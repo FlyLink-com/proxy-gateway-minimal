@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const ARTIFACT_SHA256 = "d6c0663c9a7c82c6e8ffb7d354e2a4c23d26f3339586533df5c268b887b839fd";
 const TOOL_SOURCE_COMMIT = "47a2a9583fb44cb905e91aade02ae5aa3d635d94";
+const APPROVAL_MAX_TTL_MS = 30 * 60 * 1000;
 const SAFE_RECEIPT_ERRORS = new Set([
   "artifact_identity_mismatch",
   "atomic_apply_failed",
@@ -28,6 +29,7 @@ export const JAPAN_TUIC_REPAIR_GATE = Object.freeze({
   gateBasis: "japan-tuic-identity-additive-repair-20260716-002",
   executionGateId: "github-actions-japan-tuic-additive-repair-20260716-001",
   releaseUnit: "japan-runtime-config",
+  target: "vultr-japan-production",
   surface: "japan-tuic",
   strategy: "additive_missing_only",
   artifact: Object.freeze({
@@ -127,6 +129,58 @@ export function validateArtifactIdentity(input = {}) {
     throw safeError("artifact_identity_mismatch");
   }
   return { ok: true, ...expected };
+}
+
+export function validateExecutionApproval({ bundle, current, now = new Date().toISOString() } = {}) {
+  let approval;
+  try {
+    approval = JSON.parse(bundle);
+  } catch {
+    throw safeError("approval_identity_mismatch");
+  }
+  const expectedKeys = [
+    "artifactSha256",
+    "expiresAt",
+    "gateId",
+    "repository",
+    "runAttempt",
+    "runId",
+    "schemaVersion",
+    "target",
+    "workflowCommit",
+    "workflowRef"
+  ];
+  if (!approval || typeof approval !== "object" || Array.isArray(approval)
+    || Object.keys(approval).sort().join("\n") !== expectedKeys.join("\n")) {
+    throw safeError("approval_identity_mismatch");
+  }
+  const active = record(current);
+  const nowMs = Date.parse(now);
+  const expiresAtMs = Date.parse(approval.expiresAt);
+  const validCurrentIdentity = typeof active.repository === "string"
+    && typeof active.workflowRef === "string"
+    && /^[0-9a-f]{40}$/.test(active.workflowCommit)
+    && /^[1-9][0-9]*$/.test(active.runId)
+    && /^[1-9][0-9]*$/.test(active.runAttempt);
+  const validExpiry = Number.isFinite(nowMs)
+    && Number.isFinite(expiresAtMs)
+    && approval.expiresAt === new Date(expiresAtMs).toISOString()
+    && expiresAtMs > nowMs
+    && expiresAtMs - nowMs <= APPROVAL_MAX_TTL_MS;
+  if (!validCurrentIdentity
+    || approval.schemaVersion !== "1"
+    || approval.gateId !== JAPAN_TUIC_REPAIR_GATE.executionGateId
+    || approval.repository !== active.repository
+    || approval.workflowRef !== active.workflowRef
+    || approval.workflowCommit !== active.workflowCommit
+    || approval.runId !== active.runId
+    || approval.runAttempt !== active.runAttempt
+    || approval.artifactSha256 !== ARTIFACT_SHA256
+    || approval.target !== JAPAN_TUIC_REPAIR_GATE.target
+    || !validExpiry) {
+    throw safeError("approval_identity_mismatch");
+  }
+  return { ok: true, type: "japan_tuic_execution_approval" };
 }
 
 export function validateCandidateReport(report = {}) {
@@ -307,11 +361,29 @@ function writeSafeFailure(stderr, error) {
 
 export function runJapanTuicRepairContractCli({
   argv = process.argv.slice(2),
+  env = process.env,
+  now = new Date().toISOString(),
   stdout = process.stdout,
   stderr = process.stderr
 } = {}) {
   try {
     const command = argv[0];
+    if (command === "approval") {
+      if (argv.length !== 1) throw safeError("approval_identity_mismatch");
+      const approval = validateExecutionApproval({
+        bundle: env.JAPAN_CI_APPROVAL_BUNDLE,
+        current: {
+          repository: env.CURRENT_REPOSITORY,
+          workflowRef: env.CURRENT_WORKFLOW_REF,
+          workflowCommit: env.CURRENT_WORKFLOW_COMMIT,
+          runId: env.CURRENT_RUN_ID,
+          runAttempt: env.CURRENT_RUN_ATTEMPT
+        },
+        now
+      });
+      stdout.write(`${JSON.stringify(approval)}\n`);
+      return 0;
+    }
     if (command === "receipt") {
       const inputPath = argValue(argv, "--input");
       if (!inputPath || argv.length !== 3) throw safeError("receipt_validation_failed");

@@ -10,6 +10,10 @@ const WORKFLOW_PATH = resolve(
   ".github/workflows/japan-runtime-config-additive-repair.yml"
 );
 const RUNBOOK_PATH = resolve(REPOSITORY_ROOT, "docs/GITHUB_DEPLOYMENT_RUNBOOK.md");
+const DESIGN_PATH = resolve(
+  REPOSITORY_ROOT,
+  "docs/superpowers/specs/2026-07-16-github-japan-additive-repair-cicd-design.md"
+);
 
 function workflowText() {
   return readFileSync(WORKFLOW_PATH, "utf8");
@@ -36,15 +40,28 @@ test("Japan repair workflow is manual-only with minimal read permissions", () =>
   assert.match(workflow, /cancel-in-progress: false/);
 });
 
+test("dispatcher cannot manufacture or replay the production approval", () => {
+  const workflow = workflowText();
+  const trigger = workflow.slice(workflow.indexOf("on:"), workflow.indexOf("permissions:"));
+  const preflight = jobBlock(workflow, "preflight", "execute");
+  const execute = jobBlock(workflow, "execute");
+  assert.doesNotMatch(trigger, /\binputs:/);
+  assert.doesNotMatch(workflow, /inputs\.(?:gate_id|expected_workflow_commit|confirmation)/);
+  assert.doesNotMatch(preflight, /JAPAN_CI_APPROVAL_BUNDLE|secrets\./);
+  assert.match(execute, /JAPAN_CI_APPROVAL_BUNDLE: \$\{\{ secrets\.JAPAN_CI_APPROVAL_BUNDLE \}\}/);
+  assert.match(execute, /CURRENT_RUN_ID: \$\{\{ github\.run_id \}\}/);
+  assert.match(execute, /CURRENT_RUN_ATTEMPT: \$\{\{ github\.run_attempt \}\}/);
+  assert.match(execute, /japan-tuic-additive-repair-contract\.mjs approval/);
+  const approval = execute.indexOf("- name: Validate one-time production approval");
+  const credentials = execute.indexOf("- name: Prepare restricted SSH material");
+  assert.ok(approval >= 0 && credentials > approval);
+});
+
 test("secretless preflight is isolated from the protected execute job", () => {
   const workflow = workflowText();
   const preflight = jobBlock(workflow, "preflight", "execute");
   const execute = jobBlock(workflow, "execute");
   assert.match(preflight, /github\.ref == 'refs\/heads\/master'/);
-  assert.match(preflight, /EXPECTED_WORKFLOW_COMMIT_INPUT: \$\{\{ inputs\.expected_workflow_commit \}\}/);
-  assert.match(preflight, /CURRENT_WORKFLOW_COMMIT: \$\{\{ github\.sha \}\}/);
-  assert.match(preflight, /"\$EXPECTED_WORKFLOW_COMMIT_INPUT" != "\$CURRENT_WORKFLOW_COMMIT"/);
-  assert.match(preflight, /github-actions-japan-tuic-additive-repair-20260716-001/);
   assert.doesNotMatch(preflight, /environment:|secrets\.|\bssh\b|\bscp\b|\brsync\b/);
   assert.match(preflight, /outputs:\r?\n      ready:/);
   assert.match(execute, /needs: preflight/);
@@ -52,6 +69,7 @@ test("secretless preflight is isolated from the protected execute job", () => {
   assert.match(execute, /environment: vultr-japan-production/);
   assert.equal((workflow.match(/environment: vultr-japan-production/g) ?? []).length, 1);
   for (const secret of [
+    "JAPAN_CI_APPROVAL_BUNDLE",
     "JAPAN_CI_HOST",
     "JAPAN_CI_PORT",
     "JAPAN_CI_USER",
@@ -67,7 +85,7 @@ test("both jobs use immutable Actions and verify the frozen artifact", () => {
   const workflow = workflowText();
   assert.equal(
     (workflow.match(/actions\/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6/g) ?? []).length,
-    2
+    3
   );
   assert.equal(
     (workflow.match(/actions\/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6/g) ?? []).length,
@@ -90,6 +108,21 @@ test("both jobs use immutable Actions and verify the frozen artifact", () => {
     (workflow.match(/proxy-gateway-control-plane-cumulative-20260716-003\.zip/g) ?? []).length >= 2,
     true
   );
+});
+
+test("secretless preflight independently binds the artifact to the declared Git tree", () => {
+  const workflow = workflowText();
+  const preflight = jobBlock(workflow, "preflight", "execute");
+  assert.match(preflight, /- name: Checkout frozen artifact source/);
+  assert.match(preflight, /ref: 47a2a9583fb44cb905e91aade02ae5aa3d635d94/);
+  assert.match(preflight, /path: \.japan-repair-trusted-source/);
+  assert.match(preflight, /persist-credentials: false/);
+  assert.match(preflight, /node scripts\/artifact-git-tree-verifier\.mjs/);
+  assert.match(preflight, /--commit 47a2a9583fb44cb905e91aade02ae5aa3d635d94/);
+  const treeCheckout = preflight.indexOf("- name: Checkout frozen artifact source");
+  const treeVerification = preflight.indexOf("node scripts/artifact-git-tree-verifier.mjs");
+  const ready = preflight.indexOf("- name: Mark secretless preflight ready");
+  assert.ok(treeCheckout >= 0 && treeVerification > treeCheckout && ready > treeVerification);
 });
 
 test("execute job uses only restricted SSH transport and validates before summary", () => {
@@ -146,11 +179,34 @@ test("deployment runbook closes the restricted Japan repair lifecycle", () => {
     "additive_missing_only",
     "CI Identity Bootstrap Gate",
     "Quantitative Production Execution Gate",
+    "JAPAN_CI_APPROVAL_BUNDLE",
     "JAPAN_CI_PRIVATE_KEY",
+    "required reviewer",
+    "prevent self-review",
+    "runId",
+    "runAttempt",
+    "artifact Git tree",
     "host authorization revocation",
     "GitHub secret deletion",
+    "all six temporary",
     "control-plane-app is not authorized"
   ]) {
     assert.match(runbook, new RegExp(requiredBoundary));
+  }
+});
+
+test("approved design records independent approval and source-tree binding", () => {
+  const design = readFileSync(DESIGN_PATH, "utf8");
+  for (const requiredBoundary of [
+    "JAPAN_CI_APPROVAL_BUNDLE",
+    "required reviewer",
+    "prevent self-review",
+    "runId",
+    "runAttempt",
+    "artifact Git tree",
+    "30 minutes",
+    "six temporary Environment secrets"
+  ]) {
+    assert.match(design, new RegExp(requiredBoundary));
   }
 });

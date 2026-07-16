@@ -88,19 +88,25 @@ lane: **control-plane-app is not authorized**. Application installation,
 release switching, service or timer restart, stale deletion, schema/database
 changes, and adjacent infrastructure mutation remain prohibited.
 
-The preflight job has no production secrets. It validates the exact artifact,
-the workflow commit selected from `master`, confirmation text, and the exact
-one-time Gate ID before the execute job may enter the protected Environment.
-The execute job streams the verified archive to a host-side forced command;
-it does not receive an interactive shell, PTY, forwarding, SCP, rsync, or an
-operator SSH identity. Logs and summaries contain aggregate receipts only.
+The preflight job has no production secrets. It validates the exact artifact
+digest and independently compares the archive's canonical paths, blobs, and
+executable modes with the artifact Git tree at
+`47a2a9583fb44cb905e91aade02ae5aa3d635d94`. The dispatcher supplies no
+approval or confirmation input. Only the protected execute job consumes the
+one-time approval after entering the Environment approval boundary and before
+reading connection secrets. It then streams the verified archive to a
+host-side forced command; it does not receive an interactive shell, PTY,
+forwarding, SCP, rsync, or an operator SSH identity. Logs and summaries contain
+aggregate receipts only.
 
 #### CI Identity Bootstrap Gate
 
 This independent exact Risk A Gate must be approved and completed before any
 workflow dispatch. It creates a new temporary, dedicated CI SSH identity,
 installs only the reviewed forced-command runner and one marked restricted
-authorization, pins the target host key, and writes only these temporary
+authorization, pins the target host key, limits the Environment to protected
+`master`, configures a **required reviewer** distinct from the dispatcher, and
+enables **prevent self-review**. It writes only these five temporary connection
 Environment secrets:
 
 - `JAPAN_CI_HOST`
@@ -116,10 +122,29 @@ general shell or broader sudo authority. It must not create a production user,
 daemon, provider resource, network rule, reusable deploy key, or generic
 deployment access.
 
+If the Environment cannot enforce the protected branch, required reviewer, or
+prevent self-review controls, bootstrap stops. A typed dispatcher value or an
+unprotected manual run is not an acceptable fallback.
+
 #### Quantitative Production Execution Gate
 
 After bootstrap readback, a second independent exact Risk A Gate authorizes one
-manual workflow run and no automatic retry. The earlier
+manual workflow run and no automatic retry. The dispatcher starts the
+input-free workflow on the exact merged `master` commit. After the secretless
+preflight exposes the immutable run identity, an approval authority distinct
+from the dispatcher creates the sixth temporary Environment secret,
+`JAPAN_CI_APPROVAL_BUNDLE`. The bundle contains exactly:
+
+- `schemaVersion`, `gateId`, `repository`, `workflowRef`, and `workflowCommit`;
+- the exact `runId` and `runAttempt`;
+- the frozen `artifactSha256` and target `vultr-japan-production`;
+- `expiresAt`, no more than 30 minutes after creation.
+
+The required reviewer then approves that exact pending Environment deployment.
+The execute job rejects missing, expired, replayed, extra-field, wrong-run,
+wrong-attempt, wrong-commit, wrong-artifact, or wrong-target bundles before it
+reads SSH material. A rerun changes `runAttempt` and therefore requires a new
+Gate and bundle. The earlier
 `japan-tuic-identity-additive-repair-20260716-002` review is evidence for the
 source, artifact, and candidate counts; it is not CI execution authority.
 
@@ -147,7 +172,7 @@ identity healthy or retention complete.
 Closeout is mandatory after either apply or rollback. The forced command must
 perform and verify **host authorization revocation** for only its marked key and
 remove its Gate-owned temporary material. A separately authorized GitHub
-mutation must then perform **GitHub secret deletion** for all five temporary
+mutation must then perform **GitHub secret deletion** for all six temporary
 Environment secrets and read back name absence. Until both readbacks succeed,
 the operation is incomplete and no later `control-plane-app` canary Gate may be
 submitted.

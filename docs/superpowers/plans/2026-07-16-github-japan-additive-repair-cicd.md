@@ -32,13 +32,38 @@
 - The three additions are one atomic unit. The implementation must not split them into `1 + 2`.
 - Implementation follows strict red-green-refactor. Every behavior change starts with a focused failing test and a witnessed expected failure.
 
+### Security Scan Remediation Amendment
+
+The exact-head Deep Security Scan completed after the initial implementation
+plan identified two direct blockers for this PR. The following requirements
+supersede any later plan snippet that still shows dispatcher confirmation or
+manifest-only artifact validation:
+
+- `workflow_dispatch` has no inputs; the dispatcher cannot supply an approval,
+  Gate ID, workflow commit, artifact identity, or confirmation.
+- Secretless preflight checks out the frozen source commit independently and
+  verifies the artifact digest plus its canonical Git tree before reporting
+  ready.
+- `vultr-japan-production` must enforce protected `master`, a required reviewer
+  distinct from the dispatcher, and prevent self-review.
+- The execute job accepts only `JAPAN_CI_APPROVAL_BUNDLE`, a closed, unexpired
+  JSON object bound to the exact repository, workflow ref/commit, run ID,
+  run attempt, artifact SHA-256, and target. Its maximum lifetime is 30 minutes.
+- The approval bundle is the sixth temporary Environment secret and is deleted
+  with the five connection secrets during separately authorized closeout.
+- `scripts/artifact-git-tree-verifier.mjs` and
+  `server/tests/artifact-git-tree-verifier.test.mjs` own the independent source
+  tree proof and its traversal, duplicate, file-set, content, and mode tests.
+
 ## File Structure
 
 | File | Responsibility |
 | --- | --- |
 | `scripts/japan-tuic-additive-repair-contract.mjs` | Frozen public identities, aggregate candidate/post-state validators, natural-observation acceptance, and aggregate receipt validation/CLI. No filesystem paths or SSH behavior. |
+| `scripts/artifact-git-tree-verifier.mjs` | Secretless canonical comparison of the frozen ZIP with the exact trusted Git commit. |
 | `scripts/japan-tuic-additive-repair-runner.mjs` | Dependency-injected repair state machine plus the production host adapter/CLI. Reads a root-owned binding, receives the exact ZIP on stdin, invokes only fixed helper/system commands, rolls back on post-apply failure, and emits one sanitized receipt. |
 | `server/tests/japan-tuic-additive-repair-contract.test.mjs` | Unit coverage for frozen identities, count drift, observation thresholds, receipt schema, and redaction. |
+| `server/tests/artifact-git-tree-verifier.test.mjs` | Artifact path, blob, mode, duplicate, traversal, and safe-output coverage. |
 | `server/tests/japan-tuic-additive-repair-runner.test.mjs` | Success, pre-apply stop, rollback, cleanup, timer, archive, host-adapter, and protected-output tests using temporary fixtures and injected operations. |
 | `server/tests/japan-tuic-additive-repair-workflow.test.mjs` | Static workflow security and ordering contract. |
 | `.github/workflows/japan-runtime-config-additive-repair.yml` | Manual two-job GitHub execution lane: secretless preflight followed by protected restricted execution. |
@@ -748,9 +773,10 @@ git commit -m "feat(ci): add forced-command Japan repair runner"
 **Interfaces:**
 - Consumes: Task 1 artifact/receipt CLI and the Task 3 host forced-command CLI installed later by Gate 2.
 - Environment: `vultr-japan-production` only on the `execute` job.
-- Temporary Environment secret names: `JAPAN_CI_HOST`, `JAPAN_CI_PORT`,
+- Temporary Environment secret names: `JAPAN_CI_APPROVAL_BUNDLE`,
+  `JAPAN_CI_HOST`, `JAPAN_CI_PORT`,
   `JAPAN_CI_USER`, `JAPAN_CI_PRIVATE_KEY`, `JAPAN_CI_KNOWN_HOSTS`.
-- Dispatch inputs: `gate_id`, `expected_workflow_commit`, and `confirmation`.
+- Dispatch inputs: none. Approval is Environment-issued and run-bound.
 
 - [ ] **Step 1: Write the failing workflow security contract**
 
@@ -768,13 +794,17 @@ assert.match(execute, /environment: vultr-japan-production/);
 assert.match(execute, /concurrency:/);
 assert.match(execute, /cancel-in-progress: false/);
 assert.equal((workflow.match(/actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8\.0\.1/g) ?? []).length, 2);
-assert.equal((workflow.match(/actions\/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6/g) ?? []).length, 2);
+assert.equal((workflow.match(/actions\/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6/g) ?? []).length, 3);
 assert.equal((workflow.match(/actions\/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6/g) ?? []).length, 2);
 assert.doesNotMatch(workflow, /ssh\s+-v|set\s+-x|cat\s+.*(?:key|known|receipt)|tee\s+.*receipt/i);
 assert.doesNotMatch(workflow, /systemctl\s+(?:start|restart|enable|disable)|npm\s+(?:ci|install)|\bscp\b|\brsync\b/);
 ```
 
 Also assert that both jobs validate the artifact, only `execute` reads secrets,
+preflight independently checks out source `47a2a9583fb44cb905e91aade02ae5aa3d635d94`
+and runs the canonical artifact Git-tree verifier, `workflow_dispatch` has no
+inputs, the execute job validates the exact `JAPAN_CI_APPROVAL_BUNDLE` before
+connection material,
 SSH has `BatchMode=yes`, `IdentitiesOnly=yes`, `StrictHostKeyChecking=yes`,
 `LogLevel=ERROR`, forwarding disabled, and receipt validation occurs before any
 summary output.
@@ -796,19 +826,6 @@ name: Japan Runtime Config Additive Repair
 
 on:
   workflow_dispatch:
-    inputs:
-      gate_id:
-        description: Exact approved Risk A Gate ID.
-        required: true
-        type: string
-      expected_workflow_commit:
-        description: Exact reviewed workflow commit.
-        required: true
-        type: string
-      confirmation:
-        description: Type "execute japan additive repair".
-        required: true
-        type: string
 
 permissions:
   actions: read
@@ -816,21 +833,18 @@ permissions:
 
 jobs:
   preflight:
-    if: >-
-      github.ref == 'refs/heads/master' &&
-      inputs.gate_id == 'github-actions-japan-tuic-additive-repair-20260716-001' &&
-      inputs.confirmation == 'execute japan additive repair' &&
-      inputs.expected_workflow_commit == github.sha
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 ```
 
-Checkout and setup Node with the exact pinned identities listed in the test.
+Checkout the workflow commit and the frozen source commit independently, then
+setup Node with the exact pinned identities listed in the test.
 Download artifact name
 `production-dry-run-japan-control-plane-control-plane-cumulative-20260716-003`
-from run `29495150692`, then call the Task 1 artifact CLI. Pass dispatch values
-through `env`, not `${{ }}` inside shell source. Emit only `ready=true` through
-`GITHUB_OUTPUT`.
+from run `29495150692`, call the Task 1 artifact CLI, and run the canonical
+Git-tree verifier against the frozen source checkout. Emit only `ready=true`
+through `GITHUB_OUTPUT`.
 
 - [ ] **Step 3: Run the workflow test and confirm the expected partial RED**
 
@@ -844,6 +858,9 @@ Add an `execute` job that:
 - requires `preflight` and its exact `ready=true` output;
 - repeats checkout, Node setup, artifact download, and artifact validation;
 - binds `environment: vultr-japan-production`;
+- validates the closed `JAPAN_CI_APPROVAL_BUNDLE` against the current
+  repository, workflow ref/commit, run ID/attempt, artifact digest, target, and
+  30-minute expiry before reading connection secrets;
 - uses workflow-level concurrency group `japan-runtime-config-additive-repair`
   with `cancel-in-progress: false`;
 - writes key and known-host material to `RUNNER_TEMP` with mode `0600` without
@@ -912,7 +929,11 @@ vultr-japan-production
 additive_missing_only
 CI Identity Bootstrap Gate
 Quantitative Production Execution Gate
+JAPAN_CI_APPROVAL_BUNDLE
 JAPAN_CI_PRIVATE_KEY
+required reviewer
+prevent self-review
+artifact Git tree
 host authorization revocation
 GitHub secret deletion
 control-plane-app is not authorized

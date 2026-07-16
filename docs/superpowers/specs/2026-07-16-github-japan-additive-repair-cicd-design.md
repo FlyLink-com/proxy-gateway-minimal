@@ -55,7 +55,7 @@ A actions.
 ### Included
 
 - One manual GitHub Actions workflow bound to `vultr-japan-production`.
-- A no-credential artifact and workflow-identity preflight.
+- A no-credential artifact, artifact Git tree, and workflow-identity preflight.
 - A dedicated temporary SSH key that is not an operator key.
 - A host-side forced-command runner with no interactive shell.
 - Stable aggregate inventory, protected-map backup, atomic additive apply,
@@ -133,8 +133,10 @@ is presented and explicitly approved after CI identity bootstrap.
 
 ```text
 manual workflow_dispatch on protected master
-  -> no-secret workflow and artifact preflight
+  -> no-secret workflow, artifact digest, and artifact Git tree preflight
   -> vultr-japan-production environment boundary
+  -> required reviewer with prevent self-review
+  -> exact run-bound JAPAN_CI_APPROVAL_BUNDLE
   -> temporary dedicated SSH identity
   -> pinned host key
   -> forced-command runner, stdin artifact transport only
@@ -167,8 +169,8 @@ The source PR adds a dedicated workflow with these properties:
 - no `pull_request_target`, scheduled trigger, push-triggered production job,
   reusable caller, OIDC token, repository write, package write, or deployment
   write permission;
-- untrusted dispatch inputs are passed as data through the environment and
-  never interpolated into generated shell source;
+- no dispatcher-controlled approval, confirmation, Gate, commit, artifact, or
+  target inputs;
 - all Actions used by the production workflow are pinned to reviewed immutable
   identities;
 - job and individual command timeouts are finite and fail closed;
@@ -180,8 +182,9 @@ workflow identities may the dependent `execute` job enter
 `vultr-japan-production`. Safe preflight outputs are limited to booleans and
 immutable public identities already named by the Gate.
 
-The workflow confirmation binds an exact Gate ID. Confirmation text is a
-dispatch guard, not a substitute for the separately recorded Risk A approval.
+The dispatch is intentionally input-free. Authorization comes only from the
+protected Environment and the one-time `JAPAN_CI_APPROVAL_BUNDLE` described
+below; typed confirmation text is not authorization.
 
 ### 3. CI Identity Bootstrap
 
@@ -193,10 +196,12 @@ An exact bootstrap Gate will authorize one bounded setup session:
    principal. The entry forces the reviewed runner and disables PTY, agent
    forwarding, port forwarding, X11 forwarding, and arbitrary commands.
 4. Install the exact runner bytes and verify their SHA-256 and mode.
-5. Configure the Environment branch boundary for protected `master` where the
-   current GitHub plan supports it.
-6. Store only the minimum temporary connection identity, pinned host key, and
-   dedicated private key in `vultr-japan-production` secrets.
+5. Configure the Environment branch boundary for protected `master`, a
+   **required reviewer** distinct from the dispatcher, and **prevent
+   self-review**.
+6. Store only the five minimum temporary connection secrets: `JAPAN_CI_HOST`,
+   `JAPAN_CI_PORT`, `JAPAN_CI_USER`, `JAPAN_CI_PRIVATE_KEY`, and
+   `JAPAN_CI_KNOWN_HOSTS`.
 7. Remove and verify the local private-key copy after GitHub secret creation.
 
 The bootstrap must stop if the existing target principal cannot run the exact
@@ -204,18 +209,36 @@ repair and revoke only its own marked authorization without receiving broader
 shell or sudo authority. It must not create a new production user, generic
 sudoers rule, daemon, runner service, network rule, or provider resource.
 
-The repository's private-plan limitations may prevent GitHub-native required
-reviewers. If so, the absence is recorded explicitly; protected `master`, the
-manual exact Gate, immutable identities, forced-command restriction, and the
-one-time credential remain the enforcement layers. The workflow must not
-pretend a GitHub reviewer rule exists when the API reports none.
+Bootstrap fails closed if GitHub cannot enforce the protected branch, required
+reviewer, or prevent self-review controls. Process text or dispatcher-provided
+confirmation is not a substitute.
+
+### 3A. One-Time Execution Approval
+
+The dispatcher starts the input-free workflow at the exact reviewed `master`
+commit. After the secretless preflight establishes the immutable workflow run,
+an approval authority distinct from the dispatcher creates
+`JAPAN_CI_APPROVAL_BUNDLE` as the sixth temporary Environment secret. Its
+closed JSON object contains exactly `schemaVersion`, `gateId`, `repository`,
+`workflowRef`, `workflowCommit`, `runId`, `runAttempt`, `artifactSha256`,
+`target`, and `expiresAt`. The expiry may be no more than 30 minutes after
+creation.
+
+The required reviewer approves only that pending Environment deployment. The
+execute job validates the bundle before reading any connection secret. Exact
+`runId` plus `runAttempt` makes the approval single-use: a rerun, edit, stale
+commit, different artifact, different target, expired bundle, or extra field
+fails closed and requires a new exact Risk A Gate.
 
 ### 4. Artifact Transport
 
 The GitHub-hosted runner downloads the already reviewed artifact and sidecars,
-then verifies source, manifest, file name, size, SHA-256, and ZIP entry safety
-before any secret-bearing step. The same SHA-256 is rechecked immediately
-before transport.
+checks out the exact source commit independently, then verifies source,
+manifest, file name, size, SHA-256, ZIP entry safety, and the canonical artifact
+Git tree before any secret-bearing step. Tree verification compares the
+archive commit marker, complete path set, Git blob identities, and executable
+modes with `47a2a9583fb44cb905e91aade02ae5aa3d635d94`. The same SHA-256 is
+rechecked immediately before transport.
 
 The archive is streamed over standard input to the forced command. No SCP,
 rsync, remote shell string, or user-controlled destination path is accepted.
@@ -400,11 +423,11 @@ The forced runner's `finally` path:
 The protected backup is intentionally retained for the approved rollback
 retention period and is not treated as temporary material.
 
-After the workflow ends, the operator-side controller deletes the temporary
-Environment connection and private-key secrets through a separately allowed
-GitHub mutation, then reads back only secret-name absence. The workflow does
-not receive a broad GitHub administration token merely so that it can delete
-its own secret.
+After the workflow ends, the operator-side controller deletes all six temporary Environment secrets,
+including `JAPAN_CI_APPROVAL_BUNDLE`, through a separately
+allowed GitHub mutation, then reads back only secret-name absence. The workflow
+does not receive a broad GitHub administration token merely so that it can
+delete its own secret.
 
 The final receipt distinguishes:
 

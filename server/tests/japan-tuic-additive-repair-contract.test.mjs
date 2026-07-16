@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import * as repairContract from "../../scripts/japan-tuic-additive-repair-contract.mjs";
+
 import {
   JAPAN_TUIC_REPAIR_GATE,
   runJapanTuicRepairContractCli,
@@ -15,6 +17,29 @@ import {
 } from "../../scripts/japan-tuic-additive-repair-contract.mjs";
 
 const ARTIFACT_BYTES = "approved-artifact-bytes";
+
+const approvalBundle = (overrides = {}) => JSON.stringify({
+  schemaVersion: "1",
+  gateId: "github-actions-japan-tuic-additive-repair-20260716-001",
+  repository: "gccwebos-com/proxy-gateway-minimal",
+  workflowRef: "gccwebos-com/proxy-gateway-minimal/.github/workflows/japan-runtime-config-additive-repair.yml@refs/heads/master",
+  workflowCommit: "a".repeat(40),
+  runId: "29510000000",
+  runAttempt: "1",
+  artifactSha256: "d6c0663c9a7c82c6e8ffb7d354e2a4c23d26f3339586533df5c268b887b839fd",
+  target: "vultr-japan-production",
+  expiresAt: "2026-07-16T20:15:00.000Z",
+  ...overrides
+});
+
+const currentApprovalRun = (overrides = {}) => ({
+  repository: "gccwebos-com/proxy-gateway-minimal",
+  workflowRef: "gccwebos-com/proxy-gateway-minimal/.github/workflows/japan-runtime-config-additive-repair.yml@refs/heads/master",
+  workflowCommit: "a".repeat(40),
+  runId: "29510000000",
+  runAttempt: "1",
+  ...overrides
+});
 
 const artifact = (overrides = {}) => ({
   runId: 29495150692,
@@ -83,7 +108,56 @@ test("freezes the reviewed basis, planned execution gate, artifact, and additive
   assert.equal(validateCandidateReport(candidate()).candidateReady, true);
   assert.equal(JAPAN_TUIC_REPAIR_GATE.gateBasis, "japan-tuic-identity-additive-repair-20260716-002");
   assert.equal(JAPAN_TUIC_REPAIR_GATE.executionGateId, "github-actions-japan-tuic-additive-repair-20260716-001");
+  assert.equal(JAPAN_TUIC_REPAIR_GATE.target, "vultr-japan-production");
   assert.equal(JAPAN_TUIC_REPAIR_GATE.strategy, "additive_missing_only");
+});
+
+test("accepts only an exact unexpired Environment-issued approval for this run attempt", () => {
+  assert.equal(typeof repairContract.validateExecutionApproval, "function");
+  assert.deepEqual(repairContract.validateExecutionApproval({
+    bundle: approvalBundle(),
+    current: currentApprovalRun(),
+    now: "2026-07-16T20:00:00.000Z"
+  }), {
+    ok: true,
+    type: "japan_tuic_execution_approval"
+  });
+
+  for (const [bundleOverrides, currentOverrides, now] of [
+    [{ extraField: "not-allowed" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ gateId: "replayable-public-text" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ repository: "other/repository" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ workflowRef: "other/workflow@refs/heads/master" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ workflowCommit: "b".repeat(40) }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ runId: "29510000001" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ runAttempt: "2" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ artifactSha256: "f".repeat(64) }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ target: "control-plane-app" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ expiresAt: "2026-07-16T19:59:59.000Z" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ expiresAt: "2026-07-16T20:30:00.001Z" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{}, { runAttempt: "2" }, "2026-07-16T20:00:00.000Z"]
+  ]) {
+    assert.throws(
+      () => repairContract.validateExecutionApproval({
+        bundle: approvalBundle(bundleOverrides),
+        current: currentApprovalRun(currentOverrides),
+        now
+      }),
+      (error) => error.code === "approval_identity_mismatch"
+    );
+  }
+
+  for (const bundle of [undefined, "", "not-json", "[]", "null"]) {
+    assert.throws(
+      () => repairContract.validateExecutionApproval({
+        bundle,
+        current: currentApprovalRun(),
+        now: "2026-07-16T20:00:00.000Z"
+      }),
+      (error) => error.code === "approval_identity_mismatch"
+        && error.message === "approval_identity_mismatch"
+    );
+  }
 });
 
 test("rejects any artifact drift without echoing supplied values", () => {
