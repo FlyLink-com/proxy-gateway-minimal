@@ -4,13 +4,15 @@ Last updated: 2026-07-16, America/Los_Angeles.
 
 > Status:
 > - Design state: Reviewed by the Operator; source implementation and local
->   review complete; not merged or activated
+>   review complete; merged through PR #507; not activated
 > - Risk: A because the source defines future production SQLite deletion,
 >   backup retention, restore, and systemd behavior
 > - Process: one source-only PR with design, implementation, tests, and
 >   operations documentation; production remains a later exact Risk A Gate
 > - Expected PR count: 1
 > - Source baseline: `daffc30356b8bf256f7ad44a314e22e10dbab445`
+> - Validated source head: `454cffbe02c14d8e65c8dd7d3ece46ed329bedfd`
+> - Merged master commit: `98ddd867ab15cbc1f782981d1ecf947ebf23f8ad`
 > - Validation: focused synthetic tests, full `npm test`, project-state and
 >   document-authority checks, and exact diff checks
 > - Production/AWS impact: None

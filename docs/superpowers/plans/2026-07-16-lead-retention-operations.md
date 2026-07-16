@@ -337,7 +337,7 @@ git commit -m "docs(platform): close Lead retention operations source"
 **Files:**
 - Verify every path changed from `origin/master`.
 
-- [ ] **Step 1: Run exact-head focused and complete validation**
+- [x] **Step 1: Run exact-head focused and complete validation**
 
 ```powershell
 node --test server/tests/platform-lead-retention-operations.test.mjs
@@ -348,7 +348,7 @@ git diff --check origin/master...HEAD
 git diff --check
 ```
 
-- [ ] **Step 2: Review exact changed surface and forbidden scope**
+- [x] **Step 2: Review exact changed surface and forbidden scope**
 
 ```powershell
 git diff --stat origin/master...HEAD
@@ -362,21 +362,21 @@ Nginx, DNS, firewall, identity map, attribution path, Admin UI, or application
 service unit changed. Verify the main checkout and `.codex/config.toml` remain
 untouched.
 
-- [ ] **Step 3: Push and create one Draft PR**
+- [x] **Step 3: Push and create one Draft PR**
 
 The PR body records Risk A source-only authority, intent, exact files, TDD
 evidence, retention arithmetic, failure behavior, non-goals, production impact
 `none`, rollback boundary, and the two later exact Gates. Keep Draft until
 independent review and exact-head checks are complete.
 
-- [ ] **Step 4: Perform independent source review and address findings**
+- [x] **Step 4: Perform independent source review and address findings**
 
 Review the exact PR head for privacy leakage, path containment, schema side
 effects, dry-run mutation, partial deletion, timer assumptions, restore order,
 and test gaps. Apply minimal fixes through RED/GREEN and rerun complete
 validation.
 
-- [ ] **Step 5: Ready and merge only when the source closure is complete**
+- [x] **Step 5: Ready and merge only when the source closure is complete**
 
 Mark Ready, merge through the repository's allowed method, verify merged commit
 and PR state, and clean only the isolated worktree/branch when safe. Do not
