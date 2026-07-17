@@ -154,6 +154,14 @@ function isSafeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
+function isLowerSha256(value) {
+  return typeof value === "string" && LOWER_SHA256.test(value);
+}
+
+function isLowerCommit(value) {
+  return typeof value === "string" && LOWER_COMMIT.test(value);
+}
+
 function sameValue(left, right) {
   return left === right;
 }
@@ -163,24 +171,24 @@ function hashBytes(bytes) {
 }
 
 export function executionNonceSha256(nonce) {
-  if (typeof nonce !== "string" || !LOWER_SHA256.test(nonce)) {
+  if (!isLowerSha256(nonce)) {
     throw stateError("execution_claim_mismatch");
   }
   return hashBytes(nonce);
 }
 
 export function executionClaimSha256(control) {
-  if (!control || typeof control !== "object" || Array.isArray(control)) {
+  if (!hasExactKeys(control, CLAIM_INPUT_KEYS)) {
     throw stateError("execution_claim_mismatch");
   }
-  if (!LOWER_SHA256.test(control.artifactSha256)
+  if (!isLowerSha256(control.artifactSha256)
     || typeof control.executionGateId !== "string" || !SAFE_LITERAL.test(control.executionGateId)
     || typeof control.executionNonce !== "string" || !LOWER_SHA256.test(control.executionNonce)
     || typeof control.releaseUnit !== "string" || !SAFE_LITERAL.test(control.releaseUnit)
     || typeof control.strategy !== "string" || !SAFE_LITERAL.test(control.strategy)
     || typeof control.surface !== "string" || !SAFE_LITERAL.test(control.surface)
     || typeof control.target !== "string" || !SAFE_LITERAL.test(control.target)
-    || typeof control.workflowCommit !== "string" || !LOWER_COMMIT.test(control.workflowCommit)) {
+    || !isLowerCommit(control.workflowCommit)) {
     throw stateError("execution_claim_mismatch");
   }
   return hashBytes(JSON.stringify(canonicalObject(control, CLAIM_INPUT_KEYS)));
@@ -190,9 +198,9 @@ function validateClaim(record) {
   if (!hasExactKeys(record, CLAIM_RECORD_KEYS)
     || record.schemaVersion !== SCHEMA_VERSION
     || record.type !== CLAIM_TYPE
-    || !LOWER_SHA256.test(record.claimSha256)
-    || !LOWER_SHA256.test(record.nonceSha256)
-    || !LOWER_COMMIT.test(record.workflowCommit)
+    || !isLowerSha256(record.claimSha256)
+    || record.nonceSha256 !== EXPECTED_NONCE_SHA256
+    || !isLowerCommit(record.workflowCommit)
     || !isCanonicalTimestamp(record.claimedAt)) {
     throw stateError("execution_claim_mismatch");
   }
@@ -203,9 +211,9 @@ function validateBackup(record) {
   if (!hasExactKeys(record, BACKUP_RECORD_KEYS)
     || record.schemaVersion !== SCHEMA_VERSION
     || record.type !== BACKUP_TYPE
-    || !LOWER_SHA256.test(record.claimSha256)
-    || !LOWER_SHA256.test(record.originalMapSha256)
-    || !LOWER_SHA256.test(record.backupSha256)
+    || !isLowerSha256(record.claimSha256)
+    || !isLowerSha256(record.originalMapSha256)
+    || !isLowerSha256(record.backupSha256)
     || !isSafeInteger(record.mode)
     || !isSafeInteger(record.uid)
     || !isSafeInteger(record.gid)
@@ -216,7 +224,7 @@ function validateBackup(record) {
 }
 
 function hasBackupFields(record) {
-  return LOWER_SHA256.test(record.backupSha256) && LOWER_SHA256.test(record.originalMapSha256);
+  return isLowerSha256(record.backupSha256) && isLowerSha256(record.originalMapSha256);
 }
 
 function hasApplyBoundary(record) {
@@ -224,16 +232,17 @@ function hasApplyBoundary(record) {
 }
 
 function validJournalRelationships(record) {
-  const hasClaim = LOWER_SHA256.test(record.claimSha256);
+  const hasClaim = isLowerSha256(record.claimSha256);
   const backup = hasBackupFields(record);
+  const noBackup = record.backupSha256 === null && record.originalMapSha256 === null;
   const apply = hasApplyBoundary(record);
 
-  if (record.phase === "prepared") return !hasClaim && !backup && !apply;
+  if (record.phase === "prepared") return !hasClaim && noBackup && !apply;
   if (!hasClaim) return false;
-  if (record.phase === "claimed") return !backup && !apply;
+  if (record.phase === "claimed") return noBackup && !apply;
   if (record.phase === "backup_ready") return backup && !apply;
   if (record.phase === "indeterminate") {
-    return (!backup && !apply && record.backupSha256 === null && record.originalMapSha256 === null)
+    return (noBackup && !apply)
       || (backup && (record.applyBoundary === null || apply));
   }
   return backup && apply;
@@ -245,13 +254,13 @@ export function validateJournal(record) {
     || record.type !== JOURNAL_TYPE
     || !isSafeInteger(record.sequence)
     || !PHASES.has(record.phase)
-    || !isNullable(record.claimSha256, (value) => typeof value === "string" && LOWER_SHA256.test(value))
-    || !LOWER_COMMIT.test(record.workflowCommit)
-    || !LOWER_SHA256.test(record.artifactSha256)
+    || !isNullable(record.claimSha256, isLowerSha256)
+    || !isLowerCommit(record.workflowCommit)
+    || !isLowerSha256(record.artifactSha256)
     || !isCanonicalTimestamp(record.preparedAt)
     || !isCanonicalTimestamp(record.updatedAt)
-    || !isNullable(record.backupSha256, (value) => typeof value === "string" && LOWER_SHA256.test(value))
-    || !isNullable(record.originalMapSha256, (value) => typeof value === "string" && LOWER_SHA256.test(value))
+    || !isNullable(record.backupSha256, isLowerSha256)
+    || !isNullable(record.originalMapSha256, isLowerSha256)
     || !isNullable(record.applyBoundary, (value) => typeof value === "string" && SAFE_LITERAL.test(value))
     || !isNullable(record.terminalResult, (value) => typeof value === "string" && TERMINAL_PHASES.has(value))
     || !isNullable(record.error, (value) => typeof value === "string" && SAFE_ERRORS.has(value))) {
@@ -435,19 +444,28 @@ function sameClaim(existing, identity) {
 }
 
 function validateSnapshotRelationships({ claim, journal, backup }) {
-  if (journal && journal.phase !== "prepared" && (!claim || journal.claimSha256 !== claim.claimSha256)) {
+  if (!journal) {
+    if (claim || backup) throw stateError();
+    return { claim, journal, backup };
+  }
+  if (!claim) {
+    if (journal.phase !== "prepared" || backup) throw stateError();
+    return { claim, journal, backup };
+  }
+  if (claim.nonceSha256 !== EXPECTED_NONCE_SHA256
+    || claim.workflowCommit !== journal.workflowCommit
+    || (journal.phase !== "prepared" && journal.claimSha256 !== claim.claimSha256)) {
     throw stateError();
   }
-  if (backup && (!claim
-    || !journal
-    || journal.phase === "prepared"
-    || backup.claimSha256 !== claim.claimSha256)) throw stateError();
-  if (journal && journal.backupSha256 !== null) {
+  if (backup && (journal.phase === "prepared" || backup.claimSha256 !== claim.claimSha256)) {
+    throw stateError();
+  }
+  if (journal.backupSha256 !== null) {
     if (!backup
       || journal.backupSha256 !== backup.backupSha256
-      || journal.originalMapSha256 !== backup.originalMapSha256) {
-      throw stateError();
-    }
+      || journal.originalMapSha256 !== backup.originalMapSha256) throw stateError();
+  } else if (backup && journal.phase !== "claimed" && journal.phase !== "indeterminate") {
+    throw stateError();
   }
   return { claim, journal, backup };
 }
@@ -488,6 +506,8 @@ export function createRepairStateStore({ paths: inputPaths, io: inputIo } = {}) 
     try {
       canonical = validateJournal(record);
       if (canonical.phase !== "prepared" || canonical.sequence !== 0) throw stateError();
+      const snapshot = await readSnapshot();
+      if (snapshot.claim || snapshot.journal || snapshot.backup) throw stateError();
       await exclusiveWrite(io, paths.journal, recordLine(canonical));
       return canonical;
     } catch {
@@ -509,10 +529,22 @@ export function createRepairStateStore({ paths: inputPaths, io: inputIo } = {}) 
     };
 
     return queued(claimQueue, async () => {
-      const existing = await readClaim();
-      if (existing) {
-        if (!sameClaim(existing, identity)) throw stateError("execution_claim_mismatch");
-        return existing;
+      let snapshot;
+      try {
+        snapshot = await readSnapshot();
+      } catch {
+        throw stateError("execution_claim_mismatch");
+      }
+      if (!snapshot.journal
+        || snapshot.journal.phase !== "prepared"
+        || snapshot.backup
+        || snapshot.journal.workflowCommit !== control.workflowCommit
+        || snapshot.journal.artifactSha256 !== control.artifactSha256) {
+        throw stateError("execution_claim_mismatch");
+      }
+      if (snapshot.claim) {
+        if (!sameClaim(snapshot.claim, identity)) throw stateError("execution_claim_mismatch");
+        return snapshot.claim;
       }
 
       let record;
@@ -529,8 +561,15 @@ export function createRepairStateStore({ paths: inputPaths, io: inputIo } = {}) 
         return record;
       } catch (error) {
         if (error?.code === "EEXIST") {
-          const raced = await readClaim();
-          if (raced && sameClaim(raced, identity)) return raced;
+          try {
+            const raced = await readSnapshot();
+            if (raced.journal?.phase === "prepared"
+              && !raced.backup
+              && raced.claim
+              && sameClaim(raced.claim, identity)) return raced.claim;
+          } catch {
+            // Fail closed with the fixed claim error below.
+          }
         }
         throw stateError("execution_claim_mismatch");
       }
@@ -541,9 +580,11 @@ export function createRepairStateStore({ paths: inputPaths, io: inputIo } = {}) 
     return queued(journalQueue, async () => {
       try {
         if (!isSafeInteger(expectedSequence)) throw stateError();
-        const current = await readJournal();
+        const snapshot = await readSnapshot();
+        const current = snapshot.journal;
         if (!current || current.sequence !== expectedSequence) throw stateError();
         const canonical = validateJournalTransition(current, next);
+        validateSnapshotRelationships({ ...snapshot, journal: canonical });
         await atomicReplace(io, paths.journal, recordLine(canonical));
         return canonical;
       } catch {
@@ -555,6 +596,14 @@ export function createRepairStateStore({ paths: inputPaths, io: inputIo } = {}) 
   async function writeBackupReceipt(record) {
     try {
       const canonical = validateBackup(record);
+      const snapshot = await readSnapshot();
+      if (!snapshot.claim
+        || !snapshot.journal
+        || snapshot.journal.phase !== "claimed"
+        || snapshot.backup
+        || canonical.claimSha256 !== snapshot.claim.claimSha256) {
+        throw stateError("backup_failed");
+      }
       await exclusiveWrite(io, paths.backupReceipt, recordLine(canonical));
       return canonical;
     } catch {

@@ -166,6 +166,37 @@ function backupReceipt(overrides = {}) {
   };
 }
 
+function claimRecord(overrides = {}) {
+  return {
+    schemaVersion: "3",
+    type: "japan_tuic_additive_repair_claim",
+    claimSha256: CLAIM_SHA256,
+    nonceSha256: EXPECTED_NONCE_SHA256,
+    workflowCommit: WORKFLOW_COMMIT,
+    claimedAt: "2026-07-17T00:00:02.000Z",
+    ...overrides
+  };
+}
+
+function seedPrepared(io, overrides = {}) {
+  const prepared = journalFor("prepared", { sequence: 0, ...overrides });
+  io.files.set(paths.journal, canonicalLine(prepared));
+  return prepared;
+}
+
+function seedClaimed(io, { claimOverrides = {}, journalOverrides = {} } = {}) {
+  const claim = claimRecord(claimOverrides);
+  const journal = journalFor("claimed", {
+    sequence: 1,
+    claimSha256: claim.claimSha256,
+    workflowCommit: claim.workflowCommit,
+    ...journalOverrides
+  });
+  io.files.set(paths.claim, canonicalLine(claim));
+  io.files.set(paths.journal, canonicalLine(journal));
+  return { claim, journal };
+}
+
 function canonicalLine(record) {
   return `${JSON.stringify(record)}\n`;
 }
@@ -179,6 +210,7 @@ function ioError(code = "EIO") {
 function createFakeIo({ failAt = null } = {}) {
   const events = [];
   const files = new Map();
+  const stats = { eexistCount: 0, successfulCreates: new Map() };
   let handleId = 0;
 
   const fail = (name) => {
@@ -188,6 +220,7 @@ function createFakeIo({ failAt = null } = {}) {
   return {
     events,
     files,
+    stats,
     now: () => "2026-07-17T00:00:02.000Z",
     async readFile(filePath) {
       events.push(["readFile", filePath]);
@@ -197,8 +230,12 @@ function createFakeIo({ failAt = null } = {}) {
     async open(filePath, flags, mode) {
       events.push(["open", filePath, flags, mode]);
       fail("open");
-      if ((flags & fsConstants.O_EXCL) !== 0 && files.has(filePath)) throw ioError("EEXIST");
+      if ((flags & fsConstants.O_EXCL) !== 0 && files.has(filePath)) {
+        stats.eexistCount += 1;
+        throw ioError("EEXIST");
+      }
       files.set(filePath, "");
+      stats.successfulCreates.set(filePath, (stats.successfulCreates.get(filePath) ?? 0) + 1);
       return { id: ++handleId, path: filePath, closed: false };
     },
     async write(handle, bytes) {
@@ -253,8 +290,11 @@ test("freezes nonce and canonical execution-claim digests", () => {
   for (const control of [
     { ...executeControl, workflowCommit: "A".repeat(40) },
     { ...executeControl, artifactSha256: "D".repeat(64) },
+    { ...executeControl, artifactSha256: new String(ARTIFACT_SHA256) },
+    { ...executeControl, workflowCommit: new String(WORKFLOW_COMMIT) },
     { ...executeControl, releaseUnit: null },
-    { ...executeControl, executionGateId: "" }
+    { ...executeControl, executionGateId: "" },
+    { ...executeControl, unexpected: true }
   ]) {
     expectStateError(() => executionClaimSha256(control), "execution_claim_mismatch");
   }
@@ -272,6 +312,7 @@ test("rejects a non-frozen execution nonce synchronously before I/O", () => {
 
 test("writes an exact digest-only claim with exclusive file and directory durability", async () => {
   const io = createFakeIo();
+  seedPrepared(io);
   const store = createRepairStateStore({ paths, io });
   const claim = await store.claim(executeControl);
 
@@ -298,17 +339,25 @@ test("writes an exact digest-only claim with exclusive file and directory durabi
   assert.equal(mode, 0o600);
 });
 
-test("races two claims with exactly one exclusive create and reconciles the existing claim", async () => {
+test("races two stores through O_EXCL with one create and reconciles the existing prepared claim", async () => {
   const io = createFakeIo();
-  const store = createRepairStateStore({ paths, io });
-  const [first, second] = await Promise.all([store.claim(executeControl), store.claim(executeControl)]);
+  seedPrepared(io);
+  const firstStore = createRepairStateStore({ paths, io });
+  const secondStore = createRepairStateStore({ paths, io });
+  const [first, second] = await Promise.all([
+    firstStore.claim(executeControl),
+    secondStore.claim(executeControl)
+  ]);
   assert.deepEqual(first, second);
-  assert.equal(io.events.filter(([name, filePath]) => name === "open" && filePath === paths.claim).length, 1);
+  assert.equal(io.events.filter(([name, filePath]) => name === "open" && filePath === paths.claim).length, 2);
+  assert.equal(io.stats.successfulCreates.get(paths.claim), 1);
+  assert.equal(io.stats.eexistCount, 1);
   assert.ok(io.events.filter(([name, filePath]) => name === "readFile" && filePath === paths.claim).length >= 2);
 });
 
 test("rejects an existing claim for another canonical execution", async () => {
   const io = createFakeIo();
+  seedPrepared(io);
   const store = createRepairStateStore({ paths, io });
   await store.claim(executeControl);
   await expectStateRejection(
@@ -316,6 +365,34 @@ test("rejects an existing claim for another canonical execution", async () => {
     "execution_claim_mismatch"
   );
   assert.equal(io.events.filter(([name, filePath]) => name === "open" && filePath === paths.claim).length, 1);
+});
+
+test("requires a matching prepared journal and rejects a second claim after claimed", async () => {
+  const emptyIo = createFakeIo();
+  const emptyStore = createRepairStateStore({ paths, io: emptyIo });
+  await expectStateRejection(() => emptyStore.claim(executeControl), "execution_claim_mismatch");
+  assert.equal(emptyIo.events.some(([name]) => name === "open"), false);
+
+  for (const mismatch of [
+    { artifactSha256: "e".repeat(64) },
+    { workflowCommit: "e".repeat(40) }
+  ]) {
+    const io = createFakeIo();
+    seedPrepared(io, mismatch);
+    const store = createRepairStateStore({ paths, io });
+    await expectStateRejection(() => store.claim(executeControl), "execution_claim_mismatch");
+    assert.equal(io.events.some(([name]) => name === "open"), false);
+  }
+
+  const io = createFakeIo();
+  const prepared = seedPrepared(io);
+  const store = createRepairStateStore({ paths, io });
+  const claim = await store.claim(executeControl);
+  io.files.set(paths.journal, canonicalLine(nextJournal(prepared, "claimed", {
+    claimSha256: claim.claimSha256
+  })));
+  await expectStateRejection(() => store.claim(executeControl), "execution_claim_mismatch");
+  assert.equal(io.stats.successfulCreates.get(paths.claim), 1);
 });
 
 test("validates every journal phase and exact record shape", () => {
@@ -331,10 +408,15 @@ test("validates every journal phase and exact record shape", () => {
     journalFor("prepared", { sequence: -1 }),
     journalFor("prepared", { sequence: 0.5 }),
     journalFor("prepared", { workflowCommit: "A".repeat(40) }),
+    journalFor("prepared", { workflowCommit: new String(WORKFLOW_COMMIT) }),
     journalFor("prepared", { artifactSha256: "D".repeat(64) }),
+    journalFor("prepared", { artifactSha256: new String(ARTIFACT_SHA256) }),
     journalFor("prepared", { preparedAt: "2026-07-17T00:00:00Z" }),
     journalFor("prepared", { updatedAt: "2026-02-30T00:00:00.000Z" }),
+    journalFor("prepared", { backupSha256: BACKUP_SHA256 }),
+    journalFor("claimed", { originalMapSha256: ORIGINAL_MAP_SHA256 }),
     journalFor("claimed", { claimSha256: null }),
+    journalFor("claimed", { claimSha256: new String(CLAIM_SHA256) }),
     journalFor("backup_ready", { originalMapSha256: null }),
     journalFor("applied", { backupSha256: null, originalMapSha256: null }),
     journalFor("apply_intent", { applyBoundary: null }),
@@ -389,6 +471,7 @@ test("enforces the complete phase matrix, exact sequence increment, and immutabl
 
 test("writes and reads the exact backup receipt schema", async () => {
   const io = createFakeIo();
+  seedClaimed(io);
   const store = createRepairStateStore({ paths, io });
   const receipt = backupReceipt();
   assert.deepEqual(await store.writeBackupReceipt(receipt), receipt);
@@ -399,13 +482,65 @@ test("writes and reads the exact backup receipt schema", async () => {
     backupReceipt({ schemaVersion: 3 }),
     backupReceipt({ type: "backup" }),
     backupReceipt({ claimSha256: "C".repeat(64) }),
+    backupReceipt({ claimSha256: new String(CLAIM_SHA256) }),
+    backupReceipt({ originalMapSha256: new String(ORIGINAL_MAP_SHA256) }),
+    backupReceipt({ backupSha256: new String(BACKUP_SHA256) }),
     backupReceipt({ mode: -1 }),
     backupReceipt({ uid: 0.5 }),
     backupReceipt({ gid: "0" }),
     backupReceipt({ createdAt: "2026-07-17T00:00:01Z" }),
-    { ...backupReceipt(), executionNonce: EXECUTION_NONCE }
+    { ...backupReceipt(), executionNonce: EXECUTION_NONCE },
+    { ...backupReceipt(), unexpected: true }
   ]) {
-    await expectStateRejection(() => store.writeBackupReceipt(invalid), "backup_failed");
+    const invalidIo = createFakeIo();
+    seedClaimed(invalidIo);
+    const invalidStore = createRepairStateStore({ paths, io: invalidIo });
+    await expectStateRejection(() => invalidStore.writeBackupReceipt(invalid), "backup_failed");
+    assert.equal(invalidIo.events.some(([name]) => name === "open"), false);
+  }
+});
+
+test("writes backup only for the matching claimed snapshot and only once", async () => {
+  const emptyIo = createFakeIo();
+  const emptyStore = createRepairStateStore({ paths, io: emptyIo });
+  await expectStateRejection(() => emptyStore.writeBackupReceipt(backupReceipt()), "backup_failed");
+  assert.equal(emptyIo.events.some(([name]) => name === "open"), false);
+
+  const preparedIo = createFakeIo();
+  seedPrepared(preparedIo);
+  preparedIo.files.set(paths.claim, canonicalLine(claimRecord()));
+  const preparedStore = createRepairStateStore({ paths, io: preparedIo });
+  await expectStateRejection(() => preparedStore.writeBackupReceipt(backupReceipt()), "backup_failed");
+  assert.equal(preparedIo.events.some(([name]) => name === "open"), false);
+
+  const mismatchIo = createFakeIo();
+  seedClaimed(mismatchIo);
+  const mismatchStore = createRepairStateStore({ paths, io: mismatchIo });
+  await expectStateRejection(
+    () => mismatchStore.writeBackupReceipt(backupReceipt({ claimSha256: "e".repeat(64) })),
+    "backup_failed"
+  );
+  assert.equal(mismatchIo.events.some(([name]) => name === "open"), false);
+
+  const io = createFakeIo();
+  seedClaimed(io);
+  const store = createRepairStateStore({ paths, io });
+  await store.writeBackupReceipt(backupReceipt());
+  await expectStateRejection(() => store.writeBackupReceipt(backupReceipt()), "backup_failed");
+  assert.equal(io.stats.successfulCreates.get(paths.backupReceipt), 1);
+});
+
+test("writes prepared only from a truly empty durable state", async () => {
+  for (const seed of [
+    (io) => io.files.set(paths.claim, canonicalLine(claimRecord())),
+    (io) => io.files.set(paths.backupReceipt, canonicalLine(backupReceipt())),
+    (io) => seedPrepared(io)
+  ]) {
+    const io = createFakeIo();
+    seed(io);
+    const store = createRepairStateStore({ paths, io });
+    await expectStateRejection(() => store.writePrepared(journalFor("prepared", { sequence: 0 })));
+    assert.equal(io.stats.successfulCreates.get(paths.journal) ?? 0, 0);
   }
 });
 
@@ -413,9 +548,10 @@ test("persists prepared exclusively and transitions through canonical atomic rep
   const io = createFakeIo();
   const store = createRepairStateStore({ paths, io });
   const prepared = journalFor("prepared", { sequence: 0 });
-  const claimed = nextJournal(prepared, "claimed");
 
   assert.deepEqual(await store.writePrepared(prepared), prepared);
+  const claim = await store.claim(executeControl);
+  const claimed = nextJournal(prepared, "claimed", { claimSha256: claim.claimSha256 });
   assert.deepEqual(await store.transition(0, claimed), claimed);
   assert.equal(io.files.get(paths.journal), canonicalLine(claimed));
 
@@ -438,6 +574,28 @@ test("rejects stale CAS without opening an atomic replacement", async () => {
   assert.equal(io.files.get(paths.journal), canonicalLine(prepared));
 });
 
+test("rejects transitions whose durable or hypothetical snapshot lacks claim or backup prerequisites", async () => {
+  const preparedIo = createFakeIo();
+  const prepared = seedPrepared(preparedIo);
+  const preparedStore = createRepairStateStore({ paths, io: preparedIo });
+  await expectStateRejection(() => preparedStore.transition(0, nextJournal(prepared, "claimed")));
+  assert.equal(preparedIo.events.some(([name]) => name === "open"), false);
+
+  const claimedIo = createFakeIo();
+  const { journal: claimed } = seedClaimed(claimedIo);
+  const claimedStore = createRepairStateStore({ paths, io: claimedIo });
+  await expectStateRejection(() => claimedStore.transition(1, nextJournal(claimed, "backup_ready")));
+  assert.equal(claimedIo.events.some(([name]) => name === "open"), false);
+
+  const backupReadyIo = createFakeIo();
+  const { journal: claimedBeforeBackup } = seedClaimed(backupReadyIo);
+  const backupReady = nextJournal(claimedBeforeBackup, "backup_ready");
+  backupReadyIo.files.set(paths.journal, canonicalLine(backupReady));
+  const backupReadyStore = createRepairStateStore({ paths, io: backupReadyIo });
+  await expectStateRejection(() => backupReadyStore.transition(2, nextJournal(backupReady, "apply_intent")));
+  assert.equal(backupReadyIo.events.some(([name]) => name === "open"), false);
+});
+
 test("fails closed at exclusive create and file fsync without a later durable operation", async () => {
   for (const failAt of ["open", "fsyncFile"]) {
     const io = createFakeIo({ failAt });
@@ -450,10 +608,13 @@ test("fails closed at exclusive create and file fsync without a later durable op
 
 test("fails closed at atomic rename, removes only its own temporary, and preserves the current phase", async () => {
   const io = createFakeIo({ failAt: "rename" });
-  const prepared = journalFor("prepared", { sequence: 0 });
-  io.files.set(paths.journal, canonicalLine(prepared));
+  const prepared = seedPrepared(io);
+  const claim = claimRecord();
+  io.files.set(paths.claim, canonicalLine(claim));
   const store = createRepairStateStore({ paths, io });
-  await expectStateRejection(() => store.transition(0, nextJournal(prepared, "claimed")));
+  await expectStateRejection(() => store.transition(0, nextJournal(prepared, "claimed", {
+    claimSha256: claim.claimSha256
+  })));
   assert.equal(io.files.get(paths.journal), canonicalLine(prepared));
   const removed = io.events.filter(([name]) => name === "remove");
   assert.equal(removed.length, 1);
@@ -463,9 +624,10 @@ test("fails closed at atomic rename, removes only its own temporary, and preserv
 
 test("fails closed when directory fsync cannot confirm an atomic transition", async () => {
   const io = createFakeIo({ failAt: "fsyncDirectory" });
-  const prepared = journalFor("prepared", { sequence: 0 });
-  const claimed = nextJournal(prepared, "claimed");
-  io.files.set(paths.journal, canonicalLine(prepared));
+  const prepared = seedPrepared(io);
+  const claim = claimRecord();
+  const claimed = nextJournal(prepared, "claimed", { claimSha256: claim.claimSha256 });
+  io.files.set(paths.claim, canonicalLine(claim));
   const store = createRepairStateStore({ paths, io });
   await expectStateRejection(() => store.transition(0, claimed));
   assert.equal(io.files.get(paths.journal), canonicalLine(claimed));
@@ -495,24 +657,35 @@ test("readSnapshot validates canonical bytes and returns only durable records", 
 });
 
 test("readSnapshot rejects impossible claim and backup relationships", async () => {
-  const io = createFakeIo();
-  const claim = {
-    schemaVersion: "3",
-    type: "japan_tuic_additive_repair_claim",
-    claimSha256: CLAIM_SHA256,
-    nonceSha256: EXPECTED_NONCE_SHA256,
-    workflowCommit: WORKFLOW_COMMIT,
-    claimedAt: "2026-07-17T00:00:02.000Z"
-  };
-  io.files.set(paths.claim, canonicalLine(claim));
-  io.files.set(paths.journal, canonicalLine(journalFor("claimed", { claimSha256: "e".repeat(64) })));
-  const store = createRepairStateStore({ paths, io });
-  await expectStateRejection(() => store.readSnapshot());
+  async function rejectSnapshot({ claim = null, journal = null, backup = null }, code) {
+    const io = createFakeIo();
+    if (claim) io.files.set(paths.claim, canonicalLine(claim));
+    if (journal) io.files.set(paths.journal, canonicalLine(journal));
+    if (backup) io.files.set(paths.backupReceipt, canonicalLine(backup));
+    const store = createRepairStateStore({ paths, io });
+    await expectStateRejection(() => store.readSnapshot(), code);
+  }
 
-  io.files.set(paths.journal, canonicalLine(journalFor("backup_ready")));
-  await expectStateRejection(() => store.readSnapshot());
-
-  io.files.set(paths.journal, canonicalLine(journalFor("prepared", { sequence: 0 })));
-  io.files.set(paths.backupReceipt, canonicalLine(backupReceipt()));
-  await expectStateRejection(() => store.readSnapshot());
+  await rejectSnapshot({ claim: claimRecord() });
+  await rejectSnapshot({
+    claim: claimRecord({ nonceSha256: "e".repeat(64) }),
+    journal: journalFor("prepared", { sequence: 0 })
+  }, "execution_claim_mismatch");
+  await rejectSnapshot({
+    claim: claimRecord({ workflowCommit: "e".repeat(40) }),
+    journal: journalFor("prepared", { sequence: 0 })
+  });
+  await rejectSnapshot({
+    claim: claimRecord(),
+    journal: journalFor("claimed", { claimSha256: "e".repeat(64) })
+  });
+  await rejectSnapshot({
+    claim: claimRecord(),
+    journal: journalFor("backup_ready")
+  });
+  await rejectSnapshot({
+    claim: claimRecord(),
+    journal: journalFor("prepared", { sequence: 0 }),
+    backup: backupReceipt()
+  });
 });
