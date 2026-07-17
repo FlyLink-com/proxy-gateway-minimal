@@ -349,9 +349,9 @@ test("rejects contradictory or unknown receipt states", () => {
   );
 });
 
-test("receipt CLI emits only the validated whitelist", () => {
+test("receipt CLI emits only the validated whitelist", (t) => {
   const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-receipt-"));
-  test.after(() => rmSync(directory, { recursive: true, force: true }));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
   const inputPath = join(directory, "receipt.json");
   writeFileSync(inputPath, JSON.stringify({
     schemaVersion: "1",
