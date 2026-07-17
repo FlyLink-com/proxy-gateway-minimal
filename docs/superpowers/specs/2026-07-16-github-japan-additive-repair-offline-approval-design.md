@@ -1,7 +1,8 @@
 # GitHub Japan Additive Repair Offline Approval Design
 
 > Status:
-> - Type: Approved source-only redesign for a future Risk A production action
+> - Type: Superseded source-only redesign retained as historical evidence
+> - Superseded by: `docs/superpowers/specs/2026-07-17-github-japan-additive-repair-native-direct-design.md`
 > - Design approval: All five sections were explicitly approved by the operator in the active Codex task on 2026-07-16
 > - Source baseline: `master@9982d378f93dd506c24c137197293f6942dc45ee`
 > - Source change risk: C for this document; B for the future implementation PR; A for credential creation, bootstrap, and production execution
@@ -15,6 +16,11 @@
 > - Production authority: None. This document does not generate a key, change GitHub settings, access a host, install a runner, create a nonce ledger, dispatch a workflow, mutate runtime config, deploy an application, restart a service, or approve production execution.
 
 ## Supersession Boundary
+
+> The operator selected GitHub-native Mode 1 on 2026-07-17. The offline
+> signature design below is no longer the active implementation authority.
+> Its generated public identity may remain dormant, but the selected workflow
+> and runner must not depend on it.
 
 This design supersedes only the approval-enforcement, retry, and credential
 cleanup model in
