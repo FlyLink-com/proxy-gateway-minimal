@@ -567,9 +567,11 @@ Each SSH or sudo graph starts at its fixed root and expands Include events as
 depth-first textual insertion. A file receives its first-discovery `ordinal`
 only after a successful same-FD open, bounded full read, confirmed EOF,
 post-fstat, exactly-once close, and hash, immediately before parsing its
-physical lines. A global encoded-path `seenPaths` set rejects a second
-discovery and an `activePaths` stack rejects cycles before descent. Parser
-scope crosses child insertion and is not restored per file.
+physical lines. The first-discovery `files` Array is the global encoded-path
+seen set: a bounded linear scan of `files[*].path` rejects a second discovery,
+without allocating a second `Set` container. An `activePaths` stack rejects
+cycles before descent. Parser scope crosses child insertion and is not restored
+per file.
 
 For SSH final-component globbing and sudo includedir, the parser derives one
 canonical literal parent path, trusted-opens it with `0xB0000` as a root-owned,
@@ -646,6 +648,12 @@ an allocation-free exact UTF-8 JSON punctuation/escaping/value/LF measurement,
 reserves both preimage budgets, then allocates and verifies the resulting
 length. The cumulative snapshot preimage counter never decrements after hash
 and zeroization.
+
+The aligned wildcard-comparison ceiling also charges each aligned owning
+value-byte comparison used to reject a duplicate SSH Match syntax tuple during
+semantic emission, before the duplicate pattern node is retained. The new
+pattern compares only with earlier retained pattern events for the same
+condition; no raw-range or delimiter rescan is used.
 
 Wildcard pattern bytes are capped at exactly `4194304` per snapshot.
 
