@@ -4,6 +4,7 @@ export const FRAME_MAGIC = Buffer.from("GCCGWJPR3\0", "ascii");
 const MAX_CONTROL_BYTES = 1024;
 const MAX_ARTIFACT_BYTES = 4744340;
 const MAX_FRAME_BYTES = FRAME_MAGIC.length + 8 + MAX_CONTROL_BYTES + MAX_ARTIFACT_BYTES + 1;
+const HEADER_BYTES = FRAME_MAGIC.length + 8;
 const UTF8 = new TextDecoder("utf-8", { fatal: true });
 
 const INSPECT_KEYS = ["operation", "runAttempt", "schemaVersion", "workflowCommit"];
@@ -88,39 +89,74 @@ class FrameReader {
   constructor(input) {
     if (!input || typeof input[Symbol.asyncIterator] !== "function") throw frameError();
     this.iterator = input[Symbol.asyncIterator]();
-    this.chunk = Buffer.alloc(0);
-    this.offset = 0;
+    this.pending = Buffer.alloc(0);
+    this.remainingBudget = 0;
+    this.trailing = false;
+  }
+
+  byteView(value) {
+    if (Buffer.isBuffer(value)) return value;
+    if (value instanceof Uint8Array) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    throw frameError();
+  }
+
+  async readHeader() {
+    const header = Buffer.alloc(HEADER_BYTES);
+    let written = 0;
+    while (true) {
+      const next = await this.iterator.next();
+      if (next.done) return null;
+      const bytes = this.byteView(next.value);
+      if (bytes.length === 0) continue;
+      const count = Math.min(HEADER_BYTES - written, bytes.length);
+      bytes.copy(header, written, 0, count);
+      written += count;
+      if (written === HEADER_BYTES) return { header, remainder: bytes.subarray(count) };
+    }
+  }
+
+  beginBody(remainder, budget) {
+    this.remainingBudget = budget;
+    this.storeBounded(remainder);
+  }
+
+  storeBounded(bytes) {
+    const count = Math.min(bytes.length, this.remainingBudget);
+    if (bytes.length > count) this.trailing = true;
+    this.pending = count === 0 ? Buffer.alloc(0) : Buffer.from(bytes.subarray(0, count));
+  }
+
+  async loadBounded() {
+    while (true) {
+      const next = await this.iterator.next();
+      if (next.done) return false;
+      const bytes = this.byteView(next.value);
+      if (bytes.length === 0) continue;
+      this.storeBounded(bytes);
+      return true;
+    }
   }
 
   async readExactly(size) {
     const output = Buffer.alloc(size);
     let written = 0;
     while (written < size) {
-      if (this.offset === this.chunk.length) {
-        const next = await this.iterator.next();
-        if (next.done) return null;
-        if (!Buffer.isBuffer(next.value) && !(next.value instanceof Uint8Array)) throw frameError();
-        this.chunk = Buffer.from(next.value);
-        this.offset = 0;
-        continue;
-      }
-      const count = Math.min(size - written, this.chunk.length - this.offset);
-      this.chunk.copy(output, written, this.offset, this.offset + count);
-      this.offset += count;
+      if (this.pending.length === 0 && !await this.loadBounded()) return null;
+      const count = Math.min(size - written, this.pending.length);
+      this.pending.copy(output, written, 0, count);
+      this.pending = this.pending.subarray(count);
+      this.remainingBudget -= count;
       written += count;
     }
     return output;
   }
 
   async hasSentinelByte() {
-    if (this.offset < this.chunk.length) return true;
+    if (this.trailing || this.pending.length > 0) return true;
     while (true) {
       const next = await this.iterator.next();
       if (next.done) return false;
-      if (!Buffer.isBuffer(next.value) && !(next.value instanceof Uint8Array)) throw frameError();
-      this.chunk = Buffer.from(next.value);
-      this.offset = 0;
-      if (this.chunk.length > 0) return true;
+      if (this.byteView(next.value).length > 0) return true;
     }
   }
 }
@@ -135,16 +171,17 @@ export async function readRepairFrame(input, { expectedArtifactSize, maxControlB
     const expectedSize = checkedOption(expectedArtifactSize, MAX_ARTIFACT_BYTES, true);
     const controlLimit = checkedOption(maxControlBytes, MAX_CONTROL_BYTES);
     const reader = new FrameReader(input);
-    const header = await reader.readExactly(FRAME_MAGIC.length + 8);
-    if (!header || !header.subarray(0, FRAME_MAGIC.length).equals(FRAME_MAGIC)) throw frameError();
+    const headerInput = await reader.readHeader();
+    if (!headerInput || !headerInput.header.subarray(0, FRAME_MAGIC.length).equals(FRAME_MAGIC)) throw frameError();
 
-    const controlLength = header.readUInt32BE(FRAME_MAGIC.length);
-    const artifactLength = header.readUInt32BE(FRAME_MAGIC.length + 4);
+    const controlLength = headerInput.header.readUInt32BE(FRAME_MAGIC.length);
+    const artifactLength = headerInput.header.readUInt32BE(FRAME_MAGIC.length + 4);
     if (controlLength > controlLimit || controlLength > MAX_CONTROL_BYTES || artifactLength > MAX_ARTIFACT_BYTES
       || FRAME_MAGIC.length + 8 + controlLength + artifactLength + 1 > MAX_FRAME_BYTES) {
       throw frameError("frame_too_large");
     }
     if (artifactLength !== expectedSize) throw frameError();
+    reader.beginBody(headerInput.remainder, controlLength + artifactLength + 1);
 
     const controlBytes = await reader.readExactly(controlLength);
     const artifact = await reader.readExactly(artifactLength);

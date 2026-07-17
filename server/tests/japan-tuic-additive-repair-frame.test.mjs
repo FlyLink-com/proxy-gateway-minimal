@@ -32,6 +32,8 @@ const closeout = {
   operation: "closeout"
 };
 
+const MAX_ARTIFACT_BYTES = 4744340;
+
 const frame = ({ controlBytes, artifact = Buffer.from("zip"), magic = FRAME_MAGIC }) => {
   const header = Buffer.alloc(FRAME_MAGIC.length + 8);
   magic.copy(header);
@@ -84,11 +86,20 @@ test("rejects unknown operation and invalid control forms", async () => {
 
 test("rejects missing, extra, duplicate, and reordered JSON keys", async () => {
   const canonical = canonicalRepairControl(execute);
+  const reordered = Buffer.from(JSON.stringify({
+    operation: execute.operation,
+    runAttempt: execute.runAttempt,
+    schemaVersion: execute.schemaVersion,
+    workflowCommit: execute.workflowCommit,
+    executionGateId: execute.executionGateId,
+    executionNonce: execute.executionNonce
+  }));
+  assert.deepEqual(JSON.parse(reordered), execute);
   for (const controlBytes of [
     Buffer.from('{"operation":"execute","runAttempt":"1","schemaVersion":"3","workflowCommit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}'),
     Buffer.from(`${canonical.subarray(0, -1)},"extra":true}`),
     Buffer.from(canonical.toString().replace('"operation":"execute"', '"operation":"execute","operation":"execute"')),
-    Buffer.from(JSON.stringify({ ...inspect, executionGateId: execute.executionGateId, executionNonce: execute.executionNonce }))
+    reordered
   ]) {
     await expectFrameError(frame({ controlBytes }));
   }
@@ -133,4 +144,88 @@ test("rejects header and body truncation plus a trailing byte", async () => {
   await expectFrameError(valid.subarray(0, FRAME_MAGIC.length + 8));
   await expectFrameError(valid.subarray(0, -1));
   await expectFrameError(Buffer.concat([valid, Buffer.from([0])]), {}, "frame_trailing_bytes");
+});
+
+test("accepts the exact maximum artifact and rejects one sentinel after its valid frame", async () => {
+  const artifact = Buffer.alloc(MAX_ARTIFACT_BYTES, 0x7a);
+  const valid = encodeRepairFrame({ control: execute, artifact });
+  const result = await readRepairFrame(Readable.from(valid), {
+    expectedArtifactSize: MAX_ARTIFACT_BYTES,
+    maxControlBytes: 1024
+  });
+  assert.deepEqual(result.control, execute);
+  assert.equal(result.artifact.length, MAX_ARTIFACT_BYTES);
+  await assert.rejects(
+    () => readRepairFrame(Readable.from(Buffer.concat([valid, Buffer.from([0])])), {
+      expectedArtifactSize: MAX_ARTIFACT_BYTES,
+      maxControlBytes: 1024
+    }),
+    (error) => error.code === "frame_trailing_bytes"
+  );
+});
+
+test("rejects maximum-plus-one and uint32 artifact declarations before reading a body", async () => {
+  assert.throws(
+    () => encodeRepairFrame({ control: execute, artifact: Buffer.alloc(MAX_ARTIFACT_BYTES + 1) }),
+    (error) => error.code === "frame_too_large"
+  );
+  for (const declaredSize of [MAX_ARTIFACT_BYTES + 1, 0xffffffff]) {
+    const header = Buffer.alloc(FRAME_MAGIC.length + 8);
+    FRAME_MAGIC.copy(header);
+    header.writeUInt32BE(canonicalRepairControl(execute).length, FRAME_MAGIC.length);
+    header.writeUInt32BE(declaredSize, FRAME_MAGIC.length + 4);
+    let calls = 0;
+    const input = {
+      [Symbol.asyncIterator]() {
+        return {
+          async next() {
+            calls += 1;
+            if (calls === 1) return { value: header, done: false };
+            throw new Error("body must not be read");
+          }
+        };
+      }
+    };
+    await assert.rejects(
+      () => readRepairFrame(input, { expectedArtifactSize: 3, maxControlBytes: 1024 }),
+      (error) => error.code === "frame_too_large"
+    );
+    assert.equal(calls, 1);
+  }
+});
+
+test("handles one maximum frame chunk with huge trailing data without copying the whole chunk", async () => {
+  const artifact = Buffer.alloc(MAX_ARTIFACT_BYTES, 0x5a);
+  const valid = encodeRepairFrame({ control: execute, artifact });
+  const inputChunk = Buffer.concat([valid, Buffer.alloc(1024 * 1024, 0x00)]);
+  const sourceFrom = Buffer.from;
+  let copiedWholeChunk = false;
+  Buffer.from = function patchedBufferFrom(...args) {
+    if (args[0] === inputChunk) {
+      copiedWholeChunk = true;
+      throw new Error("whole chunk copy");
+    }
+    return sourceFrom.apply(Buffer, args);
+  };
+  try {
+    const input = {
+      [Symbol.asyncIterator]() {
+        let sent = false;
+        return {
+          async next() {
+            if (sent) return { done: true };
+            sent = true;
+            return { value: inputChunk, done: false };
+          }
+        };
+      }
+    };
+    await assert.rejects(
+      () => readRepairFrame(input, { expectedArtifactSize: MAX_ARTIFACT_BYTES, maxControlBytes: 1024 }),
+      (error) => error.code === "frame_trailing_bytes"
+    );
+    assert.equal(copiedWholeChunk, false);
+  } finally {
+    Buffer.from = sourceFrom;
+  }
 });
