@@ -349,9 +349,9 @@ test("rejects contradictory or unknown receipt states", () => {
   );
 });
 
-test("receipt CLI emits only the validated whitelist", () => {
+test("receipt CLI emits only the validated whitelist", (t) => {
   const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-receipt-"));
-  test.after(() => rmSync(directory, { recursive: true, force: true }));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
   const inputPath = join(directory, "receipt.json");
   writeFileSync(inputPath, JSON.stringify({
     schemaVersion: "1",
@@ -375,9 +375,9 @@ test("receipt CLI emits only the validated whitelist", () => {
   assert.equal(stdout.includes("hidden"), false);
 });
 
-test("artifact CLI fails safely without exposing a mismatched manifest or path", () => {
+test("artifact CLI fails safely without exposing a mismatched manifest or path", (t) => {
   const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-artifact-"));
-  test.after(() => rmSync(directory, { recursive: true, force: true }));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
   const artifactPath = join(directory, "artifact.zip");
   const manifestPath = join(directory, "artifact.json");
   writeFileSync(artifactPath, ARTIFACT_BYTES);
