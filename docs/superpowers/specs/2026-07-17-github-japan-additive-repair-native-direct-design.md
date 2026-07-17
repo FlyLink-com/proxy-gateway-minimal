@@ -320,12 +320,16 @@ The preload specifier, main runner, and binding path are literal. The entrypoint
 has one `exec`, one nonblocking lock, no caller-controlled command or argument,
 and no `$SSH_ORIGINAL_COMMAND` use.
 
-The CI Identity Bootstrap Gate stages rollback and reads back the entire code,
-tool, binding, state,
-account, SSH, and sudo closure before SSH authorization exists. Adding the
-canonical authorization line is the final Gate mutation. Removing that
-line is the first rollback mutation, followed by removal and parent-directory
-fsync of the exact dedicated sudoers file.
+The CI Identity Bootstrap Gate stages and same-FD validates its zero-byte
+rollback transient first, installs the non-authorization code/tool/path/
+account/sudo closure, and stages the exact one-line candidate. A full candidate
+snapshot proves live `0/0` plus staged future `1/1` and derives the binding;
+only after binding readback does the Gate atomically install those already
+validated candidate bytes as its final authorization mutation. A second full
+installed snapshot immediately proves live `1/1`. On every post-add failure,
+the first rollback mutation atomically installs and fsyncs the already
+validated zero-byte transient and proves readback, followed by removal and
+parent-directory fsync of the exact dedicated sudoers file.
 
 The pre-import TCB is the kernel/filesystem and trusted root boundary, the
 already executing sudo/dash/env/flock/Node chain, the exact entrypoint bytes,
@@ -396,21 +400,443 @@ size/hash/central-directory-manifest/safe-extraction validation and remains
 under that separate artifact authority. Every other dynamic import is
 rejected.
 
-`toolManifest` remains unchanged; its keys are exactly
-`dash, env, flock, node, sudo, systemctl, unzip, visudo`. Their fixed paths are
-`/usr/bin/dash`, `/usr/bin/env`, `/usr/bin/flock`, `/usr/bin/node`,
-`/usr/bin/sudo`, `/usr/bin/systemctl`, `/usr/bin/unzip`, and
-`/usr/sbin/visudo`, respectively. Every value has exact order
+`toolManifest` keys are exactly, in this order:
+
+```text
+dash, env, flock, getent, id, node, sudo, systemctl, unzip, visudo
+```
+
+Their fixed paths are:
+
+```text
+dash      /usr/bin/dash
+env       /usr/bin/env
+flock     /usr/bin/flock
+getent    /usr/bin/getent
+id        /usr/bin/id
+node      /usr/bin/node
+sudo      /usr/bin/sudo
+systemctl /usr/bin/systemctl
+unzip     /usr/bin/unzip
+visudo    /usr/sbin/visudo
+```
+
+Every value has exact order
 `path, sizeBytes, sha256, type, uid, gid, mode, nlink, capabilitySha256`; it
 binds a root:root regular file, positive safe-integer size no greater than
 268435456 bytes, lowercase content SHA-256, and lowercase SHA-256 of the raw
 `security.capability` value, hashing empty bytes when absent. `sudo` alone
-has mode `04755`; every other entry has mode `0755`; every entry has
+has mode `04755`; every other one of the nine entries has mode `0755`; every entry has
 `nlink=1` and no file capability. Entrypoint bytes begin exactly
 `#!/usr/bin/dash`. Symlinks, alternate resolved paths, package binaries, and
 metadata/digest drift block the CI Identity Bootstrap Gate. The root-owned
 OS/runtime/library base
 beneath those binaries remains an explicit platform trust boundary.
+
+The schema-3 Gate matrix is therefore six code roles by ten tool roles. A
+missing or alternate `getent`/`id`, or any
+content, metadata, path, mode, link, or capability drift in either role,
+blocks before authorization. Each full candidate, installed, runtime-installed,
+or removed snapshot traverses all six code and ten tool entries. Immediate
+same-FD pre-exec validation of a bound `getent`, `id`, or `visudo` role is an
+additional validation and is not hidden in a full-manifest count.
+
+#### Native authority operations and projection boundary
+
+Production authority exports accept exactly one semantic input and never
+accept caller operations:
+
+```js
+attestBootstrapCandidateRunnerBinding(input) -> canonicalSchema3Binding
+attestBootstrapInstalledRunnerBinding(input) -> canonicalSchema3Binding
+attestRuntimeAuthorizationBinding(input) -> canonicalSchema3Binding
+attestRemovedAuthorization(input) -> { authorizationRemoved: true }
+```
+
+They reject any second argument before native factory creation. Each export
+internally calls exactly one matching module-private factory:
+
+```js
+createNativeBootstrapAggregateOperations() -> brandedBootstrapOperations
+createNativeRuntimeAggregateOperations() -> brandedRuntimeOperations
+createNativeRemovedAggregateOperations() -> brandedRemovedOperations
+```
+
+Each factory closes over reviewed `node:` builtins and fixed constants,
+constructs the path/source/account/process/capability/writer methods itself,
+recursively freezes its object, and registers that exact object identity in a
+module-private `WeakSet`. Bootstrap operations have exact internal keys
+`effectiveUid,pathOperations,sourceOperations,accountOperations,
+capabilityOperations,writerOperations`; runtime and removed operations have
+exact keys `effectiveUid,pathOperations,sourceOperations,accountOperations`.
+No public function brands a caller object. A second argument, shape-identical
+object, clone, Proxy, subclass, inherited or extra key, missing key, wrong
+authority brand, or capability/writer lookalike rejects before its first
+operation.
+
+Raw injected operations remain only on explicitly non-authority projections:
+
+```js
+collectBoundAccountEvidence(binding, { accountOperations })
+buildCanonicalSshIncludeClosure({ pathOperations, sourceOperations })
+buildCanonicalSshMatchCoverage(projectedAccountCore, { pathOperations, sourceOperations })
+buildCanonicalSshTopology(projectedAccountCore, binding, { pathOperations, sourceOperations })
+buildCanonicalSudoSourceClosure({ pathOperations, sourceOperations })
+buildCanonicalSudoEffectivePolicy(projectedAccountCore, { pathOperations, sourceOperations })
+```
+
+Those builders reject semantic claims such as source bytes, files, hashes,
+ordinals, coordinates, dispositions, rules, aliases, Defaults, tags, counts,
+or effective values. They return synthetic projection records that no
+authority export accepts. Authority integration tests may replace reviewed
+low-level builtin adapters only at module-evaluation time in an isolated
+VM/test harness. Production has no setter, factory argument, environment
+selector, frame field, binding field, callback, or overload for injected
+operations. Public SSH/sudo projections may traverse a graph when directly
+tested, but no authority path composes their independent observations.
+
+#### Bound native account producer and private state brands
+
+The sole account is `gccgw-japan-repair-ci`. Native authority derives its
+account core from one fixed six-call, shell-free sequence in this exact order:
+
+```text
+1 /usr/bin/getent ["passwd", "gccgw-japan-repair-ci"]
+2 /usr/bin/getent ["shadow", "gccgw-japan-repair-ci"]
+3 /usr/bin/id     ["-u", "--", "gccgw-japan-repair-ci"]
+4 /usr/bin/id     ["-g", "--", "gccgw-japan-repair-ci"]
+5 /usr/bin/id     ["-G", "--", "gccgw-japan-repair-ci"]
+6 /usr/bin/id     ["-G", "-n", "--", "gccgw-japan-repair-ci"]
+```
+
+Immediately before every call the factory same-FD revalidates the matching
+bound tool. Calls use `shell:false`, `cwd:"/"`, binary output,
+`timeout:5000`, `maxBuffer:65536`, no inherited stdio, and exact environment
+insertion order `LANG=C.UTF-8`, `LC_ALL=C.UTF-8`, `PATH=/usr/bin:/bin`.
+Success requires integer status `0`, signal `null`, empty stderr, one bounded
+stdout record, and no execution error. The spawn reopens the fixed executable;
+Node has no builtin `fexecve`, so this is immediate descriptor validation plus
+the explicit bound-root/tool-reopen residual, not same-FD execution.
+
+Passwd and shadow records are delimiter-scanned over their original Buffers.
+At most one final LF is removed by index; CR, NUL, a second line, or wrong
+field count rejects. Passwd has exactly seven colon ranges and shadow exactly
+nine. The implementation never calls `toString`, `TextDecoder`, JSON,
+formatting, or interpolation on whole passwd/shadow records, password fields,
+GECOS, shadow remainder, stderr, or unsafe `id` output. It decodes only
+grammar-validated username, uid, primary gid, home, shell, and selected safe
+group tokens. Password lock is derived only from a nonempty shadow password
+range beginning with `!` or equal to one byte `*`. Every owning Buffer that
+may contain account, authorization, SSH, sudo, basename, preimage, or child
+output bytes is registered at allocation and filled with zero in LIFO
+`finally` cleanup on success and failure; non-owning `subarray` views never
+outlive their owner.
+
+The exact account core keys are
+`username,uid,homeDirectory,loginShell,passwordLocked,primaryGroupId,
+groupIds,groupNames`. `id -G` and `id -G -n` must have equal nonzero counts,
+but positions are never paired. `groupIds` and `groupNames` are independent
+canonical sets. `groupIds` is the independently unique,
+ascending positive-safe-integer set; `groupNames` is the independently unique
+raw-byte-sorted set matching `^[a-z_][a-z0-9_.-]{0,63}$`. Each set contains at
+most 256 items, primary gid occurs exactly once in `groupIds`, and two account
+observations must have byte-identical canonical scalar and independent set
+values even when incidental `id` order differs. The recursively frozen core
+has its own private brand. Account-derived group names are transient Match/
+sudo selector inputs only; they are never serialized, hashed, logged, copied
+into binding/topology/coverage/receipt evidence, or represented as a positional
+ID/name mapping. Canonical SSH coverage emits only unique ascending numeric `groupIds`;
+source-authored Group patterns exist only in the private coverage preimage
+whose digest is retained.
+
+Candidate, installed, and removed authorization evidence use three separate
+private brands around a valid account core. Candidate proves live
+authorization `0/0` and staged authorization `1/1` with line/blob digests;
+installed proves live `1/1` with matching line/blob digests; removed proves a
+present zero-byte live authorization file with `0/0`, no line/blob digest, and
+`dedicatedSudoersFileAbsent:true`. No caller may select or brand a state.
+Each candidate, installed, or removed snapshot calls `readAccount()` exactly
+twice: once before any authorization/source read and once after both source
+graphs plus the fixed syntax check. One snapshot therefore performs 12 helper
+calls and 12 immediate `getent`/`id` role validations, then shares the first
+core only after the second observation proves stability.
+
+#### Shared source order, directory handling, and bounded work
+
+Each SSH or sudo graph starts at its fixed root and expands Include events as
+depth-first textual insertion. A file receives its first-discovery `ordinal`
+only after a successful same-FD open, bounded full read, confirmed EOF,
+post-fstat, exactly-once close, and hash, immediately before parsing its
+physical lines. A global encoded-path `seenPaths` set rejects a second
+discovery and an `activePaths` stack rejects cycles before descent. Parser
+scope crosses child insertion and is not restored per file.
+
+For SSH final-component globbing and sudo includedir, the parser derives one
+canonical literal parent path, trusted-opens it with `0xB0000` as a root-owned,
+nonsymlink, non-group/other-writable directory, calls path-based
+`readDirectory(path)` exactly once while its fd is open, validates every raw
+Buffer basename before filtering, filters and sorts with `Buffer.compare`,
+same-FD validates every selected child, then post-fstats and closes the
+directory exactly once. This proves the bound-root/writer model plus selected
+file identity, not race-free enumeration against malicious root
+replace-and-restore.
+
+`readDirectory` returns only an Array of raw Buffer basenames, each `1..255`
+bytes, without NUL or `/`, not `.`/`..`, and with fatal UTF-8 exact re-encode.
+Duplicate raw identities, non-Buffers, or malformed arrays reject before
+filtering. SSH leading-dot and glob rules are applied by the parser. Sudo
+ignores names containing `.` or ending `~`; after a fully validated directory
+enumeration, zero surviving sudo names is a valid empty textual insertion in
+candidate, installed, and removed modes.
+
+Exact independent parser maxima are: `1048576` bytes per file, `16777216`
+source bytes per graph, `256` closure files, include depth `32` with root
+counted, `16384` physical-line bytes excluding LF, `4096` raw basenames per
+directory call, `65536` raw basenames per graph, `256` tokens per line, and
+`4096` bytes per general token unless a smaller bound applies. SSH additionally
+allows `64` Include patterns, `4096` Match branches, `9` conditions per branch,
+`64` patterns per condition, and `255` bytes per Match pattern. Sudo allows
+`256` User_Alias definitions, `256` members per alias, `4096` alias-expansion
+nodes, `4096` user specs, `256` User_List members per spec, `256` command specs
+per spec, and `64` Defaults items per statement. An account has at most `256`
+groups. Violations reject before the next inspection, retention, allocation,
+or comparison; nothing is truncated or partially emitted.
+
+Every aggregate snapshot creates a new counter object before its first
+authorization/SSH/sudo parser allocation. SSH and sudo share that object, but
+the two Bootstrap snapshots and two closeout snapshots never share counters.
+Before constructing, copying, pushing, or inserting any named retained node,
+the exact reserve computes every affected safe-integer next value, rejects
+without mutation if a per-kind, per-graph, or snapshot limit would be crossed,
+then commits counters before allocation. Allocation failure rejects the whole
+snapshot and allowance is not reused.
+
+The exhaustive semantic-node ontology is:
+
+- shared: `fixedEnvelope` (maximum `32` per snapshot), `sourceFile`, and
+  `authorizationEntry`;
+- SSH: `sshPhysicalDirective`, `sshIncludePattern`,
+  `sshSelectedInsertion`, `sshMatchBranch`, `sshMatchCondition`,
+  `sshMatchPattern`, `sshAssignment`, and `sshAcceptEnvName`; and
+- sudo: `sudoStatement`, `sudoInclude`, `sudoSelectedInsertion`,
+  `sudoAliasDefinition`, `sudoAliasMember`, `sudoDefaultsItem`,
+  `sudoUserSpec`, `sudoUserHostRunasMember`, `sudoTagTransition`,
+  `sudoCommandSpec`, `sudoArgumentToken`, `sudoAliasEdge`, and
+  `sudoAliasMemoEntry`.
+
+Each physical directive/statement charges before dispatch; each child,
+pattern, condition, assignment, alias/member/edge/memo, Defaults item,
+selector/RunAs atom, tag, command, or argument charges before its exact object,
+copy, Array push, Map/Set insertion, or traversal-stack retention. A structure
+with two listed meanings charges both. Generic token/AST objects are forbidden.
+Raw bytes, delimiter indexes, blank/comments, and comparisons are not nodes and
+use their dedicated byte/work counters. A node referenced twice remains one
+object; copying it charges another node.
+
+Exact aggregate ceilings include `131072` semantic nodes per SSH graph,
+`131072` per sudo graph, and the lower shared ceiling `131072` across every
+fixed/shared/authorization/SSH/sudo node in one snapshot. Other exact limits
+are `65536` glob basename-pattern comparisons per graph, `4194304` wildcard
+pattern bytes, `131072` wildcard invocations, `16777216` aligned wildcard
+comparisons, `131072` SSH Match account-target comparisons, `65536` sudo
+selector comparisons, `16384` sudo command records, `16384` User_Alias edges,
+`32768` memoized alias visits, `4194304` canonical bytes per preimage, and
+`8388608` retained preimage bytes per snapshot. Canonical emission first runs
+an allocation-free exact UTF-8 JSON punctuation/escaping/value/LF measurement,
+reserves both preimage budgets, then allocates and verifies the resulting
+length. The cumulative snapshot preimage counter never decrements after hash
+and zeroization.
+
+Wildcard pattern bytes are capped at exactly `4194304` per snapshot.
+
+The one shared wildcard grammar permits `?` and zero or one literal `*`.
+Pattern validation is one allocation-free left-to-right scan, reserves before
+each inspected byte, stores only `starIndex`, and rejects a second or
+consecutive star. A match reserves one invocation. With no star, unequal
+lengths fail with zero aligned comparisons; equal lengths scan once from the
+start. With one star, targets shorter than prefix plus suffix fail with zero
+aligned comparisons; otherwise the matcher scans the prefix forward and
+suffix backward, reserving each aligned comparison. `?` consumes one byte and
+`*` consumes the entire nonoverlapping middle, including zero bytes. No index
+is reset or rescanned; there is no regex, recursion, retry/backtracking,
+star-retry state, substring, or compiled automaton.
+
+Alias memoization is scoped to one sudo graph after private account-core brand
+validation. It uses a function-local
+`WeakMap<brandedAccountCore, Map<aliasName,stateOrResult>>`; the outer and
+inner Maps charge fixed envelopes, absent aliases charge a memo node before
+the first insertion, every resolution charges an alias visit, every edge is
+charged before traversal, `visiting` detects cycles, and resolved booleans may
+be reused only from that inner Map. `finally` drops every reference. No
+account-core or group-name digest is computed, so a later branded core cannot
+reuse earlier applicability.
+
+#### Frozen SSH parser and effective-policy rules
+
+SSH roots at `/etc/ssh/sshd_config`. Relative Include paths resolve against
+`/etc/ssh`, not the including file. Include is accepted only in global scope;
+after any `Match`, including one reached through a child insertion, every
+later Include rejects. Include operands are processed left to right. Only `*`
+and `?` in the final component are supported; wildcard parents, `[]`,
+backslash, braces, `~`, `%`, and `**` reject. A leading dot needs a literal
+leading dot; zero glob matches, missing literal files, selected non-files,
+duplicates, cycles, or invalid encodings reject.
+
+SSH source is fatal UTF-8 with no BOM, CR, NUL, continuation, quote,
+backslash, inline comment, `keyword=value`, empty token, Unicode whitespace,
+or non-ASCII directive/Include/Match token. LF splits physical lines and one
+final unterminated line is accepted. ASCII space/tab separate tokens; blank
+and first-nonseparator-`#` lines are ignored. A directive name matches
+`[A-Za-z][A-Za-z0-9]*`, canonicalizes lowercase, and requires an argument.
+Unknown directives reject. The reviewed global opaque allowlist remains the
+one listed below in this design; opaque directives reject in Match scope.
+
+Match condition names are exactly `user,group,host,address,localaddress,
+localport,rdomain,localnetwork,all`. `Match all` is sole and remains Match
+scope. Other names occur once, carry one nonempty comma list, and preserve
+printable-ASCII case-sensitive pattern bytes. One leading `!` is supported;
+`!!`, classes, escapes, controls, whitespace, comma-in-value, and duplicates
+reject. User and Group evaluate positive/negative wildcard patterns against
+the exact username and transient independent `groupNames` set. Numeric-looking
+Group patterns still match names, never GIDs. User and Group are conjunctive;
+any resolved false makes a branch `disjoint`, even with variable dimensions.
+`all`, or resolved-true User/Group without a variable dimension, is
+`exact_user`. Otherwise any host/address/local dimension rejects as unresolved;
+`Host *` remains variable.
+
+Match coverage branch `ordinal` is the zero-based encounter counter and the
+only total order. `sourceOrdinal` is the source file first-discovery ordinal
+and `lineNumber` its one-based physical line. They must resolve to the actual
+closure item and parsed Match event, but are provenance only and are not
+lexicographically monotonic; a child `(1,5)` may precede a later root `(0,20)`.
+Native authority retains the complete coverage and source Group patterns only
+in a private canonical preimage; topology/binding retain only its digest.
+
+The one depth-first event stream uses two separate first-value tables. Before
+the first Match, only the first global scalar assignment is retained. Across
+`exact_user` branches in branch-ordinal order, only the first applicable Match
+assignment is retained. Match wins over global, then the frozen default.
+Disjoint branches contribute nothing; unresolved branches reject. `AcceptEnv`
+is additive and any applicable token fails the required empty result.
+`KbdInteractiveAuthentication` and `ChallengeResponseAuthentication` share
+one slot. Frozen defaults are: authentication methods `any`; pubkey/password/
+keyboard-interactive true; hostbased/GSSAPI/Kerberos/user-environment false;
+accepted env empty; force command/chroot `none`; forwarding false; tunnel
+false; authorized-key compiled default unresolved; other key/principal/CA
+sources `none`. Final safety still requires publickey-only, password and
+keyboard false, forwarding disabled, tunnel false, the explicit fixed one-file
+authorization source, and no alternate command/principal/CA/environment path.
+
+#### Frozen sudo parser, native syntax check, and rule semantics
+
+The sudo graph roots at `/etc/sudoers`. Exact Include forms are `#include`,
+`@include`, `#includedir`, and `@includedir` followed by one canonical absolute
+operand and no quote, escape, glob, variable, trailing token, or inline
+comment. Direct and directory insertions are depth-first. Missing/unreadable/
+replaced/ambiguous paths reject; a fully validated includedir with no surviving
+names is an exact empty insertion.
+
+The shared projection seam calls `validateSudoers` only as
+`validateSudoers("/usr/sbin/visudo", Object.freeze(["-cf","/etc/sudoers"]))`
+and requires exact own `{status:0,signal:null}`. SSH and the sudo closure
+projection call it zero times; a sudo effective projection or aggregate
+candidate/installed/removed snapshot calls it exactly once. Native authority
+uses its private branded method, same-FD revalidates the bound visudo entry,
+then executes exactly:
+
+```js
+spawnSync("/usr/sbin/visudo", ["-cf", "/etc/sudoers"], {
+  shell: false,
+  cwd: "/",
+  env: {
+    LANG: "C.UTF-8",
+    LC_ALL: "C.UTF-8",
+    PATH: "/usr/sbin:/usr/bin:/sbin:/bin"
+  },
+  encoding: null,
+  timeout: 5000,
+  maxBuffer: 65536,
+  windowsHide: true,
+  stdio: ["ignore", "pipe", "pipe"]
+})
+```
+
+Success uses only no execution error, integer status `0`, and signal `null`;
+stdout/stderr are never decoded or consulted. Captures and temporary Buffers
+are zeroed in `finally` on all paths and only a two-key internal receipt or
+sanitized rejection is exposed. The spawn reopens the path, so the explicit
+bound-root/tool-reopen residual applies.
+
+Before sudo statement allocation, one allocation-free physical-line scan
+rejects single quote `0x27` and backslash `0x5c` anywhere. Double quote
+`0x22` is lexically eligible only as adjacent `""` or inside the complete
+exact token `secure_path="/usr/sbin:/usr/bin:/sbin:/bin"`; the full parser
+must then consume that pair as the complete arguments or Defaults token.
+Everything else rejects. The exact byte grammar is:
+
+```text
+NAME        = %x61-7a *( %x61-7a / DIGIT / "_" / "." / "-" )
+ALIAS       = %x41-5a *( %x41-5a / DIGIT / "_" )
+UINT        = 1*DIGIT
+USER-MEMBER = NAME / "#" UINT / "%" NAME / "%#" UINT / "ALL" / ALIAS
+USER-LIST   = USER-MEMBER *( h "," h USER-MEMBER )
+RUNAS-ATOM  = NAME / "#" UINT / "ALL"
+RUNAS-SPEC  = "(" h RUNAS-ATOM [ h ":" h RUNAS-ATOM ] h ")"
+TAG         = "NOPASSWD:" / "PASSWD:" / "SETENV:" / "NOSETENV:"
+SAFE-COMMAND-BYTE = %x21 / %x24-26 / %x28-2b / %x2d-39 /
+                    %x3b-5b / %x5d-7e
+ABS-COMMAND = "/" 1*SAFE-COMMAND-BYTE
+ARG-TOKEN   = 1*SAFE-COMMAND-BYTE
+ARGUMENTS   = "\"\"" / ARG-TOKEN *( h1 ARG-TOKEN )
+COMMAND     = "ALL" / ABS-COMMAND [ h1 ARGUMENTS ]
+CMND-SPEC   = [ RUNAS-SPEC h ] *( TAG h ) COMMAND
+CMND-LIST   = CMND-SPEC *( h "," h CMND-SPEC )
+USER-SPEC   = USER-LIST h1 "ALL" h "=" h CMND-LIST
+USER-ALIAS  = "User_Alias" h1 ALIAS h "=" h USER-LIST
+DEFAULT-ITEM = "env_reset" / "!env_reset" /
+               "secure_path=\"/usr/sbin:/usr/bin:/sbin:/bin\""
+DEFAULTS    = "Defaults" h1 DEFAULT-ITEM *( h "," h DEFAULT-ITEM )
+```
+
+Here `H` is ASCII space/tab, `h` zero or more, `h1` one or more, and every
+production consumes the physical line through optional valid trailing comment
+and EOL. The safe byte class excludes quote, `#`, single quote, comma, colon,
+backslash, whitespace, controls, and non-ASCII. Line dispatch gives exact
+include prefixes priority; `#` plus digit begins a numeric-uid USER-SPEC,
+other leading `#` is a full-line comment, and malformed include-looking
+prefixes reject. Inline comment is allowed only after a complete Defaults,
+User_Alias, or command list and at least one separator.
+
+RunAs and tags are source-ordered per command list. Initial RunAs is `default`,
+password tag `PASSWD`, and setenv tag `NOSETENV`; explicit values replace only
+their family and persist across comma-separated commands. Every command spec
+records its source/line/index, explicit and effective state, command kind, and
+argument state before account applicability.
+
+Positive User_List members are literal username, `#uid`, `%group`, `%#gid`,
+`ALL`, or defined positive uppercase `User_Alias`. User_Alias definitions are
+collected before resolution for forward references; duplicate, undefined,
+cyclic, cross-namespace, negated, wildcard, or over-budget expansion rejects.
+Aliases only derive account applicability. The sole accepted grant must name
+literal `gccgw-japan-repair-ci`; applicable alias/uid/group/gid/ALL grants are
+`otherRule`s. Host, RunAs, and command aliases reject.
+
+Only source-ordered global `env_reset`, `!env_reset`, and exact secure path are
+supported; last assignment wins and final values must be `env_reset=true` plus
+the exact path. Scoped/unknown Defaults, `+=`, and `-=` reject. The one matched
+command spec must originate in the dedicated file and be exactly:
+
+```text
+gccgw-japan-repair-ci ALL=(root:root) NOPASSWD: /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint ""
+```
+
+That file contains only blank/comments plus that one semantic line. The parser
+fully consumes every supported spec before applicability. `matchedRuleCount`
+counts exact command specs; `otherRuleCount` counts every other command spec
+in every applicable supported user spec regardless of command path. Unresolved
+applicability rejects before counting. Success requires exact `1/0` installed
+counts; the removed verifier requires `0/0`, absent dedicated path, and safe
+remaining Defaults/source graph.
 
 `sshAuthorization` keys are exactly:
 
@@ -515,7 +941,9 @@ native directive/pattern/glob/source order, while sudo resolves native
 `include`/`includedir` order and applies the reviewed filename rules. Directory
 entries are raw bytes, validated for canonical fatal-UTF-8 round trip, and
 sorted bytewise where the native grammar requires it. Missing, duplicate,
-cyclic, ambiguous, zero-match, unsupported, or unresolved expansion fails.
+cyclic, ambiguous, unsupported, or unresolved expansion fails. SSH glob
+zero-match fails; a fully enumerated sudo includedir with zero surviving names
+is the frozen empty insertion and does not fail merely for being empty.
 Callers cannot submit file lists, ordinals, metadata, bytes, digests, or a
 claimed expansion order.
 
@@ -532,9 +960,11 @@ from these canonical records; callers cannot inject them.
 `accountDisposition`, branch order, source coordinates, variable dimensions,
 and effective values are parser output, never caller assertions. Disposition is
 derived from OpenSSH positive/negative/wildcard User and Group semantics using
-the exact bound username and ordered group identity; each source coordinate
-must belong to the derived closure and the branch sequence must be strictly
-monotonic. Global/default/applicable-Match first-value semantics derive every
+the exact bound username and transient independent canonical `groupNames` set;
+no GID/name positional mapping exists. Each source coordinate must belong to
+the derived closure and name an actual Match line. Branch `ordinal` alone is
+strict encounter order; `(sourceOrdinal,lineNumber)` is provenance and need
+not be lexicographically monotonic. Global/default/applicable-Match first-value semantics derive every
 authentication, authorization, environment, ForceCommand, ChrootDirectory,
 DisableForwarding, and PermitTunnel field before comparison to the frozen safe
 topology.
@@ -572,8 +1002,10 @@ uid/gid `0`, `nonInteractive=true`, `nopasswd=true`, `envReset=true`,
 `setenvAllowed=false`, exact secure path
 `/usr/sbin:/usr/bin:/sbin:/bin`, and `otherRuleCount=0`. The command
 specification uses the exact empty argument marker `""`. Wildcards, argument
-variation, alias expansion, alternate RunAs, another effective rule, SETENV,
-or broad sudo are rejected.
+variation, applicability of the accepted grant through an alias, alternate
+RunAs, another effective rule, SETENV, or broad sudo are rejected. Positive
+User_Alias definitions are resolved only to determine applicability; Host,
+RunAs, and command aliases reject.
 
 The sudo source-closure record has exact keys `schemaVersion, type, rootConfig,
 files`; files use the SSH Include closure's ordered
@@ -591,9 +1023,121 @@ The effective-policy record uses `schemaVersion="1"` and exact type
 shared trusted-read builder, never accepted as caller input.
 The parser, not the caller, derives the one empty-argument command rule,
 RunAs, NOPASSWD/noninteractive tags, env_reset, SETENV prohibition,
-secure_path, alias expansion, matched-rule count, and other-rule count from the
-same trusted closure. Caller-supplied semantic booleans, counts, rule arrays,
-or effective-policy digests are not evidence.
+secure_path, positive User_Alias applicability, matched-rule count, and
+other-rule count from the same trusted closure. Every other command spec in an
+applicable supported user spec is counted regardless of command path.
+Caller-supplied semantic booleans, counts, rule arrays, or effective-policy
+digests are not evidence.
+
+#### Aggregate authorization snapshots and lifecycle totals
+
+Each private candidate, installed, or removed snapshot performs exactly:
+
+1. its full schema-3, six-code, ten-tool, fixed-path validation;
+2. first six-call `readAccount` plus six immediate bound-tool validations;
+3. state-specific same-FD authorization read or reads;
+4. one depth-first SSH graph and derivation;
+5. one depth-first sudo graph and derivation;
+6. one native fixed `visudo -cf /etc/sudoers` after immediate bound-tool
+   validation;
+7. second six-call `readAccount` plus six immediate validations; and
+8. stable account/set comparison, state predicate, canonical digest
+   comparison, and only then any authority callback or return.
+
+Candidate validates every nonderived binding field and derives only the frozen
+SSH/sudo digest slots. Installed validates the complete installed binding.
+Removed validates the same binding and every still-installed path, changing
+only two predicates: the fixed authorization file is present as exact zero
+bytes and the binding-named dedicated sudoers path is absent. Candidate reads
+live zero bytes plus the fixed staged future line; installed reads one live
+line; removed reads live zero bytes. No snapshot makes a second graph
+observation or calls a public projection.
+
+The fixed transient paths are:
+
+```text
+candidate     /var/lib/gccgw/japan-tuic-additive-repair/tmp/bootstrap-authorization-candidate
+rollback-zero /var/lib/gccgw/japan-tuic-additive-repair/tmp/bootstrap-authorization-rollback-zero
+```
+
+Each is exclusive-created with no-follow semantics under the already bound
+root:root mode-`0700` temporary root, is root:root regular mode `0600`,
+`nlink=1`, written/fsynced/re-read/EOF/post-fstat validated through its creation
+fd, closed exactly once, then followed by temporary-root fsync. Candidate bytes
+are the exact canonical line plus LF; rollback bytes are exactly zero. Neither
+transient path nor bytes enter binding or receipts. Candidate topology
+substitutes the staged bytes only for the logical fixed authorization source;
+every other live source/account/coordinate remains unchanged, so the future
+and installed topology preimages are identical only when those exact staged
+bytes are atomically installed.
+
+The later Bootstrap Gate holds the exclusive lock, creates and validates the
+zero-byte rollback transient first, installs all non-authorization closure
+including sudoers, stages the candidate, then calls
+`attestBootstrapCandidateRunnerBinding` to prove live `0/0`, staged future
+`1/1`, future SSH topology, sudo `1/0`, account, ten tools, capabilities,
+writers, and visudo. It installs and same-FD reads back that derived binding,
+then as the last authorization mutation atomically renames the already
+validated candidate over the live authorization file and fsyncs the parent.
+It immediately calls `attestBootstrapInstalledRunnerBinding` to prove live
+`1/1` and matching line/blob/topology/sudo facts. No copied, regenerated,
+caller-supplied, or separately reopened candidate bytes are accepted.
+
+Failure before the final rename leaves live authorization at zero and removes
+both transients before rolling back non-authorization closure. On every failure
+after the rename, the first rollback mutation atomically renames the already
+validated zero-byte rollback transient over the live authorization file,
+fsyncs its parent, and proves zero-byte readback before any sudoers/code/
+binding rollback. Failure or ambiguity in that first mutation is indeterminate,
+not rolled back.
+
+Candidate plus installed success totals are exact: two snapshots; four
+`readAccount`; 24 helper executions plus 24 immediate `getent`/`id`
+validations; two SSH graphs; two sudo graphs; two visudo executions plus two
+immediate validations; two full six-code traversals with 12 code items; two
+full ten-tool traversals with 20 tool items; two capability matrices; two
+writer inventories; three authorization reads (live-zero, staged-one,
+live-one); and zero public projection calls. Transient cleanup is not a third
+snapshot.
+
+`validateRunnerBinding(input,{effectiveUid,pathOperations})` remains the
+two-key baseline context and must not claim account/SSH/sudo/xattr freshness.
+Before Tasks 5-8 cross an authority surface, the direct-mode runner also calls
+`attestRuntimeAuthorizationBinding`, which revalidates all ten tools and
+recomputes one installed aggregate snapshot. Runtime proof is always freshly
+derived at that use boundary.
+
+Task 8 closeout uses exactly one installed snapshot immediately before its
+first authorization mutation and one removed snapshot after both durable
+mutations. The installed snapshot proves key `1/1`, sudo `1/0`, account, and
+both safe graphs. Closeout then exclusive-creates and same-FD validates the
+same fixed zero-byte transient, atomically replaces the live authorization
+file, fsyncs its parent, proves zero-byte readback, only then unlinks the exact
+dedicated sudoers path and fsyncs that parent. The removed snapshot requires
+the same stable account under its separate brand, present zero-byte live
+authorization with `0/0` and no line/blob digest, exact no-follow sudoers
+absence, safe remaining SSH and sudo graphs, sudo counts `0/0`, and native
+visudo success. A zero-survivor `/etc/sudoers.d` includedir is valid. Only
+`attestRemovedAuthorization` may return `{authorizationRemoved:true}`.
+
+Installed plus removed closeout totals are exact: four `readAccount`; 24
+helper executions and 24 immediate validations; two SSH graphs; two sudo
+graphs; two visudo executions and two immediate validations; two full six-code
+and two full ten-tool traversals; two live authorization reads; zero
+capability matrices; zero writer inventories; and zero public projection
+calls. The persistent zero-byte authorization identity plus absent dedicated
+sudoers path is the retryable removed state. File absence, marker count, a
+prior digest, visudo alone, or an installed collector weakened to accept zero
+is never terminal evidence.
+
+Raw sshd/sudoers/authorized-key/passwd/shadow/GECOS/password/helper output,
+group names or pairs, basenames, Include/Match tokens, aliases, Defaults, user
+specs, tags, command lists, visudo/helper stderr, operation errors, fds,
+inode/device values, unredacted source paths, and canonical private preimages
+must never enter bindings, receipts, workflow output, logs, artifacts,
+exceptions, failure text, or test diagnostics. Task 4C adds no receipt field.
+Authority returns only already approved safe primitive fields, fixed counts,
+and digests.
 
 `paths` keys and order are exactly:
 
@@ -719,7 +1263,7 @@ suffix, second line, invalid UTF-8, and trailing bytes. Path-based
 `validateRunnerBinding(input, context)` requires exact context keys
 `effectiveUid, pathOperations` and
 `input.expectedEuid === context.effectiveUid === 0` numerically. It validates
-all six code-manifest files, all eight tool-manifest files, login-shell
+all six code-manifest files, all ten tool-manifest files, login-shell
 equality, and every binding path against policy before any operation. The CI
 Identity Bootstrap Gate does the same before authorization. Every file is read from its verified
 descriptor under its role ceiling. Same-FD fstat size must equal manifest
@@ -897,21 +1441,25 @@ provider/network/infrastructure scope.
 Host authorization is not removed in the main `inspect` or `execute` call. A
 second internal `closeout` frame is permitted only after a durable terminal
 state (`applied_validated` or `rolled_back_validated`) has been validated by
-GitHub. Before mutation, closeout rebuilds and revalidates the exact canonical
-account-wide SSH topology and sudo source/effective policy with the same
-reviewed parsers used by the CI Identity Bootstrap Gate. It requires exactly one authorization line
+GitHub. Immediately before its first authorization mutation, closeout calls
+the private installed authority once. That snapshot freshly revalidates all
+ten tools, the stable account, and the exact canonical account-wide SSH
+topology and sudo source/effective policy. It requires exactly one authorization line
 matching public-key blob hash, full line hash, and terminal marker; exactly one
 effective no-argument sudo rule; no other rule; effective global and
 Match-scoped ForceCommand/ChrootDirectory both `none`; and account-applicable
 `DisableForwarding=true` and `PermitTunnel=false`. Marker-only selection or
 removal is forbidden. Any forwarding/tunnel permission blocks closeout.
-Closeout creates a durable SSH replacement, revalidates
-both topologies and sources after temporary creation, fsyncs and atomically
-replaces the sole effective authorization file, fsyncs its parent, then removes
-the exact dedicated sudoers file and fsyncs that parent. It finally proves both
-the public-key blob absent from the sole effective SSH source and the dedicated
-sudo rule absent. Any SSH/sudo topology drift, alternate source, duplicate,
-readback ambiguity, or mutation after temporary creation is
+Closeout creates and same-FD validates the fixed zero-byte transient, fsyncs
+and atomically replaces the sole effective authorization file, fsyncs its
+parent, proves the live zero-byte readback, then removes the exact dedicated
+sudoers file and fsyncs that parent. Only after both mutations does it call the
+private removed authority once. That snapshot proves the public-key blob
+absent from the present zero-byte sole effective SSH source, the dedicated
+sudoers path/rule absent, the remaining sudo graph at `0/0`, and native visudo
+success. A fully enumerated zero-survivor includedir is valid. Any SSH/sudo
+topology drift, alternate source, duplicate, readback ambiguity, or mutation
+after temporary creation is
 `cleanup_indeterminate`, never `authorization_removed`.
 
 The post-closeout authorization file is exactly a zero-byte root:root regular
@@ -1164,6 +1712,65 @@ instant, and equal `new Date(value).toISOString()` exactly. Raw nonce, endpoint,
 path, SID/account, environment, provider, runtime identity, and raw error text
 are forbidden in durable records and receipts.
 
+## Task 4C Formal Transcription Gates
+
+The final independent policy review of
+`.superpowers/sdd/task-4c-policy-synthesis.md` is PASS with Critical `0`,
+Important `0`, Minor `0`. That result permits this synchronized source-only
+transcription; it does not authorize implementation, Bootstrap, identity
+access, Tasks 5-8 dispatch, or production action. Task 4C implementation and
+review must satisfy all fourteen gates together:
+
+1. Bind the exact ten-tool order, paths, modes, six-code/ten-tool manifest and
+   capability matrices, fixtures, and call counts.
+2. Keep authority exports at one semantic input with internally created,
+   recursively frozen, private-branded native aggregates; raw/unbranded,
+   Proxy/clone/wrong-brand, capability, and writer providers reject before
+   their first operation.
+3. Limit raw injected operations to non-authority projections and an isolated
+   module-evaluation adapter harness; production has no setter, overload,
+   factory argument, environment, frame, callback, or binding seam.
+4. Use the exact six-call Buffer-delimited account producer with full
+   `finally` zeroization, independent canonical `groupIds`/`groupNames`, two
+   stable observations, a private account-core brand, and separate candidate,
+   installed, and removed authorization brands.
+5. Use the fixed candidate/rollback-zero transients with exact metadata,
+   same-FD durability, logical-path future topology, live `0/0`, staged `1/1`,
+   installed `1/1`, authorization-last installation, and key-first rollback.
+6. Freeze Bootstrap candidate+installed totals at four account reads, 24
+   helper executions and validations, two SSH/sudo graphs, two visudo calls,
+   two full code/tool/capability/writer passes, three authorization reads, and
+   zero public builders.
+7. Freeze closeout installed+removed brands and totals at 24 helper calls and
+   validations, two SSH/sudo graphs, two visudo, present zero-byte
+   authorization, absent dedicated sudoers, accepted zero-survivor
+   includedir, and zero capability/writer/public-builder calls.
+8. Use the exact native visudo path, same-FD pre-exec validation, shell/cwd/env/
+   timeout/maxBuffer/binary-stdio envelope, status-only sanitized decision,
+   capture zeroization, and explicit path-reopen residual.
+9. Separate source first-discovery ordinal from Match encounter ordinal;
+   coordinates prove provenance but carry no monotonic-order authority.
+10. Freeze SSH relative Include base, glob/lexer/Match scope and grammar,
+    independent group sets, first-Match/global/default layering,
+    opaque-in-Match rejection, and private-only source Group-pattern preimage.
+11. Freeze the byte-level sudo EBNF/state machine, include/`#uid`/comment
+    dispatch, quote/single-quote/backslash precheck, corrected command byte
+    classes, RunAs/tag/argument persistence, EOL consumption, User_Alias-only
+    applicability, global supported Defaults, includedir residual, and exact
+    rule counts.
+12. Enforce every file/graph/account/work bound, exhaustive node ontology and
+    pre-retention charge, shared `131072` snapshot ceiling, zero/one-star
+    prefix/suffix matcher and its byte/invocation/comparison budgets,
+    account-identity WeakMap alias memo, premeasured preimage reservation, and
+    per-kind/global max/max+1 adversarial tests.
+13. Prohibit all raw authorization/account/source/parser/helper evidence from
+    receipts and diagnostics, including whole passwd/shadow/GECOS/password/
+    stderr decoding, serialized group names or positional ID/name mappings,
+    and native Match patterns.
+14. Distinguish Bootstrap binding from Task 8 use-time revalidation; require
+    runtime installed re-attestation, the retryable removed-state identity,
+    and full post-removal proof before `authorizationRemoved:true`.
+
 ## Source-Only TDD And Review
 
 Implementation order is:
@@ -1171,9 +1778,9 @@ Implementation order is:
 1. closed frame protocol;
 2. durable one-time claim and monotonic journal;
 3. direct-mode contract and receipts;
-4. exact schema-3 binding, installed code/eight-tool closure, account-wide SSH
-   Include/Match topology, canonical sudo source/effective policy, same-FD
-   reads, and pre-migration fail-closed CLI;
+4. exact schema-3 binding, candidate-then-installed six-code/ten-tool account/
+   SSH/sudo authorization evidence, same-FD reads, and pre-migration
+   fail-closed CLI;
 5. use-time-revalidated read-only inspection;
 6. crash-durable claim, backup, apply, and observation;
 7. use-time-revalidated rollback and replay;
@@ -1190,7 +1797,7 @@ local/loader/dynamic-code surfaces, the exact four-module application graph,
 and exactly one total JavaScript `import()` at the runner's verified-artifact
 callsite.
 
-An end-to-end six-code/eight-tool manifest matrix covers exact role order,
+An end-to-end six-code/ten-tool manifest matrix covers exact role order,
 paths, metadata, digests, capability fields, recursive canonical key order,
 per-role ceilings (including bootstrap `65536/65537`), same-FD size/read/hash/
 confirmed-EOF behavior, early EOF, trailing byte, wrong fd, post-read metadata
@@ -1202,7 +1809,8 @@ Windows host constants; missing or drifted required constants reject.
 Operations-driven SSH and sudo fixtures derive every native source closure from
 same-FD reads capped at 1 MiB with confirmed EOF. They cover missing,
 duplicate, cyclic, ambiguous, and unresolved expansion; sudo empty-argument
-source semantics; derived Match disposition and strict source order; positive,
+source semantics; derived Match disposition, encounter ordinal, and provenance
+coordinates; positive,
 negative, and wildcard User/Group cases; and global/default/applicable-Match
 effective-value derivation. Caller-supplied source, order, disposition,
 effective booleans, rule counts, or digests are rejected as evidence.
@@ -1238,7 +1846,7 @@ silently trusting a different workflow commit.
 1. **Exact CI Identity Bootstrap Gate:** bind the merged workflow commit,
    the exact six-role `codeManifest` in
    `bootstrap, contract, entrypoint, frame, runner, state` order, the fixed
-   eight-line `--import=` entrypoint, and the unchanged eight-binary `toolManifest`
+   eight-line `--import=` entrypoint, and the exact ten-binary `toolManifest`
    including raw capability digests,
    binding and expected claim digest, fixed account/passwd/home/shell,
    canonical complete sshd topology and Include/Match preimages with global and
@@ -1255,10 +1863,18 @@ silently trusting a different workflow commit.
    reviewed builtin static imports and none of local import, `import()`,
    require/createRequire, eval, or loader registration; it also proves bootstrap
    same-FD-validates runner/contract/frame/state before root evaluation. The
-   Gate stages the rollback procedure first; reads back the entire installed
-   closure before authorization; and adds the exact
-   authorization line last. Its first rollback mutation removes that line,
-   followed by removal and parent-directory fsync of the exact sudoers file.
+   Gate stages the zero-byte rollback transient first, installs the complete
+   non-authorization closure, stages the one-line candidate, and runs the full
+   candidate aggregate snapshot. That snapshot proves live authorization
+   `0/0`, staged future `1/1`, exact account, SSH/sudo graphs, ten tools,
+   capability/writer evidence, and native visudo before installing and
+   same-FD reading back the candidate-derived binding. The Gate then atomically
+   installs the already validated authorization candidate as its final
+   authorization mutation and immediately runs the independent installed
+   aggregate snapshot proving live `1/1`. Its first post-add rollback mutation
+   atomically installs and fsyncs the already validated zero-byte rollback
+   transient, proves zero-byte readback, and only then removes and
+   parent-directory-fsyncs the exact sudoers file.
    Gate capability dry-run evidence covers absent xattr, unexpected
    bytes, wrong fd, unsupported/error, oversize, and digest mismatch before
    authorization. Any path, content/capability digest, SSH/sudo topology, role-mode,
