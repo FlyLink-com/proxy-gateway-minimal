@@ -36,6 +36,22 @@
 - No general shell, PTY, forwarding, SCP, rsync, broad sudo, service control, manual collector invocation, stale deletion, app deploy, schema/database mutation, or provider/network/account expansion.
 - Never print or write to durable host state, receipt, or log an SSH private key, offline private key, raw endpoint, raw nonce, host path, runtime principal, UUID, credential reference, raw config/env, database row, customer data, provider response, or raw error. The public frozen nonce may exist only in reviewed source and bounded ephemeral frame scratch.
 - Every behavior change follows RED -> GREEN -> focused regression -> fresh task review -> commit. Do not combine tasks before witnessing the planned failure.
+- The Task 4 schema-3 binding policy in the active design supersedes all older
+  root-only-final-owner, `trusted_root_concurrency_not_machine_proven`,
+  incomplete code-closure, and marker-only authorization text. The exact
+  residual is `bound_writer_concurrency_not_machine_proven`.
+- Bootstrap is authorization-last and rollback-first: stage rollback, bind and
+  read back the complete installed code/tool/path/account/sshd/sudo closure,
+  add the exact canonical authorization line as the final mutation, remove it
+  as the first rollback mutation, then remove and directory-fsync the exact
+  dedicated sudoers file. Bootstrap and workflow dispatch remain
+  prohibited until Task 8 atomically removes the v1 path and enables strict
+  framed schema-3 CLI dispatch.
+- Tasks 5-8 reopen and same-FD-fstat every protected file immediately before
+  every read, helper spawn, backup, apply, restore, observation, or
+  authorization replacement. Owner-writable inputs receive immediate pre/post
+  digests. Helper pathname reopen retains the explicit bound-writer residual
+  and is never claimed race-free.
 
 ## File Map
 
@@ -269,7 +285,7 @@ git commit -m "feat(ci): add durable Japan repair state"
 
 **Interfaces:**
 - Consumes: Task 1 canonical controls and frames; Task 2 nonce/claim digests.
-- Produces temporarily: `JAPAN_TUIC_REPAIR_GATE_V3` schema `3`, `buildOperationControl({ operation, workflowCommit, runAttempt })`, `validateOperationControl(control)`, `validateInspectReceipt(input)`, `validateExecuteReceipt(input)`, `validateCloseoutReceipt(input)`, and CLI commands `artifact`, `frame`, and `receipt`. The existing `JAPAN_TUIC_REPAIR_GATE` v1 export remains only for unchanged compatibility callers through Task 8.
+- Produces temporarily: `JAPAN_TUIC_REPAIR_GATE_V3` schema `3`, `buildOperationControl({ operation, workflowCommit, runAttempt })`, `validateOperationControl(control)`, `validateInspectReceipt(input)`, `validateExecuteReceipt(input)`, `validateCloseoutReceipt(input)`, and CLI commands `artifact`, `frame`, and `receipt`. The existing `JAPAN_TUIC_REPAIR_GATE` v1 export remains only for the separately named private legacy local-test helper through Task 8; it is never reachable from exported schema-3 validation or direct CLI dispatch.
 
 - [ ] **Step 1: Add failing Mode 1 tests beside temporary v1 compatibility tests**
 
@@ -341,7 +357,9 @@ constants and validators. Add `JAPAN_TUIC_REPAIR_GATE_V3` and v3 interfaces
 without changing the existing `JAPAN_TUIC_REPAIR_GATE` v1 export, v1 named
 exports, or `approval` CLI yet; that compatibility surface is used only by
 unchanged code and is removed with its callers in Task 9. No new Mode 1 code may
-call it. Use the exact timestamp regex:
+call it. Task 8 deletes the runner's private v1 validator/helper and execution
+path; Task 9 removes any then-uncalled contract/workflow compatibility export.
+Use the exact timestamp regex:
 
 ```js
 const CANONICAL_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -388,30 +406,256 @@ git commit -m "refactor(ci): switch Japan repair contract to mode one"
 - Modify: `server/tests/japan-tuic-additive-repair-runner.test.mjs`
 
 **Interfaces:**
-- Produces: a source template installed later at one digest-bound absolute path; `validateRunnerBinding(input, context)` schema `3`; `validateTrustedPathChain(path, policy, operations)`.
-- Binding adds: `expectedEuid`, `expectedWorkflowCommit`, `expectedNonceSha256`, `expectedClaimSha256`, `writerFreeze`, `paths.stateDirectory`, and `paths.lockFile`; schema-3 binding checks use `JAPAN_TUIC_REPAIR_GATE_V3` while the temporary v1 execution helper remains isolated. `writerFreeze` has exact keys `knownWriterCount`, `evidenceSha256`, and `residualRisk`, requiring `0`, one 64-hex bootstrap evidence digest, and `trusted_root_concurrency_not_machine_proven`.
+- Produces: the uninstalled source template for
+  `/usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint`;
+  `buildCanonicalRunnerBinding(input)`; `buildCanonicalSshTopology(input)`;
+  `buildCanonicalSshIncludeClosure(input)`;
+  `buildCanonicalSshMatchCoverage(input)`;
+  `buildCanonicalSudoSourceClosure(input)`;
+  `buildCanonicalSudoEffectivePolicy(input)`;
+  `parseCanonicalAuthorizedKeyLine(input)`;
+  `loadRootOwnedBinding({ path, effectiveUid, pathOperations })`;
+  `validateRunnerBinding(input, context)` schema `3`; and
+  `validateTrustedPathChain(path, policy, operations, consumeOpened?)`.
+- The fixed installed closure is entrypoint
+  `/usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint`, runner
+  `/usr/local/libexec/gccgw/japan-tuic-additive-repair-runner.mjs`, contract
+  `/usr/local/libexec/gccgw/japan-tuic-additive-repair-contract.mjs`, frame
+  `/usr/local/libexec/gccgw/japan-tuic-additive-repair-frame.mjs`, state module
+  `/usr/local/libexec/gccgw/japan-tuic-additive-repair-state.mjs`, binding
+  `/etc/gccgw/japan-tuic-additive-repair-binding.json`, state root
+  `/var/lib/gccgw/japan-tuic-additive-repair`, subdirectories `backups` and
+  `tmp`, lock `repair.lock`, authorization file
+  `/etc/ssh/authorized_keys/gccgw-japan-repair-ci`, account home
+  `/var/lib/gccgw-japan-repair-ci`, login shell `/usr/bin/dash`, and dedicated
+  sudoers file `/etc/sudoers.d/gccgw-japan-repair-ci`.
+- Entrypoint metadata is root:root/file/`0755`/`nlink=1`; the four modules are
+  root:root/file/`0644`/`1`; binding and lock are root:root/file/`0600`/`1`;
+  state/backup/temporary are root:root/directory/`0700`/null; authorization is
+  root:root/file/`0600`/`1`; home is root:root/directory/`0755`/null; login
+  shell is root:root/file/`0755`/`1` plus exact digest; sudoers is
+  root:root/file/`0440`/`1` plus exact content digest. Lock absence fails;
+  neither Task 4 nor `flock` creates it.
+- The binding's exact top-level order is `schemaVersion, gateId, expectedEuid,
+  expectedWorkflowCommit, expectedNonceSha256, expectedClaimSha256,
+  codeManifest, toolManifest, sshAuthorization, sudoAuthorization, paths,
+  pathPolicies, units, writerFreeze, authorizationMarker`. One builder recursively emits every
+  nested object and UTF-8 bytes exactly
+  `JSON.stringify(canonicalBinding) + "\n"`.
+- Require `schemaVersion="3"`, exact V3 Gate/nonce digest constants,
+  `expectedEuid=0`, primitive lowercase 40-hex workflow commit, and recompute
+  `expectedClaimSha256` from that commit plus the fixed Gate, nonce, artifact,
+  release unit, strategy, surface, and target. Every path is a distinct
+  canonical POSIX absolute primitive. Fixed-role policies cannot be relaxed by
+  binding input; `units` is exact `service, timer`, and
+  `authorizationMarker` is the unique safe marker.
+- `codeManifest` order is `contract, entrypoint, frame, runner, state`.
+  Every code value order is
+  `path, sizeBytes, sha256, type, uid, gid, mode, nlink`; size is a positive
+  safe integer, entrypoint is at most 16384 bytes, and each ESM module is at
+  most 1048576 bytes.
+  `toolManifest` order is
+  `dash, env, flock, node, sudo, systemctl, unzip, visudo`, with respective
+  fixed paths `/usr/bin/dash`, `/usr/bin/env`, `/usr/bin/flock`,
+  `/usr/bin/node`, `/usr/bin/sudo`, `/usr/bin/systemctl`, `/usr/bin/unzip`, and
+  `/usr/sbin/visudo`. Every tool value order is
+  `path, sizeBytes, sha256, type, uid, gid, mode, nlink, capabilitySha256`;
+  size is positive safe integer no greater than 268435456 bytes; content and
+  raw `security.capability` digests are exact lowercase SHA-256, using empty
+  bytes when capability is absent. All tools are root:root regular and `nlink=1`;
+  `sudo` alone is mode `04755`, all others are `0755`, and every capability is
+  absent. Symlinks and alternate resolved/package paths are rejected.
+- `sshAuthorization` order is `algorithm, authorizedKeysFile,
+  authorizedKeysLineSha256, effectiveConfigSha256, homeDirectory,
+  homeDirectoryPolicy, loginShell, loginShellPolicy, publicKeyBlobSha256, uid,
+  username`. Nested home policy order is `type,uid,gid,mode,nlink`; nested shell
+  policy order is `type,uid,gid,mode,nlink,sha256`; shell path/metadata/digest
+  equal `toolManifest.dash` apart from the tool-only capability field.
+- `sudoAuthorization` order is `schemaVersion, type, username, uid,
+  sudoersFile, sudoersFileSha256, command, commandArguments, runAsUid, runAsGid,
+  nonInteractive, nopasswd, envReset, setenvAllowed, securePath,
+  otherRuleCount, sourceClosureSha256, effectivePolicySha256`.
+- `paths` order is `authorizedKeys, backupDirectory, currentMap, lockFile,
+  materialStore, mihomoConfig, naturalObservation, producerStatus,
+  stateDirectory, sudoersFile, temporaryRoot`; `pathPolicies` repeats that order and each
+  value is `type, uid, gid, mode, nlink`. `units` order is `service, timer`.
+  `writerFreeze` order is `knownWriterCount, evidenceSha256, residualRisk` with
+  exact values `0`, lowercase 64-hex, and
+  `bound_writer_concurrency_not_machine_proven`. This supersedes the old
+  root-only final-owner wording and old residual literal everywhere in the
+  active design/plan.
 
-- [ ] **Step 1: Write failing entrypoint and binding tests**
+- [ ] **Step 1: Write the complete failing entrypoint, import-closure, binding, and SSH-policy tests**
 
-Assert the shell source contains one `exec /usr/bin/env -i`, fixed `LANG` and
-`PATH`, absolute `/usr/bin/flock`, conflict exit `75`, an absolute lock path,
-absolute `/usr/bin/node`, absolute installed runner, and absolute binding. It
-must not contain `$SSH_ORIGINAL_COMMAND`, `eval`, `sh -c`, relative executables,
-`NODE_OPTIONS`, `NODE_PATH`, a variable command, or a second command path.
+Assert the entrypoint bytes are exact, including `#!/usr/bin/dash`, one
+`exec /usr/bin/env -i`, fixed `LANG`/`PATH`, absolute bound `flock`/Node/lock/
+runner/binding paths, and no variable command, secondary command path, `eval`,
+`sh -c`, relative executable, or use of `$SSH_ORIGINAL_COMMAND`.
 
-Add runner tests whose fake path operations return exact `lstat/open/fstat`
-records. Accept only numeric EUID `0`, root-owned non-symlink components, fixed
-file/dir modes, `nlink=1` files, mode-`0700` state/backup directories, and no
-group/other writable component. Reject a symlink, owner drift, mode drift,
-binding commit drift, nonce digest drift, claim digest drift, and EUID drift.
+Under the bound Node test runtime, use syntax-aware ESM parsing such as
+`vm.SourceTextModule` to recursively enumerate runner/contract/frame/state.
+Require exactly the four-module local graph and an exact reviewed `node:`
+builtin allowlist. Reject bare packages, absolute/file/data URLs, query/hash
+specifiers, `node:module`, `createRequire`, CommonJS `require`, and unlisted
+local modules. Permit exactly one dynamic-code callsite: the frozen runner
+import of `scripts/traffic-accounting-natural-observation.mjs` after verified
+artifact size/hash/central-directory-manifest/safe-extraction validation;
+reject every other dynamic import or module-loading surface. Assert all five
+`codeManifest` roles, including entrypoint, and all eight `toolManifest` roles
+are present with exact paths/order/metadata/content/capability digests. Assert
+`sudo` is exactly `04755`, every other tool is `0755`, every capability digest
+is the SHA-256 of absent/empty raw capability bytes, and any symlink or
+alternate resolved/package path is rejected. Require exact manifest
+`sizeBytes`, entrypoint 16384/16385 and ESM 1048576/1048577 boundaries, tool
+268435456/268435457 boundaries, same-FD fstat-size equality, exact-size read,
+confirmed zero-byte EOF, and rejection of early EOF or trailing byte.
+
+Test the exact recursive canonical binding order and field names above. Reject
+schema 1 through exported `validateRunnerBinding`; require its exact context
+keys `effectiveUid, pathOperations` and numeric
+`input.expectedEuid === context.effectiveUid === 0`. The separately named
+private legacy validator is reachable only from the isolated local v1 helper
+through Task 8 and is never dispatched by the exported validator.
+
+Use injected operations with exact contract `lstat, open, fstat, read, close`
+and bigint stats. Assert that the fd returned from `open` is the only fd passed
+to `fstat`, `read`, and `close`; no path-based read occurs. Cover bigint
+dev/ino mismatch; exact `O_RDONLY|O_NOFOLLOW|O_CLOEXEC` plus directory-only
+`O_DIRECTORY`; positive short reads; EINTR-only retry; confirmed zero-byte EOF;
+binding sizes 65536 accepted and 65537 rejected; code-file 1 MiB limit; fatal
+UTF-8; BOM; CR; duplicate/reordered keys; prefix/suffix/second-line/trailing
+bytes; returned counts outside `0..length`; wrong fd; post-consume dev/ino/size
+drift; and exactly-once close on success, consumer failure, read failure, and
+close failure. Every exposed failure is only `restricted_identity_rejected`.
+
+Freeze `sshAuthorization` for algorithm `ssh-ed25519`, exact positive uid,
+username `gccgw-japan-repair-ci`, fixed home/shell, exact passwd identity,
+root-controlled home chain, locked password, one effective authorization file,
+and exactly one active nonblank/noncomment entry equal to the canonical line.
+The canonical SSH topology builder has exact keys/order:
+
+```text
+schemaVersion, type, username, uid, homeDirectory, loginShell,
+passwordLocked, authenticationMethods, pubkeyAuthentication,
+passwordAuthentication, keyboardInteractiveAuthentication,
+hostbasedAuthentication, gssapiAuthentication, kerberosAuthentication,
+permitUserEnvironment, acceptedEnvironmentNames,
+authorizedKeysFiles, authorizedKeysCommand, authorizedPrincipalsFiles,
+authorizedPrincipalsCommand, trustedUserCAKeys,
+activeAuthorizationEntryCount, targetKeyOccurrenceCount,
+addressDependentAuthorizationBranchCount, includeClosureSha256,
+matchCoverageSha256
+```
+
+Require schema `1`, type `japan_ci_ssh_authorization_topology`, bound account
+values, password locked, only `authenticationMethods=["publickey"]`, pubkey
+true, every other authentication boolean false, user environment false,
+accepted environment names empty, the sole bound authorization file, command
+fields `"none"`, principals/CA arrays empty, counts `1/1/0`, and lowercase
+closure/coverage digests. Reject unresolved Include/Match/conditional/address/
+host branches or alternate password, keyboard-interactive, host-based, GSSAPI,
+Kerberos, CA/principals, AuthorizedKeysCommand, or file-expansion paths.
+`effectiveConfigSha256` is over UTF-8
+`JSON.stringify(canonicalTopology) + "\n"`.
+
+Freeze SSH digest preimages, not caller-provided digest strings. Include closure
+has exact keys `schemaVersion, type, rootConfig, files`; files retain resolved
+OpenSSH expansion order and each item has
+`ordinal, path, sha256, uid, gid, mode, nlink`. Require canonical absolute,
+root-owned regular, `nlink=1`, no group/other write, bytewise lexical glob
+expansion, and rejection of missing/duplicate/cyclic/ambiguous/unresolved
+includes. Match coverage has exact keys
+`schemaVersion, type, username, groupIds, branches`; group IDs are unique
+ascending, branches stay in Include/source order with exact keys
+`ordinal, sourceOrdinal, lineNumber, conditions, accountDisposition,
+variableDimensions`, and disposition is only `disjoint` or `exact_user`.
+Any matching branch must be exact-user with no variable dimensions; unresolved
+host/address/local-address/local-port/group/user-negation or other context
+fails. Both digests are derived from canonical JSON+LF by the builder.
+
+The shared source-closure builder uses `schemaVersion="1"`, exact type
+`japan_ci_sshd_source_closure` for SSH and
+`japan_ci_sudo_source_closure` for sudo, exact roots
+`/etc/ssh/sshd_config` and `/etc/sudoers`, and the same file-item builder and
+serializer. Every closure file is at most 1 MiB and is metadata-validated,
+read, hashed, and confirmed at EOF from one trusted descriptor; only the
+subsystem-native expansion order differs.
+
+The Match record is schema `"1"`, exact type
+`japan_ci_sshd_match_coverage`. Each condition has exact keys
+`name, patterns`; name is one lowercase literal `user, group, host, address,
+localaddress, localport, rdomain, localnetwork, all`, appears once at most, and
+remains source-ordered. Each pattern has exact keys `negated, value`; boolean
+negation plus a nonempty printable ASCII value without whitespace, comma,
+backslash, control byte, or Unicode normalization. Preserve literal `*`/`?`,
+reject duplicate name/pattern pairs, require `patterns` as an explicit JSON
+array, freeze `all` exactly as `{"name":"all","patterns":[]}`, require
+at least one pattern for every other condition, and require
+`variableDimensions` unique in
+fixed order `host, address, localaddress, localport, rdomain, localnetwork`.
+Unsupported names, ambiguous negation, escapes, or unparsable wildcard
+semantics fail closed.
+
+Freeze canonical sudo policy. `sudoAuthorization` is schema `1`, type
+`japan_ci_sudo_authorization`, the bound account, fixed
+`/etc/sudoers.d/gccgw-japan-repair-ci`, exact file digest, exact entrypoint,
+`commandArguments=[]`, run-as `0:0`, noninteractive/NOPASSWD/env_reset true,
+SETENV false, secure path `/usr/sbin:/usr/bin:/sbin:/bin`, and
+`otherRuleCount=0`. Require the exact sudoers empty-argument marker `""` and
+reject wildcard/argument variation, aliases, alternate RunAs, other effective
+rule, SETENV, or broad sudo. Sudo source closure uses the same ordered file-item
+schema with sudo include ordering and include rejection. Effective policy has
+exact keys `schemaVersion, type, username, uid, command, commandArguments,
+runAsUid, runAsGid, nonInteractive, nopasswd, envReset, setenvAllowed,
+securePath, matchedRuleCount, otherRuleCount, sourceClosureSha256`, with matched
+count `1`. Both digests are builder-derived canonical JSON+LF. `visudo -cf`
+success is required but cannot replace semantic comparison. The effective
+record is schema `"1"`, exact type `japan_ci_sudo_effective_policy`, and its
+source-closure digest comes only from the shared trusted-read builder.
+
+Freeze the shared Task 8 ASCII key-line parser: at most 16384 bytes plus one
+LF; no CR/NUL/additional lines/tokens/unknown or duplicate options/escapes;
+exact option sequence, then `ssh-ed25519`, one canonical base64 token, and exact
+terminal marker. Decode/re-encode must reproduce base64 exactly. The SSH wire
+blob contains length-prefixed `ssh-ed25519`, exactly one 32-byte Ed25519 key,
+and EOF. Line and embedded algorithms match before blob/full-line digest
+comparison; no shell text is evaluated.
+
+Test fixed path roles and dynamic observed metadata. Ancestors are uid-0
+nonsymlink directories without group/other write. A file has `nlink=1`; a
+directory has JSON null nlink. `currentMap` is exact mode `0600` with observed
+uid/gid. Material store, Mihomo config, natural observation, and producer
+status accept only exact observed mode `0400` or `0600`, plus exact observed
+uid/gid: owner-only readable, non-executable, and never group/other accessible.
+Any other observed mode blocks without normalization and requires a separate
+permission-hardening Gate. Non-root final owner is allowed only when its role
+minimum and binding policy pass. Assert writer inventory covers every principal with
+write capability and every known service/timer/process writer, known active
+count is zero, and the exact new residual is serialized.
+
+Compare code/tool modes as low 12 permission/special bits: every non-sudo role
+rejects setuid, setgid, or sticky, while sudo requires setuid and rejects
+setgid/sticky drift. Runtime path policies compare low 9 permission bits and
+separately reject every special bit.
+
+Finally, invoke the current runner directly and require zero stdout, exact
+stderr bytes
+`{"schemaVersion":"3","type":"japan_tuic_additive_repair_pre_migration","error":"restricted_identity_rejected"}\n`,
+exit `1`, and zero binding-load, operations-factory, stdin/artifact-read,
+output-before-rejection, or legacy-helper calls. Own-property `NODE_OPTIONS`
+or `NODE_PATH` is rejected even when empty; any nonempty
+`SSH_ORIGINAL_COMMAND`, including whitespace-only, is rejected before those
+calls.
 
 - [ ] **Step 2: Run focused tests and witness RED**
 
 ```powershell
-node --test server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
+node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
 ```
 
-Expected: entrypoint module/file missing and binding schema assertions fail.
+Expected: RED on the missing exact dash entrypoint, schema-3 closure,
+same-FD/bigint reader, eight-tool manifest, canonical SSH Include/Match and sudo
+policies, parser, and exact pre-migration behavior.
 
 - [ ] **Step 3: Add the exact no-variable entrypoint**
 
@@ -421,7 +665,7 @@ and sudoers. `authorized_keys` invokes exactly
 with no caller-controlled argument. The entrypoint bytes are:
 
 ```sh
-#!/bin/sh
+#!/usr/bin/dash
 set -eu
 exec /usr/bin/env -i LANG=C.UTF-8 PATH=/usr/bin:/bin \
   /usr/bin/flock --exclusive --nonblock --conflict-exit-code 75 \
@@ -431,27 +675,61 @@ exec /usr/bin/env -i LANG=C.UTF-8 PATH=/usr/bin:/bin \
   --binding /etc/gccgw/japan-tuic-additive-repair-binding.json
 ```
 
-The bootstrap Gate must bind the installed bytes and configure sudoers for
-exactly this no-argument absolute entrypoint with `env_reset`, no `SETENV`, and fixed
-`secure_path`. No installation occurs in this task.
+The bootstrap Gate derives code/tool digests from the exact merged commit,
+binds installed bytes and exact executable metadata, and configures the fixed
+sudoers file for exactly this no-argument entrypoint with empty-argument marker
+`""`, `env_reset`, no `SETENV`, and exact `secure_path`. Only bootstrap uses a
+native same-FD `fgetxattr` attestation for raw `security.capability`: absent
+`ENODATA`/`ENOATTR` maps to SHA-256 of empty bytes and every other error fails.
+Runtime does not claim xattr revalidation. The root-owned
+OS/runtime/library/capability base beneath the eight bound tools remains an
+explicit platform trust boundary. No installation occurs in this task.
 
-- [ ] **Step 4: Implement binding/path validation without touching production**
+- [ ] **Step 4: Implement recursive canonical binding, same-FD validation, and SSH-policy helpers**
 
-Upgrade binding schema to `3`. Validation first checks exact JSON keys and
-frozen public identities, then uses injected `lstat/open/fstat/close` operations
-to verify each component and the opened final inode. Reject `NODE_OPTIONS`,
-`NODE_PATH`, and non-empty `SSH_ORIGINAL_COMMAND` when CLI tests bypass the
-env-empty wrapper. Error output remains `restricted_identity_rejected` only.
+Implement the exact interfaces and nested orders above. `validateTrustedPathChain`
+is synchronous: canonical POSIX absolute lexical path; bigint lstat of `/` and
+each component exactly once; exact final lstat policy; required open flags;
+same-fd bigint fstat/dev+ino; optional synchronous consumer that cannot close;
+post-consume same dev/ino/size; and exactly-once close in `finally`, with close
+failure still fail-closed.
 
-- [ ] **Step 5: Run GREEN and commit**
+`loadRootOwnedBinding` accepts only the fixed binding path and fixed metadata;
+reads the verified fd from position zero in a bounded short-read/EINTR loop;
+requires fstat size `1..65536`, accumulated length equal to fstat size, and
+actual EOF; then fatal-decodes and compares exact canonical JSON+one-LF bytes.
+It never uses path `stat`/`readFile`. Runtime `validateRunnerBinding` checks all
+five code roles, all eight tools' path/content/type/uid/gid/mode/nlink,
+login-shell equality, and every protected path before an operation. Code, tool,
+SSH closure, and sudo closure bytes use the same fd loop. Entrypoint, ESM,
+tool, and source-closure reads use their exact 16 KiB, 1 MiB, 256 MiB, and
+1 MiB ceilings. Same-FD fstat size equals
+manifest `sizeBytes`; read exactly that size, confirm zero-byte EOF, then hash.
+Early EOF, mismatch, ceiling+1, and trailing byte fail. Bootstrap additionally
+attests tool
+capability digests before authorization; runtime deliberately makes no xattr
+claim.
+
+The root-owned binding is authoritative for observed final uid/gid/mode and is
+not client input. Keep all path/stat/open/read/consume/close errors sanitized.
+Initial validation is not a use-time guarantee; expose the same trusted-open
+primitive for Tasks 5-8.
+
+- [ ] **Step 5: Implement exact pre-migration isolation and run GREEN**
+
+Keep schema 1 in only the separately named private local-test helper. Until
+Task 8, production CLI dispatch is mechanically disabled with the exact
+stderr/exit/call-count behavior above. The entrypoint source remains
+uninstalled; workflow dispatch and bootstrap are prohibited.
 
 ```powershell
-node --test server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
+node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
 git add scripts/japan-tuic-additive-repair-entrypoint.sh scripts/japan-tuic-additive-repair-runner.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
 git commit -m "feat(ci): harden Japan repair forced entrypoint"
 ```
 
-Expected: focused suites PASS; no host or GitHub action occurs.
+Expected: every exact RED class above is GREEN; no host, SSH, GitHub, bootstrap,
+or production action occurs.
 
 ---
 
@@ -462,8 +740,9 @@ Expected: focused suites PASS; no host or GitHub action occurs.
 - Modify: `server/tests/japan-tuic-additive-repair-runner.test.mjs`
 
 **Interfaces:**
-- Consumes: `readRepairFrame()`, Mode 1 contract, durable state snapshot.
-- Produces: `inspectJapanTuicAdditiveRepair({ binding, frame, operations })`, `reconcileClaimedState({ snapshot, operations })`, and host operations for verified scratch receive/extract/cleanup. The existing execute CLI remains temporarily callable only by its existing local tests until Task 8 replaces it.
+- Consumes: `readRepairFrame()`, Mode 1 contract, durable state snapshot, and
+  Task 4 trusted same-FD open/read primitives plus exact binding policy.
+- Produces: `inspectJapanTuicAdditiveRepair({ binding, frame, operations })`, `reconcileClaimedState({ snapshot, operations })`, and host operations for verified scratch receive/extract/cleanup. Only the separately named private v1 helper remains callable by injected local tests; direct runner invocation continues the exact Task 4 pre-migration failure until Task 8 replaces it.
 
 - [ ] **Step 1: Write failing host-verification and inspect call-count tests**
 
@@ -487,13 +766,21 @@ scratch cleanup failure. Host verification must complete before state write or
 candidate helper invocation. Add a claimed-success fixture whose current state
 is after-state and prove old before-state validation is never called.
 
+For every protected artifact, binding path, state record, target, material,
+Mihomo config, natural observation, and producer-status read, assert immediate
+reopen with the exact Task 4 policy, same-fd fstat/read/EOF, and no path-based
+read. For owner-writable roles, assert immediate pre/post digest equality.
+Inject metadata or digest drift between initial binding validation and each use
+and require zero claim, backup, helper, observation, or authorization calls.
+
 - [ ] **Step 2: Run focused runner tests and witness RED**
 
 ```powershell
 node --test server/tests/japan-tuic-additive-repair-runner.test.mjs
 ```
 
-Expected: FAIL because the runner still consumes raw ZIP and only executes v1.
+Expected: FAIL because the new host inspection interfaces are absent; direct
+runner invocation still passes the exact Task 4 pre-migration fail-closed test.
 
 - [ ] **Step 3: Implement frame-first, ledger-first inspection**
 
@@ -506,6 +793,12 @@ length-prefixed manifest digest, rejects unsafe/symlink/special entries, then
 validates strict EOF and extraction paths before full extraction. The exact
 artifact hash plus full manifest digest is the complete allowlist; required
 helper imports must each occur exactly once.
+
+Initial binding validation is not reused as proof. Reopen and same-FD validate
+each protected input immediately at its actual read/observation boundary. A
+helper that reopens an artifact-extraction pathname remains under the exact
+separate artifact authority and bound-writer residual; do not claim race
+freedom.
 
 After host artifact verification, read ledger/journal before candidate state:
 
@@ -582,6 +875,13 @@ symlink; `nlink != 1`; owner/mode drift; map digest different from durable
 backup original; unsupported file or directory fsync. Every rejection before
 helper spawn has apply count zero.
 
+At each state read, stable snapshot, backup source read, backup creation,
+helper spawn, target apply readback, timer/producer/natural-observation read,
+reopen and same-FD validate against the exact binding role. Assert immediate
+pre/post digests for owner-writable inputs, and inject drift at each boundary.
+Drift before claim produces no durable write; drift after claim follows the
+exact journal/rollback/indeterminate matrix and never silently retries.
+
 - [ ] **Step 2: Run focused tests and witness RED**
 
 ```powershell
@@ -596,15 +896,18 @@ Reuse the frozen helper only from the host-verified artifact. Do not patch or
 substitute it. Treat its rename as a write boundary, not success. The runner's
 compensating envelope enforces the exact pre/post checks and fsync order above.
 The future bootstrap inventory and Production Gate freeze every known legal
-writer; the runner verifies the root-only parent, exact target metadata/digest,
-and bound writer-freeze identity immediately before spawn. An unknown root
-writer remains the design's explicit residual risk, not a claimed proof.
+writer; the runner verifies the root-owned parent, binding-authoritative exact
+target metadata/digest, and bound writer-freeze identity immediately before
+spawn. A non-root final target owner is allowed only when the exact observed
+policy and role minimum pass. Unobserved root or bound-owner same-inode mutation
+remains the exact `bound_writer_concurrency_not_machine_proven` residual, not a
+claimed proof.
 
 - [ ] **Step 4: Run GREEN and complete failure matrix**
 
 ```powershell
 node --test server/tests/japan-tuic-additive-repair-runner.test.mjs
-node --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
+node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
 ```
 
 Expected: all PASS; success apply count exactly one; every injected crash leaves
@@ -646,6 +949,13 @@ mutation counts are zero. Validate current aggregate state according to the
 journal and return `replay_reconciled`; only a matching applied/rolled-back
 terminal pair sets `closeoutEligible: true`.
 
+Before every backup-record read, backup-byte read, restore temporary creation,
+restore source read, target replacement/readback, and post-restore aggregate
+read, reopen and same-FD validate the corresponding exact role. Owner-writable
+backup/target inputs receive immediate pre/post digests. Inject metadata,
+inode, size, or digest drift at each boundary and require fail-closed journal
+results with no second apply, restore, or authorization mutation.
+
 - [ ] **Step 2: Run focused tests and witness RED**
 
 ```powershell
@@ -659,8 +969,10 @@ Expected: FAIL on rollback durability and state-aware replay assertions.
 Derive the backup path internally from claim digest; never use an in-memory
 `Map` or client path. Restore through same-directory exclusive temp, verify the
 backup record/hash/owner/mode, fsync file, atomic rename, fsync parent, then run
-the frozen dry-run and exact before-state checks. Execute reads ledger/journal
-before old pre-state and never resumes an already-claimed operation.
+the frozen dry-run and exact before-state checks. Each protected byte read uses
+the Task 4 verified descriptor immediately at use; owner-writable bytes receive
+pre/post digest checks. Execute reads ledger/journal before old pre-state and
+never resumes an already-claimed operation.
 
 - [ ] **Step 4: Run GREEN, review, and commit**
 
@@ -682,22 +994,54 @@ Expected: suites PASS; every claimed replay has zero write-operation calls.
 
 **Interfaces:**
 - Consumes: Tasks 1-7.
-- Produces: `closeoutJapanTuicAdditiveRepair({ binding, control, operations })`, strict framed `runJapanTuicAdditiveRepairCli()`, and CLI exit classes `0`, `1`, `2`; entrypoint lock exit `75` remains outside Node.
+- Produces: `closeoutJapanTuicAdditiveRepair({ binding, control, operations })`,
+  strict framed `runJapanTuicAdditiveRepairCli()`, the final shared canonical
+  SSH topology/Include/Match builders, sudo source/effective-policy builders,
+  and bounded public-key-line parser frozen in Task 4,
+  and CLI exit classes `0`, `1`, `2`; entrypoint lock exit `75` remains outside
+  Node.
 
 - [ ] **Step 1: Write failing closeout and CLI tests**
 
 Closeout requires a matching claim plus journal/terminal result exactly
-`applied_validated` or `rolled_back_validated`. It removes only the exact marked
-`authorized_keys` line through exclusive temp, metadata preservation, file
-fsync, atomic rename, parent fsync, and absence readback. Nonterminal,
-indeterminate, missing claim, marker count other than one, or cleanup failure is
-not success. The host tests cover blocked mutation, valid removal receipt, and
-write/readback failure. Transport-level receipt loss is classified by the
+`applied_validated` or `rolled_back_validated`. Before any mutation, use the
+Task 4 same-FD primitive and shared parser/builder to revalidate exact passwd
+uid/home/shell and login-shell digest, root-controlled home/source chain,
+locked password, the complete account-wide public-key-only sshd topology,
+Include/Match closure and coverage digests, one effective authorization file,
+exactly one active line matching public-key blob hash, full line hash, and
+terminal marker, and the canonical sudo source/effective policy with exactly
+one no-argument rule and no other rule. Marker count alone and `visudo -cf`
+alone are never authority.
+
+Test topology drift, alternate source/credential, extra active entry, duplicate
+key/line, line-hash-only or marker-only collision, noncanonical base64,
+embedded-algorithm mismatch, shell/home/passwd drift, Include/Match ambiguity,
+sudo include/rule/default/RunAs/argument/alias drift, alternate sudo source,
+and metadata/inode/digest drift before and after replacement-temporary creation.
+Before temporary creation, an exact unchanged readback may produce
+`closeout_blocked`/`retained`. Once temporary creation succeeds, any parse,
+topology, write, fsync, rename, directory-fsync, or readback ambiguity is
+`cleanup_indeterminate`/`unknown`, never retained or removed.
+
+The success path uses exclusive SSH temporary creation to build exactly a
+zero-byte root:root mode-`0600`, `nlink=1` regular file, validates that
+temporary by same FD, fsyncs it, atomically replaces the authorization file,
+fsyncs the parent, then same-FD proves size zero and SHA-256 of empty bytes.
+Deletion, whitespace, comments, or any other representation fails. It next
+unlinks the exact dedicated sudoers file and directory-fsyncs its parent. Final
+same-FD topology/source readback must prove the public-key blob absent from the
+sole zero-byte SSH source, the sudoers file absent, and the dedicated sudo rule
+absent from canonical sudo source/effective policy. Only all proofs emit
+`authorization_removed`. Transport-level receipt loss is classified by the
 contract/workflow in Task 9 because the host cannot observe loss after stdout.
 
 CLI tests feed strict inspect/execute/closeout frames, require one canonical
 receipt line, bounded stderr, and rejection of raw ZIP/v1 input, arguments other
 than exact `--binding`, `SSH_ORIGINAL_COMMAND`, `NODE_OPTIONS`, and `NODE_PATH`.
+They also prove every Task 5-8 protected read/replacement reaches the same-FD
+use-time validator and that direct invocation remains the exact pre-migration
+failure until the atomic switch in this task.
 
 - [ ] **Step 2: Run focused tests and witness RED**
 
@@ -710,21 +1054,27 @@ Expected: FAIL on closeout and framed CLI assertions.
 - [ ] **Step 3: Implement terminal closeout and atomically switch the CLI**
 
 `inspect` and `execute` never revoke authorization. Closeout validates the
-exact terminal predicate before mutation and returns the design's exact closed
-receipt. After all three operations pass exported-function tests, replace the
-raw ZIP/v1 CLI with strict frame dispatch and delete the v1 execution path and
-old receipt expectations in the same commit. The runner imports
-`JAPAN_TUIC_REPAIR_GATE_V3`, never the temporary v1 constant.
+exact terminal, line/blob/marker, same-FD, canonical SSH, and canonical sudo
+predicates before mutation and after durable SSH replacement plus sudoers
+removal, then returns the
+design's exact closed receipt. After all three operations pass
+exported-function tests, replace the raw ZIP/v1 CLI with strict frame dispatch
+and delete the private legacy validator/helper, v1 execution path, and old
+receipt expectations in the same commit. The runner imports
+`JAPAN_TUIC_REPAIR_GATE_V3`, never the temporary v1 constant. Only after this
+commit's tests pass may the separate bootstrap Gate be written or executed.
 
 - [ ] **Step 4: Run GREEN, fresh security review, and commit**
 
 ```powershell
-node --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
+node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
 git add scripts/japan-tuic-additive-repair-runner.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
 git commit -m "feat(ci): separate Japan repair terminal closeout"
 ```
 
-Expected: all PASS; no active raw ZIP or v1 CLI path remains.
+Expected: all PASS; no active raw ZIP/v1 CLI or marker-only closeout path
+remains, and only complete SSH topology plus line/blob absence plus dedicated
+sudo-rule absence can report `authorization_removed`.
 
 ---
 
@@ -860,6 +1210,24 @@ repeatable inspect, master freeze/rebind, claimed replay, prepared/unclaimed new
 Gate, crash recovery, terminal closeout, `cleanup_indeterminate`, and separate
 GitHub secret cleanup Gate.
 
+Also require runbook/static evidence for the fixed installed paths and metadata,
+five-entry code manifest, eight-entry tool manifest with bootstrap-only native
+same-FD capability attestation, exact `sizeBytes` ceilings/EOF and low-12-bit
+special-mode rules, exact schema-3 recursive orders,
+`/usr/bin/dash` shebang/login-shell equality, exclusive repair account and sole
+authorization source, canonical complete SSH topology plus exact
+Include/Match preimages/nested grammar, canonical sudo source/effective policy
+and fixed sudoers rule, bounded line/blob parser, observed final-owner
+`0400`/`0600` role modes, exact
+`bound_writer_concurrency_not_machine_proven` residual, same-FD bigint/EOF/
+exactly-once-close and shared 1 MiB closure-read contract, runtime code/eight-
+tool manifest coverage without an xattr revalidation claim, Tasks 5-8 use-time
+revalidation, Task 8 zero-byte fsynced SSH-file plus absent parent-fsynced
+sudoers closeout, and the exact
+pre-migration failure through Task 8. Static tests must reject the obsolete
+shebang, obsolete residual, root-only-final-owner authority, and marker-only or
+SSH-only success language.
+
 - [ ] **Step 2: Run test and witness RED**
 
 ```powershell
@@ -876,6 +1244,17 @@ selected single-operator model and exact post-merge Gate sequence. State that
 bootstrap makes execute technically reachable and the Production Gate is
 procedural, not host arming. State that source/merge/artifact do not deploy.
 Add the active spec/plan to `docs/README.md`.
+
+Document bootstrap as rollback-first and authorization-last: stage rollback;
+derive exact merged-source code/tool digests and bootstrap-native capability
+attestations; inventory and bind fixed paths, observed role metadata, writers,
+passwd/home/shell, line/blob, complete sshd Include/Match topology, and complete
+sudo source/effective policy; install and same-FD read back the entire closure;
+then add the canonical authorization line as the final mutation. The first
+rollback mutation removes it, then removes and directory-fsyncs the dedicated
+sudoers file. Any ambiguity blocks rather than normalizes.
+State that bootstrap and dispatch are prohibited until Task 8's strict framed
+migration is merged and verified.
 
 The two config files are public only. Do not read, locate, or copy the offline
 private key. Do not reference the public files from active execution code.
@@ -905,11 +1284,23 @@ Expected: test and diff check PASS; any staged identity material is public-only.
 - [ ] **Step 1: Run the focused Japan suite**
 
 ```powershell
-node --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs server/tests/japan-tuic-additive-repair-workflow.test.mjs
+node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs server/tests/japan-tuic-additive-repair-workflow.test.mjs
 ```
 
 Expected: all tests PASS, zero failures/skips unless an existing test has an
 explicit platform skip unrelated to production behavior.
+
+The focused result must explicitly include the Task 4 recursive import-closure,
+five-code/eight-tool manifests, bootstrap-only capability attestation boundary,
+exact size/ceiling/EOF and low-12-bit special-mode boundaries, canonical
+schema, SSH topology/Include/Match/parser including explicit pattern arrays and
+fixed `all`, canonical sudo
+source/effective policy and exact no-argument rule, shared same-FD 1 MiB source
+reads, same-FD bigint/EOF/close, `0400`/`0600` role-mode/writer residual, exact
+pre-migration call-count, lock-precreation, Tasks 5-8 use-time drift, and
+zero-byte-fsynced-SSH plus absent-parent-fsynced-sudo non-marker-only closeout
+matrices. Treat any missing test class as
+a verification failure, not an allowed skip.
 
 - [ ] **Step 2: Run full repository validation and diff checks**
 
@@ -920,6 +1311,10 @@ git status --short --branch
 ```
 
 Expected: full suite PASS; diff check empty; only intentional files present.
+Before accepting that result, scan the active entrypoint/design/plan/runner and
+tests for obsolete `#!/bin/sh`,
+`trusted_root_concurrency_not_machine_proven`, root-only-final-owner authority,
+or marker-only `authorization_removed`; any active occurrence fails the task.
 
 - [ ] **Step 3: Run independent spec, security, and code-quality reviews**
 
@@ -927,7 +1322,9 @@ Use fresh reviewers for:
 
 - design/plan compliance and exact file surface;
 - attack-path review of workflow input, Environment secrets, forced command,
-  binding, frame, ledger/journal, helper envelope, rollback, and closeout;
+  binding, installed ESM/tool closure, same-FD reads, complete SSH account
+  topology, line/blob parser, use-time validation, frame, ledger/journal, helper
+  envelope, rollback, bootstrap authorization-last ordering, and closeout;
 - code quality, test realism, and receipt redaction.
 
 Fix every Critical/Important finding through a new RED/GREEN cycle. Re-run the
