@@ -1,5 +1,11 @@
 # GitHub Japan Additive Repair Offline Approval Implementation Plan
 
+> **Superseded:** The operator selected GitHub-native Mode 1 on 2026-07-17.
+> Active implementation authority is
+> `docs/superpowers/plans/2026-07-17-github-japan-additive-repair-native-direct.md`.
+> This offline-signature plan is retained as historical evidence only and must
+> not be executed or mixed with the Mode 1 plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the obsolete self-approved Japan production workflow with a source-only, TDD-verified v2 lane that supports repeatable read-only inspection and exactly one offline-signed `additive_missing_only` production write, while preserving host-side atomic nonce enforcement, rollback, and separately verified cleanup.

@@ -73,6 +73,8 @@ tool_artifact_run: 29495150692
 tool_artifact_file: proxy-gateway-control-plane-cumulative-20260716-003.zip
 tool_artifact_size: 4744340
 tool_artifact_sha256: d6c0663c9a7c82c6e8ffb7d354e2a4c23d26f3339586533df5c268b887b839fd
+tool_artifact_entry_count: 1217
+tool_artifact_entry_manifest_sha256: 39695581ec714c792540a2ffca6e040631f913be6b3839f14e78aad619b2609d
 execution_nonce: 88a2bb9923bb67a0893b2abcd3d30c951c3041a938583026526c78a5d223d00b
 expected_nonce_sha256: af3b8363d75cf920ca5dea15835c1d6e33684997bc05fa48e2da6e7804e33029
 candidate:
@@ -119,6 +121,9 @@ Inspection may verify the artifact, runner binding, durable claim/journal
 state, stable candidate or current aggregate Identity Gate, timer state, and
 natural observation. It must not claim the execution slot, create a backup,
 apply, roll back, modify authorization, or mutate GitHub material.
+It may create and remove bounded mode-`0700`/`0600` scratch solely to receive
+and inspect the frozen artifact; scratch is not ledger, journal, backup, target,
+authorization, or production state, and cleanup is verified before return.
 
 ## Fixed One-Time Execution Claim
 
@@ -235,7 +240,7 @@ whose `authorized_keys` entry invokes one exact noninteractive `sudo -n`
 command and is restricted by at least:
 
 ```text
-restrict,no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,command="/usr/bin/sudo -n -- /absolute/root-owned/runner --binding /absolute/root-owned/binding"
+restrict,no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,command="/usr/bin/sudo -n -- /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint"
 ```
 
 The exact forced-command runner and binding are root-owned, not writable by the
@@ -247,6 +252,9 @@ only fixed paths and identities, including:
 - frozen Gate/artifact/target identities;
 - current map, material, observation, timer/service, temporary, state, backup,
   and authorization paths;
+- a writer-freeze record with `knownWriterCount=0`, the exact bootstrap
+  inventory evidence SHA-256, and residual classification
+  `trusted_root_concurrency_not_machine_proven`;
 - the unique authorization marker.
 
 No client-controlled path or command is accepted. The principal receives no
@@ -254,9 +262,10 @@ general shell, PTY, SCP, rsync, sudo expansion, forwarding, service control,
 provider access, or unrelated file access.
 
 Bootstrap binds and reads back the exact numeric effective UID expected by the
-runner. Sudo, interpreter, runner, and binding all use bootstrap-verified
-absolute paths. The only sudo rule is the exact absolute runner plus exact
-binding argument; no argument variation or general command is allowed.
+runner. Sudoers permits only the no-argument absolute entrypoint above. That
+root-owned, digest-bound entrypoint executes `/usr/bin/env -i`, then absolute
+`/usr/bin/flock`, `/usr/bin/node`, installed runner, and binding paths. No
+argument variation or general command is allowed.
 Sudoers uses `env_reset`, grants no `SETENV`, and fixes `secure_path`. A
 root-owned, digest-bound wrapper clears or rejects `NODE_OPTIONS`, `NODE_PATH`,
 and every other interpreter-control environment variable before starting the
@@ -299,10 +308,16 @@ any claimed nonterminal phase
 ```
 
 Before the lock permits any claim or state write, the host independently
-verifies the received ZIP's exact size, SHA-256, complete entry allowlist,
-entry types, required executable modes, and strict EOF, then extracts it into a
-new private temporary directory. GitHub's two preflight checks are not a Host
-attestation and cannot replace this verification.
+verifies the received ZIP's exact size, SHA-256, entry count `1217`, canonical
+central-directory manifest SHA-256
+`39695581ec714c792540a2ffca6e040631f913be6b3839f14e78aad619b2609d`,
+entry path safety, regular/directory classification, symlink/special-file
+absence, and strict EOF, then extracts it into a new private temporary
+directory. The manifest canonical bytes preserve archive order and encode each
+entry as uint32 big-endian UTF-8 name length, uint32 big-endian external
+attributes, uint64 big-endian compressed length, uint64 big-endian
+uncompressed length, then raw UTF-8 name bytes. GitHub's two preflight checks
+are not a Host attestation and cannot replace this verification.
 
 Before the claim, two stable frozen candidate snapshots and aggregate
 `before_identity` are required. The runner writes a durable `prepared` journal,
@@ -316,14 +331,35 @@ exclusive-created, metadata-preserving, hash-verified, file-fsynced, and
 directory-fsynced before the journal reaches `backup_ready`. Backup paths are
 never emitted.
 
-The journal reaches `apply_intent` and is durable before the helper may mutate
-the map. Immediately before apply, the current map digest must still equal the
-durable backup's recorded original digest. The helper's temporary output,
-atomic rename, and restore path must use exclusive temporary creation and fsync
-the file and parent directory. Artifact reception is also file- and
-directory-fsynced before verification. A crash in or after `apply_intent`
-never automatically retries apply. It yields a nonterminal recovery state
-requiring a separate exact Gate.
+The frozen artifact helper cannot be changed by this PR. Its rename is only the
+write boundary, not a durable success boundary. Before spawning it, the runner
+requires a durable backup and durable `apply_intent`, then under the shared
+lock: verifies the map's immediate parent is root-owned and not group/other
+writable; rejects every `${basename}.<digits>.tmp` residue without deleting it;
+and opens
+the current target with `O_NOFOLLOW` to confirm regular file, link count,
+owner, mode, and digest equal the durable backup's recorded original.
+
+The host root boundary is trusted. The runner cannot prove that an unrelated
+root process will never write concurrently. The bootstrap inventory and exact
+Production Gate therefore freeze every known legitimate map writer for this
+bounded repair lifecycle; execute rechecks target/parent metadata and digest
+immediately before helper spawn. An unknown or compromised root writer remains
+an explicitly accepted Mode 1 residual risk, not a machine-proven absence.
+
+After the helper returns successfully, the runner requires helper-temp absence,
+opens the target with `O_NOFOLLOW`, verifies regular file, `nlink=1`, expected
+owner/mode/hash and the exact post-apply aggregate state, then fsyncs the target
+file and immediate parent directory. Only after those checks may the journal
+advance from `apply_intent` to durable `applied`. A helper failure or timeout
+does not delete residue or retry; it remains nonterminal for an exact cleanup
+or recovery Gate. A file/directory fsync failure may enter durable
+`rollback_intent` within the approved execution, otherwise it is
+`indeterminate`. Artifact reception and the runner's restore path are likewise
+file- and directory-fsynced. Crashes after helper rename but before target
+fsync, after target fsync but before directory fsync, or after directory fsync
+but before the `applied` journal all remain `apply_intent`; inspect performs
+zero writes and apply is never retried automatically.
 
 ## Validation, Rollback, And Observation
 
@@ -368,20 +404,144 @@ their absence is a later controller action under a separate exact Gate.
 
 ## Receipt Classes
 
-Receipts use a closed schema and fixed error vocabulary. They expose aggregate
-counts and state only.
+Internal durable records and external receipts use exact keys; absent values
+are JSON `null`, never omitted or replaced by extra fields.
 
-- inspect: `ready_unclaimed_revalidation_required`, `claimed_nonterminal`,
-  `terminal_reconciled`, or `inspection_blocked`;
-- execute: `applied_validated`, `rolled_back_validated`,
-  `stopped_pre_claim`, `replay_reconciled`, or `indeterminate`;
-- closeout: `authorization_removed`, `cleanup_indeterminate`, or
-  `closeout_blocked`.
+The claim record keys are:
 
-Canonical timestamps match exactly `YYYY-MM-DDTHH:mm:ss.sssZ`; permissive
-`Date.parse()` acceptance is insufficient. Raw nonce,
-endpoint, path, SID/account, environment, provider, runtime identity, and error
-text are forbidden.
+```text
+schemaVersion, type, claimSha256, nonceSha256, workflowCommit, claimedAt
+```
+
+Its `schemaVersion` is string `"3"`; `type` is
+`japan_tuic_additive_repair_claim`; both digests are lowercase 64-hex strings;
+`workflowCommit` is lowercase 40-hex; and `claimedAt` is canonical time.
+
+The backup record keys are:
+
+```text
+schemaVersion, type, claimSha256, originalMapSha256, backupSha256,
+mode, uid, gid, createdAt
+```
+
+Its `schemaVersion` is `"3"`; `type` is
+`japan_tuic_additive_repair_backup`; all three digests are lowercase 64-hex;
+`mode`, `uid`, and `gid` are nonnegative integers; and `createdAt` is canonical
+time.
+
+The journal record keys are:
+
+```text
+schemaVersion, type, sequence, phase, claimSha256, workflowCommit,
+artifactSha256, preparedAt, updatedAt, backupSha256,
+originalMapSha256, applyBoundary, terminalResult, error
+```
+
+Its `schemaVersion` is `"3"`; `type` is
+`japan_tuic_additive_repair_journal`; `sequence` is a nonnegative integer;
+`phase` is one transition-matrix label; `workflowCommit` is lowercase 40-hex;
+`artifactSha256` is the frozen lowercase 64-hex digest; timestamps are canonical
+strings; digest/time/result/error fields described as nullable are exactly a
+validated string or JSON null, never another primitive.
+
+The exact transition matrix is:
+
+```text
+prepared -> claimed
+claimed -> backup_ready | indeterminate
+backup_ready -> apply_intent | indeterminate
+apply_intent -> applied | rollback_intent | indeterminate
+applied -> observing | rollback_intent | indeterminate
+observing -> applied_validated | rollback_intent | indeterminate
+rollback_intent -> rolled_back_validated | indeterminate
+applied_validated | rolled_back_validated | indeterminate -> no transition
+```
+
+`claimSha256` is null only for `prepared`; backup/original digests are non-null
+from `backup_ready`; `applyBoundary` is non-null from `apply_intent` through
+apply/rollback phases. `terminalResult` is non-null only when phase is
+`applied_validated`, `rolled_back_validated`, or `indeterminate`, and must equal
+that phase. A terminal record never regresses.
+
+Inspect receipt keys are exactly:
+
+```text
+schemaVersion, type, inspectionResult, journalPhase, terminalResult,
+candidate, identity, error
+```
+
+`inspectionResult` is one of
+`ready_unclaimed_revalidation_required`, `claimed_nonterminal`,
+`terminal_reconciled`, `indeterminate_reconciled`, or `inspection_blocked`.
+`schemaVersion` is `"3"`; `type` is
+`japan_tuic_additive_repair_inspection`; `journalPhase` is a phase string or
+null; candidate and identity are exact frozen aggregate objects or null; error
+is a safe error string or null. `terminal_reconciled` uses terminal result
+`applied_validated` or `rolled_back_validated`;
+`indeterminate_reconciled` uses `journalPhase=indeterminate` and
+`terminalResult=indeterminate` and is never closeout-eligible.
+
+Execute receipt keys are exactly:
+
+```text
+schemaVersion, type, productionResult, journalPhase, terminalResult,
+closeoutEligible, rollbackVerified, candidate, identity,
+naturalObservation, error
+```
+
+`productionResult` is one of `applied_validated`, `rolled_back_validated`,
+`stopped_pre_claim`, `replay_reconciled`, or `indeterminate`.
+`schemaVersion` is `"3"`; `type` is
+`japan_tuic_additive_repair_execution`; `journalPhase` and `terminalResult` are
+validated strings or null; both eligibility fields are booleans; candidate,
+identity, and natural observation are their exact aggregate object schemas or
+null; error is a safe error string or null.
+`closeoutEligible` is true if and only if the durable journal phase and
+`terminalResult` both equal `applied_validated` or both equal
+`rolled_back_validated`. A nonterminal `replay_reconciled` never permits
+closeout. `rollbackVerified` is true only for `rolled_back_validated`.
+
+Closeout receipt keys are exactly:
+
+```text
+schemaVersion, type, closeoutResult, terminalResult,
+hostAuthorizationCleanup, githubCleanup, error
+```
+
+`closeoutResult` is `authorization_removed`, `cleanup_indeterminate`, or
+`closeout_blocked`. `authorization_removed` requires terminal result
+`applied_validated` or `rolled_back_validated`, host cleanup `verified`, GitHub
+cleanup `pending`, and null error. `cleanup_indeterminate` uses host cleanup
+`unknown`; `closeout_blocked` uses `retained`. Neither is reported as success.
+`schemaVersion` is `"3"`; `type` is
+`japan_tuic_additive_repair_closeout`; `terminalResult` is a validated string
+or null; `hostAuthorizationCleanup` is `verified`, `unknown`, or `retained`;
+`githubCleanup` is always `pending`; error is a safe error string or null.
+
+The entrypoint emits no receipt on OS lock conflict and exits `75`. GitHub
+synthesizes a schema-valid `inspection_blocked`/`host_lock_busy` receipt for
+inspect, an `indeterminate`/`host_lock_busy` receipt for execute, or a
+`closeout_blocked`/`host_lock_busy` receipt with retained authorization for
+closeout. No synthetic lock receipt is closeout-eligible and no automatic
+retry follows it. Any other nonzero exit or invalid/missing host receipt is
+operation-specific indeterminate evidence, never success.
+
+The fixed safe error vocabulary is:
+
+```text
+artifact_identity_mismatch, atomic_apply_failed, backup_failed,
+closeout_receipt_lost, execution_claim_mismatch, host_cleanup_failed,
+host_lock_busy, natural_observation_failed, natural_observation_timeout,
+post_apply_invariant_failed, receipt_validation_failed,
+restricted_identity_rejected, rollback_verification_failed,
+stable_snapshot_unavailable, target_identity_mismatch,
+workflow_identity_mismatch
+```
+
+Canonical timestamps must match `YYYY-MM-DDTHH:mm:ss.sssZ`, parse to a finite
+instant, and equal `new Date(value).toISOString()` exactly. Raw nonce, endpoint,
+path, SID/account, environment, provider, runtime identity, and raw error text
+are forbidden in durable records and receipts.
 
 ## Source-Only TDD And Review
 
