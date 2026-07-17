@@ -182,6 +182,12 @@ frame contains:
 - canonical fixed execution-claim fields for `execute` and `closeout`;
 - the exact frozen ZIP bytes for `inspect` and `execute` only.
 
+`runAttempt` is a canonical positive decimal string matching
+`^[1-9][0-9]*$`. Inspect accepts any such attempt and its control has exactly
+`operation`, `runAttempt`, `schemaVersion`, and `workflowCommit`. Execute and
+internal closeout accept only attempt `"1"` and additionally carry the frozen
+`executionGateId` and `executionNonce`. No control accepts an extra key.
+
 The reader enforces exact lengths, a maximum control payload, the frozen
 artifact length, max-plus-one EOF detection, and rejection of truncation,
 unknown operations, duplicate or extra control fields, noncanonical JSON, and
@@ -518,13 +524,105 @@ cleanup `pending`, and null error. `cleanup_indeterminate` uses host cleanup
 or null; `hostAuthorizationCleanup` is `verified`, `unknown`, or `retained`;
 `githubCleanup` is always `pending`; error is a safe error string or null.
 
-The entrypoint emits no receipt on OS lock conflict and exits `75`. GitHub
-synthesizes a schema-valid `inspection_blocked`/`host_lock_busy` receipt for
-inspect, an `indeterminate`/`host_lock_busy` receipt for execute, or a
-`closeout_blocked`/`host_lock_busy` receipt with retained authorization for
-closeout. No synthetic lock receipt is closeout-eligible and no automatic
-retry follows it. Any other nonzero exit or invalid/missing host receipt is
-operation-specific indeterminate evidence, never success.
+### Exact External Receipt Matrix
+
+In the tables below, `candidate` means the exact frozen candidate object;
+`before` and `after` mean the exact frozen aggregate Identity Gate objects;
+`observation` means the exact validated natural-observation aggregate; and
+`safe` means a primitive string from the fixed vocabulary below. No other
+object/null combination is accepted.
+
+Inspect receipts use this exact matrix:
+
+| inspectionResult | journalPhase | terminalResult | candidate | identity | error |
+| --- | --- | --- | --- | --- | --- |
+| `ready_unclaimed_revalidation_required` | null or `prepared` | null | candidate | before | null |
+| `claimed_nonterminal` | `prepared`, `claimed`, `backup_ready`, `apply_intent`, `applied`, `observing`, or `rollback_intent` | null | null | null | null |
+| `terminal_reconciled` | `applied_validated` | `applied_validated` | null | after | null |
+| `terminal_reconciled` | `rolled_back_validated` | `rolled_back_validated` | null | before | null |
+| `indeterminate_reconciled` | `indeterminate` | `indeterminate` | null | null | null or safe |
+| `inspection_blocked` | null | null | null | null | safe, non-null |
+
+The `claimed_nonterminal`/`prepared` row is the claim-created but journal-not-
+yet-advanced crash window. Empty state and unclaimed `prepared` use the ready
+row. Any artifact, target, restricted-identity, stable-snapshot,
+scratch-cleanup, or current-aggregate validation failure uses the blocked row
+with null phase, terminal, and aggregates. In particular, a durable terminal
+whose current aggregate no longer matches is blocked, never reconciled.
+
+Execute receipts use this exact matrix:
+
+| productionResult | journalPhase / terminalResult | closeoutEligible | rollbackVerified | candidate | identity | naturalObservation | error |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `applied_validated` | `applied_validated` / `applied_validated` | true | false | candidate | after | observation | null |
+| `rolled_back_validated` | `rolled_back_validated` / `rolled_back_validated` | true | true | candidate | before | null | safe, non-null |
+| `stopped_pre_claim` | null / null or `prepared` / null | false | false | null | null | null | safe, non-null |
+| `replay_reconciled` | any claimed nonterminal phase / null, exact applied terminal pair, or exact rolled-back terminal pair | derived from the terminal pair | true only for the rolled-back terminal pair | null | terminal replay uses after/before; nonterminal uses null | null | null |
+| `indeterminate` | null / null, any claimed nonterminal phase / null, or `indeterminate` / `indeterminate` | false | false | null | null | null | see below |
+
+Claimed nonterminal phases include `prepared` only for the claim-created crash
+window, then `claimed`, `backup_ready`, `apply_intent`, `applied`, `observing`,
+and `rollback_intent`. Replay never accepts the indeterminate pair.
+`closeoutEligible` is true if and only if the journal/terminal pair is the exact
+applied or rolled-back terminal pair. `rollbackVerified` is true if and only if
+that pair is the exact rolled-back terminal pair, including terminal replay.
+For a durable `indeterminate` pair, error is null or safe; every other
+indeterminate shape requires safe non-null error. If terminal replay fails
+current aggregate validation, it becomes `indeterminate` with both phase
+fields null, both flags false, all aggregate fields null, and the applicable
+safe error. The failed receipt never exposes the durable terminal pair and is
+never closeout-eligible.
+
+Closeout receipts use this exact matrix:
+
+| closeoutResult | terminalResult | hostAuthorizationCleanup | githubCleanup | error |
+| --- | --- | --- | --- | --- |
+| `authorization_removed` | `applied_validated` or `rolled_back_validated` | `verified` | `pending` | null |
+| `cleanup_indeterminate` | null, `applied_validated`, or `rolled_back_validated` | `unknown` | `pending` | safe, non-null |
+| `closeout_blocked` | null, `applied_validated`, `rolled_back_validated`, or `indeterminate` | `retained` | `pending` | safe, non-null |
+
+`closeout_blocked`/`retained` is permitted only when exit `75` proves the
+entrypoint body did not run, or the host created no authorization-replacement
+temporary, performed no authorization mutation, and readback proves the unique
+marker is still present. Once replacement-temporary creation succeeds, or
+marker/readback is not exact, every write, fsync, rename, directory-fsync, or
+readback failure is `cleanup_indeterminate`/`unknown`; it is never downgraded
+to retained.
+
+The operation-specific safe subsets are exact. Inspect blocked permits
+`artifact_identity_mismatch`, `backup_failed`, `execution_claim_mismatch`,
+`host_lock_busy`, `natural_observation_failed`,
+`natural_observation_timeout`, `post_apply_invariant_failed`,
+`receipt_validation_failed`, `restricted_identity_rejected`,
+`rollback_verification_failed`, `stable_snapshot_unavailable`,
+`target_identity_mismatch`, or `workflow_identity_mismatch`. Execute failure
+permits that set plus `atomic_apply_failed`, but never
+`closeout_receipt_lost` or `host_cleanup_failed`. Closeout
+cleanup-indeterminate permits only `closeout_receipt_lost`,
+`host_cleanup_failed`, or `receipt_validation_failed`. Closeout blocked permits
+only `execution_claim_mismatch`, `host_cleanup_failed`, `host_lock_busy`,
+`receipt_validation_failed`, `restricted_identity_rejected`, or
+`workflow_identity_mismatch`.
+
+The receipt CLI accepts exact `--operation`, `--input`, and canonical decimal
+`--ssh-status` in `0..255`. The input argument is syntactically required, but
+status `75` and every other nonzero status must not open or parse it. Status
+`75` synthesizes inspect `inspection_blocked`/`host_lock_busy`, execute
+`indeterminate`/`host_lock_busy` with null phases and false flags, or closeout
+`closeout_blocked`/`host_lock_busy` with null terminal and retained
+authorization. Any other nonzero status synthesizes inspect blocked or execute
+indeterminate with `receipt_validation_failed`, or closeout
+`cleanup_indeterminate`/`unknown` with `closeout_receipt_lost`. No such receipt
+is success or closeout-eligible.
+
+Status `0` requires an existing nonempty input no larger than 65536 bytes whose
+bytes are exactly UTF-8 canonical JSON followed by one LF byte, with no CR,
+prefix, suffix, second line, or additional trailing byte. A missing,
+oversized, noncanonical, multiline, invalid, or contradictory input synthesizes
+the same operation-specific evidence as other nonzero status without printing
+raw input or error. Validated host evidence and synthesized evidence are each
+emitted as one canonical JSON line. Invalid CLI shape or status remains a fixed
+safe stderr failure and nonzero CLI exit.
 
 The fixed safe error vocabulary is:
 

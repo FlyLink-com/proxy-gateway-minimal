@@ -321,7 +321,10 @@ object-or-null, enum, digest, timestamp, and error constraints for every field.
 Test every enum/phase combination in the design matrix. In particular,
 `replay_reconciled` may be nonterminal; only a matching durable
 `applied_validated` or `rolled_back_validated` journal/terminal pair sets
-`closeoutEligible: true`.
+`closeoutEligible: true`. Treat the active design's **Exact External Receipt
+Matrix** as normative, including the claim-created/`prepared` crash row,
+result-specific aggregate profiles, terminal-replay mismatch downgrade,
+operation-specific safe-error subsets, and closeout mutation boundary.
 
 - [ ] **Step 2: Run focused test and witness RED**
 
@@ -354,7 +357,9 @@ bounded file plus decimal `--ssh-status`, emits one canonical sanitized JSON
 line, and never includes raw SSH stderr. Status `75` synthesizes the exact
 operation-specific lock-conflict receipt from the design without parsing host
 stdout; other nonzero/missing/invalid receipts are operation-specific
-indeterminate evidence.
+indeterminate evidence. Implement the design's exact `0..255` status grammar,
+65536-byte input bound, canonical UTF-8 JSON plus one-LF requirement, nonzero
+no-read rule, and non-`75` closeout `cleanup_indeterminate` mapping.
 
 - [ ] **Step 4: Run GREEN and all Japan contract/frame/state suites**
 
