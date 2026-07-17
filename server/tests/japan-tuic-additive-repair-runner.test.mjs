@@ -2301,6 +2301,100 @@ import vm from "node:vm";
 const [runnerPath, payloadPath] = process.argv.slice(2);
 const payload = JSON.parse(readFileSync(payloadPath, "utf8"));
 const events = [];
+const allocationEvents = [];
+const trace = [];
+const traceEvent = (...values) => trace.push([trace.length + 1, ...values]);
+const ownedBuffers = [];
+const ownedBufferIds = new WeakMap();
+const nativeObject = Object;
+const nativeArray = Array;
+const nativeBuffer = Buffer;
+const sourceFileObjects = new WeakSet();
+let sourceReaderOperationPhase = false;
+function classifyFixedObject(descriptors) {
+  const names = descriptors ? nativeObject.keys(descriptors).sort() : [];
+  if (names.join(",") === "failed,fixedEnvelopeCount,semanticNodeCount,sshGraph,sudoGraph") {
+    return ["snapshot", descriptors.fixedEnvelopeCount.value];
+  }
+  if (descriptors && descriptors.snapshot && descriptors.cleanupStack && descriptors.kind) {
+    return ["graph", descriptors.snapshot.value.fixedEnvelopeCount, descriptors.fixedEnvelopeCount.value];
+  }
+  if (names.join(",") === "gid,mode,nlink,ordinal,path,sha256,uid") return ["source-file"];
+  return null;
+}
+function instrumentedObject(value) { return nativeObject(value); }
+instrumentedObject.prototype = nativeObject.prototype;
+nativeObject.setPrototypeOf(instrumentedObject, nativeObject);
+instrumentedObject.create = (prototype, descriptors) => {
+  const value = nativeObject.create(prototype, descriptors);
+  if (payload.instrument) {
+    const kind = classifyFixedObject(descriptors);
+    if (kind) {
+      allocationEvents.push(["object", ...kind]);
+      traceEvent("object", ...kind);
+      if (kind[0] === "source-file") sourceFileObjects.add(value);
+    }
+  }
+  return value;
+};
+instrumentedObject.freeze = (value) => {
+  if (payload.instrument && sourceFileObjects.has(value)) {
+    allocationEvents.push(["freeze", "source-file"]);
+    traceEvent("freeze", "source-file");
+  }
+  return nativeObject.freeze(value);
+};
+function instrumentedArray(...arguments_) {
+  if (payload.instrument && new.target) {
+    allocationEvents.push(["array", arguments_.length]);
+    traceEvent("array", arguments_.length);
+  }
+  return new nativeArray(...arguments_);
+}
+instrumentedArray.prototype = nativeArray.prototype;
+nativeObject.setPrototypeOf(instrumentedArray, nativeArray);
+function trackOwnedBuffer(kind, buffer) {
+  if (!payload.instrument) return buffer;
+  if (ownedBufferIds.has(buffer)) return buffer;
+  const id = ownedBuffers.length + 1;
+  const fill = buffer.fill;
+  nativeObject.defineProperty(buffer, "fill", {
+    configurable: true,
+    value(...arguments_) {
+      allocationEvents.push(["zero", id]);
+      traceEvent("zero", id, buffer.some((byte) => byte !== 0));
+      return fill.apply(this, arguments_);
+    }
+  });
+  ownedBuffers.push({ id, kind, buffer });
+  ownedBufferIds.set(buffer, id);
+  allocationEvents.push(["buffer", kind, id, buffer.length]);
+  traceEvent("buffer", kind, id, buffer.length);
+  return buffer;
+}
+function trackDirectoryRawBuffers(value) {
+  if (!payload.instrument || !value || (typeof value !== "object" && typeof value !== "function")) return;
+  let names;
+  try {
+    names = nativeObject.getOwnPropertyNames(value)
+      .filter((name) => /^(0|[1-9][0-9]*)$/.test(name) && Number(name) < 4294967295)
+      .map(Number)
+      .sort((left, right) => left - right);
+  } catch {
+    return;
+  }
+  for (const index of names) {
+    try {
+      const descriptor = nativeObject.getOwnPropertyDescriptor(value, String(index));
+      if (descriptor && nativeObject.hasOwn(descriptor, "value") && nativeBuffer.isBuffer(descriptor.value)) trackOwnedBuffer("raw", descriptor.value);
+    } catch {
+      // Instrumentation observes only own raw Buffer references and never reads bytes.
+    }
+  }
+}
+const instrumentedBuffer = nativeObject.create(nativeBuffer);
+instrumentedBuffer.alloc = (...arguments_) => trackOwnedBuffer("alloc", nativeBuffer.alloc(...arguments_));
+instrumentedBuffer.from = (...arguments_) => trackOwnedBuffer("from", nativeBuffer.from(...arguments_));
 const unused = () => { throw new Error("unused synthetic builtin"); };
 const createHash = (...arguments_) => {
   const hash = crypto.createHash(...arguments_);
@@ -2311,6 +2405,8 @@ const createHash = (...arguments_) => {
     },
     digest(...digestArguments) {
       events.push(["hash"]);
+      if (payload.instrument) { allocationEvents.push(["hash"]); traceEvent("hash"); }
+      if (payload.hashFailure && sourceReaderOperationPhase) throw new Error("hash failure");
       return hash.digest(...digestArguments);
     }
   };
@@ -2328,8 +2424,14 @@ const contractError = class JapanTuicRepairContractError extends Error {
   constructor(code) { super(code); this.code = code; }
 };
 const context = vm.createContext({
-  Buffer,
+  Array: instrumentedArray,
+  Buffer: instrumentedBuffer,
+  Object: instrumentedObject,
   TextDecoder,
+  __sourceReaderSpyEvents: allocationEvents,
+  __sourceReaderTraceEvent: traceEvent,
+  __sourceReaderBufferId: (buffer) => ownedBufferIds.get(buffer) || 0,
+  __sourceReaderSpyGraph: undefined,
   process: { argv: [], env: {}, platform: "linux", stdin: {}, stdout: { write() {} }, stderr: { write() {} } },
   setTimeout,
   clearTimeout
@@ -2360,23 +2462,61 @@ const modules = new Map([
   ["./japan-tuic-additive-repair-state.mjs", synthetic(["executionClaimSha256"], { executionClaimSha256: () => "c".repeat(64) })]
 ]);
 
-function stat({ type = "file", mode = 0o644, size = 0, nlink = type === "directory" ? 2 : 1, ino = 2 } = {}) {
+function stat({ type = "file", mode = 0o644, size = 0, nlink = type === "directory" ? 2 : 1, ino = 2, dev = 1, uid = 0, gid = 0, symbolicLink = false } = {}) {
   const typeBits = type === "directory" ? 0o040000n : 0o100000n;
   return {
-    uid: 0n,
-    gid: 0n,
+    uid: BigInt(uid),
+    gid: BigInt(gid),
     mode: typeBits | BigInt(mode),
     nlink: BigInt(nlink),
-    dev: 1n,
+    dev: BigInt(dev),
     ino: BigInt(ino),
     size: BigInt(size),
     isDirectory: () => type === "directory",
     isFile: () => type === "file",
-    isSymbolicLink: () => false
+    isSymbolicLink: () => symbolicLink
   };
 }
 
-function createPathOperations({ path, bytes, mode = 0o644, directory = false, childPath, childBytes, postDrift = false, readFault, closeFault = false, inheritedOperation = false, customOperationPrototype = false, nullOperationPrototype = false } = {}) {
+function mutateStat(entry, stage, fallbackType, statFault) {
+  let type = entry ? entry.type : fallbackType;
+  let mode = entry ? entry.mode : 0o755;
+  let size = entry ? entry.bytes.length : 4096;
+  let nlink = type === "directory" ? 2 : 1;
+  let ino = entry ? entry.ino : 100;
+  let dev = 1;
+  let uid = 0;
+  let gid = 0;
+  let symbolicLink = false;
+  if (statFault && statFault.stage === stage) {
+    if (statFault.field === "type") type = type === "file" ? "directory" : "file";
+    if (statFault.field === "uid") uid = 1;
+    if (statFault.field === "gid") gid = 1;
+    if (statFault.field === "mode") mode = 0o646;
+    if (statFault.field === "special") mode |= 0o4000;
+    if (statFault.field === "dev") dev = 2;
+    if (statFault.field === "ino") ino += 1;
+    if (statFault.field === "size") size += 1;
+    if (statFault.field === "nlink") nlink = type === "directory" ? 3 : 2;
+    if (statFault.field === "symlink") symbolicLink = true;
+  }
+  return stat({ type, mode, size, nlink, ino, dev, uid, gid, symbolicLink });
+}
+
+function shapeOperationRecord(record, firstName, shape) {
+  if (!shape) return record;
+  if (shape === "missing") delete record[firstName];
+  if (shape === "extra") record.unexpected = () => {};
+  if (shape === "symbol") nativeObject.defineProperty(record, Symbol("unexpected"), { value: () => {}, enumerable: true });
+  if (shape === "non-enumerable") nativeObject.defineProperty(record, firstName, { value: record[firstName], enumerable: false });
+  if (shape === "accessor") nativeObject.defineProperty(record, firstName, { get() { throw new Error("accessor must remain uncalled"); }, enumerable: true, configurable: true });
+  if (shape === "inherited") nativeObject.setPrototypeOf(record, { [firstName]() { throw new Error("inherited operation must be rejected"); } });
+  if (shape === "custom-prototype") nativeObject.setPrototypeOf(record, { unexpectedOperation() {} });
+  if (shape === "null-prototype") nativeObject.setPrototypeOf(record, null);
+  return record;
+}
+
+function createPathOperations({ path, bytes, mode = 0o644, directory = false, childPath, childBytes, postDrift = false, statFault, readFault, closeFault = false, openFault = false, fstatFault, operationShape } = {}) {
   let nextFd = 40;
   const descriptors = new Map();
   const readBuffers = [];
@@ -2390,11 +2530,12 @@ function createPathOperations({ path, bytes, mode = 0o644, directory = false, ch
     lstat(value) {
       events.push(["lstat", value]);
       const entry = entries.get(value);
-      if (entry) return stat({ type: entry.type, mode: entry.mode, size: entry.bytes.length, ino: entry.ino });
-      return stat({ type: "directory", mode: 0o755, size: 4096, ino: value.length + 100 });
+      if (entry) return mutateStat(entry, "final-lstat", entry.type, statFault);
+      return mutateStat(null, "ancestor", "directory", statFault);
     },
     open(value, flags) {
       const entry = entries.get(value);
+      if (openFault) throw new Error("open failure");
       if (!entry) throw new Error("unexpected open");
       const fd = nextFd++;
       descriptors.set(fd, { entry, fstats: 0 });
@@ -2407,13 +2548,10 @@ function createPathOperations({ path, bytes, mode = 0o644, directory = false, ch
       if (!descriptor) throw new Error("unexpected fd");
       descriptor.fstats += 1;
       const entry = descriptor.entry;
-      const drift = postDrift && descriptor.fstats > 1 && entry.type === "file";
-      return stat({
-        type: entry.type,
-        mode: drift ? 0o646 : entry.mode,
-        size: entry.bytes.length,
-        ino: entry.ino
-      });
+      const stage = descriptor.fstats === 1 ? "initial" : "post";
+      if (fstatFault === stage) throw new Error(stage + " fstat failure");
+      return mutateStat(entry, postDrift && stage === "post" ? "mode-drift" : stage, entry.type,
+        postDrift && stage === "post" ? { stage: "mode-drift", field: "mode" } : statFault);
     },
     read(fd, buffer, offset, length, position) {
       events.push(["read", fd, offset, length, position]);
@@ -2433,21 +2571,22 @@ function createPathOperations({ path, bytes, mode = 0o644, directory = false, ch
         if (readFault === "eof-invalid-count") return -1;
         if (readFault === "eof-non-eintr") throw Object.assign(new Error("io"), { code: "EIO" });
       }
-      if (position >= source.length) return 0;
+      if (position >= source.length) {
+        buffer[0] = 0x7a;
+        return 0;
+      }
       const count = readFault === "body-short" ? Math.min(1, length, source.length - position) : Math.min(length, source.length - position);
       source.copy(buffer, offset, position, position + count);
       return count;
     },
     close(fd) {
       events.push(["close", fd]);
+      if (payload.instrument) { allocationEvents.push(["close"]); traceEvent("close"); }
       if (!descriptors.delete(fd)) throw new Error("unexpected close");
       if (closeFault) throw new Error("close failure");
     }
   };
-  if (inheritedOperation) Object.setPrototypeOf(operations, { lstat() { throw new Error("inherited operation must be rejected"); } });
-  if (customOperationPrototype) Object.setPrototypeOf(operations, { unexpectedOperation() {} });
-  if (nullOperationPrototype) Object.setPrototypeOf(operations, null);
-  return { operations, descriptors, readBuffers };
+  return { operations: shapeOperationRecord(operations, "lstat", operationShape), descriptors, readBuffers };
 }
 
 function makeNames(count, variant) {
@@ -2463,8 +2602,13 @@ function makeNames(count, variant) {
     Object.setPrototypeOf(names, prototype);
   }
   if (variant === "invalid-utf8") names[0] = Buffer.from([0xc3]);
+  if (variant === "low-surrogate") names[0] = Buffer.from([0xed, 0xb0, 0x80]);
+  if (variant === "nul") names[0] = Buffer.from([0x6e, 0, 0x30]);
   if (variant === "slash") names[0] = Buffer.from("a/b");
   if (variant === "dot") names[0] = Buffer.from(".");
+  if (variant === "dotdot") names[0] = Buffer.from("..");
+  if (variant === "bom") names[0] = Buffer.from([0xef, 0xbb, 0xbf, 0x61]);
+  if (variant === "early-nul") names[0] = Buffer.from([0x6e, 0, 0x30]);
   if (variant === "duplicate" && names.length > 1) names[1] = Buffer.from(names[0]);
   return names;
 }
@@ -2498,10 +2642,12 @@ function malformedDirectoryValue(kind) {
   throw new Error("unknown malformed directory value");
 }
 
-function sourceOperations(buffers) {
-  return {
+function sourceOperations(buffers, shape, readDirectoryFault) {
+  const operations = {
     readDirectory() {
       events.push(["readDirectory"]);
+      if (readDirectoryFault) throw new Error("readDirectory failure");
+      trackDirectoryRawBuffers(buffers);
       return buffers;
     },
     validateSudoers() {
@@ -2509,6 +2655,7 @@ function sourceOperations(buffers) {
       throw new Error("C2A must not call validateSudoers");
     }
   };
+  return shapeOperationRecord(operations, "readDirectory", shape);
 }
 
 function summarizeBuffers(buffers) {
@@ -2522,7 +2669,53 @@ function summarizeBuffers(buffers) {
 }
 
 try {
-  const source = readFileSync(runnerPath, "utf8") + "\nexport {\n"
+  const instrumentation = payload.instrument ? [
+    "const __sourceReaderRealReserveRead = reserveAuthorizationSourceRead;",
+    "reserveAuthorizationSourceRead = function (graph, size) {",
+    "  const result = __sourceReaderRealReserveRead(graph, size);",
+    "  globalThis.__sourceReaderTraceEvent(\"source-read-reserve\", graph.fileCount, graph.totalBytes);",
+    "  return result;",
+    "};",
+    "const __sourceReaderRealRegisterBuffer = registerAuthorizationBuffer;",
+    "registerAuthorizationBuffer = function (graph, buffer) {",
+    "  const result = __sourceReaderRealRegisterBuffer(graph, buffer);",
+    "  globalThis.__sourceReaderTraceEvent(\"buffer-register\", globalThis.__sourceReaderBufferId(buffer));",
+    "  return result;",
+    "};",
+    "const __sourceReaderRealReserveNode = reserveAuthorizationSourceNode;",
+    "reserveAuthorizationSourceNode = function (graph) {",
+    "  const result = __sourceReaderRealReserveNode(graph);",
+    "  globalThis.__sourceReaderTraceEvent(\"source-node-reserve\", graph.sourceFileCount, graph.snapshot.semanticNodeCount);",
+    "  return result;",
+    "};",
+    "const __sourceReaderRealValidateLines = validateAuthorizationPhysicalLines;",
+    "validateAuthorizationPhysicalLines = function (bytes) {",
+    "  const ordinal = globalThis.__sourceReaderSpyGraph ? globalThis.__sourceReaderSpyGraph.nextOrdinal : -1;",
+    "  globalThis.__sourceReaderTraceEvent(\"ordinal-visible\", ordinal);",
+    "  globalThis.__sourceReaderTraceEvent(\"line\", ordinal);",
+    "  return __sourceReaderRealValidateLines(bytes);",
+    "};",
+    "const __sourceReaderRealConsumeSource = consumeTrustedAuthorizationSource;",
+    "consumeTrustedAuthorizationSource = function (graph, ...arguments_) {",
+    "  globalThis.__sourceReaderSpyGraph = graph;",
+    "  return __sourceReaderRealConsumeSource(graph, ...arguments_);",
+    "};"
+  ].join("\n") : "";
+  let runnerSource = readFileSync(runnerPath, "utf8");
+  const mutations = {
+    "delete-reserve-read": ["    reserveAuthorizationSourceRead(graph, size);", ""],
+    "delete-dev-compare": ["left.dev !== right.dev || ", ""],
+    "delete-nul-reject": ["basename.includes(0) || ", ""],
+    "eof-unregistered": ["const eof = allocateAuthorizationBuffer(graph, 1);", "const eof = Buffer.alloc(1);"]
+  };
+  if (payload.mutation) {
+    const mutation = mutations[payload.mutation];
+    if (!mutation) throw new Error("unknown mutation");
+    const count = runnerSource.split(mutation[0]).length - 1;
+    if (count !== 1) throw new Error("mutation target count");
+    runnerSource = runnerSource.replace(mutation[0], mutation[1]);
+  }
+  const source = runnerSource + instrumentation + "\nexport {\n"
     + "  createAuthorizationSourceSnapshot as __test_createAuthorizationSourceSnapshot,\n"
     + "  createAuthorizationSourceGraph as __test_createAuthorizationSourceGraph,\n"
     + "  consumeTrustedAuthorizationSource as __test_consumeTrustedAuthorizationSource,\n"
@@ -2540,18 +2733,28 @@ try {
     return linked;
   });
   await module.evaluate();
+  if (payload.instrument) {
+    // Module initialization can allocate unrelated Buffers; source-reader ownership starts after this boundary.
+    ownedBuffers.length = 0;
+    allocationEvents.push(["phase", "after-module"]);
+    traceEvent("phase", "after-module");
+  }
+  sourceReaderOperationPhase = true;
   const api = module.namespace;
   const snapshot = api.__test_createAuthorizationSourceSnapshot();
   const ssh = api.__test_createAuthorizationSourceGraph(snapshot, "ssh");
   const sudo = api.__test_createAuthorizationSourceGraph(snapshot, "sudo");
+  if (payload.instrument) traceEvent("phase", "before-operation");
   const sourcePath = payload.path || "/etc/ssh/sshd_config";
   if (payload.kind === "source") {
-    const fixture = createPathOperations({ path: sourcePath, bytes: payload.bytes, mode: payload.mode, postDrift: payload.postDrift === true, readFault: payload.readFault, closeFault: payload.closeFault === true, inheritedOperation: payload.inheritedOperation === true, customOperationPrototype: payload.customOperationPrototype === true, nullOperationPrototype: payload.nullOperationPrototype === true });
+    const fixture = createPathOperations({ path: sourcePath, bytes: payload.bytes, mode: payload.mode, postDrift: payload.postDrift === true, statFault: payload.statFault, readFault: payload.readFault, closeFault: payload.closeFault === true, openFault: payload.openFault === true, fstatFault: payload.fstatFault, operationShape: payload.operationShape });
     let callback;
     let callbackBytes;
     let callbackBufferNonzero = false;
     try {
       api.__test_consumeTrustedAuthorizationSource(ssh, sourcePath, fixture.operations, (bytes, sourceFile) => {
+        events.push(["callback"]);
+        if (payload.instrument) { allocationEvents.push(["callback"]); traceEvent("callback"); }
         callbackBufferNonzero = bytes.some((byte) => byte !== 0);
         callbackBytes = bytes;
         callback = {
@@ -2568,6 +2771,12 @@ try {
         };
         if (payload.callbackFailure) throw new Error("callback failure");
       });
+      if (payload.readBothGraphs) {
+        api.__test_consumeTrustedAuthorizationSource(sudo, sourcePath, fixture.operations, () => {
+          events.push(["callback"]);
+          if (payload.instrument) { allocationEvents.push(["callback"]); traceEvent("callback"); }
+        });
+      }
       process.stdout.write(JSON.stringify({
         error: null,
         callback,
@@ -2575,7 +2784,10 @@ try {
         events,
         readBuffersZeroized: summarizeBuffers(fixture.readBuffers),
         callbackBytesZeroized: callbackBytes ? callbackBytes.every((byte) => byte === 0) : false,
-        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo)
+        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo),
+        allocationEvents,
+        trace,
+        ownedBuffers: ownedBuffers.map(({ id, kind, buffer }) => [id, kind, buffer.length, buffer.every((byte) => byte === 0)])
       }));
     } catch (error) {
       process.stdout.write(JSON.stringify({
@@ -2583,7 +2795,10 @@ try {
         events,
         readBuffersZeroized: summarizeBuffers(fixture.readBuffers),
         callbackBytesZeroized: callbackBytes ? callbackBytes.every((byte) => byte === 0) : false,
-        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo)
+        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo),
+        allocationEvents,
+        trace,
+        ownedBuffers: ownedBuffers.map(({ id, kind, buffer }) => [id, kind, buffer.length, buffer.every((byte) => byte === 0)])
       }));
     }
   } else if (payload.kind === "directory") {
@@ -2591,24 +2806,33 @@ try {
     const childPath = directoryPath + "/n0";
     const malformed = payload.malformed ? malformedDirectoryValue(payload.malformed) : null;
     const buffers = malformed ? malformed.value : makeNames(payload.count === undefined ? 1 : payload.count, payload.variant);
+    if (!malformed && payload.basenameLength !== undefined && buffers.length > 0) buffers[0] = Buffer.alloc(payload.basenameLength, 0x61);
     const rawBuffers = malformed ? malformed.rawBuffers : buffers;
     const fixture = createPathOperations({
       path: directoryPath,
       directory: true,
       mode: 0o755,
       childPath: payload.readChild ? childPath : undefined,
-      childBytes: Buffer.from("child", "utf8").toString("base64")
+      childBytes: Buffer.from("child", "utf8").toString("base64"),
+      statFault: payload.statFault,
+      closeFault: payload.closeFault === true,
+      openFault: payload.openFault === true,
+      fstatFault: payload.fstatFault,
+      operationShape: payload.operationShape
     });
     let callbackCount = 0;
     try {
-      api.__test_consumeTrustedAuthorizationDirectory(ssh, directoryPath, fixture.operations, sourceOperations(buffers), (names) => {
+      api.__test_consumeTrustedAuthorizationDirectory(ssh, directoryPath, fixture.operations, sourceOperations(buffers, payload.sourceOperationShape, payload.readDirectoryFault === true), (names) => {
         callbackCount += 1;
+        events.push(["directory-callback"]);
+        if (payload.instrument) { allocationEvents.push(["directory-callback"]); traceEvent("directory-callback"); }
         if (payload.readChild) {
           api.__test_consumeTrustedAuthorizationSource(ssh, childPath, fixture.operations, () => {});
         }
         if (payload.tripTerminal) {
           try { api.__test_reserveAuthorizationSourceFile(ssh, -1); } catch {}
         }
+        if (payload.callbackFailure) throw new Error("directory callback failure");
         return names.length;
       });
       process.stdout.write(JSON.stringify({
@@ -2616,7 +2840,10 @@ try {
         callbackCount,
         events,
         namesZeroized: summarizeBuffers(rawBuffers),
-        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo)
+        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo),
+        allocationEvents,
+        trace,
+        ownedBuffers: ownedBuffers.map(({ id, kind, buffer }) => [id, kind, buffer.length, buffer.every((byte) => byte === 0)])
       }));
     } catch (error) {
       let followUpError = null;
@@ -2631,7 +2858,10 @@ try {
         namesZeroized: summarizeBuffers(rawBuffers),
         followUpError,
         followUpOperations: events.length - beforeFollowUp,
-        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo)
+        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo),
+        allocationEvents,
+        trace,
+        ownedBuffers: ownedBuffers.map(({ id, kind, buffer }) => [id, kind, buffer.length, buffer.every((byte) => byte === 0)])
       }));
     }
   } else if (payload.kind === "bounds") {
@@ -2647,7 +2877,7 @@ try {
         try { api.__test_leaveAuthorizationSourceDepth(ssh); } catch {}
       }
     }
-    process.stdout.write(JSON.stringify({ error: failure, budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo) }));
+    process.stdout.write(JSON.stringify({ error: failure, budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo), allocationEvents, trace }));
   } else if (payload.kind === "graph") {
     let error = null;
     try { api.__test_createAuthorizationSourceGraph(snapshot, payload.graphKind || "ssh"); } catch (caught) { error = caught && caught.code ? caught.code : String(caught && caught.name); }
@@ -2731,7 +2961,7 @@ test("authorization source files use one trusted fd through EOF drift and close"
   const closeFailure = sourceReaderVmProbe({ kind: "source", mode: 0o600, closeFault: true, bytes: Buffer.from("body", "utf8").toString("base64") });
   assert.equal(closeFailure.error, "restricted_identity_rejected");
   assert.equal(closeFailure.events.filter(([name]) => name === "close").length, 1);
-  const inheritedOperation = sourceReaderVmProbe({ kind: "source", mode: 0o600, inheritedOperation: true, bytes: Buffer.from("body", "utf8").toString("base64") });
+  const inheritedOperation = sourceReaderVmProbe({ kind: "source", mode: 0o600, operationShape: "inherited", bytes: Buffer.from("body", "utf8").toString("base64") });
   assert.equal(inheritedOperation.error, "restricted_identity_rejected");
   assert.equal(inheritedOperation.events.some(([name]) => name === "open"), false);
   for (const path of ["relative", "/etc//ssh", "/etc/./ssh", "/etc/../ssh", "/etc/ssh/", "/etc/\uD800ssh"]) {
@@ -2855,16 +3085,350 @@ test("authorization source directory malformed cleanup is sparse-bounded and ope
   }
   const customPrototype = sourceReaderVmProbe({
     kind: "source",
-    customOperationPrototype: true,
+    operationShape: "custom-prototype",
     mode: 0o600,
     bytes: Buffer.from("body", "utf8").toString("base64")
   });
   assert.equal(customPrototype.error, "restricted_identity_rejected");
   const nullPrototype = sourceReaderVmProbe({
     kind: "source",
-    nullOperationPrototype: true,
+    operationShape: "null-prototype",
     mode: 0o600,
     bytes: Buffer.from("body", "utf8").toString("base64")
   });
   assert.equal(nullPrototype.error, null);
+});
+
+test("authorization source reserves real containers and source-file state before ordinal object and callback", () => {
+  const initial = sourceReaderVmProbe({ kind: "bounds", instrument: true });
+  assert.equal(initial.error, null);
+  const traceEvents = (probe) => probe.trace.map(([, ...event]) => event);
+  const operationTrace = (probe) => {
+    const events = traceEvents(probe);
+    return events.slice(events.findIndex((event) => event[0] === "phase" && event[1] === "before-operation") + 1);
+  };
+  assert.deepEqual(traceEvents(initial).filter(([name]) => name === "object" || name === "array"), [
+    ["object", "snapshot", 1],
+    ["object", "graph", 3, 2],
+    ["array", 0],
+    ["object", "graph", 5, 2],
+    ["array", 0]
+  ]);
+
+  const success = sourceReaderVmProbe({
+    kind: "source",
+    instrument: true,
+    mode: 0o600,
+    bytes: Buffer.from("one\ntwo", "utf8").toString("base64")
+  });
+  assert.equal(success.error, null);
+  assert.deepEqual(operationTrace(success).filter(([name]) => [
+    "close", "hash", "source-node-reserve", "ordinal-visible", "line", "object", "freeze", "callback"
+  ].includes(name)), [
+    ["close"],
+    ["hash"],
+    ["source-node-reserve", 1, 6],
+    ["ordinal-visible", 1],
+    ["line", 1],
+    ["object", "source-file"],
+    ["freeze", "source-file"],
+    ["callback"]
+  ]);
+  assert.equal(success.budget.sshSourceFileCount, 1);
+  const crossGraph = sourceReaderVmProbe({
+    kind: "source",
+    instrument: true,
+    readBothGraphs: true,
+    mode: 0o600,
+    bytes: Buffer.from("cross-graph", "utf8").toString("base64")
+  });
+  assert.equal(crossGraph.error, null);
+  assert.equal(crossGraph.budget.sshSourceFileCount, 1);
+  assert.equal(crossGraph.budget.sudoSourceFileCount, 1);
+  assert.equal(crossGraph.budget.snapshotSemanticNodeCount, 7);
+  assert.deepEqual(operationTrace(crossGraph).filter(([name]) => name === "source-node-reserve"), [
+    ["source-node-reserve", 1, 6],
+    ["source-node-reserve", 1, 7]
+  ]);
+
+  const lineFailure = sourceReaderVmProbe({
+    kind: "source",
+    instrument: true,
+    mode: 0o600,
+    bytes: Buffer.alloc(16385, 0x61).toString("base64")
+  });
+  assert.equal(lineFailure.error, "restricted_identity_rejected");
+  assert.deepEqual(operationTrace(lineFailure).filter(([name]) => [
+    "source-node-reserve", "ordinal-visible", "line", "object", "freeze", "callback"
+  ].includes(name)), [
+    ["source-node-reserve", 1, 6],
+    ["ordinal-visible", 1],
+    ["line", 1]
+  ]);
+  assert.equal(lineFailure.budget.sshSourceFileCount, 1);
+  assert.equal(lineFailure.budget.snapshotSemanticNodeCount, 6);
+});
+
+test("authorization source rejects complete trusted-stat drift and operation-record matrix", () => {
+  const base = {
+    kind: "source",
+    mode: 0o600,
+    bytes: Buffer.from("stat-matrix", "utf8").toString("base64")
+  };
+  const sourceStages = {
+    ancestor: ["type", "uid", "mode", "symlink"],
+    "final-lstat": ["type", "uid", "gid", "mode", "special", "dev", "ino", "size", "nlink", "symlink"],
+    initial: ["type", "uid", "gid", "mode", "special", "dev", "ino", "size", "nlink", "symlink"],
+    post: ["type", "uid", "gid", "mode", "special", "dev", "ino", "size", "nlink", "symlink"]
+  };
+  for (const [stage, fields] of Object.entries(sourceStages)) {
+    for (const field of fields) {
+      const probe = sourceReaderVmProbe({ ...base, statFault: { stage, field } });
+      assert.equal(probe.error, "restricted_identity_rejected", `${stage}:${field}`);
+      const reachesSourceOpen = stage !== "ancestor" && (stage !== "final-lstat" || ["dev", "ino", "size"].includes(field));
+      assert.equal(probe.events.filter(([name]) => name === "close").length, reachesSourceOpen ? 1 : 0, `${stage}:${field}`);
+    }
+  }
+  for (const [stage, fields] of Object.entries({
+    "final-lstat": ["type", "uid", "gid", "mode", "special", "dev", "ino", "size", "nlink", "symlink"],
+    initial: ["type", "uid", "gid", "mode", "special", "dev", "ino", "size", "nlink", "symlink"],
+    post: ["type", "uid", "gid", "mode", "special", "dev", "ino", "size", "nlink", "symlink"]
+  })) {
+    for (const field of fields) {
+      const probe = sourceReaderVmProbe({ kind: "directory", count: 1, statFault: { stage, field } });
+      assert.equal(probe.error, "restricted_identity_rejected", `directory:${stage}:${field}`);
+      const reachesDirectoryOpen = stage !== "final-lstat" || ["dev", "ino", "size", "nlink"].includes(field);
+      assert.equal(probe.events.filter(([name]) => name === "close").length, reachesDirectoryOpen ? 1 : 0, `directory:${stage}:${field}`);
+    }
+  }
+  for (const payload of [
+    { openFault: true, closes: 0 },
+    { fstatFault: "initial", closes: 1 },
+    { fstatFault: "post", closes: 1 },
+    { closeFault: true, closes: 1 }
+  ]) {
+    const probe = sourceReaderVmProbe({ ...base, ...payload });
+    assert.equal(probe.error, "restricted_identity_rejected");
+    assert.equal(probe.events.filter(([name]) => name === "close").length, payload.closes);
+  }
+  for (const operationShape of ["missing", "extra", "symbol", "non-enumerable", "accessor", "inherited", "custom-prototype"]) {
+    const probe = sourceReaderVmProbe({ ...base, operationShape });
+    assert.equal(probe.error, "restricted_identity_rejected", operationShape);
+    assert.equal(probe.events.some(([name]) => name === "open"), false, operationShape);
+  }
+  for (const operationShape of [undefined, "null-prototype"]) {
+    assert.equal(sourceReaderVmProbe({ ...base, operationShape }).error, null, String(operationShape));
+  }
+  for (const sourceOperationShape of ["missing", "extra", "symbol", "non-enumerable", "accessor", "inherited", "custom-prototype"]) {
+    const probe = sourceReaderVmProbe({ kind: "directory", count: 1, sourceOperationShape });
+    assert.equal(probe.error, "restricted_identity_rejected", sourceOperationShape);
+    assert.equal(probe.events.some(([name]) => name === "open"), false, sourceOperationShape);
+  }
+  for (const sourceOperationShape of [undefined, "null-prototype"]) {
+    assert.equal(sourceReaderVmProbe({ kind: "directory", count: 1, sourceOperationShape }).error, null, String(sourceOperationShape));
+  }
+});
+
+test("authorization directory validates raw basename matrix and parent-child lifecycle", () => {
+  for (const basenameLength of [1, 255]) {
+    const probe = sourceReaderVmProbe({ kind: "directory", count: 1, basenameLength });
+    assert.equal(probe.error, null, `basename length ${basenameLength}`);
+    assert.equal(probe.namesZeroized, true, `basename length ${basenameLength}`);
+  }
+  for (const basenameLength of [256]) {
+    const probe = sourceReaderVmProbe({ kind: "directory", count: 1, basenameLength });
+    assert.equal(probe.error, "restricted_identity_rejected", `basename length ${basenameLength}`);
+    assert.equal(probe.callbackCount, 0);
+    assert.equal(probe.namesZeroized, true);
+  }
+  for (const variant of ["nul", "slash", "dot", "dotdot", "bom", "invalid-utf8", "low-surrogate", "duplicate"]) {
+    const probe = sourceReaderVmProbe({ kind: "directory", count: variant === "duplicate" ? 2 : 1, variant });
+    assert.equal(probe.error, "restricted_identity_rejected", variant);
+    assert.equal(probe.callbackCount, 0, variant);
+    assert.equal(probe.namesZeroized, true, variant);
+  }
+  const earlyInvalid = sourceReaderVmProbe({ kind: "directory", count: 3, variant: "early-nul" });
+  assert.equal(earlyInvalid.error, "restricted_identity_rejected");
+  assert.equal(earlyInvalid.callbackCount, 0);
+  assert.equal(earlyInvalid.namesZeroized, true, "later basename buffers must be registered before validation");
+
+  for (const payload of [
+    { readDirectoryFault: true },
+    { callbackFailure: true },
+    { statFault: { stage: "post", field: "dev" } },
+    { closeFault: true }
+  ]) {
+    const probe = sourceReaderVmProbe({ kind: "directory", count: 1, ...payload });
+    assert.equal(probe.error, "restricted_identity_rejected", JSON.stringify(payload));
+    assert.equal(probe.events.filter(([name]) => name === "close").length, 1, JSON.stringify(payload));
+  }
+
+  const lifecycle = sourceReaderVmProbe({ kind: "directory", count: 1, readChild: true });
+  assert.equal(lifecycle.error, null);
+  const parentFd = lifecycle.events.find(([name, path]) => name === "open" && path === "/etc/sudoers.d")[3];
+  const childFd = lifecycle.events.find(([name, path]) => name === "open" && path === "/etc/sudoers.d/n0")[3];
+  const first = (predicate) => lifecycle.events.findIndex(predicate);
+  const last = (predicate) => lifecycle.events.findLastIndex(predicate);
+  const parentInitial = first(([name, fd]) => name === "fstat" && fd === parentFd);
+  const readDirectory = first(([name]) => name === "readDirectory");
+  const childInitial = first(([name, fd]) => name === "fstat" && fd === childFd);
+  const childEof = last(([name, fd, , length]) => name === "read" && fd === childFd && length === 1);
+  const childPost = last(([name, fd]) => name === "fstat" && fd === childFd);
+  const childClose = first(([name, fd]) => name === "close" && fd === childFd);
+  const parentPost = last(([name, fd]) => name === "fstat" && fd === parentFd);
+  const parentClose = first(([name, fd]) => name === "close" && fd === parentFd);
+  assert.ok(parentInitial < readDirectory && readDirectory < childInitial);
+  assert.ok(childInitial < childEof && childEof < childPost && childPost < childClose);
+  assert.ok(childClose < parentPost && parentPost < parentClose);
+});
+
+test("authorization source and directory owning buffers zeroize through every reader failure", () => {
+  const traceEvents = (probe) => probe.trace.map(([, ...event]) => event);
+  const operationTrace = (probe) => {
+    const events = traceEvents(probe);
+    return events.slice(events.findIndex((event) => event[0] === "phase" && event[1] === "before-operation") + 1);
+  };
+  const sourceBytes = Buffer.from("zero-path", "utf8");
+  const sourceProbe = (extra = {}) => sourceReaderVmProbe({
+    kind: "source",
+    instrument: true,
+    mode: 0o600,
+    bytes: sourceBytes.toString("base64"),
+    ...extra
+  });
+  const assertSourceOwnership = (probe, label) => {
+    assert.deepEqual(probe.ownedBuffers, [
+      [1, "alloc", sourceBytes.length, true],
+      [2, "alloc", 1, true]
+    ], label);
+    assert.deepEqual(operationTrace(probe).filter(([name]) => ["buffer", "buffer-register", "zero"].includes(name)), [
+      ["buffer", "alloc", 1, sourceBytes.length],
+      ["buffer-register", 1],
+      ["buffer", "alloc", 2, 1],
+      ["buffer-register", 2],
+      ["zero", 2, true],
+      ["zero", 1, true]
+    ], label);
+  };
+  const success = sourceProbe();
+  assert.equal(success.error, null);
+  assertSourceOwnership(success, "success");
+  for (const [label, extra] of [
+    ["hash", { hashFailure: true }],
+    ["line", { bytes: Buffer.alloc(16385, 0x61).toString("base64") }],
+    ["callback", { callbackFailure: true }],
+    ["post", { statFault: { stage: "post", field: "dev" } }],
+    ["close", { closeFault: true }]
+  ]) {
+    const probe = sourceProbe(extra);
+    assert.equal(probe.error, "restricted_identity_rejected", label);
+    if (label === "line") {
+      assert.deepEqual(probe.ownedBuffers.map(([id, kind, size, zeroed]) => [id, kind, size, zeroed]), [
+        [1, "alloc", 16385, true],
+        [2, "alloc", 1, true]
+      ], label);
+      assert.deepEqual(operationTrace(probe).filter(([name]) => name === "zero"), [["zero", 2, true], ["zero", 1, true]], label);
+    } else {
+      assertSourceOwnership(probe, label);
+    }
+  }
+
+  const directorySuccess = sourceReaderVmProbe({ kind: "directory", count: 2, instrument: true });
+  assert.equal(directorySuccess.error, null);
+  assert.equal(directorySuccess.namesZeroized, true);
+  assert.deepEqual(directorySuccess.ownedBuffers, [
+    [1, "raw", 2, true],
+    [2, "raw", 2, true],
+    [3, "from", 2, true],
+    [4, "from", 2, true]
+  ]);
+  assert.deepEqual(operationTrace(directorySuccess).filter(([name]) => ["buffer", "buffer-register", "zero"].includes(name)), [
+    ["buffer", "raw", 1, 2],
+    ["buffer", "raw", 2, 2],
+    ["buffer-register", 1],
+    ["buffer-register", 2],
+    ["buffer", "from", 3, 2],
+    ["buffer-register", 3],
+    ["buffer", "from", 4, 2],
+    ["buffer-register", 4],
+    ["zero", 4, true],
+    ["zero", 3, true],
+    ["zero", 2, true],
+    ["zero", 1, true]
+  ]);
+  const directoryFailure = sourceReaderVmProbe({ kind: "directory", count: 1, variant: "bom", instrument: true });
+  assert.equal(directoryFailure.error, "restricted_identity_rejected");
+  assert.equal(directoryFailure.namesZeroized, true);
+  assert.deepEqual(directoryFailure.ownedBuffers, [[1, "raw", 4, true], [2, "from", 1, true]]);
+  assert.deepEqual(operationTrace(directoryFailure).filter(([name]) => name === "zero"), [["zero", 2, true], ["zero", 1, true]]);
+  for (const [label, payload] of [
+    ["directory callback", { callbackFailure: true }],
+    ["directory post", { statFault: { stage: "post", field: "dev" } }],
+    ["directory close", { closeFault: true }]
+  ]) {
+    const probe = sourceReaderVmProbe({ kind: "directory", count: 1, instrument: true, ...payload });
+    assert.equal(probe.error, "restricted_identity_rejected", label);
+    assert.equal(probe.namesZeroized, true, label);
+    assert.deepEqual(probe.ownedBuffers, [[1, "raw", 2, true], [2, "from", 2, true]], label);
+    assert.deepEqual(operationTrace(probe).filter(([name]) => name === "zero"), [["zero", 2, true], ["zero", 1, true]], label);
+  }
+  const readDirectoryFailure = sourceReaderVmProbe({ kind: "directory", count: 1, instrument: true, readDirectoryFault: true });
+  assert.equal(readDirectoryFailure.error, "restricted_identity_rejected");
+  assert.deepEqual(readDirectoryFailure.ownedBuffers, []);
+  assert.equal(readDirectoryFailure.events.filter(([name]) => name === "close").length, 1);
+});
+
+test("authorization source matrix contract checkers independently detect exact in-memory mutations", () => {
+  const traceEvents = (probe) => probe.trace.map(([, ...event]) => event);
+  const operationTrace = (probe) => {
+    const events = traceEvents(probe);
+    return events.slice(events.findIndex((event) => event[0] === "phase" && event[1] === "before-operation") + 1);
+  };
+  const sourcePayload = {
+    kind: "source",
+    instrument: true,
+    mode: 0o600,
+    bytes: Buffer.from("mutation-witness", "utf8").toString("base64")
+  };
+  const requireReadReservation = (probe) => {
+    assert.equal(probe.error, null);
+    assert.deepEqual(operationTrace(probe).filter(([name]) => ["source-read-reserve", "buffer", "buffer-register"].includes(name)).slice(0, 5), [
+      ["source-read-reserve", 1, Buffer.byteLength("mutation-witness")],
+      ["buffer", "alloc", 1, Buffer.byteLength("mutation-witness")],
+      ["buffer-register", 1],
+      ["buffer", "alloc", 2, 1],
+      ["buffer-register", 2]
+    ]);
+  };
+  const readBaseline = sourceReaderVmProbe(sourcePayload);
+  assert.doesNotThrow(() => requireReadReservation(readBaseline));
+  const readMutation = sourceReaderVmProbe({ ...sourcePayload, mutation: "delete-reserve-read" });
+  assert.throws(() => requireReadReservation(readMutation));
+
+  const requireDevDriftRejected = (probe) => assert.equal(probe.error, "restricted_identity_rejected");
+  const devBaseline = sourceReaderVmProbe({ ...sourcePayload, statFault: { stage: "post", field: "dev" } });
+  assert.doesNotThrow(() => requireDevDriftRejected(devBaseline));
+  const devMutation = sourceReaderVmProbe({ ...sourcePayload, statFault: { stage: "post", field: "dev" }, mutation: "delete-dev-compare" });
+  assert.throws(() => requireDevDriftRejected(devMutation));
+
+  const requireNulRejected = (probe) => {
+    assert.equal(probe.error, "restricted_identity_rejected");
+    assert.equal(probe.callbackCount, 0);
+    assert.equal(probe.namesZeroized, true);
+  };
+  const nulPayload = { kind: "directory", count: 1, variant: "nul" };
+  assert.doesNotThrow(() => requireNulRejected(sourceReaderVmProbe(nulPayload)));
+  assert.throws(() => requireNulRejected(sourceReaderVmProbe({ ...nulPayload, mutation: "delete-nul-reject" })));
+
+  const requireEofOwnership = (probe) => {
+    assert.equal(probe.error, null);
+    assert.deepEqual(probe.ownedBuffers, [
+      [1, "alloc", Buffer.byteLength("mutation-witness"), true],
+      [2, "alloc", 1, true]
+    ]);
+    assert.deepEqual(operationTrace(probe).filter(([name]) => name === "buffer-register"), [["buffer-register", 1], ["buffer-register", 2]]);
+    assert.deepEqual(operationTrace(probe).filter(([name]) => name === "zero"), [["zero", 2, true], ["zero", 1, true]]);
+  };
+  assert.doesNotThrow(() => requireEofOwnership(sourceReaderVmProbe(sourcePayload)));
+  assert.throws(() => requireEofOwnership(sourceReaderVmProbe({ ...sourcePayload, mutation: "eof-unregistered" })));
 });
