@@ -21,7 +21,7 @@ import {
   writeFileSync,
   writeSync
 } from "node:fs";
-import { execFile as execFileCallback } from "node:child_process";
+import { execFile as execFileCallback, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { dirname, join, posix, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
@@ -170,17 +170,32 @@ const CODE_PATHS = Object.freeze({
   runner: "/usr/local/libexec/gccgw/japan-tuic-additive-repair-runner.mjs",
   state: "/usr/local/libexec/gccgw/japan-tuic-additive-repair-state.mjs"
 });
-const TOOL_ROLES = Object.freeze(["dash", "env", "flock", "node", "sudo", "systemctl", "unzip", "visudo"]);
+const TOOL_ROLES = Object.freeze(["dash", "env", "flock", "getent", "id", "node", "sudo", "systemctl", "unzip", "visudo"]);
 const TOOL_PATHS = Object.freeze({
   dash: "/usr/bin/dash",
   env: "/usr/bin/env",
   flock: "/usr/bin/flock",
+  getent: "/usr/bin/getent",
+  id: "/usr/bin/id",
   node: "/usr/bin/node",
   sudo: "/usr/bin/sudo",
   systemctl: "/usr/bin/systemctl",
   unzip: "/usr/bin/unzip",
   visudo: "/usr/sbin/visudo"
 });
+const ACCOUNT_CORE_KEYS = Object.freeze([
+  "username", "uid", "homeDirectory", "loginShell", "passwordLocked", "primaryGroupId", "groupIds", "groupNames"
+]);
+const ACCOUNT_GROUP_NAME = /^[a-z_][a-z0-9_.-]{0,63}$/;
+const MAX_ACCOUNT_GROUPS = 256;
+const ACCOUNT_PROCESS_ENV = Object.freeze({
+  LANG: "C.UTF-8",
+  LC_ALL: "C.UTF-8",
+  PATH: "/usr/bin:/bin"
+});
+const ACCOUNT_PROCESS_STDIO = Object.freeze(["ignore", "pipe", "pipe"]);
+const PROJECTED_ACCOUNT_CORE_BRAND = new WeakSet();
+const NATIVE_ACCOUNT_CORE_BRAND = new WeakSet();
 const PATH_ROLES = Object.freeze([
   "authorizedKeys", "backupDirectory", "currentMap", "lockFile", "materialStore",
   "mihomoConfig", "naturalObservation", "producerStatus", "stateDirectory",
@@ -443,6 +458,115 @@ export function buildCanonicalRunnerBinding(input = {}) {
     },
     authorizationMarker: value.authorizationMarker
   };
+}
+
+function recursivelyFreezeAccountCore({
+  username,
+  uid,
+  homeDirectory,
+  loginShell,
+  passwordLocked,
+  primaryGroupId,
+  groupIds,
+  groupNames
+}) {
+  return Object.freeze({
+    username,
+    uid,
+    homeDirectory,
+    loginShell,
+    passwordLocked,
+    primaryGroupId,
+    groupIds: Object.freeze([...groupIds]),
+    groupNames: Object.freeze([...groupNames])
+  });
+}
+
+function canonicalAccountGroupNames(groupNames) {
+  if (!Array.isArray(groupNames) || groupNames.length === 0 || groupNames.length > MAX_ACCOUNT_GROUPS) restricted();
+  const values = groupNames.map((name) => {
+    if (typeof name !== "string" || !ACCOUNT_GROUP_NAME.test(name)) restricted();
+    const bytes = Buffer.from(name, "ascii");
+    if (bytes.toString("ascii") !== name) restricted();
+    return { bytes, name };
+  });
+  values.sort((left, right) => Buffer.compare(left.bytes, right.bytes));
+  for (let index = 1; index < values.length; index += 1) {
+    if (Buffer.compare(values[index - 1].bytes, values[index].bytes) === 0) restricted();
+  }
+  return values.map(({ name }) => name);
+}
+
+function canonicalAccountGroupIds(groupIds, primaryGroupId) {
+  if (!Array.isArray(groupIds) || groupIds.length === 0 || groupIds.length > MAX_ACCOUNT_GROUPS) restricted();
+  if (!groupIds.every(positiveSafeInteger)) restricted();
+  const canonical = [...groupIds].sort((left, right) => left - right);
+  for (let index = 1; index < canonical.length; index += 1) {
+    if (canonical[index - 1] === canonical[index]) restricted();
+  }
+  if (canonical.filter((groupId) => groupId === primaryGroupId).length !== 1) restricted();
+  return canonical;
+}
+
+function canonicalAccountCore(input, binding) {
+  const value = record(input);
+  if (!hasKeys(value, ACCOUNT_CORE_KEYS)
+    || value.username !== binding.sshAuthorization.username
+    || value.uid !== binding.sshAuthorization.uid
+    || value.homeDirectory !== binding.sshAuthorization.homeDirectory
+    || value.loginShell !== binding.sshAuthorization.loginShell
+    || value.passwordLocked !== true
+    || !positiveSafeInteger(value.primaryGroupId)) restricted();
+  const groupIds = canonicalAccountGroupIds(value.groupIds, value.primaryGroupId);
+  const groupNames = canonicalAccountGroupNames(value.groupNames);
+  if (groupIds.length !== groupNames.length) restricted();
+  return recursivelyFreezeAccountCore({
+    username: value.username,
+    uid: value.uid,
+    homeDirectory: value.homeDirectory,
+    loginShell: value.loginShell,
+    passwordLocked: true,
+    primaryGroupId: value.primaryGroupId,
+    groupIds,
+    groupNames
+  });
+}
+
+function sameAccountCore(left, right) {
+  return left.username === right.username
+    && left.uid === right.uid
+    && left.homeDirectory === right.homeDirectory
+    && left.loginShell === right.loginShell
+    && left.passwordLocked === right.passwordLocked
+    && left.primaryGroupId === right.primaryGroupId
+    && left.groupIds.length === right.groupIds.length
+    && left.groupNames.length === right.groupNames.length
+    && left.groupIds.every((value, index) => value === right.groupIds[index])
+    && left.groupNames.every((value, index) => value === right.groupNames[index]);
+}
+
+function validateAccountOperations(input) {
+  const value = record(input);
+  if (!hasKeys(value, ["readAccount"]) || typeof value.readAccount !== "function") restricted();
+  return value;
+}
+
+export function collectBoundAccountEvidence(binding, input) {
+  try {
+    if (arguments.length !== 2) restricted();
+    const canonicalBinding = buildCanonicalRunnerBinding(binding);
+    const projection = record(input);
+    if (!hasKeys(projection, ["accountOperations"])) restricted();
+    const operations = validateAccountOperations(projection.accountOperations);
+    const first = canonicalAccountCore(operations.readAccount(ACCOUNT_USERNAME), canonicalBinding);
+    const second = canonicalAccountCore(operations.readAccount(ACCOUNT_USERNAME), canonicalBinding);
+    if (!sameAccountCore(first, second)) restricted();
+    PROJECTED_ACCOUNT_CORE_BRAND.add(first);
+    return first;
+  } catch (error) {
+    if (error instanceof JapanTuicRepairContractError) throw error;
+    restricted();
+  }
 }
 
 function buildCanonicalSourceClosure(input, { type, rootConfig }) {
@@ -908,6 +1032,207 @@ function readBoundManifestFile(path, manifest, operations, maximum) {
       return bytes;
     }
   );
+}
+
+function zeroAccountBuffers(buffers) {
+  for (let index = buffers.length - 1; index >= 0; index -= 1) {
+    buffers[index].fill(0);
+  }
+}
+
+function accountRecordEnd(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0 || buffer.length > MAX_HELPER_OUTPUT_BYTES) restricted();
+  let end = buffer.length;
+  if (buffer[end - 1] === 0x0a) end -= 1;
+  if (end === 0) restricted();
+  for (let index = 0; index < end; index += 1) {
+    if (buffer[index] === 0 || buffer[index] === 0x0a || buffer[index] === 0x0d) restricted();
+  }
+  return end;
+}
+
+function accountDelimitedRanges(buffer, end, delimiter, expectedCount) {
+  const ranges = [];
+  let start = 0;
+  for (let index = 0; index <= end; index += 1) {
+    if (index !== end && buffer[index] !== delimiter) continue;
+    ranges.push([start, index]);
+    start = index + 1;
+  }
+  if (ranges.length !== expectedCount) restricted();
+  return ranges;
+}
+
+function accountRangeEqualsAscii(buffer, range, expected) {
+  const [start, end] = range;
+  const expectedBytes = Buffer.from(expected, "ascii");
+  if (end - start !== expectedBytes.length) restricted();
+  for (let index = 0; index < expectedBytes.length; index += 1) {
+    if (buffer[start + index] !== expectedBytes[index]) restricted();
+  }
+}
+
+function accountPositiveDecimal(buffer, range) {
+  const [start, end] = range;
+  if (start === end || buffer[start] === 0x30) restricted();
+  let value = 0;
+  for (let index = start; index < end; index += 1) {
+    const byte = buffer[index];
+    if (byte < 0x30 || byte > 0x39) restricted();
+    const digit = byte - 0x30;
+    if (value > Math.floor((Number.MAX_SAFE_INTEGER - digit) / 10)) restricted();
+    value = (value * 10) + digit;
+  }
+  if (!positiveSafeInteger(value)) restricted();
+  return value;
+}
+
+function nativePasswdCore(buffer, binding) {
+  const ranges = accountDelimitedRanges(buffer, accountRecordEnd(buffer), 0x3a, 7);
+  accountRangeEqualsAscii(buffer, ranges[0], binding.sshAuthorization.username);
+  const uid = accountPositiveDecimal(buffer, ranges[2]);
+  const primaryGroupId = accountPositiveDecimal(buffer, ranges[3]);
+  accountRangeEqualsAscii(buffer, ranges[5], binding.sshAuthorization.homeDirectory);
+  accountRangeEqualsAscii(buffer, ranges[6], binding.sshAuthorization.loginShell);
+  if (uid !== binding.sshAuthorization.uid) restricted();
+  return { uid, primaryGroupId };
+}
+
+function nativeShadowLocked(buffer, binding) {
+  const ranges = accountDelimitedRanges(buffer, accountRecordEnd(buffer), 0x3a, 9);
+  accountRangeEqualsAscii(buffer, ranges[0], binding.sshAuthorization.username);
+  const [start, end] = ranges[1];
+  if (start === end) restricted();
+  return buffer[start] === 0x21 || (end - start === 1 && buffer[start] === 0x2a);
+}
+
+function nativeIdTokenRanges(buffer) {
+  const end = accountRecordEnd(buffer);
+  const ranges = [];
+  let start = 0;
+  for (let index = 0; index <= end; index += 1) {
+    if (index !== end && buffer[index] !== 0x20) continue;
+    if (start === index || ranges.length >= MAX_ACCOUNT_GROUPS) restricted();
+    ranges.push([start, index]);
+    start = index + 1;
+  }
+  return ranges;
+}
+
+function nativeSingleId(buffer) {
+  const ranges = nativeIdTokenRanges(buffer);
+  if (ranges.length !== 1) restricted();
+  return accountPositiveDecimal(buffer, ranges[0]);
+}
+
+function nativeGroupIds(buffer, primaryGroupId) {
+  const ranges = nativeIdTokenRanges(buffer);
+  if (ranges.length === 0) restricted();
+  const groupIds = ranges.map((range) => accountPositiveDecimal(buffer, range));
+  return canonicalAccountGroupIds(groupIds, primaryGroupId);
+}
+
+function nativeGroupNames(buffer) {
+  const ranges = nativeIdTokenRanges(buffer);
+  if (ranges.length === 0) restricted();
+  const names = ranges.map((range) => {
+    const [start, end] = range;
+    const length = end - start;
+    if (length === 0 || length > 64) restricted();
+    for (let index = start; index < end; index += 1) {
+      const byte = buffer[index];
+      const initial = byte === 0x5f || (byte >= 0x61 && byte <= 0x7a);
+      const continuation = initial || (byte >= 0x30 && byte <= 0x39) || byte === 0x2e || byte === 0x2d;
+      if ((index === start && !initial) || (index !== start && !continuation)) restricted();
+    }
+    return buffer.subarray(start, end).toString("ascii");
+  });
+  return canonicalAccountGroupNames(names);
+}
+
+function revalidateNativeAccountTool(binding, operations, role) {
+  let bytes;
+  try {
+    const entry = binding.toolManifest[role];
+    bytes = readBoundManifestFile(entry.path, entry, operations, 268435456);
+  } finally {
+    if (Buffer.isBuffer(bytes)) bytes.fill(0);
+  }
+}
+
+function createNativeAccountOperations(binding) {
+  const canonicalBinding = buildCanonicalRunnerBinding(binding);
+  const pathOperations = nativePathOperations();
+  const run = (role, executable, arguments_) => {
+    revalidateNativeAccountTool(canonicalBinding, pathOperations, role);
+    return spawnSync(executable, arguments_, {
+      shell: false,
+      cwd: "/",
+      env: ACCOUNT_PROCESS_ENV,
+      encoding: null,
+      timeout: 5000,
+      maxBuffer: MAX_HELPER_OUTPUT_BYTES,
+      windowsHide: true,
+      stdio: ACCOUNT_PROCESS_STDIO
+    });
+  };
+  return Object.freeze({
+    readAccount() {
+      const buffers = [];
+      const capture = (value) => {
+        if (Buffer.isBuffer(value)) buffers.push(value);
+        return value;
+      };
+      try {
+        const execute = (role, executable, arguments_) => {
+          const result = run(role, executable, arguments_);
+          if (!result || typeof result !== "object") restricted();
+          const stdout = capture(result.stdout);
+          const stderr = capture(result.stderr);
+          if (result.error !== undefined
+            || result.status !== 0
+            || result.signal !== null
+            || !Buffer.isBuffer(stdout)
+            || !Buffer.isBuffer(stderr)
+            || stdout.length > MAX_HELPER_OUTPUT_BYTES
+            || stderr.length !== 0) restricted();
+          return stdout;
+        };
+        const passwd = execute("getent", "/usr/bin/getent", ["passwd", ACCOUNT_USERNAME]);
+        const shadow = execute("getent", "/usr/bin/getent", ["shadow", ACCOUNT_USERNAME]);
+        const uid = execute("id", "/usr/bin/id", ["-u", "--", ACCOUNT_USERNAME]);
+        const primaryGroup = execute("id", "/usr/bin/id", ["-g", "--", ACCOUNT_USERNAME]);
+        const groupIds = execute("id", "/usr/bin/id", ["-G", "--", ACCOUNT_USERNAME]);
+        const groupNames = execute("id", "/usr/bin/id", ["-G", "-n", "--", ACCOUNT_USERNAME]);
+        const passwdCore = nativePasswdCore(passwd, canonicalBinding);
+        const observedUid = nativeSingleId(uid);
+        const observedPrimaryGroupId = nativeSingleId(primaryGroup);
+        if (!nativeShadowLocked(shadow, canonicalBinding)
+          || observedUid !== passwdCore.uid
+          || observedPrimaryGroupId !== passwdCore.primaryGroupId) restricted();
+        const canonicalGroupIds = nativeGroupIds(groupIds, passwdCore.primaryGroupId);
+        const canonicalGroupNames = nativeGroupNames(groupNames);
+        if (canonicalGroupIds.length !== canonicalGroupNames.length) restricted();
+        const core = recursivelyFreezeAccountCore({
+          username: canonicalBinding.sshAuthorization.username,
+          uid: passwdCore.uid,
+          homeDirectory: canonicalBinding.sshAuthorization.homeDirectory,
+          loginShell: canonicalBinding.sshAuthorization.loginShell,
+          passwordLocked: true,
+          primaryGroupId: passwdCore.primaryGroupId,
+          groupIds: canonicalGroupIds,
+          groupNames: canonicalGroupNames
+        });
+        NATIVE_ACCOUNT_CORE_BRAND.add(core);
+        return core;
+      } catch (error) {
+        if (error instanceof JapanTuicRepairContractError) throw error;
+        restricted();
+      } finally {
+        zeroAccountBuffers(buffers);
+      }
+    }
+  });
 }
 
 export function validateRunnerBinding(input = {}, context = {}) {

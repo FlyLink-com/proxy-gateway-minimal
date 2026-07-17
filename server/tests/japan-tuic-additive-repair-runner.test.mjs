@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import * as runnerModule from "../../scripts/japan-tuic-additive-repair-runner.mjs";
 
 import {
   JAPAN_TUIC_REPAIR_GATE,
@@ -124,7 +125,7 @@ function toolEntry(path, mode, overrides = {}) {
   };
 }
 
-function v3ToolManifest() {
+function v3EightToolManifest() {
   return {
     dash: toolEntry("/usr/bin/dash", 0o755),
     env: toolEntry("/usr/bin/env", 0o755),
@@ -135,6 +136,26 @@ function v3ToolManifest() {
     unzip: toolEntry("/usr/bin/unzip", 0o755),
     visudo: toolEntry("/usr/sbin/visudo", 0o755)
   };
+}
+
+function v3ToolManifest() {
+  const legacy = v3EightToolManifest();
+  return {
+    dash: legacy.dash,
+    env: legacy.env,
+    flock: legacy.flock,
+    getent: toolEntry("/usr/bin/getent", 0o755),
+    id: toolEntry("/usr/bin/id", 0o755),
+    node: legacy.node,
+    sudo: legacy.sudo,
+    systemctl: legacy.systemctl,
+    unzip: legacy.unzip,
+    visudo: legacy.visudo
+  };
+}
+
+function v3TenToolManifest() {
+  return v3ToolManifest();
 }
 
 function v3SshAuthorization() {
@@ -212,6 +233,260 @@ function v3Binding(overrides = {}) {
     authorizationMarker: AUTHORIZATION_MARKER,
     ...overrides
   };
+}
+
+function accountCore(overrides = {}) {
+  return {
+    username: "gccgw-japan-repair-ci",
+    uid: 975,
+    homeDirectory: HOME_PATH,
+    loginShell: "/usr/bin/dash",
+    passwordLocked: true,
+    primaryGroupId: 975,
+    groupIds: [1100, 975],
+    groupNames: ["repair", "ops"],
+    ...overrides
+  };
+}
+
+function accountOperations(reads, calls = []) {
+  let index = 0;
+  return {
+    readAccount(username) {
+      calls.push(username);
+      const value = reads[Math.min(index, reads.length - 1)];
+      index += 1;
+      return value;
+    }
+  };
+}
+
+function nativeAccountBinding() {
+  const binding = v3Binding({ toolManifest: v3TenToolManifest() });
+  const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  const getentBytes = Buffer.from("native-getent", "ascii");
+  const idBytes = Buffer.from("native-id", "ascii");
+  return {
+    ...binding,
+    toolManifest: {
+      ...binding.toolManifest,
+      getent: {
+        ...binding.toolManifest.getent,
+        sizeBytes: getentBytes.length,
+        sha256: digest(getentBytes)
+      },
+      id: {
+        ...binding.toolManifest.id,
+        sizeBytes: idBytes.length,
+        sha256: digest(idBytes)
+      }
+    }
+  };
+}
+
+function nativeAccountOutputs(overrides = {}) {
+  const encode = (value) => Buffer.from(value, "utf8").toString("base64");
+  const records = [
+    "gccgw-japan-repair-ci:x:975:975:SENSITIVE_SENTINEL:/var/lib/gccgw-japan-repair-ci:/usr/bin/dash\n",
+    "gccgw-japan-repair-ci:!SENSITIVE_SENTINEL:1:2:3:4:5:6:7\n",
+    "975\n",
+    "975\n",
+    "1100 975\n",
+    "repair ops\n"
+  ];
+  return records.map((stdout, index) => ({
+    stdout: encode(stdout),
+    status: 0,
+    signal: null,
+    ...overrides[index]
+  }));
+}
+
+function nativeAccountVmProbe({ binding, outputs }) {
+  const directory = mkdtempSync(join(tmpdir(), "japan-account-vm-"));
+  const harnessPath = join(directory, "harness.mjs");
+  const payloadPath = join(directory, "payload.json");
+  const runnerPath = fileURLToPath(new URL("../../scripts/japan-tuic-additive-repair-runner.mjs", import.meta.url));
+  const harness = String.raw`
+import { readFileSync } from "node:fs";
+import * as crypto from "node:crypto";
+import * as nodePath from "node:path";
+import * as nodeUrl from "node:url";
+import { promisify } from "node:util";
+import vm from "node:vm";
+
+const [runnerPath, payloadPath] = process.argv.slice(2);
+const payload = JSON.parse(readFileSync(payloadPath, "utf8"));
+const calls = [];
+const captures = [];
+const descriptors = new Map();
+let nextFd = 70;
+let outputIndex = 0;
+
+const directoryStat = () => ({
+  uid: 0n, gid: 0n, mode: 0o755n, nlink: 2n, dev: 1n, ino: 1n, size: 4096n,
+  isDirectory: () => true, isFile: () => false, isSymbolicLink: () => false
+});
+const toolBytes = new Map([
+  ["/usr/bin/getent", Buffer.from("native-getent", "ascii")],
+  ["/usr/bin/id", Buffer.from("native-id", "ascii")]
+]);
+const toolStat = (path) => {
+  const bytes = toolBytes.get(path);
+  return {
+    uid: 0n, gid: 0n, mode: 0o755n, nlink: 1n, dev: 1n,
+    ino: path.endsWith("getent") ? 2n : 3n, size: BigInt(bytes.length),
+    isDirectory: () => false, isFile: () => true, isSymbolicLink: () => false
+  };
+};
+const unused = () => { throw new Error("unused synthetic builtin"); };
+const fs = {
+  chmodSync: unused, chownSync: unused, copyFileSync: unused, existsSync: unused,
+  mkdirSync: unused, mkdtempSync: unused, readFileSync: unused, realpathSync: unused,
+  renameSync: unused, rmSync: unused, statSync: unused, writeFileSync: unused, writeSync: unused,
+  constants: { O_RDONLY: 0, O_DIRECTORY: 0x10000, O_NOFOLLOW: 0x20000, O_CLOEXEC: 0x80000 },
+  lstatSync(path) {
+    calls.push(["lstat", path]);
+    return toolBytes.has(path) ? toolStat(path) : directoryStat();
+  },
+  openSync(path, flags) {
+    calls.push(["open", path, flags]);
+    if (!toolBytes.has(path)) throw new Error("unexpected open");
+    const fd = nextFd++;
+    descriptors.set(fd, path);
+    return fd;
+  },
+  fstatSync(fd) {
+    calls.push(["fstat", fd]);
+    const path = descriptors.get(fd);
+    if (!path) throw new Error("unexpected fd");
+    return toolStat(path);
+  },
+  readSync(fd, buffer, offset, length, position) {
+    calls.push(["read", fd, offset, length, position]);
+    const bytes = toolBytes.get(descriptors.get(fd));
+    if (!bytes || position >= bytes.length) return 0;
+    const count = Math.min(length, bytes.length - position);
+    bytes.copy(buffer, offset, position, position + count);
+    return count;
+  },
+  closeSync(fd) {
+    calls.push(["close", fd]);
+    if (!descriptors.delete(fd)) throw new Error("unexpected close");
+  }
+};
+const spawnSync = (executable, arguments_, options) => {
+  calls.push(["spawn", executable, arguments_, {
+    shell: options.shell,
+    cwd: options.cwd,
+    envKeys: Object.keys(options.env),
+    env: options.env,
+    encoding: options.encoding,
+    timeout: options.timeout,
+    maxBuffer: options.maxBuffer,
+    windowsHide: options.windowsHide,
+    stdio: options.stdio
+  }]);
+  const output = payload.outputs[outputIndex++];
+  if (!output) throw new Error("unexpected spawn");
+  const stdout = Buffer.from(output.stdout, "base64");
+  const stderr = Buffer.from(output.stderr || "", "base64");
+  captures.push(stdout, stderr);
+  return { error: output.error ? new Error("synthetic") : undefined, status: output.status, signal: output.signal, stdout, stderr };
+};
+const context = vm.createContext({
+  Buffer,
+  TextDecoder,
+  process: { argv: [], env: {}, platform: "linux", stdin: {}, stdout: { write() {} }, stderr: { write() {} } }
+});
+const synthetic = (names, values) => new vm.SyntheticModule(names, function () {
+  for (const name of names) this.setExport(name, values[name]);
+}, { context });
+const contractError = class JapanTuicRepairContractError extends Error {
+  constructor(code) { super(code); this.code = code; }
+};
+const modules = new Map([
+  ["node:crypto", synthetic(["createHash", "randomUUID"], crypto)],
+  ["node:fs", synthetic(Object.keys(fs), fs)],
+  ["node:child_process", synthetic(["execFile", "spawnSync"], { execFile: unused, spawnSync })],
+  ["node:util", synthetic(["promisify"], { promisify })],
+  ["node:path", synthetic(["dirname", "join", "posix", "resolve"], nodePath)],
+  ["node:url", synthetic(["pathToFileURL", "fileURLToPath"], nodeUrl)],
+  ["./japan-tuic-additive-repair-contract.mjs", synthetic([
+    "JAPAN_TUIC_REPAIR_GATE", "JAPAN_TUIC_REPAIR_GATE_V3", "JapanTuicRepairContractError",
+    "validateArtifactIdentity", "validateCandidateReport", "validateExecutionReceipt", "validateNaturalObservation", "validatePostApplyIdentity"
+  ], {
+    JAPAN_TUIC_REPAIR_GATE: {},
+    JAPAN_TUIC_REPAIR_GATE_V3: {
+      executionGateId: payload.binding.gateId,
+      expectedNonceSha256: payload.binding.expectedNonceSha256,
+      artifact: { sha256: "f".repeat(64) }, releaseUnit: "unit", strategy: "strategy", surface: "surface", target: "target"
+    },
+    JapanTuicRepairContractError: contractError,
+    validateArtifactIdentity: unused, validateCandidateReport: unused, validateExecutionReceipt: unused,
+    validateNaturalObservation: unused, validatePostApplyIdentity: unused
+  })],
+  ["./japan-tuic-additive-repair-state.mjs", synthetic(["executionClaimSha256"], {
+    executionClaimSha256: () => payload.binding.expectedClaimSha256
+  })]
+]);
+const source = readFileSync(runnerPath, "utf8") + "\nexport { createNativeAccountOperations as __test_createNativeAccountOperations };\n";
+const module = new vm.SourceTextModule(source, { context, identifier: runnerPath });
+await module.link((specifier) => {
+  const linked = modules.get(specifier);
+  if (!linked) throw new Error("unexpected import:" + specifier);
+  return linked;
+});
+await module.evaluate();
+const sentinel = Buffer.from("SENSITIVE_SENTINEL", "ascii");
+const originalToString = Buffer.prototype.toString;
+let account;
+let error;
+try {
+  Buffer.prototype.toString = function (...arguments_) {
+    if (this.includes(sentinel)) throw new Error("whole_sensitive_decode");
+    return originalToString.apply(this, arguments_);
+  };
+  account = module.namespace.__test_createNativeAccountOperations(payload.binding).readAccount();
+} catch (caught) {
+  error = caught && caught.code ? caught.code : "unexpected";
+} finally {
+  Buffer.prototype.toString = originalToString;
+}
+process.stdout.write(JSON.stringify({
+  account: account && {
+    username: account.username,
+    uid: account.uid,
+    homeDirectory: account.homeDirectory,
+    loginShell: account.loginShell,
+    passwordLocked: account.passwordLocked,
+    primaryGroupId: account.primaryGroupId,
+    groupIds: account.groupIds,
+    groupNameCount: account.groupNames.length,
+    groupNamesAreCanonical: account.groupNames.length === 2
+      ? account.groupNames[0] === "ops" && account.groupNames[1] === "repair"
+      : account.groupNames.every((name, index, values) => index === 0 || Buffer.compare(
+        Buffer.from(values[index - 1], "ascii"), Buffer.from(name, "ascii")
+      ) < 0)
+  },
+  error,
+  calls,
+  outputCount: outputIndex,
+  zeroized: captures.every((buffer) => buffer.every((byte) => byte === 0))
+}));
+`;
+  writeFileSync(harnessPath, harness, "utf8");
+  writeFileSync(payloadPath, JSON.stringify({ binding, outputs }), "utf8");
+  try {
+    const result = spawnSync(process.execPath, ["--experimental-vm-modules", harnessPath, runnerPath, payloadPath], {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 function sshClosure(overrides = {}) {
@@ -552,13 +827,240 @@ test("schema-3 binding builder emits every recursive key in the frozen order", (
   ]);
   assert.deepEqual(Object.keys(binding.codeManifest), ["bootstrap", "contract", "entrypoint", "frame", "runner", "state"]);
   assert.deepEqual(binding.codeManifest.bootstrap, codeEntry(BOOTSTRAP_PATH, 0o644));
-  assert.deepEqual(Object.keys(binding.toolManifest), ["dash", "env", "flock", "node", "sudo", "systemctl", "unzip", "visudo"]);
+  assert.deepEqual(Object.keys(binding.toolManifest), ["dash", "env", "flock", "getent", "id", "node", "sudo", "systemctl", "unzip", "visudo"]);
   assert.deepEqual(Object.keys(binding.paths), [
     "authorizedKeys", "backupDirectory", "currentMap", "lockFile", "materialStore",
     "mihomoConfig", "naturalObservation", "producerStatus", "stateDirectory",
     "sudoersFile", "temporaryRoot"
   ]);
   assert.equal(`${JSON.stringify(binding)}\n`, `${JSON.stringify(v3Binding())}\n`);
+});
+
+test("schema 3 binds exact getent and id tool roles", () => {
+  const binding = v3Binding({ toolManifest: v3TenToolManifest() });
+  const canonical = buildCanonicalRunnerBinding(binding);
+  assert.deepEqual(Object.keys(canonical.toolManifest), [
+    "dash", "env", "flock", "getent", "id", "node", "sudo", "systemctl", "unzip", "visudo"
+  ]);
+  assert.equal(canonical.toolManifest.getent.path, "/usr/bin/getent");
+  assert.equal(canonical.toolManifest.id.path, "/usr/bin/id");
+  assert.equal(canonical.toolManifest.getent.mode, 0o755);
+  assert.equal(canonical.toolManifest.id.mode, 0o755);
+  const missing = { ...binding.toolManifest };
+  delete missing.id;
+  for (const toolManifest of [
+    v3EightToolManifest(),
+    missing,
+    { ...binding.toolManifest, getent: { ...binding.toolManifest.getent, path: "/bin/getent" } },
+    { ...binding.toolManifest, id: { ...binding.toolManifest.id, mode: 0o4755 } },
+    { ...binding.toolManifest, id: { ...binding.toolManifest.id, capabilitySha256: SHA_A } }
+  ]) {
+    assert.throws(
+      () => buildCanonicalRunnerBinding({ ...binding, toolManifest }),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+  }
+});
+
+test("account evidence uses only two exact projection reads and a frozen canonical core", () => {
+  assert.equal(typeof runnerModule.collectBoundAccountEvidence, "function");
+  const calls = [];
+  const evidence = runnerModule.collectBoundAccountEvidence(
+    v3Binding({ toolManifest: v3TenToolManifest() }),
+    {
+      accountOperations: accountOperations([
+        accountCore(),
+        accountCore({ groupIds: [975, 1100], groupNames: ["ops", "repair"] })
+      ], calls)
+    }
+  );
+  assert.deepEqual(calls, ["gccgw-japan-repair-ci", "gccgw-japan-repair-ci"]);
+  assert.deepEqual(evidence, {
+    username: "gccgw-japan-repair-ci",
+    uid: 975,
+    homeDirectory: HOME_PATH,
+    loginShell: "/usr/bin/dash",
+    passwordLocked: true,
+    primaryGroupId: 975,
+    groupIds: [975, 1100],
+    groupNames: ["ops", "repair"]
+  });
+  assert.equal(Object.isFrozen(evidence), true);
+  assert.equal(Object.isFrozen(evidence.groupIds), true);
+  assert.equal(Object.isFrozen(evidence.groupNames), true);
+
+  const rejectedCalls = [];
+  const operations = accountOperations([accountCore()], rejectedCalls);
+  assert.throws(
+    () => runnerModule.collectBoundAccountEvidence(
+      v3Binding({ toolManifest: v3TenToolManifest() }),
+      { accountOperations: operations, extra: true }
+    ),
+    (error) => error.code === "restricted_identity_rejected"
+  );
+  assert.throws(
+    () => runnerModule.collectBoundAccountEvidence(
+      v3Binding({ toolManifest: v3TenToolManifest() }),
+      { accountOperations: operations },
+      "overload"
+    ),
+    (error) => error.code === "restricted_identity_rejected"
+  );
+  assert.deepEqual(rejectedCalls, []);
+});
+
+test("account evidence rejects uid home shell lock group and second-read drift", () => {
+  assert.equal(typeof runnerModule.collectBoundAccountEvidence, "function");
+  const binding = v3Binding({ toolManifest: v3TenToolManifest() });
+  const failures = [
+    accountCore({ uid: 0 }),
+    accountCore({ homeDirectory: "/other" }),
+    accountCore({ loginShell: "/bin/sh" }),
+    accountCore({ passwordLocked: false }),
+    accountCore({ primaryGroupId: 1001 }),
+    accountCore({ groupIds: [975, 975] }),
+    accountCore({ groupIds: [1100] }),
+    accountCore({ groupNames: ["ops", "ops"] }),
+    accountCore({ groupIds: Array.from({ length: 257 }, (_, index) => index + 1), groupNames: Array.from({ length: 257 }, (_, index) => `g${index}`) })
+  ];
+  for (const first of failures) {
+    assert.throws(
+      () => runnerModule.collectBoundAccountEvidence(binding, { accountOperations: accountOperations([first]) }),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+  }
+  assert.throws(
+    () => runnerModule.collectBoundAccountEvidence(binding, {
+      accountOperations: accountOperations([accountCore(), accountCore({ groupNames: ["ops", "other"] })])
+    }),
+    (error) => error.code === "restricted_identity_rejected"
+  );
+});
+
+test("account buffers are delimiter parsed by the actual private native source and zeroized", () => {
+  const source = readFileSync(fileURLToPath(new URL("../../scripts/japan-tuic-additive-repair-runner.mjs", import.meta.url)), "utf8");
+  assert.match(source, /function createNativeAccountOperations\(/);
+  const encode = (value) => Buffer.from(value, "utf8").toString("base64");
+  const probe = nativeAccountVmProbe({
+    binding: nativeAccountBinding(),
+    outputs: [
+      { stdout: encode("gccgw-japan-repair-ci:x:975:975:SENSITIVE_SENTINEL:/var/lib/gccgw-japan-repair-ci:/usr/bin/dash\n"), status: 0, signal: null },
+      { stdout: encode("gccgw-japan-repair-ci:!SENSITIVE_SENTINEL:1:2:3:4:5:6:7\n"), status: 0, signal: null },
+      { stdout: encode("975\n"), status: 0, signal: null },
+      { stdout: encode("975\n"), status: 0, signal: null },
+      { stdout: encode("1100 975\n"), status: 0, signal: null },
+      { stdout: encode("repair ops\n"), status: 0, signal: null }
+    ]
+  });
+  assert.equal(probe.error, undefined);
+  assert.equal(probe.outputCount, 6);
+  assert.equal(probe.zeroized, true);
+  assert.deepEqual(probe.account, {
+    username: "gccgw-japan-repair-ci",
+    uid: 975,
+    homeDirectory: HOME_PATH,
+    loginShell: "/usr/bin/dash",
+    passwordLocked: true,
+    primaryGroupId: 975,
+    groupIds: [975, 1100],
+    groupNameCount: 2,
+    groupNamesAreCanonical: true
+  });
+  const trace = probe.calls.filter(([name]) => name === "open" || name === "spawn");
+  assert.deepEqual(trace.map(([name, path]) => [name, path]), [
+    ["open", "/usr/bin/getent"], ["spawn", "/usr/bin/getent"],
+    ["open", "/usr/bin/getent"], ["spawn", "/usr/bin/getent"],
+    ["open", "/usr/bin/id"], ["spawn", "/usr/bin/id"],
+    ["open", "/usr/bin/id"], ["spawn", "/usr/bin/id"],
+    ["open", "/usr/bin/id"], ["spawn", "/usr/bin/id"],
+    ["open", "/usr/bin/id"], ["spawn", "/usr/bin/id"]
+  ]);
+  const spawns = probe.calls.filter(([name]) => name === "spawn");
+  assert.deepEqual(spawns.map(([, executable, arguments_]) => [executable, arguments_]), [
+    ["/usr/bin/getent", ["passwd", "gccgw-japan-repair-ci"]],
+    ["/usr/bin/getent", ["shadow", "gccgw-japan-repair-ci"]],
+    ["/usr/bin/id", ["-u", "--", "gccgw-japan-repair-ci"]],
+    ["/usr/bin/id", ["-g", "--", "gccgw-japan-repair-ci"]],
+    ["/usr/bin/id", ["-G", "--", "gccgw-japan-repair-ci"]],
+    ["/usr/bin/id", ["-G", "-n", "--", "gccgw-japan-repair-ci"]]
+  ]);
+  for (const [, , , options] of spawns) {
+    assert.deepEqual(options, {
+      shell: false,
+      cwd: "/",
+      envKeys: ["LANG", "LC_ALL", "PATH"],
+      env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", PATH: "/usr/bin:/bin" },
+      encoding: null,
+      timeout: 5000,
+      maxBuffer: 65536,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+  }
+});
+
+test("private native account source rejects every fixed-process and Buffer grammar failure with zeroized captures", () => {
+  const encode = (value) => Buffer.from(value, "utf8").toString("base64");
+  const mutate = (index, replacement) => {
+    const outputs = nativeAccountOutputs();
+    outputs[index] = { ...outputs[index], ...replacement };
+    return outputs;
+  };
+  const failures = [
+    { name: "spawn error", outputs: mutate(0, { error: true }) },
+    { name: "nonzero status", outputs: mutate(0, { status: 1 }) },
+    { name: "signal", outputs: mutate(0, { signal: "SIGTERM" }) },
+    { name: "stderr", outputs: mutate(0, { stderr: encode("SENSITIVE_SENTINEL") }) },
+    { name: "oversize stdout", outputs: mutate(0, { stdout: encode("x".repeat(65537)) }) },
+    { name: "passwd CR", outputs: mutate(0, { stdout: encode("gccgw-japan-repair-ci:x:975:975:SENSITIVE_SENTINEL:/var/lib/gccgw-japan-repair-ci:/usr/bin/dash\r\n") }) },
+    { name: "shadow NUL", outputs: mutate(1, { stdout: encode("gccgw-japan-repair-ci:!SENSITIVE_SENTINEL\0:1:2:3:4:5:6:7\n") }) },
+    { name: "shadow field count", outputs: mutate(1, { stdout: encode("gccgw-japan-repair-ci:!SENSITIVE_SENTINEL:1:2:3:4:5:6\n") }) },
+    { name: "id second line", outputs: mutate(2, { stdout: encode("975\n976\n") }) },
+    { name: "passwd field count", outputs: mutate(0, { stdout: encode("gccgw-japan-repair-ci:x:975:975:SENSITIVE_SENTINEL:/var/lib/gccgw-japan-repair-ci\n") }) },
+    { name: "home mismatch", outputs: mutate(0, { stdout: encode("gccgw-japan-repair-ci:x:975:975:SENSITIVE_SENTINEL:/other:/usr/bin/dash\n") }) },
+    { name: "shell mismatch", outputs: mutate(0, { stdout: encode("gccgw-japan-repair-ci:x:975:975:SENSITIVE_SENTINEL:/var/lib/gccgw-japan-repair-ci:/bin/sh\n") }) },
+    { name: "unlocked shadow", outputs: mutate(1, { stdout: encode("gccgw-japan-repair-ci:x:1:2:3:4:5:6:7\n") }) },
+    { name: "uid mismatch", outputs: mutate(2, { stdout: encode("976\n") }) },
+    { name: "gid mismatch", outputs: mutate(3, { stdout: encode("976\n") }) },
+    { name: "duplicate primary group", outputs: mutate(4, { stdout: encode("975 975\n") }) },
+    { name: "missing primary group", outputs: mutate(4, { stdout: encode("1100 1200\n") }) },
+    { name: "duplicate group name", outputs: mutate(5, { stdout: encode("ops ops\n") }) },
+    { name: "group count mismatch", outputs: mutate(5, { stdout: encode("ops\n") }) },
+    { name: "group name grammar", outputs: mutate(5, { stdout: encode("repair Ops\n") }) },
+    {
+      name: "257 groups",
+      outputs: mutate(4, { stdout: encode(`${Array.from({ length: 257 }, (_, index) => index + 1).join(" ")}\n`) })
+    }
+  ];
+  for (const failure of failures) {
+    const probe = nativeAccountVmProbe({ binding: nativeAccountBinding(), outputs: failure.outputs });
+    assert.equal(probe.error, "restricted_identity_rejected", failure.name);
+    assert.equal(probe.zeroized, true, failure.name);
+    assert.ok(probe.outputCount === 1 || probe.outputCount === 6, failure.name);
+  }
+
+  const driftedBinding = nativeAccountBinding();
+  driftedBinding.toolManifest.getent = { ...driftedBinding.toolManifest.getent, sha256: SHA_A };
+  const drifted = nativeAccountVmProbe({ binding: driftedBinding, outputs: nativeAccountOutputs() });
+  assert.equal(drifted.error, "restricted_identity_rejected");
+  assert.equal(drifted.outputCount, 0);
+  assert.equal(drifted.zeroized, true);
+  assert.equal(drifted.calls.some(([name]) => name === "spawn"), false);
+
+  const maximumGroups = [975, ...Array.from({ length: 255 }, (_, index) => index + 1)];
+  const maximumNames = Array.from({ length: 256 }, (_, index) => `g${index}`);
+  const maximum = nativeAccountVmProbe({
+    binding: nativeAccountBinding(),
+    outputs: nativeAccountOutputs({
+      4: { stdout: encode(`${maximumGroups.join(" ")}\n`) },
+      5: { stdout: encode(`${maximumNames.join(" ")}\n`) }
+    })
+  });
+  assert.equal(maximum.error, undefined);
+  assert.equal(maximum.account.groupIds.length, 256);
+  assert.equal(maximum.account.groupNameCount, 256);
+  assert.equal(maximum.account.groupNamesAreCanonical, true);
+  assert.equal(maximum.zeroized, true);
 });
 
 test("exported binding validator is schema-3-only and requires the exact root context", () => {
@@ -1480,7 +1982,7 @@ test("manifest trusted reads keep the low-twelve sudo exception separate", () =>
     assert.equal(validated.codeManifest[role].mode, 0o644);
   }
   assert.equal(validated.toolManifest.sudo.mode, 0o4755);
-  for (const role of ["dash", "env", "flock", "node", "systemctl", "unzip", "visudo"]) {
+  for (const role of ["dash", "env", "flock", "getent", "id", "node", "systemctl", "unzip", "visudo"]) {
     assert.equal(validated.toolManifest[role].mode, 0o755);
   }
   assert.equal(fixture.calls.filter(([name]) => name === "close").length, fixture.calls.filter(([name]) => name === "open").length);
