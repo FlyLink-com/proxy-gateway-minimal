@@ -1052,10 +1052,7 @@ export function createPortalAccessRequestService(options = {}) {
   }
 
   function hasPriorTrial(portalUserRef) {
-    return listRecords({ portalUserRef, plan: "trial" }).some((request) =>
-      request.portalUserRef === portalUserRef
-      && request.plan === "trial"
-    );
+    return listRecords({ portalUserRef, plan: "trial" }).length > 0;
   }
 
   function assertAutoIssuanceReady() {
