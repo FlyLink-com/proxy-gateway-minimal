@@ -2,6 +2,7 @@
 
 > Status:
 > - Type: Approved source-only design for a future Risk A production action
+> - Supersession notice: The required-reviewer, run-bound Environment-secret approval, retry, and cleanup model in this document is not executable for the current private GitHub Team repository. It is superseded by `2026-07-16-github-japan-additive-repair-offline-approval-design.md`. Do not bootstrap or execute from this document. Unchanged artifact, additive-only, backup, rollback, observation, and scope constraints remain applicable.
 > - Design approval: Confirmed by the operator in the active Codex task on 2026-07-16
 > - Source change risk: C for this design document; implementation is B; production execution is A
 > - Capability: `github-japan-runtime-config-additive-repair-cicd@v1`

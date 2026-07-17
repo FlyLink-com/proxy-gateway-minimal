@@ -101,6 +101,13 @@ aggregate receipts only.
 
 #### CI Identity Bootstrap Gate
 
+> Blocked and superseded: the required-reviewer and prevent-self-review model
+> below is unavailable for the current private GitHub Team repository and must
+> not be executed. The approved replacement design is
+> `docs/superpowers/specs/2026-07-16-github-japan-additive-repair-offline-approval-design.md`.
+> A future source-only implementation PR must reconcile this runbook before a
+> redesigned bootstrap or production Gate can be submitted.
+
 This independent exact Risk A Gate must be approved and completed before any
 workflow dispatch. It creates a new temporary, dedicated CI SSH identity,
 installs only the reviewed forced-command runner and one marked restricted
