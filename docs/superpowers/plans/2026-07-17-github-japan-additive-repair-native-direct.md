@@ -469,8 +469,11 @@ git commit -m "refactor(ci): switch Japan repair contract to mode one"
   authorizedKeysLineSha256, effectiveConfigSha256, homeDirectory,
   homeDirectoryPolicy, loginShell, loginShellPolicy, publicKeyBlobSha256, uid,
   username`. Nested home policy order is `type,uid,gid,mode,nlink`; nested shell
-  policy order is `type,uid,gid,mode,nlink,sha256`; shell path/metadata/digest
-  equal `toolManifest.dash` apart from the tool-only capability field.
+  policy order is `type,uid,gid,mode,nlink,sha256`. Projection is explicit:
+  `loginShell === toolManifest.dash.path`, and shell
+  type/uid/gid/mode/nlink/SHA equal the dash entry. Dash `sizeBytes` and
+  `capabilitySha256` are validated only by the full tool entry and are not
+  fields of `loginShellPolicy`.
 - `sudoAuthorization` order is `schemaVersion, type, username, uid,
   sudoersFile, sudoersFileSha256, command, commandArguments, runAsUid, runAsGid,
   nonInteractive, nopasswd, envReset, setenvAllowed, securePath,
@@ -510,6 +513,12 @@ alternate resolved/package path is rejected. Require exact manifest
 268435456/268435457 boundaries, same-FD fstat-size equality, exact-size read,
 confirmed zero-byte EOF, and rejection of early EOF or trailing byte.
 
+Freeze bootstrap-Gate dry-run fixtures for native same-FD capability
+attestation: `ENODATA` and `ENOATTR` absence; unexpected capability bytes;
+wrong descriptor; unsupported or other error; oversize xattr; and digest
+mismatch. Every non-absence/error/mismatch blocks before authorization, and no
+fixture is described as runtime xattr validation.
+
 Test the exact recursive canonical binding order and field names above. Reject
 schema 1 through exported `validateRunnerBinding`; require its exact context
 keys `effectiveUid, pathOperations` and numeric
@@ -524,14 +533,19 @@ dev/ino mismatch; exact `O_RDONLY|O_NOFOLLOW|O_CLOEXEC` plus directory-only
 `O_DIRECTORY`; positive short reads; EINTR-only retry; confirmed zero-byte EOF;
 binding sizes 65536 accepted and 65537 rejected; code-file 1 MiB limit; fatal
 UTF-8; BOM; CR; duplicate/reordered keys; prefix/suffix/second-line/trailing
-bytes; returned counts outside `0..length`; wrong fd; post-consume dev/ino/size
-drift; and exactly-once close on success, consumer failure, read failure, and
-close failure. Every exposed failure is only `restricted_identity_rejected`.
+bytes; returned counts outside `0..length`; wrong fd; post-consumption
+type/uid/gid/mode/nlink drift including directory-sentinel count drift, plus
+dev/ino/size drift; and exactly-once close on success, consumer failure, read
+failure, and close failure. Every exposed failure is only
+`restricted_identity_rejected`.
 
 Freeze `sshAuthorization` for algorithm `ssh-ed25519`, exact positive uid,
 username `gccgw-japan-repair-ci`, fixed home/shell, exact passwd identity,
 root-controlled home chain, locked password, one effective authorization file,
 and exactly one active nonblank/noncomment entry equal to the canonical line.
+Add a focused login-shell projection test: path/type/uid/gid/mode/nlink/SHA
+must equal `toolManifest.dash`; size and capability remain mandatory on the dash
+tool entry but absent from `loginShellPolicy`.
 The canonical SSH topology builder has exact keys/order:
 
 ```text
@@ -540,6 +554,8 @@ passwordLocked, authenticationMethods, pubkeyAuthentication,
 passwordAuthentication, keyboardInteractiveAuthentication,
 hostbasedAuthentication, gssapiAuthentication, kerberosAuthentication,
 permitUserEnvironment, acceptedEnvironmentNames,
+forceCommand, chrootDirectory,
+disableForwarding, permitTunnel,
 authorizedKeysFiles, authorizedKeysCommand, authorizedPrincipalsFiles,
 authorizedPrincipalsCommand, trustedUserCAKeys,
 activeAuthorizationEntryCount, targetKeyOccurrenceCount,
@@ -550,11 +566,22 @@ matchCoverageSha256
 Require schema `1`, type `japan_ci_ssh_authorization_topology`, bound account
 values, password locked, only `authenticationMethods=["publickey"]`, pubkey
 true, every other authentication boolean false, user environment false,
-accepted environment names empty, the sole bound authorization file, command
+accepted environment names empty, `forceCommand="none"`,
+`chrootDirectory="none"`, `disableForwarding=true`, `permitTunnel=false`, the
+sole bound authorization file, command
 fields `"none"`, principals/CA arrays empty, counts `1/1/0`, and lowercase
 closure/coverage digests. Reject unresolved Include/Match/conditional/address/
 host branches or alternate password, keyboard-interactive, host-based, GSSAPI,
-Kerberos, CA/principals, AuthorizedKeysCommand, or file-expansion paths.
+Kerberos, CA/principals, AuthorizedKeysCommand, file-expansion paths, effective
+server forced command, chroot, forwarding, or tunnel. Derive global, Include,
+account-applicable Match-scoped, and default effective values. Add RED/GREEN
+fixtures for default/explicit deny for both controls, global forwarding/tunnel
+allow, Match-scoped allow, and unresolved conditional alongside the
+ForceCommand/ChrootDirectory cases. Any non-`none` command/chroot or any
+effective forwarding/tunnel permission blocks bootstrap and Task 8 closeout so
+the key command and bound absolute paths remain effective authority. Per-key
+`restrict` and no-forwarding options are defense in depth, not a substitute for
+these account-effective values.
 `effectiveConfigSha256` is over UTF-8
 `JSON.stringify(canonicalTopology) + "\n"`.
 
@@ -588,8 +615,9 @@ localaddress, localport, rdomain, localnetwork, all`, appears once at most, and
 remains source-ordered. Each pattern has exact keys `negated, value`; boolean
 negation plus a nonempty printable ASCII value without whitespace, comma,
 backslash, control byte, or Unicode normalization. Preserve literal `*`/`?`,
-reject duplicate name/pattern pairs, require `patterns` as an explicit JSON
-array, freeze `all` exactly as `{"name":"all","patterns":[]}`, require
+reject duplicate name/pattern pairs and require `patterns` as an explicit JSON
+array. Freeze `all` with exact object shape `{name:"all", patterns:[]}` and
+exact no-space `JSON.stringify` bytes `{"name":"all","patterns":[]}`; require
 at least one pattern for every other condition, and require
 `variableDimensions` unique in
 fixed order `host, address, localaddress, localport, rdomain, localnetwork`.
@@ -623,7 +651,11 @@ comparison; no shell text is evaluated.
 
 Test fixed path roles and dynamic observed metadata. Ancestors are uid-0
 nonsymlink directories without group/other write. A file has `nlink=1`; a
-directory has JSON null nlink. `currentMap` is exact mode `0600` with observed
+directory policy has JSON `nlink=null` only as a not-bound sentinel: lstat and
+fstat observed link counts are positive BigInts and equal within the
+validation, never compared to null. File policies reject null and require
+exact integer/observed `1`. Test zero/negative directory counts, lstat/fstat
+count drift, and file-null rejection. `currentMap` is exact mode `0600` with observed
 uid/gid. Material store, Mihomo config, natural observation, and producer
 status accept only exact observed mode `0400` or `0600`, plus exact observed
 uid/gid: owner-only readable, non-executable, and never group/other accessible.
@@ -655,7 +687,11 @@ node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-en
 
 Expected: RED on the missing exact dash entrypoint, schema-3 closure,
 same-FD/bigint reader, eight-tool manifest, canonical SSH Include/Match and sudo
-policies, parser, and exact pre-migration behavior.
+policies, ForceCommand/ChrootDirectory enforcement,
+DisableForwarding/PermitTunnel enforcement, exact Match-all bytes,
+post-consumption full-policy drift, directory-nlink sentinel, login-shell
+projection, capability dry-run fixtures, parser, and exact pre-migration
+behavior.
 
 - [ ] **Step 3: Add the exact no-variable entrypoint**
 
@@ -689,10 +725,14 @@ explicit platform trust boundary. No installation occurs in this task.
 
 Implement the exact interfaces and nested orders above. `validateTrustedPathChain`
 is synchronous: canonical POSIX absolute lexical path; bigint lstat of `/` and
-each component exactly once; exact final lstat policy; required open flags;
-same-fd bigint fstat/dev+ino; optional synchronous consumer that cannot close;
-post-consume same dev/ino/size; and exactly-once close in `finally`, with close
-failure still fail-closed.
+each component exactly once; exact final lstat type/uid/gid/mode; file
+nlink policy and observed count exact `1`; directory policy sentinel null with
+positive-BigInt lstat count; required open flags; same-fd bigint fstat/dev+ino;
+file count still `1`, directory fstat count positive and equal to lstat;
+optional synchronous consumer that cannot close; post-consumption fstat that
+repeats the complete final type/uid/gid/mode/nlink policy including directory-
+null sentinel semantics and requires unchanged dev/ino/size; and exactly-once
+close in `finally`, with close failure still fail-closed.
 
 `loadRootOwnedBinding` accepts only the fixed binding path and fixed metadata;
 reads the verified fd from position zero in a bounded short-read/EINTR loop;
@@ -1010,13 +1050,17 @@ uid/home/shell and login-shell digest, root-controlled home/source chain,
 locked password, the complete account-wide public-key-only sshd topology,
 Include/Match closure and coverage digests, one effective authorization file,
 exactly one active line matching public-key blob hash, full line hash, and
-terminal marker, and the canonical sudo source/effective policy with exactly
-one no-argument rule and no other rule. Marker count alone and `visudo -cf`
+terminal marker, effective global and Match-scoped ForceCommand and
+ChrootDirectory both `none`, account-applicable DisableForwarding `true` and
+PermitTunnel `false`, and the canonical sudo source/effective policy
+with exactly one no-argument rule and no other rule. Marker count alone and `visudo -cf`
 alone are never authority.
 
 Test topology drift, alternate source/credential, extra active entry, duplicate
 key/line, line-hash-only or marker-only collision, noncanonical base64,
 embedded-algorithm mismatch, shell/home/passwd drift, Include/Match ambiguity,
+global or Match-scoped ForceCommand/ChrootDirectory drift, default/global/Match
+DisableForwarding or PermitTunnel drift and unresolved conditional branches,
 sudo include/rule/default/RunAs/argument/alias drift, alternate sudo source,
 and metadata/inode/digest drift before and after replacement-temporary creation.
 Before temporary creation, an exact unchanged readback may produce
@@ -1213,17 +1257,24 @@ GitHub secret cleanup Gate.
 Also require runbook/static evidence for the fixed installed paths and metadata,
 five-entry code manifest, eight-entry tool manifest with bootstrap-only native
 same-FD capability attestation, exact `sizeBytes` ceilings/EOF and low-12-bit
-special-mode rules, exact schema-3 recursive orders,
-`/usr/bin/dash` shebang/login-shell equality, exclusive repair account and sole
+special-mode rules, exact schema-3 recursive orders, `/usr/bin/dash` shebang
+and explicit login-shell/dash projection, exclusive repair account and sole
 authorization source, canonical complete SSH topology plus exact
-Include/Match preimages/nested grammar, canonical sudo source/effective policy
+Include/Match preimages/nested grammar with global and Match-scoped
+ForceCommand/ChrootDirectory both `none`, account-applicable DisableForwarding
+`true` and PermitTunnel `false` with default/global/Match/unresolved-conditional
+fixtures, exact Match-all object shape and no-space JSON bytes, canonical sudo
+source/effective policy
 and fixed sudoers rule, bounded line/blob parser, observed final-owner
 `0400`/`0600` role modes, exact
 `bound_writer_concurrency_not_machine_proven` residual, same-FD bigint/EOF/
 exactly-once-close and shared 1 MiB closure-read contract, runtime code/eight-
 tool manifest coverage without an xattr revalidation claim, Tasks 5-8 use-time
 revalidation, Task 8 zero-byte fsynced SSH-file plus absent parent-fsynced
-sudoers closeout, and the exact
+sudoers closeout, directory-null sentinel with positive/equal BigInt link
+counts and file-null rejection, post-consumption full type/uid/gid/mode/nlink
+revalidation including directory count drift, bootstrap capability dry-run
+matrix, and the exact
 pre-migration failure through Task 8. Static tests must reject the obsolete
 shebang, obsolete residual, root-only-final-owner authority, and marker-only or
 SSH-only success language.
@@ -1247,9 +1298,13 @@ Add the active spec/plan to `docs/README.md`.
 
 Document bootstrap as rollback-first and authorization-last: stage rollback;
 derive exact merged-source code/tool digests and bootstrap-native capability
-attestations; inventory and bind fixed paths, observed role metadata, writers,
+attestations plus the absent/unexpected/wrong-fd/error/oversize/digest-mismatch
+dry-run matrix; inventory and bind fixed paths, observed role metadata, writers,
 passwd/home/shell, line/blob, complete sshd Include/Match topology, and complete
-sudo source/effective policy; install and same-FD read back the entire closure;
+sudo source/effective policy; require effective global and Match-scoped
+ForceCommand/ChrootDirectory both `none`, account-applicable DisableForwarding
+`true`, and PermitTunnel `false`; install and same-FD read back the entire
+closure;
 then add the canonical authorization line as the final mutation. The first
 rollback mutation removes it, then removes and directory-fsyncs the dedicated
 sudoers file. Any ambiguity blocks rather than normalizes.
@@ -1292,11 +1347,19 @@ explicit platform skip unrelated to production behavior.
 
 The focused result must explicitly include the Task 4 recursive import-closure,
 five-code/eight-tool manifests, bootstrap-only capability attestation boundary,
+bootstrap capability dry-run fixtures for absent/unexpected/wrong-fd/error/
+oversize/digest mismatch,
 exact size/ceiling/EOF and low-12-bit special-mode boundaries, canonical
 schema, SSH topology/Include/Match/parser including explicit pattern arrays and
-fixed `all`, canonical sudo
+fixed `all`, global and Match-scoped ForceCommand/ChrootDirectory `none`,
+account-applicable DisableForwarding `true` and PermitTunnel `false` with
+default/explicit-deny, global-allow, Match-scoped-allow, and unresolved-
+conditional fixtures, exact Match-all object shape and no-space JSON bytes,
+explicit login-shell/dash projection, canonical sudo
 source/effective policy and exact no-argument rule, shared same-FD 1 MiB source
-reads, same-FD bigint/EOF/close, `0400`/`0600` role-mode/writer residual, exact
+reads, same-FD bigint/EOF/close, directory-null positive/equal BigInt sentinel
+plus file-null rejection and post-consumption type/uid/gid/mode/nlink drift,
+`0400`/`0600` role-mode/writer residual, exact
 pre-migration call-count, lock-precreation, Tasks 5-8 use-time drift, and
 zero-byte-fsynced-SSH plus absent-parent-fsynced-sudo non-marker-only closeout
 matrices. Treat any missing test class as
@@ -1323,8 +1386,12 @@ Use fresh reviewers for:
 - design/plan compliance and exact file surface;
 - attack-path review of workflow input, Environment secrets, forced command,
   binding, installed ESM/tool closure, same-FD reads, complete SSH account
-  topology, line/blob parser, use-time validation, frame, ledger/journal, helper
-  envelope, rollback, bootstrap authorization-last ordering, and closeout;
+  topology including ForceCommand/ChrootDirectory and
+  DisableForwarding/PermitTunnel global/Match/default derivation, exact
+  Match-all bytes, directory-link sentinel plus post-consumption full-policy
+  drift, login-shell projection, capability dry-run evidence, line/blob parser,
+  use-time validation, frame, ledger/journal, helper envelope, rollback,
+  bootstrap authorization-last ordering, and closeout;
 - code quality, test realism, and receipt redaction.
 
 Fix every Critical/Important finding through a new RED/GREEN cycle. Re-run the

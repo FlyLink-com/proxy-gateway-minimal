@@ -376,9 +376,11 @@ home/shell equal the fixed paths. `homeDirectoryPolicy` keys are exactly
 values file/root/root/`0755`/`1` plus one lowercase 64-hex digest. Bootstrap
 binds exact passwd uid/home/shell, proves the home chain root-controlled,
 proves the principal cannot replace an authorization source, and proves one
-occurrence of the public key and canonical line. Login-shell path, metadata,
-and SHA equal `toolManifest.dash` exactly apart from the tool-only capability
-field.
+occurrence of the public key and canonical line. Login-shell projection is
+exact: `loginShell === toolManifest.dash.path`, and login-shell
+type/uid/gid/mode/nlink/SHA equal the dash entry. Dash `sizeBytes` and
+`capabilitySha256` remain validated by the full tool-manifest entry and are not
+fields of `loginShellPolicy`.
 
 The account is exclusive to this repair identity for the bounded lifecycle.
 Its effective authorization file has exactly one active nonblank/noncomment
@@ -400,6 +402,8 @@ passwordLocked, authenticationMethods, pubkeyAuthentication,
 passwordAuthentication, keyboardInteractiveAuthentication,
 hostbasedAuthentication, gssapiAuthentication, kerberosAuthentication,
 permitUserEnvironment, acceptedEnvironmentNames,
+forceCommand, chrootDirectory,
+disableForwarding, permitTunnel,
 authorizedKeysFiles, authorizedKeysCommand, authorizedPrincipalsFiles,
 authorizedPrincipalsCommand, trustedUserCAKeys,
 activeAuthorizationEntryCount, targetKeyOccurrenceCount,
@@ -412,12 +416,23 @@ Fixed values are schema `1`, type
 `passwordLocked=true`, `authenticationMethods=["publickey"]`,
 `pubkeyAuthentication=true`, every other named authentication boolean false,
 `permitUserEnvironment=false`, `acceptedEnvironmentNames=[]`,
+`forceCommand="none"`, `chrootDirectory="none"`,
+`disableForwarding=true`, `permitTunnel=false`,
 `authorizedKeysFiles=[authorizedKeysFile]`, both command fields `"none"`, both
 principals/CA arrays empty, both entry/key counts `1`, address-dependent branch
 count `0`, and lowercase 64-hex closure/coverage digests.
 `effectiveConfigSha256` is the SHA-256 of UTF-8
 `JSON.stringify(canonicalTopology) + "\n"`. Bootstrap and Task 8 closeout use
-the same reviewed parser/builder and exact bytes.
+the same reviewed parser/builder and exact bytes. The Include/Match builder
+derives global, Include, account-applicable Match-scoped, and default effective
+values for ForceCommand, ChrootDirectory, DisableForwarding, and PermitTunnel.
+Any effective session command or chroot other than `none`, any effective
+forwarding permission, or any effective tunnel permission blocks bootstrap and
+closeout so the authorized-key command and fixed absolute host paths remain the
+execution authority. Default/explicit deny, global allow, Match-scoped allow,
+and unresolved-conditional fixtures are mandatory. Per-key `restrict` and
+no-forwarding options remain defense in depth and never substitute for the
+account-effective `disableForwarding=true` and `permitTunnel=false` values.
 
 `includeClosureSha256` is derived only from a canonical Include-closure record
 with exact keys `schemaVersion, type, rootConfig, files`. Files remain in
@@ -456,9 +471,10 @@ once per branch, and remains in source order. Each pattern has exact keys
 `negated, value`; `negated` is boolean and `value` is a nonempty printable
 ASCII token with no whitespace, comma, backslash, control byte, or Unicode
 normalization. Literal `*` and `?` wildcard bytes are preserved; duplicate
-name/pattern pairs fail. `patterns` is always an explicit JSON array; condition
-`all` is exactly `{"name":"all","patterns":[]}`, while every other
-condition has at least one pattern. `variableDimensions` is unique and fixed-order
+name/pattern pairs fail. `patterns` is always an explicit JSON array. Condition
+`all` has exact object shape `{name:"all", patterns:[]}` and exact no-space
+`JSON.stringify` bytes `{"name":"all","patterns":[]}`; every other condition
+has at least one pattern. `variableDimensions` is unique and fixed-order
 `host, address, localaddress, localport, rdomain, localnetwork`, containing
 only dimensions present. Unsupported names, ambiguous negation, escapes, or
 unparsable wildcard semantics fail closed.
@@ -512,7 +528,11 @@ authorization/state/backup/temporary/lock/sudoers paths equal the values above.
 `type, uid, gid, mode, nlink`: uid/gid/mode are nonnegative safe integers;
 mode is permission bits only in `0..0777` with no group/other write; files use
 `type="file"`, integer `nlink=1`; directories use `type="directory"`, JSON
-`nlink=null`. Fixed roles cannot be relaxed by binding data.
+`nlink=null`. Directory null is an explicit not-bound sentinel: observed lstat
+and fstat link counts must each be positive BigInts and equal during one
+validation, but are not compared to null. File policies cannot use null and
+continue to require exact integer `1`. Fixed roles cannot be relaxed by binding
+data.
 
 `sudoersFile` is root:root regular mode `0440`, `nlink=1`, and its exact
 content SHA-256 equals `sudoAuthorization.sudoersFileSha256`.
@@ -555,14 +575,20 @@ synchronous and fail-closed:
 2. use production bigint stats and `lstat` `/` plus each cumulative component
    exactly once; every ancestor is a uid-0 nonsymlink directory without
    group/other write;
-3. validate final lstat type and exact uid/gid/mode/nlink;
+3. validate final lstat type and exact uid/gid/mode. For a file, require policy
+   and observed `nlink=1` and reject null. For a directory, require policy
+   `nlink=null` and a positive BigInt observed nlink without comparing it to
+   null;
 4. open with `O_RDONLY|O_NOFOLLOW|O_CLOEXEC`, plus `O_DIRECTORY` for a
    directory;
 5. `fstat` with bigint stats, repeat final policy, and require exact bigint
-   dev+ino equality with lstat;
+   dev+ino equality with lstat. File nlink remains exact `1`; directory nlink
+   is a positive BigInt equal to the lstat directory nlink;
 6. call synchronous `consumeOpened(fd, openedStats)` before close when supplied;
    it consumes only that verified fd and never closes it;
-7. fstat after consumption and require unchanged dev, ino, and size; and
+7. fstat after consumption, repeat the complete final type/uid/gid/mode/nlink
+   policy including directory-null sentinel semantics, and require unchanged
+   dev, ino, and size; and
 8. close exactly once in `finally` after every successful open. Close failure
    fails closed even when an earlier operation also failed.
 
@@ -762,8 +788,11 @@ GitHub. Before mutation, closeout rebuilds and revalidates the exact canonical
 account-wide SSH topology and sudo source/effective policy with the same
 reviewed parsers used by bootstrap. It requires exactly one authorization line
 matching public-key blob hash, full line hash, and terminal marker; exactly one
-effective no-argument sudo rule; and no other rule. Marker-only selection or
-removal is forbidden. Closeout creates a durable SSH replacement, revalidates
+effective no-argument sudo rule; no other rule; effective global and
+Match-scoped ForceCommand/ChrootDirectory both `none`; and account-applicable
+`DisableForwarding=true` and `PermitTunnel=false`. Marker-only selection or
+removal is forbidden. Any forwarding/tunnel permission blocks closeout.
+Closeout creates a durable SSH replacement, revalidates
 both topologies and sources after temporary creation, fsyncs and atomically
 replaces the sole effective authorization file, fsyncs its parent, then removes
 the exact dedicated sudoers file and fsyncs that parent. It finally proves both
@@ -1054,11 +1083,21 @@ trailing byte, low-12-bit special-mode drift and required sudo setuid, explicit
 Match pattern arrays/`all` form, exact empty post-closeout authorization file,
 absent parent-fsynced sudoers file, exact fd propagation, bigint dev/ino,
 partial reads, EINTR, confirmed EOF, `65536/65537`, fatal UTF-8, BOM,
-duplicate/reordered/trailing bytes, open flags, post-read drift, exactly-once
-close, environment/EUID rejection ordering, schema-1 rejection, exact
+duplicate/reordered/trailing bytes, open flags, post-consumption
+type/uid/gid/mode/nlink drift including directory-sentinel count drift,
+exactly-once close, environment/EUID rejection ordering, schema-1 rejection, exact
 pre-migration stderr/exit/call counts, pre-created lock enforcement, observed
-metadata role minimums, and the exact bound-writer residual. Tasks 5-8 add
-operation-specific immediate reopen/fstat/digest assertions at every use.
+metadata role minimums, directory-nlink null-sentinel positive/equal BigInt
+semantics and file-null rejection, explicit login-shell/dash projection, exact
+Match-all object shape plus no-space JSON bytes, global and Match-scoped
+ForceCommand/ChrootDirectory `none` enforcement, account-applicable
+DisableForwarding/PermitTunnel deny enforcement with default/explicit-deny,
+global-allow, Match-scoped-allow, and unresolved-conditional fixtures, and the
+exact bound-writer residual. Bootstrap dry-run fixtures cover capability-xattr
+`ENODATA`/`ENOATTR`, unexpected bytes, wrong fd, unsupported/error, oversize,
+and digest mismatch without reclassifying them as runtime xattr validation.
+Tasks 5-8 add operation-specific immediate reopen/fstat/digest assertions at
+every use.
 
 Each behavior begins with a failing focused test, then minimal implementation,
 focused regression, and commit. Before merge, the exact PR head must pass
@@ -1079,7 +1118,10 @@ silently trusting a different workflow commit.
    entrypoint plus four-module `codeManifest`, eight-binary `toolManifest`
    including raw capability digests,
    binding and expected claim digest, fixed account/passwd/home/shell,
-   canonical complete sshd topology and Include/Match preimages, sole
+   canonical complete sshd topology and Include/Match preimages with global and
+   Match-scoped ForceCommand/ChrootDirectory both exactly `none`,
+   account-applicable DisableForwarding exactly `true` and PermitTunnel exactly
+   `false`, sole
    authorization source and line/blob, canonical sudo source/effective policy,
    fixed dedicated sudoers file/rule, lock/state/path metadata, writer
    inventory, host-key/endpoint digests,
@@ -1088,7 +1130,9 @@ silently trusting a different workflow commit.
    entire installed closure before authorization; and adds the exact
    authorization line last. Its first rollback mutation removes that line,
    followed by removal and parent-directory fsync of the exact sudoers file.
-   Any path, content/capability digest, SSH/sudo topology, role-mode,
+   Bootstrap capability dry-run evidence covers absent xattr, unexpected
+   bytes, wrong fd, unsupported/error, oversize, and digest mismatch before
+   authorization. Any path, content/capability digest, SSH/sudo topology, role-mode,
    Include/Match/include-source coverage, or readback ambiguity blocks
    bootstrap. The initial validation operation is `inspect`;
    no runtime-config write is authorized by bootstrap.
