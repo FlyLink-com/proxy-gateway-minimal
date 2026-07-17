@@ -841,7 +841,8 @@ function parseCanonicalReceiptFile(inputPath, operation) {
     if (!text.endsWith("\n") || text.includes("\r")) throw safeError("receipt_validation_failed");
     const input = JSON.parse(text.slice(0, -1));
     const receipt = validateReceiptForOperation(operation, input);
-    if (text !== `${JSON.stringify(receipt)}\n`) throw safeError("receipt_validation_failed");
+    const canonicalBytes = Buffer.from(`${JSON.stringify(receipt)}\n`, "utf8");
+    if (!bytes.equals(canonicalBytes)) throw safeError("receipt_validation_failed");
     return receipt;
   } catch {
     throw safeError("receipt_validation_failed");

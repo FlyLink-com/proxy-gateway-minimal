@@ -888,6 +888,11 @@ test("Mode 1 receipt CLI accepts only one canonical bounded UTF-8 JSON line", (t
 
   const invalidInputs = [
     ["empty.json", ""],
+    ["bom.json", Buffer.concat([
+      Buffer.from([0xef, 0xbb, 0xbf]),
+      Buffer.from(validLine, "utf8")
+    ])],
+    ["invalid-utf8.json", Buffer.from([0xc3, 0x28, 0x0a])],
     ["no-lf.json", JSON.stringify(inspectReceiptV3())],
     ["crlf.json", `${JSON.stringify(inspectReceiptV3())}\r\n`],
     ["two-lines.json", `${JSON.stringify(inspectReceiptV3())}\n${JSON.stringify(inspectReceiptV3())}\n`],
