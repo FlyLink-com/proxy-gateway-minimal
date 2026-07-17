@@ -1052,10 +1052,7 @@ export function createPortalAccessRequestService(options = {}) {
   }
 
   function hasPriorTrial(portalUserRef) {
-    return listRecords({ portalUserRef, plan: "trial" }).some((request) =>
-      request.portalUserRef === portalUserRef
-      && request.plan === "trial"
-    );
+    return listRecords({ portalUserRef, plan: "trial" }).length > 0;
   }
 
   function assertAutoIssuanceReady() {
@@ -1176,8 +1173,6 @@ export function createPortalAccessRequestService(options = {}) {
       const status = String(filters.status || "").trim();
       const portalUserRef = String(filters.portalUserRef || "").trim();
       return listRecords({ ...filters, status, portalUserRef })
-        .filter((request) => !status || request.status === status)
-        .filter((request) => !portalUserRef || request.portalUserRef === portalUserRef)
         .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
         .map(summarize);
     },
@@ -1185,7 +1180,6 @@ export function createPortalAccessRequestService(options = {}) {
     listEdgeCredentialOrders(filters = {}) {
       const status = String(filters.status || "").trim();
       return listRecords({ ...filters, status })
-        .filter((request) => !status || request.status === status)
         .flatMap(edgeCredentialOrderSummariesFor)
         .sort((a, b) =>
           a.submittedAt.localeCompare(b.submittedAt) ||
