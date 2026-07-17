@@ -2376,7 +2376,7 @@ function stat({ type = "file", mode = 0o644, size = 0, nlink = type === "directo
   };
 }
 
-function createPathOperations({ path, bytes, mode = 0o644, directory = false, childPath, childBytes, postDrift = false, readFault, closeFault = false, inheritedOperation = false } = {}) {
+function createPathOperations({ path, bytes, mode = 0o644, directory = false, childPath, childBytes, postDrift = false, readFault, closeFault = false, inheritedOperation = false, customOperationPrototype = false, nullOperationPrototype = false } = {}) {
   let nextFd = 40;
   const descriptors = new Map();
   const readBuffers = [];
@@ -2445,6 +2445,8 @@ function createPathOperations({ path, bytes, mode = 0o644, directory = false, ch
     }
   };
   if (inheritedOperation) Object.setPrototypeOf(operations, { lstat() { throw new Error("inherited operation must be rejected"); } });
+  if (customOperationPrototype) Object.setPrototypeOf(operations, { unexpectedOperation() {} });
+  if (nullOperationPrototype) Object.setPrototypeOf(operations, null);
   return { operations, descriptors, readBuffers };
 }
 
@@ -2465,6 +2467,35 @@ function makeNames(count, variant) {
   if (variant === "dot") names[0] = Buffer.from(".");
   if (variant === "duplicate" && names.length > 1) names[1] = Buffer.from(names[0]);
   return names;
+}
+
+function malformedDirectoryValue(kind) {
+  const rawBuffers = [Buffer.from("first"), Buffer.from("second")];
+  if (kind === "non-array") {
+    const value = Object.create(null);
+    Object.defineProperty(value, "0", { value: rawBuffers[0], writable: true, enumerable: true, configurable: true });
+    Object.defineProperty(value, "1", { value: rawBuffers[1], writable: true, enumerable: true, configurable: true });
+    Object.defineProperty(value, "length", { value: 2, writable: true, enumerable: false, configurable: false });
+    return { value, rawBuffers };
+  }
+  if (kind === "invalid-array-length") {
+    const target = [rawBuffers[0], rawBuffers[1]];
+    const value = new Proxy(target, {
+      getOwnPropertyDescriptor(inner, key) {
+        if (key === "length") return { value: -1, writable: true, enumerable: false, configurable: false };
+        return Reflect.getOwnPropertyDescriptor(inner, key);
+      }
+    });
+    return { value, rawBuffers };
+  }
+  if (kind === "sparse-huge") {
+    const value = [];
+    value.length = 4294967295;
+    value[3] = rawBuffers[0];
+    value[17] = rawBuffers[1];
+    return { value, rawBuffers };
+  }
+  throw new Error("unknown malformed directory value");
 }
 
 function sourceOperations(buffers) {
@@ -2515,7 +2546,7 @@ try {
   const sudo = api.__test_createAuthorizationSourceGraph(snapshot, "sudo");
   const sourcePath = payload.path || "/etc/ssh/sshd_config";
   if (payload.kind === "source") {
-    const fixture = createPathOperations({ path: sourcePath, bytes: payload.bytes, mode: payload.mode, postDrift: payload.postDrift === true, readFault: payload.readFault, closeFault: payload.closeFault === true, inheritedOperation: payload.inheritedOperation === true });
+    const fixture = createPathOperations({ path: sourcePath, bytes: payload.bytes, mode: payload.mode, postDrift: payload.postDrift === true, readFault: payload.readFault, closeFault: payload.closeFault === true, inheritedOperation: payload.inheritedOperation === true, customOperationPrototype: payload.customOperationPrototype === true, nullOperationPrototype: payload.nullOperationPrototype === true });
     let callback;
     let callbackBytes;
     let callbackBufferNonzero = false;
@@ -2558,7 +2589,9 @@ try {
   } else if (payload.kind === "directory") {
     const directoryPath = payload.path || "/etc/sudoers.d";
     const childPath = directoryPath + "/n0";
-    const buffers = makeNames(payload.count === undefined ? 1 : payload.count, payload.variant);
+    const malformed = payload.malformed ? malformedDirectoryValue(payload.malformed) : null;
+    const buffers = malformed ? malformed.value : makeNames(payload.count === undefined ? 1 : payload.count, payload.variant);
+    const rawBuffers = malformed ? malformed.rawBuffers : buffers;
     const fixture = createPathOperations({
       path: directoryPath,
       directory: true,
@@ -2582,7 +2615,7 @@ try {
         error: null,
         callbackCount,
         events,
-        namesZeroized: summarizeBuffers(buffers),
+        namesZeroized: summarizeBuffers(rawBuffers),
         budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo)
       }));
     } catch (error) {
@@ -2595,7 +2628,7 @@ try {
         error: error && error.code ? error.code : String(error && error.name),
         callbackCount,
         events,
-        namesZeroized: summarizeBuffers(buffers),
+        namesZeroized: summarizeBuffers(rawBuffers),
         followUpError,
         followUpOperations: events.length - beforeFollowUp,
         budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo)
@@ -2633,8 +2666,10 @@ try {
   try {
     const result = spawnSync(process.execPath, ["--experimental-vm-modules", harnessPath, runnerPath, payloadPath], {
       encoding: "utf8",
-      maxBuffer: 16 * 1024 * 1024
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: payload.expectTimeout ? 800 : undefined
     });
+    if (payload.expectTimeout) return { timedOut: result.error && result.error.code, status: result.status, stdout: result.stdout };
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout);
   } finally {
@@ -2803,4 +2838,33 @@ test("authorization source and basename buffers are zeroized on every path", () 
   });
   assert.equal(callbackFailure.error, "restricted_identity_rejected");
   assert.equal(callbackFailure.events.filter(([name]) => name === "close").length, 1);
+});
+
+test("authorization source directory malformed cleanup is sparse-bounded and operation records have no custom prototype", () => {
+  const sparse = sourceReaderVmProbe({ kind: "directory", malformed: "sparse-huge", expectTimeout: true });
+  assert.equal(sparse.timedOut, undefined, `directory cleanup must not scan an untrusted length: ${JSON.stringify(sparse)}`);
+  assert.equal(sparse.status, 0);
+  const sparseResult = JSON.parse(sparse.stdout);
+  assert.equal(sparseResult.error, "restricted_identity_rejected");
+  assert.equal(sparseResult.namesZeroized, true);
+  for (const malformed of ["non-array", "invalid-array-length"]) {
+    const probe = sourceReaderVmProbe({ kind: "directory", malformed });
+    assert.equal(probe.error, "restricted_identity_rejected", malformed);
+    assert.equal(probe.callbackCount, 0, malformed);
+    assert.equal(probe.namesZeroized, true, malformed);
+  }
+  const customPrototype = sourceReaderVmProbe({
+    kind: "source",
+    customOperationPrototype: true,
+    mode: 0o600,
+    bytes: Buffer.from("body", "utf8").toString("base64")
+  });
+  assert.equal(customPrototype.error, "restricted_identity_rejected");
+  const nullPrototype = sourceReaderVmProbe({
+    kind: "source",
+    nullOperationPrototype: true,
+    mode: 0o600,
+    bytes: Buffer.from("body", "utf8").toString("base64")
+  });
+  assert.equal(nullPrototype.error, null);
 });

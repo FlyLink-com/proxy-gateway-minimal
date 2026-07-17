@@ -232,6 +232,10 @@ const AUTHORIZATION_SOURCE_MAX_FIXED_ENVELOPES = 32;
 const AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES = 131072;
 const AUTHORIZATION_PATH_OPERATION_KEYS = Object.freeze(["lstat", "open", "fstat", "read", "close"]);
 const AUTHORIZATION_SOURCE_OPERATION_KEYS = Object.freeze(["readDirectory", "validateSudoers"]);
+const AUTHORIZATION_STANDARD_OBJECT_PROTOTYPE_KEYS = Object.freeze([
+  "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "__proto__", "constructor",
+  "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable", "toLocaleString", "toString", "valueOf"
+]);
 
 function restricted() {
   throw safeError(RESTRICTED_CODE);
@@ -240,6 +244,13 @@ function restricted() {
 function exactPrivateOperationRecord(input, expected) {
   if (!input || typeof input !== "object" || Array.isArray(input)
     || Object.getOwnPropertySymbols(input).length !== 0) restricted();
+  const prototype = Object.getPrototypeOf(input);
+  if (prototype !== null) {
+    const prototypeNames = Object.getOwnPropertyNames(prototype).sort();
+    const standardNames = [...AUTHORIZATION_STANDARD_OBJECT_PROTOTYPE_KEYS].sort();
+    if (Object.getPrototypeOf(prototype) !== null || Object.getOwnPropertySymbols(prototype).length !== 0
+      || prototypeNames.length !== standardNames.length || prototypeNames.some((name, index) => name !== standardNames[index])) restricted();
+  }
   const names = Object.getOwnPropertyNames(input).sort();
   const sortedExpected = [...expected].sort();
   if (names.length !== sortedExpected.length || names.some((name, index) => name !== sortedExpected[index])) restricted();
@@ -627,25 +638,48 @@ function consumeTrustedAuthorizationSource(graph, path, inputOperations, callbac
 }
 
 function cleanupOnlyAuthorizationDirectoryArray(value, length) {
-  if (!Array.isArray(value) || !Number.isSafeInteger(length) || length < 0) return;
-  for (let index = length - 1; index >= 0; index -= 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-    if (descriptor && Object.hasOwn(descriptor, "value") && Buffer.isBuffer(descriptor.value)) descriptor.value.fill(0);
+  if (!value || (typeof value !== "object" && typeof value !== "function")) return;
+  let indexes;
+  try {
+    indexes = Object.getOwnPropertyNames(value)
+      .filter((name) => /^(0|[1-9][0-9]*)$/.test(name) && Number(name) < 4294967295)
+      .map(Number)
+      .sort((left, right) => right - left);
+  } catch {
+    return;
+  }
+  for (const index of indexes) {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (descriptor && Object.hasOwn(descriptor, "value") && Buffer.isBuffer(descriptor.value)) descriptor.value.fill(0);
+    } catch {
+      // Cleanup-only handling must not turn a hostile descriptor into further work.
+    }
   }
 }
 
 function validateAuthorizationDirectoryArray(graph, value) {
-  if (!Array.isArray(value)) restricted();
-  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (!Array.isArray(value)) {
+    cleanupOnlyAuthorizationDirectoryArray(value);
+    restricted();
+  }
+  let lengthDescriptor;
+  try {
+    lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  } catch {
+    cleanupOnlyAuthorizationDirectoryArray(value);
+    restricted();
+  }
   if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, "value") || !Number.isSafeInteger(lengthDescriptor.value)
     || lengthDescriptor.value < 0 || lengthDescriptor.enumerable !== false || lengthDescriptor.configurable !== false) {
+    cleanupOnlyAuthorizationDirectoryArray(value);
     restricted();
   }
   const length = lengthDescriptor.value;
   try {
     reserveAuthorizationDirectoryNames(graph, length);
   } catch (error) {
-    cleanupOnlyAuthorizationDirectoryArray(value, length);
+    cleanupOnlyAuthorizationDirectoryArray(value);
     throw error;
   }
   const checkpoint = graph.cleanupStack.length;
