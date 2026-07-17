@@ -43,6 +43,8 @@ const BINDING_PATH_KEYS = Object.freeze([
   "producerStatus",
   "temporaryRoot"
 ]);
+
+const ALLOWED_ZIP_TYPES = new Set(["-", "d"]);
 const REQUIRED_ARCHIVE_ENTRIES = Object.freeze([
   "scripts/mihomo-tuic-usage-map-rebuild.mjs",
   "scripts/traffic-accounting-natural-observation.mjs",
@@ -510,7 +512,7 @@ function parseJsonOutput(output, code) {
 function validateZipTypeListing(output) {
   for (const line of String(output || "").split(/\r?\n/)) {
     const match = line.match(/^\s*([bcdlps-])[rwxStTs-]{9}\s/);
-    if (match && !new Set(["-", "d"]).has(match[1])) {
+    if (match && !ALLOWED_ZIP_TYPES.has(match[1])) {
       throw safeError("artifact_identity_mismatch");
     }
   }
