@@ -279,6 +279,414 @@ function requireAuthorizationSourceGraph(graph) {
   return graph;
 }
 
+// C2B_EXACT_BLOCK_BEGIN
+const AUTHORIZATION_SHARED_SEMANTIC_LIMITS = Object.freeze({
+  fixedEnvelope: 32,
+  sourceFile: 256,
+  authorizationEntry: 1
+});
+
+const AUTHORIZATION_SSH_SEMANTIC_LIMITS = Object.freeze({
+  sshPhysicalDirective: 131072,
+  sshIncludePattern: 131072,
+  sshSelectedInsertion: 65536,
+  sshMatchBranch: 4096,
+  sshMatchCondition: 131072,
+  sshMatchPattern: 131072,
+  sshAssignment: 131072,
+  sshAcceptEnvName: 131072
+});
+
+const AUTHORIZATION_SUDO_SEMANTIC_LIMITS = Object.freeze({
+  sudoStatement: 131072,
+  sudoInclude: 131072,
+  sudoSelectedInsertion: 65536,
+  sudoAliasDefinition: 256,
+  sudoAliasMember: 65536,
+  sudoDefaultsItem: 131072,
+  sudoUserSpec: 4096,
+  sudoUserHostRunasMember: 131072,
+  sudoTagTransition: 131072,
+  sudoCommandSpec: 16384,
+  sudoArgumentToken: 131072,
+  sudoAliasEdge: 16384,
+  sudoAliasMemoEntry: 256
+});
+
+const AUTHORIZATION_PARSER_LOCAL_LIMITS = Object.freeze({
+  tokensPerPhysicalLine: 256,
+  generalTokenBytes: 4096,
+  sshIncludeOperands: 64,
+  sshMatchBranches: 4096,
+  sshMatchConditionsPerBranch: 9,
+  sshMatchPatternsPerCondition: 64,
+  sshMatchPatternBytes: 255,
+  sudoAliasDefinitions: 256,
+  sudoAliasMembersPerAlias: 256,
+  sudoAliasExpansionNodes: 4096,
+  sudoUserSpecs: 4096,
+  sudoUserListMembersPerSpec: 256,
+  sudoCommandSpecsPerSpec: 256,
+  sudoDefaultsItemsPerStatement: 64,
+  accountGroups: 256
+});
+
+const AUTHORIZATION_WORK_LIMITS = Object.freeze({
+  globComparisons: 65536,
+  wildcardPatternBytes: 4194304,
+  wildcardInvocations: 131072,
+  wildcardAlignedComparisons: 16777216,
+  sshMatchComparisons: 131072,
+  sudoSelectorComparisons: 65536,
+  sudoCommand: 16384,
+  sudoAliasEdge: 16384,
+  sudoAliasVisit: 32768,
+  preimageBytes: 4194304,
+  retainedPreimageBytes: 8388608
+});
+
+function nextAuthorizationBudgetValue(current, amount, maximum) {
+  if (!Number.isSafeInteger(current) || current < 0
+    || !Number.isSafeInteger(amount) || amount <= 0
+    || !Number.isSafeInteger(maximum) || maximum <= 0) {
+    restricted();
+  }
+  const next = current + amount;
+  if (!Number.isSafeInteger(next) || next > maximum) restricted();
+  return next;
+}
+
+function reserveAuthorizationSemanticNode(graph, kind) {
+  let active;
+  let counter;
+  let maximum;
+  let workCounter;
+  let workMaximum;
+  let counterNext;
+  let graphNext;
+  let snapshotNext;
+  let workNext;
+  try {
+    active = requireAuthorizationSourceGraph(graph);
+    switch (kind) {
+      case "sourceFile":
+        counter = "sourceFileCount";
+        maximum = AUTHORIZATION_SHARED_SEMANTIC_LIMITS.sourceFile;
+        break;
+      case "sshPhysicalDirective":
+        if (active.kind !== "ssh") restricted();
+        counter = "sshPhysicalDirectiveCount";
+        maximum = AUTHORIZATION_SSH_SEMANTIC_LIMITS.sshPhysicalDirective;
+        break;
+      case "sshIncludePattern":
+        if (active.kind !== "ssh") restricted();
+        counter = "sshIncludePatternCount";
+        maximum = AUTHORIZATION_SSH_SEMANTIC_LIMITS.sshIncludePattern;
+        break;
+      case "sshSelectedInsertion":
+        if (active.kind !== "ssh") restricted();
+        counter = "sshSelectedInsertionCount";
+        maximum = AUTHORIZATION_SSH_SEMANTIC_LIMITS.sshSelectedInsertion;
+        break;
+      case "sshMatchBranch":
+        if (active.kind !== "ssh") restricted();
+        counter = "sshMatchBranchCount";
+        maximum = AUTHORIZATION_SSH_SEMANTIC_LIMITS.sshMatchBranch;
+        break;
+      case "sshMatchCondition":
+        if (active.kind !== "ssh") restricted();
+        counter = "sshMatchConditionCount";
+        maximum = AUTHORIZATION_SSH_SEMANTIC_LIMITS.sshMatchCondition;
+        break;
+      case "sshMatchPattern":
+        if (active.kind !== "ssh") restricted();
+        counter = "sshMatchPatternCount";
+        maximum = AUTHORIZATION_SSH_SEMANTIC_LIMITS.sshMatchPattern;
+        break;
+      case "sshAssignment":
+        if (active.kind !== "ssh") restricted();
+        counter = "sshAssignmentCount";
+        maximum = AUTHORIZATION_SSH_SEMANTIC_LIMITS.sshAssignment;
+        break;
+      case "sshAcceptEnvName":
+        if (active.kind !== "ssh") restricted();
+        counter = "sshAcceptEnvNameCount";
+        maximum = AUTHORIZATION_SSH_SEMANTIC_LIMITS.sshAcceptEnvName;
+        break;
+      case "sudoStatement":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoStatementCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoStatement;
+        break;
+      case "sudoInclude":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoIncludeCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoInclude;
+        break;
+      case "sudoSelectedInsertion":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoSelectedInsertionCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoSelectedInsertion;
+        break;
+      case "sudoAliasDefinition":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoAliasDefinitionCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoAliasDefinition;
+        break;
+      case "sudoAliasMember":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoAliasMemberCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoAliasMember;
+        break;
+      case "sudoDefaultsItem":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoDefaultsItemCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoDefaultsItem;
+        break;
+      case "sudoUserSpec":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoUserSpecCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoUserSpec;
+        break;
+      case "sudoUserHostRunasMember":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoUserHostRunasMemberCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoUserHostRunasMember;
+        break;
+      case "sudoTagTransition":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoTagTransitionCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoTagTransition;
+        break;
+      case "sudoCommandSpec":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoCommandSpecCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoCommandSpec;
+        workCounter = "commandWorkCount";
+        workMaximum = AUTHORIZATION_WORK_LIMITS.sudoCommand;
+        break;
+      case "sudoArgumentToken":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoArgumentTokenCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoArgumentToken;
+        break;
+      case "sudoAliasEdge":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoAliasEdgeCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoAliasEdge;
+        workCounter = "aliasEdgeWorkCount";
+        workMaximum = AUTHORIZATION_WORK_LIMITS.sudoAliasEdge;
+        break;
+      case "sudoAliasMemoEntry":
+        if (active.kind !== "sudo") restricted();
+        counter = "sudoAliasMemoEntryCount";
+        maximum = AUTHORIZATION_SUDO_SEMANTIC_LIMITS.sudoAliasMemoEntry;
+        break;
+      default:
+        restricted();
+    }
+    counterNext = nextAuthorizationBudgetValue(active[counter], 1, maximum);
+    graphNext = nextAuthorizationBudgetValue(
+      active.semanticNodeCount,
+      1,
+      AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES
+    );
+    snapshotNext = nextAuthorizationBudgetValue(
+      active.snapshot.semanticNodeCount,
+      1,
+      AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES
+    );
+    if (workCounter !== undefined) {
+      workNext = nextAuthorizationBudgetValue(active[workCounter], 1, workMaximum);
+    }
+    active[counter] = counterNext;
+    active.semanticNodeCount = graphNext;
+    active.snapshot.semanticNodeCount = snapshotNext;
+    if (workCounter !== undefined) active[workCounter] = workNext;
+  } catch {
+    failAuthorizationSourceGraph(graph);
+    restricted();
+  }
+}
+
+function reserveAuthorizationWorkUnit(graph, kind) {
+  let active;
+  let graphCounter;
+  let graphMaximum;
+  let snapshotCounter;
+  let snapshotMaximum;
+  let graphNext;
+  let snapshotNext;
+  let invocationNext;
+  try {
+    active = requireAuthorizationSourceGraph(graph);
+    switch (kind) {
+      case "glob":
+        graphCounter = "globComparisonCount";
+        graphMaximum = AUTHORIZATION_WORK_LIMITS.globComparisons;
+        snapshotCounter = "wildcardInvocationCount";
+        snapshotMaximum = AUTHORIZATION_WORK_LIMITS.wildcardInvocations;
+        break;
+      case "sshMatch":
+        if (active.kind !== "ssh") restricted();
+        snapshotCounter = "sshMatchComparisonCount";
+        snapshotMaximum = AUTHORIZATION_WORK_LIMITS.sshMatchComparisons;
+        break;
+      case "sudoSelector":
+        if (active.kind !== "sudo") restricted();
+        snapshotCounter = "sudoSelectorComparisonCount";
+        snapshotMaximum = AUTHORIZATION_WORK_LIMITS.sudoSelectorComparisons;
+        break;
+      case "sudoCommand":
+        if (active.kind !== "sudo") restricted();
+        graphCounter = "commandWorkCount";
+        graphMaximum = AUTHORIZATION_WORK_LIMITS.sudoCommand;
+        break;
+      case "sudoAliasEdge":
+        if (active.kind !== "sudo") restricted();
+        graphCounter = "aliasEdgeWorkCount";
+        graphMaximum = AUTHORIZATION_WORK_LIMITS.sudoAliasEdge;
+        break;
+      case "sudoAliasVisit":
+        if (active.kind !== "sudo") restricted();
+        snapshotCounter = "sudoAliasVisitCount";
+        snapshotMaximum = AUTHORIZATION_WORK_LIMITS.sudoAliasVisit;
+        break;
+      default:
+        restricted();
+    }
+    if (graphCounter !== undefined) {
+      graphNext = nextAuthorizationBudgetValue(active[graphCounter], 1, graphMaximum);
+    }
+    if (snapshotCounter !== undefined) {
+      snapshotNext = nextAuthorizationBudgetValue(active.snapshot[snapshotCounter], 1, snapshotMaximum);
+    }
+    if (kind === "sshMatch" || kind === "sudoSelector") {
+      invocationNext = nextAuthorizationBudgetValue(
+        active.snapshot.wildcardInvocationCount,
+        1,
+        AUTHORIZATION_WORK_LIMITS.wildcardInvocations
+      );
+    }
+    if (graphCounter !== undefined) active[graphCounter] = graphNext;
+    if (snapshotCounter !== undefined) active.snapshot[snapshotCounter] = snapshotNext;
+    if (kind === "sshMatch" || kind === "sudoSelector") {
+      active.snapshot.wildcardInvocationCount = invocationNext;
+    }
+  } catch {
+    failAuthorizationSourceGraph(graph);
+    restricted();
+  }
+}
+
+function reservePreimageBytes(snapshot, length) {
+  if (!snapshot || !AUTHORIZATION_SOURCE_SNAPSHOT_BRAND.has(snapshot)) restricted();
+  if (snapshot.failed) restricted();
+  if (!Number.isSafeInteger(length) || length <= 0
+    || length > AUTHORIZATION_WORK_LIMITS.preimageBytes) {
+    snapshot.failed = true;
+    restricted();
+  }
+  let next;
+  try {
+    next = nextAuthorizationBudgetValue(
+      snapshot.retainedPreimageBytes,
+      length,
+      AUTHORIZATION_WORK_LIMITS.retainedPreimageBytes
+    );
+  } catch {
+    snapshot.failed = true;
+    restricted();
+  }
+  snapshot.retainedPreimageBytes = next;
+}
+
+function scanAuthorizationWildcardPattern(graph, pattern) {
+  let active;
+  try {
+    active = requireAuthorizationSourceGraph(graph);
+    if (!Buffer.isBuffer(pattern)) restricted();
+    let starIndex = -1;
+    for (let index = 0; index < pattern.length; index += 1) {
+      const next = nextAuthorizationBudgetValue(
+        active.snapshot.wildcardPatternByteCount,
+        1,
+        AUTHORIZATION_WORK_LIMITS.wildcardPatternBytes
+      );
+      active.snapshot.wildcardPatternByteCount = next;
+      const byte = pattern[index];
+      if (byte === 0x2a) {
+        if (starIndex !== -1) restricted();
+        starIndex = index;
+      }
+    }
+    return starIndex;
+  } catch {
+    failAuthorizationSourceGraph(graph);
+    restricted();
+  }
+}
+
+function matchAuthorizationWildcard(graph, domain, pattern, target, starIndex) {
+  let active;
+  try {
+    active = requireAuthorizationSourceGraph(graph);
+    if (!Buffer.isBuffer(pattern) || !Buffer.isBuffer(target)
+      || typeof starIndex !== "number" || starIndex % 1 !== 0
+      || starIndex < -1 || starIndex >= pattern.length) {
+      restricted();
+    }
+    reserveAuthorizationWorkUnit(active, domain);
+    if (starIndex === -1) {
+      if (pattern.length !== target.length) return false;
+      for (let index = 0; index < pattern.length; index += 1) {
+        const next = nextAuthorizationBudgetValue(
+          active.snapshot.wildcardAlignedComparisonCount,
+          1,
+          AUTHORIZATION_WORK_LIMITS.wildcardAlignedComparisons
+        );
+        active.snapshot.wildcardAlignedComparisonCount = next;
+        const patternByte = pattern[index];
+        const targetByte = target[index];
+        if (patternByte !== 0x3f && patternByte !== targetByte) return false;
+      }
+      return true;
+    }
+    const prefixLength = starIndex;
+    const suffixLength = pattern.length - starIndex - 1;
+    if (target.length < prefixLength + suffixLength) return false;
+    for (let prefixIndex = 0; prefixIndex < prefixLength; prefixIndex += 1) {
+      const next = nextAuthorizationBudgetValue(
+        active.snapshot.wildcardAlignedComparisonCount,
+        1,
+        AUTHORIZATION_WORK_LIMITS.wildcardAlignedComparisons
+      );
+      active.snapshot.wildcardAlignedComparisonCount = next;
+      const patternByte = pattern[prefixIndex];
+      const targetByte = target[prefixIndex];
+      if (patternByte !== 0x3f && patternByte !== targetByte) return false;
+    }
+    for (let suffixOffset = 0; suffixOffset < suffixLength; suffixOffset += 1) {
+      const patternIndex = pattern.length - suffixOffset - 1;
+      const targetIndex = target.length - suffixOffset - 1;
+      const next = nextAuthorizationBudgetValue(
+        active.snapshot.wildcardAlignedComparisonCount,
+        1,
+        AUTHORIZATION_WORK_LIMITS.wildcardAlignedComparisons
+      );
+      active.snapshot.wildcardAlignedComparisonCount = next;
+      const patternByte = pattern[patternIndex];
+      const targetByte = target[targetIndex];
+      if (patternByte !== 0x3f && patternByte !== targetByte) return false;
+    }
+    return true;
+  } catch {
+    failAuthorizationSourceGraph(graph);
+    restricted();
+  }
+}
+// C2B_EXACT_BLOCK_END
+
 function reserveAuthorizationSourceRead(graph, size) {
   const active = requireAuthorizationSourceGraph(graph);
   if (!Number.isSafeInteger(size) || size < 0 || size > AUTHORIZATION_SOURCE_MAX_FILE_BYTES
@@ -292,16 +700,7 @@ function reserveAuthorizationSourceRead(graph, size) {
 }
 
 function reserveAuthorizationSourceNode(graph) {
-  const active = requireAuthorizationSourceGraph(graph);
-  if (active.sourceFileCount + 1 > AUTHORIZATION_SOURCE_MAX_FILES
-    || active.semanticNodeCount + 1 > AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES
-    || active.snapshot.semanticNodeCount + 1 > AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES) {
-    failAuthorizationSourceGraph(active);
-    restricted();
-  }
-  active.sourceFileCount += 1;
-  active.semanticNodeCount += 1;
-  active.snapshot.semanticNodeCount += 1;
+  reserveAuthorizationSemanticNode(graph, "sourceFile");
 }
 
 function reserveAuthorizationDirectoryNames(graph, count) {
@@ -327,6 +726,16 @@ function createAuthorizationSourceSnapshot() {
     sshGraph: { value: undefined, writable: true, enumerable: true },
     sudoGraph: { value: undefined, writable: true, enumerable: true }
   });
+  Object.defineProperties(snapshot, {
+    authorizationEntryCount: { value: 0, writable: true, enumerable: true },
+    wildcardPatternByteCount: { value: 0, writable: true, enumerable: true },
+    wildcardInvocationCount: { value: 0, writable: true, enumerable: true },
+    wildcardAlignedComparisonCount: { value: 0, writable: true, enumerable: true },
+    sshMatchComparisonCount: { value: 0, writable: true, enumerable: true },
+    sudoSelectorComparisonCount: { value: 0, writable: true, enumerable: true },
+    sudoAliasVisitCount: { value: 0, writable: true, enumerable: true },
+    retainedPreimageBytes: { value: 0, writable: true, enumerable: true }
+  });
   AUTHORIZATION_SOURCE_SNAPSHOT_BRAND.add(snapshot);
   return snapshot;
 }
@@ -351,6 +760,30 @@ function createAuthorizationSourceGraph(snapshot, kind) {
       directoryNameCount: { value: 0, writable: true, enumerable: true },
       depth: { value: 0, writable: true, enumerable: true },
       nextOrdinal: { value: 0, writable: true, enumerable: true },
+      sshPhysicalDirectiveCount: { value: 0, writable: true, enumerable: true },
+      sshIncludePatternCount: { value: 0, writable: true, enumerable: true },
+      sshSelectedInsertionCount: { value: 0, writable: true, enumerable: true },
+      sshMatchBranchCount: { value: 0, writable: true, enumerable: true },
+      sshMatchConditionCount: { value: 0, writable: true, enumerable: true },
+      sshMatchPatternCount: { value: 0, writable: true, enumerable: true },
+      sshAssignmentCount: { value: 0, writable: true, enumerable: true },
+      sshAcceptEnvNameCount: { value: 0, writable: true, enumerable: true },
+      sudoStatementCount: { value: 0, writable: true, enumerable: true },
+      sudoIncludeCount: { value: 0, writable: true, enumerable: true },
+      sudoSelectedInsertionCount: { value: 0, writable: true, enumerable: true },
+      sudoAliasDefinitionCount: { value: 0, writable: true, enumerable: true },
+      sudoAliasMemberCount: { value: 0, writable: true, enumerable: true },
+      sudoDefaultsItemCount: { value: 0, writable: true, enumerable: true },
+      sudoUserSpecCount: { value: 0, writable: true, enumerable: true },
+      sudoUserHostRunasMemberCount: { value: 0, writable: true, enumerable: true },
+      sudoTagTransitionCount: { value: 0, writable: true, enumerable: true },
+      sudoCommandSpecCount: { value: 0, writable: true, enumerable: true },
+      sudoArgumentTokenCount: { value: 0, writable: true, enumerable: true },
+      sudoAliasEdgeCount: { value: 0, writable: true, enumerable: true },
+      sudoAliasMemoEntryCount: { value: 0, writable: true, enumerable: true },
+      globComparisonCount: { value: 0, writable: true, enumerable: true },
+      commandWorkCount: { value: 0, writable: true, enumerable: true },
+      aliasEdgeWorkCount: { value: 0, writable: true, enumerable: true },
       failed: { value: false, writable: true, enumerable: true },
       cleanupStack: { value: undefined, writable: true, enumerable: true }
     });

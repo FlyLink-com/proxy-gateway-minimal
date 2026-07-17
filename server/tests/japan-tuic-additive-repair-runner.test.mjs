@@ -3827,3 +3827,2300 @@ test("authorization source matrix contract checkers independently detect exact i
   assert.deepEqual(operationTrace(eofMutation).filter(([name]) => name === "zero"), [["zero", 1, true]]);
   assert.throws(() => requireEofOwnership(eofMutation));
 });
+
+function c2bBudgetHarnessPrefix() {
+  return String.raw`
+import { readFileSync } from "node:fs";
+import * as crypto from "node:crypto";
+import * as nodePath from "node:path";
+import * as nodeUrl from "node:url";
+import { promisify, types } from "node:util";
+import vm from "node:vm";
+
+const [runnerPath, scenario] = process.argv.slice(2);
+const nativeObject = Object;
+const nativeArray = Array;
+const nativeMap = Map;
+const nativeSet = Set;
+const nativeWeakMap = WeakMap;
+const nativeWeakSet = WeakSet;
+const nativeProxy = Proxy;
+const nativeBuffer = Buffer;
+const nativeRegExp = RegExp;
+const nativeTextEncoder = TextEncoder;
+const nativeJSON = JSON;
+let allocationActive = false;
+const allocationCounts = {
+  objectCall: 0, objectCreate: 0, array: 0, map: 0, set: 0, weakMap: 0, weakSet: 0, proxy: 0,
+  bufferConstructor: 0, bufferAlloc: 0, bufferAllocUnsafe: 0, bufferConcat: 0, bufferFrom: 0, bufferOf: 0,
+  createHash: 0, regexp: 0,
+  textEncoder: 0, textEncode: 0, jsonStringify: 0, jsonParse: 0
+};
+
+function instrumentedObject(value) {
+  if (allocationActive) allocationCounts.objectCall += 1;
+  return nativeObject(value);
+}
+instrumentedObject.prototype = nativeObject.prototype;
+nativeObject.setPrototypeOf(instrumentedObject, nativeObject);
+instrumentedObject.create = (...arguments_) => {
+  if (allocationActive) allocationCounts.objectCreate += 1;
+  return nativeObject.create(...arguments_);
+};
+function instrumentedArray(...arguments_) {
+  if (allocationActive) allocationCounts.array += 1;
+  return new nativeArray(...arguments_);
+}
+instrumentedArray.prototype = nativeArray.prototype;
+nativeObject.setPrototypeOf(instrumentedArray, nativeArray);
+function instrumentedMap(iterable) {
+  if (!new.target) return Reflect.apply(nativeMap, undefined, [iterable]);
+  if (allocationActive && new.target) allocationCounts.map += 1;
+  return new nativeMap(iterable);
+}
+instrumentedMap.prototype = nativeMap.prototype;
+nativeObject.setPrototypeOf(instrumentedMap, nativeMap);
+function instrumentedSet(iterable) {
+  if (!new.target) return Reflect.apply(nativeSet, undefined, [iterable]);
+  if (allocationActive && new.target) allocationCounts.set += 1;
+  return new nativeSet(iterable);
+}
+instrumentedSet.prototype = nativeSet.prototype;
+nativeObject.setPrototypeOf(instrumentedSet, nativeSet);
+function instrumentedWeakMap(iterable) {
+  if (!new.target) return Reflect.apply(nativeWeakMap, undefined, [iterable]);
+  if (allocationActive && new.target) allocationCounts.weakMap += 1;
+  return new nativeWeakMap(iterable);
+}
+instrumentedWeakMap.prototype = nativeWeakMap.prototype;
+nativeObject.setPrototypeOf(instrumentedWeakMap, nativeWeakMap);
+function instrumentedWeakSet(iterable) {
+  if (!new.target) return Reflect.apply(nativeWeakSet, undefined, [iterable]);
+  if (allocationActive && new.target) allocationCounts.weakSet += 1;
+  return new nativeWeakSet(iterable);
+}
+instrumentedWeakSet.prototype = nativeWeakSet.prototype;
+nativeObject.setPrototypeOf(instrumentedWeakSet, nativeWeakSet);
+function instrumentedProxy(target, handler) {
+  if (allocationActive) allocationCounts.proxy += 1;
+  if (!new.target) return Reflect.apply(nativeProxy, undefined, [target, handler]);
+  return new nativeProxy(target, handler);
+}
+instrumentedProxy.revocable = (target, handler) => {
+  if (allocationActive) allocationCounts.proxy += 1;
+  return nativeProxy.revocable(target, handler);
+};
+const instrumentedBufferAlloc = (...arguments_) => {
+  if (allocationActive) allocationCounts.bufferAlloc += 1;
+  return nativeBuffer.alloc(...arguments_);
+};
+const instrumentedBufferFrom = (...arguments_) => {
+  if (allocationActive) allocationCounts.bufferFrom += 1;
+  return nativeBuffer.from(...arguments_);
+};
+const instrumentedBufferAllocUnsafe = (...arguments_) => {
+  if (allocationActive) allocationCounts.bufferAllocUnsafe += 1;
+  return nativeBuffer.allocUnsafe(...arguments_);
+};
+const instrumentedBufferAllocUnsafeSlow = (...arguments_) => {
+  if (allocationActive) allocationCounts.bufferAllocUnsafe += 1;
+  return nativeBuffer.allocUnsafeSlow(...arguments_);
+};
+const instrumentedBufferConcat = (...arguments_) => {
+  if (allocationActive) allocationCounts.bufferConcat += 1;
+  return nativeBuffer.concat(...arguments_);
+};
+const instrumentedBufferOf = (...arguments_) => {
+  if (allocationActive) allocationCounts.bufferOf += 1;
+  return nativeBuffer.of(...arguments_);
+};
+const instrumentedBuffer = new Proxy(nativeBuffer, {
+  apply(target, thisArgument, arguments_) {
+    if (allocationActive) allocationCounts.bufferConstructor += 1;
+    return Reflect.apply(target, thisArgument, arguments_);
+  },
+  construct(target, arguments_, newTarget) {
+    if (allocationActive) allocationCounts.bufferConstructor += 1;
+    return Reflect.construct(target, arguments_, newTarget);
+  },
+  get(target, property) {
+    if (property === "alloc") return instrumentedBufferAlloc;
+    if (property === "allocUnsafe") return instrumentedBufferAllocUnsafe;
+    if (property === "allocUnsafeSlow") return instrumentedBufferAllocUnsafeSlow;
+    if (property === "concat") return instrumentedBufferConcat;
+    if (property === "from") return instrumentedBufferFrom;
+    if (property === "of") return instrumentedBufferOf;
+    return Reflect.get(target, property, target);
+  }
+});
+function instrumentedRegExp(...arguments_) {
+  if (allocationActive) allocationCounts.regexp += 1;
+  if (new.target) return Reflect.construct(nativeRegExp, arguments_);
+  return Reflect.apply(nativeRegExp, undefined, arguments_);
+}
+instrumentedRegExp.prototype = nativeRegExp.prototype;
+nativeObject.setPrototypeOf(instrumentedRegExp, nativeRegExp);
+class InstrumentedTextEncoder extends nativeTextEncoder {
+  constructor(...arguments_) {
+    if (allocationActive) allocationCounts.textEncoder += 1;
+    super(...arguments_);
+  }
+  encode(...arguments_) {
+    if (allocationActive) allocationCounts.textEncode += 1;
+    return super.encode(...arguments_);
+  }
+  encodeInto(...arguments_) {
+    if (allocationActive) allocationCounts.textEncode += 1;
+    return super.encodeInto(...arguments_);
+  }
+}
+const instrumentedJSONStringify = (...arguments_) => {
+  if (allocationActive) allocationCounts.jsonStringify += 1;
+  return nativeJSON.stringify(...arguments_);
+};
+const instrumentedJSONParse = (...arguments_) => {
+  if (allocationActive) allocationCounts.jsonParse += 1;
+  return nativeJSON.parse(...arguments_);
+};
+const instrumentedJSON = new Proxy(nativeJSON, {
+  get(target, property) {
+    if (property === "stringify") return instrumentedJSONStringify;
+    if (property === "parse") return instrumentedJSONParse;
+    return Reflect.get(target, property, target);
+  }
+});
+const instrumentedCreateHash = (...arguments_) => {
+  if (allocationActive) allocationCounts.createHash += 1;
+  return crypto.createHash(...arguments_);
+};
+
+const unused = () => { throw new Error("unused synthetic builtin"); };
+const fs = {
+  chmodSync: unused, chownSync: unused, closeSync: unused, copyFileSync: unused,
+  existsSync: unused, fstatSync: unused, lstatSync: unused, mkdirSync: unused,
+  mkdtempSync: unused, openSync: unused, readFileSync: unused, readSync: unused,
+  realpathSync: unused, renameSync: unused, rmSync: unused, statSync: unused,
+  writeFileSync: unused, writeSync: unused,
+  constants: { O_RDONLY: 0, O_DIRECTORY: 0x10000, O_NOFOLLOW: 0x20000, O_CLOEXEC: 0x80000 }
+};
+const contractError = class JapanTuicRepairContractError extends Error {
+  constructor(code) { super(code); this.code = code; }
+};
+const context = vm.createContext({
+  Array: instrumentedArray,
+  Buffer: instrumentedBuffer,
+  JSON: instrumentedJSON,
+  Map: instrumentedMap,
+  Object: instrumentedObject,
+  Proxy: instrumentedProxy,
+  RegExp: instrumentedRegExp,
+  Set: instrumentedSet,
+  TextEncoder: InstrumentedTextEncoder,
+  WeakMap: instrumentedWeakMap,
+  WeakSet: instrumentedWeakSet,
+  TextDecoder,
+  __testIsProxy: types.isProxy,
+  process: { argv: [], env: {}, platform: "linux", stdin: {}, stdout: { write() {} }, stderr: { write() {} } },
+  setTimeout,
+  clearTimeout
+});
+const synthetic = (names, values) => new vm.SyntheticModule(names, function () {
+  for (const name of names) this.setExport(name, values[name]);
+}, { context });
+const modules = new Map([
+  ["node:crypto", synthetic(["createHash", "randomUUID"], { createHash: instrumentedCreateHash, randomUUID: () => "test-uuid" })],
+  ["node:fs", synthetic(Object.keys(fs), fs)],
+  ["node:child_process", synthetic(["execFile", "spawnSync"], { execFile: unused, spawnSync: unused })],
+  ["node:util", synthetic(["promisify"], { promisify })],
+  ["node:path", synthetic(["dirname", "join", "posix", "resolve"], nodePath)],
+  ["node:url", synthetic(["pathToFileURL", "fileURLToPath"], nodeUrl)],
+  ["./japan-tuic-additive-repair-contract.mjs", synthetic([
+    "JAPAN_TUIC_REPAIR_GATE", "JAPAN_TUIC_REPAIR_GATE_V3", "JapanTuicRepairContractError",
+    "validateArtifactIdentity", "validateCandidateReport", "validateExecutionReceipt", "validateNaturalObservation", "validatePostApplyIdentity"
+  ], {
+    JAPAN_TUIC_REPAIR_GATE: {},
+    JAPAN_TUIC_REPAIR_GATE_V3: {
+      executionGateId: "test-gate", expectedNonceSha256: "a".repeat(64),
+      artifact: { sha256: "b".repeat(64) }, releaseUnit: "unit", strategy: "strategy", surface: "surface", target: "target"
+    },
+    JapanTuicRepairContractError: contractError,
+    validateArtifactIdentity: unused, validateCandidateReport: unused, validateExecutionReceipt: unused,
+    validateNaturalObservation: unused, validatePostApplyIdentity: unused
+  })],
+  ["./japan-tuic-additive-repair-state.mjs", synthetic(["executionClaimSha256"], { executionClaimSha256: () => "c".repeat(64) })]
+]);
+
+const append = [
+  "const __test_createAuthorizationSourceSnapshot = createAuthorizationSourceSnapshot;",
+  "const __test_createAuthorizationSourceGraph = createAuthorizationSourceGraph;",
+  "const __test_reserveAuthorizationSourceFile = reserveAuthorizationSourceFile;",
+  "const __test_consumeTrustedAuthorizationSource = consumeTrustedAuthorizationSource;",
+  "function __test_c2bCreateState() {",
+  "  const snapshot = createAuthorizationSourceSnapshot();",
+  "  const ssh = createAuthorizationSourceGraph(snapshot, 'ssh');",
+  "  const sudo = createAuthorizationSourceGraph(snapshot, 'sudo');",
+  "  return { snapshot, ssh, sudo };",
+  "}",
+  "const __test_AUTHORIZATION_SHARED_SEMANTIC_LIMITS = typeof AUTHORIZATION_SHARED_SEMANTIC_LIMITS === 'object' ? AUTHORIZATION_SHARED_SEMANTIC_LIMITS : undefined;",
+  "const __test_AUTHORIZATION_SSH_SEMANTIC_LIMITS = typeof AUTHORIZATION_SSH_SEMANTIC_LIMITS === 'object' ? AUTHORIZATION_SSH_SEMANTIC_LIMITS : undefined;",
+  "const __test_AUTHORIZATION_SUDO_SEMANTIC_LIMITS = typeof AUTHORIZATION_SUDO_SEMANTIC_LIMITS === 'object' ? AUTHORIZATION_SUDO_SEMANTIC_LIMITS : undefined;",
+  "const __test_AUTHORIZATION_PARSER_LOCAL_LIMITS = typeof AUTHORIZATION_PARSER_LOCAL_LIMITS === 'object' ? AUTHORIZATION_PARSER_LOCAL_LIMITS : undefined;",
+  "const __test_AUTHORIZATION_WORK_LIMITS = typeof AUTHORIZATION_WORK_LIMITS === 'object' ? AUTHORIZATION_WORK_LIMITS : undefined;",
+  "function __test_c2bPolicy() {",
+  "  return {",
+  "    shared: { ...__test_AUTHORIZATION_SHARED_SEMANTIC_LIMITS },",
+  "    ssh: { ...__test_AUTHORIZATION_SSH_SEMANTIC_LIMITS },",
+  "    sudo: { ...__test_AUTHORIZATION_SUDO_SEMANTIC_LIMITS },",
+  "    local: { ...__test_AUTHORIZATION_PARSER_LOCAL_LIMITS },",
+  "    work: { ...__test_AUTHORIZATION_WORK_LIMITS },",
+  "    frozen: [__test_AUTHORIZATION_SHARED_SEMANTIC_LIMITS, __test_AUTHORIZATION_SSH_SEMANTIC_LIMITS, __test_AUTHORIZATION_SUDO_SEMANTIC_LIMITS, __test_AUTHORIZATION_PARSER_LOCAL_LIMITS, __test_AUTHORIZATION_WORK_LIMITS].every(Object.isFrozen)",
+  "  };",
+  "}",
+  "const __test_reserveAuthorizationSemanticNode = typeof reserveAuthorizationSemanticNode === 'function' ? reserveAuthorizationSemanticNode : undefined;",
+  "function __test_c2bReserveSource(graph, size) { return reserveAuthorizationSourceFile(graph, size); }",
+  "let __test_c2bSemanticTraceOriginal;",
+  "let __test_c2bSemanticTraceGraph;",
+  "let __test_c2bSemanticTraceCalls;",
+  "let __test_c2bSemanticTraceKind;",
+  "let __test_c2bSemanticTraceSameGraph;",
+  "function __test_c2bSemanticTraceDelegate(graph, kind) {",
+  "  __test_c2bSemanticTraceCalls += 1;",
+  "  __test_c2bSemanticTraceKind = kind;",
+  "  __test_c2bSemanticTraceSameGraph = __test_c2bSemanticTraceSameGraph && graph === __test_c2bSemanticTraceGraph;",
+  "  return __test_c2bSemanticTraceOriginal(graph, kind);",
+  "}",
+  "function __test_c2bReserveSourceWithSemanticTrace(graph, size) {",
+  "  __test_c2bSemanticTraceOriginal = reserveAuthorizationSemanticNode;",
+  "  __test_c2bSemanticTraceGraph = graph;",
+  "  __test_c2bSemanticTraceCalls = 0;",
+  "  __test_c2bSemanticTraceKind = undefined;",
+  "  __test_c2bSemanticTraceSameGraph = true;",
+  "  reserveAuthorizationSemanticNode = __test_c2bSemanticTraceDelegate;",
+  "  try { reserveAuthorizationSourceFile(graph, size); }",
+  "  finally { reserveAuthorizationSemanticNode = __test_c2bSemanticTraceOriginal; }",
+  "  return { calls: __test_c2bSemanticTraceCalls, kind: __test_c2bSemanticTraceKind, sameGraph: __test_c2bSemanticTraceSameGraph };",
+  "}",
+  "const __test_reserveAuthorizationWorkUnit = typeof reserveAuthorizationWorkUnit === 'function' ? reserveAuthorizationWorkUnit : undefined;",
+  "const __test_reservePreimageBytes = typeof reservePreimageBytes === 'function' ? reservePreimageBytes : undefined;",
+  "const __test_nextAuthorizationBudgetValue = typeof nextAuthorizationBudgetValue === 'function' ? nextAuthorizationBudgetValue : undefined;",
+  "const __test_scanAuthorizationWildcardPattern = typeof scanAuthorizationWildcardPattern === 'function' ? scanAuthorizationWildcardPattern : undefined;",
+  "const __test_matchAuthorizationWildcard = typeof matchAuthorizationWildcard === 'function' ? matchAuthorizationWildcard : undefined;",
+  "function __test_missingC2BSymbols() {",
+  "  return [",
+  "    ['nextAuthorizationBudgetValue', __test_nextAuthorizationBudgetValue, 'function'],",
+  "    ['reserveAuthorizationSemanticNode', __test_reserveAuthorizationSemanticNode, 'function'],",
+  "    ['reserveAuthorizationWorkUnit', __test_reserveAuthorizationWorkUnit, 'function'],",
+  "    ['reservePreimageBytes', __test_reservePreimageBytes, 'function'],",
+  "    ['scanAuthorizationWildcardPattern', __test_scanAuthorizationWildcardPattern, 'function'],",
+  "    ['matchAuthorizationWildcard', __test_matchAuthorizationWildcard, 'function'],",
+  "    ['AUTHORIZATION_SHARED_SEMANTIC_LIMITS', __test_AUTHORIZATION_SHARED_SEMANTIC_LIMITS, 'object'],",
+  "    ['AUTHORIZATION_SSH_SEMANTIC_LIMITS', __test_AUTHORIZATION_SSH_SEMANTIC_LIMITS, 'object'],",
+  "    ['AUTHORIZATION_SUDO_SEMANTIC_LIMITS', __test_AUTHORIZATION_SUDO_SEMANTIC_LIMITS, 'object'],",
+  "    ['AUTHORIZATION_PARSER_LOCAL_LIMITS', __test_AUTHORIZATION_PARSER_LOCAL_LIMITS, 'object'],",
+  "    ['AUTHORIZATION_WORK_LIMITS', __test_AUTHORIZATION_WORK_LIMITS, 'object']",
+  "  ].filter(([, value, expectedType]) => typeof value !== expectedType || (expectedType === 'object' && value === null)).map(([name]) => name);",
+  "}",
+  "function __test_c2bArities() { return {",
+  "  nextAuthorizationBudgetValue: nextAuthorizationBudgetValue.length,",
+  "  reserveAuthorizationSemanticNode: reserveAuthorizationSemanticNode.length,",
+  "  reserveAuthorizationWorkUnit: reserveAuthorizationWorkUnit.length,",
+  "  reservePreimageBytes: reservePreimageBytes.length,",
+  "  scanAuthorizationWildcardPattern: scanAuthorizationWildcardPattern.length,",
+  "  matchAuthorizationWildcard: matchAuthorizationWildcard.length",
+  "}; }",
+  "function __test_c2bProxyInstrumentation(state) {",
+  "  const direct = new Proxy(state.snapshot, state.ssh);",
+  "  const revocable = Proxy.revocable(state.snapshot, state.sudo);",
+  "  const result = __testIsProxy(direct) && __testIsProxy(revocable.proxy);",
+  "  revocable.revoke();",
+  "  return result;",
+  "}",
+  "function __test_inspectAuthorizationBudgetState(state) {",
+  "  const inspectGraph = (graph) => ({",
+  "    kind: graph.kind, failed: graph.failed, fixedEnvelopeCount: graph.fixedEnvelopeCount,",
+  "    semanticNodeCount: graph.semanticNodeCount, fileCount: graph.fileCount, sourceFileCount: graph.sourceFileCount,",
+  "    totalBytes: graph.totalBytes, directoryNameCount: graph.directoryNameCount, depth: graph.depth, nextOrdinal: graph.nextOrdinal,",
+  "    sshPhysicalDirectiveCount: graph.sshPhysicalDirectiveCount,",
+  "    sshIncludePatternCount: graph.sshIncludePatternCount, sshSelectedInsertionCount: graph.sshSelectedInsertionCount,",
+  "    sshMatchBranchCount: graph.sshMatchBranchCount, sshMatchConditionCount: graph.sshMatchConditionCount,",
+  "    sshMatchPatternCount: graph.sshMatchPatternCount, sshAssignmentCount: graph.sshAssignmentCount,",
+  "    sshAcceptEnvNameCount: graph.sshAcceptEnvNameCount, sudoStatementCount: graph.sudoStatementCount,",
+  "    sudoIncludeCount: graph.sudoIncludeCount, sudoSelectedInsertionCount: graph.sudoSelectedInsertionCount,",
+  "    sudoAliasDefinitionCount: graph.sudoAliasDefinitionCount, sudoAliasMemberCount: graph.sudoAliasMemberCount,",
+  "    sudoDefaultsItemCount: graph.sudoDefaultsItemCount, sudoUserSpecCount: graph.sudoUserSpecCount,",
+  "    sudoUserHostRunasMemberCount: graph.sudoUserHostRunasMemberCount, sudoTagTransitionCount: graph.sudoTagTransitionCount,",
+  "    sudoCommandSpecCount: graph.sudoCommandSpecCount, sudoArgumentTokenCount: graph.sudoArgumentTokenCount,",
+  "    sudoAliasEdgeCount: graph.sudoAliasEdgeCount, sudoAliasMemoEntryCount: graph.sudoAliasMemoEntryCount,",
+  "    globComparisonCount: graph.globComparisonCount, commandWorkCount: graph.commandWorkCount, aliasEdgeWorkCount: graph.aliasEdgeWorkCount",
+  "  });",
+  "  const inspectCleanup = (value) => {",
+  "    const descriptor = Object.getOwnPropertyDescriptor(value, 'length');",
+  "    const prototype = Object.getPrototypeOf(value);",
+  "    return {",
+  "      isArray: Array.isArray(value), isProxy: __testIsProxy(value),",
+  "      prototypeIsNative: prototype === Array.prototype, prototypeIsProxy: __testIsProxy(prototype),",
+  "      length: value.length, ownNames: Object.getOwnPropertyNames(value).sort(),",
+  "      symbolCount: Object.getOwnPropertySymbols(value).length,",
+  "      lengthDescriptor: {",
+  "        value: descriptor.value, writable: descriptor.writable, enumerable: descriptor.enumerable,",
+  "        configurable: descriptor.configurable, hasGetter: descriptor.get !== undefined, hasSetter: descriptor.set !== undefined",
+  "      }",
+  "    };",
+  "  };",
+  "  return {",
+  "    snapshot: {",
+  "      failed: state.snapshot.failed, fixedEnvelopeCount: state.snapshot.fixedEnvelopeCount, semanticNodeCount: state.snapshot.semanticNodeCount,",
+  "      authorizationEntryCount: state.snapshot.authorizationEntryCount, wildcardPatternByteCount: state.snapshot.wildcardPatternByteCount,",
+  "      wildcardInvocationCount: state.snapshot.wildcardInvocationCount, wildcardAlignedComparisonCount: state.snapshot.wildcardAlignedComparisonCount,",
+  "      sshMatchComparisonCount: state.snapshot.sshMatchComparisonCount, sudoSelectorComparisonCount: state.snapshot.sudoSelectorComparisonCount,",
+  "      sudoAliasVisitCount: state.snapshot.sudoAliasVisitCount, retainedPreimageBytes: state.snapshot.retainedPreimageBytes",
+  "    },",
+  "    ssh: inspectGraph(state.ssh), sudo: inspectGraph(state.sudo),",
+  "    identity: {",
+  "      snapshotSshGraph: state.snapshot.sshGraph === state.ssh, snapshotSudoGraph: state.snapshot.sudoGraph === state.sudo,",
+  "      sshSnapshot: state.ssh.snapshot === state.snapshot, sudoSnapshot: state.sudo.snapshot === state.snapshot,",
+  "      graphsDistinct: state.ssh !== state.sudo, cleanupDistinct: state.ssh.cleanupStack !== state.sudo.cleanupStack,",
+  "      sshCleanup: inspectCleanup(state.ssh.cleanupStack), sudoCleanup: inspectCleanup(state.sudo.cleanupStack)",
+  "    }",
+  "  };",
+  "}",
+  "function __test_c2bFixedShape(state) {",
+  "  const valueKind = (value) => {",
+  "    if (Array.isArray(value)) return 'Array';",
+  "    if (value instanceof Map) return 'Map';",
+  "    if (value instanceof Set) return 'Set';",
+  "    if (value instanceof WeakMap) return 'WeakMap';",
+  "    if (value instanceof WeakSet) return 'WeakSet';",
+  "    return value !== null && typeof value === 'object' ? 'Object' : typeof value;",
+  "  };",
+  "  const describe = (value) => ({",
+  "    nullPrototype: Object.getPrototypeOf(value) === null,",
+  "    symbolCount: Object.getOwnPropertySymbols(value).length,",
+  "    fields: Object.getOwnPropertyNames(value).sort().map((name) => {",
+  "      const descriptor = Object.getOwnPropertyDescriptor(value, name);",
+  "      return { name, writable: descriptor.writable, enumerable: descriptor.enumerable, configurable: descriptor.configurable, valueKind: valueKind(descriptor.value) };",
+  "    })",
+  "  });",
+  "  return { snapshot: describe(state.snapshot), ssh: describe(state.ssh), sudo: describe(state.sudo) };",
+  "}",
+  "function __test_c2bTerminalSourceOperation(graph) {",
+  "  let calls = 0;",
+  "  const operation = () => { calls += 1; throw new Error('operation must not run'); };",
+  "  const operations = { lstat: operation, open: operation, fstat: operation, read: operation, close: operation };",
+  "  let error = null;",
+  "  try { consumeTrustedAuthorizationSource(graph, '/etc/ssh/sshd_config', operations, operation); }",
+  "  catch (caught) { error = caught && caught.code ? caught.code : caught.name; }",
+  "  return { error, calls };",
+  "}",
+  "export {",
+  "  __test_c2bArities, __test_c2bCreateState, __test_c2bPolicy, __test_c2bProxyInstrumentation, __test_c2bReserveSource, __test_c2bReserveSourceWithSemanticTrace, __test_c2bTerminalSourceOperation,",
+  "  __test_consumeTrustedAuthorizationSource, __test_createAuthorizationSourceGraph, __test_createAuthorizationSourceSnapshot,",
+  "  __test_c2bFixedShape, __test_inspectAuthorizationBudgetState, __test_reserveAuthorizationSourceFile,",
+  "  __test_matchAuthorizationWildcard, __test_missingC2BSymbols, __test_nextAuthorizationBudgetValue, __test_reserveAuthorizationSemanticNode,",
+  "  __test_reserveAuthorizationWorkUnit, __test_reservePreimageBytes, __test_scanAuthorizationWildcardPattern",
+  "};"
+].join("\n");
+const source = readFileSync(runnerPath, "utf8") + "\n" + append + "\n";
+const module = new vm.SourceTextModule(source, { context, identifier: runnerPath });
+await module.link((specifier) => {
+  const linked = modules.get(specifier);
+  if (!linked) throw new Error("unexpected import:" + specifier);
+  return linked;
+});
+for (const name of nativeObject.keys(allocationCounts)) allocationCounts[name] = 0;
+allocationActive = true;
+try { await module.evaluate(); }
+finally { allocationActive = false; }
+const moduleAllocationCounts = { ...allocationCounts };
+const api = module.namespace;
+
+function errorCode(error) {
+  return error && error.code ? error.code : error && error.name ? error.name : "unexpected";
+}
+function safe(operation) {
+  try { return { ok: true, value: operation() }; }
+  catch (error) { return { ok: false, error: errorCode(error) }; }
+}
+function fresh() { return api.__test_c2bCreateState(); }
+function inspect(state) { return api.__test_inspectAuthorizationBudgetState(state); }
+function withAllocations(operation) {
+  for (const name of nativeObject.keys(allocationCounts)) allocationCounts[name] = 0;
+  allocationActive = true;
+  try {
+    const value = operation();
+    return { value, counts: { ...allocationCounts } };
+  } finally {
+    allocationActive = false;
+  }
+}
+`;
+}
+
+const C2B_ZERO_ALLOCATIONS = Object.freeze({
+  objectCall: 0,
+  objectCreate: 0,
+  array: 0,
+  map: 0,
+  set: 0,
+  weakMap: 0,
+  weakSet: 0,
+  proxy: 0,
+  bufferConstructor: 0,
+  bufferAlloc: 0,
+  bufferAllocUnsafe: 0,
+  bufferConcat: 0,
+  bufferFrom: 0,
+  bufferOf: 0,
+  createHash: 0,
+  regexp: 0,
+  textEncoder: 0,
+  textEncode: 0,
+  jsonStringify: 0,
+  jsonParse: 0
+});
+const C2B_FRESH_ALLOCATIONS = Object.freeze({ ...C2B_ZERO_ALLOCATIONS, objectCreate: 3, array: 2 });
+const C2B_MODULE_ALLOCATION_BASELINE = Object.freeze({
+  objectCall: 0,
+  objectCreate: 0,
+  array: 0,
+  map: 0,
+  set: 3,
+  weakMap: 0,
+  weakSet: 4,
+  proxy: 0,
+  bufferConstructor: 0,
+  bufferAlloc: 1,
+  bufferAllocUnsafe: 0,
+  bufferConcat: 0,
+  bufferFrom: 0,
+  bufferOf: 0,
+  createHash: 1,
+  regexp: 0,
+  textEncoder: 0,
+  textEncode: 0,
+  jsonStringify: 0,
+  jsonParse: 0
+});
+const C2B_NATIVE_EXPORTS = Object.freeze([
+  "buildCanonicalRunnerBinding",
+  "buildCanonicalSshIncludeClosure",
+  "buildCanonicalSshMatchCoverage",
+  "buildCanonicalSshTopology",
+  "buildCanonicalSudoEffectivePolicy",
+  "buildCanonicalSudoSourceClosure",
+  "collectBoundAccountEvidence",
+  "createHostOperations",
+  "deriveWaitBudget",
+  "executeJapanTuicAdditiveRepair",
+  "loadRootOwnedBinding",
+  "parseCanonicalAuthorizedKeyLine",
+  "runJapanTuicAdditiveRepairCli",
+  "validateArchiveEntries",
+  "validateNativeLinuxOpenFlags",
+  "validateRunnerBinding",
+  "validateTrustedPathChain"
+]);
+const C2B_EXACT_BLOCK_BEGIN = "// C2B_EXACT_BLOCK_BEGIN";
+const C2B_EXACT_BLOCK_END = "// C2B_EXACT_BLOCK_END";
+const C2B_EXACT_BLOCK_SIZE = 14319;
+const C2B_EXACT_BLOCK_SHA256 = "398b8af65d4fd80cf00f130b2b0044d9232a2d266d947e334b36346af148ed48";
+const C2B_EXPECTED_ARITIES = Object.freeze({
+  nextAuthorizationBudgetValue: 3,
+  reserveAuthorizationSemanticNode: 2,
+  reserveAuthorizationWorkUnit: 2,
+  reservePreimageBytes: 2,
+  scanAuthorizationWildcardPattern: 2,
+  matchAuthorizationWildcard: 5
+});
+const C2B_EXPECTED_TOP_LEVEL_ADDITIONS = Object.freeze([
+  "const AUTHORIZATION_PARSER_LOCAL_LIMITS",
+  "const AUTHORIZATION_SHARED_SEMANTIC_LIMITS",
+  "const AUTHORIZATION_SSH_SEMANTIC_LIMITS",
+  "const AUTHORIZATION_SUDO_SEMANTIC_LIMITS",
+  "const AUTHORIZATION_WORK_LIMITS",
+  "function matchAuthorizationWildcard",
+  "function nextAuthorizationBudgetValue",
+  "function reserveAuthorizationSemanticNode",
+  "function reserveAuthorizationWorkUnit",
+  "function reservePreimageBytes",
+  "function scanAuthorizationWildcardPattern"
+]);
+const C2B_ACCEPTED_BASE_TOP_LEVEL_HEADERS = Object.freeze([
+  "async function cleanupHost",
+  "async function verifyRollback",
+  "async function waitForNaturalObservation",
+  "const ACCOUNT_CORE_KEYS",
+  "const ACCOUNT_GROUP_NAME",
+  "const ACCOUNT_HOME_PATH",
+  "const ACCOUNT_PROCESS_ENV",
+  "const ACCOUNT_PROCESS_STDIO",
+  "const ACCOUNT_USERNAME",
+  "const ALLOWED_ZIP_TYPES",
+  "const AUDITED_DIRECTORY_OPEN_FLAGS",
+  "const AUDITED_FILE_OPEN_FLAGS",
+  "const AUDITED_LINUX_OPEN_CONSTANTS",
+  "const AUTHORIZATION_PATH_OPERATION_KEYS",
+  "const AUTHORIZATION_SOURCE_GRAPH_BRAND",
+  "const AUTHORIZATION_SOURCE_MAX_DEPTH",
+  "const AUTHORIZATION_SOURCE_MAX_DIRECTORY_NAMES",
+  "const AUTHORIZATION_SOURCE_MAX_FILES",
+  "const AUTHORIZATION_SOURCE_MAX_FILE_BYTES",
+  "const AUTHORIZATION_SOURCE_MAX_FIXED_ENVELOPES",
+  "const AUTHORIZATION_SOURCE_MAX_GRAPH_BYTES",
+  "const AUTHORIZATION_SOURCE_MAX_GRAPH_DIRECTORY_NAMES",
+  "const AUTHORIZATION_SOURCE_MAX_LINE_BYTES",
+  "const AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES",
+  "const AUTHORIZATION_SOURCE_OPERATION_KEYS",
+  "const AUTHORIZATION_SOURCE_SNAPSHOT_BRAND",
+  "const AUTHORIZATION_STANDARD_OBJECT_PROTOTYPE_KEYS",
+  "const AUTHORIZED_KEYS_PATH",
+  "const BINDING_PATH",
+  "const BINDING_PATH_KEYS",
+  "const BOOTSTRAP_PATH",
+  "const CODE_PATHS",
+  "const CODE_ROLES",
+  "const EMPTY_SHA256",
+  "const ENTRYPOINT_PATH",
+  "const FIXED_PATHS",
+  "const LOWER_COMMIT",
+  "const LOWER_SHA256",
+  "const MATCH_NAMES",
+  "const MATCH_TOKEN",
+  "const MAX_ACCOUNT_GROUPS",
+  "const MAX_HELPER_OUTPUT_BYTES",
+  "const MAX_PROTECTED_OBSERVATION_BYTES",
+  "const NATIVE_ACCOUNT_CORE_BRAND",
+  "const PATH_ROLES",
+  "const POLICY_KEYS",
+  "const PROJECTED_ACCOUNT_CORE_BRAND",
+  "const REQUIRED_ARCHIVE_ENTRIES",
+  "const RESTRICTED_CODE",
+  "const SAFE_ERROR_CODES",
+  "const SECURE_PATH",
+  "const SOURCE_FILE_KEYS",
+  "const SUDOERS_PATH",
+  "const TOOL_PATHS",
+  "const TOOL_ROLES",
+  "const TOP_LEVEL_KEYS",
+  "const VARIABLE_DIMENSIONS",
+  "const execFileAsync",
+  "export async function executeJapanTuicAdditiveRepair",
+  "export async function runJapanTuicAdditiveRepairCli",
+  "export function buildCanonicalRunnerBinding",
+  "export function buildCanonicalSshIncludeClosure",
+  "export function buildCanonicalSshMatchCoverage",
+  "export function buildCanonicalSshTopology",
+  "export function buildCanonicalSudoEffectivePolicy",
+  "export function buildCanonicalSudoSourceClosure",
+  "export function collectBoundAccountEvidence",
+  "export function createHostOperations",
+  "export function deriveWaitBudget",
+  "export function loadRootOwnedBinding",
+  "export function parseCanonicalAuthorizedKeyLine",
+  "export function validateArchiveEntries",
+  "export function validateNativeLinuxOpenFlags",
+  "export function validateRunnerBinding",
+  "export function validateTrustedPathChain",
+  "function accountDelimitedRanges",
+  "function accountPositiveDecimal",
+  "function accountRangeEqualsAscii",
+  "function accountRecordEnd",
+  "function allocateAuthorizationBuffer",
+  "function applyMetadata",
+  "function assertMetadataPreserved",
+  "function assertStableAggregate",
+  "function authorizationPathIsCanonical",
+  "function baseReceipt",
+  "function buildCanonicalSourceClosure",
+  "function canonicalAccountCore",
+  "function canonicalAccountGroupIds",
+  "function canonicalAccountGroupNames",
+  "function canonicalManifestEntry",
+  "function canonicalManifestPathPolicy",
+  "function canonicalMatchCondition",
+  "function canonicalObject",
+  "function canonicalPathPolicy",
+  "function canonicalSshAuthorization",
+  "function canonicalSudoAuthorization",
+  "function cleanupOnlyAuthorizationDirectoryArray",
+  "function consumeTrustedAuthorizationDirectory",
+  "function consumeTrustedAuthorizationSource",
+  "function createAuthorizationSourceGraph",
+  "function createAuthorizationSourceSnapshot",
+  "function createNativeAccountOperations",
+  "function encodeAuthorizationBasename",
+  "function enterAuthorizationSourceDepth",
+  "function exactArchiveEntries",
+  "function exactKeys",
+  "function exactPrivateOperationRecord",
+  "function failAuthorizationSourceGraph",
+  "function fileSha256",
+  "function hasKeys",
+  "function hashCanonical",
+  "function inspectAuthorizationSourceBudget",
+  "function isDirectInvocation",
+  "function leaveAuthorizationSourceDepth",
+  "function lowerSha256",
+  "function lstatAuthorizationPathChain",
+  "function nativeGroupIds",
+  "function nativeGroupNames",
+  "function nativeIdTokenRanges",
+  "function nativePasswdCore",
+  "function nativePathOperations",
+  "function nativeShadowLocked",
+  "function nativeSingleId",
+  "function naturalObservationSummary",
+  "function nonNegativeSafeInteger",
+  "function parseJsonOutput",
+  "function parseKeyValueOutput",
+  "function parseNonNegativeInteger",
+  "function pathComponents",
+  "function positiveSafeInteger",
+  "function readAuthorizationSourceBytes",
+  "function readBoundManifestFile",
+  "function readBoundedJson",
+  "function readConfirmedEof",
+  "function readExactOpenedFile",
+  "function record",
+  "function recursivelyFreezeAccountCore",
+  "function registerAuthorizationBuffer",
+  "function requireAuthorizationSourceGraph",
+  "function requireFixedPathPolicies",
+  "function reserveAuthorizationDirectoryNames",
+  "function reserveAuthorizationSourceFile",
+  "function reserveAuthorizationSourceNode",
+  "function reserveAuthorizationSourceRead",
+  "function restricted",
+  "function revalidateNativeAccountTool",
+  "function safeAbsolutePath",
+  "function safeCliFailure",
+  "function safeCode",
+  "function safeError",
+  "function sameAccountCore",
+  "function sameAuthorizationFinalStat",
+  "function stableJson",
+  "function utf8PathIdentity",
+  "function validateAccountOperations",
+  "function validateAppliedReport",
+  "function validateAuthorizationAncestor",
+  "function validateAuthorizationDirectoryArray",
+  "function validateAuthorizationFinalStat",
+  "function validateAuthorizationPhysicalLines",
+  "function validateBeforeIdentity",
+  "function validateBigintStatIdentity",
+  "function validateFrozenIdentity",
+  "function validateLegacyRunnerBindingForLocalTest",
+  "function validateManifestPathChain",
+  "function validateManifestStat",
+  "function validateMetadata",
+  "function validateObservationBaseline",
+  "function validatePathOperations",
+  "function validatePostApplyCandidate",
+  "function validateRuntimePathStat",
+  "function validateTimerState",
+  "function validateTrustedPathChainByAuthority",
+  "function validateZipTypeListing",
+  "function withTrustedAuthorizationSourcePath",
+  "function zeroAccountBuffers",
+  "function zeroAuthorizationBuffersTo"
+]);
+
+function c2bNumericState(state) {
+  return structuredClone(state);
+}
+
+function c2bExpectedGraphFailure(state, family) {
+  const expected = c2bNumericState(state);
+  expected.snapshot.failed = true;
+  expected[family].failed = true;
+  return expected;
+}
+
+function c2bExpectedSnapshotFailure(state) {
+  const expected = c2bNumericState(state);
+  expected.snapshot.failed = true;
+  return expected;
+}
+
+function c2bExpectedInitialGraph(kind) {
+  return {
+    kind,
+    failed: false,
+    fixedEnvelopeCount: 2,
+    semanticNodeCount: 2,
+    fileCount: 0,
+    sourceFileCount: 0,
+    totalBytes: 0,
+    directoryNameCount: 0,
+    depth: 0,
+    nextOrdinal: 0,
+    sshPhysicalDirectiveCount: 0,
+    sshIncludePatternCount: 0,
+    sshSelectedInsertionCount: 0,
+    sshMatchBranchCount: 0,
+    sshMatchConditionCount: 0,
+    sshMatchPatternCount: 0,
+    sshAssignmentCount: 0,
+    sshAcceptEnvNameCount: 0,
+    sudoStatementCount: 0,
+    sudoIncludeCount: 0,
+    sudoSelectedInsertionCount: 0,
+    sudoAliasDefinitionCount: 0,
+    sudoAliasMemberCount: 0,
+    sudoDefaultsItemCount: 0,
+    sudoUserSpecCount: 0,
+    sudoUserHostRunasMemberCount: 0,
+    sudoTagTransitionCount: 0,
+    sudoCommandSpecCount: 0,
+    sudoArgumentTokenCount: 0,
+    sudoAliasEdgeCount: 0,
+    sudoAliasMemoEntryCount: 0,
+    globComparisonCount: 0,
+    commandWorkCount: 0,
+    aliasEdgeWorkCount: 0
+  };
+}
+
+const C2B_EXPECTED_EMPTY_CLEANUP = Object.freeze({
+  isArray: true,
+  isProxy: false,
+  prototypeIsNative: true,
+  prototypeIsProxy: false,
+  length: 0,
+  ownNames: Object.freeze(["length"]),
+  symbolCount: 0,
+  lengthDescriptor: Object.freeze({
+    value: 0,
+    writable: true,
+    enumerable: false,
+    configurable: false,
+    hasGetter: false,
+    hasSetter: false
+  })
+});
+
+function c2bHeaderIdentifierEnd(source, start) {
+  if (!/[A-Za-z_$]/.test(source[start] || "")) return -1;
+  let index = start + 1;
+  while (/[A-Za-z0-9_$]/.test(source[index] || "")) index += 1;
+  return index;
+}
+
+function c2bHeaderQuotedEnd(source, start, quote) {
+  let index = start + 1;
+  while (index < source.length) {
+    if (source[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    if (source[index] === quote) return index + 1;
+    if (source[index] === "\n" || source[index] === "\r") throw new Error("unterminated_header_string");
+    index += 1;
+  }
+  throw new Error("unterminated_header_string");
+}
+
+function c2bHeaderLineCommentEnd(source, start) {
+  let index = start + 2;
+  while (index < source.length && source[index] !== "\n") index += 1;
+  return index;
+}
+
+function c2bHeaderBlockCommentEnd(source, start) {
+  const end = source.indexOf("*/", start + 2);
+  if (end < 0) throw new Error("unterminated_header_comment");
+  return end + 2;
+}
+
+function c2bHeaderRegexEnd(source, start) {
+  let index = start + 1;
+  let escaped = false;
+  let inClass = false;
+  while (index < source.length) {
+    const byte = source[index];
+    if (byte === "\n" || byte === "\r") throw new Error("unterminated_header_regex");
+    if (escaped) escaped = false;
+    else if (byte === "\\") escaped = true;
+    else if (byte === "[") inClass = true;
+    else if (byte === "]") inClass = false;
+    else if (byte === "/" && !inClass) {
+      index += 1;
+      while (/[A-Za-z]/.test(source[index] || "")) index += 1;
+      return index;
+    }
+    index += 1;
+  }
+  throw new Error("unterminated_header_regex");
+}
+
+function c2bHeaderRegexAllowedAfter(token) {
+  return token === "" || /^(?:await|case|delete|do|else|in|instanceof|new|of|return|throw|typeof|void|yield)$/.test(token)
+    || /^[([{,:;=!?&|+*%^~<>-]$/.test(token);
+}
+
+function c2bHeaderTemplateExpressionEnd(source, start) {
+  let index = start;
+  let depth = 1;
+  let previousToken = "";
+  while (index < source.length) {
+    const byte = source[index];
+    if (/\s/.test(byte)) {
+      index += 1;
+      continue;
+    }
+    if (byte === "'" || byte === '"') {
+      index = c2bHeaderQuotedEnd(source, index, byte);
+      previousToken = "literal";
+      continue;
+    }
+    if (source.charCodeAt(index) === 96) {
+      index = c2bHeaderTemplateEnd(source, index);
+      previousToken = "literal";
+      continue;
+    }
+    if (byte === "/" && source[index + 1] === "/") {
+      index = c2bHeaderLineCommentEnd(source, index);
+      continue;
+    }
+    if (byte === "/" && source[index + 1] === "*") {
+      index = c2bHeaderBlockCommentEnd(source, index);
+      continue;
+    }
+    if (byte === "/" && c2bHeaderRegexAllowedAfter(previousToken)) {
+      index = c2bHeaderRegexEnd(source, index);
+      previousToken = "literal";
+      continue;
+    }
+    const identifierEnd = c2bHeaderIdentifierEnd(source, index);
+    if (identifierEnd >= 0) {
+      previousToken = source.slice(index, identifierEnd);
+      index = identifierEnd;
+      continue;
+    }
+    if (byte === "{") {
+      depth += 1;
+      previousToken = byte;
+      index += 1;
+      continue;
+    }
+    if (byte === "}") {
+      depth -= 1;
+      index += 1;
+      if (depth === 0) return index;
+      previousToken = byte;
+      continue;
+    }
+    previousToken = byte;
+    index += 1;
+  }
+  throw new Error("unterminated_header_template_expression");
+}
+
+function c2bHeaderTemplateEnd(source, start) {
+  let index = start + 1;
+  while (index < source.length) {
+    if (source[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    if (source.charCodeAt(index) === 96) return index + 1;
+    if (source[index] === "$" && source[index + 1] === "{") {
+      index = c2bHeaderTemplateExpressionEnd(source, index + 2);
+      continue;
+    }
+    index += 1;
+  }
+  throw new Error("unterminated_header_template");
+}
+
+function c2bHeaderMaskRange(masked, source, start, end) {
+  for (let index = start; index < end; index += 1) {
+    if (source[index] !== "\n" && source[index] !== "\r") masked[index] = " ";
+  }
+}
+
+function c2bHeaderCodeMask(source) {
+  const masked = [...source];
+  let index = 0;
+  let previousToken = "";
+  while (index < source.length) {
+    const byte = source[index];
+    if (index === 0 && byte === "#" && source[index + 1] === "!") {
+      const end = c2bHeaderLineCommentEnd(source, index);
+      c2bHeaderMaskRange(masked, source, index, end);
+      index = end;
+      continue;
+    }
+    if (/\s/.test(byte)) {
+      index += 1;
+      continue;
+    }
+    let end = -1;
+    if (byte === "'" || byte === '"') end = c2bHeaderQuotedEnd(source, index, byte);
+    else if (source.charCodeAt(index) === 96) end = c2bHeaderTemplateEnd(source, index);
+    else if (byte === "/" && source[index + 1] === "/") end = c2bHeaderLineCommentEnd(source, index);
+    else if (byte === "/" && source[index + 1] === "*") end = c2bHeaderBlockCommentEnd(source, index);
+    else if (byte === "/" && c2bHeaderRegexAllowedAfter(previousToken)) end = c2bHeaderRegexEnd(source, index);
+    if (end >= 0) {
+      c2bHeaderMaskRange(masked, source, index, end);
+      if (!(byte === "/" && (source[index + 1] === "/" || source[index + 1] === "*"))) previousToken = "literal";
+      index = end;
+      continue;
+    }
+    const identifierEnd = c2bHeaderIdentifierEnd(source, index);
+    if (identifierEnd >= 0) {
+      previousToken = source.slice(index, identifierEnd);
+      index = identifierEnd;
+      continue;
+    }
+    previousToken = byte;
+    index += 1;
+  }
+  return masked.join("");
+}
+
+function c2bParseTopLevelVariable(masked, start, prefix, kind) {
+  const headers = [];
+  let index = start;
+  let brace = 0;
+  let paren = 0;
+  let bracket = 0;
+  while (index < masked.length) {
+    while (/\s/.test(masked[index] || "")) index += 1;
+    const identifierEnd = c2bHeaderIdentifierEnd(masked, index);
+    if (identifierEnd < 0) throw new Error("unsupported_top_level_binding");
+    headers.push(prefix + kind + " " + masked.slice(index, identifierEnd));
+    index = identifierEnd;
+    while (index < masked.length) {
+      const byte = masked[index];
+      if (byte === "{") brace += 1;
+      else if (byte === "}") {
+        if (brace === 0) throw new Error("unbalanced_top_level_variable");
+        brace -= 1;
+      } else if (byte === "(") paren += 1;
+      else if (byte === ")") {
+        if (paren === 0) throw new Error("unbalanced_top_level_variable");
+        paren -= 1;
+      } else if (byte === "[") bracket += 1;
+      else if (byte === "]") {
+        if (bracket === 0) throw new Error("unbalanced_top_level_variable");
+        bracket -= 1;
+      } else if (brace === 0 && paren === 0 && bracket === 0 && byte === ",") {
+        index += 1;
+        break;
+      } else if (brace === 0 && paren === 0 && bracket === 0 && byte === ";") {
+        return { headers, next: index + 1 };
+      }
+      index += 1;
+    }
+  }
+  throw new Error("unterminated_top_level_variable");
+}
+
+function c2bParseTopLevelDeclaration(masked, start) {
+  const match = /^(?:(export)\s+)?(?:(default)\s+)?(?:(async)\s+)?(function|class|const|let|var)\b/.exec(masked.slice(start));
+  if (!match) return null;
+  const exported = match[1] ? "export " : "";
+  const defaulted = match[2] ? "default " : "";
+  const asynchronous = match[3] ? "async " : "";
+  const kind = match[4];
+  let index = start + match[0].length;
+  const prefix = exported + defaulted + asynchronous;
+  if (kind === "const" || kind === "let" || kind === "var") {
+    if (defaulted || asynchronous) throw new Error("invalid_top_level_variable_modifier");
+    const parsed = c2bParseTopLevelVariable(masked, index, prefix, kind);
+    return { ...parsed, complete: true };
+  }
+  while (/\s/.test(masked[index] || "")) index += 1;
+  let generator = "";
+  if (kind === "function" && masked[index] === "*") {
+    generator = "*";
+    index += 1;
+    while (/\s/.test(masked[index] || "")) index += 1;
+  }
+  const identifierEnd = c2bHeaderIdentifierEnd(masked, index);
+  if (identifierEnd < 0) throw new Error("anonymous_top_level_declaration");
+  return {
+    headers: [prefix + kind + generator + " " + masked.slice(index, identifierEnd)],
+    next: identifierEnd,
+    complete: false
+  };
+}
+
+function c2bTopLevelHeaders(source) {
+  const masked = c2bHeaderCodeMask(source);
+  const headers = [];
+  let index = 0;
+  let brace = 0;
+  let paren = 0;
+  let bracket = 0;
+  let statementStart = true;
+  while (index < masked.length) {
+    const byte = masked[index];
+    if (/\s/.test(byte)) {
+      index += 1;
+      continue;
+    }
+    if (brace === 0 && paren === 0 && bracket === 0 && statementStart) {
+      const declaration = c2bParseTopLevelDeclaration(masked, index);
+      if (declaration) {
+        headers.push(...declaration.headers);
+        index = declaration.next;
+        statementStart = declaration.complete;
+        continue;
+      }
+      statementStart = false;
+    }
+    if (byte === "{") brace += 1;
+    else if (byte === "}") {
+      if (brace === 0) throw new Error("unbalanced_top_level_brace");
+      brace -= 1;
+      if (brace === 0 && paren === 0 && bracket === 0) statementStart = true;
+    } else if (byte === "(") paren += 1;
+    else if (byte === ")") {
+      if (paren === 0) throw new Error("unbalanced_top_level_paren");
+      paren -= 1;
+    } else if (byte === "[") bracket += 1;
+    else if (byte === "]") {
+      if (bracket === 0) throw new Error("unbalanced_top_level_bracket");
+      bracket -= 1;
+    } else if (byte === ";" && brace === 0 && paren === 0 && bracket === 0) {
+      statementStart = true;
+    }
+    index += 1;
+  }
+  if (brace !== 0 || paren !== 0 || bracket !== 0) throw new Error("unbalanced_top_level_source");
+  return headers.sort();
+}
+
+function c2bExactSourceBlock(source) {
+  const normalized = source.replace(/\r\n/g, "\n");
+  assert.doesNotMatch(normalized, /\r/);
+  assert.equal(normalized.split(C2B_EXACT_BLOCK_BEGIN).length - 1, 1);
+  assert.equal(normalized.split(C2B_EXACT_BLOCK_END).length - 1, 1);
+  const beginNeedle = C2B_EXACT_BLOCK_BEGIN + "\n";
+  const endNeedle = C2B_EXACT_BLOCK_END + "\n";
+  const begin = normalized.indexOf(beginNeedle);
+  const endStart = normalized.indexOf(endNeedle);
+  assert.ok(begin >= 0 && endStart > begin);
+  assert.ok(begin === 0 || normalized[begin - 1] === "\n");
+  return {
+    normalized,
+    block: normalized.slice(begin, endStart + endNeedle.length)
+  };
+}
+test("authorization semantic reserve kernel freezes exact ontology and atomic maxima", () => {
+  const probe = c2bBudgetVmProbe("semantic");
+  assert.equal(probe.error, null);
+  assert.equal(Object.hasOwn(probe, "value"), true);
+  assert.deepEqual(probe.value.missingSymbols, []);
+  const value = probe.value;
+  const declarationFixture = [
+    "const alpha = 1, beta = { nested: [1, 2] };",
+    "let gamma, delta = () => 1;",
+    "var epsilon = /[,;]/, zeta = 'class FakeZeta {}';",
+    "export const eta = 1, theta = 2;"
+  ].join("\n");
+  assert.deepEqual(c2bTopLevelHeaders(declarationFixture), [
+    "const alpha", "const beta", "export const eta", "export const theta",
+    "let delta", "let gamma", "var epsilon", "var zeta"
+  ]);
+  assert.deepEqual(c2bTopLevelHeaders([
+    "function outer() { const hidden = 1; function nested() {} }",
+    "class VisibleClass { method() { let hiddenToo = 2; } }",
+    "const visible = 1;"
+  ].join("\n")), ["class VisibleClass", "const visible", "function outer"]);
+  const tick = String.fromCharCode(96);
+  const maskedFixture = [
+    "// const commentFake = 1;",
+    "const single = 'function singleFake() {}';",
+    "const double = \"class DoubleFake {}\";",
+    "const regex = /const regexFake = 1;[{}]/;",
+    "const template = " + tick + "const templateFake = 1; ${'class NestedFake {}'}" + tick + ";",
+    "const visible = 1;"
+  ].join("\n");
+  assert.deepEqual(c2bTopLevelHeaders(maskedFixture), [
+    "const double", "const regex", "const single", "const template", "const visible"
+  ]);
+  assert.throws(() => c2bTopLevelHeaders("const { hidden } = value;\n"), /unsupported_top_level_binding/);
+  assert.throws(() => c2bTopLevelHeaders("export default function () {}\n"), /anonymous_top_level_declaration/);
+  assert.throws(() => c2bTopLevelHeaders("const visible = 1; /*"), /unterminated_header_comment/);
+  assert.deepEqual(Object.keys(runnerModule).sort(), C2B_NATIVE_EXPORTS);
+  assert.deepEqual(probe.value.moduleAllocationCounts, C2B_MODULE_ALLOCATION_BASELINE);
+  const runnerSource = readFileSync(fileURLToPath(new URL("../../scripts/japan-tuic-additive-repair-runner.mjs", import.meta.url)), "utf8");
+  const sourceLock = c2bExactSourceBlock(runnerSource);
+  assert.equal(Buffer.byteLength(sourceLock.block, "utf8"), C2B_EXACT_BLOCK_SIZE);
+  assert.equal(createHash("sha256").update(sourceLock.block, "utf8").digest("hex"), C2B_EXACT_BLOCK_SHA256);
+  assert.deepEqual(c2bTopLevelHeaders(sourceLock.block), C2B_EXPECTED_TOP_LEVEL_ADDITIONS);
+  const allHeaders = c2bTopLevelHeaders(sourceLock.normalized);
+  const additionHeaders = allHeaders.filter((header) => C2B_EXPECTED_TOP_LEVEL_ADDITIONS.includes(header));
+  const baseHeaders = allHeaders.filter((header) => !C2B_EXPECTED_TOP_LEVEL_ADDITIONS.includes(header));
+  assert.deepEqual(baseHeaders, C2B_ACCEPTED_BASE_TOP_LEVEL_HEADERS);
+  assert.deepEqual(additionHeaders, C2B_EXPECTED_TOP_LEVEL_ADDITIONS);
+  assert.equal(allHeaders.length, C2B_ACCEPTED_BASE_TOP_LEVEL_HEADERS.length + C2B_EXPECTED_TOP_LEVEL_ADDITIONS.length);
+  assert.deepEqual(value.arities, C2B_EXPECTED_ARITIES);
+  assert.equal(value.proxyInstrumentation, true);
+  assert.deepEqual(value.proxyInstrumentationAllocations, { ...C2B_ZERO_ALLOCATIONS, proxy: 2 });
+  assert.equal(value.policy.frozen, true);
+  assert.deepEqual(value.policy.shared, { fixedEnvelope: 32, sourceFile: 256, authorizationEntry: 1 });
+  assert.deepEqual(value.policy.ssh, {
+    sshPhysicalDirective: 131072,
+    sshIncludePattern: 131072,
+    sshSelectedInsertion: 65536,
+    sshMatchBranch: 4096,
+    sshMatchCondition: 131072,
+    sshMatchPattern: 131072,
+    sshAssignment: 131072,
+    sshAcceptEnvName: 131072
+  });
+  assert.deepEqual(value.policy.sudo, {
+    sudoStatement: 131072,
+    sudoInclude: 131072,
+    sudoSelectedInsertion: 65536,
+    sudoAliasDefinition: 256,
+    sudoAliasMember: 65536,
+    sudoDefaultsItem: 131072,
+    sudoUserSpec: 4096,
+    sudoUserHostRunasMember: 131072,
+    sudoTagTransition: 131072,
+    sudoCommandSpec: 16384,
+    sudoArgumentToken: 131072,
+    sudoAliasEdge: 16384,
+    sudoAliasMemoEntry: 256
+  });
+  assert.deepEqual(value.policy.local, {
+    tokensPerPhysicalLine: 256,
+    generalTokenBytes: 4096,
+    sshIncludeOperands: 64,
+    sshMatchBranches: 4096,
+    sshMatchConditionsPerBranch: 9,
+    sshMatchPatternsPerCondition: 64,
+    sshMatchPatternBytes: 255,
+    sudoAliasDefinitions: 256,
+    sudoAliasMembersPerAlias: 256,
+    sudoAliasExpansionNodes: 4096,
+    sudoUserSpecs: 4096,
+    sudoUserListMembersPerSpec: 256,
+    sudoCommandSpecsPerSpec: 256,
+    sudoDefaultsItemsPerStatement: 64,
+    accountGroups: 256
+  });
+  assert.deepEqual(value.policy.work, {
+    globComparisons: 65536,
+    wildcardPatternBytes: 4194304,
+    wildcardInvocations: 131072,
+    wildcardAlignedComparisons: 16777216,
+    sshMatchComparisons: 131072,
+    sudoSelectorComparisons: 65536,
+    sudoCommand: 16384,
+    sudoAliasEdge: 16384,
+    sudoAliasVisit: 32768,
+    preimageBytes: 4194304,
+    retainedPreimageBytes: 8388608
+  });
+  assert.deepEqual(value.initial.snapshot, {
+    failed: false,
+    fixedEnvelopeCount: 5,
+    semanticNodeCount: 5,
+    authorizationEntryCount: 0,
+    wildcardPatternByteCount: 0,
+    wildcardInvocationCount: 0,
+    wildcardAlignedComparisonCount: 0,
+    sshMatchComparisonCount: 0,
+    sudoSelectorComparisonCount: 0,
+    sudoAliasVisitCount: 0,
+    retainedPreimageBytes: 0
+  });
+  assert.deepEqual(value.initial.ssh, c2bExpectedInitialGraph("ssh"));
+  assert.deepEqual(value.initial.sudo, c2bExpectedInitialGraph("sudo"));
+  assert.deepEqual(value.initial.identity, {
+    snapshotSshGraph: true,
+    snapshotSudoGraph: true,
+    sshSnapshot: true,
+    sudoSnapshot: true,
+    graphsDistinct: true,
+    cleanupDistinct: true,
+    sshCleanup: C2B_EXPECTED_EMPTY_CLEANUP,
+    sudoCleanup: C2B_EXPECTED_EMPTY_CLEANUP
+  });
+  assert.deepEqual(value.initialCreationAllocations, C2B_FRESH_ALLOCATIONS);
+  const snapshotKeys = [
+    "authorizationEntryCount", "failed", "fixedEnvelopeCount", "retainedPreimageBytes", "semanticNodeCount",
+    "sshGraph", "sshMatchComparisonCount", "sudoAliasVisitCount", "sudoGraph", "sudoSelectorComparisonCount",
+    "wildcardAlignedComparisonCount", "wildcardInvocationCount", "wildcardPatternByteCount"
+  ].sort();
+  const graphKeys = [
+    "aliasEdgeWorkCount", "cleanupStack", "commandWorkCount", "depth", "directoryNameCount", "failed", "fileCount",
+    "fixedEnvelopeCount", "globComparisonCount", "kind", "nextOrdinal", "semanticNodeCount", "snapshot", "sourceFileCount",
+    "sshAcceptEnvNameCount", "sshAssignmentCount", "sshIncludePatternCount", "sshMatchBranchCount", "sshMatchConditionCount",
+    "sshMatchPatternCount", "sshPhysicalDirectiveCount", "sshSelectedInsertionCount", "sudoAliasDefinitionCount",
+    "sudoAliasEdgeCount", "sudoAliasMemberCount", "sudoAliasMemoEntryCount", "sudoArgumentTokenCount", "sudoCommandSpecCount",
+    "sudoDefaultsItemCount", "sudoIncludeCount", "sudoSelectedInsertionCount", "sudoStatementCount", "sudoTagTransitionCount",
+    "sudoUserHostRunasMemberCount", "sudoUserSpecCount", "totalBytes"
+  ].sort();
+  const expectedFields = (keys, readOnly, kinds) => keys.map((name) => ({
+    name,
+    writable: !readOnly.has(name),
+    enumerable: true,
+    configurable: false,
+    valueKind: kinds[name] || "number"
+  }));
+  assert.deepEqual(value.fixedShape.snapshot, {
+    nullPrototype: true,
+    symbolCount: 0,
+    fields: expectedFields(snapshotKeys, new Set(), { failed: "boolean", sshGraph: "Object", sudoGraph: "Object" })
+  });
+  for (const family of ["ssh", "sudo"]) {
+    assert.deepEqual(value.fixedShape[family], {
+      nullPrototype: true,
+      symbolCount: 0,
+      fields: expectedFields(graphKeys, new Set(["fixedEnvelopeCount", "kind", "snapshot"]), {
+        cleanupStack: "Array", failed: "boolean", kind: "string", snapshot: "Object"
+      })
+    }, family);
+  }
+  assert.equal(value.sourceOnly.before.snapshot.semanticNodeCount, 5);
+  assert.equal(value.sourceOnly.after.snapshot.semanticNodeCount, 6);
+  assert.equal(value.sourceOnly.after.ssh.semanticNodeCount, 3);
+  assert.equal(value.sourceOnly.after.ssh.sourceFileCount, 1);
+  assert.equal(value.sourceOnly.after.ssh.fileCount, 1);
+  assert.equal(value.sourceOnly.after.sudo.semanticNodeCount, 2);
+  assert.deepEqual(value.sourceOnly.trace, { calls: 1, kind: "sourceFile", sameGraph: true });
+  const expectedSourceOnly = c2bNumericState(value.sourceOnly.before);
+  expectedSourceOnly.snapshot.semanticNodeCount += 1;
+  expectedSourceOnly.ssh.semanticNodeCount += 1;
+  expectedSourceOnly.ssh.fileCount += 1;
+  expectedSourceOnly.ssh.sourceFileCount += 1;
+  assert.deepEqual(c2bNumericState(value.sourceOnly.after), expectedSourceOnly);
+  assert.deepEqual(value.sourceOnly.allocations, C2B_ZERO_ALLOCATIONS);
+  for (const route of value.sourceRoutes) {
+    const expectedRoute = c2bNumericState(route.before);
+    expectedRoute.snapshot.semanticNodeCount += 1;
+    expectedRoute[route.family].semanticNodeCount += 1;
+    expectedRoute[route.family].fileCount += 1;
+    expectedRoute[route.family].sourceFileCount += 1;
+    assert.deepEqual(route.trace, { calls: 1, kind: "sourceFile", sameGraph: true }, route.family);
+    assert.deepEqual(c2bNumericState(route.after), expectedRoute, route.family);
+    assert.deepEqual(route.allocations, C2B_ZERO_ALLOCATIONS, route.family);
+  }
+  const futureKindNames = [...Object.keys(value.policy.ssh), ...Object.keys(value.policy.sudo)];
+  assert.deepEqual(value.futureKinds.map(({ kind }) => kind), futureKindNames);
+  for (const witness of value.futureKinds) {
+    const graph = witness.after[witness.family];
+    const other = witness.after[witness.family === "ssh" ? "sudo" : "ssh"];
+    assert.equal(witness.before.snapshot.semanticNodeCount, 5, witness.kind);
+    assert.equal(witness.after.snapshot.semanticNodeCount, 6, witness.kind);
+    assert.equal(graph.semanticNodeCount, 3, witness.kind);
+    assert.equal(graph[`${witness.kind}Count`], 1, witness.kind);
+    assert.equal(other.semanticNodeCount, 2, witness.kind);
+    assert.equal(graph.commandWorkCount, witness.kind === "sudoCommandSpec" ? 1 : 0, witness.kind);
+    assert.equal(graph.aliasEdgeWorkCount, witness.kind === "sudoAliasEdge" ? 1 : 0, witness.kind);
+    const expectedAfter = c2bNumericState(witness.before);
+    expectedAfter.snapshot.semanticNodeCount += 1;
+    expectedAfter[witness.family].semanticNodeCount += 1;
+    expectedAfter[witness.family][`${witness.kind}Count`] += 1;
+    if (witness.kind === "sudoCommandSpec") expectedAfter.sudo.commandWorkCount += 1;
+    if (witness.kind === "sudoAliasEdge") expectedAfter.sudo.aliasEdgeWorkCount += 1;
+    assert.deepEqual(c2bNumericState(witness.after), expectedAfter, witness.kind);
+    assert.deepEqual(witness.allocations, C2B_ZERO_ALLOCATIONS, witness.kind);
+  }
+  for (const boundary of value.boundaries) {
+    const expectedAtMaximum = c2bNumericState(value.initial);
+    expectedAtMaximum.snapshot.semanticNodeCount += boundary.maximum;
+    expectedAtMaximum[boundary.family].semanticNodeCount += boundary.maximum;
+    expectedAtMaximum[boundary.family][boundary.counter] = boundary.maximum;
+    if (boundary.kind === "sudoCommandSpec") expectedAtMaximum.sudo.commandWorkCount = boundary.maximum;
+    if (boundary.kind === "sudoAliasEdge") expectedAtMaximum.sudo.aliasEdgeWorkCount = boundary.maximum;
+    assert.deepEqual(c2bNumericState(boundary.atMaximum), expectedAtMaximum, boundary.kind);
+    assert.equal(boundary.countAtMaximum, boundary.maximum, boundary.kind);
+    assert.equal(boundary.countAfter, boundary.maximum, boundary.kind);
+    assert.equal(boundary.graphSemanticAfter, boundary.graphSemanticAtMaximum, boundary.kind);
+    assert.equal(boundary.snapshotSemanticAfter, boundary.snapshotSemanticAtMaximum, boundary.kind);
+    assert.deepEqual(boundary.rejected, { ok: false, error: "restricted_identity_rejected" }, boundary.kind);
+    assert.equal(boundary.terminal, true, boundary.kind);
+    assert.deepEqual(c2bNumericState(boundary.after), c2bExpectedGraphFailure(boundary.atMaximum, boundary.family), boundary.kind);
+    assert.deepEqual(boundary.allocations, C2B_ZERO_ALLOCATIONS, boundary.kind);
+    assert.deepEqual(boundary.rejectionAllocations, C2B_ZERO_ALLOCATIONS, boundary.kind);
+  }
+  for (const local of value.localMaxima) {
+    assert.equal(local.accepted, local.maximum, local.name);
+    assert.deepEqual(local.rejected, { ok: false, error: "restricted_identity_rejected" }, local.name);
+    assert.deepEqual(local.acceptedAllocations, C2B_ZERO_ALLOCATIONS, local.name);
+    assert.deepEqual(local.rejectedAllocations, C2B_ZERO_ALLOCATIONS, local.name);
+  }
+  assert.ok(value.invalidNext.every(({ outcome }) => !outcome.ok && outcome.error === "restricted_identity_rejected"));
+  for (const invalid of value.invalidNext) assert.deepEqual(invalid.allocations, C2B_ZERO_ALLOCATIONS, invalid.name);
+  for (const rejected of value.rejected) {
+    assert.deepEqual(rejected.outcome, { ok: false, error: "restricted_identity_rejected" }, rejected.kind);
+    assert.deepEqual(c2bNumericState(rejected.after), c2bExpectedGraphFailure(rejected.before, rejected.family), rejected.kind);
+    assert.equal(rejected.after.snapshot.failed, true, rejected.kind);
+    assert.equal(rejected.after[rejected.family].failed, true, rejected.kind);
+    assert.deepEqual(rejected.allocations, C2B_ZERO_ALLOCATIONS, rejected.kind);
+  }
+  assert.deepEqual(value.unbranded.outcome, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(c2bNumericState(value.unbranded.after), c2bNumericState(value.unbranded.before));
+  assert.deepEqual(value.unbranded.rawAfter, value.unbranded.rawBefore);
+  assert.deepEqual(value.unbranded.allocations, C2B_ZERO_ALLOCATIONS);
+  for (const coupling of [value.commandCoupling, value.edgeCoupling]) {
+    assert.deepEqual(coupling.outcome, { ok: false, error: "restricted_identity_rejected" });
+    assert.deepEqual(c2bNumericState(coupling.after), c2bExpectedGraphFailure(coupling.before, "sudo"));
+    assert.equal(coupling.after.snapshot.failed, true);
+    assert.equal(coupling.after.sudo.failed, true);
+    assert.deepEqual(coupling.preparationAllocations, C2B_ZERO_ALLOCATIONS);
+    assert.deepEqual(coupling.rejectionAllocations, C2B_ZERO_ALLOCATIONS);
+  }
+  assert.equal(value.commandCoupling.before.sudo.commandWorkCount, 16384);
+  assert.equal(value.commandCoupling.before.sudo.sudoCommandSpecCount, 0);
+  assert.equal(value.edgeCoupling.before.sudo.aliasEdgeWorkCount, 16384);
+  assert.equal(value.edgeCoupling.before.sudo.sudoAliasEdgeCount, 0);
+});
+
+test("one snapshot rejects before semantic node 131073 across both graphs", () => {
+  const probe = c2bBudgetVmProbe("aggregate");
+  assert.equal(probe.error, null);
+  assert.equal(Object.hasOwn(probe, "value"), true);
+  assert.deepEqual(probe.value.missingSymbols, []);
+  const value = probe.value;
+  assert.equal(value.initial.snapshot.semanticNodeCount, 5);
+  assert.equal(value.atMaximum.snapshot.semanticNodeCount, 131072);
+  assert.equal(value.atMaximum.ssh.semanticNodeCount, 65536);
+  assert.equal(value.atMaximum.ssh.sshPhysicalDirectiveCount, 65534);
+  assert.equal(value.atMaximum.sudo.semanticNodeCount, 65535);
+  assert.equal(value.atMaximum.sudo.sudoStatementCount, 65533);
+  const expectedAggregateMaximum = c2bNumericState(value.initial);
+  expectedAggregateMaximum.snapshot.semanticNodeCount = 131072;
+  expectedAggregateMaximum.ssh.semanticNodeCount = 65536;
+  expectedAggregateMaximum.ssh.sshPhysicalDirectiveCount = 65534;
+  expectedAggregateMaximum.sudo.semanticNodeCount = 65535;
+  expectedAggregateMaximum.sudo.sudoStatementCount = 65533;
+  assert.deepEqual(c2bNumericState(value.atMaximum), expectedAggregateMaximum);
+  assert.deepEqual(value.rejected, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.rejectionAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(c2bNumericState(value.after), c2bExpectedGraphFailure(value.atMaximum, "ssh"));
+  assert.equal(value.after.snapshot.failed, true);
+  assert.equal(value.after.ssh.failed, true);
+  for (const outcome of [value.terminalSemantic, value.terminalWork, value.terminalPreimage, value.terminalC2A]) {
+    assert.deepEqual(outcome, { ok: false, error: "restricted_identity_rejected" });
+  }
+  for (const allocations of [
+    value.terminalSemanticAllocations,
+    value.terminalWorkAllocations,
+    value.terminalPreimageAllocations,
+    value.terminalC2AAllocations,
+    value.terminalSourceAllocations
+  ]) assert.deepEqual(allocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.terminalSource, { error: "restricted_identity_rejected", calls: 0 });
+  const expectedTerminalFinal = c2bNumericState(value.after);
+  expectedTerminalFinal.sudo.failed = true;
+  assert.deepEqual(c2bNumericState(value.terminalFinal), expectedTerminalFinal);
+  assert.deepEqual(c2bNumericState(value.reset), c2bNumericState(value.initial));
+  assert.equal(value.reset.snapshot.semanticNodeCount, 5);
+  assert.equal(value.reset.snapshot.failed, false);
+  assert.equal(value.reset.ssh.sshPhysicalDirectiveCount, 0);
+  assert.equal(value.reset.sudo.sudoStatementCount, 0);
+  assert.equal(value.graphDefense.accepted, 131072);
+  assert.deepEqual(value.graphDefense.rejected, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.graphDefense.acceptedAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.graphDefense.rejectedAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.allocations, C2B_ZERO_ALLOCATIONS);
+});
+
+test("authorization work and preimage reserves are atomic terminal and nondecrementing", () => {
+  const probe = c2bBudgetVmProbe("work");
+  assert.equal(probe.error, null);
+  assert.equal(Object.hasOwn(probe, "value"), true);
+  assert.deepEqual(probe.value.missingSymbols, []);
+  const value = probe.value;
+  assert.deepEqual(value.policy, {
+    globComparisons: 65536,
+    wildcardPatternBytes: 4194304,
+    wildcardInvocations: 131072,
+    wildcardAlignedComparisons: 16777216,
+    sshMatchComparisons: 131072,
+    sudoSelectorComparisons: 65536,
+    sudoCommand: 16384,
+    sudoAliasEdge: 16384,
+    sudoAliasVisit: 32768,
+    preimageBytes: 4194304,
+    retainedPreimageBytes: 8388608
+  });
+  for (const boundary of value.boundaries) {
+    const expectedAtMaximum = c2bNumericState(boundary.initial);
+    if (boundary.kind === "glob") {
+      expectedAtMaximum[boundary.family].globComparisonCount = boundary.maximum;
+      expectedAtMaximum.snapshot.wildcardInvocationCount = boundary.maximum;
+    } else if (boundary.kind === "sshMatch") {
+      expectedAtMaximum.snapshot.sshMatchComparisonCount = boundary.maximum;
+      expectedAtMaximum.snapshot.wildcardInvocationCount = boundary.maximum;
+    } else if (boundary.kind === "sudoSelector") {
+      expectedAtMaximum.snapshot.sudoSelectorComparisonCount = boundary.maximum;
+      expectedAtMaximum.snapshot.wildcardInvocationCount = boundary.maximum;
+    } else if (boundary.kind === "sudoCommand") {
+      expectedAtMaximum.sudo.commandWorkCount = boundary.maximum;
+    } else if (boundary.kind === "sudoAliasEdge") {
+      expectedAtMaximum.sudo.aliasEdgeWorkCount = boundary.maximum;
+    } else if (boundary.kind === "sudoAliasVisit") {
+      expectedAtMaximum.snapshot.sudoAliasVisitCount = boundary.maximum;
+    } else {
+      assert.fail(`unexpected work kind: ${boundary.kind}`);
+    }
+    assert.deepEqual(c2bNumericState(boundary.atMaximum), expectedAtMaximum, boundary.kind);
+    assert.deepEqual(boundary.rejected, { ok: false, error: "restricted_identity_rejected" }, boundary.kind);
+    assert.deepEqual(c2bNumericState(boundary.after), c2bExpectedGraphFailure(boundary.atMaximum, boundary.family), boundary.kind);
+    assert.equal(boundary.after.snapshot.failed, true, boundary.kind);
+    assert.equal(boundary.after[boundary.family].failed, true, boundary.kind);
+    assert.equal(boundary.atMaximum.snapshot.semanticNodeCount, 5, boundary.kind);
+    assert.deepEqual(boundary.allocations, C2B_ZERO_ALLOCATIONS, boundary.kind);
+    assert.deepEqual(boundary.rejectionAllocations, C2B_ZERO_ALLOCATIONS, boundary.kind);
+  }
+  assert.equal(value.invocationAtomic.before.snapshot.wildcardInvocationCount, 131072);
+  assert.equal(value.invocationAtomic.before.snapshot.sshMatchComparisonCount, 0);
+  const expectedInvocationAtomic = c2bNumericState(value.initial);
+  expectedInvocationAtomic.ssh.globComparisonCount = 65536;
+  expectedInvocationAtomic.snapshot.sudoSelectorComparisonCount = 65536;
+  expectedInvocationAtomic.snapshot.wildcardInvocationCount = 131072;
+  assert.deepEqual(c2bNumericState(value.invocationAtomic.before), expectedInvocationAtomic);
+  assert.deepEqual(value.invocationAtomic.rejected, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(c2bNumericState(value.invocationAtomic.after), c2bExpectedGraphFailure(value.invocationAtomic.before, "ssh"));
+  assert.equal(value.invocationAtomic.after.snapshot.failed, true);
+  assert.equal(value.invocationAtomic.after.ssh.failed, true);
+  assert.deepEqual(value.invocationAtomic.rejectionAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.preimage.returnTypes, ["undefined", "undefined"]);
+  const expectedPreimageMaximum = c2bNumericState(value.preimage.initial);
+  expectedPreimageMaximum.snapshot.retainedPreimageBytes = 8388608;
+  assert.deepEqual(c2bNumericState(value.preimage.atMaximum), expectedPreimageMaximum);
+  assert.equal(value.preimage.before.snapshot.retainedPreimageBytes, 8388608);
+  assert.deepEqual(value.preimage.rejected, { ok: false, error: "restricted_identity_rejected" });
+  assert.equal(value.preimage.after.snapshot.retainedPreimageBytes, 8388608);
+  assert.deepEqual(c2bNumericState(value.preimage.after), c2bExpectedSnapshotFailure(expectedPreimageMaximum));
+  assert.equal(value.preimage.after.snapshot.failed, true);
+  assert.deepEqual(value.preimage.allocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.preimage.rejectionAllocations, C2B_ZERO_ALLOCATIONS);
+  for (const witness of value.invalidPreimage) {
+    assert.deepEqual(witness.outcome, { ok: false, error: "restricted_identity_rejected" }, witness.name);
+    assert.deepEqual(c2bNumericState(witness.after), c2bExpectedSnapshotFailure(witness.before), witness.name);
+    assert.equal(witness.after.snapshot.retainedPreimageBytes, 0, witness.name);
+    assert.equal(witness.after.snapshot.failed, true, witness.name);
+    assert.deepEqual(witness.allocations, C2B_ZERO_ALLOCATIONS, witness.name);
+  }
+  assert.deepEqual(value.unbranded.outcome, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(c2bNumericState(value.unbranded.after), c2bNumericState(value.unbranded.before));
+  assert.deepEqual(value.unbranded.rawAfter, value.unbranded.rawBefore);
+  assert.deepEqual(value.unbranded.allocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.failedSnapshot.first, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.failedSnapshot.second, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(c2bNumericState(value.failedSnapshot.after), c2bNumericState(value.failedSnapshot.before));
+  assert.deepEqual(value.failedSnapshot.firstAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.failedSnapshot.secondAllocations, C2B_ZERO_ALLOCATIONS);
+  for (const witness of value.rejectedWork) {
+    assert.deepEqual(witness.outcome, { ok: false, error: "restricted_identity_rejected" }, witness.kind);
+    assert.deepEqual(c2bNumericState(witness.after), c2bExpectedGraphFailure(witness.before, witness.family), witness.kind);
+    assert.equal(witness.after.snapshot.failed, true, witness.kind);
+    assert.equal(witness.after[witness.family].failed, true, witness.kind);
+    assert.deepEqual(witness.allocations, C2B_ZERO_ALLOCATIONS, witness.kind);
+  }
+  assert.deepEqual(value.unbrandedWork.outcome, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(c2bNumericState(value.unbrandedWork.after), c2bNumericState(value.unbrandedWork.before));
+  assert.deepEqual(value.unbrandedWork.rawAfter, value.unbrandedWork.rawBefore);
+  assert.deepEqual(value.unbrandedWork.allocations, C2B_ZERO_ALLOCATIONS);
+});
+
+test("wildcard permits zero or one star and scans prefix suffix bytes once", () => {
+  const probe = c2bBudgetVmProbe("wildcard");
+  assert.equal(probe.error, null);
+  assert.equal(Object.hasOwn(probe, "value"), true);
+  assert.deepEqual(probe.value.missingSymbols, []);
+  const value = probe.value;
+  assert.deepEqual(value.cases.map(({ name, result, starIndex, alignedDelta }) => [name, result, starIndex, alignedDelta]), [
+    ["no-star-equal", true, -1, 3],
+    ["literal-mismatch", false, -1, 3],
+    ["unequal-length", false, -1, 0],
+    ["question", true, -1, 3],
+    ["star-start", true, 0, 1],
+    ["star-end", true, 1, 1],
+    ["star-middle-empty", true, 1, 2],
+    ["star-middle-nonempty", true, 1, 2],
+    ["star-too-short", false, 2, 0],
+    ["sudo-glob", true, 1, 2]
+  ]);
+  for (const witness of value.cases) {
+    const expectedAfter = c2bNumericState(witness.before);
+    expectedAfter.snapshot.wildcardPatternByteCount += witness.patternLength;
+    expectedAfter.snapshot.wildcardInvocationCount += 1;
+    expectedAfter.snapshot.wildcardAlignedComparisonCount += witness.alignedDelta;
+    if (witness.domain === "sshMatch") expectedAfter.snapshot.sshMatchComparisonCount += 1;
+    else if (witness.domain === "sudoSelector") expectedAfter.snapshot.sudoSelectorComparisonCount += 1;
+    else expectedAfter[witness.family].globComparisonCount += 1;
+    assert.deepEqual(c2bNumericState(witness.after), expectedAfter, witness.name);
+    assert.equal(witness.patternDelta, witness.patternLength, witness.name);
+    assert.equal(witness.invocationDelta, 1, witness.name);
+    assert.deepEqual(witness.scanAllocations, C2B_ZERO_ALLOCATIONS, witness.name);
+    assert.deepEqual(witness.matchAllocations, C2B_ZERO_ALLOCATIONS, witness.name);
+  }
+  assert.deepEqual(value.cases[0].scanTrace, [["pattern", 0], ["pattern", 1], ["pattern", 2]]);
+  assert.deepEqual(value.cases[0].matchTrace, [
+    ["pattern", 0], ["target", 0], ["pattern", 1], ["target", 1], ["pattern", 2], ["target", 2]
+  ]);
+  assert.deepEqual(value.cases[1].scanTrace, [["pattern", 0], ["pattern", 1], ["pattern", 2]]);
+  assert.deepEqual(value.cases[1].matchTrace, [
+    ["pattern", 0], ["target", 0], ["pattern", 1], ["target", 1], ["pattern", 2], ["target", 2]
+  ]);
+  assert.deepEqual(value.cases[2].scanTrace, [["pattern", 0], ["pattern", 1], ["pattern", 2]]);
+  assert.deepEqual(value.cases[2].matchTrace, []);
+  assert.deepEqual(value.cases.at(-1).scanTrace, [["pattern", 0], ["pattern", 1], ["pattern", 2]]);
+  assert.deepEqual(value.cases.at(-1).matchTrace, [
+    ["pattern", 0], ["target", 0], ["pattern", 2], ["target", 4]
+  ]);
+  assert.deepEqual(value.longTrace.scanTrace, [
+    ["pattern", 0], ["pattern", 1], ["pattern", 2], ["pattern", 3],
+    ["pattern", 4], ["pattern", 5], ["pattern", 6]
+  ]);
+  assert.equal(value.longTrace.result, true);
+  const expectedLong = c2bNumericState(value.longTrace.before);
+  expectedLong.snapshot.wildcardPatternByteCount += 7;
+  expectedLong.snapshot.wildcardInvocationCount += 1;
+  expectedLong.snapshot.wildcardAlignedComparisonCount += 6;
+  expectedLong.ssh.globComparisonCount += 1;
+  assert.deepEqual(c2bNumericState(value.longTrace.after), expectedLong);
+  assert.equal(value.longTrace.patternDelta, 7);
+  assert.equal(value.longTrace.invocationDelta, 1);
+  assert.equal(value.longTrace.alignedDelta, 6);
+  assert.deepEqual(value.longTrace.scanAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.longTrace.matchAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.longTrace.matchTrace, [
+    ["pattern", 0], ["target", 0], ["pattern", 1], ["target", 1], ["pattern", 2], ["target", 2],
+    ["pattern", 6], ["target", 9], ["pattern", 5], ["target", 8], ["pattern", 4], ["target", 7]
+  ]);
+  assert.equal(new Set(value.longTrace.matchTrace.filter(([role]) => role === "target").map(([, index]) => index)).size, 6);
+  assert.equal(value.earlyPrefix.result, false);
+  const expectedEarlyPrefix = c2bNumericState(value.earlyPrefix.before);
+  expectedEarlyPrefix.snapshot.wildcardPatternByteCount += 5;
+  expectedEarlyPrefix.snapshot.wildcardInvocationCount += 1;
+  expectedEarlyPrefix.snapshot.wildcardAlignedComparisonCount += 2;
+  expectedEarlyPrefix.ssh.globComparisonCount += 1;
+  assert.deepEqual(c2bNumericState(value.earlyPrefix.after), expectedEarlyPrefix);
+  assert.equal(value.earlyPrefix.patternDelta, 5);
+  assert.equal(value.earlyPrefix.invocationDelta, 1);
+  assert.equal(value.earlyPrefix.alignedDelta, 2);
+  assert.deepEqual(value.earlyPrefix.scanAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.earlyPrefix.matchAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.earlyPrefix.trace, [["pattern", 0], ["target", 0], ["pattern", 1], ["target", 1]]);
+  assert.equal(value.earlySuffix.result, false);
+  const expectedEarlySuffix = c2bNumericState(value.earlySuffix.before);
+  expectedEarlySuffix.snapshot.wildcardPatternByteCount += 5;
+  expectedEarlySuffix.snapshot.wildcardInvocationCount += 1;
+  expectedEarlySuffix.snapshot.wildcardAlignedComparisonCount += 3;
+  expectedEarlySuffix.ssh.globComparisonCount += 1;
+  assert.deepEqual(c2bNumericState(value.earlySuffix.after), expectedEarlySuffix);
+  assert.equal(value.earlySuffix.patternDelta, 5);
+  assert.equal(value.earlySuffix.invocationDelta, 1);
+  assert.equal(value.earlySuffix.alignedDelta, 3);
+  assert.deepEqual(value.earlySuffix.scanAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.earlySuffix.matchAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.earlySuffix.trace, [
+    ["pattern", 0], ["target", 0], ["pattern", 1], ["target", 1], ["pattern", 4], ["target", 6]
+  ]);
+  assert.deepEqual(value.secondStars[0].outcome, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.secondStars[0].trace, [["pattern", 0], ["pattern", 1], ["pattern", 2], ["pattern", 3]]);
+  assert.deepEqual(value.secondStars[1].outcome, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.secondStars[1].trace, [["pattern", 0], ["pattern", 1]]);
+  for (const witness of value.secondStars) {
+    const expectedAfter = c2bExpectedGraphFailure(witness.before, "ssh");
+    expectedAfter.snapshot.wildcardPatternByteCount += witness.trace.length;
+    assert.deepEqual(c2bNumericState(witness.after), expectedAfter);
+    assert.equal(witness.after.snapshot.failed, true);
+    assert.deepEqual(witness.allocations, C2B_ZERO_ALLOCATIONS);
+  }
+  assert.equal(value.patternBoundary.atMaximum.snapshot.wildcardPatternByteCount, 4194304);
+  const expectedPatternMaximum = c2bNumericState(value.patternBoundary.initial);
+  expectedPatternMaximum.snapshot.wildcardPatternByteCount = 4194304;
+  assert.deepEqual(c2bNumericState(value.patternBoundary.atMaximum), expectedPatternMaximum);
+  assert.deepEqual(value.patternBoundary.rejected, { ok: false, error: "restricted_identity_rejected" });
+  assert.equal(value.patternBoundary.after.snapshot.wildcardPatternByteCount, 4194304);
+  assert.deepEqual(c2bNumericState(value.patternBoundary.after), c2bExpectedGraphFailure(expectedPatternMaximum, "ssh"));
+  assert.equal(value.patternBoundary.after.snapshot.failed, true);
+  assert.deepEqual(value.patternBoundary.trace, []);
+  assert.deepEqual(value.patternBoundary.allocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.patternBoundary.rejectionAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.equal(value.alignedBoundary.atMaximum.snapshot.wildcardAlignedComparisonCount, 16777216);
+  const expectedAlignedMaximum = c2bNumericState(value.alignedBoundary.initial);
+  expectedAlignedMaximum.snapshot.wildcardPatternByteCount = 4096;
+  expectedAlignedMaximum.snapshot.wildcardInvocationCount = 4096;
+  expectedAlignedMaximum.snapshot.wildcardAlignedComparisonCount = 16777216;
+  expectedAlignedMaximum.ssh.globComparisonCount = 4096;
+  assert.deepEqual(c2bNumericState(value.alignedBoundary.atMaximum), expectedAlignedMaximum);
+  assert.deepEqual(value.alignedBoundary.rejected, { ok: false, error: "restricted_identity_rejected" });
+  assert.equal(value.alignedBoundary.after.snapshot.wildcardAlignedComparisonCount, 16777216);
+  assert.equal(value.alignedBoundary.after.snapshot.wildcardInvocationCount, 4097);
+  assert.equal(value.alignedBoundary.after.ssh.globComparisonCount, 4097);
+  const expectedAlignedAfter = c2bNumericState(expectedAlignedMaximum);
+  expectedAlignedAfter.snapshot.wildcardInvocationCount += 1;
+  expectedAlignedAfter.ssh.globComparisonCount += 1;
+  assert.deepEqual(c2bNumericState(value.alignedBoundary.after), c2bExpectedGraphFailure(expectedAlignedAfter, "ssh"));
+  assert.equal(value.alignedBoundary.after.snapshot.failed, true);
+  assert.deepEqual(value.alignedBoundary.trace, []);
+  assert.deepEqual(value.alignedBoundary.scanAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.alignedBoundary.allocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.alignedBoundary.rejectionAllocations, C2B_ZERO_ALLOCATIONS);
+  for (const boundary of value.domains) {
+    const expectedAtMaximum = c2bNumericState(boundary.initial);
+    if (boundary.domain === "glob") {
+      expectedAtMaximum[boundary.family].globComparisonCount = boundary.maximum;
+      expectedAtMaximum.snapshot.wildcardInvocationCount = boundary.maximum;
+    } else if (boundary.domain === "sshMatch") {
+      expectedAtMaximum.snapshot.sshMatchComparisonCount = boundary.maximum;
+      expectedAtMaximum.snapshot.wildcardInvocationCount = boundary.maximum;
+    } else if (boundary.domain === "sudoSelector") {
+      expectedAtMaximum.snapshot.sudoSelectorComparisonCount = boundary.maximum;
+      expectedAtMaximum.snapshot.wildcardInvocationCount = boundary.maximum;
+    } else {
+      assert.fail(`unexpected wildcard domain: ${boundary.domain}`);
+    }
+    assert.deepEqual(c2bNumericState(boundary.atMaximum), expectedAtMaximum, boundary.domain);
+    assert.deepEqual(boundary.rejected, { ok: false, error: "restricted_identity_rejected" }, boundary.domain);
+    assert.deepEqual(boundary.trace, [], boundary.domain);
+    assert.deepEqual(c2bNumericState(boundary.after), c2bExpectedGraphFailure(boundary.atMaximum, boundary.family), boundary.domain);
+    assert.equal(boundary.after.snapshot.failed, true, boundary.domain);
+    assert.equal(boundary.after[boundary.family].failed, true, boundary.domain);
+    assert.deepEqual(boundary.allocations, C2B_ZERO_ALLOCATIONS, boundary.domain);
+    assert.deepEqual(boundary.rejectionAllocations, C2B_ZERO_ALLOCATIONS, boundary.domain);
+  }
+  for (const witness of value.wrongDomains) {
+    assert.deepEqual(witness.outcome, { ok: false, error: "restricted_identity_rejected" }, witness.domain);
+    assert.deepEqual(witness.trace, [], witness.domain);
+    assert.deepEqual(c2bNumericState(witness.after), c2bExpectedGraphFailure(witness.before, witness.family), witness.domain);
+    assert.equal(witness.after.snapshot.failed, true, witness.domain);
+    assert.equal(witness.after[witness.family].failed, true, witness.domain);
+    assert.deepEqual(witness.allocations, C2B_ZERO_ALLOCATIONS, witness.domain);
+  }
+  assert.deepEqual(value.invalidScanSubjects.raw, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.invalidScanSubjects.rawTrace, []);
+  assert.deepEqual(value.invalidScanSubjects.rawAfter, value.invalidScanSubjects.rawBefore);
+  assert.deepEqual(value.invalidScanSubjects.rawAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.invalidScanSubjects.failedPreparation, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.invalidScanSubjects.failedPreparationAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.invalidScanSubjects.failed, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.invalidScanSubjects.failedTrace, []);
+  const expectedFailedScan = c2bNumericState(value.invalidScanSubjects.failedBefore);
+  expectedFailedScan.sudo.failed = true;
+  assert.deepEqual(c2bNumericState(value.invalidScanSubjects.failedAfter), expectedFailedScan);
+  assert.deepEqual(value.invalidScanSubjects.failedAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.equal(value.invalidScanSubjects.failedAfter.sudo.failed, true);
+  assert.deepEqual(value.invalidScanSubjects.nonBuffer, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(c2bNumericState(value.invalidScanSubjects.nonBufferAfter), c2bExpectedGraphFailure(value.invalidScanSubjects.nonBufferBefore, "ssh"));
+  assert.equal(value.invalidScanSubjects.nonBufferAfter.snapshot.failed, true);
+  assert.equal(value.invalidScanSubjects.nonBufferAfter.ssh.failed, true);
+  assert.deepEqual(value.invalidScanSubjects.nonBufferAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.invalidMatchGraphs.raw, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.invalidMatchGraphs.rawTrace, []);
+  assert.deepEqual(value.invalidMatchGraphs.rawAfter, value.invalidMatchGraphs.rawBefore);
+  assert.deepEqual(c2bNumericState(value.invalidMatchGraphs.rawBudgetAfter), c2bNumericState(value.invalidMatchGraphs.rawBudgetBefore));
+  assert.deepEqual(value.invalidMatchGraphs.rawAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.invalidMatchGraphs.failedPreparation, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.invalidMatchGraphs.failedPreparationAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.invalidMatchGraphs.failed, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.invalidMatchGraphs.failedTrace, []);
+  const expectedFailedMatch = c2bNumericState(value.invalidMatchGraphs.failedBefore);
+  expectedFailedMatch.sudo.failed = true;
+  assert.deepEqual(c2bNumericState(value.invalidMatchGraphs.failedAfter), expectedFailedMatch);
+  assert.equal(value.invalidMatchGraphs.failedAfter.snapshot.failed, true);
+  assert.equal(value.invalidMatchGraphs.failedAfter.sudo.failed, true);
+  assert.deepEqual(value.invalidMatchGraphs.failedAllocations, C2B_ZERO_ALLOCATIONS);
+  for (const witness of value.invalidMatches) {
+    assert.deepEqual(witness.outcome, { ok: false, error: "restricted_identity_rejected" }, witness.name);
+    assert.deepEqual(witness.trace, [], witness.name);
+    assert.deepEqual(c2bNumericState(witness.after), c2bExpectedGraphFailure(witness.before, "ssh"), witness.name);
+    assert.equal(witness.after.snapshot.failed, true, witness.name);
+    assert.equal(witness.after.ssh.failed, true, witness.name);
+    assert.deepEqual(witness.allocations, C2B_ZERO_ALLOCATIONS, witness.name);
+  }
+});
+
+const C2B_BUDGET_HARNESS_SUFFIX = String.raw`
+function semanticBoundary(kind, family, maximum, counter) {
+  const state = fresh();
+  const graph = family === "ssh" ? state.ssh : state.sudo;
+  const allocation = withAllocations(() => {
+    for (let index = 0; index < maximum; index += 1) api.__test_reserveAuthorizationSemanticNode(graph, kind);
+  });
+  const atMaximum = inspect(state);
+  const rejection = withAllocations(() => safe(() => api.__test_reserveAuthorizationSemanticNode(graph, kind)));
+  const after = inspect(state);
+  return {
+    kind, family, maximum, counter, rejected: rejection.value, rejectionAllocations: rejection.counts,
+    atMaximum, after,
+    countAtMaximum: atMaximum[family][counter],
+    countAfter: after[family][counter],
+    graphSemanticAtMaximum: atMaximum[family].semanticNodeCount,
+    graphSemanticAfter: after[family].semanticNodeCount,
+    snapshotSemanticAtMaximum: atMaximum.snapshot.semanticNodeCount,
+    snapshotSemanticAfter: after.snapshot.semanticNodeCount,
+    terminal: after.snapshot.failed,
+    allocations: allocation.counts
+  };
+}
+function rejectedSemantic(kind, family) {
+  const state = fresh();
+  const graph = family === "ssh" ? state.ssh : state.sudo;
+  const before = inspect(state);
+  const allocation = withAllocations(() => safe(() => api.__test_reserveAuthorizationSemanticNode(graph, kind)));
+  return { kind, family, before, outcome: allocation.value, after: inspect(state), allocations: allocation.counts };
+}
+function oneSemantic(kind, family) {
+  const state = fresh();
+  const graph = family === "ssh" ? state.ssh : state.sudo;
+  const before = inspect(state);
+  const allocation = withAllocations(() => api.__test_reserveAuthorizationSemanticNode(graph, kind));
+  return { kind, family, before, after: inspect(state), allocations: allocation.counts };
+}
+function runSemantic() {
+  const policy = api.__test_c2bPolicy();
+  const initialCreation = withAllocations(() => api.__test_c2bCreateState());
+  const initial = inspect(initialCreation.value);
+  const arities = api.__test_c2bArities();
+  const proxyInstrumentation = withAllocations(() => api.__test_c2bProxyInstrumentation(initialCreation.value));
+  const fixedShape = api.__test_c2bFixedShape(initialCreation.value);
+  const sshKinds = [
+    "sshPhysicalDirective", "sshIncludePattern", "sshSelectedInsertion", "sshMatchBranch",
+    "sshMatchCondition", "sshMatchPattern", "sshAssignment", "sshAcceptEnvName"
+  ];
+  const sudoKinds = [
+    "sudoStatement", "sudoInclude", "sudoSelectedInsertion", "sudoAliasDefinition", "sudoAliasMember",
+    "sudoDefaultsItem", "sudoUserSpec", "sudoUserHostRunasMember", "sudoTagTransition", "sudoCommandSpec",
+    "sudoArgumentToken", "sudoAliasEdge", "sudoAliasMemoEntry"
+  ];
+  const sourceRoute = (family) => {
+    const state = fresh();
+    const before = inspect(state);
+    const graph = family === "ssh" ? state.ssh : state.sudo;
+    const allocation = withAllocations(() => api.__test_c2bReserveSourceWithSemanticTrace(graph, 0));
+    return { family, before, after: inspect(state), trace: allocation.value, allocations: allocation.counts };
+  };
+  const sourceRoutes = [sourceRoute("ssh"), sourceRoute("sudo")];
+  const sourceOnly = sourceRoutes[0];
+  const futureKinds = [
+    ...sshKinds.map((kind) => oneSemantic(kind, "ssh")),
+    ...sudoKinds.map((kind) => oneSemantic(kind, "sudo"))
+  ];
+  const boundaries = [
+    semanticBoundary("sshSelectedInsertion", "ssh", 65536, "sshSelectedInsertionCount"),
+    semanticBoundary("sshMatchBranch", "ssh", 4096, "sshMatchBranchCount"),
+    semanticBoundary("sudoSelectedInsertion", "sudo", 65536, "sudoSelectedInsertionCount"),
+    semanticBoundary("sudoAliasDefinition", "sudo", 256, "sudoAliasDefinitionCount"),
+    semanticBoundary("sudoAliasMember", "sudo", 65536, "sudoAliasMemberCount"),
+    semanticBoundary("sudoUserSpec", "sudo", 4096, "sudoUserSpecCount"),
+    semanticBoundary("sudoCommandSpec", "sudo", 16384, "sudoCommandSpecCount"),
+    semanticBoundary("sudoAliasEdge", "sudo", 16384, "sudoAliasEdgeCount"),
+    semanticBoundary("sudoAliasMemoEntry", "sudo", 256, "sudoAliasMemoEntryCount")
+  ];
+  const localMaxima = [
+    ["tokensPerPhysicalLine", 256], ["generalTokenBytes", 4096], ["sshIncludeOperands", 64],
+    ["sshMatchBranches", 4096], ["sshMatchConditionsPerBranch", 9], ["sshMatchPatternsPerCondition", 64],
+    ["sshMatchPatternBytes", 255], ["sudoAliasDefinitions", 256], ["sudoAliasMembersPerAlias", 256],
+    ["sudoAliasExpansionNodes", 4096], ["sudoUserSpecs", 4096], ["sudoUserListMembersPerSpec", 256],
+    ["sudoCommandSpecsPerSpec", 256], ["sudoDefaultsItemsPerStatement", 64], ["accountGroups", 256]
+  ].map(([name, maximum]) => {
+    const accepted = withAllocations(() => api.__test_nextAuthorizationBudgetValue(maximum - 1, 1, maximum));
+    const rejected = withAllocations(() => safe(() => api.__test_nextAuthorizationBudgetValue(maximum, 1, maximum)));
+    return {
+      name, maximum, accepted: accepted.value, rejected: rejected.value,
+      acceptedAllocations: accepted.counts, rejectedAllocations: rejected.counts
+    };
+  });
+  const invalidNext = [
+    ["negative-current", -1, 1, 10], ["negative-amount", 0, -1, 10], ["zero-amount", 0, 0, 10],
+    ["fraction", 0, 1.5, 10], ["unsafe", Number.MAX_SAFE_INTEGER, 1, Number.MAX_SAFE_INTEGER],
+    ["string", 0, "1", 10], ["bigint", 0, 1n, 10], ["bad-maximum", 0, 1, 0]
+  ].map(([name, current, amount, maximum]) => {
+    const allocation = withAllocations(() => safe(() => api.__test_nextAuthorizationBudgetValue(current, amount, maximum)));
+    return { name, outcome: allocation.value, allocations: allocation.counts };
+  });
+  const commandCoupling = (() => {
+    const coupled = fresh();
+    const preparation = withAllocations(() => {
+      for (let index = 0; index < 16384; index += 1) api.__test_reserveAuthorizationWorkUnit(coupled.sudo, "sudoCommand");
+    });
+    const before = inspect(coupled);
+    const rejection = withAllocations(() => safe(() => api.__test_reserveAuthorizationSemanticNode(coupled.sudo, "sudoCommandSpec")));
+    return { before, outcome: rejection.value, after: inspect(coupled), preparationAllocations: preparation.counts, rejectionAllocations: rejection.counts };
+  })();
+  const edgeCoupling = (() => {
+    const coupled = fresh();
+    const preparation = withAllocations(() => {
+      for (let index = 0; index < 16384; index += 1) api.__test_reserveAuthorizationWorkUnit(coupled.sudo, "sudoAliasEdge");
+    });
+    const before = inspect(coupled);
+    const rejection = withAllocations(() => safe(() => api.__test_reserveAuthorizationSemanticNode(coupled.sudo, "sudoAliasEdge")));
+    return { before, outcome: rejection.value, after: inspect(coupled), preparationAllocations: preparation.counts, rejectionAllocations: rejection.counts };
+  })();
+  return {
+    policy, arities, proxyInstrumentation: proxyInstrumentation.value,
+    proxyInstrumentationAllocations: proxyInstrumentation.counts,
+    initial, initialCreationAllocations: initialCreation.counts, fixedShape,
+    sourceOnly, futureKinds, boundaries, localMaxima, invalidNext,
+    rejected: [
+      rejectedSemantic("unknownKind", "ssh"), rejectedSemantic("unknownKind", "sudo"),
+      rejectedSemantic("SshMatchBranch", "ssh"), rejectedSemantic("SudoStatement", "sudo"),
+      ...sshKinds.map((kind) => rejectedSemantic(kind, "sudo")),
+      ...sudoKinds.map((kind) => rejectedSemantic(kind, "ssh")),
+      rejectedSemantic("fixedEnvelope", "ssh"), rejectedSemantic("fixedEnvelope", "sudo"),
+      rejectedSemantic("authorizationEntry", "ssh"), rejectedSemantic("authorizationEntry", "sudo")
+    ],
+    unbranded: (() => {
+      const state = fresh();
+      const raw = { failed: false, semanticNodeCount: 0, kind: "ssh" };
+      const before = inspect(state);
+      const rawBefore = { ...raw };
+      const allocation = withAllocations(() => safe(() => api.__test_reserveAuthorizationSemanticNode(raw, "sshPhysicalDirective")));
+      return { before, rawBefore, outcome: allocation.value, after: inspect(state), rawAfter: { ...raw }, allocations: allocation.counts };
+    })(),
+    sourceRoutes, commandCoupling, edgeCoupling
+  };
+}
+function runAggregate() {
+  const state = fresh();
+  const initial = inspect(state);
+  const allocation = withAllocations(() => {
+    for (let index = 0; index < 65534; index += 1) api.__test_reserveAuthorizationSemanticNode(state.ssh, "sshPhysicalDirective");
+    for (let index = 0; index < 65533; index += 1) api.__test_reserveAuthorizationSemanticNode(state.sudo, "sudoStatement");
+  });
+  const atMaximum = inspect(state);
+  const rejection = withAllocations(() => safe(() => api.__test_reserveAuthorizationSemanticNode(state.ssh, "sshPhysicalDirective")));
+  const after = inspect(state);
+  const terminalSemantic = withAllocations(() => safe(() => api.__test_reserveAuthorizationSemanticNode(state.sudo, "sudoStatement")));
+  const terminalWork = withAllocations(() => safe(() => api.__test_reserveAuthorizationWorkUnit(state.sudo, "sudoSelector")));
+  const terminalPreimage = withAllocations(() => safe(() => api.__test_reservePreimageBytes(state.snapshot, 1)));
+  const terminalC2A = withAllocations(() => safe(() => api.__test_c2bReserveSource(state.sudo, 0)));
+  const terminalSource = withAllocations(() => api.__test_c2bTerminalSourceOperation(state.sudo));
+  const terminalFinal = inspect(state);
+  const reset = inspect(fresh());
+  return {
+    initial, atMaximum, rejected: rejection.value, after,
+    rejectionAllocations: rejection.counts,
+    terminalSemantic: terminalSemantic.value, terminalSemanticAllocations: terminalSemantic.counts,
+    terminalWork: terminalWork.value, terminalWorkAllocations: terminalWork.counts,
+    terminalPreimage: terminalPreimage.value, terminalPreimageAllocations: terminalPreimage.counts,
+    terminalC2A: terminalC2A.value, terminalC2AAllocations: terminalC2A.counts,
+    terminalSource: terminalSource.value, terminalSourceAllocations: terminalSource.counts,
+    terminalFinal, reset, allocations: allocation.counts,
+    graphDefense: (() => {
+      const accepted = withAllocations(() => api.__test_nextAuthorizationBudgetValue(131071, 1, 131072));
+      const rejected = withAllocations(() => safe(() => api.__test_nextAuthorizationBudgetValue(131072, 1, 131072)));
+      return {
+        accepted: accepted.value, rejected: rejected.value,
+        acceptedAllocations: accepted.counts, rejectedAllocations: rejected.counts
+      };
+    })()
+  };
+}
+function workBoundary(kind, family, maximum) {
+  const state = fresh();
+  const graph = family === "ssh" ? state.ssh : state.sudo;
+  const initial = inspect(state);
+  const allocation = withAllocations(() => {
+    for (let index = 0; index < maximum; index += 1) api.__test_reserveAuthorizationWorkUnit(graph, kind);
+  });
+  const atMaximum = inspect(state);
+  const rejection = withAllocations(() => safe(() => api.__test_reserveAuthorizationWorkUnit(graph, kind)));
+  return {
+    kind, family, maximum, initial, atMaximum, rejected: rejection.value, after: inspect(state),
+    allocations: allocation.counts, rejectionAllocations: rejection.counts
+  };
+}
+function invalidWork(kind, family) {
+  const state = fresh();
+  const graph = family === "ssh" ? state.ssh : state.sudo;
+  const before = inspect(state);
+  const allocation = withAllocations(() => safe(() => api.__test_reserveAuthorizationWorkUnit(graph, kind)));
+  return { kind, family, before, outcome: allocation.value, after: inspect(state), allocations: allocation.counts };
+}
+function runWork() {
+  const initial = inspect(fresh());
+  const boundaries = [
+    workBoundary("glob", "ssh", 65536), workBoundary("glob", "sudo", 65536), workBoundary("sshMatch", "ssh", 131072),
+    workBoundary("sudoSelector", "sudo", 65536), workBoundary("sudoCommand", "sudo", 16384),
+    workBoundary("sudoAliasEdge", "sudo", 16384), workBoundary("sudoAliasVisit", "sudo", 32768)
+  ];
+  const invocationAtomic = (() => {
+    const state = fresh();
+    for (let index = 0; index < 65536; index += 1) api.__test_reserveAuthorizationWorkUnit(state.ssh, "glob");
+    for (let index = 0; index < 65536; index += 1) api.__test_reserveAuthorizationWorkUnit(state.sudo, "sudoSelector");
+    const before = inspect(state);
+    const rejection = withAllocations(() => safe(() => api.__test_reserveAuthorizationWorkUnit(state.ssh, "sshMatch")));
+    return { before, rejected: rejection.value, after: inspect(state), rejectionAllocations: rejection.counts };
+  })();
+  const preimage = (() => {
+    const state = fresh();
+    const initial = inspect(state);
+    const allocation = withAllocations(() => [
+      api.__test_reservePreimageBytes(state.snapshot, 4194304),
+      api.__test_reservePreimageBytes(state.snapshot, 4194304)
+    ]);
+    const atMaximum = inspect(state);
+    const rejection = withAllocations(() => safe(() => api.__test_reservePreimageBytes(state.snapshot, 1)));
+    return {
+      returnTypes: allocation.value.map((value) => typeof value), allocations: allocation.counts,
+      initial, atMaximum, before: atMaximum, rejected: rejection.value, rejectionAllocations: rejection.counts, after: inspect(state)
+    };
+  })();
+  const invalidPreimage = [
+    ["too-large", 4194305], ["zero", 0], ["negative", -1], ["fraction", 1.5],
+    ["unsafe", Number.MAX_SAFE_INTEGER + 1], ["string", "1"], ["bigint", 1n], ["missing", undefined]
+  ].map(([name, length]) => {
+    const state = fresh();
+    const before = inspect(state);
+    const allocation = withAllocations(() => safe(() => api.__test_reservePreimageBytes(state.snapshot, length)));
+    return { name, before, outcome: allocation.value, after: inspect(state), allocations: allocation.counts };
+  });
+  const unbranded = (() => {
+    const state = fresh();
+    const raw = { failed: false, retainedPreimageBytes: 0 };
+    const before = inspect(state);
+    const rawBefore = { ...raw };
+    const allocation = withAllocations(() => safe(() => api.__test_reservePreimageBytes(raw, 1)));
+    return { before, rawBefore, outcome: allocation.value, after: inspect(state), rawAfter: { ...raw }, allocations: allocation.counts };
+  })();
+  const failedSnapshot = (() => {
+    const state = fresh();
+    const firstAllocation = withAllocations(() => safe(() => api.__test_reserveAuthorizationWorkUnit(state.ssh, "unknown")));
+    const before = inspect(state);
+    const secondAllocation = withAllocations(() => safe(() => api.__test_reservePreimageBytes(state.snapshot, 1)));
+    return {
+      first: firstAllocation.value, firstAllocations: firstAllocation.counts, before,
+      second: secondAllocation.value, secondAllocations: secondAllocation.counts, after: inspect(state)
+    };
+  })();
+  const rejectedWork = [
+    ["unknown", "ssh"], ["unknown", "sudo"], ["Glob", "ssh"], ["Glob", "sudo"],
+    ["sshMatch", "sudo"], ["sudoSelector", "ssh"], ["sudoCommand", "ssh"],
+    ["sudoAliasEdge", "ssh"], ["sudoAliasVisit", "ssh"]
+  ].map(([kind, family]) => invalidWork(kind, family));
+  const unbrandedWork = (() => {
+    const state = fresh();
+    const raw = { failed: false, globComparisonCount: 0, kind: "ssh" };
+    const before = inspect(state);
+    const rawBefore = { ...raw };
+    const allocation = withAllocations(() => safe(() => api.__test_reserveAuthorizationWorkUnit(raw, "glob")));
+    return { before, rawBefore, outcome: allocation.value, after: inspect(state), rawAfter: { ...raw }, allocations: allocation.counts };
+  })();
+  return {
+    policy: api.__test_c2bPolicy().work, initial, boundaries, invocationAtomic, preimage,
+    invalidPreimage, unbranded, failedSnapshot, rejectedWork, unbrandedWork
+  };
+}
+function traceBuffer(bytes, role, trace) {
+  const buffer = Buffer.from(bytes);
+  return new Proxy(buffer, {
+    get(target, property) {
+      if (typeof property === "string" && /^(0|[1-9][0-9]*)$/.test(property)) trace.push([role, Number(property)]);
+      return Reflect.get(target, property, target);
+    }
+  });
+}
+function matchCase(state, family, domain, pattern, target) {
+  const graph = family === "ssh" ? state.ssh : state.sudo;
+  const before = inspect(state);
+  const trace = [];
+  const tracedPattern = traceBuffer(pattern, "pattern", trace);
+  const tracedTarget = traceBuffer(target, "target", trace);
+  const allocation = withAllocations(() => {
+    const starIndex = api.__test_scanAuthorizationWildcardPattern(graph, tracedPattern);
+    return { starIndex };
+  });
+  const scanTrace = trace.splice(0);
+  const matchAllocation = withAllocations(() => api.__test_matchAuthorizationWildcard(
+    graph, domain, tracedPattern, tracedTarget, allocation.value.starIndex
+  ));
+  const after = inspect(state);
+  return {
+    family, domain, result: matchAllocation.value, starIndex: allocation.value.starIndex, patternLength: pattern.length,
+    before, after, scanTrace, matchTrace: trace,
+    patternDelta: after.snapshot.wildcardPatternByteCount - before.snapshot.wildcardPatternByteCount,
+    invocationDelta: after.snapshot.wildcardInvocationCount - before.snapshot.wildcardInvocationCount,
+    alignedDelta: after.snapshot.wildcardAlignedComparisonCount - before.snapshot.wildcardAlignedComparisonCount,
+    scanAllocations: allocation.counts, matchAllocations: matchAllocation.counts
+  };
+}
+function wildcardDomainBoundary(domain, family, maximum) {
+  const state = fresh();
+  const graph = family === "ssh" ? state.ssh : state.sudo;
+  const initial = inspect(state);
+  const empty = Buffer.alloc(0);
+  const allocation = withAllocations(() => {
+    for (let index = 0; index < maximum; index += 1) api.__test_matchAuthorizationWildcard(graph, domain, empty, empty, -1);
+  });
+  const atMaximum = inspect(state);
+  const trace = [];
+  const pattern = traceBuffer(Buffer.from([0x61]), "pattern", trace);
+  const target = traceBuffer(Buffer.from([0x61]), "target", trace);
+  const rejection = withAllocations(() => safe(() => api.__test_matchAuthorizationWildcard(graph, domain, pattern, target, -1)));
+  return {
+    domain, family, maximum, initial, atMaximum, rejected: rejection.value, after: inspect(state), trace,
+    allocations: allocation.counts, rejectionAllocations: rejection.counts
+  };
+}
+function secondStar(pattern) {
+  const state = fresh();
+  const before = inspect(state);
+  const trace = [];
+  const subject = traceBuffer(pattern, "pattern", trace);
+  const allocation = withAllocations(() => safe(() => api.__test_scanAuthorizationWildcardPattern(state.ssh, subject)));
+  return { before, outcome: allocation.value, trace, after: inspect(state), allocations: allocation.counts };
+}
+function invalidWildcardMatch(name, patternKind, targetKind, starIndex, omitStarIndex = false) {
+  const state = fresh();
+  const trace = [];
+  const pattern = patternKind === "buffer" ? traceBuffer(Buffer.from([0x61]), "pattern", trace) : "a";
+  const target = targetKind === "buffer" ? traceBuffer(Buffer.from([0x61]), "target", trace) : "a";
+  const before = inspect(state);
+  const allocation = withAllocations(() => safe(() => omitStarIndex
+    ? api.__test_matchAuthorizationWildcard(state.ssh, "glob", pattern, target)
+    : api.__test_matchAuthorizationWildcard(state.ssh, "glob", pattern, target, starIndex)));
+  return { name, before, outcome: allocation.value, trace, after: inspect(state), allocations: allocation.counts };
+}
+function runWildcard() {
+  const casesState = fresh();
+  const cases = [
+    ["no-star-equal", "ssh", "glob", "abc", "abc"],
+    ["literal-mismatch", "ssh", "glob", "abc", "abd"],
+    ["unequal-length", "ssh", "glob", "abc", "ab"],
+    ["question", "ssh", "sshMatch", "a?c", "abc"],
+    ["star-start", "ssh", "glob", "*c", "abc"],
+    ["star-end", "ssh", "glob", "a*", "abc"],
+    ["star-middle-empty", "sudo", "sudoSelector", "a*c", "ac"],
+    ["star-middle-nonempty", "sudo", "sudoSelector", "a*c", "abbbc"],
+    ["star-too-short", "ssh", "glob", "ab*cd", "abc"],
+    ["sudo-glob", "sudo", "glob", "a*c", "abbbc"]
+  ].map(([name, family, domain, pattern, target]) => ({
+    name,
+    ...matchCase(casesState, family, domain, Buffer.from(pattern, "ascii"), Buffer.from(target, "ascii"))
+  }));
+  const longTrace = (() => {
+    const state = fresh();
+    const before = inspect(state);
+    const trace = [];
+    const pattern = traceBuffer(Buffer.from("ab?*x?z", "ascii"), "pattern", trace);
+    const target = traceBuffer(Buffer.from("abQmidXxYz", "ascii"), "target", trace);
+    const scanAllocation = withAllocations(() => api.__test_scanAuthorizationWildcardPattern(state.ssh, pattern));
+    const starIndex = scanAllocation.value;
+    const scanTrace = trace.splice(0);
+    const matchAllocation = withAllocations(() => api.__test_matchAuthorizationWildcard(state.ssh, "glob", pattern, target, starIndex));
+    const after = inspect(state);
+    return {
+      starIndex, result: matchAllocation.value, scanTrace, matchTrace: trace, before, after,
+      patternDelta: after.snapshot.wildcardPatternByteCount - before.snapshot.wildcardPatternByteCount,
+      invocationDelta: after.snapshot.wildcardInvocationCount - before.snapshot.wildcardInvocationCount,
+      alignedDelta: after.snapshot.wildcardAlignedComparisonCount - before.snapshot.wildcardAlignedComparisonCount,
+      scanAllocations: scanAllocation.counts, matchAllocations: matchAllocation.counts
+    };
+  })();
+  const earlyPrefix = (() => {
+    const state = fresh();
+    const before = inspect(state);
+    const trace = [];
+    const pattern = traceBuffer(Buffer.from("ab*cd", "ascii"), "pattern", trace);
+    const target = traceBuffer(Buffer.from("axMIDcd", "ascii"), "target", trace);
+    const scanAllocation = withAllocations(() => api.__test_scanAuthorizationWildcardPattern(state.ssh, pattern));
+    const starIndex = scanAllocation.value;
+    trace.length = 0;
+    const matchAllocation = withAllocations(() => api.__test_matchAuthorizationWildcard(state.ssh, "glob", pattern, target, starIndex));
+    const after = inspect(state);
+    return {
+      result: matchAllocation.value, trace, before, after,
+      patternDelta: after.snapshot.wildcardPatternByteCount - before.snapshot.wildcardPatternByteCount,
+      invocationDelta: after.snapshot.wildcardInvocationCount - before.snapshot.wildcardInvocationCount,
+      alignedDelta: after.snapshot.wildcardAlignedComparisonCount - before.snapshot.wildcardAlignedComparisonCount,
+      scanAllocations: scanAllocation.counts, matchAllocations: matchAllocation.counts
+    };
+  })();
+  const earlySuffix = (() => {
+    const state = fresh();
+    const before = inspect(state);
+    const trace = [];
+    const pattern = traceBuffer(Buffer.from("ab*cd", "ascii"), "pattern", trace);
+    const target = traceBuffer(Buffer.from("abMIDcx", "ascii"), "target", trace);
+    const scanAllocation = withAllocations(() => api.__test_scanAuthorizationWildcardPattern(state.ssh, pattern));
+    const starIndex = scanAllocation.value;
+    trace.length = 0;
+    const matchAllocation = withAllocations(() => api.__test_matchAuthorizationWildcard(state.ssh, "glob", pattern, target, starIndex));
+    const after = inspect(state);
+    return {
+      result: matchAllocation.value, trace, before, after,
+      patternDelta: after.snapshot.wildcardPatternByteCount - before.snapshot.wildcardPatternByteCount,
+      invocationDelta: after.snapshot.wildcardInvocationCount - before.snapshot.wildcardInvocationCount,
+      alignedDelta: after.snapshot.wildcardAlignedComparisonCount - before.snapshot.wildcardAlignedComparisonCount,
+      scanAllocations: scanAllocation.counts, matchAllocations: matchAllocation.counts
+    };
+  })();
+  const patternBoundary = (() => {
+    const state = fresh();
+    const initial = inspect(state);
+    const pattern = Buffer.alloc(4096, 0x61);
+    const allocation = withAllocations(() => {
+      for (let index = 0; index < 1024; index += 1) api.__test_scanAuthorizationWildcardPattern(state.ssh, pattern);
+    });
+    const atMaximum = inspect(state);
+    const trace = [];
+    const subject = traceBuffer(Buffer.from([0x61]), "pattern", trace);
+    const rejection = withAllocations(() => safe(() => api.__test_scanAuthorizationWildcardPattern(state.ssh, subject)));
+    return {
+      initial, atMaximum, rejected: rejection.value, after: inspect(state), trace,
+      allocations: allocation.counts, rejectionAllocations: rejection.counts
+    };
+  })();
+  const alignedBoundary = (() => {
+    const state = fresh();
+    const initial = inspect(state);
+    const pattern = Buffer.alloc(4096, 0x61);
+    const target = Buffer.alloc(4096, 0x61);
+    const scanAllocation = withAllocations(() => api.__test_scanAuthorizationWildcardPattern(state.ssh, pattern));
+    const starIndex = scanAllocation.value;
+    const afterScan = inspect(state);
+    const allocation = withAllocations(() => {
+      for (let index = 0; index < 4096; index += 1) api.__test_matchAuthorizationWildcard(state.ssh, "glob", pattern, target, starIndex);
+    });
+    const atMaximum = inspect(state);
+    const trace = [];
+    const rejection = withAllocations(() => safe(() => api.__test_matchAuthorizationWildcard(
+      state.ssh,
+      "glob",
+      traceBuffer(pattern, "pattern", trace),
+      traceBuffer(target, "target", trace),
+      starIndex
+    )));
+    return {
+      initial, afterScan, atMaximum, rejected: rejection.value, after: inspect(state), trace,
+      scanAllocations: scanAllocation.counts, allocations: allocation.counts, rejectionAllocations: rejection.counts
+    };
+  })();
+  const wrongDomains = [
+    ["sudoSelector", "ssh"], ["sshMatch", "sudo"],
+    ["unknown", "ssh"], ["unknown", "sudo"], ["Glob", "ssh"], ["Glob", "sudo"]
+  ].map(([domain, family]) => {
+    const state = fresh();
+    const graph = family === "ssh" ? state.ssh : state.sudo;
+    const before = inspect(state);
+    const trace = [];
+    const pattern = traceBuffer(Buffer.from([0x61]), "pattern", trace);
+    const target = traceBuffer(Buffer.from([0x61]), "target", trace);
+    const allocation = withAllocations(() => safe(() => api.__test_matchAuthorizationWildcard(
+      graph,
+      domain,
+      pattern,
+      target,
+      -1
+    )));
+    return { domain, family, before, outcome: allocation.value, trace, after: inspect(state), allocations: allocation.counts };
+  });
+  const invalidScanSubjects = (() => {
+    const rawGraph = { failed: false, wildcardPatternByteCount: 0 };
+    const rawBefore = { ...rawGraph };
+    const rawTrace = [];
+    const rawSubject = traceBuffer(Buffer.from([0x61]), "pattern", rawTrace);
+    const rawAllocation = withAllocations(() => safe(() => api.__test_scanAuthorizationWildcardPattern(rawGraph, rawSubject)));
+    const state = fresh();
+    const failedPreparation = withAllocations(() => safe(() => api.__test_reserveAuthorizationWorkUnit(state.ssh, "unknown")));
+    const failedBefore = inspect(state);
+    const failedTrace = [];
+    const failedSubject = traceBuffer(Buffer.from([0x61]), "pattern", failedTrace);
+    const failedAllocation = withAllocations(() => safe(() => api.__test_scanAuthorizationWildcardPattern(
+      state.sudo,
+      failedSubject
+    )));
+    const nonBufferState = fresh();
+    const nonBufferBefore = inspect(nonBufferState);
+    const nonBufferAllocation = withAllocations(() => safe(() => api.__test_scanAuthorizationWildcardPattern(nonBufferState.ssh, "a")));
+    return {
+      raw: rawAllocation.value, rawBefore, rawAfter: { ...rawGraph }, rawTrace, rawAllocations: rawAllocation.counts,
+      failedPreparation: failedPreparation.value, failedPreparationAllocations: failedPreparation.counts,
+      failed: failedAllocation.value, failedTrace, failedBefore, failedAfter: inspect(state), failedAllocations: failedAllocation.counts,
+      nonBuffer: nonBufferAllocation.value, nonBufferBefore, nonBufferAfter: inspect(nonBufferState), nonBufferAllocations: nonBufferAllocation.counts
+    };
+  })();
+  const invalidMatchGraphs = (() => {
+    const rawState = fresh();
+    const raw = { failed: false, globComparisonCount: 0, kind: "ssh" };
+    const rawBefore = { ...raw };
+    const rawBudgetBefore = inspect(rawState);
+    const rawTrace = [];
+    const rawPattern = traceBuffer(Buffer.from([0x61]), "pattern", rawTrace);
+    const rawTarget = traceBuffer(Buffer.from([0x61]), "target", rawTrace);
+    const rawAllocation = withAllocations(() => safe(() => api.__test_matchAuthorizationWildcard(raw, "glob", rawPattern, rawTarget, -1)));
+    const failedState = fresh();
+    const failedPreparation = withAllocations(() => safe(() => api.__test_reserveAuthorizationWorkUnit(failedState.ssh, "unknown")));
+    const failedBefore = inspect(failedState);
+    const failedTrace = [];
+    const failedPattern = traceBuffer(Buffer.from([0x61]), "pattern", failedTrace);
+    const failedTarget = traceBuffer(Buffer.from([0x61]), "target", failedTrace);
+    const failedAllocation = withAllocations(() => safe(() => api.__test_matchAuthorizationWildcard(
+      failedState.sudo, "glob", failedPattern, failedTarget, -1
+    )));
+    return {
+      raw: rawAllocation.value, rawBefore, rawAfter: { ...raw }, rawBudgetBefore, rawBudgetAfter: inspect(rawState),
+      rawTrace, rawAllocations: rawAllocation.counts,
+      failedPreparation: failedPreparation.value, failedPreparationAllocations: failedPreparation.counts,
+      failed: failedAllocation.value, failedBefore, failedAfter: inspect(failedState),
+      failedTrace, failedAllocations: failedAllocation.counts
+    };
+  })();
+  return {
+    cases, longTrace, earlyPrefix, earlySuffix,
+    secondStars: [secondStar(Buffer.from("a*b*c", "ascii")), secondStar(Buffer.from("**x", "ascii"))],
+    patternBoundary, alignedBoundary, wrongDomains, invalidScanSubjects, invalidMatchGraphs,
+    invalidMatches: [
+      invalidWildcardMatch("non-buffer-pattern", "raw", "buffer", -1),
+      invalidWildcardMatch("non-buffer-target", "buffer", "raw", -1),
+      invalidWildcardMatch("negative-non-sentinel", "buffer", "buffer", -2),
+      invalidWildcardMatch("out-of-range", "buffer", "buffer", 1),
+      invalidWildcardMatch("fraction", "buffer", "buffer", 0.5),
+      invalidWildcardMatch("string", "buffer", "buffer", "0"),
+      invalidWildcardMatch("bigint", "buffer", "buffer", 0n),
+      invalidWildcardMatch("missing", "buffer", "buffer", undefined, true)
+    ],
+    domains: [
+      wildcardDomainBoundary("glob", "ssh", 65536),
+      wildcardDomainBoundary("glob", "sudo", 65536),
+      wildcardDomainBoundary("sshMatch", "ssh", 131072),
+      wildcardDomainBoundary("sudoSelector", "sudo", 65536)
+    ]
+  };
+}
+
+try {
+  const missingSymbols = api.__test_missingC2BSymbols();
+  if (missingSymbols.length !== 0) {
+    process.stdout.write(JSON.stringify({ error: null, value: { missingSymbols, moduleAllocationCounts } }));
+  } else {
+    let value;
+    if (scenario === "semantic") value = runSemantic();
+    else if (scenario === "aggregate") value = runAggregate();
+    else if (scenario === "work") value = runWork();
+    else if (scenario === "wildcard") value = runWildcard();
+    else throw new Error("unknown scenario");
+    process.stdout.write(JSON.stringify({ error: null, value: { missingSymbols, moduleAllocationCounts, ...value } }));
+  }
+} catch (error) {
+  const message = String(error && error.message || "");
+  const identifier = message.match(/[A-Za-z_$][A-Za-z0-9_$]*/);
+  process.stdout.write(JSON.stringify({ error: errorCode(error), missing: identifier ? identifier[0] : null }));
+}
+`;
+
+function c2bBudgetVmProbe(scenario) {
+  const directory = mkdtempSync(join(tmpdir(), "japan-c2b-budget-vm-"));
+  const harnessPath = join(directory, "harness.mjs");
+  const runnerPath = fileURLToPath(new URL("../../scripts/japan-tuic-additive-repair-runner.mjs", import.meta.url));
+  const harness = c2bBudgetHarnessPrefix() + C2B_BUDGET_HARNESS_SUFFIX;
+  writeFileSync(harnessPath, harness, "utf8");
+  try {
+    const result = spawnSync(process.execPath, ["--experimental-vm-modules", harnessPath, runnerPath, scenario], {
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+      timeout: 120000
+    });
+    assert.equal(result.status, 0, result.stderr || String(result.error));
+    return JSON.parse(result.stdout);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
