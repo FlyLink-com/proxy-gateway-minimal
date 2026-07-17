@@ -2592,6 +2592,20 @@ function shapeOperationRecord(record, firstName, shape) {
   return record;
 }
 
+function expectedPathRoles(path, directory, childPath) {
+  const roles = new Map([["/", "ancestor-0"]]);
+  const components = path.slice(1).split("/");
+  let current = "";
+  for (let index = 0; index < components.length; index += 1) {
+    current += "/" + components[index];
+    roles.set(current, index === components.length - 1
+      ? (directory ? "parent" : "final")
+      : "ancestor-" + (index + 1));
+  }
+  if (childPath) roles.set(childPath, "child");
+  return roles;
+}
+
 function createPathOperations({ path, bytes, mode = 0o644, directory = false, childPath, childBytes, postDrift = false, statFault, readFault, closeFault = false, openFault = false, fstatFault, operationShape } = {}) {
   let nextFd = 40;
   const descriptors = new Map();
@@ -2602,9 +2616,8 @@ function createPathOperations({ path, bytes, mode = 0o644, directory = false, ch
     [path, { type: directory ? "directory" : "file", bytes: directory ? Buffer.alloc(0) : Buffer.from(bytes || "", "base64"), mode, ino: 20 }]
   ]);
   if (childPath) entries.set(childPath, { type: "file", bytes: Buffer.from(childBytes || "", "base64"), mode: 0o600, ino: 21 });
-  const pathRole = (value) => value === path ? (directory ? "parent" : "final")
-    : childPath && value === childPath ? "child"
-      : "ancestor";
+  const pathRoles = expectedPathRoles(path, directory, childPath);
+  const pathRole = (value) => pathRoles.get(value) || "unexpected";
   const operations = {
     lstat(value) {
       operationCalls.lstat += 1;
@@ -2830,7 +2843,15 @@ try {
     ],
     "delete-dev-compare": ["left.dev !== right.dev || ", ""],
     "delete-nul-reject": ["basename.includes(0) || ", ""],
-    "eof-unregistered": ["const eof = allocateAuthorizationBuffer(graph, 1);", "const eof = Buffer.alloc(1);"]
+    "eof-unregistered": ["const eof = allocateAuthorizationBuffer(graph, 1);", "const eof = Buffer.alloc(1);"],
+    "repeat-root-skip-first-ancestor": [
+      "    const stats = operations.lstat(current);",
+      "    const stats = current === path.slice(0, path.indexOf(\"/\", 1)) ? operations.lstat(\"/\") : operations.lstat(current);"
+    ],
+    "drift-source-file-path": [
+      "      path: { value: path, enumerable: true },",
+      "      path: { value: path + \".drift\", enumerable: true },"
+    ]
   };
   if (payload.mutation) {
     const mutation = mutations[payload.mutation];
@@ -2889,7 +2910,9 @@ try {
           uid: sourceFile.uid,
           gid: sourceFile.gid,
           mode: sourceFile.mode,
-          nlink: sourceFile.nlink
+          nlink: sourceFile.nlink,
+          pathBound: sourceFile.path === sourcePath,
+          sha256Bound: sourceFile.sha256 === crypto.createHash("sha256").update(bytes).digest("hex")
         };
         if (payload.callbackFailure) throw new Error("callback failure");
       });
@@ -3075,11 +3098,17 @@ test("authorization source files use one trusted fd through EOF drift and close"
     assert.deepEqual(probe.callback.keys, ["ordinal", "path", "sha256", "uid", "gid", "mode", "nlink"]);
     assert.equal(probe.callback.frozen, true);
     assert.equal(probe.callback.hasBufferValue, false);
+    assert.equal(probe.callback.pathBound, true);
+    assert.equal(probe.callback.sha256Bound, true);
     assert.equal(probe.callbackBufferNonzero, true);
     assert.equal(probe.readBuffersZeroized, true);
     assert.equal(probe.callbackBytesZeroized, true);
-    assert.deepEqual(probe.events.filter(([name]) => name === "lstat").map(([, role]) => role), [
-      "ancestor", "ancestor", "ancestor", "final"
+    assert.deepEqual(probe.events.filter(([name]) => name === "lstat" || name === "open").map(([name, role]) => [name, role]), [
+      ["lstat", "ancestor-0"],
+      ["lstat", "ancestor-1"],
+      ["lstat", "ancestor-2"],
+      ["lstat", "final"],
+      ["open", "final"]
     ]);
     const fd = probe.events.find(([name]) => name === "open")[3];
     assert.equal(probe.events.find(([name]) => name === "open")[1], "final");
@@ -3171,6 +3200,17 @@ test("authorization source graphs enforce shared depth file byte line and direct
 test("directory enumeration remains bounded root-controlled and candidate-validated", () => {
   const lifecycle = sourceReaderVmProbe({ kind: "directory", count: 1, readChild: true });
   assert.equal(lifecycle.error, null);
+  assert.deepEqual(lifecycle.events.filter(([name]) => name === "lstat" || name === "open").map(([name, role]) => [name, role]), [
+    ["lstat", "ancestor-0"],
+    ["lstat", "ancestor-1"],
+    ["lstat", "parent"],
+    ["open", "parent"],
+    ["lstat", "ancestor-0"],
+    ["lstat", "ancestor-1"],
+    ["lstat", "parent"],
+    ["lstat", "child"],
+    ["open", "child"]
+  ]);
   assert.equal(lifecycle.callbackCount, 1);
   assert.equal(lifecycle.events.filter(([name]) => name === "readDirectory").length, 1);
   assert.equal(lifecycle.events.some(([name]) => name === "validateSudoers"), false);
@@ -3667,6 +3707,47 @@ test("authorization source matrix contract checkers independently detect exact i
     mode: 0o600,
     bytes: Buffer.from("mutation-witness", "utf8").toString("base64")
   };
+  const expectedSourcePathEvents = [
+    ["lstat", "ancestor-0"],
+    ["lstat", "ancestor-1"],
+    ["lstat", "ancestor-2"],
+    ["lstat", "final"],
+    ["open", "final"]
+  ];
+  const requireSourcePathSequence = (probe) => {
+    assert.equal(probe.error, null);
+    assert.deepEqual(
+      probe.events.filter(([name]) => name === "lstat" || name === "open").map(([name, role]) => [name, role]),
+      expectedSourcePathEvents
+    );
+  };
+  const requireSourceBinding = (probe) => {
+    assert.equal(probe.error, null);
+    assert.equal(probe.callback.pathBound, true);
+    assert.equal(probe.callback.sha256Bound, true);
+  };
+  assert.doesNotThrow(() => requireSourcePathSequence(sourceReaderVmProbe(sourcePayload)));
+  const pathChainMutation = sourceReaderVmProbe({ ...sourcePayload, mutation: "repeat-root-skip-first-ancestor" });
+  assert.equal(pathChainMutation.mutationTargetCount, 1);
+  assert.equal(pathChainMutation.error, null);
+  assert.deepEqual(
+    pathChainMutation.events.filter(([name]) => name === "lstat" || name === "open").map(([name, role]) => [name, role]),
+    [
+      ["lstat", "ancestor-0"],
+      ["lstat", "ancestor-0"],
+      ["lstat", "ancestor-2"],
+      ["lstat", "final"],
+      ["open", "final"]
+    ]
+  );
+  assert.throws(() => requireSourcePathSequence(pathChainMutation));
+  assert.doesNotThrow(() => requireSourceBinding(sourceReaderVmProbe(sourcePayload)));
+  const bindingMutation = sourceReaderVmProbe({ ...sourcePayload, mutation: "drift-source-file-path" });
+  assert.equal(bindingMutation.mutationTargetCount, 1);
+  assert.equal(bindingMutation.error, null);
+  assert.equal(bindingMutation.callback.pathBound, false);
+  assert.equal(bindingMutation.callback.sha256Bound, true);
+  assert.throws(() => requireSourceBinding(bindingMutation));
   assert.doesNotThrow(() => requireOrdinalOrder(sourceReaderVmProbe(sourcePayload)));
   const ordinalMutation = sourceReaderVmProbe({ ...sourcePayload, mutation: "move-ordinal-update-before-source-close" });
   assert.equal(ordinalMutation.error, null);
