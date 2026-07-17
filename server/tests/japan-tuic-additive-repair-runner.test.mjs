@@ -2284,3 +2284,523 @@ test("direct runner invocation emits only the exact pre-migration record", () =>
     "{\"schemaVersion\":\"3\",\"type\":\"japan_tuic_additive_repair_pre_migration\",\"error\":\"restricted_identity_rejected\"}\n"
   );
 });
+
+function sourceReaderVmProbe(payload) {
+  const directory = mkdtempSync(join(tmpdir(), "japan-source-reader-vm-"));
+  const harnessPath = join(directory, "harness.mjs");
+  const payloadPath = join(directory, "payload.json");
+  const runnerPath = fileURLToPath(new URL("../../scripts/japan-tuic-additive-repair-runner.mjs", import.meta.url));
+  const harness = String.raw`
+import { readFileSync } from "node:fs";
+import * as crypto from "node:crypto";
+import * as nodePath from "node:path";
+import * as nodeUrl from "node:url";
+import { promisify } from "node:util";
+import vm from "node:vm";
+
+const [runnerPath, payloadPath] = process.argv.slice(2);
+const payload = JSON.parse(readFileSync(payloadPath, "utf8"));
+const events = [];
+const unused = () => { throw new Error("unused synthetic builtin"); };
+const createHash = (...arguments_) => {
+  const hash = crypto.createHash(...arguments_);
+  const wrapper = {
+    update(...updateArguments) {
+      hash.update(...updateArguments);
+      return wrapper;
+    },
+    digest(...digestArguments) {
+      events.push(["hash"]);
+      return hash.digest(...digestArguments);
+    }
+  };
+  return wrapper;
+};
+const fs = {
+  chmodSync: unused, chownSync: unused, closeSync: unused, copyFileSync: unused,
+  existsSync: unused, fstatSync: unused, lstatSync: unused, mkdirSync: unused,
+  mkdtempSync: unused, openSync: unused, readFileSync: unused, readSync: unused,
+  realpathSync: unused, renameSync: unused, rmSync: unused, statSync: unused,
+  writeFileSync: unused, writeSync: unused,
+  constants: { O_RDONLY: 0, O_DIRECTORY: 0x10000, O_NOFOLLOW: 0x20000, O_CLOEXEC: 0x80000 }
+};
+const contractError = class JapanTuicRepairContractError extends Error {
+  constructor(code) { super(code); this.code = code; }
+};
+const context = vm.createContext({
+  Buffer,
+  TextDecoder,
+  process: { argv: [], env: {}, platform: "linux", stdin: {}, stdout: { write() {} }, stderr: { write() {} } },
+  setTimeout,
+  clearTimeout
+});
+const synthetic = (names, values) => new vm.SyntheticModule(names, function () {
+  for (const name of names) this.setExport(name, values[name]);
+}, { context });
+const modules = new Map([
+  ["node:crypto", synthetic(["createHash", "randomUUID"], { createHash, randomUUID: () => "test-uuid" })],
+  ["node:fs", synthetic(Object.keys(fs), fs)],
+  ["node:child_process", synthetic(["execFile", "spawnSync"], { execFile: unused, spawnSync: unused })],
+  ["node:util", synthetic(["promisify"], { promisify })],
+  ["node:path", synthetic(["dirname", "join", "posix", "resolve"], nodePath)],
+  ["node:url", synthetic(["pathToFileURL", "fileURLToPath"], nodeUrl)],
+  ["./japan-tuic-additive-repair-contract.mjs", synthetic([
+    "JAPAN_TUIC_REPAIR_GATE", "JAPAN_TUIC_REPAIR_GATE_V3", "JapanTuicRepairContractError",
+    "validateArtifactIdentity", "validateCandidateReport", "validateExecutionReceipt", "validateNaturalObservation", "validatePostApplyIdentity"
+  ], {
+    JAPAN_TUIC_REPAIR_GATE: {},
+    JAPAN_TUIC_REPAIR_GATE_V3: {
+      executionGateId: "test-gate", expectedNonceSha256: "a".repeat(64),
+      artifact: { sha256: "b".repeat(64) }, releaseUnit: "unit", strategy: "strategy", surface: "surface", target: "target"
+    },
+    JapanTuicRepairContractError: contractError,
+    validateArtifactIdentity: unused, validateCandidateReport: unused, validateExecutionReceipt: unused,
+    validateNaturalObservation: unused, validatePostApplyIdentity: unused
+  })],
+  ["./japan-tuic-additive-repair-state.mjs", synthetic(["executionClaimSha256"], { executionClaimSha256: () => "c".repeat(64) })]
+]);
+
+function stat({ type = "file", mode = 0o644, size = 0, nlink = type === "directory" ? 2 : 1, ino = 2 } = {}) {
+  const typeBits = type === "directory" ? 0o040000n : 0o100000n;
+  return {
+    uid: 0n,
+    gid: 0n,
+    mode: typeBits | BigInt(mode),
+    nlink: BigInt(nlink),
+    dev: 1n,
+    ino: BigInt(ino),
+    size: BigInt(size),
+    isDirectory: () => type === "directory",
+    isFile: () => type === "file",
+    isSymbolicLink: () => false
+  };
+}
+
+function createPathOperations({ path, bytes, mode = 0o644, directory = false, childPath, childBytes, postDrift = false, readFault, closeFault = false, inheritedOperation = false } = {}) {
+  let nextFd = 40;
+  const descriptors = new Map();
+  const readBuffers = [];
+  let bodyEintr = false;
+  let eofEintr = false;
+  const entries = new Map([
+    [path, { type: directory ? "directory" : "file", bytes: directory ? Buffer.alloc(0) : Buffer.from(bytes || "", "base64"), mode, ino: 20 }]
+  ]);
+  if (childPath) entries.set(childPath, { type: "file", bytes: Buffer.from(childBytes || "", "base64"), mode: 0o600, ino: 21 });
+  const operations = {
+    lstat(value) {
+      events.push(["lstat", value]);
+      const entry = entries.get(value);
+      if (entry) return stat({ type: entry.type, mode: entry.mode, size: entry.bytes.length, ino: entry.ino });
+      return stat({ type: "directory", mode: 0o755, size: 4096, ino: value.length + 100 });
+    },
+    open(value, flags) {
+      const entry = entries.get(value);
+      if (!entry) throw new Error("unexpected open");
+      const fd = nextFd++;
+      descriptors.set(fd, { entry, fstats: 0 });
+      events.push(["open", value, flags, fd]);
+      return fd;
+    },
+    fstat(fd) {
+      events.push(["fstat", fd]);
+      const descriptor = descriptors.get(fd);
+      if (!descriptor) throw new Error("unexpected fd");
+      descriptor.fstats += 1;
+      const entry = descriptor.entry;
+      const drift = postDrift && descriptor.fstats > 1 && entry.type === "file";
+      return stat({
+        type: entry.type,
+        mode: drift ? 0o646 : entry.mode,
+        size: entry.bytes.length,
+        ino: entry.ino
+      });
+    },
+    read(fd, buffer, offset, length, position) {
+      events.push(["read", fd, offset, length, position]);
+      if (!readBuffers.includes(buffer)) readBuffers.push(buffer);
+      const descriptor = descriptors.get(fd);
+      if (!descriptor || descriptor.entry.type !== "file") throw new Error("unexpected read");
+      const source = descriptor.entry.bytes;
+      if (readFault === "wrong-fd") throw Object.assign(new Error("wrong fd"), { code: "EBADF" });
+      if (position < source.length) {
+        if (readFault === "body-eintr" && !bodyEintr) { bodyEintr = true; throw Object.assign(new Error("interrupted"), { code: "EINTR" }); }
+        if (readFault === "body-early") return 0;
+        if (readFault === "body-invalid-count") return length + 1;
+        if (readFault === "body-non-eintr") throw Object.assign(new Error("io"), { code: "EIO" });
+      } else {
+        if (readFault === "eof-eintr" && !eofEintr) { eofEintr = true; throw Object.assign(new Error("interrupted"), { code: "EINTR" }); }
+        if (readFault === "eof-trailing") return 1;
+        if (readFault === "eof-invalid-count") return -1;
+        if (readFault === "eof-non-eintr") throw Object.assign(new Error("io"), { code: "EIO" });
+      }
+      if (position >= source.length) return 0;
+      const count = readFault === "body-short" ? Math.min(1, length, source.length - position) : Math.min(length, source.length - position);
+      source.copy(buffer, offset, position, position + count);
+      return count;
+    },
+    close(fd) {
+      events.push(["close", fd]);
+      if (!descriptors.delete(fd)) throw new Error("unexpected close");
+      if (closeFault) throw new Error("close failure");
+    }
+  };
+  if (inheritedOperation) Object.setPrototypeOf(operations, { lstat() { throw new Error("inherited operation must be rejected"); } });
+  return { operations, descriptors, readBuffers };
+}
+
+function makeNames(count, variant) {
+  const names = Array.from({ length: count }, (_, index) => Buffer.from("n" + index.toString(16), "ascii"));
+  if (variant === "accessor") Object.defineProperty(names, "0", { get() { throw new Error("getter"); }, configurable: true, enumerable: true });
+  if (variant === "hole") delete names[0];
+  if (variant === "nonbuffer") names[0] = "not-a-buffer";
+  if (variant === "extra") Object.defineProperty(names, "extra", { get() { throw new Error("extra must remain unobserved"); }, enumerable: true });
+  if (variant === "symbol") Object.defineProperty(names, Symbol("extra"), { get() { throw new Error("symbol must remain unobserved"); }, enumerable: true });
+  if (variant === "inherited") {
+    const prototype = Object.create(Array.prototype);
+    Object.defineProperty(prototype, "inherited", { get() { throw new Error("inherited must remain unobserved"); }, enumerable: true });
+    Object.setPrototypeOf(names, prototype);
+  }
+  if (variant === "invalid-utf8") names[0] = Buffer.from([0xc3]);
+  if (variant === "slash") names[0] = Buffer.from("a/b");
+  if (variant === "dot") names[0] = Buffer.from(".");
+  if (variant === "duplicate" && names.length > 1) names[1] = Buffer.from(names[0]);
+  return names;
+}
+
+function sourceOperations(buffers) {
+  return {
+    readDirectory() {
+      events.push(["readDirectory"]);
+      return buffers;
+    },
+    validateSudoers() {
+      events.push(["validateSudoers"]);
+      throw new Error("C2A must not call validateSudoers");
+    }
+  };
+}
+
+function summarizeBuffers(buffers) {
+  if (!buffers || typeof buffers !== "object") return false;
+  return Object.getOwnPropertyNames(buffers).every((name) => {
+    if (!/^(0|[1-9][0-9]*)$/.test(name)) return true;
+    const descriptor = Object.getOwnPropertyDescriptor(buffers, name);
+    return !descriptor || !Object.hasOwn(descriptor, "value") || !Buffer.isBuffer(descriptor.value)
+      || descriptor.value.every((byte) => byte === 0);
+  });
+}
+
+try {
+  const source = readFileSync(runnerPath, "utf8") + "\nexport {\n"
+    + "  createAuthorizationSourceSnapshot as __test_createAuthorizationSourceSnapshot,\n"
+    + "  createAuthorizationSourceGraph as __test_createAuthorizationSourceGraph,\n"
+    + "  consumeTrustedAuthorizationSource as __test_consumeTrustedAuthorizationSource,\n"
+    + "  consumeTrustedAuthorizationDirectory as __test_consumeTrustedAuthorizationDirectory,\n"
+    + "  enterAuthorizationSourceDepth as __test_enterAuthorizationSourceDepth,\n"
+    + "  leaveAuthorizationSourceDepth as __test_leaveAuthorizationSourceDepth,\n"
+    + "  reserveAuthorizationSourceFile as __test_reserveAuthorizationSourceFile,\n"
+    + "  reserveAuthorizationDirectoryNames as __test_reserveAuthorizationDirectoryNames,\n"
+    + "  inspectAuthorizationSourceBudget as __test_inspectAuthorizationSourceBudget\n"
+    + "};\n";
+  const module = new vm.SourceTextModule(source, { context, identifier: runnerPath });
+  await module.link((specifier) => {
+    const linked = modules.get(specifier);
+    if (!linked) throw new Error("unexpected import:" + specifier);
+    return linked;
+  });
+  await module.evaluate();
+  const api = module.namespace;
+  const snapshot = api.__test_createAuthorizationSourceSnapshot();
+  const ssh = api.__test_createAuthorizationSourceGraph(snapshot, "ssh");
+  const sudo = api.__test_createAuthorizationSourceGraph(snapshot, "sudo");
+  const sourcePath = payload.path || "/etc/ssh/sshd_config";
+  if (payload.kind === "source") {
+    const fixture = createPathOperations({ path: sourcePath, bytes: payload.bytes, mode: payload.mode, postDrift: payload.postDrift === true, readFault: payload.readFault, closeFault: payload.closeFault === true, inheritedOperation: payload.inheritedOperation === true });
+    let callback;
+    let callbackBytes;
+    let callbackBufferNonzero = false;
+    try {
+      api.__test_consumeTrustedAuthorizationSource(ssh, sourcePath, fixture.operations, (bytes, sourceFile) => {
+        callbackBufferNonzero = bytes.some((byte) => byte !== 0);
+        callbackBytes = bytes;
+        callback = {
+          keys: Object.keys(sourceFile),
+          frozen: Object.isFrozen(sourceFile),
+          hasBufferValue: Object.values(sourceFile).some((value) => Buffer.isBuffer(value)),
+          ordinal: sourceFile.ordinal,
+          path: sourceFile.path,
+          sha256: sourceFile.sha256,
+          uid: sourceFile.uid,
+          gid: sourceFile.gid,
+          mode: sourceFile.mode,
+          nlink: sourceFile.nlink
+        };
+        if (payload.callbackFailure) throw new Error("callback failure");
+      });
+      process.stdout.write(JSON.stringify({
+        error: null,
+        callback,
+        callbackBufferNonzero,
+        events,
+        readBuffersZeroized: summarizeBuffers(fixture.readBuffers),
+        callbackBytesZeroized: callbackBytes ? callbackBytes.every((byte) => byte === 0) : false,
+        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo)
+      }));
+    } catch (error) {
+      process.stdout.write(JSON.stringify({
+        error: error && error.code ? error.code : String(error && error.name),
+        events,
+        readBuffersZeroized: summarizeBuffers(fixture.readBuffers),
+        callbackBytesZeroized: callbackBytes ? callbackBytes.every((byte) => byte === 0) : false,
+        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo)
+      }));
+    }
+  } else if (payload.kind === "directory") {
+    const directoryPath = payload.path || "/etc/sudoers.d";
+    const childPath = directoryPath + "/n0";
+    const buffers = makeNames(payload.count === undefined ? 1 : payload.count, payload.variant);
+    const fixture = createPathOperations({
+      path: directoryPath,
+      directory: true,
+      mode: 0o755,
+      childPath: payload.readChild ? childPath : undefined,
+      childBytes: Buffer.from("child", "utf8").toString("base64")
+    });
+    let callbackCount = 0;
+    try {
+      api.__test_consumeTrustedAuthorizationDirectory(ssh, directoryPath, fixture.operations, sourceOperations(buffers), (names) => {
+        callbackCount += 1;
+        if (payload.readChild) {
+          api.__test_consumeTrustedAuthorizationSource(ssh, childPath, fixture.operations, () => {});
+        }
+        if (payload.tripTerminal) {
+          try { api.__test_reserveAuthorizationSourceFile(ssh, -1); } catch {}
+        }
+        return names.length;
+      });
+      process.stdout.write(JSON.stringify({
+        error: null,
+        callbackCount,
+        events,
+        namesZeroized: summarizeBuffers(buffers),
+        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo)
+      }));
+    } catch (error) {
+      let followUpError = null;
+      const beforeFollowUp = events.length;
+      if (payload.tripTerminal) {
+        try { api.__test_consumeTrustedAuthorizationSource(sudo, childPath, fixture.operations, () => {}); } catch (error) { followUpError = error && error.code ? error.code : String(error && error.name); }
+      }
+      process.stdout.write(JSON.stringify({
+        error: error && error.code ? error.code : String(error && error.name),
+        callbackCount,
+        events,
+        namesZeroized: summarizeBuffers(buffers),
+        followUpError,
+        followUpOperations: events.length - beforeFollowUp,
+        budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo)
+      }));
+    }
+  } else if (payload.kind === "bounds") {
+    let failure = null;
+    try {
+      for (const size of payload.sizes || []) api.__test_reserveAuthorizationSourceFile(ssh, size);
+      for (const count of payload.directoryCounts || []) api.__test_reserveAuthorizationDirectoryNames(ssh, count);
+      for (let index = 0; index < (payload.depth || 0); index += 1) api.__test_enterAuthorizationSourceDepth(ssh);
+    } catch (error) {
+      failure = error && error.code ? error.code : String(error && error.name);
+    } finally {
+      for (let index = 0; index < (payload.depth || 0); index += 1) {
+        try { api.__test_leaveAuthorizationSourceDepth(ssh); } catch {}
+      }
+    }
+    process.stdout.write(JSON.stringify({ error: failure, budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo) }));
+  } else if (payload.kind === "graph") {
+    let error = null;
+    try { api.__test_createAuthorizationSourceGraph(snapshot, payload.graphKind || "ssh"); } catch (caught) { error = caught && caught.code ? caught.code : String(caught && caught.name); }
+    let later = null;
+    try { api.__test_reserveAuthorizationSourceFile(sudo, 0); } catch (caught) { later = caught && caught.code ? caught.code : String(caught && caught.name); }
+    process.stdout.write(JSON.stringify({ error, later, budget: api.__test_inspectAuthorizationSourceBudget(snapshot, ssh, sudo) }));
+  } else {
+    throw new Error("unknown probe kind");
+  }
+} catch (error) {
+  process.stdout.write(JSON.stringify({ error: error && error.code ? error.code : String(error && error.message || error) }));
+}
+`;
+  writeFileSync(harnessPath, harness, "utf8");
+  writeFileSync(payloadPath, JSON.stringify(payload), "utf8");
+  try {
+    const result = spawnSync(process.execPath, ["--experimental-vm-modules", harnessPath, runnerPath, payloadPath], {
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+test("authorization source files use one trusted fd through EOF drift and close", () => {
+  for (const mode of [0o400, 0o440, 0o600, 0o640, 0o644]) {
+    const probe = sourceReaderVmProbe({
+      kind: "source",
+      mode,
+      bytes: Buffer.from("line-one\nline-two", "utf8").toString("base64")
+    });
+    assert.equal(probe.error, null);
+    assert.equal(probe.callback.ordinal, 0);
+    assert.equal(probe.callback.mode, mode);
+    assert.deepEqual(probe.callback.keys, ["ordinal", "path", "sha256", "uid", "gid", "mode", "nlink"]);
+    assert.equal(probe.callback.frozen, true);
+    assert.equal(probe.callback.hasBufferValue, false);
+    assert.equal(probe.callbackBufferNonzero, true);
+    assert.equal(probe.readBuffersZeroized, true);
+    assert.equal(probe.callbackBytesZeroized, true);
+    assert.deepEqual(probe.events.filter(([name]) => name === "lstat").map(([, path]) => path), [
+      "/", "/etc", "/etc/ssh", "/etc/ssh/sshd_config"
+    ]);
+    const fd = probe.events.find(([name]) => name === "open")[3];
+    assert.equal(probe.events.find(([name]) => name === "open")[2], 0xA0000);
+    assert.ok(probe.events.filter(([name]) => name === "fstat" || name === "read" || name === "close")
+      .every(([, observedFd]) => observedFd === fd));
+    assert.ok(probe.events.findIndex(([name]) => name === "close") < probe.events.findLastIndex(([name]) => name === "hash"));
+  }
+  for (const payload of [
+    { bytes: "", mode: 0o600 },
+    { bytes: Buffer.concat(Array.from({ length: 64 }, () => Buffer.concat([Buffer.alloc(16383, 0x61), Buffer.from("\n")]))).toString("base64"), mode: 0o600 },
+    { bytes: Buffer.alloc(1048577, 0x61).toString("base64"), mode: 0o600 },
+    { bytes: Buffer.from("body", "utf8").toString("base64"), mode: 0o600, postDrift: true },
+    { bytes: Buffer.from("body", "utf8").toString("base64"), mode: 0o600, callbackFailure: true }
+  ]) {
+    const probe = sourceReaderVmProbe({ kind: "source", ...payload });
+    if (Buffer.from(payload.bytes, "base64").length <= 1048576 && !payload.postDrift && !payload.callbackFailure) {
+      assert.equal(probe.error, null, `accepted source length=${Buffer.from(payload.bytes, "base64").length}`);
+    } else {
+      assert.equal(probe.error, "restricted_identity_rejected");
+      assert.equal(probe.events.filter(([name]) => name === "close").length, 1);
+    }
+  }
+  for (const readFault of ["body-eintr", "body-short", "eof-eintr"]) {
+    const probe = sourceReaderVmProbe({ kind: "source", mode: 0o600, readFault, bytes: Buffer.from("body", "utf8").toString("base64") });
+    assert.equal(probe.error, null, readFault);
+    assert.equal(probe.readBuffersZeroized, true);
+  }
+  for (const readFault of ["body-early", "body-invalid-count", "body-non-eintr", "eof-trailing", "eof-invalid-count", "eof-non-eintr", "wrong-fd"]) {
+    const probe = sourceReaderVmProbe({ kind: "source", mode: 0o600, readFault, bytes: Buffer.from("body", "utf8").toString("base64") });
+    assert.equal(probe.error, "restricted_identity_rejected", readFault);
+    assert.equal(probe.events.filter(([name]) => name === "close").length, 1);
+    assert.equal(probe.readBuffersZeroized, true);
+  }
+  const closeFailure = sourceReaderVmProbe({ kind: "source", mode: 0o600, closeFault: true, bytes: Buffer.from("body", "utf8").toString("base64") });
+  assert.equal(closeFailure.error, "restricted_identity_rejected");
+  assert.equal(closeFailure.events.filter(([name]) => name === "close").length, 1);
+  const inheritedOperation = sourceReaderVmProbe({ kind: "source", mode: 0o600, inheritedOperation: true, bytes: Buffer.from("body", "utf8").toString("base64") });
+  assert.equal(inheritedOperation.error, "restricted_identity_rejected");
+  assert.equal(inheritedOperation.events.some(([name]) => name === "open"), false);
+  for (const path of ["relative", "/etc//ssh", "/etc/./ssh", "/etc/../ssh", "/etc/ssh/", "/etc/\uD800ssh"]) {
+    const probe = sourceReaderVmProbe({ kind: "source", path, mode: 0o600, bytes: Buffer.from("body", "utf8").toString("base64") });
+    assert.equal(probe.error, "restricted_identity_rejected", path);
+    assert.equal(probe.events.some(([name]) => name === "open"), false);
+  }
+});
+
+test("authorization source graphs enforce shared depth file byte line and directory bounds", () => {
+  const initial = sourceReaderVmProbe({ kind: "bounds" });
+  assert.equal(initial.error, null);
+  assert.deepEqual(initial.budget, {
+    snapshotFixedEnvelopeCount: 5,
+    snapshotSemanticNodeCount: 5,
+    sshFixedEnvelopeCount: 2,
+    sudoFixedEnvelopeCount: 2,
+    sshSourceFileCount: 0,
+    sudoSourceFileCount: 0,
+    sshDepth: 0,
+    sudoDepth: 0,
+    failed: false
+  });
+  assert.equal(sourceReaderVmProbe({ kind: "bounds", sizes: Array.from({ length: 256 }, () => 0) }).error, null);
+  assert.equal(sourceReaderVmProbe({ kind: "bounds", sizes: Array.from({ length: 257 }, () => 0) }).error, "restricted_identity_rejected");
+  const maximumTotal = Array.from({ length: 16 }, () => 1048576);
+  assert.equal(sourceReaderVmProbe({ kind: "bounds", sizes: maximumTotal }).error, null);
+  assert.equal(sourceReaderVmProbe({ kind: "bounds", sizes: [...maximumTotal, 1] }).error, "restricted_identity_rejected");
+  assert.equal(sourceReaderVmProbe({ kind: "bounds", directoryCounts: Array.from({ length: 16 }, () => 4096) }).error, null);
+  assert.equal(sourceReaderVmProbe({ kind: "bounds", directoryCounts: [...Array.from({ length: 16 }, () => 4096), 1] }).error, "restricted_identity_rejected");
+  assert.equal(sourceReaderVmProbe({ kind: "bounds", depth: 32 }).error, null);
+  assert.equal(sourceReaderVmProbe({ kind: "bounds", depth: 33 }).error, "restricted_identity_rejected");
+  const duplicateGraph = sourceReaderVmProbe({ kind: "graph", graphKind: "ssh" });
+  assert.equal(duplicateGraph.error, "restricted_identity_rejected");
+  assert.equal(duplicateGraph.later, "restricted_identity_rejected");
+  assert.equal(duplicateGraph.budget.failed, true);
+  const maximumLine = sourceReaderVmProbe({
+    kind: "source",
+    mode: 0o600,
+    bytes: Buffer.alloc(16384, 0x61).toString("base64")
+  });
+  assert.equal(maximumLine.error, null);
+  const overLine = sourceReaderVmProbe({
+    kind: "source",
+    mode: 0o600,
+    bytes: Buffer.alloc(16385, 0x61).toString("base64")
+  });
+  assert.equal(overLine.error, "restricted_identity_rejected");
+});
+
+test("directory enumeration remains bounded root-controlled and candidate-validated", () => {
+  const lifecycle = sourceReaderVmProbe({ kind: "directory", count: 1, readChild: true });
+  assert.equal(lifecycle.error, null);
+  assert.equal(lifecycle.callbackCount, 1);
+  assert.equal(lifecycle.events.filter(([name]) => name === "readDirectory").length, 1);
+  assert.equal(lifecycle.events.some(([name]) => name === "validateSudoers"), false);
+  const directoryOpen = lifecycle.events.findIndex(([name, path]) => name === "open" && path === "/etc/sudoers.d");
+  const directoryClose = lifecycle.events.findIndex(([name, fd]) => name === "close" && fd === 40);
+  const childOpen = lifecycle.events.findIndex(([name, path]) => name === "open" && path === "/etc/sudoers.d/n0");
+  assert.ok(directoryOpen < lifecycle.events.findIndex(([name]) => name === "readDirectory"));
+  assert.ok(lifecycle.events.findIndex(([name]) => name === "readDirectory") < childOpen);
+  assert.ok(childOpen < directoryClose);
+  assert.equal(sourceReaderVmProbe({ kind: "directory", count: 4096 }).error, null);
+  assert.equal(sourceReaderVmProbe({ kind: "directory", count: 0 }).error, null);
+  const perDirectory = sourceReaderVmProbe({ kind: "directory", count: 4097 });
+  assert.equal(perDirectory.error, "restricted_identity_rejected");
+  assert.equal(perDirectory.callbackCount, 0);
+  assert.equal(perDirectory.namesZeroized, true);
+  for (const variant of ["accessor", "hole", "nonbuffer", "invalid-utf8", "slash", "dot", "duplicate"]) {
+    const probe = sourceReaderVmProbe({ kind: "directory", count: variant === "duplicate" ? 2 : 1, variant });
+    assert.equal(probe.error, "restricted_identity_rejected", variant);
+    assert.equal(probe.callbackCount, 0, variant);
+    assert.equal(probe.namesZeroized, true, variant);
+  }
+  for (const variant of ["extra", "symbol", "inherited"]) {
+    const probe = sourceReaderVmProbe({ kind: "directory", count: 1, variant });
+    assert.equal(probe.error, null, variant);
+    assert.equal(probe.callbackCount, 1, variant);
+    assert.equal(probe.namesZeroized, true, variant);
+  }
+  const terminal = sourceReaderVmProbe({ kind: "directory", count: 1, tripTerminal: true });
+  assert.equal(terminal.error, "restricted_identity_rejected");
+  assert.equal(terminal.followUpError, "restricted_identity_rejected");
+  assert.equal(terminal.followUpOperations, 0);
+  assert.equal(terminal.budget.failed, true);
+});
+
+test("authorization source and basename buffers are zeroized on every path", () => {
+  const success = sourceReaderVmProbe({
+    kind: "directory",
+    count: 2,
+    readChild: true
+  });
+  assert.equal(success.error, null);
+  assert.equal(success.namesZeroized, true);
+  const failure = sourceReaderVmProbe({ kind: "directory", count: 4097 });
+  assert.equal(failure.error, "restricted_identity_rejected");
+  assert.equal(failure.namesZeroized, true);
+  const callbackFailure = sourceReaderVmProbe({
+    kind: "source",
+    mode: 0o600,
+    bytes: Buffer.from("callback-source", "utf8").toString("base64"),
+    callbackFailure: true
+  });
+  assert.equal(callbackFailure.error, "restricted_identity_rejected");
+  assert.equal(callbackFailure.events.filter(([name]) => name === "close").length, 1);
+});

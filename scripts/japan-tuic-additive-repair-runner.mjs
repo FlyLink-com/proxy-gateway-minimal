@@ -219,9 +219,506 @@ const AUDITED_LINUX_OPEN_CONSTANTS = Object.freeze({
 });
 const AUDITED_FILE_OPEN_FLAGS = 0xA0000;
 const AUDITED_DIRECTORY_OPEN_FLAGS = 0xB0000;
+const AUTHORIZATION_SOURCE_SNAPSHOT_BRAND = new WeakSet();
+const AUTHORIZATION_SOURCE_GRAPH_BRAND = new WeakSet();
+const AUTHORIZATION_SOURCE_MAX_FILE_BYTES = 1048576;
+const AUTHORIZATION_SOURCE_MAX_GRAPH_BYTES = 16777216;
+const AUTHORIZATION_SOURCE_MAX_FILES = 256;
+const AUTHORIZATION_SOURCE_MAX_DEPTH = 32;
+const AUTHORIZATION_SOURCE_MAX_LINE_BYTES = 16384;
+const AUTHORIZATION_SOURCE_MAX_DIRECTORY_NAMES = 4096;
+const AUTHORIZATION_SOURCE_MAX_GRAPH_DIRECTORY_NAMES = 65536;
+const AUTHORIZATION_SOURCE_MAX_FIXED_ENVELOPES = 32;
+const AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES = 131072;
+const AUTHORIZATION_PATH_OPERATION_KEYS = Object.freeze(["lstat", "open", "fstat", "read", "close"]);
+const AUTHORIZATION_SOURCE_OPERATION_KEYS = Object.freeze(["readDirectory", "validateSudoers"]);
 
 function restricted() {
   throw safeError(RESTRICTED_CODE);
+}
+
+function exactPrivateOperationRecord(input, expected) {
+  if (!input || typeof input !== "object" || Array.isArray(input)
+    || Object.getOwnPropertySymbols(input).length !== 0) restricted();
+  const names = Object.getOwnPropertyNames(input).sort();
+  const sortedExpected = [...expected].sort();
+  if (names.length !== sortedExpected.length || names.some((name, index) => name !== sortedExpected[index])) restricted();
+  for (const name of expected) {
+    const descriptor = Object.getOwnPropertyDescriptor(input, name);
+    if (!descriptor || !Object.hasOwn(descriptor, "value") || descriptor.enumerable !== true
+      || typeof descriptor.value !== "function" || descriptor.get !== undefined || descriptor.set !== undefined) restricted();
+    for (let prototype = Object.getPrototypeOf(input); prototype; prototype = Object.getPrototypeOf(prototype)) {
+      if (Object.hasOwn(prototype, name)) restricted();
+    }
+  }
+  return input;
+}
+
+function failAuthorizationSourceGraph(graph) {
+  if (graph && AUTHORIZATION_SOURCE_GRAPH_BRAND.has(graph)) {
+    graph.failed = true;
+    graph.snapshot.failed = true;
+  }
+}
+
+function requireAuthorizationSourceGraph(graph) {
+  if (!graph || !AUTHORIZATION_SOURCE_GRAPH_BRAND.has(graph)
+    || !AUTHORIZATION_SOURCE_SNAPSHOT_BRAND.has(graph.snapshot)
+    || graph.failed || graph.snapshot.failed) restricted();
+  return graph;
+}
+
+function reserveAuthorizationSourceRead(graph, size) {
+  const active = requireAuthorizationSourceGraph(graph);
+  if (!Number.isSafeInteger(size) || size < 0 || size > AUTHORIZATION_SOURCE_MAX_FILE_BYTES
+    || active.fileCount + 1 > AUTHORIZATION_SOURCE_MAX_FILES
+    || active.totalBytes + size > AUTHORIZATION_SOURCE_MAX_GRAPH_BYTES) {
+    failAuthorizationSourceGraph(active);
+    restricted();
+  }
+  active.fileCount += 1;
+  active.totalBytes += size;
+}
+
+function reserveAuthorizationSourceNode(graph) {
+  const active = requireAuthorizationSourceGraph(graph);
+  if (active.sourceFileCount + 1 > AUTHORIZATION_SOURCE_MAX_FILES
+    || active.semanticNodeCount + 1 > AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES
+    || active.snapshot.semanticNodeCount + 1 > AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES) {
+    failAuthorizationSourceGraph(active);
+    restricted();
+  }
+  active.sourceFileCount += 1;
+  active.semanticNodeCount += 1;
+  active.snapshot.semanticNodeCount += 1;
+}
+
+function reserveAuthorizationDirectoryNames(graph, count) {
+  const active = requireAuthorizationSourceGraph(graph);
+  if (!Number.isSafeInteger(count) || count < 0 || count > AUTHORIZATION_SOURCE_MAX_DIRECTORY_NAMES
+    || active.directoryNameCount + count > AUTHORIZATION_SOURCE_MAX_GRAPH_DIRECTORY_NAMES) {
+    failAuthorizationSourceGraph(active);
+    restricted();
+  }
+  active.directoryNameCount += count;
+}
+
+function createAuthorizationSourceSnapshot() {
+  let fixedEnvelopeCount = 0;
+  let semanticNodeCount = 0;
+  if (fixedEnvelopeCount + 1 > AUTHORIZATION_SOURCE_MAX_FIXED_ENVELOPES) restricted();
+  fixedEnvelopeCount += 1;
+  semanticNodeCount += 1;
+  const snapshot = Object.create(null, {
+    fixedEnvelopeCount: { value: fixedEnvelopeCount, writable: true, enumerable: true },
+    semanticNodeCount: { value: semanticNodeCount, writable: true, enumerable: true },
+    failed: { value: false, writable: true, enumerable: true },
+    sshGraph: { value: undefined, writable: true, enumerable: true },
+    sudoGraph: { value: undefined, writable: true, enumerable: true }
+  });
+  AUTHORIZATION_SOURCE_SNAPSHOT_BRAND.add(snapshot);
+  return snapshot;
+}
+
+function createAuthorizationSourceGraph(snapshot, kind) {
+  if (!snapshot || !AUTHORIZATION_SOURCE_SNAPSHOT_BRAND.has(snapshot)) restricted();
+  try {
+    const graphSlot = kind === "ssh" ? "sshGraph" : kind === "sudo" ? "sudoGraph" : undefined;
+    if (snapshot.failed || !graphSlot || snapshot[graphSlot]
+      || snapshot.fixedEnvelopeCount + 2 > AUTHORIZATION_SOURCE_MAX_FIXED_ENVELOPES
+      || snapshot.semanticNodeCount + 2 > AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES) restricted();
+    snapshot.fixedEnvelopeCount += 2;
+    snapshot.semanticNodeCount += 2;
+    const graph = Object.create(null, {
+      snapshot: { value: snapshot, enumerable: true },
+      kind: { value: kind, enumerable: true },
+      fixedEnvelopeCount: { value: 2, enumerable: true },
+      semanticNodeCount: { value: 2, writable: true, enumerable: true },
+      fileCount: { value: 0, writable: true, enumerable: true },
+      sourceFileCount: { value: 0, writable: true, enumerable: true },
+      totalBytes: { value: 0, writable: true, enumerable: true },
+      directoryNameCount: { value: 0, writable: true, enumerable: true },
+      depth: { value: 0, writable: true, enumerable: true },
+      nextOrdinal: { value: 0, writable: true, enumerable: true },
+      failed: { value: false, writable: true, enumerable: true },
+      cleanupStack: { value: undefined, writable: true, enumerable: true }
+    });
+    graph.cleanupStack = new Array();
+    AUTHORIZATION_SOURCE_GRAPH_BRAND.add(graph);
+    snapshot[graphSlot] = graph;
+    return graph;
+  } catch (error) {
+    snapshot.failed = true;
+    restricted();
+  }
+}
+
+function enterAuthorizationSourceDepth(graph) {
+  const active = requireAuthorizationSourceGraph(graph);
+  if (active.depth + 1 > AUTHORIZATION_SOURCE_MAX_DEPTH) {
+    failAuthorizationSourceGraph(active);
+    restricted();
+  }
+  active.depth += 1;
+}
+
+function leaveAuthorizationSourceDepth(graph) {
+  const active = requireAuthorizationSourceGraph(graph);
+  if (active.depth <= 0) {
+    failAuthorizationSourceGraph(active);
+    restricted();
+  }
+  active.depth -= 1;
+}
+
+function reserveAuthorizationSourceFile(graph, size) {
+  reserveAuthorizationSourceRead(graph, size);
+  reserveAuthorizationSourceNode(graph);
+}
+
+function authorizationPathIsCanonical(path) {
+  if (typeof path !== "string" || path.length < 2 || path[0] !== "/"
+    || path.at(-1) === "/" || path.includes("\\") || path.includes("\0")) return false;
+  let componentStart = 1;
+  for (let index = 0; index < path.length; index += 1) {
+    const code = path.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = path.charCodeAt(index + 1);
+      if (next < 0xdc00 || next > 0xdfff) return false;
+      index += 1;
+      continue;
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) return false;
+    if (path[index] !== "/") continue;
+    if (index !== 0) {
+      if (index === componentStart || (index - componentStart === 1 && path[componentStart] === ".")
+        || (index - componentStart === 2 && path.slice(componentStart, index) === "..")) return false;
+      componentStart = index + 1;
+    }
+  }
+  return componentStart < path.length
+    && !(path.length - componentStart === 1 && path[componentStart] === ".")
+    && !(path.length - componentStart === 2 && path.slice(componentStart) === "..");
+}
+
+function validateAuthorizationAncestor(stats) {
+  if (!stats || typeof stats !== "object" || typeof stats.uid !== "bigint" || typeof stats.mode !== "bigint"
+    || typeof stats.isDirectory !== "function" || typeof stats.isSymbolicLink !== "function"
+    || stats.uid !== 0n || !stats.isDirectory() || stats.isSymbolicLink() || (stats.mode & 0o022n) !== 0n) restricted();
+}
+
+function validateAuthorizationFinalStat(stats, type) {
+  if (!stats || typeof stats !== "object"
+    || !["uid", "gid", "mode", "nlink", "dev", "ino", "size"].every((key) => typeof stats[key] === "bigint")
+    || typeof stats.isDirectory !== "function" || typeof stats.isFile !== "function" || typeof stats.isSymbolicLink !== "function"
+    || stats.uid !== 0n || stats.gid !== 0n || stats.isSymbolicLink()
+    || (stats.mode & 0o7000n) !== 0n || (stats.mode & 0o022n) !== 0n) restricted();
+  if (type === "file") {
+    if (!stats.isFile() || stats.isDirectory() || stats.nlink !== 1n) restricted();
+  } else if (type === "directory") {
+    if (!stats.isDirectory() || stats.isFile() || stats.nlink <= 0n) restricted();
+  } else {
+    restricted();
+  }
+}
+
+function sameAuthorizationFinalStat(left, right, type) {
+  validateAuthorizationFinalStat(left, type);
+  validateAuthorizationFinalStat(right, type);
+  if (left.uid !== right.uid || left.gid !== right.gid
+    || (left.mode & 0o777n) !== (right.mode & 0o777n)
+    || (left.mode & 0o7000n) !== (right.mode & 0o7000n)
+    || left.dev !== right.dev || left.ino !== right.ino || left.size !== right.size
+    || left.nlink !== right.nlink) restricted();
+}
+
+function lstatAuthorizationPathChain(path, operations, type) {
+  if (!authorizationPathIsCanonical(path)) restricted();
+  // This is a path-based residual check only: a hostile parent may replace and
+  // restore a component between lstat calls, so it is deliberately not claimed
+  // to provide race-free same-fd directory enumeration.
+  validateAuthorizationAncestor(operations.lstat("/"));
+  let current = "";
+  let start = 1;
+  for (let index = 1; index <= path.length; index += 1) {
+    if (index !== path.length && path[index] !== "/") continue;
+    current += `/${path.slice(start, index)}`;
+    const stats = operations.lstat(current);
+    if (index === path.length) {
+      validateAuthorizationFinalStat(stats, type);
+      return stats;
+    }
+    validateAuthorizationAncestor(stats);
+    start = index + 1;
+  }
+  restricted();
+}
+
+function withTrustedAuthorizationSourcePath(graph, path, type, inputOperations, consume) {
+  let operations;
+  let fd;
+  let opened = false;
+  let result;
+  let failure;
+  try {
+    requireAuthorizationSourceGraph(graph);
+    operations = exactPrivateOperationRecord(inputOperations, AUTHORIZATION_PATH_OPERATION_KEYS);
+    if (typeof consume !== "function") restricted();
+    const finalLstat = lstatAuthorizationPathChain(path, operations, type);
+    fd = operations.open(path, type === "directory" ? 0xB0000 : 0xA0000);
+    if (!Number.isInteger(fd) || fd < 0) restricted();
+    opened = true;
+    const initial = operations.fstat(fd);
+    sameAuthorizationFinalStat(finalLstat, initial, type);
+    try {
+      result = consume(fd, initial, operations);
+    } catch (error) {
+      failure = error;
+    }
+    try {
+      const after = operations.fstat(fd);
+      sameAuthorizationFinalStat(initial, after, type);
+    } catch (error) {
+      if (!failure) failure = error;
+    }
+    requireAuthorizationSourceGraph(graph);
+  } catch (error) {
+    failure = error;
+  } finally {
+    if (opened) {
+      try {
+        operations.close(fd);
+      } catch (error) {
+        failure = error;
+      }
+    }
+  }
+  if (failure) restricted();
+  return result;
+}
+
+function registerAuthorizationBuffer(graph, buffer) {
+  if (!Buffer.isBuffer(buffer)) restricted();
+  try {
+    requireAuthorizationSourceGraph(graph).cleanupStack.push(buffer);
+    return buffer;
+  } catch (error) {
+    buffer.fill(0);
+    failAuthorizationSourceGraph(graph);
+    restricted();
+  }
+}
+
+function allocateAuthorizationBuffer(graph, size) {
+  let buffer;
+  try {
+    buffer = Buffer.alloc(size);
+    return registerAuthorizationBuffer(graph, buffer);
+  } catch (error) {
+    if (Buffer.isBuffer(buffer)) buffer.fill(0);
+    failAuthorizationSourceGraph(graph);
+    restricted();
+  }
+}
+
+function encodeAuthorizationBasename(graph, text) {
+  let buffer;
+  try {
+    buffer = Buffer.from(text, "utf8");
+    return registerAuthorizationBuffer(graph, buffer);
+  } catch (error) {
+    if (Buffer.isBuffer(buffer)) buffer.fill(0);
+    failAuthorizationSourceGraph(graph);
+    restricted();
+  }
+}
+
+function zeroAuthorizationBuffersTo(graph, checkpoint) {
+  while (graph.cleanupStack.length > checkpoint) {
+    const buffer = graph.cleanupStack.pop();
+    if (Buffer.isBuffer(buffer)) buffer.fill(0);
+  }
+}
+
+function readAuthorizationSourceBytes(graph, fd, stats, operations) {
+  if (stats.size < 0n || stats.size > BigInt(Number.MAX_SAFE_INTEGER)) restricted();
+  const size = Number(stats.size);
+  reserveAuthorizationSourceRead(graph, size);
+  const bytes = allocateAuthorizationBuffer(graph, size);
+  let offset = 0;
+  while (offset < size) {
+    let count;
+    try {
+      count = operations.read(fd, bytes, offset, size - offset, offset);
+    } catch (error) {
+      if (error && error.code === "EINTR") continue;
+      restricted();
+    }
+    if (!Number.isInteger(count) || count <= 0 || count > size - offset) restricted();
+    offset += count;
+  }
+  const eof = allocateAuthorizationBuffer(graph, 1);
+  while (true) {
+    try {
+      const count = operations.read(fd, eof, 0, 1, size);
+      if (!Number.isInteger(count) || count !== 0) restricted();
+      break;
+    } catch (error) {
+      if (error && error.code === "EINTR") continue;
+      restricted();
+    }
+  }
+  return bytes;
+}
+
+function validateAuthorizationPhysicalLines(bytes) {
+  let lineBytes = 0;
+  for (let index = 0; index < bytes.length; index += 1) {
+    if (bytes[index] === 0x0a) {
+      lineBytes = 0;
+    } else {
+      lineBytes += 1;
+      if (lineBytes > AUTHORIZATION_SOURCE_MAX_LINE_BYTES) restricted();
+    }
+  }
+}
+
+function consumeTrustedAuthorizationSource(graph, path, inputOperations, callback) {
+  const active = requireAuthorizationSourceGraph(graph);
+  const checkpoint = active.cleanupStack.length;
+  let entered = false;
+  try {
+    if (typeof callback !== "function") restricted();
+    enterAuthorizationSourceDepth(active);
+    entered = true;
+    let bytes;
+    let stats;
+    withTrustedAuthorizationSourcePath(active, path, "file", inputOperations, (fd, openedStats, operations) => {
+      bytes = readAuthorizationSourceBytes(active, fd, openedStats, operations);
+      stats = openedStats;
+    });
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    reserveAuthorizationSourceNode(active);
+    const ordinal = active.nextOrdinal;
+    active.nextOrdinal += 1;
+    validateAuthorizationPhysicalLines(bytes);
+    const sourceFile = Object.freeze(Object.create(null, {
+      ordinal: { value: ordinal, enumerable: true },
+      path: { value: path, enumerable: true },
+      sha256: { value: sha256, enumerable: true },
+      uid: { value: Number(stats.uid), enumerable: true },
+      gid: { value: Number(stats.gid), enumerable: true },
+      mode: { value: Number(stats.mode & 0o777n), enumerable: true },
+      nlink: { value: Number(stats.nlink), enumerable: true }
+    }));
+    const result = callback(bytes, sourceFile);
+    requireAuthorizationSourceGraph(active);
+    return result;
+  } catch (error) {
+    failAuthorizationSourceGraph(active);
+    restricted();
+  } finally {
+    try {
+      if (entered && active.depth > 0) active.depth -= 1;
+    } finally {
+      zeroAuthorizationBuffersTo(active, checkpoint);
+    }
+  }
+}
+
+function cleanupOnlyAuthorizationDirectoryArray(value, length) {
+  if (!Array.isArray(value) || !Number.isSafeInteger(length) || length < 0) return;
+  for (let index = length - 1; index >= 0; index -= 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (descriptor && Object.hasOwn(descriptor, "value") && Buffer.isBuffer(descriptor.value)) descriptor.value.fill(0);
+  }
+}
+
+function validateAuthorizationDirectoryArray(graph, value) {
+  if (!Array.isArray(value)) restricted();
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, "value") || !Number.isSafeInteger(lengthDescriptor.value)
+    || lengthDescriptor.value < 0 || lengthDescriptor.enumerable !== false || lengthDescriptor.configurable !== false) {
+    restricted();
+  }
+  const length = lengthDescriptor.value;
+  try {
+    reserveAuthorizationDirectoryNames(graph, length);
+  } catch (error) {
+    cleanupOnlyAuthorizationDirectoryArray(value, length);
+    throw error;
+  }
+  const checkpoint = graph.cleanupStack.length;
+  let valid = true;
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || !Object.hasOwn(descriptor, "value") || descriptor.get !== undefined || descriptor.set !== undefined) {
+      valid = false;
+      continue;
+    }
+    if (!Buffer.isBuffer(descriptor.value)) {
+      valid = false;
+      continue;
+    }
+    registerAuthorizationBuffer(graph, descriptor.value);
+  }
+  if (!valid) restricted();
+  for (let index = 0; index < length; index += 1) {
+    const basename = graph.cleanupStack[checkpoint + index];
+    if (basename.length < 1 || basename.length > 255 || basename.includes(0) || basename.includes(0x2f)
+      || (basename.length === 1 && basename[0] === 0x2e)
+      || (basename.length === 2 && basename[0] === 0x2e && basename[1] === 0x2e)) restricted();
+    let text;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(basename);
+    } catch {
+      restricted();
+    }
+    const encoded = encodeAuthorizationBasename(graph, text);
+    if (Buffer.compare(encoded, basename) !== 0) restricted();
+  }
+  for (let left = 0; left < length; left += 1) {
+    for (let right = left + 1; right < length; right += 1) {
+      if (Buffer.compare(graph.cleanupStack[checkpoint + left], graph.cleanupStack[checkpoint + right]) === 0) restricted();
+    }
+  }
+  return checkpoint;
+}
+
+function consumeTrustedAuthorizationDirectory(graph, path, inputPathOperations, inputSourceOperations, callback) {
+  const active = requireAuthorizationSourceGraph(graph);
+  const checkpoint = active.cleanupStack.length;
+  try {
+    if (typeof callback !== "function") restricted();
+    const sourceOperations = exactPrivateOperationRecord(inputSourceOperations, AUTHORIZATION_SOURCE_OPERATION_KEYS);
+    return withTrustedAuthorizationSourcePath(active, path, "directory", inputPathOperations, () => {
+      const values = sourceOperations.readDirectory(path);
+      validateAuthorizationDirectoryArray(active, values);
+      return callback(values);
+    });
+  } catch (error) {
+    failAuthorizationSourceGraph(active);
+    restricted();
+  } finally {
+    zeroAuthorizationBuffersTo(active, checkpoint);
+  }
+}
+
+function inspectAuthorizationSourceBudget(snapshot, ssh, sudo) {
+  if (!AUTHORIZATION_SOURCE_SNAPSHOT_BRAND.has(snapshot)
+    || !AUTHORIZATION_SOURCE_GRAPH_BRAND.has(ssh) || !AUTHORIZATION_SOURCE_GRAPH_BRAND.has(sudo)
+    || ssh.snapshot !== snapshot || sudo.snapshot !== snapshot) restricted();
+  return {
+    snapshotFixedEnvelopeCount: snapshot.fixedEnvelopeCount,
+    snapshotSemanticNodeCount: snapshot.semanticNodeCount,
+    sshFixedEnvelopeCount: 2,
+    sudoFixedEnvelopeCount: 2,
+    sshSourceFileCount: ssh.sourceFileCount,
+    sudoSourceFileCount: sudo.sourceFileCount,
+    sshDepth: ssh.depth,
+    sudoDepth: sudo.depth,
+    failed: snapshot.failed
+  };
 }
 
 function hasKeys(value, keys) {
