@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  constants as fsConstants,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -13,16 +15,315 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
-import { JAPAN_TUIC_REPAIR_GATE } from "../../scripts/japan-tuic-additive-repair-contract.mjs";
 import {
+  JAPAN_TUIC_REPAIR_GATE,
+  JAPAN_TUIC_REPAIR_GATE_V3
+} from "../../scripts/japan-tuic-additive-repair-contract.mjs";
+import { executionClaimSha256 } from "../../scripts/japan-tuic-additive-repair-state.mjs";
+import {
+  buildCanonicalRunnerBinding,
+  buildCanonicalSshIncludeClosure,
+  buildCanonicalSshMatchCoverage,
+  buildCanonicalSshTopology,
+  buildCanonicalSudoEffectivePolicy,
+  buildCanonicalSudoSourceClosure,
   createHostOperations,
   deriveWaitBudget,
   executeJapanTuicAdditiveRepair,
+  loadRootOwnedBinding,
+  parseCanonicalAuthorizedKeyLine,
   runJapanTuicAdditiveRepairCli,
   validateArchiveEntries,
-  validateRunnerBinding
+  validateRunnerBinding,
+  validateTrustedPathChain
 } from "../../scripts/japan-tuic-additive-repair-runner.mjs";
+
+const EMPTY_SHA256 = createHash("sha256").update(Buffer.alloc(0)).digest("hex");
+const SHA_A = "a".repeat(64);
+const SHA_B = "b".repeat(64);
+const SHA_C = "c".repeat(64);
+const WORKFLOW_COMMIT = "d".repeat(40);
+const AUTHORIZATION_MARKER = JAPAN_TUIC_REPAIR_GATE_V3.executionGateId;
+const ENTRYPOINT_PATH = "/usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint";
+const BINDING_PATH = "/etc/gccgw/japan-tuic-additive-repair-binding.json";
+const AUTHORIZED_KEYS_PATH = "/etc/ssh/authorized_keys/gccgw-japan-repair-ci";
+const HOME_PATH = "/var/lib/gccgw-japan-repair-ci";
+const SUDOERS_PATH = "/etc/sudoers.d/gccgw-japan-repair-ci";
+
+function v3Paths() {
+  return {
+    authorizedKeys: AUTHORIZED_KEYS_PATH,
+    backupDirectory: "/var/lib/gccgw/japan-tuic-additive-repair/backups",
+    currentMap: "/protected/japan-tuic-map.json",
+    lockFile: "/var/lib/gccgw/japan-tuic-additive-repair/repair.lock",
+    materialStore: "/protected/material-store.json",
+    mihomoConfig: "/protected/mihomo-config.yaml",
+    naturalObservation: "/protected/natural-observation.json",
+    producerStatus: "/protected/producer-status.json",
+    stateDirectory: "/var/lib/gccgw/japan-tuic-additive-repair",
+    sudoersFile: SUDOERS_PATH,
+    temporaryRoot: "/var/lib/gccgw/japan-tuic-additive-repair/tmp"
+  };
+}
+
+function v3PathPolicies() {
+  return {
+    authorizedKeys: { type: "file", uid: 0, gid: 0, mode: 0o600, nlink: 1 },
+    backupDirectory: { type: "directory", uid: 0, gid: 0, mode: 0o700, nlink: null },
+    currentMap: { type: "file", uid: 1000, gid: 1000, mode: 0o600, nlink: 1 },
+    lockFile: { type: "file", uid: 0, gid: 0, mode: 0o600, nlink: 1 },
+    materialStore: { type: "file", uid: 1000, gid: 1000, mode: 0o400, nlink: 1 },
+    mihomoConfig: { type: "file", uid: 1000, gid: 1000, mode: 0o600, nlink: 1 },
+    naturalObservation: { type: "file", uid: 1000, gid: 1000, mode: 0o400, nlink: 1 },
+    producerStatus: { type: "file", uid: 1000, gid: 1000, mode: 0o600, nlink: 1 },
+    stateDirectory: { type: "directory", uid: 0, gid: 0, mode: 0o700, nlink: null },
+    sudoersFile: { type: "file", uid: 0, gid: 0, mode: 0o440, nlink: 1 },
+    temporaryRoot: { type: "directory", uid: 0, gid: 0, mode: 0o700, nlink: null }
+  };
+}
+
+function codeEntry(path, mode, overrides = {}) {
+  return {
+    path,
+    sizeBytes: 1024,
+    sha256: SHA_A,
+    type: "file",
+    uid: 0,
+    gid: 0,
+    mode,
+    nlink: 1,
+    ...overrides
+  };
+}
+
+function v3CodeManifest() {
+  return {
+    contract: codeEntry("/usr/local/libexec/gccgw/japan-tuic-additive-repair-contract.mjs", 0o644),
+    entrypoint: codeEntry(ENTRYPOINT_PATH, 0o755),
+    frame: codeEntry("/usr/local/libexec/gccgw/japan-tuic-additive-repair-frame.mjs", 0o644),
+    runner: codeEntry("/usr/local/libexec/gccgw/japan-tuic-additive-repair-runner.mjs", 0o644),
+    state: codeEntry("/usr/local/libexec/gccgw/japan-tuic-additive-repair-state.mjs", 0o644)
+  };
+}
+
+function toolEntry(path, mode, overrides = {}) {
+  return {
+    path,
+    sizeBytes: 4096,
+    sha256: SHA_B,
+    type: "file",
+    uid: 0,
+    gid: 0,
+    mode,
+    nlink: 1,
+    capabilitySha256: EMPTY_SHA256,
+    ...overrides
+  };
+}
+
+function v3ToolManifest() {
+  return {
+    dash: toolEntry("/usr/bin/dash", 0o755),
+    env: toolEntry("/usr/bin/env", 0o755),
+    flock: toolEntry("/usr/bin/flock", 0o755),
+    node: toolEntry("/usr/bin/node", 0o755),
+    sudo: toolEntry("/usr/bin/sudo", 0o4755),
+    systemctl: toolEntry("/usr/bin/systemctl", 0o755),
+    unzip: toolEntry("/usr/bin/unzip", 0o755),
+    visudo: toolEntry("/usr/sbin/visudo", 0o755)
+  };
+}
+
+function v3SshAuthorization() {
+  return {
+    algorithm: "ssh-ed25519",
+    authorizedKeysFile: AUTHORIZED_KEYS_PATH,
+    authorizedKeysLineSha256: SHA_A,
+    effectiveConfigSha256: SHA_B,
+    homeDirectory: HOME_PATH,
+    homeDirectoryPolicy: { type: "directory", uid: 0, gid: 0, mode: 0o755, nlink: null },
+    loginShell: "/usr/bin/dash",
+    loginShellPolicy: { type: "file", uid: 0, gid: 0, mode: 0o755, nlink: 1, sha256: SHA_B },
+    publicKeyBlobSha256: SHA_C,
+    uid: 975,
+    username: "gccgw-japan-repair-ci"
+  };
+}
+
+function v3SudoAuthorization() {
+  return {
+    schemaVersion: "1",
+    type: "japan_ci_sudo_authorization",
+    username: "gccgw-japan-repair-ci",
+    uid: 975,
+    sudoersFile: SUDOERS_PATH,
+    sudoersFileSha256: SHA_C,
+    command: ENTRYPOINT_PATH,
+    commandArguments: [],
+    runAsUid: 0,
+    runAsGid: 0,
+    nonInteractive: true,
+    nopasswd: true,
+    envReset: true,
+    setenvAllowed: false,
+    securePath: "/usr/sbin:/usr/bin:/sbin:/bin",
+    otherRuleCount: 0,
+    sourceClosureSha256: SHA_A,
+    effectivePolicySha256: SHA_B
+  };
+}
+
+function v3Binding(overrides = {}) {
+  const expectedClaimSha256 = executionClaimSha256({
+    artifactSha256: JAPAN_TUIC_REPAIR_GATE_V3.artifact.sha256,
+    executionGateId: JAPAN_TUIC_REPAIR_GATE_V3.executionGateId,
+    executionNonce: JAPAN_TUIC_REPAIR_GATE_V3.executionNonce,
+    releaseUnit: JAPAN_TUIC_REPAIR_GATE_V3.releaseUnit,
+    strategy: JAPAN_TUIC_REPAIR_GATE_V3.strategy,
+    surface: JAPAN_TUIC_REPAIR_GATE_V3.surface,
+    target: JAPAN_TUIC_REPAIR_GATE_V3.target,
+    workflowCommit: WORKFLOW_COMMIT
+  });
+  return {
+    schemaVersion: "3",
+    gateId: JAPAN_TUIC_REPAIR_GATE_V3.executionGateId,
+    expectedEuid: 0,
+    expectedWorkflowCommit: WORKFLOW_COMMIT,
+    expectedNonceSha256: JAPAN_TUIC_REPAIR_GATE_V3.expectedNonceSha256,
+    expectedClaimSha256,
+    codeManifest: v3CodeManifest(),
+    toolManifest: v3ToolManifest(),
+    sshAuthorization: v3SshAuthorization(),
+    sudoAuthorization: v3SudoAuthorization(),
+    paths: v3Paths(),
+    pathPolicies: v3PathPolicies(),
+    units: {
+      service: "gccgw-traffic-usage-collect.service",
+      timer: "gccgw-traffic-usage-collect.timer"
+    },
+    writerFreeze: {
+      knownWriterCount: 0,
+      evidenceSha256: SHA_C,
+      residualRisk: "bound_writer_concurrency_not_machine_proven"
+    },
+    authorizationMarker: AUTHORIZATION_MARKER,
+    ...overrides
+  };
+}
+
+function sshClosure(overrides = {}) {
+  return {
+    schemaVersion: "1",
+    type: "japan_ci_sshd_source_closure",
+    rootConfig: "/etc/ssh/sshd_config",
+    files: [
+      { ordinal: 0, path: "/etc/ssh/sshd_config", sha256: SHA_A, uid: 0, gid: 0, mode: 0o644, nlink: 1 },
+      { ordinal: 1, path: "/etc/ssh/sshd_config.d/repair.conf", sha256: SHA_B, uid: 0, gid: 0, mode: 0o600, nlink: 1 }
+    ],
+    ...overrides
+  };
+}
+
+function matchCoverage(overrides = {}) {
+  return {
+    schemaVersion: "1",
+    type: "japan_ci_sshd_match_coverage",
+    username: "gccgw-japan-repair-ci",
+    groupIds: [975, 1001],
+    branches: [
+      {
+        ordinal: 0,
+        sourceOrdinal: 1,
+        lineNumber: 12,
+        conditions: [{ name: "user", patterns: [{ negated: false, value: "gccgw-japan-repair-ci" }] }],
+        accountDisposition: "exact_user",
+        variableDimensions: []
+      },
+      {
+        ordinal: 1,
+        sourceOrdinal: 1,
+        lineNumber: 24,
+        conditions: [{ name: "all", patterns: [] }],
+        accountDisposition: "exact_user",
+        variableDimensions: []
+      }
+    ],
+    ...overrides
+  };
+}
+
+function sshTopologyInput(overrides = {}) {
+  return {
+    schemaVersion: "1",
+    type: "japan_ci_ssh_authorization_topology",
+    username: "gccgw-japan-repair-ci",
+    uid: 975,
+    homeDirectory: HOME_PATH,
+    loginShell: "/usr/bin/dash",
+    passwordLocked: true,
+    authenticationMethods: ["publickey"],
+    pubkeyAuthentication: true,
+    passwordAuthentication: false,
+    keyboardInteractiveAuthentication: false,
+    hostbasedAuthentication: false,
+    gssapiAuthentication: false,
+    kerberosAuthentication: false,
+    permitUserEnvironment: false,
+    acceptedEnvironmentNames: [],
+    forceCommand: "none",
+    chrootDirectory: "none",
+    disableForwarding: true,
+    permitTunnel: false,
+    authorizedKeysFiles: [AUTHORIZED_KEYS_PATH],
+    authorizedKeysCommand: "none",
+    authorizedPrincipalsFiles: [],
+    authorizedPrincipalsCommand: "none",
+    trustedUserCAKeys: [],
+    activeAuthorizationEntryCount: 1,
+    targetKeyOccurrenceCount: 1,
+    addressDependentAuthorizationBranchCount: 0,
+    includeClosure: sshClosure(),
+    matchCoverage: matchCoverage(),
+    ...overrides
+  };
+}
+
+function sudoClosure(overrides = {}) {
+  return {
+    schemaVersion: "1",
+    type: "japan_ci_sudo_source_closure",
+    rootConfig: "/etc/sudoers",
+    files: [
+      { ordinal: 0, path: "/etc/sudoers", sha256: SHA_A, uid: 0, gid: 0, mode: 0o440, nlink: 1 },
+      { ordinal: 1, path: SUDOERS_PATH, sha256: SHA_C, uid: 0, gid: 0, mode: 0o440, nlink: 1 }
+    ],
+    ...overrides
+  };
+}
+
+function sudoPolicyInput(overrides = {}) {
+  return {
+    schemaVersion: "1",
+    type: "japan_ci_sudo_effective_policy",
+    username: "gccgw-japan-repair-ci",
+    uid: 975,
+    command: ENTRYPOINT_PATH,
+    commandArguments: [],
+    runAsUid: 0,
+    runAsGid: 0,
+    nonInteractive: true,
+    nopasswd: true,
+    envReset: true,
+    setenvAllowed: false,
+    securePath: "/usr/sbin:/usr/bin:/sbin:/bin",
+    matchedRuleCount: 1,
+    otherRuleCount: 0,
+    sourceClosure: sudoClosure(),
+    ...overrides
+  };
+}
 
 function validBinding(overrides = {}) {
   return {
@@ -240,40 +541,94 @@ function createOperations({
   return { calls, operations };
 }
 
-test("binding accepts only the exact execution gate and fixed units", () => {
-  const binding = validBinding();
-  assert.equal(validateRunnerBinding(binding).gateId, JAPAN_TUIC_REPAIR_GATE.executionGateId);
+test("schema-3 binding builder emits every recursive key in the frozen order", () => {
+  const binding = buildCanonicalRunnerBinding(v3Binding());
+  assert.deepEqual(Object.keys(binding), [
+    "schemaVersion", "gateId", "expectedEuid", "expectedWorkflowCommit",
+    "expectedNonceSha256", "expectedClaimSha256", "codeManifest", "toolManifest",
+    "sshAuthorization", "sudoAuthorization", "paths", "pathPolicies", "units",
+    "writerFreeze", "authorizationMarker"
+  ]);
+  assert.deepEqual(Object.keys(binding.codeManifest), ["contract", "entrypoint", "frame", "runner", "state"]);
+  assert.deepEqual(Object.keys(binding.toolManifest), ["dash", "env", "flock", "node", "sudo", "systemctl", "unzip", "visudo"]);
+  assert.deepEqual(Object.keys(binding.paths), [
+    "authorizedKeys", "backupDirectory", "currentMap", "lockFile", "materialStore",
+    "mihomoConfig", "naturalObservation", "producerStatus", "stateDirectory",
+    "sudoersFile", "temporaryRoot"
+  ]);
+  assert.equal(`${JSON.stringify(binding)}\n`, `${JSON.stringify(v3Binding())}\n`);
+});
+
+test("exported binding validator is schema-3-only and requires the exact root context", () => {
+  const legacy = validBinding();
   assert.throws(
-    () => validateRunnerBinding({ ...binding, gateId: "another-gate" }),
-    (error) => error.code === "target_identity_mismatch"
+    () => validateRunnerBinding(legacy, { effectiveUid: 0, pathOperations: {} }),
+    (error) => error.code === "restricted_identity_rejected"
   );
   assert.throws(
-    () => validateRunnerBinding({ ...binding, units: { ...binding.units, timer: "other.timer" } }),
-    (error) => error.code === "target_identity_mismatch"
+    () => validateRunnerBinding(v3Binding(), { effectiveUid: 0 }),
+    (error) => error.code === "restricted_identity_rejected"
+  );
+  assert.throws(
+    () => validateRunnerBinding(v3Binding(), { effectiveUid: 1, pathOperations: {} }),
+    (error) => error.code === "restricted_identity_rejected"
   );
 });
 
-test("binding rejects relative, duplicate, missing, and extra path fields", () => {
-  const binding = validBinding();
+test("binding rejects relaxed fixed roles, alias paths, drifted claim, and manifest boundaries", () => {
+  const binding = v3Binding();
+  const failures = [
+    { ...binding, gateId: "another-gate" },
+    { ...binding, expectedClaimSha256: SHA_A },
+    { ...binding, expectedWorkflowCommit: WORKFLOW_COMMIT.toUpperCase() },
+    { ...binding, paths: { ...binding.paths, currentMap: binding.paths.mihomoConfig } },
+    { ...binding, pathPolicies: { ...binding.pathPolicies, currentMap: { ...binding.pathPolicies.currentMap, mode: 0o644 } } },
+    { ...binding, codeManifest: { ...binding.codeManifest, entrypoint: { ...binding.codeManifest.entrypoint, sizeBytes: 16385 } } },
+    { ...binding, codeManifest: { ...binding.codeManifest, runner: { ...binding.codeManifest.runner, sizeBytes: 1048577 } } },
+    { ...binding, toolManifest: { ...binding.toolManifest, node: { ...binding.toolManifest.node, sizeBytes: 268435457 } } },
+    { ...binding, toolManifest: { ...binding.toolManifest, sudo: { ...binding.toolManifest.sudo, mode: 0o755 } } },
+    { ...binding, toolManifest: { ...binding.toolManifest, node: { ...binding.toolManifest.node, mode: 0o4755 } } },
+    { ...binding, toolManifest: { ...binding.toolManifest, dash: { ...binding.toolManifest.dash, capabilitySha256: SHA_A } } },
+    { ...binding, sshAuthorization: { ...binding.sshAuthorization, loginShellPolicy: { ...binding.sshAuthorization.loginShellPolicy, sha256: SHA_A } } },
+    { ...binding, writerFreeze: { ...binding.writerFreeze, residualRisk: "root_only_final_owner_not_machine_proven" } }
+  ];
+  for (const value of failures) {
+    assert.throws(
+      () => buildCanonicalRunnerBinding(value),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+  }
+  assert.equal(buildCanonicalRunnerBinding({
+    ...binding,
+    codeManifest: {
+      ...binding.codeManifest,
+      entrypoint: { ...binding.codeManifest.entrypoint, sizeBytes: 16384 },
+      runner: { ...binding.codeManifest.runner, sizeBytes: 1048576 }
+    },
+    toolManifest: {
+      ...binding.toolManifest,
+      node: { ...binding.toolManifest.node, sizeBytes: 268435456 }
+    }
+  }).schemaVersion, "3");
+});
+
+test("binding rejects relative, missing, and extra path fields", () => {
+  const binding = v3Binding();
   assert.throws(
-    () => validateRunnerBinding({ ...binding, paths: { ...binding.paths, currentMap: "relative.json" } }),
-    (error) => error.code === "target_identity_mismatch"
-  );
-  assert.throws(
-    () => validateRunnerBinding({
+    () => buildCanonicalRunnerBinding({
       ...binding,
-      paths: { ...binding.paths, currentMap: binding.paths.mihomoConfig }
+      paths: { ...binding.paths, currentMap: "relative.json" }
     }),
-    (error) => error.code === "target_identity_mismatch"
+    (error) => error.code === "restricted_identity_rejected"
   );
   const { naturalObservation: _removed, ...missingPath } = binding.paths;
   assert.throws(
-    () => validateRunnerBinding({ ...binding, paths: missingPath }),
-    (error) => error.code === "target_identity_mismatch"
+    () => buildCanonicalRunnerBinding({ ...binding, paths: missingPath }),
+    (error) => error.code === "restricted_identity_rejected"
   );
   assert.throws(
-    () => validateRunnerBinding({ ...binding, paths: { ...binding.paths, unexpected: "/protected/extra" } }),
-    (error) => error.code === "target_identity_mismatch"
+    () => buildCanonicalRunnerBinding({ ...binding, paths: { ...binding.paths, unexpected: "/protected/extra" } }),
+    (error) => error.code === "restricted_identity_rejected"
   );
 });
 
@@ -715,66 +1070,366 @@ test("host adapter rejects natural evidence without the fixed Japan TUIC channel
   );
 });
 
-test("forced-command CLI rejects extra arguments without echoing input", async () => {
-  let stdout = "";
-  let stderr = "";
-  const exitCode = await runJapanTuicAdditiveRepairCli({
-    argv: ["--binding", "/protected/binding.json", "--command", "/protected/unsafe"],
-    stdout: { write: (value) => { stdout += value; } },
-    stderr: { write: (value) => { stderr += value; } },
-    env: { SSH_ORIGINAL_COMMAND: "/protected/do-not-run" }
-  });
-  assert.equal(exitCode, 1);
-  assert.equal(stdout, "");
-  assert.deepEqual(JSON.parse(stderr), {
-    schemaVersion: "1",
-    type: "japan_tuic_additive_repair_execution",
-    productionResult: "indeterminate",
-    hostCredentialCleanup: "failed",
-    closeout: "incomplete",
-    error: "restricted_identity_rejected"
-  });
-  assert.doesNotMatch(stderr, /protected|unsafe|do-not-run/);
+test("SSH source closure and Match coverage are canonical and hash their preimages", () => {
+  const closure = buildCanonicalSshIncludeClosure(sshClosure());
+  assert.deepEqual(Object.keys(closure), ["schemaVersion", "type", "rootConfig", "files"]);
+  assert.deepEqual(Object.keys(closure.files[0]), ["ordinal", "path", "sha256", "uid", "gid", "mode", "nlink"]);
+  const coverage = buildCanonicalSshMatchCoverage(matchCoverage());
+  assert.deepEqual(Object.keys(coverage), ["schemaVersion", "type", "username", "groupIds", "branches"]);
+  assert.equal(JSON.stringify(coverage.branches[1].conditions[0]), "{\"name\":\"all\",\"patterns\":[]}");
+  const topology = buildCanonicalSshTopology(sshTopologyInput());
+  assert.deepEqual(Object.keys(topology), [
+    "schemaVersion", "type", "username", "uid", "homeDirectory", "loginShell",
+    "passwordLocked", "authenticationMethods", "pubkeyAuthentication",
+    "passwordAuthentication", "keyboardInteractiveAuthentication",
+    "hostbasedAuthentication", "gssapiAuthentication", "kerberosAuthentication",
+    "permitUserEnvironment", "acceptedEnvironmentNames", "forceCommand",
+    "chrootDirectory", "disableForwarding", "permitTunnel", "authorizedKeysFiles",
+    "authorizedKeysCommand", "authorizedPrincipalsFiles", "authorizedPrincipalsCommand",
+    "trustedUserCAKeys", "activeAuthorizationEntryCount", "targetKeyOccurrenceCount",
+    "addressDependentAuthorizationBranchCount", "includeClosureSha256", "matchCoverageSha256"
+  ]);
+  assert.equal(
+    topology.includeClosureSha256,
+    createHash("sha256").update(`${JSON.stringify(closure)}\n`).digest("hex")
+  );
+  assert.equal(
+    topology.matchCoverageSha256,
+    createHash("sha256").update(`${JSON.stringify(coverage)}\n`).digest("hex")
+  );
 });
 
-test("forced-command CLI ignores SSH_ORIGINAL_COMMAND and emits one aggregate receipt", async () => {
-  let stdout = "";
-  let stderr = "";
-  let executeCalls = 0;
-  const exitCode = await runJapanTuicAdditiveRepairCli({
-    argv: ["--binding", "/protected/binding.json"],
-    stdin: Readable.from([Buffer.from("artifact")]),
-    stdout: { write: (value) => { stdout += value; } },
-    stderr: { write: (value) => { stderr += value; } },
-    env: { SSH_ORIGINAL_COMMAND: "rm -rf /protected/must-not-run" },
-    platform: "linux",
-    loadBindingFn: () => validBinding(),
-    operationsFactory: () => ({ bounded: true }),
-    executeFn: async ({ operations }) => {
-      executeCalls += 1;
-      assert.deepEqual(operations, { bounded: true });
-      return {
-        schemaVersion: "1",
-        type: "japan_tuic_additive_repair_execution",
-        productionResult: "applied_validated",
-        hostCredentialCleanup: "verified",
-        closeout: "github_cleanup_pending",
-        candidate: JAPAN_TUIC_REPAIR_GATE.candidate,
-        identityAfter: JAPAN_TUIC_REPAIR_GATE.after,
-        naturalObservation: {
-          accepted: true,
-          capturedAt: "2026-07-16T20:05:00.000Z",
-          collectorCount: 5,
-          unresolvedTotal: 1,
-          japanTuicUnresolved: 0
-        }
-      };
+test("SSH policy blocks alternate authorization, command, chroot, forwarding, tunnel, and unresolved conditions", () => {
+  const failures = [
+    sshTopologyInput({ authenticationMethods: ["publickey", "password"] }),
+    sshTopologyInput({ passwordAuthentication: true }),
+    sshTopologyInput({ authorizedKeysFiles: [AUTHORIZED_KEYS_PATH, "/alternate"] }),
+    sshTopologyInput({ authorizedKeysCommand: "/usr/bin/lookup" }),
+    sshTopologyInput({ trustedUserCAKeys: ["/etc/ssh/ca.pub"] }),
+    sshTopologyInput({ forceCommand: "/bin/true" }),
+    sshTopologyInput({ chrootDirectory: "/srv/chroot" }),
+    sshTopologyInput({ disableForwarding: false }),
+    sshTopologyInput({ permitTunnel: true }),
+    sshTopologyInput({ addressDependentAuthorizationBranchCount: 1 })
+  ];
+  for (const value of failures) {
+    assert.throws(
+      () => buildCanonicalSshTopology(value),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+  }
+  const coverageFailures = [
+    matchCoverage({ groupIds: [1001, 975] }),
+    matchCoverage({ groupIds: [975, 975] }),
+    matchCoverage({ branches: [{ ...matchCoverage().branches[0], variableDimensions: ["host"] }] }),
+    matchCoverage({ branches: [{ ...matchCoverage().branches[0], conditions: [{ name: "all", patterns: [{ negated: false, value: "*" }] }] }] }),
+    matchCoverage({ branches: [{ ...matchCoverage().branches[0], conditions: [{ name: "host", patterns: [{ negated: false, value: "*.example" }] }], accountDisposition: "exact_user", variableDimensions: [] }] }),
+    matchCoverage({ branches: [{ ...matchCoverage().branches[0], conditions: [{ name: "user", patterns: [{ negated: false, value: "!root" }] }] }] })
+  ];
+  for (const value of coverageFailures) {
+    assert.throws(
+      () => buildCanonicalSshMatchCoverage(value),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+  }
+});
+
+test("sudo closure and effective policy bind one no-argument root rule", () => {
+  const closure = buildCanonicalSudoSourceClosure(sudoClosure());
+  const policy = buildCanonicalSudoEffectivePolicy(sudoPolicyInput());
+  assert.deepEqual(Object.keys(policy), [
+    "schemaVersion", "type", "username", "uid", "command", "commandArguments",
+    "runAsUid", "runAsGid", "nonInteractive", "nopasswd", "envReset",
+    "setenvAllowed", "securePath", "matchedRuleCount", "otherRuleCount",
+    "sourceClosureSha256"
+  ]);
+  assert.equal(
+    policy.sourceClosureSha256,
+    createHash("sha256").update(`${JSON.stringify(closure)}\n`).digest("hex")
+  );
+  for (const value of [
+    sudoPolicyInput({ commandArguments: ["*"] }),
+    sudoPolicyInput({ runAsUid: 1000 }),
+    sudoPolicyInput({ matchedRuleCount: 2 }),
+    sudoPolicyInput({ otherRuleCount: 1 }),
+    sudoPolicyInput({ setenvAllowed: true }),
+    sudoPolicyInput({ securePath: "/usr/local/bin:/usr/bin" })
+  ]) {
+    assert.throws(
+      () => buildCanonicalSudoEffectivePolicy(value),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+  }
+});
+
+test("authorized key parser accepts only the exact ASCII option sequence and Ed25519 wire blob", () => {
+  const algorithm = Buffer.from("ssh-ed25519", "ascii");
+  const key = Buffer.alloc(32, 0x42);
+  const blob = Buffer.alloc(4 + algorithm.length + 4 + key.length);
+  blob.writeUInt32BE(algorithm.length, 0);
+  algorithm.copy(blob, 4);
+  blob.writeUInt32BE(key.length, 4 + algorithm.length);
+  key.copy(blob, 8 + algorithm.length);
+  const options = "restrict,no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,command=\"/usr/bin/sudo -n -- /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint\"";
+  const line = `${options} ssh-ed25519 ${blob.toString("base64")} ${AUTHORIZATION_MARKER}`;
+  const parsed = parseCanonicalAuthorizedKeyLine(`${line}\n`);
+  assert.equal(parsed.algorithm, "ssh-ed25519");
+  assert.equal(parsed.authorizationMarker, AUTHORIZATION_MARKER);
+  assert.equal(parsed.authorizedKeysLineSha256, createHash("sha256").update(line, "ascii").digest("hex"));
+  assert.equal(parsed.publicKeyBlobSha256, createHash("sha256").update(blob).digest("hex"));
+  for (const value of [
+    line.replace("restrict,", ""),
+    line.replace("ssh-ed25519", "ssh-rsa"),
+    line.replace(AUTHORIZATION_MARKER, `${AUTHORIZATION_MARKER} extra`),
+    `${line}\r\n`,
+    `${line}\n${line}\n`,
+    line.replace(blob.toString("base64"), `${blob.toString("base64")}=`),
+    `${line}\0`
+  ]) {
+    assert.throws(
+      () => parseCanonicalAuthorizedKeyLine(value),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+  }
+});
+
+function bigintStat({
+  type = "file",
+  uid = 0n,
+  gid = 0n,
+  mode = type === "directory" ? 0o755n : 0o600n,
+  nlink = type === "directory" ? 2n : 1n,
+  dev = 1n,
+  ino = 2n,
+  size = 10n
+} = {}) {
+  const typeBits = type === "directory" ? 0o040000n : 0o100000n;
+  return {
+    uid,
+    gid,
+    mode: typeBits | mode,
+    nlink,
+    dev,
+    ino,
+    size,
+    isDirectory: () => type === "directory",
+    isFile: () => type === "file",
+    isSymbolicLink: () => false
+  };
+}
+
+function trustedOperations(bytes, {
+  finalPath = BINDING_PATH,
+  finalStat = bigintStat({ size: BigInt(bytes.length) }),
+  postStat = finalStat,
+  readPlan = null,
+  closeError = null
+} = {}) {
+  const calls = [];
+  let fstatCount = 0;
+  let readCount = 0;
+  const operations = {
+    lstat(path) {
+      calls.push(["lstat", path]);
+      if (path === finalPath) return finalStat;
+      return bigintStat({ type: "directory", uid: 0n, gid: 0n, mode: 0o755n, nlink: 2n, ino: BigInt(path.length + 10), size: 4096n });
+    },
+    open(path, flags) {
+      calls.push(["open", path, flags]);
+      return 41;
+    },
+    fstat(fd) {
+      calls.push(["fstat", fd]);
+      fstatCount += 1;
+      return fstatCount === 1 ? finalStat : postStat;
+    },
+    read(fd, buffer, offset, length, position) {
+      calls.push(["read", fd, offset, length, position]);
+      const planned = readPlan?.[readCount];
+      readCount += 1;
+      if (planned instanceof Error) throw planned;
+      if (planned !== undefined) {
+        if (planned > 0) bytes.copy(buffer, offset, position, position + planned);
+        return planned;
+      }
+      if (position >= bytes.length) return 0;
+      const count = Math.min(length, bytes.length - position);
+      bytes.copy(buffer, offset, position, position + count);
+      return count;
+    },
+    close(fd) {
+      calls.push(["close", fd]);
+      if (closeError) throw closeError;
     }
+  };
+  return { calls, operations };
+}
+
+test("trusted path validation uses one descriptor, bigint identity, post-consumption policy, and one close", () => {
+  const bytes = Buffer.from("bound-bytes");
+  const policy = { type: "file", uid: 0, gid: 0, mode: 0o600, nlink: 1 };
+  const { calls, operations } = trustedOperations(bytes, {
+    finalPath: "/etc/gccgw/bound",
+    finalStat: bigintStat({ size: BigInt(bytes.length) })
   });
-  assert.equal(exitCode, 0);
-  assert.equal(executeCalls, 1);
-  assert.equal(stderr, "");
-  assert.equal(stdout.trim().split("\n").length, 1);
-  assert.equal(JSON.parse(stdout).productionResult, "applied_validated");
-  assert.doesNotMatch(stdout, /rm -rf|protected|must-not-run/);
+  const result = validateTrustedPathChain(
+    "/etc/gccgw/bound",
+    policy,
+    operations,
+    (fd, stats) => ({ fd, size: stats.size })
+  );
+  assert.deepEqual(result, { fd: 41, size: BigInt(bytes.length) });
+  assert.deepEqual(calls.filter(([name]) => name === "lstat").map(([, path]) => path), ["/", "/etc", "/etc/gccgw", "/etc/gccgw/bound"]);
+  assert.equal(calls.filter(([name]) => name === "fstat").length, 2);
+  assert.equal(calls.filter(([name]) => name === "close").length, 1);
+  assert.equal(calls.find(([name]) => name === "open")[2], fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_CLOEXEC);
+  assert.ok(calls.filter(([name]) => name === "fstat" || name === "close").every(([, fd]) => fd === 41));
+});
+
+test("directory nlink is a positive observed sentinel and drift fails closed", () => {
+  const policy = { type: "directory", uid: 0, gid: 0, mode: 0o700, nlink: null };
+  const good = bigintStat({ type: "directory", mode: 0o700n, nlink: 2n, size: 4096n });
+  const goodOps = trustedOperations(Buffer.alloc(0), { finalPath: "/state", finalStat: good });
+  validateTrustedPathChain("/state", policy, goodOps.operations);
+  assert.equal(goodOps.calls.find(([name]) => name === "open")[2], fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_CLOEXEC | fsConstants.O_DIRECTORY);
+  for (const [candidatePolicy, first, after] of [
+    [{ ...policy, nlink: 1 }, good, good],
+    [policy, { ...good, nlink: 0n }, { ...good, nlink: 0n }],
+    [policy, good, { ...good, nlink: 3n }],
+    [{ type: "file", uid: 0, gid: 0, mode: 0o600, nlink: null }, bigintStat(), bigintStat()]
+  ]) {
+    const fixture = trustedOperations(Buffer.alloc(0), { finalPath: "/state", finalStat: first, postStat: after });
+    assert.throws(
+      () => validateTrustedPathChain("/state", candidatePolicy, fixture.operations),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+    assert.ok(fixture.calls.filter(([name]) => name === "close").length <= 1);
+  }
+});
+
+test("trusted descriptor failures are sanitized and close exactly once", () => {
+  const bytes = Buffer.from("bound-bytes");
+  const policy = { type: "file", uid: 0, gid: 0, mode: 0o600, nlink: 1 };
+  const cases = [
+    trustedOperations(bytes, { finalPath: "/bound", postStat: bigintStat({ size: BigInt(bytes.length), ino: 3n }) }),
+    trustedOperations(bytes, { finalPath: "/bound", postStat: bigintStat({ size: BigInt(bytes.length + 1) }) }),
+    trustedOperations(bytes, { finalPath: "/bound", closeError: new Error("protected-close") })
+  ];
+  for (const fixture of cases) {
+    assert.throws(
+      () => validateTrustedPathChain("/bound", policy, fixture.operations, () => true),
+      (error) => error.code === "restricted_identity_rejected" && !error.message.includes("protected")
+    );
+    assert.equal(fixture.calls.filter(([name]) => name === "close").length, 1);
+  }
+  const consumerFailure = trustedOperations(bytes, { finalPath: "/bound" });
+  assert.throws(
+    () => validateTrustedPathChain("/bound", policy, consumerFailure.operations, () => { throw new Error("protected-consumer"); }),
+    (error) => error.code === "restricted_identity_rejected"
+  );
+  assert.equal(consumerFailure.calls.filter(([name]) => name === "close").length, 1);
+});
+
+test("root-owned binding loader performs bounded same-fd reads and exact canonical byte comparison", () => {
+  const canonical = buildCanonicalRunnerBinding(v3Binding());
+  const bytes = Buffer.from(`${JSON.stringify(canonical)}\n`);
+  const fixture = trustedOperations(bytes, { readPlan: [7, 13, bytes.length - 20, 0] });
+  assert.deepEqual(loadRootOwnedBinding({
+    path: BINDING_PATH,
+    effectiveUid: 0,
+    pathOperations: fixture.operations
+  }), canonical);
+  assert.ok(fixture.calls.filter(([name]) => name === "read").every(([, fd]) => fd === 41));
+  assert.equal(fixture.calls.filter(([name]) => name === "close").length, 1);
+
+  const variants = [
+    Buffer.from(JSON.stringify(canonical)),
+    Buffer.from(`${JSON.stringify(canonical)}\r\n`),
+    Buffer.from(`\ufeff${JSON.stringify(canonical)}\n`),
+    Buffer.from(`${JSON.stringify({ type: "extra", ...canonical })}\n`),
+    Buffer.concat([bytes, Buffer.from("x")])
+  ];
+  for (const value of variants) {
+    const broken = trustedOperations(value);
+    assert.throws(
+      () => loadRootOwnedBinding({ path: BINDING_PATH, effectiveUid: 0, pathOperations: broken.operations }),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+    assert.equal(broken.calls.filter(([name]) => name === "close").length, 1);
+  }
+  const oversized = Buffer.alloc(65537, 0x20);
+  const tooLarge = trustedOperations(oversized);
+  assert.throws(
+    () => loadRootOwnedBinding({ path: BINDING_PATH, effectiveUid: 0, pathOperations: tooLarge.operations }),
+    (error) => error.code === "restricted_identity_rejected"
+  );
+});
+
+test("binding reader retries only EINTR and rejects early EOF, trailing bytes, and invalid counts", () => {
+  const canonical = buildCanonicalRunnerBinding(v3Binding());
+  const bytes = Buffer.from(`${JSON.stringify(canonical)}\n`);
+  const interrupted = new Error("interrupted");
+  interrupted.code = "EINTR";
+  const retry = trustedOperations(bytes, { readPlan: [interrupted, 5, bytes.length - 5, 0] });
+  assert.equal(loadRootOwnedBinding({ path: BINDING_PATH, effectiveUid: 0, pathOperations: retry.operations }).schemaVersion, "3");
+  const failures = [
+    trustedOperations(bytes, { readPlan: [5, 0] }),
+    trustedOperations(bytes, { readPlan: [bytes.length + 1] }),
+    trustedOperations(bytes, { readPlan: [bytes.length, 1] }),
+    trustedOperations(bytes, { readPlan: [new Error("not-eintr")] })
+  ];
+  for (const fixture of failures) {
+    assert.throws(
+      () => loadRootOwnedBinding({ path: BINDING_PATH, effectiveUid: 0, pathOperations: fixture.operations }),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+    assert.equal(fixture.calls.filter(([name]) => name === "close").length, 1);
+  }
+});
+
+test("forced-command CLI is mechanically pre-migration and calls no authority surface", async () => {
+  const expected = "{\"schemaVersion\":\"3\",\"type\":\"japan_tuic_additive_repair_pre_migration\",\"error\":\"restricted_identity_rejected\"}\n";
+  for (const env of [
+    {},
+    { NODE_OPTIONS: "" },
+    { NODE_PATH: "" },
+    { SSH_ORIGINAL_COMMAND: " " },
+    { SSH_ORIGINAL_COMMAND: "/protected/do-not-run" }
+  ]) {
+    let stdout = "";
+    let stderr = "";
+    const calls = [];
+    const exitCode = await runJapanTuicAdditiveRepairCli({
+      argv: ["--binding", BINDING_PATH],
+      stdin: { read: () => { calls.push("stdin"); } },
+      stdout: { write: (value) => { stdout += value; calls.push("stdout"); } },
+      stderr: { write: (value) => { stderr += value; } },
+      env,
+      platform: "linux",
+      loadBindingFn: () => { calls.push("load"); },
+      operationsFactory: () => { calls.push("operations"); },
+      executeFn: () => { calls.push("execute"); }
+    });
+    assert.equal(exitCode, 1);
+    assert.equal(stdout, "");
+    assert.equal(stderr, expected);
+    assert.deepEqual(calls, []);
+  }
+});
+
+test("direct runner invocation emits only the exact pre-migration record", () => {
+  const result = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL("../../scripts/japan-tuic-additive-repair-runner.mjs", import.meta.url)), "--binding", BINDING_PATH],
+    {
+      encoding: "utf8",
+      env: Object.fromEntries(Object.entries(process.env).filter(([key]) => !new Set(["NODE_OPTIONS", "NODE_PATH", "SSH_ORIGINAL_COMMAND"]).has(key)))
+    }
+  );
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, "");
+  assert.equal(
+    result.stderr,
+    "{\"schemaVersion\":\"3\",\"type\":\"japan_tuic_additive_repair_pre_migration\",\"error\":\"restricted_identity_rejected\"}\n"
+  );
 });
