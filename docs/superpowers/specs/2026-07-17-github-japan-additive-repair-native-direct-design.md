@@ -13,7 +13,10 @@
 > - Identity gate: `surface=japan-tuic`, `state=pending`
 > - Planned execution Gate: `github-actions-japan-tuic-additive-repair-20260717-001`, `not_approved`
 > - Expected PR count: One source-only implementation PR containing design, plan, code, tests, and runbook reconciliation
-> - Production authority: None. This document does not change GitHub settings, install an SSH identity, dispatch a workflow, access production, mutate runtime config, deploy an application, restart a service, or approve production execution.
+> - Production authority: None. This source-only document does not install
+>   anything, make a network request, access or mutate GitHub, use SSH, dispatch
+>   a workflow, access production, mutate runtime config, deploy an application,
+>   restart a service, or approve production execution.
 
 ## Supersession Boundary
 
@@ -27,7 +30,7 @@ by this work.
 
 The frozen artifact, additive-only mutation, aggregate Identity Gate, backup,
 rollback, natural observation, output-redaction, and no-application-deploy
-boundaries remain unchanged. No earlier bootstrap or execution approval is
+boundaries remain unchanged. No earlier CI Identity Bootstrap Gate or execution approval is
 reusable for this design.
 
 ## Decision And Trust Model
@@ -244,7 +247,8 @@ principals, database rows, or provider responses.
 The policy in this section supersedes every earlier root-only-final-owner,
 `trusted_root_concurrency_not_machine_proven`, incomplete code-closure, and
 marker-only authorization formulation for this design. The root-owned,
-same-FD-validated binding is authoritative for bootstrap-observed final-file
+same-FD-validated binding is authoritative for CI Identity Bootstrap
+Gate-observed final-file
 metadata; the sole writer residual is
 `bound_writer_concurrency_not_machine_proven`.
 
@@ -267,6 +271,7 @@ marker `""`, `env_reset`, no `SETENV`, and exact `secure_path`.
 Installed paths are exactly:
 
 ```text
+bootstrap    /usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs
 entrypoint   /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint
 runner       /usr/local/libexec/gccgw/japan-tuic-additive-repair-runner.mjs
 contract     /usr/local/libexec/gccgw/japan-tuic-additive-repair-contract.mjs
@@ -283,11 +288,12 @@ login-shell  /usr/bin/dash
 sudoers      /etc/sudoers.d/gccgw-japan-repair-ci
 ```
 
-The entrypoint is a root:root regular file, mode `0755`, `nlink=1`. Runner,
-contract, frame, and state are root:root regular files, mode `0644`,
+The entrypoint is a root:root regular file, mode `0755`, `nlink=1`. Bootstrap,
+contract, frame, runner, and state are root:root regular files, mode `0644`,
 `nlink=1`. The binding is root:root regular, mode `0600`, `nlink=1`.
 State/backup/temporary are root:root directories with exact mode `0700`. The
-lock is pre-created by bootstrap as root:root regular mode `0600`, `nlink=1`;
+lock is pre-created by the CI Identity Bootstrap Gate as root:root regular mode
+`0600`, `nlink=1`;
 `flock` never creates it. The authorization file is root:root regular mode
 `0600`, `nlink=1`, beneath a root-controlled component chain. The account is
 exactly `gccgw-japan-repair-ci`; its home is the fixed root:root mode-`0755`
@@ -297,13 +303,51 @@ home, `.ssh`, effective authorization file, or an alternate authorization
 source. The dedicated sudoers file is root:root regular mode `0440`,
 `nlink=1`, with an exact content SHA-256.
 
-Bootstrap stages rollback and reads back the entire code, tool, binding, state,
+The fixed entrypoint bytes are exactly eight physical lines:
+
+```sh
+#!/usr/bin/dash
+set -eu
+exec /usr/bin/env -i LANG=C.UTF-8 PATH=/usr/bin:/bin \
+  /usr/bin/flock --exclusive --nonblock --conflict-exit-code 75 \
+  /var/lib/gccgw/japan-tuic-additive-repair/repair.lock \
+  /usr/bin/node --disable-proto=throw --import=/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs \
+  /usr/local/libexec/gccgw/japan-tuic-additive-repair-runner.mjs \
+  --binding /etc/gccgw/japan-tuic-additive-repair-binding.json
+```
+
+The preload specifier, main runner, and binding path are literal. The entrypoint
+has one `exec`, one nonblocking lock, no caller-controlled command or argument,
+and no `$SSH_ORIGINAL_COMMAND` use.
+
+The CI Identity Bootstrap Gate stages rollback and reads back the entire code,
+tool, binding, state,
 account, SSH, and sudo closure before SSH authorization exists. Adding the
-canonical authorization line is the final bootstrap mutation. Removing that
+canonical authorization line is the final Gate mutation. Removing that
 line is the first rollback mutation, followed by removal and parent-directory
-fsync of the exact dedicated sudoers file. Runner self-validation is defense
-in depth because static ESM imports execute before runner code; exact bootstrap
-manifest/readback plus the trusted host-root boundary are primary authority.
+fsync of the exact dedicated sudoers file.
+
+The pre-import TCB is the kernel/filesystem and trusted root boundary, the
+already executing sudo/dash/env/flock/Node chain, the exact entrypoint bytes,
+the exact bootstrap preload bytes, and Node's reviewed builtin loader/runtime
+base. The bootstrap independently verifies runner, contract, frame, and state
+from the binding and the same opened descriptors before Node evaluates the
+runner main graph. Runtime checks of the already executing entrypoint,
+bootstrap, Node, or other pre-import tools are defense in depth and cannot be
+cited as self-authorization. Installation-time same-FD readback plus protected
+root-only ancestry is the authority for those already executing TCB bytes.
+Before opening authority data the preload requires Linux, numeric EUID `0`, the
+exact fixed main/binding argument shape, no `NODE_OPTIONS` or `NODE_PATH` own
+property, and no nonempty `SSH_ORIGINAL_COMMAND`. It loads only the fixed
+root:root mode-`0600` canonical schema-3 binding through the bounded same-FD
+reader and rejects before application evaluation on any invocation, binding,
+path, metadata, size, EOF, or digest mismatch.
+The preload's normative scope ends at canonical binding/code-envelope parsing
+and same-FD verification of the four application modules. It does not derive
+SSH or sudo policy, attest tool capabilities or writer inventory, parse frames,
+or perform host operations. Those full checks remain in the CI Identity
+Bootstrap Gate and the runner validator before their respective authority
+surfaces.
 
 ### Canonical Schema 3 Binding
 
@@ -321,28 +365,38 @@ writerFreeze, authorizationMarker
 digest is recomputed from that commit plus the fixed Gate, nonce, artifact,
 release unit, strategy, surface, and target.
 
-`codeManifest` keys are exactly `contract, entrypoint, frame, runner, state` in
-that order. Every value has exact key order
+`codeManifest` keys are exactly
+`bootstrap, contract, entrypoint, frame, runner, state` in that order. Every
+value has exact key order
 `path, sizeBytes, sha256, type, uid, gid, mode, nlink`, uses its fixed path and
 metadata, has positive safe-integer size and `type="file"`, and binds a
 primitive lowercase 64-hex SHA-256 derived from the exact merged commit.
-Entrypoint is at most 16384 bytes; each ESM module is at most 1048576 bytes.
-Bootstrap verifies the installed bytes before authorization. A syntax-aware
-source test recursively enumerates the static ESM
-imports from runner/contract/frame/state and requires exactly that four-module
-subgraph. Static imports may be only a reviewed exact `node:` builtin allowlist
-or one of those relative manifest paths. Bare packages, absolute/file/data
-URLs, query/hash specifiers, `node:module`, `createRequire`, CommonJS
-`require`, and unlisted local modules are rejected.
+Entrypoint is at most 16384 bytes; bootstrap is at most 65536 bytes; contract,
+frame, runner, and state are each at most 1048576 bytes. The CI Identity
+Bootstrap Gate verifies all six installed roles before authorization. At
+runtime the bootstrap independently verifies the four not-yet-evaluated
+application modules from the canonical binding before Node evaluates the main
+graph.
 
-The only dynamic-code exception is the already frozen runner callsite that
+A syntax-aware source test enumerates all six code roles, every static import,
+and every dynamic-code/module-loader surface. Bootstrap may statically import
+only the exact reviewed `node:` builtin allowlist and has no local static
+import, `import()`, CommonJS `require`, `createRequire`, `node:module`, loader
+registration, `eval`, or `Function`. The application closure is exactly
+runner/contract/frame/state; its static imports may be only the reviewed exact
+`node:` builtin allowlist or one of those relative manifest paths. Bare
+packages, absolute/file/data URLs, query/hash specifiers, unlisted local
+modules, and every other loader or dynamic-code surface are rejected.
+
+The total JavaScript `import()` count across bootstrap, runner, contract,
+frame, and state is exactly one: the already frozen runner callsite that
 imports `scripts/traffic-accounting-natural-observation.mjs` from the verified
 artifact extraction root. It is allowed only after exact artifact
 size/hash/central-directory-manifest/safe-extraction validation and remains
 under that separate artifact authority. Every other dynamic import is
 rejected.
 
-`toolManifest` keys are exactly
+`toolManifest` remains unchanged; its keys are exactly
 `dash, env, flock, node, sudo, systemctl, unzip, visudo`. Their fixed paths are
 `/usr/bin/dash`, `/usr/bin/env`, `/usr/bin/flock`, `/usr/bin/node`,
 `/usr/bin/sudo`, `/usr/bin/systemctl`, `/usr/bin/unzip`, and
@@ -354,7 +408,8 @@ binds a root:root regular file, positive safe-integer size no greater than
 has mode `04755`; every other entry has mode `0755`; every entry has
 `nlink=1` and no file capability. Entrypoint bytes begin exactly
 `#!/usr/bin/dash`. Symlinks, alternate resolved paths, package binaries, and
-metadata/digest drift block bootstrap. The root-owned OS/runtime/library base
+metadata/digest drift block the CI Identity Bootstrap Gate. The root-owned
+OS/runtime/library base
 beneath those binaries remains an explicit platform trust boundary.
 
 `sshAuthorization` keys are exactly:
@@ -373,7 +428,8 @@ is a positive safe integer, username is exactly `gccgw-japan-repair-ci`, and
 home/shell equal the fixed paths. `homeDirectoryPolicy` keys are exactly
 `type,uid,gid,mode,nlink` with values directory/root/root/`0755`/null.
 `loginShellPolicy` keys are exactly `type,uid,gid,mode,nlink,sha256` with
-values file/root/root/`0755`/`1` plus one lowercase 64-hex digest. Bootstrap
+values file/root/root/`0755`/`1` plus one lowercase 64-hex digest. The CI
+Identity Bootstrap Gate
 binds exact passwd uid/home/shell, proves the home chain root-controlled,
 proves the principal cannot replace an authorization source, and proves one
 occurrence of the public key and canonical line. Login-shell projection is
@@ -390,7 +446,8 @@ host-based, GSSAPI, Kerberos, TrustedUserCAKeys,
 AuthorizedPrincipalsFile/Command, AuthorizedKeysCommand, additional
 AuthorizedKeysFile expansion, and address/host-dependent authorization
 branches are disabled or absent. `PermitUserEnvironment` is false and the
-accepted client-environment name set is empty. Bootstrap rejects an unresolved
+accepted client-environment name set is empty. The CI Identity Bootstrap Gate
+rejects an unresolved
 Include, Match, or conditional branch instead of sampling one `sshd -T -C`
 tuple.
 
@@ -422,12 +479,14 @@ Fixed values are schema `1`, type
 principals/CA arrays empty, both entry/key counts `1`, address-dependent branch
 count `0`, and lowercase 64-hex closure/coverage digests.
 `effectiveConfigSha256` is the SHA-256 of UTF-8
-`JSON.stringify(canonicalTopology) + "\n"`. Bootstrap and Task 8 closeout use
+`JSON.stringify(canonicalTopology) + "\n"`. The CI Identity Bootstrap Gate and
+Task 8 closeout use
 the same reviewed parser/builder and exact bytes. The Include/Match builder
 derives global, Include, account-applicable Match-scoped, and default effective
 values for ForceCommand, ChrootDirectory, DisableForwarding, and PermitTunnel.
 Any effective session command or chroot other than `none`, any effective
-forwarding permission, or any effective tunnel permission blocks bootstrap and
+forwarding permission, or any effective tunnel permission blocks the CI
+Identity Bootstrap Gate and
 closeout so the authorized-key command and fixed absolute host paths remain the
 execution authority. Default/explicit deny, global allow, Match-scoped allow,
 and unresolved-conditional fixtures are mandatory. Per-key `restrict` and
@@ -451,6 +510,14 @@ is at most 1 MiB; every ancestor and final inode passes the trusted-path
 algorithm; and content is hashed only from the verified descriptor with the
 bounded read-to-confirmed-EOF algorithm. Both subsystems reuse the exact shared
 file-item builder and JSON+LF serializer; only native expansion order differs.
+The builders are operations-driven from the two fixed roots: SSH resolves
+native directive/pattern/glob/source order, while sudo resolves native
+`include`/`includedir` order and applies the reviewed filename rules. Directory
+entries are raw bytes, validated for canonical fatal-UTF-8 round trip, and
+sorted bytewise where the native grammar requires it. Missing, duplicate,
+cyclic, ambiguous, zero-match, unsupported, or unresolved expansion fails.
+Callers cannot submit file lists, ordinals, metadata, bytes, digests, or a
+claimed expansion order.
 
 `matchCoverageSha256` is derived only from a canonical Match-coverage record
 with exact keys `schemaVersion, type, username, groupIds, branches`. Numeric
@@ -462,6 +529,15 @@ can match the bound user/group is `exact_user` with an empty variable-dimension
 array. Any unresolved host/address/local-address/local-port/group/user negation
 or other context dimension fails. The topology builder derives both digests
 from these canonical records; callers cannot inject them.
+`accountDisposition`, branch order, source coordinates, variable dimensions,
+and effective values are parser output, never caller assertions. Disposition is
+derived from OpenSSH positive/negative/wildcard User and Group semantics using
+the exact bound username and ordered group identity; each source coordinate
+must belong to the derived closure and the branch sequence must be strictly
+monotonic. Global/default/applicable-Match first-value semantics derive every
+authentication, authorization, environment, ForceCommand, ChrootDirectory,
+DisableForwarding, and PermitTunnel field before comparison to the frozen safe
+topology.
 
 The Match record uses `schemaVersion="1"` and exact type
 `japan_ci_sshd_match_coverage`. Every `conditions` element has exact keys
@@ -509,10 +585,15 @@ setenvAllowed, securePath, matchedRuleCount, otherRuleCount,
 sourceClosureSha256`, with exact expected values, matched count `1`, and other
 count `0`. Both digests cover canonical JSON+LF built by the reviewed parser.
 Exact `visudo -cf` success is necessary but never substitutes for semantic
-comparison. Bootstrap and Task 8 recompute both records.
+comparison. The CI Identity Bootstrap Gate and Task 8 recompute both records.
 The effective-policy record uses `schemaVersion="1"` and exact type
 `japan_ci_sudo_effective_policy`; its source-closure digest is derived by the
 shared trusted-read builder, never accepted as caller input.
+The parser, not the caller, derives the one empty-argument command rule,
+RunAs, NOPASSWD/noninteractive tags, env_reset, SETENV prohibition,
+secure_path, alias expansion, matched-rule count, and other-rule count from the
+same trusted closure. Caller-supplied semantic booleans, counts, rule arrays,
+or effective-policy digests are not evidence.
 
 `paths` keys and order are exactly:
 
@@ -524,6 +605,10 @@ sudoersFile, temporaryRoot
 
 Every path is a distinct canonical POSIX absolute primitive string; fixed
 authorization/state/backup/temporary/lock/sudoers paths equal the values above.
+Each path must survive strict UTF-8 encode/decode round trip exactly; unpaired
+surrogates and any two distinct JavaScript strings with the same encoded path
+bytes are rejected. Valid non-ASCII scalar values remain permitted when their
+encoded byte identities are distinct.
 `pathPolicies` has the same keys/order. Every policy value has exact key order
 `type, uid, gid, mode, nlink`: uid/gid/mode are nonnegative safe integers;
 mode is permission bits only in `0..0777` with no group/other write; files use
@@ -537,18 +622,20 @@ data.
 `sudoersFile` is root:root regular mode `0440`, `nlink=1`, and its exact
 content SHA-256 equals `sudoAuthorization.sudoersFileSha256`.
 
-`currentMap` is regular, `nlink=1`, exact mode `0600`, with uid/gid frozen from
-bootstrap. Material store, Mihomo config, natural observation, and producer
-status are regular files with `nlink=1`; bootstrap freezes exact observed
+`currentMap` is regular, `nlink=1`, exact mode `0600`, with uid/gid frozen by
+the CI Identity Bootstrap Gate. Material store, Mihomo config, natural
+observation, and producer status are regular files with `nlink=1`; the Gate
+freezes exact observed
 uid/gid/mode. Their mode is exactly `0400` or `0600`: owner-only readable,
-non-executable, and never group/other accessible. Bootstrap stops on any other
+non-executable, and never group/other accessible. The Gate stops on any other
 observed mode and does not normalize live metadata; a separate
-permission-hardening Gate is required before bootstrap can resume.
+permission-hardening Gate is required before the CI Identity Bootstrap Gate can
+resume.
 
 The root-owned, same-FD binding is authority for observed final uid/gid/mode,
 not client input. Every ancestor remains root-owned and non-writable by
 group/other. A non-root final owner is permitted only when the role minimum and
-exact bootstrap policy both pass. Writer inventory enumerates every OS
+exact Gate policy both pass. Writer inventory enumerates every OS
 principal with target write capability and every known service/timer/process
 writer, proves known active writers quiesced, and binds aggregate-only evidence.
 `writerFreeze` keys/order are `knownWriterCount, evidenceSha256, residualRisk`
@@ -556,6 +643,10 @@ with exact values `0`, one lowercase 64-hex digest, and
 `bound_writer_concurrency_not_machine_proven`. The count covers known active
 writers; it does not claim owner-write permission vanished. The residual
 explicitly covers unobserved root or bound-owner same-inode mutation.
+Writer evidence is operations-derived from every owner-write policy, the exact
+bound service and timer, and every known writer process. A caller-provided zero
+count, role list, inactive flag, or evidence digest is not accepted as proof;
+missing/duplicate/unknown coverage or any active known writer fails.
 
 `units` keys/order are exactly `service, timer` with frozen values.
 `authorizationMarker` remains the unique safe marker. One named canonical
@@ -595,7 +686,18 @@ synchronous and fail-closed:
 Code/tool manifest modes compare the low 12 Unix permission/special bits.
 Every non-sudo code/tool rejects setuid, setgid, and sticky bits; sudo requires
 setuid and rejects setgid/sticky drift. Runtime `pathPolicies` compare only the
-low 9 permission bits and separately reject every special bit.
+low 9 permission bits: the policy must be `mode <= 0777` and
+`(mode & 0022) === 0`, and both observed stats must satisfy
+`(mode & 07000) === 0`; every special bit rejects independently of the low-nine
+comparison.
+
+Native Linux operations require exact audited constants `O_RDONLY=0x00000`,
+`O_DIRECTORY=0x10000`, `O_NOFOLLOW=0x20000`, and `O_CLOEXEC=0x80000`.
+File opens therefore use `0xA0000` and directory opens use `0xB0000`. A missing
+or drifted required constant, or a non-Linux native platform, fails closed; no
+fallback substitutes zero. Windows tests inject the audited constants and
+assert these numeric bitsets independently of the host `fs.constants`, plus an
+explicit missing/drifted-constant rejection matrix.
 
 The injected operations contract is exactly `lstat, open, fstat, read, close`.
 `read(fd, buffer, offset, length, position)` writes only into the supplied
@@ -617,22 +719,32 @@ suffix, second line, invalid UTF-8, and trailing bytes. Path-based
 `validateRunnerBinding(input, context)` requires exact context keys
 `effectiveUid, pathOperations` and
 `input.expectedEuid === context.effectiveUid === 0` numerically. It validates
-all five code-manifest files, all eight tool-manifest files, login-shell
-equality, and every binding path against policy before any operation. Bootstrap
-does the same before authorization. Every file is read from its verified
+all six code-manifest files, all eight tool-manifest files, login-shell
+equality, and every binding path against policy before any operation. The CI
+Identity Bootstrap Gate does the same before authorization. Every file is read from its verified
 descriptor under its role ceiling. Same-FD fstat size must equal manifest
 `sizeBytes`; readers consume exactly that many bytes and confirm zero-byte EOF
 before SHA-256 comparison. Early EOF, size mismatch, ceiling+1, and a trailing
 byte fail closed. Runtime coverage includes the already executed entrypoint as
-defense in depth; bootstrap manifest coverage is the primary pre-execution
-authority.
+defense in depth. The preload independently parses the fixed canonical binding
+and same-FD validates runner, contract, frame, and state before their root
+evaluation; it must not call/import the runner validator or trust a caller
+assertion. Its runtime checks of entrypoint/bootstrap are drift evidence only.
+The CI Identity Bootstrap Gate's install-time readback remains authority for
+the already executing TCB bytes.
 
-`capabilitySha256` is a bootstrap-only native same-FD `fgetxattr`
-attestation because Node has no built-in same-FD xattr API. Bootstrap maps only
+`capabilitySha256` is a CI Identity Bootstrap Gate-only native same-FD
+`fgetxattr` attestation because Node has no built-in same-FD xattr API. The Gate
+maps only
 absent `ENODATA`/`ENOATTR` to SHA-256 of zero bytes and fails every other
 error. Runtime makes no claim to revalidate xattrs; it still checks every
 tool's path/content/type/uid/gid/mode/nlink. A capability change remains inside
 the explicit trusted host-root/capability residual.
+The dry-run matrix binds the exact already opened descriptor and covers both
+absence codes, nonempty bytes, wrong fd, unsupported/error codes, non-Buffer
+returns, a 65536-byte nonempty value rejected as unexpected, a 65537-byte value
+rejected as oversize, and digest mismatch. Only absence may produce the empty
+digest; none of the other cases can be treated as absence or silently skipped.
 
 Initial binding validation never replaces use-time validation. Tasks 5-8
 re-open and fstat each protected file immediately before every read, helper
@@ -653,8 +765,8 @@ an operation; environment and argv never do.
 Until Task 8, direct runner invocation emits zero stdout, exact stderr bytes
 `{"schemaVersion":"3","type":"japan_tuic_additive_repair_pre_migration","error":"restricted_identity_rejected"}\n`,
 and exits exactly `1`, with zero binding-load, operations-factory, stdin-read,
-or legacy-helper calls. The source entrypoint remains uninstalled. Bootstrap
-and workflow dispatch are prohibited until Task 8 removes the v1 path and
+or legacy-helper calls. The source entrypoint remains uninstalled. The CI
+Identity Bootstrap Gate and workflow dispatch are prohibited until Task 8 removes the v1 path and
 atomically enables the strict frame CLI.
 
 The shared Task 8 `authorized_keys` parser is bounded to one 16384-byte ASCII
@@ -732,7 +844,8 @@ owner, mode, and digest equal the durable backup's recorded original.
 
 The host root boundary and root-owned binding are trusted. The runner cannot
 prove that an unobserved root process or the binding's exact non-root final
-owner will never mutate the same inode concurrently. The bootstrap inventory
+owner will never mutate the same inode concurrently. The CI Identity Bootstrap
+Gate inventory
 and exact Production Gate enumerate every principal with write capability and
 every known service/timer/process writer, prove known active writers quiesced,
 and bind that aggregate evidence for this bounded lifecycle. Execute reopens
@@ -786,7 +899,7 @@ second internal `closeout` frame is permitted only after a durable terminal
 state (`applied_validated` or `rolled_back_validated`) has been validated by
 GitHub. Before mutation, closeout rebuilds and revalidates the exact canonical
 account-wide SSH topology and sudo source/effective policy with the same
-reviewed parsers used by bootstrap. It requires exactly one authorization line
+reviewed parsers used by the CI Identity Bootstrap Gate. It requires exactly one authorization line
 matching public-key blob hash, full line hash, and terminal marker; exactly one
 effective no-argument sudo rule; no other rule; effective global and
 Match-scoped ForceCommand/ChrootDirectory both `none`; and account-applicable
@@ -1069,35 +1182,43 @@ Implementation order is:
 9. manual GitHub workflow and secret ordering;
 10. dormant public-identity hygiene and runbook reconciliation.
 
-Task 4 RED/GREEN coverage includes exact entrypoint bytes, recursive
-syntax-aware four-module ESM closure (for example `vm.SourceTextModule` under
-the bound Node test runtime) and reviewed builtin allowlist, the sole
-verified-artifact dynamic-import exception, all five code-manifest entries and
-eight tool-manifest entries with capability digests, recursive canonical key
-order, complete SSH topology/Include/Match preimages, canonical sudo
-source/effective-policy builders, no-argument rule semantics, and bounded
-public-key parser, shared same-FD 1 MiB source-closure reads, exact Match nested
-condition/pattern grammar, bootstrap-only native capability attestation with no
-runtime xattr claim, exact manifest sizes/role ceilings/ceiling+1, early EOF,
-trailing byte, low-12-bit special-mode drift and required sudo setuid, explicit
-Match pattern arrays/`all` form, exact empty post-closeout authorization file,
-absent parent-fsynced sudoers file, exact fd propagation, bigint dev/ino,
-partial reads, EINTR, confirmed EOF, `65536/65537`, fatal UTF-8, BOM,
-duplicate/reordered/trailing bytes, open flags, post-consumption
-type/uid/gid/mode/nlink drift including directory-sentinel count drift,
-exactly-once close, environment/EUID rejection ordering, schema-1 rejection, exact
-pre-migration stderr/exit/call counts, pre-created lock enforcement, observed
-metadata role minimums, directory-nlink null-sentinel positive/equal BigInt
-semantics and file-null rejection, explicit login-shell/dash projection, exact
-Match-all object shape plus no-space JSON bytes, global and Match-scoped
-ForceCommand/ChrootDirectory `none` enforcement, account-applicable
-DisableForwarding/PermitTunnel deny enforcement with default/explicit-deny,
-global-allow, Match-scoped-allow, and unresolved-conditional fixtures, and the
-exact bound-writer residual. Bootstrap dry-run fixtures cover capability-xattr
-`ENODATA`/`ENOATTR`, unexpected bytes, wrong fd, unsupported/error, oversize,
-and digest mismatch without reclassifying them as runtime xattr validation.
-Tasks 5-8 add operation-specific immediate reopen/fstat/digest assertions at
-every use.
+Task 4 RED/GREEN coverage includes the exact eight-line fixed `--import=`
+entrypoint and a tampered-module sentinel proving preload rejection occurs
+before root evaluation. Syntax-aware enumeration covers all six code roles,
+every static import, the bootstrap's exact builtin-only graph and forbidden
+local/loader/dynamic-code surfaces, the exact four-module application graph,
+and exactly one total JavaScript `import()` at the runner's verified-artifact
+callsite.
+
+An end-to-end six-code/eight-tool manifest matrix covers exact role order,
+paths, metadata, digests, capability fields, recursive canonical key order,
+per-role ceilings (including bootstrap `65536/65537`), same-FD size/read/hash/
+confirmed-EOF behavior, early EOF, trailing byte, wrong fd, post-read metadata
+drift, and exactly-once close. Code/tool low-12 mode rules, required sudo
+setuid, runtime `mode <= 0777`/no `0022`/no observed `07000`, and the audited
+Linux `0xA0000`/`0xB0000` file/directory flags are tested independently of
+Windows host constants; missing or drifted required constants reject.
+
+Operations-driven SSH and sudo fixtures derive every native source closure from
+same-FD reads capped at 1 MiB with confirmed EOF. They cover missing,
+duplicate, cyclic, ambiguous, and unresolved expansion; sudo empty-argument
+source semantics; derived Match disposition and strict source order; positive,
+negative, and wildcard User/Group cases; and global/default/applicable-Match
+effective-value derivation. Caller-supplied source, order, disposition,
+effective booleans, rule counts, or digests are rejected as evidence.
+
+The integration matrix also covers bounded public-key parsing, exact Match
+nested grammar and `all` bytes, canonical sudo source/effective policy,
+CI Identity Bootstrap Gate-only capability `ENODATA`/`ENOATTR` absence plus bytes/wrong-fd/error/
+oversize/digest failures, writer evidence for every writable owner, bound unit,
+and known process, strict surrogate UTF-8 path rejection with valid scalar
+round trips, bigint dev/ino, partial reads, EINTR, fatal UTF-8, BOM,
+duplicate/reordered/trailing binding bytes, directory-nlink null-sentinel
+semantics, login-shell/dash projection, pre-created lock enforcement, exact
+pre-migration stderr/exit/call counts, and the exact bound-writer residual.
+Task 8 cannot enable framed dispatch until every Task 4 matrix is GREEN and all
+reviewer findings are closed. Tasks 5-8 add operation-specific immediate
+reopen/fstat/digest assertions at every use.
 
 Each behavior begins with a failing focused test, then minimal implementation,
 focused regression, and commit. Before merge, the exact PR head must pass
@@ -1107,7 +1228,7 @@ security review. A successful source PR remains `not_deployed`.
 
 ## Post-Merge Gate Sequence
 
-From successful bootstrap until terminal closeout, `master` is operationally
+From successful CI Identity Bootstrap Gate until terminal closeout, `master` is operationally
 frozen at the bound merged commit. If `master` advances, all operations stop;
 the old commit is not dispatched through an alternate ref. A new exact rebind
 Gate must review the intervening commits and update the host binding before
@@ -1115,7 +1236,9 @@ inspection can resume. This keeps repeatable inspection available without
 silently trusting a different workflow commit.
 
 1. **Exact CI Identity Bootstrap Gate:** bind the merged workflow commit,
-   entrypoint plus four-module `codeManifest`, eight-binary `toolManifest`
+   the exact six-role `codeManifest` in
+   `bootstrap, contract, entrypoint, frame, runner, state` order, the fixed
+   eight-line `--import=` entrypoint, and the unchanged eight-binary `toolManifest`
    including raw capability digests,
    binding and expected claim digest, fixed account/passwd/home/shell,
    canonical complete sshd topology and Include/Match preimages with global and
@@ -1126,16 +1249,22 @@ silently trusting a different workflow commit.
    fixed dedicated sudoers file/rule, lock/state/path metadata, writer
    inventory, host-key/endpoint digests,
    master-only Environment policy, exact five secrets, rollback, and cleanup
-   readback. Bootstrap stages the rollback procedure first; reads back the
-   entire installed closure before authorization; and adds the exact
+   readback. The Gate treats entrypoint/bootstrap/Node/root as the pre-import
+   TCB, verifies bootstrap at install time, and records runtime bootstrap
+   self-checks only as defense in depth. It proves the bootstrap has only the
+   reviewed builtin static imports and none of local import, `import()`,
+   require/createRequire, eval, or loader registration; it also proves bootstrap
+   same-FD-validates runner/contract/frame/state before root evaluation. The
+   Gate stages the rollback procedure first; reads back the entire installed
+   closure before authorization; and adds the exact
    authorization line last. Its first rollback mutation removes that line,
    followed by removal and parent-directory fsync of the exact sudoers file.
-   Bootstrap capability dry-run evidence covers absent xattr, unexpected
+   Gate capability dry-run evidence covers absent xattr, unexpected
    bytes, wrong fd, unsupported/error, oversize, and digest mismatch before
    authorization. Any path, content/capability digest, SSH/sudo topology, role-mode,
    Include/Match/include-source coverage, or readback ambiguity blocks
-   bootstrap. The initial validation operation is `inspect`;
-   no runtime-config write is authorized by bootstrap.
+   the Gate. The initial validation operation is `inspect`;
+   no runtime-config write is authorized by the Gate.
    Installing the binding, authorization, and five secrets nevertheless makes
    `execute` technically reachable to the trusted GitHub operator. The later
    Production Gate is a procedural control, not a separate host arming step.

@@ -4,7 +4,7 @@
 
 **Goal:** Replace the blocked six-secret approval-bundle workflow with a source-only, TDD-verified Mode 1 lane that lets the single GitHub operator repeat read-only inspection and execute exactly one fixed `additive_missing_only` Japan runtime-config repair through a crash-aware forced-command runner.
 
-**Architecture:** GitHub Actions is the execution and procedural approval plane; a root-owned forced-command entrypoint and runner are the technical enforcement plane. A closed stdin frame carries only the selected operation, exact workflow commit, fixed public nonce/Gate identity, and frozen artifact; the host validates the artifact independently, serializes every operation with OS `flock`, and uses a durable nonce ledger, monotonic journal, deterministic backup, fsync envelope, aggregate validation, rollback, and separate terminal closeout.
+**Architecture:** GitHub Actions is the execution and procedural approval plane; a root-owned forced-command entrypoint, builtin-only Node preload TCB, and runner are the technical enforcement plane. The fixed eight-line entrypoint starts Node with literal `--import=/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs` and then the literal runner main module. The preload same-FD verifies every not-yet-evaluated application module before root evaluation. A closed stdin frame carries only the selected operation, exact workflow commit, fixed public nonce/Gate identity, and frozen artifact; the host validates the artifact independently, serializes every operation with OS `flock`, and uses a durable nonce ledger, monotonic journal, deterministic backup, fsync envelope, aggregate validation, rollback, and separate terminal closeout.
 
 **Tech Stack:** Node.js 22 ESM, built-in `node:test`, `node:crypto`, `node:fs`, `node:stream`, POSIX shell, util-linux `flock`, GitHub Actions YAML, OpenSSH forced command, existing artifact Git-tree verifier, frozen Japan repair helper and natural-observation helper.
 
@@ -14,7 +14,11 @@
 - **Process:** approved Mode 1 design -> this TDD plan -> one source-only PR -> exact-head CI/security scans -> merge -> exact CI Identity Bootstrap Gate -> repeatable inspect -> separate exact Quantitative Production Execution Gate -> terminal closeout -> separate GitHub secret cleanup Gate.
 - **Expected PR count:** one source-only implementation PR. Do not split spec, plan, code, tests, or runbook into separate PRs.
 - **Validation:** focused RED/GREEN per task, full `npm test`, `git diff --check origin/master...HEAD`, exact-head GitHub CI, CodeQL/code scanning, available dependency/secret scanning, and independent security review.
-- **Production/AWS impact:** none during this plan. Do not mutate GitHub settings or secrets, dispatch the workflow, connect with SSH, inspect or write production, access a provider, deploy an application, restart a service, change schema/database state, or perform AWS actions.
+- **Production/AWS impact:** none during this plan. This is source-only: do not
+  install anything, make a network request, access or mutate GitHub settings or
+  secrets, dispatch the workflow, connect with SSH, inspect or write production,
+  access a provider, deploy an application, restart a service, change
+  schema/database state, or perform AWS actions.
 - Design authority: `docs/superpowers/specs/2026-07-17-github-japan-additive-repair-native-direct-design.md`.
 - Superseded design: `docs/superpowers/specs/2026-07-16-github-japan-additive-repair-offline-approval-design.md`.
 - Release unit: `japan-runtime-config`; surface: `japan-tuic`; strategy: `additive_missing_only`; `identity_impact: true`.
@@ -40,11 +44,12 @@
   root-only-final-owner, `trusted_root_concurrency_not_machine_proven`,
   incomplete code-closure, and marker-only authorization text. The exact
   residual is `bound_writer_concurrency_not_machine_proven`.
-- Bootstrap is authorization-last and rollback-first: stage rollback, bind and
+- The CI Identity Bootstrap Gate is authorization-last and rollback-first:
+  stage rollback, bind and
   read back the complete installed code/tool/path/account/sshd/sudo closure,
   add the exact canonical authorization line as the final mutation, remove it
   as the first rollback mutation, then remove and directory-fsync the exact
-  dedicated sudoers file. Bootstrap and workflow dispatch remain
+  dedicated sudoers file. The Gate and workflow dispatch remain
   prohibited until Task 8 atomically removes the v1 path and enables strict
   framed schema-3 CLI dispatch.
 - Tasks 5-8 reopen and same-FD-fstat every protected file immediately before
@@ -63,6 +68,8 @@
 | `server/tests/japan-tuic-additive-repair-state.test.mjs` | Concurrent claim, CAS/transition, crash-window, raw-nonce absence, and injected fsync/rename failures. |
 | `scripts/japan-tuic-additive-repair-contract.mjs` | v3 frozen identities, Mode 1 control validation, aggregate validators, strict receipt schemas, and workflow CLI. |
 | `server/tests/japan-tuic-additive-repair-contract.test.mjs` | v3 control/receipt/timestamp/error tests; removes the v1 approval-bundle model. |
+| `scripts/japan-tuic-additive-repair-bootstrap.mjs` | Builtin-only fixed Node preload TCB that independently validates the canonical binding code envelope and same-FD verifies runner/contract/frame/state before root evaluation. |
+| `server/tests/japan-tuic-additive-repair-bootstrap.test.mjs` | Pre-import ordering, six-role manifest, builtin-only graph, same-FD drift/EOF, TCB self-check labeling, and tampered-module sentinel tests. |
 | `scripts/japan-tuic-additive-repair-entrypoint.sh` | Digest-bound installation source for env-empty absolute-path `flock` + Node forced entrypoint. |
 | `server/tests/japan-tuic-additive-repair-entrypoint.test.mjs` | Static absolute argv, env scrub, no PATH lookup, lock exit, and no remote command tests. |
 | `scripts/japan-tuic-additive-repair-runner.mjs` | Root binding/path validation, host artifact verification, inspect/replay, durable execute/rollback, closeout, and sanitized CLI receipts. |
@@ -397,15 +404,21 @@ git commit -m "refactor(ci): switch Japan repair contract to mode one"
 
 ---
 
-### Task 4: Environment-Scrubbed Forced Entrypoint And Binding
+### Task 4: Pre-Import Bootstrap, Environment-Scrubbed Entrypoint, And Binding
 
 **Files:**
+- Create: `scripts/japan-tuic-additive-repair-bootstrap.mjs`
+- Create: `server/tests/japan-tuic-additive-repair-bootstrap.test.mjs`
 - Create: `scripts/japan-tuic-additive-repair-entrypoint.sh`
 - Create: `server/tests/japan-tuic-additive-repair-entrypoint.test.mjs`
 - Modify: `scripts/japan-tuic-additive-repair-runner.mjs`
 - Modify: `server/tests/japan-tuic-additive-repair-runner.test.mjs`
 
 **Interfaces:**
+- Produces: a fixed builtin-only Node preload at
+  `/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs` that
+  independently validates the binding code envelope and same-FD verifies
+  runner/contract/frame/state before Node evaluates the main graph.
 - Produces: the uninstalled source template for
   `/usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint`;
   `buildCanonicalRunnerBinding(input)`; `buildCanonicalSshTopology(input)`;
@@ -416,8 +429,24 @@ git commit -m "refactor(ci): switch Japan repair contract to mode one"
   `parseCanonicalAuthorizedKeyLine(input)`;
   `loadRootOwnedBinding({ path, effectiveUid, pathOperations })`;
   `validateRunnerBinding(input, context)` schema `3`; and
-  `validateTrustedPathChain(path, policy, operations, consumeOpened?)`.
-- The fixed installed closure is entrypoint
+  `validateTrustedPathChain(path, policy, operations, consumeOpened?)`;
+  `validateNativeLinuxOpenFlags({ platform, constants })`;
+  `attestOpenedSecurityCapability(input)`; and
+  `attestBootstrapRunnerBinding(input, context)`.
+- The authorization builders are operations-driven:
+  `buildCanonicalSshIncludeClosure({ pathOperations, sourceOperations })`,
+  `buildCanonicalSudoSourceClosure({ pathOperations, sourceOperations })`, and
+  their topology/effective-policy consumers accept bound account evidence plus
+  those operations, never caller-built file/Match/rule/effective records.
+  `pathOperations` remains exactly `lstat, open, fstat, read, close`;
+  `sourceOperations` is exactly `readDirectory, validateSudoers`. Capability
+  attestation receives only same-FD
+  `fgetxattr(fd, "security.capability", 65536)` and maps only `ENODATA` or
+  `ENOATTR` to absence; writer attestation receives a
+  collector and derives its required owner/unit/process coverage from binding
+  policy rather than a caller's zero-count claim.
+- The fixed installed closure is bootstrap
+  `/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs`, entrypoint
   `/usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint`, runner
   `/usr/local/libexec/gccgw/japan-tuic-additive-repair-runner.mjs`, contract
   `/usr/local/libexec/gccgw/japan-tuic-additive-repair-contract.mjs`, frame
@@ -429,8 +458,9 @@ git commit -m "refactor(ci): switch Japan repair contract to mode one"
   `/etc/ssh/authorized_keys/gccgw-japan-repair-ci`, account home
   `/var/lib/gccgw-japan-repair-ci`, login shell `/usr/bin/dash`, and dedicated
   sudoers file `/etc/sudoers.d/gccgw-japan-repair-ci`.
-- Entrypoint metadata is root:root/file/`0755`/`nlink=1`; the four modules are
-  root:root/file/`0644`/`1`; binding and lock are root:root/file/`0600`/`1`;
+- Entrypoint metadata is root:root/file/`0755`/`nlink=1`; bootstrap and the four
+  application modules are root:root/file/`0644`/`1`; binding and lock are
+  root:root/file/`0600`/`1`;
   state/backup/temporary are root:root/directory/`0700`/null; authorization is
   root:root/file/`0600`/`1`; home is root:root/directory/`0755`/null; login
   shell is root:root/file/`0755`/`1` plus exact digest; sudoers is
@@ -449,12 +479,13 @@ git commit -m "refactor(ci): switch Japan repair contract to mode one"
   canonical POSIX absolute primitive. Fixed-role policies cannot be relaxed by
   binding input; `units` is exact `service, timer`, and
   `authorizationMarker` is the unique safe marker.
-- `codeManifest` order is `contract, entrypoint, frame, runner, state`.
+- `codeManifest` order is
+  `bootstrap, contract, entrypoint, frame, runner, state`.
   Every code value order is
   `path, sizeBytes, sha256, type, uid, gid, mode, nlink`; size is a positive
-  safe integer, entrypoint is at most 16384 bytes, and each ESM module is at
-  most 1048576 bytes.
-  `toolManifest` order is
+  safe integer, entrypoint is at most 16384 bytes, bootstrap is at most 65536
+  bytes, and each other ESM module is at most 1048576 bytes.
+  The unchanged `toolManifest` order is
   `dash, env, flock, node, sudo, systemctl, unzip, visudo`, with respective
   fixed paths `/usr/bin/dash`, `/usr/bin/env`, `/usr/bin/flock`,
   `/usr/bin/node`, `/usr/bin/sudo`, `/usr/bin/systemctl`, `/usr/bin/unzip`, and
@@ -465,6 +496,20 @@ git commit -m "refactor(ci): switch Japan repair contract to mode one"
   bytes when capability is absent. All tools are root:root regular and `nlink=1`;
   `sudo` alone is mode `04755`, all others are `0755`, and every capability is
   absent. Symlinks and alternate resolved/package paths are rejected.
+- The pre-import TCB is exactly the kernel/filesystem and trusted root boundary,
+  the already executing sudo/dash/env/flock/Node chain, the exact entrypoint
+  bytes, the exact bootstrap bytes, and Node's reviewed builtin loader/runtime
+  base. Installation-time same-FD readback and root-only ancestry authorize
+  those already executing bytes. Runtime entrypoint/bootstrap/Node checks are
+  defense in depth and must not be reported as self-authorization.
+- Bootstrap has only an exact reviewed `node:` builtin static-import allowlist.
+  It has no local static import, `import()`, CommonJS `require`, `createRequire`,
+  `node:module`, loader registration, `eval`, or `Function`; it does not import
+  or call the runner validator. Before main evaluation it independently parses
+  the fixed canonical binding and same-FD validates runner, contract, frame,
+  and state. The total JavaScript `import()` count across bootstrap plus the
+  four-module application closure is
+  exactly one, at the runner's verified-artifact callsite.
 - `sshAuthorization` order is `algorithm, authorizedKeysFile,
   authorizedKeysLineSha256, effectiveConfigSha256, homeDirectory,
   homeDirectoryPolicy, loginShell, loginShellPolicy, publicKeyBlobSha256, uid,
@@ -492,32 +537,60 @@ git commit -m "refactor(ci): switch Japan repair contract to mode one"
 
 Assert the entrypoint bytes are exact, including `#!/usr/bin/dash`, one
 `exec /usr/bin/env -i`, fixed `LANG`/`PATH`, absolute bound `flock`/Node/lock/
-runner/binding paths, and no variable command, secondary command path, `eval`,
-`sh -c`, relative executable, or use of `$SSH_ORIGINAL_COMMAND`.
+bootstrap/runner/binding paths, literal fixed `--import=` before the literal
+main runner, and no variable command, secondary command path, `eval`, `sh -c`,
+relative executable, or use of `$SSH_ORIGINAL_COMMAND`. Require exactly eight
+physical lines.
 
 Under the bound Node test runtime, use syntax-aware ESM parsing such as
-`vm.SourceTextModule` to recursively enumerate runner/contract/frame/state.
-Require exactly the four-module local graph and an exact reviewed `node:`
-builtin allowlist. Reject bare packages, absolute/file/data URLs, query/hash
-specifiers, `node:module`, `createRequire`, CommonJS `require`, and unlisted
-local modules. Permit exactly one dynamic-code callsite: the frozen runner
-import of `scripts/traffic-accounting-natural-observation.mjs` after verified
-artifact size/hash/central-directory-manifest/safe-extraction validation;
-reject every other dynamic import or module-loading surface. Assert all five
-`codeManifest` roles, including entrypoint, and all eight `toolManifest` roles
+`vm.SourceTextModule` plus a token-aware dynamic-code walker across bootstrap,
+runner, contract, frame, and state. Require bootstrap's exact builtin-only graph
+and zero local imports, `import()`, require/createRequire, eval, or loader
+registration. Require exactly the runner/contract/frame/state application graph
+with its reviewed `node:` allowlist. Reject bare packages,
+absolute/file/data URLs, query/hash specifiers, `node:module`, `createRequire`,
+CommonJS `require`, and unlisted local modules. Permit exactly one total
+JavaScript `import()` callsite: the frozen runner import of
+`scripts/traffic-accounting-natural-observation.mjs` after verified artifact
+size/hash/central-directory-manifest/safe-extraction validation; reject spaced,
+commented, or non-runner dynamic-import and module-loading bypasses. Assert all
+six `codeManifest` roles, including bootstrap and entrypoint, and all eight
+`toolManifest` roles
 are present with exact paths/order/metadata/content/capability digests. Assert
 `sudo` is exactly `04755`, every other tool is `0755`, every capability digest
 is the SHA-256 of absent/empty raw capability bytes, and any symlink or
 alternate resolved/package path is rejected. Require exact manifest
-`sizeBytes`, entrypoint 16384/16385 and ESM 1048576/1048577 boundaries, tool
+`sizeBytes`, entrypoint 16384/16385, bootstrap 65536/65537, other ESM
+1048576/1048577 boundaries, tool
 268435456/268435457 boundaries, same-FD fstat-size equality, exact-size read,
 confirmed zero-byte EOF, and rejection of early EOF or trailing byte.
 
-Freeze bootstrap-Gate dry-run fixtures for native same-FD capability
+Add a subprocess/loader ordering fixture for each of runner, contract, frame,
+and state: content/hash or uid/gid/mode/nlink drift plus a top-level sentinel
+must produce sentinel count zero and runner call count zero before sanitized
+rejection. A positive control proves the sentinel evaluates only after clean
+preload success. Entry point/bootstrap/Node/root are explicitly the pre-import
+TCB; bootstrap self-read and entrypoint readback are defense in depth.
+
+Freeze CI Identity Bootstrap Gate dry-run fixtures for native same-FD capability
 attestation: `ENODATA` and `ENOATTR` absence; unexpected capability bytes;
 wrong descriptor; unsupported or other error; oversize xattr; and digest
 mismatch. Every non-absence/error/mismatch blocks before authorization, and no
 fixture is described as runtime xattr validation.
+
+Add one end-to-end Gate-attestation matrix across every six-code and
+eight-tool role. For each role independently cover exact fd propagation through
+open/fstat/read/capability/EOF/post-fstat/close, size mismatch, early EOF,
+trailing byte, wrong fd, digest drift, metadata drift, ceiling and ceiling+1,
+and exactly-once close. Capability fixtures additionally cover `ENODATA`,
+`ENOATTR`, unexpected bytes, unsupported/arbitrary errors, non-Buffer results,
+a 65536-byte nonempty value rejected as unexpected, a 65537-byte value rejected
+as oversize, and wrong digest. Add integration fixtures that mutate one SSH
+source/Match, one sudo source/rule/Defaults value, one writable-owner or bound
+unit/known-process writer observation, one manifest role, and one capability;
+every mutation must reject before any authority callback. Writer evidence is
+derived from every owner-write policy, both exact bound units, and every known
+process; callers cannot assert `knownWriterCount=0` or an evidence digest.
 
 Test the exact recursive canonical binding order and field names above. Reject
 schema 1 through exported `validateRunnerBinding`; require its exact context
@@ -578,7 +651,8 @@ account-applicable Match-scoped, and default effective values. Add RED/GREEN
 fixtures for default/explicit deny for both controls, global forwarding/tunnel
 allow, Match-scoped allow, and unresolved conditional alongside the
 ForceCommand/ChrootDirectory cases. Any non-`none` command/chroot or any
-effective forwarding/tunnel permission blocks bootstrap and Task 8 closeout so
+effective forwarding/tunnel permission blocks the CI Identity Bootstrap Gate
+and Task 8 closeout so
 the key command and bound absolute paths remain effective authority. Per-key
 `restrict` and no-forwarding options are defense in depth, not a substitute for
 these account-effective values.
@@ -599,6 +673,13 @@ variableDimensions`, and disposition is only `disjoint` or `exact_user`.
 Any matching branch must be exact-user with no variable dimensions; unresolved
 host/address/local-address/local-port/group/user-negation or other context
 fails. Both digests are derived from canonical JSON+LF by the builder.
+The parser derives `accountDisposition`, source coordinates/order,
+variable dimensions, and every global/default/applicable-Match effective value
+from the trusted closure. It evaluates positive, negative, and wildcard User
+and Group patterns against the exact bound username and ordered group identity;
+coordinates must belong to the derived closure and be strictly monotonic.
+Caller labels, safe-looking aggregate values, source ordinals, or effective
+booleans are never accepted as evidence.
 
 The shared source-closure builder uses `schemaVersion="1"`, exact type
 `japan_ci_sshd_source_closure` for SSH and
@@ -607,6 +688,16 @@ The shared source-closure builder uses `schemaVersion="1"`, exact type
 serializer. Every closure file is at most 1 MiB and is metadata-validated,
 read, hashed, and confirmed at EOF from one trusted descriptor; only the
 subsystem-native expansion order differs.
+Both builders are operations-driven from their fixed roots. SSH derives
+directive/pattern/glob/source order; sudo derives `include`/`includedir` order
+and reviewed filename filtering. Raw directory basenames receive fatal UTF-8
+round-trip validation and bytewise sorting where native rules require it.
+Missing, duplicate, cyclic, ambiguous, zero-match, unsupported, or unresolved
+expansion fails. Callers cannot supply a closure file list, bytes, metadata,
+digest, order, disposition, rule count, tag, Defaults value, or effective-policy
+claim. Sudo syntax validation runs only fixed `/usr/sbin/visudo -cf
+/etc/sudoers`; semantic authorization is still parser-derived from the same
+trusted closure.
 
 The Match record is schema `"1"`, exact type
 `japan_ci_sshd_match_coverage`. Each condition has exact keys
@@ -668,7 +759,21 @@ count is zero, and the exact new residual is serialized.
 Compare code/tool modes as low 12 permission/special bits: every non-sudo role
 rejects setuid, setgid, or sticky, while sudo requires setuid and rejects
 setgid/sticky drift. Runtime path policies compare low 9 permission bits and
-separately reject every special bit.
+require `mode <= 0777` and `(mode & 0022) === 0`; both initial and
+post-consumption stats separately require `(mode & 07000) === 0` before the
+low-nine comparison.
+
+Freeze audited Linux flag values independently of the host runtime:
+`O_RDONLY=0x00000`, `O_DIRECTORY=0x10000`, `O_NOFOLLOW=0x20000`, and
+`O_CLOEXEC=0x80000`. File opens use `0xA0000`; directory opens use `0xB0000`.
+Native operation creation fails closed on non-Linux, any absent flag, or any
+numeric drift. Windows fixtures inject and assert these audited values rather
+than deriving expectations from the same incomplete host `fs.constants`.
+
+Every canonical path and raw includedir basename must survive exact UTF-8
+encode/decode round trip. Reject unpaired-surrogate aliases and compare encoded
+path-byte identities for uniqueness; preserve valid non-ASCII scalar paths only
+when their byte identities remain distinct.
 
 Finally, invoke the current runner directly and require zero stdout, exact
 stderr bytes
@@ -682,18 +787,20 @@ calls.
 - [ ] **Step 2: Run focused tests and witness RED**
 
 ```powershell
-node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
+node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-bootstrap.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
 ```
 
-Expected: RED on the missing exact dash entrypoint, schema-3 closure,
-same-FD/bigint reader, eight-tool manifest, canonical SSH Include/Match and sudo
+Expected: RED on the missing exact fixed-preload dash entrypoint, missing
+builtin-only bootstrap and pre-import sentinel ordering, six-role schema-3
+closure, same-FD/bigint reader, eight-tool manifest, canonical SSH Include/Match and sudo
 policies, ForceCommand/ChrootDirectory enforcement,
 DisableForwarding/PermitTunnel enforcement, exact Match-all bytes,
 post-consumption full-policy drift, directory-nlink sentinel, login-shell
-projection, capability dry-run fixtures, parser, and exact pre-migration
-behavior.
+projection, audited Linux flag absence/drift, surrogate UTF-8 path aliases,
+capability dry-run fixtures, six-code/eight-tool/source/writer integration,
+parser, and exact pre-migration behavior.
 
-- [ ] **Step 3: Add the exact no-variable entrypoint**
+- [ ] **Step 3: Add the exact no-variable entrypoint and builtin-only preload**
 
 The committed template is the only command target allowed by `authorized_keys`
 and sudoers. `authorized_keys` invokes exactly
@@ -706,22 +813,31 @@ set -eu
 exec /usr/bin/env -i LANG=C.UTF-8 PATH=/usr/bin:/bin \
   /usr/bin/flock --exclusive --nonblock --conflict-exit-code 75 \
   /var/lib/gccgw/japan-tuic-additive-repair/repair.lock \
-  /usr/bin/node --disable-proto=throw \
+  /usr/bin/node --disable-proto=throw --import=/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs \
   /usr/local/libexec/gccgw/japan-tuic-additive-repair-runner.mjs \
   --binding /etc/gccgw/japan-tuic-additive-repair-binding.json
 ```
 
-The bootstrap Gate derives code/tool digests from the exact merged commit,
+The bootstrap is a preload, not a replacement main module and not a loader that
+dynamic-imports the runner. Its top-level builtin-only code validates exact
+root invocation and argv, loads the fixed canonical binding with the same-FD
+bounded reader, requires exact six-role order, and verifies
+runner/contract/frame/state path/type/uid/gid/mode/nlink/size/hash and protected
+parents before returning. Only then may Node evaluate the literal runner main
+module. Bootstrap/entrypoint self-checks are defense in depth; install-time
+readback is authority for those already evaluated TCB bytes.
+
+The CI Identity Bootstrap Gate derives code/tool digests from the exact merged commit,
 binds installed bytes and exact executable metadata, and configures the fixed
 sudoers file for exactly this no-argument entrypoint with empty-argument marker
-`""`, `env_reset`, no `SETENV`, and exact `secure_path`. Only bootstrap uses a
+`""`, `env_reset`, no `SETENV`, and exact `secure_path`. Only the Gate uses a
 native same-FD `fgetxattr` attestation for raw `security.capability`: absent
 `ENODATA`/`ENOATTR` maps to SHA-256 of empty bytes and every other error fails.
 Runtime does not claim xattr revalidation. The root-owned
 OS/runtime/library/capability base beneath the eight bound tools remains an
 explicit platform trust boundary. No installation occurs in this task.
 
-- [ ] **Step 4: Implement recursive canonical binding, same-FD validation, and SSH-policy helpers**
+- [ ] **Step 4: Implement preload verification, recursive canonical binding, and derived authorization evidence**
 
 Implement the exact interfaces and nested orders above. `validateTrustedPathChain`
 is synchronous: canonical POSIX absolute lexical path; bigint lstat of `/` and
@@ -739,16 +855,30 @@ reads the verified fd from position zero in a bounded short-read/EINTR loop;
 requires fstat size `1..65536`, accumulated length equal to fstat size, and
 actual EOF; then fatal-decodes and compares exact canonical JSON+one-LF bytes.
 It never uses path `stat`/`readFile`. Runtime `validateRunnerBinding` checks all
-five code roles, all eight tools' path/content/type/uid/gid/mode/nlink,
+six code roles, all eight tools' path/content/type/uid/gid/mode/nlink,
 login-shell equality, and every protected path before an operation. Code, tool,
 SSH closure, and sudo closure bytes use the same fd loop. Entrypoint, ESM,
-tool, and source-closure reads use their exact 16 KiB, 1 MiB, 256 MiB, and
-1 MiB ceilings. Same-FD fstat size equals
+tool, and source-closure reads use their exact 16 KiB, bootstrap 64 KiB,
+other-ESM 1 MiB, 256 MiB, and 1 MiB ceilings. Same-FD fstat size equals
 manifest `sizeBytes`; read exactly that size, confirm zero-byte EOF, then hash.
-Early EOF, mismatch, ceiling+1, and trailing byte fail. Bootstrap additionally
-attests tool
+Early EOF, mismatch, ceiling+1, and trailing byte fail. The CI Identity
+Bootstrap Gate additionally attests tool
 capability digests before authorization; runtime deliberately makes no xattr
 claim.
+
+Implement the bootstrap without importing any application helper. It owns a
+minimal independent canonical binding/code-envelope validator and same-FD
+reader for runner/contract/frame/state, and returns only after those four match.
+It never performs SSH/sudo/capability/writer/frame/host operations. Test that
+any application module's top-level sentinel remains zero on every metadata or
+byte rejection.
+
+Implement SSH and sudo closure builders as operations-driven native parsers
+over the fixed roots and one shared same-FD 1 MiB reader. Derive Match
+disposition/order/effective SSH fields, sudo rule/tags/Defaults/counts, and
+writer evidence inside the attestation path; delete every caller-asserted
+semantic input. Implement runtime low-nine mode rules and audited Linux flags
+exactly as frozen above, plus strict UTF-8 path-byte identity.
 
 The root-owned binding is authoritative for observed final uid/gid/mode and is
 not client input. Keep all path/stat/open/read/consume/close errors sanitized.
@@ -760,16 +890,18 @@ primitive for Tasks 5-8.
 Keep schema 1 in only the separately named private local-test helper. Until
 Task 8, production CLI dispatch is mechanically disabled with the exact
 stderr/exit/call-count behavior above. The entrypoint source remains
-uninstalled; workflow dispatch and bootstrap are prohibited.
+uninstalled; workflow dispatch and the CI Identity Bootstrap Gate are prohibited.
 
 ```powershell
-node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
-git add scripts/japan-tuic-additive-repair-entrypoint.sh scripts/japan-tuic-additive-repair-runner.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
+node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-bootstrap.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
+git add scripts/japan-tuic-additive-repair-bootstrap.mjs scripts/japan-tuic-additive-repair-entrypoint.sh scripts/japan-tuic-additive-repair-runner.mjs server/tests/japan-tuic-additive-repair-bootstrap.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
 git commit -m "feat(ci): harden Japan repair forced entrypoint"
 ```
 
-Expected: every exact RED class above is GREEN; no host, SSH, GitHub, bootstrap,
-or production action occurs.
+Expected: every exact RED class above is GREEN; the preload still performs no
+host authorization or production operation, and no install, network, SSH,
+GitHub, CI Identity Bootstrap Gate, workflow dispatch, or production action
+occurs.
 
 ---
 
@@ -910,7 +1042,8 @@ Each original call remains durable `apply_intent` and apply count stays one.
 Inject helper timeout with a synthetic residue and require no deletion or retry.
 
 Test that apply preconditions reject: root-parent policy drift; missing exact
-bootstrap writer-freeze evidence; `${basename}.<digits>.tmp` residue; target
+CI Identity Bootstrap Gate writer-freeze evidence; `${basename}.<digits>.tmp`
+residue; target
 symlink; `nlink != 1`; owner/mode drift; map digest different from durable
 backup original; unsupported file or directory fsync. Every rejection before
 helper spawn has apply count zero.
@@ -935,7 +1068,7 @@ Expected: FAIL on missing v3 claim/backup/apply behavior and crash assertions.
 Reuse the frozen helper only from the host-verified artifact. Do not patch or
 substitute it. Treat its rename as a write boundary, not success. The runner's
 compensating envelope enforces the exact pre/post checks and fsync order above.
-The future bootstrap inventory and Production Gate freeze every known legal
+The future CI Identity Bootstrap Gate inventory and Production Gate freeze every known legal
 writer; the runner verifies the root-owned parent, binding-authoritative exact
 target metadata/digest, and bound writer-freeze identity immediately before
 spawn. A non-root final target owner is allowed only when the exact observed
@@ -947,7 +1080,7 @@ claimed proof.
 
 ```powershell
 node --test server/tests/japan-tuic-additive-repair-runner.test.mjs
-node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
+node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-bootstrap.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
 ```
 
 Expected: all PASS; success apply count exactly one; every injected crash leaves
@@ -1041,6 +1174,14 @@ Expected: suites PASS; every claimed replay has zero write-operation calls.
   and CLI exit classes `0`, `1`, `2`; entrypoint lock exit `75` remains outside
   Node.
 
+**Blocking entry condition:** Task 8 must not begin and framed dispatch must not
+be enabled until Task 4's pre-import sentinel, syntax-aware import/source
+enumeration, six-code/eight-tool manifest, operations-driven SSH/sudo closure,
+derived Match/effective-policy, runtime mode/Linux-flag, capability, writer,
+same-FD EOF/drift, and surrogate UTF-8 matrices are all GREEN and every Task 4
+reviewer Important/Minor finding is closed. A partial pass or caller-asserted
+digest/semantic record keeps Task 8 blocked.
+
 - [ ] **Step 1: Write failing closeout and CLI tests**
 
 Closeout requires a matching claim plus journal/terminal result exactly
@@ -1106,12 +1247,15 @@ exported-function tests, replace the raw ZIP/v1 CLI with strict frame dispatch
 and delete the private legacy validator/helper, v1 execution path, and old
 receipt expectations in the same commit. The runner imports
 `JAPAN_TUIC_REPAIR_GATE_V3`, never the temporary v1 constant. Only after this
-commit's tests pass may the separate bootstrap Gate be written or executed.
+commit's tests pass may the separate CI Identity Bootstrap Gate be written or executed.
+The entrypoint continues to preload the fixed builtin-only bootstrap and then
+names runner as the literal main module; Task 8 must not replace that ordering
+with bootstrap `import()` of runner or add any loader surface.
 
 - [ ] **Step 4: Run GREEN, fresh security review, and commit**
 
 ```powershell
-node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
+node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-bootstrap.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
 git add scripts/japan-tuic-additive-repair-runner.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs
 git commit -m "feat(ci): separate Japan repair terminal closeout"
 ```
@@ -1247,7 +1391,7 @@ Expected: PASS; no workflow dispatch or secret access occurs.
 
 Parse the public PEM with Node crypto, require Ed25519 SPKI, derive lowercase
 SHA-256 of SPKI DER, and compare to the 64-hex key-ID file. Scan active workflow,
-contract, frame, state, entrypoint, and runner text and require neither public
+bootstrap, contract, frame, state, entrypoint, and runner text and require neither public
 identity path, key ID, `JAPAN_CI_APPROVAL_BUNDLE`, nor offline signer reference.
 Require runbook text for Mode 1 trust root, five secrets, fixed nonce digest,
 repeatable inspect, master freeze/rebind, claimed replay, prepared/unclaimed new
@@ -1255,9 +1399,17 @@ Gate, crash recovery, terminal closeout, `cleanup_indeterminate`, and separate
 GitHub secret cleanup Gate.
 
 Also require runbook/static evidence for the fixed installed paths and metadata,
-five-entry code manifest, eight-entry tool manifest with bootstrap-only native
+six-entry code manifest in
+`bootstrap, contract, entrypoint, frame, runner, state` order, eight-entry tool
+manifest with CI Identity Bootstrap Gate-only native
 same-FD capability attestation, exact `sizeBytes` ceilings/EOF and low-12-bit
-special-mode rules, exact schema-3 recursive orders, `/usr/bin/dash` shebang
+special-mode rules, exact schema-3 recursive orders, the exact eight-line
+`/usr/bin/dash` entrypoint with fixed `--import=` preload followed by literal
+runner main, explicit entrypoint/bootstrap/Node/root pre-import TCB, bootstrap
+self-checks labelled defense in depth, builtin-only preload with no local or
+dynamic loader surface, pre-evaluation same-FD verification of all four
+application modules, exactly one total JavaScript `import()` at the runner
+verified-artifact callsite, `/usr/bin/dash` shebang
 and explicit login-shell/dash projection, exclusive repair account and sole
 authorization source, canonical complete SSH topology plus exact
 Include/Match preimages/nested grammar with global and Match-scoped
@@ -1268,13 +1420,17 @@ source/effective policy
 and fixed sudoers rule, bounded line/blob parser, observed final-owner
 `0400`/`0600` role modes, exact
 `bound_writer_concurrency_not_machine_proven` residual, same-FD bigint/EOF/
-exactly-once-close and shared 1 MiB closure-read contract, runtime code/eight-
+exactly-once-close and shared operations-driven 1 MiB closure-read contract,
+derived Match/source-order/effective SSH and sudo evidence with no caller
+assertions, runtime six-code/eight-
 tool manifest coverage without an xattr revalidation claim, Tasks 5-8 use-time
 revalidation, Task 8 zero-byte fsynced SSH-file plus absent parent-fsynced
 sudoers closeout, directory-null sentinel with positive/equal BigInt link
 counts and file-null rejection, post-consumption full type/uid/gid/mode/nlink
-revalidation including directory count drift, bootstrap capability dry-run
-matrix, and the exact
+revalidation including directory count drift, runtime mode `<=0777`/no `0022`/
+no `07000`, required Linux flag absence/drift, surrogate UTF-8 path rejection,
+CI Identity Bootstrap Gate capability dry-run and six-code/eight-tool/source/
+manifest/writer integration matrices, and the exact
 pre-migration failure through Task 8. Static tests must reject the obsolete
 shebang, obsolete residual, root-only-final-owner authority, and marker-only or
 SSH-only success language.
@@ -1292,12 +1448,12 @@ Expected: FAIL on the v1 runbook and missing active Mode 1 index references.
 Mark the 2026-07-16 offline plan superseded by the 2026-07-17 Mode 1 plan.
 Replace the runbook's required-reviewer/sixth-secret/offline-bundle path with the
 selected single-operator model and exact post-merge Gate sequence. State that
-bootstrap makes execute technically reachable and the Production Gate is
+the CI Identity Bootstrap Gate makes execute technically reachable and the Production Gate is
 procedural, not host arming. State that source/merge/artifact do not deploy.
 Add the active spec/plan to `docs/README.md`.
 
-Document bootstrap as rollback-first and authorization-last: stage rollback;
-derive exact merged-source code/tool digests and bootstrap-native capability
+Document the CI Identity Bootstrap Gate as rollback-first and authorization-last:
+stage rollback; derive exact merged-source code/tool digests and Gate-native capability
 attestations plus the absent/unexpected/wrong-fd/error/oversize/digest-mismatch
 dry-run matrix; inventory and bind fixed paths, observed role metadata, writers,
 passwd/home/shell, line/blob, complete sshd Include/Match topology, and complete
@@ -1308,7 +1464,8 @@ closure;
 then add the canonical authorization line as the final mutation. The first
 rollback mutation removes it, then removes and directory-fsyncs the dedicated
 sudoers file. Any ambiguity blocks rather than normalizes.
-State that bootstrap and dispatch are prohibited until Task 8's strict framed
+State that the CI Identity Bootstrap Gate and dispatch are prohibited until
+Task 8's strict framed
 migration is merged and verified.
 
 The two config files are public only. Do not read, locate, or copy the offline
@@ -1339,15 +1496,19 @@ Expected: test and diff check PASS; any staged identity material is public-only.
 - [ ] **Step 1: Run the focused Japan suite**
 
 ```powershell
-node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs server/tests/japan-tuic-additive-repair-workflow.test.mjs
+node --experimental-vm-modules --test server/tests/japan-tuic-additive-repair-frame.test.mjs server/tests/japan-tuic-additive-repair-state.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs server/tests/japan-tuic-additive-repair-bootstrap.test.mjs server/tests/japan-tuic-additive-repair-entrypoint.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs server/tests/japan-tuic-additive-repair-workflow.test.mjs
 ```
 
 Expected: all tests PASS, zero failures/skips unless an existing test has an
 explicit platform skip unrelated to production behavior.
 
 The focused result must explicitly include the Task 4 recursive import-closure,
-five-code/eight-tool manifests, bootstrap-only capability attestation boundary,
-bootstrap capability dry-run fixtures for absent/unexpected/wrong-fd/error/
+six-code/eight-tool manifests, CI Identity Bootstrap Gate-only capability attestation boundary,
+pre-import tampered-module sentinel ordering, exact eight-line fixed-preload
+entrypoint, builtin-only bootstrap with no local/dynamic/loader escape,
+entrypoint/bootstrap/Node/root TCB and self-check-as-defense-in-depth labels,
+exactly one total JavaScript `import()`, capability dry-run fixtures for
+absent/unexpected/wrong-fd/error/
 oversize/digest mismatch,
 exact size/ceiling/EOF and low-12-bit special-mode boundaries, canonical
 schema, SSH topology/Include/Match/parser including explicit pattern arrays and
@@ -1356,8 +1517,11 @@ account-applicable DisableForwarding `true` and PermitTunnel `false` with
 default/explicit-deny, global-allow, Match-scoped-allow, and unresolved-
 conditional fixtures, exact Match-all object shape and no-space JSON bytes,
 explicit login-shell/dash projection, canonical sudo
-source/effective policy and exact no-argument rule, shared same-FD 1 MiB source
-reads, same-FD bigint/EOF/close, directory-null positive/equal BigInt sentinel
+source/effective policy and exact no-argument rule, operations-driven same-FD
+1 MiB source reads, derived disposition/source-order/effective facts with no
+caller assertions, six-code/eight-tool/source/manifest/writer integration,
+runtime mode and audited Linux flag absence/drift, surrogate UTF-8 round-trip
+rejection, same-FD bigint/EOF/close, directory-null positive/equal BigInt sentinel
 plus file-null rejection and post-consumption type/uid/gid/mode/nlink drift,
 `0400`/`0600` role-mode/writer residual, exact
 pre-migration call-count, lock-precreation, Tasks 5-8 use-time drift, and
@@ -1377,7 +1541,10 @@ Expected: full suite PASS; diff check empty; only intentional files present.
 Before accepting that result, scan the active entrypoint/design/plan/runner and
 tests for obsolete `#!/bin/sh`,
 `trusted_root_concurrency_not_machine_proven`, root-only-final-owner authority,
-or marker-only `authorization_removed`; any active occurrence fails the task.
+an obsolete code-manifest role set, direct Node runner startup without the fixed preload,
+bootstrap dynamic-import of runner, bootstrap self-authorization, caller-
+asserted SSH/sudo/Match/writer evidence, zero-fallback Linux flags, or marker-
+only `authorization_removed`; any active occurrence fails the task.
 
 - [ ] **Step 3: Run independent spec, security, and code-quality reviews**
 
@@ -1391,7 +1558,7 @@ Use fresh reviewers for:
   Match-all bytes, directory-link sentinel plus post-consumption full-policy
   drift, login-shell projection, capability dry-run evidence, line/blob parser,
   use-time validation, frame, ledger/journal, helper envelope, rollback,
-  bootstrap authorization-last ordering, and closeout;
+  CI Identity Bootstrap Gate authorization-last ordering, and closeout;
 - code quality, test realism, and receipt redaction.
 
 Fix every Critical/Important finding through a new RED/GREEN cycle. Re-run the
