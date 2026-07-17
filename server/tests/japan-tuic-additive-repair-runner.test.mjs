@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
-  constants as fsConstants,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -637,6 +636,75 @@ test("binding rejects relative, missing, and extra path fields", () => {
   );
 });
 
+test("canonical paths reject unpaired-surrogate UTF-8 aliases", () => {
+  const first = "/protected/\ud800";
+  const second = "/protected/\ud801";
+  assert.notEqual(first, second);
+  assert.equal(Buffer.from(first, "utf8").equals(Buffer.from(second, "utf8")), true);
+
+  for (const path of [first, second]) {
+    const binding = v3Binding();
+    assert.throws(
+      () => buildCanonicalRunnerBinding({
+        ...binding,
+        paths: { ...binding.paths, currentMap: path }
+      }),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+    assert.throws(
+      () => buildCanonicalSshIncludeClosure(sshClosure({
+        files: [
+          sshClosure().files[0],
+          { ...sshClosure().files[1], path }
+        ]
+      })),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+  }
+
+  const binding = v3Binding();
+  assert.throws(
+    () => buildCanonicalRunnerBinding({
+      ...binding,
+      paths: {
+        ...binding.paths,
+        currentMap: first,
+        materialStore: second
+      }
+    }),
+    (error) => error.code === "restricted_identity_rejected"
+  );
+});
+
+test("canonical paths preserve distinct valid non-ASCII scalar identities", () => {
+  const first = "/protected/é.json";
+  const second = "/protected/日本.json";
+  for (const path of [first, second]) {
+    assert.equal(Buffer.from(path, "utf8").toString("utf8"), path);
+  }
+  assert.equal(Buffer.from(first, "utf8").equals(Buffer.from(second, "utf8")), false);
+
+  const binding = v3Binding();
+  const canonical = buildCanonicalRunnerBinding({
+    ...binding,
+    paths: {
+      ...binding.paths,
+      currentMap: first,
+      materialStore: second
+    }
+  });
+  assert.equal(canonical.paths.currentMap, first);
+  assert.equal(canonical.paths.materialStore, second);
+
+  const included = buildCanonicalSshIncludeClosure(sshClosure({
+    files: [
+      sshClosure().files[0],
+      { ...sshClosure().files[1], path: "/etc/ssh/sshd_config.d/日本.conf" }
+    ]
+  }));
+  assert.equal(included.files[1].path, "/etc/ssh/sshd_config.d/日本.conf");
+});
+
 test("archive inspection requires reviewed helpers and rejects unsafe paths", () => {
   const requiredEntries = [
     "scripts/mihomo-tuic-usage-map-rebuild.mjs",
@@ -1226,7 +1294,8 @@ function bigintStat({
 function trustedOperations(bytes, {
   finalPath = BINDING_PATH,
   finalStat = bigintStat({ size: BigInt(bytes.length) }),
-  postStat = finalStat,
+  openedStat = finalStat,
+  postStat = openedStat,
   readPlan = null,
   closeError = null
 } = {}) {
@@ -1246,7 +1315,7 @@ function trustedOperations(bytes, {
     fstat(fd) {
       calls.push(["fstat", fd]);
       fstatCount += 1;
-      return fstatCount === 1 ? finalStat : postStat;
+      return fstatCount === 1 ? openedStat : postStat;
     },
     read(fd, buffer, offset, length, position) {
       calls.push(["read", fd, offset, length, position]);
@@ -1270,6 +1339,163 @@ function trustedOperations(bytes, {
   return { calls, operations };
 }
 
+function manifestValidationFixture() {
+  const source = v3Binding();
+  const bytesByPath = new Map();
+  const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  const codeManifest = Object.fromEntries(Object.entries(source.codeManifest).map(([role, entry]) => {
+    const bytes = role === "entrypoint"
+      ? Buffer.from("#!/usr/bin/dash\n", "ascii")
+      : Buffer.from(`code:${role}`, "utf8");
+    bytesByPath.set(entry.path, bytes);
+    return [role, { ...entry, sizeBytes: bytes.length, sha256: digest(bytes) }];
+  }));
+  const toolManifest = Object.fromEntries(Object.entries(source.toolManifest).map(([role, entry]) => {
+    const bytes = Buffer.from(`tool:${role}`, "utf8");
+    bytesByPath.set(entry.path, bytes);
+    return [role, { ...entry, sizeBytes: bytes.length, sha256: digest(bytes) }];
+  }));
+
+  const algorithm = Buffer.from("ssh-ed25519", "ascii");
+  const key = Buffer.alloc(32, 0x42);
+  const blob = Buffer.alloc(4 + algorithm.length + 4 + key.length);
+  blob.writeUInt32BE(algorithm.length, 0);
+  algorithm.copy(blob, 4);
+  blob.writeUInt32BE(key.length, 4 + algorithm.length);
+  key.copy(blob, 8 + algorithm.length);
+  const options = "restrict,no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,command=\"/usr/bin/sudo -n -- /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint\"";
+  const authorizedKeyBytes = Buffer.from(`${options} ssh-ed25519 ${blob.toString("base64")} ${AUTHORIZATION_MARKER}\n`, "ascii");
+  const parsedKey = parseCanonicalAuthorizedKeyLine(authorizedKeyBytes);
+  const sudoersBytes = Buffer.from("gccgw-japan-repair-ci ALL=(root:root) NOPASSWD: /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint \"\"\n", "ascii");
+  bytesByPath.set(AUTHORIZED_KEYS_PATH, authorizedKeyBytes);
+  bytesByPath.set(SUDOERS_PATH, sudoersBytes);
+
+  const binding = buildCanonicalRunnerBinding({
+    ...source,
+    codeManifest,
+    toolManifest,
+    sshAuthorization: {
+      ...source.sshAuthorization,
+      authorizedKeysLineSha256: parsedKey.authorizedKeysLineSha256,
+      publicKeyBlobSha256: parsedKey.publicKeyBlobSha256,
+      loginShellPolicy: {
+        ...source.sshAuthorization.loginShellPolicy,
+        sha256: toolManifest.dash.sha256
+      }
+    },
+    sudoAuthorization: {
+      ...source.sudoAuthorization,
+      sudoersFileSha256: digest(sudoersBytes)
+    }
+  });
+
+  const entries = new Map();
+  let nextIno = 100n;
+  const addEntry = (path, { type, uid, gid, mode, nlink }, bytes = Buffer.alloc(0)) => {
+    entries.set(path, {
+      type,
+      uid,
+      gid,
+      mode,
+      nlink: type === "directory" ? 2 : nlink,
+      bytes,
+      ino: nextIno
+    });
+    nextIno += 1n;
+  };
+  for (const entry of Object.values(binding.codeManifest)) addEntry(entry.path, entry, bytesByPath.get(entry.path));
+  for (const entry of Object.values(binding.toolManifest)) addEntry(entry.path, entry, bytesByPath.get(entry.path));
+  for (const role of Object.keys(binding.paths)) {
+    const path = binding.paths[role];
+    const policy = binding.pathPolicies[role];
+    addEntry(path, policy, bytesByPath.get(path));
+  }
+  addEntry(binding.sshAuthorization.homeDirectory, binding.sshAuthorization.homeDirectoryPolicy);
+
+  const calls = [];
+  const descriptors = new Map();
+  let nextFd = 50;
+  const asStat = (entry) => bigintStat({
+    type: entry.type,
+    uid: BigInt(entry.uid),
+    gid: BigInt(entry.gid),
+    mode: BigInt(entry.mode),
+    nlink: BigInt(entry.nlink),
+    ino: entry.ino,
+    size: entry.type === "directory" ? 4096n : BigInt(entry.bytes.length)
+  });
+  const operations = {
+    lstat(path) {
+      calls.push(["lstat", path]);
+      const entry = entries.get(path);
+      if (entry) return asStat(entry);
+      return bigintStat({
+        type: "directory",
+        uid: 0n,
+        gid: 0n,
+        mode: 0o755n,
+        nlink: 2n,
+        ino: BigInt(10000 + path.length),
+        size: 4096n
+      });
+    },
+    open(path, flags) {
+      calls.push(["open", path, flags]);
+      assert.equal(entries.has(path), true);
+      const fd = nextFd;
+      nextFd += 1;
+      descriptors.set(fd, entries.get(path));
+      return fd;
+    },
+    fstat(fd) {
+      calls.push(["fstat", fd]);
+      assert.equal(descriptors.has(fd), true);
+      return asStat(descriptors.get(fd));
+    },
+    read(fd, buffer, offset, length, position) {
+      calls.push(["read", fd, offset, length, position]);
+      assert.equal(descriptors.has(fd), true);
+      const bytes = descriptors.get(fd).bytes;
+      if (position >= bytes.length) return 0;
+      const count = Math.min(length, bytes.length - position);
+      bytes.copy(buffer, offset, position, position + count);
+      return count;
+    },
+    close(fd) {
+      calls.push(["close", fd]);
+      assert.equal(descriptors.delete(fd), true);
+    }
+  };
+  return { binding, calls, operations };
+}
+
+test("manifest trusted reads keep the low-twelve sudo exception separate", () => {
+  const fixture = manifestValidationFixture();
+  const validated = validateRunnerBinding(fixture.binding, {
+    effectiveUid: 0,
+    pathOperations: fixture.operations
+  });
+  assert.equal(validated.codeManifest.entrypoint.mode, 0o755);
+  for (const role of ["bootstrap", "contract", "frame", "runner", "state"]) {
+    assert.equal(validated.codeManifest[role].mode, 0o644);
+  }
+  assert.equal(validated.toolManifest.sudo.mode, 0o4755);
+  for (const role of ["dash", "env", "flock", "node", "systemctl", "unzip", "visudo"]) {
+    assert.equal(validated.toolManifest[role].mode, 0o755);
+  }
+  assert.equal(fixture.calls.filter(([name]) => name === "close").length, fixture.calls.filter(([name]) => name === "open").length);
+
+  for (const toolManifest of [
+    { ...fixture.binding.toolManifest, sudo: { ...fixture.binding.toolManifest.sudo, mode: 0o755 } },
+    { ...fixture.binding.toolManifest, node: { ...fixture.binding.toolManifest.node, mode: 0o4755 } }
+  ]) {
+    assert.throws(
+      () => buildCanonicalRunnerBinding({ ...fixture.binding, toolManifest }),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+  }
+});
+
 test("trusted path validation uses one descriptor, bigint identity, post-consumption policy, and one close", () => {
   const bytes = Buffer.from("bound-bytes");
   const policy = { type: "file", uid: 0, gid: 0, mode: 0o600, nlink: 1 };
@@ -1287,7 +1513,7 @@ test("trusted path validation uses one descriptor, bigint identity, post-consump
   assert.deepEqual(calls.filter(([name]) => name === "lstat").map(([, path]) => path), ["/", "/etc", "/etc/gccgw", "/etc/gccgw/bound"]);
   assert.equal(calls.filter(([name]) => name === "fstat").length, 2);
   assert.equal(calls.filter(([name]) => name === "close").length, 1);
-  assert.equal(calls.find(([name]) => name === "open")[2], fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_CLOEXEC);
+  assert.equal(calls.find(([name]) => name === "open")[2], 0xA0000);
   assert.ok(calls.filter(([name]) => name === "fstat" || name === "close").every(([, fd]) => fd === 41));
 });
 
@@ -1296,7 +1522,7 @@ test("directory nlink is a positive observed sentinel and drift fails closed", (
   const good = bigintStat({ type: "directory", mode: 0o700n, nlink: 2n, size: 4096n });
   const goodOps = trustedOperations(Buffer.alloc(0), { finalPath: "/state", finalStat: good });
   validateTrustedPathChain("/state", policy, goodOps.operations);
-  assert.equal(goodOps.calls.find(([name]) => name === "open")[2], fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_CLOEXEC | fsConstants.O_DIRECTORY);
+  assert.equal(goodOps.calls.find(([name]) => name === "open")[2], 0xB0000);
   for (const [candidatePolicy, first, after] of [
     [{ ...policy, nlink: 1 }, good, good],
     [policy, { ...good, nlink: 0n }, { ...good, nlink: 0n }],
@@ -1309,6 +1535,84 @@ test("directory nlink is a positive observed sentinel and drift fails closed", (
       (error) => error.code === "restricted_identity_rejected"
     );
     assert.ok(fixture.calls.filter(([name]) => name === "close").length <= 1);
+  }
+});
+
+test("runtime trusted paths reject writable and special policy modes before open", () => {
+  for (const mode of [0o666, 0o4755, 0o2755, 0o1755]) {
+    const stats = bigintStat({ mode: BigInt(mode) });
+    const fixture = trustedOperations(Buffer.alloc(0), {
+      finalPath: "/runtime",
+      finalStat: stats
+    });
+    assert.throws(
+      () => validateTrustedPathChain(
+        "/runtime",
+        { type: "file", uid: 0, gid: 0, mode, nlink: 1 },
+        fixture.operations
+      ),
+      (error) => error.code === "restricted_identity_rejected"
+    );
+    assert.equal(fixture.calls.filter(([name]) => name === "open").length, 0);
+    assert.equal(fixture.calls.filter(([name]) => name === "close").length, 0);
+  }
+});
+
+test("runtime trusted paths reject writable and special bits at every observed stat", () => {
+  const policy = { type: "file", uid: 0, gid: 0, mode: 0o755, nlink: 1 };
+  const clean = bigintStat({ mode: 0o755n });
+  for (const mode of [0o666, 0o4755, 0o2755, 0o1755]) {
+    const drift = bigintStat({ mode: BigInt(mode) });
+    for (const [phase, finalStat, openedStat, postStat, expectedCloses] of [
+      ["lstat", drift, drift, drift, 0],
+      ["initial-fstat", clean, drift, drift, 1],
+      ["post-consumption-fstat", clean, clean, drift, 1]
+    ]) {
+      const fixture = trustedOperations(Buffer.alloc(0), {
+        finalPath: "/runtime",
+        finalStat,
+        openedStat,
+        postStat
+      });
+      assert.throws(
+        () => validateTrustedPathChain("/runtime", policy, fixture.operations, () => phase),
+        (error) => error.code === "restricted_identity_rejected",
+        `${phase} accepted ${mode.toString(8)}`
+      );
+      assert.equal(fixture.calls.filter(([name]) => name === "close").length, expectedCloses);
+    }
+  }
+});
+
+test("native Linux flag support is audited independently of host constants", async () => {
+  const runner = await import("../../scripts/japan-tuic-additive-repair-runner.mjs");
+  assert.equal(typeof runner.validateNativeLinuxOpenFlags, "function");
+  if (typeof runner.validateNativeLinuxOpenFlags !== "function") return;
+
+  const audited = {
+    O_RDONLY: 0x00000,
+    O_DIRECTORY: 0x10000,
+    O_NOFOLLOW: 0x20000,
+    O_CLOEXEC: 0x80000
+  };
+  assert.deepEqual(
+    runner.validateNativeLinuxOpenFlags({ platform: "linux", constants: audited }),
+    { fileFlags: 0xA0000, directoryFlags: 0xB0000 }
+  );
+
+  const failures = [{ platform: "win32", constants: audited }];
+  for (const key of Object.keys(audited)) {
+    const missing = { ...audited };
+    delete missing[key];
+    failures.push({ platform: "linux", constants: missing });
+    failures.push({ platform: "linux", constants: { ...audited, [key]: audited[key] ^ 1 } });
+    failures.push({ platform: "linux", constants: { ...audited, [key]: String(audited[key]) } });
+  }
+  for (const input of failures) {
+    assert.throws(
+      () => runner.validateNativeLinuxOpenFlags(input),
+      (error) => error.code === "restricted_identity_rejected"
+    );
   }
 });
 

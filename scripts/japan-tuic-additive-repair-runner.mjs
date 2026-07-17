@@ -89,14 +89,27 @@ function exactKeys(value, expected) {
   return keys.length === expected.length && keys.every((key, index) => key === expected[index]);
 }
 
+function utf8PathIdentity(value) {
+  const bytes = Buffer.from(value, "utf8");
+  if (bytes.toString("utf8") !== value) restricted();
+  return bytes.toString("hex");
+}
+
 function safeAbsolutePath(value) {
-  return typeof value === "string"
+  const structurallySafe = typeof value === "string"
     && value.length > 1
     && value.length <= 4096
     && !value.includes("\0")
     && !value.includes("\\")
     && posix.isAbsolute(value)
     && posix.normalize(value) === value;
+  if (!structurallySafe) return false;
+  try {
+    utf8PathIdentity(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function validateLegacyRunnerBindingForLocalTest(input = {}) {
@@ -110,7 +123,7 @@ function validateLegacyRunnerBindingForLocalTest(input = {}) {
   if (!exactKeys(paths, [...BINDING_PATH_KEYS].sort())) throw safeError("target_identity_mismatch");
   const pathValues = BINDING_PATH_KEYS.map((key) => paths[key]);
   if (pathValues.some((path) => !safeAbsolutePath(path))
-    || new Set(pathValues).size !== pathValues.length) {
+    || new Set(pathValues.map(utf8PathIdentity)).size !== pathValues.length) {
     throw safeError("target_identity_mismatch");
   }
   const units = record(value.units);
@@ -183,6 +196,14 @@ const FIXED_PATHS = Object.freeze({
 });
 const SOURCE_FILE_KEYS = Object.freeze(["ordinal", "path", "sha256", "uid", "gid", "mode", "nlink"]);
 const POLICY_KEYS = Object.freeze(["type", "uid", "gid", "mode", "nlink"]);
+const AUDITED_LINUX_OPEN_CONSTANTS = Object.freeze({
+  O_RDONLY: 0x00000,
+  O_DIRECTORY: 0x10000,
+  O_NOFOLLOW: 0x20000,
+  O_CLOEXEC: 0x80000
+});
+const AUDITED_FILE_OPEN_FLAGS = 0xA0000;
+const AUDITED_DIRECTORY_OPEN_FLAGS = 0xB0000;
 
 function restricted() {
   throw safeError(RESTRICTED_CODE);
@@ -382,7 +403,7 @@ export function buildCanonicalRunnerBinding(input = {}) {
   if (!hasKeys(pathInput, PATH_ROLES)) restricted();
   const paths = canonicalObject(pathInput, PATH_ROLES);
   if (Object.values(paths).some((path) => !safeAbsolutePath(path))
-    || new Set(Object.values(paths)).size !== PATH_ROLES.length) restricted();
+    || new Set(Object.values(paths).map(utf8PathIdentity)).size !== PATH_ROLES.length) restricted();
   const policyInput = record(value.pathPolicies);
   if (!hasKeys(policyInput, PATH_ROLES)) restricted();
   const pathPolicies = Object.fromEntries(PATH_ROLES.map((role) => [role, canonicalPathPolicy(policyInput[role])]));
@@ -432,15 +453,16 @@ function buildCanonicalSourceClosure(input, { type, rootConfig }) {
   const seen = new Set();
   const files = value.files.map((inputFile, index) => {
     const file = record(inputFile);
+    const pathIdentity = safeAbsolutePath(file.path) ? utf8PathIdentity(file.path) : null;
     if (!hasKeys(file, SOURCE_FILE_KEYS)
       || file.ordinal !== index
-      || !safeAbsolutePath(file.path)
-      || seen.has(file.path)
+      || pathIdentity === null
+      || seen.has(pathIdentity)
       || !lowerSha256(file.sha256)
       || file.uid !== 0 || file.gid !== 0
       || !nonNegativeSafeInteger(file.mode) || file.mode > 0o777
       || (file.mode & 0o022) !== 0 || file.nlink !== 1) restricted();
-    seen.add(file.path);
+    seen.add(pathIdentity);
     return canonicalObject(file, SOURCE_FILE_KEYS);
   });
   if (files[0].path !== rootConfig) restricted();
@@ -645,6 +667,7 @@ export function parseCanonicalAuthorizedKeyLine(input) {
 }
 
 function nativePathOperations() {
+  validateNativeLinuxOpenFlags({ platform: process.platform, constants });
   return {
     lstat: (path) => lstatSync(path, { bigint: true }),
     open: (path, flags) => openSync(path, flags),
@@ -652,6 +675,27 @@ function nativePathOperations() {
     read: (fd, buffer, offset, length, position) => readSync(fd, buffer, offset, length, position),
     close: (fd) => closeSync(fd)
   };
+}
+
+export function validateNativeLinuxOpenFlags(input = {}) {
+  try {
+    const value = record(input);
+    const provided = record(value.constants);
+    if (!hasKeys(value, ["platform", "constants"]) || value.platform !== "linux") restricted();
+    for (const [name, expected] of Object.entries(AUDITED_LINUX_OPEN_CONSTANTS)) {
+      if (!Object.hasOwn(provided, name)
+        || typeof provided[name] !== "number"
+        || !Number.isInteger(provided[name])
+        || provided[name] !== expected) restricted();
+    }
+    return {
+      fileFlags: AUDITED_FILE_OPEN_FLAGS,
+      directoryFlags: AUDITED_DIRECTORY_OPEN_FLAGS
+    };
+  } catch (error) {
+    if (error instanceof JapanTuicRepairContractError) throw error;
+    restricted();
+  }
 }
 
 function validatePathOperations(input) {
@@ -662,7 +706,7 @@ function validatePathOperations(input) {
   return value;
 }
 
-function validateBigintStat(stats, policy) {
+function validateBigintStatIdentity(stats, policy) {
   if (!stats || typeof stats !== "object"
     || !["uid", "gid", "mode", "nlink", "dev", "ino", "size"]
       .every((key) => typeof stats[key] === "bigint")
@@ -671,8 +715,7 @@ function validateBigintStat(stats, policy) {
     || typeof stats.isSymbolicLink !== "function"
     || stats.isSymbolicLink()
     || stats.uid !== BigInt(policy.uid)
-    || stats.gid !== BigInt(policy.gid)
-    || (stats.mode & 0o7777n) !== BigInt(policy.mode)) restricted();
+    || stats.gid !== BigInt(policy.gid)) restricted();
   if (policy.type === "file") {
     if (policy.nlink !== 1 || !stats.isFile() || stats.isDirectory() || stats.nlink !== 1n) restricted();
   } else if (policy.type === "directory") {
@@ -680,6 +723,29 @@ function validateBigintStat(stats, policy) {
   } else {
     restricted();
   }
+}
+
+function validateRuntimePathStat(stats, policy) {
+  validateBigintStatIdentity(stats, policy);
+  if ((stats.mode & 0o7000n) !== 0n
+    || (stats.mode & 0o777n) !== BigInt(policy.mode)) restricted();
+}
+
+function validateManifestStat(stats, policy) {
+  validateBigintStatIdentity(stats, policy);
+  if ((stats.mode & 0o7777n) !== BigInt(policy.mode)) restricted();
+}
+
+function canonicalManifestPathPolicy(input) {
+  const policy = record(input);
+  if (!hasKeys(policy, POLICY_KEYS)
+    || !new Set(["file", "directory"]).has(policy.type)
+    || !nonNegativeSafeInteger(policy.uid)
+    || !nonNegativeSafeInteger(policy.gid)
+    || !nonNegativeSafeInteger(policy.mode)
+    || policy.mode > 0o7777
+    || (policy.type === "file" ? policy.nlink !== 1 : policy.nlink !== null)) restricted();
+  return canonicalObject(policy, POLICY_KEYS);
 }
 
 function pathComponents(path) {
@@ -693,24 +759,21 @@ function pathComponents(path) {
   return output;
 }
 
-export function validateTrustedPathChain(path, inputPolicy, inputOperations, consumeOpened) {
+function validateTrustedPathChainByAuthority(path, inputPolicy, inputOperations, consumeOpened, authority) {
   let fd;
   let opened = false;
   let result;
   let failure;
+  let operations;
   try {
     if (!safeAbsolutePath(path) || path === "/" || (consumeOpened !== undefined && typeof consumeOpened !== "function")) {
       restricted();
     }
-    const policy = record(inputPolicy);
-    if (!hasKeys(policy, POLICY_KEYS)
-      || !new Set(["file", "directory"]).has(policy.type)
-      || !nonNegativeSafeInteger(policy.uid)
-      || !nonNegativeSafeInteger(policy.gid)
-      || !nonNegativeSafeInteger(policy.mode)
-      || policy.mode > 0o7777
-      || (policy.type === "file" ? policy.nlink !== 1 : policy.nlink !== null)) restricted();
-    const operations = validatePathOperations(inputOperations);
+    const policy = authority === "manifest"
+      ? canonicalManifestPathPolicy(inputPolicy)
+      : canonicalPathPolicy(inputPolicy);
+    const validateFinalStat = authority === "manifest" ? validateManifestStat : validateRuntimePathStat;
+    operations = validatePathOperations(inputOperations);
     const components = pathComponents(path);
     const stats = components.map((component) => operations.lstat(component));
     for (const ancestor of stats.slice(0, -1)) {
@@ -721,21 +784,18 @@ export function validateTrustedPathChain(path, inputPolicy, inputOperations, con
         || (ancestor.mode & 0o022n) !== 0n) restricted();
     }
     const finalLstat = stats.at(-1);
-    validateBigintStat(finalLstat, policy);
-    const flags = (constants.O_RDONLY ?? 0)
-      | (constants.O_NOFOLLOW ?? 0)
-      | (constants.O_CLOEXEC ?? 0)
-      | (policy.type === "directory" ? (constants.O_DIRECTORY ?? 0) : 0);
+    validateFinalStat(finalLstat, policy);
+    const flags = policy.type === "directory" ? AUDITED_DIRECTORY_OPEN_FLAGS : AUDITED_FILE_OPEN_FLAGS;
     fd = operations.open(path, flags);
     if (!Number.isInteger(fd) || fd < 0) restricted();
     opened = true;
     const before = operations.fstat(fd);
-    validateBigintStat(before, policy);
+    validateFinalStat(before, policy);
     if (before.dev !== finalLstat.dev || before.ino !== finalLstat.ino
       || (policy.type === "directory" && before.nlink !== finalLstat.nlink)) restricted();
     if (consumeOpened) result = consumeOpened(fd, before);
     const after = operations.fstat(fd);
-    validateBigintStat(after, policy);
+    validateFinalStat(after, policy);
     if (after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size
       || (policy.type === "directory" && after.nlink !== before.nlink)) restricted();
   } catch (error) {
@@ -743,7 +803,7 @@ export function validateTrustedPathChain(path, inputPolicy, inputOperations, con
   } finally {
     if (opened) {
       try {
-        inputOperations.close(fd);
+        operations.close(fd);
       } catch (error) {
         failure = error;
       }
@@ -751,6 +811,14 @@ export function validateTrustedPathChain(path, inputPolicy, inputOperations, con
   }
   if (failure) restricted();
   return result;
+}
+
+export function validateTrustedPathChain(path, inputPolicy, inputOperations, consumeOpened) {
+  return validateTrustedPathChainByAuthority(path, inputPolicy, inputOperations, consumeOpened, "runtime");
+}
+
+function validateManifestPathChain(path, policy, operations, consumeOpened) {
+  return validateTrustedPathChainByAuthority(path, policy, operations, consumeOpened, "manifest");
 }
 
 function readExactOpenedFile(fd, stats, operations, maximum) {
@@ -829,7 +897,7 @@ export function loadRootOwnedBinding(input = {}) {
 }
 
 function readBoundManifestFile(path, manifest, operations, maximum) {
-  return validateTrustedPathChain(
+  return validateManifestPathChain(
     path,
     { type: "file", uid: manifest.uid, gid: manifest.gid, mode: manifest.mode, nlink: 1 },
     operations,
