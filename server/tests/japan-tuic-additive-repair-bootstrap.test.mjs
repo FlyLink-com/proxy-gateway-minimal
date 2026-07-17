@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { dirname, posix, resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, posix, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createContext, SourceTextModule, SyntheticModule } from "node:vm";
@@ -11,6 +13,10 @@ const BOOTSTRAP_SOURCE_PATH = resolve(SCRIPTS_ROOT, "japan-tuic-additive-repair-
 const BOOTSTRAP_PATH = "/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs";
 const BINDING_PATH = "/etc/gccgw/japan-tuic-additive-repair-binding.json";
 const ENTRYPOINT_PATH = "/usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint";
+const EXPECTED_EXEC_ARGV = Object.freeze([
+  "--disable-proto=throw",
+  "--import=/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs"
+]);
 const APPLICATION_PATHS = Object.freeze({
   contract: "/usr/local/libexec/gccgw/japan-tuic-additive-repair-contract.mjs",
   frame: "/usr/local/libexec/gccgw/japan-tuic-additive-repair-frame.mjs",
@@ -208,6 +214,7 @@ function makeFixture({
   const fakeProcess = {
     platform: "linux",
     execPath: "/usr/bin/node",
+    execArgv: [...EXPECTED_EXEC_ARGV],
     argv: [
       "/usr/bin/node",
       "/usr/local/libexec/gccgw/japan-tuic-additive-repair-runner.mjs",
@@ -375,6 +382,55 @@ test("bootstrap plus application closure has exactly one reviewed JavaScript imp
   assert.equal(dynamicImportCount(sources[1]), 1);
 });
 
+test("real Node --import evaluates preload before a static dependency and main", (t) => {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "japan-bootstrap-order-"));
+  t.after(() => rmSync(fixtureRoot, { recursive: true, force: true }));
+  const preloadPath = join(fixtureRoot, "preload.mjs");
+  const dependencyPath = join(fixtureRoot, "dependency.mjs");
+  const mainPath = join(fixtureRoot, "main.mjs");
+  const identity = process.execPath + "|" + process.version;
+  writeFileSync(preloadPath, 'console.log("preload|" + process.execPath + "|" + process.version);\n', "utf8");
+  writeFileSync(dependencyPath, 'console.log("dependency");\n', "utf8");
+  writeFileSync(mainPath, 'import "./dependency.mjs";\nconsole.log("main|" + process.execPath + "|" + process.version);\n', "utf8");
+
+  const preloadOption = "--import=" + pathToFileURL(preloadPath).href;
+  const result = spawnSync(process.execPath, [preloadOption, mainPath], {
+    encoding: "utf8",
+    env: { ...process.env, NODE_OPTIONS: "", NODE_PATH: "" }
+  });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.signal, null);
+  assert.equal(result.stderr, "");
+  assert.deepEqual(result.stdout.trimEnd().split(/\r?\n/), [
+    "preload|" + identity,
+    "dependency",
+    "main|" + identity
+  ]);
+});
+
+test("real Node --import failure prevents static dependency and main evaluation", (t) => {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "japan-bootstrap-failure-"));
+  t.after(() => rmSync(fixtureRoot, { recursive: true, force: true }));
+  const preloadPath = join(fixtureRoot, "preload.mjs");
+  const dependencyPath = join(fixtureRoot, "dependency.mjs");
+  const mainPath = join(fixtureRoot, "main.mjs");
+  writeFileSync(preloadPath, 'console.log("preload-failed");\nthrow new Error("fixture_preload_rejected");\n', "utf8");
+  writeFileSync(dependencyPath, 'console.log("dependency");\n', "utf8");
+  writeFileSync(mainPath, 'import "./dependency.mjs";\nconsole.log("main");\n', "utf8");
+
+  const result = spawnSync(
+    process.execPath,
+    ["--import=" + pathToFileURL(preloadPath).href, mainPath],
+    { encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "", NODE_PATH: "" } }
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.equal(result.signal, null);
+  assert.deepEqual(result.stdout.trimEnd().split(/\r?\n/), ["preload-failed"]);
+  assert.doesNotMatch(result.stdout, /dependency|main/);
+});
+
 test("bootstrap rejects every application drift before any top-level or main evaluation", async () => {
   const manifestBytes = applicationBytes();
   for (const role of Object.keys(APPLICATION_PATHS)) {
@@ -405,6 +461,33 @@ test("bootstrap rejects wrong root invocation before opening the binding", async
     { env: { SSH_ORIGINAL_COMMAND: " " } }
   ]) {
     const fixture = makeFixture({ processOverrides });
+    await rejectsRestricted(fixture);
+    assert.equal(fixture.calls.some(([name]) => name === "open"), false);
+  }
+});
+
+test("bootstrap accepts only the exact two Node startup arguments", async () => {
+  const exact = makeFixture();
+  assert.deepEqual(exact.process.execArgv, EXPECTED_EXEC_ARGV);
+  await evaluateBootstrap(exact);
+
+  for (const execArgv of [
+    undefined,
+    [],
+    ["--disable-proto=throw"],
+    [EXPECTED_EXEC_ARGV[1]],
+    [EXPECTED_EXEC_ARGV[1], EXPECTED_EXEC_ARGV[0]],
+    [...EXPECTED_EXEC_ARGV, "--require=/tmp/unreviewed.cjs"],
+    ["--require=/tmp/unreviewed.cjs", ...EXPECTED_EXEC_ARGV],
+    [...EXPECTED_EXEC_ARGV, "--import=/tmp/unreviewed.mjs"],
+    [...EXPECTED_EXEC_ARGV, "--experimental-loader=/tmp/unreviewed-loader.mjs"],
+    [...EXPECTED_EXEC_ARGV, "--loader=/tmp/unreviewed-loader.mjs"],
+    [...EXPECTED_EXEC_ARGV, "--inspect=127.0.0.1:9229"],
+    [EXPECTED_EXEC_ARGV[0], "--import", BOOTSTRAP_PATH],
+    ["--disable-proto", "throw", EXPECTED_EXEC_ARGV[1]],
+    [EXPECTED_EXEC_ARGV[0], EXPECTED_EXEC_ARGV[1], EXPECTED_EXEC_ARGV[1]]
+  ]) {
+    const fixture = makeFixture({ processOverrides: { execArgv } });
     await rejectsRestricted(fixture);
     assert.equal(fixture.calls.some(([name]) => name === "open"), false);
   }

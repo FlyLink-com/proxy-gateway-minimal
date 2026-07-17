@@ -15,6 +15,10 @@ const BINDING_PATH = "/etc/gccgw/japan-tuic-additive-repair-binding.json";
 const BOOTSTRAP_PATH = "/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs";
 const RUNNER_PATH = "/usr/local/libexec/gccgw/japan-tuic-additive-repair-runner.mjs";
 const ENTRYPOINT_PATH = "/usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint";
+const NODE_EXEC_ARGV = Object.freeze([
+  "--disable-proto=throw",
+  "--import=/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs"
+]);
 const CODE_ROLES = Object.freeze(["bootstrap", "contract", "entrypoint", "frame", "runner", "state"]);
 const APPLICATION_ROLES = Object.freeze(["contract", "frame", "runner", "state"]);
 const CODE_PATHS = Object.freeze({
@@ -65,10 +69,15 @@ function maximumForRole(role) {
 }
 
 function validateInvocation() {
+  // This exact-startup check detects conformance only. It cannot undo code a
+  // preceding malicious preload already evaluated; entrypoint/bootstrap stay TCB.
   if (process.platform !== "linux"
     || typeof process.geteuid !== "function"
     || process.geteuid() !== 0
     || process.execPath !== "/usr/bin/node"
+    || !Array.isArray(process.execArgv)
+    || process.execArgv.length !== NODE_EXEC_ARGV.length
+    || !process.execArgv.every((value, index) => value === NODE_EXEC_ARGV[index])
     || fileURLToPath(import.meta.url) !== BOOTSTRAP_PATH
     || !Array.isArray(process.argv)
     || process.argv.length !== 4
