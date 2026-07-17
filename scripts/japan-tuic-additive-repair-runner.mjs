@@ -486,15 +486,20 @@ function canonicalAccountGroupNames(groupNames) {
   if (!Array.isArray(groupNames) || groupNames.length === 0 || groupNames.length > MAX_ACCOUNT_GROUPS) restricted();
   const values = groupNames.map((name) => {
     if (typeof name !== "string" || !ACCOUNT_GROUP_NAME.test(name)) restricted();
-    const bytes = Buffer.from(name, "ascii");
-    if (bytes.toString("ascii") !== name) restricted();
-    return { bytes, name };
+    return name;
   });
-  values.sort((left, right) => Buffer.compare(left.bytes, right.bytes));
+  values.sort((left, right) => {
+    const length = Math.min(left.length, right.length);
+    for (let index = 0; index < length; index += 1) {
+      const difference = left.charCodeAt(index) - right.charCodeAt(index);
+      if (difference !== 0) return difference;
+    }
+    return left.length - right.length;
+  });
   for (let index = 1; index < values.length; index += 1) {
-    if (Buffer.compare(values[index - 1].bytes, values[index].bytes) === 0) restricted();
+    if (values[index - 1] === values[index]) restricted();
   }
-  return values.map(({ name }) => name);
+  return values;
 }
 
 function canonicalAccountGroupIds(groupIds, primaryGroupId) {
@@ -1065,10 +1070,10 @@ function accountDelimitedRanges(buffer, end, delimiter, expectedCount) {
 
 function accountRangeEqualsAscii(buffer, range, expected) {
   const [start, end] = range;
-  const expectedBytes = Buffer.from(expected, "ascii");
-  if (end - start !== expectedBytes.length) restricted();
-  for (let index = 0; index < expectedBytes.length; index += 1) {
-    if (buffer[start + index] !== expectedBytes[index]) restricted();
+  if (typeof expected !== "string" || end - start !== expected.length) restricted();
+  for (let index = 0; index < expected.length; index += 1) {
+    const byte = expected.charCodeAt(index);
+    if (byte > 0x7f || buffer[start + index] !== byte) restricted();
   }
 }
 

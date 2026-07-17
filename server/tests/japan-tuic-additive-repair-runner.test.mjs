@@ -440,17 +440,26 @@ await module.link((specifier) => {
 await module.evaluate();
 const sentinel = Buffer.from("SENSITIVE_SENTINEL", "ascii");
 const originalToString = Buffer.prototype.toString;
+const originalBufferFrom = Buffer.from;
+const accountAsciiCopies = [];
 let account;
 let error;
 try {
+  const nativeOperations = module.namespace.__test_createNativeAccountOperations(payload.binding);
+  Buffer.from = function (value, encoding, ...arguments_) {
+    const copy = originalBufferFrom.call(Buffer, value, encoding, ...arguments_);
+    if (typeof value === "string" && encoding === "ascii") accountAsciiCopies.push(copy);
+    return copy;
+  };
   Buffer.prototype.toString = function (...arguments_) {
     if (this.includes(sentinel)) throw new Error("whole_sensitive_decode");
     return originalToString.apply(this, arguments_);
   };
-  account = module.namespace.__test_createNativeAccountOperations(payload.binding).readAccount();
+  account = nativeOperations.readAccount();
 } catch (caught) {
   error = caught && caught.code ? caught.code : "unexpected";
 } finally {
+  Buffer.from = originalBufferFrom;
   Buffer.prototype.toString = originalToString;
 }
 process.stdout.write(JSON.stringify({
@@ -472,7 +481,9 @@ process.stdout.write(JSON.stringify({
   error,
   calls,
   outputCount: outputIndex,
-  zeroized: captures.every((buffer) => buffer.every((byte) => byte === 0))
+  zeroized: captures.every((buffer) => buffer.every((byte) => byte === 0)),
+  accountAsciiCopyCount: accountAsciiCopies.length,
+  accountAsciiCopiesZeroized: accountAsciiCopies.every((buffer) => buffer.every((byte) => byte === 0))
 }));
 `;
   writeFileSync(harnessPath, harness, "utf8");
@@ -996,6 +1007,35 @@ test("account buffers are delimiter parsed by the actual private native source a
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
+  }
+});
+
+test("private native account source zeroizes every account-derived ASCII copy on success and rejection", () => {
+  const encode = (value) => Buffer.from(value, "utf8").toString("base64");
+  const probes = [
+    {
+      name: "success",
+      outputs: nativeAccountOutputs(),
+      error: undefined
+    },
+    {
+      name: "duplicate group name",
+      outputs: nativeAccountOutputs({ 5: { stdout: encode("ops ops\n") } }),
+      error: "restricted_identity_rejected"
+    },
+    {
+      name: "bound home comparison failure",
+      outputs: nativeAccountOutputs({
+        0: { stdout: encode("gccgw-japan-repair-ci:x:975:975:SENSITIVE_SENTINEL:/other:/usr/bin/dash\n") }
+      }),
+      error: "restricted_identity_rejected"
+    }
+  ];
+  for (const expected of probes) {
+    const probe = nativeAccountVmProbe({ binding: nativeAccountBinding(), outputs: expected.outputs });
+    assert.equal(probe.error, expected.error, expected.name);
+    assert.equal(probe.accountAsciiCopyCount, 0, expected.name);
+    assert.equal(probe.accountAsciiCopiesZeroized, true, expected.name);
   }
 });
 
