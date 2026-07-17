@@ -135,6 +135,7 @@ const LOWER_SHA256 = /^[0-9a-f]{64}$/;
 const LOWER_COMMIT = /^[0-9a-f]{40}$/;
 const EMPTY_SHA256 = createHash("sha256").update(Buffer.alloc(0)).digest("hex");
 const BINDING_PATH = "/etc/gccgw/japan-tuic-additive-repair-binding.json";
+const BOOTSTRAP_PATH = "/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs";
 const ENTRYPOINT_PATH = "/usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint";
 const AUTHORIZED_KEYS_PATH = "/etc/ssh/authorized_keys/gccgw-japan-repair-ci";
 const ACCOUNT_HOME_PATH = "/var/lib/gccgw-japan-repair-ci";
@@ -147,8 +148,9 @@ const TOP_LEVEL_KEYS = Object.freeze([
   "sshAuthorization", "sudoAuthorization", "paths", "pathPolicies", "units",
   "writerFreeze", "authorizationMarker"
 ]);
-const CODE_ROLES = Object.freeze(["contract", "entrypoint", "frame", "runner", "state"]);
+const CODE_ROLES = Object.freeze(["bootstrap", "contract", "entrypoint", "frame", "runner", "state"]);
 const CODE_PATHS = Object.freeze({
+  bootstrap: BOOTSTRAP_PATH,
   contract: "/usr/local/libexec/gccgw/japan-tuic-additive-repair-contract.mjs",
   entrypoint: ENTRYPOINT_PATH,
   frame: "/usr/local/libexec/gccgw/japan-tuic-additive-repair-frame.mjs",
@@ -361,7 +363,7 @@ export function buildCanonicalRunnerBinding(input = {}) {
     codeManifest[role] = canonicalManifestEntry(codeInput[role], {
       path: CODE_PATHS[role],
       mode: role === "entrypoint" ? 0o755 : 0o644,
-      maximum: role === "entrypoint" ? 16384 : 1048576
+      maximum: role === "entrypoint" ? 16384 : role === "bootstrap" ? 65536 : 1048576
     });
   }
   const toolInput = record(value.toolManifest);
@@ -850,7 +852,8 @@ export function validateRunnerBinding(input = {}, context = {}) {
     if (binding.expectedEuid !== contextValue.effectiveUid) restricted();
     for (const role of CODE_ROLES) {
       const entry = binding.codeManifest[role];
-      const bytes = readBoundManifestFile(entry.path, entry, operations, role === "entrypoint" ? 16384 : 1048576);
+      const maximum = role === "entrypoint" ? 16384 : role === "bootstrap" ? 65536 : 1048576;
+      const bytes = readBoundManifestFile(entry.path, entry, operations, maximum);
       if (role === "entrypoint" && !bytes.subarray(0, 16).equals(Buffer.from("#!/usr/bin/dash\n", "ascii"))) restricted();
     }
     for (const role of TOOL_ROLES) {

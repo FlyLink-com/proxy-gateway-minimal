@@ -15,7 +15,7 @@ set -eu
 exec /usr/bin/env -i LANG=C.UTF-8 PATH=/usr/bin:/bin \\
   /usr/bin/flock --exclusive --nonblock --conflict-exit-code 75 \\
   /var/lib/gccgw/japan-tuic-additive-repair/repair.lock \\
-  /usr/bin/node --disable-proto=throw \\
+  /usr/bin/node --disable-proto=throw --import=/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs \\
   /usr/local/libexec/gccgw/japan-tuic-additive-repair-runner.mjs \\
   --binding /etc/gccgw/japan-tuic-additive-repair-binding.json
 `;
@@ -27,9 +27,13 @@ test("forced entrypoint bytes are the exact no-variable command", () => {
   assert.match(source, /LANG=C\.UTF-8 PATH=\/usr\/bin:\/bin/);
   assert.match(source, /\/usr\/bin\/flock --exclusive --nonblock --conflict-exit-code 75/);
   assert.match(source, /\/var\/lib\/gccgw\/japan-tuic-additive-repair\/repair\.lock/);
-  assert.match(source, /\/usr\/bin\/node --disable-proto=throw/);
+  assert.match(
+    source,
+    /\/usr\/bin\/node --disable-proto=throw --import=\/usr\/local\/libexec\/gccgw\/japan-tuic-additive-repair-bootstrap\.mjs \\\n  \/usr\/local\/libexec\/gccgw\/japan-tuic-additive-repair-runner\.mjs/
+  );
   assert.match(source, /\/usr\/local\/libexec\/gccgw\/japan-tuic-additive-repair-runner\.mjs/);
   assert.match(source, /--binding \/etc\/gccgw\/japan-tuic-additive-repair-binding\.json/);
+  assert.equal(source.split("\n").length - 1, 8);
 });
 
 test("forced entrypoint exposes no alternate command surface", () => {

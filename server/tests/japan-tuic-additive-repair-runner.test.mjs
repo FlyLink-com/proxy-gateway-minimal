@@ -46,6 +46,7 @@ const SHA_B = "b".repeat(64);
 const SHA_C = "c".repeat(64);
 const WORKFLOW_COMMIT = "d".repeat(40);
 const AUTHORIZATION_MARKER = JAPAN_TUIC_REPAIR_GATE_V3.executionGateId;
+const BOOTSTRAP_PATH = "/usr/local/libexec/gccgw/japan-tuic-additive-repair-bootstrap.mjs";
 const ENTRYPOINT_PATH = "/usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint";
 const BINDING_PATH = "/etc/gccgw/japan-tuic-additive-repair-binding.json";
 const AUTHORIZED_KEYS_PATH = "/etc/ssh/authorized_keys/gccgw-japan-repair-ci";
@@ -100,6 +101,7 @@ function codeEntry(path, mode, overrides = {}) {
 
 function v3CodeManifest() {
   return {
+    bootstrap: codeEntry(BOOTSTRAP_PATH, 0o644),
     contract: codeEntry("/usr/local/libexec/gccgw/japan-tuic-additive-repair-contract.mjs", 0o644),
     entrypoint: codeEntry(ENTRYPOINT_PATH, 0o755),
     frame: codeEntry("/usr/local/libexec/gccgw/japan-tuic-additive-repair-frame.mjs", 0o644),
@@ -549,7 +551,8 @@ test("schema-3 binding builder emits every recursive key in the frozen order", (
     "sshAuthorization", "sudoAuthorization", "paths", "pathPolicies", "units",
     "writerFreeze", "authorizationMarker"
   ]);
-  assert.deepEqual(Object.keys(binding.codeManifest), ["contract", "entrypoint", "frame", "runner", "state"]);
+  assert.deepEqual(Object.keys(binding.codeManifest), ["bootstrap", "contract", "entrypoint", "frame", "runner", "state"]);
+  assert.deepEqual(binding.codeManifest.bootstrap, codeEntry(BOOTSTRAP_PATH, 0o644));
   assert.deepEqual(Object.keys(binding.toolManifest), ["dash", "env", "flock", "node", "sudo", "systemctl", "unzip", "visudo"]);
   assert.deepEqual(Object.keys(binding.paths), [
     "authorizedKeys", "backupDirectory", "currentMap", "lockFile", "materialStore",
@@ -583,6 +586,7 @@ test("binding rejects relaxed fixed roles, alias paths, drifted claim, and manif
     { ...binding, expectedWorkflowCommit: WORKFLOW_COMMIT.toUpperCase() },
     { ...binding, paths: { ...binding.paths, currentMap: binding.paths.mihomoConfig } },
     { ...binding, pathPolicies: { ...binding.pathPolicies, currentMap: { ...binding.pathPolicies.currentMap, mode: 0o644 } } },
+    { ...binding, codeManifest: { ...binding.codeManifest, bootstrap: { ...binding.codeManifest.bootstrap, sizeBytes: 65537 } } },
     { ...binding, codeManifest: { ...binding.codeManifest, entrypoint: { ...binding.codeManifest.entrypoint, sizeBytes: 16385 } } },
     { ...binding, codeManifest: { ...binding.codeManifest, runner: { ...binding.codeManifest.runner, sizeBytes: 1048577 } } },
     { ...binding, toolManifest: { ...binding.toolManifest, node: { ...binding.toolManifest.node, sizeBytes: 268435457 } } },
@@ -602,6 +606,7 @@ test("binding rejects relaxed fixed roles, alias paths, drifted claim, and manif
     ...binding,
     codeManifest: {
       ...binding.codeManifest,
+      bootstrap: { ...binding.codeManifest.bootstrap, sizeBytes: 65536 },
       entrypoint: { ...binding.codeManifest.entrypoint, sizeBytes: 16384 },
       runner: { ...binding.codeManifest.runner, sizeBytes: 1048576 }
     },
