@@ -3496,7 +3496,11 @@ function deriveAuthorizationSshPolicy(graph, syntax, accountCore) {
     preimage = Buffer.alloc(preimageLength);
     if (emitAuthorizationSshCoverage(coverage, preimage) !== preimageLength) restricted();
     const coverageSha256 = createHash("sha256").update(preimage).digest("hex");
-    if (!LOWER_SHA256.test(coverageSha256)) restricted();
+    if (coverageSha256.length !== 64) restricted();
+    for (let index = 0; index < coverageSha256.length; index += 1) {
+      const code = coverageSha256.charCodeAt(index);
+      if (!((code >= 0x30 && code <= 0x39) || (code >= 0x61 && code <= 0x66))) restricted();
+    }
     policy.coverage = coverage;
     policy.coverageSha256 = coverageSha256;
     policy.effective = effective;
