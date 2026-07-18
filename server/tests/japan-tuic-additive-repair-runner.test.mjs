@@ -8113,7 +8113,9 @@ function c3AssertA2Lifecycle(value) {
   assert.deepEqual(success.shapeAfterDerive, success.shapeBefore);
   assert.equal(success.afterDerive.snapshot.fixedEnvelopeCount - success.before.snapshot.fixedEnvelopeCount, 5);
   assert.equal(success.afterDerive.snapshot.semanticNodeCount - success.before.snapshot.semanticNodeCount,
-    ownerView.files.length + ownerView.events.length);
+    5 + ownerView.files.length + ownerView.events.length);
+  assert.equal(success.afterDerive.ssh.semanticNodeCount - success.before.ssh.semanticNodeCount,
+    5 + ownerView.files.length + ownerView.events.length);
   const eventKindCounts = Object.fromEntries(Object.keys(C3_EVENT_SCHEMAS).map((kind) => [kind,
     ownerView.events.filter((event) => event.values.kind === kind).length]));
   assert.equal(success.afterDerive.ssh.sourceFileCount, ownerView.files.length);
