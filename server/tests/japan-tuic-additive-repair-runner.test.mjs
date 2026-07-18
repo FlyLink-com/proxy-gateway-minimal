@@ -3857,6 +3857,7 @@ const nativeWeakMapDelete = nativeWeakMap.prototype.delete;
 const nativeArrayPush = nativeArray.prototype.push;
 const nativeBufferFill = nativeBuffer.prototype.fill;
 const nativeBufferCopy = nativeBuffer.prototype.copy;
+const nativeBufferCompare = nativeBuffer.compare;
 const nativeUint8ArrayFill = nativeUint8Array.prototype.fill;
 let allocationActive = false;
 const allocationCounts = {
@@ -3987,6 +3988,7 @@ function c3LifecycleBegin(tracker, name, graph, operationCount = () => 0, fault 
     eventBatchByOrdinal: new nativeMap(), retentions: new nativeArray(), actionOrdinal: 0, lastEventPushAction: 0,
     allocationActions: new nativeArray(), objectAllocationRecords: new nativeWeakMap(),
     objectAllocationEntries: new nativeArray(), byteAllocationActions: new nativeArray(), copyActions: new nativeArray(),
+    rawDirectoryOccurrences: new nativeArray(), rawDirectoryCursor: 0, rawDirectoryFailed: false,
     fault, faultTriggered: false
   };
   tracker.phases.push(phase);
@@ -4011,6 +4013,15 @@ function c3LifecycleEnd() {
       pushes: phase.pushOrdinal,
       operationCalls: phase.operationCount()
     };
+    phase.rawDirectoryState = {
+      rawCount: phase.rawDirectoryOccurrences.length,
+      matchedCount: phase.rawDirectoryCursor,
+      failed: phase.rawDirectoryFailed
+    };
+    phase.rawDirectoryOccurrences.length = 0;
+    phase.rawDirectoryOccurrences = null;
+    phase.rawDirectoryCursor = 0;
+    phase.rawDirectoryFailed = false;
     phase.byteState = phase.tracker.byteEntries.map((record) => ({
       id: record.id,
       roles: [...record.roles].sort(),
@@ -4273,6 +4284,10 @@ function c3LifecycleByteRecord(value, creationKind) {
 function c3LifecycleMarkByte(value, role) {
   const record = c3LifecycleByteRecord(value, "external");
   if (record) record.roles.add(role);
+  const current = c3LifecycleCurrent;
+  if (current && role === "rawDirectory") {
+    Reflect.apply(nativeArrayPush, current.rawDirectoryOccurrences, [{ value, length: value.length }]);
+  }
   return record ? record.id : null;
 }
 
@@ -4430,10 +4445,25 @@ const instrumentedBufferFrom = (...arguments_) => {
   c3LifecycleBeforeAllocation("bufferFrom");
   const result = c3TrackAllocation("bufferFrom", nativeBuffer.from(...arguments_));
   const current = c3LifecycleCurrent;
-  if (current && arguments_.length > 0) {
-    const sourceRecord = current.tracker.byteRecords.get(arguments_[0]);
-    const resultRecord = current.tracker.byteRecords.get(result);
-    if (sourceRecord && resultRecord && sourceRecord.roles.has("rawDirectory")) resultRecord.roles.add("directoryReencode");
+  if (current && current.rawDirectoryCursor < current.rawDirectoryOccurrences.length) {
+    try {
+      const occurrence = current.rawDirectoryOccurrences[current.rawDirectoryCursor];
+      if (arguments_.length !== 2 || typeof arguments_[0] !== "string" || arguments_[1] !== "utf8"
+        || result.length !== occurrence.length
+        || Reflect.apply(nativeBufferCompare, nativeBuffer, [result, occurrence.value]) !== 0) {
+        current.rawDirectoryFailed = true;
+      } else {
+        const resultRecord = current.tracker.byteRecords.get(result);
+        if (!resultRecord) {
+          current.rawDirectoryFailed = true;
+        } else {
+          resultRecord.roles.add("directoryReencode");
+          current.rawDirectoryCursor += 1;
+        }
+      }
+    } catch {
+      current.rawDirectoryFailed = true;
+    }
   }
   return result;
 };
@@ -7028,6 +7058,7 @@ function c3LifecycleSummary(tracker) {
       byteState: phase.byteState.map((entry) => ({ id: entry.id, roles: [...entry.roles], zero: entry.zero })),
       arrayState: phase.arrayState.map((entry) => ({ ...entry })),
       objectState: { roles: [...phase.objectState.roles], ownerLinksClosure: phase.objectState.ownerLinksClosure },
+      rawDirectory: { ...phase.rawDirectoryState },
       finalStamp: { ...phase.finalStamp }
     }))
   };
@@ -8119,8 +8150,12 @@ function c3AssertA2Lifecycle(value) {
     assert.ok(records.every((entry) => deriveBytes.get(entry.id).zero), role);
   }
   const directoryReencodes = success.lifecycle.bytes.filter((entry) => entry.roles.includes("directoryReencode"));
-  assert.ok(directoryReencodes.length > 0);
-  assert.ok(directoryReencodes.every((entry) => !entry.roles.includes("retainedEvent")
+  assert.ok(derive.rawDirectory.rawCount > 0);
+  assert.equal(!derive.rawDirectory.failed
+    && derive.rawDirectory.matchedCount === derive.rawDirectory.rawCount, true);
+  assert.equal(directoryReencodes.length, derive.rawDirectory.rawCount);
+  assert.ok(directoryReencodes.every((entry) => entry.creationKind === "bufferFrom"
+    && !entry.roles.includes("retainedEvent")
     && deriveBytes.get(entry.id).zero));
   assert.deepEqual(success.lifecycle.arrays.map((entry) => entry.role).sort(), ["activePaths", "events", "files"]);
   assert.ok(success.lifecycle.arrays.every((entry) => entry.native && entry.prototype && entry.length === 0));
