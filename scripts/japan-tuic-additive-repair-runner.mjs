@@ -22,7 +22,7 @@ import {
   writeSync
 } from "node:fs";
 import { execFile as execFileCallback, spawnSync } from "node:child_process";
-import { promisify } from "node:util";
+import { promisify, types } from "node:util";
 import { dirname, join, posix, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 
@@ -1188,6 +1188,1488 @@ function inspectAuthorizationSourceBudget(snapshot, ssh, sudo) {
   };
 }
 
+// C3_SSH_SOURCE_BLOCK_BEGIN
+const AUTHORIZATION_SSH_ROOT_CONFIG = "/etc/ssh/sshd_config";
+const AUTHORIZATION_SSH_RELATIVE_BASE = "/etc/ssh";
+const AUTHORIZATION_SSH_PROVENANCE = new WeakMap();
+const AUTHORIZATION_SSH_AUTHORITY_NAMES = "authenticationmethods pubkeyauthentication passwordauthentication kbdinteractiveauthentication challengeresponseauthentication hostbasedauthentication gssapiauthentication kerberosauthentication permituserenvironment acceptenv forcecommand chrootdirectory disableforwarding permittunnel authorizedkeysfile authorizedkeyscommand authorizedprincipalsfile authorizedprincipalscommand trustedusercakeys";
+const AUTHORIZATION_SSH_BOOLEAN_NAMES = "pubkeyauthentication passwordauthentication kbdinteractiveauthentication challengeresponseauthentication hostbasedauthentication gssapiauthentication kerberosauthentication permituserenvironment disableforwarding";
+const AUTHORIZATION_SSH_OPAQUE_NAMES = "addressfamily allowagentforwarding allowgroups allowstreamlocalforwarding allowtcpforwarding allowusers banner casignaturealgorithms channeltimeout ciphers clientalivecountmax clientaliveinterval compression denygroups denyusers exposeauthinfo fingerprinthash gatewayports gssapicleanupcredentials gssapistrictacceptorcheck hostbasedacceptedalgorithms hostbasedusesnamefrompacketonly hostcertificate hostkey hostkeyagent hostkeyalgorithms ignorerhosts ipqos kerberosgetafstoken kerberosorlocalpasswd kerberosticketcleanup listenaddress logingracetime loglevel logverbose macs maxauthtries maxsessions maxstartups modulifile persourcemaxstartups persourcenetblocksize permitemptypasswords permitlisten permitopen permitrootlogin permittty permituserrc pidfile port printlastlog printmotd pubkeyacceptedalgorithms pubkeyauthoptions rekeylimit requiredrsasize revokedkeys rdomain securitykeyprovider setenv streamlocalbindmask streamlocalbindunlink strictmodes subsystem syslogfacility tcpkeepalive usedns usepam versionaddendum x11displayoffset x11forwarding x11uselocalhost xauthlocation unusedconnectiontimeout";
+const AUTHORIZATION_SSH_MATCH_NAMES = "user group host address localaddress localport rdomain localnetwork all";
+const AUTHORIZATION_SSH_JSON_HEX = "0123456789abcdef";
+
+function reserveAuthorizationFixedEnvelope(graph) {
+  let active;
+  let snapshotFixedNext;
+  let graphSemanticNext;
+  let snapshotSemanticNext;
+  try {
+    active = requireAuthorizationSourceGraph(graph);
+    snapshotFixedNext = nextAuthorizationBudgetValue(
+      active.snapshot.fixedEnvelopeCount,
+      1,
+      AUTHORIZATION_SOURCE_MAX_FIXED_ENVELOPES
+    );
+    graphSemanticNext = nextAuthorizationBudgetValue(
+      active.semanticNodeCount,
+      1,
+      AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES
+    );
+    snapshotSemanticNext = nextAuthorizationBudgetValue(
+      active.snapshot.semanticNodeCount,
+      1,
+      AUTHORIZATION_SOURCE_MAX_SEMANTIC_NODES
+    );
+    active.snapshot.fixedEnvelopeCount = snapshotFixedNext;
+    active.semanticNodeCount = graphSemanticNext;
+    active.snapshot.semanticNodeCount = snapshotSemanticNext;
+  } catch {
+    failAuthorizationSourceGraph(graph);
+    restricted();
+  }
+}
+
+function authorizationSshNativeEmptyArray(value) {
+  if (!Array.isArray(value) || types.isProxy(value)
+    || Object.getPrototypeOf(value) !== Array.prototype
+    || types.isProxy(Object.getPrototypeOf(value))) return false;
+  const length = Object.getOwnPropertyDescriptor(value, "length");
+  return !!length && Object.hasOwn(length, "value") && length.value === 0
+    && length.writable === true && length.enumerable === false && length.configurable === false
+    && length.get === undefined && length.set === undefined
+    && value.push === Array.prototype.push && value.pop === Array.prototype.pop;
+}
+
+function authorizationSshFreshGraphCounters(candidate) {
+  return candidate.fileCount === 0 && candidate.sourceFileCount === 0 && candidate.totalBytes === 0
+    && candidate.directoryNameCount === 0 && candidate.depth === 0 && candidate.nextOrdinal === 0
+    && candidate.sshPhysicalDirectiveCount === 0 && candidate.sshIncludePatternCount === 0
+    && candidate.sshSelectedInsertionCount === 0 && candidate.sshMatchBranchCount === 0
+    && candidate.sshMatchConditionCount === 0 && candidate.sshMatchPatternCount === 0
+    && candidate.sshAssignmentCount === 0 && candidate.sshAcceptEnvNameCount === 0
+    && candidate.sudoStatementCount === 0 && candidate.sudoIncludeCount === 0
+    && candidate.sudoSelectedInsertionCount === 0 && candidate.sudoAliasDefinitionCount === 0
+    && candidate.sudoAliasMemberCount === 0 && candidate.sudoDefaultsItemCount === 0
+    && candidate.sudoUserSpecCount === 0 && candidate.sudoUserHostRunasMemberCount === 0
+    && candidate.sudoTagTransitionCount === 0 && candidate.sudoCommandSpecCount === 0
+    && candidate.sudoArgumentTokenCount === 0 && candidate.sudoAliasEdgeCount === 0
+    && candidate.sudoAliasMemoEntryCount === 0 && candidate.globComparisonCount === 0
+    && candidate.commandWorkCount === 0 && candidate.aliasEdgeWorkCount === 0;
+}
+
+function requireFreshAuthorizationSshGraph(graph) {
+  const active = requireAuthorizationSourceGraph(graph);
+  const snapshot = active.snapshot;
+  const sudo = snapshot.sudoGraph;
+  if (active.kind !== "ssh" || snapshot.sshGraph !== active
+    || !AUTHORIZATION_SOURCE_SNAPSHOT_BRAND.has(snapshot)
+    || !sudo || !AUTHORIZATION_SOURCE_GRAPH_BRAND.has(sudo)
+    || sudo.kind !== "sudo" || sudo.snapshot !== snapshot || sudo === active
+    || snapshot.fixedEnvelopeCount !== 5 || snapshot.failed
+    || active.fixedEnvelopeCount !== 2 || active.semanticNodeCount !== 2 || active.failed
+    || sudo.fixedEnvelopeCount !== 2 || sudo.semanticNodeCount !== 2 || sudo.failed
+    || active.cleanupStack === sudo.cleanupStack
+    || !authorizationSshNativeEmptyArray(active.cleanupStack)
+    || !authorizationSshNativeEmptyArray(sudo.cleanupStack)
+    || snapshot.wildcardPatternByteCount !== 0 || snapshot.wildcardInvocationCount !== 0
+    || snapshot.wildcardAlignedComparisonCount !== 0 || snapshot.sshMatchComparisonCount !== 0
+    || snapshot.sudoSelectorComparisonCount !== 0 || snapshot.sudoAliasVisitCount !== 0
+    || snapshot.retainedPreimageBytes !== 0) restricted();
+  const zeroEntry = snapshot.authorizationEntryCount === 0
+    && snapshot.semanticNodeCount === 5
+    && !AUTHORIZATION_SSH_PROVENANCE.has(snapshot);
+  const oneEntry = snapshot.authorizationEntryCount === 1
+    && snapshot.semanticNodeCount === 6
+    && AUTHORIZATION_SSH_PROVENANCE.get(snapshot) === active;
+  if (!zeroEntry && !oneEntry) restricted();
+  if (!authorizationSshFreshGraphCounters(active) || !authorizationSshFreshGraphCounters(sudo)) restricted();
+  return active;
+}
+
+function authorizationSshAsciiEquals(bytes, start, end, constant) {
+  if (end - start !== constant.length) return false;
+  for (let index = 0; index < constant.length; index += 1) {
+    let byte = bytes[start + index];
+    if (byte >= 0x41 && byte <= 0x5a) byte += 0x20;
+    if (byte !== constant.charCodeAt(index)) return false;
+  }
+  return true;
+}
+
+function authorizationSshAsciiExact(bytes, start, end, constant) {
+  if (end - start !== constant.length) return false;
+  for (let index = 0; index < constant.length; index += 1) {
+    if (bytes[start + index] !== constant.charCodeAt(index)) return false;
+  }
+  return true;
+}
+
+function authorizationSshReviewedName(bytes, start, end, names) {
+  let wordStart = 0;
+  while (wordStart < names.length) {
+    let wordEnd = wordStart;
+    while (wordEnd < names.length && names.charCodeAt(wordEnd) !== 0x20) wordEnd += 1;
+    if (end - start === wordEnd - wordStart) {
+      let equal = true;
+      for (let index = 0; index < wordEnd - wordStart; index += 1) {
+        let byte = bytes[start + index];
+        if (byte >= 0x41 && byte <= 0x5a) byte += 0x20;
+        if (byte !== names.charCodeAt(wordStart + index)) {
+          equal = false;
+          break;
+        }
+      }
+      if (equal) {
+        if (names === AUTHORIZATION_SSH_AUTHORITY_NAMES) {
+          switch (wordStart) {
+            case 0: return "authenticationmethods";
+            case 22: return "pubkeyauthentication";
+            case 43: return "passwordauthentication";
+            case 66: return "kbdinteractiveauthentication";
+            case 95: return "challengeresponseauthentication";
+            case 127: return "hostbasedauthentication";
+            case 151: return "gssapiauthentication";
+            case 172: return "kerberosauthentication";
+            case 195: return "permituserenvironment";
+            case 217: return "acceptenv";
+            case 227: return "forcecommand";
+            case 240: return "chrootdirectory";
+            case 256: return "disableforwarding";
+            case 274: return "permittunnel";
+            case 287: return "authorizedkeysfile";
+            case 306: return "authorizedkeyscommand";
+            case 328: return "authorizedprincipalsfile";
+            case 353: return "authorizedprincipalscommand";
+            case 381: return "trustedusercakeys";
+            default: restricted();
+          }
+        }
+        if (names === AUTHORIZATION_SSH_OPAQUE_NAMES) {
+          switch (wordStart) {
+            case 0: return "addressfamily";
+            case 14: return "allowagentforwarding";
+            case 35: return "allowgroups";
+            case 47: return "allowstreamlocalforwarding";
+            case 74: return "allowtcpforwarding";
+            case 93: return "allowusers";
+            case 104: return "banner";
+            case 111: return "casignaturealgorithms";
+            case 133: return "channeltimeout";
+            case 148: return "ciphers";
+            case 156: return "clientalivecountmax";
+            case 176: return "clientaliveinterval";
+            case 196: return "compression";
+            case 208: return "denygroups";
+            case 219: return "denyusers";
+            case 229: return "exposeauthinfo";
+            case 244: return "fingerprinthash";
+            case 260: return "gatewayports";
+            case 273: return "gssapicleanupcredentials";
+            case 298: return "gssapistrictacceptorcheck";
+            case 324: return "hostbasedacceptedalgorithms";
+            case 352: return "hostbasedusesnamefrompacketonly";
+            case 384: return "hostcertificate";
+            case 400: return "hostkey";
+            case 408: return "hostkeyagent";
+            case 421: return "hostkeyalgorithms";
+            case 439: return "ignorerhosts";
+            case 452: return "ipqos";
+            case 458: return "kerberosgetafstoken";
+            case 478: return "kerberosorlocalpasswd";
+            case 500: return "kerberosticketcleanup";
+            case 522: return "listenaddress";
+            case 536: return "logingracetime";
+            case 551: return "loglevel";
+            case 560: return "logverbose";
+            case 571: return "macs";
+            case 576: return "maxauthtries";
+            case 589: return "maxsessions";
+            case 601: return "maxstartups";
+            case 613: return "modulifile";
+            case 624: return "persourcemaxstartups";
+            case 645: return "persourcenetblocksize";
+            case 667: return "permitemptypasswords";
+            case 688: return "permitlisten";
+            case 701: return "permitopen";
+            case 712: return "permitrootlogin";
+            case 728: return "permittty";
+            case 738: return "permituserrc";
+            case 751: return "pidfile";
+            case 759: return "port";
+            case 764: return "printlastlog";
+            case 777: return "printmotd";
+            case 787: return "pubkeyacceptedalgorithms";
+            case 812: return "pubkeyauthoptions";
+            case 830: return "rekeylimit";
+            case 841: return "requiredrsasize";
+            case 857: return "revokedkeys";
+            case 869: return "rdomain";
+            case 877: return "securitykeyprovider";
+            case 897: return "setenv";
+            case 904: return "streamlocalbindmask";
+            case 924: return "streamlocalbindunlink";
+            case 946: return "strictmodes";
+            case 958: return "subsystem";
+            case 968: return "syslogfacility";
+            case 983: return "tcpkeepalive";
+            case 996: return "usedns";
+            case 1003: return "usepam";
+            case 1010: return "versionaddendum";
+            case 1026: return "x11displayoffset";
+            case 1043: return "x11forwarding";
+            case 1057: return "x11uselocalhost";
+            case 1073: return "xauthlocation";
+            case 1087: return "unusedconnectiontimeout";
+            default: restricted();
+          }
+        }
+        if (names === AUTHORIZATION_SSH_MATCH_NAMES) {
+          switch (wordStart) {
+            case 0: return "user";
+            case 5: return "group";
+            case 11: return "host";
+            case 16: return "address";
+            case 24: return "localaddress";
+            case 37: return "localport";
+            case 47: return "rdomain";
+            case 55: return "localnetwork";
+            case 68: return "all";
+            default: restricted();
+          }
+        }
+        restricted();
+      }
+    }
+    wordStart = wordEnd + 1;
+  }
+  return undefined;
+}
+
+function authorizationSshNameInList(name, names) {
+  let wordStart = 0;
+  while (wordStart < names.length) {
+    let wordEnd = wordStart;
+    while (wordEnd < names.length && names.charCodeAt(wordEnd) !== 0x20) wordEnd += 1;
+    if (name.length === wordEnd - wordStart) {
+      let equal = true;
+      for (let index = 0; index < name.length; index += 1) {
+        if (name.charCodeAt(index) !== names.charCodeAt(wordStart + index)) {
+          equal = false;
+          break;
+        }
+      }
+      if (equal) return true;
+    }
+    wordStart = wordEnd + 1;
+  }
+  return false;
+}
+
+function authorizationSshDirective(bytes, start, end) {
+  if (authorizationSshAsciiEquals(bytes, start, end, "include")) return "include";
+  if (authorizationSshAsciiEquals(bytes, start, end, "match")) return "match";
+  const authority = authorizationSshReviewedName(bytes, start, end, AUTHORIZATION_SSH_AUTHORITY_NAMES);
+  if (authority !== undefined) return authority;
+  const opaque = authorizationSshReviewedName(bytes, start, end, AUTHORIZATION_SSH_OPAQUE_NAMES);
+  return opaque === undefined ? "unknown" : opaque;
+}
+
+function authorizationSshMatchName(bytes, start, end) {
+  return authorizationSshReviewedName(bytes, start, end, AUTHORIZATION_SSH_MATCH_NAMES);
+}
+
+function authorizationSshSkipSeparators(bytes, start, end) {
+  let index = start;
+  while (index < end && (bytes[index] === 0x20 || bytes[index] === 0x09)) index += 1;
+  return index;
+}
+
+function authorizationSshTokenEnd(bytes, start, end) {
+  let index = start;
+  while (index < end && bytes[index] !== 0x20 && bytes[index] !== 0x09) index += 1;
+  return index;
+}
+
+function authorizationSshValidateSourceBytes(bytes) {
+  for (let index = 0; index < bytes.length;) {
+    const first = bytes[index];
+    if (first <= 0x7f) {
+      if (first === 0 || first === 0x0d || first === 0x7f
+        || (first < 0x20 && first !== 0x09 && first !== 0x0a)) restricted();
+      index += 1;
+      continue;
+    }
+    let scalar;
+    let length;
+    if (first >= 0xc2 && first <= 0xdf) {
+      length = 2;
+      if (index + length > bytes.length || bytes[index + 1] < 0x80 || bytes[index + 1] > 0xbf) restricted();
+      scalar = ((first & 0x1f) << 6) | (bytes[index + 1] & 0x3f);
+    } else if (first >= 0xe0 && first <= 0xef) {
+      length = 3;
+      if (index + length > bytes.length
+        || bytes[index + 1] < (first === 0xe0 ? 0xa0 : 0x80)
+        || bytes[index + 1] > (first === 0xed ? 0x9f : 0xbf)
+        || bytes[index + 2] < 0x80 || bytes[index + 2] > 0xbf) restricted();
+      scalar = ((first & 0x0f) << 12) | ((bytes[index + 1] & 0x3f) << 6) | (bytes[index + 2] & 0x3f);
+    } else if (first >= 0xf0 && first <= 0xf4) {
+      length = 4;
+      if (index + length > bytes.length
+        || bytes[index + 1] < (first === 0xf0 ? 0x90 : 0x80)
+        || bytes[index + 1] > (first === 0xf4 ? 0x8f : 0xbf)
+        || bytes[index + 2] < 0x80 || bytes[index + 2] > 0xbf
+        || bytes[index + 3] < 0x80 || bytes[index + 3] > 0xbf) restricted();
+      scalar = ((first & 0x07) << 18) | ((bytes[index + 1] & 0x3f) << 12)
+        | ((bytes[index + 2] & 0x3f) << 6) | (bytes[index + 3] & 0x3f);
+    } else {
+      restricted();
+    }
+    if (scalar === 0xfeff || scalar === 0x0085 || scalar === 0x00a0 || scalar === 0x1680
+      || (scalar >= 0x2000 && scalar <= 0x200a) || scalar === 0x2028 || scalar === 0x2029
+      || scalar === 0x202f || scalar === 0x205f || scalar === 0x3000) restricted();
+    index += length;
+  }
+}
+
+function authorizationSshEvent(events, kind, sourceOrdinal, lineNumber, first, second, third, fourth, fifth, sixth, seventh) {
+  const event = Object.create(null);
+  const eventOrdinal = events.length;
+  if (kind === "physicalDirective") {
+    event.kind = kind;
+    event.eventOrdinal = eventOrdinal;
+    event.sourceOrdinal = sourceOrdinal;
+    event.lineNumber = lineNumber;
+    event.directive = first;
+    event.scope = second;
+    event.branchOrdinal = third;
+  } else if (kind === "includePattern") {
+    event.kind = kind;
+    event.eventOrdinal = eventOrdinal;
+    event.sourceOrdinal = sourceOrdinal;
+    event.lineNumber = lineNumber;
+    event.physicalEventOrdinal = first;
+    event.argumentOrdinal = second;
+    event.starIndex = third;
+    event.selectedCount = fourth;
+  } else if (kind === "selectedInsertion") {
+    event.kind = kind;
+    event.eventOrdinal = eventOrdinal;
+    event.sourceOrdinal = sourceOrdinal;
+    event.lineNumber = lineNumber;
+    event.includePatternEventOrdinal = first;
+    event.selectionOrdinal = second;
+    event.path = third;
+  } else if (kind === "matchBranch") {
+    event.kind = kind;
+    event.eventOrdinal = eventOrdinal;
+    event.sourceOrdinal = sourceOrdinal;
+    event.lineNumber = lineNumber;
+    event.physicalEventOrdinal = first;
+    event.branchOrdinal = second;
+    event.conditionStartEventOrdinal = third;
+    event.conditionCount = fourth;
+    event.patternCount = fifth;
+  } else if (kind === "matchCondition") {
+    event.kind = kind;
+    event.eventOrdinal = eventOrdinal;
+    event.sourceOrdinal = sourceOrdinal;
+    event.lineNumber = lineNumber;
+    event.physicalEventOrdinal = first;
+    event.branchOrdinal = second;
+    event.conditionOrdinal = third;
+    event.name = fourth;
+    event.patternStartEventOrdinal = fifth;
+    event.patternCount = sixth;
+  } else if (kind === "matchPattern") {
+    event.kind = kind;
+    event.eventOrdinal = eventOrdinal;
+    event.sourceOrdinal = sourceOrdinal;
+    event.lineNumber = lineNumber;
+    event.physicalEventOrdinal = first;
+    event.branchOrdinal = second;
+    event.conditionOrdinal = third;
+    event.patternOrdinal = fourth;
+    event.negated = fifth;
+    event.valueBytes = sixth;
+    event.starIndex = seventh;
+  } else if (kind === "assignment") {
+    event.kind = kind;
+    event.eventOrdinal = eventOrdinal;
+    event.sourceOrdinal = sourceOrdinal;
+    event.lineNumber = lineNumber;
+    event.physicalEventOrdinal = first;
+    event.scope = second;
+    event.branchOrdinal = third;
+    event.name = fourth;
+    event.argumentCount = fifth;
+    event.valueBytes = sixth;
+  } else if (kind === "acceptEnvName") {
+    event.kind = kind;
+    event.eventOrdinal = eventOrdinal;
+    event.sourceOrdinal = sourceOrdinal;
+    event.lineNumber = lineNumber;
+    event.physicalEventOrdinal = first;
+    event.scope = second;
+    event.branchOrdinal = third;
+    event.assignmentEventOrdinal = fourth;
+    event.nameOrdinal = fifth;
+    event.valueBytes = sixth;
+  } else {
+    restricted();
+  }
+  Object.freeze(event);
+  events.push(event);
+  return eventOrdinal;
+}
+
+function authorizationSshZeroEventBuffer(event) {
+  if (!event || typeof event !== "object") return;
+  if (event.kind === "matchPattern" || event.kind === "acceptEnvName") {
+    if (Buffer.isBuffer(event.valueBytes)) event.valueBytes.fill(0);
+  } else if (event.kind === "assignment" && Buffer.isBuffer(event.valueBytes)) {
+    event.valueBytes.fill(0);
+  }
+}
+
+function cleanupAuthorizationSshSyntax(graph, owner, deleteOwnerBinding) {
+  let cleanupFailed = false;
+  if (deleteOwnerBinding) {
+    try {
+      if (!AUTHORIZATION_SSH_PROVENANCE.delete(owner)) cleanupFailed = true;
+    } catch {
+      cleanupFailed = true;
+    }
+  }
+  if (owner && Array.isArray(owner.events)) {
+    for (let index = owner.events.length - 1; index >= 0; index -= 1) {
+      try {
+        authorizationSshZeroEventBuffer(owner.events[index]);
+      } catch {
+        cleanupFailed = true;
+      }
+    }
+    try {
+      owner.events.length = 0;
+    } catch {
+      cleanupFailed = true;
+    }
+  }
+  if (owner && owner.closure && Array.isArray(owner.closure.files)) {
+    try {
+      owner.closure.files.length = 0;
+    } catch {
+      cleanupFailed = true;
+    }
+  }
+  if (owner && Array.isArray(owner.activePaths)) {
+    try {
+      owner.activePaths.length = 0;
+    } catch {
+      cleanupFailed = true;
+    }
+  }
+  if (owner) {
+    try {
+      owner.closure = undefined;
+    } catch {
+      cleanupFailed = true;
+    }
+    try {
+      owner.disposed = true;
+    } catch {
+      cleanupFailed = true;
+    }
+  }
+  if (cleanupFailed) failAuthorizationSourceGraph(graph);
+  return !cleanupFailed;
+}
+
+function authorizationSshJsonStringLength(value) {
+  if (typeof value !== "string") restricted();
+  let length = 2;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const low = value.charCodeAt(index + 1);
+      if (low < 0xdc00 || low > 0xdfff) restricted();
+      length += 4;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      restricted();
+    } else if (code === 0x22 || code === 0x5c || code === 0x08 || code === 0x0c
+      || code === 0x0a || code === 0x0d || code === 0x09) {
+      length += 2;
+    } else if (code <= 0x1f) {
+      length += 6;
+    } else if (code <= 0x7f) {
+      length += 1;
+    } else if (code <= 0x7ff) {
+      length += 2;
+    } else {
+      length += 3;
+    }
+  }
+  return length;
+}
+
+function authorizationSshIntegerLength(value) {
+  if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) restricted();
+  if (value === 0) return 1;
+  let digits = 0;
+  for (let remaining = value; remaining > 0; remaining = Math.floor(remaining / 10)) digits += 1;
+  return digits;
+}
+
+function authorizationSshWriteAscii(buffer, offset, value) {
+  for (let index = 0; index < value.length; index += 1) buffer[offset++] = value.charCodeAt(index);
+  return offset;
+}
+
+function authorizationSshWriteJsonString(buffer, offset, value) {
+  buffer[offset++] = 0x22;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const low = value.charCodeAt(index + 1);
+      if (low < 0xdc00 || low > 0xdfff) restricted();
+      const scalar = 0x10000 + ((code - 0xd800) << 10) + low - 0xdc00;
+      buffer[offset++] = 0xf0 | (scalar >> 18);
+      buffer[offset++] = 0x80 | ((scalar >> 12) & 0x3f);
+      buffer[offset++] = 0x80 | ((scalar >> 6) & 0x3f);
+      buffer[offset++] = 0x80 | (scalar & 0x3f);
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      restricted();
+    } else if (code === 0x22 || code === 0x5c) {
+      buffer[offset++] = 0x5c;
+      buffer[offset++] = code;
+    } else if (code === 0x08 || code === 0x0c || code === 0x0a || code === 0x0d || code === 0x09) {
+      buffer[offset++] = 0x5c;
+      buffer[offset++] = code === 0x08 ? 0x62 : code === 0x0c ? 0x66
+        : code === 0x0a ? 0x6e : code === 0x0d ? 0x72 : 0x74;
+    } else if (code <= 0x1f) {
+      buffer[offset++] = 0x5c;
+      buffer[offset++] = 0x75;
+      buffer[offset++] = 0x30;
+      buffer[offset++] = 0x30;
+      buffer[offset++] = AUTHORIZATION_SSH_JSON_HEX.charCodeAt(code >> 4);
+      buffer[offset++] = AUTHORIZATION_SSH_JSON_HEX.charCodeAt(code & 0x0f);
+    } else if (code <= 0x7f) {
+      buffer[offset++] = code;
+    } else if (code <= 0x7ff) {
+      buffer[offset++] = 0xc0 | (code >> 6);
+      buffer[offset++] = 0x80 | (code & 0x3f);
+    } else {
+      buffer[offset++] = 0xe0 | (code >> 12);
+      buffer[offset++] = 0x80 | ((code >> 6) & 0x3f);
+      buffer[offset++] = 0x80 | (code & 0x3f);
+    }
+  }
+  buffer[offset++] = 0x22;
+  return offset;
+}
+
+function authorizationSshWriteInteger(buffer, offset, value) {
+  const digits = authorizationSshIntegerLength(value);
+  let cursor = offset + digits - 1;
+  let remaining = value;
+  do {
+    buffer[cursor--] = 0x30 + (remaining % 10);
+    remaining = Math.floor(remaining / 10);
+  } while (remaining > 0);
+  return offset + digits;
+}
+
+function measureAuthorizationSshClosure(closure) {
+  let length = "{\"schemaVersion\":\"1\",\"type\":\"japan_ci_sshd_source_closure\",\"rootConfig\":".length;
+  length += authorizationSshJsonStringLength(closure.rootConfig);
+  length += ",\"files\":[".length;
+  for (let index = 0; index < closure.files.length; index += 1) {
+    const file = closure.files[index];
+    if (index > 0) length += 1;
+    length += "{\"ordinal\":".length + authorizationSshIntegerLength(file.ordinal);
+    length += ",\"path\":".length + authorizationSshJsonStringLength(file.path);
+    length += ",\"sha256\":".length + authorizationSshJsonStringLength(file.sha256);
+    length += ",\"uid\":".length + authorizationSshIntegerLength(file.uid);
+    length += ",\"gid\":".length + authorizationSshIntegerLength(file.gid);
+    length += ",\"mode\":".length + authorizationSshIntegerLength(file.mode);
+    length += ",\"nlink\":".length + authorizationSshIntegerLength(file.nlink) + 1;
+    if (!Number.isSafeInteger(length)) restricted();
+  }
+  return length + 3;
+}
+
+function emitAuthorizationSshClosure(closure, buffer) {
+  let offset = authorizationSshWriteAscii(
+    buffer,
+    0,
+    "{\"schemaVersion\":\"1\",\"type\":\"japan_ci_sshd_source_closure\",\"rootConfig\":"
+  );
+  offset = authorizationSshWriteJsonString(buffer, offset, closure.rootConfig);
+  offset = authorizationSshWriteAscii(buffer, offset, ",\"files\":[");
+  for (let index = 0; index < closure.files.length; index += 1) {
+    const file = closure.files[index];
+    if (index > 0) buffer[offset++] = 0x2c;
+    offset = authorizationSshWriteAscii(buffer, offset, "{\"ordinal\":");
+    offset = authorizationSshWriteInteger(buffer, offset, file.ordinal);
+    offset = authorizationSshWriteAscii(buffer, offset, ",\"path\":");
+    offset = authorizationSshWriteJsonString(buffer, offset, file.path);
+    offset = authorizationSshWriteAscii(buffer, offset, ",\"sha256\":");
+    offset = authorizationSshWriteJsonString(buffer, offset, file.sha256);
+    offset = authorizationSshWriteAscii(buffer, offset, ",\"uid\":");
+    offset = authorizationSshWriteInteger(buffer, offset, file.uid);
+    offset = authorizationSshWriteAscii(buffer, offset, ",\"gid\":");
+    offset = authorizationSshWriteInteger(buffer, offset, file.gid);
+    offset = authorizationSshWriteAscii(buffer, offset, ",\"mode\":");
+    offset = authorizationSshWriteInteger(buffer, offset, file.mode);
+    offset = authorizationSshWriteAscii(buffer, offset, ",\"nlink\":");
+    offset = authorizationSshWriteInteger(buffer, offset, file.nlink);
+    buffer[offset++] = 0x7d;
+  }
+  buffer[offset++] = 0x5d;
+  buffer[offset++] = 0x7d;
+  buffer[offset++] = 0x0a;
+  return offset;
+}
+
+function authorizationSshDirectoryArray(graph, values, cleanupCheckpoint, directoryNameCountBefore) {
+  if (types.isProxy(values) || !Array.isArray(values)) restricted();
+  const length = graph.directoryNameCount - directoryNameCountBefore;
+  if (!Number.isSafeInteger(length) || length < 0 || values.length !== length
+    || graph.cleanupStack.length !== cleanupCheckpoint + 2 * length
+    || Object.getPrototypeOf(values) !== Array.prototype
+    || types.isProxy(Object.getPrototypeOf(values))) restricted();
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(values, "length");
+  if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, "value") || lengthDescriptor.value !== length
+    || lengthDescriptor.writable !== true || lengthDescriptor.enumerable !== false
+    || lengthDescriptor.configurable !== false || lengthDescriptor.get !== undefined
+    || lengthDescriptor.set !== undefined) restricted();
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(values, String(index));
+    if (!descriptor || !Object.hasOwn(descriptor, "value") || descriptor.value !== graph.cleanupStack[cleanupCheckpoint + index]
+      || !Buffer.isBuffer(descriptor.value) || descriptor.writable !== true || descriptor.enumerable !== true
+      || descriptor.configurable !== true || descriptor.get !== undefined || descriptor.set !== undefined) restricted();
+  }
+  return length;
+}
+
+function authorizationSshHeapSort(values) {
+  const length = values.length;
+  for (let start = Math.floor(length / 2) - 1; start >= 0; start -= 1) {
+    let root = start;
+    while (root * 2 + 1 < length) {
+      let child = root * 2 + 1;
+      if (child + 1 < length && Buffer.compare(values[child], values[child + 1]) < 0) child += 1;
+      if (Buffer.compare(values[root], values[child]) >= 0) break;
+      const swap = values[root];
+      values[root] = values[child];
+      values[child] = swap;
+      root = child;
+    }
+  }
+  for (let end = length - 1; end > 0; end -= 1) {
+    const swap = values[0];
+    values[0] = values[end];
+    values[end] = swap;
+    let root = 0;
+    while (root * 2 + 1 < end) {
+      let child = root * 2 + 1;
+      if (child + 1 < end && Buffer.compare(values[child], values[child + 1]) < 0) child += 1;
+      if (Buffer.compare(values[root], values[child]) >= 0) break;
+      const childSwap = values[root];
+      values[root] = values[child];
+      values[child] = childSwap;
+      root = child;
+    }
+  }
+}
+
+function authorizationSshValidatePhysicalLine(bytes, start, end) {
+  let cursor = authorizationSshSkipSeparators(bytes, start, end);
+  if (cursor === end || bytes[cursor] === 0x23) return 0;
+  const directiveStart = cursor;
+  const directiveEnd = authorizationSshTokenEnd(bytes, cursor, end);
+  if (directiveEnd - directiveStart > AUTHORIZATION_PARSER_LOCAL_LIMITS.generalTokenBytes
+    || directiveEnd === end || (bytes[directiveEnd] !== 0x20 && bytes[directiveEnd] !== 0x09)
+    || !((bytes[directiveStart] >= 0x41 && bytes[directiveStart] <= 0x5a)
+      || (bytes[directiveStart] >= 0x61 && bytes[directiveStart] <= 0x7a))) restricted();
+  for (let index = directiveStart + 1; index < directiveEnd; index += 1) {
+    const byte = bytes[index];
+    if (!((byte >= 0x41 && byte <= 0x5a) || (byte >= 0x61 && byte <= 0x7a)
+      || (byte >= 0x30 && byte <= 0x39))) restricted();
+  }
+  let tokenCount = 1;
+  cursor = authorizationSshSkipSeparators(bytes, directiveEnd, end);
+  if (cursor === end) restricted();
+  while (cursor < end) {
+    const tokenEnd = authorizationSshTokenEnd(bytes, cursor, end);
+    if (tokenEnd === cursor || tokenEnd - cursor > AUTHORIZATION_PARSER_LOCAL_LIMITS.generalTokenBytes) restricted();
+    for (let index = cursor; index < tokenEnd; index += 1) {
+      const byte = bytes[index];
+      if (byte === 0x22 || byte === 0x27 || byte === 0x5c || byte === 0x23
+        || byte < 0x20 || byte === 0x7f) restricted();
+    }
+    tokenCount += 1;
+    if (tokenCount > AUTHORIZATION_PARSER_LOCAL_LIMITS.tokensPerPhysicalLine) restricted();
+    cursor = authorizationSshSkipSeparators(bytes, tokenEnd, end);
+  }
+  return tokenCount;
+}
+
+function authorizationSshAsciiTokensWithoutEquals(bytes, start, end) {
+  for (let index = start; index < end; index += 1) {
+    const byte = bytes[index];
+    if (byte === 0x20 || byte === 0x09) continue;
+    if (byte < 0x21 || byte > 0x7e || byte === 0x3d) restricted();
+  }
+}
+
+function authorizationSshIncludeFinalStart(bytes, start, end) {
+  if (start >= end) restricted();
+  const absolute = bytes[start] === 0x2f;
+  let componentStart = absolute ? start + 1 : start;
+  if (componentStart === end) restricted();
+  let finalStart = componentStart;
+  let componentWildcard = false;
+  let starCount = 0;
+  for (let index = componentStart; index <= end; index += 1) {
+    if (index === end || bytes[index] === 0x2f) {
+      if (index === componentStart
+        || (index - componentStart === 1 && bytes[componentStart] === 0x2e)
+        || (index - componentStart === 2 && bytes[componentStart] === 0x2e && bytes[componentStart + 1] === 0x2e)
+        || (index < end && componentWildcard)) restricted();
+      finalStart = componentStart;
+      componentStart = index + 1;
+      if (index < end) componentWildcard = false;
+      continue;
+    }
+    const byte = bytes[index];
+    if (byte < 0x21 || byte > 0x7e || byte === 0x3d || byte === 0x5b || byte === 0x5d
+      || byte === 0x5c || byte === 0x7b || byte === 0x7d || byte === 0x7e || byte === 0x25) restricted();
+    if (byte === 0x2a) {
+      starCount += 1;
+      componentWildcard = true;
+      if (starCount > 1) restricted();
+    } else if (byte === 0x3f) {
+      componentWildcard = true;
+    }
+  }
+  if (componentStart !== end + 1 || finalStart >= end) restricted();
+  return componentWildcard ? -(finalStart + 1) : finalStart;
+}
+
+function authorizationSshIncludeParent(bytes, start, finalStart) {
+  if (bytes[start] === 0x2f) {
+    return finalStart === start + 1 ? "/" : bytes.toString("ascii", start, finalStart - 1);
+  }
+  return finalStart === start
+    ? AUTHORIZATION_SSH_RELATIVE_BASE
+    : `${AUTHORIZATION_SSH_RELATIVE_BASE}/${bytes.toString("ascii", start, finalStart - 1)}`;
+}
+
+function authorizationSshChildPath(parent, basename) {
+  const path = parent === "/" ? `/${basename}` : `${parent}/${basename}`;
+  if (!authorizationPathIsCanonical(path)) restricted();
+  return path;
+}
+
+function authorizationSshCanonicalArguments(source, start, end, name, argumentCount) {
+  let length = argumentCount - 1;
+  let cursor = start;
+  for (let ordinal = 0; ordinal < argumentCount; ordinal += 1) {
+    cursor = authorizationSshSkipSeparators(source, cursor, end);
+    const tokenEnd = authorizationSshTokenEnd(source, cursor, end);
+    length += tokenEnd - cursor;
+    cursor = tokenEnd;
+  }
+  let output;
+  let complete = false;
+  try {
+    output = Buffer.alloc(length);
+    cursor = start;
+    let offset = 0;
+    for (let ordinal = 0; ordinal < argumentCount; ordinal += 1) {
+      cursor = authorizationSshSkipSeparators(source, cursor, end);
+      const tokenEnd = authorizationSshTokenEnd(source, cursor, end);
+      if (ordinal === 0) {
+        source.copy(output, offset, cursor, tokenEnd);
+        offset += tokenEnd - cursor;
+      } else {
+        output[offset++] = 0x20;
+        for (let index = cursor; index < tokenEnd; index += 1) output[offset++] = source[index];
+      }
+      cursor = tokenEnd;
+    }
+    if (offset !== length) restricted();
+    if (authorizationSshNameInList(name, AUTHORIZATION_SSH_BOOLEAN_NAMES)) {
+      for (let index = 0; index < output.length; index += 1) {
+        if (output[index] >= 0x41 && output[index] <= 0x5a) output[index] += 0x20;
+      }
+    }
+    complete = true;
+    return output;
+  } finally {
+    if (!complete && Buffer.isBuffer(output)) output.fill(0);
+  }
+}
+
+function deriveAuthorizationSshSyntax(graph, pathOperations, sourceOperations) {
+  let active;
+  let owner;
+  let closure;
+  let files;
+  let events;
+  let activePaths;
+  let trustedPathOperations;
+  let trustedSourceOperations;
+  let currentBranchOrdinal = -1;
+  try {
+    active = requireAuthorizationSourceGraph(graph);
+    active = requireFreshAuthorizationSshGraph(active);
+    trustedPathOperations = exactPrivateOperationRecord(pathOperations, AUTHORIZATION_PATH_OPERATION_KEYS);
+    trustedSourceOperations = exactPrivateOperationRecord(sourceOperations, AUTHORIZATION_SOURCE_OPERATION_KEYS);
+
+    reserveAuthorizationFixedEnvelope(active);
+    owner = Object.create(null);
+    owner.closure = undefined;
+    owner.closureSha256 = undefined;
+    owner.events = undefined;
+    owner.activePaths = undefined;
+    owner.disposed = false;
+
+    reserveAuthorizationFixedEnvelope(active);
+    closure = Object.create(null);
+    closure.schemaVersion = "1";
+    closure.type = "japan_ci_sshd_source_closure";
+    closure.rootConfig = AUTHORIZATION_SSH_ROOT_CONFIG;
+    closure.files = undefined;
+
+    reserveAuthorizationFixedEnvelope(active);
+    files = new Array();
+    reserveAuthorizationFixedEnvelope(active);
+    events = new Array();
+    reserveAuthorizationFixedEnvelope(active);
+    activePaths = new Array(AUTHORIZATION_SSH_ROOT_CONFIG);
+
+    closure.files = files;
+    owner.closure = closure;
+    owner.events = events;
+    owner.activePaths = activePaths;
+
+    function consumeSelected(parent, basenameBytes, basenameStart, basenameEnd, utf8,
+      includePatternEventOrdinal, selectionOrdinal, sourceOrdinal, lineNumber) {
+      if (currentBranchOrdinal !== -1) restricted();
+      reserveAuthorizationSemanticNode(active, "sshSelectedInsertion");
+      const basename = basenameBytes.toString(utf8 ? "utf8" : "ascii", basenameStart, basenameEnd);
+      const childPath = authorizationSshChildPath(parent, basename);
+      authorizationSshEvent(
+        events,
+        "selectedInsertion",
+        sourceOrdinal,
+        lineNumber,
+        includePatternEventOrdinal,
+        selectionOrdinal,
+        childPath
+      );
+      for (let index = 0; index < activePaths.length; index += 1) {
+        if (activePaths[index] === childPath) restricted();
+      }
+      for (let index = 0; index < files.length; index += 1) {
+        if (files[index].path === childPath) restricted();
+      }
+      activePaths.push(childPath);
+      try {
+        consumeSource(childPath);
+      } finally {
+        const removed = activePaths.pop();
+        if (removed !== childPath) restricted();
+      }
+    }
+
+    function parseInclude(bytes, sourceFile, lineNumber, argumentStart, lineEnd, physicalScope) {
+      if (currentBranchOrdinal !== -1) restricted();
+      authorizationSshAsciiTokensWithoutEquals(bytes, argumentStart, lineEnd);
+      let operandCount = 0;
+      let cursor = argumentStart;
+      while (cursor < lineEnd) {
+        cursor = authorizationSshSkipSeparators(bytes, cursor, lineEnd);
+        if (cursor === lineEnd) break;
+        const operandEnd = authorizationSshTokenEnd(bytes, cursor, lineEnd);
+        authorizationSshIncludeFinalStart(bytes, cursor, operandEnd);
+        operandCount += 1;
+        if (operandCount > AUTHORIZATION_PARSER_LOCAL_LIMITS.sshIncludeOperands) restricted();
+        cursor = operandEnd;
+      }
+      for (let index = 0; index < operandCount; index += 1) {
+        reserveAuthorizationSemanticNode(active, "sshIncludePattern");
+      }
+      const physicalEventOrdinal = authorizationSshEvent(
+        events,
+        "physicalDirective",
+        sourceFile.ordinal,
+        lineNumber,
+        "include",
+        physicalScope,
+        currentBranchOrdinal
+      );
+      cursor = argumentStart;
+      for (let argumentOrdinal = 0; argumentOrdinal < operandCount; argumentOrdinal += 1) {
+        if (currentBranchOrdinal !== -1) restricted();
+        cursor = authorizationSshSkipSeparators(bytes, cursor, lineEnd);
+        const operandStart = cursor;
+        const operandEnd = authorizationSshTokenEnd(bytes, operandStart, lineEnd);
+        const encodedFinalStart = authorizationSshIncludeFinalStart(bytes, operandStart, operandEnd);
+        const hasWildcard = encodedFinalStart < 0;
+        const finalStart = hasWildcard ? -encodedFinalStart - 1 : encodedFinalStart;
+        const parent = authorizationSshIncludeParent(bytes, operandStart, finalStart);
+        if (!authorizationPathIsCanonical(parent)) restricted();
+        const pattern = allocateAuthorizationBuffer(active, operandEnd - finalStart);
+        bytes.copy(pattern, 0, finalStart, operandEnd);
+        const starIndex = scanAuthorizationWildcardPattern(active, pattern);
+        if (!hasWildcard) {
+          const includePatternEventOrdinal = authorizationSshEvent(
+            events,
+            "includePattern",
+            sourceFile.ordinal,
+            lineNumber,
+            physicalEventOrdinal,
+            argumentOrdinal,
+            starIndex,
+            1
+          );
+          consumeSelected(
+            parent,
+            bytes,
+            finalStart,
+            operandEnd,
+            false,
+            includePatternEventOrdinal,
+            0,
+            sourceFile.ordinal,
+            lineNumber
+          );
+        } else {
+          const cleanupCheckpoint = active.cleanupStack.length;
+          const directoryNameCountBefore = active.directoryNameCount;
+          consumeTrustedAuthorizationDirectory(
+            active,
+            parent,
+            trustedPathOperations,
+            trustedSourceOperations,
+            (values) => {
+              const nameCount = authorizationSshDirectoryArray(
+                active,
+                values,
+                cleanupCheckpoint,
+                directoryNameCountBefore
+              );
+              authorizationSshHeapSort(values);
+              const patternStartsDot = pattern[0] === 0x2e;
+              let selectedCount = 0;
+              for (let index = 0; index < nameCount; index += 1) {
+                const basename = values[index];
+                let selected;
+                if (basename[0] === 0x2e && !patternStartsDot) {
+                  reserveAuthorizationWorkUnit(active, "glob");
+                  selected = false;
+                } else {
+                  selected = matchAuthorizationWildcard(active, "glob", pattern, basename, starIndex);
+                }
+                if (selected) {
+                  if (selectedCount !== index) {
+                    const swap = values[selectedCount];
+                    values[selectedCount] = values[index];
+                    values[index] = swap;
+                  }
+                  selectedCount += 1;
+                }
+              }
+              if (selectedCount === 0) restricted();
+              const includePatternEventOrdinal = authorizationSshEvent(
+                events,
+                "includePattern",
+                sourceFile.ordinal,
+                lineNumber,
+                physicalEventOrdinal,
+                argumentOrdinal,
+                starIndex,
+                selectedCount
+              );
+              for (let selectionOrdinal = 0; selectionOrdinal < selectedCount; selectionOrdinal += 1) {
+                const basename = values[selectionOrdinal];
+                consumeSelected(
+                  parent,
+                  basename,
+                  0,
+                  basename.length,
+                  true,
+                  includePatternEventOrdinal,
+                  selectionOrdinal,
+                  sourceFile.ordinal,
+                  lineNumber
+                );
+              }
+            }
+          );
+        }
+        cursor = operandEnd;
+      }
+    }
+
+    function parseMatch(bytes, sourceFile, lineNumber, argumentStart, lineEnd, physicalScope) {
+      authorizationSshAsciiTokensWithoutEquals(bytes, argumentStart, lineEnd);
+      let userPatternCount = -1;
+      let groupPatternCount = -1;
+      let hostPatternCount = -1;
+      let addressPatternCount = -1;
+      let localAddressPatternCount = -1;
+      let localPortPatternCount = -1;
+      let rdomainPatternCount = -1;
+      let localNetworkPatternCount = -1;
+      let allPatternCount = -1;
+      let conditionCount = 0;
+      let totalPatternCount = 0;
+      let cursor = authorizationSshSkipSeparators(bytes, argumentStart, lineEnd);
+      const firstNameEnd = authorizationSshTokenEnd(bytes, cursor, lineEnd);
+      const firstName = authorizationSshMatchName(bytes, cursor, firstNameEnd);
+      if (firstName === "all") {
+        if (authorizationSshSkipSeparators(bytes, firstNameEnd, lineEnd) !== lineEnd) restricted();
+        allPatternCount = 0;
+        conditionCount = 1;
+      } else {
+        while (cursor < lineEnd) {
+          const nameStart = cursor;
+          const nameEnd = authorizationSshTokenEnd(bytes, nameStart, lineEnd);
+          const name = authorizationSshMatchName(bytes, nameStart, nameEnd);
+          if (name === undefined || name === "all") restricted();
+          cursor = authorizationSshSkipSeparators(bytes, nameEnd, lineEnd);
+          if (cursor === lineEnd) restricted();
+          const patternsStart = cursor;
+          const patternsEnd = authorizationSshTokenEnd(bytes, patternsStart, lineEnd);
+          let memberStart = patternsStart;
+          let patternCount = 0;
+          for (let index = patternsStart; index <= patternsEnd; index += 1) {
+            if (index !== patternsEnd && bytes[index] !== 0x2c) continue;
+            if (index === memberStart) restricted();
+            let valueStart = memberStart;
+            if (bytes[valueStart] === 0x21) {
+              valueStart += 1;
+              if (valueStart === index || bytes[valueStart] === 0x21) restricted();
+            }
+            const valueLength = index - valueStart;
+            if (valueLength < 1 || valueLength > AUTHORIZATION_PARSER_LOCAL_LIMITS.sshMatchPatternBytes) restricted();
+            for (let valueIndex = valueStart; valueIndex < index; valueIndex += 1) {
+              const byte = bytes[valueIndex];
+              if (byte < 0x21 || byte > 0x7e || byte === 0x2c || byte === 0x3d
+                || byte === 0x5b || byte === 0x5d || byte === 0x5c) restricted();
+            }
+            patternCount += 1;
+            if (patternCount > AUTHORIZATION_PARSER_LOCAL_LIMITS.sshMatchPatternsPerCondition) restricted();
+            memberStart = index + 1;
+          }
+          if (name === "user") {
+            if (userPatternCount !== -1) restricted();
+            userPatternCount = patternCount;
+          } else if (name === "group") {
+            if (groupPatternCount !== -1) restricted();
+            groupPatternCount = patternCount;
+          } else if (name === "host") {
+            if (hostPatternCount !== -1) restricted();
+            hostPatternCount = patternCount;
+          } else if (name === "address") {
+            if (addressPatternCount !== -1) restricted();
+            addressPatternCount = patternCount;
+          } else if (name === "localaddress") {
+            if (localAddressPatternCount !== -1) restricted();
+            localAddressPatternCount = patternCount;
+          } else if (name === "localport") {
+            if (localPortPatternCount !== -1) restricted();
+            localPortPatternCount = patternCount;
+          } else if (name === "rdomain") {
+            if (rdomainPatternCount !== -1) restricted();
+            rdomainPatternCount = patternCount;
+          } else if (name === "localnetwork") {
+            if (localNetworkPatternCount !== -1) restricted();
+            localNetworkPatternCount = patternCount;
+          } else {
+            restricted();
+          }
+          conditionCount += 1;
+          totalPatternCount += patternCount;
+          cursor = authorizationSshSkipSeparators(bytes, patternsEnd, lineEnd);
+        }
+      }
+      if (conditionCount < 1 || conditionCount > AUTHORIZATION_PARSER_LOCAL_LIMITS.sshMatchConditionsPerBranch) restricted();
+      reserveAuthorizationSemanticNode(active, "sshMatchBranch");
+      for (let index = 0; index < conditionCount; index += 1) {
+        reserveAuthorizationSemanticNode(active, "sshMatchCondition");
+      }
+      for (let index = 0; index < totalPatternCount; index += 1) {
+        reserveAuthorizationSemanticNode(active, "sshMatchPattern");
+      }
+      const physicalEventOrdinal = authorizationSshEvent(
+        events,
+        "physicalDirective",
+        sourceFile.ordinal,
+        lineNumber,
+        "match",
+        physicalScope,
+        currentBranchOrdinal
+      );
+      const branchOrdinal = currentBranchOrdinal + 1;
+      authorizationSshEvent(
+        events,
+        "matchBranch",
+        sourceFile.ordinal,
+        lineNumber,
+        physicalEventOrdinal,
+        branchOrdinal,
+        physicalEventOrdinal + 2,
+        conditionCount,
+        totalPatternCount
+      );
+      cursor = authorizationSshSkipSeparators(bytes, argumentStart, lineEnd);
+      if (allPatternCount === 0) {
+        authorizationSshEvent(
+          events,
+          "matchCondition",
+          sourceFile.ordinal,
+          lineNumber,
+          physicalEventOrdinal,
+          branchOrdinal,
+          0,
+          "all",
+          -1,
+          0
+        );
+      } else {
+        for (let conditionOrdinal = 0; conditionOrdinal < conditionCount; conditionOrdinal += 1) {
+          const nameStart = cursor;
+          const nameEnd = authorizationSshTokenEnd(bytes, nameStart, lineEnd);
+          const name = authorizationSshMatchName(bytes, nameStart, nameEnd);
+          cursor = authorizationSshSkipSeparators(bytes, nameEnd, lineEnd);
+          const patternsStart = cursor;
+          const patternsEnd = authorizationSshTokenEnd(bytes, patternsStart, lineEnd);
+          const expectedPatternCount = name === "user" ? userPatternCount
+            : name === "group" ? groupPatternCount
+              : name === "host" ? hostPatternCount
+                : name === "address" ? addressPatternCount
+                  : name === "localaddress" ? localAddressPatternCount
+                    : name === "localport" ? localPortPatternCount
+                      : name === "rdomain" ? rdomainPatternCount
+                        : name === "localnetwork" ? localNetworkPatternCount : -1;
+          if (expectedPatternCount < 1) restricted();
+          const conditionEventOrdinal = events.length;
+          authorizationSshEvent(
+            events,
+            "matchCondition",
+            sourceFile.ordinal,
+            lineNumber,
+            physicalEventOrdinal,
+            branchOrdinal,
+            conditionOrdinal,
+            name,
+            conditionEventOrdinal + 1,
+            expectedPatternCount
+          );
+          const firstPatternEventIndex = events.length;
+          let emittedPatternCount = 0;
+          let memberStart = patternsStart;
+          for (let index = patternsStart; index <= patternsEnd; index += 1) {
+            if (index !== patternsEnd && bytes[index] !== 0x2c) continue;
+            let valueStart = memberStart;
+            let negated = false;
+            if (bytes[valueStart] === 0x21) {
+              negated = true;
+              valueStart += 1;
+            }
+            let valueBytes;
+            let attached = false;
+            try {
+              valueBytes = Buffer.alloc(index - valueStart);
+              bytes.copy(valueBytes, 0, valueStart, index);
+              const starIndex = scanAuthorizationWildcardPattern(active, valueBytes);
+              if (emittedPatternCount < 0 || emittedPatternCount > 63
+                || events.length !== firstPatternEventIndex + emittedPatternCount) restricted();
+              for (let previousOffset = 0; previousOffset < emittedPatternCount; previousOffset += 1) {
+                const previous = events[firstPatternEventIndex + previousOffset];
+                if (!previous || previous.kind !== "matchPattern"
+                  || previous.physicalEventOrdinal !== physicalEventOrdinal
+                  || previous.branchOrdinal !== branchOrdinal
+                  || previous.conditionOrdinal !== conditionOrdinal
+                  || previous.patternOrdinal !== previousOffset) restricted();
+                if (previous.negated !== negated || previous.valueBytes.length !== valueBytes.length) continue;
+                let equal = true;
+                for (let byteIndex = 0; byteIndex < valueBytes.length; byteIndex += 1) {
+                  const next = nextAuthorizationBudgetValue(
+                    active.snapshot.wildcardAlignedComparisonCount,
+                    1,
+                    AUTHORIZATION_WORK_LIMITS.wildcardAlignedComparisons
+                  );
+                  active.snapshot.wildcardAlignedComparisonCount = next;
+                  if (previous.valueBytes[byteIndex] !== valueBytes[byteIndex]) {
+                    equal = false;
+                    break;
+                  }
+                }
+                if (equal) restricted();
+              }
+              authorizationSshEvent(
+                events,
+                "matchPattern",
+                sourceFile.ordinal,
+                lineNumber,
+                physicalEventOrdinal,
+                branchOrdinal,
+                conditionOrdinal,
+                emittedPatternCount,
+                negated,
+                valueBytes,
+                starIndex
+              );
+              attached = true;
+              emittedPatternCount += 1;
+            } finally {
+              if (!attached && Buffer.isBuffer(valueBytes)) valueBytes.fill(0);
+            }
+            memberStart = index + 1;
+          }
+          if (emittedPatternCount !== expectedPatternCount) restricted();
+          cursor = authorizationSshSkipSeparators(bytes, patternsEnd, lineEnd);
+        }
+      }
+      currentBranchOrdinal = branchOrdinal;
+    }
+
+    function parseAuthority(bytes, sourceFile, lineNumber, directive, argumentStart, lineEnd,
+      argumentCount, physicalScope) {
+      authorizationSshAsciiTokensWithoutEquals(bytes, argumentStart, lineEnd);
+      if (directive === "acceptenv") {
+        if (argumentCount < 1 || argumentCount > 255) restricted();
+      } else if (directive === "forcecommand" || directive === "authorizedkeyscommand"
+        || directive === "authorizedprincipalscommand" || directive === "authorizedkeysfile") {
+        if (argumentCount < 1 || argumentCount > 255) restricted();
+      } else if (argumentCount !== 1) {
+        restricted();
+      }
+      const firstStart = authorizationSshSkipSeparators(bytes, argumentStart, lineEnd);
+      const firstEnd = authorizationSshTokenEnd(bytes, firstStart, lineEnd);
+      if (authorizationSshNameInList(directive, AUTHORIZATION_SSH_BOOLEAN_NAMES)) {
+        if (!authorizationSshAsciiEquals(bytes, firstStart, firstEnd, "yes")
+          && !authorizationSshAsciiEquals(bytes, firstStart, firstEnd, "no")) restricted();
+      } else if (directive === "permittunnel") {
+        if (!authorizationSshAsciiExact(bytes, firstStart, firstEnd, "yes")
+          && !authorizationSshAsciiExact(bytes, firstStart, firstEnd, "no")
+          && !authorizationSshAsciiExact(bytes, firstStart, firstEnd, "point-to-point")
+          && !authorizationSshAsciiExact(bytes, firstStart, firstEnd, "ethernet")) restricted();
+      }
+      reserveAuthorizationSemanticNode(active, "sshAssignment");
+      if (directive === "acceptenv") {
+        for (let index = 0; index < argumentCount; index += 1) {
+          reserveAuthorizationSemanticNode(active, "sshAcceptEnvName");
+        }
+      }
+      const physicalEventOrdinal = authorizationSshEvent(
+        events,
+        "physicalDirective",
+        sourceFile.ordinal,
+        lineNumber,
+        directive,
+        physicalScope,
+        currentBranchOrdinal
+      );
+      if (directive === "acceptenv") {
+        const assignmentEventOrdinal = authorizationSshEvent(
+          events,
+          "assignment",
+          sourceFile.ordinal,
+          lineNumber,
+          physicalEventOrdinal,
+          physicalScope,
+          currentBranchOrdinal,
+          directive,
+          argumentCount,
+          null
+        );
+        let cursor = argumentStart;
+        for (let nameOrdinal = 0; nameOrdinal < argumentCount; nameOrdinal += 1) {
+          cursor = authorizationSshSkipSeparators(bytes, cursor, lineEnd);
+          const tokenEnd = authorizationSshTokenEnd(bytes, cursor, lineEnd);
+          let valueBytes;
+          let attached = false;
+          try {
+            valueBytes = Buffer.alloc(tokenEnd - cursor);
+            bytes.copy(valueBytes, 0, cursor, tokenEnd);
+            authorizationSshEvent(
+              events,
+              "acceptEnvName",
+              sourceFile.ordinal,
+              lineNumber,
+              physicalEventOrdinal,
+              physicalScope,
+              currentBranchOrdinal,
+              assignmentEventOrdinal,
+              nameOrdinal,
+              valueBytes
+            );
+            attached = true;
+          } finally {
+            if (!attached && Buffer.isBuffer(valueBytes)) valueBytes.fill(0);
+          }
+          cursor = tokenEnd;
+        }
+      } else {
+        let valueBytes;
+        let attached = false;
+        try {
+          valueBytes = authorizationSshCanonicalArguments(
+            bytes,
+            argumentStart,
+            lineEnd,
+            directive,
+            argumentCount
+          );
+          authorizationSshEvent(
+            events,
+            "assignment",
+            sourceFile.ordinal,
+            lineNumber,
+            physicalEventOrdinal,
+            physicalScope,
+            currentBranchOrdinal,
+            directive,
+            argumentCount,
+            valueBytes
+          );
+          attached = true;
+        } finally {
+          if (!attached && Buffer.isBuffer(valueBytes)) valueBytes.fill(0);
+        }
+      }
+    }
+
+    function parsePhysicalLine(bytes, sourceFile, lineNumber, lineStart, lineEnd) {
+      const tokenCount = authorizationSshValidatePhysicalLine(bytes, lineStart, lineEnd);
+      if (tokenCount === 0) return;
+      const directiveStart = authorizationSshSkipSeparators(bytes, lineStart, lineEnd);
+      const directiveEnd = authorizationSshTokenEnd(bytes, directiveStart, lineEnd);
+      const argumentStart = authorizationSshSkipSeparators(bytes, directiveEnd, lineEnd);
+      reserveAuthorizationSemanticNode(active, "sshPhysicalDirective");
+      const directive = authorizationSshDirective(bytes, directiveStart, directiveEnd);
+      const physicalScope = currentBranchOrdinal === -1 ? "global" : "match";
+      if (directive === "unknown") {
+        authorizationSshEvent(
+          events,
+          "physicalDirective",
+          sourceFile.ordinal,
+          lineNumber,
+          "unknown",
+          physicalScope,
+          currentBranchOrdinal
+        );
+        restricted();
+      }
+      if (directive === "include") {
+        parseInclude(bytes, sourceFile, lineNumber, argumentStart, lineEnd, physicalScope);
+      } else if (directive === "match") {
+        parseMatch(bytes, sourceFile, lineNumber, argumentStart, lineEnd, physicalScope);
+      } else if (authorizationSshNameInList(directive, AUTHORIZATION_SSH_AUTHORITY_NAMES)) {
+        parseAuthority(
+          bytes,
+          sourceFile,
+          lineNumber,
+          directive,
+          argumentStart,
+          lineEnd,
+          tokenCount - 1,
+          physicalScope
+        );
+      } else {
+        if (currentBranchOrdinal !== -1
+          || !authorizationSshNameInList(directive, AUTHORIZATION_SSH_OPAQUE_NAMES)) restricted();
+        authorizationSshEvent(
+          events,
+          "physicalDirective",
+          sourceFile.ordinal,
+          lineNumber,
+          directive,
+          physicalScope,
+          currentBranchOrdinal
+        );
+      }
+    }
+
+    function parseSource(bytes, sourceFile) {
+      files.push(sourceFile);
+      authorizationSshValidateSourceBytes(bytes);
+      let lineStart = 0;
+      let lineNumber = 1;
+      for (let index = 0; index <= bytes.length; index += 1) {
+        if (index !== bytes.length && bytes[index] !== 0x0a) continue;
+        if (index > lineStart) parsePhysicalLine(bytes, sourceFile, lineNumber, lineStart, index);
+        if (index === bytes.length) break;
+        lineStart = index + 1;
+        lineNumber += 1;
+      }
+    }
+
+    function consumeSource(path) {
+      consumeTrustedAuthorizationSource(active, path, trustedPathOperations, (bytes, sourceFile) => {
+        parseSource(bytes, sourceFile);
+      });
+    }
+
+    try {
+      consumeSource(AUTHORIZATION_SSH_ROOT_CONFIG);
+    } finally {
+      const root = activePaths.pop();
+      if (root !== AUTHORIZATION_SSH_ROOT_CONFIG) restricted();
+    }
+    if (activePaths.length !== 0) restricted();
+    Object.freeze(closure);
+    const preimageLength = measureAuthorizationSshClosure(closure);
+    reservePreimageBytes(active.snapshot, preimageLength);
+    let preimage;
+    let closureSha256;
+    try {
+      preimage = Buffer.alloc(preimageLength);
+      if (emitAuthorizationSshClosure(closure, preimage) !== preimageLength) restricted();
+      closureSha256 = createHash("sha256").update(preimage).digest("hex");
+    } finally {
+      if (Buffer.isBuffer(preimage)) preimage.fill(0);
+    }
+    if (typeof closureSha256 !== "string" || !LOWER_SHA256.test(closureSha256)) restricted();
+    owner.closureSha256 = closureSha256;
+    if (owner.disposed !== false || activePaths.length !== 0 || files.length < 1
+      || active.failed || active.snapshot.failed || Object.isFrozen(closure) !== true) restricted();
+    AUTHORIZATION_SSH_PROVENANCE.set(owner, active);
+    return owner;
+  } catch {
+    cleanupAuthorizationSshSyntax(active, owner, false);
+    failAuthorizationSourceGraph(active || graph);
+    restricted();
+  }
+}
+
+function disposeAuthorizationSshSyntax(graph, syntax) {
+  let active;
+  try {
+    if (!graph || !AUTHORIZATION_SOURCE_GRAPH_BRAND.has(graph)
+      || !AUTHORIZATION_SOURCE_SNAPSHOT_BRAND.has(graph.snapshot)
+      || graph.kind !== "ssh" || graph.snapshot.sshGraph !== graph) restricted();
+    active = graph;
+    if (AUTHORIZATION_SSH_PROVENANCE.get(syntax) !== active
+      || !syntax || syntax.disposed !== false
+      || !Array.isArray(syntax.events) || !Array.isArray(syntax.activePaths)
+      || !syntax.closure || !Array.isArray(syntax.closure.files)) restricted();
+    if (!cleanupAuthorizationSshSyntax(active, syntax, true)) restricted();
+  } catch {
+    failAuthorizationSourceGraph(active || graph);
+    restricted();
+  }
+}
+
+// C3_SSH_SOURCE_BLOCK_END
 function hasKeys(value, keys) {
   return exactKeys(value, [...keys].sort());
 }
