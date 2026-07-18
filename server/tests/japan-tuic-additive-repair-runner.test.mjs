@@ -312,7 +312,7 @@ import { readFileSync } from "node:fs";
 import * as crypto from "node:crypto";
 import * as nodePath from "node:path";
 import * as nodeUrl from "node:url";
-import { promisify } from "node:util";
+import { promisify, types } from "node:util";
 import vm from "node:vm";
 
 const [runnerPath, payloadPath] = process.argv.slice(2);
@@ -409,7 +409,7 @@ const modules = new Map([
   ["node:crypto", synthetic(["createHash", "randomUUID"], crypto)],
   ["node:fs", synthetic(Object.keys(fs), fs)],
   ["node:child_process", synthetic(["execFile", "spawnSync"], { execFile: unused, spawnSync })],
-  ["node:util", synthetic(["promisify"], { promisify })],
+  ["node:util", synthetic(["promisify", "types"], { promisify, types })],
   ["node:path", synthetic(["dirname", "join", "posix", "resolve"], nodePath)],
   ["node:url", synthetic(["pathToFileURL", "fileURLToPath"], nodeUrl)],
   ["./japan-tuic-additive-repair-contract.mjs", synthetic([
@@ -2295,7 +2295,7 @@ import { readFileSync } from "node:fs";
 import * as crypto from "node:crypto";
 import * as nodePath from "node:path";
 import * as nodeUrl from "node:url";
-import { promisify } from "node:util";
+import { promisify, types } from "node:util";
 import vm from "node:vm";
 
 const [runnerPath, payloadPath] = process.argv.slice(2);
@@ -2503,7 +2503,7 @@ const modules = new Map([
   ["node:crypto", synthetic(["createHash", "randomUUID"], { createHash, randomUUID: () => "test-uuid" })],
   ["node:fs", synthetic(Object.keys(fs), fs)],
   ["node:child_process", synthetic(["execFile", "spawnSync"], { execFile: unused, spawnSync: unused })],
-  ["node:util", synthetic(["promisify"], { promisify })],
+  ["node:util", synthetic(["promisify", "types"], { promisify, types })],
   ["node:path", synthetic(["dirname", "join", "posix", "resolve"], nodePath)],
   ["node:url", synthetic(["pathToFileURL", "fileURLToPath"], nodeUrl)],
   ["./japan-tuic-additive-repair-contract.mjs", synthetic([
@@ -3846,9 +3846,18 @@ const nativeWeakMap = WeakMap;
 const nativeWeakSet = WeakSet;
 const nativeProxy = Proxy;
 const nativeBuffer = Buffer;
+const nativeUint8Array = Uint8Array;
 const nativeRegExp = RegExp;
 const nativeTextEncoder = TextEncoder;
 const nativeJSON = JSON;
+const nativeWeakMapGet = nativeWeakMap.prototype.get;
+const nativeWeakMapHas = nativeWeakMap.prototype.has;
+const nativeWeakMapSet = nativeWeakMap.prototype.set;
+const nativeWeakMapDelete = nativeWeakMap.prototype.delete;
+const nativeArrayPush = nativeArray.prototype.push;
+const nativeBufferFill = nativeBuffer.prototype.fill;
+const nativeBufferCopy = nativeBuffer.prototype.copy;
+const nativeUint8ArrayFill = nativeUint8Array.prototype.fill;
 let allocationActive = false;
 const allocationCounts = {
   objectCall: 0, objectCreate: 0, array: 0, map: 0, set: 0, weakMap: 0, weakSet: 0, proxy: 0,
@@ -3856,6 +3865,488 @@ const allocationCounts = {
   createHash: 0, regexp: 0,
   textEncoder: 0, textEncode: 0, jsonStringify: 0, jsonParse: 0
 };
+let c3LifecycleCurrent = null;
+const C3_OWNER_KEY_NAMES = "activePaths,closure,closureSha256,disposed,events";
+const C3_SNAPSHOT_KEY_NAMES = "authorizationEntryCount,failed,fixedEnvelopeCount,retainedPreimageBytes,semanticNodeCount,sshGraph,sshMatchComparisonCount,sudoAliasVisitCount,sudoGraph,sudoSelectorComparisonCount,wildcardAlignedComparisonCount,wildcardInvocationCount,wildcardPatternByteCount";
+
+function c3LifecycleKeyShape(key) {
+  if ((typeof key !== "object" && typeof key !== "function") || key === null) return "primitive";
+  if (types.isProxy(key)) return "proxy";
+  try {
+    const names = nativeObject.getOwnPropertyNames(key).sort().join(",");
+    if (nativeObject.getPrototypeOf(key) === null && names === C3_OWNER_KEY_NAMES) return "owner";
+    if (nativeObject.getPrototypeOf(key) === null && names === C3_SNAPSHOT_KEY_NAMES) return "snapshot";
+  } catch {}
+  return "other";
+}
+
+function c3LifecycleOwnerComplete(owner, graph) {
+  try {
+    if (c3LifecycleKeyShape(owner) !== "owner") return false;
+    const closure = nativeObject.getOwnPropertyDescriptor(owner, "closure");
+    const closureSha256 = nativeObject.getOwnPropertyDescriptor(owner, "closureSha256");
+    const events = nativeObject.getOwnPropertyDescriptor(owner, "events");
+    const activePaths = nativeObject.getOwnPropertyDescriptor(owner, "activePaths");
+    const disposed = nativeObject.getOwnPropertyDescriptor(owner, "disposed");
+    if (![closure, closureSha256, events, activePaths, disposed].every((descriptor) => descriptor && nativeObject.hasOwn(descriptor, "value"))) return false;
+    return nativeObject.getPrototypeOf(closure.value) === null
+      && nativeObject.isFrozen(closure.value)
+      && nativeArray.isArray(closure.value.files)
+      && nativeArray.isArray(events.value)
+      && nativeArray.isArray(activePaths.value)
+      && activePaths.value.length === 0
+      && disposed.value === false
+      && typeof closureSha256.value === "string"
+      && closureSha256.value.length === 64
+      && graph && graph.failed === false && graph.snapshot && graph.snapshot.failed === false;
+  } catch {
+    return false;
+  }
+}
+
+function c3LifecycleRegistryEvent(method, key, value, result) {
+  const current = c3LifecycleCurrent;
+  if (!current) return;
+  const keyShape = c3LifecycleKeyShape(key);
+  const sameGraph = method === "set"
+    ? value === current.graph
+    : result === current.graph;
+  current.registry.push({
+    method,
+    keyShape,
+    sameGraph,
+    result: typeof result === "boolean" ? result : undefined,
+    ownerComplete: method === "set" && keyShape === "owner"
+      ? c3LifecycleOwnerComplete(key, current.graph)
+      : undefined,
+    stamp: method === "set" ? {
+      allocations: current.allocationOrdinal,
+      hashes: current.hashOrdinal,
+      copies: current.copyOrdinal,
+      pushes: current.pushOrdinal,
+      operationCalls: current.operationCount()
+    } : undefined
+  });
+}
+
+const instrumentedWeakMapPrototype = nativeObject.create(nativeWeakMap.prototype);
+nativeObject.defineProperties(instrumentedWeakMapPrototype, {
+  constructor: { value: null, writable: true, configurable: true },
+  get: {
+    value(key) {
+      const result = Reflect.apply(nativeWeakMapGet, this, [key]);
+      c3LifecycleRegistryEvent("get", key, undefined, result);
+      return result;
+    }, writable: true, configurable: true
+  },
+  has: {
+    value(key) {
+      const result = Reflect.apply(nativeWeakMapHas, this, [key]);
+      const value = result ? Reflect.apply(nativeWeakMapGet, this, [key]) : undefined;
+      c3LifecycleRegistryEvent("has", key, undefined, value);
+      return result;
+    }, writable: true, configurable: true
+  },
+  set: {
+    value(key, value) {
+      const result = Reflect.apply(nativeWeakMapSet, this, [key, value]);
+      c3LifecycleRegistryEvent("set", key, value, result);
+      return result;
+    }, writable: true, configurable: true
+  },
+  delete: {
+    value(key) {
+      const previous = Reflect.apply(nativeWeakMapGet, this, [key]);
+      const result = Reflect.apply(nativeWeakMapDelete, this, [key]);
+      c3LifecycleRegistryEvent("delete", key, undefined, previous);
+      return result;
+    }, writable: true, configurable: true
+  }
+});
+
+function c3CreateLifecycleTracker() {
+  return {
+    byteRecords: new nativeWeakMap(), byteEntries: new nativeArray(), nextByteId: 1,
+    arrayRecords: new nativeWeakMap(), arrayEntries: new nativeArray(), nextArrayId: 1,
+    objectEntries: new nativeArray(),
+    phases: new nativeArray(), pendingByteRole: null, pendingFixedRole: null,
+    pendingSemanticRoles: new nativeArray()
+  };
+}
+
+function c3LifecycleBegin(tracker, name, graph, operationCount = () => 0, fault = null) {
+  if (c3LifecycleCurrent) throw new Error("nested C3 lifecycle phase");
+  const phase = {
+    name, graph, operationCount, allocationOrdinal: 0, hashOrdinal: 0,
+    fillOrdinal: 0, copyOrdinal: 0, pushOrdinal: 0, attachedOrdinal: 0, fixedOrdinal: 0,
+    roleAllocationOrdinals: nativeObject.create(null), roleFillOrdinals: nativeObject.create(null),
+    registry: new nativeArray(), fills: new nativeArray(), copies: new nativeArray(), pushes: new nativeArray(),
+    objects: new nativeArray(), allocationKinds: nativeObject.create(null), hashes: new nativeArray(),
+    fixedAllocations: new nativeArray(), roleAllocations: new nativeArray(), roleFills: new nativeArray(),
+    semanticReserveOrdinal: 0, semanticBatchOrdinal: 0, currentSemanticBatch: 0,
+    eventBatchByOrdinal: new nativeMap(), retentions: new nativeArray(), actionOrdinal: 0, lastEventPushAction: 0,
+    allocationActions: new nativeArray(), objectAllocationRecords: new nativeWeakMap(),
+    objectAllocationEntries: new nativeArray(), byteAllocationActions: new nativeArray(), copyActions: new nativeArray(),
+    fault, faultTriggered: false
+  };
+  tracker.phases.push(phase);
+  c3LifecycleCurrent = phase;
+  phase.tracker = tracker;
+  nativeArray.prototype.push = c3LifecycleInstrumentedArrayPush;
+  nativeBuffer.prototype.fill = c3LifecycleInstrumentedBufferFill;
+  nativeBuffer.prototype.copy = c3LifecycleInstrumentedBufferCopy;
+  nativeUint8Array.prototype.fill = c3LifecycleInstrumentedUint8ArrayFill;
+  return phase;
+}
+
+function c3LifecycleEnd() {
+  const phase = c3LifecycleCurrent;
+  c3LifecycleCurrent = null;
+  try {
+    if (!phase) return phase;
+    phase.finalStamp = {
+      allocations: phase.allocationOrdinal,
+      hashes: phase.hashOrdinal,
+      copies: phase.copyOrdinal,
+      pushes: phase.pushOrdinal,
+      operationCalls: phase.operationCount()
+    };
+    phase.byteState = phase.tracker.byteEntries.map((record) => ({
+      id: record.id,
+      roles: [...record.roles].sort(),
+      zero: record.value.every((byte) => byte === 0)
+    }));
+    phase.arrayState = phase.tracker.arrayEntries.map((record) => ({
+      id: record.id, role: record.role, length: record.value.length
+    }));
+    const ownerRecord = phase.objects.find((record) => record.role === "owner");
+    const closureRecord = phase.objects.find((record) => record.role === "closure");
+    let ownerLinksClosure = null;
+    if (ownerRecord && closureRecord) {
+      const descriptor = nativeObject.getOwnPropertyDescriptor(ownerRecord.value, "closure");
+      ownerLinksClosure = !!descriptor && nativeObject.hasOwn(descriptor, "value") && descriptor.value === closureRecord.value;
+    }
+    phase.objectState = {
+      roles: phase.objects.map((record) => record.role),
+      ownerLinksClosure
+    };
+    phase.graph = null;
+    phase.operationCount = null;
+    phase.fault = null;
+    phase.tracker.pendingByteRole = null;
+    phase.tracker.pendingFixedRole = null;
+    phase.tracker.pendingSemanticRoles.length = 0;
+    phase.tracker = null;
+    return phase;
+  } finally {
+    nativeArray.prototype.push = nativeArrayPush;
+    nativeBuffer.prototype.fill = nativeBufferFill;
+    nativeBuffer.prototype.copy = nativeBufferCopy;
+    nativeUint8Array.prototype.fill = nativeUint8ArrayFill;
+  }
+}
+
+function c3LifecycleInstrumentedArrayPush(value) {
+  const current = c3LifecycleCurrent;
+  if (current) {
+    const arrayRecord = current.tracker.arrayRecords.get(this);
+    if (arrayRecord) {
+      current.pushOrdinal += 1;
+      current.actionOrdinal += 1;
+      const pushAction = current.actionOrdinal;
+      const bufferIds = new nativeArray();
+      if (arrayRecord.role === "events") {
+        for (let index = 0; index < arguments.length; index += 1) {
+          const event = arguments[index];
+          if (!event || (typeof event !== "object" && typeof event !== "function") || types.isProxy(event)) continue;
+          for (const name of nativeObject.getOwnPropertyNames(event)) {
+            const descriptor = nativeObject.getOwnPropertyDescriptor(event, name);
+            if (!descriptor || !nativeObject.hasOwn(descriptor, "value")) continue;
+            const byteRecord = c3LifecycleByteRecord(descriptor.value, "external");
+            if (!byteRecord) continue;
+            byteRecord.roles.add("retainedEvent");
+            if (byteRecord.attachedOrdinal === undefined) {
+              byteRecord.attachedOrdinal = current.attachedOrdinal;
+              current.attachedOrdinal += 1;
+            }
+            byteRecord.eventOrdinal = event.eventOrdinal;
+            Reflect.apply(nativeArrayPush, bufferIds, [byteRecord.id]);
+          }
+        }
+      }
+      Reflect.apply(nativeArrayPush, current.pushes, [{
+        ordinal: current.pushOrdinal,
+        arrayRole: arrayRecord.role,
+        valueCount: arguments.length,
+        bufferIds
+      }]);
+      if (arrayRecord.role === "files") {
+        for (let index = 0; index < arguments.length; index += 1) {
+          const record = current.objectAllocationRecords.get(arguments[index]);
+          if (record && record.classification === null) record.classification = "sourceFile";
+        }
+      }
+      if (arrayRecord.role === "events" && arguments.length === 1) {
+        const event = arguments[0];
+        const role = c3LifecycleSemanticRoleForEvent(event);
+        let expectedBatch = null;
+        if (role !== "sshPhysicalDirective" && role !== "sshSelectedInsertion") {
+          expectedBatch = current.eventBatchByOrdinal.get(event.physicalEventOrdinal);
+        } else if (role === "sshSelectedInsertion") {
+          expectedBatch = current.eventBatchByOrdinal.get(event.includePatternEventOrdinal);
+        }
+        let reserveIndex = -1;
+        const includeRole = role === "sshIncludePattern" || role === "sshSelectedInsertion";
+        const start = includeRole ? current.tracker.pendingSemanticRoles.length - 1 : 0;
+        const step = includeRole ? -1 : 1;
+        for (let index = start; index >= 0 && index < current.tracker.pendingSemanticRoles.length; index += step) {
+          const candidate = current.tracker.pendingSemanticRoles[index];
+          if (candidate.role === role
+            && (role === "sshPhysicalDirective" || includeRole || candidate.batch === expectedBatch)) {
+            reserveIndex = index;
+            break;
+          }
+        }
+        if (reserveIndex >= 0) {
+          const reserve = current.tracker.pendingSemanticRoles[reserveIndex];
+          for (let index = reserveIndex; index + 1 < current.tracker.pendingSemanticRoles.length; index += 1) {
+            current.tracker.pendingSemanticRoles[index] = current.tracker.pendingSemanticRoles[index + 1];
+          }
+          current.tracker.pendingSemanticRoles.length -= 1;
+          const lowerAction = Math.max(reserve.reserveStamp.action, current.lastEventPushAction);
+          const allocations = current.allocationActions.filter((entry) => entry.action > lowerAction && entry.action < pushAction);
+          const objects = current.objectAllocationEntries.filter((entry) => entry.action > lowerAction && entry.action < pushAction);
+          const objectRecord = current.objectAllocationRecords.get(event);
+          if (objectRecord && objectRecord.classification === null) objectRecord.classification = "event";
+          Reflect.apply(nativeArrayPush, current.retentions, [{
+            role,
+            reserveOrdinal: reserve.reserveOrdinal,
+            reserveStamp: reserve.reserveStamp,
+            allocationKinds: allocations.map((entry) => entry.kind),
+            objectCreateOrdinals: objects.map((entry) => entry.ordinal),
+            objectCreateActions: objects.map((entry) => entry.action),
+            byteAllocationOrdinals: current.byteAllocationActions
+              .filter((entry) => entry.action > lowerAction && entry.action < pushAction).map((entry) => entry.ordinal),
+            byteAllocationActions: current.byteAllocationActions
+              .filter((entry) => entry.action > lowerAction && entry.action < pushAction).map((entry) => entry.action),
+            copyOrdinals: current.copyActions
+              .filter((entry) => entry.action > lowerAction && entry.action < pushAction).map((entry) => entry.ordinal),
+            copyActions: current.copyActions
+              .filter((entry) => entry.action > lowerAction && entry.action < pushAction).map((entry) => entry.action),
+            objectCreateCount: objects.length,
+            objectIdentityMatches: !!objectRecord && objectRecord.classification === "event"
+              && objectRecord.action > lowerAction && objectRecord.action < pushAction
+              && objects.filter((entry) => entry.classification === null || entry.classification === "event").length === 1,
+            pushOrdinal: current.pushOrdinal,
+            pushAction,
+            pushOperationCalls: current.operationCount(),
+            eventOrdinal: Number.isSafeInteger(event.eventOrdinal) ? event.eventOrdinal : null
+          }]);
+          current.eventBatchByOrdinal.set(event.eventOrdinal,
+            role === "sshPhysicalDirective" ? reserve.batch : expectedBatch === undefined ? reserve.batch : expectedBatch);
+        }
+        current.lastEventPushAction = pushAction;
+      }
+    }
+  }
+  return Reflect.apply(nativeArrayPush, this, arguments);
+}
+
+function c3LifecycleSemanticRoleForEvent(event) {
+  if (!event || (typeof event !== "object" && typeof event !== "function") || types.isProxy(event)) return "unexpected";
+  switch (event.kind) {
+    case "physicalDirective": return "sshPhysicalDirective";
+    case "includePattern": return "sshIncludePattern";
+    case "selectedInsertion": return "sshSelectedInsertion";
+    case "matchBranch": return "sshMatchBranch";
+    case "matchCondition": return "sshMatchCondition";
+    case "matchPattern": return "sshMatchPattern";
+    case "assignment": return "sshAssignment";
+    case "acceptEnvName": return "sshAcceptEnvName";
+    default: return "unexpected";
+  }
+}
+
+function c3LifecycleSignal(kind, value) {
+  const current = c3LifecycleCurrent;
+  if (!current) return;
+  if (kind === "preimage") current.tracker.pendingByteRole = { role: "preimage", length: value };
+  if (kind === "fixed") {
+    current.fixedOrdinal += 1;
+    current.tracker.pendingFixedRole = ["owner", "closure", "files", "events", "activePaths"][current.fixedOrdinal - 1] || "unexpectedFixed";
+  }
+  if (kind === "semantic" && (value === "sshPhysicalDirective" || value === "sshIncludePattern"
+    || value === "sshSelectedInsertion" || value === "sshMatchBranch" || value === "sshMatchCondition"
+    || value === "sshMatchPattern" || value === "sshAssignment" || value === "sshAcceptEnvName")) {
+    current.semanticReserveOrdinal += 1;
+    current.actionOrdinal += 1;
+    if (value === "sshPhysicalDirective") {
+      current.semanticBatchOrdinal += 1;
+      current.currentSemanticBatch = current.semanticBatchOrdinal;
+    }
+    Reflect.apply(nativeArrayPush, current.tracker.pendingSemanticRoles, [{
+      role: value,
+      batch: current.currentSemanticBatch,
+      reserveOrdinal: current.semanticReserveOrdinal,
+      reserveStamp: {
+        action: current.actionOrdinal,
+        allocations: current.allocationOrdinal,
+        copies: current.copyOrdinal,
+        pushes: current.pushOrdinal
+      }
+    }]);
+  }
+}
+
+function c3LifecycleBeforeAllocation(kind, requestedLength) {
+  const current = c3LifecycleCurrent;
+  if (!current) return;
+  current.allocationOrdinal += 1;
+  current.actionOrdinal += 1;
+  current.allocationKinds[kind] = (current.allocationKinds[kind] || 0) + 1;
+  Reflect.apply(nativeArrayPush, current.allocationActions, [{
+    ordinal: current.allocationOrdinal,
+    action: current.actionOrdinal,
+    kind
+  }]);
+  if (kind.startsWith("buffer") || kind === "textEncoderOutput") {
+    Reflect.apply(nativeArrayPush, current.byteAllocationActions, [{
+      ordinal: current.allocationOrdinal,
+      action: current.actionOrdinal
+    }]);
+  }
+  const pendingFixedRole = current.tracker.pendingFixedRole;
+  if (pendingFixedRole) {
+    const expectedKind = pendingFixedRole === "owner" || pendingFixedRole === "closure" ? "objectCreate" : "array";
+    Reflect.apply(nativeArrayPush, current.fixedAllocations, [{
+      role: pendingFixedRole,
+      ordinal: current.fixedOrdinal,
+      kind,
+      expectedKind: kind === expectedKind
+    }]);
+    if (current.fault && current.fault.kind === "fixedAllocation"
+      && current.fault.role === pendingFixedRole && current.fault.ordinal === current.fixedOrdinal
+      && kind === expectedKind && !current.faultTriggered) {
+      current.faultTriggered = true;
+      throw new Error("synthetic C3 fixed allocation failure");
+    }
+  }
+  const pending = current.tracker.pendingByteRole;
+  const pendingRole = pending && pending.role;
+  if (pendingRole && kind === "bufferAlloc" && requestedLength === pending.length) {
+    current.roleAllocationOrdinals[pendingRole] = (current.roleAllocationOrdinals[pendingRole] || 0) + 1;
+    Reflect.apply(nativeArrayPush, current.roleAllocations, [{
+      role: pendingRole,
+      ordinal: current.roleAllocationOrdinals[pendingRole],
+      kind,
+      lengthMatches: true
+    }]);
+    if (current.fault && current.fault.kind === "allocationRole" && current.fault.role === pendingRole
+      && current.fault.ordinal === current.roleAllocationOrdinals[pendingRole] && !current.faultTriggered) {
+      current.faultTriggered = true;
+      throw new Error("synthetic C3 role allocation failure");
+    }
+  }
+}
+
+function c3LifecycleByteRecord(value, creationKind) {
+  const current = c3LifecycleCurrent;
+  if (!current || !(nativeBuffer.isBuffer(value) || value instanceof nativeUint8Array)) return null;
+  const tracker = current.tracker;
+  let record = tracker.byteRecords.get(value);
+  if (!record) {
+    record = { value, id: tracker.nextByteId, creationKind, roles: new nativeSet(), fills: new nativeArray() };
+    tracker.nextByteId += 1;
+    tracker.byteRecords.set(value, record);
+    tracker.byteEntries.push(record);
+  }
+  const pending = tracker.pendingByteRole;
+  if (pending && creationKind === "bufferAlloc" && pending.length === value.length) {
+    record.roles.add(pending.role);
+    tracker.pendingByteRole = null;
+  }
+  return record;
+}
+
+function c3LifecycleMarkByte(value, role) {
+  const record = c3LifecycleByteRecord(value, "external");
+  if (record) record.roles.add(role);
+  return record ? record.id : null;
+}
+
+function c3LifecycleMarkOwner(owner) {
+  const current = c3LifecycleCurrent;
+  if (!current || !owner || !nativeArray.isArray(owner.events)) return new nativeArray();
+  const attached = new nativeArray();
+  for (let eventOrdinal = 0; eventOrdinal < owner.events.length; eventOrdinal += 1) {
+    const event = owner.events[eventOrdinal];
+    for (const name of nativeObject.getOwnPropertyNames(event)) {
+      const descriptor = nativeObject.getOwnPropertyDescriptor(event, name);
+      if (!descriptor || !nativeObject.hasOwn(descriptor, "value")) continue;
+      const record = c3LifecycleByteRecord(descriptor.value, "external");
+      if (!record) continue;
+      record.roles.add("retainedEvent");
+      if (record.attachedOrdinal === undefined) record.attachedOrdinal = attached.length;
+      record.eventOrdinal = eventOrdinal;
+      attached.push(record.id);
+    }
+  }
+  return attached;
+}
+
+function c3LifecycleArrayRecord(value) {
+  const current = c3LifecycleCurrent;
+  if (!current || !nativeArray.isArray(value)) return null;
+  const tracker = current.tracker;
+  let record = tracker.arrayRecords.get(value);
+  if (!record) {
+    record = { value, id: tracker.nextArrayId, role: tracker.pendingFixedRole };
+    tracker.nextArrayId += 1;
+    tracker.arrayRecords.set(value, record);
+    tracker.arrayEntries.push(record);
+  }
+  tracker.pendingFixedRole = null;
+  return record;
+}
+
+function c3LifecycleObjectRecord(value, role) {
+  const current = c3LifecycleCurrent;
+  if (!current || (role !== "owner" && role !== "closure")) return;
+  const record = { value, role };
+  current.tracker.objectEntries.push(record);
+  current.objects.push(record);
+}
+
+function c3TrackAllocation(kind, value) {
+  if (allocationActive && Array.isArray(globalThis.__c3AllocationTrace)) {
+    globalThis.__c3AllocationTrace.push([kind]);
+  }
+  if (allocationActive && kind === "array" && Array.isArray(globalThis.__c3TrackedArrays)) {
+    globalThis.__c3TrackedArrays.push(value);
+  }
+  if (allocationActive && kind.startsWith("buffer") && Array.isArray(globalThis.__c3TrackedBuffers)) {
+    globalThis.__c3TrackedBuffers.push(value);
+  }
+  if (kind === "array") c3LifecycleArrayRecord(value);
+  if (kind === "objectCreate" && c3LifecycleCurrent) {
+    const entry = {
+      ordinal: c3LifecycleCurrent.allocationOrdinal,
+      action: c3LifecycleCurrent.actionOrdinal,
+      classification: c3LifecycleCurrent.tracker.pendingFixedRole === "owner"
+        || c3LifecycleCurrent.tracker.pendingFixedRole === "closure"
+        ? c3LifecycleCurrent.tracker.pendingFixedRole : null
+    };
+    c3LifecycleCurrent.objectAllocationRecords.set(value, entry);
+    Reflect.apply(nativeArrayPush, c3LifecycleCurrent.objectAllocationEntries, [entry]);
+  }
+  if (kind === "objectCreate" && c3LifecycleCurrent
+    && (c3LifecycleCurrent.tracker.pendingFixedRole === "owner" || c3LifecycleCurrent.tracker.pendingFixedRole === "closure")) {
+    c3LifecycleObjectRecord(value, c3LifecycleCurrent.tracker.pendingFixedRole);
+    c3LifecycleCurrent.tracker.pendingFixedRole = null;
+  }
+  if (kind.startsWith("buffer") || kind === "textEncoderOutput") c3LifecycleByteRecord(value, kind);
+  return value;
+}
 
 function instrumentedObject(value) {
   if (allocationActive) allocationCounts.objectCall += 1;
@@ -3865,11 +4356,13 @@ instrumentedObject.prototype = nativeObject.prototype;
 nativeObject.setPrototypeOf(instrumentedObject, nativeObject);
 instrumentedObject.create = (...arguments_) => {
   if (allocationActive) allocationCounts.objectCreate += 1;
-  return nativeObject.create(...arguments_);
+  c3LifecycleBeforeAllocation("objectCreate");
+  return c3TrackAllocation("objectCreate", nativeObject.create(...arguments_));
 };
 function instrumentedArray(...arguments_) {
   if (allocationActive) allocationCounts.array += 1;
-  return new nativeArray(...arguments_);
+  c3LifecycleBeforeAllocation("array");
+  return c3TrackAllocation("array", new nativeArray(...arguments_));
 }
 instrumentedArray.prototype = nativeArray.prototype;
 nativeObject.setPrototypeOf(instrumentedArray, nativeArray);
@@ -3890,9 +4383,12 @@ nativeObject.setPrototypeOf(instrumentedSet, nativeSet);
 function instrumentedWeakMap(iterable) {
   if (!new.target) return Reflect.apply(nativeWeakMap, undefined, [iterable]);
   if (allocationActive && new.target) allocationCounts.weakMap += 1;
-  return new nativeWeakMap(iterable);
+  return Reflect.construct(nativeWeakMap, [iterable], new.target);
 }
-instrumentedWeakMap.prototype = nativeWeakMap.prototype;
+instrumentedWeakMap.prototype = instrumentedWeakMapPrototype;
+nativeObject.defineProperty(instrumentedWeakMapPrototype, "constructor", {
+  value: instrumentedWeakMap, writable: true, configurable: true
+});
 nativeObject.setPrototypeOf(instrumentedWeakMap, nativeWeakMap);
 function instrumentedWeakSet(iterable) {
   if (!new.target) return Reflect.apply(nativeWeakSet, undefined, [iterable]);
@@ -3912,42 +4408,62 @@ instrumentedProxy.revocable = (target, handler) => {
 };
 const instrumentedBufferAlloc = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferAlloc += 1;
-  return nativeBuffer.alloc(...arguments_);
+  c3LifecycleBeforeAllocation("bufferAlloc", arguments_[0]);
+  return c3TrackAllocation("bufferAlloc", nativeBuffer.alloc(...arguments_));
 };
 const instrumentedBufferFrom = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferFrom += 1;
-  return nativeBuffer.from(...arguments_);
+  c3LifecycleBeforeAllocation("bufferFrom");
+  const result = c3TrackAllocation("bufferFrom", nativeBuffer.from(...arguments_));
+  const current = c3LifecycleCurrent;
+  if (current && arguments_.length > 0) {
+    const sourceRecord = current.tracker.byteRecords.get(arguments_[0]);
+    const resultRecord = current.tracker.byteRecords.get(result);
+    if (sourceRecord && resultRecord && sourceRecord.roles.has("rawDirectory")) resultRecord.roles.add("directoryReencode");
+  }
+  return result;
 };
 const instrumentedBufferAllocUnsafe = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferAllocUnsafe += 1;
-  return nativeBuffer.allocUnsafe(...arguments_);
+  c3LifecycleBeforeAllocation("bufferAllocUnsafe");
+  return c3TrackAllocation("bufferAllocUnsafe", nativeBuffer.allocUnsafe(...arguments_));
 };
 const instrumentedBufferAllocUnsafeSlow = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferAllocUnsafe += 1;
-  return nativeBuffer.allocUnsafeSlow(...arguments_);
+  c3LifecycleBeforeAllocation("bufferAllocUnsafe");
+  return c3TrackAllocation("bufferAllocUnsafe", nativeBuffer.allocUnsafeSlow(...arguments_));
 };
 const instrumentedBufferConcat = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferConcat += 1;
-  return nativeBuffer.concat(...arguments_);
+  c3LifecycleBeforeAllocation("bufferConcat");
+  return c3TrackAllocation("bufferConcat", nativeBuffer.concat(...arguments_));
 };
 const instrumentedBufferOf = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferOf += 1;
-  return nativeBuffer.of(...arguments_);
+  c3LifecycleBeforeAllocation("bufferOf");
+  return c3TrackAllocation("bufferOf", nativeBuffer.of(...arguments_));
+};
+const instrumentedBufferCompare = (...arguments_) => {
+  if (Number.isSafeInteger(globalThis.__c3BufferCompareCount)) globalThis.__c3BufferCompareCount += 1;
+  return nativeBuffer.compare(...arguments_);
 };
 const instrumentedBuffer = new Proxy(nativeBuffer, {
   apply(target, thisArgument, arguments_) {
     if (allocationActive) allocationCounts.bufferConstructor += 1;
-    return Reflect.apply(target, thisArgument, arguments_);
+    c3LifecycleBeforeAllocation("bufferConstructor");
+    return c3TrackAllocation("bufferConstructor", Reflect.apply(target, thisArgument, arguments_));
   },
   construct(target, arguments_, newTarget) {
     if (allocationActive) allocationCounts.bufferConstructor += 1;
-    return Reflect.construct(target, arguments_, newTarget);
+    c3LifecycleBeforeAllocation("bufferConstructor");
+    return c3TrackAllocation("bufferConstructor", Reflect.construct(target, arguments_, newTarget));
   },
   get(target, property) {
     if (property === "alloc") return instrumentedBufferAlloc;
     if (property === "allocUnsafe") return instrumentedBufferAllocUnsafe;
     if (property === "allocUnsafeSlow") return instrumentedBufferAllocUnsafeSlow;
     if (property === "concat") return instrumentedBufferConcat;
+    if (property === "compare") return instrumentedBufferCompare;
     if (property === "from") return instrumentedBufferFrom;
     if (property === "of") return instrumentedBufferOf;
     return Reflect.get(target, property, target);
@@ -3967,10 +4483,12 @@ class InstrumentedTextEncoder extends nativeTextEncoder {
   }
   encode(...arguments_) {
     if (allocationActive) allocationCounts.textEncode += 1;
-    return super.encode(...arguments_);
+    c3LifecycleBeforeAllocation("textEncoderOutput");
+    return c3TrackAllocation("textEncoderOutput", super.encode(...arguments_));
   }
   encodeInto(...arguments_) {
     if (allocationActive) allocationCounts.textEncode += 1;
+    if (arguments_.length > 1) c3LifecycleMarkByte(arguments_[1], "textEncoderDestination");
     return super.encodeInto(...arguments_);
   }
 }
@@ -3991,8 +4509,104 @@ const instrumentedJSON = new Proxy(nativeJSON, {
 });
 const instrumentedCreateHash = (...arguments_) => {
   if (allocationActive) allocationCounts.createHash += 1;
-  return crypto.createHash(...arguments_);
+  if (allocationActive && Array.isArray(globalThis.__c3AllocationTrace)) globalThis.__c3AllocationTrace.push(["createHash"]);
+  const current = c3LifecycleCurrent;
+  if (current) {
+    current.hashOrdinal += 1;
+    current.hashes.push({ ordinal: current.hashOrdinal });
+    if (current.fault && current.fault.kind === "hash"
+      && current.fault.ordinal === current.hashOrdinal && !current.faultTriggered) {
+      current.faultTriggered = true;
+      throw new Error("synthetic C3 hash failure");
+    }
+  }
+  const hash = crypto.createHash(...arguments_);
+  if (!current) return hash;
+  const nativeUpdate = hash.update;
+  const nativeDigest = hash.digest;
+  nativeObject.defineProperties(hash, {
+    update: {
+      value(...updateArguments) {
+        if (updateArguments.length > 0) c3LifecycleMarkByte(updateArguments[0], "hashInput");
+        Reflect.apply(nativeUpdate, hash, updateArguments);
+        return hash;
+      }, configurable: true
+    },
+    digest: {
+      value(...digestArguments) {
+        const result = Reflect.apply(nativeDigest, hash, digestArguments);
+        return nativeBuffer.isBuffer(result) || result instanceof nativeUint8Array
+          ? c3TrackAllocation("bufferHashDigest", result)
+          : result;
+      }, configurable: true
+    }
+  });
+  return hash;
 };
+
+function c3LifecycleInstrumentedBufferFill(...arguments_) {
+  const current = c3LifecycleCurrent;
+  let shouldFail = false;
+  let roleShouldFail = false;
+  if (current) {
+    const record = c3LifecycleByteRecord(this, "external");
+    current.fillOrdinal += 1;
+    const entry = { ordinal: current.fillOrdinal, byteId: record ? record.id : null, zero: arguments_[0] === 0 };
+    current.fills.push(entry);
+    if (record) record.fills.push({ phase: current.name, ordinal: current.fillOrdinal, zero: entry.zero });
+    shouldFail = current.fault && current.fault.kind === "fill"
+      && current.fault.ordinal === current.fillOrdinal && !current.faultTriggered;
+    if (record && record.roles.has("preimage") && arguments_[0] === 0) {
+      current.roleFillOrdinals.preimage = (current.roleFillOrdinals.preimage || 0) + 1;
+      Reflect.apply(nativeArrayPush, current.roleFills, [{
+        role: "preimage",
+        ordinal: current.roleFillOrdinals.preimage,
+        byteId: record.id,
+        zero: true
+      }]);
+      roleShouldFail = current.fault && current.fault.kind === "fillRole"
+        && current.fault.role === "preimage"
+        && current.fault.ordinal === current.roleFillOrdinals.preimage && !current.faultTriggered;
+    }
+  }
+  const result = Reflect.apply(nativeBufferFill, this, arguments_);
+  if (shouldFail || roleShouldFail) {
+    current.faultTriggered = true;
+    throw new Error("synthetic C3 fill failure");
+  }
+  return result;
+}
+function c3LifecycleInstrumentedBufferCopy(target, ...arguments_) {
+  const current = c3LifecycleCurrent;
+  if (current) {
+    const sourceRecord = c3LifecycleByteRecord(this, "external");
+    const targetRecord = c3LifecycleByteRecord(target, "external");
+    current.copyOrdinal += 1;
+    current.actionOrdinal += 1;
+    current.copies.push({ ordinal: current.copyOrdinal, sourceId: sourceRecord ? sourceRecord.id : null, targetId: targetRecord ? targetRecord.id : null });
+    Reflect.apply(nativeArrayPush, current.copyActions, [{ ordinal: current.copyOrdinal, action: current.actionOrdinal }]);
+  }
+  return Reflect.apply(nativeBufferCopy, this, [target, ...arguments_]);
+}
+function c3LifecycleInstrumentedUint8ArrayFill(...arguments_) {
+  const current = c3LifecycleCurrent;
+  let shouldFail = false;
+  if (current && !nativeBuffer.isBuffer(this)) {
+    const record = c3LifecycleByteRecord(this, "external");
+    current.fillOrdinal += 1;
+    const entry = { ordinal: current.fillOrdinal, byteId: record ? record.id : null, zero: arguments_[0] === 0 };
+    current.fills.push(entry);
+    if (record) record.fills.push({ phase: current.name, ordinal: current.fillOrdinal, zero: entry.zero });
+    shouldFail = current.fault && current.fault.kind === "fill"
+      && current.fault.ordinal === current.fillOrdinal && !current.faultTriggered;
+  }
+  const result = Reflect.apply(nativeUint8ArrayFill, this, arguments_);
+  if (shouldFail) {
+    current.faultTriggered = true;
+    throw new Error("synthetic C3 fill failure");
+  }
+  return result;
+}
 
 const unused = () => { throw new Error("unused synthetic builtin"); };
 const fs = {
@@ -4031,7 +4645,7 @@ const modules = new Map([
   ["node:crypto", synthetic(["createHash", "randomUUID"], { createHash: instrumentedCreateHash, randomUUID: () => "test-uuid" })],
   ["node:fs", synthetic(Object.keys(fs), fs)],
   ["node:child_process", synthetic(["execFile", "spawnSync"], { execFile: unused, spawnSync: unused })],
-  ["node:util", synthetic(["promisify"], { promisify })],
+  ["node:util", synthetic(["promisify", "types"], { promisify, types })],
   ["node:path", synthetic(["dirname", "join", "posix", "resolve"], nodePath)],
   ["node:url", synthetic(["pathToFileURL", "fileURLToPath"], nodeUrl)],
   ["./japan-tuic-additive-repair-contract.mjs", synthetic([
@@ -4105,6 +4719,24 @@ const append = [
   "const __test_nextAuthorizationBudgetValue = typeof nextAuthorizationBudgetValue === 'function' ? nextAuthorizationBudgetValue : undefined;",
   "const __test_scanAuthorizationWildcardPattern = typeof scanAuthorizationWildcardPattern === 'function' ? scanAuthorizationWildcardPattern : undefined;",
   "const __test_matchAuthorizationWildcard = typeof matchAuthorizationWildcard === 'function' ? matchAuthorizationWildcard : undefined;",
+  "const __test_reserveAuthorizationFixedEnvelope = typeof reserveAuthorizationFixedEnvelope === 'function' ? reserveAuthorizationFixedEnvelope : undefined;",
+  "const __test_deriveAuthorizationSshSyntax = typeof deriveAuthorizationSshSyntax === 'function' ? deriveAuthorizationSshSyntax : undefined;",
+  "const __test_disposeAuthorizationSshSyntax = typeof disposeAuthorizationSshSyntax === 'function' ? disposeAuthorizationSshSyntax : undefined;",
+  "function __test_c3Trace(...values) { if (Array.isArray(globalThis.__c3AllocationTrace)) globalThis.__c3AllocationTrace.push(values); }",
+  "if (typeof __test_reserveAuthorizationFixedEnvelope === 'function' && typeof __test_deriveAuthorizationSshSyntax === 'function' && typeof __test_disposeAuthorizationSshSyntax === 'function') {",
+  "  const __test_c3RealReserveFixed = reserveAuthorizationFixedEnvelope;",
+  "  reserveAuthorizationFixedEnvelope = function (graph) { __test_c3Trace('reserve-fixed'); const value = __test_c3RealReserveFixed(graph); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('fixed'); return value; };",
+  "  const __test_c3RealReserveSemantic = reserveAuthorizationSemanticNode;",
+  "  reserveAuthorizationSemanticNode = function (graph, kind) { __test_c3Trace('reserve-semantic', kind); const value = __test_c3RealReserveSemantic(graph, kind); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('semantic', kind); return value; };",
+  "  const __test_c3RealReserveWork = reserveAuthorizationWorkUnit;",
+  "  reserveAuthorizationWorkUnit = function (graph, kind) { __test_c3Trace('reserve-work', kind); return __test_c3RealReserveWork(graph, kind); };",
+  "  const __test_c3RealReservePreimage = reservePreimageBytes;",
+  "  reservePreimageBytes = function (snapshot, length) { __test_c3Trace('reserve-preimage', length); const value = __test_c3RealReservePreimage(snapshot, length); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('preimage', length); return value; };",
+  "  const __test_c3RealScanWildcard = scanAuthorizationWildcardPattern;",
+  "  scanAuthorizationWildcardPattern = function (graph, pattern) { __test_c3Trace('scan-wildcard', pattern.length); return __test_c3RealScanWildcard(graph, pattern); };",
+  "  const __test_c3RealMatchWildcard = matchAuthorizationWildcard;",
+  "  matchAuthorizationWildcard = function (graph, domain, pattern, target, starIndex) { __test_c3Trace('match-wildcard', domain, pattern.length, target.length, starIndex); return __test_c3RealMatchWildcard(graph, domain, pattern, target, starIndex); };",
+  "}",
   "function __test_missingC2BSymbols() {",
   "  return [",
   "    ['nextAuthorizationBudgetValue', __test_nextAuthorizationBudgetValue, 'function'],",
@@ -4120,6 +4752,18 @@ const append = [
   "    ['AUTHORIZATION_WORK_LIMITS', __test_AUTHORIZATION_WORK_LIMITS, 'object']",
   "  ].filter(([, value, expectedType]) => typeof value !== expectedType || (expectedType === 'object' && value === null)).map(([name]) => name);",
   "}",
+  "function __test_missingC3Symbols() {",
+  "  return [",
+  "    ['reserveAuthorizationFixedEnvelope', __test_reserveAuthorizationFixedEnvelope],",
+  "    ['deriveAuthorizationSshSyntax', __test_deriveAuthorizationSshSyntax],",
+  "    ['disposeAuthorizationSshSyntax', __test_disposeAuthorizationSshSyntax]",
+  "  ].filter(([, value]) => typeof value !== 'function').map(([name]) => name);",
+  "}",
+  "function __test_c3Arities() { return {",
+  "  reserveAuthorizationFixedEnvelope: typeof __test_reserveAuthorizationFixedEnvelope === 'function' ? __test_reserveAuthorizationFixedEnvelope.length : null,",
+  "  deriveAuthorizationSshSyntax: typeof __test_deriveAuthorizationSshSyntax === 'function' ? __test_deriveAuthorizationSshSyntax.length : null,",
+  "  disposeAuthorizationSshSyntax: typeof __test_disposeAuthorizationSshSyntax === 'function' ? __test_disposeAuthorizationSshSyntax.length : null",
+  "}; }",
   "function __test_c2bArities() { return {",
   "  nextAuthorizationBudgetValue: nextAuthorizationBudgetValue.length,",
   "  reserveAuthorizationSemanticNode: reserveAuthorizationSemanticNode.length,",
@@ -4213,10 +4857,10 @@ const append = [
   "  return { error, calls };",
   "}",
   "export {",
-  "  __test_c2bArities, __test_c2bCreateState, __test_c2bPolicy, __test_c2bProxyInstrumentation, __test_c2bReserveSource, __test_c2bReserveSourceWithSemanticTrace, __test_c2bTerminalSourceOperation,",
+  "  __test_c2bArities, __test_c2bCreateState, __test_c2bPolicy, __test_c2bProxyInstrumentation, __test_c2bReserveSource, __test_c2bReserveSourceWithSemanticTrace, __test_c2bTerminalSourceOperation, __test_c3Arities,",
   "  __test_consumeTrustedAuthorizationSource, __test_createAuthorizationSourceGraph, __test_createAuthorizationSourceSnapshot,",
   "  __test_c2bFixedShape, __test_inspectAuthorizationBudgetState, __test_reserveAuthorizationSourceFile,",
-  "  __test_matchAuthorizationWildcard, __test_missingC2BSymbols, __test_nextAuthorizationBudgetValue, __test_reserveAuthorizationSemanticNode,",
+  "  __test_deriveAuthorizationSshSyntax, __test_disposeAuthorizationSshSyntax, __test_matchAuthorizationWildcard, __test_missingC2BSymbols, __test_missingC3Symbols, __test_nextAuthorizationBudgetValue, __test_reserveAuthorizationFixedEnvelope, __test_reserveAuthorizationSemanticNode,",
   "  __test_reserveAuthorizationWorkUnit, __test_reservePreimageBytes, __test_scanAuthorizationWildcardPattern",
   "};"
 ].join("\n");
@@ -5915,3 +6559,2140 @@ function c2bBudgetVmProbe(scenario) {
     rmSync(directory, { recursive: true, force: true });
   }
 }
+
+const C3_EXPECTED_MISSING_SYMBOLS = Object.freeze([
+  "reserveAuthorizationFixedEnvelope",
+  "deriveAuthorizationSshSyntax",
+  "disposeAuthorizationSshSyntax"
+]);
+const C3_EVENT_SCHEMAS = Object.freeze({
+  physicalDirective: Object.freeze(["kind", "eventOrdinal", "sourceOrdinal", "lineNumber", "directive", "scope", "branchOrdinal"]),
+  includePattern: Object.freeze(["kind", "eventOrdinal", "sourceOrdinal", "lineNumber", "physicalEventOrdinal", "argumentOrdinal", "starIndex", "selectedCount"]),
+  selectedInsertion: Object.freeze(["kind", "eventOrdinal", "sourceOrdinal", "lineNumber", "includePatternEventOrdinal", "selectionOrdinal", "path"]),
+  matchBranch: Object.freeze(["kind", "eventOrdinal", "sourceOrdinal", "lineNumber", "physicalEventOrdinal", "branchOrdinal", "conditionStartEventOrdinal", "conditionCount", "patternCount"]),
+  matchCondition: Object.freeze(["kind", "eventOrdinal", "sourceOrdinal", "lineNumber", "physicalEventOrdinal", "branchOrdinal", "conditionOrdinal", "name", "patternStartEventOrdinal", "patternCount"]),
+  matchPattern: Object.freeze(["kind", "eventOrdinal", "sourceOrdinal", "lineNumber", "physicalEventOrdinal", "branchOrdinal", "conditionOrdinal", "patternOrdinal", "negated", "valueBytes", "starIndex"]),
+  assignment: Object.freeze(["kind", "eventOrdinal", "sourceOrdinal", "lineNumber", "physicalEventOrdinal", "scope", "branchOrdinal", "name", "argumentCount", "valueBytes"]),
+  acceptEnvName: Object.freeze(["kind", "eventOrdinal", "sourceOrdinal", "lineNumber", "physicalEventOrdinal", "scope", "branchOrdinal", "assignmentEventOrdinal", "nameOrdinal", "valueBytes"])
+});
+const C3_EVENT_ROLE_BY_KIND = Object.freeze({
+  physicalDirective: "sshPhysicalDirective",
+  includePattern: "sshIncludePattern",
+  selectedInsertion: "sshSelectedInsertion",
+  matchBranch: "sshMatchBranch",
+  matchCondition: "sshMatchCondition",
+  matchPattern: "sshMatchPattern",
+  assignment: "sshAssignment",
+  acceptEnvName: "sshAcceptEnvName"
+});
+const C3_OPAQUE_DIRECTIVES = Object.freeze(`addressfamily allowagentforwarding allowgroups allowstreamlocalforwarding
+allowtcpforwarding allowusers banner casignaturealgorithms channeltimeout
+ciphers clientalivecountmax clientaliveinterval compression denygroups
+denyusers exposeauthinfo fingerprinthash gatewayports gssapicleanupcredentials
+gssapistrictacceptorcheck hostbasedacceptedalgorithms
+hostbasedusesnamefrompacketonly hostcertificate hostkey hostkeyagent
+hostkeyalgorithms ignorerhosts ipqos kerberosgetafstoken
+kerberosorlocalpasswd kerberosticketcleanup listenaddress logingracetime
+loglevel logverbose macs maxauthtries maxsessions maxstartups modulifile
+persourcemaxstartups persourcenetblocksize permitemptypasswords permitlisten
+permitopen permitrootlogin permittty permituserrc pidfile port printlastlog
+printmotd pubkeyacceptedalgorithms pubkeyauthoptions rekeylimit requiredrsasize
+revokedkeys rdomain securitykeyprovider setenv streamlocalbindmask
+streamlocalbindunlink strictmodes subsystem syslogfacility tcpkeepalive usedns
+usepam versionaddendum x11displayoffset x11forwarding x11uselocalhost
+xauthlocation unusedconnectiontimeout`.split(/\s+/));
+const C3_AUTHORITY_DIRECTIVES = Object.freeze([
+  "authenticationmethods", "pubkeyauthentication", "passwordauthentication",
+  "kbdinteractiveauthentication", "challengeresponseauthentication",
+  "hostbasedauthentication", "gssapiauthentication", "kerberosauthentication",
+  "permituserenvironment", "acceptenv", "forcecommand", "chrootdirectory",
+  "disableforwarding", "permittunnel", "authorizedkeysfile", "authorizedkeyscommand",
+  "authorizedprincipalsfile", "authorizedprincipalscommand", "trustedusercakeys"
+]);
+
+const C3_VM_HARNESS_SUFFIX = String.raw`
+const C3_ROOT = "/etc/ssh/sshd_config";
+const C3_BASE = "/etc/ssh";
+
+function c3Stat(entry, overrides = {}) {
+  const type = overrides.type || entry.type;
+  const directory = type === "directory";
+  const file = type === "file";
+  const typeBits = directory ? 0o040000n : file ? 0o100000n : 0n;
+  return {
+    uid: BigInt(overrides.uid === undefined ? 0 : overrides.uid),
+    gid: BigInt(overrides.gid === undefined ? 0 : overrides.gid),
+    mode: typeBits | BigInt(overrides.mode === undefined ? entry.mode : overrides.mode),
+    nlink: BigInt(overrides.nlink === undefined ? (directory ? 2 : 1) : overrides.nlink),
+    dev: BigInt(overrides.dev === undefined ? 7 : overrides.dev),
+    ino: BigInt(overrides.ino === undefined ? entry.ino : overrides.ino),
+    size: BigInt(overrides.size === undefined ? (directory ? 4096 : entry.bytes.length) : overrides.size),
+    isDirectory: () => directory,
+    isFile: () => file,
+    isSymbolicLink: () => false
+  };
+}
+
+function c3Environment(fileSpecs, directorySpecs, options = {}) {
+  const entries = new nativeMap();
+  const ancestors = new nativeMap();
+  const directoryValues = new nativeMap();
+  const calls = new nativeArray();
+  const pathRoles = new nativeMap();
+  let ordinal = 100;
+  for (let index = 0; index < fileSpecs.length; index += 1) {
+    const [path, input] = fileSpecs[index];
+    const bytes = nativeBuffer.isBuffer(input) ? nativeBuffer.from(input) : nativeBuffer.from(input, "utf8");
+    const role = "file-" + index;
+    pathRoles.set(path, role);
+    entries.set(path, { type: "file", mode: 0o644, bytes, ino: ordinal, role });
+    ordinal += 1;
+  }
+  for (let index = 0; index < directorySpecs.length; index += 1) {
+    const [path, names] = directorySpecs[index];
+    const role = "directory-" + index;
+    pathRoles.set(path, role);
+    entries.set(path, { type: "directory", mode: 0o755, bytes: nativeBuffer.alloc(0), ino: ordinal, role });
+    ordinal += 1;
+    const values = new nativeArray();
+    for (const name of names) values.push(nativeBuffer.from(name, "utf8"));
+    directoryValues.set(path, values);
+  }
+  let ancestorOrdinal = 0;
+  function registerAncestor(path) {
+    if (entries.has(path) || ancestors.has(path)) return;
+    const role = "ancestor-" + ancestorOrdinal;
+    ancestorOrdinal += 1;
+    const entry = { type: "directory", mode: 0o755, bytes: nativeBuffer.alloc(0), ino: ordinal, role };
+    ordinal += 1;
+    ancestors.set(path, entry);
+    pathRoles.set(path, role);
+  }
+  registerAncestor("/");
+  for (const path of entries.keys()) {
+    let current = "";
+    const components = path.slice(1).split("/");
+    for (let index = 0; index + 1 < components.length; index += 1) {
+      current += "/" + components[index];
+      registerAncestor(current);
+    }
+  }
+  const fault = options.fault || null;
+  function faultMatches(kind, role) {
+    return fault && fault.kind === kind && (fault.role === undefined || fault.role === role);
+  }
+  function operationFailure(defaultCode = "EIO") {
+    const error = new Error("synthetic operation failure");
+    error.code = fault && typeof fault.code === "string" ? fault.code : defaultCode;
+    throw error;
+  }
+  function entryForPath(path) {
+    return entries.get(path) || ancestors.get(path);
+  }
+  const descriptors = new nativeMap();
+  const openedRoles = new nativeSet();
+  const directoryReadCounts = new nativeMap();
+  let nextFd = 300;
+  const pathOperations = {
+    lstat(path) {
+      const role = pathRoles.get(path) || "unrecognized-path";
+      calls.push(["lstat", role]);
+      if (faultMatches("lstat-failure", role)) operationFailure();
+      const entry = entryForPath(path);
+      if (!entry) operationFailure("ENOENT");
+      if (faultMatches("nonregular", role)) return c3Stat(entry, { type: "other" });
+      return c3Stat(entry);
+    },
+    open(path, flags) {
+      const role = pathRoles.get(path) || "unrecognized-path";
+      const entry = entries.get(path);
+      const kind = entry && entry.type === "directory" ? "directory" : "file";
+      calls.push(["open", role, kind]);
+      if (faultMatches("open-failure", role)) operationFailure();
+      if (!entry || openedRoles.has(role)) operationFailure();
+      const expectedFlags = entry.type === "directory" ? 0xB0000 : 0xA0000;
+      if (flags !== expectedFlags) operationFailure();
+      const fd = nextFd;
+      nextFd += 1;
+      openedRoles.add(role);
+      descriptors.set(fd, {
+        entry,
+        fstatCount: 0,
+        readOffset: 0,
+        eofConfirmed: false,
+        bodyEintr: false,
+        eofEintr: false
+      });
+      return fd;
+    },
+    fstat(fd) {
+      const descriptor = descriptors.get(fd);
+      const role = descriptor ? descriptor.entry.role : "unrecognized-fd";
+      const stage = descriptor && descriptor.fstatCount === 0 ? "pre" : "post";
+      calls.push(["fstat", role, stage]);
+      if (!descriptor || descriptor.fstatCount > 1) operationFailure();
+      descriptor.fstatCount += 1;
+      if (faultMatches("fstat-failure", role) && fault.stage === stage) operationFailure();
+      if (faultMatches("post-fstat-drift", role) && stage === "post") {
+        return c3Stat(descriptor.entry, { ino: descriptor.entry.ino + 1 });
+      }
+      return c3Stat(descriptor.entry);
+    },
+    read(fd, buffer, offset, length, position) {
+      const descriptor = descriptors.get(fd);
+      const role = descriptor ? descriptor.entry.role : "unrecognized-fd";
+      const entry = descriptor && descriptor.entry;
+      c3LifecycleMarkByte(buffer, "rawSource");
+      if (entry && entry.bytes) c3LifecycleMarkByte(entry.bytes, "sourceFixture");
+      if (!descriptor || entry.type !== "file" || descriptor.fstatCount !== 1 || !nativeBuffer.isBuffer(buffer)) {
+        calls.push(["read", role, "invalid"]);
+        operationFailure();
+      }
+      const body = position < entry.bytes.length;
+      const stage = body ? "body" : "eof";
+      if (body) {
+        if (offset !== position || position !== descriptor.readOffset
+          || length !== entry.bytes.length - position || buffer.length !== entry.bytes.length) {
+          calls.push(["read", role, "invalid"]);
+          operationFailure();
+        }
+        if (faultMatches("body-eintr", role) && !descriptor.bodyEintr) {
+          descriptor.bodyEintr = true;
+          calls.push(["read", role, "body-eintr"]);
+          operationFailure("EINTR");
+        }
+        if (faultMatches("early-eof", role)) {
+          calls.push(["read", role, "body-early-eof"]);
+          return 0;
+        }
+        if (faultMatches("body-invalid-count", role)) {
+          calls.push(["read", role, "body-invalid-count"]);
+          return length + 1;
+        }
+        if (faultMatches("read-failure", role)) {
+          calls.push(["read", role, "body-failure"]);
+          operationFailure();
+        }
+      } else {
+        if (position !== entry.bytes.length || descriptor.readOffset !== entry.bytes.length
+          || offset !== 0 || length !== 1 || buffer.length !== 1 || descriptor.eofConfirmed) {
+          calls.push(["read", role, "invalid"]);
+          operationFailure();
+        }
+        if (faultMatches("eof-eintr", role) && !descriptor.eofEintr) {
+          descriptor.eofEintr = true;
+          calls.push(["read", role, "eof-eintr"]);
+          operationFailure("EINTR");
+        }
+        if (faultMatches("trailing-byte", role)) {
+          calls.push(["read", role, "eof-trailing-byte"]);
+          buffer[0] = 0x78;
+          return 1;
+        }
+        if (faultMatches("eof-invalid-count", role)) {
+          calls.push(["read", role, "eof-invalid-count"]);
+          return -1;
+        }
+      }
+      calls.push(["read", role, stage]);
+      if (!body) {
+        descriptor.eofConfirmed = true;
+        return 0;
+      }
+      const count = entry.bytes.length - position;
+      entry.bytes.copy(buffer, offset, position, position + count);
+      descriptor.readOffset += count;
+      return count;
+    },
+    close(fd) {
+      const descriptor = descriptors.get(fd);
+      const role = descriptor ? descriptor.entry.role : "unrecognized-fd";
+      calls.push(["close", role]);
+      if (!descriptors.delete(fd)) operationFailure();
+      if (faultMatches("close-failure", role)) operationFailure();
+    }
+  };
+  const sourceOperations = {
+    readDirectory(path) {
+      const role = pathRoles.get(path) || "unrecognized-path";
+      const entry = entries.get(path);
+      const live = new nativeArray();
+      for (const descriptor of descriptors.values()) {
+        if (descriptor.entry === entry && descriptor.fstatCount === 1) live.push(descriptor);
+      }
+      calls.push(["readDirectory", role, live.length === 1 ? "live" : "invalid"]);
+      const count = directoryReadCounts.get(role) || 0;
+      directoryReadCounts.set(role, count + 1);
+      if (!entry || entry.type !== "directory" || live.length !== 1 || count !== 0) operationFailure();
+      if (faultMatches("read-directory-failure", role)) operationFailure();
+      const values = directoryValues.get(path);
+      if (!values) operationFailure();
+      for (const value of values) c3LifecycleMarkByte(value, "rawDirectory");
+      return values;
+    },
+    validateSudoers() {
+      calls.push(["validateSudoers"]);
+      operationFailure();
+    }
+  };
+  return { calls, pathOperations, sourceOperations, pathRoles };
+}
+
+function c3KnownAscii(value, text) {
+  if (value.length !== text.length) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] !== text.charCodeAt(index)) return false;
+  }
+  return true;
+}
+
+function c3Value(key, value, pathRoles) {
+  if (nativeBuffer.isBuffer(value)) {
+    return {
+      byteLength: value.length,
+      sha256: crypto.createHash("sha256").update(value).digest("hex"),
+      knownBytes: {
+        lang: c3KnownAscii(value, "LANG"),
+        lcAll: c3KnownAscii(value, "LC_ALL")
+      }
+    };
+  }
+  if (typeof value === "string" && pathRoles.has(value)) return { pathRole: pathRoles.get(value) };
+  if (typeof value === "string" && !["kind", "directive", "scope", "name", "schemaVersion", "type"].includes(key)) {
+    return { utf8Length: nativeBuffer.byteLength(value, "utf8"), sha256: crypto.createHash("sha256").update(value, "utf8").digest("hex") };
+  }
+  return value;
+}
+
+function c3EventView(event, pathRoles) {
+  const keys = nativeObject.getOwnPropertyNames(event);
+  const values = {};
+  const descriptors = {};
+  for (const key of keys) {
+    const descriptor = nativeObject.getOwnPropertyDescriptor(event, key);
+    descriptors[key] = {
+      enumerable: descriptor.enumerable,
+      configurable: descriptor.configurable,
+      writable: descriptor.writable,
+      data: nativeObject.hasOwn(descriptor, "value")
+    };
+    values[key] = c3Value(key, event[key], pathRoles);
+  }
+  return {
+    keys,
+    symbolCount: nativeObject.getOwnPropertySymbols(event).length,
+    proxy: types.isProxy(event),
+    descriptors,
+    nullPrototype: nativeObject.getPrototypeOf(event) === null,
+    frozen: nativeObject.isFrozen(event),
+    values
+  };
+}
+
+function c3OwnerView(owner, pathRoles, includeEvents = true) {
+  const ownerKeys = nativeObject.getOwnPropertyNames(owner);
+  const closureKeys = nativeObject.getOwnPropertyNames(owner.closure);
+  const files = owner.closure.files.map((file) => ({
+    keys: nativeObject.getOwnPropertyNames(file),
+    symbolCount: nativeObject.getOwnPropertySymbols(file).length,
+    proxy: types.isProxy(file),
+    nullPrototype: nativeObject.getPrototypeOf(file) === null,
+    frozen: nativeObject.isFrozen(file),
+    ordinal: file.ordinal,
+    pathRole: pathRoles.get(file.path) || "unrecognized-path",
+    sha256: file.sha256,
+    uid: file.uid,
+    gid: file.gid,
+    mode: file.mode,
+    nlink: file.nlink
+  }));
+  const canonicalBytes = nativeBuffer.from(nativeJSON.stringify(owner.closure) + "\n", "utf8");
+  const canonicalSha256 = crypto.createHash("sha256").update(canonicalBytes).digest("hex");
+  canonicalBytes.fill(0);
+  return {
+    ownerKeys,
+    ownerSymbolCount: nativeObject.getOwnPropertySymbols(owner).length,
+    ownerProxy: types.isProxy(owner),
+    ownerNullPrototype: nativeObject.getPrototypeOf(owner) === null,
+    closureKeys,
+    closureSymbolCount: nativeObject.getOwnPropertySymbols(owner.closure).length,
+    closureProxy: types.isProxy(owner.closure),
+    closureNullPrototype: nativeObject.getPrototypeOf(owner.closure) === null,
+    closureFrozen: nativeObject.isFrozen(owner.closure),
+    schemaVersion: owner.closure.schemaVersion,
+    type: owner.closure.type,
+    rootConfigRole: pathRoles.get(owner.closure.rootConfig) || "unrecognized-path",
+    files,
+    closureSha256: owner.closureSha256,
+    canonicalSha256,
+    eventCount: owner.events.length,
+    events: includeEvents ? owner.events.map((event) => c3EventView(event, pathRoles)) : [],
+    activePathRoles: owner.activePaths.map((path) => pathRoles.get(path) || "unrecognized-path"),
+    disposed: owner.disposed
+  };
+}
+
+function c3TrackedSummary(arrays, buffers) {
+  return {
+    arrays: arrays.map((value) => ({ length: value.length, native: nativeArray.isArray(value), prototype: nativeObject.getPrototypeOf(value) === nativeArray.prototype })),
+    buffers: buffers.map((value) => ({ length: value.length, zero: value.every((byte) => byte === 0) }))
+  };
+}
+
+function c3LifecycleSummary(tracker) {
+  if (!tracker) return null;
+  return {
+    bytes: tracker.byteEntries.map((record) => ({
+      id: record.id,
+      creationKind: record.creationKind,
+      roles: [...record.roles].sort(),
+      length: record.value.length,
+      zero: record.value.every((byte) => byte === 0),
+      attachedOrdinal: record.attachedOrdinal === undefined ? null : record.attachedOrdinal,
+      eventOrdinal: record.eventOrdinal === undefined ? null : record.eventOrdinal,
+      fills: record.fills.map((fill) => ({ ...fill }))
+    })),
+    arrays: tracker.arrayEntries.map((record) => ({
+      id: record.id,
+      role: record.role,
+      length: record.value.length,
+      native: nativeArray.isArray(record.value),
+      prototype: nativeObject.getPrototypeOf(record.value) === nativeArray.prototype
+    })),
+    phases: tracker.phases.map((phase) => ({
+      name: phase.name,
+      allocations: phase.allocationOrdinal,
+      allocationKinds: { ...phase.allocationKinds },
+      hashes: phase.hashOrdinal,
+      objectAllocations: phase.objectAllocationEntries.map((entry) => ({
+        ordinal: entry.ordinal,
+        classification: entry.classification
+      })),
+      fixedAllocations: phase.fixedAllocations.map((entry) => ({ ...entry })),
+      roleAllocations: phase.roleAllocations.map((entry) => ({ ...entry })),
+      roleFills: phase.roleFills.map((entry) => ({ ...entry })),
+      retentions: phase.retentions.map((entry) => ({
+        role: entry.role,
+        reserveOrdinal: entry.reserveOrdinal,
+        reserveStamp: { ...entry.reserveStamp },
+        allocationKinds: [...entry.allocationKinds],
+        objectCreateOrdinals: [...entry.objectCreateOrdinals],
+        objectCreateActions: [...entry.objectCreateActions],
+        byteAllocationOrdinals: [...entry.byteAllocationOrdinals],
+        byteAllocationActions: [...entry.byteAllocationActions],
+        copyOrdinals: [...entry.copyOrdinals],
+        copyActions: [...entry.copyActions],
+        objectCreateCount: entry.objectCreateCount,
+        objectIdentityMatches: entry.objectIdentityMatches,
+        pushOrdinal: entry.pushOrdinal,
+        pushAction: entry.pushAction,
+        pushOperationCalls: entry.pushOperationCalls,
+        eventOrdinal: entry.eventOrdinal
+      })),
+      fills: phase.fills.map((fill) => ({ ...fill })),
+      copies: phase.copies.map((copy) => ({ ...copy })),
+      pushes: phase.pushes.map((push) => ({
+        ordinal: push.ordinal,
+        arrayRole: push.arrayRole,
+        valueCount: push.valueCount,
+        bufferIds: [...push.bufferIds]
+      })),
+      faultTriggered: phase.faultTriggered,
+      registry: phase.registry.map((entry) => ({
+        method: entry.method,
+        keyShape: entry.keyShape,
+        sameGraph: entry.sameGraph,
+        ...(entry.result === undefined ? {} : { result: entry.result }),
+        ...(entry.ownerComplete === undefined ? {} : { ownerComplete: entry.ownerComplete }),
+        ...(entry.stamp === undefined ? {} : { stamp: { ...entry.stamp } })
+      })),
+      byteState: phase.byteState.map((entry) => ({ id: entry.id, roles: [...entry.roles], zero: entry.zero })),
+      arrayState: phase.arrayState.map((entry) => ({ ...entry })),
+      objectState: { roles: [...phase.objectState.roles], ownerLinksClosure: phase.objectState.ownerLinksClosure },
+      finalStamp: { ...phase.finalStamp }
+    }))
+  };
+}
+
+function c3LifecyclePhase(tracker, name, graph, calls, operation, fault = null) {
+  context.__c3LifecycleSignal = c3LifecycleSignal;
+  c3LifecycleBegin(tracker, name, graph, () => calls.length, fault);
+  try {
+    return operation();
+  } finally {
+    try {
+      c3LifecycleEnd();
+    } finally {
+      delete context.__c3LifecycleSignal;
+    }
+  }
+}
+
+function c3Run(fileSpecs, directorySpecs = [], options = {}) {
+  const state = fresh();
+  const environment = c3Environment(fileSpecs, directorySpecs, options.operations || {});
+  const lifecycleTracker = options.lifecycle === true ? c3CreateLifecycleTracker() : null;
+  const before = inspect(state);
+  const shapeBefore = api.__test_c2bFixedShape(state);
+  const trace = new nativeArray();
+  const trackedArrays = new nativeArray();
+  const trackedBuffers = new nativeArray();
+  globalThis.__c3AllocationTrace = trace;
+  globalThis.__c3TrackedArrays = trackedArrays;
+  globalThis.__c3TrackedBuffers = trackedBuffers;
+  globalThis.__c3BufferCompareCount = 0;
+  context.__c3AllocationTrace = trace;
+  let attachedBufferIds = new nativeArray();
+  const deriveOperation = () => {
+    const result = withAllocations(() => safe(() => api.__test_deriveAuthorizationSshSyntax(
+      state.ssh,
+      environment.pathOperations,
+      environment.sourceOperations
+    )));
+    if (result.value.ok) attachedBufferIds = c3LifecycleMarkOwner(result.value.value);
+    return result;
+  };
+  const derived = lifecycleTracker
+    ? c3LifecyclePhase(lifecycleTracker, "derive", state.ssh, environment.calls, deriveOperation, options.deriveFault || null)
+    : deriveOperation();
+  const compareCount = globalThis.__c3BufferCompareCount;
+  const afterDerive = inspect(state);
+  const shapeAfterDerive = api.__test_c2bFixedShape(state);
+  let owner = null;
+  let ownerBeforeDispose = null;
+  let dispose = null;
+  let ownerAfterDispose = null;
+  let secondDerive = null;
+  let secondDeriveCalls = null;
+  let terminalSecondDerive = null;
+  let terminalSecondDeriveCalls = null;
+  let terminalSecondDeriveAllocations = null;
+  let disposeAllocations = null;
+  if (derived.value.ok) {
+    owner = derived.value.value;
+    ownerBeforeDispose = c3OwnerView(owner, environment.pathRoles, options.includeEvents !== false);
+    if (options.secondDerive === true) {
+      const secondEnvironment = c3Environment(fileSpecs, directorySpecs);
+      secondDerive = safe(() => api.__test_deriveAuthorizationSshSyntax(
+        state.ssh,
+        secondEnvironment.pathOperations,
+        secondEnvironment.sourceOperations
+      ));
+      secondDeriveCalls = secondEnvironment.calls.slice();
+    }
+    if (options.dispose !== false) {
+      const bufferWitnesses = trackedBuffers.slice();
+      const closureReference = owner.closure;
+      const disposeOperation = () => withAllocations(() => safe(() => api.__test_disposeAuthorizationSshSyntax(state.ssh, owner)));
+      const disposed = lifecycleTracker
+        ? c3LifecyclePhase(lifecycleTracker, "dispose", state.ssh, environment.calls, disposeOperation, options.disposeFault || null)
+        : disposeOperation();
+      dispose = disposed.value;
+      disposeAllocations = disposed.counts;
+      ownerAfterDispose = {
+        disposed: owner.disposed,
+        closureReferenceDropped: owner.closure !== closureReference,
+        fileLength: closureReference.files.length,
+        eventLength: owner.events.length,
+        activeLength: owner.activePaths.length,
+        allBuffersZero: bufferWitnesses.every((buffer) => buffer.every((byte) => byte === 0))
+      };
+      if (!dispose.ok && options.terminalAfterDispose === true) {
+        const terminalEnvironment = c3Environment(fileSpecs, directorySpecs);
+        const terminalOperation = () => withAllocations(() => safe(() => api.__test_deriveAuthorizationSshSyntax(
+          state.ssh,
+          terminalEnvironment.pathOperations,
+          terminalEnvironment.sourceOperations
+        )));
+        const terminal = lifecycleTracker
+          ? c3LifecyclePhase(lifecycleTracker, "terminalAfterDispose", state.ssh, terminalEnvironment.calls, terminalOperation)
+          : terminalOperation();
+        terminalSecondDerive = terminal.value;
+        terminalSecondDeriveAllocations = terminal.counts;
+        terminalSecondDeriveCalls = terminalEnvironment.calls.slice();
+      }
+    }
+  } else if (options.terminalSecondCall === true) {
+    const terminalEnvironment = c3Environment(fileSpecs, directorySpecs);
+    const terminalOperation = () => withAllocations(() => safe(() => api.__test_deriveAuthorizationSshSyntax(
+      state.ssh,
+      terminalEnvironment.pathOperations,
+      terminalEnvironment.sourceOperations
+    )));
+    const terminal = lifecycleTracker
+      ? c3LifecyclePhase(lifecycleTracker, "terminal", state.ssh, terminalEnvironment.calls, terminalOperation)
+      : terminalOperation();
+    terminalSecondDerive = terminal.value;
+    terminalSecondDeriveAllocations = terminal.counts;
+    terminalSecondDeriveCalls = terminalEnvironment.calls.slice();
+  }
+  const after = inspect(state);
+  const tracked = c3TrackedSummary(trackedArrays, trackedBuffers);
+  delete globalThis.__c3AllocationTrace;
+  delete globalThis.__c3TrackedArrays;
+  delete globalThis.__c3TrackedBuffers;
+  delete globalThis.__c3BufferCompareCount;
+  delete context.__c3AllocationTrace;
+  return {
+    outcome: derived.value.ok ? { ok: true } : derived.value,
+    before,
+    shapeBefore,
+    afterDerive,
+    shapeAfterDerive,
+    after,
+    allocations: derived.counts,
+    trace,
+    compareCount,
+    calls: environment.calls,
+    ownerBeforeDispose,
+    dispose,
+    disposeAllocations,
+    ownerAfterDispose,
+    tracked,
+    lifecycle: c3LifecycleSummary(lifecycleTracker),
+    attachedBufferIds,
+    secondDerive,
+    secondDeriveCalls,
+    terminalSecondDerive,
+    terminalSecondDeriveAllocations,
+    terminalSecondDeriveCalls
+  };
+}
+
+function c3A1FileRun(fault, terminalSecondCall = false) {
+  return c3Run([[C3_ROOT, "Banner operation\n"]], [], {
+    includeEvents: false,
+    terminalSecondCall,
+    operations: fault ? { fault } : {}
+  });
+}
+
+function c3A1DirectoryRun(fault, terminalSecondCall = false) {
+  return c3Run([
+    [C3_ROOT, "Include conf.d/selected*.conf\n"],
+    ["/etc/ssh/conf.d/selected.conf", "Banner selected\n"]
+  ], [["/etc/ssh/conf.d", ["ignored.txt", "selected.conf"]]], {
+    includeEvents: false,
+    terminalSecondCall,
+    operations: fault ? { fault } : {}
+  });
+}
+
+function c3OwnerIsolationSnapshot(owner) {
+  const closure = owner.closure;
+  const files = closure.files;
+  const events = owner.events;
+  const activePaths = owner.activePaths;
+  const buffers = new nativeArray();
+  for (const event of events) {
+    for (const name of nativeObject.getOwnPropertyNames(event)) {
+      const descriptor = nativeObject.getOwnPropertyDescriptor(event, name);
+      if (descriptor && nativeObject.hasOwn(descriptor, "value") && nativeBuffer.isBuffer(descriptor.value)) {
+        const value = descriptor.value;
+        Reflect.apply(nativeArrayPush, buffers, [{
+          value,
+          length: value.length,
+          nonzero: value.reduce((count, byte) => count + (byte === 0 ? 0 : 1), 0),
+          sha256: crypto.createHash("sha256").update(value).digest("hex")
+        }]);
+      }
+    }
+  }
+  return {
+    owner, closure, files, events, activePaths, buffers,
+    disposed: owner.disposed,
+    fileLength: files.length,
+    eventLength: events.length,
+    activeLength: activePaths.length
+  };
+}
+
+function c3OwnerIsolationComparison(snapshot) {
+  const current = c3OwnerIsolationSnapshot(snapshot.owner);
+  return {
+    ownerIdentity: current.owner === snapshot.owner,
+    closureIdentity: current.closure === snapshot.closure,
+    filesIdentity: current.files === snapshot.files,
+    eventsIdentity: current.events === snapshot.events,
+    activePathsIdentity: current.activePaths === snapshot.activePaths,
+    disposedUnchanged: current.disposed === snapshot.disposed,
+    fileLengthUnchanged: current.fileLength === snapshot.fileLength,
+    eventLengthUnchanged: current.eventLength === snapshot.eventLength,
+    activeLengthUnchanged: current.activeLength === snapshot.activeLength,
+    bufferCount: current.buffers.length,
+    bufferCountUnchanged: current.buffers.length === snapshot.buffers.length,
+    bufferIdentitiesUnchanged: current.buffers.length === snapshot.buffers.length
+      && current.buffers.every((entry, index) => entry.value === snapshot.buffers[index].value),
+    bufferLengthsUnchanged: current.buffers.length === snapshot.buffers.length
+      && current.buffers.every((entry, index) => entry.length === snapshot.buffers[index].length),
+    bufferNonzeroUnchanged: current.buffers.length === snapshot.buffers.length
+      && current.buffers.every((entry, index) => entry.nonzero === snapshot.buffers[index].nonzero),
+    bufferBytesUnchanged: current.buffers.length === snapshot.buffers.length
+      && current.buffers.every((entry, index) => entry.sha256 === snapshot.buffers[index].sha256)
+  };
+}
+
+function c3RegistryLifecycleScenario() {
+  const tracker = c3CreateLifecycleTracker();
+
+  function derive(name, source, existingState) {
+    const state = existingState || fresh();
+    const environment = c3Environment([[C3_ROOT, source]], []);
+    let attached = new nativeArray();
+    const execution = c3LifecyclePhase(tracker, name, state.ssh, environment.calls, () => {
+      const result = withAllocations(() => safe(() => api.__test_deriveAuthorizationSshSyntax(
+        state.ssh, environment.pathOperations, environment.sourceOperations
+      )));
+      if (result.value.ok) attached = c3LifecycleMarkOwner(result.value.value);
+      return result;
+    });
+    return {
+      state,
+      owner: execution.value.ok ? execution.value.value : null,
+      outcome: execution.value.ok ? { ok: true } : execution.value,
+      allocations: execution.counts,
+      calls: environment.calls.slice(),
+      attached
+    };
+  }
+
+  function dispose(name, state, owner) {
+    const calls = new nativeArray();
+    const execution = c3LifecyclePhase(tracker, name, state.ssh, calls,
+      () => withAllocations(() => safe(() => api.__test_disposeAuthorizationSshSyntax(state.ssh, owner))));
+    return { outcome: execution.value.ok ? { ok: true } : execution.value, allocations: execution.counts };
+  }
+
+  const failed = derive("failedDerive", "UnknownDirective opaque\n");
+  const a = derive("deriveA", "AcceptEnv LANG\n");
+  const b = derive("deriveB", "Match User alice Group ops\n");
+  const aIsolationBefore = c3OwnerIsolationSnapshot(a.owner);
+  const bIsolationBefore = c3OwnerIsolationSnapshot(b.owner);
+  const bClosure = b.owner.closure;
+  const bFiles = bClosure.files;
+  const bEvents = b.owner.events;
+  const bActivePaths = b.owner.activePaths;
+  const bLengths = [bFiles.length, bEvents.length, bActivePaths.length];
+  const foreign = dispose("foreignDispose", b.state, a.owner);
+  const foreignOwnerIsolation = c3OwnerIsolationComparison(aIsolationBefore);
+  const liveOwnerIsolation = c3OwnerIsolationComparison(bIsolationBefore);
+  const foreignOwnerStateHealthy = !a.state.snapshot.failed && !a.state.ssh.failed;
+  const terminal = derive("terminalFollowup", "AcceptEnv LANG\n", b.state);
+  const terminalUnchanged = b.owner.closure === bClosure
+    && bClosure.files === bFiles && b.owner.events === bEvents && b.owner.activePaths === bActivePaths
+    && bFiles.length === bLengths[0] && bEvents.length === bLengths[1] && bActivePaths.length === bLengths[2];
+  const disposeA = dispose("disposeA", a.state, a.owner);
+  const disposeACleanup = {
+    disposed: a.owner.disposed,
+    closureDropped: a.owner.closure !== aIsolationBefore.closure,
+    filesCleared: aIsolationBefore.files.length === 0,
+    eventsCleared: aIsolationBefore.events.length === 0,
+    activePathsCleared: aIsolationBefore.activePaths.length === 0,
+    buffersZero: aIsolationBefore.buffers.every((entry) => entry.value.every((byte) => byte === 0))
+  };
+  const disposeB = dispose("disposeB", b.state, b.owner);
+
+  const c = derive("deriveC", "AcceptEnv LC_ALL\n");
+  const snapshotAsOwner = dispose("snapshotAsOwner", c.state, c.state.snapshot);
+  const disposeC = dispose("disposeC", c.state, c.owner);
+
+  const d = derive("deriveD", "Match User delta\n");
+  const e = derive("deriveE", "Match Group echo\n");
+  const eIsolationBefore = c3OwnerIsolationSnapshot(e.owner);
+  const disposeD = dispose("disposeD", d.state, d.owner);
+  const reuseD = dispose("reuseD", d.state, d.owner);
+  const reuseLiveOwnerIsolation = c3OwnerIsolationComparison(eIsolationBefore);
+  const reuseLiveOwnerStateHealthy = !e.state.snapshot.failed && !e.state.ssh.failed;
+  const disposeE = dispose("disposeE", e.state, e.owner);
+
+  return {
+    failed: { outcome: failed.outcome, terminal: failed.state.snapshot.failed && failed.state.ssh.failed },
+    foreign: {
+      outcome: foreign.outcome,
+      terminal: b.state.snapshot.failed && b.state.ssh.failed,
+      foreignOwnerStateHealthy,
+      foreignOwnerIsolation,
+      liveOwnerIsolation,
+      disposeACleanup
+    },
+    terminal: {
+      outcome: terminal.outcome,
+      allocations: terminal.allocations,
+      calls: terminal.calls,
+      unchanged: terminalUnchanged
+    },
+    snapshotAsOwner: { outcome: snapshotAsOwner.outcome },
+    reuse: { outcome: reuseD.outcome, reuseLiveOwnerIsolation, reuseLiveOwnerStateHealthy },
+    correctDisposals: [disposeA.outcome, disposeB.outcome, disposeC.outcome, disposeD.outcome, disposeE.outcome],
+    lifecycle: c3LifecycleSummary(tracker)
+  };
+}
+
+function c3LifecycleScenario() {
+  const success = c3Run([
+    [C3_ROOT, "Include conf.d/*.conf\nMatch User alice Group ops\nAcceptEnv LANG LC_ALL\n"],
+    ["/etc/ssh/conf.d/selected.conf", "Banner selected\n"]
+  ], [["/etc/ssh/conf.d", ["ignored.txt", "selected.conf"]]], { lifecycle: true });
+  const failure = c3Run([[C3_ROOT, "AcceptEnv LANG\nMatch User abc,abc\n"]], [], {
+    lifecycle: true,
+    includeEvents: false,
+    terminalSecondCall: true
+  });
+  const fixedAllocationFailures = ["owner", "closure", "files", "events", "activePaths"].map((role, index) => ({
+    role,
+    result: c3Run([[C3_ROOT, "AcceptEnv LANG\n"]], [], {
+      lifecycle: true,
+      includeEvents: false,
+      terminalSecondCall: true,
+      deriveFault: { kind: "fixedAllocation", role, ordinal: index + 1 }
+    })
+  }));
+  const hashFailure = c3Run([[C3_ROOT, "AcceptEnv LANG\n"]], [], {
+    lifecycle: true,
+    includeEvents: false,
+    terminalSecondCall: true,
+    deriveFault: { kind: "hash", ordinal: 2 }
+  });
+  const preimageAllocationFailure = c3Run([[C3_ROOT, "AcceptEnv LANG LC_ALL\n"]], [], {
+    lifecycle: true,
+    includeEvents: false,
+    terminalSecondCall: true,
+    deriveFault: { kind: "allocationRole", role: "preimage", ordinal: 1 }
+  });
+  const preimageFillFailure = c3Run([[C3_ROOT, "AcceptEnv LANG LC_ALL\n"]], [], {
+    lifecycle: true,
+    includeEvents: false,
+    terminalSecondCall: true,
+    deriveFault: { kind: "fillRole", role: "preimage", ordinal: 1 }
+  });
+  const disposeFailure = c3Run([[C3_ROOT, "Match User alice Group ops\nAcceptEnv LANG LC_ALL\n"]], [], {
+    lifecycle: true,
+    includeEvents: false,
+    disposeFault: { kind: "fill", ordinal: 1 },
+    terminalAfterDispose: true
+  });
+  const cycleFailure = c3Run([[C3_ROOT, "Include sshd_config\n"]], [], {
+    lifecycle: true,
+    includeEvents: true,
+    terminalSecondCall: true
+  });
+  const seenFailure = c3Run([
+    [C3_ROOT, "Include child.conf child.conf\n"],
+    ["/etc/ssh/child.conf", "Banner child\n"]
+  ], [], {
+    lifecycle: true,
+    includeEvents: true,
+    terminalSecondCall: true
+  });
+  return {
+    moduleWeakMapCount: moduleAllocationCounts.weakMap,
+    success,
+    failure,
+    fixedAllocationFailures,
+    hashFailure,
+    preimageAllocationFailure,
+    preimageFillFailure,
+    disposeFailure,
+    cycleFailure,
+    seenFailure,
+    registry: c3RegistryLifecycleScenario(),
+    prototypesRestored: nativeArray.prototype.push === nativeArrayPush
+      && nativeBuffer.prototype.fill === nativeBufferFill
+      && nativeBuffer.prototype.copy === nativeBufferCopy
+      && nativeUint8Array.prototype.fill === nativeUint8ArrayFill
+  };
+}
+
+function c3DepthScenario() {
+  const root = [
+    "# root comment",
+    "Include conf.d/*.conf literal.conf",
+    "PubkeyAuthentication yes",
+    "Match all",
+    "PasswordAuthentication no",
+    ""
+  ].join("\n");
+  const files = [
+    [C3_ROOT, root],
+    ["/etc/ssh/conf.d/10-child.conf", "AuthenticationMethods publickey\nInclude nested.conf\n"],
+    ["/etc/ssh/nested.conf", "DisableForwarding yes\n"],
+    ["/etc/ssh/conf.d/20-child.conf", "AuthorizedKeysFile /etc/ssh/authorized_keys/gccgw-japan-repair-ci\n"],
+    ["/etc/ssh/literal.conf", "PermitTunnel no\n"]
+  ];
+  const directories = [["/etc/ssh/conf.d", ["20-child.conf", ".hidden.conf", "10-child.conf"]]];
+  const success = c3Run(files, directories, { secondDerive: true });
+  const failure = c3Run([[C3_ROOT, "UnknownDirective secret-value\n"]]);
+  const operationSuccess = c3A1FileRun();
+  const operationFailures = [
+    ["lstat", { kind: "lstat-failure", role: "file-0", code: "EINTR" }],
+    ["nonregular", { kind: "nonregular", role: "file-0" }],
+    ["open", { kind: "open-failure", role: "file-0", code: "EINTR" }]
+  ].map(([name, fault]) => ({ name, result: c3A1FileRun(fault, true) }));
+  return { success, failure, operationSuccess, operationFailures, lifecycle: c3LifecycleScenario() };
+}
+
+function c3CoordinateScenario() {
+  const coordinate = c3Run([
+    [C3_ROOT, "Include child.conf\nMatch User later\nPasswordAuthentication no\n"],
+    ["/etc/ssh/child.conf", "\n# line two\n\n\nMatch Group ops\nPubkeyAuthentication yes\n"]
+  ]);
+  const duplicateCases = [
+    ["negation", "Match User a,!a\n", true, 0],
+    ["length", "Match User a,bb\n", true, 0],
+    ["first-byte", "Match User a,b\n", true, 1],
+    ["later-byte", "Match User abc,abd\n", true, 3],
+    ["duplicate", "Match User abc,abc\n", false, 3]
+  ].map(([name, source, ok, aligned]) => ({ name, ok, aligned, result: c3Run([[C3_ROOT, source]], [], { includeEvents: false }) }));
+
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+  const lines = new nativeArray();
+  const common62 = "a".repeat(62);
+  for (let line = 0; line < 132; line += 1) {
+    const patterns = new nativeArray();
+    for (let index = 0; index < 64; index += 1) patterns.push(common62 + alphabet[index]);
+    lines.push("Match User " + patterns.join(","));
+  }
+  const common63 = "b".repeat(63);
+  const tail = new nativeArray();
+  for (let index = 0; index < 20; index += 1) tail.push(common63 + alphabet[index]);
+  lines.push("Match User " + tail.join(","));
+  const exactAlignedSource = lines.join("\n") + "\n";
+  const alignedMaximum = c3Run([[C3_ROOT, exactAlignedSource]], [], { includeEvents: false });
+  const alignedOverflow = c3Run([[C3_ROOT, exactAlignedSource + "Match User aa,ab\n"]], [], { includeEvents: false });
+
+  const branchesMaximum = c3Run([[C3_ROOT, "Match all\n".repeat(4096)]], [], { includeEvents: false });
+  const branchesOverflow = c3Run([[C3_ROOT, "Match all\n".repeat(4097)]], [], { includeEvents: false });
+  const patternValues = alphabet.split("").map((value) => "p" + value);
+  const patternsMaximum = c3Run([[C3_ROOT, "Match User " + patternValues.join(",") + "\n"]], [], { includeEvents: false });
+  const patternsOverflow = c3Run([[C3_ROOT, "Match User " + patternValues.concat(["overflow"]).join(",") + "\n"]], [], { includeEvents: false });
+  const valueMaximum = c3Run([[C3_ROOT, "Match User " + "v".repeat(255) + "\n"]], [], { includeEvents: false });
+  const valueOverflow = c3Run([[C3_ROOT, "Match User " + "v".repeat(256) + "\n"]], [], { includeEvents: false });
+  const negatedMaximum = c3Run([[C3_ROOT, "Match User !" + "v".repeat(255) + "\n"]], [], { includeEvents: false });
+  const negatedOverflow = c3Run([[C3_ROOT, "Match User !" + "v".repeat(256) + "\n"]], [], { includeEvents: false });
+  const readEintr = [
+    ["body", { kind: "body-eintr", role: "file-0" }],
+    ["eof", { kind: "eof-eintr", role: "file-0" }]
+  ].map(([name, fault]) => ({ name, result: c3A1FileRun(fault) }));
+  const readFailures = [
+    ["early-eof", { kind: "early-eof", role: "file-0" }],
+    ["trailing-byte", { kind: "trailing-byte", role: "file-0" }],
+    ["body-invalid-count", { kind: "body-invalid-count", role: "file-0" }],
+    ["eof-invalid-count", { kind: "eof-invalid-count", role: "file-0" }]
+  ].map(([name, fault]) => ({ name, result: c3A1FileRun(fault, true) }));
+  return {
+    coordinate,
+    duplicateCases,
+    alignedMaximum,
+    alignedOverflow,
+    branchesMaximum,
+    branchesOverflow,
+    patternsMaximum,
+    patternsOverflow,
+    valueMaximum,
+    valueOverflow,
+    negatedMaximum,
+    negatedOverflow,
+    readEintr,
+    readFailures,
+    conditionCalculator: {
+      maximum: api.__test_nextAuthorizationBudgetValue(8, 1, 9),
+      overflow: safe(() => api.__test_nextAuthorizationBudgetValue(9, 1, 9))
+    }
+  };
+}
+
+function c3ChainFiles(count) {
+  const files = new nativeArray();
+  for (let index = 0; index < count; index += 1) {
+    const path = index === 0 ? C3_ROOT : C3_BASE + "/depth-" + index + ".conf";
+    const next = index + 1 < count ? "Include depth-" + (index + 1) + ".conf\n" : "Banner done\n";
+    files.push([path, next]);
+  }
+  return files;
+}
+
+function c3ManyIncludedFiles(childCount) {
+  const files = new nativeArray();
+  const rootLines = new nativeArray();
+  for (let offset = 0; offset < childCount; offset += 64) {
+    const names = new nativeArray();
+    for (let index = offset; index < Math.min(childCount, offset + 64); index += 1) {
+      const name = "file-" + index + ".conf";
+      names.push(name);
+      files.push([C3_BASE + "/" + name, "Banner child\n"]);
+    }
+    rootLines.push("Include " + names.join(" "));
+  }
+  files.unshift([C3_ROOT, rootLines.join("\n") + "\n"]);
+  return files;
+}
+
+function c3VmTimedStep(timeout, operation) {
+  context.__c3VmTimedStepOperation = operation;
+  try {
+    return vm.runInContext("__c3VmTimedStepOperation()", context, { timeout });
+  } finally {
+    delete context.__c3VmTimedStepOperation;
+  }
+}
+
+function c3IncludeScenario() {
+  const relative = c3Run([
+    [C3_ROOT, "Include sub/child.conf\n"],
+    ["/etc/ssh/sub/child.conf", "Include sibling.conf\n"],
+    ["/etc/ssh/sibling.conf", "Banner sibling\n"]
+  ]);
+  const glob = c3Run([
+    [C3_ROOT, "Include conf.d/*.conf\n"],
+    ["/etc/ssh/conf.d/10.conf", "Banner ten\n"],
+    ["/etc/ssh/conf.d/20.conf", "Banner twenty\n"]
+  ], [["/etc/ssh/conf.d", ["20.conf", ".hidden.conf", "10.conf"]]]);
+  const invalidSources = [
+    ["dot", "Include .\n"], ["dotdot", "Include ..\n"],
+    ["repeated-slash", "Include conf.d//x\n"], ["trailing-slash", "Include conf.d/\n"],
+    ["escape", "Include ../escape\n"], ["wild-parent", "Include conf*/x.conf\n"],
+    ["double-star", "Include conf.d/**.conf\n"], ["bracket", "Include conf.d/[a].conf\n"],
+    ["backslash", "Include conf.d/x\\y\n"], ["brace", "Include conf.d/{a}.conf\n"],
+    ["tilde", "Include ~/x\n"], ["percent", "Include %h/x\n"],
+    ["missing", "Include missing.conf\n"], ["zero-glob", "Include conf.d/zero*.conf\n"]
+  ].map(([name, source]) => ({
+    name,
+    result: c3Run([[C3_ROOT, source]], [["/etc/ssh/conf.d", ["one.conf"]]], { includeEvents: false })
+  }));
+  invalidSources.push({
+    name: "selected-directory",
+    result: c3Run([[C3_ROOT, "Include child.conf\n"]], [["/etc/ssh/child.conf", []]], { includeEvents: false })
+  });
+  invalidSources.push({
+    name: "cycle",
+    result: c3Run([[C3_ROOT, "Include cycle.conf\n"], ["/etc/ssh/cycle.conf", "Include sshd_config\n"]], [], { includeEvents: false })
+  });
+  invalidSources.push({
+    name: "duplicate",
+    result: c3Run([[C3_ROOT, "Include same.conf same.conf\n"], ["/etc/ssh/same.conf", "Banner same\n"]], [], { includeEvents: false })
+  });
+  invalidSources.push({
+    name: "child-match-scope",
+    result: c3Run([
+      [C3_ROOT, "Include child.conf\nInclude later.conf\n"],
+      ["/etc/ssh/child.conf", "Match all\n"],
+      ["/etc/ssh/later.conf", "Banner later\n"]
+    ], [], { includeEvents: false })
+  });
+  const invalidUtf8 = nativeBuffer.concat([nativeBuffer.from("Include ", "ascii"), nativeBuffer.from([0xc3]), nativeBuffer.from("\n")]);
+  invalidSources.push({ name: "invalid-utf8", result: c3Run([[C3_ROOT, invalidUtf8]], [], { includeEvents: false }) });
+
+  const names4096 = new nativeArray();
+  for (let index = 4094; index >= 0; index -= 1) names4096.push("n" + String(index).padStart(4, "0") + ".txt");
+  names4096.unshift("target.conf");
+  const directory4096 = c3VmTimedStep(30000, () => c3Run([
+    [C3_ROOT, "Include huge/target*.conf\n"],
+    ["/etc/ssh/huge/target.conf", "Banner selected\n"]
+  ], [["/etc/ssh/huge", names4096]], { includeEvents: false }));
+  const names4097 = names4096.concat(["overflow.txt"]);
+  const directory4097 = c3Run([[C3_ROOT, "Include huge/*.conf\n"]], [["/etc/ssh/huge", names4097]], { includeEvents: false });
+
+  const include64Files = new nativeArray();
+  const include64Names = new nativeArray();
+  for (let index = 0; index < 64; index += 1) {
+    const name = "operand-" + index + ".conf";
+    include64Names.push(name);
+    include64Files.push([C3_BASE + "/" + name, "Banner operand\n"]);
+  }
+  include64Files.unshift([C3_ROOT, "Include " + include64Names.join(" ") + "\n"]);
+  const operands64 = c3Run(include64Files, [], { includeEvents: false });
+  const operands65 = c3Run([[C3_ROOT, "Include " + include64Names.concat(["overflow.conf"]).join(" ") + "\n"]], [], { includeEvents: false });
+  const depth32 = c3Run(c3ChainFiles(32), [], { includeEvents: false });
+  const depth33 = c3Run(c3ChainFiles(33), [], { includeEvents: false });
+  const files256 = c3Run(c3ManyIncludedFiles(255), [], { includeEvents: false });
+  const files257 = c3Run(c3ManyIncludedFiles(256), [], { includeEvents: false });
+  const operationDirectory = c3A1DirectoryRun();
+  const readDirectoryFailure = c3A1DirectoryRun({
+    kind: "read-directory-failure",
+    role: "directory-0",
+    code: "EINTR"
+  }, true);
+  return {
+    relative,
+    glob,
+    invalidSources,
+    directory4096,
+    directory4097,
+    operands64,
+    operands65,
+    depth32,
+    depth33,
+    files256,
+    files257,
+    operationDirectory,
+    readDirectoryFailure,
+    selectedCalculator: {
+      maximum: api.__test_nextAuthorizationBudgetValue(65535, 1, 65536),
+      overflow: safe(() => api.__test_nextAuthorizationBudgetValue(65536, 1, 65536))
+    },
+    directoryCalculator: {
+      perDirectorySort: 4 * 4096 * Math.ceil(Math.log2(4096)),
+      aggregateSort: 4 * 65536 * Math.ceil(Math.log2(65536)),
+      inheritedAggregate: 65536 * 4095 / 2 + 65536,
+      completeCeiling: 137396224
+    }
+  };
+}
+
+function c3LineOfLength(length) {
+  const prefix = "ForceCommand ";
+  const tokenCount = 4;
+  const separatorBytes = tokenCount - 1;
+  const content = length - prefix.length - separatorBytes;
+  const base = Math.floor(content / tokenCount);
+  let remainder = content % tokenCount;
+  const tokens = new nativeArray();
+  for (let index = 0; index < tokenCount; index += 1) {
+    const size = base + (remainder > 0 ? 1 : 0);
+    remainder -= remainder > 0 ? 1 : 0;
+    tokens.push("x".repeat(size));
+  }
+  return prefix + tokens.join(" ");
+}
+
+function c3LexerScenario() {
+  const authorityLines = [
+    "AuthenticationMethods publickey", "PubkeyAuthentication YES", "PasswordAuthentication no",
+    "KbdInteractiveAuthentication No", "ChallengeResponseAuthentication no", "HostbasedAuthentication no",
+    "GSSAPIAuthentication no", "KerberosAuthentication no", "PermitUserEnvironment no",
+    "AcceptEnv LANG LC_ALL", "ForceCommand none extra", "ChrootDirectory none",
+    "DisableForwarding yes", "PermitTunnel no",
+    "AuthorizedKeysFile /etc/ssh/authorized_keys/gccgw-japan-repair-ci",
+    "AuthorizedKeysCommand none extra", "AuthorizedPrincipalsFile none",
+    "AuthorizedPrincipalsCommand none extra", "TrustedUserCAKeys none"
+  ];
+  const opaqueLines = ${JSON.stringify(C3_OPAQUE_DIRECTIVES)}.map((name) => name + " value=kept");
+  const successSource = ["", "   # comment", ...opaqueLines, ...authorityLines,
+    "Match User alice,!blocked Group ops,admins", "PubkeyAuthentication yes", "Match all", "PasswordAuthentication no", ""].join("\n");
+  const success = c3Run([[C3_ROOT, successSource]]);
+  const invalidByteSources = [
+    ["bom-start", nativeBuffer.concat([nativeBuffer.from([0xef, 0xbb, 0xbf]), nativeBuffer.from("Banner x\n")])],
+    ["bom-middle", nativeBuffer.concat([nativeBuffer.from("Banner x", "ascii"), nativeBuffer.from([0xef, 0xbb, 0xbf]), nativeBuffer.from("\n")])],
+    ["cr", nativeBuffer.from("Banner x\r\n")], ["nul", nativeBuffer.from([0x42, 0x61, 0x6e, 0x6e, 0x65, 0x72, 0x20, 0, 0x0a])],
+    ["invalid-utf8", nativeBuffer.from([0x42, 0x61, 0x6e, 0x6e, 0x65, 0x72, 0x20, 0xc3, 0x0a])]
+  ];
+  const invalidTextSources = [
+    ["inline-comment", "Banner x # no\n"], ["double-quote", "Banner \"x\"\n"],
+    ["single-quote", "Banner 'x'\n"], ["backslash", "Banner x\\y\n"],
+    ["control", "Banner x" + String.fromCharCode(1) + "y\n"], ["delete", "Banner x" + String.fromCharCode(0x7f) + "y\n"],
+    ["directive-equals", "Banner=x\n"], ["include-equals", "Include x=y\n"],
+    ["match-equals", "Match User=x\n"], ["authority-equals", "ForceCommand x=y\n"],
+    ["unknown", "UnknownDirective x\n"], ["missing-argument", "Banner\n"],
+    ["non-ascii-directive", "Bännér x\n"], ["non-ascii-include", "Include tänk.conf\n"],
+    ["non-ascii-match", "Match User å\n"], ["non-ascii-authority", "ForceCommand å\n"],
+    ["opaque-in-match", "Match all\nBanner x\n"], ["include-in-match", "Match all\nInclude child.conf\n"],
+    ["repeated-condition", "Match User a User b\n"], ["all-not-sole", "Match all User a\n"],
+    ["empty-pattern", "Match User a,,b\n"], ["double-negation", "Match User !!a\n"],
+    ["pattern-bracket", "Match User [a]\n"], ["pattern-backslash", "Match User a\\b\n"],
+    ["permittunnel-case", "PermitTunnel NO\n"], ["bad-boolean", "PasswordAuthentication maybe\n"]
+  ];
+  const unicodeWhitespace = [0x0085, 0x00a0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000];
+  for (const scalar of unicodeWhitespace) invalidTextSources.push(["unicode-whitespace-" + scalar.toString(16), "Banner x" + String.fromCodePoint(scalar) + "y\n"]);
+  const invalid = [
+    ...invalidByteSources.map(([name, bytes]) => ({ name, result: c3Run([[C3_ROOT, bytes]], [], { includeEvents: false }) })),
+    ...invalidTextSources.map(([name, source]) => ({ name, result: c3Run([[C3_ROOT, source]], [], { includeEvents: false }) }))
+  ];
+
+  const line16384 = c3Run([[C3_ROOT, c3LineOfLength(16384) + "\n"]], [], { includeEvents: false });
+  const line16385 = c3Run([[C3_ROOT, c3LineOfLength(16385) + "\n"]], [], { includeEvents: false });
+  const token4096 = c3Run([[C3_ROOT, "Banner " + "x".repeat(4096) + "\n"]], [], { includeEvents: false });
+  const token4097 = c3Run([[C3_ROOT, "Banner " + "x".repeat(4097) + "\n"]], [], { includeEvents: false });
+  const arguments255 = new nativeArray();
+  for (let index = 0; index < 255; index += 1) arguments255.push("n" + index);
+  const tokens256 = c3Run([[C3_ROOT, "ForceCommand " + arguments255.join(" ") + "\n"]], [], { includeEvents: false });
+  const tokens257 = c3Run([[C3_ROOT, "ForceCommand " + arguments255.concat(["overflow"]).join(" ") + "\n"]], [], { includeEvents: false });
+  const acceptEnv255 = c3Run([[C3_ROOT, "AcceptEnv " + arguments255.join(" ") + "\n"]], [], { includeEvents: false });
+  const acceptEnv256 = c3Run([[C3_ROOT, "AcceptEnv " + arguments255.concat(["overflow"]).join(" ") + "\n"]], [], { includeEvents: false });
+
+  const precharge = c3Run([
+    [C3_ROOT, "Include child.conf\nMatch User aa,ab Group ops\nAcceptEnv LANG LC_ALL\n"],
+    ["/etc/ssh/child.conf", "Banner child\n"]
+  ]);
+  const operationFailures = [
+    ["post-fstat-drift", { kind: "post-fstat-drift", role: "file-0" }],
+    ["read", { kind: "read-failure", role: "file-0" }],
+    ["close", { kind: "close-failure", role: "file-0", code: "EINTR" }]
+  ].map(([name, fault]) => ({ name, result: c3A1FileRun(fault, true) }));
+
+  return {
+    success,
+    invalid,
+    line16384,
+    line16385,
+    token4096,
+    token4097,
+    tokens256,
+    tokens257,
+    acceptEnv255,
+    acceptEnv256,
+    precharge,
+    operationFailures
+  };
+}
+
+function c3FixtureProof(name) {
+  const state = fresh();
+  return {
+    scenarioKnown: ["depth", "coordinates", "include", "lexer"].includes(name),
+    linked: module.status === "linked" || module.status === "evaluated",
+    evaluated: module.status === "evaluated",
+    nativeTypes: api.__test_c2bProxyInstrumentation(state),
+    c3Arities: api.__test_c3Arities(),
+    freshState: inspect(state)
+  };
+}
+
+function c3UnknownScenario() {
+  throw new Error("unknown C3 scenario");
+}
+
+try {
+  const fixture = c3FixtureProof(scenario);
+  const missingSymbols = api.__test_missingC3Symbols();
+  const scenarioValue = missingSymbols.length !== 0
+    ? undefined
+    : scenario === "depth"
+      ? c3DepthScenario()
+      : scenario === "coordinates"
+        ? c3CoordinateScenario()
+        : scenario === "include"
+          ? c3IncludeScenario()
+          : scenario === "lexer"
+            ? c3LexerScenario()
+            : c3UnknownScenario();
+  process.stdout.write(JSON.stringify({ error: null, value: { fixture, missingSymbols, moduleAllocationCounts, scenarioValue } }));
+} catch (error) {
+  process.stdout.write(JSON.stringify({ error: errorCode(error) }));
+}
+`;
+
+function c3VmProbe(scenario, timeout = 120000) {
+  const directory = mkdtempSync(join(tmpdir(), "japan-c3-ssh-vm-"));
+  const harnessPath = join(directory, "harness.mjs");
+  const runnerPath = fileURLToPath(new URL("../../scripts/japan-tuic-additive-repair-runner.mjs", import.meta.url));
+  writeFileSync(harnessPath, c2bBudgetHarnessPrefix() + C3_VM_HARNESS_SUFFIX, "utf8");
+  try {
+    const result = spawnSync(process.execPath, ["--experimental-vm-modules", harnessPath, runnerPath, scenario], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      timeout
+    });
+    assert.equal(result.status, 0, result.stderr || String(result.error));
+    return JSON.parse(result.stdout);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+function c3AssertFreshGraph(graph, kind) {
+  assert.equal(graph.kind, kind);
+  assert.equal(graph.failed, false);
+  assert.equal(graph.fixedEnvelopeCount, 2);
+  assert.equal(graph.semanticNodeCount, 2);
+  for (const [name, count] of Object.entries(graph)) {
+    if (["kind", "failed", "fixedEnvelopeCount", "semanticNodeCount"].includes(name)) continue;
+    assert.equal(count, 0, `${kind}.${name}`);
+  }
+}
+
+function c3AssertFixture(value) {
+  const fixture = value.fixture;
+  assert.equal(fixture.scenarioKnown, true);
+  assert.equal(fixture.linked, true);
+  assert.equal(fixture.evaluated, true);
+  assert.equal(fixture.nativeTypes, true);
+  assert.deepEqual(fixture.freshState.snapshot, {
+    failed: false,
+    fixedEnvelopeCount: 5,
+    semanticNodeCount: 5,
+    authorizationEntryCount: 0,
+    wildcardPatternByteCount: 0,
+    wildcardInvocationCount: 0,
+    wildcardAlignedComparisonCount: 0,
+    sshMatchComparisonCount: 0,
+    sudoSelectorComparisonCount: 0,
+    sudoAliasVisitCount: 0,
+    retainedPreimageBytes: 0
+  });
+  c3AssertFreshGraph(fixture.freshState.ssh, "ssh");
+  c3AssertFreshGraph(fixture.freshState.sudo, "sudo");
+  assert.deepEqual({
+    snapshotSshGraph: fixture.freshState.identity.snapshotSshGraph,
+    snapshotSudoGraph: fixture.freshState.identity.snapshotSudoGraph,
+    sshSnapshot: fixture.freshState.identity.sshSnapshot,
+    sudoSnapshot: fixture.freshState.identity.sudoSnapshot,
+    graphsDistinct: fixture.freshState.identity.graphsDistinct,
+    cleanupDistinct: fixture.freshState.identity.cleanupDistinct
+  }, {
+    snapshotSshGraph: true,
+    snapshotSudoGraph: true,
+    sshSnapshot: true,
+    sudoSnapshot: true,
+    graphsDistinct: true,
+    cleanupDistinct: true
+  });
+  for (const cleanup of [fixture.freshState.identity.sshCleanup, fixture.freshState.identity.sudoCleanup]) {
+    assert.equal(cleanup.isArray, true);
+    assert.equal(cleanup.isProxy, false);
+    assert.equal(cleanup.prototypeIsNative, true);
+    assert.equal(cleanup.prototypeIsProxy, false);
+    assert.equal(cleanup.length, 0);
+  }
+}
+
+function requireC3Symbols(probe) {
+  assert.equal(probe.error, null);
+  assert.equal(Object.hasOwn(probe, "value"), true);
+  c3AssertFixture(probe.value);
+  const missing = probe.value.missingSymbols;
+  assert.deepEqual(missing.length === 0 ? C3_EXPECTED_MISSING_SYMBOLS : missing, C3_EXPECTED_MISSING_SYMBOLS);
+  if (missing.length === 0) {
+    assert.deepEqual(probe.value.fixture.c3Arities, {
+      reserveAuthorizationFixedEnvelope: 1,
+      deriveAuthorizationSshSyntax: 3,
+      disposeAuthorizationSshSyntax: 2
+    });
+  }
+  assert.deepEqual(missing, [], `missing C3 private symbols: ${missing.join(",")}`);
+  return probe.value.scenarioValue;
+}
+
+function c3AssertSuccess(result) {
+  assert.deepEqual(result.outcome, { ok: true });
+  assert.deepEqual(result.dispose, { ok: true });
+  assert.equal(result.ownerAfterDispose.disposed, true);
+  assert.equal(result.ownerAfterDispose.closureReferenceDropped, true);
+  assert.equal(result.ownerAfterDispose.eventLength, 0);
+  assert.equal(result.ownerAfterDispose.activeLength, 0);
+  assert.equal(result.ownerAfterDispose.allBuffersZero, true);
+  assert.ok(result.tracked.arrays.every((entry) => entry.native && entry.prototype && entry.length === 0));
+  assert.ok(result.tracked.buffers.every((entry) => entry.zero));
+  assert.equal(result.calls.some(([name]) => name === "validateSudoers"), false);
+}
+
+function c3AssertFailure(result) {
+  assert.deepEqual(result.outcome, { ok: false, error: "restricted_identity_rejected" });
+  assert.equal(result.after.snapshot.failed, true);
+  assert.equal(result.after.ssh.failed, true);
+  assert.ok(result.tracked.arrays.every((entry) => entry.length === 0));
+  assert.ok(result.tracked.buffers.every((entry) => entry.zero));
+}
+
+function c3LifecycleNamedPhase(lifecycle, name) {
+  const matches = lifecycle.phases.filter((phase) => phase.name === name);
+  assert.equal(matches.length, 1, name);
+  return matches[0];
+}
+
+function c3AssertEventSchemas(owner) {
+  const events = owner.events;
+  const fileOrdinals = new Set(owner.files.map((file) => file.ordinal));
+  assert.deepEqual([...new Set(events.map((event) => event.values.kind))].sort(), Object.keys(C3_EVENT_SCHEMAS).sort());
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    const values = event.values;
+    const schema = C3_EVENT_SCHEMAS[values.kind];
+    assert.ok(schema, values.kind);
+    assert.deepEqual(event.keys, schema, values.kind);
+    assert.equal(event.symbolCount, 0, values.kind);
+    assert.equal(event.proxy, false, values.kind);
+    assert.equal(event.nullPrototype, true, values.kind);
+    assert.equal(event.frozen, true, values.kind);
+    assert.deepEqual(Object.keys(event.descriptors), schema, values.kind);
+    for (const key of schema) {
+      assert.deepEqual(event.descriptors[key], {
+        enumerable: true,
+        configurable: false,
+        writable: false,
+        data: true
+      }, `${values.kind}.${key}`);
+    }
+    assert.equal(values.eventOrdinal, index, values.kind);
+    assert.equal(Number.isSafeInteger(values.sourceOrdinal), true, values.kind);
+    assert.equal(fileOrdinals.has(values.sourceOrdinal), true, values.kind);
+    assert.equal(Number.isSafeInteger(values.lineNumber) && values.lineNumber >= 1, true, values.kind);
+  }
+
+  const at = (ordinal, kind) => {
+    assert.equal(Number.isSafeInteger(ordinal) && ordinal >= 0 && ordinal < events.length, true, kind);
+    const event = events[ordinal];
+    assert.equal(event.values.kind, kind);
+    return event.values;
+  };
+  const sameCoordinate = (child, parent) => {
+    assert.equal(child.sourceOrdinal, parent.sourceOrdinal);
+    assert.equal(child.lineNumber, parent.lineNumber);
+  };
+  const grouped = (kind, parentField, parentOrdinal) => events
+    .filter((event) => event.values.kind === kind && event.values[parentField] === parentOrdinal)
+    .map((event) => event.values);
+
+  const branchByOrdinal = new Map();
+  for (const event of events) {
+    const value = event.values;
+    if (value.kind === "physicalDirective") {
+      assert.equal(value.scope === "global" || value.scope === "match", true);
+      assert.equal(value.scope === "global" ? value.branchOrdinal === -1 : value.branchOrdinal >= 0, true);
+      continue;
+    }
+    if (value.kind === "includePattern") {
+      const physical = at(value.physicalEventOrdinal, "physicalDirective");
+      assert.ok(value.physicalEventOrdinal < value.eventOrdinal);
+      sameCoordinate(value, physical);
+      assert.equal(physical.directive, "include");
+      const siblings = grouped("includePattern", "physicalEventOrdinal", value.physicalEventOrdinal);
+      assert.deepEqual(siblings.map((entry) => entry.argumentOrdinal), siblings.map((_, index) => index));
+      const selections = grouped("selectedInsertion", "includePatternEventOrdinal", value.eventOrdinal);
+      assert.equal(value.selectedCount, selections.length);
+      continue;
+    }
+    if (value.kind === "selectedInsertion") {
+      const pattern = at(value.includePatternEventOrdinal, "includePattern");
+      assert.ok(value.includePatternEventOrdinal < value.eventOrdinal);
+      sameCoordinate(value, pattern);
+      const siblings = grouped("selectedInsertion", "includePatternEventOrdinal", value.includePatternEventOrdinal);
+      assert.deepEqual(siblings.map((entry) => entry.selectionOrdinal), siblings.map((_, index) => index));
+      assert.equal(typeof value.path === "object" && typeof value.path.pathRole === "string", true);
+      continue;
+    }
+    if (value.kind === "matchBranch") {
+      const physical = at(value.physicalEventOrdinal, "physicalDirective");
+      assert.equal(value.eventOrdinal, value.physicalEventOrdinal + 1);
+      sameCoordinate(value, physical);
+      assert.equal(physical.directive, "match");
+      assert.equal(branchByOrdinal.has(value.branchOrdinal), false);
+      branchByOrdinal.set(value.branchOrdinal, value);
+      const conditions = events.filter((candidate) => candidate.values.kind === "matchCondition"
+        && candidate.values.physicalEventOrdinal === value.physicalEventOrdinal
+        && candidate.values.branchOrdinal === value.branchOrdinal).map((candidate) => candidate.values);
+      assert.equal(value.conditionCount, conditions.length);
+      assert.equal(value.conditionStartEventOrdinal, value.eventOrdinal + 1);
+      assert.equal(value.conditionStartEventOrdinal, conditions[0].eventOrdinal);
+      assert.equal(value.patternCount, conditions.reduce((count, condition) => count + condition.patternCount, 0));
+      continue;
+    }
+    if (value.kind === "matchCondition") {
+      const physical = at(value.physicalEventOrdinal, "physicalDirective");
+      sameCoordinate(value, physical);
+      assert.ok(branchByOrdinal.has(value.branchOrdinal));
+      const conditions = events.filter((candidate) => candidate.values.kind === "matchCondition"
+        && candidate.values.physicalEventOrdinal === value.physicalEventOrdinal
+        && candidate.values.branchOrdinal === value.branchOrdinal).map((candidate) => candidate.values);
+      assert.deepEqual(conditions.map((entry) => entry.conditionOrdinal), conditions.map((_, index) => index));
+      const patterns = events.filter((candidate) => candidate.values.kind === "matchPattern"
+        && candidate.values.physicalEventOrdinal === value.physicalEventOrdinal
+        && candidate.values.branchOrdinal === value.branchOrdinal
+        && candidate.values.conditionOrdinal === value.conditionOrdinal).map((candidate) => candidate.values);
+      assert.equal(value.patternCount, patterns.length);
+      assert.equal(value.patternStartEventOrdinal, patterns.length === 0 ? -1 : patterns[0].eventOrdinal);
+      assert.equal(value.name === "all", patterns.length === 0);
+      continue;
+    }
+    if (value.kind === "matchPattern") {
+      const physical = at(value.physicalEventOrdinal, "physicalDirective");
+      sameCoordinate(value, physical);
+      const conditions = events.filter((candidate) => candidate.values.kind === "matchCondition"
+        && candidate.values.physicalEventOrdinal === value.physicalEventOrdinal
+        && candidate.values.branchOrdinal === value.branchOrdinal
+        && candidate.values.conditionOrdinal === value.conditionOrdinal);
+      assert.equal(conditions.length, 1);
+      const patterns = events.filter((candidate) => candidate.values.kind === "matchPattern"
+        && candidate.values.physicalEventOrdinal === value.physicalEventOrdinal
+        && candidate.values.branchOrdinal === value.branchOrdinal
+        && candidate.values.conditionOrdinal === value.conditionOrdinal).map((candidate) => candidate.values);
+      assert.deepEqual(patterns.map((entry) => entry.patternOrdinal), patterns.map((_, index) => index));
+      assert.equal(value.eventOrdinal, conditions[0].values.patternStartEventOrdinal + value.patternOrdinal);
+      continue;
+    }
+    if (value.kind === "assignment") {
+      const physical = at(value.physicalEventOrdinal, "physicalDirective");
+      sameCoordinate(value, physical);
+      assert.equal(value.eventOrdinal, value.physicalEventOrdinal + 1);
+      assert.equal(value.scope, physical.scope);
+      assert.equal(value.branchOrdinal, physical.branchOrdinal);
+      assert.equal(value.name, physical.directive);
+      const names = grouped("acceptEnvName", "assignmentEventOrdinal", value.eventOrdinal);
+      assert.equal(value.name === "acceptenv" ? value.argumentCount === names.length && value.valueBytes === null : names.length === 0, true);
+      continue;
+    }
+    if (value.kind === "acceptEnvName") {
+      const physical = at(value.physicalEventOrdinal, "physicalDirective");
+      const assignment = at(value.assignmentEventOrdinal, "assignment");
+      sameCoordinate(value, physical);
+      sameCoordinate(value, assignment);
+      assert.equal(value.eventOrdinal, value.assignmentEventOrdinal + 1 + value.nameOrdinal);
+      assert.equal(value.scope, assignment.scope);
+      assert.equal(value.branchOrdinal, assignment.branchOrdinal);
+      const names = grouped("acceptEnvName", "assignmentEventOrdinal", value.assignmentEventOrdinal);
+      assert.deepEqual(names.map((entry) => entry.nameOrdinal), names.map((_, index) => index));
+    }
+  }
+  assert.deepEqual([...branchByOrdinal.keys()], [...branchByOrdinal.keys()].map((_, index) => index));
+}
+
+function c3AssertTerminalLifecyclePhase(phase) {
+  assert.deepEqual(phase.finalStamp, { allocations: 0, hashes: 0, copies: 0, pushes: 0, operationCalls: 0 });
+  assert.deepEqual(phase.allocationKinds, {});
+  assert.deepEqual(phase.objectAllocations, []);
+  assert.deepEqual(phase.fixedAllocations, []);
+  assert.deepEqual(phase.roleAllocations, []);
+  assert.deepEqual(phase.roleFills, []);
+  assert.deepEqual(phase.retentions, []);
+  assert.deepEqual(phase.registry, []);
+  assert.deepEqual(phase.fills, []);
+  assert.deepEqual(phase.copies, []);
+  assert.deepEqual(phase.pushes, []);
+}
+
+function c3AssertA2Lifecycle(value) {
+  assert.equal(value.moduleWeakMapCount, 1);
+  assert.equal(value.prototypesRestored, true);
+  const success = value.success;
+  c3AssertSuccess(success);
+  assert.equal(success.ownerAfterDispose.fileLength, 0);
+  assert.deepEqual(success.disposeAllocations, C2B_ZERO_ALLOCATIONS);
+  const derive = c3LifecycleNamedPhase(success.lifecycle, "derive");
+  const dispose = c3LifecycleNamedPhase(success.lifecycle, "dispose");
+  const ownerSets = derive.registry.filter((entry) => entry.method === "set" && entry.keyShape === "owner");
+  assert.deepEqual(derive.objectState, { roles: ["owner", "closure"], ownerLinksClosure: true });
+  assert.deepEqual(derive.fixedAllocations, [
+    { role: "owner", ordinal: 1, kind: "objectCreate", expectedKind: true },
+    { role: "closure", ordinal: 2, kind: "objectCreate", expectedKind: true },
+    { role: "files", ordinal: 3, kind: "array", expectedKind: true },
+    { role: "events", ordinal: 4, kind: "array", expectedKind: true },
+    { role: "activePaths", ordinal: 5, kind: "array", expectedKind: true }
+  ]);
+  assert.equal(ownerSets.length, 1);
+  assert.deepEqual(ownerSets[0], {
+    method: "set",
+    keyShape: "owner",
+    sameGraph: true,
+    ownerComplete: true,
+    stamp: derive.finalStamp
+  });
+  assert.equal(success.lifecycle.phases.flatMap((phase) => phase.registry)
+    .some((entry) => entry.keyShape === "snapshot" && (entry.method === "set" || entry.method === "delete")), false);
+  const ownerDeletes = dispose.registry.filter((entry) => entry.method === "delete" && entry.keyShape === "owner");
+  assert.equal(ownerDeletes.length, 1);
+  assert.equal(ownerDeletes[0].sameGraph, true);
+  const attached = success.lifecycle.bytes.filter((entry) => entry.roles.includes("retainedEvent"));
+  assert.ok(attached.length > 0);
+  assert.equal(new Set(attached.map((entry) => entry.id)).size, attached.length);
+  assert.ok(attached.every((entry) => entry.creationKind === "bufferAlloc"
+    && !entry.roles.some((role) => ["rawSource", "rawDirectory", "preimage", "sourceFixture"].includes(role))));
+  const deriveBytes = new Map(derive.byteState.map((entry) => [entry.id, entry]));
+  assert.ok(attached.every((entry) => deriveBytes.get(entry.id).zero === false && entry.zero === true));
+  assert.deepEqual(dispose.fills.map((entry) => entry.byteId), success.attachedBufferIds.slice().reverse());
+  assert.ok(dispose.fills.every((entry) => entry.zero));
+  const preimages = success.lifecycle.bytes.filter((entry) => entry.roles.includes("preimage"));
+  assert.equal(preimages.length, 1);
+  assert.equal(preimages[0].creationKind, "bufferAlloc");
+  assert.equal(preimages[0].roles.includes("hashInput"), true);
+  assert.equal(deriveBytes.get(preimages[0].id).zero, true);
+  for (const role of ["rawSource", "rawDirectory"]) {
+    const records = success.lifecycle.bytes.filter((entry) => entry.roles.includes(role));
+    assert.ok(records.length > 0, role);
+    assert.ok(records.every((entry) => deriveBytes.get(entry.id).zero), role);
+  }
+  assert.deepEqual(success.lifecycle.arrays.map((entry) => entry.role).sort(), ["activePaths", "events", "files"]);
+  assert.ok(success.lifecycle.arrays.every((entry) => entry.native && entry.prototype && entry.length === 0));
+  const ownerView = success.ownerBeforeDispose;
+  assert.deepEqual(ownerView.ownerKeys, ["closure", "closureSha256", "events", "activePaths", "disposed"]);
+  assert.equal(ownerView.ownerSymbolCount, 0);
+  assert.equal(ownerView.ownerProxy, false);
+  assert.deepEqual(ownerView.closureKeys, ["schemaVersion", "type", "rootConfig", "files"]);
+  assert.equal(ownerView.closureSymbolCount, 0);
+  assert.equal(ownerView.closureProxy, false);
+  assert.ok(ownerView.files.every((file) => file.symbolCount === 0 && file.proxy === false));
+  c3AssertEventSchemas(ownerView);
+  assert.deepEqual(success.shapeAfterDerive, success.shapeBefore);
+  assert.equal(success.afterDerive.snapshot.fixedEnvelopeCount - success.before.snapshot.fixedEnvelopeCount, 5);
+  assert.equal(success.afterDerive.snapshot.semanticNodeCount - success.before.snapshot.semanticNodeCount,
+    ownerView.files.length + ownerView.events.length);
+  const eventKindCounts = Object.fromEntries(Object.keys(C3_EVENT_SCHEMAS).map((kind) => [kind,
+    ownerView.events.filter((event) => event.values.kind === kind).length]));
+  assert.equal(success.afterDerive.ssh.sourceFileCount, ownerView.files.length);
+  assert.equal(success.afterDerive.ssh.sshPhysicalDirectiveCount, eventKindCounts.physicalDirective);
+  assert.equal(success.afterDerive.ssh.sshIncludePatternCount, eventKindCounts.includePattern);
+  assert.equal(success.afterDerive.ssh.sshSelectedInsertionCount, eventKindCounts.selectedInsertion);
+  assert.equal(success.afterDerive.ssh.sshMatchBranchCount, eventKindCounts.matchBranch);
+  assert.equal(success.afterDerive.ssh.sshMatchConditionCount, eventKindCounts.matchCondition);
+  assert.equal(success.afterDerive.ssh.sshMatchPatternCount, eventKindCounts.matchPattern);
+  assert.equal(success.afterDerive.ssh.sshAssignmentCount, eventKindCounts.assignment);
+  assert.equal(success.afterDerive.ssh.sshAcceptEnvNameCount, eventKindCounts.acceptEnvName);
+  assert.deepEqual(derive.objectAllocations.reduce((counts, entry) => {
+    counts[entry.classification === null ? "unmatched" : entry.classification] += 1;
+    return counts;
+  }, { owner: 0, closure: 0, sourceFile: 0, event: 0, unmatched: 0 }), {
+    owner: 1,
+    closure: 1,
+    sourceFile: ownerView.files.length,
+    event: ownerView.events.length,
+    unmatched: 0
+  });
+  assert.equal(derive.retentions.length, ownerView.events.length);
+  assert.deepEqual(derive.retentions.map((entry) => entry.eventOrdinal), ownerView.events.map((_, index) => index));
+  for (const retention of derive.retentions) {
+    const event = ownerView.events[retention.eventOrdinal];
+    assert.equal(retention.role, C3_EVENT_ROLE_BY_KIND[event.values.kind]);
+    assert.equal(retention.objectIdentityMatches, true);
+    assert.equal(retention.objectCreateActions.length, 1);
+    assert.ok(retention.objectCreateActions.every((action) => retention.reserveStamp.action < action && action < retention.pushAction));
+    assert.ok(retention.byteAllocationActions.every((action) => retention.reserveStamp.action < action && action < retention.pushAction));
+    assert.ok(retention.copyActions.every((action) => retention.reserveStamp.action < action && action < retention.pushAction));
+    const ownsBytes = event.values.kind === "matchPattern" || event.values.kind === "acceptEnvName"
+      || (event.values.kind === "assignment" && event.values.valueBytes !== null);
+    assert.equal(retention.byteAllocationActions.length, ownsBytes ? 1 : 0, `${event.values.kind}.bufferAlloc`);
+    assert.equal(retention.copyActions.length, ownsBytes ? 1 : 0, `${event.values.kind}.copy`);
+  }
+  for (const directive of ["match", "acceptenv"]) {
+    const physical = ownerView.events.find((event) => event.values.kind === "physicalDirective" && event.values.directive === directive);
+    assert.ok(physical, directive);
+    const ordinals = new Set([physical.values.eventOrdinal]);
+    for (const event of ownerView.events) {
+      if (event.values.physicalEventOrdinal === physical.values.eventOrdinal) ordinals.add(event.values.eventOrdinal);
+    }
+    const groupedRetentions = derive.retentions.filter((entry) => ordinals.has(entry.eventOrdinal));
+    assert.equal(groupedRetentions.length, ordinals.size);
+    const firstAllocationAction = Math.min(...groupedRetentions.flatMap((entry) => [
+      ...entry.objectCreateActions, ...entry.byteAllocationActions
+    ]));
+    assert.ok(groupedRetentions.every((entry) => entry.reserveStamp.action < firstAllocationAction), directive);
+    assert.equal(new Set(groupedRetentions.map((entry) => JSON.stringify({
+      allocations: entry.reserveStamp.allocations,
+      copies: entry.reserveStamp.copies,
+      pushes: entry.reserveStamp.pushes
+    }))).size, 1, directive);
+  }
+  const selectedRetentions = derive.retentions.filter((entry) => entry.role === "sshSelectedInsertion");
+  assert.ok(selectedRetentions.length > 0);
+  for (const retention of selectedRetentions) {
+    const event = ownerView.events[retention.eventOrdinal].values;
+    const selectedOpen = success.calls.findIndex(([name, role]) => name === "open" && role === event.path.pathRole);
+    assert.ok(selectedOpen >= retention.pushOperationCalls);
+  }
+
+  const failure = value.failure;
+  c3AssertFailure(failure);
+  assert.deepEqual(failure.terminalSecondDerive, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(failure.terminalSecondDeriveAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(failure.terminalSecondDeriveCalls, []);
+  assert.equal(failure.lifecycle.phases.flatMap((phase) => phase.registry)
+    .some((entry) => entry.method === "set" && entry.keyShape === "owner"), false);
+  assert.ok(failure.lifecycle.arrays.every((entry) => entry.length === 0));
+  assert.ok(failure.lifecycle.bytes
+    .filter((entry) => !entry.roles.includes("sourceFixture"))
+    .every((entry) => entry.zero));
+  const failedAttached = failure.lifecycle.bytes.filter((entry) => entry.roles.includes("retainedEvent"));
+  const failedUnattached = failure.lifecycle.bytes.filter((entry) => entry.creationKind === "bufferAlloc"
+    && entry.fills.some((fill) => fill.phase === "derive" && fill.zero)
+    && !entry.roles.some((role) => ["retainedEvent", "rawSource", "rawDirectory", "preimage", "sourceFixture", "hashInput"].includes(role)));
+  assert.ok(failedAttached.length > 0);
+  assert.equal(failedUnattached.length, 1);
+  const failedEventIds = new Set([...failedAttached, ...failedUnattached].map((entry) => entry.id));
+  const failedDerive = c3LifecycleNamedPhase(failure.lifecycle, "derive");
+  assert.deepEqual(failedDerive.objectState, { roles: ["owner", "closure"], ownerLinksClosure: false });
+  assert.deepEqual(failedDerive.fills.filter((fill) => failedEventIds.has(fill.byteId)).map((fill) => fill.byteId), [
+    failedUnattached[0].id,
+    ...failedAttached.sort((left, right) => right.attachedOrdinal - left.attachedOrdinal).map((entry) => entry.id)
+  ]);
+  const failureTerminal = c3LifecycleNamedPhase(failure.lifecycle, "terminal");
+  c3AssertTerminalLifecyclePhase(failureTerminal);
+
+  const fixedRoles = ["owner", "closure", "files", "events", "activePaths"];
+  assert.deepEqual(value.fixedAllocationFailures.map((entry) => entry.role), fixedRoles);
+  for (let index = 0; index < value.fixedAllocationFailures.length; index += 1) {
+    const witness = value.fixedAllocationFailures[index];
+    const result = witness.result;
+    c3AssertFailure(result);
+    const phase = c3LifecycleNamedPhase(result.lifecycle, "derive");
+    assert.equal(phase.faultTriggered, true, witness.role);
+    const fixedAttempt = phase.fixedAllocations.at(-1);
+    assert.deepEqual(fixedAttempt, {
+      role: witness.role,
+      ordinal: index + 1,
+      kind: index < 2 ? "objectCreate" : "array",
+      expectedKind: true
+    }, witness.role);
+    assert.deepEqual(phase.fixedAllocations.map((entry) => entry.role), fixedRoles.slice(0, index + 1), witness.role);
+    assert.deepEqual(phase.finalStamp, {
+      allocations: index + 1,
+      hashes: 0,
+      copies: 0,
+      pushes: 0,
+      operationCalls: 0
+    }, witness.role);
+    assert.deepEqual(phase.fills, [], witness.role);
+    assert.deepEqual(phase.copies, [], witness.role);
+    assert.deepEqual(phase.pushes, [], witness.role);
+    assert.deepEqual(phase.objectState.roles, fixedRoles.slice(0, Math.min(index, 2)), witness.role);
+    assert.equal(phase.objectState.ownerLinksClosure, index >= 2 ? false : null, witness.role);
+    assert.deepEqual(result.lifecycle.arrays.map((entry) => entry.role), fixedRoles.slice(2, index), witness.role);
+    assert.ok(result.lifecycle.arrays.every((entry) => entry.length === 0), witness.role);
+    assert.ok(result.lifecycle.bytes.filter((entry) => !entry.roles.includes("sourceFixture")).every((entry) => entry.zero), witness.role);
+    assert.equal(phase.registry.some((entry) => entry.method === "set"), false, witness.role);
+    assert.deepEqual(result.terminalSecondDeriveAllocations, C2B_ZERO_ALLOCATIONS, witness.role);
+    assert.deepEqual(result.terminalSecondDeriveCalls, [], witness.role);
+    c3AssertTerminalLifecyclePhase(c3LifecycleNamedPhase(result.lifecycle, "terminal"));
+  }
+
+  const hashFailure = value.hashFailure;
+  c3AssertFailure(hashFailure);
+  const hashDerive = c3LifecycleNamedPhase(hashFailure.lifecycle, "derive");
+  assert.equal(hashDerive.faultTriggered, true);
+  assert.deepEqual(hashDerive.objectState, { roles: ["owner", "closure"], ownerLinksClosure: false });
+  assert.equal(hashDerive.hashes, 2);
+  const failedPreimages = hashFailure.lifecycle.bytes.filter((entry) => entry.roles.includes("preimage"));
+  assert.equal(failedPreimages.length, 1);
+  assert.equal(hashDerive.byteState.find((entry) => entry.id === failedPreimages[0].id).zero, true);
+  assert.ok(hashFailure.lifecycle.arrays.every((entry) => entry.length === 0));
+  assert.equal(hashDerive.registry.some((entry) => entry.method === "set"), false);
+  assert.deepEqual(hashFailure.terminalSecondDeriveAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(hashFailure.terminalSecondDeriveCalls, []);
+  c3AssertTerminalLifecyclePhase(c3LifecycleNamedPhase(hashFailure.lifecycle, "terminal"));
+
+  const preimageAllocationFailure = value.preimageAllocationFailure;
+  c3AssertFailure(preimageAllocationFailure);
+  const preimageAllocationDerive = c3LifecycleNamedPhase(preimageAllocationFailure.lifecycle, "derive");
+  assert.equal(preimageAllocationDerive.faultTriggered, true);
+  assert.deepEqual(preimageAllocationDerive.roleAllocations, [{
+    role: "preimage", ordinal: 1, kind: "bufferAlloc", lengthMatches: true
+  }]);
+  assert.deepEqual(preimageAllocationDerive.objectState, { roles: ["owner", "closure"], ownerLinksClosure: false });
+  assert.equal(preimageAllocationFailure.lifecycle.bytes.some((entry) => entry.roles.includes("preimage")), false);
+  assert.equal(preimageAllocationDerive.hashes, 1);
+  assert.ok(preimageAllocationFailure.lifecycle.arrays.every((entry) => entry.length === 0));
+  assert.ok(preimageAllocationFailure.lifecycle.bytes
+    .filter((entry) => !entry.roles.includes("sourceFixture"))
+    .every((entry) => entry.zero));
+  assert.equal(preimageAllocationDerive.registry.some((entry) => entry.method === "set"), false);
+  assert.deepEqual(preimageAllocationFailure.terminalSecondDeriveAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(preimageAllocationFailure.terminalSecondDeriveCalls, []);
+  c3AssertTerminalLifecyclePhase(c3LifecycleNamedPhase(preimageAllocationFailure.lifecycle, "terminal"));
+
+  const preimageFillFailure = value.preimageFillFailure;
+  c3AssertFailure(preimageFillFailure);
+  const preimageFillDerive = c3LifecycleNamedPhase(preimageFillFailure.lifecycle, "derive");
+  assert.equal(preimageFillDerive.faultTriggered, true);
+  assert.equal(preimageFillDerive.roleFills.length, 1);
+  assert.deepEqual({
+    role: preimageFillDerive.roleFills[0].role,
+    ordinal: preimageFillDerive.roleFills[0].ordinal,
+    zero: preimageFillDerive.roleFills[0].zero
+  }, { role: "preimage", ordinal: 1, zero: true });
+  const fillFailedPreimages = preimageFillFailure.lifecycle.bytes.filter((entry) => entry.roles.includes("preimage"));
+  assert.equal(fillFailedPreimages.length, 1);
+  assert.equal(preimageFillDerive.roleFills[0].byteId, fillFailedPreimages[0].id);
+  assert.equal(preimageFillDerive.byteState.find((entry) => entry.id === fillFailedPreimages[0].id).zero, true);
+  const fillFailedAttached = preimageFillFailure.lifecycle.bytes.filter((entry) => entry.roles.includes("retainedEvent"));
+  assert.ok(fillFailedAttached.length > 0);
+  const preimageFillIndex = preimageFillDerive.fills.findIndex((entry) => entry.byteId === fillFailedPreimages[0].id);
+  assert.ok(preimageFillIndex >= 0);
+  assert.deepEqual(preimageFillDerive.fills.slice(preimageFillIndex + 1)
+    .filter((entry) => fillFailedAttached.some((buffer) => buffer.id === entry.byteId)).map((entry) => entry.byteId),
+  fillFailedAttached.slice().sort((left, right) => right.attachedOrdinal - left.attachedOrdinal).map((entry) => entry.id));
+  assert.deepEqual(preimageFillDerive.objectState, { roles: ["owner", "closure"], ownerLinksClosure: false });
+  assert.ok(preimageFillFailure.lifecycle.arrays.every((entry) => entry.length === 0));
+  assert.ok(preimageFillFailure.lifecycle.bytes.filter((entry) => !entry.roles.includes("sourceFixture")).every((entry) => entry.zero));
+  assert.equal(preimageFillDerive.registry.some((entry) => entry.method === "set"), false);
+  assert.deepEqual(preimageFillFailure.terminalSecondDeriveAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(preimageFillFailure.terminalSecondDeriveCalls, []);
+  c3AssertTerminalLifecyclePhase(c3LifecycleNamedPhase(preimageFillFailure.lifecycle, "terminal"));
+
+  const disposeFailure = value.disposeFailure;
+  assert.deepEqual(disposeFailure.outcome, { ok: true });
+  assert.deepEqual(disposeFailure.dispose, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(disposeFailure.disposeAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.equal(disposeFailure.after.snapshot.failed, true);
+  assert.equal(disposeFailure.after.ssh.failed, true);
+  assert.equal(disposeFailure.ownerAfterDispose.disposed, true);
+  assert.equal(disposeFailure.ownerAfterDispose.closureReferenceDropped, true);
+  assert.equal(disposeFailure.ownerAfterDispose.fileLength, 0);
+  assert.equal(disposeFailure.ownerAfterDispose.eventLength, 0);
+  assert.equal(disposeFailure.ownerAfterDispose.activeLength, 0);
+  assert.equal(disposeFailure.ownerAfterDispose.allBuffersZero, true);
+  const failedDisposePhase = c3LifecycleNamedPhase(disposeFailure.lifecycle, "dispose");
+  assert.equal(failedDisposePhase.faultTriggered, true);
+  const failedDisposeDeletes = failedDisposePhase.registry.filter((entry) => entry.method === "delete" && entry.keyShape === "owner");
+  assert.equal(failedDisposeDeletes.length, 1);
+  assert.equal(failedDisposeDeletes[0].sameGraph, true);
+  assert.deepEqual(failedDisposePhase.fills.map((entry) => entry.byteId), disposeFailure.attachedBufferIds.slice().reverse());
+  assert.ok(failedDisposePhase.fills.every((entry) => entry.zero));
+  assert.ok(disposeFailure.lifecycle.arrays.every((entry) => entry.length === 0));
+  assert.ok(disposeFailure.lifecycle.bytes
+    .filter((entry) => !entry.roles.includes("sourceFixture"))
+    .every((entry) => entry.zero));
+  assert.deepEqual(disposeFailure.terminalSecondDerive, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(disposeFailure.terminalSecondDeriveAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(disposeFailure.terminalSecondDeriveCalls, []);
+  const disposeTerminal = c3LifecycleNamedPhase(disposeFailure.lifecycle, "terminalAfterDispose");
+  c3AssertTerminalLifecyclePhase(disposeTerminal);
+
+  for (const [name, result, expectedSelections] of [
+    ["cycle", value.cycleFailure, 1],
+    ["seen", value.seenFailure, 2]
+  ]) {
+    c3AssertFailure(result);
+    const phase = c3LifecycleNamedPhase(result.lifecycle, "derive");
+    const selected = phase.retentions.filter((entry) => entry.role === "sshSelectedInsertion");
+    assert.equal(selected.length, expectedSelections, name);
+    assert.equal(selected.at(-1).pushOperationCalls, result.calls.length, name);
+    assert.equal(phase.registry.some((entry) => entry.method === "set"), false, name);
+    assert.deepEqual(result.terminalSecondDeriveAllocations, C2B_ZERO_ALLOCATIONS, name);
+    assert.deepEqual(result.terminalSecondDeriveCalls, [], name);
+    c3AssertTerminalLifecyclePhase(c3LifecycleNamedPhase(result.lifecycle, "terminal"));
+  }
+
+  const registry = value.registry;
+  assert.deepEqual(registry.failed.outcome, { ok: false, error: "restricted_identity_rejected" });
+  assert.equal(registry.failed.terminal, true);
+  assert.deepEqual(registry.foreign.outcome, { ok: false, error: "restricted_identity_rejected" });
+  assert.equal(registry.foreign.terminal, true);
+  assert.equal(registry.foreign.foreignOwnerStateHealthy, true);
+  for (const isolation of [registry.foreign.foreignOwnerIsolation, registry.foreign.liveOwnerIsolation]) {
+    assert.ok(isolation.bufferCount > 0);
+    for (const [name, unchanged] of Object.entries(isolation)) {
+      if (name === "bufferCount") continue;
+      assert.equal(unchanged, true, name);
+    }
+  }
+  assert.deepEqual(registry.foreign.disposeACleanup, {
+    disposed: true,
+    closureDropped: true,
+    filesCleared: true,
+    eventsCleared: true,
+    activePathsCleared: true,
+    buffersZero: true
+  });
+  assert.deepEqual(registry.snapshotAsOwner.outcome, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(registry.reuse.outcome, { ok: false, error: "restricted_identity_rejected" });
+  assert.equal(registry.reuse.reuseLiveOwnerStateHealthy, true);
+  assert.ok(registry.reuse.reuseLiveOwnerIsolation.bufferCount > 0);
+  for (const [name, unchanged] of Object.entries(registry.reuse.reuseLiveOwnerIsolation)) {
+    if (name === "bufferCount") continue;
+    assert.equal(unchanged, true, `reuse.${name}`);
+  }
+  assert.ok(registry.correctDisposals.every((outcome) => outcome.ok === true));
+  assert.deepEqual(registry.terminal.outcome, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(registry.terminal.allocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(registry.terminal.calls, []);
+  assert.equal(registry.terminal.unchanged, true);
+  const phases = registry.lifecycle.phases;
+  const registryEvents = phases.flatMap((phase) => phase.registry);
+  assert.equal(registryEvents.filter((entry) => entry.method === "set").length, 5);
+  assert.ok(registryEvents.filter((entry) => entry.method === "set")
+    .every((entry) => entry.keyShape === "owner" && entry.sameGraph && entry.ownerComplete));
+  assert.equal(registryEvents.filter((entry) => entry.method === "delete").length, 5);
+  assert.ok(registryEvents.filter((entry) => entry.method === "delete")
+    .every((entry) => entry.keyShape === "owner" && entry.sameGraph));
+  assert.equal(registryEvents.some((entry) => entry.keyShape === "snapshot"
+    && (entry.method === "set" || entry.method === "delete")), false);
+  for (const name of ["failedDerive", "foreignDispose", "snapshotAsOwner", "reuseD", "terminalFollowup"]) {
+    assert.equal(c3LifecycleNamedPhase(registry.lifecycle, name).registry
+      .some((entry) => entry.method === "set" || entry.method === "delete"), false, name);
+  }
+  assert.ok(c3LifecycleNamedPhase(registry.lifecycle, "foreignDispose").registry
+    .some((entry) => entry.method === "get" && entry.keyShape === "owner" && !entry.sameGraph));
+  const foreignPhase = c3LifecycleNamedPhase(registry.lifecycle, "foreignDispose");
+  assert.deepEqual(foreignPhase.finalStamp, { allocations: 0, hashes: 0, copies: 0, pushes: 0, operationCalls: 0 });
+  assert.deepEqual(foreignPhase.allocationKinds, {});
+  assert.deepEqual(foreignPhase.objectAllocations, []);
+  assert.deepEqual(foreignPhase.fixedAllocations, []);
+  assert.deepEqual(foreignPhase.roleAllocations, []);
+  assert.deepEqual(foreignPhase.roleFills, []);
+  assert.deepEqual(foreignPhase.retentions, []);
+  assert.deepEqual(foreignPhase.fills, []);
+  assert.deepEqual(foreignPhase.copies, []);
+  assert.deepEqual(foreignPhase.pushes, []);
+  assert.ok(foreignPhase.registry.length > 0);
+  assert.ok(foreignPhase.registry.every((entry) => (entry.method === "get" || entry.method === "has")
+    && entry.keyShape === "owner" && entry.method !== "set" && entry.method !== "delete"));
+  assert.ok(c3LifecycleNamedPhase(registry.lifecycle, "snapshotAsOwner").registry
+    .some((entry) => entry.method === "get" && entry.keyShape === "snapshot" && !entry.sameGraph));
+  assert.ok(c3LifecycleNamedPhase(registry.lifecycle, "reuseD").registry
+    .some((entry) => entry.method === "get" && entry.keyShape === "owner" && !entry.sameGraph));
+  const terminalFollowup = c3LifecycleNamedPhase(registry.lifecycle, "terminalFollowup");
+  c3AssertTerminalLifecyclePhase(terminalFollowup);
+  for (const phase of phases.filter((entry) => entry.name.startsWith("derive") && entry.name !== "failedDerive")) {
+    const sets = phase.registry.filter((entry) => entry.method === "set" && entry.keyShape === "owner");
+    assert.equal(sets.length, 1, phase.name);
+    assert.deepEqual(sets[0].stamp, phase.finalStamp, phase.name);
+  }
+}
+
+function c3A1FileOperations(...readStages) {
+  return [
+    ["lstat", "ancestor-0"],
+    ["lstat", "ancestor-1"],
+    ["lstat", "ancestor-2"],
+    ["lstat", "file-0"],
+    ["open", "file-0", "file"],
+    ["fstat", "file-0", "pre"],
+    ...readStages.map((stage) => ["read", "file-0", stage]),
+    ["fstat", "file-0", "post"],
+    ["close", "file-0"]
+  ];
+}
+
+const C3_A1_DIRECTORY_OPERATIONS = Object.freeze([
+  ["lstat", "ancestor-0"],
+  ["lstat", "ancestor-1"],
+  ["lstat", "ancestor-2"],
+  ["lstat", "file-0"],
+  ["open", "file-0", "file"],
+  ["fstat", "file-0", "pre"],
+  ["read", "file-0", "body"],
+  ["read", "file-0", "eof"],
+  ["fstat", "file-0", "post"],
+  ["close", "file-0"],
+  ["lstat", "ancestor-0"],
+  ["lstat", "ancestor-1"],
+  ["lstat", "ancestor-2"],
+  ["lstat", "directory-0"],
+  ["open", "directory-0", "directory"],
+  ["fstat", "directory-0", "pre"],
+  ["readDirectory", "directory-0", "live"],
+  ["lstat", "ancestor-0"],
+  ["lstat", "ancestor-1"],
+  ["lstat", "ancestor-2"],
+  ["lstat", "directory-0"],
+  ["lstat", "file-1"],
+  ["open", "file-1", "file"],
+  ["fstat", "file-1", "pre"],
+  ["read", "file-1", "body"],
+  ["read", "file-1", "eof"],
+  ["fstat", "file-1", "post"],
+  ["close", "file-1"],
+  ["fstat", "directory-0", "post"],
+  ["close", "directory-0"]
+]);
+
+const C3_A1_DIRECTORY_FAILURE_OPERATIONS = Object.freeze([
+  ...C3_A1_DIRECTORY_OPERATIONS.slice(0, 17),
+  ["fstat", "directory-0", "post"],
+  ["close", "directory-0"]
+]);
+
+function c3AssertA1Protocol(result) {
+  assert.equal(result.calls.some(([name]) => name === "validateSudoers"), false);
+  const opened = result.calls.filter(([name]) => name === "open");
+  assert.equal(new Set(opened.map(([, role]) => role)).size, opened.length);
+  for (const [, role, kind] of opened) {
+    assert.equal(result.calls.filter(([name, candidate]) => name === "close" && candidate === role).length, 1, role);
+    assert.deepEqual(result.calls
+      .filter(([name, candidate]) => name === "fstat" && candidate === role)
+      .map(([, , stage]) => stage), ["pre", "post"], role);
+    if (kind === "file") {
+      assert.equal(result.calls.some(([name, candidate, stage]) => name === "read" && candidate === role && stage === "body"), true, role);
+      assert.equal(result.calls.some(([name, candidate, stage]) => name === "read" && candidate === role && stage === "eof"), true, role);
+    } else {
+      assert.deepEqual(result.calls
+        .filter(([name, candidate]) => name === "readDirectory" && candidate === role),
+      [["readDirectory", role, "live"]], role);
+    }
+  }
+}
+
+function c3AssertA1Success(result, expectedCalls) {
+  c3AssertSuccess(result);
+  assert.deepEqual(result.calls, expectedCalls);
+  c3AssertA1Protocol(result);
+}
+
+function c3AssertA1TerminalFailure(witness, expectedCalls) {
+  c3AssertFailure(witness.result);
+  assert.deepEqual(witness.result.calls, expectedCalls, witness.name);
+  assert.equal(witness.result.calls.some(([name]) => name === "validateSudoers"), false, witness.name);
+  assert.deepEqual(witness.result.terminalSecondDerive,
+    { ok: false, error: "restricted_identity_rejected" }, witness.name);
+  assert.deepEqual(witness.result.terminalSecondDeriveAllocations, C2B_ZERO_ALLOCATIONS, witness.name);
+  assert.deepEqual(witness.result.terminalSecondDeriveCalls, [], witness.name);
+}
+
+test("SSH source closure derives depth first Include encounter order", () => {
+  const value = requireC3Symbols(c3VmProbe("depth"));
+  c3AssertSuccess(value.success);
+  const owner = value.success.ownerBeforeDispose;
+  assert.deepEqual(owner.ownerKeys, ["closure", "closureSha256", "events", "activePaths", "disposed"]);
+  assert.equal(owner.ownerSymbolCount, 0);
+  assert.equal(owner.ownerProxy, false);
+  assert.equal(owner.ownerNullPrototype, true);
+  assert.deepEqual(owner.closureKeys, ["schemaVersion", "type", "rootConfig", "files"]);
+  assert.equal(owner.closureSymbolCount, 0);
+  assert.equal(owner.closureProxy, false);
+  assert.equal(owner.closureNullPrototype, true);
+  assert.equal(owner.closureFrozen, true);
+  assert.equal(owner.schemaVersion, "1");
+  assert.equal(owner.type, "japan_ci_sshd_source_closure");
+  assert.equal(owner.rootConfigRole, "file-0");
+  assert.deepEqual(owner.files.map(({ ordinal, pathRole }) => [ordinal, pathRole]), [
+    [0, "file-0"],
+    [1, "file-1"],
+    [2, "file-2"],
+    [3, "file-3"],
+    [4, "file-4"]
+  ]);
+  assert.ok(owner.files.every((file) => file.nullPrototype && file.frozen && file.symbolCount === 0 && file.proxy === false
+    && file.keys.join(",") === "ordinal,path,sha256,uid,gid,mode,nlink"));
+  assert.equal(owner.closureSha256, owner.canonicalSha256);
+  assert.equal(owner.eventCount, 24);
+  assert.deepEqual(owner.events.map((event) => event.values.kind), [
+    "physicalDirective", "includePattern", "selectedInsertion",
+    "physicalDirective", "assignment", "physicalDirective", "includePattern", "selectedInsertion",
+    "physicalDirective", "assignment", "selectedInsertion", "physicalDirective", "assignment",
+    "includePattern", "selectedInsertion", "physicalDirective", "assignment",
+    "physicalDirective", "assignment", "physicalDirective", "matchBranch", "matchCondition",
+    "physicalDirective", "assignment"
+  ]);
+  assert.ok(owner.events.every((event, index) => event.nullPrototype && event.frozen
+    && event.values.eventOrdinal === index));
+  assert.deepEqual(owner.activePathRoles, []);
+  assert.equal(value.success.afterDerive.snapshot.fixedEnvelopeCount, 10);
+  assert.equal(value.success.afterDerive.ssh.fixedEnvelopeCount, 2);
+  assert.equal(value.success.afterDerive.sudo.fixedEnvelopeCount, 2);
+  assert.deepEqual(value.success.secondDerive, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.success.secondDeriveCalls, []);
+  const preimageIndex = value.success.trace.findIndex(([name]) => name === "reserve-preimage");
+  const laterBufferIndex = value.success.trace.findIndex(([name], index) => index > preimageIndex && name.startsWith("buffer"));
+  assert.ok(preimageIndex >= 0 && laterBufferIndex > preimageIndex);
+  c3AssertFailure(value.failure);
+  c3AssertA1Success(value.operationSuccess, c3A1FileOperations("body", "eof"));
+  const operationFailureCalls = {
+    lstat: c3A1FileOperations().slice(0, 4),
+    nonregular: c3A1FileOperations().slice(0, 4),
+    open: c3A1FileOperations().slice(0, 5)
+  };
+  for (const witness of value.operationFailures) {
+    c3AssertA1TerminalFailure(witness, operationFailureCalls[witness.name]);
+  }
+  c3AssertA2Lifecycle(value.lifecycle);
+});
+
+test("SSH branch ordinal is total while source coordinates are provenance", () => {
+  const value = requireC3Symbols(c3VmProbe("coordinates"));
+  c3AssertSuccess(value.coordinate);
+  const branches = value.coordinate.ownerBeforeDispose.events
+    .filter((event) => event.values.kind === "matchBranch")
+    .map((event) => [event.values.branchOrdinal, event.values.sourceOrdinal, event.values.lineNumber]);
+  assert.deepEqual(branches, [[0, 1, 5], [1, 0, 2]]);
+  const physicalMatches = value.coordinate.ownerBeforeDispose.events
+    .filter((event) => event.values.kind === "physicalDirective" && event.values.directive === "match")
+    .map((event) => [event.values.scope, event.values.branchOrdinal]);
+  assert.deepEqual(physicalMatches, [["global", -1], ["match", 0]]);
+  for (const witness of value.duplicateCases) {
+    if (witness.ok) c3AssertSuccess(witness.result);
+    else c3AssertFailure(witness.result);
+    assert.equal(witness.result.after.snapshot.wildcardAlignedComparisonCount, witness.aligned, witness.name);
+  }
+  c3AssertSuccess(value.alignedMaximum);
+  assert.equal(value.alignedMaximum.afterDerive.snapshot.wildcardAlignedComparisonCount, 16777216);
+  c3AssertFailure(value.alignedOverflow);
+  assert.equal(value.alignedOverflow.after.snapshot.wildcardAlignedComparisonCount, 16777216);
+  c3AssertSuccess(value.branchesMaximum);
+  assert.equal(value.branchesMaximum.afterDerive.ssh.sshMatchBranchCount, 4096);
+  c3AssertFailure(value.branchesOverflow);
+  c3AssertSuccess(value.patternsMaximum);
+  c3AssertFailure(value.patternsOverflow);
+  c3AssertSuccess(value.valueMaximum);
+  c3AssertFailure(value.valueOverflow);
+  c3AssertSuccess(value.negatedMaximum);
+  c3AssertFailure(value.negatedOverflow);
+  assert.equal(value.conditionCalculator.maximum, 9);
+  assert.deepEqual(value.conditionCalculator.overflow, { ok: false, error: "restricted_identity_rejected" });
+  const eintrCalls = {
+    body: c3A1FileOperations("body-eintr", "body", "eof"),
+    eof: c3A1FileOperations("body", "eof-eintr", "eof")
+  };
+  for (const witness of value.readEintr) c3AssertA1Success(witness.result, eintrCalls[witness.name]);
+  const readFailureCalls = {
+    "early-eof": c3A1FileOperations("body-early-eof"),
+    "trailing-byte": c3A1FileOperations("body", "eof-trailing-byte"),
+    "body-invalid-count": c3A1FileOperations("body-invalid-count"),
+    "eof-invalid-count": c3A1FileOperations("body", "eof-invalid-count")
+  };
+  for (const witness of value.readFailures) {
+    c3AssertA1TerminalFailure(witness, readFailureCalls[witness.name]);
+  }
+});
+
+test("SSH Include freezes relative base final glob and Match scope", { timeout: 120000 }, () => {
+  const value = requireC3Symbols(c3VmProbe("include", 60000));
+  c3AssertSuccess(value.relative);
+  assert.deepEqual(value.relative.ownerBeforeDispose.files.map((file) => file.pathRole), ["file-0", "file-1", "file-2"]);
+  c3AssertSuccess(value.glob);
+  assert.deepEqual(value.glob.ownerBeforeDispose.files.map((file) => file.pathRole), ["file-0", "file-1", "file-2"]);
+  for (const witness of value.invalidSources) c3AssertFailure(witness.result);
+  c3AssertSuccess(value.directory4096);
+  assert.ok(value.directory4096.compareCount >= 8390656);
+  assert.ok(value.directory4096.compareCount <= 8390656 + 196608);
+  c3AssertFailure(value.directory4097);
+  assert.equal(value.directory4097.compareCount, 0);
+  c3AssertSuccess(value.operands64);
+  c3AssertFailure(value.operands65);
+  c3AssertSuccess(value.depth32);
+  c3AssertFailure(value.depth33);
+  c3AssertSuccess(value.files256);
+  c3AssertFailure(value.files257);
+  assert.equal(value.selectedCalculator.maximum, 65536);
+  assert.deepEqual(value.selectedCalculator.overflow, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.directoryCalculator, {
+    perDirectorySort: 196608,
+    aggregateSort: 4194304,
+    inheritedAggregate: 134250496,
+    completeCeiling: 137396224
+  });
+  c3AssertA1Success(value.operationDirectory, C3_A1_DIRECTORY_OPERATIONS);
+  c3AssertA1TerminalFailure({ name: "readDirectory", result: value.readDirectoryFailure },
+    C3_A1_DIRECTORY_FAILURE_OPERATIONS);
+});
+
+test("SSH lexer accepts only the global and Match closed subsets", () => {
+  const value = requireC3Symbols(c3VmProbe("lexer"));
+  c3AssertSuccess(value.success);
+  const assignments = value.success.ownerBeforeDispose.events
+    .filter((event) => event.values.kind === "assignment")
+    .map((event) => event.values.name);
+  assert.deepEqual([...new Set(assignments)].sort(), [...C3_AUTHORITY_DIRECTIVES].sort());
+  const physical = value.success.ownerBeforeDispose.events
+    .filter((event) => event.values.kind === "physicalDirective")
+    .map((event) => event.values.directive);
+  for (const directive of C3_OPAQUE_DIRECTIVES) assert.ok(physical.includes(directive), directive);
+  const accept = value.success.ownerBeforeDispose.events.filter((event) => event.values.kind === "acceptEnvName");
+  assert.deepEqual(accept.map((event) => event.values.valueBytes.knownBytes), [
+    { lang: true, lcAll: false },
+    { lang: false, lcAll: true }
+  ]);
+  for (const witness of value.invalid) c3AssertFailure(witness.result);
+  c3AssertSuccess(value.line16384);
+  c3AssertFailure(value.line16385);
+  c3AssertSuccess(value.token4096);
+  c3AssertFailure(value.token4097);
+  c3AssertSuccess(value.tokens256);
+  c3AssertFailure(value.tokens257);
+  c3AssertSuccess(value.acceptEnv255);
+  c3AssertFailure(value.acceptEnv256);
+  c3AssertSuccess(value.precharge);
+  const semanticTrace = value.precharge.trace.filter(([name]) => name === "reserve-semantic").map(([, kind]) => kind);
+  assert.deepEqual(semanticTrace, [
+    "sourceFile",
+    "sshPhysicalDirective", "sshIncludePattern", "sshSelectedInsertion",
+    "sourceFile", "sshPhysicalDirective",
+    "sshPhysicalDirective", "sshMatchBranch", "sshMatchCondition", "sshMatchCondition",
+    "sshMatchPattern", "sshMatchPattern", "sshMatchPattern",
+    "sshPhysicalDirective", "sshAssignment", "sshAcceptEnvName", "sshAcceptEnvName"
+  ]);
+  const operationFailureCalls = {
+    "post-fstat-drift": c3A1FileOperations("body", "eof"),
+    read: c3A1FileOperations("body-failure"),
+    close: c3A1FileOperations("body", "eof")
+  };
+  for (const witness of value.operationFailures) {
+    c3AssertA1TerminalFailure(witness, operationFailureCalls[witness.name]);
+  }
+  assert.deepEqual(Object.keys(runnerModule).sort(), C2B_NATIVE_EXPORTS);
+});
