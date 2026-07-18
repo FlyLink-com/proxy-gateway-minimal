@@ -7246,6 +7246,103 @@ const C3_EXACT_BLOCK_END = "// C3_SSH_SOURCE_BLOCK_END";
 const C3_EXACT_BLOCK_SIZE = 61980;
 const C3_EXACT_BLOCK_LINES = 1482;
 const C3_EXACT_BLOCK_SHA256 = "cf93a44d95dc99ff305eaf465509ccf2fcdb54f92988fa8cba7294503bb2e740";
+const C4_EXACT_RUNNER_SIZE = 224784;
+const C4_EXACT_RUNNER_LINES = 5551;
+const C4_EXACT_RUNNER_SHA256 = "f982a32670158768fe960459fde48ea6d6ef9d7dba9123fd91333b47db00c777";
+const C4_EXACT_BLOCK_BEGIN = "// C4_SSH_POLICY_BLOCK_BEGIN";
+const C4_EXACT_BLOCK_END = "// C4_SSH_POLICY_BLOCK_END";
+const C4_EXACT_BLOCK_SIZE = 48834;
+const C4_EXACT_BLOCK_LINES = 1043;
+const C4_EXACT_BLOCK_SHA256 = "e530ca3154dbd9ab0db3849bf78936e75774c6bcc6d7e3b60913719c04990b25";
+const C4_EXACT_TOKEN_COUNT = 8181;
+const C4_EXACT_TOKEN_SHA256 = "0be5bd35a49ce7b01fbcae90ea0740d1c4a52f9328833ec2b31c5f8c48294129";
+const C4_EXPECTED_TOP_LEVEL_DECLARATIONS = Object.freeze([
+  "const AUTHORIZATION_SSH_C4_AUTHORIZED_PREFIX",
+  "const AUTHORIZATION_SSH_C4_BINDING_NAMES",
+  "const AUTHORIZATION_SSH_C4_BINDING_PATH_NAMES",
+  "const AUTHORIZATION_SSH_C4_BINDING_SSH_NAMES",
+  "const AUTHORIZATION_SSH_C4_OPERATION_INPUT_NAMES",
+  "const AUTHORIZATION_SSH_C4_PATH_OPERATION_NAMES",
+  "const AUTHORIZATION_SSH_C4_PATH_POLICY_NAMES",
+  "const AUTHORIZATION_SSH_C4_SOURCE_OPERATION_NAMES",
+  "const AUTHORIZATION_SSH_C4_TOPOLOGY_MIDDLE",
+  "const AUTHORIZATION_SSH_C4_TOPOLOGY_TAIL",
+  "const AUTHORIZATION_SSH_C4_VALUE_SLOTS",
+  "function authorizationSshC4AdoptCanonicalBindingShape",
+  "function authorizationSshC4AsciiText",
+  "function authorizationSshC4AssignmentSlot",
+  "function authorizationSshC4Base64Value",
+  "function authorizationSshC4BindingShape",
+  "function authorizationSshC4Boolean",
+  "function authorizationSshC4BuildTopology",
+  "function authorizationSshC4CleanupPolicy",
+  "function authorizationSshC4CloneClosure",
+  "function authorizationSshC4CompleteProjection",
+  "function authorizationSshC4CreateValueTable",
+  "function authorizationSshC4DecodeLine",
+  "function authorizationSshC4DigestMatches",
+  "function authorizationSshC4EffectiveIsSafe",
+  "function authorizationSshC4ExactRecord",
+  "function authorizationSshC4First",
+  "function authorizationSshC4FixedArray",
+  "function authorizationSshC4FixedObject",
+  "function authorizationSshC4FreezeCoverage",
+  "function authorizationSshC4OperationInput",
+  "function authorizationSshC4PatternListMatches",
+  "function authorizationSshC4ReadAuthorization",
+  "function authorizationSshC4ReadEof",
+  "function authorizationSshC4SameFinal",
+  "function authorizationSshC4TableAssignment",
+  "function authorizationSshC4ValidateAncestor",
+  "function authorizationSshC4ValidateFinal",
+  "function authorizationSshC4WriteAsciiTarget",
+  "function authorizationSshC4ZeroBuffersTo",
+  "function deriveAuthorizationSshPolicy",
+  "function disposeAuthorizationSshPolicy",
+  "function emitAuthorizationSshCoverage",
+  "function emitAuthorizationSshTopology",
+  "function measureAuthorizationSshCoverage",
+  "function measureAuthorizationSshTopology",
+  "function verifyProjectedSshAuthorization"
+]);
+const C4_EXPECTED_TOP_LEVEL_ARITIES = Object.freeze([
+  "authorizationSshC4AdoptCanonicalBindingShape/2",
+  "authorizationSshC4AsciiText/1",
+  "authorizationSshC4AssignmentSlot/1",
+  "authorizationSshC4Base64Value/1",
+  "authorizationSshC4BindingShape/1",
+  "authorizationSshC4Boolean/2",
+  "authorizationSshC4BuildTopology/5",
+  "authorizationSshC4CleanupPolicy/3",
+  "authorizationSshC4CloneClosure/2",
+  "authorizationSshC4CompleteProjection/4",
+  "authorizationSshC4CreateValueTable/1",
+  "authorizationSshC4DecodeLine/2",
+  "authorizationSshC4DigestMatches/2",
+  "authorizationSshC4EffectiveIsSafe/1",
+  "authorizationSshC4ExactRecord/3",
+  "authorizationSshC4First/4",
+  "authorizationSshC4FixedArray/2",
+  "authorizationSshC4FixedObject/1",
+  "authorizationSshC4FreezeCoverage/1",
+  "authorizationSshC4OperationInput/1",
+  "authorizationSshC4PatternListMatches/6",
+  "authorizationSshC4ReadAuthorization/3",
+  "authorizationSshC4ReadEof/3",
+  "authorizationSshC4SameFinal/2",
+  "authorizationSshC4TableAssignment/2",
+  "authorizationSshC4ValidateAncestor/1",
+  "authorizationSshC4ValidateFinal/1",
+  "authorizationSshC4WriteAsciiTarget/2",
+  "authorizationSshC4ZeroBuffersTo/2",
+  "deriveAuthorizationSshPolicy/3",
+  "disposeAuthorizationSshPolicy/2",
+  "emitAuthorizationSshCoverage/2",
+  "emitAuthorizationSshTopology/2",
+  "measureAuthorizationSshCoverage/1",
+  "measureAuthorizationSshTopology/1",
+  "verifyProjectedSshAuthorization/2"
+]);
 const C3_EXPECTED_TOP_LEVEL_ADDITIONS = Object.freeze([
   "const AUTHORIZATION_SSH_AUTHORITY_NAMES",
   "const AUTHORIZATION_SSH_BOOLEAN_NAMES",
@@ -12402,6 +12499,606 @@ function c3AssertOrderedSource(source, needles) {
   }
 }
 
+function c4TokenizeSource(source) {
+  const tokens = [];
+  const punctuators = ["===", "!==", ">>>", "**=", "&&=", "||=", "??=", "=>", "==", "!=", "<=", ">=", "++", "--", "&&", "||", "??", "?.", "**", "<<", ">>", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "..."];
+  let index = 0;
+  while (index < source.length) {
+    const code = source.charCodeAt(index);
+    if (code === 0x09 || code === 0x0a || code === 0x0d || code === 0x20) {
+      index += 1;
+      continue;
+    }
+    if (source[index] === "/" && source[index + 1] === "/") {
+      index += 2;
+      while (index < source.length && source[index] !== "\n") index += 1;
+      continue;
+    }
+    if (source[index] === "/" && source[index + 1] === "*") {
+      index += 2;
+      while (index + 1 < source.length && !(source[index] === "*" && source[index + 1] === "/")) index += 1;
+      assert.ok(index + 1 < source.length, "unterminated block comment");
+      index += 2;
+      continue;
+    }
+    if (source[index] === "\"" || source[index] === "'" || source[index] === "`") {
+      const start = index;
+      const quote = source[index++];
+      let escaped = false;
+      while (index < source.length) {
+        const character = source[index++];
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (character === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (character === quote) break;
+        if (quote !== "`" && (character === "\n" || character === "\r")) assert.fail("newline in string literal");
+      }
+      assert.equal(source[index - 1], quote, "unterminated string or template literal");
+      tokens.push({ type: quote === "`" ? "template" : "string", value: source.slice(start, index) });
+      continue;
+    }
+    const identifierStart = (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)
+      || code === 0x5f || code === 0x24;
+    if (identifierStart) {
+      const start = index++;
+      while (index < source.length) {
+        const next = source.charCodeAt(index);
+        if (!((next >= 0x41 && next <= 0x5a) || (next >= 0x61 && next <= 0x7a)
+          || (next >= 0x30 && next <= 0x39) || next === 0x5f || next === 0x24)) break;
+        index += 1;
+      }
+      tokens.push({ type: "identifier", value: source.slice(start, index) });
+      continue;
+    }
+    if (code >= 0x30 && code <= 0x39) {
+      const start = index++;
+      while (index < source.length && /[A-Za-z0-9_.]/.test(source[index])) index += 1;
+      tokens.push({ type: "number", value: source.slice(start, index) });
+      continue;
+    }
+    const punctuator = punctuators.find((value) => source.startsWith(value, index));
+    if (punctuator) {
+      tokens.push({ type: "punctuator", value: punctuator });
+      index += punctuator.length;
+      continue;
+    }
+    tokens.push({ type: "punctuator", value: source[index++] });
+  }
+  return tokens;
+}
+
+function c4TokenSequenceCount(tokens, values) {
+  let count = 0;
+  for (let index = 0; index <= tokens.length - values.length; index += 1) {
+    let matches = true;
+    for (let offset = 0; offset < values.length; offset += 1) {
+      if (tokens[index + offset].value !== values[offset]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) count += 1;
+  }
+  return count;
+}
+
+function c4TokenIdentitySha256(tokens) {
+  const hash = createHash("sha256");
+  for (const token of tokens) {
+    hash.update(token.type);
+    hash.update("\0");
+    hash.update(String(Buffer.byteLength(token.value, "utf8")));
+    hash.update(":");
+    hash.update(token.value);
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function c4TopLevelDeclarations(tokens) {
+  const declarations = [];
+  const arities = [];
+  let braceDepth = 0;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (braceDepth === 0 && token.value === "const" && tokens[index + 1]?.type === "identifier") {
+      declarations.push(`const ${tokens[index + 1].value}`);
+    }
+    if (braceDepth === 0 && token.value === "function" && tokens[index + 1]?.type === "identifier"
+      && tokens[index + 2]?.value === "(") {
+      const name = tokens[index + 1].value;
+      declarations.push(`function ${name}`);
+      let parameterDepth = 1;
+      let parameterCount = tokens[index + 3]?.value === ")" ? 0 : 1;
+      for (let cursor = index + 3; cursor < tokens.length && parameterDepth > 0; cursor += 1) {
+        if (tokens[cursor].value === "(") parameterDepth += 1;
+        else if (tokens[cursor].value === ")") parameterDepth -= 1;
+        else if (tokens[cursor].value === "," && parameterDepth === 1) parameterCount += 1;
+      }
+      arities.push(`${name}/${parameterCount}`);
+    }
+    if (token.value === "{") braceDepth += 1;
+    else if (token.value === "}") braceDepth -= 1;
+    assert.ok(braceDepth >= 0, "C4 token brace depth");
+  }
+  assert.equal(braceDepth, 0, "C4 token brace balance");
+  return { declarations: declarations.sort(), arities: arities.sort() };
+}
+
+function c4LiteralContainerCounts(tokens) {
+  const expressionPunctuators = new Set([
+    "=", "(", "[", "{", ";", ",", ":", "?", "=>", "!", "~", "+", "-", "*", "/", "%", "**",
+    "<", ">", "<=", ">=", "==", "===", "!=", "!==", "&", "|", "^", "<<", ">>", ">>>",
+    "&&", "||", "??", "+=", "-=", "*=", "/=", "%=", "**=", "&&=", "||=", "??=", "&=", "|=", "^="
+  ]);
+  const expressionKeywords = new Set([
+    "return", "yield", "throw", "const", "let", "var", "void", "typeof", "delete", "await",
+    "of", "in", "instanceof", "case"
+  ]);
+  let object = 0;
+  let array = 0;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const current = tokens[index].value;
+    if (current !== "{" && current !== "[") continue;
+    const previous = tokens[index - 1];
+    const expressionStart = !previous || expressionPunctuators.has(previous.value)
+      || (previous.type === "identifier" && expressionKeywords.has(previous.value));
+    if (!expressionStart) continue;
+    if (current === "{") object += 1;
+    else array += 1;
+  }
+  return { object, array };
+}
+
+function c4ContainsOrdered(source, needles) {
+  let offset = 0;
+  for (const needle of needles) {
+    const index = source.indexOf(needle, offset);
+    if (index < offset) return false;
+    offset = index + needle.length;
+  }
+  return true;
+}
+
+function c4StaticStringValue(tokens, start, end, bindings) {
+  let value = "";
+  let operand = false;
+  let expectOperand = true;
+  for (let index = start; index < end; index += 1) {
+    const token = tokens[index];
+    if (token.value === "(" || token.value === ")") continue;
+    if (expectOperand) {
+      if (token.type === "string" && !token.value.includes("\\")) {
+        value += token.value.slice(1, -1);
+      } else if (token.type === "identifier" && bindings.has(token.value)) {
+        value += bindings.get(token.value);
+      } else {
+        return undefined;
+      }
+      operand = true;
+      expectOperand = false;
+    } else if (token.value === "+") {
+      expectOperand = true;
+    } else {
+      return undefined;
+    }
+  }
+  return operand && !expectOperand ? value : undefined;
+}
+
+function c4StaticStringBindings(tokens) {
+  const bindings = new Map();
+  for (let index = 0; index < tokens.length - 4; index += 1) {
+    if (!["const", "let"].includes(tokens[index].value)
+      || tokens[index + 1].type !== "identifier" || tokens[index + 2].value !== "=") continue;
+    let end = index + 3;
+    while (end < tokens.length && tokens[end].value !== ";") end += 1;
+    if (end >= tokens.length) continue;
+    const value = c4StaticStringValue(tokens, index + 3, end, bindings);
+    if (value !== undefined) bindings.set(tokens[index + 1].value, value);
+  }
+  return bindings;
+}
+
+function c4ComputedPropertyNames(tokens, bindings) {
+  const names = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].value !== "[") continue;
+    let depth = 1;
+    let end = index + 1;
+    while (end < tokens.length && depth > 0) {
+      if (tokens[end].value === "[") depth += 1;
+      else if (tokens[end].value === "]") depth -= 1;
+      if (depth > 0) end += 1;
+    }
+    if (depth !== 0) continue;
+    const value = c4StaticStringValue(tokens, index + 1, end, bindings);
+    if (value !== undefined) names.push(value);
+  }
+  return names;
+}
+
+function c4FunctionArity(tokens, name) {
+  for (let index = 0; index < tokens.length - 3; index += 1) {
+    if (tokens[index].value !== "function" || tokens[index + 1].value !== name || tokens[index + 2].value !== "(") continue;
+    let depth = 1;
+    let count = tokens[index + 3].value === ")" ? 0 : 1;
+    for (let cursor = index + 3; cursor < tokens.length && depth > 0; cursor += 1) {
+      if (tokens[cursor].value === "(") depth += 1;
+      else if (tokens[cursor].value === ")") depth -= 1;
+      else if (tokens[cursor].value === "," && depth === 1) count += 1;
+    }
+    return count;
+  }
+  return -1;
+}
+
+function c4SourceLockFailures(rawSource) {
+  const failures = new Set();
+  const normalized = rawSource.replaceAll("\r\n", "\n");
+  if (rawSource.includes("\r")
+    || Buffer.byteLength(normalized, "utf8") !== C4_EXACT_RUNNER_SIZE
+    || normalized.split("\n").length - 1 !== C4_EXACT_RUNNER_LINES
+    || createHash("sha256").update(normalized, "utf8").digest("hex") !== C4_EXACT_RUNNER_SHA256) {
+    failures.add("runner-identity");
+  }
+  const beginCount = c3SourceCount(normalized, C4_EXACT_BLOCK_BEGIN);
+  const endCount = c3SourceCount(normalized, C4_EXACT_BLOCK_END);
+  if (beginCount !== 1 || endCount !== 1) {
+    failures.add("c4-block-identity");
+    return [...failures];
+  }
+  const begin = normalized.indexOf(C4_EXACT_BLOCK_BEGIN);
+  const end = normalized.indexOf(C4_EXACT_BLOCK_END, begin + C4_EXACT_BLOCK_BEGIN.length);
+  const endAfter = end + C4_EXACT_BLOCK_END.length;
+  const block = normalized.slice(begin, endAfter);
+  const blockThroughEndLf = normalized[endAfter] === "\n" ? normalized.slice(begin, endAfter + 1) : "";
+  if (Buffer.byteLength(blockThroughEndLf, "utf8") !== C4_EXACT_BLOCK_SIZE
+    || blockThroughEndLf.split("\n").length - 1 !== C4_EXACT_BLOCK_LINES
+    || createHash("sha256").update(blockThroughEndLf, "utf8").digest("hex") !== C4_EXACT_BLOCK_SHA256) {
+    failures.add("c4-block-identity");
+  }
+
+  const tokens = c4TokenizeSource(block);
+  if (tokens.length !== C4_EXACT_TOKEN_COUNT
+    || c4TokenIdentitySha256(tokens) !== C4_EXACT_TOKEN_SHA256) failures.add("c4-token-identity");
+  const headers = c4TopLevelDeclarations(tokens);
+  if (JSON.stringify(headers.declarations) !== JSON.stringify(C4_EXPECTED_TOP_LEVEL_DECLARATIONS)) {
+    failures.add("declarations");
+  }
+  if (JSON.stringify(headers.arities) !== JSON.stringify(C4_EXPECTED_TOP_LEVEL_ARITIES)) {
+    failures.add("private-signatures");
+  }
+  const literals = c4LiteralContainerCounts(tokens);
+  const tokenValues = tokens.map((token) => token.value);
+  const staticStringBindings = c4StaticStringBindings(tokens);
+  const computedPropertyNames = c4ComputedPropertyNames(tokens, staticStringBindings);
+  let computedDepth = 0;
+  let escapedComputedProperty = false;
+  for (const token of tokens) {
+    if (token.value === "[") computedDepth += 1;
+    else if (token.value === "]") computedDepth -= 1;
+    else if (computedDepth > 0 && token.type === "string" && token.value.includes("\\")) {
+      escapedComputedProperty = true;
+    }
+  }
+  const forbiddenContainers = new Set(["Map", "Set", "WeakMap", "WeakSet"]);
+  const allowedObjectMembers = new Set([
+    "create", "freeze", "getOwnPropertyDescriptor", "getOwnPropertyNames",
+    "getOwnPropertySymbols", "getPrototypeOf", "hasOwn", "prototype", "setPrototypeOf"
+  ]);
+  let genericConstructorAccess = false;
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].value === "Object"
+      && (tokens[index + 1]?.value !== "." || !allowedObjectMembers.has(tokens[index + 2]?.value))) {
+      genericConstructorAccess = true;
+    }
+    if (tokens[index].value === "Array") {
+      const approvedAllocation = tokens[index - 1]?.value === "new";
+      const approvedInspection = tokens[index + 1]?.value === "." && tokens[index + 2]?.value === "isArray";
+      if (!approvedAllocation && !approvedInspection) genericConstructorAccess = true;
+    }
+  }
+  if (literals.object !== 0 || literals.array !== 0
+    || tokenValues.some((value) => forbiddenContainers.has(value))
+    || tokenValues.filter((value) => value === "new").length !== 5
+    || c4TokenSequenceCount(tokens, ["new", "Array"]) !== 5
+    || c4TokenSequenceCount(tokens, ["Object", ".", "create", "(", "null", ")"]) !== 4
+    || c4TokenSequenceCount(tokens, ["Buffer", ".", "alloc", "("]) !== 5
+    || c4TokenSequenceCount(tokens, ["Buffer", ".", "allocUnsafe", "("]) !== 0
+    || tokenValues.includes("...")
+    || c4TokenSequenceCount(tokens, ["Array", ".", "from"]) !== 0
+    || c4TokenSequenceCount(tokens, ["Object", ".", "fromEntries"]) !== 0
+    || c4TokenSequenceCount(tokens, ["Reflect", ".", "construct"]) !== 0
+    || genericConstructorAccess) {
+    failures.add("container-token");
+  }
+  const forbiddenDynamic = new Set([
+    "eval", "Function", "AsyncFunction", "GeneratorFunction", "globalThis",
+    "WebAssembly", "compileFunction", "runInNewContext", "runInThisContext", "import",
+    "Proxy", "RegExp", "constructor", "__proto__", "caller", "callee", "callerEvidence",
+    "setTimeout", "setInterval", "require", "module", "process", "Reflect"
+  ]);
+  const dynamicStrings = new Set([
+    "\"eval\"", "'eval'", "\"Function\"", "'Function'", "\"constructor\"", "'constructor'",
+    "\"__proto__\"", "'__proto__'"
+  ]);
+  if (tokenValues.some((value) => forbiddenDynamic.has(value))
+    || tokenValues.includes("\\")
+    || tokenValues.includes("=>")
+    || tokenValues.filter((value) => value === "function").length !== headers.arities.length
+    || computedPropertyNames.some((name) => ["constructor", "eval", "Function", "caller", "callee", "callerEvidence"].includes(name))
+    || [...staticStringBindings.values()].some((name) => [
+      "constructor", "eval", "Function", "caller", "callee", "callerEvidence"
+    ].includes(name))
+    || escapedComputedProperty
+    || tokens.some((token) => token.type === "string" && dynamicStrings.has(token.value))) {
+    failures.add("dynamic-token");
+  }
+  const templates = tokens.filter((token) => token.type === "template").map((token) => token.value);
+  if (templates.length !== 1
+    || templates[0] !== "`restrict,no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,command=\"/usr/bin/sudo -n -- ${ENTRYPOINT_PATH}\" ssh-ed25519 `") {
+    failures.add("dynamic-token");
+  }
+  const forbiddenWholeRecord = [
+    ["JSON", ".", "stringify"], ["JSON", ".", "parse"], ["Buffer", ".", "from"],
+    ["TextEncoder"], ["TextDecoder"], ["structuredClone"], ["parseCanonicalAuthorizedKeyLine"],
+    [".", "toString", "("], ["?.", "toString", "("], [".", "split", "("],
+    ["?.", "split", "("], [".", "filter", "("],
+    [".", "map", "("], [".", "reduce", "("], [".", "match", "("],
+    [".", "matchAll", "("], [".", "exec", "("], [".", "search", "("],
+    [".", "replace", "("], [".", "replaceAll", "("], [".", "test", "("]
+  ];
+  const forbiddenWholeRecordMembers = new Set([
+    "toString", "split", "filter", "map", "reduce", "match", "matchAll",
+    "exec", "search", "replace", "replaceAll", "test", "join"
+  ]);
+  const forbiddenWholeRecordMemberAccess = tokens.some((token, index) => (token.value === "." || token.value === "?.")
+    && forbiddenWholeRecordMembers.has(tokens[index + 1]?.value));
+  const computedWholeRecordProperty = computedPropertyNames.some((name) => forbiddenWholeRecordMembers.has(name));
+  if (forbiddenWholeRecord.some((sequence) => c4TokenSequenceCount(tokens, sequence) !== 0)
+    || forbiddenWholeRecordMemberAccess || computedWholeRecordProperty || tokenValues.includes("/")
+    || tokenValues.filter((value) => value === "String").length !== 1
+    || c4TokenSequenceCount(tokens, ["String", ".", "fromCharCode", "("]) !== 1) {
+    failures.add("whole-record-bypass");
+  }
+
+  const provenanceCalls = [];
+  for (let index = 0; index < tokens.length - 5; index += 1) {
+    if (tokens[index].value !== "AUTHORIZATION_SSH_PROVENANCE" || tokens[index + 1].value !== "."
+      || !["get", "set", "delete"].includes(tokens[index + 2].value)
+      || tokens[index + 3].value !== "(" || tokens[index + 4].type !== "identifier") continue;
+    provenanceCalls.push(`${tokens[index + 2].value}/${tokens[index + 4].value}`);
+  }
+  if (tokenValues.filter((value) => value === "AUTHORIZATION_SSH_PROVENANCE").length !== 8
+    || c4TokenSequenceCount(tokens, [
+      "AUTHORIZATION_SSH_PROVENANCE", ".", "set", "(", "policy", ",", "active", ")"
+    ]) !== 1
+    || JSON.stringify(provenanceCalls) !== JSON.stringify([
+    "delete/policy", "get/syntax", "set/policy", "get/policy",
+    "delete/policy", "get/policy", "delete/policy", "get/policy"
+  ])) failures.add("provenance-sites");
+  if (tokenValues.includes("reserveAuthorizationSemanticNode")
+    || tokenValues.includes("authorizationEntryCount")
+    || computedPropertyNames.includes("authorizationEntryCount")
+    || computedPropertyNames.includes("authorizationEntry")
+    || [...staticStringBindings.values()].includes("authorizationEntryCount")
+    || [...staticStringBindings.values()].includes("authorizationEntry")
+    || block.includes('"authorizationEntry"')) failures.add("semantic-delta");
+
+  const fixedObject = c3SourceRegion(block, "function authorizationSshC4FixedObject(", "\nfunction authorizationSshC4FixedArray(");
+  const fixedArray = c3SourceRegion(block, "function authorizationSshC4FixedArray(", "\nfunction authorizationSshC4AsciiText(");
+  const asciiText = c3SourceRegion(block, "function authorizationSshC4AsciiText(", "\nfunction authorizationSshC4WriteAsciiTarget(");
+  if (c3SourceCount(block, "String.fromCharCode(") !== 1
+    || c3SourceCount(asciiText, "String.fromCharCode(") !== 1
+    || c4TokenSequenceCount(tokens, ["authorizationSshC4AsciiText", "("]) !== 3
+    || c4TokenSequenceCount(tokens, [
+      "authorizationSshC4AsciiText", "(", "event", ".", "valueBytes", ")"
+    ]) !== 1
+    || c4TokenSequenceCount(tokens, [
+      "authorizationSshC4AsciiText", "(", "sourcePattern", ".", "valueBytes", ")"
+    ]) !== 1
+    || !c4ContainsOrdered(asciiText, [
+      "if (!Buffer.isBuffer(bytes)) restricted();",
+      "for (let index = 0; index < bytes.length; index += 1)",
+      "if (byte < 0x20 || byte > 0x7e) restricted();",
+      "value += String.fromCharCode(byte);"
+    ])) failures.add("bounded-ascii-conversion");
+  if (!c4ContainsOrdered(fixedObject, ["reserveAuthorizationFixedEnvelope(graph);", "return Object.create(null);"])
+    || !c4ContainsOrdered(fixedArray, [
+      "reserveAuthorizationFixedEnvelope(graph);",
+      "return length === undefined ? new Array() : new Array(length);"
+    ])) failures.add("fixed-allocation-order");
+
+  const derive = c3SourceRegion(block, "function deriveAuthorizationSshPolicy(", "\nconst AUTHORIZATION_SSH_C4_OPERATION_INPUT_NAMES");
+  const verifier = c3SourceRegion(block, "function verifyProjectedSshAuthorization(", "\nfunction authorizationSshC4CloneClosure(");
+  const clone = c3SourceRegion(block, "function authorizationSshC4CloneClosure(", "\nfunction authorizationSshC4EffectiveIsSafe(");
+  const topology = c3SourceRegion(block, "function authorizationSshC4BuildTopology(", "\nfunction disposeAuthorizationSshPolicy(");
+  const patternList = c3SourceRegion(block, "function authorizationSshC4PatternListMatches(", "\nfunction authorizationSshC4CreateValueTable(");
+  const firstValue = c3SourceRegion(block, "function authorizationSshC4First(", "\nfunction authorizationSshC4FreezeCoverage(");
+  const assignmentSlot = c3SourceRegion(block, "function authorizationSshC4AssignmentSlot(", "\nfunction authorizationSshC4TableAssignment(");
+  const adoption = c3SourceRegion(block, "function authorizationSshC4AdoptCanonicalBindingShape(", "\nfunction authorizationSshC4ValidateAncestor(");
+  const cleanup = c3SourceRegion(block, "function authorizationSshC4CleanupPolicy(", "\nfunction authorizationSshC4ZeroBuffersTo(");
+  const coverageMeasure = c3SourceRegion(block, "function measureAuthorizationSshCoverage(", "\nfunction emitAuthorizationSshCoverage(");
+  const coverageEmit = c3SourceRegion(block, "function emitAuthorizationSshCoverage(", "\nfunction authorizationSshC4CleanupPolicy(");
+  const topologyMeasure = c3SourceRegion(block, "function measureAuthorizationSshTopology(", "\nfunction emitAuthorizationSshTopology(");
+  const topologyEmit = c3SourceRegion(block, "function emitAuthorizationSshTopology(", "\nfunction authorizationSshC4BuildTopology(");
+  if (!c4ContainsOrdered(derive, [
+    "AUTHORIZATION_SOURCE_GRAPH_BRAND.has(graph)",
+    "AUTHORIZATION_SOURCE_SNAPSHOT_BRAND.has(graph.snapshot)",
+    "PROJECTED_ACCOUNT_CORE_BRAND.has(accountCore)",
+    "NATIVE_ACCOUNT_CORE_BRAND.has(accountCore)",
+    "AUTHORIZATION_SSH_PROVENANCE.get(syntax) !== active",
+    "checkpoint = active.cleanupStack.length;",
+    "allocateAuthorizationBuffer(active, accountCore.username.length)"
+  ])) failures.add("brand-before-allocation");
+  if (!c4ContainsOrdered(verifier, [
+    "if (arguments.length !== 2) restricted();",
+    "authorizationSshC4BindingShape(binding);",
+    "const canonical = buildCanonicalRunnerBinding(binding);",
+    "operations = authorizationSshC4ExactRecord(",
+    "authorizationSshC4ValidateAncestor(operations.lstat(\"/\"));"
+  ])) failures.add("verifier-canonicalize-first");
+  if (c3SourceCount(clone, "authorizationSshC4FixedObject(") !== 1
+    || c3SourceCount(clone, "authorizationSshC4FixedArray(") !== 1
+    || c3SourceCount(derive, "authorizationSshC4FixedObject(") !== 3
+    || c3SourceCount(derive, "authorizationSshC4FixedArray(") !== 2
+    || c3SourceCount(derive, "authorizationSshC4CreateValueTable(") !== 2
+    || c3SourceCount(topology, "authorizationSshC4FixedObject(") !== 1
+    || c3SourceCount(topology, "authorizationSshC4FixedArray(") !== 5
+    || JSON.stringify({ include: 5 + 5 + 2, coverage: 5 + 5 + 7, topology: 5 + 5 + 7 + 6 })
+      !== JSON.stringify({ include: 12, coverage: 17, topology: 23 })) failures.add("fixed-deltas");
+  if (!c4ContainsOrdered(firstValue, [
+    "if (matchTable[slot] !== undefined) return matchTable[slot];",
+    "if (globalTable[slot] !== undefined) return globalTable[slot];",
+    "return fallback;"
+  ]) || !assignmentSlot.includes(
+    'name === "kbdinteractiveauthentication" || name === "challengeresponseauthentication"'
+  ) || !derive.includes("const globalTable = authorizationSshC4CreateValueTable(active);")
+    || !derive.includes("const matchTable = authorizationSshC4CreateValueTable(active);")) {
+    failures.add("first-value-tables");
+  }
+  const coverageOrder = [
+    '\\"schemaVersion\\"', '\\"type\\"', '\\"username\\"', '\\"groupIds\\"', '\\"branches\\"',
+    '\\"ordinal\\"', '\\"sourceOrdinal\\"', '\\"lineNumber\\"', '\\"conditions\\"',
+    '\\"name\\"', '\\"patterns\\"', '\\"negated\\"', '\\"value\\"',
+    '\\"accountDisposition\\"', '\\"variableDimensions\\"'
+  ];
+  const topologyOrder = [
+    '\\"schemaVersion\\"', '\\"type\\"', '\\"username\\"', '\\"uid\\"', '\\"homeDirectory\\"',
+    '\\"loginShell\\"', "AUTHORIZATION_SSH_C4_TOPOLOGY_MIDDLE",
+    "AUTHORIZATION_SSH_C4_TOPOLOGY_TAIL", '\\"targetKeyOccurrenceCount\\"',
+    '\\"addressDependentAuthorizationBranchCount\\"', '\\"includeClosureSha256\\"',
+    '\\"matchCoverageSha256\\"'
+  ];
+  if (!c4ContainsOrdered(coverageMeasure, coverageOrder)
+    || !c4ContainsOrdered(coverageEmit, coverageOrder)
+    || !c4ContainsOrdered(topologyMeasure, topologyOrder)
+    || !c4ContainsOrdered(topologyEmit, topologyOrder)
+    || !block.includes(
+      'const AUTHORIZATION_SSH_C4_VALUE_SLOTS = "authenticationMethods pubkeyAuthentication passwordAuthentication keyboardInteractiveAuthentication hostbasedAuthentication gssapiAuthentication kerberosAuthentication permitUserEnvironment forceCommand chrootDirectory disableForwarding permitTunnel authorizedKeysFile authorizedKeysCommand authorizedPrincipalsFile authorizedPrincipalsCommand trustedUserCAKeys";'
+    )) failures.add("canonical-field-order");
+  if (c3SourceCount(patternList, "matchAuthorizationWildcard(") !== 1
+    || !c4ContainsOrdered(patternList, [
+      "let positiveMatched = false;",
+      "matchAuthorizationWildcard(",
+      '"sshMatch"',
+      "if (matched && pattern.negated) return false;",
+      "return positiveMatched;"
+    ]) || patternList.includes("hasPositive")) failures.add("pattern-budget-semantics");
+  if (c3SourceCount(adoption, "Object.setPrototypeOf(") !== 5
+    || c3SourceCount(adoption, "Object.getPrototypeOf(") !== 5
+    || !c4ContainsOrdered(adoption, [
+      "Object.setPrototypeOf(canonical, Object.getPrototypeOf(source));",
+      "Object.setPrototypeOf(canonical.sshAuthorization, Object.getPrototypeOf(source.sshAuthorization));",
+      "Object.setPrototypeOf(canonical.paths, Object.getPrototypeOf(source.paths));",
+      "Object.setPrototypeOf(canonical.pathPolicies, Object.getPrototypeOf(source.pathPolicies));",
+      "canonical.pathPolicies.authorizedKeys,",
+      "Object.getPrototypeOf(source.pathPolicies.authorizedKeys)",
+      "return canonical;"
+    ])) failures.add("prototype-adoption");
+  if (!c4ContainsOrdered(cleanup, [
+    "AUTHORIZATION_SSH_PROVENANCE.delete(policy)",
+    "policy.coverage = undefined",
+    "policy.effective = undefined",
+    "policy.disposed = true",
+    "if (cleanupFailed) failAuthorizationSourceGraph(graph);"
+  ])) failures.add("cleanup-order");
+  if (!c4ContainsOrdered(derive, [
+    "authorizationSshC4FreezeCoverage(coverage);",
+    "const preimageLength = measureAuthorizationSshCoverage(coverage);",
+    "reservePreimageBytes(active.snapshot, preimageLength);",
+    "preimage = Buffer.alloc(preimageLength);",
+    "emitAuthorizationSshCoverage(coverage, preimage)",
+    'createHash("sha256").update(preimage).digest("hex")',
+    "if (Buffer.isBuffer(preimage)) preimage.fill(0);"
+  ]) || !c4ContainsOrdered(topology, [
+    "Object.freeze(topology);",
+    "const length = measureAuthorizationSshTopology(topology);",
+    "reservePreimageBytes(graph.snapshot, length);",
+    "preimage = Buffer.alloc(length);",
+    "emitAuthorizationSshTopology(topology, preimage)",
+    'createHash("sha256").update(preimage).digest("hex")',
+    "if (Buffer.isBuffer(preimage)) preimage.fill(0);"
+  ])) failures.add("preimage-lifecycle");
+
+  const includePublic = c3SourceRegion(normalized, "export function buildCanonicalSshIncludeClosure(", "\nexport function buildCanonicalSudoSourceClosure(");
+  const coveragePublic = c3SourceRegion(normalized, "export function buildCanonicalSshMatchCoverage(", "\nexport function buildCanonicalSshTopology(");
+  const topologyPublic = c3SourceRegion(normalized, "export function buildCanonicalSshTopology(", "\nexport function buildCanonicalSudoEffectivePolicy(");
+  if (c4FunctionArity(c4TokenizeSource(includePublic), "buildCanonicalSshIncludeClosure") !== 1
+    || c4FunctionArity(c4TokenizeSource(coveragePublic), "buildCanonicalSshMatchCoverage") !== 2
+    || c4FunctionArity(c4TokenizeSource(topologyPublic), "buildCanonicalSshTopology") !== 3
+    || c3SourceCount(normalized, "buildCanonicalSshIncludeClosure") !== 1
+    || c3SourceCount(normalized, "buildCanonicalSshMatchCoverage") !== 1
+    || c3SourceCount(normalized, "buildCanonicalSshTopology") !== 1) failures.add("public-signatures");
+  if (!c4ContainsOrdered(includePublic, [
+    "if (arguments.length !== 1) restricted();",
+    "const operations = authorizationSshC4OperationInput(input);",
+    "const snapshot = createAuthorizationSourceSnapshot();",
+    "syntax = deriveAuthorizationSshSyntax(",
+    "result = authorizationSshC4CloneClosure(graph, syntax.closure);",
+    "authorizationSshC4CompleteProjection(graph, undefined, syntax, failure);"
+  ]) || !c4ContainsOrdered(coveragePublic, [
+    "arguments.length !== 2 || !PROJECTED_ACCOUNT_CORE_BRAND.has(projectedAccountCore)",
+    "const operations = authorizationSshC4OperationInput(input);",
+    "const snapshot = createAuthorizationSourceSnapshot();",
+    "syntax = deriveAuthorizationSshSyntax(",
+    "policy = deriveAuthorizationSshPolicy(graph, syntax, projectedAccountCore);",
+    "result = policy.coverage;",
+    "authorizationSshC4CompleteProjection(graph, policy, syntax, failure);"
+  ]) || !c4ContainsOrdered(topologyPublic, [
+    "arguments.length !== 3 || !PROJECTED_ACCOUNT_CORE_BRAND.has(projectedAccountCore)",
+    "const operations = authorizationSshC4OperationInput(input);",
+    "authorizationSshC4BindingShape(binding);",
+    "const canonicalBinding = authorizationSshC4AdoptCanonicalBindingShape(",
+    "buildCanonicalRunnerBinding(binding)",
+    "const snapshot = createAuthorizationSourceSnapshot();",
+    "syntax = deriveAuthorizationSshSyntax(",
+    "policy = deriveAuthorizationSshPolicy(graph, syntax, projectedAccountCore);",
+    "authorizationSshC4EffectiveIsSafe(policy.effective)",
+    "verifyProjectedSshAuthorization(canonicalBinding, operations.pathOperations);",
+    "authorizationSshC4BuildTopology(",
+    "canonicalBinding",
+    "authorizationSshC4CompleteProjection(graph, policy, syntax, failure);"
+  ])) failures.add("public-operation-shapes");
+  const includePublicTokens = c4TokenizeSource(includePublic);
+  const coveragePublicTokens = c4TokenizeSource(coveragePublic);
+  const topologyPublicTokens = c4TokenizeSource(topologyPublic);
+  if (includePublicTokens.filter((token) => token.value === "input").length !== 2
+    || includePublicTokens.filter((token) => token.value === "arguments").length !== 1
+    || includePublicTokens.filter((token) => token.value === "operations").length !== 3
+    || coveragePublicTokens.filter((token) => token.value === "input").length !== 2
+    || coveragePublicTokens.filter((token) => token.value === "arguments").length !== 1
+    || coveragePublicTokens.filter((token) => token.value === "operations").length !== 3
+    || coveragePublicTokens.filter((token) => token.value === "projectedAccountCore").length !== 3
+    || topologyPublicTokens.filter((token) => token.value === "input").length !== 2
+    || topologyPublicTokens.filter((token) => token.value === "arguments").length !== 1
+    || topologyPublicTokens.filter((token) => token.value === "operations").length !== 4
+    || topologyPublicTokens.filter((token) => token.value === "binding").length !== 4
+    || topologyPublicTokens.filter((token) => token.value === "projectedAccountCore").length !== 9
+    || topologyPublicTokens.filter((token) => token.value === "canonicalBinding").length !== 7) {
+    failures.add("public-input-use");
+  }
+  if (!block.includes(
+    'const AUTHORIZATION_SSH_C4_OPERATION_INPUT_NAMES = "pathOperations sourceOperations";'
+  ) || !block.includes(
+    'const AUTHORIZATION_SSH_C4_PATH_OPERATION_NAMES = "lstat open fstat read close";'
+  ) || !block.includes(
+    'const AUTHORIZATION_SSH_C4_SOURCE_OPERATION_NAMES = "readDirectory validateSudoers";'
+  )) failures.add("operation-key-shapes");
+
+  const nativeGroup = c3SourceRegion(normalized, "function nativeGroupNames(", "\nfunction revalidateNativeAccountTool(");
+  if (!nativeGroup.includes(
+    "const initial = byte === 0x5f || (byte >= 0x61 && byte <= 0x7a)\n        || (byte >= 0x30 && byte <= 0x39);"
+  )) failures.add("numeric-group-alignment");
+  return [...failures];
+}
+
 function c3AssertExactSourceLock() {
   const { normalized, block, blockThroughEndLf } = c3FormalMarkerBlock();
   assert.doesNotMatch(normalized, /\r/);
@@ -14438,6 +15135,364 @@ test("SSH source closure derives depth first Include encounter order", () => {
     terminalCallCount: 0
   });
   c3AssertExactSourceLock();
+});
+
+test("C4 SSH policy source identity rejects allocation container dynamic provenance arity and identity evasions", () => {
+  const runnerPath = fileURLToPath(new URL("../../scripts/japan-tuic-additive-repair-runner.mjs", import.meta.url));
+  const source = readFileSync(runnerPath, "utf8");
+  c3AssertExactSourceLock();
+  assert.deepEqual(c4SourceLockFailures(source), []);
+  assert.equal(Object.keys(runnerModule).length, 17);
+  assert.deepEqual(Object.keys(runnerModule).sort(), C2B_NATIVE_EXPORTS);
+  assert.equal(runnerModule.buildCanonicalSshIncludeClosure.length, 1);
+  assert.equal(runnerModule.buildCanonicalSshMatchCoverage.length, 2);
+  assert.equal(runnerModule.buildCanonicalSshTopology.length, 3);
+
+  function replaceOnce(needle, replacement) {
+    assert.equal(c3SourceCount(source, needle), 1, needle);
+    return source.replace(needle, replacement);
+  }
+
+  const afterMarker = `${C4_EXACT_BLOCK_BEGIN}\n`;
+  const mutations = [
+    {
+      name: "allocation-before-reserve",
+      expected: "fixed-allocation-order",
+      source: replaceOnce(
+        "function authorizationSshC4FixedObject(graph) {\n  reserveAuthorizationFixedEnvelope(graph);\n  return Object.create(null);",
+        "function authorizationSshC4FixedObject(graph) {\n  return Object.create(null);"
+      )
+    },
+    {
+      name: "generic-container",
+      expected: "container-token",
+      source: replaceOnce(afterMarker, `${afterMarker}const c4ContainerEvasion = new Map();\n`)
+    },
+    {
+      name: "array-literal-container",
+      expected: "container-token",
+      source: replaceOnce(afterMarker, `${afterMarker}const c4ArrayEvasion = [];\n`)
+    },
+    {
+      name: "object-literal-container",
+      expected: "container-token",
+      source: replaceOnce(afterMarker, `${afterMarker}const c4ObjectEvasion = {};\n`)
+    },
+    {
+      name: "for-of-array-literal-container",
+      expected: "container-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  for (const value of []) void value;"
+      )
+    },
+    {
+      name: "exponent-object-literal-container",
+      expected: "container-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  void (0 ** {});"
+      )
+    },
+    {
+      name: "compound-assignment-object-literal-container",
+      expected: "container-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  let value = 0;\n  value += {};"
+      )
+    },
+    {
+      name: "case-array-literal-container",
+      expected: "container-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  switch (bytes) { case []: break; }"
+      )
+    },
+    {
+      name: "instanceof-object-literal-container",
+      expected: "container-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  void (bytes instanceof {});"
+      )
+    },
+    {
+      name: "statement-array-literal-container",
+      expected: "container-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  [];"
+      )
+    },
+    {
+      name: "extra-buffer-allocation",
+      expected: "container-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  Buffer.alloc(1);"
+      )
+    },
+    {
+      name: "unsafe-buffer-allocation",
+      expected: "container-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  Buffer.allocUnsafe(1);"
+      )
+    },
+    {
+      name: "dynamic-code",
+      expected: "dynamic-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  eval(\"0\");"
+      )
+    },
+    {
+      name: "provenance-set-owner",
+      expected: "provenance-sites",
+      source: replaceOnce(
+        "AUTHORIZATION_SSH_PROVENANCE.set(policy, active);",
+        "AUTHORIZATION_SSH_PROVENANCE.set(syntax, active);"
+      )
+    },
+    {
+      name: "provenance-get-owner",
+      expected: "provenance-sites",
+      source: replaceOnce(
+        "if (AUTHORIZATION_SSH_PROVENANCE.get(syntax) !== active\n      || !syntax || syntax.disposed !== false || syntax.c4PolicyConsumed === true",
+        "if (AUTHORIZATION_SSH_PROVENANCE.get(policy) !== active\n      || !syntax || syntax.disposed !== false || syntax.c4PolicyConsumed === true"
+      )
+    },
+    {
+      name: "provenance-delete-owner",
+      expected: "provenance-sites",
+      source: replaceOnce(
+        "if (!AUTHORIZATION_SSH_PROVENANCE.delete(policy)) cleanupFailed = true;",
+        "if (!AUTHORIZATION_SSH_PROVENANCE.delete(syntax)) cleanupFailed = true;"
+      )
+    },
+    {
+      name: "provenance-computed-snapshot",
+      expected: "provenance-sites",
+      source: replaceOnce(
+        "AUTHORIZATION_SSH_PROVENANCE.set(policy, active);",
+        'AUTHORIZATION_SSH_PROVENANCE["set"](graph.snapshot, active);'
+      )
+    },
+    {
+      name: "provenance-set-value",
+      expected: "provenance-sites",
+      source: replaceOnce(
+        "AUTHORIZATION_SSH_PROVENANCE.set(policy, active);",
+        "AUTHORIZATION_SSH_PROVENANCE.set(policy, graph.snapshot);"
+      )
+    },
+    {
+      name: "unicode-escaped-dynamic-code",
+      expected: "dynamic-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  \\u0065val(\"0\");"
+      )
+    },
+    {
+      name: "optional-chain-whole-record",
+      expected: "whole-record-bypass",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  bytes?.toString(\"ascii\");"
+      )
+    },
+    {
+      name: "computed-whole-record",
+      expected: "whole-record-bypass",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        'function authorizationSshC4AsciiText(bytes) {\n  bytes["toString"]("ascii");'
+      )
+    },
+    {
+      name: "optional-property-whole-record",
+      expected: "whole-record-bypass",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  const mapper = bytes?.map;\n  void mapper;"
+      )
+    },
+    {
+      name: "aliased-property-whole-record",
+      expected: "whole-record-bypass",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  const mapper = bytes.map;\n  void mapper;"
+      )
+    },
+    {
+      name: "concatenated-constructor-dynamic",
+      expected: "dynamic-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        'function authorizationSshC4AsciiText(bytes) {\n  (function(){})["con" + "structor"]("return 0")();'
+      )
+    },
+    {
+      name: "escaped-computed-dynamic",
+      expected: "dynamic-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        'function authorizationSshC4AsciiText(bytes) {\n  bytes["con\\u0073tructor"];'
+      )
+    },
+    {
+      name: "variable-computed-constructor-dynamic",
+      expected: "dynamic-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        'function authorizationSshC4AsciiText(bytes) {\n  const key = "con" + "structor";\n  authorizationSshC4AsciiText[key]("return 0");'
+      )
+    },
+    {
+      name: "parenthesized-computed-constructor-dynamic",
+      expected: "dynamic-token",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        'function authorizationSshC4AsciiText(bytes) {\n  authorizationSshC4AsciiText[("con" + "structor")]("return 0");'
+      )
+    },
+    {
+      name: "authorization-source-ascii-conversion",
+      expected: "bounded-ascii-conversion",
+      source: replaceOnce(
+        "source = authorizationSshC4ReadAuthorization(fd, size, operations);",
+        "source = authorizationSshC4ReadAuthorization(fd, size, operations);\n        authorizationSshC4AsciiText(source);"
+      )
+    },
+    {
+      name: "authorization-source-string-conversion",
+      expected: "whole-record-bypass",
+      source: replaceOnce(
+        "source = authorizationSshC4ReadAuthorization(fd, size, operations);",
+        "source = authorizationSshC4ReadAuthorization(fd, size, operations);\n        String(source);"
+      )
+    },
+    {
+      name: "authorization-source-join",
+      expected: "whole-record-bypass",
+      source: replaceOnce(
+        "source = authorizationSshC4ReadAuthorization(fd, size, operations);",
+        'source = authorizationSshC4ReadAuthorization(fd, size, operations);\n        source.join("");'
+      )
+    },
+    {
+      name: "regex-literal-scan",
+      expected: "whole-record-bypass",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        "function authorizationSshC4AsciiText(bytes) {\n  const scan = /a/;"
+      )
+    },
+    {
+      name: "private-arity",
+      expected: "private-signatures",
+      source: replaceOnce(
+        "function deriveAuthorizationSshPolicy(graph, syntax, accountCore) {",
+        "function deriveAuthorizationSshPolicy(graph, syntax, accountCore, callerEvidence) {"
+      )
+    },
+    {
+      name: "public-arity",
+      expected: "public-signatures",
+      source: replaceOnce(
+        "export function buildCanonicalSshTopology(projectedAccountCore, binding, input) {",
+        "export function buildCanonicalSshTopology(projectedAccountCore, binding, input, callerEvidence) {"
+      )
+    },
+    {
+      name: "caller-operation-key",
+      expected: "operation-key-shapes",
+      source: replaceOnce(
+        'const AUTHORIZATION_SSH_C4_OPERATION_INPUT_NAMES = "pathOperations sourceOperations";',
+        'const AUTHORIZATION_SSH_C4_OPERATION_INPUT_NAMES = "pathOperations sourceOperations coverage";'
+      )
+    },
+    {
+      name: "public-caller-evidence",
+      expected: "public-input-use",
+      source: replaceOnce(
+        "if (arguments.length !== 1) restricted();\n    const operations = authorizationSshC4OperationInput(input);\n    const snapshot = createAuthorizationSourceSnapshot();",
+        "if (arguments.length !== 1) restricted();\n    const operations = authorizationSshC4OperationInput(input);\n    void input.callerEvidence;\n    const snapshot = createAuthorizationSourceSnapshot();"
+      )
+    },
+    {
+      name: "public-computed-caller-evidence",
+      expected: "public-input-use",
+      source: replaceOnce(
+        "const operations = authorizationSshC4OperationInput(input);\n    authorizationSshC4BindingShape(binding);",
+        'const operations = authorizationSshC4OperationInput(input);\n    void input["callerEvidence"];\n    authorizationSshC4BindingShape(binding);'
+      )
+    },
+    {
+      name: "public-arguments-caller-evidence",
+      expected: "public-input-use",
+      source: replaceOnce(
+        "if (arguments.length !== 1) restricted();",
+        "if (arguments.length !== 1) restricted();\n    void arguments[0].callerEvidence;"
+      )
+    },
+    {
+      name: "public-binding-caller-evidence",
+      expected: "public-input-use",
+      source: replaceOnce(
+        "authorizationSshC4BindingShape(binding);\n    const canonicalBinding",
+        "authorizationSshC4BindingShape(binding);\n    void binding.callerEvidence;\n    const canonicalBinding"
+      )
+    },
+    {
+      name: "semantic-computed-count",
+      expected: "semantic-delta",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        'function authorizationSshC4AsciiText(bytes) {\n  graph.snapshot["authorization" + "EntryCount"] = 1;'
+      )
+    },
+    {
+      name: "semantic-variable-count",
+      expected: "semantic-delta",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        'function authorizationSshC4AsciiText(bytes) {\n  const key = "authorization" + "EntryCount";\n  graph.snapshot[key] = 1;'
+      )
+    },
+    {
+      name: "semantic-reflect-count",
+      expected: "semantic-delta",
+      source: replaceOnce(
+        "function authorizationSshC4AsciiText(bytes) {",
+        'function authorizationSshC4AsciiText(bytes) {\n  const key = "authorization" + "EntryCount";\n  Reflect.set(graph.snapshot, key, 1);'
+      )
+    },
+    {
+      name: "whole-runner-identity",
+      expected: "runner-identity",
+      source: `${source} `
+    }
+  ];
+  const outsideC4Mutations = new Set([
+    "public-arity", "public-caller-evidence", "public-computed-caller-evidence",
+    "public-arguments-caller-evidence", "public-binding-caller-evidence", "whole-runner-identity"
+  ]);
+  for (const mutation of mutations) {
+    const failures = c4SourceLockFailures(mutation.source);
+    assert.ok(failures.includes(mutation.expected), `${mutation.name}: ${failures.join(",")}`);
+    assert.ok(failures.includes("runner-identity"), `${mutation.name}:runner-identity`);
+    if (!outsideC4Mutations.has(mutation.name)) {
+      assert.ok(failures.includes("c4-block-identity"), `${mutation.name}:c4-block-identity`);
+      assert.ok(failures.includes("c4-token-identity"), `${mutation.name}:c4-token-identity`);
+    }
+  }
 });
 
 test("SSH branch ordinal is total while source coordinates are provenance", () => {
