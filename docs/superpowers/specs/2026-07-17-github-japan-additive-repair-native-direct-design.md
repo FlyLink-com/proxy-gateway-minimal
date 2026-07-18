@@ -22,11 +22,17 @@
 
 This design supersedes the mandatory offline-signature architecture in
 `docs/superpowers/specs/2026-07-16-github-japan-additive-repair-offline-approval-design.md`
-and its implementation plan. The earlier public Ed25519 key and key ID may
-remain as dormant public material, but neither the workflow nor production
-runner may require, load, or verify them in Mode 1. The offline private key
-remains outside the repository and is not accessed, copied, rotated, or deleted
-by this work.
+and its implementation plan. The earlier public Ed25519 key and key ID remain
+dormant outside this source-only PR. In particular,
+`config/japan-production-approval-ed25519-public.pem` and
+`config/japan-production-approval-ed25519-key-id.txt` are excluded inputs and
+outputs: this work must not open, stat, hash, parse, existence-check, add,
+modify, delete, stage, commit, use as a test fixture, or treat either file as a
+prerequisite. Neither the Mode 1 workflow nor the production runner may name,
+reference, load, verify, or otherwise depend on either file. The offline
+private key remains outside the repository and is not accessed, copied,
+rotated, or deleted by this work; offline signing remains dormant rather than
+an execution dependency.
 
 The frozen artifact, additive-only mutation, aggregate Identity Gate, backup,
 rollback, natural observation, output-redaction, and no-application-deploy
@@ -1795,7 +1801,8 @@ Implementation order is:
 8. non-marker-only SSH-plus-sudo terminal closeout plus atomic strict-frame CLI
    migration;
 9. manual GitHub workflow and secret ordering;
-10. dormant public-identity hygiene and runbook reconciliation.
+10. static dormant-identity non-use hygiene and runbook reconciliation, with
+    both identity files remaining outside the source-only PR.
 
 Task 4 RED/GREEN coverage includes the exact eight-line fixed `--import=`
 entrypoint and a tampered-module sentinel proving preload rejection occurs

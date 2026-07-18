@@ -79,11 +79,17 @@
 | `server/tests/japan-tuic-additive-repair-runner.test.mjs` | Binding/path, read-only call counts, state machine, helper envelope, crash injection, rollback, closeout, and redaction tests. |
 | `.github/workflows/japan-runtime-config-additive-repair.yml` | Manual operation selector, two secretless artifact/tree checks, one five-secret SSH step, framed calls, receipt validation, and cleanup. |
 | `server/tests/japan-tuic-additive-repair-workflow.test.mjs` | Trigger/input, pinned action, secret ordering/count, shell injection, SSH option, closeout, and forbidden-capability tests. |
-| `config/japan-production-approval-ed25519-public.pem` | Dormant public Ed25519 identity; not an active Mode 1 dependency. |
-| `config/japan-production-approval-ed25519-key-id.txt` | Dormant public key ID; not an active Mode 1 dependency. |
 | `docs/GITHUB_DEPLOYMENT_RUNBOOK.md` | Mode 1 trust boundary, exact post-merge gates, repair lifecycle master freeze, receipts, recovery, and cleanup. |
 | `docs/README.md` | Active design/plan navigation. |
 | `docs/superpowers/plans/2026-07-16-github-japan-additive-repair-offline-approval.md` | Marked superseded; retained as historical evidence only. |
+
+Source-only exclusion: the dormant public Ed25519 identity and key-ID files at
+`config/japan-production-approval-ed25519-public.pem` and
+`config/japan-production-approval-ed25519-key-id.txt` remain outside this PR.
+Tasks 1-11 must not open, stat, hash, parse, existence-check, add, modify,
+delete, stage, commit, use as a test fixture, or treat either file as a
+prerequisite. The Mode 1 workflow and runner must not name, reference, load,
+verify, or depend on either file. Offline signing remains dormant.
 
 ---
 
@@ -1735,11 +1741,9 @@ Expected: PASS; no workflow dispatch or secret access occurs.
 
 ---
 
-### Task 10: Dormant Public Identity And Runbook Reconciliation
+### Task 10: Dormant Identity Non-Use And Runbook Reconciliation
 
 **Files:**
-- Add: `config/japan-production-approval-ed25519-public.pem`
-- Add: `config/japan-production-approval-ed25519-key-id.txt`
 - Modify: `server/tests/japan-tuic-additive-repair-workflow.test.mjs`
 - Modify: `docs/GITHUB_DEPLOYMENT_RUNBOOK.md`
 - Modify: `docs/README.md`
@@ -1747,14 +1751,16 @@ Expected: PASS; no workflow dispatch or secret access occurs.
 - Modify: `docs/superpowers/specs/2026-07-17-github-japan-additive-repair-native-direct-design.md`
 
 **Interfaces:**
-- Produces: public identity hygiene evidence and active Mode 1 operational documentation.
+- Produces: static dormant-identity non-use evidence and active Mode 1 operational documentation.
 
 - [ ] **Step 1: Write failing static/hygiene tests**
 
-Parse the public PEM with Node crypto, require Ed25519 SPKI, derive lowercase
-SHA-256 of SPKI DER, and compare to the 64-hex key-ID file. Scan active workflow,
-bootstrap, contract, frame, state, entrypoint, and runner text and require neither public
-identity path, key ID, `JAPAN_CI_APPROVAL_BUNDLE`, nor offline signer reference.
+Scan only tracked active workflow, bootstrap, contract, frame, state,
+entrypoint, and runner text. Require the Mode 1 execution surface to contain no
+offline-signature loader, signer, key-ID validator, approval-bundle dependency,
+or `JAPAN_CI_APPROVAL_BUNDLE` reference. The static test must not name the two
+excluded identity paths, access them through any filesystem operation, use
+either as a fixture, or make their presence or absence a prerequisite.
 Require runbook text for Mode 1 trust root, five secrets, fixed nonce digest,
 repeatable inspect, master freeze/rebind, claimed replay, prepared/unclaimed new
 Gate, crash recovery, terminal closeout, `cleanup_indeterminate`, and separate
@@ -1805,7 +1811,7 @@ node --test server/tests/japan-tuic-additive-repair-workflow.test.mjs
 
 Expected: FAIL on the v1 runbook and missing active Mode 1 index references.
 
-- [ ] **Step 3: Reconcile documentation and retain public files as dormant**
+- [ ] **Step 3: Reconcile documentation and freeze dormant identity non-use**
 
 Mark the 2026-07-16 offline plan superseded by the 2026-07-17 Mode 1 plan.
 Replace the runbook's required-reviewer/sixth-secret/offline-bundle path with the
@@ -1833,19 +1839,23 @@ State that the CI Identity Bootstrap Gate and dispatch are prohibited until
 Task 8's strict framed
 migration is merged and verified.
 
-The two config files are public only. Do not read, locate, or copy the offline
-private key. Do not reference the public files from active execution code.
+Keep both dormant identity files outside the source-only PR. Do not open, stat,
+hash, parse, existence-check, add, modify, delete, stage, commit, use as a test
+fixture, or treat either as a prerequisite. The Mode 1 workflow and runner must
+not name, reference, load, verify, or depend on them. Do not read, locate, or
+copy the offline private key. Offline signing remains dormant.
 
 - [ ] **Step 4: Run GREEN, diff check, and commit**
 
 ```powershell
 node --test server/tests/japan-tuic-additive-repair-workflow.test.mjs
 git diff --check
-git add config/japan-production-approval-ed25519-public.pem config/japan-production-approval-ed25519-key-id.txt server/tests/japan-tuic-additive-repair-workflow.test.mjs docs/GITHUB_DEPLOYMENT_RUNBOOK.md docs/README.md docs/superpowers/plans/2026-07-16-github-japan-additive-repair-offline-approval.md docs/superpowers/specs/2026-07-17-github-japan-additive-repair-native-direct-design.md
+git add server/tests/japan-tuic-additive-repair-workflow.test.mjs docs/GITHUB_DEPLOYMENT_RUNBOOK.md docs/README.md docs/superpowers/plans/2026-07-16-github-japan-additive-repair-offline-approval.md docs/superpowers/specs/2026-07-17-github-japan-additive-repair-native-direct-design.md
 git commit -m "docs(ci): document native Japan repair lifecycle"
 ```
 
-Expected: test and diff check PASS; any staged identity material is public-only.
+Expected: test and diff check PASS; neither dormant identity file is accessed,
+changed, tested, staged, or committed.
 
 ---
 
@@ -1897,12 +1907,44 @@ a verification failure, not an allowed skip.
 - [ ] **Step 2: Run full repository validation and diff checks**
 
 ```powershell
+$frozenSourceOnlyPaths = @(
+  '.github/workflows/japan-runtime-config-additive-repair.yml'
+  'docs/GITHUB_DEPLOYMENT_RUNBOOK.md'
+  'docs/README.md'
+  'docs/superpowers/plans/2026-07-16-github-japan-additive-repair-offline-approval.md'
+  'docs/superpowers/plans/2026-07-17-github-japan-additive-repair-native-direct.md'
+  'docs/superpowers/specs/2026-07-16-github-japan-additive-repair-cicd-design.md'
+  'docs/superpowers/specs/2026-07-16-github-japan-additive-repair-offline-approval-design.md'
+  'docs/superpowers/specs/2026-07-17-github-japan-additive-repair-native-direct-design.md'
+  'package.json'
+  'scripts/japan-tuic-additive-repair-bootstrap.mjs'
+  'scripts/japan-tuic-additive-repair-contract.mjs'
+  'scripts/japan-tuic-additive-repair-entrypoint.sh'
+  'scripts/japan-tuic-additive-repair-frame.mjs'
+  'scripts/japan-tuic-additive-repair-runner.mjs'
+  'scripts/japan-tuic-additive-repair-state.mjs'
+  'server/tests/japan-tuic-additive-repair-bootstrap.test.mjs'
+  'server/tests/japan-tuic-additive-repair-contract.test.mjs'
+  'server/tests/japan-tuic-additive-repair-entrypoint.test.mjs'
+  'server/tests/japan-tuic-additive-repair-frame.test.mjs'
+  'server/tests/japan-tuic-additive-repair-runner.test.mjs'
+  'server/tests/japan-tuic-additive-repair-state.test.mjs'
+  'server/tests/japan-tuic-additive-repair-workflow.test.mjs'
+) | Sort-Object -Unique
 npm test
 git diff --check origin/master...HEAD
-git status --short --branch
+$indexSourceOnlyPaths = @(git diff --cached --name-only origin/master -- | Sort-Object -Unique)
+if ($LASTEXITCODE -ne 0) { throw 'index source-only path inventory failed' }
+if (@(Compare-Object -ReferenceObject $frozenSourceOnlyPaths -DifferenceObject $indexSourceOnlyPaths).Count -ne 0) {
+  throw 'index source-only path inventory differs from frozen allowlist'
+}
+git status --short --branch --untracked-files=no
 ```
 
-Expected: full suite PASS; diff check empty; only intentional files present.
+Expected: full suite PASS; diff check empty; the index-only PR surface exactly
+matches the frozen allowlist, and tracked status is clean. The status command
+deliberately suppresses untracked files and must not be replaced by an
+untracked-files inventory or used to infer their presence or absence.
 Before accepting that result, scan the active entrypoint/design/plan/runner and
 tests for obsolete `#!/bin/sh`,
 `trusted_root_concurrency_not_machine_proven`, root-only-final-owner authority,
@@ -1931,14 +1973,61 @@ focused and full commands after the final fix.
 
 - [ ] **Step 4: Commit final review fixes**
 
+If Step 3 produced changes, define `$reviewedPaths` as a literal, no-glob array
+containing only the exact paths changed by accepted fresh-review fixes. Do not
+derive it from status, filesystem enumeration, or search output. If Step 3
+produced no changes, skip this step.
+
 ```powershell
-git add --update
+$frozenSourceOnlyPaths = @(
+  '.github/workflows/japan-runtime-config-additive-repair.yml'
+  'docs/GITHUB_DEPLOYMENT_RUNBOOK.md'
+  'docs/README.md'
+  'docs/superpowers/plans/2026-07-16-github-japan-additive-repair-offline-approval.md'
+  'docs/superpowers/plans/2026-07-17-github-japan-additive-repair-native-direct.md'
+  'docs/superpowers/specs/2026-07-16-github-japan-additive-repair-cicd-design.md'
+  'docs/superpowers/specs/2026-07-16-github-japan-additive-repair-offline-approval-design.md'
+  'docs/superpowers/specs/2026-07-17-github-japan-additive-repair-native-direct-design.md'
+  'package.json'
+  'scripts/japan-tuic-additive-repair-bootstrap.mjs'
+  'scripts/japan-tuic-additive-repair-contract.mjs'
+  'scripts/japan-tuic-additive-repair-entrypoint.sh'
+  'scripts/japan-tuic-additive-repair-frame.mjs'
+  'scripts/japan-tuic-additive-repair-runner.mjs'
+  'scripts/japan-tuic-additive-repair-state.mjs'
+  'server/tests/japan-tuic-additive-repair-bootstrap.test.mjs'
+  'server/tests/japan-tuic-additive-repair-contract.test.mjs'
+  'server/tests/japan-tuic-additive-repair-entrypoint.test.mjs'
+  'server/tests/japan-tuic-additive-repair-frame.test.mjs'
+  'server/tests/japan-tuic-additive-repair-runner.test.mjs'
+  'server/tests/japan-tuic-additive-repair-state.test.mjs'
+  'server/tests/japan-tuic-additive-repair-workflow.test.mjs'
+) | Sort-Object -Unique
+$reviewedPaths = @(
+  # Insert only the literal exact paths accepted by the fresh Step 3 review.
+)
+$uniqueReviewedPaths = @($reviewedPaths | Sort-Object -Unique)
+if ($reviewedPaths.Count -eq 0 -or $reviewedPaths.Count -ne $uniqueReviewedPaths.Count) {
+  throw 'fresh-reviewed exact path list is empty or contains duplicates'
+}
+$outsideFrozenAllowlist = @($reviewedPaths | Where-Object { $_ -notin $frozenSourceOnlyPaths })
+if ($outsideFrozenAllowlist.Count -ne 0) { throw 'fresh-reviewed path is outside the frozen source-only allowlist' }
+git diff --cached --quiet
+if ($LASTEXITCODE -ne 0) { throw 'index must be clean before exact-path staging' }
+git add -- $reviewedPaths
+if ($LASTEXITCODE -ne 0) { throw 'exact-path staging failed' }
+$cachedPaths = @(git diff --cached --name-only | Sort-Object -Unique)
+if ($LASTEXITCODE -ne 0) { throw 'cached path inventory failed' }
+if (@(Compare-Object -ReferenceObject $uniqueReviewedPaths -DifferenceObject $cachedPaths).Count -ne 0) {
+  throw 'cached path inventory differs from the fresh-reviewed exact path list'
+}
 git diff --cached --check
 git commit -m "test(ci): close Japan repair mode one review"
 ```
 
-Skip this commit only if review creates no changes. Before staging, verify no
-private key, credential, temporary receipt, or unrelated user file is present.
+The cached-name equality and frozen-allowlist checks are fail-closed. Do not
+enumerate untracked files or use any untracked file's presence or absence as a
+staging prerequisite.
 
 - [ ] **Step 5: Push and open one Draft PR**
 
@@ -1963,9 +2052,15 @@ repository for the exact PR head. Do not mark Ready or merge while any required
 or security result is pending, failed, or has an unresolved Critical/Important
 finding.
 
-- [ ] **Step 7: Ready, merge, and source closeout only after PASS**
+- [ ] **Step 7: Ready, merge, and record the source result only after PASS**
 
-Reconfirm exact reviewed head and clean mergeability, mark Ready, merge through
-the protected branch, and clean the local branch/worktree. Record source merge
-only. Do not dispatch the workflow or claim production readiness. The next
-action is the separately written and approved exact CI Identity Bootstrap Gate.
+Reconfirm the exact reviewed remote PR head and GitHub mergeability, mark Ready,
+and merge through the protected branch. Record only the source merge result.
+This source-only task must not inspect, clean, delete, detach, switch, prune, or
+otherwise modify the local worktree or its attached local branch; leave both in
+their pre-merge state, and do not use either one's state as acceptance evidence.
+Any later worktree or local-branch disposal requires separate explicit
+authorization and must not depend on observing, enumerating, or inferring either
+dormant identity file. Do not dispatch the workflow or claim production
+readiness. The next action is the separately written and approved exact CI
+Identity Bootstrap Gate.
