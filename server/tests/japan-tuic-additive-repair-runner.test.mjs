@@ -24,9 +24,6 @@ import {
 import { executionClaimSha256 } from "../../scripts/japan-tuic-additive-repair-state.mjs";
 import {
   buildCanonicalRunnerBinding,
-  buildCanonicalSshIncludeClosure,
-  buildCanonicalSshMatchCoverage,
-  buildCanonicalSshTopology,
   buildCanonicalSudoEffectivePolicy,
   buildCanonicalSudoSourceClosure,
   createHostOperations,
@@ -498,83 +495,6 @@ process.stdout.write(JSON.stringify({
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-}
-
-function sshClosure(overrides = {}) {
-  return {
-    schemaVersion: "1",
-    type: "japan_ci_sshd_source_closure",
-    rootConfig: "/etc/ssh/sshd_config",
-    files: [
-      { ordinal: 0, path: "/etc/ssh/sshd_config", sha256: SHA_A, uid: 0, gid: 0, mode: 0o644, nlink: 1 },
-      { ordinal: 1, path: "/etc/ssh/sshd_config.d/repair.conf", sha256: SHA_B, uid: 0, gid: 0, mode: 0o600, nlink: 1 }
-    ],
-    ...overrides
-  };
-}
-
-function matchCoverage(overrides = {}) {
-  return {
-    schemaVersion: "1",
-    type: "japan_ci_sshd_match_coverage",
-    username: "gccgw-japan-repair-ci",
-    groupIds: [975, 1001],
-    branches: [
-      {
-        ordinal: 0,
-        sourceOrdinal: 1,
-        lineNumber: 12,
-        conditions: [{ name: "user", patterns: [{ negated: false, value: "gccgw-japan-repair-ci" }] }],
-        accountDisposition: "exact_user",
-        variableDimensions: []
-      },
-      {
-        ordinal: 1,
-        sourceOrdinal: 1,
-        lineNumber: 24,
-        conditions: [{ name: "all", patterns: [] }],
-        accountDisposition: "exact_user",
-        variableDimensions: []
-      }
-    ],
-    ...overrides
-  };
-}
-
-function sshTopologyInput(overrides = {}) {
-  return {
-    schemaVersion: "1",
-    type: "japan_ci_ssh_authorization_topology",
-    username: "gccgw-japan-repair-ci",
-    uid: 975,
-    homeDirectory: HOME_PATH,
-    loginShell: "/usr/bin/dash",
-    passwordLocked: true,
-    authenticationMethods: ["publickey"],
-    pubkeyAuthentication: true,
-    passwordAuthentication: false,
-    keyboardInteractiveAuthentication: false,
-    hostbasedAuthentication: false,
-    gssapiAuthentication: false,
-    kerberosAuthentication: false,
-    permitUserEnvironment: false,
-    acceptedEnvironmentNames: [],
-    forceCommand: "none",
-    chrootDirectory: "none",
-    disableForwarding: true,
-    permitTunnel: false,
-    authorizedKeysFiles: [AUTHORIZED_KEYS_PATH],
-    authorizedKeysCommand: "none",
-    authorizedPrincipalsFiles: [],
-    authorizedPrincipalsCommand: "none",
-    trustedUserCAKeys: [],
-    activeAuthorizationEntryCount: 1,
-    targetKeyOccurrenceCount: 1,
-    addressDependentAuthorizationBranchCount: 0,
-    includeClosure: sshClosure(),
-    matchCoverage: matchCoverage(),
-    ...overrides
-  };
 }
 
 function sudoClosure(overrides = {}) {
@@ -1193,15 +1113,6 @@ test("canonical paths reject unpaired-surrogate UTF-8 aliases", () => {
       }),
       (error) => error.code === "restricted_identity_rejected"
     );
-    assert.throws(
-      () => buildCanonicalSshIncludeClosure(sshClosure({
-        files: [
-          sshClosure().files[0],
-          { ...sshClosure().files[1], path }
-        ]
-      })),
-      (error) => error.code === "restricted_identity_rejected"
-    );
   }
 
   const binding = v3Binding();
@@ -1238,13 +1149,6 @@ test("canonical paths preserve distinct valid non-ASCII scalar identities", () =
   assert.equal(canonical.paths.currentMap, first);
   assert.equal(canonical.paths.materialStore, second);
 
-  const included = buildCanonicalSshIncludeClosure(sshClosure({
-    files: [
-      sshClosure().files[0],
-      { ...sshClosure().files[1], path: "/etc/ssh/sshd_config.d/日本.conf" }
-    ]
-  }));
-  assert.equal(included.files[1].path, "/etc/ssh/sshd_config.d/日本.conf");
 });
 
 test("archive inspection requires reviewed helpers and rejects unsafe paths", () => {
@@ -1683,70 +1587,6 @@ test("host adapter rejects natural evidence without the fixed Japan TUIC channel
     () => operations.readNaturalObservation({ root: "/gate/source", binding }),
     (error) => error.code === "natural_observation_failed"
   );
-});
-
-test("SSH source closure and Match coverage are canonical and hash their preimages", () => {
-  const closure = buildCanonicalSshIncludeClosure(sshClosure());
-  assert.deepEqual(Object.keys(closure), ["schemaVersion", "type", "rootConfig", "files"]);
-  assert.deepEqual(Object.keys(closure.files[0]), ["ordinal", "path", "sha256", "uid", "gid", "mode", "nlink"]);
-  const coverage = buildCanonicalSshMatchCoverage(matchCoverage());
-  assert.deepEqual(Object.keys(coverage), ["schemaVersion", "type", "username", "groupIds", "branches"]);
-  assert.equal(JSON.stringify(coverage.branches[1].conditions[0]), "{\"name\":\"all\",\"patterns\":[]}");
-  const topology = buildCanonicalSshTopology(sshTopologyInput());
-  assert.deepEqual(Object.keys(topology), [
-    "schemaVersion", "type", "username", "uid", "homeDirectory", "loginShell",
-    "passwordLocked", "authenticationMethods", "pubkeyAuthentication",
-    "passwordAuthentication", "keyboardInteractiveAuthentication",
-    "hostbasedAuthentication", "gssapiAuthentication", "kerberosAuthentication",
-    "permitUserEnvironment", "acceptedEnvironmentNames", "forceCommand",
-    "chrootDirectory", "disableForwarding", "permitTunnel", "authorizedKeysFiles",
-    "authorizedKeysCommand", "authorizedPrincipalsFiles", "authorizedPrincipalsCommand",
-    "trustedUserCAKeys", "activeAuthorizationEntryCount", "targetKeyOccurrenceCount",
-    "addressDependentAuthorizationBranchCount", "includeClosureSha256", "matchCoverageSha256"
-  ]);
-  assert.equal(
-    topology.includeClosureSha256,
-    createHash("sha256").update(`${JSON.stringify(closure)}\n`).digest("hex")
-  );
-  assert.equal(
-    topology.matchCoverageSha256,
-    createHash("sha256").update(`${JSON.stringify(coverage)}\n`).digest("hex")
-  );
-});
-
-test("SSH policy blocks alternate authorization, command, chroot, forwarding, tunnel, and unresolved conditions", () => {
-  const failures = [
-    sshTopologyInput({ authenticationMethods: ["publickey", "password"] }),
-    sshTopologyInput({ passwordAuthentication: true }),
-    sshTopologyInput({ authorizedKeysFiles: [AUTHORIZED_KEYS_PATH, "/alternate"] }),
-    sshTopologyInput({ authorizedKeysCommand: "/usr/bin/lookup" }),
-    sshTopologyInput({ trustedUserCAKeys: ["/etc/ssh/ca.pub"] }),
-    sshTopologyInput({ forceCommand: "/bin/true" }),
-    sshTopologyInput({ chrootDirectory: "/srv/chroot" }),
-    sshTopologyInput({ disableForwarding: false }),
-    sshTopologyInput({ permitTunnel: true }),
-    sshTopologyInput({ addressDependentAuthorizationBranchCount: 1 })
-  ];
-  for (const value of failures) {
-    assert.throws(
-      () => buildCanonicalSshTopology(value),
-      (error) => error.code === "restricted_identity_rejected"
-    );
-  }
-  const coverageFailures = [
-    matchCoverage({ groupIds: [1001, 975] }),
-    matchCoverage({ groupIds: [975, 975] }),
-    matchCoverage({ branches: [{ ...matchCoverage().branches[0], variableDimensions: ["host"] }] }),
-    matchCoverage({ branches: [{ ...matchCoverage().branches[0], conditions: [{ name: "all", patterns: [{ negated: false, value: "*" }] }] }] }),
-    matchCoverage({ branches: [{ ...matchCoverage().branches[0], conditions: [{ name: "host", patterns: [{ negated: false, value: "*.example" }] }], accountDisposition: "exact_user", variableDimensions: [] }] }),
-    matchCoverage({ branches: [{ ...matchCoverage().branches[0], conditions: [{ name: "user", patterns: [{ negated: false, value: "!root" }] }] }] })
-  ];
-  for (const value of coverageFailures) {
-    assert.throws(
-      () => buildCanonicalSshMatchCoverage(value),
-      (error) => error.code === "restricted_identity_rejected"
-    );
-  }
 });
 
 test("sudo closure and effective policy bind one no-argument root rule", () => {
@@ -2841,7 +2681,10 @@ try {
         "  const bytes = allocateAuthorizationBuffer(graph, size);"
       ].join("\n")
     ],
-    "delete-dev-compare": ["left.dev !== right.dev || ", ""],
+    "delete-dev-compare": [
+      "    || left.dev !== right.dev || left.ino !== right.ino || left.size !== right.size",
+      "    || left.ino !== right.ino || left.size !== right.size"
+    ],
     "delete-nul-reject": ["basename.includes(0) || ", ""],
     "eof-unregistered": ["const eof = allocateAuthorizationBuffer(graph, 1);", "const eof = Buffer.alloc(1);"],
     "repeat-root-skip-first-ancestor": [
@@ -3849,6 +3692,7 @@ const nativeBuffer = Buffer;
 const nativeUint8Array = Uint8Array;
 const nativeRegExp = RegExp;
 const nativeTextEncoder = TextEncoder;
+const nativeTextDecoder = TextDecoder;
 const nativeJSON = JSON;
 const nativeWeakMapGet = nativeWeakMap.prototype.get;
 const nativeWeakMapHas = nativeWeakMap.prototype.has;
@@ -3857,6 +3701,7 @@ const nativeWeakMapDelete = nativeWeakMap.prototype.delete;
 const nativeArrayPush = nativeArray.prototype.push;
 const nativeBufferFill = nativeBuffer.prototype.fill;
 const nativeBufferCopy = nativeBuffer.prototype.copy;
+const nativeBufferToString = nativeBuffer.prototype.toString;
 const nativeBufferCompare = nativeBuffer.compare;
 const nativeUint8ArrayFill = nativeUint8Array.prototype.fill;
 let allocationActive = false;
@@ -3905,17 +3750,95 @@ function c3LifecycleOwnerComplete(owner, graph) {
   }
 }
 
-function c3LifecycleRegistryEvent(method, key, value, result) {
+function c3LifecycleRegistryIdentity(current, method, key, value, registry) {
+  const references = current && current.tracker && current.tracker.c4RawReferences;
+  if (!references) return null;
+  let identity = null;
+  if (key === references.syntax) identity = "syntax";
+  else if (key === references.snapshot) identity = "snapshot";
+  else if (references.policy !== null && key === references.policy) identity = "policy";
+  else if (method === "set" && value === references.graph
+    && key !== references.syntax && key !== references.snapshot) {
+    if (references.policy === null) references.policy = key;
+    if (key === references.policy) identity = "policy";
+  }
+  if (identity !== null) {
+    if (references.registry === null) references.registry = registry;
+    else if (references.registry !== registry) references.registryStable = false;
+  }
+  return identity;
+}
+
+function c3LifecycleProgressStamp(current) {
+  if (!current) return null;
+  return {
+    action: current.actionOrdinal,
+    allocations: current.allocationOrdinal,
+    hashes: current.hashOrdinal,
+    fills: current.fillOrdinal,
+    copies: current.copyOrdinal,
+    pushes: current.pushOrdinal,
+    fixedReserves: current.fixedReserves.length,
+    semanticReserves: current.semanticReserveOrdinal,
+    preimageReserves: current.preimageReserveOrdinal,
+    workAttempts: current.workAttemptCount,
+    matcherAttempts: current.matcherAttemptCount,
+    ...(current.c4Audit === true ? {
+      forwardWork: current.forwardWorkOrdinal,
+      projectionFreezes: current.projectionFreezeOrdinal
+    } : {}),
+    registryEvents: current.registry.length,
+    operationCalls: typeof current.operationCount === "function"
+      ? current.operationCount()
+      : current.finalStamp && Number.isSafeInteger(current.finalStamp.operationCalls)
+        ? current.finalStamp.operationCalls
+        : 0
+  };
+}
+
+function c3LifecycleRecordForwardWork(kind) {
+  const current = c3LifecycleCurrent;
+  if (!current || !current.tracker || !current.tracker.c4RawReferences) return;
+  current.forwardWorkOrdinal += 1;
+  current.forwardWorkKinds[kind] = (current.forwardWorkKinds[kind] || 0) + 1;
+}
+
+function c3LifecycleRecordFault(current) {
+  if (!current || current.faultTriggered) return;
+  current.faultTriggered = true;
+  current.faultTriggerCount += 1;
+  current.faultStamp = c3LifecycleProgressStamp(current);
+}
+
+function c3LifecycleRegistryEvent(method, key, value, result, registry) {
   const current = c3LifecycleCurrent;
   if (!current) return;
   const keyShape = c3LifecycleKeyShape(key);
-  const sameGraph = method === "set"
-    ? value === current.graph
-    : result === current.graph;
+  const keyIdentity = c3LifecycleRegistryIdentity(current, method, key, value, registry);
+  const references = current.tracker.c4RawReferences;
+  const trackedGraph = references && references.graph;
+  const trackedSnapshot = references && references.snapshot;
+  const comparisonGraph = references ? trackedGraph : current.graph;
+  const sameGraph = comparisonGraph !== null && comparisonGraph !== undefined
+    && (method === "set" ? value === comparisonGraph : result === comparisonGraph);
+  const ordinal = current.registry.length + 1;
   current.registry.push({
+    ordinal,
     method,
+    rawKey: key,
+    rawRegistry: registry,
+    rawValue: value,
+    rawResult: result,
+    c4Audit: !!references,
     keyShape,
+    keyIdentity,
+    provenanceRegistry: !!references && references.registry === registry,
     sameGraph,
+    graphFailed: trackedGraph && typeof trackedGraph.failed === "boolean" ? trackedGraph.failed : null,
+    snapshotFailed: trackedSnapshot && typeof trackedSnapshot.failed === "boolean" ? trackedSnapshot.failed : null,
+    authorizationEntryCount: trackedSnapshot && Number.isSafeInteger(trackedSnapshot.authorizationEntryCount)
+      ? trackedSnapshot.authorizationEntryCount
+      : null,
     result: typeof result === "boolean" ? result : undefined,
     ownerComplete: method === "set" && keyShape === "owner"
       ? c3LifecycleOwnerComplete(key, current.graph)
@@ -3936,7 +3859,7 @@ nativeObject.defineProperties(instrumentedWeakMapPrototype, {
   get: {
     value(key) {
       const result = Reflect.apply(nativeWeakMapGet, this, [key]);
-      c3LifecycleRegistryEvent("get", key, undefined, result);
+      c3LifecycleRegistryEvent("get", key, undefined, result, this);
       return result;
     }, writable: true, configurable: true
   },
@@ -3944,14 +3867,14 @@ nativeObject.defineProperties(instrumentedWeakMapPrototype, {
     value(key) {
       const result = Reflect.apply(nativeWeakMapHas, this, [key]);
       const value = result ? Reflect.apply(nativeWeakMapGet, this, [key]) : undefined;
-      c3LifecycleRegistryEvent("has", key, undefined, value);
+      c3LifecycleRegistryEvent("has", key, undefined, value, this);
       return result;
     }, writable: true, configurable: true
   },
   set: {
     value(key, value) {
       const result = Reflect.apply(nativeWeakMapSet, this, [key, value]);
-      c3LifecycleRegistryEvent("set", key, value, result);
+      c3LifecycleRegistryEvent("set", key, value, result, this);
       return result;
     }, writable: true, configurable: true
   },
@@ -3959,7 +3882,16 @@ nativeObject.defineProperties(instrumentedWeakMapPrototype, {
     value(key) {
       const previous = Reflect.apply(nativeWeakMapGet, this, [key]);
       const result = Reflect.apply(nativeWeakMapDelete, this, [key]);
-      c3LifecycleRegistryEvent("delete", key, undefined, previous);
+      c3LifecycleRegistryEvent("delete", key, undefined, previous, this);
+      const current = c3LifecycleCurrent;
+      const identity = current
+        ? c3LifecycleRegistryIdentity(current, "delete", key, undefined, this)
+        : null;
+      if (current && current.fault && current.fault.kind === "registryDeleteAfter"
+        && current.fault.identity === identity && !current.faultTriggered) {
+        c3LifecycleRecordFault(current);
+        throw new Error("synthetic registry delete completion failure");
+      }
       return result;
     }, writable: true, configurable: true
   }
@@ -3984,12 +3916,23 @@ function c3LifecycleBegin(tracker, name, graph, operationCount = () => 0, fault 
     registry: new nativeArray(), fills: new nativeArray(), copies: new nativeArray(), pushes: new nativeArray(),
     objects: new nativeArray(), allocationKinds: nativeObject.create(null), hashes: new nativeArray(),
     fixedAllocations: new nativeArray(), roleAllocations: new nativeArray(), roleFills: new nativeArray(),
+    fixedReserves: new nativeArray(), fixedCompletions: new nativeArray(),
     semanticReserveOrdinal: 0, semanticBatchOrdinal: 0, currentSemanticBatch: 0,
+    preimageReserveOrdinal: 0, preimageReserves: new nativeArray(), pendingPreimageReserve: null,
+    workAttemptCount: 0, workReservationCount: 0, workCompletionCount: 0, workThrowCount: 0,
+    workInFlight: 0, workOrderingValid: true,
+    lastWorkAttemptStamp: null, lastWorkCompletionStamp: null,
+    matcherAttemptCount: 0, matcherCompletionCount: 0, matcherThrowCount: 0,
+    matcherInFlight: 0, matcherOrderingValid: true,
+    captureMatcherLedger: tracker.captureMatcherLedger === true,
+    matcherLedgerOrdinal: 0, matcherLedger: new nativeArray(),
     eventBatchByOrdinal: new nativeMap(), retentions: new nativeArray(), actionOrdinal: 0, lastEventPushAction: 0,
     allocationActions: new nativeArray(), objectAllocationRecords: new nativeWeakMap(),
     objectAllocationEntries: new nativeArray(), byteAllocationActions: new nativeArray(), copyActions: new nativeArray(),
     rawDirectoryOccurrences: new nativeArray(), rawDirectoryCursor: 0, rawDirectoryFailed: false,
-    fault, faultTriggered: false
+    publicStage: null, fault, faultTriggered: false, faultTriggerCount: 0, faultStamp: null,
+    c4Audit: !!tracker.c4RawReferences,
+    forwardWorkOrdinal: 0, forwardWorkKinds: nativeObject.create(null), projectionFreezeOrdinal: 0
   };
   tracker.phases.push(phase);
   c3LifecycleCurrent = phase;
@@ -4013,6 +3956,14 @@ function c3LifecycleEnd() {
       pushes: phase.pushOrdinal,
       operationCalls: phase.operationCount()
     };
+    phase.workOrderingValid = phase.workOrderingValid
+      && phase.workCompletionCount + phase.workThrowCount === phase.workAttemptCount
+      && phase.workReservationCount === phase.workAttemptCount
+      && phase.workInFlight === 0;
+    phase.matcherOrderingValid = phase.matcherOrderingValid
+      && phase.matcherCompletionCount + phase.matcherThrowCount === phase.matcherAttemptCount
+      && phase.matcherInFlight === 0;
+    phase.preimagePendingCount = phase.pendingPreimageReserve === null ? 0 : 1;
     phase.rawDirectoryState = {
       rawCount: phase.rawDirectoryOccurrences.length,
       matchedCount: phase.rawDirectoryCursor,
@@ -4044,6 +3995,7 @@ function c3LifecycleEnd() {
     phase.graph = null;
     phase.operationCount = null;
     phase.fault = null;
+    phase.pendingPreimageReserve = null;
     phase.tracker.pendingByteRole = null;
     phase.tracker.pendingFixedRole = null;
     phase.tracker.pendingSemanticRoles.length = 0;
@@ -4229,10 +4181,165 @@ function c3LifecycleSemanticRoleForEvent(event) {
 function c3LifecycleSignal(kind, value) {
   const current = c3LifecycleCurrent;
   if (!current) return;
-  if (kind === "preimage") current.tracker.pendingByteRole = { role: "preimage", length: value };
+  if (kind === "publicStage") current.publicStage = value;
+  if (kind === "c4Reference" && current.tracker.c4RawReferences
+    && value && (value.identity === "graph" || value.identity === "snapshot"
+      || value.identity === "syntax" || value.identity === "policy")) {
+    const references = current.tracker.c4RawReferences;
+    if (value.identity === "syntax" && references.policy === value.owner) references.policy = null;
+    references[value.identity] = value.owner;
+    if (value.identity === "graph") {
+      for (const entry of current.registry) {
+        const candidate = entry.method === "set" ? entry.rawValue : entry.rawResult;
+        entry.sameGraph = candidate === value.owner;
+      }
+    }
+    if (value.identity !== "graph") {
+      for (const entry of current.registry) {
+        if (entry.rawKey === value.owner) {
+          entry.keyIdentity = value.identity;
+          const candidate = entry.method === "set" ? entry.rawValue : entry.rawResult;
+          entry.sameGraph = references.graph !== null && candidate === references.graph;
+          if (references.registry === null) references.registry = entry.rawRegistry;
+          else if (references.registry !== entry.rawRegistry) references.registryStable = false;
+        }
+      }
+      if (references.registry !== null) {
+        for (const entry of current.registry) {
+          if (entry.rawRegistry === references.registry) entry.provenanceRegistry = true;
+        }
+      }
+    }
+  }
+  if (kind === "preimage") {
+    current.preimageReserveOrdinal += 1;
+    current.actionOrdinal += 1;
+    const reserve = {
+      ordinal: current.preimageReserveOrdinal,
+      reservedLength: value,
+      action: current.actionOrdinal,
+      allocations: current.allocationOrdinal,
+      hashes: current.hashOrdinal,
+      fills: current.fillOrdinal,
+      pushes: current.pushOrdinal,
+      allocationOrdinal: null,
+      allocationAction: null,
+      allocationKind: null,
+      requestedLength: null,
+      actualLength: null,
+      byteId: null,
+      ...(current.publicStage === null ? {} : { publicStage: current.publicStage })
+    };
+    current.pendingPreimageReserve = reserve;
+    Reflect.apply(nativeArrayPush, current.preimageReserves, [reserve]);
+  }
   if (kind === "fixed") {
     current.fixedOrdinal += 1;
+    current.actionOrdinal += 1;
     current.tracker.pendingFixedRole = ["owner", "closure", "files", "events", "activePaths"][current.fixedOrdinal - 1] || "unexpectedFixed";
+    Reflect.apply(nativeArrayPush, current.fixedReserves, [{
+      ordinal: current.fixedOrdinal,
+      action: current.actionOrdinal,
+      allocations: current.allocationOrdinal,
+      ...(current.publicStage === null ? {} : { publicStage: current.publicStage })
+    }]);
+  }
+  if (kind === "workAttempt") {
+    current.workAttemptCount += 1;
+    current.workReservationCount += 1;
+    current.workInFlight += 1;
+    current.workOrderingValid = current.workOrderingValid
+      && current.workCompletionCount < current.workAttemptCount;
+    current.lastWorkAttemptStamp = {
+      kind: value,
+      attempts: current.workAttemptCount,
+      reservations: current.workReservationCount,
+      completions: current.workCompletionCount,
+      allocations: current.allocationOrdinal,
+      pushes: current.pushOrdinal,
+      preimages: current.preimageReserveOrdinal,
+      hashes: current.hashOrdinal,
+      fills: current.fillOrdinal
+    };
+    if (current.captureMatcherLedger) {
+      current.matcherLedgerOrdinal += 1;
+      Reflect.apply(nativeArrayPush, current.matcherLedger, [{
+        sequence: current.matcherLedgerOrdinal,
+        phase: "reserveAttempt",
+        kind: value,
+        attempts: current.workAttemptCount,
+        reservations: current.workReservationCount,
+        completions: current.workCompletionCount
+      }]);
+    }
+  }
+  if (kind === "workComplete") {
+    current.workOrderingValid = current.workOrderingValid && current.workInFlight === 1;
+    current.workCompletionCount += 1;
+    current.workInFlight -= 1;
+    current.lastWorkCompletionStamp = {
+      kind: value,
+      attempts: current.workAttemptCount,
+      reservations: current.workReservationCount,
+      completions: current.workCompletionCount,
+      allocations: current.allocationOrdinal,
+      pushes: current.pushOrdinal,
+      preimages: current.preimageReserveOrdinal,
+      hashes: current.hashOrdinal,
+      fills: current.fillOrdinal
+    };
+    if (current.captureMatcherLedger) {
+      current.matcherLedgerOrdinal += 1;
+      Reflect.apply(nativeArrayPush, current.matcherLedger, [{
+        sequence: current.matcherLedgerOrdinal,
+        phase: "reserveComplete",
+        kind: value,
+        attempts: current.workAttemptCount,
+        reservations: current.workReservationCount,
+        completions: current.workCompletionCount
+      }]);
+    }
+  }
+  if (kind === "workThrow") {
+    current.workOrderingValid = current.workOrderingValid && current.workInFlight === 1;
+    current.workThrowCount += 1;
+    current.workInFlight -= 1;
+  }
+  if (kind === "matcherAttempt") {
+    current.matcherAttemptCount += 1;
+    current.matcherInFlight += 1;
+    current.matcherOrderingValid = current.matcherOrderingValid
+      && current.matcherCompletionCount + current.matcherThrowCount < current.matcherAttemptCount;
+    if (current.captureMatcherLedger) {
+      current.matcherLedgerOrdinal += 1;
+      Reflect.apply(nativeArrayPush, current.matcherLedger, [{
+        sequence: current.matcherLedgerOrdinal,
+        phase: "matcherAttempt",
+        kind: value,
+        attempts: current.matcherAttemptCount,
+        completions: current.matcherCompletionCount
+      }]);
+    }
+  }
+  if (kind === "matcherComplete") {
+    current.matcherOrderingValid = current.matcherOrderingValid && current.matcherInFlight === 1;
+    current.matcherCompletionCount += 1;
+    current.matcherInFlight -= 1;
+    if (current.captureMatcherLedger) {
+      current.matcherLedgerOrdinal += 1;
+      Reflect.apply(nativeArrayPush, current.matcherLedger, [{
+        sequence: current.matcherLedgerOrdinal,
+        phase: "matcherComplete",
+        kind: value,
+        attempts: current.matcherAttemptCount,
+        completions: current.matcherCompletionCount
+      }]);
+    }
+  }
+  if (kind === "matcherThrow") {
+    current.matcherOrderingValid = current.matcherOrderingValid && current.matcherInFlight === 1;
+    current.matcherThrowCount += 1;
+    current.matcherInFlight -= 1;
   }
   if (kind === "semantic" && (value === "sshPhysicalDirective" || value === "sshIncludePattern"
     || value === "sshSelectedInsertion" || value === "sshMatchBranch" || value === "sshMatchCondition"
@@ -4263,18 +4370,47 @@ function c3LifecycleBeforeAllocation(kind, requestedLength) {
   current.allocationOrdinal += 1;
   current.actionOrdinal += 1;
   current.allocationKinds[kind] = (current.allocationKinds[kind] || 0) + 1;
-  Reflect.apply(nativeArrayPush, current.allocationActions, [{
+  const allocationAction = {
     ordinal: current.allocationOrdinal,
     action: current.actionOrdinal,
-    kind
-  }]);
+    kind,
+    requestedLength: Number.isSafeInteger(requestedLength) ? requestedLength : null,
+    preimageReserveOrdinal: null,
+    ...(current.c4Audit === true ? {
+      operationCalls: current.operationCount(),
+      projectionFreezes: current.projectionFreezeOrdinal
+    } : {}),
+    ...(current.publicStage === null ? {} : { publicStage: current.publicStage })
+  };
+  const pendingPreimage = current.pendingPreimageReserve;
+  if (pendingPreimage !== null) {
+    pendingPreimage.allocationOrdinal = current.allocationOrdinal;
+    pendingPreimage.allocationAction = current.actionOrdinal;
+    pendingPreimage.allocationKind = kind;
+    pendingPreimage.requestedLength = allocationAction.requestedLength;
+    allocationAction.preimageReserveOrdinal = pendingPreimage.ordinal;
+    current.pendingPreimageReserve = null;
+  }
+  Reflect.apply(nativeArrayPush, current.allocationActions, [allocationAction]);
   if (kind.startsWith("buffer") || kind === "textEncoderOutput") {
     Reflect.apply(nativeArrayPush, current.byteAllocationActions, [{
       ordinal: current.allocationOrdinal,
       action: current.actionOrdinal,
       kind,
-      byteId: null
+      requestedLength: allocationAction.requestedLength,
+      byteId: null,
+      preimageReserveOrdinal: allocationAction.preimageReserveOrdinal,
+      ...(current.c4Audit === true ? {
+        operationCalls: current.operationCount(),
+        projectionFreezes: current.projectionFreezeOrdinal
+      } : {}),
+      ...(current.publicStage === null ? {} : { publicStage: current.publicStage })
     }]);
+  }
+  if (current.fault && current.fault.kind === "allocationOrdinal"
+    && current.fault.ordinal === current.allocationOrdinal && !current.faultTriggered) {
+    c3LifecycleRecordFault(current);
+    throw new Error("synthetic allocation ordinal failure");
   }
   const pendingFixedRole = current.tracker.pendingFixedRole;
   if (pendingFixedRole) {
@@ -4283,28 +4419,44 @@ function c3LifecycleBeforeAllocation(kind, requestedLength) {
       role: pendingFixedRole,
       ordinal: current.fixedOrdinal,
       kind,
-      expectedKind: kind === expectedKind
+      expectedKind: kind === expectedKind,
+      ...(current.c4Audit === true ? {
+        action: current.actionOrdinal,
+        operationCalls: current.operationCount(),
+        projectionFreezes: current.projectionFreezeOrdinal
+      } : {}),
+      ...(current.publicStage === null ? {} : { publicStage: current.publicStage })
     }]);
     if (current.fault && current.fault.kind === "fixedAllocation"
       && current.fault.role === pendingFixedRole && current.fault.ordinal === current.fixedOrdinal
       && kind === expectedKind && !current.faultTriggered) {
-      current.faultTriggered = true;
+      c3LifecycleRecordFault(current);
       throw new Error("synthetic C3 fixed allocation failure");
     }
+    if (current.fault && current.fault.kind === "fixedOrdinal"
+      && current.fault.ordinal === current.fixedOrdinal && !current.faultTriggered) {
+      c3LifecycleRecordFault(current);
+      throw new Error("synthetic fixed allocation ordinal failure");
+    }
   }
-  const pending = current.tracker.pendingByteRole;
-  const pendingRole = pending && pending.role;
-  if (pendingRole && kind === "bufferAlloc" && requestedLength === pending.length) {
+  const pendingRole = pendingPreimage === null ? null : "preimage";
+  if (pendingRole && kind === "bufferAlloc" && requestedLength === pendingPreimage.reservedLength) {
     current.roleAllocationOrdinals[pendingRole] = (current.roleAllocationOrdinals[pendingRole] || 0) + 1;
     Reflect.apply(nativeArrayPush, current.roleAllocations, [{
       role: pendingRole,
       ordinal: current.roleAllocationOrdinals[pendingRole],
       kind,
-      lengthMatches: true
+      lengthMatches: true,
+      ...(current.c4Audit === true ? {
+        action: current.actionOrdinal,
+        operationCalls: current.operationCount(),
+        projectionFreezes: current.projectionFreezeOrdinal
+      } : {}),
+      ...(current.publicStage === null ? {} : { publicStage: current.publicStage })
     }]);
     if (current.fault && current.fault.kind === "allocationRole" && current.fault.role === pendingRole
       && current.fault.ordinal === current.roleAllocationOrdinals[pendingRole] && !current.faultTriggered) {
-      current.faultTriggered = true;
+      c3LifecycleRecordFault(current);
       throw new Error("synthetic C3 role allocation failure");
     }
   }
@@ -4383,6 +4535,9 @@ function c3LifecycleObjectRecord(value, role) {
 }
 
 function c3TrackAllocation(kind, value) {
+  const fixedCurrent = c3LifecycleCurrent;
+  const pendingFixedRole = fixedCurrent && fixedCurrent.tracker.pendingFixedRole;
+  const pendingFixedOrdinal = fixedCurrent && fixedCurrent.fixedOrdinal;
   if (allocationActive && Array.isArray(globalThis.__c3AllocationTrace)) {
     globalThis.__c3AllocationTrace.push([kind]);
   }
@@ -4409,6 +4564,18 @@ function c3TrackAllocation(kind, value) {
     c3LifecycleObjectRecord(value, c3LifecycleCurrent.tracker.pendingFixedRole);
     c3LifecycleCurrent.tracker.pendingFixedRole = null;
   }
+  if (fixedCurrent && pendingFixedRole !== null) {
+    Reflect.apply(nativeArrayPush, fixedCurrent.fixedCompletions, [{
+      ordinal: pendingFixedOrdinal,
+      action: fixedCurrent.actionOrdinal,
+      allocationOrdinal: fixedCurrent.allocationOrdinal,
+      kind,
+      ...(fixedCurrent.publicStage === null ? {} : { publicStage: fixedCurrent.publicStage })
+    }]);
+    if (fixedCurrent.tracker.pendingFixedRole === pendingFixedRole) {
+      fixedCurrent.tracker.pendingFixedRole = null;
+    }
+  }
   if (kind.startsWith("buffer") || kind === "textEncoderOutput") {
     const byteRecord = c3LifecycleByteRecord(value, kind);
     const allocation = c3LifecycleCurrent && c3LifecycleCurrent.byteAllocationActions.at(-1);
@@ -4417,9 +4584,19 @@ function c3TrackAllocation(kind, value) {
       && allocation.ordinal === c3LifecycleCurrent.allocationOrdinal
       && allocation.action === c3LifecycleCurrent.actionOrdinal) {
       allocation.byteId = byteRecord.id;
+      allocation.actualLength = value.length;
       byteRecord.allocationOrdinal = allocation.ordinal;
       byteRecord.allocationAction = allocation.action;
       byteRecord.allocationKind = allocation.kind;
+    }
+    if (byteRecord && allocation && allocation.preimageReserveOrdinal !== null) {
+      const reserve = c3LifecycleCurrent.preimageReserves.find((entry) =>
+        entry.ordinal === allocation.preimageReserveOrdinal);
+      if (reserve) {
+        byteRecord.roles.add("preimage");
+        reserve.actualLength = value.length;
+        reserve.byteId = byteRecord.id;
+      }
     }
   }
   return value;
@@ -4427,23 +4604,158 @@ function c3TrackAllocation(kind, value) {
 
 function instrumentedObject(value) {
   if (allocationActive) allocationCounts.objectCall += 1;
+  c3LifecycleRecordForwardWork("objectCall");
   return nativeObject(value);
 }
 instrumentedObject.prototype = nativeObject.prototype;
 nativeObject.setPrototypeOf(instrumentedObject, nativeObject);
+function c4ProjectionRawShapeAudit(value) {
+  const pending = [{ value, path: "$" }];
+  const seenValues = new nativeArray();
+  const seenPaths = new nativeArray();
+  const nodes = new nativeArray();
+  const repeatedReferences = new nativeArray();
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    const current = entry.value;
+    if (current === null || typeof current !== "object") continue;
+    let prior = -1;
+    for (let index = 0; index < seenValues.length; index += 1) {
+      if (seenValues[index] === current) {
+        prior = index;
+        break;
+      }
+    }
+    if (prior !== -1) {
+      repeatedReferences.push({ path: entry.path, firstPath: seenPaths[prior] });
+      continue;
+    }
+    seenValues.push(current);
+    seenPaths.push(entry.path);
+    const proxy = types.isProxy(current);
+    if (proxy) {
+      nodes.push({
+        path: entry.path, proxy: true, prototypeKind: null, frozen: false,
+        extensible: null, ownNames: [], ownSymbolCount: null, descriptors: []
+      });
+      continue;
+    }
+    const prototype = nativeObject.getPrototypeOf(current);
+    const ownNames = nativeObject.getOwnPropertyNames(current);
+    const descriptors = new nativeArray();
+    for (let index = 0; index < ownNames.length; index += 1) {
+      const name = ownNames[index];
+      const descriptor = nativeObject.getOwnPropertyDescriptor(current, name);
+      const data = !!descriptor && nativeObject.hasOwn(descriptor, "value")
+        && descriptor.get === undefined && descriptor.set === undefined;
+      const child = data && descriptor.value !== null && typeof descriptor.value === "object";
+      const childPath = child ? entry.path + "/" + nativeJSON.stringify(name) : null;
+      descriptors.push({
+        name,
+        data,
+        valueKind: !data ? null : nativeArray.isArray(descriptor.value) ? "Array"
+          : descriptor.value === null ? "null" : typeof descriptor.value === "object" ? "Object"
+            : typeof descriptor.value,
+        writable: !!descriptor && descriptor.writable === true,
+        enumerable: !!descriptor && descriptor.enumerable === true,
+        configurable: !!descriptor && descriptor.configurable === true,
+        hasGetter: !!descriptor && descriptor.get !== undefined,
+        hasSetter: !!descriptor && descriptor.set !== undefined,
+        childPath
+      });
+      if (child) pending.push({ value: descriptor.value, path: childPath });
+    }
+    nodes.push({
+      path: entry.path,
+      proxy: false,
+      prototypeKind: prototype === null ? "null" : prototype === nativeArray.prototype ? "Array" : "other",
+      frozen: nativeObject.isFrozen(current),
+      extensible: nativeObject.isExtensible(current),
+      ownNames,
+      ownSymbolCount: nativeObject.getOwnPropertySymbols(current).length,
+      descriptors
+    });
+  }
+  nodes.sort((left, right) => left.path.localeCompare(right.path));
+  repeatedReferences.sort((left, right) => left.path.localeCompare(right.path));
+  return { nodes, repeatedReferences };
+}
+function c4ProjectionRootShapeAudit(value) {
+  const audit = c4ProjectionRawShapeAudit(value);
+  return { root: audit.nodes.find((entry) => entry.path === "$") || null };
+}
 instrumentedObject.create = (...arguments_) => {
   if (allocationActive) allocationCounts.objectCreate += 1;
+  c3LifecycleRecordForwardWork("objectCreate");
   c3LifecycleBeforeAllocation("objectCreate");
   return c3TrackAllocation("objectCreate", nativeObject.create(...arguments_));
 };
+instrumentedObject.freeze = (value) => {
+  c3LifecycleRecordForwardWork("objectFreeze");
+  const audit = context && context.__c4PublicAudit;
+  let projectionEvent = null;
+  if (audit && value && typeof value === "object") {
+    const rootProxy = types.isProxy(value);
+    const typeDescriptor = rootProxy ? undefined : nativeObject.getOwnPropertyDescriptor(value, "type");
+    const projectionType = typeDescriptor && nativeObject.hasOwn(typeDescriptor, "value")
+      ? typeDescriptor.value : null;
+    let projectionKind = null;
+    if (projectionType === "japan_ci_sshd_source_closure") {
+      projectionKind = "include";
+      audit.projectionFreezeCounts.include += 1;
+    }
+    if (projectionType === "japan_ci_sshd_match_coverage") {
+      projectionKind = "coverage";
+      audit.projectionFreezeCounts.coverage += 1;
+    }
+    if (projectionType === "japan_ci_ssh_authorization_topology") {
+      projectionKind = "topology";
+      audit.projectionFreezeCounts.topology += 1;
+      audit.topologyFreezeCount += 1;
+    }
+    if (projectionKind !== null && nativeArray.isArray(audit.projectionFreezeEvents)) {
+      const current = c3LifecycleCurrent;
+      if (current) current.projectionFreezeOrdinal += 1;
+      projectionEvent = {
+        ordinal: audit.projectionFreezeEvents.length + 1,
+        kind: projectionKind,
+        publicStage: current ? current.publicStage : null,
+        registryEvents: current ? current.registry.length : 0,
+        action: current ? current.actionOrdinal : 0,
+        forwardWork: current ? current.forwardWorkOrdinal : 0,
+        rootProxy,
+        rootSymbolCount: rootProxy ? null : nativeObject.getOwnPropertySymbols(value).length,
+        typeDescriptorExact: !!typeDescriptor && typeDescriptor.get === undefined
+          && typeDescriptor.set === undefined && typeDescriptor.enumerable === true,
+        returnedRoot: false,
+        frozenAfter: false,
+        contentJson: null,
+        rawShape: null
+      };
+      Reflect.apply(nativeArrayPush, audit.projectionFreezeEvents, [projectionEvent]);
+      if (nativeArray.isArray(c4ProjectionFreezeReferences)) {
+        Reflect.apply(nativeArrayPush, c4ProjectionFreezeReferences, [value]);
+      }
+    }
+  }
+  const frozen = nativeObject.freeze(value);
+  if (projectionEvent !== null) {
+    projectionEvent.frozenAfter = nativeObject.isFrozen(value);
+    projectionEvent.contentJson = nativeJSON.stringify(value);
+    projectionEvent.rawShape = c4ProjectionRootShapeAudit(value);
+  }
+  return frozen;
+};
 function instrumentedArray(...arguments_) {
   if (allocationActive) allocationCounts.array += 1;
+  c3LifecycleRecordForwardWork("array");
   c3LifecycleBeforeAllocation("array");
   return c3TrackAllocation("array", new nativeArray(...arguments_));
 }
 instrumentedArray.prototype = nativeArray.prototype;
 nativeObject.setPrototypeOf(instrumentedArray, nativeArray);
 function instrumentedMap(iterable) {
+  c3LifecycleRecordForwardWork("map");
   if (!new.target) return Reflect.apply(nativeMap, undefined, [iterable]);
   if (allocationActive && new.target) allocationCounts.map += 1;
   return new nativeMap(iterable);
@@ -4451,6 +4763,7 @@ function instrumentedMap(iterable) {
 instrumentedMap.prototype = nativeMap.prototype;
 nativeObject.setPrototypeOf(instrumentedMap, nativeMap);
 function instrumentedSet(iterable) {
+  c3LifecycleRecordForwardWork("set");
   if (!new.target) return Reflect.apply(nativeSet, undefined, [iterable]);
   if (allocationActive && new.target) allocationCounts.set += 1;
   return new nativeSet(iterable);
@@ -4458,6 +4771,7 @@ function instrumentedSet(iterable) {
 instrumentedSet.prototype = nativeSet.prototype;
 nativeObject.setPrototypeOf(instrumentedSet, nativeSet);
 function instrumentedWeakMap(iterable) {
+  c3LifecycleRecordForwardWork("weakMap");
   if (!new.target) return Reflect.apply(nativeWeakMap, undefined, [iterable]);
   if (allocationActive && new.target) allocationCounts.weakMap += 1;
   return Reflect.construct(nativeWeakMap, [iterable], new.target);
@@ -4468,6 +4782,7 @@ nativeObject.defineProperty(instrumentedWeakMapPrototype, "constructor", {
 });
 nativeObject.setPrototypeOf(instrumentedWeakMap, nativeWeakMap);
 function instrumentedWeakSet(iterable) {
+  c3LifecycleRecordForwardWork("weakSet");
   if (!new.target) return Reflect.apply(nativeWeakSet, undefined, [iterable]);
   if (allocationActive && new.target) allocationCounts.weakSet += 1;
   return new nativeWeakSet(iterable);
@@ -4475,21 +4790,25 @@ function instrumentedWeakSet(iterable) {
 instrumentedWeakSet.prototype = nativeWeakSet.prototype;
 nativeObject.setPrototypeOf(instrumentedWeakSet, nativeWeakSet);
 function instrumentedProxy(target, handler) {
+  c3LifecycleRecordForwardWork("proxy");
   if (allocationActive) allocationCounts.proxy += 1;
   if (!new.target) return Reflect.apply(nativeProxy, undefined, [target, handler]);
   return new nativeProxy(target, handler);
 }
 instrumentedProxy.revocable = (target, handler) => {
+  c3LifecycleRecordForwardWork("proxyRevocable");
   if (allocationActive) allocationCounts.proxy += 1;
   return nativeProxy.revocable(target, handler);
 };
 const instrumentedBufferAlloc = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferAlloc += 1;
+  c3LifecycleRecordForwardWork("bufferAlloc");
   c3LifecycleBeforeAllocation("bufferAlloc", arguments_[0]);
   return c3TrackAllocation("bufferAlloc", nativeBuffer.alloc(...arguments_));
 };
 const instrumentedBufferFrom = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferFrom += 1;
+  c3LifecycleRecordForwardWork("bufferFrom");
   c3LifecycleBeforeAllocation("bufferFrom");
   const result = c3TrackAllocation("bufferFrom", nativeBuffer.from(...arguments_));
   const current = c3LifecycleCurrent;
@@ -4517,36 +4836,43 @@ const instrumentedBufferFrom = (...arguments_) => {
 };
 const instrumentedBufferAllocUnsafe = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferAllocUnsafe += 1;
+  c3LifecycleRecordForwardWork("bufferAllocUnsafe");
   c3LifecycleBeforeAllocation("bufferAllocUnsafe");
   return c3TrackAllocation("bufferAllocUnsafe", nativeBuffer.allocUnsafe(...arguments_));
 };
 const instrumentedBufferAllocUnsafeSlow = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferAllocUnsafe += 1;
+  c3LifecycleRecordForwardWork("bufferAllocUnsafeSlow");
   c3LifecycleBeforeAllocation("bufferAllocUnsafe");
   return c3TrackAllocation("bufferAllocUnsafe", nativeBuffer.allocUnsafeSlow(...arguments_));
 };
 const instrumentedBufferConcat = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferConcat += 1;
+  c3LifecycleRecordForwardWork("bufferConcat");
   c3LifecycleBeforeAllocation("bufferConcat");
   return c3TrackAllocation("bufferConcat", nativeBuffer.concat(...arguments_));
 };
 const instrumentedBufferOf = (...arguments_) => {
   if (allocationActive) allocationCounts.bufferOf += 1;
+  c3LifecycleRecordForwardWork("bufferOf");
   c3LifecycleBeforeAllocation("bufferOf");
   return c3TrackAllocation("bufferOf", nativeBuffer.of(...arguments_));
 };
 const instrumentedBufferCompare = (...arguments_) => {
+  c3LifecycleRecordForwardWork("bufferCompare");
   if (Number.isSafeInteger(globalThis.__c3BufferCompareCount)) globalThis.__c3BufferCompareCount += 1;
   return nativeBuffer.compare(...arguments_);
 };
 const instrumentedBuffer = new Proxy(nativeBuffer, {
   apply(target, thisArgument, arguments_) {
     if (allocationActive) allocationCounts.bufferConstructor += 1;
+    c3LifecycleRecordForwardWork("bufferConstructor");
     c3LifecycleBeforeAllocation("bufferConstructor");
     return c3TrackAllocation("bufferConstructor", Reflect.apply(target, thisArgument, arguments_));
   },
   construct(target, arguments_, newTarget) {
     if (allocationActive) allocationCounts.bufferConstructor += 1;
+    c3LifecycleRecordForwardWork("bufferConstructor");
     c3LifecycleBeforeAllocation("bufferConstructor");
     return c3TrackAllocation("bufferConstructor", Reflect.construct(target, arguments_, newTarget));
   },
@@ -4563,6 +4889,7 @@ const instrumentedBuffer = new Proxy(nativeBuffer, {
 });
 function instrumentedRegExp(...arguments_) {
   if (allocationActive) allocationCounts.regexp += 1;
+  c3LifecycleRecordForwardWork("regexp");
   if (new.target) return Reflect.construct(nativeRegExp, arguments_);
   return Reflect.apply(nativeRegExp, undefined, arguments_);
 }
@@ -4571,25 +4898,30 @@ nativeObject.setPrototypeOf(instrumentedRegExp, nativeRegExp);
 class InstrumentedTextEncoder extends nativeTextEncoder {
   constructor(...arguments_) {
     if (allocationActive) allocationCounts.textEncoder += 1;
+    c3LifecycleRecordForwardWork("textEncoder");
     super(...arguments_);
   }
   encode(...arguments_) {
     if (allocationActive) allocationCounts.textEncode += 1;
+    c3LifecycleRecordForwardWork("textEncode");
     c3LifecycleBeforeAllocation("textEncoderOutput");
     return c3TrackAllocation("textEncoderOutput", super.encode(...arguments_));
   }
   encodeInto(...arguments_) {
     if (allocationActive) allocationCounts.textEncode += 1;
+    c3LifecycleRecordForwardWork("textEncodeInto");
     if (arguments_.length > 1) c3LifecycleMarkByte(arguments_[1], "textEncoderDestination");
     return super.encodeInto(...arguments_);
   }
 }
 const instrumentedJSONStringify = (...arguments_) => {
   if (allocationActive) allocationCounts.jsonStringify += 1;
+  c3LifecycleRecordForwardWork("jsonStringify");
   return nativeJSON.stringify(...arguments_);
 };
 const instrumentedJSONParse = (...arguments_) => {
   if (allocationActive) allocationCounts.jsonParse += 1;
+  c3LifecycleRecordForwardWork("jsonParse");
   return nativeJSON.parse(...arguments_);
 };
 const instrumentedJSON = new Proxy(nativeJSON, {
@@ -4601,33 +4933,87 @@ const instrumentedJSON = new Proxy(nativeJSON, {
 });
 const instrumentedCreateHash = (...arguments_) => {
   if (allocationActive) allocationCounts.createHash += 1;
+  c3LifecycleRecordForwardWork("createHash");
   if (allocationActive && Array.isArray(globalThis.__c3AllocationTrace)) globalThis.__c3AllocationTrace.push(["createHash"]);
   const current = c3LifecycleCurrent;
+  const authorizationAudit = context && context.__c4AuthorizationVerifyActive === true
+    && context.__c4PublicAudit && nativeArray.isArray(context.__c4PublicAudit.authorizationHashInputs)
+    ? { algorithm: arguments_[0], updateCount: 0, totalLength: 0, inputSha256: null }
+    : null;
+  const authorizationInputHash = authorizationAudit === null ? null : crypto.createHash("sha256");
+  let hashEntry = null;
   if (current) {
     current.hashOrdinal += 1;
-    current.hashes.push({ ordinal: current.hashOrdinal });
+    current.actionOrdinal += 1;
+    hashEntry = {
+      ordinal: current.hashOrdinal,
+      action: current.actionOrdinal,
+      ...(current.c4Audit === true ? {
+        operationCalls: current.operationCount(),
+        projectionFreezes: current.projectionFreezeOrdinal
+      } : {}),
+      ...(current.publicStage === null ? {} : { publicStage: current.publicStage }),
+      updateByteIds: new nativeArray(),
+      updateActions: new nativeArray(),
+      updateLengths: new nativeArray(),
+      updateSha256s: new nativeArray()
+    };
+    current.hashes.push(hashEntry);
     if (current.fault && current.fault.kind === "hash"
       && current.fault.ordinal === current.hashOrdinal && !current.faultTriggered) {
-      current.faultTriggered = true;
+      c3LifecycleRecordFault(current);
       throw new Error("synthetic C3 hash failure");
     }
   }
   const hash = crypto.createHash(...arguments_);
-  if (!current) return hash;
+  if (!current && authorizationAudit === null) return hash;
   const nativeUpdate = hash.update;
   const nativeDigest = hash.digest;
   nativeObject.defineProperties(hash, {
     update: {
       value(...updateArguments) {
-        if (updateArguments.length > 0) c3LifecycleMarkByte(updateArguments[0], "hashInput");
+        c3LifecycleRecordForwardWork("hashUpdate");
+        if (current && updateArguments.length > 0) {
+          const byteId = c3LifecycleMarkByte(updateArguments[0], "hashInput");
+          current.actionOrdinal += 1;
+          Reflect.apply(nativeArrayPush, hashEntry.updateByteIds, [byteId]);
+          Reflect.apply(nativeArrayPush, hashEntry.updateActions, [current.actionOrdinal]);
+          const input = updateArguments[0];
+          const length = typeof input === "string"
+            ? nativeBuffer.byteLength(input, updateArguments[1])
+            : input && Number.isSafeInteger(input.byteLength) ? input.byteLength : null;
+          Reflect.apply(nativeArrayPush, hashEntry.updateLengths, [length]);
+          const inputSha256 = crypto.createHash("sha256");
+          Reflect.apply(inputSha256.update, inputSha256, updateArguments);
+          Reflect.apply(nativeArrayPush, hashEntry.updateSha256s, [inputSha256.digest("hex")]);
+        }
+        if (authorizationAudit !== null && updateArguments.length > 0) {
+          const input = updateArguments[0];
+          const length = typeof input === "string"
+            ? nativeBuffer.byteLength(input, updateArguments[1])
+            : input && Number.isSafeInteger(input.byteLength) ? input.byteLength : null;
+          authorizationAudit.updateCount += 1;
+          authorizationAudit.totalLength += length === null ? 0 : length;
+          Reflect.apply(authorizationInputHash.update, authorizationInputHash, updateArguments);
+        }
         Reflect.apply(nativeUpdate, hash, updateArguments);
         return hash;
       }, configurable: true
     },
     digest: {
       value(...digestArguments) {
+        c3LifecycleRecordForwardWork("hashDigest");
+        const c4BufferDigestAllocation = current && current.c4Audit === true
+          && arguments_[0] === "sha256" && digestArguments[0] === undefined;
+        if (c4BufferDigestAllocation) {
+          c3LifecycleBeforeAllocation("bufferHashDigest", 32);
+        }
         const result = Reflect.apply(nativeDigest, hash, digestArguments);
-        return nativeBuffer.isBuffer(result) || result instanceof nativeUint8Array
+        if (authorizationAudit !== null) {
+          authorizationAudit.inputSha256 = authorizationInputHash.digest("hex");
+          Reflect.apply(nativeArrayPush, context.__c4PublicAudit.authorizationHashInputs, [{ ...authorizationAudit }]);
+        }
+        return current && (nativeBuffer.isBuffer(result) || result instanceof nativeUint8Array)
           ? c3TrackAllocation("bufferHashDigest", result)
           : result;
       }, configurable: true
@@ -4643,7 +5029,18 @@ function c3LifecycleInstrumentedBufferFill(...arguments_) {
   if (current) {
     const record = c3LifecycleByteRecord(this, "external");
     current.fillOrdinal += 1;
-    const entry = { ordinal: current.fillOrdinal, byteId: record ? record.id : null, zero: arguments_[0] === 0 };
+    current.actionOrdinal += 1;
+    const entry = {
+      ordinal: current.fillOrdinal,
+      action: current.actionOrdinal,
+      ...(current.c4Audit === true ? {
+        operationCalls: current.operationCount(),
+        projectionFreezes: current.projectionFreezeOrdinal
+      } : {}),
+      byteId: record ? record.id : null,
+      zero: arguments_[0] === 0,
+      ...(current.publicStage === null ? {} : { publicStage: current.publicStage })
+    };
     current.fills.push(entry);
     if (record) record.fills.push({ phase: current.name, ordinal: current.fillOrdinal, zero: entry.zero });
     shouldFail = current.fault && current.fault.kind === "fill"
@@ -4654,7 +5051,8 @@ function c3LifecycleInstrumentedBufferFill(...arguments_) {
         role: "preimage",
         ordinal: current.roleFillOrdinals.preimage,
         byteId: record.id,
-        zero: true
+        zero: true,
+        ...(current.publicStage === null ? {} : { publicStage: current.publicStage })
       }]);
       roleShouldFail = current.fault && current.fault.kind === "fillRole"
         && current.fault.role === "preimage"
@@ -4663,7 +5061,7 @@ function c3LifecycleInstrumentedBufferFill(...arguments_) {
   }
   const result = Reflect.apply(nativeBufferFill, this, arguments_);
   if (shouldFail || roleShouldFail) {
-    current.faultTriggered = true;
+    c3LifecycleRecordFault(current);
     throw new Error("synthetic C3 fill failure");
   }
   return result;
@@ -4691,7 +5089,18 @@ function c3LifecycleInstrumentedUint8ArrayFill(...arguments_) {
   if (current && !nativeBuffer.isBuffer(this)) {
     const record = c3LifecycleByteRecord(this, "external");
     current.fillOrdinal += 1;
-    const entry = { ordinal: current.fillOrdinal, byteId: record ? record.id : null, zero: arguments_[0] === 0 };
+    current.actionOrdinal += 1;
+    const entry = {
+      ordinal: current.fillOrdinal,
+      action: current.actionOrdinal,
+      ...(current.c4Audit === true ? {
+        operationCalls: current.operationCount(),
+        projectionFreezes: current.projectionFreezeOrdinal
+      } : {}),
+      byteId: record ? record.id : null,
+      zero: arguments_[0] === 0,
+      ...(current.publicStage === null ? {} : { publicStage: current.publicStage })
+    };
     current.fills.push(entry);
     if (record) record.fills.push({ phase: current.name, ordinal: current.fillOrdinal, zero: entry.zero });
     shouldFail = current.fault && current.fault.kind === "fill"
@@ -4699,23 +5108,115 @@ function c3LifecycleInstrumentedUint8ArrayFill(...arguments_) {
   }
   const result = Reflect.apply(nativeUint8ArrayFill, this, arguments_);
   if (shouldFail) {
-    current.faultTriggered = true;
+    c3LifecycleRecordFault(current);
     throw new Error("synthetic C3 fill failure");
   }
   return result;
 }
 
 const unused = () => { throw new Error("unused synthetic builtin"); };
+function c4IsWholeAuthorizationRecordLength(length) {
+  return context && Number.isSafeInteger(context.__c4AuthorizationRecordLength)
+    && (length === context.__c4AuthorizationRecordLength
+      || length + 1 === context.__c4AuthorizationRecordLength);
+}
+function c4BufferStringSpanIndex(value, fallback, length) {
+  if (value === undefined) return fallback;
+  const numeric = Number(value);
+  if (Number.isNaN(numeric) || numeric <= 0) return 0;
+  if (numeric === Infinity || numeric >= length) return length;
+  return Math.trunc(numeric);
+}
+function c4InstrumentedBufferToString(...arguments_) {
+  c3LifecycleRecordForwardWork("bufferToString");
+  const audit = context && context.__c4PublicAudit;
+  const start = c4BufferStringSpanIndex(arguments_[1], 0, this.length);
+  const end = c4BufferStringSpanIndex(arguments_[2], this.length, this.length);
+  const spanLength = end > start ? end - start : 0;
+  if (context && context.__c4AuthorizationVerifyActive === true && audit) {
+    const encoding = arguments_[0] === "utf8" ? "utf8"
+      : arguments_[0] === "hex" ? "hex" : "other";
+    const operationCalls = c3LifecycleCurrent && typeof c3LifecycleCurrent.operationCount === "function"
+      ? c3LifecycleCurrent.operationCount()
+      : null;
+    audit.verifierBufferToStringCount += 1;
+    audit.verifierBufferToStringSpans.push({
+      sourceLength: this.length,
+      start,
+      end,
+      spanLength,
+      encoding,
+      operationCalls
+    });
+    if (c4IsWholeAuthorizationRecordLength(spanLength)) {
+      audit.wholeRecordBufferToStringCount += 1;
+    }
+  }
+  return Reflect.apply(nativeBufferToString, this, arguments_);
+}
+class C4InstrumentedTextDecoder extends nativeTextDecoder {
+  constructor(...arguments_) {
+    c3LifecycleRecordForwardWork("textDecoder");
+    const audit = context && context.__c4PublicAudit;
+    if (context && context.__c4AuthorizationVerifyActive === true && audit) {
+      audit.verifierTextDecoderConstructionCount += 1;
+    }
+    super(...arguments_);
+  }
+  decode(input, ...arguments_) {
+    c3LifecycleRecordForwardWork("textDecode");
+    const audit = context && context.__c4PublicAudit;
+    if (context && context.__c4AuthorizationVerifyActive === true && audit) {
+      const inputLength = input && typeof input.byteLength === "number" ? input.byteLength : null;
+      audit.verifierTextDecoderDecodeCount += 1;
+      audit.verifierTextDecoderInputLengths.push(inputLength);
+      if (inputLength !== null && c4IsWholeAuthorizationRecordLength(inputLength)) {
+        audit.wholeRecordTextDecoderCount += 1;
+      }
+    }
+    return super.decode(input, ...arguments_);
+  }
+}
+let c4NativeBuiltinHost = null;
+let c4ContractErrorReferences = null;
+let c4ProjectionFreezeReferences = null;
+function c4NativeBuiltin(name, arguments_) {
+  if (!c4NativeBuiltinHost || typeof c4NativeBuiltinHost[name] !== "function") return unused();
+  return c4NativeBuiltinHost[name](...arguments_);
+}
 const fs = {
-  chmodSync: unused, chownSync: unused, closeSync: unused, copyFileSync: unused,
-  existsSync: unused, fstatSync: unused, lstatSync: unused, mkdirSync: unused,
-  mkdtempSync: unused, openSync: unused, readFileSync: unused, readSync: unused,
+  chmodSync: unused, chownSync: unused, closeSync(...arguments_) { return c4NativeBuiltin("closeSync", arguments_); }, copyFileSync: unused,
+  existsSync: unused, fstatSync(...arguments_) { return c4NativeBuiltin("fstatSync", arguments_); }, lstatSync(...arguments_) { return c4NativeBuiltin("lstatSync", arguments_); }, mkdirSync: unused,
+  mkdtempSync: unused, openSync(...arguments_) { return c4NativeBuiltin("openSync", arguments_); }, readFileSync: unused, readSync(...arguments_) { return c4NativeBuiltin("readSync", arguments_); },
   realpathSync: unused, renameSync: unused, rmSync: unused, statSync: unused,
   writeFileSync: unused, writeSync: unused,
   constants: { O_RDONLY: 0, O_DIRECTORY: 0x10000, O_NOFOLLOW: 0x20000, O_CLOEXEC: 0x80000 }
 };
 const contractError = class JapanTuicRepairContractError extends Error {
-  constructor(code) { super(code); this.code = code; }
+  constructor(code) {
+    super(code);
+    const stack = this.stack;
+    nativeObject.defineProperty(this, "stack", {
+      value: stack,
+      writable: true,
+      enumerable: false,
+      configurable: true
+    });
+    this.code = code;
+    const audit = typeof context === "object" && context && context.__c4PublicAudit;
+    if (audit && nativeArray.isArray(audit.contractErrorEvents)
+      && nativeArray.isArray(c4ContractErrorReferences)) {
+      const ordinal = c4ContractErrorReferences.length + 1;
+      Reflect.apply(nativeArrayPush, c4ContractErrorReferences, [this]);
+      Reflect.apply(nativeArrayPush, audit.contractErrorEvents, [{
+        ordinal,
+        codeExact: code === "restricted_identity_rejected",
+        publicStage: c3LifecycleCurrent ? c3LifecycleCurrent.publicStage : null,
+        registryEvents: c3LifecycleCurrent ? c3LifecycleCurrent.registry.length : 0,
+        action: c3LifecycleCurrent ? c3LifecycleCurrent.actionOrdinal : 0
+      }]);
+    }
+  }
 };
 const context = vm.createContext({
   Array: instrumentedArray,
@@ -4729,7 +5230,7 @@ const context = vm.createContext({
   TextEncoder: InstrumentedTextEncoder,
   WeakMap: instrumentedWeakMap,
   WeakSet: instrumentedWeakSet,
-  TextDecoder,
+  TextDecoder: C4InstrumentedTextDecoder,
   __testIsProxy: types.isProxy,
   process: { argv: [], env: {}, platform: "linux", stdin: {}, stdout: { write() {} }, stderr: { write() {} } },
   setTimeout,
@@ -4741,7 +5242,7 @@ const synthetic = (names, values) => new vm.SyntheticModule(names, function () {
 const modules = new Map([
   ["node:crypto", synthetic(["createHash", "randomUUID"], { createHash: instrumentedCreateHash, randomUUID: () => "test-uuid" })],
   ["node:fs", synthetic(Object.keys(fs), fs)],
-  ["node:child_process", synthetic(["execFile", "spawnSync"], { execFile: unused, spawnSync: unused })],
+  ["node:child_process", synthetic(["execFile", "spawnSync"], { execFile: unused, spawnSync: (...arguments_) => c4NativeBuiltin("spawnSync", arguments_) })],
   ["node:util", synthetic(["promisify", "types"], { promisify, types })],
   ["node:path", synthetic(["dirname", "join", "posix", "resolve"], nodePath)],
   ["node:url", synthetic(["pathToFileURL", "fileURLToPath"], nodeUrl)],
@@ -4819,20 +5320,79 @@ const append = [
   "const __test_reserveAuthorizationFixedEnvelope = typeof reserveAuthorizationFixedEnvelope === 'function' ? reserveAuthorizationFixedEnvelope : undefined;",
   "const __test_deriveAuthorizationSshSyntax = typeof deriveAuthorizationSshSyntax === 'function' ? deriveAuthorizationSshSyntax : undefined;",
   "const __test_disposeAuthorizationSshSyntax = typeof disposeAuthorizationSshSyntax === 'function' ? disposeAuthorizationSshSyntax : undefined;",
+  "const __test_deriveAuthorizationSshPolicy = typeof deriveAuthorizationSshPolicy === 'function' ? deriveAuthorizationSshPolicy : undefined;",
+  "const __test_disposeAuthorizationSshPolicy = typeof disposeAuthorizationSshPolicy === 'function' ? disposeAuthorizationSshPolicy : undefined;",
+  "const __test_verifyProjectedSshAuthorization = typeof verifyProjectedSshAuthorization === 'function' ? verifyProjectedSshAuthorization : undefined;",
+  "const __test_createNativeAccountOperations = createNativeAccountOperations;",
   "function __test_c3Trace(...values) { if (Array.isArray(globalThis.__c3AllocationTrace)) globalThis.__c3AllocationTrace.push(values); }",
   "if (typeof __test_reserveAuthorizationFixedEnvelope === 'function' && typeof __test_deriveAuthorizationSshSyntax === 'function' && typeof __test_disposeAuthorizationSshSyntax === 'function') {",
   "  const __test_c3RealReserveFixed = reserveAuthorizationFixedEnvelope;",
-  "  reserveAuthorizationFixedEnvelope = function (graph) { __test_c3Trace('reserve-fixed'); const value = __test_c3RealReserveFixed(graph); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('fixed'); return value; };",
+  "  reserveAuthorizationFixedEnvelope = function (graph) { __test_c3Trace('reserve-fixed'); const value = __test_c3RealReserveFixed(graph); if (typeof globalThis.__c4LedgerSignal === 'function') globalThis.__c4LedgerSignal('fixed', graph); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('fixed'); return value; };",
   "  const __test_c3RealReserveSemantic = reserveAuthorizationSemanticNode;",
-  "  reserveAuthorizationSemanticNode = function (graph, kind) { __test_c3Trace('reserve-semantic', kind); const value = __test_c3RealReserveSemantic(graph, kind); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('semantic', kind); return value; };",
+  "  reserveAuthorizationSemanticNode = function (graph, kind) { __test_c3Trace('reserve-semantic', kind); const value = __test_c3RealReserveSemantic(graph, kind); if (typeof globalThis.__c4LedgerSignal === 'function') globalThis.__c4LedgerSignal('semantic', graph, kind); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('semantic', kind); return value; };",
   "  const __test_c3RealReserveWork = reserveAuthorizationWorkUnit;",
-  "  reserveAuthorizationWorkUnit = function (graph, kind) { __test_c3Trace('reserve-work', kind); return __test_c3RealReserveWork(graph, kind); };",
+  "  reserveAuthorizationWorkUnit = function (graph, kind) { __test_c3Trace('reserve-work', kind); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('workAttempt', kind); try { const value = __test_c3RealReserveWork(graph, kind); if (typeof globalThis.__c4LedgerSignal === 'function') globalThis.__c4LedgerSignal('work', graph, kind); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('workComplete', kind); return value; } catch (error) { if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('workThrow', kind); throw error; } };",
   "  const __test_c3RealReservePreimage = reservePreimageBytes;",
-  "  reservePreimageBytes = function (snapshot, length) { __test_c3Trace('reserve-preimage', length); const value = __test_c3RealReservePreimage(snapshot, length); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('preimage', length); return value; };",
+  "  reservePreimageBytes = function (snapshot, length) { __test_c3Trace('reserve-preimage', length); const value = __test_c3RealReservePreimage(snapshot, length); const audit = globalThis.__c4PublicAudit; if (audit && Array.isArray(audit.preimageReserveLengths)) { audit.preimageReserveLengths.push(length); audit.preimageReserveTotal += length; } if (typeof globalThis.__c4LedgerSignal === 'function') globalThis.__c4LedgerSignal('preimage', snapshot, length); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('preimage', length); return value; };",
   "  const __test_c3RealScanWildcard = scanAuthorizationWildcardPattern;",
-  "  scanAuthorizationWildcardPattern = function (graph, pattern) { __test_c3Trace('scan-wildcard', pattern.length); return __test_c3RealScanWildcard(graph, pattern); };",
+  "  scanAuthorizationWildcardPattern = function (graph, pattern) { __test_c3Trace('scan-wildcard', pattern.length); const value = __test_c3RealScanWildcard(graph, pattern); if (typeof globalThis.__c4LedgerSignal === 'function') globalThis.__c4LedgerSignal('scan', graph, pattern.length); return value; };",
+  "  function __test_c4WildcardAlignedCount(pattern, target, starIndex) {",
+  "    if (starIndex === -1) { if (pattern.length !== target.length) return 0; for (let index = 0; index < pattern.length; index += 1) { if (pattern[index] !== 0x3f && pattern[index] !== target[index]) return index + 1; } return pattern.length; }",
+  "    const prefixLength = starIndex; const suffixLength = pattern.length - starIndex - 1; if (target.length < prefixLength + suffixLength) return 0; let count = 0;",
+  "    for (let index = 0; index < prefixLength; index += 1) { count += 1; if (pattern[index] !== 0x3f && pattern[index] !== target[index]) return count; }",
+  "    for (let offset = 0; offset < suffixLength; offset += 1) { const patternIndex = pattern.length - offset - 1; const targetIndex = target.length - offset - 1; count += 1; if (pattern[patternIndex] !== 0x3f && pattern[patternIndex] !== target[targetIndex]) return count; } return count;",
+  "  }",
   "  const __test_c3RealMatchWildcard = matchAuthorizationWildcard;",
-  "  matchAuthorizationWildcard = function (graph, domain, pattern, target, starIndex) { __test_c3Trace('match-wildcard', domain, pattern.length, target.length, starIndex); return __test_c3RealMatchWildcard(graph, domain, pattern, target, starIndex); };",
+  "  matchAuthorizationWildcard = function (graph, domain, pattern, target, starIndex) { __test_c3Trace('match-wildcard', domain, pattern.length, target.length, starIndex); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('matcherAttempt', domain); try { const value = __test_c3RealMatchWildcard(graph, domain, pattern, target, starIndex); if (typeof globalThis.__c4LedgerSignal === 'function') globalThis.__c4LedgerSignal('match', graph, __test_c4WildcardAlignedCount(pattern, target, starIndex)); if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('matcherComplete', domain); return value; } catch (error) { if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('matcherThrow', domain); throw error; } };",
+  "  const __test_c4RealReserveSourceRead = reserveAuthorizationSourceRead;",
+  "  reserveAuthorizationSourceRead = function (graph, size) { const value = __test_c4RealReserveSourceRead(graph, size); if (typeof globalThis.__c4LedgerSignal === 'function') globalThis.__c4LedgerSignal('sourceRead', graph, size); return value; };",
+  "  const __test_c4RealReserveSourceNode = reserveAuthorizationSourceNode;",
+  "  reserveAuthorizationSourceNode = function (graph) { const value = __test_c4RealReserveSourceNode(graph); if (typeof globalThis.__c4LedgerSignal === 'function') globalThis.__c4LedgerSignal('sourceNode', graph, 1); return value; };",
+  "  const __test_c4RealReserveDirectoryNames = reserveAuthorizationDirectoryNames;",
+  "  reserveAuthorizationDirectoryNames = function (graph, count) { const value = __test_c4RealReserveDirectoryNames(graph, count); if (typeof globalThis.__c4LedgerSignal === 'function') globalThis.__c4LedgerSignal('directoryNames', graph, count); return value; };",
+  "  const __test_c4RealEnterSourceDepth = enterAuthorizationSourceDepth;",
+  "  enterAuthorizationSourceDepth = function (graph) { const value = __test_c4RealEnterSourceDepth(graph); if (typeof globalThis.__c4LedgerSignal === 'function') globalThis.__c4LedgerSignal('depth', graph, 1); return value; };",
+  "  const __test_c4RealLeaveSourceDepth = leaveAuthorizationSourceDepth;",
+  "  leaveAuthorizationSourceDepth = function (graph) { const value = __test_c4RealLeaveSourceDepth(graph); if (typeof globalThis.__c4LedgerSignal === 'function') globalThis.__c4LedgerSignal('depth', graph, -1); return value; };",
+  "}",
+  "function __test_c4PublicStage(name) { if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('publicStage', name); }",
+  "function __test_c4PublicReference(identity, owner) { if (typeof globalThis.__c3LifecycleSignal === 'function') globalThis.__c3LifecycleSignal('c4Reference', { identity, owner }); }",
+  "function __test_c4PublicTrace(name) { __test_c4PublicStage(name); if (Array.isArray(globalThis.__c4PublicCallTrace)) globalThis.__c4PublicCallTrace.push(name); }",
+  "if (typeof __test_deriveAuthorizationSshPolicy === 'function' && typeof __test_disposeAuthorizationSshPolicy === 'function') {",
+  "  const __test_c4RealLegacyLineParser = parseCanonicalAuthorizedKeyLine;",
+  "  parseCanonicalAuthorizedKeyLine = function (value) { const audit = globalThis.__c4PublicAudit; if (audit) audit.legacyLineParserCallCount += 1; return __test_c4RealLegacyLineParser(value); };",
+  "  const __test_c4RealCreateSnapshot = createAuthorizationSourceSnapshot;",
+  "  createAuthorizationSourceSnapshot = function () { __test_c4PublicTrace('snapshot'); const value = __test_c4RealCreateSnapshot(); globalThis.__c4LastSnapshot = value; __test_c4PublicReference('snapshot', value); if (typeof globalThis.__c4CaptureInitialBoundary === 'function') globalThis.__c4CaptureInitialBoundary('snapshot', value, null, null); return value; };",
+  "  const __test_c4RealCreateGraph = createAuthorizationSourceGraph;",
+  "  createAuthorizationSourceGraph = function (snapshot, kind) { const value = __test_c4RealCreateGraph(snapshot, kind); __test_c4PublicTrace('graph:' + kind); if (kind === 'ssh') { globalThis.__c4LastSshGraph = value; __test_c4PublicReference('graph', value); if (typeof globalThis.__c4CaptureInitialBoundary === 'function') globalThis.__c4CaptureInitialBoundary('ssh', snapshot, value, null); } if (kind === 'sudo') { globalThis.__c4LastSudoGraph = value; if (typeof globalThis.__c4CaptureInitialBoundary === 'function') globalThis.__c4CaptureInitialBoundary('sudo', snapshot, globalThis.__c4LastSshGraph, value); } return value; };",
+  "  const __test_c4RealDeriveSyntax = deriveAuthorizationSshSyntax;",
+  "  deriveAuthorizationSshSyntax = function (graph, pathOperations, sourceOperations) { __test_c4PublicTrace('deriveSyntax'); try { const value = __test_c4RealDeriveSyntax(graph, pathOperations, sourceOperations); __test_c4PublicReference('syntax', value); return value; } finally { __test_c4PublicStage('deriveSyntax:complete'); } };",
+  "  const __test_c4RealDisposeSyntax = disposeAuthorizationSshSyntax;",
+  "  disposeAuthorizationSshSyntax = function (graph, syntax) { __test_c4PublicTrace('disposeSyntax'); return __test_c4RealDisposeSyntax(graph, syntax); };",
+  "  const __test_c4RealDerivePolicy = deriveAuthorizationSshPolicy;",
+  "  deriveAuthorizationSshPolicy = function (graph, syntax, accountCore) { __test_c4PublicTrace('derivePolicy'); try { const value = __test_c4RealDerivePolicy(graph, syntax, accountCore); __test_c4PublicReference('policy', value); return value; } finally { __test_c4PublicStage('derivePolicy:complete'); } };",
+  "  const __test_c4RealDisposePolicy = disposeAuthorizationSshPolicy;",
+  "  disposeAuthorizationSshPolicy = function (graph, policy) { __test_c4PublicTrace('disposePolicy'); return __test_c4RealDisposePolicy(graph, policy); };",
+  "  if (typeof verifyProjectedSshAuthorization === 'function') {",
+  "    const __test_c4RealVerifyAuthorization = verifyProjectedSshAuthorization;",
+  "    verifyProjectedSshAuthorization = function (binding, pathOperations) { const audit = globalThis.__c4PublicAudit; __test_c4PublicTrace('verify'); if (audit) audit.verifyAttempts += 1; globalThis.__c4AuthorizationVerifyActive = true; try { const value = __test_c4RealVerifyAuthorization(binding, pathOperations); if (audit) { audit.verifySuccesses += 1; if (value === undefined) audit.verifyUndefinedReturns += 1; else audit.verifyNonUndefinedReturns += 1; } return value; } catch (error) { if (audit) audit.verifyFailures += 1; throw error; } finally { delete globalThis.__c4AuthorizationVerifyActive; __test_c4PublicStage('verify:complete'); } };",
+  "  }",
+  "  function __test_c4FinalizePublicSnapshotAudit() {",
+  "    const snapshot = globalThis.__c4LastSnapshot;",
+  "    const audit = globalThis.__c4PublicAudit;",
+  "    if (audit && snapshot) { audit.authorizationEntryCount = snapshot.authorizationEntryCount; audit.snapshotFailed = snapshot.failed; }",
+  "    delete globalThis.__c4LastSnapshot;",
+  "  }",
+  "  const __test_c4RealBuildInclude = buildCanonicalSshIncludeClosure;",
+  "  buildCanonicalSshIncludeClosure = function (input) { __test_c4PublicTrace('include'); try { return Reflect.apply(__test_c4RealBuildInclude, this, arguments); } finally { __test_c4FinalizePublicSnapshotAudit(); } };",
+  "  const __test_c4RealBuildCoverage = buildCanonicalSshMatchCoverage;",
+  "  buildCanonicalSshMatchCoverage = function (projectedAccountCore, input) { __test_c4PublicTrace('coverage'); try { return Reflect.apply(__test_c4RealBuildCoverage, this, arguments); } finally { __test_c4FinalizePublicSnapshotAudit(); } };",
+  "  const __test_c4RealBuildTopology = buildCanonicalSshTopology;",
+  "  buildCanonicalSshTopology = function (projectedAccountCore, binding, input) {",
+  "    __test_c4PublicTrace('topology');",
+  "    try { return Reflect.apply(__test_c4RealBuildTopology, this, arguments); }",
+  "    finally { __test_c4FinalizePublicSnapshotAudit(); }",
+  "  };",
   "}",
   "function __test_missingC2BSymbols() {",
   "  return [",
@@ -4856,10 +5416,21 @@ const append = [
   "    ['disposeAuthorizationSshSyntax', __test_disposeAuthorizationSshSyntax]",
   "  ].filter(([, value]) => typeof value !== 'function').map(([name]) => name);",
   "}",
+  "function __test_missingC4Symbols() {",
+  "  return [",
+  "    ['deriveAuthorizationSshPolicy', __test_deriveAuthorizationSshPolicy],",
+  "    ['disposeAuthorizationSshPolicy', __test_disposeAuthorizationSshPolicy]",
+  "  ].filter(([, value]) => typeof value !== 'function').map(([name]) => name);",
+  "}",
   "function __test_c3Arities() { return {",
   "  reserveAuthorizationFixedEnvelope: typeof __test_reserveAuthorizationFixedEnvelope === 'function' ? __test_reserveAuthorizationFixedEnvelope.length : null,",
   "  deriveAuthorizationSshSyntax: typeof __test_deriveAuthorizationSshSyntax === 'function' ? __test_deriveAuthorizationSshSyntax.length : null,",
   "  disposeAuthorizationSshSyntax: typeof __test_disposeAuthorizationSshSyntax === 'function' ? __test_disposeAuthorizationSshSyntax.length : null",
+  "}; }",
+  "function __test_c4Arities() { return {",
+  "  deriveAuthorizationSshPolicy: typeof __test_deriveAuthorizationSshPolicy === 'function' ? __test_deriveAuthorizationSshPolicy.length : null,",
+  "  disposeAuthorizationSshPolicy: typeof __test_disposeAuthorizationSshPolicy === 'function' ? __test_disposeAuthorizationSshPolicy.length : null,",
+  "  verifyProjectedSshAuthorization: typeof __test_verifyProjectedSshAuthorization === 'function' ? __test_verifyProjectedSshAuthorization.length : null",
   "}; }",
   "function __test_c2bArities() { return {",
   "  nextAuthorizationBudgetValue: nextAuthorizationBudgetValue.length,",
@@ -4954,10 +5525,10 @@ const append = [
   "  return { error, calls };",
   "}",
   "export {",
-  "  __test_c2bArities, __test_c2bCreateState, __test_c2bPolicy, __test_c2bProxyInstrumentation, __test_c2bReserveSource, __test_c2bReserveSourceWithSemanticTrace, __test_c2bTerminalSourceOperation, __test_c3Arities,",
+  "  __test_c2bArities, __test_c2bCreateState, __test_c2bPolicy, __test_c2bProxyInstrumentation, __test_c2bReserveSource, __test_c2bReserveSourceWithSemanticTrace, __test_c2bTerminalSourceOperation, __test_c3Arities, __test_c4Arities,",
   "  __test_consumeTrustedAuthorizationSource, __test_createAuthorizationSourceGraph, __test_createAuthorizationSourceSnapshot,",
   "  __test_c2bFixedShape, __test_inspectAuthorizationBudgetState, __test_reserveAuthorizationSourceFile,",
-  "  __test_deriveAuthorizationSshSyntax, __test_disposeAuthorizationSshSyntax, __test_matchAuthorizationWildcard, __test_missingC2BSymbols, __test_missingC3Symbols, __test_nextAuthorizationBudgetValue, __test_reserveAuthorizationFixedEnvelope, __test_reserveAuthorizationSemanticNode,",
+  "  __test_deriveAuthorizationSshSyntax, __test_disposeAuthorizationSshSyntax, __test_deriveAuthorizationSshPolicy, __test_disposeAuthorizationSshPolicy, __test_createNativeAccountOperations, __test_matchAuthorizationWildcard, __test_missingC2BSymbols, __test_missingC3Symbols, __test_missingC4Symbols, __test_nextAuthorizationBudgetValue, __test_reserveAuthorizationFixedEnvelope, __test_reserveAuthorizationSemanticNode,",
   "  __test_reserveAuthorizationWorkUnit, __test_reservePreimageBytes, __test_scanAuthorizationWildcardPattern",
   "};"
 ].join("\n");
@@ -4970,8 +5541,12 @@ await module.link((specifier) => {
 });
 for (const name of nativeObject.keys(allocationCounts)) allocationCounts[name] = 0;
 allocationActive = true;
+nativeBuffer.prototype.toString = c4InstrumentedBufferToString;
 try { await module.evaluate(); }
-finally { allocationActive = false; }
+finally {
+  nativeBuffer.prototype.toString = nativeBufferToString;
+  allocationActive = false;
+}
 const moduleAllocationCounts = { ...allocationCounts };
 const api = module.namespace;
 
@@ -6662,6 +7237,10 @@ const C3_EXPECTED_MISSING_SYMBOLS = Object.freeze([
   "deriveAuthorizationSshSyntax",
   "disposeAuthorizationSshSyntax"
 ]);
+const C4_EXPECTED_MISSING_SYMBOLS = Object.freeze([
+  "deriveAuthorizationSshPolicy",
+  "disposeAuthorizationSshPolicy"
+]);
 const C3_EXACT_BLOCK_BEGIN = "// C3_SSH_SOURCE_BLOCK_BEGIN";
 const C3_EXACT_BLOCK_END = "// C3_SSH_SOURCE_BLOCK_END";
 const C3_EXACT_BLOCK_SIZE = 61980;
@@ -6817,6 +7396,40 @@ function c3PayloadOracle(value) {
 const C3_VM_HARNESS_SUFFIX = String.raw`
 const C3_ROOT = "/etc/ssh/sshd_config";
 const C3_BASE = "/etc/ssh";
+const C4_SCENARIOS = ["c4-match", "c4-variable", "c4-effective", "c4-topology"];
+let c4ScenarioInvocationCount = 0;
+let c4AccountReadCount = 0;
+let c4InjectedOperationCount = 0;
+
+function c3A1FileOperations(...readStages) {
+  return [
+    ["lstat", "ancestor-0"],
+    ["lstat", "ancestor-1"],
+    ["lstat", "ancestor-2"],
+    ["lstat", "file-0"],
+    ["open", "file-0", "file"],
+    ["fstat", "file-0", "pre"],
+    ...readStages.map((stage) => ["read", "file-0", stage]),
+    ["fstat", "file-0", "post"],
+    ["close", "file-0"]
+  ];
+}
+
+function c4ExpectedTopologyPathOperations(authReadStages = ["body", "eof"]) {
+  return [
+    ...c3A1FileOperations("body", "eof"),
+    ["lstat", "ancestor-0"],
+    ["lstat", "ancestor-1"],
+    ["lstat", "ancestor-2"],
+    ["lstat", "ancestor-3"],
+    ["lstat", "file-1"],
+    ["open", "file-1", "file"],
+    ["fstat", "file-1", "pre"],
+    ...authReadStages.map((stage) => ["read", "file-1", stage]),
+    ["fstat", "file-1", "post"],
+    ["close", "file-1"]
+  ];
+}
 
 function c3Stat(entry, overrides = {}) {
   const type = overrides.type || entry.type;
@@ -6824,10 +7437,10 @@ function c3Stat(entry, overrides = {}) {
   const file = type === "file";
   const typeBits = directory ? 0o040000n : file ? 0o100000n : 0n;
   return {
-    uid: BigInt(overrides.uid === undefined ? 0 : overrides.uid),
-    gid: BigInt(overrides.gid === undefined ? 0 : overrides.gid),
+    uid: BigInt(overrides.uid === undefined ? (entry.uid === undefined ? 0 : entry.uid) : overrides.uid),
+    gid: BigInt(overrides.gid === undefined ? (entry.gid === undefined ? 0 : entry.gid) : overrides.gid),
     mode: typeBits | BigInt(overrides.mode === undefined ? entry.mode : overrides.mode),
-    nlink: BigInt(overrides.nlink === undefined ? (directory ? 2 : 1) : overrides.nlink),
+    nlink: BigInt(overrides.nlink === undefined ? (entry.nlink === undefined ? (directory ? 2 : 1) : entry.nlink) : overrides.nlink),
     dev: BigInt(overrides.dev === undefined ? 7 : overrides.dev),
     ino: BigInt(overrides.ino === undefined ? entry.ino : overrides.ino),
     size: BigInt(overrides.size === undefined ? (directory ? 4096 : entry.bytes.length) : overrides.size),
@@ -6845,11 +7458,20 @@ function c3Environment(fileSpecs, directorySpecs, options = {}) {
   const pathRoles = new nativeMap();
   let ordinal = 100;
   for (let index = 0; index < fileSpecs.length; index += 1) {
-    const [path, input] = fileSpecs[index];
+    const [path, input, metadata = {}] = fileSpecs[index];
     const bytes = nativeBuffer.isBuffer(input) ? nativeBuffer.from(input) : nativeBuffer.from(input, "utf8");
     const role = "file-" + index;
     pathRoles.set(path, role);
-    entries.set(path, { type: "file", mode: 0o644, bytes, ino: ordinal, role });
+    entries.set(path, {
+      type: "file",
+      mode: metadata.mode === undefined ? 0o644 : metadata.mode,
+      uid: metadata.uid === undefined ? 0 : metadata.uid,
+      gid: metadata.gid === undefined ? 0 : metadata.gid,
+      nlink: metadata.nlink === undefined ? 1 : metadata.nlink,
+      bytes,
+      ino: ordinal,
+      role
+    });
     ordinal += 1;
   }
   for (let index = 0; index < directorySpecs.length; index += 1) {
@@ -6884,7 +7506,9 @@ function c3Environment(fileSpecs, directorySpecs, options = {}) {
   const fault = options.fault || null;
   const directoryProxyCounters = options.directoryProxyCounters || null;
   function faultMatches(kind, role) {
-    return fault && fault.kind === kind && (fault.role === undefined || fault.role === role);
+    return fault && fault.kind === kind
+      && (fault.role === undefined || fault.role === role)
+      && (fault.verificationOnly !== true || context.__c4AuthorizationVerifyActive === true);
   }
   function operationFailure(defaultCode = "EIO") {
     const error = new Error("synthetic operation failure");
@@ -6896,6 +7520,8 @@ function c3Environment(fileSpecs, directorySpecs, options = {}) {
   }
   const descriptors = new nativeMap();
   const openedRoles = new nativeSet();
+  const successfulOpenCounts = new nativeMap();
+  const closeAttemptCounts = new nativeMap();
   const directoryReadCounts = new nativeMap();
   let nextFd = 300;
   const pathOperations = {
@@ -6906,6 +7532,7 @@ function c3Environment(fileSpecs, directorySpecs, options = {}) {
       const entry = entryForPath(path);
       if (!entry) operationFailure("ENOENT");
       if (faultMatches("nonregular", role)) return c3Stat(entry, { type: "other" });
+      if (faultMatches("stat-override", role)) return c3Stat(entry, fault.overrides || {});
       return c3Stat(entry);
     },
     open(path, flags) {
@@ -6920,11 +7547,13 @@ function c3Environment(fileSpecs, directorySpecs, options = {}) {
       const fd = nextFd;
       nextFd += 1;
       openedRoles.add(role);
+      successfulOpenCounts.set(role, (successfulOpenCounts.get(role) || 0) + 1);
       descriptors.set(fd, {
         entry,
         fstatCount: 0,
         readOffset: 0,
         eofConfirmed: false,
+        partialBody: false,
         bodyEintr: false,
         eofEintr: false
       });
@@ -7004,7 +7633,11 @@ function c3Environment(fileSpecs, directorySpecs, options = {}) {
         descriptor.eofConfirmed = true;
         return 0;
       }
-      const count = entry.bytes.length - position;
+      let count = entry.bytes.length - position;
+      if (faultMatches("body-partial", role) && !descriptor.partialBody && count > 1) {
+        descriptor.partialBody = true;
+        count = Math.max(1, Math.floor(count / 2));
+      }
       entry.bytes.copy(buffer, offset, position, position + count);
       descriptor.readOffset += count;
       return count;
@@ -7013,6 +7646,7 @@ function c3Environment(fileSpecs, directorySpecs, options = {}) {
       const descriptor = descriptors.get(fd);
       const role = descriptor ? descriptor.entry.role : "unrecognized-fd";
       calls.push(["close", role]);
+      closeAttemptCounts.set(role, (closeAttemptCounts.get(role) || 0) + 1);
       if (!descriptors.delete(fd)) operationFailure();
       if (faultMatches("close-failure", role)) operationFailure();
     }
@@ -7060,7 +7694,15 @@ function c3Environment(fileSpecs, directorySpecs, options = {}) {
       operationFailure();
     }
   };
-  return { calls, pathOperations, sourceOperations, pathRoles };
+  function fdAudit() {
+    const ordered = (counts) => [...counts.entries()].sort(([left], [right]) => left.localeCompare(right));
+    return {
+      successfulOpens: ordered(successfulOpenCounts),
+      closeAttempts: ordered(closeAttemptCounts),
+      liveDescriptorCount: descriptors.size
+    };
+  }
+  return { calls, pathOperations, sourceOperations, pathRoles, fdAudit };
 }
 
 function c3KnownAscii(value, text) {
@@ -7173,6 +7815,8 @@ function c3LifecycleSummary(tracker) {
       roles: [...record.roles].sort(),
       length: record.value.length,
       zero: record.value.every((byte) => byte === 0),
+      allocationOrdinal: record.allocationOrdinal === undefined ? null : record.allocationOrdinal,
+      allocationAction: record.allocationAction === undefined ? null : record.allocationAction,
       attachedOrdinal: record.attachedOrdinal === undefined ? null : record.attachedOrdinal,
       eventOrdinal: record.eventOrdinal === undefined ? null : record.eventOrdinal,
       fills: record.fills.map((fill) => ({ ...fill }))
@@ -7189,13 +7833,50 @@ function c3LifecycleSummary(tracker) {
       allocations: phase.allocationOrdinal,
       allocationKinds: { ...phase.allocationKinds },
       hashes: phase.hashOrdinal,
+      hashActions: phase.hashes.map((entry) => ({
+        ordinal: entry.ordinal,
+        action: entry.action,
+        operationCalls: entry.operationCalls,
+        projectionFreezes: entry.projectionFreezes,
+        ...(entry.publicStage === undefined ? {} : { publicStage: entry.publicStage }),
+        updateByteIds: [...entry.updateByteIds],
+        updateActions: [...entry.updateActions],
+        updateLengths: [...entry.updateLengths],
+        updateSha256s: [...entry.updateSha256s]
+      })),
       objectAllocations: phase.objectAllocationEntries.map((entry) => ({
         ordinal: entry.ordinal,
         classification: entry.classification
       })),
+      allocationActions: phase.allocationActions.map((entry) => ({ ...entry })),
+      byteAllocationActions: phase.byteAllocationActions.map((entry) => ({ ...entry })),
       fixedAllocations: phase.fixedAllocations.map((entry) => ({ ...entry })),
+      fixedReserves: phase.fixedReserves.map((entry) => ({ ...entry })),
+      fixedCompletions: phase.fixedCompletions.map((entry) => ({ ...entry })),
       roleAllocations: phase.roleAllocations.map((entry) => ({ ...entry })),
       roleFills: phase.roleFills.map((entry) => ({ ...entry })),
+      preimageReserves: phase.preimageReserves.map((entry) => ({ ...entry })),
+      work: {
+        attempts: phase.workAttemptCount,
+        reservations: phase.workReservationCount,
+        completions: phase.workCompletionCount,
+        throws: phase.workThrowCount,
+        inFlight: phase.workInFlight,
+        orderingValid: phase.workOrderingValid,
+        lastAttemptStamp: phase.lastWorkAttemptStamp === null ? null : { ...phase.lastWorkAttemptStamp },
+        lastCompletionStamp: phase.lastWorkCompletionStamp === null ? null : { ...phase.lastWorkCompletionStamp }
+      },
+      matcher: {
+        attempts: phase.matcherAttemptCount,
+        completions: phase.matcherCompletionCount,
+        throws: phase.matcherThrowCount,
+        inFlight: phase.matcherInFlight,
+        orderingValid: phase.matcherOrderingValid
+      },
+      ...(phase.captureMatcherLedger ? {
+        matcherLedger: phase.matcherLedger.map((entry) => ({ ...entry }))
+      } : {}),
+      preimagePendingCount: phase.preimagePendingCount,
       retentions: phase.retentions.map((entry) => ({
         role: entry.role,
         reserveOrdinal: entry.reserveOrdinal,
@@ -7236,10 +7917,21 @@ function c3LifecycleSummary(tracker) {
         bufferIds: [...push.bufferIds]
       })),
       faultTriggered: phase.faultTriggered,
+      faultTriggerCount: phase.faultTriggerCount,
+      faultStamp: phase.faultStamp === null ? null : { ...phase.faultStamp },
+      progress: c3LifecycleProgressStamp(phase),
       registry: phase.registry.map((entry) => ({
         method: entry.method,
         keyShape: entry.keyShape,
+        ...(entry.keyIdentity === null ? {} : { keyIdentity: entry.keyIdentity }),
         sameGraph: entry.sameGraph,
+        ...(entry.c4Audit ? {
+          ordinal: entry.ordinal,
+          provenanceRegistry: entry.provenanceRegistry,
+          graphFailed: entry.graphFailed,
+          snapshotFailed: entry.snapshotFailed,
+          authorizationEntryCount: entry.authorizationEntryCount
+        } : {}),
         ...(entry.result === undefined ? {} : { result: entry.result }),
         ...(entry.ownerComplete === undefined ? {} : { ownerComplete: entry.ownerComplete }),
         ...(entry.stamp === undefined ? {} : { stamp: { ...entry.stamp } })
@@ -8140,14 +8832,3427 @@ function c3LexerScenario() {
   };
 }
 
+function c4Binding(overrides = {}) {
+  const binding = ${JSON.stringify(v3Binding({
+    gateId: "test-gate",
+    expectedNonceSha256: "a".repeat(64),
+    expectedClaimSha256: "c".repeat(64),
+    authorizationMarker: "test-gate"
+  }))};
+  const sshAuthorization = overrides.sshAuthorization === undefined
+    ? binding.sshAuthorization
+    : { ...binding.sshAuthorization, ...overrides.sshAuthorization };
+  return { ...binding, ...overrides, sshAuthorization };
+}
+
+function c4AccountRecord(overrides = {}) {
+  return {
+    username: "gccgw-japan-repair-ci",
+    uid: 975,
+    homeDirectory: "/var/lib/gccgw-japan-repair-ci",
+    loginShell: "/usr/bin/dash",
+    passwordLocked: true,
+    primaryGroupId: 975,
+    groupIds: [1100, 975],
+    groupNames: ["repair", "ops"],
+    ...overrides
+  };
+}
+
+function c4FrozenAccountLookalike(account) {
+  const groupIds = nativeObject.freeze([...account.groupIds]);
+  const groupNames = nativeObject.freeze([...account.groupNames]);
+  return nativeObject.freeze({
+    username: account.username,
+    uid: account.uid,
+    homeDirectory: account.homeDirectory,
+    loginShell: account.loginShell,
+    passwordLocked: account.passwordLocked,
+    primaryGroupId: account.primaryGroupId,
+    groupIds,
+    groupNames
+  });
+}
+
+function c4ProjectedAccount(binding, firstOverrides = {}, secondOverrides = firstOverrides) {
+  const reads = new nativeArray();
+  const first = c4AccountRecord(firstOverrides);
+  const second = c4AccountRecord(secondOverrides);
+  const accountOperations = {
+    readAccount(username) {
+      c4AccountReadCount += 1;
+      reads.push(username);
+      return reads.length === 1 ? first : second;
+    }
+  };
+  const core = api.collectBoundAccountEvidence(binding, { accountOperations });
+  if (reads.length !== 2) throw new Error("C4 projected account did not use exactly two reads");
+  return { core, reads };
+}
+
+function c4NativeAccountCore(groupNamesOutput = "repair ops\n") {
+  const getentBytes = nativeBuffer.from("c4-native-getent", "ascii");
+  const idBytes = nativeBuffer.from("c4-native-id", "ascii");
+  const base = c4Binding();
+  const binding = c4Binding({
+    toolManifest: {
+      ...base.toolManifest,
+      getent: {
+        ...base.toolManifest.getent,
+        sizeBytes: getentBytes.length,
+        sha256: crypto.createHash("sha256").update(getentBytes).digest("hex")
+      },
+      id: {
+        ...base.toolManifest.id,
+        sizeBytes: idBytes.length,
+        sha256: crypto.createHash("sha256").update(idBytes).digest("hex")
+      }
+    }
+  });
+  const calls = new nativeArray();
+  const descriptors = new nativeMap();
+  let nextFd = 900;
+  let outputIndex = 0;
+  const outputTexts = [
+    "gccgw-japan-repair-ci:x:975:975:projection:/var/lib/gccgw-japan-repair-ci:/usr/bin/dash\n",
+    "gccgw-japan-repair-ci:!locked:1:2:3:4:5:6:7\n",
+    "975\n",
+    "975\n",
+    "1100 975\n",
+    groupNamesOutput
+  ];
+  const outputBuffers = outputTexts.map((value) => nativeBuffer.from(value, "ascii"));
+  const stderrBuffers = outputTexts.map(() => nativeBuffer.alloc(0));
+  function directoryStat() {
+    return {
+      uid: 0n, gid: 0n, mode: 0o040755n, nlink: 2n, dev: 31n, ino: 1n, size: 4096n,
+      isDirectory: () => true, isFile: () => false, isSymbolicLink: () => false
+    };
+  }
+  function bytesFor(path) {
+    if (path === "/usr/bin/getent") return getentBytes;
+    if (path === "/usr/bin/id") return idBytes;
+    return null;
+  }
+  function fileStat(path) {
+    const bytes = bytesFor(path);
+    return {
+      uid: 0n, gid: 0n, mode: 0o100755n, nlink: 1n, dev: 31n,
+      ino: path.endsWith("getent") ? 2n : 3n, size: BigInt(bytes.length),
+      isDirectory: () => false, isFile: () => true, isSymbolicLink: () => false
+    };
+  }
+  const host = {
+    lstatSync(path) {
+      calls.push(["lstat", path]);
+      return bytesFor(path) ? fileStat(path) : directoryStat();
+    },
+    openSync(path, flags) {
+      calls.push(["open", path, flags]);
+      const bytes = bytesFor(path);
+      if (!bytes || flags !== 0xA0000) throw new Error("unexpected C4 native open");
+      const fd = nextFd;
+      nextFd += 1;
+      descriptors.set(fd, { path, bytes, fstatCount: 0, offset: 0 });
+      return fd;
+    },
+    fstatSync(fd) {
+      const descriptor = descriptors.get(fd);
+      calls.push(["fstat", fd]);
+      if (!descriptor || descriptor.fstatCount > 1) throw new Error("unexpected C4 native fstat");
+      descriptor.fstatCount += 1;
+      return fileStat(descriptor.path);
+    },
+    readSync(fd, buffer, offset, length, position) {
+      const descriptor = descriptors.get(fd);
+      calls.push(["read", fd, position]);
+      if (!descriptor || descriptor.fstatCount !== 1 || position !== descriptor.offset) {
+        throw new Error("unexpected C4 native read");
+      }
+      if (position === descriptor.bytes.length) return 0;
+      const count = descriptor.bytes.length - position;
+      if (offset !== position || length !== count || buffer.length !== descriptor.bytes.length) {
+        throw new Error("unexpected C4 native read envelope");
+      }
+      descriptor.bytes.copy(buffer, offset);
+      descriptor.offset += count;
+      return count;
+    },
+    closeSync(fd) {
+      calls.push(["close", fd]);
+      if (!descriptors.delete(fd)) throw new Error("unexpected C4 native close");
+    },
+    spawnSync(executable, arguments_, options) {
+      calls.push(["spawn", executable, [...arguments_], options && options.shell]);
+      if (outputIndex >= outputBuffers.length) throw new Error("unexpected C4 native spawn");
+      const result = {
+        stdout: outputBuffers[outputIndex],
+        stderr: stderrBuffers[outputIndex],
+        status: 0,
+        signal: null
+      };
+      outputIndex += 1;
+      return result;
+    }
+  };
+  let core;
+  c4NativeBuiltinHost = host;
+  try {
+    core = api.__test_createNativeAccountOperations(binding).readAccount();
+  } finally {
+    c4NativeBuiltinHost = null;
+    getentBytes.fill(0);
+    idBytes.fill(0);
+  }
+  return {
+    core,
+    binding,
+    calls,
+    outputCount: outputIndex,
+    outputZeroized: outputBuffers.every((value) => value.every((byte) => byte === 0))
+      && stderrBuffers.every((value) => value.length === 0)
+  };
+}
+
+function c4NativePolicyPositive(groupNamesOutput = "repair ops\n", matchGroup = "ops") {
+  const nativeAccount = c4NativeAccountCore(groupNamesOutput);
+  const state = fresh();
+  const source = c4SafeLines() + "Match User gccgw-japan-repair-ci Group " + matchGroup + "\n";
+  const environment = c3Environment([[C3_ROOT, source]], []);
+  const input = c4OperationInput(environment);
+  const syntax = safe(() => api.__test_deriveAuthorizationSshSyntax(
+    state.ssh,
+    input.pathOperations,
+    input.sourceOperations
+  ));
+  if (!syntax.ok) return { syntax: { ok: false, error: syntax.error }, nativeAccount };
+  const policy = c4AllocatedCall(() => api.__test_deriveAuthorizationSshPolicy(
+    state.ssh,
+    syntax.value,
+    nativeAccount.core
+  ));
+  const afterPolicy = inspect(state);
+  const disposePolicy = policy.result.ok
+    ? safe(() => api.__test_disposeAuthorizationSshPolicy(state.ssh, policy.result.value))
+    : null;
+  const disposeSyntax = safe(() => api.__test_disposeAuthorizationSshSyntax(state.ssh, syntax.value));
+  return {
+    syntax: { ok: true },
+    policy: { ok: policy.result.ok, error: policy.result.error || null },
+    disposePolicy: disposePolicy && { ok: disposePolicy.ok, error: disposePolicy.error || null },
+    disposeSyntax: { ok: disposeSyntax.ok, error: disposeSyntax.error || null },
+    authorizationEntryCount: afterPolicy.snapshot.authorizationEntryCount,
+    terminal: afterPolicy.snapshot.failed,
+    nativeAccount: {
+      outputCount: nativeAccount.outputCount,
+      outputZeroized: nativeAccount.outputZeroized,
+      openCount: nativeAccount.calls.filter(([name]) => name === "open").length,
+      spawnCount: nativeAccount.calls.filter(([name]) => name === "spawn").length
+    }
+  };
+}
+
+function c4OperationInput(
+  environment,
+  mutation = null,
+  verificationScopes = null,
+  beforeFirstSourcePathOperation = null
+) {
+  let pendingSourcePathHook = beforeFirstSourcePathOperation;
+  function recordVerificationScope(operation, role) {
+    if (verificationScopes !== null && (role.startsWith("ancestor-") || role === "file-1")) {
+      verificationScopes.push([operation, role, context.__c4AuthorizationVerifyActive === true]);
+    }
+  }
+  const call = (operation) => (...arguments_) => {
+    c4InjectedOperationCount += 1;
+    return operation(...arguments_);
+  };
+  let authorizationFd = null;
+  const pathOperations = {
+    lstat(path) {
+      c4InjectedOperationCount += 1;
+      const role = environment.pathRoles.get(path) || "unrecognized-path";
+      if (pendingSourcePathHook !== null && role === "ancestor-0"
+        && context.__c4AuthorizationVerifyActive !== true) {
+        const hook = pendingSourcePathHook;
+        pendingSourcePathHook = null;
+        hook();
+      }
+      recordVerificationScope("lstat", role);
+      return environment.pathOperations.lstat(path);
+    },
+    open(path, flags) {
+      c4InjectedOperationCount += 1;
+      const role = environment.pathRoles.get(path) || "unrecognized-path";
+      recordVerificationScope("open", role);
+      const fd = environment.pathOperations.open(path, flags);
+      if (path === "/etc/ssh/authorized_keys/gccgw-japan-repair-ci") authorizationFd = fd;
+      return fd;
+    },
+    fstat(fd) {
+      c4InjectedOperationCount += 1;
+      if (fd === authorizationFd) recordVerificationScope("fstat", "file-1");
+      return mutation === "wrong-fd" && fd === authorizationFd
+        ? environment.pathOperations.fstat(fd + 10000)
+        : environment.pathOperations.fstat(fd);
+    },
+    read(fd, buffer, offset, length, position) {
+      c4InjectedOperationCount += 1;
+      if (fd === authorizationFd) recordVerificationScope("read", "file-1");
+      return environment.pathOperations.read(fd, buffer, offset, length, position);
+    },
+    close(fd) {
+      c4InjectedOperationCount += 1;
+      if (fd === authorizationFd) recordVerificationScope("close", "file-1");
+      return environment.pathOperations.close(fd);
+    }
+  };
+  const sourceOperations = {
+    readDirectory: call(environment.sourceOperations.readDirectory),
+    validateSudoers: call(environment.sourceOperations.validateSudoers)
+  };
+  return { pathOperations, sourceOperations };
+}
+
+function c4FixedShapeValueKind(value) {
+  if (value !== null && (typeof value === "object" || typeof value === "function") && types.isProxy(value)) {
+    return "Proxy";
+  }
+  if (nativeArray.isArray(value)) return "Array";
+  if (value instanceof nativeMap) return "Map";
+  if (value instanceof nativeSet) return "Set";
+  if (value instanceof nativeWeakMap) return "WeakMap";
+  if (value instanceof nativeWeakSet) return "WeakSet";
+  return value === null ? "null" : typeof value === "object" ? "Object" : typeof value;
+}
+
+function c4FixedShapeObject(value) {
+  const objectLike = value !== null && (typeof value === "object" || typeof value === "function");
+  const proxy = objectLike && types.isProxy(value);
+  if (!objectLike || proxy) return { objectLike, proxy, prototypeKind: null, symbolCount: null, fields: [] };
+  const prototype = nativeObject.getPrototypeOf(value);
+  return {
+    objectLike: true,
+    proxy: false,
+    prototypeKind: prototype === null ? "null" : prototype === nativeArray.prototype ? "Array" : "other",
+    symbolCount: nativeObject.getOwnPropertySymbols(value).length,
+    fields: nativeObject.getOwnPropertyNames(value).sort().map((name) => {
+      const descriptor = nativeObject.getOwnPropertyDescriptor(value, name);
+      return {
+        name,
+        hasValue: nativeObject.hasOwn(descriptor, "value"),
+        valueKind: nativeObject.hasOwn(descriptor, "value") ? c4FixedShapeValueKind(descriptor.value) : null,
+        writable: descriptor.writable === true,
+        enumerable: descriptor.enumerable === true,
+        configurable: descriptor.configurable === true,
+        hasGetter: descriptor.get !== undefined,
+        hasSetter: descriptor.set !== undefined
+      };
+    })
+  };
+}
+
+function c4FixedShapeAudit(snapshot, ssh, sudo) {
+  return {
+    snapshot: c4FixedShapeObject(snapshot),
+    ssh: c4FixedShapeObject(ssh),
+    sudo: c4FixedShapeObject(sudo),
+    sshCleanup: c4FixedShapeObject(ssh && ssh.cleanupStack),
+    sudoCleanup: c4FixedShapeObject(sudo && sudo.cleanupStack)
+  };
+}
+
+const C4_SNAPSHOT_NUMERIC_BUDGET_KEYS = [
+  "fixedEnvelopeCount", "semanticNodeCount", "authorizationEntryCount", "wildcardPatternByteCount",
+  "wildcardInvocationCount", "wildcardAlignedComparisonCount", "sshMatchComparisonCount",
+  "sudoSelectorComparisonCount", "sudoAliasVisitCount", "retainedPreimageBytes"
+];
+const C4_GRAPH_NUMERIC_BUDGET_KEYS = [
+  "fixedEnvelopeCount", "semanticNodeCount", "fileCount", "sourceFileCount", "totalBytes",
+  "directoryNameCount", "depth", "nextOrdinal", "sshPhysicalDirectiveCount", "sshIncludePatternCount",
+  "sshSelectedInsertionCount", "sshMatchBranchCount", "sshMatchConditionCount", "sshMatchPatternCount",
+  "sshAssignmentCount", "sshAcceptEnvNameCount", "sudoStatementCount", "sudoIncludeCount",
+  "sudoSelectedInsertionCount", "sudoAliasDefinitionCount", "sudoAliasMemberCount", "sudoDefaultsItemCount",
+  "sudoUserSpecCount", "sudoUserHostRunasMemberCount", "sudoTagTransitionCount", "sudoCommandSpecCount",
+  "sudoArgumentTokenCount", "sudoAliasEdgeCount", "sudoAliasMemoEntryCount", "globComparisonCount",
+  "commandWorkCount", "aliasEdgeWorkCount"
+];
+
+function c4CreateIndependentBudgetLedger() {
+  const snapshot = {};
+  for (const key of C4_SNAPSHOT_NUMERIC_BUDGET_KEYS) snapshot[key] = 0;
+  snapshot.fixedEnvelopeCount = 5;
+  snapshot.semanticNodeCount = 5;
+  snapshot.failed = false;
+  function graph(kind) {
+    const value = { kind, failed: false };
+    for (const key of C4_GRAPH_NUMERIC_BUDGET_KEYS) value[key] = 0;
+    value.fixedEnvelopeCount = 2;
+    value.semanticNodeCount = 2;
+    return value;
+  }
+  return {
+    budget: {
+      snapshot,
+      ssh: graph("ssh"),
+      sudo: graph("sudo"),
+      identity: {
+        snapshotSshGraph: true,
+        snapshotSudoGraph: true,
+        sshSnapshot: true,
+        sudoSnapshot: true,
+        graphsDistinct: true,
+        cleanupDistinct: true
+      }
+    },
+    signalCount: 0,
+    signals: {
+      fixed: 0,
+      semantic: 0,
+      work: 0,
+      preimage: 0,
+      scan: 0,
+      match: 0,
+      sourceRead: 0,
+      sourceNode: 0,
+      directoryNames: 0,
+      depth: 0
+    }
+  };
+}
+
+function c4ApplyIndependentBudgetSignal(ledger, references, kind, subject, value) {
+  if (ledger === null) throw new Error("C4 budget ledger was not initialized");
+  ledger.signalCount += 1;
+  if (!nativeObject.hasOwn(ledger.signals, kind)) throw new Error("C4 unknown budget ledger signal");
+  ledger.signals[kind] += 1;
+  const budget = ledger.budget;
+  if (kind === "preimage") {
+    if (subject !== references.snapshot || !Number.isSafeInteger(value) || value <= 0) {
+      throw new Error("C4 invalid preimage ledger signal");
+    }
+    budget.snapshot.retainedPreimageBytes += value;
+    return;
+  }
+  const graph = subject === references.ssh ? budget.ssh
+    : subject === references.sudo ? budget.sudo : null;
+  if (graph === null) throw new Error("C4 budget ledger graph identity mismatch");
+  if (kind === "fixed") {
+    budget.snapshot.fixedEnvelopeCount += 1;
+    budget.snapshot.semanticNodeCount += 1;
+    graph.semanticNodeCount += 1;
+    return;
+  }
+  if (kind === "semantic") {
+    const counter = String(value) + "Count";
+    if (!nativeObject.hasOwn(graph, counter)) throw new Error("C4 semantic ledger kind mismatch");
+    budget.snapshot.semanticNodeCount += 1;
+    graph.semanticNodeCount += 1;
+    graph[counter] += 1;
+    if (value === "sudoCommandSpec") graph.commandWorkCount += 1;
+    if (value === "sudoAliasEdge") graph.aliasEdgeWorkCount += 1;
+    return;
+  }
+  if (kind === "work") {
+    if (value === "glob") {
+      graph.globComparisonCount += 1;
+      budget.snapshot.wildcardInvocationCount += 1;
+    } else if (value === "sshMatch") {
+      budget.snapshot.sshMatchComparisonCount += 1;
+      budget.snapshot.wildcardInvocationCount += 1;
+    } else if (value === "sudoSelector") {
+      budget.snapshot.sudoSelectorComparisonCount += 1;
+      budget.snapshot.wildcardInvocationCount += 1;
+    } else if (value === "sudoCommand") {
+      graph.commandWorkCount += 1;
+    } else if (value === "sudoAliasEdge") {
+      graph.aliasEdgeWorkCount += 1;
+    } else if (value === "sudoAliasVisit") {
+      budget.snapshot.sudoAliasVisitCount += 1;
+    } else {
+      throw new Error("C4 work ledger kind mismatch");
+    }
+    return;
+  }
+  if (!Number.isSafeInteger(value)) throw new Error("C4 numeric ledger signal mismatch");
+  if (kind === "scan") budget.snapshot.wildcardPatternByteCount += value;
+  else if (kind === "match") budget.snapshot.wildcardAlignedComparisonCount += value;
+  else if (kind === "sourceRead") {
+    graph.fileCount += 1;
+    graph.totalBytes += value;
+  } else if (kind === "sourceNode") {
+    if (value !== 1) throw new Error("C4 source-node ledger value mismatch");
+    graph.nextOrdinal += 1;
+  }
+  else if (kind === "directoryNames") graph.directoryNameCount += value;
+  else if (kind === "depth") graph.depth += value;
+  else throw new Error("C4 unhandled budget ledger signal");
+}
+
+function c4InitialBudgetAudit(snapshot, ssh, sudo) {
+  const snapshotBudget = {};
+  for (const key of C4_SNAPSHOT_NUMERIC_BUDGET_KEYS) snapshotBudget[key] = snapshot[key];
+  snapshotBudget.failed = snapshot.failed;
+  snapshotBudget.sshGraphIdentity = snapshot.sshGraph === ssh;
+  snapshotBudget.sudoGraphIdentity = snapshot.sudoGraph === sudo;
+  function graphBudget(graph, kind) {
+    const budget = { kindExact: graph.kind === kind, snapshotIdentity: graph.snapshot === snapshot };
+    for (const key of C4_GRAPH_NUMERIC_BUDGET_KEYS) budget[key] = graph[key];
+    budget.failed = graph.failed;
+    budget.cleanupLength = graph.cleanupStack.length;
+    return budget;
+  }
+  return {
+    snapshot: snapshotBudget,
+    ssh: graphBudget(ssh, "ssh"),
+    sudo: graphBudget(sudo, "sudo")
+  };
+}
+
+function c4InitialBoundaryAudit(kind, snapshot, ssh, sudo) {
+  const snapshotBudget = {};
+  for (const key of C4_SNAPSHOT_NUMERIC_BUDGET_KEYS) snapshotBudget[key] = snapshot[key];
+  snapshotBudget.failed = snapshot.failed;
+  snapshotBudget.sshGraphAbsent = snapshot.sshGraph === undefined;
+  snapshotBudget.sudoGraphAbsent = snapshot.sudoGraph === undefined;
+  snapshotBudget.sshGraphIdentity = ssh !== null && snapshot.sshGraph === ssh;
+  snapshotBudget.sudoGraphIdentity = sudo !== null && snapshot.sudoGraph === sudo;
+  function graphBudget(graph, expectedKind) {
+    if (graph === null) return null;
+    const budget = { kindExact: graph.kind === expectedKind, snapshotIdentity: graph.snapshot === snapshot };
+    for (const key of C4_GRAPH_NUMERIC_BUDGET_KEYS) budget[key] = graph[key];
+    budget.failed = graph.failed;
+    budget.cleanupLength = graph.cleanupStack.length;
+    return budget;
+  }
+  return {
+    kind,
+    fixedShape: c4FixedShapeAudit(snapshot, ssh, sudo),
+    budget: {
+      snapshot: snapshotBudget,
+      ssh: graphBudget(ssh, "ssh"),
+      sudo: graphBudget(sudo, "sudo")
+    }
+  };
+}
+
+function c4RawErrorDescriptor(descriptor, expectedValue) {
+  return {
+    present: descriptor !== undefined,
+    data: !!descriptor && nativeObject.hasOwn(descriptor, "value")
+      && descriptor.get === undefined && descriptor.set === undefined,
+    valueExact: !!descriptor && nativeObject.hasOwn(descriptor, "value")
+      && (expectedValue === "<string>" ? typeof descriptor.value === "string" : descriptor.value === expectedValue),
+    writable: !!descriptor && descriptor.writable === true,
+    enumerable: !!descriptor && descriptor.enumerable === true,
+    configurable: !!descriptor && descriptor.configurable === true
+  };
+}
+
+function c4RawContractErrorAudit(error) {
+  const objectLike = error !== null && (typeof error === "object" || typeof error === "function");
+  const proxy = objectLike && types.isProxy(error);
+  let contractErrorOrdinal = null;
+  if (nativeArray.isArray(c4ContractErrorReferences)) {
+    for (let index = 0; index < c4ContractErrorReferences.length; index += 1) {
+      if (c4ContractErrorReferences[index] === error) contractErrorOrdinal = index + 1;
+    }
+  }
+  if (!objectLike || proxy) {
+    return {
+      contractError: false, contractErrorOrdinal, proxy, prototypeExact: false,
+      contractErrorPrototypeParentExact: false, contractErrorPrototypeOwnNames: [],
+      contractErrorPrototypeOwnSymbolCount: null, contractErrorPrototypeConstructorExact: false,
+      contractErrorPrototypeConstructorDescriptor: c4RawErrorDescriptor(undefined, contractError),
+      contractErrorParentOwnNames: [], contractErrorParentOwnSymbolCount: null,
+      codeExact: false, messageExact: false, nameExact: false,
+      enumerableOwnKeys: [], ownNames: [], ownSymbolCount: null,
+      codeDescriptor: c4RawErrorDescriptor(undefined, "restricted_identity_rejected"),
+      messageDescriptor: c4RawErrorDescriptor(undefined, "restricted_identity_rejected"),
+      stackDescriptor: c4RawErrorDescriptor(undefined, "<string>"),
+      forbiddenOwnFieldPresent: false, syntheticMessageVisible: false, syntheticStackVisible: false
+    };
+  }
+  const codeDescriptor = nativeObject.getOwnPropertyDescriptor(error, "code");
+  const messageDescriptor = nativeObject.getOwnPropertyDescriptor(error, "message");
+  const stackDescriptor = nativeObject.getOwnPropertyDescriptor(error, "stack");
+  const prototypeConstructorDescriptor = nativeObject.getOwnPropertyDescriptor(
+    contractError.prototype, "constructor");
+  const message = messageDescriptor && typeof messageDescriptor.value === "string" ? messageDescriptor.value : "";
+  const stack = stackDescriptor && typeof stackDescriptor.value === "string" ? stackDescriptor.value : "";
+  return {
+    contractError: error instanceof contractError,
+    contractErrorOrdinal,
+    proxy: false,
+    prototypeExact: nativeObject.getPrototypeOf(error) === contractError.prototype,
+    contractErrorPrototypeParentExact: nativeObject.getPrototypeOf(contractError.prototype) === Error.prototype,
+    contractErrorPrototypeOwnNames: nativeObject.getOwnPropertyNames(contractError.prototype).sort(),
+    contractErrorPrototypeOwnSymbolCount: nativeObject.getOwnPropertySymbols(contractError.prototype).length,
+    contractErrorPrototypeConstructorExact:
+      prototypeConstructorDescriptor?.value === contractError,
+    contractErrorPrototypeConstructorDescriptor:
+      c4RawErrorDescriptor(prototypeConstructorDescriptor, contractError),
+    contractErrorParentOwnNames: nativeObject.getOwnPropertyNames(Error.prototype).sort(),
+    contractErrorParentOwnSymbolCount: nativeObject.getOwnPropertySymbols(Error.prototype).length,
+    codeExact: !!codeDescriptor && codeDescriptor.value === "restricted_identity_rejected",
+    messageExact: message === "restricted_identity_rejected",
+    nameExact: error.name === "Error",
+    enumerableOwnKeys: nativeObject.keys(error).sort(),
+    ownNames: nativeObject.getOwnPropertyNames(error).sort(),
+    ownSymbolCount: nativeObject.getOwnPropertySymbols(error).length,
+    codeDescriptor: c4RawErrorDescriptor(codeDescriptor, "restricted_identity_rejected"),
+    messageDescriptor: c4RawErrorDescriptor(messageDescriptor, "restricted_identity_rejected"),
+    stackDescriptor: c4RawErrorDescriptor(stackDescriptor, "<string>"),
+    forbiddenOwnFieldPresent: ["cause", "value", "error", "raw", "originalError"]
+      .some((name) => nativeObject.hasOwn(error, name)),
+    syntheticMessageVisible: message.toLowerCase().includes("synthetic"),
+    syntheticStackVisible: stack.toLowerCase().includes("synthetic")
+  };
+}
+
+function c4TerminalBudgetState(graph) {
+  const snapshot = graph && graph.snapshot;
+  if (!snapshot || !snapshot.sudoGraph) return null;
+  return {
+    budget: api.__test_inspectAuthorizationBudgetState({ snapshot, ssh: graph, sudo: snapshot.sudoGraph }),
+    fixedShape: c4FixedShapeAudit(snapshot, graph, snapshot.sudoGraph)
+  };
+}
+
+function c4AllocatedCall(operation, captureTrace = true) {
+  const trace = captureTrace ? new nativeArray() : null;
+  const trackedArrays = new nativeArray();
+  const trackedBuffers = new nativeArray();
+  if (trace !== null) globalThis.__c3AllocationTrace = trace;
+  globalThis.__c3TrackedArrays = trackedArrays;
+  globalThis.__c3TrackedBuffers = trackedBuffers;
+  if (trace !== null) context.__c3AllocationTrace = trace;
+  try {
+    const result = withAllocations(() => safe(operation));
+    return {
+      result: result.value,
+      allocations: result.counts,
+      trace: trace === null ? [] : trace,
+      trackedArrayLengths: trackedArrays.map((value) => value.length),
+      trackedBuffersZero: trackedBuffers.every((value) => value.every((byte) => byte === 0)),
+      trackedBufferCount: trackedBuffers.length
+    };
+  } finally {
+    delete globalThis.__c3AllocationTrace;
+    delete globalThis.__c3TrackedArrays;
+    delete globalThis.__c3TrackedBuffers;
+    delete context.__c3AllocationTrace;
+  }
+}
+
+function c4AllocatedRawCall(operation, captureTrace = true) {
+  let rawErrorAudit = null;
+  const call = c4AllocatedCall(() => {
+    try {
+      return operation();
+    } catch (error) {
+      rawErrorAudit = c4RawContractErrorAudit(error);
+      throw error;
+    }
+  }, captureTrace);
+  return { ...call, rawErrorAudit };
+}
+
+function c4AllocatedPublicCall(operation) {
+  const publicCalls = new nativeArray();
+  const publicAudit = {
+    legacyLineParserCallCount: 0,
+    wholeRecordBufferToStringCount: 0,
+    wholeRecordTextDecoderCount: 0,
+    verifierBufferToStringCount: 0,
+    verifierBufferToStringSpans: new nativeArray(),
+    verifierTextDecoderConstructionCount: 0,
+    verifierTextDecoderDecodeCount: 0,
+    verifierTextDecoderInputLengths: new nativeArray(),
+    topologyFreezeCount: 0,
+    projectionFreezeCounts: { include: 0, coverage: 0, topology: 0 },
+    projectionFreezeEvents: new nativeArray(),
+    contractErrorEvents: new nativeArray(),
+    initialBoundaryCaptureCount: 0,
+    initialBoundaryAudits: new nativeArray(),
+    initialShapeCaptureCount: 0,
+    initialFixedShape: null,
+    initialBudgetAudit: null,
+    verifyAttempts: 0,
+    verifySuccesses: 0,
+    verifyFailures: 0,
+    verifyUndefinedReturns: 0,
+    verifyNonUndefinedReturns: 0,
+    authorizationHashInputs: new nativeArray(),
+    preimageReserveLengths: new nativeArray(),
+    preimageReserveTotal: 0,
+    budgetLedger: null,
+    authorizationEntryCount: null,
+    snapshotFailed: null
+  };
+  const contractErrorReferences = new nativeArray();
+  const projectionFreezeReferences = new nativeArray();
+  const budgetLedgerReferences = { snapshot: null, ssh: null, sudo: null };
+  delete context.__c4LastSshGraph;
+  delete context.__c4LastSudoGraph;
+  delete context.__c4LastSnapshot;
+  context.__c4PublicCallTrace = publicCalls;
+  context.__c4PublicAudit = publicAudit;
+  context.__c4CaptureInitialBoundary = (kind, snapshot, ssh, sudo) => {
+    publicAudit.initialBoundaryCaptureCount += 1;
+    const boundary = c4InitialBoundaryAudit(kind, snapshot, ssh, sudo);
+    publicAudit.initialBoundaryAudits.push(boundary);
+    budgetLedgerReferences.snapshot = snapshot;
+    if (ssh !== null) budgetLedgerReferences.ssh = ssh;
+    if (sudo !== null) budgetLedgerReferences.sudo = sudo;
+    if (kind === "sudo" && publicAudit.initialFixedShape === null) {
+      publicAudit.initialShapeCaptureCount += 1;
+      publicAudit.initialFixedShape = c4FixedShapeAudit(snapshot, ssh, sudo);
+      publicAudit.initialBudgetAudit = c4InitialBudgetAudit(snapshot, ssh, sudo);
+      publicAudit.budgetLedger = c4CreateIndependentBudgetLedger();
+    }
+  };
+  context.__c4LedgerSignal = (kind, subject, value) =>
+    c4ApplyIndependentBudgetSignal(publicAudit.budgetLedger, budgetLedgerReferences,
+      kind, subject, value);
+  c4ContractErrorReferences = contractErrorReferences;
+  c4ProjectionFreezeReferences = projectionFreezeReferences;
+  nativeBuffer.prototype.toString = c4InstrumentedBufferToString;
+  try {
+    let rawErrorAudit = null;
+    const call = c4AllocatedCall(() => {
+      try {
+        return operation();
+      } catch (error) {
+        rawErrorAudit = c4RawContractErrorAudit(error);
+        throw error;
+      }
+    });
+    for (let index = 0; index < publicAudit.projectionFreezeEvents.length; index += 1) {
+      publicAudit.projectionFreezeEvents[index].returnedRoot = call.result.ok
+        && projectionFreezeReferences[index] === call.result.value;
+    }
+    c4ContractErrorReferences = null;
+    c4ProjectionFreezeReferences = null;
+    const mainPublicCalls = [...publicCalls];
+    let terminalFollowUp = null;
+    if (!call.result.ok && ["include", "coverage", "topology"].includes(mainPublicCalls[0])
+      && context.__c4LastSshGraph) {
+      const trapCalls = new nativeArray();
+      const trapInput = c4TrapInput("exact", trapCalls);
+      const beforeState = c4TerminalBudgetState(context.__c4LastSshGraph);
+      const beforeLifecycle = c3LifecycleProgressStamp(c3LifecycleCurrent);
+      delete context.__c4PublicCallTrace;
+      const followUp = c4AllocatedCall(() => api.__test_deriveAuthorizationSshSyntax(
+        context.__c4LastSshGraph,
+        trapInput.pathOperations,
+        trapInput.sourceOperations
+      ));
+      const afterState = c4TerminalBudgetState(context.__c4LastSshGraph);
+      const afterLifecycle = c3LifecycleProgressStamp(c3LifecycleCurrent);
+      terminalFollowUp = {
+        ok: followUp.result.ok,
+        error: followUp.result.error || null,
+        allocations: followUp.allocations,
+        operationCalls: trapCalls.length,
+        trackedBuffersZero: followUp.trackedBuffersZero,
+        beforeLifecycle,
+        afterLifecycle,
+        beforeState,
+        afterState
+      };
+    }
+    return { ...call, publicCalls: mainPublicCalls, publicAudit, rawErrorAudit, terminalFollowUp };
+  } finally {
+    c4ContractErrorReferences = null;
+    c4ProjectionFreezeReferences = null;
+    nativeBuffer.prototype.toString = nativeBufferToString;
+    delete context.__c4PublicCallTrace;
+    delete context.__c4PublicAudit;
+    delete context.__c4CaptureInitialBoundary;
+    delete context.__c4LedgerSignal;
+    delete context.__c4LastSshGraph;
+    delete context.__c4LastSudoGraph;
+    delete context.__c4LastSnapshot;
+  }
+}
+
+function c4OrdinaryPublicCall(operation, operationCalls) {
+  const tracker = c3CreateLifecycleTracker();
+  tracker.c4RawReferences = {
+    graph: null,
+    syntax: null,
+    policy: null,
+    snapshot: null,
+    registry: null,
+    registryStable: true
+  };
+  const call = c3LifecyclePhase(tracker, "c4OrdinaryPublic", null, operationCalls,
+    () => c4AllocatedPublicCall(operation));
+  const lifecycle = c3LifecycleSummary(tracker);
+  const phase = lifecycle.phases.find((entry) => entry.name === "c4OrdinaryPublic");
+  const registryAudit = c4PublicRegistryAudit(phase);
+  const verifyAllocationAudit = c4VerifyAllocationAudit(phase);
+  tracker.c4RawReferences.graph = null;
+  tracker.c4RawReferences.syntax = null;
+  tracker.c4RawReferences.policy = null;
+  tracker.c4RawReferences.snapshot = null;
+  tracker.c4RawReferences.registry = null;
+  return { ...call, registryAudit, verifyAllocationAudit };
+}
+
+function c4CoverageFreezeAudit(coverage) {
+  const branches = new nativeArray();
+  for (const branch of coverage.branches) {
+    const conditions = new nativeArray();
+    for (const condition of branch.conditions) {
+      const patterns = new nativeArray();
+      for (const pattern of condition.patterns) {
+        patterns.push({
+          frozen: nativeObject.isFrozen(pattern),
+          keys: nativeObject.keys(pattern)
+        });
+      }
+      conditions.push({
+        frozen: nativeObject.isFrozen(condition),
+        keys: nativeObject.keys(condition),
+        patternsFrozen: nativeObject.isFrozen(condition.patterns),
+        patterns
+      });
+    }
+    branches.push({
+      frozen: nativeObject.isFrozen(branch),
+      keys: nativeObject.keys(branch),
+      conditionsFrozen: nativeObject.isFrozen(branch.conditions),
+      variableDimensionsFrozen: nativeObject.isFrozen(branch.variableDimensions),
+      conditions
+    });
+  }
+  return {
+    rootFrozen: nativeObject.isFrozen(coverage),
+    rootKeys: nativeObject.keys(coverage),
+    groupIdsFrozen: nativeObject.isFrozen(coverage.groupIds),
+    branchesFrozen: nativeObject.isFrozen(coverage.branches),
+    recursive: c4RecursiveFreezeAudit(coverage),
+    branches
+  };
+}
+
+function c4Coverage(source, accountOverrides = {}, environmentOptions = {}) {
+  const binding = c4Binding();
+  const account = c4ProjectedAccount(binding, accountOverrides);
+  const environment = c3Environment([[C3_ROOT, source]], [], environmentOptions);
+  const input = c4OperationInput(environment);
+  const call = c4OrdinaryPublicCall(() => api.buildCanonicalSshMatchCoverage(account.core, input), environment.calls);
+  const freezeAudit = call.result.ok ? c4CoverageFreezeAudit(call.result.value) : null;
+  return { ...call, calls: environment.calls, fdAudit: environment.fdAudit(), accountReads: account.reads, freezeAudit };
+}
+
+function c4CoverageFromFiles(fileSpecs, directorySpecs, accountOverrides = {}) {
+  const binding = c4Binding();
+  const account = c4ProjectedAccount(binding, accountOverrides);
+  const environment = c3Environment(fileSpecs, directorySpecs);
+  const input = c4OperationInput(environment);
+  const call = c4OrdinaryPublicCall(() => api.buildCanonicalSshMatchCoverage(account.core, input), environment.calls);
+  const freezeAudit = call.result.ok ? c4CoverageFreezeAudit(call.result.value) : null;
+  return { ...call, calls: environment.calls, fdAudit: environment.fdAudit(), accountReads: account.reads, freezeAudit };
+}
+
+function c4Include(source, environmentOptions = {}) {
+  const environment = c3Environment([[C3_ROOT, source]], [], environmentOptions);
+  const input = c4OperationInput(environment);
+  const call = c4OrdinaryPublicCall(() => api.buildCanonicalSshIncludeClosure(input), environment.calls);
+  return {
+    ...call,
+    expected: c4ExpectedClosure(source),
+    freezeAudit: call.result.ok ? c4RecursiveFreezeAudit(call.result.value) : null,
+    calls: environment.calls,
+    fdAudit: environment.fdAudit()
+  };
+}
+
+function c4HashCanonical(value) {
+  return crypto.createHash("sha256").update(nativeJSON.stringify(value) + "\n", "utf8").digest("hex");
+}
+
+function c4CanonicalPreimageOracle(value) {
+  const jsonLf = nativeJSON.stringify(value) + "\n";
+  return {
+    length: nativeBuffer.byteLength(jsonLf, "utf8"),
+    sha256: crypto.createHash("sha256").update(jsonLf, "utf8").digest("hex")
+  };
+}
+
+function c4ExpectedClosure(source) {
+  return {
+    schemaVersion: "1",
+    type: "japan_ci_sshd_source_closure",
+    rootConfig: C3_ROOT,
+    files: [{
+      ordinal: 0,
+      path: C3_ROOT,
+      sha256: crypto.createHash("sha256").update(source, "utf8").digest("hex"),
+      uid: 0,
+      gid: 0,
+      mode: 0o644,
+      nlink: 1
+    }]
+  };
+}
+
+function c4ExpectedBranch(ordinal, lineNumber, conditions, accountDisposition, variableDimensions = []) {
+  return { ordinal, sourceOrdinal: 0, lineNumber, conditions, accountDisposition, variableDimensions };
+}
+
+function c4ExpectedCoverage(branches = [], accountOverrides = {}) {
+  const account = c4AccountRecord(accountOverrides);
+  const groupIds = [...account.groupIds].sort((left, right) => left - right);
+  return {
+    schemaVersion: "1",
+    type: "japan_ci_sshd_match_coverage",
+    username: "gccgw-japan-repair-ci",
+    groupIds,
+    branches
+  };
+}
+
+function c4AuthorizationFixture(keyByte = 7, marker = "test-gate") {
+  const algorithm = nativeBuffer.from("ssh-ed25519", "ascii");
+  const key = nativeBuffer.alloc(32, keyByte);
+  const blob = nativeBuffer.alloc(4 + algorithm.length + 4 + key.length);
+  blob.writeUInt32BE(algorithm.length, 0);
+  algorithm.copy(blob, 4);
+  blob.writeUInt32BE(key.length, 4 + algorithm.length);
+  key.copy(blob, 8 + algorithm.length);
+  const options = "restrict,no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,command=\"/usr/bin/sudo -n -- /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint\"";
+  const lineText = options + " ssh-ed25519 " + blob.toString("base64") + " " + marker;
+  const line = nativeBuffer.from(lineText, "ascii");
+  const file = nativeBuffer.alloc(line.length + 1);
+  line.copy(file, 0);
+  file[file.length - 1] = 10;
+  return { algorithm, key, blob, line, file, lineText };
+}
+
+function c4LineForBinding(file) {
+  return file.length > 0 && file[file.length - 1] === 10 ? file.subarray(0, file.length - 1) : file;
+}
+
+function c4AuthorizationFileFromBlob(blob, algorithm = "ssh-ed25519", marker = "test-gate", extraToken = "") {
+  const options = "restrict,no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,command=\"/usr/bin/sudo -n -- /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint\"";
+  const extra = extraToken === "" ? "" : " " + extraToken;
+  return nativeBuffer.from(options + " " + algorithm + " " + blob.toString("base64") + extra + " " + marker + "\n", "ascii");
+}
+
+function c4ExpectedTopology(closure, coverage, overrides = {}) {
+  return {
+    schemaVersion: "1",
+    type: "japan_ci_ssh_authorization_topology",
+    username: "gccgw-japan-repair-ci",
+    uid: 975,
+    homeDirectory: "/var/lib/gccgw-japan-repair-ci",
+    loginShell: "/usr/bin/dash",
+    passwordLocked: true,
+    authenticationMethods: ["publickey"],
+    pubkeyAuthentication: true,
+    passwordAuthentication: false,
+    keyboardInteractiveAuthentication: false,
+    hostbasedAuthentication: false,
+    gssapiAuthentication: false,
+    kerberosAuthentication: false,
+    permitUserEnvironment: false,
+    acceptedEnvironmentNames: [],
+    forceCommand: "none",
+    chrootDirectory: "none",
+    disableForwarding: true,
+    permitTunnel: false,
+    authorizedKeysFiles: ["/etc/ssh/authorized_keys/gccgw-japan-repair-ci"],
+    authorizedKeysCommand: "none",
+    authorizedPrincipalsFiles: [],
+    authorizedPrincipalsCommand: "none",
+    trustedUserCAKeys: [],
+    activeAuthorizationEntryCount: 1,
+    targetKeyOccurrenceCount: 1,
+    addressDependentAuthorizationBranchCount: 0,
+    includeClosureSha256: c4HashCanonical(closure),
+    matchCoverageSha256: c4HashCanonical(coverage),
+    ...overrides
+  };
+}
+
+function c4RecursiveFreezeAudit(value) {
+  const pending = [value];
+  let containerCount = 0;
+  let allFrozen = true;
+  let proxyCount = 0;
+  let symbolCount = 0;
+  let accessorCount = 0;
+  let unexpectedNonEnumerableCount = 0;
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === null || typeof current !== "object") continue;
+    containerCount += 1;
+    if (types.isProxy(current)) {
+      proxyCount += 1;
+      allFrozen = false;
+      continue;
+    }
+    if (!nativeObject.isFrozen(current)) allFrozen = false;
+    symbolCount += nativeObject.getOwnPropertySymbols(current).length;
+    for (const name of nativeObject.getOwnPropertyNames(current)) {
+      const descriptor = nativeObject.getOwnPropertyDescriptor(current, name);
+      const data = !!descriptor && nativeObject.hasOwn(descriptor, "value")
+        && descriptor.get === undefined && descriptor.set === undefined;
+      if (!data) accessorCount += 1;
+      if (descriptor && descriptor.enumerable !== true
+        && !(nativeArray.isArray(current) && name === "length")) {
+        unexpectedNonEnumerableCount += 1;
+      }
+      if (data) pending.push(descriptor.value);
+    }
+  }
+  return {
+    rootFrozen: value !== null && typeof value === "object" && nativeObject.isFrozen(value),
+    allFrozen,
+    containerCount,
+    proxyCount,
+    symbolCount,
+    accessorCount,
+    unexpectedNonEnumerableCount,
+    rawShape: c4ProjectionRawShapeAudit(value)
+  };
+}
+
+function c4Topology(source, options = {}) {
+  const fixture = options.fixture || c4AuthorizationFixture();
+  const expectedClosure = c4ExpectedClosure(source);
+  const expectedCoverage = options.expectedCoverage || c4ExpectedCoverage([], options.accountOverrides || {});
+  const expected = c4ExpectedTopology(expectedClosure, expectedCoverage, options.expectedOverrides || {});
+  const canonicalLine = options.canonicalLine || fixture.line;
+  const canonicalBlob = options.canonicalBlob || fixture.blob;
+  const boundLineSha256 = options.bindingDrift === "line"
+    ? "0".repeat(64)
+    : crypto.createHash("sha256").update(canonicalLine).digest("hex");
+  const boundBlobSha256 = options.bindingDrift === "blob"
+    ? "0".repeat(64)
+    : crypto.createHash("sha256").update(canonicalBlob).digest("hex");
+  const boundEffectiveSha256 = options.bindingDrift === "effective"
+    ? "0".repeat(64)
+    : c4HashCanonical(expected);
+  const binding = c4Binding({
+    sshAuthorization: {
+      authorizedKeysLineSha256: boundLineSha256,
+      publicKeyBlobSha256: boundBlobSha256,
+      effectiveConfigSha256: boundEffectiveSha256
+    }
+  });
+  const initialBindingDigests = {
+    line: binding.sshAuthorization.authorizedKeysLineSha256,
+    blob: binding.sshAuthorization.publicKeyBlobSha256,
+    effective: binding.sshAuthorization.effectiveConfigSha256
+  };
+  const account = c4ProjectedAccount(binding, options.accountOverrides || {});
+  const authFile = options.authFile === undefined ? fixture.file : options.authFile;
+  const environment = c3Environment([
+    [C3_ROOT, source],
+    ["/etc/ssh/authorized_keys/gccgw-japan-repair-ci", authFile, options.authMetadata || { mode: 0o600 }]
+  ], [], options.environmentOptions || {});
+  const verificationScopes = new nativeArray();
+  let bindingMutationCount = 0;
+  const bindingMutation = options.bindingMutationDigests === undefined ? null : () => {
+    binding.sshAuthorization.authorizedKeysLineSha256 = options.bindingMutationDigests.line;
+    binding.sshAuthorization.publicKeyBlobSha256 = options.bindingMutationDigests.blob;
+    bindingMutationCount += 1;
+  };
+  const input = c4OperationInput(
+    environment,
+    options.operationMutation || null,
+    verificationScopes,
+    bindingMutation
+  );
+  context.__c4AuthorizationRecordLength = authFile.length;
+  let topology;
+  try {
+    topology = c4OrdinaryPublicCall(() => api.buildCanonicalSshTopology(account.core, binding, input), environment.calls);
+  } finally {
+    delete context.__c4AuthorizationRecordLength;
+  }
+  const freezeAudit = topology.result.ok ? c4RecursiveFreezeAudit(topology.result.value) : null;
+  const authorizationHashOracle = {
+    line: {
+      length: canonicalLine.length,
+      sha256: crypto.createHash("sha256").update(canonicalLine).digest("hex")
+    },
+    blob: {
+      length: canonicalBlob.length,
+      sha256: crypto.createHash("sha256").update(canonicalBlob).digest("hex")
+    },
+    legacyWholeFile: {
+      length: authFile.length,
+      sha256: crypto.createHash("sha256").update(authFile).digest("hex")
+    }
+  };
+  fixture.algorithm.fill(0);
+  fixture.key.fill(0);
+  fixture.blob.fill(0);
+  fixture.line.fill(0);
+  fixture.file.fill(0);
+  return {
+    expectedClosure,
+    expectedCoverage,
+    topology,
+    freezeAudit,
+    expected,
+    calls: environment.calls,
+    verificationScopes,
+    authorizationHashOracle,
+    fdAudit: environment.fdAudit(),
+    accountReads: account.reads,
+    bindingMutationCount,
+    initialBindingDigests,
+    bindingDigests: {
+      line: binding.sshAuthorization.authorizedKeysLineSha256,
+      blob: binding.sshAuthorization.publicKeyBlobSha256,
+      effective: binding.sshAuthorization.effectiveConfigSha256
+    }
+  };
+}
+
+function c4PublicPostFaultAudit(phase, operationCalls) {
+  const stamp = phase.faultStamp;
+  if (stamp === null) return null;
+  const progress = phase.progress;
+  const postFaultFills = phase.fills.filter((entry) => entry.action > stamp.action);
+  const postFaultRegistry = phase.registry.slice(stamp.registryEvents);
+  const postFaultOperations = operationCalls.slice(stamp.operationCalls).map((entry) => [...entry]);
+  return {
+    allocations: progress.allocations - stamp.allocations,
+    hashes: progress.hashes - stamp.hashes,
+    copies: progress.copies - stamp.copies,
+    pushes: progress.pushes - stamp.pushes,
+    fixedReserves: progress.fixedReserves - stamp.fixedReserves,
+    semanticReserves: progress.semanticReserves - stamp.semanticReserves,
+    preimageReserves: progress.preimageReserves - stamp.preimageReserves,
+    workAttempts: progress.workAttempts - stamp.workAttempts,
+    matcherAttempts: progress.matcherAttempts - stamp.matcherAttempts,
+    forwardWork: progress.forwardWork - stamp.forwardWork,
+    projectionFreezes: progress.projectionFreezes - stamp.projectionFreezes,
+    fillCount: postFaultFills.length,
+    nonzeroFillCount: postFaultFills.filter((entry) => entry.zero !== true).length,
+    operationCalls: postFaultOperations,
+    nonCloseOperationCount: postFaultOperations.filter((entry) => entry[0] !== "close").length,
+    registryEvents: postFaultRegistry.map((entry) => ({
+      ordinal: entry.ordinal,
+      method: entry.method,
+      keyIdentity: entry.keyIdentity ?? null,
+      provenanceRegistry: entry.provenanceRegistry,
+      sameGraph: entry.sameGraph,
+      graphFailed: entry.graphFailed,
+      snapshotFailed: entry.snapshotFailed,
+      authorizationEntryCount: entry.authorizationEntryCount,
+      result: entry.result === undefined ? null : entry.result
+    }))
+  };
+}
+
+function c4PublicRegistryAudit(phase) {
+  const allEvents = phase.registry.filter((entry) => Number.isSafeInteger(entry.ordinal)).map((entry) => ({
+    ordinal: entry.ordinal,
+    method: entry.method,
+    keyIdentity: entry.keyIdentity ?? null,
+    keyShape: entry.keyShape,
+    provenanceRegistry: entry.provenanceRegistry,
+    sameGraph: entry.sameGraph,
+    graphFailed: entry.graphFailed,
+    snapshotFailed: entry.snapshotFailed,
+    authorizationEntryCount: entry.authorizationEntryCount,
+    result: entry.result === undefined ? null : entry.result
+  }));
+  const provenanceEvents = allEvents.filter((entry) => entry.provenanceRegistry === true);
+  return {
+    allEvents,
+    provenanceEvents,
+    foreignRegistryEvents: allEvents.filter((entry) => entry.provenanceRegistry !== true),
+    snapshotEvents: allEvents.filter((entry) => entry.keyIdentity === "snapshot"),
+    unknownEvents: allEvents.filter((entry) => !["snapshot", "syntax", "policy"].includes(entry.keyIdentity))
+  };
+}
+
+const C4_VERIFY_CONTAINER_ALLOCATION_KINDS = nativeObject.freeze([
+  "array", "map", "objectCall", "objectCreate", "proxy", "set", "weakMap", "weakSet"
+]);
+
+function c4VerifyAllocationAudit(phase) {
+  const allocations = phase.allocationActions.filter((entry) => entry.publicStage === "verify");
+  const byteAllocations = phase.byteAllocationActions.filter((entry) => entry.publicStage === "verify");
+  const containerAllocations = allocations.filter((entry) =>
+    C4_VERIFY_CONTAINER_ALLOCATION_KINDS.includes(entry.kind));
+  const allocationKinds = nativeObject.create(null);
+  for (const entry of allocations) {
+    allocationKinds[entry.kind] = (allocationKinds[entry.kind] || 0) + 1;
+  }
+  return {
+    allocationCount: allocations.length,
+    allocationKinds: { ...allocationKinds },
+    allocationOrdinals: allocations.map((entry) => entry.ordinal),
+    byteAllocationCount: byteAllocations.length,
+    byteAllocationKinds: byteAllocations.map((entry) => entry.kind),
+    byteAllocationOrdinals: byteAllocations.map((entry) => entry.ordinal),
+    byteAllocationRequestedLengths: byteAllocations.map((entry) => entry.requestedLength),
+    byteAllocationActualLengths: byteAllocations.map((entry) => entry.actualLength ?? null),
+    byteAllocationOperationCalls: byteAllocations.map((entry) => entry.operationCalls ?? null),
+    fixedReserveCount: phase.fixedReserves.filter((entry) => entry.publicStage === "verify").length,
+    fixedAllocationCount: phase.fixedAllocations.filter((entry) => entry.publicStage === "verify").length,
+    preimageReserveCount: phase.preimageReserves.filter((entry) => entry.publicStage === "verify").length,
+    preimageAllocationCount: phase.roleAllocations.filter((entry) =>
+      entry.publicStage === "verify" && entry.role === "preimage").length,
+    containerAllocationCount: containerAllocations.length,
+    containerAllocationKinds: containerAllocations.map((entry) => entry.kind)
+  };
+}
+
+function c4PublicPreimageWitness(kind, failEffectiveDigest = false, fault = null) {
+  const source = c4SafeLines() + "Match User gccgw-japan-repair-ci Group ops\n";
+  const expectedClosure = c4ExpectedClosure(source);
+  const expectedCoverage = c4ExpectedCoverage([
+    c4ExpectedBranch(0, 12, [{
+      name: "user",
+      patterns: [{ negated: false, value: "gccgw-japan-repair-ci" }]
+    }, {
+      name: "group",
+      patterns: [{ negated: false, value: "ops" }]
+    }], "exact_user")
+  ]);
+  const fixture = c4AuthorizationFixture();
+  const expectedTopology = c4ExpectedTopology(expectedClosure, expectedCoverage);
+  const binding = c4Binding({
+    sshAuthorization: {
+      authorizedKeysLineSha256: crypto.createHash("sha256").update(fixture.line).digest("hex"),
+      publicKeyBlobSha256: crypto.createHash("sha256").update(fixture.blob).digest("hex"),
+      effectiveConfigSha256: failEffectiveDigest ? "0".repeat(64) : c4HashCanonical(expectedTopology)
+    }
+  });
+  const account = kind === "include" ? null : c4ProjectedAccount(binding).core;
+  const specs = kind === "topology"
+    ? [[C3_ROOT, source], ["/etc/ssh/authorized_keys/gccgw-japan-repair-ci", fixture.file, { mode: 0o600 }]]
+    : kind === "coverage" || kind === "include"
+    ? [[C3_ROOT, source]]
+    : [];
+  const environment = c3Environment(specs, []);
+  const input = c4OperationInput(environment);
+  const stateCalls = environment.calls;
+  const tracker = c3CreateLifecycleTracker();
+  tracker.c4RawReferences = {
+    graph: null,
+    syntax: null,
+    policy: null,
+    snapshot: null,
+    registry: null,
+    registryStable: true
+  };
+  const phaseName = kind === "include"
+    ? "c4PublicInclude"
+    : kind === "coverage" ? "c4PublicCoverage" : "c4PublicTopology";
+  if (kind === "topology") context.__c4AuthorizationRecordLength = fixture.file.length;
+  let call;
+  try {
+    call = c3LifecyclePhase(tracker, phaseName, null, stateCalls,
+      () => c4AllocatedPublicCall(() => kind === "coverage"
+        ? api.buildCanonicalSshMatchCoverage(account, input)
+        : kind === "include"
+          ? api.buildCanonicalSshIncludeClosure(input)
+          : api.buildCanonicalSshTopology(account, binding, input)), fault);
+  } finally {
+    delete context.__c4AuthorizationRecordLength;
+  }
+  const lifecycle = c3LifecycleSummary(tracker);
+  const preimages = c4LifecyclePreimageAudit(lifecycle, phaseName);
+  const preimagePhase = lifecycle.phases.find((entry) => entry.name === phaseName);
+  const postFaultAudit = c4PublicPostFaultAudit(preimagePhase, environment.calls);
+  const registryAudit = c4PublicRegistryAudit(preimagePhase);
+  const references = tracker.c4RawReferences;
+  const provenance = references.graph === null ? null : c4RawProvenanceState(
+    tracker,
+    references.graph,
+    references.policy
+  );
+  const finalState = references.graph === null || references.snapshot === null ? null : {
+    graphFailed: references.graph.failed,
+    snapshotFailed: references.snapshot.failed,
+    authorizationEntryCount: references.snapshot.authorizationEntryCount
+  };
+  tracker.c4RawReferences.graph = null;
+  tracker.c4RawReferences.syntax = null;
+  tracker.c4RawReferences.policy = null;
+  tracker.c4RawReferences.snapshot = null;
+  tracker.c4RawReferences.registry = null;
+  tracker.c4RawReferences = null;
+  fixture.algorithm.fill(0);
+  fixture.key.fill(0);
+  fixture.blob.fill(0);
+  fixture.line.fill(0);
+  fixture.file.fill(0);
+  return {
+    kind,
+    failEffectiveDigest,
+    fault: fault === null ? null : { ...fault },
+    faultTriggered: preimagePhase.faultTriggered,
+    faultTriggerCount: preimagePhase.faultTriggerCount,
+    faultStamp: preimagePhase.faultStamp,
+    postFaultAudit,
+    registryAudit,
+    result: { ok: call.result.ok, error: call.result.error || null },
+    preimages,
+    preimagePendingCount: preimagePhase.preimagePendingCount,
+    oraclePreimages: kind === "include"
+      ? [c4CanonicalPreimageOracle(expectedClosure)]
+      : kind === "coverage"
+        ? [c4CanonicalPreimageOracle(expectedClosure), c4CanonicalPreimageOracle(expectedCoverage)]
+        : [
+            c4CanonicalPreimageOracle(expectedClosure),
+            c4CanonicalPreimageOracle(expectedCoverage),
+            c4CanonicalPreimageOracle(expectedTopology)
+          ],
+    trackedBuffersZero: call.trackedBuffersZero,
+    lifecycle,
+    phaseName,
+    provenance,
+    finalState,
+    buffersZero: c4RunnerOwnedLifecycleBytesZero(lifecycle),
+    verifyAllocationAudit: c4VerifyAllocationAudit(preimagePhase),
+    fdAudit: environment.fdAudit(),
+    operationAudit: {
+      rootOpenCount: environment.calls.filter((entry) => entry[0] === "open" && entry[1] === "file-0").length,
+      authorizationOpenCount: environment.calls.filter((entry) => entry[0] === "open" && entry[1] === "file-1").length,
+      readDirectoryCount: environment.calls.filter((entry) => entry[0] === "readDirectory").length,
+      validateSudoersCount: environment.calls.filter((entry) => entry[0] === "validateSudoers").length,
+      calls: environment.calls.map((entry) => [...entry])
+    },
+    publicCalls: call.publicCalls,
+    publicAudit: call.publicAudit,
+    rawErrorAudit: call.rawErrorAudit,
+    terminalFollowUp: call.terminalFollowUp
+  };
+}
+
+function c4RunnerOwnedLifecycleBytesZero(lifecycle) {
+  return lifecycle.bytes
+    .filter((entry) => !(entry.roles.length === 1 && entry.roles[0] === "sourceFixture"))
+    .every((entry) => entry.zero === true);
+}
+
+function c4PublicOwnedStages(kind) {
+  if (kind === "include") return ["deriveSyntax:complete"];
+  if (kind === "coverage") return ["derivePolicy", "derivePolicy:complete"];
+  return ["derivePolicy", "derivePolicy:complete", "verify", "verify:complete"];
+}
+
+const C4_PUBLIC_FAULT_EXPECTATION_TABLE = nativeObject.freeze({
+  "include|deriveSyntax:complete|fixed-envelope": nativeObject.freeze({
+    faultKind: "fixedOrdinal", freezeTrace: nativeObject.freeze(["include@deriveSyntax"]),
+    topologyFreezeCount: 0
+  }),
+  "coverage|derivePolicy|fixed-envelope": nativeObject.freeze({
+    faultKind: "fixedOrdinal", freezeTrace: nativeObject.freeze(["include@deriveSyntax"]),
+    topologyFreezeCount: 0
+  }),
+  "coverage|derivePolicy|preimage-allocation": nativeObject.freeze({
+    faultKind: "allocationRole",
+    freezeTrace: nativeObject.freeze(["include@deriveSyntax", "coverage@derivePolicy"]),
+    topologyFreezeCount: 0
+  }),
+  "coverage|derivePolicy|preimage-hash": nativeObject.freeze({
+    faultKind: "hash",
+    freezeTrace: nativeObject.freeze(["include@deriveSyntax", "coverage@derivePolicy"]),
+    topologyFreezeCount: 0
+  }),
+  "coverage|derivePolicy|preimage-fill": nativeObject.freeze({
+    faultKind: "fill",
+    freezeTrace: nativeObject.freeze(["include@deriveSyntax", "coverage@derivePolicy"]),
+    topologyFreezeCount: 0
+  }),
+  "topology|derivePolicy|fixed-envelope": nativeObject.freeze({
+    faultKind: "fixedOrdinal", freezeTrace: nativeObject.freeze(["include@deriveSyntax"]),
+    topologyFreezeCount: 0
+  }),
+  "topology|derivePolicy|preimage-allocation": nativeObject.freeze({
+    faultKind: "allocationRole",
+    freezeTrace: nativeObject.freeze(["include@deriveSyntax", "coverage@derivePolicy"]),
+    topologyFreezeCount: 0
+  }),
+  "topology|derivePolicy|preimage-hash": nativeObject.freeze({
+    faultKind: "hash",
+    freezeTrace: nativeObject.freeze(["include@deriveSyntax", "coverage@derivePolicy"]),
+    topologyFreezeCount: 0
+  }),
+  "topology|derivePolicy|preimage-fill": nativeObject.freeze({
+    faultKind: "fill",
+    freezeTrace: nativeObject.freeze(["include@deriveSyntax", "coverage@derivePolicy"]),
+    topologyFreezeCount: 0
+  }),
+  "topology|verify|authorization-transient-cleanup": nativeObject.freeze({
+    faultKind: "fill",
+    freezeTrace: nativeObject.freeze(["include@deriveSyntax", "coverage@derivePolicy"]),
+    topologyFreezeCount: 0
+  }),
+  "topology|verify|authorization-verify-byte-allocation": nativeObject.freeze({
+    faultKind: "allocationOrdinal",
+    freezeTrace: nativeObject.freeze(["include@deriveSyntax", "coverage@derivePolicy"]),
+    topologyFreezeCount: 0
+  }),
+  "topology|verify|authorization-verify-hash": nativeObject.freeze({
+    faultKind: "hash",
+    freezeTrace: nativeObject.freeze(["include@deriveSyntax", "coverage@derivePolicy"]),
+    topologyFreezeCount: 0
+  }),
+  "topology|verify:complete|fixed-envelope": nativeObject.freeze({
+    faultKind: "fixedOrdinal",
+    freezeTrace: nativeObject.freeze(["include@deriveSyntax", "coverage@derivePolicy"]),
+    topologyFreezeCount: 0
+  }),
+  "topology|verify:complete|preimage-allocation": nativeObject.freeze({
+    faultKind: "allocationRole",
+    freezeTrace: nativeObject.freeze([
+      "include@deriveSyntax", "coverage@derivePolicy", "topology@verify:complete"
+    ]),
+    topologyFreezeCount: 1
+  }),
+  "topology|verify:complete|preimage-hash": nativeObject.freeze({
+    faultKind: "hash",
+    freezeTrace: nativeObject.freeze([
+      "include@deriveSyntax", "coverage@derivePolicy", "topology@verify:complete"
+    ]),
+    topologyFreezeCount: 1
+  }),
+  "topology|verify:complete|preimage-fill": nativeObject.freeze({
+    faultKind: "fill",
+    freezeTrace: nativeObject.freeze([
+      "include@deriveSyntax", "coverage@derivePolicy", "topology@verify:complete"
+    ]),
+    topologyFreezeCount: 1
+  })
+});
+
+function c4PublicFaultSpecifications(calibration) {
+  const phase = calibration.lifecycle.phases.find((entry) => entry.name === calibration.phaseName);
+  const allowedStages = c4PublicOwnedStages(calibration.kind);
+  const specifications = new nativeArray();
+  const seen = new nativeSet();
+  function add(site, publicStage, fault, calibrationPoint) {
+    const key = nativeJSON.stringify(fault);
+    if (seen.has(key)) return;
+    if (!calibrationPoint
+      || !Number.isSafeInteger(calibrationPoint.action)
+      || !Number.isSafeInteger(calibrationPoint.operationCalls)
+      || !Number.isSafeInteger(calibrationPoint.projectionFreezes)) {
+      throw new Error("missing C4 calibration point: " + calibration.kind + ":" + site + ":" + publicStage);
+    }
+    seen.add(key);
+    specifications.push({
+      site,
+      publicStage,
+      fault,
+      expectedAction: calibrationPoint.action,
+      expectedProjectionFreezeCount: calibrationPoint.projectionFreezes,
+      expectedOperationCalls: calibration.operationAudit.calls
+        .slice(0, calibrationPoint.operationCalls).map((entry) => [...entry])
+    });
+  }
+  for (const allocation of phase.fixedAllocations) {
+    if (allowedStages.includes(allocation.publicStage)) {
+      add("fixed-envelope", allocation.publicStage,
+        { kind: "fixedOrdinal", ordinal: allocation.ordinal }, allocation);
+    }
+  }
+  const preimageFillOrdinals = new nativeSet();
+  const preimageHashOrdinals = new nativeSet();
+  for (const preimage of calibration.preimages) {
+    if (!allowedStages.includes(preimage.publicStage)) continue;
+    const allocation = phase.roleAllocations.find((entry) =>
+      entry.role === "preimage" && entry.ordinal === preimage.ordinal);
+    add("preimage-allocation", preimage.publicStage, {
+      kind: "allocationRole", role: "preimage", ordinal: preimage.ordinal
+    }, allocation);
+    for (const span of preimage.hashSpans) {
+      preimageHashOrdinals.add(span.hashOrdinal);
+      const hash = phase.hashActions.find((entry) => entry.ordinal === span.hashOrdinal);
+      add("preimage-hash", span.publicStage,
+        { kind: "hash", ordinal: span.hashOrdinal }, hash);
+    }
+    for (const ordinal of preimage.fillOrdinals) {
+      preimageFillOrdinals.add(ordinal);
+      const fill = phase.fills.find((entry) => entry.ordinal === ordinal);
+      add("preimage-fill", preimage.publicStage, { kind: "fill", ordinal }, fill);
+    }
+  }
+  if (calibration.kind === "topology") {
+    const sourceFixtureIds = new nativeSet(calibration.lifecycle.bytes
+      .filter((entry) => entry.roles.includes("sourceFixture"))
+      .map((entry) => entry.id));
+    const verifyByteAllocations = phase.byteAllocationActions.filter((entry) =>
+      entry.publicStage === "verify"
+        && entry.preimageReserveOrdinal === null
+        && !sourceFixtureIds.has(entry.byteId));
+    if (verifyByteAllocations.length === 0) {
+      throw new Error("missing C4 verify non-preimage byte allocation calibration");
+    }
+    for (const allocation of verifyByteAllocations) {
+      add("authorization-verify-byte-allocation", allocation.publicStage,
+        { kind: "allocationOrdinal", ordinal: allocation.ordinal }, allocation);
+    }
+    const verifyHashes = phase.hashActions.filter((entry) =>
+      entry.publicStage === "verify" && !preimageHashOrdinals.has(entry.ordinal));
+    if (verifyHashes.length !== 2) {
+      throw new Error("unexpected C4 verify hash calibration count");
+    }
+    for (const hash of verifyHashes) {
+      add("authorization-verify-hash", hash.publicStage,
+        { kind: "hash", ordinal: hash.ordinal }, hash);
+    }
+    for (const fill of phase.fills) {
+      if (fill.publicStage === "verify" && fill.zero === true && !preimageFillOrdinals.has(fill.ordinal)) {
+        add("authorization-transient-cleanup", fill.publicStage,
+          { kind: "fill", ordinal: fill.ordinal }, fill);
+      }
+    }
+  }
+  return specifications;
+}
+
+function c4CompactPublicFailure(witness) {
+  return {
+    fault: witness.fault,
+    faultTriggered: witness.faultTriggered,
+    faultTriggerCount: witness.faultTriggerCount,
+    faultStamp: witness.faultStamp,
+    postFaultAudit: witness.postFaultAudit,
+    registryAudit: witness.registryAudit,
+    result: witness.result,
+    trackedBuffersZero: witness.trackedBuffersZero,
+    buffersZero: witness.buffersZero,
+    preimagePendingCount: witness.preimagePendingCount,
+    preimages: witness.preimages.map((entry) => ({
+      publicStage: entry.publicStage,
+      zero: entry.zero,
+      orphan: entry.orphan,
+      fillOrdinals: entry.fillOrdinals
+    })),
+    publicCalls: witness.publicCalls,
+    publicAudit: witness.publicAudit,
+    rawErrorAudit: witness.rawErrorAudit,
+    provenance: witness.provenance,
+    finalState: witness.finalState,
+    fdAudit: witness.fdAudit,
+    operationAudit: witness.operationAudit,
+    verifyAllocationAudit: witness.verifyAllocationAudit,
+    terminalFollowUp: witness.terminalFollowUp
+  };
+}
+
+function c4PublicFaultMatrix(kind, calibration) {
+  return c4PublicFaultSpecifications(calibration).map((specification) => {
+    const witness = c4PublicPreimageWitness(kind, false, specification.fault);
+    return { ...specification, witness: c4CompactPublicFailure(witness) };
+  });
+}
+
+function c4PublicDisposerMatrix() {
+  return [
+    ["include-syntax-delete-after", "include", "syntax"],
+    ["coverage-policy-delete-after", "coverage", "policy"],
+    ["coverage-syntax-delete-after", "coverage", "syntax"],
+    ["topology-policy-delete-after", "topology", "policy"],
+    ["topology-syntax-delete-after", "topology", "syntax"]
+  ].map(([name, kind, identity]) => {
+    const witness = c4PublicPreimageWitness(kind, false, { kind: "registryDeleteAfter", identity });
+    return { name, kind, identity, witness: c4CompactPublicFailure(witness) };
+  });
+}
+
+function c4SafeLines(overrides = {}) {
+  const values = {
+    authenticationmethods: "publickey",
+    pubkeyauthentication: "yes",
+    passwordauthentication: "no",
+    kbdinteractiveauthentication: "no",
+    hostbasedauthentication: "no",
+    gssapiauthentication: "no",
+    kerberosauthentication: "no",
+    permituserenvironment: "no",
+    disableforwarding: "yes",
+    permittunnel: "no",
+    authorizedkeysfile: "/etc/ssh/authorized_keys/gccgw-japan-repair-ci",
+    ...overrides
+  };
+  const lines = new nativeArray();
+  for (const name of nativeObject.keys(values)) {
+    if (values[name] !== null) lines.push(name + " " + values[name]);
+  }
+  return lines.join("\n") + "\n";
+}
+
+function c4PrivateAttempt(kind) {
+  const binding = c4Binding();
+  const account = c4ProjectedAccount(binding).core;
+  const firstState = fresh();
+  const source = c4SafeLines() + "Match User gccgw-japan-repair-ci\n";
+  const firstEnvironment = c3Environment([[C3_ROOT, source]], []);
+  const firstInput = c4OperationInput(firstEnvironment);
+  const syntaxResult = safe(() => api.__test_deriveAuthorizationSshSyntax(
+    firstState.ssh,
+    firstInput.pathOperations,
+    firstInput.sourceOperations
+  ));
+  if (!syntaxResult.ok) return { syntaxResult };
+  const syntax = syntaxResult.value;
+  let activeState = firstState;
+  let graph = firstState.ssh;
+  let owner = syntax;
+  let candidate = account;
+  let foreignState = null;
+  let foreignOwner = null;
+  if (kind === "plain") candidate = { ...account, groupIds: [...account.groupIds], groupNames: [...account.groupNames] };
+  if (kind === "clone") candidate = nativeJSON.parse(nativeJSON.stringify(account));
+  if (kind === "frozen-lookalike") candidate = c4FrozenAccountLookalike(account);
+  if (kind === "proxy") candidate = new nativeProxy(account, {});
+  if (kind === "wrong-graph") {
+    activeState = fresh();
+    graph = activeState.ssh;
+  }
+  if (kind === "foreign-syntax") {
+    foreignState = fresh();
+    const foreignEnvironment = c3Environment([[C3_ROOT, source]], []);
+    const foreignInput = c4OperationInput(foreignEnvironment);
+    const foreign = safe(() => api.__test_deriveAuthorizationSshSyntax(
+      foreignState.ssh,
+      foreignInput.pathOperations,
+      foreignInput.sourceOperations
+    ));
+    foreignOwner = foreign.ok ? foreign.value : null;
+    owner = foreignOwner;
+  }
+  if (kind === "disposed-syntax") {
+    safe(() => api.__test_disposeAuthorizationSshSyntax(firstState.ssh, syntax));
+  }
+  let setupPolicy = null;
+  let setupPolicyDispose = null;
+  if (kind === "live-policy-as-syntax" || kind === "disposed-policy-as-syntax") {
+    setupPolicy = c4AllocatedCall(() => api.__test_deriveAuthorizationSshPolicy(
+      firstState.ssh,
+      syntax,
+      account
+    ));
+    if (!setupPolicy.result.ok) {
+      return {
+        kind,
+        setupPolicy: { ok: false, error: setupPolicy.result.error || null }
+      };
+    }
+    owner = setupPolicy.result.value;
+    if (kind === "disposed-policy-as-syntax") {
+      setupPolicyDispose = safe(() => api.__test_disposeAuthorizationSshPolicy(firstState.ssh, owner));
+    }
+  }
+  const before = inspect(activeState);
+  const beforeCalls = firstEnvironment.calls.length;
+  const attempted = c4AllocatedRawCall(() => api.__test_deriveAuthorizationSshPolicy(graph, owner, candidate));
+  const afterAttempt = inspect(activeState);
+  let reused = null;
+  let reusedComparisonDelta = null;
+  let reusedOperationDelta = null;
+  let disposePolicy = null;
+  let failedOwnerDispose = null;
+  if (attempted.result.ok) {
+    if (kind === "reused-owner") {
+      const beforeReuse = inspect(firstState).snapshot.sshMatchComparisonCount;
+      const beforeReuseCalls = firstEnvironment.calls.length;
+      reused = c4AllocatedRawCall(() => api.__test_deriveAuthorizationSshPolicy(firstState.ssh, syntax, account));
+      reusedComparisonDelta = inspect(firstState).snapshot.sshMatchComparisonCount - beforeReuse;
+      reusedOperationDelta = firstEnvironment.calls.length - beforeReuseCalls;
+    }
+    disposePolicy = safe(() => api.__test_disposeAuthorizationSshPolicy(firstState.ssh, attempted.result.value));
+  } else if (kind === "live-policy-as-syntax") {
+    failedOwnerDispose = safe(() => api.__test_disposeAuthorizationSshPolicy(firstState.ssh, owner));
+  }
+  const disposeSyntax = safe(() => api.__test_disposeAuthorizationSshSyntax(firstState.ssh, syntax));
+  const disposeForeign = foreignOwner
+    ? safe(() => api.__test_disposeAuthorizationSshSyntax(foreignState.ssh, foreignOwner))
+    : null;
+  const after = inspect(activeState);
+  let terminalFollowUp = null;
+  if (!attempted.result.ok || (reused && !reused.result.ok)) {
+    const terminalEnvironment = c3Environment([[C3_ROOT, source]], []);
+    const terminalInput = c4OperationInput(terminalEnvironment);
+    const terminal = c4AllocatedCall(() => api.__test_deriveAuthorizationSshSyntax(
+      activeState.ssh,
+      terminalInput.pathOperations,
+      terminalInput.sourceOperations
+    ));
+    terminalFollowUp = {
+      ok: terminal.result.ok,
+      error: terminal.result.error || null,
+      allocations: terminal.allocations,
+      calls: terminalEnvironment.calls.length
+    };
+  }
+  return {
+    kind,
+    attempted: { ok: attempted.result.ok, error: attempted.result.error || null },
+    setupPolicy: setupPolicy && { ok: setupPolicy.result.ok, error: setupPolicy.result.error || null },
+    setupPolicyDispose: setupPolicyDispose && { ok: setupPolicyDispose.ok, error: setupPolicyDispose.error || null },
+    allocations: attempted.allocations,
+    trackedBuffersZero: attempted.trackedBuffersZero,
+    rawErrorAudit: attempted.rawErrorAudit,
+    reused: reused && {
+      ok: reused.result.ok,
+      error: reused.result.error || null,
+      allocations: reused.allocations,
+      rawErrorAudit: reused.rawErrorAudit
+    },
+    reusedComparisonDelta,
+    reusedOperationDelta,
+    disposePolicy: disposePolicy && { ok: disposePolicy.ok, error: disposePolicy.error || null },
+    failedOwnerDispose: failedOwnerDispose && { ok: failedOwnerDispose.ok, error: failedOwnerDispose.error || null },
+    disposeSyntax: { ok: disposeSyntax.ok, error: disposeSyntax.error || null },
+    disposeForeign: disposeForeign && { ok: disposeForeign.ok, error: disposeForeign.error || null },
+    injectedOperationDelta: firstEnvironment.calls.length - beforeCalls,
+    comparisonBefore: before.snapshot.sshMatchComparisonCount,
+    comparisonAfterAttempt: afterAttempt.snapshot.sshMatchComparisonCount,
+    comparisonDelta: afterAttempt.snapshot.sshMatchComparisonCount - before.snapshot.sshMatchComparisonCount,
+    comparisonAfter: after.snapshot.sshMatchComparisonCount,
+    terminal: after.snapshot.failed,
+    terminalFollowUp
+  };
+}
+
+function c4RawProvenanceState(tracker, graph, returnedPolicy) {
+  const references = tracker.c4RawReferences;
+  const registry = references && references.registry;
+  function stateFor(value) {
+    const present = !!registry && value !== null
+      && Reflect.apply(nativeWeakMapHas, registry, [value]);
+    return {
+      present,
+      sameGraph: present && Reflect.apply(nativeWeakMapGet, registry, [value]) === graph
+    };
+  }
+  return {
+    registryObserved: !!registry,
+    registryStable: !!references && references.registryStable,
+    policyIdentified: !!references && references.policy !== null,
+    syntaxPolicyDistinct: !!references && references.policy !== null
+      && references.syntax !== references.policy,
+    returnedPolicyIdentity: returnedPolicy === null
+      ? null
+      : !!references && returnedPolicy === references.policy,
+    syntax: stateFor(references && references.syntax),
+    policy: stateFor(references && references.policy),
+    snapshot: stateFor(references && references.snapshot)
+  };
+}
+
+function c4ForbiddenAllocationView(allocations) {
+  return {
+    map: allocations.map,
+    set: allocations.set,
+    weakMap: allocations.weakMap,
+    weakSet: allocations.weakSet,
+    bufferFrom: allocations.bufferFrom,
+    textEncoder: allocations.textEncoder,
+    textEncode: allocations.textEncode,
+    jsonStringify: allocations.jsonStringify,
+    jsonParse: allocations.jsonParse
+  };
+}
+
+function c4LifecyclePreimageAudit(lifecycle, phaseName) {
+  const phase = lifecycle.phases.find((entry) => entry.name === phaseName);
+  if (!phase) return [];
+  return phase.preimageReserves.map((reserve) => {
+    const buffer = reserve.byteId === null
+      ? null
+      : lifecycle.bytes.find((entry) => entry.id === reserve.byteId);
+    const hashSpans = reserve.byteId === null ? [] : phase.hashActions.flatMap((entry) =>
+      entry.updateByteIds.map((byteId, index) => ({
+        hashOrdinal: entry.ordinal,
+        publicStage: entry.publicStage,
+        operationCalls: entry.operationCalls,
+        projectionFreezes: entry.projectionFreezes,
+        byteId,
+        length: entry.updateLengths[index],
+        sha256: entry.updateSha256s[index],
+        action: entry.updateActions[index]
+      })).filter((entry) => entry.byteId === reserve.byteId));
+    const zeroFills = reserve.byteId === null ? [] : phase.fills.filter((entry) =>
+      entry.byteId === reserve.byteId && entry.zero === true);
+    const firstHashSpan = hashSpans[0] || null;
+    const firstZeroFill = zeroFills[0] || null;
+    return {
+      ordinal: reserve.ordinal,
+      publicStage: reserve.publicStage,
+      reservedLength: reserve.reservedLength,
+      requestedLength: reserve.requestedLength,
+      actualLength: reserve.actualLength,
+      byteId: reserve.byteId,
+      reserveAction: reserve.action,
+      allocationOrdinal: reserve.allocationOrdinal,
+      allocationAction: reserve.allocationAction,
+      allocationKind: reserve.allocationKind,
+      firstAllocationAfterReserve: reserve.allocationOrdinal === reserve.allocations + 1,
+      hashAction: firstHashSpan === null ? null : firstHashSpan.action,
+      hashSpans,
+      fullSpanHashCount: hashSpans.filter((entry) =>
+        entry.length === reserve.actualLength).length,
+      fillAction: firstZeroFill === null ? null : firstZeroFill.action,
+      fillOrdinals: zeroFills.map((entry) => entry.ordinal),
+      zeroFillCount: zeroFills.length,
+      zero: buffer === null || buffer.zero,
+      orphan: buffer === null,
+      claimedAsPreimage: buffer !== null && buffer.roles.includes("preimage")
+    };
+  });
+}
+
+function c4PolicyFaultWitness(fault) {
+  const binding = c4Binding();
+  const account = c4ProjectedAccount(binding).core;
+  const state = fresh();
+  const source = c4SafeLines() + "Match User gccgw-japan-repair-ci Group ops\n";
+  const environment = c3Environment([[C3_ROOT, source]], []);
+  const input = c4OperationInput(environment);
+  const syntax = c4AllocatedCall(() => api.__test_deriveAuthorizationSshSyntax(
+    state.ssh,
+    input.pathOperations,
+    input.sourceOperations
+  ));
+  if (!syntax.result.ok) return { setupFailed: true, fault };
+  const tracker = c3CreateLifecycleTracker();
+  tracker.c4RawReferences = {
+    graph: state.ssh,
+    syntax: syntax.result.value,
+    policy: null,
+    snapshot: state.snapshot,
+    registry: null,
+    registryStable: true
+  };
+  const derive = c3LifecyclePhase(tracker, "c4FaultDerive", state.ssh, environment.calls,
+    () => c4AllocatedRawCall(() => api.__test_deriveAuthorizationSshPolicy(
+      state.ssh,
+      syntax.result.value,
+      account
+    )), fault);
+  const afterDerive = inspect(state);
+  const provenance = c4RawProvenanceState(
+    tracker,
+    state.ssh,
+    derive.result.ok ? derive.result.value : null
+  );
+  const syntaxCleanup = c3LifecyclePhase(tracker, "c4FaultSyntaxCleanup", state.ssh, environment.calls,
+    () => c4AllocatedCall(() => api.__test_disposeAuthorizationSshSyntax(state.ssh, syntax.result.value)));
+  const afterCleanup = inspect(state);
+  const terminalCalls = new nativeArray();
+  const terminalInput = c4TrapInput("exact", terminalCalls);
+  const followUp = c4AllocatedCall(() => api.__test_deriveAuthorizationSshSyntax(
+    state.ssh,
+    terminalInput.pathOperations,
+    terminalInput.sourceOperations
+  ));
+  const lifecycle = c3LifecycleSummary(tracker);
+  tracker.c4RawReferences.syntax = null;
+  tracker.c4RawReferences.policy = null;
+  tracker.c4RawReferences.snapshot = null;
+  tracker.c4RawReferences.registry = null;
+  tracker.c4RawReferences = null;
+  const derivePhase = lifecycle.phases.find((entry) => entry.name === "c4FaultDerive");
+  return {
+    setupFailed: false,
+    fault: { ...fault },
+    faultTriggered: derivePhase.faultTriggered,
+    result: { ok: derive.result.ok, error: derive.result.error || null },
+    rawErrorAudit: derive.rawErrorAudit,
+    forbiddenAllocations: c4ForbiddenAllocationView(derive.allocations),
+    trackedBuffersZero: derive.trackedBuffersZero,
+    provenance,
+    syntaxCleanup: {
+      ok: syntaxCleanup.result.ok,
+      error: syntaxCleanup.result.error || null,
+      trackedBuffersZero: syntaxCleanup.trackedBuffersZero
+    },
+    graphFailed: afterDerive.ssh.failed && afterCleanup.ssh.failed,
+    snapshotFailed: afterDerive.snapshot.failed && afterCleanup.snapshot.failed,
+    authorizationEntryCount: afterCleanup.snapshot.authorizationEntryCount,
+    preimages: c4LifecyclePreimageAudit(lifecycle, "c4FaultDerive"),
+    preimagePendingCount: derivePhase.preimagePendingCount,
+    buffersZero: c4RunnerOwnedLifecycleBytesZero(lifecycle),
+    followUp: {
+      ok: followUp.result.ok,
+      error: followUp.result.error || null,
+      allocations: followUp.allocations,
+      calls: terminalCalls.length,
+      trackedBuffersZero: followUp.trackedBuffersZero
+    }
+  };
+}
+
+function c4PolicyFaultMatrix(calibrationLifecycle) {
+  const phase = calibrationLifecycle.phases.find((entry) => entry.name === "derivePolicy");
+  const faults = new nativeArray();
+  for (const reserve of phase.fixedReserves) faults.push({ kind: "fixedOrdinal", ordinal: reserve.ordinal });
+  for (const allocation of phase.roleAllocations) {
+    if (allocation.role === "preimage") {
+      faults.push({ kind: "allocationRole", role: "preimage", ordinal: allocation.ordinal });
+    }
+  }
+  for (let ordinal = 1; ordinal <= phase.hashes; ordinal += 1) faults.push({ kind: "hash", ordinal });
+  for (let ordinal = 1; ordinal <= phase.fills.length; ordinal += 1) faults.push({ kind: "fill", ordinal });
+  return faults.map((fault) => c4PolicyFaultWitness(fault));
+}
+
+function c4PolicyLifecycle() {
+  const source = c4SafeLines() + "Match User gccgw-japan-repair-ci Group ops\n";
+  const coverageOracle = c4CanonicalPreimageOracle(c4ExpectedCoverage([
+    c4ExpectedBranch(0, 12, [{
+      name: "user",
+      patterns: [{ negated: false, value: "gccgw-japan-repair-ci" }]
+    }, {
+      name: "group",
+      patterns: [{ negated: false, value: "ops" }]
+    }], "exact_user")
+  ]));
+  const binding = c4Binding();
+  const account = c4ProjectedAccount(binding).core;
+  const state = fresh();
+  const environment = c3Environment([[C3_ROOT, source]], []);
+  const input = c4OperationInput(environment);
+  const syntaxCall = c4AllocatedCall(() => api.__test_deriveAuthorizationSshSyntax(
+    state.ssh,
+    input.pathOperations,
+    input.sourceOperations
+  ));
+  if (!syntaxCall.result.ok) return { syntaxCall };
+  const syntax = syntaxCall.result.value;
+  const tracker = c3CreateLifecycleTracker();
+  tracker.c4RawReferences = {
+    graph: state.ssh,
+    syntax,
+    policy: null,
+    snapshot: state.snapshot,
+    registry: null,
+    registryStable: true
+  };
+  const derive = c3LifecyclePhase(tracker, "derivePolicy", state.ssh, environment.calls,
+    () => c4AllocatedCall(() => api.__test_deriveAuthorizationSshPolicy(state.ssh, syntax, account)));
+  const afterDerive = inspect(state);
+  const afterDeriveProvenance = c4RawProvenanceState(
+    tracker,
+    state.ssh,
+    derive.result.ok ? derive.result.value : null
+  );
+  let disposePolicy = null;
+  if (derive.result.ok) {
+    disposePolicy = c3LifecyclePhase(tracker, "disposePolicy", state.ssh, environment.calls,
+      () => c4AllocatedCall(() => api.__test_disposeAuthorizationSshPolicy(state.ssh, derive.result.value)));
+  }
+  const afterPolicyDisposeProvenance = c4RawProvenanceState(
+    tracker,
+    state.ssh,
+    derive.result.ok ? derive.result.value : null
+  );
+  const disposeSyntax = c3LifecyclePhase(tracker, "disposeSyntax", state.ssh, environment.calls,
+    () => c4AllocatedCall(() => api.__test_disposeAuthorizationSshSyntax(state.ssh, syntax)));
+  const afterDispose = inspect(state);
+  const afterDisposeProvenance = c4RawProvenanceState(
+    tracker,
+    state.ssh,
+    derive.result.ok ? derive.result.value : null
+  );
+  const lifecycle = c3LifecycleSummary(tracker);
+  tracker.c4RawReferences.syntax = null;
+  tracker.c4RawReferences.policy = null;
+  tracker.c4RawReferences.snapshot = null;
+  tracker.c4RawReferences.registry = null;
+  tracker.c4RawReferences = null;
+  return {
+    syntax: { ok: syntaxCall.result.ok, trackedBuffersZero: syntaxCall.trackedBuffersZero },
+    derive: {
+      ok: derive.result.ok,
+      error: derive.result.error || null,
+      trackedBuffersZero: derive.trackedBuffersZero,
+      trackedBufferCount: derive.trackedBufferCount,
+      forbiddenAllocations: c4ForbiddenAllocationView(derive.allocations)
+    },
+    disposePolicy: disposePolicy && {
+      ok: disposePolicy.result.ok,
+      error: disposePolicy.result.error || null,
+      trackedBuffersZero: disposePolicy.trackedBuffersZero
+    },
+    disposeSyntax: {
+      ok: disposeSyntax.result.ok,
+      error: disposeSyntax.result.error || null,
+      trackedBuffersZero: disposeSyntax.trackedBuffersZero
+    },
+    afterDerive,
+    afterDispose,
+    provenance: {
+      afterDerive: afterDeriveProvenance,
+      afterPolicyDispose: afterPolicyDisposeProvenance,
+      afterDispose: afterDisposeProvenance
+    },
+    lifecycle,
+    coverageOracle
+  };
+}
+
+function c4PolicyDisposeAmbiguity() {
+  const fixture = c4PolicyFixture();
+  if (!fixture.syntax.result.ok || !fixture.policy || !fixture.policy.result.ok) {
+    return { setupFailed: true };
+  }
+  const tracker = c3CreateLifecycleTracker();
+  tracker.c4RawReferences = {
+    graph: fixture.state.ssh,
+    syntax: fixture.syntax.result.value,
+    policy: fixture.policy.result.value,
+    snapshot: fixture.state.snapshot,
+    registry: null,
+    registryStable: true
+  };
+  const dispose = c3LifecyclePhase(tracker, "c4DisposeAmbiguity", fixture.state.ssh,
+    fixture.environment.calls, () => c4AllocatedRawCall(() => api.__test_disposeAuthorizationSshPolicy(
+      fixture.state.ssh,
+      fixture.policy.result.value
+    )), { kind: "registryDeleteAfter", identity: "policy" });
+  const provenanceAfterDelete = c4RawProvenanceState(
+    tracker,
+    fixture.state.ssh,
+    fixture.policy.result.value
+  );
+  const afterDelete = inspect(fixture.state);
+  fixture.policyDisposed = provenanceAfterDelete.policy.present === false;
+  const syntaxCleanup = c3LifecyclePhase(tracker, "c4DisposeAmbiguitySyntaxCleanup", fixture.state.ssh,
+    fixture.environment.calls, () => c4AllocatedCall(() => api.__test_disposeAuthorizationSshSyntax(
+      fixture.state.ssh,
+      fixture.syntax.result.value
+    )));
+  const afterCleanup = inspect(fixture.state);
+  const provenanceAfterCleanup = c4RawProvenanceState(
+    tracker,
+    fixture.state.ssh,
+    fixture.policy.result.value
+  );
+  const terminalCalls = new nativeArray();
+  const terminalInput = c4TrapInput("exact", terminalCalls);
+  const followUp = c4AllocatedCall(() => api.__test_deriveAuthorizationSshSyntax(
+    fixture.state.ssh,
+    terminalInput.pathOperations,
+    terminalInput.sourceOperations
+  ));
+  const lifecycle = c3LifecycleSummary(tracker);
+  tracker.c4RawReferences.syntax = null;
+  tracker.c4RawReferences.policy = null;
+  tracker.c4RawReferences.snapshot = null;
+  tracker.c4RawReferences.registry = null;
+  tracker.c4RawReferences = null;
+  const disposePhase = lifecycle.phases.find((entry) => entry.name === "c4DisposeAmbiguity");
+  return {
+    setupFailed: false,
+    result: { ok: dispose.result.ok, error: dispose.result.error || null },
+    rawErrorAudit: dispose.rawErrorAudit,
+    faultTriggered: disposePhase.faultTriggered,
+    provenanceAfterDelete,
+    provenanceAfterCleanup,
+    syntaxCleanup: {
+      ok: syntaxCleanup.result.ok,
+      error: syntaxCleanup.result.error || null,
+      trackedBuffersZero: syntaxCleanup.trackedBuffersZero
+    },
+    graphFailed: afterDelete.ssh.failed && afterCleanup.ssh.failed,
+    snapshotFailed: afterDelete.snapshot.failed && afterCleanup.snapshot.failed,
+    authorizationEntryCount: afterCleanup.snapshot.authorizationEntryCount,
+    buffersZero: c4RunnerOwnedLifecycleBytesZero(lifecycle),
+    followUp: {
+      ok: followUp.result.ok,
+      error: followUp.result.error || null,
+      allocations: followUp.allocations,
+      calls: terminalCalls.length,
+      trackedBuffersZero: followUp.trackedBuffersZero
+    }
+  };
+}
+
+function c4PolicyFixture() {
+  const binding = c4Binding();
+  const account = c4ProjectedAccount(binding).core;
+  const state = fresh();
+  const source = c4SafeLines() + "Match User gccgw-japan-repair-ci Group ops\n";
+  const environment = c3Environment([[C3_ROOT, source]], []);
+  const input = c4OperationInput(environment);
+  const syntax = c4AllocatedCall(() => api.__test_deriveAuthorizationSshSyntax(
+    state.ssh,
+    input.pathOperations,
+    input.sourceOperations
+  ));
+  const policy = syntax.result.ok
+    ? c4AllocatedCall(() => api.__test_deriveAuthorizationSshPolicy(state.ssh, syntax.result.value, account))
+    : null;
+  return { state, environment, syntax, policy, policyDisposed: false };
+}
+
+function c4PolicyDisposeCleanup(fixture, label) {
+  const outcomes = new nativeArray();
+  if (fixture.policy && fixture.policy.result.ok && fixture.policyDisposed === false) {
+    const disposed = safe(() => api.__test_disposeAuthorizationSshPolicy(
+      fixture.state.ssh,
+      fixture.policy.result.value
+    ));
+    fixture.policyDisposed = disposed.ok;
+    outcomes.push({ label: label + "-policy", ok: disposed.ok, error: disposed.error || null });
+  }
+  if (fixture.syntax.result.ok) {
+    const disposed = safe(() => api.__test_disposeAuthorizationSshSyntax(
+      fixture.state.ssh,
+      fixture.syntax.result.value
+    ));
+    outcomes.push({ label: label + "-syntax", ok: disposed.ok, error: disposed.error || null });
+  }
+  return outcomes;
+}
+
+function c4PolicyDisposeWitness(kind) {
+  const first = c4PolicyFixture();
+  const needsSecond = kind === "wrong-graph" || kind === "foreign" || kind === "disposed";
+  const second = needsSecond ? c4PolicyFixture() : null;
+  if (!first.syntax.result.ok || !first.policy || !first.policy.result.ok
+    || (second && (!second.syntax.result.ok || !second.policy || !second.policy.result.ok))) {
+    return { kind, setupFailed: true };
+  }
+  let target = first;
+  let candidate = first.policy.result.value;
+  let preDispose = null;
+  if (kind === "plain") candidate = {};
+  if (kind === "clone") candidate = nativeObject.assign(
+    nativeObject.create(nativeObject.getPrototypeOf(first.policy.result.value)),
+    first.policy.result.value
+  );
+  if (kind === "proxy") candidate = new nativeProxy(first.policy.result.value, {});
+  if (kind === "syntax-as-policy") candidate = first.syntax.result.value;
+  if (kind === "wrong-graph") {
+    target = second;
+    candidate = first.policy.result.value;
+  }
+  if (kind === "foreign") candidate = second.policy.result.value;
+  if (kind === "disposed" || kind === "double") {
+    const disposed = safe(() => api.__test_disposeAuthorizationSshPolicy(
+      first.state.ssh,
+      first.policy.result.value
+    ));
+    first.policyDisposed = disposed.ok;
+    preDispose = { ok: disposed.ok, error: disposed.error || null };
+    if (kind === "disposed") target = second;
+  }
+  const callsBefore = target.environment.calls.length;
+  const attempted = c4AllocatedRawCall(() => api.__test_disposeAuthorizationSshPolicy(
+    target.state.ssh,
+    candidate
+  ));
+  const terminalEnvironment = c3Environment([[C3_ROOT, c4SafeLines()]], []);
+  const terminalInput = c4OperationInput(terminalEnvironment);
+  const followUp = c4AllocatedCall(() => api.__test_deriveAuthorizationSshSyntax(
+    target.state.ssh,
+    terminalInput.pathOperations,
+    terminalInput.sourceOperations
+  ));
+  const cleanup = c4PolicyDisposeCleanup(first, "first");
+  if (second) cleanup.push(...c4PolicyDisposeCleanup(second, "second"));
+  return {
+    kind,
+    setupFailed: false,
+    preDispose,
+    attempted: { ok: attempted.result.ok, error: attempted.result.error || null },
+    rawErrorAudit: attempted.rawErrorAudit,
+    allocations: attempted.allocations,
+    trackedBuffersZero: attempted.trackedBuffersZero,
+    operationDelta: target.environment.calls.length - callsBefore,
+    terminal: inspect(target.state).snapshot.failed,
+    followUp: {
+      ok: followUp.result.ok,
+      error: followUp.result.error || null,
+      allocations: followUp.allocations,
+      calls: terminalEnvironment.calls.length
+    },
+    cleanup
+  };
+}
+
+function c4PolicyDisposeMatrix() {
+  return [
+    "plain", "clone", "proxy", "syntax-as-policy",
+    "wrong-graph", "foreign", "disposed", "double"
+  ].map((kind) => c4PolicyDisposeWitness(kind));
+}
+
+function c4PrivateBudget(source, accountOverrides, captureMatcherLedger = false) {
+  const binding = c4Binding();
+  const account = c4ProjectedAccount(binding, accountOverrides).core;
+  const state = fresh();
+  const environment = c3Environment([[C3_ROOT, source]], []);
+  const input = c4OperationInput(environment);
+  const syntax = safe(() => api.__test_deriveAuthorizationSshSyntax(
+    state.ssh,
+    input.pathOperations,
+    input.sourceOperations
+  ));
+  if (!syntax.ok) return { syntax: { ok: false, error: syntax.error } };
+  const tracker = c3CreateLifecycleTracker();
+  tracker.captureMatcherLedger = captureMatcherLedger;
+  const policy = c3LifecyclePhase(tracker, "c4BudgetDerive", state.ssh, environment.calls,
+    () => c4AllocatedCall(() => api.__test_deriveAuthorizationSshPolicy(
+      state.ssh,
+      syntax.value,
+      account
+    ), false));
+  const afterPolicy = inspect(state);
+  if (policy.result.ok) safe(() => api.__test_disposeAuthorizationSshPolicy(state.ssh, policy.result.value));
+  safe(() => api.__test_disposeAuthorizationSshSyntax(state.ssh, syntax.value));
+  const lifecycle = c3LifecycleSummary(tracker);
+  const phase = lifecycle.phases.find((entry) => entry.name === "c4BudgetDerive");
+  const terminalEnvironment = c3Environment([[C3_ROOT, "Match all\n"]], []);
+  const terminalInput = c4OperationInput(terminalEnvironment);
+  const followUp = policy.result.ok ? null : c4AllocatedCall(() => api.__test_deriveAuthorizationSshSyntax(
+    state.ssh,
+    terminalInput.pathOperations,
+    terminalInput.sourceOperations
+  ));
+  return {
+    syntax: { ok: true },
+    policy: { ok: policy.result.ok, error: policy.result.error || null },
+    fixedEnvelopes: afterPolicy.snapshot.fixedEnvelopeCount,
+    semanticReserves: phase.progress.semanticReserves,
+    comparisons: afterPolicy.snapshot.sshMatchComparisonCount,
+    attempts: phase.work.attempts,
+    reservations: phase.work.reservations,
+    completions: phase.work.completions,
+    reserveThrows: phase.work.throws,
+    reserveBeforeComplete: phase.work.orderingValid,
+    matcherAttempts: phase.matcher.attempts,
+    matcherCompletions: phase.matcher.completions,
+    matcherThrows: phase.matcher.throws,
+    matcherOrderingValid: phase.matcher.orderingValid,
+    matcherLedger: phase.matcherLedger || null,
+    wildcardInvocations: afterPolicy.snapshot.wildcardInvocationCount,
+    wildcardAlignedComparisons: afterPolicy.snapshot.wildcardAlignedComparisonCount,
+    lastAttemptStamp: phase.work.lastAttemptStamp,
+    lastCompletionStamp: phase.work.lastCompletionStamp,
+    finalStamp: phase.finalStamp,
+    traceLength: policy.trace.length,
+    terminal: afterPolicy.snapshot.failed,
+    followUp: followUp && {
+      ok: followUp.result.ok,
+      error: followUp.result.error || null,
+      allocations: followUp.allocations,
+      calls: terminalEnvironment.calls.length
+    }
+  };
+}
+
+function c4TrapInput(shape = "exact", calls = []) {
+  const operation = (name) => () => {
+    c4InjectedOperationCount += 1;
+    calls.push(name);
+    throw new Error("C4 rejected input performed an operation");
+  };
+  const pathOperations = {
+    lstat: operation("lstat"),
+    open: operation("open"),
+    fstat: operation("fstat"),
+    read: operation("read"),
+    close: operation("close")
+  };
+  const sourceOperations = {
+    readDirectory: operation("readDirectory"),
+    validateSudoers: operation("validateSudoers")
+  };
+  if (shape === "path-extra") pathOperations.extra = operation("extra");
+  if (shape === "source-extra") sourceOperations.extra = operation("extra");
+  if (shape === "top-missing") return { pathOperations };
+  if (shape === "top-extra") return { pathOperations, sourceOperations, extra: true };
+  return { pathOperations, sourceOperations };
+}
+
+function c4ProxyCounters() {
+  return { get: 0, ownKeys: 0, getOwnPropertyDescriptor: 0, getPrototypeOf: 0 };
+}
+
+function c4UnobservedProxy(value, counters) {
+  return new nativeProxy(value, {
+    get(target, property, receiver) {
+      counters.get += 1;
+      return Reflect.get(target, property, receiver);
+    },
+    ownKeys(target) {
+      counters.ownKeys += 1;
+      return Reflect.ownKeys(target);
+    },
+    getOwnPropertyDescriptor(target, property) {
+      counters.getOwnPropertyDescriptor += 1;
+      return Reflect.getOwnPropertyDescriptor(target, property);
+    },
+    getPrototypeOf(target) {
+      counters.getPrototypeOf += 1;
+      return Reflect.getPrototypeOf(target);
+    }
+  });
+}
+
+function c4ShapeWitness(name, operation, calls, proxyCounters = null) {
+  const result = c4AllocatedPublicCall(operation);
+  return {
+    name,
+    ok: result.result.ok,
+    error: result.result.error || null,
+    allocations: result.allocations,
+    calls: calls.length,
+    publicCalls: result.publicCalls,
+    rawErrorAudit: result.rawErrorAudit,
+    contractErrorEvents: result.publicAudit.contractErrorEvents,
+    proxyCounters: proxyCounters === null ? null : { ...proxyCounters }
+  };
+}
+
+function c4PublicShapeMatrix() {
+  const binding = c4Binding();
+  const branded = c4ProjectedAccount(binding).core;
+  const plain = c4AccountRecord();
+  const clone = nativeJSON.parse(nativeJSON.stringify(branded));
+  const frozen = c4FrozenAccountLookalike(branded);
+  const proxy = new nativeProxy(branded, {});
+  const nativeAccount = c4NativeAccountCore().core;
+  const legacyClosure = {
+    schemaVersion: "1", type: "japan_ci_sshd_source_closure", rootConfig: C3_ROOT, files: []
+  };
+  const legacyCoverage = {
+    schemaVersion: "1", type: "japan_ci_sshd_match_coverage",
+    username: "gccgw-japan-repair-ci", groupIds: [], branches: []
+  };
+  const legacyTopology = {
+    schemaVersion: "1", type: "japan_ci_ssh_authorization_topology"
+  };
+  const witnesses = new nativeArray();
+  function add(name, operation, calls, proxyCounters = null) {
+    witnesses.push(c4ShapeWitness(name, operation, calls, proxyCounters));
+  }
+  let calls = [];
+  add("include-old-caller-record", () => api.buildCanonicalSshIncludeClosure(legacyClosure), calls);
+  calls = [];
+  add("include-missing-input", () => api.buildCanonicalSshIncludeClosure(), calls);
+  calls = [];
+  add("include-top-missing", () => api.buildCanonicalSshIncludeClosure(c4TrapInput("top-missing", calls)), calls);
+  calls = [];
+  add("include-top-extra", () => api.buildCanonicalSshIncludeClosure(c4TrapInput("top-extra", calls)), calls);
+  calls = [];
+  add("include-path-extra", () => api.buildCanonicalSshIncludeClosure(c4TrapInput("path-extra", calls)), calls);
+  calls = [];
+  add("include-source-extra", () => api.buildCanonicalSshIncludeClosure(c4TrapInput("source-extra", calls)), calls);
+  calls = [];
+  add("include-overload", () => api.buildCanonicalSshIncludeClosure(c4TrapInput("exact", calls), "overload"), calls);
+  for (const [label, account] of [
+    ["plain", plain],
+    ["clone", clone],
+    ["frozen-lookalike", frozen],
+    ["proxy", proxy],
+    ["native", nativeAccount]
+  ]) {
+    const accountLabel = label === "native"
+      ? "native-account"
+      : label === "frozen-lookalike"
+        ? "frozen-lookalike"
+        : "unbranded-" + label;
+    calls = [];
+    add("coverage-" + accountLabel,
+      () => api.buildCanonicalSshMatchCoverage(account, c4TrapInput("exact", calls)), calls);
+    calls = [];
+    add("topology-" + accountLabel,
+      () => api.buildCanonicalSshTopology(account, binding, c4TrapInput("exact", calls)), calls);
+  }
+  calls = [];
+  add("coverage-missing-input", () => api.buildCanonicalSshMatchCoverage(branded), calls);
+  calls = [];
+  add("coverage-swapped", () => api.buildCanonicalSshMatchCoverage(c4TrapInput("exact", calls), branded), calls);
+  calls = [];
+  add("coverage-binding-in-input", () => api.buildCanonicalSshMatchCoverage(branded, binding), calls);
+  calls = [];
+  add("coverage-old-caller-record-in-input",
+    () => api.buildCanonicalSshMatchCoverage(branded, legacyCoverage), calls);
+  calls = [];
+  add("coverage-top-missing", () => api.buildCanonicalSshMatchCoverage(branded, c4TrapInput("top-missing", calls)), calls);
+  calls = [];
+  add("coverage-top-extra", () => api.buildCanonicalSshMatchCoverage(branded, c4TrapInput("top-extra", calls)), calls);
+  calls = [];
+  add("coverage-path-extra", () => api.buildCanonicalSshMatchCoverage(branded, c4TrapInput("path-extra", calls)), calls);
+  calls = [];
+  add("coverage-source-extra", () => api.buildCanonicalSshMatchCoverage(branded, c4TrapInput("source-extra", calls)), calls);
+  calls = [];
+  add("coverage-overload", () => api.buildCanonicalSshMatchCoverage(branded, c4TrapInput("exact", calls), "overload"), calls);
+  calls = [];
+  add("topology-missing-binding", () => api.buildCanonicalSshTopology(branded), calls);
+  calls = [];
+  add("topology-missing-input", () => api.buildCanonicalSshTopology(branded, binding), calls);
+  calls = [];
+  add("topology-input-in-binding",
+    () => api.buildCanonicalSshTopology(branded, c4TrapInput("exact", calls)), calls);
+  calls = [];
+  add("topology-binding-in-input", () => api.buildCanonicalSshTopology(branded, binding, binding), calls);
+  calls = [];
+  add("topology-binding-input-swapped",
+    () => api.buildCanonicalSshTopology(branded, c4TrapInput("exact", calls), binding), calls);
+  calls = [];
+  add("topology-old-binding-record",
+    () => api.buildCanonicalSshTopology(branded, legacyTopology, c4TrapInput("exact", calls)), calls);
+  calls = [];
+  add("topology-old-caller-record-in-input",
+    () => api.buildCanonicalSshTopology(branded, binding, legacyTopology), calls);
+  calls = [];
+  add("topology-top-extra", () => api.buildCanonicalSshTopology(branded, binding, c4TrapInput("top-extra", calls)), calls);
+  calls = [];
+  add("topology-path-extra", () => api.buildCanonicalSshTopology(branded, binding, c4TrapInput("path-extra", calls)), calls);
+  calls = [];
+  add("topology-source-extra", () => api.buildCanonicalSshTopology(branded, binding, c4TrapInput("source-extra", calls)), calls);
+  calls = [];
+  add("topology-overload", () => api.buildCanonicalSshTopology(branded, binding, c4TrapInput("exact", calls), "overload"), calls);
+
+  const bindingShapes = new nativeArray();
+  bindingShapes.push(["null", null, null]);
+  const missingAuthorization = { ...binding };
+  delete missingAuthorization.sshAuthorization;
+  bindingShapes.push(["missing-authorization", missingAuthorization, null]);
+  const missingNested = { ...binding.sshAuthorization };
+  delete missingNested.effectiveConfigSha256;
+  bindingShapes.push(["missing-nested", { ...binding, sshAuthorization: missingNested }, null]);
+  bindingShapes.push(["top-extra", { ...binding, extra: true }, null]);
+  bindingShapes.push(["nested-extra", {
+    ...binding,
+    sshAuthorization: { ...binding.sshAuthorization, extra: true }
+  }, null]);
+  const topProxyCounters = c4ProxyCounters();
+  bindingShapes.push(["top-proxy", c4UnobservedProxy(binding, topProxyCounters), topProxyCounters]);
+  const nestedProxyCounters = c4ProxyCounters();
+  bindingShapes.push(["nested-proxy", {
+    ...binding,
+    sshAuthorization: c4UnobservedProxy(binding.sshAuthorization, nestedProxyCounters)
+  }, nestedProxyCounters]);
+  for (const [label, candidateBinding, proxyCounters] of bindingShapes) {
+    calls = [];
+    add("topology-binding-" + label,
+      () => api.buildCanonicalSshTopology(branded, candidateBinding, c4TrapInput("exact", calls)),
+      calls,
+      proxyCounters);
+  }
+  return witnesses;
+}
+
+function c4CanonicalBindingValueDriftMatrix() {
+  const binding = c4Binding();
+  const account = c4ProjectedAccount(binding).core;
+  const alternatePath = "/etc/ssh/authorized_keys/gccgw-japan-repair-ci-alternate";
+  const cases = [
+    ["expected-euid", { ...binding, expectedEuid: 1 }],
+    ["ssh-algorithm", {
+      ...binding,
+      sshAuthorization: { ...binding.sshAuthorization, algorithm: "ssh-rsa" }
+    }],
+    ["ssh-authorized-keys-file", {
+      ...binding,
+      sshAuthorization: { ...binding.sshAuthorization, authorizedKeysFile: alternatePath }
+    }],
+    ["paths-authorized-keys", {
+      ...binding,
+      paths: { ...binding.paths, authorizedKeys: alternatePath }
+    }],
+    ["synchronized-authorized-keys-path", {
+      ...binding,
+      paths: { ...binding.paths, authorizedKeys: alternatePath },
+      sshAuthorization: { ...binding.sshAuthorization, authorizedKeysFile: alternatePath }
+    }],
+    ["authorized-keys-policy-mode", {
+      ...binding,
+      pathPolicies: {
+        ...binding.pathPolicies,
+        authorizedKeys: { ...binding.pathPolicies.authorizedKeys, mode: 0o400 }
+      }
+    }],
+    ["authorized-keys-policy-uid", {
+      ...binding,
+      pathPolicies: {
+        ...binding.pathPolicies,
+        authorizedKeys: { ...binding.pathPolicies.authorizedKeys, uid: 1 }
+      }
+    }],
+    ["authorized-keys-policy-gid", {
+      ...binding,
+      pathPolicies: {
+        ...binding.pathPolicies,
+        authorizedKeys: { ...binding.pathPolicies.authorizedKeys, gid: 1 }
+      }
+    }],
+    ["authorized-keys-policy-nlink", {
+      ...binding,
+      pathPolicies: {
+        ...binding.pathPolicies,
+        authorizedKeys: { ...binding.pathPolicies.authorizedKeys, nlink: 2 }
+      }
+    }],
+    ["authorization-marker", { ...binding, authorizationMarker: "wrong-marker" }]
+  ];
+  return cases.map(([name, candidate]) => {
+    const calls = new nativeArray();
+    const call = c4AllocatedPublicCall(() => api.buildCanonicalSshTopology(
+      account,
+      candidate,
+      c4TrapInput("exact", calls)
+    ));
+    return {
+      name,
+      result: { ok: call.result.ok, error: call.result.error || null },
+      allocations: call.allocations,
+      calls: calls.length,
+      sourceTraversalCount: calls.filter((name) =>
+        name === "readDirectory" || name === "validateSudoers").length,
+      publicCalls: call.publicCalls,
+      trackedBuffersZero: call.trackedBuffersZero,
+      rawErrorAudit: call.rawErrorAudit,
+      contractErrorEvents: call.publicAudit.contractErrorEvents,
+      initialBoundaryCaptureCount: call.publicAudit.initialBoundaryCaptureCount,
+      initialShapeCaptureCount: call.publicAudit.initialShapeCaptureCount,
+      authorizationEntryCount: call.publicAudit.authorizationEntryCount,
+      snapshotFailed: call.publicAudit.snapshotFailed
+    };
+  });
+}
+
+function c4MatchScenario() {
+  c4ScenarioInvocationCount += 1;
+  const source = [
+    "Match User gccgw-japan-repair-ci",
+    "Match User gccgw-japan-*-ci",
+    "Match User *,!root",
+    "Match User !root",
+    "Match User *,!gccgw-japan-repair-ci",
+    "Match Group ops",
+    "Match Group o?s,!wheel",
+    "Match Group *,!wheel",
+    "Match Group !wheel",
+    "Match Group *,!ops",
+    "Match Group !ops",
+    "Match User gccgw-japan-repair-ci Group ops",
+    "Match all",
+    "Match User root",
+    "Match Group wheel",
+    "Match User gccgw-japan-repair-ci Group wheel",
+    "Match Group 975"
+  ].join("\n") + "\n";
+  const coverage = c4Coverage(source);
+  const independent = c4Coverage("Match Group ops\n", { groupIds: [2200, 975], groupNames: ["repair", "ops"] });
+  const numericName = c4Coverage("Match Group 975\n", { groupIds: [2200, 975], groupNames: ["ops", "975"] });
+  const nestedIncludeOracle = {
+    schemaVersion: "1",
+    type: "japan_ci_sshd_match_coverage",
+    username: "gccgw-japan-repair-ci",
+    groupIds: [975, 1100],
+    branches: [
+      {
+        ordinal: 0,
+        sourceOrdinal: 2,
+        lineNumber: 1,
+        conditions: [{ name: "all", patterns: [] }],
+        accountDisposition: "exact_user",
+        variableDimensions: []
+      },
+      {
+        ordinal: 1,
+        sourceOrdinal: 2,
+        lineNumber: 2,
+        conditions: [{ name: "group", patterns: [{ negated: false, value: "ops" }] }],
+        accountDisposition: "exact_user",
+        variableDimensions: []
+      },
+      {
+        ordinal: 2,
+        sourceOrdinal: 1,
+        lineNumber: 2,
+        conditions: [{ name: "user", patterns: [{ negated: false, value: "gccgw-japan-repair-ci" }] }],
+        accountDisposition: "exact_user",
+        variableDimensions: []
+      },
+      {
+        ordinal: 3,
+        sourceOrdinal: 1,
+        lineNumber: 3,
+        conditions: [{ name: "group", patterns: [{ negated: false, value: "wheel" }] }],
+        accountDisposition: "disjoint",
+        variableDimensions: []
+      },
+      {
+        ordinal: 4,
+        sourceOrdinal: 0,
+        lineNumber: 2,
+        conditions: [{ name: "user", patterns: [{ negated: false, value: "root" }] }],
+        accountDisposition: "disjoint",
+        variableDimensions: []
+      }
+    ]
+  };
+  const nestedIncludeCoverage = c4CoverageFromFiles([
+    [C3_ROOT, "Include child.conf\nMatch User root\n"],
+    ["/etc/ssh/child.conf", "Include nested.conf\nMatch User gccgw-japan-repair-ci\nMatch Group wheel\n"],
+    ["/etc/ssh/nested.conf", "Match all\nMatch Group ops\n"]
+  ], []);
+  const privateAttempts = [
+    "plain", "clone", "frozen-lookalike", "proxy",
+    "wrong-graph", "foreign-syntax", "disposed-syntax", "live-policy-as-syntax",
+    "disposed-policy-as-syntax", "reused-owner"
+  ]
+    .map((kind) => c4PrivateAttempt(kind));
+  const groupIds = [975];
+  const groupNames = ["g00"];
+  for (let index = 1; index < 32; index += 1) {
+    groupIds.push(1000 + index);
+    groupNames.push("g" + String(index).padStart(2, "0"));
+  }
+  const branch = "Match Group g31\n";
+  const finalPatterns = new nativeArray();
+  for (let index = 0; index < 32; index += 1) finalPatterns.push("x" + String(index).padStart(2, "0"));
+  finalPatterns.push("g00");
+  const budgetAccount = { groupIds, groupNames };
+  const maximum = c4PrivateBudget(c4SafeLines() + branch.repeat(4096), budgetAccount);
+  const overflow = c4PrivateBudget(c4SafeLines() + branch.repeat(4095)
+    + "Match Group " + finalPatterns.join(",") + "\n", budgetAccount);
+  const userOrdering = c4PrivateBudget(c4SafeLines()
+    + "Match User gccgw-japan-repair-ci,!x00\n", {}, true);
+  const lifecycle = c4PolicyLifecycle();
+  const lifecyclePhase = lifecycle.lifecycle.phases.find((entry) => entry.name === "derivePolicy");
+  return {
+    scenario: "match",
+    publicArities: {
+      include: api.buildCanonicalSshIncludeClosure.length,
+      coverage: api.buildCanonicalSshMatchCoverage.length,
+      topology: api.buildCanonicalSshTopology.length
+    },
+    coverage,
+    includeSnapshotSuccess: c4Include(c4SafeLines()),
+    includeSnapshotFailure: c4Include("UnknownDirective x\n"),
+    coverageSnapshotFailure: c4Coverage("UnknownDirective x\n"),
+    independent,
+    numericName,
+    nestedInclude: {
+      coverage: nestedIncludeCoverage,
+      oracle: nestedIncludeOracle,
+      oracleSha256: "19e389d5b7fddc56308b0440c8859311147da47d7169cf2026278c79b443d4e9",
+      actualSha256: nestedIncludeCoverage.result.ok
+        ? c4HashCanonical(nestedIncludeCoverage.result.value)
+        : null
+    },
+    privateAttempts,
+    nativePolicy: c4NativePolicyPositive(),
+    nativeNumericPolicy: c4NativePolicyPositive("975ops ops\n", "975ops"),
+    lifecycle,
+    lifecycleCalibration: {
+      fixedReserves: lifecyclePhase.fixedReserves,
+      fixedCompletions: lifecyclePhase.fixedCompletions,
+      semanticReserves: lifecyclePhase.progress.semanticReserves,
+      preimages: c4LifecyclePreimageAudit(lifecycle.lifecycle, "derivePolicy"),
+      preimagePendingCount: lifecyclePhase.preimagePendingCount,
+      coverageOracle: lifecycle.coverageOracle,
+      hashes: lifecyclePhase.hashes,
+      fills: lifecyclePhase.fills.length
+    },
+    faultMatrix: c4PolicyFaultMatrix(lifecycle.lifecycle),
+    disposeMatrix: c4PolicyDisposeMatrix(),
+    disposeAmbiguity: c4PolicyDisposeAmbiguity(),
+    shapeWitnesses: c4PublicShapeMatrix(),
+    budget: {
+      userOrdering,
+      maximum: {
+        ok: maximum.policy && maximum.policy.ok,
+        error: maximum.policy && maximum.policy.error,
+        comparisons: maximum.comparisons,
+        attempts: maximum.attempts,
+        reservations: maximum.reservations,
+        completions: maximum.completions,
+        reserveThrows: maximum.reserveThrows,
+        reserveBeforeComplete: maximum.reserveBeforeComplete,
+        matcherAttempts: maximum.matcherAttempts,
+        matcherCompletions: maximum.matcherCompletions,
+        matcherThrows: maximum.matcherThrows,
+        matcherOrderingValid: maximum.matcherOrderingValid,
+        wildcardInvocations: maximum.wildcardInvocations,
+        wildcardAlignedComparisons: maximum.wildcardAlignedComparisons,
+        fixedEnvelopes: maximum.fixedEnvelopes,
+        semanticReserves: maximum.semanticReserves,
+        traceLength: maximum.traceLength,
+        terminal: maximum.terminal
+      },
+      overflow: {
+        ok: overflow.policy && overflow.policy.ok,
+        error: overflow.policy && overflow.policy.error,
+        comparisons: overflow.comparisons,
+        attempts: overflow.attempts,
+        reservations: overflow.reservations,
+        completions: overflow.completions,
+        reserveThrows: overflow.reserveThrows,
+        reserveBeforeComplete: overflow.reserveBeforeComplete,
+        matcherAttempts: overflow.matcherAttempts,
+        matcherCompletions: overflow.matcherCompletions,
+        matcherThrows: overflow.matcherThrows,
+        matcherOrderingValid: overflow.matcherOrderingValid,
+        wildcardInvocations: overflow.wildcardInvocations,
+        wildcardAlignedComparisons: overflow.wildcardAlignedComparisons,
+        semanticReserves: overflow.semanticReserves,
+        lastAttemptStamp: overflow.lastAttemptStamp,
+        finalStamp: overflow.finalStamp,
+        traceLength: overflow.traceLength,
+        terminal: overflow.terminal,
+        followUp: overflow.followUp
+      }
+    }
+  };
+}
+
+function c4VariableScenario() {
+  c4ScenarioInvocationCount += 1;
+  const dimensions = ["Host", "Address", "LocalAddress", "LocalPort", "RDomain", "LocalNetwork"];
+  const values = ["*", "192.0.2.1", "192.0.2.2", "22", "repair", "192.0.2.0/24"];
+  const reversedConditions = dimensions.map((name, index) => [name, values[index]]).reverse();
+  const disjointSource = "Match User root " + reversedConditions.map(([name, value]) => name + " " + value).join(" ") + "\n";
+  const matchingSource = "Match User gccgw-japan-repair-ci " + reversedConditions.map(([name, value]) => name + " " + value).join(" ") + "\n";
+  const individual = dimensions.map((name, index) => ({
+    name: name.toLowerCase(),
+    result: c4Coverage("Match User gccgw-japan-repair-ci " + name + " " + values[index] + "\n"),
+    disjoint: c4Coverage("Match User root " + name + " " + values[index] + "\n"),
+    privateMatching: c4PrivateBudget(c4SafeLines() + "Match User gccgw-japan-repair-ci " + name + " " + values[index] + "\n", {}),
+    privateDisjoint: c4PrivateBudget(c4SafeLines() + "Match User root " + name + " " + values[index] + "\n", {})
+  }));
+  return {
+    scenario: "variable",
+    fixedOrder: ["host", "address", "localaddress", "localport", "rdomain", "localnetwork"],
+    disjoint: c4Coverage(disjointSource),
+    matching: c4Coverage(matchingSource),
+    variableOnly: c4Coverage("Match Host *\n"),
+    privateDisjoint: c4PrivateBudget(c4SafeLines() + disjointSource, {}),
+    privateMatching: c4PrivateBudget(c4SafeLines() + matchingSource, {}),
+    privateVariableOnly: c4PrivateBudget(c4SafeLines() + "Match Host *\n", {}),
+    individual
+  };
+}
+
+function c4EffectiveScenario() {
+  c4ScenarioInvocationCount += 1;
+  const safe = c4SafeLines();
+  const unsafe = c4SafeLines({
+    authenticationmethods: "password",
+    pubkeyauthentication: "no",
+    passwordauthentication: "yes",
+    kbdinteractiveauthentication: "yes",
+    disableforwarding: "no",
+    permittunnel: "yes",
+    authorizedkeysfile: "/alternate"
+  });
+  const exactUserCondition = [{
+    name: "user",
+    patterns: [{ negated: false, value: "gccgw-japan-repair-ci" }]
+  }];
+  const wildcardUserCondition = [{
+    name: "user",
+    patterns: [{ negated: false, value: "gccgw-japan-*-ci" }]
+  }];
+  const rootUserCondition = [{ name: "user", patterns: [{ negated: false, value: "root" }] }];
+  const repeatedGlobal = c4Topology(safe + unsafe);
+  const matchWins = c4Topology(unsafe + "Match User gccgw-japan-repair-ci\n" + safe, {
+    expectedCoverage: c4ExpectedCoverage([
+      c4ExpectedBranch(0, 12, exactUserCondition, "exact_user")
+    ])
+  });
+  const multipleMatch = c4Topology("Match User gccgw-japan-repair-ci\n" + safe
+    + "Match User gccgw-japan-*-ci\n" + unsafe, {
+    expectedCoverage: c4ExpectedCoverage([
+      c4ExpectedBranch(0, 1, exactUserCondition, "exact_user"),
+      c4ExpectedBranch(1, 13, wildcardUserCondition, "exact_user")
+    ])
+  });
+  const fallback = c4Topology(safe + "Match User gccgw-japan-repair-ci\n", {
+    expectedCoverage: c4ExpectedCoverage([
+      c4ExpectedBranch(0, 12, exactUserCondition, "exact_user")
+    ])
+  });
+  const defaults = c4Topology(c4SafeLines({
+    pubkeyauthentication: null,
+    hostbasedauthentication: null,
+    gssapiauthentication: null,
+    kerberosauthentication: null,
+    permituserenvironment: null,
+    permittunnel: null
+  }));
+  const disjointIgnoreSource = safe + "Match User root\n" + unsafe;
+  const disjointIgnore = c4Topology(disjointIgnoreSource, {
+    expectedCoverage: c4ExpectedCoverage([
+      c4ExpectedBranch(0, 12, rootUserCondition, "disjoint")
+    ])
+  });
+  const firstValueBase = c4SafeLines({ passwordauthentication: null });
+  const disjointThenExactSafeSource = firstValueBase
+    + "Match User root\nPasswordAuthentication yes\n"
+    + "Match User gccgw-japan-repair-ci\nPasswordAuthentication no\n";
+  const disjointThenExactUnsafeSource = firstValueBase
+    + "Match User root\nPasswordAuthentication no\n"
+    + "Match User gccgw-japan-repair-ci\nPasswordAuthentication yes\n";
+  const twoBranchCoverage = c4ExpectedCoverage([
+    c4ExpectedBranch(0, 11, rootUserCondition, "disjoint"),
+    c4ExpectedBranch(1, 13, exactUserCondition, "exact_user")
+  ]);
+  const disjointThenExactSafe = c4Topology(disjointThenExactSafeSource, {
+    expectedCoverage: twoBranchCoverage
+  });
+  const disjointThenExactUnsafe = c4Topology(disjointThenExactUnsafeSource, {
+    expectedCoverage: twoBranchCoverage
+  });
+  const sameExactSafeFirst = c4Topology(firstValueBase
+    + "Match User gccgw-japan-repair-ci\n"
+    + "PasswordAuthentication no\nPasswordAuthentication yes\n", {
+    expectedCoverage: c4ExpectedCoverage([
+      c4ExpectedBranch(0, 11, exactUserCondition, "exact_user")
+    ])
+  });
+  const matchAllSource = "Match all\n" + safe;
+  const matchAll = c4Topology(matchAllSource, {
+    expectedCoverage: c4ExpectedCoverage([
+      c4ExpectedBranch(0, 1, [{ name: "all", patterns: [] }], "exact_user")
+    ])
+  });
+  const kbdAlias = c4Topology(c4SafeLines({ kbdinteractiveauthentication: null })
+    + "KbdInteractiveAuthentication no\nChallengeResponseAuthentication yes\n");
+  const kbdAliasReject = c4Topology(c4SafeLines({ kbdinteractiveauthentication: null })
+    + "ChallengeResponseAuthentication yes\nKbdInteractiveAuthentication no\n");
+  const acceptEnv = [
+    c4Topology(safe + "AcceptEnv LANG\n"),
+    c4Topology(safe + "Match User gccgw-japan-repair-ci\nAcceptEnv LANG\n", {
+      expectedCoverage: c4ExpectedCoverage([
+        c4ExpectedBranch(0, 12, exactUserCondition, "exact_user")
+      ])
+    }),
+    c4Topology(safe + "Match User root\nAcceptEnv LANG\n", {
+      expectedCoverage: c4ExpectedCoverage([
+        c4ExpectedBranch(0, 12, rootUserCondition, "disjoint")
+      ])
+    })
+  ];
+  return {
+    scenario: "effective",
+    sourceFailureAudit: c4TopologyFailureAudit("source-effective", "not-called"),
+    repeatedGlobal,
+    matchWins,
+    multipleMatch,
+    fallback,
+    defaults,
+    disjointIgnore,
+    disjointThenExactSafe,
+    disjointThenExactUnsafe,
+    sameExactSafeFirst,
+    disjointIgnoreCoverage: c4Coverage(disjointIgnoreSource),
+    matchAll,
+    matchAllCoverage: c4Coverage(matchAllSource),
+    kbdAlias,
+    kbdAliasReject,
+    acceptEnv
+  };
+}
+
+function c4AuthorizationAncestorOperations() {
+  return [
+    ...c3A1FileOperations("body", "eof"),
+    ["lstat", "ancestor-0"],
+    ["lstat", "ancestor-1"],
+    ["lstat", "ancestor-2"],
+    ["lstat", "ancestor-3"]
+  ];
+}
+
+function c4AuthorizationAncestorOperationsThrough(role) {
+  const roles = ["ancestor-0", "ancestor-1", "ancestor-2", "ancestor-3"];
+  const index = roles.indexOf(role);
+  if (index === -1) throw new Error("unknown authorization ancestor role");
+  return [
+    ...c3A1FileOperations("body", "eof"),
+    ...roles.slice(0, index + 1).map((ancestorRole) => ["lstat", ancestorRole])
+  ];
+}
+
+function c4AuthorizationFileLstatOperations() {
+  return [...c4AuthorizationAncestorOperations(), ["lstat", "file-1"]];
+}
+
+function c4AuthorizationOperationFailureCalls(name) {
+  const throughLstat = c4AuthorizationFileLstatOperations();
+  const throughOpen = [...throughLstat, ["open", "file-1", "file"]];
+  const throughPreStat = [...throughOpen, ["fstat", "file-1", "pre"]];
+  const post = ["fstat", "file-1", "post"];
+  const close = ["close", "file-1"];
+  switch (name) {
+    case "auth-lstat-failure":
+    case "auth-nonregular": return throughLstat;
+    case "auth-open-failure": return throughOpen;
+    case "auth-pre-fstat-failure": return [...throughPreStat, close];
+    case "auth-read-failure": return [...throughPreStat, ["read", "file-1", "body-failure"], post, close];
+    case "auth-body-invalid-count": return [
+      ...throughPreStat, ["read", "file-1", "body-invalid-count"], post, close
+    ];
+    case "auth-eof-invalid-count": return [
+      ...throughPreStat, ["read", "file-1", "body"], ["read", "file-1", "eof-invalid-count"], post, close
+    ];
+    case "post-fstat-drift": return [
+      ...throughPreStat, ["read", "file-1", "body"], ["read", "file-1", "eof"],
+      ["fstat", "file-1", "post"], close
+    ];
+    case "early-eof": return [...throughPreStat, ["read", "file-1", "body-early-eof"], post, close];
+    case "trailing-byte": return [
+      ...throughPreStat, ["read", "file-1", "body"], ["read", "file-1", "eof-trailing-byte"], post, close
+    ];
+    case "close-failure": return c4ExpectedTopologyPathOperations();
+    case "wrong-fd": return [...throughOpen, ["fstat", "unrecognized-fd", "post"], close];
+    default: throw new Error("unknown authorization operation failure: " + name);
+  }
+}
+
+function c4TopologyFailureAudit(stage, verifyOutcome, authorizationOpenExpected = null, expectedCalls = null) {
+  const publicCalls = [
+    "topology", "snapshot", "graph:ssh", "graph:sudo", "deriveSyntax"
+  ];
+  if (stage !== "source-syntax") {
+    publicCalls.push("derivePolicy");
+    if (verifyOutcome !== "not-called") publicCalls.push("verify");
+    publicCalls.push("disposePolicy", "disposeSyntax");
+  }
+  const expectAuthorizationOpen = authorizationOpenExpected === null
+    ? stage !== "source-syntax" && stage !== "source-effective" && stage !== "authorization-metadata"
+    : authorizationOpenExpected;
+  const exactCalls = expectedCalls !== null
+    ? expectedCalls
+    : stage === "source-syntax" || stage === "source-effective"
+      ? c3A1FileOperations("body", "eof")
+      : stage === "authorization-metadata"
+        ? c4AuthorizationFileLstatOperations()
+        : stage === "authorization-ancestor" || stage === "authorization-operation"
+          ? null
+          : c4ExpectedTopologyPathOperations();
+  return {
+    stage,
+    publicCalls,
+    successfulOpenRoles: expectAuthorizationOpen ? ["file-0", "file-1"] : ["file-0"],
+    expectedCalls: exactCalls,
+    verifyAttempts: verifyOutcome === "not-called" ? 0 : 1,
+    verifySuccesses: verifyOutcome === "success" ? 1 : 0,
+    verifyFailures: verifyOutcome === "failure" ? 1 : 0
+  };
+}
+
+function c4TopologyScenario() {
+  c4ScenarioInvocationCount += 1;
+  const unsafe = [
+    ["authenticationmethods", "password"],
+    ["pubkeyauthentication", "no"],
+    ["passwordauthentication", "yes"],
+    ["kbdinteractiveauthentication", "yes"],
+    ["hostbasedauthentication", "yes"],
+    ["gssapiauthentication", "yes"],
+    ["kerberosauthentication", "yes"],
+    ["permituserenvironment", "yes"],
+    ["acceptenv", "LANG"],
+    ["forcecommand", "/bin/true"],
+    ["chrootdirectory", "/srv/chroot"],
+    ["disableforwarding", "no"],
+    ["permittunnel", "yes"],
+    ["authorizedkeysfile", "/alternate"],
+    ["authorizedkeyscommand", "/usr/bin/lookup"],
+    ["authorizedprincipalsfile", "/etc/ssh/principals"],
+    ["authorizedprincipalscommand", "/usr/bin/principals"],
+    ["trustedusercakeys", "/etc/ssh/ca.pub"]
+  ];
+  const sourceFailures = unsafe.map(([name, value]) => {
+    const overrides = {};
+    overrides[name] = value;
+    return {
+      name,
+      failureAudit: c4TopologyFailureAudit("source-effective", "not-called"),
+      probe: c4Topology(c4SafeLines(overrides))
+    };
+  });
+  for (const [name, overrides] of [
+    ["missing-authentication-methods", { authenticationmethods: null }],
+    ["authenticationmethods-publickey-password", { authenticationmethods: "publickey,password" }],
+    ["authenticationmethods-publickey-keyboard", { authenticationmethods: "publickey,keyboard-interactive" }],
+    ["authenticationmethods-multiple-alternatives", { authenticationmethods: "publickey,password publickey" }],
+    ["authenticationmethods-password-keyboard", { authenticationmethods: "password,keyboard-interactive" }],
+    ["missing-password-authentication", { passwordauthentication: null }],
+    ["missing-keyboard-interactive", { kbdinteractiveauthentication: null }],
+    ["challenge-response-authentication", {
+      kbdinteractiveauthentication: null,
+      challengeresponseauthentication: "yes"
+    }]
+  ]) sourceFailures.push({
+    name,
+    failureAudit: c4TopologyFailureAudit(
+      name === "authenticationmethods-multiple-alternatives" ? "source-syntax" : "source-effective",
+      "not-called"
+    ),
+    probe: c4Topology(c4SafeLines(overrides))
+  });
+  sourceFailures.push({
+    name: "missing-disable-forwarding",
+    failureAudit: c4TopologyFailureAudit("source-effective", "not-called"),
+    probe: c4Topology(c4SafeLines({ disableforwarding: null }))
+  });
+  sourceFailures.push({
+    name: "missing-authorized-keys",
+    failureAudit: c4TopologyFailureAudit("source-effective", "not-called"),
+    probe: c4Topology(c4SafeLines({ authorizedkeysfile: null }))
+  });
+  sourceFailures.push({
+    name: "two-authorized-keys",
+    failureAudit: c4TopologyFailureAudit("source-effective", "not-called"),
+    probe: c4Topology(c4SafeLines({ authorizedkeysfile: "/etc/ssh/authorized_keys/gccgw-japan-repair-ci /alternate" }))
+  });
+
+  const safe = c4SafeLines();
+  const exactUserCoverage = c4ExpectedCoverage([
+    c4ExpectedBranch(0, 12, [{
+      name: "user",
+      patterns: [{ negated: false, value: "gccgw-japan-repair-ci" }]
+    }], "exact_user")
+  ]);
+  const disjointCoverage = c4ExpectedCoverage([
+    c4ExpectedBranch(0, 12, [{
+      name: "user",
+      patterns: [{ negated: false, value: "root" }]
+    }], "disjoint")
+  ]);
+  const directiveMatchMatrix = unsafe.map(([name, value]) => {
+    const applicableSource = safe + "Match User gccgw-japan-repair-ci\n" + name + " " + value + "\n";
+    const disjointSource = safe + "Match User root\n" + name + " " + value + "\n";
+    return {
+      name,
+      applicable: {
+        coverage: c4Coverage(applicableSource),
+        failureAudit: c4TopologyFailureAudit("source-effective", "not-called"),
+        probe: c4Topology(applicableSource, { expectedCoverage: exactUserCoverage })
+      },
+      disjoint: {
+        coverage: c4Coverage(disjointSource),
+        probe: c4Topology(disjointSource, { expectedCoverage: disjointCoverage })
+      }
+    };
+  });
+  const canonical = c4AuthorizationFixture();
+  const alternate = c4AuthorizationFixture(9);
+  const badOption = nativeBuffer.from(canonical.lineText.replace("restrict,no-pty", "no-pty,restrict") + "\n", "ascii");
+  const unknownOption = nativeBuffer.from("unknown," + canonical.lineText + "\n", "ascii");
+  const escapeDrift = nativeBuffer.from(canonical.lineText.replace("command=\"", "command=\"\\") + "\n", "ascii");
+  const missingLf = nativeBuffer.from(canonical.lineText, "ascii");
+  const secondLine = nativeBuffer.concat([canonical.file, alternate.file]);
+  const duplicateLine = nativeBuffer.concat([canonical.file, canonical.file]);
+  const blankPrefix = nativeBuffer.concat([nativeBuffer.from("\n", "ascii"), canonical.file]);
+  const blankSuffix = nativeBuffer.concat([canonical.file, nativeBuffer.from("\n", "ascii")]);
+  const commentPrefix = nativeBuffer.concat([nativeBuffer.from("# comment\n", "ascii"), canonical.file]);
+  const commentSuffix = nativeBuffer.concat([canonical.file, nativeBuffer.from("# comment\n", "ascii")]);
+  const folded = nativeBuffer.from(canonical.lineText.slice(0, 20) + "\n" + canonical.lineText.slice(20) + "\n", "ascii");
+  const cr = nativeBuffer.from(canonical.lineText + "\r\n", "ascii");
+  const nul = nativeBuffer.concat([canonical.line, nativeBuffer.from([0]), nativeBuffer.from("\n", "ascii")]);
+  const unicode = nativeBuffer.concat([canonical.line, nativeBuffer.from([0xc3, 0xa9, 10])]);
+  const encodedStart = canonical.lineText.indexOf(" ssh-ed25519 ") + " ssh-ed25519 ".length;
+  const encodedEnd = canonical.lineText.lastIndexOf(" test-gate");
+  const invalidBase64Alphabet = nativeBuffer.from(
+    canonical.lineText.slice(0, encodedStart)
+      + "!" + canonical.lineText.slice(encodedStart + 1) + "\n", "ascii");
+  const noncanonicalBase64 = nativeBuffer.from(
+    canonical.lineText.slice(0, encodedEnd) + "=" + canonical.lineText.slice(encodedEnd) + "\n", "ascii");
+  const alignedExtraPadding = nativeBuffer.from(
+    canonical.lineText.slice(0, encodedEnd) + "====" + canonical.lineText.slice(encodedEnd) + "\n", "ascii");
+  function c4WireFixture(algorithmText, keyLength, trailingByte = false) {
+    const algorithm = nativeBuffer.from(algorithmText, "ascii");
+    const key = nativeBuffer.alloc(keyLength, 7);
+    const blob = nativeBuffer.alloc(4 + algorithm.length + 4 + key.length + (trailingByte ? 1 : 0));
+    blob.writeUInt32BE(algorithm.length, 0);
+    algorithm.copy(blob, 4);
+    blob.writeUInt32BE(key.length, 4 + algorithm.length);
+    key.copy(blob, 8 + algorithm.length);
+    if (trailingByte) blob[blob.length - 1] = 1;
+    algorithm.fill(0);
+    key.fill(0);
+    return blob;
+  }
+  const wrongWireAlgorithm = c4WireFixture("ssh-ed25518", 32);
+  const wrongWireLength = c4WireFixture("ssh-ed25519", 31);
+  const trailingWire = c4WireFixture("ssh-ed25519", 32, true);
+  const wrongWireAlgorithmLengthSameTotal = nativeBuffer.from(canonical.blob);
+  wrongWireAlgorithmLengthSameTotal.writeUInt32BE(canonical.algorithm.length - 1, 0);
+  const canonicalKeyLengthOffset = 4 + canonical.algorithm.length;
+  const wrongWireKeyLength31SameTotal = nativeBuffer.from(canonical.blob);
+  wrongWireKeyLength31SameTotal.writeUInt32BE(31, canonicalKeyLengthOffset);
+  const wrongWireAlgorithmFile = c4AuthorizationFileFromBlob(wrongWireAlgorithm);
+  const wrongWireLengthFile = c4AuthorizationFileFromBlob(wrongWireLength);
+  const trailingWireFile = c4AuthorizationFileFromBlob(trailingWire);
+  const wrongWireAlgorithmLengthSameTotalFile = c4AuthorizationFileFromBlob(
+    wrongWireAlgorithmLengthSameTotal);
+  const wrongWireKeyLength31SameTotalFile = c4AuthorizationFileFromBlob(
+    wrongWireKeyLength31SameTotal);
+  const wrongLineAlgorithm = c4AuthorizationFileFromBlob(canonical.blob, "ssh-rsa");
+  const extraToken = c4AuthorizationFileFromBlob(canonical.blob, "ssh-ed25519", "test-gate", "extra");
+  const wrongMarker = c4AuthorizationFileFromBlob(canonical.blob, "ssh-ed25519", "wrong-marker");
+  const markerPrefixDrift = c4AuthorizationFileFromBlob(
+    canonical.blob, "ssh-ed25519", "test-gate-suffix");
+  const markerSuffixDrift = c4AuthorizationFileFromBlob(
+    canonical.blob, "ssh-ed25519", "second-test-gate");
+  const tabSeparator = nativeBuffer.from(
+    canonical.lineText.replace(" ssh-ed25519 ", "\tssh-ed25519 ") + "\n", "ascii");
+  const unitSeparator = nativeBuffer.from(
+    canonical.lineText.replace(" ssh-ed25519 ", "\x1fssh-ed25519 ") + "\n", "latin1");
+  const deleteSeparator = nativeBuffer.from(
+    canonical.lineText.replace(" ssh-ed25519 ", "\x7fssh-ed25519 ") + "\n", "latin1");
+  const canonicalOptionTokens = [
+    "restrict",
+    "no-pty",
+    "no-agent-forwarding",
+    "no-port-forwarding",
+    "no-X11-forwarding",
+    "command=\"/usr/bin/sudo -n -- /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint\""
+  ];
+  const canonicalOptionNames = [
+    "restrict", "no-pty", "no-agent-forwarding", "no-port-forwarding", "no-x11-forwarding", "command"
+  ];
+  const canonicalTail = canonical.lineText.slice(canonical.lineText.indexOf(" ssh-ed25519 "));
+  function c4AuthorizationFileWithOptions(optionTokens) {
+    return nativeBuffer.from(optionTokens.join(",") + canonicalTail + "\n", "ascii");
+  }
+  const commandSingleQuoteTokens = canonicalOptionTokens.slice();
+  commandSingleQuoteTokens[commandSingleQuoteTokens.length - 1]
+    = "command='/usr/bin/sudo -n -- /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint'";
+  const commandSingleQuoteDrift = c4AuthorizationFileWithOptions(commandSingleQuoteTokens);
+  const requiredOptionFailures = new nativeArray();
+  for (let index = 0; index < canonicalOptionTokens.length; index += 1) {
+    const omitted = canonicalOptionTokens.slice();
+    omitted.splice(index, 1);
+    requiredOptionFailures.push([
+      "option-omitted-" + canonicalOptionNames[index],
+      c4AuthorizationFileWithOptions(omitted),
+      canonical.blob,
+      true
+    ]);
+    const duplicated = canonicalOptionTokens.slice();
+    duplicated.splice(index, 0, canonicalOptionTokens[index]);
+    requiredOptionFailures.push([
+      "option-duplicated-" + canonicalOptionNames[index],
+      c4AuthorizationFileWithOptions(duplicated),
+      canonical.blob,
+      true
+    ]);
+  }
+  const commandDriftTokens = canonicalOptionTokens.slice();
+  commandDriftTokens[commandDriftTokens.length - 1]
+    = "command=\"/usr/bin/sudo -n -- /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint-drift\"";
+  const commandValueDrift = c4AuthorizationFileWithOptions(commandDriftTokens);
+  function c4LateCommandBoundaryFile(lineLength) {
+    const prefix = canonicalOptionTokens.slice(0, -1).join(",") + ",command=\"";
+    const command = "/usr/bin/sudo -n -- /usr/local/libexec/gccgw/japan-tuic-additive-repair-entrypoint";
+    const suffix = "\"" + canonicalTail;
+    const paddingLength = lineLength - nativeBuffer.byteLength(prefix + command + suffix, "ascii");
+    if (paddingLength < 1) throw new Error("invalid C4 late-command boundary fixture");
+    const line = prefix + command + "x".repeat(paddingLength) + suffix;
+    if (nativeBuffer.byteLength(line, "ascii") !== lineLength) throw new Error("invalid C4 boundary length");
+    return nativeBuffer.from(line + "\n", "ascii");
+  }
+  const maximumLine = c4LateCommandBoundaryFile(16384);
+  const overflowLine = c4LateCommandBoundaryFile(16385);
+  const authFailureSpecs = [
+    ["empty", nativeBuffer.alloc(0), null, true, []],
+    ["blank", nativeBuffer.from("\n", "ascii"), null, true, []],
+    ["comment", nativeBuffer.from("# comment\n", "ascii"), null, true],
+    ["blank-prefix", blankPrefix, null, true],
+    ["blank-suffix", blankSuffix, null, true],
+    ["comment-prefix", commentPrefix, null, true],
+    ["comment-suffix", commentSuffix, null, true],
+    ["missing-lf", missingLf, null, true],
+    ["folded", folded, null, true],
+    ["second-active", secondLine, null, true],
+    ["duplicate-target", duplicateLine, null, true],
+    ["alternate-key", alternate.file, null, false],
+    ["bad-option-order", badOption, null, true],
+    ["unknown-option", unknownOption, null, true],
+    ["escape-drift", escapeDrift, null, true],
+    ["noncanonical-base64", noncanonicalBase64, canonical.blob, true],
+    ["base64-aligned-extra-padding", alignedExtraPadding, canonical.blob, true],
+    ["wrong-line-algorithm", wrongLineAlgorithm, canonical.blob, true],
+    ["wrong-wire-algorithm", wrongWireAlgorithmFile, wrongWireAlgorithm, true],
+    ["wrong-wire-key-length", wrongWireLengthFile, wrongWireLength, true],
+    ["trailing-wire-byte", trailingWireFile, trailingWire, true],
+    ["wrong-wire-algorithm-length-field-same-total", wrongWireAlgorithmLengthSameTotalFile,
+      wrongWireAlgorithmLengthSameTotal, true],
+    ["wrong-wire-key-length-31-same-total", wrongWireKeyLength31SameTotalFile,
+      wrongWireKeyLength31SameTotal, true],
+    ["extra-token", extraToken, canonical.blob, true],
+    ["wrong-marker", wrongMarker, canonical.blob, true],
+    ["marker-prefix-drift", markerPrefixDrift, canonical.blob, true],
+    ["marker-suffix-drift-second-test-gate", markerSuffixDrift, canonical.blob, true],
+    ["tab-separator", tabSeparator, canonical.blob, true],
+    ["unit-separator-0x1f", unitSeparator, canonical.blob, true],
+    ["delete-separator-0x7f", deleteSeparator, canonical.blob, true],
+    ["base64-invalid-alphabet", invalidBase64Alphabet, canonical.blob, true],
+    ...requiredOptionFailures,
+    ["command-single-quote-drift", commandSingleQuoteDrift, canonical.blob, true],
+    ["command-value-drift", commandValueDrift, canonical.blob, true],
+    ["cr", cr, null, true],
+    ["nul", nul, null, true],
+    ["unicode", unicode, null, true],
+    ["line-16384", maximumLine, canonical.blob, true, ["body", "eof"]],
+    ["line-16385", overflowLine, canonical.blob, true, []]
+  ];
+  const canonicalSelectionNames = [
+    "empty", "blank", "comment", "blank-prefix", "blank-suffix", "comment-prefix", "comment-suffix",
+    "folded", "second-active", "duplicate-target"
+  ];
+  const authFailures = authFailureSpecs.map(([name, authFile, canonicalBlob, bindActualLine, expectedAuthReadStages]) => {
+    const canonicalSelection = canonicalSelectionNames.includes(name);
+    const actualLine = canonicalSelection
+      ? canonical.line
+      : bindActualLine ? c4LineForBinding(authFile) : null;
+    const selectedBlob = canonicalSelection ? canonical.blob : canonicalBlob;
+    const legacyWholeFileLine = c4LineForBinding(authFile);
+    const legacyWholeFileLineSha256 = crypto.createHash("sha256")
+      .update(legacyWholeFileLine).digest("hex");
+    return {
+      name,
+      failureAudit: expectedAuthReadStages === undefined
+        ? c4TopologyFailureAudit("authorization-grammar-or-digest", "failure")
+        : c4TopologyFailureAudit("authorization-grammar-or-digest", "failure", true,
+          c4ExpectedTopologyPathOperations(expectedAuthReadStages)),
+      expectedAuthReadStages: expectedAuthReadStages === undefined ? null : expectedAuthReadStages,
+      canonicalSelection,
+      expectedLineSha256: actualLine
+        ? crypto.createHash("sha256").update(actualLine).digest("hex")
+        : null,
+      selectedLineSha256: actualLine
+        ? crypto.createHash("sha256").update(actualLine).digest("hex")
+        : null,
+      expectedBlobSha256: selectedBlob
+        ? crypto.createHash("sha256").update(selectedBlob).digest("hex")
+        : null,
+      legacyWholeFileLineLength: legacyWholeFileLine.length,
+      legacyWholeFileLineSha256,
+      probe: c4Topology(safe, {
+        authFile,
+        ...(actualLine ? { canonicalLine: actualLine } : {}),
+        ...(selectedBlob ? { canonicalBlob: selectedBlob } : {})
+      })
+    };
+  });
+  const metadataFailures = [
+    ["uid", { mode: 0o600, uid: 1000 }],
+    ["gid", { mode: 0o600, gid: 1000 }],
+    ["mode-0400", { mode: 0o400 }],
+    ["mode-0601", { mode: 0o601 }],
+    ["mode-0644", { mode: 0o644 }],
+    ["mode-0700", { mode: 0o700 }],
+    ["nlink", { mode: 0o600, nlink: 2 }]
+  ].map(([name, authMetadata]) => ({
+    name,
+    expectedCalls: c4AuthorizationFileLstatOperations(),
+    failureAudit: c4TopologyFailureAudit("authorization-metadata", "failure"),
+    probe: c4Topology(safe, { authMetadata })
+  }));
+  const ancestorFailures = ["ancestor-0", "ancestor-1", "ancestor-2", "ancestor-3"]
+    .flatMap((role) => [
+      ["non-directory", { kind: "nonregular", role }],
+      ["non-root-uid", { kind: "stat-override", role, overrides: { uid: 1000 } }],
+      ["non-root-gid", { kind: "stat-override", role, overrides: { gid: 1000 } }],
+      ["group-writable-mode", { kind: "stat-override", role, overrides: { mode: 0o775 } }],
+      ["other-writable-mode", { kind: "stat-override", role, overrides: { mode: 0o757 } }]
+    ].map(([name, fault]) => ({
+      name: role + "-" + name,
+      role,
+      operationWitness: ["lstat", role],
+      expectedCalls: c4AuthorizationAncestorOperationsThrough(role),
+      failureAudit: c4TopologyFailureAudit(
+        "authorization-ancestor", "failure", false, c4AuthorizationAncestorOperationsThrough(role)),
+      probe: c4Topology(safe, { environmentOptions: { fault: { ...fault, verificationOnly: true } } })
+    })));
+  const operationFailures = [
+    ["auth-lstat-failure", { fault: { kind: "lstat-failure", role: "file-1" } }, false, ["lstat", "file-1"]],
+    ["auth-nonregular", { fault: { kind: "nonregular", role: "file-1" } }, false, ["lstat", "file-1"]],
+    ["auth-open-failure", { fault: { kind: "open-failure", role: "file-1" } }, false, ["open", "file-1", "file"]],
+    ["auth-pre-fstat-failure", { fault: { kind: "fstat-failure", role: "file-1", stage: "pre" } }, true, ["fstat", "file-1", "pre"]],
+    ["auth-read-failure", { fault: { kind: "read-failure", role: "file-1" } }, true, ["read", "file-1", "body-failure"]],
+    ["auth-body-invalid-count", { fault: { kind: "body-invalid-count", role: "file-1" } }, true, ["read", "file-1", "body-invalid-count"]],
+    ["auth-eof-invalid-count", { fault: { kind: "eof-invalid-count", role: "file-1" } }, true, ["read", "file-1", "eof-invalid-count"]],
+    ["post-fstat-drift", { fault: { kind: "post-fstat-drift", role: "file-1" } }, true, ["fstat", "file-1", "post"]],
+    ["early-eof", { fault: { kind: "early-eof", role: "file-1" } }, true, ["read", "file-1", "body-early-eof"]],
+    ["trailing-byte", { fault: { kind: "trailing-byte", role: "file-1" } }, true, ["read", "file-1", "eof-trailing-byte"]],
+    ["close-failure", { fault: { kind: "close-failure", role: "file-1" } }, true, ["close", "file-1"]]
+  ].map(([name, environmentOptions, authorizationOpenExpected, operationWitness]) => ({
+    name,
+    failureAudit: c4TopologyFailureAudit(
+      "authorization-operation", "failure", authorizationOpenExpected,
+      c4AuthorizationOperationFailureCalls(name)),
+    operationWitness,
+    probe: c4Topology(safe, {
+      environmentOptions: {
+        ...environmentOptions,
+        fault: { ...environmentOptions.fault, verificationOnly: true }
+      }
+    })
+  }));
+  operationFailures.push({
+    name: "wrong-fd",
+    failureAudit: c4TopologyFailureAudit(
+      "authorization-operation", "failure", true, c4AuthorizationOperationFailureCalls("wrong-fd")),
+    operationWitness: ["fstat", "unrecognized-fd", "post"],
+    probe: c4Topology(safe, { operationMutation: "wrong-fd" })
+  });
+  const streamingSuccesses = [
+    ["body-partial", { fault: { kind: "body-partial", role: "file-1" } }, ["body", "body", "eof"]],
+    ["body-eintr", { fault: { kind: "body-eintr", role: "file-1" } }, ["body-eintr", "body", "eof"]],
+    ["eof-eintr", { fault: { kind: "eof-eintr", role: "file-1" } }, ["body", "eof-eintr", "eof"]]
+  ].map(([name, environmentOptions, expectedAuthReadStages]) => ({
+    name,
+    expectedAuthReadStages,
+    probe: c4Topology(safe, {
+      environmentOptions: {
+        ...environmentOptions,
+        fault: { ...environmentOptions.fault, verificationOnly: true }
+      }
+    })
+  }));
+  const bindingDrifts = ["line", "blob", "effective"].map((name) => ({
+    name,
+    failureAudit: c4TopologyFailureAudit(
+      name === "effective" ? "binding-effective-digest" : "binding-authorization-digest",
+      name === "effective" ? "success" : "failure"
+    ),
+    probe: c4Topology(safe, { bindingDrift: name })
+  }));
+  const snapshotFixture = c4AuthorizationFixture(7, "test-gate");
+  const laterFixture = c4AuthorizationFixture(23, "test-gate");
+  const bindingSnapshotMutation = {
+    failureAudit: c4TopologyFailureAudit("binding-authorization-digest", "failure"),
+    probe: c4Topology(safe, {
+      fixture: snapshotFixture,
+      canonicalLine: snapshotFixture.line,
+      canonicalBlob: snapshotFixture.blob,
+      authFile: laterFixture.file,
+      bindingMutationDigests: {
+        line: crypto.createHash("sha256").update(laterFixture.line).digest("hex"),
+        blob: crypto.createHash("sha256").update(laterFixture.blob).digest("hex")
+      }
+    })
+  };
+  snapshotFixture.algorithm.fill(0);
+  snapshotFixture.key.fill(0);
+  snapshotFixture.blob.fill(0);
+  snapshotFixture.line.fill(0);
+  snapshotFixture.file.fill(0);
+  laterFixture.algorithm.fill(0);
+  laterFixture.key.fill(0);
+  laterFixture.blob.fill(0);
+  laterFixture.line.fill(0);
+  laterFixture.file.fill(0);
+  const bindingValueDrifts = c4CanonicalBindingValueDriftMatrix();
+  const positive = c4Topology(safe);
+  const secondPositive = c4Topology(safe, {
+    fixture: c4AuthorizationFixture(23)
+  });
+  const preimageAudits = {
+    includeSuccess: c4PublicPreimageWitness("include"),
+    coverageSuccess: c4PublicPreimageWitness("coverage"),
+    topologySuccess: c4PublicPreimageWitness("topology"),
+    topologyFailure: c4PublicPreimageWitness("topology", true)
+  };
+  const publicFaultMatrices = {
+    include: c4PublicFaultMatrix("include", preimageAudits.includeSuccess),
+    coverage: c4PublicFaultMatrix("coverage", preimageAudits.coverageSuccess),
+    topology: c4PublicFaultMatrix("topology", preimageAudits.topologySuccess)
+  };
+  const publicDisposerMatrix = c4PublicDisposerMatrix();
+  const lateEffectiveDigestAndPolicyDeleteFailure = c4CompactPublicFailure(
+    c4PublicPreimageWitness("topology", true, { kind: "registryDeleteAfter", identity: "policy" })
+  );
+  const privatePolicyLifecycle = c4PolicyLifecycle();
+  const privatePolicyPhase = privatePolicyLifecycle.lifecycle.phases.find((entry) =>
+    entry.name === "derivePolicy");
+  const privatePolicyPreimage = {
+    result: {
+      ok: privatePolicyLifecycle.derive.ok,
+      error: privatePolicyLifecycle.derive.error
+    },
+    preimages: c4LifecyclePreimageAudit(privatePolicyLifecycle.lifecycle, "derivePolicy"),
+    preimagePendingCount: privatePolicyPhase.preimagePendingCount,
+    coverageOracle: privatePolicyLifecycle.coverageOracle
+  };
+  canonical.algorithm.fill(0);
+  canonical.key.fill(0);
+  canonical.blob.fill(0);
+  canonical.line.fill(0);
+  canonical.file.fill(0);
+  alternate.algorithm.fill(0);
+  alternate.key.fill(0);
+  alternate.blob.fill(0);
+  alternate.line.fill(0);
+  alternate.file.fill(0);
+  for (const buffer of [
+    badOption, unknownOption, escapeDrift, missingLf, secondLine, duplicateLine, blankPrefix, blankSuffix,
+    commentPrefix, commentSuffix, folded, cr, nul, unicode, noncanonicalBase64, alignedExtraPadding,
+    wrongWireAlgorithm, wrongWireLength, trailingWire, wrongWireAlgorithmLengthSameTotal,
+    wrongWireKeyLength31SameTotal, wrongWireAlgorithmFile,
+    wrongWireLengthFile, trailingWireFile, wrongWireAlgorithmLengthSameTotalFile,
+    wrongWireKeyLength31SameTotalFile,
+    wrongLineAlgorithm, extraToken, wrongMarker,
+    markerPrefixDrift, markerSuffixDrift, tabSeparator, unitSeparator, deleteSeparator,
+    invalidBase64Alphabet, commandSingleQuoteDrift, commandValueDrift,
+    ...requiredOptionFailures.map(([, value]) => value), maximumLine, overflowLine
+  ]) buffer.fill(0);
+  return {
+    scenario: "topology",
+    encodedTokenLength: encodedEnd - encodedStart,
+    positive,
+    secondPositive,
+    sourceFailures,
+    directiveMatchMatrix,
+    authFailures,
+    canonicalSelectionNames,
+    metadataFailures,
+    ancestorFailures,
+    operationFailures,
+    streamingSuccesses,
+    bindingDrifts,
+    bindingSnapshotMutation,
+    bindingValueDrifts,
+    preimageAudits,
+    publicFaultExpectations: nativeObject.keys(C4_PUBLIC_FAULT_EXPECTATION_TABLE).sort().map((key) => ({
+      key,
+      faultKind: C4_PUBLIC_FAULT_EXPECTATION_TABLE[key].faultKind,
+      freezeTrace: [...C4_PUBLIC_FAULT_EXPECTATION_TABLE[key].freezeTrace],
+      topologyFreezeCount: C4_PUBLIC_FAULT_EXPECTATION_TABLE[key].topologyFreezeCount
+    })),
+    publicFaultMatrices,
+    publicDisposerMatrix,
+    lateEffectiveDigestAndPolicyDeleteFailure,
+    privatePolicyPreimage
+  };
+}
+
 function c3FixtureProof(name) {
   const state = fresh();
   return {
-    scenarioKnown: ["depth", "coordinates", "include", "lexer"].includes(name),
+    scenarioKnown: ["depth", "coordinates", "include", "lexer", ...C4_SCENARIOS].includes(name),
     linked: module.status === "linked" || module.status === "evaluated",
     evaluated: module.status === "evaluated",
     nativeTypes: api.__test_c2bProxyInstrumentation(state),
     c3Arities: api.__test_c3Arities(),
+    c4Arities: api.__test_c4Arities(),
     freshState: inspect(state)
   };
 }
@@ -8158,8 +12263,10 @@ function c3UnknownScenario() {
 
 try {
   const fixture = c3FixtureProof(scenario);
-  const missingSymbols = api.__test_missingC3Symbols();
-  const scenarioValue = missingSymbols.length !== 0
+  const c3MissingSymbols = api.__test_missingC3Symbols();
+  const c4Scenario = C4_SCENARIOS.includes(scenario);
+  const missingSymbols = c4Scenario ? api.__test_missingC4Symbols() : c3MissingSymbols;
+  const scenarioValue = c3MissingSymbols.length !== 0 || missingSymbols.length !== 0
     ? undefined
     : scenario === "depth"
       ? c3DepthScenario()
@@ -8169,12 +12276,52 @@ try {
           ? c3IncludeScenario()
           : scenario === "lexer"
             ? c3LexerScenario()
+            : scenario === "c4-match"
+              ? c4MatchScenario()
+              : scenario === "c4-variable"
+                ? c4VariableScenario()
+                : scenario === "c4-effective"
+                  ? c4EffectiveScenario()
+                  : scenario === "c4-topology"
+                    ? c4TopologyScenario()
             : c3UnknownScenario();
-  process.stdout.write(JSON.stringify({ error: null, value: { fixture, missingSymbols, moduleAllocationCounts, scenarioValue } }));
+  process.stdout.write(JSON.stringify({
+    error: null,
+    value: {
+      fixture,
+      c3MissingSymbols,
+      missingSymbols,
+      moduleAllocationCounts,
+      c4RedGuard: { scenarioInvocationCount: c4ScenarioInvocationCount, accountReadCount: c4AccountReadCount, injectedOperationCount: c4InjectedOperationCount },
+      scenarioValue
+    }
+  }));
 } catch (error) {
   process.stdout.write(JSON.stringify({ error: errorCode(error) }));
 }
 `;
+
+const C4_HOST_SNAPSHOT_KEY_NAMES = Object.freeze(
+  "authorizationEntryCount,failed,fixedEnvelopeCount,retainedPreimageBytes,semanticNodeCount,sshGraph,sshMatchComparisonCount,sudoAliasVisitCount,sudoGraph,sudoSelectorComparisonCount,wildcardAlignedComparisonCount,wildcardInvocationCount,wildcardPatternByteCount".split(",")
+);
+const C4_HOST_SNAPSHOT_NUMERIC_BUDGET_KEYS = Object.freeze([
+  "fixedEnvelopeCount", "semanticNodeCount", "authorizationEntryCount", "wildcardPatternByteCount",
+  "wildcardInvocationCount", "wildcardAlignedComparisonCount", "sshMatchComparisonCount",
+  "sudoSelectorComparisonCount", "sudoAliasVisitCount", "retainedPreimageBytes"
+]);
+const C4_HOST_GRAPH_NUMERIC_BUDGET_KEYS = Object.freeze([
+  "fixedEnvelopeCount", "semanticNodeCount", "fileCount", "sourceFileCount", "totalBytes",
+  "directoryNameCount", "depth", "nextOrdinal", "sshPhysicalDirectiveCount", "sshIncludePatternCount",
+  "sshSelectedInsertionCount", "sshMatchBranchCount", "sshMatchConditionCount", "sshMatchPatternCount",
+  "sshAssignmentCount", "sshAcceptEnvNameCount", "sudoStatementCount", "sudoIncludeCount",
+  "sudoSelectedInsertionCount", "sudoAliasDefinitionCount", "sudoAliasMemberCount", "sudoDefaultsItemCount",
+  "sudoUserSpecCount", "sudoUserHostRunasMemberCount", "sudoTagTransitionCount", "sudoCommandSpecCount",
+  "sudoArgumentTokenCount", "sudoAliasEdgeCount", "sudoAliasMemoEntryCount", "globComparisonCount",
+  "commandWorkCount", "aliasEdgeWorkCount"
+]);
+const C4_HOST_VERIFIER_CANONICAL_PATH_BYTE_LENGTHS = Object.freeze([
+  46, 49, 30, 53, 30, 29, 35, 31, 41, 36, 45
+]);
 
 function c3VmProbe(scenario, timeout = 120000) {
   const directory = mkdtempSync(join(tmpdir(), "japan-c3-ssh-vm-"));
@@ -8496,6 +12643,1006 @@ function requireC3Symbols(probe) {
   }
   assert.deepEqual(missing, [], `missing C3 private symbols: ${missing.join(",")}`);
   return probe.value.scenarioValue;
+}
+
+function requireC4Symbols(probe) {
+  assert.equal(probe.error, null);
+  assert.equal(Object.hasOwn(probe, "value"), true);
+  c3AssertFixture(probe.value);
+  assert.deepEqual(probe.value.c3MissingSymbols, []);
+  const missing = probe.value.missingSymbols;
+  if (missing.length !== 0) {
+    assert.deepEqual(probe.value.c4RedGuard, {
+      scenarioInvocationCount: 0,
+      accountReadCount: 0,
+      injectedOperationCount: 0
+    });
+  }
+  assert.deepEqual(missing.length === 0 ? C4_EXPECTED_MISSING_SYMBOLS : missing, C4_EXPECTED_MISSING_SYMBOLS);
+  if (missing.length === 0) {
+    assert.deepEqual(probe.value.fixture.c4Arities, {
+      deriveAuthorizationSshPolicy: 3,
+      disposeAuthorizationSshPolicy: 2,
+      verifyProjectedSshAuthorization: 2
+    });
+  }
+  assert.deepEqual(missing, [], `missing C4 private symbols: ${missing.join(",")}`);
+  return probe.value.scenarioValue;
+}
+
+const C4_TOPOLOGY_KEYS = Object.freeze([
+  "schemaVersion", "type", "username", "uid", "homeDirectory", "loginShell",
+  "passwordLocked", "authenticationMethods", "pubkeyAuthentication",
+  "passwordAuthentication", "keyboardInteractiveAuthentication",
+  "hostbasedAuthentication", "gssapiAuthentication", "kerberosAuthentication",
+  "permitUserEnvironment", "acceptedEnvironmentNames", "forceCommand",
+  "chrootDirectory", "disableForwarding", "permitTunnel", "authorizedKeysFiles",
+  "authorizedKeysCommand", "authorizedPrincipalsFiles", "authorizedPrincipalsCommand",
+  "trustedUserCAKeys", "activeAuthorizationEntryCount", "targetKeyOccurrenceCount",
+  "addressDependentAuthorizationBranchCount", "includeClosureSha256", "matchCoverageSha256"
+]);
+
+function c4ExpectedTopologyPathOperations(authReadStages = ["body", "eof"]) {
+  return [
+    ...c3A1FileOperations("body", "eof"),
+    ["lstat", "ancestor-0"],
+    ["lstat", "ancestor-1"],
+    ["lstat", "ancestor-2"],
+    ["lstat", "ancestor-3"],
+    ["lstat", "file-1"],
+    ["open", "file-1", "file"],
+    ["fstat", "file-1", "pre"],
+    ...authReadStages.map((stage) => ["read", "file-1", stage]),
+    ["fstat", "file-1", "post"],
+    ["close", "file-1"]
+  ];
+}
+
+function c4AssertDerivedCallSuccess(call) {
+  assert.equal(call.result.ok, true, call.result.error);
+  assert.equal(call.trackedBuffersZero, true);
+  assert.ok(call.trackedBufferCount > 0);
+  assert.equal(call.publicAudit.authorizationEntryCount, 0);
+  assert.equal(call.publicAudit.snapshotFailed, false);
+  c4AssertInitialPublicState(call.publicAudit);
+  const kind = call.publicCalls[0];
+  assert.equal(call.publicAudit.budgetLedger.budget.snapshot.fixedEnvelopeCount, {
+    include: 12,
+    coverage: 17,
+    topology: 23
+  }[kind], kind);
+  const expectedFreezes = kind === "include"
+    ? { include: 2, coverage: 0, topology: 0 }
+    : kind === "coverage"
+      ? { include: 1, coverage: 1, topology: 0 }
+      : { include: 1, coverage: 1, topology: 1 };
+  c4AssertProjectionFreezeAudit(call.publicAudit, expectedFreezes);
+  c4AssertPublicRegistrySuccess(call.registryAudit, kind);
+  assert.equal(call.publicAudit.projectionFreezeEvents.filter((entry) =>
+    entry.kind === kind && entry.returnedRoot === true).length, 1);
+  assert.equal(call.publicAudit.projectionFreezeEvents.filter((entry) =>
+    entry.kind !== kind && entry.returnedRoot === true).length, 0);
+  if (kind === "include") {
+    assert.deepEqual(call.result.value, call.expected);
+    assert.deepEqual(call.publicAudit.projectionFreezeEvents.map((entry) => ({
+      kind: entry.kind,
+      publicStage: entry.publicStage,
+      returnedRoot: entry.returnedRoot,
+      contentJson: entry.contentJson
+    })), [
+      {
+        kind: "include", publicStage: "deriveSyntax", returnedRoot: false,
+        contentJson: JSON.stringify(call.expected)
+      },
+      {
+        kind: "include", publicStage: "deriveSyntax:complete", returnedRoot: true,
+        contentJson: JSON.stringify(call.expected)
+      }
+    ]);
+    assert.deepEqual(call.freezeAudit && {
+      rootFrozen: call.freezeAudit.rootFrozen,
+      allFrozen: call.freezeAudit.allFrozen,
+      proxyCount: call.freezeAudit.proxyCount,
+      symbolCount: call.freezeAudit.symbolCount,
+      accessorCount: call.freezeAudit.accessorCount,
+      unexpectedNonEnumerableCount: call.freezeAudit.unexpectedNonEnumerableCount,
+      rawShape: call.freezeAudit.rawShape
+    }, {
+      rootFrozen: true,
+      allFrozen: true,
+      proxyCount: 0,
+      symbolCount: 0,
+      accessorCount: 0,
+      unexpectedNonEnumerableCount: 0,
+      rawShape: c4ExpectedProjectionRawShape(call.expected)
+    });
+  }
+}
+
+function c4AssertDerivedCallFailure(call) {
+  assert.equal(call.result.ok, false);
+  assert.equal(call.result.error, "restricted_identity_rejected");
+  assert.equal(call.trackedBuffersZero, true);
+  assert.equal(call.publicAudit.authorizationEntryCount, 0);
+  assert.equal(call.publicAudit.snapshotFailed, true);
+  c4AssertInitialPublicState(call.publicAudit);
+  c4AssertProjectionFreezeAudit(call.publicAudit, call.publicAudit.projectionFreezeCounts);
+  assert.equal(call.publicAudit.projectionFreezeEvents.every((entry) => entry.returnedRoot === false), true);
+  assert.equal(call.publicAudit.contractErrorEvents.length >= 1, true);
+  const boundaryEvent = call.publicAudit.contractErrorEvents.at(-1);
+  assert.equal(call.rawErrorAudit.contractErrorOrdinal, boundaryEvent.ordinal);
+  assert.deepEqual(call.rawErrorAudit,
+    c4ExpectedRestrictedRawErrorAudit(boundaryEvent.ordinal));
+  const registryBoundaryCount = boundaryEvent.registryEvents;
+  assert.equal(Number.isSafeInteger(registryBoundaryCount) && registryBoundaryCount >= 1, true);
+  c4AssertPublicRegistryFailure(call.registryAudit, call.publicCalls[0], registryBoundaryCount);
+  if (call.terminalFollowUp !== null) {
+    const { beforeLifecycle, afterLifecycle, beforeState, afterState, ...terminalFollowUp } =
+      call.terminalFollowUp;
+    assert.deepEqual(terminalFollowUp, {
+      ok: false,
+      error: "restricted_identity_rejected",
+      allocations: C2B_ZERO_ALLOCATIONS,
+      operationCalls: 0,
+      trackedBuffersZero: true
+    });
+    assert.deepEqual(afterLifecycle, beforeLifecycle);
+    assert.deepEqual(afterState, beforeState);
+    c4AssertTerminalBudgetState(beforeState, call.publicAudit.initialFixedShape,
+      call.publicAudit.budgetLedger, call.publicAudit.preimageReserveTotal);
+  }
+}
+
+function c4ExpectedPublicTrace(kind) {
+  const calls = [kind, "snapshot", "graph:ssh", "graph:sudo", "deriveSyntax"];
+  if (kind !== "include") calls.push("derivePolicy");
+  if (kind === "topology") calls.push("verify");
+  if (kind !== "include") calls.push("disposePolicy");
+  calls.push("disposeSyntax");
+  return calls;
+}
+
+function c4ExpectedRestrictedRawErrorAudit(contractErrorOrdinal = 1) {
+  return {
+    contractError: true,
+    contractErrorOrdinal,
+    proxy: false,
+    prototypeExact: true,
+    contractErrorPrototypeParentExact: true,
+    contractErrorPrototypeOwnNames: ["constructor"],
+    contractErrorPrototypeOwnSymbolCount: 0,
+    contractErrorPrototypeConstructorExact: true,
+    contractErrorPrototypeConstructorDescriptor: {
+      present: true, data: true, valueExact: true,
+      writable: true, enumerable: false, configurable: true
+    },
+    contractErrorParentOwnNames: ["constructor", "message", "name", "toString"],
+    contractErrorParentOwnSymbolCount: 0,
+    codeExact: true,
+    messageExact: true,
+    nameExact: true,
+    enumerableOwnKeys: ["code"],
+    ownNames: ["code", "message", "stack"],
+    ownSymbolCount: 0,
+    codeDescriptor: {
+      present: true, data: true, valueExact: true,
+      writable: true, enumerable: true, configurable: true
+    },
+    messageDescriptor: {
+      present: true, data: true, valueExact: true,
+      writable: true, enumerable: false, configurable: true
+    },
+    stackDescriptor: {
+      present: true, data: true, valueExact: true,
+      writable: true, enumerable: false, configurable: true
+    },
+    forbiddenOwnFieldPresent: false,
+    syntheticMessageVisible: false,
+    syntheticStackVisible: false
+  };
+}
+
+function c4ExpectedPublicFaultTrace(kind, publicStage) {
+  const calls = [kind, "snapshot", "graph:ssh", "graph:sudo", "deriveSyntax"];
+  if (kind === "include" || publicStage === "deriveSyntax") return [...calls, "disposeSyntax"];
+  calls.push("derivePolicy");
+  if (publicStage === "derivePolicy") return [...calls, "disposeSyntax"];
+  if (kind === "coverage") return [...calls, "disposePolicy", "disposeSyntax"];
+  if (publicStage === "derivePolicy:complete") return [...calls, "disposePolicy", "disposeSyntax"];
+  calls.push("verify", "disposePolicy", "disposeSyntax");
+  return calls;
+}
+
+function c4ExpectedProjectionFreezeKinds(counts) {
+  return [
+    ...new Array(counts.include).fill("include"),
+    ...new Array(counts.coverage).fill("coverage"),
+    ...new Array(counts.topology).fill("topology")
+  ];
+}
+
+function c4ExpectedProjectionRawShape(value) {
+  const pending = [{ value, path: "$" }];
+  const nodes = [];
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    const current = entry.value;
+    if (current === null || typeof current !== "object") continue;
+    const ownNames = Object.getOwnPropertyNames(current);
+    const descriptors = ownNames.map((name) => {
+      const propertyValue = current[name];
+      const child = propertyValue !== null && typeof propertyValue === "object";
+      const childPath = child ? entry.path + "/" + JSON.stringify(name) : null;
+      if (child) pending.push({ value: propertyValue, path: childPath });
+      return {
+        name,
+        data: true,
+        valueKind: Array.isArray(propertyValue) ? "Array"
+          : propertyValue === null ? "null" : typeof propertyValue === "object" ? "Object"
+            : typeof propertyValue,
+        writable: false,
+        enumerable: !(Array.isArray(current) && name === "length"),
+        configurable: false,
+        hasGetter: false,
+        hasSetter: false,
+        childPath
+      };
+    });
+    nodes.push({
+      path: entry.path,
+      proxy: false,
+      prototypeKind: Array.isArray(current) ? "Array" : "null",
+      frozen: true,
+      extensible: false,
+      ownNames,
+      ownSymbolCount: 0,
+      descriptors
+    });
+  }
+  nodes.sort((left, right) => left.path.localeCompare(right.path));
+  return { nodes, repeatedReferences: [] };
+}
+
+function c4ExpectedProjectionRootShape(value) {
+  const audit = c4ExpectedProjectionRawShape(value);
+  return { root: audit.nodes.find((entry) => entry.path === "$") || null };
+}
+
+function c4AssertProjectionRawShapeEvent(event) {
+  assert.equal(typeof event.contentJson, "string");
+  const canonical = JSON.parse(event.contentJson);
+  const expected = c4ExpectedProjectionRootShape(canonical);
+  assert.deepEqual(event.rawShape, expected, event.kind);
+}
+
+function c4AssertInitialPublicState(publicAudit) {
+  assert.equal(publicAudit.initialBoundaryCaptureCount, 3);
+  assert.deepEqual(publicAudit.initialBoundaryAudits.map((entry) => entry.kind), [
+    "snapshot", "ssh", "sudo"
+  ]);
+  assert.equal(publicAudit.initialShapeCaptureCount, 1);
+  assert.notEqual(publicAudit.initialFixedShape, null);
+  assert.notEqual(publicAudit.initialBudgetAudit, null);
+  assert.notEqual(publicAudit.budgetLedger, null);
+  function assertRoot(root, expectedNames, valueKind, writable) {
+    assert.deepEqual({
+      objectLike: root.objectLike,
+      proxy: root.proxy,
+      prototypeKind: root.prototypeKind,
+      symbolCount: root.symbolCount
+    }, { objectLike: true, proxy: false, prototypeKind: "null", symbolCount: 0 });
+    assert.deepEqual(root.fields.map((entry) => entry.name), [...expectedNames].sort());
+    for (const field of root.fields) {
+      assert.deepEqual(field, {
+        name: field.name,
+        hasValue: true,
+        valueKind: valueKind(field.name),
+        writable: writable(field.name),
+        enumerable: true,
+        configurable: false,
+        hasGetter: false,
+        hasSetter: false
+      });
+    }
+  }
+  const snapshotNames = C4_HOST_SNAPSHOT_KEY_NAMES;
+  assertRoot(publicAudit.initialFixedShape.snapshot, snapshotNames,
+    (name) => name === "failed" ? "boolean" : name === "sshGraph" || name === "sudoGraph" ? "Object" : "number",
+    () => true);
+  const graphNames = ["snapshot", "kind", ...C4_HOST_GRAPH_NUMERIC_BUDGET_KEYS, "failed", "cleanupStack"];
+  for (const kind of ["ssh", "sudo"]) {
+    assertRoot(publicAudit.initialFixedShape[kind], graphNames,
+      (name) => name === "snapshot" ? "Object"
+        : name === "kind" ? "string" : name === "failed" ? "boolean"
+          : name === "cleanupStack" ? "Array" : "number",
+      (name) => !["snapshot", "kind", "fixedEnvelopeCount"].includes(name));
+    const cleanup = publicAudit.initialFixedShape[`${kind}Cleanup`];
+    assert.deepEqual(cleanup, {
+      objectLike: true,
+      proxy: false,
+      prototypeKind: "Array",
+      symbolCount: 0,
+      fields: [{
+        name: "length", hasValue: true, valueKind: "number", writable: true,
+        enumerable: false, configurable: false, hasGetter: false, hasSetter: false
+      }]
+    });
+  }
+  const expectedSnapshot = {};
+  for (const key of C4_HOST_SNAPSHOT_NUMERIC_BUDGET_KEYS) expectedSnapshot[key] = 0;
+  expectedSnapshot.fixedEnvelopeCount = 5;
+  expectedSnapshot.semanticNodeCount = 5;
+  expectedSnapshot.failed = false;
+  expectedSnapshot.sshGraphIdentity = true;
+  expectedSnapshot.sudoGraphIdentity = true;
+  function expectedGraph() {
+    const value = { kindExact: true, snapshotIdentity: true };
+    for (const key of C4_HOST_GRAPH_NUMERIC_BUDGET_KEYS) value[key] = 0;
+    value.fixedEnvelopeCount = 2;
+    value.semanticNodeCount = 2;
+    value.failed = false;
+    value.cleanupLength = 0;
+    return value;
+  }
+  assert.deepEqual(publicAudit.initialBudgetAudit, {
+    snapshot: expectedSnapshot,
+    ssh: expectedGraph(),
+    sudo: expectedGraph()
+  });
+  function expectedBoundarySnapshot(fixedEnvelopeCount, semanticNodeCount, sshPresent, sudoPresent) {
+    const value = {};
+    for (const key of C4_HOST_SNAPSHOT_NUMERIC_BUDGET_KEYS) value[key] = 0;
+    value.fixedEnvelopeCount = fixedEnvelopeCount;
+    value.semanticNodeCount = semanticNodeCount;
+    value.failed = false;
+    value.sshGraphAbsent = !sshPresent;
+    value.sudoGraphAbsent = !sudoPresent;
+    value.sshGraphIdentity = sshPresent;
+    value.sudoGraphIdentity = sudoPresent;
+    return value;
+  }
+  assert.deepEqual(publicAudit.initialBoundaryAudits.map((entry) => entry.budget), [
+    {
+      snapshot: expectedBoundarySnapshot(1, 1, false, false),
+      ssh: null,
+      sudo: null
+    },
+    {
+      snapshot: expectedBoundarySnapshot(3, 3, true, false),
+      ssh: expectedGraph(),
+      sudo: null
+    },
+    {
+      snapshot: expectedBoundarySnapshot(5, 5, true, true),
+      ssh: expectedGraph(),
+      sudo: expectedGraph()
+    }
+  ]);
+  const absentShape = {
+    objectLike: false, proxy: false, prototypeKind: null, symbolCount: null, fields: []
+  };
+  assert.deepEqual(publicAudit.initialBoundaryAudits[0].fixedShape.ssh, absentShape);
+  assert.deepEqual(publicAudit.initialBoundaryAudits[0].fixedShape.sudo, absentShape);
+  assert.deepEqual(publicAudit.initialBoundaryAudits[1].fixedShape.sudo, absentShape);
+  assert.deepEqual(publicAudit.initialBoundaryAudits[2].fixedShape, publicAudit.initialFixedShape);
+  for (let index = 0; index < publicAudit.initialBoundaryAudits.length; index += 1) {
+    const boundary = publicAudit.initialBoundaryAudits[index];
+    assertRoot(boundary.fixedShape.snapshot, snapshotNames,
+      (name) => name === "failed" ? "boolean"
+        : name === "sshGraph" ? index === 0 ? "undefined" : "Object"
+          : name === "sudoGraph" ? index < 2 ? "undefined" : "Object" : "number",
+      () => true);
+  }
+  assertRoot(publicAudit.initialBoundaryAudits[1].fixedShape.ssh, graphNames,
+    (name) => name === "snapshot" ? "Object"
+      : name === "kind" ? "string" : name === "failed" ? "boolean"
+        : name === "cleanupStack" ? "Array" : "number",
+    (name) => !["snapshot", "kind", "fixedEnvelopeCount"].includes(name));
+}
+
+function c4AssertProjectionFreezeAudit(publicAudit, expectedCounts) {
+  assert.deepEqual(publicAudit.projectionFreezeCounts, expectedCounts);
+  const expectedKinds = c4ExpectedProjectionFreezeKinds(expectedCounts);
+  assert.deepEqual(publicAudit.projectionFreezeEvents.map((entry) => entry.kind), expectedKinds);
+  assert.deepEqual(publicAudit.projectionFreezeEvents.map((entry) => entry.ordinal),
+    expectedKinds.map((_, index) => index + 1));
+  let includeOrdinal = 0;
+  assert.deepEqual(publicAudit.projectionFreezeEvents.map((entry) => {
+    if (entry.kind === "include") {
+      includeOrdinal += 1;
+      return includeOrdinal === 1 ? "deriveSyntax" : "deriveSyntax:complete";
+    }
+    return entry.kind === "coverage" ? "derivePolicy" : "verify:complete";
+  }), publicAudit.projectionFreezeEvents.map((entry) => entry.publicStage));
+  assert.equal(publicAudit.projectionFreezeEvents.every((entry) =>
+    Number.isSafeInteger(entry.registryEvents) && entry.registryEvents >= 0
+      && Number.isSafeInteger(entry.action) && entry.action >= 0
+      && Number.isSafeInteger(entry.forwardWork) && entry.forwardWork > 0
+      && entry.rootProxy === false && entry.rootSymbolCount === 0
+      && entry.typeDescriptorExact === true && typeof entry.returnedRoot === "boolean"
+      && entry.frozenAfter === true), true);
+  for (const event of publicAudit.projectionFreezeEvents) c4AssertProjectionRawShapeEvent(event);
+}
+
+function c4ExpectedPublicRegistrySequence(kind) {
+  const sequence = [
+    ["has", "snapshot"],
+    ["set", "syntax"]
+  ];
+  if (kind !== "include") sequence.push(["get", "syntax"], ["set", "policy"]);
+  if (kind !== "include") sequence.push(["get", "policy"], ["delete", "policy"]);
+  sequence.push(["get", "syntax"], ["delete", "syntax"]);
+  return sequence;
+}
+
+function c4RegistryCore(events) {
+  return events.map((entry) => [entry.method, entry.keyIdentity]);
+}
+
+function c4ExpectedPostFaultRegistryCleanup(allEvents, boundaryCount) {
+  const live = { syntax: false, policy: false };
+  for (const event of allEvents.slice(0, boundaryCount)) {
+    if (event.keyIdentity !== "syntax" && event.keyIdentity !== "policy") continue;
+    if (event.method === "set") live[event.keyIdentity] = true;
+    if (event.method === "delete") live[event.keyIdentity] = false;
+  }
+  const expected = [];
+  for (const identity of ["policy", "syntax"]) {
+    if (live[identity]) expected.push(["get", identity], ["delete", identity]);
+  }
+  return expected;
+}
+
+function c4AssertRegistryEventPolicy(events) {
+  assert.equal(events.length >= 1, true);
+  assert.deepEqual(c4RegistryCore(events.slice(0, 1)), [["has", "snapshot"]]);
+  assert.equal(events[0].provenanceRegistry, true);
+  assert.equal(events[0].sameGraph, false);
+  assert.equal(events.filter((entry) => entry.keyIdentity === "snapshot").length, 1);
+  assert.equal(events.some((entry) => entry.keyIdentity === "snapshot" && entry.method !== "has"), false);
+  assert.equal(events.every((entry) => ["has", "get", "set", "delete"].includes(entry.method)), true);
+  assert.equal(events.slice(1).every((entry) => entry.provenanceRegistry === true
+    && entry.sameGraph === true), true);
+}
+
+function c4AssertPublicRegistrySuccess(audit, kind) {
+  c4AssertRegistryEventPolicy(audit.allEvents);
+  assert.deepEqual(c4RegistryCore(audit.allEvents), c4ExpectedPublicRegistrySequence(kind));
+  assert.deepEqual(audit.snapshotEvents, [audit.allEvents[0]]);
+  assert.deepEqual(audit.unknownEvents, []);
+  assert.deepEqual(audit.foreignRegistryEvents, []);
+}
+
+function c4AssertPublicRegistryFailure(audit, kind, boundaryCount, postFaultEvents = null, label = kind) {
+  c4AssertRegistryEventPolicy(audit.allEvents);
+  const prefix = audit.allEvents.slice(0, boundaryCount);
+  assert.deepEqual(c4RegistryCore(prefix),
+    c4ExpectedPublicRegistrySequence(kind).slice(0, prefix.length),
+    `${label}:${JSON.stringify(prefix.map((entry) => ({
+      method: entry.method,
+      keyIdentity: entry.keyIdentity,
+      keyShape: entry.keyShape,
+      provenanceRegistry: entry.provenanceRegistry,
+      sameGraph: entry.sameGraph
+    })))}`);
+  const expectedCleanup = c4ExpectedPostFaultRegistryCleanup(audit.allEvents, boundaryCount);
+  const actualCleanup = audit.allEvents.slice(boundaryCount);
+  assert.deepEqual(c4RegistryCore(actualCleanup), expectedCleanup);
+  if (postFaultEvents !== null) assert.deepEqual(c4RegistryCore(postFaultEvents), expectedCleanup);
+  assert.deepEqual(audit.snapshotEvents, [audit.allEvents[0]]);
+  assert.deepEqual(audit.unknownEvents, []);
+  assert.deepEqual(audit.foreignRegistryEvents, []);
+}
+
+function c4AssertTerminalBudgetState(state, initialFixedShape, independentLedger, preimageReserveTotal) {
+  assert.notEqual(state, null);
+  assert.notEqual(independentLedger, null);
+  assert.deepEqual(state.fixedShape, initialFixedShape);
+  const expectedCleanup = {
+    isArray: true,
+    isProxy: false,
+    prototypeIsNative: true,
+    prototypeIsProxy: false,
+    length: 0,
+    ownNames: ["length"],
+    symbolCount: 0,
+    lengthDescriptor: {
+      value: 0, writable: true, enumerable: false, configurable: false,
+      hasGetter: false, hasSetter: false
+    }
+  };
+  assert.equal(independentLedger.signalCount,
+    Object.values(independentLedger.signals).reduce((total, count) => total + count, 0));
+  assert.equal(independentLedger.budget.snapshot.retainedPreimageBytes, preimageReserveTotal);
+  const expectedBudget = JSON.parse(JSON.stringify(independentLedger.budget));
+  expectedBudget.snapshot.failed = true;
+  expectedBudget.snapshot.authorizationEntryCount = 0;
+  expectedBudget.ssh.failed = true;
+  expectedBudget.sudo.failed = false;
+  expectedBudget.ssh.depth = 0;
+  expectedBudget.sudo.depth = 0;
+  expectedBudget.identity.sshCleanup = expectedCleanup;
+  expectedBudget.identity.sudoCleanup = expectedCleanup;
+  assert.deepEqual(state.budget, expectedBudget);
+  assert.equal(state.budget.snapshot.retainedPreimageBytes, preimageReserveTotal);
+}
+
+function c4AssertVerifyAllocationAudit(audit, { requireByteAllocation = false } = {}) {
+  assert.deepEqual(Object.keys(audit), [
+    "allocationCount", "allocationKinds", "allocationOrdinals", "byteAllocationCount",
+    "byteAllocationKinds", "byteAllocationOrdinals", "byteAllocationRequestedLengths",
+    "byteAllocationActualLengths", "byteAllocationOperationCalls", "fixedReserveCount",
+    "fixedAllocationCount", "preimageReserveCount", "preimageAllocationCount",
+    "containerAllocationCount", "containerAllocationKinds"
+  ]);
+  assert.equal(Number.isSafeInteger(audit.allocationCount), true);
+  assert.equal(Number.isSafeInteger(audit.byteAllocationCount), true);
+  assert.equal(audit.allocationCount, audit.byteAllocationCount);
+  assert.equal(Object.values(audit.allocationKinds)
+    .reduce((total, count) => total + count, 0), audit.allocationCount);
+  const allocationKindKeys = Object.keys(audit.allocationKinds).sort();
+  assert.equal(allocationKindKeys.every((kind) =>
+    kind === "bufferAlloc" || kind === "bufferFrom" || kind === "bufferHashDigest"), true);
+  assert.deepEqual(allocationKindKeys, [...new Set(audit.byteAllocationKinds)].sort());
+  for (const kind of allocationKindKeys) {
+    assert.equal(audit.allocationKinds[kind],
+      audit.byteAllocationKinds.filter((entry) => entry === kind).length);
+  }
+  assert.equal(audit.allocationOrdinals.length, audit.allocationCount);
+  assert.equal(audit.byteAllocationKinds.length, audit.byteAllocationCount);
+  assert.equal(audit.byteAllocationOrdinals.length, audit.byteAllocationCount);
+  assert.equal(audit.byteAllocationRequestedLengths.length, audit.byteAllocationCount);
+  assert.equal(audit.byteAllocationActualLengths.length, audit.byteAllocationCount);
+  assert.equal(audit.byteAllocationOperationCalls.length, audit.byteAllocationCount);
+  assert.equal(audit.allocationOrdinals.every((ordinal, index) =>
+    Number.isSafeInteger(ordinal) && ordinal > 0
+      && (index === 0 || ordinal > audit.allocationOrdinals[index - 1])), true);
+  assert.equal(audit.byteAllocationOrdinals.every((ordinal, index) =>
+    Number.isSafeInteger(ordinal) && audit.allocationOrdinals.includes(ordinal)
+      && (index === 0 || ordinal > audit.byteAllocationOrdinals[index - 1])), true);
+  assert.equal(audit.byteAllocationRequestedLengths.every((length, index) =>
+    audit.byteAllocationKinds[index] === "bufferFrom"
+      ? length === null
+      : Number.isSafeInteger(length)
+        && (audit.byteAllocationKinds[index] === "bufferHashDigest"
+          ? length === 32
+          : audit.byteAllocationKinds[index] === "bufferAlloc" && length >= 0 && length <= 16385)), true);
+  assert.equal(audit.byteAllocationActualLengths.every((length) =>
+    length === null || (Number.isSafeInteger(length) && length >= 0 && length <= 16385)), true);
+  assert.equal(audit.byteAllocationOperationCalls.every((count) =>
+    Number.isSafeInteger(count) && count >= 0), true);
+  assert.deepEqual({
+    fixedReserveCount: audit.fixedReserveCount,
+    fixedAllocationCount: audit.fixedAllocationCount,
+    preimageReserveCount: audit.preimageReserveCount,
+    preimageAllocationCount: audit.preimageAllocationCount,
+    containerAllocationCount: audit.containerAllocationCount,
+    containerAllocationKinds: audit.containerAllocationKinds
+  }, {
+    fixedReserveCount: 0,
+    fixedAllocationCount: 0,
+    preimageReserveCount: 0,
+    preimageAllocationCount: 0,
+    containerAllocationCount: 0,
+    containerAllocationKinds: []
+  });
+  if (requireByteAllocation) {
+    assert.equal(audit.allocationCount, 27);
+    assert.equal(audit.byteAllocationCount, 27);
+    assert.deepEqual(audit.allocationKinds, {
+      bufferFrom: 22,
+      bufferAlloc: 3,
+      bufferHashDigest: 2
+    });
+    assert.deepEqual(audit.byteAllocationKinds, [
+      ...new Array(22).fill("bufferFrom"),
+      "bufferAlloc", "bufferAlloc", "bufferAlloc",
+      "bufferHashDigest", "bufferHashDigest"
+    ]);
+    assert.deepEqual(audit.byteAllocationRequestedLengths, [
+      ...new Array(22).fill(null),
+      257, 1, 51, 32, 32
+    ]);
+    assert.deepEqual(audit.byteAllocationActualLengths, [
+      ...C4_HOST_VERIFIER_CANONICAL_PATH_BYTE_LENGTHS,
+      ...C4_HOST_VERIFIER_CANONICAL_PATH_BYTE_LENGTHS,
+      257, 1, 51, 32, 32
+    ]);
+    assert.deepEqual(audit.byteAllocationOperationCalls.slice(0, 22),
+      new Array(22).fill(c3A1FileOperations("body", "eof").length));
+  }
+}
+
+function c4ExpectedVerifierCanonicalPathStringSpans(attempts) {
+  assert.equal(Number.isSafeInteger(attempts) && attempts >= 0 && attempts <= 1, true);
+  const spans = [];
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    for (let pass = 0; pass < 2; pass += 1) {
+      for (const length of C4_HOST_VERIFIER_CANONICAL_PATH_BYTE_LENGTHS) {
+        const span = {
+          sourceLength: length,
+          start: 0,
+          end: length,
+          spanLength: length,
+          operationCalls: c3A1FileOperations("body", "eof").length
+        };
+        spans.push(
+          { ...span, encoding: "utf8" },
+          { ...span, encoding: "hex" }
+        );
+      }
+    }
+  }
+  return spans;
+}
+
+function c4AssertVerifierCanonicalPathStringAudit(count, spans, attempts) {
+  const expected = c4ExpectedVerifierCanonicalPathStringSpans(attempts);
+  assert.equal(count, expected.length);
+  assert.deepEqual(spans, expected);
+}
+
+function c4AssertPublicTerminalFailure(witness, kind, {
+  expectedTopologyFreezeCount = 0,
+  expectedAuthorizationOpenCount = null,
+  expectedOperationCalls = null,
+  expectedPostFaultOperationCalls = [],
+  expectedRawErrorEvent = "terminal",
+  label = kind
+} = {}) {
+  assert.deepEqual(witness.result, { ok: false, error: "restricted_identity_rejected" });
+  assert.equal(witness.faultTriggered, true);
+  assert.equal(witness.faultTriggerCount, 1);
+  assert.equal(witness.trackedBuffersZero, true);
+  assert.equal(witness.buffersZero, true);
+  assert.equal(witness.preimagePendingCount, 0);
+  assert.ok(witness.preimages.every((entry) => entry.zero === true));
+  assert.deepEqual(witness.finalState, {
+    graphFailed: true,
+    snapshotFailed: true,
+    authorizationEntryCount: 0
+  });
+  assert.equal(witness.publicAudit.authorizationEntryCount, 0);
+  assert.equal(witness.publicAudit.snapshotFailed, true);
+  assert.equal(witness.publicAudit.topologyFreezeCount, expectedTopologyFreezeCount);
+  c4AssertVerifyAllocationAudit(witness.verifyAllocationAudit);
+  c4AssertInitialPublicState(witness.publicAudit);
+  assert.equal(witness.publicAudit.projectionFreezeEvents.every((entry) => entry.returnedRoot === false), true);
+  assert.ok(witness.publicAudit.contractErrorEvents.length >= 1);
+  assert.deepEqual(witness.publicAudit.contractErrorEvents.map((entry) => entry.ordinal),
+    witness.publicAudit.contractErrorEvents.map((_, index) => index + 1));
+  assert.equal(witness.publicAudit.contractErrorEvents.every((entry) => entry.codeExact === true), true);
+  assert.notEqual(witness.faultStamp, null);
+  assert.equal(witness.publicAudit.projectionFreezeEvents.length,
+    witness.faultStamp.projectionFreezes);
+  const terminalEvent = witness.publicAudit.contractErrorEvents.at(-1);
+  assert.ok(terminalEvent.action >= witness.faultStamp.action, label);
+  const rawErrorEvent = expectedRawErrorEvent === "primary"
+    ? witness.publicAudit.contractErrorEvents[0]
+    : terminalEvent;
+  assert.equal(witness.rawErrorAudit.contractErrorOrdinal, rawErrorEvent.ordinal, label);
+  assert.deepEqual(witness.rawErrorAudit,
+    c4ExpectedRestrictedRawErrorAudit(witness.rawErrorAudit.contractErrorOrdinal));
+  assert.notEqual(witness.postFaultAudit, null);
+  for (const field of [
+    "allocations", "hashes", "copies", "pushes", "fixedReserves", "semanticReserves",
+    "preimageReserves", "workAttempts", "matcherAttempts", "forwardWork", "projectionFreezes",
+    "nonzeroFillCount"
+  ]) assert.equal(witness.postFaultAudit[field], 0, field);
+  assert.deepEqual(witness.postFaultAudit.operationCalls, expectedPostFaultOperationCalls, label);
+  assert.equal(witness.postFaultAudit.nonCloseOperationCount,
+    expectedPostFaultOperationCalls.filter((entry) => entry[0] !== "close").length);
+  assert.equal(witness.postFaultAudit.operationCalls.filter((entry) => entry[0] === "close").length,
+    expectedPostFaultOperationCalls.filter((entry) => entry[0] === "close").length);
+  c4AssertPublicRegistryFailure(witness.registryAudit, kind,
+    witness.faultStamp.registryEvents, witness.postFaultAudit.registryEvents, label);
+  assert.equal(witness.provenance.registryObserved, true);
+  assert.equal(witness.provenance.registryStable, true);
+  assert.deepEqual(witness.provenance.syntax, { present: false, sameGraph: false });
+  assert.deepEqual(witness.provenance.policy, { present: false, sameGraph: false });
+  assert.deepEqual(witness.provenance.snapshot, { present: false, sameGraph: false });
+  assert.equal(witness.publicCalls[0], kind);
+  for (const name of ["snapshot", "graph:ssh", "graph:sudo", "deriveSyntax"]) {
+    assert.equal(witness.publicCalls.filter((entry) => entry === name).length, 1, name);
+  }
+  assert.equal(witness.operationAudit.rootOpenCount, 1);
+  assert.equal(witness.operationAudit.readDirectoryCount, 0);
+  assert.equal(witness.operationAudit.validateSudoersCount, 0);
+  if (expectedAuthorizationOpenCount !== null) {
+    assert.equal(witness.operationAudit.authorizationOpenCount, expectedAuthorizationOpenCount);
+  }
+  if (expectedOperationCalls !== null) {
+    assert.deepEqual(witness.operationAudit.calls, expectedOperationCalls);
+  }
+  assert.equal(witness.fdAudit.liveDescriptorCount, 0);
+  assert.deepEqual(witness.fdAudit.closeAttempts, witness.fdAudit.successfulOpens);
+  const { beforeLifecycle, afterLifecycle, beforeState, afterState, ...terminalFollowUp } = witness.terminalFollowUp;
+  assert.deepEqual(terminalFollowUp, {
+    ok: false,
+    error: "restricted_identity_rejected",
+    allocations: C2B_ZERO_ALLOCATIONS,
+    operationCalls: 0,
+    trackedBuffersZero: true
+  });
+  assert.deepEqual(afterLifecycle, beforeLifecycle);
+  assert.deepEqual(afterState, beforeState);
+  c4AssertTerminalBudgetState(beforeState, witness.publicAudit.initialFixedShape,
+    witness.publicAudit.budgetLedger, witness.publicAudit.preimageReserveTotal);
+}
+
+function c4AssertSingleSshTraversal(call) {
+  assert.deepEqual(call.calls.filter(([name]) => name === "open").map(([, role]) => role), ["file-0"]);
+  assert.deepEqual(call.calls.filter(([name]) => name === "close").map(([, role]) => role), ["file-0"]);
+  assert.equal(call.calls.filter(([name]) => name === "readDirectory").length, 0);
+  assert.equal(call.calls.filter(([name]) => name === "validateSudoers").length, 0);
+  assert.deepEqual(call.fdAudit, {
+    successfulOpens: [["file-0", 1]],
+    closeAttempts: [["file-0", 1]],
+    liveDescriptorCount: 0
+  });
+}
+
+function c4AssertCoverageFreezeAudit(call) {
+  const audit = call.freezeAudit;
+  assert.notEqual(audit, null);
+  assert.equal(audit.rootFrozen, true);
+  assert.deepEqual(audit.rootKeys, ["schemaVersion", "type", "username", "groupIds", "branches"]);
+  assert.equal(audit.groupIdsFrozen, true);
+  assert.equal(audit.branchesFrozen, true);
+  assert.equal(audit.branches.length, call.result.value.branches.length);
+  const { rawShape, ...recursive } = audit.recursive;
+  assert.deepEqual(recursive, {
+    rootFrozen: true,
+    allFrozen: true,
+    containerCount: recursive.containerCount,
+    proxyCount: 0,
+    symbolCount: 0,
+    accessorCount: 0,
+    unexpectedNonEnumerableCount: 0
+  });
+  assert.deepEqual(rawShape, c4ExpectedProjectionRawShape(call.result.value));
+  for (const branch of audit.branches) {
+    assert.equal(branch.frozen, true);
+    assert.deepEqual(branch.keys, [
+      "ordinal", "sourceOrdinal", "lineNumber", "conditions", "accountDisposition", "variableDimensions"
+    ]);
+    assert.equal(branch.conditionsFrozen, true);
+    assert.equal(branch.variableDimensionsFrozen, true);
+    for (const condition of branch.conditions) {
+      assert.equal(condition.frozen, true);
+      assert.deepEqual(condition.keys, ["name", "patterns"]);
+      assert.equal(condition.patternsFrozen, true);
+      for (const pattern of condition.patterns) {
+        assert.equal(pattern.frozen, true);
+        assert.deepEqual(pattern.keys, ["negated", "value"]);
+      }
+    }
+  }
+}
+
+function c4AssertTopologySuccess(probe, { strictReads = true, expectedAuthReadStages = null } = {}) {
+  c4AssertDerivedCallSuccess(probe.topology);
+  assert.deepEqual(probe.topology.publicCalls, [
+    "topology", "snapshot", "graph:ssh", "graph:sudo", "deriveSyntax", "derivePolicy",
+    "verify", "disposePolicy", "disposeSyntax"
+  ]);
+  c4AssertVerifyAllocationAudit(probe.topology.verifyAllocationAudit, {
+    requireByteAllocation: true
+  });
+  c4AssertProjectionFreezeAudit(probe.topology.publicAudit, { include: 1, coverage: 1, topology: 1 });
+  const {
+    authorizationHashInputs, projectionFreezeCounts, projectionFreezeEvents, contractErrorEvents,
+    verifierBufferToStringCount, verifierBufferToStringSpans,
+    initialBoundaryCaptureCount, initialBoundaryAudits,
+    initialShapeCaptureCount, initialFixedShape, initialBudgetAudit, budgetLedger,
+    preimageReserveLengths, preimageReserveTotal, ...publicAudit
+  } =
+    probe.topology.publicAudit;
+  assert.deepEqual(projectionFreezeCounts, { include: 1, coverage: 1, topology: 1 });
+  assert.ok(projectionFreezeEvents.length > 0);
+  assert.deepEqual(contractErrorEvents, []);
+  assert.equal(initialShapeCaptureCount, 1);
+  assert.equal(initialBoundaryCaptureCount, 3);
+  assert.equal(initialBoundaryAudits.length, 3);
+  assert.notEqual(initialFixedShape, null);
+  assert.notEqual(initialBudgetAudit, null);
+  assert.notEqual(budgetLedger, null);
+  c4AssertVerifierCanonicalPathStringAudit(
+    verifierBufferToStringCount,
+    verifierBufferToStringSpans,
+    1
+  );
+  assert.deepEqual(preimageReserveTotal,
+    preimageReserveLengths.reduce((total, length) => total + length, 0));
+  assert.deepEqual(publicAudit, {
+    legacyLineParserCallCount: 0,
+    wholeRecordBufferToStringCount: 0,
+    wholeRecordTextDecoderCount: 0,
+    verifierTextDecoderConstructionCount: 0,
+    verifierTextDecoderDecodeCount: 0,
+    verifierTextDecoderInputLengths: [],
+    topologyFreezeCount: 1,
+    verifyAttempts: 1,
+    verifySuccesses: 1,
+    verifyFailures: 0,
+    verifyUndefinedReturns: 1,
+    verifyNonUndefinedReturns: 0,
+    authorizationEntryCount: 0,
+    snapshotFailed: false
+  });
+  assert.ok(authorizationHashInputs.every((entry) => entry.updateCount >= 1));
+  assert.deepEqual(authorizationHashInputs.map(({ algorithm, totalLength, inputSha256 }) => ({
+    algorithm,
+    totalLength,
+    inputSha256
+  })).sort((left, right) => left.totalLength - right.totalLength), [
+    {
+      algorithm: "sha256",
+      totalLength: probe.authorizationHashOracle.blob.length,
+      inputSha256: probe.authorizationHashOracle.blob.sha256
+    },
+    {
+      algorithm: "sha256",
+      totalLength: probe.authorizationHashOracle.line.length,
+      inputSha256: probe.authorizationHashOracle.line.sha256
+    }
+  ].sort((left, right) => left.totalLength - right.totalLength));
+  assert.equal(authorizationHashInputs.some((entry) =>
+    entry.totalLength === probe.authorizationHashOracle.legacyWholeFile.length
+      && entry.inputSha256 === probe.authorizationHashOracle.legacyWholeFile.sha256), false);
+  assert.equal(probe.topology.terminalFollowUp, null);
+  assert.deepEqual(probe.topology.result.value, probe.expected);
+  const { rawShape: topologyRawShape, ...topologyFreezeAudit } = probe.freezeAudit;
+  assert.deepEqual(topologyFreezeAudit, {
+    rootFrozen: true,
+    allFrozen: true,
+    containerCount: 6,
+    proxyCount: 0,
+    symbolCount: 0,
+    accessorCount: 0,
+    unexpectedNonEnumerableCount: 0
+  });
+  assert.deepEqual(topologyRawShape, c4ExpectedProjectionRawShape(probe.expected));
+  assert.deepEqual(Object.keys(probe.topology.result.value), C4_TOPOLOGY_KEYS);
+  assert.equal(probe.topology.result.value.activeAuthorizationEntryCount, 1);
+  assert.equal(probe.topology.result.value.targetKeyOccurrenceCount, 1);
+  assert.equal(probe.topology.result.value.addressDependentAuthorizationBranchCount, 0);
+  assert.equal(probe.bindingDigests.effective,
+    createHash("sha256").update(`${JSON.stringify(probe.expected)}\n`).digest("hex"));
+  assert.deepEqual(probe.accountReads, ["gccgw-japan-repair-ci", "gccgw-japan-repair-ci"]);
+  assert.deepEqual(probe.calls.filter(([name]) => name === "open").map(([, role]) => role), ["file-0", "file-1"]);
+  assert.deepEqual(probe.calls.filter(([name]) => name === "close").map(([, role]) => role), ["file-0", "file-1"]);
+  const reads = probe.calls.filter(([name]) => name === "read").map(([, role, stage]) => [role, stage]);
+  if (strictReads) {
+    assert.deepEqual(probe.calls, c4ExpectedTopologyPathOperations());
+  } else if (expectedAuthReadStages !== null) {
+    assert.deepEqual(probe.calls, c4ExpectedTopologyPathOperations(expectedAuthReadStages));
+  } else {
+    assert.deepEqual(reads.filter(([role, stage]) => role === "file-0" && ["body", "eof"].includes(stage)), [
+      ["file-0", "body"], ["file-0", "eof"]
+    ]);
+    assert.ok(reads.some(([role, stage]) => role === "file-1" && stage.startsWith("body")));
+    assert.ok(reads.some(([role, stage]) => role === "file-1" && stage.startsWith("eof")));
+  }
+  assert.equal(probe.calls.filter(([name]) => name === "readDirectory").length, 0);
+  assert.equal(probe.calls.filter(([name]) => name === "validateSudoers").length, 0);
+  assert.deepEqual(probe.fdAudit, {
+    successfulOpens: [["file-0", 1], ["file-1", 1]],
+    closeAttempts: [["file-0", 1], ["file-1", 1]],
+    liveDescriptorCount: 0
+  });
+  assert.deepEqual(probe.verificationScopes.filter(([operation, role, active]) =>
+    role === "file-1" && ["lstat", "open", "fstat", "read", "close"].includes(operation) && active !== true), []);
+}
+
+function c4AssertTopologyFailure(probe, failureAudit, label = failureAudit.stage) {
+  assert.ok([
+    "source-syntax",
+    "source-effective",
+    "authorization-grammar-or-digest",
+    "authorization-metadata",
+    "authorization-ancestor",
+    "authorization-operation",
+    "binding-authorization-digest",
+    "binding-effective-digest"
+  ].includes(failureAudit.stage), failureAudit.stage);
+  const expectedTopologyFreezeCount = failureAudit.stage === "binding-effective-digest" ? 1 : 0;
+  assert.notEqual(probe.topology, null, "C4 topology fixture must exercise the standalone topology failure path");
+  c4AssertInitialPublicState(probe.topology.publicAudit);
+  assert.equal(probe.topology.result.ok, false);
+  assert.equal(probe.topology.result.error, "restricted_identity_rejected");
+  assert.equal(Object.hasOwn(probe.topology.result, "value"), false);
+  assert.equal(Number.isSafeInteger(probe.topology.rawErrorAudit.contractErrorOrdinal), true);
+  assert.deepEqual(probe.topology.rawErrorAudit,
+    c4ExpectedRestrictedRawErrorAudit(probe.topology.publicAudit.contractErrorEvents.at(-1).ordinal));
+  assert.equal(probe.freezeAudit, null);
+  assert.equal(probe.topology.trackedBuffersZero, true);
+  assert.deepEqual(probe.topology.publicCalls, failureAudit.publicCalls, label);
+  c4AssertVerifyAllocationAudit(probe.topology.verifyAllocationAudit);
+  const expectsPolicyCleanup = failureAudit.stage !== "source-syntax";
+  assert.deepEqual(probe.topology.publicCalls.slice(expectsPolicyCleanup ? -2 : -1),
+    expectsPolicyCleanup ? ["disposePolicy", "disposeSyntax"] : ["deriveSyntax"]);
+  assert.equal(probe.topology.publicCalls.filter((name) => name === "disposePolicy").length,
+    expectsPolicyCleanup ? 1 : 0);
+  assert.equal(probe.topology.publicCalls.filter((name) => name === "disposeSyntax").length,
+    expectsPolicyCleanup ? 1 : 0);
+  c4AssertPublicRegistryFailure(
+    probe.topology.registryAudit,
+    "topology",
+    probe.topology.publicAudit.contractErrorEvents[0].registryEvents
+  );
+  c4AssertProjectionFreezeAudit(probe.topology.publicAudit, probe.topology.publicAudit.projectionFreezeCounts);
+  assert.equal(probe.topology.publicAudit.projectionFreezeEvents.every((entry) => entry.returnedRoot === false), true);
+  const {
+    authorizationHashInputs, projectionFreezeCounts, projectionFreezeEvents, contractErrorEvents,
+    verifierBufferToStringCount, verifierBufferToStringSpans,
+    initialBoundaryCaptureCount, initialBoundaryAudits,
+    initialShapeCaptureCount, initialFixedShape, initialBudgetAudit, budgetLedger,
+    preimageReserveLengths, preimageReserveTotal, ...publicAudit
+  } =
+    probe.topology.publicAudit;
+  assert.equal(projectionFreezeCounts.topology, expectedTopologyFreezeCount);
+  assert.equal(projectionFreezeEvents.length > 0, expectsPolicyCleanup);
+  assert.ok(contractErrorEvents.length >= 1);
+  assert.deepEqual(contractErrorEvents.map((entry) => entry.ordinal),
+    contractErrorEvents.map((_, index) => index + 1));
+  assert.equal(contractErrorEvents.every((entry) => entry.codeExact === true), true);
+  assert.equal(probe.topology.rawErrorAudit.contractErrorOrdinal, contractErrorEvents.at(-1).ordinal);
+  assert.equal(initialShapeCaptureCount, 1);
+  assert.equal(initialBoundaryCaptureCount, 3);
+  assert.equal(initialBoundaryAudits.length, 3);
+  assert.notEqual(initialFixedShape, null);
+  assert.notEqual(initialBudgetAudit, null);
+  assert.notEqual(budgetLedger, null);
+  c4AssertVerifierCanonicalPathStringAudit(
+    verifierBufferToStringCount,
+    verifierBufferToStringSpans,
+    failureAudit.verifyAttempts
+  );
+  assert.deepEqual(preimageReserveTotal,
+    preimageReserveLengths.reduce((total, length) => total + length, 0));
+  assert.deepEqual(publicAudit, {
+    legacyLineParserCallCount: 0,
+    wholeRecordBufferToStringCount: 0,
+    wholeRecordTextDecoderCount: 0,
+    verifierTextDecoderConstructionCount: 0,
+    verifierTextDecoderDecodeCount: 0,
+    verifierTextDecoderInputLengths: [],
+    topologyFreezeCount: expectedTopologyFreezeCount,
+    verifyAttempts: failureAudit.verifyAttempts,
+    verifySuccesses: failureAudit.verifySuccesses,
+    verifyFailures: failureAudit.verifyFailures,
+    verifyUndefinedReturns: failureAudit.verifySuccesses,
+    verifyNonUndefinedReturns: 0,
+    authorizationEntryCount: 0,
+    snapshotFailed: true
+  });
+  assert.equal(Array.isArray(authorizationHashInputs), true);
+  assert.notEqual(failureAudit.expectedCalls, null);
+  assert.deepEqual(probe.calls, failureAudit.expectedCalls, label);
+  assert.deepEqual(probe.verificationScopes.filter(([operation, role, active]) =>
+    role === "file-1" && ["lstat", "open", "fstat", "read", "close"].includes(operation) && active !== true), []);
+  assert.equal(probe.topology.publicCalls.filter((name) => name === "verify").length,
+    failureAudit.verifyAttempts);
+  const { beforeLifecycle, afterLifecycle, beforeState, afterState, ...terminalFollowUp } =
+    probe.topology.terminalFollowUp;
+  assert.deepEqual(terminalFollowUp, {
+    ok: false,
+    error: "restricted_identity_rejected",
+    allocations: C2B_ZERO_ALLOCATIONS,
+    operationCalls: 0,
+    trackedBuffersZero: true
+  });
+  assert.deepEqual(afterLifecycle, beforeLifecycle);
+  assert.deepEqual(afterState, beforeState);
+  c4AssertTerminalBudgetState(beforeState, initialFixedShape,
+    probe.topology.publicAudit.budgetLedger, preimageReserveTotal);
+  assert.deepEqual(probe.fdAudit.successfulOpens,
+    failureAudit.successfulOpenRoles.map((role) => [role, 1]));
+  assert.deepEqual(probe.fdAudit.closeAttempts, probe.fdAudit.successfulOpens);
+  assert.equal(probe.fdAudit.liveDescriptorCount, 0);
+  for (const [, count] of probe.fdAudit.successfulOpens) assert.equal(count, 1);
+  for (const [, count] of probe.fdAudit.closeAttempts) assert.equal(count, 1);
 }
 
 function c3AssertAllocationPolicy(result) {
@@ -9758,4 +14905,1292 @@ test("SSH lexer accepts only the global and Match closed subsets", () => {
     opaqueDirectiveNamesFixedLowercase: true,
     unknownDirectiveValues: ["unknown"]
   });
+});
+
+test("SSH Match derives User Group disposition from shared branded account evidence", () => {
+  const value = requireC4Symbols(c3VmProbe("c4-match"));
+  assert.equal(value.scenario, "match");
+  assert.deepEqual(value.publicArities, { include: 1, coverage: 2, topology: 3 });
+  c4AssertDerivedCallSuccess(value.coverage);
+  c4AssertCoverageFreezeAudit(value.coverage);
+  assert.deepEqual(value.coverage.publicCalls, [
+    "coverage", "snapshot", "graph:ssh", "graph:sudo", "deriveSyntax", "derivePolicy",
+    "disposePolicy", "disposeSyntax"
+  ]);
+  c4AssertSingleSshTraversal(value.coverage);
+  const coverage = value.coverage.result.value;
+  assert.deepEqual(Object.keys(coverage), ["schemaVersion", "type", "username", "groupIds", "branches"]);
+  assert.deepEqual(coverage.groupIds, [975, 1100]);
+  assert.equal(coverage.branches.length, 17);
+  assert.deepEqual(coverage.branches.map((branch) => branch.ordinal), Array.from({ length: 17 }, (_, index) => index));
+  assert.deepEqual(coverage.branches.map((branch) => branch.lineNumber), Array.from({ length: 17 }, (_, index) => index + 1));
+  assert.deepEqual(coverage.branches.map((branch) => branch.accountDisposition), [
+    "exact_user", "exact_user", "exact_user", "disjoint", "disjoint",
+    "exact_user", "exact_user", "exact_user", "disjoint", "disjoint",
+    "disjoint", "exact_user", "exact_user", "disjoint", "disjoint",
+    "disjoint", "disjoint"
+  ]);
+  for (const branch of coverage.branches) {
+    assert.deepEqual(Object.keys(branch), [
+      "ordinal", "sourceOrdinal", "lineNumber", "conditions", "accountDisposition", "variableDimensions"
+    ]);
+    assert.deepEqual(branch.variableDimensions, []);
+  }
+  assert.deepEqual(coverage.branches[0].conditions, [
+    { name: "user", patterns: [{ negated: false, value: "gccgw-japan-repair-ci" }] }
+  ]);
+  assert.deepEqual(coverage.branches[4].conditions[0].patterns, [
+    { negated: false, value: "*" },
+    { negated: true, value: "gccgw-japan-repair-ci" }
+  ]);
+  assert.deepEqual(coverage.branches[3].conditions, [{
+    name: "user",
+    patterns: [{ negated: true, value: "root" }]
+  }]);
+  assert.equal(coverage.branches[3].accountDisposition, "disjoint");
+  assert.deepEqual(coverage.branches[8].conditions, [{
+    name: "group",
+    patterns: [{ negated: true, value: "wheel" }]
+  }]);
+  assert.equal(coverage.branches[8].accountDisposition, "disjoint");
+  assert.deepEqual(coverage.branches[9].conditions, [{
+    name: "group",
+    patterns: [{ negated: false, value: "*" }, { negated: true, value: "ops" }]
+  }]);
+  assert.deepEqual(coverage.branches[10].conditions, [{
+    name: "group",
+    patterns: [{ negated: true, value: "ops" }]
+  }]);
+  assert.equal(coverage.branches[9].accountDisposition, "disjoint");
+  assert.equal(coverage.branches[10].accountDisposition, "disjoint");
+  assert.deepEqual(coverage.branches[11].conditions.map((condition) => condition.name), ["user", "group"]);
+  assert.deepEqual(coverage.branches[12].conditions, [{ name: "all", patterns: [] }]);
+  assert.deepEqual(value.coverage.freezeAudit.branches[12].conditions, [{
+    frozen: true,
+    keys: ["name", "patterns"],
+    patternsFrozen: true,
+    patterns: []
+  }]);
+  c4AssertDerivedCallSuccess(value.includeSnapshotSuccess);
+  assert.deepEqual(value.includeSnapshotSuccess.publicCalls, [
+    "include", "snapshot", "graph:ssh", "graph:sudo", "deriveSyntax", "disposeSyntax"
+  ]);
+  c4AssertSingleSshTraversal(value.includeSnapshotSuccess);
+  c4AssertDerivedCallFailure(value.includeSnapshotFailure);
+  assert.deepEqual(value.includeSnapshotFailure.publicCalls, [
+    "include", "snapshot", "graph:ssh", "graph:sudo", "deriveSyntax"
+  ]);
+  const {
+    beforeLifecycle: includeBeforeLifecycle, afterLifecycle: includeAfterLifecycle,
+    beforeState: includeBeforeState, afterState: includeAfterState, ...includeTerminalFollowUp
+  } = value.includeSnapshotFailure.terminalFollowUp;
+  assert.deepEqual(includeTerminalFollowUp, {
+    ok: false,
+    error: "restricted_identity_rejected",
+    allocations: C2B_ZERO_ALLOCATIONS,
+    operationCalls: 0,
+    trackedBuffersZero: true
+  });
+  assert.deepEqual(includeAfterLifecycle, includeBeforeLifecycle);
+  assert.deepEqual(includeAfterState, includeBeforeState);
+  c4AssertSingleSshTraversal(value.includeSnapshotFailure);
+  c4AssertDerivedCallFailure(value.coverageSnapshotFailure);
+  assert.deepEqual(value.coverageSnapshotFailure.publicCalls, [
+    "coverage", "snapshot", "graph:ssh", "graph:sudo", "deriveSyntax"
+  ]);
+  const {
+    beforeLifecycle: coverageBeforeLifecycle, afterLifecycle: coverageAfterLifecycle,
+    beforeState: coverageBeforeState, afterState: coverageAfterState, ...coverageTerminalFollowUp
+  } = value.coverageSnapshotFailure.terminalFollowUp;
+  assert.deepEqual(coverageTerminalFollowUp, {
+    ok: false,
+    error: "restricted_identity_rejected",
+    allocations: C2B_ZERO_ALLOCATIONS,
+    operationCalls: 0,
+    trackedBuffersZero: true
+  });
+  assert.deepEqual(coverageAfterLifecycle, coverageBeforeLifecycle);
+  assert.deepEqual(coverageAfterState, coverageBeforeState);
+  c4AssertSingleSshTraversal(value.coverageSnapshotFailure);
+  c4AssertDerivedCallSuccess(value.independent);
+  assert.deepEqual(value.independent.result.value.groupIds, [975, 2200]);
+  assert.equal(value.independent.result.value.branches[0].accountDisposition, "exact_user");
+  c4AssertDerivedCallSuccess(value.numericName);
+  assert.deepEqual(value.numericName.result.value.groupIds, [975, 2200]);
+  assert.equal(value.numericName.result.value.branches[0].accountDisposition, "exact_user");
+  c4AssertDerivedCallSuccess(value.nestedInclude.coverage);
+  c4AssertCoverageFreezeAudit(value.nestedInclude.coverage);
+  assert.deepEqual(value.nestedInclude.coverage.result.value, value.nestedInclude.oracle);
+  assert.equal(value.nestedInclude.actualSha256, value.nestedInclude.oracleSha256);
+  assert.deepEqual(value.nestedInclude.coverage.result.value.branches.map((branch) => branch.ordinal), [0, 1, 2, 3, 4]);
+  assert.deepEqual(value.nestedInclude.coverage.result.value.branches.map((branch) => branch.sourceOrdinal), [2, 2, 1, 1, 0]);
+  assert.deepEqual(value.nestedInclude.coverage.result.value.branches.map((branch) => branch.lineNumber), [1, 2, 2, 3, 2]);
+  assert.deepEqual(value.nestedInclude.coverage.result.value.branches.map((branch) => branch.accountDisposition), [
+    "exact_user", "exact_user", "exact_user", "disjoint", "disjoint"
+  ]);
+  assert.deepEqual(value.nestedInclude.coverage.calls.filter(([name]) => name === "open").map(([, role]) => role), [
+    "file-0", "file-1", "file-2"
+  ]);
+  assert.equal(value.nestedInclude.coverage.calls.filter(([name]) => name === "readDirectory").length, 0);
+  assert.equal(value.nestedInclude.coverage.calls.filter(([name]) => name === "validateSudoers").length, 0);
+  assert.deepEqual(value.nestedInclude.coverage.accountReads, ["gccgw-japan-repair-ci", "gccgw-japan-repair-ci"]);
+  for (const attempt of value.privateAttempts) {
+    assert.equal(attempt.injectedOperationDelta, 0, attempt.kind);
+    assert.equal(attempt.trackedBuffersZero, true, attempt.kind);
+    const policyAsSyntax = attempt.kind === "live-policy-as-syntax"
+      || attempt.kind === "disposed-policy-as-syntax";
+    if (policyAsSyntax) {
+      assert.deepEqual(attempt.setupPolicy, { ok: true, error: null }, attempt.kind);
+      assert.ok(attempt.comparisonBefore > 0, attempt.kind);
+      assert.deepEqual(attempt.setupPolicyDispose, attempt.kind === "disposed-policy-as-syntax"
+        ? { ok: true, error: null }
+        : null, attempt.kind);
+    } else {
+      assert.equal(attempt.comparisonBefore, 0, attempt.kind);
+    }
+    if (attempt.kind === "reused-owner") {
+      assert.equal(attempt.attempted.ok, true);
+      assert.equal(attempt.rawErrorAudit, null);
+      assert.deepEqual(attempt.reused && { ok: attempt.reused.ok, error: attempt.reused.error },
+        { ok: false, error: "restricted_identity_rejected" });
+      assert.deepEqual(attempt.reused.rawErrorAudit,
+        c4ExpectedRestrictedRawErrorAudit(null));
+      assert.deepEqual(attempt.reused.allocations, C2B_ZERO_ALLOCATIONS);
+      assert.equal(attempt.reusedComparisonDelta, 0);
+      assert.equal(attempt.reusedOperationDelta, 0);
+      assert.equal(attempt.terminal, true);
+      assert.deepEqual(attempt.terminalFollowUp, {
+        ok: false,
+        error: "restricted_identity_rejected",
+        allocations: C2B_ZERO_ALLOCATIONS,
+        calls: 0
+      });
+    } else {
+      assert.deepEqual({ ok: attempt.attempted.ok, error: attempt.attempted.error },
+        { ok: false, error: "restricted_identity_rejected" }, attempt.kind);
+      assert.deepEqual(attempt.rawErrorAudit,
+        c4ExpectedRestrictedRawErrorAudit(null), attempt.kind);
+      assert.deepEqual(attempt.allocations, C2B_ZERO_ALLOCATIONS, attempt.kind);
+      assert.equal(attempt.comparisonDelta, 0, attempt.kind);
+      assert.equal(attempt.comparisonAfterAttempt, attempt.comparisonBefore, attempt.kind);
+      assert.equal(attempt.comparisonAfter, attempt.comparisonBefore, attempt.kind);
+      assert.deepEqual(attempt.terminalFollowUp, {
+        ok: false,
+        error: "restricted_identity_rejected",
+        allocations: C2B_ZERO_ALLOCATIONS,
+        calls: 0
+      }, attempt.kind);
+    }
+  }
+  assert.deepEqual(value.nativePolicy.syntax, { ok: true });
+  assert.deepEqual(value.nativePolicy.policy, { ok: true, error: null });
+  assert.deepEqual(value.nativePolicy.disposePolicy, { ok: true, error: null });
+  assert.deepEqual(value.nativePolicy.disposeSyntax, { ok: true, error: null });
+  assert.equal(value.nativePolicy.authorizationEntryCount, 0);
+  assert.equal(value.nativePolicy.terminal, false);
+  assert.deepEqual(value.nativePolicy.nativeAccount, {
+    outputCount: 6,
+    outputZeroized: true,
+    openCount: 6,
+    spawnCount: 6
+  });
+  assert.deepEqual(value.nativeNumericPolicy.syntax, { ok: true });
+  assert.deepEqual(value.nativeNumericPolicy.policy, { ok: true, error: null });
+  assert.deepEqual(value.nativeNumericPolicy.disposePolicy, { ok: true, error: null });
+  assert.deepEqual(value.nativeNumericPolicy.disposeSyntax, { ok: true, error: null });
+  assert.equal(value.nativeNumericPolicy.authorizationEntryCount, 0);
+  assert.equal(value.nativeNumericPolicy.terminal, false);
+  assert.deepEqual(value.nativeNumericPolicy.nativeAccount, {
+    outputCount: 6,
+    outputZeroized: true,
+    openCount: 6,
+    spawnCount: 6
+  });
+  assert.deepEqual(value.shapeWitnesses.map((witness) => witness.name), [
+    "include-old-caller-record",
+    "include-missing-input",
+    "include-top-missing",
+    "include-top-extra",
+    "include-path-extra",
+    "include-source-extra",
+    "include-overload",
+    "coverage-unbranded-plain",
+    "topology-unbranded-plain",
+    "coverage-unbranded-clone",
+    "topology-unbranded-clone",
+    "coverage-frozen-lookalike",
+    "topology-frozen-lookalike",
+    "coverage-unbranded-proxy",
+    "topology-unbranded-proxy",
+    "coverage-native-account",
+    "topology-native-account",
+    "coverage-missing-input",
+    "coverage-swapped",
+    "coverage-binding-in-input",
+    "coverage-old-caller-record-in-input",
+    "coverage-top-missing",
+    "coverage-top-extra",
+    "coverage-path-extra",
+    "coverage-source-extra",
+    "coverage-overload",
+    "topology-missing-binding",
+    "topology-missing-input",
+    "topology-input-in-binding",
+    "topology-binding-in-input",
+    "topology-binding-input-swapped",
+    "topology-old-binding-record",
+    "topology-old-caller-record-in-input",
+    "topology-top-extra",
+    "topology-path-extra",
+    "topology-source-extra",
+    "topology-overload",
+    "topology-binding-null",
+    "topology-binding-missing-authorization",
+    "topology-binding-missing-nested",
+    "topology-binding-top-extra",
+    "topology-binding-nested-extra",
+    "topology-binding-top-proxy",
+    "topology-binding-nested-proxy"
+  ]);
+  for (const witness of value.shapeWitnesses) {
+    assert.deepEqual({ ok: witness.ok, error: witness.error, calls: witness.calls }, {
+      ok: false,
+      error: "restricted_identity_rejected",
+      calls: 0
+    }, witness.name);
+    assert.deepEqual(witness.allocations, C2B_ZERO_ALLOCATIONS, witness.name);
+    const expectedPublicCall = witness.name.startsWith("include-")
+      ? "include"
+      : witness.name.startsWith("coverage-")
+        ? "coverage"
+        : "topology";
+    assert.deepEqual(witness.publicCalls, [expectedPublicCall], witness.name);
+    assert.equal(witness.contractErrorEvents.length >= 1, true, witness.name);
+    assert.equal(witness.rawErrorAudit.contractErrorOrdinal,
+      witness.contractErrorEvents.at(-1).ordinal, witness.name);
+    assert.deepEqual(witness.rawErrorAudit,
+      c4ExpectedRestrictedRawErrorAudit(witness.contractErrorEvents.at(-1).ordinal), witness.name);
+    if (witness.proxyCounters !== null) {
+      assert.deepEqual(witness.proxyCounters, {
+        get: 0,
+        ownKeys: 0,
+        getOwnPropertyDescriptor: 0,
+        getPrototypeOf: 0
+      }, witness.name);
+    }
+  }
+  assert.equal(value.lifecycle.syntax.ok, true);
+  assert.equal(value.lifecycle.derive.ok, true);
+  assert.deepEqual(value.lifecycle.disposePolicy && {
+    ok: value.lifecycle.disposePolicy.ok,
+    error: value.lifecycle.disposePolicy.error
+  }, { ok: true, error: null });
+  assert.deepEqual({ ok: value.lifecycle.disposeSyntax.ok, error: value.lifecycle.disposeSyntax.error },
+    { ok: true, error: null });
+  assert.equal(value.lifecycle.afterDerive.snapshot.authorizationEntryCount, 0);
+  assert.equal(value.lifecycle.afterDerive.snapshot.failed, false);
+  assert.equal(value.lifecycle.afterDispose.snapshot.authorizationEntryCount, 0);
+  assert.equal(value.lifecycle.afterDispose.snapshot.failed, false);
+  assert.deepEqual(value.lifecycle.provenance, {
+    afterDerive: {
+      registryObserved: true,
+      registryStable: true,
+      policyIdentified: true,
+      syntaxPolicyDistinct: true,
+      returnedPolicyIdentity: true,
+      syntax: { present: true, sameGraph: true },
+      policy: { present: true, sameGraph: true },
+      snapshot: { present: false, sameGraph: false }
+    },
+    afterPolicyDispose: {
+      registryObserved: true,
+      registryStable: true,
+      policyIdentified: true,
+      syntaxPolicyDistinct: true,
+      returnedPolicyIdentity: true,
+      syntax: { present: true, sameGraph: true },
+      policy: { present: false, sameGraph: false },
+      snapshot: { present: false, sameGraph: false }
+    },
+    afterDispose: {
+      registryObserved: true,
+      registryStable: true,
+      policyIdentified: true,
+      syntaxPolicyDistinct: true,
+      returnedPolicyIdentity: true,
+      syntax: { present: false, sameGraph: false },
+      policy: { present: false, sameGraph: false },
+      snapshot: { present: false, sameGraph: false }
+    }
+  });
+  assert.deepEqual(value.lifecycle.lifecycle.phases.map((phase) => phase.name), [
+    "derivePolicy", "disposePolicy", "disposeSyntax"
+  ]);
+  const lifecycleRegistry = value.lifecycle.lifecycle.phases.flatMap((phase) =>
+    phase.registry
+      .filter((entry) => entry.keyIdentity !== undefined)
+      .map((entry) => [phase.name, entry.method, entry.keyIdentity, entry.sameGraph]));
+  assert.deepEqual(lifecycleRegistry, [
+    ["derivePolicy", "get", "syntax", true],
+    ["derivePolicy", "set", "policy", true],
+    ["disposePolicy", "get", "policy", true],
+    ["disposePolicy", "delete", "policy", true],
+    ["disposeSyntax", "get", "syntax", true],
+    ["disposeSyntax", "delete", "syntax", true]
+  ]);
+  assert.equal(lifecycleRegistry.filter(([, method]) => method === "get").length, 3);
+  assert.equal(lifecycleRegistry.filter(([, method]) => method === "set").length, 1);
+  assert.equal(lifecycleRegistry.filter(([, method]) => method === "delete").length, 2);
+  assert.equal(lifecycleRegistry.some(([, , identity]) => identity === "snapshot"), false);
+  assert.deepEqual(value.lifecycle.derive.forbiddenAllocations, {
+    map: 0,
+    set: 0,
+    weakMap: 0,
+    weakSet: 0,
+    bufferFrom: 0,
+    textEncoder: 0,
+    textEncode: 0,
+    jsonStringify: 0,
+    jsonParse: 0
+  });
+  assert.ok(value.lifecycle.derive.trackedBufferCount > 0);
+  const calibration = value.lifecycleCalibration;
+  assert.equal(calibration.fixedReserves.length, 7);
+  assert.equal(calibration.fixedCompletions.length, calibration.fixedReserves.length);
+  assert.deepEqual(calibration.fixedReserves.map((entry) => entry.ordinal),
+    Array.from({ length: calibration.fixedReserves.length }, (_, index) => index + 1));
+  assert.deepEqual(calibration.fixedCompletions.map((entry) => entry.ordinal),
+    calibration.fixedReserves.map((entry) => entry.ordinal));
+  assert.deepEqual(calibration.fixedCompletions.map((entry) => entry.kind), [
+    "objectCreate", "objectCreate", "array", "array",
+    "objectCreate", "objectCreate", "objectCreate"
+  ]);
+  assert.equal(calibration.semanticReserves, 0);
+  for (let index = 0; index < calibration.fixedReserves.length; index += 1) {
+    const reserve = calibration.fixedReserves[index];
+    const completion = calibration.fixedCompletions[index];
+    assert.ok(reserve.action < completion.action, `fixed envelope ${reserve.ordinal}`);
+    assert.ok(completion.allocationOrdinal > 0, `fixed envelope ${reserve.ordinal}`);
+    assert.ok(["objectCreate", "array"].includes(completion.kind), `fixed envelope ${reserve.ordinal}`);
+  }
+  assert.equal(calibration.preimages.length, 1);
+  assert.equal(calibration.preimagePendingCount, 0);
+  for (const preimage of calibration.preimages) {
+    assert.equal(preimage.reservedLength, calibration.coverageOracle.length);
+    assert.equal(preimage.requestedLength, calibration.coverageOracle.length);
+    assert.equal(preimage.actualLength, calibration.coverageOracle.length);
+    assert.equal(Number.isSafeInteger(preimage.byteId), true);
+    assert.equal(preimage.allocationKind, "bufferAlloc");
+    assert.equal(preimage.firstAllocationAfterReserve, true);
+    assert.equal(preimage.claimedAsPreimage, true);
+    assert.equal(preimage.orphan, false);
+    assert.ok(preimage.reserveAction < preimage.allocationAction);
+    assert.ok(preimage.allocationAction < preimage.hashAction);
+    assert.ok(preimage.hashAction < preimage.fillAction);
+    assert.equal(preimage.fullSpanHashCount, 1);
+    assert.deepEqual(preimage.hashSpans.map(({ byteId, length, sha256 }) => ({ byteId, length, sha256 })), [{
+      byteId: preimage.byteId,
+      length: calibration.coverageOracle.length,
+      sha256: calibration.coverageOracle.sha256
+    }]);
+    assert.equal(preimage.zeroFillCount, 1);
+    assert.equal(preimage.zero, true);
+  }
+  assert.ok(calibration.hashes > 0);
+  assert.ok(calibration.fills > 0);
+  assert.ok(value.faultMatrix.length >= calibration.fixedReserves.length + 3);
+  for (const witness of value.faultMatrix) {
+    assert.equal(witness.setupFailed, false, JSON.stringify(witness.fault));
+    assert.equal(witness.faultTriggered, true, JSON.stringify(witness.fault));
+    assert.deepEqual(witness.result, {
+      ok: false,
+      error: "restricted_identity_rejected"
+    }, JSON.stringify(witness.fault));
+    assert.deepEqual(witness.rawErrorAudit,
+      c4ExpectedRestrictedRawErrorAudit(null), JSON.stringify(witness.fault));
+    assert.deepEqual(witness.forbiddenAllocations, {
+      map: 0,
+      set: 0,
+      weakMap: 0,
+      weakSet: 0,
+      bufferFrom: 0,
+      textEncoder: 0,
+      textEncode: 0,
+      jsonStringify: 0,
+      jsonParse: 0
+    }, JSON.stringify(witness.fault));
+    assert.equal(witness.provenance.policy.present, false, JSON.stringify(witness.fault));
+    assert.deepEqual(witness.syntaxCleanup, {
+      ok: true,
+      error: null,
+      trackedBuffersZero: true
+    }, JSON.stringify(witness.fault));
+    assert.equal(witness.graphFailed, true, JSON.stringify(witness.fault));
+    assert.equal(witness.snapshotFailed, true, JSON.stringify(witness.fault));
+    assert.equal(witness.authorizationEntryCount, 0, JSON.stringify(witness.fault));
+    assert.equal(witness.trackedBuffersZero, true, JSON.stringify(witness.fault));
+    assert.equal(witness.buffersZero, true, JSON.stringify(witness.fault));
+    assert.equal(witness.preimagePendingCount, 0, JSON.stringify(witness.fault));
+    for (const preimage of witness.preimages) {
+      assert.equal(preimage.zero, true, JSON.stringify(witness.fault));
+      if (preimage.hashAction !== null && preimage.fillAction !== null) {
+        assert.ok(preimage.reserveAction < preimage.allocationAction, JSON.stringify(witness.fault));
+        assert.ok(preimage.allocationAction < preimage.hashAction, JSON.stringify(witness.fault));
+        assert.ok(preimage.hashAction < preimage.fillAction, JSON.stringify(witness.fault));
+      }
+    }
+    assert.deepEqual(witness.followUp, {
+      ok: false,
+      error: "restricted_identity_rejected",
+      allocations: C2B_ZERO_ALLOCATIONS,
+      calls: 0,
+      trackedBuffersZero: true
+    }, JSON.stringify(witness.fault));
+  }
+  const ambiguity = value.disposeAmbiguity;
+  assert.equal(ambiguity.setupFailed, false);
+  assert.equal(ambiguity.faultTriggered, true);
+  assert.deepEqual(ambiguity.result, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(ambiguity.rawErrorAudit, c4ExpectedRestrictedRawErrorAudit(null));
+  assert.deepEqual(ambiguity.provenanceAfterDelete.policy, { present: false, sameGraph: false });
+  assert.deepEqual(ambiguity.provenanceAfterDelete.syntax, { present: true, sameGraph: true });
+  assert.deepEqual(ambiguity.provenanceAfterCleanup.policy, { present: false, sameGraph: false });
+  assert.deepEqual(ambiguity.provenanceAfterCleanup.syntax, { present: false, sameGraph: false });
+  assert.deepEqual(ambiguity.syntaxCleanup, { ok: true, error: null, trackedBuffersZero: true });
+  assert.equal(ambiguity.graphFailed, true);
+  assert.equal(ambiguity.snapshotFailed, true);
+  assert.equal(ambiguity.authorizationEntryCount, 0);
+  assert.equal(ambiguity.buffersZero, true);
+  assert.deepEqual(ambiguity.followUp, {
+    ok: false,
+    error: "restricted_identity_rejected",
+    allocations: C2B_ZERO_ALLOCATIONS,
+    calls: 0,
+    trackedBuffersZero: true
+  });
+  assert.deepEqual(value.disposeMatrix.map((entry) => entry.kind), [
+    "plain", "clone", "proxy", "syntax-as-policy",
+    "wrong-graph", "foreign", "disposed", "double"
+  ]);
+  for (const witness of value.disposeMatrix) {
+    assert.equal(witness.setupFailed, false, witness.kind);
+    if (witness.kind === "disposed" || witness.kind === "double") {
+      assert.deepEqual(witness.preDispose, { ok: true, error: null }, witness.kind);
+    } else {
+      assert.equal(witness.preDispose, null, witness.kind);
+    }
+    assert.deepEqual(witness.attempted,
+      { ok: false, error: "restricted_identity_rejected" }, witness.kind);
+    assert.deepEqual(witness.rawErrorAudit,
+      c4ExpectedRestrictedRawErrorAudit(null), witness.kind);
+    assert.deepEqual(witness.allocations, C2B_ZERO_ALLOCATIONS, witness.kind);
+    assert.equal(witness.trackedBuffersZero, true, witness.kind);
+    assert.equal(witness.operationDelta, 0, witness.kind);
+    assert.equal(witness.terminal, true, witness.kind);
+    assert.deepEqual(witness.followUp, {
+      ok: false,
+      error: "restricted_identity_rejected",
+      allocations: C2B_ZERO_ALLOCATIONS,
+      calls: 0
+    }, witness.kind);
+    assert.ok(witness.cleanup.length >= 1, witness.kind);
+    assert.ok(witness.cleanup.every((entry) => entry.ok === true && entry.error === null), witness.kind);
+  }
+  assert.deepEqual({
+    ok: value.budget.userOrdering.policy.ok,
+    error: value.budget.userOrdering.policy.error,
+    comparisons: value.budget.userOrdering.comparisons,
+    attempts: value.budget.userOrdering.attempts,
+    reservations: value.budget.userOrdering.reservations,
+    completions: value.budget.userOrdering.completions,
+    reserveThrows: value.budget.userOrdering.reserveThrows,
+    reserveBeforeComplete: value.budget.userOrdering.reserveBeforeComplete,
+    matcherAttempts: value.budget.userOrdering.matcherAttempts,
+    matcherCompletions: value.budget.userOrdering.matcherCompletions,
+    matcherThrows: value.budget.userOrdering.matcherThrows,
+    matcherOrderingValid: value.budget.userOrdering.matcherOrderingValid,
+    wildcardInvocations: value.budget.userOrdering.wildcardInvocations,
+    terminal: value.budget.userOrdering.terminal
+  }, {
+    ok: true,
+    error: null,
+    comparisons: 2,
+    attempts: 2,
+    reservations: 2,
+    completions: 2,
+    reserveThrows: 0,
+    reserveBeforeComplete: true,
+    matcherAttempts: 2,
+    matcherCompletions: 2,
+    matcherThrows: 0,
+    matcherOrderingValid: true,
+    wildcardInvocations: 2,
+    terminal: false
+  });
+  assert.deepEqual(value.budget.userOrdering.matcherLedger, [
+    { sequence: 1, phase: "matcherAttempt", kind: "sshMatch", attempts: 1, completions: 0 },
+    { sequence: 2, phase: "reserveAttempt", kind: "sshMatch", attempts: 1, reservations: 1, completions: 0 },
+    { sequence: 3, phase: "reserveComplete", kind: "sshMatch", attempts: 1, reservations: 1, completions: 1 },
+    { sequence: 4, phase: "matcherComplete", kind: "sshMatch", attempts: 1, completions: 1 },
+    { sequence: 5, phase: "matcherAttempt", kind: "sshMatch", attempts: 2, completions: 1 },
+    { sequence: 6, phase: "reserveAttempt", kind: "sshMatch", attempts: 2, reservations: 2, completions: 1 },
+    { sequence: 7, phase: "reserveComplete", kind: "sshMatch", attempts: 2, reservations: 2, completions: 2 },
+    { sequence: 8, phase: "matcherComplete", kind: "sshMatch", attempts: 2, completions: 2 }
+  ]);
+  assert.deepEqual(value.budget.maximum, {
+    ok: true,
+    error: null,
+    comparisons: 131072,
+    attempts: 131072,
+    reservations: 131072,
+    completions: 131072,
+    reserveThrows: 0,
+    reserveBeforeComplete: true,
+    matcherAttempts: 131072,
+    matcherCompletions: 131072,
+    matcherThrows: 0,
+    matcherOrderingValid: true,
+    wildcardInvocations: 131072,
+    wildcardAlignedComparisons: 270336,
+    fixedEnvelopes: 17,
+    semanticReserves: 0,
+    traceLength: 0,
+    terminal: false
+  });
+  assert.deepEqual({
+    ok: value.budget.overflow.ok,
+    error: value.budget.overflow.error,
+    comparisons: value.budget.overflow.comparisons,
+    attempts: value.budget.overflow.attempts,
+    reservations: value.budget.overflow.reservations,
+    completions: value.budget.overflow.completions,
+    reserveThrows: value.budget.overflow.reserveThrows,
+    reserveBeforeComplete: value.budget.overflow.reserveBeforeComplete,
+    matcherAttempts: value.budget.overflow.matcherAttempts,
+    matcherCompletions: value.budget.overflow.matcherCompletions,
+    matcherThrows: value.budget.overflow.matcherThrows,
+    matcherOrderingValid: value.budget.overflow.matcherOrderingValid,
+    wildcardInvocations: value.budget.overflow.wildcardInvocations,
+    wildcardAlignedComparisons: value.budget.overflow.wildcardAlignedComparisons,
+    semanticReserves: value.budget.overflow.semanticReserves,
+    traceLength: value.budget.overflow.traceLength,
+    terminal: value.budget.overflow.terminal,
+    followUp: value.budget.overflow.followUp
+  }, {
+    ok: false,
+    error: "restricted_identity_rejected",
+    comparisons: 131072,
+    attempts: 131073,
+    reservations: 131073,
+    completions: 131072,
+    reserveThrows: 1,
+    reserveBeforeComplete: true,
+    matcherAttempts: 131073,
+    matcherCompletions: 131072,
+    matcherThrows: 1,
+    matcherOrderingValid: true,
+    wildcardInvocations: 131072,
+    wildcardAlignedComparisons: 271462,
+    semanticReserves: 0,
+    traceLength: 0,
+    terminal: true,
+    followUp: {
+      ok: false,
+      error: "restricted_identity_rejected",
+      allocations: C2B_ZERO_ALLOCATIONS,
+      calls: 0
+    }
+  });
+  assert.deepEqual({
+    attempts: value.budget.overflow.lastAttemptStamp.attempts,
+    reservations: value.budget.overflow.lastAttemptStamp.reservations,
+    completions: value.budget.overflow.lastAttemptStamp.completions
+  }, { attempts: 131073, reservations: 131073, completions: 131072 });
+  assert.deepEqual({
+    allocations: value.budget.overflow.lastAttemptStamp.allocations,
+    pushes: value.budget.overflow.lastAttemptStamp.pushes,
+    preimages: value.budget.overflow.lastAttemptStamp.preimages,
+    hashes: value.budget.overflow.lastAttemptStamp.hashes
+  }, {
+    allocations: value.budget.overflow.finalStamp.allocations,
+    pushes: value.budget.overflow.finalStamp.pushes,
+    preimages: 0,
+    hashes: value.budget.overflow.finalStamp.hashes
+  });
+});
+
+test("SSH Match rejects potentially applicable variable dimensions", () => {
+  const value = requireC4Symbols(c3VmProbe("c4-variable"));
+  assert.equal(value.scenario, "variable");
+  c4AssertDerivedCallSuccess(value.disjoint);
+  const branch = value.disjoint.result.value.branches[0];
+  assert.equal(branch.accountDisposition, "disjoint");
+  assert.deepEqual(branch.variableDimensions, value.fixedOrder);
+  assert.deepEqual(branch.conditions.map((condition) => condition.name), [
+    "user", "localnetwork", "rdomain", "localport", "localaddress", "address", "host"
+  ]);
+  for (const result of [value.matching, value.variableOnly, ...value.individual.map((entry) => entry.result)]) {
+    c4AssertDerivedCallFailure(result);
+  }
+  assert.deepEqual(value.individual.map((entry) => entry.name), value.fixedOrder);
+  assert.equal(value.privateDisjoint.policy.ok, true);
+  assert.equal(value.privateDisjoint.terminal, false);
+  for (const result of [
+    value.privateMatching,
+    value.privateVariableOnly,
+    ...value.individual.map((entry) => entry.privateMatching)
+  ]) {
+    assert.deepEqual(result.policy, { ok: false, error: "restricted_identity_rejected" });
+    assert.equal(result.terminal, true);
+    assert.equal(result.comparisons <= 131072, true);
+    assert.deepEqual(result.followUp, {
+      ok: false,
+      error: "restricted_identity_rejected",
+      allocations: C2B_ZERO_ALLOCATIONS,
+      calls: 0
+    });
+  }
+  for (const entry of value.individual) {
+    c4AssertDerivedCallSuccess(entry.disjoint);
+    assert.equal(entry.disjoint.result.value.branches[0].accountDisposition, "disjoint");
+    assert.deepEqual(entry.disjoint.result.value.branches[0].variableDimensions, [entry.name]);
+    assert.equal(entry.privateDisjoint.policy.ok, true);
+    assert.equal(entry.privateDisjoint.terminal, false);
+  }
+});
+
+test("SSH effective values use Match first then global then frozen default", () => {
+  const value = requireC4Symbols(c3VmProbe("c4-effective"));
+  assert.equal(value.scenario, "effective");
+  for (const probe of [
+    value.repeatedGlobal,
+    value.matchWins,
+    value.multipleMatch,
+    value.fallback,
+    value.defaults,
+    value.disjointIgnore,
+    value.disjointThenExactSafe,
+    value.sameExactSafeFirst,
+    value.matchAll,
+    value.kbdAlias
+  ]) c4AssertTopologySuccess(probe);
+  c4AssertTopologyFailure(value.kbdAliasReject, value.sourceFailureAudit);
+  c4AssertTopologyFailure(value.disjointThenExactUnsafe, value.sourceFailureAudit);
+  c4AssertTopologyFailure(value.acceptEnv[0], value.sourceFailureAudit);
+  c4AssertTopologyFailure(value.acceptEnv[1], value.sourceFailureAudit);
+  c4AssertTopologySuccess(value.acceptEnv[2]);
+  assert.deepEqual(value.defaults.topology.result.value, {
+    ...value.defaults.expected,
+    pubkeyAuthentication: true,
+    hostbasedAuthentication: false,
+    gssapiAuthentication: false,
+    kerberosAuthentication: false,
+    permitUserEnvironment: false,
+    permitTunnel: false
+  });
+  assert.equal(value.kbdAlias.topology.result.value.keyboardInteractiveAuthentication, false);
+  assert.deepEqual(value.disjointThenExactSafe.topology.result.value.passwordAuthentication, false);
+  assert.deepEqual(value.sameExactSafeFirst.topology.result.value.passwordAuthentication, false);
+  c4AssertDerivedCallSuccess(value.disjointIgnoreCoverage);
+  c4AssertDerivedCallSuccess(value.matchAllCoverage);
+  assert.deepEqual(value.disjointIgnoreCoverage.result.value.branches.map((entry) => entry.accountDisposition), ["disjoint"]);
+  assert.deepEqual(value.matchAllCoverage.result.value.branches[0].conditions, [{ name: "all", patterns: [] }]);
+});
+
+test("SSH topology rejects alternate authentication environment command chroot forwarding tunnel and key sources", () => {
+  const value = requireC4Symbols(c3VmProbe("c4-topology"));
+  assert.equal(value.scenario, "topology");
+  c4AssertTopologySuccess(value.positive);
+  c4AssertTopologySuccess(value.secondPositive);
+  assert.notEqual(value.secondPositive.bindingDigests.line, value.positive.bindingDigests.line);
+  assert.notEqual(value.secondPositive.bindingDigests.blob, value.positive.bindingDigests.blob);
+  assert.equal(value.secondPositive.bindingDigests.effective, value.positive.bindingDigests.effective);
+  assert.deepEqual(value.secondPositive.topology.result.value, value.positive.topology.result.value);
+  assert.deepEqual(Object.keys(value.positive.topology.result.value), C4_TOPOLOGY_KEYS);
+  assert.deepEqual(value.directiveMatchMatrix.map((entry) => entry.name), value.sourceFailures.slice(0, 18)
+    .map((entry) => entry.name));
+  for (const witness of value.directiveMatchMatrix) {
+    c4AssertDerivedCallSuccess(witness.applicable.coverage);
+    c4AssertCoverageFreezeAudit(witness.applicable.coverage);
+    assert.equal(witness.applicable.coverage.result.value.branches.length, 1, witness.name);
+    assert.equal(witness.applicable.coverage.result.value.branches[0].accountDisposition, "exact_user", witness.name);
+    assert.deepEqual(witness.applicable.coverage.result.value.branches[0].conditions, [{
+      name: "user",
+      patterns: [{ negated: false, value: "gccgw-japan-repair-ci" }]
+    }], witness.name);
+    c4AssertTopologyFailure(witness.applicable.probe, witness.applicable.failureAudit);
+    assert.equal(witness.applicable.probe.topology.publicAudit.verifyAttempts, 0, witness.name);
+    assert.equal(witness.applicable.probe.topology.publicCalls.includes("verify"), false, witness.name);
+
+    c4AssertDerivedCallSuccess(witness.disjoint.coverage);
+    c4AssertCoverageFreezeAudit(witness.disjoint.coverage);
+    assert.equal(witness.disjoint.coverage.result.value.branches.length, 1, witness.name);
+    assert.equal(witness.disjoint.coverage.result.value.branches[0].accountDisposition, "disjoint", witness.name);
+    assert.deepEqual(witness.disjoint.coverage.result.value.branches[0].conditions, [{
+      name: "user",
+      patterns: [{ negated: false, value: "root" }]
+    }], witness.name);
+    c4AssertTopologySuccess(witness.disjoint.probe);
+    assert.equal(witness.disjoint.probe.topology.publicAudit.verifyAttempts, 1, witness.name);
+    assert.equal(witness.disjoint.probe.topology.publicAudit.verifySuccesses, 1, witness.name);
+  }
+  for (const witness of [
+    ...value.sourceFailures,
+    ...value.authFailures,
+    ...value.metadataFailures,
+    ...value.ancestorFailures,
+    ...value.operationFailures,
+    ...value.bindingDrifts
+  ]) c4AssertTopologyFailure(witness.probe, witness.failureAudit, witness.name);
+  const snapshotMutation = value.bindingSnapshotMutation;
+  assert.equal(snapshotMutation.probe.bindingMutationCount, 1);
+  assert.notEqual(snapshotMutation.probe.initialBindingDigests.line,
+    snapshotMutation.probe.bindingDigests.line);
+  assert.notEqual(snapshotMutation.probe.initialBindingDigests.blob,
+    snapshotMutation.probe.bindingDigests.blob);
+  assert.equal(snapshotMutation.probe.initialBindingDigests.effective,
+    snapshotMutation.probe.bindingDigests.effective);
+  c4AssertTopologyFailure(
+    snapshotMutation.probe,
+    snapshotMutation.failureAudit,
+    "binding-snapshot-mutation"
+  );
+  for (const witness of value.streamingSuccesses) c4AssertTopologySuccess(witness.probe, {
+    strictReads: false,
+    expectedAuthReadStages: witness.expectedAuthReadStages
+  });
+  assert.deepEqual(value.sourceFailures.map((entry) => entry.name), [
+    "authenticationmethods", "pubkeyauthentication", "passwordauthentication",
+    "kbdinteractiveauthentication", "hostbasedauthentication", "gssapiauthentication",
+    "kerberosauthentication", "permituserenvironment", "acceptenv", "forcecommand",
+    "chrootdirectory", "disableforwarding", "permittunnel", "authorizedkeysfile",
+    "authorizedkeyscommand", "authorizedprincipalsfile", "authorizedprincipalscommand",
+    "trustedusercakeys", "missing-authentication-methods", "authenticationmethods-publickey-password",
+    "authenticationmethods-publickey-keyboard", "authenticationmethods-multiple-alternatives",
+    "authenticationmethods-password-keyboard", "missing-password-authentication",
+    "missing-keyboard-interactive", "challenge-response-authentication",
+    "missing-disable-forwarding", "missing-authorized-keys", "two-authorized-keys"
+  ]);
+  assert.deepEqual(value.authFailures.map((entry) => entry.name), [
+    "empty", "blank", "comment", "blank-prefix", "blank-suffix", "comment-prefix", "comment-suffix",
+    "missing-lf", "folded", "second-active", "duplicate-target", "alternate-key",
+    "bad-option-order", "unknown-option", "escape-drift", "noncanonical-base64",
+    "base64-aligned-extra-padding", "wrong-line-algorithm", "wrong-wire-algorithm",
+    "wrong-wire-key-length", "trailing-wire-byte",
+    "wrong-wire-algorithm-length-field-same-total", "wrong-wire-key-length-31-same-total",
+    "extra-token", "wrong-marker", "marker-prefix-drift", "marker-suffix-drift-second-test-gate",
+    "tab-separator", "unit-separator-0x1f", "delete-separator-0x7f", "base64-invalid-alphabet",
+    "option-omitted-restrict", "option-duplicated-restrict",
+    "option-omitted-no-pty", "option-duplicated-no-pty",
+    "option-omitted-no-agent-forwarding", "option-duplicated-no-agent-forwarding",
+    "option-omitted-no-port-forwarding", "option-duplicated-no-port-forwarding",
+    "option-omitted-no-x11-forwarding", "option-duplicated-no-x11-forwarding",
+    "option-omitted-command", "option-duplicated-command",
+    "command-single-quote-drift", "command-value-drift",
+    "cr", "nul", "unicode", "line-16384", "line-16385"
+  ]);
+  assert.deepEqual(value.metadataFailures.map((entry) => entry.name), [
+    "uid", "gid", "mode-0400", "mode-0601", "mode-0644", "mode-0700", "nlink"
+  ]);
+  assert.deepEqual(value.ancestorFailures.map((entry) => entry.name),
+    ["ancestor-0", "ancestor-1", "ancestor-2", "ancestor-3"].flatMap((role) => [
+      "non-directory", "non-root-uid", "non-root-gid", "group-writable-mode", "other-writable-mode"
+    ].map((name) => `${role}-${name}`)));
+  assert.deepEqual(value.operationFailures.map((entry) => entry.name), [
+    "auth-lstat-failure", "auth-nonregular", "auth-open-failure", "auth-pre-fstat-failure",
+    "auth-read-failure", "auth-body-invalid-count", "auth-eof-invalid-count",
+    "post-fstat-drift", "early-eof", "trailing-byte", "close-failure", "wrong-fd"
+  ]);
+  assert.deepEqual(value.streamingSuccesses.map((entry) => entry.name), ["body-partial", "body-eintr", "eof-eintr"]);
+  assert.deepEqual(value.streamingSuccesses.map((entry) => entry.expectedAuthReadStages), [
+    ["body", "body", "eof"],
+    ["body-eintr", "body", "eof"],
+    ["body", "eof-eintr", "eof"]
+  ]);
+  assert.deepEqual(value.bindingDrifts.map((entry) => entry.name), ["line", "blob", "effective"]);
+  assert.deepEqual(value.bindingValueDrifts.map((entry) => entry.name), [
+    "expected-euid",
+    "ssh-algorithm",
+    "ssh-authorized-keys-file",
+    "paths-authorized-keys",
+    "synchronized-authorized-keys-path",
+    "authorized-keys-policy-mode",
+    "authorized-keys-policy-uid",
+    "authorized-keys-policy-gid",
+    "authorized-keys-policy-nlink",
+    "authorization-marker"
+  ]);
+  for (const witness of value.bindingValueDrifts) {
+    assert.deepEqual(witness.result, { ok: false, error: "restricted_identity_rejected" }, witness.name);
+    assert.equal(witness.calls, 0, witness.name);
+    assert.equal(witness.sourceTraversalCount, 0, witness.name);
+    assert.deepEqual(witness.publicCalls, ["topology"], witness.name);
+    assert.equal(witness.trackedBuffersZero, true, witness.name);
+    assert.equal(witness.initialBoundaryCaptureCount, 0, witness.name);
+    assert.equal(witness.initialShapeCaptureCount, 0, witness.name);
+    assert.equal(witness.authorizationEntryCount, null, witness.name);
+    assert.equal(witness.snapshotFailed, null, witness.name);
+    assert.equal(witness.contractErrorEvents.length >= 1, true, witness.name);
+    assert.deepEqual(witness.contractErrorEvents.map((entry) => entry.ordinal),
+      witness.contractErrorEvents.map((_, index) => index + 1), witness.name);
+    assert.equal(witness.rawErrorAudit.contractErrorOrdinal,
+      witness.contractErrorEvents.at(-1).ordinal, witness.name);
+    assert.deepEqual(witness.rawErrorAudit,
+      c4ExpectedRestrictedRawErrorAudit(witness.contractErrorEvents.at(-1).ordinal), witness.name);
+  }
+  assert.deepEqual([...new Set(value.sourceFailures.map((entry) => entry.failureAudit.stage))],
+    ["source-effective", "source-syntax"]);
+  assert.deepEqual([...new Set(value.authFailures.map((entry) => entry.failureAudit.stage))],
+    ["authorization-grammar-or-digest"]);
+  assert.deepEqual([...new Set(value.metadataFailures.map((entry) => entry.failureAudit.stage))],
+    ["authorization-metadata"]);
+  assert.deepEqual([...new Set(value.ancestorFailures.map((entry) => entry.failureAudit.stage))],
+    ["authorization-ancestor"]);
+  assert.deepEqual([...new Set(value.operationFailures.map((entry) => entry.failureAudit.stage))],
+    ["authorization-operation"]);
+  assert.deepEqual(value.bindingDrifts.map((entry) => entry.failureAudit.stage), [
+    "binding-authorization-digest", "binding-authorization-digest", "binding-effective-digest"
+  ]);
+  assert.deepEqual(value.preimageAudits.includeSuccess.result, { ok: true, error: null });
+  assert.deepEqual(value.preimageAudits.coverageSuccess.result, { ok: true, error: null });
+  assert.deepEqual(value.preimageAudits.topologySuccess.result, { ok: true, error: null });
+  assert.deepEqual(value.preimageAudits.topologyFailure.result, {
+    ok: false,
+    error: "restricted_identity_rejected"
+  });
+  assert.deepEqual(value.preimageAudits.includeSuccess.publicCalls, c4ExpectedPublicTrace("include"));
+  assert.deepEqual(value.preimageAudits.coverageSuccess.publicCalls, c4ExpectedPublicTrace("coverage"));
+  assert.deepEqual(value.preimageAudits.topologySuccess.publicCalls, c4ExpectedPublicTrace("topology"));
+  assert.equal(value.preimageAudits.includeSuccess.rawErrorAudit, null);
+  assert.equal(value.preimageAudits.coverageSuccess.rawErrorAudit, null);
+  assert.equal(value.preimageAudits.topologySuccess.rawErrorAudit, null);
+  assert.deepEqual(value.preimageAudits.topologyFailure.rawErrorAudit,
+    c4ExpectedRestrictedRawErrorAudit(
+      value.preimageAudits.topologyFailure.rawErrorAudit.contractErrorOrdinal));
+  assert.deepEqual(value.preimageAudits.includeSuccess.publicAudit.projectionFreezeCounts,
+    { include: 2, coverage: 0, topology: 0 });
+  assert.deepEqual(value.preimageAudits.coverageSuccess.publicAudit.projectionFreezeCounts,
+    { include: 1, coverage: 1, topology: 0 });
+  assert.deepEqual(value.preimageAudits.topologySuccess.publicAudit.projectionFreezeCounts,
+    { include: 1, coverage: 1, topology: 1 });
+  assert.deepEqual(value.preimageAudits.topologyFailure.publicAudit.projectionFreezeCounts,
+    { include: 1, coverage: 1, topology: 1 });
+  c4AssertProjectionFreezeAudit(value.preimageAudits.includeSuccess.publicAudit,
+    { include: 2, coverage: 0, topology: 0 });
+  c4AssertProjectionFreezeAudit(value.preimageAudits.coverageSuccess.publicAudit,
+    { include: 1, coverage: 1, topology: 0 });
+  c4AssertProjectionFreezeAudit(value.preimageAudits.topologySuccess.publicAudit,
+    { include: 1, coverage: 1, topology: 1 });
+  c4AssertProjectionFreezeAudit(value.preimageAudits.topologyFailure.publicAudit,
+    { include: 1, coverage: 1, topology: 1 });
+  assert.equal(value.preimageAudits.includeSuccess.preimages.length, 1);
+  assert.equal(value.preimageAudits.coverageSuccess.preimages.length, 2);
+  assert.equal(value.preimageAudits.topologySuccess.preimages.length, 3);
+  assert.equal(value.preimageAudits.topologyFailure.preimages.length, 3);
+  assert.deepEqual(value.preimageAudits.includeSuccess.preimages.map((entry) => entry.publicStage),
+    ["deriveSyntax"]);
+  assert.deepEqual(value.preimageAudits.coverageSuccess.preimages.map((entry) => entry.publicStage),
+    ["deriveSyntax", "derivePolicy"]);
+  assert.deepEqual(value.preimageAudits.topologySuccess.preimages.map((entry) => entry.publicStage),
+    ["deriveSyntax", "derivePolicy", "verify:complete"]);
+  assert.deepEqual(value.preimageAudits.topologyFailure.preimages.map((entry) => entry.publicStage),
+    ["deriveSyntax", "derivePolicy", "verify:complete"]);
+  for (const witness of Object.values(value.preimageAudits)) {
+    c4AssertInitialPublicState(witness.publicAudit);
+    assert.equal(witness.publicAudit.budgetLedger.budget.snapshot.fixedEnvelopeCount, {
+      include: 12,
+      coverage: 17,
+      topology: 23
+    }[witness.kind], witness.kind);
+    const publicPhase = c3LifecycleNamedPhase(witness.lifecycle, witness.phaseName);
+    const c4FixedStages = new Set(["deriveSyntax:complete", "derivePolicy", "verify:complete"]);
+    assert.deepEqual(publicPhase.fixedCompletions
+      .filter((entry) => c4FixedStages.has(entry.publicStage))
+      .map((entry) => [entry.publicStage, entry.kind]), {
+      include: [
+        ["deriveSyntax:complete", "objectCreate"],
+        ["deriveSyntax:complete", "array"]
+      ],
+      coverage: [
+        ["derivePolicy", "objectCreate"], ["derivePolicy", "objectCreate"],
+        ["derivePolicy", "array"], ["derivePolicy", "array"],
+        ["derivePolicy", "objectCreate"], ["derivePolicy", "objectCreate"],
+        ["derivePolicy", "objectCreate"]
+      ],
+      topology: [
+        ["derivePolicy", "objectCreate"], ["derivePolicy", "objectCreate"],
+        ["derivePolicy", "array"], ["derivePolicy", "array"],
+        ["derivePolicy", "objectCreate"], ["derivePolicy", "objectCreate"],
+        ["derivePolicy", "objectCreate"], ["verify:complete", "objectCreate"],
+        ["verify:complete", "array"], ["verify:complete", "array"],
+        ["verify:complete", "array"], ["verify:complete", "array"],
+        ["verify:complete", "array"]
+      ]
+    }[witness.kind], witness.kind);
+    c4AssertVerifyAllocationAudit(witness.verifyAllocationAudit, {
+      requireByteAllocation: witness.kind === "topology" && witness.result.ok
+    });
+    assert.equal(witness.publicAudit.projectionFreezeEvents.filter((entry) => entry.returnedRoot === true).length,
+      witness.result.ok ? 1 : 0, witness.kind);
+    if (witness.result.ok) {
+      assert.equal(witness.publicAudit.projectionFreezeEvents.some((entry) =>
+        entry.kind === witness.kind && entry.returnedRoot === true), true, witness.kind);
+    }
+    assert.equal(witness.trackedBuffersZero, true, witness.kind);
+    assert.equal(witness.publicAudit.legacyLineParserCallCount, 0, witness.kind);
+    assert.equal(witness.publicAudit.wholeRecordBufferToStringCount, 0, witness.kind);
+    assert.equal(witness.publicAudit.wholeRecordTextDecoderCount, 0, witness.kind);
+    c4AssertVerifierCanonicalPathStringAudit(
+      witness.publicAudit.verifierBufferToStringCount,
+      witness.publicAudit.verifierBufferToStringSpans,
+      witness.publicAudit.verifyAttempts
+    );
+    assert.equal(witness.publicAudit.verifierTextDecoderConstructionCount, 0, witness.kind);
+    assert.equal(witness.publicAudit.verifierTextDecoderDecodeCount, 0, witness.kind);
+    assert.deepEqual(witness.publicAudit.verifierTextDecoderInputLengths, [], witness.kind);
+    assert.equal(witness.preimagePendingCount, 0, witness.kind);
+    if (witness.result.ok) {
+      c4AssertPublicRegistrySuccess(witness.registryAudit, witness.kind);
+    } else {
+      const primary = witness.publicAudit.contractErrorEvents[0];
+      c4AssertPublicRegistryFailure(witness.registryAudit, witness.kind,
+        primary.registryEvents);
+    }
+    assert.deepEqual(witness.provenance.syntax, { present: false, sameGraph: false }, witness.kind);
+    assert.deepEqual(witness.provenance.policy, { present: false, sameGraph: false }, witness.kind);
+    assert.deepEqual(witness.provenance.snapshot, { present: false, sameGraph: false }, witness.kind);
+    assert.deepEqual(witness.preimages.map((entry) => entry.reservedLength),
+      witness.oraclePreimages.map((entry) => entry.length), witness.kind);
+    for (let index = 0; index < witness.preimages.length; index += 1) {
+      const preimage = witness.preimages[index];
+      const oracle = witness.oraclePreimages[index];
+      assert.equal(preimage.reservedLength, oracle.length, witness.kind);
+      assert.equal(preimage.requestedLength, oracle.length, witness.kind);
+      assert.equal(preimage.actualLength, oracle.length, witness.kind);
+      assert.equal(Number.isSafeInteger(preimage.byteId), true, witness.kind);
+      assert.equal(preimage.allocationKind, "bufferAlloc", witness.kind);
+      assert.equal(preimage.firstAllocationAfterReserve, true, witness.kind);
+      assert.equal(preimage.claimedAsPreimage, true, witness.kind);
+      assert.equal(preimage.orphan, false, witness.kind);
+      assert.ok(preimage.reserveAction < preimage.allocationAction, witness.kind);
+      assert.ok(preimage.allocationAction < preimage.hashAction, witness.kind);
+      assert.ok(preimage.hashAction < preimage.fillAction, witness.kind);
+      assert.equal(preimage.fullSpanHashCount, 1, witness.kind);
+      assert.deepEqual(preimage.hashSpans.map(({ byteId, length, sha256 }) => ({ byteId, length, sha256 })), [{
+        byteId: preimage.byteId,
+        length: oracle.length,
+        sha256: oracle.sha256
+      }], witness.kind);
+      assert.equal(preimage.zeroFillCount, 1, witness.kind);
+      assert.equal(preimage.zero, true, witness.kind);
+    }
+  }
+  assert.deepEqual(value.privatePolicyPreimage.result, { ok: true, error: null });
+  assert.equal(value.privatePolicyPreimage.preimagePendingCount, 0);
+  assert.equal(value.privatePolicyPreimage.preimages.length, 1);
+  const privateCoveragePreimage = value.privatePolicyPreimage.preimages[0];
+  const publicCoveragePreimage = value.preimageAudits.coverageSuccess.preimages[1];
+  const topologyCoveragePreimage = value.preimageAudits.topologySuccess.preimages[1];
+  assert.deepEqual([
+    privateCoveragePreimage.reservedLength,
+    publicCoveragePreimage.reservedLength,
+    topologyCoveragePreimage.reservedLength
+  ], [
+    value.privatePolicyPreimage.coverageOracle.length,
+    value.preimageAudits.coverageSuccess.oraclePreimages[1].length,
+    value.preimageAudits.topologySuccess.oraclePreimages[1].length
+  ]);
+  assert.equal(new Set([
+    privateCoveragePreimage.reservedLength,
+    publicCoveragePreimage.reservedLength,
+    topologyCoveragePreimage.reservedLength
+  ]).size, 1);
+  assert.equal(new Set([
+    value.privatePolicyPreimage.coverageOracle.sha256,
+    value.preimageAudits.coverageSuccess.oraclePreimages[1].sha256,
+    value.preimageAudits.topologySuccess.oraclePreimages[1].sha256
+  ]).size, 1);
+  assert.deepEqual([
+    value.preimageAudits.includeSuccess.preimages[0].reservedLength,
+    value.preimageAudits.coverageSuccess.preimages[0].reservedLength,
+    value.preimageAudits.topologySuccess.preimages[0].reservedLength
+  ], Array(3).fill(value.preimageAudits.includeSuccess.oraclePreimages[0].length));
+  assert.equal(value.preimageAudits.topologyFailure.publicAudit.authorizationEntryCount, 0);
+  assert.equal(value.preimageAudits.topologyFailure.publicAudit.snapshotFailed, true);
+  const {
+    beforeLifecycle: topologyFailureBeforeLifecycle,
+    afterLifecycle: topologyFailureAfterLifecycle,
+    beforeState: topologyFailureBeforeState,
+    afterState: topologyFailureAfterState,
+    ...topologyFailureFollowUp
+  } = value.preimageAudits.topologyFailure.terminalFollowUp;
+  assert.deepEqual(topologyFailureFollowUp, {
+    ok: false,
+    error: "restricted_identity_rejected",
+    allocations: C2B_ZERO_ALLOCATIONS,
+    operationCalls: 0,
+    trackedBuffersZero: true
+  });
+  assert.deepEqual(topologyFailureAfterLifecycle, topologyFailureBeforeLifecycle);
+  assert.deepEqual(topologyFailureAfterState, topologyFailureBeforeState);
+  const topologyFailurePrimary = value.preimageAudits.topologyFailure.publicAudit.contractErrorEvents.at(-1);
+  assert.equal(value.preimageAudits.topologyFailure.rawErrorAudit.contractErrorOrdinal,
+    topologyFailurePrimary.ordinal);
+  c4AssertTerminalBudgetState(topologyFailureBeforeState,
+    value.preimageAudits.topologyFailure.publicAudit.initialFixedShape,
+    value.preimageAudits.topologyFailure.publicAudit.budgetLedger,
+    value.preimageAudits.topologyFailure.publicAudit.preimageReserveTotal);
+  const publicFaultExpectationByKey = new Map(value.publicFaultExpectations.map((entry) => [entry.key, entry]));
+  for (const kind of ["include", "coverage", "topology"]) {
+    const matrix = value.publicFaultMatrices[kind];
+    assert.ok(matrix.length > 0, `${kind} public C4 fault calibration must be nonempty`);
+    const expectedCombinationKeys = value.publicFaultExpectations.map((entry) => entry.key)
+      .filter((key) => key.startsWith(kind + "|")).sort();
+    const actualCombinationKeys = [...new Set(matrix.map((entry) =>
+      kind + "|" + entry.publicStage + "|" + entry.site))].sort();
+    assert.deepEqual(actualCombinationKeys, expectedCombinationKeys,
+      `${kind}:independent-public-fault-combinations`);
+    for (const combinationKey of actualCombinationKeys) {
+      const actions = matrix.filter((entry) =>
+        kind + "|" + entry.publicStage + "|" + entry.site === combinationKey)
+        .map((entry) => entry.expectedAction);
+      assert.equal(actions.length >= 1, true, combinationKey);
+      assert.equal(new Set(actions).size, actions.length, combinationKey);
+      assert.equal(actions.every((action) => Number.isSafeInteger(action) && action > 0), true,
+        combinationKey);
+    }
+    const requiredSites = kind === "include"
+      ? ["fixed-envelope"]
+      : ["fixed-envelope", "preimage-allocation", "preimage-hash", "preimage-fill"];
+    for (const site of requiredSites) {
+      assert.ok(matrix.some((entry) => entry.site === site), `${kind}:${site}`);
+    }
+    if (kind === "topology") {
+      assert.ok(matrix.some((entry) => entry.site === "authorization-transient-cleanup"));
+      assert.ok(matrix.some((entry) => entry.site === "authorization-verify-byte-allocation"));
+      assert.equal(matrix.filter((entry) => entry.site === "authorization-verify-hash").length, 2);
+    }
+    const allowedStages = kind === "include"
+      ? ["deriveSyntax:complete"]
+      : kind === "coverage"
+        ? ["derivePolicy", "derivePolicy:complete"]
+        : ["derivePolicy", "derivePolicy:complete", "verify", "verify:complete"];
+    for (const entry of matrix) {
+      assert.ok(allowedStages.includes(entry.publicStage), `${kind}:${entry.site}:${entry.publicStage}`);
+      const independentFaultExpectation = publicFaultExpectationByKey.get(
+        kind + "|" + entry.publicStage + "|" + entry.site);
+      assert.notEqual(independentFaultExpectation, undefined,
+        `${kind}:${entry.site}:${entry.publicStage}`);
+      assert.equal(entry.fault.kind, independentFaultExpectation.faultKind,
+        `${kind}:${entry.site}:${entry.publicStage}`);
+      assert.equal(entry.witness.faultStamp.action,
+        entry.expectedAction, `${kind}:${entry.site}:${entry.publicStage}`);
+      assert.equal(entry.expectedProjectionFreezeCount,
+        independentFaultExpectation.freezeTrace.length,
+        `${kind}:${entry.site}:${entry.publicStage}`);
+      assert.equal(entry.witness.faultStamp.projectionFreezes,
+        independentFaultExpectation.freezeTrace.length,
+        `${kind}:${entry.site}:${entry.publicStage}`);
+      assert.deepEqual(entry.witness.publicAudit.projectionFreezeEvents
+        .slice(0, entry.witness.faultStamp.projectionFreezes)
+        .map((event) => event.kind + "@" + event.publicStage),
+      independentFaultExpectation.freezeTrace,
+      `${kind}:${entry.site}:${entry.publicStage}`);
+      assert.equal(entry.witness.publicAudit.projectionFreezeEvents
+        .slice(0, entry.witness.faultStamp.projectionFreezes)
+        .every((event) => event.action < entry.witness.faultStamp.action), true,
+      `${kind}:${entry.site}:${entry.publicStage}`);
+      assert.notEqual(entry.publicStage, "snapshot");
+      assert.notEqual(entry.publicStage, "graph:ssh");
+      assert.notEqual(entry.publicStage, "graph:sudo");
+      assert.notEqual(entry.publicStage, "deriveSyntax");
+      const verifierFault = entry.site === "authorization-transient-cleanup"
+        || entry.site === "authorization-verify-byte-allocation"
+        || entry.site === "authorization-verify-hash";
+      const verifierHasOpenFile = entry.expectedOperationCalls.some((operation) =>
+        operation[0] === "open" && operation[1] === "file-1");
+      const verifierRequiresFdCleanup = verifierFault && verifierHasOpenFile;
+      const verifierCleanupSuffix = [["fstat", "file-1", "post"], ["close", "file-1"]];
+      const expectedOperationCalls = verifierRequiresFdCleanup
+        ? [...entry.expectedOperationCalls, ...verifierCleanupSuffix]
+        : entry.expectedOperationCalls;
+      const expectedPostFaultOperationCalls = verifierRequiresFdCleanup
+        ? verifierCleanupSuffix
+        : [];
+      const expectedAuthorizationOpenCount = expectedOperationCalls.filter((entry) =>
+        entry[0] === "open" && entry[1] === "file-1").length;
+      c4AssertPublicTerminalFailure(entry.witness, kind, {
+        expectedTopologyFreezeCount: independentFaultExpectation.topologyFreezeCount,
+        expectedAuthorizationOpenCount,
+        expectedOperationCalls,
+        expectedPostFaultOperationCalls,
+        label: `${kind}:${entry.site}:${entry.publicStage}`
+      });
+      c4AssertProjectionFreezeAudit(entry.witness.publicAudit,
+        entry.witness.publicAudit.projectionFreezeCounts);
+      assert.deepEqual(entry.witness.publicCalls,
+        c4ExpectedPublicFaultTrace(kind, entry.publicStage), `${kind}:${entry.site}:${entry.publicStage}`);
+    }
+  }
+  assert.deepEqual(value.publicDisposerMatrix.map((entry) => entry.name), [
+    "include-syntax-delete-after",
+    "coverage-policy-delete-after",
+    "coverage-syntax-delete-after",
+    "topology-policy-delete-after",
+    "topology-syntax-delete-after"
+  ]);
+  for (const entry of value.publicDisposerMatrix) {
+    c4AssertPublicTerminalFailure(entry.witness, entry.kind, {
+      expectedTopologyFreezeCount: entry.kind === "topology" ? 1 : 0,
+      expectedAuthorizationOpenCount: entry.kind === "topology" ? 1 : 0,
+      expectedOperationCalls: entry.kind === "topology"
+        ? c4ExpectedTopologyPathOperations()
+        : c3A1FileOperations("body", "eof")
+    });
+    const expectedProjectionFreezes = entry.kind === "include"
+      ? { include: 2, coverage: 0, topology: 0 }
+      : entry.kind === "coverage"
+        ? { include: 1, coverage: 1, topology: 0 }
+        : { include: 1, coverage: 1, topology: 1 };
+    assert.deepEqual(entry.witness.publicAudit.projectionFreezeCounts, expectedProjectionFreezes, entry.name);
+    c4AssertProjectionFreezeAudit(entry.witness.publicAudit, expectedProjectionFreezes);
+    const targetedDeletes = entry.witness.registryAudit.provenanceEvents.filter((event) =>
+      event.method === "delete" && event.keyIdentity === entry.identity);
+    assert.equal(targetedDeletes.length, 1, entry.name);
+    assert.equal(targetedDeletes[0].sameGraph, true, entry.name);
+    assert.ok(entry.witness.publicAudit.projectionFreezeEvents.every((event) =>
+      event.registryEvents < targetedDeletes[0].ordinal), entry.name);
+    assert.deepEqual({
+      graphFailed: targetedDeletes[0].graphFailed,
+      snapshotFailed: targetedDeletes[0].snapshotFailed,
+      authorizationEntryCount: targetedDeletes[0].authorizationEntryCount
+    }, { graphFailed: false, snapshotFailed: false, authorizationEntryCount: 0 }, entry.name);
+    assert.deepEqual(entry.witness.publicCalls, c4ExpectedPublicTrace(entry.kind), entry.name);
+    assert.equal(entry.witness.publicCalls.filter((name) => name === "disposeSyntax").length, 1, entry.name);
+    assert.equal(entry.witness.publicCalls.filter((name) => name === "disposePolicy").length,
+      entry.kind === "include" ? 0 : 1, entry.name);
+    if (entry.identity === "policy") {
+      assert.ok(entry.witness.publicCalls.indexOf("disposePolicy")
+        < entry.witness.publicCalls.indexOf("disposeSyntax"), entry.name);
+    }
+  }
+  const dualFailure = value.lateEffectiveDigestAndPolicyDeleteFailure;
+  c4AssertPublicTerminalFailure(dualFailure, "topology", {
+    expectedAuthorizationOpenCount: 1,
+    expectedOperationCalls: c4ExpectedTopologyPathOperations(),
+    expectedTopologyFreezeCount: 1,
+    expectedRawErrorEvent: "primary",
+    label: "late-effective-digest-and-policy-delete-failure"
+  });
+  assert.deepEqual(dualFailure.result, { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(Object.keys(dualFailure.result), ["ok", "error"]);
+  assert.equal(dualFailure.publicAudit.topologyFreezeCount, 1);
+  assert.equal(dualFailure.publicAudit.verifyAttempts, 1);
+  assert.equal(dualFailure.publicAudit.verifySuccesses, 1);
+  assert.equal(dualFailure.publicAudit.verifyFailures, 0);
+  assert.deepEqual(dualFailure.publicAudit.projectionFreezeCounts,
+    { include: 1, coverage: 1, topology: 1 });
+  c4AssertProjectionFreezeAudit(dualFailure.publicAudit, { include: 1, coverage: 1, topology: 1 });
+  const dualPolicyDeletes = dualFailure.registryAudit.provenanceEvents.filter((event) =>
+    event.method === "delete" && event.keyIdentity === "policy");
+  assert.equal(dualPolicyDeletes.length, 1);
+  assert.equal(dualPolicyDeletes[0].sameGraph, true);
+  assert.equal(dualPolicyDeletes[0].authorizationEntryCount, 0);
+  const primaryErrorsBeforeCleanup = dualFailure.publicAudit.contractErrorEvents.filter((entry) =>
+    entry.codeExact === true && entry.publicStage === "verify:complete"
+      && entry.registryEvents < dualPolicyDeletes[0].ordinal);
+  assert.equal(primaryErrorsBeforeCleanup.length, 1);
+  assert.equal(dualFailure.rawErrorAudit.contractErrorOrdinal, primaryErrorsBeforeCleanup[0].ordinal);
+  assert.deepEqual(dualFailure.publicCalls, c4ExpectedPublicTrace("topology"));
+  assert.deepEqual(dualFailure.publicCalls.filter((name) =>
+    name === "verify" || name === "disposePolicy" || name === "disposeSyntax"), [
+    "verify", "disposePolicy", "disposeSyntax"
+  ]);
+  assert.ok(dualFailure.publicCalls.indexOf("verify")
+    < dualFailure.publicCalls.indexOf("disposePolicy"));
+  assert.ok(dualFailure.publicCalls.indexOf("disposePolicy")
+    < dualFailure.publicCalls.indexOf("disposeSyntax"));
+  for (const witness of value.metadataFailures) {
+    assert.equal(witness.probe.calls.filter((entry) => entry.length === 2
+      && entry[0] === "lstat" && entry[1] === "file-1").length, 1, witness.name);
+    assert.deepEqual(witness.probe.calls, witness.expectedCalls, witness.name);
+    assert.equal(witness.probe.calls.some(([operation, role]) => operation === "open" && role === "file-1"),
+      false, witness.name);
+  }
+  for (const witness of value.ancestorFailures) {
+    assert.equal(witness.probe.calls.filter((entry) => entry.length === witness.operationWitness.length
+      && entry.every((value, index) => value === witness.operationWitness[index])).length,
+    witness.role === "ancestor-3" ? 1 : 2, witness.name);
+    assert.equal(witness.probe.topology.publicAudit.verifyAttempts, 1, witness.name);
+    assert.equal(witness.probe.topology.publicAudit.verifyFailures, 1, witness.name);
+    const sourceAncestorScopes = c3A1FileOperations("body", "eof")
+      .filter(([operation, role]) => operation === "lstat" && role.startsWith("ancestor-"))
+      .map(([operation, role]) => [operation, role, false]);
+    const authorizationAncestorScopes = witness.expectedCalls
+      .slice(c3A1FileOperations("body", "eof").length)
+      .filter(([operation, role]) => operation === "lstat" && role.startsWith("ancestor-"))
+      .map(([operation, role]) => [operation, role, true]);
+    assert.deepEqual(witness.probe.verificationScopes,
+      [...sourceAncestorScopes, ...authorizationAncestorScopes], witness.name);
+    assert.deepEqual(witness.probe.calls, witness.expectedCalls, witness.name);
+    assert.deepEqual(witness.probe.calls.slice(-1), [["lstat", witness.role]], witness.name);
+    assert.equal(witness.probe.calls.some(([, role]) => role === "file-1"), false, witness.name);
+  }
+  for (const witness of value.operationFailures) {
+    assert.equal(witness.probe.calls.filter((entry) => entry.length === witness.operationWitness.length
+      && entry.every((value, index) => value === witness.operationWitness[index])).length, 1, witness.name);
+  }
+  assert.equal(value.encodedTokenLength, 68);
+  for (const witness of [...value.authFailures, ...value.bindingDrifts]) {
+    assert.equal(witness.probe.topology.publicCalls.filter((name) => name === "verify").length, 1, witness.name);
+    assert.deepEqual(witness.probe.calls.filter(([name]) => name === "open").map(([, role]) => role),
+      ["file-0", "file-1"], witness.name);
+  }
+  for (const witness of value.authFailures) {
+    if (witness.expectedLineSha256 !== null) {
+      assert.equal(witness.probe.bindingDigests.line, witness.expectedLineSha256, witness.name);
+    }
+    if (witness.expectedBlobSha256 !== null) {
+      assert.equal(witness.probe.bindingDigests.blob, witness.expectedBlobSha256, witness.name);
+    }
+  }
+  assert.deepEqual(value.canonicalSelectionNames, [
+    "empty", "blank", "comment", "blank-prefix", "blank-suffix", "comment-prefix", "comment-suffix",
+    "folded", "second-active", "duplicate-target"
+  ]);
+  for (const name of value.canonicalSelectionNames) {
+    const witness = value.authFailures.find((entry) => entry.name === name);
+    assert.equal(witness.canonicalSelection, true, name);
+    assert.equal(witness.selectedLineSha256, witness.expectedLineSha256, name);
+    assert.equal(witness.probe.bindingDigests.line, witness.selectedLineSha256, name);
+    assert.equal(witness.probe.bindingDigests.blob, witness.expectedBlobSha256, name);
+    assert.match(witness.selectedLineSha256, /^[0-9a-f]{64}$/u, name);
+    assert.match(witness.legacyWholeFileLineSha256, /^[0-9a-f]{64}$/u, name);
+    assert.notEqual(witness.selectedLineSha256, witness.legacyWholeFileLineSha256, name);
+    assert.equal(witness.probe.topology.publicAudit.verifyAttempts, 1, name);
+    assert.equal(witness.probe.topology.publicAudit.verifyFailures, 1, name);
+    assert.equal(witness.probe.topology.publicCalls.includes("verify"), true, name);
+    assert.equal(witness.probe.topology.publicAudit.authorizationHashInputs.some((entry) =>
+      entry.totalLength === witness.probe.authorizationHashOracle.legacyWholeFile.length
+        && entry.inputSha256 === witness.probe.authorizationHashOracle.legacyWholeFile.sha256), false, name);
+    assert.equal(witness.probe.topology.publicAudit.authorizationHashInputs.some((entry) =>
+      entry.totalLength === witness.legacyWholeFileLineLength
+        && entry.inputSha256 === witness.legacyWholeFileLineSha256), false, name);
+  }
+  for (const witness of value.bindingDrifts) {
+    assert.deepEqual(witness.probe.calls.filter(([name]) => name === "close").map(([, role]) => role),
+      ["file-0", "file-1"], witness.name);
+  }
+  for (const name of ["empty", "line-16384", "line-16385"]) {
+    const witness = value.authFailures.find((entry) => entry.name === name);
+    assert.deepEqual(witness.probe.calls
+      .filter(([operation, role]) => operation === "read" && role === "file-1")
+      .map(([, , stage]) => stage), witness.expectedAuthReadStages, name);
+  }
+  const wrongFd = value.operationFailures.find((entry) => entry.name === "wrong-fd").probe;
+  assert.deepEqual(wrongFd.calls.filter(([name]) => name === "open").map(([, role]) => role), ["file-0", "file-1"]);
+  assert.deepEqual(wrongFd.calls.filter(([name, role]) => name === "read" && role === "file-0")
+    .map(([, role, stage]) => [role, stage]), [["file-0", "body"], ["file-0", "eof"]]);
+  assert.equal(value.positive.topology.trackedBuffersZero, true);
+  assert.ok(value.positive.topology.trackedBufferCount > 0);
 });
