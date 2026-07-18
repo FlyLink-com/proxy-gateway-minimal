@@ -4066,10 +4066,45 @@ function c3LifecycleInstrumentedArrayPush(value) {
       current.actionOrdinal += 1;
       const pushAction = current.actionOrdinal;
       const bufferIds = new nativeArray();
+      let eventKind = null;
+      let eventDirective = null;
+      let eventKeys = null;
+      let eventSymbolCount = null;
+      let eventProxy = null;
+      let eventNullPrototype = null;
+      let eventFrozen = null;
+      let eventOrdinal = null;
+      let eventSourceOrdinal = null;
+      let eventLineNumber = null;
+      let eventScope = null;
+      let eventBranchOrdinal = null;
+      let eventDescriptorsExact = null;
       if (arrayRecord.role === "events") {
         for (let index = 0; index < arguments.length; index += 1) {
           const event = arguments[index];
           if (!event || (typeof event !== "object" && typeof event !== "function") || types.isProxy(event)) continue;
+          if (arguments.length === 1) {
+            eventKind = typeof event.kind === "string" ? event.kind : null;
+            eventDirective = typeof event.directive === "string" ? event.directive : null;
+            eventKeys = nativeObject.getOwnPropertyNames(event);
+            eventSymbolCount = nativeObject.getOwnPropertySymbols(event).length;
+            eventProxy = types.isProxy(event);
+            eventNullPrototype = nativeObject.getPrototypeOf(event) === null;
+            eventFrozen = nativeObject.isFrozen(event);
+            eventOrdinal = event.eventOrdinal;
+            eventSourceOrdinal = event.sourceOrdinal;
+            eventLineNumber = event.lineNumber;
+            eventScope = event.scope;
+            eventBranchOrdinal = event.branchOrdinal;
+            eventDescriptorsExact = true;
+            for (const key of eventKeys) {
+              const descriptor = nativeObject.getOwnPropertyDescriptor(event, key);
+              if (!descriptor || !nativeObject.hasOwn(descriptor, "value")
+                || descriptor.writable !== false || descriptor.enumerable !== true
+                || descriptor.configurable !== false || descriptor.get !== undefined
+                || descriptor.set !== undefined) eventDescriptorsExact = false;
+            }
+          }
           for (const name of nativeObject.getOwnPropertyNames(event)) {
             const descriptor = nativeObject.getOwnPropertyDescriptor(event, name);
             if (!descriptor || !nativeObject.hasOwn(descriptor, "value") || !nativeBuffer.isBuffer(descriptor.value)) continue;
@@ -4089,6 +4124,19 @@ function c3LifecycleInstrumentedArrayPush(value) {
         ordinal: current.pushOrdinal,
         arrayRole: arrayRecord.role,
         valueCount: arguments.length,
+        eventKind,
+        eventDirective,
+        eventKeys,
+        eventSymbolCount,
+        eventProxy,
+        eventNullPrototype,
+        eventFrozen,
+        eventOrdinal,
+        eventSourceOrdinal,
+        eventLineNumber,
+        eventScope,
+        eventBranchOrdinal,
+        eventDescriptorsExact,
         bufferIds
       }]);
       if (arrayRecord.role === "files") {
@@ -6658,6 +6706,30 @@ const C3_AUTHORITY_DIRECTIVES = Object.freeze([
   "disableforwarding", "permittunnel", "authorizedkeysfile", "authorizedkeyscommand",
   "authorizedprincipalsfile", "authorizedprincipalscommand", "trustedusercakeys"
 ]);
+const C3_MATCH_CONDITION_NAMES = Object.freeze([
+  "user", "group", "host", "address", "localaddress", "localport", "rdomain", "localnetwork", "all"
+]);
+const C3_INCLUDE_ROOT_ONLY_INVALID_NAMES = Object.freeze([
+  "dot", "dotdot", "repeated-slash", "trailing-slash", "escape", "wild-parent",
+  "double-star", "bracket", "backslash", "brace", "tilde", "percent", "invalid-utf8"
+]);
+const C3_FORBIDDEN_ALLOCATION_KEYS = Object.freeze([
+  "objectCall", "map", "set", "weakMap", "weakSet", "proxy", "bufferConstructor",
+  "bufferAllocUnsafe", "bufferConcat", "bufferOf", "regexp", "textEncoder", "textEncode",
+  "jsonStringify", "jsonParse"
+]);
+
+function c3PayloadOracle(value) {
+  const bytes = Buffer.from(value, "ascii");
+  return {
+    byteLength: bytes.length,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    knownBytes: {
+      lang: value === "LANG",
+      lcAll: value === "LC_ALL"
+    }
+  };
+}
 
 const C3_VM_HARNESS_SUFFIX = String.raw`
 const C3_ROOT = "/etc/ssh/sshd_config";
@@ -7044,6 +7116,19 @@ function c3LifecycleSummary(tracker) {
         ordinal: push.ordinal,
         arrayRole: push.arrayRole,
         valueCount: push.valueCount,
+        eventKind: push.eventKind,
+        eventDirective: push.eventDirective,
+        eventKeys: push.eventKeys === null ? null : [...push.eventKeys],
+        eventSymbolCount: push.eventSymbolCount,
+        eventProxy: push.eventProxy,
+        eventNullPrototype: push.eventNullPrototype,
+        eventFrozen: push.eventFrozen,
+        eventOrdinal: push.eventOrdinal,
+        eventSourceOrdinal: push.eventSourceOrdinal,
+        eventLineNumber: push.eventLineNumber,
+        eventScope: push.eventScope,
+        eventBranchOrdinal: push.eventBranchOrdinal,
+        eventDescriptorsExact: push.eventDescriptorsExact,
         bufferIds: [...push.bufferIds]
       })),
       faultTriggered: phase.faultTriggered,
@@ -7721,6 +7806,20 @@ function c3LexerScenario() {
     "Match User alice,!blocked Group ops,admins", "PubkeyAuthentication yes", "Match all", "PasswordAuthentication no", ""].join("\n");
   const success = c3Run([[C3_ROOT, successSource]]);
   const ignoredOnly = c3Run([[C3_ROOT, "\n \t\n# root comment\n\t # indented comment\n"]]);
+  const payloadOracle = c3Run([
+    [C3_ROOT, "Include conf.d/*.conf\nMatch User alice,!blocked,a*e? Group ops\nForceCommand   none   extra\n"],
+    ["/etc/ssh/conf.d/selected.conf", "Banner selected\n"]
+  ], [["/etc/ssh/conf.d", ["selected.conf"]]]);
+  const namedMatchConditions = c3Run([[C3_ROOT,
+    "Match User user Group group Host host Address address LocalAddress localaddress LocalPort 22 RDomain rdomain LocalNetwork localnetwork\n"]]);
+  const allMatchCondition = c3Run([[C3_ROOT, "Match all\n"]]);
+  const unknownMatchCondition = c3Run([[C3_ROOT, "Match Principal principal\n"]], [], { includeEvents: false });
+  const allPrecharge = c3Run([[C3_ROOT, "Match all\n"]], [], { lifecycle: true });
+  const unknownDirective = c3Run([[C3_ROOT, "UnknownDirective value\n"]], [], {
+    lifecycle: true,
+    includeEvents: false,
+    terminalSecondCall: true
+  });
   const invalidByteSources = [
     ["bom-start", nativeBuffer.concat([nativeBuffer.from([0xef, 0xbb, 0xbf]), nativeBuffer.from("Banner x\n")])],
     ["bom-middle", nativeBuffer.concat([nativeBuffer.from("Banner x", "ascii"), nativeBuffer.from([0xef, 0xbb, 0xbf]), nativeBuffer.from("\n")])],
@@ -7773,6 +7872,12 @@ function c3LexerScenario() {
   return {
     success,
     ignoredOnly,
+    payloadOracle,
+    namedMatchConditions,
+    allMatchCondition,
+    unknownMatchCondition,
+    allPrecharge,
+    unknownDirective,
     invalid,
     line16384,
     line16385,
@@ -7914,7 +8019,34 @@ function requireC3Symbols(probe) {
   return probe.value.scenarioValue;
 }
 
+function c3AssertAllocationPolicy(result) {
+  assert.deepEqual(Object.keys(result.allocations).sort(), Object.keys(C2B_ZERO_ALLOCATIONS).sort());
+  for (const key of C3_FORBIDDEN_ALLOCATION_KEYS) assert.equal(result.allocations[key], 0, key);
+  const hashIndexes = result.trace
+    .map(([name], index) => name === "createHash" ? index : -1)
+    .filter((index) => index >= 0);
+  const preimageIndexes = result.trace
+    .map(([name], index) => name === "reserve-preimage" ? index : -1)
+    .filter((index) => index >= 0);
+  assert.equal(result.allocations.createHash, hashIndexes.length);
+  assert.ok(preimageIndexes.length <= 1);
+  assert.ok(result.allocations.createHash >= preimageIndexes.length);
+  if (preimageIndexes.length === 1) {
+    const sourceHashAttempts = hashIndexes.filter((index) => index < preimageIndexes[0]).length;
+    const closureHashAttempts = hashIndexes.filter((index) => index > preimageIndexes[0]).length;
+    assert.ok(closureHashAttempts <= 1);
+    if (result.outcome.ok) {
+      assert.equal(sourceHashAttempts, result.ownerBeforeDispose.files.length);
+      assert.equal(closureHashAttempts, 1);
+      assert.equal(result.allocations.createHash, result.ownerBeforeDispose.files.length + 1);
+    }
+  } else {
+    assert.equal(result.outcome.ok, false);
+  }
+}
+
 function c3AssertSuccess(result) {
+  c3AssertAllocationPolicy(result);
   assert.deepEqual(result.outcome, { ok: true });
   assert.deepEqual(result.dispose, { ok: true });
   assert.equal(result.ownerAfterDispose.disposed, true);
@@ -7928,6 +8060,7 @@ function c3AssertSuccess(result) {
 }
 
 function c3AssertFailure(result) {
+  c3AssertAllocationPolicy(result);
   assert.deepEqual(result.outcome, { ok: false, error: "restricted_identity_rejected" });
   assert.equal(result.after.snapshot.failed, true);
   assert.equal(result.after.ssh.failed, true);
@@ -8367,6 +8500,7 @@ function c3AssertA2Lifecycle(value) {
   c3AssertTerminalLifecyclePhase(c3LifecycleNamedPhase(preimageFillFailure.lifecycle, "terminal"));
 
   const disposeFailure = value.disposeFailure;
+  c3AssertAllocationPolicy(disposeFailure);
   assert.deepEqual(disposeFailure.outcome, { ok: true });
   assert.deepEqual(disposeFailure.dispose, { ok: false, error: "restricted_identity_rejected" });
   assert.deepEqual(disposeFailure.disposeAllocations, C2B_ZERO_ALLOCATIONS);
@@ -8688,7 +8822,29 @@ test("SSH Include freezes relative base final glob and Match scope", { timeout: 
   assert.deepEqual(value.relative.ownerBeforeDispose.files.map((file) => file.pathRole), ["file-0", "file-1", "file-2"]);
   c3AssertSuccess(value.glob);
   assert.deepEqual(value.glob.ownerBeforeDispose.files.map((file) => file.pathRole), ["file-0", "file-1", "file-2"]);
+  const globPattern = value.glob.ownerBeforeDispose.events
+    .filter((event) => event.values.kind === "includePattern").map((event) => event.values);
+  assert.deepEqual(globPattern.map(({ starIndex, selectedCount }) => ({ starIndex, selectedCount })), [
+    { starIndex: 0, selectedCount: 2 }
+  ]);
+  assert.deepEqual(value.glob.trace.filter(([name]) => name === "reserve-work"), [
+    ["reserve-work", "glob"],
+    ["reserve-work", "glob"],
+    ["reserve-work", "glob"]
+  ]);
+  assert.deepEqual(value.glob.trace.filter(([name]) => name === "match-wildcard"), [
+    ["match-wildcard", "glob", 6, 7, 0],
+    ["match-wildcard", "glob", 6, 7, 0]
+  ]);
+  assert.equal(value.glob.afterDerive.ssh.globComparisonCount, 3);
+  assert.equal(value.glob.afterDerive.snapshot.wildcardInvocationCount, 3);
+  assert.equal(value.glob.afterDerive.snapshot.wildcardPatternByteCount, 6);
   for (const witness of value.invalidSources) c3AssertFailure(witness.result);
+  for (const name of C3_INCLUDE_ROOT_ONLY_INVALID_NAMES) {
+    const witness = value.invalidSources.find((entry) => entry.name === name);
+    assert.ok(witness, name);
+    assert.deepEqual(witness.result.calls, c3A1FileOperations("body", "eof"), name);
+  }
   c3AssertSuccess(value.directory4096);
   assert.ok(value.directory4096.compareCount >= 8390656);
   assert.ok(value.directory4096.compareCount <= 8390656 + 196608);
@@ -8696,6 +8852,7 @@ test("SSH Include freezes relative base final glob and Match scope", { timeout: 
   assert.equal(value.directory4097.compareCount, 0);
   c3AssertSuccess(value.operands64);
   c3AssertFailure(value.operands65);
+  assert.deepEqual(value.operands65.calls, c3A1FileOperations("body", "eof"));
   c3AssertSuccess(value.depth32);
   c3AssertFailure(value.depth33);
   c3AssertSuccess(value.files256);
@@ -8729,6 +8886,116 @@ test("SSH lexer accepts only the global and Match closed subsets", () => {
     { lang: true, lcAll: false },
     { lang: false, lcAll: true }
   ]);
+  const payloadOracle = value.payloadOracle;
+  c3AssertSuccess(payloadOracle);
+  const payloadEvents = payloadOracle.ownerBeforeDispose.events.map((event) => event.values);
+  assert.deepEqual(payloadEvents.filter((event) => event.kind === "includePattern")
+    .map(({ starIndex, selectedCount }) => ({ starIndex, selectedCount })), [
+    { starIndex: 0, selectedCount: 1 }
+  ]);
+  assert.deepEqual(payloadEvents.filter((event) => event.kind === "matchPattern")
+    .map(({ negated, valueBytes, starIndex }) => ({ negated, valueBytes, starIndex })), [
+    { negated: false, valueBytes: c3PayloadOracle("alice"), starIndex: -1 },
+    { negated: true, valueBytes: c3PayloadOracle("blocked"), starIndex: -1 },
+    { negated: false, valueBytes: c3PayloadOracle("a*e?"), starIndex: 1 },
+    { negated: false, valueBytes: c3PayloadOracle("ops"), starIndex: -1 }
+  ]);
+  const forceCommand = payloadEvents.filter((event) => event.kind === "assignment" && event.name === "forcecommand");
+  assert.deepEqual(forceCommand.map(({ argumentCount, valueBytes }) => ({ argumentCount, valueBytes })), [
+    { argumentCount: 2, valueBytes: c3PayloadOracle("none extra") }
+  ]);
+
+  c3AssertSuccess(value.namedMatchConditions);
+  c3AssertSuccess(value.allMatchCondition);
+  const namedConditions = value.namedMatchConditions.ownerBeforeDispose.events
+    .filter((event) => event.values.kind === "matchCondition").map((event) => event.values.name);
+  const allConditions = value.allMatchCondition.ownerBeforeDispose.events
+    .filter((event) => event.values.kind === "matchCondition").map((event) => event.values.name);
+  assert.deepEqual([...namedConditions, ...allConditions], C3_MATCH_CONDITION_NAMES);
+  c3AssertFailure(value.unknownMatchCondition);
+  assert.deepEqual(value.unknownMatchCondition.calls, c3A1FileOperations("body", "eof"));
+
+  c3AssertSuccess(value.allPrecharge);
+  const allPrechargeEvents = value.allPrecharge.ownerBeforeDispose.events.map((event) => event.values);
+  assert.deepEqual(allPrechargeEvents.map(({ kind }) => kind), [
+    "physicalDirective", "matchBranch", "matchCondition"
+  ]);
+  assert.deepEqual(allPrechargeEvents.filter(({ kind }) => kind === "matchCondition")
+    .map(({ name, patternCount, patternStartEventOrdinal }) => ({ name, patternCount, patternStartEventOrdinal })), [
+    { name: "all", patternCount: 0, patternStartEventOrdinal: -1 }
+  ]);
+  const allPrechargeDerive = c3LifecycleNamedPhase(value.allPrecharge.lifecycle, "derive");
+  assert.deepEqual(value.allPrecharge.trace.filter(([name]) => name === "reserve-semantic"), [
+    ["reserve-semantic", "sourceFile"],
+    ["reserve-semantic", "sshPhysicalDirective"],
+    ["reserve-semantic", "sshMatchBranch"],
+    ["reserve-semantic", "sshMatchCondition"]
+  ]);
+  assert.deepEqual(allPrechargeDerive.retentions.map(({ role, reserveOrdinal }) => ({ role, reserveOrdinal })), [
+    { role: "sshPhysicalDirective", reserveOrdinal: 1 },
+    { role: "sshMatchBranch", reserveOrdinal: 2 },
+    { role: "sshMatchCondition", reserveOrdinal: 3 }
+  ]);
+  const allFirstAllocation = Math.min(...allPrechargeDerive.retentions
+    .flatMap((entry) => entry.objectCreateActions));
+  assert.ok(allPrechargeDerive.retentions
+    .every((entry) => entry.reserveStamp.action < allFirstAllocation));
+  assert.equal(new Set(allPrechargeDerive.retentions.map((entry) => JSON.stringify({
+    allocations: entry.reserveStamp.allocations,
+    copies: entry.reserveStamp.copies,
+    pushes: entry.reserveStamp.pushes
+  }))).size, 1);
+
+  c3AssertFailure(value.unknownDirective);
+  assert.deepEqual(value.unknownDirective.calls, c3A1FileOperations("body", "eof"));
+  assert.deepEqual(value.unknownDirective.trace.filter(([name]) => name === "reserve-semantic"), [
+    ["reserve-semantic", "sourceFile"],
+    ["reserve-semantic", "sshPhysicalDirective"]
+  ]);
+  const unknownDerive = c3LifecycleNamedPhase(value.unknownDirective.lifecycle, "derive");
+  assert.deepEqual(unknownDerive.pushes.filter((entry) => entry.arrayRole === "events")
+    .map(({ valueCount, eventKind, eventDirective, eventKeys, eventSymbolCount, eventProxy,
+      eventNullPrototype, eventFrozen, eventOrdinal, eventSourceOrdinal, eventLineNumber,
+      eventScope, eventBranchOrdinal, eventDescriptorsExact, bufferIds }) => ({
+      valueCount,
+      eventKind,
+      eventDirective,
+      eventKeys,
+      eventSymbolCount,
+      eventProxy,
+      eventNullPrototype,
+      eventFrozen,
+      eventOrdinal,
+      eventSourceOrdinal,
+      eventLineNumber,
+      eventScope,
+      eventBranchOrdinal,
+      eventDescriptorsExact,
+      bufferIds
+    })), [
+    {
+      valueCount: 1,
+      eventKind: "physicalDirective",
+      eventDirective: "unknown",
+      eventKeys: C3_EVENT_SCHEMAS.physicalDirective,
+      eventSymbolCount: 0,
+      eventProxy: false,
+      eventNullPrototype: true,
+      eventFrozen: true,
+      eventOrdinal: 0,
+      eventSourceOrdinal: 0,
+      eventLineNumber: 1,
+      eventScope: "global",
+      eventBranchOrdinal: -1,
+      eventDescriptorsExact: true,
+      bufferIds: []
+    }
+  ]);
+  assert.deepEqual(unknownDerive.retentions.map((entry) => entry.role), ["sshPhysicalDirective"]);
+  assert.deepEqual(value.unknownDirective.terminalSecondDerive,
+    { ok: false, error: "restricted_identity_rejected" });
+  assert.deepEqual(value.unknownDirective.terminalSecondDeriveAllocations, C2B_ZERO_ALLOCATIONS);
+  assert.deepEqual(value.unknownDirective.terminalSecondDeriveCalls, []);
   const ignoredOnly = value.ignoredOnly;
   assert.deepEqual(ignoredOnly.calls, c3A1FileOperations("body", "eof"));
   assert.equal(ignoredOnly.afterDerive.snapshot.fixedEnvelopeCount, 10);
