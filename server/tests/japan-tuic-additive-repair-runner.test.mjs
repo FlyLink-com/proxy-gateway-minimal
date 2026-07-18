@@ -7720,6 +7720,7 @@ function c3LexerScenario() {
   const successSource = ["", "   # comment", ...opaqueLines, ...authorityLines,
     "Match User alice,!blocked Group ops,admins", "PubkeyAuthentication yes", "Match all", "PasswordAuthentication no", ""].join("\n");
   const success = c3Run([[C3_ROOT, successSource]]);
+  const ignoredOnly = c3Run([[C3_ROOT, "\n \t\n# root comment\n\t # indented comment\n"]]);
   const invalidByteSources = [
     ["bom-start", nativeBuffer.concat([nativeBuffer.from([0xef, 0xbb, 0xbf]), nativeBuffer.from("Banner x\n")])],
     ["bom-middle", nativeBuffer.concat([nativeBuffer.from("Banner x", "ascii"), nativeBuffer.from([0xef, 0xbb, 0xbf]), nativeBuffer.from("\n")])],
@@ -7771,6 +7772,7 @@ function c3LexerScenario() {
 
   return {
     success,
+    ignoredOnly,
     invalid,
     line16384,
     line16385,
@@ -8727,6 +8729,45 @@ test("SSH lexer accepts only the global and Match closed subsets", () => {
     { lang: true, lcAll: false },
     { lang: false, lcAll: true }
   ]);
+  const ignoredOnly = value.ignoredOnly;
+  assert.deepEqual(ignoredOnly.calls, c3A1FileOperations("body", "eof"));
+  assert.equal(ignoredOnly.afterDerive.snapshot.fixedEnvelopeCount, 10);
+  assert.equal(ignoredOnly.afterDerive.snapshot.semanticNodeCount, 11);
+  assert.equal(ignoredOnly.afterDerive.ssh.fixedEnvelopeCount, 2);
+  assert.equal(ignoredOnly.afterDerive.ssh.semanticNodeCount, 8);
+  assert.equal(ignoredOnly.afterDerive.ssh.sourceFileCount, 1);
+  assert.deepEqual({
+    physicalDirective: ignoredOnly.afterDerive.ssh.sshPhysicalDirectiveCount,
+    includePattern: ignoredOnly.afterDerive.ssh.sshIncludePatternCount,
+    selectedInsertion: ignoredOnly.afterDerive.ssh.sshSelectedInsertionCount,
+    matchBranch: ignoredOnly.afterDerive.ssh.sshMatchBranchCount,
+    matchCondition: ignoredOnly.afterDerive.ssh.sshMatchConditionCount,
+    matchPattern: ignoredOnly.afterDerive.ssh.sshMatchPatternCount,
+    assignment: ignoredOnly.afterDerive.ssh.sshAssignmentCount,
+    acceptEnvName: ignoredOnly.afterDerive.ssh.sshAcceptEnvNameCount
+  }, {
+    physicalDirective: 0,
+    includePattern: 0,
+    selectedInsertion: 0,
+    matchBranch: 0,
+    matchCondition: 0,
+    matchPattern: 0,
+    assignment: 0,
+    acceptEnvName: 0
+  });
+  assert.equal(ignoredOnly.trace.filter(([name]) => name === "reserve-preimage").length, 1);
+  assert.equal(ignoredOnly.trace.filter(([name]) => name === "createHash").length, 2);
+  assert.ok(ignoredOnly.tracked.arrays.every((entry) => entry.length === 0));
+  assert.ok(ignoredOnly.tracked.buffers.every((entry) => entry.zero));
+  c3AssertSuccess(ignoredOnly);
+  assert.equal(ignoredOnly.ownerBeforeDispose.files.length, 1);
+  assert.equal(ignoredOnly.ownerBeforeDispose.eventCount, 0);
+  assert.deepEqual(ignoredOnly.ownerBeforeDispose.activePathRoles, []);
+  assert.equal(ignoredOnly.ownerBeforeDispose.closureSha256, ignoredOnly.ownerBeforeDispose.canonicalSha256);
+  assert.equal(ignoredOnly.ownerAfterDispose.fileLength, 0);
+  assert.equal(ignoredOnly.ownerAfterDispose.eventLength, 0);
+  assert.equal(ignoredOnly.ownerAfterDispose.activeLength, 0);
+  assert.equal(ignoredOnly.ownerAfterDispose.allBuffersZero, true);
   for (const witness of value.invalid) c3AssertFailure(witness.result);
   c3AssertSuccess(value.line16384);
   c3AssertFailure(value.line16385);
