@@ -90,9 +90,14 @@ function exactKeys(value, expected) {
 }
 
 function utf8PathIdentity(value) {
-  const bytes = Buffer.from(value, "utf8");
-  if (bytes.toString("utf8") !== value) restricted();
-  return bytes.toString("hex");
+  let bytes;
+  try {
+    bytes = Buffer.from(value, "utf8");
+    if (bytes.toString("utf8") !== value) restricted();
+    return bytes.toString("hex");
+  } finally {
+    if (Buffer.isBuffer(bytes)) bytes.fill(0);
+  }
 }
 
 function safeAbsolutePath(value) {
@@ -186,7 +191,7 @@ const TOOL_PATHS = Object.freeze({
 const ACCOUNT_CORE_KEYS = Object.freeze([
   "username", "uid", "homeDirectory", "loginShell", "passwordLocked", "primaryGroupId", "groupIds", "groupNames"
 ]);
-const ACCOUNT_GROUP_NAME = /^[a-z_][a-z0-9_.-]{0,63}$/;
+const ACCOUNT_GROUP_NAME = /^[a-z0-9_][a-z0-9_.-]{0,63}$/;
 const MAX_ACCOUNT_GROUPS = 256;
 const ACCOUNT_PROCESS_ENV = Object.freeze({
   LANG: "C.UTF-8",
@@ -3020,6 +3025,1046 @@ export function collectBoundAccountEvidence(binding, input) {
   }
 }
 
+// C4_SSH_POLICY_BLOCK_BEGIN
+const AUTHORIZATION_SSH_C4_VALUE_SLOTS = "authenticationMethods pubkeyAuthentication passwordAuthentication keyboardInteractiveAuthentication hostbasedAuthentication gssapiAuthentication kerberosAuthentication permitUserEnvironment forceCommand chrootDirectory disableForwarding permitTunnel authorizedKeysFile authorizedKeysCommand authorizedPrincipalsFile authorizedPrincipalsCommand trustedUserCAKeys";
+
+function authorizationSshC4FixedObject(graph) {
+  reserveAuthorizationFixedEnvelope(graph);
+  return Object.create(null);
+}
+
+function authorizationSshC4FixedArray(graph, length) {
+  reserveAuthorizationFixedEnvelope(graph);
+  return length === undefined ? new Array() : new Array(length);
+}
+
+function authorizationSshC4AsciiText(bytes) {
+  if (!Buffer.isBuffer(bytes)) restricted();
+  let value = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte = bytes[index];
+    if (byte < 0x20 || byte > 0x7e) restricted();
+    value += String.fromCharCode(byte);
+  }
+  return value;
+}
+
+function authorizationSshC4WriteAsciiTarget(buffer, value) {
+  if (!Buffer.isBuffer(buffer) || typeof value !== "string" || value.length > buffer.length) restricted();
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code > 0x7f) restricted();
+    buffer[index] = code;
+  }
+  return buffer.subarray(0, value.length);
+}
+
+function authorizationSshC4PatternListMatches(graph, events, condition, usernameTarget, groupScratch, groupNames) {
+  if (!condition || condition.kind !== "matchCondition" || condition.patternCount < 1) restricted();
+  let hasNegative = false;
+  for (let offset = 0; offset < condition.patternCount; offset += 1) {
+    const pattern = events[condition.patternStartEventOrdinal + offset];
+    if (!pattern || pattern.kind !== "matchPattern" || pattern.conditionOrdinal !== condition.conditionOrdinal
+      || pattern.branchOrdinal !== condition.branchOrdinal || pattern.patternOrdinal !== offset) restricted();
+    if (pattern.negated) hasNegative = true;
+  }
+  let positiveMatched = false;
+  const targetCount = condition.name === "user" ? 1 : groupNames.length;
+  for (let targetOrdinal = 0; targetOrdinal < targetCount; targetOrdinal += 1) {
+    const target = condition.name === "user"
+      ? usernameTarget
+      : authorizationSshC4WriteAsciiTarget(groupScratch, groupNames[targetOrdinal]);
+    for (let offset = 0; offset < condition.patternCount; offset += 1) {
+      const pattern = events[condition.patternStartEventOrdinal + offset];
+      const matched = matchAuthorizationWildcard(
+        graph,
+        "sshMatch",
+        pattern.valueBytes,
+        target,
+        pattern.starIndex
+      );
+      if (matched && pattern.negated) return false;
+      if (matched && !pattern.negated) {
+        positiveMatched = true;
+        if (!hasNegative) return true;
+      }
+    }
+  }
+  return positiveMatched;
+}
+
+function authorizationSshC4CreateValueTable(graph) {
+  const table = authorizationSshC4FixedObject(graph);
+  let start = 0;
+  while (start < AUTHORIZATION_SSH_C4_VALUE_SLOTS.length) {
+    let end = start;
+    while (end < AUTHORIZATION_SSH_C4_VALUE_SLOTS.length
+      && AUTHORIZATION_SSH_C4_VALUE_SLOTS.charCodeAt(end) !== 0x20) end += 1;
+    table[AUTHORIZATION_SSH_C4_VALUE_SLOTS.slice(start, end)] = undefined;
+    start = end + 1;
+  }
+  table.acceptEnv = false;
+  return table;
+}
+
+function authorizationSshC4AssignmentSlot(name) {
+  if (name === "authenticationmethods") return "authenticationMethods";
+  if (name === "pubkeyauthentication") return "pubkeyAuthentication";
+  if (name === "passwordauthentication") return "passwordAuthentication";
+  if (name === "kbdinteractiveauthentication" || name === "challengeresponseauthentication") {
+    return "keyboardInteractiveAuthentication";
+  }
+  if (name === "hostbasedauthentication") return "hostbasedAuthentication";
+  if (name === "gssapiauthentication") return "gssapiAuthentication";
+  if (name === "kerberosauthentication") return "kerberosAuthentication";
+  if (name === "permituserenvironment") return "permitUserEnvironment";
+  if (name === "forcecommand") return "forceCommand";
+  if (name === "chrootdirectory") return "chrootDirectory";
+  if (name === "disableforwarding") return "disableForwarding";
+  if (name === "permittunnel") return "permitTunnel";
+  if (name === "authorizedkeysfile") return "authorizedKeysFile";
+  if (name === "authorizedkeyscommand") return "authorizedKeysCommand";
+  if (name === "authorizedprincipalsfile") return "authorizedPrincipalsFile";
+  if (name === "authorizedprincipalscommand") return "authorizedPrincipalsCommand";
+  if (name === "trustedusercakeys") return "trustedUserCAKeys";
+  return undefined;
+}
+
+function authorizationSshC4TableAssignment(table, event) {
+  if (event.name === "acceptenv") {
+    table.acceptEnv = true;
+    return;
+  }
+  const slot = authorizationSshC4AssignmentSlot(event.name);
+  if (slot === undefined || table[slot] !== undefined || !Buffer.isBuffer(event.valueBytes)) return;
+  table[slot] = authorizationSshC4AsciiText(event.valueBytes);
+}
+
+function authorizationSshC4Boolean(value, fallback) {
+  const selected = value === undefined ? fallback : value;
+  if (selected === "yes" || selected === true) return true;
+  if (selected === "no" || selected === false) return false;
+  restricted();
+}
+
+function authorizationSshC4First(matchTable, globalTable, slot, fallback) {
+  if (matchTable[slot] !== undefined) return matchTable[slot];
+  if (globalTable[slot] !== undefined) return globalTable[slot];
+  return fallback;
+}
+
+function authorizationSshC4FreezeCoverage(coverage) {
+  for (let branchIndex = 0; branchIndex < coverage.branches.length; branchIndex += 1) {
+    const branch = coverage.branches[branchIndex];
+    for (let conditionIndex = 0; conditionIndex < branch.conditions.length; conditionIndex += 1) {
+      const condition = branch.conditions[conditionIndex];
+      for (let patternIndex = 0; patternIndex < condition.patterns.length; patternIndex += 1) {
+        Object.freeze(condition.patterns[patternIndex]);
+      }
+      Object.freeze(condition.patterns);
+      Object.freeze(condition);
+    }
+    Object.freeze(branch.conditions);
+    Object.freeze(branch.variableDimensions);
+    Object.freeze(branch);
+  }
+  Object.freeze(coverage.groupIds);
+  Object.freeze(coverage.branches);
+  return Object.freeze(coverage);
+}
+
+function measureAuthorizationSshCoverage(coverage) {
+  let length = "{\"schemaVersion\":\"1\",\"type\":\"japan_ci_sshd_match_coverage\",\"username\":".length;
+  length += authorizationSshJsonStringLength(coverage.username);
+  length += ",\"groupIds\":[".length;
+  for (let index = 0; index < coverage.groupIds.length; index += 1) {
+    if (index > 0) length += 1;
+    length += authorizationSshIntegerLength(coverage.groupIds[index]);
+  }
+  length += "],\"branches\":[".length;
+  for (let branchIndex = 0; branchIndex < coverage.branches.length; branchIndex += 1) {
+    const branch = coverage.branches[branchIndex];
+    if (branchIndex > 0) length += 1;
+    length += "{\"ordinal\":".length + authorizationSshIntegerLength(branch.ordinal);
+    length += ",\"sourceOrdinal\":".length + authorizationSshIntegerLength(branch.sourceOrdinal);
+    length += ",\"lineNumber\":".length + authorizationSshIntegerLength(branch.lineNumber);
+    length += ",\"conditions\":[".length;
+    for (let conditionIndex = 0; conditionIndex < branch.conditions.length; conditionIndex += 1) {
+      const condition = branch.conditions[conditionIndex];
+      if (conditionIndex > 0) length += 1;
+      length += "{\"name\":".length + authorizationSshJsonStringLength(condition.name);
+      length += ",\"patterns\":[".length;
+      for (let patternIndex = 0; patternIndex < condition.patterns.length; patternIndex += 1) {
+        const pattern = condition.patterns[patternIndex];
+        if (patternIndex > 0) length += 1;
+        length += pattern.negated ? "{\"negated\":true,\"value\":".length
+          : "{\"negated\":false,\"value\":".length;
+        length += authorizationSshJsonStringLength(pattern.value) + 1;
+      }
+      length += "]}".length;
+    }
+    length += "],\"accountDisposition\":".length
+      + authorizationSshJsonStringLength(branch.accountDisposition);
+    length += ",\"variableDimensions\":[".length;
+    for (let index = 0; index < branch.variableDimensions.length; index += 1) {
+      if (index > 0) length += 1;
+      length += authorizationSshJsonStringLength(branch.variableDimensions[index]);
+    }
+    length += "]}".length;
+    if (!Number.isSafeInteger(length)) restricted();
+  }
+  return length + 3;
+}
+
+function emitAuthorizationSshCoverage(coverage, buffer) {
+  let offset = authorizationSshWriteAscii(
+    buffer,
+    0,
+    "{\"schemaVersion\":\"1\",\"type\":\"japan_ci_sshd_match_coverage\",\"username\":"
+  );
+  offset = authorizationSshWriteJsonString(buffer, offset, coverage.username);
+  offset = authorizationSshWriteAscii(buffer, offset, ",\"groupIds\":[");
+  for (let index = 0; index < coverage.groupIds.length; index += 1) {
+    if (index > 0) buffer[offset++] = 0x2c;
+    offset = authorizationSshWriteInteger(buffer, offset, coverage.groupIds[index]);
+  }
+  offset = authorizationSshWriteAscii(buffer, offset, "],\"branches\":[");
+  for (let branchIndex = 0; branchIndex < coverage.branches.length; branchIndex += 1) {
+    const branch = coverage.branches[branchIndex];
+    if (branchIndex > 0) buffer[offset++] = 0x2c;
+    offset = authorizationSshWriteAscii(buffer, offset, "{\"ordinal\":");
+    offset = authorizationSshWriteInteger(buffer, offset, branch.ordinal);
+    offset = authorizationSshWriteAscii(buffer, offset, ",\"sourceOrdinal\":");
+    offset = authorizationSshWriteInteger(buffer, offset, branch.sourceOrdinal);
+    offset = authorizationSshWriteAscii(buffer, offset, ",\"lineNumber\":");
+    offset = authorizationSshWriteInteger(buffer, offset, branch.lineNumber);
+    offset = authorizationSshWriteAscii(buffer, offset, ",\"conditions\":[");
+    for (let conditionIndex = 0; conditionIndex < branch.conditions.length; conditionIndex += 1) {
+      const condition = branch.conditions[conditionIndex];
+      if (conditionIndex > 0) buffer[offset++] = 0x2c;
+      offset = authorizationSshWriteAscii(buffer, offset, "{\"name\":");
+      offset = authorizationSshWriteJsonString(buffer, offset, condition.name);
+      offset = authorizationSshWriteAscii(buffer, offset, ",\"patterns\":[");
+      for (let patternIndex = 0; patternIndex < condition.patterns.length; patternIndex += 1) {
+        const pattern = condition.patterns[patternIndex];
+        if (patternIndex > 0) buffer[offset++] = 0x2c;
+        offset = authorizationSshWriteAscii(
+          buffer,
+          offset,
+          pattern.negated ? "{\"negated\":true,\"value\":" : "{\"negated\":false,\"value\":"
+        );
+        offset = authorizationSshWriteJsonString(buffer, offset, pattern.value);
+        buffer[offset++] = 0x7d;
+      }
+      offset = authorizationSshWriteAscii(buffer, offset, "]}");
+    }
+    offset = authorizationSshWriteAscii(buffer, offset, "],\"accountDisposition\":");
+    offset = authorizationSshWriteJsonString(buffer, offset, branch.accountDisposition);
+    offset = authorizationSshWriteAscii(buffer, offset, ",\"variableDimensions\":[");
+    for (let index = 0; index < branch.variableDimensions.length; index += 1) {
+      if (index > 0) buffer[offset++] = 0x2c;
+      offset = authorizationSshWriteJsonString(buffer, offset, branch.variableDimensions[index]);
+    }
+    offset = authorizationSshWriteAscii(buffer, offset, "]}");
+  }
+  offset = authorizationSshWriteAscii(buffer, offset, "]}\n");
+  return offset;
+}
+
+function authorizationSshC4CleanupPolicy(graph, policy, deleteOwnerBinding) {
+  let cleanupFailed = false;
+  if (deleteOwnerBinding) {
+    try {
+      if (!AUTHORIZATION_SSH_PROVENANCE.delete(policy)) cleanupFailed = true;
+    } catch {
+      cleanupFailed = true;
+    }
+  }
+  if (policy) {
+    try { policy.coverage = undefined; } catch { cleanupFailed = true; }
+    try { policy.effective = undefined; } catch { cleanupFailed = true; }
+    try { policy.disposed = true; } catch { cleanupFailed = true; }
+  }
+  if (cleanupFailed) failAuthorizationSourceGraph(graph);
+  return !cleanupFailed;
+}
+
+function authorizationSshC4ZeroBuffersTo(graph, checkpoint) {
+  let cleanupFailed = false;
+  if (!graph || !Array.isArray(graph.cleanupStack)
+    || !Number.isSafeInteger(checkpoint) || checkpoint < 0 || checkpoint > graph.cleanupStack.length) {
+    return false;
+  }
+  while (graph.cleanupStack.length > checkpoint) {
+    let buffer;
+    try {
+      buffer = graph.cleanupStack.pop();
+    } catch {
+      cleanupFailed = true;
+      break;
+    }
+    try {
+      if (Buffer.isBuffer(buffer)) buffer.fill(0);
+    } catch {
+      cleanupFailed = true;
+    }
+  }
+  return !cleanupFailed;
+}
+
+function deriveAuthorizationSshPolicy(graph, syntax, accountCore) {
+  let active;
+  let policy;
+  let registered = false;
+  let preimage;
+  let checkpoint = 0;
+  try {
+    if (!graph || !AUTHORIZATION_SOURCE_GRAPH_BRAND.has(graph)
+      || !AUTHORIZATION_SOURCE_SNAPSHOT_BRAND.has(graph.snapshot)
+      || graph.kind !== "ssh" || graph.snapshot.sshGraph !== graph
+      || graph.failed || graph.snapshot.failed
+      || (!PROJECTED_ACCOUNT_CORE_BRAND.has(accountCore) && !NATIVE_ACCOUNT_CORE_BRAND.has(accountCore))) restricted();
+    active = graph;
+    if (AUTHORIZATION_SSH_PROVENANCE.get(syntax) !== active
+      || !syntax || syntax.disposed !== false || syntax.c4PolicyConsumed === true
+      || !syntax.closure || !Array.isArray(syntax.closure.files)
+      || !Array.isArray(syntax.events) || !Array.isArray(syntax.activePaths)
+      || syntax.activePaths.length !== 0) restricted();
+    checkpoint = active.cleanupStack.length;
+    const usernameTarget = allocateAuthorizationBuffer(active, accountCore.username.length);
+    authorizationSshC4WriteAsciiTarget(usernameTarget, accountCore.username);
+    const groupScratch = allocateAuthorizationBuffer(active, 64);
+
+    policy = authorizationSshC4FixedObject(active);
+    policy.coverage = undefined;
+    policy.coverageSha256 = undefined;
+    policy.effective = undefined;
+    policy.disposed = false;
+
+    const coverage = authorizationSshC4FixedObject(active);
+    coverage.schemaVersion = "1";
+    coverage.type = "japan_ci_sshd_match_coverage";
+    coverage.username = accountCore.username;
+    const groupIds = authorizationSshC4FixedArray(active, accountCore.groupIds.length);
+    for (let index = 0; index < groupIds.length; index += 1) groupIds[index] = accountCore.groupIds[index];
+    coverage.groupIds = groupIds;
+    const branches = authorizationSshC4FixedArray(active, active.sshMatchBranchCount);
+    coverage.branches = branches;
+
+    let emittedBranches = 0;
+    for (let eventIndex = 0; eventIndex < syntax.events.length; eventIndex += 1) {
+      const branchEvent = syntax.events[eventIndex];
+      if (!branchEvent || branchEvent.kind !== "matchBranch") continue;
+      if (branchEvent.branchOrdinal !== emittedBranches || branchEvent.conditionCount < 1) restricted();
+      const branch = Object.create(null);
+      branch.ordinal = branchEvent.branchOrdinal;
+      branch.sourceOrdinal = branchEvent.sourceOrdinal;
+      branch.lineNumber = branchEvent.lineNumber;
+      const conditions = new Array(branchEvent.conditionCount);
+      branch.conditions = conditions;
+      let accountMatches = true;
+      let hasAccountCondition = false;
+      let host = false;
+      let address = false;
+      let localaddress = false;
+      let localport = false;
+      let rdomain = false;
+      let localnetwork = false;
+      let conditionEventIndex = branchEvent.conditionStartEventOrdinal;
+      for (let conditionOrdinal = 0; conditionOrdinal < branchEvent.conditionCount; conditionOrdinal += 1) {
+        const sourceCondition = syntax.events[conditionEventIndex];
+        if (!sourceCondition || sourceCondition.kind !== "matchCondition"
+          || sourceCondition.branchOrdinal !== branchEvent.branchOrdinal
+          || sourceCondition.conditionOrdinal !== conditionOrdinal) restricted();
+        const condition = Object.create(null);
+        condition.name = sourceCondition.name;
+        const patterns = new Array(sourceCondition.patternCount);
+        condition.patterns = patterns;
+        for (let patternOrdinal = 0; patternOrdinal < sourceCondition.patternCount; patternOrdinal += 1) {
+          const sourcePattern = syntax.events[sourceCondition.patternStartEventOrdinal + patternOrdinal];
+          if (!sourcePattern || sourcePattern.kind !== "matchPattern"
+            || sourcePattern.branchOrdinal !== branchEvent.branchOrdinal
+            || sourcePattern.conditionOrdinal !== conditionOrdinal
+            || sourcePattern.patternOrdinal !== patternOrdinal) restricted();
+          const pattern = Object.create(null);
+          pattern.negated = sourcePattern.negated;
+          pattern.value = authorizationSshC4AsciiText(sourcePattern.valueBytes);
+          patterns[patternOrdinal] = pattern;
+        }
+        conditions[conditionOrdinal] = condition;
+        if (sourceCondition.name === "all") {
+          if (branchEvent.conditionCount !== 1 || sourceCondition.patternCount !== 0) restricted();
+          hasAccountCondition = true;
+        } else if (sourceCondition.name === "user" || sourceCondition.name === "group") {
+          hasAccountCondition = true;
+          if (accountMatches && !authorizationSshC4PatternListMatches(
+            active,
+            syntax.events,
+            sourceCondition,
+            usernameTarget,
+            groupScratch,
+            accountCore.groupNames
+          )) accountMatches = false;
+        } else if (sourceCondition.name === "host") host = true;
+        else if (sourceCondition.name === "address") address = true;
+        else if (sourceCondition.name === "localaddress") localaddress = true;
+        else if (sourceCondition.name === "localport") localport = true;
+        else if (sourceCondition.name === "rdomain") rdomain = true;
+        else if (sourceCondition.name === "localnetwork") localnetwork = true;
+        else restricted();
+        conditionEventIndex = sourceCondition.patternCount === 0
+          ? sourceCondition.eventOrdinal + 1
+          : sourceCondition.patternStartEventOrdinal + sourceCondition.patternCount;
+      }
+      let dimensionCount = 0;
+      if (host) dimensionCount += 1;
+      if (address) dimensionCount += 1;
+      if (localaddress) dimensionCount += 1;
+      if (localport) dimensionCount += 1;
+      if (rdomain) dimensionCount += 1;
+      if (localnetwork) dimensionCount += 1;
+      const variableDimensions = new Array(dimensionCount);
+      let dimensionIndex = 0;
+      if (host) variableDimensions[dimensionIndex++] = "host";
+      if (address) variableDimensions[dimensionIndex++] = "address";
+      if (localaddress) variableDimensions[dimensionIndex++] = "localaddress";
+      if (localport) variableDimensions[dimensionIndex++] = "localport";
+      if (rdomain) variableDimensions[dimensionIndex++] = "rdomain";
+      if (localnetwork) variableDimensions[dimensionIndex++] = "localnetwork";
+      if (accountMatches && dimensionCount > 0) restricted();
+      branch.accountDisposition = accountMatches && hasAccountCondition ? "exact_user" : "disjoint";
+      branch.variableDimensions = variableDimensions;
+      branches[emittedBranches++] = branch;
+    }
+    if (emittedBranches !== branches.length) restricted();
+
+    const globalTable = authorizationSshC4CreateValueTable(active);
+    const matchTable = authorizationSshC4CreateValueTable(active);
+    for (let eventIndex = 0; eventIndex < syntax.events.length; eventIndex += 1) {
+      const event = syntax.events[eventIndex];
+      if (!event || event.kind !== "assignment") continue;
+      if (event.scope === "global") {
+        authorizationSshC4TableAssignment(globalTable, event);
+      } else if (event.scope === "match") {
+        const branch = branches[event.branchOrdinal];
+        if (!branch) restricted();
+        if (branch.accountDisposition === "exact_user") authorizationSshC4TableAssignment(matchTable, event);
+      } else {
+        restricted();
+      }
+    }
+
+    const effective = authorizationSshC4FixedObject(active);
+    effective.authenticationMethods = authorizationSshC4First(matchTable, globalTable, "authenticationMethods", "any");
+    effective.pubkeyAuthentication = authorizationSshC4Boolean(
+      authorizationSshC4First(matchTable, globalTable, "pubkeyAuthentication", true), true
+    );
+    effective.passwordAuthentication = authorizationSshC4Boolean(
+      authorizationSshC4First(matchTable, globalTable, "passwordAuthentication", true), true
+    );
+    effective.keyboardInteractiveAuthentication = authorizationSshC4Boolean(
+      authorizationSshC4First(matchTable, globalTable, "keyboardInteractiveAuthentication", true), true
+    );
+    effective.hostbasedAuthentication = authorizationSshC4Boolean(
+      authorizationSshC4First(matchTable, globalTable, "hostbasedAuthentication", false), false
+    );
+    effective.gssapiAuthentication = authorizationSshC4Boolean(
+      authorizationSshC4First(matchTable, globalTable, "gssapiAuthentication", false), false
+    );
+    effective.kerberosAuthentication = authorizationSshC4Boolean(
+      authorizationSshC4First(matchTable, globalTable, "kerberosAuthentication", false), false
+    );
+    effective.permitUserEnvironment = authorizationSshC4Boolean(
+      authorizationSshC4First(matchTable, globalTable, "permitUserEnvironment", false), false
+    );
+    effective.acceptEnv = matchTable.acceptEnv || globalTable.acceptEnv;
+    effective.forceCommand = authorizationSshC4First(matchTable, globalTable, "forceCommand", "none");
+    effective.chrootDirectory = authorizationSshC4First(matchTable, globalTable, "chrootDirectory", "none");
+    effective.disableForwarding = authorizationSshC4Boolean(
+      authorizationSshC4First(matchTable, globalTable, "disableForwarding", false), false
+    );
+    effective.permitTunnel = authorizationSshC4First(matchTable, globalTable, "permitTunnel", "no");
+    effective.authorizedKeysFile = authorizationSshC4First(matchTable, globalTable, "authorizedKeysFile", undefined);
+    effective.authorizedKeysCommand = authorizationSshC4First(matchTable, globalTable, "authorizedKeysCommand", "none");
+    effective.authorizedPrincipalsFile = authorizationSshC4First(matchTable, globalTable, "authorizedPrincipalsFile", "none");
+    effective.authorizedPrincipalsCommand = authorizationSshC4First(matchTable, globalTable, "authorizedPrincipalsCommand", "none");
+    effective.trustedUserCAKeys = authorizationSshC4First(matchTable, globalTable, "trustedUserCAKeys", "none");
+
+    authorizationSshC4FreezeCoverage(coverage);
+    const preimageLength = measureAuthorizationSshCoverage(coverage);
+    reservePreimageBytes(active.snapshot, preimageLength);
+    preimage = Buffer.alloc(preimageLength);
+    if (emitAuthorizationSshCoverage(coverage, preimage) !== preimageLength) restricted();
+    const coverageSha256 = createHash("sha256").update(preimage).digest("hex");
+    if (!LOWER_SHA256.test(coverageSha256)) restricted();
+    policy.coverage = coverage;
+    policy.coverageSha256 = coverageSha256;
+    policy.effective = effective;
+    syntax.c4PolicyConsumed = true;
+    AUTHORIZATION_SSH_PROVENANCE.set(policy, active);
+    registered = true;
+    return policy;
+  } catch (error) {
+    if (registered && policy) {
+      try {
+        if (AUTHORIZATION_SSH_PROVENANCE.get(policy) === active) AUTHORIZATION_SSH_PROVENANCE.delete(policy);
+      } catch {
+        // The graph is terminal below; cleanup cannot restore trust.
+      }
+    }
+    authorizationSshC4CleanupPolicy(active, policy, false);
+    failAuthorizationSourceGraph(active || graph);
+    if (error instanceof JapanTuicRepairContractError) throw error;
+    restricted();
+  } finally {
+    let cleanupFailed = false;
+    try {
+      if (Buffer.isBuffer(preimage)) preimage.fill(0);
+    } catch {
+      cleanupFailed = true;
+    }
+    if (active && !authorizationSshC4ZeroBuffersTo(active, checkpoint)) cleanupFailed = true;
+    if (cleanupFailed) {
+      if (registered && policy) {
+        try {
+          if (AUTHORIZATION_SSH_PROVENANCE.get(policy) === active) {
+            AUTHORIZATION_SSH_PROVENANCE.delete(policy);
+          }
+        } catch {
+          // The graph is terminal below; cleanup cannot restore trust.
+        }
+      }
+      authorizationSshC4CleanupPolicy(active, policy, false);
+      failAuthorizationSourceGraph(active || graph);
+      restricted();
+    }
+  }
+}
+
+const AUTHORIZATION_SSH_C4_OPERATION_INPUT_NAMES = "pathOperations sourceOperations";
+const AUTHORIZATION_SSH_C4_PATH_OPERATION_NAMES = "lstat open fstat read close";
+const AUTHORIZATION_SSH_C4_SOURCE_OPERATION_NAMES = "readDirectory validateSudoers";
+const AUTHORIZATION_SSH_C4_BINDING_NAMES = "schemaVersion gateId expectedEuid expectedWorkflowCommit expectedNonceSha256 expectedClaimSha256 codeManifest toolManifest sshAuthorization sudoAuthorization paths pathPolicies units writerFreeze authorizationMarker";
+const AUTHORIZATION_SSH_C4_BINDING_SSH_NAMES = "algorithm authorizedKeysFile authorizedKeysLineSha256 effectiveConfigSha256 homeDirectory homeDirectoryPolicy loginShell loginShellPolicy publicKeyBlobSha256 uid username";
+const AUTHORIZATION_SSH_C4_BINDING_PATH_NAMES = "authorizedKeys backupDirectory currentMap lockFile materialStore mihomoConfig naturalObservation producerStatus stateDirectory sudoersFile temporaryRoot";
+const AUTHORIZATION_SSH_C4_PATH_POLICY_NAMES = "type uid gid mode nlink";
+const AUTHORIZATION_SSH_C4_AUTHORIZED_PREFIX = `restrict,no-pty,no-agent-forwarding,no-port-forwarding,no-X11-forwarding,command="/usr/bin/sudo -n -- ${ENTRYPOINT_PATH}" ssh-ed25519 `;
+
+function authorizationSshC4ExactRecord(input, expectedNames, functionsOnly) {
+  if (!input || typeof input !== "object" || Array.isArray(input) || types.isProxy(input)) restricted();
+  const prototype = Object.getPrototypeOf(input);
+  if (prototype !== null && prototype !== Object.prototype) restricted();
+  if (Object.getOwnPropertySymbols(input).length !== 0) restricted();
+  let expectedCount = 0;
+  let start = 0;
+  while (start < expectedNames.length) {
+    let end = start;
+    while (end < expectedNames.length && expectedNames.charCodeAt(end) !== 0x20) end += 1;
+    const name = expectedNames.slice(start, end);
+    const descriptor = Object.getOwnPropertyDescriptor(input, name);
+    if (!descriptor || !Object.hasOwn(descriptor, "value") || descriptor.enumerable !== true
+      || descriptor.get !== undefined || descriptor.set !== undefined
+      || (functionsOnly && typeof descriptor.value !== "function")) restricted();
+    expectedCount += 1;
+    start = end + 1;
+  }
+  if (Object.getOwnPropertyNames(input).length !== expectedCount) restricted();
+  return input;
+}
+
+function authorizationSshC4OperationInput(input) {
+  const value = authorizationSshC4ExactRecord(
+    input,
+    AUTHORIZATION_SSH_C4_OPERATION_INPUT_NAMES,
+    false
+  );
+  authorizationSshC4ExactRecord(
+    value.pathOperations,
+    AUTHORIZATION_SSH_C4_PATH_OPERATION_NAMES,
+    true
+  );
+  authorizationSshC4ExactRecord(
+    value.sourceOperations,
+    AUTHORIZATION_SSH_C4_SOURCE_OPERATION_NAMES,
+    true
+  );
+  return value;
+}
+
+function authorizationSshC4BindingShape(input) {
+  const value = authorizationSshC4ExactRecord(input, AUTHORIZATION_SSH_C4_BINDING_NAMES, false);
+  const ssh = authorizationSshC4ExactRecord(
+    value.sshAuthorization,
+    AUTHORIZATION_SSH_C4_BINDING_SSH_NAMES,
+    false
+  );
+  const paths = authorizationSshC4ExactRecord(
+    value.paths,
+    AUTHORIZATION_SSH_C4_BINDING_PATH_NAMES,
+    false
+  );
+  const pathPolicies = authorizationSshC4ExactRecord(
+    value.pathPolicies,
+    AUTHORIZATION_SSH_C4_BINDING_PATH_NAMES,
+    false
+  );
+  const authorizedPolicy = authorizationSshC4ExactRecord(
+    pathPolicies.authorizedKeys,
+    AUTHORIZATION_SSH_C4_PATH_POLICY_NAMES,
+    false
+  );
+  if (value.expectedEuid !== 0 || ssh.algorithm !== "ssh-ed25519"
+    || ssh.authorizedKeysFile !== AUTHORIZED_KEYS_PATH || paths.authorizedKeys !== AUTHORIZED_KEYS_PATH
+    || authorizedPolicy.type !== "file" || authorizedPolicy.uid !== 0 || authorizedPolicy.gid !== 0
+    || authorizedPolicy.mode !== 0o600 || authorizedPolicy.nlink !== 1
+    || value.authorizationMarker !== value.gateId) restricted();
+  return value;
+}
+
+function authorizationSshC4AdoptCanonicalBindingShape(canonical, source) {
+  Object.setPrototypeOf(canonical, Object.getPrototypeOf(source));
+  Object.setPrototypeOf(canonical.sshAuthorization, Object.getPrototypeOf(source.sshAuthorization));
+  Object.setPrototypeOf(canonical.paths, Object.getPrototypeOf(source.paths));
+  Object.setPrototypeOf(canonical.pathPolicies, Object.getPrototypeOf(source.pathPolicies));
+  Object.setPrototypeOf(
+    canonical.pathPolicies.authorizedKeys,
+    Object.getPrototypeOf(source.pathPolicies.authorizedKeys)
+  );
+  return canonical;
+}
+
+function authorizationSshC4ValidateAncestor(stats) {
+  if (!stats || typeof stats !== "object" || types.isProxy(stats)
+    || typeof stats.uid !== "bigint" || typeof stats.gid !== "bigint" || typeof stats.mode !== "bigint"
+    || typeof stats.isDirectory !== "function" || typeof stats.isSymbolicLink !== "function"
+    || stats.uid !== 0n || stats.gid !== 0n || !stats.isDirectory() || stats.isSymbolicLink()
+    || (stats.mode & 0o022n) !== 0n) restricted();
+}
+
+function authorizationSshC4ValidateFinal(stats) {
+  if (!stats || typeof stats !== "object" || types.isProxy(stats)
+    || typeof stats.uid !== "bigint" || typeof stats.gid !== "bigint"
+    || typeof stats.mode !== "bigint" || typeof stats.nlink !== "bigint"
+    || typeof stats.dev !== "bigint" || typeof stats.ino !== "bigint" || typeof stats.size !== "bigint"
+    || typeof stats.isDirectory !== "function" || typeof stats.isFile !== "function"
+    || typeof stats.isSymbolicLink !== "function" || stats.uid !== 0n || stats.gid !== 0n
+    || !stats.isFile() || stats.isDirectory() || stats.isSymbolicLink() || stats.nlink !== 1n
+    || (stats.mode & 0o7000n) !== 0n || (stats.mode & 0o777n) !== 0o600n) restricted();
+}
+
+function authorizationSshC4SameFinal(left, right) {
+  authorizationSshC4ValidateFinal(left);
+  authorizationSshC4ValidateFinal(right);
+  if (left.uid !== right.uid || left.gid !== right.gid || left.mode !== right.mode
+    || left.nlink !== right.nlink || left.dev !== right.dev || left.ino !== right.ino
+    || left.size !== right.size) restricted();
+}
+
+function authorizationSshC4Base64Value(byte) {
+  if (byte >= 0x41 && byte <= 0x5a) return byte - 0x41;
+  if (byte >= 0x61 && byte <= 0x7a) return byte - 0x61 + 26;
+  if (byte >= 0x30 && byte <= 0x39) return byte - 0x30 + 52;
+  if (byte === 0x2b) return 62;
+  if (byte === 0x2f) return 63;
+  restricted();
+}
+
+function authorizationSshC4DigestMatches(digest, expected) {
+  if (!Buffer.isBuffer(digest) || digest.length !== 32
+    || typeof expected !== "string" || expected.length !== 64) restricted();
+  let difference = 0;
+  for (let index = 0; index < 32; index += 1) {
+    const highCode = expected.charCodeAt(index * 2);
+    const lowCode = expected.charCodeAt(index * 2 + 1);
+    const high = highCode >= 0x30 && highCode <= 0x39 ? highCode - 0x30
+      : highCode >= 0x61 && highCode <= 0x66 ? highCode - 0x61 + 10 : -1;
+    const low = lowCode >= 0x30 && lowCode <= 0x39 ? lowCode - 0x30
+      : lowCode >= 0x61 && lowCode <= 0x66 ? lowCode - 0x61 + 10 : -1;
+    if (high < 0 || low < 0) restricted();
+    difference |= digest[index] ^ ((high << 4) | low);
+  }
+  return difference === 0;
+}
+
+function authorizationSshC4ReadAuthorization(fd, size, operations) {
+  let source;
+  let complete = false;
+  try {
+    source = Buffer.alloc(size);
+    let offset = 0;
+    while (offset < size) {
+      let count;
+      try {
+        count = operations.read(fd, source, offset, size - offset, offset);
+      } catch (error) {
+        if (error && error.code === "EINTR") continue;
+        throw error;
+      }
+      if (!Number.isInteger(count) || count <= 0 || count > size - offset) restricted();
+      offset += count;
+    }
+    complete = true;
+    return source;
+  } finally {
+    if (!complete && Buffer.isBuffer(source)) source.fill(0);
+  }
+}
+
+function authorizationSshC4ReadEof(fd, size, operations) {
+  let scratch;
+  let complete = false;
+  try {
+    scratch = Buffer.alloc(1);
+    while (true) {
+      try {
+        const count = operations.read(fd, scratch, 0, 1, size);
+        if (!Number.isInteger(count) || count !== 0) restricted();
+        complete = true;
+        return scratch;
+      } catch (error) {
+        if (error && error.code === "EINTR") continue;
+        throw error;
+      }
+    }
+  } finally {
+    if (!complete && Buffer.isBuffer(scratch)) scratch.fill(0);
+  }
+}
+
+function authorizationSshC4DecodeLine(source, marker) {
+  const lineLength = source.length - 1;
+  if (source.length < 2 || source.length > 16385 || source[lineLength] !== 0x0a) restricted();
+  for (let index = 0; index < lineLength; index += 1) {
+    if (source[index] < 0x20 || source[index] > 0x7e) restricted();
+  }
+  const expectedLength = AUTHORIZATION_SSH_C4_AUTHORIZED_PREFIX.length + 68 + 1 + marker.length;
+  if (lineLength !== expectedLength) restricted();
+  for (let index = 0; index < AUTHORIZATION_SSH_C4_AUTHORIZED_PREFIX.length; index += 1) {
+    if (source[index] !== AUTHORIZATION_SSH_C4_AUTHORIZED_PREFIX.charCodeAt(index)) restricted();
+  }
+  const markerStart = AUTHORIZATION_SSH_C4_AUTHORIZED_PREFIX.length + 69;
+  if (source[markerStart - 1] !== 0x20) restricted();
+  for (let index = 0; index < marker.length; index += 1) {
+    const code = marker.charCodeAt(index);
+    if (code < 0x21 || code > 0x7e || source[markerStart + index] !== code) restricted();
+  }
+  let blob;
+  let complete = false;
+  try {
+    blob = Buffer.alloc(51);
+    let output = 0;
+    const base64Start = AUTHORIZATION_SSH_C4_AUTHORIZED_PREFIX.length;
+    for (let index = 0; index < 68; index += 4) {
+      const first = authorizationSshC4Base64Value(source[base64Start + index]);
+      const second = authorizationSshC4Base64Value(source[base64Start + index + 1]);
+      const third = authorizationSshC4Base64Value(source[base64Start + index + 2]);
+      const fourth = authorizationSshC4Base64Value(source[base64Start + index + 3]);
+      blob[output++] = (first << 2) | (second >> 4);
+      blob[output++] = ((second & 15) << 4) | (third >> 2);
+      blob[output++] = ((third & 3) << 6) | fourth;
+    }
+    if (output !== 51 || blob[0] !== 0 || blob[1] !== 0 || blob[2] !== 0 || blob[3] !== 11
+      || blob[15] !== 0 || blob[16] !== 0 || blob[17] !== 0 || blob[18] !== 32) restricted();
+    const algorithm = "ssh-ed25519";
+    for (let index = 0; index < algorithm.length; index += 1) {
+      if (blob[index + 4] !== algorithm.charCodeAt(index)) restricted();
+    }
+    complete = true;
+    return blob;
+  } finally {
+    if (!complete && Buffer.isBuffer(blob)) blob.fill(0);
+  }
+}
+
+function verifyProjectedSshAuthorization(binding, pathOperations) {
+  let operations;
+  let fd;
+  let opened = false;
+  let failure;
+  let cleanupFailed = false;
+  let source;
+  let scratch;
+  let blob;
+  let lineDigest;
+  let blobDigest;
+  try {
+    if (arguments.length !== 2) restricted();
+    authorizationSshC4BindingShape(binding);
+    const canonical = buildCanonicalRunnerBinding(binding);
+    operations = authorizationSshC4ExactRecord(
+      pathOperations,
+      AUTHORIZATION_SSH_C4_PATH_OPERATION_NAMES,
+      true
+    );
+    if (canonical.schemaVersion !== "3" || canonical.expectedEuid !== 0
+      || canonical.sshAuthorization.algorithm !== "ssh-ed25519"
+      || canonical.sshAuthorization.authorizedKeysFile !== AUTHORIZED_KEYS_PATH
+      || canonical.paths.authorizedKeys !== AUTHORIZED_KEYS_PATH
+      || canonical.authorizationMarker !== canonical.gateId) restricted();
+    const policy = canonical.pathPolicies.authorizedKeys;
+    if (!policy || policy.type !== "file" || policy.uid !== 0 || policy.gid !== 0
+      || policy.mode !== 0o600 || policy.nlink !== 1) restricted();
+    authorizationSshC4ValidateAncestor(operations.lstat("/"));
+    authorizationSshC4ValidateAncestor(operations.lstat("/etc"));
+    authorizationSshC4ValidateAncestor(operations.lstat("/etc/ssh"));
+    authorizationSshC4ValidateAncestor(operations.lstat("/etc/ssh/authorized_keys"));
+    const finalLstat = operations.lstat(AUTHORIZED_KEYS_PATH);
+    authorizationSshC4ValidateFinal(finalLstat);
+    fd = operations.open(AUTHORIZED_KEYS_PATH, 0xA0000);
+    if (!Number.isInteger(fd) || fd < 0) restricted();
+    opened = true;
+    const initial = operations.fstat(fd);
+    authorizationSshC4SameFinal(finalLstat, initial);
+    try {
+      try {
+        if (initial.size < 2n || initial.size > 16385n) restricted();
+        const size = Number(initial.size);
+        source = authorizationSshC4ReadAuthorization(fd, size, operations);
+        scratch = authorizationSshC4ReadEof(fd, size, operations);
+        blob = authorizationSshC4DecodeLine(source, canonical.authorizationMarker);
+        lineDigest = createHash("sha256").update(source.subarray(0, source.length - 1)).digest();
+        blobDigest = createHash("sha256").update(blob).digest();
+        if (!authorizationSshC4DigestMatches(
+          lineDigest,
+          canonical.sshAuthorization.authorizedKeysLineSha256
+        ) || !authorizationSshC4DigestMatches(
+          blobDigest,
+          canonical.sshAuthorization.publicKeyBlobSha256
+        )) restricted();
+      } catch (error) {
+        failure = error;
+      } finally {
+        try { if (Buffer.isBuffer(source)) source.fill(0); } catch { cleanupFailed = true; }
+        try { if (Buffer.isBuffer(blob)) blob.fill(0); } catch { cleanupFailed = true; }
+        try { if (Buffer.isBuffer(lineDigest)) lineDigest.fill(0); } catch { cleanupFailed = true; }
+        try { if (Buffer.isBuffer(blobDigest)) blobDigest.fill(0); } catch { cleanupFailed = true; }
+        try { if (Buffer.isBuffer(scratch)) scratch.fill(0); } catch { cleanupFailed = true; }
+      }
+      try {
+        const after = operations.fstat(fd);
+        authorizationSshC4SameFinal(initial, after);
+      } catch (error) {
+        if (!failure) failure = error;
+      }
+    } catch (error) {
+      if (!failure) failure = error;
+    }
+  } catch (error) {
+    if (!failure) failure = error;
+  } finally {
+    if (opened) {
+      try {
+        operations.close(fd);
+      } catch (error) {
+        if (!failure) failure = error;
+        else cleanupFailed = true;
+      }
+    }
+  }
+  if (failure || cleanupFailed) restricted();
+}
+
+function authorizationSshC4CloneClosure(graph, closure) {
+  if (!closure || closure.schemaVersion !== "1"
+    || closure.type !== "japan_ci_sshd_source_closure"
+    || closure.rootConfig !== AUTHORIZATION_SSH_ROOT_CONFIG
+    || !Array.isArray(closure.files) || closure.files.length < 1) restricted();
+  const output = authorizationSshC4FixedObject(graph);
+  output.schemaVersion = "1";
+  output.type = "japan_ci_sshd_source_closure";
+  output.rootConfig = AUTHORIZATION_SSH_ROOT_CONFIG;
+  const files = authorizationSshC4FixedArray(graph, closure.files.length);
+  for (let index = 0; index < files.length; index += 1) files[index] = closure.files[index];
+  output.files = Object.freeze(files);
+  return Object.freeze(output);
+}
+
+function authorizationSshC4EffectiveIsSafe(effective) {
+  return !!effective
+    && effective.authenticationMethods === "publickey"
+    && effective.pubkeyAuthentication === true
+    && effective.passwordAuthentication === false
+    && effective.keyboardInteractiveAuthentication === false
+    && effective.hostbasedAuthentication === false
+    && effective.gssapiAuthentication === false
+    && effective.kerberosAuthentication === false
+    && effective.permitUserEnvironment === false
+    && effective.acceptEnv === false
+    && effective.forceCommand === "none"
+    && effective.chrootDirectory === "none"
+    && effective.disableForwarding === true
+    && effective.permitTunnel === "no"
+    && effective.authorizedKeysFile === AUTHORIZED_KEYS_PATH
+    && effective.authorizedKeysCommand === "none"
+    && effective.authorizedPrincipalsFile === "none"
+    && effective.authorizedPrincipalsCommand === "none"
+    && effective.trustedUserCAKeys === "none";
+}
+
+const AUTHORIZATION_SSH_C4_TOPOLOGY_MIDDLE = ",\"passwordLocked\":true,\"authenticationMethods\":[\"publickey\"],\"pubkeyAuthentication\":true,\"passwordAuthentication\":false,\"keyboardInteractiveAuthentication\":false,\"hostbasedAuthentication\":false,\"gssapiAuthentication\":false,\"kerberosAuthentication\":false,\"permitUserEnvironment\":false,\"acceptedEnvironmentNames\":[],\"forceCommand\":\"none\",\"chrootDirectory\":\"none\",\"disableForwarding\":true,\"permitTunnel\":false,\"authorizedKeysFiles\":[";
+const AUTHORIZATION_SSH_C4_TOPOLOGY_TAIL = "],\"authorizedKeysCommand\":\"none\",\"authorizedPrincipalsFiles\":[],\"authorizedPrincipalsCommand\":\"none\",\"trustedUserCAKeys\":[],\"activeAuthorizationEntryCount\":";
+
+function measureAuthorizationSshTopology(topology) {
+  let length = "{\"schemaVersion\":\"1\",\"type\":\"japan_ci_ssh_authorization_topology\",\"username\":".length;
+  length += authorizationSshJsonStringLength(topology.username);
+  length += ",\"uid\":".length + authorizationSshIntegerLength(topology.uid);
+  length += ",\"homeDirectory\":".length + authorizationSshJsonStringLength(topology.homeDirectory);
+  length += ",\"loginShell\":".length + authorizationSshJsonStringLength(topology.loginShell);
+  length += AUTHORIZATION_SSH_C4_TOPOLOGY_MIDDLE.length;
+  length += authorizationSshJsonStringLength(topology.authorizedKeysFiles[0]);
+  length += AUTHORIZATION_SSH_C4_TOPOLOGY_TAIL.length;
+  length += authorizationSshIntegerLength(topology.activeAuthorizationEntryCount);
+  length += ",\"targetKeyOccurrenceCount\":".length
+    + authorizationSshIntegerLength(topology.targetKeyOccurrenceCount);
+  length += ",\"addressDependentAuthorizationBranchCount\":".length
+    + authorizationSshIntegerLength(topology.addressDependentAuthorizationBranchCount);
+  length += ",\"includeClosureSha256\":".length
+    + authorizationSshJsonStringLength(topology.includeClosureSha256);
+  length += ",\"matchCoverageSha256\":".length
+    + authorizationSshJsonStringLength(topology.matchCoverageSha256);
+  return length + 2;
+}
+
+function emitAuthorizationSshTopology(topology, buffer) {
+  let offset = authorizationSshWriteAscii(
+    buffer,
+    0,
+    "{\"schemaVersion\":\"1\",\"type\":\"japan_ci_ssh_authorization_topology\",\"username\":"
+  );
+  offset = authorizationSshWriteJsonString(buffer, offset, topology.username);
+  offset = authorizationSshWriteAscii(buffer, offset, ",\"uid\":");
+  offset = authorizationSshWriteInteger(buffer, offset, topology.uid);
+  offset = authorizationSshWriteAscii(buffer, offset, ",\"homeDirectory\":");
+  offset = authorizationSshWriteJsonString(buffer, offset, topology.homeDirectory);
+  offset = authorizationSshWriteAscii(buffer, offset, ",\"loginShell\":");
+  offset = authorizationSshWriteJsonString(buffer, offset, topology.loginShell);
+  offset = authorizationSshWriteAscii(buffer, offset, AUTHORIZATION_SSH_C4_TOPOLOGY_MIDDLE);
+  offset = authorizationSshWriteJsonString(buffer, offset, topology.authorizedKeysFiles[0]);
+  offset = authorizationSshWriteAscii(buffer, offset, AUTHORIZATION_SSH_C4_TOPOLOGY_TAIL);
+  offset = authorizationSshWriteInteger(buffer, offset, topology.activeAuthorizationEntryCount);
+  offset = authorizationSshWriteAscii(buffer, offset, ",\"targetKeyOccurrenceCount\":");
+  offset = authorizationSshWriteInteger(buffer, offset, topology.targetKeyOccurrenceCount);
+  offset = authorizationSshWriteAscii(buffer, offset, ",\"addressDependentAuthorizationBranchCount\":");
+  offset = authorizationSshWriteInteger(buffer, offset, topology.addressDependentAuthorizationBranchCount);
+  offset = authorizationSshWriteAscii(buffer, offset, ",\"includeClosureSha256\":");
+  offset = authorizationSshWriteJsonString(buffer, offset, topology.includeClosureSha256);
+  offset = authorizationSshWriteAscii(buffer, offset, ",\"matchCoverageSha256\":");
+  offset = authorizationSshWriteJsonString(buffer, offset, topology.matchCoverageSha256);
+  offset = authorizationSshWriteAscii(buffer, offset, "}\n");
+  return offset;
+}
+
+function authorizationSshC4BuildTopology(graph, accountCore, syntax, policy, binding) {
+  let preimage;
+  let failure;
+  const topology = authorizationSshC4FixedObject(graph);
+  topology.schemaVersion = "1";
+  topology.type = "japan_ci_ssh_authorization_topology";
+  topology.username = accountCore.username;
+  topology.uid = accountCore.uid;
+  topology.homeDirectory = accountCore.homeDirectory;
+  topology.loginShell = accountCore.loginShell;
+  topology.passwordLocked = accountCore.passwordLocked;
+  const authenticationMethods = authorizationSshC4FixedArray(graph, 1);
+  authenticationMethods[0] = "publickey";
+  topology.authenticationMethods = Object.freeze(authenticationMethods);
+  topology.pubkeyAuthentication = true;
+  topology.passwordAuthentication = false;
+  topology.keyboardInteractiveAuthentication = false;
+  topology.hostbasedAuthentication = false;
+  topology.gssapiAuthentication = false;
+  topology.kerberosAuthentication = false;
+  topology.permitUserEnvironment = false;
+  topology.acceptedEnvironmentNames = Object.freeze(authorizationSshC4FixedArray(graph, 0));
+  topology.forceCommand = "none";
+  topology.chrootDirectory = "none";
+  topology.disableForwarding = true;
+  topology.permitTunnel = false;
+  const authorizedKeysFiles = authorizationSshC4FixedArray(graph, 1);
+  authorizedKeysFiles[0] = AUTHORIZED_KEYS_PATH;
+  topology.authorizedKeysFiles = Object.freeze(authorizedKeysFiles);
+  topology.authorizedKeysCommand = "none";
+  topology.authorizedPrincipalsFiles = Object.freeze(authorizationSshC4FixedArray(graph, 0));
+  topology.authorizedPrincipalsCommand = "none";
+  topology.trustedUserCAKeys = Object.freeze(authorizationSshC4FixedArray(graph, 0));
+  topology.activeAuthorizationEntryCount = 1;
+  topology.targetKeyOccurrenceCount = 1;
+  topology.addressDependentAuthorizationBranchCount = 0;
+  topology.includeClosureSha256 = syntax.closureSha256;
+  topology.matchCoverageSha256 = policy.coverageSha256;
+  Object.freeze(topology);
+  try {
+    const length = measureAuthorizationSshTopology(topology);
+    reservePreimageBytes(graph.snapshot, length);
+    preimage = Buffer.alloc(length);
+    if (emitAuthorizationSshTopology(topology, preimage) !== length) restricted();
+    const digest = createHash("sha256").update(preimage).digest("hex");
+    if (digest !== binding.sshAuthorization.effectiveConfigSha256) restricted();
+  } catch (error) {
+    failure = error;
+  } finally {
+    try {
+      if (Buffer.isBuffer(preimage)) preimage.fill(0);
+    } catch (error) {
+      if (!failure) failure = error;
+    }
+  }
+  if (failure) {
+    if (failure instanceof JapanTuicRepairContractError) throw failure;
+    restricted();
+  }
+  return topology;
+}
+
+function disposeAuthorizationSshPolicy(graph, policy) {
+  let active;
+  let failure;
+  let owned = false;
+  try {
+    if (!graph || !AUTHORIZATION_SOURCE_GRAPH_BRAND.has(graph)
+      || !AUTHORIZATION_SOURCE_SNAPSHOT_BRAND.has(graph.snapshot)
+      || graph.kind !== "ssh" || graph.snapshot.sshGraph !== graph) restricted();
+    active = graph;
+    if (AUTHORIZATION_SSH_PROVENANCE.get(policy) !== active
+      || !policy || policy.disposed !== false || !policy.coverage || !policy.effective
+      || typeof policy.coverageSha256 !== "string") restricted();
+    owned = true;
+    if (!authorizationSshC4CleanupPolicy(active, policy, true)) restricted();
+  } catch (error) {
+    failure = error;
+    if (owned && policy && policy.disposed === false) authorizationSshC4CleanupPolicy(active, policy, false);
+    failAuthorizationSourceGraph(active || graph);
+  }
+  if (failure) {
+    if (failure instanceof JapanTuicRepairContractError) throw failure;
+    restricted();
+  }
+}
+
+function authorizationSshC4CompleteProjection(graph, policy, syntax, primaryFailure) {
+  let failure = primaryFailure;
+  if (policy) {
+    try {
+      disposeAuthorizationSshPolicy(graph, policy);
+    } catch (error) {
+      if (!failure) failure = error;
+    }
+  }
+  if (syntax) {
+    try {
+      disposeAuthorizationSshSyntax(graph, syntax);
+    } catch (error) {
+      if (!failure) failure = error;
+    }
+  }
+  if (failure) {
+    failAuthorizationSourceGraph(graph);
+    if (failure instanceof JapanTuicRepairContractError) throw failure;
+    restricted();
+  }
+}
+// C4_SSH_POLICY_BLOCK_END
+
 function buildCanonicalSourceClosure(input, { type, rootConfig }) {
   const value = record(input);
   if (!hasKeys(value, ["schemaVersion", "type", "rootConfig", "files"])
@@ -3044,11 +4089,29 @@ function buildCanonicalSourceClosure(input, { type, rootConfig }) {
   return { schemaVersion: "1", type, rootConfig, files };
 }
 
-export function buildCanonicalSshIncludeClosure(input = {}) {
-  return buildCanonicalSourceClosure(input, {
-    type: "japan_ci_sshd_source_closure",
-    rootConfig: "/etc/ssh/sshd_config"
-  });
+export function buildCanonicalSshIncludeClosure(input) {
+  let graph;
+  let syntax;
+  let result;
+  let failure;
+  try {
+    if (arguments.length !== 1) restricted();
+    const operations = authorizationSshC4OperationInput(input);
+    const snapshot = createAuthorizationSourceSnapshot();
+    graph = createAuthorizationSourceGraph(snapshot, "ssh");
+    createAuthorizationSourceGraph(snapshot, "sudo");
+    syntax = deriveAuthorizationSshSyntax(
+      graph,
+      operations.pathOperations,
+      operations.sourceOperations
+    );
+    result = authorizationSshC4CloneClosure(graph, syntax.closure);
+  } catch (error) {
+    failure = error;
+    failAuthorizationSourceGraph(graph);
+  }
+  authorizationSshC4CompleteProjection(graph, undefined, syntax, failure);
+  return result;
 }
 
 export function buildCanonicalSudoSourceClosure(input = {}) {
@@ -3058,130 +4121,76 @@ export function buildCanonicalSudoSourceClosure(input = {}) {
   });
 }
 
-const MATCH_NAMES = new Set(["user", "group", "host", "address", "localaddress", "localport", "rdomain", "localnetwork", "all"]);
-const VARIABLE_DIMENSIONS = Object.freeze(["host", "address", "localaddress", "localport", "rdomain", "localnetwork"]);
-const MATCH_TOKEN = /^[\x21-\x7e]+$/;
-
-function canonicalMatchCondition(input) {
-  const value = record(input);
-  if (!hasKeys(value, ["name", "patterns"])
-    || !MATCH_NAMES.has(value.name)
-    || !Array.isArray(value.patterns)) restricted();
-  if (value.name === "all") {
-    if (value.patterns.length !== 0) restricted();
-    return { name: "all", patterns: [] };
+export function buildCanonicalSshMatchCoverage(projectedAccountCore, input) {
+  let graph;
+  let syntax;
+  let policy;
+  let result;
+  let failure;
+  try {
+    if (arguments.length !== 2 || !PROJECTED_ACCOUNT_CORE_BRAND.has(projectedAccountCore)) restricted();
+    const operations = authorizationSshC4OperationInput(input);
+    const snapshot = createAuthorizationSourceSnapshot();
+    graph = createAuthorizationSourceGraph(snapshot, "ssh");
+    createAuthorizationSourceGraph(snapshot, "sudo");
+    syntax = deriveAuthorizationSshSyntax(
+      graph,
+      operations.pathOperations,
+      operations.sourceOperations
+    );
+    policy = deriveAuthorizationSshPolicy(graph, syntax, projectedAccountCore);
+    result = policy.coverage;
+  } catch (error) {
+    failure = error;
+    failAuthorizationSourceGraph(graph);
   }
-  if (value.patterns.length === 0) restricted();
-  const seen = new Set();
-  const patterns = value.patterns.map((inputPattern) => {
-    const pattern = record(inputPattern);
-    if (!hasKeys(pattern, ["negated", "value"])
-      || typeof pattern.negated !== "boolean"
-      || typeof pattern.value !== "string"
-      || !MATCH_TOKEN.test(pattern.value)
-      || /[\s,\\[\]]/.test(pattern.value)
-      || pattern.value.startsWith("!")
-      || pattern.value.normalize("NFC") !== pattern.value) restricted();
-    const identity = `${pattern.negated ? "!" : "+"}${pattern.value}`;
-    if (seen.has(identity)) restricted();
-    seen.add(identity);
-    return { negated: pattern.negated, value: pattern.value };
-  });
-  return { name: value.name, patterns };
+  authorizationSshC4CompleteProjection(graph, policy, syntax, failure);
+  return result;
 }
 
-export function buildCanonicalSshMatchCoverage(input = {}) {
-  const value = record(input);
-  if (!hasKeys(value, ["schemaVersion", "type", "username", "groupIds", "branches"])
-    || value.schemaVersion !== "1"
-    || value.type !== "japan_ci_sshd_match_coverage"
-    || value.username !== ACCOUNT_USERNAME
-    || !Array.isArray(value.groupIds)
-    || !value.groupIds.every(nonNegativeSafeInteger)
-    || value.groupIds.some((groupId, index) => index > 0 && groupId <= value.groupIds[index - 1])
-    || !Array.isArray(value.branches)) restricted();
-  const branches = value.branches.map((inputBranch, index) => {
-    const branch = record(inputBranch);
-    const keys = ["ordinal", "sourceOrdinal", "lineNumber", "conditions", "accountDisposition", "variableDimensions"];
-    if (!hasKeys(branch, keys)
-      || branch.ordinal !== index
-      || !nonNegativeSafeInteger(branch.sourceOrdinal)
-      || !positiveSafeInteger(branch.lineNumber)
-      || !Array.isArray(branch.conditions) || branch.conditions.length === 0
-      || !new Set(["disjoint", "exact_user"]).has(branch.accountDisposition)
-      || !Array.isArray(branch.variableDimensions)) restricted();
-    const conditions = branch.conditions.map(canonicalMatchCondition);
-    const names = conditions.map((condition) => condition.name);
-    if (new Set(names).size !== names.length) restricted();
-    if (names.includes("all")
-      && (conditions.length !== 1 || branch.accountDisposition !== "exact_user")) restricted();
-    const derivedDimensions = VARIABLE_DIMENSIONS.filter((dimension) => names.includes(dimension));
-    if (branch.variableDimensions.length !== derivedDimensions.length
-      || branch.variableDimensions.some((dimension, dimensionIndex) => dimension !== derivedDimensions[dimensionIndex])
-      || (branch.accountDisposition === "exact_user" && derivedDimensions.length !== 0)) restricted();
-    return {
-      ordinal: branch.ordinal,
-      sourceOrdinal: branch.sourceOrdinal,
-      lineNumber: branch.lineNumber,
-      conditions,
-      accountDisposition: branch.accountDisposition,
-      variableDimensions: [...branch.variableDimensions]
-    };
-  });
-  return {
-    schemaVersion: "1",
-    type: "japan_ci_sshd_match_coverage",
-    username: ACCOUNT_USERNAME,
-    groupIds: [...value.groupIds],
-    branches
-  };
-}
-
-export function buildCanonicalSshTopology(input = {}) {
-  const outputKeys = [
-    "schemaVersion", "type", "username", "uid", "homeDirectory", "loginShell",
-    "passwordLocked", "authenticationMethods", "pubkeyAuthentication",
-    "passwordAuthentication", "keyboardInteractiveAuthentication", "hostbasedAuthentication",
-    "gssapiAuthentication", "kerberosAuthentication", "permitUserEnvironment",
-    "acceptedEnvironmentNames", "forceCommand", "chrootDirectory", "disableForwarding",
-    "permitTunnel", "authorizedKeysFiles", "authorizedKeysCommand", "authorizedPrincipalsFiles",
-    "authorizedPrincipalsCommand", "trustedUserCAKeys", "activeAuthorizationEntryCount",
-    "targetKeyOccurrenceCount", "addressDependentAuthorizationBranchCount",
-    "includeClosureSha256", "matchCoverageSha256"
-  ];
-  const inputKeys = [...outputKeys.slice(0, -2), "includeClosure", "matchCoverage"];
-  const value = record(input);
-  if (!hasKeys(value, inputKeys)
-    || value.schemaVersion !== "1" || value.type !== "japan_ci_ssh_authorization_topology"
-    || value.username !== ACCOUNT_USERNAME || !positiveSafeInteger(value.uid)
-    || value.homeDirectory !== ACCOUNT_HOME_PATH || value.loginShell !== "/usr/bin/dash"
-    || value.passwordLocked !== true
-    || !Array.isArray(value.authenticationMethods)
-    || value.authenticationMethods.length !== 1 || value.authenticationMethods[0] !== "publickey"
-    || value.pubkeyAuthentication !== true
-    || value.passwordAuthentication !== false
-    || value.keyboardInteractiveAuthentication !== false
-    || value.hostbasedAuthentication !== false
-    || value.gssapiAuthentication !== false
-    || value.kerberosAuthentication !== false
-    || value.permitUserEnvironment !== false
-    || !Array.isArray(value.acceptedEnvironmentNames) || value.acceptedEnvironmentNames.length !== 0
-    || value.forceCommand !== "none" || value.chrootDirectory !== "none"
-    || value.disableForwarding !== true || value.permitTunnel !== false
-    || !Array.isArray(value.authorizedKeysFiles)
-    || value.authorizedKeysFiles.length !== 1 || value.authorizedKeysFiles[0] !== AUTHORIZED_KEYS_PATH
-    || value.authorizedKeysCommand !== "none"
-    || !Array.isArray(value.authorizedPrincipalsFiles) || value.authorizedPrincipalsFiles.length !== 0
-    || value.authorizedPrincipalsCommand !== "none"
-    || !Array.isArray(value.trustedUserCAKeys) || value.trustedUserCAKeys.length !== 0
-    || value.activeAuthorizationEntryCount !== 1 || value.targetKeyOccurrenceCount !== 1
-    || value.addressDependentAuthorizationBranchCount !== 0) restricted();
-  const includeClosure = buildCanonicalSshIncludeClosure(value.includeClosure);
-  const matchCoverage = buildCanonicalSshMatchCoverage(value.matchCoverage);
-  const output = canonicalObject(value, outputKeys.slice(0, -2));
-  output.includeClosureSha256 = hashCanonical(includeClosure);
-  output.matchCoverageSha256 = hashCanonical(matchCoverage);
-  return output;
+export function buildCanonicalSshTopology(projectedAccountCore, binding, input) {
+  let graph;
+  let syntax;
+  let policy;
+  let result;
+  let failure;
+  try {
+    if (arguments.length !== 3 || !PROJECTED_ACCOUNT_CORE_BRAND.has(projectedAccountCore)) restricted();
+    const operations = authorizationSshC4OperationInput(input);
+    authorizationSshC4BindingShape(binding);
+    const canonicalBinding = authorizationSshC4AdoptCanonicalBindingShape(
+      buildCanonicalRunnerBinding(binding),
+      binding
+    );
+    if (projectedAccountCore.username !== canonicalBinding.sshAuthorization.username
+      || projectedAccountCore.uid !== canonicalBinding.sshAuthorization.uid
+      || projectedAccountCore.homeDirectory !== canonicalBinding.sshAuthorization.homeDirectory
+      || projectedAccountCore.loginShell !== canonicalBinding.sshAuthorization.loginShell
+      || projectedAccountCore.passwordLocked !== true) restricted();
+    const snapshot = createAuthorizationSourceSnapshot();
+    graph = createAuthorizationSourceGraph(snapshot, "ssh");
+    createAuthorizationSourceGraph(snapshot, "sudo");
+    syntax = deriveAuthorizationSshSyntax(
+      graph,
+      operations.pathOperations,
+      operations.sourceOperations
+    );
+    policy = deriveAuthorizationSshPolicy(graph, syntax, projectedAccountCore);
+    if (!authorizationSshC4EffectiveIsSafe(policy.effective)) restricted();
+    verifyProjectedSshAuthorization(canonicalBinding, operations.pathOperations);
+    result = authorizationSshC4BuildTopology(
+      graph,
+      projectedAccountCore,
+      syntax,
+      policy,
+      canonicalBinding
+    );
+  } catch (error) {
+    failure = error;
+    failAuthorizationSourceGraph(graph);
+  }
+  authorizationSshC4CompleteProjection(graph, policy, syntax, failure);
+  return result;
 }
 
 export function buildCanonicalSudoEffectivePolicy(input = {}) {
@@ -3592,7 +4601,8 @@ function nativeGroupNames(buffer) {
     if (length === 0 || length > 64) restricted();
     for (let index = start; index < end; index += 1) {
       const byte = buffer[index];
-      const initial = byte === 0x5f || (byte >= 0x61 && byte <= 0x7a);
+      const initial = byte === 0x5f || (byte >= 0x61 && byte <= 0x7a)
+        || (byte >= 0x30 && byte <= 0x39);
       const continuation = initial || (byte >= 0x30 && byte <= 0x39) || byte === 0x2e || byte === 0x2d;
       if ((index === start && !initial) || (index !== start && !continuation)) restricted();
     }
