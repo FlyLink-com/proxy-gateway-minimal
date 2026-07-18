@@ -6662,6 +6662,89 @@ const C3_EXPECTED_MISSING_SYMBOLS = Object.freeze([
   "deriveAuthorizationSshSyntax",
   "disposeAuthorizationSshSyntax"
 ]);
+const C3_EXACT_BLOCK_BEGIN = "// C3_SSH_SOURCE_BLOCK_BEGIN";
+const C3_EXACT_BLOCK_END = "// C3_SSH_SOURCE_BLOCK_END";
+const C3_EXACT_BLOCK_SIZE = 61980;
+const C3_EXACT_BLOCK_LINES = 1482;
+const C3_EXACT_BLOCK_SHA256 = "cf93a44d95dc99ff305eaf465509ccf2fcdb54f92988fa8cba7294503bb2e740";
+const C3_EXPECTED_TOP_LEVEL_ADDITIONS = Object.freeze([
+  "const AUTHORIZATION_SSH_AUTHORITY_NAMES",
+  "const AUTHORIZATION_SSH_BOOLEAN_NAMES",
+  "const AUTHORIZATION_SSH_JSON_HEX",
+  "const AUTHORIZATION_SSH_MATCH_NAMES",
+  "const AUTHORIZATION_SSH_OPAQUE_NAMES",
+  "const AUTHORIZATION_SSH_PROVENANCE",
+  "const AUTHORIZATION_SSH_RELATIVE_BASE",
+  "const AUTHORIZATION_SSH_ROOT_CONFIG",
+  "function authorizationSshAsciiEquals",
+  "function authorizationSshAsciiExact",
+  "function authorizationSshAsciiTokensWithoutEquals",
+  "function authorizationSshCanonicalArguments",
+  "function authorizationSshChildPath",
+  "function authorizationSshDirective",
+  "function authorizationSshDirectoryArray",
+  "function authorizationSshEvent",
+  "function authorizationSshFreshGraphCounters",
+  "function authorizationSshHeapSort",
+  "function authorizationSshIncludeFinalStart",
+  "function authorizationSshIncludeParent",
+  "function authorizationSshIntegerLength",
+  "function authorizationSshJsonStringLength",
+  "function authorizationSshMatchName",
+  "function authorizationSshNameInList",
+  "function authorizationSshNativeEmptyArray",
+  "function authorizationSshReviewedName",
+  "function authorizationSshSkipSeparators",
+  "function authorizationSshTokenEnd",
+  "function authorizationSshValidatePhysicalLine",
+  "function authorizationSshValidateSourceBytes",
+  "function authorizationSshWriteAscii",
+  "function authorizationSshWriteInteger",
+  "function authorizationSshWriteJsonString",
+  "function authorizationSshZeroEventBuffer",
+  "function cleanupAuthorizationSshSyntax",
+  "function deriveAuthorizationSshSyntax",
+  "function disposeAuthorizationSshSyntax",
+  "function emitAuthorizationSshClosure",
+  "function measureAuthorizationSshClosure",
+  "function requireFreshAuthorizationSshGraph",
+  "function reserveAuthorizationFixedEnvelope"
+]);
+const C3_EXPECTED_TOP_LEVEL_ARITIES = Object.freeze([
+  "authorizationSshAsciiEquals/4",
+  "authorizationSshAsciiExact/4",
+  "authorizationSshAsciiTokensWithoutEquals/3",
+  "authorizationSshCanonicalArguments/5",
+  "authorizationSshChildPath/2",
+  "authorizationSshDirective/3",
+  "authorizationSshDirectoryArray/4",
+  "authorizationSshEvent/11",
+  "authorizationSshFreshGraphCounters/1",
+  "authorizationSshHeapSort/1",
+  "authorizationSshIncludeFinalStart/3",
+  "authorizationSshIncludeParent/3",
+  "authorizationSshIntegerLength/1",
+  "authorizationSshJsonStringLength/1",
+  "authorizationSshMatchName/3",
+  "authorizationSshNameInList/2",
+  "authorizationSshNativeEmptyArray/1",
+  "authorizationSshReviewedName/4",
+  "authorizationSshSkipSeparators/3",
+  "authorizationSshTokenEnd/3",
+  "authorizationSshValidatePhysicalLine/3",
+  "authorizationSshValidateSourceBytes/1",
+  "authorizationSshWriteAscii/3",
+  "authorizationSshWriteInteger/3",
+  "authorizationSshWriteJsonString/3",
+  "authorizationSshZeroEventBuffer/1",
+  "cleanupAuthorizationSshSyntax/3",
+  "deriveAuthorizationSshSyntax/3",
+  "disposeAuthorizationSshSyntax/2",
+  "emitAuthorizationSshClosure/2",
+  "measureAuthorizationSshClosure/1",
+  "requireFreshAuthorizationSshGraph/1",
+  "reserveAuthorizationFixedEnvelope/1"
+]);
 const C3_EVENT_SCHEMAS = Object.freeze({
   physicalDirective: Object.freeze(["kind", "eventOrdinal", "sourceOrdinal", "lineNumber", "directive", "scope", "branchOrdinal"]),
   includePattern: Object.freeze(["kind", "eventOrdinal", "sourceOrdinal", "lineNumber", "physicalEventOrdinal", "argumentOrdinal", "starIndex", "selectedCount"]),
@@ -8114,15 +8197,20 @@ function c3VmProbe(scenario, timeout = 120000) {
 function c3FormalMarkerBlock() {
   const runnerPath = fileURLToPath(new URL("../../scripts/japan-tuic-additive-repair-runner.mjs", import.meta.url));
   const source = readFileSync(runnerPath, "utf8").replaceAll("\r\n", "\n");
-  const beginMarker = "// C3_SSH_SOURCE_BLOCK_BEGIN";
-  const endMarker = "// C3_SSH_SOURCE_BLOCK_END";
-  const begin = source.indexOf(beginMarker);
-  const end = source.indexOf(endMarker, begin < 0 ? 0 : begin + beginMarker.length);
-  return begin >= 0 && end >= 0 ? source.slice(begin, end + endMarker.length) : "";
+  const begin = source.indexOf(C3_EXACT_BLOCK_BEGIN);
+  const end = source.indexOf(C3_EXACT_BLOCK_END, begin < 0 ? 0 : begin + C3_EXACT_BLOCK_BEGIN.length);
+  const endAfter = end < 0 ? -1 : end + C3_EXACT_BLOCK_END.length;
+  return {
+    normalized: source,
+    block: begin >= 0 && endAfter >= 0 ? source.slice(begin, endAfter) : "",
+    blockThroughEndLf: begin >= 0 && endAfter >= 0 && source[endAfter] === "\n"
+      ? source.slice(begin, endAfter + 1)
+      : ""
+  };
 }
 
 function c3FormalSourceTruth() {
-  const block = c3FormalMarkerBlock();
+  const { block } = c3FormalMarkerBlock();
   const helperStart = block.indexOf("function authorizationSshIncludeFinalStart(");
   const helperEnd = block.indexOf("\nfunction ", helperStart < 0 ? 0 : helperStart + 1);
   const helper = helperStart >= 0 && helperEnd > helperStart ? block.slice(helperStart, helperEnd) : "";
@@ -8145,6 +8233,196 @@ function c3FormalSourceTruth() {
         && !/\bpattern\s*\[[^\]]+\]/.test(scannerSegment)
     }
   };
+}
+
+function c3SourceCount(source, needle) {
+  return source.split(needle).length - 1;
+}
+
+function c3SourceRegion(source, beginNeedle, endNeedle) {
+  const begin = source.indexOf(beginNeedle);
+  const end = source.indexOf(endNeedle, begin < 0 ? 0 : begin + beginNeedle.length);
+  assert.ok(begin >= 0 && end > begin, `${beginNeedle} -> ${endNeedle}`);
+  return source.slice(begin, end);
+}
+
+function c3AssertOrderedSource(source, needles) {
+  let offset = 0;
+  for (const needle of needles) {
+    const index = source.indexOf(needle, offset);
+    assert.ok(index >= offset, needle);
+    offset = index + needle.length;
+  }
+}
+
+function c3AssertExactSourceLock() {
+  const { normalized, block, blockThroughEndLf } = c3FormalMarkerBlock();
+  assert.doesNotMatch(normalized, /\r/);
+  assert.equal(c3SourceCount(normalized, C3_EXACT_BLOCK_BEGIN), 1);
+  assert.equal(c3SourceCount(normalized, C3_EXACT_BLOCK_END), 1);
+  assert.equal(Buffer.byteLength(blockThroughEndLf, "utf8"), C3_EXACT_BLOCK_SIZE);
+  assert.equal(blockThroughEndLf.split("\n").length - 1, C3_EXACT_BLOCK_LINES);
+  assert.equal(createHash("sha256").update(blockThroughEndLf, "utf8").digest("hex"), C3_EXACT_BLOCK_SHA256);
+
+  const declarations = [...block.matchAll(/^(const|function) ([A-Za-z_$][A-Za-z0-9_$]*)/gm)]
+    .map((match) => `${match[1]} ${match[2]}`)
+    .sort();
+  const arities = [...block.matchAll(/^function ([A-Za-z_$][A-Za-z0-9_$]*)\(([^)]*)\) \{/gm)]
+    .map((match) => `${match[1]}/${match[2].trim() === "" ? 0 : match[2].split(",").length}`)
+    .sort();
+  assert.deepEqual(declarations, C3_EXPECTED_TOP_LEVEL_ADDITIONS);
+  assert.deepEqual(arities, C3_EXPECTED_TOP_LEVEL_ARITIES);
+
+  const nodeUtilImports = normalized.match(
+    /^[ \t]*import(?:[ \t\r\n]+[^;]*?[ \t\r\n]+from)?[ \t\r\n]*["']node:util["'][ \t]*;[ \t]*$/gm
+  ) || [];
+  assert.equal(nodeUtilImports.length, 1);
+  assert.equal((normalized.match(/["']node:util["']/g) || []).length, 1);
+  assert.equal(c3SourceCount(normalized, 'import { promisify, types } from "node:util";'), 1);
+  assert.deepEqual(Object.keys(runnerModule).sort(), C2B_NATIVE_EXPORTS);
+  const c2bLock = c2bExactSourceBlock(normalized);
+  assert.equal(Buffer.byteLength(c2bLock.block, "utf8"), C2B_EXACT_BLOCK_SIZE);
+  assert.equal(createHash("sha256").update(c2bLock.block, "utf8").digest("hex"), C2B_EXACT_BLOCK_SHA256);
+  assert.deepEqual(c2bTopLevelHeaders(c2bLock.block), C2B_EXPECTED_TOP_LEVEL_ADDITIONS);
+
+  assert.equal(c3SourceCount(block, "new WeakMap()"), 1);
+  assert.equal(c3SourceCount(block, "new Map("), 0);
+  assert.equal(c3SourceCount(block, "new Set("), 0);
+  assert.equal(c3SourceCount(block, "new WeakSet("), 0);
+  assert.equal(c3SourceCount(block, "new Array("), 3);
+  assert.equal(c3SourceCount(block, "Object.create(null)"), 3);
+  assert.equal(c3SourceCount(block, ".split("), 0);
+  assert.equal(c3SourceCount(block, "JSON.stringify("), 0);
+  assert.equal(c3SourceCount(block, "JSON.parse("), 0);
+  assert.equal(c3SourceCount(block, "AUTHORIZATION_SSH_PROVENANCE.set("), 1);
+  assert.equal(c3SourceCount(block, "AUTHORIZATION_SSH_PROVENANCE.delete("), 1);
+  assert.equal(c3SourceCount(block, "AUTHORIZATION_SSH_PROVENANCE.has("), 1);
+  assert.equal(c3SourceCount(block, "AUTHORIZATION_SSH_PROVENANCE.get("), 2);
+  assert.equal(c3SourceCount(block, "AUTHORIZATION_SSH_PROVENANCE.set(snapshot"), 0);
+  assert.equal(c3SourceCount(block, "AUTHORIZATION_SSH_PROVENANCE.delete(snapshot"), 0);
+  assert.equal(c3SourceCount(block, "const AUTHORIZATION_SSH_PROVENANCE = new WeakMap();"), 1);
+  assert.equal(c3SourceCount(block, "AUTHORIZATION_SSH_PROVENANCE.has(snapshot)"), 1);
+  assert.equal(c3SourceCount(block, "AUTHORIZATION_SSH_PROVENANCE.get(snapshot)"), 1);
+  assert.equal(c3SourceCount(block, "AUTHORIZATION_SSH_PROVENANCE.get(syntax)"), 1);
+  assert.equal(c3SourceCount(block, "AUTHORIZATION_SSH_PROVENANCE.set(owner, active)"), 1);
+  assert.equal(c3SourceCount(block, "AUTHORIZATION_SSH_PROVENANCE.delete(owner)"), 1);
+
+  const derive = c3SourceRegion(block, "function deriveAuthorizationSshSyntax(", "\nfunction disposeAuthorizationSshSyntax(");
+  const selected = c3SourceRegion(derive, "    function consumeSelected(", "\n    function parseInclude(");
+  const include = c3SourceRegion(derive, "    function parseInclude(", "\n    function parseMatch(");
+  const parseSource = c3SourceRegion(derive, "    function parseSource(", "\n    function consumeSource(");
+  const directory = c3SourceRegion(block, "function authorizationSshDirectoryArray(", "\nfunction authorizationSshHeapSort(");
+  const reviewedName = c3SourceRegion(block, "function authorizationSshReviewedName(", "\nfunction authorizationSshNameInList(");
+  const cleanup = c3SourceRegion(block, "function cleanupAuthorizationSshSyntax(", "\nfunction authorizationSshJsonStringLength(");
+  const dispose = c3SourceRegion(block, "function disposeAuthorizationSshSyntax(", `\n${C3_EXACT_BLOCK_END}`);
+
+  assert.equal(c3SourceCount(derive, "reserveAuthorizationFixedEnvelope(active);"), 5);
+  c3AssertOrderedSource(derive, [
+    "active = requireAuthorizationSourceGraph(graph);",
+    "active = requireFreshAuthorizationSshGraph(active);",
+    "trustedPathOperations = exactPrivateOperationRecord(pathOperations, AUTHORIZATION_PATH_OPERATION_KEYS);",
+    "trustedSourceOperations = exactPrivateOperationRecord(sourceOperations, AUTHORIZATION_SOURCE_OPERATION_KEYS);",
+    "reserveAuthorizationFixedEnvelope(active);",
+    "owner = Object.create(null);",
+    "reserveAuthorizationFixedEnvelope(active);",
+    "closure = Object.create(null);",
+    "reserveAuthorizationFixedEnvelope(active);",
+    "files = new Array();",
+    "reserveAuthorizationFixedEnvelope(active);",
+    "events = new Array();",
+    "reserveAuthorizationFixedEnvelope(active);",
+    "activePaths = new Array(AUTHORIZATION_SSH_ROOT_CONFIG);"
+  ]);
+
+  c3AssertOrderedSource(directory, [
+    "types.isProxy(values)",
+    "Array.isArray(values)",
+    "values.length",
+    "Object.getPrototypeOf(values)",
+    "Object.getOwnPropertyDescriptor(values, \"length\")"
+  ]);
+  c3AssertOrderedSource(parseSource, ["files.push(sourceFile);", "authorizationSshValidateSourceBytes(bytes);"]);
+  assert.equal(c3SourceCount(block, "if (currentBranchOrdinal !== -1) restricted();"), 3);
+  c3AssertOrderedSource(selected, [
+    "if (currentBranchOrdinal !== -1) restricted();",
+    'reserveAuthorizationSemanticNode(active, "sshSelectedInsertion");',
+    "const childPath = authorizationSshChildPath(parent, basename);",
+    '"selectedInsertion"',
+    "for (let index = 0; index < activePaths.length; index += 1)",
+    "for (let index = 0; index < files.length; index += 1)",
+    "activePaths.push(childPath);",
+    "consumeSource(childPath);",
+    "activePaths.pop()"
+  ]);
+  assert.equal(c3SourceCount(include, "if (currentBranchOrdinal !== -1) restricted();"), 2);
+  c3AssertOrderedSource(include, [
+    "function parseInclude(",
+    "if (currentBranchOrdinal !== -1) restricted();",
+    "for (let argumentOrdinal = 0; argumentOrdinal < operandCount; argumentOrdinal += 1)",
+    "if (currentBranchOrdinal !== -1) restricted();",
+    "const encodedFinalStart = authorizationSshIncludeFinalStart(",
+    "const hasWildcard = encodedFinalStart < 0;",
+    "const finalStart = hasWildcard ? -encodedFinalStart - 1 : encodedFinalStart;",
+    "const pattern = allocateAuthorizationBuffer(",
+    "const starIndex = scanAuthorizationWildcardPattern(active, pattern);",
+    "if (!hasWildcard)"
+  ]);
+
+  assert.equal(c3SourceCount(reviewedName, "switch (wordStart)"), 3);
+  assert.equal(c3SourceCount(reviewedName, ".slice("), 0);
+  assert.equal(c3SourceCount(reviewedName, ".substring("), 0);
+  assert.equal(c3SourceCount(reviewedName, ".substr("), 0);
+  const reviewedLiterals = [...reviewedName.matchAll(/case \d+: return "([a-z0-9]+)";/g)]
+    .map((match) => match[1])
+    .sort();
+  assert.deepEqual(reviewedLiterals, [
+    ...C3_AUTHORITY_DIRECTIVES,
+    ...C3_OPAQUE_DIRECTIVES,
+    ...C3_MATCH_CONDITION_NAMES
+  ].sort());
+  assert.deepEqual(c3FormalSourceTruth(), {
+    namesSubstringCallCount: 0,
+    wildcard: {
+      signedFinalStart: true,
+      singleScalarDecode: true,
+      scannerCallCount: 1,
+      noPostScannerRescan: true
+    }
+  });
+
+  c3AssertOrderedSource(cleanup, [
+    "AUTHORIZATION_SSH_PROVENANCE.delete(owner)",
+    "for (let index = owner.events.length - 1; index >= 0; index -= 1)",
+    "authorizationSshZeroEventBuffer(owner.events[index]);",
+    "owner.events.length = 0;",
+    "owner.closure.files.length = 0;",
+    "owner.activePaths.length = 0;",
+    "owner.closure = undefined;",
+    "owner.disposed = true;",
+    "if (cleanupFailed) failAuthorizationSourceGraph(graph);"
+  ]);
+  c3AssertOrderedSource(derive, [
+    "Object.freeze(closure);",
+    "const preimageLength = measureAuthorizationSshClosure(closure);",
+    "reservePreimageBytes(active.snapshot, preimageLength);",
+    "preimage = Buffer.alloc(preimageLength);",
+    "emitAuthorizationSshClosure(closure, preimage)",
+    'createHash("sha256").update(preimage).digest("hex")',
+    "if (Buffer.isBuffer(preimage)) preimage.fill(0);",
+    "owner.closureSha256 = closureSha256;",
+    "AUTHORIZATION_SSH_PROVENANCE.set(owner, active);",
+    "return owner;",
+    "cleanupAuthorizationSshSyntax(active, owner, false);",
+    "failAuthorizationSourceGraph(active || graph);",
+    "restricted();"
+  ]);
+  c3AssertOrderedSource(dispose, [
+    "AUTHORIZATION_SSH_PROVENANCE.get(syntax) !== active",
+    "cleanupAuthorizationSshSyntax(active, syntax, true)",
+    "failAuthorizationSourceGraph(active || graph);",
+    "restricted();"
+  ]);
+  assert.equal(normalized.includes(`${C3_EXACT_BLOCK_END}\nfunction hasKeys(value, keys) {`), true);
 }
 
 function c3AssertFreshGraph(graph, kind) {
@@ -9012,6 +9290,7 @@ test("SSH source closure derives depth first Include encounter order", () => {
     terminalAllocationCount: 0,
     terminalCallCount: 0
   });
+  c3AssertExactSourceLock();
 });
 
 test("SSH branch ordinal is total while source coordinates are provenance", () => {
