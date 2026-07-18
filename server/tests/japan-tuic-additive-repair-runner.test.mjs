@@ -4061,7 +4061,7 @@ function c3LifecycleInstrumentedArrayPush(value) {
           if (!event || (typeof event !== "object" && typeof event !== "function") || types.isProxy(event)) continue;
           for (const name of nativeObject.getOwnPropertyNames(event)) {
             const descriptor = nativeObject.getOwnPropertyDescriptor(event, name);
-            if (!descriptor || !nativeObject.hasOwn(descriptor, "value")) continue;
+            if (!descriptor || !nativeObject.hasOwn(descriptor, "value") || !nativeBuffer.isBuffer(descriptor.value)) continue;
             const byteRecord = c3LifecycleByteRecord(descriptor.value, "external");
             if (!byteRecord) continue;
             byteRecord.roles.add("retainedEvent");
@@ -4116,6 +4116,10 @@ function c3LifecycleInstrumentedArrayPush(value) {
           const lowerAction = Math.max(reserve.reserveStamp.action, current.lastEventPushAction);
           const allocations = current.allocationActions.filter((entry) => entry.action > lowerAction && entry.action < pushAction);
           const objects = current.objectAllocationEntries.filter((entry) => entry.action > lowerAction && entry.action < pushAction);
+          const byteAllocations = current.byteAllocationActions.filter((entry) => bufferIds.includes(entry.byteId)
+            && entry.action > reserve.reserveStamp.action && entry.action < pushAction);
+          const copies = current.copyActions.filter((entry) => bufferIds.includes(entry.targetId)
+            && entry.action > reserve.reserveStamp.action && entry.action < pushAction);
           const objectRecord = current.objectAllocationRecords.get(event);
           if (objectRecord && objectRecord.classification === null) objectRecord.classification = "event";
           Reflect.apply(nativeArrayPush, current.retentions, [{
@@ -4125,14 +4129,10 @@ function c3LifecycleInstrumentedArrayPush(value) {
             allocationKinds: allocations.map((entry) => entry.kind),
             objectCreateOrdinals: objects.map((entry) => entry.ordinal),
             objectCreateActions: objects.map((entry) => entry.action),
-            byteAllocationOrdinals: current.byteAllocationActions
-              .filter((entry) => entry.action > lowerAction && entry.action < pushAction).map((entry) => entry.ordinal),
-            byteAllocationActions: current.byteAllocationActions
-              .filter((entry) => entry.action > lowerAction && entry.action < pushAction).map((entry) => entry.action),
-            copyOrdinals: current.copyActions
-              .filter((entry) => entry.action > lowerAction && entry.action < pushAction).map((entry) => entry.ordinal),
-            copyActions: current.copyActions
-              .filter((entry) => entry.action > lowerAction && entry.action < pushAction).map((entry) => entry.action),
+            byteAllocationOrdinals: byteAllocations.map((entry) => entry.ordinal),
+            byteAllocationActions: byteAllocations.map((entry) => entry.action),
+            copyOrdinals: copies.map((entry) => entry.ordinal),
+            copyActions: copies.map((entry) => entry.action),
             objectCreateCount: objects.length,
             objectIdentityMatches: !!objectRecord && objectRecord.classification === "event"
               && objectRecord.action > lowerAction && objectRecord.action < pushAction
@@ -4212,7 +4212,9 @@ function c3LifecycleBeforeAllocation(kind, requestedLength) {
   if (kind.startsWith("buffer") || kind === "textEncoderOutput") {
     Reflect.apply(nativeArrayPush, current.byteAllocationActions, [{
       ordinal: current.allocationOrdinal,
-      action: current.actionOrdinal
+      action: current.actionOrdinal,
+      kind,
+      byteId: null
     }]);
   }
   const pendingFixedRole = current.tracker.pendingFixedRole;
@@ -4282,7 +4284,7 @@ function c3LifecycleMarkOwner(owner) {
     const event = owner.events[eventOrdinal];
     for (const name of nativeObject.getOwnPropertyNames(event)) {
       const descriptor = nativeObject.getOwnPropertyDescriptor(event, name);
-      if (!descriptor || !nativeObject.hasOwn(descriptor, "value")) continue;
+      if (!descriptor || !nativeObject.hasOwn(descriptor, "value") || !nativeBuffer.isBuffer(descriptor.value)) continue;
       const record = c3LifecycleByteRecord(descriptor.value, "external");
       if (!record) continue;
       record.roles.add("retainedEvent");
@@ -4344,7 +4346,19 @@ function c3TrackAllocation(kind, value) {
     c3LifecycleObjectRecord(value, c3LifecycleCurrent.tracker.pendingFixedRole);
     c3LifecycleCurrent.tracker.pendingFixedRole = null;
   }
-  if (kind.startsWith("buffer") || kind === "textEncoderOutput") c3LifecycleByteRecord(value, kind);
+  if (kind.startsWith("buffer") || kind === "textEncoderOutput") {
+    const byteRecord = c3LifecycleByteRecord(value, kind);
+    const allocation = c3LifecycleCurrent && c3LifecycleCurrent.byteAllocationActions.at(-1);
+    if (byteRecord && allocation && allocation.byteId === null
+      && allocation.kind === kind
+      && allocation.ordinal === c3LifecycleCurrent.allocationOrdinal
+      && allocation.action === c3LifecycleCurrent.actionOrdinal) {
+      allocation.byteId = byteRecord.id;
+      byteRecord.allocationOrdinal = allocation.ordinal;
+      byteRecord.allocationAction = allocation.action;
+      byteRecord.allocationKind = allocation.kind;
+    }
+  }
   return value;
 }
 
@@ -4584,7 +4598,12 @@ function c3LifecycleInstrumentedBufferCopy(target, ...arguments_) {
     current.copyOrdinal += 1;
     current.actionOrdinal += 1;
     current.copies.push({ ordinal: current.copyOrdinal, sourceId: sourceRecord ? sourceRecord.id : null, targetId: targetRecord ? targetRecord.id : null });
-    Reflect.apply(nativeArrayPush, current.copyActions, [{ ordinal: current.copyOrdinal, action: current.actionOrdinal }]);
+    Reflect.apply(nativeArrayPush, current.copyActions, [{
+      ordinal: current.copyOrdinal,
+      action: current.actionOrdinal,
+      sourceId: sourceRecord ? sourceRecord.id : null,
+      targetId: targetRecord ? targetRecord.id : null
+    }]);
   }
   return Reflect.apply(nativeBufferCopy, this, [target, ...arguments_]);
 }
@@ -8099,6 +8118,10 @@ function c3AssertA2Lifecycle(value) {
     assert.ok(records.length > 0, role);
     assert.ok(records.every((entry) => deriveBytes.get(entry.id).zero), role);
   }
+  const directoryReencodes = success.lifecycle.bytes.filter((entry) => entry.roles.includes("directoryReencode"));
+  assert.ok(directoryReencodes.length > 0);
+  assert.ok(directoryReencodes.every((entry) => !entry.roles.includes("retainedEvent")
+    && deriveBytes.get(entry.id).zero));
   assert.deepEqual(success.lifecycle.arrays.map((entry) => entry.role).sort(), ["activePaths", "events", "files"]);
   assert.ok(success.lifecycle.arrays.every((entry) => entry.native && entry.prototype && entry.length === 0));
   const ownerView = success.ownerBeforeDispose;
