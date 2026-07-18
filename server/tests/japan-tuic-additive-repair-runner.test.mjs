@@ -6799,6 +6799,7 @@ function c3Environment(fileSpecs, directorySpecs, options = {}) {
     }
   }
   const fault = options.fault || null;
+  const directoryProxyCounters = options.directoryProxyCounters || null;
   function faultMatches(kind, role) {
     return fault && fault.kind === kind && (fault.role === undefined || fault.role === role);
   }
@@ -6949,7 +6950,27 @@ function c3Environment(fileSpecs, directorySpecs, options = {}) {
       const values = directoryValues.get(path);
       if (!values) operationFailure();
       for (const value of values) c3LifecycleMarkByte(value, "rawDirectory");
-      return values;
+      if (!directoryProxyCounters) return values;
+      return new nativeProxy(values, {
+        get(target, property, receiver) {
+          directoryProxyCounters.get += 1;
+          if (property === "length") directoryProxyCounters.getLength += 1;
+          else directoryProxyCounters.getOther += 1;
+          return Reflect.get(target, property, receiver);
+        },
+        getOwnPropertyDescriptor(target, property) {
+          directoryProxyCounters.getOwnPropertyDescriptor += 1;
+          return Reflect.getOwnPropertyDescriptor(target, property);
+        },
+        getPrototypeOf(target) {
+          directoryProxyCounters.getPrototypeOf += 1;
+          return Reflect.getPrototypeOf(target);
+        },
+        ownKeys(target) {
+          directoryProxyCounters.ownKeys += 1;
+          return Reflect.ownKeys(target);
+        }
+      });
     },
     validateSudoers() {
       calls.push(["validateSudoers"]);
@@ -7294,6 +7315,87 @@ function c3Run(fileSpecs, directorySpecs = [], options = {}) {
   };
 }
 
+function c3MeasuredAllocationCount(counts) {
+  let total = 0;
+  for (const name of nativeObject.keys(counts)) {
+    if (name !== "createHash") total += counts[name];
+  }
+  return total;
+}
+
+function c3ForwardingOperationProxy(target, counters) {
+  return new nativeProxy(target, {
+    getOwnPropertyDescriptor(value, property) {
+      counters.getOwnPropertyDescriptor += 1;
+      return Reflect.getOwnPropertyDescriptor(value, property);
+    },
+    getPrototypeOf(value) {
+      counters.getPrototypeOf += 1;
+      return Reflect.getPrototypeOf(value);
+    },
+    ownKeys(value) {
+      counters.ownKeys += 1;
+      return Reflect.ownKeys(value);
+    }
+  });
+}
+
+function c3TrapTotal(counters) {
+  return counters.getOwnPropertyDescriptor + counters.getPrototypeOf + counters.ownKeys;
+}
+
+function c3FreshBeforeReflectionScenario() {
+  const state = fresh();
+  api.__test_reserveAuthorizationFixedEnvelope(state.ssh);
+  const environment = c3Environment([[C3_ROOT, "Banner unreachable\n"]], []);
+  const pathCounters = { getOwnPropertyDescriptor: 0, getPrototypeOf: 0, ownKeys: 0 };
+  const sourceCounters = { getOwnPropertyDescriptor: 0, getPrototypeOf: 0, ownKeys: 0 };
+  const pathProxy = c3ForwardingOperationProxy(environment.pathOperations, pathCounters);
+  const sourceProxy = c3ForwardingOperationProxy(environment.sourceOperations, sourceCounters);
+  const tracker = c3CreateLifecycleTracker();
+  const firstExecution = c3LifecyclePhase(tracker, "formalNonfresh", state.ssh, environment.calls,
+    () => withAllocations(() => safe(() => api.__test_deriveAuthorizationSshSyntax(
+      state.ssh, pathProxy, sourceProxy
+    ))));
+  const firstCalls = environment.calls.slice();
+  const firstPathTrapTotal = c3TrapTotal(pathCounters);
+  const firstSourceTrapTotal = c3TrapTotal(sourceCounters);
+  const afterFirst = inspect(state);
+  const terminalExecution = c3LifecyclePhase(tracker, "formalTerminal", state.ssh, environment.calls,
+    () => withAllocations(() => safe(() => api.__test_deriveAuthorizationSshSyntax(
+      state.ssh, pathProxy, sourceProxy
+    ))));
+  const terminalCalls = environment.calls.slice(firstCalls.length);
+  const terminalPathTrapTotal = c3TrapTotal(pathCounters) - firstPathTrapTotal;
+  const terminalSourceTrapTotal = c3TrapTotal(sourceCounters) - firstSourceTrapTotal;
+  return {
+    first: {
+      outcome: firstExecution.value,
+      pathTrapTotal: firstPathTrapTotal,
+      sourceTrapTotal: firstSourceTrapTotal,
+      allocationCount: c3MeasuredAllocationCount(firstExecution.counts),
+      hashCount: firstExecution.counts.createHash,
+      copyCount: tracker.phases[0].copies.length,
+      pushCount: tracker.phases[0].pushes.length,
+      pathOperationCalls: firstCalls.filter(([name]) => ["lstat", "open", "fstat", "read", "close"].includes(name)).length,
+      sourceOperationCalls: firstCalls.filter(([name]) => ["readDirectory", "validateSudoers"].includes(name)).length,
+      graphTerminal: afterFirst.ssh.failed,
+      snapshotTerminal: afterFirst.snapshot.failed
+    },
+    terminal: {
+      outcome: terminalExecution.value,
+      pathTrapTotal: terminalPathTrapTotal,
+      sourceTrapTotal: terminalSourceTrapTotal,
+      allocationCount: c3MeasuredAllocationCount(terminalExecution.counts),
+      hashCount: terminalExecution.counts.createHash,
+      copyCount: tracker.phases[1].copies.length,
+      pushCount: tracker.phases[1].pushes.length,
+      pathOperationCalls: terminalCalls.filter(([name]) => ["lstat", "open", "fstat", "read", "close"].includes(name)).length,
+      sourceOperationCalls: terminalCalls.filter(([name]) => ["readDirectory", "validateSudoers"].includes(name)).length
+    }
+  };
+}
+
 function c3A1FileRun(fault, terminalSecondCall = false) {
   return c3Run([[C3_ROOT, "Banner operation\n"]], [], {
     includeEvents: false,
@@ -7563,7 +7665,12 @@ function c3DepthScenario() {
     ["nonregular", { kind: "nonregular", role: "file-0" }],
     ["open", { kind: "open-failure", role: "file-0", code: "EINTR" }]
   ].map(([name, fault]) => ({ name, result: c3A1FileRun(fault, true) }));
-  return { success, failure, operationSuccess, operationFailures, lifecycle: c3LifecycleScenario() };
+  const formalNulRetention = c3Run([[C3_ROOT, nativeBuffer.from([0x00])]], [], {
+    lifecycle: true,
+    includeEvents: false,
+    terminalSecondCall: true
+  });
+  return { success, failure, operationSuccess, operationFailures, formalNulRetention, lifecycle: c3LifecycleScenario() };
 }
 
 function c3CoordinateScenario() {
@@ -7632,7 +7739,8 @@ function c3CoordinateScenario() {
     conditionCalculator: {
       maximum: api.__test_nextAuthorizationBudgetValue(8, 1, 9),
       overflow: safe(() => api.__test_nextAuthorizationBudgetValue(9, 1, 9))
-    }
+    },
+    formalFreshBeforeReflection: c3FreshBeforeReflectionScenario()
   };
 }
 
@@ -7747,6 +7855,59 @@ function c3IncludeScenario() {
     role: "directory-0",
     code: "EINTR"
   }, true);
+  const directoryProxyCounters = {
+    get: 0,
+    getLength: 0,
+    getOther: 0,
+    getOwnPropertyDescriptor: 0,
+    getPrototypeOf: 0,
+    ownKeys: 0
+  };
+  const formalDirectoryProxy = c3Run([
+    [C3_ROOT, "Include conf.d/*.conf\n"],
+    ["/etc/ssh/conf.d/selected.conf", "Banner selected\n"]
+  ], [["/etc/ssh/conf.d", ["selected.conf"]]], {
+    lifecycle: true,
+    includeEvents: false,
+    terminalSecondCall: true,
+    operations: { directoryProxyCounters }
+  });
+  const formalSameLineMatch = c3Run([
+    [C3_ROOT, "Include child.conf later.conf\n"],
+    ["/etc/ssh/child.conf", "Match all\n"],
+    ["/etc/ssh/later.conf", "PasswordAuthentication no\n"]
+  ], [], { lifecycle: true, terminalSecondCall: true });
+  const formalSameGlobMatch = c3Run([
+    [C3_ROOT, "Include conf.d/*.conf\n"],
+    ["/etc/ssh/conf.d/01-match.conf", "Match all\n"],
+    ["/etc/ssh/conf.d/02-later.conf", "PasswordAuthentication no\n"]
+  ], [["/etc/ssh/conf.d", ["01-match.conf", "02-later.conf"]]], {
+    lifecycle: true,
+    terminalSecondCall: true
+  });
+  const formalWildcardDecisions = [
+    {
+      name: "literal",
+      result: c3Run([
+        [C3_ROOT, "Include literal.conf\n"],
+        ["/etc/ssh/literal.conf", "Banner literal\n"]
+      ], [], { includeEvents: false })
+    },
+    {
+      name: "question",
+      result: c3Run([
+        [C3_ROOT, "Include conf.d/0?.conf\n"],
+        ["/etc/ssh/conf.d/01.conf", "Banner question\n"]
+      ], [["/etc/ssh/conf.d", ["01.conf"]]], { includeEvents: false })
+    },
+    {
+      name: "star",
+      result: c3Run([
+        [C3_ROOT, "Include conf.d/*.conf\n"],
+        ["/etc/ssh/conf.d/01.conf", "Banner star\n"]
+      ], [["/etc/ssh/conf.d", ["01.conf"]]], { includeEvents: false })
+    }
+  ];
   return {
     relative,
     glob,
@@ -7761,6 +7922,10 @@ function c3IncludeScenario() {
     files257,
     operationDirectory,
     readDirectoryFailure,
+    formalDirectoryProxy: { result: formalDirectoryProxy, counters: directoryProxyCounters },
+    formalSameLineMatch,
+    formalSameGlobMatch,
+    formalWildcardDecisions,
     selectedCalculator: {
       maximum: api.__test_nextAuthorizationBudgetValue(65535, 1, 65536),
       overflow: safe(() => api.__test_nextAuthorizationBudgetValue(65536, 1, 65536))
@@ -7944,6 +8109,42 @@ function c3VmProbe(scenario, timeout = 120000) {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+function c3FormalMarkerBlock() {
+  const runnerPath = fileURLToPath(new URL("../../scripts/japan-tuic-additive-repair-runner.mjs", import.meta.url));
+  const source = readFileSync(runnerPath, "utf8").replaceAll("\r\n", "\n");
+  const beginMarker = "// C3_SSH_SOURCE_BLOCK_BEGIN";
+  const endMarker = "// C3_SSH_SOURCE_BLOCK_END";
+  const begin = source.indexOf(beginMarker);
+  const end = source.indexOf(endMarker, begin < 0 ? 0 : begin + beginMarker.length);
+  return begin >= 0 && end >= 0 ? source.slice(begin, end + endMarker.length) : "";
+}
+
+function c3FormalSourceTruth() {
+  const block = c3FormalMarkerBlock();
+  const helperStart = block.indexOf("function authorizationSshIncludeFinalStart(");
+  const helperEnd = block.indexOf("\nfunction ", helperStart < 0 ? 0 : helperStart + 1);
+  const helper = helperStart >= 0 && helperEnd > helperStart ? block.slice(helperStart, helperEnd) : "";
+  const scannerText = "scanAuthorizationWildcardPattern(active, pattern)";
+  const scannerIndex = block.indexOf(scannerText);
+  const branchIndex = block.indexOf("if (!hasWildcard)", scannerIndex < 0 ? 0 : scannerIndex + scannerText.length);
+  const scannerSegment = scannerIndex >= 0 && branchIndex > scannerIndex
+    ? block.slice(scannerIndex + scannerText.length, branchIndex)
+    : "";
+  const scannerCalls = block.match(/\bscanAuthorizationWildcardPattern\s*\(\s*active\s*,\s*pattern\s*\)/g) || [];
+  const namesSubstringCalls = block.match(/\bnames\.(?:slice|substring|substr)\s*\(/g) || [];
+  return {
+    namesSubstringCallCount: namesSubstringCalls.length,
+    wildcard: {
+      signedFinalStart: /return\s+componentWildcard\s*\?\s*-\s*\(\s*finalStart\s*\+\s*1\s*\)\s*:\s*finalStart\s*;/.test(helper),
+      singleScalarDecode: /const\s+encodedFinalStart\s*=\s*authorizationSshIncludeFinalStart\s*\([^;]+;[\s\S]*?const\s+hasWildcard\s*=\s*encodedFinalStart\s*<\s*0\s*;[\s\S]*?const\s+finalStart\s*=\s*hasWildcard\s*\?\s*-\s*encodedFinalStart\s*-\s*1\s*:\s*encodedFinalStart\s*;/.test(block),
+      scannerCallCount: scannerCalls.length,
+      noPostScannerRescan: scannerSegment.length > 0
+        && !/\b(?:for|while)\s*\(/.test(scannerSegment)
+        && !/\bpattern\s*\[[^\]]+\]/.test(scannerSegment)
+    }
+  };
 }
 
 function c3AssertFreshGraph(graph, kind) {
@@ -8767,6 +8968,50 @@ test("SSH source closure derives depth first Include encounter order", () => {
     c3AssertA1TerminalFailure(witness, operationFailureCalls[witness.name]);
   }
   c3AssertA2Lifecycle(value.lifecycle);
+  const formalNul = value.formalNulRetention;
+  const formalNulPhase = c3LifecycleNamedPhase(formalNul.lifecycle, "derive");
+  const formalNulFilesPushes = formalNulPhase.pushes.filter((entry) => entry.arrayRole === "files");
+  const formalNulRawSources = formalNul.lifecycle.bytes.filter((entry) => entry.roles.includes("rawSource"));
+  const formalNulArrayLength = (role) => formalNulPhase.arrayState.find((entry) => entry.role === role)?.length ?? -1;
+  const formalNulRecord = {
+    result: formalNul.outcome,
+    filesRolePushCount: formalNulFilesPushes.length,
+    filesPushValueCount: formalNulFilesPushes.reduce((count, entry) => count + entry.valueCount, 0),
+    sourceFileIdentityCount: formalNulPhase.objectAllocations.filter((entry) => entry.classification === "sourceFile").length,
+    eventsRolePushCount: formalNulPhase.pushes.filter((entry) => entry.arrayRole === "events").length,
+    ownerProvenanceSetCount: formalNulPhase.registry.filter((entry) => entry.method === "set" && entry.keyShape === "owner").length,
+    closurePreimageCount: formalNul.trace.filter(([name]) => name === "reserve-preimage").length,
+    closureHashCount: formalNul.allocations.createHash - formalNul.after.ssh.sourceFileCount,
+    graphTerminal: formalNul.after.ssh.failed,
+    snapshotTerminal: formalNul.after.snapshot.failed,
+    finalFilesLength: formalNulArrayLength("files"),
+    finalEventsLength: formalNulArrayLength("events"),
+    finalActiveLength: formalNulArrayLength("activePaths"),
+    rawSourceZeroized: formalNulRawSources.length > 0 && formalNulRawSources.every((entry) => entry.zero),
+    terminalOutcome: formalNul.terminalSecondDerive,
+    terminalAllocationCount: Object.values(formalNul.terminalSecondDeriveAllocations)
+      .reduce((count, value_) => count + value_, 0),
+    terminalCallCount: formalNul.terminalSecondDeriveCalls.length
+  };
+  assert.deepEqual(formalNulRecord, {
+    result: { ok: false, error: "restricted_identity_rejected" },
+    filesRolePushCount: 1,
+    filesPushValueCount: 1,
+    sourceFileIdentityCount: 1,
+    eventsRolePushCount: 0,
+    ownerProvenanceSetCount: 0,
+    closurePreimageCount: 0,
+    closureHashCount: 0,
+    graphTerminal: true,
+    snapshotTerminal: true,
+    finalFilesLength: 0,
+    finalEventsLength: 0,
+    finalActiveLength: 0,
+    rawSourceZeroized: true,
+    terminalOutcome: { ok: false, error: "restricted_identity_rejected" },
+    terminalAllocationCount: 0,
+    terminalCallCount: 0
+  });
 });
 
 test("SSH branch ordinal is total while source coordinates are provenance", () => {
@@ -8814,6 +9059,32 @@ test("SSH branch ordinal is total while source coordinates are provenance", () =
   for (const witness of value.readFailures) {
     c3AssertA1TerminalFailure(witness, readFailureCalls[witness.name]);
   }
+  assert.deepEqual(value.formalFreshBeforeReflection, {
+    first: {
+      outcome: { ok: false, error: "restricted_identity_rejected" },
+      pathTrapTotal: 0,
+      sourceTrapTotal: 0,
+      allocationCount: 0,
+      hashCount: 0,
+      copyCount: 0,
+      pushCount: 0,
+      pathOperationCalls: 0,
+      sourceOperationCalls: 0,
+      graphTerminal: true,
+      snapshotTerminal: true
+    },
+    terminal: {
+      outcome: { ok: false, error: "restricted_identity_rejected" },
+      pathTrapTotal: 0,
+      sourceTrapTotal: 0,
+      allocationCount: 0,
+      hashCount: 0,
+      copyCount: 0,
+      pushCount: 0,
+      pathOperationCalls: 0,
+      sourceOperationCalls: 0
+    }
+  });
 });
 
 test("SSH Include freezes relative base final glob and Match scope", { timeout: 120000 }, () => {
@@ -8868,6 +9139,134 @@ test("SSH Include freezes relative base final glob and Match scope", { timeout: 
   c3AssertA1Success(value.operationDirectory, C3_A1_DIRECTORY_OPERATIONS);
   c3AssertA1TerminalFailure({ name: "readDirectory", result: value.readDirectoryFailure },
     C3_A1_DIRECTORY_FAILURE_OPERATIONS);
+  const formalDirectoryProxy = value.formalDirectoryProxy.result;
+  const formalDirectoryPhase = c3LifecycleNamedPhase(formalDirectoryProxy.lifecycle, "derive");
+  const formalRawDirectory = formalDirectoryProxy.lifecycle.bytes
+    .filter((entry) => entry.roles.includes("rawDirectory"));
+  const formalDirectoryReencode = formalDirectoryProxy.lifecycle.bytes
+    .filter((entry) => entry.roles.includes("directoryReencode"));
+  const formalDirectoryArrayLength = (role) => formalDirectoryPhase.arrayState
+    .find((entry) => entry.role === role)?.length ?? -1;
+  const summarizeMatchBoundary = (result) => {
+    const phase = c3LifecycleNamedPhase(result.lifecycle, "derive");
+    const terminalAllocationCount = result.terminalSecondDeriveAllocations === null
+      ? null
+      : Object.values(result.terminalSecondDeriveAllocations).reduce((count, value_) => count + value_, 0);
+    return {
+      result: result.outcome,
+      file2OperationCalls: result.calls.filter(([, role]) => role === "file-2").length,
+      scanWildcardCalls: result.trace.filter(([name]) => name === "scan-wildcard").length,
+      selectedInsertionReserves: result.trace.filter(([name, role]) => name === "reserve-semantic"
+        && role === "sshSelectedInsertion").length,
+      includePatternReserves: result.trace.filter(([name, role]) => name === "reserve-semantic"
+        && role === "sshIncludePattern").length,
+      selectedInsertionEvents: phase.pushes.filter((entry) => entry.arrayRole === "events"
+        && entry.eventKind === "selectedInsertion").length,
+      ownerProvenanceSetCount: phase.registry.filter((entry) => entry.method === "set"
+        && entry.keyShape === "owner").length,
+      terminalFollowupExecuted: result.terminalSecondDerive !== null,
+      terminalFollowupWork: terminalAllocationCount === null
+        ? null
+        : terminalAllocationCount + result.terminalSecondDeriveCalls.length,
+      graphTerminal: result.after.ssh.failed,
+      snapshotTerminal: result.after.snapshot.failed,
+      cleanupComplete: result.tracked.arrays.every((entry) => entry.length === 0)
+        && result.tracked.buffers.every((entry) => entry.zero)
+    };
+  };
+  const formalSourceTruth = c3FormalSourceTruth();
+  const formalIncludeRecord = {
+    directoryProxy: {
+      result: formalDirectoryProxy.outcome,
+      descriptorTrapPositive: value.formalDirectoryProxy.counters.getOwnPropertyDescriptor > 0,
+      getTrapCount: value.formalDirectoryProxy.counters.get,
+      getLengthTrapCount: value.formalDirectoryProxy.counters.getLength,
+      getOtherTrapCount: value.formalDirectoryProxy.counters.getOther,
+      globWorkCount: formalDirectoryProxy.trace.filter(([name, role]) => name === "reserve-work" && role === "glob").length,
+      selectedChildOpens: formalDirectoryProxy.calls.filter(([name, role]) => name === "open" && role === "file-1").length,
+      rawDirectoryZeroized: formalRawDirectory.length > 0 && formalRawDirectory.every((entry) => entry.zero),
+      directoryReencodeZeroized: formalDirectoryReencode.length > 0 && formalDirectoryReencode.every((entry) => entry.zero),
+      finalFilesLength: formalDirectoryArrayLength("files"),
+      finalEventsLength: formalDirectoryArrayLength("events"),
+      finalActiveLength: formalDirectoryArrayLength("activePaths"),
+      graphTerminal: formalDirectoryProxy.after.ssh.failed,
+      snapshotTerminal: formalDirectoryProxy.after.snapshot.failed,
+      terminalOutcome: formalDirectoryProxy.terminalSecondDerive,
+      terminalAllocationCount: Object.values(formalDirectoryProxy.terminalSecondDeriveAllocations)
+        .reduce((count, value_) => count + value_, 0),
+      terminalCallCount: formalDirectoryProxy.terminalSecondDeriveCalls.length
+    },
+    sameLine: summarizeMatchBoundary(value.formalSameLineMatch),
+    sameGlob: summarizeMatchBoundary(value.formalSameGlobMatch),
+    wildcardSource: formalSourceTruth.wildcard,
+    wildcardDynamic: value.formalWildcardDecisions.map(({ name, result }) => ({
+      name,
+      result: result.outcome,
+      scanTrace: result.trace.filter(([entry]) => entry === "scan-wildcard"),
+      cleanupComplete: result.tracked.arrays.every((entry) => entry.length === 0)
+        && result.tracked.buffers.every((entry) => entry.zero)
+    }))
+  };
+  assert.deepEqual(formalIncludeRecord, {
+    directoryProxy: {
+      result: { ok: false, error: "restricted_identity_rejected" },
+      descriptorTrapPositive: true,
+      getTrapCount: 0,
+      getLengthTrapCount: 0,
+      getOtherTrapCount: 0,
+      globWorkCount: 0,
+      selectedChildOpens: 0,
+      rawDirectoryZeroized: true,
+      directoryReencodeZeroized: true,
+      finalFilesLength: 0,
+      finalEventsLength: 0,
+      finalActiveLength: 0,
+      graphTerminal: true,
+      snapshotTerminal: true,
+      terminalOutcome: { ok: false, error: "restricted_identity_rejected" },
+      terminalAllocationCount: 0,
+      terminalCallCount: 0
+    },
+    sameLine: {
+      result: { ok: false, error: "restricted_identity_rejected" },
+      file2OperationCalls: 0,
+      scanWildcardCalls: 1,
+      selectedInsertionReserves: 1,
+      includePatternReserves: 2,
+      selectedInsertionEvents: 1,
+      ownerProvenanceSetCount: 0,
+      terminalFollowupExecuted: true,
+      terminalFollowupWork: 0,
+      graphTerminal: true,
+      snapshotTerminal: true,
+      cleanupComplete: true
+    },
+    sameGlob: {
+      result: { ok: false, error: "restricted_identity_rejected" },
+      file2OperationCalls: 0,
+      scanWildcardCalls: 1,
+      selectedInsertionReserves: 1,
+      includePatternReserves: 1,
+      selectedInsertionEvents: 1,
+      ownerProvenanceSetCount: 0,
+      terminalFollowupExecuted: true,
+      terminalFollowupWork: 0,
+      graphTerminal: true,
+      snapshotTerminal: true,
+      cleanupComplete: true
+    },
+    wildcardSource: {
+      signedFinalStart: true,
+      singleScalarDecode: true,
+      scannerCallCount: 1,
+      noPostScannerRescan: true
+    },
+    wildcardDynamic: [
+      { name: "literal", result: { ok: true }, scanTrace: [["scan-wildcard", 12]], cleanupComplete: true },
+      { name: "question", result: { ok: true }, scanTrace: [["scan-wildcard", 7]], cleanupComplete: true },
+      { name: "star", result: { ok: true }, scanTrace: [["scan-wildcard", 6]], cleanupComplete: true }
+    ]
+  });
 });
 
 test("SSH lexer accepts only the global and Match closed subsets", () => {
@@ -9063,4 +9462,21 @@ test("SSH lexer accepts only the global and Match closed subsets", () => {
     c3AssertA1TerminalFailure(witness, operationFailureCalls[witness.name]);
   }
   assert.deepEqual(Object.keys(runnerModule).sort(), C2B_NATIVE_EXPORTS);
+  const formalNameTruth = c3FormalSourceTruth();
+  const formalReviewedNameRecord = {
+    namesSubstringCallCount: formalNameTruth.namesSubstringCallCount,
+    assignmentNamesFixedLowercase: assignments.length > 0
+      && assignments.every((name) => name === name.toLowerCase()),
+    opaqueDirectiveNamesFixedLowercase: C3_OPAQUE_DIRECTIVES.every((name) => physical.includes(name))
+      && physical.every((name) => name === name.toLowerCase()),
+    unknownDirectiveValues: unknownDerive.pushes
+      .filter((entry) => entry.arrayRole === "events" && entry.eventKind === "physicalDirective")
+      .map((entry) => entry.eventDirective)
+  };
+  assert.deepEqual(formalReviewedNameRecord, {
+    namesSubstringCallCount: 0,
+    assignmentNamesFixedLowercase: true,
+    opaqueDirectiveNamesFixedLowercase: true,
+    unknownDirectiveValues: ["unknown"]
+  });
 });
