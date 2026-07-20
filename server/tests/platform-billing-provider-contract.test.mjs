@@ -41,6 +41,23 @@ test("recharge order contract normalizes multi-provider payment orders without r
   assert.doesNotMatch(JSON.stringify(order), /owner@sensitive|tok_secret|cardToken|customerEmail/i);
 });
 
+test("recharge order contract recognizes WorldFirst as a provider vocabulary entry", () => {
+  const order = normalizeRechargeOrder({
+    id: "recharge_worldfirst_001",
+    provider: "wanlihui",
+    providerOrderRef: "wf_order_001",
+    accountRef: "acct_safe_worldfirst",
+    packageRef: "monthly",
+    amountMinor: 1999,
+    currency: "usd",
+    creditTrafficMb: 5120,
+    status: "pending"
+  }, { now: NOW });
+
+  assert.equal(order.provider, "worldfirst");
+  assert.equal(order.providerOrderRef, "wf_order_001");
+});
+
 test("billing event contract fails closed for unverified paid webhooks and duplicate idempotency keys", () => {
   assert.throws(() => {
     normalizeBillingPaymentEvent({

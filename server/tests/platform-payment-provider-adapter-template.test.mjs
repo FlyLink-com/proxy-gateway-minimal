@@ -30,6 +30,30 @@ test("payment provider environment summary reports configured placeholders witho
   assert.doesNotMatch(JSON.stringify(summary), /paypal-client-secret-sensitive|paypal-webhook-secret-sensitive/i);
 });
 
+test("payment provider environment summary models WorldFirst RSA integration requirements", () => {
+  const summary = summarizePaymentProviderEnvironment({
+    PAYMENT_PROVIDER: "worldfirst",
+    PAYMENT_MODE: "sandbox",
+    PAYMENT_PROVIDER_CLIENT_ID: "worldfirst-client-id",
+    PAYMENT_PROVIDER_PRIVATE_KEY_PATH: "/operator-only/worldfirst/client-private-key.pem",
+    PAYMENT_PROVIDER_PLATFORM_PUBLIC_KEY_PATH: "/operator-only/worldfirst/platform-public-key.pem",
+    PAYMENT_PUBLIC_BASE_URL: "https://pay.example.com",
+    PAYMENT_RETURN_URL: "https://pay.example.com/return",
+    PAYMENT_CANCEL_URL: "https://pay.example.com/cancel"
+  });
+
+  assert.equal(summary.provider, "worldfirst");
+  assert.deepEqual(summary.requiredEnv, [
+    "PAYMENT_PROVIDER_CLIENT_ID",
+    "PAYMENT_PROVIDER_PRIVATE_KEY_PATH",
+    "PAYMENT_PROVIDER_PLATFORM_PUBLIC_KEY_PATH"
+  ]);
+  assert.equal(summary.configured.clientIdConfigured, true);
+  assert.equal(summary.configured.privateKeyPathConfigured, true);
+  assert.equal(summary.configured.platformPublicKeyPathConfigured, true);
+  assert.doesNotMatch(JSON.stringify(summary), /worldfirst-client-id|client-private-key|platform-public-key/i);
+});
+
 test("payment provider environment summary rejects non-https public URLs outside loopback test mode", () => {
   assert.throws(() => summarizePaymentProviderEnvironment({
     PAYMENT_PROVIDER: "stripe",

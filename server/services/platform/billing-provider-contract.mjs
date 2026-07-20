@@ -7,6 +7,7 @@ const BILLING_PROVIDERS = new Set([
   "lemonsqueezy",
   "alipay",
   "wechatpay",
+  "worldfirst",
   "manual",
   "mock"
 ]);
@@ -21,6 +22,10 @@ const PROVIDER_ALIASES = {
   wechatpay: "wechatpay",
   weixin: "wechatpay",
   weixinpay: "wechatpay",
+  worldfirst: "worldfirst",
+  worldfirstpay: "worldfirst",
+  wanlihui: "worldfirst",
+  wf: "worldfirst",
   manual: "manual",
   mock: "mock"
 };

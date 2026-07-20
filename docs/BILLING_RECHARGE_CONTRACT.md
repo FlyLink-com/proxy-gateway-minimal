@@ -1,6 +1,6 @@
 # Billing Recharge Contract
 
-Last updated: 2026-05-31, Asia/Shanghai.
+Last updated: 2026-07-20, America/Los_Angeles.
 
 This document defines the repository-local billing contract for the current
 subscription platform direction. It is a future optional top-up extension to
@@ -57,6 +57,7 @@ adapters:
 
 ```text
 paypal
+worldfirst
 stripe
 paddle
 lemonsqueezy
@@ -69,6 +70,11 @@ mock
 This does not mean any provider is currently live. Real provider integration,
 checkout URL creation, webhook registration, signature verification against a
 provider API, or sandbox/live capture is separate Risk A work.
+
+Niuniu Pay is intentionally not part of the active provider vocabulary for new
+work. Historical Niuniu material may be used only as deprecated archaeology for
+safe migration analysis; no new provider credentials, checkout flow, webhook,
+or production payment path should be built around it.
 
 ## Subscription Boundary
 

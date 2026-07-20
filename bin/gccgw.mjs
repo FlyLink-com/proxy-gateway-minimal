@@ -278,6 +278,12 @@ function renderEnvSkeleton({ configurePlan, importPlan }) {
   skeleton.push("PAYMENT_PROVIDER_API_KEY=");
   skeleton.push("PAYMENT_PROVIDER_API_SECRET=");
   skeleton.push("PAYMENT_PROVIDER_WEBHOOK_SECRET=");
+  skeleton.push("PAYMENT_PROVIDER_CLIENT_ID=");
+  skeleton.push("PAYMENT_PROVIDER_MERCHANT_ID=");
+  skeleton.push("PAYMENT_PROVIDER_APP_ID=");
+  skeleton.push("PAYMENT_PROVIDER_CERT_SERIAL=");
+  skeleton.push("PAYMENT_PROVIDER_PRIVATE_KEY_PATH=");
+  skeleton.push("PAYMENT_PROVIDER_PLATFORM_PUBLIC_KEY_PATH=");
   skeleton.push("PAYMENT_RETURN_URL=");
   skeleton.push("PAYMENT_CANCEL_URL=");
   skeleton.push("PAYMENT_PUBLIC_BASE_URL=");

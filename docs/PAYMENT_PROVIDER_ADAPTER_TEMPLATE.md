@@ -1,6 +1,6 @@
 # Payment Provider Adapter Template
 
-Last updated: 2026-05-31, Asia/Shanghai.
+Last updated: 2026-07-20, America/Los_Angeles.
 
 This document defines the repository-local adapter template for future payment
 provider integration.
@@ -46,6 +46,7 @@ This template only defines the seam between `payment provider` and the existing
 
 ```text
 paypal
+worldfirst
 stripe
 paddle
 lemonsqueezy
@@ -57,6 +58,25 @@ mock
 
 This vocabulary is not live-provider support. It is only the durable naming
 contract for future adapters.
+
+PayPal is already represented as a provider vocabulary entry and maps to the
+generic REST API key/secret and webhook-secret placeholders. WorldFirst is
+represented as `worldfirst` for future cross-border collection or payment
+solution integration and maps to client-id plus operator-managed RSA key path
+placeholders. Niuniu Pay is retired and intentionally absent from the active
+provider vocabulary.
+
+## Provider Configuration Shape
+
+| Provider | Placeholder env names | Current status |
+| --- | --- | --- |
+| `paypal` | `PAYMENT_PROVIDER_API_KEY`, `PAYMENT_PROVIDER_API_SECRET`, `PAYMENT_PROVIDER_WEBHOOK_SECRET` | Vocabulary only; no live checkout, capture, or webhook. |
+| `worldfirst` | `PAYMENT_PROVIDER_CLIENT_ID`, `PAYMENT_PROVIDER_PRIVATE_KEY_PATH`, `PAYMENT_PROVIDER_PLATFORM_PUBLIC_KEY_PATH` | Vocabulary only; no API calls, signing, or notification verification. |
+| `manual` / `mock` | none | Safe local/manual testing surfaces only. |
+
+The placeholder names record the shape of future private runtime configuration.
+They do not authorize storing secrets in Git, registering webhooks, or calling a
+provider API.
 
 ## Secret Boundary
 

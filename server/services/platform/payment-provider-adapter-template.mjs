@@ -9,6 +9,7 @@ const SUPPORTED_PROVIDER_IDS = new Set([
   "lemonsqueezy",
   "alipay",
   "wechatpay",
+  "worldfirst",
   "manual",
   "mock"
 ]);
@@ -23,6 +24,10 @@ const PROVIDER_ALIASES = {
   wechatpay: "wechatpay",
   weixin: "wechatpay",
   weixinpay: "wechatpay",
+  worldfirst: "worldfirst",
+  worldfirstpay: "worldfirst",
+  wanlihui: "worldfirst",
+  wf: "worldfirst",
   manual: "manual",
   mock: "mock"
 };
@@ -42,6 +47,11 @@ const PROVIDER_REQUIRED_ENV = Object.freeze({
     "PAYMENT_PROVIDER_API_SECRET",
     "PAYMENT_PROVIDER_CERT_SERIAL",
     "PAYMENT_PROVIDER_PRIVATE_KEY_PATH"
+  ],
+  worldfirst: [
+    "PAYMENT_PROVIDER_CLIENT_ID",
+    "PAYMENT_PROVIDER_PRIVATE_KEY_PATH",
+    "PAYMENT_PROVIDER_PLATFORM_PUBLIC_KEY_PATH"
   ],
   manual: [],
   mock: []
@@ -121,12 +131,14 @@ function isConfiguredSecret(value) {
 function safeConfiguredEnvSummary(env = {}) {
   return {
     apiKeyConfigured: isConfiguredSecret(env.PAYMENT_PROVIDER_API_KEY || env.PAYMENT_API_KEY),
+    clientIdConfigured: isConfiguredSecret(env.PAYMENT_PROVIDER_CLIENT_ID),
     apiSecretConfigured: isConfiguredSecret(env.PAYMENT_PROVIDER_API_SECRET || env.PAYMENT_API_SECRET),
     webhookSecretConfigured: isConfiguredSecret(env.PAYMENT_PROVIDER_WEBHOOK_SECRET || env.PAYMENT_WEBHOOK_SECRET),
     appIdConfigured: isConfiguredSecret(env.PAYMENT_PROVIDER_APP_ID),
     merchantIdConfigured: isConfiguredSecret(env.PAYMENT_PROVIDER_MERCHANT_ID),
     certSerialConfigured: isConfiguredSecret(env.PAYMENT_PROVIDER_CERT_SERIAL),
-    privateKeyPathConfigured: isConfiguredSecret(env.PAYMENT_PROVIDER_PRIVATE_KEY_PATH)
+    privateKeyPathConfigured: isConfiguredSecret(env.PAYMENT_PROVIDER_PRIVATE_KEY_PATH),
+    platformPublicKeyPathConfigured: isConfiguredSecret(env.PAYMENT_PROVIDER_PLATFORM_PUBLIC_KEY_PATH)
   };
 }
 

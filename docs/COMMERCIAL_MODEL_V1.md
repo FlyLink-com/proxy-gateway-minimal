@@ -1,6 +1,6 @@
 # Commercial Model v1
 
-Last updated: 2026-07-11, America/Los_Angeles.
+Last updated: 2026-07-20, America/Los_Angeles.
 
 > Status:
 > - Type: Active commercial-model baseline
@@ -219,5 +219,6 @@ Commercial Model v1 is implemented only when all applicable rules are proven:
 - `docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md`
 - `docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md`
 - `docs/BILLING_RECHARGE_CONTRACT.md`
+- `docs/PAYMENT_PROVIDER_SYSTEM_PLAN.md`
 - `docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md`
 - `docs/CURRENT_RELEASE_STATE.md`

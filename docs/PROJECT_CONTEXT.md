@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-07-15, America/Los_Angeles.
+Last updated: 2026-07-20, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-07-20
   production_authority: false
 ```
 
@@ -171,7 +171,7 @@ Keep one primary implementation lane active:
 | 1 | #437 | Traffic Accounting | Primary lane; reopened by Risk C receipt `issuecomment-4976074286`; Draft #479 remains behind `master`; Gate `pr479-forward-pending-rollback-obligation-remediation-20260715-003` terminated blocked and its approval is consumed |
 | separate | #475 | Operations Foundation | Open source/schema lane; Draft #476 has merge conflicts, is not deployed, and carries no production schema initialization or runtime mutation authority |
 | 2 | #438 | Portal Lifecycle | Queued after traffic semantics stabilize |
-| 3 | #439 | Commercial Foundation | Queued; #472/#474 add source foundations while billing and AppsFlyer remain non-live |
+| 3 | #439 | Commercial Foundation | Queued; #472/#474 add source foundations; the payment-provider system plan records PayPal-first sandbox preparation, WorldFirst readiness, and retired Niuniu boundaries as source-only future work while billing and AppsFlyer remain non-live |
 | 4 | #440 | Code Boundary Cleanup | Opportunistic guardrail only |
 
 Issues #457 and #462 are closed. Real merges proved that Vercel candidates and
@@ -379,6 +379,7 @@ Use these entrypoints:
 - `docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md`: active #437 domain plan
 - `docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md`: queued #438 domain plan
 - `docs/BILLING_RECHARGE_CONTRACT.md`: queued #439 foundation
+- `docs/PAYMENT_PROVIDER_SYSTEM_PLAN.md`: payment-provider inventory and PayPal/WorldFirst source-only plan
 - `docs/PROJECT_SIMPLIFICATION_MAP.md`: cleanup and non-goal map
 - `docs/production-replacement-records/`: production execution evidence
 - `docs/archive/`: superseded plans and historical context
