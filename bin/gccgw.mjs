@@ -273,8 +273,14 @@ function renderEnvSkeleton({ configurePlan, importPlan }) {
   }
   skeleton.push("CONSOLE_TOKEN=__SET_ON_HOST__");
   skeleton.push("SS_PASSWORD=__SET_ON_HOST__");
+  skeleton.push("USER_PORTAL_PAYMENT_CHECKOUT_ENABLED=");
   skeleton.push("PAYMENT_PROVIDER=");
   skeleton.push("PAYMENT_MODE=");
+  skeleton.push("PAYMENT_PROVIDER_CURRENCY=");
+  skeleton.push("PAYMENT_PROVIDER_BRAND_NAME=");
+  skeleton.push("PAYMENT_PLAN_MONTHLY_BASIC_AMOUNT_MINOR=");
+  skeleton.push("PAYMENT_PLAN_MONTHLY_PLUS_AMOUNT_MINOR=");
+  skeleton.push("PAYMENT_PLAN_YEARLY_AMOUNT_MINOR=");
   skeleton.push("PAYMENT_PROVIDER_API_KEY=");
   skeleton.push("PAYMENT_PROVIDER_API_SECRET=");
   skeleton.push("PAYMENT_PROVIDER_WEBHOOK_SECRET=");

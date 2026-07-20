@@ -26,6 +26,8 @@ import { createPortalRegistrationService } from "./services/platform/portal-regi
 import { createPortalTotpSecretProtector, createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
 import { createPortalAccountAdminAuthService } from "./services/platform/admin-auth.mjs";
+import { createPayPalPaymentAdapter } from "./services/platform/paypal-payment-adapter.mjs";
+import { createPortalPaymentCheckoutService } from "./services/platform/portal-payment-checkout.mjs";
 import { createHysteria2UsageCollector } from "./services/edge/hysteria2-usage-collector.mjs";
 import { createMihomoTuicUsageCollector } from "./services/edge/mihomo-tuic-usage-collector.mjs";
 import { createMihomoExternalControllerUsageSnapshotReader } from "./services/edge/mihomo-external-controller-usage-reader.mjs";
@@ -900,6 +902,7 @@ export function createRuntimeState(options = {}) {
     env
   });
   const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
+  const portalPaymentCheckoutEnabled = envFlag(env.USER_PORTAL_PAYMENT_CHECKOUT_ENABLED);
   const adminAuthRoutesEnabled = envFlag(env.ADMIN_AUTH_ROUTES_ENABLED || env.ADMIN_PROTECTED_ROUTE_AUTH_ENABLED);
   const localProxyControlRoutesEnabled = envFlag(env.LOCAL_PROXY_CONTROL_ROUTES_ENABLED, true);
   const adminAuthPortalAccountId = optionalEnvText(env.ADMIN_AUTH_PORTAL_ACCOUNT_ID);
@@ -1278,6 +1281,28 @@ export function createRuntimeState(options = {}) {
     deferEdgeLifecycle: envFlag(env.EDGE_CREDENTIAL_LIFECYCLE_DEFER_RESPONSE)
   });
   const platformPortalSupportRequests = options.platformPortalSupportRequests || createPortalSupportRequestService();
+  const platformPortalPaymentCheckout = options.platformPortalPaymentCheckout || (() => {
+    if (!userPortalRoutesEnabled || !portalPaymentCheckoutEnabled) {
+      return null;
+    }
+    const provider = optionalEnvText(env.PAYMENT_PROVIDER || "paypal").toLowerCase();
+    if (provider !== "paypal") {
+      throw runtimeValidationError("USER_PORTAL_PAYMENT_CHECKOUT_ENABLED currently supports PAYMENT_PROVIDER=paypal only");
+    }
+    const paymentMode = optionalEnvText(env.PAYMENT_MODE || "sandbox").toLowerCase();
+    if (paymentMode !== "sandbox") {
+      throw runtimeValidationError("live PayPal checkout requires a separate Risk A gate");
+    }
+    return createPortalPaymentCheckoutService({
+      env,
+      providerAdapter: createPayPalPaymentAdapter({
+        env,
+        fetchFn: options.paymentProviderFetchFn,
+        nowFn: options.paymentNowFn || options.userPortalNowFn
+      }),
+      nowFn: options.paymentNowFn || options.userPortalNowFn
+    });
+  })();
   const platformPortalHumanChallenges = options.platformPortalHumanChallenges || (
     userPortalRoutesEnabled ? createPortalHumanChallengeService({
       nowFn: options.userPortalNowFn
@@ -1587,6 +1612,7 @@ export function createRuntimeState(options = {}) {
       portalPasswordCredentialService: platformPortalPasswordCredentialService,
       portalRegistrations: platformPortalRegistrations,
       portalAccessRequests: platformPortalAccessRequests,
+      portalPaymentCheckout: platformPortalPaymentCheckout,
       portalSupportRequests: platformPortalSupportRequests,
       controlStore: platformControlStore,
       edgeCredentialMaterialStore,

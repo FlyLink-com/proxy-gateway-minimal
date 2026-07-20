@@ -68,8 +68,11 @@ mock
 ```
 
 This does not mean any provider is currently live. Real provider integration,
-checkout URL creation, webhook registration, signature verification against a
-provider API, or sandbox/live capture is separate Risk A work.
+webhook registration, production signature verification, live capture, ledger
+storage, or entitlement effects are separate Risk A work. The current source
+tree contains PayPal sandbox Orders/Capture adapter code and disabled
+session-scoped Portal checkout routes; those routes do not write a billing
+ledger and do not issue subscriptions.
 
 Niuniu Pay is intentionally not part of the active provider vocabulary for new
 work. Historical Niuniu material may be used only as deprecated archaeology for
@@ -119,8 +122,9 @@ Recommended next implementation layers:
 2. Define durable top-up and reversal ledger storage in a separate
    schema/migration-gated task.
 3. Prove that top-up cannot reset usage or bypass entitlement validity.
-4. Add one payment provider adapter in sandbox mode only after the primary
-   commercial lifecycle is stable.
+4. Run the PayPal sandbox checkout/capture gate with operator-provided
+   credentials and redacted evidence only.
+5. Add one durable payment ledger before any payment-driven entitlement effect.
 
 Any real payment provider, public payment API, webhook endpoint, production DB
 migration, or automatic issuance remains separate Risk A work.

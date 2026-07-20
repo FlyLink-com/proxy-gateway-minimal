@@ -3593,11 +3593,17 @@
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
 }
 
-.portal-v2-shell .portal-wallet-logo img {
+.portal-v2-shell .portal-wallet-logo img,
+.portal-v2-shell .portal-wallet-logo svg {
   display: block;
   width: 26px;
   height: 26px;
   object-fit: contain;
+}
+
+.portal-v2-shell .portal-wallet-logo svg {
+  color: #0f172a;
+  padding: 4px;
 }
 
 .portal-v2-shell .portal-payment-scan-card .portal-payment-qr-copy {
@@ -3749,6 +3755,17 @@
 .portal-v2-shell .portal-payment-status-actions .portal-secondary-button {
   width: auto;
   min-width: 180px;
+}
+
+.portal-v2-shell .portal-payment-status-actions a.portal-primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  border-radius: 12px;
+  padding: 0 16px;
+  text-decoration: none;
 }
 
 .portal-v2-shell .portal-payment-status-line {

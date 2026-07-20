@@ -380,6 +380,7 @@ Use these entrypoints:
 - `docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md`: queued #438 domain plan
 - `docs/BILLING_RECHARGE_CONTRACT.md`: queued #439 foundation
 - `docs/PAYMENT_PROVIDER_SYSTEM_PLAN.md`: payment-provider inventory and PayPal/WorldFirst source-only plan
+- `docs/PAYPAL_SANDBOX_CHECKOUT_RUNBOOK.md`: disabled-by-default PayPal sandbox checkout env mapping and test boundary
 - `docs/PROJECT_SIMPLIFICATION_MAP.md`: cleanup and non-goal map
 - `docs/production-replacement-records/`: production execution evidence
 - `docs/archive/`: superseded plans and historical context

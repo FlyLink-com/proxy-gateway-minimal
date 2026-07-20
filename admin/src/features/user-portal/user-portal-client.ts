@@ -10,7 +10,7 @@ export const PORTAL_REGISTRATION_SESSION_STORAGE_KEY = "gccwebos-portal-registra
 export type PortalAuthMode = "email" | "authenticator" | "token" | "password" | "passkey";
 export type PortalPlanId = "trial" | "monthly" | "monthly_basic" | "monthly_plus" | "yearly";
 export type PortalClientId = "clash" | "karing";
-export type PortalPaymentChannel = "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
+export type PortalPaymentChannel = "paypal" | "worldfirst" | "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
 export type PortalPaymentOrderStatus =
   | "pending_payment"
   | "payment_amount_mismatch"
@@ -50,6 +50,8 @@ export type PortalPaymentOrder = {
   paymentExpiresAt?: string;
   planId: PortalPlanId;
   planLabel?: string;
+  provider?: string;
+  providerCaptureRef?: string;
   providerOrderRef?: string;
   qrCode?: string;
   status: PortalPaymentOrderStatus;
@@ -74,6 +76,12 @@ export type PortalPaymentOrdersInput = {
   sessionRef?: string;
   plan?: Exclude<PortalPlanId, "trial">;
   status?: PortalPaymentOrderStatus;
+};
+
+export type PortalPaymentCaptureInput = {
+  userRef: string;
+  sessionRef?: string;
+  orderRef: string;
 };
 
 export type PortalPaymentCheckoutResult = {
@@ -448,6 +456,7 @@ export type UserPortalClient = {
   fetchCurrentState(input: { userRef: string; sessionRef?: string }): Promise<PortalUserState>;
   fetchPaymentOrders(input: PortalPaymentOrdersInput): Promise<PortalPaymentOrder[]>;
   createPaymentCheckout(input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult>;
+  capturePaymentCheckout(input: PortalPaymentCaptureInput): Promise<PortalPaymentCheckoutResult>;
   startAuthenticatorEnrollment(input: { userRef: string; sessionRef?: string }): Promise<PortalAuthenticatorEnrollment>;
   confirmAuthenticatorEnrollment(input: {
     userRef: string;
@@ -723,7 +732,7 @@ function amountMinorForPlan(planId: Exclude<PortalPlanId, "trial">) {
 function mapPaymentOrder(record: Record<string, unknown>): PortalPaymentOrder {
   const planId = normalizePaymentPlan(record.plan ?? record.planId);
   const orderRef = requiredText(String(record.orderRef ?? ""), "支付订单无效。");
-  const channel = typeof record.channel === "string" && ["alipay", "wxpay", "qqpay", "bank", "jdpay"].includes(record.channel)
+  const channel = typeof record.channel === "string" && ["paypal", "worldfirst", "alipay", "wxpay", "qqpay", "bank", "jdpay"].includes(record.channel)
     ? record.channel as PortalPaymentChannel
     : undefined;
   return {
@@ -734,6 +743,7 @@ function mapPaymentOrder(record: Record<string, unknown>): PortalPaymentOrder {
     channel,
     currency: String(record.currency ?? "CNY"),
     status: String(record.status ?? "pending_payment"),
+    provider: typeof record.provider === "string" ? record.provider : undefined,
     checkoutUrl: typeof record.checkoutUrl === "string" ? record.checkoutUrl : undefined,
     urlScheme: typeof record.urlScheme === "string" ? record.urlScheme : undefined,
     qrCode: typeof record.qrCode === "string" ? record.qrCode : undefined,
@@ -743,6 +753,7 @@ function mapPaymentOrder(record: Record<string, unknown>): PortalPaymentOrder {
         ? record.checkoutExpiresAt
         : undefined,
     providerOrderRef: typeof record.providerOrderRef === "string" ? record.providerOrderRef : undefined,
+    providerCaptureRef: typeof record.providerCaptureRef === "string" ? record.providerCaptureRef : undefined,
     accessRequestRef: typeof record.accessRequestRef === "string" ? record.accessRequestRef : undefined,
     accessRequestStatus: typeof record.accessRequestStatus === "string" ? record.accessRequestStatus : undefined,
     paidAt: typeof record.paidAt === "string" ? record.paidAt : undefined,
@@ -1377,6 +1388,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       const createdAt = now().toISOString();
       const paymentExpiresAt = new Date(new Date(createdAt).getTime() + 10 * 60 * 1000).toISOString();
       localPaymentSequence += 1;
+      const isProviderHostedPreview = input.channel === "paypal";
       const order: PortalPaymentOrder = {
         orderRef: stableRef("pay", [
           userRef,
@@ -1390,9 +1402,10 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         planLabel: planLabel(planId),
         amountMinor: amountMinorForPlan(planId),
         channel: input.channel,
-        currency: "CNY",
+        currency: isProviderHostedPreview ? "USD" : "CNY",
         status: "pending_payment",
-        checkoutUrl: `https://pay.example.test/${planId}`,
+        provider: isProviderHostedPreview ? "local-preview" : undefined,
+        checkoutUrl: isProviderHostedPreview ? undefined : `https://pay.example.test/${planId}`,
         createdAt,
         paymentExpiresAt,
         safety: {
@@ -1404,6 +1417,32 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       return {
         provider: "local-preview",
         order,
+        safety: {
+          noRawMerchantKey: true,
+          noRawProviderPayload: true,
+          noSubscriptionIssued: true
+        }
+      };
+    },
+
+    async capturePaymentCheckout(input) {
+      const userRef = requiredText(input.userRef, "用户会话无效。");
+      const orderRef = requiredText(input.orderRef, "支付订单无效。");
+      const existing = (paymentOrders.get(userRef) ?? []).find((order) => order.orderRef === orderRef);
+      if (!existing) {
+        throw portalError("支付订单无效。");
+      }
+      const paidAt = now().toISOString();
+      const captured: PortalPaymentOrder = {
+        ...existing,
+        status: "paid_pending_admin_review",
+        paidAt,
+        providerCaptureRef: existing.providerCaptureRef ?? stableRef("capture", `${orderRef}|${paidAt}`)
+      };
+      upsertLocalPaymentOrder(userRef, captured);
+      return {
+        provider: "local-preview",
+        order: captured,
         safety: {
           noRawMerchantKey: true,
           noRawProviderPayload: true,
@@ -2038,7 +2077,28 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
       });
       const checkout = body.checkout ?? {};
       return {
-        provider: String(checkout.provider ?? "niuniu-pay"),
+        provider: String(checkout.provider ?? "paypal"),
+        order: mapPaymentOrder(checkout.order ?? {}),
+        safety: {
+          noRawMerchantKey: true,
+          noRawProviderPayload: true,
+          noSubscriptionIssued: true
+        }
+      };
+    },
+
+    async capturePaymentCheckout(input) {
+      requiredText(input.userRef, "用户会话无效。");
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/payments/capture"), {
+        method: "POST",
+        headers: portalSessionHeaders(input.sessionRef),
+        body: JSON.stringify({
+          orderRef: requiredText(input.orderRef, "支付订单无效。")
+        })
+      });
+      const checkout = body.checkout ?? {};
+      return {
+        provider: String(checkout.provider ?? "paypal"),
         order: mapPaymentOrder(checkout.order ?? {}),
         safety: {
           noRawMerchantKey: true,

@@ -10,9 +10,10 @@ later activate or renew a time-bounded entitlement, or fund an explicitly
 approved top-up extension. They must not issue runtime credentials directly or
 silently switch the primary product to a prepaid wallet model.
 
-It does **not** activate payment, checkout, capture, webhook registration,
-webhook verification against a live provider, billing ledger storage,
-production database migration, subscription issuance, or runtime mutation.
+It does **not** activate live payment, webhook registration, billing ledger
+storage, production database migration, subscription issuance, or runtime
+mutation. PayPal sandbox checkout/capture source exists separately and is
+disabled by default.
 
 ## Boundary
 
@@ -37,6 +38,16 @@ This template only defines the seam between `payment provider` and the existing
   - exposes fail-closed operation stubs for checkout, capture, and webhook
     verification;
   - normalizes already-verified provider events into billing events.
+- `server/services/platform/paypal-payment-adapter.mjs`
+  - implements PayPal REST OAuth, Orders v2 create, Orders v2 capture, and
+    verify-webhook-signature calls for sandbox testing;
+  - uses `PayPal-Request-Id` for provider-side request idempotency;
+  - returns only safe checkout/capture/event summaries and never exposes the
+    client secret, webhook id, access token, or raw provider payload.
+- `server/services/platform/portal-payment-checkout.mjs`
+  - creates account-scoped PayPal checkout orders from env-backed plan amounts;
+  - keeps source-only in-memory order state for sandbox proof;
+  - capture moves an order to `paid_pending_admin_review` only.
 - `.env.payment.example`
   - placeholder-only environment template;
   - no real API token, AK, SK, private key, webhook secret, merchant account,
@@ -70,7 +81,7 @@ provider vocabulary.
 
 | Provider | Placeholder env names | Current status |
 | --- | --- | --- |
-| `paypal` | `PAYMENT_PROVIDER_API_KEY`, `PAYMENT_PROVIDER_API_SECRET`, `PAYMENT_PROVIDER_WEBHOOK_SECRET` | Vocabulary only; no live checkout, capture, or webhook. |
+| `paypal` | `PAYMENT_PROVIDER_API_KEY`, `PAYMENT_PROVIDER_API_SECRET`, `PAYMENT_PROVIDER_WEBHOOK_SECRET`, `PAYMENT_PROVIDER_CURRENCY`, `PAYMENT_PLAN_*_AMOUNT_MINOR`, `USER_PORTAL_PAYMENT_CHECKOUT_ENABLED` | Sandbox Orders/Capture adapter and disabled Portal checkout route exist; no live checkout, webhook HTTP endpoint, ledger, refund flow, or entitlement effect. |
 | `worldfirst` | `PAYMENT_PROVIDER_CLIENT_ID`, `PAYMENT_PROVIDER_PRIVATE_KEY_PATH`, `PAYMENT_PROVIDER_PLATFORM_PUBLIC_KEY_PATH` | Vocabulary only; no API calls, signing, or notification verification. |
 | `manual` / `mock` | none | Safe local/manual testing surfaces only. |
 
@@ -96,8 +107,8 @@ must not return or log the value.
 
 ## Future Adapter Contract
 
-A real provider adapter must implement these operations behind a separate Risk A
-gate:
+A real provider adapter implements these operations behind the applicable
+source and external-provider gates:
 
 ```text
 createRechargeOrder()
@@ -106,15 +117,17 @@ verifyWebhook()
 normalizeVerifiedPaymentEvent()
 ```
 
-Only `normalizeVerifiedPaymentEvent()` exists today as a safe repo-local
-contract helper. The first three operations remain explicit fail-closed stubs
-until a provider is selected and approved.
+The generic template remains fail-closed for providers without a specific
+adapter. The PayPal adapter implements the operations above for sandbox source
+testing, but runtime state refuses PayPal `live` mode until a separate Risk A
+gate approves protected credentials, provider dashboard setup, validation, and
+rollback.
 
 ## Risk Gates
 
 Separate approval is required for:
 
-- adding a public checkout endpoint;
+- enabling the disabled Portal checkout route against a real sandbox provider;
 - registering a provider webhook;
 - storing provider order/payment rows;
 - adding a billing ledger schema or migration;
@@ -124,9 +137,10 @@ Separate approval is required for:
 
 ## Recommended Next Steps
 
-1. Keep PRs provider-neutral until the collection/MoR provider is selected.
-2. Add durable billing ledger storage in a schema-gated task.
-3. Add one sandbox provider adapter only after the provider's allowed-use policy
-   is reviewed.
-4. Keep subscription issuance behind the existing controlled operator gate until
+1. Run a PayPal sandbox gate with operator-provided REST app credentials and
+   redacted evidence only.
+2. Add a PayPal webhook HTTP endpoint only with replay/idempotency tests.
+3. Add durable billing ledger storage in a schema-gated task.
+4. Implement WorldFirst only after the exact account/API product is confirmed.
+5. Keep subscription issuance behind the existing controlled operator gate until
    payment, abuse, quota, and revocation paths are proven.

@@ -182,7 +182,7 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
     })),
     fetchPaymentOrders: vi.fn(async (): Promise<PortalPaymentOrder[]> => []),
     createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-      provider: "niuniu-pay",
+      provider: "paypal",
       order: {
         orderRef: `pay_${input.planId}`,
         planId: input.planId,
@@ -197,11 +197,41 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
             ? 3000
             : 2000,
         channel: input.channel,
-        currency: "CNY",
+        currency: input.channel === "paypal" ? "USD" : "CNY",
         status: "pending_payment",
-        checkoutUrl: `https://pay.example.test/${input.planId}`,
+        checkoutUrl: input.channel === "paypal"
+          ? `https://www.sandbox.paypal.com/checkoutnow?token=${input.planId}`
+          : `https://pay.example.test/${input.planId}`,
+        provider: input.channel === "paypal" ? "paypal" : undefined,
+        providerOrderRef: input.channel === "paypal" ? `PAYPAL_${input.planId}` : undefined,
         createdAt: "2026-05-31T00:00:00.000Z",
         paymentExpiresAt: "2099-01-01T00:00:00.000Z",
+        safety: {
+          noRawMerchantKey: true,
+          noRawProviderPayload: true
+        }
+      },
+      safety: {
+        noRawMerchantKey: true,
+        noRawProviderPayload: true,
+        noSubscriptionIssued: true
+      }
+    })),
+    capturePaymentCheckout: vi.fn(async (input: { userRef: string; orderRef: string }): Promise<PortalPaymentCheckoutResult> => ({
+      provider: "paypal",
+      order: {
+        orderRef: input.orderRef,
+        planId: "monthly_basic",
+        amountMinor: 2000,
+        channel: "paypal",
+        currency: "USD",
+        status: "paid_pending_admin_review",
+        provider: "paypal",
+        providerOrderRef: "PAYPAL_monthly_basic",
+        providerCaptureRef: "PAYPAL_CAPTURE_monthly_basic",
+        checkoutUrl: "https://www.sandbox.paypal.com/checkoutnow?token=monthly_basic",
+        paidAt: "2026-05-31T00:05:00.000Z",
+        createdAt: "2026-05-31T00:00:00.000Z",
         safety: {
           noRawMerchantKey: true,
           noRawProviderPayload: true
@@ -528,7 +558,7 @@ function openNewOrderForm() {
   fireEvent.click(screen.getAllByRole("button", { name: "购买套餐" })[0]);
 }
 
-function continueFromCashier(paymentMethod = "支付宝") {
+function continueFromCashier(paymentMethod = "PayPal") {
   const cashierDialog = screen.getByRole("dialog", { name: "选择支付方式" });
   fireEvent.click(within(cashierDialog).getByRole("button", { name: paymentMethod }));
   fireEvent.click(within(cashierDialog).getByRole("button", { name: "继续支付" }));
@@ -1522,22 +1552,23 @@ describe("user portal product surface", () => {
       expect(JSON.parse(String(init?.body))).toEqual({
         plan: "monthly_plus",
         clientTarget: "clash",
-        channel: "wxpay",
+        channel: "paypal",
         device: "mobile"
       });
       return new Response(JSON.stringify({
         checkout: {
-          provider: "niuniu-pay",
+          provider: "paypal",
           order: {
             orderRef: "pay_http_001",
             plan: "monthly_plus",
             planLabel: "monthly plus",
             amountMinor: 3000,
-            currency: "CNY",
+            currency: "USD",
+            channel: "paypal",
             status: "pending_payment",
-            checkoutUrl: "https://pay.example.test/pay_http_001",
-            urlScheme: "weixin://pay/pay_http_001",
-            qrCode: "wxpay_qr_payload_safe",
+            provider: "paypal",
+            providerOrderRef: "PAYPAL_HTTP_001",
+            checkoutUrl: "https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL_HTTP_001",
             createdAt: "2026-07-02T10:00:00.000Z"
           },
           safety: {
@@ -1555,7 +1586,7 @@ describe("user portal product surface", () => {
       sessionRef: "portal_session_http_1",
       planId: "monthly_plus",
       clientTarget: "clash",
-      channel: "wxpay",
+      channel: "paypal",
       device: "mobile"
     });
 
@@ -1563,12 +1594,67 @@ describe("user portal product surface", () => {
       orderRef: "pay_http_001",
       planId: "monthly_plus",
       amountMinor: 3000,
+      channel: "paypal",
       status: "pending_payment",
-      checkoutUrl: "https://pay.example.test/pay_http_001",
-      urlScheme: "weixin://pay/pay_http_001",
-      qrCode: "wxpay_qr_payload_safe"
+      provider: "paypal",
+      providerOrderRef: "PAYPAL_HTTP_001",
+      checkoutUrl: "https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL_HTTP_001"
     });
-    expect(JSON.stringify(checkout)).not.toMatch(/merchantSecret|apiKey|token=|rawPayload/i);
+    expect(JSON.stringify(checkout)).not.toMatch(/merchantSecret|apiKey|rawPayload/i);
+  });
+
+  test("http portal client captures a PayPal-hosted payment order through the backend", async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("/api/portal/payments/capture");
+      expect(init?.method).toBe("POST");
+      expect(init?.headers).toMatchObject({
+        "X-Portal-Session": "portal_session_http_1"
+      });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        orderRef: "pay_http_paypal_001"
+      });
+      return new Response(JSON.stringify({
+        checkout: {
+          provider: "paypal",
+          order: {
+            orderRef: "pay_http_paypal_001",
+            plan: "monthly_basic",
+            planLabel: "monthly basic",
+            amountMinor: 2000,
+            currency: "USD",
+            channel: "paypal",
+            status: "paid_pending_admin_review",
+            providerOrderRef: "PAYPAL_ORDER_001",
+            providerCaptureRef: "PAYPAL_CAPTURE_001",
+            checkoutUrl: "https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL_ORDER_001",
+            createdAt: "2026-07-20T09:00:00.000Z",
+            paidAt: "2026-07-20T09:05:00.000Z"
+          },
+          safety: {
+            noRawMerchantKey: true,
+            noRawProviderPayload: true,
+            noSubscriptionIssued: true
+          }
+        }
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const client = createHttpUserPortalClient({ fetchFn });
+
+    const checkout = await client.capturePaymentCheckout({
+      userRef: "user_safe_ref",
+      sessionRef: "portal_session_http_1",
+      orderRef: "pay_http_paypal_001"
+    });
+
+    expect(checkout.provider).toBe("paypal");
+    expect(checkout.order).toMatchObject({
+      orderRef: "pay_http_paypal_001",
+      channel: "paypal",
+      status: "paid_pending_admin_review",
+      providerOrderRef: "PAYPAL_ORDER_001",
+      providerCaptureRef: "PAYPAL_CAPTURE_001"
+    });
+    expect(JSON.stringify(checkout)).not.toMatch(/merchantSecret|apiKey|access-token|rawPayload/i);
   });
 
   test("http portal client lists session-scoped payment orders", async () => {
@@ -2019,7 +2105,7 @@ describe("user portal product surface", () => {
     openNewOrderForm();
     fireEvent.click(screen.getByRole("button", { name: /选择年度套餐/ }));
     expect(screen.getByRole("dialog", { name: "选择支付方式" })).not.toBeNull();
-    continueFromCashier("微信支付");
+    continueFromCashier();
 
     expect((await screen.findAllByText("待付款")).length).toBeGreaterThan(0);
     expect(client.createPaymentCheckout).toHaveBeenCalledWith(
@@ -2027,13 +2113,13 @@ describe("user portal product surface", () => {
         userRef: "user_safe_ref",
         planId: "yearly",
         clientTarget: "clash",
-        channel: "wxpay"
+        channel: "paypal"
       })
     );
     expect(client.applyForSubscription).not.toHaveBeenCalled();
     expect(screen.queryByText("https://sub.example.test/import/visible-once")).toBeNull();
     expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "PayPal 托管付款" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "订单摘要" })).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "支持的支付方式" })).toBeNull();
     expect(screen.getByText("支付至")).not.toBeNull();
@@ -2049,32 +2135,68 @@ describe("user portal product surface", () => {
     expect(screen.queryByRole("button", { name: "切换支付方式" })).toBeNull();
     expect(screen.queryByText("等待付款确认...")).toBeNull();
     expect(screen.queryByText("继续支付即表示你同意服务条款和隐私政策。")).toBeNull();
-    expect(screen.getAllByText("微信支付").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("PayPal").length).toBeGreaterThan(0);
     expect(screen.queryByText("支付宝")).toBeNull();
-    expect(screen.getByText("请使用微信扫码付款。")).not.toBeNull();
+    expect(screen.getByText("使用 PayPal 托管付款页面完成付款，返回后在本页检查订单状态。")).not.toBeNull();
     expect(screen.queryByText("二维码仅限本订单使用。")).toBeNull();
     expect(screen.queryByText("聚合扫码支付")).toBeNull();
     expect(screen.queryByText(/以后端回调|后台回调|系统会按套餐周期/)).toBeNull();
     expect(screen.queryByRole("button", { name: "打开支付平台" })).toBeNull();
     expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
+    expect(screen.getByRole("link", { name: "打开 PayPal 付款" })).not.toBeNull();
     fireEvent.click(screen.getAllByRole("button", { name: "返回个人与安全" })[0]);
     expect(screen.getByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
     expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
     expect(screen.getByText("邮箱：user_safe_ref")).not.toBeNull();
   });
 
-  test("does not render a fake WeChat QR code from a hosted checkout URL", async () => {
+  test("uses PayPal hosted checkout as the default payment flow", async () => {
+    const client = portalClient();
+    render(createElement(UserPortalPage, { portalClient: client, paymentRedirect: vi.fn() }));
+
+    await enterPortal();
+    openNewOrderForm();
+    fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
+
+    const cashierDialog = screen.getByRole("dialog", { name: "选择支付方式" });
+    expect(within(cashierDialog).getByRole("button", { name: "PayPal" })).not.toBeNull();
+    expect(within(cashierDialog).queryByRole("button", { name: "支付宝" })).toBeNull();
+    expect(within(cashierDialog).queryByRole("button", { name: "微信支付" })).toBeNull();
+    fireEvent.click(within(cashierDialog).getByRole("button", { name: "继续支付" }));
+
+    await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userRef: "user_safe_ref",
+        planId: "monthly_basic",
+        clientTarget: "clash",
+        channel: "paypal",
+        device: "pc"
+      })
+    ));
+    expect(await screen.findByRole("heading", { name: "PayPal 托管付款" })).not.toBeNull();
+    expect(screen.getByRole("link", { name: "打开 PayPal 付款" }).getAttribute("href")).toBe(
+      "https://www.sandbox.paypal.com/checkoutnow?token=monthly_basic"
+    );
+    expect(screen.getByRole("button", { name: "我已完成付款，检查状态" })).not.toBeNull();
+    expect(screen.queryByAltText("PayPal二维码")).toBeNull();
+    expect(screen.queryByText("支付宝")).toBeNull();
+    expect(screen.queryByText("微信支付")).toBeNull();
+  });
+
+  test("does not render a fake PayPal QR code from a hosted checkout URL", async () => {
     const client = portalClient({
       createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
+        provider: "paypal",
         order: {
-          orderRef: "pay_wx_hosted_only",
+          orderRef: "pay_paypal_hosted_only",
           planId: "monthly_basic",
           amountMinor: 2000,
-          channel: "wxpay",
-          currency: "CNY",
+          channel: "paypal",
+          currency: "USD",
           status: "pending_payment",
-          checkoutUrl: "https://pay.example.test/wxpay/hosted-only",
+          provider: "paypal",
+          providerOrderRef: "PAYPAL_HOSTED_ONLY",
+          checkoutUrl: "https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL_HOSTED_ONLY",
           createdAt: "2026-05-31T00:00:00.000Z",
           paymentExpiresAt: "2099-01-01T00:00:00.000Z",
           safety: {
@@ -2094,27 +2216,30 @@ describe("user portal product surface", () => {
     await enterPortal();
     openNewOrderForm();
     fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-    continueFromCashier("微信支付");
+    continueFromCashier();
 
-    expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
-    expect(screen.queryByAltText("微信支付二维码")).toBeNull();
-    expect(screen.getByText("微信支付暂未返回可扫码付款码，请改用支付宝，或在手机端重新提交后跳转微信支付。")).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "PayPal 托管付款" })).not.toBeNull();
+    expect(screen.queryByAltText("PayPal二维码")).toBeNull();
+    expect(screen.getByRole("link", { name: "打开 PayPal 付款" }).getAttribute("href")).toBe(
+      "https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL_HOSTED_ONLY"
+    );
   });
 
   test("uses the mobile default wallet before external checkout", async () => {
     const restoreDevice = installMobilePaymentDevice();
     const client = portalClient({
       createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
+        provider: "paypal",
         order: {
-          orderRef: "pay_mobile_alipay",
+          orderRef: "pay_mobile_paypal",
           planId: input.planId,
           amountMinor: 2000,
           channel: input.channel,
-          currency: "CNY",
+          currency: "USD",
           status: "pending_payment",
-          checkoutUrl: `https://pay.example.test/${input.channel}/monthly_basic`,
-          urlScheme: `${input.channel}://pay/monthly_basic`,
+          provider: "paypal",
+          providerOrderRef: "PAYPAL_MOBILE_DEFAULT",
+          checkoutUrl: "https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL_MOBILE_DEFAULT",
           createdAt: "2026-05-31T00:00:00.000Z",
           safety: {
             noRawMerchantKey: true,
@@ -2135,18 +2260,18 @@ describe("user portal product surface", () => {
       await enterPortal();
       openNewOrderForm();
       fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-      continueFromCashier("微信支付");
+      continueFromCashier();
 
       await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalledWith(
         expect.objectContaining({
           userRef: "user_safe_ref",
           planId: "monthly_basic",
           clientTarget: "clash",
-          channel: "wxpay",
+          channel: "paypal",
           device: "mobile"
         })
       ));
-      await waitFor(() => expect(paymentRedirect).toHaveBeenCalledWith("wxpay://pay/monthly_basic"));
+      await waitFor(() => expect(paymentRedirect).toHaveBeenCalledWith("https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL_MOBILE_DEFAULT"));
     } finally {
       restoreDevice();
     }
@@ -2156,16 +2281,17 @@ describe("user portal product surface", () => {
     const restoreDevice = installMobilePaymentDevice();
     const client = portalClient({
       createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
+        provider: "paypal",
         order: {
-          orderRef: "pay_mobile_scheme",
+          orderRef: "pay_mobile_provider_url",
           planId: input.planId,
           amountMinor: 2000,
           channel: input.channel,
-          currency: "CNY",
+          currency: "USD",
           status: "pending_payment",
-          checkoutUrl: "https://pay.example.test/monthly_basic",
-          urlScheme: "weixin://pay/monthly_basic",
+          provider: "paypal",
+          providerOrderRef: "PAYPAL_MOBILE_URL",
+          checkoutUrl: "https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL_MOBILE_URL",
           createdAt: "2026-05-31T00:00:00.000Z",
           safety: {
             noRawMerchantKey: true,
@@ -2186,11 +2312,11 @@ describe("user portal product surface", () => {
       await enterPortal();
       openNewOrderForm();
       fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-      continueFromCashier("微信支付");
+      continueFromCashier();
 
       await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalled());
       expect(client.createPaymentCheckout).toHaveBeenCalledWith(expect.objectContaining({ device: "mobile" }));
-      await waitFor(() => expect(paymentRedirect).toHaveBeenCalledWith("weixin://pay/monthly_basic"));
+      await waitFor(() => expect(paymentRedirect).toHaveBeenCalledWith("https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL_MOBILE_URL"));
     } finally {
       restoreDevice();
     }
@@ -2199,14 +2325,16 @@ describe("user portal product surface", () => {
   test("falls back to the in-panel payment status when checkout URL is unavailable", async () => {
     const client = portalClient({
       createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
+        provider: "paypal",
         order: {
           orderRef: "pay_without_url",
           planId: input.planId,
           amountMinor: 2000,
           channel: input.channel,
-          currency: "CNY",
+          currency: "USD",
           status: "pending_payment",
+          provider: "paypal",
+          providerOrderRef: "PAYPAL_WITHOUT_URL",
           createdAt: "2026-05-31T00:00:00.000Z",
           safety: {
             noRawMerchantKey: true,
@@ -2230,7 +2358,7 @@ describe("user portal product surface", () => {
 
     await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalled());
     expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "PayPal 托管付款" })).not.toBeNull();
   });
 
   test("purchase form does not expose the registration-only 7 day trial", async () => {
@@ -2268,14 +2396,14 @@ describe("user portal product surface", () => {
         userRef: "user_safe_ref",
         planId: "monthly_plus",
         clientTarget: "clash",
-        channel: "alipay"
+        channel: "paypal"
       })
     ));
     expect(client.applyForSubscription).not.toHaveBeenCalled();
 
     expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
-    expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
+    expect(await screen.findByRole("heading", { name: "PayPal 托管付款" })).not.toBeNull();
+    expect(screen.getByRole("link", { name: "打开 PayPal 付款" })).not.toBeNull();
     fireEvent.click(screen.getAllByRole("button", { name: "返回个人与安全" })[0]);
 
     expect(screen.getByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
@@ -2295,8 +2423,8 @@ describe("user portal product surface", () => {
 
     await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalled());
     expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
-    expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
+    expect(await screen.findByRole("heading", { name: "PayPal 托管付款" })).not.toBeNull();
+    expect(screen.getByRole("link", { name: "打开 PayPal 付款" })).not.toBeNull();
     fireEvent.click(screen.getAllByRole("button", { name: "返回个人与安全" })[0]);
 
     expect(screen.getByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
@@ -2357,12 +2485,12 @@ describe("user portal product surface", () => {
         userRef: "user_safe_ref",
         planId: "monthly_basic",
         clientTarget: "clash",
-        channel: "alipay"
+        channel: "paypal"
       })
     ));
     expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
-    expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
+    expect(await screen.findByRole("heading", { name: "PayPal 托管付款" })).not.toBeNull();
+    expect(screen.getByRole("link", { name: "打开 PayPal 付款" })).not.toBeNull();
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
@@ -2862,8 +2990,8 @@ describe("user portal product surface", () => {
 
     expect((await screen.findAllByText("待付款")).length).toBeGreaterThan(0);
     expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "扫码支付" })).not.toBeNull();
-    expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "PayPal 托管付款" })).not.toBeNull();
+    expect(screen.queryByRole("link", { name: "打开 PayPal 付款" })).toBeNull();
     expect(screen.queryByText("下一步：开通中")).toBeNull();
     expect(screen.queryByText("授权完成后显示订阅链接")).toBeNull();
     expect(screen.queryByRole("button", { name: "复制" })).toBeNull();

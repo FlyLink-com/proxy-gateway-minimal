@@ -29,6 +29,18 @@ function sendPortalError(res, error) {
     res.status(429).json({ error: "subscription_refresh_rate_limited" });
     return;
   }
+  if (error.code === "payment_provider_checkout_unavailable") {
+    res.status(503).json({ error: "payment_provider_checkout_unavailable" });
+    return;
+  }
+  if (error.code === "payment_order_not_found") {
+    res.status(404).json({ error: "payment_order_not_found" });
+    return;
+  }
+  if (error.code === "payment_provider_capture_failed") {
+    res.status(400).json({ error: "payment_provider_capture_failed" });
+    return;
+  }
   if (error.code === "legal_agreement_required") {
     res.status(400).json({ error: "legal_agreement_required" });
     return;
@@ -65,6 +77,7 @@ export function userPortalRoutes(state, options = {}) {
     || state.platform?.portalRegistrationEmailVerifications;
   const supportRequests = options.portalSupportRequests || state.platform?.portalSupportRequests;
   const humanChallenges = options.portalHumanChallenges || state.platform?.portalHumanChallenges;
+  const paymentCheckout = options.portalPaymentCheckout || state.platform?.portalPaymentCheckout;
 
   function requestContext(req) {
     return {
@@ -119,6 +132,15 @@ export function userPortalRoutes(state, options = {}) {
       ...(req.body ?? {}),
       portalUserRef: session.accountId
     };
+  }
+
+  function requirePaymentCheckout() {
+    if (!paymentCheckout) {
+      const error = new Error("portal payment checkout service is not configured");
+      error.code = "payment_provider_checkout_unavailable";
+      throw error;
+    }
+    return paymentCheckout;
   }
 
   router.post("/api/portal/human-challenges", (req, res) => {
@@ -365,6 +387,57 @@ export function userPortalRoutes(state, options = {}) {
       res.json({
         request: accessRequests.disableSubscription(sessionScopedBody(req))
       });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.get("/api/portal/payments/current", (req, res) => {
+    try {
+      const service = requirePaymentCheckout();
+      const session = requirePortalSession(req);
+      res.json({
+        payments: {
+          provider: service.provider || "paypal",
+          orders: service.listOrders({
+            accountRef: session.accountId,
+            plan: req.query?.plan,
+            status: req.query?.status
+          })
+        }
+      });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.post("/api/portal/payments/checkout", async (req, res) => {
+    try {
+      const service = requirePaymentCheckout();
+      const session = requirePortalSession(req);
+      const checkout = await service.createCheckout({
+        accountRef: session.accountId,
+        plan: req.body?.plan ?? req.body?.planId,
+        clientTarget: req.body?.clientTarget,
+        channel: req.body?.channel,
+        device: req.body?.device,
+        requestContext: requestContext(req)
+      });
+      res.status(201).json({ checkout });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.post("/api/portal/payments/capture", async (req, res) => {
+    try {
+      const service = requirePaymentCheckout();
+      const session = requirePortalSession(req);
+      const checkout = await service.captureCheckout({
+        accountRef: session.accountId,
+        orderRef: req.body?.orderRef
+      });
+      res.json({ checkout });
     } catch (error) {
       sendPortalError(res, error);
     }

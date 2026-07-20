@@ -43,6 +43,9 @@ const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/security/current",
   "/api/portal/security/totp/enrollment",
   "/api/portal/security/totp/enrollment/confirm",
+  "/api/portal/payments/current",
+  "/api/portal/payments/checkout",
+  "/api/portal/payments/capture",
   "/api/portal/support-requests"
 ];
 

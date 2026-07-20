@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Copy,
+  CreditCard,
   Download,
   Eye,
   ExternalLink,
@@ -139,16 +140,15 @@ const clientTargets: Array<{ id: PortalClientId; label: string }> = [
   { id: "karing", label: "Karing" }
 ];
 
-const webDefaultPaymentChannel: PortalPaymentChannel = "alipay";
+const webDefaultPaymentChannel: PortalPaymentChannel = "paypal";
 
 const cashierPaymentChannels: Array<{
-  id: Extract<PortalPaymentChannel, "alipay" | "wxpay">;
+  id: Extract<PortalPaymentChannel, "paypal">;
   labelEn: string;
   labelZh: string;
-  iconSrc: string;
+  icon: LucideIcon;
 }> = [
-  { id: "alipay", labelZh: "支付宝", labelEn: "Alipay", iconSrc: "/payment-alipay-icon.png" },
-  { id: "wxpay", labelZh: "微信支付", labelEn: "WeChat Pay", iconSrc: "/payment-wechat-pay-icon.svg" }
+  { id: "paypal", labelZh: "PayPal", labelEn: "PayPal", icon: CreditCard }
 ];
 
 const orderStatusTabs: Array<{ id: OrderStatusFilter; label: string }> = [
@@ -292,7 +292,7 @@ function paymentDeviceForCurrentBrowser(): "pc" | "mobile" {
 }
 
 function defaultPaymentChannelForCurrentBrowser(): PortalPaymentChannel {
-  return shouldRedirectToPaymentProvider() ? "wxpay" : webDefaultPaymentChannel;
+  return webDefaultPaymentChannel;
 }
 
 function paymentRedirectUrl(order: PortalPaymentOrder) {
@@ -300,6 +300,7 @@ function paymentRedirectUrl(order: PortalPaymentOrder) {
 }
 
 function paymentQrPayload(order: PortalPaymentOrder) {
+  if (order.channel === "paypal") return "";
   if (order.qrCode) return order.qrCode;
   if (order.channel === "wxpay") return "";
   return order.checkoutUrl || "";
@@ -574,7 +575,8 @@ function paymentOrderNumber(orderRef: string) {
 
 function paymentAmountLabel(order: PortalPaymentOrder) {
   const amount = Number.isFinite(order.amountMinor) ? order.amountMinor / 100 : 0;
-  return `¥${amount.toFixed(2)}`;
+  const currency = String(order.currency || "USD").trim().toUpperCase();
+  return `${currency} ${amount.toFixed(2)}`;
 }
 
 function paymentOrderStatusClass(status: PortalPaymentOrder["status"]): PortalOrderRow["status"] {
@@ -617,6 +619,10 @@ function paymentFlowStep(order: PortalPaymentOrder): PaymentFlowStep {
 
 function paymentChannelLabel(order: PortalPaymentOrder, locale: PortalAuthLocale = "zh") {
   switch (order.channel) {
+    case "paypal":
+      return "PayPal";
+    case "worldfirst":
+      return uiText(locale, "万里汇", "WorldFirst");
     case "alipay":
       return uiText(locale, "支付宝", "Alipay");
     case "qqpay":
@@ -636,6 +642,13 @@ function paymentDisplayMethodLabel(order: PortalPaymentOrder, locale: PortalAuth
 }
 
 function paymentScanInstruction(order: PortalPaymentOrder, locale: PortalAuthLocale, isMobilePayment: boolean) {
+  if (order.channel === "paypal") {
+    return uiText(
+      locale,
+      "使用 PayPal 托管付款页面完成付款，返回后在本页检查订单状态。",
+      "Complete payment on PayPal's hosted page, then return here to check the order status."
+    );
+  }
   if (isMobilePayment) {
     return uiText(locale, "提交后会进入所选支付平台；如未自动打开，可点击继续支付。", "Continue in the selected wallet. If it does not open automatically, tap Continue payment.");
   }
@@ -652,7 +665,7 @@ function paymentFlowTitle(step: PaymentFlowStep, locale: PortalAuthLocale) {
   if (step === "success") return uiText(locale, "支付成功", "Payment successful");
   if (step === "processing") return uiText(locale, "正在核验支付", "Verifying payment");
   if (step === "failed") return uiText(locale, "支付失败", "Payment failed");
-  return uiText(locale, "扫码支付", "Scan to pay");
+  return uiText(locale, "支付确认", "Payment confirmation");
 }
 
 function paymentFlowDescription(step: PaymentFlowStep, locale: PortalAuthLocale) {
@@ -1458,6 +1471,18 @@ export function UserPortalPage({
     setActionError("");
     setPending(true);
     try {
+      let capturedOrder: PortalPaymentOrder | null = null;
+      if (targetOrderRef) {
+        const targetOrder = paymentOrders.find((order) => order.orderRef === targetOrderRef);
+        if (targetOrder?.status === "pending_payment" && targetOrder.providerOrderRef) {
+          const captured = await portalClient.capturePaymentCheckout({
+            userRef: portalSession.userRef,
+            sessionRef: portalSession.sessionRef,
+            orderRef: targetOrderRef
+          });
+          capturedOrder = captured.order;
+        }
+      }
       const refreshedOrders = await portalClient.fetchPaymentOrders({
         userRef: portalSession.userRef,
         sessionRef: portalSession.sessionRef
@@ -1465,6 +1490,7 @@ export function UserPortalPage({
       setPaymentOrders((rows) => {
         const byRef = new Map(rows.map((order) => [order.orderRef, order]));
         for (const order of refreshedOrders) byRef.set(order.orderRef, order);
+        if (capturedOrder) byRef.set(capturedOrder.orderRef, capturedOrder);
         return [...byRef.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
       });
       if (targetOrderRef) {
@@ -2688,7 +2714,7 @@ function SubscriptionManager({
                                   </div>
                                 </div>
                                 <p className="portal-payment-next-step">
-                                  {uiText(locale, "点击“去付款”查看付款二维码；付款完成后会为账户增加可用时间和套餐额度。", "Pay now shows the payment QR code. After payment, account time and plan quota are credited.")}
+                                  {uiText(locale, "点击“去付款”打开支付方付款页面；付款完成后会为账户增加可用时间和套餐额度。", "Pay now opens the payment provider checkout. After payment, account time and plan quota are credited.")}
                                 </p>
                               </div>
                             </td>
@@ -2873,7 +2899,7 @@ function CashierSelectionDialog({
   const methods = cashierPaymentChannels.map((method) => ({
     id: method.id,
     label: uiText(locale, method.labelZh, method.labelEn),
-    iconSrc: method.iconSrc
+    icon: method.icon
   }));
   const amountLabel = plan.priceLabel.replace(/\s+/g, " ");
 
@@ -2913,9 +2939,11 @@ function CashierSelectionDialog({
         </section>
         <section className="portal-cashier-methods" aria-label={uiText(locale, "支付方式", "Payment methods")}>
           <span className="portal-card-label">{uiText(locale, "支付方式", "Payment method")}</span>
-          <h4>{uiText(locale, "选择后生成对应二维码", "Choose a method to generate its code")}</h4>
+          <h4>{uiText(locale, "选择后打开支付方页面", "Choose a method to open the provider checkout")}</h4>
           <div className="portal-cashier-method-list">
-            {methods.map((method) => (
+            {methods.map((method) => {
+              const MethodIcon = method.icon;
+              return (
               <button
                 key={method.id}
                 type="button"
@@ -2926,12 +2954,13 @@ function CashierSelectionDialog({
                 onClick={() => setPaymentChannel(method.id)}
               >
                 <span className="portal-wallet-logo" aria-hidden="true">
-                  <img src={method.iconSrc} alt="" decoding="async" loading="lazy" />
+                  <MethodIcon aria-hidden="true" />
                 </span>
                 <span>{method.label}</span>
                 {paymentChannel === method.id ? <CheckCircle2 aria-hidden="true" /> : null}
               </button>
-            ))}
+              );
+            })}
           </div>
         </section>
       </div>
@@ -2973,6 +3002,7 @@ function PortalPaymentFlow({
   const paymentMethod = paymentDisplayMethodLabel(order, locale, isMobilePayment);
   const paymentScanCopy = paymentScanInstruction(order, locale, isMobilePayment);
   const isCheckout = step === "checkout";
+  const isProviderHostedPayment = order.channel === "paypal";
   const isProcessing = step === "processing";
   const isSuccess = step === "success";
   const isFailed = step === "failed";
@@ -2984,7 +3014,7 @@ function PortalPaymentFlow({
     .map((method) => ({
       id: method.id,
       label: uiText(locale, method.labelZh, method.labelEn),
-      iconSrc: method.iconSrc
+      icon: method.icon
     }));
   const [paymentNowMs, setPaymentNowMs] = useState(() => Date.now());
   const [paymentQrDataUrl, setPaymentQrDataUrl] = useState("");
@@ -2993,7 +3023,7 @@ function PortalPaymentFlow({
   const paymentCodeExpired = isCheckout && paymentRemainingMs <= 0;
   const paymentRemainingLabel = paymentCodeRemainingLabel(paymentRemainingMs, locale);
   const paymentEntryAvailable = hasPaymentEntry(order);
-  const qrPayload = paymentQrPayload(order);
+  const qrPayload = isProviderHostedPayment ? "" : paymentQrPayload(order);
   const scanUnavailableMessage = isCheckout && !paymentCodeExpired
     ? paymentScanUnavailableMessage(order, locale)
     : "";
@@ -3061,15 +3091,17 @@ function PortalPaymentFlow({
         <div className="portal-payment-page-grid">
           <div className="portal-payment-main-panel">
             {isCheckout ? (
-              <article className="portal-payment-scan-card" aria-label={uiText(locale, "支付二维码区域", "Payment QR area")}>
+              <article className="portal-payment-scan-card" aria-label={uiText(locale, "支付方付款区域", "Payment provider area")}>
                 <div className="portal-payment-scan-layout">
                   <div className="portal-payment-qr-copy">
-                    <h3>{uiText(locale, "扫码支付", "Scan to pay")}</h3>
+                    <h3>{isProviderHostedPayment ? uiText(locale, "PayPal 托管付款", "PayPal hosted checkout") : uiText(locale, "扫码支付", "Scan to pay")}</h3>
                     <span>{paymentScanCopy}</span>
                   </div>
                   <div className="portal-payment-qr-column">
                     <div className={cn("portal-payment-qr-frame", !paymentQrDataUrl && "placeholder")}>
-                      {paymentQrDataUrl && !paymentCodeExpired ? (
+                      {isProviderHostedPayment && order.checkoutUrl && !paymentCodeExpired ? (
+                        <ExternalLink aria-hidden="true" />
+                      ) : paymentQrDataUrl && !paymentCodeExpired ? (
                         <img
                           alt={uiText(locale, `${paymentMethod}二维码`, `${paymentMethod} QR code`)}
                           className="portal-payment-qr-image"
@@ -3086,6 +3118,18 @@ function PortalPaymentFlow({
                     {paymentExpiryNotice}
                   </div>
                 </div>
+                {isProviderHostedPayment && order.checkoutUrl && !paymentCodeExpired ? (
+                  <div className="portal-payment-status-actions horizontal">
+                    <a className="portal-primary-button compact" href={order.checkoutUrl} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink aria-hidden="true" />
+                      {uiText(locale, "打开 PayPal 付款", "Open PayPal checkout")}
+                    </a>
+                    <button className="portal-secondary-button" type="button" disabled={pending} onClick={() => void refreshPaymentOrders(order.orderRef)}>
+                      <RefreshCw aria-hidden="true" />
+                      {pending ? uiText(locale, "检查中", "Checking") : uiText(locale, "我已完成付款，检查状态", "I paid, check status")}
+                    </button>
+                  </div>
+                ) : null}
                 {!paymentCodeExpired && !paymentEntryAvailable ? (
                   <div className="alert alert-error">
                     {uiText(locale, "暂时无法打开付款页面，请稍后重新提交订单。", "The payment page is not available yet. Submit the order again later.")}
@@ -3174,14 +3218,17 @@ function PortalPaymentFlow({
                     {uiText(locale, "支付方式", "Payment methods")}
                   </span>
                   <div className="portal-payment-wallet-list" aria-label={uiText(locale, "支持的钱包", "Supported wallets")}>
-                    {supportedPaymentMethods.map((method) => (
+                    {supportedPaymentMethods.map((method) => {
+                      const MethodIcon = method.icon;
+                      return (
                       <span key={method.id}>
                         <span className="portal-wallet-logo" aria-hidden="true">
-                          <img src={method.iconSrc} alt="" decoding="async" loading="lazy" />
+                          <MethodIcon aria-hidden="true" />
                         </span>
                         {method.label}
                       </span>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}
