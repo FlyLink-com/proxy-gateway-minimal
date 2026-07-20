@@ -6,20 +6,20 @@ document_metadata:
   lifecycle: active
   authority_scope: release_state
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-07-20
   production_authority: false
 ```
 
 > Status:
 > - Type: Current documented release snapshot
 > - Version management baseline: `v3` artifact and runtime-identity foundation
-> - Source evidence baseline: `5b61d9d787e2f98e9f834fe05de6dcbb6805cea7` (PR #494)
+> - Source evidence baseline: `9982d378f93dd506c24c137197293f6942dc45ee` (master @ 2026-07-20)
 > - Static artifact baseline: `18807285` (PR #452)
 > - Historical v2 baseline: `4fbe0222` (PR #445)
-> - Updated: 2026-07-15, America/Los_Angeles
-> - Source evidence cutoff: GitHub read-only inventory through `master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7` on 2026-07-15
-> - Production/runtime evidence cutoff: `2026-07-11T13:03:40Z`; the existing validated Issue #437 execution records remain dated evidence
-> - Live verification: no fresh live production or provider inventory was performed by this C-tier reconciliation
+> - Updated: 2026-07-20, America/Los_Angeles
+> - Source evidence cutoff: GitHub read-only inventory through `master@9982d378f93dd506c24c137197293f6942dc45ee` on 2026-07-20
+> - Production/runtime evidence cutoff: `2026-07-20T06:21:00Z`; vultr-japan-control control-plane-app upgraded to master-upgrade-20260720-9982d378
+> - Live verification: Production upgrade validation completed with service stability confirmed
 > - Execution authority: None
 
 Read this file for the latest repository-backed release identity before reading
@@ -28,6 +28,46 @@ before a Risk A action and does not authorize promotion, rollback, runtime
 mutation, credential access, or customer-data access. Newer validated Issue,
 PR, or deployment evidence takes precedence over this dated cutoff until the
 next source-state reconciliation.
+
+## Latest Production Deployment
+
+### Deploy Note: Japan Control Plane Upgrade (2026-07-20)
+
+**Deployment Metadata:**
+- **deployed_at**: 2026-07-20 06:21:00 UTC
+- **release_unit**: control-plane-app
+- **source_commit**: 9982d378f93dd506c24c137197293f6942dc45ee
+- **artifact_or_release**: releases/master-upgrade-20260720-9982d378
+- **target**: vultr-japan-control:/opt/proxy-gateway-minimal-candidate/current
+- **backup**: /opt/proxy-gateway-minimal-candidate/backups/upgrade-20260720-060639/
+- **previous_release**: releases/phase2-control-plane-artifact-alignment-20260710-001
+
+**Validation Results:**
+- Service Status: ✅ active (running), PID 1949527
+- HTTP Console: ✅ 200 OK, "Proxy Gateway Console" title verified
+- Service Ports: ✅ 3456 (Console), 18180 (HTTP Proxy) listening
+- New Modules: ✅ lead-retention-operations.mjs, gate-governance.mjs present
+- Database Schema: ✅ platform_leads table exists (0 records)
+- Database Location: /opt/proxy-gateway-minimal-candidate/shared/state/subscription-control.sqlite (71M)
+- Service Stability: ✅ No crash loops, 2+ minutes uptime post-restart
+
+**Upgrade Scope (72 commits since phase2-control-plane-artifact-alignment-20260710-001):**
+- Japan TUIC repair CI/CD workflow
+- Platform lead retention infrastructure (platform_leads table initialized)
+- Portal auth enhancements (credential lifecycle, refresh cooldown, trial limits)
+- Governance framework (gate-governance.mjs, execution-contract.mjs)
+
+**Execution Notes:**
+- Initial deployment encountered missing config/ files due to incomplete transfer
+- Rollback successfully tested: symlink reverted to old release, service recovered
+- Second deployment succeeded after manual scp of config/*.json
+- Schema migration auto-executed via initializeSchema() on service startup
+- No identity_impact: runtime identity gates unchanged
+
+**Risk Classification:** A-tier
+**Rollback Plan:** Verified functional via Phase 5 test execution
+
+---
 
 ## State Labels
 
