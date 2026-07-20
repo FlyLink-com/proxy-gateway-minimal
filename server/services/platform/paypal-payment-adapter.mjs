@@ -134,7 +134,11 @@ async function parseJsonResponse(response) {
 
 function approveLink(order) {
   const links = Array.isArray(order?.links) ? order.links : [];
-  return optionalText(links.find((link) => link?.rel === "approve")?.href, 500);
+  return optionalText(
+    links.find((link) => link?.rel === "approve")?.href
+    || links.find((link) => link?.rel === "payer-action")?.href,
+    500
+  );
 }
 
 function captureRef(captureBody) {

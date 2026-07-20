@@ -75,7 +75,7 @@ test("PayPal adapter creates provider-hosted checkout orders through Orders v2",
         status: "CREATED",
         links: [
           {
-            rel: "approve",
+            rel: "payer-action",
             href: "https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL_ORDER_001"
           }
         ]
