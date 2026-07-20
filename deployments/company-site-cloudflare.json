@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "1",
+  "releaseUnit": "company-site-static",
+  "provider": "cloudflare",
+  "environment": "cloudflare-production",
+  "deploy": false,
+  "confirmation": "not requested"
+}

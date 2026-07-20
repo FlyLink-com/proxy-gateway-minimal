@@ -23,10 +23,15 @@ on:
       - package.json
       - package-lock.json
       - wrangler.jsonc
+      - deployments/company-site-cloudflare.json
       - .github/workflows/deploy-cloudflare-site.yml
 
 permissions:
   contents: read
+  deployments: write
+  actions: read
+  pull-requests: read
+  issues: write
 
 concurrency:
   group: cloudflare-site-${{ github.ref }}
@@ -36,6 +41,8 @@ jobs:
   validate:
     name: Build and verify public site
     runs-on: ubuntu-latest
+    outputs:
+      manifest_deploy: ${{ steps.deploy-intent.outputs.manifest_deploy }}
 
     steps:
       - name: Checkout
@@ -49,6 +56,13 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             admin/package-lock.json
+
+      - name: Resolve deploy intent
+        id: deploy-intent
+        run: >-
+          node scripts/resolve-cloudflare-deploy-intent.mjs
+          --manifest deployments/company-site-cloudflare.json
+          --github-output "$GITHUB_OUTPUT"
 
       - name: Install root dependencies
         run: npm ci
@@ -75,7 +89,8 @@ jobs:
        inputs.mode == 'deploy' &&
        inputs.confirmation == 'deploy cloudflare site') ||
       (github.event_name == 'push' &&
-       vars.CLOUDFLARE_SITE_AUTO_DEPLOY == 'true')
+       (vars.CLOUDFLARE_SITE_AUTO_DEPLOY == 'true' ||
+        needs.validate.outputs.manifest_deploy == 'true'))
 
     steps:
       - name: Checkout
@@ -102,8 +117,143 @@ jobs:
       - name: Verify public site boundary
         run: npm run cloudflare:site:verify
 
+      - name: Create GitHub deployment
+        id: github-deployment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: "cloudflare-production",
+              description: "Cloudflare company-site-static deployment",
+              auto_merge: false,
+              required_contexts: [],
+              transient_environment: false,
+              production_environment: true,
+              payload: {
+                release_unit: "company-site-static",
+                provider: "cloudflare",
+                workflow_run_id: String(context.runId),
+                workflow_run_attempt: String(process.env.GITHUB_RUN_ATTEMPT)
+              }
+            });
+            core.setOutput("deployment_id", String(deployment.data.id));
+
+      - name: Mark deployment in progress
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: Number("${{ steps.github-deployment.outputs.deployment_id }}"),
+              state: "in_progress",
+              log_url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${context.runId}`,
+              description: "Cloudflare deploy started"
+            });
+
       - name: Deploy with Wrangler
+        id: wrangler-deploy
+        continue-on-error: true
+        shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc
+        run: |
+          set +e
+          started_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "started_at=$started_at" >> "$GITHUB_OUTPUT"
+          npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc
+          exit_code=$?
+          completed_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "completed_at=$completed_at" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit "$exit_code"
+
+      - name: Create deploy receipt
+        if: always() && steps.github-deployment.outputs.deployment_id != '' && steps.wrangler-deploy.outputs.exit_code != ''
+        run: >-
+          node scripts/create-deploy-receipt.mjs
+          --release-unit company-site-static
+          --provider cloudflare
+          --environment cloudflare-production
+          --target cloudflare-workers:proxy-gateway-minimal
+          --source-commit "$GITHUB_SHA"
+          --github-deployment-id "${{ steps.github-deployment.outputs.deployment_id }}"
+          --github-deployment-status "${{ steps.wrangler-deploy.outputs.exit_code == '0' && 'success' || 'failure' }}"
+          --workflow-run-id "$GITHUB_RUN_ID"
+          --workflow-run-attempt "$GITHUB_RUN_ATTEMPT"
+          --workflow-run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          --deploy-started-at "${{ steps.wrangler-deploy.outputs.started_at }}"
+          --deploy-completed-at "${{ steps.wrangler-deploy.outputs.completed_at }}"
+          --wrangler-exit-code "${{ steps.wrangler-deploy.outputs.exit_code }}"
+          --output .deploy-receipts/deploy-receipt.json
+
+      - name: Upload deploy receipt
+        if: always() && steps.github-deployment.outputs.deployment_id != '' && steps.wrangler-deploy.outputs.exit_code != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: cloudflare-company-site-deploy-receipt-${{ github.run_id }}
+          path: .deploy-receipts/deploy-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Mark deployment completed
+        if: always() && steps.github-deployment.outputs.deployment_id != '' && steps.wrangler-deploy.outputs.exit_code != ''
+        uses: actions/github-script@v9
+        env:
+          DEPLOYMENT_STATE: ${{ steps.wrangler-deploy.outputs.exit_code == '0' && 'success' || 'failure' }}
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: Number("${{ steps.github-deployment.outputs.deployment_id }}"),
+              state: process.env.DEPLOYMENT_STATE,
+              log_url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${context.runId}`,
+              description: process.env.DEPLOYMENT_STATE === "success"
+                ? "Cloudflare deploy completed"
+                : "Cloudflare deploy failed; see deploy receipt artifact"
+            });
+
+      - name: Comment deploy receipt on associated PR
+        if: always() && steps.github-deployment.outputs.deployment_id != '' && steps.wrangler-deploy.outputs.exit_code != ''
+        uses: actions/github-script@v9
+        env:
+          DEPLOYMENT_STATE: ${{ steps.wrangler-deploy.outputs.exit_code == '0' && 'success' || 'failure' }}
+        with:
+          script: |
+            const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha
+            });
+            const pull = pulls.data.find((item) => item.merged_at) || pulls.data[0];
+            if (!pull) {
+              core.info("No associated PR found for deploy receipt comment.");
+              return;
+            }
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${context.runId}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pull.number,
+              body: [
+                "### Cloudflare deploy receipt",
+                "",
+                `- release_unit: company-site-static`,
+                `- provider: cloudflare`,
+                `- environment: cloudflare-production`,
+                `- source_commit: ${context.sha}`,
+                `- github_deployment_id: ${{ steps.github-deployment.outputs.deployment_id }}`,
+                `- status: ${process.env.DEPLOYMENT_STATE}`,
+                `- workflow_run: ${runUrl}`,
+                `- artifact: cloudflare-company-site-deploy-receipt-${context.runId}`
+              ].join("\n")
+            });
+
+      - name: Fail job when provider deploy failed
+        if: always() && steps.wrangler-deploy.outputs.exit_code != '' && steps.wrangler-deploy.outputs.exit_code != '0'
+        run: exit "${{ steps.wrangler-deploy.outputs.exit_code }}"

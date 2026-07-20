@@ -149,6 +149,47 @@ test("Release Artifact skips package jobs only for an exact docs-only result and
   assert.doesNotMatch(workflow, /contents: write|deploy|provider|ssh|scp|rsync/);
 });
 
+test("Cloudflare deploy workflow records GitHub deployment status and a portable receipt", () => {
+  const workflow = readRepositoryFile(".github/workflows/deploy-cloudflare-site.yml");
+  const deploy = jobBlock(workflow, "deploy");
+
+  assert.match(workflow, /permissions:\r?\n  contents: read\r?\n  deployments: write\r?\n  actions: read\r?\n  pull-requests: read\r?\n  issues: write/);
+  assert.match(workflow, /deployments\/company-site-cloudflare\.json/);
+  assert.match(workflow, /manifest_deploy: \$\{\{ steps\.deploy-intent\.outputs\.manifest_deploy \}\}/);
+  assert.match(workflow, /node scripts\/resolve-cloudflare-deploy-intent\.mjs/);
+  assert.match(deploy, /environment: cloudflare-production/);
+  assert.match(deploy, /vars\.CLOUDFLARE_SITE_AUTO_DEPLOY == 'true'/);
+  assert.match(deploy, /needs\.validate\.outputs\.manifest_deploy == 'true'/);
+
+  const createDeploymentIndex = deploy.indexOf("- name: Create GitHub deployment");
+  const progressIndex = deploy.indexOf("- name: Mark deployment in progress");
+  const deployIndex = deploy.indexOf("- name: Deploy with Wrangler");
+  const receiptIndex = deploy.indexOf("- name: Create deploy receipt");
+  const uploadIndex = deploy.indexOf("- name: Upload deploy receipt");
+  const statusIndex = deploy.indexOf("- name: Mark deployment completed");
+  const commentIndex = deploy.indexOf("- name: Comment deploy receipt on associated PR");
+
+  assert.ok(createDeploymentIndex >= 0, "deploy job must create a GitHub deployment");
+  assert.ok(progressIndex > createDeploymentIndex, "deploy job must mark the deployment in progress");
+  assert.ok(deployIndex > progressIndex, "Wrangler deploy must happen after in-progress status");
+  assert.ok(receiptIndex > deployIndex, "deploy job must create a receipt after the provider attempt");
+  assert.ok(uploadIndex > receiptIndex, "deploy job must upload the receipt artifact");
+  assert.ok(statusIndex > receiptIndex, "deploy job must update the final deployment status after receipt creation");
+  assert.ok(commentIndex > statusIndex, "deploy job must comment the receipt after final status");
+
+  assert.match(deploy, /github\.rest\.repos\.createDeployment/);
+  assert.match(deploy, /github\.rest\.repos\.createDeploymentStatus/);
+  assert.match(deploy, /node scripts\/create-deploy-receipt\.mjs/);
+  assert.match(deploy, /actions\/upload-artifact@v7/);
+  assert.match(deploy, /deploy-receipt\.json/);
+  assert.match(deploy, /github\.rest\.repos\.listPullRequestsAssociatedWithCommit/);
+  assert.match(deploy, /github\.rest\.issues\.createComment/);
+  assert.match(deploy, /continue-on-error: true/);
+  assert.match(deploy, /steps\.wrangler-deploy\.outputs\.exit_code != '' && steps\.wrangler-deploy\.outputs\.exit_code != '0'/);
+  assert.match(deploy, /exit "\$\{\{ steps\.wrangler-deploy\.outputs\.exit_code \}\}"/);
+  assert.doesNotMatch(deploy, /ssh|scp|rsync|nginx|systemctl|vercel/i);
+});
+
 test("validation baseline documents the fail-closed docs-only lane contract", () => {
   const baseline = readRepositoryFile("docs/VALIDATION_BASELINE.md");
 
