@@ -12,6 +12,10 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 }
 
+function compareOrdinal(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function clone(value) {
   if (Array.isArray(value)) return value.map(clone);
   if (isPlainObject(value)) {
@@ -49,6 +53,20 @@ function requirePositiveCoins(value, reason = 'invalid_amount_coins') {
   return value;
 }
 
+function checkedAddCoins(left, right) {
+  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right)) validation('coins_arithmetic_overflow');
+  const result = left + right;
+  if (!Number.isSafeInteger(result)) validation('coins_arithmetic_overflow');
+  return result;
+}
+
+function checkedSubtractCoins(left, right) {
+  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right)) validation('coins_arithmetic_overflow');
+  const result = left - right;
+  if (!Number.isSafeInteger(result)) validation('coins_arithmetic_overflow');
+  return result;
+}
+
 function requireCanonicalIso(value, reason = 'invalid_timestamp') {
   requireTrimmedString(value, reason);
   const parsed = new Date(value);
@@ -73,27 +91,49 @@ function notFound() {
   throw commerceError('not_found', {});
 }
 
-function requireClosedStructure(value) {
+function closedDataEntries(value, reason) {
+  const ownKeys = Reflect.ownKeys(value);
+  if (ownKeys.some((key) => typeof key === 'symbol')) validation(reason);
+  if (Array.isArray(value)) {
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+    if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value')
+      || lengthDescriptor.value !== value.length || lengthDescriptor.enumerable
+      || lengthDescriptor.configurable || typeof lengthDescriptor.writable !== 'boolean') {
+      validation(reason);
+    }
+    const expectedKeys = new Set(['length', ...Array.from({ length: value.length }, (_, index) => String(index))]);
+    if (ownKeys.length !== expectedKeys.size || ownKeys.some((key) => !expectedKeys.has(key))) validation(reason);
+    return Array.from({ length: value.length }, (_, index) => {
+      const key = String(index);
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) validation(reason);
+      return [key, descriptor.value];
+    });
+  }
+  const entries = [];
+  for (const key of ownKeys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) validation(reason);
+    entries.push([key, descriptor.value]);
+  }
+  return entries;
+}
+
+function requireClosedStructure(value, active = new WeakSet()) {
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return;
   if (typeof value === 'number') {
     if (!Number.isSafeInteger(value)) validation('invalid_closed_value');
     return;
   }
-  if (Array.isArray(value)) {
-    if (Object.getOwnPropertySymbols(value).length > 0) validation('invalid_closed_value');
-    for (let index = 0; index < value.length; index += 1) {
-      if (!Object.hasOwn(value, index)) validation('invalid_closed_value');
-      requireClosedStructure(value[index]);
-    }
-    return;
+  if (!Array.isArray(value) && !isPlainObject(value)) validation('invalid_closed_value');
+  if (active.has(value)) validation('invalid_closed_value');
+  active.add(value);
+  for (const [key, item] of closedDataEntries(value, 'invalid_closed_value')) {
+    if (!Array.isArray(value) && /Ref$/.test(key)) requireTrimmedString(item, 'invalid_ref');
+    if (!Array.isArray(value) && (/At$/.test(key) || key === 'validUntil') && item !== null) requireCanonicalIso(item);
+    requireClosedStructure(item, active);
   }
-  if (!isPlainObject(value)) validation('invalid_closed_value');
-  if (Object.getOwnPropertySymbols(value).length > 0) validation('invalid_closed_value');
-  for (const [key, item] of Object.entries(value)) {
-    if (/Ref$/.test(key)) requireTrimmedString(item, 'invalid_ref');
-    if ((/At$/.test(key) || key === 'validUntil') && item !== null) requireCanonicalIso(item);
-    requireClosedStructure(item);
-  }
+  active.delete(value);
 }
 
 function requireClosedValue(value, path = []) {
@@ -115,7 +155,7 @@ function requireClosedValue(value, path = []) {
   }
 }
 
-function canonicalize(value) {
+function canonicalize(value, active = new WeakSet()) {
   if (value === null || typeof value === 'boolean') return value;
   if (typeof value === 'number') {
     if (!Number.isSafeInteger(value)) validation('invalid_idempotency_value');
@@ -125,18 +165,16 @@ function canonicalize(value) {
     if (value.length === 0) validation('invalid_idempotency_value');
     return value;
   }
-  if (Array.isArray(value)) {
-    if (Object.getOwnPropertySymbols(value).length > 0) validation('invalid_idempotency_value');
-    const result = [];
-    for (let index = 0; index < value.length; index += 1) {
-      if (!Object.hasOwn(value, index)) validation('invalid_idempotency_value');
-      result.push(canonicalize(value[index]));
-    }
-    return result;
-  }
-  if (!isPlainObject(value)) validation('invalid_idempotency_value');
-  if (Object.getOwnPropertySymbols(value).length > 0) validation('invalid_idempotency_value');
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]));
+  if (!Array.isArray(value) && !isPlainObject(value)) validation('invalid_idempotency_value');
+  if (active.has(value)) validation('invalid_idempotency_value');
+  active.add(value);
+  const entries = closedDataEntries(value, 'invalid_idempotency_value');
+  const orderedEntries = Array.isArray(value) ? entries : entries.sort(([left], [right]) => compareOrdinal(left, right));
+  const canonical = Array.isArray(value)
+    ? orderedEntries.map(([, item]) => canonicalize(item, active))
+    : Object.fromEntries(orderedEntries.map(([key, item]) => [key, canonicalize(item, active)]));
+  active.delete(value);
+  return canonical;
 }
 
 export function canonicalCommerceRequestDigest(value) {
@@ -198,7 +236,7 @@ function normalizeTransaction(value, allowedTypes = null) {
   const expectedOrigin = allowedTypes === REFERRAL_TYPES ? 'referral' : null;
   const allocations = value.allocations.map((allocation) => normalizeAllocation(allocation, expectedOrigin));
   const amountCoins = requirePositiveCoins(value.amountCoins);
-  if (allocations.reduce((total, allocation) => total + allocation.amountCoins, 0) !== amountCoins) {
+  if (allocations.reduce((total, allocation) => checkedAddCoins(total, allocation.amountCoins), 0) !== amountCoins) {
     validation('allocation_amount_mismatch');
   }
   if (new Set(allocations.map(({ lotRef }) => lotRef)).size !== allocations.length) validation('duplicate_allocation_lot');
@@ -222,11 +260,11 @@ function sameAllocations(left, right) {
 }
 
 function addAmount(map, lotRef, amount) {
-  map.set(lotRef, (map.get(lotRef) ?? 0) + amount);
+  map.set(lotRef, checkedAddCoins(map.get(lotRef) ?? 0, amount));
 }
 
 function subtractAmount(map, lotRef, amount) {
-  const next = (map.get(lotRef) ?? 0) - amount;
+  const next = checkedSubtractCoins(map.get(lotRef) ?? 0, amount);
   if (next < 0) validation('impossible_transaction_history');
   map.set(lotRef, next);
 }
@@ -288,11 +326,30 @@ export function createInMemoryCoinsCommerceStore({
   const attemptRevisions = new Map();
   const plans = new Map();
   const idempotencyResults = new Map();
+  let eventTimestampWatermark = null;
 
   function appendTransaction(transaction) {
     if (transactionRefs.has(transaction.transactionRef)) validation('duplicate_transaction_ref');
     transactionRefs.add(transaction.transactionRef);
     transactions.push(transaction);
+    if (eventTimestampWatermark === null || transaction.createdAt > eventTimestampWatermark) {
+      eventTimestampWatermark = transaction.createdAt;
+    }
+  }
+
+  function requireAppendTime(candidateTime, relatedCreatedAt = null) {
+    if ((eventTimestampWatermark !== null && candidateTime < eventTimestampWatermark)
+      || (relatedCreatedAt !== null && candidateTime < relatedCreatedAt)) {
+      validation('event_time_before_watermark');
+    }
+  }
+
+  function requireIssuedCapacity(accountRef, issuedCoins) {
+    let existingCoins = 0;
+    for (const coinLot of lots) {
+      if (coinLot.accountRef === accountRef) existingCoins = checkedAddCoins(existingCoins, coinLot.issuedCoins);
+    }
+    checkedAddCoins(existingCoins, issuedCoins);
   }
 
   for (const inputLot of walletLots) {
@@ -300,6 +357,7 @@ export function createInMemoryCoinsCommerceStore({
     if (lotsByRef.has(storedLot.lotRef)) validation('duplicate_lot_ref');
     const transactionRef = `seed_credit:${storedLot.lotRef}`;
     if (transactionRefs.has(transactionRef)) validation('duplicate_transaction_ref');
+    requireIssuedCapacity(storedLot.accountRef, storedLot.issuedCoins);
     lots.push(storedLot);
     lotsByRef.set(storedLot.lotRef, storedLot);
     appendTransaction(snapshot({
@@ -356,16 +414,18 @@ export function createInMemoryCoinsCommerceStore({
     const result = new Map();
     for (const coinLot of lots) {
       if (coinLot.accountRef !== accountRef || coinLot.createdAt > at) continue;
-      const committed = (consumed.get(coinLot.lotRef) ?? 0)
-        + (purchaseFrozen.get(coinLot.lotRef) ?? 0)
-        + (settlementFrozen.get(coinLot.lotRef) ?? 0)
-        + (settled.get(coinLot.lotRef) ?? 0)
-        + (reversed.get(coinLot.lotRef) ?? 0);
+      const committed = [
+        consumed.get(coinLot.lotRef) ?? 0,
+        purchaseFrozen.get(coinLot.lotRef) ?? 0,
+        settlementFrozen.get(coinLot.lotRef) ?? 0,
+        settled.get(coinLot.lotRef) ?? 0,
+        reversed.get(coinLot.lotRef) ?? 0
+      ].reduce(checkedAddCoins, 0);
       if (committed > coinLot.issuedCoins) validation('impossible_transaction_history');
       const expired = coinLot.origin === 'bonus' && coinLot.expiresAt <= at;
       result.set(coinLot.lotRef, {
         lot: coinLot,
-        available: expired ? 0 : coinLot.issuedCoins - committed,
+        available: expired ? 0 : checkedSubtractCoins(coinLot.issuedCoins, committed),
         consumed: consumed.get(coinLot.lotRef) ?? 0,
         purchaseFrozen: purchaseFrozen.get(coinLot.lotRef) ?? 0,
         settlementFrozen: settlementFrozen.get(coinLot.lotRef) ?? 0,
@@ -383,21 +443,26 @@ export function createInMemoryCoinsCommerceStore({
     ));
     candidates.sort((left, right) => {
       if (referralOnly) {
-        return left.lot.createdAt.localeCompare(right.lot.createdAt) || left.lot.lotRef.localeCompare(right.lot.lotRef);
+        return compareOrdinal(left.lot.createdAt, right.lot.createdAt)
+          || compareOrdinal(left.lot.lotRef, right.lot.lotRef);
       }
       const leftOrigin = ORIGINS.indexOf(left.lot.origin);
       const rightOrigin = ORIGINS.indexOf(right.lot.origin);
       if (leftOrigin !== rightOrigin) return leftOrigin - rightOrigin;
       if (left.lot.origin === 'bonus') {
-        return left.lot.expiresAt.localeCompare(right.lot.expiresAt)
-          || left.lot.createdAt.localeCompare(right.lot.createdAt)
-          || left.lot.lotRef.localeCompare(right.lot.lotRef);
+        return compareOrdinal(left.lot.expiresAt, right.lot.expiresAt)
+          || compareOrdinal(left.lot.createdAt, right.lot.createdAt)
+          || compareOrdinal(left.lot.lotRef, right.lot.lotRef);
       }
-      return left.lot.createdAt.localeCompare(right.lot.createdAt) || left.lot.lotRef.localeCompare(right.lot.lotRef);
+      return compareOrdinal(left.lot.createdAt, right.lot.createdAt)
+        || compareOrdinal(left.lot.lotRef, right.lot.lotRef);
     });
-    const availableCoins = candidates.reduce((total, candidate) => total + candidate.available, 0);
+    const availableCoins = candidates.reduce((total, candidate) => checkedAddCoins(total, candidate.available), 0);
     if (availableCoins < amountCoins) {
-      throw commerceError('insufficient_coins', { availableCoins, shortfallCoins: amountCoins - availableCoins });
+      throw commerceError('insufficient_coins', {
+        availableCoins,
+        shortfallCoins: checkedSubtractCoins(amountCoins, availableCoins)
+      });
     }
     const allocations = [];
     let remaining = amountCoins;
@@ -405,7 +470,7 @@ export function createInMemoryCoinsCommerceStore({
       if (remaining === 0) break;
       const allocated = Math.min(remaining, candidate.available);
       allocations.push({ lotRef: candidate.lot.lotRef, origin: candidate.lot.origin, amountCoins: allocated });
-      remaining -= allocated;
+      remaining = checkedSubtractCoins(remaining, allocated);
     }
     return snapshot(allocations);
   }
@@ -461,8 +526,8 @@ export function createInMemoryCoinsCommerceStore({
   }
 
   [...referralEntries]
-    .sort((left, right) => String(left?.createdAt).localeCompare(String(right?.createdAt))
-      || String(left?.transactionRef).localeCompare(String(right?.transactionRef)))
+    .sort((left, right) => compareOrdinal(String(left?.createdAt), String(right?.createdAt))
+      || compareOrdinal(String(left?.transactionRef), String(right?.transactionRef)))
     .forEach(replayReferralEntry);
 
   function listCatalog() {
@@ -483,7 +548,7 @@ export function createInMemoryCoinsCommerceStore({
       .filter((membership) => membership.accountRef === accountRef
         && (membership.validUntil === null || membership.validUntil > at))
       .map((membership) => productVersions.get(membership.productVersionRef))
-      .sort((left, right) => left.productVersionRef.localeCompare(right.productVersionRef)));
+      .sort((left, right) => compareOrdinal(left.productVersionRef, right.productVersionRef)));
   }
 
   function appendCoinLot({ transactionRef, lot }) {
@@ -491,6 +556,8 @@ export function createInMemoryCoinsCommerceStore({
     const storedLot = normalizeLot(lot);
     if (lotsByRef.has(storedLot.lotRef)) validation('duplicate_lot_ref');
     if (transactionRefs.has(transactionRef)) validation('duplicate_transaction_ref');
+    requireAppendTime(storedLot.createdAt);
+    requireIssuedCapacity(storedLot.accountRef, storedLot.issuedCoins);
     const transaction = snapshot({
       transactionRef,
       accountRef: storedLot.accountRef,
@@ -512,14 +579,24 @@ export function createInMemoryCoinsCommerceStore({
     const balances = balancesAt(accountRef, at);
     const byOrigin = Object.fromEntries(ORIGINS.map((origin) => [origin, { availableCoins: 0, frozenCoins: 0 }]));
     for (const balance of balances.values()) {
-      byOrigin[balance.lot.origin].availableCoins += balance.available;
-      byOrigin[balance.lot.origin].frozenCoins += balance.purchaseFrozen + balance.settlementFrozen;
+      byOrigin[balance.lot.origin].availableCoins = checkedAddCoins(
+        byOrigin[balance.lot.origin].availableCoins,
+        balance.available
+      );
+      byOrigin[balance.lot.origin].frozenCoins = checkedAddCoins(
+        byOrigin[balance.lot.origin].frozenCoins,
+        checkedAddCoins(balance.purchaseFrozen, balance.settlementFrozen)
+      );
     }
     return snapshot({
       accountRef,
       at,
-      totalAvailableCoins: ORIGINS.reduce((total, origin) => total + byOrigin[origin].availableCoins, 0),
-      totalFrozenCoins: ORIGINS.reduce((total, origin) => total + byOrigin[origin].frozenCoins, 0),
+      totalAvailableCoins: ORIGINS.reduce(
+        (total, origin) => checkedAddCoins(total, byOrigin[origin].availableCoins), 0
+      ),
+      totalFrozenCoins: ORIGINS.reduce(
+        (total, origin) => checkedAddCoins(total, byOrigin[origin].frozenCoins), 0
+      ),
       byOrigin
     });
   }
@@ -529,8 +606,8 @@ export function createInMemoryCoinsCommerceStore({
     if (!Number.isSafeInteger(limit) || limit <= 0) validation('invalid_transaction_limit');
     return snapshot(transactions
       .filter((transaction) => transaction.accountRef === accountRef)
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)
-        || left.transactionRef.localeCompare(right.transactionRef))
+      .sort((left, right) => compareOrdinal(right.createdAt, left.createdAt)
+        || compareOrdinal(left.transactionRef, right.transactionRef))
       .slice(0, limit));
   }
 
@@ -542,6 +619,7 @@ export function createInMemoryCoinsCommerceStore({
     const transactionRef = `hold:${holdRef}`;
     if (transactionRefs.has(transactionRef)) validation('duplicate_transaction_ref');
     const createdAt = requireNow(nowFn);
+    requireAppendTime(createdAt);
     const allocations = allocate(accountRef, amountCoins, createdAt);
     const hold = snapshot({
       holdRef, accountRef, amountCoins, status: 'held', allocations, createdAt,
@@ -572,6 +650,7 @@ export function createInMemoryCoinsCommerceStore({
     }
     if (transactionRefs.has(transactionRef)) validation('duplicate_transaction_ref');
     const createdAt = requireNow(nowFn);
+    requireAppendTime(createdAt, current.createdAt);
     const next = snapshot({
       ...current,
       status: operation === 'capture' ? 'captured' : 'released',
@@ -601,6 +680,7 @@ export function createInMemoryCoinsCommerceStore({
     const transactionRef = `referral_freeze:${freezeRef}`;
     if (transactionRefs.has(transactionRef)) validation('duplicate_transaction_ref');
     const createdAt = requireNow(nowFn);
+    requireAppendTime(createdAt);
     const allocations = allocate(accountRef, amountCoins, createdAt, true);
     const freezeState = snapshot({
       freezeRef, accountRef, amountCoins, status: 'frozen', allocations, createdAt,
@@ -632,6 +712,7 @@ export function createInMemoryCoinsCommerceStore({
     }
     if (transactionRefs.has(transactionRef)) validation('duplicate_transaction_ref');
     const createdAt = requireNow(nowFn);
+    requireAppendTime(createdAt, current.createdAt);
     const next = snapshot({
       ...current,
       status: operation === 'release' ? 'released' : 'settled',
@@ -661,6 +742,7 @@ export function createInMemoryCoinsCommerceStore({
     const transactionRef = `referral_reversal:${reversalRef}`;
     if (transactionRefs.has(transactionRef)) validation('duplicate_transaction_ref');
     const createdAt = requireNow(nowFn);
+    requireAppendTime(createdAt);
     const allocations = allocate(accountRef, amountCoins, createdAt, true);
     const transaction = snapshot({
       transactionRef, accountRef, type: 'referral_reversal', amountCoins, allocations,
@@ -684,13 +766,13 @@ export function createInMemoryCoinsCommerceStore({
     let reversedCoins = 0;
     for (const balance of balances.values()) {
       if (balance.lot.origin !== 'referral') continue;
-      cumulativeEarnedCoins += balance.lot.issuedCoins;
-      availableCoins += balance.available;
-      internallyConsumedCoins += balance.consumed;
-      purchaseFrozenCoins += balance.purchaseFrozen;
-      frozenForSettlementCoins += balance.settlementFrozen;
-      externallySettledCoins += balance.settled;
-      reversedCoins += balance.reversed;
+      cumulativeEarnedCoins = checkedAddCoins(cumulativeEarnedCoins, balance.lot.issuedCoins);
+      availableCoins = checkedAddCoins(availableCoins, balance.available);
+      internallyConsumedCoins = checkedAddCoins(internallyConsumedCoins, balance.consumed);
+      purchaseFrozenCoins = checkedAddCoins(purchaseFrozenCoins, balance.purchaseFrozen);
+      frozenForSettlementCoins = checkedAddCoins(frozenForSettlementCoins, balance.settlementFrozen);
+      externallySettledCoins = checkedAddCoins(externallySettledCoins, balance.settled);
+      reversedCoins = checkedAddCoins(reversedCoins, balance.reversed);
     }
     return snapshot({
       accountRef,
@@ -698,7 +780,7 @@ export function createInMemoryCoinsCommerceStore({
       cumulativeEarnedCoins,
       availableCoins,
       internallyConsumedCoins,
-      frozenCoins: purchaseFrozenCoins + frozenForSettlementCoins,
+      frozenCoins: checkedAddCoins(purchaseFrozenCoins, frozenForSettlementCoins),
       frozenForSettlementCoins,
       externallySettledCoins,
       reversedCoins
@@ -707,9 +789,9 @@ export function createInMemoryCoinsCommerceStore({
 
   function prepareAggregate(value, requiredFields, reason) {
     requirePlainObject(value, reason);
+    requireClosedValue(value);
     requiredFields.forEach((field) => requireTrimmedString(value[field], `invalid_${field}`));
     requireCanonicalIso(value.createdAt);
-    requireClosedValue(value);
     return snapshot(value);
   }
 
@@ -732,8 +814,8 @@ export function createInMemoryCoinsCommerceStore({
     requireTrimmedString(accountRef, 'invalid_account_ref');
     return snapshot([...orders.values()]
       .filter((order) => order.accountRef === accountRef)
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt)
-        || left.orderRef.localeCompare(right.orderRef)));
+      .sort((left, right) => compareOrdinal(left.createdAt, right.createdAt)
+        || compareOrdinal(left.orderRef, right.orderRef)));
   }
 
   function insertPaymentAttempt(attempt) {
@@ -744,9 +826,13 @@ export function createInMemoryCoinsCommerceStore({
   }
 
   function updatePaymentAttempt(attempt) {
+    requirePlainObject(attempt, 'invalid_payment_attempt');
+    requireClosedValue(attempt);
+    const attemptRef = requireTrimmedString(attempt.attemptRef, 'invalid_attemptRef');
+    const accountRef = requireTrimmedString(attempt.accountRef, 'invalid_accountRef');
+    const revisions = attemptRevisions.get(attemptRef);
+    if (!revisions || revisions.at(-1).accountRef !== accountRef) notFound();
     const stored = prepareAggregate(attempt, ['attemptRef', 'accountRef', 'orderRef', 'providerId'], 'invalid_payment_attempt');
-    const revisions = attemptRevisions.get(stored.attemptRef);
-    if (!revisions) notFound();
     const current = revisions.at(-1);
     for (const field of ['attemptRef', 'accountRef', 'orderRef', 'providerId', 'sourceAttemptRef']) {
       if (current[field] !== stored[field]) validation('payment_attempt_identity_changed');
@@ -769,8 +855,8 @@ export function createInMemoryCoinsCommerceStore({
     if (!Number.isSafeInteger(cursor) || cursor < 0) validation('invalid_attempt_cursor');
     const latest = [...attemptRevisions.values()].map((revisions) => revisions.at(-1))
       .filter((attempt) => status === undefined || attempt.status === status)
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)
-        || left.attemptRef.localeCompare(right.attemptRef));
+      .sort((left, right) => compareOrdinal(right.createdAt, left.createdAt)
+        || compareOrdinal(left.attemptRef, right.attemptRef));
     const items = latest.slice(cursor, cursor + limit);
     const nextCursor = cursor + items.length < latest.length ? cursor + items.length : null;
     return snapshot({ items, nextCursor });

@@ -177,6 +177,127 @@ test('makes holds and releases all-or-nothing with terminal replay and global tr
   assertCommerceError(() => store.appendCoinLot({ transactionRef: 'release-1', lot: lot({ lotRef: 'paid-2', origin: 'paid', issuedCoins: 1 }) }), 'validation_error');
 });
 
+test('rejects backwards-clock second holds without hiding existing allocations or drifting balances', () => {
+  const store = createInMemoryCoinsCommerceStore({
+    nowFn: sequenceNow(T2, T1),
+    walletLots: [lot({ lotRef: 'paid-1', origin: 'paid', issuedCoins: 10 })]
+  });
+  store.createCoinHold({ accountRef: 'acct-1', holdRef: 'hold-first', amountCoins: 6 });
+  const before = store.listWalletTransactions({ accountRef: 'acct-1', limit: 20 });
+  assertCommerceError(() => store.createCoinHold({ accountRef: 'acct-1', holdRef: 'hold-backwards', amountCoins: 4 }), 'validation_error', {
+    reason: 'event_time_before_watermark'
+  });
+  assert.deepEqual(store.listWalletTransactions({ accountRef: 'acct-1', limit: 20 }), before);
+  assert.deepEqual(store.getWalletSummary({ accountRef: 'acct-1', at: T9 }), {
+    accountRef: 'acct-1', at: T9, totalAvailableCoins: 4, totalFrozenCoins: 6,
+    byOrigin: {
+      bonus: { availableCoins: 0, frozenCoins: 0 },
+      paid: { availableCoins: 4, frozenCoins: 6 },
+      referral: { availableCoins: 0, frozenCoins: 0 }
+    }
+  });
+});
+
+test('rejects backwards-clock referral freezes and reversals without state drift', () => {
+  const freezeStore = createInMemoryCoinsCommerceStore({
+    nowFn: sequenceNow(T2, T1),
+    walletLots: [lot({ lotRef: 'ref-1', origin: 'referral', issuedCoins: 10 })]
+  });
+  freezeStore.freezeReferralCoins({ accountRef: 'acct-1', freezeRef: 'freeze-first', amountCoins: 6 });
+  const beforeFreeze = freezeStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 });
+  assertCommerceError(() => freezeStore.freezeReferralCoins({ accountRef: 'acct-1', freezeRef: 'freeze-backwards', amountCoins: 4 }), 'validation_error', {
+    reason: 'event_time_before_watermark'
+  });
+  assert.deepEqual(freezeStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 }), beforeFreeze);
+  assert.equal(freezeStore.getReferralSummary({ accountRef: 'acct-1', at: T9 }).frozenForSettlementCoins, 6);
+
+  const reversalStore = createInMemoryCoinsCommerceStore({
+    nowFn: sequenceNow(T2, T1),
+    walletLots: [lot({ lotRef: 'ref-1', origin: 'referral', issuedCoins: 10 })]
+  });
+  reversalStore.reverseReferralCoins({ accountRef: 'acct-1', reversalRef: 'reversal-first', amountCoins: 6 });
+  const beforeReversal = reversalStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 });
+  assertCommerceError(() => reversalStore.reverseReferralCoins({ accountRef: 'acct-1', reversalRef: 'reversal-backwards', amountCoins: 4 }), 'validation_error', {
+    reason: 'event_time_before_watermark'
+  });
+  assert.deepEqual(reversalStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 }), beforeReversal);
+  assert.equal(reversalStore.getReferralSummary({ accountRef: 'acct-1', at: T9 }).reversedCoins, 6);
+});
+
+test('rejects backwards terminal and credit event times atomically', () => {
+  const holdStore = createInMemoryCoinsCommerceStore({
+    nowFn: sequenceNow(T2, T1),
+    walletLots: [lot({ lotRef: 'paid-1', origin: 'paid', issuedCoins: 10 })]
+  });
+  holdStore.createCoinHold({ accountRef: 'acct-1', holdRef: 'hold-1', amountCoins: 5 });
+  const beforeHoldTerminal = holdStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 });
+  assertCommerceError(() => holdStore.captureCoinHold({ accountRef: 'acct-1', holdRef: 'hold-1', transactionRef: 'capture-backwards' }), 'validation_error', {
+    reason: 'event_time_before_watermark'
+  });
+  assert.deepEqual(holdStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 }), beforeHoldTerminal);
+  assert.equal(holdStore.getWalletSummary({ accountRef: 'acct-1', at: T9 }).totalFrozenCoins, 5);
+
+  const freezeStore = createInMemoryCoinsCommerceStore({
+    nowFn: sequenceNow(T2, T1),
+    walletLots: [lot({ lotRef: 'ref-1', origin: 'referral', issuedCoins: 10 })]
+  });
+  freezeStore.freezeReferralCoins({ accountRef: 'acct-1', freezeRef: 'freeze-1', amountCoins: 5 });
+  const beforeFreezeTerminal = freezeStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 });
+  assertCommerceError(() => freezeStore.settleReferralFreeze({ accountRef: 'acct-1', freezeRef: 'freeze-1', transactionRef: 'settle-backwards' }), 'validation_error', {
+    reason: 'event_time_before_watermark'
+  });
+  assert.deepEqual(freezeStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 }), beforeFreezeTerminal);
+  assert.equal(freezeStore.getReferralSummary({ accountRef: 'acct-1', at: T9 }).frozenForSettlementCoins, 5);
+
+  const creditStore = createInMemoryCoinsCommerceStore({
+    walletLots: [lot({ lotRef: 'paid-newer', origin: 'paid', issuedCoins: 1, createdAt: T2 })]
+  });
+  const beforeCredit = creditStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 });
+  assertCommerceError(() => creditStore.appendCoinLot({
+    transactionRef: 'credit-backwards',
+    lot: lot({ lotRef: 'paid-older', origin: 'paid', issuedCoins: 1, createdAt: T1 })
+  }), 'validation_error', { reason: 'event_time_before_watermark' });
+  assert.deepEqual(creditStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 }), beforeCredit);
+});
+
+test('rejects aggregate Coins overflow while preserving the exact safe-integer boundary', () => {
+  const maximum = Number.MAX_SAFE_INTEGER;
+  assertCommerceError(() => createInMemoryCoinsCommerceStore({
+    walletLots: [
+      lot({ lotRef: 'paid-max', origin: 'paid', issuedCoins: maximum }),
+      lot({ lotRef: 'paid-overflow', origin: 'paid', issuedCoins: 1 })
+    ]
+  }), 'validation_error', { reason: 'coins_arithmetic_overflow' });
+
+  const boundaryStore = createInMemoryCoinsCommerceStore({
+    nowFn: sequenceNow(T1),
+    walletLots: [
+      lot({ lotRef: 'paid-large', origin: 'paid', issuedCoins: maximum - 2 }),
+      lot({ lotRef: 'paid-one', origin: 'paid', issuedCoins: 1 }),
+      lot({ lotRef: 'referral-one', origin: 'referral', issuedCoins: 1 })
+    ]
+  });
+  assert.equal(boundaryStore.getWalletSummary({ accountRef: 'acct-1', at: T1 }).totalAvailableCoins, maximum);
+  boundaryStore.createCoinHold({ accountRef: 'acct-1', holdRef: 'hold-maximum', amountCoins: maximum });
+  assert.equal(boundaryStore.getWalletSummary({ accountRef: 'acct-1', at: T2 }).totalFrozenCoins, maximum);
+  assert.equal(boundaryStore.getReferralSummary({ accountRef: 'acct-1', at: T2 }).frozenCoins, 1);
+
+  const appendStore = createInMemoryCoinsCommerceStore({
+    walletLots: [lot({ lotRef: 'paid-base', origin: 'paid', issuedCoins: maximum - 1 })]
+  });
+  appendStore.appendCoinLot({
+    transactionRef: 'credit-boundary',
+    lot: lot({ lotRef: 'paid-boundary', origin: 'paid', issuedCoins: 1, createdAt: T1 })
+  });
+  const beforeOverflow = appendStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 });
+  assertCommerceError(() => appendStore.appendCoinLot({
+    transactionRef: 'credit-overflow',
+    lot: lot({ lotRef: 'paid-overflow', origin: 'paid', issuedCoins: 1, createdAt: T2 })
+  }), 'validation_error', { reason: 'coins_arithmetic_overflow' });
+  assert.deepEqual(appendStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 }), beforeOverflow);
+  assert.equal(appendStore.getWalletSummary({ accountRef: 'acct-1', at: T2 }).totalAvailableCoins, maximum);
+});
+
 test('partitions referral value across internal consumption, settlement freezes, settlement, and reversal', () => {
   const nowFn = sequenceNow(T1, T2, T3, T3, T3, T4, T5, T5, T6, T7);
   const store = createInMemoryCoinsCommerceStore({
@@ -255,6 +376,79 @@ test('validates and replays referral seed entries in deterministic order and rej
   assertCommerceError(() => createInMemoryCoinsCommerceStore({ walletLots: [referralLot], referralEntries: [{ ...freeze, type: 'capture' }] }), 'validation_error');
 });
 
+test('uses deterministic code-unit ordering for Unicode ref tie-breaks across store projections', () => {
+  const walletStore = createInMemoryCoinsCommerceStore({
+    nowFn: sequenceNow(T1),
+    walletLots: [
+      lot({ lotRef: 'ä-paid', origin: 'paid', issuedCoins: 1 }),
+      lot({ lotRef: 'z-paid', origin: 'paid', issuedCoins: 1 })
+    ]
+  });
+  assert.deepEqual(walletStore.createCoinHold({
+    accountRef: 'acct-1', holdRef: 'unicode-hold', amountCoins: 1
+  }).allocations, [{ lotRef: 'z-paid', origin: 'paid', amountCoins: 1 }]);
+  assert.deepEqual(walletStore.listWalletTransactions({ accountRef: 'acct-1', limit: 10 })
+    .filter(({ type }) => type === 'credit').map(({ relatedRef }) => relatedRef), ['z-paid', 'ä-paid']);
+
+  const referralStore = createInMemoryCoinsCommerceStore({
+    nowFn: sequenceNow(T1),
+    walletLots: [
+      lot({ lotRef: 'ä-referral', origin: 'referral', issuedCoins: 1 }),
+      lot({ lotRef: 'z-referral', origin: 'referral', issuedCoins: 1 })
+    ]
+  });
+  assert.deepEqual(referralStore.freezeReferralCoins({
+    accountRef: 'acct-1', freezeRef: 'unicode-freeze', amountCoins: 1
+  }).allocations, [{ lotRef: 'z-referral', origin: 'referral', amountCoins: 1 }]);
+
+  const baseCatalog = createInMemoryCoinsCommerceStore().listCatalog();
+  const membershipTemplate = baseCatalog.productVersions.find(({ kind }) => kind === 'membership');
+  const unicodeCatalog = {
+    schemaVersion: baseCatalog.schemaVersion,
+    publishedAt: baseCatalog.publishedAt,
+    productVersions: [
+      { ...membershipTemplate, productVersionRef: 'ä-membership' },
+      { ...membershipTemplate, productVersionRef: 'z-membership' }
+    ],
+    offerVersions: [],
+    rechargeOffers: []
+  };
+  const projectionStore = createInMemoryCoinsCommerceStore({
+    catalog: unicodeCatalog,
+    accountMemberships: [
+      { accountRef: 'acct-1', productVersionRef: 'ä-membership', validUntil: null },
+      { accountRef: 'acct-1', productVersionRef: 'z-membership', validUntil: null }
+    ]
+  });
+  assert.deepEqual(projectionStore.getActiveMemberships({ accountRef: 'acct-1', at: T1 })
+    .map(({ productVersionRef }) => productVersionRef), ['z-membership', 'ä-membership']);
+  projectionStore.insertOrder({ orderRef: 'ä-order', accountRef: 'acct-1', createdAt: T1 });
+  projectionStore.insertOrder({ orderRef: 'z-order', accountRef: 'acct-1', createdAt: T1 });
+  assert.deepEqual(projectionStore.listOrdersForAccount({ accountRef: 'acct-1' })
+    .map(({ orderRef }) => orderRef), ['z-order', 'ä-order']);
+  projectionStore.insertPaymentAttempt({
+    attemptRef: 'ä-attempt', accountRef: 'acct-1', orderRef: 'ä-order', providerId: 'provider', createdAt: T1
+  });
+  projectionStore.insertPaymentAttempt({
+    attemptRef: 'z-attempt', accountRef: 'acct-1', orderRef: 'z-order', providerId: 'provider', createdAt: T1
+  });
+  assert.deepEqual(projectionStore.listPaymentAttempts().items.map(({ attemptRef }) => attemptRef), ['z-attempt', 'ä-attempt']);
+
+  const seedFreeze = {
+    transactionRef: 'z-freeze', accountRef: 'acct-1', type: 'referral_freeze', amountCoins: 1,
+    allocations: [{ lotRef: 'ref-seed', origin: 'referral', amountCoins: 1 }], relatedRef: 'unicode-seed', createdAt: T1
+  };
+  const seedRelease = {
+    transactionRef: 'ä-release', accountRef: 'acct-1', type: 'referral_release', amountCoins: 1,
+    allocations: [{ lotRef: 'ref-seed', origin: 'referral', amountCoins: 1 }], relatedRef: 'unicode-seed', createdAt: T1
+  };
+  const replayStore = createInMemoryCoinsCommerceStore({
+    walletLots: [lot({ lotRef: 'ref-seed', origin: 'referral', issuedCoins: 1 })],
+    referralEntries: [seedRelease, seedFreeze]
+  });
+  assert.equal(replayStore.getReferralSummary({ accountRef: 'acct-1', at: T2 }).availableCoins, 1);
+});
+
 test('stores immutable orders, append-only payment attempt revisions, and fulfillment plans', () => {
   const store = createInMemoryCoinsCommerceStore();
   const orderB = { orderRef: 'order-b', accountRef: 'acct-1', createdAt: T2, status: 'pending', quantity: 2 };
@@ -280,6 +474,8 @@ test('stores immutable orders, append-only payment attempt revisions, and fulfil
   assert.equal(updated.status, 'succeeded');
   assert.equal(store.getPaymentAttemptForAccount({ accountRef: 'acct-1', attemptRef: 'attempt-a' }).createdAt, T5);
   assertCommerceError(() => store.getPaymentAttemptForAccount({ accountRef: 'acct-2', attemptRef: 'attempt-a' }), 'not_found', {});
+  assertCommerceError(() => store.updatePaymentAttempt({ ...attemptA, accountRef: 'acct-2', createdAt: T6 }), 'not_found', {});
+  assertCommerceError(() => store.updatePaymentAttempt({ ...attemptA, attemptRef: 'missing-attempt', createdAt: T6 }), 'not_found', {});
   assertCommerceError(() => store.updatePaymentAttempt({ ...attemptA, sourceAttemptRef: 'changed', createdAt: T6 }), 'validation_error');
   assert.deepEqual(store.listPaymentAttempts({ limit: 1 }), { items: [updated], nextCursor: 1 });
   assert.deepEqual(store.listPaymentAttempts({ limit: 1, cursor: 1 }).items.map(({ attemptRef }) => attemptRef), ['attempt-b']);
@@ -345,6 +541,53 @@ test('rejects sparse or symbol-bearing closed values and malformed nested refs o
 
   const catalog = store.listCatalog();
   assertCommerceError(() => createInMemoryCoinsCommerceStore({ catalog: { ...catalog, publishedAt: '2026-01-01' } }), 'validation_error');
+});
+
+test('rejects cyclic, accessor, non-enumerable, and nonstandard array closed values without invoking getters', () => {
+  const cyclic = {};
+  cyclic.self = cyclic;
+  const nonEnumerable = { visible: 1 };
+  Object.defineProperty(nonEnumerable, 'hidden', { value: 2, enumerable: false });
+  let getterCalls = 0;
+  const accessor = {};
+  Object.defineProperty(accessor, 'value', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return 1;
+    }
+  });
+  const extraArray = [1];
+  extraArray.extra = 2;
+  const accessorArray = [1];
+  Object.defineProperty(accessorArray, '0', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return 1;
+    }
+  });
+  const nonEnumerableArray = [1];
+  Object.defineProperty(nonEnumerableArray, '0', { value: 1, enumerable: false });
+  const invalidValues = [cyclic, nonEnumerable, accessor, extraArray, accessorArray, nonEnumerableArray];
+
+  const store = createInMemoryCoinsCommerceStore();
+  invalidValues.forEach((value, index) => {
+    assertCommerceError(() => canonicalCommerceRequestDigest(value), 'validation_error');
+    assertCommerceError(() => store.insertOrder({
+      orderRef: `closed-order-${index}`, accountRef: 'acct-1', createdAt: T1, metadata: value
+    }), 'validation_error');
+  });
+  const rootAccessor = { accountRef: 'acct-1', createdAt: T1 };
+  Object.defineProperty(rootAccessor, 'orderRef', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return 'root-accessor-order';
+    }
+  });
+  assertCommerceError(() => store.insertOrder(rootAccessor), 'validation_error');
+  assert.equal(getterCalls, 0);
 });
 
 test('rejects noncanonical event time and cross-account or malformed wallet requests', () => {
