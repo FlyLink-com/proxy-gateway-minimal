@@ -68,6 +68,19 @@ The initial catalog includes:
 - permanent traffic packs: 30 Coins/100 GB, 60 Coins/300 GB, and
   100 Coins/1000 GB.
 
+The initial recharge catalog exposes fixed paid-Coins denominations of 10, 20,
+30, 50, 100, 200, and 300 Coins. The source-only default attaches no bonus to
+those offers; a future versioned Admin promotion may add bonus Coins without
+changing the paid amount.
+
+Membership pricing rules are part of the catalog calculation rather than the
+provider adapter. The 20-Coin monthly membership prices traffic packs at 95%,
+the 30-Coin monthly membership prices traffic packs at 90%, and the 200-Coin
+annual membership prices GCC WebOS self-operated traffic packs and future
+add-ons at 80%. Recharge offers and membership products are excluded. Discounts
+never stack; the lowest eligible integer price wins. Fractional results round
+down so the charged price never exceeds the displayed discount.
+
 Order items snapshot product version, offer version, Coins price, and grants.
 This slice calculates and displays pricing but does not publish runtime grants.
 
@@ -85,7 +98,9 @@ Lot origins are:
 The read model exposes available and frozen amounts by origin. Paid and
 referral lots do not expire in this slice. Bonus lots carry an expiry timestamp
 and default to 30 days. Consumption order is deterministic and recorded in the
-transaction result.
+transaction result: unexpired bonus lots by earliest expiry, paid lots FIFO,
+then referral lots FIFO. This consumes expiring value first and preserves
+Referral Coins as future settlement evidence when other balances are available.
 
 Product purchase follows `hold -> capture` or `hold -> release`. Tests can seed
 wallet lots through dependency injection; no public or Admin HTTP endpoint can
