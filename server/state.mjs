@@ -961,16 +961,24 @@ export function createRuntimeState(options = {}) {
   );
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
-  const platformCoinsCommerceStore = options.platformCoinsCommerceStore || createInMemoryCoinsCommerceStore({
-    nowFn: options.coinsCommerceNowFn,
-    catalog: options.coinsCommerceCatalog
-  });
-  const platformCoinsCommerceService = options.platformCoinsCommerceService || createCoinsCommerceService({
-    store: platformCoinsCommerceStore,
-    providers: options.coinsCommerceProviders || [],
-    nowFn: options.coinsCommerceNowFn,
-    refFactory: options.coinsCommerceRefFactory
-  });
+  const platformCoinsCommerceStore = options.platformCoinsCommerceStore || (
+    userPortalRoutesEnabled && !options.platformCoinsCommerceService
+      ? createInMemoryCoinsCommerceStore({
+        nowFn: options.coinsCommerceNowFn,
+        catalog: options.coinsCommerceCatalog
+      })
+      : null
+  );
+  const platformCoinsCommerceService = options.platformCoinsCommerceService || (
+    userPortalRoutesEnabled
+      ? createCoinsCommerceService({
+        store: platformCoinsCommerceStore,
+        providers: options.coinsCommerceProviders || [],
+        nowFn: options.coinsCommerceNowFn,
+        refFactory: options.coinsCommerceRefFactory
+      })
+      : null
+  );
   const subscriptionCoreNowFn = dateNowFn(options.subscriptionNowFn || options.userPortalNowFn);
   let edgeCredentialMaterialStore = options.edgeCredentialMaterialStore || null;
   const subscriptionCore = options.subscriptionCore || options.subscriptionService || createSubscriptionCore({

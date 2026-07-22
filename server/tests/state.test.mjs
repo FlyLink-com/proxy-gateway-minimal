@@ -103,6 +103,82 @@ function runtimeEnv(overrides = {}) {
   };
 }
 
+test("Coins commerce is disabled by default and wires only for enabled Portal or explicit injection", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-coins-commerce-state-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  writeFileSync(proxyConfigPath, JSON.stringify({ servers: [], pingHosts: [], nginx: {} }));
+  const injectedService = Object.freeze({ marker: "injected-commerce-service" });
+  const states = [];
+
+  const baseOptions = {
+    rootDir: new URL("../../", import.meta.url),
+    proxyConfigPath,
+    subscriptionCore: {},
+    platformControlStore: {},
+    platformLeadQueue: {},
+    platformAccountShell: {},
+    platformAccessShell: {},
+    platformPortalAccessRequests: {},
+    platformPortalSupportRequests: {},
+    platformTrafficAccounting: {},
+    orderUsageQuotaLifecycleGate: {},
+    autoStartHttpProxy: false
+  };
+
+  try {
+    const disabled = createRuntimeState({
+      ...baseOptions,
+      env: { CONSOLE_TOKEN: "secret" }
+    });
+    states.push(disabled);
+    assert.equal(disabled.platform.userPortalRoutesEnabled, false);
+    assert.equal(disabled.platform.coinsCommerceStore, null);
+    assert.equal(disabled.platform.coinsCommerceService, null);
+
+    const enabled = createRuntimeState({
+      ...baseOptions,
+      env: { CONSOLE_TOKEN: "secret", USER_PORTAL_ROUTES_ENABLED: "true" },
+      platformUserPortalAuth: {},
+      platformPortalHumanChallenges: {},
+      platformPortalRegistrationEmailVerifications: {},
+      platformPortalPasswordCredentialService: {},
+      platformPortalRegistrations: {}
+    });
+    states.push(enabled);
+    assert.equal(enabled.platform.userPortalRoutesEnabled, true);
+    assert.equal(typeof enabled.platform.coinsCommerceStore.getWalletSummary, "function");
+    assert.equal(typeof enabled.platform.coinsCommerceService.getCatalog, "function");
+
+    const injected = createRuntimeState({
+      ...baseOptions,
+      env: { CONSOLE_TOKEN: "secret" },
+      platformCoinsCommerceService: injectedService
+    });
+    states.push(injected);
+    assert.equal(injected.platform.userPortalRoutesEnabled, false);
+    assert.equal(injected.platform.coinsCommerceStore, null);
+    assert.equal(injected.platform.coinsCommerceService, injectedService);
+
+    const enabledInjected = createRuntimeState({
+      ...baseOptions,
+      env: { CONSOLE_TOKEN: "secret", USER_PORTAL_ROUTES_ENABLED: "true" },
+      platformCoinsCommerceService: injectedService,
+      platformUserPortalAuth: {},
+      platformPortalHumanChallenges: {},
+      platformPortalRegistrationEmailVerifications: {},
+      platformPortalPasswordCredentialService: {},
+      platformPortalRegistrations: {}
+    });
+    states.push(enabledInjected);
+    assert.equal(enabledInjected.platform.userPortalRoutesEnabled, true);
+    assert.equal(enabledInjected.platform.coinsCommerceStore, null);
+    assert.equal(enabledInjected.platform.coinsCommerceService, injectedService);
+  } finally {
+    for (const state of states) state.close();
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState exposes expected ports and services", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-state-"));
   let state;
