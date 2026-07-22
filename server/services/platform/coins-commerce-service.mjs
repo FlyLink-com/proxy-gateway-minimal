@@ -27,6 +27,7 @@ const SWITCHABLE = new Map([
   ['confirmed_no_charge', 'confirmed_no_charge'],
   ['provider_insufficient', 'confirmed_no_charge']
 ]);
+const REPLAY_RESULTS = new WeakSet();
 const QUOTE_KEYS = [
   'rechargeOfferRef', 'paidCoins', 'bonusCoins', 'fiatAmountMinor', 'fiatCurrency',
   'rateNumerator', 'rateDenominator', 'rateVersionRef', 'promotionRef'
@@ -106,6 +107,15 @@ function deepFreeze(value) {
 
 function snapshot(value) {
   return deepFreeze(cloneClosed(value));
+}
+
+function markReplayResult(value) {
+  REPLAY_RESULTS.add(value);
+  return value;
+}
+
+export function isCoinsCommerceReplayResult(value) {
+  return value !== null && typeof value === 'object' && REPLAY_RESULTS.has(value);
 }
 
 function exactRecord(value, requiredKeys, optionalKeys = []) {
@@ -384,7 +394,7 @@ export function createCoinsCommerceService(options) {
     const requestDigest = canonicalCommerceRequestDigest({ offerVersionRef });
     const idempotency = idemInput(SCOPES.product, accountRef, idempotencyKey, requestDigest);
     const replay = store.getIdempotencyResult(idempotency);
-    if (replay !== null) return resolveProductResult(accountRef, replay);
+    if (replay !== null) return markReplayResult(resolveProductResult(accountRef, replay));
 
     const createdAt = now();
     const offerVersion = store.getOffer(offerVersionRef);
@@ -562,7 +572,7 @@ export function createCoinsCommerceService(options) {
     const requestDigest = canonicalCommerceRequestDigest({ rechargeOfferRef, preferredProviderId });
     const idempotency = idemInput(SCOPES.recharge, accountRef, idempotencyKey, requestDigest);
     const replay = store.getIdempotencyResult(idempotency);
-    if (replay !== null) return resolvePaymentPointer(accountRef, replay);
+    if (replay !== null) return markReplayResult(resolvePaymentPointer(accountRef, replay));
 
     const createdAt = now();
     const orderRef = nextRef('recharge_order');
@@ -677,7 +687,7 @@ export function createCoinsCommerceService(options) {
     const requestDigest = canonicalCommerceRequestDigest({ sourceAttemptRef: attemptRef, targetProviderId });
     const idempotency = idemInput(SCOPES.switch, accountRef, idempotencyKey, requestDigest);
     const replay = store.getIdempotencyResult(idempotency);
-    if (replay !== null) return resolvePaymentPointer(accountRef, replay);
+    if (replay !== null) return markReplayResult(resolvePaymentPointer(accountRef, replay));
 
     const source = store.getPaymentAttemptForAccount({ accountRef, attemptRef });
     if (source.targetAttemptRef !== null || SWITCHABLE.get(source.status) !== source.chargeCertainty) {

@@ -185,6 +185,41 @@ test("Portal commerce exposes every authenticated endpoint without Console Beare
   }
 });
 
+test("Portal commerce reports a service replay after createApp is rebuilt without a second write", async () => {
+  const { service } = commerceFixture();
+  const state = stateFor(service);
+  const request = {
+    method: "POST",
+    headers: portalHeaders({
+      "Content-Type": "application/json",
+      "Idempotency-Key": "cross-app-product-1"
+    }),
+    body: JSON.stringify({ offerVersionRef: "ov_traffic_pack_permanent_100gb_v1" })
+  };
+
+  const firstApp = await listen(createApp(state));
+  let firstBody;
+  try {
+    const first = await jsonRequest(firstApp.baseUrl, "/api/portal/commerce/orders", request);
+    assert.equal(first.status, 201);
+    firstBody = await first.json();
+  } finally {
+    firstApp.server.close();
+  }
+
+  const rebuiltApp = await listen(createApp(state));
+  try {
+    const replay = await jsonRequest(rebuiltApp.baseUrl, "/api/portal/commerce/orders", request);
+    assert.equal(replay.status, 200);
+    const replayBody = await replay.json();
+    assert.deepEqual(replayBody, firstBody);
+    assert.equal(JSON.stringify(replayBody).includes("replay"), false);
+    assert.equal(service.listOrders({ accountRef: "acct-a" }).length, 1);
+  } finally {
+    rebuiltApp.server.close();
+  }
+});
+
 test("Portal commerce rejects missing sessions and caller-supplied ownership", async () => {
   const { service } = commerceFixture();
   const { server, baseUrl } = await listen(createApp(stateFor(service)));

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { isCoinsCommerceReplayResult } from "../services/platform/coins-commerce-service.mjs";
 
 function sendError(res, error) {
   const code = error?.code;
@@ -23,7 +24,6 @@ export function portalCommerceRoutes(state, options = {}) {
   const router = Router();
   const auth = options.userPortalAuth || state.platform?.userPortalAuth;
   const service = options.platformCoinsCommerceService || state.platform?.coinsCommerceService;
-  const completedWrites = new Set();
 
   function account(req) {
     if (!auth?.requireSession) { const error = new Error("portal auth unavailable"); error.code = "invalid_session"; throw error; }
@@ -41,23 +41,20 @@ export function portalCommerceRoutes(state, options = {}) {
     if (!service || typeof service[method] !== "function") { const error = new Error("commerce unavailable"); error.code = "validation_error"; throw error; }
     return service[method](input);
   }
-  async function write(req, res, { scope, method, input }) {
+  async function write(req, res, { method, input }) {
     const accountRef = account(req);
     const idempotencyKey = requireIdempotency(req);
-    const completedKey = JSON.stringify([scope, accountRef, idempotencyKey]);
-    const replay = completedWrites.has(completedKey);
     const result = await call(method, input({ accountRef, idempotencyKey }));
-    completedWrites.add(completedKey);
-    res.status(replay ? 200 : 201).json(result);
+    res.status(isCoinsCommerceReplayResult(result) ? 200 : 201).json(result);
   }
   const get = (method) => (req, res) => { try { res.json(call(method, { accountRef: account(req) })); } catch (e) { sendError(res, e); } };
   router.get("/api/portal/commerce/wallet", get("getWallet"));
   router.get("/api/portal/commerce/catalog", get("getCatalog"));
   router.get("/api/portal/commerce/orders", get("listOrders"));
   router.get("/api/portal/commerce/referral", get("getReferralSummary"));
-  router.post("/api/portal/commerce/orders", async (req, res) => { try { await write(req, res, { scope: "product", method: "createProductOrder", input: ({ accountRef, idempotencyKey }) => ({ accountRef, offerVersionRef: req.body?.offerVersionRef, idempotencyKey }) }); } catch (e) { sendError(res, e); } });
-  router.post("/api/portal/commerce/recharge-orders", async (req, res) => { try { await write(req, res, { scope: "recharge", method: "createRechargeOrder", input: ({ accountRef, idempotencyKey }) => ({ accountRef, rechargeOfferRef: req.body?.rechargeOfferRef, preferredProviderId: req.body?.preferredProviderId ?? null, idempotencyKey }) }); } catch (e) { sendError(res, e); } });
+  router.post("/api/portal/commerce/orders", async (req, res) => { try { await write(req, res, { method: "createProductOrder", input: ({ accountRef, idempotencyKey }) => ({ accountRef, offerVersionRef: req.body?.offerVersionRef, idempotencyKey }) }); } catch (e) { sendError(res, e); } });
+  router.post("/api/portal/commerce/recharge-orders", async (req, res) => { try { await write(req, res, { method: "createRechargeOrder", input: ({ accountRef, idempotencyKey }) => ({ accountRef, rechargeOfferRef: req.body?.rechargeOfferRef, preferredProviderId: req.body?.preferredProviderId ?? null, idempotencyKey }) }); } catch (e) { sendError(res, e); } });
   router.get("/api/portal/commerce/payment-attempts/:attemptRef", async (req, res) => { try { res.json(await call("getPaymentAttempt", { accountRef: account(req), attemptRef: req.params.attemptRef })); } catch (e) { sendError(res, e); } });
-  router.post("/api/portal/commerce/payment-attempts/:attemptRef/switch", async (req, res) => { try { await write(req, res, { scope: "switch", method: "switchPaymentAttempt", input: ({ accountRef, idempotencyKey }) => ({ accountRef, attemptRef: req.params.attemptRef, targetProviderId: req.body?.targetProviderId, idempotencyKey }) }); } catch (e) { sendError(res, e); } });
+  router.post("/api/portal/commerce/payment-attempts/:attemptRef/switch", async (req, res) => { try { await write(req, res, { method: "switchPaymentAttempt", input: ({ accountRef, idempotencyKey }) => ({ accountRef, attemptRef: req.params.attemptRef, targetProviderId: req.body?.targetProviderId, idempotencyKey }) }); } catch (e) { sendError(res, e); } });
   return router;
 }
