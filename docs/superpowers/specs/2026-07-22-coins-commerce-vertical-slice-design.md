@@ -130,6 +130,11 @@ only a safe `nextAction`:
 The source-only slice uses an injected preview adapter in tests and local
 fixtures. Default application wiring has no live provider capability.
 
+Fiat quote data is issued by a trusted server-side dependency, never accepted
+from Portal input. The immutable quote for a recharge order is reused across
+provider attempts, so automatic or explicit route changes cannot silently
+change fiat amount, currency, rate version, paid Coins, or bonus Coins.
+
 Provider switching rules are enforced by domain code:
 
 - before a charge-capable attempt exists, provider entry failure may select a
@@ -167,6 +172,12 @@ The slice emits an idempotent, inspectable fulfillment plan after a successful
 Coins product order. It does not apply runtime credentials or mutate production
 grants. The plan is the contract later consumed by the Risk A durable
 fulfillment implementation.
+
+The in-memory store supplies a synchronous atomic mutation boundary so the
+source slice cannot leave a partial hold, capture, order, fulfillment plan, or
+idempotency result when local orchestration fails. This is not a claim of
+durable cross-process payment exactly-once behavior; a real provider rollout
+still requires durable payment-operation reservation and recovery under Risk A.
 
 ## Backend Components
 

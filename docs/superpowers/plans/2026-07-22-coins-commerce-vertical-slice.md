@@ -321,12 +321,27 @@ git commit -m "feat(commerce): define preview payment adapter"
 **Files:**
 - Create: `server/services/platform/coins-commerce-service.mjs`
 - Create: `server/tests/platform-coins-commerce-service.test.mjs`
+- Modify: `server/services/platform/coins-commerce-store.mjs`
+- Modify: `server/tests/platform-coins-commerce-store.test.mjs`
 
 **Interface:**
 
 ```js
-createCoinsCommerceService({ store, providers = [], nowFn, refFactory })
+createCoinsCommerceService({
+  store,
+  providers = [],
+  rechargeQuoteIssuer = null,
+  nowFn,
+  refFactory
+})
 ```
+
+`rechargeQuoteIssuer` is a trusted server-side dependency. Portal input never
+supplies fiat amount, rate, bonus, promotion, or quote fields. A provider-enabled
+service requires the issuer; the default empty-provider service does not. One
+immutable quote is locked per recharge order and reused by all automatic or
+explicit provider attempts for that order, so a route change cannot silently
+reprice the order.
 
 Public methods are `getWallet`, `getCatalog`, `listOrders`,
 `createProductOrder`, `createRechargeOrder`, `getPaymentAttempt`,
@@ -340,12 +355,26 @@ hold/capture, one idempotent fulfillment plan, failure release, and replay.
 Insufficient Coins must return `shortfallCoins` with no partial hold, attempt, or
 fulfillment plan.
 
+The current store's separate mutation methods are not an atomic purchase
+boundary. Add a synchronous, non-nestable `runAtomicMutation(operation)` store
+primitive and prove that a throw after every intermediate product-purchase write
+restores all arrays, maps, sets, attempt revisions, and the event-time watermark.
+Promise-returning operations are rejected and rolled back. The service uses this
+boundary for hold, capture, order, fulfillment, and idempotency-result writes.
+
 - [ ] **Step 2: Write failing recharge-separation tests**
 
 Creating a recharge order must never create a product order, credit a wallet,
 or emit a fulfillment plan. With no provider, return a safe unavailable result,
 `attempt: null`, and `nextAction: { type: "none" }`. Returning to an earlier
 product intent must still require a new explicit purchase confirmation.
+
+Before any provider call, atomically persist the immutable recharge order, the
+initial provider-bound attempt, and an idempotency pointer. Replays resolve that
+pointer to the latest attempt and never call the quote issuer or provider again.
+Only a normalized `entry_unavailable/not_charge_capable` result can route to the
+next configured provider. An adapter throw is conservatively recorded as
+`unknown/unknown` and cannot fail over automatically.
 
 - [ ] **Step 3: Write the complete payment-switch matrix tests**
 
@@ -377,6 +406,10 @@ empty provider list. For a successful Coins purchase, capture once and create an
 inspectable fulfillment plan carrying traffic priority/reset policy, but call
 no runtime/grant service.
 
+This in-memory source slice does not claim durable cross-process exactly-once
+payment execution. It does preserve a pre-call attempt/idempotency record inside
+the running process and must never infer that an adapter throw means no charge.
+
 ```powershell
 node --test server/tests/platform-coins-commerce-model.test.mjs server/tests/platform-coins-commerce-store.test.mjs server/tests/platform-coins-commerce-provider-preview.test.mjs server/tests/platform-coins-commerce-service.test.mjs
 ```
@@ -384,7 +417,7 @@ node --test server/tests/platform-coins-commerce-model.test.mjs server/tests/pla
 - [ ] **Step 7: Commit the service slice**
 
 ```powershell
-git add server/services/platform/coins-commerce-service.mjs server/tests/platform-coins-commerce-service.test.mjs
+git add server/services/platform/coins-commerce-service.mjs server/tests/platform-coins-commerce-service.test.mjs server/services/platform/coins-commerce-store.mjs server/tests/platform-coins-commerce-store.test.mjs
 git commit -m "feat(commerce): orchestrate Coins orders and payments"
 ```
 
