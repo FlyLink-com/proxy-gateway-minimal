@@ -125,6 +125,9 @@ const CATALOG = freeze({
     rechargeOfferRef: `rov_paid_${paidCoins}_v1`, version: 1, status: 'published', currency: 'COINS', paidCoins, bonusCoins: 0, publishedAt: PUBLISHED_AT
   }))
 });
+const CANONICAL_MEMBERSHIPS = new Map(CATALOG.productVersions
+  .filter((productVersion) => productVersion.kind === 'membership')
+  .map((productVersion) => [productVersion.productVersionRef, productVersion]));
 
 export function createDefaultCommerceCatalog() {
   return CATALOG;
@@ -167,12 +170,29 @@ function validateOfferVersion(offer, field = 'offerVersion') {
   requireCanonicalIso(offer.publishedAt, field);
 }
 
+function deeplyEqual(left, right) {
+  if (left === right) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((value, index) => deeplyEqual(value, right[index]));
+  }
+  if (!isPlainObject(left) || !isPlainObject(right)) return false;
+  const leftKeys = Object.keys(left);
+  return leftKeys.length === Object.keys(right).length
+    && leftKeys.every((key) => Object.hasOwn(right, key) && deeplyEqual(left[key], right[key]));
+}
+
+function validateCanonicalActiveMembership(membership) {
+  validateProductVersion(membership, 'activeMembership');
+  const canonical = CANONICAL_MEMBERSHIPS.get(membership.productVersionRef);
+  if (!canonical || !deeplyEqual(membership, canonical)) fail('activeMembership');
+}
+
 export function calculateOfferPrice({ offerVersion, activeMemberships }) {
   validateOfferVersion(offerVersion);
   if (!Array.isArray(activeMemberships)) fail('activeMemberships');
   let chosen = null;
   for (const membership of activeMemberships) {
-    validateProductVersion(membership, 'activeMembership');
+    validateCanonicalActiveMembership(membership);
     for (const benefit of membership.commerceBenefits) {
       if (!benefit.eligibleDiscountClasses.includes(offerVersion.discountClass)) continue;
       const multiplied = offerVersion.priceCoins * benefit.priceBasisPoints;

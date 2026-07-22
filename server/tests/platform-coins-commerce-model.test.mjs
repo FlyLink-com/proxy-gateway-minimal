@@ -81,11 +81,34 @@ test('calculates integer-only discounted prices and deterministic membership ben
   assert.deepEqual(calculateOfferPrice({ offerVersion: annualMembership, activeMemberships: [annual200] }), {
     basePriceCoins: 200, payableCoins: 200, discount: null
   });
-  const tied = { ...monthly20, productVersionRef: 'pv_a', commerceBenefits: [{ ...monthly20.commerceBenefits[0], priceBasisPoints: 9500 }] };
-  assert.equal(calculateOfferPrice({ offerVersion: trafficPack30, activeMemberships: [monthly20, tied] }).discount.sourceProductVersionRef, 'pv_a');
+  assert.equal(calculateOfferPrice({ offerVersion: trafficPack30, activeMemberships: [monthly20, monthly20] }).discount.sourceProductVersionRef, monthly20.productVersionRef);
+  assert.throws(() => calculateOfferPrice({
+    offerVersion: trafficPack30,
+    activeMemberships: [{ ...monthly20, commerceBenefits: [{ ...monthly20.commerceBenefits[0], priceBasisPoints: 0 }] }]
+  }), /validation_error/);
+  assert.throws(() => calculateOfferPrice({
+    offerVersion: trafficPack30,
+    activeMemberships: [{ ...monthly20, productVersionRef: 'pv_forged_membership_v1' }]
+  }), /validation_error/);
   assert.throws(() => calculateOfferPrice({ offerVersion: { ...trafficPack30, priceCoins: 1.5 }, activeMemberships: [] }), /validation_error/);
   assert.throws(() => calculateOfferPrice({ offerVersion: { ...trafficPack30, priceCoins: Number.MAX_SAFE_INTEGER }, activeMemberships: [monthly20] }), /validation_error/);
   assert.throws(() => calculateOfferPrice({ offerVersion: trafficPack30, activeMemberships: [{ ...monthly20, commerceBenefits: [{ ...monthly20.commerceBenefits[0], priceBasisPoints: 9500.5 }] }] }), /validation_error/);
+});
+
+test('publishes safe-integer grants and canonical UTC timestamps', () => {
+  const { catalog } = catalogEntries();
+  for (const product of catalog.productVersions) {
+    assert.equal(new Date(product.publishedAt).toISOString(), product.publishedAt);
+    for (const grant of product.grants) {
+      if (grant.type === 'access') {
+        assert.ok(grant.durationDays === null || Number.isSafeInteger(grant.durationDays));
+      } else {
+        assert.ok(Number.isSafeInteger(grant.quantityGb));
+        assert.ok(grant.cycleDays === null || Number.isSafeInteger(grant.cycleDays));
+        assert.ok(Number.isSafeInteger(grant.consumptionPriority));
+      }
+    }
+  }
 });
 
 test('creates detached frozen snapshots only for matching safe-integer versions', () => {
