@@ -527,8 +527,14 @@ test('stores immutable orders, append-only payment attempt revisions, and fulfil
   assertCommerceError(() => store.insertOrder({ orderRef: 'unsafe', accountRef: 'acct-1', createdAt: T1, apiToken: 'nope' }), 'validation_error');
 
   const attemptA = {
+    schemaVersion: 'coins_commerce_payment_attempt_v1',
     attemptRef: 'attempt-a', accountRef: 'acct-1', orderRef: 'order-a', providerId: 'provider-a',
-    sourceAttemptRef: 'source-a', createdAt: T3, updatedAt: T3, status: 'pending', nextAction: { type: 'hosted_redirect', url: 'https://pay.example.test/a', expiresAt: T9 }
+    sourceAttemptRef: 'source-a', targetAttemptRef: null, switchReason: null,
+    idempotencyFingerprint: 'a'.repeat(64),
+    quoteSnapshot: { rechargeOfferRef: 'rov_paid_10_v1', paidCoins: 10 },
+    providerOrderRef: null, status: 'pending', chargeCertainty: 'pending',
+    nextAction: { type: 'hosted_redirect', url: 'https://pay.example.test/a', expiresAt: T9 },
+    reconciliationState: 'pending', createdAt: T3, updatedAt: T3
   };
   const attemptB = { attemptRef: 'attempt-b', accountRef: 'acct-2', orderRef: 'order-b', providerId: 'provider-a', createdAt: T4, status: 'pending' };
   store.insertPaymentAttempt(attemptA);
@@ -699,9 +705,13 @@ test('rolls back every mutable collection and the event watermark when an atomic
     store.insertOrder({ orderRef: 'order-atomic', accountRef: 'acct-1', createdAt: T2 });
     store.insertFulfillmentPlan({ planRef: 'plan-atomic', orderRef: 'order-atomic', createdAt: T2 });
     store.insertPaymentAttempt({
+      schemaVersion: 'coins_commerce_payment_attempt_v1',
       attemptRef: 'attempt-atomic', accountRef: 'acct-1', orderRef: 'order-atomic',
       providerId: 'provider_atomic', sourceAttemptRef: null, targetAttemptRef: null,
-      createdAt: T2, updatedAt: T2
+      switchReason: null, idempotencyFingerprint: 'a'.repeat(64),
+      quoteSnapshot: { rechargeOfferRef: 'rov_paid_10_v1', paidCoins: 10 },
+      providerOrderRef: null, status: 'pending', chargeCertainty: 'pending',
+      nextAction: { type: 'none' }, reconciliationState: 'pending', createdAt: T2, updatedAt: T2
     });
     store.updatePaymentAttempt({
       ...store.getPaymentAttemptForAccount({ accountRef: 'acct-1', attemptRef: 'attempt-atomic' }),
@@ -735,12 +745,19 @@ test('rolls back attempt revisions, rejects promise and nested atomic mutations,
     walletLots: [lot({ lotRef: 'paid-atomic', origin: 'paid', issuedCoins: 5 })]
   });
   const originalAttempt = store.insertPaymentAttempt({
+    schemaVersion: 'coins_commerce_payment_attempt_v1',
     attemptRef: 'attempt-existing', accountRef: 'acct-1', orderRef: 'order-existing',
     providerId: 'provider_atomic', sourceAttemptRef: null, targetAttemptRef: null,
-    status: 'pending', createdAt: T0, updatedAt: T0
+    switchReason: null, idempotencyFingerprint: 'a'.repeat(64),
+    quoteSnapshot: { rechargeOfferRef: 'rov_paid_10_v1', paidCoins: 10 },
+    providerOrderRef: null, status: 'pending', chargeCertainty: 'pending',
+    nextAction: { type: 'none' }, reconciliationState: 'pending', createdAt: T0, updatedAt: T0
   });
   assert.throws(() => store.runAtomicMutation(() => {
-    store.updatePaymentAttempt({ ...originalAttempt, status: 'unknown', updatedAt: T1 });
+    store.updatePaymentAttempt({
+      ...originalAttempt, status: 'unknown', chargeCertainty: 'unknown',
+      reconciliationState: 'requires_review', updatedAt: T1
+    });
     throw new Error('revision rollback');
   }), /revision rollback/);
   assert.deepEqual(store.getPaymentAttemptForAccount({ accountRef: 'acct-1', attemptRef: 'attempt-existing' }), originalAttempt);
@@ -760,4 +777,134 @@ test('rolls back attempt revisions, rejects promise and nested atomic mutations,
 
   const committed = store.runAtomicMutation(() => ({ value: 1 }));
   assert.deepEqual(committed, { value: 1 });
+});
+
+test('rejects every store mutator resumed from a rejected asynchronous atomic context', async () => {
+  const store = createInMemoryCoinsCommerceStore({
+    nowFn: () => T1,
+    walletLots: [lot({ lotRef: 'paid-async', origin: 'paid', issuedCoins: 20 })]
+  });
+  const digest = canonicalCommerceRequestDigest({ sourceAttemptRef: 'attempt-source', targetProviderId: 'provider-target' });
+  const before = store.listWalletTransactions({ accountRef: 'acct-1', limit: 100 });
+  let resume;
+  const gate = new Promise((resolve) => { resume = resolve; });
+  let continuation;
+
+  assertCommerceError(() => store.runAtomicMutation(() => {
+    store.createCoinHold({ accountRef: 'acct-1', holdRef: 'async-hold', amountCoins: 1 });
+    continuation = (async () => {
+      await gate;
+      const actions = [
+        () => store.appendCoinLot({ transactionRef: 'async-credit', lot: lot({ lotRef: 'async-lot', origin: 'paid', issuedCoins: 1, createdAt: T1 }) }),
+        () => store.createCoinHold({ accountRef: 'acct-1', holdRef: 'async-hold-2', amountCoins: 1 }),
+        () => store.captureCoinHold({ accountRef: 'acct-1', holdRef: 'async-hold', transactionRef: 'async-capture' }),
+        () => store.releaseCoinHold({ accountRef: 'acct-1', holdRef: 'async-hold', transactionRef: 'async-release' }),
+        () => store.freezeReferralCoins({ accountRef: 'acct-1', freezeRef: 'async-freeze', amountCoins: 1 }),
+        () => store.releaseReferralFreeze({ accountRef: 'acct-1', freezeRef: 'async-freeze', transactionRef: 'async-ref-release' }),
+        () => store.settleReferralFreeze({ accountRef: 'acct-1', freezeRef: 'async-freeze', transactionRef: 'async-ref-settle' }),
+        () => store.reverseReferralCoins({ accountRef: 'acct-1', reversalRef: 'async-reversal', amountCoins: 1 }),
+        () => store.insertOrder({ orderRef: 'async-order', accountRef: 'acct-1', createdAt: T1 }),
+        () => store.insertPaymentAttempt({ attemptRef: 'async-attempt', accountRef: 'acct-1', orderRef: 'async-order', providerId: 'provider-target', createdAt: T1 }),
+        () => store.updatePaymentAttempt({ attemptRef: 'async-attempt', accountRef: 'acct-1', orderRef: 'async-order', providerId: 'provider-target', createdAt: T1 }),
+        () => store.insertFulfillmentPlan({ planRef: 'async-plan', orderRef: 'async-order', createdAt: T1 }),
+        () => store.recordIdempotencyResult({
+          scope: 'coins_commerce.payment_switch.v1', accountRef: 'acct-1', idempotencyKey: 'async-key',
+          requestDigest: digest, result: { orderRef: 'async-order', rootAttemptRef: 'async-attempt' }
+        }),
+        () => store.runAtomicMutation(() => null)
+      ];
+      const errors = actions.map((action) => {
+        try { action(); } catch (error) { return error; }
+        return null;
+      });
+      return errors;
+    })();
+    return continuation;
+  }), 'validation_error', { reason: 'atomic_operation_must_be_synchronous' });
+
+  resume();
+  const errors = await continuation;
+  assert.equal(errors.length, 14);
+  for (const error of errors) {
+    assert.equal(error?.code, 'validation_error');
+    assert.deepEqual(error?.details, { reason: 'atomic_context_rejected' });
+  }
+  assert.deepEqual(store.listWalletTransactions({ accountRef: 'acct-1', limit: 100 }), before);
+  assert.deepEqual(store.listOrdersForAccount({ accountRef: 'acct-1' }), []);
+  assert.deepEqual(store.listPaymentAttempts(), { items: [], nextCursor: null });
+  assertCommerceError(() => store.getFulfillmentPlan('async-plan'), 'not_found', {});
+  assert.equal(store.getIdempotencyResult({
+    scope: 'coins_commerce.payment_switch.v1', accountRef: 'acct-1', idempotencyKey: 'async-key', requestDigest: digest
+  }), null);
+});
+
+test('freezes payment-attempt evidence and restricts target-link revisions to target and time only', () => {
+  const store = createInMemoryCoinsCommerceStore();
+  const quoteSnapshot = {
+    rechargeOfferRef: 'rov_paid_10_v1', paidCoins: 10, bonusCoins: 0,
+    fiatAmountMinor: 1000, fiatCurrency: 'USD', rateNumerator: 100,
+    rateDenominator: 1, rateVersionRef: 'rate_usd_v1', promotionRef: null
+  };
+  const initial = store.insertPaymentAttempt({
+    schemaVersion: 'coins_commerce_payment_attempt_v1',
+    attemptRef: 'attempt-evidence', accountRef: 'acct-1', orderRef: 'order-evidence',
+    providerId: 'provider-evidence', sourceAttemptRef: null, targetAttemptRef: null,
+    switchReason: null, idempotencyFingerprint: 'a'.repeat(64), quoteSnapshot,
+    providerOrderRef: null, status: 'pending', chargeCertainty: 'pending',
+    nextAction: { type: 'none' }, reconciliationState: 'pending', createdAt: T1, updatedAt: T1
+  });
+  const completed = store.updatePaymentAttempt({
+    ...initial, providerOrderRef: 'provider-order-evidence', status: 'confirmed_no_charge',
+    chargeCertainty: 'confirmed_no_charge', reconciliationState: 'confirmed_no_charge', updatedAt: T2
+  });
+
+  const withoutUpdatedAt = { ...completed };
+  delete withoutUpdatedAt.updatedAt;
+  assertCommerceError(() => store.updatePaymentAttempt(withoutUpdatedAt), 'validation_error');
+  assertCommerceError(() => store.updatePaymentAttempt({ ...completed, updatedAt: T1 }), 'validation_error');
+  assertCommerceError(() => store.updatePaymentAttempt({ ...completed, schemaVersion: 'other', updatedAt: T3 }), 'validation_error');
+  assertCommerceError(() => store.updatePaymentAttempt({ ...completed, switchReason: 'changed', updatedAt: T3 }), 'validation_error');
+  assertCommerceError(() => store.updatePaymentAttempt({ ...completed, idempotencyFingerprint: 'b'.repeat(64), updatedAt: T3 }), 'validation_error');
+  assertCommerceError(() => store.updatePaymentAttempt({
+    ...completed, quoteSnapshot: { ...quoteSnapshot, fiatAmountMinor: 1001 }, updatedAt: T3
+  }), 'validation_error');
+  assertCommerceError(() => store.updatePaymentAttempt({
+    ...completed, targetAttemptRef: 'attempt-target', status: 'unknown',
+    chargeCertainty: 'unknown', reconciliationState: 'requires_review', updatedAt: T3
+  }), 'validation_error');
+
+  const linked = store.updatePaymentAttempt({ ...completed, targetAttemptRef: 'attempt-target', updatedAt: T3 });
+  assert.equal(linked.targetAttemptRef, 'attempt-target');
+  assertCommerceError(() => store.updatePaymentAttempt({
+    ...linked, status: 'unknown', chargeCertainty: 'unknown',
+    reconciliationState: 'requires_review', updatedAt: T4
+  }), 'validation_error');
+  assertCommerceError(() => store.updatePaymentAttempt({
+    ...linked, providerOrderRef: 'provider-order-changed', updatedAt: T4
+  }), 'validation_error');
+
+  const legacy = store.insertPaymentAttempt({
+    attemptRef: 'attempt-legacy', accountRef: 'acct-1', orderRef: 'order-legacy',
+    providerId: 'provider-legacy', createdAt: T1, status: 'pending'
+  });
+  assert.deepEqual(store.getPaymentAttemptForAccount({ accountRef: 'acct-1', attemptRef: 'attempt-legacy' }), legacy);
+  assertCommerceError(() => store.updatePaymentAttempt({ ...legacy, status: 'unknown', updatedAt: T2 }), 'validation_error');
+  const timestampedLegacy = store.insertPaymentAttempt({
+    attemptRef: 'attempt-legacy-timestamped', accountRef: 'acct-1', orderRef: 'order-legacy',
+    providerId: 'provider-legacy', createdAt: T1, updatedAt: T1, status: 'pending'
+  });
+  assertCommerceError(() => store.updatePaymentAttempt({
+    ...timestampedLegacy, status: 'unknown', updatedAt: T2
+  }), 'validation_error');
+});
+
+test('commits exactly one real mutation from a successful atomic operation', () => {
+  const store = createInMemoryCoinsCommerceStore();
+  const committed = store.runAtomicMutation(() => store.insertOrder({
+    orderRef: 'atomic-success-order', accountRef: 'acct-1', createdAt: T1
+  }));
+  assert.equal(committed.orderRef, 'atomic-success-order');
+  assert.deepEqual(store.listOrdersForAccount({ accountRef: 'acct-1' }).map(({ orderRef }) => orderRef), [
+    'atomic-success-order'
+  ]);
 });

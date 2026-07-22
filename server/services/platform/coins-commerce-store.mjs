@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { types as utilTypes } from 'node:util';
 
@@ -263,6 +264,25 @@ function sameAllocations(left, right) {
   ));
 }
 
+function sameClosedValue(left, right) {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length
+      && left.every((value, index) => sameClosedValue(value, right[index]));
+  }
+  if (!isPlainObject(left) || !isPlainObject(right)) return false;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key) => Object.hasOwn(right, key) && sameClosedValue(left[key], right[key]));
+}
+
+function changedFields(left, right) {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...keys].filter((key) => !Object.hasOwn(left, key) || !Object.hasOwn(right, key)
+    || !sameClosedValue(left[key], right[key]));
+}
+
 function addAmount(map, lotRef, amount) {
   map.set(lotRef, checkedAddCoins(map.get(lotRef) ?? 0, amount));
 }
@@ -332,6 +352,18 @@ export function createInMemoryCoinsCommerceStore({
   const idempotencyResults = new Map();
   let eventTimestampWatermark = null;
   let atomicMutationActive = false;
+  const atomicContextStorage = new AsyncLocalStorage();
+
+  function rejectRejectedAtomicContext() {
+    if (atomicContextStorage.getStore()?.rejected === true) validation('atomic_context_rejected');
+  }
+
+  function exposeMutation(operation) {
+    return (...args) => {
+      rejectRejectedAtomicContext();
+      return operation(...args);
+    };
+  }
 
   function captureMutableState() {
     return {
@@ -380,18 +412,23 @@ export function createInMemoryCoinsCommerceStore({
   }
 
   function runAtomicMutation(operation) {
+    rejectRejectedAtomicContext();
     if (typeof operation !== 'function') validation('invalid_atomic_operation');
     if (atomicMutationActive) validation('nested_atomic_mutation');
     const state = captureMutableState();
+    const context = { rejected: false };
     atomicMutationActive = true;
     try {
-      const result = operation();
+      const result = atomicContextStorage.run(context, operation);
       if (utilTypes.isPromise(result)) {
+        context.rejected = true;
         Promise.prototype.catch.call(result, () => {});
         validation('atomic_operation_must_be_synchronous');
       }
+      context.rejected = true;
       return result;
     } catch (error) {
+      context.rejected = true;
       restoreMutableState(state);
       throw error;
     } finally {
@@ -905,16 +942,36 @@ export function createInMemoryCoinsCommerceStore({
     if (!revisions || revisions.at(-1).accountRef !== accountRef) notFound();
     const stored = prepareAggregate(attempt, ['attemptRef', 'accountRef', 'orderRef', 'providerId'], 'invalid_payment_attempt');
     const current = revisions.at(-1);
-    for (const field of ['attemptRef', 'accountRef', 'orderRef', 'providerId', 'sourceAttemptRef', 'createdAt']) {
-      if (current[field] !== stored[field]) validation('payment_attempt_identity_changed');
+    const revisionFields = [
+      'schemaVersion', 'sourceAttemptRef', 'targetAttemptRef', 'switchReason',
+      'idempotencyFingerprint', 'quoteSnapshot', 'providerOrderRef', 'status',
+      'chargeCertainty', 'nextAction', 'reconciliationState', 'createdAt', 'updatedAt'
+    ];
+    if (revisionFields.some((field) => !Object.hasOwn(current, field) || !Object.hasOwn(stored, field))) {
+      validation('legacy_payment_attempt_not_revisionable');
     }
-    if (current.targetAttemptRef !== null && current.targetAttemptRef !== undefined
-      && stored.targetAttemptRef !== current.targetAttemptRef) {
-      validation('payment_attempt_target_changed');
+    if (!Object.hasOwn(current, 'updatedAt') || !Object.hasOwn(stored, 'updatedAt')) {
+      validation('payment_attempt_updated_at_required');
     }
-    if (current.updatedAt !== undefined && stored.updatedAt !== undefined
-      && stored.updatedAt < current.updatedAt) {
-      validation('payment_attempt_revision_time_regressed');
+    requireCanonicalIso(current.updatedAt, 'invalid_payment_attempt_updated_at');
+    requireCanonicalIso(stored.updatedAt, 'invalid_payment_attempt_updated_at');
+    if (stored.updatedAt < current.updatedAt) validation('payment_attempt_revision_time_regressed');
+    for (const field of [
+      'attemptRef', 'accountRef', 'orderRef', 'providerId', 'sourceAttemptRef', 'createdAt',
+      'schemaVersion', 'switchReason', 'idempotencyFingerprint', 'quoteSnapshot'
+    ]) {
+      if (!sameClosedValue(current[field], stored[field])) validation('payment_attempt_identity_changed');
+    }
+    const currentTarget = current.targetAttemptRef ?? null;
+    const storedTarget = stored.targetAttemptRef ?? null;
+    const differences = changedFields(current, stored);
+    if (currentTarget !== null) {
+      if (storedTarget !== currentTarget || differences.some((field) => field !== 'updatedAt')) {
+        validation('payment_attempt_linked_revision_changed');
+      }
+    } else if (storedTarget !== null
+      && differences.some((field) => !['targetAttemptRef', 'updatedAt'].includes(field))) {
+      validation('payment_attempt_target_link_mixed_revision');
     }
     revisions.push(stored);
     return snapshot(stored);
@@ -992,28 +1049,28 @@ export function createInMemoryCoinsCommerceStore({
     getOffer: (offerVersionRef) => lookup(offerVersions, offerVersionRef, 'invalid_offer_version_ref'),
     getRechargeOffer: (rechargeOfferRef) => lookup(rechargeOffers, rechargeOfferRef, 'invalid_recharge_offer_ref'),
     getActiveMemberships,
-    appendCoinLot,
+    appendCoinLot: exposeMutation(appendCoinLot),
     getWalletSummary,
     listWalletTransactions,
     runAtomicMutation,
-    createCoinHold,
-    captureCoinHold: (input) => terminateHold(input, 'capture'),
-    releaseCoinHold: (input) => terminateHold(input, 'release'),
-    freezeReferralCoins,
-    releaseReferralFreeze: (input) => terminateReferralFreeze(input, 'release'),
-    settleReferralFreeze: (input) => terminateReferralFreeze(input, 'settlement'),
-    reverseReferralCoins,
+    createCoinHold: exposeMutation(createCoinHold),
+    captureCoinHold: exposeMutation((input) => terminateHold(input, 'capture')),
+    releaseCoinHold: exposeMutation((input) => terminateHold(input, 'release')),
+    freezeReferralCoins: exposeMutation(freezeReferralCoins),
+    releaseReferralFreeze: exposeMutation((input) => terminateReferralFreeze(input, 'release')),
+    settleReferralFreeze: exposeMutation((input) => terminateReferralFreeze(input, 'settlement')),
+    reverseReferralCoins: exposeMutation(reverseReferralCoins),
     getReferralSummary,
-    insertOrder,
+    insertOrder: exposeMutation(insertOrder),
     getOrderForAccount,
     listOrdersForAccount,
-    insertPaymentAttempt,
-    updatePaymentAttempt,
+    insertPaymentAttempt: exposeMutation(insertPaymentAttempt),
+    updatePaymentAttempt: exposeMutation(updatePaymentAttempt),
     getPaymentAttemptForAccount,
     listPaymentAttempts,
-    insertFulfillmentPlan,
+    insertFulfillmentPlan: exposeMutation(insertFulfillmentPlan),
     getFulfillmentPlan,
     getIdempotencyResult,
-    recordIdempotencyResult
+    recordIdempotencyResult: exposeMutation(recordIdempotencyResult)
   });
 }

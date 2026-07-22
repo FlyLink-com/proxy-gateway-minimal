@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
 
 import {
   commerceError,
@@ -88,7 +89,12 @@ function cloneClosed(value, active = new WeakSet()) {
     let descriptor;
     try { descriptor = Object.getOwnPropertyDescriptor(value, key); } catch { validation(); }
     if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) validation();
-    result[key] = cloneClosed(descriptor.value, active);
+    Object.defineProperty(result, key, {
+      value: cloneClosed(descriptor.value, active),
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
   }
   active.delete(value);
   return result;
@@ -268,7 +274,18 @@ function validateQuote(value, rechargeOffer) {
 
 function normalizeProviderOutcome(value) {
   const closed = cloneClosed(value);
-  return normalizePaymentResult(closed);
+  const result = normalizePaymentResult(closed);
+  const hasProviderOrderRef = Object.hasOwn(result, 'providerOrderRef');
+  if ((result.status === 'entry_unavailable' && hasProviderOrderRef)
+    || (result.status !== 'entry_unavailable' && !hasProviderOrderRef)) validation();
+  if (result.nextAction.type === 'hosted_redirect') {
+    let url;
+    try { url = new URL(result.nextAction.url); } catch { validation(); }
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+    if (url.protocol !== 'https:' || url.username || url.password || isIP(hostname) !== 0
+      || !hostname.includes('.') || hostname === 'localhost' || hostname.endsWith('.localhost')) validation();
+  }
+  return result;
 }
 
 function attemptProjection(attempt) {

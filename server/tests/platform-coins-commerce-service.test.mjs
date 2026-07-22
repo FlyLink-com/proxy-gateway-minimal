@@ -49,6 +49,14 @@ function preview(providerId, createRechargeOrderFn) {
   return createCoinsCommerceProviderPreview({ providerId, createRechargeOrderFn });
 }
 
+function directProvider(providerId, createRechargeOrder) {
+  return Object.freeze({
+    providerId,
+    capabilities: Object.freeze({ createRechargeOrder: true }),
+    createRechargeOrder
+  });
+}
+
 function actionRequired(providerOrderRef = 'provider_order_1') {
   return {
     providerOrderRef,
@@ -332,6 +340,77 @@ test('records adapter throws as unknown and never automatically routes to anothe
   assert.doesNotMatch(JSON.stringify(result), /private provider failure/);
 });
 
+test('maps contradictory or unsafe direct-adapter results to unknown without automatic routing', async () => {
+  const invalidResults = [
+    {
+      providerOrderRef: 'contradictory_ref', status: 'entry_unavailable',
+      chargeCertainty: 'not_charge_capable', nextAction: { type: 'none' }
+    },
+    { status: 'pending', chargeCertainty: 'pending', nextAction: { type: 'none' } },
+    {
+      providerOrderRef: 'unsafe_scheme', status: 'action_required', chargeCertainty: 'pending',
+      nextAction: { type: 'hosted_redirect', url: 'http://pay.example.test/checkout' }
+    },
+    {
+      providerOrderRef: 'unsafe_credentials', status: 'action_required', chargeCertainty: 'pending',
+      nextAction: { type: 'hosted_redirect', url: 'https://user:pass@pay.example.test/checkout' }
+    },
+    {
+      providerOrderRef: 'unsafe_host', status: 'action_required', chargeCertainty: 'pending',
+      nextAction: { type: 'hosted_redirect', url: 'https://127.0.0.1/checkout' }
+    }
+  ];
+  for (const [index, invalidResult] of invalidResults.entries()) {
+    let firstCalls = 0;
+    let secondCalls = 0;
+    const first = directProvider(`direct_invalid_${index}`, async () => {
+      firstCalls += 1;
+      return invalidResult;
+    });
+    const second = directProvider(`direct_unused_${index}`, async () => {
+      secondCalls += 1;
+      return actionRequired(`unused_${index}`);
+    });
+    const { service } = serviceFixture({ providers: [first, second] });
+    const result = await service.createRechargeOrder({
+      accountRef: 'acct-1', rechargeOfferRef: 'rov_paid_10_v1', preferredProviderId: null,
+      idempotencyKey: `direct-invalid-${index}`
+    });
+    assert.equal(result.status, 'unknown');
+    assert.equal(result.chargeCertainty, 'unknown');
+    assert.equal(result.attempt.reconciliationState, 'requires_review');
+    assert.equal(firstCalls, 1);
+    assert.equal(secondCalls, 0);
+  }
+});
+
+test('never automatically routes any normalized non-entry provider result', async () => {
+  const statuses = [
+    'confirmed_no_charge', 'provider_insufficient', 'risk_rejected', 'action_required',
+    'pending', 'unknown', 'possibly_charged', 'succeeded', 'reversed'
+  ];
+  for (const [index, status] of statuses.entries()) {
+    let firstCalls = 0;
+    let secondCalls = 0;
+    const first = directProvider(`matrix_first_${index}`, async () => {
+      firstCalls += 1;
+      return normalizedResult(status);
+    });
+    const second = directProvider(`matrix_second_${index}`, async () => {
+      secondCalls += 1;
+      return actionRequired(`matrix_unused_${index}`);
+    });
+    const { service } = serviceFixture({ providers: [first, second] });
+    const result = await service.createRechargeOrder({
+      accountRef: 'acct-1', rechargeOfferRef: 'rov_paid_10_v1', preferredProviderId: null,
+      idempotencyKey: `non-entry-${status}`
+    });
+    assert.equal(result.status, status);
+    assert.equal(firstCalls, 1);
+    assert.equal(secondCalls, 0);
+  }
+});
+
 test('records recharge and switch idempotency pointers before provider calls complete', async () => {
   let rechargeCalls = 0;
   let resolveRecharge;
@@ -531,4 +610,63 @@ test('rejects extra, accessor, symbol, cyclic, exotic, undefined, bigint, and un
     assert.throws(() => service.getWallet(input), (error) => assertCommerceError(error, 'validation_error'));
   }
   assert.equal(getterCalls, 0);
+});
+
+test('rejects own enumerable __proto__ data at public and quote boundaries without prototype pollution or getters', async () => {
+  const legacyProtoDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, '__proto__');
+  let legacySetterCalls = 0;
+  Object.defineProperty(Object.prototype, '__proto__', {
+    ...legacyProtoDescriptor,
+    set(value) {
+      legacySetterCalls += 1;
+      return legacyProtoDescriptor.set.call(this, value);
+    }
+  });
+  try {
+  const publicInput = { accountRef: 'acct-1' };
+  Object.defineProperty(publicInput, '__proto__', {
+    value: { task4Polluted: true }, enumerable: true, configurable: true, writable: true
+  });
+  const publicFixture = serviceFixture();
+  assert.throws(() => publicFixture.service.getWallet(publicInput), (error) => assertCommerceError(error, 'validation_error'));
+  assert.equal(Object.getPrototypeOf(publicInput), Object.prototype);
+  assert.equal(Object.prototype.task4Polluted, undefined);
+
+  let getterCalls = 0;
+  const accessorInput = { accountRef: 'acct-1' };
+  Object.defineProperty(accessorInput, '__proto__', {
+    enumerable: true,
+    get() { getterCalls += 1; return { task4Polluted: true }; }
+  });
+  assert.throws(() => publicFixture.service.getWallet(accessorInput), (error) => assertCommerceError(error, 'validation_error'));
+  assert.equal(getterCalls, 0);
+  assert.equal(Object.prototype.task4Polluted, undefined);
+
+  let providerCalls = 0;
+  const provider = directProvider('provider_proto', async () => {
+    providerCalls += 1;
+    return actionRequired('provider_order_proto');
+  });
+  const quoteFixture = serviceFixture({
+    providers: [provider],
+    rechargeQuoteIssuer(value) {
+      const quote = quoteFor(value);
+      Object.defineProperty(quote, '__proto__', {
+        value: { task4Polluted: true }, enumerable: true, configurable: true, writable: true
+      });
+      return quote;
+    }
+  });
+  const result = await quoteFixture.service.createRechargeOrder({
+    accountRef: 'acct-1', rechargeOfferRef: 'rov_paid_10_v1', preferredProviderId: null,
+    idempotencyKey: 'proto-quote'
+  });
+  assert.equal(result.status, 'entry_unavailable');
+  assert.equal(result.attempt, null);
+  assert.equal(providerCalls, 0);
+  assert.equal(Object.prototype.task4Polluted, undefined);
+  } finally {
+    Object.defineProperty(Object.prototype, '__proto__', legacyProtoDescriptor);
+  }
+  assert.equal(legacySetterCalls, 0);
 });
