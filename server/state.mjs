@@ -35,6 +35,8 @@ import { createRuntimeUsageAccountingService } from "./services/platform/runtime
 import { createTrafficAccountingService } from "./services/platform/traffic-accounting.mjs";
 import { createFileTrafficCollectorStatusStore } from "./services/platform/traffic-collector-admin-projection.mjs";
 import { createOrderUsageQuotaLifecycleGate } from "./services/platform/order-usage-quota-lifecycle-gate.mjs";
+import { createInMemoryCoinsCommerceStore } from "./services/platform/coins-commerce-store.mjs";
+import { createCoinsCommerceService } from "./services/platform/coins-commerce-service.mjs";
 import { createFileBackedEdgeCredentialMaterialStore } from "./services/edge/credential-material-store.mjs";
 import {
   createOrderEdgeCredentialIssuer,
@@ -959,6 +961,16 @@ export function createRuntimeState(options = {}) {
   );
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
+  const platformCoinsCommerceStore = options.platformCoinsCommerceStore || createInMemoryCoinsCommerceStore({
+    nowFn: options.coinsCommerceNowFn,
+    catalog: options.coinsCommerceCatalog
+  });
+  const platformCoinsCommerceService = options.platformCoinsCommerceService || createCoinsCommerceService({
+    store: platformCoinsCommerceStore,
+    providers: options.coinsCommerceProviders || [],
+    nowFn: options.coinsCommerceNowFn,
+    refFactory: options.coinsCommerceRefFactory
+  });
   const subscriptionCoreNowFn = dateNowFn(options.subscriptionNowFn || options.userPortalNowFn);
   let edgeCredentialMaterialStore = options.edgeCredentialMaterialStore || null;
   const subscriptionCore = options.subscriptionCore || options.subscriptionService || createSubscriptionCore({
@@ -1589,6 +1601,8 @@ export function createRuntimeState(options = {}) {
       portalAccessRequests: platformPortalAccessRequests,
       portalSupportRequests: platformPortalSupportRequests,
       controlStore: platformControlStore,
+      coinsCommerceStore: platformCoinsCommerceStore,
+      coinsCommerceService: platformCoinsCommerceService,
       edgeCredentialMaterialStore,
       edgeCredentialIssuer,
       edgeLifecycleService,

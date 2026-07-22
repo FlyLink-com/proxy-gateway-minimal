@@ -22,6 +22,8 @@ import {
 import { subscriptionRoutes } from "./routes/subscription.mjs";
 import { publicLeadRoutes } from "./routes/public-leads.mjs";
 import { userPortalRoutes } from "./routes/user-portal.mjs";
+import { portalCommerceRoutes } from "./routes/portal-commerce.mjs";
+import { adminPaymentLogsRoutes } from "./routes/admin-payment-logs.mjs";
 import { dataPlaneAgentRoutes } from "./routes/data-plane-agent.mjs";
 import { resolveClientIp } from "./services/ip-address.mjs";
 
@@ -45,6 +47,14 @@ const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/security/totp/enrollment/confirm",
   "/api/portal/support-requests"
 ];
+const PORTAL_COMMERCE_PUBLIC_PATHS = [
+  "/api/portal/commerce/wallet",
+  "/api/portal/commerce/catalog",
+  "/api/portal/commerce/orders",
+  "/api/portal/commerce/recharge-orders",
+  "/api/portal/commerce/referral"
+];
+const PORTAL_COMMERCE_PUBLIC_PREFIXES = ["/api/portal/commerce/payment-attempts/"];
 
 function hashRateLimitValue(value) {
   return createHash("sha256")
@@ -104,6 +114,7 @@ export function createApp(state, options = {}) {
       || state.platform?.portalRegistrations
       || state.platform?.portalRegistrationEmailVerifications
       || state.platform?.portalSupportRequests
+      || state.platform?.coinsCommerceService
     )
   );
   const dataPlaneAgentRoutesEnabled = Boolean(
@@ -117,6 +128,7 @@ export function createApp(state, options = {}) {
   const authPublicPaths = [
     ...PUBLIC_PATHS,
     ...(userPortalRoutesEnabled ? USER_PORTAL_PUBLIC_PATHS : []),
+    ...(userPortalRoutesEnabled && state.platform?.coinsCommerceService ? PORTAL_COMMERCE_PUBLIC_PATHS : []),
     ...(adminAuthRoutesEnabled ? ADMIN_AUTH_PUBLIC_PATHS : [])
   ];
   const clientIpResolver = options.clientIpResolver || ((req) => resolveClientIp(req, {
@@ -145,10 +157,11 @@ export function createApp(state, options = {}) {
   app.use(createAuthMiddleware({
     token: state.consoleToken,
     publicPaths: authPublicPaths,
-    publicPathPrefixes: PUBLIC_PATH_PREFIXES
+    publicPathPrefixes: [...PUBLIC_PATH_PREFIXES, ...(userPortalRoutesEnabled && state.platform?.coinsCommerceService ? PORTAL_COMMERCE_PUBLIC_PREFIXES : [])]
   }));
   app.use(publicLeadRoutes(state));
   if (userPortalRoutesEnabled) {
+    if (state.platform?.coinsCommerceService) app.use(portalCommerceRoutes(state));
     app.use(userPortalRoutes(state));
   }
   app.get("/api/status", statusRoutes(state));
@@ -175,6 +188,7 @@ export function createApp(state, options = {}) {
   ) {
     app.use(adminPlatformRoutes(state));
   }
+  if (state.platform?.coinsCommerceService) app.use(adminPaymentLogsRoutes(state));
   app.use("/sub", createRateLimitMiddleware({
     windowMs: security.subRateLimit?.windowMs,
     max: security.subRateLimit?.max,
