@@ -76,8 +76,7 @@ function validateInputValue(value) {
 function validateInput(value) {
   try {
     return validateInputValue(value);
-  } catch (error) {
-    if (error?.code === 'validation_error') throw error;
+  } catch {
     throw validationError();
   }
 }
@@ -110,8 +109,7 @@ function validateFactoryOptions(options) {
     const allowLoopbackHttp = Object.hasOwn(descriptors, 'allowLoopbackHttp') ? descriptors.allowLoopbackHttp.value : false;
     if (typeof providerId !== 'string' || !PROVIDER_ID.test(providerId) || typeof createRechargeOrderFn !== 'function' || typeof allowLoopbackHttp !== 'boolean') throw validationError();
     return { providerId, createRechargeOrderFn, allowLoopbackHttp };
-  } catch (error) {
-    if (error?.code === 'validation_error') throw error;
+  } catch {
     throw validationError();
   }
 }

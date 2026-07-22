@@ -181,3 +181,24 @@ test('normalizes factory options proxy traps without leaking trap data', () => {
     return true;
   });
 });
+
+test('does not inspect hostile caller input or factory trap errors', async () => {
+  const hostile = { get code() { throw new Error('secondary_raw'); } };
+  let calls = 0;
+  const adapter = preview(() => { calls += 1; return actionRequired(); });
+  const callerTrap = new Proxy(input(), { ownKeys() { throw hostile; } });
+  await assert.rejects(adapter.createRechargeOrder(callerTrap), (error) => {
+    assert.equal(error.code, 'validation_error');
+    assert.deepEqual(error.details, {});
+    assert.doesNotMatch(error.message, /secondary_raw/);
+    return true;
+  });
+  assert.equal(calls, 0);
+  const factoryTrap = new Proxy({}, { getPrototypeOf() { throw hostile; } });
+  assert.throws(() => createCoinsCommerceProviderPreview(factoryTrap), (error) => {
+    assert.equal(error.code, 'validation_error');
+    assert.deepEqual(error.details, {});
+    assert.doesNotMatch(error.message, /secondary_raw/);
+    return true;
+  });
+});
