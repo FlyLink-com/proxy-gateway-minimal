@@ -1,20 +1,26 @@
 import type {
   CatalogDto,
   ChargeCertainty,
+  CommerceGrantDto,
   CommerceOrderDto,
   CommerceOrderStatus,
+  FulfillmentPlanDto,
+  OfferVersionDto,
+  OrderItemDto,
   PaymentAttemptDto,
   PaymentAttemptStatus,
+  PaymentReconciliationState,
   PaymentSwitchInput,
-  ProductOrderDto,
   ProductOrderInput,
   ProductOrderResultDto,
-  RechargeOrderDto,
+  ProductVersionDto,
+  RechargeOfferDto,
   RechargeOrderInput,
   RechargeOrderResultDto,
   RecoveryActionDto,
   ReferralSummaryDto,
   SafeNextActionDto,
+  WalletTransactionDto,
   WalletDto
 } from "./commerce-model";
 import {
@@ -93,6 +99,18 @@ const SERVER_ERROR_CODES = new Set<CommerceClientErrorCode>([
 const ATTEMPT_STATUS_SET = new Set<string>(PAYMENT_ATTEMPT_STATUSES);
 const CHARGE_CERTAINTY_SET = new Set<string>(CHARGE_CERTAINTIES);
 const ORDER_STATUS_SET = new Set<string>(ORDER_STATUSES);
+const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const PROVIDER_ID = /^[a-z][a-z0-9_-]{2,63}$/;
+const TRANSACTION_TYPES = new Set<string>([
+  "credit",
+  "hold",
+  "capture",
+  "release",
+  "referral_freeze",
+  "referral_release",
+  "referral_settlement",
+  "referral_reversal"
+]);
 const STATUS_CERTAINTY = new Map<PaymentAttemptStatus, ChargeCertainty>([
   ["entry_unavailable", "not_charge_capable"],
   ["action_required", "pending"],
@@ -103,6 +121,18 @@ const STATUS_CERTAINTY = new Map<PaymentAttemptStatus, ChargeCertainty>([
   ["succeeded", "charged"],
   ["unknown", "unknown"],
   ["possibly_charged", "possibly_charged"],
+  ["reversed", "reversed"]
+]);
+const STATUS_RECONCILIATION = new Map<PaymentAttemptStatus, PaymentReconciliationState>([
+  ["entry_unavailable", "not_charge_capable"],
+  ["action_required", "pending"],
+  ["pending", "pending"],
+  ["confirmed_no_charge", "confirmed_no_charge"],
+  ["provider_insufficient", "confirmed_no_charge"],
+  ["risk_rejected", "confirmed_no_charge"],
+  ["unknown", "requires_review"],
+  ["possibly_charged", "requires_review"],
+  ["succeeded", "charged_uncredited"],
   ["reversed", "reversed"]
 ]);
 
@@ -131,13 +161,41 @@ function text(value: unknown): string {
   return value;
 }
 
+function safeRef(value: unknown): string {
+  const result = text(value);
+  if (!SAFE_REF.test(result)) invalidResponse();
+  return result;
+}
+
+function canonicalTimestamp(value: unknown): string {
+  const result = text(value);
+  const parsed = new Date(result);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== result) invalidResponse();
+  return result;
+}
+
 function nullableText(value: unknown): string | null {
   return value === null ? null : text(value);
+}
+
+function nullableRef(value: unknown): string | null {
+  return value === null ? null : safeRef(value);
 }
 
 function safeInteger(value: unknown): number {
   if (!Number.isSafeInteger(value) || Number(value) < 0) invalidResponse();
   return Number(value);
+}
+
+function positiveInteger(value: unknown): number {
+  const result = safeInteger(value);
+  if (result === 0) invalidResponse();
+  return result;
+}
+
+function booleanValue(value: unknown): boolean {
+  if (typeof value !== "boolean") invalidResponse();
+  return value;
 }
 
 function stringValue<T extends string>(value: unknown, allowed: Set<string>): T {
@@ -163,7 +221,7 @@ function safeHostedRedirect(value: string): string {
 function parseNextAction(value: unknown): SafeNextActionDto {
   if (!isRecord(value)) invalidResponse();
   const type = text(value.type);
-  const optionalExpiry = Object.hasOwn(value, "expiresAt") ? text(value.expiresAt) : undefined;
+  const optionalExpiry = Object.hasOwn(value, "expiresAt") ? canonicalTimestamp(value.expiresAt) : undefined;
   if (type === "none") {
     exactRecord(value, ["type"]);
     return { type: "none" };
@@ -174,7 +232,7 @@ function parseNextAction(value: unknown): SafeNextActionDto {
   }
   if (type === "provider_sdk") {
     exactRecord(value, ["type", "actionRef"], ["expiresAt"]);
-    return { type, actionRef: text(value.actionRef), ...(optionalExpiry ? { expiresAt: optionalExpiry } : {}) };
+    return { type, actionRef: safeRef(value.actionRef), ...(optionalExpiry ? { expiresAt: optionalExpiry } : {}) };
   }
   if (type === "qr") {
     exactRecord(value, ["type", "payload"], ["expiresAt"]);
@@ -213,53 +271,206 @@ function parseAttempt(value: unknown): PaymentAttemptDto {
   const nextAction = parseNextAction(record.nextAction);
   if ((status === "action_required") !== (nextAction.type !== "none")) invalidResponse();
   const reconciliationState = text(record.reconciliationState);
-  if (!["not_charge_capable", "confirmed_no_charge", "pending", "requires_review", "charged_uncredited", "reversed"].includes(reconciliationState)) {
-    invalidResponse();
-  }
+  if (STATUS_RECONCILIATION.get(status) !== reconciliationState) invalidResponse();
+  const providerId = text(record.providerId);
+  if (!PROVIDER_ID.test(providerId)) invalidResponse();
+  const createdAt = canonicalTimestamp(record.createdAt);
+  const updatedAt = canonicalTimestamp(record.updatedAt);
+  if (updatedAt < createdAt) invalidResponse();
   return {
-    attemptRef: text(record.attemptRef),
-    orderRef: text(record.orderRef),
-    providerId: text(record.providerId),
+    attemptRef: safeRef(record.attemptRef),
+    orderRef: safeRef(record.orderRef),
+    providerId,
     status,
     chargeCertainty,
     nextAction,
-    sourceAttemptRef: nullableText(record.sourceAttemptRef),
-    targetAttemptRef: nullableText(record.targetAttemptRef),
+    sourceAttemptRef: nullableRef(record.sourceAttemptRef),
+    targetAttemptRef: nullableRef(record.targetAttemptRef),
     switchReason: nullableText(record.switchReason),
-    reconciliationState: reconciliationState as PaymentAttemptDto["reconciliationState"],
-    createdAt: text(record.createdAt),
-    updatedAt: text(record.updatedAt)
+    reconciliationState: STATUS_RECONCILIATION.get(status)!,
+    createdAt,
+    updatedAt
+  };
+}
+
+function parseGrant(value: unknown): CommerceGrantDto {
+  if (!isRecord(value)) invalidResponse();
+  if (value.type === "access") {
+    const record = exactRecord(value, ["type", "durationDays", "mode"]);
+    const durationDays = record.durationDays === null ? null : positiveInteger(record.durationDays);
+    if (record.mode !== "fixed_term" && record.mode !== "while_traffic_remaining") invalidResponse();
+    return { type: "access", durationDays, mode: record.mode };
+  }
+  if (value.type === "traffic") {
+    const record = exactRecord(value, [
+      "type", "quantityGb", "cycleDays", "resetAtCycleEnd", "carryOver", "consumptionPriority"
+    ]);
+    const cycleDays = record.cycleDays === null ? null : positiveInteger(record.cycleDays);
+    return {
+      type: "traffic",
+      quantityGb: positiveInteger(record.quantityGb),
+      cycleDays,
+      resetAtCycleEnd: booleanValue(record.resetAtCycleEnd),
+      carryOver: booleanValue(record.carryOver),
+      consumptionPriority: safeInteger(record.consumptionPriority)
+    };
+  }
+  return invalidResponse();
+}
+
+function parseGrants(value: unknown): CommerceGrantDto[] {
+  if (!Array.isArray(value) || value.length !== 2) invalidResponse();
+  return value.map(parseGrant);
+}
+
+function sameGrant(left: CommerceGrantDto, right: CommerceGrantDto): boolean {
+  if (left.type !== right.type) return false;
+  if (left.type === "access" && right.type === "access") {
+    return left.durationDays === right.durationDays && left.mode === right.mode;
+  }
+  return left.type === "traffic" && right.type === "traffic"
+    && left.quantityGb === right.quantityGb
+    && left.cycleDays === right.cycleDays
+    && left.resetAtCycleEnd === right.resetAtCycleEnd
+    && left.carryOver === right.carryOver
+    && left.consumptionPriority === right.consumptionPriority;
+}
+
+function sameGrants(left: CommerceGrantDto[], right: CommerceGrantDto[]): boolean {
+  return left.length === right.length && left.every((grant, index) => sameGrant(grant, right[index]));
+}
+
+function parseProductVersion(value: unknown): ProductVersionDto {
+  const record = exactRecord(value, [
+    "productId", "productVersionRef", "version", "status", "kind", "selfOperated",
+    "publishedAt", "grants", "commerceBenefits"
+  ]);
+  if (record.status !== "published"
+    || (record.kind !== "membership" && record.kind !== "traffic_pack")
+    || record.selfOperated !== true
+    || !Array.isArray(record.commerceBenefits)) invalidResponse();
+  const commerceBenefits = record.commerceBenefits.map((benefit) => {
+    const parsed = exactRecord(benefit, ["type", "eligibleDiscountClasses", "priceBasisPoints"]);
+    if (parsed.type !== "offer_discount"
+      || !Array.isArray(parsed.eligibleDiscountClasses)
+      || parsed.eligibleDiscountClasses.length === 0) invalidResponse();
+    const priceBasisPoints = safeInteger(parsed.priceBasisPoints);
+    if (priceBasisPoints > 10000) invalidResponse();
+    return {
+      type: "offer_discount" as const,
+      eligibleDiscountClasses: parsed.eligibleDiscountClasses.map(safeRef),
+      priceBasisPoints
+    };
+  });
+  return {
+    productId: safeRef(record.productId),
+    productVersionRef: safeRef(record.productVersionRef),
+    version: positiveInteger(record.version),
+    status: "published",
+    kind: record.kind,
+    selfOperated: true,
+    publishedAt: canonicalTimestamp(record.publishedAt),
+    grants: parseGrants(record.grants),
+    commerceBenefits
+  };
+}
+
+function parseOfferVersion(value: unknown): OfferVersionDto {
+  const record = exactRecord(value, [
+    "offerVersionRef", "productVersionRef", "version", "status", "currency", "priceCoins",
+    "discountClass", "selfOperated", "publishedAt"
+  ]);
+  if (record.status !== "published" || record.currency !== "COINS" || record.selfOperated !== true) invalidResponse();
+  return {
+    offerVersionRef: safeRef(record.offerVersionRef),
+    productVersionRef: safeRef(record.productVersionRef),
+    version: positiveInteger(record.version),
+    status: "published",
+    currency: "COINS",
+    priceCoins: safeInteger(record.priceCoins),
+    discountClass: discountClass(record.discountClass),
+    selfOperated: true,
+    publishedAt: canonicalTimestamp(record.publishedAt)
+  };
+}
+
+function discountClass(value: unknown): OfferVersionDto["discountClass"] {
+  if (value === "membership" || value === "traffic_pack" || value === "addon") return value;
+  return invalidResponse();
+}
+
+function parseRechargeOffer(value: unknown): RechargeOfferDto {
+  const record = exactRecord(value, [
+    "rechargeOfferRef", "version", "status", "currency", "paidCoins", "bonusCoins", "publishedAt"
+  ]);
+  if (record.status !== "published" || record.currency !== "COINS") invalidResponse();
+  return {
+    rechargeOfferRef: safeRef(record.rechargeOfferRef),
+    version: positiveInteger(record.version),
+    status: "published",
+    currency: "COINS",
+    paidCoins: positiveInteger(record.paidCoins),
+    bonusCoins: safeInteger(record.bonusCoins),
+    publishedAt: canonicalTimestamp(record.publishedAt)
+  };
+}
+
+function parseOrderItem(value: unknown): OrderItemDto {
+  const record = exactRecord(value, [
+    "productId", "productVersionRef", "offerVersionRef", "currency", "basePriceCoins",
+    "payableCoins", "discount", "grants"
+  ]);
+  if (record.currency !== "COINS") invalidResponse();
+  const basePriceCoins = safeInteger(record.basePriceCoins);
+  const payableCoins = safeInteger(record.payableCoins);
+  if (payableCoins > basePriceCoins) invalidResponse();
+  let discount: OrderItemDto["discount"] = null;
+  if (record.discount !== null) {
+    const parsed = exactRecord(record.discount, ["sourceProductVersionRef", "priceBasisPoints"]);
+    const priceBasisPoints = safeInteger(parsed.priceBasisPoints);
+    if (priceBasisPoints > 10000) invalidResponse();
+    discount = { sourceProductVersionRef: safeRef(parsed.sourceProductVersionRef), priceBasisPoints };
+  }
+  return {
+    productId: safeRef(record.productId),
+    productVersionRef: safeRef(record.productVersionRef),
+    offerVersionRef: safeRef(record.offerVersionRef),
+    currency: "COINS",
+    basePriceCoins,
+    payableCoins,
+    discount,
+    grants: parseGrants(record.grants)
   };
 }
 
 function parseOrder(value: unknown): CommerceOrderDto {
   if (!isRecord(value)) invalidResponse();
   const orderType = text(value.orderType);
-  const common = {
-    schemaVersion: text(value.schemaVersion),
-    orderRef: text(value.orderRef),
-    accountRef: text(value.accountRef),
-    createdAt: text(value.createdAt)
-  };
-  if (common.schemaVersion !== "coins_commerce_order_v1") invalidResponse();
   if (orderType === "product") {
     const record = exactRecord(value, [
       "schemaVersion", "orderRef", "accountRef", "orderType", "status", "currency", "item",
       "amountCoins", "holdRef", "captureTransactionRef", "fulfillmentPlanRef", "createdAt"
     ]);
     const status = stringValue<CommerceOrderStatus>(record.status, ORDER_STATUS_SET);
-    if (status !== "fulfillment_planned" || record.currency !== "COINS" || !isRecord(record.item)) invalidResponse();
+    if (record.schemaVersion !== "coins_commerce_order_v1" || status !== "fulfillment_planned" || record.currency !== "COINS") {
+      invalidResponse();
+    }
+    const item = parseOrderItem(record.item);
+    const amountCoins = safeInteger(record.amountCoins);
+    if (amountCoins !== item.payableCoins) invalidResponse();
     return {
-      ...common,
       schemaVersion: "coins_commerce_order_v1",
-      orderType,
+      orderRef: safeRef(record.orderRef),
+      accountRef: safeRef(record.accountRef),
+      orderType: "product",
       status,
       currency: "COINS",
-      item: record.item as ProductOrderDto["item"],
-      amountCoins: safeInteger(record.amountCoins),
-      holdRef: text(record.holdRef),
-      captureTransactionRef: text(record.captureTransactionRef),
-      fulfillmentPlanRef: text(record.fulfillmentPlanRef)
+      item,
+      amountCoins,
+      holdRef: safeRef(record.holdRef),
+      captureTransactionRef: safeRef(record.captureTransactionRef),
+      fulfillmentPlanRef: safeRef(record.fulfillmentPlanRef),
+      createdAt: canonicalTimestamp(record.createdAt)
     };
   }
   if (orderType === "recharge") {
@@ -270,21 +481,65 @@ function parseOrder(value: unknown): CommerceOrderDto {
     const snapshot = exactRecord(record.rechargeSnapshot, [
       "rechargeOfferRef", "currency", "paidCoins", "bonusCoins"
     ]);
-    if (status !== "payment_requested" || snapshot.currency !== "COINS") invalidResponse();
+    if (record.schemaVersion !== "coins_commerce_order_v1"
+      || status !== "payment_requested"
+      || snapshot.currency !== "COINS") invalidResponse();
     return {
-      ...common,
       schemaVersion: "coins_commerce_order_v1",
-      orderType,
+      orderRef: safeRef(record.orderRef),
+      accountRef: safeRef(record.accountRef),
+      orderType: "recharge",
       status,
       rechargeSnapshot: {
-        rechargeOfferRef: text(snapshot.rechargeOfferRef),
+        rechargeOfferRef: safeRef(snapshot.rechargeOfferRef),
         currency: "COINS",
-        paidCoins: safeInteger(snapshot.paidCoins),
+        paidCoins: positiveInteger(snapshot.paidCoins),
         bonusCoins: safeInteger(snapshot.bonusCoins)
-      }
+      },
+      createdAt: canonicalTimestamp(record.createdAt)
     };
   }
   return invalidResponse();
+}
+
+function coinOrigin(value: unknown): WalletTransactionDto["allocations"][number]["origin"] {
+  if (value === "bonus" || value === "paid" || value === "referral") return value;
+  return invalidResponse();
+}
+
+function transactionType(value: unknown): WalletTransactionDto["type"] {
+  const result = text(value);
+  if (!TRANSACTION_TYPES.has(result)) invalidResponse();
+  if (result === "credit" || result === "hold" || result === "capture" || result === "release"
+    || result === "referral_freeze" || result === "referral_release"
+    || result === "referral_settlement" || result === "referral_reversal") return result;
+  return invalidResponse();
+}
+
+function parseWalletTransaction(value: unknown): WalletTransactionDto {
+  const record = exactRecord(value, [
+    "transactionRef", "accountRef", "type", "amountCoins", "allocations", "relatedRef", "createdAt"
+  ]);
+  if (!Array.isArray(record.allocations) || record.allocations.length === 0) invalidResponse();
+  const allocations = record.allocations.map((allocation) => {
+    const parsed = exactRecord(allocation, ["lotRef", "origin", "amountCoins"]);
+    return {
+      lotRef: safeRef(parsed.lotRef),
+      origin: coinOrigin(parsed.origin),
+      amountCoins: positiveInteger(parsed.amountCoins)
+    };
+  });
+  const amountCoins = positiveInteger(record.amountCoins);
+  if (allocations.reduce((total, allocation) => total + allocation.amountCoins, 0) !== amountCoins) invalidResponse();
+  return {
+    transactionRef: safeRef(record.transactionRef),
+    accountRef: safeRef(record.accountRef),
+    type: transactionType(record.type),
+    amountCoins,
+    allocations,
+    relatedRef: safeRef(record.relatedRef),
+    createdAt: canonicalTimestamp(record.createdAt)
+  };
 }
 
 function parseWallet(value: unknown): WalletDto {
@@ -293,23 +548,36 @@ function parseWallet(value: unknown): WalletDto {
     "accountRef", "at", "totalAvailableCoins", "totalFrozenCoins", "byOrigin"
   ]);
   const byOrigin = exactRecord(summary.byOrigin, [...COIN_ORIGINS]);
-  const balances = Object.fromEntries(COIN_ORIGINS.map((origin) => {
-    const balance = exactRecord(byOrigin[origin], ["availableCoins", "frozenCoins"]);
-    return [origin, {
-      availableCoins: safeInteger(balance.availableCoins),
-      frozenCoins: safeInteger(balance.frozenCoins)
-    }];
-  })) as WalletDto["summary"]["byOrigin"];
-  if (!Array.isArray(record.transactions)) invalidResponse();
+  const balances = {
+    bonus: parseOriginBalance(byOrigin.bonus),
+    paid: parseOriginBalance(byOrigin.paid),
+    referral: parseOriginBalance(byOrigin.referral)
+  };
+  const totalAvailableCoins = safeInteger(summary.totalAvailableCoins);
+  const totalFrozenCoins = safeInteger(summary.totalFrozenCoins);
+  if (Object.values(balances).reduce((total, balance) => total + balance.availableCoins, 0) !== totalAvailableCoins
+    || Object.values(balances).reduce((total, balance) => total + balance.frozenCoins, 0) !== totalFrozenCoins
+    || !Array.isArray(record.transactions)) invalidResponse();
+  const accountRef = safeRef(summary.accountRef);
+  const transactions = record.transactions.map(parseWalletTransaction);
+  if (transactions.some((transaction) => transaction.accountRef !== accountRef)) invalidResponse();
   return {
     summary: {
-      accountRef: text(summary.accountRef),
-      at: text(summary.at),
-      totalAvailableCoins: safeInteger(summary.totalAvailableCoins),
-      totalFrozenCoins: safeInteger(summary.totalFrozenCoins),
+      accountRef,
+      at: canonicalTimestamp(summary.at),
+      totalAvailableCoins,
+      totalFrozenCoins,
       byOrigin: balances
     },
-    transactions: record.transactions as WalletDto["transactions"]
+    transactions
+  };
+}
+
+function parseOriginBalance(value: unknown): WalletDto["summary"]["byOrigin"]["paid"] {
+  const record = exactRecord(value, ["availableCoins", "frozenCoins"]);
+  return {
+    availableCoins: safeInteger(record.availableCoins),
+    frozenCoins: safeInteger(record.frozenCoins)
   };
 }
 
@@ -323,24 +591,79 @@ function parseCatalog(value: unknown): CatalogDto {
     || !Array.isArray(catalog.offerVersions)
     || !Array.isArray(catalog.rechargeOffers)
     || !Array.isArray(record.activeMemberships)) invalidResponse();
+  const productVersions = catalog.productVersions.map(parseProductVersion);
+  const offerVersions = catalog.offerVersions.map(parseOfferVersion);
+  const rechargeOffers = catalog.rechargeOffers.map(parseRechargeOffer);
+  const activeMemberships = record.activeMemberships.map(parseProductVersion);
+  const productRefs = new Set(productVersions.map(({ productVersionRef }) => productVersionRef));
+  if (productRefs.size !== productVersions.length
+    || new Set(offerVersions.map(({ offerVersionRef }) => offerVersionRef)).size !== offerVersions.length
+    || new Set(rechargeOffers.map(({ rechargeOfferRef }) => rechargeOfferRef)).size !== rechargeOffers.length
+    || offerVersions.some(({ productVersionRef }) => !productRefs.has(productVersionRef))
+    || activeMemberships.some(({ productVersionRef, kind }) => kind !== "membership" || !productRefs.has(productVersionRef))) {
+    invalidResponse();
+  }
   return {
-    catalog: catalog as CatalogDto["catalog"],
-    activeMemberships: record.activeMemberships as CatalogDto["activeMemberships"]
+    catalog: {
+      schemaVersion: "coins_commerce_catalog_v1",
+      publishedAt: canonicalTimestamp(catalog.publishedAt),
+      productVersions,
+      offerVersions,
+      rechargeOffers
+    },
+    activeMemberships
+  };
+}
+
+function parseFulfillmentPlan(value: unknown): FulfillmentPlanDto {
+  const record = exactRecord(value, [
+    "schemaVersion", "planRef", "orderRef", "accountRef", "status", "productVersionRef",
+    "offerVersionRef", "grants", "createdAt"
+  ]);
+  if (record.schemaVersion !== "coins_commerce_fulfillment_plan_v1" || record.status !== "ready") invalidResponse();
+  return {
+    schemaVersion: "coins_commerce_fulfillment_plan_v1",
+    planRef: safeRef(record.planRef),
+    orderRef: safeRef(record.orderRef),
+    accountRef: safeRef(record.accountRef),
+    status: "ready",
+    productVersionRef: safeRef(record.productVersionRef),
+    offerVersionRef: safeRef(record.offerVersionRef),
+    grants: parseGrants(record.grants),
+    createdAt: canonicalTimestamp(record.createdAt)
   };
 }
 
 function parseProductOrderResult(value: unknown): ProductOrderResultDto {
   const record = exactRecord(value, ["order", "fulfillmentPlan"]);
   const order = parseOrder(record.order);
-  const plan = exactRecord(record.fulfillmentPlan, [
-    "schemaVersion", "planRef", "orderRef", "accountRef", "status", "productVersionRef",
-    "offerVersionRef", "grants", "createdAt"
-  ]);
+  const fulfillmentPlan = parseFulfillmentPlan(record.fulfillmentPlan);
   if (order.orderType !== "product"
-    || plan.schemaVersion !== "coins_commerce_fulfillment_plan_v1"
-    || plan.status !== "ready"
-    || !Array.isArray(plan.grants)) invalidResponse();
-  return { order, fulfillmentPlan: plan as ProductOrderResultDto["fulfillmentPlan"] };
+    || fulfillmentPlan.planRef !== order.fulfillmentPlanRef
+    || fulfillmentPlan.orderRef !== order.orderRef
+    || fulfillmentPlan.accountRef !== order.accountRef
+    || fulfillmentPlan.productVersionRef !== order.item.productVersionRef
+    || fulfillmentPlan.offerVersionRef !== order.item.offerVersionRef
+    || !sameGrants(fulfillmentPlan.grants, order.item.grants)) invalidResponse();
+  return { order, fulfillmentPlan };
+}
+
+function sameNextAction(left: SafeNextActionDto, right: SafeNextActionDto): boolean {
+  if (left.type !== right.type) return false;
+  if (left.type === "none" && right.type === "none") return true;
+  if (left.type === "hosted_redirect" && right.type === "hosted_redirect") {
+    return left.url === right.url && left.expiresAt === right.expiresAt;
+  }
+  if (left.type === "provider_sdk" && right.type === "provider_sdk") {
+    return left.actionRef === right.actionRef && left.expiresAt === right.expiresAt;
+  }
+  if (left.type === "qr" && right.type === "qr") {
+    return left.payload === right.payload && left.expiresAt === right.expiresAt;
+  }
+  return left.type === "bank_instructions" && right.type === "bank_instructions"
+    && left.expiresAt === right.expiresAt
+    && left.instructions.length === right.instructions.length
+    && left.instructions.every((instruction, index) => instruction === right.instructions[index]);
 }
 
 function parseRechargeOrderResult(value: unknown): RechargeOrderResultDto {
@@ -354,7 +677,7 @@ function parseRechargeOrderResult(value: unknown): RechargeOrderResultDto {
   if (attempt === null) {
     if (status !== "entry_unavailable" || chargeCertainty !== "not_charge_capable" || nextAction.type !== "none") invalidResponse();
   } else if (attempt.status !== status || attempt.chargeCertainty !== chargeCertainty
-    || JSON.stringify(attempt.nextAction) !== JSON.stringify(nextAction)) invalidResponse();
+    || !sameNextAction(attempt.nextAction, nextAction)) invalidResponse();
   return { order, attempt, status, chargeCertainty, nextAction };
 }
 
@@ -435,7 +758,26 @@ function requiredInputText(value: string): string {
 }
 
 function endpoint(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/$/, "")}${path}`;
+  if (baseUrl === "") return path;
+  let current: URL;
+  let configured: URL;
+  try {
+    if (typeof window === "undefined") throw new Error("browser origin unavailable");
+    current = new URL(window.location.href);
+    configured = new URL(baseUrl, current);
+  } catch {
+    throw new CommerceClientError("validation_error", 400);
+  }
+  if (current.origin === "null"
+    || configured.origin !== current.origin
+    || configured.username
+    || configured.password
+    || configured.search
+    || configured.hash) {
+    throw new CommerceClientError("validation_error", 400);
+  }
+  const basePath = configured.pathname.replace(/\/+$/, "");
+  return `${configured.origin}${basePath}${path}`;
 }
 
 function sessionHeaders(sessionRef: string): Record<string, string> {
@@ -456,14 +798,14 @@ function writeHeaders(sessionRef: string, idempotencyKey: string): Record<string
 export function createHttpCommerceClient(options: HttpCommerceClientOptions = {}): CommerceClient {
   const baseUrl = options.baseUrl ?? "";
   const fetchFn = options.fetchFn ?? fetch;
-  const read = <T>(sessionRef: string, path: string, parse: (value: unknown) => T, signal?: AbortSignal) => (
+  const read = async <T>(sessionRef: string, path: string, parse: (value: unknown) => T, signal?: AbortSignal) => (
     requestJson(fetchFn, endpoint(baseUrl, path), {
       method: "GET",
       headers: sessionHeaders(sessionRef),
       signal
     }, parse)
   );
-  const write = <T>(
+  const write = async <T>(
     sessionRef: string,
     path: string,
     idempotencyKey: string,
@@ -525,7 +867,7 @@ export function createHttpCommerceClient(options: HttpCommerceClientOptions = {}
 }
 
 function cloneDto<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  return structuredClone(value);
 }
 
 function checkAbort(signal?: AbortSignal): void {

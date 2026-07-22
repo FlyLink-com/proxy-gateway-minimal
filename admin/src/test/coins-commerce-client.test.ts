@@ -89,6 +89,56 @@ function attempt(overrides: Partial<PaymentAttemptDto> = {}): PaymentAttemptDto 
   };
 }
 
+function productOrderResult() {
+  const grants = [
+    { type: "access" as const, durationDays: null, mode: "while_traffic_remaining" as const },
+    {
+      type: "traffic" as const,
+      quantityGb: 100,
+      cycleDays: null,
+      resetAtCycleEnd: false,
+      carryOver: true,
+      consumptionPriority: 200
+    }
+  ];
+  return {
+    order: {
+      schemaVersion: "coins_commerce_order_v1" as const,
+      orderRef: "product-order-safe",
+      accountRef: "acct-safe",
+      orderType: "product" as const,
+      status: "fulfillment_planned" as const,
+      currency: "COINS" as const,
+      item: {
+        productId: "traffic_pack_permanent_100gb",
+        productVersionRef: "pv-safe",
+        offerVersionRef: "ov-safe",
+        currency: "COINS" as const,
+        basePriceCoins: 30,
+        payableCoins: 30,
+        discount: null,
+        grants
+      },
+      amountCoins: 30,
+      holdRef: "hold-safe",
+      captureTransactionRef: "capture-safe",
+      fulfillmentPlanRef: "plan-safe",
+      createdAt: NOW
+    },
+    fulfillmentPlan: {
+      schemaVersion: "coins_commerce_fulfillment_plan_v1" as const,
+      planRef: "plan-safe",
+      orderRef: "product-order-safe",
+      accountRef: "acct-safe",
+      status: "ready" as const,
+      productVersionRef: "pv-safe",
+      offerVersionRef: "ov-safe",
+      grants,
+      createdAt: NOW
+    }
+  };
+}
+
 describe("HTTP Coins commerce client", () => {
   test("uses same-origin GETs with the Portal session and propagates AbortSignal", async () => {
     const fetchFn = fetchMock(response(wallet()));
@@ -105,43 +155,105 @@ describe("HTTP Coins commerce client", () => {
     expect(request.url).not.toMatch(/account|userRef|portalUserRef/i);
   });
 
-  test("puts idempotency only in headers and omits caller ownership from every POST", async () => {
-    const productResult = {
-      order: {
-        schemaVersion: "coins_commerce_order_v1",
-        orderRef: "product-order-safe",
-        accountRef: "acct-safe",
-        orderType: "product",
-        status: "fulfillment_planned",
-        currency: "COINS",
-        item: {
-          productId: "traffic_pack_permanent_100gb",
-          productVersionRef: "pv-safe",
-          offerVersionRef: "ov-safe",
-          currency: "COINS",
-          basePriceCoins: 30,
-          payableCoins: 30,
-          discount: null,
-          grants: []
-        },
-        amountCoins: 30,
-        holdRef: "hold-safe",
-        captureTransactionRef: "capture-safe",
-        fulfillmentPlanRef: "plan-safe",
-        createdAt: NOW
+  test("refuses a cross-origin base URL before a session-bearing fetch and allows explicit same-origin", async () => {
+    const crossOriginFetch = fetchMock(response(catalog()));
+    const crossOriginClient = createHttpCommerceClient({
+      baseUrl: "https://untrusted.example.test",
+      fetchFn: crossOriginFetch as unknown as typeof fetch
+    });
+
+    const result = await crossOriginClient.getCatalog("synthetic-session-marker").catch((error: unknown) => error);
+
+    expect(result).toMatchObject({
+      name: "CommerceClientError",
+      code: "validation_error",
+      status: 400
+    });
+    expect(crossOriginFetch).not.toHaveBeenCalled();
+
+    const sameOriginFetch = fetchMock(response(catalog()));
+    const sameOriginClient = createHttpCommerceClient({
+      baseUrl: window.location.origin,
+      fetchFn: sameOriginFetch as unknown as typeof fetch
+    });
+    await expect(sameOriginClient.getCatalog("same-origin-session")).resolves.toEqual(catalog());
+    expect(requestAt(sameOriginFetch, 0).url).toBe(`${window.location.origin}/api/portal/commerce/catalog`);
+  });
+
+  test("fails closed for nested Commerce DTOs and status-linked payment evidence", async () => {
+    const baseProductResult = productOrderResult();
+    const malformedCatalog = {
+      ...catalog(),
+      catalog: {
+        ...catalog().catalog,
+        productVersions: [{ providerPayload: { credential: "synthetic-marker" } }],
+        offerVersions: [{}],
+        rechargeOffers: [{}]
       },
-      fulfillmentPlan: {
-        schemaVersion: "coins_commerce_fulfillment_plan_v1",
-        planRef: "plan-safe",
-        orderRef: "product-order-safe",
+      activeMemberships: [{}]
+    };
+    const malformedWallet = {
+      ...wallet(),
+      transactions: [{
+        transactionRef: "transaction-safe",
         accountRef: "acct-safe",
-        status: "ready",
-        productVersionRef: "pv-safe",
-        offerVersionRef: "ov-safe",
-        grants: [],
-        createdAt: NOW
+        type: "credit",
+        amountCoins: 1.5,
+        allocations: [],
+        relatedRef: "bad/ref",
+        createdAt: "not-a-timestamp"
+      }]
+    };
+    const malformedItem = {
+      ...baseProductResult,
+      order: {
+        ...baseProductResult.order,
+        item: {
+          ...baseProductResult.order.item,
+          providerPayload: { credential: "synthetic-marker" }
+        }
       }
     };
+    const malformedPlan = {
+      ...baseProductResult,
+      fulfillmentPlan: {
+        ...baseProductResult.fulfillmentPlan,
+        orderRef: "different-order",
+        grants: [{ type: "traffic", providerPayload: { credential: "synthetic-marker" } }]
+      }
+    };
+    const fetchFn = fetchMock(
+      response(malformedCatalog),
+      response(malformedWallet),
+      response(malformedItem, 201),
+      response(malformedPlan, 201),
+      response(attempt({ status: "succeeded", chargeCertainty: "charged", reconciliationState: "pending" })),
+      response(attempt({
+        status: "action_required",
+        chargeCertainty: "pending",
+        reconciliationState: "pending",
+        nextAction: { type: "provider_sdk", actionRef: "bad/ref", expiresAt: "not-a-timestamp" }
+      }))
+    );
+    const client = createHttpCommerceClient({ fetchFn: fetchFn as unknown as typeof fetch });
+    const results = await Promise.allSettled([
+      client.getCatalog("session-safe"),
+      client.getWallet("session-safe"),
+      client.createProductOrder("session-safe", { offerVersionRef: "ov-safe", idempotencyKey: "item-check" }),
+      client.createProductOrder("session-safe", { offerVersionRef: "ov-safe", idempotencyKey: "plan-check" }),
+      client.getPaymentAttempt("session-safe", "attempt-safe"),
+      client.getPaymentAttempt("session-safe", "attempt-action-safe")
+    ]);
+
+    expect(results.map(({ status }) => status)).toEqual(Array.from({ length: 6 }, () => "rejected"));
+    for (const result of results) {
+      if (result.status !== "rejected") continue;
+      expect(result.reason).toMatchObject({ name: "CommerceClientError", code: "invalid_response" });
+    }
+  });
+
+  test("puts idempotency only in headers and omits caller ownership from every POST", async () => {
+    const productResult = productOrderResult();
     const rechargeResult = {
       order: {
         schemaVersion: "coins_commerce_order_v1",
