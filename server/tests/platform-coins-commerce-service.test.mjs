@@ -45,8 +45,8 @@ function quoteFor({ rechargeOfferRef, paidCoins, bonusCoins }) {
   };
 }
 
-function preview(providerId, createRechargeOrderFn) {
-  return createCoinsCommerceProviderPreview({ providerId, createRechargeOrderFn });
+function preview(providerId, createRechargeOrderFn, options = {}) {
+  return createCoinsCommerceProviderPreview({ providerId, createRechargeOrderFn, ...options });
 }
 
 function directProvider(providerId, createRechargeOrder) {
@@ -57,12 +57,12 @@ function directProvider(providerId, createRechargeOrder) {
   });
 }
 
-function actionRequired(providerOrderRef = 'provider_order_1') {
+function actionRequired(providerOrderRef = 'provider_order_1', url = 'https://pay.example.test/checkout') {
   return {
     providerOrderRef,
     status: 'action_required',
     chargeCertainty: 'pending',
-    nextAction: { type: 'hosted_redirect', url: 'https://pay.example.test/checkout' }
+    nextAction: { type: 'hosted_redirect', url }
   };
 }
 
@@ -354,10 +354,6 @@ test('maps contradictory or unsafe direct-adapter results to unknown without aut
     {
       providerOrderRef: 'unsafe_credentials', status: 'action_required', chargeCertainty: 'pending',
       nextAction: { type: 'hosted_redirect', url: 'https://user:pass@pay.example.test/checkout' }
-    },
-    {
-      providerOrderRef: 'unsafe_host', status: 'action_required', chargeCertainty: 'pending',
-      nextAction: { type: 'hosted_redirect', url: 'https://127.0.0.1/checkout' }
     }
   ];
   for (const [index, invalidResult] of invalidResults.entries()) {
@@ -381,6 +377,30 @@ test('maps contradictory or unsafe direct-adapter results to unknown without aut
     assert.equal(result.attempt.reconciliationState, 'requires_review');
     assert.equal(firstCalls, 1);
     assert.equal(secondCalls, 0);
+  }
+});
+
+test('preserves Task3 HTTPS host freedom and explicitly enabled HTTP loopback previews', async () => {
+  const urls = [
+    'https://127.0.0.1/checkout',
+    'https://paybox/checkout',
+    'https://localhost/checkout',
+    'http://localhost:3456/checkout',
+    'http://127.0.0.1:3456/checkout',
+    'http://[::1]:3456/checkout'
+  ];
+  for (const [index, url] of urls.entries()) {
+    const provider = preview(`preview_redirect_${index}`, () => actionRequired(`preview_order_${index}`, url), {
+      allowLoopbackHttp: true
+    });
+    const { service } = serviceFixture({ providers: [provider] });
+    const result = await service.createRechargeOrder({
+      accountRef: 'acct-1', rechargeOfferRef: 'rov_paid_10_v1', preferredProviderId: null,
+      idempotencyKey: `preview-redirect-${index}`
+    });
+    assert.equal(result.status, 'action_required');
+    assert.equal(result.nextAction.type, 'hosted_redirect');
+    assert.equal(result.nextAction.url, url);
   }
 });
 

@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { isIP } from 'node:net';
 
 import {
   commerceError,
@@ -281,9 +280,9 @@ function normalizeProviderOutcome(value) {
   if (result.nextAction.type === 'hosted_redirect') {
     let url;
     try { url = new URL(result.nextAction.url); } catch { validation(); }
-    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
-    if (url.protocol !== 'https:' || url.username || url.password || isIP(hostname) !== 0
-      || !hostname.includes('.') || hostname === 'localhost' || hostname.endsWith('.localhost')) validation();
+    const loopback = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname);
+    if (url.username || url.password
+      || (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback))) validation();
   }
   return result;
 }
