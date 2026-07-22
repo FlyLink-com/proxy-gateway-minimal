@@ -141,6 +141,10 @@ test('permits dense bank-instruction arrays but rejects exotic array shapes', as
   const cyclic = bankInstructions();
   cyclic.nextAction.instructions.push(cyclic.nextAction.instructions);
   await assert.rejects(preview(() => cyclic).createRechargeOrder(input()), /provider_unavailable/);
+  class ExoticInstructions extends Array {}
+  const exotic = bankInstructions();
+  exotic.nextAction.instructions = new ExoticInstructions('Use preview bank', 'Reference provider_order_bank');
+  await assert.rejects(preview(() => exotic).createRechargeOrder(input()), /provider_unavailable/);
 });
 
 test('validates factory options before reading fields or running getters', () => {

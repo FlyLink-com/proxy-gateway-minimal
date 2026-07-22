@@ -19,6 +19,7 @@ function closedClone(value, seen = new Set()) {
   if (typeof value !== 'object' || seen.has(value) || Object.getOwnPropertySymbols(value).length !== 0) throw validationError();
   seen.add(value);
   if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype) throw validationError();
     const descriptors = Object.getOwnPropertyDescriptors(value);
     const length = descriptors.length;
     if (!Object.hasOwn(length, 'value') || length.enumerable || length.configurable || typeof length.writable !== 'boolean' || !Number.isSafeInteger(length.value)) throw validationError();
