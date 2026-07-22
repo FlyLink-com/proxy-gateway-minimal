@@ -1,6 +1,6 @@
 # GitHub Deployment Runbook
 
-Last updated: 2026-07-16, America/Los_Angeles.
+Last updated: 2026-07-21, America/Los_Angeles.
 
 This runbook defines the repository-owned GitHub deployment foundation for
 `proxy-gateway-minimal`. It is not a production approval. Production host,
@@ -100,6 +100,15 @@ forwarding, SCP, rsync, or an operator SSH identity. Logs and summaries contain
 aggregate receipts only.
 
 #### CI Identity Bootstrap Gate
+
+> **Blocked on the current repository plan and policy.** The private Team
+> repository does not enforce required Environment reviewers or prevent
+> self-review. Therefore this bootstrap and the dependent production execution
+> Gate below are design-only and must not be dispatched. A typed confirmation
+> or unprotected manual run is not an acceptable substitute. Re-entry requires
+> a new source-only PR from current `master` that first proves enforceable
+> approval separation or defines an independently reviewed offline approval
+> mechanism; that PR carries no production execution authority.
 
 This independent exact Risk A Gate must be approved and completed before any
 workflow dispatch. It creates a new temporary, dedicated CI SSH identity,
