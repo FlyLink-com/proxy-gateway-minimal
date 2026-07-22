@@ -1,0 +1,240 @@
+.coins-commerce-balance-card,
+.coins-commerce-offer-card,
+.coins-commerce-order-summary,
+.coins-commerce-state {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-card);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  box-shadow: var(--admin-shadow-card);
+  overflow-wrap: anywhere;
+}
+
+.coins-commerce-balance-card,
+.coins-commerce-order-summary,
+.coins-commerce-state {
+  padding: var(--admin-density-normal-card-padding);
+}
+
+.coins-commerce-balance-card h3,
+.coins-commerce-offer-card h3,
+.coins-commerce-order-summary h3,
+.coins-commerce-state h3 {
+  min-width: 0;
+  margin: 0;
+  color: var(--admin-text);
+  font-size: 1rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.coins-commerce-balance-value {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.coins-commerce-balance-value strong {
+  font-size: clamp(1.75rem, 6vw, 2.5rem);
+  line-height: 1;
+}
+
+.coins-commerce-balance-value span,
+.coins-commerce-supporting-copy {
+  color: var(--admin-muted);
+}
+
+.coins-commerce-supporting-copy {
+  min-width: 0;
+  margin: 8px 0 0;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.coins-commerce-offer-item {
+  min-width: 0;
+  max-width: 100%;
+  list-style: none;
+}
+
+.coins-commerce-offer-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: var(--admin-density-normal-card-padding);
+}
+
+.coins-commerce-offer-copy,
+.coins-commerce-price {
+  min-width: 0;
+}
+
+.coins-commerce-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.coins-commerce-price del {
+  color: var(--admin-muted);
+}
+
+.coins-commerce-action {
+  display: inline-flex;
+  min-block-size: var(--admin-touch-target-min, 44px);
+  min-inline-size: var(--admin-touch-target-min, 44px);
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--admin-accent);
+  border-radius: var(--admin-radius-control);
+  padding: 10px 16px;
+  background: var(--admin-accent);
+  color: var(--admin-surface);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  transition: background var(--admin-ease), border-color var(--admin-ease), box-shadow var(--admin-ease);
+}
+
+.coins-commerce-action:hover:not(:disabled) {
+  border-color: var(--admin-accent-strong);
+  background: var(--admin-accent-strong);
+}
+
+.coins-commerce-action:focus-visible {
+  outline: 3px solid var(--admin-focus-ring);
+  outline-offset: 3px;
+}
+
+.coins-commerce-action:disabled {
+  border-color: var(--admin-border-strong);
+  background: var(--admin-neutral-bg);
+  color: var(--admin-muted);
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.coins-commerce-status {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-pill);
+  padding: 4px 9px;
+  background: var(--admin-neutral-bg);
+  color: var(--admin-neutral-fg);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.coins-commerce-status-mark {
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.coins-commerce-status-success {
+  border-color: var(--admin-success-border);
+  background: var(--admin-success-bg);
+  color: var(--admin-success-fg);
+}
+
+.coins-commerce-status-info {
+  border-color: var(--admin-info-border);
+  background: var(--admin-info-bg);
+  color: var(--admin-info-fg);
+}
+
+.coins-commerce-status-warning {
+  border-color: var(--admin-warning-border);
+  background: var(--admin-warning-bg);
+  color: var(--admin-warning-fg);
+}
+
+.coins-commerce-status-danger,
+.coins-commerce-state-error {
+  border-color: var(--admin-danger-border);
+  background: var(--admin-danger-bg);
+  color: var(--admin-danger-fg);
+}
+
+.coins-commerce-section-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.coins-commerce-detail-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 0;
+}
+
+.coins-commerce-detail-list > div {
+  min-width: 0;
+}
+
+.coins-commerce-detail-list dt {
+  color: var(--admin-muted);
+  font-size: 0.8125rem;
+}
+
+.coins-commerce-detail-list dd {
+  min-width: 0;
+  margin: 4px 0 0;
+  color: var(--admin-text);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.coins-commerce-state-loading {
+  border-color: var(--admin-info-border);
+  background: var(--admin-info-bg);
+}
+
+.coins-commerce-state-empty {
+  background: var(--admin-surface-muted);
+}
+
+.coins-commerce-ledger-row > td {
+  min-width: 0;
+  max-width: 100%;
+  border-bottom: 1px solid var(--admin-border);
+  padding: 12px;
+  color: var(--admin-text-soft);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 620px) {
+  .coins-commerce-offer-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .coins-commerce-action {
+    width: 100%;
+  }
+
+  .coins-commerce-section-heading {
+    flex-direction: column;
+  }
+
+  .coins-commerce-detail-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
