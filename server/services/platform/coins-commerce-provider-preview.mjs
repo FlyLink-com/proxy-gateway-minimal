@@ -16,8 +16,23 @@ function isPlainObject(value) {
 
 function closedClone(value, seen = new Set()) {
   if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return value;
-  if (typeof value !== 'object' || !isPlainObject(value) || seen.has(value) || Object.getOwnPropertySymbols(value).length !== 0) throw validationError();
+  if (typeof value !== 'object' || seen.has(value) || Object.getOwnPropertySymbols(value).length !== 0) throw validationError();
   seen.add(value);
+  if (Array.isArray(value)) {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const length = descriptors.length;
+    if (!Object.hasOwn(length, 'value') || length.enumerable || length.configurable || typeof length.writable !== 'boolean' || !Number.isSafeInteger(length.value)) throw validationError();
+    const clone = [];
+    for (let index = 0; index < length.value; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) throw validationError();
+      clone.push(closedClone(descriptor.value, seen));
+    }
+    if (Object.keys(descriptors).length !== length.value + 1) throw validationError();
+    seen.delete(value);
+    return clone;
+  }
+  if (!isPlainObject(value)) throw validationError();
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const clone = {};
   for (const [key, descriptor] of Object.entries(descriptors)) {
@@ -41,7 +56,7 @@ function positiveSafeInteger(value) {
 }
 
 function deepFreeze(value) {
-  if (isPlainObject(value)) Object.values(value).forEach(deepFreeze);
+  if (Array.isArray(value) || isPlainObject(value)) Object.values(value).forEach(deepFreeze);
   return Object.freeze(value);
 }
 
@@ -73,8 +88,26 @@ function validateProviderResult(value, allowLoopbackHttp) {
   return deepFreeze(closedClone(result));
 }
 
-export function createCoinsCommerceProviderPreview({ providerId, createRechargeOrderFn, allowLoopbackHttp = false }) {
-  if (typeof providerId !== 'string' || !PROVIDER_ID.test(providerId) || typeof createRechargeOrderFn !== 'function' || typeof allowLoopbackHttp !== 'boolean') throw validationError();
+function validateFactoryOptions(options) {
+  try {
+    if (!isPlainObject(options) || Object.getOwnPropertySymbols(options).length !== 0) throw validationError();
+    const descriptors = Object.getOwnPropertyDescriptors(options);
+    const keys = Object.keys(descriptors);
+    if (!['providerId', 'createRechargeOrderFn'].every((key) => Object.hasOwn(descriptors, key)) || keys.some((key) => !['providerId', 'createRechargeOrderFn', 'allowLoopbackHttp'].includes(key))) throw validationError();
+    for (const descriptor of Object.values(descriptors)) if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) throw validationError();
+    const providerId = descriptors.providerId.value;
+    const createRechargeOrderFn = descriptors.createRechargeOrderFn.value;
+    const allowLoopbackHttp = Object.hasOwn(descriptors, 'allowLoopbackHttp') ? descriptors.allowLoopbackHttp.value : false;
+    if (typeof providerId !== 'string' || !PROVIDER_ID.test(providerId) || typeof createRechargeOrderFn !== 'function' || typeof allowLoopbackHttp !== 'boolean') throw validationError();
+    return { providerId, createRechargeOrderFn, allowLoopbackHttp };
+  } catch (error) {
+    if (error?.code === 'validation_error') throw error;
+    throw validationError();
+  }
+}
+
+export function createCoinsCommerceProviderPreview(options) {
+  const { providerId, createRechargeOrderFn, allowLoopbackHttp } = validateFactoryOptions(options);
   const adapter = {
     providerId,
     capabilities: deepFreeze({ createRechargeOrder: true }),

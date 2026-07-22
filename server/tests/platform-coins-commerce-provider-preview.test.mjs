@@ -116,3 +116,41 @@ test('requires providerOrderRef except for entry unavailable and permits QR payl
   const qr = await preview(() => ({ providerOrderRef: 'provider_order_2', status: 'action_required', chargeCertainty: 'pending', nextAction: { type: 'qr', payload: 'preview-qr' } })).createRechargeOrder(input());
   assert.equal(qr.nextAction.payload, 'preview-qr');
 });
+
+test('permits dense bank-instruction arrays but rejects exotic array shapes', async () => {
+  const bankInstructions = () => ({
+    providerOrderRef: 'provider_order_bank', status: 'action_required', chargeCertainty: 'pending',
+    nextAction: { type: 'bank_instructions', instructions: ['Use preview bank', 'Reference provider_order_bank'] }
+  });
+  const result = await preview(bankInstructions).createRechargeOrder(input());
+  assert.deepEqual(result.nextAction.instructions, ['Use preview bank', 'Reference provider_order_bank']);
+  assert.ok(Object.isFrozen(result.nextAction.instructions));
+
+  const sparse = bankInstructions();
+  sparse.nextAction.instructions = ['Use preview bank', , 'Reference provider_order_bank'];
+  await assert.rejects(preview(() => sparse).createRechargeOrder(input()), /provider_unavailable/);
+  const extra = bankInstructions();
+  extra.nextAction.instructions.extra = 'nope';
+  await assert.rejects(preview(() => extra).createRechargeOrder(input()), /provider_unavailable/);
+  const accessor = bankInstructions();
+  Object.defineProperty(accessor.nextAction.instructions, '0', { enumerable: true, get() { throw new Error('must not run'); } });
+  await assert.rejects(preview(() => accessor).createRechargeOrder(input()), /provider_unavailable/);
+  const hiddenIndex = bankInstructions();
+  Object.defineProperty(hiddenIndex.nextAction.instructions, '0', { enumerable: false, value: 'Use preview bank' });
+  await assert.rejects(preview(() => hiddenIndex).createRechargeOrder(input()), /provider_unavailable/);
+  const cyclic = bankInstructions();
+  cyclic.nextAction.instructions.push(cyclic.nextAction.instructions);
+  await assert.rejects(preview(() => cyclic).createRechargeOrder(input()), /provider_unavailable/);
+});
+
+test('validates factory options before reading fields or running getters', () => {
+  let getterCalls = 0;
+  const accessor = {};
+  Object.defineProperty(accessor, 'providerId', { enumerable: true, get() { getterCalls += 1; return 'preview_local'; } });
+  Object.defineProperty(accessor, 'createRechargeOrderFn', { enumerable: true, value() {} });
+  assert.throws(() => createCoinsCommerceProviderPreview(accessor), /validation_error/);
+  assert.equal(getterCalls, 0);
+  for (const options of [null, undefined, 'preview_local', { providerId: 'preview_local', createRechargeOrderFn() {}, credential: 'nope' }, { providerId: 'preview_local', createRechargeOrderFn() {}, config: {} }]) {
+    assert.throws(() => createCoinsCommerceProviderPreview(options), /validation_error/);
+  }
+});
