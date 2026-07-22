@@ -158,3 +158,26 @@ test('validates factory options before reading fields or running getters', () =>
     assert.throws(() => createCoinsCommerceProviderPreview(options), /validation_error/);
   }
 });
+
+test('normalizes caller input proxy traps without running the callback or leaking trap data', async () => {
+  let calls = 0;
+  const adapter = preview(() => { calls += 1; return actionRequired(); });
+  const trapped = new Proxy(input(), { ownKeys() { throw new Error('raw_marker'); } });
+  await assert.rejects(adapter.createRechargeOrder(trapped), (error) => {
+    assert.equal(error.code, 'validation_error');
+    assert.deepEqual(error.details, {});
+    assert.doesNotMatch(error.message, /raw_marker/);
+    return true;
+  });
+  assert.equal(calls, 0);
+});
+
+test('normalizes factory options proxy traps without leaking trap data', () => {
+  const trapped = new Proxy({}, { getPrototypeOf() { throw new Error('raw_marker'); } });
+  assert.throws(() => createCoinsCommerceProviderPreview(trapped), (error) => {
+    assert.equal(error.code, 'validation_error');
+    assert.deepEqual(error.details, {});
+    assert.doesNotMatch(error.message, /raw_marker/);
+    return true;
+  });
+});

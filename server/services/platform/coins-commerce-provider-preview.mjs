@@ -61,7 +61,7 @@ function deepFreeze(value) {
   return Object.freeze(value);
 }
 
-function validateInput(value) {
+function validateInputValue(value) {
   const input = closedClone(value);
   if (!hasExactKeys(input, INPUT_KEYS) || !nonEmptyTrimmedString(input.rechargeOrderRef) || !nonEmptyTrimmedString(input.attemptRef) || !nonEmptyTrimmedString(input.idempotencyKey)) throw validationError();
   const quote = input.quoteSnapshot;
@@ -71,6 +71,15 @@ function validateInput(value) {
   if (!Number.isSafeInteger(quote.bonusCoins) || quote.bonusCoins < 0 || !/^[A-Z]{3}$/.test(quote.fiatCurrency)) throw validationError();
   if (quote.promotionRef !== null && !nonEmptyTrimmedString(quote.promotionRef)) throw validationError();
   return deepFreeze(input);
+}
+
+function validateInput(value) {
+  try {
+    return validateInputValue(value);
+  } catch (error) {
+    if (error?.code === 'validation_error') throw error;
+    throw validationError();
+  }
 }
 
 function validateProviderResult(value, allowLoopbackHttp) {
