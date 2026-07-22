@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { types as utilTypes } from 'node:util';
 
 import { commerceError, createDefaultCommerceCatalog } from './coins-commerce-model.mjs';
 
@@ -131,7 +132,7 @@ function requireClosedStructure(value, active = new WeakSet()) {
   if (active.has(value)) validation('invalid_closed_value');
   active.add(value);
   for (const [key, item] of closedDataEntries(value, 'invalid_closed_value')) {
-    if (!Array.isArray(value) && /Ref$/.test(key)) requireTrimmedString(item, 'invalid_ref');
+    if (!Array.isArray(value) && /Ref$/.test(key) && item !== null) requireTrimmedString(item, 'invalid_ref');
     if (!Array.isArray(value) && (/At$/.test(key) || key === 'validUntil') && item !== null) requireCanonicalIso(item);
     requireClosedStructure(item, active);
   }
@@ -330,6 +331,73 @@ export function createInMemoryCoinsCommerceStore({
   const plans = new Map();
   const idempotencyResults = new Map();
   let eventTimestampWatermark = null;
+  let atomicMutationActive = false;
+
+  function captureMutableState() {
+    return {
+      lots: [...lots],
+      lotsByRef: new Map(lotsByRef),
+      transactions: [...transactions],
+      transactionRefs: new Set(transactionRefs),
+      holdRevisions: [...holdRevisions],
+      referralFreezeRevisions: [...referralFreezeRevisions],
+      reversalRefs: new Set(reversalRefs),
+      orders: new Map(orders),
+      attemptRevisions: new Map([...attemptRevisions].map(([key, revisions]) => [key, [...revisions]])),
+      plans: new Map(plans),
+      idempotencyResults: new Map(idempotencyResults),
+      eventTimestampWatermark
+    };
+  }
+
+  function replaceArray(target, source) {
+    target.splice(0, target.length, ...source);
+  }
+
+  function replaceMap(target, source) {
+    target.clear();
+    for (const [key, value] of source) target.set(key, value);
+  }
+
+  function replaceSet(target, source) {
+    target.clear();
+    for (const value of source) target.add(value);
+  }
+
+  function restoreMutableState(state) {
+    replaceArray(lots, state.lots);
+    replaceMap(lotsByRef, state.lotsByRef);
+    replaceArray(transactions, state.transactions);
+    replaceSet(transactionRefs, state.transactionRefs);
+    replaceArray(holdRevisions, state.holdRevisions);
+    replaceArray(referralFreezeRevisions, state.referralFreezeRevisions);
+    replaceSet(reversalRefs, state.reversalRefs);
+    replaceMap(orders, state.orders);
+    replaceMap(attemptRevisions, state.attemptRevisions);
+    replaceMap(plans, state.plans);
+    replaceMap(idempotencyResults, state.idempotencyResults);
+    eventTimestampWatermark = state.eventTimestampWatermark;
+  }
+
+  function runAtomicMutation(operation) {
+    if (typeof operation !== 'function') validation('invalid_atomic_operation');
+    if (atomicMutationActive) validation('nested_atomic_mutation');
+    const state = captureMutableState();
+    atomicMutationActive = true;
+    try {
+      const result = operation();
+      if (utilTypes.isPromise(result)) {
+        Promise.prototype.catch.call(result, () => {});
+        validation('atomic_operation_must_be_synchronous');
+      }
+      return result;
+    } catch (error) {
+      restoreMutableState(state);
+      throw error;
+    } finally {
+      atomicMutationActive = false;
+    }
+  }
 
   function appendTransaction(transaction) {
     if (transactionRefs.has(transaction.transactionRef)) validation('duplicate_transaction_ref');
@@ -837,8 +905,16 @@ export function createInMemoryCoinsCommerceStore({
     if (!revisions || revisions.at(-1).accountRef !== accountRef) notFound();
     const stored = prepareAggregate(attempt, ['attemptRef', 'accountRef', 'orderRef', 'providerId'], 'invalid_payment_attempt');
     const current = revisions.at(-1);
-    for (const field of ['attemptRef', 'accountRef', 'orderRef', 'providerId', 'sourceAttemptRef']) {
+    for (const field of ['attemptRef', 'accountRef', 'orderRef', 'providerId', 'sourceAttemptRef', 'createdAt']) {
       if (current[field] !== stored[field]) validation('payment_attempt_identity_changed');
+    }
+    if (current.targetAttemptRef !== null && current.targetAttemptRef !== undefined
+      && stored.targetAttemptRef !== current.targetAttemptRef) {
+      validation('payment_attempt_target_changed');
+    }
+    if (current.updatedAt !== undefined && stored.updatedAt !== undefined
+      && stored.updatedAt < current.updatedAt) {
+      validation('payment_attempt_revision_time_regressed');
     }
     revisions.push(stored);
     return snapshot(stored);
@@ -858,7 +934,7 @@ export function createInMemoryCoinsCommerceStore({
     if (!Number.isSafeInteger(cursor) || cursor < 0) validation('invalid_attempt_cursor');
     const latest = [...attemptRevisions.values()].map((revisions) => revisions.at(-1))
       .filter((attempt) => status === undefined || attempt.status === status)
-      .sort((left, right) => compareOrdinal(right.createdAt, left.createdAt)
+      .sort((left, right) => compareOrdinal(right.updatedAt ?? right.createdAt, left.updatedAt ?? left.createdAt)
         || compareOrdinal(left.attemptRef, right.attemptRef));
     const items = latest.slice(cursor, cursor + limit);
     const nextCursor = cursor + items.length < latest.length ? cursor + items.length : null;
@@ -919,6 +995,7 @@ export function createInMemoryCoinsCommerceStore({
     appendCoinLot,
     getWalletSummary,
     listWalletTransactions,
+    runAtomicMutation,
     createCoinHold,
     captureCoinHold: (input) => terminateHold(input, 'capture'),
     releaseCoinHold: (input) => terminateHold(input, 'release'),
