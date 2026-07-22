@@ -106,6 +106,68 @@ test('normalizes lots, appends exact credits, and rejects duplicate or invalid l
   assert.deepEqual(store.listWalletTransactions({ accountRef: 'acct-1', limit: 10 }), before);
 });
 
+test('rejects exotic exact lot, transaction, allocation, and membership records before invoking getters', () => {
+  let getterCalls = 0;
+  const appendStore = createInMemoryCoinsCommerceStore({
+    walletLots: [lot({ lotRef: 'paid-base', origin: 'paid', issuedCoins: 1 })]
+  });
+  const beforeAppend = appendStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 });
+  const accessorLot = lot({ lotRef: 'accessor-lot', origin: 'paid', issuedCoins: 1, createdAt: T1 });
+  Object.defineProperty(accessorLot, 'lotRef', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return 'accessor-lot';
+    }
+  });
+  const symbolLot = lot({ lotRef: 'symbol-lot', origin: 'paid', issuedCoins: 1, createdAt: T1 });
+  symbolLot[Symbol('extra')] = true;
+  const nonEnumerableLot = lot({ lotRef: 'hidden-lot', origin: 'paid', issuedCoins: 1, createdAt: T1 });
+  Object.defineProperty(nonEnumerableLot, 'hidden', { value: true, enumerable: false });
+  const extraLot = { ...lot({ lotRef: 'extra-lot', origin: 'paid', issuedCoins: 1, createdAt: T1 }), extra: true };
+  [accessorLot, symbolLot, nonEnumerableLot, extraLot].forEach((inputLot, index) => {
+    assertCommerceError(() => appendStore.appendCoinLot({
+      transactionRef: `exotic-credit-${index}`, lot: inputLot
+    }), 'validation_error');
+    assert.deepEqual(appendStore.listWalletTransactions({ accountRef: 'acct-1', limit: 20 }), beforeAppend);
+  });
+
+  const referralLot = lot({ lotRef: 'referral-base', origin: 'referral', issuedCoins: 2 });
+  const baseAllocation = { lotRef: 'referral-base', origin: 'referral', amountCoins: 1 };
+  const baseTransaction = {
+    transactionRef: 'referral_freeze:exotic', accountRef: 'acct-1', type: 'referral_freeze', amountCoins: 1,
+    allocations: [baseAllocation], relatedRef: 'exotic', createdAt: T1
+  };
+  const symbolTransaction = { ...baseTransaction };
+  symbolTransaction[Symbol('extra')] = true;
+  assertCommerceError(() => createInMemoryCoinsCommerceStore({
+    walletLots: [referralLot], referralEntries: [symbolTransaction]
+  }), 'validation_error');
+  const symbolAllocation = { ...baseAllocation };
+  symbolAllocation[Symbol('extra')] = true;
+  assertCommerceError(() => createInMemoryCoinsCommerceStore({
+    walletLots: [referralLot], referralEntries: [{ ...baseTransaction, allocations: [symbolAllocation] }]
+  }), 'validation_error');
+
+  const membership = {
+    accountRef: 'acct-1', productVersionRef: 'pv_membership_monthly_50gb_v1', validUntil: null
+  };
+  Object.defineProperty(membership, 'hidden', { value: true, enumerable: false });
+  assertCommerceError(() => createInMemoryCoinsCommerceStore({ accountMemberships: [membership] }), 'validation_error');
+  const accessorMembership = { productVersionRef: 'pv_membership_monthly_50gb_v1', validUntil: null };
+  Object.defineProperty(accessorMembership, 'accountRef', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return 'acct-1';
+    }
+  });
+  assertCommerceError(() => createInMemoryCoinsCommerceStore({
+    accountMemberships: [accessorMembership]
+  }), 'validation_error');
+  assert.equal(getterCalls, 0);
+});
+
 test('allocates bonus then paid then referral with deterministic ties and keeps held expired bonus frozen', () => {
   const nowFn = sequenceNow(T4, T5);
   const store = createInMemoryCoinsCommerceStore({
@@ -516,6 +578,20 @@ test('canonicalizes request digests and replays the first detached idempotency r
   assert.deepEqual(store.getIdempotencyResult({ scope: 'order', accountRef: 'acct-1', idempotencyKey: 'key-1', requestDigest: expected }), recorded);
   assertCommerceError(() => store.getIdempotencyResult({ scope: 'order', accountRef: 'acct-1', idempotencyKey: 'key-1', requestDigest: '0'.repeat(64) }), 'idempotency_conflict', {});
   assertCommerceError(() => store.recordIdempotencyResult({ scope: 'order', accountRef: 'acct-1', idempotencyKey: 'key-1', requestDigest: '0'.repeat(64), result: {} }), 'idempotency_conflict', {});
+});
+
+test('canonicalizes root and nested numeric-like keys in ordinal rather than numeric order', () => {
+  const digestForCanonicalJson = (canonicalJson) => createHash('sha256')
+    .update(`COINS_COMMERCE_IDEMPOTENCY:v1\0${canonicalJson}`, 'utf8')
+    .digest('hex');
+  assert.equal(
+    canonicalCommerceRequestDigest({ 2: 'two', 10: 'ten' }),
+    digestForCanonicalJson('{"10":"ten","2":"two"}')
+  );
+  assert.equal(
+    canonicalCommerceRequestDigest({ z: 0, outer: { 2: 'two', 10: ['ten'] } }),
+    digestForCanonicalJson('{"outer":{"10":["ten"],"2":"two"},"z":0}')
+  );
 });
 
 test('rejects sparse or symbol-bearing closed values and malformed nested refs or timestamps', () => {

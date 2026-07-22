@@ -77,7 +77,9 @@ function requireCanonicalIso(value, reason = 'invalid_timestamp') {
 function requireExactKeys(value, required, optional, reason) {
   requirePlainObject(value, reason);
   const allowed = new Set([...required, ...optional]);
-  if (!required.every((key) => Object.hasOwn(value, key)) || Object.keys(value).some((key) => !allowed.has(key))) {
+  const keys = closedDataEntries(value, reason).map(([key]) => key);
+  const keySet = new Set(keys);
+  if (!required.every((key) => keySet.has(key)) || keys.some((key) => !allowed.has(key))) {
     validation(reason);
   }
 }
@@ -156,14 +158,14 @@ function requireClosedValue(value, path = []) {
 }
 
 function canonicalize(value, active = new WeakSet()) {
-  if (value === null || typeof value === 'boolean') return value;
+  if (value === null || typeof value === 'boolean') return JSON.stringify(value);
   if (typeof value === 'number') {
     if (!Number.isSafeInteger(value)) validation('invalid_idempotency_value');
-    return value;
+    return JSON.stringify(value);
   }
   if (typeof value === 'string') {
     if (value.length === 0) validation('invalid_idempotency_value');
-    return value;
+    return JSON.stringify(value);
   }
   if (!Array.isArray(value) && !isPlainObject(value)) validation('invalid_idempotency_value');
   if (active.has(value)) validation('invalid_idempotency_value');
@@ -171,14 +173,14 @@ function canonicalize(value, active = new WeakSet()) {
   const entries = closedDataEntries(value, 'invalid_idempotency_value');
   const orderedEntries = Array.isArray(value) ? entries : entries.sort(([left], [right]) => compareOrdinal(left, right));
   const canonical = Array.isArray(value)
-    ? orderedEntries.map(([, item]) => canonicalize(item, active))
-    : Object.fromEntries(orderedEntries.map(([key, item]) => [key, canonicalize(item, active)]));
+    ? `[${orderedEntries.map(([, item]) => canonicalize(item, active)).join(',')}]`
+    : `{${orderedEntries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalize(item, active)}`).join(',')}}`;
   active.delete(value);
   return canonical;
 }
 
 export function canonicalCommerceRequestDigest(value) {
-  const canonicalJson = JSON.stringify(canonicalize(value));
+  const canonicalJson = canonicalize(value);
   return createHash('sha256')
     .update(`COINS_COMMERCE_IDEMPOTENCY:v1\0${canonicalJson}`, 'utf8')
     .digest('hex');
@@ -234,7 +236,8 @@ function normalizeTransaction(value, allowedTypes = null) {
   if (allowedTypes !== null && !allowedTypes.has(type)) validation('invalid_transaction_type');
   if (!Array.isArray(value.allocations) || value.allocations.length === 0) validation('invalid_allocations');
   const expectedOrigin = allowedTypes === REFERRAL_TYPES ? 'referral' : null;
-  const allocations = value.allocations.map((allocation) => normalizeAllocation(allocation, expectedOrigin));
+  const allocations = closedDataEntries(value.allocations, 'invalid_allocations')
+    .map(([, allocation]) => normalizeAllocation(allocation, expectedOrigin));
   const amountCoins = requirePositiveCoins(value.amountCoins);
   if (allocations.reduce((total, allocation) => checkedAddCoins(total, allocation.amountCoins), 0) !== amountCoins) {
     validation('allocation_amount_mismatch');
