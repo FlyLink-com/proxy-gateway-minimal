@@ -25,7 +25,7 @@ afterEach(() => {
 
 describe("admin navigation", () => {
   test("groups product-facing admin surfaces by responsibility", () => {
-    const activePages = ["dashboard", "portalRequests", "usageMonitor", "paymentLogs"];
+    const activePages = ["dashboard", "portalRequests", "paymentLogs", "usageMonitor"];
     const navPageIds = navItems.map((item) => item.id);
 
     expect(navPageIds).toEqual(activePages);

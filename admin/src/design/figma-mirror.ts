@@ -71,6 +71,18 @@ export const ADMIN_FIGMA_MIRROR_PAGES: readonly AdminFigmaMirrorPage[] = [
     ]
   },
   {
+    name: "06 Payment Logs / 1600x1024",
+    status: "required",
+    role: "page-mirror",
+    frameName: "06 Payment Logs / 1600x1024",
+    frameSize: "1600x1024",
+    mapsToPages: ["paymentLogs"],
+    acceptance: [
+      "Mirrors redacted read-only payment-attempt evidence and reconciliation state",
+      "Does not expose provider payloads, credentials, customer fields, or mutation controls"
+    ]
+  },
+  {
     name: "04 State & Safety Matrix",
     status: "current",
     role: "visual-qa-ledger",

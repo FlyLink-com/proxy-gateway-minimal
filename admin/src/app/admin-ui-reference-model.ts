@@ -28,7 +28,8 @@ export type AdminUiSurfaceKey =
   | "usage-ledger"
   | "partner-attribution-report"
   | "collection-anomalies"
-  | "receipts-collectors";
+  | "receipts-collectors"
+  | "payment-logs";
 
 export type AdminUiReferenceSource = {
   key: AdminUiReferenceKey;
@@ -248,6 +249,14 @@ export const ADMIN_UI_SURFACE_REFERENCES: AdminUiSurfaceReference[] = [
     page: "usageMonitor",
     primaryReference: "arco-design-pro",
     supportingReferences: ["vben-admin"]
+  },
+  {
+    implementationTarget: "Redacted payment-attempt evidence and reconciliation table",
+    key: "payment-logs",
+    label: "Payment logs",
+    page: "paymentLogs",
+    primaryReference: "ant-design-pro",
+    supportingReferences: ["arco-design-pro"]
   }
 ];
 

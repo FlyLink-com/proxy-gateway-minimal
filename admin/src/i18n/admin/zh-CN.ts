@@ -21,8 +21,8 @@ export const adminZhCNLanguagePack: AdminLanguagePack = {
       routes: {
         dashboard: "运营总览",
         portalRequests: "账户与资源",
-        usageMonitor: "使用情况与渠道",
-        paymentLogs: "支付日志"
+        paymentLogs: "支付日志",
+        usageMonitor: "使用情况与渠道"
       },
       safetyDescription: "Admin UI 示例不展示 token、URL、凭据、运行配置或原始客户数据。",
       safetyDetail: "生产操作必须经过已批准的 runbook。",
@@ -56,8 +56,8 @@ export const adminZhCNLanguagePack: AdminLanguagePack = {
       pageTitles: {
         dashboard: "运营总览",
         portalRequests: "账户与资源",
-        usageMonitor: "使用情况与渠道",
-        paymentLogs: "支付日志"
+        paymentLogs: "支付日志",
+        usageMonitor: "使用情况与渠道"
       },
       riskGateLabel: "Risk A 门禁",
       searchAriaLabel: "搜索 Admin 操作面板",

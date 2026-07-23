@@ -35,7 +35,7 @@ describe("admin fixture preview", () => {
     const moduleCount = Object.values(ADMIN_FIXTURE_PREVIEW_DATA.modules)
       .flatMap((modules) => Object.values(modules))
       .length;
-    expect(moduleCount).toBe(13);
+    expect(moduleCount).toBe(14);
     expect(JSON.stringify(ADMIN_FIXTURE_PREVIEW_DATA)).not.toMatch(forbiddenFixtureTextPattern);
   });
 });

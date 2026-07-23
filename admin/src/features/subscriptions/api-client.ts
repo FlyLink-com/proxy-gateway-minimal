@@ -41,6 +41,7 @@ import type {
   TempLinkResult
 } from "./types";
 import { adminAuthOriginPolicy, normalizeBaseUrl } from "./api-origin-policy";
+import { parsePaymentLogsEnvelope } from "../payment-logs/payment-logs-model";
 
 type Fetcher = typeof fetch;
 
@@ -130,13 +131,14 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
   }
 
   return {
-    listPaymentLogs: async (filters: { status?: string; limit?: number; cursor?: number } = {}) => {
+    listPaymentLogs: async (filters: { status?: string; limit?: number; cursor?: number; signal?: AbortSignal } = {}) => {
       const params = new URLSearchParams();
       if (filters.status) params.set("status", filters.status);
       if (filters.limit) params.set("limit", String(filters.limit));
       if (filters.cursor) params.set("cursor", String(filters.cursor));
       const query = params.toString();
-      return (await request<{ items: import("../payment-logs/payment-logs-model").PaymentLogDto[] }>(`/api/admin/platform/payment-logs${query ? `?${query}` : ""}`)).items;
+      const response = await request<unknown>(`/api/admin/platform/payment-logs${query ? `?${query}` : ""}`, { signal: filters.signal });
+      return parsePaymentLogsEnvelope(response);
     },
     listTenants: async () => (await request<{ items: SubscriptionTenant[] }>("/api/admin/subscriptions")).items,
     createTenant: async (input: CreateSubscriptionInput) =>

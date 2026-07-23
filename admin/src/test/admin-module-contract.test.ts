@@ -11,11 +11,13 @@ import { ADMIN_FIGMA_PAGINATION_STANDARD } from "../design/figma-mirror";
 import { overviewBlueprint } from "../pages/dashboard-page";
 import { accountsResourcesBlueprint } from "../pages/portal-requests-page";
 import { usageChannelsBlueprint } from "../pages/subscription-usage-monitor-page";
+import { paymentLogsBlueprint } from "../pages/payment-logs-page";
 
 const adminBlueprints = [
   overviewBlueprint(),
   accountsResourcesBlueprint,
-  usageChannelsBlueprint
+  usageChannelsBlueprint,
+  paymentLogsBlueprint
 ];
 
 describe("admin module contract", () => {
@@ -52,6 +54,7 @@ describe("admin module contract", () => {
       "usageMonitor:partner-attribution-report:platform-monitoring-partner-attribution-report",
       "usageMonitor:collection-anomalies:platform-monitoring-anomalies",
       "usageMonitor:receipts-collectors:platform-monitoring-receipts-collectors"
+      ,"paymentLogs:payment-attempts:user-operations-payment-attempts"
     ]);
 
     contracts.forEach((contract) => {
@@ -94,6 +97,7 @@ describe("admin module contract", () => {
       "usageMonitor:partner-attribution-report": "pagination",
       "usageMonitor:collection-anomalies": "pagination",
       "usageMonitor:receipts-collectors": "pagination"
+      ,"paymentLogs:payment-attempts": "pagination"
     });
   });
 

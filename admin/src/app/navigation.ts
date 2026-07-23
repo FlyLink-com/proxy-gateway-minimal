@@ -153,8 +153,8 @@ export const navItems: NavItem[] = navSections.flatMap((section) => section.item
 export const pageTitles: Record<AdminPage, string> = {
   dashboard: "Operations Overview",
   portalRequests: "Accounts & Resources",
-  usageMonitor: "Usage & Channels",
-  paymentLogs: "Payment Logs"
+  paymentLogs: "Payment Logs",
+  usageMonitor: "Usage & Channels"
 };
 
 export const adminPageRouteSlugs: Record<AdminPage, string> = {

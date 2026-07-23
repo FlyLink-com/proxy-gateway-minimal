@@ -104,9 +104,9 @@ describe("admin OS UI contract", () => {
   test("declares page-level grammar contracts for active Admin surfaces", () => {
     expect(Object.keys(ADMIN_UI_CONTRACT.pageContracts).sort()).toEqual([
       "dashboard",
+      "paymentLogs",
       "portalRequests",
-      "usageMonitor",
-      "paymentLogs"
+      "usageMonitor"
     ]);
 
     expect(getAdminPageContract("dashboard")).toMatchObject({

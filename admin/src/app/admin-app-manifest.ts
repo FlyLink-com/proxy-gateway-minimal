@@ -648,6 +648,7 @@ const PLUGIN_CATEGORIES: Record<string, WorkbenchCategory> = {
   "resource-orders": "management",
   "risk-queue": "audit-workflow",
   "usage-ledger": "monitoring"
+  ,"payment-attempts": "monitoring"
 };
 
 const PLUGIN_SOURCE_CONTRACTS: Record<string, AdminAppSourceContract> = {
