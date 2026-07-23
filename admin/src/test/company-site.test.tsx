@@ -359,7 +359,7 @@ describe("company site route", () => {
 
     expect(document.documentElement.lang).toBe("zh-CN");
     expect(document.title).toBe("GCC WebOS - 连接世界，从简单开始");
-    expect(screen.getByRole("heading", { name: "连接世界，从简单开始。" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "连接世界，从简单开始" })).not.toBeNull();
     expect(screen.getByText("从第一次了解，到选择适合的服务，再到持续使用，GCC WebOS 将复杂流程组织成清晰、连贯的数字体验。")).not.toBeNull();
     expect(screen.getByText("让数字服务更容易理解，更容易开始。")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "连接更多网络，看见更大的世界" })).not.toBeNull();
@@ -397,14 +397,14 @@ describe("company site route", () => {
 
     expect(window.localStorage.getItem("gccwebos-site-locale")).toBe("zh");
     expect(document.documentElement.lang).toBe("zh-CN");
-    expect(screen.getByRole("heading", { name: "连接世界，从简单开始。" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "连接世界，从简单开始" })).not.toBeNull();
 
     cleanup();
     window.location.hash = "#/site";
     render(createElement(App));
 
     expect(document.documentElement.lang).toBe("zh-CN");
-    expect(screen.getByRole("heading", { name: "连接世界，从简单开始。" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "连接世界，从简单开始" })).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "EN" }));
     expect(window.localStorage.getItem("gccwebos-site-locale")).toBe("en");
@@ -528,7 +528,7 @@ describe("company site route", () => {
     fireEvent.click(screen.getByRole("link", { name: "返回官网" }));
 
     expect(window.location.hash).toBe("#/site");
-    expect(screen.getByRole("heading", { name: "连接世界，从简单开始。" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "连接世界，从简单开始" })).not.toBeNull();
   });
 
   test("does not embed Telegram signup, raw subscription, or bypass-positioning content", () => {

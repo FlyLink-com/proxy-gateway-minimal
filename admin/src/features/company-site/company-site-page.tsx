@@ -458,7 +458,7 @@ const companySiteCopy = {
     },
     hero: {
       eyebrow: "数字服务",
-      title: "连接世界，从简单开始。",
+      title: "连接世界，从简单开始",
       description: "从第一次了解，到选择适合的服务，再到持续使用，GCC WebOS 将复杂流程组织成清晰、连贯的数字体验。",
       support: "探索",
       portal: "开始使用",
