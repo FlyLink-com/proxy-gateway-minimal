@@ -55,6 +55,8 @@ import type {
   PortalSubscriptionRequest,
   UserPortalClient
 } from "./user-portal-client";
+import { CommerceWorkspace, type CommerceDestination } from "./commerce/commerce-pages";
+import type { CommerceClient } from "./commerce/commerce-client";
 
 type DisplayAuthMode = PortalSession["authMode"];
 type PortalView = "dashboard" | "usage" | "start" | "profile" | "support";
@@ -270,10 +272,6 @@ type PortalAuthLocale = keyof typeof portalAuthEntryCopy;
 function uiText(locale: PortalAuthLocale, zh: string, en: string) {
   return locale === "en" ? en : zh;
 }
-
-const defaultPaymentRedirect = (url: string) => {
-  window.location.assign(url);
-};
 
 function shouldRedirectToPaymentProvider() {
   if (typeof window === "undefined") return false;
@@ -986,12 +984,13 @@ function downloadPasskeyExport(passkeyExport: PortalPasskeyExport) {
 
 export function UserPortalPage({
   initialSession,
-  paymentRedirect = defaultPaymentRedirect,
-  portalClient
+  portalClient,
+  commerceClient
 }: {
   initialSession?: PortalSession;
-  paymentRedirect?: (url: string) => void;
   portalClient: UserPortalClient;
+  commerceClient?: CommerceClient;
+  paymentRedirect?: (url: string) => void;
   onBackToAdmin?: () => void;
 }) {
   const { locale, setLocale } = usePublicLocalePreference();
@@ -1008,20 +1007,17 @@ export function UserPortalPage({
   const [humanChallengeReady, setHumanChallengeReady] = useState(false);
   const [humanChallengeLoading, setHumanChallengeLoading] = useState(true);
   const [activeView, setActiveView] = useState<PortalView>("start");
+  const [commerceDestination, setCommerceDestination] = useState<CommerceDestination>("wallet");
   const [selectedPlanId, setSelectedPlanId] = useState<PortalPlanId>("monthly_basic");
   const [clientTarget, setClientTarget] = useState<PortalClientId>("clash");
-  const [paymentChannel, setPaymentChannel] = useState<PortalPaymentChannel>(() => defaultPaymentChannelForCurrentBrowser());
   const [orderRows, setOrderRows] = useState<PortalOrderRow[]>([]);
   const [accountEntitlements, setAccountEntitlements] = useState<PortalAccountEntitlement[]>([]);
-  const [paymentOrders, setPaymentOrders] = useState<PortalPaymentOrder[]>([]);
-  const [lastPaymentOrderRef, setLastPaymentOrderRef] = useState<string | null>(null);
   const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatusFilter>("all");
   const [orderSearch, setOrderSearch] = useState("");
   const [orderClientFilter, setOrderClientFilter] = useState<"all" | PortalClientId>("all");
   const [orderSort, setOrderSort] = useState<OrderSort>("newest");
   const [orderFormOpen, setOrderFormOpen] = useState(false);
   const [selectedOrderRef, setSelectedOrderRef] = useState<string | null>(null);
-  const [activePaymentOrderRef, setActivePaymentOrderRef] = useState<string | null>(null);
   const [authError, setAuthError] = useState("");
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -1064,13 +1060,8 @@ export function UserPortalPage({
       ?? orderRows.find((row) => row.status === "pending")
       ?? (currentEntitlement ? null : orderRows[0] ?? null);
   }, [currentEntitlement, orderRows, selectedOrderRef]);
-  const activePaymentOrder = useMemo(
-    () => activePaymentOrderRef
-      ? paymentOrders.find((order) => order.orderRef === activePaymentOrderRef) ?? null
-      : null,
-    [activePaymentOrderRef, paymentOrders]
-  );
-  const paymentFlowActive = activeView === "profile" && Boolean(activePaymentOrder);
+  const paymentFlowActive = false;
+  const commerceSessionRef = portalSession?.sessionRef ?? "";
   const created = useMemo(() => createdSubscriptionFromOrder(selectedOrder), [selectedOrder]);
   const lifecycle = resolveLifecycle(created);
   const currentPlan = subscriptionPlan(created, selectedPlanId, locale);
@@ -1152,19 +1143,6 @@ export function UserPortalPage({
       : portalState.subscriptionRequest
         ? [portalState.subscriptionRequest]
         : [];
-    let hydratedPaymentOrders = portalState.paymentOrders ?? [];
-    if (!hydratedPaymentOrders.length) {
-      try {
-        hydratedPaymentOrders = await portalClient.fetchPaymentOrders({
-          userRef: session.userRef,
-          sessionRef: session.sessionRef
-        });
-      } catch {
-        hydratedPaymentOrders = [];
-      }
-    }
-    setPaymentOrders([...hydratedPaymentOrders].sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
-    setLastPaymentOrderRef(hydratedPaymentOrders[0]?.orderRef ?? null);
     if (subscriptionRequests.length > 0) {
       const orders = subscriptionRequests
         .map((request) => subscriptionRequestToOrder(request))
@@ -1184,8 +1162,8 @@ export function UserPortalPage({
       }
     }
     setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
-    setActivePaymentOrderRef(null);
     setActiveView("start");
+    setCommerceDestination("wallet");
   }
 
   useEffect(() => {
@@ -1302,39 +1280,10 @@ export function UserPortalPage({
   ): Promise<boolean> {
     setActionError("");
     setCopiedOrderRef(null);
-    const planId: Exclude<PortalPlanId, "trial"> = planIdOverride
-      ?? (selectedPlanId === "trial" ? "monthly_basic" : selectedPlanId as Exclude<PortalPlanId, "trial">);
-
-    setPending(true);
-    try {
-      const userRef = portalSession?.userRef ?? "";
-      const paymentDevice = paymentDeviceForCurrentBrowser();
-      const checkoutChannel = paymentChannelOverride ?? paymentChannel;
-      const checkout = await portalClient.createPaymentCheckout({
-        userRef,
-        sessionRef: portalSession?.sessionRef,
-        planId: planId as Exclude<PortalPlanId, "trial">,
-        clientTarget,
-        channel: checkoutChannel,
-        device: paymentDevice
-      });
-      setPaymentOrders((rows) => upsertPaymentOrder(rows, checkout.order));
-      setLastPaymentOrderRef(checkout.order.orderRef);
-      setSelectedPlanId(planId);
-      setOrderFormOpen(false);
-      setActiveView("profile");
-      setActivePaymentOrderRef(checkout.order.orderRef);
-      const redirectUrl = paymentRedirectUrl(checkout.order);
-      if (redirectUrl && shouldRedirectToPaymentProvider()) {
-        paymentRedirect(redirectUrl);
-      }
-      return true;
-    } catch (requestError) {
-      setActionError(portalUiErrorMessage(requestError, "操作失败。", locale));
-      return false;
-    } finally {
-      setPending(false);
-    }
+    setCommerceDestination("catalog");
+    setOrderFormOpen(false);
+    setActiveView("dashboard");
+    return false;
   }
 
   const revealOrCreateSubscriptionLink = useCallback(async (
@@ -1415,19 +1364,21 @@ export function UserPortalPage({
   }, [currentEntitlement, historySummary, locale, portalClient, portalSession, selectedOrder, selectedPlanId]);
 
   function viewOrder(order: PortalOrderRow) {
-    setActivePaymentOrderRef(null);
     setSelectedOrderRef(order.requestRef);
     setSelectedPlanId(order.planId);
     setClientTarget(order.clientTarget);
   }
 
   function startNewOrder() {
-    setActiveView("profile");
-    setActivePaymentOrderRef(null);
-    setSelectedPlanId("monthly_basic");
-    setClientTarget("clash");
-    setPaymentChannel(defaultPaymentChannelForCurrentBrowser());
-    setOrderFormOpen(true);
+    setCommerceDestination("catalog");
+    setActiveView("dashboard");
+    setOrderFormOpen(false);
+  }
+
+  function openCommerce(destination: CommerceDestination) {
+    setCommerceDestination(destination);
+    setActiveView("dashboard");
+    setOrderFormOpen(false);
   }
 
   function closeOrderForm() {
@@ -1436,46 +1387,8 @@ export function UserPortalPage({
     setActionError("");
   }
 
-  function openPaymentOrder(order: PortalPaymentOrder) {
-    setActionError("");
-    setOrderFormOpen(false);
-    setLastPaymentOrderRef(order.orderRef);
-    setActiveView("profile");
-    setActivePaymentOrderRef(order.orderRef);
-    const redirectUrl = paymentRedirectUrl(order);
-    if (redirectUrl && shouldRedirectToPaymentProvider()) {
-      paymentRedirect(redirectUrl);
-    }
-  }
-
   function navigatePortalView(view: PortalView) {
-    setActivePaymentOrderRef(null);
     setActiveView(view);
-  }
-
-  async function refreshPaymentOrders(targetOrderRef?: string) {
-    if (!portalSession) return;
-    setActionError("");
-    setPending(true);
-    try {
-      const refreshedOrders = await portalClient.fetchPaymentOrders({
-        userRef: portalSession.userRef,
-        sessionRef: portalSession.sessionRef
-      });
-      setPaymentOrders((rows) => {
-        const byRef = new Map(rows.map((order) => [order.orderRef, order]));
-        for (const order of refreshedOrders) byRef.set(order.orderRef, order);
-        return [...byRef.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-      });
-      if (targetOrderRef) {
-        setActivePaymentOrderRef(targetOrderRef);
-        setLastPaymentOrderRef(targetOrderRef);
-      }
-    } catch (requestError) {
-      setActionError(portalUiErrorMessage(requestError, "支付状态刷新失败。", locale));
-    } finally {
-      setPending(false);
-    }
   }
 
   async function submitSupportRequest(event: FormEvent<HTMLFormElement>) {
@@ -1579,8 +1492,6 @@ export function UserPortalPage({
     setClientTarget("clash");
     setOrderRows([]);
     setAccountEntitlements([]);
-    setPaymentOrders([]);
-    setLastPaymentOrderRef(null);
     setOrderStatusFilter("all");
     setOrderSearch("");
     setOrderClientFilter("all");
@@ -1877,6 +1788,20 @@ export function UserPortalPage({
               );
             })}
           </nav>
+          {commerceClient && portalSession?.sessionRef ? (
+            <nav aria-label="Coins Commerce 导航" className="portal-use-nav portal-commerce-nav">
+              {(["wallet", "catalog", "orders", "referral"] as CommerceDestination[]).map((destination) => (
+                <button
+                  key={destination}
+                  type="button"
+                  className="portal-use-nav-item"
+                  onClick={() => openCommerce(destination)}
+                >
+                  <span><strong>{({ wallet: "Wallet", catalog: "Store", orders: "Orders", referral: "Referral" } as Record<CommerceDestination, string>)[destination]}</strong></span>
+                </button>
+              ))}
+            </nav>
+          ) : null}
 
           <div className="portal-user-card portal-v2-user-card portal-v2-account-card">
             <span className="portal-avatar">{userDisplayName.charAt(0).toUpperCase()}</span>
@@ -1899,6 +1824,14 @@ export function UserPortalPage({
           "portal-use-main portal-v2-main",
           paymentFlowActive && "portal-v2-main-payment"
         )}>
+          {commerceClient && commerceSessionRef ? (
+            <CommerceWorkspace
+              key={`${commerceSessionRef}:${commerceDestination}`}
+              client={commerceClient}
+              sessionRef={commerceSessionRef}
+              initialDestination={{ type: commerceDestination }}
+            />
+          ) : null}
           {!paymentFlowActive ? (
             <>
               <header className="portal-use-topbar portal-v2-topbar">
@@ -2045,38 +1978,6 @@ export function UserPortalPage({
                   exportPasskey={exportPasskey}
                   startAuthenticatorEnrollment={startAuthenticatorEnrollment}
                   userRef={portalSession.userRef}
-                  locale={locale}
-                />
-              ) : null}
-              {paymentFlowActive || orderFormOpen ? (
-                <SubscriptionManager
-                  activePaymentOrder={activePaymentOrder}
-                  actionError={actionError}
-                  orderClientFilter={orderClientFilter}
-                  orderFormOpen={orderFormOpen}
-                  orderRows={filteredOrderRows}
-                  paymentOrders={paymentOrders}
-                  lastPaymentOrderRef={lastPaymentOrderRef}
-                  orderSearch={orderSearch}
-                  orderSort={orderSort}
-                  orderStatusFilter={orderStatusFilter}
-                  paymentChannel={paymentChannel}
-                  selectedOrderRef={selectedOrderRef}
-                  selectedPlanId={selectedPlanId}
-                  pending={pending}
-                  setOrderClientFilter={setOrderClientFilter}
-                  setOrderSearch={setOrderSearch}
-                  setOrderSort={setOrderSort}
-                  setOrderStatusFilter={setOrderStatusFilter}
-                  setPaymentChannel={setPaymentChannel}
-                  setSelectedPlanId={setSelectedPlanId}
-                  closePaymentOrder={() => setActivePaymentOrderRef(null)}
-                  openPaymentOrder={openPaymentOrder}
-                  refreshPaymentOrders={refreshPaymentOrders}
-                  submitSubscription={submitSubscription}
-                  startNewOrder={startNewOrder}
-                  closeOrderForm={closeOrderForm}
-                  viewOrder={viewOrder}
                   locale={locale}
                 />
               ) : null}

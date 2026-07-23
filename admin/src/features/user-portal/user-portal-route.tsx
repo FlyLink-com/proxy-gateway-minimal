@@ -6,6 +6,7 @@ import {
 } from "./user-portal-client";
 import { UserPortalPage } from "./user-portal-page";
 import { UserRegistrationPage } from "./user-registration-page";
+import { createHttpCommerceClient, createLocalPreviewCommerceClient, type CommerceClient } from "./commerce/commerce-client";
 
 type UserPortalRouteProps = {
   env?: PortalRouteEnv;
@@ -77,6 +78,9 @@ export function UserPortalRoute({
       : createHttpUserPortalClient(),
     [localShellPreviewEnabled]
   );
+  const commerceClient = useMemo<CommerceClient>(() => localShellPreviewEnabled
+    ? createLocalPreviewCommerceClient(createLocalPreviewCommerceFixture())
+    : createHttpCommerceClient(), [localShellPreviewEnabled]);
 
   if (mode === "register") {
     return <UserRegistrationPage portalClient={portalClient} />;
@@ -86,6 +90,17 @@ export function UserPortalRoute({
     <UserPortalPage
       initialSession={localShellPreviewEnabled ? localPreviewSession : undefined}
       portalClient={portalClient}
+      commerceClient={commerceClient}
     />
   );
+}
+
+function createLocalPreviewCommerceFixture() {
+  const now = "2026-07-02T00:00:00.000Z";
+  return {
+    wallet: { summary: { accountRef: "preview", at: now, totalAvailableCoins: 0, totalFrozenCoins: 0, byOrigin: { bonus: { availableCoins: 0, frozenCoins: 0 }, paid: { availableCoins: 0, frozenCoins: 0 }, referral: { availableCoins: 0, frozenCoins: 0 } } }, transactions: [] },
+    catalog: { catalog: { schemaVersion: "coins_commerce_catalog_v1" as const, publishedAt: now, productVersions: [], offerVersions: [], rechargeOffers: [] }, activeMemberships: [] },
+    orders: [],
+    referral: { cumulativeEarnedCoins: 0, availableCoins: 0, internallyConsumedCoins: 0, frozenCoins: 0, frozenForSettlementCoins: 0, externallySettledCoins: 0, reversedCoins: 0 }
+  };
 }

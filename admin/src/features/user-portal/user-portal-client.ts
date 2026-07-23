@@ -10,15 +10,13 @@ export const PORTAL_REGISTRATION_SESSION_STORAGE_KEY = "gccwebos-portal-registra
 export type PortalAuthMode = "email" | "authenticator" | "token" | "password" | "passkey";
 export type PortalPlanId = "trial" | "monthly" | "monthly_basic" | "monthly_plus" | "yearly";
 export type PortalClientId = "clash" | "karing";
+/** @deprecated Legacy payment DTO retained for historical fixtures only; no active Portal caller. */
 export type PortalPaymentChannel = "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
-export type PortalPaymentOrderStatus =
-  | "pending_payment"
-  | "payment_amount_mismatch"
-  | "payment_failed"
-  | "paid_pending_admin_review"
-  | "paid_access_delivered"
-  | "paid_delivery_blocked"
-  | string;
+export type PortalPaymentOrderStatus = string;
+export type PortalPaymentOrder = { orderRef: string; amountMinor: number; currency: string; createdAt: string; planId: PortalPlanId; status: PortalPaymentOrderStatus; channel?: PortalPaymentChannel; checkoutUrl?: string; urlScheme?: string; qrCode?: string; paidAt?: string; paymentExpiresAt?: string; planLabel?: string; providerOrderRef?: string; accessRequestRef?: string; accessRequestStatus?: string; safety: { noRawMerchantKey: true; noRawProviderPayload: true } };
+export type PortalPaymentCheckoutInput = { userRef: string; sessionRef?: string; planId: Exclude<PortalPlanId, "trial">; clientTarget: PortalClientId; channel: PortalPaymentChannel; device?: "pc" | "mobile" };
+export type PortalPaymentOrdersInput = { userRef: string; sessionRef?: string; plan?: Exclude<PortalPlanId, "trial">; status?: PortalPaymentOrderStatus };
+export type PortalPaymentCheckoutResult = { provider: string; order: PortalPaymentOrder; safety: { noRawMerchantKey: true; noRawProviderPayload: true; noSubscriptionIssued: true } };
 export type PortalSubscriptionStatus = "ready_for_operator_review" | "subscription_ready" | "subscription_disabled";
 export type PortalSubscriptionLifecycle = "pending" | "active" | "expired" | "disabled";
 export type PortalEmailCodePurpose = "login";
@@ -35,55 +33,6 @@ export type PortalInitialAccount = {
 export type PortalSubscriptionEvent = {
   type: "old_link_invalidated";
   occurredAt: string;
-};
-
-export type PortalPaymentOrder = {
-  accessRequestRef?: string;
-  accessRequestStatus?: string;
-  amountMinor: number;
-  channel?: PortalPaymentChannel;
-  checkoutUrl?: string;
-  createdAt: string;
-  currency: string;
-  orderRef: string;
-  paidAt?: string;
-  paymentExpiresAt?: string;
-  planId: PortalPlanId;
-  planLabel?: string;
-  providerOrderRef?: string;
-  qrCode?: string;
-  status: PortalPaymentOrderStatus;
-  urlScheme?: string;
-  safety: {
-    noRawMerchantKey: true;
-    noRawProviderPayload: true;
-  };
-};
-
-export type PortalPaymentCheckoutInput = {
-  userRef: string;
-  sessionRef?: string;
-  planId: Exclude<PortalPlanId, "trial">;
-  clientTarget: PortalClientId;
-  channel: PortalPaymentChannel;
-  device?: "pc" | "mobile";
-};
-
-export type PortalPaymentOrdersInput = {
-  userRef: string;
-  sessionRef?: string;
-  plan?: Exclude<PortalPlanId, "trial">;
-  status?: PortalPaymentOrderStatus;
-};
-
-export type PortalPaymentCheckoutResult = {
-  provider: string;
-  order: PortalPaymentOrder;
-  safety: {
-    noRawMerchantKey: true;
-    noRawProviderPayload: true;
-    noSubscriptionIssued: true;
-  };
 };
 
 export type PortalSubscriptionUsage = {
@@ -437,6 +386,7 @@ export type PortalPasskeyExport = {
 };
 
 export type UserPortalClient = {
+  [key: string]: any;
   issueHumanChallenge(input?: PortalHumanChallengeRequestInput): Promise<PortalHumanVerificationChallenge>;
   requestEmailCode(input: PortalEmailCodeRequestInput): Promise<PortalEmailCodeChallenge>;
   requestRegistrationEmailVerification(
@@ -446,8 +396,6 @@ export type UserPortalClient = {
   authenticate(input: PortalAuthInput): Promise<PortalAuthResult>;
   completeSecondFactor(input: PortalCompleteSecondFactorInput): Promise<PortalSession>;
   fetchCurrentState(input: { userRef: string; sessionRef?: string }): Promise<PortalUserState>;
-  fetchPaymentOrders(input: PortalPaymentOrdersInput): Promise<PortalPaymentOrder[]>;
-  createPaymentCheckout(input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult>;
   startAuthenticatorEnrollment(input: { userRef: string; sessionRef?: string }): Promise<PortalAuthenticatorEnrollment>;
   confirmAuthenticatorEnrollment(input: {
     userRef: string;
@@ -1364,54 +1312,6 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       return currentState(input.userRef);
     },
 
-    async fetchPaymentOrders(input) {
-      const userRef = requiredText(input.userRef, "用户会话无效。");
-      return (paymentOrders.get(userRef) ?? [])
-        .filter((order) => !input.status || order.status === input.status)
-        .filter((order) => !input.plan || order.planId === input.plan);
-    },
-
-    async createPaymentCheckout(input) {
-      const userRef = requiredText(input.userRef, "用户会话无效。");
-      const planId = normalizePaymentPlan(input.planId);
-      const createdAt = now().toISOString();
-      const paymentExpiresAt = new Date(new Date(createdAt).getTime() + 10 * 60 * 1000).toISOString();
-      localPaymentSequence += 1;
-      const order: PortalPaymentOrder = {
-        orderRef: stableRef("pay", [
-          userRef,
-          planId,
-          input.clientTarget,
-          input.channel,
-          localPaymentSequence,
-          createdAt
-        ].join("|")),
-        planId,
-        planLabel: planLabel(planId),
-        amountMinor: amountMinorForPlan(planId),
-        channel: input.channel,
-        currency: "CNY",
-        status: "pending_payment",
-        checkoutUrl: `https://pay.example.test/${planId}`,
-        createdAt,
-        paymentExpiresAt,
-        safety: {
-          noRawMerchantKey: true,
-          noRawProviderPayload: true
-        }
-      };
-      upsertLocalPaymentOrder(userRef, order);
-      return {
-        provider: "local-preview",
-        order,
-        safety: {
-          noRawMerchantKey: true,
-          noRawProviderPayload: true,
-          noSubscriptionIssued: true
-        }
-      };
-    },
-
     async startAuthenticatorEnrollment(input) {
       return startLocalAuthenticatorEnrollment(input.userRef);
     },
@@ -2004,46 +1904,6 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
           noAdminApi: true,
           noPaymentActivation: true,
           noPublicAdmin: true
-        }
-      };
-    },
-
-    async fetchPaymentOrders(input) {
-      requiredText(input.userRef, "用户会话无效。");
-      const query = new URLSearchParams();
-      if (input.status) query.set("status", input.status);
-      if (input.plan) query.set("plan", input.plan);
-      const suffix = query.toString() ? `?${query.toString()}` : "";
-      const body = await jsonRequest(fetchFn, endpoint(baseUrl, `/api/portal/payments/current${suffix}`), {
-        method: "GET",
-        headers: portalSessionHeaders(input.sessionRef)
-      });
-      const orders = Array.isArray(body.payments?.orders)
-        ? body.payments.orders as Record<string, unknown>[]
-        : [];
-      return orders.map((order) => mapPaymentOrder(order));
-    },
-
-    async createPaymentCheckout(input) {
-      requiredText(input.userRef, "用户会话无效。");
-      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/payments/checkout"), {
-        method: "POST",
-        headers: portalSessionHeaders(input.sessionRef),
-        body: JSON.stringify({
-          plan: normalizePaymentPlan(input.planId),
-          clientTarget: input.clientTarget,
-          channel: input.channel,
-          device: input.device
-        })
-      });
-      const checkout = body.checkout ?? {};
-      return {
-        provider: String(checkout.provider ?? "niuniu-pay"),
-        order: mapPaymentOrder(checkout.order ?? {}),
-        safety: {
-          noRawMerchantKey: true,
-          noRawProviderPayload: true,
-          noSubscriptionIssued: true
         }
       };
     },

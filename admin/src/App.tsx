@@ -23,6 +23,7 @@ import { AdminSearchResultsPage } from "./pages/admin-search-results-page";
 import { DashboardPage } from "./pages/dashboard-page";
 import { PortalRequestsPage } from "./pages/portal-requests-page";
 import { SubscriptionUsageMonitorPage } from "./pages/subscription-usage-monitor-page";
+import { createLocalPreviewCommerceClient } from "./features/user-portal/commerce/commerce-client";
 
 type AppRoute = "admin" | "portal" | "portalPreview" | "portalRegister" | "site";
 
@@ -171,10 +172,17 @@ function PortalPreviewRoute({
   const localUserPortalClient = useMemo(() => createLocalUserPortalClient({
     demoSubscriptionUrl: "https://sub.example.test/import/local-preview-visible-once"
   }), []);
+  const localCommerceClient = useMemo(() => createLocalPreviewCommerceClient({
+    wallet: { summary: { accountRef: "preview", at: "2026-07-02T00:00:00.000Z", totalAvailableCoins: 0, totalFrozenCoins: 0, byOrigin: { bonus: { availableCoins: 0, frozenCoins: 0 }, paid: { availableCoins: 0, frozenCoins: 0 }, referral: { availableCoins: 0, frozenCoins: 0 } }, }, transactions: [] },
+    catalog: { catalog: { schemaVersion: "coins_commerce_catalog_v1", publishedAt: "2026-07-02T00:00:00.000Z", productVersions: [], offerVersions: [], rechargeOffers: [] }, activeMemberships: [] },
+    orders: [],
+    referral: { cumulativeEarnedCoins: 0, availableCoins: 0, internallyConsumedCoins: 0, frozenCoins: 0, frozenForSettlementCoins: 0, externallySettledCoins: 0, reversedCoins: 0 }
+  }), []);
 
   return (
     <UserPortalPage
       portalClient={localUserPortalClient}
+      commerceClient={localCommerceClient}
       onBackToAdmin={onBackToAdmin}
     />
   );

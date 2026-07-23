@@ -565,6 +565,15 @@ async function submitPortalLogin(accountId = "user_safe_ref", password = "user-p
 }
 
 describe("user portal route", () => {
+  test("Commerce destinations are part of the authenticated Portal shell contract", () => {
+    const page = readFileSync(resolve("src/features/user-portal/user-portal-page.tsx"), "utf8");
+    expect(page).toContain("Wallet");
+    expect(page).toContain("Store");
+    expect(page).toContain("Orders");
+    expect(page).toContain("Referral");
+    expect(page).toContain("CommerceWorkspace");
+    expect(page).toContain("sessionRef={commerceSessionRef}");
+  });
   test("keeps automatic portal shell preview local to development loopback hosts", () => {
     expect(isLocalPortalShellPreviewEnabled(
       { MODE: "development" },
