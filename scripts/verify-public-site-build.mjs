@@ -24,10 +24,11 @@ const requiredPatterns = [
   /GCC WebOS/,
   /company-site-shell/,
   /gccwebos-public-site/,
-  /Secure access for every device/,
-  /Tell us what you need/,
-  /Common payment options supported/,
-  /Start 7-day trial/
+  /Connect to the world\. Start simply\./,
+  /Connect to more networks\. See a wider world\./,
+  /Explore what comes next with GCC WebOS/,
+  /连接世界，从简单开始/,
+  /连接更多网络，看见更大的世界/
 ];
 
 const forbiddenPatterns = [
@@ -46,7 +47,11 @@ const forbiddenPatterns = [
   /proxy-gateway-admin/i,
   /Telegram/i,
   /(?:https?:\/\/)?t\.me\//i,
-  /gcaltd0528/i
+  /gcaltd0528/i,
+  /Protocol: WireGuard/i,
+  /Tokyo · JP/i,
+  /Start 7-day trial/i,
+  /¥(?:20|30|200)/i
 ];
 
 const missing = requiredPatterns.filter((pattern) => !pattern.test(combined));
