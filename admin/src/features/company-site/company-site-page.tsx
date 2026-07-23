@@ -913,17 +913,42 @@ export function CompanySitePage() {
 
       <div className="company-site-mobile-viewport" data-mobile-viewport="true">
       <section className="company-site-hero" data-mobile-concept-stage="true" id="top">
+        <div
+          aria-hidden="true"
+          className="company-site-brand-environment"
+          data-brand-environment="true"
+        >
+          {(["horizon", "connection", "continuity"] as const).map((state) => (
+            <div
+              className={`company-site-brand-environment-state is-${state}`}
+              data-brand-state={state}
+              key={state}
+            >
+              <span />
+              <span />
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+          ))}
+          <i className="company-site-brand-energy is-blue" />
+          <i className="company-site-brand-energy is-teal" />
+          <i className="company-site-brand-energy is-violet" />
+        </div>
+
         <div className="company-site-hero-copy">
           <span className="company-site-hero-eyebrow">GCC WEBOS · {copy.hero.eyebrow}</span>
           <h1>{copy.hero.title}</h1>
           <p>{copy.hero.description}</p>
           <div className="company-site-actions">
-            <a className="company-site-primary" href="#features" onClick={(event) => handleSectionClick(event, "features")}>
-              {copy.actions.explore}
+            <a className="company-site-primary" href={registerUrl}>
+              {copy.actions.getStarted}
               <ArrowRight aria-hidden="true" />
             </a>
-            <a className="company-site-secondary" href={registerUrl}>{copy.actions.getStarted}</a>
-            <a className="company-site-tertiary" href={loginUrl}>{copy.actions.signIn}</a>
+            <a className="company-site-secondary" href="#features" onClick={(event) => handleSectionClick(event, "features")}>
+              {copy.actions.explore}
+            </a>
           </div>
           <div className="company-site-hero-index" aria-label="GCC WebOS public website areas">
             {[copy.hero.support, copy.hero.portal, copy.hero.partnership].map((item, index) => (

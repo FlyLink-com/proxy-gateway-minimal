@@ -67,6 +67,43 @@ describe("company site route", () => {
       .some((block) => block.includes("padding: 112px 10px 8px"))).toBe(true);
   });
 
+  test("frames the desktop hero as a centered brand environment instead of a content card", () => {
+    window.location.hash = "#/site";
+
+    const { container } = render(createElement(App));
+    const hero = container.querySelector(".company-site-hero");
+    const environment = hero?.querySelector("[data-brand-environment]");
+    const states = Array.from(environment?.querySelectorAll("[data-brand-state]") ?? [])
+      .map((state) => state.getAttribute("data-brand-state"));
+    const heroActions = hero?.querySelector(".company-site-actions");
+    const actionLinks = Array.from(heroActions?.querySelectorAll("a") ?? []);
+
+    expect(environment?.getAttribute("aria-hidden")).toBe("true");
+    expect(states).toEqual(["horizon", "connection", "continuity"]);
+    expect(hero?.querySelector(".company-site-brand-visual")).not.toBeNull();
+    expect(actionLinks).toHaveLength(2);
+    expect(actionLinks[0]?.textContent).toContain("Get Started");
+    expect(actionLinks[0]?.classList.contains("company-site-primary")).toBe(true);
+    expect(actionLinks[0]?.getAttribute("href")).toBe(portalRegisterUrl);
+    expect(actionLinks[1]?.textContent).toContain("Explore");
+    expect(actionLinks[1]?.classList.contains("company-site-secondary")).toBe(true);
+    expect(actionLinks[1]?.getAttribute("href")).toBe("#features");
+    expect(publicSiteStyleBlocks(".company-site-shell .company-site-hero-copy")
+      .some((block) =>
+        block.includes("max-width: 820px")
+        && block.includes("justify-items: center")
+        && block.includes("text-align: center")
+      )).toBe(true);
+    expect(publicSiteStyleBlocks(".company-site-shell .company-site-brand-environment")
+      .some((block) =>
+        block.includes("display: block")
+        && block.includes("position: absolute")
+        && block.includes("pointer-events: none")
+      )).toBe(true);
+    expect(publicSiteStyleBlocks(".company-site-shell .company-site-brand-environment")
+      .some((block) => block.includes("display: none"))).toBe(true);
+  });
+
   test("leads with promotional GCC WebOS value without exposing private surfaces or invented claims", () => {
     window.location.hash = "#/site";
 
