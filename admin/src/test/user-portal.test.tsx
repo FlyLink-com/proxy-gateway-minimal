@@ -22,9 +22,6 @@ import {
   type PortalCompleteSecondFactorInput,
   type PortalEmailCodeChallenge,
   type PortalHumanVerificationChallenge,
-  type PortalPaymentCheckoutInput,
-  type PortalPaymentCheckoutResult,
-  type PortalPaymentOrder,
   type PortalPasskeyBinding,
   type PortalPasskeyExport,
   type PortalRefreshSubscriptionInput,
@@ -39,6 +36,10 @@ import {
   type PortalUserState,
   type UserPortalClient
 } from "../features/user-portal/user-portal-client";
+
+type PortalPaymentOrder = { [key: string]: any; orderRef: string; amountMinor: number; currency: string; createdAt: string; planId: "monthly_basic" | "monthly_plus" | "yearly"; status: string; safety: { noRawMerchantKey: true; noRawProviderPayload: true } };
+type PortalPaymentCheckoutInput = { userRef: string; sessionRef?: string; planId: "monthly_basic" | "monthly_plus" | "yearly"; clientTarget: "clash" | "karing"; channel: string; device?: "pc" | "mobile" };
+type PortalPaymentCheckoutResult = { provider: string; order: PortalPaymentOrder; safety: { noRawMerchantKey: true; noRawProviderPayload: true; noSubscriptionIssued: true } };
 
 afterEach(() => {
   cleanup();
@@ -164,7 +165,6 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
     fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
       userRef: input.userRef,
       subscriptionRequest: null,
-      paymentOrders: [],
       historySummary: [],
       security: {
         authenticatorBound: false,
@@ -444,7 +444,6 @@ function portalClientWithActiveSubscription(
         userRef: input.userRef,
         ...requestOverrides
       }),
-      paymentOrders: [],
       historySummary: [],
       security: {
         authenticatorBound: false,
@@ -3131,7 +3130,6 @@ describe("user portal product surface", () => {
             quota: { trafficGb: 0 }
           }
         ],
-        paymentOrders: [],
         historySummary: [],
         security: {
           authenticatorBound: false,
@@ -3207,7 +3205,6 @@ describe("user portal product surface", () => {
             quota: { trafficGb: 200 }
           }
         ],
-        paymentOrders: [],
         historySummary: [],
         security: {
           authenticatorBound: false,
@@ -3309,7 +3306,6 @@ describe("user portal product surface", () => {
             quota: { trafficGb: 200 }
           }
         ],
-        paymentOrders: [],
         historySummary: [],
         security: {
           authenticatorBound: false,
@@ -3367,7 +3363,6 @@ describe("user portal product surface", () => {
             quota: { trafficGb: 200 }
           }
         ],
-        paymentOrders: [],
         historySummary: [],
         security: {
           authenticatorBound: false,

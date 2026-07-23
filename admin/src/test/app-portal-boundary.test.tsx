@@ -75,5 +75,8 @@ describe("App portal boundary", () => {
     const source = readFileSync(resolve("src/features/user-portal/user-portal-page.tsx"), "utf8");
     const client = readFileSync(resolve("src/features/user-portal/user-portal-client.ts"), "utf8");
     expect(`${source}\n${client}`).not.toMatch(/\/api\/portal\/payments\/(current|checkout)|createPaymentCheckout|fetchPaymentOrders/);
+    expect(source).not.toContain("SubscriptionManager");
+    expect(source).not.toContain("PortalPaymentFlow");
+    expect(source).not.toMatch(/CashierSelectionDialog|cashierPaymentChannels|paymentRedirect/);
   });
 });

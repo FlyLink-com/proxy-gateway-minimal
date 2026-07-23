@@ -10,16 +10,9 @@ export const PORTAL_REGISTRATION_SESSION_STORAGE_KEY = "gccwebos-portal-registra
 export type PortalAuthMode = "email" | "authenticator" | "token" | "password" | "passkey";
 export type PortalPlanId = "trial" | "monthly" | "monthly_basic" | "monthly_plus" | "yearly";
 export type PortalClientId = "clash" | "karing";
-/** @deprecated Legacy payment DTO retained for historical fixtures only; no active Portal caller. */
-export type PortalPaymentChannel = "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
-export type PortalPaymentOrderStatus = string;
-export type PortalPaymentOrder = { orderRef: string; amountMinor: number; currency: string; createdAt: string; planId: PortalPlanId; status: PortalPaymentOrderStatus; channel?: PortalPaymentChannel; checkoutUrl?: string; urlScheme?: string; qrCode?: string; paidAt?: string; paymentExpiresAt?: string; planLabel?: string; providerOrderRef?: string; accessRequestRef?: string; accessRequestStatus?: string; safety: { noRawMerchantKey: true; noRawProviderPayload: true } };
-export type PortalPaymentCheckoutInput = { userRef: string; sessionRef?: string; planId: Exclude<PortalPlanId, "trial">; clientTarget: PortalClientId; channel: PortalPaymentChannel; device?: "pc" | "mobile" };
-export type PortalPaymentOrdersInput = { userRef: string; sessionRef?: string; plan?: Exclude<PortalPlanId, "trial">; status?: PortalPaymentOrderStatus };
-export type PortalPaymentCheckoutResult = { provider: string; order: PortalPaymentOrder; safety: { noRawMerchantKey: true; noRawProviderPayload: true; noSubscriptionIssued: true } };
+export type PortalEmailCodePurpose = "login";
 export type PortalSubscriptionStatus = "ready_for_operator_review" | "subscription_ready" | "subscription_disabled";
 export type PortalSubscriptionLifecycle = "pending" | "active" | "expired" | "disabled";
-export type PortalEmailCodePurpose = "login";
 export type PortalSecondFactorKind = "authenticator" | "passkey";
 export type PortalSupportCategory = "subscription" | "client_import" | "account_security" | "other";
 export type PortalHumanChallengeScope = "portal_login" | "portal_registration";
@@ -308,7 +301,6 @@ export type PortalUserState = {
   subscriptionRequest: PortalSubscriptionRequest | null;
   subscriptionRequests?: PortalSubscriptionRequest[];
   accountEntitlements?: PortalAccountEntitlement[];
-  paymentOrders?: PortalPaymentOrder[];
   historySummary?: PortalHistoryRecord[];
   security?: PortalUserSecurityState;
   updatedAt: string;
@@ -656,52 +648,6 @@ function planLabel(planId: PortalPlanId) {
   return "月付套餐";
 }
 
-function normalizePaymentPlan(value: unknown): PortalPaymentCheckoutInput["planId"] {
-  if (value === "yearly" || value === "monthly_plus" || value === "monthly_basic") return value;
-  if (value === "monthly") return "monthly_basic";
-  throw portalError("支付套餐无效。");
-}
-
-function amountMinorForPlan(planId: Exclude<PortalPlanId, "trial">) {
-  if (planId === "yearly") return 20000;
-  if (planId === "monthly_plus") return 3000;
-  return 2000;
-}
-
-function mapPaymentOrder(record: Record<string, unknown>): PortalPaymentOrder {
-  const planId = normalizePaymentPlan(record.plan ?? record.planId);
-  const orderRef = requiredText(String(record.orderRef ?? ""), "支付订单无效。");
-  const channel = typeof record.channel === "string" && ["alipay", "wxpay", "qqpay", "bank", "jdpay"].includes(record.channel)
-    ? record.channel as PortalPaymentChannel
-    : undefined;
-  return {
-    orderRef,
-    planId,
-    planLabel: typeof record.planLabel === "string" ? record.planLabel : planLabel(planId),
-    amountMinor: Number(record.amountMinor ?? amountMinorForPlan(planId)),
-    channel,
-    currency: String(record.currency ?? "CNY"),
-    status: String(record.status ?? "pending_payment"),
-    checkoutUrl: typeof record.checkoutUrl === "string" ? record.checkoutUrl : undefined,
-    urlScheme: typeof record.urlScheme === "string" ? record.urlScheme : undefined,
-    qrCode: typeof record.qrCode === "string" ? record.qrCode : undefined,
-    paymentExpiresAt: typeof record.paymentExpiresAt === "string"
-      ? record.paymentExpiresAt
-      : typeof record.checkoutExpiresAt === "string"
-        ? record.checkoutExpiresAt
-        : undefined,
-    providerOrderRef: typeof record.providerOrderRef === "string" ? record.providerOrderRef : undefined,
-    accessRequestRef: typeof record.accessRequestRef === "string" ? record.accessRequestRef : undefined,
-    accessRequestStatus: typeof record.accessRequestStatus === "string" ? record.accessRequestStatus : undefined,
-    paidAt: typeof record.paidAt === "string" ? record.paidAt : undefined,
-    createdAt: requiredText(String(record.createdAt ?? ""), "支付订单时间无效。"),
-    safety: {
-      noRawMerchantKey: true,
-      noRawProviderPayload: true
-    }
-  };
-}
-
 function normalizeSupportMessage(value: string) {
   const message = requiredText(value, "请输入问题描述。").replace(/\s+/g, " ");
   if (message.length < 6) {
@@ -985,7 +931,6 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
     passkeyEnabled?: boolean;
     passkeyRef?: string;
   }>();
-  const paymentOrders = new Map<string, PortalPaymentOrder[]>();
   const authenticatorEnrollments = new Map<string, {
     expiresAt: string;
     secret: string;
@@ -998,7 +943,6 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
     userRef: string;
   }>();
   let localSubscriptionSequence = 0;
-  let localPaymentSequence = 0;
 
   function securityState(userRef: string): PortalUserSecurityState {
     const security = accountSecurity.get(userRef);
@@ -1024,11 +968,10 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
   }
 
   function emptyState(userRef: string): PortalUserState {
-      return {
+    return {
         userRef,
         subscriptionRequest: null,
         subscriptionRequests: [],
-        paymentOrders: paymentOrders.get(userRef) ?? [],
         historySummary: [],
         security: securityState(userRef),
         updatedAt: now().toISOString(),
@@ -1044,7 +987,6 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
     const state = states.get(userRef) ?? emptyState(userRef);
     return {
       ...state,
-      paymentOrders: paymentOrders.get(userRef) ?? state.paymentOrders ?? [],
       security: securityState(userRef)
     };
   }
@@ -1053,6 +995,8 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
     const state: PortalUserState = {
       userRef,
       ...next,
+      subscriptionRequest: next.subscriptionRequest ?? null,
+      updatedAt: next.updatedAt ?? now().toISOString(),
       security: next.security ?? securityState(userRef),
       safety: {
         noAdminApi: true,
@@ -1062,24 +1006,6 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
     };
     states.set(userRef, state);
     return state;
-  }
-
-  function upsertLocalPaymentOrder(userRef: string, order: PortalPaymentOrder) {
-    const nextOrders = [
-      order,
-      ...(paymentOrders.get(userRef) ?? []).filter((existing) => existing.orderRef !== order.orderRef)
-    ];
-    paymentOrders.set(userRef, nextOrders);
-    const state = currentState(userRef);
-    setState(userRef, {
-      subscriptionRequest: state.subscriptionRequest,
-      subscriptionRequests: state.subscriptionRequests,
-      paymentOrders: nextOrders,
-      historySummary: state.historySummary ?? [],
-      security: state.security,
-      updatedAt: order.createdAt
-    });
-    return nextOrders;
   }
 
   function createSecondFactorChallenge(userRef: string, displayName: string, issuedAt: Date): PortalSecondFactorChallenge {
