@@ -124,9 +124,12 @@ describe("company site route", () => {
     fireEvent.click(opener);
 
     const dialog = screen.getByRole("dialog", { name: "Choose how to start" });
+    const startPanel = dialog.querySelector(".company-site-start-panel");
     expect(opener.getAttribute("aria-expanded")).toBe("true");
-    expect(within(dialog).getByRole("link", { name: "Create account" }).getAttribute("href")).toBe(portalRegisterUrl);
-    expect(within(dialog).getByRole("link", { name: "Sign in now" }).getAttribute("href")).toBe(portalLoginUrl);
+    expect(startPanel).not.toBeNull();
+    expect(startPanel?.querySelector(".company-site-start-sheet-copy")).not.toBeNull();
+    expect(within(startPanel as HTMLElement).getByRole("link", { name: "Create account" }).getAttribute("href")).toBe(portalRegisterUrl);
+    expect(within(startPanel as HTMLElement).getByRole("link", { name: "Sign in now" }).getAttribute("href")).toBe(portalLoginUrl);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Close start options" }));
     expect(screen.queryByRole("dialog", { name: "Choose how to start" })).toBeNull();

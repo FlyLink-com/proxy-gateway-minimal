@@ -1012,19 +1012,21 @@ export function CompanySitePage() {
               <i>G</i>
               <b>{copy.actions.openStart}</b>
             </div>
-            <div className="company-site-start-sheet-copy">
-              <small>WELCOME TO GCC WEBOS</small>
-              <h2>{copy.actions.openStart}</h2>
-              <p>{copy.hero.description}</p>
+            <div className="company-site-start-panel">
+              <div className="company-site-start-sheet-copy">
+                <small>WELCOME TO GCC WEBOS</small>
+                <h2>{copy.actions.openStart}</h2>
+                <p>{copy.hero.description}</p>
+              </div>
+              <a aria-label={copy.actions.createAccount} className="company-site-start-choice is-primary" href={registerUrl}>
+                <span><b>01</b><strong>{copy.actions.createAccount}</strong></span>
+                <ArrowRight aria-hidden="true" />
+              </a>
+              <a aria-label={copy.actions.signInNow} className="company-site-start-choice" href={loginUrl}>
+                <span><b>02</b><strong>{copy.actions.signInNow}</strong></span>
+                <ArrowRight aria-hidden="true" />
+              </a>
             </div>
-            <a aria-label={copy.actions.createAccount} className="company-site-start-choice is-primary" href={registerUrl}>
-              <span><b>01</b><strong>{copy.actions.createAccount}</strong></span>
-              <ArrowRight aria-hidden="true" />
-            </a>
-            <a aria-label={copy.actions.signInNow} className="company-site-start-choice" href={loginUrl}>
-              <span><b>02</b><strong>{copy.actions.signInNow}</strong></span>
-              <ArrowRight aria-hidden="true" />
-            </a>
           </section>
         </div>
       ) : null}
