@@ -53,6 +53,15 @@ describe("company site route", () => {
       .some((block) => block.includes("width: 4px"))).toBe(true);
   });
 
+  test("keeps the mobile plan details in a flat content flow instead of a card shell", () => {
+    expect(publicSiteStyleBlocks(".company-site-shell .company-site-product-rail")
+      .some((block) =>
+        block.includes("border-radius: 0")
+        && block.includes("background: transparent")
+        && block.includes("color: var(--site-ink)")
+      )).toBe(true);
+  });
+
   test("leads with promotional GCC WebOS value without exposing private surfaces or invented claims", () => {
     window.location.hash = "#/site";
 

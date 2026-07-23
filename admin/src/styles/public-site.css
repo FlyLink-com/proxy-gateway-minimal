@@ -2928,6 +2928,9 @@
 
   .company-site-shell .company-site-product-rail {
     border-top: 1px solid var(--site-line);
+    border-radius: 0;
+    background: transparent;
+    color: var(--site-ink);
   }
 
   .company-site-shell .company-site-product-rail article,
@@ -2944,14 +2947,23 @@
     scroll-snap-align: none;
   }
 
-  .company-site-shell .company-site-product-rail article:first-child p,
-  .company-site-shell .company-site-product-rail article:first-child li {
+  .company-site-shell .company-site-product-rail article h3 {
+    color: var(--site-ink);
+  }
+
+  .company-site-shell .company-site-product-rail article p,
+  .company-site-shell .company-site-product-rail article li {
     color: var(--site-muted);
   }
 
   .company-site-shell .company-site-product-rail .company-site-primary,
   .company-site-shell .company-site-product-rail .company-site-secondary {
     width: fit-content;
+  }
+
+  .company-site-shell .company-site-product-rail .company-site-secondary {
+    border-color: var(--site-line-strong);
+    color: var(--site-ink);
   }
 
   .company-site-shell .company-site-guide {
