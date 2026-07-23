@@ -5,7 +5,6 @@ import {
   BookOpen,
   Check,
   ChevronDown,
-  CircleHelp,
   Compass,
   FileText,
   Globe2,
@@ -998,25 +997,21 @@ export function CompanySitePage() {
             aria-label={copy.aria.startChooser}
             aria-modal="true"
             className="company-site-start-chooser"
+            data-presentation="bottom-sheet"
             id="company-site-start-chooser"
             role="dialog"
           >
-            <header>
-              <button aria-label={copy.aria.closeStart} onClick={() => setIsStartChooserOpen(false)} type="button">×</button>
-              <strong>GCC WebOS</strong>
-              <CircleHelp aria-hidden="true" />
-            </header>
-            <div className="company-site-start-orbit" aria-hidden="true">
-              <span />
-              <span />
-              <i>G</i>
-              <b>{copy.actions.openStart}</b>
-            </div>
             <div className="company-site-start-panel">
+              <button
+                aria-label={copy.aria.closeStart}
+                className="company-site-start-panel-close"
+                onClick={() => setIsStartChooserOpen(false)}
+                type="button"
+              >
+                ×
+              </button>
               <div className="company-site-start-sheet-copy">
-                <small>WELCOME TO GCC WEBOS</small>
                 <h2>{copy.actions.openStart}</h2>
-                <p>{copy.hero.description}</p>
               </div>
               <a aria-label={copy.actions.createAccount} className="company-site-start-choice is-primary" href={registerUrl}>
                 <span><b>01</b><strong>{copy.actions.createAccount}</strong></span>

@@ -112,7 +112,7 @@ describe("company site route", () => {
     expect(detailScroller?.querySelector(".company-site-footer")).not.toBeNull();
   });
 
-  test("opens a focused mobile start chooser without replacing the existing account destinations", () => {
+  test("opens account destinations in a focused bottom sheet without repeating the hero visual", () => {
     window.location.hash = "#/site";
 
     render(createElement(App));
@@ -126,8 +126,13 @@ describe("company site route", () => {
     const dialog = screen.getByRole("dialog", { name: "Choose how to start" });
     const startPanel = dialog.querySelector(".company-site-start-panel");
     expect(opener.getAttribute("aria-expanded")).toBe("true");
+    expect(dialog.getAttribute("data-presentation")).toBe("bottom-sheet");
+    expect(dialog.querySelector("header")).toBeNull();
+    expect(dialog.querySelector(".company-site-start-orbit")).toBeNull();
+    expect(within(dialog).queryByText("WELCOME TO GCC WEBOS")).toBeNull();
     expect(startPanel).not.toBeNull();
     expect(startPanel?.querySelector(".company-site-start-sheet-copy")).not.toBeNull();
+    expect(within(startPanel as HTMLElement).getByRole("button", { name: "Close start options" })).not.toBeNull();
     expect(within(startPanel as HTMLElement).getByRole("link", { name: "Create account" }).getAttribute("href")).toBe(portalRegisterUrl);
     expect(within(startPanel as HTMLElement).getByRole("link", { name: "Sign in now" }).getAttribute("href")).toBe(portalLoginUrl);
 
