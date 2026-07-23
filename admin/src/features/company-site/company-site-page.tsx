@@ -93,7 +93,7 @@ const iconMap = {
 const companySiteCopy = {
   en: {
     meta: {
-      title: "GCC WebOS - Connect with ease"
+      title: "GCC WebOS - Connect to the world. Start simply."
     },
     aria: {
       brandHome: "GCC WebOS home",
@@ -136,91 +136,103 @@ const companySiteCopy = {
       submitting: "Sending..."
     },
     hero: {
-      eyebrow: "CONNECTED EXPERIENCE",
-      title: "Connect to the world. Start with ease.",
+      eyebrow: "DIGITAL SERVICES",
+      title: "Connect to the world. Start simply.",
       description:
-        "See what GCC WebOS can do, choose what fits, and begin your connected experience with confidence.",
-      support: "Discover",
-      portal: "Choose",
-      partnership: "Start"
+        "From first discovery to choosing the right service and continuing day to day, GCC WebOS turns complex service journeys into one clear, coherent digital experience.",
+      support: "Explore",
+      portal: "Get Started",
+      partnership: "Sign In"
     },
     brandVisual: {
-      title: "One brand. One connected journey.",
-      description: "From first look to the experience that follows, every step stays familiar and focused.",
-      lanes: ["Discover", "Choose", "Start", "Continue"],
+      title: "More networks. More perspectives.",
+      description: "Digital services, easier to understand and easier to begin.",
+      lanes: ["Discover", "Explore", "Connect", "Continue"],
       scenes: [
         {
-          eyebrow: "Move freely",
-          title: "Your world stays within reach",
-          description: "A connected experience designed to feel clear across the moments and devices that matter."
+          eyebrow: "Discover",
+          title: "See beyond one point of view",
+          description: "Reach more sources, compare perspectives and find a new way to understand what matters."
         },
         {
-          eyebrow: "Choose simply",
-          title: "Find the path that feels right",
-          description: "Understand the essentials, compare your options, and move forward without the noise."
+          eyebrow: "Connect",
+          title: "Keep work moving across distance",
+          description: "Continue familiar conversations and responsibilities as places and network environments change."
         },
         {
-          eyebrow: "Continue naturally",
-          title: "Pick up where you left off",
-          description: "Create an account or sign in when you are ready to continue your GCC WebOS journey."
+          eyebrow: "Continue",
+          title: "A new environment, without starting over",
+          description: "Find a connection that fits the moment and keep your digital life moving in its familiar rhythm."
         }
       ]
     },
     product: {
-      title: "Find what fits your next step",
+      title: "Connect to more networks. See a wider world.",
       description:
-        "See the essentials at a glance, then explore the ways GCC WebOS can help you begin.",
+        "GCC WebOS provides diverse network services that help people find the right way to connect across different environments and everyday scenarios—opening access to more information, services and perspectives.",
       items: [
         {
           icon: "product",
-          title: "Discover with clarity",
-          description: "See the GCC WebOS experience and the ways to begin at a glance."
+          title: "Learn beyond one source",
+          description: "Open new perspectives for learning, research and everyday discovery."
         },
         {
           icon: "guide",
-          title: "Start with confidence",
-          description: "Turn interest into a practical next step through a simple, guided journey."
+          title: "Work beyond distance",
+          description: "Find the right way to connect across regions and everyday collaboration."
         },
         {
           icon: "help",
-          title: "Stay supported",
-          description: "Keep helpful resources and clear ways to reach us close at hand."
+          title: "Adapt as environments change",
+          description: "Choose a connection that fits travel, movement and changing networks."
         }
       ]
     },
     plans: {
-      title: "Choose your way to begin",
+      title: "Find the connection that fits the moment",
       description:
-        "Start at your own pace or open a conversation around your team and partnership goals.",
+        "VPN is one part of the GCC WebOS network experience. Its value is not defined by technical complexity, but by the possibilities it creates for learning, working, communicating and exploring.",
       items: [
         {
-          title: "Easy Start",
-          description: "A direct way to discover GCC WebOS and move forward at your own pace.",
-          points: ["Clear product essentials", "Guided next steps", "A smooth handoff to your account"]
+          title: "Explore more perspectives",
+          description: "For learning, research and everyday discovery beyond a single point of view.",
+          points: ["More sources to learn from", "New perspectives to consider", "A clear path to begin"]
         },
         {
-          title: "Flexible Path",
-          description: "For teams and visitors who want to shape the conversation around their goals.",
-          points: ["Room for specific needs", "A direct line for questions", "A path that can grow with you"]
+          title: "Keep work moving",
+          description: "For cross-region work, communication and changing network environments.",
+          points: ["Connect across locations", "Continue familiar workflows", "Find support when needed"]
         }
       ],
-      note: "Choose what feels right today. You can create an account or sign in whenever you are ready."
+      note: "Choose the scenario that matters now. Your account gives you one place to continue."
     },
     guide: {
-      title: "See every step as you move",
-      description: "Follow a clear journey from discovery to the experience that comes next.",
+      title: "The world is wide. Connecting should not feel complicated.",
+      description:
+        "Throughout the day, we move between different sources of information, places and responsibilities—sometimes searching for an answer, sometimes continuing our work, and sometimes looking beyond the perspectives we already know.",
       steps: [
-        { title: "Discover", description: "See what GCC WebOS can bring to your connected experience." },
-        { title: "Choose", description: "Compare the starting direction that feels right for you." },
-        { title: "Start", description: "Create an account when you are ready to begin." },
-        { title: "Continue", description: "Sign in anytime and keep your GCC WebOS experience moving." }
+        {
+          title: "One question, more than one answer",
+          description:
+            "In the morning, you begin with a question. Looking beyond a single source can reveal not only more information, but a new way to understand the problem."
+        },
+        {
+          title: "Keep working beyond distance",
+          description:
+            "By afternoon, work may cross cities and regions. Different network environments should not end the conversation; the right connection helps familiar collaboration continue."
+        },
+        {
+          title: "A new environment, without starting over",
+          description:
+            "When you arrive somewhere new, the network around you changes. GCC WebOS helps you find a connection for the moment, so the environment changes—not your whole digital life."
+        }
       ]
     },
     support: {
-      title: "Support and answers, together",
-      description: "Guides, answers, service information, and public rules stay easy to reach.",
-      statement: "Already have an account?",
-      portalStatement: "Continue your GCC WebOS experience.",
+      title: "Go further. Know where to turn.",
+      description: "When you need to understand a service, confirm a rule or continue a conversation, GCC WebOS keeps the answers and entry points easy to find.",
+      statement: "Ready to continue?",
+      portalStatement: "Return to your account center and pick up where you left off.",
       resources: [
         {
           icon: "guide",
@@ -253,19 +265,19 @@ const companySiteCopy = {
       ]
     },
     conversion: {
-      title: "Ready for what comes next?",
+      title: "Your next step, your way.",
       description:
-        "Choose what fits, create an account, or sign in to continue your GCC WebOS experience.",
-      steps: ["Discover", "Choose", "Start"]
+        "Some people arrive with a question, some are ready to begin, and some want to explore new possibilities with GCC WebOS. Wherever you start, the next step should be clear.",
+      steps: ["Discover more possibilities", "Choose the right service", "Create a GCC WebOS account", "Continue with support"]
     },
     intake: {
-      title: "Start a conversation with GCC WebOS",
+      title: "Explore what comes next with GCC WebOS",
       description:
-        "Have a product question, a team goal, or a partnership idea? Tell us where you want to go and start the conversation.",
+        "If you are exploring a product, technology or business collaboration, tell us what you hope to achieve and let us discover the next possibility together.",
       points: [
-        "Bring us the outcome you want to reach",
-        "Explore a path for individuals, teams, or partners",
-        "Turn interest into a clear next step"
+        "Share the product or service outcome you have in mind",
+        "Describe the team, market or scenario you are exploring",
+        "Turn a new idea into a clear conversation"
       ],
       fields: {
         organization: "Name or team",
@@ -281,35 +293,43 @@ const companySiteCopy = {
         useCase: "Use case",
         useCasePlaceholder: "Tell us what you want to understand, start, or build"
       },
-      options: ["Easy Start", "Flexible Path", "Support", "Partnership"],
-      note: "When you are ready, continue your GCC WebOS journey from the account entry.",
+      options: ["Explore more perspectives", "Keep work moving", "Support", "Partnership"],
+      note: "If you are ready to use a service, create an account or sign in to continue from your account center.",
       success: "Request submitted. We will use these details to continue the conversation.",
       error: "Submission failed. Please try again or use the contact information in the support section."
     },
     faq: {
-      title: "Questions? Start here.",
-      description: "Find a quick answer, then choose the way you want to begin.",
+      title: "Know before you begin",
+      description: "A few clear answers about GCC WebOS, its services and the ways to continue.",
       items: [
         {
-          question: "Where do I create an account or sign in?",
-          answer: "Choose Create account if you are new, or Sign in if you already have an account."
+          question: "What is GCC WebOS?",
+          answer: "GCC WebOS is a digital services brand for individuals, teams and partners. Through diverse network services, it helps people move through a clearer, more coherent digital experience."
+        },
+        {
+          question: "Does GCC WebOS provide VPN services?",
+          answer: "VPN is one part of the GCC WebOS network experience, supporting learning and discovery, cross-region work and communication, and moments when network environments change."
+        },
+        {
+          question: "How do I get started?",
+          answer: "Create a GCC WebOS account, then enter the account center to explore and use the services currently available."
         },
         {
           question: "I already have an account. How do I continue?",
-          answer: "Choose Sign in to continue your GCC WebOS experience."
+          answer: "Sign in to the account center to continue using and managing your existing services."
         },
         {
-          question: "Which way to begin is right for me?",
-          answer: "Review the two starting directions, or send an inquiry when you want help choosing."
+          question: "Where can I find guides and service information?",
+          answer: "The support center brings together usage guides, service information, public status, rules and privacy."
         },
         {
-          question: "Where can I review support and rules?",
-          answer: "Use the support directory for the guide, help center, status information, privacy, and public rules."
+          question: "How can I contact GCC WebOS?",
+          answer: "Use the website contact entry to share a product question, team need or partnership idea."
         }
       ]
     },
     footer: {
-      description: "A connected GCC WebOS experience for discovering, starting, and moving forward.",
+      description: "Connecting more perspectives—and every new beginning.",
       groups: [
         {
           title: "Product",
@@ -400,7 +420,7 @@ const companySiteCopy = {
   },
   zh: {
     meta: {
-      title: "GCC WebOS - 连接世界，轻松开始"
+      title: "GCC WebOS - 连接世界，从简单开始"
     },
     aria: {
       brandHome: "GCC WebOS 首页",
@@ -443,76 +463,84 @@ const companySiteCopy = {
       submitting: "发送中..."
     },
     hero: {
-      eyebrow: "畅连体验",
-      title: "连接世界，也连接每一次开始",
-      description: "一眼了解 GCC WebOS，找到适合自己的方式，轻松开启连接体验。",
-      support: "了解",
-      portal: "选择",
-      partnership: "开始"
+      eyebrow: "数字服务",
+      title: "连接世界，从简单开始。",
+      description: "从第一次了解，到选择适合的服务，再到持续使用，GCC WebOS 将复杂流程组织成清晰、连贯的数字体验。",
+      support: "探索",
+      portal: "开始使用",
+      partnership: "登录"
     },
     brandVisual: {
-      title: "一个品牌，一段连贯旅程",
-      description: "从第一次了解，到登录后继续使用，每一步都熟悉、清晰而专注。",
-      lanes: ["发现", "选择", "开始", "继续"],
+      title: "连接更多网络，看见更多视角",
+      description: "让数字服务更容易理解，更容易开始。",
+      lanes: ["发现", "探索", "连接", "继续"],
       scenes: [
         {
-          eyebrow: "自在连接",
-          title: "让熟悉的世界始终触手可及",
-          description: "围绕重要的时刻与设备，带来清晰、自然、连贯的连接体验。"
+          eyebrow: "发现",
+          title: "看见熟悉视角之外的世界",
+          description: "接触更多信息来源，比较不同观点，用新的角度理解真正重要的问题。"
         },
         {
-          eyebrow: "轻松选择",
-          title: "找到适合自己的开始方式",
-          description: "先看懂重点，再比较选择，不被复杂信息打断前进的节奏。"
+          eyebrow: "连接",
+          title: "距离之外，继续同行",
+          description: "当地点与网络环境发生变化，熟悉的沟通与工作节奏依然可以继续。"
         },
         {
-          eyebrow: "自然继续",
-          title: "随时接续你的 GCC WebOS 体验",
-          description: "准备好后创建账户，已有账户则直接登录，继续前往下一程。"
+          eyebrow: "继续",
+          title: "换一个地方，不必重新开始",
+          description: "找到适合当下的连接方式，让变化发生在环境，而不是你的整个数字生活。"
         }
       ]
     },
     product: {
-      title: "找到适合你的开始方式",
-      description: "集中了解产品重点，看看 GCC WebOS 可以如何陪你开始。",
+      title: "连接更多网络，看见更大的世界",
+      description: "GCC WebOS 提供多元网络服务，帮助用户在不同环境与使用场景中找到适合自己的连接方式，接触更丰富的信息、服务与观点。",
       items: [
-        { icon: "product", title: "清晰发现价值", description: "快速了解 GCC WebOS 体验，以及可以如何开始。" },
-        { icon: "guide", title: "更有把握地开始", description: "用简单连贯的方式，把兴趣变成可以行动的下一步。" },
-        { icon: "help", title: "一路获得支持", description: "实用资源与清晰的联系入口，始终触手可及。" }
+        { icon: "product", title: "不止一种答案", description: "接触不同地区的信息与观点，为学习、研究和日常探索打开更多视角。" },
+        { icon: "guide", title: "距离之外，继续同行", description: "面对跨区域工作、业务交流与日常协作，以更合适的方式连接需要使用的数字服务。" },
+        { icon: "help", title: "环境改变，节奏继续", description: "当所在地区或网络环境发生变化时，选择适合当前场景的连接方式。" }
       ]
     },
     plans: {
-      title: "选择你的开始方式",
-      description: "按自己的节奏轻松开始，也可以围绕团队与合作目标展开沟通。",
+      title: "找到适合当下的连接方式",
+      description: "VPN 是 GCC WebOS 网络服务的一部分。它的价值不在于复杂参数，而在于帮助用户跨越环境差异，更从容地学习、工作、沟通与探索。",
       items: [
         {
-          title: "轻松起步",
-          description: "直接了解 GCC WebOS，按照自己的节奏从容向前。",
-          points: ["清晰掌握产品重点", "跟随明确的下一步", "顺畅衔接账户体验"]
+          title: "看见更多视角",
+          description: "适合希望在学习、研究与日常探索中，不局限于单一视角的人。",
+          points: ["接触更多信息来源", "理解不同观点", "从清晰路径开始"]
         },
         {
-          title: "随需进阶",
-          description: "适合希望围绕团队目标或具体需求展开沟通的访客。",
-          points: ["为具体需求留出空间", "直接提出问题与目标", "让体验随你持续发展"]
+          title: "让工作继续向前",
+          description: "适合跨区域工作、日常沟通以及网络环境发生变化的场景。",
+          points: ["连接不同地点", "延续熟悉工作节奏", "需要时获得支持"]
         }
       ],
-      note: "先选择适合自己的方向；准备好后即可创建账户或登录。"
+      note: "从当下最重要的场景开始，并在账户中心继续你的 GCC WebOS 体验。"
     },
     guide: {
-      title: "每一步，都看得清楚",
-      description: "从了解、选择到开始与继续，沿着清晰节奏看懂完整旅程。",
+      title: "世界很大，连接不必复杂",
+      description: "一天之中，我们会在不同的信息、地点与任务之间来回切换。有时为了寻找答案，有时为了继续工作，也有时，只是想看看熟悉视角之外的世界。",
       steps: [
-        { title: "发现", description: "一眼看懂 GCC WebOS 能为你带来什么。" },
-        { title: "选择", description: "比较更适合自己的开始方式。" },
-        { title: "开始", description: "准备好后创建账户，立即开启体验。" },
-        { title: "继续", description: "随时登录，继续你的 GCC WebOS 体验。" }
+        {
+          title: "一个问题，不止一种答案",
+          description: "清晨，你正在寻找一份资料。当信息不再局限于单一来源，看到的不只是更多内容，也可能是理解问题的新角度。"
+        },
+        {
+          title: "距离之外，继续同行",
+          description: "下午，工作跨越了城市与地区。不同的网络环境不应该成为沟通的终点；合适的连接方式，让协作可以按照原来的节奏继续。"
+        },
+        {
+          title: "换一个地方，不必重新开始",
+          description: "当你出发去往新的地方，熟悉的网络环境也随之改变。GCC WebOS 帮助你寻找适合当前场景的连接方式，让变化发生在环境，而不是你的整个数字生活。"
+        }
       ]
     },
     support: {
-      title: "支持与答案，放在同一处",
-      description: "指南、答案、服务信息与公开规则，都可以随时找到。",
-      statement: "已有账户？",
-      portalStatement: "继续你的 GCC WebOS 体验。",
+      title: "走得更远，也随时找得到方向",
+      description: "当你需要了解服务、确认规则或继续一段对话，GCC WebOS 把答案与入口留在容易找到的地方。",
+      statement: "准备继续？",
+      portalStatement: "回到账户中心，接续你的 GCC WebOS 体验。",
       resources: [
         { icon: "guide", title: "使用指南", description: "从产生兴趣到采取行动，获得实用指引。", action: "阅读指南", slug: "download" },
         { icon: "help", title: "支持中心", description: "找到答案，也找到继续沟通的清晰入口。", action: "获取帮助", slug: "help" },
@@ -521,14 +549,14 @@ const companySiteCopy = {
       ]
     },
     conversion: {
-      title: "准备好，连接你的下一程",
-      description: "选择适合自己的方式，创建账户或立即登录，轻松继续 GCC WebOS。",
-      steps: ["了解", "选择", "开始"]
+      title: "下一步，由你决定",
+      description: "有人带着一个问题来到这里，有人已经准备好开始，也有人希望与 GCC WebOS 一起探索新的可能。无论从哪里抵达，都应该找到清晰的下一步。",
+      steps: ["发现更多可能", "选择适合的服务", "创建 GCC WebOS 账户", "继续使用并获得支持"]
     },
     intake: {
-      title: "与 GCC WebOS 开始沟通",
-      description: "无论是产品问题、团队目标还是合作想法，告诉我们你想去往哪里，让对话从这里开始。",
-      points: ["带来你希望实现的目标", "探索个人、团队或合作伙伴方向", "把兴趣转化为清晰的下一步"],
+      title: "与 GCC WebOS 一起探索新的可能",
+      description: "如果你正在寻找产品、技术或商业合作，我们期待了解你的目标，一起探索下一种可能。",
+      points: ["分享你期待实现的产品或服务目标", "说明正在探索的团队、市场或使用场景", "让一个新想法成为清晰的对话"],
       fields: {
         organization: "姓名或团队",
         organizationPlaceholder: "你的姓名、团队或组织",
@@ -543,23 +571,25 @@ const companySiteCopy = {
         useCase: "需求说明",
         useCasePlaceholder: "告诉我们你希望了解、开始或合作的事项"
       },
-      options: ["轻松起步", "随需进阶", "支持", "合作"],
-      note: "准备好时，从账户入口继续你的 GCC WebOS 旅程。",
+      options: ["看见更多视角", "让工作继续向前", "支持", "合作"],
+      note: "如果已经准备好使用服务，可以创建账户或登录账户中心继续。",
       success: "请求已提交。我们会使用这些信息继续沟通。",
       error: "提交失败。请重试，或使用支持页面中的联系方式。"
     },
     faq: {
-      title: "有问题？从这里开始",
-      description: "先找到简洁答案，再选择适合自己的开始方式。",
+      title: "开始之前，先了解更多",
+      description: "先了解 GCC WebOS、服务与开始方式，再选择适合自己的下一步。",
       items: [
-        { question: "在哪里创建账户或登录？", answer: "第一次使用可创建账户，已有账户可直接登录。" },
-        { question: "已经有账户，如何继续？", answer: "选择“登录”，继续你的 GCC WebOS 体验。" },
-        { question: "哪种开始方式适合我？", answer: "先比较两种开始方向，需要帮助时也可以提交咨询。" },
-        { question: "在哪里查看支持与规则？", answer: "支持目录提供指南、支持中心、状态说明、隐私与公开规则入口。" }
+        { question: "GCC WebOS 是什么？", answer: "GCC WebOS 是一个面向个人、团队与合作伙伴的数字服务品牌，通过多元网络服务，帮助用户获得更清晰、更连贯的数字体验。" },
+        { question: "GCC WebOS 是否提供 VPN 服务？", answer: "VPN 是 GCC WebOS 网络服务的一部分，适用于学习探索、跨区域工作沟通以及网络环境发生变化时的连接需求。" },
+        { question: "如何开始使用？", answer: "创建 GCC WebOS 账户后，可以进入账户中心了解并使用当前提供的服务。" },
+        { question: "已经拥有账户，如何继续？", answer: "直接登录账户中心，即可继续使用和管理已有服务。" },
+        { question: "在哪里查看使用指南与服务信息？", answer: "官网支持中心提供使用指南、服务说明、公开状态以及规则与隐私入口。" },
+        { question: "如何联系 GCC WebOS？", answer: "如果你有产品问题、团队需求或合作想法，可以通过官网联系入口提交信息。" }
       ]
     },
     footer: {
-      description: "从发现、开始到继续向前，GCC WebOS 带来连贯一致的数字体验。",
+      description: "连接更多视角，也连接每一种开始。",
       groups: [
         {
           title: "产品",

@@ -24,11 +24,11 @@ const requiredPatterns = [
   /GCC WebOS/,
   /company-site-shell/,
   /gccwebos-public-site/,
-  /Connect to the world\. Start with ease\./,
-  /Find what fits your next step/,
-  /Start a conversation with GCC WebOS/,
-  /连接世界，也连接每一次开始/,
-  /找到适合你的开始方式/
+  /Connect to the world\. Start simply\./,
+  /Connect to more networks\. See a wider world\./,
+  /Explore what comes next with GCC WebOS/,
+  /连接世界，从简单开始/,
+  /连接更多网络，看见更大的世界/
 ];
 
 const forbiddenPatterns = [

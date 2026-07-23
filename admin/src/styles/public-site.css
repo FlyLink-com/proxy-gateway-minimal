@@ -2556,7 +2556,7 @@
     border-radius: 0;
     padding-top: 24px;
     padding-bottom: 24px;
-    background: #f7f8fa;
+    background: var(--site-bg);
   }
 
   .company-site-shell .company-site-conversion > div:first-child,
@@ -3099,6 +3099,18 @@
   .company-site-shell .company-site-conversion > div:first-child p,
   .company-site-shell .company-site-conversion ol {
     color: var(--site-muted);
+  }
+
+  .company-site-shell .company-site-conversion h2 {
+    color: var(--site-ink);
+  }
+
+  .company-site-shell .company-site-conversion li {
+    color: var(--site-muted);
+  }
+
+  .company-site-shell .company-site-conversion .company-site-secondary {
+    color: var(--site-ink);
   }
 
   .company-site-shell .company-site-footer {
