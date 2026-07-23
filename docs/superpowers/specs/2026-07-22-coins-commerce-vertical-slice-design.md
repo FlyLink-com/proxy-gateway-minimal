@@ -1,5 +1,14 @@
 # Coins Commerce Source-Only Vertical Slice Design
 
+> **Governance amendment — 2026-07-22:** This design remains a source-only
+> Commerce Platform Foundation. It is not evidence that the selected Portal or
+> Admin source is the current production source. Frontend implementation and
+> closeout are blocked by `docs/COMMERCIAL_FEATURE_INTEGRATION_GATE.md` until
+> production surface identity and existing business journeys are confirmed.
+> The closed-loop Coins invariants may be preserved; production durability,
+> provider lifecycle, fulfillment execution, commercial-policy alignment, and
+> referral external-settlement ownership remain unresolved.
+
 ## Status
 
 - Date: 2026-07-22
@@ -7,7 +16,8 @@
 - Expected PR count: 1 cohesive intent/code/tests PR
 - Production/AWS impact: none
 - Explicitly excluded: production schema/migration, real provider credentials,
-  live webhook, real balance mutation, deployment, payout, and runtime mutation
+  live webhook, durable or production balance mutation, deployment, payout,
+  and runtime mutation
 
 ## Goal
 

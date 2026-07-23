@@ -2,6 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Governance hold — 2026-07-22:** The source-only backend foundation remains
+> useful, but Tasks 8-10 do not prove integration with the current production
+> Portal or Admin. Task 11 is blocked. Do not continue frontend code, mark the
+> source complete, or close the Draft until
+> `docs/COMMERCIAL_FEATURE_INTEGRATION_GATE.md` passes Stage 0 and Stage 1.
+> Current production URLs must first be bound to deployment, immutable artifact,
+> commit, build entry, and source path through
+> `docs/PRODUCTION_SURFACE_REPORT.md` and `docs/ACTIVE_FRONTEND_MAP.md`.
+
 **Goal:** Deliver one executable, source-only Coins commerce path through the
 existing User Portal and one protected read-only Admin Payment Logs page,
 without activating durable balances, real providers, production fulfillment,
@@ -591,6 +600,12 @@ git commit -m "feat(portal): build Coins commerce components"
 
 ### Task 8: Build the Wallet, Store, Recharge, Purchase, Orders, and Referral flows
 
+**Status: `REJECTED_PENDING_PRODUCTION_INTEGRATION_REDESIGN`.**
+
+The component/state-machine evidence remains useful. Do not treat the original
+steps below as authority to continue UI work until Stages 0-2 of
+`docs/COMMERCIAL_FEATURE_INTEGRATION_GATE.md` pass.
+
 **Files:**
 - Create: `admin/src/features/user-portal/commerce/commerce-pages.tsx`
 - Create: `admin/src/test/coins-commerce-pages.test.tsx`
@@ -646,6 +661,12 @@ git commit -m "feat(portal): add Coins wallet and store flows"
 ```
 
 ### Task 9: Integrate Commerce into the current User Portal and retire active direct checkout
+
+**Status: `REJECTED_PENDING_PRODUCTION_INTEGRATION_REDESIGN`.**
+
+The legacy direct-checkout removal evidence remains useful. The production
+Portal integration result is not accepted, and the original steps below are
+not executable authority.
 
 **Files:**
 - Modify: `admin/src/portal-main.tsx`
@@ -704,6 +725,12 @@ git commit -m "feat(portal): switch purchases to Coins commerce"
 ```
 
 ### Task 10: Add protected read-only Admin Payment Logs
+
+**Status: `REJECTED_PENDING_PRODUCTION_INTEGRATION_REDESIGN`.**
+
+The redacted DTO, API, registry, and read-only safety contracts remain useful.
+The top-level navigation/page placement is not accepted until the production
+Admin identity and owning operations journey are confirmed.
 
 **Files:**
 - Create: `admin/src/features/payment-logs/payment-logs-model.ts`
@@ -771,10 +798,30 @@ git commit -m "feat(admin): add read-only payment logs"
 
 ### Task 11: Reconcile documentation, run full verification, and close the Draft evidence
 
+**Status: `BLOCKED / NOT AUTHORIZED`.**
+
+The steps below are retained as the original closeout design. They must not be
+executed from the existing frontend result. Before re-authorizing Task 11:
+
+1. pass Production Surface Discovery for both production URLs;
+2. map the existing authenticated user and operator journeys;
+3. reconcile Coins-first policy with `docs/COMMERCIAL_MODEL_V1.md`;
+4. resolve whether referral external settlement is outside the closed-loop
+   Coins asset domain;
+5. replace Tasks 8-10 production-integration acceptance with real built-browser
+   and production-baseline evidence.
+
+A status-only correction may be applied immediately to this plan and the Draft
+PR body. It may record `source_foundation_present`,
+`production_commerce_backend: not_implemented`,
+`frontend_identity_gate: blocked`, and `source_complete: false`. That
+correction does not authorize implementation, acceptance, Ready, merge, or
+Task 11 closeout.
+
 **Files:**
 - Modify: `docs/COMMERCIAL_MODEL_V1.md`
 - Modify: `docs/BILLING_RECHARGE_CONTRACT.md`
-- Modify: `docs/PAYMENT_PROVIDER_SYSTEM_PLAN.md`
+- Modify: `docs/COMMERCIAL_SYSTEM_MAP.md`
 - Modify: `docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md`
 - Modify: `docs/CURRENT_RELEASE_STATE.md`
 - Modify: `docs/PROJECT_CONTEXT.md`
@@ -782,12 +829,13 @@ git commit -m "feat(admin): add read-only payment logs"
 
 - [ ] **Step 1: Update docs to source truth**
 
-Mark direct plan-to-provider checkout and traffic-balance recharge contracts as
-legacy/non-authoritative for new Commerce work. Document Coins-first separation,
-provider attempts, charge certainty, wallet lot origins, referral double-use
-prevention, catalog/pricing, fulfillment-plan-only behavior, and all false live
-flags. Do not claim deployment, durability, live wallet credit, or runtime grant
-application.
+Do not silently mark the current time-bounded entitlement model or optional
+top-up contract legacy. First record an explicit policy decision for how
+Coins-first purchasing coexists with or supersedes those authorities. Document
+recharge/purchase separation, provider attempts, charge certainty, wallet lot
+origins, referral double-use prevention, catalog/pricing,
+fulfillment-plan-only behavior, and all false live flags. Do not claim
+deployment, durability, live wallet credit, or runtime grant application.
 
 - [ ] **Step 2: Run source hygiene checks**
 
@@ -837,7 +885,7 @@ PASS with a file/test pointer in PR #526; unresolved items keep the PR Draft.
 - [ ] **Step 6: Commit docs and publish Draft evidence**
 
 ```powershell
-git add docs/COMMERCIAL_MODEL_V1.md docs/BILLING_RECHARGE_CONTRACT.md docs/PAYMENT_PROVIDER_SYSTEM_PLAN.md docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md docs/CURRENT_RELEASE_STATE.md docs/PROJECT_CONTEXT.md
+git add docs/COMMERCIAL_MODEL_V1.md docs/BILLING_RECHARGE_CONTRACT.md docs/COMMERCIAL_SYSTEM_MAP.md docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md docs/CURRENT_RELEASE_STATE.md docs/PROJECT_CONTEXT.md
 git commit -m "docs: align Commerce source-only boundary"
 git push origin codex/coins-commerce-vertical-slice
 ```
@@ -845,7 +893,10 @@ git push origin codex/coins-commerce-vertical-slice
 Update PR #526 with exact test results and these flags:
 
 ```text
-source_complete: true
+commerce_domain_foundation: source_foundation_present
+production_commerce_backend: not_implemented
+frontend_identity_gate: blocked
+source_complete: false
 coins_wallet_live: false
 payment_provider_live: false
 provider_credentials_installed: false
@@ -862,11 +913,22 @@ and review are complete.
 This plan deliberately stops at an executable source contract. Subsequent work
 must use separate approved changes in this order:
 
+Before step 1, complete the non-production prerequisites:
+
+- **Production Surface Discovery (Risk C):** bind Portal and Admin URL,
+  deployment, immutable artifact, commit, build entry, and source path.
+- **Existing Journey and Integration Design (Risk C/B):** map the real user and
+  operator journeys, reconcile commercial policy, and design an extension of
+  the existing production surfaces rather than a second shell.
+
 1. **Durable commerce storage (Risk A):** schema/migration, backup, restore,
-   append-only constraints, concurrency, reconciliation, and rollout runbook.
+   append-only constraints, aggregate transition constraints, durable
+   idempotency/provider-call reservations, crash recovery, concurrency,
+   reconciliation, and rollout runbook.
 2. **Real provider adapters (Risk A):** registry selection, credentials gate,
    signed notifications, amount/currency/order correlation, idempotent
-   settlement, sandbox validation, and provider rotation.
+   settlement, refund/chargeback/dispute events, compensation decisions,
+   sandbox validation, and provider rotation.
 3. **Durable fulfillment and runtime expiry (Risk A):** transactional outbox or
    equivalent minimal durable command, grants ledger, apply receipts, stable
    subscription revision, runtime revoke at `validUntil`, retry and rollback.
@@ -877,9 +939,11 @@ must use separate approved changes in this order:
    qualified-invite evidence, tier versioning, refund/chargeback reversal,
    anti-self-invite controls, versioned bonus/expiry/product-scope policies, and
    append-only Admin adjustments.
-6. **External partner settlement (separate Risk A system):** freeze, approval,
-   evidence export, payout execution, settlement reversal, and strict prevention
-   of internal-spend plus cash-settlement double redemption.
+6. **Conditional external partner settlement (separate Risk A system):** only
+   if an approved policy moves partner claims into an asset/domain separate
+   from closed-loop Coins; then define freeze, approval, evidence export,
+   payout execution, settlement reversal, and strict prevention of
+   internal-spend plus cash-settlement double redemption.
 
 Each phase requires its own live inventory and operator approval. Completing
 PR #526 authorizes none of these production actions.

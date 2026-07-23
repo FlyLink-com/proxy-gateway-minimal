@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-07-15, America/Los_Angeles.
+Last updated: 2026-07-22, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-07-22
   production_authority: false
 ```
 
@@ -77,6 +77,8 @@ release, deployment, runtime, or production authority.
 | --- | --- | --- | --- |
 | `docs/CURRENT_RELEASE_STATE.md` | Compact documented snapshot of each release unit, unresolved production lineage, and master-only capabilities after Version Management Baseline v1. | Active release-state entrypoint; dated repository evidence only, not live inventory or execution authority. | Read first when resuming the project, then verify live before any Risk A action. |
 | `docs/PROJECT_CONTEXT.md` | Compact current handoff, active blockers, documented production snapshot, validation baseline, and latest durable next-step context. | Active current-state handoff; not the full docs index or execution-history archive. | Read first when resuming the repo or before changing project direction, then use this index for detailed docs navigation and execution records. |
+| `docs/PRODUCTION_SURFACE_REPORT.md` | Read-only Portal/Admin URL-to-deployment-to-artifact-to-commit-to-source discovery report. | Active evidence; both production frontend identity chains are currently blocked and it grants no code or production authority. | Read before any commercial Portal/Admin integration or before claiming a frontend source matches production. |
+| `docs/ACTIVE_FRONTEND_MAP.md` | Two-axis map of active source, legacy compatibility, archive, experiments, and production identity. | Active canonical frontend-source identity map; current Portal/Admin paths remain production candidates, not confirmed production source. | Read before selecting any frontend path, route, shell, navigation, fixture, or preview as an integration target. |
 | `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` | Current docs/status baseline for the Vultr Japan control plane and Vultr Japan/Singapore data-plane direction, with explicit no-mutation boundaries. | Active docs/status baseline; no execution authority and not a replacement for live inventory or execution records. | Read before aligning current project direction, preparing a new Risk A gate, or replacing stale Aliyun-current wording. |
 | `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md` | Current checkout, historical local paths, generated-runtime folders, README update rule, and re-import guardrails for keeping outdated material out of the active project. | Active repository hygiene boundary; no production, cloud, deploy, secret, runtime, or file-move authority by itself. | Read before using old checkouts, `docs/archive/`, `.worktrees/`, generated outputs, release packages, or previous execution artifacts as source material. |
 | `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md` | Current Git/docs closeout index after the July 8/9 focused PRs, local worktree cleanup, stale branch deletion, and remote head cleanup. | Active repo-hygiene index; no production, runtime, deploy, provider, credential, payment, or file-move authority by itself. | Read before deciding whether old carrier branches, local worktrees, or July 8 closeout notes still represent current Git state. |
@@ -131,6 +133,7 @@ production inventory. The production/runtime evidence cutoff remains dated at
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
 | `AGENTS.md` | Default agent instructions, A/B/C risk tiers, PR completion gate, validation expectations, and safety boundaries. | Active workflow rules. | Read before repo, ops, CI, network, deployment, or production-adjacent work. |
+| `docs/COMMERCIAL_FEATURE_INTEGRATION_GATE.md` | Mandatory production identity, journey, domain-policy, UI integration, validation, and release sequence for commercial features. | Active canonical governance contract; no code, provider, deployment, or production authority. | Read before implementing Coins, Subscription, Billing, Referral, Marketplace, or another commercial capability. |
 | `docs/IDENTITY_LIFECYCLE.md` | Runtime identity binding lifecycle and aggregate Identity Gate for identity-impacting source and runtime changes. | Active release-governance contract; no production, map, config, accounting, quota, or credential authority. | Read before changing Xray/Mihomo principals, protected usage maps, material bindings, or collector identity resolution, and before approving stale-binding retirement. |
 | `docs/AGENT_ONBOARDING.md` | First-pass AI agent entry guide covering reading order, metadata headers, risk tiers, workspace boundaries, common mistakes, and PR checklist. | Active onboarding guide; no execution authority. | Read when a new agent enters the repo or before turning a broad assessment into Linear/GitHub tasks. |
 | `docs/GITHUB_ISSUE_PR_WORKFLOW.md` | GitHub Issues as durable index cards and PRs as execution summaries/validation receipts, including when issues are required versus optional. | Active workflow rule; no production, deploy, runtime, secret, or customer-data authority. | Read before opening multi-PR, Risk A, source/production drift, archive, or main-lane work, and when deciding whether a small PR needs an issue. |
@@ -203,6 +206,7 @@ conflicts; every document in this layer is an index or derived view.
 
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
+| `docs/COMMERCIAL_SYSTEM_MAP.md` | Derived topology for Commerce foundation, user/operator journeys, production backend gaps, and the capability/product-integration split. | Active derived commercial-system view; PR #526 remains source-only foundation and unresolved policy or production facts defer to their owning canonical documents. | Read before planning Coins, payment, order, fulfillment, reconciliation, Portal, or Admin commercial work. |
 | `docs/project-state/CURRENT_STATE.md` | Evidence-backed current view for project, milestone, mainline Issue, production/mutation boundary, validation, blockers, and next actions. | Active derived snapshot; drift-prone facts require current checks. | Read after the three required release/context documents when resuming the project or reconciling a derived view. |
 | `docs/project-state/MILESTONES.md` | Foundation, Governance, Runtime, and Commercial milestone map with goals, statuses, dependencies, acceptance criteria, and information gaps. | Active portfolio map; no release or execution authority. | Read before claiming a phase is active, complete, blocked, or ready for promotion. |
 | `docs/project-state/BLOCKERS.md` | Blocker template and evidence-backed coordination/information-gap records. | Active blocker format; no mutation authority. | Read before recording or closing a blocker. |
