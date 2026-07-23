@@ -161,7 +161,7 @@ No additional commit is required; the empty initialization commit is the reviewa
 - Create: `C:\Users\g\.codex\worktrees\gccwebos-site\tests\company-site.test.tsx`
 
 **Interfaces:**
-- Consumes: exact source test SHA-256 `1CA25B56A71B76EC1DA7AC8553CCB43C865A84C966D751EE7188E0F5ECE1619A`.
+- Consumes: exact source test Git blob `01518b39ae2c4455ff57015fde0531784e6f95b6`.
 - Produces: installed minimal dependencies and a RED test suite that imports `CompanySitePage` directly.
 
 - [ ] **Step 1: Add the minimal package contract**
@@ -188,6 +188,7 @@ Create `package.json` with:
   },
   "devDependencies": {
     "@testing-library/react": "^16.0.0",
+    "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
@@ -280,10 +281,14 @@ New-Item -ItemType Directory -Path (Join-Path $siteRepo 'tests') | Out-Null
 Copy-Item `
   -LiteralPath (Join-Path $extractRoot 'admin/src/test/company-site.test.tsx') `
   -Destination (Join-Path $siteRepo 'tests/company-site.test.tsx')
-Get-FileHash -Algorithm SHA256 (Join-Path $siteRepo 'tests/company-site.test.tsx')
+$sourceBlob = git -C $sourceRepo rev-parse "$sourceCommit`:admin/src/test/company-site.test.tsx"
+$targetBlob = git -C $siteRepo hash-object tests/company-site.test.tsx
+if ($sourceBlob -ne $targetBlob) {
+  throw 'company-site test blob mismatch'
+}
 ```
 
-Expected SHA-256: `1CA25B56A71B76EC1DA7AC8553CCB43C865A84C966D751EE7188E0F5ECE1619A`.
+Expected Git blob: `01518b39ae2c4455ff57015fde0531784e6f95b6`.
 
 Then apply these changes:
 
@@ -348,9 +353,9 @@ Expected: one commit containing only toolchain and the intentionally failing dir
 
 **Interfaces:**
 - Consumes:
-  - component SHA-256 `76934D2FBC45AC9955B0EAA6E8BA1CFB43C9D530D4C5CB0A2731D6BFD74EBD0D`
-  - public CSS SHA-256 `FFE3D83C74F9B78870B480675DCE3E1EF9ED75299768AA3498D1090CB2478572`
-  - favicon SHA-256 `C3BF052514FEC1C96817E6DA75E5877393845D0B05D0310CF95CCDE9E7E49286`
+  - component Git blob `35bd838f1bf8fbff545423c02d23d23f399c0df7`
+  - public CSS Git blob `c480bb3414d6d719854bf78f671660d4dfc78575`
+  - favicon Git blob `99e51a1178dbfde0bd18dfaf942458db3398444d`
 - Produces: renderable standalone site preserving all existing runtime contracts.
 
 - [ ] **Step 1: Extract and verify the three exact source assets**
@@ -391,12 +396,21 @@ Copy-Item `
 Run:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 `
-  src/company-site-page.tsx,src/styles/public-site.css,public/favicon.svg |
-  Select-Object Hash,Path
+$pairs = @(
+  @('admin/src/features/company-site/company-site-page.tsx', 'src/company-site-page.tsx'),
+  @('admin/src/styles/public-site.css', 'src/styles/public-site.css'),
+  @('admin/public/favicon.svg', 'public/favicon.svg')
+)
+foreach ($pair in $pairs) {
+  $sourceBlob = git -C $sourceRepo rev-parse "$sourceCommit`:$($pair[0])"
+  $targetBlob = git -C $siteRepo hash-object $pair[1]
+  if ($sourceBlob -ne $targetBlob) {
+    throw "source blob mismatch: $($pair[1])"
+  }
+}
 ```
 
-Expected: the three hashes match the values in the Interfaces block.
+Expected: the three Git blobs match the values in the Interfaces block. Git blob identity avoids false drift from Windows checkout line-ending conversion.
 
 - [ ] **Step 2: Add the minimal root and stylesheet imports**
 
@@ -526,7 +540,7 @@ git commit -m 'feat: add standalone GCC WebOS company site'
 - Create: `C:\Users\g\.codex\worktrees\gccwebos-site\vercel.json`
 
 **Interfaces:**
-- Consumes: source verifier SHA-256 `445E9FF29138E6834228136A58F49F87869AD7FA256FB9C03128F38268914D18`.
+- Consumes: source verifier Git blob `8ba3f54aa4b1c3e823a8cdc79798441fb0771528`.
 - Produces: `dist/` build that is independently checked for public markers and forbidden private markers.
 
 - [ ] **Step 1: Copy the exact build verifier**
@@ -560,10 +574,14 @@ The package script passes `dist`, so the verifier's legacy default path is not u
 Run:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 scripts/verify-public-site-build.mjs
+$sourceBlob = git -C $sourceRepo rev-parse "$sourceCommit`:scripts/verify-public-site-build.mjs"
+$targetBlob = git -C $siteRepo hash-object scripts/verify-public-site-build.mjs
+if ($sourceBlob -ne $targetBlob) {
+  throw 'public-site verifier blob mismatch'
+}
 ```
 
-Expected: `445E9FF29138E6834228136A58F49F87869AD7FA256FB9C03128F38268914D18`.
+Expected: `8ba3f54aa4b1c3e823a8cdc79798441fb0771528`.
 
 - [ ] **Step 2: Add the static Vite build declaration**
 
