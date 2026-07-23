@@ -5,12 +5,14 @@ const pageStatus: Record<AdminPage, string> = {
   dashboard: "Summary and routing",
   portalRequests: "Decision owner",
   usageMonitor: "Evidence owner"
+  ,paymentLogs: "Evidence owner"
 };
 
 const searchPlaceholders: Record<AdminPage, string> = {
   dashboard: "Search accounts, orders, channels, cases",
   portalRequests: "Search accounts, orders, resources, quota",
   usageMonitor: "Search usage, channels, receipts, anomalies"
+  ,paymentLogs: "Search payment attempts, charge certainty, reconciliation"
 };
 
 export const adminEnUSLanguagePack: AdminLanguagePack = {
@@ -47,7 +49,8 @@ export const adminEnUSLanguagePack: AdminLanguagePack = {
       contexts: {
         dashboard: pageContexts.dashboard.eyebrow,
         portalRequests: pageContexts.portalRequests.eyebrow,
-        usageMonitor: pageContexts.usageMonitor.eyebrow
+        usageMonitor: pageContexts.usageMonitor.eyebrow,
+        paymentLogs: pageContexts.paymentLogs.eyebrow
       },
       languageLabel: "Admin language",
       languageOptions: {

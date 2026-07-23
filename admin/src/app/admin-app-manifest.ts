@@ -14,6 +14,7 @@ import {
   PanelTopOpen,
   Radar,
   RefreshCw,
+  ReceiptText,
   Route,
   Settings,
   ShieldAlert,
@@ -522,6 +523,20 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
     ),
     zhName: "使用情况和渠道",
     tone: "nav-app-tone-cyan"
+  },
+  paymentLogs: {
+    aliases: ["payments", "payment", "attempts", "reconciliation", "支付", "支付日志", "对账"],
+    appId: "payment-logs",
+    capabilities: ["view", "inspect"],
+    category: "management",
+    coreViews: ["payment attempts", "charge certainty", "reconciliation state"],
+    iconKey: "receipt",
+    primaryObjects: ["payment attempt", "reconciliation evidence"],
+    role: "evidence-owner",
+    searchableFields: ["payment", "attempt", "charge certainty", "reconciliation", "支付", "对账"],
+    sourceContract: sourceContract(["payment-attempt-redacted-summary"], ["paymentLogs#user-operations-payment-attempts"], ["payment-attempt-ref", "charge-certainty", "reconciliation-state"]),
+    zhName: "支付日志",
+    tone: "nav-app-tone-slate"
   }
 };
 
@@ -541,6 +556,7 @@ const ICONS: Record<string, LucideIcon> = {
   panel: PanelTopOpen,
   radar: Radar,
   refresh: RefreshCw,
+  receipt: ReceiptText,
   route: Route,
   settings: Settings,
   shield: ShieldCheck,
@@ -1263,7 +1279,8 @@ function createAdminAppMap(apps: readonly AdminAppManifest[]): AdminAppMap {
   }, {
     dashboard: [],
     portalRequests: [],
-    usageMonitor: []
+    usageMonitor: [],
+    paymentLogs: []
   });
 
   return {
@@ -1681,12 +1698,12 @@ function createUtilityApp({
 
 function pageOwnerArea(page: AdminPage) {
   if (page === "dashboard") return "Overview";
-  if (page === "portalRequests") return "User Operations";
+  if (page === "portalRequests" || page === "paymentLogs") return "User Operations";
   return "Platform Monitoring";
 }
 
 function pageOrder(page: AdminPage) {
-  const pages: AdminPage[] = ["dashboard", "portalRequests", "usageMonitor"];
+  const pages: AdminPage[] = ["dashboard", "portalRequests", "usageMonitor", "paymentLogs"];
   return pages.indexOf(page);
 }
 

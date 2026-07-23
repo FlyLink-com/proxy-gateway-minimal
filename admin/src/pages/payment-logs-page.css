@@ -1,0 +1,5 @@
+.payment-logs-page { display: grid; gap: 20px; }
+.payment-logs-boundary { border: 1px solid var(--color-border, #d8dee8); padding: 12px 16px; border-radius: 8px; }
+.payment-logs-table { width: 100%; border-collapse: collapse; }
+.payment-logs-table th, .payment-logs-table td { padding: 12px; border-bottom: 1px solid var(--color-border, #d8dee8); text-align: left; }
+.payment-logs-toolbar { display: flex; gap: 12px; flex-wrap: wrap; }

@@ -88,7 +88,8 @@ const UNSAFE_SAFE_READ_PAGE_TEXT_PATTERN =
 const ADMIN_SAFE_READ_PAGE_ROUTE_SLUGS: Record<AdminPage, string> = {
   dashboard: "operations",
   portalRequests: "accounts",
-  usageMonitor: "usage"
+  usageMonitor: "usage",
+  paymentLogs: "payments"
 };
 
 const ADMIN_SAFE_READ_VISIBLE_SECTION_IDS: Record<AdminPage, string[]> = {
@@ -106,7 +107,8 @@ const ADMIN_SAFE_READ_VISIBLE_SECTION_IDS: Record<AdminPage, string[]> = {
     "freshness",
     "channel-coverage",
     "usage-ledger"
-  ]
+  ],
+  paymentLogs: ["payment-attempts"]
 };
 
 export function createAdminSafeReadPageModels(

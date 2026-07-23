@@ -1,9 +1,10 @@
-import { Activity, LayoutDashboard, Users, type LucideIcon } from "lucide-react";
+import { Activity, LayoutDashboard, Users, ReceiptText, type LucideIcon } from "lucide-react";
 
 export type AdminPage =
   | "dashboard"
   | "portalRequests"
-  | "usageMonitor";
+  | "usageMonitor"
+  | "paymentLogs";
 
 export type AdminPageRouteTarget = {
   page: AdminPage;
@@ -92,7 +93,8 @@ export const consoleSections: ConsoleSection[] = [
     responsibility: "Supervise accounts, resources, orders, subscription artifacts, and traffic quotas.",
     entryGate: "Accounts & Resources page exists and only displays safe refs and redacted states.",
     items: [
-      { id: "portalRequests", label: "Accounts & Resources", icon: Users }
+      { id: "portalRequests", label: "Accounts & Resources", icon: Users },
+      { id: "paymentLogs", label: "Payment Logs", icon: ReceiptText }
     ]
   },
   {
@@ -151,13 +153,15 @@ export const navItems: NavItem[] = navSections.flatMap((section) => section.item
 export const pageTitles: Record<AdminPage, string> = {
   dashboard: "Operations Overview",
   portalRequests: "Accounts & Resources",
-  usageMonitor: "Usage & Channels"
+  usageMonitor: "Usage & Channels",
+  paymentLogs: "Payment Logs"
 };
 
 export const adminPageRouteSlugs: Record<AdminPage, string> = {
   dashboard: "operations",
   portalRequests: "accounts",
-  usageMonitor: "usage"
+  usageMonitor: "usage",
+  paymentLogs: "payments"
 };
 
 const adminPageByRouteSlug = Object.fromEntries(
@@ -216,7 +220,7 @@ function pageFromRouteSegment(segment?: string): AdminPage | undefined {
   if (!segment) {
     return undefined;
   }
-  if (segment === "dashboard" || segment === "portalRequests" || segment === "usageMonitor") {
+  if (segment === "dashboard" || segment === "portalRequests" || segment === "usageMonitor" || segment === "paymentLogs") {
     return segment as AdminPage;
   }
   return adminPageByRouteSlug[segment];
@@ -242,6 +246,10 @@ export const pageContexts: Record<AdminPage, { eyebrow: string; description: str
   usageMonitor: {
     eyebrow: "Platform Monitoring",
     description: "Collection trust, channel health, and data anomalies"
+  },
+  paymentLogs: {
+    eyebrow: "User Operations",
+    description: "Redacted payment-attempt evidence and reconciliation state"
   }
 };
 
@@ -363,6 +371,9 @@ export const pageSubNavigation: Record<AdminPage, PageSubNavigationItem[]> = {
       owner: "Platform Monitoring",
       targetId: "platform-monitoring-receipts-collectors"
     }
+  ],
+  paymentLogs: [
+    { id: "payment-attempts", label: "Payment Attempts", description: "Safe payment-attempt evidence and reconciliation review.", mode: "owner", owner: "User Operations", targetId: "user-operations-payment-attempts" }
   ]
 };
 
@@ -441,5 +452,14 @@ export const pageWorkbenchContracts: Record<AdminPage, PageWorkbenchContract> = 
       "platform_tooling",
       "operator_settings"
     ]
+  },
+  paymentLogs: {
+    role: "evidence-owner",
+    primaryQuestion: "What payment-attempt evidence is safe to inspect?",
+    sectionIds: ["payment-attempts"],
+    ownsDecisions: [],
+    previewOnly: [],
+    evidenceOnly: ["resource_order_lifecycle"],
+    forbiddenDecisions: ["payout_approval", "runtime_apply", "operator_settings"]
   }
 };

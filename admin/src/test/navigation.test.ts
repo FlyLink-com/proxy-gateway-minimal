@@ -25,7 +25,7 @@ afterEach(() => {
 
 describe("admin navigation", () => {
   test("groups product-facing admin surfaces by responsibility", () => {
-    const activePages = ["dashboard", "portalRequests", "usageMonitor"];
+    const activePages = ["dashboard", "portalRequests", "usageMonitor", "paymentLogs"];
     const navPageIds = navItems.map((item) => item.id);
 
     expect(navPageIds).toEqual(activePages);
@@ -38,12 +38,13 @@ describe("admin navigation", () => {
     ]);
     expect(navSections.map((section) => section.items.map((item) => item.label))).toEqual([
       ["Operations Overview"],
-      ["Accounts & Resources"],
+      ["Accounts & Resources", "Payment Logs"],
       ["Usage & Channels"]
     ]);
     expect(pageTitles.dashboard).toBe("Operations Overview");
     expect(pageTitles.portalRequests).toBe("Accounts & Resources");
     expect(pageTitles.usageMonitor).toBe("Usage & Channels");
+    expect(pageTitles.paymentLogs).toBe("Payment Logs");
     expect(pageContexts.dashboard).toEqual({
       eyebrow: "Overview",
       description: "Platform health, risk summary, and recent activity"
@@ -77,18 +78,20 @@ describe("admin navigation", () => {
     expect(navSections.map((section) => section.label)).not.toContain("Audit & Cases");
     expect(navSections.map((section) => section.label)).not.toContain("Platform Development");
     expect(navSections.map((section) => section.label)).not.toContain("System Settings");
-    expect(navItems.map((item) => item.label)).toEqual(["Operations Overview", "Accounts & Resources", "Usage & Channels"]);
+    expect(navItems.map((item) => item.label)).toEqual(["Operations Overview", "Accounts & Resources", "Payment Logs", "Usage & Channels"]);
   });
 
   test("formats and parses canonical Admin page hashes for active pages", () => {
     expect(formatAdminRouteHash("dashboard")).toBe("#/admin/operations");
     expect(formatAdminRouteHash("portalRequests")).toBe("#/admin/accounts");
     expect(formatAdminRouteHash("usageMonitor")).toBe("#/admin/usage");
+    expect(formatAdminRouteHash("paymentLogs")).toBe("#/admin/payments");
 
     expect(parseAdminRouteHash("#/admin")).toEqual({ page: "dashboard" });
     expect(parseAdminRouteHash("#/admin/operations")).toEqual({ page: "dashboard" });
     expect(parseAdminRouteHash("#/admin/accounts")).toEqual({ page: "portalRequests" });
     expect(parseAdminRouteHash("#/admin/usage")).toEqual({ page: "usageMonitor" });
+    expect(parseAdminRouteHash("#/admin/payments")).toEqual({ page: "paymentLogs" });
     expect(parseAdminRouteHash("#/admin/dashboard")).toEqual({ page: "dashboard" });
     expect(parseAdminRouteHash("#/admin/portalRequests")).toEqual({ page: "portalRequests" });
     expect(parseAdminRouteHash("#/admin/unknown")).toEqual({ page: "dashboard" });
@@ -100,7 +103,7 @@ describe("admin navigation", () => {
   });
 
   test("defines page-local subnavigation from the Admin domain dictionary", () => {
-    expect(Object.keys(pageSubNavigation)).toEqual(["dashboard", "portalRequests", "usageMonitor"]);
+    expect(Object.keys(pageSubNavigation)).toEqual(["dashboard", "portalRequests", "usageMonitor", "paymentLogs"]);
     expect(pageSubNavigation.dashboard.map((item) => item.label)).toEqual([
       "Health Summary",
       "Risk Queue",
@@ -135,7 +138,7 @@ describe("admin navigation", () => {
   });
 
   test("defines page contracts for front-end ownership and decision boundaries", () => {
-    expect(Object.keys(pageWorkbenchContracts)).toEqual(["dashboard", "portalRequests", "usageMonitor"]);
+    expect(Object.keys(pageWorkbenchContracts)).toEqual(["dashboard", "portalRequests", "usageMonitor", "paymentLogs"]);
 
     expect(pageWorkbenchContracts.dashboard.role).toBe("overview");
     expect(pageWorkbenchContracts.dashboard.primaryQuestion).toBe("What needs attention, and where should the operator go next?");

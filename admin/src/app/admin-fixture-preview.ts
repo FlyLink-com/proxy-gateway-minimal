@@ -270,6 +270,14 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
           "Collector activation is not available in preview."
         ]
       }
+    },
+    paymentLogs: {
+      "payment-attempts": {
+        summary: "Redacted payment-attempt evidence for reconciliation review.",
+        chips: [{ label: "READ-ONLY", tone: "info" }, { label: "Safe summary", tone: "neutral" }],
+        rows: [{ label: "attempt_••01", value: "Confirmed no charge", meta: "Reconciliation not required", tone: "success" }],
+        safetyNotes: ["Provider identifiers, customer data, credentials, and mutation controls are excluded."]
+      }
     }
   }
 };

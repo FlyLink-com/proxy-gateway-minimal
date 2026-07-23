@@ -80,7 +80,8 @@ describe("admin app manifest", () => {
     expect(getWorkspacePageApps().map((app) => app.id)).toEqual([
       "operations-overview",
       "accounts-resources",
-      "usage-channels"
+      "usage-channels",
+      "payment-logs"
     ]);
 
     expect(getWorkspacePageApp("dashboard")).toMatchObject({
@@ -253,7 +254,8 @@ describe("admin app manifest", () => {
     expect(appMap.workspacePages.map((app) => app.id)).toEqual([
       "operations-overview",
       "accounts-resources",
-      "usage-channels"
+      "usage-channels",
+      "payment-logs"
     ]);
     expect(appMap.utilities.map((app) => app.library.group)).toEqual([
       "console-settings",

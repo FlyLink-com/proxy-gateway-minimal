@@ -249,6 +249,15 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
         "state-preview",
         "evidence-row"
       ]
+    },
+    paymentLogs: {
+      density: "normal",
+      forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
+      hierarchy: ["context", "state", "evidence"],
+      layout: "table",
+      mobileStandardStatus: "pending-dedicated-standard",
+      page: "paymentLogs",
+      requiredBlocks: ["page-title", "page-context", "primary-panel", "status-chip", "state-preview", "evidence-row"]
     }
   },
   pageCompositionContracts: {
@@ -278,6 +287,15 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
       page: "usageMonitor",
       requiresSubpages: true,
       subpageModuleLimit: 2
+    },
+    paymentLogs: {
+      activeModuleLimit: 1,
+      contractId: "page-composition",
+      firstViewportStrategy: "owner-subpage",
+      overflowPolicy: "subpage-or-pagination",
+      page: "paymentLogs",
+      requiresSubpages: false,
+      subpageModuleLimit: 0
     }
   },
   pageFrame: {

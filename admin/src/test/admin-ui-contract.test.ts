@@ -105,7 +105,8 @@ describe("admin OS UI contract", () => {
     expect(Object.keys(ADMIN_UI_CONTRACT.pageContracts).sort()).toEqual([
       "dashboard",
       "portalRequests",
-      "usageMonitor"
+      "usageMonitor",
+      "paymentLogs"
     ]);
 
     expect(getAdminPageContract("dashboard")).toMatchObject({

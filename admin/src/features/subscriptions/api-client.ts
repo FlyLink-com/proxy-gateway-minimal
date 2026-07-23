@@ -130,6 +130,14 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
   }
 
   return {
+    listPaymentLogs: async (filters: { status?: string; limit?: number; cursor?: number } = {}) => {
+      const params = new URLSearchParams();
+      if (filters.status) params.set("status", filters.status);
+      if (filters.limit) params.set("limit", String(filters.limit));
+      if (filters.cursor) params.set("cursor", String(filters.cursor));
+      const query = params.toString();
+      return (await request<{ items: import("../payment-logs/payment-logs-model").PaymentLogDto[] }>(`/api/admin/platform/payment-logs${query ? `?${query}` : ""}`)).items;
+    },
     listTenants: async () => (await request<{ items: SubscriptionTenant[] }>("/api/admin/subscriptions")).items,
     createTenant: async (input: CreateSubscriptionInput) =>
       request<CreateSubscriptionResult>("/api/admin/subscriptions", {

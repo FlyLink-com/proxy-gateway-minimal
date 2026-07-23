@@ -24,6 +24,8 @@ import { DashboardPage } from "./pages/dashboard-page";
 import { PortalRequestsPage } from "./pages/portal-requests-page";
 import { SubscriptionUsageMonitorPage } from "./pages/subscription-usage-monitor-page";
 import { createLocalPreviewCommerceClient } from "./features/user-portal/commerce/commerce-client";
+import { createAdminApiClient } from "./features/subscriptions/api-client";
+import { PaymentLogsPage } from "./pages/payment-logs-page";
 
 type AppRoute = "admin" | "portal" | "portalPreview" | "portalRegister" | "site";
 
@@ -58,6 +60,9 @@ export function App() {
   const [adminSession, setAdminSession] = useState(() => loadAdminSession());
   const fixturePreviewEnabled = isAdminFixturePreviewEnabled();
   const adminApiConfigured = fixturePreviewEnabled || adminSession.consoleToken.trim().length > 0;
+  const adminApiClient = useMemo(() => adminSession.consoleToken.trim()
+    ? createAdminApiClient(adminSession)
+    : undefined, [adminSession]);
 
   useEffect(() => {
     function syncRoute() {
@@ -159,7 +164,7 @@ export function App() {
           searchQuery={search}
           onNavigate={navigateAdminPage}
         />
-      ) : renderPage(activePage, navigateAdminPage, setRiskNotificationCount, fixturePreviewEnabled)}
+        ) : renderPage(activePage, navigateAdminPage, setRiskNotificationCount, fixturePreviewEnabled, adminApiClient)}
     </AdminLayout>
   );
 }
@@ -193,6 +198,7 @@ function renderPage(
   onNavigate: (page: AdminPage) => void,
   onRiskCountChange: (count: number) => void,
   fixturePreviewEnabled: boolean
+  ,apiClient?: ReturnType<typeof createAdminApiClient>
 ) {
   switch (activePage) {
     case "dashboard":
@@ -207,6 +213,8 @@ function renderPage(
       return <PortalRequestsPage fixturePreviewEnabled={fixturePreviewEnabled} />;
     case "usageMonitor":
       return <SubscriptionUsageMonitorPage fixturePreviewEnabled={fixturePreviewEnabled} />;
+    case "paymentLogs":
+      return <PaymentLogsPage apiClient={apiClient} fixturePreviewEnabled={fixturePreviewEnabled} />;
   }
 }
 
