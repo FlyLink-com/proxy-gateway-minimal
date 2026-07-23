@@ -59,6 +59,11 @@ type InfoPage = {
 };
 
 const localeOptions: Locale[] = ["zh", "en"];
+const conceptVisuals = [
+  { Icon: Compass, kind: "perspective" },
+  { Icon: Route, kind: "distance" },
+  { Icon: Signpost, kind: "continuity" }
+] as const;
 const infoPageSlugs: InfoPageSlug[] = [
   "features",
   "pricing",
@@ -97,7 +102,6 @@ const companySiteCopy = {
     aria: {
       brandHome: "GCC WebOS home",
       closeContact: "Close contact form",
-      closeStart: "Close start options",
       contactDialog: "Start a conversation",
       footer: "GCC WebOS public footer",
       language: "Language",
@@ -105,7 +109,6 @@ const companySiteCopy = {
       openNavigation: "Open navigation",
       productStory: "GCC WebOS product details",
       productChoices: "GCC WebOS product choices",
-      startChooser: "Choose how to start",
       supportDirectory: "GCC WebOS support directory"
     },
     nav: {
@@ -120,9 +123,6 @@ const companySiteCopy = {
       explore: "Explore",
       getStarted: "Get Started",
       signIn: "Sign In",
-      createAccount: "Create account",
-      signInNow: "Sign in now",
-      openStart: "Choose how to start",
       openContact: "Start a conversation",
       learnMore: "Learn more",
       compare: "Explore this path",
@@ -424,7 +424,6 @@ const companySiteCopy = {
     aria: {
       brandHome: "GCC WebOS 首页",
       closeContact: "关闭联系表单",
-      closeStart: "关闭开始方式",
       contactDialog: "开始沟通",
       footer: "GCC WebOS 官网页脚",
       language: "语言",
@@ -432,7 +431,6 @@ const companySiteCopy = {
       openNavigation: "打开导航",
       productStory: "GCC WebOS 产品详情",
       productChoices: "GCC WebOS 产品选择",
-      startChooser: "选择开始方式",
       supportDirectory: "GCC WebOS 支持目录"
     },
     nav: {
@@ -447,9 +445,6 @@ const companySiteCopy = {
       explore: "了解产品",
       getStarted: "开始使用",
       signIn: "登录",
-      createAccount: "创建账户",
-      signInNow: "立即登录",
-      openStart: "选择开始方式",
       openContact: "开始沟通",
       learnMore: "进一步了解",
       compare: "了解这个方向",
@@ -755,7 +750,6 @@ export function CompanySitePage() {
   const [activeSection, setActiveSection] = useState<CompanySiteSectionId>("top");
   const [isMobileContactOpen, setIsMobileContactOpen] = useState(false);
   const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
-  const [isStartChooserOpen, setIsStartChooserOpen] = useState(false);
   const [infoPage, setInfoPage] = useState<InfoPageSlug | null>(readInfoPageFromHash);
   const [leadStatus, setLeadStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
 
@@ -858,7 +852,6 @@ export function CompanySitePage() {
       data-active-section={activeSection}
       data-contact-open={isMobileContactOpen}
       data-locale={locale}
-      data-start-open={isStartChooserOpen}
     >
       <header className="company-site-header" data-mobile-menu-open={isMobileNavigationOpen}>
         <a
@@ -883,6 +876,10 @@ export function CompanySitePage() {
           <a href="#support" onClick={(event) => handleSectionClick(event, "support")}>{copy.nav.support}</a>
           <a href="#contact" onClick={(event) => handleSectionClick(event, "contact")}>{copy.nav.contact}</a>
           <a href={buildInfoPageHash("features")} onClick={(event) => openInfoPage(event, "features")}>{copy.nav.about}</a>
+          <div className="company-site-mobile-account-links">
+            <a className="is-primary" href={registerUrl}>{copy.actions.getStarted}</a>
+            <a href={loginUrl}>{copy.actions.signIn}</a>
+          </div>
         </nav>
 
         <div className="company-site-header-actions">
@@ -951,80 +948,36 @@ export function CompanySitePage() {
                 data-concept-loop={track}
                 key={track}
               >
-                {copy.brandVisual.scenes.map((scene, index) => (
-                  <article className="company-site-concept-scene" key={`${track}-${scene.title}`}>
-                    <span>0{index + 1} · {scene.eyebrow}</span>
-                    <div className="company-site-concept-graphic" aria-hidden="true">
-                      <i />
-                      <i />
-                      <i />
-                      <b>G</b>
-                    </div>
-                    <h2>{scene.title}</h2>
-                    <p>{scene.description}</p>
-                  </article>
-                ))}
+                {copy.brandVisual.scenes.map((scene, index) => {
+                  const visual = conceptVisuals[index];
+                  const VisualIcon = visual.Icon;
+
+                  return (
+                    <article className="company-site-concept-scene" key={`${track}-${scene.title}`}>
+                      <span>0{index + 1} · {scene.eyebrow}</span>
+                      <div
+                        className={`company-site-concept-graphic is-${visual.kind}`}
+                        data-concept-visual={visual.kind}
+                        aria-hidden="true"
+                      >
+                        <span />
+                        <span />
+                        <span />
+                        <i />
+                        <i />
+                        <i />
+                        <VisualIcon />
+                      </div>
+                      <h2>{scene.title}</h2>
+                      <p>{scene.description}</p>
+                    </article>
+                  );
+                })}
               </div>
             ))}
           </div>
         </div>
-        <div className="company-site-mobile-start-card">
-          <div>
-            <strong>{copy.actions.openStart}</strong>
-            <span>{copy.actions.createAccount} · {copy.actions.signInNow}</span>
-          </div>
-          <button
-            aria-controls="company-site-start-chooser"
-            aria-expanded={isStartChooserOpen}
-            onClick={() => setIsStartChooserOpen(true)}
-            type="button"
-          >
-            {copy.actions.openStart}
-            <ArrowRight aria-hidden="true" />
-          </button>
-        </div>
       </section>
-
-      {isStartChooserOpen ? (
-        <div className="company-site-start-overlay">
-          <button
-            aria-label={copy.aria.closeStart}
-            className="company-site-sheet-backdrop"
-            onClick={() => setIsStartChooserOpen(false)}
-            type="button"
-          />
-          <section
-            aria-label={copy.aria.startChooser}
-            aria-modal="true"
-            className="company-site-start-chooser"
-            data-presentation="bottom-sheet"
-            id="company-site-start-chooser"
-            role="dialog"
-          >
-            <div className="company-site-start-panel">
-              <button
-                aria-label={copy.aria.closeStart}
-                className="company-site-start-panel-close"
-                onClick={() => setIsStartChooserOpen(false)}
-                type="button"
-              >
-                ×
-              </button>
-              <div className="company-site-start-sheet-copy">
-                <h2>{copy.actions.openStart}</h2>
-              </div>
-              <a aria-label={copy.actions.createAccount} className="company-site-start-choice is-primary" href={registerUrl}>
-                <span><b>01</b><strong>{copy.actions.createAccount}</strong></span>
-                <ArrowRight aria-hidden="true" />
-              </a>
-              <a aria-label={copy.actions.signInNow} className="company-site-start-choice" href={loginUrl}>
-                <span><b>02</b><strong>{copy.actions.signInNow}</strong></span>
-                <ArrowRight aria-hidden="true" />
-              </a>
-            </div>
-          </section>
-        </div>
-      ) : null}
 
       <div
         aria-label={copy.aria.productStory}

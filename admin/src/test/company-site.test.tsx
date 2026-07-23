@@ -62,6 +62,11 @@ describe("company site route", () => {
       )).toBe(true);
   });
 
+  test("reclaims the mobile concept stage space after removing the start chooser", () => {
+    expect(publicSiteStyleBlocks(".company-site-shell .company-site-concept-scene")
+      .some((block) => block.includes("padding: 112px 10px 8px"))).toBe(true);
+  });
+
   test("leads with promotional GCC WebOS value without exposing private surfaces or invented claims", () => {
     window.location.hash = "#/site";
 
@@ -127,14 +132,23 @@ describe("company site route", () => {
     const detailScroller = container.querySelector("[data-mobile-detail-scroller]");
     const primaryConcepts = container.querySelector("[data-concept-loop='primary']");
     const repeatedConcepts = container.querySelector("[data-concept-loop='duplicate']");
+    const primaryVisuals = Array.from(
+      primaryConcepts?.querySelectorAll("[data-concept-visual]") ?? []
+    ).map((visual) => visual.getAttribute("data-concept-visual"));
+    const repeatedVisuals = Array.from(
+      repeatedConcepts?.querySelectorAll("[data-concept-visual]") ?? []
+    ).map((visual) => visual.getAttribute("data-concept-visual"));
 
     expect(viewport).not.toBeNull();
     expect(viewport?.children[0]).toBe(conceptStage);
     expect(viewport?.children[1]).toBe(detailScroller);
-    expect(conceptStage?.querySelector(".company-site-mobile-start-card")).not.toBeNull();
+    expect(conceptStage?.querySelector(".company-site-mobile-start-card")).toBeNull();
     expect(primaryConcepts?.children.length).toBeGreaterThanOrEqual(3);
     expect(repeatedConcepts?.children.length).toBe(primaryConcepts?.children.length);
     expect(repeatedConcepts?.getAttribute("aria-hidden")).toBe("true");
+    expect(primaryVisuals).toEqual(["perspective", "distance", "continuity"]);
+    expect(new Set(primaryVisuals).size).toBe(primaryVisuals.length);
+    expect(repeatedVisuals).toEqual(primaryVisuals);
     expect(detailScroller?.getAttribute("tabindex")).toBe("0");
     expect(detailScroller?.querySelector("#features")).not.toBeNull();
     expect(detailScroller?.querySelector("#pricing")).not.toBeNull();
@@ -144,33 +158,18 @@ describe("company site route", () => {
     expect(detailScroller?.querySelector(".company-site-footer")).not.toBeNull();
   });
 
-  test("opens account destinations in a focused bottom sheet without repeating the hero visual", () => {
+  test("keeps mobile account destinations direct without a start chooser", () => {
     window.location.hash = "#/site";
 
-    render(createElement(App));
+    const { container } = render(createElement(App));
+    const accountLinks = container.querySelector(".company-site-mobile-account-links");
 
-    const opener = screen.getByRole("button", { name: "Choose how to start" });
-    expect(opener.getAttribute("aria-expanded")).toBe("false");
+    expect(accountLinks).not.toBeNull();
+    expect(within(accountLinks as HTMLElement).getByRole("link", { name: "Get Started" }).getAttribute("href")).toBe(portalRegisterUrl);
+    expect(within(accountLinks as HTMLElement).getByRole("link", { name: "Sign In" }).getAttribute("href")).toBe(portalLoginUrl);
+    expect(screen.queryByRole("button", { name: "Choose how to start" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Choose how to start" })).toBeNull();
-
-    fireEvent.click(opener);
-
-    const dialog = screen.getByRole("dialog", { name: "Choose how to start" });
-    const startPanel = dialog.querySelector(".company-site-start-panel");
-    expect(opener.getAttribute("aria-expanded")).toBe("true");
-    expect(dialog.getAttribute("data-presentation")).toBe("bottom-sheet");
-    expect(dialog.querySelector("header")).toBeNull();
-    expect(dialog.querySelector(".company-site-start-orbit")).toBeNull();
-    expect(within(dialog).queryByText("WELCOME TO GCC WEBOS")).toBeNull();
-    expect(startPanel).not.toBeNull();
-    expect(startPanel?.querySelector(".company-site-start-sheet-copy")).not.toBeNull();
-    expect(within(startPanel as HTMLElement).getByRole("button", { name: "Close start options" })).not.toBeNull();
-    expect(within(startPanel as HTMLElement).getByRole("link", { name: "Create account" }).getAttribute("href")).toBe(portalRegisterUrl);
-    expect(within(startPanel as HTMLElement).getByRole("link", { name: "Sign in now" }).getAttribute("href")).toBe(portalLoginUrl);
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close start options" }));
-    expect(screen.queryByRole("dialog", { name: "Choose how to start" })).toBeNull();
-    expect(opener.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector(".company-site-start-overlay")).toBeNull();
   });
 
   test("keeps the mobile contact form compact until a visitor asks to start a conversation", () => {
