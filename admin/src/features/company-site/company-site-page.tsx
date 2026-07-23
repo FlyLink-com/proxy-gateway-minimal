@@ -104,6 +104,7 @@ const companySiteCopy = {
       language: "Language",
       navigation: "GCC WebOS website navigation",
       openNavigation: "Open navigation",
+      productStory: "GCC WebOS product details",
       productChoices: "GCC WebOS product choices",
       startChooser: "Choose how to start",
       supportDirectory: "GCC WebOS support directory"
@@ -146,12 +147,29 @@ const companySiteCopy = {
     brandVisual: {
       title: "One brand. One connected journey.",
       description: "From first look to the experience that follows, every step stays familiar and focused.",
-      lanes: ["Discover", "Choose", "Start", "Continue"]
+      lanes: ["Discover", "Choose", "Start", "Continue"],
+      scenes: [
+        {
+          eyebrow: "Move freely",
+          title: "Your world stays within reach",
+          description: "A connected experience designed to feel clear across the moments and devices that matter."
+        },
+        {
+          eyebrow: "Choose simply",
+          title: "Find the path that feels right",
+          description: "Understand the essentials, compare your options, and move forward without the noise."
+        },
+        {
+          eyebrow: "Continue naturally",
+          title: "Pick up where you left off",
+          description: "Create an account or sign in when you are ready to continue your GCC WebOS journey."
+        }
+      ]
     },
     product: {
       title: "Find what fits your next step",
       description:
-        "See the essentials at a glance, then swipe through the ways GCC WebOS can help you begin.",
+        "See the essentials at a glance, then explore the ways GCC WebOS can help you begin.",
       items: [
         {
           icon: "product",
@@ -190,8 +208,7 @@ const companySiteCopy = {
     },
     guide: {
       title: "See every step as you move",
-      description: "Swipe through a simple journey from discovery to the experience that comes next.",
-      swipeHint: "Swipe left, or keep scrolling down",
+      description: "Follow a clear journey from discovery to the experience that comes next.",
       steps: [
         { title: "Discover", description: "See what GCC WebOS can bring to your connected experience." },
         { title: "Choose", description: "Compare the starting direction that feels right for you." },
@@ -394,6 +411,7 @@ const companySiteCopy = {
       language: "语言",
       navigation: "GCC WebOS 官网导航",
       openNavigation: "打开导航",
+      productStory: "GCC WebOS 产品详情",
       productChoices: "GCC WebOS 产品选择",
       startChooser: "选择开始方式",
       supportDirectory: "GCC WebOS 支持目录"
@@ -435,11 +453,28 @@ const companySiteCopy = {
     brandVisual: {
       title: "一个品牌，一段连贯旅程",
       description: "从第一次了解，到登录后继续使用，每一步都熟悉、清晰而专注。",
-      lanes: ["发现", "选择", "开始", "继续"]
+      lanes: ["发现", "选择", "开始", "继续"],
+      scenes: [
+        {
+          eyebrow: "自在连接",
+          title: "让熟悉的世界始终触手可及",
+          description: "围绕重要的时刻与设备，带来清晰、自然、连贯的连接体验。"
+        },
+        {
+          eyebrow: "轻松选择",
+          title: "找到适合自己的开始方式",
+          description: "先看懂重点，再比较选择，不被复杂信息打断前进的节奏。"
+        },
+        {
+          eyebrow: "自然继续",
+          title: "随时接续你的 GCC WebOS 体验",
+          description: "准备好后创建账户，已有账户则直接登录，继续前往下一程。"
+        }
+      ]
     },
     product: {
       title: "找到适合你的开始方式",
-      description: "一眼掌握产品重点，再左右滑动，看看 GCC WebOS 可以如何陪你开始。",
+      description: "集中了解产品重点，看看 GCC WebOS 可以如何陪你开始。",
       items: [
         { icon: "product", title: "清晰发现价值", description: "快速了解 GCC WebOS 体验，以及可以如何开始。" },
         { icon: "guide", title: "更有把握地开始", description: "用简单连贯的方式，把兴趣变成可以行动的下一步。" },
@@ -464,9 +499,8 @@ const companySiteCopy = {
       note: "先选择适合自己的方向；准备好后即可创建账户或登录。"
     },
     guide: {
-      title: "滑动之间，看清每一步",
-      description: "从了解、选择到开始与继续，用一次滑动看清完整旅程。",
-      swipeHint: "向左滑动，或继续向下滚动",
+      title: "每一步，都看得清楚",
+      description: "从了解、选择到开始与继续，沿着清晰节奏看懂完整旅程。",
       steps: [
         { title: "发现", description: "一眼看懂 GCC WebOS 能为你带来什么。" },
         { title: "选择", description: "比较更适合自己的开始方式。" },
@@ -690,7 +724,6 @@ function buildPublicLeadPayload(formData: FormData) {
 export function CompanySitePage() {
   const [locale, setLocale] = useState<Locale>(detectBrowserLocale);
   const [activeSection, setActiveSection] = useState<CompanySiteSectionId>("top");
-  const [activeGuideStep, setActiveGuideStep] = useState(0);
   const [isMobileContactOpen, setIsMobileContactOpen] = useState(false);
   const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
   const [isStartChooserOpen, setIsStartChooserOpen] = useState(false);
@@ -852,7 +885,8 @@ export function CompanySitePage() {
         </div>
       </header>
 
-      <section className="company-site-hero" id="top">
+      <div className="company-site-mobile-viewport" data-mobile-viewport="true">
+      <section className="company-site-hero" data-mobile-concept-stage="true" id="top">
         <div className="company-site-hero-copy">
           <span className="company-site-hero-eyebrow">GCC WEBOS · {copy.hero.eyebrow}</span>
           <h1>{copy.hero.title}</h1>
@@ -880,19 +914,29 @@ export function CompanySitePage() {
               <span>{copy.brandVisual.description}</span>
             </div>
           </div>
-          <div className="company-site-lane-map" aria-hidden="true">
-            {copy.brandVisual.lanes.map((lane, index) => (
-              <div className="company-site-lane" key={lane}>
-                <span>0{index + 1}</span>
-                <i />
-                <strong>{lane}</strong>
+          <div className="company-site-concept-loop">
+            {(["primary", "duplicate"] as const).map((track) => (
+              <div
+                aria-hidden={track === "duplicate" ? true : undefined}
+                className="company-site-concept-track"
+                data-concept-loop={track}
+                key={track}
+              >
+                {copy.brandVisual.scenes.map((scene, index) => (
+                  <article className="company-site-concept-scene" key={`${track}-${scene.title}`}>
+                    <span>0{index + 1} · {scene.eyebrow}</span>
+                    <div className="company-site-concept-graphic" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                      <b>G</b>
+                    </div>
+                    <h2>{scene.title}</h2>
+                    <p>{scene.description}</p>
+                  </article>
+                ))}
               </div>
             ))}
-          </div>
-          <div className="company-site-workspace-outline" aria-hidden="true">
-            <span />
-            <span />
-            <span />
           </div>
         </div>
         <div className="company-site-mobile-start-card">
@@ -955,6 +999,13 @@ export function CompanySitePage() {
         </div>
       ) : null}
 
+      <div
+        aria-label={copy.aria.productStory}
+        className="company-site-detail-scroller"
+        data-mobile-detail-scroller="true"
+        role="region"
+        tabIndex={0}
+      >
       <section className="company-site-product-layer" id="features">
         <div className="company-site-section-intro">
           <span>01</span>
@@ -963,7 +1014,7 @@ export function CompanySitePage() {
             <p>{copy.product.description}</p>
           </div>
         </div>
-        <div className="company-site-product-list" data-mobile-rail="true">
+        <div className="company-site-product-list" data-mobile-layout="vertical">
           {copy.product.items.map((item) => {
             const Icon = iconMap[item.icon];
             return (
@@ -985,7 +1036,7 @@ export function CompanySitePage() {
           <h2>{copy.plans.title}</h2>
           <p>{copy.plans.description}</p>
         </div>
-        <div className="company-site-product-rail" aria-label={copy.aria.productChoices} data-mobile-rail="true">
+        <div className="company-site-product-rail" aria-label={copy.aria.productChoices} data-mobile-layout="vertical">
           {copy.plans.items.map((item, index) => (
             <article key={item.title}>
               <span>0{index + 1}</span>
@@ -1014,22 +1065,10 @@ export function CompanySitePage() {
         <ol
           aria-label={copy.guide.title}
           className="company-site-guide-steps"
-          data-active-step={activeGuideStep}
-          data-mobile-rail="true"
-          onScroll={(event) => {
-            const stepWidth = event.currentTarget.clientWidth;
-            if (stepWidth <= 0) {
-              return;
-            }
-            setActiveGuideStep(Math.max(0, Math.min(
-              copy.guide.steps.length - 1,
-              Math.round(event.currentTarget.scrollLeft / stepWidth)
-            )));
-          }}
-          tabIndex={0}
+          data-mobile-layout="vertical"
         >
           {copy.guide.steps.map((step, index) => (
-            <li data-active={activeGuideStep === index} key={step.title}>
+            <li key={step.title}>
               <span>0{index + 1}</span>
               <i aria-hidden="true" />
               <h3>{step.title}</h3>
@@ -1037,10 +1076,6 @@ export function CompanySitePage() {
             </li>
           ))}
         </ol>
-        <div className="company-site-guide-progress" aria-live="polite">
-          <strong>0{activeGuideStep + 1} / 0{copy.guide.steps.length}</strong>
-          <span>{copy.guide.swipeHint}<ArrowRight aria-hidden="true" /></span>
-        </div>
         <a className="company-site-inline-action" href={buildInfoPageHash("download")} onClick={(event) => openInfoPage(event, "download")}>
           <BookOpen aria-hidden="true" />
           {copy.actions.readGuide}
@@ -1060,7 +1095,7 @@ export function CompanySitePage() {
             <i />
           </div>
         </div>
-        <div className="company-site-support-directory" aria-label={copy.aria.supportDirectory} data-mobile-rail="true">
+        <div className="company-site-support-directory" aria-label={copy.aria.supportDirectory} data-mobile-layout="vertical">
           {copy.support.resources.map((resource) => {
             const Icon = iconMap[resource.icon];
             const slug = resource.slug as InfoPageSlug;
@@ -1219,6 +1254,8 @@ export function CompanySitePage() {
           <span>{copy.footer.rights}</span>
         </div>
       </footer>
+      </div>
+      </div>
     </main>
   );
 }

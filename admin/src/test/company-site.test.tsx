@@ -78,6 +78,32 @@ describe("company site route", () => {
     expect(container.innerHTML).not.toMatch(/t\.me|gcaltd0528|telegram/i);
   });
 
+  test("separates the mobile concept stage from the vertically scrolling product story", () => {
+    window.location.hash = "#/site";
+
+    const { container } = render(createElement(App));
+    const viewport = container.querySelector("[data-mobile-viewport]");
+    const conceptStage = container.querySelector("[data-mobile-concept-stage]");
+    const detailScroller = container.querySelector("[data-mobile-detail-scroller]");
+    const primaryConcepts = container.querySelector("[data-concept-loop='primary']");
+    const repeatedConcepts = container.querySelector("[data-concept-loop='duplicate']");
+
+    expect(viewport).not.toBeNull();
+    expect(viewport?.children[0]).toBe(conceptStage);
+    expect(viewport?.children[1]).toBe(detailScroller);
+    expect(conceptStage?.querySelector(".company-site-mobile-start-card")).not.toBeNull();
+    expect(primaryConcepts?.children.length).toBeGreaterThanOrEqual(3);
+    expect(repeatedConcepts?.children.length).toBe(primaryConcepts?.children.length);
+    expect(repeatedConcepts?.getAttribute("aria-hidden")).toBe("true");
+    expect(detailScroller?.getAttribute("tabindex")).toBe("0");
+    expect(detailScroller?.querySelector("#features")).not.toBeNull();
+    expect(detailScroller?.querySelector("#pricing")).not.toBeNull();
+    expect(detailScroller?.querySelector("#how-it-works")).not.toBeNull();
+    expect(detailScroller?.querySelector("#support")).not.toBeNull();
+    expect(detailScroller?.querySelector("#contact")).not.toBeNull();
+    expect(detailScroller?.querySelector(".company-site-footer")).not.toBeNull();
+  });
+
   test("opens a focused mobile start chooser without replacing the existing account destinations", () => {
     window.location.hash = "#/site";
 
@@ -216,27 +242,27 @@ describe("company site route", () => {
     expect(container.querySelector(".company-site-brand-visual")).not.toBeNull();
     expect(container.querySelector(".company-site-product-rail")).not.toBeNull();
     expect(container.querySelector(".company-site-support-directory")).not.toBeNull();
-    expect(container.querySelector(".company-site-product-list")?.getAttribute("data-mobile-rail")).toBe("true");
-    expect(container.querySelector(".company-site-product-rail")?.getAttribute("data-mobile-rail")).toBe("true");
-    expect(container.querySelector(".company-site-guide-steps")?.getAttribute("data-mobile-rail")).toBe("true");
-    expect(container.querySelector(".company-site-support-directory")?.getAttribute("data-mobile-rail")).toBe("true");
+    expect(container.querySelector(".company-site-product-list")?.getAttribute("data-mobile-layout")).toBe("vertical");
+    expect(container.querySelector(".company-site-product-rail")?.getAttribute("data-mobile-layout")).toBe("vertical");
+    expect(container.querySelector(".company-site-guide-steps")?.getAttribute("data-mobile-layout")).toBe("vertical");
+    expect(container.querySelector(".company-site-support-directory")?.getAttribute("data-mobile-layout")).toBe("vertical");
     expect(container.textContent).not.toMatch(/Admin API|订阅链接.*token|节点密钥|¥\d+|checkout|trial|SLA|real-time/i);
   });
 
-  test("updates the mobile story position as visitors swipe through its steps", () => {
+  test("keeps product detail chapters in one compact vertical reading flow", () => {
     window.location.hash = "#/site";
 
     const { container } = render(createElement(App));
-    const story = container.querySelector(".company-site-guide-steps") as HTMLOListElement;
-    Object.defineProperty(story, "clientWidth", { configurable: true, value: 300 });
-    Object.defineProperty(story, "scrollLeft", { configurable: true, value: 300 });
+    const detailScroller = container.querySelector("[data-mobile-detail-scroller]");
+    const layouts = Array.from(detailScroller?.querySelectorAll("[data-mobile-layout]") ?? []);
 
-    expect(story.getAttribute("data-active-step")).toBe("0");
-    expect(story.getAttribute("tabindex")).toBe("0");
-
-    fireEvent.scroll(story);
-
-    expect(story.getAttribute("data-active-step")).toBe("1");
+    expect(layouts.length).toBe(4);
+    layouts.forEach((layout) => {
+      expect(layout.getAttribute("data-mobile-layout")).toBe("vertical");
+      expect(layout.getAttribute("data-mobile-rail")).toBeNull();
+    });
+    expect(container.querySelector(".company-site-guide-progress")).toBeNull();
+    expect(detailScroller?.textContent).not.toMatch(/swipe|滑动/i);
   });
 
   test("adapts the public site copy from the browser language", () => {
@@ -249,7 +275,7 @@ describe("company site route", () => {
     expect(document.title).toBe("GCC WebOS - 连接世界，轻松开始");
     expect(screen.getByRole("heading", { name: "连接世界，也连接每一次开始" })).not.toBeNull();
     expect(screen.getByText("一眼了解 GCC WebOS，找到适合自己的方式，轻松开启连接体验。")).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "滑动之间，看清每一步" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "每一步，都看得清楚" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "准备好，连接你的下一程" })).not.toBeNull();
     expect(screen.getAllByRole("link", { name: "开始使用" }).length).toBeGreaterThan(0);
     screen.getAllByRole("link", { name: "开始使用" }).forEach((link) => {
