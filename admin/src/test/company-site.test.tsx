@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -5,6 +7,13 @@ import { App } from "../App";
 
 const portalLoginUrl = "https://portal.gccwebos.com/";
 const portalRegisterUrl = "https://portal.gccwebos.com/portal/register/";
+const publicSiteStyles = readFileSync(resolve("src/styles/public-site.css"), "utf8").replace(/\r\n?/g, "\n");
+
+function publicSiteStyleBlocks(selector: string) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [...publicSiteStyles.matchAll(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`, "gm"))]
+    .map((match) => match[1] ?? "");
+}
 
 function setBrowserLanguage(language: string) {
   Object.defineProperty(window.navigator, "language", {
@@ -30,6 +39,20 @@ afterEach(() => {
 });
 
 describe("company site route", () => {
+  test("contains mobile detail visuals within the dedicated scroll viewport", () => {
+    expect(publicSiteStyleBlocks(".company-site-shell .company-site-connection-map")
+      .some((block) => block.includes("overflow: hidden"))).toBe(true);
+    expect(publicSiteStyleBlocks(".company-site-shell .company-site-support-statement")
+      .some((block) => block.includes("margin-inline: 0"))).toBe(true);
+    expect(publicSiteStyleBlocks(".company-site-shell .company-site-detail-scroller")
+      .some((block) =>
+        block.includes("scrollbar-gutter: auto")
+        && block.includes("scrollbar-width: thin")
+      )).toBe(true);
+    expect(publicSiteStyleBlocks(".company-site-shell .company-site-detail-scroller::-webkit-scrollbar")
+      .some((block) => block.includes("width: 4px"))).toBe(true);
+  });
+
   test("leads with promotional GCC WebOS value without exposing private surfaces or invented claims", () => {
     window.location.hash = "#/site";
 

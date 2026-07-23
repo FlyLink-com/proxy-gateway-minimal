@@ -832,6 +832,7 @@
   grid-template-columns: repeat(4, 1fr);
   align-items: center;
   position: relative;
+  overflow: hidden;
 }
 
 .company-site-shell .company-site-connection-map::before {
@@ -2818,9 +2819,24 @@
     overflow-y: auto;
     overscroll-behavior-y: contain;
     scroll-behavior: smooth;
-    scrollbar-gutter: stable;
+    scrollbar-color: rgba(91, 120, 146, 0.64) transparent;
+    scrollbar-gutter: auto;
+    scrollbar-width: thin;
     background: var(--site-bg);
     outline-offset: -3px;
+  }
+
+  .company-site-shell .company-site-detail-scroller::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .company-site-shell .company-site-detail-scroller::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .company-site-shell .company-site-detail-scroller::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(91, 120, 146, 0.64);
   }
 
   .company-site-shell .company-site-product-layer,
@@ -3007,6 +3023,7 @@
   }
 
   .company-site-shell .company-site-support-statement {
+    margin-inline: 0;
     border-radius: 0;
     padding-inline: 0;
   }
