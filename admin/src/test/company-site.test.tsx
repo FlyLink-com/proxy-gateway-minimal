@@ -36,17 +36,17 @@ describe("company site route", () => {
     const { container } = render(createElement(App));
 
     expect(document.documentElement.lang).toBe("en");
-    expect(document.title).toBe("GCC WebOS - Make Digital Services Easier to Start");
+    expect(document.title).toBe("GCC WebOS - Connect with ease");
     expect(screen.getAllByText("GCC WebOS").length).toBeGreaterThan(1);
-    expect(screen.getByRole("heading", { name: "GCC WebOS makes digital services easier to start" })).not.toBeNull();
-    expect(screen.getByText("Discover the right path, get started with confidence, and find support when you need it—all through one connected GCC WebOS experience.")).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Everything you need to move forward" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Choose your way into GCC WebOS" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "From first look to a confident start" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Help that keeps you moving" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Ready to experience GCC WebOS?" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Build what comes next with GCC WebOS" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Questions before you begin?" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Connect to the world. Start with ease." })).not.toBeNull();
+    expect(screen.getByText("See what GCC WebOS can do, choose what fits, and begin your connected experience with confidence.")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Find what fits your next step" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Choose your way to begin" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "See every step as you move" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Support and answers, together" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Ready for what comes next?" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Start a conversation with GCC WebOS" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Questions? Start here." })).not.toBeNull();
     expect(screen.getAllByRole("link", { name: "Get Started" }).length).toBeGreaterThan(0);
     screen.getAllByRole("link", { name: "Get Started" }).forEach((link) => {
       expect(link.getAttribute("href")).toBe(portalRegisterUrl);
@@ -67,12 +67,57 @@ describe("company site route", () => {
       /login-after-entry|subscriptionUrl|token=|entryRef|artifactRef|access-grants|#\/portal|\/use|\/api\/admin/
     );
     expect(container.textContent).not.toMatch(
-      /Telegram|TG|扫码注册|扫码进入|翻墙|绕过|突破封锁|Approximate RMB monthly plan|Account-area activation|WireGuard|AES-256|No-log|refund|latency|Tokyo · JP|¥\d+|\/month|\/year|7-day trial|real-time/i
+      /Telegram|\bTG\b|扫码注册|扫码进入|翻墙|绕过|突破封锁|Approximate RMB monthly plan|Account-area activation|WireGuard|AES-256|No-log|refund|latency|Tokyo · JP|¥\d+|\/month|\/year|7-day trial|real-time/i
     );
     expect(container.textContent).not.toMatch(
       /One clear place to understand|Understand the product before you continue|Four steps keep the public website informative|It is not an order or service-management screen/
     );
+    expect(container.textContent).not.toMatch(
+      /Portal|service management|signed-in service|account gateway|public website explains/i
+    );
     expect(container.innerHTML).not.toMatch(/t\.me|gcaltd0528|telegram/i);
+  });
+
+  test("opens a focused mobile start chooser without replacing the existing account destinations", () => {
+    window.location.hash = "#/site";
+
+    render(createElement(App));
+
+    const opener = screen.getByRole("button", { name: "Choose how to start" });
+    expect(opener.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("dialog", { name: "Choose how to start" })).toBeNull();
+
+    fireEvent.click(opener);
+
+    const dialog = screen.getByRole("dialog", { name: "Choose how to start" });
+    expect(opener.getAttribute("aria-expanded")).toBe("true");
+    expect(within(dialog).getByRole("link", { name: "Create account" }).getAttribute("href")).toBe(portalRegisterUrl);
+    expect(within(dialog).getByRole("link", { name: "Sign in now" }).getAttribute("href")).toBe(portalLoginUrl);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close start options" }));
+    expect(screen.queryByRole("dialog", { name: "Choose how to start" })).toBeNull();
+    expect(opener.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  test("keeps the mobile contact form compact until a visitor asks to start a conversation", () => {
+    window.location.hash = "#/site";
+
+    render(createElement(App));
+
+    const opener = screen.getByRole("button", { name: "Start a conversation" });
+    expect(opener.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("dialog", { name: "Start a conversation" })).toBeNull();
+
+    fireEvent.click(opener);
+
+    const dialog = screen.getByRole("dialog", { name: "Start a conversation" });
+    expect(opener.getAttribute("aria-expanded")).toBe("true");
+    expect(within(dialog).getByLabelText("Name or team")).not.toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Contact GCC WebOS" })).not.toBeNull();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close contact form" }));
+    expect(screen.queryByRole("dialog", { name: "Start a conversation" })).toBeNull();
+    expect(opener.getAttribute("aria-expanded")).toBe("false");
   });
 
   test("submits a public access inquiry through the lead intake endpoint", async () => {
@@ -147,7 +192,7 @@ describe("company site route", () => {
       expect(screen.getAllByText(product).length).toBeGreaterThan(0);
     });
 
-    ["Discover value", "Choose your path", "Get started", "Continue in Portal"].forEach((step) => {
+    ["Discover", "Choose", "Start", "Continue"].forEach((step) => {
       expect(screen.getAllByText(step).length).toBeGreaterThan(0);
     });
 
@@ -161,8 +206,8 @@ describe("company site route", () => {
 
     [
       "Where do I create an account or sign in?",
-      "Is this website where I manage my service?",
-      "How do I choose a product path?",
+      "I already have an account. How do I continue?",
+      "Which way to begin is right for me?",
       "Where can I review support and rules?"
     ].forEach((question) => {
       expect(screen.getByText(question)).not.toBeNull();
@@ -171,7 +216,27 @@ describe("company site route", () => {
     expect(container.querySelector(".company-site-brand-visual")).not.toBeNull();
     expect(container.querySelector(".company-site-product-rail")).not.toBeNull();
     expect(container.querySelector(".company-site-support-directory")).not.toBeNull();
+    expect(container.querySelector(".company-site-product-list")?.getAttribute("data-mobile-rail")).toBe("true");
+    expect(container.querySelector(".company-site-product-rail")?.getAttribute("data-mobile-rail")).toBe("true");
+    expect(container.querySelector(".company-site-guide-steps")?.getAttribute("data-mobile-rail")).toBe("true");
+    expect(container.querySelector(".company-site-support-directory")?.getAttribute("data-mobile-rail")).toBe("true");
     expect(container.textContent).not.toMatch(/Admin API|订阅链接.*token|节点密钥|¥\d+|checkout|trial|SLA|real-time/i);
+  });
+
+  test("updates the mobile story position as visitors swipe through its steps", () => {
+    window.location.hash = "#/site";
+
+    const { container } = render(createElement(App));
+    const story = container.querySelector(".company-site-guide-steps") as HTMLOListElement;
+    Object.defineProperty(story, "clientWidth", { configurable: true, value: 300 });
+    Object.defineProperty(story, "scrollLeft", { configurable: true, value: 300 });
+
+    expect(story.getAttribute("data-active-step")).toBe("0");
+    expect(story.getAttribute("tabindex")).toBe("0");
+
+    fireEvent.scroll(story);
+
+    expect(story.getAttribute("data-active-step")).toBe("1");
   });
 
   test("adapts the public site copy from the browser language", () => {
@@ -181,11 +246,11 @@ describe("company site route", () => {
     render(createElement(App));
 
     expect(document.documentElement.lang).toBe("zh-CN");
-    expect(document.title).toBe("GCC WebOS - 让数字服务更容易开始");
-    expect(screen.getByRole("heading", { name: "GCC WebOS，让数字服务更容易开始" })).not.toBeNull();
-    expect(screen.getByText("发现适合自己的方向，更有把握地开始，并在需要时获得支持。一切都在连贯一致的 GCC WebOS 体验中。")).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "从第一次了解，到从容开始" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "准备好体验 GCC WebOS 了吗？" })).not.toBeNull();
+    expect(document.title).toBe("GCC WebOS - 连接世界，轻松开始");
+    expect(screen.getByRole("heading", { name: "连接世界，也连接每一次开始" })).not.toBeNull();
+    expect(screen.getByText("一眼了解 GCC WebOS，找到适合自己的方式，轻松开启连接体验。")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "滑动之间，看清每一步" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "准备好，连接你的下一程" })).not.toBeNull();
     expect(screen.getAllByRole("link", { name: "开始使用" }).length).toBeGreaterThan(0);
     screen.getAllByRole("link", { name: "开始使用" }).forEach((link) => {
       expect(link.getAttribute("href")).toBe(portalRegisterUrl);
@@ -195,11 +260,12 @@ describe("company site route", () => {
       expect(link.getAttribute("href")).toBe(portalLoginUrl);
     });
     expect(screen.getByText("支持中心")).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "开始之前，还有问题？" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "有问题？从这里开始" })).not.toBeNull();
     expect(screen.getAllByText("轻松起步").length).toBeGreaterThan(0);
     expect(screen.getAllByText("随需进阶").length).toBeGreaterThan(0);
-    expect(screen.getByText("登录后的服务体验继续在 Portal 延伸。")).not.toBeNull();
+    expect(screen.getByText("继续你的 GCC WebOS 体验。")).not.toBeNull();
     expect(screen.getByLabelText("姓名或团队")).not.toBeNull();
+    expect(document.body.textContent).not.toMatch(/Portal|服务管理|账户网关/);
     expect(document.body.textContent).not.toMatch(/人民币月度近似套餐|账户区域激活|当前代码未接广告像素|¥\d+|试用|实时状态|SLA/);
   });
 
@@ -209,24 +275,24 @@ describe("company site route", () => {
 
     render(createElement(App));
 
-    expect(screen.getByRole("heading", { name: "GCC WebOS makes digital services easier to start" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Connect to the world. Start with ease." })).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "中" }));
 
     expect(window.localStorage.getItem("gccwebos-site-locale")).toBe("zh");
     expect(document.documentElement.lang).toBe("zh-CN");
-    expect(screen.getByRole("heading", { name: "GCC WebOS，让数字服务更容易开始" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "连接世界，也连接每一次开始" })).not.toBeNull();
 
     cleanup();
     window.location.hash = "#/site";
     render(createElement(App));
 
     expect(document.documentElement.lang).toBe("zh-CN");
-    expect(screen.getByRole("heading", { name: "GCC WebOS，让数字服务更容易开始" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "连接世界，也连接每一次开始" })).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "EN" }));
     expect(window.localStorage.getItem("gccwebos-site-locale")).toBe("en");
     expect(document.documentElement.lang).toBe("en");
-    expect(screen.getByRole("heading", { name: "GCC WebOS makes digital services easier to start" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Connect to the world. Start with ease." })).not.toBeNull();
   });
 
   test("keeps the site hash route when scrolling through public site navigation", () => {
@@ -333,17 +399,19 @@ describe("company site route", () => {
     expect(document.documentElement.lang).toBe("zh-CN");
     expect(document.title).toBe("隐私政策 - GCC WebOS");
     expect(screen.getByRole("heading", { name: "隐私政策" })).not.toBeNull();
-    expect(screen.getByText("语言偏好")).not.toBeNull();
-    expect(screen.getByText("当前未使用广告追踪")).not.toBeNull();
+    expect(screen.getByText("语言偏好只保存在你的设备上")).not.toBeNull();
+    expect(screen.getByText("官网不使用广告追踪塑造体验")).not.toBeNull();
     expect(screen.getByRole("link", { name: "返回官网" })).not.toBeNull();
     expect(container.querySelector(".company-site-info-page")).not.toBeNull();
     expect(container.querySelector(".company-site-info-layout article")).not.toBeNull();
-    expect(container.textContent).not.toMatch(/subscriptionUrl|token=|Admin API|节点密钥|翻墙|绕过|突破封锁/);
+    expect(container.textContent).not.toMatch(
+      /subscriptionUrl|token=|Admin API|节点密钥|翻墙|绕过|突破封锁|未经确认|未经验证|生产状态|运行时健康/
+    );
 
     fireEvent.click(screen.getByRole("link", { name: "返回官网" }));
 
     expect(window.location.hash).toBe("#/site");
-    expect(screen.getByRole("heading", { name: "GCC WebOS，让数字服务更容易开始" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "连接世界，也连接每一次开始" })).not.toBeNull();
   });
 
   test("does not embed Telegram signup, raw subscription, or bypass-positioning content", () => {

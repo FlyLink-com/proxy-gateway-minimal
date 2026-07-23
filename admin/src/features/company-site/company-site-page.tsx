@@ -93,15 +93,19 @@ const iconMap = {
 const companySiteCopy = {
   en: {
     meta: {
-      title: "GCC WebOS - Make Digital Services Easier to Start"
+      title: "GCC WebOS - Connect with ease"
     },
     aria: {
       brandHome: "GCC WebOS home",
+      closeContact: "Close contact form",
+      closeStart: "Close start options",
+      contactDialog: "Start a conversation",
       footer: "GCC WebOS public footer",
       language: "Language",
       navigation: "GCC WebOS website navigation",
       openNavigation: "Open navigation",
       productChoices: "GCC WebOS product choices",
+      startChooser: "Choose how to start",
       supportDirectory: "GCC WebOS support directory"
     },
     nav: {
@@ -116,6 +120,10 @@ const companySiteCopy = {
       explore: "Explore",
       getStarted: "Get Started",
       signIn: "Sign In",
+      createAccount: "Create account",
+      signInNow: "Sign in now",
+      openStart: "Choose how to start",
+      openContact: "Start a conversation",
       learnMore: "Learn more",
       compare: "Explore this path",
       readGuide: "Read guide",
@@ -127,22 +135,23 @@ const companySiteCopy = {
       submitting: "Sending..."
     },
     hero: {
-      title: "GCC WebOS makes digital services easier to start",
+      eyebrow: "CONNECTED EXPERIENCE",
+      title: "Connect to the world. Start with ease.",
       description:
-        "Discover the right path, get started with confidence, and find support when you need it—all through one connected GCC WebOS experience.",
-      support: "Discover with confidence",
-      portal: "Choose your path",
-      partnership: "Grow with GCC WebOS"
+        "See what GCC WebOS can do, choose what fits, and begin your connected experience with confidence.",
+      support: "Discover",
+      portal: "Choose",
+      partnership: "Start"
     },
     brandVisual: {
       title: "One brand. One connected journey.",
-      description: "From first look to signed-in service, every step stays familiar and focused.",
+      description: "From first look to the experience that follows, every step stays familiar and focused.",
       lanes: ["Discover", "Choose", "Start", "Continue"]
     },
     product: {
-      title: "Everything you need to move forward",
+      title: "Find what fits your next step",
       description:
-        "GCC WebOS brings discovery, guidance, and support together so every next step feels easier to understand and act on.",
+        "See the essentials at a glance, then swipe through the ways GCC WebOS can help you begin.",
       items: [
         {
           icon: "product",
@@ -162,9 +171,9 @@ const companySiteCopy = {
       ]
     },
     plans: {
-      title: "Choose your way into GCC WebOS",
+      title: "Choose your way to begin",
       description:
-        "Start simple or open the conversation around a path shaped by your goals.",
+        "Start at your own pace or open a conversation around your team and partnership goals.",
       items: [
         {
           title: "Easy Start",
@@ -177,23 +186,24 @@ const companySiteCopy = {
           points: ["Room for specific needs", "A direct line for questions", "A path that can grow with you"]
         }
       ],
-      note: "Explore the direction that feels right; current account choices are confirmed in Portal."
+      note: "Choose what feels right today. You can create an account or sign in whenever you are ready."
     },
     guide: {
-      title: "From first look to a confident start",
-      description: "A simple journey keeps momentum high and every next step clear.",
+      title: "See every step as you move",
+      description: "Swipe through a simple journey from discovery to the experience that comes next.",
+      swipeHint: "Swipe left, or keep scrolling down",
       steps: [
-        { title: "Discover value", description: "See how GCC WebOS brings the experience together." },
-        { title: "Choose your path", description: "Find the starting direction that best matches your goals." },
-        { title: "Get started", description: "Move forward through the existing account entry when you are ready." },
-        { title: "Continue in Portal", description: "Sign in to continue your account and service experience." }
+        { title: "Discover", description: "See what GCC WebOS can bring to your connected experience." },
+        { title: "Choose", description: "Compare the starting direction that feels right for you." },
+        { title: "Start", description: "Create an account when you are ready to begin." },
+        { title: "Continue", description: "Sign in anytime and keep your GCC WebOS experience moving." }
       ]
     },
     support: {
-      title: "Help that keeps you moving",
-      description: "Guides, answers, and public rules are close at hand whenever you need a clearer next step.",
-      statement: "GCC WebOS brings the experience together.",
-      portalStatement: "Your signed-in service experience continues in Portal.",
+      title: "Support and answers, together",
+      description: "Guides, answers, service information, and public rules stay easy to reach.",
+      statement: "Already have an account?",
+      portalStatement: "Continue your GCC WebOS experience.",
       resources: [
         {
           icon: "guide",
@@ -212,7 +222,7 @@ const companySiteCopy = {
         {
           icon: "status",
           title: "Service status",
-          description: "Find general notices and guidance when verified updates are available.",
+          description: "See the latest GCC WebOS notices in one familiar place.",
           action: "View status",
           slug: "status"
         },
@@ -226,13 +236,13 @@ const companySiteCopy = {
       ]
     },
     conversion: {
-      title: "Ready to experience GCC WebOS?",
+      title: "Ready for what comes next?",
       description:
-        "Explore what fits, take the next step, and continue your signed-in experience in Portal.",
-      steps: ["Discover the experience", "Choose your path", "Get started"]
+        "Choose what fits, create an account, or sign in to continue your GCC WebOS experience.",
+      steps: ["Discover", "Choose", "Start"]
     },
     intake: {
-      title: "Build what comes next with GCC WebOS",
+      title: "Start a conversation with GCC WebOS",
       description:
         "Have a product question, a team goal, or a partnership idea? Tell us where you want to go and start the conversation.",
       points: [
@@ -255,25 +265,25 @@ const companySiteCopy = {
         useCasePlaceholder: "Tell us what you want to understand, start, or build"
       },
       options: ["Easy Start", "Flexible Path", "Support", "Partnership"],
-      note: "Registration, login, and signed-in service management remain in Portal.",
+      note: "When you are ready, continue your GCC WebOS journey from the account entry.",
       success: "Request submitted. We will use these details to continue the conversation.",
       error: "Submission failed. Please try again or use the contact information in the support section."
     },
     faq: {
-      title: "Questions before you begin?",
-      description: "Find quick answers, then choose your next step with confidence.",
+      title: "Questions? Start here.",
+      description: "Find a quick answer, then choose the way you want to begin.",
       items: [
         {
           question: "Where do I create an account or sign in?",
-          answer: "Use Get Started for the existing registration entry, or Sign In to open Portal."
+          answer: "Choose Create account if you are new, or Sign in if you already have an account."
         },
         {
-          question: "Is this website where I manage my service?",
-          answer: "No. The public website explains the product and starting path. Signed-in service management stays in Portal."
+          question: "I already have an account. How do I continue?",
+          answer: "Choose Sign in to continue your GCC WebOS experience."
         },
         {
-          question: "How do I choose a product path?",
-          answer: "Review the selection guidance, then continue in Portal or send a public inquiry when you need help."
+          question: "Which way to begin is right for me?",
+          answer: "Review the two starting directions, or send an inquiry when you want help choosing."
         },
         {
           question: "Where can I review support and rules?",
@@ -316,28 +326,28 @@ const companySiteCopy = {
       back: "Back to website",
       getStarted: "Get Started",
       contact: "Contact",
-      note: "Public information only. Signed-in service management stays in Portal."
+      note: "Explore here, then create an account or sign in whenever you are ready."
     },
     infoPages: {
       features: {
         title: "Product",
-        summary: "A clear overview of the GCC WebOS public product experience and its Portal handoff.",
-        points: ["Public product guidance", "Getting-started path", "Support and partnership entry", "Signed-in management in Portal"]
+        summary: "A clear overview of the GCC WebOS experience and the ways you can begin.",
+        points: ["Product highlights", "Ways to get started", "Support and partnership entry", "A direct account sign-in"]
       },
       pricing: {
         title: "Plans",
-        summary: "Selection guidance without presenting unverified commercial or availability details.",
-        points: ["Compare the intent of each access path", "Confirm current choices in Portal", "Use the inquiry form when requirements need discussion"]
+        summary: "Compare the ways to begin and choose the one that feels right.",
+        points: ["See each direction at a glance", "Choose at your own pace", "Start a conversation when you want help deciding"]
       },
       download: {
         title: "Usage guide",
-        summary: "Public guidance for moving from exploration to the signed-in Portal experience.",
-        points: ["Explore the product", "Create an account when ready", "Follow the next-step guidance", "Manage service in Portal"]
+        summary: "A simple guide for moving from exploration to your GCC WebOS account experience.",
+        points: ["Explore the product", "Create an account when ready", "Follow the next-step guidance", "Sign in to continue"]
       },
       changelog: {
         title: "Changelog",
-        summary: "A public place for product-experience updates when verified release notes are available.",
-        points: ["Public-facing changes only", "No implied production state", "Verified updates take precedence over historical notes"]
+        summary: "Follow the public evolution of the GCC WebOS experience.",
+        points: ["Discover what is new", "See how the experience is improving", "Return for future updates"]
       },
       terms: {
         title: "Terms of service",
@@ -346,8 +356,8 @@ const companySiteCopy = {
       },
       privacy: {
         title: "Privacy policy",
-        summary: "How this public website handles basic visitor and inquiry information.",
-        points: ["Language preference", "Public inquiry details", "No advertising tracking on this public surface"]
+        summary: "Your privacy matters from the first visit.",
+        points: ["Your language choice stays on this device", "Inquiry details help us respond to your request", "No advertising trackers shape this experience"]
       },
       "acceptable-use": {
         title: "Acceptable use",
@@ -356,32 +366,36 @@ const companySiteCopy = {
       },
       help: {
         title: "Support center",
-        summary: "Public routes to guidance and support.",
-        points: ["Review the usage guide", "Send a support inquiry", "Sign in to Portal for account-specific management"]
+        summary: "Helpful guidance is always close at hand.",
+        points: ["Explore the usage guide", "Start a support conversation", "Sign in when your question is about your account"]
       },
       contact: {
         title: "Contact",
-        summary: "Use the public inquiry form for product, support, or partnership questions.",
-        points: ["Describe the outcome you need", "Do not include credentials or private service material", "Continue account actions in Portal"]
+        summary: "Bring us your product question, support need, or partnership idea.",
+        points: ["Tell us the outcome you want", "Keep sensitive account details private", "Choose the conversation that fits"]
       },
       status: {
         title: "Service status",
-        summary: "General service-status guidance without presenting an unverified live-health claim.",
-        points: ["Check verified notices when available", "Use support for account-specific questions", "Do not infer runtime health from this page"]
+        summary: "A simple place to find GCC WebOS service notices.",
+        points: ["See the latest published notice", "Find support when you need help", "Return anytime for new updates"]
       }
     } satisfies Record<InfoPageSlug, InfoPage>
   },
   zh: {
     meta: {
-      title: "GCC WebOS - 让数字服务更容易开始"
+      title: "GCC WebOS - 连接世界，轻松开始"
     },
     aria: {
       brandHome: "GCC WebOS 首页",
+      closeContact: "关闭联系表单",
+      closeStart: "关闭开始方式",
+      contactDialog: "开始沟通",
       footer: "GCC WebOS 官网页脚",
       language: "语言",
       navigation: "GCC WebOS 官网导航",
       openNavigation: "打开导航",
       productChoices: "GCC WebOS 产品选择",
+      startChooser: "选择开始方式",
       supportDirectory: "GCC WebOS 支持目录"
     },
     nav: {
@@ -396,6 +410,10 @@ const companySiteCopy = {
       explore: "了解产品",
       getStarted: "开始使用",
       signIn: "登录",
+      createAccount: "创建账户",
+      signInNow: "立即登录",
+      openStart: "选择开始方式",
+      openContact: "开始沟通",
       learnMore: "进一步了解",
       compare: "了解这个方向",
       readGuide: "阅读指南",
@@ -407,11 +425,12 @@ const companySiteCopy = {
       submitting: "发送中..."
     },
     hero: {
-      title: "GCC WebOS，让数字服务更容易开始",
-      description: "发现适合自己的方向，更有把握地开始，并在需要时获得支持。一切都在连贯一致的 GCC WebOS 体验中。",
-      support: "从容发现价值",
-      portal: "选择你的方向",
-      partnership: "与 GCC WebOS 一起成长"
+      eyebrow: "畅连体验",
+      title: "连接世界，也连接每一次开始",
+      description: "一眼了解 GCC WebOS，找到适合自己的方式，轻松开启连接体验。",
+      support: "了解",
+      portal: "选择",
+      partnership: "开始"
     },
     brandVisual: {
       title: "一个品牌，一段连贯旅程",
@@ -419,17 +438,17 @@ const companySiteCopy = {
       lanes: ["发现", "选择", "开始", "继续"]
     },
     product: {
-      title: "向前一步，需要的都在这里",
-      description: "GCC WebOS 将发现、指引与支持汇聚在一起，让每一个下一步都更容易理解、更容易行动。",
+      title: "找到适合你的开始方式",
+      description: "一眼掌握产品重点，再左右滑动，看看 GCC WebOS 可以如何陪你开始。",
       items: [
         { icon: "product", title: "清晰发现价值", description: "快速了解 GCC WebOS 体验，以及可以如何开始。" },
-        { icon: "guide", title: "更有把握地开始", description: "用简单连贯的路径，把兴趣变成可以行动的下一步。" },
+        { icon: "guide", title: "更有把握地开始", description: "用简单连贯的方式，把兴趣变成可以行动的下一步。" },
         { icon: "help", title: "一路获得支持", description: "实用资源与清晰的联系入口，始终触手可及。" }
       ]
     },
     plans: {
-      title: "选择你的 GCC WebOS 开始方式",
-      description: "从简单直接的开始，到围绕目标展开更深入的沟通，找到适合你的方向。",
+      title: "选择你的开始方式",
+      description: "按自己的节奏轻松开始，也可以围绕团队与合作目标展开沟通。",
       items: [
         {
           title: "轻松起步",
@@ -439,40 +458,41 @@ const companySiteCopy = {
         {
           title: "随需进阶",
           description: "适合希望围绕团队目标或具体需求展开沟通的访客。",
-          points: ["为具体需求留出空间", "直接提出问题与目标", "让路径随你持续发展"]
+          points: ["为具体需求留出空间", "直接提出问题与目标", "让体验随你持续发展"]
         }
       ],
-      note: "先探索适合自己的方向；当前账户选择以 Portal 确认为准。"
+      note: "先选择适合自己的方向；准备好后即可创建账户或登录。"
     },
     guide: {
-      title: "从第一次了解，到从容开始",
-      description: "简单而连贯的路径，让每一步都有方向，让开始更有把握。",
+      title: "滑动之间，看清每一步",
+      description: "从了解、选择到开始与继续，用一次滑动看清完整旅程。",
+      swipeHint: "向左滑动，或继续向下滚动",
       steps: [
-        { title: "发现价值", description: "了解 GCC WebOS 如何把体验连接起来。" },
-        { title: "选择方向", description: "找到更符合个人目标的开始方式。" },
-        { title: "开始体验", description: "准备好后，通过既有账户入口继续。" },
-        { title: "在 Portal 继续", description: "登录后延续账户与服务体验。" }
+        { title: "发现", description: "一眼看懂 GCC WebOS 能为你带来什么。" },
+        { title: "选择", description: "比较更适合自己的开始方式。" },
+        { title: "开始", description: "准备好后创建账户，立即开启体验。" },
+        { title: "继续", description: "随时登录，继续你的 GCC WebOS 体验。" }
       ]
     },
     support: {
-      title: "让支持陪你继续向前",
-      description: "需要更清晰的下一步时，指南、答案与公开规则都近在眼前。",
-      statement: "GCC WebOS 将完整体验连接在一起。",
-      portalStatement: "登录后的服务体验继续在 Portal 延伸。",
+      title: "支持与答案，放在同一处",
+      description: "指南、答案、服务信息与公开规则，都可以随时找到。",
+      statement: "已有账户？",
+      portalStatement: "继续你的 GCC WebOS 体验。",
       resources: [
         { icon: "guide", title: "使用指南", description: "从产生兴趣到采取行动，获得实用指引。", action: "阅读指南", slug: "download" },
         { icon: "help", title: "支持中心", description: "找到答案，也找到继续沟通的清晰入口。", action: "获取帮助", slug: "help" },
-        { icon: "status", title: "服务状态", description: "在有经过确认的更新时，查看一般通知与相关说明。", action: "查看状态", slug: "status" },
+        { icon: "status", title: "服务状态", description: "在熟悉的位置，查看 GCC WebOS 最新公开通知。", action: "查看状态", slug: "status" },
         { icon: "rules", title: "规则与隐私", description: "了解支持负责任体验的公开原则。", action: "查看规则", slug: "privacy" }
       ]
     },
     conversion: {
-      title: "准备好体验 GCC WebOS 了吗？",
-      description: "探索适合自己的方向，迈出下一步，并在 Portal 延续登录后的体验。",
-      steps: ["发现产品体验", "选择你的方向", "开始使用"]
+      title: "准备好，连接你的下一程",
+      description: "选择适合自己的方式，创建账户或立即登录，轻松继续 GCC WebOS。",
+      steps: ["了解", "选择", "开始"]
     },
     intake: {
-      title: "与 GCC WebOS 一起，创造下一步",
+      title: "与 GCC WebOS 开始沟通",
       description: "无论是产品问题、团队目标还是合作想法，告诉我们你想去往哪里，让对话从这里开始。",
       points: ["带来你希望实现的目标", "探索个人、团队或合作伙伴方向", "把兴趣转化为清晰的下一步"],
       fields: {
@@ -490,17 +510,17 @@ const companySiteCopy = {
         useCasePlaceholder: "告诉我们你希望了解、开始或合作的事项"
       },
       options: ["轻松起步", "随需进阶", "支持", "合作"],
-      note: "注册、登录与登录后的服务管理仍在 Portal 完成。",
+      note: "准备好时，从账户入口继续你的 GCC WebOS 旅程。",
       success: "请求已提交。我们会使用这些信息继续沟通。",
       error: "提交失败。请重试，或使用支持页面中的联系方式。"
     },
     faq: {
-      title: "开始之前，还有问题？",
-      description: "快速找到答案，更有把握地选择下一步。",
+      title: "有问题？从这里开始",
+      description: "先找到简洁答案，再选择适合自己的开始方式。",
       items: [
-        { question: "在哪里创建账户或登录？", answer: "使用“开始使用”打开既有注册入口，或使用“登录”进入 Portal。" },
-        { question: "官网用于管理服务吗？", answer: "不是。官网解释产品与开始路径；登录后的服务管理仍在 Portal 完成。" },
-        { question: "如何选择产品方向？", answer: "先阅读选择说明；准备好后继续到 Portal，需要帮助时也可提交公开咨询。" },
+        { question: "在哪里创建账户或登录？", answer: "第一次使用可创建账户，已有账户可直接登录。" },
+        { question: "已经有账户，如何继续？", answer: "选择“登录”，继续你的 GCC WebOS 体验。" },
+        { question: "哪种开始方式适合我？", answer: "先比较两种开始方向，需要帮助时也可以提交咨询。" },
         { question: "在哪里查看支持与规则？", answer: "支持目录提供指南、支持中心、状态说明、隐私与公开规则入口。" }
       ]
     },
@@ -539,28 +559,28 @@ const companySiteCopy = {
       back: "返回官网",
       getStarted: "开始使用",
       contact: "联系",
-      note: "仅为公开信息。登录后的服务管理仍在 Portal 完成。"
+      note: "先在这里了解，准备好时再创建账户或登录。"
     },
     infoPages: {
       features: {
         title: "产品",
-        summary: "清晰说明 GCC WebOS 的公开产品体验及其与 Portal 的衔接。",
-        points: ["公开产品说明", "开始使用路径", "支持与合作入口", "在 Portal 完成登录后管理"]
+        summary: "清晰了解 GCC WebOS 体验与不同的开始方式。",
+        points: ["产品亮点", "开始方式", "支持与合作入口", "直接登录账户"]
       },
       pricing: {
         title: "套餐",
-        summary: "提供选择方向，但不展示未经确认的商业或可用性信息。",
-        points: ["比较接入方向", "在 Portal 确认当前选择", "有具体需求时提交公开咨询"]
+        summary: "比较不同的开始方式，选择此刻更适合你的方向。",
+        points: ["一眼看懂每个方向", "按照自己的节奏选择", "需要建议时直接开始沟通"]
       },
       download: {
         title: "使用指南",
-        summary: "从了解产品到进入 Portal 的公开开始说明。",
-        points: ["了解产品", "准备好后创建账户", "按照下一步指南操作", "在 Portal 管理服务"]
+        summary: "从了解产品到继续账户体验的简洁指南。",
+        points: ["了解产品", "准备好后创建账户", "按照下一步指南操作", "登录后继续"]
       },
       changelog: {
         title: "更新记录",
-        summary: "在有经过验证的公开发布说明时，记录产品体验更新。",
-        points: ["只记录公开变化", "不暗示生产状态", "经过验证的新信息优先于历史记录"]
+        summary: "持续了解 GCC WebOS 公开体验如何向前演进。",
+        points: ["发现新的变化", "了解体验如何持续改善", "随时回来查看后续更新"]
       },
       terms: {
         title: "服务条款",
@@ -569,8 +589,8 @@ const companySiteCopy = {
       },
       privacy: {
         title: "隐私政策",
-        summary: "说明官网如何处理基本访客信息与公开咨询信息。",
-        points: ["语言偏好", "公开咨询信息", "当前未使用广告追踪"]
+        summary: "从第一次访问开始，尊重你的隐私选择。",
+        points: ["语言偏好只保存在你的设备上", "联系信息只用于回应你的需求", "官网不使用广告追踪塑造体验"]
       },
       "acceptable-use": {
         title: "可接受使用",
@@ -579,18 +599,18 @@ const companySiteCopy = {
       },
       help: {
         title: "帮助中心",
-        summary: "进入公开指南与支持的入口。",
-        points: ["查看使用指南", "提交支持咨询", "账户事项登录 Portal 管理"]
+        summary: "需要指引时，帮助始终触手可及。",
+        points: ["探索使用指南", "开始支持沟通", "账户相关问题可登录后继续"]
       },
       contact: {
         title: "联系",
-        summary: "通过公开表单咨询产品、支持或合作事项。",
-        points: ["说明希望达成的结果", "不要提交凭证或私有服务材料", "账户操作继续在 Portal 完成"]
+        summary: "带来你的产品问题、支持需求或合作想法。",
+        points: ["告诉我们希望实现的结果", "请保留敏感账户信息", "选择适合你的沟通方向"]
       },
       status: {
         title: "服务状态",
-        summary: "提供一般状态说明，不展示未经验证的实时健康承诺。",
-        points: ["有经过验证的通知时再查看", "账户问题使用支持入口", "不要从本页推断运行时健康状态"]
+        summary: "在一个清晰的位置查看 GCC WebOS 服务通知。",
+        points: ["查看最新公开通知", "需要帮助时前往支持中心", "随时回来了解新的更新"]
       }
     } satisfies Record<InfoPageSlug, InfoPage>
   }
@@ -670,7 +690,10 @@ function buildPublicLeadPayload(formData: FormData) {
 export function CompanySitePage() {
   const [locale, setLocale] = useState<Locale>(detectBrowserLocale);
   const [activeSection, setActiveSection] = useState<CompanySiteSectionId>("top");
+  const [activeGuideStep, setActiveGuideStep] = useState(0);
+  const [isMobileContactOpen, setIsMobileContactOpen] = useState(false);
   const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
+  const [isStartChooserOpen, setIsStartChooserOpen] = useState(false);
   const [infoPage, setInfoPage] = useState<InfoPageSlug | null>(readInfoPageFromHash);
   const [leadStatus, setLeadStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
 
@@ -768,7 +791,13 @@ export function CompanySitePage() {
   }
 
   return (
-    <main className="company-site-shell" data-active-section={activeSection} data-locale={locale}>
+    <main
+      className="company-site-shell"
+      data-active-section={activeSection}
+      data-contact-open={isMobileContactOpen}
+      data-locale={locale}
+      data-start-open={isStartChooserOpen}
+    >
       <header className="company-site-header" data-mobile-menu-open={isMobileNavigationOpen}>
         <a
           className="company-site-brand"
@@ -825,6 +854,7 @@ export function CompanySitePage() {
 
       <section className="company-site-hero" id="top">
         <div className="company-site-hero-copy">
+          <span className="company-site-hero-eyebrow">GCC WEBOS · {copy.hero.eyebrow}</span>
           <h1>{copy.hero.title}</h1>
           <p>{copy.hero.description}</p>
           <div className="company-site-actions">
@@ -865,7 +895,65 @@ export function CompanySitePage() {
             <span />
           </div>
         </div>
+        <div className="company-site-mobile-start-card">
+          <div>
+            <strong>{copy.actions.openStart}</strong>
+            <span>{copy.actions.createAccount} · {copy.actions.signInNow}</span>
+          </div>
+          <button
+            aria-controls="company-site-start-chooser"
+            aria-expanded={isStartChooserOpen}
+            onClick={() => setIsStartChooserOpen(true)}
+            type="button"
+          >
+            {copy.actions.openStart}
+            <ArrowRight aria-hidden="true" />
+          </button>
+        </div>
       </section>
+
+      {isStartChooserOpen ? (
+        <div className="company-site-start-overlay">
+          <button
+            aria-label={copy.aria.closeStart}
+            className="company-site-sheet-backdrop"
+            onClick={() => setIsStartChooserOpen(false)}
+            type="button"
+          />
+          <section
+            aria-label={copy.aria.startChooser}
+            aria-modal="true"
+            className="company-site-start-chooser"
+            id="company-site-start-chooser"
+            role="dialog"
+          >
+            <header>
+              <button aria-label={copy.aria.closeStart} onClick={() => setIsStartChooserOpen(false)} type="button">×</button>
+              <strong>GCC WebOS</strong>
+              <CircleHelp aria-hidden="true" />
+            </header>
+            <div className="company-site-start-orbit" aria-hidden="true">
+              <span />
+              <span />
+              <i>G</i>
+              <b>{copy.actions.openStart}</b>
+            </div>
+            <div className="company-site-start-sheet-copy">
+              <small>WELCOME TO GCC WEBOS</small>
+              <h2>{copy.actions.openStart}</h2>
+              <p>{copy.hero.description}</p>
+            </div>
+            <a aria-label={copy.actions.createAccount} className="company-site-start-choice is-primary" href={registerUrl}>
+              <span><b>01</b><strong>{copy.actions.createAccount}</strong></span>
+              <ArrowRight aria-hidden="true" />
+            </a>
+            <a aria-label={copy.actions.signInNow} className="company-site-start-choice" href={loginUrl}>
+              <span><b>02</b><strong>{copy.actions.signInNow}</strong></span>
+              <ArrowRight aria-hidden="true" />
+            </a>
+          </section>
+        </div>
+      ) : null}
 
       <section className="company-site-product-layer" id="features">
         <div className="company-site-section-intro">
@@ -875,7 +963,7 @@ export function CompanySitePage() {
             <p>{copy.product.description}</p>
           </div>
         </div>
-        <div className="company-site-product-list">
+        <div className="company-site-product-list" data-mobile-rail="true">
           {copy.product.items.map((item) => {
             const Icon = iconMap[item.icon];
             return (
@@ -897,7 +985,7 @@ export function CompanySitePage() {
           <h2>{copy.plans.title}</h2>
           <p>{copy.plans.description}</p>
         </div>
-        <div className="company-site-product-rail" aria-label={copy.aria.productChoices}>
+        <div className="company-site-product-rail" aria-label={copy.aria.productChoices} data-mobile-rail="true">
           {copy.plans.items.map((item, index) => (
             <article key={item.title}>
               <span>0{index + 1}</span>
@@ -923,9 +1011,25 @@ export function CompanySitePage() {
           <h2>{copy.guide.title}</h2>
           <p>{copy.guide.description}</p>
         </div>
-        <ol className="company-site-guide-steps">
+        <ol
+          aria-label={copy.guide.title}
+          className="company-site-guide-steps"
+          data-active-step={activeGuideStep}
+          data-mobile-rail="true"
+          onScroll={(event) => {
+            const stepWidth = event.currentTarget.clientWidth;
+            if (stepWidth <= 0) {
+              return;
+            }
+            setActiveGuideStep(Math.max(0, Math.min(
+              copy.guide.steps.length - 1,
+              Math.round(event.currentTarget.scrollLeft / stepWidth)
+            )));
+          }}
+          tabIndex={0}
+        >
           {copy.guide.steps.map((step, index) => (
-            <li key={step.title}>
+            <li data-active={activeGuideStep === index} key={step.title}>
               <span>0{index + 1}</span>
               <i aria-hidden="true" />
               <h3>{step.title}</h3>
@@ -933,6 +1037,10 @@ export function CompanySitePage() {
             </li>
           ))}
         </ol>
+        <div className="company-site-guide-progress" aria-live="polite">
+          <strong>0{activeGuideStep + 1} / 0{copy.guide.steps.length}</strong>
+          <span>{copy.guide.swipeHint}<ArrowRight aria-hidden="true" /></span>
+        </div>
         <a className="company-site-inline-action" href={buildInfoPageHash("download")} onClick={(event) => openInfoPage(event, "download")}>
           <BookOpen aria-hidden="true" />
           {copy.actions.readGuide}
@@ -952,7 +1060,7 @@ export function CompanySitePage() {
             <i />
           </div>
         </div>
-        <div className="company-site-support-directory" aria-label={copy.aria.supportDirectory}>
+        <div className="company-site-support-directory" aria-label={copy.aria.supportDirectory} data-mobile-rail="true">
           {copy.support.resources.map((resource) => {
             const Icon = iconMap[resource.icon];
             const slug = resource.slug as InfoPageSlug;
@@ -1006,49 +1114,76 @@ export function CompanySitePage() {
               <li key={point}><Handshake aria-hidden="true" />{point}</li>
             ))}
           </ul>
-        </div>
-        <form className="company-site-contact-form" onSubmit={handleLeadSubmit}>
-          <div className="company-site-form-grid">
-            <label>
-              {copy.intake.fields.organization}
-              <input name="organization" placeholder={copy.intake.fields.organizationPlaceholder} required />
-            </label>
-            <label>
-              {copy.intake.fields.email}
-              <input name="email" placeholder={copy.intake.fields.emailPlaceholder} required type="email" />
-            </label>
-            <label>
-              {copy.intake.fields.interest}
-              <select defaultValue="" name="plan" required>
-                <option disabled value="">{copy.intake.fields.chooseInterest}</option>
-                {copy.intake.options.map((option, index) => (
-                  <option key={option} value={index === 0 ? "Essential Access" : index === 1 ? "Flexible Access" : option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              {copy.intake.fields.devices}
-              <input name="devices" placeholder={copy.intake.fields.devicesPlaceholder} />
-            </label>
-            <label className="company-site-form-wide">
-              {copy.intake.fields.region}
-              <input name="region" placeholder={copy.intake.fields.regionPlaceholder} />
-            </label>
-            <label className="company-site-form-wide">
-              {copy.intake.fields.useCase}
-              <textarea name="message" placeholder={copy.intake.fields.useCasePlaceholder} required rows={4} />
-            </label>
-          </div>
-          <p className="company-site-form-note"><ShieldCheck aria-hidden="true" />{copy.intake.note}</p>
-          {leadStatus === "success" ? <p className="company-site-form-status is-success" role="status">{copy.intake.success}</p> : null}
-          {leadStatus === "error" ? <p className="company-site-form-status is-error" role="alert">{copy.intake.error}</p> : null}
-          <button className="company-site-primary" type="submit" disabled={leadStatus === "submitting"}>
-            {leadStatus === "submitting" ? copy.actions.submitting : copy.actions.submit}
+          <button
+            aria-controls="company-site-contact-panel"
+            aria-expanded={isMobileContactOpen}
+            className="company-site-mobile-contact-opener"
+            onClick={() => setIsMobileContactOpen(true)}
+            type="button"
+          >
+            {copy.actions.openContact}
             <ArrowRight aria-hidden="true" />
           </button>
-        </form>
+        </div>
+        <div
+          aria-label={isMobileContactOpen ? copy.aria.contactDialog : undefined}
+          aria-modal={isMobileContactOpen ? true : undefined}
+          className="company-site-contact-panel"
+          data-mobile-open={isMobileContactOpen}
+          id="company-site-contact-panel"
+          role={isMobileContactOpen ? "dialog" : undefined}
+        >
+          <button
+            aria-label={copy.aria.closeContact}
+            className="company-site-contact-close"
+            onClick={() => setIsMobileContactOpen(false)}
+            type="button"
+          >
+            ×
+          </button>
+          <form className="company-site-contact-form" onSubmit={handleLeadSubmit}>
+            <div className="company-site-form-grid">
+              <label>
+                {copy.intake.fields.organization}
+                <input name="organization" placeholder={copy.intake.fields.organizationPlaceholder} required />
+              </label>
+              <label>
+                {copy.intake.fields.email}
+                <input name="email" placeholder={copy.intake.fields.emailPlaceholder} required type="email" />
+              </label>
+              <label>
+                {copy.intake.fields.interest}
+                <select defaultValue="" name="plan" required>
+                  <option disabled value="">{copy.intake.fields.chooseInterest}</option>
+                  {copy.intake.options.map((option, index) => (
+                    <option key={option} value={index === 0 ? "Essential Access" : index === 1 ? "Flexible Access" : option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {copy.intake.fields.devices}
+                <input name="devices" placeholder={copy.intake.fields.devicesPlaceholder} />
+              </label>
+              <label className="company-site-form-wide">
+                {copy.intake.fields.region}
+                <input name="region" placeholder={copy.intake.fields.regionPlaceholder} />
+              </label>
+              <label className="company-site-form-wide">
+                {copy.intake.fields.useCase}
+                <textarea name="message" placeholder={copy.intake.fields.useCasePlaceholder} required rows={4} />
+              </label>
+            </div>
+            <p className="company-site-form-note"><ShieldCheck aria-hidden="true" />{copy.intake.note}</p>
+            {leadStatus === "success" ? <p className="company-site-form-status is-success" role="status">{copy.intake.success}</p> : null}
+            {leadStatus === "error" ? <p className="company-site-form-status is-error" role="alert">{copy.intake.error}</p> : null}
+            <button className="company-site-primary" type="submit" disabled={leadStatus === "submitting"}>
+              {leadStatus === "submitting" ? copy.actions.submitting : copy.actions.submit}
+              <ArrowRight aria-hidden="true" />
+            </button>
+          </form>
+        </div>
       </section>
 
       <section className="company-site-faq" id="faq">
