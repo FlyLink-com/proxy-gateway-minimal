@@ -96,8 +96,8 @@ describe("admin module contract", () => {
       "usageMonitor:usage-ledger": "pagination",
       "usageMonitor:partner-attribution-report": "pagination",
       "usageMonitor:collection-anomalies": "pagination",
-      "usageMonitor:receipts-collectors": "pagination"
-      ,"paymentLogs:payment-attempts": "pagination"
+      "usageMonitor:receipts-collectors": "pagination",
+      "paymentLogs:payment-attempts": "not-applicable"
     });
   });
 

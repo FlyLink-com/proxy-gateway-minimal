@@ -8,22 +8,25 @@ import {
 import { overviewBlueprint } from "../pages/dashboard-page";
 import { accountsResourcesBlueprint } from "../pages/portal-requests-page";
 import { usageChannelsBlueprint } from "../pages/subscription-usage-monitor-page";
+import { paymentLogsBlueprint } from "../pages/payment-logs-page";
 
 const adminBlueprints = [
   overviewBlueprint(),
   accountsResourcesBlueprint,
-  usageChannelsBlueprint
+  usageChannelsBlueprint,
+  paymentLogsBlueprint
 ];
 
 describe("admin safe read page model", () => {
   test("creates one page-level safe read model per active Admin page", () => {
     const models = createAdminSafeReadPageModels(adminBlueprints);
 
-    expect(models).toHaveLength(3);
+    expect(models).toHaveLength(4);
     expect(models.map((model) => model.page)).toEqual([
       "dashboard",
       "portalRequests",
-      "usageMonitor"
+      "usageMonitor",
+      "paymentLogs"
     ]);
     models.forEach((model) => {
       expect(model.schemaVersion).toBe(ADMIN_SAFE_READ_PAGE_MODEL_SCHEMA);
@@ -68,6 +71,8 @@ describe("admin safe read page model", () => {
       "collection-anomalies",
       "receipts-collectors"
     ]);
+    expect(modelsByPage.paymentLogs.visibleSectionIds).toEqual(["payment-attempts"]);
+    expect(modelsByPage.paymentLogs.deferredSectionIds).toEqual([]);
   });
 
   test("summarizes fixture projection counts without exposing unsafe material", () => {
@@ -95,6 +100,13 @@ describe("admin safe read page model", () => {
         rowCount: 14,
         totalSections: 6,
         visibleSections: 3
+      },
+      {
+        chipCount: 2,
+        deferredSections: 0,
+        rowCount: 1,
+        totalSections: 1,
+        visibleSections: 1
       }
     ]);
     expect(JSON.stringify(models)).not.toMatch(

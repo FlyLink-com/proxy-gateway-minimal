@@ -40,13 +40,13 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
 describe("admin API client", () => {
   test("lists payment logs with trusted bearer/query and fail-closed redacted DTO validation", async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse({
-      items: [{ attemptRef: "attempt_1", orderRef: "order_1", providerId: "provider_private", status: "confirmed_no_charge", chargeCertainty: "confirmed_no_charge", sourceAttemptRef: null, targetAttemptRef: null, switchReason: null, idempotencyFingerprint: "a".repeat(64), reconciliationState: "not_required", createdAt: "2026-07-22T00:00:00.000Z", updatedAt: "2026-07-22T00:00:00.000Z" }],
+      items: [{ attemptRef: "attempt_1", orderRef: "order_1", providerId: "provider_private", status: "confirmed_no_charge", chargeCertainty: "confirmed_no_charge", sourceAttemptRef: null, targetAttemptRef: null, switchReason: null, idempotencyFingerprint: "a".repeat(64), reconciliationState: "confirmed_no_charge", createdAt: "2026-07-22T00:00:00.000Z", updatedAt: "2026-07-22T00:00:00.000Z" }],
       nextCursor: null,
       safety: { readOnly: true, mutationAllowed: false }
     }));
     const client = createAdminApiClient({ baseUrl: "http://127.0.0.1:3456/", consoleToken: "console-secret", fetcher });
-    const items = await client.listPaymentLogs({ status: "pending review" });
-    expect(fetcher.mock.calls[0][0]).toBe("http://127.0.0.1:3456/api/admin/platform/payment-logs?status=pending+review");
+    const items = await client.listPaymentLogs({ status: "pending" });
+    expect(fetcher.mock.calls[0][0]).toBe("http://127.0.0.1:3456/api/admin/platform/payment-logs?status=pending");
     expect((fetcher.mock.calls[0][1] as unknown as RequestInit).headers).toBeInstanceOf(Headers);
     expect((((fetcher.mock.calls[0][1] as unknown as RequestInit).headers as Headers).get("authorization"))).toBe("Bearer console-secret");
     expect(items[0]).not.toHaveProperty("providerId");

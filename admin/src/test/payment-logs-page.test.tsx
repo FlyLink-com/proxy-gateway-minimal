@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PaymentLogsPage } from "../pages/payment-logs-page";
 import { PAYMENT_LOG_FIXTURE, parsePaymentLogsEnvelope, toPaymentLogRows, type PaymentLogDto } from "../features/payment-logs/payment-logs-model";
 
-const api = (listPaymentLogs: (...args: unknown[]) => Promise<PaymentLogDto[]>) => ({ listPaymentLogs } as never);
+const api = (listPaymentLogs: (...args: any[]) => Promise<PaymentLogDto[]>) => ({ listPaymentLogs } as never);
 afterEach(cleanup);
 
 describe("Payment Logs page", () => {
@@ -23,11 +23,13 @@ describe("Payment Logs page", () => {
   });
 
   it("renders success, frozen status/charge certainty, and local safe-ref search", async () => {
-    const items: PaymentLogDto[] = [{ ...PAYMENT_LOG_FIXTURE[0], attemptRef: "attempt_admin_01", orderRef: "order_admin_01", status: "confirmed_no_charge", chargeCertainty: "confirmed_no_charge" }];
+    const items: PaymentLogDto[] = [{ ...PAYMENT_LOG_FIXTURE[0], attemptRef: "attempt_admin_01", orderRef: "order_admin_01", status: "confirmed_no_charge", chargeCertainty: "confirmed_no_charge", reconciliationState: "confirmed_no_charge" }];
     render(<PaymentLogsPage apiClient={api(async () => items)} />);
     await waitFor(() => expect(screen.getByRole("table")).toBeTruthy());
     expect(screen.getAllByText("confirmed_no_charge").length).toBeGreaterThan(0);
-    fireEvent.change(screen.getByLabelText("Safe-ref search"), { target: { value: "admin_01" } });
+    fireEvent.change(screen.getByLabelText("Safe-ref search"), { target: { value: "super_secret" } });
+    expect(screen.getByRole("status").textContent).toContain("No payment attempts found");
+    fireEvent.change(screen.getByLabelText("Safe-ref search"), { target: { value: "attempt_••01" } });
     expect(screen.getByRole("table")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Safe-ref search"), { target: { value: "missing" } });
     expect(screen.getByRole("status").textContent).toContain("No payment attempts found");
@@ -40,6 +42,23 @@ describe("Payment Logs page", () => {
     fireEvent.change(screen.getByLabelText("Status"), { target: { value: "pending" } });
     await waitFor(() => expect(listPaymentLogs).toHaveBeenCalledWith(expect.objectContaining({ status: "pending", signal: expect.any(AbortSignal) })));
   });
+
+  it("does not let stale or unmounted requests overwrite the view", async () => {
+    let resolveOld!: (items: PaymentLogDto[]) => void;
+    let resolveNew!: (items: PaymentLogDto[]) => void;
+    const listPaymentLogs = vi.fn((filters?: { status?: string; signal?: AbortSignal }) => new Promise<PaymentLogDto[]>((resolve) => {
+      if (filters?.status === "pending") resolveNew = resolve;
+      else resolveOld = resolve;
+    }));
+    const { rerender, unmount } = render(<PaymentLogsPage apiClient={api(listPaymentLogs)} />);
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "pending" } });
+    resolveOld([{ ...PAYMENT_LOG_FIXTURE[0], attemptRef: "attempt_old" }]);
+    resolveNew([{ ...PAYMENT_LOG_FIXTURE[0], attemptRef: "attempt_new" }]);
+    await waitFor(() => expect(screen.getByText("attempt_••ew")).toBeTruthy());
+    rerender(<PaymentLogsPage apiClient={api(listPaymentLogs)} fixturePreviewEnabled />);
+    unmount();
+    expect(screen.queryByText("attempt_old")).toBeNull();
+  });
 });
 
 describe("Payment Logs safe DTO", () => {
@@ -50,5 +69,22 @@ describe("Payment Logs safe DTO", () => {
     expect(safe[0]).not.toHaveProperty("idempotencyFingerprint");
     expect(() => parsePaymentLogsEnvelope({ ...envelope, extra: true })).toThrow();
     expect(JSON.stringify(toPaymentLogRows(safe))).not.toMatch(/provider|fingerprint|secret/i);
+  });
+
+  it("enforces frozen status/certainty, reconciliation, refs, and canonical timestamps", () => {
+    const raw = { attemptRef: "attempt_1", orderRef: "order_1", providerId: "provider_private", status: "confirmed_no_charge", chargeCertainty: "confirmed_no_charge", sourceAttemptRef: null, targetAttemptRef: null, switchReason: null, idempotencyFingerprint: "a".repeat(64), reconciliationState: "confirmed_no_charge", createdAt: "2026-07-22T00:00:00.000Z", updatedAt: "2026-07-22T00:00:00.000Z" };
+    const envelope = { items: [raw], nextCursor: null, safety: { readOnly: true, mutationAllowed: false } };
+    expect(parsePaymentLogsEnvelope(envelope)[0].chargeCertainty).toBe("confirmed_no_charge");
+    expect(() => parsePaymentLogsEnvelope({ ...envelope, items: [{ ...raw, chargeCertainty: "none" }] })).toThrow();
+    expect(() => parsePaymentLogsEnvelope({ ...envelope, items: [{ ...raw, reconciliationState: "not_required" }] })).toThrow();
+    expect(() => parsePaymentLogsEnvelope({ ...envelope, items: [{ ...raw, attemptRef: "bad ref" }] })).toThrow();
+    expect(() => parsePaymentLogsEnvelope({ ...envelope, items: [{ ...raw, createdAt: "2026-07-22" }] })).toThrow();
+  });
+
+  it("searches only masked visible refs", () => {
+    const rows = toPaymentLogRows([{ ...PAYMENT_LOG_FIXTURE[0], attemptRef: "attempt_super_secret_01", orderRef: "order_visible_02" }]);
+    expect(rows[0].attemptRef).toContain("••");
+    expect(rows[0].attemptRef).not.toContain("super_secret");
+    expect(rows[0].orderRef).toContain("order_vi");
   });
 });

@@ -7,6 +7,7 @@ import { ADMIN_VISUAL_QA_AXES } from "../design/figma-mirror";
 import { DashboardPage } from "../pages/dashboard-page";
 import { accountsResourcesBlueprint, PortalRequestsPage } from "../pages/portal-requests-page";
 import { SubscriptionUsageMonitorPage, usageChannelsBlueprint } from "../pages/subscription-usage-monitor-page";
+import { PaymentLogsPage } from "../pages/payment-logs-page";
 
 const PROHIBITED_SENSITIVE_TEXT =
   /https?:\/\/|subscriptionUrl|token=|Bearer|raw token|raw credential|secret-value|password|edgecred_|sqlite-row-value/i;
@@ -156,6 +157,14 @@ describe("admin visual QA contract", () => {
     expect(document.querySelector(".admin-blueprint-module-dock")).toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(PROHIBITED_SENSITIVE_TEXT);
     assertNamedInteractiveControls();
+  });
+
+  test("keeps Payment Logs evidence masked and mutation-free", () => {
+    render(<PaymentLogsPage fixturePreviewEnabled />);
+    expect(screen.getByText("READ-ONLY")).not.toBeNull();
+    expect(screen.getByRole("table").textContent).toContain("order_ad");
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(document.body.textContent ?? "").not.toMatch(PROHIBITED_SENSITIVE_TEXT);
   });
 
   test("keeps automated QA coverage aligned with the Figma mirror evidence axes", () => {

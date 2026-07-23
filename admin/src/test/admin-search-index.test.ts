@@ -3,11 +3,13 @@ import { createAdminSearchResults } from "../app/admin-search-index";
 import { overviewBlueprint } from "../pages/dashboard-page";
 import { accountsResourcesBlueprint } from "../pages/portal-requests-page";
 import { usageChannelsBlueprint } from "../pages/subscription-usage-monitor-page";
+import { paymentLogsBlueprint } from "../pages/payment-logs-page";
 
 const blueprints = [
   overviewBlueprint(),
   accountsResourcesBlueprint,
-  usageChannelsBlueprint
+  usageChannelsBlueprint,
+  paymentLogsBlueprint
 ];
 
 describe("admin system search index", () => {
@@ -34,5 +36,9 @@ describe("admin system search index", () => {
       })
     ]));
     expect(results.find((result) => result.id === "planned:system-settings")?.page).toBeUndefined();
+  });
+
+  test("searches Payment Logs page and module aliases", () => {
+    expect(createAdminSearchResults({ blueprints, query: "payment" }).map((result) => result.id)).toEqual(expect.arrayContaining(["paymentLogs:page", "paymentLogs:payment-attempts"]));
   });
 });

@@ -8,18 +8,20 @@ import { ADMIN_PAGINATION_STANDARD } from "../app/admin-ui-standards";
 import { overviewBlueprint } from "../pages/dashboard-page";
 import { accountsResourcesBlueprint } from "../pages/portal-requests-page";
 import { usageChannelsBlueprint } from "../pages/subscription-usage-monitor-page";
+import { paymentLogsBlueprint } from "../pages/payment-logs-page";
 
 const adminBlueprints = [
   overviewBlueprint(),
   accountsResourcesBlueprint,
-  usageChannelsBlueprint
+  usageChannelsBlueprint,
+  paymentLogsBlueprint
 ];
 
 describe("admin safe read projection", () => {
   test("creates one safe read projection per visible Admin module", () => {
     const projections = createAdminSafeReadProjections(adminBlueprints);
 
-    expect(projections).toHaveLength(14);
+    expect(projections).toHaveLength(15);
     projections.forEach((projection) => {
       expect(projection.schemaVersion).toBe(ADMIN_SAFE_READ_PROJECTION_SCHEMA);
       expect(projection.dataBoundary).toBe("safe-summary-only");

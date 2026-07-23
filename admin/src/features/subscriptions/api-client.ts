@@ -41,7 +41,7 @@ import type {
   TempLinkResult
 } from "./types";
 import { adminAuthOriginPolicy, normalizeBaseUrl } from "./api-origin-policy";
-import { parsePaymentLogsEnvelope } from "../payment-logs/payment-logs-model";
+import { parsePaymentLogsEnvelope, type PaymentLogStatus } from "../payment-logs/payment-logs-model";
 
 type Fetcher = typeof fetch;
 
@@ -131,7 +131,7 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
   }
 
   return {
-    listPaymentLogs: async (filters: { status?: string; limit?: number; cursor?: number; signal?: AbortSignal } = {}) => {
+    listPaymentLogs: async (filters: { status?: PaymentLogStatus; limit?: number; cursor?: number; signal?: AbortSignal } = {}) => {
       const params = new URLSearchParams();
       if (filters.status) params.set("status", filters.status);
       if (filters.limit) params.set("limit", String(filters.limit));

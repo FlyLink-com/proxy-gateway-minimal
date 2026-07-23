@@ -7,6 +7,7 @@ import {
 import { overviewBlueprint } from "./dashboard-page";
 import { accountsResourcesBlueprint } from "./portal-requests-page";
 import { usageChannelsBlueprint } from "./subscription-usage-monitor-page";
+import { paymentLogsBlueprint } from "./payment-logs-page";
 
 export function AdminSearchResultsPage({
   searchQuery,
@@ -19,7 +20,8 @@ export function AdminSearchResultsPage({
   const blueprints = useMemo(() => [
     overviewBlueprint(),
     accountsResourcesBlueprint,
-    usageChannelsBlueprint
+    usageChannelsBlueprint,
+    paymentLogsBlueprint
   ], []);
   const results = useMemo(() => createAdminSearchResults({
     blueprints,
