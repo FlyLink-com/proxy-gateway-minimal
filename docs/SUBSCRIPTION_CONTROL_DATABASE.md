@@ -61,6 +61,16 @@ and initializes these SQLite tables:
 | `platform_edge_desired_state_notifications` | Safe pending/acknowledged/applied/failed coordination facts for remote data-plane desired-state delivery. |
 | `platform_edge_agent_leases` | Loopback/internal agent lease facts for desired-state pulls. |
 
+The startup DDL owned by `createSqliteSubscriptionControlStore({ dbPath })`
+owns only the subscription-control objects documented above. It does not
+create, alter, migrate, or verify Coins wallet objects.
+
+Coins wallet schema ownership is separate: it uses a checksum-bound migration
+module and the separately gated `platform_schema_migrations` ledger described
+in `docs/COINS_WALLET_SCHEMA_GATE.md`. The presence of that source and CLI does
+not prove that a production migration occurred and does not authorize startup
+DDL to absorb Coins ownership.
+
 Remote data-plane notification rows intentionally store only safe refs:
 
 ```text
