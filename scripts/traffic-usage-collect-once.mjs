@@ -245,12 +245,30 @@ export async function runTrafficUsageCollectOnce({
     }
   }
   const observationStore = state.platform?.japanTuicRepairObservationStore;
+  const observationEnabled = observationStore && typeof observationStore.write === "function";
+  if (
+    summary.ok === true
+    && summary.rawReportOk === true
+    && observationEnabled
+    && !statusProjection
+  ) {
+    stderr.write(`${JSON.stringify({
+      type: "japan_tuic_repair_observation_snapshot",
+      ok: false,
+      error: "observation_snapshot_write_failed",
+      safety: {
+        redacted: true,
+        pathReturned: false,
+        rawErrorReturned: false
+      }
+    })}\n`);
+    return 1;
+  }
   if (
     summary.ok === true
     && summary.rawReportOk === true
     && statusProjection
-    && observationStore
-    && typeof observationStore.write === "function"
+    && observationEnabled
   ) {
     try {
       observationStore.write({ projection: statusProjection });

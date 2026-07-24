@@ -47,7 +47,6 @@ const BINDING_PATH_KEYS = Object.freeze([
 const ALLOWED_ZIP_TYPES = new Set(["-", "d"]);
 const REQUIRED_ARCHIVE_ENTRIES = Object.freeze([
   "scripts/mihomo-tuic-usage-map-rebuild.mjs",
-  "server/services/platform/japan-tuic-repair-observation.mjs",
   "server/services/platform/traffic-collector-admin-projection.mjs",
   "server/services/platform/traffic-collector-status-producers.mjs"
 ]);
@@ -70,6 +69,16 @@ const SAFE_ERROR_CODES = new Set([
 const execFileAsync = promisify(execFileCallback);
 const MAX_HELPER_OUTPUT_BYTES = 64 * 1024;
 const MAX_PROTECTED_OBSERVATION_BYTES = 4 * 1024 * 1024;
+const MAX_JAPAN_OBSERVATION_BYTES = 256 * 1024;
+const RUNNER_DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const INSTALLED_JAPAN_OBSERVATION_HELPER = join(
+  RUNNER_DIRECTORY,
+  "..",
+  "server",
+  "services",
+  "platform",
+  "japan-tuic-repair-observation.mjs"
+);
 
 function safeError(code) {
   return new JapanTuicRepairContractError(code);
@@ -815,19 +824,13 @@ export function createHostOperations({
     async readNaturalObservation({ root, binding: activeBinding }) {
       const input = readBoundedJson(
         activeBinding.paths.naturalObservation,
-        MAX_PROTECTED_OBSERVATION_BYTES,
+        MAX_JAPAN_OBSERVATION_BYTES,
         "natural_observation_failed"
       );
       let validator = naturalObservationValidator;
       if (!validator) {
         try {
-          const module = await import(pathToFileURL(join(
-            root,
-            "server",
-            "services",
-            "platform",
-            "japan-tuic-repair-observation.mjs"
-          )).href);
+          const module = await import(pathToFileURL(INSTALLED_JAPAN_OBSERVATION_HELPER).href);
           validator = module.validateJapanTuicRepairObservation;
         } catch {
           throw safeError("natural_observation_failed");

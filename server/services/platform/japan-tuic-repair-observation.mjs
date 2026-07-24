@@ -156,7 +156,6 @@ export function createJapanTuicRepairObservationStore({ filePath } = {}) {
 
       const parentDirectory = dirname(path);
       mkdirSync(parentDirectory, { recursive: true, mode: 0o700 });
-      chmodSync(parentDirectory, 0o700);
       const temporaryPath = join(parentDirectory, `.${basename(path)}.tmp-${process.pid}`);
       let temporaryCreated = false;
       try {

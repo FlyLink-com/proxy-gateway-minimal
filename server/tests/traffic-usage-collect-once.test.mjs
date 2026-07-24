@@ -656,6 +656,125 @@ test("traffic usage collect CLI keeps metering result authoritative when status 
   assert.doesNotMatch(stderr, /protected|private|status-path/i);
 });
 
+test("traffic usage collect CLI fails closed when observation is configured and status writing fails", async () => {
+  let stdout = "";
+  let stderr = "";
+  let observationWrites = 0;
+  const exitCode = await runTrafficUsageCollectOnce({
+    argv: ["--collect"],
+    stdout: { write(chunk) { stdout += chunk; } },
+    stderr: { write(chunk) { stderr += chunk; } },
+    runtimeStateFactory() {
+      return {
+        platform: {
+          edgeUsageAccounting: {
+            async collectAndRecord() {
+              return {
+                ok: true,
+                collectorCount: 0,
+                reports: [],
+                safety: {
+                  noRawRuntimePayload: true,
+                  noSecretMaterialReturned: true
+                },
+                redacted: true
+              };
+            }
+          },
+          trafficCollectorStatusStore: {
+            write() {
+              throw new Error("/protected/private/status-path must not leak");
+            }
+          },
+          japanTuicRepairObservationStore: {
+            write() {
+              observationWrites += 1;
+            }
+          }
+        }
+      };
+    }
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(stdout, "");
+  assert.equal(observationWrites, 0);
+  assert.deepEqual(stderr.trim().split("\n").map((line) => JSON.parse(line)), [
+    {
+      type: "traffic_collector_status_snapshot",
+      ok: false,
+      error: "status_snapshot_write_failed",
+      safety: {
+        redacted: true,
+        pathReturned: false,
+        rawErrorReturned: false
+      }
+    },
+    {
+      type: "japan_tuic_repair_observation_snapshot",
+      ok: false,
+      error: "observation_snapshot_write_failed",
+      safety: {
+        redacted: true,
+        pathReturned: false,
+        rawErrorReturned: false
+      }
+    }
+  ]);
+  assert.doesNotMatch(stderr, /protected|private|status-path/i);
+});
+
+test("traffic usage collect CLI fails closed when observation is configured without a status projection", async () => {
+  let stderr = "";
+  const exitCode = await runTrafficUsageCollectOnce({
+    argv: ["--collect"],
+    stdout: { write() {} },
+    stderr: { write(chunk) { stderr += chunk; } },
+    runtimeStateFactory() {
+      return {
+        platform: {
+          edgeUsageAccounting: {
+            async collectAndRecord() {
+              return {
+                ok: true,
+                collectorCount: 0,
+                reports: [],
+                safety: {
+                  noRawRuntimePayload: true,
+                  noSecretMaterialReturned: true
+                },
+                redacted: true
+              };
+            }
+          },
+          trafficCollectorStatusStore: {
+            write() {
+              return undefined;
+            }
+          },
+          japanTuicRepairObservationStore: {
+            write() {
+              throw new Error("must not be called without a projection");
+            }
+          }
+        }
+      };
+    }
+  });
+
+  assert.equal(exitCode, 1);
+  assert.deepEqual(JSON.parse(stderr), {
+    type: "japan_tuic_repair_observation_snapshot",
+    ok: false,
+    error: "observation_snapshot_write_failed",
+    safety: {
+      redacted: true,
+      pathReturned: false,
+      rawErrorReturned: false
+    }
+  });
+});
+
 test("traffic usage collect CLI runs when invoked through a symlinked path", () => {
   const tempDir = mkdtempSync(join(tmpdir(), "traffic-usage-collect-cli-"));
   const scriptPath = join(tempDir, "check-direct-invocation.mjs");

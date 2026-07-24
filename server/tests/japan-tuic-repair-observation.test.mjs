@@ -130,6 +130,14 @@ test("Japan TUIC repair observation store atomically persists only the aggregate
   }
 });
 
+test("Japan TUIC repair observation store does not chmod an existing parent directory", () => {
+  const source = readFileSync(
+    new URL("../services/platform/japan-tuic-repair-observation.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.doesNotMatch(source, /chmodSync\(parentDirectory\b/);
+});
+
 test("Japan TUIC repair observation store rejects a relative path", () => {
   assert.throws(() => createJapanTuicRepairObservationStore({
     filePath: "relative-observation.json"

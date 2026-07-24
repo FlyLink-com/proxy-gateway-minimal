@@ -310,11 +310,10 @@ test("binding rejects relative, duplicate, missing, and extra path fields", () =
 test("archive inspection requires reviewed helpers and rejects unsafe paths", () => {
   const requiredEntries = [
     "scripts/mihomo-tuic-usage-map-rebuild.mjs",
-    "server/services/platform/japan-tuic-repair-observation.mjs",
     "server/services/platform/traffic-collector-admin-projection.mjs",
     "server/services/platform/traffic-collector-status-producers.mjs"
   ];
-  assert.deepEqual(validateArchiveEntries(requiredEntries), { safe: true, entryCount: 4 });
+  assert.deepEqual(validateArchiveEntries(requiredEntries), { safe: true, entryCount: 3 });
   for (const entries of [
     ["../escape", ...requiredEntries],
     ["/absolute", ...requiredEntries],
@@ -530,7 +529,6 @@ test("host adapter inspects ZIP names and types before fixed extraction", async 
   const calls = [];
   const requiredEntries = [
     "scripts/mihomo-tuic-usage-map-rebuild.mjs",
-    "server/services/platform/japan-tuic-repair-observation.mjs",
     "server/services/platform/traffic-collector-admin-projection.mjs",
     "server/services/platform/traffic-collector-status-producers.mjs"
   ];
@@ -560,7 +558,7 @@ test("host adapter rejects a ZIP symlink before extraction", async () => {
     binding: validBinding(),
     execFileFn: async (_file, args) => {
       if (args[0] === "-Z1") {
-        return { stdout: "scripts/mihomo-tuic-usage-map-rebuild.mjs\nserver/services/platform/japan-tuic-repair-observation.mjs\nserver/services/platform/traffic-collector-admin-projection.mjs\nserver/services/platform/traffic-collector-status-producers.mjs\n", stderr: "" };
+        return { stdout: "scripts/mihomo-tuic-usage-map-rebuild.mjs\nserver/services/platform/traffic-collector-admin-projection.mjs\nserver/services/platform/traffic-collector-status-producers.mjs\n", stderr: "" };
       }
       return { stdout: "lrwxrwxrwx  3.0 unx 1 tx scripts/mihomo-tuic-usage-map-rebuild.mjs", stderr: "" };
     }
@@ -692,9 +690,38 @@ test("host adapter consumes the aggregate persisted by the Japan observation sto
     binding,
     execFileFn: async () => ({ stdout: "", stderr: "" })
   });
-  const summary = await operations.readNaturalObservation({ root: process.cwd(), binding });
+  const summary = await operations.readNaturalObservation({
+    root: join(directory, "extracted-frozen-artifact-without-observation-helper"),
+    binding
+  });
   assert.deepEqual(summary, observationCurrent({ unresolvedTotal: 0 }));
   assert.equal(JSON.stringify(summary).includes("must/not-return"), false);
+});
+
+test("host adapter rejects a Japan observation larger than 256 KiB", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-natural-oversized-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const observationPath = join(directory, "natural-observation.json");
+  writeFileSync(observationPath, `${JSON.stringify({
+    schemaVersion: "1",
+    type: "japan_tuic_repair_observation",
+    capturedAt: "2026-07-16T20:05:00.000Z",
+    collectorCount: 5,
+    unresolvedTotal: 0,
+    japanTuicUnresolved: 0,
+    accepted: true
+  })}${" ".repeat(256 * 1024)}`);
+  const binding = validBinding({
+    paths: { ...validBinding().paths, naturalObservation: observationPath }
+  });
+  const operations = createHostOperations({
+    binding,
+    execFileFn: async () => ({ stdout: "", stderr: "" })
+  });
+  await assert.rejects(
+    () => operations.readNaturalObservation({ root: process.cwd(), binding }),
+    (error) => error.code === "natural_observation_failed"
+  );
 });
 
 test("host adapter rejects an aggregate observation with an unknown field", async (t) => {
