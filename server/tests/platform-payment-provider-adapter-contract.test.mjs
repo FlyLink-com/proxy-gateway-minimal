@@ -72,7 +72,7 @@ function validCallbackInput(overrides = {}) {
 
 function enabledAdapter(overrides = {}) {
   const adapter = {
-    adapterKey: "provider_core",
+    adapterKey: "provider_core_adapter",
     providerId: "provider_core",
     contractVersion: "v1",
     capabilities: {
@@ -276,6 +276,13 @@ test("enforces all capability invariants and disables before compiled invocation
     })),
     expectCode("invalid_payment_provider_adapter"),
   );
+  assert.throws(
+    () => assertPaymentProviderAdapterContract(enabledAdapter({
+      adapterKey: "provider_core",
+      providerId: "provider_core",
+    })),
+    expectCode("invalid_payment_provider_adapter"),
+  );
   const same = () => validResult();
   assert.throws(
     () => assertPaymentProviderAdapterContract(enabledAdapter({
@@ -321,6 +328,15 @@ test("rejects hostile reflection surfaces without triggering Proxy traps", async
     expectCode("invalid_payment_provider_adapter"),
   );
   assertNoProxyTraps(methods.counters);
+
+  const revokedMethods = Proxy.revocable(["alipay"], {});
+  revokedMethods.revoke();
+  assert.throws(
+    () => assertPaymentProviderAdapterContract(enabledAdapter({
+      supportedPaymentMethods: revokedMethods.proxy,
+    })),
+    expectCode("invalid_payment_provider_adapter"),
+  );
 
   const fn = proxyWithTrapCounters(() => validResult());
   assert.throws(
@@ -379,7 +395,7 @@ test("snapshots adapter metadata, methods, origins, inputs, and freezes detached
   const pending = normalized.createRechargeOrder(input);
   input.amountMinor = 999;
   const result = await pending;
-  assert.equal(normalized.adapterKey, "provider_core");
+  assert.equal(normalized.adapterKey, "provider_core_adapter");
   assert.equal(calls, 1);
   assert.deepEqual(result, validResult());
   assert.ok(Object.isFrozen(result));
@@ -517,6 +533,23 @@ test("normalizes null, redirect, and QR actions with compile-time HTTPS origin b
       { type: "redirect", url: "https://pay.example.com", expiresAt: NOW, html: "<b>x</b>" },
       { allowedActionOrigins: ACTION_ORIGINS },
     ),
+    expectCode("invalid_payment_next_action"),
+  );
+  const mappedLoopbackOrigin = "https://[::ffff:7f00:1]";
+  assert.throws(
+    () => assertPaymentProviderAdapterContract(enabledAdapter(), {
+      allowedActionOrigins: [mappedLoopbackOrigin],
+    }),
+    expectCode("invalid_payment_provider_adapter"),
+  );
+  assert.throws(
+    () => normalizePaymentNextAction({
+      type: "redirect",
+      url: `${mappedLoopbackOrigin}/start`,
+      expiresAt: NOW,
+    }, {
+      allowedActionOrigins: [mappedLoopbackOrigin],
+    }),
     expectCode("invalid_payment_next_action"),
   );
   const trapped = proxyWithTrapCounters({
@@ -719,6 +752,31 @@ test("normalizes every provider code and enforces charge-certainty restrictions 
   assert.ok(!JSON.stringify(collapsed).includes(marker));
   assert.ok(!collapsed.message.includes(marker));
   assert.ok(!collapsed.stack.includes(marker));
+});
+
+test("consumes rejected async normalizeError results without unhandled rejection", async () => {
+  const marker = "async-normalize-error-marker";
+  let unhandled;
+  const onUnhandled = (error) => {
+    unhandled = error;
+  };
+  process.once("unhandledRejection", onUnhandled);
+  try {
+    const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
+      normalizeError: async () => {
+        throw new Error(marker);
+      },
+    }));
+    const collapsed = adapter.normalizeError({
+      operation: "query_payment",
+      error: new Error(marker),
+    });
+    assert.equal(collapsed.code, "provider_operation_failed");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(unhandled, undefined);
+  } finally {
+    process.removeListener("unhandledRejection", onUnhandled);
+  }
 });
 
 test("credential execution covers five operations, exact bindings, fresh scopes, and no credential view", async () => {

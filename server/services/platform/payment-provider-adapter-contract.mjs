@@ -1,4 +1,5 @@
 import { types as utilTypes } from "node:util";
+import { isIP } from "node:net";
 
 const ERROR_CODES = new Set([
   "invalid_payment_method",
@@ -171,7 +172,7 @@ function snapshotOptionalObject(value, allowedKeys, code) {
 }
 
 function snapshotArray(value, code) {
-  if (!Array.isArray(value) || utilTypes.isProxy(value)) throw contractError(code);
+  if (utilTypes.isProxy(value) || !Array.isArray(value)) throw contractError(code);
   if (Object.getPrototypeOf(value) !== Array.prototype) throw contractError(code);
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const keys = Reflect.ownKeys(descriptors);
@@ -302,14 +303,61 @@ function canonicalOrigin(value, code) {
     || parsed.hash !== ""
     || parsed.origin !== value
     || hostname.endsWith(".")
-    || hostname === "localhost"
-    || hostname.endsWith(".localhost")
-    || /^127(?:\.|$)/u.test(hostname)
-    || hostname === "[::1]"
+    || isLoopbackHost(hostname)
   ) {
     throw contractError(code);
   }
   return parsed.origin;
+}
+
+function ipv6Words(value) {
+  const halves = value.split("::");
+  if (halves.length > 2) return null;
+  const parseHalf = (half) => {
+    if (half === "") return [];
+    const words = [];
+    for (const part of half.split(":")) {
+      if (part.includes(".")) {
+        if (isIP(part) !== 4) return null;
+        const bytes = part.split(".").map(Number);
+        words.push((bytes[0] << 8) | bytes[1], (bytes[2] << 8) | bytes[3]);
+      } else {
+        const word = Number.parseInt(part, 16);
+        if (!/^[a-f0-9]{1,4}$/iu.test(part) || !Number.isInteger(word)) return null;
+        words.push(word);
+      }
+    }
+    return words;
+  };
+  const left = parseHalf(halves[0]);
+  const right = halves.length === 2 ? parseHalf(halves[1]) : [];
+  if (left === null || right === null) return null;
+  const missing = 8 - left.length - right.length;
+  if (
+    missing < 0
+    || (halves.length === 1 && missing !== 0)
+    || (halves.length === 2 && missing < 1)
+  ) {
+    return null;
+  }
+  return [...left, ...Array(missing).fill(0), ...right];
+}
+
+function isLoopbackHost(hostname) {
+  const bare = hostname.startsWith("[") && hostname.endsWith("]")
+    ? hostname.slice(1, -1)
+    : hostname;
+  if (bare === "localhost" || bare.endsWith(".localhost")) return true;
+  const ipVersion = isIP(bare);
+  if (ipVersion === 4) return Number(bare.split(".")[0]) === 127;
+  if (ipVersion !== 6) return false;
+  const words = ipv6Words(bare);
+  if (words === null) return false;
+  const directLoopback = words.slice(0, 7).every((word) => word === 0) && words[7] === 1;
+  const mappedOrCompatible = words.slice(0, 5).every((word) => word === 0)
+    && (words[5] === 0 || words[5] === 0xffff)
+    && (words[6] >> 8) === 127;
+  return directLoopback || mappedOrCompatible;
 }
 
 function snapshotAllowedOrigins(value, code) {
@@ -346,10 +394,7 @@ function normalizeRawNextAction(value, allowedActionOrigins, code) {
     || parsed.password !== ""
     || parsed.hash !== ""
     || hostname.endsWith(".")
-    || hostname === "localhost"
-    || hostname.endsWith(".localhost")
-    || /^127(?:\.|$)/u.test(hostname)
-    || hostname === "[::1]"
+    || isLoopbackHost(hostname)
     || !allowedActionOrigins.includes(parsed.origin)
   ) {
     throw contractError(code);
@@ -711,6 +756,7 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
   if (input.providerId === "alipay" || input.providerId === "wechat_pay") {
     throw contractError(code);
   }
+  if (input.adapterKey === input.providerId) throw contractError(code);
   if (input.contractVersion !== "v1" && input.contractVersion !== "unverified") {
     throw contractError(code);
   }
@@ -837,7 +883,13 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
           operation: wrapper.operation,
           error: wrapper.error,
         }));
-        if (isNativePromise(raw)) return genericProviderError(wrapper.operation);
+        if (isNativePromise(raw)) {
+          void raw.then(
+            () => undefined,
+            () => undefined,
+          );
+          return genericProviderError(wrapper.operation);
+        }
         return normalizePaymentProviderError(raw);
       } catch {
         return genericProviderError(wrapper.operation);
