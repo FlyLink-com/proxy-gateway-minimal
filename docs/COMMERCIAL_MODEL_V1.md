@@ -1,6 +1,6 @@
 # Commercial Model v1
 
-Last updated: 2026-07-11, America/Los_Angeles.
+Last updated: 2026-07-24, America/Los_Angeles.
 
 > Status:
 > - Type: Active commercial-model baseline
