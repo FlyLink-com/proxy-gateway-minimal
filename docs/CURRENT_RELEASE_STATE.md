@@ -228,6 +228,14 @@ does not require review-thread resolution. Six environments exist; only
 `artifact-publication` has a branch policy, and none has reviewer enforcement.
 This is the observed machine-enforcement boundary, not independent approval.
 
+The manual Japan runtime-config additive-repair workflow is source-only and
+does not establish a deployment or production result. Its `approval_pr` check
+requires the nominated PR to merge at the exact workflow commit, to have a
+passed `Validate` check, and to retain a final approval from a non-dispatcher
+before the execute job can read connection material. That source authorization
+does not bootstrap host access, authorize dispatch, apply the map, or prove
+production success; each remains behind its separate Risk A gate.
+
 GitHub reports 0 open code-scanning alerts, 0 open Dependabot alerts, and 0 open
 secret-scanning alerts at this cutoff. Successful CodeQL execution remains
 source-analysis evidence rather than production proof.

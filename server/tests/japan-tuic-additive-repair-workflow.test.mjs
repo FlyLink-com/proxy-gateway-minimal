@@ -196,21 +196,22 @@ test("deployment runbook closes the restricted Japan repair lifecycle", () => {
     "additive_missing_only",
     "CI Identity Bootstrap Gate",
     "Quantitative Production Execution Gate",
-    "JAPAN_CI_APPROVAL_BUNDLE",
+    "approval_pr",
+    "exact merge commit",
+    "Validate",
+    "non-dispatcher",
+    "source authorization only",
+    "production success",
     "JAPAN_CI_PRIVATE_KEY",
-    "required reviewer",
-    "prevent self-review",
-    "runId",
-    "runAttempt",
-    "issuedAt",
     "artifact Git tree",
     "host authorization revocation",
     "GitHub secret deletion",
-    "all six temporary",
+    "all five temporary",
     "control-plane-app is not authorized"
   ]) {
     assert.match(runbook, new RegExp(requiredBoundary));
   }
+  assert.doesNotMatch(runbook, /JAPAN_CI_APPROVAL_BUNDLE/);
 });
 
 test("approved design records independent approval and source-tree binding", () => {
