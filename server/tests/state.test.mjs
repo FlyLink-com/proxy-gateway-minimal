@@ -13,8 +13,14 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import Database from "better-sqlite3";
 import { createRuntimeState } from "../state.mjs";
 import { createDataPlaneHandoffRuntimeAdapter } from "../services/edge/data-plane-handoff-runtime-adapter.mjs";
+import {
+  applyCoinWalletMigrations,
+  COIN_WALLET_MIGRATIONS,
+  REQUIRED_COIN_WALLET_MIGRATION_ID
+} from "../services/platform/coin-wallet-migrations.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 import { createPortalTotpSecretProtector } from "../services/platform/portal-totp-verifier.mjs";
 
@@ -101,6 +107,26 @@ function runtimeEnv(overrides = {}) {
     ...VULTR_MULTICHANNEL_ENV,
     ...overrides
   };
+}
+
+function prepareMigratedCoinWalletControlDatabase(directory) {
+  const controlDbPath = join(directory, "control.sqlite");
+  const seed = createRuntimeState({
+    rootDir: new URL("../../", import.meta.url),
+    env: runtimeEnv({ CONSOLE_TOKEN: "secret" }),
+    controlDbPath,
+    subscriptionDbPath: join(directory, "seed-subscriptions.sqlite"),
+    autoStartHttpProxy: false
+  });
+  seed.close();
+
+  applyCoinWalletMigrations({
+    dbPath: controlDbPath,
+    expectedMigrationId: REQUIRED_COIN_WALLET_MIGRATION_ID,
+    expectedDdlChecksum: COIN_WALLET_MIGRATIONS[0].ddlChecksum,
+    nowFn: () => new Date("2026-07-23T00:00:00.000Z")
+  });
+  return controlDbPath;
 }
 
 test("createRuntimeState exposes expected ports and services", () => {
@@ -288,6 +314,297 @@ test("createRuntimeState uses SUBSCRIPTION_CONTROL_DB_PATH for the business cont
   } finally {
     state?.close();
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+for (const [label, configuredValue] of [
+  ["missing", undefined],
+  ["empty", ""],
+  ["false", "false"]
+]) {
+  test(`createRuntimeState keeps Coins wallet disabled when COINS_WALLET_ENABLED is ${label}`, () => {
+    const dir = mkdtempSync(join(tmpdir(), `proxy-gateway-coins-disabled-${label}-`));
+    const controlDbPath = join(dir, "control.sqlite");
+    const env = runtimeEnv({ CONSOLE_TOKEN: "secret" });
+    if (configuredValue !== undefined) {
+      env.COINS_WALLET_ENABLED = configuredValue;
+    }
+    let state;
+    let coinsWalletEnabled;
+    let coinsWalletStore;
+
+    try {
+      state = createRuntimeState({
+        rootDir: new URL("../../", import.meta.url),
+        env,
+        controlDbPath,
+        subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+        autoStartHttpProxy: false
+      });
+      coinsWalletEnabled = state.platform.coinsWalletEnabled;
+      coinsWalletStore = state.platform.coinsWalletStore;
+      state.close();
+      state = null;
+
+      const database = new Database(controlDbPath, {
+        readonly: true,
+        fileMustExist: true
+      });
+      try {
+        const coinObjects = database.prepare(`
+          select name
+            from sqlite_master
+           where name = 'platform_schema_migrations'
+              or name glob 'platform_coin_*'
+           order by name
+        `).all().map(({ name }) => name);
+        assert.deepEqual(coinObjects, []);
+      } finally {
+        database.close();
+      }
+
+      assert.equal(coinsWalletEnabled, false);
+      assert.equal(coinsWalletStore, null);
+    } finally {
+      state?.close();
+      removeTempDir(dir);
+    }
+  });
+}
+
+test("createRuntimeState ignores an injected Coins wallet store while disabled and never closes it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-coins-disabled-injected-"));
+  let closeCount = 0;
+  const injectedStore = {
+    close() {
+      closeCount += 1;
+    }
+  };
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        COINS_WALLET_ENABLED: "false"
+      }),
+      controlDbPath: join(dir, "control.sqlite"),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      coinsWalletStore: injectedStore,
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(state.platform.coinsWalletEnabled, false);
+    assert.equal(state.platform.coinsWalletStore, null);
+    state.close();
+    state.close();
+    state = null;
+    assert.equal(closeCount, 0);
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState fails closed when Coins wallet is enabled without its migration", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-coins-unmigrated-"));
+  const controlDbPath = join(dir, "control.sqlite");
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  let unexpectedState;
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            COINS_WALLET_ENABLED: "true"
+          }),
+          controlDbPath,
+          subscriptionDbPath,
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "coin_wallet_schema_not_ready"
+    );
+
+    const releasedControlDbPath = join(dir, "released-control.sqlite");
+    const releasedSubscriptionDbPath = join(dir, "released-subscriptions.sqlite");
+    renameSync(controlDbPath, releasedControlDbPath);
+    renameSync(subscriptionDbPath, releasedSubscriptionDbPath);
+    assert.equal(existsSync(releasedControlDbPath), true);
+    assert.equal(existsSync(releasedSubscriptionDbPath), true);
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState fails closed when the enabled Coins wallet checksum drifts", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-coins-checksum-drift-"));
+  let unexpectedState;
+
+  try {
+    const controlDbPath = prepareMigratedCoinWalletControlDatabase(dir);
+    const database = new Database(controlDbPath);
+    try {
+      database.prepare(`
+        update platform_schema_migrations
+           set ddl_checksum = ?
+         where migration_id = ?
+      `).run("0".repeat(64), REQUIRED_COIN_WALLET_MIGRATION_ID);
+    } finally {
+      database.close();
+    }
+
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            COINS_WALLET_ENABLED: "true"
+          }),
+          controlDbPath,
+          subscriptionDbPath: join(dir, "enabled-subscriptions.sqlite"),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "coin_wallet_schema_not_ready"
+    );
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState fails closed when the enabled Coins wallet schema drifts", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-coins-schema-drift-"));
+  let unexpectedState;
+
+  try {
+    const controlDbPath = prepareMigratedCoinWalletControlDatabase(dir);
+    const database = new Database(controlDbPath);
+    try {
+      database.exec("drop index platform_coin_wallets_account_id_idx");
+    } finally {
+      database.close();
+    }
+
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            COINS_WALLET_ENABLED: "true"
+          }),
+          controlDbPath,
+          subscriptionDbPath: join(dir, "enabled-subscriptions.sqlite"),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "coin_wallet_schema_not_ready"
+    );
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState exposes an owned Coins wallet store only for an exact migrated schema", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-coins-enabled-"));
+  let state;
+
+  try {
+    const controlDbPath = prepareMigratedCoinWalletControlDatabase(dir);
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        COINS_WALLET_ENABLED: "true"
+      }),
+      controlDbPath,
+      subscriptionDbPath: join(dir, "enabled-subscriptions.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(state.platform.coinsWalletEnabled, true);
+    assert.equal(typeof state.platform.coinsWalletStore?.getWallet, "function");
+    assert.equal(state.platform.coinsWalletStore.getWallet("wallet_missing"), null);
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState closes its owned Coins wallet store idempotently", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-coins-owned-close-"));
+  let state;
+
+  try {
+    const controlDbPath = prepareMigratedCoinWalletControlDatabase(dir);
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        COINS_WALLET_ENABLED: "true"
+      }),
+      controlDbPath,
+      subscriptionDbPath: join(dir, "enabled-subscriptions.sqlite"),
+      autoStartHttpProxy: false
+    });
+    const ownedStore = state.platform.coinsWalletStore;
+    assert.equal(typeof ownedStore?.getWallet, "function");
+
+    state.close();
+    state.close();
+    state = null;
+
+    assert.throws(
+      () => ownedStore.getWallet("wallet_missing"),
+      (error) => error?.code === "store_closed"
+    );
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState exposes but never closes an injected enabled Coins wallet store", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-coins-enabled-injected-"));
+  let closeCount = 0;
+  const injectedStore = {
+    close() {
+      closeCount += 1;
+    }
+  };
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        COINS_WALLET_ENABLED: "true"
+      }),
+      controlDbPath: join(dir, "control.sqlite"),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      coinsWalletStore: injectedStore,
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(state.platform.coinsWalletEnabled, true);
+    assert.equal(state.platform.coinsWalletStore, injectedStore);
+    state.close();
+    state.close();
+    state = null;
+    assert.equal(closeCount, 0);
+  } finally {
+    state?.close();
+    removeTempDir(dir);
   }
 });
 
