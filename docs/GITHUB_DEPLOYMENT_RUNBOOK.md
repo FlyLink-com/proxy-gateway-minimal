@@ -115,6 +115,26 @@ streams the verified archive to a host-side forced command; it does not receive
 an interactive shell, PTY, forwarding, SCP, rsync, or an operator SSH identity.
 Logs and summaries contain aggregate receipts only.
 
+#### Bootstrap Probe Before a New Execution Identity
+
+After any execution that lacks a validated receipt, use
+`.github/workflows/japan-runtime-config-bootstrap-probe.yml` before creating a
+new final execution identity. The probe is manual-only, uses the same protected
+Environment and five temporary connection secrets, and deliberately streams no
+artifact input to the restricted command. It can only be accepted when the
+aggregate receipt proves `stopped_pre_apply`, `artifact_identity_mismatch`,
+verified host authorization cleanup, and the expected nonzero SSH status. It
+does not download an artifact, apply a map, alter a service or timer, or change
+any production configuration.
+
+The probe consumes its temporary identity. On either success or failure, delete
+all five temporary GitHub Environment secrets, read back their name absence,
+and independently verify that the one marked host authorization is absent before
+creating the distinct final execution identity. A
+`receipt_validation_failed_without_production_claim` summary is diagnostic
+evidence only: it does not prove map apply, rollback, host cleanup, or a
+production result.
+
 #### Japan TUIC Observation Source Prerequisite
 
 The Japan TUIC repair-observation source is a bounded `Risk: B` capability for

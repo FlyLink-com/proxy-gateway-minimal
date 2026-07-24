@@ -1,0 +1,168 @@
+name: Japan Runtime Config Bootstrap Probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      approval_pr:
+        description: Merged PR number that supplies reviewed CI authorization
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: japan-runtime-config-bootstrap-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Prove restricted transport and host cleanup without apply
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: vultr-japan-production
+
+    steps:
+      - name: Checkout reviewed workflow commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+
+      - name: Validate merged PR production approval
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          APPROVAL_PR: ${{ inputs.approval_pr }}
+        run: |
+          set -euo pipefail
+          node scripts/japan-tuic-merged-pr-approval.mjs --pr-number "$APPROVAL_PR" >/dev/null
+
+      - name: Prepare restricted SSH material
+        shell: bash
+        env:
+          JAPAN_CI_HOST: ${{ secrets.JAPAN_CI_HOST }}
+          JAPAN_CI_PORT: ${{ secrets.JAPAN_CI_PORT }}
+          JAPAN_CI_USER: ${{ secrets.JAPAN_CI_USER }}
+          JAPAN_CI_PRIVATE_KEY: ${{ secrets.JAPAN_CI_PRIVATE_KEY }}
+          JAPAN_CI_KNOWN_HOSTS: ${{ secrets.JAPAN_CI_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/japan-bootstrap-probe-key"
+          KNOWN_HOSTS_FILE="$RUNNER_TEMP/japan-bootstrap-probe-known-hosts"
+          if [[ ! "$JAPAN_CI_HOST" =~ ^[^[:space:]]{1,255}$ ]] || \
+             [[ ! "$JAPAN_CI_USER" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || \
+             [[ ! "$JAPAN_CI_PORT" =~ ^[0-9]{1,5}$ ]] || \
+             (( JAPAN_CI_PORT < 1 || JAPAN_CI_PORT > 65535 )) || \
+             [[ -z "$JAPAN_CI_PRIVATE_KEY" ]] || \
+             [[ -z "$JAPAN_CI_KNOWN_HOSTS" ]]; then
+            echo "restricted_identity_rejected" >&2
+            exit 1
+          fi
+          printf '%s\n' "$JAPAN_CI_PRIVATE_KEY" | tr -d '\r' > "$KEY_FILE"
+          printf '%s\n' "$JAPAN_CI_KNOWN_HOSTS" | tr -d '\r' > "$KNOWN_HOSTS_FILE"
+          chmod 600 "$KEY_FILE" "$KNOWN_HOSTS_FILE"
+          test -s "$KEY_FILE"
+          test -s "$KNOWN_HOSTS_FILE"
+
+      - name: Probe forced-command transport without artifact input
+        id: restricted_probe
+        shell: bash
+        env:
+          JAPAN_CI_HOST: ${{ secrets.JAPAN_CI_HOST }}
+          JAPAN_CI_PORT: ${{ secrets.JAPAN_CI_PORT }}
+          JAPAN_CI_USER: ${{ secrets.JAPAN_CI_USER }}
+          KEY_FILE: ${{ runner.temp }}/japan-bootstrap-probe-key
+          KNOWN_HOSTS_FILE: ${{ runner.temp }}/japan-bootstrap-probe-known-hosts
+          RECEIPT_FILE: ${{ runner.temp }}/japan-bootstrap-probe-receipt.json
+          SSH_ERROR_FILE: ${{ runner.temp }}/japan-bootstrap-probe-ssh-error.txt
+        run: |
+          set -euo pipefail
+          umask 077
+          set +e
+          ssh -F /dev/null -T \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o PasswordAuthentication=no \
+            -o KbdInteractiveAuthentication=no \
+            -o LogLevel=ERROR \
+            -o ClearAllForwardings=yes \
+            -o RequestTTY=no \
+            -o ConnectionAttempts=1 \
+            -o ConnectTimeout=20 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=2 \
+            -o GlobalKnownHostsFile=/dev/null \
+            -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
+            -i "$KEY_FILE" \
+            -p "$JAPAN_CI_PORT" \
+            -- "$JAPAN_CI_USER@$JAPAN_CI_HOST" \
+            < /dev/null > "$RECEIPT_FILE" 2> "$SSH_ERROR_FILE"
+          ssh_status=$?
+          set -e
+          echo "ssh_status=$ssh_status" >> "$GITHUB_OUTPUT"
+
+      - name: Validate aggregate probe receipt
+        if: always()
+        shell: bash
+        env:
+          SSH_STATUS: ${{ steps.restricted_probe.outputs.ssh_status }}
+          RECEIPT_FILE: ${{ runner.temp }}/japan-bootstrap-probe-receipt.json
+          VALIDATED_RECEIPT_FILE: ${{ runner.temp }}/japan-bootstrap-probe-validated-receipt.json
+        run: |
+          set -euo pipefail
+          umask 077
+          if ! node scripts/japan-tuic-additive-repair-contract.mjs receipt \
+            --input "$RECEIPT_FILE" > "$VALIDATED_RECEIPT_FILE"; then
+            printf '%s\n' \
+              '### Japan runtime-config bootstrap probe' \
+              'receipt_validation_failed_without_production_claim' \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          VALIDATED_RECEIPT_FILE="$VALIDATED_RECEIPT_FILE" SSH_STATUS="$SSH_STATUS" node --input-type=module - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          import { readFileSync } from "node:fs";
+          const receipt = JSON.parse(readFileSync(process.env.VALIDATED_RECEIPT_FILE, "utf8"));
+          const accepted = process.env.SSH_STATUS === "2"
+            && receipt.productionResult === "stopped_pre_apply"
+            && receipt.error === "artifact_identity_mismatch"
+            && receipt.hostCredentialCleanup === "verified"
+            && receipt.closeout === "github_cleanup_pending";
+          process.stdout.write(
+            `### Japan runtime-config bootstrap probe\n\nresult=${accepted ? "verified" : "rejected"}\n`
+          );
+          process.exitCode = accepted ? 0 : 1;
+          NODE
+
+      - name: Remove runner-side temporary material
+        if: always()
+        shell: bash
+        env:
+          KEY_FILE: ${{ runner.temp }}/japan-bootstrap-probe-key
+          KNOWN_HOSTS_FILE: ${{ runner.temp }}/japan-bootstrap-probe-known-hosts
+          RECEIPT_FILE: ${{ runner.temp }}/japan-bootstrap-probe-receipt.json
+          VALIDATED_RECEIPT_FILE: ${{ runner.temp }}/japan-bootstrap-probe-validated-receipt.json
+          SSH_ERROR_FILE: ${{ runner.temp }}/japan-bootstrap-probe-ssh-error.txt
+        run: |
+          set -euo pipefail
+          rm -f -- "$KEY_FILE" "$KNOWN_HOSTS_FILE" "$RECEIPT_FILE" \
+            "$VALIDATED_RECEIPT_FILE" "$SSH_ERROR_FILE"
+          test ! -e "$KEY_FILE"
+          test ! -e "$KNOWN_HOSTS_FILE"
+          test ! -e "$RECEIPT_FILE"
+          test ! -e "$VALIDATED_RECEIPT_FILE"
+          test ! -e "$SSH_ERROR_FILE"

@@ -9,6 +9,10 @@ const WORKFLOW_PATH = resolve(
   REPOSITORY_ROOT,
   ".github/workflows/japan-runtime-config-additive-repair.yml"
 );
+const BOOTSTRAP_PROBE_WORKFLOW_PATH = resolve(
+  REPOSITORY_ROOT,
+  ".github/workflows/japan-runtime-config-bootstrap-probe.yml"
+);
 const RUNBOOK_PATH = resolve(REPOSITORY_ROOT, "docs/GITHUB_DEPLOYMENT_RUNBOOK.md");
 const CURRENT_RELEASE_STATE_PATH = resolve(
   REPOSITORY_ROOT,
@@ -22,6 +26,10 @@ const DESIGN_PATH = resolve(
 
 function workflowText() {
   return readFileSync(WORKFLOW_PATH, "utf8");
+}
+
+function bootstrapProbeWorkflowText() {
+  return readFileSync(BOOTSTRAP_PROBE_WORKFLOW_PATH, "utf8");
 }
 
 function jobBlock(workflow, jobName, nextJobName) {
@@ -182,12 +190,42 @@ test("execute job uses only restricted SSH transport and validates before summar
   assert.match(execute, /< "\$ARTIFACT_FILE"/);
   assert.match(execute, /> "\$RECEIPT_FILE" 2> "\$SSH_ERROR_FILE"/);
   assert.match(execute, /japan-tuic-additive-repair-contract\.mjs receipt/);
+  assert.match(execute, /receipt_validation_failed_without_production_claim/);
+  assert.match(
+    execute,
+    /if ! node scripts\/japan-tuic-additive-repair-contract\.mjs receipt[\s\S]*receipt_validation_failed_without_production_claim/
+  );
   assert.match(execute, /GITHUB_STEP_SUMMARY/);
   assert.match(cleanup >= 0 ? execute.slice(cleanup) : "", /if: always\(\)/);
   assert.doesNotMatch(
     execute,
     /ssh\s+-v|set\s+-x|cat\s+.*(?:key|known|receipt)|tee\s+.*receipt|\bscp\b|\brsync\b/i
   );
+});
+
+test("bootstrap probe proves restricted transport and cleanup without map mutation", () => {
+  const workflow = bootstrapProbeWorkflowText();
+  assert.match(workflow, /^name: Japan Runtime Config Bootstrap Probe$/m);
+  assert.match(
+    workflow,
+    /^on:\r?\n  workflow_dispatch:\r?\n    inputs:\r?\n      approval_pr:/m
+  );
+  assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request|pull_request_target|schedule|workflow_call):/m);
+  assert.match(workflow, /environment: vultr-japan-production/);
+  assert.equal((workflow.match(/environment: vultr-japan-production/g) ?? []).length, 1);
+  assert.match(workflow, /japan-tuic-merged-pr-approval\.mjs --pr-number "\$APPROVAL_PR"/);
+  assert.match(workflow, /< \/dev\/null > "\$RECEIPT_FILE" 2> "\$SSH_ERROR_FILE"/);
+  assert.match(workflow, /productionResult === "stopped_pre_apply"/);
+  assert.match(workflow, /receipt\.error === "artifact_identity_mismatch"/);
+  assert.match(workflow, /receipt\.hostCredentialCleanup === "verified"/);
+  assert.match(workflow, /receipt\.closeout === "github_cleanup_pending"/);
+  assert.match(workflow, /process\.env\.SSH_STATUS === "2"/);
+  assert.match(workflow, /Remove runner-side temporary material/);
+  assert.doesNotMatch(
+    workflow,
+    /download-artifact|artifact-git-tree-verifier|systemctl|map\s+apply|restart|enable|disable|sqlite|nginx|firewall|scp|rsync/i
+  );
+  assert.doesNotMatch(workflow, /ssh\s+-v|set\s+-x|cat\s+.*(?:key|known|receipt)|tee\s+.*receipt/i);
 });
 
 test("workflow cannot deploy an application or mutate adjacent production surfaces", () => {
@@ -222,6 +260,8 @@ test("deployment runbook closes the restricted Japan repair lifecycle", () => {
     "host authorization revocation",
     "GitHub secret deletion",
     "all five temporary",
+    "Bootstrap Probe",
+    "receipt_validation_failed_without_production_claim",
     "control-plane-app is not authorized"
   ]) {
     assert.match(runbook, new RegExp(requiredBoundary));
