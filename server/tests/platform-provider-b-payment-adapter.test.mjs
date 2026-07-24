@@ -27,6 +27,47 @@ function assertUnverified(error, operation) {
   });
 }
 
+function assertInvalidFactoryOptions(value, marker) {
+  assert.throws(() => createProviderBPaymentAdapter(value), (error) => {
+    assert.equal(error?.message, "invalid_payment_provider_adapter");
+    assert.doesNotMatch(String(error), new RegExp(marker));
+    return true;
+  });
+}
+
+test("Provider B rejects Proxy factory options without invoking traps or leaking errors", () => {
+  const marker = "provider-b-options-marker";
+  const trapCalls = { get: 0, ownKeys: 0, descriptor: 0 };
+  const proxyOptions = new Proxy({ nowFn: () => NOW }, {
+    get() { trapCalls.get += 1; throw new Error(marker); },
+    ownKeys() { trapCalls.ownKeys += 1; throw new Error(marker); },
+    getOwnPropertyDescriptor() { trapCalls.descriptor += 1; throw new Error(marker); },
+  });
+  assertInvalidFactoryOptions(proxyOptions, marker);
+  assert.deepEqual(trapCalls, { get: 0, ownKeys: 0, descriptor: 0 });
+});
+
+test("Provider B rejects accessor factory options without invoking getters or leaking errors", () => {
+  const marker = "provider-b-options-marker";
+  let getterCalls = 0;
+  const accessorOptions = {};
+  Object.defineProperty(accessorOptions, "nowFn", {
+    enumerable: true,
+    get() { getterCalls += 1; throw new Error(marker); },
+  });
+  assertInvalidFactoryOptions(accessorOptions, marker);
+  assert.equal(getterCalls, 0);
+});
+
+test("Provider B rejects factory options outside the closed ordinary shape", () => {
+  const marker = "provider-b-options-marker";
+  assertInvalidFactoryOptions({ nowFn: () => NOW, extra: marker }, marker);
+  assertInvalidFactoryOptions({ [Symbol(marker)]: true }, marker);
+  assertInvalidFactoryOptions(Object.create(null), marker);
+  assertInvalidFactoryOptions([], marker);
+  assertInvalidFactoryOptions(null, marker);
+});
+
 test("Provider B is a frozen, distinct provisional disabled adapter", () => {
   const raw = createProviderBPaymentAdapter({ nowFn: () => NOW });
   assert.equal(raw.adapterKey, "provisional_provider_b_v1");

@@ -9,6 +9,36 @@ const OPERATIONS = new Set([
   "refund",
   "reconcile",
 ]);
+const FACTORY_OPTION_KEYS = new Set(["executionScope", "nowFn"]);
+
+function snapshotFactoryNowFn(options) {
+  const code = "invalid_payment_provider_adapter";
+  if (
+    options === null
+    || typeof options !== "object"
+    || utilTypes.isProxy(options)
+    || Object.getPrototypeOf(options) !== Object.prototype
+  ) {
+    throw new TypeError(code);
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(options);
+  const keys = Reflect.ownKeys(descriptors);
+  if (
+    keys.some((key) => typeof key !== "string" || !FACTORY_OPTION_KEYS.has(key))
+    || keys.some((key) => (
+      !Object.hasOwn(descriptors[key], "value")
+      || descriptors[key].enumerable !== true
+    ))
+  ) {
+    throw new TypeError(code);
+  }
+  if (!Object.hasOwn(descriptors, "nowFn")) return undefined;
+  const nowFn = descriptors.nowFn.value;
+  if (typeof nowFn !== "function" || utilTypes.isProxy(nowFn)) {
+    throw new TypeError("invalid_now_fn");
+  }
+  return nowFn;
+}
 
 function requestedOperation(value) {
   if (value === null || typeof value !== "object" || utilTypes.isProxy(value)) {
@@ -20,10 +50,8 @@ function requestedOperation(value) {
     : null;
 }
 
-export function createProviderAPaymentAdapter({ nowFn } = {}) {
-  if (nowFn !== undefined && (typeof nowFn !== "function" || utilTypes.isProxy(nowFn))) {
-    throw new TypeError("invalid_now_fn");
-  }
+export function createProviderAPaymentAdapter(options = {}) {
+  const nowFn = snapshotFactoryNowFn(options);
   const timestamp = nowFn ?? (() => new Date().toISOString());
   const errorFor = (operation) => normalizePaymentProviderError({
     code: "provider_contract_unverified",
