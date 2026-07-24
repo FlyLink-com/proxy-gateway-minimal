@@ -699,31 +699,26 @@ test("host adapter rejects a generic observation-shaped record without the Japan
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const observationPath = join(directory, "natural-observation.json");
   writeFileSync(observationPath, JSON.stringify({
+    capturedAt: "2026-07-16T20:05:00.000Z",
+    collectorInvocationObserved: true,
     projection: {
-      collectors: [{ channelRef: "channel-vultr-a-tuic", unresolvedCount: 0 }]
-    }
+      collectorCount: 5,
+      unresolvedTotal: 0,
+      omittedCollectors: 0,
+      omittedProducers: 0,
+      provenanceConserved: true
+    },
+    passed: true
   }));
   const binding = validBinding({
     paths: { ...validBinding().paths, naturalObservation: observationPath }
   });
   const operations = createHostOperations({
     binding,
-    execFileFn: async () => ({ stdout: "", stderr: "" }),
-    naturalObservationBuilder: () => ({
-      capturedAt: "2026-07-16T20:05:00.000Z",
-      collectorInvocationObserved: true,
-      projection: {
-        collectorCount: 5,
-        unresolvedTotal: 0,
-        omittedCollectors: 0,
-        omittedProducers: 0,
-        provenanceConserved: true
-      },
-      passed: true
-    })
+    execFileFn: async () => ({ stdout: "", stderr: "" })
   });
   await assert.rejects(
-    () => operations.readNaturalObservation({ root: "/gate/source", binding }),
+    () => operations.readNaturalObservation({ root: process.cwd(), binding }),
     (error) => error.code === "natural_observation_failed"
   );
 });
