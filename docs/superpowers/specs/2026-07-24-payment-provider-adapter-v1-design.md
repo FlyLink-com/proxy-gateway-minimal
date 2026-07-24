@@ -271,6 +271,11 @@ paymentFact
 input and whose amount, currency, and currency exponent equal the capture
 input. For every non-success result, `paymentFact` is `null`.
 
+A shape-valid, explicitly mapped non-success provider status may produce that
+non-success outcome. A malformed response, missing or duplicate capture,
+reference mismatch, or money mismatch rejects instead; malformed evidence is
+never collapsed into a reconciliation result.
+
 The authenticated capture fact enters the same durable event pipeline as a
 verified webhook. It never invokes the wallet directly.
 
@@ -503,10 +508,12 @@ Within one operation:
    response plus either `null` evidence for non-fact operations or validated
    lowercase SHA-256 `merchantScopeDigest` and `payloadDigest` evidence for a
    fact-bearing operation;
-4. after the provider request resolves successfully, Provider Core returns the
-   Adapter only the safe response, detached evidence, and an opaque, privately
-   branded transport receipt bound to that exact execution scope, operation,
-   and evidence digests;
+4. after the provider request resolves successfully, Provider Core rechecks
+   that the exact execution scope is still active, then returns the Adapter
+   only the safe response, detached evidence, and an opaque, privately branded
+   transport receipt bound to that exact scope, operation, and evidence
+   digests; synchronous results and Promise fulfillment use the same active
+   scope check, and a result that arrives after closure cannot mint a receipt;
 5. a fact-bearing callback returns one exact internal evidence envelope:
    `{ transportReceipt, paymentFact }` for `verify_callback`, or
    `{ transportReceipt, captureOutcome }` for `capture_payment`;
@@ -524,6 +531,14 @@ or public Adapter output. It carries no credential, response body, merchant
 value, customer field, or execution identifier and is never serialized,
 logged, stored, or returned by a canonical Adapter method. Non-fact operations
 may consume the safe response without returning the receipt.
+
+`verify_callback` has no nullable-fact success envelope. Only a verified,
+supported, structurally valid callback may return
+`{ transportReceipt, paymentFact }`. Failed verification, an unsupported event,
+malformed payload, ambiguous reference, or money mismatch rejects, closes the
+scope, invalidates any receipt, and returns no payment fact. This is distinct
+from a shape-valid non-success capture outcome, which contains
+`paymentFact: null`.
 
 PayPal OAuth tokens cannot cross credential profiles. XSD signing and callback
 verification will occur inside its credential scope only after the exact
@@ -778,8 +793,9 @@ Focused tests must prove:
 - all `unverified` capabilities are false;
 - configuration can only reduce compiled capabilities;
 - disabled methods perform zero loader, request, or clock calls;
-- a zero-request, failed-request, fabricated-receipt, cross-scope, or
-  cross-operation fact-bearing callback cannot mint private provenance;
+- a zero-request, failed-request, fabricated, reused, cross-scope,
+  cross-operation, digest-mismatched, custom-thenable, late-fulfillment, or
+  post-closure receipt cannot mint private provenance;
 - secret markers never enter projections, Adapters, errors, or serialized
   output;
 - query is side-effect-free and never calls capture;
