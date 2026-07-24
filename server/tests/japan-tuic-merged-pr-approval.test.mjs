@@ -361,6 +361,16 @@ test("accepts a final-head approval with a successful Validate check", () => {
   });
 });
 
+test("accepts the lowercase success conclusion returned by the GitHub Checks API", () => {
+  assert.deepEqual(validateMergedPrApproval(validEvidence({
+    checks: [{ name: "Validate", conclusion: "success" }]
+  })), {
+    ok: true,
+    type: "japan_tuic_merged_pr_approval",
+    prNumber: 531
+  });
+});
+
 test("rejects approval by the workflow triggering actor", () => {
   for (const login of ["triggering-actor", "TRIGGERING-ACTOR"]) {
     assert.throws(

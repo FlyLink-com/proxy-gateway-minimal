@@ -105,7 +105,7 @@ export function validateMergedPrApproval(input = {}) {
       && commitId === pullRequest.headCommit
     );
     const validatePassed = checks.some(({ name, conclusion }) =>
-      name === "Validate" && conclusion === "SUCCESS"
+      name === "Validate" && (conclusion === "success" || conclusion === "SUCCESS")
     );
     if (!pullRequest.merged
       || pullRequest.mergeCommit !== current.workflowCommit
