@@ -10,6 +10,11 @@ const WORKFLOW_PATH = resolve(
   ".github/workflows/japan-runtime-config-additive-repair.yml"
 );
 const RUNBOOK_PATH = resolve(REPOSITORY_ROOT, "docs/GITHUB_DEPLOYMENT_RUNBOOK.md");
+const CURRENT_RELEASE_STATE_PATH = resolve(
+  REPOSITORY_ROOT,
+  "docs/CURRENT_RELEASE_STATE.md"
+);
+const PROJECT_CONTEXT_PATH = resolve(REPOSITORY_ROOT, "docs/PROJECT_CONTEXT.md");
 const DESIGN_PATH = resolve(
   REPOSITORY_ROOT,
   "docs/superpowers/specs/2026-07-16-github-japan-additive-repair-cicd-design.md"
@@ -29,9 +34,16 @@ function jobBlock(workflow, jobName, nextJobName) {
 test("Japan repair workflow is manual-only with minimal read permissions", () => {
   const workflow = workflowText();
   assert.match(workflow, /^name: Japan Runtime Config Additive Repair$/m);
-  assert.match(workflow, /^on:\r?\n  workflow_dispatch:/m);
+  assert.match(
+    workflow,
+    /^on:\r?\n  workflow_dispatch:\r?\n    inputs:\r?\n      approval_pr:/m
+  );
+  assert.match(workflow, /approval_pr:[\s\S]*required: true[\s\S]*type: string/);
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request|pull_request_target|schedule|workflow_call):/m);
-  assert.match(workflow, /permissions:\r?\n  actions: read\r?\n  contents: read/);
+  assert.match(
+    workflow,
+    /permissions:\r?\n  actions: read\r?\n  checks: read\r?\n  contents: read\r?\n  pull-requests: read/
+  );
   assert.doesNotMatch(
     workflow,
     /id-token: write|contents: write|packages: write|deployments: write|actions: write/
@@ -40,21 +52,39 @@ test("Japan repair workflow is manual-only with minimal read permissions", () =>
   assert.match(workflow, /cancel-in-progress: false/);
 });
 
-test("dispatcher cannot manufacture or replay the production approval", () => {
+test("triggering actor cannot manufacture the merged PR approval", () => {
   const workflow = workflowText();
   const trigger = workflow.slice(workflow.indexOf("on:"), workflow.indexOf("permissions:"));
   const preflight = jobBlock(workflow, "preflight", "execute");
   const execute = jobBlock(workflow, "execute");
-  assert.doesNotMatch(trigger, /\binputs:/);
+  assert.match(trigger, /inputs:\r?\n      approval_pr:/);
+  assert.doesNotMatch(trigger, /\b(?:host|port|user|key|known_hosts|gate_id|confirmation):/);
   assert.doesNotMatch(workflow, /inputs\.(?:gate_id|expected_workflow_commit|confirmation)/);
   assert.doesNotMatch(preflight, /JAPAN_CI_APPROVAL_BUNDLE|secrets\./);
-  assert.match(execute, /JAPAN_CI_APPROVAL_BUNDLE: \$\{\{ secrets\.JAPAN_CI_APPROVAL_BUNDLE \}\}/);
-  assert.match(execute, /CURRENT_RUN_ID: \$\{\{ github\.run_id \}\}/);
-  assert.match(execute, /CURRENT_RUN_ATTEMPT: \$\{\{ github\.run_attempt \}\}/);
-  assert.match(execute, /japan-tuic-additive-repair-contract\.mjs approval/);
-  const approval = execute.indexOf("- name: Validate one-time production approval");
+  assert.doesNotMatch(workflow, /JAPAN_CI_APPROVAL_BUNDLE/);
+  assert.match(execute, /GITHUB_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(execute, /GITHUB_REPOSITORY: \$\{\{ github\.repository \}\}/);
+  assert.match(execute, /GITHUB_SHA: \$\{\{ github\.sha \}\}/);
+  assert.match(
+    execute,
+    /GITHUB_TRIGGERING_ACTOR: \$\{\{ github\.triggering_actor \}\}/
+  );
+  assert.doesNotMatch(execute, /GITHUB_ACTOR:/);
+  assert.match(execute, /APPROVAL_PR: \$\{\{ inputs\.approval_pr \}\}/);
+  assert.match(execute, /japan-tuic-merged-pr-approval\.mjs --pr-number "\$APPROVAL_PR"/);
+  const approval = execute.indexOf("- name: Validate merged PR production approval");
+  const triggeringActor = execute.indexOf("${{ github.triggering_actor }}");
+  const download = execute.indexOf("- name: Download frozen dry-run artifact");
+  const firstJapanSecret = execute.indexOf("JAPAN_CI_");
   const credentials = execute.indexOf("- name: Prepare restricted SSH material");
-  assert.ok(approval >= 0 && credentials > approval);
+  assert.ok(
+    approval >= 0
+      && triggeringActor > approval
+      && triggeringActor < download
+      && download > approval
+      && firstJapanSecret > approval
+      && credentials > approval
+  );
 });
 
 test("secretless preflight is isolated from the protected execute job", () => {
@@ -69,7 +99,6 @@ test("secretless preflight is isolated from the protected execute job", () => {
   assert.match(execute, /environment: vultr-japan-production/);
   assert.equal((workflow.match(/environment: vultr-japan-production/g) ?? []).length, 1);
   for (const secret of [
-    "JAPAN_CI_APPROVAL_BUNDLE",
     "JAPAN_CI_HOST",
     "JAPAN_CI_PORT",
     "JAPAN_CI_USER",
@@ -179,20 +208,48 @@ test("deployment runbook closes the restricted Japan repair lifecycle", () => {
     "additive_missing_only",
     "CI Identity Bootstrap Gate",
     "Quantitative Production Execution Gate",
-    "JAPAN_CI_APPROVAL_BUNDLE",
+    "approval_pr",
+    "exact merge commit",
+    "final\\s+head",
+    "Validate",
+    "triggering\\s+actor",
+    "reusable",
+    "not a one-time or consumed\\s+credential",
+    "source authorization only",
+    "production success",
     "JAPAN_CI_PRIVATE_KEY",
-    "required reviewer",
-    "prevent self-review",
-    "runId",
-    "runAttempt",
-    "issuedAt",
     "artifact Git tree",
     "host authorization revocation",
     "GitHub secret deletion",
-    "all six temporary",
+    "all five temporary",
     "control-plane-app is not authorized"
   ]) {
     assert.match(runbook, new RegExp(requiredBoundary));
+  }
+  assert.doesNotMatch(runbook, /JAPAN_CI_APPROVAL_BUNDLE/);
+  assert.doesNotMatch(runbook, /fresh approval evidence|final approval from a non-dispatcher/);
+});
+
+test("active operating documents record reusable merged-PR authorization", () => {
+  for (const documentPath of [
+    CURRENT_RELEASE_STATE_PATH,
+    PROJECT_CONTEXT_PATH
+  ]) {
+    const document = readFileSync(documentPath, "utf8");
+    for (const requiredBoundary of [
+      "reusable",
+      "not a one-time or consumed\\s+credential",
+      "final\\s+head",
+      "triggering\\s+actor",
+      "Validate",
+      "source-only"
+    ]) {
+      assert.match(document, new RegExp(requiredBoundary));
+    }
+    assert.doesNotMatch(
+      document,
+      /final approval from a non-dispatcher|requires fresh approval evidence/
+    );
   }
 });
 

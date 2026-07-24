@@ -276,6 +276,17 @@ PR #483 introduced docs-only/code lane routing and always-run diff checking
 while retaining one stable required `Validate` context. It did not create
 independent lane contexts or change the ruleset/settings boundary above.
 
+The manual Japan runtime-config additive-repair workflow has a source-only
+authorization boundary: its required `approval_pr` must identify a PR merged
+at the exact workflow commit with a passed `Validate` check and a latest-state
+approval on the PR final head from a reviewer other than the actual triggering
+actor. This source-only authorization is checked before the execute-job
+artifact download and any connection-secret reference. It is reusable while
+those conditions remain true; `approval_pr` is not a one-time or consumed
+credential. It does not
+bootstrap the host, authorize a workflow dispatch, apply the map, or establish
+production success; those are separate exact Risk A actions.
+
 ## Source Governance And Security Snapshot
 
 CodeQL runs `29418794902` and `29418794903` completed successfully for exact
