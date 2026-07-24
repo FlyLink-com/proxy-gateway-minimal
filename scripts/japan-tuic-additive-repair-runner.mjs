@@ -185,7 +185,7 @@ function validatePostApplyCandidate(input) {
   const expected = {
     addCount: 0,
     removeCount: 0,
-    deferredRemoveCount: 27,
+    deferredRemoveCount: 46,
     deferredChangedCount: 0,
     missingMaterialCount: 0,
     projectedMapCount: 82,
@@ -660,7 +660,7 @@ export function createHostOperations({
         "--strategy", "additive_missing_only",
         "--expected-add", "3",
         "--expected-remove", "0",
-        "--expected-deferred-remove", "27",
+        "--expected-deferred-remove", "46",
         "--expected-changed", "0",
         "--expected-missing-material", "0",
         "--expected-projected-map-count", "82"

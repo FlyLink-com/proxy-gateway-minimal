@@ -42,24 +42,24 @@ export const JAPAN_TUIC_REPAIR_GATE = Object.freeze({
   candidate: Object.freeze({
     addCount: 3,
     removeCount: 0,
-    deferredRemoveCount: 27,
+    deferredRemoveCount: 46,
     deferredChangedCount: 0,
     missingMaterialCount: 0,
     projectedMapCount: 82
   }),
   before: Object.freeze({
-    runtimeCount: 55,
-    mappedCount: 52,
+    runtimeCount: 36,
+    mappedCount: 33,
     missing: 3,
-    stale: 27,
+    stale: 46,
     changed: 0,
     missingMaterial: 0
   }),
   after: Object.freeze({
-    runtimeCount: 55,
-    mappedCount: 55,
+    runtimeCount: 36,
+    mappedCount: 36,
     missing: 0,
-    stale: 27,
+    stale: 46,
     changed: 0,
     missingMaterial: 0,
     retentionState: "pending",
