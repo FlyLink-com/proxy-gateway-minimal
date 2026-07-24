@@ -314,10 +314,11 @@ evidence changes the dated production pointer.
 
 ## Active Blockers
 
-1. #437 has observed Japan TUIC identity drift (`missing=2`, `stale=19`) and at
-   least one active missing binding. Accounting completeness remains
-   `risk_not_quantified`; the additive repair capability is not deployed and
-   map apply has not started.
+1. #437 has a 2026-07-23 read-only Japan TUIC aggregate snapshot with
+   `missing=3`, `stale=46`, and an additive-only candidate of `add=3`,
+   `remove=0`. Periodic traffic collection is active, but identity mapping
+   remains degraded. The source repair contract is merged; its protected
+   production capability is not bootstrapped and map apply has not started.
 2. Offline Runtime Config Identity has not observed Japan or Singapore
    production; this must not be confused with the active traffic Evidence
    Runtime.
