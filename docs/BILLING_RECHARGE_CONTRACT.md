@@ -1,25 +1,43 @@
 # Billing Recharge Contract
 
-Last updated: 2026-05-31, Asia/Shanghai.
+Last updated: 2026-07-23, America/Los_Angeles.
 
-This document defines the repository-local billing contract for the current
-subscription platform direction. It is a future optional top-up extension to
-`docs/COMMERCIAL_MODEL_V1.md`, not the primary v1 commercial model:
+This document defines the boundary of the existing repository-local billing
+helper. That helper is legacy optional traffic-topup compatibility. It is not
+the new payment Adapter Registry, Coins authority, wallet ledger, or evidence
+of a verified provider integration.
+
+The current helper retains this compatibility flow:
 
 ```text
-payment -> recharge credit -> traffic balance -> usage debit -> controlled subscription issuance
+legacy billing helper
+  -> optional traffic-topup compatibility only
 ```
 
-It intentionally does **not** activate a real payment provider, public checkout,
-webhook endpoint, production SQLite migration, subscription issuance, or runtime
-mutation.
+The target commercial architecture keeps recharge payment, Coins consumption,
+and fulfillment separate:
+
+```text
+verified recharge payment
+  -> durable payment order/event
+  -> paid_coins
+
+paid_coins hold/capture
+  -> separate product order
+  -> fulfillment decision
+```
+
+Those latter two flows are target architecture. They remain unimplemented and
+unproven in production. This document does **not** activate a real payment
+provider, public checkout, webhook endpoint, Payment Store or schema, wallet
+credit, subscription issuance, fulfillment, or runtime mutation.
 
 ## Model
 
-Commercial Model v1 sells time-bounded packages with included traffic
-allowances. This contract describes how a later approved top-up could add
-traffic credit without selling raw subscription links or replacing entitlement
-validity.
+Commercial Model v1 continues to sell time-bounded packages with included
+traffic allowances. The existing helper describes how a legacy optional
+top-up could add traffic credit without selling raw subscription links or
+replacing entitlement validity.
 
 ```text
 Payment provider success
@@ -32,8 +50,9 @@ Payment provider success
   -> insufficient balance triggers controlled disable/revoke gate
 ```
 
-The subscription artifact is only the delivery mechanism. The durable commercial
-state is the traffic balance and ledger.
+Within this legacy compatibility flow, the subscription artifact is only the
+delivery mechanism. Neither the helper nor its normalized decisions establish
+a durable Coins wallet or payment order.
 
 ## Current Repository Contract
 
@@ -46,14 +65,15 @@ The repo-only contract lives in
 - `buildUsageDebitDecision`
 
 These helpers are provider-agnostic and safe by default. They normalize
-operator/payment facts into safe summaries and ledger decisions without storing
-or returning raw payment payloads, customer emails, payment credentials,
-subscription URLs, artifact secrets, or handoff material.
+operator/payment facts into safe summaries and legacy traffic-credit decisions
+without storing or returning raw payment payloads, customer emails, payment
+credentials, subscription URLs, artifact secrets, or handoff material. They do
+not implement the static Adapter Registry, provider verification provenance,
+durable payment events, or any Coins balance.
 
 ## Provider Boundary
 
-The current provider vocabulary is deliberately broad enough for future payment
-adapters:
+The legacy helper accepts this provider-label vocabulary:
 
 ```text
 paypal
@@ -66,9 +86,10 @@ manual
 mock
 ```
 
-This does not mean any provider is currently live. Real provider integration,
-checkout URL creation, webhook registration, signature verification against a
-provider API, or sandbox/live capture is separate Risk A work.
+These labels are not Adapter Registry identities and do not mean any provider
+is live or verified. Real provider protocols, checkout URL creation, callback
+registration and verification, refund, reconciliation, or sandbox/live
+execution remain separately gated work.
 
 ## Subscription Boundary
 
@@ -92,8 +113,8 @@ Not allowed from billing contract:
 
 ## Relationship To Commercial Model v1
 
-Recharge/debit remains useful as an optional extension because network resources
-are consumable:
+The legacy traffic recharge/debit helper remains useful as optional
+compatibility because network resources are consumable:
 
 - traffic can be metered;
 - abuse can be contained by balance;
@@ -101,20 +122,24 @@ are consumable:
 - refunds/reversals can subtract credit through ledger entries;
 - future provider integrations can remain decoupled from subscription delivery.
 
-It must not become a second activation authority. A top-up cannot activate an
-expired, canceled, or suspended entitlement, reset measured usage, or issue a
-runtime credential directly from a payment event.
+It must not become a second activation authority or be reused as a Coins
+ledger. A traffic top-up cannot activate an expired, canceled, or suspended
+entitlement, reset measured usage, or issue a runtime credential directly from
+a payment event.
 
 ## Next Gates
 
 Recommended next implementation layers:
 
-1. Keep this extension disabled while the fixed-package v1 path is validated.
-2. Define durable top-up and reversal ledger storage in a separate
+1. Keep legacy traffic-topup compatibility separate from the target Coins
+   recharge path.
+2. Define durable payment-order/event and wallet storage in a separate
    schema/migration-gated task.
-3. Prove that top-up cannot reset usage or bypass entitlement validity.
-4. Add one payment provider adapter in sandbox mode only after the primary
-   commercial lifecycle is stable.
+3. Prove idempotent `paid_coins` credit before enabling any recharge action.
+4. Define product-order hold/capture and fulfillment decisions separately from
+   recharge payment.
+5. Verify one real provider contract before enabling its Adapter capabilities.
 
-Any real payment provider, public payment API, webhook endpoint, production DB
-migration, or automatic issuance remains separate Risk A work.
+Any real provider, public payment API, callback endpoint, production DB
+migration, wallet mutation, fulfillment, or automatic issuance remains outside
+this source-only compatibility contract.

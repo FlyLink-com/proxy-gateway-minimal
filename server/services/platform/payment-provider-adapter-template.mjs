@@ -1,6 +1,9 @@
+import { types as utilTypes } from "node:util";
+
 import {
-  normalizeBillingPaymentEvent
-} from "./billing-provider-contract.mjs";
+  assertPaymentProviderAdapterContract,
+  normalizePaymentProviderError,
+} from "./payment-provider-adapter-contract.mjs";
 
 const SUPPORTED_PROVIDER_IDS = new Set([
   "paypal",
@@ -46,12 +49,12 @@ const PROVIDER_REQUIRED_ENV = Object.freeze({
   manual: [],
   mock: []
 });
-const PAYMENT_EVENT_TYPES = new Set([
-  "payment_pending",
-  "payment_succeeded",
-  "payment_failed",
-  "payment_refunded",
-  "payment_chargeback"
+const OPERATIONS = new Set([
+  "create_recharge_order",
+  "query_payment",
+  "verify_callback",
+  "refund",
+  "reconcile",
 ]);
 
 function adapterError(message) {
@@ -130,28 +133,50 @@ function safeConfiguredEnvSummary(env = {}) {
   };
 }
 
-function assertNoSensitivePayload(payload = {}) {
-  for (const field of [
-    "rawPayload",
-    "rawProviderPayload",
-    "customerEmail",
-    "cardToken",
-    "paymentCredential",
-    "apiKey",
-    "apiSecret",
-    "accessKey",
-    "secretKey"
-  ]) {
-    if (payload[field] !== undefined) {
-      throw adapterError(`${field} is not allowed in safe payment event facts`);
-    }
+function normalizeTemplateOptions(value) {
+  if (
+    value === null
+    || typeof value !== "object"
+    || utilTypes.isProxy(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new TypeError("invalid_payment_provider_adapter_template");
   }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors);
+  if (
+    keys.some((key) => key !== "nowFn")
+    || keys.some((key) => {
+      const descriptor = descriptors[key];
+      return (
+        !descriptor
+        || !Object.hasOwn(descriptor, "value")
+        || descriptor.enumerable !== true
+      );
+    })
+  ) {
+    throw new TypeError("invalid_payment_provider_adapter_template");
+  }
+  const nowFn = descriptors.nowFn?.value;
+  if (
+    nowFn !== undefined
+    && (typeof nowFn !== "function" || utilTypes.isProxy(nowFn))
+  ) {
+    throw new TypeError("invalid_now_fn");
+  }
+  return { nowFn };
 }
 
-function notImplemented(operation) {
-  const error = new Error(`${operation} requires a provider-specific adapter`);
-  error.code = "payment_provider_adapter_not_implemented";
-  throw error;
+function requestedOperation(value) {
+  if (value === null || typeof value !== "object" || utilTypes.isProxy(value)) {
+    return null;
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(value, "operation");
+  return descriptor
+    && Object.hasOwn(descriptor, "value")
+    && OPERATIONS.has(descriptor.value)
+    ? descriptor.value
+    : null;
 }
 
 export function summarizePaymentProviderEnvironment(env = {}, options = {}) {
@@ -189,50 +214,53 @@ export function summarizePaymentProviderEnvironment(env = {}, options = {}) {
 }
 
 export function createPaymentProviderAdapterTemplate(options = {}) {
-  const summary = summarizePaymentProviderEnvironment(options.env || {}, options);
-  return {
-    provider: summary.provider,
-    mode: summary.mode,
-    summary,
-    async createRechargeOrder() {
-      return notImplemented("createRechargeOrder");
-    },
-    async capturePayment() {
-      return notImplemented("capturePayment");
-    },
-    async verifyWebhook() {
-      return notImplemented("verifyWebhook");
-    },
-    normalizeVerifiedPaymentEvent(payload = {}) {
-      return normalizeVerifiedPaymentProviderEvent({
-        ...payload,
-        provider: payload.provider ?? summary.provider
-      });
-    }
+  const { nowFn } = normalizeTemplateOptions(options);
+  const timestamp = nowFn ?? (() => new Date().toISOString());
+  const errorFor = (operation) => normalizePaymentProviderError({
+    code: "provider_contract_unverified",
+    operation,
+    retryable: false,
+    chargeCertainty: "confirmed_no_charge",
+    providerOrderRef: null,
+    occurredAt: timestamp(),
+  });
+  const disabled = (operation) => {
+    throw errorFor(operation);
   };
-}
+  const rawAdapter = {
+    adapterKey: "payment_provider_template_v1",
+    providerId: "payment_provider_template",
+    contractVersion: "unverified",
+    capabilities: Object.freeze({
+      createRechargeOrder: false,
+      queryPayment: false,
+      verifyCallback: false,
+      refund: false,
+      reconcile: false,
+      repeatCreateIdempotent: false,
+    }),
+    supportedPaymentMethods: Object.freeze([]),
+    createRechargeOrder: () => disabled("create_recharge_order"),
+    queryPayment: () => disabled("query_payment"),
+    verifyAndNormalizeCallback: () => disabled("verify_callback"),
+    normalizeError: (value) => {
+      const requested = requestedOperation(value);
+      const operation = requested ?? "reconcile";
+      return {
+        code: requested
+          ? "provider_contract_unverified"
+          : "provider_operation_failed",
+        operation,
+        retryable: false,
+        chargeCertainty: requested ? "confirmed_no_charge" : "unknown",
+        providerOrderRef: null,
+        occurredAt: timestamp(),
+      };
+    },
+    webhookSuccessAck: () => disabled("verify_callback"),
+    refund: () => disabled("refund"),
+    reconcile: () => disabled("reconcile"),
+  };
 
-export function normalizeVerifiedPaymentProviderEvent(payload = {}, options = {}) {
-  assertNoSensitivePayload(payload);
-  const provider = normalizeProvider(payload.provider ?? options.provider);
-  const eventType = requiredString(payload.eventType, "eventType", 80).toLowerCase();
-  if (!PAYMENT_EVENT_TYPES.has(eventType)) {
-    throw adapterError("eventType is invalid");
-  }
-  const verificationStatus = requiredString(payload.verificationStatus, "verificationStatus", 80).toLowerCase();
-  if (verificationStatus !== "verified") {
-    throw adapterError("payment event must be verified before normalization");
-  }
-
-  return normalizeBillingPaymentEvent({
-    id: payload.id,
-    provider,
-    providerEventRef: payload.providerEventRef,
-    idempotencyKey: payload.idempotencyKey,
-    orderId: payload.orderId,
-    eventType,
-    signatureStatus: "verified",
-    receivedAt: payload.receivedAt,
-    createdAt: payload.createdAt
-  }, options);
+  return assertPaymentProviderAdapterContract(rawAdapter);
 }
