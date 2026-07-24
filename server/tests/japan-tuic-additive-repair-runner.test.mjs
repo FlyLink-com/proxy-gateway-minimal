@@ -15,6 +15,7 @@ import { Readable } from "node:stream";
 import test from "node:test";
 
 import { JAPAN_TUIC_REPAIR_GATE } from "../../scripts/japan-tuic-additive-repair-contract.mjs";
+import { createJapanTuicRepairObservationStore } from "../services/platform/japan-tuic-repair-observation.mjs";
 import {
   createHostOperations,
   deriveWaitBudget,
@@ -42,7 +43,7 @@ function validBinding(overrides = {}) {
       timer: "gccgw-traffic-usage-collect.timer",
       service: "gccgw-traffic-usage-collect.service"
     },
-    authorizationMarker: "github-actions-japan-tuic-additive-repair-20260716-001",
+    authorizationMarker: "github-actions-japan-tuic-additive-repair-20260724-002",
     ...overrides
   };
 }
@@ -54,7 +55,7 @@ function candidateReport(overrides = {}) {
     candidate: {
       addCount: 3,
       removeCount: 0,
-      deferredRemoveCount: 27,
+      deferredRemoveCount: 46,
       deferredChangedCount: 0,
       missingMaterialCount: 0,
       projectedMapCount: 82,
@@ -71,7 +72,7 @@ function postCandidateReport(overrides = {}) {
     candidate: {
       addCount: 0,
       removeCount: 0,
-      deferredRemoveCount: 27,
+      deferredRemoveCount: 46,
       deferredChangedCount: 0,
       missingMaterialCount: 0,
       projectedMapCount: 82,
@@ -120,6 +121,35 @@ function observationCurrent(overrides = {}) {
     omittedProducerCount: 0,
     provenanceConserved: true,
     validatorPassed: true,
+    ...overrides
+  };
+}
+
+function acceptedJapanProjection(overrides = {}) {
+  return {
+    type: "traffic_collector_admin_projection",
+    schemaVersion: "1",
+    availability: "available",
+    safety: { redacted: true },
+    observedAt: "2026-07-16T20:05:00.000Z",
+    run: {
+      runOk: true,
+      rawReportOk: true,
+      collectorCount: 5
+    },
+    accounting: {
+      recordingOk: true,
+      unresolvedCount: 0
+    },
+    omittedCollectorCount: 0,
+    collectors: [{
+      channelRef: "channel-vultr-a-tuic",
+      safety: { redacted: true },
+      health: "healthy",
+      condition: "ok",
+      unresolvedCount: 0,
+      lastCollectorSuccessAt: "2026-07-16T20:04:00.000Z"
+    }],
     ...overrides
   };
 }
@@ -290,6 +320,12 @@ test("archive inspection requires reviewed helpers and rejects unsafe paths", ()
     ["/absolute", ...requiredEntries],
     ["C:/windows", ...requiredEntries],
     requiredEntries.slice(1),
+    [
+      "scripts/mihomo-tuic-usage-map-rebuild.mjs",
+      "server/services/platform/japan-tuic-repair-observation.mjs",
+      "server/services/platform/traffic-collector-admin-projection.mjs",
+      "server/services/platform/traffic-collector-status-producers.mjs"
+    ],
     [...requiredEntries, requiredEntries[0]]
   ]) {
     assert.throws(
@@ -500,7 +536,6 @@ test("host adapter inspects ZIP names and types before fixed extraction", async 
   const calls = [];
   const requiredEntries = [
     "scripts/mihomo-tuic-usage-map-rebuild.mjs",
-    "scripts/traffic-accounting-natural-observation.mjs",
     "server/services/platform/traffic-collector-admin-projection.mjs",
     "server/services/platform/traffic-collector-status-producers.mjs"
   ];
@@ -530,7 +565,7 @@ test("host adapter rejects a ZIP symlink before extraction", async () => {
     binding: validBinding(),
     execFileFn: async (_file, args) => {
       if (args[0] === "-Z1") {
-        return { stdout: "scripts/mihomo-tuic-usage-map-rebuild.mjs\nscripts/traffic-accounting-natural-observation.mjs\nserver/services/platform/traffic-collector-admin-projection.mjs\nserver/services/platform/traffic-collector-status-producers.mjs\n", stderr: "" };
+        return { stdout: "scripts/mihomo-tuic-usage-map-rebuild.mjs\nserver/services/platform/traffic-collector-admin-projection.mjs\nserver/services/platform/traffic-collector-status-producers.mjs\n", stderr: "" };
       }
       return { stdout: "lrwxrwxrwx  3.0 unx 1 tx scripts/mihomo-tuic-usage-map-rebuild.mjs", stderr: "" };
     }
@@ -546,7 +581,7 @@ test("host adapter invokes only the fixed additive helper arguments and derives 
   const report = {
     ...candidateReport(),
     currentMapCount: 79,
-    rebuiltMapCount: 55
+    rebuiltMapCount: 36
   };
   const operations = createHostOperations({
     binding: validBinding(),
@@ -571,7 +606,7 @@ test("host adapter invokes only the fixed additive helper arguments and derives 
     "--strategy", "additive_missing_only",
     "--expected-add", "3",
     "--expected-remove", "0",
-    "--expected-deferred-remove", "27",
+    "--expected-deferred-remove", "46",
     "--expected-changed", "0",
     "--expected-missing-material", "0",
     "--expected-projected-map-count", "82"
@@ -646,71 +681,79 @@ test("host adapter backs up, restores, and removes only its marked authorization
   assert.equal(readFileSync(authorizedKeys, "utf8"), "ssh-ed25519 AAAA first-key\n");
 });
 
-test("host adapter validates a protected natural observation and returns aggregates only", async (t) => {
+test("host adapter consumes the aggregate persisted by the Japan observation store", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-natural-observation-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const observationPath = join(directory, "natural-observation.json");
-  writeFileSync(observationPath, JSON.stringify({
-    protectedFixture: "/must/not/return",
-    projection: {
-      collectors: [
-        { channelRef: "channel-vultr-a-tuic", unresolvedCount: 0 },
-        { channelRef: "channel-unrelated", unresolvedCount: 1 }
-      ]
-    }
-  }));
+  createJapanTuicRepairObservationStore({ filePath: observationPath }).write({
+    projection: acceptedJapanProjection({
+      protectedFixture: "/must/not-return"
+    })
+  });
   const binding = validBinding({
     paths: { ...validBinding().paths, naturalObservation: observationPath }
   });
   const operations = createHostOperations({
     binding,
-    execFileFn: async () => ({ stdout: "", stderr: "" }),
-    naturalObservationBuilder: () => ({
-      capturedAt: "2026-07-16T20:05:00.000Z",
-      collectorInvocationObserved: true,
-      projection: {
-        collectorCount: 5,
-        unresolvedTotal: 1,
-        omittedCollectors: 0,
-        omittedProducers: 0,
-        provenanceConserved: true
-      },
-      passed: true
-    })
+    execFileFn: async () => ({ stdout: "", stderr: "" })
   });
-  const summary = await operations.readNaturalObservation({ root: "/gate/source", binding });
-  assert.deepEqual(summary, observationCurrent());
-  assert.equal(JSON.stringify(summary).includes("must/not/return"), false);
+  const summary = await operations.readNaturalObservation({
+    root: join(directory, "extracted-frozen-artifact-without-observation-helper"),
+    binding
+  });
+  assert.deepEqual(summary, observationCurrent({ unresolvedTotal: 0 }));
+  assert.equal(JSON.stringify(summary).includes("must/not-return"), false);
 });
 
-test("host adapter rejects natural evidence without the fixed Japan TUIC channel", async (t) => {
+test("host adapter rejects a Japan observation larger than 256 KiB", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-natural-oversized-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const observationPath = join(directory, "natural-observation.json");
+  writeFileSync(observationPath, `${JSON.stringify({
+    schemaVersion: "1",
+    type: "japan_tuic_repair_observation",
+    capturedAt: "2026-07-16T20:05:00.000Z",
+    collectorCount: 5,
+    unresolvedTotal: 0,
+    japanTuicUnresolved: 0,
+    accepted: true
+  })}${" ".repeat(256 * 1024)}`);
+  const binding = validBinding({
+    paths: { ...validBinding().paths, naturalObservation: observationPath }
+  });
+  const operations = createHostOperations({
+    binding,
+    execFileFn: async () => ({ stdout: "", stderr: "" })
+  });
+  await assert.rejects(
+    () => operations.readNaturalObservation({ root: process.cwd(), binding }),
+    (error) => error.code === "natural_observation_failed"
+  );
+});
+
+test("host adapter rejects an aggregate observation with an unknown field", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-natural-missing-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const observationPath = join(directory, "natural-observation.json");
   writeFileSync(observationPath, JSON.stringify({
-    projection: { collectors: [{ channelRef: "channel-unrelated", unresolvedCount: 0 }] }
+    schemaVersion: "1",
+    type: "japan_tuic_repair_observation",
+    capturedAt: "2026-07-16T20:05:00.000Z",
+    collectorCount: 5,
+    unresolvedTotal: 0,
+    japanTuicUnresolved: 0,
+    accepted: true,
+    unexpected: true
   }));
   const binding = validBinding({
     paths: { ...validBinding().paths, naturalObservation: observationPath }
   });
   const operations = createHostOperations({
     binding,
-    execFileFn: async () => ({ stdout: "", stderr: "" }),
-    naturalObservationBuilder: () => ({
-      capturedAt: "2026-07-16T20:05:00.000Z",
-      collectorInvocationObserved: true,
-      projection: {
-        collectorCount: 1,
-        unresolvedTotal: 0,
-        omittedCollectors: 0,
-        omittedProducers: 0,
-        provenanceConserved: true
-      },
-      passed: true
-    })
+    execFileFn: async () => ({ stdout: "", stderr: "" })
   });
   await assert.rejects(
-    () => operations.readNaturalObservation({ root: "/gate/source", binding }),
+    () => operations.readNaturalObservation({ root: process.cwd(), binding }),
     (error) => error.code === "natural_observation_failed"
   );
 });

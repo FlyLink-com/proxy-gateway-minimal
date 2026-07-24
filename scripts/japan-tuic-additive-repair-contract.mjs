@@ -4,8 +4,8 @@ import { readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ARTIFACT_SHA256 = "d6c0663c9a7c82c6e8ffb7d354e2a4c23d26f3339586533df5c268b887b839fd";
-const TOOL_SOURCE_COMMIT = "47a2a9583fb44cb905e91aade02ae5aa3d635d94";
+const ARTIFACT_SHA256 = "43d5cea28dc70b838f95706690b45282297b1dae3cfe3b76ab941660ed7a83fe";
+const TOOL_SOURCE_COMMIT = "70880d83761b165e91e9c521ec480fcc840375fb";
 const APPROVAL_MAX_TTL_MS = 30 * 60 * 1000;
 const SAFE_RECEIPT_ERRORS = new Set([
   "artifact_identity_mismatch",
@@ -26,40 +26,40 @@ const SAFE_RECEIPT_ERRORS = new Set([
 
 export const JAPAN_TUIC_REPAIR_GATE = Object.freeze({
   schemaVersion: "1",
-  gateBasis: "japan-tuic-identity-additive-repair-20260716-002",
-  executionGateId: "github-actions-japan-tuic-additive-repair-20260716-001",
+  gateBasis: "japan-tuic-identity-additive-repair-20260724-003",
+  executionGateId: "github-actions-japan-tuic-additive-repair-20260724-002",
   releaseUnit: "japan-runtime-config",
   target: "vultr-japan-production",
   surface: "japan-tuic",
   strategy: "additive_missing_only",
   artifact: Object.freeze({
-    runId: 29495150692,
-    fileName: "proxy-gateway-control-plane-cumulative-20260716-003.zip",
-    sizeBytes: 4744340,
+    runId: 30092196734,
+    fileName: "proxy-gateway-japan-tuic-additive-repair-20260724-001.zip",
+    sizeBytes: 4829111,
     sha256: ARTIFACT_SHA256,
     sourceCommit: TOOL_SOURCE_COMMIT
   }),
   candidate: Object.freeze({
     addCount: 3,
     removeCount: 0,
-    deferredRemoveCount: 27,
+    deferredRemoveCount: 46,
     deferredChangedCount: 0,
     missingMaterialCount: 0,
     projectedMapCount: 82
   }),
   before: Object.freeze({
-    runtimeCount: 55,
-    mappedCount: 52,
+    runtimeCount: 36,
+    mappedCount: 33,
     missing: 3,
-    stale: 27,
+    stale: 46,
     changed: 0,
     missingMaterial: 0
   }),
   after: Object.freeze({
-    runtimeCount: 55,
-    mappedCount: 55,
+    runtimeCount: 36,
+    mappedCount: 36,
     missing: 0,
-    stale: 27,
+    stale: 46,
     changed: 0,
     missingMaterial: 0,
     retentionState: "pending",

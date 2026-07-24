@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: release_state
   superseded_by: null
-  last_verified_at: 2026-07-20
+  last_verified_at: 2026-07-24
   production_authority: false
 ```
 
@@ -16,7 +16,8 @@ document_metadata:
 > - Source evidence baseline: `9982d378f93dd506c24c137197293f6942dc45ee` (master @ 2026-07-20)
 > - Static artifact baseline: `18807285` (PR #452)
 > - Historical v2 baseline: `4fbe0222` (PR #445)
-> - Updated: 2026-07-20, America/Los_Angeles
+> - Updated: 2026-07-24, America/Los_Angeles (traffic-accounting addendum;
+>   source and release baseline below remain 2026-07-20)
 > - Source evidence cutoff: GitHub read-only inventory through `master@9982d378f93dd506c24c137197293f6942dc45ee` on 2026-07-20
 > - Production/runtime evidence cutoff: `2026-07-20T06:21:00Z`; vultr-japan-control control-plane-app upgraded to master-upgrade-20260720-9982d378
 > - Live verification: Production upgrade validation completed with service stability confirmed
@@ -227,6 +228,30 @@ does not require review-thread resolution. Six environments exist; only
 `artifact-publication` has a branch policy, and none has reviewer enforcement.
 This is the observed machine-enforcement boundary, not independent approval.
 
+The manual Japan runtime-config additive-repair workflow is source-only and
+does not establish a deployment or production result. Its `approval_pr` check
+requires the nominated PR to merge at the exact workflow commit, to have a
+passed `Validate` check, and to retain a latest-state approval on the PR final
+head from a reviewer other than the actual triggering actor before the execute
+job can read connection material. This source-only authorization is reusable
+while those conditions remain true; `approval_pr` is not a one-time or consumed
+credential. It does not bootstrap host access, authorize dispatch, apply the
+map, or prove production success; each remains behind its separate Risk A gate.
+
+The Japan TUIC repair-observation source candidate is likewise
+`not_deployed`. It neither deploys the writer nor configures an observation-file
+path, creates CI credentials, secrets, bindings, or systemd units, changes the
+protected map, or dispatches a workflow run. A later, separately approved Risk
+A sequence must deploy the reviewed control-plane source, configure one
+protected observation-file path, obtain two naturally timer-written accepted
+observations, complete fresh aggregate preflight, then bootstrap the temporary
+forced-command identity with both its runner and sibling helper matched to that
+reviewed source release, dispatch one run, and prove host and GitHub cleanup.
+The fixed 2026-07-16 map-repair ZIP remains unchanged and cannot prove that a
+newer host-side sibling helper is deployed. Source merge, if approved, does not
+establish any of those steps or a
+closed-loop production result.
+
 GitHub reports 0 open code-scanning alerts, 0 open Dependabot alerts, and 0 open
 secret-scanning alerts at this cutoff. Successful CodeQL execution remains
 source-analysis evidence rather than production proof.
@@ -250,8 +275,14 @@ The ordered next-action queue is:
 - #437 Traffic Accounting remains the primary implementation Epic. Source now
   includes the reviewed credential-lifecycle, cumulative-accounting,
   unresolved-provenance, and offline natural-observation work through #478.
-  The dated production observation remains unchanged: identity sync is degraded
-  (`missing=2`, `stale=19`), and `map_apply` has not started. Draft PR #479 is
+  The Japan TUIC repair-observation writer remains a source candidate and is
+  not deployed; it has no configured protected observation path, CI identity,
+  CI secret/binding, systemd change, map mutation, or dispatched repair run.
+  A 2026-07-23 read-only Japan aggregate observation found identity sync
+  degraded (`missing=3`, `stale=46`) with an additive-only candidate
+  (`add=3`, `remove=0`). Periodic traffic collection is active; `map_apply`
+  has not started because the protected repair capability is not bootstrapped.
+  Draft PR #479 is
   blocked at Gate 003 terminal receipt `issuecomment-4979585832`; that approval
   is consumed, and no later durable Gate exists. Issue #437 was reopened by
   receipt `issuecomment-4976074286`

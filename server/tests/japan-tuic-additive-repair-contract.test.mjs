@@ -20,13 +20,13 @@ const ARTIFACT_BYTES = "approved-artifact-bytes";
 
 const approvalBundle = (overrides = {}) => JSON.stringify({
   schemaVersion: "1",
-  gateId: "github-actions-japan-tuic-additive-repair-20260716-001",
+  gateId: "github-actions-japan-tuic-additive-repair-20260724-002",
   repository: "gccwebos-com/proxy-gateway-minimal",
   workflowRef: "gccwebos-com/proxy-gateway-minimal/.github/workflows/japan-runtime-config-additive-repair.yml@refs/heads/master",
   workflowCommit: "a".repeat(40),
   runId: "29510000000",
   runAttempt: "1",
-  artifactSha256: "d6c0663c9a7c82c6e8ffb7d354e2a4c23d26f3339586533df5c268b887b839fd",
+  artifactSha256: "43d5cea28dc70b838f95706690b45282297b1dae3cfe3b76ab941660ed7a83fe",
   target: "vultr-japan-production",
   issuedAt: "2026-07-16T20:00:00.000Z",
   expiresAt: "2026-07-16T20:15:00.000Z",
@@ -43,11 +43,11 @@ const currentApprovalRun = (overrides = {}) => ({
 });
 
 const artifact = (overrides = {}) => ({
-  runId: 29495150692,
-  fileName: "proxy-gateway-control-plane-cumulative-20260716-003.zip",
-  sizeBytes: 4744340,
-  sha256: "d6c0663c9a7c82c6e8ffb7d354e2a4c23d26f3339586533df5c268b887b839fd",
-  sourceCommit: "47a2a9583fb44cb905e91aade02ae5aa3d635d94",
+  runId: 30092196734,
+  fileName: "proxy-gateway-japan-tuic-additive-repair-20260724-001.zip",
+  sizeBytes: 4829111,
+  sha256: "43d5cea28dc70b838f95706690b45282297b1dae3cfe3b76ab941660ed7a83fe",
+  sourceCommit: "70880d83761b165e91e9c521ec480fcc840375fb",
   ...overrides
 });
 
@@ -57,7 +57,7 @@ const candidate = (overrides = {}) => ({
   candidate: {
     addCount: 3,
     removeCount: 0,
-    deferredRemoveCount: 27,
+    deferredRemoveCount: 46,
     deferredChangedCount: 0,
     missingMaterialCount: 0,
     projectedMapCount: 82,
@@ -67,10 +67,10 @@ const candidate = (overrides = {}) => ({
 });
 
 const identityAfter = (overrides = {}) => ({
-  runtimeCount: 55,
-  mappedCount: 55,
+  runtimeCount: 36,
+  mappedCount: 36,
   missing: 0,
-  stale: 27,
+  stale: 46,
   changed: 0,
   missingMaterial: 0,
   retentionState: "pending",
@@ -107,10 +107,39 @@ const naturalObservation = (overrides = {}) => ({
 test("freezes the reviewed basis, planned execution gate, artifact, and additive counts", () => {
   assert.equal(validateArtifactIdentity(artifact()).ok, true);
   assert.equal(validateCandidateReport(candidate()).candidateReady, true);
-  assert.equal(JAPAN_TUIC_REPAIR_GATE.gateBasis, "japan-tuic-identity-additive-repair-20260716-002");
-  assert.equal(JAPAN_TUIC_REPAIR_GATE.executionGateId, "github-actions-japan-tuic-additive-repair-20260716-001");
+  assert.equal(JAPAN_TUIC_REPAIR_GATE.gateBasis, "japan-tuic-identity-additive-repair-20260724-003");
+  assert.equal(JAPAN_TUIC_REPAIR_GATE.executionGateId, "github-actions-japan-tuic-additive-repair-20260724-002");
   assert.equal(JAPAN_TUIC_REPAIR_GATE.target, "vultr-japan-production");
   assert.equal(JAPAN_TUIC_REPAIR_GATE.strategy, "additive_missing_only");
+});
+
+test("freezes the new immutable artifact and non-replayable execution gate", () => {
+  assert.deepEqual(JAPAN_TUIC_REPAIR_GATE.artifact, {
+    runId: 30092196734,
+    fileName: "proxy-gateway-japan-tuic-additive-repair-20260724-001.zip",
+    sizeBytes: 4829111,
+    sha256: "43d5cea28dc70b838f95706690b45282297b1dae3cfe3b76ab941660ed7a83fe",
+    sourceCommit: "70880d83761b165e91e9c521ec480fcc840375fb"
+  });
+  assert.equal(
+    JAPAN_TUIC_REPAIR_GATE.gateBasis,
+    "japan-tuic-identity-additive-repair-20260724-003"
+  );
+  assert.equal(
+    JAPAN_TUIC_REPAIR_GATE.executionGateId,
+    "github-actions-japan-tuic-additive-repair-20260724-002"
+  );
+});
+
+test("workflow preflight and execution consume the same new immutable artifact", () => {
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/japan-runtime-config-additive-repair.yml", import.meta.url),
+    "utf8"
+  );
+  assert.match(workflow, /run-id: 30092196734/g);
+  assert.match(workflow, /proxy-gateway-japan-tuic-additive-repair-20260724-001/g);
+  assert.match(workflow, /proxy-gateway-japan-tuic-additive-repair-20260724-001\.zip/g);
+  assert.match(workflow, /70880d83761b165e91e9c521ec480fcc840375fb/g);
 });
 
 test("accepts only an exact unexpired Environment-issued approval for this run attempt", () => {
@@ -179,7 +208,7 @@ test("accepts only an exact unexpired Environment-issued approval for this run a
 
 test("rejects any artifact drift without echoing supplied values", () => {
   for (const drift of [
-    { runId: 29495150693 },
+    { runId: 30092196735 },
     { fileName: "/protected/value" },
     { sizeBytes: 4744341 },
     { sha256: "f".repeat(64) },
@@ -194,7 +223,7 @@ test("rejects any artifact drift without echoing supplied values", () => {
       }
     );
     assert.equal(message, "artifact_identity_mismatch");
-    assert.doesNotMatch(message, /protected|value|29495150693/);
+    assert.doesNotMatch(message, /protected|value|30092196735/);
   }
 });
 
@@ -202,7 +231,7 @@ test("rejects every additive count drift with one fixed safe code", () => {
   for (const [field, value] of [
     ["addCount", 2],
     ["removeCount", 1],
-    ["deferredRemoveCount", 26],
+    ["deferredRemoveCount", 45],
     ["deferredChangedCount", 1],
     ["missingMaterialCount", 1],
     ["projectedMapCount", 81],
@@ -218,8 +247,8 @@ test("rejects every additive count drift with one fixed safe code", () => {
 test("requires the exact degraded post-apply Identity Gate", () => {
   assert.equal(validatePostApplyIdentity(identityAfter()).state, "degraded");
   for (const drift of [
-    { runtimeCount: 54 },
-    { mappedCount: 54 },
+    { runtimeCount: 35 },
+    { mappedCount: 35 },
     { missing: 1 },
     { stale: 0 },
     { changed: 1 },
@@ -394,7 +423,7 @@ test("artifact CLI fails safely without exposing a mismatched manifest or path",
   let stdout = "";
   let stderr = "";
   const exitCode = runJapanTuicRepairContractCli({
-    argv: ["artifact", "--manifest", manifestPath, "--artifact", artifactPath, "--run-id", "29495150692"],
+    argv: ["artifact", "--manifest", manifestPath, "--artifact", artifactPath, "--run-id", "30092196734"],
     stdout: { write: (value) => { stdout += value; } },
     stderr: { write: (value) => { stderr += value; } }
   });

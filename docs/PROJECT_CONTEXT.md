@@ -276,6 +276,17 @@ PR #483 introduced docs-only/code lane routing and always-run diff checking
 while retaining one stable required `Validate` context. It did not create
 independent lane contexts or change the ruleset/settings boundary above.
 
+The manual Japan runtime-config additive-repair workflow has a source-only
+authorization boundary: its required `approval_pr` must identify a PR merged
+at the exact workflow commit with a passed `Validate` check and a latest-state
+approval on the PR final head from a reviewer other than the actual triggering
+actor. This source-only authorization is checked before the execute-job
+artifact download and any connection-secret reference. It is reusable while
+those conditions remain true; `approval_pr` is not a one-time or consumed
+credential. It does not
+bootstrap the host, authorize a workflow dispatch, apply the map, or establish
+production success; those are separate exact Risk A actions.
+
 ## Source Governance And Security Snapshot
 
 CodeQL runs `29418794902` and `29418794903` completed successfully for exact
@@ -314,10 +325,11 @@ evidence changes the dated production pointer.
 
 ## Active Blockers
 
-1. #437 has observed Japan TUIC identity drift (`missing=2`, `stale=19`) and at
-   least one active missing binding. Accounting completeness remains
-   `risk_not_quantified`; the additive repair capability is not deployed and
-   map apply has not started.
+1. #437 has a 2026-07-23 read-only Japan TUIC aggregate snapshot with
+   `missing=3`, `stale=46`, and an additive-only candidate of `add=3`,
+   `remove=0`. Periodic traffic collection is active, but identity mapping
+   remains degraded. The source repair contract is merged; its protected
+   production capability is not bootstrapped and map apply has not started.
 2. Offline Runtime Config Identity has not observed Japan or Singapore
    production; this must not be confused with the active traffic Evidence
    Runtime.

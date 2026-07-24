@@ -1,6 +1,6 @@
 # Vultr Japan Control / Data-Plane Status
 
-Last updated: 2026-07-09, UTC.
+Last updated: 2026-07-24, UTC.
 
 > Status:
 > - Type: Active docs/status baseline
@@ -40,6 +40,30 @@ planning.
 
 The current protected Admin API no longer exposes Aliyun gate packet/evidence
 routes or replacement provider-gate aliases for the retired Aliyun lane.
+
+## 2026-07-24 Read-Only Traffic Accounting Readiness
+
+This snapshot records a fresh, aggregate-only inventory. It does not change
+runtime state or authorize an execution:
+
+- `proxy-gateway-candidate.service`, `gccgw-traffic-usage-collect.timer`,
+  `xray-vless-reality.service`, and `mihomo-tuic.service` were active and
+  enabled.
+- `gccgw-traffic-usage-collect.service` was a static, timer-triggered one-shot
+  unit with its last recorded result `success`; its inactive waiting state is
+  not evidence that collection is disabled.
+- `master@cf33de7` contains the manual Japan additive-repair workflow and its
+  merged-PR verifier. PR #533 itself had no formal GitHub Review, so it cannot
+  be nominated as that verifier's `approval_pr`; a comment is not a substitute
+  for final-head `APPROVED` evidence.
+
+The next source gate is one purpose-bound PR merged at the exact workflow
+commit after an independent final-head GitHub approval and a passed `Validate`
+check. That PR is reusable source authorization only. It does not authorize a
+workflow dispatch, protected-material access, map apply, quota change, or a
+production-success claim. Those steps remain a separately reviewed Risk A
+execution gate with fresh pre-apply snapshots, a backup, one bounded manual
+run, and aggregate post-apply validation.
 
 ## Relationship To Execution Records
 

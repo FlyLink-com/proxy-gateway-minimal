@@ -35,6 +35,7 @@ import { createXrayStatsCliUsageSnapshotReader } from "./services/edge/xray-stat
 import { createRuntimeUsageAccountingService } from "./services/platform/runtime-usage-accounting.mjs";
 import { createTrafficAccountingService } from "./services/platform/traffic-accounting.mjs";
 import { createFileTrafficCollectorStatusStore } from "./services/platform/traffic-collector-admin-projection.mjs";
+import { createJapanTuicRepairObservationStore } from "./services/platform/japan-tuic-repair-observation.mjs";
 import { createOrderUsageQuotaLifecycleGate } from "./services/platform/order-usage-quota-lifecycle-gate.mjs";
 import { createFileBackedEdgeCredentialMaterialStore } from "./services/edge/credential-material-store.mjs";
 import {
@@ -883,6 +884,21 @@ function createReceiptBackedSubscriptionChannelGate({ controlStore } = {}) {
 export function createRuntimeState(options = {}) {
   const rootDir = rootPathFrom(options.rootDir || new URL("..", import.meta.url));
   const env = options.env || process.env;
+  const trafficCollectorStatusPath = optionalEnvText(env.EDGE_USAGE_COLLECTOR_STATUS_PATH);
+  const japanTuicRepairObservationPath = optionalEnvText(env.EDGE_JAPAN_TUIC_REPAIR_OBSERVATION_PATH);
+  if (japanTuicRepairObservationPath && !trafficCollectorStatusPath) {
+    throw runtimeValidationError(
+      "EDGE_JAPAN_TUIC_REPAIR_OBSERVATION_PATH requires EDGE_USAGE_COLLECTOR_STATUS_PATH"
+    );
+  }
+  if (
+    japanTuicRepairObservationPath
+    && resolve(japanTuicRepairObservationPath) === resolve(trafficCollectorStatusPath)
+  ) {
+    throw runtimeValidationError(
+      "Japan TUIC repair observation and collector status paths must differ"
+    );
+  }
   const host = "127.0.0.1";
   const consolePort = Number.parseInt(env.CONSOLE_PORT, 10) || 3456;
   const ports = { console: consolePort, socks: 1080, httpProxy: 18180 };
@@ -1419,11 +1435,17 @@ export function createRuntimeState(options = {}) {
       })
       : null
   );
-  const trafficCollectorStatusPath = optionalEnvText(env.EDGE_USAGE_COLLECTOR_STATUS_PATH);
   const trafficCollectorStatusStore = options.trafficCollectorStatusStore || (
     trafficCollectorStatusPath
       ? createFileTrafficCollectorStatusStore({
         filePath: trafficCollectorStatusPath
+      })
+      : null
+  );
+  const japanTuicRepairObservationStore = options.japanTuicRepairObservationStore || (
+    japanTuicRepairObservationPath
+      ? createJapanTuicRepairObservationStore({
+        filePath: japanTuicRepairObservationPath
       })
       : null
   );
@@ -1632,6 +1654,7 @@ export function createRuntimeState(options = {}) {
       edgeUsageCollectors,
       edgeUsageAccounting,
       trafficCollectorStatusStore,
+      japanTuicRepairObservationStore,
       dataPlaneHandoffQueue,
       dataPlaneAgentRoutesEnabled,
       dataPlaneAgentService

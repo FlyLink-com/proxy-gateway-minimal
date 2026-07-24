@@ -70,6 +70,16 @@ const SAFE_ERROR_CODES = new Set([
 const execFileAsync = promisify(execFileCallback);
 const MAX_HELPER_OUTPUT_BYTES = 64 * 1024;
 const MAX_PROTECTED_OBSERVATION_BYTES = 4 * 1024 * 1024;
+const MAX_JAPAN_OBSERVATION_BYTES = 256 * 1024;
+const RUNNER_DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const INSTALLED_JAPAN_OBSERVATION_HELPER = join(
+  RUNNER_DIRECTORY,
+  "..",
+  "server",
+  "services",
+  "platform",
+  "japan-tuic-repair-observation.mjs"
+);
 
 function safeError(code) {
   return new JapanTuicRepairContractError(code);
@@ -185,7 +195,7 @@ function validatePostApplyCandidate(input) {
   const expected = {
     addCount: 0,
     removeCount: 0,
-    deferredRemoveCount: 27,
+    deferredRemoveCount: 46,
     deferredChangedCount: 0,
     missingMaterialCount: 0,
     projectedMapCount: 82,
@@ -536,26 +546,28 @@ function readBoundedJson(path, maxBytes, code) {
   }
 }
 
-function naturalObservationSummary(input, report) {
-  const projectionInput = record(record(input).projection);
-  const collectors = Array.isArray(projectionInput.collectors) ? projectionInput.collectors : [];
-  const japanTuic = collectors.find((collector) => {
-    const value = record(collector);
-    return value.channelRef === "channel-vultr-a-tuic"
-      || value.collectorRef === "channel-vultr-a-tuic";
-  });
-  if (!japanTuic) throw safeError("natural_observation_failed");
-  const projection = record(record(report).projection);
+function naturalObservationSummary(report) {
+  const observation = record(report);
+  if (observation.schemaVersion !== "1"
+    || observation.type !== "japan_tuic_repair_observation"
+    || observation.accepted !== true
+    || !Number.isSafeInteger(observation.collectorCount)
+    || observation.collectorCount < 0
+    || !Number.isSafeInteger(observation.unresolvedTotal)
+    || observation.unresolvedTotal < 0
+    || observation.japanTuicUnresolved !== 0) {
+    throw safeError("natural_observation_failed");
+  }
   return {
-    capturedAt: report.capturedAt,
-    collectorInvocationObserved: report.collectorInvocationObserved,
-    collectorCount: projection.collectorCount,
-    unresolvedTotal: projection.unresolvedTotal,
-    japanTuicUnresolved: record(japanTuic).unresolvedCount,
-    omittedCollectorCount: projection.omittedCollectors,
-    omittedProducerCount: projection.omittedProducers,
-    provenanceConserved: projection.provenanceConserved,
-    validatorPassed: report.passed === true
+    capturedAt: observation.capturedAt,
+    collectorInvocationObserved: true,
+    collectorCount: observation.collectorCount,
+    unresolvedTotal: observation.unresolvedTotal,
+    japanTuicUnresolved: observation.japanTuicUnresolved,
+    omittedCollectorCount: 0,
+    omittedProducerCount: 0,
+    provenanceConserved: true,
+    validatorPassed: true
   };
 }
 
@@ -564,7 +576,7 @@ export function createHostOperations({
   expectedArtifact = JAPAN_TUIC_REPAIR_GATE.artifact,
   execFileFn = execFileAsync,
   makeTemporaryDirectoryFn,
-  naturalObservationBuilder,
+  naturalObservationValidator,
   platform = process.platform
 } = {}) {
   let temporaryDirectory = null;
@@ -660,7 +672,7 @@ export function createHostOperations({
         "--strategy", "additive_missing_only",
         "--expected-add", "3",
         "--expected-remove", "0",
-        "--expected-deferred-remove", "27",
+        "--expected-deferred-remove", "46",
         "--expected-changed", "0",
         "--expected-missing-material", "0",
         "--expected-projected-map-count", "82"
@@ -813,24 +825,20 @@ export function createHostOperations({
     async readNaturalObservation({ root, binding: activeBinding }) {
       const input = readBoundedJson(
         activeBinding.paths.naturalObservation,
-        MAX_PROTECTED_OBSERVATION_BYTES,
+        MAX_JAPAN_OBSERVATION_BYTES,
         "natural_observation_failed"
       );
-      let builder = naturalObservationBuilder;
-      if (!builder) {
+      let validator = naturalObservationValidator;
+      if (!validator) {
         try {
-          const module = await import(pathToFileURL(join(
-            root,
-            "scripts",
-            "traffic-accounting-natural-observation.mjs"
-          )).href);
-          builder = module.buildTrafficAccountingNaturalObservation;
+          const module = await import(pathToFileURL(INSTALLED_JAPAN_OBSERVATION_HELPER).href);
+          validator = module.validateJapanTuicRepairObservation;
         } catch {
           throw safeError("natural_observation_failed");
         }
       }
       try {
-        return naturalObservationSummary(input, builder(input));
+        return naturalObservationSummary(validator(input));
       } catch (error) {
         if (error instanceof JapanTuicRepairContractError) throw error;
         throw safeError("natural_observation_failed");
