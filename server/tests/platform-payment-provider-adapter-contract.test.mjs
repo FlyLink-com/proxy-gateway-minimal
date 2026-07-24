@@ -1358,6 +1358,21 @@ test("successful capture requires a matching branded payment fact", async () => 
   }
 });
 
+test("successful capture requires an operation result bound to its provider order", async () => {
+  const branded = await createBrandedCaptureFact();
+  const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
+    capturePayment: () => validCaptureOutcome({
+      operationResult: validResult({ providerOrderRef: "other-provider-order" }),
+      paymentFact: branded,
+    }),
+  }));
+
+  await assert.rejects(
+    () => adapter.capturePayment(validCaptureInput()),
+    expectCode("invalid_payment_operation_result"),
+  );
+});
+
 test("capture rejects order amount currency exponent and provenance mismatches", async () => {
   const cases = [
     ["paymentOrderRef", "other-payment-order"],
@@ -1450,6 +1465,24 @@ test("non-success capture outcomes require a null payment fact", async () => {
       }),
     })),
     (error) => error?.code === "provider_operation_failed",
+  );
+});
+
+test("non-success capture requires an operation result bound to its provider order", async () => {
+  const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
+    capturePayment: () => validCaptureOutcome({
+      operationResult: validResult({
+        providerOrderRef: "other-provider-order",
+        status: "pending",
+        chargeCertainty: "possibly_charged",
+      }),
+      paymentFact: null,
+    }),
+  }));
+
+  await assert.rejects(
+    () => adapter.capturePayment(validCaptureInput()),
+    expectCode("invalid_payment_operation_result"),
   );
 });
 
