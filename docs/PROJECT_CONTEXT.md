@@ -280,9 +280,10 @@ The manual Japan runtime-config additive-repair workflow has a source-only
 authorization boundary: its required `approval_pr` must identify a PR merged
 at the exact workflow commit with a passed `Validate` check and a latest-state
 approval on the PR final head from a reviewer other than the actual triggering
-actor. This source-only authorization is checked before artifact download and
-any connection-secret reference. It is reusable while those conditions remain
-true; `approval_pr` is not a one-time or consumed credential. It does not
+actor. This source-only authorization is checked before the execute-job
+artifact download and any connection-secret reference. It is reusable while
+those conditions remain true; `approval_pr` is not a one-time or consumed
+credential. It does not
 bootstrap the host, authorize a workflow dispatch, apply the map, or establish
 production success; those are separate exact Risk A actions.
 
