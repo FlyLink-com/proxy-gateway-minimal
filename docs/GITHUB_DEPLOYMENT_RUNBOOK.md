@@ -70,7 +70,8 @@ It does not:
 source-only production capability for release unit `japan-runtime-config` and
 strategy `additive_missing_only`. Its protected Environment is
 `vultr-japan-production`. Merging this workflow does not approve or perform a
-production operation; the execution Gate remains separate and one-time.
+production operation. Every dispatch and execution remains behind a separate
+exact Risk A Gate.
 
 This lane consumes only the frozen dry-run artifact from run `29495150692`:
 
@@ -95,11 +96,13 @@ executable modes with the artifact Git tree at
 required `approval_pr` number, not an approval token or confirmation value.
 Before artifact download or any connection-secret reference, the protected
 execute job queries that PR and accepts it only when its exact merge commit is
-the workflow commit, its `Validate` check passed, and its final approval is
-from a non-dispatcher. It then streams the verified archive to a host-side
-forced command; it does not receive an interactive shell, PTY, forwarding,
-SCP, rsync, or an operator SSH identity. Logs and summaries contain aggregate
-receipts only.
+the workflow commit, its `Validate` check passed, and the latest state from an
+approving reviewer other than the actual triggering actor is `APPROVED` on the
+PR final head. This source authorization is reusable while those conditions
+remain true; `approval_pr` is not a one-time or consumed credential. It then
+streams the verified archive to a host-side forced command; it does not receive
+an interactive shell, PTY, forwarding, SCP, rsync, or an operator SSH identity.
+Logs and summaries contain aggregate receipts only.
 
 #### CI Identity Bootstrap Gate
 
@@ -130,8 +133,8 @@ deployment access.
 
 Bootstrap stops if the restricted principal would gain a general shell or
 broader sudo authority. A typed dispatcher value, an unprotected manual run,
-or an `approval_pr` that fails the exact merged-commit, `Validate`, or
-non-dispatcher approval checks is not an acceptable fallback.
+or an `approval_pr` that fails the exact merged-commit, final-head review,
+`Validate`, or triggering actor checks is not an acceptable fallback.
 
 #### Quantitative Production Execution Gate
 
@@ -140,18 +143,22 @@ manual workflow run and no automatic retry. The dispatcher starts the workflow
 on the exact merged `master` commit and supplies `approval_pr`. Before artifact
 download or any `JAPAN_CI_*` secret reference, the execute job uses its
 ephemeral GitHub token to verify that the nominated PR was merged at that exact
-workflow commit, has a passed `Validate` check, and has a final `APPROVED`
-review from an account other than the dispatcher. The check is fail-closed;
-missing, unmerged, drifted, failed-`Validate`, or dispatcher-only review
-evidence stops the run before protected material is read. A rerun requires a
-new exact Risk A Gate and fresh approval evidence. The earlier
+workflow commit, has a passed `Validate` check, and has a latest-state
+`APPROVED` review on its final head from an account other than the actual
+triggering actor. The check is fail-closed; missing, unmerged, drifted,
+stale-head, failed-`Validate`, or triggering-actor-only review evidence stops
+the run before protected material is read. A rerun requires a new exact Risk A
+dispatch/execution Gate, but may reuse the same `approval_pr` source
+authorization while all merged-commit, final-head-review, `Validate`, and
+triggering-actor conditions still pass. The earlier
 `japan-tuic-identity-additive-repair-20260716-002` review is evidence for the
 source, artifact, and candidate counts; it is not CI execution authority.
 
-The merged-PR check authorizes only the reviewed source boundary. It does not
-bootstrap a host identity, authorize dispatch, apply the map, or establish a
-successful production result; those remain separately authorized and validated
-Risk A actions.
+The merged-PR check is reusable source authorization, not a one-time or
+consumed credential. It authorizes only the reviewed source boundary. It does
+not bootstrap a host identity, authorize dispatch, apply the map, or establish
+a successful production result; those remain separately authorized and
+validated Risk A actions.
 
 The run must reproduce two stable pre-apply snapshots with the exact candidate
 above before backup or mutation. A successful apply must produce this

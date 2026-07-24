@@ -231,10 +231,12 @@ This is the observed machine-enforcement boundary, not independent approval.
 The manual Japan runtime-config additive-repair workflow is source-only and
 does not establish a deployment or production result. Its `approval_pr` check
 requires the nominated PR to merge at the exact workflow commit, to have a
-passed `Validate` check, and to retain a final approval from a non-dispatcher
-before the execute job can read connection material. That source authorization
-does not bootstrap host access, authorize dispatch, apply the map, or prove
-production success; each remains behind its separate Risk A gate.
+passed `Validate` check, and to retain a latest-state approval on the PR final
+head from a reviewer other than the actual triggering actor before the execute
+job can read connection material. This source-only authorization is reusable
+while those conditions remain true; `approval_pr` is not a one-time or consumed
+credential. It does not bootstrap host access, authorize dispatch, apply the
+map, or prove production success; each remains behind its separate Risk A gate.
 
 GitHub reports 0 open code-scanning alerts, 0 open Dependabot alerts, and 0 open
 secret-scanning alerts at this cutoff. Successful CodeQL execution remains

@@ -54,24 +54,26 @@ function validCommit(value) {
 function validateInput(input) {
   if (!exactKeys(input, ["pullRequest", "reviews", "checks", "current"])) throw safeError();
   const { pullRequest, reviews, checks, current } = input;
-  if (!exactKeys(pullRequest, ["number", "merged", "mergeCommit"])
+  if (!exactKeys(pullRequest, ["number", "merged", "mergeCommit", "headCommit"])
     || !Number.isSafeInteger(pullRequest.number)
     || pullRequest.number < 1
     || typeof pullRequest.merged !== "boolean"
     || !validCommit(pullRequest.mergeCommit)
+    || !validCommit(pullRequest.headCommit)
     || !strictEvidenceArray(reviews)
     || !strictEvidenceArray(checks)
-    || !exactKeys(current, ["dispatcher", "workflowCommit"])
-    || typeof current.dispatcher !== "string"
-    || current.dispatcher.length === 0
+    || !exactKeys(current, ["triggeringActor", "workflowCommit"])
+    || typeof current.triggeringActor !== "string"
+    || current.triggeringActor.length === 0
     || !validCommit(current.workflowCommit)) {
     throw safeError();
   }
   for (const review of reviews) {
-    if (!exactKeys(review, ["login", "state"])
+    if (!exactKeys(review, ["login", "state", "commitId"])
       || typeof review.login !== "string"
       || review.login.length === 0
-      || typeof review.state !== "string") {
+      || typeof review.state !== "string"
+      || !validCommit(review.commitId)) {
       throw safeError();
     }
   }
@@ -87,15 +89,20 @@ function validateInput(input) {
 
 function latestReviewerStates(reviews) {
   const latest = new Map();
-  for (const review of reviews) latest.set(review.login, review.state);
-  return [...latest].map(([login, state]) => ({ login, state }));
+  for (const review of reviews) {
+    latest.set(review.login.toLowerCase(), review);
+  }
+  return [...latest.values()];
 }
 
 export function validateMergedPrApproval(input = {}) {
   try {
     const { pullRequest, reviews, checks, current } = validateInput(input);
-    const approved = latestReviewerStates(reviews).some(({ login, state }) =>
-      login !== current.dispatcher && state === "APPROVED"
+    const triggeringActor = current.triggeringActor.toLowerCase();
+    const approved = latestReviewerStates(reviews).some(({ login, state, commitId }) =>
+      login.toLowerCase() !== triggeringActor
+      && state === "APPROVED"
+      && commitId === pullRequest.headCommit
     );
     const validatePassed = checks.some(({ name, conclusion }) =>
       name === "Validate" && conclusion === "SUCCESS"
@@ -127,29 +134,91 @@ function parseRunnerContext(argv, env) {
   }
   const prNumber = Number(argv[1]);
   const { GITHUB_TOKEN: token, GITHUB_REPOSITORY: repository, GITHUB_SHA: workflowCommit,
-    GITHUB_ACTOR: dispatcher } = env || {};
+    GITHUB_TRIGGERING_ACTOR: triggeringActor } = env || {};
   if (!Number.isSafeInteger(prNumber)
     || typeof token !== "string"
     || token.length === 0
     || typeof repository !== "string"
     || !/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repository)
     || !validCommit(workflowCommit)
-    || typeof dispatcher !== "string"
-    || dispatcher.length === 0) {
+    || typeof triggeringActor !== "string"
+    || triggeringActor.length === 0) {
     throw safeError();
   }
-  return { prNumber, token, repository, workflowCommit, dispatcher };
+  return { prNumber, token, repository, workflowCommit, triggeringActor };
 }
 
-async function getJson(fetchFn, path, token) {
-  const response = await fetchFn(`${GITHUB_API_ORIGIN}${path}`, {
+async function fetchJsonResponse(fetchFn, url, token) {
+  const response = await fetchFn(url, {
     headers: {
       accept: "application/vnd.github+json",
       authorization: `Bearer ${token}`
     }
   });
   if (!response || response.ok !== true || typeof response.json !== "function") throw safeError();
+  return response;
+}
+
+async function getJson(fetchFn, path, token) {
+  const response = await fetchJsonResponse(fetchFn, `${GITHUB_API_ORIGIN}${path}`, token);
   return response.json();
+}
+
+function reviewPageUrl(value, reviewsPath) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw safeError();
+  }
+  const parameterNames = [...url.searchParams.keys()];
+  const page = url.searchParams.get("page");
+  if (url.origin !== GITHUB_API_ORIGIN
+    || url.username !== ""
+    || url.password !== ""
+    || url.hash !== ""
+    || url.pathname !== reviewsPath
+    || parameterNames.length !== 2
+    || !parameterNames.includes("per_page")
+    || !parameterNames.includes("page")
+    || url.searchParams.get("per_page") !== "100"
+    || !/^[1-9][0-9]*$/.test(page || "")
+    || !Number.isSafeInteger(Number(page))) {
+    throw safeError();
+  }
+  return url.href;
+}
+
+function nextReviewPage(linkHeader, reviewsPath) {
+  if (linkHeader === null) return null;
+  if (typeof linkHeader !== "string" || linkHeader.length === 0) throw safeError();
+  const relations = new Map();
+  for (const entry of linkHeader.split(",")) {
+    const match = /^\s*<([^<>]+)>\s*;\s*rel="(next|prev|first|last)"\s*$/.exec(entry);
+    if (!match || relations.has(match[2])) throw safeError();
+    relations.set(match[2], reviewPageUrl(match[1], reviewsPath));
+  }
+  return relations.get("next") || null;
+}
+
+async function getAllReviews(fetchFn, reviewsPath, token) {
+  const reviews = [];
+  const seen = new Set();
+  let nextUrl = `${GITHUB_API_ORIGIN}${reviewsPath}?per_page=100`;
+  while (nextUrl !== null) {
+    if (seen.has(nextUrl)) throw safeError();
+    seen.add(nextUrl);
+    const response = await fetchJsonResponse(fetchFn, nextUrl, token);
+    const page = await response.json();
+    if (!strictEvidenceArray(page)
+      || !response.headers
+      || typeof response.headers.get !== "function") {
+      throw safeError();
+    }
+    reviews.push(...page);
+    nextUrl = nextReviewPage(response.headers.get("link"), reviewsPath);
+  }
+  return reviews;
 }
 
 function apiEvidence(pullRequest, reviews, checks, current) {
@@ -157,11 +226,13 @@ function apiEvidence(pullRequest, reviews, checks, current) {
     pullRequest: {
       number: pullRequest.number,
       merged: pullRequest.merged,
-      mergeCommit: pullRequest.merge_commit_sha
+      mergeCommit: pullRequest.merge_commit_sha,
+      headCommit: pullRequest.head?.sha
     },
     reviews: reviews.map((review) => ({
       login: review.user?.login,
-      state: review.state
+      state: review.state,
+      commitId: review.commit_id
     })),
     checks: checks.check_runs.map((check) => ({
       name: check.name,
@@ -179,21 +250,27 @@ export async function runMergedPrApprovalCli({
   stderr = process.stderr
 } = {}) {
   try {
-    const { prNumber, token, repository, workflowCommit, dispatcher } = parseRunnerContext(argv, env);
+    const {
+      prNumber,
+      token,
+      repository,
+      workflowCommit,
+      triggeringActor
+    } = parseRunnerContext(argv, env);
     if (typeof fetchFn !== "function" || !stdout || typeof stdout.write !== "function") throw safeError();
     const paths = [
       `/repos/${repository}/pulls/${prNumber}`,
-      `/repos/${repository}/pulls/${prNumber}/reviews?per_page=100`,
+      `/repos/${repository}/pulls/${prNumber}/reviews`,
       `/repos/${repository}/commits/${workflowCommit}/check-runs?per_page=100`
     ];
     const pullRequest = await getJson(fetchFn, paths[0], token);
-    const reviews = await getJson(fetchFn, paths[1], token);
+    const reviews = await getAllReviews(fetchFn, paths[1], token);
     const checks = await getJson(fetchFn, paths[2], token);
     const result = validateMergedPrApproval(apiEvidence(
       pullRequest,
       reviews,
       checks,
-      { dispatcher, workflowCommit }
+      { triggeringActor, workflowCommit }
     ));
     stdout.write(`${JSON.stringify(result)}\n`);
     return 0;

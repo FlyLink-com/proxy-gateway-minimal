@@ -10,6 +10,11 @@ const WORKFLOW_PATH = resolve(
   ".github/workflows/japan-runtime-config-additive-repair.yml"
 );
 const RUNBOOK_PATH = resolve(REPOSITORY_ROOT, "docs/GITHUB_DEPLOYMENT_RUNBOOK.md");
+const CURRENT_RELEASE_STATE_PATH = resolve(
+  REPOSITORY_ROOT,
+  "docs/CURRENT_RELEASE_STATE.md"
+);
+const PROJECT_CONTEXT_PATH = resolve(REPOSITORY_ROOT, "docs/PROJECT_CONTEXT.md");
 const DESIGN_PATH = resolve(
   REPOSITORY_ROOT,
   "docs/superpowers/specs/2026-07-16-github-japan-additive-repair-cicd-design.md"
@@ -47,7 +52,7 @@ test("Japan repair workflow is manual-only with minimal read permissions", () =>
   assert.match(workflow, /cancel-in-progress: false/);
 });
 
-test("dispatcher cannot manufacture or replay the production approval", () => {
+test("triggering actor cannot manufacture the merged PR approval", () => {
   const workflow = workflowText();
   const trigger = workflow.slice(workflow.indexOf("on:"), workflow.indexOf("permissions:"));
   const preflight = jobBlock(workflow, "preflight", "execute");
@@ -60,15 +65,22 @@ test("dispatcher cannot manufacture or replay the production approval", () => {
   assert.match(execute, /GITHUB_TOKEN: \$\{\{ github\.token \}\}/);
   assert.match(execute, /GITHUB_REPOSITORY: \$\{\{ github\.repository \}\}/);
   assert.match(execute, /GITHUB_SHA: \$\{\{ github\.sha \}\}/);
-  assert.match(execute, /GITHUB_ACTOR: \$\{\{ github\.actor \}\}/);
+  assert.match(
+    execute,
+    /GITHUB_TRIGGERING_ACTOR: \$\{\{ github\.triggering_actor \}\}/
+  );
+  assert.doesNotMatch(execute, /GITHUB_ACTOR:/);
   assert.match(execute, /APPROVAL_PR: \$\{\{ inputs\.approval_pr \}\}/);
   assert.match(execute, /japan-tuic-merged-pr-approval\.mjs --pr-number "\$APPROVAL_PR"/);
   const approval = execute.indexOf("- name: Validate merged PR production approval");
+  const triggeringActor = execute.indexOf("${{ github.triggering_actor }}");
   const download = execute.indexOf("- name: Download frozen dry-run artifact");
   const firstJapanSecret = execute.indexOf("JAPAN_CI_");
   const credentials = execute.indexOf("- name: Prepare restricted SSH material");
   assert.ok(
     approval >= 0
+      && triggeringActor > approval
+      && triggeringActor < download
       && download > approval
       && firstJapanSecret > approval
       && credentials > approval
@@ -198,8 +210,11 @@ test("deployment runbook closes the restricted Japan repair lifecycle", () => {
     "Quantitative Production Execution Gate",
     "approval_pr",
     "exact merge commit",
+    "final\\s+head",
     "Validate",
-    "non-dispatcher",
+    "triggering\\s+actor",
+    "reusable",
+    "not a one-time or consumed\\s+credential",
     "source authorization only",
     "production success",
     "JAPAN_CI_PRIVATE_KEY",
@@ -212,6 +227,30 @@ test("deployment runbook closes the restricted Japan repair lifecycle", () => {
     assert.match(runbook, new RegExp(requiredBoundary));
   }
   assert.doesNotMatch(runbook, /JAPAN_CI_APPROVAL_BUNDLE/);
+  assert.doesNotMatch(runbook, /fresh approval evidence|final approval from a non-dispatcher/);
+});
+
+test("active operating documents record reusable merged-PR authorization", () => {
+  for (const documentPath of [
+    CURRENT_RELEASE_STATE_PATH,
+    PROJECT_CONTEXT_PATH
+  ]) {
+    const document = readFileSync(documentPath, "utf8");
+    for (const requiredBoundary of [
+      "reusable",
+      "not a one-time or consumed\\s+credential",
+      "final\\s+head",
+      "triggering\\s+actor",
+      "Validate",
+      "source-only"
+    ]) {
+      assert.match(document, new RegExp(requiredBoundary));
+    }
+    assert.doesNotMatch(
+      document,
+      /final approval from a non-dispatcher|requires fresh approval evidence/
+    );
+  }
 });
 
 test("approved design records independent approval and source-tree binding", () => {

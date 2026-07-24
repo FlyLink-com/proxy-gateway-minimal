@@ -10,16 +10,17 @@ const validEvidence = (overrides = {}) => ({
   pullRequest: {
     number: 531,
     merged: true,
-    mergeCommit: "a".repeat(40)
+    mergeCommit: "a".repeat(40),
+    headCommit: "b".repeat(40)
   },
   reviews: [
-    { login: "reviewer", state: "APPROVED" }
+    { login: "reviewer", state: "APPROVED", commitId: "b".repeat(40) }
   ],
   checks: [
     { name: "Validate", conclusion: "SUCCESS" }
   ],
   current: {
-    dispatcher: "dispatcher",
+    triggeringActor: "triggering-actor",
     workflowCommit: "a".repeat(40)
   },
   ...overrides
@@ -30,7 +31,7 @@ function validEnv() {
     GITHUB_TOKEN: "test-token",
     GITHUB_REPOSITORY: "gccwebos-com/proxy-gateway-minimal",
     GITHUB_SHA: "a".repeat(40),
-    GITHUB_ACTOR: "dispatcher"
+    GITHUB_TRIGGERING_ACTOR: "triggering-actor"
   };
 }
 
@@ -39,9 +40,14 @@ function fixtureFetch(evidence) {
     {
       number: evidence.pullRequest.number,
       merged: evidence.pullRequest.merged,
-      merge_commit_sha: evidence.pullRequest.mergeCommit
+      merge_commit_sha: evidence.pullRequest.mergeCommit,
+      head: { sha: evidence.pullRequest.headCommit }
     },
-    evidence.reviews.map(({ login, state }) => ({ user: { login }, state })),
+    evidence.reviews.map(({ login, state, commitId }) => ({
+      user: { login },
+      state,
+      commit_id: commitId
+    })),
     { check_runs: evidence.checks }
   ];
   const calls = [];
@@ -50,6 +56,7 @@ function fixtureFetch(evidence) {
     const body = bodies.shift();
     return {
       ok: true,
+      headers: { get: () => null },
       json: async () => body
     };
   };
@@ -62,6 +69,28 @@ function capturedStreams() {
     stdout: { text: "", write(value) { this.text += value; } },
     stderr: { text: "", write(value) { this.text += value; } }
   };
+}
+
+function apiResponse(body, { link = null, ok = true } = {}) {
+  return {
+    ok,
+    headers: {
+      get(name) {
+        return name.toLowerCase() === "link" ? link : null;
+      }
+    },
+    json: async () => body
+  };
+}
+
+function queuedFetch(responses) {
+  const calls = [];
+  const fetchFn = async (url, options) => {
+    calls.push({ url, options });
+    return responses.shift();
+  };
+  fetchFn.calls = calls;
+  return fetchFn;
 }
 
 function assertSafeCliFailure({ exitCode, stdout, stderr, sensitive }) {
@@ -88,6 +117,9 @@ test("queries fixed GitHub evidence endpoints and emits approved evidence", asyn
   assert.equal(exitCode, 0);
   assert.equal(JSON.parse(stdout.text).type, "japan_tuic_merged_pr_approval");
   assert.equal(stderr.text, "");
+  assert.equal(stdout.text.includes("reviewer"), false);
+  assert.equal(stdout.text.includes("triggering-actor"), false);
+  assert.equal(stdout.text.includes("test-token"), false);
   assert.deepEqual(fetchFn.calls.map(({ url }) => url), [
     "https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/pulls/531",
     "https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/pulls/531/reviews?per_page=100",
@@ -95,10 +127,18 @@ test("queries fixed GitHub evidence endpoints and emits approved evidence", asyn
   ]);
 });
 
-test("rejects invalid CLI context before making a GitHub request", async () => {
+test("requires the actual triggering actor before making a GitHub request", async () => {
   for (const options of [
     { argv: ["--pr-number", "not-a-number"], env: validEnv() },
-    { argv: ["--pr-number", "531"], env: { ...validEnv(), GITHUB_TOKEN: "" } }
+    { argv: ["--pr-number", "531"], env: { ...validEnv(), GITHUB_TOKEN: "" } },
+    {
+      argv: ["--pr-number", "531"],
+      env: {
+        ...validEnv(),
+        GITHUB_TRIGGERING_ACTOR: "",
+        GITHUB_ACTOR: "original-dispatcher"
+      }
+    }
   ]) {
     const { stdout, stderr } = capturedStreams();
     let requests = 0;
@@ -171,10 +211,149 @@ test("rejects malformed GitHub evidence without leaking its response body", asyn
   });
 
   assertSafeCliFailure({ exitCode, stdout, stderr, sensitive: apiBody });
-  assert.equal(fetchFn.calls.length, 3);
+  assert.equal(fetchFn.calls.length, 2);
 });
 
-test("accepts a merged PR with independent approval and a successful Validate check", () => {
+test("consumes every review page before accepting a final-head approval", async () => {
+  const { stdout, stderr } = capturedStreams();
+  const nextReviewsUrl =
+    "https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/pulls/531/reviews"
+    + "?per_page=100&page=2";
+  const fetchFn = queuedFetch([
+    apiResponse({
+      number: 531,
+      merged: true,
+      merge_commit_sha: "a".repeat(40),
+      head: { sha: "b".repeat(40) }
+    }),
+    apiResponse([
+      {
+        user: { login: "first-page-reviewer-private" },
+        state: "COMMENTED",
+        commit_id: "b".repeat(40)
+      }
+    ], { link: `<${nextReviewsUrl}>; rel="next"` }),
+    apiResponse([
+      {
+        user: { login: "page-two-reviewer-private" },
+        state: "APPROVED",
+        commit_id: "b".repeat(40)
+      }
+    ]),
+    apiResponse({ check_runs: [{ name: "Validate", conclusion: "SUCCESS" }] })
+  ]);
+
+  const exitCode = await runMergedPrApprovalCli({
+    argv: ["--pr-number", "531"],
+    env: validEnv(),
+    fetchFn,
+    stdout,
+    stderr
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(stderr.text, "");
+  assert.equal(stdout.text.includes("first-page-reviewer-private"), false);
+  assert.equal(stdout.text.includes("page-two-reviewer-private"), false);
+  assert.equal(stdout.text.includes(nextReviewsUrl), false);
+  assert.deepEqual(fetchFn.calls.map(({ url }) => url), [
+    "https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/pulls/531",
+    "https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/pulls/531/reviews?per_page=100",
+    nextReviewsUrl,
+    `https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/commits/${"a".repeat(40)}/check-runs?per_page=100`
+  ]);
+});
+
+test("rejects a second-page dismissal and consumes the complete review history", async () => {
+  const { stdout, stderr } = capturedStreams();
+  const nextReviewsUrl =
+    "https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/pulls/531/reviews"
+    + "?per_page=100&page=2";
+  const fetchFn = queuedFetch([
+    apiResponse({
+      number: 531,
+      merged: true,
+      merge_commit_sha: "a".repeat(40),
+      head: { sha: "b".repeat(40) }
+    }),
+    apiResponse([
+      {
+        user: { login: "reviewer" },
+        state: "APPROVED",
+        commit_id: "b".repeat(40)
+      }
+    ], { link: `<${nextReviewsUrl}>; rel="next"` }),
+    apiResponse([
+      {
+        user: { login: "reviewer" },
+        state: "DISMISSED",
+        commit_id: "b".repeat(40)
+      }
+    ]),
+    apiResponse({ check_runs: [{ name: "Validate", conclusion: "SUCCESS" }] })
+  ]);
+
+  const exitCode = await runMergedPrApprovalCli({
+    argv: ["--pr-number", "531"],
+    env: validEnv(),
+    fetchFn,
+    stdout,
+    stderr
+  });
+
+  assertSafeCliFailure({
+    exitCode,
+    stdout,
+    stderr,
+    sensitive: nextReviewsUrl
+  });
+  assert.equal(fetchFn.calls.length, 4);
+});
+
+test("fails safely when review pagination cannot be parsed", async () => {
+  for (const malformedLink of [
+    "malformed-pagination-private-value",
+    '<https://pagination-private.example/reviews?per_page=100&page=2>; rel="next"',
+    '<https://api.github.com/repos/other/repository/pulls/531/reviews?per_page=100&page=2>; rel="next"',
+    '<https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/pulls/531/reviews?per_page=100&page=99999999999999999999>; rel="next"'
+  ]) {
+    const { stdout, stderr } = capturedStreams();
+    const fetchFn = queuedFetch([
+      apiResponse({
+        number: 531,
+        merged: true,
+        merge_commit_sha: "a".repeat(40),
+        head: { sha: "b".repeat(40) }
+      }),
+      apiResponse([
+        {
+          user: { login: "reviewer" },
+          state: "APPROVED",
+          commit_id: "b".repeat(40)
+        }
+      ], { link: malformedLink }),
+      apiResponse({ check_runs: [{ name: "Validate", conclusion: "SUCCESS" }] })
+    ]);
+
+    const exitCode = await runMergedPrApprovalCli({
+      argv: ["--pr-number", "531"],
+      env: validEnv(),
+      fetchFn,
+      stdout,
+      stderr
+    });
+
+    assertSafeCliFailure({
+      exitCode,
+      stdout,
+      stderr,
+      sensitive: malformedLink
+    });
+    assert.equal(fetchFn.calls.length, 2);
+  }
+});
+
+test("accepts a final-head approval with a successful Validate check", () => {
   assert.deepEqual(validateMergedPrApproval(validEvidence()), {
     ok: true,
     type: "japan_tuic_merged_pr_approval",
@@ -182,10 +361,29 @@ test("accepts a merged PR with independent approval and a successful Validate ch
   });
 });
 
-test("rejects a dispatcher approval", () => {
+test("rejects approval by the workflow triggering actor", () => {
+  for (const login of ["triggering-actor", "TRIGGERING-ACTOR"]) {
+    assert.throws(
+      () => validateMergedPrApproval(validEvidence({
+        reviews: [{
+          login,
+          state: "APPROVED",
+          commitId: "b".repeat(40)
+        }]
+      })),
+      /merged_pr_approval_mismatch/
+    );
+  }
+});
+
+test("rejects an approval from an earlier PR head commit", () => {
   assert.throws(
     () => validateMergedPrApproval(validEvidence({
-      reviews: [{ login: "dispatcher", state: "APPROVED" }]
+      reviews: [{
+        login: "reviewer",
+        state: "APPROVED",
+        commitId: "c".repeat(40)
+      }]
     })),
     /merged_pr_approval_mismatch/
   );
@@ -195,8 +393,8 @@ test("uses each reviewer's latest state", () => {
   assert.throws(
     () => validateMergedPrApproval(validEvidence({
       reviews: [
-        { login: "reviewer", state: "APPROVED" },
-        { login: "reviewer", state: "CHANGES_REQUESTED" }
+        { login: "reviewer", state: "APPROVED", commitId: "b".repeat(40) },
+        { login: "reviewer", state: "CHANGES_REQUESTED", commitId: "b".repeat(40) }
       ]
     })),
     /merged_pr_approval_mismatch/
@@ -204,8 +402,8 @@ test("uses each reviewer's latest state", () => {
   assert.throws(
     () => validateMergedPrApproval(validEvidence({
       reviews: [
-        { login: "reviewer", state: "APPROVED" },
-        { login: "reviewer", state: "DISMISSED" }
+        { login: "reviewer", state: "APPROVED", commitId: "b".repeat(40) },
+        { login: "reviewer", state: "DISMISSED", commitId: "b".repeat(40) }
       ]
     })),
     /merged_pr_approval_mismatch/
@@ -214,8 +412,22 @@ test("uses each reviewer's latest state", () => {
 
 test("rejects a non-merged PR, commit drift, or absent successful Validate check", () => {
   for (const evidence of [
-    validEvidence({ pullRequest: { number: 531, merged: false, mergeCommit: "a".repeat(40) } }),
-    validEvidence({ pullRequest: { number: 531, merged: true, mergeCommit: "b".repeat(40) } }),
+    validEvidence({
+      pullRequest: {
+        number: 531,
+        merged: false,
+        mergeCommit: "a".repeat(40),
+        headCommit: "b".repeat(40)
+      }
+    }),
+    validEvidence({
+      pullRequest: {
+        number: 531,
+        merged: true,
+        mergeCommit: "c".repeat(40),
+        headCommit: "b".repeat(40)
+      }
+    }),
     validEvidence({ checks: [{ name: "Validate", conclusion: "FAILURE" }] }),
     validEvidence({ checks: [{ name: "Other", conclusion: "SUCCESS" }] })
   ]) {
@@ -239,9 +451,13 @@ test("rejects unknown or malformed evidence fields", () => {
     unknownReview,
     unknownCheck,
     unknownCurrent,
-    validEvidence({ reviews: [{ login: "reviewer", state: 1 }] }),
+    validEvidence({
+      reviews: [{ login: "reviewer", state: 1, commitId: "b".repeat(40) }]
+    }),
     validEvidence({ checks: "not-an-array" }),
-    validEvidence({ current: { dispatcher: "dispatcher", workflowCommit: "invalid" } })
+    validEvidence({
+      current: { triggeringActor: "triggering-actor", workflowCommit: "invalid" }
+    })
   ]) {
     assert.throws(() => validateMergedPrApproval(evidence), /merged_pr_approval_mismatch/);
   }
