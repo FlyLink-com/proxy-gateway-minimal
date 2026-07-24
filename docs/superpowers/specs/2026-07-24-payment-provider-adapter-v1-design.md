@@ -187,6 +187,53 @@ Rules:
 - `queryPayment` is read-only and can never capture, refund, credit Coins, or
   cause provider fallback.
 
+### Monetary Operation Inputs
+
+The exact create input is:
+
+```text
+paymentOrderRef
+attemptRef
+providerRequestRef
+paymentMethod
+amountMinor
+currency
+currencyExponent
+expectedPaidCoins
+quoteDigest
+expiresAt
+callbackRouteRef
+returnRouteRef
+```
+
+The exact refund input is:
+
+```text
+paymentOrderRef
+attemptRef
+providerOrderRef
+refundRequestRef
+amountMinor
+currency
+currencyExponent
+reasonCode
+```
+
+`currencyExponent` is a safe integer from 0 through 9. A provider-neutral
+canonical decimal formatter converts only a positive safe integer
+`amountMinor`:
+
+- exponent 0 uses `0|[1-9][0-9]*`;
+- exponent greater than 0 uses `(0|[1-9][0-9]*)\.[0-9]{exponent}`;
+- the formatter left-pads the minor-unit digits so the fractional part has
+  exactly `exponent` digits;
+- parsers reject signs, whitespace, grouping separators, exponent notation,
+  non-canonical leading zeroes, missing or excess fractional digits, zero, and
+  values outside the positive safe-integer range.
+
+Provider codecs additionally enforce a compiled allowlist of exact
+currency/exponent pairs. They may not infer a scale from the currency code.
+
 ### Capture
 
 `capturePayment` is explicit. It is never hidden inside query or browser return
@@ -201,13 +248,15 @@ providerOrderRef
 captureRequestRef
 amountMinor
 currency
+currencyExponent
 ```
 
 `captureRequestRef` is the stable provider idempotency identity. A repeated
 capture is permitted only when the compiled and declared Adapter capabilities
-both allow it. `amountMinor` and `currency` are copied from the immutable
-recharge quote so the Adapter can validate the authenticated provider response
-without reading a Store.
+both allow it. `amountMinor`, `currency`, and `currencyExponent` are copied from
+the immutable recharge quote so the Adapter can validate and format the
+authenticated provider amount without reading a Store or guessing a currency
+scale.
 
 Capture returns a canonical outcome:
 
@@ -219,8 +268,8 @@ paymentFact
 `operationResult` uses the ordinary operation-result state model. When it is
 `succeeded`, `paymentFact` is required and must be a verified
 `payment_succeeded` fact whose order and provider references match the capture
-input and whose amount and currency equal the capture input. For every
-non-success result, `paymentFact` is `null`.
+input and whose amount, currency, and currency exponent equal the capture
+input. For every non-success result, `paymentFact` is `null`.
 
 The authenticated capture fact enters the same durable event pipeline as a
 verified webhook. It never invokes the wallet directly.
@@ -256,6 +305,7 @@ providerCaptureRef
 providerRefundRef
 amountMinor
 currency
+currencyExponent
 merchantScopeDigest
 payloadDigest
 occurredAt
@@ -271,16 +321,25 @@ Rules:
   uses the provider order identifier as the canonical capture identifier;
 - refund facts require a refund identifier when the provider supplies one;
 - the event dedupe key is mandatory and stable;
-- all money uses positive safe integer minor units and an uppercase
-  three-letter currency;
+- all money uses positive safe integer minor units, an uppercase three-letter
+  currency, and an explicit safe integer `currencyExponent` from 0 through 9;
+- create, capture, and refund operation inputs carry the same explicit
+  `currencyExponent` immediately after `currency`;
+- provider codecs further restrict currency/exponent pairs with compiled
+  allowlists; they never infer an exponent from a currency string;
+- decimal formatting and parsing use integer/string algorithms only: no
+  floating-point division, exponent notation, or `toFixed`;
+- Provider Core brands callback and authenticated-capture facts with distinct
+  private provenance; a pure decoder cannot create that brand, and a capture
+  fact cannot be passed to `webhookSuccessAck`;
 - the merchant and payload are represented only by SHA-256 digests;
 - raw provider bodies, headers, tokens, credential handles, customer fields,
   and arbitrary metadata are forbidden.
 
 Callback facts are minted only after provider verification. Capture-response
 facts are minted only inside the credential-scoped execution after an
-authenticated provider response has passed exact amount, currency, order, and
-capture validation.
+authenticated provider response has passed exact amount, currency, currency
+exponent, order, and capture validation.
 
 ## Adapter Mapping
 
@@ -325,8 +384,9 @@ Required rewrite:
 - direct environment and `fetch` access becomes credential-scoped transport;
 - old method names and response models become the canonical V1 contract;
 - in-memory orders are removed;
-- all callback and capture facts include canonical amount, currency, internal
-  reference, merchant digest, payload digest, and dedupe identity;
+- all callback and capture facts include canonical amount, currency, currency
+  exponent, internal reference, merchant digest, payload digest, and dedupe
+  identity;
 - old Portal create/capture routes and direct product checkout are not carried
   forward.
 
@@ -462,7 +522,7 @@ Each recharge intent freezes:
 routingPolicyKey
 routeSnapshotDigest
 ordered profile candidates
-fiat currency and minor units
+fiat currency, minor units, and currency exponent
 paid Coin units
 price policy ref, version, and digest
 ```
@@ -524,7 +584,8 @@ verified payment fact
   -> claim processing receipt
   -> load frozen recharge, route, attempt, and profile identity
   -> verify account-independent internal reference
-  -> verify provider, merchant digest, order, capture, amount, and currency
+  -> verify provider, merchant digest, order, capture, amount, currency, and
+     currency exponent
   -> create or replay one settlement
   -> create one paid_coins credit origin and lot
   -> append existing Coin ledger credit
@@ -578,10 +639,11 @@ returned.
 | `unknown` | Stop retry and fallback; query or reconcile. |
 | `confirmed_charged` | Persist the fact and converge on settlement; never create another payment. |
 
-Unknown provider status, malformed success data, amount mismatch, currency
-mismatch, internal-reference mismatch, merchant mismatch, capture collision,
-or contradictory terminal facts become `reconciliation_required` or a terminal
-safe rejection. They never become success by default.
+Unknown provider status, malformed success data, amount mismatch, currency or
+currency-exponent mismatch, internal-reference mismatch, merchant mismatch,
+capture collision, or contradictory terminal facts become
+`reconciliation_required` or a terminal safe rejection. They never become
+success by default.
 
 Crash recovery rules:
 
@@ -615,7 +677,8 @@ cross-Coin compensation.
   extra fields without invoking hostile traps.
 - Callback bodies and headers remain bounded; authorization, cookies, and
   response cookies are forbidden callback inputs.
-- Payment amounts use integer minor units; floating-point money is forbidden.
+- Payment amounts use integer minor units plus an explicit bounded currency
+  exponent; floating-point money and inferred currency scales are forbidden.
 - Provider and wallet idempotency identities are domain-separated and stable.
 - Safe action URLs use exact compiled HTTPS origins and reject loopback.
 - Callback signature failure writes no verified event.
@@ -640,6 +703,7 @@ One source PR contains:
 
 - the `paypal` payment-method addition;
 - explicit `capturePayment` and capture-idempotency capabilities;
+- explicit currency exponent snapshots on monetary inputs and verified facts;
 - verified payment-fact fields required by capture and settlement;
 - registry replacement of provisional A/B identities with the three named
   Adapters;
@@ -676,8 +740,12 @@ Focused tests must prove:
   output;
 - query is side-effect-free and never calls capture;
 - capture succeeds only with a matching verified payment fact;
-- capture rejects a fact whose amount or currency differs from its immutable
-  expected input;
+- create, capture, refund, and verified facts reject missing, extra, or
+  out-of-range currency exponents;
+- capture rejects a fact whose amount, currency, or currency exponent differs
+  from its immutable expected input;
+- provider decimal codecs cover exponents 0, 2, and 3 without floating-point
+  arithmetic and reject non-canonical or over-precise decimal text;
 - capture retry is impossible without both capability gates;
 - PayPal create, query, capture, action-link, idempotency, and callback mappings
   use injected transport only;
