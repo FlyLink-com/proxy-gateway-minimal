@@ -275,7 +275,6 @@ function normalizedCreateInput(value) {
     callbackRouteRef: safeRef(input.callbackRouteRef),
     returnRouteRef: safeRef(input.returnRouteRef, true),
   };
-  compiledMoney(currency, exponent);
   return normalized;
 }
 
@@ -313,7 +312,6 @@ function normalizedCaptureInput(value) {
     currency,
     currencyExponent: exponent,
   };
-  compiledMoney(currency, exponent);
   return normalized;
 }
 
@@ -458,6 +456,7 @@ export function derivePayPalProviderRequestId(value) {
 export function encodePayPalCreateOrderRequest(value) {
   return publicCall(() => {
     const input = normalizedCreateInput(value);
+    compiledMoney(input.currency, input.currencyExponent);
     return deepFreeze({
       action: "paypal_orders_create",
       requestId: derivePayPalProviderRequestId({
@@ -491,6 +490,7 @@ export function decodePayPalCreateOrderResponse(value) {
     const createInput = normalizedCreateInput(envelope.createInput);
     const response = normalizedCreateResponse(envelope.providerResponse);
     const receivedAt = canonicalTimestamp(envelope.receivedAt);
+    compiledMoney(createInput.currency, createInput.currencyExponent);
     const reviewed = response.links.filter((link) => (
       REVIEWED_ACTION_RELS.has(link.rel)
     ));
@@ -579,6 +579,7 @@ export function decodePayPalQueryOrderResponse(value) {
 export function encodePayPalCaptureOrderRequest(value) {
   return publicCall(() => {
     const input = normalizedCaptureInput(value);
+    compiledMoney(input.currency, input.currencyExponent);
     return deepFreeze({
       action: "paypal_orders_capture",
       providerOrderRef: input.providerOrderRef,
@@ -615,6 +616,7 @@ export function decodePayPalCaptureOrderResponse(value) {
     const purchaseUnits = snapshotArray(response.purchase_units);
     if (status !== "COMPLETED") {
       if (purchaseUnits.length !== 0) invalidProtocol();
+      compiledMoney(captureInput.currency, captureInput.currencyExponent);
       const pending = status === "APPROVED"
         || status === "PAYER_ACTION_REQUIRED";
       return deepFreeze({
@@ -652,6 +654,7 @@ export function decodePayPalCaptureOrderResponse(value) {
       captureInput.currencyExponent,
     );
     if (amountMinor !== captureInput.amountMinor) invalidProtocol();
+    compiledMoney(captureInput.currency, captureInput.currencyExponent);
     const paymentFact = {
       sourceType: "authenticated_capture_response",
       providerEventRef: null,

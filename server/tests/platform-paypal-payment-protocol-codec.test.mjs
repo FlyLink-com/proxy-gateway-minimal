@@ -271,6 +271,33 @@ test("PayPal create codec emits a detached descriptor and maps an allowlisted pa
     () => encodePayPalCreateOrderRequest({ ...CREATE_INPUT, currency: "EUR" }),
     protocolError("provider_contract_unverified"),
   );
+
+  const unsupportedCreateInput = { ...CREATE_INPUT, currency: "EUR" };
+  for (const malformedEnvelope of [
+    {
+      createInput: unsupportedCreateInput,
+      providerResponse: createResponse({ id: "bad provider id" }),
+      receivedAt: RECEIVED_AT,
+    },
+    {
+      createInput: unsupportedCreateInput,
+      providerResponse: createResponse(),
+      receivedAt: "not-a-timestamp",
+    },
+  ]) {
+    assert.throws(
+      () => decodePayPalCreateOrderResponse(malformedEnvelope),
+      protocolError(),
+    );
+  }
+  assert.throws(
+    () => decodePayPalCreateOrderResponse({
+      createInput: unsupportedCreateInput,
+      providerResponse: createResponse(),
+      receivedAt: RECEIVED_AT,
+    }),
+    protocolError("provider_contract_unverified"),
+  );
 });
 
 test("PayPal request ids are stable and domain-separated for create and capture", () => {
@@ -649,6 +676,75 @@ test("PayPal capture rejects mismatched order amount currency exponent and missi
     protocolError(),
   );
   assert.equal(amountAccessorCalls, 0);
+
+  const unsupportedCaptureInput = { ...CAPTURE_INPUT, currency: "EUR" };
+  const unsupportedCompletedResponse = completedCaptureResponse({
+    currency: "EUR",
+  });
+  for (const malformedEnvelope of [
+    captureDecodeInput({
+      captureInput: unsupportedCaptureInput,
+      providerResponse: unsupportedCompletedResponse,
+      merchantScopeDigest: "not-a-digest",
+    }),
+    captureDecodeInput({
+      captureInput: unsupportedCaptureInput,
+      providerResponse: unsupportedCompletedResponse,
+      receivedAt: "not-a-timestamp",
+    }),
+    captureDecodeInput({
+      captureInput: unsupportedCaptureInput,
+      providerResponse: completedCaptureResponse({
+        orderId: "bad provider id",
+        currency: "EUR",
+      }),
+    }),
+    captureDecodeInput({
+      captureInput: unsupportedCaptureInput,
+      providerResponse: completedCaptureResponse({
+        currency: "EUR",
+        value: "malformed",
+      }),
+    }),
+    captureDecodeInput({
+      captureInput: unsupportedCaptureInput,
+      providerResponse: completedCaptureResponse({
+        currency: "EUR",
+        value: "12.35",
+      }),
+    }),
+    captureDecodeInput({
+      captureInput: unsupportedCaptureInput,
+      providerResponse: {
+        id: unsupportedCaptureInput.providerOrderRef,
+        status: "APPROVED",
+        purchase_units: [{}],
+      },
+    }),
+  ]) {
+    assert.throws(
+      () => decodePayPalCaptureOrderResponse(malformedEnvelope),
+      protocolError(),
+    );
+  }
+  assert.throws(
+    () => decodePayPalCaptureOrderResponse(captureDecodeInput({
+      captureInput: unsupportedCaptureInput,
+      providerResponse: unsupportedCompletedResponse,
+    })),
+    protocolError("provider_contract_unverified"),
+  );
+  assert.throws(
+    () => decodePayPalCaptureOrderResponse(captureDecodeInput({
+      captureInput: unsupportedCaptureInput,
+      providerResponse: {
+        id: unsupportedCaptureInput.providerOrderRef,
+        status: "APPROVED",
+        purchase_units: [],
+      },
+    })),
+    protocolError("provider_contract_unverified"),
+  );
 });
 
 test("PayPal non-success capture outcomes carry a null payment fact", () => {
