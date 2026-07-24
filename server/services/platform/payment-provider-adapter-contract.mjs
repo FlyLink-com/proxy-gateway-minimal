@@ -3,6 +3,8 @@ import { isIP } from "node:net";
 
 import { normalizeCurrencyExponent } from "./payment-money-codec.mjs";
 
+const promiseThen = Function.prototype.call.bind(Promise.prototype.then);
+
 const ERROR_CODES = new Set([
   "invalid_payment_method",
   "invalid_payment_provider_adapter",
@@ -278,7 +280,7 @@ function isNativePromise(value) {
     value !== null
     && typeof value === "object"
     && !utilTypes.isProxy(value)
-    && Object.getPrototypeOf(value) === Promise.prototype
+    && utilTypes.isPromise(value)
   );
 }
 
@@ -874,7 +876,8 @@ function invokeCompiled(compiled, input, normalize, operation) {
     return Promise.reject(safeProviderError(error, operation));
   }
   if (isNativePromise(raw)) {
-    return raw.then(
+    return promiseThen(
+      raw,
       (value) => normalize(value),
       (error) => Promise.reject(safeProviderError(error, operation)),
     );
@@ -1058,7 +1061,8 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
           error: wrapper.error,
         }));
         if (isNativePromise(raw)) {
-          void raw.then(
+          void promiseThen(
+            raw,
             () => undefined,
             () => undefined,
           );
@@ -1337,7 +1341,8 @@ export function createCredentialScopedPaymentExecution(options) {
     };
     const drainCallbackOutcome = () => {
       if (isNativePromise(callbackOutcome)) {
-        void callbackOutcome.then(
+        void promiseThen(
+          callbackOutcome,
           () => undefined,
           () => undefined,
         );
@@ -1369,7 +1374,8 @@ export function createCredentialScopedPaymentExecution(options) {
           return Promise.reject(genericProviderError(operation));
         }
         if (isNativePromise(response)) {
-          return response.then(
+          return promiseThen(
+            response,
             (value) => {
               if (!scopeActive) {
                 throw contractError("payment_execution_scope_closed");
@@ -1415,7 +1421,8 @@ export function createCredentialScopedPaymentExecution(options) {
         return callbackOutcome;
       }
       if (isNativePromise(raw)) {
-        callbackOutcome = raw.then(
+        callbackOutcome = promiseThen(
+          raw,
           (value) => normalizeExecutionOutput(
             operation,
             value,
@@ -1457,7 +1464,8 @@ export function createCredentialScopedPaymentExecution(options) {
       return abortLoader(genericProviderError(operation));
     }
     if (isNativePromise(loaderOutcome)) {
-      return loaderOutcome.then(
+      return promiseThen(
+        loaderOutcome,
         () => {
           loaderClosed = true;
           return callbackInvoked
