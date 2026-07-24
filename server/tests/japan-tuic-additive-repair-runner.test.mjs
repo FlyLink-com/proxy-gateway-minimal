@@ -43,7 +43,7 @@ function validBinding(overrides = {}) {
       timer: "gccgw-traffic-usage-collect.timer",
       service: "gccgw-traffic-usage-collect.service"
     },
-    authorizationMarker: "github-actions-japan-tuic-additive-repair-20260716-001",
+    authorizationMarker: "github-actions-japan-tuic-additive-repair-20260724-002",
     ...overrides
   };
 }

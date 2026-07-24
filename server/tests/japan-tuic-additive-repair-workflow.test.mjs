@@ -124,9 +124,9 @@ test("both jobs use immutable Actions and verify the frozen artifact", () => {
     (workflow.match(/actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8\.0\.1/g) ?? []).length,
     2
   );
-  assert.equal((workflow.match(/run-id: 29495150692/g) ?? []).length, 2);
+  assert.equal((workflow.match(/run-id: 30092196734/g) ?? []).length, 2);
   assert.equal(
-    (workflow.match(/production-dry-run-japan-control-plane-control-plane-cumulative-20260716-003/g) ?? []).length,
+    (workflow.match(/name: proxy-gateway-japan-tuic-additive-repair-20260724-001/g) ?? []).length,
     2
   );
   assert.equal(
@@ -134,7 +134,7 @@ test("both jobs use immutable Actions and verify the frozen artifact", () => {
     2
   );
   assert.equal(
-    (workflow.match(/proxy-gateway-control-plane-cumulative-20260716-003\.zip/g) ?? []).length >= 2,
+    (workflow.match(/proxy-gateway-japan-tuic-additive-repair-20260724-001\.zip/g) ?? []).length >= 3,
     true
   );
 });
@@ -143,11 +143,11 @@ test("secretless preflight independently binds the artifact to the declared Git 
   const workflow = workflowText();
   const preflight = jobBlock(workflow, "preflight", "execute");
   assert.match(preflight, /- name: Checkout frozen artifact source/);
-  assert.match(preflight, /ref: 47a2a9583fb44cb905e91aade02ae5aa3d635d94/);
+  assert.match(preflight, /ref: 70880d83761b165e91e9c521ec480fcc840375fb/);
   assert.match(preflight, /path: \.japan-repair-trusted-source/);
   assert.match(preflight, /persist-credentials: false/);
   assert.match(preflight, /node scripts\/artifact-git-tree-verifier\.mjs/);
-  assert.match(preflight, /--commit 47a2a9583fb44cb905e91aade02ae5aa3d635d94/);
+  assert.match(preflight, /--commit 70880d83761b165e91e9c521ec480fcc840375fb/);
   const treeCheckout = preflight.indexOf("- name: Checkout frozen artifact source");
   const treeVerification = preflight.indexOf("node scripts/artifact-git-tree-verifier.mjs");
   const ready = preflight.indexOf("- name: Mark secretless preflight ready");
