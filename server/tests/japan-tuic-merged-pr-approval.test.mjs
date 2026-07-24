@@ -94,3 +94,14 @@ test("rejects unknown or malformed evidence fields", () => {
     assert.throws(() => validateMergedPrApproval(evidence), /merged_pr_approval_mismatch/);
   }
 });
+
+test("rejects non-enumerable and Symbol own properties", () => {
+  const nonEnumerable = validEvidence();
+  Object.defineProperty(nonEnumerable, "extra", { value: "not-allowed" });
+  const symbolProperty = validEvidence();
+  symbolProperty[Symbol("extra")] = "not-allowed";
+
+  for (const evidence of [nonEnumerable, symbolProperty]) {
+    assert.throws(() => validateMergedPrApproval(evidence), /merged_pr_approval_mismatch/);
+  }
+});

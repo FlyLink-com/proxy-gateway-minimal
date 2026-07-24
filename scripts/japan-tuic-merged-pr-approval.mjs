@@ -11,10 +11,10 @@ function safeError() {
 }
 
 function exactKeys(value, keys) {
-  return value
-    && typeof value === "object"
-    && !Array.isArray(value)
-    && Object.keys(value).sort().join("\n") === [...keys].sort().join("\n");
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actual = Reflect.ownKeys(value);
+  return actual.length === keys.length
+    && actual.every((key) => typeof key === "string" && keys.includes(key));
 }
 
 function validCommit(value) {
