@@ -132,7 +132,7 @@ function loadNormalizeSqlForTest() {
   const source = readFileSync(
     new URL("../services/platform/coin-wallet-migrations.mjs", import.meta.url),
     "utf8"
-  );
+  ).replace(/\r\n?/g, "\n");
   const start = source.indexOf("function normalizeSql(sql) {");
   const endMarker = "\n}\n\nconst EXPECTED_OBJECT_SQL";
   const end = source.indexOf(endMarker, start);

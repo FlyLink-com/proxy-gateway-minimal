@@ -746,7 +746,8 @@ if (!isMainThread && workerData?.workerMode === "coin_hold") {
 
 if (isMainThread) {
   test("concurrency harness keeps bounded cancellable waits and explicit cleanup", () => {
-    const source = readFileSync(new URL(import.meta.url), "utf8");
+    const source = readFileSync(new URL(import.meta.url), "utf8")
+      .replace(/\r\n?/g, "\n");
     for (const pattern of [
       /promise\.cancel = cancel/,
       /promise\.catch\(\(\) => \{\}\)/,
