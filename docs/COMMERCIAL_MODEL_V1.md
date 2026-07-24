@@ -139,38 +139,55 @@ Commercial Model v1 does not automate refunds.
 
 ## Recharge And Top-up Boundary
 
-Prepaid traffic recharge is not the primary v1 model. The existing recharge
-contract remains a future optional top-up extension.
+Entitlement packages remain the current primary product model. The existing
+billing helper is legacy optional traffic-topup compatibility; it is not a
+Coins wallet.
 
-A future top-up must:
+Coins are a separate target closed-loop layer. A verified recharge may create
+only `paid_coins`. `bonus_coins` and `reward_coins` remain separate balance and
+ledger domains, and promotion rewards must never generate further promotion
+rewards.
 
-- attach to an existing account and approved entitlement;
-- create an auditable commercial ledger entry;
-- never reset or rewrite measured usage;
-- never bypass an expired, canceled, suspended, or otherwise invalid
-  entitlement;
-- never issue runtime credentials directly from a payment event;
-- remain disabled until durable ledger storage, reversal behavior, and a
-  provider sandbox are separately approved.
+```text
+verified recharge payment
+  -> durable payment order/event
+  -> paid_coins
+
+accepted Coins hold/capture
+  -> separate product order
+  -> fulfillment decision
+```
+
+Recharge, product order, wallet hold/capture, and fulfillment are separate
+transactions and decisions. A payment callback must not directly fulfill a
+package or mutate runtime access.
+
+Coins may buy only platform-operated products. They cannot be withdrawn,
+exchanged to fiat, transferred between users, traded, or used to pay third
+parties. These rules describe target architecture, not current backend,
+wallet, provider, Portal/Admin, deployment, or production availability.
 
 ## Payment Provider Boundary
 
 No payment provider is selected or active in Commercial Model v1. Provider
-vocabulary and adapter templates are compatibility contracts only.
+Core contracts, disabled provisional Adapters, and the unregistered template
+are source-only boundaries, not proof of a verified real provider.
 
-A future provider integration must keep this sequence:
+A future Coins recharge integration must keep this sequence:
 
 ```text
 provider event
   -> signature and authenticity verification
-  -> normalized commercial event
-  -> idempotent order decision
-  -> entitlement decision
-  -> controlled access lifecycle
+  -> normalized payment event
+  -> idempotent durable recharge order decision
+  -> paid_coins credit decision
 ```
 
-Checkout, capture, webhook registration, payment storage, refunds, and provider
-credentials remain separate Risk A work.
+Product purchase must then begin from a separate wallet hold/capture and
+product-order flow. Checkout, callback registration, payment storage, wallet
+mutation, refunds, reconciliation, fulfillment, and provider credentials
+remain separately gated and are not established by the current Provider Core
+source.
 
 ## Current Capability Boundary
 
@@ -208,6 +225,9 @@ Commercial Model v1 is implemented only when all applicable rules are proven:
 - old runtime material is invalid after an applied refresh rotation;
 - renewal does not rewrite historical usage;
 - payment/commercial events are idempotent before they affect entitlement;
+- recharge cannot directly fulfill a product, and product consumption cannot
+  be mistaken for a recharge payment;
+- `paid_coins`, `bonus_coins`, and `reward_coins` remain separate domains;
 - no secret, raw payment payload, subscription URL, credential material, or
   customer-private data appears in public evidence;
 - production state is demonstrated by runtime receipt and reconciliation, not
