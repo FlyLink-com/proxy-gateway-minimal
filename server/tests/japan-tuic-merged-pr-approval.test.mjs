@@ -57,6 +57,21 @@ function fixtureFetch(evidence) {
   return fetchFn;
 }
 
+function capturedStreams() {
+  return {
+    stdout: { text: "", write(value) { this.text += value; } },
+    stderr: { text: "", write(value) { this.text += value; } }
+  };
+}
+
+function assertSafeCliFailure({ exitCode, stdout, stderr, sensitive }) {
+  assert.equal(exitCode, 1);
+  assert.equal(stdout.text, "");
+  assert.equal(stderr.text, "merged_pr_approval_mismatch\n");
+  assert.equal(`${stdout.text}${stderr.text}`.includes("test-token"), false);
+  assert.equal(`${stdout.text}${stderr.text}`.includes(sensitive), false);
+}
+
 test("queries fixed GitHub evidence endpoints and emits approved evidence", async () => {
   const stdout = { text: "", write(value) { this.text += value; } };
   const stderr = { text: "", write(value) { this.text += value; } };
@@ -78,6 +93,85 @@ test("queries fixed GitHub evidence endpoints and emits approved evidence", asyn
     "https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/pulls/531/reviews?per_page=100",
     `https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/commits/${"a".repeat(40)}/check-runs?per_page=100`
   ]);
+});
+
+test("rejects invalid CLI context before making a GitHub request", async () => {
+  for (const options of [
+    { argv: ["--pr-number", "not-a-number"], env: validEnv() },
+    { argv: ["--pr-number", "531"], env: { ...validEnv(), GITHUB_TOKEN: "" } }
+  ]) {
+    const { stdout, stderr } = capturedStreams();
+    let requests = 0;
+    const exitCode = await runMergedPrApprovalCli({
+      ...options,
+      fetchFn: async () => { requests += 1; },
+      stdout,
+      stderr
+    });
+
+    assertSafeCliFailure({
+      exitCode,
+      stdout,
+      stderr,
+      sensitive: "invalid-context-api-body"
+    });
+    assert.equal(requests, 0);
+  }
+});
+
+test("stops at the non-OK GitHub response without leaking API data", async () => {
+  const { stdout, stderr } = capturedStreams();
+  let requests = 0;
+  const apiBody = "non-ok-api-body";
+  const responses = [
+    {
+      ok: true,
+      json: async () => ({
+        number: 531,
+        merged: true,
+        merge_commit_sha: "a".repeat(40)
+      })
+    },
+    { ok: false, json: async () => ({ message: apiBody }) }
+  ];
+  const exitCode = await runMergedPrApprovalCli({
+    argv: ["--pr-number", "531"],
+    env: validEnv(),
+    fetchFn: async () => {
+      requests += 1;
+      return responses.shift();
+    },
+    stdout,
+    stderr
+  });
+
+  assertSafeCliFailure({ exitCode, stdout, stderr, sensitive: apiBody });
+  assert.equal(requests, 2);
+});
+
+test("rejects malformed GitHub evidence without leaking its response body", async () => {
+  const { stdout, stderr } = capturedStreams();
+  const apiBody = "malformed-api-body";
+  const fetchFn = fixtureFetch(validEvidence());
+  fetchFn.calls.length = 0;
+  const originalFetch = fetchFn;
+  let responseIndex = 0;
+  const malformedFetch = async (...args) => {
+    const response = await originalFetch(...args);
+    responseIndex += 1;
+    if (responseIndex === 2) return { ok: true, json: async () => ({ message: apiBody }) };
+    return response;
+  };
+  const exitCode = await runMergedPrApprovalCli({
+    argv: ["--pr-number", "531"],
+    env: validEnv(),
+    fetchFn: malformedFetch,
+    stdout,
+    stderr
+  });
+
+  assertSafeCliFailure({ exitCode, stdout, stderr, sensitive: apiBody });
+  assert.equal(fetchFn.calls.length, 3);
 });
 
 test("accepts a merged PR with independent approval and a successful Validate check", () => {
