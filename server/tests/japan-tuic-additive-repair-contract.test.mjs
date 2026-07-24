@@ -57,7 +57,7 @@ const candidate = (overrides = {}) => ({
   candidate: {
     addCount: 3,
     removeCount: 0,
-    deferredRemoveCount: 27,
+    deferredRemoveCount: 46,
     deferredChangedCount: 0,
     missingMaterialCount: 0,
     projectedMapCount: 82,
@@ -67,10 +67,10 @@ const candidate = (overrides = {}) => ({
 });
 
 const identityAfter = (overrides = {}) => ({
-  runtimeCount: 55,
-  mappedCount: 55,
+  runtimeCount: 36,
+  mappedCount: 36,
   missing: 0,
-  stale: 27,
+  stale: 46,
   changed: 0,
   missingMaterial: 0,
   retentionState: "pending",
@@ -202,7 +202,7 @@ test("rejects every additive count drift with one fixed safe code", () => {
   for (const [field, value] of [
     ["addCount", 2],
     ["removeCount", 1],
-    ["deferredRemoveCount", 26],
+    ["deferredRemoveCount", 45],
     ["deferredChangedCount", 1],
     ["missingMaterialCount", 1],
     ["projectedMapCount", 81],
@@ -218,8 +218,8 @@ test("rejects every additive count drift with one fixed safe code", () => {
 test("requires the exact degraded post-apply Identity Gate", () => {
   assert.equal(validatePostApplyIdentity(identityAfter()).state, "degraded");
   for (const drift of [
-    { runtimeCount: 54 },
-    { mappedCount: 54 },
+    { runtimeCount: 35 },
+    { mappedCount: 35 },
     { missing: 1 },
     { stale: 0 },
     { changed: 1 },

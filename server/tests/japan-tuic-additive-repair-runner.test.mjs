@@ -54,7 +54,7 @@ function candidateReport(overrides = {}) {
     candidate: {
       addCount: 3,
       removeCount: 0,
-      deferredRemoveCount: 27,
+      deferredRemoveCount: 46,
       deferredChangedCount: 0,
       missingMaterialCount: 0,
       projectedMapCount: 82,
@@ -71,7 +71,7 @@ function postCandidateReport(overrides = {}) {
     candidate: {
       addCount: 0,
       removeCount: 0,
-      deferredRemoveCount: 27,
+      deferredRemoveCount: 46,
       deferredChangedCount: 0,
       missingMaterialCount: 0,
       projectedMapCount: 82,
@@ -546,7 +546,7 @@ test("host adapter invokes only the fixed additive helper arguments and derives 
   const report = {
     ...candidateReport(),
     currentMapCount: 79,
-    rebuiltMapCount: 55
+    rebuiltMapCount: 36
   };
   const operations = createHostOperations({
     binding: validBinding(),
@@ -571,7 +571,7 @@ test("host adapter invokes only the fixed additive helper arguments and derives 
     "--strategy", "additive_missing_only",
     "--expected-add", "3",
     "--expected-remove", "0",
-    "--expected-deferred-remove", "27",
+    "--expected-deferred-remove", "46",
     "--expected-changed", "0",
     "--expected-missing-material", "0",
     "--expected-projected-map-count", "82"
