@@ -1,4 +1,5 @@
 const safeErrors = new WeakSet();
+const GITHUB_API_ORIGIN = "https://api.github.com";
 
 export class JapanTuicMergedPrApprovalError extends Error {
   constructor() {
@@ -114,4 +115,94 @@ export function validateMergedPrApproval(input = {}) {
     if (safeErrors.has(error)) throw error;
     throw safeError();
   }
+}
+
+function parseRunnerContext(argv, env) {
+  if (!Array.isArray(argv)
+    || argv.length !== 2
+    || argv[0] !== "--pr-number"
+    || typeof argv[1] !== "string"
+    || !/^[1-9][0-9]*$/.test(argv[1])) {
+    throw safeError();
+  }
+  const prNumber = Number(argv[1]);
+  const { GITHUB_TOKEN: token, GITHUB_REPOSITORY: repository, GITHUB_SHA: workflowCommit,
+    GITHUB_ACTOR: dispatcher } = env || {};
+  if (!Number.isSafeInteger(prNumber)
+    || typeof token !== "string"
+    || token.length === 0
+    || typeof repository !== "string"
+    || !/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repository)
+    || !validCommit(workflowCommit)
+    || typeof dispatcher !== "string"
+    || dispatcher.length === 0) {
+    throw safeError();
+  }
+  return { prNumber, token, repository, workflowCommit, dispatcher };
+}
+
+async function getJson(fetchFn, path, token) {
+  const response = await fetchFn(`${GITHUB_API_ORIGIN}${path}`, {
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token}`
+    }
+  });
+  if (!response || response.ok !== true || typeof response.json !== "function") throw safeError();
+  return response.json();
+}
+
+function apiEvidence(pullRequest, reviews, checks, current) {
+  return {
+    pullRequest: {
+      number: pullRequest.number,
+      merged: pullRequest.merged,
+      mergeCommit: pullRequest.merge_commit_sha
+    },
+    reviews: reviews.map((review) => ({
+      login: review.user?.login,
+      state: review.state
+    })),
+    checks: checks.check_runs.map((check) => ({
+      name: check.name,
+      conclusion: check.conclusion
+    })),
+    current
+  };
+}
+
+export async function runMergedPrApprovalCli({
+  argv = process.argv.slice(2),
+  env = process.env,
+  fetchFn = globalThis.fetch,
+  stdout = process.stdout,
+  stderr = process.stderr
+} = {}) {
+  try {
+    const { prNumber, token, repository, workflowCommit, dispatcher } = parseRunnerContext(argv, env);
+    if (typeof fetchFn !== "function" || !stdout || typeof stdout.write !== "function") throw safeError();
+    const paths = [
+      `/repos/${repository}/pulls/${prNumber}`,
+      `/repos/${repository}/pulls/${prNumber}/reviews?per_page=100`,
+      `/repos/${repository}/commits/${workflowCommit}/check-runs?per_page=100`
+    ];
+    const pullRequest = await getJson(fetchFn, paths[0], token);
+    const reviews = await getJson(fetchFn, paths[1], token);
+    const checks = await getJson(fetchFn, paths[2], token);
+    const result = validateMergedPrApproval(apiEvidence(
+      pullRequest,
+      reviews,
+      checks,
+      { dispatcher, workflowCommit }
+    ));
+    stdout.write(`${JSON.stringify(result)}\n`);
+    return 0;
+  } catch {
+    if (stderr && typeof stderr.write === "function") stderr.write("merged_pr_approval_mismatch\n");
+    return 1;
+  }
+}
+
+if (import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+  process.exitCode = await runMergedPrApprovalCli();
 }

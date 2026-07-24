@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { validateMergedPrApproval } from "../../scripts/japan-tuic-merged-pr-approval.mjs";
+import {
+  runMergedPrApprovalCli,
+  validateMergedPrApproval
+} from "../../scripts/japan-tuic-merged-pr-approval.mjs";
 
 const validEvidence = (overrides = {}) => ({
   pullRequest: {
@@ -20,6 +23,61 @@ const validEvidence = (overrides = {}) => ({
     workflowCommit: "a".repeat(40)
   },
   ...overrides
+});
+
+function validEnv() {
+  return {
+    GITHUB_TOKEN: "test-token",
+    GITHUB_REPOSITORY: "gccwebos-com/proxy-gateway-minimal",
+    GITHUB_SHA: "a".repeat(40),
+    GITHUB_ACTOR: "dispatcher"
+  };
+}
+
+function fixtureFetch(evidence) {
+  const bodies = [
+    {
+      number: evidence.pullRequest.number,
+      merged: evidence.pullRequest.merged,
+      merge_commit_sha: evidence.pullRequest.mergeCommit
+    },
+    evidence.reviews.map(({ login, state }) => ({ user: { login }, state })),
+    { check_runs: evidence.checks }
+  ];
+  const calls = [];
+  const fetchFn = async (url, options) => {
+    calls.push({ url, options });
+    const body = bodies.shift();
+    return {
+      ok: true,
+      json: async () => body
+    };
+  };
+  fetchFn.calls = calls;
+  return fetchFn;
+}
+
+test("queries fixed GitHub evidence endpoints and emits approved evidence", async () => {
+  const stdout = { text: "", write(value) { this.text += value; } };
+  const stderr = { text: "", write(value) { this.text += value; } };
+  const fetchFn = fixtureFetch(validEvidence());
+
+  const exitCode = await runMergedPrApprovalCli({
+    argv: ["--pr-number", "531"],
+    env: validEnv(),
+    fetchFn,
+    stdout,
+    stderr
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(JSON.parse(stdout.text).type, "japan_tuic_merged_pr_approval");
+  assert.equal(stderr.text, "");
+  assert.deepEqual(fetchFn.calls.map(({ url }) => url), [
+    "https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/pulls/531",
+    "https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/pulls/531/reviews?per_page=100",
+    `https://api.github.com/repos/gccwebos-com/proxy-gateway-minimal/commits/${"a".repeat(40)}/check-runs?per_page=100`
+  ]);
 });
 
 test("accepts a merged PR with independent approval and a successful Validate check", () => {
