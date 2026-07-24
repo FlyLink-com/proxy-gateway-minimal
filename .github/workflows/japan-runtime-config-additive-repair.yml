@@ -2,10 +2,17 @@ name: Japan Runtime Config Additive Repair
 
 on:
   workflow_dispatch:
+    inputs:
+      approval_pr:
+        description: Merged PR number that supplies reviewed CI authorization
+        required: true
+        type: string
 
 permissions:
   actions: read
+  checks: read
   contents: read
+  pull-requests: read
 
 concurrency:
   group: japan-runtime-config-additive-repair
@@ -92,18 +99,17 @@ jobs:
         with:
           node-version: 22
 
-      - name: Validate one-time production approval
+      - name: Validate merged PR production approval
         shell: bash
         env:
-          JAPAN_CI_APPROVAL_BUNDLE: ${{ secrets.JAPAN_CI_APPROVAL_BUNDLE }}
-          CURRENT_REPOSITORY: ${{ github.repository }}
-          CURRENT_WORKFLOW_REF: ${{ github.workflow_ref }}
-          CURRENT_WORKFLOW_COMMIT: ${{ github.sha }}
-          CURRENT_RUN_ID: ${{ github.run_id }}
-          CURRENT_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          APPROVAL_PR: ${{ inputs.approval_pr }}
         run: |
           set -euo pipefail
-          node scripts/japan-tuic-additive-repair-contract.mjs approval >/dev/null
+          node scripts/japan-tuic-merged-pr-approval.mjs --pr-number "$APPROVAL_PR" >/dev/null
 
       - name: Download frozen dry-run artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

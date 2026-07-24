@@ -29,9 +29,16 @@ function jobBlock(workflow, jobName, nextJobName) {
 test("Japan repair workflow is manual-only with minimal read permissions", () => {
   const workflow = workflowText();
   assert.match(workflow, /^name: Japan Runtime Config Additive Repair$/m);
-  assert.match(workflow, /^on:\r?\n  workflow_dispatch:/m);
+  assert.match(
+    workflow,
+    /^on:\r?\n  workflow_dispatch:\r?\n    inputs:\r?\n      approval_pr:/m
+  );
+  assert.match(workflow, /approval_pr:[\s\S]*required: true[\s\S]*type: string/);
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request|pull_request_target|schedule|workflow_call):/m);
-  assert.match(workflow, /permissions:\r?\n  actions: read\r?\n  contents: read/);
+  assert.match(
+    workflow,
+    /permissions:\r?\n  actions: read\r?\n  checks: read\r?\n  contents: read\r?\n  pull-requests: read/
+  );
   assert.doesNotMatch(
     workflow,
     /id-token: write|contents: write|packages: write|deployments: write|actions: write/
@@ -45,16 +52,27 @@ test("dispatcher cannot manufacture or replay the production approval", () => {
   const trigger = workflow.slice(workflow.indexOf("on:"), workflow.indexOf("permissions:"));
   const preflight = jobBlock(workflow, "preflight", "execute");
   const execute = jobBlock(workflow, "execute");
-  assert.doesNotMatch(trigger, /\binputs:/);
+  assert.match(trigger, /inputs:\r?\n      approval_pr:/);
+  assert.doesNotMatch(trigger, /\b(?:host|port|user|key|known_hosts|gate_id|confirmation):/);
   assert.doesNotMatch(workflow, /inputs\.(?:gate_id|expected_workflow_commit|confirmation)/);
   assert.doesNotMatch(preflight, /JAPAN_CI_APPROVAL_BUNDLE|secrets\./);
-  assert.match(execute, /JAPAN_CI_APPROVAL_BUNDLE: \$\{\{ secrets\.JAPAN_CI_APPROVAL_BUNDLE \}\}/);
-  assert.match(execute, /CURRENT_RUN_ID: \$\{\{ github\.run_id \}\}/);
-  assert.match(execute, /CURRENT_RUN_ATTEMPT: \$\{\{ github\.run_attempt \}\}/);
-  assert.match(execute, /japan-tuic-additive-repair-contract\.mjs approval/);
-  const approval = execute.indexOf("- name: Validate one-time production approval");
+  assert.doesNotMatch(workflow, /JAPAN_CI_APPROVAL_BUNDLE/);
+  assert.match(execute, /GITHUB_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(execute, /GITHUB_REPOSITORY: \$\{\{ github\.repository \}\}/);
+  assert.match(execute, /GITHUB_SHA: \$\{\{ github\.sha \}\}/);
+  assert.match(execute, /GITHUB_ACTOR: \$\{\{ github\.actor \}\}/);
+  assert.match(execute, /APPROVAL_PR: \$\{\{ inputs\.approval_pr \}\}/);
+  assert.match(execute, /japan-tuic-merged-pr-approval\.mjs --pr-number "\$APPROVAL_PR"/);
+  const approval = execute.indexOf("- name: Validate merged PR production approval");
+  const download = execute.indexOf("- name: Download frozen dry-run artifact");
+  const firstJapanSecret = execute.indexOf("JAPAN_CI_");
   const credentials = execute.indexOf("- name: Prepare restricted SSH material");
-  assert.ok(approval >= 0 && credentials > approval);
+  assert.ok(
+    approval >= 0
+      && download > approval
+      && firstJapanSecret > approval
+      && credentials > approval
+  );
 });
 
 test("secretless preflight is isolated from the protected execute job", () => {
@@ -69,7 +87,6 @@ test("secretless preflight is isolated from the protected execute job", () => {
   assert.match(execute, /environment: vultr-japan-production/);
   assert.equal((workflow.match(/environment: vultr-japan-production/g) ?? []).length, 1);
   for (const secret of [
-    "JAPAN_CI_APPROVAL_BUNDLE",
     "JAPAN_CI_HOST",
     "JAPAN_CI_PORT",
     "JAPAN_CI_USER",
