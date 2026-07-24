@@ -244,9 +244,12 @@ path, creates CI credentials, secrets, bindings, or systemd units, changes the
 protected map, or dispatches a workflow run. A later, separately approved Risk
 A sequence must deploy the reviewed control-plane source, configure one
 protected observation-file path, obtain two naturally timer-written accepted
-observations, complete fresh aggregate preflight, bootstrap the temporary
-forced-command identity, dispatch one run, and prove host and GitHub cleanup.
-Source merge, if approved, does not establish any of those steps or a
+observations, complete fresh aggregate preflight, then bootstrap the temporary
+forced-command identity with both its runner and sibling helper matched to that
+reviewed source release, dispatch one run, and prove host and GitHub cleanup.
+The fixed 2026-07-16 map-repair ZIP remains unchanged and cannot prove that a
+newer host-side sibling helper is deployed. Source merge, if approved, does not
+establish any of those steps or a
 closed-loop production result.
 
 GitHub reports 0 open code-scanning alerts, 0 open Dependabot alerts, and 0 open

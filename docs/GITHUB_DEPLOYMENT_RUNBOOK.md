@@ -89,6 +89,14 @@ lane: **control-plane-app is not authorized**. Application installation,
 release switching, service or timer restart, stale deletion, schema/database
 changes, and adjacent infrastructure mutation remain prohibited.
 
+The fixed 2026-07-16 map-repair ZIP remains unchanged. It can establish only
+the reviewed map-helper boundary it contains; it cannot prove that a newer
+host-side sibling helper is deployed. Before bootstrap, the separately approved
+Risk A Gate must bind both the deployed forced-command runner and its sibling
+helper to the reviewed source release. This source/deployment binding is a
+bootstrap prerequisite, not evidence that bootstrap, dispatch, map apply, or
+closed-loop repair succeeded.
+
 The preflight job has no production secrets. It validates the exact artifact
 digest and independently compares the archive's canonical paths, blobs, and
 executable modes with the artifact Git tree at
@@ -139,7 +147,8 @@ repair runner must not manually invoke, restart, enable, or disable it.
 
 This independent exact Risk A Gate must be approved and completed before any
 workflow dispatch. It creates a new temporary, dedicated CI SSH identity,
-installs only the reviewed forced-command runner and one marked restricted
+installs only the reviewed forced-command runner and its reviewed sibling
+helper from the same reviewed source release, installs one marked restricted
 authorization, pins the target host key, and writes only these five temporary
 connection Environment secrets:
 

@@ -186,3 +186,96 @@ After final whole-branch review, open one Draft PR. Its body must state `Risk: B
 - Scope: Tasks 1–3 create only a Japan map-repair observation path; Task 4 keeps deployment and CI execution outside this PR.
 - Safety: the writer accepts only an already-redacted projection, writes a bounded aggregate record, and fails closed; runner backup/rollback behavior is unchanged.
 - Independence: no task marks an absent Singapore sidecar healthy or treats source merge as production evidence.
+
+## Final Review Remediation
+
+The first whole-branch review found two deterministic integration defects: the
+frozen repair ZIP cannot contain a helper introduced by this source branch, and
+the runner re-parsed the aggregate record written by the store as though it
+were a full collector projection. The following remediation replaces only that
+incompatible boundary; it does not loosen any production gate.
+
+### Task 5: Consume the persisted aggregate observation directly
+
+**Files:**
+- Modify: `server/services/platform/japan-tuic-repair-observation.mjs`
+- Modify: `scripts/japan-tuic-additive-repair-runner.mjs`
+- Modify: `server/tests/japan-tuic-repair-observation.test.mjs`
+- Modify: `server/tests/japan-tuic-additive-repair-runner.test.mjs`
+
+**Interfaces:**
+- Produces: `validateJapanTuicRepairObservation(input)`, which accepts only the exact aggregate record emitted by `buildJapanTuicRepairObservation`.
+- Consumes: `binding.paths.naturalObservation` as that aggregate record, not a collector projection.
+
+- [ ] **Step 1: Write RED integration tests**
+
+Create one real temporary file through `createJapanTuicRepairObservationStore.write({ projection })`; pass that same path to `createHostOperations(...).readNaturalObservation()` and assert the existing aggregate summary. Add a negative case for a valid-shape record with a wrong type or an unknown field.
+
+- [ ] **Step 2: Implement exact aggregate validation**
+
+Export a validator that requires exactly `schemaVersion`, `type`, `capturedAt`, `collectorCount`, `unresolvedTotal`, `japanTuicUnresolved`, and `accepted`; require `schemaVersion: "1"`, `type: "japan_tuic_repair_observation"`, canonical ISO time, non-negative safe integers, `unresolvedTotal: 0`, `japanTuicUnresolved: 0`, and `accepted: true`. The builder returns this validator's result. The runner reads and directly validates the persisted aggregate; it does not call the projection builder a second time.
+
+- [ ] **Step 3: Verify**
+
+Run: `node --test server/tests/japan-tuic-repair-observation.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs`
+
+Expected: pass, including real store-to-runner observation consumption.
+
+### Task 6: Keep the helper outside the frozen ZIP and close configuration gaps
+
+**Files:**
+- Modify: `scripts/japan-tuic-additive-repair-runner.mjs`
+- Modify: `server/services/platform/japan-tuic-repair-observation.mjs`
+- Modify: `server/state.mjs`
+- Modify: `scripts/traffic-usage-collect-once.mjs`
+- Modify: `server/tests/japan-tuic-additive-repair-runner.test.mjs`
+- Modify: `server/tests/japan-tuic-repair-observation.test.mjs`
+- Modify: `server/tests/traffic-usage-collect-once.test.mjs`
+
+**Interfaces:**
+- The runner imports the reviewed sibling helper from its own installed directory, not from the fixed 2026-07-16 artifact. The ZIP continues to provide only the pre-existing reviewed map helper and unrelated fixed archive entries.
+- `EDGE_JAPAN_TUIC_REPAIR_OBSERVATION_PATH` is valid only when a collector-status path is configured and the two resolved paths differ.
+
+- [ ] **Step 1: Write RED tests**
+
+Assert that the archive entry list no longer requires the new helper and that the host adapter dynamically imports the installed sibling helper. Assert state construction rejects an observation path without a status path and rejects equal resolved paths. Assert when an observation store is configured and the status snapshot write fails, the collector emits only the existing redacted status failure plus the fixed observation failure and returns non-zero.
+
+- [ ] **Step 2: Implement no-artifact helper loading and bounded reads**
+
+Resolve the helper path from `dirname(fileURLToPath(import.meta.url))`; add no new archive requirement. Use a Japan observation read bound of `256 * 1024` bytes. Preserve all artifact identity checks for the existing archive. Do not change the original frozen artifact identity.
+
+- [ ] **Step 3: Implement safe directory/config behavior**
+
+Do not chmod an existing parent directory. Create a missing dedicated parent at `0700`; keep the temporary and final record at `0600`. In runtime state, reject the observation configuration unless both paths exist in config and their resolved paths differ. In the collector, when the observation store is configured, a missing status projection after a successful raw report is a redacted failure and exit code `1`.
+
+- [ ] **Step 4: Verify**
+
+Run: `node --check scripts/japan-tuic-additive-repair-runner.mjs`
+
+Run: `node --check server/state.mjs`
+
+Run: `node --check scripts/traffic-usage-collect-once.mjs`
+
+Run: `node --test server/tests/japan-tuic-repair-observation.test.mjs server/tests/japan-tuic-additive-repair-runner.test.mjs server/tests/traffic-usage-collect-once.test.mjs server/tests/state.test.mjs`
+
+Expected: pass.
+
+### Task 7: Reconcile documentation and repeat final review
+
+**Files:**
+- Modify: `docs/GITHUB_DEPLOYMENT_RUNBOOK.md`
+- Modify: `docs/CURRENT_RELEASE_STATE.md`
+
+- [ ] **Step 1: Record the corrected source boundary**
+
+State that the deployed forced-command runner and its sibling helper must match the reviewed source release before bootstrap; the fixed map-repair artifact remains unchanged and cannot be used as proof that a newer host helper is deployed. Keep all source-only and later Risk A gates unchanged.
+
+- [ ] **Step 2: Run full validation and final review**
+
+Run: `git diff --check origin/master...HEAD`
+
+Run: `npm run docs:authority:check`
+
+Run: `npm test`
+
+Then request a new whole-branch review. Do not push or open the Draft PR until that review has no Critical or Important findings.
