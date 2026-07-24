@@ -54,14 +54,14 @@ export function createProviderBPaymentAdapter({ nowFn } = {}) {
     normalizeError: (value) => {
       const requested = requestedOperation(value);
       const operation = requested ?? "reconcile";
-      return normalizePaymentProviderError({
+      return {
         code: requested ? "provider_contract_unverified" : "provider_operation_failed",
         operation,
         retryable: false,
         chargeCertainty: requested ? "confirmed_no_charge" : "unknown",
         providerOrderRef: null,
         occurredAt: timestamp(),
-      });
+      };
     },
     webhookSuccessAck: () => disabled("verify_callback"),
     refund: () => disabled("refund"),

@@ -82,11 +82,21 @@ test("Provider B normalized disabled methods reject before raw operation executi
   assert.equal(rawCalls, 0);
 });
 
-test("Provider B normalizes only safe canonical errors", () => {
+test("Provider B exposes a plain safe raw error record and preserves it through the normalized wrapper", () => {
   const raw = createProviderBPaymentAdapter({ nowFn: () => NOW });
-  assertUnverified(raw.normalizeError({ operation: "refund" }), "refund");
+  const rawRecord = raw.normalizeError({ operation: "refund", error: new Error("ignored") });
+  assert.equal(rawRecord instanceof Error, false);
+  assert.deepEqual(rawRecord, {
+    code: "provider_contract_unverified", operation: "refund", retryable: false,
+    chargeCertainty: "confirmed_no_charge", providerOrderRef: null, occurredAt: NOW,
+  });
+  const normalized = assertPaymentProviderAdapterContract(raw);
+  assertUnverified(normalized.normalizeError({ operation: "refund", error: new Error("ignored") }), "refund");
+  const invalidWrapper = normalized.normalizeError({ operation: "not-an-operation", error: new Error("ignored") });
+  assert.equal(invalidWrapper.message, "provider_operation_failed");
+  assert.equal(invalidWrapper.operation, "reconcile");
   const fallback = raw.normalizeError({ operation: "not-an-operation" });
-  assert.deepEqual({ ...fallback }, {
+  assert.deepEqual(fallback, {
     code: "provider_operation_failed", operation: "reconcile", retryable: false,
     chargeCertainty: "unknown", providerOrderRef: null, occurredAt: NOW,
   });
