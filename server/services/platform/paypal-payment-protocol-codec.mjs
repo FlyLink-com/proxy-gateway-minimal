@@ -135,6 +135,17 @@ function boundedText(value, maximumLength = 4096) {
   return value;
 }
 
+function headerValue(value) {
+  if (
+    typeof value !== "string"
+    || value.length > 4096
+    || /[\0\r\n]/u.test(value)
+  ) {
+    invalidProtocol();
+  }
+  return value;
+}
+
 function providerStatus(value) {
   if (typeof value !== "string" || !STATUS_RE.test(value)) invalidProtocol();
   return value;
@@ -249,9 +260,8 @@ function normalizedCreateInput(value) {
   ]);
   const currency = currencyCode(input.currency);
   const exponent = currencyExponent(input.currencyExponent);
-  compiledMoney(currency, exponent);
   if (input.paymentMethod !== "paypal") invalidProtocol();
-  return {
+  const normalized = {
     paymentOrderRef: safeRef(input.paymentOrderRef),
     attemptRef: safeRef(input.attemptRef),
     providerRequestRef: safeRef(input.providerRequestRef),
@@ -265,6 +275,8 @@ function normalizedCreateInput(value) {
     callbackRouteRef: safeRef(input.callbackRouteRef),
     returnRouteRef: safeRef(input.returnRouteRef, true),
   };
+  compiledMoney(currency, exponent);
+  return normalized;
 }
 
 function normalizedQueryInput(value) {
@@ -292,8 +304,7 @@ function normalizedCaptureInput(value) {
   ]);
   const currency = currencyCode(input.currency);
   const exponent = currencyExponent(input.currencyExponent);
-  compiledMoney(currency, exponent);
-  return {
+  const normalized = {
     paymentOrderRef: safeRef(input.paymentOrderRef),
     attemptRef: safeRef(input.attemptRef),
     providerOrderRef: safeRef(input.providerOrderRef),
@@ -302,6 +313,8 @@ function normalizedCaptureInput(value) {
     currency,
     currencyExponent: exponent,
   };
+  compiledMoney(currency, exponent);
+  return normalized;
 }
 
 function normalizedCreateResponse(value) {
@@ -366,13 +379,15 @@ function normalizedCallbackInput(value) {
     }
     return {
       name: entry.name,
-      value: boundedText(entry.value),
+      value: headerValue(entry.value),
     };
   });
   const required = {};
   for (const name of REQUIRED_WEBHOOK_HEADERS) {
     const matches = headerEntries.filter((entry) => entry.name === name);
-    if (matches.length !== 1) invalidProtocol();
+    if (matches.length !== 1 || matches[0].value.length === 0) {
+      invalidProtocol();
+    }
     required[name] = matches[0].value;
   }
   if (required["paypal-cert-url"] !== ACTION_CERT_URL) invalidProtocol();
@@ -689,6 +704,8 @@ export function decodeVerifiedPayPalWebhook(value) {
       "merchantScopeDigest",
       "payloadDigest",
     ]);
+    const merchantScopeDigest = digest(envelope.merchantScopeDigest);
+    const payloadDigest = digest(envelope.payloadDigest);
     const callbackInput = normalizedCallbackInput(envelope.callbackInput);
     const verification = snapshotObject(
       envelope.verificationResponse,
@@ -709,8 +726,8 @@ export function decodeVerifiedPayPalWebhook(value) {
       invalidProtocol();
     }
     const currency = event.resource.amount.currency_code;
-    compiledMoney(currency, 2);
     const amountMinor = parsedAmountMinor(event.resource.amount.value, 2);
+    compiledMoney(currency, 2);
     const providerOrderRef = event.resource.supplementary_data.related_ids.order_id;
     const providerCaptureRef = event.resource.id;
     return deepFreeze({
@@ -729,8 +746,8 @@ export function decodeVerifiedPayPalWebhook(value) {
       amountMinor,
       currency,
       currencyExponent: 2,
-      merchantScopeDigest: digest(envelope.merchantScopeDigest),
-      payloadDigest: digest(envelope.payloadDigest),
+      merchantScopeDigest,
+      payloadDigest,
       occurredAt: callbackInput.receivedAt,
       verificationResult: "verified",
     });

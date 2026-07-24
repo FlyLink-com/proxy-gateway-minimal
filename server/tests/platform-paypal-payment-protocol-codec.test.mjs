@@ -68,6 +68,40 @@ function protocolError(message = "invalid_paypal_protocol") {
   };
 }
 
+function assertProxyRejectedWithoutTraps(invoke, validInput) {
+  const counters = {
+    get: 0,
+    ownKeys: 0,
+    descriptor: 0,
+    getPrototypeOf: 0,
+  };
+  const proxy = new Proxy(validInput, {
+    get(target, key, receiver) {
+      counters.get += 1;
+      return Reflect.get(target, key, receiver);
+    },
+    ownKeys(target) {
+      counters.ownKeys += 1;
+      return Reflect.ownKeys(target);
+    },
+    getOwnPropertyDescriptor(target, key) {
+      counters.descriptor += 1;
+      return Reflect.getOwnPropertyDescriptor(target, key);
+    },
+    getPrototypeOf(target) {
+      counters.getPrototypeOf += 1;
+      return Reflect.getPrototypeOf(target);
+    },
+  });
+  assert.throws(() => invoke(proxy), protocolError());
+  assert.deepEqual(counters, {
+    get: 0,
+    ownKeys: 0,
+    descriptor: 0,
+    getPrototypeOf: 0,
+  });
+}
+
 function assertDeepFrozen(value) {
   if (value === null || typeof value !== "object") return;
   assert.equal(Object.isFrozen(value), true);
@@ -223,6 +257,20 @@ test("PayPal create codec emits a detached descriptor and maps an allowlisted pa
     raw,
   );
   assertDeepFrozen(raw);
+
+  for (const malformed of [
+    { ...CREATE_INPUT, currency: "EUR", paymentMethod: "card" },
+    { ...CREATE_INPUT, currency: "EUR", quoteDigest: "not-a-digest" },
+  ]) {
+    assert.throws(
+      () => encodePayPalCreateOrderRequest(malformed),
+      protocolError(),
+    );
+  }
+  assert.throws(
+    () => encodePayPalCreateOrderRequest({ ...CREATE_INPUT, currency: "EUR" }),
+    protocolError("provider_contract_unverified"),
+  );
 });
 
 test("PayPal request ids are stable and domain-separated for create and capture", () => {
@@ -301,6 +349,56 @@ test("PayPal create treats duplicate or simultaneous reviewed action links as am
       occurredAt: RECEIVED_AT,
     });
   }
+
+  assert.throws(
+    () => decodePayPalCreateOrderResponse({
+      createInput: CREATE_INPUT,
+      providerResponse: createResponse({
+        links: Array.from({ length: 17 }, (_value, index) => ({
+          rel: "self",
+          href: `${ACTION_ORIGIN}/orders/${index}`,
+        })),
+      }),
+      receivedAt: RECEIVED_AT,
+    }),
+    protocolError(),
+  );
+  assert.throws(
+    () => decodePayPalCreateOrderResponse({
+      createInput: CREATE_INPUT,
+      providerResponse: createResponse({ links: new Array(1) }),
+      receivedAt: RECEIVED_AT,
+    }),
+    protocolError(),
+  );
+  assert.throws(
+    () => decodePayPalCreateOrderResponse({
+      createInput: CREATE_INPUT,
+      providerResponse: createResponse({
+        links: [{ rel: "approve", href: ACTION_URL, extra: true }],
+      }),
+      receivedAt: RECEIVED_AT,
+    }),
+    protocolError(),
+  );
+  let nestedAccessorCalls = 0;
+  const hostileLink = { rel: "approve", href: ACTION_URL };
+  Object.defineProperty(hostileLink, "href", {
+    enumerable: true,
+    get() {
+      nestedAccessorCalls += 1;
+      throw new Error("hostile nested accessor");
+    },
+  });
+  assert.throws(
+    () => decodePayPalCreateOrderResponse({
+      createInput: CREATE_INPUT,
+      providerResponse: createResponse({ links: [hostileLink] }),
+      receivedAt: RECEIVED_AT,
+    }),
+    protocolError(),
+  );
+  assert.equal(nestedAccessorCalls, 0);
 });
 
 test("PayPal Core rejects a decoded action outside the compiled redirect origin", () => {
@@ -491,6 +589,66 @@ test("PayPal capture rejects mismatched order amount currency exponent and missi
     () => encodePayPalCaptureOrderRequest({ ...CAPTURE_INPUT, currency: "EUR" }),
     protocolError("provider_contract_unverified"),
   );
+  for (const malformed of [
+    { ...CAPTURE_INPUT, currency: "EUR", amountMinor: 0 },
+    { ...CAPTURE_INPUT, currency: "EUR", captureRequestRef: "bad ref" },
+  ]) {
+    assert.throws(
+      () => encodePayPalCaptureOrderRequest(malformed),
+      protocolError(),
+    );
+  }
+
+  const duplicatePurchaseUnit = completedCaptureResponse();
+  duplicatePurchaseUnit.purchase_units.push(
+    structuredClone(duplicatePurchaseUnit.purchase_units[0]),
+  );
+  assert.throws(
+    () => decodePayPalCaptureOrderResponse(captureDecodeInput({
+      providerResponse: duplicatePurchaseUnit,
+    })),
+    protocolError(),
+  );
+  const duplicateCapture = completedCaptureResponse();
+  duplicateCapture.purchase_units[0].payments.captures.push(
+    structuredClone(
+      duplicateCapture.purchase_units[0].payments.captures[0],
+    ),
+  );
+  assert.throws(
+    () => decodePayPalCaptureOrderResponse(captureDecodeInput({
+      providerResponse: duplicateCapture,
+    })),
+    protocolError(),
+  );
+  const extraAmountField = completedCaptureResponse();
+  extraAmountField.purchase_units[0].payments.captures[0].amount.extra = true;
+  assert.throws(
+    () => decodePayPalCaptureOrderResponse(captureDecodeInput({
+      providerResponse: extraAmountField,
+    })),
+    protocolError(),
+  );
+  let amountAccessorCalls = 0;
+  const accessorAmount = completedCaptureResponse();
+  Object.defineProperty(
+    accessorAmount.purchase_units[0].payments.captures[0].amount,
+    "value",
+    {
+      enumerable: true,
+      get() {
+        amountAccessorCalls += 1;
+        throw new Error("hostile amount accessor");
+      },
+    },
+  );
+  assert.throws(
+    () => decodePayPalCaptureOrderResponse(captureDecodeInput({
+      providerResponse: accessorAmount,
+    })),
+    protocolError(),
+  );
+  assert.equal(amountAccessorCalls, 0);
 });
 
 test("PayPal non-success capture outcomes carry a null payment fact", () => {
@@ -637,26 +795,50 @@ test("PayPal callback rejects FAILURE unsupported malformed ambiguous and mismat
     ))),
     protocolError("provider_contract_unverified"),
   );
+  for (const malformed of [
+    webhookDecodeInput(callbackInput(completedWebhookEvent({
+      currency: "EUR",
+      value: "malformed",
+    }))),
+    webhookDecodeInput(callbackInput(completedWebhookEvent({
+      currency: "EUR",
+    })), {
+      merchantScopeDigest: "not-a-digest",
+    }),
+    webhookDecodeInput(callbackInput(completedWebhookEvent({
+      currency: "EUR",
+      providerOrderRef: "bad ref",
+    }))),
+  ]) {
+    assert.throws(
+      () => decodeVerifiedPayPalWebhook(malformed),
+      protocolError(),
+    );
+  }
 });
 
 test("PayPal callback requires each verification header exactly once and rejects duplicates", () => {
   const required = callbackInput().headerEntries.slice(0, 5);
+  const withHeaders = (headerEntries) => callbackInput(
+    completedWebhookEvent(),
+    headerEntries,
+  );
   for (let index = 0; index < required.length; index += 1) {
     assert.throws(
-      () => encodePayPalWebhookVerificationRequest(callbackInput(
+      () => encodePayPalWebhookVerificationRequest(withHeaders(
         required.filter((_entry, entryIndex) => entryIndex !== index),
       )),
       protocolError(),
     );
     assert.throws(
-      () => encodePayPalWebhookVerificationRequest(callbackInput([
+      () => encodePayPalWebhookVerificationRequest(withHeaders([
         ...required,
         { ...required[index] },
       ])),
       protocolError(),
     );
     assert.throws(
-      () => encodePayPalWebhookVerificationRequest(callbackInput(
+      () => encodePayPalWebhookVerificationRequest(withHeaders(
         required.map((entry, entryIndex) => (
           entryIndex === index ? { ...entry, value: "" } : entry
         )),
@@ -665,7 +847,7 @@ test("PayPal callback requires each verification header exactly once and rejects
     );
   }
   assert.throws(
-    () => encodePayPalWebhookVerificationRequest(callbackInput(
+    () => encodePayPalWebhookVerificationRequest(withHeaders(
       required.map((entry) => (
         entry.name === "paypal-cert-url"
           ? { ...entry, value: "https://cert.other.invalid/paypal.pem" }
@@ -674,6 +856,10 @@ test("PayPal callback requires each verification header exactly once and rejects
     )),
     protocolError(),
   );
+  assert.doesNotThrow(() => encodePayPalWebhookVerificationRequest(withHeaders([
+    ...required,
+    { name: "x-synthetic-ignored", value: "" },
+  ])));
 });
 
 test("PayPal raw decoded facts have no Provider Core provenance", () => {
@@ -743,37 +929,37 @@ test("PayPal decoders reject missing extra accessor Proxy and digest envelope fi
     assert.throws(() => decode(accessor), protocolError());
     assert.equal(accessorCalls, 0);
 
-    const counters = {
-      get: 0,
-      ownKeys: 0,
-      descriptor: 0,
-      getPrototypeOf: 0,
-    };
-    const proxy = new Proxy(valid, {
-      get(target, key, receiver) {
-        counters.get += 1;
-        return Reflect.get(target, key, receiver);
+  }
+
+  for (const [invoke, valid] of [
+    [
+      derivePayPalProviderRequestId,
+      { operation: "create_recharge_order", requestRef: "request_1" },
+    ],
+    [encodePayPalCreateOrderRequest, CREATE_INPUT],
+    [
+      decodePayPalCreateOrderResponse,
+      {
+        createInput: CREATE_INPUT,
+        providerResponse: createResponse(),
+        receivedAt: RECEIVED_AT,
       },
-      ownKeys(target) {
-        counters.ownKeys += 1;
-        return Reflect.ownKeys(target);
+    ],
+    [encodePayPalQueryOrderRequest, QUERY_INPUT],
+    [
+      decodePayPalQueryOrderResponse,
+      {
+        queryInput: QUERY_INPUT,
+        providerResponse: { id: QUERY_INPUT.providerOrderRef, status: "APPROVED" },
+        receivedAt: RECEIVED_AT,
       },
-      getOwnPropertyDescriptor(target, key) {
-        counters.descriptor += 1;
-        return Reflect.getOwnPropertyDescriptor(target, key);
-      },
-      getPrototypeOf(target) {
-        counters.getPrototypeOf += 1;
-        return Reflect.getPrototypeOf(target);
-      },
-    });
-    assert.throws(() => decode(proxy), protocolError());
-    assert.deepEqual(counters, {
-      get: 0,
-      ownKeys: 0,
-      descriptor: 0,
-      getPrototypeOf: 0,
-    });
+    ],
+    [encodePayPalCaptureOrderRequest, CAPTURE_INPUT],
+    [decodePayPalCaptureOrderResponse, captureDecodeInput()],
+    [encodePayPalWebhookVerificationRequest, callbackInput()],
+    [decodeVerifiedPayPalWebhook, webhookDecodeInput()],
+  ]) {
+    assertProxyRejectedWithoutTraps(invoke, valid);
   }
 
   for (const key of ["merchantScopeDigest", "payloadDigest"]) {
