@@ -193,6 +193,11 @@ async function createExecution(overrides = {}) {
   };
 }
 
+async function createBrandedEvent(overrides = {}) {
+  const { execution } = await createExecution();
+  return execution.withCredential("verify_callback", () => validEvent(overrides));
+}
+
 test("exports exact frozen payment method vocabulary and performs no coercion", async () => {
   const module = await import("../services/platform/payment-provider-adapter-contract.mjs");
   assert.deepEqual(Object.keys(module).sort(), [
@@ -405,10 +410,11 @@ test("snapshots adapter metadata, methods, origins, inputs, and freezes detached
 
 test("validates create, query, callback, refund, and reconcile operation inputs", async () => {
   const seen = {};
+  const brandedCallbackEvent = await createBrandedEvent();
   const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
     createRechargeOrder(input) { seen.create = input; return validResult(); },
     queryPayment(input) { seen.query = input; return validResult(); },
-    verifyAndNormalizeCallback(input) { seen.callback = input; return validEvent(); },
+    verifyAndNormalizeCallback(input) { seen.callback = input; return brandedCallbackEvent; },
     refund(input) { seen.refund = input; return validResult({ status: "reversed" }); },
     reconcile(input) { seen.reconcile = input; return validResult(); },
   }), { allowedActionOrigins: ACTION_ORIGINS });
@@ -463,7 +469,10 @@ test("validates create, query, callback, refund, and reconcile operation inputs"
 });
 
 test("enforces callback body, header, forbidden-header, and hostile-layer bounds", async () => {
-  const adapter = assertPaymentProviderAdapterContract(enabledAdapter());
+  const brandedCallbackEvent = await createBrandedEvent();
+  const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
+    verifyAndNormalizeCallback: () => brandedCallbackEvent,
+  }));
   await adapter.verifyAndNormalizeCallback(validCallbackInput());
   const invalid = [
     validCallbackInput({ bodyBase64: "" }),
@@ -616,6 +625,41 @@ test("brands verified events only through credential-scoped verify_callback exec
     () => normalizeVerifiedPaymentEvent({ ...branded }),
     expectCode("invalid_verified_payment_event"),
   );
+});
+
+test("normalized adapters reject unbranded callback events and preserve branded provenance", async () => {
+  const plainAdapter = assertPaymentProviderAdapterContract(enabledAdapter());
+  await assert.rejects(
+    () => plainAdapter.verifyAndNormalizeCallback(validCallbackInput()),
+    expectCode("invalid_verified_payment_event"),
+  );
+
+  const branded = await createBrandedEvent();
+  const cloneAdapter = assertPaymentProviderAdapterContract(enabledAdapter({
+    verifyAndNormalizeCallback: () => ({ ...branded }),
+  }));
+  await assert.rejects(
+    () => cloneAdapter.verifyAndNormalizeCallback(validCallbackInput()),
+    expectCode("invalid_verified_payment_event"),
+  );
+
+  let acknowledgedEvent;
+  const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
+    verifyAndNormalizeCallback: () => branded,
+    webhookSuccessAck(event) {
+      acknowledgedEvent = event;
+      return { statusCode: 204, contentType: "text/plain", body: "" };
+    },
+  }));
+  const returned = await adapter.verifyAndNormalizeCallback(validCallbackInput());
+  assert.equal(returned, branded);
+  assert.equal(normalizeVerifiedPaymentEvent(returned), branded);
+  assert.deepEqual(await adapter.webhookSuccessAck(returned), {
+    statusCode: 204,
+    contentType: "text/plain",
+    body: "",
+  });
+  assert.equal(acknowledgedEvent, branded);
 });
 
 test("validates all verified event types, nullable ref, digests, time, amount, and payload rejection", async () => {
@@ -889,6 +933,124 @@ test("credential execution defends invalid ops, double callbacks, closure, mutat
     (error) => error?.code === "provider_operation_failed",
   );
   assert.equal(thenTrap, 0);
+});
+
+test("request transport failures atomically close the credential scope", async () => {
+  for (const failureMode of ["sync_throw", "native_reject"]) {
+    let transportCalls = 0;
+    const { execution } = await createExecution({
+      requestFn() {
+        transportCalls += 1;
+        if (failureMode === "sync_throw") throw new Error("transport-secret");
+        return Promise.reject(new Error("transport-secret"));
+      },
+    });
+    const result = await execution.withCredential("query_payment", async ({ request }) => {
+      const firstError = await request({ attempt: 1 }).catch((error) => error);
+      assert.equal(firstError.code, "provider_operation_failed");
+      const secondError = await request({ attempt: 2 }).catch((error) => error);
+      assert.equal(secondError.message, "payment_execution_scope_closed");
+      return validResult();
+    });
+    assert.deepEqual(result, validResult());
+    assert.equal(transportCalls, 1);
+  }
+});
+
+test("loader failures close retained scopes and drain background callback rejection", async () => {
+  for (const failureMode of ["sync_throw", "native_reject", "custom_thenable"]) {
+    let retainedRequest;
+    let transportCalls = 0;
+    let releaseCallback;
+    let callbackReachedRequest;
+    const callbackGate = new Promise((resolve) => {
+      releaseCallback = resolve;
+    });
+    const reachedRequest = new Promise((resolve) => {
+      callbackReachedRequest = resolve;
+    });
+    const unhandled = [];
+    const onUnhandled = (error) => {
+      unhandled.push(error);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const credentialLoader = {
+        withCredential(_binding, callback) {
+          void callback("opaque-credential");
+          if (failureMode === "sync_throw") throw new Error("loader-secret");
+          if (failureMode === "native_reject") {
+            return Promise.reject(new Error("loader-secret"));
+          }
+          return { then() {} };
+        },
+      };
+      const { execution } = await createExecution({
+        credentialLoader,
+        requestFn() {
+          transportCalls += 1;
+          return { ok: true };
+        },
+      });
+      const outer = execution.withCredential("query_payment", async ({ request }) => {
+        retainedRequest = request;
+        await callbackGate;
+        callbackReachedRequest();
+        await request({ background: true });
+        return validResult();
+      });
+      await assert.rejects(outer, (error) => error?.code === "provider_operation_failed");
+      await assert.rejects(
+        () => retainedRequest({ retained: true }),
+        expectCode("payment_execution_scope_closed"),
+      );
+      assert.equal(transportCalls, 0);
+      releaseCallback();
+      await reachedRequest;
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(transportCalls, 0);
+      assert.deepEqual(unhandled, []);
+    } finally {
+      process.removeListener("unhandledRejection", onUnhandled);
+      releaseCallback();
+    }
+  }
+});
+
+test("successful early loader resolution keeps scope open until callback settles", async () => {
+  let retainedRequest;
+  let releaseCallback;
+  let transportCalls = 0;
+  const callbackGate = new Promise((resolve) => {
+    releaseCallback = resolve;
+  });
+  const { execution } = await createExecution({
+    credentialLoader: {
+      withCredential(_binding, callback) {
+        void callback("opaque-credential");
+        return Promise.resolve();
+      },
+    },
+    requestFn({ request }) {
+      transportCalls += 1;
+      return request;
+    },
+  });
+  const outer = execution.withCredential("query_payment", async ({ request }) => {
+    retainedRequest = request;
+    await callbackGate;
+    assert.deepEqual(await request({ allowed: true }), { allowed: true });
+    return validResult();
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(transportCalls, 0);
+  releaseCallback();
+  assert.deepEqual(await outer, validResult());
+  assert.equal(transportCalls, 1);
+  await assert.rejects(
+    () => retainedRequest({ after: true }),
+    expectCode("payment_execution_scope_closed"),
+  );
 });
 
 test("rejects hostile execution layers and collapses loader callback and request failures", async () => {

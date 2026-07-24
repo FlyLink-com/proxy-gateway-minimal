@@ -864,7 +864,7 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
         return invokeCompiled(
           methods.verifyAndNormalizeCallback,
           normalized,
-          (output) => normalizeRawVerifiedEvent(output, "invalid_verified_payment_event"),
+          (output) => normalizeVerifiedPaymentEvent(output),
           "verify_callback",
         );
       }
@@ -1013,22 +1013,44 @@ export function createCredentialScopedPaymentExecution(options) {
     let callbackInvoked = false;
     let callbackOutcome;
     let loaderClosed = false;
+    let scopeActive = false;
+    const closeScope = () => {
+      scopeActive = false;
+    };
+    const drainCallbackOutcome = () => {
+      if (isNativePromise(callbackOutcome)) {
+        void callbackOutcome.then(
+          () => undefined,
+          () => undefined,
+        );
+      }
+    };
+    const abortLoader = (error) => {
+      loaderClosed = true;
+      closeScope();
+      drainCallbackOutcome();
+      return Promise.reject(error);
+    };
 
     const loaderCallback = (credentialHandle) => {
       if (callbackInvoked) return callbackOutcome;
       if (loaderClosed) return Promise.reject(genericProviderError(operation));
       callbackInvoked = true;
-      let active = true;
+      scopeActive = true;
       const scopedRequest = (request) => {
-        if (!active) return reject("payment_execution_scope_closed");
+        if (!scopeActive) return reject("payment_execution_scope_closed");
         let response;
         try {
           response = requestFn({ binding, credentialHandle, request });
         } catch (error) {
+          closeScope();
           return Promise.reject(safeProviderError(error, operation));
         }
         if (isNativePromise(response)) {
-          return response.catch((error) => Promise.reject(safeProviderError(error, operation)));
+          return response.catch((error) => {
+            closeScope();
+            return Promise.reject(safeProviderError(error, operation));
+          });
         }
         return response;
       };
@@ -1037,7 +1059,7 @@ export function createCredentialScopedPaymentExecution(options) {
       try {
         raw = callback(context);
       } catch (error) {
-        active = false;
+        closeScope();
         callbackOutcome = Promise.reject(safeProviderError(error, operation));
         return callbackOutcome;
       }
@@ -1047,7 +1069,7 @@ export function createCredentialScopedPaymentExecution(options) {
           (error) => Promise.reject(safeProviderError(error, operation)),
         ).catch((error) => Promise.reject(safeProviderError(error, operation)))
           .finally(() => {
-            active = false;
+            closeScope();
           });
         return callbackOutcome;
       }
@@ -1058,7 +1080,7 @@ export function createCredentialScopedPaymentExecution(options) {
       } catch (error) {
         callbackOutcome = Promise.reject(safeProviderError(error, operation));
       }
-      active = false;
+      closeScope();
       return callbackOutcome;
     };
 
@@ -1066,12 +1088,10 @@ export function createCredentialScopedPaymentExecution(options) {
     try {
       loaderOutcome = loaderMethod(binding, loaderCallback);
     } catch (error) {
-      loaderClosed = true;
-      return Promise.reject(safeProviderError(error, operation));
+      return abortLoader(safeProviderError(error, operation));
     }
     if (isCustomThenable(loaderOutcome)) {
-      loaderClosed = true;
-      return Promise.reject(genericProviderError(operation));
+      return abortLoader(genericProviderError(operation));
     }
     if (isNativePromise(loaderOutcome)) {
       return loaderOutcome.then(
@@ -1082,8 +1102,7 @@ export function createCredentialScopedPaymentExecution(options) {
             : Promise.reject(genericProviderError(operation));
         },
         (error) => {
-          loaderClosed = true;
-          return Promise.reject(safeProviderError(error, operation));
+          return abortLoader(safeProviderError(error, operation));
         },
       );
     }
