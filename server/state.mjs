@@ -13,6 +13,7 @@ import { createSqliteSubscriptionStore } from "./services/subscriptions/reposito
 import { createSubscriptionCore } from "./services/subscriptions/core.mjs";
 import { DEFAULT_ADMIN_ALLOWED_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS } from "./services/ip-address.mjs";
 import { createPlatformAccountEntitlementShell } from "./services/platform/account-entitlement-shell.mjs";
+import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
 import { createSqliteSubscriptionControlStore } from "./services/platform/subscription-control-db.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
@@ -901,6 +902,7 @@ export function createRuntimeState(options = {}) {
   });
   const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
   const adminAuthRoutesEnabled = envFlag(env.ADMIN_AUTH_ROUTES_ENABLED || env.ADMIN_PROTECTED_ROUTE_AUTH_ENABLED);
+  const coinsWalletEnabled = envFlag(env.COINS_WALLET_ENABLED);
   const localProxyControlRoutesEnabled = envFlag(env.LOCAL_PROXY_CONTROL_ROUTES_ENABLED, true);
   const adminAuthPortalAccountId = optionalEnvText(env.ADMIN_AUTH_PORTAL_ACCOUNT_ID);
   if (adminAuthRoutesEnabled && !adminAuthPortalAccountId) {
@@ -959,6 +961,28 @@ export function createRuntimeState(options = {}) {
   );
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
+  const ownsCoinsWalletStore = coinsWalletEnabled && !options.coinsWalletStore;
+  let coinsWalletStore = null;
+  if (coinsWalletEnabled) {
+    try {
+      coinsWalletStore = options.coinsWalletStore || createSqliteCoinWalletStore({
+        dbPath: controlDbPath
+      });
+    } catch (error) {
+      for (const [owned, store] of [
+        [ownsControlStore, platformControlStore],
+        [ownsSubscriptionStore, subscriptionStore]
+      ]) {
+        if (!owned) continue;
+        try {
+          store.close();
+        } catch {
+          // Preserve the fail-closed wallet construction error.
+        }
+      }
+      throw error;
+    }
+  }
   const subscriptionCoreNowFn = dateNowFn(options.subscriptionNowFn || options.userPortalNowFn);
   let edgeCredentialMaterialStore = options.edgeCredentialMaterialStore || null;
   const subscriptionCore = options.subscriptionCore || options.subscriptionService || createSubscriptionCore({
@@ -1442,12 +1466,20 @@ export function createRuntimeState(options = {}) {
   function close() {
     if (closed) return;
     closed = true;
-    if (ownsSubscriptionStore) {
-      subscriptionStore.close();
+    let firstError;
+    for (const [owned, store] of [
+      [ownsCoinsWalletStore, coinsWalletStore],
+      [ownsControlStore, platformControlStore],
+      [ownsSubscriptionStore, subscriptionStore]
+    ]) {
+      if (!owned) continue;
+      try {
+        store.close();
+      } catch (error) {
+        firstError ||= error;
+      }
     }
-    if (ownsControlStore) {
-      platformControlStore.close();
-    }
+    if (firstError) throw firstError;
   }
 
   const bridgeServer = options.httpProxyServer || createBridgeServer({ socksPort: ports.socks });
@@ -1577,6 +1609,8 @@ export function createRuntimeState(options = {}) {
       leadQueue: platformLeadQueue,
       accountShell: platformAccountShell,
       accessShell: platformAccessShell,
+      coinsWalletEnabled,
+      coinsWalletStore,
       adminAuthRoutesEnabled,
       adminAuth: platformAdminAuth,
       userPortalRoutesEnabled,
