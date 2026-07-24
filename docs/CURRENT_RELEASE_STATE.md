@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: release_state
   superseded_by: null
-  last_verified_at: 2026-07-20
+  last_verified_at: 2026-07-24
   production_authority: false
 ```
 
@@ -16,7 +16,8 @@ document_metadata:
 > - Source evidence baseline: `9982d378f93dd506c24c137197293f6942dc45ee` (master @ 2026-07-20)
 > - Static artifact baseline: `18807285` (PR #452)
 > - Historical v2 baseline: `4fbe0222` (PR #445)
-> - Updated: 2026-07-20, America/Los_Angeles
+> - Updated: 2026-07-24, America/Los_Angeles (traffic-accounting addendum;
+>   source and release baseline below remain 2026-07-20)
 > - Source evidence cutoff: GitHub read-only inventory through `master@9982d378f93dd506c24c137197293f6942dc45ee` on 2026-07-20
 > - Production/runtime evidence cutoff: `2026-07-20T06:21:00Z`; vultr-japan-control control-plane-app upgraded to master-upgrade-20260720-9982d378
 > - Live verification: Production upgrade validation completed with service stability confirmed
@@ -250,8 +251,11 @@ The ordered next-action queue is:
 - #437 Traffic Accounting remains the primary implementation Epic. Source now
   includes the reviewed credential-lifecycle, cumulative-accounting,
   unresolved-provenance, and offline natural-observation work through #478.
-  The dated production observation remains unchanged: identity sync is degraded
-  (`missing=2`, `stale=19`), and `map_apply` has not started. Draft PR #479 is
+  A 2026-07-23 read-only Japan aggregate observation found identity sync
+  degraded (`missing=3`, `stale=46`) with an additive-only candidate
+  (`add=3`, `remove=0`). Periodic traffic collection is active; `map_apply`
+  has not started because the protected repair capability is not bootstrapped.
+  Draft PR #479 is
   blocked at Gate 003 terminal receipt `issuecomment-4979585832`; that approval
   is consumed, and no later durable Gate exists. Issue #437 was reopened by
   receipt `issuecomment-4976074286`

@@ -1,6 +1,6 @@
 # GitHub Deployment Runbook
 
-Last updated: 2026-07-21, America/Los_Angeles.
+Last updated: 2026-07-24, America/Los_Angeles.
 
 This runbook defines the repository-owned GitHub deployment foundation for
 `proxy-gateway-minimal`. It is not a production approval. Production host,
@@ -79,7 +79,7 @@ This lane consumes only the frozen dry-run artifact from run `29495150692`:
 - artifact size: `4744340` bytes;
 - artifact SHA-256:
   `d6c0663c9a7c82c6e8ffb7d354e2a4c23d26f3339586533df5c268b887b839fd`;
-- candidate: `add=3`, `remove=0`, `deferred_remove=27`, `changed=0`,
+- candidate: `add=3`, `remove=0`, `deferred_remove=46`, `changed=0`,
   `missing_material=0`, `projected_map=82`.
 
 The artifact manifest uses `control-plane-app` because the ZIP carries the
@@ -163,10 +163,10 @@ above before backup or mutation. A successful apply must produce this
 aggregate Identity Gate:
 
 ```yaml
-runtime_count: 55
-mapped_count: 55
+runtime_count: 36
+mapped_count: 36
 missing: 0
-stale: 27
+stale: 46
 changed: 0
 missing_material: 0
 retention_state: pending
@@ -179,7 +179,7 @@ on any post-apply or observation failure. It never manually invokes or restarts
 the collector. The fixed helper invocation never receives `--status-path`, so
 dry-run, apply, rollback validation, and failure handling cannot write producer
 status outside the protected-map backup boundary. The acceptance read uses a
-fresh timer/service snapshot after the candidate observation. `stale=27`
+fresh timer/service snapshot after the candidate observation. `stale=46`
 remains unresolved; success must not be reported as identity healthy or
 retention complete.
 
