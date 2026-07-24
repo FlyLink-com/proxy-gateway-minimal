@@ -14,7 +14,11 @@ function exactKeys(value, keys) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const actual = Reflect.ownKeys(value);
   return actual.length === keys.length
-    && actual.every((key) => typeof key === "string" && keys.includes(key));
+    && actual.every((key) => {
+      if (typeof key !== "string" || !keys.includes(key)) return false;
+      const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+      return descriptor && "value" in descriptor;
+    });
 }
 
 function validCommit(value) {
@@ -62,22 +66,27 @@ function latestReviewerStates(reviews) {
 }
 
 export function validateMergedPrApproval(input = {}) {
-  const { pullRequest, reviews, checks, current } = validateInput(input);
-  const approved = latestReviewerStates(reviews).some(({ login, state }) =>
-    login !== current.dispatcher && state === "APPROVED"
-  );
-  const validatePassed = checks.some(({ name, conclusion }) =>
-    name === "Validate" && conclusion === "SUCCESS"
-  );
-  if (!pullRequest.merged
-    || pullRequest.mergeCommit !== current.workflowCommit
-    || !approved
-    || !validatePassed) {
+  try {
+    const { pullRequest, reviews, checks, current } = validateInput(input);
+    const approved = latestReviewerStates(reviews).some(({ login, state }) =>
+      login !== current.dispatcher && state === "APPROVED"
+    );
+    const validatePassed = checks.some(({ name, conclusion }) =>
+      name === "Validate" && conclusion === "SUCCESS"
+    );
+    if (!pullRequest.merged
+      || pullRequest.mergeCommit !== current.workflowCommit
+      || !approved
+      || !validatePassed) {
+      throw safeError();
+    }
+    return {
+      ok: true,
+      type: "japan_tuic_merged_pr_approval",
+      prNumber: pullRequest.number
+    };
+  } catch (error) {
+    if (error instanceof JapanTuicMergedPrApprovalError) throw error;
     throw safeError();
   }
-  return {
-    ok: true,
-    type: "japan_tuic_merged_pr_approval",
-    prNumber: pullRequest.number
-  };
 }

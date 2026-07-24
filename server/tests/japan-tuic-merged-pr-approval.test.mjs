@@ -105,3 +105,33 @@ test("rejects non-enumerable and Symbol own properties", () => {
     assert.throws(() => validateMergedPrApproval(evidence), /merged_pr_approval_mismatch/);
   }
 });
+
+test("rejects accessor properties without invoking their getters", () => {
+  const evidence = validEvidence();
+  Object.defineProperty(evidence, "pullRequest", {
+    enumerable: true,
+    get() {
+      throw new Error("protected getter value");
+    }
+  });
+
+  assert.throws(
+    () => validateMergedPrApproval(evidence),
+    (error) => error.code === "merged_pr_approval_mismatch"
+      && error.message === "merged_pr_approval_mismatch"
+  );
+});
+
+test("maps hostile Proxy ownKeys failures to the safe error", () => {
+  const evidence = new Proxy(validEvidence(), {
+    ownKeys() {
+      throw new Error("protected ownKeys failure");
+    }
+  });
+
+  assert.throws(
+    () => validateMergedPrApproval(evidence),
+    (error) => error.code === "merged_pr_approval_mismatch"
+      && error.message === "merged_pr_approval_mismatch"
+  );
+});
