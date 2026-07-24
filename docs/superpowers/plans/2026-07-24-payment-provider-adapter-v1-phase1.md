@@ -1074,7 +1074,8 @@ providerEventRef
 Each component is joined with NUL and hashed with SHA-256; the safe dedupe ref
 is `pp_` plus the full lowercase hexadecimal digest.
 
-The protocol module imports only `node:crypto` and
+The protocol module imports only `node:crypto`, `node:util` (solely
+`types.isProxy` for the Proxy zero-trap boundary), and
 `./payment-money-codec.mjs`. It contains no API origin, credential, OAuth,
 global `fetch`, HTTP client, route, Store, wallet, environment lookup, clock,
 or application import.

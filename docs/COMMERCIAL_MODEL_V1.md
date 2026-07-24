@@ -169,9 +169,11 @@ wallet, provider, Portal/Admin, deployment, or production availability.
 
 ## Payment Provider Boundary
 
-No payment provider is selected or active in Commercial Model v1. Provider
-Core contracts, disabled provisional Adapters, and the unregistered template
-are source-only boundaries, not proof of a verified real provider.
+No payment provider is selected, verified, available, active, or live in
+Commercial Model v1. Provider Core contracts, the three disabled and
+unverified named Adapter identities (`paypal_v1`, `xsd_v1`, and
+`chaojipay_v1`), and the independent unregistered legacy environment-summary
+template/helper are source-only boundaries, not proof of a real provider.
 
 A future Coins recharge integration must keep this sequence:
 

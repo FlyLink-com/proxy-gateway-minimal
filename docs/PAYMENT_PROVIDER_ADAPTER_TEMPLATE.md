@@ -5,15 +5,17 @@ Last updated: 2026-07-23, America/Los_Angeles.
 This document defines the repository-local adapter template for future payment
 provider integration.
 
-The commercial authority is `docs/COMMERCIAL_MODEL_V1.md`. The template is
-source-only, unregistered, `unverified`, and fully disabled. It is not evidence
-for any real API, signature, callback, refund, reconciliation, status mapping,
-sandbox, or live capability.
+The commercial authority is `docs/COMMERCIAL_MODEL_V1.md`. The template and
+Provider Core V1 are source-only. The legacy environment-summary helper remains
+independent and unregistered; every named Adapter is `unverified` and fully
+disabled. This is not evidence for any real API, signature, callback, refund,
+reconciliation, status mapping, sandbox, or live capability.
 
-It does **not** activate payment, checkout, callback registration, callback
-verification against a real provider, billing or wallet storage, production
-database migration, product fulfillment, subscription issuance, or runtime
-mutation.
+It does **not** activate a provider call or credential, payment, checkout,
+callback registration or route, callback verification against a real provider,
+Payment Store or schema, billing or wallet settlement, UI, runtime activation,
+production database migration, product fulfillment, subscription issuance, or
+production deployment.
 
 ## Boundary
 
@@ -43,7 +45,7 @@ not the Provider Core Adapter contract or a Coins wallet.
   - exposes a fixed template identity through the canonical Adapter contract;
   - returns a frozen, unverified Adapter with every capability disabled and no
     supported payment method;
-  - is not registered in the static Adapter Registry.
+  - is independent of and not registered in the static Adapter Registry.
 - `.env.payment.example`
   - placeholder-only environment template;
   - no real API token, AK, SK, private key, webhook secret, merchant account,
@@ -64,7 +66,9 @@ mock
 
 This vocabulary belongs only to the independent environment-summary
 compatibility helper. It is not the identity list of the static Adapter
-Registry and is not live-provider support.
+Registry and is not live-provider support. `paypal` is also a canonical payment
+method vocabulary item; it is not a selected, verified, available, or live
+provider capability.
 
 Provider identity and payment method are separate concepts. An Adapter
 `providerId` identifies one compiled provider integration, while canonical
@@ -89,7 +93,7 @@ must not return or log the value.
 
 ## Canonical Adapter Surface
 
-The template uses the exact canonical 12-key surface:
+The canonical Adapter surface has exactly 13 keys:
 
 ```text
 adapterKey
@@ -99,6 +103,7 @@ capabilities
 supportedPaymentMethods
 createRechargeOrder()
 queryPayment()
+capturePayment()
 verifyAndNormalizeCallback()
 normalizeError()
 webhookSuccessAck()
@@ -108,10 +113,31 @@ reconcile()
 
 Its fixed identity is
 `payment_provider_template_v1` / `payment_provider_template`, with contract
-version `unverified`. All business and acknowledgement paths are disabled by
-the canonical capability guard. The template has no helper that lets input
-self-declare a verified event; verified callback provenance belongs to the
-credential-scoped Provider Core contract.
+version `unverified`. The eight frozen V1 capability flags are
+`createRechargeOrder`, `queryPayment`, `capturePayment`, `verifyCallback`,
+`refund`, `reconcile`, `repeatCreateIdempotent`, and
+`repeatCaptureIdempotent`. All are `false` for an `unverified` Adapter, whose
+`supportedPaymentMethods` is empty. All business and acknowledgement paths are
+disabled by the canonical capability guard. The template has no helper that
+lets input self-declare a verified event; verified callback provenance belongs
+to the credential-scoped Provider Core contract.
+
+## Static Registry And Evidence Boundary
+
+The static Registry contains exactly these named, disabled identities:
+
+| `adapterKey` | `providerId` | Contract state | Methods / capabilities |
+| --- | --- | --- | --- |
+| `paypal_v1` | `paypal_commerce` | `unverified` | empty / every flag `false` |
+| `xsd_v1` | `xsd` | `unverified` | empty / every flag `false` |
+| `chaojipay_v1` | `chaojipay` | `unverified` | empty / every flag `false` |
+
+The PayPal and XSD protocol codecs are synthetic, detached local evidence only;
+they do not select or enable a provider, send a request, or establish a
+credential, callback, settlement, runtime, or deployment path. ChaoJiPay is an
+identity-only disabled Adapter with no guessed protocol surface. Monetary
+operation inputs and payment facts always carry an explicit
+`currencyExponent`; no codec infers it from a currency string.
 
 ## Risk Gates
 
