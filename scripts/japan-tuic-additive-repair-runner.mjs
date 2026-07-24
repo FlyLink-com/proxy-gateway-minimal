@@ -47,7 +47,7 @@ const BINDING_PATH_KEYS = Object.freeze([
 const ALLOWED_ZIP_TYPES = new Set(["-", "d"]);
 const REQUIRED_ARCHIVE_ENTRIES = Object.freeze([
   "scripts/mihomo-tuic-usage-map-rebuild.mjs",
-  "scripts/traffic-accounting-natural-observation.mjs",
+  "server/services/platform/japan-tuic-repair-observation.mjs",
   "server/services/platform/traffic-collector-admin-projection.mjs",
   "server/services/platform/traffic-collector-status-producers.mjs"
 ]);
@@ -536,26 +536,28 @@ function readBoundedJson(path, maxBytes, code) {
   }
 }
 
-function naturalObservationSummary(input, report) {
-  const projectionInput = record(record(input).projection);
-  const collectors = Array.isArray(projectionInput.collectors) ? projectionInput.collectors : [];
-  const japanTuic = collectors.find((collector) => {
-    const value = record(collector);
-    return value.channelRef === "channel-vultr-a-tuic"
-      || value.collectorRef === "channel-vultr-a-tuic";
-  });
-  if (!japanTuic) throw safeError("natural_observation_failed");
-  const projection = record(record(report).projection);
+function naturalObservationSummary(report) {
+  const observation = record(report);
+  if (observation.schemaVersion !== "1"
+    || observation.type !== "japan_tuic_repair_observation"
+    || observation.accepted !== true
+    || !Number.isSafeInteger(observation.collectorCount)
+    || observation.collectorCount < 0
+    || !Number.isSafeInteger(observation.unresolvedTotal)
+    || observation.unresolvedTotal < 0
+    || observation.japanTuicUnresolved !== 0) {
+    throw safeError("natural_observation_failed");
+  }
   return {
-    capturedAt: report.capturedAt,
-    collectorInvocationObserved: report.collectorInvocationObserved,
-    collectorCount: projection.collectorCount,
-    unresolvedTotal: projection.unresolvedTotal,
-    japanTuicUnresolved: record(japanTuic).unresolvedCount,
-    omittedCollectorCount: projection.omittedCollectors,
-    omittedProducerCount: projection.omittedProducers,
-    provenanceConserved: projection.provenanceConserved,
-    validatorPassed: report.passed === true
+    capturedAt: observation.capturedAt,
+    collectorInvocationObserved: true,
+    collectorCount: observation.collectorCount,
+    unresolvedTotal: observation.unresolvedTotal,
+    japanTuicUnresolved: observation.japanTuicUnresolved,
+    omittedCollectorCount: 0,
+    omittedProducerCount: 0,
+    provenanceConserved: true,
+    validatorPassed: true
   };
 }
 
@@ -821,16 +823,18 @@ export function createHostOperations({
         try {
           const module = await import(pathToFileURL(join(
             root,
-            "scripts",
-            "traffic-accounting-natural-observation.mjs"
+            "server",
+            "services",
+            "platform",
+            "japan-tuic-repair-observation.mjs"
           )).href);
-          builder = module.buildTrafficAccountingNaturalObservation;
+          builder = module.buildJapanTuicRepairObservation;
         } catch {
           throw safeError("natural_observation_failed");
         }
       }
       try {
-        return naturalObservationSummary(input, builder(input));
+        return naturalObservationSummary(builder({ projection: input }));
       } catch (error) {
         if (error instanceof JapanTuicRepairContractError) throw error;
         throw safeError("natural_observation_failed");
