@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import {
+  chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -130,12 +132,43 @@ test("Japan TUIC repair observation store atomically persists only the aggregate
   }
 });
 
-test("Japan TUIC repair observation store does not chmod an existing parent directory", () => {
-  const source = readFileSync(
-    new URL("../services/platform/japan-tuic-repair-observation.mjs", import.meta.url),
-    "utf8"
-  );
-  assert.doesNotMatch(source, /chmodSync\(parentDirectory\b/);
+test("Japan TUIC repair observation store preserves an existing parent mode", {
+  skip: process.platform === "win32"
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), "japan-tuic-repair-observation-existing-parent-"));
+  const parentDirectory = join(dir, "existing");
+  const filePath = join(parentDirectory, "observation.json");
+  try {
+    mkdirSync(parentDirectory, { mode: 0o750 });
+    chmodSync(parentDirectory, 0o750);
+
+    createJapanTuicRepairObservationStore({ filePath }).write({
+      projection: validProjection()
+    });
+
+    assert.equal(statSync(parentDirectory).mode & 0o777, 0o750);
+    assert.equal(statSync(filePath).mode & 0o777, 0o600);
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("Japan TUIC repair observation store creates a missing parent with private modes", {
+  skip: process.platform === "win32"
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), "japan-tuic-repair-observation-missing-parent-"));
+  const parentDirectory = join(dir, "missing", "nested");
+  const filePath = join(parentDirectory, "observation.json");
+  try {
+    createJapanTuicRepairObservationStore({ filePath }).write({
+      projection: validProjection()
+    });
+
+    assert.equal(statSync(parentDirectory).mode & 0o777, 0o700);
+    assert.equal(statSync(filePath).mode & 0o777, 0o600);
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
 });
 
 test("Japan TUIC repair observation store rejects a relative path", () => {
