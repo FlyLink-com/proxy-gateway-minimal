@@ -5,11 +5,14 @@ import {
   createCredentialScopedPaymentExecution,
 } from "./payment-provider-adapter-contract.mjs";
 import {
-  createProviderAPaymentAdapter,
-} from "./provider-a-payment-adapter.mjs";
+  createPayPalPaymentAdapter,
+} from "./paypal-payment-adapter.mjs";
 import {
-  createProviderBPaymentAdapter,
-} from "./provider-b-payment-adapter.mjs";
+  createXsdPaymentAdapter,
+} from "./xsd-payment-adapter.mjs";
+import {
+  createChaoJiPayPaymentAdapter,
+} from "./chaojipay-payment-adapter.mjs";
 
 const REGISTRY_ERROR_CODES = new Set([
   "invalid_payment_adapter_registry",
@@ -46,8 +49,9 @@ const TRANSPORT_KEYS = ["requestFn", "allowedActionOrigins"];
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 const ADAPTER_FACTORIES = Object.freeze({
-  provisional_provider_a_v1: createProviderAPaymentAdapter,
-  provisional_provider_b_v1: createProviderBPaymentAdapter,
+  paypal_v1: createPayPalPaymentAdapter,
+  xsd_v1: createXsdPaymentAdapter,
+  chaojipay_v1: createChaoJiPayPaymentAdapter,
 });
 const COMPILED_ADAPTER_KEYS = Object.freeze(Object.keys(ADAPTER_FACTORIES));
 
