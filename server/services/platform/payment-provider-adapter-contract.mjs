@@ -1,6 +1,8 @@
 import { types as utilTypes } from "node:util";
 import { isIP } from "node:net";
 
+import { normalizeCurrencyExponent } from "./payment-money-codec.mjs";
+
 const ERROR_CODES = new Set([
   "invalid_payment_method",
   "invalid_payment_provider_adapter",
@@ -24,6 +26,7 @@ const ADAPTER_KEYS = [
   "supportedPaymentMethods",
   "createRechargeOrder",
   "queryPayment",
+  "capturePayment",
   "verifyAndNormalizeCallback",
   "normalizeError",
   "webhookSuccessAck",
@@ -33,14 +36,17 @@ const ADAPTER_KEYS = [
 const CAPABILITY_KEYS = [
   "createRechargeOrder",
   "queryPayment",
+  "capturePayment",
   "verifyCallback",
   "refund",
   "reconcile",
   "repeatCreateIdempotent",
+  "repeatCaptureIdempotent",
 ];
 const EXECUTION_OPERATIONS = new Set([
   "create_recharge_order",
   "query_payment",
+  "capture_payment",
   "verify_callback",
   "refund",
   "reconcile",
@@ -104,7 +110,8 @@ const CURRENCY_RE = /^[A-Z]{3}$/;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9a-z]{1,128}$/;
 
-const verifiedEvents = new WeakSet();
+const verifiedPaymentFacts = new WeakMap();
+const transportReceipts = new WeakMap();
 const providerErrors = new WeakSet();
 
 function contractError(code) {
@@ -229,6 +236,14 @@ function assertPositiveInteger(value, code) {
 function assertCurrency(value, code) {
   if (typeof value !== "string" || !CURRENCY_RE.test(value)) throw contractError(code);
   return value;
+}
+
+function assertCurrencyExponent(value, code) {
+  try {
+    return normalizeCurrencyExponent(value);
+  } catch {
+    throw contractError(code);
+  }
 }
 
 function assertDigest(value, code) {
@@ -406,10 +421,14 @@ function normalizeRawNextAction(value, allowedActionOrigins, code) {
   });
 }
 
-export const PAYMENT_METHODS_V1 = Object.freeze(["alipay", "wechat_pay"]);
+export const PAYMENT_METHODS_V1 = Object.freeze([
+  "alipay",
+  "wechat_pay",
+  "paypal",
+]);
 
 export function normalizePaymentMethod(value) {
-  if (value !== "alipay" && value !== "wechat_pay") {
+  if (!PAYMENT_METHODS_V1.includes(value)) {
     throw contractError("invalid_payment_method");
   }
   return value;
@@ -466,47 +485,95 @@ export function normalizePaymentOperationResult(value, options = {}) {
   return normalizeRawOperationResult(value, origins, "invalid_payment_operation_result");
 }
 
-function normalizeRawVerifiedEvent(value, code) {
+function normalizeRawVerifiedPaymentFact(value, code) {
   const input = snapshotObject(value, [
+    "sourceType",
     "providerEventRef",
     "eventDedupeKey",
     "eventType",
+    "paymentOrderRef",
     "providerOrderRef",
+    "providerCaptureRef",
+    "providerRefundRef",
     "amountMinor",
     "currency",
+    "currencyExponent",
     "merchantScopeDigest",
     "payloadDigest",
     "occurredAt",
     "verificationResult",
   ], code);
-  if (!EVENT_TYPES.has(input.eventType) || input.verificationResult !== "verified") {
+  if (
+    (input.sourceType !== "callback"
+      && input.sourceType !== "authenticated_capture_response")
+    || !EVENT_TYPES.has(input.eventType)
+    || input.verificationResult !== "verified"
+  ) {
     throw contractError(code);
   }
-  return freezeObject({
+  const fact = {
+    sourceType: input.sourceType,
     providerEventRef: assertSafeRef(input.providerEventRef, true, code),
     eventDedupeKey: assertSafeRef(input.eventDedupeKey, false, code),
     eventType: input.eventType,
+    paymentOrderRef: assertSafeRef(input.paymentOrderRef, false, code),
     providerOrderRef: assertSafeRef(input.providerOrderRef, false, code),
+    providerCaptureRef: assertSafeRef(input.providerCaptureRef, true, code),
+    providerRefundRef: assertSafeRef(input.providerRefundRef, true, code),
     amountMinor: assertPositiveInteger(input.amountMinor, code),
     currency: assertCurrency(input.currency, code),
+    currencyExponent: assertCurrencyExponent(input.currencyExponent, code),
     merchantScopeDigest: assertDigest(input.merchantScopeDigest, code),
     payloadDigest: assertDigest(input.payloadDigest, code),
     occurredAt: assertTimestamp(input.occurredAt, code),
     verificationResult: "verified",
-  });
+  };
+  if (fact.eventType === "payment_succeeded" && fact.providerCaptureRef === null) {
+    throw contractError(code);
+  }
+  if (
+    fact.sourceType === "authenticated_capture_response"
+    && (
+      fact.eventType !== "payment_succeeded"
+      || fact.providerEventRef !== null
+      || fact.providerRefundRef !== null
+    )
+  ) {
+    throw contractError(code);
+  }
+  return freezeObject(fact);
 }
 
-export function normalizeVerifiedPaymentEvent(value) {
+function assertBrandedPaymentFact(value, expectedSourceType, code) {
   if (
     value === null
     || typeof value !== "object"
     || utilTypes.isProxy(value)
-    || !verifiedEvents.has(value)
     || !Object.isFrozen(value)
+    || verifiedPaymentFacts.get(value) !== expectedSourceType
+  ) {
+    throw contractError(code);
+  }
+  return value;
+}
+
+export function normalizeVerifiedPaymentEvent(value) {
+  const sourceType = (
+    value !== null
+    && typeof value === "object"
+    && !utilTypes.isProxy(value)
+  ) ? verifiedPaymentFacts.get(value) : undefined;
+  if (
+    sourceType !== "callback"
+    && sourceType !== "authenticated_capture_response"
   ) {
     throw contractError("invalid_verified_payment_event");
   }
-  return value;
+  return assertBrandedPaymentFact(
+    value,
+    sourceType,
+    "invalid_verified_payment_event",
+  );
 }
 
 function createProviderError(input) {
@@ -588,6 +655,7 @@ function createInput(value) {
     "paymentMethod",
     "amountMinor",
     "currency",
+    "currencyExponent",
     "expectedPaidCoins",
     "quoteDigest",
     "expiresAt",
@@ -607,11 +675,34 @@ function createInput(value) {
     })(),
     amountMinor: assertPositiveInteger(input.amountMinor, code),
     currency: assertCurrency(input.currency, code),
+    currencyExponent: assertCurrencyExponent(input.currencyExponent, code),
     expectedPaidCoins: assertPositiveInteger(input.expectedPaidCoins, code),
     quoteDigest: assertDigest(input.quoteDigest, code),
     expiresAt: assertTimestamp(input.expiresAt, code),
     callbackRouteRef: assertSafeRef(input.callbackRouteRef, false, code),
     returnRouteRef: assertSafeRef(input.returnRouteRef, true, code),
+  });
+}
+
+function captureInput(value) {
+  const code = "invalid_payment_operation_input";
+  const input = snapshotObject(value, [
+    "paymentOrderRef",
+    "attemptRef",
+    "providerOrderRef",
+    "captureRequestRef",
+    "amountMinor",
+    "currency",
+    "currencyExponent",
+  ], code);
+  return freezeObject({
+    paymentOrderRef: assertSafeRef(input.paymentOrderRef, false, code),
+    attemptRef: assertSafeRef(input.attemptRef, false, code),
+    providerOrderRef: assertSafeRef(input.providerOrderRef, false, code),
+    captureRequestRef: assertSafeRef(input.captureRequestRef, false, code),
+    amountMinor: assertPositiveInteger(input.amountMinor, code),
+    currency: assertCurrency(input.currency, code),
+    currencyExponent: assertCurrencyExponent(input.currencyExponent, code),
   });
 }
 
@@ -638,6 +729,7 @@ function refundInput(value) {
     "refundRequestRef",
     "amountMinor",
     "currency",
+    "currencyExponent",
     "reasonCode",
   ], code);
   if (!REFUND_REASONS.has(input.reasonCode)) throw contractError(code);
@@ -648,6 +740,7 @@ function refundInput(value) {
     refundRequestRef: assertSafeRef(input.refundRequestRef, false, code),
     amountMinor: assertPositiveInteger(input.amountMinor, code),
     currency: assertCurrency(input.currency, code),
+    currencyExponent: assertCurrencyExponent(input.currencyExponent, code),
     reasonCode: input.reasonCode,
   });
 }
@@ -720,6 +813,59 @@ function normalizeAck(value) {
   });
 }
 
+function normalizeRawExecutionCaptureOutcome(value, allowedActionOrigins, code) {
+  const input = snapshotObject(value, ["operationResult", "paymentFact"], code);
+  const operationResult = normalizeRawOperationResult(
+    input.operationResult,
+    allowedActionOrigins,
+    code,
+  );
+  if (operationResult.status === "succeeded") {
+    return {
+      operationResult,
+      paymentFact: normalizeRawVerifiedPaymentFact(input.paymentFact, code),
+    };
+  }
+  if (input.paymentFact !== null) throw contractError(code);
+  return { operationResult, paymentFact: null };
+}
+
+function normalizeAdapterCaptureOutcome(
+  value,
+  input,
+  allowedActionOrigins,
+  code,
+) {
+  const raw = snapshotObject(value, ["operationResult", "paymentFact"], code);
+  const operationResult = normalizeRawOperationResult(
+    raw.operationResult,
+    allowedActionOrigins,
+    code,
+  );
+  if (operationResult.providerOrderRef !== input.providerOrderRef) {
+    throw contractError(code);
+  }
+  if (operationResult.status !== "succeeded") {
+    if (raw.paymentFact !== null) throw contractError(code);
+    return freezeObject({ operationResult, paymentFact: null });
+  }
+  const paymentFact = assertBrandedPaymentFact(
+    raw.paymentFact,
+    "authenticated_capture_response",
+    code,
+  );
+  if (
+    paymentFact.paymentOrderRef !== input.paymentOrderRef
+    || paymentFact.providerOrderRef !== input.providerOrderRef
+    || paymentFact.amountMinor !== input.amountMinor
+    || paymentFact.currency !== input.currency
+    || paymentFact.currencyExponent !== input.currencyExponent
+  ) {
+    throw contractError(code);
+  }
+  return freezeObject({ operationResult, paymentFact });
+}
+
 function invokeCompiled(compiled, input, normalize, operation) {
   let raw;
   try {
@@ -753,7 +899,7 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
   }
   assertMethodKey(input.adapterKey, code);
   assertMethodKey(input.providerId, code);
-  if (input.providerId === "alipay" || input.providerId === "wechat_pay") {
+  if (PAYMENT_METHODS_V1.includes(input.providerId)) {
     throw contractError(code);
   }
   if (input.adapterKey === input.providerId) throw contractError(code);
@@ -778,12 +924,14 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
   const anyOperationEnabled = (
     capabilities.createRechargeOrder
     || capabilities.queryPayment
+    || capabilities.capturePayment
     || capabilities.verifyCallback
     || capabilities.refund
     || capabilities.reconcile
   );
   if (
     (capabilities.repeatCreateIdempotent && !capabilities.createRechargeOrder)
+    || (capabilities.repeatCaptureIdempotent && !capabilities.capturePayment)
     || (anyOperationEnabled && supportedPaymentMethods.length === 0)
     || (!anyOperationEnabled && supportedPaymentMethods.length !== 0)
     || (input.contractVersion === "unverified"
@@ -794,13 +942,18 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
   const methods = {
     createRechargeOrder: snapshotFunction(input.createRechargeOrder, code),
     queryPayment: snapshotFunction(input.queryPayment, code),
+    capturePayment: snapshotFunction(input.capturePayment, code),
     verifyAndNormalizeCallback: snapshotFunction(input.verifyAndNormalizeCallback, code),
     normalizeError: snapshotFunction(input.normalizeError, code),
     webhookSuccessAck: snapshotFunction(input.webhookSuccessAck, code),
     refund: snapshotFunction(input.refund, code),
     reconcile: snapshotFunction(input.reconcile, code),
   };
-  if (methods.queryPayment === methods.verifyAndNormalizeCallback) {
+  if (
+    methods.queryPayment === methods.verifyAndNormalizeCallback
+    || methods.queryPayment === methods.capturePayment
+    || methods.capturePayment === methods.verifyAndNormalizeCallback
+  ) {
     throw contractError(code);
   }
 
@@ -853,6 +1006,27 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
         );
       }
       : disabled,
+    capturePayment: capabilities.capturePayment
+      ? (value) => {
+        let normalized;
+        try {
+          normalized = captureInput(value);
+        } catch (error) {
+          return Promise.reject(error);
+        }
+        return invokeCompiled(
+          methods.capturePayment,
+          normalized,
+          (output) => normalizeAdapterCaptureOutcome(
+            output,
+            normalized,
+            allowedActionOrigins,
+            "invalid_payment_operation_result",
+          ),
+          "capture_payment",
+        );
+      }
+      : disabled,
     verifyAndNormalizeCallback: capabilities.verifyCallback
       ? (value) => {
         let normalized;
@@ -901,7 +1075,7 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
           event === null
           || typeof event !== "object"
           || utilTypes.isProxy(event)
-          || !verifiedEvents.has(event)
+          || verifiedPaymentFacts.get(event) !== "callback"
         ) {
           return reject("invalid_payment_webhook_ack");
         }
@@ -957,11 +1131,149 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
   return Object.freeze(result);
 }
 
-function normalizeExecutionOutput(operation, value, allowedActionOrigins) {
+function normalizeTransportResult(
+  operation,
+  value,
+  scopeToken,
+  scopeReceipts,
+) {
+  const code = "invalid_payment_execution";
+  const input = snapshotObject(value, ["response", "evidence"], code);
+  const factOperation = (
+    operation === "capture_payment"
+    || operation === "verify_callback"
+  );
+  let evidence = null;
+  if (factOperation) {
+    const rawEvidence = snapshotObject(
+      input.evidence,
+      ["merchantScopeDigest", "payloadDigest"],
+      code,
+    );
+    evidence = Object.freeze({
+      merchantScopeDigest: assertDigest(rawEvidence.merchantScopeDigest, code),
+      payloadDigest: assertDigest(rawEvidence.payloadDigest, code),
+    });
+  } else if (input.evidence !== null) {
+    throw contractError(code);
+  }
+  const transportReceipt = Object.freeze({});
+  transportReceipts.set(transportReceipt, {
+    scopeToken,
+    operation,
+    merchantScopeDigest: evidence?.merchantScopeDigest ?? null,
+    payloadDigest: evidence?.payloadDigest ?? null,
+    consumed: false,
+  });
+  scopeReceipts.add(transportReceipt);
+  return Object.freeze({
+    response: input.response,
+    evidence,
+    transportReceipt,
+  });
+}
+
+function consumeTransportReceipt({
+  transportReceipt,
+  scopeToken,
+  scopeReceipts,
+  operation,
+  paymentFact,
+  code,
+}) {
+  if (
+    transportReceipt === null
+    || typeof transportReceipt !== "object"
+    || utilTypes.isProxy(transportReceipt)
+    || !Object.isFrozen(transportReceipt)
+  ) {
+    throw contractError(code);
+  }
+  const metadata = transportReceipts.get(transportReceipt);
+  if (
+    !metadata
+    || metadata.scopeToken !== scopeToken
+    || metadata.operation !== operation
+    || metadata.consumed
+    || (
+      paymentFact !== null
+      && (
+        metadata.merchantScopeDigest !== paymentFact.merchantScopeDigest
+        || metadata.payloadDigest !== paymentFact.payloadDigest
+      )
+    )
+  ) {
+    throw contractError(code);
+  }
+  metadata.consumed = true;
+  transportReceipts.delete(transportReceipt);
+  scopeReceipts.delete(transportReceipt);
+}
+
+function normalizeExecutionOutput(
+  operation,
+  value,
+  allowedActionOrigins,
+  scopeToken,
+  scopeReceipts,
+) {
   if (operation === "verify_callback") {
-    const event = normalizeRawVerifiedEvent(value, "invalid_verified_payment_event");
-    verifiedEvents.add(event);
-    return event;
+    const code = "invalid_verified_payment_event";
+    const envelope = snapshotObject(
+      value,
+      ["transportReceipt", "paymentFact"],
+      code,
+    );
+    const paymentFact = normalizeRawVerifiedPaymentFact(
+      envelope.paymentFact,
+      code,
+    );
+    if (paymentFact.sourceType !== "callback") throw contractError(code);
+    consumeTransportReceipt({
+      transportReceipt: envelope.transportReceipt,
+      scopeToken,
+      scopeReceipts,
+      operation,
+      paymentFact,
+      code,
+    });
+    verifiedPaymentFacts.set(paymentFact, "callback");
+    return paymentFact;
+  }
+  if (operation === "capture_payment") {
+    const code = "invalid_payment_operation_result";
+    const envelope = snapshotObject(
+      value,
+      ["transportReceipt", "captureOutcome"],
+      code,
+    );
+    const captureOutcome = normalizeRawExecutionCaptureOutcome(
+      envelope.captureOutcome,
+      allowedActionOrigins,
+      code,
+    );
+    if (
+      captureOutcome.paymentFact !== null
+      && captureOutcome.paymentFact.sourceType
+        !== "authenticated_capture_response"
+    ) {
+      throw contractError(code);
+    }
+    consumeTransportReceipt({
+      transportReceipt: envelope.transportReceipt,
+      scopeToken,
+      scopeReceipts,
+      operation,
+      paymentFact: captureOutcome.paymentFact,
+      code,
+    });
+    if (captureOutcome.paymentFact !== null) {
+      verifiedPaymentFacts.set(
+        captureOutcome.paymentFact,
+        "authenticated_capture_response",
+      );
+    }
+    return freezeObject(captureOutcome);
   }
   return normalizeRawOperationResult(
     value,
@@ -1014,8 +1326,14 @@ export function createCredentialScopedPaymentExecution(options) {
     let callbackOutcome;
     let loaderClosed = false;
     let scopeActive = false;
+    const scopeToken = Object.freeze({});
+    const scopeReceipts = new Set();
     const closeScope = () => {
       scopeActive = false;
+      for (const transportReceipt of scopeReceipts) {
+        transportReceipts.delete(transportReceipt);
+      }
+      scopeReceipts.clear();
     };
     const drainCallbackOutcome = () => {
       if (isNativePromise(callbackOutcome)) {
@@ -1046,13 +1364,46 @@ export function createCredentialScopedPaymentExecution(options) {
           closeScope();
           return Promise.reject(safeProviderError(error, operation));
         }
-        if (isNativePromise(response)) {
-          return response.catch((error) => {
-            closeScope();
-            return Promise.reject(safeProviderError(error, operation));
-          });
+        if (isCustomThenable(response)) {
+          closeScope();
+          return Promise.reject(genericProviderError(operation));
         }
-        return response;
+        if (isNativePromise(response)) {
+          return response.then(
+            (value) => {
+              if (!scopeActive) {
+                throw contractError("payment_execution_scope_closed");
+              }
+              try {
+                return normalizeTransportResult(
+                  operation,
+                  value,
+                  scopeToken,
+                  scopeReceipts,
+                );
+              } catch (error) {
+                closeScope();
+                return Promise.reject(safeProviderError(error, operation));
+              }
+            },
+            (error) => {
+              closeScope();
+              return Promise.reject(safeProviderError(error, operation));
+            },
+          );
+        }
+        if (!scopeActive) return reject("payment_execution_scope_closed");
+        try {
+          return normalizeTransportResult(
+            operation,
+            response,
+            scopeToken,
+            scopeReceipts,
+          );
+        } catch (error) {
+          closeScope();
+          return Promise.reject(safeProviderError(error, operation));
+        }
       };
       const context = Object.freeze({ binding, request: scopedRequest });
       let raw;
@@ -1065,7 +1416,13 @@ export function createCredentialScopedPaymentExecution(options) {
       }
       if (isNativePromise(raw)) {
         callbackOutcome = raw.then(
-          (value) => normalizeExecutionOutput(operation, value, allowedActionOrigins),
+          (value) => normalizeExecutionOutput(
+            operation,
+            value,
+            allowedActionOrigins,
+            scopeToken,
+            scopeReceipts,
+          ),
           (error) => Promise.reject(safeProviderError(error, operation)),
         ).catch((error) => Promise.reject(safeProviderError(error, operation)))
           .finally(() => {
@@ -1075,7 +1432,13 @@ export function createCredentialScopedPaymentExecution(options) {
       }
       try {
         callbackOutcome = Promise.resolve(
-          normalizeExecutionOutput(operation, raw, allowedActionOrigins),
+          normalizeExecutionOutput(
+            operation,
+            raw,
+            allowedActionOrigins,
+            scopeToken,
+            scopeReceipts,
+          ),
         );
       } catch (error) {
         callbackOutcome = Promise.reject(safeProviderError(error, operation));

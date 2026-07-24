@@ -21,6 +21,7 @@ const ADAPTER_KEYS = [
   "supportedPaymentMethods",
   "createRechargeOrder",
   "queryPayment",
+  "capturePayment",
   "verifyAndNormalizeCallback",
   "normalizeError",
   "webhookSuccessAck",
@@ -30,30 +31,37 @@ const ADAPTER_KEYS = [
 const CAPABILITY_KEYS = [
   "createRechargeOrder",
   "queryPayment",
+  "capturePayment",
   "verifyCallback",
   "refund",
   "reconcile",
   "repeatCreateIdempotent",
+  "repeatCaptureIdempotent",
 ];
 const FALSE_CAPABILITIES = Object.freeze({
   createRechargeOrder: false,
   queryPayment: false,
+  capturePayment: false,
   verifyCallback: false,
   refund: false,
   reconcile: false,
   repeatCreateIdempotent: false,
+  repeatCaptureIdempotent: false,
 });
 const TRUE_CAPABILITIES = Object.freeze({
   createRechargeOrder: true,
   queryPayment: true,
+  capturePayment: true,
   verifyCallback: true,
   refund: true,
   reconcile: true,
   repeatCreateIdempotent: true,
+  repeatCaptureIdempotent: true,
 });
 const OPERATIONS = [
   "createRechargeOrder",
   "queryPayment",
+  "capturePayment",
   "verifyAndNormalizeCallback",
   "webhookSuccessAck",
   "refund",
@@ -160,10 +168,12 @@ test("unknown Adapter detection precedes missing known-resolution fields", () =>
       declaredCapabilities: {
         createRechargeOrder: false,
         queryPayment: false,
+        capturePayment: false,
         verifyCallback: false,
         refund: true,
         reconcile: false,
         repeatCreateIdempotent: false,
+        repeatCaptureIdempotent: false,
       },
     }),
     "payment_adapter_not_registered",
@@ -309,6 +319,9 @@ test("database declarations can only reduce every compiled capability", () => {
       if (capabilityKey === "repeatCreateIdempotent") {
         declaredCapabilities.createRechargeOrder = true;
       }
+      if (capabilityKey === "repeatCaptureIdempotent") {
+        declaredCapabilities.capturePayment = true;
+      }
       const adapter = registry.resolve(knownResolution({
         adapterKey,
         credentialProfileRef: `credential-${adapterKey}`,
@@ -335,6 +348,19 @@ test("repeat-create declaration cannot be true when create is false", () => {
       declaredCapabilities: {
         ...FALSE_CAPABILITIES,
         repeatCreateIdempotent: true,
+      },
+    })),
+    "invalid_payment_adapter_resolution",
+  );
+});
+
+test("repeat-capture declaration cannot be true when capture is false", () => {
+  const registry = createStaticPaymentProviderAdapterRegistry();
+  assertRegistryError(
+    () => registry.resolve(knownResolution({
+      declaredCapabilities: {
+        ...FALSE_CAPABILITIES,
+        repeatCaptureIdempotent: true,
       },
     })),
     "invalid_payment_adapter_resolution",

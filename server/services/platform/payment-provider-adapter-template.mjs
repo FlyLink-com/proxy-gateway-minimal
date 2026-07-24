@@ -52,6 +52,7 @@ const PROVIDER_REQUIRED_ENV = Object.freeze({
 const OPERATIONS = new Set([
   "create_recharge_order",
   "query_payment",
+  "capture_payment",
   "verify_callback",
   "refund",
   "reconcile",
@@ -234,14 +235,17 @@ export function createPaymentProviderAdapterTemplate(options = {}) {
     capabilities: Object.freeze({
       createRechargeOrder: false,
       queryPayment: false,
+      capturePayment: false,
       verifyCallback: false,
       refund: false,
       reconcile: false,
       repeatCreateIdempotent: false,
+      repeatCaptureIdempotent: false,
     }),
     supportedPaymentMethods: Object.freeze([]),
     createRechargeOrder: () => disabled("create_recharge_order"),
     queryPayment: () => disabled("query_payment"),
+    capturePayment: () => disabled("capture_payment"),
     verifyAndNormalizeCallback: () => disabled("verify_callback"),
     normalizeError: (value) => {
       const requested = requestedOperation(value);

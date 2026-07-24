@@ -9,6 +9,7 @@ const NOW = "2026-07-23T12:34:56.789Z";
 const operations = [
   ["createRechargeOrder", "create_recharge_order"],
   ["queryPayment", "query_payment"],
+  ["capturePayment", "capture_payment"],
   ["verifyAndNormalizeCallback", "verify_callback"],
   ["webhookSuccessAck", "verify_callback"],
   ["refund", "refund"],
@@ -74,8 +75,9 @@ test("Provider B is a frozen, distinct provisional disabled adapter", () => {
   assert.equal(raw.providerId, "provisional_provider_b");
   assert.equal(raw.contractVersion, "unverified");
   assert.deepEqual(raw.capabilities, {
-    createRechargeOrder: false, queryPayment: false, verifyCallback: false,
-    refund: false, reconcile: false, repeatCreateIdempotent: false,
+    createRechargeOrder: false, queryPayment: false, capturePayment: false,
+    verifyCallback: false, refund: false, reconcile: false,
+    repeatCreateIdempotent: false, repeatCaptureIdempotent: false,
   });
   const normalized = assertPaymentProviderAdapterContract(raw);
   assert.ok(Object.isFrozen(normalized));

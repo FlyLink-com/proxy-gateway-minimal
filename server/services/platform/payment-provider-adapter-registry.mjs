@@ -27,12 +27,21 @@ const RESOLUTION_KEYS = [
 const CAPABILITY_KEYS = [
   "createRechargeOrder",
   "queryPayment",
+  "capturePayment",
   "verifyCallback",
   "refund",
   "reconcile",
   "repeatCreateIdempotent",
+  "repeatCaptureIdempotent",
 ];
-const OPERATION_CAPABILITY_KEYS = CAPABILITY_KEYS.slice(0, 5);
+const OPERATION_CAPABILITY_KEYS = [
+  "createRechargeOrder",
+  "queryPayment",
+  "capturePayment",
+  "verifyCallback",
+  "refund",
+  "reconcile",
+];
 const TRANSPORT_KEYS = ["requestFn", "allowedActionOrigins"];
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
@@ -322,6 +331,9 @@ function normalizeDeclaredCapabilities(value) {
     fail("invalid_payment_adapter_resolution");
   }
   if (input.repeatCreateIdempotent && !input.createRechargeOrder) {
+    fail("invalid_payment_adapter_resolution");
+  }
+  if (input.repeatCaptureIdempotent && !input.capturePayment) {
     fail("invalid_payment_adapter_resolution");
   }
   return input;
