@@ -4240,7 +4240,8 @@ test("BEGIN IMMEDIATE busy maps to wallet_busy and does not consume a lifecycle 
   let store;
   try {
     insertAccount(database, "account_1");
-    const probe = createArmableBusyConnection(database);
+    const fixedTimeDatabase = createFixedDatabaseTimeConnection(database, NOW);
+    const probe = createArmableBusyConnection(fixedTimeDatabase);
     store = createSqliteCoinWalletStore({
       database: probe.connection,
       refFactory: makeRefFactory()
