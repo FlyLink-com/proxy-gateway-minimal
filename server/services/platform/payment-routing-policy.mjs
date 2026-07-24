@@ -331,7 +331,7 @@ function evaluateCurrentAttempt(input) {
   }
   if (attempt.status === "entry_ready") {
     if (attempt.chargeCertainty === "confirmed_no_charge") {
-      return stop("current_attempt_active");
+      return reconcile("attempt_state_inconsistent");
     }
     return reconcile("dispatch_outcome_uncertain");
   }

@@ -214,7 +214,7 @@ test("an exhausted safe chain stops and never wraps around", () => {
   }
 });
 
-test("a normal active attempt stops without selecting a concurrent attempt", () => {
+test("a created attempt stops while contradictory entry-ready state reconciles", () => {
   assertDecision(withAttempt(currentAttempt()), {
     action: "stop",
     profileRef: null,
@@ -228,9 +228,9 @@ test("a normal active attempt stops without selecting a concurrent attempt", () 
     entryIssued: true,
     providerFingerprint: FINGERPRINT_A,
   })), {
-    action: "stop",
+    action: "reconcile",
     profileRef: null,
-    reason: "current_attempt_active",
+    reason: "attempt_state_inconsistent",
   });
 });
 
