@@ -424,12 +424,29 @@ the exact acknowledgement bytes, and an explicit
 obtained, signing and constant-time verification will run inside the
 credential boundary without exposing the secret.
 
-Known status mappings:
+The read-only provider manual establishes these non-secret semantic field
+roles, but not enough canonical encoded bytes to create or verify a signed
+wire request:
 
-- query success maps to `succeeded`;
-- documented query unpaid maps to `pending`;
-- callback success maps to `payment_succeeded`;
-- documented callback unpaid maps to `payment_pending`;
+```text
+create:
+merchant_order_ref, amount, notify_target, return_target,
+merchant_scope, channel, signature, response_format, attachment
+
+query:
+merchant_order_ref, merchant_scope, signature
+
+callback:
+merchant_order_ref, provider_order_ref, merchant_scope,
+amount, status, signature, attachment
+```
+
+Known observed status mappings:
+
+- query `"3"` maps to `succeeded`;
+- query `"00"` maps to `pending`;
+- callback `"1"` maps to `payment_succeeded`;
+- callback `"-1"` maps to `payment_pending`;
 - unknown values map to `reconciliation_required`, never to failure or success.
 
 An XSD query result of `succeeded` is an observation only. It cannot mint a
@@ -482,9 +499,31 @@ Within one operation:
 1. the loader opens an opaque credential handle;
 2. the transport performs OAuth, local signing, verification, or provider
    request construction using that handle;
-3. the Adapter receives only the safe transport result;
-4. the execution scope closes after success or failure;
-5. reuse of the request function after scope closure fails.
+3. the transport returns an exact safe envelope containing the ephemeral
+   response plus either `null` evidence for non-fact operations or validated
+   lowercase SHA-256 `merchantScopeDigest` and `payloadDigest` evidence for a
+   fact-bearing operation;
+4. after the provider request resolves successfully, Provider Core returns the
+   Adapter only the safe response, detached evidence, and an opaque, privately
+   branded transport receipt bound to that exact execution scope, operation,
+   and evidence digests;
+5. a fact-bearing callback returns one exact internal evidence envelope:
+   `{ transportReceipt, paymentFact }` for `verify_callback`, or
+   `{ transportReceipt, captureOutcome }` for `capture_payment`;
+6. Provider Core accepts only a receipt minted by a successful request in the
+   same scope and operation whose private evidence digests match the returned
+   fact, strips the receipt, validates the raw fact or outcome, and only then
+   attaches private payment-fact provenance;
+7. a missing, fabricated, failed-request, reused, cross-scope,
+   cross-operation, or digest-mismatched receipt cannot mint a verified fact;
+8. the execution scope closes after success or failure;
+9. reuse of the request function or receipt after scope closure fails.
+
+The receipt is not a provider fact, callback acknowledgement, Store receipt,
+or public Adapter output. It carries no credential, response body, merchant
+value, customer field, or execution identifier and is never serialized,
+logged, stored, or returned by a canonical Adapter method. Non-fact operations
+may consume the safe response without returning the receipt.
 
 PayPal OAuth tokens cannot cross credential profiles. XSD signing and callback
 verification will occur inside its credential scope only after the exact
@@ -682,6 +721,9 @@ cross-Coin compensation.
 - Provider and wallet idempotency identities are domain-separated and stable.
 - Safe action URLs use exact compiled HTTPS origins and reject loopback.
 - Callback signature failure writes no verified event.
+- A callback or capture result cannot receive private verified-fact provenance
+  without a same-scope, same-operation receipt from a successfully resolved
+  credential-scoped transport request.
 - Phase 1 has no ACK sender; the future callback orchestrator requires a
   durable Event Store acceptance receipt before encoding and sending a provider
   success acknowledgement.
@@ -736,6 +778,8 @@ Focused tests must prove:
 - all `unverified` capabilities are false;
 - configuration can only reduce compiled capabilities;
 - disabled methods perform zero loader, request, or clock calls;
+- a zero-request, failed-request, fabricated-receipt, cross-scope, or
+  cross-operation fact-bearing callback cannot mint private provenance;
 - secret markers never enter projections, Adapters, errors, or serialized
   output;
 - query is side-effect-free and never calls capture;
@@ -744,8 +788,10 @@ Focused tests must prove:
   out-of-range currency exponents;
 - capture rejects a fact whose amount, currency, or currency exponent differs
   from its immutable expected input;
-- provider decimal codecs cover exponents 0, 2, and 3 without floating-point
-  arithmetic and reject non-canonical or over-precise decimal text;
+- the provider-neutral decimal codec covers exponents 0, 2, and 3 without
+  floating-point arithmetic and rejects non-canonical or over-precise decimal
+  text; each provider codec accepts only its separately evidence-backed
+  compiled currency/exponent pairs;
 - capture retry is impossible without both capability gates;
 - PayPal create, query, capture, action-link, idempotency, and callback mappings
   use injected transport only;
