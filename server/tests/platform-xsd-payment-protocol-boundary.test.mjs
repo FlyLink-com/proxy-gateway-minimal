@@ -44,20 +44,20 @@ const ALLOWED_MEMBER_EXPRESSIONS = new Set([
 const ALLOWED_CALL_EXPRESSIONS = new Set(["Object.freeze", "Error", "unverified"]);
 const CONTROL_FLOW_KEYWORDS = new Set(["if", "for", "while", "switch", "catch"]);
 const SEMANTIC_FORBIDDEN_PATTERNS = [
-  ["crypto_digest", /\b(?:md5|node:crypto|createHash|createHmac|subtle\.digest|crypto\.)\b/iu],
+  ["crypto_digest", /\b(?:createHash|createHmac|md5[A-Za-z_$\w]*)\s*\(|\b(?:crypto|subtle)\s*\.\s*digest\s*\(/iu],
   ["field_sorting", /\.(?:sort|toSorted)\s*\(/u],
   ["field_joining", /\.(?:join|concat|reduce)\s*\(/u],
-  ["charset_encoding", /\b(?:TextEncoder|TextDecoder|Buffer|utf-?8|ascii|latin1|gbk)\b/iu],
-  ["form_encoding", /\b(?:URLSearchParams|FormData|application\/x-www-form-urlencoded)\b/iu],
+  ["charset_encoding", /\b(?:TextEncoder|TextDecoder)\s*\(|\bBuffer\s*\.\s*(?:from|alloc|concat)\s*\(/u],
+  ["form_encoding", /\b(?:URLSearchParams|FormData)\s*\(|["'`]application\/x-www-form-urlencoded["'`]/iu],
   ["digest_case", /\.(?:toLowerCase|toUpperCase)\s*\(/u],
-  ["credential_loading", /\b(?:credential|secret|token|process\.env|readFile(?:Sync)?|createReadStream)\b/iu],
-  ["network_request", /\b(?:fetch|XMLHttpRequest|axios|undici|node:https?|https?\.request|request|net\.connect)\b/iu],
-  ["url_literal", /https?:\/\//iu],
-  ["sandbox_or_retry", /\b(?:sandbox|retry)\b/iu],
+  ["credential_loading", /\b(?:readFile(?:Sync)?|createReadStream)\s*\(|\bprocess\s*\.\s*env\b|\b(?:credential|secret|token)[A-Za-z_$\w]*\s*(?:\.|\[)/iu],
+  ["network_request", /\b(?:fetch|XMLHttpRequest|axios|undici)\s*(?:\(|\.)|\b(?:https?|net)\s*\.\s*(?:request|connect)\s*\(/iu],
+  ["url_literal", /["'`]https?:\/\//iu],
+  ["sandbox_or_retry", /\b(?:sandbox|retry)[A-Za-z_$\w]*\s*\(/iu],
 ];
 
-function extractTopLevelConstNames(source) {
-  return [...source.matchAll(/^(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=/gmu)]
+function extractConstDeclarationNames(source) {
+  return [...source.matchAll(/\b(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=/gu)]
     .map((match) => match[1]);
 }
 
@@ -78,12 +78,15 @@ function findBoundaryViolations(source) {
   if (/\$\{/u.test(source)) violations.add("template_interpolation");
   if (/\bclass\b/u.test(source)) violations.add("class_declaration");
   if (/=>/u.test(source)) violations.add("arrow_function");
+  if (/\b[A-Za-z_$][\w$]*\s*\[/u.test(source)) violations.add("computed_member_access");
+  if (/\b(?:process|globalThis)\b/u.test(source)) violations.add("ambient_global");
+  if (/\b(?:let|var)\b/u.test(source)) violations.add("mutable_binding");
   if (/\b(?:setTimeout|setInterval|queueMicrotask|setImmediate)\s*\(/u.test(source)) {
     violations.add("scheduling");
   }
   if (/\bfunction\s*\(/u.test(source)) violations.add("function_expression");
-  if (JSON.stringify(extractTopLevelConstNames(source)) !== JSON.stringify(EXPECTED_TOP_LEVEL_CONSTS)) {
-    violations.add("top_level_constants");
+  if (JSON.stringify(extractConstDeclarationNames(source)) !== JSON.stringify(EXPECTED_TOP_LEVEL_CONSTS)) {
+    violations.add("const_declarations");
   }
   if (JSON.stringify(extractFunctionDeclarationNames(source)) !== JSON.stringify(EXPECTED_FUNCTION_DECLARATIONS)) {
     violations.add("function_declarations");
@@ -214,10 +217,10 @@ test("XSD signer and verifier reject before inspecting hostile input", () => {
 
 test("XSD boundary contains no guessed signing encoding or transport implementation", () => {
   const source = readFileSync(new URL("../services/platform/xsd-payment-protocol-boundary.mjs", import.meta.url), "utf8");
-  assert.deepEqual(extractTopLevelConstNames(source), EXPECTED_TOP_LEVEL_CONSTS);
+  assert.deepEqual(extractConstDeclarationNames(source), EXPECTED_TOP_LEVEL_CONSTS);
   assert.deepEqual(extractFunctionDeclarationNames(source), EXPECTED_FUNCTION_DECLARATIONS);
   assert.deepEqual(findBoundaryViolations(source), []);
-  for (const [fixtureName, fixtureSource, expectedRule] of [
+  for (const [fixtureName, fixtureSource, expectedRule, expected = true] of [
     ["left plus right", "const output = left + right;", "string_concatenation"],
     ["template interpolation", "const output = `${value}`;", "template_interpolation"],
     ["generic helper import", 'import { helper } from "node:querystring";', "module_loading"],
@@ -226,10 +229,21 @@ test("XSD boundary contains no guessed signing encoding or transport implementat
     ["client member call", "client.post(input);", "unknown_member_access"],
     ["configuration member read", "config.apiKey;", "unknown_member_access"],
     ["scheduling call", "setTimeout(task, 0);", "scheduling"],
+    ["nested const helper", "function helper() { const hidden = value; }", "const_declarations"],
+    ["mutable helper binding", "let hidden = value;", "mutable_binding"],
+    ["ambient process", "process;", "ambient_global"],
+    ["retry comment", "// retry remains unsupported", "sandbox_or_retry", false],
+  ]) {
+    const violations = findBoundaryViolations(fixtureSource);
+    assert.equal(violations.includes(expectedRule), expected, `${fixtureName} rule result`);
+  }
+  for (const [fixtureName, fixtureSource] of [
+    ["computed process access", `${source}\nprocess["env"]["PAYMENT_KEY"];`],
+    ["computed global access", `${source}\nglobalThis["providerProof"]();`],
   ]) {
     assert.ok(
-      findBoundaryViolations(fixtureSource).includes(expectedRule),
-      `${fixtureName} must be rejected by ${expectedRule}`,
+      findBoundaryViolations(fixtureSource).includes("computed_member_access"),
+      `${fixtureName} must be rejected by computed_member_access`,
     );
   }
 });
