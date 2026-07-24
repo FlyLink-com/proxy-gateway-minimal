@@ -281,6 +281,9 @@ function isNativePromise(value) {
     && typeof value === "object"
     && !utilTypes.isProxy(value)
     && utilTypes.isPromise(value)
+    && Object.getPrototypeOf(value) === Promise.prototype
+    && !Object.hasOwn(value, "then")
+    && !Object.hasOwn(value, "constructor")
   );
 }
 
@@ -876,11 +879,15 @@ function invokeCompiled(compiled, input, normalize, operation) {
     return Promise.reject(safeProviderError(error, operation));
   }
   if (isNativePromise(raw)) {
-    return promiseThen(
-      raw,
-      (value) => normalize(value),
-      (error) => Promise.reject(safeProviderError(error, operation)),
-    );
+    try {
+      return promiseThen(
+        raw,
+        (value) => normalize(value),
+        (error) => Promise.reject(safeProviderError(error, operation)),
+      );
+    } catch (error) {
+      return Promise.reject(safeProviderError(error, operation));
+    }
   }
   try {
     return Promise.resolve(normalize(raw));
@@ -1341,11 +1348,15 @@ export function createCredentialScopedPaymentExecution(options) {
     };
     const drainCallbackOutcome = () => {
       if (isNativePromise(callbackOutcome)) {
-        void promiseThen(
-          callbackOutcome,
-          () => undefined,
-          () => undefined,
-        );
+        try {
+          void promiseThen(
+            callbackOutcome,
+            () => undefined,
+            () => undefined,
+          );
+        } catch {
+          // Scope closure is authoritative; draining must not reopen the loader path.
+        }
       }
     };
     const abortLoader = (error) => {
@@ -1374,29 +1385,34 @@ export function createCredentialScopedPaymentExecution(options) {
           return Promise.reject(genericProviderError(operation));
         }
         if (isNativePromise(response)) {
-          return promiseThen(
-            response,
-            (value) => {
-              if (!scopeActive) {
-                throw contractError("payment_execution_scope_closed");
-              }
-              try {
-                return normalizeTransportResult(
-                  operation,
-                  value,
-                  scopeToken,
-                  scopeReceipts,
-                );
-              } catch (error) {
+          try {
+            return promiseThen(
+              response,
+              (value) => {
+                if (!scopeActive) {
+                  throw contractError("payment_execution_scope_closed");
+                }
+                try {
+                  return normalizeTransportResult(
+                    operation,
+                    value,
+                    scopeToken,
+                    scopeReceipts,
+                  );
+                } catch (error) {
+                  closeScope();
+                  return Promise.reject(safeProviderError(error, operation));
+                }
+              },
+              (error) => {
                 closeScope();
                 return Promise.reject(safeProviderError(error, operation));
-              }
-            },
-            (error) => {
-              closeScope();
-              return Promise.reject(safeProviderError(error, operation));
-            },
-          );
+              },
+            );
+          } catch (error) {
+            closeScope();
+            return Promise.reject(safeProviderError(error, operation));
+          }
         }
         if (!scopeActive) return reject("payment_execution_scope_closed");
         try {
@@ -1421,20 +1437,25 @@ export function createCredentialScopedPaymentExecution(options) {
         return callbackOutcome;
       }
       if (isNativePromise(raw)) {
-        callbackOutcome = promiseThen(
-          raw,
-          (value) => normalizeExecutionOutput(
-            operation,
-            value,
-            allowedActionOrigins,
-            scopeToken,
-            scopeReceipts,
-          ),
-          (error) => Promise.reject(safeProviderError(error, operation)),
-        ).catch((error) => Promise.reject(safeProviderError(error, operation)))
-          .finally(() => {
-            closeScope();
-          });
+        try {
+          callbackOutcome = promiseThen(
+            raw,
+            (value) => normalizeExecutionOutput(
+              operation,
+              value,
+              allowedActionOrigins,
+              scopeToken,
+              scopeReceipts,
+            ),
+            (error) => Promise.reject(safeProviderError(error, operation)),
+          ).catch((error) => Promise.reject(safeProviderError(error, operation)))
+            .finally(() => {
+              closeScope();
+            });
+        } catch (error) {
+          closeScope();
+          callbackOutcome = Promise.reject(safeProviderError(error, operation));
+        }
         return callbackOutcome;
       }
       try {
@@ -1464,18 +1485,22 @@ export function createCredentialScopedPaymentExecution(options) {
       return abortLoader(genericProviderError(operation));
     }
     if (isNativePromise(loaderOutcome)) {
-      return promiseThen(
-        loaderOutcome,
-        () => {
-          loaderClosed = true;
-          return callbackInvoked
-            ? callbackOutcome
-            : Promise.reject(genericProviderError(operation));
-        },
-        (error) => {
-          return abortLoader(safeProviderError(error, operation));
-        },
-      );
+      try {
+        return promiseThen(
+          loaderOutcome,
+          () => {
+            loaderClosed = true;
+            return callbackInvoked
+              ? callbackOutcome
+              : Promise.reject(genericProviderError(operation));
+          },
+          (error) => {
+            return abortLoader(safeProviderError(error, operation));
+          },
+        );
+      } catch (error) {
+        return abortLoader(safeProviderError(error, operation));
+      }
     }
     loaderClosed = true;
     if (!callbackInvoked) return Promise.reject(genericProviderError(operation));
