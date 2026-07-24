@@ -1,3 +1,5 @@
+const safeErrors = new WeakSet();
+
 export class JapanTuicMergedPrApprovalError extends Error {
   constructor() {
     super("merged_pr_approval_mismatch");
@@ -7,7 +9,9 @@ export class JapanTuicMergedPrApprovalError extends Error {
 }
 
 function safeError() {
-  return new JapanTuicMergedPrApprovalError();
+  const error = new JapanTuicMergedPrApprovalError();
+  safeErrors.add(error);
+  return error;
 }
 
 function exactKeys(value, keys) {
@@ -19,6 +23,27 @@ function exactKeys(value, keys) {
       const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
       return descriptor && "value" in descriptor;
     });
+}
+
+function strictEvidenceArray(value) {
+  if (!Array.isArray(value)) return false;
+  const actual = Reflect.ownKeys(value);
+  const lengthDescriptor = Reflect.getOwnPropertyDescriptor(value, "length");
+  if (!lengthDescriptor
+    || !("value" in lengthDescriptor)
+    || !Number.isSafeInteger(lengthDescriptor.value)
+    || lengthDescriptor.value < 0
+    || actual.length !== lengthDescriptor.value + 1) {
+    return false;
+  }
+  return actual.every((key) => {
+    if (key === "length") return true;
+    if (typeof key !== "string" || !/^(0|[1-9][0-9]*)$/.test(key)) return false;
+    const index = Number(key);
+    if (!Number.isSafeInteger(index) || index >= lengthDescriptor.value) return false;
+    const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+    return descriptor && "value" in descriptor;
+  });
 }
 
 function validCommit(value) {
@@ -33,8 +58,8 @@ function validateInput(input) {
     || pullRequest.number < 1
     || typeof pullRequest.merged !== "boolean"
     || !validCommit(pullRequest.mergeCommit)
-    || !Array.isArray(reviews)
-    || !Array.isArray(checks)
+    || !strictEvidenceArray(reviews)
+    || !strictEvidenceArray(checks)
     || !exactKeys(current, ["dispatcher", "workflowCommit"])
     || typeof current.dispatcher !== "string"
     || current.dispatcher.length === 0
@@ -86,7 +111,7 @@ export function validateMergedPrApproval(input = {}) {
       prNumber: pullRequest.number
     };
   } catch (error) {
-    if (error instanceof JapanTuicMergedPrApprovalError) throw error;
+    if (safeErrors.has(error)) throw error;
     throw safeError();
   }
 }

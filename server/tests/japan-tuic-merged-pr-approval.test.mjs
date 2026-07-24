@@ -135,3 +135,48 @@ test("maps hostile Proxy ownKeys failures to the safe error", () => {
       && error.message === "merged_pr_approval_mismatch"
   );
 });
+
+test("maps a hostile Proxy object thrown by ownKeys to the safe error", () => {
+  const hostileError = new Proxy({}, {
+    getPrototypeOf() {
+      throw new Error("protected catch-path failure");
+    }
+  });
+  const evidence = new Proxy(validEvidence(), {
+    ownKeys() {
+      throw hostileError;
+    }
+  });
+
+  assert.throws(
+    () => validateMergedPrApproval(evidence),
+    (error) => error.code === "merged_pr_approval_mismatch"
+      && error.message === "merged_pr_approval_mismatch"
+  );
+});
+
+test("rejects extra own properties on review and check arrays", () => {
+  const reviewEnumerable = validEvidence();
+  reviewEnumerable.reviews.extra = "not-allowed";
+  const reviewNonEnumerable = validEvidence();
+  Object.defineProperty(reviewNonEnumerable.reviews, "extra", { value: "not-allowed" });
+  const reviewSymbol = validEvidence();
+  reviewSymbol.reviews[Symbol("extra")] = "not-allowed";
+  const checkEnumerable = validEvidence();
+  checkEnumerable.checks.extra = "not-allowed";
+  const checkNonEnumerable = validEvidence();
+  Object.defineProperty(checkNonEnumerable.checks, "extra", { value: "not-allowed" });
+  const checkSymbol = validEvidence();
+  checkSymbol.checks[Symbol("extra")] = "not-allowed";
+
+  for (const evidence of [
+    reviewEnumerable,
+    reviewNonEnumerable,
+    reviewSymbol,
+    checkEnumerable,
+    checkNonEnumerable,
+    checkSymbol
+  ]) {
+    assert.throws(() => validateMergedPrApproval(evidence), /merged_pr_approval_mismatch/);
+  }
+});
