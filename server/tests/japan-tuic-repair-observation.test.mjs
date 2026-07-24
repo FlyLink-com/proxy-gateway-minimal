@@ -3,7 +3,8 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
-  statSync
+  statSync,
+  writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -112,4 +113,21 @@ test("Japan TUIC repair observation store rejects a relative path", () => {
   assert.throws(() => createJapanTuicRepairObservationStore({
     filePath: "relative-observation.json"
   }), { code: "validation_error" });
+});
+
+test("Japan TUIC repair observation store preserves a colliding temporary file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "japan-tuic-repair-observation-collision-"));
+  const filePath = join(dir, "observation.json");
+  const temporaryPath = join(dir, `.observation.json.tmp-${process.pid}`);
+  try {
+    writeFileSync(temporaryPath, "existing temporary file", { mode: 0o600, flag: "wx" });
+    const store = createJapanTuicRepairObservationStore({ filePath });
+
+    assert.throws(() => store.write({ projection: validProjection() }), {
+      code: "EEXIST"
+    });
+    assert.equal(readFileSync(temporaryPath, "utf8"), "existing temporary file");
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
 });

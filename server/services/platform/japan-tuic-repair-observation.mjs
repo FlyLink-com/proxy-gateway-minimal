@@ -5,7 +5,6 @@ import {
   unlinkSync,
   writeFileSync
 } from "node:fs";
-import { randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 const MAX_OBSERVATION_BYTES = 256 * 1024;
@@ -117,21 +116,26 @@ export function createJapanTuicRepairObservationStore({ filePath } = {}) {
       const parentDirectory = dirname(path);
       mkdirSync(parentDirectory, { recursive: true, mode: 0o700 });
       chmodSync(parentDirectory, 0o700);
-      const temporaryPath = `${join(parentDirectory, `.${basename(path)}.tmp-${process.pid}-${randomUUID()}`)}`;
+      const temporaryPath = join(parentDirectory, `.${basename(path)}.tmp-${process.pid}`);
+      let temporaryCreated = false;
       try {
         writeFileSync(temporaryPath, serialized, {
           encoding: "utf8",
           mode: 0o600,
           flag: "wx"
         });
+        temporaryCreated = true;
         chmodSync(temporaryPath, 0o600);
         renameSync(temporaryPath, path);
+        temporaryCreated = false;
         chmodSync(path, 0o600);
       } catch (error) {
-        try {
-          unlinkSync(temporaryPath);
-        } catch (cleanupError) {
-          if (cleanupError?.code !== "ENOENT") throw cleanupError;
+        if (temporaryCreated) {
+          try {
+            unlinkSync(temporaryPath);
+          } catch (cleanupError) {
+            if (cleanupError?.code !== "ENOENT") throw cleanupError;
+          }
         }
         throw error;
       }
