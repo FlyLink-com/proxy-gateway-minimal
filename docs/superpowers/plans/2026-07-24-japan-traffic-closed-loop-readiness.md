@@ -32,11 +32,11 @@
 | File | Responsibility |
 | --- | --- |
 | `server/services/platform/japan-tuic-repair-observation.mjs` | Validate and atomically persist a bounded Japan-only observation from an already-redacted collector projection. |
-| `scripts/japan-tuic-additive-repair-runner.mjs` | Import the purpose-bound validator from the reviewed artifact and summarize only its aggregate acceptance fields. |
+| `scripts/japan-tuic-additive-repair-runner.mjs` | Import the purpose-bound validator from the reviewed sibling helper installed beside the runner, summarize only its aggregate acceptance fields, and preserve the fixed ZIP's four pre-existing historical entries without adding this helper. |
 | `scripts/traffic-usage-collect-once.mjs` | Write the observation after a successful collector-status projection write when the configured store exists. |
 | `server/state.mjs` | Construct the optional observation store from `EDGE_JAPAN_TUIC_REPAIR_OBSERVATION_PATH`. |
 | `server/tests/japan-tuic-repair-observation.test.mjs` | Prove valid writes, atomic replacement, file bound, and safe rejection. |
-| `server/tests/japan-tuic-additive-repair-runner.test.mjs` | Prove the runner accepts only the Japan-specific post-apply observation and packages the new helper in the artifact. |
+| `server/tests/japan-tuic-additive-repair-runner.test.mjs` | Prove the runner accepts only the Japan-specific post-apply observation, imports the installed sibling helper, and preserves the fixed ZIP's four-entry historical contract. |
 | `server/tests/traffic-usage-collect-once.test.mjs` | Prove correct post-status ordering and fail-closed writer behavior. |
 | `docs/GITHUB_DEPLOYMENT_RUNBOOK.md` | Record that the new source prerequisite must be deployed and naturally observed twice before the existing CI bootstrap gate.
 
@@ -84,7 +84,16 @@ Run: `node --test server/tests/japan-tuic-repair-observation.test.mjs server/tes
 
 Expected: pass.
 
-### Task 2: Bind the repair runner to the Japan-specific observation
+### Task 2: Bind the repair runner to the Japan-specific observation (historical; superseded)
+
+> **Historical design only — do not execute.** The artifact-loading and
+> `REQUIRED_ARCHIVE_ENTRIES` instructions below are superseded by **Final Review
+> Remediation Tasks 5–8**. The executable design imports the reviewed sibling
+> helper from the deployed runner's own installation directory. The fixed
+> 2026-07-16 ZIP is still validated against exactly its four pre-existing
+> entries (map helper, generic natural-observation validator, collector
+> projection helper, and producer-status helper); it does not contain the new
+> Japan observation helper.
 
 **Files:**
 - Modify: `scripts/japan-tuic-additive-repair-runner.mjs`
@@ -94,27 +103,40 @@ Expected: pass.
 - Consumes: `buildJapanTuicRepairObservation` from Task 1 and `binding.paths.naturalObservation`.
 - Produces: the existing receipt `naturalObservation` fields, populated from the Japan observation record; no receipt schema expansion.
 
-- [ ] **Step 1: Write failing runner tests**
+- [ ] **Step 1: Historical test intent (superseded; do not execute)**
 
-Update the reviewed archive-entry fixture to require `server/services/platform/japan-tuic-repair-observation.mjs`. Add a host-adapter test where a valid Japan record produces the existing aggregate summary. Add a negative test showing that a generic observation-shaped record without `type: "japan_tuic_repair_observation"` is rejected.
+The original proposal updated the reviewed archive-entry fixture to require
+`server/services/platform/japan-tuic-repair-observation.mjs`. It is retained
+as history only: do not add that helper to the ZIP fixture. Tasks 5–8 instead
+test an installed sibling-helper import, a four-entry fixed ZIP, and rejection
+of a generic observation-shaped record without
+`type: "japan_tuic_repair_observation"`.
 
-- [ ] **Step 2: Run focused tests to witness RED**
+- [ ] **Step 2: Historical RED command (superseded; do not execute)**
 
 Run: `node --test server/tests/japan-tuic-additive-repair-runner.test.mjs`
 
-Expected: failure until the runner imports the new helper and requires the new archive entry.
+Historical expected result: failure before the original artifact-helper design.
+Do not restore or execute this expectation; Tasks 5–8 replace it with the
+installed-sibling-helper and fixed-four-entry contract.
 
-- [ ] **Step 3: Implement the narrow adapter change**
+- [ ] **Step 3: Historical adapter change (superseded; do not execute)**
 
-Replace the dynamic import of `scripts/traffic-accounting-natural-observation.mjs` with `server/services/platform/japan-tuic-repair-observation.mjs`; call `buildJapanTuicRepairObservation({ projection: input })` on the bounded JSON file. Keep the existing `naturalObservationSummary` field names and keep the later-than-apply-boundary/timer-state checks unchanged. Add the helper to `REQUIRED_ARCHIVE_ENTRIES`.
+The original proposal replaced the dynamic import of
+`scripts/traffic-accounting-natural-observation.mjs` with
+`server/services/platform/japan-tuic-repair-observation.mjs` and added that
+new helper to `REQUIRED_ARCHIVE_ENTRIES`. It is retained as history only. Do
+not add a new archive entry or import a new helper from the artifact; implement
+the final installed-sibling-helper design in Tasks 5–8 instead.
 
-- [ ] **Step 4: Run focused verification**
+- [ ] **Step 4: Historical verification (superseded; do not execute)**
 
 Run: `node --check scripts/japan-tuic-additive-repair-runner.mjs`
 
 Run: `node --test server/tests/japan-tuic-additive-repair-runner.test.mjs server/tests/japan-tuic-additive-repair-contract.test.mjs`
 
-Expected: pass.
+Historical expected result: pass for the discarded artifact-helper design. The
+current verification checklist is in Tasks 6–8 and Task 9.
 
 ### Task 3: Write observations after successful collector status snapshots
 
@@ -279,3 +301,58 @@ Run: `npm run docs:authority:check`
 Run: `npm test`
 
 Then request a new whole-branch review. Do not push or open the Draft PR until that review has no Critical or Important findings.
+
+### Task 8: Restore the frozen artifact entry contract
+
+**Files:**
+- Modify: `scripts/japan-tuic-additive-repair-runner.mjs`
+- Modify: `server/tests/japan-tuic-additive-repair-runner.test.mjs`
+
+- [ ] **Step 1: Restore the pre-existing generic natural-observation helper to `REQUIRED_ARCHIVE_ENTRIES`**
+
+The fixed 2026-07-16 ZIP must continue to prove all four historical entries: the map helper, generic natural-observation validator, collector projection helper, and producer-status helper. Do not add the new Japan observation helper to this ZIP contract.
+
+- [ ] **Step 2: Restore the four-entry test fixture and run focused runner tests**
+
+Run: `node --test server/tests/japan-tuic-additive-repair-runner.test.mjs`
+
+Expected: pass.
+
+### Task 9: Mark the superseded artifact-helper design as historical
+
+**Files:**
+- Modify: `docs/superpowers/plans/2026-07-24-japan-traffic-closed-loop-readiness.md`
+
+- [ ] **Step 1: Reconcile Task 2 and the file-responsibility table**
+
+Mark every Task 2 claim that imports the new Japan helper from the frozen
+artifact or adds it to `REQUIRED_ARCHIVE_ENTRIES` as **historical, superseded
+by Final Review Remediation Tasks 5–8, and not executable**. Update the Files
+table and test responsibility so the only executable design is: the deployed
+forced-command runner dynamically imports its reviewed sibling helper from its
+own installation directory, while the fixed ZIP continues to validate exactly
+four pre-existing historical entries. Add a no-regression checklist: future
+changes must neither add the Japan helper to the ZIP nor use artifact contents
+as proof that the newer sibling helper is deployed.
+
+- [ ] **Step 2: Verify the implementation handoff cannot revive the obsolete design**
+
+Before executing Tasks 5–8 or any follow-on repair, confirm all of the
+following in the implementation and its focused tests:
+
+- the runner resolves and imports its reviewed sibling helper from the deployed
+  installation directory;
+- `REQUIRED_ARCHIVE_ENTRIES` contains exactly the four historical entries;
+- the Japan observation helper is absent from the fixed ZIP contract; and
+- artifact identity checks remain limited to the existing fixed ZIP and are not
+  treated as deployment proof for the sibling helper.
+
+- [ ] **Step 3: Repeat final validation and review**
+
+Run: `git diff --check origin/master...HEAD`
+
+Run: `npm run docs:authority:check`
+
+Run: `npm test`
+
+Request a fresh whole-branch review before publishing.
