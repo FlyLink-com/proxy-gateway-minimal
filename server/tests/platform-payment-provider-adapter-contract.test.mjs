@@ -14,6 +14,7 @@ import {
 
 const NOW = "2026-07-23T12:34:56.789Z";
 const DIGEST = "a".repeat(64);
+const PAYLOAD_DIGEST = "b".repeat(64);
 const ACTION_ORIGINS = ["https://pay.example.com"];
 
 function validResult(overrides = {}) {
@@ -29,18 +30,33 @@ function validResult(overrides = {}) {
 
 function validEvent(overrides = {}) {
   return {
+    sourceType: "callback",
     providerEventRef: "provider-event-1",
     eventDedupeKey: "event-dedupe-1",
     eventType: "payment_succeeded",
+    paymentOrderRef: "payment-order-1",
     providerOrderRef: "provider-order-1",
+    providerCaptureRef: "provider-capture-1",
+    providerRefundRef: null,
     amountMinor: 3000,
     currency: "USD",
+    currencyExponent: 2,
     merchantScopeDigest: DIGEST,
-    payloadDigest: "b".repeat(64),
+    payloadDigest: PAYLOAD_DIGEST,
     occurredAt: NOW,
     verificationResult: "verified",
     ...overrides,
   };
+}
+
+function validCaptureFact(overrides = {}) {
+  return validEvent({
+    sourceType: "authenticated_capture_response",
+    providerEventRef: null,
+    eventDedupeKey: "capture-dedupe-1",
+    providerRefundRef: null,
+    ...overrides,
+  });
 }
 
 function validCreateInput(overrides = {}) {
@@ -51,11 +67,33 @@ function validCreateInput(overrides = {}) {
     paymentMethod: "alipay",
     amountMinor: 3000,
     currency: "USD",
+    currencyExponent: 2,
     expectedPaidCoins: 30,
     quoteDigest: DIGEST,
     expiresAt: NOW,
     callbackRouteRef: "callback-route-1",
     returnRouteRef: null,
+    ...overrides,
+  };
+}
+
+function validCaptureInput(overrides = {}) {
+  return {
+    paymentOrderRef: "payment-order-1",
+    attemptRef: "attempt-1",
+    providerOrderRef: "provider-order-1",
+    captureRequestRef: "capture-request-1",
+    amountMinor: 3000,
+    currency: "USD",
+    currencyExponent: 2,
+    ...overrides,
+  };
+}
+
+function validCaptureOutcome(overrides = {}) {
+  return {
+    operationResult: validResult(),
+    paymentFact: null,
     ...overrides,
   };
 }
@@ -78,14 +116,22 @@ function enabledAdapter(overrides = {}) {
     capabilities: {
       createRechargeOrder: true,
       queryPayment: true,
+      capturePayment: true,
       verifyCallback: true,
       refund: true,
       reconcile: true,
       repeatCreateIdempotent: true,
+      repeatCaptureIdempotent: true,
     },
-    supportedPaymentMethods: ["alipay", "wechat_pay"],
+    supportedPaymentMethods: ["alipay", "wechat_pay", "paypal"],
     createRechargeOrder: () => validResult(),
     queryPayment: () => validResult({ status: "pending", chargeCertainty: "possibly_charged" }),
+    capturePayment: () => validCaptureOutcome({
+      operationResult: validResult({
+        status: "pending",
+        chargeCertainty: "possibly_charged",
+      }),
+    }),
     verifyAndNormalizeCallback: () => validEvent(),
     normalizeError: ({ operation }) => validProviderError({ operation }),
     webhookSuccessAck: () => ({
@@ -106,14 +152,17 @@ function disabledAdapter(overrides = {}) {
     capabilities: {
       createRechargeOrder: false,
       queryPayment: false,
+      capturePayment: false,
       verifyCallback: false,
       refund: false,
       reconcile: false,
       repeatCreateIdempotent: false,
+      repeatCaptureIdempotent: false,
     },
     supportedPaymentMethods: [],
     createRechargeOrder: empty,
     queryPayment: () => {},
+    capturePayment: () => {},
     verifyAndNormalizeCallback: () => {},
     normalizeError: () => {},
     webhookSuccessAck: () => {},
@@ -165,6 +214,29 @@ function assertNoProxyTraps(counters) {
   assert.deepEqual(counters, { get: 0, ownKeys: 0, descriptor: 0 });
 }
 
+function poisonNativePromiseConstructor(promise, mode, marker, counters) {
+  if (mode === "throwing_constructor_getter") {
+    Object.defineProperty(promise, "constructor", {
+      get() {
+        counters.constructor += 1;
+        throw new Error(marker);
+      },
+    });
+    return promise;
+  }
+  const constructor = {};
+  Object.defineProperty(constructor, Symbol.species, {
+    get() {
+      counters.species += 1;
+      throw new Error(marker);
+    },
+  });
+  Object.defineProperty(promise, "constructor", {
+    value: constructor,
+  });
+  return promise;
+}
+
 async function createExecution(overrides = {}) {
   let loaderCalls = 0;
   const credentialMarker = "credential-marker-must-not-leak";
@@ -181,7 +253,18 @@ async function createExecution(overrides = {}) {
     },
     requestFn({ binding, credentialHandle, request }) {
       assert.equal(credentialHandle.opaque, credentialMarker);
-      return { binding, request };
+      const evidence = (
+        binding.operation === "capture_payment"
+        || binding.operation === "verify_callback"
+      ) ? {
+          merchantScopeDigest: DIGEST,
+          payloadDigest: PAYLOAD_DIGEST,
+        }
+        : null;
+      return {
+        response: { binding, request },
+        evidence,
+      };
     },
     allowedActionOrigins: ACTION_ORIGINS,
     ...overrides,
@@ -195,10 +278,39 @@ async function createExecution(overrides = {}) {
 
 async function createBrandedEvent(overrides = {}) {
   const { execution } = await createExecution();
-  return execution.withCredential("verify_callback", () => validEvent(overrides));
+  return executeCallbackFact(execution, validEvent(overrides));
 }
 
-test("exports exact frozen payment method vocabulary and performs no coercion", async () => {
+async function executeCallbackFact(execution, paymentFact = validEvent()) {
+  return execution.withCredential("verify_callback", async ({ request }) => {
+    const { transportReceipt } = await request({ callbackRequestRef: "callback-request-1" });
+    return {
+      transportReceipt,
+      paymentFact,
+    };
+  });
+}
+
+async function createBrandedCaptureFact(overrides = {}) {
+  const { execution } = await createExecution();
+  const outcome = await executeCaptureOutcome(
+    execution,
+    validCaptureOutcome({ paymentFact: validCaptureFact(overrides) }),
+  );
+  return outcome.paymentFact;
+}
+
+async function executeCaptureOutcome(execution, captureOutcome = validCaptureOutcome()) {
+  return execution.withCredential("capture_payment", async ({ request }) => {
+    const { transportReceipt } = await request({ captureRequestRef: "capture-request-1" });
+    return {
+      transportReceipt,
+      captureOutcome,
+    };
+  });
+}
+
+test("payment methods include paypal while provider identity remains distinct", async () => {
   const module = await import("../services/platform/payment-provider-adapter-contract.mjs");
   assert.deepEqual(Object.keys(module).sort(), [
     "PAYMENT_METHODS_V1",
@@ -210,10 +322,17 @@ test("exports exact frozen payment method vocabulary and performs no coercion", 
     "normalizePaymentProviderError",
     "normalizeVerifiedPaymentEvent",
   ]);
-  assert.deepEqual(PAYMENT_METHODS_V1, ["alipay", "wechat_pay"]);
+  assert.deepEqual(PAYMENT_METHODS_V1, ["alipay", "wechat_pay", "paypal"]);
   assert.ok(Object.isFrozen(PAYMENT_METHODS_V1));
   assert.equal(normalizePaymentMethod("alipay"), "alipay");
   assert.equal(normalizePaymentMethod("wechat_pay"), "wechat_pay");
+  assert.equal(normalizePaymentMethod("paypal"), "paypal");
+  for (const providerId of PAYMENT_METHODS_V1) {
+    assert.throws(
+      () => assertPaymentProviderAdapterContract(enabledAdapter({ providerId })),
+      expectCode("invalid_payment_provider_adapter"),
+    );
+  }
   for (const value of [" alipay", "ALIPAY", "wechat-pay", "provider_core", 1, true, null, undefined]) {
     assert.throws(() => normalizePaymentMethod(value), expectCode("invalid_payment_method"));
   }
@@ -235,6 +354,7 @@ test("accepts enabled and fully disabled unverified canonical adapters", async (
   for (const [method, args] of [
     ["createRechargeOrder", [validCreateInput()]],
     ["queryPayment", [{ paymentOrderRef: "p-1", attemptRef: "a-1", providerOrderRef: "o-1" }]],
+    ["capturePayment", [validCaptureInput()]],
     ["verifyAndNormalizeCallback", [validCallbackInput()]],
     ["webhookSuccessAck", [validEvent()]],
     ["refund", [{
@@ -244,6 +364,7 @@ test("accepts enabled and fully disabled unverified canonical adapters", async (
       refundRequestRef: "r-1",
       amountMinor: 1,
       currency: "USD",
+      currencyExponent: 2,
       reasonCode: "other",
     }]],
     ["reconcile", [{ paymentOrderRef: "p-1", attemptRef: "a-1", providerOrderRef: "o-1" }]],
@@ -255,8 +376,10 @@ test("accepts enabled and fully disabled unverified canonical adapters", async (
 test("enforces all capability invariants and disables before compiled invocation", async () => {
   const invalidCapabilities = [
     { repeatCreateIdempotent: true, createRechargeOrder: false },
+    { repeatCaptureIdempotent: true, capturePayment: false },
     { createRechargeOrder: "true" },
     { queryPayment: true },
+    { capturePayment: true },
     { verifyCallback: true },
     { refund: true },
     { reconcile: true },
@@ -310,6 +433,18 @@ test("enforces all capability invariants and disables before compiled invocation
     expectCode("payment_provider_capability_disabled"),
   );
   assert.equal(called, 0);
+});
+
+test("repeat-capture idempotency requires capture capability", () => {
+  const adapter = disabledAdapter({ contractVersion: "v1" });
+  adapter.capabilities = {
+    ...adapter.capabilities,
+    repeatCaptureIdempotent: true,
+  };
+  assert.throws(
+    () => assertPaymentProviderAdapterContract(adapter),
+    expectCode("invalid_payment_provider_adapter"),
+  );
 });
 
 test("rejects hostile reflection surfaces without triggering Proxy traps", async () => {
@@ -408,18 +543,24 @@ test("snapshots adapter metadata, methods, origins, inputs, and freezes detached
   assert.notEqual(result, adapter);
 });
 
-test("validates create, query, callback, refund, and reconcile operation inputs", async () => {
+test("validates create, query, capture, callback, refund, and reconcile operation inputs", async () => {
   const seen = {};
   const brandedCallbackEvent = await createBrandedEvent();
+  const brandedCaptureFact = await createBrandedCaptureFact();
   const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
     createRechargeOrder(input) { seen.create = input; return validResult(); },
     queryPayment(input) { seen.query = input; return validResult(); },
+    capturePayment(input) {
+      seen.capture = input;
+      return validCaptureOutcome({ paymentFact: brandedCaptureFact });
+    },
     verifyAndNormalizeCallback(input) { seen.callback = input; return brandedCallbackEvent; },
     refund(input) { seen.refund = input; return validResult({ status: "reversed" }); },
     reconcile(input) { seen.reconcile = input; return validResult(); },
   }), { allowedActionOrigins: ACTION_ORIGINS });
   await adapter.createRechargeOrder(validCreateInput());
   await adapter.queryPayment({ paymentOrderRef: "p-1", attemptRef: "a-1", providerOrderRef: "o-1" });
+  await adapter.capturePayment(validCaptureInput());
   await adapter.verifyAndNormalizeCallback(validCallbackInput());
   await adapter.refund({
     paymentOrderRef: "p-1",
@@ -428,6 +569,7 @@ test("validates create, query, callback, refund, and reconcile operation inputs"
     refundRequestRef: "r-1",
     amountMinor: 1,
     currency: "USD",
+    currencyExponent: 2,
     reasonCode: "customer_request",
   });
   await adapter.reconcile({ paymentOrderRef: "p-1", attemptRef: "a-1", providerOrderRef: "o-1" });
@@ -460,12 +602,164 @@ test("validates create, query, callback, refund, and reconcile operation inputs"
     await adapter.refund({
       paymentOrderRef: "p-1", attemptRef: "a-1", providerOrderRef: "o-1",
       refundRequestRef: `refund-${reasonCode}`, amountMinor: 1, currency: "USD", reasonCode,
+      currencyExponent: 2,
     });
   }
   await assert.rejects(() => adapter.refund({
     paymentOrderRef: "p-1", attemptRef: "a-1", providerOrderRef: "o-1",
-    refundRequestRef: "r-1", amountMinor: 1, currency: "USD", reasonCode: "risk_rejection",
+    refundRequestRef: "r-1", amountMinor: 1, currency: "USD", currencyExponent: 2,
+    reasonCode: "risk_rejection",
   }), expectCode("invalid_payment_operation_input"));
+});
+
+test("create refund capture and verified facts require an explicit bounded currency exponent", async () => {
+  const adapter = assertPaymentProviderAdapterContract(enabledAdapter(), {
+    allowedActionOrigins: ACTION_ORIGINS,
+  });
+  for (const currencyExponent of [-1, 0, 2, 3, 9, 10]) {
+    const shouldPass = currencyExponent >= 0 && currencyExponent <= 9;
+    const inputs = [
+      () => adapter.createRechargeOrder(validCreateInput({ currencyExponent })),
+      () => adapter.refund({
+        paymentOrderRef: "p-1",
+        attemptRef: "a-1",
+        providerOrderRef: "provider-order-1",
+        refundRequestRef: "r-1",
+        amountMinor: 1,
+        currency: "USD",
+        currencyExponent,
+        reasonCode: "other",
+      }),
+      () => adapter.capturePayment(validCaptureInput({ currencyExponent })),
+    ];
+    for (const invoke of inputs) {
+      if (shouldPass) await assert.doesNotReject(invoke);
+      else {
+        await assert.rejects(
+          invoke,
+          expectCode("invalid_payment_operation_input"),
+        );
+      }
+    }
+    const { execution } = await createExecution();
+    if (shouldPass) {
+      const fact = await executeCallbackFact(
+        execution,
+        validEvent({ currencyExponent }),
+      );
+      assert.equal(fact.currencyExponent, currencyExponent);
+    } else {
+      await assert.rejects(
+        () => executeCallbackFact(execution, validEvent({ currencyExponent })),
+        (error) => error?.code === "provider_operation_failed",
+      );
+    }
+  }
+
+  const missingCreate = validCreateInput();
+  delete missingCreate.currencyExponent;
+  const missingCapture = validCaptureInput();
+  delete missingCapture.currencyExponent;
+  const missingRefund = {
+    paymentOrderRef: "p-1",
+    attemptRef: "a-1",
+    providerOrderRef: "provider-order-1",
+    refundRequestRef: "r-1",
+    amountMinor: 1,
+    currency: "USD",
+    currencyExponent: 2,
+    reasonCode: "other",
+  };
+  delete missingRefund.currencyExponent;
+  for (const invoke of [
+    () => adapter.createRechargeOrder(missingCreate),
+    () => adapter.capturePayment(missingCapture),
+    () => adapter.refund(missingRefund),
+  ]) {
+    await assert.rejects(invoke, expectCode("invalid_payment_operation_input"));
+  }
+  const missingFact = validEvent();
+  delete missingFact.currencyExponent;
+  const { execution } = await createExecution();
+  await assert.rejects(
+    () => executeCallbackFact(execution, missingFact),
+    (error) => error?.code === "provider_operation_failed",
+  );
+});
+
+test("capture is an exact separately gated canonical operation", async () => {
+  const counters = { loader: 0, request: 0, clock: 0 };
+  const execution = createCredentialScopedPaymentExecution({
+    profileRef: "profile-1",
+    adapterKey: "provider_core",
+    contractVersion: "v1",
+    credentialProfileRef: "credential-profile-1",
+    credentialLoader: {
+      withCredential(binding, callback) {
+        counters.loader += 1;
+        assert.equal(binding.operation, "capture_payment");
+        return callback("opaque-credential");
+      },
+    },
+    requestFn({ binding }) {
+      counters.request += 1;
+      assert.equal(binding.operation, "capture_payment");
+      return {
+        response: { accepted: true },
+        evidence: {
+          merchantScopeDigest: DIGEST,
+          payloadDigest: PAYLOAD_DIGEST,
+        },
+      };
+    },
+    allowedActionOrigins: ACTION_ORIGINS,
+  });
+  const compiledCapture = (input) => {
+    counters.clock += 1;
+    assert.ok(Object.isFrozen(input));
+    assert.deepEqual(Object.keys(input), [
+      "paymentOrderRef",
+      "attemptRef",
+      "providerOrderRef",
+      "captureRequestRef",
+      "amountMinor",
+      "currency",
+      "currencyExponent",
+    ]);
+    return execution.withCredential("capture_payment", async ({ request }) => {
+      const { transportReceipt } = await request({ captureRequestRef: input.captureRequestRef });
+      return {
+        transportReceipt,
+        captureOutcome: validCaptureOutcome({
+          operationResult: validResult({ providerOrderRef: input.providerOrderRef }),
+          paymentFact: validCaptureFact({
+            paymentOrderRef: input.paymentOrderRef,
+            providerOrderRef: input.providerOrderRef,
+            amountMinor: input.amountMinor,
+            currency: input.currency,
+            currencyExponent: input.currencyExponent,
+          }),
+        }),
+      };
+    });
+  };
+
+  const disabledRaw = disabledAdapter({
+    capturePayment: compiledCapture,
+  });
+  const disabled = assertPaymentProviderAdapterContract(disabledRaw);
+  await assert.rejects(
+    () => disabled.capturePayment(validCaptureInput()),
+    expectCode("payment_provider_capability_disabled"),
+  );
+  assert.deepEqual(counters, { loader: 0, request: 0, clock: 0 });
+
+  const enabled = assertPaymentProviderAdapterContract(enabledAdapter({
+    capturePayment: compiledCapture,
+  }));
+  const outcome = await enabled.capturePayment(validCaptureInput());
+  assert.equal(outcome.paymentFact.sourceType, "authenticated_capture_response");
+  assert.deepEqual(counters, { loader: 1, request: 1, clock: 1 });
 });
 
 test("enforces callback body, header, forbidden-header, and hostile-layer bounds", async () => {
@@ -610,24 +904,406 @@ test("accepts every legal operation result row and rejects illegal combinations"
   }
 });
 
-test("brands verified events only through credential-scoped verify_callback execution", async () => {
+test("credential execution brands callback and capture facts with distinct provenance", async () => {
+  const callbackFact = await createBrandedEvent();
+  const captureFact = await createBrandedCaptureFact();
+  assert.equal(normalizeVerifiedPaymentEvent(callbackFact), callbackFact);
+  assert.equal(normalizeVerifiedPaymentEvent(captureFact), captureFact);
+  assert.equal(callbackFact.sourceType, "callback");
+  assert.equal(captureFact.sourceType, "authenticated_capture_response");
+  assert.notEqual(callbackFact, captureFact);
+  assert.ok(Object.isFrozen(callbackFact));
+  assert.ok(Object.isFrozen(captureFact));
+  assert.deepEqual(Object.keys(callbackFact), [
+    "sourceType",
+    "providerEventRef",
+    "eventDedupeKey",
+    "eventType",
+    "paymentOrderRef",
+    "providerOrderRef",
+    "providerCaptureRef",
+    "providerRefundRef",
+    "amountMinor",
+    "currency",
+    "currencyExponent",
+    "merchantScopeDigest",
+    "payloadDigest",
+    "occurredAt",
+    "verificationResult",
+  ]);
+});
+
+test("fact provenance requires a successful same-scope same-operation transport receipt", async () => {
   const raw = validEvent();
   assert.throws(
     () => normalizeVerifiedPaymentEvent(raw),
     expectCode("invalid_verified_payment_event"),
   );
   const { execution } = await createExecution();
-  const branded = await execution.withCredential("verify_callback", () => raw);
+  const branded = await executeCallbackFact(execution, raw);
   assert.deepEqual(normalizeVerifiedPaymentEvent(branded), raw);
   assert.equal(normalizeVerifiedPaymentEvent(branded), branded);
-  assert.ok(Object.isFrozen(branded));
   assert.throws(
     () => normalizeVerifiedPaymentEvent({ ...branded }),
     expectCode("invalid_verified_payment_event"),
   );
 });
 
-test("normalized adapters reject unbranded callback events and preserve branded provenance", async () => {
+test("failed zero-request reused and cross-scope receipts cannot mint facts", async () => {
+  const { execution } = await createExecution();
+  await assert.rejects(
+    () => execution.withCredential("verify_callback", () => ({
+      transportReceipt: Object.freeze({}),
+      paymentFact: validEvent(),
+    })),
+    (error) => error?.code === "provider_operation_failed",
+  );
+  await assert.rejects(
+    () => execution.withCredential("capture_payment", () => ({
+      transportReceipt: Object.freeze({}),
+      captureOutcome: validCaptureOutcome({
+        paymentFact: validCaptureFact(),
+      }),
+    })),
+    (error) => error?.code === "provider_operation_failed",
+  );
+  await assert.rejects(
+    () => execution.withCredential("verify_callback", async ({ request }) => {
+      const { transportReceipt } = await request({
+        callbackRequestRef: "callback-request-null-fact",
+      });
+      return { transportReceipt, paymentFact: null };
+    }),
+    (error) => error?.code === "provider_operation_failed",
+  );
+
+  let retainedReceipt;
+  const first = await execution.withCredential("verify_callback", async ({ request }) => {
+    const requestResult = await request({ callbackRequestRef: "callback-request-1" });
+    retainedReceipt = requestResult.transportReceipt;
+    return {
+      transportReceipt: retainedReceipt,
+      paymentFact: validEvent(),
+    };
+  });
+  assert.equal(first.sourceType, "callback");
+  await assert.rejects(
+    () => execution.withCredential("verify_callback", () => ({
+      transportReceipt: retainedReceipt,
+      paymentFact: validEvent(),
+    })),
+    (error) => error?.code === "provider_operation_failed",
+  );
+
+  let failedReceipt;
+  const failed = await createExecution({
+    requestFn() {
+      throw new Error("transport-secret");
+    },
+  });
+  await assert.rejects(
+    () => failed.execution.withCredential("verify_callback", async ({ request }) => {
+      failedReceipt = await request({ callbackRequestRef: "callback-request-1" })
+        .then((result) => result.transportReceipt, () => undefined);
+      return {
+        transportReceipt: failedReceipt,
+        paymentFact: validEvent(),
+      };
+    }),
+    (error) => error?.code === "provider_operation_failed",
+  );
+  assert.equal(failedReceipt, undefined);
+  assert.throws(
+    () => normalizeVerifiedPaymentEvent(validEvent()),
+    expectCode("invalid_verified_payment_event"),
+  );
+});
+
+test("transport receipt attack matrix rejects fabricated cross-operation digest mismatch custom thenable late fulfillment and post-closure use", async () => {
+  const { execution } = await createExecution();
+  await assert.rejects(
+    () => execution.withCredential("verify_callback", () => ({
+      transportReceipt: Object.freeze({}),
+      paymentFact: validEvent(),
+    })),
+    (error) => error?.code === "provider_operation_failed",
+  );
+
+  const malformedTransports = [
+    { response: { accepted: true }, evidence: null },
+    { response: { accepted: true } },
+    {
+      response: { accepted: true },
+      evidence: {
+        merchantScopeDigest: DIGEST,
+        payloadDigest: PAYLOAD_DIGEST,
+      },
+      extra: true,
+    },
+  ];
+  for (const transportValue of malformedTransports) {
+    const malformed = await createExecution({
+      requestFn: () => transportValue,
+    });
+    await assert.rejects(
+      () => executeCallbackFact(malformed.execution),
+      (error) => error?.code === "provider_operation_failed",
+    );
+  }
+
+  for (const mode of ["sync", "promise"]) {
+    for (const digestField of ["merchantScopeDigest", "payloadDigest"]) {
+      const transport = await createExecution({
+        requestFn() {
+          const envelope = {
+            response: { accepted: true },
+            evidence: {
+              merchantScopeDigest: DIGEST,
+              payloadDigest: PAYLOAD_DIGEST,
+            },
+          };
+          return mode === "promise" ? Promise.resolve(envelope) : envelope;
+        },
+      });
+      await assert.rejects(
+        () => executeCallbackFact(
+          transport.execution,
+          validEvent({ [digestField]: "c".repeat(64) }),
+        ),
+        (error) => error?.code === "provider_operation_failed",
+      );
+    }
+  }
+
+  let crossOperationReceipt;
+  await assert.rejects(
+    () => execution.withCredential("capture_payment", async ({ request }) => {
+      crossOperationReceipt = (await request({ captureRequestRef: "capture-request-1" }))
+        .transportReceipt;
+      return {
+        transportReceipt: Object.freeze({}),
+        captureOutcome: validCaptureOutcome(),
+      };
+    }),
+    (error) => error?.code === "provider_operation_failed",
+  );
+  await assert.rejects(
+    () => execution.withCredential("verify_callback", () => ({
+      transportReceipt: crossOperationReceipt,
+      paymentFact: validEvent(),
+    })),
+    (error) => error?.code === "provider_operation_failed",
+  );
+
+  let thenReads = 0;
+  const customThenable = Object.create(null);
+  Object.defineProperty(customThenable, "then", {
+    get() {
+      thenReads += 1;
+      return () => {};
+    },
+  });
+  const thenableTransport = await createExecution({
+    requestFn: () => customThenable,
+  });
+  await assert.rejects(
+    () => thenableTransport.execution.withCredential(
+      "verify_callback",
+      async ({ request }) => {
+        const requestResult = await request({ callbackRequestRef: "callback-request-1" });
+        return {
+          transportReceipt: requestResult.transportReceipt,
+          paymentFact: validEvent(),
+        };
+      },
+    ),
+    (error) => error?.code === "provider_operation_failed",
+  );
+  assert.equal(thenReads, 0);
+
+  let resolveTransport;
+  let lateRequest;
+  const late = await createExecution({
+    requestFn() {
+      return new Promise((resolve) => {
+        resolveTransport = resolve;
+      });
+    },
+  });
+  await assert.rejects(
+    () => late.execution.withCredential("verify_callback", ({ request }) => {
+      lateRequest = request({ callbackRequestRef: "callback-request-1" });
+      return {
+        transportReceipt: Object.freeze({}),
+        paymentFact: validEvent(),
+      };
+    }),
+    (error) => error?.code === "provider_operation_failed",
+  );
+  resolveTransport({
+    response: { accepted: true },
+    evidence: {
+      merchantScopeDigest: DIGEST,
+      payloadDigest: PAYLOAD_DIGEST,
+    },
+  });
+  await assert.rejects(
+    lateRequest,
+    expectCode("payment_execution_scope_closed"),
+  );
+
+  let retainedRequest;
+  await execution.withCredential("query_payment", ({ request }) => {
+    retainedRequest = request;
+    return validResult();
+  });
+  await assert.rejects(
+    () => retainedRequest({ afterClosure: true }),
+    expectCode("payment_execution_scope_closed"),
+  );
+});
+
+test("transport rejects Promise-prototype then spoofs without minting receipts or facts", async () => {
+  const marker = "promise-prototype-transport-marker";
+  for (const mode of ["data_then", "throwing_then_getter"]) {
+    const counters = { then: 0, getter: 0 };
+    const spoof = Object.create(Promise.prototype);
+    if (mode === "data_then") {
+      Object.defineProperty(spoof, "then", {
+        value(onFulfilled) {
+          counters.then += 1;
+          return Promise.resolve(onFulfilled({
+            response: { accepted: true },
+            evidence: {
+              merchantScopeDigest: DIGEST,
+              payloadDigest: PAYLOAD_DIGEST,
+            },
+          }));
+        },
+      });
+    } else {
+      Object.defineProperty(spoof, "then", {
+        get() {
+          counters.getter += 1;
+          throw new Error(marker);
+        },
+      });
+    }
+
+    const rawFact = validEvent();
+    let retainedRequest;
+    let receivedReceipt;
+    let output;
+    let caught;
+    const { execution } = await createExecution({
+      requestFn: () => spoof,
+    });
+    try {
+      output = await execution.withCredential(
+        "verify_callback",
+        async ({ request }) => {
+          retainedRequest = request;
+          const requestResult = await request({
+            callbackRequestRef: `callback-${mode}`,
+          });
+          receivedReceipt = requestResult.transportReceipt;
+          return {
+            transportReceipt: receivedReceipt,
+            paymentFact: rawFact,
+          };
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    assert.equal(output, undefined);
+    assert.equal(receivedReceipt, undefined);
+    assert.equal(counters.then, 0);
+    assert.equal(counters.getter, 0);
+    assert.equal(caught?.code, "provider_operation_failed");
+    assert.doesNotMatch(String(caught), new RegExp(marker, "u"));
+    assert.doesNotMatch(JSON.stringify(caught), new RegExp(marker, "u"));
+    assert.throws(
+      () => normalizeVerifiedPaymentEvent(rawFact),
+      expectCode("invalid_verified_payment_event"),
+    );
+    await assert.rejects(
+      () => retainedRequest({ afterFailure: true }),
+      expectCode("payment_execution_scope_closed"),
+    );
+  }
+});
+
+test("transport rejects genuine Promises with throwing constructor or species without minting provenance", async () => {
+  const marker = "native-promise-transport-species-marker";
+  for (const mode of [
+    "throwing_constructor_getter",
+    "throwing_species_getter",
+  ]) {
+    const counters = { constructor: 0, species: 0, request: 0 };
+    const response = poisonNativePromiseConstructor(
+      Promise.resolve({
+        response: { accepted: true },
+        evidence: {
+          merchantScopeDigest: DIGEST,
+          payloadDigest: PAYLOAD_DIGEST,
+        },
+      }),
+      mode,
+      marker,
+      counters,
+    );
+    const rawFact = validEvent();
+    let retainedRequest;
+    let receivedReceipt;
+    let output;
+    let caught;
+    const { execution } = await createExecution({
+      requestFn() {
+        counters.request += 1;
+        return response;
+      },
+    });
+    try {
+      output = await execution.withCredential(
+        "verify_callback",
+        async ({ request }) => {
+          retainedRequest = request;
+          const requestResult = await request({
+            callbackRequestRef: `native-promise-${mode}`,
+          });
+          receivedReceipt = requestResult.transportReceipt;
+          return {
+            transportReceipt: receivedReceipt,
+            paymentFact: rawFact,
+          };
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    assert.equal(output, undefined);
+    assert.equal(receivedReceipt, undefined);
+    assert.equal(counters.constructor, 0);
+    assert.equal(counters.species, 0);
+    assert.equal(counters.request, 1);
+    assert.equal(caught?.code, "provider_operation_failed");
+    assert.doesNotMatch(String(caught), new RegExp(marker, "u"));
+    assert.doesNotMatch(JSON.stringify(caught), new RegExp(marker, "u"));
+    assert.throws(
+      () => normalizeVerifiedPaymentEvent(rawFact),
+      expectCode("invalid_verified_payment_event"),
+    );
+    await assert.rejects(
+      () => retainedRequest({ afterTransportFailure: true }),
+      expectCode("payment_execution_scope_closed"),
+    );
+  }
+});
+
+test("normalized adapters reject unbranded callback facts and preserve branded provenance", async () => {
   const plainAdapter = assertPaymentProviderAdapterContract(enabledAdapter());
   await assert.rejects(
     () => plainAdapter.verifyAndNormalizeCallback(validCallbackInput()),
@@ -662,7 +1338,208 @@ test("normalized adapters reject unbranded callback events and preserve branded 
   assert.equal(acknowledgedEvent, branded);
 });
 
-test("validates all verified event types, nullable ref, digests, time, amount, and payload rejection", async () => {
+test("successful capture requires a matching branded payment fact", async () => {
+  const branded = await createBrandedCaptureFact();
+  const valid = assertPaymentProviderAdapterContract(enabledAdapter({
+    capturePayment: () => validCaptureOutcome({ paymentFact: branded }),
+  }));
+  const outcome = await valid.capturePayment(validCaptureInput());
+  assert.equal(outcome.paymentFact, branded);
+  assert.ok(Object.isFrozen(outcome));
+
+  for (const paymentFact of [null, validCaptureFact(), { ...branded }]) {
+    const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
+      capturePayment: () => validCaptureOutcome({ paymentFact }),
+    }));
+    await assert.rejects(
+      () => adapter.capturePayment(validCaptureInput()),
+      expectCode("invalid_payment_operation_result"),
+    );
+  }
+});
+
+test("successful capture requires an operation result bound to its provider order", async () => {
+  const branded = await createBrandedCaptureFact();
+  const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
+    capturePayment: () => validCaptureOutcome({
+      operationResult: validResult({ providerOrderRef: "other-provider-order" }),
+      paymentFact: branded,
+    }),
+  }));
+
+  await assert.rejects(
+    () => adapter.capturePayment(validCaptureInput()),
+    expectCode("invalid_payment_operation_result"),
+  );
+});
+
+test("capture rejects order amount currency exponent and provenance mismatches", async () => {
+  const cases = [
+    ["paymentOrderRef", "other-payment-order"],
+    ["providerOrderRef", "other-provider-order"],
+    ["amountMinor", 3001],
+    ["currency", "EUR"],
+    ["currencyExponent", 3],
+    ["sourceType", "callback"],
+    ["eventType", "payment_pending"],
+    ["providerCaptureRef", null],
+  ];
+  for (const [field, value] of cases) {
+    let paymentFactPromise;
+    if (field === "sourceType") {
+      paymentFactPromise = createBrandedEvent({
+        ...validCaptureFact(),
+        sourceType: value,
+      });
+    } else {
+      paymentFactPromise = createBrandedCaptureFact({ [field]: value });
+    }
+    const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
+      async capturePayment() {
+        return validCaptureOutcome({
+          paymentFact: await paymentFactPromise,
+        });
+      },
+    }));
+    await assert.rejects(
+      () => adapter.capturePayment(validCaptureInput()),
+      (error) => (
+        error?.message === "invalid_payment_operation_result"
+        || error?.code === "provider_operation_failed"
+      ),
+    );
+  }
+});
+
+test("non-success capture outcomes require a null payment fact", async () => {
+  const branded = await createBrandedCaptureFact();
+  const results = [
+    validResult({ status: "pending", chargeCertainty: "possibly_charged" }),
+    validResult({
+      status: "failed_no_charge",
+      chargeCertainty: "confirmed_no_charge",
+    }),
+    validResult({
+      status: "reconciliation_required",
+      chargeCertainty: "unknown",
+    }),
+    validResult({ status: "reversed" }),
+  ];
+  for (const operationResult of results) {
+    const valid = assertPaymentProviderAdapterContract(enabledAdapter({
+      capturePayment: () => ({ operationResult, paymentFact: null }),
+    }));
+    const outcome = await valid.capturePayment(validCaptureInput());
+    assert.equal(outcome.paymentFact, null);
+    for (const paymentFact of [branded, validCaptureFact()]) {
+      const invalid = assertPaymentProviderAdapterContract(enabledAdapter({
+        capturePayment: () => ({ operationResult, paymentFact }),
+      }));
+      await assert.rejects(
+        () => invalid.capturePayment(validCaptureInput()),
+        expectCode("invalid_payment_operation_result"),
+      );
+    }
+  }
+  const { execution } = await createExecution();
+  const internal = await executeCaptureOutcome(
+    execution,
+    validCaptureOutcome({
+      operationResult: validResult({
+        status: "pending",
+        chargeCertainty: "possibly_charged",
+      }),
+      paymentFact: null,
+    }),
+  );
+  assert.equal(internal.paymentFact, null);
+  await assert.rejects(
+    () => execution.withCredential("capture_payment", () => ({
+      transportReceipt: Object.freeze({}),
+      captureOutcome: validCaptureOutcome({
+        operationResult: validResult({
+          status: "pending",
+          chargeCertainty: "possibly_charged",
+        }),
+        paymentFact: null,
+      }),
+    })),
+    (error) => error?.code === "provider_operation_failed",
+  );
+});
+
+test("non-success capture requires an operation result bound to its provider order", async () => {
+  const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
+    capturePayment: () => validCaptureOutcome({
+      operationResult: validResult({
+        providerOrderRef: "other-provider-order",
+        status: "pending",
+        chargeCertainty: "possibly_charged",
+      }),
+      paymentFact: null,
+    }),
+  }));
+
+  await assert.rejects(
+    () => adapter.capturePayment(validCaptureInput()),
+    expectCode("invalid_payment_operation_result"),
+  );
+});
+
+test("query cannot return a payment fact or invoke capture", async () => {
+  let queryCalls = 0;
+  let captureCalls = 0;
+  const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
+    queryPayment() {
+      queryCalls += 1;
+      return validResult({ status: "pending", chargeCertainty: "possibly_charged" });
+    },
+    capturePayment() {
+      captureCalls += 1;
+      return validCaptureOutcome();
+    },
+  }));
+  const result = await adapter.queryPayment({
+    paymentOrderRef: "payment-order-1",
+    attemptRef: "attempt-1",
+    providerOrderRef: "provider-order-1",
+  });
+  assert.equal(queryCalls, 1);
+  assert.equal(captureCalls, 0);
+  assert.equal(Object.hasOwn(result, "paymentFact"), false);
+
+  const invalid = assertPaymentProviderAdapterContract(enabledAdapter({
+    queryPayment: () => validCaptureOutcome(),
+  }));
+  await assert.rejects(
+    () => invalid.queryPayment({
+      paymentOrderRef: "payment-order-1",
+      attemptRef: "attempt-1",
+      providerOrderRef: "provider-order-1",
+    }),
+    expectCode("invalid_payment_operation_result"),
+  );
+});
+
+test("webhook acknowledgement rejects authenticated-capture provenance", async () => {
+  const callbackFact = await createBrandedEvent();
+  const captureFact = await createBrandedCaptureFact();
+  let calls = 0;
+  const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
+    webhookSuccessAck: () => {
+      calls += 1;
+      return { statusCode: 204, contentType: "text/plain", body: "" };
+    },
+  }));
+  await assert.doesNotReject(() => adapter.webhookSuccessAck(callbackFact));
+  await assert.rejects(
+    () => adapter.webhookSuccessAck(captureFact),
+    expectCode("invalid_payment_webhook_ack"),
+  );
+  assert.equal(calls, 1);
+});
+
+test("validates all verified fact types, nullable refs, digests, time, amount, and payload rejection", async () => {
   const { execution } = await createExecution();
   for (const eventType of [
     "payment_pending",
@@ -671,12 +1548,16 @@ test("validates all verified event types, nullable ref, digests, time, amount, a
     "payment_refunded",
     "payment_chargeback",
   ]) {
-    const event = await execution.withCredential("verify_callback", () => validEvent({ eventType }));
+    const event = await executeCallbackFact(execution, validEvent({
+      eventType,
+      providerCaptureRef: eventType === "payment_succeeded" ? "provider-capture-1" : null,
+      providerRefundRef: eventType === "payment_refunded" ? "provider-refund-1" : null,
+    }));
     assert.equal(event.eventType, eventType);
   }
-  const nullable = await execution.withCredential(
-    "verify_callback",
-    () => validEvent({ providerEventRef: null }),
+  const nullable = await executeCallbackFact(
+    execution,
+    validEvent({ providerEventRef: null }),
   );
   assert.equal(nullable.providerEventRef, null);
   for (const value of [
@@ -690,15 +1571,14 @@ test("validates all verified event types, nullable ref, digests, time, amount, a
     { ...validEvent(), payload: "raw-secret" },
   ]) {
     await assert.rejects(
-      () => execution.withCredential("verify_callback", () => value),
+      () => executeCallbackFact(execution, value),
       (error) => error?.code === "provider_operation_failed",
     );
   }
 });
 
 test("normalizes safe webhook acknowledgements and requires branded events", async () => {
-  const { execution } = await createExecution();
-  const event = await execution.withCredential("verify_callback", () => validEvent());
+  const event = await createBrandedEvent();
   for (const contentType of ["text/plain", "application/json", "application/xml", "text/xml"]) {
     const adapter = assertPaymentProviderAdapterContract(enabledAdapter({
       webhookSuccessAck: () => ({ statusCode: 204, contentType, body: "ok" }),
@@ -823,7 +1703,64 @@ test("consumes rejected async normalizeError results without unhandled rejection
   }
 });
 
-test("credential execution covers five operations, exact bindings, fresh scopes, and no credential view", async () => {
+test("compiled Adapter Promise species failures are rejected without reading hostile constructors", async () => {
+  const marker = "native-promise-adapter-species-marker";
+  for (const mode of [
+    "throwing_constructor_getter",
+    "throwing_species_getter",
+  ]) {
+    const queryCounters = { constructor: 0, species: 0 };
+    const queryPromise = poisonNativePromiseConstructor(
+      Promise.resolve(validResult({
+        status: "pending",
+        chargeCertainty: "possibly_charged",
+      })),
+      mode,
+      marker,
+      queryCounters,
+    );
+    const queryAdapter = assertPaymentProviderAdapterContract(enabledAdapter({
+      queryPayment: () => queryPromise,
+    }));
+    let queryError;
+    try {
+      await queryAdapter.queryPayment({
+        paymentOrderRef: "payment-order-1",
+        attemptRef: "attempt-1",
+        providerOrderRef: "provider-order-1",
+      });
+    } catch (error) {
+      queryError = error;
+    }
+    assert.equal(queryError?.message, "invalid_payment_operation_result");
+    assert.equal(queryCounters.constructor, 0);
+    assert.equal(queryCounters.species, 0);
+    assert.doesNotMatch(String(queryError), new RegExp(marker, "u"));
+    assert.doesNotMatch(JSON.stringify(queryError), new RegExp(marker, "u"));
+
+    const normalizeCounters = { constructor: 0, species: 0 };
+    const normalizePromise = poisonNativePromiseConstructor(
+      Promise.resolve(validProviderError()),
+      mode,
+      marker,
+      normalizeCounters,
+    );
+    const normalizeAdapter = assertPaymentProviderAdapterContract(enabledAdapter({
+      normalizeError: () => normalizePromise,
+    }));
+    const normalized = normalizeAdapter.normalizeError({
+      operation: "query_payment",
+      error: new Error(marker),
+    });
+    assert.equal(normalized.code, "provider_operation_failed");
+    assert.equal(normalizeCounters.constructor, 0);
+    assert.equal(normalizeCounters.species, 0);
+    assert.doesNotMatch(String(normalized), new RegExp(marker, "u"));
+    assert.doesNotMatch(JSON.stringify(normalized), new RegExp(marker, "u"));
+  }
+});
+
+test("credential execution covers six operations, exact bindings, fresh scopes, and no credential view", async () => {
   const bindings = [];
   let callbacks = 0;
   let callbackCredentialView;
@@ -838,24 +1775,37 @@ test("credential execution covers five operations, exact bindings, fresh scopes,
   const operations = [
     "create_recharge_order",
     "query_payment",
+    "capture_payment",
     "verify_callback",
     "refund",
     "reconcile",
   ];
   for (const operation of operations) {
-    const output = await execution.withCredential(operation, ({ binding, request }) => {
+    const output = await execution.withCredential(operation, async ({ binding, request }) => {
       callbacks += 1;
       callbackCredentialView = { binding, request };
       assert.equal(binding.operation, operation);
       assert.deepEqual(Object.keys({ binding, request }), ["binding", "request"]);
-      if (operation === "verify_callback") return validEvent();
+      if (operation === "verify_callback") {
+        const { transportReceipt } = await request({ callbackRequestRef: "callback-request-1" });
+        return { transportReceipt, paymentFact: validEvent() };
+      }
+      if (operation === "capture_payment") {
+        const { transportReceipt } = await request({ captureRequestRef: "capture-request-1" });
+        return {
+          transportReceipt,
+          captureOutcome: validCaptureOutcome({
+            paymentFact: validCaptureFact(),
+          }),
+        };
+      }
       return validResult();
     });
     assert.ok(Object.isFrozen(output));
   }
-  assert.equal(callbacks, 5);
+  assert.equal(callbacks, 6);
   assert.equal(getLoaderCalls(), 0);
-  assert.equal(bindings.length, 5);
+  assert.equal(bindings.length, 6);
   for (const [index, binding] of bindings.entries()) {
     assert.deepEqual(binding, {
       profileRef: "profile-1",
@@ -891,7 +1841,7 @@ test("credential execution defends invalid ops, double callbacks, closure, mutat
     },
     requestFn({ request }) {
       requestCalls += 1;
-      return request;
+      return { response: request, evidence: null };
     },
     allowedActionOrigins: ACTION_ORIGINS,
   };
@@ -908,7 +1858,10 @@ test("credential execution defends invalid ops, double callbacks, closure, mutat
     callbackCalls += 1;
     assert.equal(binding.profileRef, "profile-1");
     retainedRequest = request;
-    assert.deepEqual(await request({ ping: true }), { ping: true });
+    const requestResult = await request({ ping: true });
+    assert.deepEqual(requestResult.response, { ping: true });
+    assert.equal(requestResult.evidence, null);
+    assert.deepEqual(Object.keys(requestResult.transportReceipt), []);
     return Promise.resolve(validResult());
   });
   assert.deepEqual(result, validResult());
@@ -933,6 +1886,62 @@ test("credential execution defends invalid ops, double callbacks, closure, mutat
     (error) => error?.code === "provider_operation_failed",
   );
   assert.equal(thenTrap, 0);
+});
+
+test("compiled credential callbacks reject genuine Promise species failures and close scope", async () => {
+  const marker = "native-promise-callback-species-marker";
+  for (const mode of [
+    "throwing_constructor_getter",
+    "throwing_species_getter",
+  ]) {
+    const counters = { constructor: 0, species: 0, request: 0 };
+    const rawFact = validEvent();
+    const callbackPromise = poisonNativePromiseConstructor(
+      Promise.resolve({
+        transportReceipt: Object.freeze({}),
+        paymentFact: rawFact,
+      }),
+      mode,
+      marker,
+      counters,
+    );
+    let retainedRequest;
+    let output;
+    let caught;
+    const { execution } = await createExecution({
+      requestFn() {
+        counters.request += 1;
+        throw new Error("must-not-run");
+      },
+    });
+    try {
+      output = await execution.withCredential(
+        "verify_callback",
+        ({ request }) => {
+          retainedRequest = request;
+          return callbackPromise;
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    assert.equal(output, undefined);
+    assert.equal(counters.constructor, 0);
+    assert.equal(counters.species, 0);
+    assert.equal(counters.request, 0);
+    assert.equal(caught?.code, "provider_operation_failed");
+    assert.doesNotMatch(String(caught), new RegExp(marker, "u"));
+    assert.doesNotMatch(JSON.stringify(caught), new RegExp(marker, "u"));
+    assert.throws(
+      () => normalizeVerifiedPaymentEvent(rawFact),
+      expectCode("invalid_verified_payment_event"),
+    );
+    await assert.rejects(
+      () => retainedRequest({ afterCallbackFailure: true }),
+      expectCode("payment_execution_scope_closed"),
+    );
+  }
 });
 
 test("request transport failures atomically close the credential scope", async () => {
@@ -1017,6 +2026,200 @@ test("loader failures close retained scopes and drain background callback reject
   }
 });
 
+test("loader rejects Promise-prototype then spoofs and closes opened scopes safely", async () => {
+  const marker = "promise-prototype-loader-marker";
+  for (const mode of ["data_then", "throwing_then_getter"]) {
+    const counters = { then: 0, getter: 0, request: 0 };
+    const spoof = Object.create(Promise.prototype);
+    if (mode === "data_then") {
+      Object.defineProperty(spoof, "then", {
+        value() {
+          counters.then += 1;
+          return Promise.resolve("forged-loader-result");
+        },
+      });
+    } else {
+      Object.defineProperty(spoof, "then", {
+        get() {
+          counters.getter += 1;
+          throw new Error(marker);
+        },
+      });
+    }
+
+    let releaseCallback;
+    const callbackGate = new Promise((resolve) => {
+      releaseCallback = resolve;
+    });
+    let callbackOutcome;
+    let callbackValue;
+    let callbackError;
+    let retainedRequest;
+    const rawFact = validEvent();
+    const execution = createCredentialScopedPaymentExecution({
+      profileRef: "profile-1",
+      adapterKey: "provider_core",
+      contractVersion: "v1",
+      credentialProfileRef: "credential-profile-1",
+      credentialLoader: {
+        withCredential(_binding, callback) {
+          callbackOutcome = callback("opaque-credential");
+          return spoof;
+        },
+      },
+      requestFn() {
+        counters.request += 1;
+        return {
+          response: { accepted: true },
+          evidence: {
+            merchantScopeDigest: DIGEST,
+            payloadDigest: PAYLOAD_DIGEST,
+          },
+        };
+      },
+      allowedActionOrigins: ACTION_ORIGINS,
+    });
+
+    let outerValue;
+    let outerError;
+    try {
+      try {
+        outerValue = await execution.withCredential(
+          "verify_callback",
+          async ({ request }) => {
+            retainedRequest = request;
+            await callbackGate;
+            const { transportReceipt } = await request({
+              callbackRequestRef: `loader-${mode}`,
+            });
+            return { transportReceipt, paymentFact: rawFact };
+          },
+        );
+      } catch (error) {
+        outerError = error;
+      }
+    } finally {
+      releaseCallback();
+      try {
+        callbackValue = await callbackOutcome;
+      } catch (error) {
+        callbackError = error;
+      }
+    }
+
+    assert.equal(outerValue, undefined);
+    assert.equal(callbackValue, undefined);
+    assert.equal(outerError?.code, "provider_operation_failed");
+    assert.equal(callbackError?.code, "provider_operation_failed");
+    assert.equal(counters.then, 0);
+    assert.equal(counters.getter, 0);
+    assert.equal(counters.request, 0);
+    assert.doesNotMatch(String(outerError), new RegExp(marker, "u"));
+    assert.doesNotMatch(JSON.stringify(outerError), new RegExp(marker, "u"));
+    assert.throws(
+      () => normalizeVerifiedPaymentEvent(rawFact),
+      expectCode("invalid_verified_payment_event"),
+    );
+    await assert.rejects(
+      () => retainedRequest({ afterLoaderFailure: true }),
+      expectCode("payment_execution_scope_closed"),
+    );
+  }
+});
+
+test("loader rejects genuine Promises with throwing constructor or species and drains callbacks", async () => {
+  const marker = "native-promise-loader-species-marker";
+  for (const mode of [
+    "throwing_constructor_getter",
+    "throwing_species_getter",
+  ]) {
+    const counters = { constructor: 0, species: 0, request: 0 };
+    const loaderPromise = poisonNativePromiseConstructor(
+      Promise.resolve(),
+      mode,
+      marker,
+      counters,
+    );
+    let releaseCallback;
+    const callbackGate = new Promise((resolve) => {
+      releaseCallback = resolve;
+    });
+    let callbackOutcome;
+    let callbackValue;
+    let callbackError;
+    let retainedRequest;
+    const rawFact = validEvent();
+    const execution = createCredentialScopedPaymentExecution({
+      profileRef: "profile-1",
+      adapterKey: "provider_core",
+      contractVersion: "v1",
+      credentialProfileRef: "credential-profile-1",
+      credentialLoader: {
+        withCredential(_binding, callback) {
+          callbackOutcome = callback("opaque-credential");
+          return loaderPromise;
+        },
+      },
+      requestFn() {
+        counters.request += 1;
+        return {
+          response: { accepted: true },
+          evidence: {
+            merchantScopeDigest: DIGEST,
+            payloadDigest: PAYLOAD_DIGEST,
+          },
+        };
+      },
+      allowedActionOrigins: ACTION_ORIGINS,
+    });
+
+    let outerValue;
+    let outerError;
+    try {
+      try {
+        outerValue = await execution.withCredential(
+          "verify_callback",
+          async ({ request }) => {
+            retainedRequest = request;
+            await callbackGate;
+            const { transportReceipt } = await request({
+              callbackRequestRef: `loader-native-${mode}`,
+            });
+            return { transportReceipt, paymentFact: rawFact };
+          },
+        );
+      } catch (error) {
+        outerError = error;
+      }
+    } finally {
+      releaseCallback();
+      try {
+        callbackValue = await callbackOutcome;
+      } catch (error) {
+        callbackError = error;
+      }
+    }
+
+    assert.equal(outerValue, undefined);
+    assert.equal(callbackValue, undefined);
+    assert.equal(outerError?.code, "provider_operation_failed");
+    assert.equal(callbackError?.code, "provider_operation_failed");
+    assert.equal(counters.constructor, 0);
+    assert.equal(counters.species, 0);
+    assert.equal(counters.request, 0);
+    assert.doesNotMatch(String(outerError), new RegExp(marker, "u"));
+    assert.doesNotMatch(JSON.stringify(outerError), new RegExp(marker, "u"));
+    assert.throws(
+      () => normalizeVerifiedPaymentEvent(rawFact),
+      expectCode("invalid_verified_payment_event"),
+    );
+    await assert.rejects(
+      () => retainedRequest({ afterLoaderFailure: true }),
+      expectCode("payment_execution_scope_closed"),
+    );
+  }
+});
+
 test("successful early loader resolution keeps scope open until callback settles", async () => {
   let retainedRequest;
   let releaseCallback;
@@ -1033,13 +2236,15 @@ test("successful early loader resolution keeps scope open until callback settles
     },
     requestFn({ request }) {
       transportCalls += 1;
-      return request;
+      return { response: request, evidence: null };
     },
   });
   const outer = execution.withCredential("query_payment", async ({ request }) => {
     retainedRequest = request;
     await callbackGate;
-    assert.deepEqual(await request({ allowed: true }), { allowed: true });
+    const requestResult = await request({ allowed: true });
+    assert.deepEqual(requestResult.response, { allowed: true });
+    assert.equal(requestResult.evidence, null);
     return validResult();
   });
   await new Promise((resolve) => setImmediate(resolve));

@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-07-15, America/Los_Angeles.
+Last updated: 2026-07-24, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-07-24
   production_authority: false
 ```
 
@@ -169,6 +169,8 @@ production inventory. The production/runtime evidence cutoff remains dated at
 | `docs/PARTNER_ATTRIBUTION_SETTLEMENT_ARCHITECTURE.md` | Provider-agnostic partner attribution and settlement architecture covering partner/campaign source evidence, attribution touch ledger, backend-confirmed settlement candidates, disabled/dry-run provider adapters such as AppsFlyer, Admin reporting, privacy rules, and A-tier activation gates. | Active architecture and task-line baseline; no AppsFlyer credentials, provider postbacks, live Web/S2S events, production schema migration, public campaign launch, partner payout, settlement execution, secret, subscription URL, credential, or customer-data authority. | Read before adding attribution capture, partner/campaign models, AppsFlyer or UTM adapters, settlement candidate logic, partner reporting, fraud/reconciliation guardrails, or production partner-link activation. |
 | `docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md` | Repo-only plan for per-order traffic usage samples, rollups, quota decisions, controlled disable/revoke, and subscription header backfill. | Active implementation plan; no production, AWS, Vultr, Aliyun, runtime, payment, DB migration, or subscription issuance authority by itself. | Read before implementing usage ledgers, Mihomo usage collectors, quota enforcement, abuse controls, or traffic-aware subscription headers. |
 | `docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md` | Canonical source-only payment Adapter template plus an independent safe environment-summary compatibility helper. | Unregistered, `unverified`, and fully disabled; no real protocol, provider capability, callback, refund, reconciliation, Store/schema, wallet, runtime, or production authority. | Read before verifying a provider contract, enabling Adapter capabilities, adding payment credentials, or planning callback, refund, reconciliation, or durable payment storage work. |
+| `docs/superpowers/specs/2026-07-24-payment-provider-adapter-v1-design.md` | Provider Core V1 design for the canonical contract, three disabled named Adapter identities, and synthetic PayPal/XSD evidence boundaries. | Source-only design with no execution or production authority; Risk A Payment Store/schema, provider credentials/calls, callback registration, wallet settlement, Portal/Admin UI, runtime activation, and deployment remain deferred. | Read before changing Provider Core, validating a provider, or proposing a separately gated payment vertical slice. |
+| `docs/superpowers/plans/2026-07-24-payment-provider-adapter-v1-phase1.md` | Provider Core V1 Phase 1 source/test implementation plan. | Source-only plan with no execution or production authority; Risk A Payment Store/schema, provider credentials/calls, callback registration, wallet settlement, Portal/Admin UI, runtime activation, and deployment remain deferred. | Read before reviewing Phase 1 source boundaries or planning a separately approved follow-on. |
 | `docs/ADMIN_UI_LEGACY_ARCHIVE.md` | Legacy Admin UI archive decision: the existing `admin/` app remains a local protected reference/testing surface, but is no longer the future user/operator/product UI baseline. | Active archive boundary; docs-only and no execution authority. | Read before polishing, extending, deleting, replacing, or publicly exposing the old Admin UI. |
 | `docs/ADMIN_CONSOLE_REBUILD_BASELINE.md` | GCC-42 New Admin Console rebuild baseline covering reference style, first-screen frame, object responsibilities, locked future navigation slots, and acceptance criteria. | Active UI rebuild baseline; docs-only and no production, template migration, auth, schema, runtime, token, credential, subscription URL, or customer-data authority. | Read before implementing New Admin shell, dashboard, Case/workbench, user/resource supervision, traffic/channel supervision, or visual primitives. |
 | `docs/ADMIN_CONSOLE_CONCEPT_REQUIREMENTS_MATRIX.md` | Card-by-card requirements matrix extracted from the Admin console concept image, covering every visible shell region, metric card, queue, table, timeline, page, interaction, data source, and acceptance check. | Active UI requirements matrix; docs-only and no production, template migration, auth, schema, runtime, token, credential, subscription URL, raw config/log/env, SQLite row, or customer-data authority. | Read before implementing or reviewing concept parity for `总览`, `用户监管`, `平台监控`, `审计与工单`, `平台开发`, `系统设置`, or shared Admin UI primitives. |

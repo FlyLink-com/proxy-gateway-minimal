@@ -17,6 +17,7 @@ const ADAPTER_KEYS = [
   "supportedPaymentMethods",
   "createRechargeOrder",
   "queryPayment",
+  "capturePayment",
   "verifyAndNormalizeCallback",
   "normalizeError",
   "webhookSuccessAck",
@@ -26,10 +27,12 @@ const ADAPTER_KEYS = [
 const FALSE_CAPABILITIES = {
   createRechargeOrder: false,
   queryPayment: false,
+  capturePayment: false,
   verifyCallback: false,
   refund: false,
   reconcile: false,
   repeatCreateIdempotent: false,
+  repeatCaptureIdempotent: false,
 };
 
 function trappingProxy(value, counters) {
@@ -175,7 +178,6 @@ test("template is an exact frozen canonical unverified Adapter", () => {
 
   for (const forbidden of [
     "createCheckoutOrder",
-    "capturePayment",
     "verifyWebhook",
     "normalizeVerifiedPaymentEvent",
     "provider",
@@ -194,6 +196,7 @@ test("all disabled template operations reject before reading caller input", asyn
   for (const operation of [
     "createRechargeOrder",
     "queryPayment",
+    "capturePayment",
     "verifyAndNormalizeCallback",
     "webhookSuccessAck",
     "refund",
@@ -269,7 +272,6 @@ test("template source has no legacy billing or self-declared verification seam",
 
   assert.doesNotMatch(source, /normalizeBillingPaymentEvent/u);
   assert.doesNotMatch(source, /normalizeVerifiedPaymentProviderEvent/u);
-  assert.doesNotMatch(source, /\bcapturePayment\b/u);
   assert.doesNotMatch(source, /\bverifyWebhook\b/u);
   assert.doesNotMatch(source, /verificationStatus\s*[:=]\s*["']verified["']/u);
 });

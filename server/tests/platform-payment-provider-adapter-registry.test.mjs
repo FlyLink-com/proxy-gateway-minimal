@@ -6,11 +6,14 @@ import {
   createStaticPaymentProviderAdapterRegistry,
 } from "../services/platform/payment-provider-adapter-registry.mjs";
 import {
-  createProviderAPaymentAdapter,
-} from "../services/platform/provider-a-payment-adapter.mjs";
+  createPayPalPaymentAdapter,
+} from "../services/platform/paypal-payment-adapter.mjs";
 import {
-  createProviderBPaymentAdapter,
-} from "../services/platform/provider-b-payment-adapter.mjs";
+  createXsdPaymentAdapter,
+} from "../services/platform/xsd-payment-adapter.mjs";
+import {
+  createChaoJiPayPaymentAdapter,
+} from "../services/platform/chaojipay-payment-adapter.mjs";
 
 const NOW = "2026-07-23T12:34:56.789Z";
 const ADAPTER_KEYS = [
@@ -21,6 +24,7 @@ const ADAPTER_KEYS = [
   "supportedPaymentMethods",
   "createRechargeOrder",
   "queryPayment",
+  "capturePayment",
   "verifyAndNormalizeCallback",
   "normalizeError",
   "webhookSuccessAck",
@@ -30,30 +34,37 @@ const ADAPTER_KEYS = [
 const CAPABILITY_KEYS = [
   "createRechargeOrder",
   "queryPayment",
+  "capturePayment",
   "verifyCallback",
   "refund",
   "reconcile",
   "repeatCreateIdempotent",
+  "repeatCaptureIdempotent",
 ];
 const FALSE_CAPABILITIES = Object.freeze({
   createRechargeOrder: false,
   queryPayment: false,
+  capturePayment: false,
   verifyCallback: false,
   refund: false,
   reconcile: false,
   repeatCreateIdempotent: false,
+  repeatCaptureIdempotent: false,
 });
 const TRUE_CAPABILITIES = Object.freeze({
   createRechargeOrder: true,
   queryPayment: true,
+  capturePayment: true,
   verifyCallback: true,
   refund: true,
   reconcile: true,
   repeatCreateIdempotent: true,
+  repeatCaptureIdempotent: true,
 });
 const OPERATIONS = [
   "createRechargeOrder",
   "queryPayment",
+  "capturePayment",
   "verifyAndNormalizeCallback",
   "webhookSuccessAck",
   "refund",
@@ -62,7 +73,7 @@ const OPERATIONS = [
 
 function knownResolution(overrides = {}) {
   return {
-    adapterKey: "provisional_provider_a_v1",
+    adapterKey: "paypal_v1",
     profileRef: "profile-1",
     contractVersion: "unverified",
     credentialProfileRef: "credential-profile-1",
@@ -100,7 +111,7 @@ function trappingProxy(value, counters) {
   });
 }
 
-test("static registry lists two detached frozen descriptors in compiled order", () => {
+test("static registry lists three detached frozen descriptors in compiled order", () => {
   const registry = createStaticPaymentProviderAdapterRegistry({ nowFn: () => NOW });
   assert.equal(Object.getPrototypeOf(registry), Object.prototype);
   assert.ok(Object.isFrozen(registry));
@@ -113,15 +124,22 @@ test("static registry lists two detached frozen descriptors in compiled order", 
   assert.notEqual(first, second);
   assert.deepEqual(first, [
     {
-      adapterKey: "provisional_provider_a_v1",
-      providerId: "provisional_provider_a",
+      adapterKey: "paypal_v1",
+      providerId: "paypal_commerce",
       contractVersion: "unverified",
       capabilities: { ...FALSE_CAPABILITIES },
       supportedPaymentMethods: [],
     },
     {
-      adapterKey: "provisional_provider_b_v1",
-      providerId: "provisional_provider_b",
+      adapterKey: "xsd_v1",
+      providerId: "xsd",
+      contractVersion: "unverified",
+      capabilities: { ...FALSE_CAPABILITIES },
+      supportedPaymentMethods: [],
+    },
+    {
+      adapterKey: "chaojipay_v1",
+      providerId: "chaojipay",
       contractVersion: "unverified",
       capabilities: { ...FALSE_CAPABILITIES },
       supportedPaymentMethods: [],
@@ -146,8 +164,8 @@ test("static registry lists two detached frozen descriptors in compiled order", 
   assert.notEqual(first[0], second[0]);
   assert.notEqual(first[0].capabilities, second[0].capabilities);
   assert.notEqual(first[0].supportedPaymentMethods, second[0].supportedPaymentMethods);
-  assert.equal(new Set(first.map(({ adapterKey }) => adapterKey)).size, 2);
-  assert.equal(new Set(first.map(({ providerId }) => providerId)).size, 2);
+  assert.equal(new Set(first.map(({ adapterKey }) => adapterKey)).size, 3);
+  assert.equal(new Set(first.map(({ providerId }) => providerId)).size, 3);
   assert.notEqual(first[0].adapterKey, first[0].providerId);
   assert.notEqual(first[1].adapterKey, first[1].providerId);
 });
@@ -160,10 +178,12 @@ test("unknown Adapter detection precedes missing known-resolution fields", () =>
       declaredCapabilities: {
         createRechargeOrder: false,
         queryPayment: false,
+        capturePayment: false,
         verifyCallback: false,
         refund: true,
         reconcile: false,
         repeatCreateIdempotent: false,
+        repeatCaptureIdempotent: false,
       },
     }),
     "payment_adapter_not_registered",
@@ -181,7 +201,7 @@ test("unknown Adapter detection precedes missing known-resolution fields", () =>
 test("known resolution requires exact safe refs, version, and full strict declarations", () => {
   const registry = createStaticPaymentProviderAdapterRegistry();
   const valid = registry.resolve(knownResolution());
-  assert.equal(valid.adapterKey, "provisional_provider_a_v1");
+  assert.equal(valid.adapterKey, "paypal_v1");
 
   const invalidInputs = [];
   for (const key of [
@@ -300,14 +320,18 @@ test("resolution rejects symbols, accessors, and Proxies without executing traps
 test("database declarations can only reduce every compiled capability", () => {
   const registry = createStaticPaymentProviderAdapterRegistry();
   for (const adapterKey of [
-    "provisional_provider_a_v1",
-    "provisional_provider_b_v1",
+    "paypal_v1",
+    "xsd_v1",
+    "chaojipay_v1",
   ]) {
     for (const capabilityKey of CAPABILITY_KEYS) {
       const declaredCapabilities = { ...FALSE_CAPABILITIES };
       declaredCapabilities[capabilityKey] = true;
       if (capabilityKey === "repeatCreateIdempotent") {
         declaredCapabilities.createRechargeOrder = true;
+      }
+      if (capabilityKey === "repeatCaptureIdempotent") {
+        declaredCapabilities.capturePayment = true;
       }
       const adapter = registry.resolve(knownResolution({
         adapterKey,
@@ -341,6 +365,19 @@ test("repeat-create declaration cannot be true when create is false", () => {
   );
 });
 
+test("repeat-capture declaration cannot be true when capture is false", () => {
+  const registry = createStaticPaymentProviderAdapterRegistry();
+  assertRegistryError(
+    () => registry.resolve(knownResolution({
+      declaredCapabilities: {
+        ...FALSE_CAPABILITIES,
+        repeatCaptureIdempotent: true,
+      },
+    })),
+    "invalid_payment_adapter_resolution",
+  );
+});
+
 test("successful resolution returns only distinct canonical frozen Adapters", () => {
   const registry = createStaticPaymentProviderAdapterRegistry();
   const first = registry.resolve(knownResolution());
@@ -365,8 +402,9 @@ test("successful resolution returns only distinct canonical frozen Adapters", ()
 
 test("raw factories stay unverified while resolved normalized operations stay disabled", async () => {
   for (const [factory, adapterKey] of [
-    [createProviderAPaymentAdapter, "provisional_provider_a_v1"],
-    [createProviderBPaymentAdapter, "provisional_provider_b_v1"],
+    [createPayPalPaymentAdapter, "paypal_v1"],
+    [createXsdPaymentAdapter, "xsd_v1"],
+    [createChaoJiPayPaymentAdapter, "chaojipay_v1"],
   ]) {
     const raw = factory({ nowFn: () => NOW });
     assert.throws(() => raw.createRechargeOrder({}), (error) => (
@@ -396,7 +434,7 @@ test("raw factories stay unverified while resolved normalized operations stay di
   }
 });
 
-test("constructor is closed over loader, time, and the two compiled transport entries", () => {
+test("constructor is closed over loader, time, and the three compiled transport entries", () => {
   const requestFn = () => {
     throw new Error("must-not-run");
   };
@@ -406,11 +444,11 @@ test("constructor is closed over loader, time, and the two compiled transport en
     },
   };
   const transports = {
-    provisional_provider_a_v1: {
+    paypal_v1: {
       requestFn,
       allowedActionOrigins: ["https://provider-a.example.test"],
     },
-    provisional_provider_b_v1: {
+    xsd_v1: {
       requestFn,
       allowedActionOrigins: ["https://provider-b.example.test"],
     },
@@ -453,18 +491,18 @@ test("constructor is closed over loader, time, and the two compiled transport en
     { credentialLoader: { withCredential: "not-a-function" } },
     { credentialLoader: { withCredential() {}, extra: true } },
     { transports: null },
-    { transports: { unknown_adapter_v1: transports.provisional_provider_a_v1 } },
+    { transports: { unknown_adapter_v1: transports.paypal_v1 } },
     {
       transports: {
-        provisional_provider_a_v1: {
-          ...transports.provisional_provider_a_v1,
+        paypal_v1: {
+          ...transports.paypal_v1,
           endpoint: "synthetic-secret-marker",
         },
       },
     },
     {
       transports: {
-        provisional_provider_a_v1: {
+        paypal_v1: {
           requestFn: new Proxy(requestFn, {}),
           allowedActionOrigins: [],
         },
@@ -472,7 +510,7 @@ test("constructor is closed over loader, time, and the two compiled transport en
     },
     {
       transports: {
-        provisional_provider_a_v1: {
+        paypal_v1: {
           requestFn,
           allowedActionOrigins: ["http://synthetic-secret-marker.example.test"],
         },
@@ -480,7 +518,7 @@ test("constructor is closed over loader, time, and the two compiled transport en
     },
     {
       transports: {
-        provisional_provider_a_v1: {
+        paypal_v1: {
           requestFn,
           allowedActionOrigins: ["https://provider-a.example.test/"],
         },
@@ -536,14 +574,14 @@ test("construct, list, resolve, and disabled rejection perform no loader, reques
       },
     },
     transports: {
-      provisional_provider_a_v1: {
+      paypal_v1: {
         requestFn() {
           counters.request += 1;
           throw new Error("must-not-run");
         },
         allowedActionOrigins: ["https://provider-a.example.test"],
       },
-      provisional_provider_b_v1: {
+      xsd_v1: {
         requestFn() {
           counters.request += 1;
           throw new Error("must-not-run");
@@ -558,8 +596,9 @@ test("construct, list, resolve, and disabled rejection perform no loader, reques
   });
   registry.list();
   for (const adapterKey of [
-    "provisional_provider_a_v1",
-    "provisional_provider_b_v1",
+    "paypal_v1",
+    "xsd_v1",
+    "chaojipay_v1",
   ]) {
     const adapter = registry.resolve(knownResolution({
       adapterKey,
@@ -582,7 +621,7 @@ test("construct, list, resolve, and disabled rejection perform no loader, reques
   );
 });
 
-test("synthetic secret markers never appear in projections, Adapters, or errors", () => {
+test("Registry projections Adapters and errors never contain synthetic secret markers", () => {
   const marker = "synthetic-secret-marker";
   const registry = createStaticPaymentProviderAdapterRegistry({
     credentialLoader: {
@@ -591,7 +630,7 @@ test("synthetic secret markers never appear in projections, Adapters, or errors"
       },
     },
     transports: {
-      provisional_provider_a_v1: {
+      paypal_v1: {
         requestFn() {
           throw new Error(marker);
         },
