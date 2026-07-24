@@ -196,7 +196,7 @@ function createOperations({
       calls.push("listArchiveEntries");
       return [
         "scripts/mihomo-tuic-usage-map-rebuild.mjs",
-        "server/services/platform/japan-tuic-repair-observation.mjs",
+        "scripts/traffic-accounting-natural-observation.mjs",
         "server/services/platform/traffic-collector-admin-projection.mjs",
         "server/services/platform/traffic-collector-status-producers.mjs"
       ];
@@ -310,15 +310,22 @@ test("binding rejects relative, duplicate, missing, and extra path fields", () =
 test("archive inspection requires reviewed helpers and rejects unsafe paths", () => {
   const requiredEntries = [
     "scripts/mihomo-tuic-usage-map-rebuild.mjs",
+    "scripts/traffic-accounting-natural-observation.mjs",
     "server/services/platform/traffic-collector-admin-projection.mjs",
     "server/services/platform/traffic-collector-status-producers.mjs"
   ];
-  assert.deepEqual(validateArchiveEntries(requiredEntries), { safe: true, entryCount: 3 });
+  assert.deepEqual(validateArchiveEntries(requiredEntries), { safe: true, entryCount: 4 });
   for (const entries of [
     ["../escape", ...requiredEntries],
     ["/absolute", ...requiredEntries],
     ["C:/windows", ...requiredEntries],
     requiredEntries.slice(1),
+    [
+      "scripts/mihomo-tuic-usage-map-rebuild.mjs",
+      "server/services/platform/japan-tuic-repair-observation.mjs",
+      "server/services/platform/traffic-collector-admin-projection.mjs",
+      "server/services/platform/traffic-collector-status-producers.mjs"
+    ],
     [...requiredEntries, requiredEntries[0]]
   ]) {
     assert.throws(

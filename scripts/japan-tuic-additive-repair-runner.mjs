@@ -47,6 +47,7 @@ const BINDING_PATH_KEYS = Object.freeze([
 const ALLOWED_ZIP_TYPES = new Set(["-", "d"]);
 const REQUIRED_ARCHIVE_ENTRIES = Object.freeze([
   "scripts/mihomo-tuic-usage-map-rebuild.mjs",
+  "scripts/traffic-accounting-natural-observation.mjs",
   "server/services/platform/traffic-collector-admin-projection.mjs",
   "server/services/platform/traffic-collector-status-producers.mjs"
 ]);
