@@ -238,6 +238,20 @@ while those conditions remain true; `approval_pr` is not a one-time or consumed
 credential. It does not bootstrap host access, authorize dispatch, apply the
 map, or prove production success; each remains behind its separate Risk A gate.
 
+The Japan TUIC repair-observation source candidate is likewise
+`not_deployed`. It neither deploys the writer nor configures an observation-file
+path, creates CI credentials, secrets, bindings, or systemd units, changes the
+protected map, or dispatches a workflow run. A later, separately approved Risk
+A sequence must deploy the reviewed control-plane source, configure one
+protected observation-file path, obtain two naturally timer-written accepted
+observations, complete fresh aggregate preflight, then bootstrap the temporary
+forced-command identity with both its runner and sibling helper matched to that
+reviewed source release, dispatch one run, and prove host and GitHub cleanup.
+The fixed 2026-07-16 map-repair ZIP remains unchanged and cannot prove that a
+newer host-side sibling helper is deployed. Source merge, if approved, does not
+establish any of those steps or a
+closed-loop production result.
+
 GitHub reports 0 open code-scanning alerts, 0 open Dependabot alerts, and 0 open
 secret-scanning alerts at this cutoff. Successful CodeQL execution remains
 source-analysis evidence rather than production proof.
@@ -261,6 +275,9 @@ The ordered next-action queue is:
 - #437 Traffic Accounting remains the primary implementation Epic. Source now
   includes the reviewed credential-lifecycle, cumulative-accounting,
   unresolved-provenance, and offline natural-observation work through #478.
+  The Japan TUIC repair-observation writer remains a source candidate and is
+  not deployed; it has no configured protected observation path, CI identity,
+  CI secret/binding, systemd change, map mutation, or dispatched repair run.
   A 2026-07-23 read-only Japan aggregate observation found identity sync
   degraded (`missing=3`, `stale=46`) with an additive-only candidate
   (`add=3`, `remove=0`). Periodic traffic collection is active; `map_apply`

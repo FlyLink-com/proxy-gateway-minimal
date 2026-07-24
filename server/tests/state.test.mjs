@@ -3018,6 +3018,46 @@ test("createRuntimeState wires the optional cross-process collector status store
   }
 });
 
+test("createRuntimeState rejects a Japan observation path without a collector status path", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-observation-without-status-"));
+  try {
+    assert.throws(() => createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        EDGE_JAPAN_TUIC_REPAIR_OBSERVATION_PATH: join(dir, "observation.json")
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      autoStartHttpProxy: false
+    }), { code: "validation_error" });
+  } finally {
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState rejects equal resolved status and Japan observation paths", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-observation-status-collision-"));
+  const sharedPath = join(dir, "protected", "..", "collector.json");
+  try {
+    assert.throws(() => createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        EDGE_USAGE_COLLECTOR_STATUS_PATH: join(dir, "collector.json"),
+        EDGE_JAPAN_TUIC_REPAIR_OBSERVATION_PATH: sharedPath
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      autoStartHttpProxy: false
+    }), { code: "validation_error" });
+  } finally {
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState wires env-gated Mihomo TUIC usage collector into the control ledger", async () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-tuic-usage-ledger-"));
   const proxyConfigPath = join(dir, "proxy-servers.json");

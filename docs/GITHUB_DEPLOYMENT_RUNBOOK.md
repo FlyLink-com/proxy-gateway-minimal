@@ -89,6 +89,14 @@ lane: **control-plane-app is not authorized**. Application installation,
 release switching, service or timer restart, stale deletion, schema/database
 changes, and adjacent infrastructure mutation remain prohibited.
 
+The fixed 2026-07-16 map-repair ZIP remains unchanged. It can establish only
+the reviewed map-helper boundary it contains; it cannot prove that a newer
+host-side sibling helper is deployed. Before bootstrap, the separately approved
+Risk A Gate must bind both the deployed forced-command runner and its sibling
+helper to the reviewed source release. This source/deployment binding is a
+bootstrap prerequisite, not evidence that bootstrap, dispatch, map apply, or
+closed-loop repair succeeded.
+
 The preflight job has no production secrets. It validates the exact artifact
 digest and independently compares the archive's canonical paths, blobs, and
 executable modes with the artifact Git tree at
@@ -104,6 +112,31 @@ streams the verified archive to a host-side forced command; it does not receive
 an interactive shell, PTY, forwarding, SCP, rsync, or an operator SSH identity.
 Logs and summaries contain aggregate receipts only.
 
+#### Japan TUIC Observation Source Prerequisite
+
+The Japan TUIC repair-observation source PR is a `Risk: B source-only`
+candidate for release unit `control-plane-app` with `identity_impact: true`.
+It adds source for a bounded Japan-scoped observation writer, but does **not**
+deploy that writer, configure its protected observation-file path, create CI
+credentials, secrets, bindings, or systemd units, change a protected map, or
+dispatch this workflow. Merging the source PR is neither a deployment nor a
+closed-loop repair result.
+
+Before any repair execution, a separately approved Risk A sequence must occur
+in this order:
+
+1. deploy the reviewed control-plane source;
+2. configure one protected observation-file path;
+3. wait for two naturally timer-written accepted Japan observations;
+4. complete a fresh aggregate preflight;
+5. bootstrap the temporary forced-command identity;
+6. dispatch one run; and
+7. prove host and GitHub cleanup.
+
+Each numbered action remains independently bounded by its applicable Risk A
+authorization. The collector timer is the only observation producer: the
+repair runner must not manually invoke, restart, enable, or disable it.
+
 #### CI Identity Bootstrap Gate
 
 > **Blocked pending a separate exact Risk A authorization.** This runbook does
@@ -114,7 +147,8 @@ Logs and summaries contain aggregate receipts only.
 
 This independent exact Risk A Gate must be approved and completed before any
 workflow dispatch. It creates a new temporary, dedicated CI SSH identity,
-installs only the reviewed forced-command runner and one marked restricted
+installs only the reviewed forced-command runner and its reviewed sibling
+helper from the same reviewed source release, installs one marked restricted
 authorization, pins the target host key, and writes only these five temporary
 connection Environment secrets:
 
