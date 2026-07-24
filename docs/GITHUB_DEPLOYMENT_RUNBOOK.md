@@ -73,13 +73,16 @@ strategy `additive_missing_only`. Its protected Environment is
 production operation. Every dispatch and execution remains behind a separate
 exact Risk A Gate.
 
-This lane consumes only the frozen dry-run artifact from run `29495150692`:
+This lane consumes only the new immutable source artifact from run
+`30092196734`:
 
-- source commit: `47a2a9583fb44cb905e91aade02ae5aa3d635d94`;
-- artifact file: `proxy-gateway-control-plane-cumulative-20260716-003.zip`;
-- artifact size: `4744340` bytes;
+- source commit: `70880d83761b165e91e9c521ec480fcc840375fb`;
+- artifact file: `proxy-gateway-japan-tuic-additive-repair-20260724-001.zip`;
+- artifact size: `4829111` bytes;
 - artifact SHA-256:
-  `d6c0663c9a7c82c6e8ffb7d354e2a4c23d26f3339586533df5c268b887b839fd`;
+  `43d5cea28dc70b838f95706690b45282297b1dae3cfe3b76ab941660ed7a83fe`;
+- gate basis: `japan-tuic-identity-additive-repair-20260724-003`;
+- execution gate: `github-actions-japan-tuic-additive-repair-20260724-002`;
 - candidate: `add=3`, `remove=0`, `deferred_remove=46`, `changed=0`,
   `missing_material=0`, `projected_map=82`.
 
@@ -89,7 +92,7 @@ lane: **control-plane-app is not authorized**. Application installation,
 release switching, service or timer restart, stale deletion, schema/database
 changes, and adjacent infrastructure mutation remain prohibited.
 
-The fixed 2026-07-16 map-repair ZIP remains unchanged. It can establish only
+The fixed 2026-07-24 map-repair ZIP remains unchanged. It can establish only
 the reviewed map-helper boundary it contains; it cannot prove that a newer
 host-side sibling helper is deployed. Before bootstrap, the separately approved
 Risk A Gate must bind both the deployed forced-command runner and its sibling
@@ -100,7 +103,7 @@ closed-loop repair succeeded.
 The preflight job has no production secrets. It validates the exact artifact
 digest and independently compares the archive's canonical paths, blobs, and
 executable modes with the artifact Git tree at
-`47a2a9583fb44cb905e91aade02ae5aa3d635d94`. The dispatcher supplies the
+`70880d83761b165e91e9c521ec480fcc840375fb`. The dispatcher supplies the
 required `approval_pr` number, not an approval token or confirmation value.
 Before artifact download or any connection-secret reference, the protected
 execute job queries that PR and accepts it only when its exact merge commit is
@@ -114,13 +117,12 @@ Logs and summaries contain aggregate receipts only.
 
 #### Japan TUIC Observation Source Prerequisite
 
-The Japan TUIC repair-observation source PR is a `Risk: B source-only`
-candidate for release unit `control-plane-app` with `identity_impact: true`.
-It adds source for a bounded Japan-scoped observation writer, but does **not**
-deploy that writer, configure its protected observation-file path, create CI
-credentials, secrets, bindings, or systemd units, change a protected map, or
-dispatch this workflow. Merging the source PR is neither a deployment nor a
-closed-loop repair result.
+The Japan TUIC repair-observation source is a bounded `Risk: B` capability for
+release unit `control-plane-app` with `identity_impact: true`. Its deployment,
+protected observation-file path, and active timer are recorded separately from
+this source gate. Neither the writer deployment nor this new immutable artifact
+creates CI credentials or bindings, changes a protected map, or dispatches this
+workflow. They are not closed-loop repair results.
 
 Before any repair execution, a separately approved Risk A sequence must occur
 in this order:
@@ -185,8 +187,8 @@ the run before protected material is read. A rerun requires a new exact Risk A
 dispatch/execution Gate, but may reuse the same `approval_pr` source
 authorization while all merged-commit, final-head-review, `Validate`, and
 triggering-actor conditions still pass. The earlier
-`japan-tuic-identity-additive-repair-20260716-002` review is evidence for the
-source, artifact, and candidate counts; it is not CI execution authority.
+`japan-tuic-identity-additive-repair-20260724-003` review is evidence for the
+new source artifact and candidate counts; it is not CI execution authority.
 
 The merged-PR check is reusable source authorization, not a one-time or
 consumed credential. It authorizes only the reviewed source boundary. It does

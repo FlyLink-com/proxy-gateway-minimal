@@ -37,7 +37,7 @@ jobs:
       - name: Checkout frozen artifact source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: 47a2a9583fb44cb905e91aade02ae5aa3d635d94
+          ref: 70880d83761b165e91e9c521ec480fcc840375fb
           path: .japan-repair-trusted-source
           persist-credentials: false
 
@@ -49,11 +49,11 @@ jobs:
       - name: Download frozen dry-run artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: production-dry-run-japan-control-plane-control-plane-cumulative-20260716-003
+          name: proxy-gateway-japan-tuic-additive-repair-20260724-001
           path: ${{ runner.temp }}/japan-repair-preflight
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: 29495150692
+          run-id: 30092196734
 
       - name: Verify frozen artifact
         shell: bash
@@ -64,12 +64,12 @@ jobs:
           set -euo pipefail
           node scripts/japan-tuic-additive-repair-contract.mjs artifact \
             --manifest "$ARTIFACT_DIRECTORY/artifact.json" \
-            --artifact "$ARTIFACT_DIRECTORY/proxy-gateway-control-plane-cumulative-20260716-003.zip" \
-            --run-id 29495150692 >/dev/null
+            --artifact "$ARTIFACT_DIRECTORY/proxy-gateway-japan-tuic-additive-repair-20260724-001.zip" \
+            --run-id 30092196734 >/dev/null
           node scripts/artifact-git-tree-verifier.mjs \
             --repository "$TRUSTED_SOURCE_DIRECTORY" \
-            --commit 47a2a9583fb44cb905e91aade02ae5aa3d635d94 \
-            --artifact "$ARTIFACT_DIRECTORY/proxy-gateway-control-plane-cumulative-20260716-003.zip" >/dev/null
+            --commit 70880d83761b165e91e9c521ec480fcc840375fb \
+            --artifact "$ARTIFACT_DIRECTORY/proxy-gateway-japan-tuic-additive-repair-20260724-001.zip" >/dev/null
 
       - name: Mark secretless preflight ready
         id: ready
@@ -114,11 +114,11 @@ jobs:
       - name: Download frozen dry-run artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: production-dry-run-japan-control-plane-control-plane-cumulative-20260716-003
+          name: proxy-gateway-japan-tuic-additive-repair-20260724-001
           path: ${{ runner.temp }}/japan-repair-execute
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: 29495150692
+          run-id: 30092196734
 
       - name: Verify frozen artifact
         shell: bash
@@ -128,8 +128,8 @@ jobs:
           set -euo pipefail
           node scripts/japan-tuic-additive-repair-contract.mjs artifact \
             --manifest "$ARTIFACT_DIRECTORY/artifact.json" \
-            --artifact "$ARTIFACT_DIRECTORY/proxy-gateway-control-plane-cumulative-20260716-003.zip" \
-            --run-id 29495150692 >/dev/null
+            --artifact "$ARTIFACT_DIRECTORY/proxy-gateway-japan-tuic-additive-repair-20260724-001.zip" \
+            --run-id 30092196734 >/dev/null
 
       - name: Prepare restricted SSH material
         shell: bash
@@ -166,7 +166,7 @@ jobs:
           JAPAN_CI_HOST: ${{ secrets.JAPAN_CI_HOST }}
           JAPAN_CI_PORT: ${{ secrets.JAPAN_CI_PORT }}
           JAPAN_CI_USER: ${{ secrets.JAPAN_CI_USER }}
-          ARTIFACT_FILE: ${{ runner.temp }}/japan-repair-execute/proxy-gateway-control-plane-cumulative-20260716-003.zip
+          ARTIFACT_FILE: ${{ runner.temp }}/japan-repair-execute/proxy-gateway-japan-tuic-additive-repair-20260724-001.zip
           KEY_FILE: ${{ runner.temp }}/japan-repair-key
           KNOWN_HOSTS_FILE: ${{ runner.temp }}/japan-repair-known-hosts
           RECEIPT_FILE: ${{ runner.temp }}/japan-repair-receipt.json
