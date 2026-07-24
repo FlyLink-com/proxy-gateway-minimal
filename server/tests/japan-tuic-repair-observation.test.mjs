@@ -11,7 +11,8 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   buildJapanTuicRepairObservation,
-  createJapanTuicRepairObservationStore
+  createJapanTuicRepairObservationStore,
+  validateJapanTuicRepairObservation
 } from "../services/platform/japan-tuic-repair-observation.mjs";
 
 const OBSERVED_AT = "2026-07-24T12:00:00.000Z";
@@ -64,6 +65,26 @@ test("buildJapanTuicRepairObservation returns only the accepted aggregate", () =
     accepted: true
   });
   assert.doesNotMatch(JSON.stringify(observation), /must-not-persist/i);
+});
+
+test("validateJapanTuicRepairObservation accepts only the exact aggregate record", () => {
+  const observation = buildJapanTuicRepairObservation({
+    projection: validProjection()
+  });
+
+  assert.deepEqual(
+    validateJapanTuicRepairObservation(observation),
+    observation
+  );
+  for (const invalid of [
+    { ...observation, type: "traffic_collector_admin_projection" },
+    { ...observation, unexpected: true }
+  ]) {
+    assert.throws(
+      () => validateJapanTuicRepairObservation(invalid),
+      { code: "validation_error" }
+    );
+  }
 });
 
 test("Japan TUIC repair observation rejects invalid or unsafe projections", () => {

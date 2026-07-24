@@ -566,7 +566,7 @@ export function createHostOperations({
   expectedArtifact = JAPAN_TUIC_REPAIR_GATE.artifact,
   execFileFn = execFileAsync,
   makeTemporaryDirectoryFn,
-  naturalObservationBuilder,
+  naturalObservationValidator,
   platform = process.platform
 } = {}) {
   let temporaryDirectory = null;
@@ -818,8 +818,8 @@ export function createHostOperations({
         MAX_PROTECTED_OBSERVATION_BYTES,
         "natural_observation_failed"
       );
-      let builder = naturalObservationBuilder;
-      if (!builder) {
+      let validator = naturalObservationValidator;
+      if (!validator) {
         try {
           const module = await import(pathToFileURL(join(
             root,
@@ -828,13 +828,13 @@ export function createHostOperations({
             "platform",
             "japan-tuic-repair-observation.mjs"
           )).href);
-          builder = module.buildJapanTuicRepairObservation;
+          validator = module.validateJapanTuicRepairObservation;
         } catch {
           throw safeError("natural_observation_failed");
         }
       }
       try {
-        return naturalObservationSummary(builder({ projection: input }));
+        return naturalObservationSummary(validator(input));
       } catch (error) {
         if (error instanceof JapanTuicRepairContractError) throw error;
         throw safeError("natural_observation_failed");

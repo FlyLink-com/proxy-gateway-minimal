@@ -15,6 +15,7 @@ import { Readable } from "node:stream";
 import test from "node:test";
 
 import { JAPAN_TUIC_REPAIR_GATE } from "../../scripts/japan-tuic-additive-repair-contract.mjs";
+import { createJapanTuicRepairObservationStore } from "../services/platform/japan-tuic-repair-observation.mjs";
 import {
   createHostOperations,
   deriveWaitBudget,
@@ -675,13 +676,15 @@ test("host adapter backs up, restores, and removes only its marked authorization
   assert.equal(readFileSync(authorizedKeys, "utf8"), "ssh-ed25519 AAAA first-key\n");
 });
 
-test("host adapter adapts a valid Japan observation into the existing aggregate summary", async (t) => {
+test("host adapter consumes the aggregate persisted by the Japan observation store", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-natural-observation-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const observationPath = join(directory, "natural-observation.json");
-  writeFileSync(observationPath, JSON.stringify(acceptedJapanProjection({
-    protectedFixture: "/must/not/return"
-  })));
+  createJapanTuicRepairObservationStore({ filePath: observationPath }).write({
+    projection: acceptedJapanProjection({
+      protectedFixture: "/must/not-return"
+    })
+  });
   const binding = validBinding({
     paths: { ...validBinding().paths, naturalObservation: observationPath }
   });
@@ -691,24 +694,22 @@ test("host adapter adapts a valid Japan observation into the existing aggregate 
   });
   const summary = await operations.readNaturalObservation({ root: process.cwd(), binding });
   assert.deepEqual(summary, observationCurrent({ unresolvedTotal: 0 }));
-  assert.equal(JSON.stringify(summary).includes("must/not/return"), false);
+  assert.equal(JSON.stringify(summary).includes("must/not-return"), false);
 });
 
-test("host adapter rejects a generic observation-shaped record without the Japan type", async (t) => {
+test("host adapter rejects an aggregate observation with an unknown field", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-natural-missing-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const observationPath = join(directory, "natural-observation.json");
   writeFileSync(observationPath, JSON.stringify({
+    schemaVersion: "1",
+    type: "japan_tuic_repair_observation",
     capturedAt: "2026-07-16T20:05:00.000Z",
-    collectorInvocationObserved: true,
-    projection: {
-      collectorCount: 5,
-      unresolvedTotal: 0,
-      omittedCollectors: 0,
-      omittedProducers: 0,
-      provenanceConserved: true
-    },
-    passed: true
+    collectorCount: 5,
+    unresolvedTotal: 0,
+    japanTuicUnresolved: 0,
+    accepted: true,
+    unexpected: true
   }));
   const binding = validBinding({
     paths: { ...validBinding().paths, naturalObservation: observationPath }

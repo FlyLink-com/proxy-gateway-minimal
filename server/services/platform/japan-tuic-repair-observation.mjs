@@ -24,6 +24,13 @@ function isNonNegativeSafeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
+function hasExactKeys(value, expected) {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value).sort();
+  return keys.length === expected.length
+    && keys.every((key, index) => key === expected[index]);
+}
+
 function canonicalIsoTimestamp(value) {
   if (typeof value !== "string") return null;
   const timestamp = new Date(value);
@@ -86,9 +93,43 @@ function requireAcceptedProjection(projection) {
   return { observedAt: projection.observedAt, japanCollector };
 }
 
+export function validateJapanTuicRepairObservation(input) {
+  const expectedKeys = [
+    "accepted",
+    "capturedAt",
+    "collectorCount",
+    "japanTuicUnresolved",
+    "schemaVersion",
+    "type",
+    "unresolvedTotal"
+  ];
+  if (!hasExactKeys(input, expectedKeys)
+    || input.schemaVersion !== "1"
+    || input.type !== "japan_tuic_repair_observation"
+    || !canonicalIsoTimestamp(input.capturedAt)
+    || !isNonNegativeSafeInteger(input.collectorCount)
+    || !isNonNegativeSafeInteger(input.unresolvedTotal)
+    || input.unresolvedTotal !== 0
+    || !isNonNegativeSafeInteger(input.japanTuicUnresolved)
+    || input.japanTuicUnresolved !== 0
+    || input.accepted !== true) {
+    throw validationError("Invalid Japan TUIC repair observation");
+  }
+
+  return {
+    schemaVersion: "1",
+    type: "japan_tuic_repair_observation",
+    capturedAt: input.capturedAt,
+    collectorCount: input.collectorCount,
+    unresolvedTotal: input.unresolvedTotal,
+    japanTuicUnresolved: input.japanTuicUnresolved,
+    accepted: true
+  };
+}
+
 export function buildJapanTuicRepairObservation({ projection } = {}) {
   const { observedAt, japanCollector } = requireAcceptedProjection(projection);
-  return {
+  return validateJapanTuicRepairObservation({
     schemaVersion: "1",
     type: "japan_tuic_repair_observation",
     capturedAt: observedAt,
@@ -96,7 +137,7 @@ export function buildJapanTuicRepairObservation({ projection } = {}) {
     unresolvedTotal: projection.accounting.unresolvedCount,
     japanTuicUnresolved: japanCollector.unresolvedCount,
     accepted: true
-  };
+  });
 }
 
 export function createJapanTuicRepairObservationStore({ filePath } = {}) {
