@@ -316,8 +316,19 @@ function evaluateCurrentAttempt(input) {
     }
     return stop("current_attempt_active");
   }
-  if (attempt.status === "succeeded") return stop("payment_succeeded");
-  if (attempt.status === "reversed") return stop("payment_reversed");
+  if (attempt.status === "succeeded" || attempt.status === "reversed") {
+    if (
+      attempt.chargeCertainty !== "confirmed_charged"
+      || attempt.providerOrderRef === null
+    ) {
+      return reconcile("attempt_state_inconsistent");
+    }
+    return stop(
+      attempt.status === "succeeded"
+        ? "payment_succeeded"
+        : "payment_reversed",
+    );
+  }
   if (attempt.status === "entry_ready") {
     if (attempt.chargeCertainty === "confirmed_no_charge") {
       return stop("current_attempt_active");

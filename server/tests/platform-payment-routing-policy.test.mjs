@@ -314,6 +314,41 @@ test("succeeded and reversed attempts stop", () => {
   }
 });
 
+test("contradictory succeeded and reversed states reconcile", () => {
+  for (const status of ["succeeded", "reversed"]) {
+    for (const chargeCertainty of [
+      "unknown",
+      "possibly_charged",
+      "confirmed_no_charge",
+    ]) {
+      assertDecision(withAttempt(currentAttempt({
+        dispatchState: "dispatch_prepared",
+        status,
+        chargeCertainty,
+        providerOrderRef: "order-a",
+        entryIssued: true,
+        providerFingerprint: FINGERPRINT_A,
+      })), {
+        action: "reconcile",
+        profileRef: null,
+        reason: "attempt_state_inconsistent",
+      });
+    }
+    assertDecision(withAttempt(currentAttempt({
+      dispatchState: "dispatch_prepared",
+      status,
+      chargeCertainty: "confirmed_charged",
+      providerOrderRef: null,
+      entryIssued: true,
+      providerFingerprint: FINGERPRINT_A,
+    })), {
+      action: "reconcile",
+      profileRef: null,
+      reason: "attempt_state_inconsistent",
+    });
+  }
+});
+
 test("missing, mismatched, or kind-incompatible final evidence reconciles", () => {
   assertDecision(withAttempt(finalNoChargeAttempt({
     finalNoChargeEvidence: null,
