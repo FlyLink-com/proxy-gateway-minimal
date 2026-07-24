@@ -225,11 +225,12 @@ export async function runTrafficUsageCollectOnce({
     unresolvedPolicy: "tolerate_unresolved_bindings"
   });
   const statusStore = state.platform?.trafficCollectorStatusStore;
+  let statusProjection = null;
   if (statusStore && typeof statusStore.write === "function") {
     try {
       const now = nowFn();
       const observedAt = (now instanceof Date ? now : new Date(now)).toISOString();
-      statusStore.write({ summary, observedAt });
+      statusProjection = statusStore.write({ summary, observedAt });
     } catch {
       stderr.write(`${JSON.stringify({
         type: "traffic_collector_status_snapshot",
@@ -241,6 +242,30 @@ export async function runTrafficUsageCollectOnce({
           rawErrorReturned: false
         }
       })}\n`);
+    }
+  }
+  const observationStore = state.platform?.japanTuicRepairObservationStore;
+  if (
+    summary.ok === true
+    && summary.rawReportOk === true
+    && statusProjection
+    && observationStore
+    && typeof observationStore.write === "function"
+  ) {
+    try {
+      observationStore.write({ projection: statusProjection });
+    } catch {
+      stderr.write(`${JSON.stringify({
+        type: "japan_tuic_repair_observation_snapshot",
+        ok: false,
+        error: "observation_snapshot_write_failed",
+        safety: {
+          redacted: true,
+          pathReturned: false,
+          rawErrorReturned: false
+        }
+      })}\n`);
+      return 1;
     }
   }
   stdout.write(`${JSON.stringify(summary)}\n`);

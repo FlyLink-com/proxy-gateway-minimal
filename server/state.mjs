@@ -34,6 +34,7 @@ import { createXrayStatsCliUsageSnapshotReader } from "./services/edge/xray-stat
 import { createRuntimeUsageAccountingService } from "./services/platform/runtime-usage-accounting.mjs";
 import { createTrafficAccountingService } from "./services/platform/traffic-accounting.mjs";
 import { createFileTrafficCollectorStatusStore } from "./services/platform/traffic-collector-admin-projection.mjs";
+import { createJapanTuicRepairObservationStore } from "./services/platform/japan-tuic-repair-observation.mjs";
 import { createOrderUsageQuotaLifecycleGate } from "./services/platform/order-usage-quota-lifecycle-gate.mjs";
 import { createFileBackedEdgeCredentialMaterialStore } from "./services/edge/credential-material-store.mjs";
 import {
@@ -1403,6 +1404,14 @@ export function createRuntimeState(options = {}) {
       })
       : null
   );
+  const japanTuicRepairObservationPath = optionalEnvText(env.EDGE_JAPAN_TUIC_REPAIR_OBSERVATION_PATH);
+  const japanTuicRepairObservationStore = options.japanTuicRepairObservationStore || (
+    japanTuicRepairObservationPath
+      ? createJapanTuicRepairObservationStore({
+        filePath: japanTuicRepairObservationPath
+      })
+      : null
+  );
   const dataPlaneHandoffDir = optionalEnvText(env.EDGE_DATA_PLANE_HANDOFF_DIR || env.USER_PORTAL_EDGE_HANDOFF_DIR);
   const dataPlaneHandoffQueue = options.dataPlaneHandoffQueue || (
     dataPlaneHandoffDir
@@ -1598,6 +1607,7 @@ export function createRuntimeState(options = {}) {
       edgeUsageCollectors,
       edgeUsageAccounting,
       trafficCollectorStatusStore,
+      japanTuicRepairObservationStore,
       dataPlaneHandoffQueue,
       dataPlaneAgentRoutesEnabled,
       dataPlaneAgentService

@@ -470,6 +470,143 @@ test("traffic usage collect CLI records a redacted cross-process status snapshot
   }]);
 });
 
+test("traffic usage collect CLI writes the returned status projection to Japan TUIC observation storage", async () => {
+  const sequence = [];
+  const projection = { type: "traffic_collector_status_projection", accepted: true };
+  const exitCode = await runTrafficUsageCollectOnce({
+    argv: ["--collect"],
+    stdout: { write() {} },
+    stderr: { write() {} },
+    runtimeStateFactory() {
+      return {
+        platform: {
+          edgeUsageAccounting: {
+            async collectAndRecord() {
+              return {
+                ok: true,
+                collectorCount: 0,
+                reports: [],
+                safety: { noRawRuntimePayload: true, noSecretMaterialReturned: true },
+                redacted: true
+              };
+            }
+          },
+          trafficCollectorStatusStore: {
+            write() {
+              sequence.push("status");
+              return projection;
+            }
+          },
+          japanTuicRepairObservationStore: {
+            write(input) {
+              sequence.push(["observation", input]);
+            }
+          }
+        }
+      };
+    }
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(sequence, [
+    "status",
+    ["observation", { projection }]
+  ]);
+});
+
+test("traffic usage collect CLI fails closed with a redacted Japan TUIC observation error", async () => {
+  let stderr = "";
+  let collectCalls = 0;
+  const exitCode = await runTrafficUsageCollectOnce({
+    argv: ["--collect"],
+    stdout: { write() {} },
+    stderr: { write(chunk) { stderr += chunk; } },
+    runtimeStateFactory() {
+      return {
+        platform: {
+          edgeUsageAccounting: {
+            async collectAndRecord() {
+              collectCalls += 1;
+              return {
+                ok: true,
+                collectorCount: 0,
+                reports: [],
+                safety: { noRawRuntimePayload: true, noSecretMaterialReturned: true },
+                redacted: true
+              };
+            }
+          },
+          trafficCollectorStatusStore: {
+            write() {
+              return { type: "traffic_collector_status_projection", accepted: true };
+            }
+          },
+          japanTuicRepairObservationStore: {
+            write() {
+              throw new Error("/protected/private/observation-path must not leak");
+            }
+          }
+        }
+      };
+    }
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(collectCalls, 1);
+  assert.deepEqual(JSON.parse(stderr), {
+    type: "japan_tuic_repair_observation_snapshot",
+    ok: false,
+    error: "observation_snapshot_write_failed",
+    safety: {
+      redacted: true,
+      pathReturned: false,
+      rawErrorReturned: false
+    }
+  });
+  assert.doesNotMatch(stderr, /protected|private|observation-path/i);
+});
+
+test("traffic usage collect CLI skips Japan TUIC observation when the raw report is not accepted", async () => {
+  let observationWrites = 0;
+  const exitCode = await runTrafficUsageCollectOnce({
+    argv: ["--collect"],
+    stdout: { write() {} },
+    stderr: { write() {} },
+    runtimeStateFactory() {
+      return {
+        platform: {
+          edgeUsageAccounting: {
+            async collectAndRecord() {
+              return {
+                ok: false,
+                collectorCount: 1,
+                unresolvedCount: 1,
+                reports: [{
+                  collectorOk: true,
+                  recorded: [{ ok: false, status: "unresolved_binding" }]
+                }]
+              };
+            }
+          },
+          trafficCollectorStatusStore: {
+            write() {
+              return { type: "traffic_collector_status_projection", accepted: true };
+            }
+          },
+          japanTuicRepairObservationStore: {
+            write() {
+              observationWrites += 1;
+            }
+          }
+        }
+      };
+    }
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(observationWrites, 0);
+});
+
 test("traffic usage collect CLI keeps metering result authoritative when status snapshot writing fails", async () => {
   let stdout = "";
   let stderr = "";
