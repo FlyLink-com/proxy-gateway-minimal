@@ -3384,8 +3384,8 @@ function UseGuide({
     },
     clashmi: {
       name: "Clash Mi",
-      subtitle: "Android / HarmonyOS",
-      platformIds: ["android", "harmony"],
+      subtitle: "iOS / Android / HarmonyOS",
+      platformIds: ["ios", "android", "harmony"],
       clientTarget: "clash",
       icon: ClashAppIcon,
       href: "https://clashmi.app/download",
@@ -3605,6 +3605,13 @@ function UseGuide({
       }
     },
     clashmi: {
+      ios: {
+        sourceHint: locale === "zh" ? "iOS：打开我的配置后，通过右上角 + 添加配置链接" : "iOS: open My Profiles, then use + to add a configuration link",
+        resultLabel: locale === "zh" ? "添加完成后返回首页，下一步允许 iOS VPN 配置" : "After importing, return Home and allow the iOS VPN configuration next",
+        callouts: locale === "zh"
+          ? ["打开 Clash Mi 的我的配置", "点击右上角 + 并选择添加配置链接", "粘贴订阅链接后确认添加"]
+          : ["Open My Profiles in Clash Mi", "Tap + and choose Add configuration link", "Paste the subscription link and confirm"]
+      },
       android: {
         sourceHint: locale === "zh" ? "Android：参考 Clash Mi 从 URL 导入路径" : "Android: use Clash Mi import from URL",
         resultLabel: locale === "zh" ? "导入完成后返回首页，下一步允许 VPN 连接请求" : "After importing, return Home and allow the VPN connection request next",
@@ -3684,6 +3691,11 @@ function UseGuide({
       }
     },
     clashmi: {
+      ios: {
+        caption: locale === "zh" ? "iOS 首次连接会请求添加 VPN 配置，允许后再等待连接完成。" : "iOS requests permission to add a VPN configuration on first connection; allow it and wait for connection.",
+        steps: locale === "zh" ? ["返回 Clash Mi 首页", "点击连接并允许 VPN 配置", "状态变为已连接"] : ["Return to Clash Mi Home", "Tap connect and allow the VPN configuration", "Status changes to connected"],
+        verifySteps: locale === "zh" ? ["浏览器能打开目标网站", "状态栏显示 VPN 图标", "不可用时更新订阅或换线路"] : ["Target site loads", "The VPN icon appears in the status bar", "If unavailable, update the subscription or switch routes"]
+      },
       android: {
         caption: locale === "zh" ? "Android 首次连接会弹出 VPN 连接请求，允许后再等待连接完成。" : "Android prompts for a VPN connection request on first connect; allow it and wait for connection.",
         steps: locale === "zh" ? ["返回 Clash Mi 首页", "点击连接并允许 VPN 请求", "状态变为已连接"] : ["Return to Clash Mi Home", "Tap connect and allow VPN request", "Status changes to connected"],

@@ -3408,9 +3408,9 @@ describe("user portal product surface", () => {
     openPortalStartGuide();
     fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
     fireEvent.click(screen.getByRole("button", { name: "Android Samsung, Xiaomi, etc." }));
-    expect(screen.getByRole("button", { name: "Clash Mi Android / HarmonyOS" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Clash Mi iOS / Android / HarmonyOS" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Karing iOS / Android / HarmonyOS" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Clash Mi Android / HarmonyOS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clash Mi iOS / Android / HarmonyOS" }));
     expect(screen.getByRole("link", { name: "打开 Clash Mi 下载页" }).getAttribute("href")).toBe("https://clashmi.app/download");
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     await waitFor(() => expect(screen.getByDisplayValue("https://sub.example.test/import/clashmi-visible-once")).not.toBeNull());
@@ -3434,6 +3434,21 @@ describe("user portal product surface", () => {
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     expect(screen.getByText("STEP 5 / 5")).not.toBeNull();
     expect(screen.getAllByText("系统显示 VPN 正在运行").length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("offers Clash Mi for iOS setup", async () => {
+    const client = portalClientWithActiveSubscription({ clientTarget: "clash" });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalStartGuide();
+    fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "你要在哪台设备上使用？" })).not.toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Apple iOS iPhone / iPad" }));
+
+    expect(screen.getByRole("button", { name: "Clash Mi iOS / Android / HarmonyOS" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Clash Mi iOS / Android / HarmonyOS" }));
+    expect(screen.getByRole("link", { name: "打开 Clash Mi 下载页" }).getAttribute("href")).toBe("https://clashmi.app/download");
   });
 
   test("renders Linux desktop fallback instructions after copying a Hiddify link", async () => {
