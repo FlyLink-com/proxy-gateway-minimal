@@ -11,6 +11,7 @@ import {
   Download,
   Eye,
   ExternalLink,
+  Gift,
   Headphones,
   History,
   LayoutGrid,
@@ -24,7 +25,9 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  ShoppingBag,
   UserCog,
+  WalletCards,
   Wifi,
   type LucideIcon
 } from "lucide-react";
@@ -37,6 +40,11 @@ import {
   usePublicLocalePreference,
   usePublicThemePreference
 } from "./public-locale-switch";
+import {
+  MarketplacePanel,
+  ReferralRewardsPanel,
+  WalletPanel
+} from "./portal-commerce-panels";
 import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
 import type {
   PortalAccountEntitlement,
@@ -57,7 +65,15 @@ import type {
 } from "./user-portal-client";
 
 type DisplayAuthMode = PortalSession["authMode"];
-type PortalView = "dashboard" | "usage" | "start" | "profile" | "support";
+type PortalView =
+  | "dashboard"
+  | "usage"
+  | "start"
+  | "profile"
+  | "support"
+  | "marketplace"
+  | "wallet"
+  | "referrals";
 
 type PortalPlan = {
   id: PortalPlanId;
@@ -162,6 +178,8 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "start", label: "开始使用", description: "下载客户端，并按步骤导入订阅。", icon: Wifi },
   { id: "dashboard", label: "概览", description: "查看账户状态、当前套餐、流量和开始使用。", icon: LayoutGrid },
   { id: "usage", label: "用量", description: "查看流量消耗、套餐额度和用量更新状态。", icon: LineChart },
+  { id: "marketplace", label: "商城", description: "浏览平台商品、套餐、流量包和增值项。", icon: ShoppingBag },
+  { id: "referrals", label: "推荐奖励", description: "查看推荐链接、归因绩效和奖励状态。", icon: Gift },
   { id: "profile", label: "个人与安全", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
 ];
@@ -377,6 +395,18 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
     usage: {
       label: uiText(locale, "用量", "Usage"),
       description: uiText(locale, "查看账户共享流量额度和使用情况。", "Review shared account traffic quota and usage.")
+    },
+    marketplace: {
+      label: uiText(locale, "商城", "Marketplace"),
+      description: uiText(locale, "浏览平台商品、套餐、流量包和增值项。", "Browse platform products, plans, data packs, and add-ons.")
+    },
+    wallet: {
+      label: uiText(locale, "Coins 钱包", "Coins wallet"),
+      description: uiText(locale, "查看 Coins 分类、充值入口、流水和奖励结构。", "Review Coins categories, recharge entry, activity, and rewards.")
+    },
+    referrals: {
+      label: uiText(locale, "推荐奖励", "Referral rewards"),
+      description: uiText(locale, "查看推荐链接、归因绩效和奖励状态。", "Review your referral link, attributed performance, and reward states.")
     },
     start: {
       label: uiText(locale, "开始使用", "Start using"),
@@ -1927,6 +1957,22 @@ export function UserPortalPage({
                     />
                     <button
                       type="button"
+                      className={cn(
+                        "portal-coins-wallet-entry",
+                        activeView === "wallet" && "active"
+                      )}
+                      aria-label={uiText(
+                        locale,
+                        "打开 Coins 钱包，余额尚未接入",
+                        "Open Coins wallet, balance is not connected yet"
+                      )}
+                      onClick={() => navigatePortalView("wallet")}
+                    >
+                      <WalletCards aria-hidden="true" />
+                      <span>Coins · --</span>
+                    </button>
+                    <button
+                      type="button"
                       className={cn("portal-v2-mobile-icon-button", activeView === "support" && "active")}
                       aria-label={uiText(locale, "打开支持", "Open support")}
                       onClick={() => navigatePortalView("support")}
@@ -1995,6 +2041,9 @@ export function UserPortalPage({
               locale={locale}
             />
           ) : null}
+          {activeView === "marketplace" ? <MarketplacePanel locale={locale} /> : null}
+          {activeView === "wallet" ? <WalletPanel locale={locale} /> : null}
+          {activeView === "referrals" ? <ReferralRewardsPanel locale={locale} /> : null}
           {activeView === "start" ? (
             <UseGuide
               actionError={actionError}
