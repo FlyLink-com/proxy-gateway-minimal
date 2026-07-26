@@ -434,6 +434,56 @@ function activeSubscriptionRequest(overrides: Partial<PortalSubscriptionRequest>
   };
 }
 
+function paymentOrder(
+  overrides: Partial<PortalPaymentOrder> = {}
+): PortalPaymentOrder {
+  return {
+    orderRef: "pay_existing_monthly",
+    planId: "monthly_basic",
+    planLabel: "基础月付",
+    amountMinor: 2000,
+    channel: "alipay",
+    currency: "CNY",
+    status: "pending_payment",
+    checkoutUrl: "https://pay.example.test/existing",
+    createdAt: "2026-05-31T00:00:00.000Z",
+    paymentExpiresAt: "2099-01-01T00:00:00.000Z",
+    safety: {
+      noRawMerchantKey: true,
+      noRawProviderPayload: true
+    },
+    ...overrides
+  };
+}
+
+function portalClientWithPaymentOrders(
+  paymentOrders: PortalPaymentOrder[]
+): UserPortalClient {
+  return portalClient({
+    fetchCurrentState: vi.fn(async (input: {
+      userRef: string;
+    }): Promise<PortalUserState> => ({
+      userRef: input.userRef,
+      subscriptionRequest: null,
+      paymentOrders,
+      historySummary: [],
+      security: {
+        authenticatorBound: false,
+        initialAccount: false,
+        passkeyEnabled: false,
+        passkeyExported: false,
+        setupRequired: false
+      },
+      updatedAt: "2026-05-31T00:00:00.000Z",
+      safety: {
+        noAdminApi: true,
+        noPaymentActivation: true,
+        noPublicAdmin: true
+      }
+    }))
+  });
+}
+
 function portalClientWithActiveSubscription(
   requestOverrides: Partial<PortalSubscriptionRequest> = {},
   clientOverrides: Partial<UserPortalClient> = {}
@@ -2101,9 +2151,10 @@ describe("user portal product surface", () => {
 
     fireEvent.click(within(portalNav).getByRole("button", { name: "个人与安全" }));
     expect(await screen.findByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
-    expect(screen.queryByText("订单与付款记录")).toBeNull();
     expect(screen.queryByText("统一查看订单记录")).toBeNull();
-    expect(screen.queryByRole("region", { name: "订单记录" })).toBeNull();
+    expect(screen.getByRole("region", { name: "订单记录" })).not.toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "订单管理" })).toBeNull();
     expect(screen.queryByText(/订阅链接和用量记录/)).toBeNull();
 
@@ -2142,6 +2193,21 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("从订单复制链接")).toBeNull();
     expect(screen.queryByText("请先购买套餐并提交订单。")).toBeNull();
     expect(screen.queryByText(/账户权益|节点|支付渠道|订阅内容/)).toBeNull();
+  });
+
+  test("keeps existing order history reachable without opening legacy purchase dialogs", async () => {
+    const client = portalClientWithPaymentOrders([paymentOrder()]);
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalProfile();
+
+    expect(await screen.findByRole("table", { name: "订单列表" })).not.toBeNull();
+    expect(screen.getByText("P-existing_monthly")).not.toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("keeps the new order form collapsed until the user starts a new order", async () => {
@@ -2232,7 +2298,8 @@ describe("user portal product surface", () => {
     expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
     fireEvent.click(screen.getAllByRole("button", { name: "返回个人与安全" })[0]);
     expect(screen.getByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
+    const orderTable = screen.getByRole("table", { name: "订单列表" });
+    expect(within(orderTable).getByText("P-yearly")).not.toBeNull();
     expect(screen.getByText("邮箱：user_safe_ref")).not.toBeNull();
   });
 
@@ -2452,8 +2519,9 @@ describe("user portal product surface", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "返回个人与安全" })[0]);
 
     expect(screen.getByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "去付款" })).toBeNull();
+    const orderTable = screen.getByRole("table", { name: "订单列表" });
+    expect(within(orderTable).getByText("P-monthly_plus")).not.toBeNull();
+    expect(within(orderTable).getByRole("button", { name: "去付款" })).not.toBeNull();
   });
 
   test("keeps pending payment records separate from subscription setup", async () => {
@@ -2473,8 +2541,9 @@ describe("user portal product surface", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "返回个人与安全" })[0]);
 
     expect(screen.getByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "去付款" })).toBeNull();
+    const orderTable = screen.getByRole("table", { name: "订单列表" });
+    expect(within(orderTable).getByText("P-monthly_basic")).not.toBeNull();
+    expect(within(orderTable).getByRole("button", { name: "去付款" })).not.toBeNull();
 
     expect(screen.queryByRole("region", { name: "订阅状态" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "当前订阅" })).toBeNull();
@@ -2761,8 +2830,8 @@ describe("user portal product surface", () => {
     expect(screen.queryByRole("button", { name: /刷新订阅/ })).toBeNull();
     expect(screen.getByDisplayValue("https://sub.example.test/import/existing-visible-once")).not.toBeNull();
     openPortalProfile();
-    expect(screen.queryByText("订单与付款记录")).toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
+    const orderTable = screen.getByRole("table", { name: "订单列表" });
+    expect(within(orderTable).getByText("O-existing_yearly")).not.toBeNull();
     expect(screen.queryByRole("button", { name: /刷新订阅/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "停用订阅" })).toBeNull();
     expect(client.applyForSubscription).not.toHaveBeenCalled();
@@ -2842,8 +2911,9 @@ describe("user portal product surface", () => {
 
     openPortalProfile();
     expect(await screen.findByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
-    expect(screen.queryByText("订单与付款记录")).toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
+    const orderTable = screen.getByRole("table", { name: "订单列表" });
+    expect(within(orderTable).getByText("pareq_trial_1")).not.toBeNull();
+    expect(within(orderTable).getByText("pareq_monthly_2")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "用量" }));
     expect(await screen.findByRole("heading", { name: "流量消耗" })).not.toBeNull();
     expect(screen.getAllByText(/7 天/).length).toBeGreaterThan(0);
@@ -2856,7 +2926,7 @@ describe("user portal product surface", () => {
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
-  test("does not invent profile history from current subscription state", async () => {
+  test("keeps current service state free of fabricated completion history", async () => {
     const client = portalClient({
       fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
         userRef: input.userRef,
@@ -2893,8 +2963,8 @@ describe("user portal product surface", () => {
 
     expect(await screen.findByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
     expect(screen.queryByText("暂无完成套餐记录")).toBeNull();
-    expect(screen.queryByText("订单与付款记录")).toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
+    const orderTable = screen.getByRole("table", { name: "订单列表" });
+    expect(within(orderTable).getByText("O-existing_yearly")).not.toBeNull();
     expect(screen.queryByText(/申请年度套餐（已开通）/)).toBeNull();
   });
 
@@ -3068,6 +3138,10 @@ describe("user portal product surface", () => {
     expect(screen.queryByLabelText("联系手机号")).toBeNull();
     expect(screen.queryByLabelText("Telegram 账号")).toBeNull();
     expect(screen.queryByRole("dialog", { name: "填写联系资料" })).toBeNull();
+    expect(screen.getByText("暂无订单")).not.toBeNull();
+    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
   });
 
   test("local preview client preserves server-owned package facts when refreshing", async () => {

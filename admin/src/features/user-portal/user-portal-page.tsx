@@ -2117,38 +2117,36 @@ export function UserPortalPage({
                   locale={locale}
                 />
               ) : null}
-              {paymentFlowActive || orderFormOpen ? (
-                <SubscriptionManager
-                  activePaymentOrder={activePaymentOrder}
-                  actionError={actionError}
-                  orderClientFilter={orderClientFilter}
-                  orderFormOpen={orderFormOpen}
-                  orderRows={filteredOrderRows}
-                  paymentOrders={paymentOrders}
-                  lastPaymentOrderRef={lastPaymentOrderRef}
-                  orderSearch={orderSearch}
-                  orderSort={orderSort}
-                  orderStatusFilter={orderStatusFilter}
-                  paymentChannel={paymentChannel}
-                  selectedOrderRef={selectedOrderRef}
-                  selectedPlanId={selectedPlanId}
-                  pending={pending}
-                  setOrderClientFilter={setOrderClientFilter}
-                  setOrderSearch={setOrderSearch}
-                  setOrderSort={setOrderSort}
-                  setOrderStatusFilter={setOrderStatusFilter}
-                  setPaymentChannel={setPaymentChannel}
-                  setSelectedPlanId={setSelectedPlanId}
-                  closePaymentOrder={() => setActivePaymentOrderRef(null)}
-                  openPaymentOrder={openPaymentOrder}
-                  refreshPaymentOrders={refreshPaymentOrders}
-                  submitSubscription={submitSubscription}
-                  startNewOrder={startNewOrder}
-                  closeOrderForm={closeOrderForm}
-                  viewOrder={viewOrder}
-                  locale={locale}
-                />
-              ) : null}
+              <SubscriptionManager
+                activePaymentOrder={activePaymentOrder}
+                actionError={actionError}
+                orderClientFilter={orderClientFilter}
+                orderFormOpen={orderFormOpen}
+                orderRows={filteredOrderRows}
+                paymentOrders={paymentOrders}
+                lastPaymentOrderRef={lastPaymentOrderRef}
+                orderSearch={orderSearch}
+                orderSort={orderSort}
+                orderStatusFilter={orderStatusFilter}
+                paymentChannel={paymentChannel}
+                selectedOrderRef={selectedOrderRef}
+                selectedPlanId={selectedPlanId}
+                pending={pending}
+                setOrderClientFilter={setOrderClientFilter}
+                setOrderSearch={setOrderSearch}
+                setOrderSort={setOrderSort}
+                setOrderStatusFilter={setOrderStatusFilter}
+                setPaymentChannel={setPaymentChannel}
+                setSelectedPlanId={setSelectedPlanId}
+                closePaymentOrder={() => setActivePaymentOrderRef(null)}
+                openPaymentOrder={openPaymentOrder}
+                refreshPaymentOrders={refreshPaymentOrders}
+                submitSubscription={submitSubscription}
+                startNewOrder={startNewOrder}
+                closeOrderForm={closeOrderForm}
+                viewOrder={viewOrder}
+                locale={locale}
+              />
             </>
           ) : null}
           {rechargeDialogOpen ? (
