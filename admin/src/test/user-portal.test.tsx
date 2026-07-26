@@ -1963,9 +1963,9 @@ describe("user portal product surface", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Apple iOS iPhone / iPad" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "选择一个客户端" })).not.toBeNull());
-    fireEvent.click(screen.getByRole("button", { name: "Karing iOS / Android / HarmonyOS" }));
-    await waitFor(() => expect(screen.getAllByText("安装 Karing").length).toBeGreaterThan(0));
-    expect(screen.getByText("手机和平板优先用 Karing。安装完成后回到本页继续生成订阅链接。")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Hiddify 备用客户端" }));
+    await waitFor(() => expect(screen.getAllByText("安装 Hiddify").length).toBeGreaterThan(0));
+    expect(screen.getByText("如果首选客户端装不了，再选 Hiddify。请下载与你设备匹配的版本，装好后回到本页。")).not.toBeNull();
 
     expect(screen.queryByText("从订单复制链接")).toBeNull();
     expect(screen.queryByText("请先购买套餐并提交订单。")).toBeNull();
@@ -3392,10 +3392,10 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("暂时没有链接也可以先查看后续教程；正式导入前请先生成并复制订阅链接。")).toBeNull();
   });
 
-  test("renders post-copy guide steps by selected platform", async () => {
+  test("offers Clash Mi instead of Karing for Android setup", async () => {
     const client = portalClientWithActiveSubscription({
-      clientTarget: "karing",
-      subscriptionUrl: "https://sub.example.test/import/karing-visible-once"
+      clientTarget: "clash",
+      subscriptionUrl: "https://sub.example.test/import/clashmi-visible-once"
     });
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -3407,30 +3407,33 @@ describe("user portal product surface", () => {
     await enterPortal();
     openPortalStartGuide();
     fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
-    fireEvent.click(screen.getByRole("button", { name: "Apple iOS iPhone / iPad" }));
-    fireEvent.click(screen.getByRole("button", { name: "Karing iOS / Android / HarmonyOS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Android Samsung, Xiaomi, etc." }));
+    expect(screen.getByRole("button", { name: "Clash Mi Android / HarmonyOS" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Karing iOS / Android / HarmonyOS" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Clash Mi Android / HarmonyOS" }));
+    expect(screen.getByRole("link", { name: "打开 Clash Mi 下载页" }).getAttribute("href")).toBe("https://clashmi.app/download");
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
-    await waitFor(() => expect(screen.getByDisplayValue("https://sub.example.test/import/karing-visible-once")).not.toBeNull());
+    await waitFor(() => expect(screen.getByDisplayValue("https://sub.example.test/import/clashmi-visible-once")).not.toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "复制链接" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://sub.example.test/import/karing-visible-once"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://sub.example.test/import/clashmi-visible-once"));
     expect(client.applyForSubscription).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "我已复制，下一步" }));
 
     expect(screen.getByText("STEP 3 / 5")).not.toBeNull();
-    expect(screen.getByText("iOS / iPadOS：参考 Karing Add Configuration Link 路径")).not.toBeNull();
-    expect(screen.getByText("打开 Karing，点 + 或进入 Add Configuration")).not.toBeNull();
-    expect(screen.getByText("粘贴链接后点右上角添加")).not.toBeNull();
-    expect(screen.getByText("添加成功后返回首页，下一步允许 VPN 配置")).not.toBeNull();
+    expect(screen.getByText("Android：参考 Clash Mi 从 URL 导入路径")).not.toBeNull();
+    expect(screen.getByText("打开 Clash Mi，进入配置或订阅页面")).not.toBeNull();
+    expect(screen.getByText("粘贴订阅链接并确认导入")).not.toBeNull();
+    expect(screen.getByText("导入完成后返回首页，下一步允许 VPN 连接请求")).not.toBeNull();
     expect(screen.queryByAltText("Clash Verge Rev 订阅页面导入订阅文件链接教程截图")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     expect(screen.getByText("STEP 4 / 5")).not.toBeNull();
-    expect(screen.getByText("iOS 会弹出 VPN 配置权限，首次连接必须允许。")).not.toBeNull();
-    expect(screen.getAllByText("点击连接并允许 VPN 配置").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Android 首次连接会弹出 VPN 连接请求，允许后再等待连接完成。")).not.toBeNull();
+    expect(screen.getAllByText("点击连接并允许 VPN 请求").length).toBeGreaterThanOrEqual(1);
 
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     expect(screen.getByText("STEP 5 / 5")).not.toBeNull();
-    expect(screen.getAllByText("状态栏出现 VPN 图标").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("系统显示 VPN 正在运行").length).toBeGreaterThanOrEqual(1);
   });
 
   test("renders Linux desktop fallback instructions after copying a Hiddify link", async () => {
