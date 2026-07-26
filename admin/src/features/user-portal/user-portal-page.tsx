@@ -1461,13 +1461,11 @@ export function UserPortalPage({
     setClientTarget(order.clientTarget);
   }
 
-  function startNewOrder() {
-    setActiveView("profile");
+  function openMarketplace() {
+    setActionError("");
+    setOrderFormOpen(false);
     setActivePaymentOrderRef(null);
-    setSelectedPlanId("monthly_basic");
-    setClientTarget("clash");
-    setPaymentChannel(defaultPaymentChannelForCurrentBrowser());
-    setOrderFormOpen(true);
+    setActiveView("marketplace");
   }
 
   function closeOrderForm() {
@@ -2021,7 +2019,7 @@ export function UserPortalPage({
                       <input
                         value={orderSearch}
                         onChange={(event) => setOrderSearch(event.target.value)}
-                        placeholder={uiText(locale, "搜索套餐、用量、客户端", "Search plans, usage, clients")}
+                        placeholder={uiText(locale, "搜索商品、用量、客户端", "Search products, usage, clients")}
                       />
                     </label>
                     <button className="portal-primary-button compact" type="button" onClick={openRechargeDialog}>
@@ -2055,7 +2053,7 @@ export function UserPortalPage({
               orderRows={orderRows}
               currentEntitlement={currentEntitlement}
               setActiveView={setActiveView}
-              startNewOrder={startNewOrder}
+              openMarketplace={openMarketplace}
               trafficPercent={trafficPercent}
               trafficSummary={trafficSummary}
               locale={locale}
@@ -2074,7 +2072,7 @@ export function UserPortalPage({
               selectedOrder={selectedOrder}
               hasSetupAccess={hasSetupAccess}
               setActiveView={setActiveView}
-              startNewOrder={startNewOrder}
+              openMarketplace={openMarketplace}
               revealOrCreateSubscriptionLink={revealOrCreateSubscriptionLink}
             />
           ) : null}
@@ -2142,7 +2140,7 @@ export function UserPortalPage({
                 openPaymentOrder={openPaymentOrder}
                 refreshPaymentOrders={refreshPaymentOrders}
                 submitSubscription={submitSubscription}
-                startNewOrder={startNewOrder}
+                openMarketplace={openMarketplace}
                 closeOrderForm={closeOrderForm}
                 viewOrder={viewOrder}
                 locale={locale}
@@ -2238,7 +2236,7 @@ function DashboardPanel({
         <article className="portal-v2-metric-card">
           <span><Activity aria-hidden="true" /> {uiText(locale, "服务状态", "Service status")}</span>
           <strong>{orderHealthLabel(orderRows, currentEntitlement ? [currentEntitlement] : [], locale)}</strong>
-          <small>{activeOrders > 0 || entitlementActive ? uiText(locale, "当前套餐可用", "Current plan is active") : pendingOrders > 0 ? uiText(locale, `${pendingOrders} 个订单待处理`, `${pendingOrders} pending orders`) : uiText(locale, "购买套餐后开始计时", "Time starts after buying a plan")}</small>
+          <small>{activeOrders > 0 || entitlementActive ? uiText(locale, "当前套餐可用", "Current plan is active") : pendingOrders > 0 ? uiText(locale, `${pendingOrders} 个订单待处理`, `${pendingOrders} pending orders`) : uiText(locale, "商城订单交付后开始计时", "Time starts after a Marketplace order is fulfilled")}</small>
         </article>
         <article className="portal-v2-metric-card">
           <span><ReceiptText aria-hidden="true" /> {uiText(locale, "订单记录", "Order records")}</span>
@@ -2253,7 +2251,7 @@ function DashboardPanel({
         <article className="portal-v2-metric-card">
           <span><BarChart3 aria-hidden="true" /> {uiText(locale, "剩余流量", "Remaining traffic")}</span>
           <strong>{planTrafficBytes > 0 ? formatTrafficBytes(remainingTrafficBytes) : uiText(locale, "未开通", "Not active")}</strong>
-          <small>{planTrafficBytes > 0 ? uiText(locale, `本月额度 ${formatTrafficBytes(planTrafficBytes)}`, `${formatTrafficBytes(planTrafficBytes)} monthly quota`) : uiText(locale, "购买套餐后显示流量额度", "Traffic quota appears after buying a plan")}</small>
+          <small>{planTrafficBytes > 0 ? uiText(locale, `本月额度 ${formatTrafficBytes(planTrafficBytes)}`, `${formatTrafficBytes(planTrafficBytes)} monthly quota`) : uiText(locale, "流量权益交付后显示额度", "Traffic quota appears after entitlement delivery")}</small>
         </article>
       </section>
 
@@ -2322,7 +2320,7 @@ function DashboardPanel({
             <div className="portal-v2-empty">
               <ReceiptText aria-hidden="true" />
               <strong>{uiText(locale, "暂无订单", "No orders yet")}</strong>
-              <span>{uiText(locale, "购买套餐后会显示付款和续费记录。", "Payment and renewal records appear after you buy a plan.")}</span>
+              <span>{uiText(locale, "商城订单和续费记录会在这里显示。", "Marketplace orders and renewal records appear here.")}</span>
             </div>
           )}
         </article>
@@ -2366,7 +2364,7 @@ function UsagePanel({
   orderRows,
   currentEntitlement,
   setActiveView,
-  startNewOrder,
+  openMarketplace,
   trafficPercent,
   trafficSummary,
   locale
@@ -2374,7 +2372,7 @@ function UsagePanel({
   orderRows: PortalOrderRow[];
   currentEntitlement: PortalAccountEntitlement | null;
   setActiveView: (value: PortalView) => void;
-  startNewOrder: () => void;
+  openMarketplace: () => void;
   trafficPercent: number;
   trafficSummary: ReturnType<typeof aggregateTrafficUsage>;
   locale: PortalAuthLocale;
@@ -2437,7 +2435,7 @@ function UsagePanel({
               <LineChart aria-hidden="true" />
               <strong>{uiText(locale, "暂无可视化数据", "No chart data yet")}</strong>
               <span>{uiText(locale, "开始连接后会显示用量走势。", "Usage trends appear after you connect.")}</span>
-              <button className="portal-primary-button compact" type="button" onClick={currentEntitlement ? () => setActiveView("start") : startNewOrder}>{currentEntitlement ? uiText(locale, "开始使用", "Start using") : uiText(locale, "购买套餐", "Buy plan")}</button>
+              <button className="portal-primary-button compact" type="button" onClick={currentEntitlement ? () => setActiveView("start") : openMarketplace}>{currentEntitlement ? uiText(locale, "开始使用", "Start using") : uiText(locale, "前往商城", "Go to Marketplace")}</button>
             </div>
           )}
         </article>
@@ -2516,7 +2514,7 @@ function SubscriptionManager({
   openPaymentOrder,
   refreshPaymentOrders,
   submitSubscription,
-  startNewOrder,
+  openMarketplace,
   closeOrderForm,
   viewOrder,
   locale
@@ -2545,7 +2543,7 @@ function SubscriptionManager({
   openPaymentOrder: (order: PortalPaymentOrder) => void;
   refreshPaymentOrders: (targetOrderRef?: string) => Promise<void>;
   submitSubscription: (planIdOverride?: Exclude<PortalPlanId, "trial">, paymentChannelOverride?: PortalPaymentChannel) => Promise<boolean>;
-  startNewOrder: () => void;
+  openMarketplace: () => void;
   closeOrderForm: () => void;
   viewOrder: (order: PortalOrderRow) => void;
   locale: PortalAuthLocale;
@@ -2561,7 +2559,7 @@ function SubscriptionManager({
         order={activePaymentOrder}
         pending={pending}
         refreshPaymentOrders={refreshPaymentOrders}
-        startNewOrder={startNewOrder}
+        openMarketplace={openMarketplace}
       />
     );
   }
@@ -2623,7 +2621,11 @@ function SubscriptionManager({
             <div>
               <span className="portal-card-label">{uiText(locale, "订单", "Orders")}</span>
               <h2>{uiText(locale, "订单记录", "Order records")}</h2>
-              <p>{uiText(locale, "付款完成后为账户增加可用时间、套餐档位和共享流量额度。", "After payment, account time, plan tier, and shared traffic quota are credited here.")}</p>
+              <p>{uiText(
+                locale,
+                "订单、履约和权益状态在这里分别显示；流量仅在权益生效后可用。",
+                "Order, fulfillment, and entitlement states are shown separately. Traffic is available only after entitlement activation."
+              )}</p>
             </div>
           </div>
         </div>
@@ -2677,9 +2679,9 @@ function SubscriptionManager({
               <option value="expires">{uiText(locale, "到期时间", "Expiry")}</option>
             </select>
           </label>
-          <button className="portal-primary-button compact portal-toolbar-create" type="button" onClick={startNewOrder}>
+          <button className="portal-primary-button compact portal-toolbar-create" type="button" onClick={openMarketplace}>
             <Plus aria-hidden="true" />
-            {uiText(locale, "购买套餐", "Buy plan")}
+            {uiText(locale, "前往商城", "Go to Marketplace")}
           </button>
         </div>
 
@@ -2687,10 +2689,10 @@ function SubscriptionManager({
           <div className="portal-order-empty-state" role="status">
             <ReceiptText aria-hidden="true" />
             <strong>{uiText(locale, "暂无订单", "No orders yet")}</strong>
-            <p>{uiText(locale, "注册试用、套餐购买和续费记录会在这里统一显示。", "Trials, purchases, and renewals appear here.")}</p>
-            <button className="portal-primary-button compact" type="button" onClick={startNewOrder}>
+            <p>{uiText(locale, "商城订单和续费记录会在这里显示。", "Marketplace orders and renewal records appear here.")}</p>
+            <button className="portal-primary-button compact" type="button" onClick={openMarketplace}>
               <Plus aria-hidden="true" />
-              {uiText(locale, "购买套餐", "Buy plan")}
+              {uiText(locale, "前往商城", "Go to Marketplace")}
             </button>
           </div>
         ) : (
@@ -3030,7 +3032,7 @@ function PortalPaymentFlow({
   order,
   pending,
   refreshPaymentOrders,
-  startNewOrder
+  openMarketplace
 }: {
   actionError: string;
   closePaymentOrder: () => void;
@@ -3038,7 +3040,7 @@ function PortalPaymentFlow({
   order: PortalPaymentOrder;
   pending: boolean;
   refreshPaymentOrders: (targetOrderRef?: string) => Promise<void>;
-  startNewOrder: () => void;
+  openMarketplace: () => void;
 }) {
   const step = paymentFlowStep(order);
   const plan = selectedPlan(order.planId, locale);
@@ -3199,8 +3201,8 @@ function PortalPaymentFlow({
                     {pending ? uiText(locale, "检查中", "Checking") : uiText(locale, "检查状态", "Check status")}
                   </button>
                   {isFailed ? (
-                    <button className="portal-primary-button compact" type="button" onClick={startNewOrder}>
-                      {uiText(locale, "重新购买", "Buy again")}
+                    <button className="portal-primary-button compact" type="button" onClick={openMarketplace}>
+                      {uiText(locale, "前往商城", "Go to Marketplace")}
                     </button>
                   ) : null}
                   <button className="portal-secondary-button" type="button" onClick={closePaymentOrder}>
@@ -3341,7 +3343,7 @@ function UseGuide({
   selectedOrder,
   hasSetupAccess,
   setActiveView,
-  startNewOrder,
+  openMarketplace,
   revealOrCreateSubscriptionLink
 }: {
   actionError: string;
@@ -3352,7 +3354,7 @@ function UseGuide({
   selectedOrder: PortalOrderRow | null;
   hasSetupAccess: boolean;
   setActiveView: (value: PortalView) => void;
-  startNewOrder: () => void;
+  openMarketplace: () => void;
   revealOrCreateSubscriptionLink: (
     clientTarget: PortalClientId,
     options?: { refreshExisting?: boolean }
@@ -3845,7 +3847,7 @@ function UseGuide({
   };
   const startSetup = () => {
     if (!hasSetupAccess) {
-      startNewOrder();
+      openMarketplace();
       return;
     }
     setGuideStarted(true);
@@ -4019,8 +4021,8 @@ function UseGuide({
                     </p>
                   ) : null}
                   {!hasSetupAccess && !visibleSubscriptionUrl ? (
-                    <button className="portal-link-button" type="button" onClick={startNewOrder}>
-                      {uiText(locale, "没有可用流量套餐？先选择套餐", "No traffic plan? Choose a plan first")}
+                    <button className="portal-link-button" type="button" onClick={openMarketplace}>
+                      {uiText(locale, "需要流量权益？前往商城", "Need traffic entitlement? Go to Marketplace")}
                     </button>
                   ) : null}
                   {actionError ? <div className="alert alert-error">{actionError}</div> : null}

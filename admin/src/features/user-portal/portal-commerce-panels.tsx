@@ -132,8 +132,8 @@ export function MarketplacePanel({ locale }: PanelProps) {
         </ul>
         <p>
           {zh
-            ? "现有套餐购买路径仍可单独使用。"
-            : "The existing plan purchase path remains available separately."}
+            ? "月卡、年卡和流量包统一在商城提供；购买暂未开放。"
+            : "Monthly plans, annual plans, and data packs are provided through Marketplace; purchasing is not available yet."}
         </p>
         <button type="button" disabled>
           {zh ? "购买暂未开放" : "Purchasing is not available yet"}

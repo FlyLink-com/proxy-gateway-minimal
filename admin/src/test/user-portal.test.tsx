@@ -569,15 +569,12 @@ function openPortalProfile() {
   fireEvent.click(screen.getByRole("button", { name: "个人与安全" }));
 }
 
-function openNewOrderForm() {
-  openPortalStartGuide();
-  fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
-}
-
-function continueFromCashier(paymentMethod = "支付宝") {
-  const cashierDialog = screen.getByRole("dialog", { name: "选择支付方式" });
-  fireEvent.click(within(cashierDialog).getByRole("button", { name: paymentMethod }));
-  fireEvent.click(within(cashierDialog).getByRole("button", { name: "继续支付" }));
+function expectMarketplaceWithoutLegacyCheckout(client: UserPortalClient) {
+  expect(screen.getByRole("heading", { name: "平台服务商城" })).not.toBeNull();
+  expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
+  expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+  expect(client.applyForSubscription).not.toHaveBeenCalled();
 }
 
 function openPortalSubscriptions() {
@@ -733,7 +730,7 @@ describe("user portal route", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Overview" }));
     expect(await screen.findByRole("heading", { name: "Account overview" })).not.toBeNull();
-    expect(screen.getByPlaceholderText("Search plans, usage, clients")).not.toBeNull();
+    expect(screen.getByPlaceholderText("Search products, usage, clients")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Recharge Coins" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Buy plan" })).toBeNull();
 
@@ -2125,6 +2122,38 @@ describe("user portal product surface", () => {
       .toHaveAttribute("aria-pressed", "false");
   });
 
+  test("does not grant traffic or alter entitlement state when a recharge denomination is selected", async () => {
+    const client = portalClientWithActiveSubscription();
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalProfile();
+    const orderRowsBefore = within(screen.getByRole("table", {
+      name: "订单列表"
+    })).getAllByRole("row").length;
+    openPortalDashboard();
+    const statusBefore = screen.getByText("当前套餐可用").textContent;
+    const quotaBefore = screen.getAllByText(/GB/).map((node) => node.textContent);
+
+    fireEvent.click(screen.getByRole("button", { name: "充值 Coins" }));
+    fireEvent.click(within(screen.getByRole("dialog", {
+      name: "充值 Coins"
+    })).getByRole("button", { name: "选择 300 Coins" }));
+    fireEvent.click(within(screen.getByRole("dialog", {
+      name: "充值 Coins"
+    })).getByRole("button", { name: "关闭" }));
+
+    expect(screen.getByText("当前套餐可用").textContent).toBe(statusBefore);
+    expect(screen.getAllByText(/GB/).map((node) => node.textContent))
+      .toEqual(quotaBefore);
+    openPortalProfile();
+    expect(within(screen.getByRole("table", {
+      name: "订单列表"
+    })).getAllByRole("row")).toHaveLength(orderRowsBefore);
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
+  });
+
   test("keeps referral rewards as one-link placeholders without cash-out actions", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
@@ -2210,308 +2239,145 @@ describe("user portal product surface", () => {
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
-  test("keeps the new order form collapsed until the user starts a new order", async () => {
-    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+  test("routes every new-acquisition entry to Marketplace", async () => {
+    const client = portalClient();
+    render(createElement(UserPortalPage, { portalClient: client }));
+    const portalNav = await enterPortal();
 
-    await enterPortal();
-    openPortalDashboard();
-
-    expect(screen.getByRole("button", { name: "充值 Coins" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "购买套餐" })).toBeNull();
-    expect(screen.getByText("暂无订单")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "充值 Coins" })).not.toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
-    expect(screen.queryByLabelText("订单时长")).toBeNull();
-    expect(screen.queryByLabelText("数量")).toBeNull();
-    expect(screen.queryByRole("button", { name: "提交订单" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Buy plan" })).toBeNull();
 
-    openNewOrderForm();
-
-    const orderDialog = screen.getByRole("dialog", { name: "选择套餐" });
-    expect(within(orderDialog).getByRole("button", { name: /选择基础月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择标准月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择年度套餐/ })).not.toBeNull();
-    expect(within(orderDialog).queryByText("首选客户端")).toBeNull();
-    expect(within(orderDialog).queryByText("支付宝 / 微信支付")).toBeNull();
-    expect(within(orderDialog).queryByText("提交订单后进入支付确认页。")).toBeNull();
-    expect(within(orderDialog).queryByText("聚合扫码支付")).toBeNull();
-    expect(within(orderDialog).queryByRole("radio", { name: /微信支付/ })).toBeNull();
-    expect(within(orderDialog).queryByRole("radio", { name: /支付宝支付/ })).toBeNull();
-    expect(within(orderDialog).queryByText("应付")).toBeNull();
-    expect(within(orderDialog).getAllByText("20 元 / 月").length).toBeGreaterThan(0);
-    expect(within(orderDialog).queryByLabelText("订单时长")).toBeNull();
-    expect(within(orderDialog).queryByLabelText("数量")).toBeNull();
-    expect(within(orderDialog).queryByText(/删除操作|停用处理/)).toBeNull();
-    expect(within(orderDialog).queryByRole("button", { name: "取消" })).toBeNull();
-    expect(within(orderDialog).queryByRole("button", { name: "提交订单" })).toBeNull();
-
-    fireEvent.click(within(orderDialog).getByRole("button", { name: "关闭" }));
-    expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
+    fireEvent.click(within(portalNav).getByRole("button", { name: "用量" }));
+    fireEvent.click(screen.getByRole("button", { name: "前往商城" }));
+    expectMarketplaceWithoutLegacyCheckout(client);
   });
 
-  test("creates yearly payment checkout through the user-scoped client", async () => {
+  test("routes users without delivered traffic entitlement to Marketplace", async () => {
     const client = portalClient();
-    const paymentRedirect = vi.fn();
-    render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
+    render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择年度套餐/ }));
-    expect(screen.getByRole("dialog", { name: "选择支付方式" })).not.toBeNull();
-    continueFromCashier("微信支付");
+    openPortalStartGuide();
+    fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
 
-    expect((await screen.findAllByText("待付款")).length).toBeGreaterThan(0);
-    expect(client.createPaymentCheckout).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userRef: "user_safe_ref",
-        planId: "yearly",
-        clientTarget: "clash",
-        channel: "wxpay"
-      })
-    );
-    expect(client.applyForSubscription).not.toHaveBeenCalled();
-    expect(screen.queryByText("https://sub.example.test/import/visible-once")).toBeNull();
-    expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "订单摘要" })).not.toBeNull();
-    expect(screen.queryByRole("heading", { name: "支持的支付方式" })).toBeNull();
-    expect(screen.getByText("支付至")).not.toBeNull();
-    expect(screen.getByText("订单信息")).not.toBeNull();
-    expect(screen.getByText("计费周期")).not.toBeNull();
-    expect(screen.getByText("交易编号")).not.toBeNull();
-    expect(screen.getByText("订单金额")).not.toBeNull();
-    expect(screen.queryByText("优惠")).toBeNull();
-    expect(screen.getByText("支付总额")).not.toBeNull();
-    expect(screen.getByText("此支付链接将在")).not.toBeNull();
-    expect(screen.getByText("后失效")).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "已付款？检查状态" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "切换支付方式" })).toBeNull();
-    expect(screen.queryByText("等待付款确认...")).toBeNull();
-    expect(screen.queryByText("继续支付即表示你同意服务条款和隐私政策。")).toBeNull();
-    expect(screen.getAllByText("微信支付").length).toBeGreaterThan(0);
-    expect(screen.queryByText("支付宝")).toBeNull();
-    expect(screen.getByText("请使用微信扫码付款。")).not.toBeNull();
-    expect(screen.queryByText("二维码仅限本订单使用。")).toBeNull();
-    expect(screen.queryByText("聚合扫码支付")).toBeNull();
-    expect(screen.queryByText(/以后端回调|后台回调|系统会按套餐周期/)).toBeNull();
-    expect(screen.queryByRole("button", { name: "打开支付平台" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
-    fireEvent.click(screen.getAllByRole("button", { name: "返回个人与安全" })[0]);
-    expect(screen.getByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
-    const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("P-yearly")).not.toBeNull();
-    expect(screen.getByText("邮箱：user_safe_ref")).not.toBeNull();
+    expectMarketplaceWithoutLegacyCheckout(client);
+    expect(screen.queryByRole("heading", {
+      name: "你要在哪台设备上使用？"
+    })).toBeNull();
+  });
+
+  test("routes order creation controls to Marketplace", async () => {
+    const client = portalClient();
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalProfile();
+
+    const orders = screen.getByRole("region", { name: "订单记录" });
+    const acquisitionButtons = within(orders).getAllByRole("button", {
+      name: "前往商城"
+    });
+    expect(acquisitionButtons).toHaveLength(2);
+    fireEvent.click(acquisitionButtons[0]);
+
+    expectMarketplaceWithoutLegacyCheckout(client);
+  });
+
+  test("routes failed legacy payment replacement to Marketplace", async () => {
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({ status: "payment_failed" })
+    ]);
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalProfile();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
+    fireEvent.click(screen.getByRole("button", { name: "前往商城" }));
+
+    expectMarketplaceWithoutLegacyCheckout(client);
   });
 
   test("does not render a fake WeChat QR code from a hosted checkout URL", async () => {
-    const client = portalClient({
-      createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
-        order: {
-          orderRef: "pay_wx_hosted_only",
-          planId: "monthly_basic",
-          amountMinor: 2000,
-          channel: "wxpay",
-          currency: "CNY",
-          status: "pending_payment",
-          checkoutUrl: "https://pay.example.test/wxpay/hosted-only",
-          createdAt: "2026-05-31T00:00:00.000Z",
-          paymentExpiresAt: "2099-01-01T00:00:00.000Z",
-          safety: {
-            noRawMerchantKey: true,
-            noRawProviderPayload: true
-          }
-        },
-        safety: {
-          noRawMerchantKey: true,
-          noRawProviderPayload: true,
-          noSubscriptionIssued: true
-        }
-      }))
-    });
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({
+        orderRef: "pay_wx_hosted_only",
+        channel: "wxpay",
+        checkoutUrl: "https://pay.example.test/wxpay/hosted-only"
+      })
+    ]);
     render(createElement(UserPortalPage, { portalClient: client, paymentRedirect: vi.fn() }));
 
     await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-    continueFromCashier("微信支付");
+    openPortalProfile();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
 
     expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
     expect(screen.queryByAltText("微信支付二维码")).toBeNull();
     expect(screen.getByText("微信支付暂未返回可扫码付款码，请改用支付宝，或在手机端重新提交后跳转微信支付。")).not.toBeNull();
-  });
-
-  test("uses the mobile default wallet before external checkout", async () => {
-    const restoreDevice = installMobilePaymentDevice();
-    const client = portalClient({
-      createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
-        order: {
-          orderRef: "pay_mobile_alipay",
-          planId: input.planId,
-          amountMinor: 2000,
-          channel: input.channel,
-          currency: "CNY",
-          status: "pending_payment",
-          checkoutUrl: `https://pay.example.test/${input.channel}/monthly_basic`,
-          urlScheme: `${input.channel}://pay/monthly_basic`,
-          createdAt: "2026-05-31T00:00:00.000Z",
-          safety: {
-            noRawMerchantKey: true,
-            noRawProviderPayload: true
-          }
-        },
-        safety: {
-          noRawMerchantKey: true,
-          noRawProviderPayload: true,
-          noSubscriptionIssued: true
-        }
-      }))
-    });
-    const paymentRedirect = vi.fn();
-    try {
-      render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
-
-      await enterPortal();
-      openNewOrderForm();
-      fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-      continueFromCashier("微信支付");
-
-      await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userRef: "user_safe_ref",
-          planId: "monthly_basic",
-          clientTarget: "clash",
-          channel: "wxpay",
-          device: "mobile"
-        })
-      ));
-      await waitFor(() => expect(paymentRedirect).toHaveBeenCalledWith("wxpay://pay/monthly_basic"));
-    } finally {
-      restoreDevice();
-    }
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("redirects mobile payment checkout to the provider for wallet handoff", async () => {
     const restoreDevice = installMobilePaymentDevice();
-    const client = portalClient({
-      createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
-        order: {
-          orderRef: "pay_mobile_scheme",
-          planId: input.planId,
-          amountMinor: 2000,
-          channel: input.channel,
-          currency: "CNY",
-          status: "pending_payment",
-          checkoutUrl: "https://pay.example.test/monthly_basic",
-          urlScheme: "weixin://pay/monthly_basic",
-          createdAt: "2026-05-31T00:00:00.000Z",
-          safety: {
-            noRawMerchantKey: true,
-            noRawProviderPayload: true
-          }
-        },
-        safety: {
-          noRawMerchantKey: true,
-          noRawProviderPayload: true,
-          noSubscriptionIssued: true
-        }
-      }))
-    });
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({
+        orderRef: "pay_mobile_scheme",
+        channel: "wxpay",
+        checkoutUrl: "https://pay.example.test/monthly_basic",
+        urlScheme: "weixin://pay/monthly_basic"
+      })
+    ]);
     const paymentRedirect = vi.fn();
     try {
       render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
 
       await enterPortal();
-      openNewOrderForm();
-      fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-      continueFromCashier("微信支付");
+      openPortalProfile();
+      fireEvent.click(screen.getByRole("button", { name: "去付款" }));
 
-      await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalled());
-      expect(client.createPaymentCheckout).toHaveBeenCalledWith(expect.objectContaining({ device: "mobile" }));
       await waitFor(() => expect(paymentRedirect).toHaveBeenCalledWith("weixin://pay/monthly_basic"));
+      expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+      expect(client.applyForSubscription).not.toHaveBeenCalled();
     } finally {
       restoreDevice();
     }
   });
 
   test("falls back to the in-panel payment status when checkout URL is unavailable", async () => {
-    const client = portalClient({
-      createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
-        order: {
-          orderRef: "pay_without_url",
-          planId: input.planId,
-          amountMinor: 2000,
-          channel: input.channel,
-          currency: "CNY",
-          status: "pending_payment",
-          createdAt: "2026-05-31T00:00:00.000Z",
-          safety: {
-            noRawMerchantKey: true,
-            noRawProviderPayload: true
-          }
-        },
-        safety: {
-          noRawMerchantKey: true,
-          noRawProviderPayload: true,
-          noSubscriptionIssued: true
-        }
-      }))
-    });
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({
+        orderRef: "pay_without_url",
+        checkoutUrl: undefined
+      })
+    ]);
     const paymentRedirect = vi.fn();
     render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
 
     await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-    continueFromCashier();
+    openPortalProfile();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
 
-    await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalled());
     expect(paymentRedirect).not.toHaveBeenCalled();
     expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
-  });
-
-  test("purchase form does not expose the registration-only 7 day trial", async () => {
-    const client = portalClient();
-    render(createElement(UserPortalPage, { portalClient: client }));
-
-    await enterPortal();
-    openNewOrderForm();
-    const orderDialog = screen.getByRole("dialog", { name: "选择套餐" });
-
-    expect(within(orderDialog).queryByRole("button", { name: /7 天/ })).toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择基础月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择标准月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择年度套餐/ })).not.toBeNull();
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("keeps package payment records in the order table", async () => {
-    const client = portalClient();
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({
+        orderRef: "pay_monthly_plus",
+        planId: "monthly_plus",
+        amountMinor: 3000
+      })
+    ]);
     const paymentRedirect = vi.fn();
     render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
 
     await enterPortal();
-
-    openPortalDashboard();
-    expect(screen.getByRole("button", { name: "充值 Coins" })).not.toBeNull();
-    openNewOrderForm();
-    expect(screen.getByRole("button", { name: /选择基础月付/ })).not.toBeNull();
-    expect(screen.getByRole("button", { name: /选择标准月付/ })).not.toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: /选择标准月付/ }));
-    continueFromCashier();
-
-    await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userRef: "user_safe_ref",
-        planId: "monthly_plus",
-        clientTarget: "clash",
-        channel: "alipay"
-      })
-    ));
-    expect(client.applyForSubscription).not.toHaveBeenCalled();
+    openPortalProfile();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
 
     expect(paymentRedirect).not.toHaveBeenCalled();
     expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
@@ -2522,19 +2388,19 @@ describe("user portal product surface", () => {
     const orderTable = screen.getByRole("table", { name: "订单列表" });
     expect(within(orderTable).getByText("P-monthly_plus")).not.toBeNull();
     expect(within(orderTable).getByRole("button", { name: "去付款" })).not.toBeNull();
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("keeps pending payment records separate from subscription setup", async () => {
-    const client = portalClient();
+    const client = portalClientWithPaymentOrders([paymentOrder()]);
     const paymentRedirect = vi.fn();
     render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
 
     await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-    continueFromCashier();
+    openPortalProfile();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
 
-    await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalled());
     expect(paymentRedirect).not.toHaveBeenCalled();
     expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
     expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
@@ -2542,7 +2408,7 @@ describe("user portal product surface", () => {
 
     expect(screen.getByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
     const orderTable = screen.getByRole("table", { name: "订单列表" });
-    expect(within(orderTable).getByText("P-monthly_basic")).not.toBeNull();
+    expect(within(orderTable).getByText("P-existing_monthly")).not.toBeNull();
     expect(within(orderTable).getByRole("button", { name: "去付款" })).not.toBeNull();
 
     expect(screen.queryByRole("region", { name: "订阅状态" })).toBeNull();
@@ -2550,6 +2416,8 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("授权完成后显示订阅链接")).toBeNull();
     expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
     expect(screen.queryByRole("button", { name: "刷新当前订阅" })).toBeNull();
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("local portal client records 7 day orders without direct subscription generation when requestOnly is set", async () => {
@@ -2578,34 +2446,6 @@ describe("user portal product surface", () => {
     });
     expect(repeat.lifecycle).toBe("pending");
     expect(repeat.requestRef).not.toBe(request.requestRef);
-  });
-
-  test("does not collect contact details before package application", async () => {
-    const client = portalClient();
-    const paymentRedirect = vi.fn();
-    render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
-
-    await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-    continueFromCashier();
-
-    expect(screen.queryByText("请先填写授权联系资料。")).toBeNull();
-    expect(screen.queryByRole("dialog", { name: "填写联系资料" })).toBeNull();
-    expect(screen.queryByLabelText("联系手机号")).toBeNull();
-    expect(screen.queryByLabelText("Telegram 账号")).toBeNull();
-    await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userRef: "user_safe_ref",
-        planId: "monthly_basic",
-        clientTarget: "clash",
-        channel: "alipay"
-      })
-    ));
-    expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
-    expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
-    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("uses the start guide for an active subscription link without exposing lifecycle controls", async () => {
@@ -3091,41 +2931,6 @@ describe("user portal product surface", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://sub.example.test/import/paid-visible-once"));
   });
 
-  test("default local portal client is safe by default and exposes no subscription link", async () => {
-    const client = createLocalUserPortalClient({
-      now: () => new Date("2026-05-31T00:00:00.000Z")
-    });
-    const paymentRedirect = vi.fn();
-    render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
-
-    await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-    continueFromCashier();
-
-    expect((await screen.findAllByText("待付款")).length).toBeGreaterThan(0);
-    expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "扫码支付" })).not.toBeNull();
-    expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
-    expect(screen.queryByText("下一步：开通中")).toBeNull();
-    expect(screen.queryByText("授权完成后显示订阅链接")).toBeNull();
-    expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "提交订单" })).toBeNull();
-    expect(screen.getByRole("button", { name: "返回个人与安全" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "购买套餐" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "个人与安全" }));
-
-    expect(screen.getByText("这里展示账户信息和安全设置。")).not.toBeNull();
-    expect(screen.queryByText("基础月付 · 开通中")).toBeNull();
-    expect(screen.queryByText("开通中")).toBeNull();
-    expect(screen.queryByText("授权联系资料")).toBeNull();
-    expect(screen.queryByRole("button", { name: "修改资料" })).toBeNull();
-    expect(screen.queryByText(/申请基础月付（待开通）/)).toBeNull();
-    expect(screen.queryByText("2026/06/30 到期")).toBeNull();
-    expect(screen.queryByText("月卡 / 年卡套餐，申请开通；生效期内可刷新当前订阅。")).toBeNull();
-  });
-
   test("personal center does not collect profile contact info", async () => {
     const client = portalClient();
     render(createElement(UserPortalPage, { portalClient: client }));
@@ -3295,7 +3100,7 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("扣费")).toBeNull();
   });
 
-  test("requires a purchased plan before starting the setup guide", async () => {
+  test("requires delivered entitlement before setup and sends acquisition to Marketplace", async () => {
     const client = portalClient();
     render(createElement(UserPortalPage, { portalClient: client }));
 
@@ -3303,12 +3108,12 @@ describe("user portal product surface", () => {
     openPortalStartGuide();
     fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
 
-    const orderDialog = screen.getByRole("dialog", { name: "选择套餐" });
-    expect(within(orderDialog).getByRole("button", { name: /选择基础月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择标准月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择年度套餐/ })).not.toBeNull();
-    expect(screen.queryByRole("heading", { name: "你要在哪台设备上使用？" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Apple iOS iPhone / iPad" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "平台服务商城" })).not.toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
+    expect(screen.queryByRole("heading", {
+      name: "你要在哪台设备上使用？"
+    })).toBeNull();
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
