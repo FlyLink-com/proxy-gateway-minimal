@@ -7,6 +7,7 @@ import {
   generateClashSubscription,
   generateMihomoProviderTemplate,
   generateMihomoRenderTemplate,
+  generateSingBoxSubscription,
   subscriptionSummary
 } from "../services/clash-subscription.mjs";
 import { listen } from "./helpers/listen.mjs";
@@ -135,6 +136,95 @@ test("generateClashSubscription protects node domains from fake-ip self-routing"
   assert.doesNotMatch(yaml, /globalcirclecat\.cloud/);
   assert.doesNotMatch(yaml, /globalcirclecat\.icu/);
   assert.doesNotMatch(yaml, /- DIRECT\n/);
+});
+
+test("generateSingBoxSubscription keeps JP protocol endpoints outside automatic proxy routing", () => {
+  const profile = JSON.parse(generateSingBoxSubscription({
+    servers: [
+      {
+        name: "jp-vless",
+        host: "jp.gccwebos.com",
+        port: 8443,
+        protocol: "vless",
+        uuid: "11111111-1111-4111-8111-111111111111",
+        udp: true,
+        tls: true,
+        serverName: "www.cloudflare.com",
+        network: "tcp",
+        flow: "xtls-rprx-vision",
+        realityOpts: {
+          publicKey: "synthetic-public-key",
+          shortId: "synthetic-short-id"
+        },
+        clientFingerprint: "chrome"
+      },
+      {
+        name: "jp-hy2",
+        host: "jp.gccwebos.com",
+        port: 10443,
+        protocol: "hysteria2",
+        password: "synthetic-hy2-secret",
+        sni: "jp.gccwebos.com",
+        alpn: ["h3"],
+        bbrProfile: "aggressive",
+        fingerprint: "chrome",
+        ports: "10443:10445",
+        hopInterval: "30s",
+        up: "20 Mbps",
+        down: "100 Mbps",
+        obfs: "salamander",
+        obfsPassword: "synthetic-obfs-secret",
+        skipCertVerify: true
+      },
+      {
+        name: "jp-tuic",
+        host: "jp.gccwebos.com",
+        port: 443,
+        protocol: "tuic",
+        uuid: "22222222-2222-4222-8222-222222222222",
+        password: "synthetic-tuic-secret",
+        sni: "jp.gccwebos.com",
+        alpn: ["h3"],
+        udpRelayMode: "native",
+        congestionController: "bbr",
+        skipCertVerify: true
+      }
+    ]
+  }));
+
+  assert.equal(profile.route.final, "GLOBAL");
+  assert.deepEqual(profile.route.rules, [{ domain_suffix: ["gccwebos.com"], action: "route", outbound: "DIRECT" }]);
+  assert.deepEqual(profile.dns.rules, [{ domain_suffix: ["gccwebos.com"], server: "local" }]);
+  assert.deepEqual(profile.outbounds.map(({ type, tag }) => ({ type, tag })), [
+    { type: "vless", tag: "jp-vless" },
+    { type: "hysteria2", tag: "jp-hy2" },
+    { type: "tuic", tag: "jp-tuic" },
+    { type: "urltest", tag: "AUTO" },
+    { type: "selector", tag: "GLOBAL" },
+    { type: "direct", tag: "DIRECT" }
+  ]);
+
+  const vless = profile.outbounds[0];
+  assert.equal(vless.server_port, 8443);
+  assert.equal(vless.packet_encoding, "xudp");
+  assert.deepEqual(vless.tls, {
+    enabled: true,
+    server_name: "www.cloudflare.com",
+    utls: { enabled: true, fingerprint: "chrome" },
+    reality: { enabled: true, public_key: "synthetic-public-key", short_id: "synthetic-short-id" }
+  });
+  assert.equal(profile.outbounds[1].bbr_profile, "aggressive");
+  assert.deepEqual(profile.outbounds[1].tls.utls, { enabled: true, fingerprint: "chrome" });
+  assert.equal(profile.outbounds[1].tls.insecure, true);
+  assert.deepEqual(profile.outbounds[1].server_ports, ["10443:10445"]);
+  assert.equal(profile.outbounds[1].hop_interval, "30s");
+  assert.equal(profile.outbounds[1].up_mbps, 20);
+  assert.equal(profile.outbounds[1].down_mbps, 100);
+  assert.deepEqual(profile.outbounds[1].obfs, { type: "salamander", password: "synthetic-obfs-secret" });
+  assert.equal(profile.outbounds[2].congestion_control, "bbr");
+  assert.equal(profile.outbounds[2].udp_relay_mode, "native");
+  assert.equal(profile.outbounds[2].tls.insecure, true);
+  assert.equal(JSON.stringify(profile).includes("fake-ip"), false);
 });
 
 test("generateClashSubscription uses configured names as provider-neutral labels", () => {
@@ -711,6 +801,31 @@ test("artifact subscription routes bind using the trusted client IP resolver", a
     assert.equal(response.status, 200);
     assert.equal(capturedMetadata.ip, "203.0.113.10");
     assert.equal(capturedMetadata.userAgent, "Mihomo/Test");
+  } finally {
+    server.close();
+  }
+});
+
+test("artifact sing-box subscription route returns a native JSON profile", async () => {
+  const state = fakeState({
+    subscriptions: {
+      service: {
+        resolveSubscriptionArtifact: async () => ({
+          ok: true,
+          proxyConfig: sampleConfig()
+        })
+      }
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const response = await fetch(`${baseUrl}/sub/a/opaque-device/sing-box.json`);
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /application\/json/);
+    const profile = await response.json();
+    assert.equal(profile.route.final, "GLOBAL");
+    assert.equal(profile.outbounds.at(-1).tag, "DIRECT");
   } finally {
     server.close();
   }

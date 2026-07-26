@@ -4,6 +4,7 @@ import {
   generateClashProviderSubscription,
   generateClashProxyProvider,
   generateClashSubscription,
+  generateSingBoxSubscription,
   subscriptionSummary
 } from "../services/clash-subscription.mjs";
 import {
@@ -121,6 +122,13 @@ export function subscriptionRoutes(state, options = {}) {
       .send(yaml);
   }
 
+  function sendSubscriptionJson(res, lifecycle, json) {
+    applySubscriptionLifecycleHeaders(res, lifecycle);
+    res
+      .type("application/json; charset=utf-8")
+      .send(json);
+  }
+
   async function resolveArtifact(req, res) {
     const resolved = await resolver.resolveArtifact({
       artifact: req.params.artifact,
@@ -164,6 +172,20 @@ export function subscriptionRoutes(state, options = {}) {
       res,
       lifecycle,
       generateClashProxyProvider(resolved.result.proxyConfig, { lifecycle })
+    );
+  });
+
+  router.get("/sub/a/:artifact/sing-box.json", async (req, res) => {
+    const resolved = await resolveArtifact(req, res);
+    if (!resolved) {
+      return;
+    }
+
+    const lifecycle = subscriptionLifecycle(resolved.result);
+    sendSubscriptionJson(
+      res,
+      lifecycle,
+      generateSingBoxSubscription(resolved.result.proxyConfig)
     );
   });
 

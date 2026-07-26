@@ -422,6 +422,155 @@ function pushOptionalStringList(lines, key, values) {
   }
 }
 
+function singBoxTls(server, { required = false } = {}) {
+  const enabled = required || server.tls === true;
+  if (!enabled) {
+    return undefined;
+  }
+
+  const tls = { enabled: true };
+  if (server.skipCertVerify) {
+    tls.insecure = true;
+  }
+  const serverName = server.serverName || server.sni;
+  if (serverName) {
+    tls.server_name = serverName;
+  }
+  if (Array.isArray(server.alpn) && server.alpn.length > 0) {
+    tls.alpn = server.alpn;
+  }
+  const fingerprint = server.clientFingerprint || server.fingerprint;
+  if (fingerprint) {
+    tls.utls = {
+      enabled: true,
+      fingerprint
+    };
+  }
+  if (server.realityOpts) {
+    tls.reality = {
+      enabled: true
+    };
+    if (server.realityOpts.publicKey) {
+      tls.reality.public_key = server.realityOpts.publicKey;
+    }
+    if (server.realityOpts.shortId) {
+      tls.reality.short_id = server.realityOpts.shortId;
+    }
+  }
+  return tls;
+}
+
+function singBoxMegabits(value, fieldName) {
+  const normalized = text(value);
+  if (!normalized) {
+    return undefined;
+  }
+  const match = /^(\d+(?:\.\d+)?)\s*(?:m(?:bps|b)?|mbps)?$/i.exec(normalized);
+  if (!match) {
+    throw new Error(`sing-box Hysteria2 ${fieldName} must be expressed in Mbps`);
+  }
+  return Number(match[1]);
+}
+
+function singBoxOutbound(server) {
+  const outbound = {
+    type: server.type,
+    tag: server.name,
+    server: server.host,
+    server_port: server.port
+  };
+
+  if (server.type === "ss") {
+    outbound.method = server.cipher;
+    outbound.password = server.password;
+    return outbound;
+  }
+
+  if (server.type === "vless") {
+    outbound.uuid = server.uuid;
+    if (server.flow) outbound.flow = server.flow;
+    if (server.network) outbound.network = server.network;
+    if (server.packetEncoding) {
+      outbound.packet_encoding = server.packetEncoding;
+    } else if (server.udp) {
+      outbound.packet_encoding = "xudp";
+    }
+    const tls = singBoxTls(server);
+    if (tls) outbound.tls = tls;
+    return outbound;
+  }
+
+  if (server.type === "hysteria2") {
+    outbound.password = server.password;
+    if (server.ports) outbound.server_ports = [server.ports];
+    if (server.hopInterval) outbound.hop_interval = server.hopInterval;
+    const upMbps = singBoxMegabits(server.up, "up");
+    const downMbps = singBoxMegabits(server.down, "down");
+    if (upMbps !== undefined) outbound.up_mbps = upMbps;
+    if (downMbps !== undefined) outbound.down_mbps = downMbps;
+    if (server.obfsPassword && !server.obfs) {
+      throw new Error("sing-box Hysteria2 obfs password requires an obfs type");
+    }
+    if (server.obfs) {
+      outbound.obfs = { type: server.obfs };
+      if (server.obfsPassword) outbound.obfs.password = server.obfsPassword;
+    }
+    if (server.bbrProfile) outbound.bbr_profile = server.bbrProfile;
+    outbound.tls = singBoxTls(server, { required: true });
+    return outbound;
+  }
+
+  outbound.uuid = server.uuid;
+  outbound.password = server.password;
+  if (server.udpRelayMode) outbound.udp_relay_mode = server.udpRelayMode;
+  if (server.congestionController) outbound.congestion_control = server.congestionController;
+  outbound.tls = singBoxTls(server, { required: true });
+  return outbound;
+}
+
+export function generateSingBoxSubscription(proxyConfig) {
+  const servers = clashServers(proxyConfig);
+  const autoServers = autoGroupServers(servers);
+  const { suffixes } = nodeDomainProtection(servers);
+  const outbounds = [
+    ...servers.map(singBoxOutbound)
+  ];
+
+  if (autoServers.length > 0) {
+    outbounds.push({
+      type: "urltest",
+      tag: "AUTO",
+      outbounds: autoServers.map((server) => server.name),
+      url: GROUP_TEST_URL,
+      interval: "5m"
+    });
+  }
+
+  outbounds.push({
+    type: "selector",
+    tag: "GLOBAL",
+    outbounds: [
+      ...(autoServers.length > 0 ? ["AUTO"] : []),
+      ...servers.map((server) => server.name)
+    ],
+    default: autoServers.length > 0 ? "AUTO" : servers[0]?.name
+  });
+  outbounds.push({ type: "direct", tag: "DIRECT" });
+
+  return JSON.stringify({
+    dns: {
+      servers: [{ type: "local", tag: "local" }],
+      rules: suffixes.length > 0 ? [{ domain_suffix: suffixes, server: "local" }] : [],
+      final: "local"
+    },
+    outbounds,
+    route: {
+      rules: suffixes.length > 0 ? [{ domain_suffix: suffixes, action: "route", outbound: "DIRECT" }] : [],
+      final: "GLOBAL"
+    }
+  }, null, 2);
+}
+
 function pushProxyGroup(lines, { name, type, servers, tolerance }) {
   if (!Array.isArray(servers) || servers.length === 0) {
     return false;
