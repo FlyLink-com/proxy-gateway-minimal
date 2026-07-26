@@ -236,8 +236,9 @@
 }
 
 .portal-v2-shell .portal-recharge-denominations button:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 3px rgba(32, 213, 232, 0.2);
+  outline: 3px solid #20d5e8;
+  outline-offset: 2px;
+  box-shadow: none;
 }
 
 .portal-v2-shell .portal-recharge-denominations button:disabled {
@@ -302,6 +303,13 @@
   border-color: #d0d7de;
   background: #ffffff;
   color: #1f2937;
+}
+
+.portal-v2-shell[data-portal-theme="light"]
+  .portal-recharge-denominations button:focus-visible {
+  outline: 3px solid #0969da;
+  outline-offset: 2px;
+  box-shadow: none;
 }
 
 .portal-v2-shell[data-portal-theme="light"]
