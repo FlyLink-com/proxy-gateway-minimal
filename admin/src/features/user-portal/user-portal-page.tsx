@@ -42,8 +42,10 @@ import {
 } from "./public-locale-switch";
 import {
   MarketplacePanel,
+  RechargeDialog,
   ReferralRewardsPanel,
-  WalletPanel
+  WalletPanel,
+  type RechargeDenomination
 } from "./portal-commerce-panels";
 import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
 import type {
@@ -1050,6 +1052,9 @@ export function UserPortalPage({
   const [orderClientFilter, setOrderClientFilter] = useState<"all" | PortalClientId>("all");
   const [orderSort, setOrderSort] = useState<OrderSort>("newest");
   const [orderFormOpen, setOrderFormOpen] = useState(false);
+  const [rechargeDialogOpen, setRechargeDialogOpen] = useState(false);
+  const [selectedRechargeAmount, setSelectedRechargeAmount] =
+    useState<RechargeDenomination | null>(null);
   const [selectedOrderRef, setSelectedOrderRef] = useState<string | null>(null);
   const [activePaymentOrderRef, setActivePaymentOrderRef] = useState<string | null>(null);
   const [authError, setAuthError] = useState("");
@@ -1083,6 +1088,11 @@ export function UserPortalPage({
   useEffect(() => {
     document.title = portalSession ? authCopy.shellDocumentTitle : authCopy.documentTitle;
   }, [authCopy.documentTitle, authCopy.shellDocumentTitle, portalSession]);
+
+  useEffect(() => {
+    setRechargeDialogOpen(false);
+    setSelectedRechargeAmount(null);
+  }, [portalSession]);
 
   const currentEntitlement = useMemo(() => currentTrafficEntitlement(accountEntitlements), [accountEntitlements]);
   const selectedOrder = useMemo(() => {
@@ -1481,6 +1491,16 @@ export function UserPortalPage({
   function navigatePortalView(view: PortalView) {
     setActivePaymentOrderRef(null);
     setActiveView(view);
+  }
+
+  function openRechargeDialog() {
+    setSelectedRechargeAmount(null);
+    setRechargeDialogOpen(true);
+  }
+
+  function closeRechargeDialog() {
+    setSelectedRechargeAmount(null);
+    setRechargeDialogOpen(false);
   }
 
   async function refreshPaymentOrders(targetOrderRef?: string) {
@@ -2004,9 +2024,9 @@ export function UserPortalPage({
                         placeholder={uiText(locale, "搜索套餐、用量、客户端", "Search plans, usage, clients")}
                       />
                     </label>
-                    <button className="portal-primary-button compact" type="button" onClick={startNewOrder}>
+                    <button className="portal-primary-button compact" type="button" onClick={openRechargeDialog}>
                       <Plus aria-hidden="true" />
-                      {uiText(locale, "购买套餐", "Buy plan")}
+                      {uiText(locale, "充值 Coins", "Recharge Coins")}
                     </button>
                   </div>
                 </div>
@@ -2130,6 +2150,14 @@ export function UserPortalPage({
                 />
               ) : null}
             </>
+          ) : null}
+          {rechargeDialogOpen ? (
+            <RechargeDialog
+              locale={locale}
+              selectedAmount={selectedRechargeAmount}
+              onSelect={setSelectedRechargeAmount}
+              onClose={closeRechargeDialog}
+            />
           ) : null}
         </section>
       </main>
