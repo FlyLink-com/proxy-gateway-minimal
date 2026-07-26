@@ -19,12 +19,13 @@ Vite, existing `ModalFrame`, and the verified Portal static CSS boundary.
 
 ## Execution Status
 
-- Tasks 1-5 are locally implemented and task-reviewed at
+- Tasks 1-5 are locally implemented and task-reviewed at code implementation
+  checkpoint
   `af37d2c3d813d99e317938c2adb1bfdb0355cd21`.
 - Task-scoped local commits were separately authorized.
 - Push, PR, Ready, merge, artifact publication, deployment, production, and
   Stage 2 remain unauthorized.
-- Final whole-branch review is pending.
+- A final whole-branch review is required before local source handoff.
 
 ## Global Constraints
 

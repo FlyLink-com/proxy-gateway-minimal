@@ -8,9 +8,11 @@
 - Production impact: none
 - Deployment authority: none
 - Design state: approved
-- Implementation state: Stage 1 locally implemented and task-reviewed at
+- Implementation state: Stage 1 code locally implemented and task-reviewed at
+  code implementation checkpoint
   `af37d2c3d813d99e317938c2adb1bfdb0355cd21`;
-  `source_only_not_deployed`, pending final whole-branch review
+  `source_only_not_deployed`; a final whole-branch review is required before
+  local source handoff
 
 This specification defines the first interaction stage after
 `2026-07-26-portal-commerce-layout-v1.md`. It supersedes only that document's
@@ -52,12 +54,13 @@ forbidden_inputs:
   - PR 526 CommerceWorkspace or parallel navigation
 ```
 
-The production baseline above is distinct from the current local candidate:
+The production baseline above is distinct from the Stage 1 code checkpoint:
 
 ```yaml
-local_candidate:
+stage_1_code_checkpoint:
   branch: codex/portal-commerce-work-validation
-  head: af37d2c3d813d99e317938c2adb1bfdb0355cd21
+  implementation_checkpoint: af37d2c3d813d99e317938c2adb1bfdb0355cd21
+  checkpoint_scope: stage_1_code_before_traceability_docs
   state: source_only_not_deployed
 ```
 
