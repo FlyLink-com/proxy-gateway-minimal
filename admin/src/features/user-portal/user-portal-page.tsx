@@ -135,8 +135,7 @@ const plans: PortalPlan[] = [
 const purchasePlans = plans.filter((plan) => plan.id !== "trial");
 
 const clientTargets: Array<{ id: PortalClientId; label: string }> = [
-  { id: "clash", label: "Clash / Mihomo" },
-  { id: "karing", label: "Karing" }
+  { id: "clash", label: "Clash / Mihomo" }
 ];
 
 const webDefaultPaymentChannel: PortalPaymentChannel = "alipay";
@@ -554,6 +553,7 @@ function normalizeOrderQuantity(value: number) {
 }
 
 function clientTargetLabel(clientTarget: PortalClientId) {
+  if (clientTarget === "karing") return "Clash / Mihomo";
   return clientTargets.find((target) => target.id === clientTarget)?.label ?? clientTarget;
 }
 
@@ -3247,15 +3247,6 @@ function ClashAppIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function KaringAppIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" {...props}>
-      <path d="M12 3 5 6.3v5.2c0 4.1 2.75 7.82 7 9.5 4.25-1.68 7-5.4 7-9.5V6.3L12 3Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-      <path d="m8.4 12.1 2.35 2.2 4.85-5.05" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function HiddifyAppIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" {...props}>
@@ -3293,7 +3284,7 @@ function UseGuide({
   ) => Promise<string | null>;
 }) {
   type GuidePlatformId = "ios" | "android" | "harmony" | "macos" | "windows" | "linux";
-  type GuideClientId = "clash" | "karing" | "hiddify";
+  type GuideClientId = "clash" | "clashmi" | "hiddify";
   type GuideStepAction = "download" | "copy" | "import" | "connect" | "verify";
 
   const [guideStarted, setGuideStarted] = useState(false);
@@ -3391,30 +3382,30 @@ function UseGuide({
         }
       ]
     },
-    karing: {
-      name: "Karing",
-      subtitle: "iOS / Android / HarmonyOS",
-      platformIds: ["ios", "android", "harmony"],
-      clientTarget: "karing",
-      icon: KaringAppIcon,
-      href: "https://karing.app/en/download",
-      downloadText: uiText(locale, "打开 Karing 下载页", "Open Karing download"),
+    clashmi: {
+      name: "Clash Mi",
+      subtitle: "Android / HarmonyOS",
+      platformIds: ["android", "harmony"],
+      clientTarget: "clash",
+      icon: ClashAppIcon,
+      href: "https://clashmi.app/download",
+      downloadText: uiText(locale, "打开 Clash Mi 下载页", "Open Clash Mi download"),
       steps: [
         {
-          title: uiText(locale, "安装 Karing", "Install Karing"),
-          detail: uiText(locale, "手机和平板优先用 Karing。安装完成后回到本页继续生成订阅链接。", "Karing is preferred for phones and tablets. Return here after installing it to generate your link."),
+          title: uiText(locale, "安装 Clash Mi", "Install Clash Mi"),
+          detail: uiText(locale, "安装完成后回到本页继续生成订阅链接。", "Return here after installation to generate your subscription link."),
           action: "download"
         },
         {
           title: uiText(locale, "复制你的订阅链接", "Copy your subscription link"),
-          detail: uiText(locale, "点击生成并复制。这个链接只放进 Karing，不要发给别人。", "Generate and copy the link. Put it only into Karing and do not share it."),
+          detail: uiText(locale, "点击生成并复制。这个链接只放进客户端，不要发给别人。", "Generate and copy the link. Put it only into your client and do not share it."),
           action: "copy"
         },
         {
           title: uiText(locale, "导入订阅链接", "Import the subscription link"),
           detail: locale === "zh"
-            ? <>在 Karing 中点击 <code>+</code>，选择 <code>Import Configuration Link</code>，粘贴链接并点击导入。</>
-            : <>Add a profile in Karing, choose <code>Import from URL</code>, paste the link, and save.</>,
+            ? <>在 Clash Mi 的配置或订阅页面选择 <code>从 URL 导入</code>，粘贴链接并确认导入。</>
+            : <>In Clash Mi, open the configuration or subscription page, choose <code>Import from URL</code>, then paste and import the link.</>,
           action: "import"
         },
         {
@@ -3433,7 +3424,7 @@ function UseGuide({
       name: "Hiddify",
       subtitle: uiText(locale, "备用客户端", "Backup client"),
       platformIds: ["ios", "android", "harmony", "macos", "windows", "linux"],
-      clientTarget: "karing",
+      clientTarget: "clash",
       icon: HiddifyAppIcon,
       href: "https://github.com/hiddify/hiddify-app/releases",
       downloadText: uiText(locale, "查看 Hiddify 发布版", "View Hiddify releases"),
@@ -3557,22 +3548,22 @@ function UseGuide({
         ? ["打开左侧订阅", "把链接粘贴到订阅文件链接", "点击导入并等待更新完成"]
         : ["Open Subscriptions", "Paste the link into Subscription file URL", "Click Import and wait for update"]
     },
-    karing: {
-      sourceLabel: locale === "zh" ? "Karing 官方 Quick Start" : "Karing official quick start",
-      sourceUrl: "https://karing.app/en/quickstart",
-      sourceHint: locale === "zh" ? "参考 Add Configuration Link 路径" : "Based on Add Configuration Link",
+    clashmi: {
+      sourceLabel: locale === "zh" ? "Clash Mi 官方下载页" : "Clash Mi official download",
+      sourceUrl: "https://clashmi.app/download",
+      sourceHint: locale === "zh" ? "Android：参考从 URL 导入路径" : "Android: use the import-from-URL path",
       surface: "mobile",
-      screenTitle: locale === "zh" ? "添加配置链接" : "Add Configuration Link",
-      sideItems: locale === "zh" ? ["设置", "添加配置", "配置链接"] : ["Settings", "Add Configuration", "Configuration Link"],
-      activeSideItem: locale === "zh" ? "配置链接" : "Configuration Link",
+      screenTitle: locale === "zh" ? "从 URL 导入订阅" : "Import subscription from URL",
+      sideItems: locale === "zh" ? ["首页", "配置", "订阅"] : ["Home", "Profiles", "Subscriptions"],
+      activeSideItem: locale === "zh" ? "订阅" : "Subscriptions",
       entryLabel: "+",
-      inputLabel: locale === "zh" ? "配置链接/内容" : "Configuration link/content",
+      inputLabel: locale === "zh" ? "订阅链接" : "Subscription link",
       inputPlaceholder: locale === "zh" ? "填入订阅链接" : "Paste subscription URL",
       confirmLabel: locale === "zh" ? "Import" : "Import",
       resultLabel: locale === "zh" ? "添加成功后返回主屏幕连接" : "Return to the main screen after adding it",
       callouts: locale === "zh"
-        ? ["进入 Add Configuration", "打开 Add Configuration Link", "粘贴链接后点右上角添加"]
-        : ["Open Add Configuration", "Open Add Configuration Link", "Paste the link and tap add"]
+        ? ["打开 Clash Mi，进入配置或订阅页面", "选择从 URL 导入", "粘贴订阅链接并确认导入"]
+        : ["Open Clash Mi and enter Profiles or Subscriptions", "Choose Import from URL", "Paste the subscription link and import"]
     },
     hiddify: {
       sourceLabel: locale === "zh" ? "Hiddify 官方 App 使用教程" : "Hiddify official app guide",
@@ -3613,27 +3604,20 @@ function UseGuide({
           : ["Open Subscriptions", "Paste the subscription file URL", "Import; if it fails, check network and client permissions"]
       }
     },
-    karing: {
-      ios: {
-        sourceHint: locale === "zh" ? "iOS / iPadOS：参考 Karing Add Configuration Link 路径" : "iOS / iPadOS: based on Karing Add Configuration Link",
-        resultLabel: locale === "zh" ? "添加成功后返回首页，下一步允许 VPN 配置" : "After adding it, return Home and allow VPN configuration next",
-        callouts: locale === "zh"
-          ? ["打开 Karing，点 + 或进入 Add Configuration", "选择 Add Configuration Link", "粘贴链接后点右上角添加"]
-          : ["Open Karing and tap + or Add Configuration", "Choose Add Configuration Link", "Paste the link and tap add"]
-      },
+    clashmi: {
       android: {
-        sourceHint: locale === "zh" ? "Android：参考 Karing Add Configuration Link 路径" : "Android: based on Karing Add Configuration Link",
-        resultLabel: locale === "zh" ? "添加成功后返回首页，下一步允许 VPN 连接请求" : "After adding it, return Home and allow the VPN connection request next",
+        sourceHint: locale === "zh" ? "Android：参考 Clash Mi 从 URL 导入路径" : "Android: use Clash Mi import from URL",
+        resultLabel: locale === "zh" ? "导入完成后返回首页，下一步允许 VPN 连接请求" : "After importing, return Home and allow the VPN connection request next",
         callouts: locale === "zh"
-          ? ["打开左上角设置或 +", "进入 Add Configuration Link", "粘贴链接后添加"]
-          : ["Open settings or +", "Open Add Configuration Link", "Paste the link and add it"]
+          ? ["打开 Clash Mi，进入配置或订阅页面", "选择从 URL 导入", "粘贴订阅链接并确认导入"]
+          : ["Open Clash Mi and enter Profiles or Subscriptions", "Choose Import from URL", "Paste the subscription link and import"]
       },
       harmony: {
-        sourceHint: locale === "zh" ? "HarmonyOS：按 Android 兼容流程导入 Karing 配置链接" : "HarmonyOS: use the Android-compatible Karing configuration link flow",
-        resultLabel: locale === "zh" ? "添加成功后返回首页，下一步允许 VPN/网络权限" : "After adding it, return Home and allow VPN/network permissions next",
+        sourceHint: locale === "zh" ? "HarmonyOS：按 Android 兼容流程从 URL 导入 Clash Mi 订阅" : "HarmonyOS: use the Android-compatible Clash Mi import-from-URL flow",
+        resultLabel: locale === "zh" ? "导入完成后返回首页，下一步允许 VPN/网络权限" : "After importing, return Home and allow VPN/network permissions next",
         callouts: locale === "zh"
-          ? ["打开 Add Configuration", "选择 Add Configuration Link", "粘贴链接并允许系统权限提示"]
-          : ["Open Add Configuration", "Choose Add Configuration Link", "Paste the link and allow system prompts"]
+          ? ["打开 Clash Mi，进入配置或订阅页面", "选择从 URL 导入", "粘贴订阅链接并允许系统权限提示"]
+          : ["Open Clash Mi and enter Profiles or Subscriptions", "Choose Import from URL", "Paste the link and allow system prompts"]
       }
     },
     hiddify: {
@@ -3699,20 +3683,15 @@ function UseGuide({
         verifySteps: locale === "zh" ? ["浏览器能打开目标网站", "客户端显示已连接", "不可用时检查系统代理/TUN 或换线路"] : ["Target site loads", "Client shows connected", "If unavailable, check system proxy/TUN or switch route"]
       }
     },
-    karing: {
-      ios: {
-        caption: locale === "zh" ? "iOS 会弹出 VPN 配置权限，首次连接必须允许。" : "iOS prompts for VPN configuration permission; allow it on first connect.",
-        steps: locale === "zh" ? ["返回 Karing 首页", "点击连接并允许 VPN 配置", "状态变为已连接"] : ["Return to Karing Home", "Tap connect and allow VPN configuration", "Status changes to connected"],
-        verifySteps: locale === "zh" ? ["浏览器能打开目标网站", "状态栏出现 VPN 图标", "不可用时更新订阅或换线路"] : ["Target site loads", "VPN icon appears in the status bar", "If unavailable, update subscription or switch route"]
-      },
+    clashmi: {
       android: {
         caption: locale === "zh" ? "Android 首次连接会弹出 VPN 连接请求，允许后再等待连接完成。" : "Android prompts for a VPN connection request on first connect; allow it and wait for connection.",
-        steps: locale === "zh" ? ["返回 Karing 首页", "点击连接并允许 VPN 请求", "状态变为已连接"] : ["Return to Karing Home", "Tap connect and allow VPN request", "Status changes to connected"],
+        steps: locale === "zh" ? ["返回 Clash Mi 首页", "点击连接并允许 VPN 请求", "状态变为已连接"] : ["Return to Clash Mi Home", "Tap connect and allow VPN request", "Status changes to connected"],
         verifySteps: locale === "zh" ? ["浏览器能打开目标网站", "系统显示 VPN 正在运行", "不可用时更新订阅或换线路"] : ["Target site loads", "System shows VPN is running", "If unavailable, update subscription or switch route"]
       },
       harmony: {
         caption: locale === "zh" ? "HarmonyOS 按 Android 兼容流程处理，首次连接时允许 VPN/网络权限。" : "HarmonyOS follows the Android-compatible flow; allow VPN/network permissions on first connect.",
-        steps: locale === "zh" ? ["返回 Karing 首页", "点击连接并允许系统权限", "状态变为已连接"] : ["Return to Karing Home", "Tap connect and allow system permissions", "Status changes to connected"],
+        steps: locale === "zh" ? ["返回 Clash Mi 首页", "点击连接并允许系统权限", "状态变为已连接"] : ["Return to Clash Mi Home", "Tap connect and allow system permissions", "Status changes to connected"],
         verifySteps: locale === "zh" ? ["浏览器能打开目标网站", "系统显示 VPN/网络代理运行", "不可用时更新订阅或换线路"] : ["Target site loads", "System shows VPN/network proxy running", "If unavailable, update subscription or switch route"]
       }
     },
