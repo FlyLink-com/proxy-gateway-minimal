@@ -3165,7 +3165,7 @@ function PortalPaymentFlow({
                 </div>
                 {!paymentCodeExpired && !paymentEntryAvailable ? (
                   <div className="alert alert-error">
-                    {uiText(locale, "暂时无法打开付款页面，请稍后重新提交订单。", "The payment page is not available yet. Submit the order again later.")}
+                    {uiText(locale, "暂时无法打开付款页面，请查看现有订单状态或前往商城。", "The payment page is not available yet. Check the existing order status or go to Marketplace.")}
                   </div>
                 ) : null}
                 {scanUnavailableMessage ? (
@@ -3191,7 +3191,7 @@ function PortalPaymentFlow({
                     {isSuccess
                       ? uiText(locale, "服务时间以订单详情中的生效和到期时间为准。", "Service time follows the effective and expiry dates in order details.")
                       : isFailed
-                        ? uiText(locale, "可以重试同一订单，或返回个人与安全后重新选择套餐。", "Retry this order, or return to Profile & security before choosing another plan.")
+                        ? uiText(locale, "请查看现有订单状态或前往商城。", "Check the existing order status or go to Marketplace.")
                         : uiText(locale, "请稍后刷新状态；如果长时间未确认，可联系支持。", "Refresh later. Contact support if confirmation takes too long.")}
                   </span>
                 </div>

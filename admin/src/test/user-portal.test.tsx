@@ -2292,6 +2292,8 @@ describe("user portal product surface", () => {
     await enterPortal();
     openPortalProfile();
     fireEvent.click(screen.getByRole("button", { name: "去付款" }));
+    expect(screen.getByText("请查看现有订单状态或前往商城。")).not.toBeNull();
+    expect(screen.queryByText("可以重试同一订单，或返回个人与安全后重新选择套餐。")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "前往商城" }));
 
     expectMarketplaceWithoutLegacyCheckout(client);
@@ -2360,6 +2362,8 @@ describe("user portal product surface", () => {
 
     expect(paymentRedirect).not.toHaveBeenCalled();
     expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
+    expect(screen.getByText("暂时无法打开付款页面，请查看现有订单状态或前往商城。")).not.toBeNull();
+    expect(screen.queryByText("暂时无法打开付款页面，请稍后重新提交订单。")).toBeNull();
     expect(client.createPaymentCheckout).not.toHaveBeenCalled();
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
