@@ -2016,6 +2016,20 @@ describe("user portal product surface", () => {
     fireEvent.click(recharge);
 
     const dialog = screen.getByRole("dialog", { name: "充值 Coins" });
+    const choices = within(dialog).getAllByRole("button", {
+      name: /选择 \d+ Coins/
+    });
+    expect(choices.map((choice) => choice.textContent?.trim())).toEqual([
+      "10 Coins",
+      "30 Coins",
+      "50 Coins",
+      "100 Coins",
+      "200 Coins",
+      "300 Coins"
+    ]);
+    expect(within(dialog).getByRole("button", {
+      name: "支付通道将在下一阶段接入"
+    })).toBeDisabled();
     const choice = within(dialog).getByRole("button", {
       name: "选择 100 Coins"
     });
