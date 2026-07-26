@@ -1,13 +1,113 @@
+import { ModalFrame } from "../../components/modal-frame";
+
 export type PortalCommerceLocale = "zh" | "en";
 
 type PanelProps = {
   locale: PortalCommerceLocale;
 };
 
-const RECHARGE_DENOMINATIONS = [10, 30, 50, 100, 200, 300] as const;
+export const RECHARGE_DENOMINATIONS = [10, 30, 50, 100, 200, 300] as const;
+
+export type RechargeDenomination =
+  (typeof RECHARGE_DENOMINATIONS)[number];
+
+export type RechargeDenominationListProps = {
+  locale: PortalCommerceLocale;
+  mode: "dialog-selectable" | "wallet-disabled";
+  selectedAmount?: RechargeDenomination | null;
+  onSelect?: (amount: RechargeDenomination) => void;
+};
 
 function isChinese(locale: PortalCommerceLocale) {
   return locale === "zh";
+}
+
+export function RechargeDenominationList({
+  locale,
+  mode,
+  selectedAmount = null,
+  onSelect
+}: RechargeDenominationListProps) {
+  const zh = isChinese(locale);
+  const selectable = mode === "dialog-selectable";
+
+  return (
+    <ul
+      className={`portal-recharge-denominations portal-recharge-denominations--${mode}`}
+      aria-label={zh ? "Coins 充值档位" : "Coins recharge denominations"}
+    >
+      {RECHARGE_DENOMINATIONS.map((amount) => (
+        <li key={amount}>
+          <button
+            type="button"
+            disabled={!selectable}
+            aria-pressed={selectable ? selectedAmount === amount : undefined}
+            aria-label={
+              selectable
+                ? zh
+                  ? `选择 ${amount} Coins`
+                  : `Select ${amount} Coins`
+                : zh
+                  ? `充值 ${amount} Coins 暂未开放`
+                  : `Recharge ${amount} Coins — not available yet`
+            }
+            onClick={selectable ? () => onSelect?.(amount) : undefined}
+          >
+            {amount} Coins
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function RechargeDialog({
+  locale,
+  selectedAmount,
+  onSelect,
+  onClose
+}: {
+  locale: PortalCommerceLocale;
+  selectedAmount: RechargeDenomination | null;
+  onSelect: (amount: RechargeDenomination) => void;
+  onClose: () => void;
+}) {
+  const zh = isChinese(locale);
+
+  return (
+    <ModalFrame
+      closeLabel={zh ? "关闭" : "Close"}
+      onClose={onClose}
+      panelClassName="portal-recharge-dialog"
+      title={zh ? "充值 Coins" : "Recharge Coins"}
+      titleId="portal-recharge-dialog-title"
+      footer={(
+        <button
+          className="portal-primary-button compact"
+          type="button"
+          disabled
+        >
+          {zh
+            ? "支付通道将在下一阶段接入"
+            : "Payment channel will be connected in the next stage"}
+        </button>
+      )}
+    >
+      <div className="portal-recharge-dialog__body">
+        <p>
+          {zh
+            ? "选择 Coins 档位。本阶段不会创建订单或发起支付。"
+            : "Choose a Coins denomination. This stage does not create an order or start payment."}
+        </p>
+        <RechargeDenominationList
+          locale={locale}
+          mode="dialog-selectable"
+          selectedAmount={selectedAmount}
+          onSelect={onSelect}
+        />
+      </div>
+    </ModalFrame>
+  );
 }
 
 export function MarketplacePanel({ locale }: PanelProps) {
@@ -65,20 +165,7 @@ export function WalletPanel({ locale }: PanelProps) {
       </section>
       <section className="portal-commerce-layout__section" aria-labelledby="portal-commerce-wallet-recharge-heading">
         <h3 id="portal-commerce-wallet-recharge-heading">{zh ? "充值" : "Recharge"}</h3>
-        <ul className="portal-commerce-layout__list">
-          {RECHARGE_DENOMINATIONS.map((amount) => (
-            <li key={amount}>
-              <span>{amount} Coins</span>
-              <button
-                type="button"
-                disabled
-                aria-label={zh ? `充值 ${amount} Coins 暂未开放` : `Recharge ${amount} Coins — not available yet`}
-              >
-                {zh ? "充值暂未开放" : "Recharge is not available yet"}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <RechargeDenominationList locale={locale} mode="wallet-disabled" />
       </section>
       <section className="portal-commerce-layout__section" aria-label={zh ? "钱包功能" : "Wallet functions"}>
         <ul className="portal-commerce-layout__list">
