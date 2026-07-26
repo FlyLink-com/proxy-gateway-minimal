@@ -28,9 +28,9 @@ test("portal static build verifier accepts a portal-only shell", async () => {
     await writeFile(path.join(tempDir, "index.html"), "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>");
     await writeFile(
       path.join(tempDir, "portal.js"),
-      "fetch('/api/portal/human-challenges'); fetch('/api/portal/password/session'); fetch('/api/portal/registration'); fetch('/api/portal/registration/email-verification'); console.log('/portal/register 账号登录 订阅管理 客服支持 个人中心 portal-commerce-layout portal-coins-wallet-entry');"
+      "fetch('/api/portal/human-challenges'); fetch('/api/portal/password/session'); fetch('/api/portal/registration'); fetch('/api/portal/registration/email-verification'); console.log('/portal/register 账号登录 订阅管理 客服支持 个人中心 portal-commerce-layout portal-coins-wallet-entry portal-recharge-dialog');"
     );
-    await writeFile(path.join(tempDir, "portal.css"), ".portal-auth-shell{} .portal-commerce-layout{} .portal-coins-wallet-entry{}");
+    await writeFile(path.join(tempDir, "portal.css"), ".portal-auth-shell{} .portal-commerce-layout{} .portal-coins-wallet-entry{} .portal-recharge-dialog{}");
 
     const summary = await verifyPortalBuildDirectory(tempDir);
 
@@ -58,6 +58,25 @@ test("portal static build verifier rejects bundles without commerce layout marke
     await assert.rejects(
       () => verifyPortalBuildDirectory(tempDir),
       /portal commerce layout marker missing/
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("portal static build verifier rejects a missing recharge dialog from HTML and JavaScript", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
+  try {
+    await writeFile(path.join(tempDir, "index.html"), "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>");
+    await writeFile(
+      path.join(tempDir, "portal.js"),
+      "fetch('/api/portal/human-challenges'); fetch('/api/portal/password/session'); fetch('/api/portal/registration'); fetch('/api/portal/registration/email-verification'); console.log('/portal/register portal-commerce-layout portal-coins-wallet-entry');"
+    );
+    await writeFile(path.join(tempDir, "portal.css"), ".portal-auth-shell{} .portal-commerce-layout{} .portal-coins-wallet-entry{} .portal-recharge-dialog{}");
+
+    await assert.rejects(
+      () => verifyPortalBuildDirectory(tempDir),
+      /portal commerce layout marker missing: portal-recharge-dialog/
     );
   } finally {
     await rm(tempDir, { recursive: true, force: true });

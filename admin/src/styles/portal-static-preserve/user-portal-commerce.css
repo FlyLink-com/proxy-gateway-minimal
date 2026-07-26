@@ -186,6 +186,65 @@
   font-size: 12px;
 }
 
+.portal-v2-shell .portal-recharge-dialog {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.portal-v2-shell .portal-recharge-dialog__body {
+  display: grid;
+  gap: 16px;
+}
+
+.portal-v2-shell .portal-recharge-dialog__body > p {
+  margin: 0;
+  color: #8b949e;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.portal-v2-shell .portal-recharge-denominations {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.portal-v2-shell .portal-recharge-denominations li {
+  min-width: 0;
+}
+
+.portal-v2-shell .portal-recharge-denominations button {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  background: #161b22;
+  color: #c9d1d9;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 700;
+}
+
+.portal-v2-shell
+  .portal-recharge-denominations--dialog-selectable
+  button[aria-pressed="true"] {
+  border-color: rgba(32, 213, 232, 0.8);
+  background: rgba(32, 213, 232, 0.12);
+  color: #f0f6fc;
+}
+
+.portal-v2-shell .portal-recharge-denominations button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(32, 213, 232, 0.2);
+}
+
+.portal-v2-shell .portal-recharge-denominations button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .portal-v2-shell[data-portal-theme="light"] button.portal-coins-wallet-entry {
   border-color: #d0d7de;
   background: #ffffff;
@@ -233,6 +292,26 @@
   color: #57606a;
 }
 
+.portal-v2-shell[data-portal-theme="light"]
+  .portal-recharge-dialog__body > p {
+  color: #57606a;
+}
+
+.portal-v2-shell[data-portal-theme="light"]
+  .portal-recharge-denominations button {
+  border-color: #d0d7de;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+.portal-v2-shell[data-portal-theme="light"]
+  .portal-recharge-denominations--dialog-selectable
+  button[aria-pressed="true"] {
+  border-color: #13a9be;
+  background: #e8fbfd;
+  color: #1f2937;
+}
+
 @media (max-width: 1180px) {
   .portal-v2-shell .portal-commerce-layout__list,
   .portal-v2-shell .portal-commerce-layout__metrics {
@@ -273,6 +352,10 @@
   .portal-v2-shell .portal-commerce-layout__balances,
   .portal-v2-shell .portal-commerce-layout__metrics {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-v2-shell .portal-recharge-denominations {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .portal-v2-shell .portal-commerce-layout__list li:has(button) {

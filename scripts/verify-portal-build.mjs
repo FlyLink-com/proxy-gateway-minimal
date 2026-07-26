@@ -31,7 +31,8 @@ const REQUIRED_RUNTIME_MARKERS = [
 
 const REQUIRED_COMMERCE_LAYOUT_MARKERS = [
   "portal-commerce-layout",
-  "portal-coins-wallet-entry"
+  "portal-coins-wallet-entry",
+  "portal-recharge-dialog"
 ];
 
 async function listFiles(dir) {
