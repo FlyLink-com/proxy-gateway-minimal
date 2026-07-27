@@ -126,6 +126,60 @@ function exactApplyInput(database) {
   };
 }
 
+function withCommerceDatabase(fileName, action) {
+  return withTempDirectory((directory) => {
+    const dbPath = join(directory, fileName);
+    createWalletDatabase(dbPath);
+    const database = new Database(dbPath);
+    try {
+      applyCoinCommerceMigrations(exactApplyInput(database));
+      database.pragma("foreign_keys = OFF");
+      return action(database);
+    } finally {
+      database.close();
+    }
+  });
+}
+
+function insertSyntheticOrder(database, orderRef, paymentStatus) {
+  database.prepare(`
+    insert into platform_coin_commerce_orders (
+      order_ref, account_id, quote_ref, offer_version_ref, hold_ref,
+      amount_units, offer_snapshot_json, allocation_snapshot_json,
+      payment_status, cancel_until, created_at, updated_at
+    ) values (?, 'account_synthetic', ?, 'offer_synthetic', ?,
+      20, '{}', '[]', ?, '2026-07-27T00:00:00.000Z', ?, ?)
+  `).run(
+    orderRef,
+    `quote_${orderRef}`,
+    `hold_${orderRef}`,
+    paymentStatus,
+    APPLIED_AT,
+    APPLIED_AT
+  );
+}
+
+function insertSyntheticFulfillmentCommand(database, commandRef, status) {
+  const processing = status === "processing";
+  database.prepare(`
+    insert into platform_coin_commerce_fulfillment_commands (
+      command_ref, order_ref, account_id, payload_json, status,
+      attempt_count, lease_generation, lease_token, lease_until,
+      safe_failure_code, created_at, updated_at
+    ) values (?, ?, 'account_synthetic', '{}', ?,
+      0, 0, ?, ?, ?, ?, ?)
+  `).run(
+    commandRef,
+    `order_${commandRef}`,
+    status,
+    processing ? `lease_${commandRef}` : null,
+    processing ? "2026-07-26T13:00:00.000Z" : null,
+    status === "failed" ? "synthetic_failure" : null,
+    APPLIED_AT,
+    APPLIED_AT
+  );
+}
+
 function schemaSql(database, names) {
   return database.prepare(`
     select type, name, sql
@@ -608,6 +662,191 @@ test("fulfillment lease state is bidirectional and counters fail closed at overf
       ), /check constraint/i);
     } finally {
       database.close();
+    }
+  });
+});
+
+for (const initialStatus of ["captured", "cancelled"]) {
+  test(`Order recovery isolates ${initialStatus} as reconciliation_required`, () => {
+    withCommerceDatabase(`order-recovery-${initialStatus}.sqlite`, (database) => {
+      const orderRef = `order_recovery_${initialStatus}`;
+      insertSyntheticOrder(database, orderRef, initialStatus);
+      const updatedAt = "2026-07-26T13:00:00.000Z";
+
+      const result = database.prepare(`
+        update platform_coin_commerce_orders
+           set payment_status = 'reconciliation_required',
+               updated_at = ?
+         where order_ref = ?
+      `).run(updatedAt, orderRef);
+
+      assert.equal(result.changes, 1);
+      assert.deepEqual(
+        database.prepare(`
+          select payment_status, updated_at
+            from platform_coin_commerce_orders
+           where order_ref = ?
+        `).get(orderRef),
+        {
+          payment_status: "reconciliation_required",
+          updated_at: updatedAt
+        }
+      );
+    });
+  });
+}
+
+test("Order payment transitions preserve legal paths and reject terminal or unrelated rewrites", () => {
+  withCommerceDatabase("order-transition-matrix.sqlite", (database) => {
+    const legalTransitions = [
+      ["held_to_cancelled", "held", "cancelled"],
+      ["held_to_capture_pending", "held", "capture_pending"],
+      ["capture_pending_to_captured", "capture_pending", "captured"],
+      ["capture_pending_to_capture_failed", "capture_pending", "capture_failed"],
+      [
+        "capture_pending_to_reconciliation",
+        "capture_pending",
+        "reconciliation_required"
+      ],
+      ["capture_failed_to_capture_pending", "capture_failed", "capture_pending"]
+    ];
+    for (const [suffix, from, to] of legalTransitions) {
+      const orderRef = `order_${suffix}`;
+      insertSyntheticOrder(database, orderRef, from);
+      assert.equal(database.prepare(`
+        update platform_coin_commerce_orders
+           set payment_status = ?,
+               updated_at = '2026-07-26T13:00:00.000Z'
+         where order_ref = ?
+      `).run(to, orderRef).changes, 1);
+    }
+
+    const illegalTransitions = [
+      ["reconciliation_to_held", "reconciliation_required", "held"],
+      [
+        "reconciliation_to_capture_pending",
+        "reconciliation_required",
+        "capture_pending"
+      ],
+      ["reconciliation_to_captured", "reconciliation_required", "captured"],
+      ["reconciliation_to_cancelled", "reconciliation_required", "cancelled"],
+      [
+        "reconciliation_to_capture_failed",
+        "reconciliation_required",
+        "capture_failed"
+      ],
+      ["captured_to_cancelled", "captured", "cancelled"],
+      ["cancelled_to_captured", "cancelled", "captured"],
+      ["held_to_captured", "held", "captured"],
+      ["capture_pending_to_cancelled", "capture_pending", "cancelled"],
+      ["capture_failed_to_cancelled", "capture_failed", "cancelled"]
+    ];
+    for (const [suffix, from, to] of illegalTransitions) {
+      const orderRef = `order_${suffix}`;
+      insertSyntheticOrder(database, orderRef, from);
+      assert.throws(() => database.prepare(`
+        update platform_coin_commerce_orders
+           set payment_status = ?,
+               updated_at = '2026-07-26T13:00:00.000Z'
+         where order_ref = ?
+      `).run(to, orderRef), /order_payment_status_transition/i);
+    }
+  });
+});
+
+test("Fulfillment attempt exhaustion atomically fails a pending command without a lease", () => {
+  withCommerceDatabase("fulfillment-exhaustion.sqlite", (database) => {
+    const commandRef = "command_exhausted";
+    insertSyntheticFulfillmentCommand(database, commandRef, "pending");
+    const updatedAt = "2026-07-26T13:00:00.000Z";
+
+    const result = database.prepare(`
+      update platform_coin_commerce_fulfillment_commands
+         set status = 'failed',
+             safe_failure_code = 'attempt_counter_exhausted',
+             lease_token = null,
+             lease_until = null,
+             updated_at = ?
+       where command_ref = ?
+    `).run(updatedAt, commandRef);
+
+    assert.equal(result.changes, 1);
+    assert.deepEqual(
+      database.prepare(`
+        select status, safe_failure_code, lease_token, lease_until, updated_at
+          from platform_coin_commerce_fulfillment_commands
+         where command_ref = ?
+      `).get(commandRef),
+      {
+        status: "failed",
+        safe_failure_code: "attempt_counter_exhausted",
+        lease_token: null,
+        lease_until: null,
+        updated_at: updatedAt
+      }
+    );
+  });
+});
+
+test("Fulfillment command transitions preserve processing paths and freeze terminal states", () => {
+  withCommerceDatabase("fulfillment-transition-matrix.sqlite", (database) => {
+    insertSyntheticFulfillmentCommand(database, "command_pending_processing", "pending");
+    assert.equal(database.prepare(`
+      update platform_coin_commerce_fulfillment_commands
+         set status = 'processing',
+             lease_token = 'lease_claimed',
+             lease_until = '2026-07-26T13:00:00.000Z',
+             updated_at = '2026-07-26T12:45:00.000Z'
+       where command_ref = 'command_pending_processing'
+    `).run().changes, 1);
+
+    const processingTransitions = [
+      ["processing_to_pending", "pending", null],
+      ["processing_to_delivered", "delivered", null],
+      ["processing_to_failed", "failed", "synthetic_processing_failure"]
+    ];
+    for (const [suffix, to, safeFailureCode] of processingTransitions) {
+      const commandRef = `command_${suffix}`;
+      insertSyntheticFulfillmentCommand(database, commandRef, "processing");
+      assert.equal(database.prepare(`
+        update platform_coin_commerce_fulfillment_commands
+           set status = ?,
+               lease_token = null,
+               lease_until = null,
+               safe_failure_code = ?,
+               updated_at = '2026-07-26T13:00:00.000Z'
+         where command_ref = ?
+      `).run(to, safeFailureCode, commandRef).changes, 1);
+    }
+
+    insertSyntheticFulfillmentCommand(database, "command_pending_delivered", "pending");
+    assert.throws(() => database.prepare(`
+      update platform_coin_commerce_fulfillment_commands
+         set status = 'delivered',
+             updated_at = '2026-07-26T13:00:00.000Z'
+       where command_ref = 'command_pending_delivered'
+    `).run(), /fulfillment_command_status_transition/i);
+
+    const terminalTransitions = [
+      ["delivered_to_pending", "delivered", "pending"],
+      ["delivered_to_processing", "delivered", "processing"],
+      ["delivered_to_failed", "delivered", "failed"],
+      ["failed_to_pending", "failed", "pending"],
+      ["failed_to_processing", "failed", "processing"],
+      ["failed_to_delivered", "failed", "delivered"]
+    ];
+    for (const [suffix, from, to] of terminalTransitions) {
+      const commandRef = `command_${suffix}`;
+      insertSyntheticFulfillmentCommand(database, commandRef, from);
+      assert.throws(() => database.prepare(`
+        update platform_coin_commerce_fulfillment_commands
+           set status = ?,
+               lease_token = null,
+               lease_until = null,
+               safe_failure_code = case when ? = 'failed' then 'terminal_failure' end,
+               updated_at = '2026-07-26T13:00:00.000Z'
+         where command_ref = ?
+      `).run(to, to, commandRef), /fulfillment_command_status_transition/i);
     }
   });
 });
