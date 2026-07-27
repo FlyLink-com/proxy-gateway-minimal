@@ -29,6 +29,15 @@ const COMMERCE_TABLES = [
   "platform_coin_commerce_fulfillment_commands",
   "platform_coin_commerce_fulfillment_receipts"
 ];
+const WALLET_FINANCIAL_TABLES = [
+  "platform_coin_wallets",
+  "platform_coin_lots",
+  "platform_coin_credit_origins",
+  "platform_coin_holds",
+  "platform_coin_hold_allocations",
+  "platform_coin_operation_receipts",
+  "platform_coin_ledger_entries",
+];
 
 function refFactory() {
   const counts = new Map();
@@ -139,6 +148,7 @@ function commerceOperation(id, accountId = "acct_synthetic_1") {
 }
 
 function credit(store, {
+  accountId = "acct_synthetic_1",
   coinType,
   amountUnits,
   suffix,
@@ -146,7 +156,7 @@ function credit(store, {
   expiresAt = null
 }) {
   const credited = store.walletStore.creditCoins({
-    accountId: "acct_synthetic_1",
+    accountId,
     coinType,
     amountUnits,
     availability,
@@ -165,22 +175,36 @@ function credit(store, {
       operation: walletOperation(`confirm_${suffix}`)
     });
   }
+  return credited;
 }
 
-function seedWallet(store) {
-  credit(store, {
+function seedWallet(
+  store,
+  accountId = "acct_synthetic_1",
+  suffixPrefix = ""
+) {
+  const suffix = (value) => suffixPrefix ? `${suffixPrefix}_${value}` : value;
+  const first = credit(store, {
+    accountId,
     coinType: "bonus_coins",
     amountUnits: 5,
-    suffix: "bonus",
+    suffix: suffix("bonus"),
     expiresAt: "2099-01-01T00:00:00.000Z"
   });
-  credit(store, { coinType: "paid_coins", amountUnits: 20, suffix: "paid" });
   credit(store, {
+    accountId,
+    coinType: "paid_coins",
+    amountUnits: 20,
+    suffix: suffix("paid")
+  });
+  credit(store, {
+    accountId,
     coinType: "reward_coins",
     amountUnits: 10,
-    suffix: "reward",
+    suffix: suffix("reward"),
     availability: "pending"
   });
+  return first.walletRef;
 }
 
 function fixture(options = {}) {
@@ -214,6 +238,119 @@ function commerceCounts(database) {
     table,
     database.prepare(`select count(*) from ${table}`).pluck().get()
   ]));
+}
+
+function snapshotTables(database, tables) {
+  return Object.fromEntries(tables.map((table) => [
+    table,
+    database.prepare(`select * from ${table} order by rowid`).all()
+  ]));
+}
+
+function dropTableTriggers(database, table) {
+  const names = database.prepare(`
+    select name from sqlite_master
+     where type = 'trigger' and tbl_name = ?
+  `).all(table);
+  for (const { name } of names) {
+    database.exec(`drop trigger "${name.replaceAll("\"", "\"\"")}"`);
+  }
+}
+
+function mutateOrderSnapshot(state, sql, ...parameters) {
+  state.database.exec(
+    "drop trigger coin_commerce_orders_snapshot_immutable_update"
+  );
+  state.database.prepare(sql).run(...parameters);
+  state.database.exec(`
+    create trigger coin_commerce_orders_snapshot_immutable_update
+    before update of
+      order_ref,
+      account_id,
+      quote_ref,
+      offer_version_ref,
+      hold_ref,
+      amount_units,
+      offer_snapshot_json,
+      allocation_snapshot_json,
+      cancel_until,
+      created_at
+    on platform_coin_commerce_orders
+    begin
+      select raise(abort, 'coin_commerce_order_snapshot_immutable');
+    end
+  `);
+}
+
+function attachForeignHold(state, order, { captured = false } = {}) {
+  const accountId = "acct_synthetic_2";
+  insertAccount(state.database, accountId);
+  const walletRef = seedWallet(state.store, accountId, "foreign");
+  const hold = state.store.walletStore.createCoinHold({
+    walletRef,
+    purpose: "product_purchase",
+    purposeRef: order.orderRef,
+    amountUnits: order.amountUnits,
+    acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    operation: walletOperation("foreign_hold")
+  });
+  if (captured) {
+    state.store.walletStore.captureCoinHold({
+      holdRef: hold.resultRef,
+      operation: walletOperation("foreign_capture")
+    });
+  }
+  mutateOrderSnapshot(state, `
+    update platform_coin_commerce_orders
+       set hold_ref = ?
+     where order_ref = ?
+  `, hold.resultRef, order.orderRef);
+  return { accountId, holdRef: hold.resultRef };
+}
+
+function captureToOutbox(state) {
+  seedWallet(state.store);
+  const order = confirm(state, publishAndQuote(state));
+  state.clock.value = order.cancelUntil;
+  state.store.claimDueCaptures({ limit: 1 });
+  state.store.captureClaimedOrder({ orderRef: order.orderRef });
+  return {
+    order,
+    command: state.database.prepare(`
+      select * from platform_coin_commerce_fulfillment_commands
+       where order_ref = ?
+    `).get(order.orderRef)
+  };
+}
+
+function holdForOrder(state, orderRef) {
+  return state.database.prepare(`
+    select h.*
+      from platform_coin_holds h
+      join platform_coin_commerce_orders o on o.hold_ref = h.hold_ref
+     where o.order_ref = ?
+  `).get(orderRef);
+}
+
+function assertSingleRecoveryBucket(result, bucket) {
+  const buckets = [
+    "readyForCapture",
+    "captureRecovered",
+    "outboxRecovered",
+    "expiredHoldReleased",
+    "expiredLeaseObserved",
+    "reconciliationRequired",
+    "unchanged"
+  ];
+  assert.equal(result.scanned, 1);
+  for (const name of buckets) {
+    assert.equal(result[name], name === bucket ? 1 : 0, name);
+  }
+  assert.equal(
+    buckets.reduce((sum, name) => sum + result[name], 0),
+    result.scanned
+  );
 }
 
 function expectCode(action, code) {
@@ -450,6 +587,73 @@ test("frozen Wallet and asynchronous or invalid discounts fail closed without a 
   }
 });
 
+test("discount reader rejects every closed invalid boundary before Quote persistence", () => {
+  for (const discountReader of [
+    () => -1,
+    () => 10_001,
+    () => Number.MAX_SAFE_INTEGER + 1,
+    () => Promise.resolve(0)
+  ]) {
+    const state = fixture({ discountReader });
+    try {
+      seedWallet(state.store);
+      state.store.publishOfferVersion(offer());
+      expectCode(() => state.store.createCheckoutQuote({
+        accountId: "acct_synthetic_1",
+        offerRef: "offer_monthly_basic"
+      }), "commerce_infrastructure_error");
+      assert.equal(
+        commerceCounts(state.database).platform_coin_commerce_quotes,
+        0
+      );
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("active Quote confirms one millisecond before expiry and expires at equality", () => {
+  for (const boundary of ["before", "equal"]) {
+    const state = fixture();
+    try {
+      seedWallet(state.store);
+      const quote = publishAndQuote(state);
+      state.clock.value = boundary === "before"
+        ? "2026-07-26T12:39:55.999Z"
+        : "2026-07-26T12:39:56.000Z";
+      if (boundary === "before") {
+        assert.equal(confirm(state, quote).paymentStatus, "held");
+      } else {
+        expectCode(() => confirm(state, quote), "quote_expired");
+        assert.equal(state.database.prepare(`
+          select status from platform_coin_commerce_quotes
+           where quote_ref = ?
+        `).pluck().get(quote.quoteRef), "active");
+      }
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("frozen and closed Wallets reject confirmation without Commerce writes", () => {
+  for (const status of ["frozen", "closed"]) {
+    const state = fixture();
+    try {
+      seedWallet(state.store);
+      const quote = publishAndQuote(state);
+      state.database.prepare(`
+        update platform_coin_wallets set status = ? where account_id = ?
+      `).run(status, "acct_synthetic_1");
+      const before = commerceCounts(state.database);
+      expectCode(() => confirm(state, quote), "wallet_not_active");
+      assert.deepEqual(commerceCounts(state.database), before);
+    } finally {
+      state.close();
+    }
+  }
+});
+
 test("confirm consumes the exact Quote, creates one Hold and safe Order, and replays", () => {
   const state = fixture();
   try {
@@ -487,6 +691,272 @@ test("confirm consumes the exact Quote, creates one Hold and safe Order, and rep
       }),
       "idempotency_key_reused"
     );
+  } finally {
+    state.close();
+  }
+});
+
+test("confirm reports a missing own idempotency key without reading accessors", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const quote = publishAndQuote(state);
+    for (const operation of [
+      {
+        actorScope: "portal:acct_synthetic_1",
+        actorType: "portal_user",
+        actorRef: "acct_synthetic_1"
+      },
+      {}
+    ]) {
+      expectCode(() => state.store.confirmOrder({
+        accountId: "acct_synthetic_1",
+        quoteRef: quote.quoteRef,
+        operation
+      }), "idempotency_key_required");
+    }
+  } finally {
+    state.close();
+  }
+});
+
+test("confirm replay rejects matching started and failed durable receipts", () => {
+  for (const status of ["started", "failed"]) {
+    const state = fixture();
+    try {
+      seedWallet(state.store);
+      const quote = publishAndQuote(state);
+      confirm(state, quote);
+      dropTableTriggers(
+        state.database,
+        "platform_coin_commerce_operation_receipts"
+      );
+      state.database.prepare(`
+        update platform_coin_commerce_operation_receipts
+           set status = ?,
+               result_ref = null,
+               safe_result_code = ?,
+               completed_at = ?
+         where operation_type = 'confirm_order'
+           and idempotency_key = 'confirm_1'
+      `).run(
+        status,
+        status === "failed" ? "synthetic_failure" : null,
+        status === "failed" ? CLOCK : null
+      );
+      expectCode(
+        () => confirm(state, quote),
+        "commerce_infrastructure_error"
+      );
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("confirm replay rejects a malformed succeeded receipt reference", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const quote = publishAndQuote(state);
+    confirm(state, quote);
+    dropTableTriggers(
+      state.database,
+      "platform_coin_commerce_operation_receipts"
+    );
+    state.database.prepare(`
+      update platform_coin_commerce_operation_receipts
+         set operation_ref = 'bad ref'
+       where operation_type = 'confirm_order'
+         and idempotency_key = 'confirm_1'
+    `).run();
+    expectCode(
+      () => confirm(state, quote),
+      "commerce_infrastructure_error"
+    );
+  } finally {
+    state.close();
+  }
+});
+
+test("confirm replay rejects malformed and reversed succeeded timestamps", () => {
+  for (const timestamps of [
+    {
+      createdAt: "not-an-iso-time",
+      completedAt: CLOCK
+    },
+    {
+      createdAt: "2026-07-26T12:34:57.000Z",
+      completedAt: CLOCK
+    }
+  ]) {
+    const state = fixture();
+    try {
+      seedWallet(state.store);
+      const quote = publishAndQuote(state);
+      confirm(state, quote);
+      dropTableTriggers(
+        state.database,
+        "platform_coin_commerce_operation_receipts"
+      );
+      state.database.prepare(`
+        update platform_coin_commerce_operation_receipts
+           set created_at = ?, completed_at = ?
+         where operation_type = 'confirm_order'
+           and idempotency_key = 'confirm_1'
+      `).run(timestamps.createdAt, timestamps.completedAt);
+      expectCode(
+        () => confirm(state, quote),
+        "commerce_infrastructure_error"
+      );
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("confirm replay rejects an Order associated with a different Quote", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    state.store.publishOfferVersion(offer());
+    const quote1 = state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1",
+      offerRef: "offer_monthly_basic"
+    });
+    confirm(state, quote1);
+    credit(state.store, {
+      coinType: "paid_coins",
+      amountUnits: 20,
+      suffix: "receipt_second_order"
+    });
+    const quote2 = state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1",
+      offerRef: "offer_monthly_basic"
+    });
+    const order2 = confirm(state, quote2, "confirm_receipt_second");
+    dropTableTriggers(
+      state.database,
+      "platform_coin_commerce_operation_receipts"
+    );
+    state.database.prepare(`
+      update platform_coin_commerce_operation_receipts
+         set result_ref = ?
+       where operation_type = 'confirm_order'
+         and idempotency_key = 'confirm_1'
+    `).run(order2.orderRef);
+
+    expectCode(
+      () => confirm(state, quote1),
+      "commerce_infrastructure_error"
+    );
+  } finally {
+    state.close();
+  }
+});
+
+test("cancel reports a missing own idempotency key without consuming a receipt", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const order = confirm(state, publishAndQuote(state));
+    const before = commerceCounts(state.database);
+    const operation = {
+      actorScope: "portal:acct_synthetic_1",
+      actorType: "portal_user",
+      actorRef: "acct_synthetic_1"
+    };
+    expectCode(() => state.store.cancelOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef,
+      operation
+    }), "idempotency_key_required");
+    assert.deepEqual(commerceCounts(state.database), before);
+  } finally {
+    state.close();
+  }
+});
+
+test("cancel replay rejects matching started and failed durable receipts", () => {
+  for (const status of ["started", "failed"]) {
+    const state = fixture();
+    try {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      state.store.cancelOrder({
+        accountId: "acct_synthetic_1",
+        orderRef: order.orderRef,
+        operation: commerceOperation("cancel_terminal_shape")
+      });
+      dropTableTriggers(
+        state.database,
+        "platform_coin_commerce_operation_receipts"
+      );
+      state.database.prepare(`
+        update platform_coin_commerce_operation_receipts
+           set status = ?,
+               result_ref = null,
+               safe_result_code = ?,
+               completed_at = ?
+         where operation_type = 'cancel_order'
+           and idempotency_key = 'cancel_terminal_shape'
+      `).run(
+        status,
+        status === "failed" ? "synthetic_failure" : null,
+        status === "failed" ? CLOCK : null
+      );
+      expectCode(() => state.store.cancelOrder({
+        accountId: "acct_synthetic_1",
+        orderRef: order.orderRef,
+        operation: commerceOperation("cancel_terminal_shape")
+      }), "commerce_infrastructure_error");
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("cancel replay rejects an Order association different from the request", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    state.store.publishOfferVersion(offer());
+    const quote1 = state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1",
+      offerRef: "offer_monthly_basic"
+    });
+    const order1 = confirm(state, quote1);
+    credit(state.store, {
+      coinType: "paid_coins",
+      amountUnits: 20,
+      suffix: "cancel_receipt_second_order"
+    });
+    const quote2 = state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1",
+      offerRef: "offer_monthly_basic"
+    });
+    const order2 = confirm(state, quote2, "confirm_cancel_second");
+    state.store.cancelOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order1.orderRef,
+      operation: commerceOperation("cancel_wrong_association")
+    });
+    dropTableTriggers(
+      state.database,
+      "platform_coin_commerce_operation_receipts"
+    );
+    state.database.prepare(`
+      update platform_coin_commerce_operation_receipts
+         set result_ref = ?
+       where operation_type = 'cancel_order'
+         and idempotency_key = 'cancel_wrong_association'
+    `).run(order2.orderRef);
+
+    expectCode(() => state.store.cancelOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order1.orderRef,
+      operation: commerceOperation("cancel_wrong_association")
+    }), "commerce_infrastructure_error");
   } finally {
     state.close();
   }
@@ -597,6 +1067,148 @@ test("capture uses two durable stages and atomically creates one deterministic o
   }
 });
 
+test("cross-account Hold capture isolates the Order without touching either Wallet", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const order = confirm(state, publishAndQuote(state));
+    state.clock.value = order.cancelUntil;
+    state.store.claimDueCaptures({ limit: 1 });
+    const foreign = attachForeignHold(state, order);
+    const walletBefore = snapshotTables(state.database, WALLET_FINANCIAL_TABLES);
+
+    const isolated = state.store.captureClaimedOrder({
+      orderRef: order.orderRef
+    });
+
+    assert.equal(isolated.paymentStatus, "reconciliation_required");
+    assert.deepEqual(
+      snapshotTables(state.database, WALLET_FINANCIAL_TABLES),
+      walletBefore
+    );
+    assert.equal(
+      state.store.walletStore.getHold(foreign.holdRef).status,
+      "active"
+    );
+    assert.equal(state.database.prepare(`
+      select count(*) from platform_coin_commerce_fulfillment_commands
+       where order_ref = ?
+    `).pluck().get(order.orderRef), 0);
+  } finally {
+    state.close();
+  }
+});
+
+test("cross-account Hold cancel isolates without release or cancel receipt", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const order = confirm(state, publishAndQuote(state));
+    const foreign = attachForeignHold(state, order);
+    const walletBefore = snapshotTables(state.database, WALLET_FINANCIAL_TABLES);
+    const receiptsBefore = state.database.prepare(`
+      select count(*) from platform_coin_commerce_operation_receipts
+    `).pluck().get();
+
+    const isolated = state.store.cancelOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef,
+      operation: commerceOperation("cancel_foreign")
+    });
+
+    assert.equal(isolated.paymentStatus, "reconciliation_required");
+    assert.deepEqual(
+      snapshotTables(state.database, WALLET_FINANCIAL_TABLES),
+      walletBefore
+    );
+    assert.equal(
+      state.store.walletStore.getHold(foreign.holdRef).status,
+      "active"
+    );
+    assert.equal(state.database.prepare(`
+      select count(*) from platform_coin_commerce_operation_receipts
+    `).pluck().get(), receiptsBefore);
+  } finally {
+    state.close();
+  }
+});
+
+test("restart recovery isolates a cross-account active Hold without Wallet writes", () => {
+  const state = fixture();
+  let restarted;
+  try {
+    seedWallet(state.store);
+    const order = confirm(state, publishAndQuote(state));
+    const foreign = attachForeignHold(state, order);
+    state.clock.value = order.cancelUntil;
+    const walletBefore = snapshotTables(state.database, WALLET_FINANCIAL_TABLES);
+    state.store.close();
+    restarted = createSqliteCoinCommerceStore({
+      database: fixedClockDatabase(state.database, state.clock),
+      commerceRefFactory: refFactory(),
+      walletRefFactory: refFactory()
+    });
+
+    const recovered = restarted.recoverNonTerminalOrders({ limit: 1 });
+
+    assert.equal(recovered.scanned, 1);
+    assert.equal(recovered.reconciliationRequired, 1);
+    assert.equal(recovered.readyForCapture, 0);
+    assert.equal(
+      Object.entries(recovered)
+        .filter(([key]) => key !== "scanned")
+        .reduce((sum, [, value]) => sum + value, 0),
+      recovered.scanned
+    );
+    assert.deepEqual(
+      snapshotTables(state.database, WALLET_FINANCIAL_TABLES),
+      walletBefore
+    );
+    assert.equal(restarted.walletStore.getHold(foreign.holdRef).status, "active");
+    assert.equal(restarted.getOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef
+    }).paymentStatus, "reconciliation_required");
+  } finally {
+    restarted?.close();
+    state.store.close();
+    state.database.close();
+    rmSync(state.directory, { recursive: true, force: true, maxRetries: 3 });
+  }
+});
+
+test("captured cross-account Hold repair isolates without creating outbox", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const order = confirm(state, publishAndQuote(state));
+    state.clock.value = order.cancelUntil;
+    state.store.claimDueCaptures({ limit: 1 });
+    const foreign = attachForeignHold(state, order, { captured: true });
+    const walletBefore = snapshotTables(state.database, WALLET_FINANCIAL_TABLES);
+
+    const isolated = state.store.captureClaimedOrder({
+      orderRef: order.orderRef
+    });
+
+    assert.equal(isolated.paymentStatus, "reconciliation_required");
+    assert.deepEqual(
+      snapshotTables(state.database, WALLET_FINANCIAL_TABLES),
+      walletBefore
+    );
+    assert.equal(
+      state.store.walletStore.getHold(foreign.holdRef).status,
+      "captured"
+    );
+    assert.equal(state.database.prepare(`
+      select count(*) from platform_coin_commerce_fulfillment_commands
+       where order_ref = ?
+    `).pluck().get(order.orderRef), 0);
+  } finally {
+    state.close();
+  }
+});
+
 test("expired Hold capture is isolated without fulfillment", () => {
   const state = fixture({ cancelWindowMs: 1 });
   try {
@@ -622,6 +1234,39 @@ test("expired Hold capture is isolated without fulfillment", () => {
     assert.equal(state.store.walletStore.getHold(hold.hold_ref).status, "released");
   } finally {
     state.close();
+  }
+});
+
+test("capture succeeds immediately before Hold expiry and isolates at equality", () => {
+  for (const boundary of ["before", "equal"]) {
+    const state = fixture({ cancelWindowMs: 1 });
+    try {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      const expiresAt = state.database.prepare(`
+        select h.expires_at
+          from platform_coin_holds h
+          join platform_coin_commerce_orders o on o.hold_ref = h.hold_ref
+         where o.order_ref = ?
+      `).pluck().get(order.orderRef);
+      state.database.prepare(`
+        update platform_coin_commerce_orders
+           set payment_status = 'capture_pending'
+         where order_ref = ?
+      `).run(order.orderRef);
+      state.clock.value = boundary === "before"
+        ? new Date(Date.parse(expiresAt) - 1).toISOString()
+        : expiresAt;
+      const result = state.store.captureClaimedOrder({
+        orderRef: order.orderRef
+      });
+      assert.equal(
+        result.paymentStatus,
+        boundary === "before" ? "captured" : "reconciliation_required"
+      );
+    } finally {
+      state.close();
+    }
   }
 });
 
@@ -687,6 +1332,53 @@ test("outbox leases fence stale workers, complete atomically, and fail only once
   }
 });
 
+test("fulfillment lease is owned immediately before expiry and reclaimable at equality", () => {
+  const state = fixture();
+  try {
+    captureToOutbox(state);
+    const first = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+    state.clock.value = "2026-07-26T12:34:59.999Z";
+    assert.equal(state.store.claimNextFulfillmentCommand({ leaseMs: 1000 }), null);
+    state.clock.value = "2026-07-26T12:35:00.000Z";
+    const second = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+    assert.equal(second.leaseGeneration, first.leaseGeneration + 1);
+    assert.notEqual(second.leaseToken, first.leaseToken);
+  } finally {
+    state.close();
+  }
+});
+
+test("stale fulfillment generation and token are fenced independently", () => {
+  const state = fixture();
+  try {
+    captureToOutbox(state);
+    const command = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+    expectCode(() => state.store.completeFulfillmentCommand({
+      commandRef: command.commandRef,
+      leaseGeneration: command.leaseGeneration + 1,
+      leaseToken: command.leaseToken,
+      effectRef: "effect_stale_generation",
+      status: "delivered"
+    }), "commerce_fulfillment_lease_lost");
+    expectCode(() => state.store.completeFulfillmentCommand({
+      commandRef: command.commandRef,
+      leaseGeneration: command.leaseGeneration,
+      leaseToken: "f".repeat(64),
+      effectRef: "effect_stale_token",
+      status: "delivered"
+    }), "commerce_fulfillment_lease_lost");
+    assert.deepEqual(state.store.completeFulfillmentCommand({
+      commandRef: command.commandRef,
+      leaseGeneration: command.leaseGeneration,
+      leaseToken: command.leaseToken,
+      effectRef: "effect_current",
+      status: "delivered"
+    }), { status: "delivered" });
+  } finally {
+    state.close();
+  }
+});
+
 test("failed fulfillment has no receipt and repeated fail loses the lease", () => {
   const state = fixture();
   try {
@@ -721,6 +1413,362 @@ test("failed fulfillment has no receipt and repeated fail loses the lease", () =
     state.close();
   }
 });
+
+test("claim rejects a runtime command account mismatch without issuing a lease", () => {
+  const state = fixture();
+  try {
+    const { command } = captureToOutbox(state);
+    insertAccount(state.database, "acct_synthetic_2");
+    state.database.prepare(`
+      update platform_coin_commerce_fulfillment_commands
+         set account_id = 'acct_synthetic_2'
+       where command_ref = ?
+    `).run(command.command_ref);
+    expectCode(
+      () => state.store.claimNextFulfillmentCommand({ leaseMs: 1000 }),
+      "commerce_infrastructure_error"
+    );
+    assert.deepEqual(state.database.prepare(`
+      select status, attempt_count, lease_generation, lease_token, lease_until
+        from platform_coin_commerce_fulfillment_commands
+       where command_ref = ?
+    `).get(command.command_ref), {
+      status: "pending",
+      attempt_count: 0,
+      lease_generation: 0,
+      lease_token: null,
+      lease_until: null
+    });
+  } finally {
+    state.close();
+  }
+});
+
+test("Order projection rejects a delivered command without its immutable receipt", () => {
+  const state = fixture();
+  try {
+    const { order } = captureToOutbox(state);
+    const claimed = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+    state.store.completeFulfillmentCommand({
+      commandRef: claimed.commandRef,
+      leaseGeneration: claimed.leaseGeneration,
+      leaseToken: claimed.leaseToken,
+      effectRef: "effect_missing_receipt",
+      status: "delivered"
+    });
+    dropTableTriggers(
+      state.database,
+      "platform_coin_commerce_fulfillment_receipts"
+    );
+    state.database.prepare(`
+      delete from platform_coin_commerce_fulfillment_receipts
+       where command_ref = ?
+    `).run(claimed.commandRef);
+    expectCode(() => state.store.getOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef
+    }), "commerce_infrastructure_error");
+  } finally {
+    state.close();
+  }
+});
+
+test("Order projection rejects a non-delivered command carrying a receipt", () => {
+  const state = fixture();
+  try {
+    const { order, command } = captureToOutbox(state);
+    state.database.prepare(`
+      insert into platform_coin_commerce_fulfillment_receipts
+        (receipt_ref, command_ref, effect_ref, status, safe_code, recorded_at)
+      values ('receipt_impossible_pending', ?, 'effect_impossible_pending',
+              'delivered', null, ?)
+    `).run(command.command_ref, CLOCK);
+    expectCode(() => state.store.getOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef
+    }), "commerce_infrastructure_error");
+  } finally {
+    state.close();
+  }
+});
+
+test("Order projection never exposes an arbitrary runtime failure code", () => {
+  const state = fixture();
+  try {
+    const { order } = captureToOutbox(state);
+    const claimed = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+    state.store.failFulfillmentCommand({
+      commandRef: claimed.commandRef,
+      leaseGeneration: claimed.leaseGeneration,
+      leaseToken: claimed.leaseToken,
+      safeCode: "fulfillment_handler_failed"
+    });
+    dropTableTriggers(
+      state.database,
+      "platform_coin_commerce_fulfillment_commands"
+    );
+    state.database.prepare(`
+      update platform_coin_commerce_fulfillment_commands
+         set safe_failure_code = 'raw_runtime_provider_failure'
+       where command_ref = ?
+    `).run(claimed.commandRef);
+    expectCode(() => state.store.getOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef
+    }), "commerce_infrastructure_error");
+  } finally {
+    state.close();
+  }
+});
+
+test("runtime command and receipt timestamps are revalidated on every use", () => {
+  for (const corrupt of ["command", "receipt"]) {
+    const state = fixture();
+    try {
+      const { order, command } = captureToOutbox(state);
+      if (corrupt === "command") {
+        state.database.prepare(`
+          update platform_coin_commerce_fulfillment_commands
+             set updated_at = 'not-an-iso-time'
+           where command_ref = ?
+        `).run(command.command_ref);
+      } else {
+        const claimed = state.store.claimNextFulfillmentCommand({
+          leaseMs: 1000
+        });
+        state.store.completeFulfillmentCommand({
+          commandRef: claimed.commandRef,
+          leaseGeneration: claimed.leaseGeneration,
+          leaseToken: claimed.leaseToken,
+          effectRef: "effect_bad_receipt_time",
+          status: "delivered"
+        });
+        dropTableTriggers(
+          state.database,
+          "platform_coin_commerce_fulfillment_receipts"
+        );
+        state.database.prepare(`
+          update platform_coin_commerce_fulfillment_receipts
+             set recorded_at = 'not-an-iso-time'
+           where command_ref = ?
+        `).run(command.command_ref);
+      }
+      expectCode(() => state.store.getOrder({
+        accountId: "acct_synthetic_1",
+        orderRef: order.orderRef
+      }), "commerce_infrastructure_error");
+    } finally {
+      state.close();
+    }
+  }
+});
+
+const recoveryScenarios = [
+  {
+    name: "held due with active unexpired Hold",
+    bucket: "readyForCapture",
+    setup(state) {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      state.clock.value = order.cancelUntil;
+    }
+  },
+  {
+    name: "released Hold",
+    bucket: "reconciliationRequired",
+    setup(state) {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      const hold = holdForOrder(state, order.orderRef);
+      state.store.walletStore.releaseCoinHold({
+        holdRef: hold.hold_ref,
+        operation: walletOperation("recovery_released_hold")
+      });
+    }
+  },
+  {
+    name: "missing Hold",
+    bucket: "reconciliationRequired",
+    setup(state) {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      state.database.pragma("foreign_keys = OFF");
+      mutateOrderSnapshot(state, `
+        update platform_coin_commerce_orders
+           set hold_ref = 'hold_missing'
+         where order_ref = ?
+      `, order.orderRef);
+      state.database.pragma("foreign_keys = ON");
+    }
+  },
+  {
+    name: "purpose mismatch",
+    bucket: "reconciliationRequired",
+    setup(state) {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      const hold = holdForOrder(state, order.orderRef);
+      dropTableTriggers(state.database, "platform_coin_holds");
+      state.database.prepare(`
+        update platform_coin_holds
+           set purpose_ref = 'order_other'
+         where hold_ref = ?
+      `).run(hold.hold_ref);
+    }
+  },
+  {
+    name: "amount mismatch",
+    bucket: "reconciliationRequired",
+    setup(state) {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      const hold = holdForOrder(state, order.orderRef);
+      dropTableTriggers(state.database, "platform_coin_holds");
+      state.database.prepare(`
+        update platform_coin_holds set amount_units = 19 where hold_ref = ?
+      `).run(hold.hold_ref);
+    }
+  },
+  {
+    name: "allocation mismatch",
+    bucket: "reconciliationRequired",
+    setup(state) {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      mutateOrderSnapshot(state, `
+        update platform_coin_commerce_orders
+           set allocation_snapshot_json =
+             '[{"coinType":"paid_coins","amountUnits":20}]'
+         where order_ref = ?
+      `, order.orderRef);
+    }
+  },
+  {
+    name: "account mismatch",
+    bucket: "reconciliationRequired",
+    setup(state) {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      attachForeignHold(state, order);
+    }
+  },
+  {
+    name: "expired active Hold",
+    bucket: "expiredHoldReleased",
+    setup(state) {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      state.clock.value = holdForOrder(state, order.orderRef).expires_at;
+    }
+  },
+  {
+    name: "capture-pending active Hold",
+    bucket: "captureRecovered",
+    setup(state) {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      state.clock.value = order.cancelUntil;
+      state.store.claimDueCaptures({ limit: 1 });
+    }
+  },
+  {
+    name: "capture-pending captured Hold",
+    bucket: "captureRecovered",
+    setup(state) {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      state.clock.value = order.cancelUntil;
+      state.store.claimDueCaptures({ limit: 1 });
+      const hold = holdForOrder(state, order.orderRef);
+      state.store.walletStore.captureCoinHold({
+        holdRef: hold.hold_ref,
+        operation: walletOperation("recovery_pre_captured")
+      });
+    }
+  },
+  {
+    name: "expired processing lease",
+    bucket: "expiredLeaseObserved",
+    setup(state) {
+      captureToOutbox(state);
+      state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+      state.clock.value = "2026-07-26T12:35:00.000Z";
+    }
+  },
+  {
+    name: "legacy capture-failed Order",
+    bucket: "captureRecovered",
+    setup(state) {
+      seedWallet(state.store);
+      const order = confirm(state, publishAndQuote(state));
+      state.clock.value = order.cancelUntil;
+      state.store.claimDueCaptures({ limit: 1 });
+      state.database.prepare(`
+        update platform_coin_commerce_orders
+           set payment_status = 'capture_failed'
+         where order_ref = ?
+      `).run(order.orderRef);
+    }
+  },
+  {
+    name: "captured Order missing outbox",
+    bucket: "outboxRecovered",
+    setup(state) {
+      const { order } = captureToOutbox(state);
+      state.database.prepare(`
+        delete from platform_coin_commerce_fulfillment_commands
+         where order_ref = ?
+      `).run(order.orderRef);
+    }
+  },
+  {
+    name: "captured Order with existing outbox",
+    notSelected: true,
+    setup(state) {
+      captureToOutbox(state);
+    }
+  }
+];
+
+for (const scenario of recoveryScenarios) {
+  test(`recovery bucket: ${scenario.name}`, () => {
+    const state = fixture();
+    try {
+      scenario.setup(state);
+      if (scenario.notSelected) {
+        const before = snapshotTables(
+          state.database,
+          [...WALLET_FINANCIAL_TABLES, ...COMMERCE_TABLES]
+        );
+        const result = state.store.recoverNonTerminalOrders({ limit: 1 });
+        assert.deepEqual(result, {
+          scanned: 0,
+          readyForCapture: 0,
+          captureRecovered: 0,
+          outboxRecovered: 0,
+          expiredHoldReleased: 0,
+          expiredLeaseObserved: 0,
+          reconciliationRequired: 0,
+          unchanged: 0
+        });
+        assert.deepEqual(
+          snapshotTables(
+            state.database,
+            [...WALLET_FINANCIAL_TABLES, ...COMMERCE_TABLES]
+          ),
+          before
+        );
+      } else {
+        assertSingleRecoveryBucket(
+          state.store.recoverNonTerminalOrders({ limit: 1 }),
+          scenario.bucket
+        );
+      }
+    } finally {
+      state.close();
+    }
+  });
+}
 
 test("bounded recovery returns aggregate-only buckets and repairs a missing outbox", () => {
   const state = fixture();
@@ -864,6 +1912,36 @@ test("claim isolates counter overflow without issuing a lease", () => {
     });
   } finally {
     state.close();
+  }
+});
+
+test("attempt and lease-generation overflow isolate independently", () => {
+  for (const field of ["attempt_count", "lease_generation"]) {
+    const state = fixture();
+    try {
+      const { command } = captureToOutbox(state);
+      state.database.prepare(`
+        update platform_coin_commerce_fulfillment_commands
+           set ${field} = 2147483647
+         where command_ref = ?
+      `).run(command.command_ref);
+      assert.equal(
+        state.store.claimNextFulfillmentCommand({ leaseMs: 1 }),
+        null
+      );
+      assert.deepEqual(state.database.prepare(`
+        select status, safe_failure_code, lease_token, lease_until
+          from platform_coin_commerce_fulfillment_commands
+         where command_ref = ?
+      `).get(command.command_ref), {
+        status: "failed",
+        safe_failure_code: "fulfillment_attempt_limit",
+        lease_token: null,
+        lease_until: null
+      });
+    } finally {
+      state.close();
+    }
   }
 });
 
