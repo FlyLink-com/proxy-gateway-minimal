@@ -71,6 +71,15 @@ in `docs/COINS_WALLET_SCHEMA_GATE.md`. The presence of that source and CLI does
 not prove that a production migration occurred and does not authorize startup
 DDL to absorb Coins ownership.
 
+Coins Commerce schema ownership is also separate. Its additive migration
+requires the exact Wallet migration ledger row and checksum, reuses the same
+`platform_schema_migrations` ledger, and owns only the
+`platform_coin_commerce_*` tables, their named indexes, and their named
+immutability triggers. The closed source-only procedure is documented in
+`docs/COINS_COMMERCE_SCHEMA_GATE.md`. Neither source availability nor a
+successful temporary-database dry-run proves production apply, enables Wallet
+or Commerce runtime flags, or transfers Commerce ownership to startup DDL.
+
 Remote data-plane notification rows intentionally store only safe refs:
 
 ```text
