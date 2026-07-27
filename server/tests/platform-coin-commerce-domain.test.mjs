@@ -127,6 +127,59 @@ test("rejects malformed offer locales, delivery combinations, units, and Coin ty
   }
 });
 
+test("rejects hostile important-notice arrays without leaking raw getter errors", () => {
+  const rawMarker = "RAW_NOTICE_GETTER_MARKER";
+  const cases = [
+    ["sparse", () => Object.assign(Array(1), {})],
+    ["index accessor", () => {
+      const notices = ["valid"];
+      Object.defineProperty(notices, "0", { enumerable: true, get: () => "valid" });
+      return notices;
+    }],
+    ["symbol key", () => {
+      const notices = ["valid"];
+      notices[Symbol("notice")] = "extra";
+      return notices;
+    }],
+    ["extra property", () => Object.assign(["valid"], { marker: "extra" })],
+    ["custom prototype", () => {
+      const notices = ["valid"];
+      Object.setPrototypeOf(notices, Object.create(Array.prototype));
+      return notices;
+    }],
+    ["custom map", () => Object.assign([" not-valid "], { map: () => ["valid"] })],
+    ["throwing getter", () => {
+      const notices = ["valid"];
+      Object.defineProperty(notices, "0", {
+        enumerable: true,
+        get: () => { throw new Error(rawMarker); }
+      });
+      return notices;
+    }]
+  ];
+  for (const [name, createNotices] of cases) {
+    assert.throws(
+      () => normalizeCoinCommerceOffer({
+        ...monthlyBasicOffer(),
+        importantNotices: { zh: createNotices(), en: ["valid"] }
+      }),
+      (error) => error?.code === "invalid_commerce_locale" && !error.message.includes(rawMarker),
+      name
+    );
+  }
+});
+
+test("rejects accepted Coin types with a custom iterator before Wallet normalization", () => {
+  const acceptedCoinTypes = ["not_a_coin_type"];
+  Object.defineProperty(acceptedCoinTypes, Symbol.iterator, {
+    value: function* customIterator() { yield "paid_coins"; }
+  });
+  assert.throws(
+    () => normalizeCoinCommerceOffer({ ...monthlyBasicOffer(), acceptedCoinTypes }),
+    (error) => error?.code === "invalid_commerce_offer"
+  );
+});
+
 test("uses integer basis points and rounds discounted Coins upward", () => {
   assert.equal(applyCoinDiscount({ baseCoinUnits: 20, discountBasisPoints: 500 }), 19);
   assert.equal(applyCoinDiscount({ baseCoinUnits: 31, discountBasisPoints: 1_000 }), 28);
