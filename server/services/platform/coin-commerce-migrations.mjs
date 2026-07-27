@@ -551,6 +551,11 @@ const MIGRATION_STATEMENTS = Object.freeze([
           old.payment_status = 'capture_failed'
           and new.payment_status = 'capture_pending'
         )
+        or
+        (
+          old.payment_status in ('captured', 'cancelled')
+          and new.payment_status = 'reconciliation_required'
+        )
       )
     begin
       select raise(abort, 'coin_commerce_order_payment_status_transition');
@@ -574,7 +579,7 @@ const MIGRATION_STATEMENTS = Object.freeze([
     when
       new.status <> old.status
       and not (
-        (old.status = 'pending' and new.status = 'processing')
+        (old.status = 'pending' and new.status in ('processing', 'failed'))
         or
         (
           old.status = 'processing'
