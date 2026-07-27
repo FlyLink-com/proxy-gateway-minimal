@@ -1,0 +1,800 @@
+import type {
+  PortalCoinAllocation,
+  PortalCoinBalance,
+  PortalCoinCommerceClient,
+  PortalCoinCommerceClientErrorCode,
+  PortalCoinCommerceErrorCode,
+  PortalCoinFulfillment,
+  PortalCoinOffer,
+  PortalCoinOrder,
+  PortalCoinQuote,
+  PortalCoinType
+} from "./api-contract";
+
+const COMMERCE_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
+const SESSION_REFERENCE = /^[A-Za-z0-9._:-]{1,256}$/;
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
+const COIN_PRIORITY: PortalCoinType[] = [
+  "bonus_coins",
+  "paid_coins",
+  "reward_coins"
+];
+const BALANCE_FIELDS = [
+  "bonusCoins",
+  "paidCoins",
+  "rewardCoins",
+  "heldCoins"
+] as const;
+type SpendableBalanceField = Exclude<keyof PortalCoinBalance, "heldCoins">;
+const BALANCE_FIELD_BY_COIN = new Map<
+  PortalCoinType,
+  SpendableBalanceField
+>([
+  ["bonus_coins", "bonusCoins"],
+  ["paid_coins", "paidCoins"],
+  ["reward_coins", "rewardCoins"]
+]);
+const PAYMENT_STATUSES = new Set([
+  "held",
+  "capture_pending",
+  "captured",
+  "cancelled",
+  "capture_failed",
+  "reconciliation_required"
+]);
+const FULFILLMENT_STATUSES = new Set([
+  "not_requested",
+  "pending",
+  "processing",
+  "delivered",
+  "failed"
+]);
+const FULFILLMENT_SAFE_CODES = new Set([
+  "fulfillment_handler_failed",
+  "fulfillment_result_invalid",
+  "fulfillment_handler_unavailable",
+  "fulfillment_attempt_limit"
+]);
+const COMMERCE_ERROR_CODES = new Set<PortalCoinCommerceErrorCode>([
+  "cancel_window_closed",
+  "capture_in_progress",
+  "commerce_not_found",
+  "commerce_rate_limited",
+  "commerce_request_invalid",
+  "commerce_session_invalid",
+  "commerce_unavailable",
+  "idempotency_key_required",
+  "idempotency_key_reused",
+  "insufficient_coins",
+  "offer_unavailable",
+  "quote_expired",
+  "quote_stale",
+  "reconciliation_required",
+  "wallet_not_active"
+]);
+const RETRYABLE_COMMERCE_ERROR_CODES = new Set<PortalCoinCommerceErrorCode>([
+  "capture_in_progress",
+  "commerce_rate_limited",
+  "commerce_unavailable"
+]);
+
+export class PortalCoinCommerceClientError extends Error {
+  readonly code: PortalCoinCommerceClientErrorCode;
+  readonly retryable: boolean;
+
+  constructor(code: PortalCoinCommerceClientErrorCode, retryable: boolean) {
+    super("Portal Commerce request failed.");
+    this.name = "PortalCoinCommerceClientError";
+    this.code = code;
+    this.retryable = retryable;
+  }
+}
+
+function requestFailed() {
+  return new PortalCoinCommerceClientError(
+    "commerce_request_failed",
+    true
+  );
+}
+
+function invalidProjection(): never {
+  throw requestFailed();
+}
+
+function exactObject(
+  input: unknown,
+  fields: readonly string[]
+): Record<string, unknown> {
+  try {
+    if (
+      !input
+      || typeof input !== "object"
+      || Array.isArray(input)
+      || Object.getPrototypeOf(input) !== Object.prototype
+    ) {
+      return invalidProjection();
+    }
+    const expected = new Set(fields);
+    const keys = Reflect.ownKeys(input);
+    if (keys.length !== fields.length) return invalidProjection();
+    const result: Record<string, unknown> = {};
+    for (const key of keys) {
+      if (typeof key !== "string" || !expected.has(key)) {
+        return invalidProjection();
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(input, key);
+      if (
+        !descriptor
+        || !descriptor.enumerable
+        || !("value" in descriptor)
+      ) {
+        return invalidProjection();
+      }
+      result[key] = descriptor.value;
+    }
+    for (const field of fields) {
+      if (!Object.hasOwn(result, field)) return invalidProjection();
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof PortalCoinCommerceClientError) throw error;
+    return invalidProjection();
+  }
+}
+
+function exactArray(input: unknown): unknown[] {
+  try {
+    if (
+      !Array.isArray(input)
+      || Object.getPrototypeOf(input) !== Array.prototype
+    ) {
+      return invalidProjection();
+    }
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(input, "length");
+    if (
+      !lengthDescriptor
+      || !("value" in lengthDescriptor)
+      || !Number.isSafeInteger(lengthDescriptor.value)
+      || lengthDescriptor.value < 0
+      || Reflect.ownKeys(input).length !== lengthDescriptor.value + 1
+    ) {
+      return invalidProjection();
+    }
+    const result = new Array(lengthDescriptor.value);
+    for (let index = 0; index < lengthDescriptor.value; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        input,
+        String(index)
+      );
+      if (
+        !descriptor
+        || !descriptor.enumerable
+        || !("value" in descriptor)
+      ) {
+        return invalidProjection();
+      }
+      result[index] = descriptor.value;
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof PortalCoinCommerceClientError) throw error;
+    return invalidProjection();
+  }
+}
+
+function normalizedText(value: unknown) {
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value.trim() !== value
+  ) {
+    return invalidProjection();
+  }
+  return value;
+}
+
+function positiveSafeInteger(value: unknown) {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    return invalidProjection();
+  }
+  return value as number;
+}
+
+function nonNegativeSafeInteger(value: unknown) {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    return invalidProjection();
+  }
+  return value as number;
+}
+
+function safeAdd(left: number, right: number) {
+  const result = left + right;
+  if (!Number.isSafeInteger(result)) return invalidProjection();
+  return result;
+}
+
+function utcTimestamp(value: unknown) {
+  if (
+    typeof value !== "string"
+    || Number.isNaN(Date.parse(value))
+    || new Date(value).toISOString() !== value
+  ) {
+    return invalidProjection();
+  }
+  return value;
+}
+
+function commerceReference(value: unknown) {
+  if (typeof value !== "string" || !COMMERCE_REFERENCE.test(value)) {
+    return invalidProjection();
+  }
+  return value;
+}
+
+function localeMap(input: unknown) {
+  const value = exactObject(input, ["zh", "en"]);
+  return {
+    zh: normalizedText(value.zh),
+    en: normalizedText(value.en)
+  };
+}
+
+function noticeMap(input: unknown) {
+  const value = exactObject(input, ["zh", "en"]);
+  function notices(inputNotices: unknown) {
+    const raw = exactArray(inputNotices);
+    if (raw.length === 0) return invalidProjection();
+    const result = raw.map(normalizedText);
+    if (new Set(result).size !== result.length) return invalidProjection();
+    return result;
+  }
+  return {
+    zh: notices(value.zh),
+    en: notices(value.en)
+  };
+}
+
+function acceptedCoinTypes(input: unknown) {
+  const values = exactArray(input);
+  if (values.length === 0) return invalidProjection();
+  let previousPriority = -1;
+  const result: PortalCoinType[] = [];
+  for (const value of values) {
+    const priority = COIN_PRIORITY.indexOf(value as PortalCoinType);
+    if (priority <= previousPriority || priority < 0) {
+      return invalidProjection();
+    }
+    result.push(COIN_PRIORITY[priority]);
+    previousPriority = priority;
+  }
+  return result;
+}
+
+function offerProjection(input: unknown): PortalCoinOffer {
+  const value = exactObject(input, [
+    "offerRef",
+    "offerVersionRef",
+    "category",
+    "title",
+    "summary",
+    "importantNotices",
+    "referencePrice",
+    "acceptedCoinTypes",
+    "delivery"
+  ]);
+  const common = {
+    offerRef: commerceReference(value.offerRef),
+    offerVersionRef: commerceReference(value.offerVersionRef),
+    title: localeMap(value.title),
+    summary: localeMap(value.summary),
+    importantNotices: noticeMap(value.importantNotices),
+    referencePrice: (() => {
+      const price = exactObject(value.referencePrice, [
+        "currency",
+        "amountMinor"
+      ]);
+      if (price.currency !== "CNY") return invalidProjection();
+      return {
+        currency: "CNY" as const,
+        amountMinor: positiveSafeInteger(price.amountMinor)
+      };
+    })(),
+    acceptedCoinTypes: acceptedCoinTypes(value.acceptedCoinTypes)
+  };
+  const delivery = exactObject(value.delivery, [
+    "kind",
+    "durationDays",
+    "monthlyTrafficGb",
+    "trafficGb",
+    "neverExpires",
+    "discountBasisPoints"
+  ]);
+  if (value.category === "plan" && delivery.kind === "subscription_plan") {
+    const discountBasisPoints = nonNegativeSafeInteger(
+      delivery.discountBasisPoints
+    );
+    if (
+      delivery.trafficGb !== null
+      || delivery.neverExpires !== false
+      || discountBasisPoints > 10_000
+    ) {
+      return invalidProjection();
+    }
+    return {
+      ...common,
+      category: "plan",
+      delivery: {
+        kind: "subscription_plan",
+        durationDays: positiveSafeInteger(delivery.durationDays),
+        monthlyTrafficGb: positiveSafeInteger(delivery.monthlyTrafficGb),
+        trafficGb: null,
+        neverExpires: false,
+        discountBasisPoints
+      }
+    };
+  }
+  if (value.category === "data_pack" && delivery.kind === "data_pack") {
+    if (
+      delivery.durationDays !== null
+      || delivery.monthlyTrafficGb !== null
+      || delivery.neverExpires !== true
+      || delivery.discountBasisPoints !== null
+    ) {
+      return invalidProjection();
+    }
+    return {
+      ...common,
+      category: "data_pack",
+      delivery: {
+        kind: "data_pack",
+        durationDays: null,
+        monthlyTrafficGb: null,
+        trafficGb: positiveSafeInteger(delivery.trafficGb),
+        neverExpires: true,
+        discountBasisPoints: null
+      }
+    };
+  }
+  return invalidProjection();
+}
+
+function allocationProjection(
+  input: unknown,
+  amountUnits: number,
+  acceptedTypes: PortalCoinType[],
+  allowEmpty: boolean
+): PortalCoinAllocation[] {
+  const values = exactArray(input);
+  if (!allowEmpty && values.length === 0) return invalidProjection();
+  const accepted = new Set(acceptedTypes);
+  let previousPriority = -1;
+  let total = 0;
+  const result: PortalCoinAllocation[] = [];
+  for (const value of values) {
+    const item = exactObject(value, ["coinType", "amountUnits"]);
+    const priority = COIN_PRIORITY.indexOf(item.coinType as PortalCoinType);
+    if (
+      priority <= previousPriority
+      || priority < 0
+      || !accepted.has(COIN_PRIORITY[priority])
+    ) {
+      return invalidProjection();
+    }
+    const units = positiveSafeInteger(item.amountUnits);
+    total = safeAdd(total, units);
+    result.push({
+      coinType: COIN_PRIORITY[priority],
+      amountUnits: units
+    });
+    previousPriority = priority;
+  }
+  if (total !== amountUnits) return invalidProjection();
+  return result;
+}
+
+function balanceProjection(input: unknown): PortalCoinBalance {
+  const value = exactObject(input, BALANCE_FIELDS);
+  return {
+    bonusCoins: nonNegativeSafeInteger(value.bonusCoins),
+    paidCoins: nonNegativeSafeInteger(value.paidCoins),
+    rewardCoins: nonNegativeSafeInteger(value.rewardCoins),
+    heldCoins: nonNegativeSafeInteger(value.heldCoins)
+  };
+}
+
+function quoteProjection(input: unknown): PortalCoinQuote {
+  const value = exactObject(input, [
+    "quoteRef",
+    "offer",
+    "amountUnits",
+    "appliedDiscountBasisPoints",
+    "purchaseAvailability",
+    "shortfallUnits",
+    "allocation",
+    "balances",
+    "expiresAt"
+  ]);
+  const offer = offerProjection(value.offer);
+  const amountUnits = positiveSafeInteger(value.amountUnits);
+  const appliedDiscountBasisPoints = nonNegativeSafeInteger(
+    value.appliedDiscountBasisPoints
+  );
+  if (appliedDiscountBasisPoints > 10_000) return invalidProjection();
+  if (
+    value.purchaseAvailability !== "available"
+    && value.purchaseAvailability !== "insufficient_balance"
+  ) {
+    return invalidProjection();
+  }
+  const shortfallUnits = nonNegativeSafeInteger(value.shortfallUnits);
+  const balances = exactObject(value.balances, ["before", "after"]);
+  const before = balanceProjection(balances.before);
+  const after = balanceProjection(balances.after);
+  let allocation: PortalCoinAllocation[];
+  if (value.purchaseAvailability === "available") {
+    if (shortfallUnits !== 0) return invalidProjection();
+    allocation = allocationProjection(
+      value.allocation,
+      amountUnits,
+      offer.acceptedCoinTypes,
+      false
+    );
+    const allocated: Record<SpendableBalanceField, number> = {
+      bonusCoins: 0,
+      paidCoins: 0,
+      rewardCoins: 0
+    };
+    for (const item of allocation) {
+      allocated[BALANCE_FIELD_BY_COIN.get(item.coinType)!] = item.amountUnits;
+    }
+    for (const field of ["bonusCoins", "paidCoins", "rewardCoins"] as const) {
+      if (after[field] !== before[field] - allocated[field]) {
+        return invalidProjection();
+      }
+    }
+    if (after.heldCoins !== safeAdd(before.heldCoins, amountUnits)) {
+      return invalidProjection();
+    }
+  } else {
+    if (shortfallUnits < 1) return invalidProjection();
+    allocation = allocationProjection(
+      value.allocation,
+      0,
+      offer.acceptedCoinTypes,
+      true
+    );
+    for (const field of BALANCE_FIELDS) {
+      if (after[field] !== before[field]) return invalidProjection();
+    }
+    let acceptedUnits = 0;
+    for (const coinType of offer.acceptedCoinTypes) {
+      acceptedUnits = safeAdd(
+        acceptedUnits,
+        before[BALANCE_FIELD_BY_COIN.get(coinType)!]
+      );
+    }
+    if (
+      acceptedUnits >= amountUnits
+      || amountUnits - acceptedUnits !== shortfallUnits
+    ) {
+      return invalidProjection();
+    }
+  }
+  return {
+    quoteRef: commerceReference(value.quoteRef),
+    offer,
+    amountUnits,
+    appliedDiscountBasisPoints,
+    purchaseAvailability: value.purchaseAvailability,
+    shortfallUnits,
+    allocation,
+    balances: { before, after },
+    expiresAt: utcTimestamp(value.expiresAt)
+  };
+}
+
+function fulfillmentProjection(
+  input: unknown,
+  captured: boolean
+): PortalCoinFulfillment {
+  const value = exactObject(input, ["status", "safeCode"]);
+  if (!FULFILLMENT_STATUSES.has(value.status as string)) {
+    return invalidProjection();
+  }
+  if (!captured) {
+    if (value.status !== "not_requested" || value.safeCode !== null) {
+      return invalidProjection();
+    }
+    return { status: "not_requested", safeCode: null };
+  }
+  if (
+    value.status !== "pending"
+    && value.status !== "processing"
+    && value.status !== "delivered"
+    && value.status !== "failed"
+  ) {
+    return invalidProjection();
+  }
+  if (value.status === "failed") {
+    if (!FULFILLMENT_SAFE_CODES.has(value.safeCode as string)) {
+      return invalidProjection();
+    }
+    return {
+      status: "failed",
+      safeCode: value.safeCode as Extract<
+        PortalCoinFulfillment,
+        { status: "failed" }
+      >["safeCode"]
+    };
+  }
+  if (value.safeCode !== null) return invalidProjection();
+  return { status: value.status, safeCode: null };
+}
+
+function orderProjection(input: unknown): PortalCoinOrder {
+  const value = exactObject(input, [
+    "orderRef",
+    "offer",
+    "amountUnits",
+    "allocation",
+    "paymentStatus",
+    "cancelUntil",
+    "fulfillment",
+    "createdAt",
+    "updatedAt"
+  ]);
+  if (!PAYMENT_STATUSES.has(value.paymentStatus as string)) {
+    return invalidProjection();
+  }
+  const offer = offerProjection(value.offer);
+  const amountUnits = positiveSafeInteger(value.amountUnits);
+  const createdAt = utcTimestamp(value.createdAt);
+  const cancelUntil = utcTimestamp(value.cancelUntil);
+  const updatedAt = utcTimestamp(value.updatedAt);
+  if (
+    Date.parse(cancelUntil) < Date.parse(createdAt)
+    || Date.parse(updatedAt) < Date.parse(createdAt)
+  ) {
+    return invalidProjection();
+  }
+  return {
+    orderRef: commerceReference(value.orderRef),
+    offer,
+    amountUnits,
+    allocation: allocationProjection(
+      value.allocation,
+      amountUnits,
+      offer.acceptedCoinTypes,
+      false
+    ),
+    paymentStatus: value.paymentStatus as PortalCoinOrder["paymentStatus"],
+    cancelUntil,
+    fulfillment: fulfillmentProjection(
+      value.fulfillment,
+      value.paymentStatus === "captured"
+    ),
+    createdAt,
+    updatedAt
+  };
+}
+
+function offerListWrapper(input: unknown) {
+  const value = exactObject(input, ["offers"]);
+  return exactArray(value.offers).map(offerProjection);
+}
+
+function offerWrapper(input: unknown) {
+  return offerProjection(exactObject(input, ["offer"]).offer);
+}
+
+function quoteWrapper(input: unknown) {
+  return quoteProjection(exactObject(input, ["quote"]).quote);
+}
+
+function orderWrapper(input: unknown) {
+  return orderProjection(exactObject(input, ["order"]).order);
+}
+
+function exactInput(input: unknown, fields: readonly string[]) {
+  try {
+    return exactObject(input, fields);
+  } catch {
+    throw requestFailed();
+  }
+}
+
+function sessionReference(value: unknown) {
+  if (typeof value !== "string" || !SESSION_REFERENCE.test(value)) {
+    throw requestFailed();
+  }
+  return value;
+}
+
+function callerCommerceReference(value: unknown) {
+  if (typeof value !== "string" || !COMMERCE_REFERENCE.test(value)) {
+    throw requestFailed();
+  }
+  return value;
+}
+
+function callerIdempotencyKey(value: unknown) {
+  if (typeof value !== "string" || !IDEMPOTENCY_KEY.test(value)) {
+    throw requestFailed();
+  }
+  return value;
+}
+
+function structuredCommerceError(input: unknown) {
+  const wrapper = exactObject(input, ["error"]);
+  const error = exactObject(wrapper.error, ["code", "retryable"]);
+  if (
+    typeof error.code !== "string"
+    || !COMMERCE_ERROR_CODES.has(error.code as PortalCoinCommerceErrorCode)
+    || typeof error.retryable !== "boolean"
+  ) {
+    return invalidProjection();
+  }
+  const code = error.code as PortalCoinCommerceErrorCode;
+  if (error.retryable !== RETRYABLE_COMMERCE_ERROR_CODES.has(code)) {
+    return invalidProjection();
+  }
+  return new PortalCoinCommerceClientError(
+    code,
+    error.retryable
+  );
+}
+
+async function request<T>(
+  fetchFn: typeof fetch,
+  url: string,
+  init: RequestInit,
+  project: (input: unknown) => T
+): Promise<T> {
+  let body: unknown;
+  let ok: boolean;
+  try {
+    const response = await fetchFn(url, init);
+    const text = await response.text();
+    if (typeof text !== "string") throw requestFailed();
+    body = JSON.parse(text) as unknown;
+    ok = response.ok;
+    if (typeof ok !== "boolean") throw requestFailed();
+  } catch {
+    throw requestFailed();
+  }
+  if (!ok) {
+    try {
+      throw structuredCommerceError(body);
+    } catch (error) {
+      if (
+        error instanceof PortalCoinCommerceClientError
+        && error.code !== "commerce_request_failed"
+      ) {
+        throw error;
+      }
+      throw requestFailed();
+    }
+  }
+  try {
+    return project(body);
+  } catch {
+    throw requestFailed();
+  }
+}
+
+function getInit(sessionRef: string): RequestInit {
+  return {
+    method: "GET",
+    headers: { "X-Portal-Session": sessionRef }
+  };
+}
+
+function postInit(
+  sessionRef: string,
+  body: string,
+  idempotencyKey?: string
+): RequestInit {
+  return {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Portal-Session": sessionRef,
+      ...(idempotencyKey === undefined
+        ? {}
+        : { "Idempotency-Key": idempotencyKey })
+    },
+    body
+  };
+}
+
+export function createPortalCoinCommerceClient(
+  options: { fetchFn?: typeof fetch } = {}
+): PortalCoinCommerceClient {
+  const fetchFn = options.fetchFn ?? fetch;
+  return {
+    async listOffers(input) {
+      const value = exactInput(input, ["sessionRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      return request(
+        fetchFn,
+        "/api/portal/catalog/offers",
+        getInit(sessionRef),
+        offerListWrapper
+      );
+    },
+
+    async getOffer(input) {
+      const value = exactInput(input, ["sessionRef", "offerRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const offerRef = callerCommerceReference(value.offerRef);
+      return request(
+        fetchFn,
+        `/api/portal/catalog/offers/${offerRef}`,
+        getInit(sessionRef),
+        offerWrapper
+      );
+    },
+
+    async previewCheckout(input) {
+      const value = exactInput(input, ["sessionRef", "offerRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const offerRef = callerCommerceReference(value.offerRef);
+      return request(
+        fetchFn,
+        "/api/portal/commerce/checkout-preview",
+        postInit(sessionRef, JSON.stringify({ offerRef })),
+        quoteWrapper
+      );
+    },
+
+    async createOrder(input) {
+      const value = exactInput(input, [
+        "sessionRef",
+        "quoteRef",
+        "idempotencyKey"
+      ]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const quoteRef = callerCommerceReference(value.quoteRef);
+      const idempotencyKey = callerIdempotencyKey(value.idempotencyKey);
+      return request(
+        fetchFn,
+        "/api/portal/commerce/orders",
+        postInit(
+          sessionRef,
+          JSON.stringify({ quoteRef }),
+          idempotencyKey
+        ),
+        orderWrapper
+      );
+    },
+
+    async getOrder(input) {
+      const value = exactInput(input, ["sessionRef", "orderRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const orderRef = callerCommerceReference(value.orderRef);
+      return request(
+        fetchFn,
+        `/api/portal/commerce/orders/${orderRef}`,
+        getInit(sessionRef),
+        orderWrapper
+      );
+    },
+
+    async cancelOrder(input) {
+      const value = exactInput(input, [
+        "sessionRef",
+        "orderRef",
+        "idempotencyKey"
+      ]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const orderRef = callerCommerceReference(value.orderRef);
+      const idempotencyKey = callerIdempotencyKey(value.idempotencyKey);
+      return request(
+        fetchFn,
+        `/api/portal/commerce/orders/${orderRef}/cancel`,
+        postInit(sessionRef, "{}", idempotencyKey),
+        orderWrapper
+      );
+    }
+  };
+}
