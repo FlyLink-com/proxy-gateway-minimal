@@ -962,6 +962,108 @@ test("cancel replay rejects an Order association different from the request", ()
   }
 });
 
+test("cancel replay rejects an impossible held Order behind a succeeded receipt", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const order = confirm(state, publishAndQuote(state));
+    state.store.cancelOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef,
+      operation: commerceOperation("cancel_impossible_held")
+    });
+    dropTableTriggers(state.database, "platform_coin_commerce_orders");
+    state.database.prepare(`
+      update platform_coin_commerce_orders
+         set payment_status = 'held'
+       where order_ref = ?
+    `).run(order.orderRef);
+
+    expectCode(() => state.store.cancelOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef,
+      operation: commerceOperation("cancel_impossible_held")
+    }), "commerce_infrastructure_error");
+  } finally {
+    state.close();
+  }
+});
+
+test("cancel replay accepts a later Wallet release timestamp within the same transaction", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const order = confirm(state, publishAndQuote(state));
+    const lockedTimes = [
+      "2026-07-26T12:34:56.100Z",
+      "2026-07-26T12:34:56.101Z"
+    ];
+    let reads = 0;
+    Object.defineProperty(state.clock, "value", {
+      configurable: true,
+      get() {
+        const value = lockedTimes[Math.min(reads, lockedTimes.length - 1)];
+        reads += 1;
+        return value;
+      }
+    });
+    const cancelled = state.store.cancelOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef,
+      operation: commerceOperation("cancel_clock_progress")
+    });
+
+    assert.deepEqual(state.store.cancelOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef,
+      operation: commerceOperation("cancel_clock_progress")
+    }), cancelled);
+  } finally {
+    state.close();
+  }
+});
+
+test("cancel replay requires a one-to-one release ledger fact for every allocation", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const order = confirm(state, publishAndQuote(state));
+    state.store.cancelOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef,
+      operation: commerceOperation("cancel_duplicate_release_lot")
+    });
+    const ledger = state.database.prepare(`
+      select entry_ref, lot_ref, amount_units
+        from platform_coin_ledger_entries
+       where hold_ref = ?
+         and order_ref = ?
+         and operation in ('held_to_available', 'held_to_expired')
+       order by entry_ref
+    `).all(
+      state.database.prepare(`
+        select hold_ref from platform_coin_commerce_orders where order_ref = ?
+      `).pluck().get(order.orderRef),
+      order.orderRef
+    );
+    assert.equal(ledger.length, 2);
+    dropTableTriggers(state.database, "platform_coin_ledger_entries");
+    state.database.prepare(`
+      update platform_coin_ledger_entries
+         set lot_ref = ?, amount_units = ?
+       where entry_ref = ?
+    `).run(ledger[0].lot_ref, ledger[0].amount_units, ledger[1].entry_ref);
+
+    expectCode(() => state.store.cancelOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef,
+      operation: commerceOperation("cancel_duplicate_release_lot")
+    }), "commerce_infrastructure_error");
+  } finally {
+    state.close();
+  }
+});
+
 test("confirm rejects stale Wallet versions and cross-account references without writes", () => {
   const state = fixture();
   try {
@@ -1110,13 +1212,33 @@ test("cross-account Hold cancel isolates without release or cancel receipt", () 
       select count(*) from platform_coin_commerce_operation_receipts
     `).pluck().get();
 
-    const isolated = state.store.cancelOrder({
-      accountId: "acct_synthetic_1",
-      orderRef: order.orderRef,
-      operation: commerceOperation("cancel_foreign")
-    });
+    const observed = [];
+    for (const key of [
+      "cancel_foreign",
+      "cancel_foreign",
+      "cancel_foreign_different"
+    ]) {
+      try {
+        state.store.cancelOrder({
+          accountId: "acct_synthetic_1",
+          orderRef: order.orderRef,
+          operation: commerceOperation(key)
+        });
+        observed.push("success");
+      } catch (error) {
+        observed.push(error?.code);
+        assert.equal(
+          error?.message,
+          "Coin commerce store operation rejected"
+        );
+      }
+    }
 
-    assert.equal(isolated.paymentStatus, "reconciliation_required");
+    assert.deepEqual(observed, [
+      "reconciliation_required",
+      "reconciliation_required",
+      "reconciliation_required"
+    ]);
     assert.deepEqual(
       snapshotTables(state.database, WALLET_FINANCIAL_TABLES),
       walletBefore
@@ -1128,6 +1250,11 @@ test("cross-account Hold cancel isolates without release or cancel receipt", () 
     assert.equal(state.database.prepare(`
       select count(*) from platform_coin_commerce_operation_receipts
     `).pluck().get(), receiptsBefore);
+    assert.equal(state.database.prepare(`
+      select count(*) from platform_coin_commerce_order_events
+       where order_ref = ?
+         and event_type = 'reconciliation_required'
+    `).pluck().get(order.orderRef), 1);
   } finally {
     state.close();
   }
@@ -1136,6 +1263,7 @@ test("cross-account Hold cancel isolates without release or cancel receipt", () 
 test("restart recovery isolates a cross-account active Hold without Wallet writes", () => {
   const state = fixture();
   let restarted;
+  let verification;
   try {
     seedWallet(state.store);
     const order = confirm(state, publishAndQuote(state));
@@ -1143,13 +1271,18 @@ test("restart recovery isolates a cross-account active Hold without Wallet write
     state.clock.value = order.cancelUntil;
     const walletBefore = snapshotTables(state.database, WALLET_FINANCIAL_TABLES);
     state.store.close();
+    state.database.close();
     restarted = createSqliteCoinCommerceStore({
-      database: fixedClockDatabase(state.database, state.clock),
+      dbPath: state.dbPath,
       commerceRefFactory: refFactory(),
       walletRefFactory: refFactory()
     });
 
     const recovered = restarted.recoverNonTerminalOrders({ limit: 1 });
+    verification = new Database(state.dbPath, {
+      readonly: true,
+      fileMustExist: true
+    });
 
     assert.equal(recovered.scanned, 1);
     assert.equal(recovered.reconciliationRequired, 1);
@@ -1161,18 +1294,22 @@ test("restart recovery isolates a cross-account active Hold without Wallet write
       recovered.scanned
     );
     assert.deepEqual(
-      snapshotTables(state.database, WALLET_FINANCIAL_TABLES),
+      snapshotTables(verification, WALLET_FINANCIAL_TABLES),
       walletBefore
     );
-    assert.equal(restarted.walletStore.getHold(foreign.holdRef).status, "active");
-    assert.equal(restarted.getOrder({
-      accountId: "acct_synthetic_1",
-      orderRef: order.orderRef
-    }).paymentStatus, "reconciliation_required");
+    assert.equal(verification.prepare(`
+      select status from platform_coin_holds where hold_ref = ?
+    `).pluck().get(foreign.holdRef), "active");
+    assert.equal(verification.prepare(`
+      select payment_status
+        from platform_coin_commerce_orders
+       where order_ref = ?
+    `).pluck().get(order.orderRef), "reconciliation_required");
   } finally {
+    verification?.close();
     restarted?.close();
     state.store.close();
-    state.database.close();
+    if (state.database.open) state.database.close();
     rmSync(state.directory, { recursive: true, force: true, maxRetries: 3 });
   }
 });
@@ -1206,6 +1343,242 @@ test("captured cross-account Hold repair isolates without creating outbox", () =
     `).pluck().get(order.orderRef), 0);
   } finally {
     state.close();
+  }
+});
+
+test("captured invalid Hold with an existing command isolates without projection rollback", () => {
+  const state = fixture();
+  try {
+    const { order } = captureToOutbox(state);
+    const hold = holdForOrder(state, order.orderRef);
+    dropTableTriggers(state.database, "platform_coin_holds");
+    state.database.prepare(`
+      update platform_coin_holds
+         set purpose_ref = 'order_invalid_binding'
+       where hold_ref = ?
+    `).run(hold.hold_ref);
+    const walletBefore = snapshotTables(
+      state.database,
+      WALLET_FINANCIAL_TABLES
+    );
+
+    const isolated = state.store.captureClaimedOrder({
+      orderRef: order.orderRef
+    });
+
+    assert.equal(isolated.paymentStatus, "reconciliation_required");
+    assert.deepEqual(isolated.fulfillment, {
+      status: "failed",
+      safeCode: "fulfillment_result_invalid"
+    });
+    assert.equal(state.store.getOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef
+    }).paymentStatus, "reconciliation_required");
+    assert.deepEqual(
+      snapshotTables(state.database, WALLET_FINANCIAL_TABLES),
+      walletBefore
+    );
+  } finally {
+    state.close();
+  }
+});
+
+test("captured isolation quiesces processing and preserves terminal fulfillment history", () => {
+  for (const status of ["processing", "failed", "delivered"]) {
+    const state = fixture();
+    try {
+      const { order } = captureToOutbox(state);
+      const lease = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+      if (status === "failed") {
+        state.store.failFulfillmentCommand({
+          commandRef: lease.commandRef,
+          leaseGeneration: lease.leaseGeneration,
+          leaseToken: lease.leaseToken,
+          safeCode: "fulfillment_handler_failed"
+        });
+      } else if (status === "delivered") {
+        state.store.completeFulfillmentCommand({
+          commandRef: lease.commandRef,
+          leaseGeneration: lease.leaseGeneration,
+          leaseToken: lease.leaseToken,
+          effectRef: "effect_preserved_delivery",
+          status: "delivered"
+        });
+      }
+      const commandBefore = state.database.prepare(`
+        select * from platform_coin_commerce_fulfillment_commands
+         where order_ref = ?
+      `).get(order.orderRef);
+      const receiptsBefore = state.database.prepare(`
+        select * from platform_coin_commerce_fulfillment_receipts
+         where command_ref = ?
+         order by receipt_ref
+      `).all(commandBefore.command_ref);
+      const hold = holdForOrder(state, order.orderRef);
+      dropTableTriggers(state.database, "platform_coin_holds");
+      state.database.prepare(`
+        update platform_coin_holds
+           set amount_units = amount_units + 1
+         where hold_ref = ?
+      `).run(hold.hold_ref);
+      const walletBefore = snapshotTables(
+        state.database,
+        WALLET_FINANCIAL_TABLES
+      );
+
+      const isolated = state.store.captureClaimedOrder({
+        orderRef: order.orderRef
+      });
+
+      assert.equal(isolated.paymentStatus, "reconciliation_required");
+      const commandAfter = state.database.prepare(`
+        select * from platform_coin_commerce_fulfillment_commands
+         where order_ref = ?
+      `).get(order.orderRef);
+      const receiptsAfter = state.database.prepare(`
+        select * from platform_coin_commerce_fulfillment_receipts
+         where command_ref = ?
+         order by receipt_ref
+      `).all(commandAfter.command_ref);
+      if (status === "processing") {
+        assert.equal(commandAfter.status, "failed");
+        assert.equal(
+          commandAfter.safe_failure_code,
+          "fulfillment_result_invalid"
+        );
+        assert.equal(commandAfter.lease_token, null);
+        assert.equal(commandAfter.lease_until, null);
+        expectCode(() => state.store.completeFulfillmentCommand({
+          commandRef: lease.commandRef,
+          leaseGeneration: lease.leaseGeneration,
+          leaseToken: lease.leaseToken,
+          effectRef: "effect_stale_after_isolation",
+          status: "delivered"
+        }), "commerce_fulfillment_lease_lost");
+      } else {
+        assert.deepEqual(commandAfter, commandBefore);
+      }
+      assert.deepEqual(receiptsAfter, receiptsBefore);
+      assert.deepEqual(
+        snapshotTables(state.database, WALLET_FINANCIAL_TABLES),
+        walletBefore
+      );
+      assert.equal(state.store.nextWakeAt(), null);
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("fulfillment claim isolates an invalid captured Order before granting a lease", () => {
+  const state = fixture();
+  try {
+    const { order } = captureToOutbox(state);
+    const hold = holdForOrder(state, order.orderRef);
+    dropTableTriggers(state.database, "platform_coin_holds");
+    state.database.prepare(`
+      update platform_coin_holds
+         set purpose_ref = 'order_invalid_claim_binding'
+       where hold_ref = ?
+    `).run(hold.hold_ref);
+
+    assert.equal(
+      state.store.claimNextFulfillmentCommand({ leaseMs: 1000 }),
+      null
+    );
+    const isolated = state.store.getOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef
+    });
+    assert.equal(isolated.paymentStatus, "reconciliation_required");
+    assert.deepEqual(isolated.fulfillment, {
+      status: "failed",
+      safeCode: "fulfillment_result_invalid"
+    });
+    assert.equal(state.store.nextWakeAt(), null);
+  } finally {
+    state.close();
+  }
+});
+
+test("nextWakeAt is immediate when a processing command loses its Hold invariant", () => {
+  const state = fixture();
+  try {
+    const { order } = captureToOutbox(state);
+    state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+    const hold = holdForOrder(state, order.orderRef);
+    dropTableTriggers(state.database, "platform_coin_holds");
+    state.database.prepare(`
+      update platform_coin_holds
+         set purpose_ref = 'order_invalid_processing_wake'
+       where hold_ref = ?
+    `).run(hold.hold_ref);
+
+    assert.equal(state.store.nextWakeAt(), state.clock.value);
+  } finally {
+    state.close();
+  }
+});
+
+test("completion and failure isolate a post-claim invalid Hold before losing the old lease", () => {
+  for (const callback of ["complete", "fail"]) {
+    const state = fixture();
+    try {
+      const { order } = captureToOutbox(state);
+      const lease = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+      const hold = holdForOrder(state, order.orderRef);
+      dropTableTriggers(state.database, "platform_coin_holds");
+      state.database.prepare(`
+        update platform_coin_holds
+           set purpose_ref = 'order_invalid_${callback}_callback'
+         where hold_ref = ?
+      `).run(hold.hold_ref);
+      const walletBefore = snapshotTables(
+        state.database,
+        WALLET_FINANCIAL_TABLES
+      );
+
+      expectCode(() => {
+        if (callback === "complete") {
+          state.store.completeFulfillmentCommand({
+            commandRef: lease.commandRef,
+            leaseGeneration: lease.leaseGeneration,
+            leaseToken: lease.leaseToken,
+            effectRef: "effect_invalid_post_claim_hold",
+            status: "delivered"
+          });
+        } else {
+          state.store.failFulfillmentCommand({
+            commandRef: lease.commandRef,
+            leaseGeneration: lease.leaseGeneration,
+            leaseToken: lease.leaseToken,
+            safeCode: "fulfillment_handler_failed"
+          });
+        }
+      }, "commerce_fulfillment_lease_lost");
+
+      const isolated = state.store.getOrder({
+        accountId: "acct_synthetic_1",
+        orderRef: order.orderRef
+      });
+      assert.equal(isolated.paymentStatus, "reconciliation_required");
+      assert.deepEqual(isolated.fulfillment, {
+        status: "failed",
+        safeCode: "fulfillment_result_invalid"
+      });
+      assert.equal(state.database.prepare(`
+        select count(*)
+          from platform_coin_commerce_fulfillment_receipts
+         where command_ref = ?
+      `).pluck().get(lease.commandRef), 0);
+      assert.deepEqual(
+        snapshotTables(state.database, WALLET_FINANCIAL_TABLES),
+        walletBefore
+      );
+    } finally {
+      state.close();
+    }
   }
 });
 
@@ -1741,16 +2114,7 @@ for (const scenario of recoveryScenarios) {
           [...WALLET_FINANCIAL_TABLES, ...COMMERCE_TABLES]
         );
         const result = state.store.recoverNonTerminalOrders({ limit: 1 });
-        assert.deepEqual(result, {
-          scanned: 0,
-          readyForCapture: 0,
-          captureRecovered: 0,
-          outboxRecovered: 0,
-          expiredHoldReleased: 0,
-          expiredLeaseObserved: 0,
-          reconciliationRequired: 0,
-          unchanged: 0
-        });
+        assertSingleRecoveryBucket(result, "unchanged");
         assert.deepEqual(
           snapshotTables(
             state.database,
@@ -1769,6 +2133,120 @@ for (const scenario of recoveryScenarios) {
     }
   });
 }
+
+test("bounded recovery does not let an older healthy future Hold starve later actionable work", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    state.store.publishOfferVersion(offer());
+    const older = confirm(state, state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1",
+      offerRef: "offer_monthly_basic"
+    }));
+    credit(state.store, {
+      coinType: "paid_coins",
+      amountUnits: 20,
+      suffix: "recovery_starvation"
+    });
+    const actionable = confirm(state, state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1",
+      offerRef: "offer_monthly_basic"
+    }), "confirm_recovery_starvation");
+    mutateOrderSnapshot(state, `
+      update platform_coin_commerce_orders
+         set cancel_until = '2099-01-01T00:00:00.000Z'
+       where order_ref = ?
+    `, older.orderRef);
+    state.clock.value = actionable.cancelUntil;
+    assert.deepEqual(state.store.claimDueCaptures({ limit: 1 }), [
+      { orderRef: actionable.orderRef }
+    ]);
+
+    for (let call = 0; call < 2; call += 1) {
+      const recovered = state.store.recoverNonTerminalOrders({ limit: 1 });
+      assert.equal(recovered.scanned, 1);
+      assert.equal(
+        Object.entries(recovered)
+          .filter(([key]) => key !== "scanned")
+          .reduce((sum, [, value]) => sum + value, 0),
+        recovered.scanned
+      );
+    }
+
+    assert.equal(state.store.getOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: actionable.orderRef
+    }).paymentStatus, "captured");
+  } finally {
+    state.close();
+  }
+});
+
+test("recovery audit rotates to deep corruption, wraps, and does not advance on rollback", () => {
+  const state = fixture();
+  try {
+    credit(state.store, {
+      coinType: "paid_coins",
+      amountUnits: 60,
+      suffix: "recovery_audit"
+    });
+    state.store.publishOfferVersion(offer());
+    const orders = [];
+    for (let index = 0; index < 3; index += 1) {
+      orders.push(confirm(state, state.store.createCheckoutQuote({
+        accountId: "acct_synthetic_1",
+        offerRef: "offer_monthly_basic"
+      }), `confirm_recovery_audit_${index}`));
+    }
+    dropTableTriggers(state.database, "platform_coin_hold_allocations");
+    state.database.prepare(`
+      update platform_coin_hold_allocations
+         set allocated_units = allocated_units - 1
+       where hold_ref = (
+         select hold_ref
+           from platform_coin_commerce_orders
+          where order_ref = ?
+       )
+    `).run(orders[2].orderRef);
+
+    assertSingleRecoveryBucket(
+      state.store.recoverNonTerminalOrders({ limit: 1 }),
+      "unchanged"
+    );
+    assertSingleRecoveryBucket(
+      state.store.recoverNonTerminalOrders({ limit: 1 }),
+      "unchanged"
+    );
+    state.database.exec(`
+      create trigger synthetic_recovery_audit_rollback
+      before update of payment_status on platform_coin_commerce_orders
+      when old.order_ref = '${orders[2].orderRef}'
+      begin
+        select raise(abort, 'synthetic_recovery_audit_rollback');
+      end
+    `);
+    expectCode(
+      () => state.store.recoverNonTerminalOrders({ limit: 1 }),
+      "commerce_infrastructure_error"
+    );
+    state.database.exec("drop trigger synthetic_recovery_audit_rollback");
+
+    assertSingleRecoveryBucket(
+      state.store.recoverNonTerminalOrders({ limit: 1 }),
+      "reconciliationRequired"
+    );
+    assertSingleRecoveryBucket(
+      state.store.recoverNonTerminalOrders({ limit: 1 }),
+      "unchanged"
+    );
+    assert.equal(state.store.getOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: orders[2].orderRef
+    }).paymentStatus, "reconciliation_required");
+  } finally {
+    state.close();
+  }
+});
 
 test("bounded recovery returns aggregate-only buckets and repairs a missing outbox", () => {
   const state = fixture();

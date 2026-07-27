@@ -109,7 +109,7 @@ function offer() {
     importantNotices: { zh: ["合成测试"], en: ["Synthetic test"] },
     baseCoinUnits: 10,
     referencePrice: { currency: "CNY", amountMinor: 1_000 },
-    acceptedCoinTypes: ["paid_coins"],
+    acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
     delivery: {
       kind: "data_pack",
       durationDays: null,
@@ -140,24 +140,59 @@ function fixture() {
     commerceRefFactory: refs(),
     walletRefFactory: refs()
   });
-  store.walletStore.creditCoins({
-    accountId: "acct_atomic_1",
-    coinType: "paid_coins",
-    amountUnits: 100,
-    availability: "available",
-    sourceType: "synthetic_seed",
-    sourceRef: "source_atomic",
-    sourceDigest: "a".repeat(64),
-    policyRef: null,
-    policyVersion: null,
-    expiresAt: null,
-    operation: {
-      actorScope: "system:atomic",
-      idempotencyKey: "credit_atomic",
-      actorType: "system",
-      actorRef: "atomic_seed"
+  for (const seed of [
+    {
+      coinType: "bonus_coins",
+      amountUnits: 3,
+      availability: "available",
+      expiresAt: "2099-01-01T00:00:00.000Z"
+    },
+    {
+      coinType: "paid_coins",
+      amountUnits: 4,
+      availability: "available",
+      expiresAt: null
+    },
+    {
+      coinType: "reward_coins",
+      amountUnits: 3,
+      availability: "pending",
+      expiresAt: null
     }
-  });
+  ]) {
+    const credited = store.walletStore.creditCoins({
+      accountId: "acct_atomic_1",
+      coinType: seed.coinType,
+      amountUnits: seed.amountUnits,
+      availability: seed.availability,
+      sourceType: "synthetic_seed",
+      sourceRef: `source_atomic_${seed.coinType}`,
+      sourceDigest: seed.coinType.padEnd(64, "0").slice(0, 64),
+      policyRef: seed.coinType === "reward_coins"
+        ? "reward_policy_atomic"
+        : null,
+      policyVersion: seed.coinType === "reward_coins" ? 1 : null,
+      expiresAt: seed.expiresAt,
+      operation: {
+        actorScope: "system:atomic",
+        idempotencyKey: `credit_atomic_${seed.coinType}`,
+        actorType: "system",
+        actorRef: "atomic_seed"
+      }
+    });
+    if (seed.availability === "pending") {
+      store.walletStore.confirmCoinCredit({
+        lotRef: credited.resultRef,
+        amountUnits: seed.amountUnits,
+        operation: {
+          actorScope: "system:atomic",
+          idempotencyKey: `confirm_atomic_${seed.coinType}`,
+          actorType: "system",
+          actorRef: "atomic_seed"
+        }
+      });
+    }
+  }
   store.publishOfferVersion(offer());
   return {
     directory,
@@ -188,11 +223,38 @@ function confirm(state, quoteValue, key = "confirm_atomic") {
   });
 }
 
+function captureToOutbox(state) {
+  const order = confirm(state, quote(state));
+  state.clock.value = order.cancelUntil;
+  state.store.claimDueCaptures({ limit: 1 });
+  state.store.captureClaimedOrder({ orderRef: order.orderRef });
+  return order;
+}
+
+function holdForOrder(state, orderRef) {
+  return state.database.prepare(`
+    select h.*
+      from platform_coin_holds h
+      join platform_coin_commerce_orders o on o.hold_ref = h.hold_ref
+     where o.order_ref = ?
+  `).get(orderRef);
+}
+
 function snapshot(database) {
   return Object.fromEntries(ATOMIC_TABLES.map((table) => [
     table,
     database.prepare(`select * from ${table} order by rowid`).all()
   ]));
+}
+
+function dropTableTriggers(database, table) {
+  const triggers = database.prepare(`
+    select name from sqlite_master
+     where type = 'trigger' and tbl_name = ?
+  `).all(table);
+  for (const { name } of triggers) {
+    database.exec(`drop trigger "${name.replaceAll("\"", "\"\"")}"`);
+  }
 }
 
 function installFault(database, body) {
@@ -214,6 +276,65 @@ function expectSafeRollback(state, before, action) {
   });
   state.database.exec("drop trigger synthetic_commerce_fault");
   assert.deepEqual(snapshot(state.database), before);
+}
+
+function installNthFault(database, body, nthWrite) {
+  const mainTarget = body.replace(
+    /\bon\s+(platform_coin_[a-z_]+)/i,
+    "on main.$1"
+  );
+  database.exec(`
+    create temp table synthetic_commerce_fault_counter (
+      seen integer not null
+    );
+    insert into synthetic_commerce_fault_counter (seen) values (0);
+    create temp trigger synthetic_commerce_nth_fault
+    ${mainTarget}
+    begin
+      update synthetic_commerce_fault_counter set seen = seen + 1;
+      select case
+        when (select seen from synthetic_commerce_fault_counter) = ${nthWrite}
+        then raise(abort, 'RAW_SYNTHETIC_NTH_WRITE_FAULT')
+      end;
+    end
+  `);
+}
+
+function expectSafeNthRollback(state, before, action) {
+  assert.throws(action, (error) => {
+    assert.equal(error?.code, "commerce_infrastructure_error");
+    assert.equal(error?.message, "Coin commerce store operation rejected");
+    assert.equal(error.message.includes("RAW_SYNTHETIC"), false);
+    return true;
+  });
+  state.database.exec(`
+    drop trigger temp.synthetic_commerce_nth_fault;
+    drop table temp.synthetic_commerce_fault_counter;
+  `);
+  assert.deepEqual(snapshot(state.database), before);
+}
+
+function expectNthWriteRollbacks({
+  setup,
+  action,
+  trigger,
+  writeCount = 3
+}) {
+  for (let nthWrite = 1; nthWrite <= writeCount; nthWrite += 1) {
+    const state = fixture();
+    try {
+      const subject = setup(state);
+      const before = snapshot(state.database);
+      installNthFault(state.database, trigger, nthWrite);
+      expectSafeNthRollback(
+        state,
+        before,
+        () => action(state, subject, nthWrite)
+      );
+    } finally {
+      state.close();
+    }
+  }
 }
 
 test("confirm rolls all fourteen financial tables back at every write boundary", () => {
@@ -256,6 +377,25 @@ test("confirm rolls all fourteen financial tables back at every write boundary",
   }
 });
 
+test("three-allocation confirm rolls back every Nth allocation, lot, and ledger write", () => {
+  for (const trigger of [
+    "before insert on platform_coin_hold_allocations",
+    `before update on platform_coin_lots
+      when new.held_units <> old.held_units`,
+    "before insert on platform_coin_ledger_entries"
+  ]) {
+    expectNthWriteRollbacks({
+      setup: (state) => quote(state),
+      action: (state, quoteValue, nthWrite) => confirm(
+        state,
+        quoteValue,
+        `confirm_nth_${nthWrite}`
+      ),
+      trigger
+    });
+  }
+});
+
 test("cancel rolls Wallet release and Commerce receipt/event/order writes back together", () => {
   const boundaries = [
     `before insert on platform_coin_commerce_operation_receipts
@@ -292,6 +432,26 @@ test("cancel rolls Wallet release and Commerce receipt/event/order writes back t
     } finally {
       state.close();
     }
+  }
+});
+
+test("three-allocation cancel rolls back every Nth lot and ledger write", () => {
+  for (const trigger of [
+    `before update on platform_coin_lots
+      when new.held_units <> old.held_units`,
+    "before insert on platform_coin_ledger_entries"
+  ]) {
+    expectNthWriteRollbacks({
+      setup(state) {
+        return confirm(state, quote(state));
+      },
+      action: (state, order, nthWrite) => state.store.cancelOrder({
+        accountId: "acct_atomic_1",
+        orderRef: order.orderRef,
+        operation: operation(`cancel_nth_${nthWrite}`)
+      }),
+      trigger
+    });
   }
 });
 
@@ -333,6 +493,27 @@ test("capture rolls Wallet consumption, Order, event, and outbox back together",
   }
 });
 
+test("three-allocation capture rolls back every Nth lot and ledger write", () => {
+  for (const trigger of [
+    `before update on platform_coin_lots
+      when new.held_units <> old.held_units`,
+    "before insert on platform_coin_ledger_entries"
+  ]) {
+    expectNthWriteRollbacks({
+      setup(state) {
+        const order = confirm(state, quote(state));
+        state.clock.value = order.cancelUntil;
+        state.store.claimDueCaptures({ limit: 1 });
+        return order;
+      },
+      action: (state, order) => state.store.captureClaimedOrder({
+        orderRef: order.orderRef
+      }),
+      trigger
+    });
+  }
+});
+
 test("capture claim rolls all fourteen tables back at both write boundaries", () => {
   const boundaries = [
     `before update on platform_coin_commerce_orders
@@ -354,6 +535,170 @@ test("capture claim rolls all fourteen tables back at both write boundaries", ()
       );
     } finally {
       state.close();
+    }
+  }
+});
+
+test("expired-Hold recovery rolls every release and reconciliation write back", () => {
+  const setupExpired = (state) => {
+    const order = confirm(state, quote(state));
+    state.clock.value = holdForOrder(state, order.orderRef).expires_at;
+    return order;
+  };
+  for (const trigger of [
+    `before update on platform_coin_lots
+      when new.held_units <> old.held_units`,
+    "before insert on platform_coin_ledger_entries"
+  ]) {
+    expectNthWriteRollbacks({
+      setup: setupExpired,
+      action: (state) => state.store.recoverNonTerminalOrders({ limit: 1 }),
+      trigger
+    });
+  }
+  const boundaries = [
+    `before insert on platform_coin_operation_receipts
+      when new.status = 'started'
+       and new.operation_type = 'release_coin_hold'`,
+    `before update on platform_coin_holds
+      when new.status = 'released'`,
+    `before update on platform_coin_wallets
+      when new.version <> old.version`,
+    `before update on platform_coin_operation_receipts
+      when new.status = 'succeeded'
+       and new.operation_type = 'release_coin_hold'`,
+    `before update on platform_coin_commerce_orders
+      when new.payment_status = 'capture_pending'`,
+    `before update on platform_coin_commerce_orders
+      when new.payment_status = 'reconciliation_required'`,
+    `before insert on platform_coin_commerce_order_events
+      when new.event_type = 'reconciliation_required'`
+  ];
+  for (const boundary of boundaries) {
+    const state = fixture();
+    try {
+      setupExpired(state);
+      const before = snapshot(state.database);
+      installFault(state.database, boundary);
+      expectSafeRollback(
+        state,
+        before,
+        () => state.store.recoverNonTerminalOrders({ limit: 1 })
+      );
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("captured-invalid recovery rolls command quarantine and Order isolation back together", () => {
+  const boundaries = [
+    `before update on platform_coin_commerce_fulfillment_commands
+      when new.status = 'failed'
+       and new.safe_failure_code = 'fulfillment_result_invalid'`,
+    `before insert on platform_coin_commerce_order_events
+      when new.event_type = 'fulfillment_failed'
+       and new.safe_code = 'fulfillment_result_invalid'`,
+    `before update on platform_coin_commerce_orders
+      when new.payment_status = 'reconciliation_required'`,
+    `before insert on platform_coin_commerce_order_events
+      when new.event_type = 'reconciliation_required'`
+  ];
+  for (const boundary of boundaries) {
+    const state = fixture();
+    try {
+      const order = captureToOutbox(state);
+      const hold = holdForOrder(state, order.orderRef);
+      dropTableTriggers(state.database, "platform_coin_holds");
+      state.database.prepare(`
+        update platform_coin_holds
+           set purpose_ref = 'order_invalid_atomic_recovery'
+         where hold_ref = ?
+      `).run(hold.hold_ref);
+      const before = snapshot(state.database);
+      installFault(state.database, boundary);
+      expectSafeRollback(
+        state,
+        before,
+        () => state.store.recoverNonTerminalOrders({ limit: 1 })
+      );
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("captured missing-command recovery rolls outbox insertion back", () => {
+  const state = fixture();
+  try {
+    const order = captureToOutbox(state);
+    state.database.prepare(`
+      delete from platform_coin_commerce_fulfillment_commands
+       where order_ref = ?
+    `).run(order.orderRef);
+    const before = snapshot(state.database);
+    installFault(
+      state.database,
+      "before insert on platform_coin_commerce_fulfillment_commands"
+    );
+    expectSafeRollback(
+      state,
+      before,
+      () => state.store.recoverNonTerminalOrders({ limit: 1 })
+    );
+  } finally {
+    state.close();
+  }
+});
+
+test("normal fulfillment claim rolls lease update back", () => {
+  const state = fixture();
+  try {
+    captureToOutbox(state);
+    const before = snapshot(state.database);
+    installFault(
+      state.database,
+      `before update on platform_coin_commerce_fulfillment_commands
+        when new.status = 'processing'`
+    );
+    expectSafeRollback(
+      state,
+      before,
+      () => state.store.claimNextFulfillmentCommand({ leaseMs: 1000 })
+    );
+  } finally {
+    state.close();
+  }
+});
+
+test("attempt and generation overflow each roll command failure and event back", () => {
+  for (const counter of ["attempt_count", "lease_generation"]) {
+    for (const boundary of [
+      `before update on platform_coin_commerce_fulfillment_commands
+        when new.status = 'failed'
+         and new.safe_failure_code = 'fulfillment_attempt_limit'`,
+      `before insert on platform_coin_commerce_order_events
+        when new.event_type = 'fulfillment_failed'
+         and new.safe_code = 'fulfillment_attempt_limit'`
+    ]) {
+      const state = fixture();
+      try {
+        const order = captureToOutbox(state);
+        state.database.prepare(`
+          update platform_coin_commerce_fulfillment_commands
+             set ${counter} = 2147483647
+           where order_ref = ?
+        `).run(order.orderRef);
+        const before = snapshot(state.database);
+        installFault(state.database, boundary);
+        expectSafeRollback(
+          state,
+          before,
+          () => state.store.claimNextFulfillmentCommand({ leaseMs: 1000 })
+        );
+      } finally {
+        state.close();
+      }
     }
   }
 });
