@@ -43,6 +43,7 @@ describe("Portal local API validation config", () => {
       host: "127.0.0.1",
       port: 5175,
       strictPort: true,
+      hmr: false,
       proxy: {
         "/api": {
           target: "http://127.0.0.1:3457"
@@ -98,22 +99,24 @@ describe("Portal local API validation config", () => {
     );
   });
 
-  test("resolves the browser-normalized real Portal bootstrap in dev", async () => {
+  test("serves the real Portal bootstrap without Fast Refresh re-entry", async () => {
     const vite = await createServer({
       ...validationConfig,
       configFile: false,
       logLevel: "silent",
       server: {
-        middlewareMode: true,
-        hmr: false
+        ...validationConfig.server,
+        middlewareMode: true
       }
     });
 
     try {
+      expect(vite.config.server.hmr).toBe(false);
       const transformed = await vite.transformRequest(
         "/src/portal-main.tsx"
       );
       expect(transformed?.code).toContain("PortalOnlyApp");
+      expect(transformed?.code).not.toContain("__vite_react_currentExports");
     } finally {
       await vite.close();
     }
