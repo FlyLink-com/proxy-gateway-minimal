@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-07-24, America/Los_Angeles.
+Last updated: 2026-07-26, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-07-24
+  last_verified_at: 2026-07-26
   production_authority: false
 ```
 
@@ -159,6 +159,7 @@ production inventory. The production/runtime evidence cutoff remains dated at
 | `docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md` | Operator provisioning form contract for turning reviewed form facts into a safe issuance input preview before CLI dry-run and separate Risk A execution approval. | Active repository tooling contract; no execution authority. | Read before adding internal forms, agent-assisted intake, operator provisioning adapters, or any workflow that prepares subscription issuance inputs. |
 | `docs/SUBSCRIPTION_CONTROL_DATABASE.md` | Business-control SQLite ledger for accounts, entitlements, issuance requests, safe tenant/artifact refs, quota/device state, revocation, and audit events. | Active repo-only service contract; no production migration or execution authority. | Read before wiring issuance, portal, quota, device, revocation, or audit workflows to durable business state. |
 | `docs/COINS_WALLET_SCHEMA_GATE.md` | Closed Coins wallet schema CLI contract and source-only Risk A inventory, backup, approval, apply, readback, runtime hard-stop, and recovery boundary. | Active source-only gate; no production migration, runtime enablement, payment, wallet-write, or customer-data authority. | Read before validating or dry-running the Coins schema, and before preparing any separate exact production schema approval packet. |
+| `docs/COINS_COMMERCE_SCHEMA_GATE.md` | Closed Coins Commerce schema CLI contract and source-only Risk A dependency, inventory, backup, approval, apply, readback, runtime hard-stop, and recovery boundary. | Active source-only gate; no production migration, Commerce/Wallet runtime enablement, payment, fulfillment, or customer-data authority. | Read after the Wallet schema gate and before validating or dry-running the Commerce schema or preparing a separate exact production schema approval packet. |
 | `docs/USER_PORTAL_AUTH_BOUNDARY.md` | Customer portal authentication boundary for operator-issued dynamic entries, TOTP enrollment, short-lived portal sessions, retired email-code paths, and future external identity providers. | Active design contract; no portal deployment, DNS, Nginx, payment, production DB migration, mail issuance, or subscription issuance authority. | Read before adding user portal login, dynamic entry tokens, TOTP, OAuth, Passkeys/WebAuthn, portal sessions, or user-scoped authorization. |
 | `docs/USER_PORTAL_PRODUCTION_AUTH_PLAN.md` | A-tier implementation plan for durable portal account credentials, password login, backend human challenges, TOTP/passkey second factor, WebAuthn, and operator-issued initial accounts. | Active implementation gate; no production migration, public portal exposure, provider secret, payment, DNS, Nginx, systemd, or subscription issuance authority. | Read before implementing production-backed portal login, password credential storage, passkey/WebAuthn registration, second-factor challenge handling, or initial account issuance. |
 | `docs/USER_PORTAL_HUMAN_CHALLENGE_DESIGN.md` | Backend human-verification design for customer portal challenge issuance, verification, expiry, one-time use, and future CAPTCHA provider upgrade. | Active design contract; no provider secret, production DB migration, public portal exposure, or subscription issuance authority. | Read before moving anti-bot checks from frontend preview logic into backend `/api/portal/*` routes or adding Turnstile/hCaptcha/reCAPTCHA. |
