@@ -103,11 +103,13 @@ function QuoteFacts({
         <div>
           <dt>{localized(locale, "分配", "Allocation")}</dt>
           <dd>
-            {quote.allocation.map((item) => (
-              <span key={item.coinType}>
-                {item.coinType}: {item.amountUnits}
-              </span>
-            ))}
+            {quote.allocation.length === 0
+              ? `${localized(locale, "无", "None")} · 0 Coins`
+              : quote.allocation.map((item) => (
+                <span key={item.coinType}>
+                  {item.coinType}: {item.amountUnits}
+                </span>
+              ))}
           </dd>
         </div>
         <div>

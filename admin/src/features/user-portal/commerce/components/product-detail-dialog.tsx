@@ -54,8 +54,9 @@ export function CoinsDialogFrame({
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
       if (escapeCloseEnabled) {
-        event.preventDefault();
         onRequestClose();
       }
       return;
@@ -71,7 +72,13 @@ export function CoinsDialogFrame({
     }
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
+    if (
+      event.shiftKey
+      && (
+        document.activeElement === first
+        || document.activeElement === titleRef.current
+      )
+    ) {
       event.preventDefault();
       last.focus();
     } else if (!event.shiftKey && document.activeElement === last) {

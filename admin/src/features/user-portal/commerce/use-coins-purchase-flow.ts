@@ -114,6 +114,10 @@ function readStoredOrderReference(
       discardStoredOrder(storage);
       return null;
     }
+    if (raw !== JSON.stringify({ orderRef: descriptor.value })) {
+      discardStoredOrder(storage);
+      return null;
+    }
     return descriptor.value;
   } catch {
     discardStoredOrder(storage);
@@ -190,6 +194,7 @@ export function useCoinsPurchaseFlow({
   storage = browserSessionStorage()
 }: UseCoinsPurchaseFlowOptions) {
   const [state, setState] = useState<CoinsPurchaseState>(INITIAL_STATE);
+  const [pollRevision, setPollRevision] = useState(0);
   const clientRef = useRef(client);
   const sessionRefRef = useRef(sessionRef);
   const identityRef = useRef({ client, sessionRef });
@@ -211,6 +216,8 @@ export function useCoinsPurchaseFlow({
     pending: boolean;
   } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detailRequestSequenceRef = useRef(0);
+  const quoteRequestSequenceRef = useRef(0);
   const orderReadSequenceRef = useRef(0);
   clientRef.current = client;
   sessionRefRef.current = sessionRef;
@@ -218,34 +225,48 @@ export function useCoinsPurchaseFlow({
   cancelIdempotencyKeyRef.current = cancelIdempotencyKey;
   storageRef.current = storage;
 
-  const reset = useCallback(() => {
+  const invalidateFlow = useCallback((discardRecovery: boolean) => {
     generationRef.current += 1;
+    detailRequestSequenceRef.current += 1;
+    quoteRequestSequenceRef.current += 1;
     orderReadSequenceRef.current += 1;
     offerRef.current = null;
     quoteRef.current = null;
     orderRef.current = null;
     createIntentRef.current = null;
     cancelIntentRef.current = null;
-    discardStoredOrder(storageRef.current);
+    if (discardRecovery) {
+      discardStoredOrder(storageRef.current);
+    }
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    setPollRevision((current) => current + 1);
     setState({ ...INITIAL_STATE });
   }, []);
+
+  const reset = useCallback(() => {
+    invalidateFlow(true);
+  }, [invalidateFlow]);
 
   useEffect(() => {
     const previous = identityRef.current;
     if (previous.client === client && previous.sessionRef === sessionRef) return;
     identityRef.current = { client, sessionRef };
-    reset();
-  });
+    const discardRecovery = previous.sessionRef !== null
+      && previous.sessionRef !== sessionRef;
+    invalidateFlow(discardRecovery);
+  }, [client, invalidateFlow, sessionRef]);
 
   const openProduct = useCallback(async (nextOfferRef: string) => {
     const activeClient = clientRef.current;
     const activeSessionRef = sessionRefRef.current;
     if (!activeClient || !activeSessionRef) return;
     const generation = generationRef.current;
+    const sequence = detailRequestSequenceRef.current + 1;
+    detailRequestSequenceRef.current = sequence;
+    quoteRequestSequenceRef.current += 1;
     setState((current) => ({
       ...current,
       phase: "loading_detail",
@@ -260,7 +281,12 @@ export function useCoinsPurchaseFlow({
         sessionRef: activeSessionRef,
         offerRef: nextOfferRef
       });
-      if (generation !== generationRef.current) return;
+      if (
+        generation !== generationRef.current
+        || sequence !== detailRequestSequenceRef.current
+      ) {
+        return;
+      }
       offerRef.current = nextOffer.offerRef;
       quoteRef.current = null;
       createIntentRef.current = null;
@@ -274,7 +300,12 @@ export function useCoinsPurchaseFlow({
         errorRetryable: false
       });
     } catch (error) {
-      if (generation !== generationRef.current) return;
+      if (
+        generation !== generationRef.current
+        || sequence !== detailRequestSequenceRef.current
+      ) {
+        return;
+      }
       const failure = safeError(error);
       setState((current) => ({
         ...current,
@@ -291,6 +322,8 @@ export function useCoinsPurchaseFlow({
     const activeOfferRef = offerRef.current;
     if (!activeClient || !activeSessionRef || !activeOfferRef) return;
     const generation = generationRef.current;
+    const sequence = quoteRequestSequenceRef.current + 1;
+    quoteRequestSequenceRef.current = sequence;
     setState((current) => ({
       ...current,
       phase: "loading_preview",
@@ -302,7 +335,12 @@ export function useCoinsPurchaseFlow({
         sessionRef: activeSessionRef,
         offerRef: activeOfferRef
       });
-      if (generation !== generationRef.current) return;
+      if (
+        generation !== generationRef.current
+        || sequence !== quoteRequestSequenceRef.current
+      ) {
+        return;
+      }
       quoteRef.current = nextQuote;
       createIntentRef.current = null;
       setState((current) => ({
@@ -313,7 +351,12 @@ export function useCoinsPurchaseFlow({
         errorRetryable: false
       }));
     } catch (error) {
-      if (generation !== generationRef.current) return;
+      if (
+        generation !== generationRef.current
+        || sequence !== quoteRequestSequenceRef.current
+      ) {
+        return;
+      }
       const failure = safeError(error);
       setState((current) => ({
         ...current,
@@ -332,6 +375,7 @@ export function useCoinsPurchaseFlow({
       !activeClient
       || !activeSessionRef
       || !activeQuote
+      || orderRef.current !== null
       || activeQuote.purchaseAvailability !== "available"
     ) {
       return;
@@ -362,11 +406,14 @@ export function useCoinsPurchaseFlow({
       });
       if (generation !== generationRef.current) return;
       orderRef.current = nextOrder;
+      quoteRef.current = null;
+      createIntentRef.current = null;
       cancelIntentRef.current = null;
       persistOrderReference(storageRef.current, nextOrder.orderRef);
       setState((current) => ({
         ...current,
         phase: "order",
+        quote: null,
         order: nextOrder,
         errorCode: null,
         errorRetryable: false
@@ -418,6 +465,11 @@ export function useCoinsPurchaseFlow({
     if (intent.pending) return;
     intent.pending = true;
     const generation = generationRef.current;
+    orderReadSequenceRef.current += 1;
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
     setState((current) => ({
       ...current,
       cancelling: true,
@@ -431,13 +483,22 @@ export function useCoinsPurchaseFlow({
         idempotencyKey: intent.key
       });
       if (generation !== generationRef.current) return;
+      const sequence = orderReadSequenceRef.current + 1;
+      orderReadSequenceRef.current = sequence;
       const readback = await activeClient.getOrder({
         sessionRef: activeSessionRef,
         orderRef: activeOrder.orderRef
       });
-      if (generation !== generationRef.current) return;
+      if (
+        generation !== generationRef.current
+        || sequence !== orderReadSequenceRef.current
+        || orderRef.current?.orderRef !== activeOrder.orderRef
+      ) {
+        return;
+      }
       orderRef.current = readback;
       persistOrderReference(storageRef.current, readback.orderRef);
+      setPollRevision((current) => current + 1);
       setState((current) => ({
         ...current,
         phase: "order",
@@ -472,7 +533,14 @@ export function useCoinsPurchaseFlow({
     const activeClient = clientRef.current;
     const activeSessionRef = sessionRefRef.current;
     const activeOrder = orderRef.current;
-    if (!activeClient || !activeSessionRef || !activeOrder) return;
+    if (
+      !activeClient
+      || !activeSessionRef
+      || !activeOrder
+      || cancelIntentRef.current?.pending
+    ) {
+      return;
+    }
     const generation = generationRef.current;
     const sequence = orderReadSequenceRef.current + 1;
     orderReadSequenceRef.current = sequence;
@@ -490,6 +558,7 @@ export function useCoinsPurchaseFlow({
       }
       orderRef.current = readback;
       persistOrderReference(storageRef.current, readback.orderRef);
+      setPollRevision((current) => current + 1);
       setState((current) => ({
         ...current,
         phase: "order",
@@ -514,20 +583,20 @@ export function useCoinsPurchaseFlow({
   }, []);
 
   useEffect(() => {
-    const activeClient = clientRef.current;
-    const activeSessionRef = sessionRefRef.current;
-    const storedOrderRef = readStoredOrderReference(storageRef.current);
-    if (!activeClient || !activeSessionRef || !storedOrderRef) return;
+    const storedOrderRef = readStoredOrderReference(storage);
+    if (!client || !sessionRef || !storedOrderRef) return;
     const generation = generationRef.current;
     const sequence = orderReadSequenceRef.current + 1;
     orderReadSequenceRef.current = sequence;
-    void activeClient.getOrder({
-      sessionRef: activeSessionRef,
+    void client.getOrder({
+      sessionRef,
       orderRef: storedOrderRef
     }).then((readback) => {
       if (
         generation !== generationRef.current
         || sequence !== orderReadSequenceRef.current
+        || clientRef.current !== client
+        || sessionRefRef.current !== sessionRef
       ) {
         return;
       }
@@ -545,6 +614,8 @@ export function useCoinsPurchaseFlow({
       if (
         generation !== generationRef.current
         || sequence !== orderReadSequenceRef.current
+        || clientRef.current !== client
+        || sessionRefRef.current !== sessionRef
       ) {
         return;
       }
@@ -555,7 +626,7 @@ export function useCoinsPurchaseFlow({
         errorRetryable: failure.retryable
       }));
     });
-  }, []);
+  }, [client, sessionRef, storage]);
 
   const activeOrderRef = state.order?.orderRef ?? null;
   const activePaymentStatus = state.order?.paymentStatus ?? null;
@@ -570,6 +641,8 @@ export function useCoinsPurchaseFlow({
       !activeOrderRef
       || !activeOrder
       || activeOrder.orderRef !== activeOrderRef
+      || state.cancelling
+      || cancelIntentRef.current?.pending
       || isPortalCoinOrderTerminal(activeOrder)
     ) {
       return;
@@ -589,7 +662,9 @@ export function useCoinsPurchaseFlow({
     activeOrderRef,
     activePaymentStatus,
     pollIntervalMs,
-    refreshOrder
+    pollRevision,
+    refreshOrder,
+    state.cancelling
   ]);
 
   useEffect(() => () => {

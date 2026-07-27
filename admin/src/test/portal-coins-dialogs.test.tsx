@@ -45,7 +45,7 @@ const insufficientQuote: PortalCoinQuote = {
   appliedDiscountBasisPoints: 0,
   purchaseAvailability: "insufficient_balance",
   shortfallUnits: 5,
-  allocation: [{ coinType: "paid_coins", amountUnits: 10 }],
+  allocation: [],
   balances: {
     before: {
       bonusCoins: 0,
@@ -55,7 +55,7 @@ const insufficientQuote: PortalCoinQuote = {
     },
     after: {
       bonusCoins: 0,
-      paidCoins: 0,
+      paidCoins: 10,
       rewardCoins: 0,
       heldCoins: 0
     }
@@ -103,6 +103,8 @@ describe("Portal Coins dialogs", () => {
     expect(within(dialog).getByText(/100 GB/)).toBeInTheDocument();
 
     const buttons = within(dialog).getAllByRole("button");
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(buttons.at(-1)).toHaveFocus();
     buttons.at(-1)?.focus();
     fireEvent.keyDown(dialog, { key: "Tab" });
     expect(buttons[0]).toHaveFocus();
@@ -115,6 +117,54 @@ describe("Portal Coins dialogs", () => {
     expect(onPreview).not.toHaveBeenCalled();
     view.unmount();
     expect(onRestoreFocus).toHaveBeenCalledTimes(1);
+  });
+
+  test("Escape is consumed at the modal boundary whether or not close is enabled", () => {
+    const ancestorKeyDown = vi.fn();
+    const onRequestClose = vi.fn();
+    const product = render(createElement(
+      "div",
+      { onKeyDown: ancestorKeyDown },
+      createElement(ProductDetailDialog, {
+        locale: "en",
+        offer,
+        onPreview: vi.fn(),
+        onRequestClose
+      })
+    ));
+    const productDialog = screen.getByRole("dialog", { name: "Basic plan" });
+    expect(fireEvent.keyDown(productDialog, { key: "Escape" })).toBe(false);
+    expect(onRequestClose).toHaveBeenCalledTimes(1);
+    expect(ancestorKeyDown).not.toHaveBeenCalled();
+    product.unmount();
+
+    const lockedAncestorKeyDown = vi.fn();
+    const lockedClose = vi.fn();
+    const onCancel = vi.fn();
+    render(createElement(
+      "div",
+      { onKeyDown: lockedAncestorKeyDown },
+      createElement(CoinsPurchaseDialog, {
+        locale: "en",
+        quote: insufficientQuote,
+        order: heldOrder,
+        submitting: false,
+        cancelling: false,
+        errorCode: null,
+        onConfirm: vi.fn(),
+        onCancel,
+        onRefresh: vi.fn(),
+        onOpenRecharge: vi.fn(),
+        onRequestClose: lockedClose
+      })
+    ));
+    const lockedDialog = screen.getByRole("dialog", {
+      name: "Confirm Coins purchase"
+    });
+    expect(fireEvent.keyDown(lockedDialog, { key: "Escape" })).toBe(false);
+    expect(lockedClose).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(lockedAncestorKeyDown).not.toHaveBeenCalled();
   });
 
   test("insufficient confirmation shows server facts, disables confirm, and delegates recharge", () => {
@@ -140,9 +190,10 @@ describe("Portal Coins dialogs", () => {
     });
     expect(within(dialog).getByText("Basic plan")).toBeInTheDocument();
     expect(within(dialog).getByText("15 Coins")).toBeInTheDocument();
-    expect(within(dialog).getByText(/^paid_coins: 10$/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Allocation").parentElement)
+      .toHaveTextContent("AllocationNone");
     expect(within(dialog).getByText(/Before: 10/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/After: 0/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/After: 10/)).toBeInTheDocument();
     expect(within(dialog).getByText("Availability").parentElement)
       .toHaveTextContent("AvailabilityInsufficient balance");
     expect(within(dialog).getByText(/Shortfall: 5 Coins/)).toBeInTheDocument();
@@ -163,6 +214,45 @@ describe("Portal Coins dialogs", () => {
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(onRequestClose).toHaveBeenCalledTimes(1);
   });
+
+  test.each([
+    ["en", "Allocation", "None", /Before: 10/, /After: 10/],
+    ["zh", "分配", "无", /之前: 10/, /之后: 10/]
+  ] as const)(
+    "server-valid insufficient Quote renders empty allocation in %s",
+    (locale, allocationLabel, emptyLabel, beforeText, afterText) => {
+      const validInsufficientQuote: PortalCoinQuote = {
+        ...insufficientQuote,
+        allocation: [],
+        balances: {
+          before: { ...insufficientQuote.balances.before },
+          after: { ...insufficientQuote.balances.before }
+        }
+      };
+      render(createElement(CoinsPurchaseDialog, {
+        locale,
+        quote: validInsufficientQuote,
+        order: null,
+        submitting: false,
+        cancelling: false,
+        errorCode: null,
+        onConfirm: vi.fn(),
+        onCancel: vi.fn(),
+        onRefresh: vi.fn(),
+        onOpenRecharge: vi.fn(),
+        onRequestClose: vi.fn()
+      }));
+
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText(allocationLabel).parentElement)
+        .toHaveTextContent(`${allocationLabel}${emptyLabel} · 0 Coins`);
+      expect(within(dialog).getByText(beforeText)).toBeInTheDocument();
+      expect(within(dialog).getByText(afterText)).toBeInTheDocument();
+      expect(within(dialog).getByText(
+        locale === "zh" ? "缺少" : "Shortfall"
+      ).parentElement).toHaveTextContent("5 Coins");
+    }
+  );
 
   test("held status is polite, reduced-motion safe, cancellable, and Escape never cancels", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({

@@ -55,6 +55,18 @@ const quote: PortalCoinQuote = {
   expiresAt: "2026-07-27T20:00:00.000Z"
 };
 
+const secondOffer: PortalCoinOffer = {
+  ...offer,
+  offerRef: "offer_plus",
+  offerVersionRef: "offer_version_plus",
+  title: { zh: "进阶套餐", en: "Plus plan" }
+};
+
+const secondQuote: PortalCoinQuote = {
+  ...quote,
+  quoteRef: "quote_newer"
+};
+
 const heldOrder: PortalCoinOrder = {
   orderRef: "order_basic",
   offer,
@@ -141,6 +153,74 @@ describe("Portal Coins purchase flow", () => {
     });
   });
 
+  test("later product selection wins when same-session detail requests resolve out of order", async () => {
+    const firstDetail = deferred<PortalCoinOffer>();
+    const secondDetail = deferred<PortalCoinOffer>();
+    const client = commerceClient({
+      getOffer: vi.fn(({ offerRef }) => (
+        offerRef === "offer_basic" ? firstDetail.promise : secondDetail.promise
+      ))
+    });
+    const { result, unmount } = renderHook(() => commerce.useCoinsPurchaseFlow({
+      client,
+      sessionRef: "session-1"
+    }));
+
+    let firstRequest!: Promise<void>;
+    let secondRequest!: Promise<void>;
+    act(() => {
+      firstRequest = result.current.openProduct("offer_basic");
+      secondRequest = result.current.openProduct("offer_plus");
+    });
+    await act(async () => {
+      secondDetail.resolve(secondOffer);
+      await secondRequest;
+    });
+    expect(result.current.offer).toEqual(secondOffer);
+
+    await act(async () => {
+      firstDetail.resolve(offer);
+      await firstRequest;
+    });
+    expect(result.current.offer).toEqual(secondOffer);
+    unmount();
+  });
+
+  test("later preview wins when same-session Quote requests resolve out of order", async () => {
+    const firstPreview = deferred<PortalCoinQuote>();
+    const secondPreview = deferred<PortalCoinQuote>();
+    const previewCheckout = vi.fn()
+      .mockImplementationOnce(() => firstPreview.promise)
+      .mockImplementationOnce(() => secondPreview.promise);
+    const client = commerceClient({ previewCheckout });
+    const { result, unmount } = renderHook(() => commerce.useCoinsPurchaseFlow({
+      client,
+      sessionRef: "session-1"
+    }));
+    await act(async () => {
+      await result.current.openProduct("offer_basic");
+    });
+
+    let firstRequest!: Promise<void>;
+    let secondRequest!: Promise<void>;
+    act(() => {
+      firstRequest = result.current.previewCheckout();
+      secondRequest = result.current.previewCheckout();
+    });
+    await act(async () => {
+      secondPreview.resolve(secondQuote);
+      await secondRequest;
+    });
+    expect(result.current.quote).toEqual(secondQuote);
+
+    await act(async () => {
+      firstPreview.resolve(quote);
+      await firstRequest;
+    });
+    expect(result.current.quote).toEqual(secondQuote);
+    unmount();
+  });
+
   test("creates one Order for a double confirm and generates one create intent key", async () => {
     const pendingOrder = deferred<PortalCoinOrder>();
     const client = commerceClient({
@@ -175,6 +255,28 @@ describe("Portal Coins purchase flow", () => {
       await firstConfirm;
     });
     expect(result.current.order).toEqual(heldOrder);
+  });
+
+  test("successful create closes the confirm intent and later confirm calls cannot POST again", async () => {
+    const createOrder = vi.fn(async () => heldOrder);
+    const client = commerceClient({ createOrder });
+    const { result, unmount } = renderHook(() => commerce.useCoinsPurchaseFlow({
+      client,
+      sessionRef: "session-1",
+      createIdempotencyKey: () => "create_intent_1"
+    }));
+    await act(async () => {
+      await result.current.openProduct("offer_basic");
+      await result.current.previewCheckout();
+      await result.current.confirmPurchase();
+      await result.current.confirmPurchase();
+    });
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(result.current.phase).toBe("order");
+    expect(result.current.quote).toBeNull();
+    expect(result.current.order).toEqual(heldOrder);
+    unmount();
   });
 
   test("reuses the create intent key when an uncertain transport result is retried", async () => {
@@ -255,6 +357,65 @@ describe("Portal Coins purchase flow", () => {
     expect(result.current.order).toEqual(cancelledOrder);
   });
 
+  test("cancel fences stale reads and blocks refresh or polling until its protected readback", async () => {
+    vi.useFakeTimers();
+    try {
+      const staleHeldRead = deferred<PortalCoinOrder>();
+      const pendingCancel = deferred<PortalCoinOrder>();
+      const getOrder = vi.fn()
+        .mockImplementationOnce(() => staleHeldRead.promise)
+        .mockResolvedValueOnce(cancelledOrder)
+        .mockResolvedValue(heldOrder);
+      const client = commerceClient({
+        cancelOrder: vi.fn(() => pendingCancel.promise),
+        getOrder
+      });
+      const { result, unmount } = renderHook(() => commerce.useCoinsPurchaseFlow({
+        client,
+        sessionRef: "session-1",
+        createIdempotencyKey: () => "create_intent_1",
+        cancelIdempotencyKey: () => "cancel_intent_1",
+        pollIntervalMs: 1_000
+      }));
+      await act(async () => {
+        await result.current.openProduct("offer_basic");
+        await result.current.previewCheckout();
+        await result.current.confirmPurchase();
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(1_000);
+      });
+      expect(getOrder).toHaveBeenCalledTimes(1);
+
+      let cancelRequest!: Promise<void>;
+      act(() => {
+        cancelRequest = result.current.cancelPurchase();
+      });
+      await act(async () => {
+        await result.current.refreshOrder();
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(getOrder).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        pendingCancel.resolve(cancelledOrder);
+        await cancelRequest;
+      });
+      expect(getOrder).toHaveBeenCalledTimes(2);
+      expect(result.current.order).toEqual(cancelledOrder);
+
+      await act(async () => {
+        staleHeldRead.resolve(heldOrder);
+        await Promise.resolve();
+      });
+      expect(result.current.order).toEqual(cancelledOrder);
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("polls with GET only and stops after a terminal server Order", async () => {
     vi.useFakeTimers();
     try {
@@ -287,6 +448,51 @@ describe("Portal Coins purchase flow", () => {
       expect(client.createOrder).toHaveBeenCalledTimes(1);
       unmount();
       expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("keeps polling unchanged non-terminal Orders until the server returns a terminal Order", async () => {
+    vi.useFakeTimers();
+    try {
+      const getOrder = vi.fn()
+        .mockResolvedValueOnce(heldOrder)
+        .mockResolvedValueOnce(heldOrder)
+        .mockResolvedValueOnce(deliveredOrder);
+      const client = commerceClient({ getOrder });
+      const { result, unmount } = renderHook(() => commerce.useCoinsPurchaseFlow({
+        client,
+        sessionRef: "session-1",
+        createIdempotencyKey: () => "create_intent_1",
+        pollIntervalMs: 1_000
+      }));
+      await act(async () => {
+        await result.current.openProduct("offer_basic");
+        await result.current.previewCheckout();
+        await result.current.confirmPurchase();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(getOrder).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(getOrder).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(getOrder).toHaveBeenCalledTimes(3);
+      expect(result.current.order).toEqual(deliveredOrder);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+      expect(getOrder).toHaveBeenCalledTimes(3);
+      expect(client.cancelOrder).not.toHaveBeenCalled();
+      unmount();
     } finally {
       vi.useRealTimers();
     }
@@ -373,6 +579,195 @@ describe("Portal Coins purchase flow", () => {
     restored.unmount();
   });
 
+  test("restores a stored Order when authentication arrives after an initial null identity", async () => {
+    const values = new Map([
+      [
+        commerce.PORTAL_COIN_ORDER_STORAGE_KEY,
+        "{\"orderRef\":\"order_basic\"}"
+      ]
+    ]);
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      removeItem: vi.fn((key: string) => {
+        values.delete(key);
+      }),
+      setItem: vi.fn((key: string, value: string) => {
+        values.set(key, value);
+      })
+    };
+    const client = commerceClient({
+      getOrder: vi.fn(async () => heldOrder)
+    });
+    const { result, rerender, unmount } = renderHook(
+      ({ activeClient, sessionRef }) => commerce.useCoinsPurchaseFlow({
+        client: activeClient,
+        sessionRef,
+        storage
+      }),
+      {
+        initialProps: {
+          activeClient: null as PortalCoinCommerceClient | null,
+          sessionRef: null as string | null
+        }
+      }
+    );
+    expect(client.getOrder).not.toHaveBeenCalled();
+
+    rerender({ activeClient: client, sessionRef: "session-1" });
+    await waitFor(() => {
+      expect(result.current.order).toEqual(heldOrder);
+    });
+    expect(client.getOrder).toHaveBeenCalledWith({
+      sessionRef: "session-1",
+      orderRef: "order_basic"
+    });
+    expect(storage.removeItem).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  test("same-session client replacement re-recovers and fences the old client response", async () => {
+    const values = new Map([
+      [
+        commerce.PORTAL_COIN_ORDER_STORAGE_KEY,
+        "{\"orderRef\":\"order_basic\"}"
+      ]
+    ]);
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      removeItem: vi.fn((key: string) => {
+        values.delete(key);
+      }),
+      setItem: vi.fn((key: string, value: string) => {
+        values.set(key, value);
+      })
+    };
+    const oldRead = deferred<PortalCoinOrder>();
+    const firstClient = commerceClient({
+      getOrder: vi.fn(() => oldRead.promise)
+    });
+    const secondClient = commerceClient({
+      getOrder: vi.fn(async () => cancelledOrder)
+    });
+    const { result, rerender, unmount } = renderHook(
+      ({ activeClient }) => commerce.useCoinsPurchaseFlow({
+        client: activeClient,
+        sessionRef: "session-1",
+        storage
+      }),
+      { initialProps: { activeClient: firstClient } }
+    );
+    await waitFor(() => {
+      expect(firstClient.getOrder).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({ activeClient: secondClient });
+    await waitFor(() => {
+      expect(result.current.order).toEqual(cancelledOrder);
+    });
+    await act(async () => {
+      oldRead.resolve(heldOrder);
+      await Promise.resolve();
+    });
+    expect(result.current.order).toEqual(cancelledOrder);
+    expect(storage.removeItem).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  test("direct identity switch discards recovery and never reads the old Order as the new session", async () => {
+    const values = new Map([
+      [
+        commerce.PORTAL_COIN_ORDER_STORAGE_KEY,
+        "{\"orderRef\":\"order_basic\"}"
+      ]
+    ]);
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      removeItem: vi.fn((key: string) => {
+        values.delete(key);
+      }),
+      setItem: vi.fn((key: string, value: string) => {
+        values.set(key, value);
+      })
+    };
+    const firstClient = commerceClient({
+      getOrder: vi.fn(async () => heldOrder)
+    });
+    const secondClient = commerceClient();
+    const { result, rerender, unmount } = renderHook(
+      ({ activeClient, sessionRef }) => commerce.useCoinsPurchaseFlow({
+        client: activeClient,
+        sessionRef,
+        storage
+      }),
+      {
+        initialProps: {
+          activeClient: firstClient,
+          sessionRef: "session-1"
+        }
+      }
+    );
+    await waitFor(() => {
+      expect(result.current.order).toEqual(heldOrder);
+    });
+
+    rerender({ activeClient: secondClient, sessionRef: "session-2" });
+    await waitFor(() => {
+      expect(result.current.phase).toBe("idle");
+    });
+    expect(storage.removeItem).toHaveBeenCalledWith(
+      commerce.PORTAL_COIN_ORDER_STORAGE_KEY
+    );
+    expect(secondClient.getOrder).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  test("logout discards stored recovery before a later identity can authenticate", async () => {
+    const values = new Map([
+      [
+        commerce.PORTAL_COIN_ORDER_STORAGE_KEY,
+        "{\"orderRef\":\"order_basic\"}"
+      ]
+    ]);
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      removeItem: vi.fn((key: string) => {
+        values.delete(key);
+      }),
+      setItem: vi.fn((key: string, value: string) => {
+        values.set(key, value);
+      })
+    };
+    const client = commerceClient({
+      getOrder: vi.fn(async () => heldOrder)
+    });
+    const { result, rerender, unmount } = renderHook(
+      ({ activeClient, sessionRef }) => commerce.useCoinsPurchaseFlow({
+        client: activeClient,
+        sessionRef,
+        storage
+      }),
+      {
+        initialProps: {
+          activeClient: client as PortalCoinCommerceClient | null,
+          sessionRef: "session-1" as string | null
+        }
+      }
+    );
+    await waitFor(() => {
+      expect(result.current.order).toEqual(heldOrder);
+    });
+
+    rerender({ activeClient: null, sessionRef: null });
+    await waitFor(() => {
+      expect(result.current.phase).toBe("idle");
+    });
+    expect(storage.removeItem).toHaveBeenCalledWith(
+      commerce.PORTAL_COIN_ORDER_STORAGE_KEY
+    );
+    expect(values.has(commerce.PORTAL_COIN_ORDER_STORAGE_KEY)).toBe(false);
+    unmount();
+  });
+
   test.each(["quote_expired", "quote_stale"] as const)(
     "%s discards the Quote and requires a new preview",
     async (code) => {
@@ -399,16 +794,19 @@ describe("Portal Coins purchase flow", () => {
   );
 
   test.each([
+    ["malformed JSON", "{"],
+    ["a primitive", "\"order_basic\""],
+    ["an array", "[\"order_basic\"]"],
+    ["a missing field", "{}"],
     ["extra fields", "{\"orderRef\":\"order_basic\",\"sessionRef\":\"forbidden\"}"],
     [
-      "custom prototype values",
-      Object.assign(Object.create({ inherited: true }), {
-        orderRef: "order_basic"
-      })
-    ]
+      "a duplicate key",
+      "{\"orderRef\":\"order_other\",\"orderRef\":\"order_basic\"}"
+    ],
+    ["non-canonical whitespace", " {\"orderRef\":\"order_basic\"}"]
   ])("discards stored Order recovery with %s", async (_label, storedValue) => {
     const storage = {
-      getItem: vi.fn(() => storedValue as string),
+      getItem: vi.fn(() => storedValue),
       removeItem: vi.fn(),
       setItem: vi.fn()
     };
