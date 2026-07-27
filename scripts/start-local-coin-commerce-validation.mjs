@@ -51,8 +51,182 @@ const SYNTHETIC_NOW = "2026-07-27T00:00:00.000Z";
 const FUNDED_ACCOUNT_ID = "acct_local_commerce_funded";
 const EMPTY_ACCOUNT_ID = "acct_local_commerce_empty";
 const OFFER_REF = "offer_local_monthly_plan";
+const UI_ACCOUNT_ID = "acct_local_ui_validation";
+const UI_LOGIN_REF = "local-ui-validation@example.test";
+const UI_PASSWORD =
+  "local-only-synthetic-portal-ui-validation-password-v1";
+const UI_PORT = 3457;
+const TASK7_PROFILE = "task7";
+const UI_PROFILE = "ui";
 const HANDLE_INTERNALS = new WeakMap();
 const DISABLED_SUBSCRIPTION_CORE = Object.freeze({});
+const UI_OFFERS = Object.freeze([
+  Object.freeze({
+    offerRef: "offer_local_ui_monthly_50gb",
+    offerVersionRef: "offerv_local_ui_monthly_50gb_v1",
+    version: 1,
+    category: "plan",
+    title: Object.freeze({
+      zh: "本地合成 50 GB 月卡",
+      en: "Local synthetic 50 GB monthly plan"
+    }),
+    summary: Object.freeze({
+      zh: "每月 50 GB，本地合成验证专用",
+      en: "50 GB monthly, local synthetic validation only"
+    }),
+    importantNotices: Object.freeze({
+      zh: Object.freeze(["仅用于本机 UI 验证"]),
+      en: Object.freeze(["Local UI validation only"])
+    }),
+    baseCoinUnits: 20,
+    referencePrice: Object.freeze({ currency: "CNY", amountMinor: 2_000 }),
+    acceptedCoinTypes: Object.freeze([
+      "bonus_coins",
+      "paid_coins",
+      "reward_coins"
+    ]),
+    delivery: Object.freeze({
+      kind: "subscription_plan",
+      durationDays: 30,
+      monthlyTrafficGb: 50,
+      trafficGb: null,
+      neverExpires: false,
+      discountBasisPoints: 500
+    })
+  }),
+  Object.freeze({
+    offerRef: "offer_local_ui_monthly_100gb",
+    offerVersionRef: "offerv_local_ui_monthly_100gb_v1",
+    version: 1,
+    category: "plan",
+    title: Object.freeze({
+      zh: "本地合成 100 GB 月卡",
+      en: "Local synthetic 100 GB monthly plan"
+    }),
+    summary: Object.freeze({
+      zh: "每月 100 GB，本地合成验证专用",
+      en: "100 GB monthly, local synthetic validation only"
+    }),
+    importantNotices: Object.freeze({
+      zh: Object.freeze(["仅用于本机 UI 验证"]),
+      en: Object.freeze(["Local UI validation only"])
+    }),
+    baseCoinUnits: 30,
+    referencePrice: Object.freeze({ currency: "CNY", amountMinor: 3_000 }),
+    acceptedCoinTypes: Object.freeze([
+      "bonus_coins",
+      "paid_coins",
+      "reward_coins"
+    ]),
+    delivery: Object.freeze({
+      kind: "subscription_plan",
+      durationDays: 30,
+      monthlyTrafficGb: 100,
+      trafficGb: null,
+      neverExpires: false,
+      discountBasisPoints: 1_000
+    })
+  }),
+  Object.freeze({
+    offerRef: "offer_local_ui_annual_200gb",
+    offerVersionRef: "offerv_local_ui_annual_200gb_v1",
+    version: 1,
+    category: "plan",
+    title: Object.freeze({
+      zh: "本地合成 200 GB 年卡",
+      en: "Local synthetic 200 GB annual plan"
+    }),
+    summary: Object.freeze({
+      zh: "每月 200 GB，本地合成验证专用",
+      en: "200 GB monthly, local synthetic validation only"
+    }),
+    importantNotices: Object.freeze({
+      zh: Object.freeze(["仅用于本机 UI 验证"]),
+      en: Object.freeze(["Local UI validation only"])
+    }),
+    baseCoinUnits: 200,
+    referencePrice: Object.freeze({ currency: "CNY", amountMinor: 20_000 }),
+    acceptedCoinTypes: Object.freeze([
+      "bonus_coins",
+      "paid_coins",
+      "reward_coins"
+    ]),
+    delivery: Object.freeze({
+      kind: "subscription_plan",
+      durationDays: 365,
+      monthlyTrafficGb: 200,
+      trafficGb: null,
+      neverExpires: false,
+      discountBasisPoints: 2_000
+    })
+  }),
+  Object.freeze({
+    offerRef: "offer_local_ui_data_100gb",
+    offerVersionRef: "offerv_local_ui_data_100gb_v1",
+    version: 1,
+    category: "data_pack",
+    title: Object.freeze({
+      zh: "本地合成 100 GB 流量包",
+      en: "Local synthetic 100 GB data pack"
+    }),
+    summary: Object.freeze({
+      zh: "100 GB 不过期流量，本地合成验证专用",
+      en: "100 GB non-expiring data, local synthetic validation only"
+    }),
+    importantNotices: Object.freeze({
+      zh: Object.freeze(["仅用于本机 UI 验证"]),
+      en: Object.freeze(["Local UI validation only"])
+    }),
+    baseCoinUnits: 30,
+    referencePrice: Object.freeze({ currency: "CNY", amountMinor: 3_000 }),
+    acceptedCoinTypes: Object.freeze([
+      "bonus_coins",
+      "paid_coins",
+      "reward_coins"
+    ]),
+    delivery: Object.freeze({
+      kind: "data_pack",
+      durationDays: null,
+      monthlyTrafficGb: null,
+      trafficGb: 100,
+      neverExpires: true,
+      discountBasisPoints: null
+    })
+  }),
+  Object.freeze({
+    offerRef: "offer_local_ui_data_200gb",
+    offerVersionRef: "offerv_local_ui_data_200gb_v1",
+    version: 1,
+    category: "data_pack",
+    title: Object.freeze({
+      zh: "本地合成 200 GB 流量包",
+      en: "Local synthetic 200 GB data pack"
+    }),
+    summary: Object.freeze({
+      zh: "200 GB 不过期流量，本地合成验证专用",
+      en: "200 GB non-expiring data, local synthetic validation only"
+    }),
+    importantNotices: Object.freeze({
+      zh: Object.freeze(["仅用于本机 UI 验证"]),
+      en: Object.freeze(["Local UI validation only"])
+    }),
+    baseCoinUnits: 50,
+    referencePrice: Object.freeze({ currency: "CNY", amountMinor: 5_000 }),
+    acceptedCoinTypes: Object.freeze([
+      "bonus_coins",
+      "paid_coins",
+      "reward_coins"
+    ]),
+    delivery: Object.freeze({
+      kind: "data_pack",
+      durationDays: null,
+      monthlyTrafficGb: null,
+      trafficGb: 200,
+      neverExpires: true,
+      discountBasisPoints: null
+    })
+  })
+]);
 
 function validationFailure() {
   const error = new Error("Local coin commerce validation failed");
@@ -318,7 +492,7 @@ function isExactInsufficientBalanceError(response) {
     && error.retryable === false;
 }
 
-function listen(server) {
+function listen(server, port = 0) {
   return new Promise((resolveListen, reject) => {
     const onError = (error) => {
       server.off("listening", onListening);
@@ -330,7 +504,7 @@ function listen(server) {
     };
     server.once("error", onError);
     server.once("listening", onListening);
-    server.listen({ host: "127.0.0.1", port: 0, exclusive: true });
+    server.listen({ host: "127.0.0.1", port, exclusive: true });
   });
 }
 
@@ -422,9 +596,14 @@ function requestJson(baseUrl, ownedRequests, {
 
 async function startLocalCoinCommerceValidationInternal(
   options,
-  beforeRootRemovalHook = null
+  beforeRootRemovalHook = null,
+  profile = TASK7_PROFILE
 ) {
   const { failureStage } = exactOptions(options);
+  if (![TASK7_PROFILE, UI_PROFILE].includes(profile)) {
+    throw validationFailure();
+  }
+  const isUiProfile = profile === UI_PROFILE;
   if (
     beforeRootRemovalHook !== null
     && typeof beforeRootRemovalHook !== "function"
@@ -542,17 +721,26 @@ async function startLocalCoinCommerceValidationInternal(
       dbPath: controlDbPath
     });
     try {
-      for (const [id, ownerRef] of [
-        [FUNDED_ACCOUNT_ID, "owner_local_commerce_funded"],
-        [EMPTY_ACCOUNT_ID, "owner_local_commerce_empty"]
-      ]) {
+      const accounts = isUiProfile
+        ? [[UI_ACCOUNT_ID, "owner_local_ui_validation"]]
+        : [
+            [FUNDED_ACCOUNT_ID, "owner_local_commerce_funded"],
+            [EMPTY_ACCOUNT_ID, "owner_local_commerce_empty"]
+          ];
+      for (const [id, ownerRef] of accounts) {
         baseStore.createAccount({
           id,
           ownerRef,
           status: "active",
           createdAt: SYNTHETIC_NOW,
           updatedAt: SYNTHETIC_NOW,
-          metadata: { source: "local_synthetic_validation" }
+          metadata: isUiProfile
+            ? {
+                source: "local_synthetic_ui_validation",
+                loginRef: UI_LOGIN_REF,
+                displayRef: UI_LOGIN_REF
+              }
+            : { source: "local_synthetic_validation" }
         });
       }
     } finally {
@@ -579,13 +767,16 @@ async function startLocalCoinCommerceValidationInternal(
       USER_PORTAL_ROUTES_ENABLED: "true",
       COINS_WALLET_ENABLED: "true",
       COINS_COMMERCE_ENABLED: "true",
-      COINS_COMMERCE_CANCEL_WINDOW_MS: "1000",
+      COINS_COMMERCE_CANCEL_WINDOW_MS: isUiProfile ? "3000" : "1000",
+      ...(isUiProfile
+        ? { USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION: "true" }
+        : {}),
       LOCAL_PROXY_CONTROL_ROUTES_ENABLED: "false"
     };
     subscriptionStore = createSqliteSubscriptionStore({
       dbPath: subscriptionDbPath
     });
-    runtimeState = createRuntimeState({
+    const runtimeOptions = {
       rootDir: ROOT_DIR,
       env,
       controlDbPath,
@@ -594,55 +785,90 @@ async function startLocalCoinCommerceValidationInternal(
       autoStartHttpProxy: false,
       subscriptionStore,
       subscriptionCore: DISABLED_SUBSCRIPTION_CORE,
-      platformUserPortalAuth: createPortalAuth(fundedSession, emptySession),
       coinCommerceFulfillmentHandler: createFulfillmentHandler(
         effects,
         fulfillmentActivity,
         effectNamespace
-      )
-    });
+      ),
+      ...(isUiProfile
+        ? {}
+        : {
+            platformUserPortalAuth: createPortalAuth(
+              fundedSession,
+              emptySession
+            )
+          })
+    };
+    runtimeState = createRuntimeState(runtimeOptions);
 
     runtimeState.platform.coinsWalletStore.creditCoins({
-      accountId: FUNDED_ACCOUNT_ID,
+      accountId: isUiProfile ? UI_ACCOUNT_ID : FUNDED_ACCOUNT_ID,
       coinType: "paid_coins",
-      amountUnits: 60,
+      amountUnits: isUiProfile ? 1_000 : 60,
       availability: "available",
       sourceType: "synthetic_seed",
-      sourceRef: "source_local_commerce_funds",
-      sourceDigest: "a".repeat(64),
+      sourceRef: isUiProfile
+        ? "source_local_ui_validation_paid_coins_v1"
+        : "source_local_commerce_funds",
+      sourceDigest: isUiProfile
+        ? createHash("sha256")
+            .update("local-ui-validation-paid-coins-v1", "utf8")
+            .digest("hex")
+        : "a".repeat(64),
       policyRef: null,
       policyVersion: null,
       expiresAt: null,
       operation: {
-        actorScope: "system:local-commerce-validation",
-        idempotencyKey: "credit_local_commerce_funds",
+        actorScope: isUiProfile
+          ? "system:local-ui-validation"
+          : "system:local-commerce-validation",
+        idempotencyKey: isUiProfile
+          ? "credit_local_ui_validation_paid_coins_v1"
+          : "credit_local_commerce_funds",
         actorType: "system",
-        actorRef: "local_validation"
+        actorRef: isUiProfile
+          ? "local_ui_validation_v1"
+          : "local_validation"
       }
     });
-    runtimeState.platform.coinCommerceStore.publishOfferVersion({
-      offerRef: OFFER_REF,
-      offerVersionRef: "offerv_local_monthly_plan_v1",
-      version: 1,
-      category: "plan",
-      title: { zh: "本地合成月卡", en: "Local synthetic monthly plan" },
-      summary: { zh: "本地合成验证", en: "Local synthetic validation" },
-      importantNotices: {
-        zh: ["仅用于本地合成验证"],
-        en: ["Local synthetic validation only"]
-      },
-      baseCoinUnits: 20,
-      referencePrice: { currency: "CNY", amountMinor: 2_000 },
-      acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
-      delivery: {
-        kind: "subscription_plan",
-        durationDays: 30,
-        monthlyTrafficGb: 50,
-        trafficGb: null,
-        neverExpires: false,
-        discountBasisPoints: 0
+    if (isUiProfile) {
+      runtimeState.platform.portalPasswordCredentialService
+        .issueInitialPasswordCredential({
+          accountId: UI_ACCOUNT_ID,
+          credentialRef: "portal_pwd_local_ui_validation_v1",
+          plainPassword: UI_PASSWORD,
+          issuedByRef: "system_local_ui_validation",
+          approvalRef: "local_ui_validation_v1",
+          mustRotate: true
+        });
+      for (const offer of UI_OFFERS) {
+        runtimeState.platform.coinCommerceStore.publishOfferVersion(offer);
       }
-    });
+    } else {
+      runtimeState.platform.coinCommerceStore.publishOfferVersion({
+        offerRef: OFFER_REF,
+        offerVersionRef: "offerv_local_monthly_plan_v1",
+        version: 1,
+        category: "plan",
+        title: { zh: "本地合成月卡", en: "Local synthetic monthly plan" },
+        summary: { zh: "本地合成验证", en: "Local synthetic validation" },
+        importantNotices: {
+          zh: ["仅用于本地合成验证"],
+          en: ["Local synthetic validation only"]
+        },
+        baseCoinUnits: 20,
+        referencePrice: { currency: "CNY", amountMinor: 2_000 },
+        acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
+        delivery: {
+          kind: "subscription_plan",
+          durationDays: 30,
+          monthlyTrafficGb: 50,
+          trafficGb: null,
+          neverExpires: false,
+          discountBasisPoints: 0
+        }
+      });
+    }
     failAt(failureStage, "after_seed");
 
     server = createServer(createApp(runtimeState));
@@ -650,7 +876,7 @@ async function startLocalCoinCommerceValidationInternal(
       sockets.add(socket);
       socket.once("close", () => sockets.delete(socket));
     });
-    await listen(server);
+    await listen(server, isUiProfile ? UI_PORT : 0);
     const address = server.address();
     if (
       !address
@@ -663,6 +889,9 @@ async function startLocalCoinCommerceValidationInternal(
       throw validationFailure();
     }
     const baseUrl = `http://127.0.0.1:${address.port}`;
+    if (isUiProfile && address.port !== UI_PORT) {
+      throw validationFailure();
+    }
     failAt(failureStage, "after_listen");
 
     await runtimeState.platform.coinCommerceCoordinator.start();
@@ -670,12 +899,14 @@ async function startLocalCoinCommerceValidationInternal(
 
     const handle = {
       baseUrl,
-      portalHeaders,
+      ...(isUiProfile ? {} : { portalHeaders }),
       ownedTempRoot,
       runCoordinatorOnce: () => runtimeState.platform.coinCommerceCoordinator.runOnce(),
       inspect: () => {
         const funds = runtimeState.platform.coinsWalletStore
-          .getWalletProjection({ accountId: FUNDED_ACCOUNT_ID });
+          .getWalletProjection({
+            accountId: isUiProfile ? UI_ACCOUNT_ID : FUNDED_ACCOUNT_ID
+          });
         return Object.freeze({
           effectCount: effects.size,
           fulfillmentInFlight: fulfillmentActivity.inFlight,
@@ -706,6 +937,15 @@ async function startLocalCoinCommerceValidationInternal(
 
 export async function startLocalCoinCommerceValidation(options) {
   return startLocalCoinCommerceValidationInternal(options);
+}
+
+export async function startLocalCoinCommerceUiValidation() {
+  if (arguments.length !== 0) throw validationFailure();
+  return startLocalCoinCommerceValidationInternal(
+    undefined,
+    null,
+    UI_PROFILE
+  );
 }
 
 async function runClosedProof(lifecycle = null) {
