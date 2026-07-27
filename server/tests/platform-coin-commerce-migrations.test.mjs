@@ -445,6 +445,91 @@ test("exact namespace inspection rejects explicit objects attached to mixed or u
   }
 });
 
+test("case-folded tbl_name discovery rejects extra explicit objects without an extra Commerce table", () => {
+  withTempDirectory((directory) => {
+    const dbPath = join(directory, "case-folded-known-table.sqlite");
+    createWalletDatabase(dbPath);
+    const database = new Database(dbPath);
+    try {
+      applyCoinCommerceMigrations(exactApplyInput(database));
+      database.exec(`
+        create index commerce_known_table_extra_idx
+          on platform_coin_commerce_orders(updated_at);
+        create trigger commerce_known_table_extra_trigger
+        before update on platform_coin_commerce_orders
+        begin
+          select raise(abort, 'unreviewed');
+        end;
+      `);
+
+      database.unsafeMode(true);
+      try {
+        database.exec("pragma writable_schema = ON");
+        const updateTableName = database.prepare(`
+          update sqlite_schema
+             set tbl_name = ?
+           where type = ?
+             and name = ?
+        `);
+        assert.equal(updateTableName.run(
+          "PLATFORM_COIN_COMMERCE_ORDERS",
+          "index",
+          "commerce_known_table_extra_idx"
+        ).changes, 1);
+        assert.equal(updateTableName.run(
+          "Platform_Coin_Commerce_Orders",
+          "trigger",
+          "commerce_known_table_extra_trigger"
+        ).changes, 1);
+      } finally {
+        try {
+          database.exec("pragma writable_schema = OFF");
+        } finally {
+          database.unsafeMode(false);
+        }
+      }
+
+      const commerceTables = database.prepare(`
+        select name
+          from sqlite_master
+         where type = 'table'
+           and lower(name) glob 'platform_coin_commerce_*'
+         order by name
+      `).pluck().all();
+      assert.deepEqual(commerceTables, [...TABLES].sort());
+
+      const tamperedObjects = database.prepare(`
+        select name, tbl_name
+          from sqlite_master
+         where name in (?, ?)
+         order by name
+      `).all(
+        "commerce_known_table_extra_idx",
+        "commerce_known_table_extra_trigger"
+      );
+      assert.deepEqual(tamperedObjects, [
+        {
+          name: "commerce_known_table_extra_idx",
+          tbl_name: "PLATFORM_COIN_COMMERCE_ORDERS"
+        },
+        {
+          name: "commerce_known_table_extra_trigger",
+          tbl_name: "Platform_Coin_Commerce_Orders"
+        }
+      ]);
+
+      const inspection = inspectCoinCommerceSchema({ database });
+      assert.equal(inspection.ok, false);
+      assert.equal(inspection.checks.schemaExact, false);
+      assert.ok(
+        inspection.reasonCodes.includes("commerce_owned_object_incompatible")
+      );
+    } finally {
+      database.close();
+    }
+  });
+});
+
 test("inspection requires quick-check and foreign-key-check", () => {
   withTempDirectory((directory) => {
     const dbPath = join(directory, "integrity.sqlite");
