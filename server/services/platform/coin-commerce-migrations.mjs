@@ -953,11 +953,11 @@ function commerceNamespaceObjects(database) {
       from sqlite_master
      where (
        type = 'table'
-       and name glob 'platform_coin_commerce_*'
+       and lower(name) glob 'platform_coin_commerce_*'
      )
         or (
           type in ('index', 'trigger')
-          and tbl_name glob 'platform_coin_commerce_*'
+          and lower(tbl_name) glob 'platform_coin_commerce_*'
         )
      order by type, name
   `).all().filter((row) => !(

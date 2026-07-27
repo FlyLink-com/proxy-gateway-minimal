@@ -194,6 +194,28 @@ test("rejects every pre-existing Commerce namespace object without the migration
   });
 });
 
+test("rejects mixed and upper-case pre-existing Commerce namespace tables", () => {
+  for (const tableName of [
+    "PLATFORM_COIN_COMMERCE_UNREVIEWED",
+    "Platform_Coin_Commerce_Mixed"
+  ]) {
+    withTempDirectory((directory) => {
+      const dbPath = join(directory, `${tableName}.sqlite`);
+      createWalletDatabase(dbPath);
+      const database = new Database(dbPath);
+      try {
+        database.exec(`create table ${tableName} (id text primary key)`);
+        expectCode(
+          () => applyCoinCommerceMigrations(exactApplyInput(database)),
+          "commerce_owned_object_without_migration"
+        );
+      } finally {
+        database.close();
+      }
+    });
+  }
+});
+
 test("applies only Commerce-owned additive objects with the exact closed inspection", () => {
   withTempDirectory((directory) => {
     const dbPath = join(directory, "commerce.sqlite");
@@ -364,6 +386,46 @@ test("exact namespace inspection rejects extra Commerce tables and attached expl
           database.exec(`
             create trigger coin_commerce_unreviewed_trigger
             before update on platform_coin_commerce_orders
+            begin
+              select raise(abort, 'unreviewed');
+            end
+          `);
+        }
+        const inspection = inspectCoinCommerceSchema({ database });
+        assert.equal(inspection.ok, false, mutation);
+        assert.equal(inspection.checks.schemaExact, false, mutation);
+        assert.ok(
+          inspection.reasonCodes.includes("commerce_owned_object_incompatible"),
+          mutation
+        );
+      } finally {
+        database.close();
+      }
+    });
+  }
+});
+
+test("exact namespace inspection rejects explicit objects attached to mixed or upper-case Commerce tables", () => {
+  for (const mutation of ["index", "trigger"]) {
+    withTempDirectory((directory) => {
+      const dbPath = join(directory, `case-folded-${mutation}.sqlite`);
+      createWalletDatabase(dbPath);
+      const database = new Database(dbPath);
+      try {
+        applyCoinCommerceMigrations(exactApplyInput(database));
+        const tableName = mutation === "index"
+          ? "PLATFORM_COIN_COMMERCE_INDEX_SHADOW"
+          : "Platform_Coin_Commerce_Trigger_Shadow";
+        database.exec(`create table ${tableName} (id text primary key)`);
+        if (mutation === "index") {
+          database.exec(`
+            create index Commerce_Shadow_Explicit_Index
+              on ${tableName}(id)
+          `);
+        } else {
+          database.exec(`
+            create trigger Commerce_Shadow_Explicit_Trigger
+            before update on ${tableName}
             begin
               select raise(abort, 'unreviewed');
             end
