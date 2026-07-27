@@ -1,0 +1,210 @@
+import { createElement } from "react";
+import "@testing-library/jest-dom/vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within
+} from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import {
+  CoinsPurchaseDialog,
+  ProductDetailDialog,
+  type PortalCoinOffer,
+  type PortalCoinOrder,
+  type PortalCoinQuote
+} from "../features/user-portal/commerce";
+
+const offer: PortalCoinOffer = {
+  offerRef: "offer_basic",
+  offerVersionRef: "offer_version_basic",
+  category: "plan",
+  title: { zh: "基础套餐", en: "Basic plan" },
+  summary: { zh: "基础说明", en: "Basic summary" },
+  importantNotices: {
+    zh: ["购买后按订单状态交付"],
+    en: ["Delivery follows the Order state"]
+  },
+  referencePrice: { currency: "CNY", amountMinor: 1500 },
+  acceptedCoinTypes: ["paid_coins", "reward_coins"],
+  delivery: {
+    kind: "subscription_plan",
+    durationDays: 30,
+    monthlyTrafficGb: 100,
+    trafficGb: null,
+    neverExpires: false,
+    discountBasisPoints: 0
+  }
+};
+
+const insufficientQuote: PortalCoinQuote = {
+  quoteRef: "quote_basic",
+  offer,
+  amountUnits: 15,
+  appliedDiscountBasisPoints: 0,
+  purchaseAvailability: "insufficient_balance",
+  shortfallUnits: 5,
+  allocation: [{ coinType: "paid_coins", amountUnits: 10 }],
+  balances: {
+    before: {
+      bonusCoins: 0,
+      paidCoins: 10,
+      rewardCoins: 0,
+      heldCoins: 0
+    },
+    after: {
+      bonusCoins: 0,
+      paidCoins: 0,
+      rewardCoins: 0,
+      heldCoins: 0
+    }
+  },
+  expiresAt: "2026-07-27T20:00:00.000Z"
+};
+
+const heldOrder: PortalCoinOrder = {
+  orderRef: "order_basic",
+  offer,
+  amountUnits: 15,
+  allocation: [{ coinType: "paid_coins", amountUnits: 15 }],
+  paymentStatus: "held",
+  cancelUntil: "2026-07-27T20:05:00.000Z",
+  fulfillment: { status: "not_requested", safeCode: null },
+  createdAt: "2026-07-27T19:55:00.000Z",
+  updatedAt: "2026-07-27T19:55:00.000Z"
+};
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+describe("Portal Coins dialogs", () => {
+  test("product detail is a labelled focus-contained modal with caller-owned close restoration", () => {
+    const onPreview = vi.fn();
+    const onRequestClose = vi.fn();
+    const onRestoreFocus = vi.fn();
+    const view = render(createElement(ProductDetailDialog, {
+      locale: "en",
+      offer,
+      onPreview,
+      onRequestClose,
+      onRestoreFocus
+    }));
+
+    const dialog = screen.getByRole("dialog", { name: "Basic plan" });
+    const title = within(dialog).getByRole("heading", {
+      name: "Basic plan"
+    });
+    expect(title).toHaveFocus();
+    expect(within(dialog).getByText("Basic summary")).toBeInTheDocument();
+    expect(within(dialog).getByText(/30 days/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/100 GB/)).toBeInTheDocument();
+
+    const buttons = within(dialog).getAllByRole("button");
+    buttons.at(-1)?.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(buttons[0]).toHaveFocus();
+    buttons[0].focus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(buttons.at(-1)).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(onRequestClose).toHaveBeenCalledTimes(1);
+    expect(onPreview).not.toHaveBeenCalled();
+    view.unmount();
+    expect(onRestoreFocus).toHaveBeenCalledTimes(1);
+  });
+
+  test("insufficient confirmation shows server facts, disables confirm, and delegates recharge", () => {
+    const onConfirm = vi.fn();
+    const onOpenRecharge = vi.fn();
+    const onRequestClose = vi.fn();
+    render(createElement(CoinsPurchaseDialog, {
+      locale: "en",
+      quote: insufficientQuote,
+      order: null,
+      submitting: false,
+      cancelling: false,
+      errorCode: null,
+      onConfirm,
+      onCancel: vi.fn(),
+      onRefresh: vi.fn(),
+      onOpenRecharge,
+      onRequestClose
+    }));
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Confirm Coins purchase"
+    });
+    expect(within(dialog).getByText("Basic plan")).toBeInTheDocument();
+    expect(within(dialog).getByText("15 Coins")).toBeInTheDocument();
+    expect(within(dialog).getByText(/^paid_coins: 10$/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Before: 10/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/After: 0/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Availability").parentElement)
+      .toHaveTextContent("AvailabilityInsufficient balance");
+    expect(within(dialog).getByText(/Shortfall: 5 Coins/)).toBeInTheDocument();
+    expect(within(dialog).getByText(
+      "2026-07-27T20:00:00.000Z"
+    )).toBeInTheDocument();
+
+    const confirm = within(dialog).getByRole("button", {
+      name: "Confirm purchase"
+    });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", {
+      name: "Open recharge"
+    }));
+    expect(onOpenRecharge).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(onRequestClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("held status is polite, reduced-motion safe, cancellable, and Escape never cancels", () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({
+      matches: true,
+      media: "(prefers-reduced-motion: reduce)",
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    })));
+    const onCancel = vi.fn();
+    const onRequestClose = vi.fn();
+    render(createElement(CoinsPurchaseDialog, {
+      locale: "en",
+      quote: insufficientQuote,
+      order: heldOrder,
+      submitting: false,
+      cancelling: false,
+      errorCode: null,
+      onConfirm: vi.fn(),
+      onCancel,
+      onRefresh: vi.fn(),
+      onOpenRecharge: vi.fn(),
+      onRequestClose
+    }));
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Confirm Coins purchase"
+    });
+    const status = within(dialog).getByText("Coins reserved");
+    expect(status).toHaveAttribute("aria-live", "polite");
+    const spinner = dialog.querySelector(".portal-coins-status-spinner");
+    expect(spinner).toHaveAttribute("aria-hidden", "true");
+    expect(spinner).toHaveAttribute("data-motion", "reduced");
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(onRequestClose).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", {
+      name: "Cancel Order"
+    }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});
