@@ -14,12 +14,23 @@ import {
 
 const NOW = "2026-07-26T12:34:56.000Z";
 const PARTICIPANT_METHODS = [
-  "captureCoinHoldInTransaction",
-  "createCoinHoldInTransaction",
   "getWalletByAccountIdInTransaction",
   "getWalletProjectionInTransaction",
   "previewCoinHoldInTransaction",
+  "createCoinHoldInTransaction",
+  "captureCoinHoldInTransaction",
   "releaseCoinHoldInTransaction"
+];
+const MUTATION_ENVELOPE_FIELDS = [
+  "ok",
+  "replayed",
+  "operationRef",
+  "walletRef",
+  "safeResultCode",
+  "resultRef",
+  "previousWalletVersion",
+  "resultingWalletVersion",
+  "resultingWalletStatus"
 ];
 
 function createSyntheticDatabase() {
@@ -180,28 +191,28 @@ function validHold(overrides = {}) {
 function validCapture(holdRef, overrides = {}) {
   return {
     holdRef,
+    ...overrides,
     operation: {
       actorScope: "account:account_1",
       idempotencyKey: "capture_1",
       actorType: "user",
       actorRef: "account_1",
       ...(overrides.operation ?? {})
-    },
-    ...overrides
+    }
   };
 }
 
 function validRelease(holdRef, overrides = {}) {
   return {
     holdRef,
+    ...overrides,
     operation: {
       actorScope: "account:account_1",
       idempotencyKey: "release_1",
       actorType: "user",
       actorRef: "account_1",
       ...(overrides.operation ?? {})
-    },
-    ...overrides
+    }
   };
 }
 
@@ -228,12 +239,136 @@ function walletFinancialSnapshot(database) {
   ]));
 }
 
-test("factory validates exact schema and exposes only the six transaction methods", () => {
+function mutationOutcome(action) {
+  try {
+    return { kind: "result", value: action() };
+  } catch (error) {
+    return {
+      kind: "error",
+      value: {
+        code: error?.code,
+        message: error?.message
+      }
+    };
+  }
+}
+
+function assertExactMutationOutcomes(outcomes) {
+  for (const outcome of outcomes) {
+    if (outcome.kind === "error") {
+      assert.deepEqual(Reflect.ownKeys(outcome.value), ["code", "message"]);
+      assert.equal(
+        outcome.value.message,
+        "Coin wallet store operation rejected"
+      );
+      continue;
+    }
+    assert.deepEqual(Reflect.ownKeys(outcome.value), MUTATION_ENVELOPE_FIELDS);
+    for (const field of MUTATION_ENVELOPE_FIELDS) {
+      const descriptor = Object.getOwnPropertyDescriptor(outcome.value, field);
+      assert.equal(descriptor?.enumerable, true);
+      assert.equal("value" in descriptor, true);
+    }
+  }
+}
+
+function seedAllocationWallet(store) {
+  store.creditCoins(validCredit({
+    coinType: "bonus_coins",
+    amountUnits: 4,
+    sourceRef: "bonus_seed",
+    sourceDigest: "b".repeat(64),
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    operation: {
+      actorScope: "account:account_1",
+      idempotencyKey: "credit_bonus_seed",
+      actorType: "system",
+      actorRef: "settlement_worker"
+    }
+  }));
+  store.creditCoins(validCredit({
+    amountUnits: 5,
+    sourceRef: "paid_seed",
+    sourceDigest: "c".repeat(64),
+    operation: {
+      actorScope: "account:account_1",
+      idempotencyKey: "credit_paid_seed",
+      actorType: "system",
+      actorRef: "settlement_worker"
+    }
+  }));
+  const reward = store.creditCoins(validCredit({
+    coinType: "reward_coins",
+    amountUnits: 6,
+    availability: "pending",
+    sourceRef: "reward_seed",
+    sourceDigest: "d".repeat(64),
+    policyRef: "reward_policy",
+    policyVersion: 1,
+    operation: {
+      actorScope: "account:account_1",
+      idempotencyKey: "credit_reward_seed",
+      actorType: "system",
+      actorRef: "settlement_worker"
+    }
+  }));
+  store.confirmCoinCredit({
+    lotRef: reward.resultRef,
+    amountUnits: 6,
+    operation: {
+      actorScope: "account:account_1",
+      idempotencyKey: "confirm_reward_seed",
+      actorType: "system",
+      actorRef: "reward_confirmer"
+    }
+  });
+}
+
+test("factory rejects every extra or non-data option without invoking accessors", () => {
   assert.throws(
     () => createCoinWalletTransactionParticipant(),
     (error) => error?.code === "invalid_store_contract"
   );
 
+  const database = createSyntheticDatabase();
+  try {
+    let accessorReads = 0;
+    const invalidOptions = [
+      { database, extra: true },
+      { database, dbPath: "ignored.sqlite" },
+      Object.assign({ database }, { [Symbol("escape")]: true }),
+      Object.defineProperty({ database }, "extra", {
+        enumerable: true,
+        get() {
+          accessorReads += 1;
+          return true;
+        }
+      }),
+      Object.defineProperty({}, "database", {
+        enumerable: true,
+        get() {
+          accessorReads += 1;
+          return database;
+        }
+      }),
+      Object.defineProperty({ database }, "extra", {
+        enumerable: false,
+        value: true
+      })
+    ];
+    for (const options of invalidOptions) {
+      expectCode(
+        () => createCoinWalletTransactionParticipant(options),
+        "invalid_store_contract"
+      );
+    }
+    assert.equal(accessorReads, 0);
+  } finally {
+    database.close();
+  }
+});
+
+test("factory validates exact schema and exposes six own enumerable data methods", () => {
   const invalid = new Database(":memory:");
   try {
     expectCode(
@@ -252,42 +387,68 @@ test("factory validates exact schema and exposes only the six transaction method
       nowFn: () => new Date(NOW),
       refFactory: makeRefFactory()
     });
-    assert.deepEqual(Object.keys(participant).sort(), PARTICIPANT_METHODS);
-    assert.equal("database" in participant, false);
-    assert.equal("close" in participant, false);
-  } finally {
-    database.close();
-  }
-});
-
-test("all participant methods require a caller-owned transaction as their first gate", () => {
-  const database = createSyntheticDatabase();
-  try {
-    const participant = createCoinWalletTransactionParticipant({ database });
+    assert.deepEqual(Reflect.ownKeys(participant), PARTICIPANT_METHODS);
     for (const method of PARTICIPANT_METHODS) {
-      expectCode(() => participant[method](undefined), "wallet_transaction_required");
+      assert.deepEqual(Object.getOwnPropertyDescriptor(participant, method), {
+        value: participant[method],
+        writable: true,
+        enumerable: true,
+        configurable: true
+      });
+      assert.equal(typeof participant[method], "function");
+    }
+    assert.deepEqual(
+      Reflect.ownKeys(participant).filter((key) => typeof key === "symbol"),
+      []
+    );
+    for (const escape of ["database", "db", "close", "transaction", "run"]) {
+      assert.equal(escape in participant, false);
     }
   } finally {
     database.close();
   }
 });
 
-test("missing and throwing transaction state fail with the same safe gate code", () => {
-  for (const readInTransaction of [
-    () => undefined,
-    () => {
+test("all six methods gate false, missing, and throwing state before poisoned input", () => {
+  const transactionStates = [
+    ["false", () => false],
+    ["missing", () => undefined],
+    ["throwing", () => {
       throw new Error("synthetic transaction-state fault");
-    }
-  ]) {
+    }]
+  ];
+  for (const [state, readInTransaction] of transactionStates) {
     const database = createSyntheticDatabase();
     try {
       const participant = createCoinWalletTransactionParticipant({
         database: overrideInTransaction(database, readInTransaction)
       });
-      expectCode(
-        () => participant.getWalletByAccountIdInTransaction("account_1"),
-        "wallet_transaction_required"
-      );
+      for (const method of PARTICIPANT_METHODS) {
+        let poisonReads = 0;
+        const poisonedInput = new Proxy({}, {
+          get() {
+            poisonReads += 1;
+            throw new Error(`poisoned ${state} input`);
+          },
+          getOwnPropertyDescriptor() {
+            poisonReads += 1;
+            throw new Error(`poisoned ${state} input`);
+          },
+          getPrototypeOf() {
+            poisonReads += 1;
+            throw new Error(`poisoned ${state} input`);
+          },
+          ownKeys() {
+            poisonReads += 1;
+            throw new Error(`poisoned ${state} input`);
+          }
+        });
+        expectCode(
+          () => participant[method](poisonedInput),
+          "wallet_transaction_required"
+        );
+        assert.equal(poisonReads, 0, `${method} inspected ${state} input`);
+      }
     } finally {
       database.close();
     }
@@ -310,13 +471,14 @@ test("participant Wallet changes roll back with the caller transaction", () => {
       nowFn: () => new Date(NOW),
       refFactory: refs
     });
+    const before = walletFinancialSnapshot(database);
 
     const outer = database.transaction(() => {
       participant.createCoinHoldInTransaction(validHold());
       throw new Error("synthetic_outer_failure");
     });
     assert.throws(() => outer.immediate(), /synthetic_outer_failure/);
-    assert.equal(store.getHold("hold_1"), null);
+    assert.deepEqual(walletFinancialSnapshot(database), before);
   } finally {
     database.close();
   }
@@ -473,20 +635,24 @@ test("preview handles missing and inactive Wallets without exposing financial ro
 function createMutationFixture({ participant = false } = {}) {
   const database = createSyntheticDatabase();
   insertAccount(database);
+  const clock = { value: NOW };
+  const locked = createLockedUtcDatabase(database, clock);
   const refs = makeObservedRefFactory();
   const store = createSqliteCoinWalletStore({
-    database,
+    database: locked.database,
     nowFn: () => new Date(NOW),
     refFactory: refs
   });
-  store.creditCoins(validCredit());
+  seedAllocationWallet(store);
   return {
     database,
+    clock,
+    locked,
     refs,
     store,
     participant: participant
       ? createCoinWalletTransactionParticipant({
-          database,
+          database: locked.database,
           nowFn: () => new Date(NOW),
           refFactory: refs
         })
@@ -498,130 +664,363 @@ function runParticipant(database, action) {
   return database.transaction(action).immediate();
 }
 
-test("participant hold, replay, capture, and release preserve public envelopes and ref order", () => {
-  for (const operation of ["capture", "release"]) {
+function invokeMutation(fixture, operation, input) {
+  if (!fixture.participant) return fixture.store[operation](input);
+  const participantMethod = {
+    createCoinHold: "createCoinHoldInTransaction",
+    captureCoinHold: "captureCoinHoldInTransaction",
+    releaseCoinHold: "releaseCoinHoldInTransaction"
+  }[operation];
+  return runParticipant(
+    fixture.database,
+    () => fixture.participant[participantMethod](input)
+  );
+}
+
+function setWalletStatus(fixture, status) {
+  fixture.database.prepare(`
+    update platform_coin_wallets set status = ? where account_id = 'account_1'
+  `).run(status);
+}
+
+const HOLD_SUCCESS_REF_CALLS = [
+  "operation",
+  "hold",
+  "allocation",
+  "ledger_entry",
+  "allocation",
+  "ledger_entry",
+  "allocation",
+  "ledger_entry"
+];
+const LIFECYCLE_SUCCESS_REF_CALLS = [
+  "ledger_entry",
+  "ledger_entry",
+  "ledger_entry",
+  "operation"
+];
+
+function setupActiveHold(fixture, overrides = {}) {
+  const result = invokeMutation(
+    fixture,
+    "createCoinHold",
+    validHold({
+      expiresAt: "2026-07-27T12:34:56.000Z",
+      ...overrides
+    })
+  );
+  assert.equal(result.safeResultCode, "held");
+  fixture.holdRef = result.resultRef;
+}
+
+function outcomeSignatures(outcomes) {
+  return outcomes.map((outcome) => outcome.kind === "error"
+    ? `error:${outcome.value.code}`
+    : `result:${outcome.value.safeResultCode}:${outcome.value.replayed}`);
+}
+
+const PARITY_SCENARIOS = [
+  {
+    name: "create success",
+    expected: ["result:held:false"],
+    expectedRefs: HOLD_SUCCESS_REF_CALLS,
+    expectedClockReads: 1,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "createCoinHold",
+        validHold()
+      ))
+    ]
+  },
+  {
+    name: "create replay",
+    expected: ["result:held:false", "result:held:true"],
+    expectedRefs: HOLD_SUCCESS_REF_CALLS,
+    expectedClockReads: 1,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(fixture, "createCoinHold", validHold())),
+      mutationOutcome(() => invokeMutation(fixture, "createCoinHold", validHold()))
+    ]
+  },
+  {
+    name: "create insufficient",
+    expected: ["result:insufficient_balance:false"],
+    expectedRefs: ["operation"],
+    expectedClockReads: 1,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "createCoinHold",
+        validHold({ amountUnits: 16 })
+      ))
+    ]
+  },
+  {
+    name: "create drift",
+    expected: ["result:held:false", "error:idempotency_conflict"],
+    expectedRefs: HOLD_SUCCESS_REF_CALLS,
+    expectedClockReads: 1,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(fixture, "createCoinHold", validHold())),
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "createCoinHold",
+        validHold({ amountUnits: 11 })
+      ))
+    ]
+  },
+  {
+    name: "create expiry",
+    expected: ["error:invalid_coin_expiry"],
+    expectedRefs: [],
+    expectedClockReads: 1,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "createCoinHold",
+        validHold({ expiresAt: NOW })
+      ))
+    ]
+  },
+  ...["frozen", "closed"].map((status) => ({
+    name: `create ${status} Wallet`,
+    expected: ["error:wallet_not_active"],
+    expectedRefs: [],
+    expectedClockReads: 0,
+    setup: (fixture) => setWalletStatus(fixture, status),
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(fixture, "createCoinHold", validHold()))
+    ]
+  })),
+  {
+    name: "capture success",
+    expected: ["result:captured:false"],
+    expectedRefs: LIFECYCLE_SUCCESS_REF_CALLS,
+    expectedClockReads: 1,
+    setup: setupActiveHold,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "captureCoinHold",
+        validCapture(fixture.holdRef)
+      ))
+    ]
+  },
+  {
+    name: "capture replay",
+    expected: ["result:captured:false", "result:captured:true"],
+    expectedRefs: LIFECYCLE_SUCCESS_REF_CALLS,
+    expectedClockReads: 1,
+    setup: setupActiveHold,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "captureCoinHold",
+        validCapture(fixture.holdRef)
+      )),
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "captureCoinHold",
+        validCapture(fixture.holdRef)
+      ))
+    ]
+  },
+  {
+    name: "capture drift",
+    expected: ["result:captured:false", "error:idempotency_conflict"],
+    expectedRefs: LIFECYCLE_SUCCESS_REF_CALLS,
+    expectedClockReads: 1,
+    setup: setupActiveHold,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "captureCoinHold",
+        validCapture(fixture.holdRef)
+      )),
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "captureCoinHold",
+        validCapture("hold_other")
+      ))
+    ]
+  },
+  {
+    name: "capture expired Hold",
+    expected: ["result:hold_expired:false"],
+    expectedRefs: ["operation"],
+    expectedClockReads: 1,
+    setup: setupActiveHold,
+    act: (fixture) => {
+      fixture.clock.value = "2026-07-27T12:34:56.000Z";
+      return [
+        mutationOutcome(() => invokeMutation(
+          fixture,
+          "captureCoinHold",
+          validCapture(fixture.holdRef)
+        ))
+      ];
+    }
+  },
+  ...["frozen", "closed"].map((status) => ({
+    name: `capture ${status} Wallet`,
+    expected: ["error:wallet_not_active"],
+    expectedRefs: [],
+    expectedClockReads: 0,
+    setup: (fixture) => {
+      setupActiveHold(fixture);
+      setWalletStatus(fixture, status);
+    },
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "captureCoinHold",
+        validCapture(fixture.holdRef)
+      ))
+    ]
+  })),
+  {
+    name: "release success",
+    expected: ["result:released:false"],
+    expectedRefs: LIFECYCLE_SUCCESS_REF_CALLS,
+    expectedClockReads: 1,
+    setup: setupActiveHold,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "releaseCoinHold",
+        validRelease(fixture.holdRef)
+      ))
+    ]
+  },
+  {
+    name: "release replay",
+    expected: ["result:released:false", "result:released:true"],
+    expectedRefs: LIFECYCLE_SUCCESS_REF_CALLS,
+    expectedClockReads: 1,
+    setup: setupActiveHold,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "releaseCoinHold",
+        validRelease(fixture.holdRef)
+      )),
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "releaseCoinHold",
+        validRelease(fixture.holdRef)
+      ))
+    ]
+  },
+  {
+    name: "release drift",
+    expected: ["result:released:false", "error:idempotency_conflict"],
+    expectedRefs: LIFECYCLE_SUCCESS_REF_CALLS,
+    expectedClockReads: 1,
+    setup: setupActiveHold,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "releaseCoinHold",
+        validRelease(fixture.holdRef)
+      )),
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "releaseCoinHold",
+        validRelease("hold_other")
+      ))
+    ]
+  },
+  ...["frozen", "closed"].map((status) => ({
+    name: `release ${status} Wallet`,
+    expected: ["result:released:false"],
+    expectedRefs: LIFECYCLE_SUCCESS_REF_CALLS,
+    expectedClockReads: 1,
+    setup: (fixture) => {
+      setupActiveHold(fixture);
+      setWalletStatus(fixture, status);
+    },
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "releaseCoinHold",
+        validRelease(fixture.holdRef)
+      ))
+    ]
+  })),
+  {
+    name: "fixed bonus paid reward allocation",
+    expected: ["result:held:false"],
+    expectedRefs: HOLD_SUCCESS_REF_CALLS,
+    expectedClockReads: 1,
+    act: (fixture) => [
+      mutationOutcome(() => invokeMutation(
+        fixture,
+        "createCoinHold",
+        validHold({ amountUnits: 12 })
+      ))
+    ],
+    verify: (fixture) => {
+      assert.deepEqual(fixture.database.prepare(`
+        select l.coin_type, a.allocation_sequence, a.allocated_units
+          from platform_coin_hold_allocations a
+          join platform_coin_lots l on l.lot_ref = a.lot_ref
+         order by a.allocation_sequence
+      `).all(), [
+        { coin_type: "bonus_coins", allocation_sequence: 1, allocated_units: 4 },
+        { coin_type: "paid_coins", allocation_sequence: 2, allocated_units: 5 },
+        { coin_type: "reward_coins", allocation_sequence: 3, allocated_units: 3 }
+      ]);
+    }
+  }
+];
+
+for (const scenario of PARITY_SCENARIOS) {
+  test(`public and participant parity: ${scenario.name}`, () => {
     const publicFixture = createMutationFixture();
     const participantFixture = createMutationFixture({ participant: true });
     try {
-      const publicHold = publicFixture.store.createCoinHold(validHold());
-      const participantHold = runParticipant(
-        participantFixture.database,
-        () => participantFixture.participant.createCoinHoldInTransaction(validHold())
-      );
-      assert.deepEqual(participantHold, publicHold);
-      assert.deepEqual(
-        runParticipant(
-          participantFixture.database,
-          () => participantFixture.participant.createCoinHoldInTransaction(validHold())
-        ),
-        publicFixture.store.createCoinHold(validHold())
-      );
+      scenario.setup?.(publicFixture);
+      scenario.setup?.(participantFixture);
+      const publicRefOffset = publicFixture.refs.calls().length;
+      const participantRefOffset = participantFixture.refs.calls().length;
+      const publicClockOffset = publicFixture.locked.reads();
+      const participantClockOffset = participantFixture.locked.reads();
 
-      const publicResult = operation === "capture"
-        ? publicFixture.store.captureCoinHold(validCapture(publicHold.resultRef))
-        : publicFixture.store.releaseCoinHold(validRelease(publicHold.resultRef));
-      const participantResult = runParticipant(
-        participantFixture.database,
-        () => operation === "capture"
-          ? participantFixture.participant.captureCoinHoldInTransaction(
-              validCapture(participantHold.resultRef)
-            )
-          : participantFixture.participant.releaseCoinHoldInTransaction(
-              validRelease(participantHold.resultRef)
-            )
+      const publicOutcomes = scenario.act(publicFixture);
+      const participantOutcomes = scenario.act(participantFixture);
+      assertExactMutationOutcomes(publicOutcomes);
+      assertExactMutationOutcomes(participantOutcomes);
+      assert.deepEqual(outcomeSignatures(publicOutcomes), scenario.expected);
+      assert.deepEqual(participantOutcomes, publicOutcomes);
+      assert.deepEqual(
+        publicFixture.refs.calls().slice(publicRefOffset),
+        scenario.expectedRefs
       );
-      assert.deepEqual(participantResult, publicResult);
-      assert.deepEqual(participantFixture.refs.calls(), publicFixture.refs.calls());
+      assert.deepEqual(
+        participantFixture.refs.calls().slice(participantRefOffset),
+        scenario.expectedRefs
+      );
+      assert.equal(
+        publicFixture.locked.reads() - publicClockOffset,
+        scenario.expectedClockReads
+      );
+      assert.equal(
+        participantFixture.locked.reads() - participantClockOffset,
+        scenario.expectedClockReads
+      );
+      assert.deepEqual(
+        walletFinancialSnapshot(participantFixture.database),
+        walletFinancialSnapshot(publicFixture.database)
+      );
+      scenario.verify?.(publicFixture);
+      scenario.verify?.(participantFixture);
     } finally {
       publicFixture.database.close();
       participantFixture.database.close();
     }
-  }
-});
-
-test("participant preserves insufficient, idempotency-drift, and expiry result codes", () => {
-  const fixture = createMutationFixture({ participant: true });
-  try {
-    const insufficient = runParticipant(
-      fixture.database,
-      () => fixture.participant.createCoinHoldInTransaction(validHold({
-        amountUnits: 26,
-        operation: { idempotencyKey: "hold_insufficient" }
-      }))
-    );
-    assert.equal(insufficient.safeResultCode, "insufficient_balance");
-    assert.equal(insufficient.ok, false);
-    expectCode(
-      () => runParticipant(
-        fixture.database,
-        () => fixture.participant.createCoinHoldInTransaction(validHold({
-          amountUnits: 24,
-          operation: { idempotencyKey: "hold_insufficient" }
-        }))
-      ),
-      "idempotency_conflict"
-    );
-    expectCode(
-      () => runParticipant(
-        fixture.database,
-        () => fixture.participant.createCoinHoldInTransaction(validHold({
-          expiresAt: "2000-01-01T00:00:00.000Z",
-          operation: { idempotencyKey: "hold_expired_input" }
-        }))
-      ),
-      "invalid_coin_expiry"
-    );
-  } finally {
-    fixture.database.close();
-  }
-});
-
-test("capture expiry uses one locked UTC read and replay uses none", () => {
-  const database = createSyntheticDatabase();
-  try {
-    insertAccount(database);
-    const refs = makeRefFactory();
-    const store = createSqliteCoinWalletStore({
-      database,
-      nowFn: () => new Date(NOW),
-      refFactory: refs
-    });
-    store.creditCoins(validCredit());
-    const clock = { value: NOW };
-    const locked = createLockedUtcDatabase(database, clock);
-    const participant = createCoinWalletTransactionParticipant({
-      database: locked.database,
-      nowFn: () => new Date(NOW),
-      refFactory: refs
-    });
-    const hold = runParticipant(
-      database,
-      () => participant.createCoinHoldInTransaction(validHold({
-        expiresAt: "2026-07-27T12:34:56.000Z"
-      }))
-    );
-    assert.equal(locked.reads(), 1);
-
-    clock.value = "2026-07-27T12:34:56.000Z";
-    const expired = runParticipant(
-      database,
-      () => participant.captureCoinHoldInTransaction(validCapture(hold.resultRef))
-    );
-    assert.equal(expired.safeResultCode, "hold_expired");
-    assert.equal(expired.ok, false);
-    assert.equal(locked.reads(), 2);
-    assert.deepEqual(
-      runParticipant(
-        database,
-        () => participant.captureCoinHoldInTransaction(validCapture(hold.resultRef))
-      ),
-      { ...expired, replayed: true }
-    );
-    assert.equal(locked.reads(), 2);
-  } finally {
-    database.close();
-  }
-});
+  });
+}
 
 test("an injected hold trigger failure rolls every participant write back", () => {
   const fixture = createMutationFixture({ participant: true });
