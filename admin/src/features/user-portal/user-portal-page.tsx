@@ -1055,6 +1055,7 @@ export function UserPortalPage({
   const [rechargeDialogOpen, setRechargeDialogOpen] = useState(false);
   const [selectedRechargeAmount, setSelectedRechargeAmount] =
     useState<RechargeDenomination | null>(null);
+  const rechargeReturnFocusRef = useRef<(() => void) | null>(null);
   const [selectedOrderRef, setSelectedOrderRef] = useState<string | null>(null);
   const [activePaymentOrderRef, setActivePaymentOrderRef] = useState<string | null>(null);
   const [authError, setAuthError] = useState("");
@@ -1092,6 +1093,7 @@ export function UserPortalPage({
   useEffect(() => {
     setRechargeDialogOpen(false);
     setSelectedRechargeAmount(null);
+    rechargeReturnFocusRef.current = null;
   }, [portalSession]);
 
   const currentEntitlement = useMemo(() => currentTrafficEntitlement(accountEntitlements), [accountEntitlements]);
@@ -1491,14 +1493,18 @@ export function UserPortalPage({
     setActiveView(view);
   }
 
-  function openRechargeDialog() {
+  function openRechargeDialog(returnFocus?: () => void) {
+    rechargeReturnFocusRef.current = returnFocus ?? null;
     setSelectedRechargeAmount(null);
     setRechargeDialogOpen(true);
   }
 
   function closeRechargeDialog() {
+    const returnFocus = rechargeReturnFocusRef.current;
+    rechargeReturnFocusRef.current = null;
     setSelectedRechargeAmount(null);
     setRechargeDialogOpen(false);
+    returnFocus?.();
   }
 
   async function refreshPaymentOrders(targetOrderRef?: string) {
@@ -2022,7 +2028,14 @@ export function UserPortalPage({
                         placeholder={uiText(locale, "搜索商品、用量、客户端", "Search products, usage, clients")}
                       />
                     </label>
-                    <button className="portal-primary-button compact" type="button" onClick={openRechargeDialog}>
+                    <button
+                      className="portal-primary-button compact"
+                      type="button"
+                      onClick={(event) => {
+                        const origin = event.currentTarget;
+                        openRechargeDialog(() => origin.focus());
+                      }}
+                    >
                       <Plus aria-hidden="true" />
                       {uiText(locale, "充值 Coins", "Recharge Coins")}
                     </button>
@@ -2059,7 +2072,15 @@ export function UserPortalPage({
               locale={locale}
             />
           ) : null}
-          {activeView === "marketplace" ? <MarketplacePanel locale={locale} /> : null}
+          {activeView === "marketplace" ? (
+            <MarketplacePanel
+              commerceClient={portalClient.commerce ?? null}
+              locale={locale}
+              onOpenRecharge={openRechargeDialog}
+              sessionRef={portalSession.sessionRef ?? null}
+              theme={theme}
+            />
+          ) : null}
           {activeView === "wallet" ? <WalletPanel locale={locale} /> : null}
           {activeView === "referrals" ? <ReferralRewardsPanel locale={locale} /> : null}
           {activeView === "start" ? (

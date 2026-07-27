@@ -1,0 +1,902 @@
+import { createElement } from "react";
+import "@testing-library/jest-dom/vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import type {
+  PortalCoinCommerceClient,
+  PortalCoinOffer,
+  PortalCoinOrder,
+  PortalCoinQuote
+} from "../features/user-portal/commerce";
+import { PortalCoinCommerceClientError } from "../features/user-portal/commerce";
+import {
+  createLocalUserPortalClient,
+  type PortalSession,
+  type UserPortalClient
+} from "../features/user-portal/user-portal-client";
+import { UserPortalPage } from "../features/user-portal/user-portal-page";
+import { MarketplacePanel } from "../features/user-portal/portal-commerce-panels";
+
+const session: PortalSession = {
+  status: "authenticated_preview",
+  sessionRef: "portal_session_marketplace",
+  userRef: "user_marketplace",
+  displayName: "Marketplace user",
+  authMode: "password",
+  registeredAt: "2026-07-27T00:00:00.000Z",
+  safety: {
+    noAdminApi: true,
+    noPublicAuthActivated: true,
+    noRawPasswordReturned: true
+  }
+};
+
+const planOffer: PortalCoinOffer = {
+  offerRef: "offer_plan_basic",
+  offerVersionRef: "offer_version_plan_basic",
+  category: "plan",
+  title: { zh: "服务端基础套餐", en: "Server basic plan" },
+  summary: { zh: "服务端套餐说明", en: "Server plan summary" },
+  importantNotices: {
+    zh: ["按订单状态交付"],
+    en: ["Delivery follows the Order state"]
+  },
+  referencePrice: { currency: "CNY", amountMinor: 1567 },
+  acceptedCoinTypes: ["paid_coins", "reward_coins"],
+  delivery: {
+    kind: "subscription_plan",
+    durationDays: 30,
+    monthlyTrafficGb: 100,
+    trafficGb: null,
+    neverExpires: false,
+    discountBasisPoints: 0
+  }
+};
+
+const dataPackOffer: PortalCoinOffer = {
+  offerRef: "offer_data_pack",
+  offerVersionRef: "offer_version_data_pack",
+  category: "data_pack",
+  title: { zh: "服务端流量包", en: "Server data pack" },
+  summary: { zh: "服务端流量包说明", en: "Server data-pack summary" },
+  importantNotices: {
+    zh: ["以订单交付结果为准"],
+    en: ["The Order delivery result is authoritative"]
+  },
+  referencePrice: { currency: "CNY", amountMinor: 990 },
+  acceptedCoinTypes: ["paid_coins"],
+  delivery: {
+    kind: "data_pack",
+    durationDays: null,
+    monthlyTrafficGb: null,
+    trafficGb: 50,
+    neverExpires: true,
+    discountBasisPoints: null
+  }
+};
+
+const availableQuote: PortalCoinQuote = {
+  quoteRef: "quote_plan_basic",
+  offer: planOffer,
+  amountUnits: 42,
+  appliedDiscountBasisPoints: 0,
+  purchaseAvailability: "available",
+  shortfallUnits: 0,
+  allocation: [
+    { coinType: "paid_coins", amountUnits: 40 },
+    { coinType: "reward_coins", amountUnits: 2 }
+  ],
+  balances: {
+    before: {
+      bonusCoins: 0,
+      paidCoins: 50,
+      rewardCoins: 2,
+      heldCoins: 0
+    },
+    after: {
+      bonusCoins: 0,
+      paidCoins: 10,
+      rewardCoins: 0,
+      heldCoins: 42
+    }
+  },
+  expiresAt: "2026-07-27T20:00:00.000Z"
+};
+
+const insufficientQuote: PortalCoinQuote = {
+  ...availableQuote,
+  quoteRef: "quote_plan_insufficient",
+  amountUnits: 15,
+  purchaseAvailability: "insufficient_balance",
+  shortfallUnits: 5,
+  allocation: [],
+  balances: {
+    before: {
+      bonusCoins: 0,
+      paidCoins: 10,
+      rewardCoins: 0,
+      heldCoins: 0
+    },
+    after: {
+      bonusCoins: 0,
+      paidCoins: 10,
+      rewardCoins: 0,
+      heldCoins: 0
+    }
+  }
+};
+
+const heldOrder: PortalCoinOrder = {
+  orderRef: "order_plan_basic",
+  offer: planOffer,
+  amountUnits: 42,
+  allocation: availableQuote.allocation,
+  paymentStatus: "held",
+  cancelUntil: "2026-07-27T20:05:00.000Z",
+  fulfillment: { status: "not_requested", safeCode: null },
+  createdAt: "2026-07-27T19:55:00.000Z",
+  updatedAt: "2026-07-27T19:55:00.000Z"
+};
+
+const cancelledOrder: PortalCoinOrder = {
+  ...heldOrder,
+  paymentStatus: "cancelled",
+  updatedAt: "2026-07-27T19:56:00.000Z"
+};
+
+const deliveredOrder: PortalCoinOrder = {
+  ...heldOrder,
+  paymentStatus: "captured",
+  fulfillment: { status: "delivered", safeCode: null },
+  updatedAt: "2026-07-27T19:57:00.000Z"
+};
+
+function deferred<T>() {
+  let resolvePromise!: (value: T) => void;
+  let rejectPromise!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return {
+    promise,
+    resolve: resolvePromise,
+    reject: rejectPromise
+  };
+}
+
+function commerceClient(
+  overrides: Partial<PortalCoinCommerceClient> = {}
+): PortalCoinCommerceClient {
+  return {
+    listOffers: vi.fn(async () => [planOffer, dataPackOffer]),
+    getOffer: vi.fn(async ({ offerRef }) => (
+      offerRef === dataPackOffer.offerRef ? dataPackOffer : planOffer
+    )),
+    previewCheckout: vi.fn(),
+    createOrder: vi.fn(),
+    getOrder: vi.fn(),
+    cancelOrder: vi.fn(),
+    ...overrides
+  };
+}
+
+function portalClientWithCommerce(
+  commerce: PortalCoinCommerceClient
+): UserPortalClient {
+  return {
+    ...createLocalUserPortalClient(),
+    commerce
+  };
+}
+
+async function openMarketplace(client: UserPortalClient) {
+  render(createElement(UserPortalPage, {
+    initialSession: session,
+    portalClient: client
+  }));
+  const navigation = await screen.findByRole("navigation", {
+    name: "用户中心导航"
+  });
+  fireEvent.click(within(navigation).getByRole("button", { name: "商城" }));
+}
+
+async function loginAndOpenMarketplace(client: UserPortalClient) {
+  render(createElement(UserPortalPage, { portalClient: client }));
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "登录" })).not.toBeDisabled();
+  });
+  const challenge = screen.getByLabelText("防机器人校验") as HTMLInputElement;
+  const match = challenge.placeholder.match(
+    /^(\d+)\s+\+\s+(\d+)\s+=\s+\?$/
+  );
+  if (!match) {
+    throw new Error("unexpected local human-challenge prompt");
+  }
+  fireEvent.change(screen.getByLabelText("电子邮箱"), {
+    target: { value: "user_marketplace" }
+  });
+  fireEvent.change(screen.getByLabelText("密码"), {
+    target: { value: "user-password" }
+  });
+  fireEvent.change(challenge, {
+    target: { value: String(Number(match[1]) + Number(match[2])) }
+  });
+  fireEvent.click(screen.getByRole("button", { name: "登录" }));
+  const navigation = await screen.findByRole("navigation", {
+    name: "用户中心导航"
+  });
+  fireEvent.click(within(navigation).getByRole("button", { name: "商城" }));
+}
+
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+  vi.restoreAllMocks();
+});
+
+describe("Portal server-backed Marketplace", () => {
+  test("loads the exact authenticated catalog and groups server Offers", async () => {
+    const commerce = commerceClient();
+    await openMarketplace(portalClientWithCommerce(commerce));
+
+    await waitFor(() => {
+      expect(commerce.listOffers).toHaveBeenCalledWith({
+        sessionRef: "portal_session_marketplace"
+      });
+    });
+    expect(screen.getByRole("heading", { name: "套餐" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "流量包" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", {
+      name: "服务端基础套餐"
+    })).toBeInTheDocument();
+    expect(screen.getByRole("heading", {
+      name: "服务端流量包"
+    })).toBeInTheDocument();
+  });
+
+  test("keeps one Portal shell and renders only server facts without a catalog Coins price", async () => {
+    await openMarketplace(portalClientWithCommerce(commerceClient()));
+
+    expect(document.querySelectorAll(".portal-v2-shell")).toHaveLength(1);
+    expect(screen.getAllByRole("navigation", {
+      name: "用户中心导航"
+    })).toHaveLength(1);
+    expect(screen.queryByRole("heading", {
+      name: "平台服务商城"
+    })).not.toBeInTheDocument();
+    expect(screen.queryByText("商品")).not.toBeInTheDocument();
+    expect(screen.queryByText("增值项")).not.toBeInTheDocument();
+    expect(screen.queryByText("购买暂未开放")).not.toBeInTheDocument();
+    expect(screen.queryByText(/购物车|Cart|数量|Quantity/)).not.toBeInTheDocument();
+
+    const planCard = (await screen.findByRole("heading", {
+      name: "服务端基础套餐"
+    })).closest("article");
+    expect(planCard).not.toBeNull();
+    expect(within(planCard as HTMLElement).getByText("服务端套餐说明"))
+      .toBeInTheDocument();
+    expect(within(planCard as HTMLElement).getByText("30 天 · 每月 100 GB"))
+      .toBeInTheDocument();
+    expect(within(planCard as HTMLElement).getByText("参考价").parentElement)
+      .toHaveTextContent("参考价CNY 15.67");
+    expect(within(planCard as HTMLElement).getByText("按订单状态交付"))
+      .toBeInTheDocument();
+    expect(within(planCard as HTMLElement).getByText(/paid_coins/))
+      .toBeInTheDocument();
+    expect(within(planCard as HTMLElement).queryByText(/42 Coins/))
+      .not.toBeInTheDocument();
+    expect(within(planCard as HTMLElement).getByRole("button", {
+      name: "查看详情"
+    })).toBeInTheDocument();
+    expect(within(planCard as HTMLElement).getByRole("button", {
+      name: "使用 Coins 购买"
+    })).toBeInTheDocument();
+  });
+
+  test("shows honest loading, empty, unavailable, auth-error, and retry states", async () => {
+    const pendingCatalog = deferred<PortalCoinOffer[]>();
+    const loadingCommerce = commerceClient({
+      listOffers: vi.fn(() => pendingCatalog.promise)
+    });
+    const loadingView = render(createElement(UserPortalPage, {
+      initialSession: session,
+      portalClient: portalClientWithCommerce(loadingCommerce)
+    }));
+    const loadingNavigation = await screen.findByRole("navigation", {
+      name: "用户中心导航"
+    });
+    fireEvent.click(within(loadingNavigation).getByRole("button", {
+      name: "商城"
+    }));
+    expect(screen.getByRole("status")).toHaveTextContent("正在加载商城目录");
+    await act(async () => {
+      pendingCatalog.resolve([]);
+      await pendingCatalog.promise;
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "当前没有可用商品"
+    );
+    loadingView.unmount();
+
+    await openMarketplace(createLocalUserPortalClient());
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "当前客户端未提供服务端商城能力"
+    );
+    expect(screen.queryByText("服务端基础套餐")).not.toBeInTheDocument();
+    cleanup();
+
+    const authList = vi.fn()
+      .mockRejectedValue(new PortalCoinCommerceClientError(
+        "commerce_session_invalid",
+        false
+      ));
+    await openMarketplace(portalClientWithCommerce(commerceClient({
+      listOffers: authList
+    })));
+    const authAlert = await screen.findByRole("alert");
+    expect(authAlert).toHaveTextContent("商城会话已失效，请重新登录");
+    expect(within(authAlert).queryByRole("button", { name: "重试" }))
+      .not.toBeInTheDocument();
+    cleanup();
+
+    const failingList = vi.fn()
+      .mockRejectedValueOnce(new PortalCoinCommerceClientError(
+        "commerce_unavailable",
+        true
+      ))
+      .mockResolvedValueOnce([planOffer]);
+    const failingCommerce = commerceClient({ listOffers: failingList });
+    await openMarketplace(portalClientWithCommerce(failingCommerce));
+    const retryAlert = await screen.findByRole("alert");
+    expect(retryAlert).toHaveTextContent("Coins 购买流程暂时不可用");
+    fireEvent.click(within(retryAlert).getByRole("button", { name: "重试" }));
+    expect(await screen.findByRole("heading", {
+      name: "服务端基础套餐"
+    })).toBeInTheDocument();
+    expect(failingList).toHaveBeenCalledTimes(2);
+  });
+
+  test("opens details and Quote confirmation with one dialog and restores each card origin", async () => {
+    const commerce = commerceClient({
+      previewCheckout: vi.fn(async () => availableQuote)
+    });
+    await openMarketplace(portalClientWithCommerce(commerce));
+    const planCard = (await screen.findByRole("heading", {
+      name: "服务端基础套餐"
+    })).closest("article") as HTMLElement;
+    const details = within(planCard).getByRole("button", {
+      name: "查看详情"
+    });
+    const purchase = within(planCard).getByRole("button", {
+      name: "使用 Coins 购买"
+    });
+
+    fireEvent.click(details);
+    const detailDialog = await screen.findByRole("dialog", {
+      name: "服务端基础套餐"
+    });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(commerce.getOffer).toHaveBeenCalledWith({
+      sessionRef: "portal_session_marketplace",
+      offerRef: "offer_plan_basic"
+    });
+    fireEvent.keyDown(detailDialog, { key: "Escape" });
+    await waitFor(() => expect(details).toHaveFocus());
+
+    fireEvent.click(details);
+    const detailToQuoteDialog = await screen.findByRole("dialog", {
+      name: "服务端基础套餐"
+    });
+    fireEvent.click(within(detailToQuoteDialog).getByRole("button", {
+      name: "预览 Coins 结算"
+    }));
+    const quoteFromDetails = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
+    });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    fireEvent.click(within(quoteFromDetails).getByRole("button", {
+      name: "关闭"
+    }));
+    await waitFor(() => expect(details).toHaveFocus());
+
+    fireEvent.click(purchase);
+    const purchaseDialog = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
+    });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(commerce.previewCheckout).toHaveBeenCalledWith({
+      sessionRef: "portal_session_marketplace",
+      offerRef: "offer_plan_basic"
+    });
+    expect(within(purchaseDialog).getByText("42 Coins"))
+      .toBeInTheDocument();
+    expect(within(purchaseDialog).getByText(/之前: 52/))
+      .toBeInTheDocument();
+    fireEvent.click(within(purchaseDialog).getByRole("button", {
+      name: "关闭"
+    }));
+    await waitFor(() => expect(purchase).toHaveFocus());
+  });
+
+  test("uses accessible loading and safe failure surfaces without mounting a blank dialog", async () => {
+    const detail = deferred<PortalCoinOffer>();
+    const preview = deferred<PortalCoinQuote>();
+    const commerce = commerceClient({
+      getOffer: vi.fn(() => detail.promise),
+      previewCheckout: vi.fn(() => preview.promise)
+    });
+    await openMarketplace(portalClientWithCommerce(commerce));
+    const planCard = (await screen.findByRole("heading", {
+      name: "服务端基础套餐"
+    })).closest("article") as HTMLElement;
+    const purchaseAction = within(planCard).getByRole("button", {
+      name: "使用 Coins 购买"
+    });
+    fireEvent.click(purchaseAction);
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "正在加载商品详情"
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await act(async () => {
+      detail.resolve(planOffer);
+      await detail.promise;
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "正在获取服务端报价"
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await act(async () => {
+      preview.reject(new PortalCoinCommerceClientError(
+        "commerce_unavailable",
+        true
+      ));
+      await preview.promise.catch(() => undefined);
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Coins 购买流程暂时不可用"
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  test("does not let an older purchase continuation upgrade a newer product detail", async () => {
+    const oldPlanDetail = deferred<PortalCoinOffer>();
+    const currentDataPackDetail = deferred<PortalCoinOffer>();
+    const previewCheckout = vi.fn(async () => ({
+      ...availableQuote,
+      offer: dataPackOffer
+    }));
+    const commerce = commerceClient({
+      getOffer: vi.fn(({ offerRef }) => (
+        offerRef === planOffer.offerRef
+          ? oldPlanDetail.promise
+          : currentDataPackDetail.promise
+      )),
+      previewCheckout
+    });
+    await openMarketplace(portalClientWithCommerce(commerce));
+    const planCard = (await screen.findByRole("heading", {
+      name: "服务端基础套餐"
+    })).closest("article") as HTMLElement;
+    const dataPackCard = screen.getByRole("heading", {
+      name: "服务端流量包"
+    }).closest("article") as HTMLElement;
+    const oldPurchase = within(planCard).getByRole("button", {
+      name: "使用 Coins 购买"
+    });
+    const currentDetails = within(dataPackCard).getByRole("button", {
+      name: "查看详情"
+    });
+
+    await act(async () => {
+      oldPurchase.click();
+      currentDetails.click();
+    });
+    await act(async () => {
+      currentDataPackDetail.resolve(dataPackOffer);
+      await currentDataPackDetail.promise;
+    });
+    expect(await screen.findByRole("dialog", {
+      name: "服务端流量包"
+    })).toBeInTheDocument();
+    await act(async () => {
+      oldPlanDetail.resolve(planOffer);
+      await oldPlanDetail.promise;
+    });
+
+    await waitFor(() => expect(previewCheckout).not.toHaveBeenCalled());
+    expect(screen.getByRole("dialog", {
+      name: "服务端流量包"
+    })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", {
+      name: "确认 Coins 购买"
+    })).not.toBeInTheDocument();
+  });
+
+  test("blocks repeated confirmation after a non-retryable create failure", async () => {
+    const createOrder = vi.fn().mockRejectedValue(
+      new PortalCoinCommerceClientError("commerce_session_invalid", false)
+    );
+    const commerce = commerceClient({
+      previewCheckout: vi.fn(async () => availableQuote),
+      createOrder
+    });
+    await openMarketplace(portalClientWithCommerce(commerce));
+    const planCard = (await screen.findByRole("heading", {
+      name: "服务端基础套餐"
+    })).closest("article") as HTMLElement;
+    fireEvent.click(within(planCard).getByRole("button", {
+      name: "使用 Coins 购买"
+    }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
+    });
+    const confirm = within(dialog).getByRole("button", {
+      name: "确认购买"
+    });
+    fireEvent.click(confirm);
+
+    expect(await within(dialog).findByText("会话已失效，请重新登录。"))
+      .toBeInTheDocument();
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("moves from details to Quote, explicit confirm, held status, cancel, and GET readback", async () => {
+    const commerce = commerceClient({
+      previewCheckout: vi.fn(async () => availableQuote),
+      createOrder: vi.fn(async () => heldOrder),
+      cancelOrder: vi.fn(async () => heldOrder),
+      getOrder: vi.fn(async () => cancelledOrder)
+    });
+    await openMarketplace(portalClientWithCommerce(commerce));
+    const planCard = (await screen.findByRole("heading", {
+      name: "服务端基础套餐"
+    })).closest("article") as HTMLElement;
+    fireEvent.click(within(planCard).getByRole("button", {
+      name: "查看详情"
+    }));
+    const detailDialog = await screen.findByRole("dialog", {
+      name: "服务端基础套餐"
+    });
+    fireEvent.click(within(detailDialog).getByRole("button", {
+      name: "预览 Coins 结算"
+    }));
+    const quoteDialog = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
+    });
+    fireEvent.click(within(quoteDialog).getByRole("button", {
+      name: "确认购买"
+    }));
+
+    expect(await within(quoteDialog).findByText("Coins 已预留"))
+      .toHaveAttribute("aria-live", "polite");
+    expect(quoteDialog.querySelector(".portal-coins-status-spinner"))
+      .toHaveAttribute("aria-hidden", "true");
+    expect(commerce.createOrder).toHaveBeenCalledWith({
+      sessionRef: "portal_session_marketplace",
+      quoteRef: "quote_plan_basic",
+      idempotencyKey: expect.any(String)
+    });
+    fireEvent.click(within(quoteDialog).getByRole("button", {
+      name: "取消订单"
+    }));
+    expect(await within(quoteDialog).findByText(
+      "订单已取消，预留已释放"
+    )).toBeInTheDocument();
+    expect(commerce.cancelOrder).toHaveBeenCalledWith({
+      sessionRef: "portal_session_marketplace",
+      orderRef: "order_plan_basic",
+      idempotencyKey: expect.any(String)
+    });
+    expect(commerce.getOrder).toHaveBeenCalledWith({
+      sessionRef: "portal_session_marketplace",
+      orderRef: "order_plan_basic"
+    });
+  });
+
+  test("reopens a non-terminal Order instead of discarding it for another product", async () => {
+    const commerce = commerceClient({
+      previewCheckout: vi.fn(async () => availableQuote),
+      createOrder: vi.fn(async () => heldOrder),
+      getOrder: vi.fn(async () => heldOrder)
+    });
+    await openMarketplace(portalClientWithCommerce(commerce));
+    const planCard = (await screen.findByRole("heading", {
+      name: "服务端基础套餐"
+    })).closest("article") as HTMLElement;
+    const purchaseAction = within(planCard).getByRole("button", {
+      name: "使用 Coins 购买"
+    });
+    fireEvent.click(purchaseAction);
+    const orderDialog = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
+    });
+    fireEvent.click(within(orderDialog).getByRole("button", {
+      name: "确认购买"
+    }));
+    expect(await within(orderDialog).findByText("Coins 已预留"))
+      .toBeInTheDocument();
+    fireEvent.click(within(orderDialog).getByRole("button", {
+      name: "关闭"
+    }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    const dataPackCard = screen.getByRole("heading", {
+      name: "服务端流量包"
+    }).closest("article") as HTMLElement;
+    fireEvent.click(within(dataPackCard).getByRole("button", {
+      name: "使用 Coins 购买"
+    }));
+
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
+    });
+    expect(within(reopenedDialog).getByText("Coins 已预留"))
+      .toBeInTheDocument();
+    expect(commerce.getOffer).toHaveBeenCalledTimes(1);
+    expect(commerce.previewCheckout).toHaveBeenCalledTimes(1);
+    expect(commerce.createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("uses GET refresh for captured delivery and never invents success", async () => {
+    const commerce = commerceClient({
+      previewCheckout: vi.fn(async () => availableQuote),
+      createOrder: vi.fn(async () => heldOrder),
+      getOrder: vi.fn(async () => deliveredOrder)
+    });
+    await openMarketplace(portalClientWithCommerce(commerce));
+    const planCard = (await screen.findByRole("heading", {
+      name: "服务端基础套餐"
+    })).closest("article") as HTMLElement;
+    fireEvent.click(within(planCard).getByRole("button", {
+      name: "使用 Coins 购买"
+    }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
+    });
+    fireEvent.click(within(dialog).getByRole("button", {
+      name: "确认购买"
+    }));
+    expect(await within(dialog).findByText("Coins 已预留"))
+      .toBeInTheDocument();
+    expect(within(dialog).queryByText("购买和交付已完成"))
+      .not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", {
+      name: "刷新订单"
+    }));
+    expect(await within(dialog).findByText("购买和交付已完成"))
+      .toBeInTheDocument();
+  });
+
+  test("opens the existing non-executable Recharge dialog explicitly without overlapping modals", async () => {
+    const commerce = commerceClient({
+      previewCheckout: vi.fn(async () => insufficientQuote)
+    });
+    await openMarketplace(portalClientWithCommerce(commerce));
+    const planCard = (await screen.findByRole("heading", {
+      name: "服务端基础套餐"
+    })).closest("article") as HTMLElement;
+    const purchaseAction = within(planCard).getByRole("button", {
+      name: "使用 Coins 购买"
+    });
+    fireEvent.click(purchaseAction);
+    const coinsDialog = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
+    });
+    expect(within(coinsDialog).getByRole("button", {
+      name: "确认购买"
+    })).toBeDisabled();
+    fireEvent.click(within(coinsDialog).getByRole("button", {
+      name: "打开充值"
+    }));
+
+    const recharge = await screen.findByRole("dialog", {
+      name: "充值 Coins"
+    });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(within(recharge).getByRole("button", {
+      name: "选择 10 Coins"
+    })).toHaveFocus();
+    expect(within(recharge).getByText(
+      "本阶段不会创建订单或发起支付。",
+      { exact: false }
+    )).toBeInTheDocument();
+    expect(within(recharge).getByRole("button", {
+      name: "支付通道将在下一阶段接入"
+    })).toBeDisabled();
+    expect(commerce.createOrder).not.toHaveBeenCalled();
+    fireEvent.click(within(recharge).getByRole("button", {
+      name: "关闭"
+    }));
+    await waitFor(() => expect(purchaseAction).toHaveFocus());
+  });
+
+  test("keeps bilingual capability parity and the unknown Wallet balance boundary", async () => {
+    await openMarketplace(portalClientWithCommerce(commerceClient()));
+    expect(await screen.findByText("Coins · --")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "EN" }));
+
+    expect(await screen.findByRole("heading", { name: "Plans" }))
+      .toBeInTheDocument();
+    const englishCard = screen.getByRole("heading", {
+      name: "Server basic plan"
+    }).closest("article") as HTMLElement;
+    expect(within(englishCard).getByText("Server plan summary"))
+      .toBeInTheDocument();
+    expect(within(englishCard).getByText("Reference price").parentElement)
+      .toHaveTextContent("Reference priceCNY 15.67");
+    expect(within(englishCard).getByRole("button", {
+      name: "Details"
+    })).toBeInTheDocument();
+    expect(within(englishCard).getByRole("button", {
+      name: "Buy with Coins"
+    })).toBeInTheDocument();
+    expect(screen.getByText("Coins · --")).toBeInTheDocument();
+  });
+
+  test("latest session catalog wins and logout ignores the old catalog", async () => {
+    const first = deferred<PortalCoinOffer[]>();
+    const second = deferred<PortalCoinOffer[]>();
+    const listOffers = vi.fn(({ sessionRef }: { sessionRef: string }) => (
+      sessionRef === "portal_session_first" ? first.promise : second.promise
+    ));
+    const commerce = commerceClient({ listOffers });
+    const view = render(createElement(MarketplacePanel, {
+      commerceClient: commerce,
+      locale: "en",
+      onOpenRecharge: vi.fn(),
+      sessionRef: "portal_session_first",
+      theme: "light"
+    }));
+    view.rerender(createElement(MarketplacePanel, {
+      commerceClient: commerce,
+      locale: "en",
+      onOpenRecharge: vi.fn(),
+      sessionRef: "portal_session_second",
+      theme: "light"
+    }));
+    await act(async () => {
+      first.resolve([planOffer]);
+      second.resolve([dataPackOffer]);
+      await Promise.all([first.promise, second.promise]);
+    });
+    expect(screen.queryByRole("heading", {
+      name: "Server basic plan"
+    })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", {
+      name: "Server data pack"
+    })).toBeInTheDocument();
+    view.unmount();
+
+    const oldCatalog = deferred<PortalCoinOffer[]>();
+    const oldCommerce = commerceClient({
+      listOffers: vi.fn(() => oldCatalog.promise)
+    });
+    const oldClient = portalClientWithCommerce(oldCommerce);
+    oldClient.authenticate = vi.fn(async () => session);
+    await loginAndOpenMarketplace(oldClient);
+    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    await act(async () => {
+      oldCatalog.resolve([planOffer]);
+      await oldCatalog.promise;
+    });
+    expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
+    expect(screen.queryByText("服务端基础套餐")).not.toBeInTheDocument();
+  });
+
+  test("session replacement clears a pending product surface and ignores its old detail", async () => {
+    const oldDetail = deferred<PortalCoinOffer>();
+    const getOffer = vi.fn(({
+      sessionRef,
+      offerRef
+    }: {
+      sessionRef: string;
+      offerRef: string;
+    }) => (
+      sessionRef === "portal_session_first"
+        ? oldDetail.promise
+        : Promise.resolve(
+            offerRef === dataPackOffer.offerRef ? dataPackOffer : planOffer
+          )
+    ));
+    const commerce = commerceClient({
+      getOffer,
+      listOffers: vi.fn(async ({ sessionRef }) => (
+        sessionRef === "portal_session_first"
+          ? [planOffer]
+          : [dataPackOffer]
+      ))
+    });
+    const view = render(createElement(MarketplacePanel, {
+      commerceClient: commerce,
+      locale: "en",
+      onOpenRecharge: vi.fn(),
+      sessionRef: "portal_session_first",
+      theme: "light"
+    }));
+    const oldCard = (await screen.findByRole("heading", {
+      name: "Server basic plan"
+    })).closest("article") as HTMLElement;
+    fireEvent.click(within(oldCard).getByRole("button", {
+      name: "Details"
+    }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Loading product details"
+    );
+
+    view.rerender(createElement(MarketplacePanel, {
+      commerceClient: commerce,
+      locale: "en",
+      onOpenRecharge: vi.fn(),
+      sessionRef: "portal_session_second",
+      theme: "light"
+    }));
+    expect(await screen.findByRole("heading", {
+      name: "Server data pack"
+    })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector(".portal-coins-dialog-theme"))
+        .not.toBeInTheDocument();
+    });
+    await act(async () => {
+      oldDetail.resolve(planOffer);
+      await oldDetail.promise;
+    });
+    expect(screen.queryByRole("dialog", {
+      name: "Server basic plan"
+    })).not.toBeInTheDocument();
+
+    const currentCard = screen.getByRole("heading", {
+      name: "Server data pack"
+    }).closest("article") as HTMLElement;
+    fireEvent.click(within(currentCard).getByRole("button", {
+      name: "Details"
+    }));
+    expect(await screen.findByRole("dialog", {
+      name: "Server data pack"
+    })).toBeInTheDocument();
+    expect(getOffer).toHaveBeenLastCalledWith({
+      sessionRef: "portal_session_second",
+      offerRef: "offer_data_pack"
+    });
+  });
+
+  test("Commerce CSS is Portal-scoped and themes sibling dialogs responsively", () => {
+    const css = readFileSync(resolve(
+      process.cwd(),
+      "src/styles/portal-static-preserve/user-portal-commerce.css"
+    ), "utf8");
+    expect(css).toContain(
+      '.portal-coins-dialog-theme[data-portal-theme="light"]'
+    );
+    expect(css).toContain(
+      '.portal-coins-dialog-theme[data-portal-theme="dark"]'
+    );
+    expect(css).toContain(".portal-coins-dialog-backdrop");
+    expect(css).not.toContain(
+      ".portal-v2-shell .portal-coins-dialog-backdrop"
+    );
+    expect(css).toContain("@media (max-width: 720px)");
+    expect(css).toContain("max-height: calc(100dvh");
+    expect(css).toContain("env(safe-area-inset-bottom)");
+    expect(css).toContain("overflow-y: auto");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(css).toContain(".portal-coins-dialog button:focus-visible");
+  });
+});

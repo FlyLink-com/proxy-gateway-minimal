@@ -570,7 +570,11 @@ function openPortalProfile() {
 }
 
 function expectMarketplaceWithoutLegacyCheckout(client: UserPortalClient) {
-  expect(screen.getByRole("heading", { name: "平台服务商城" })).not.toBeNull();
+  expect(screen.getByRole("region", { name: "商城目录" })).not.toBeNull();
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "当前客户端未提供服务端商城能力"
+  );
+  expect(screen.queryByRole("heading", { name: "平台服务商城" })).toBeNull();
   expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
   expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
   expect(client.createPaymentCheckout).not.toHaveBeenCalled();
@@ -1995,12 +1999,13 @@ describe("user portal product surface", () => {
     expect(walletButton.closest(".portal-v2-primary-actions")).toBeNull();
 
     fireEvent.click(within(portalNav).getByRole("button", { name: "商城" }));
-    expect(await screen.findByRole("heading", { name: "平台服务商城" })).not.toBeNull();
-    expect(screen.getByText("商品")).not.toBeNull();
-    expect(screen.getByText("套餐")).not.toBeNull();
-    expect(screen.getByText("流量包")).not.toBeNull();
-    expect(screen.getByText("增值项")).not.toBeNull();
-    expect((screen.getByRole("button", { name: "购买暂未开放" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(await screen.findByRole("region", { name: "商城目录" })).not.toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "当前客户端未提供服务端商城能力"
+    );
+    expect(screen.queryByText("商品")).toBeNull();
+    expect(screen.queryByText("增值项")).toBeNull();
+    expect(screen.queryByRole("button", { name: "购买暂未开放" })).toBeNull();
   });
 
   test("shows recharge denominations in the disabled Coins wallet", async () => {
@@ -3112,13 +3117,11 @@ describe("user portal product surface", () => {
     openPortalStartGuide();
     fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
 
-    expect(screen.getByRole("heading", { name: "平台服务商城" })).not.toBeNull();
+    expectMarketplaceWithoutLegacyCheckout(client);
     expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
     expect(screen.queryByRole("heading", {
       name: "你要在哪台设备上使用？"
     })).toBeNull();
-    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
-    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("lets a registration trial order start setup without forcing a paid plan", async () => {

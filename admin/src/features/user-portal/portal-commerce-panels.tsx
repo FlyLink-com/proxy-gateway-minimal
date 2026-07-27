@@ -1,4 +1,21 @@
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent
+} from "react";
 import { ModalFrame } from "../../components/modal-frame";
+import {
+  CoinsPurchaseDialog,
+  isPortalCoinOrderTerminal,
+  PortalCoinCommerceClientError,
+  ProductDetailDialog,
+  useCoinsPurchaseFlow,
+  type PortalCoinCommerceClientErrorCode,
+  type PortalCoinCommerceClient,
+  type PortalCoinOffer
+} from "./commerce";
 
 export type PortalCommerceLocale = "zh" | "en";
 
@@ -12,6 +29,7 @@ export type RechargeDenomination =
   (typeof RECHARGE_DENOMINATIONS)[number];
 
 export type RechargeDenominationListProps = {
+  autoFocusFirst?: boolean;
   locale: PortalCommerceLocale;
   mode: "dialog-selectable" | "wallet-disabled";
   selectedAmount?: RechargeDenomination | null;
@@ -23,6 +41,7 @@ function isChinese(locale: PortalCommerceLocale) {
 }
 
 export function RechargeDenominationList({
+  autoFocusFirst = false,
   locale,
   mode,
   selectedAmount = null,
@@ -40,6 +59,11 @@ export function RechargeDenominationList({
         <li key={amount}>
           <button
             type="button"
+            autoFocus={
+              autoFocusFirst
+              && selectable
+              && amount === RECHARGE_DENOMINATIONS[0]
+            }
             disabled={!selectable}
             aria-pressed={selectable ? selectedAmount === amount : undefined}
             aria-label={
@@ -100,6 +124,7 @@ export function RechargeDialog({
             : "Choose a Coins denomination. This stage does not create an order or start payment."}
         </p>
         <RechargeDenominationList
+          autoFocusFirst
           locale={locale}
           mode="dialog-selectable"
           selectedAmount={selectedAmount}
@@ -110,35 +135,498 @@ export function RechargeDialog({
   );
 }
 
-export function MarketplacePanel({ locale }: PanelProps) {
+type MarketplacePanelProps = PanelProps & {
+  commerceClient: PortalCoinCommerceClient | null;
+  onOpenRecharge: (returnFocus?: () => void) => void;
+  sessionRef: string | null;
+  theme: "light" | "dark";
+};
+
+type MarketplaceCatalogState =
+  | { status: "loading"; offers: PortalCoinOffer[] }
+  | { status: "ready"; offers: PortalCoinOffer[] }
+  | { status: "unavailable"; offers: PortalCoinOffer[] }
+  | {
+      status: "error";
+      offers: PortalCoinOffer[];
+      errorCode: PortalCoinCommerceClientErrorCode;
+      retryable: boolean;
+    };
+
+type MarketplaceProductIntent = {
+  mode: "detail" | "purchase";
+  offerRef: string;
+};
+
+function offerTitle(offer: PortalCoinOffer, locale: PortalCommerceLocale) {
+  return locale === "zh" ? offer.title.zh : offer.title.en;
+}
+
+function offerSummary(offer: PortalCoinOffer, locale: PortalCommerceLocale) {
+  return locale === "zh" ? offer.summary.zh : offer.summary.en;
+}
+
+function referencePrice(offer: PortalCoinOffer) {
+  return `CNY ${(offer.referencePrice.amountMinor / 100).toFixed(2)}`;
+}
+
+function safeCommerceFailure(error: unknown): {
+  errorCode: PortalCoinCommerceClientErrorCode;
+  retryable: boolean;
+} {
+  if (error instanceof PortalCoinCommerceClientError) {
+    return {
+      errorCode: error.code,
+      retryable: error.retryable
+    };
+  }
+  return {
+    errorCode: "commerce_request_failed",
+    retryable: true
+  };
+}
+
+function safeCommerceErrorText(
+  errorCode: PortalCoinCommerceClientErrorCode,
+  locale: PortalCommerceLocale
+) {
   const zh = isChinese(locale);
-  const categories = zh ? ["商品", "套餐", "流量包", "增值项"] : ["Products", "Plans", "Data packs", "Add-ons"];
+  if (errorCode === "commerce_session_invalid") {
+    return zh
+      ? "商城会话已失效，请重新登录。"
+      : "The Marketplace session is no longer valid. Sign in again.";
+  }
+  if (errorCode === "wallet_not_active") {
+    return zh
+      ? "Coins 钱包尚未启用。"
+      : "The Coins wallet is not active.";
+  }
+  if (errorCode === "insufficient_coins") {
+    return zh
+      ? "Coins 余额不足，请查看服务端报价。"
+      : "The Coins balance is insufficient. Review the server Quote.";
+  }
+  if (errorCode === "quote_expired" || errorCode === "quote_stale") {
+    return zh
+      ? "服务端报价已失效，请重新预览。"
+      : "The server Quote is no longer current. Preview again.";
+  }
+  if (errorCode === "reconciliation_required") {
+    return zh
+      ? "订单需要人工核对，尚未完成。"
+      : "The Order needs support review and is not complete.";
+  }
+  return zh
+    ? "Coins 购买流程暂时不可用，请安全重试。"
+    : "The Coins purchase flow is temporarily unavailable. Retry safely.";
+}
+
+function MarketplaceOfferCard({
+  busy,
+  locale,
+  offer,
+  onDetails,
+  onPurchase
+}: {
+  busy: boolean;
+  locale: PortalCommerceLocale;
+  offer: PortalCoinOffer;
+  onDetails: (event: MouseEvent<HTMLButtonElement>) => void;
+  onPurchase: (event: MouseEvent<HTMLButtonElement>) => void;
+}) {
+  const zh = isChinese(locale);
+  const notices = zh
+    ? offer.importantNotices.zh
+    : offer.importantNotices.en;
+  const delivery = offer.delivery.kind === "subscription_plan"
+    ? zh
+      ? `${offer.delivery.durationDays} 天 · 每月 ${offer.delivery.monthlyTrafficGb} GB`
+      : `${offer.delivery.durationDays} days · ${offer.delivery.monthlyTrafficGb} GB monthly`
+    : zh
+      ? `${offer.delivery.trafficGb} GB · 永不过期`
+      : `${offer.delivery.trafficGb} GB · never expires`;
 
   return (
-    <section className="portal-commerce-layout portal-commerce-layout--marketplace" aria-labelledby="portal-commerce-marketplace-heading">
-      <header className="portal-commerce-layout__header">
-        <h2 id="portal-commerce-marketplace-heading">{zh ? "平台服务商城" : "Platform service marketplace"}</h2>
-        <p>
-          {zh
-            ? "商城负责展示平台服务类别；具体可用目录将由服务确认。"
-            : "The marketplace owns the display of platform service categories; catalog availability will be confirmed by the service."}
+    <li className="portal-marketplace-card">
+      <article>
+        <h3>{offerTitle(offer, locale)}</h3>
+        <p>{offerSummary(offer, locale)}</p>
+        <dl className="portal-marketplace-card__facts">
+          <div>
+            <dt>{zh ? "交付" : "Delivery"}</dt>
+            <dd>{delivery}</dd>
+          </div>
+          <div>
+            <dt>{zh ? "参考价" : "Reference price"}</dt>
+            <dd>{referencePrice(offer)}</dd>
+          </div>
+          <div>
+            <dt>{zh ? "接受的 Coins" : "Accepted Coins"}</dt>
+            <dd>{offer.acceptedCoinTypes.join(", ")}</dd>
+          </div>
+        </dl>
+        {notices.length > 0 ? (
+          <ul className="portal-marketplace-card__notices">
+            {notices.map((notice) => <li key={notice}>{notice}</li>)}
+          </ul>
+        ) : null}
+        <div className="portal-marketplace-card__actions">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onDetails}
+          >
+            {zh ? "查看详情" : "Details"}
+          </button>
+          <button
+            className="portal-marketplace-card__purchase"
+            type="button"
+            disabled={busy}
+            onClick={onPurchase}
+          >
+            {zh ? "使用 Coins 购买" : "Buy with Coins"}
+          </button>
+        </div>
+      </article>
+    </li>
+  );
+}
+
+export function MarketplacePanel({
+  commerceClient,
+  locale,
+  onOpenRecharge,
+  sessionRef,
+  theme
+}: MarketplacePanelProps) {
+  const zh = isChinese(locale);
+  const generationRef = useRef(0);
+  const [refreshRevision, setRefreshRevision] = useState(0);
+  const [catalog, setCatalog] = useState<MarketplaceCatalogState>(() => (
+    commerceClient && sessionRef
+      ? { status: "loading", offers: [] }
+      : { status: "unavailable", offers: [] }
+  ));
+  const [productIntent, setProductIntent] =
+    useState<MarketplaceProductIntent | null>(null);
+  const [dialogVisible, setDialogVisible] = useState(false);
+  const originFocusRef = useRef<HTMLButtonElement | null>(null);
+  const productSessionRef = useRef(sessionRef);
+  const latestProductSessionRef = useRef(sessionRef);
+  const productIntentSequenceRef = useRef(0);
+  const suppressProductFocusRestoreRef = useRef(false);
+  latestProductSessionRef.current = sessionRef;
+  const purchaseFlow = useCoinsPurchaseFlow({
+    client: commerceClient,
+    sessionRef
+  });
+
+  useEffect(() => {
+    if (productSessionRef.current === sessionRef) return;
+    productSessionRef.current = sessionRef;
+    productIntentSequenceRef.current += 1;
+    suppressProductFocusRestoreRef.current = false;
+    setProductIntent(null);
+    setDialogVisible(false);
+    originFocusRef.current = null;
+  }, [sessionRef]);
+
+  useEffect(() => () => {
+    productIntentSequenceRef.current += 1;
+  }, []);
+
+  const retryCatalog = useCallback(() => {
+    setRefreshRevision((revision) => revision + 1);
+  }, []);
+
+  useEffect(() => {
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    if (!commerceClient || !sessionRef) {
+      setCatalog({ status: "unavailable", offers: [] });
+      return () => {
+        generationRef.current += 1;
+      };
+    }
+    setCatalog({ status: "loading", offers: [] });
+    void commerceClient.listOffers({ sessionRef }).then((offers) => {
+      if (generation !== generationRef.current) return;
+      setCatalog({ status: "ready", offers });
+    }).catch((error: unknown) => {
+      if (generation !== generationRef.current) return;
+      const failure = safeCommerceFailure(error);
+      setCatalog({
+        status: "error",
+        offers: [],
+        ...failure
+      });
+    });
+    return () => {
+      generationRef.current += 1;
+    };
+  }, [commerceClient, refreshRevision, sessionRef]);
+
+  const planOffers = catalog.offers.filter((offer) => offer.category === "plan");
+  const dataPackOffers = catalog.offers.filter((offer) => offer.category === "data_pack");
+  const productBusy = purchaseFlow.phase === "loading_detail"
+    || purchaseFlow.phase === "loading_preview"
+    || purchaseFlow.phase === "submitting";
+
+  const restoreProductFocus = useCallback(() => {
+    if (suppressProductFocusRestoreRef.current) {
+      suppressProductFocusRestoreRef.current = false;
+      return;
+    }
+    originFocusRef.current?.focus();
+  }, []);
+
+  const startProduct = useCallback(async (
+    offerRef: string,
+    mode: MarketplaceProductIntent["mode"],
+    origin?: HTMLButtonElement
+  ) => {
+    if (!commerceClient || !sessionRef) return;
+    const intentSequence = productIntentSequenceRef.current + 1;
+    productIntentSequenceRef.current = intentSequence;
+    const intentSessionRef = sessionRef;
+    if (origin) {
+      originFocusRef.current = origin;
+    }
+    if (
+      purchaseFlow.order
+      && !isPortalCoinOrderTerminal(purchaseFlow.order)
+    ) {
+      setProductIntent(null);
+      setDialogVisible(true);
+      return;
+    }
+    purchaseFlow.reset();
+    setProductIntent({ mode, offerRef });
+    setDialogVisible(true);
+    await purchaseFlow.openProduct(offerRef);
+    if (
+      intentSequence !== productIntentSequenceRef.current
+      || latestProductSessionRef.current !== intentSessionRef
+    ) {
+      return;
+    }
+    if (mode === "purchase") {
+      await purchaseFlow.previewCheckout();
+    }
+  }, [commerceClient, purchaseFlow, sessionRef]);
+
+  const previewFromDetails = useCallback(() => {
+    setProductIntent((current) => (
+      current ? { ...current, mode: "purchase" } : current
+    ));
+    void purchaseFlow.previewCheckout();
+  }, [purchaseFlow]);
+
+  const closeCoinsDialog = useCallback(() => {
+    productIntentSequenceRef.current += 1;
+    setDialogVisible(false);
+    setProductIntent(null);
+    if (
+      !purchaseFlow.order
+      || isPortalCoinOrderTerminal(purchaseFlow.order)
+    ) {
+      purchaseFlow.reset();
+    }
+  }, [purchaseFlow]);
+
+  const openRechargeFromCoins = useCallback(() => {
+    productIntentSequenceRef.current += 1;
+    suppressProductFocusRestoreRef.current = true;
+    setDialogVisible(false);
+    setProductIntent(null);
+    purchaseFlow.reset();
+    onOpenRecharge(restoreProductFocus);
+  }, [onOpenRecharge, purchaseFlow, restoreProductFocus]);
+
+  const retryProduct = useCallback(() => {
+    if (!productIntent) return;
+    void startProduct(productIntent.offerRef, productIntent.mode);
+  }, [productIntent, startProduct]);
+
+  const activeOrderRef = purchaseFlow.order?.orderRef ?? null;
+  const confirmationBlocked = Boolean(
+    purchaseFlow.quote
+    && !purchaseFlow.order
+    && purchaseFlow.errorCode
+    && !purchaseFlow.errorRetryable
+  );
+  useEffect(() => {
+    if (!activeOrderRef) return;
+    setDialogVisible(true);
+  }, [activeOrderRef]);
+
+  return (
+    <section
+      className="portal-commerce-layout portal-commerce-layout--marketplace"
+      aria-label={zh ? "商城目录" : "Marketplace catalog"}
+    >
+      {catalog.status === "unavailable" ? (
+        <div className="portal-marketplace-state" role="status">
+          <p>
+            {zh
+              ? "商城目录暂不可用；当前客户端未提供服务端商城能力。"
+              : "The Marketplace catalog is unavailable because this client has no server Commerce capability."}
+          </p>
+        </div>
+      ) : null}
+      {catalog.status === "loading" ? (
+        <div className="portal-marketplace-state" role="status" aria-live="polite">
+          {zh ? "正在加载商城目录…" : "Loading Marketplace catalog…"}
+        </div>
+      ) : null}
+      {catalog.status === "error" ? (
+        <div className="portal-marketplace-state" role="alert">
+          <p>{safeCommerceErrorText(catalog.errorCode, locale)}</p>
+          {catalog.retryable ? (
+            <button type="button" onClick={retryCatalog}>
+              {zh ? "重试" : "Retry"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {catalog.status === "ready" && catalog.offers.length === 0 ? (
+        <div className="portal-marketplace-state" role="status">
+          {zh ? "当前没有可用商品。" : "No products are currently available."}
+        </div>
+      ) : null}
+      {catalog.status === "ready" && planOffers.length > 0 ? (
+        <section
+          className="portal-marketplace-group"
+          aria-labelledby="portal-marketplace-plan-heading"
+        >
+          <h2 id="portal-marketplace-plan-heading">{zh ? "套餐" : "Plans"}</h2>
+          <ul className="portal-marketplace-grid">
+            {planOffers.map((offer) => (
+              <MarketplaceOfferCard
+                busy={productBusy}
+                key={offer.offerRef}
+                locale={locale}
+                offer={offer}
+                onDetails={(event) => {
+                  void startProduct(
+                    offer.offerRef,
+                    "detail",
+                    event.currentTarget
+                  );
+                }}
+                onPurchase={(event) => {
+                  void startProduct(
+                    offer.offerRef,
+                    "purchase",
+                    event.currentTarget
+                  );
+                }}
+              />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {catalog.status === "ready" && dataPackOffers.length > 0 ? (
+        <section
+          className="portal-marketplace-group"
+          aria-labelledby="portal-marketplace-data-pack-heading"
+        >
+          <h2 id="portal-marketplace-data-pack-heading">
+            {zh ? "流量包" : "Data packs"}
+          </h2>
+          <ul className="portal-marketplace-grid">
+            {dataPackOffers.map((offer) => (
+              <MarketplaceOfferCard
+                busy={productBusy}
+                key={offer.offerRef}
+                locale={locale}
+                offer={offer}
+                onDetails={(event) => {
+                  void startProduct(
+                    offer.offerRef,
+                    "detail",
+                    event.currentTarget
+                  );
+                }}
+                onPurchase={(event) => {
+                  void startProduct(
+                    offer.offerRef,
+                    "purchase",
+                    event.currentTarget
+                  );
+                }}
+              />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {productBusy && !purchaseFlow.quote && !purchaseFlow.order ? (
+        <p
+          aria-live="polite"
+          className="portal-marketplace-flow-state"
+          role="status"
+        >
+          {purchaseFlow.phase === "loading_preview"
+            ? zh
+              ? "正在获取服务端报价…"
+              : "Loading the server Quote…"
+            : zh
+              ? "正在加载商品详情…"
+              : "Loading product details…"}
         </p>
-      </header>
-      <section className="portal-commerce-layout__section" aria-label={zh ? "服务类别" : "Service categories"}>
-        <ul className="portal-commerce-layout__list">
-          {categories.map((category) => (
-            <li key={category}>{category}</li>
-          ))}
-        </ul>
-        <p>
-          {zh
-            ? "月卡、年卡和流量包统一在商城提供；购买暂未开放。"
-            : "Monthly plans, annual plans, and data packs are provided through Marketplace; purchasing is not available yet."}
-        </p>
-        <button type="button" disabled>
-          {zh ? "购买暂未开放" : "Purchasing is not available yet"}
-        </button>
-      </section>
+      ) : null}
+      {purchaseFlow.errorCode
+        && !purchaseFlow.quote
+        && !purchaseFlow.order ? (
+          <div className="portal-marketplace-flow-state" role="alert">
+            <p>{safeCommerceErrorText(purchaseFlow.errorCode, locale)}</p>
+            {productIntent && (
+              purchaseFlow.errorRetryable
+              || purchaseFlow.errorCode === "quote_expired"
+              || purchaseFlow.errorCode === "quote_stale"
+            ) ? (
+              <button type="button" onClick={retryProduct}>
+                {zh ? "重试" : "Retry"}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      {dialogVisible ? (
+        <div
+          className="portal-coins-dialog-theme"
+          data-portal-theme={theme}
+        >
+          {productIntent?.mode === "detail"
+            && purchaseFlow.phase === "detail"
+            && purchaseFlow.offer ? (
+              <ProductDetailDialog
+                locale={locale}
+                offer={purchaseFlow.offer}
+                onPreview={previewFromDetails}
+                onRequestClose={closeCoinsDialog}
+                onRestoreFocus={restoreProductFocus}
+              />
+            ) : purchaseFlow.quote || purchaseFlow.order ? (
+              <CoinsPurchaseDialog
+                cancelling={purchaseFlow.cancelling}
+                errorCode={purchaseFlow.errorCode}
+                locale={locale}
+                onCancel={purchaseFlow.cancelPurchase}
+                onConfirm={purchaseFlow.confirmPurchase}
+                onOpenRecharge={openRechargeFromCoins}
+                onRefresh={purchaseFlow.refreshOrder}
+                onRequestClose={closeCoinsDialog}
+                onRestoreFocus={restoreProductFocus}
+                order={purchaseFlow.order}
+                quote={purchaseFlow.quote}
+                submitting={
+                  purchaseFlow.phase === "submitting"
+                  || confirmationBlocked
+                }
+              />
+            ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
