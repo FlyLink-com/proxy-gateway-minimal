@@ -103,6 +103,16 @@ Schema apply alone must leave both Wallet and Commerce runtime feature flags
 false. It does not authorize routes, stores, payment, fulfillment, Portal,
 Admin, provider access, deployment, or customer-data writes.
 
+## Local synthetic validation
+
+Run `npm run platform:coin-commerce:local-validation` to execute the closed
+local proof. It creates and deletes only internally owned temporary SQLite
+files, binds only an ephemeral IPv4 loopback listener, and uses exclusively
+synthetic identities, balances, Orders, and fulfillment effects. It accepts no
+database path or production credential. A PASS is not production inventory,
+schema-apply authority, deployment, runtime enablement, provider proof, or
+customer fulfillment.
+
 ## Failure, rollback, and forward-fix
 
 Before commit, any rejection must roll back the transaction and stop. Do not
