@@ -778,7 +778,11 @@ test("restart recovery captures one pending Order with original deterministic re
   state.store.close();
   state.database.close();
 
-  const reopened = createSqliteCoinCommerceStore({ dbPath: state.dbPath });
+  const reopenedDatabase = new Database(state.dbPath);
+  reopenedDatabase.pragma("foreign_keys = ON");
+  const reopened = createSqliteCoinCommerceStore({
+    database: fixedClockDatabase(reopenedDatabase, state.clock)
+  });
   try {
     const recovered = reopened.recoverNonTerminalOrders({ limit: 10 });
     assert.equal(recovered.scanned, 1);
@@ -800,6 +804,7 @@ test("restart recovery captures one pending Order with original deterministic re
     }
   } finally {
     reopened.close();
+    reopenedDatabase.close();
     rmSync(state.directory, { recursive: true, force: true, maxRetries: 3 });
   }
 });
