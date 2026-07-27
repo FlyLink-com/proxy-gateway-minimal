@@ -133,8 +133,10 @@ function withCommerceDatabase(fileName, action) {
     const database = new Database(dbPath);
     try {
       applyCoinCommerceMigrations(exactApplyInput(database));
-      database.pragma("foreign_keys = OFF");
-      return action(database);
+      assert.equal(database.pragma("foreign_keys", { simple: true }), 1);
+      const result = action(database);
+      assert.equal(database.pragma("foreign_keys", { simple: true }), 1);
+      return result;
     } finally {
       database.close();
     }
@@ -142,35 +144,120 @@ function withCommerceDatabase(fileName, action) {
 }
 
 function insertSyntheticOrder(database, orderRef, paymentStatus) {
-  database.prepare(`
-    insert into platform_coin_commerce_orders (
-      order_ref, account_id, quote_ref, offer_version_ref, hold_ref,
-      amount_units, offer_snapshot_json, allocation_snapshot_json,
-      payment_status, cancel_until, created_at, updated_at
-    ) values (?, 'account_synthetic', ?, 'offer_synthetic', ?,
-      20, '{}', '[]', ?, '2026-07-27T00:00:00.000Z', ?, ?)
-  `).run(
-    orderRef,
-    `quote_${orderRef}`,
-    `hold_${orderRef}`,
-    paymentStatus,
-    APPLIED_AT,
-    APPLIED_AT
-  );
+  const accountId = `account_${orderRef}`;
+  const walletRef = `wallet_${orderRef}`;
+  const offerVersionRef = `offerv_${orderRef}`;
+  const quoteRef = `quote_${orderRef}`;
+  const holdRef = `hold_${orderRef}`;
+  const holdStatus = paymentStatus === "captured"
+    ? "captured"
+    : paymentStatus === "cancelled"
+      ? "released"
+      : "active";
+
+  database.transaction(() => {
+    database.prepare(`
+      insert into platform_accounts (
+        id, owner_ref, status, created_at, updated_at, metadata_json
+      ) values (?, ?, 'active', ?, ?, '{}')
+    `).run(accountId, `owner_${orderRef}`, APPLIED_AT, APPLIED_AT);
+    database.prepare(`
+      insert into platform_coin_wallets (
+        wallet_ref, account_id, status, version, created_at, updated_at
+      ) values (?, ?, 'active', 0, ?, ?)
+    `).run(walletRef, accountId, APPLIED_AT, APPLIED_AT);
+    database.prepare(`
+      insert into platform_coin_commerce_offer_versions (
+        offer_version_ref, offer_ref, version, status, category,
+        title_zh, title_en, summary_zh, summary_en,
+        important_notices_zh_json, important_notices_en_json,
+        base_coin_units, reference_currency, reference_amount_minor,
+        accepted_coin_types_json, delivery_kind, duration_days,
+        monthly_traffic_gb, traffic_gb, never_expires,
+        discount_basis_points, created_at, published_at, retired_at
+      ) values (
+        ?, ?, 1, 'published', 'plan',
+        '合成方案', 'Synthetic plan', '合成测试', 'Synthetic test',
+        '["合成测试"]', '["Synthetic test"]',
+        20, 'CNY', 2000, '["paid_coins"]',
+        'subscription_plan', 30, 50, null, 0, 0,
+        ?, ?, null
+      )
+    `).run(
+      offerVersionRef,
+      `offer_${orderRef}`,
+      APPLIED_AT,
+      APPLIED_AT
+    );
+    database.prepare(`
+      insert into platform_coin_commerce_quotes (
+        quote_ref, account_id, offer_version_ref, wallet_version,
+        amount_units, applied_discount_basis_points,
+        purchase_availability, shortfall_units, allocation_json,
+        before_balance_json, after_balance_json, status,
+        created_at, expires_at, consumed_at
+      ) values (
+        ?, ?, ?, 0, 20, 0, 'available', 0, '[]',
+        '{}', '{}', 'consumed', ?, '2026-07-27T00:00:00.000Z', ?
+      )
+    `).run(
+      quoteRef,
+      accountId,
+      offerVersionRef,
+      APPLIED_AT,
+      APPLIED_AT
+    );
+    database.prepare(`
+      insert into platform_coin_holds (
+        hold_ref, wallet_ref, purpose, purpose_ref, amount_units,
+        status, expires_at, created_at, updated_at
+      ) values (
+        ?, ?, 'product_purchase', ?, 20, ?,
+        '2026-07-27T00:00:00.000Z', ?, ?
+      )
+    `).run(
+      holdRef,
+      walletRef,
+      orderRef,
+      holdStatus,
+      APPLIED_AT,
+      APPLIED_AT
+    );
+    database.prepare(`
+      insert into platform_coin_commerce_orders (
+        order_ref, account_id, quote_ref, offer_version_ref, hold_ref,
+        amount_units, offer_snapshot_json, allocation_snapshot_json,
+        payment_status, cancel_until, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, 20, '{}', '[]', ?,
+        '2026-07-27T00:00:00.000Z', ?, ?)
+    `).run(
+      orderRef,
+      accountId,
+      quoteRef,
+      offerVersionRef,
+      holdRef,
+      paymentStatus,
+      APPLIED_AT,
+      APPLIED_AT
+    );
+  })();
 }
 
 function insertSyntheticFulfillmentCommand(database, commandRef, status) {
   const processing = status === "processing";
+  const orderRef = `order_${commandRef}`;
+  insertSyntheticOrder(database, orderRef, "captured");
   database.prepare(`
     insert into platform_coin_commerce_fulfillment_commands (
       command_ref, order_ref, account_id, payload_json, status,
       attempt_count, lease_generation, lease_token, lease_until,
       safe_failure_code, created_at, updated_at
-    ) values (?, ?, 'account_synthetic', '{}', ?,
+    ) values (?, ?, ?, '{}', ?,
       0, 0, ?, ?, ?, ?, ?)
   `).run(
     commandRef,
-    `order_${commandRef}`,
+    orderRef,
+    `account_${orderRef}`,
     status,
     processing ? `lease_${commandRef}` : null,
     processing ? "2026-07-26T13:00:00.000Z" : null,
