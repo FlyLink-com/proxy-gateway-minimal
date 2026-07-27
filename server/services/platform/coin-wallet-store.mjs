@@ -69,6 +69,17 @@ const CREATE_HOLD_FIELDS = new Set([
   "expiresAt",
   "operation"
 ]);
+const PREVIEW_HOLD_FIELDS = new Set([
+  "accountId",
+  "amountUnits",
+  "acceptedCoinTypes"
+]);
+const PARTICIPANT_PROJECTION_FIELDS = new Set(["accountId"]);
+const PARTICIPANT_FACTORY_FIELDS = new Set([
+  "database",
+  "nowFn",
+  "refFactory"
+]);
 const HOLD_LIFECYCLE_FIELDS = new Set(["holdRef", "operation"]);
 const EXPIRE_HOLD_FIELDS = new Set(["holdRef"]);
 const EXPIRE_LOT_FIELDS = new Set(["lotRef"]);
@@ -115,8 +126,10 @@ const KNOWN_STORE_CODES = new Set([
   "wallet_busy",
   "wallet_infrastructure_error",
   "wallet_not_found",
-  "wallet_not_active"
+  "wallet_not_active",
+  "wallet_transaction_required"
 ]);
+const TRANSACTION_PARTICIPANT_BY_STORE = new WeakMap();
 
 function storeError(code) {
   const error = new Error("Coin wallet store operation rejected");
@@ -428,6 +441,37 @@ function normalizeHoldLifecycleRequest(input, operationType) {
     operation: normalizeLifecycleOperation(request.operation),
     requestDigest: canonicalWalletRequestDigest(operationType, { holdRef })
   };
+}
+
+function normalizePreviewHoldRequest(input) {
+  const request = assertPlainObject(input);
+  assertExactDataFields(request, PREVIEW_HOLD_FIELDS);
+  assertRequiredOwnDataFields(request, PREVIEW_HOLD_FIELDS);
+  let acceptedCoinTypes;
+  try {
+    acceptedCoinTypes = normalizeAcceptedCoinTypes(request.acceptedCoinTypes);
+  } catch (error) {
+    if (
+      error?.code === "invalid_accepted_coin_types"
+      || error?.code === "duplicate_coin_type"
+      || error?.code === "invalid_coin_type"
+    ) {
+      throw storeError(error.code);
+    }
+    throw storeError("invalid_coin_type");
+  }
+  return {
+    accountId: assertNormalizedString(request.accountId),
+    amountUnits: normalizePositiveUnits(request.amountUnits),
+    acceptedCoinTypes
+  };
+}
+
+function normalizeParticipantProjectionLookup(input) {
+  const request = assertPlainObject(input);
+  assertExactDataFields(request, PARTICIPANT_PROJECTION_FIELDS);
+  assertRequiredOwnDataFields(request, PARTICIPANT_PROJECTION_FIELDS);
+  return { accountId: assertNormalizedString(request.accountId) };
 }
 
 function normalizeExpirySubjectRequest(input, fields, subjectField) {
@@ -1576,7 +1620,7 @@ export function createSqliteCoinWalletStore(options = {}) {
     return buildClosedConfirmationResult(closedReceipt, false, request.lotRef);
   });
 
-  const runCreateHoldTransaction = db.transaction((request) => {
+  function createCoinHoldBody(request) {
     const replay = findReceipt({
       actorScope: request.operation.actorScope,
       operationType: OPERATION_TYPE_CREATE_HOLD,
@@ -1860,7 +1904,9 @@ export function createSqliteCoinWalletStore(options = {}) {
       operationType: OPERATION_TYPE_CREATE_HOLD,
       idempotencyKey: request.operation.idempotencyKey
     }), false, wallet.walletRef);
-  });
+  }
+
+  const runCreateHoldTransaction = db.transaction(createCoinHoldBody);
 
   function updateLifecycleLot({
     lot,
@@ -2039,10 +2085,10 @@ export function createSqliteCoinWalletStore(options = {}) {
     );
   }
 
-  const runHoldLifecycleTransaction = db.transaction((
+  function holdLifecycleBody(
     request,
     operationType
-  ) => {
+  ) {
     const replay = readLifecycleReplay({
       actorScope: request.operation.actorScope,
       operationType,
@@ -2208,7 +2254,9 @@ export function createSqliteCoinWalletStore(options = {}) {
       idempotencyKey: request.operation.idempotencyKey,
       subjectRef: request.holdRef
     });
-  });
+  }
+
+  const runHoldLifecycleTransaction = db.transaction(holdLifecycleBody);
 
   const runExpireHoldTransaction = db.transaction((holdRef) => {
     const hold = findHold(holdRef);
@@ -2754,6 +2802,170 @@ export function createSqliteCoinWalletStore(options = {}) {
     });
   }
 
+  function assertCallerTransaction() {
+    let inTransaction;
+    try {
+      inTransaction = db.inTransaction;
+    } catch {
+      throw storeError("wallet_transaction_required");
+    }
+    if (inTransaction !== true) {
+      throw storeError("wallet_transaction_required");
+    }
+  }
+
+  function getWalletByAccountIdInTransaction(accountId) {
+    assertCallerTransaction();
+    try {
+      return findWalletByAccountId(assertNormalizedString(accountId));
+    } catch (error) {
+      throw normalizeStoreError(error);
+    }
+  }
+
+  function getWalletProjectionInTransaction(input) {
+    assertCallerTransaction();
+    try {
+      return getWalletProjection(normalizeParticipantProjectionLookup(input));
+    } catch (error) {
+      throw normalizeStoreError(error);
+    }
+  }
+
+  function previewCoinHoldInTransaction(input) {
+    assertCallerTransaction();
+    try {
+      const request = normalizePreviewHoldRequest(input);
+      const wallet = findWalletByAccountId(request.accountId);
+      if (!wallet) {
+        return {
+          walletProjection: getWalletProjection({
+            accountId: request.accountId
+          }),
+          requestedUnits: request.amountUnits,
+          acceptedCoinTypes: request.acceptedCoinTypes,
+          allocation: [],
+          sufficient: false
+        };
+      }
+      if (wallet.status !== "active") {
+        throw storeError("wallet_not_active");
+      }
+      const walletProjection = getWalletProjection({
+        accountId: request.accountId
+      });
+
+      const occurredAt = readLockedDatabaseUtc();
+      const placeholders = request.acceptedCoinTypes.map(() => "?").join(", ");
+      const lots = db.prepare(`
+        select *
+          from platform_coin_lots
+         where wallet_ref = ?
+           and available_units > 0
+           and coin_type in (${placeholders})
+           and (
+             coin_type <> 'bonus_coins'
+             or expires_at is null
+             or expires_at > ?
+           )
+      `).all(
+        wallet.walletRef,
+        ...request.acceptedCoinTypes,
+        occurredAt
+      ).map(mapLot);
+      let allocations;
+      try {
+        allocations = allocateCoinLots({
+          lots,
+          amountUnits: request.amountUnits,
+          acceptedCoinTypes: request.acceptedCoinTypes,
+          now: occurredAt
+        });
+      } catch {
+        throw storeError("wallet_infrastructure_error");
+      }
+      if (!Array.isArray(allocations)) {
+        throw storeError("wallet_infrastructure_error");
+      }
+
+      const allocationByType = new Map();
+      for (const allocation of allocations) {
+        allocationByType.set(
+          allocation.coinType,
+          safeAddUnits(
+            allocationByType.get(allocation.coinType) ?? 0,
+            allocation.allocatedUnits
+          )
+        );
+      }
+      return {
+        walletProjection,
+        requestedUnits: request.amountUnits,
+        acceptedCoinTypes: request.acceptedCoinTypes,
+        allocation: ["bonus_coins", "paid_coins", "reward_coins"]
+          .filter((coinType) => allocationByType.has(coinType))
+          .map((coinType) => ({
+            coinType,
+            amountUnits: allocationByType.get(coinType)
+          })),
+        sufficient: allocations.length > 0
+      };
+    } catch (error) {
+      throw normalizeStoreError(error);
+    }
+  }
+
+  function createCoinHoldInTransaction(input) {
+    assertCallerTransaction();
+    try {
+      return createCoinHoldBody(normalizeCreateHoldRequest(input));
+    } catch (error) {
+      if (
+        error?.code === "invalid_reference"
+        || error?.code === "coin_units_overflow"
+      ) {
+        throw storeError("wallet_infrastructure_error");
+      }
+      throw normalizeStoreError(error);
+    }
+  }
+
+  function captureCoinHoldInTransaction(input) {
+    assertCallerTransaction();
+    try {
+      return holdLifecycleBody(
+        normalizeHoldLifecycleRequest(input, OPERATION_TYPE_CAPTURE_HOLD),
+        OPERATION_TYPE_CAPTURE_HOLD
+      );
+    } catch (error) {
+      if (
+        error?.code === "invalid_reference"
+        || error?.code === "coin_units_overflow"
+      ) {
+        throw storeError("wallet_infrastructure_error");
+      }
+      throw normalizeStoreError(error);
+    }
+  }
+
+  function releaseCoinHoldInTransaction(input) {
+    assertCallerTransaction();
+    try {
+      return holdLifecycleBody(
+        normalizeHoldLifecycleRequest(input, OPERATION_TYPE_RELEASE_HOLD),
+        OPERATION_TYPE_RELEASE_HOLD
+      );
+    } catch (error) {
+      if (
+        error?.code === "invalid_reference"
+        || error?.code === "coin_units_overflow"
+      ) {
+        throw storeError("wallet_infrastructure_error");
+      }
+      throw normalizeStoreError(error);
+    }
+  }
+
   function creditCoins(input) {
     assertOpen();
     let request;
@@ -2894,7 +3106,7 @@ export function createSqliteCoinWalletStore(options = {}) {
     }
   }
 
-  return {
+  const store = {
     captureCoinHold,
     close,
     confirmCoinCredit,
@@ -2913,4 +3125,45 @@ export function createSqliteCoinWalletStore(options = {}) {
     listLots,
     releaseCoinHold
   };
+  TRANSACTION_PARTICIPANT_BY_STORE.set(store, {
+    getWalletByAccountIdInTransaction,
+    getWalletProjectionInTransaction,
+    previewCoinHoldInTransaction,
+    createCoinHoldInTransaction,
+    captureCoinHoldInTransaction,
+    releaseCoinHoldInTransaction
+  });
+  return store;
+}
+
+export function createCoinWalletTransactionParticipant(options = {}) {
+  if (
+    !options
+    || typeof options !== "object"
+    || Array.isArray(options)
+    || Object.getPrototypeOf(options) !== Object.prototype
+  ) {
+    throw storeError("invalid_store_contract");
+  }
+  for (const key of Reflect.ownKeys(options)) {
+    const descriptor = Object.getOwnPropertyDescriptor(options, key);
+    if (
+      typeof key !== "string"
+      || !PARTICIPANT_FACTORY_FIELDS.has(key)
+      || !descriptor
+      || !descriptor.enumerable
+      || !("value" in descriptor)
+    ) {
+      throw storeError("invalid_store_contract");
+    }
+  }
+  if (!Object.prototype.hasOwnProperty.call(options, "database")) {
+    throw storeError("invalid_store_contract");
+  }
+  const store = createSqliteCoinWalletStore(options);
+  const participant = TRANSACTION_PARTICIPANT_BY_STORE.get(store);
+  if (!participant) {
+    throw storeError("wallet_infrastructure_error");
+  }
+  return participant;
 }
