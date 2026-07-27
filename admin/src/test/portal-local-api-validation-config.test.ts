@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import type { UserConfig } from "vite";
+import { createServer, type UserConfig } from "vite";
 import { describe, expect, test } from "vitest";
 import productionPortalConfig from "../../vite.portal.config";
 import localApiValidationConfig from "../../vite.portal.local-api-validation.config";
@@ -10,7 +10,7 @@ const validationConfig = localApiValidationConfig as UserConfig;
 const adminDir = resolve(".");
 
 describe("Portal local API validation config", () => {
-  test("merges only a dev server into the real Portal production candidate", () => {
+  test("merges only local dev resolution and a server into the real Portal production candidate", () => {
     expect(Object.hasOwn(productionConfig, "server")).toBe(false);
     expect(validationConfig).not.toBe(productionConfig);
 
@@ -26,7 +26,7 @@ describe("Portal local API validation config", () => {
       Object.keys(validationConfig).filter(
         (key) => !Object.hasOwn(productionConfig, key)
       )
-    ).toEqual(["server"]);
+    ).toEqual(["resolve", "server"]);
 
     expect(validationConfig.root).toBe(resolve(adminDir, "portal"));
     expect(validationConfig.publicDir).toBe(resolve(adminDir, "public"));
@@ -96,5 +96,26 @@ describe("Portal local API validation config", () => {
     expect(`${validationConfigSource}\n${command}`).not.toMatch(
       /\b(?:preview|fixture|demo|mock)\b/i
     );
+  });
+
+  test("resolves the browser-normalized real Portal bootstrap in dev", async () => {
+    const vite = await createServer({
+      ...validationConfig,
+      configFile: false,
+      logLevel: "silent",
+      server: {
+        middlewareMode: true,
+        hmr: false
+      }
+    });
+
+    try {
+      const transformed = await vite.transformRequest(
+        "/src/portal-main.tsx"
+      );
+      expect(transformed?.code).toContain("PortalOnlyApp");
+    } finally {
+      await vite.close();
+    }
   });
 });
