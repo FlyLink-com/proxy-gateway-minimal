@@ -12,6 +12,7 @@ type CommerceLocale = "zh" | "en";
 
 export type CoinsPurchaseDialogProps = {
   cancelling: boolean;
+  confirmDisabled?: boolean;
   errorCode: PortalCoinCommerceClientErrorCode | null;
   locale: CommerceLocale;
   onCancel: () => void;
@@ -149,6 +150,7 @@ function QuoteFacts({
 
 export function CoinsPurchaseDialog({
   cancelling,
+  confirmDisabled = false,
   errorCode,
   locale,
   onCancel,
@@ -176,8 +178,10 @@ export function CoinsPurchaseDialog({
 
   return (
     <CoinsDialogFrame
+      busy={submitting}
+      closeDisabled={submitting}
       closeLabel={localized(locale, "关闭", "Close")}
-      escapeCloseEnabled={order === null}
+      escapeCloseEnabled={order === null && !submitting}
       onRequestClose={onRequestClose}
       onRestoreFocus={onRestoreFocus}
       panelClassName="portal-coins-purchase-dialog"
@@ -190,7 +194,7 @@ export function CoinsPurchaseDialog({
             </button>
           ) : null}
           <button
-            disabled={insufficient || submitting}
+            disabled={insufficient || submitting || confirmDisabled}
             type="button"
             onClick={onConfirm}
           >

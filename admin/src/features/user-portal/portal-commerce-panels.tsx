@@ -235,6 +235,7 @@ function MarketplaceOfferCard({
   onPurchase: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const zh = isChinese(locale);
+  const title = offerTitle(offer, locale);
   const notices = zh
     ? offer.importantNotices.zh
     : offer.importantNotices.en;
@@ -249,7 +250,7 @@ function MarketplaceOfferCard({
   return (
     <li className="portal-marketplace-card">
       <article>
-        <h3>{offerTitle(offer, locale)}</h3>
+        <h3>{title}</h3>
         <p>{offerSummary(offer, locale)}</p>
         <dl className="portal-marketplace-card__facts">
           <div>
@@ -272,6 +273,11 @@ function MarketplaceOfferCard({
         ) : null}
         <div className="portal-marketplace-card__actions">
           <button
+            aria-label={
+              zh
+                ? `查看 ${title} 详情`
+                : `View ${title} details`
+            }
             type="button"
             disabled={busy}
             onClick={onDetails}
@@ -279,6 +285,11 @@ function MarketplaceOfferCard({
             {zh ? "查看详情" : "Details"}
           </button>
           <button
+            aria-label={
+              zh
+                ? `使用 Coins 购买 ${title}`
+                : `Buy ${title} with Coins`
+            }
             className="portal-marketplace-card__purchase"
             type="button"
             disabled={busy}
@@ -311,6 +322,7 @@ export function MarketplacePanel({
     useState<MarketplaceProductIntent | null>(null);
   const [dialogVisible, setDialogVisible] = useState(false);
   const originFocusRef = useRef<HTMLButtonElement | null>(null);
+  const productClientRef = useRef(commerceClient);
   const productSessionRef = useRef(sessionRef);
   const latestProductSessionRef = useRef(sessionRef);
   const productIntentSequenceRef = useRef(0);
@@ -330,6 +342,35 @@ export function MarketplacePanel({
     setDialogVisible(false);
     originFocusRef.current = null;
   }, [sessionRef]);
+
+  useEffect(() => {
+    if (productClientRef.current === commerceClient) return;
+    const ownsPendingMutation = purchaseFlow.phase === "submitting"
+      || purchaseFlow.cancelling;
+    if (ownsPendingMutation) return;
+    productClientRef.current = commerceClient;
+    if (purchaseFlow.order !== null) return;
+    const hasProductReadState = productIntent !== null
+      || dialogVisible
+      || purchaseFlow.offer !== null
+      || purchaseFlow.quote !== null;
+    if (!hasProductReadState) return;
+    productIntentSequenceRef.current += 1;
+    suppressProductFocusRestoreRef.current = false;
+    setProductIntent(null);
+    setDialogVisible(false);
+    purchaseFlow.reset();
+  }, [
+    commerceClient,
+    dialogVisible,
+    productIntent,
+    purchaseFlow.cancelling,
+    purchaseFlow.offer,
+    purchaseFlow.order,
+    purchaseFlow.phase,
+    purchaseFlow.quote,
+    purchaseFlow.reset
+  ]);
 
   useEffect(() => () => {
     productIntentSequenceRef.current += 1;
@@ -609,6 +650,7 @@ export function MarketplacePanel({
             ) : purchaseFlow.quote || purchaseFlow.order ? (
               <CoinsPurchaseDialog
                 cancelling={purchaseFlow.cancelling}
+                confirmDisabled={confirmationBlocked}
                 errorCode={purchaseFlow.errorCode}
                 locale={locale}
                 onCancel={purchaseFlow.cancelPurchase}
@@ -619,10 +661,7 @@ export function MarketplacePanel({
                 onRestoreFocus={restoreProductFocus}
                 order={purchaseFlow.order}
                 quote={purchaseFlow.quote}
-                submitting={
-                  purchaseFlow.phase === "submitting"
-                  || confirmationBlocked
-                }
+                submitting={purchaseFlow.phase === "submitting"}
               />
             ) : null}
         </div>

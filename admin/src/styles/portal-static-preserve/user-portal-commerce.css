@@ -1,3 +1,11 @@
+.portal-v2-shell[data-portal-theme="dark"] {
+  --portal-commerce-focus-accent: #20d5e8;
+}
+
+.portal-v2-shell[data-portal-theme="light"] {
+  --portal-commerce-focus-accent: #0969da;
+}
+
 .portal-v2-shell button.portal-coins-wallet-entry {
   display: inline-flex;
   min-width: 118px;
@@ -32,8 +40,9 @@
 
 .portal-v2-shell button.portal-coins-wallet-entry:focus-visible,
 .portal-v2-shell .portal-commerce-layout button:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 3px rgba(32, 213, 232, 0.2);
+  outline: 3px solid var(--portal-commerce-focus-accent);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 
 .portal-v2-shell button.portal-coins-wallet-entry:disabled,
@@ -585,7 +594,11 @@
 .portal-coins-dialog-theme .portal-coins-dialog {
   display: flex;
   width: min(720px, 100%);
-  max-height: calc(100dvh - 32px);
+  max-height: calc(
+    100dvh
+    - max(16px, env(safe-area-inset-top))
+    - max(16px, env(safe-area-inset-bottom))
+  );
   min-width: 0;
   flex-direction: column;
   border: 1px solid var(--portal-coins-dialog-border);
@@ -726,6 +739,12 @@
   }
 }
 
+@media (max-width: 960px) {
+  .portal-v2-shell .portal-marketplace-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 720px) {
   .portal-v2-shell .portal-marketplace-grid,
   .portal-v2-shell .portal-marketplace-card__actions {
@@ -752,7 +771,11 @@
 
   .portal-coins-dialog-theme .portal-coins-dialog {
     width: 100%;
-    max-height: calc(100dvh - 16px);
+    max-height: calc(
+      100dvh
+      - max(8px, env(safe-area-inset-top))
+      - max(8px, env(safe-area-inset-bottom))
+    );
     border-radius: 14px;
   }
 

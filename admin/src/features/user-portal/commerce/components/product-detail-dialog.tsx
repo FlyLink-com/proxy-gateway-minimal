@@ -10,7 +10,9 @@ import type { PortalCoinOffer } from "../api-contract";
 type CommerceLocale = "zh" | "en";
 
 type CoinsDialogFrameProps = {
+  busy?: boolean;
   children: ReactNode;
+  closeDisabled?: boolean;
   closeLabel: string;
   escapeCloseEnabled: boolean;
   footer?: ReactNode;
@@ -30,7 +32,9 @@ const FOCUSABLE_SELECTOR = [
 ].join(",");
 
 export function CoinsDialogFrame({
+  busy = false,
   children,
+  closeDisabled = false,
   closeLabel,
   escapeCloseEnabled,
   footer,
@@ -90,6 +94,7 @@ export function CoinsDialogFrame({
   return (
     <div className="portal-coins-dialog-backdrop" role="presentation">
       <section
+        aria-busy={busy || undefined}
         aria-labelledby={titleId}
         aria-modal="true"
         className={`portal-coins-dialog ${panelClassName}`}
@@ -99,7 +104,11 @@ export function CoinsDialogFrame({
       >
         <header className="portal-coins-dialog__header">
           <h2 id={titleId} ref={titleRef} tabIndex={-1}>{title}</h2>
-          <button type="button" onClick={onRequestClose}>
+          <button
+            disabled={closeDisabled}
+            type="button"
+            onClick={onRequestClose}
+          >
             {closeLabel}
           </button>
         </header>

@@ -130,7 +130,9 @@ export function CoinsPaymentStatusCard({
         />
       ) : null}
       {safeFailure ? <p>{safeFailure}</p> : null}
-      {errorCode ? <p>{commerceErrorText(errorCode, locale)}</p> : null}
+      {errorCode ? (
+        <p role="alert">{commerceErrorText(errorCode, locale)}</p>
+      ) : null}
       <div className="portal-coins-payment-status__actions">
         {state === "reserved" && !cancelling ? (
           <button type="button" onClick={onCancel}>

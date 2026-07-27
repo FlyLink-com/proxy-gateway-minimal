@@ -215,6 +215,46 @@ describe("Portal Coins dialogs", () => {
     expect(onRequestClose).toHaveBeenCalledTimes(1);
   });
 
+  test("submitting Order marks the dialog busy and locks Close and Escape", () => {
+    const onRequestClose = vi.fn();
+    render(createElement(CoinsPurchaseDialog, {
+      locale: "en",
+      quote: {
+        ...insufficientQuote,
+        purchaseAvailability: "available",
+        shortfallUnits: 0,
+        allocation: [{ coinType: "paid_coins", amountUnits: 15 }],
+        balances: {
+          before: { ...insufficientQuote.balances.before, paidCoins: 20 },
+          after: {
+            ...insufficientQuote.balances.after,
+            paidCoins: 5,
+            heldCoins: 15
+          }
+        }
+      },
+      order: null,
+      submitting: true,
+      cancelling: false,
+      errorCode: null,
+      onConfirm: vi.fn(),
+      onCancel: vi.fn(),
+      onRefresh: vi.fn(),
+      onOpenRecharge: vi.fn(),
+      onRequestClose
+    }));
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Confirm Coins purchase"
+    });
+    expect(dialog).toHaveAttribute("aria-busy", "true");
+    expect(within(dialog).getByRole("button", {
+      name: "Close"
+    })).toBeDisabled();
+    expect(fireEvent.keyDown(dialog, { key: "Escape" })).toBe(false);
+    expect(onRequestClose).not.toHaveBeenCalled();
+  });
+
   test.each([
     ["en", "Allocation", "None", /Before: 10/, /After: 10/],
     ["zh", "分配", "无", /之前: 10/, /之后: 10/]
@@ -253,6 +293,29 @@ describe("Portal Coins dialogs", () => {
       ).parentElement).toHaveTextContent("5 Coins");
     }
   );
+
+  test("order refresh or cancel rejection is announced as a safe alert", () => {
+    render(createElement(CoinsPurchaseDialog, {
+      locale: "en",
+      quote: insufficientQuote,
+      order: heldOrder,
+      submitting: false,
+      cancelling: false,
+      errorCode: "commerce_unavailable",
+      onConfirm: vi.fn(),
+      onCancel: vi.fn(),
+      onRefresh: vi.fn(),
+      onOpenRecharge: vi.fn(),
+      onRequestClose: vi.fn()
+    }));
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Confirm Coins purchase"
+    });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      "Unable to refresh the Order. Retry safely."
+    );
+  });
 
   test("held status is polite, reduced-motion safe, cancellable, and Escape never cancels", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({

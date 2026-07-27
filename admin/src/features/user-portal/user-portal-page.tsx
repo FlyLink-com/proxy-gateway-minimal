@@ -47,6 +47,7 @@ import {
   WalletPanel,
   type RechargeDenomination
 } from "./portal-commerce-panels";
+import { PORTAL_COIN_ORDER_STORAGE_KEY } from "./commerce";
 import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
 import type {
   PortalAccountEntitlement,
@@ -1619,6 +1620,11 @@ export function UserPortalPage({
   }
 
   function logout() {
+    try {
+      window.sessionStorage.removeItem(PORTAL_COIN_ORDER_STORAGE_KEY);
+    } catch {
+      // Commerce recovery storage is optional; logout must still complete.
+    }
     setPortalSession(null);
     setAccountId("");
     setPassword("");
