@@ -279,6 +279,227 @@ describe("Portal Coins purchase flow", () => {
     unmount();
   });
 
+  test("same-session client replacement preserves an in-flight create as the owned Order", async () => {
+    const pendingOrder = deferred<PortalCoinOrder>();
+    const createdOrder: PortalCoinOrder = {
+      ...heldOrder,
+      orderRef: "order_new"
+    };
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      removeItem: vi.fn((key: string) => {
+        values.delete(key);
+      }),
+      setItem: vi.fn((key: string, value: string) => {
+        values.set(key, value);
+      })
+    };
+    const firstCreate = vi.fn(() => pendingOrder.promise);
+    const secondCreate = vi.fn(async () => createdOrder);
+    const firstClient = commerceClient({ createOrder: firstCreate });
+    const secondClient = commerceClient({ createOrder: secondCreate });
+    const createIdempotencyKey = vi.fn(() => "create_intent_1");
+    const { result, rerender, unmount } = renderHook(
+      ({ activeClient }) => commerce.useCoinsPurchaseFlow({
+        client: activeClient,
+        sessionRef: "session-1",
+        createIdempotencyKey,
+        storage
+      }),
+      { initialProps: { activeClient: firstClient } }
+    );
+    await act(async () => {
+      await result.current.openProduct("offer_basic");
+      await result.current.previewCheckout();
+    });
+
+    let createRequest!: Promise<void>;
+    act(() => {
+      createRequest = result.current.confirmPurchase();
+    });
+    expect(result.current.phase).toBe("submitting");
+    expect(firstCreate).toHaveBeenCalledTimes(1);
+
+    rerender({ activeClient: secondClient });
+    expect(result.current.phase).toBe("submitting");
+    await act(async () => {
+      await result.current.confirmPurchase();
+    });
+    expect(firstCreate).toHaveBeenCalledTimes(1);
+    expect(secondCreate).not.toHaveBeenCalled();
+    expect(createIdempotencyKey).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingOrder.resolve(createdOrder);
+      await createRequest;
+    });
+    expect(result.current.phase).toBe("order");
+    expect(result.current.order).toEqual(createdOrder);
+    expect(values.get(commerce.PORTAL_COIN_ORDER_STORAGE_KEY))
+      .toBe("{\"orderRef\":\"order_new\"}");
+
+    await act(async () => {
+      await result.current.confirmPurchase();
+    });
+    expect(firstCreate).toHaveBeenCalledTimes(1);
+    expect(secondCreate).not.toHaveBeenCalled();
+    expect(createIdempotencyKey).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  test("successful create fences replacement recovery that started after the new flow", async () => {
+    const initialRecovery = deferred<PortalCoinOrder>();
+    const replacementRecovery = deferred<PortalCoinOrder>();
+    const pendingOrder = deferred<PortalCoinOrder>();
+    const createdOrder: PortalCoinOrder = {
+      ...heldOrder,
+      orderRef: "order_new"
+    };
+    const values = new Map([
+      [
+        commerce.PORTAL_COIN_ORDER_STORAGE_KEY,
+        "{\"orderRef\":\"order_basic\"}"
+      ]
+    ]);
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      removeItem: vi.fn((key: string) => {
+        values.delete(key);
+      }),
+      setItem: vi.fn((key: string, value: string) => {
+        values.set(key, value);
+      })
+    };
+    const firstClient = commerceClient({
+      createOrder: vi.fn(() => pendingOrder.promise),
+      getOrder: vi.fn(() => initialRecovery.promise)
+    });
+    const secondClient = commerceClient({
+      getOrder: vi.fn(() => replacementRecovery.promise)
+    });
+    const { result, rerender, unmount } = renderHook(
+      ({ activeClient }) => commerce.useCoinsPurchaseFlow({
+        client: activeClient,
+        sessionRef: "session-1",
+        createIdempotencyKey: () => "create_intent_1",
+        storage
+      }),
+      { initialProps: { activeClient: firstClient } }
+    );
+    await waitFor(() => {
+      expect(firstClient.getOrder).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      await result.current.openProduct("offer_basic");
+      await result.current.previewCheckout();
+    });
+
+    let createRequest!: Promise<void>;
+    act(() => {
+      createRequest = result.current.confirmPurchase();
+    });
+    rerender({ activeClient: secondClient });
+    await waitFor(() => {
+      expect(secondClient.getOrder).toHaveBeenCalledWith({
+        sessionRef: "session-1",
+        orderRef: "order_basic"
+      });
+    });
+
+    await act(async () => {
+      pendingOrder.resolve(createdOrder);
+      await createRequest;
+    });
+    expect(result.current.order).toEqual(createdOrder);
+    expect(values.get(commerce.PORTAL_COIN_ORDER_STORAGE_KEY))
+      .toBe("{\"orderRef\":\"order_new\"}");
+
+    await act(async () => {
+      replacementRecovery.resolve(heldOrder);
+      await replacementRecovery.promise;
+      await Promise.resolve();
+    });
+    expect(result.current.order).toEqual(createdOrder);
+    expect(values.get(commerce.PORTAL_COIN_ORDER_STORAGE_KEY))
+      .toBe("{\"orderRef\":\"order_new\"}");
+    unmount();
+  });
+
+  test("replacement recovery cannot publish an old Order while create is pending", async () => {
+    const initialRecovery = deferred<PortalCoinOrder>();
+    const replacementRecovery = deferred<PortalCoinOrder>();
+    const pendingOrder = deferred<PortalCoinOrder>();
+    const createdOrder: PortalCoinOrder = {
+      ...heldOrder,
+      orderRef: "order_new"
+    };
+    const values = new Map([
+      [
+        commerce.PORTAL_COIN_ORDER_STORAGE_KEY,
+        "{\"orderRef\":\"order_basic\"}"
+      ]
+    ]);
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      removeItem: vi.fn((key: string) => {
+        values.delete(key);
+      }),
+      setItem: vi.fn((key: string, value: string) => {
+        values.set(key, value);
+      })
+    };
+    const firstClient = commerceClient({
+      createOrder: vi.fn(() => pendingOrder.promise),
+      getOrder: vi.fn(() => initialRecovery.promise)
+    });
+    const secondClient = commerceClient({
+      getOrder: vi.fn(() => replacementRecovery.promise)
+    });
+    const { result, rerender, unmount } = renderHook(
+      ({ activeClient }) => commerce.useCoinsPurchaseFlow({
+        client: activeClient,
+        sessionRef: "session-1",
+        createIdempotencyKey: () => "create_intent_1",
+        storage
+      }),
+      { initialProps: { activeClient: firstClient } }
+    );
+    await waitFor(() => {
+      expect(firstClient.getOrder).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      await result.current.openProduct("offer_basic");
+      await result.current.previewCheckout();
+    });
+
+    let createRequest!: Promise<void>;
+    act(() => {
+      createRequest = result.current.confirmPurchase();
+    });
+    rerender({ activeClient: secondClient });
+    await waitFor(() => {
+      expect(secondClient.getOrder).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      replacementRecovery.resolve(heldOrder);
+      await replacementRecovery.promise;
+      await Promise.resolve();
+    });
+    expect(result.current.phase).toBe("submitting");
+    expect(result.current.order).toBeNull();
+
+    await act(async () => {
+      pendingOrder.resolve(createdOrder);
+      await createRequest;
+    });
+    expect(result.current.phase).toBe("order");
+    expect(result.current.order).toEqual(createdOrder);
+    expect(values.get(commerce.PORTAL_COIN_ORDER_STORAGE_KEY))
+      .toBe("{\"orderRef\":\"order_new\"}");
+    unmount();
+  });
+
   test("reuses the create intent key when an uncertain transport result is retried", async () => {
     const createOrder = vi.fn()
       .mockRejectedValueOnce(
@@ -577,6 +798,53 @@ describe("Portal Coins purchase flow", () => {
       orderRef: "order_basic"
     });
     restored.unmount();
+  });
+
+  test("new purchase fences delayed recovery so its created Order stays authoritative", async () => {
+    const storedOrderRead = deferred<PortalCoinOrder>();
+    const createdOrder: PortalCoinOrder = {
+      ...heldOrder,
+      orderRef: "order_new"
+    };
+    window.sessionStorage.setItem(
+      commerce.PORTAL_COIN_ORDER_STORAGE_KEY,
+      "{\"orderRef\":\"order_basic\"}"
+    );
+    const client = commerceClient({
+      createOrder: vi.fn(async () => createdOrder),
+      getOrder: vi.fn(() => storedOrderRead.promise)
+    });
+    const { result, unmount } = renderHook(() => (
+      commerce.useCoinsPurchaseFlow({
+        client,
+        sessionRef: "session-1",
+        createIdempotencyKey: () => "create_intent_new"
+      })
+    ));
+    await waitFor(() => {
+      expect(client.getOrder).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await result.current.openProduct("offer_basic");
+      await result.current.previewCheckout();
+      await result.current.confirmPurchase();
+    });
+    expect(result.current.order).toEqual(createdOrder);
+    expect(window.sessionStorage.getItem(
+      commerce.PORTAL_COIN_ORDER_STORAGE_KEY
+    )).toBe("{\"orderRef\":\"order_new\"}");
+
+    await act(async () => {
+      storedOrderRead.resolve(heldOrder);
+      await storedOrderRead.promise;
+      await Promise.resolve();
+    });
+    expect(result.current.order).toEqual(createdOrder);
+    expect(window.sessionStorage.getItem(
+      commerce.PORTAL_COIN_ORDER_STORAGE_KEY
+    )).toBe("{\"orderRef\":\"order_new\"}");
+    unmount();
   });
 
   test("restores a stored Order when authentication arrives after an initial null identity", async () => {

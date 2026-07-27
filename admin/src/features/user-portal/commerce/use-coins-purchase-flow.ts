@@ -254,8 +254,8 @@ export function useCoinsPurchaseFlow({
     const previous = identityRef.current;
     if (previous.client === client && previous.sessionRef === sessionRef) return;
     identityRef.current = { client, sessionRef };
-    const discardRecovery = previous.sessionRef !== null
-      && previous.sessionRef !== sessionRef;
+    if (previous.sessionRef === sessionRef) return;
+    const discardRecovery = previous.sessionRef !== null;
     invalidateFlow(discardRecovery);
   }, [client, invalidateFlow, sessionRef]);
 
@@ -267,6 +267,7 @@ export function useCoinsPurchaseFlow({
     const sequence = detailRequestSequenceRef.current + 1;
     detailRequestSequenceRef.current = sequence;
     quoteRequestSequenceRef.current += 1;
+    orderReadSequenceRef.current += 1;
     setState((current) => ({
       ...current,
       phase: "loading_detail",
@@ -405,6 +406,7 @@ export function useCoinsPurchaseFlow({
         idempotencyKey: intent.key
       });
       if (generation !== generationRef.current) return;
+      orderReadSequenceRef.current += 1;
       orderRef.current = nextOrder;
       quoteRef.current = null;
       createIntentRef.current = null;
@@ -597,6 +599,7 @@ export function useCoinsPurchaseFlow({
         || sequence !== orderReadSequenceRef.current
         || clientRef.current !== client
         || sessionRefRef.current !== sessionRef
+        || createIntentRef.current?.pending
       ) {
         return;
       }
