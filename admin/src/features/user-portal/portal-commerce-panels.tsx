@@ -275,8 +275,8 @@ function MarketplaceOfferCard({
           <button
             aria-label={
               zh
-                ? `查看 ${title} 详情`
-                : `View ${title} details`
+                ? `查看详情：${title}`
+                : `Details: ${title}`
             }
             type="button"
             disabled={busy}
@@ -287,8 +287,8 @@ function MarketplaceOfferCard({
           <button
             aria-label={
               zh
-                ? `使用 Coins 购买 ${title}`
-                : `Buy ${title} with Coins`
+                ? `使用 Coins 购买：${title}`
+                : `Buy with Coins: ${title}`
             }
             className="portal-marketplace-card__purchase"
             type="button"

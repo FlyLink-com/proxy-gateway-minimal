@@ -301,16 +301,16 @@ describe("Portal server-backed Marketplace", () => {
     expect(within(planCard as HTMLElement).queryByText(/42 Coins/))
       .not.toBeInTheDocument();
     expect(within(planCard as HTMLElement).getByRole("button", {
-      name: "查看 服务端基础套餐 详情"
+      name: "查看详情：服务端基础套餐"
     })).toBeInTheDocument();
     expect(within(planCard as HTMLElement).getByRole("button", {
-      name: "使用 Coins 购买 服务端基础套餐"
+      name: "使用 Coins 购买：服务端基础套餐"
     })).toBeInTheDocument();
     expect(screen.getByRole("button", {
-      name: "查看 服务端流量包 详情"
+      name: "查看详情：服务端流量包"
     })).toBeInTheDocument();
     expect(screen.getByRole("button", {
-      name: "使用 Coins 购买 服务端流量包"
+      name: "使用 Coins 购买：服务端流量包"
     })).toBeInTheDocument();
     expect(screen.queryByRole("button", {
       name: "查看详情"
@@ -392,10 +392,10 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端基础套餐"
     })).closest("article") as HTMLElement;
     const details = within(planCard).getByRole("button", {
-      name: "查看 服务端基础套餐 详情"
+      name: "查看详情：服务端基础套餐"
     });
     const purchase = within(planCard).getByRole("button", {
-      name: "使用 Coins 购买 服务端基础套餐"
+      name: "使用 Coins 购买：服务端基础套餐"
     });
 
     fireEvent.click(details);
@@ -466,7 +466,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端基础套餐"
     })).closest("article") as HTMLElement;
     const purchaseAction = within(planCard).getByRole("button", {
-      name: "使用 Coins 购买 服务端基础套餐"
+      name: "使用 Coins 购买：服务端基础套餐"
     });
     fireEvent.click(purchaseAction);
 
@@ -518,10 +518,10 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端流量包"
     }).closest("article") as HTMLElement;
     const oldPurchase = within(planCard).getByRole("button", {
-      name: "使用 Coins 购买 服务端基础套餐"
+      name: "使用 Coins 购买：服务端基础套餐"
     });
     const currentDetails = within(dataPackCard).getByRole("button", {
-      name: "查看 服务端流量包 详情"
+      name: "查看详情：服务端流量包"
     });
 
     await act(async () => {
@@ -562,7 +562,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端基础套餐"
     })).closest("article") as HTMLElement;
     const purchaseAction = within(planCard).getByRole("button", {
-      name: "使用 Coins 购买 服务端基础套餐"
+      name: "使用 Coins 购买：服务端基础套餐"
     });
     fireEvent.click(purchaseAction);
     const dialog = await screen.findByRole("dialog", {
@@ -599,7 +599,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端基础套餐"
     })).closest("article") as HTMLElement;
     fireEvent.click(within(planCard).getByRole("button", {
-      name: "使用 Coins 购买 服务端基础套餐"
+      name: "使用 Coins 购买：服务端基础套餐"
     }));
     const dialog = await screen.findByRole("dialog", {
       name: "确认 Coins 购买"
@@ -621,10 +621,10 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端流量包"
     }).closest("article") as HTMLElement;
     expect(within(dataPackCard).getByRole("button", {
-      name: "查看 服务端流量包 详情"
+      name: "查看详情：服务端流量包"
     })).toBeDisabled();
     expect(within(dataPackCard).getByRole("button", {
-      name: "使用 Coins 购买 服务端流量包"
+      name: "使用 Coins 购买：服务端流量包"
     })).toBeDisabled();
 
     await act(async () => {
@@ -654,7 +654,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端基础套餐"
     })).closest("article") as HTMLElement;
     fireEvent.click(within(planCard).getByRole("button", {
-      name: "查看 服务端基础套餐 详情"
+      name: "查看详情：服务端基础套餐"
     }));
     const detailDialog = await screen.findByRole("dialog", {
       name: "服务端基础套餐"
@@ -706,7 +706,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端基础套餐"
     })).closest("article") as HTMLElement;
     const purchaseAction = within(planCard).getByRole("button", {
-      name: "使用 Coins 购买 服务端基础套餐"
+      name: "使用 Coins 购买：服务端基础套餐"
     });
     fireEvent.click(purchaseAction);
     const orderDialog = await screen.findByRole("dialog", {
@@ -728,7 +728,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端流量包"
     }).closest("article") as HTMLElement;
     fireEvent.click(within(dataPackCard).getByRole("button", {
-      name: "使用 Coins 购买 服务端流量包"
+      name: "使用 Coins 购买：服务端流量包"
     }));
 
     const reopenedDialog = await screen.findByRole("dialog", {
@@ -752,7 +752,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端基础套餐"
     })).closest("article") as HTMLElement;
     fireEvent.click(within(planCard).getByRole("button", {
-      name: "使用 Coins 购买 服务端基础套餐"
+      name: "使用 Coins 购买：服务端基础套餐"
     }));
     const dialog = await screen.findByRole("dialog", {
       name: "确认 Coins 购买"
@@ -780,7 +780,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端基础套餐"
     })).closest("article") as HTMLElement;
     const purchaseAction = within(planCard).getByRole("button", {
-      name: "使用 Coins 购买 服务端基础套餐"
+      name: "使用 Coins 购买：服务端基础套餐"
     });
     fireEvent.click(purchaseAction);
     const coinsDialog = await screen.findByRole("dialog", {
@@ -829,10 +829,10 @@ describe("Portal server-backed Marketplace", () => {
     expect(within(englishCard).getByText("Reference price").parentElement)
       .toHaveTextContent("Reference priceCNY 15.67");
     expect(within(englishCard).getByRole("button", {
-      name: "View Server basic plan details"
+      name: "Details: Server basic plan"
     })).toBeInTheDocument();
     expect(within(englishCard).getByRole("button", {
-      name: "Buy Server basic plan with Coins"
+      name: "Buy with Coins: Server basic plan"
     })).toBeInTheDocument();
     expect(screen.getByText("Coins · --")).toBeInTheDocument();
   });
@@ -921,7 +921,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "Server basic plan"
     })).closest("article") as HTMLElement;
     fireEvent.click(within(oldCard).getByRole("button", {
-      name: "View Server basic plan details"
+      name: "Details: Server basic plan"
     }));
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Loading product details"
@@ -953,7 +953,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "Server data pack"
     }).closest("article") as HTMLElement;
     fireEvent.click(within(currentCard).getByRole("button", {
-      name: "View Server data pack details"
+      name: "Details: Server data pack"
     }));
     expect(await screen.findByRole("dialog", {
       name: "Server data pack"
@@ -974,7 +974,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "服务端基础套餐"
     })).closest("article") as HTMLElement;
     fireEvent.click(within(planCard).getByRole("button", {
-      name: "使用 Coins 购买 服务端基础套餐"
+      name: "使用 Coins 购买：服务端基础套餐"
     }));
     const orderDialog = await screen.findByRole("dialog", {
       name: "确认 Coins 购买"
@@ -1055,7 +1055,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "Server basic plan"
     })).closest("article") as HTMLElement;
     fireEvent.click(within(oldCard).getByRole("button", {
-      name: "Buy Server basic plan with Coins"
+      name: "Buy with Coins: Server basic plan"
     }));
     await waitFor(() => {
       expect(oldCommerce.previewCheckout).toHaveBeenCalledTimes(1);
@@ -1083,7 +1083,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "Server basic plan"
     })).closest("article") as HTMLElement;
     fireEvent.click(within(currentCard).getByRole("button", {
-      name: "Buy Server basic plan with Coins"
+      name: "Buy with Coins: Server basic plan"
     }));
     expect(await screen.findByRole("dialog", {
       name: "Confirm Coins purchase"
@@ -1118,7 +1118,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "Server basic plan"
     })).closest("article") as HTMLElement;
     fireEvent.click(within(oldCard).getByRole("button", {
-      name: "Buy Server basic plan with Coins"
+      name: "Buy with Coins: Server basic plan"
     }));
     const dialog = await screen.findByRole("dialog", {
       name: "Confirm Coins purchase"
@@ -1156,7 +1156,7 @@ describe("Portal server-backed Marketplace", () => {
       name: "Server basic plan"
     })).closest("article") as HTMLElement;
     fireEvent.click(within(currentCard).getByRole("button", {
-      name: "Buy Server basic plan with Coins"
+      name: "Buy with Coins: Server basic plan"
     }));
     expect(await screen.findByRole("dialog", {
       name: "Confirm Coins purchase"
@@ -1169,6 +1169,49 @@ describe("Portal server-backed Marketplace", () => {
       sessionRef: "portal_session_marketplace",
       offerRef: "offer_plan_basic"
     });
+  });
+
+  test("keeps no-notice card actions as the final auto-pushed child", async () => {
+    const noNoticeOffer: PortalCoinOffer = {
+      ...planOffer,
+      offerRef: "offer_plan_without_notices",
+      offerVersionRef: "offer_version_plan_without_notices",
+      importantNotices: { zh: [], en: [] }
+    };
+    render(createElement(MarketplacePanel, {
+      commerceClient: commerceClient({
+        listOffers: vi.fn(async () => [noNoticeOffer])
+      }),
+      locale: "en",
+      onOpenRecharge: vi.fn(),
+      sessionRef: "portal_session_marketplace",
+      theme: "dark"
+    }));
+
+    const card = (await screen.findByRole("heading", {
+      name: "Server basic plan"
+    })).closest("article") as HTMLElement;
+    const actions = card.querySelector<HTMLElement>(
+      ".portal-marketplace-card__actions"
+    );
+    expect(card.querySelector(".portal-marketplace-card__notices")).toBeNull();
+    expect(actions).not.toBeNull();
+    expect(actions?.parentElement).toBe(card);
+    expect(card.lastElementChild).toBe(actions);
+
+    const css = readFileSync(resolve(
+      process.cwd(),
+      "src/styles/portal-static-preserve/user-portal-commerce.css"
+    ), "utf8");
+    expect(css).not.toContain(
+      "grid-template-rows: auto auto auto 1fr auto"
+    );
+    expect(css).toMatch(
+      /\.portal-v2-shell \.portal-marketplace-card article\s*\{[\s\S]*?display: flex;[\s\S]*?flex-direction: column;[\s\S]*?\}/
+    );
+    expect(css).toMatch(
+      /\.portal-v2-shell \.portal-marketplace-card__actions\s*\{[\s\S]*?margin-top: auto;[\s\S]*?\}/
+    );
   });
 
   test("Commerce CSS keeps theme, focus, safe-area, and responsive rules scoped", () => {
