@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import express from "express";
 import { join } from "node:path";
+import { types as utilTypes } from "node:util";
 import { createAdminAllowlistMiddleware } from "./middleware/admin-allowlist.mjs";
 import { createAuthMiddleware } from "./middleware/auth.mjs";
 import { createRateLimitMiddleware } from "./middleware/rate-limit.mjs";
@@ -22,6 +23,7 @@ import {
 import { subscriptionRoutes } from "./routes/subscription.mjs";
 import { publicLeadRoutes } from "./routes/public-leads.mjs";
 import { userPortalRoutes } from "./routes/user-portal.mjs";
+import { portalCoinCommerceRoutes } from "./routes/portal-coin-commerce.mjs";
 import { dataPlaneAgentRoutes } from "./routes/data-plane-agent.mjs";
 import { resolveClientIp } from "./services/ip-address.mjs";
 
@@ -87,8 +89,145 @@ function subscriptionCredentialRateLimitKey(req, fallbackKeyFn) {
   return fallbackKey();
 }
 
+function matchesPortalCommerceNamespace(pathname) {
+  return (
+    pathname === "/api/portal/catalog"
+    || pathname.startsWith("/api/portal/catalog/")
+    || pathname === "/api/portal/commerce"
+    || pathname.startsWith("/api/portal/commerce/")
+  );
+}
+
+function decodeAsciiPercentLayer(value) {
+  return value.replace(
+    /%([0-7][0-9a-f])/gi,
+    (_match, hex) => String.fromCharCode(Number.parseInt(hex, 16))
+  );
+}
+
+function isPortalCommerceNamespace(req) {
+  const target = typeof req.originalUrl === "string"
+    ? req.originalUrl
+    : req.url;
+  if (typeof target !== "string") return false;
+  const queryIndex = target.indexOf("?");
+  let candidate = queryIndex === -1 ? target : target.slice(0, queryIndex);
+  for (let layer = 0; layer <= 3; layer += 1) {
+    if (matchesPortalCommerceNamespace(candidate.toLowerCase())) return true;
+    if (layer === 3) break;
+    const decoded = decodeAsciiPercentLayer(candidate);
+    if (decoded === candidate) break;
+    candidate = decoded;
+  }
+  return false;
+}
+
+function ownEnumerableDataValue(value, field) {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, field);
+    if (
+      !descriptor
+      || !descriptor.enumerable
+      || !("value" in descriptor)
+    ) {
+      return undefined;
+    }
+    return descriptor.value;
+  } catch {
+    return undefined;
+  }
+}
+
+function hasCallableOwnSurface(value, fields) {
+  if (!value || (typeof value !== "object" && typeof value !== "function")) {
+    return false;
+  }
+  return fields.every(
+    (field) => typeof ownEnumerableDataValue(value, field) === "function"
+  );
+}
+
+function hasCallableSafeDescriptorChain(value, fields) {
+  try {
+    if (
+      !value
+      || (typeof value !== "object" && typeof value !== "function")
+      || Array.isArray(value)
+      || utilTypes.isProxy(value)
+    ) {
+      return false;
+    }
+    return fields.every((field) => {
+      const seen = new Set();
+      let current = value;
+      for (let depth = 0; current !== null && depth < 32; depth += 1) {
+        if (seen.has(current) || utilTypes.isProxy(current)) return false;
+        seen.add(current);
+        const descriptor = Object.getOwnPropertyDescriptor(current, field);
+        if (descriptor) {
+          return (
+            "value" in descriptor
+            && typeof descriptor.value === "function"
+            && !utilTypes.isProxy(descriptor.value)
+          );
+        }
+        current = Object.getPrototypeOf(current);
+      }
+      return false;
+    });
+  } catch {
+    return false;
+  }
+}
+
+function portalCoinCommerceRoutesEnabled(state) {
+  const platform = state.platform;
+  if (!platform || typeof platform !== "object") return false;
+  if (
+    ownEnumerableDataValue(platform, "coinsCommerceEnabled") !== true
+    || ownEnumerableDataValue(platform, "userPortalRoutesEnabled") !== true
+  ) {
+    return false;
+  }
+  const store = ownEnumerableDataValue(platform, "coinCommerceStore");
+  const auth = ownEnumerableDataValue(platform, "userPortalAuth");
+  const coordinator = ownEnumerableDataValue(
+    platform,
+    "coinCommerceCoordinator"
+  );
+  return (
+    hasCallableOwnSurface(store, [
+      "listPublishedOffers",
+      "getPublishedOffer",
+      "createCheckoutQuote",
+      "confirmOrder",
+      "cancelOrder",
+      "getOrder"
+    ])
+    && hasCallableSafeDescriptorChain(auth, ["requireSession"])
+    && hasCallableOwnSurface(coordinator, ["start", "stop"])
+  );
+}
+
 export function createApp(state, options = {}) {
   const app = express();
+  if (portalCoinCommerceRoutesEnabled(state)) {
+    app.use(portalCoinCommerceRoutes(state, {
+      nowFn: options.rateLimitNowFn
+    }));
+  }
+  const portalCommerceConsoleAuth = createAuthMiddleware({
+    token: state.consoleToken,
+    publicPaths: [],
+    publicPathPrefixes: []
+  });
+  app.use((req, res, next) => {
+    if (isPortalCommerceNamespace(req)) {
+      portalCommerceConsoleAuth(req, res, next);
+      return;
+    }
+    next();
+  });
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {
