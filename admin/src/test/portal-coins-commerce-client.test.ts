@@ -305,6 +305,31 @@ describe("Portal Coins Commerce HTTP client", () => {
     ]);
   });
 
+  test("rejects successful statuses outside each endpoint contract", async () => {
+    const responses = [
+      wireResponse({ offers: [PLAN_OFFER] }, 201),
+      wireResponse({ order: HELD_ORDER }, 200),
+      wireResponse({ order: HELD_ORDER }, 202)
+    ];
+    const fetchFn = vi.fn<typeof fetch>(async () => responses.shift()!);
+    const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
+
+    await expectSafeFailure(
+      commerce.listOffers({ sessionRef: "session_alpha" })
+    );
+    await expectSafeFailure(commerce.createOrder({
+      sessionRef: "session_alpha",
+      quoteRef: "quote_monthly_50gb_1",
+      idempotencyKey: "checkout-status-200"
+    }));
+    await expectSafeFailure(commerce.createOrder({
+      sessionRef: "session_alpha",
+      quoteRef: "quote_monthly_50gb_1",
+      idempotencyKey: "checkout-status-202"
+    }));
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+  });
+
   test("accepts both Quote states and the held, captured, and cancelled Order states", async () => {
     const bodies = [
       { quote: AVAILABLE_QUOTE },

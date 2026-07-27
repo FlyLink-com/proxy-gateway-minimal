@@ -648,17 +648,19 @@ async function request<T>(
   fetchFn: typeof fetch,
   url: string,
   init: RequestInit,
+  expectedStatus: number,
   project: (input: unknown) => T
 ): Promise<T> {
   let body: unknown;
   let ok: boolean;
   try {
     const response = await fetchFn(url, init);
+    ok = response.ok;
+    if (typeof ok !== "boolean") throw requestFailed();
+    if (ok && response.status !== expectedStatus) throw requestFailed();
     const text = await response.text();
     if (typeof text !== "string") throw requestFailed();
     body = JSON.parse(text) as unknown;
-    ok = response.ok;
-    if (typeof ok !== "boolean") throw requestFailed();
   } catch {
     throw requestFailed();
   }
@@ -719,6 +721,7 @@ export function createPortalCoinCommerceClient(
         fetchFn,
         "/api/portal/catalog/offers",
         getInit(sessionRef),
+        200,
         offerListWrapper
       );
     },
@@ -731,6 +734,7 @@ export function createPortalCoinCommerceClient(
         fetchFn,
         `/api/portal/catalog/offers/${offerRef}`,
         getInit(sessionRef),
+        200,
         offerWrapper
       );
     },
@@ -743,6 +747,7 @@ export function createPortalCoinCommerceClient(
         fetchFn,
         "/api/portal/commerce/checkout-preview",
         postInit(sessionRef, JSON.stringify({ offerRef })),
+        200,
         quoteWrapper
       );
     },
@@ -764,6 +769,7 @@ export function createPortalCoinCommerceClient(
           JSON.stringify({ quoteRef }),
           idempotencyKey
         ),
+        201,
         orderWrapper
       );
     },
@@ -776,6 +782,7 @@ export function createPortalCoinCommerceClient(
         fetchFn,
         `/api/portal/commerce/orders/${orderRef}`,
         getInit(sessionRef),
+        200,
         orderWrapper
       );
     },
@@ -793,6 +800,7 @@ export function createPortalCoinCommerceClient(
         fetchFn,
         `/api/portal/commerce/orders/${orderRef}/cancel`,
         postInit(sessionRef, "{}", idempotencyKey),
+        200,
         orderWrapper
       );
     }
