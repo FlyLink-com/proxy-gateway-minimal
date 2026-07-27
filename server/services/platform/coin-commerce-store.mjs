@@ -28,6 +28,8 @@ const DEFAULT_CANCEL_WINDOW_MS = 3_000;
 const DEFAULT_QUOTE_TTL_MS = 300_000;
 const MAX_SERVER_INTERVAL_MS = 86_400_000;
 const COMMERCE_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
+const CANCEL_RECONCILIATION = Symbol("cancel_reconciliation");
+const FULFILLMENT_LEASE_LOST = Symbol("fulfillment_lease_lost");
 const FACTORY_FIELDS = new Set([
   "dbPath",
   "database",
@@ -422,6 +424,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   let closed = false;
+  let recoveryAuditCursor = null;
+  let recoveryAuditDue = false;
 
   function assertOpen() {
     if (closed) throw commerceError("commerce_store_closed");
@@ -839,6 +843,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
     ) {
       throw commerceError("commerce_infrastructure_error");
     }
+    if (operationType === "cancel_order") {
+      validateSucceededCancelReplay({ order, receipt, operation });
+    }
     return projectOrderRow(order);
   }
 
@@ -1177,6 +1184,160 @@ export function createSqliteCoinCommerceStore(options = {}) {
     return { valid: true, hold, allocation };
   }
 
+  function validateSucceededCancelReplay({ order, receipt, operation }) {
+    if (
+      !["cancelled", "reconciliation_required"].includes(
+        order.payment_status
+      )
+    ) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    const binding = readOrderHoldInvariant(order);
+    if (!binding.valid || binding.hold.status !== "released") {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    const events = db.prepare(`
+      select * from platform_coin_commerce_order_events
+       where order_ref = ?
+       order by occurred_at, event_ref
+    `).all(order.order_ref);
+    const heldEvents = events.filter(
+      (event) => event.event_type === "order_held"
+    );
+    const cancelledEvents = events.filter(
+      (event) => event.event_type === "order_cancelled"
+    );
+    const reconciliationEvents = events.filter(
+      (event) => event.event_type === "reconciliation_required"
+    );
+    const forbiddenEvents = events.filter((event) => [
+      "capture_claimed",
+      "payment_captured",
+      "fulfillment_delivered",
+      "fulfillment_failed"
+    ].includes(event.event_type));
+    if (
+      heldEvents.length !== 1
+      || cancelledEvents.length !== 1
+      || forbiddenEvents.length !== 0
+      || heldEvents[0].actor_type !== "portal_user"
+      || heldEvents[0].actor_ref !== order.account_id
+      || heldEvents[0].safe_code !== null
+      || heldEvents[0].occurred_at !== order.created_at
+      || cancelledEvents[0].actor_type !== operation.actorType
+      || cancelledEvents[0].actor_ref !== operation.actorRef
+      || cancelledEvents[0].safe_code !== null
+      || cancelledEvents[0].occurred_at !== receipt.completed_at
+      || !events.every((event) => (
+        COMMERCE_REFERENCE.test(event.event_ref)
+        && isStrictIsoTimestamp(event.occurred_at)
+      ))
+      || (
+        order.payment_status === "cancelled"
+          ? reconciliationEvents.length !== 0
+          : reconciliationEvents.length !== 1
+            || reconciliationEvents[0].event_ref
+              !== recoveryEventRef(order.order_ref, "reconciliation_required")
+            || reconciliationEvents[0].safe_code
+              !== "reconciliation_required"
+            || reconciliationEvents[0].occurred_at < receipt.completed_at
+      )
+    ) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    const refs = deriveCommerceOperationRefs(order.order_ref);
+    const releaseReceipt = db.prepare(`
+      select * from platform_coin_operation_receipts
+       where actor_scope = ?
+         and operation_type = 'release_coin_hold'
+         and idempotency_key = ?
+    `).get(operation.actorScope, refs.releaseOperationRef);
+    if (
+      !releaseReceipt
+      || !isSafeWalletReference(releaseReceipt.operation_ref)
+      || releaseReceipt.wallet_ref !== binding.hold.wallet_ref
+      || releaseReceipt.status !== "succeeded"
+      || releaseReceipt.result_ref !== order.hold_ref
+      || releaseReceipt.safe_result_code !== "released"
+      || !/^[0-9a-f]{64}$/.test(releaseReceipt.request_digest)
+      || !Number.isSafeInteger(releaseReceipt.previous_wallet_version)
+      || !Number.isSafeInteger(releaseReceipt.resulting_wallet_version)
+      || releaseReceipt.resulting_wallet_version
+        !== releaseReceipt.previous_wallet_version + 1
+      || releaseReceipt.resulting_wallet_status !== binding.hold.wallet_status
+      || !isStrictIsoTimestamp(releaseReceipt.created_at)
+      || !isStrictIsoTimestamp(releaseReceipt.completed_at)
+      || releaseReceipt.created_at < receipt.created_at
+      || releaseReceipt.completed_at < releaseReceipt.created_at
+    ) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    const allocations = db.prepare(`
+      select lot_ref, allocated_units
+        from platform_coin_hold_allocations
+       where hold_ref = ?
+       order by allocation_sequence
+    `).all(order.hold_ref);
+    const ledger = db.prepare(`
+      select * from platform_coin_ledger_entries
+       where operation_ref = ?
+       order by lot_ref, entry_ref
+    `).all(releaseReceipt.operation_ref);
+    const releasedLotRefs = new Set(ledger.map((entry) => entry.lot_ref));
+    if (
+      allocations.length === 0
+      || ledger.length !== allocations.length
+      || releasedLotRefs.size !== allocations.length
+      || ledger.some((entry) => {
+        const allocation = allocations.find(
+          (candidate) => candidate.lot_ref === entry.lot_ref
+        );
+        return (
+          !allocation
+          || !["held_to_available", "held_to_expired"].includes(
+            entry.operation
+          )
+          || entry.amount_units !== allocation.allocated_units
+          || entry.wallet_ref !== binding.hold.wallet_ref
+          || entry.hold_ref !== order.hold_ref
+          || entry.order_ref !== order.order_ref
+          || entry.actor_type !== operation.actorType
+          || entry.actor_ref !== operation.actorRef
+          || entry.previous_wallet_version
+            !== releaseReceipt.previous_wallet_version
+          || entry.resulting_wallet_version
+            !== releaseReceipt.resulting_wallet_version
+          || entry.resulting_wallet_status
+            !== releaseReceipt.resulting_wallet_status
+          || entry.occurred_at !== releaseReceipt.completed_at
+        );
+      })
+    ) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    const forbiddenWalletFacts = db.prepare(`
+      select count(*)
+        from platform_coin_operation_receipts
+       where actor_scope = ?
+         and (
+           (operation_type = 'capture_coin_hold' and idempotency_key = ?)
+           or idempotency_key = ?
+         )
+    `).pluck().get(
+      `commerce:${order.account_id}`,
+      refs.captureOperationRef,
+      refs.recoveryOperationRef
+    );
+    const commandFacts = db.prepare(`
+      select count(*)
+        from platform_coin_commerce_fulfillment_commands
+       where order_ref = ?
+    `).pluck().get(order.order_ref);
+    if (forbiddenWalletFacts !== 0 || commandFacts !== 0) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+  }
+
   function parseQuoteRow(row) {
     if (
       !row
@@ -1359,6 +1520,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
     if (replay) return replay;
     const order = findOrder(request.orderRef, request.accountId);
     if (!order) throw commerceError("commerce_not_found");
+    if (order.payment_status === "reconciliation_required") {
+      return CANCEL_RECONCILIATION;
+    }
     if (["capture_pending", "captured"].includes(order.payment_status)) {
       throw commerceError("capture_in_progress");
     }
@@ -1371,7 +1535,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     const binding = readOrderHoldInvariant(order);
     if (!binding.valid || binding.hold.status !== "active") {
       markReconciliation(order, occurredAt);
-      return projectOrderRow(findOrder(order.order_ref));
+      return CANCEL_RECONCILIATION;
     }
     const receiptRef = insertStartedCommerceReceipt({
       accountId: request.accountId,
@@ -1439,7 +1603,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
         throw commerceError("invalid_store_contract");
       }
       const operation = normalizeOperation(value.operation, business.accountId);
-      return cancelTransaction.immediate({
+      const result = cancelTransaction.immediate({
         ...business,
         operation,
         requestDigest: canonicalCommerceRequestDigest(
@@ -1447,6 +1611,10 @@ export function createSqliteCoinCommerceStore(options = {}) {
           business
         )
       });
+      if (result === CANCEL_RECONCILIATION) {
+        throw commerceError("reconciliation_required");
+      }
+      return result;
     });
   }
 
@@ -1582,13 +1750,20 @@ export function createSqliteCoinCommerceStore(options = {}) {
       : null;
     const payload = parseCommandPayload(command.payload_json);
     const expectedPayload = order ? commandPayloadForOrder(order) : null;
+    const commandMatchesOrderState = (
+      order?.payment_status === "captured"
+      || (
+        order?.payment_status === "reconciliation_required"
+        && ["failed", "delivered"].includes(command.status)
+      )
+    );
     if (
       !order
       || command.command_ref !== refs?.commandRef
       || command.order_ref !== order.order_ref
       || command.account_id !== order.account_id
       || !COMMERCE_REFERENCE.test(command.account_id)
-      || order.payment_status !== "captured"
+      || !commandMatchesOrderState
       || JSON.stringify(payload) !== JSON.stringify(expectedPayload)
       || !["pending", "processing", "delivered", "failed"].includes(
         command.status
@@ -1741,6 +1916,55 @@ export function createSqliteCoinCommerceStore(options = {}) {
     });
   }
 
+  function isolateCapturedOrder(order, occurredAt) {
+    if (order.payment_status !== "captured") {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    const command = db.prepare(`
+      select * from platform_coin_commerce_fulfillment_commands
+       where order_ref = ?
+    `).get(order.order_ref);
+    if (command) {
+      validateCommandAndReceipt(command, order);
+      if (["pending", "processing"].includes(command.status)) {
+        const failed = db.prepare(`
+          update platform_coin_commerce_fulfillment_commands
+             set status = 'failed',
+                 lease_token = null,
+                 lease_until = null,
+                 safe_failure_code = 'fulfillment_result_invalid',
+                 updated_at = ?
+           where command_ref = ?
+             and status = ?
+             and lease_generation = ?
+             and lease_token is ?
+             and lease_until is ?
+        `).run(
+          occurredAt,
+          command.command_ref,
+          command.status,
+          command.lease_generation,
+          command.lease_token,
+          command.lease_until
+        );
+        if (failed.changes !== 1) {
+          throw commerceError("commerce_infrastructure_error");
+        }
+        appendOrderEvent({
+          orderRef: order.order_ref,
+          eventType: "fulfillment_failed",
+          safeCode: "fulfillment_result_invalid",
+          actorType: "commerce_system",
+          actorRef: "coin_commerce_recovery",
+          occurredAt,
+          eventRef: recoveryEventRef(order.order_ref, "fulfillment_failed")
+        });
+      }
+    }
+    markReconciliation(order, occurredAt);
+    return projectOrderRow(findOrder(order.order_ref));
+  }
+
   function releaseForRecovery(order, occurredAt, invariant = null) {
     const binding = invariant ?? readOrderHoldInvariant(order);
     if (!binding.valid) return false;
@@ -1779,8 +2003,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     if (order.payment_status === "captured") {
       const binding = readOrderHoldInvariant(order);
       if (!binding.valid || binding.hold.status !== "captured") {
-        markReconciliation(order, occurredAt);
-        return projectOrderRow(findOrder(orderRef));
+        return isolateCapturedOrder(order, occurredAt);
       }
       ensureOutbox(order, occurredAt);
       return projectOrderRow(findOrder(orderRef));
@@ -1890,27 +2113,148 @@ export function createSqliteCoinCommerceStore(options = {}) {
     });
   }
 
-  const recoverTransaction = db.transaction((limit) => {
-    const occurredAt = readDatabaseUtc(db);
-    const rows = db.prepare(`
+  function selectActionableRecoveryRows(occurredAt, limit) {
+    if (limit === 0) return [];
+    return db.prepare(`
       select o.*
         from platform_coin_commerce_orders o
+        left join platform_coin_holds h on h.hold_ref = o.hold_ref
+        left join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
         left join platform_coin_commerce_fulfillment_commands c
           on c.order_ref = o.order_ref
-       where o.payment_status in ('held', 'capture_pending', 'capture_failed')
+       where o.payment_status in ('capture_pending', 'capture_failed')
+          or (
+            o.payment_status = 'held'
+            and (
+              o.cancel_until <= ?
+              or h.hold_ref is null
+              or w.wallet_ref is null
+              or w.account_id <> o.account_id
+              or h.purpose <> 'product_purchase'
+              or h.purpose_ref <> o.order_ref
+              or h.amount_units <> o.amount_units
+              or h.status <> 'active'
+              or h.expires_at <= ?
+            )
+          )
           or (
             o.payment_status = 'captured'
             and (
-              c.command_ref is null
-              or (
-                c.status = 'processing'
-                and c.lease_until <= ?
-              )
+              h.hold_ref is null
+              or w.wallet_ref is null
+              or w.account_id <> o.account_id
+              or h.purpose <> 'product_purchase'
+              or h.purpose_ref <> o.order_ref
+              or h.amount_units <> o.amount_units
+              or h.status <> 'captured'
+              or c.command_ref is null
+              or (c.status = 'processing' and c.lease_until <= ?)
             )
           )
        order by o.updated_at, o.order_ref
        limit ?
-    `).all(occurredAt, limit);
+    `).all(occurredAt, occurredAt, occurredAt, limit);
+  }
+
+  function selectAuditRecoveryRows(occurredAt, limit, cursor) {
+    if (limit === 0) return { rows: [], wrapped: false };
+    const eligible = `
+      (
+        o.payment_status = 'held'
+        and o.cancel_until > ?
+        and h.hold_ref is not null
+        and w.wallet_ref is not null
+        and w.account_id = o.account_id
+        and h.purpose = 'product_purchase'
+        and h.purpose_ref = o.order_ref
+        and h.amount_units = o.amount_units
+        and h.status = 'active'
+        and h.expires_at > ?
+      )
+      or (
+        o.payment_status = 'captured'
+        and h.hold_ref is not null
+        and w.wallet_ref is not null
+        and w.account_id = o.account_id
+        and h.purpose = 'product_purchase'
+        and h.purpose_ref = o.order_ref
+        and h.amount_units = o.amount_units
+        and h.status = 'captured'
+        and c.command_ref is not null
+        and not (c.status = 'processing' and c.lease_until <= ?)
+      )
+    `;
+    const select = (afterCursor) => {
+      const keyset = afterCursor
+        ? `
+          and (
+            o.updated_at > ?
+            or (o.updated_at = ? and o.order_ref > ?)
+          )
+        `
+        : "";
+      const parameters = [occurredAt, occurredAt, occurredAt];
+      if (afterCursor) {
+        parameters.push(
+          afterCursor.updatedAt,
+          afterCursor.updatedAt,
+          afterCursor.orderRef
+        );
+      }
+      parameters.push(limit);
+      return db.prepare(`
+        select o.*
+          from platform_coin_commerce_orders o
+          join platform_coin_holds h on h.hold_ref = o.hold_ref
+          join platform_coin_wallets w on w.wallet_ref = h.wallet_ref
+          left join platform_coin_commerce_fulfillment_commands c
+            on c.order_ref = o.order_ref
+         where (${eligible})
+           ${keyset}
+         order by o.updated_at, o.order_ref
+         limit ?
+      `).all(...parameters);
+    };
+    const rows = select(cursor);
+    if (rows.length > 0 || cursor === null) {
+      return { rows, wrapped: false };
+    }
+    return { rows: select(null), wrapped: true };
+  }
+
+  const recoverTransaction = db.transaction((request) => {
+    const occurredAt = readDatabaseUtc(db);
+    let auditRows = [];
+    let actionRows = [];
+    let wrapped = false;
+    if (request.auditDue) {
+      const audit = selectAuditRecoveryRows(
+        occurredAt,
+        1,
+        request.auditCursor
+      );
+      auditRows = audit.rows;
+      wrapped = audit.wrapped;
+      actionRows = selectActionableRecoveryRows(
+        occurredAt,
+        request.limit - auditRows.length
+      );
+    } else {
+      actionRows = selectActionableRecoveryRows(
+        occurredAt,
+        request.limit
+      );
+      if (actionRows.length < request.limit) {
+        const audit = selectAuditRecoveryRows(
+          occurredAt,
+          request.limit - actionRows.length,
+          request.auditCursor
+        );
+        auditRows = audit.rows;
+        wrapped = audit.wrapped;
+      }
+    }
+    const rows = [...actionRows, ...auditRows];
     const result = {
       scanned: rows.length,
       readyForCapture: 0,
@@ -1991,7 +2335,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
       }
       const binding = readOrderHoldInvariant(order);
       if (!binding.valid || binding.hold.status !== "captured") {
-        markReconciliation(order, occurredAt);
+        isolateCapturedOrder(order, occurredAt);
         result.reconciliationRequired += 1;
         continue;
       }
@@ -2014,7 +2358,23 @@ export function createSqliteCoinCommerceStore(options = {}) {
         }
       }
     }
-    return result;
+    const lastAudit = auditRows.at(-1);
+    const nextCursor = lastAudit
+      ? {
+          updatedAt: lastAudit.updated_at,
+          orderRef: lastAudit.order_ref
+        }
+      : request.auditCursor;
+    const nextAuditDue = (
+      auditRows.length === 0
+      && actionRows.length === request.limit
+    );
+    return {
+      result,
+      nextCursor,
+      nextAuditDue,
+      wrapped
+    };
   });
 
   function recoverNonTerminalOrders(recoverInput) {
@@ -2022,7 +2382,14 @@ export function createSqliteCoinCommerceStore(options = {}) {
       const value = assertPlainObject(recoverInput);
       const fields = new Set(["limit"]);
       assertExactDataFields(value, fields);
-      return recoverTransaction.immediate(normalizeLimit(value.limit));
+      const recovered = recoverTransaction.immediate({
+        limit: normalizeLimit(value.limit),
+        auditCursor: recoveryAuditCursor,
+        auditDue: recoveryAuditDue
+      });
+      recoveryAuditCursor = recovered.nextCursor;
+      recoveryAuditDue = recovered.nextAuditDue;
+      return recovered.result;
     });
   }
 
@@ -2042,17 +2409,27 @@ export function createSqliteCoinCommerceStore(options = {}) {
   const claimCommandTransaction = db.transaction((leaseMs) => {
     const occurredAt = readDatabaseUtc(db);
     const command = db.prepare(`
-      select * from platform_coin_commerce_fulfillment_commands
-       where status = 'pending'
-          or (status = 'processing' and lease_until <= ?)
+      select c.*
+        from platform_coin_commerce_fulfillment_commands c
+        join platform_coin_commerce_orders o on o.order_ref = c.order_ref
+       where o.payment_status = 'captured'
+         and (
+           c.status = 'pending'
+           or (c.status = 'processing' and c.lease_until <= ?)
+         )
        order by
-         case status when 'pending' then 0 else 1 end,
-         coalesce(lease_until, updated_at),
-         command_ref
+         case c.status when 'pending' then 0 else 1 end,
+         coalesce(c.lease_until, c.updated_at),
+         c.command_ref
        limit 1
     `).get(occurredAt);
     if (!command) return null;
-    validateCommandAndReceipt(command);
+    const { order } = validateCommandAndReceipt(command);
+    const binding = readOrderHoldInvariant(order);
+    if (!binding.valid || binding.hold.status !== "captured") {
+      isolateCapturedOrder(order, occurredAt);
+      return null;
+    }
     if (
       command.attempt_count >= 2_147_483_647
       || command.lease_generation >= 2_147_483_647
@@ -2157,6 +2534,13 @@ export function createSqliteCoinCommerceStore(options = {}) {
       throw commerceError("commerce_fulfillment_lease_lost");
     }
     const validated = validateCommandAndReceipt(command);
+    if (validated.order.payment_status === "captured") {
+      const binding = readOrderHoldInvariant(validated.order);
+      if (!binding.valid || binding.hold.status !== "captured") {
+        isolateCapturedOrder(validated.order, occurredAt);
+        return FULFILLMENT_LEASE_LOST;
+      }
+    }
     if (command.status === "delivered") {
       const receipt = validated.receipt;
       if (
@@ -2232,13 +2616,17 @@ export function createSqliteCoinCommerceStore(options = {}) {
       ) {
         throw commerceError("commerce_invalid_fulfillment_result");
       }
-      return completeCommandTransaction.immediate({
+      const result = completeCommandTransaction.immediate({
         commandRef: normalizeReference(value.commandRef),
         leaseGeneration: value.leaseGeneration,
         leaseToken: value.leaseToken,
         effectRef: normalizeReference(value.effectRef),
         status: "delivered"
       });
+      if (result === FULFILLMENT_LEASE_LOST) {
+        throw commerceError("commerce_fulfillment_lease_lost");
+      }
+      return result;
     });
   }
 
@@ -2258,7 +2646,14 @@ export function createSqliteCoinCommerceStore(options = {}) {
     if (!command) {
       throw commerceError("commerce_fulfillment_lease_lost");
     }
-    validateCommandAndReceipt(command);
+    const validated = validateCommandAndReceipt(command);
+    if (validated.order.payment_status === "captured") {
+      const binding = readOrderHoldInvariant(validated.order);
+      if (!binding.valid || binding.hold.status !== "captured") {
+        isolateCapturedOrder(validated.order, occurredAt);
+        return FULFILLMENT_LEASE_LOST;
+      }
+    }
     const updated = db.prepare(`
       update platform_coin_commerce_fulfillment_commands
          set status = 'failed',
@@ -2313,23 +2708,36 @@ export function createSqliteCoinCommerceStore(options = {}) {
       ) {
         throw commerceError("commerce_invalid_fulfillment_result");
       }
-      return failCommandTransaction.immediate({
+      const result = failCommandTransaction.immediate({
         commandRef: normalizeReference(value.commandRef),
         leaseGeneration: value.leaseGeneration,
         leaseToken: value.leaseToken,
         safeCode: value.safeCode
       });
+      if (result === FULFILLMENT_LEASE_LOST) {
+        throw commerceError("commerce_fulfillment_lease_lost");
+      }
+      return result;
     });
   }
 
   const nextWakeTransaction = db.transaction(() => {
     const occurredAt = readDatabaseUtc(db);
+    const candidates = [];
     for (const command of db.prepare(`
       select * from platform_coin_commerce_fulfillment_commands
     `).all()) {
-      validateCommandAndReceipt(command);
+      const { order } = validateCommandAndReceipt(command);
+      if (
+        command.status === "processing"
+        && order.payment_status === "captured"
+      ) {
+        const binding = readOrderHoldInvariant(order);
+        if (!binding.valid || binding.hold.status !== "captured") {
+          candidates.push(occurredAt);
+        }
+      }
     }
-    const candidates = [];
     const held = db.prepare(`
       select min(cancel_until) from platform_coin_commerce_orders
        where payment_status = 'held'
@@ -2349,14 +2757,20 @@ export function createSqliteCoinCommerceStore(options = {}) {
     `).get();
     if (immediateOrder) candidates.push(occurredAt);
     const pending = db.prepare(`
-      select 1 from platform_coin_commerce_fulfillment_commands
-       where status = 'pending' limit 1
+      select 1
+        from platform_coin_commerce_fulfillment_commands c
+        join platform_coin_commerce_orders o on o.order_ref = c.order_ref
+       where o.payment_status = 'captured'
+         and c.status = 'pending'
+       limit 1
     `).get();
     if (pending) candidates.push(occurredAt);
     const lease = db.prepare(`
-      select min(lease_until)
-        from platform_coin_commerce_fulfillment_commands
-       where status = 'processing'
+      select min(c.lease_until)
+        from platform_coin_commerce_fulfillment_commands c
+        join platform_coin_commerce_orders o on o.order_ref = c.order_ref
+       where o.payment_status = 'captured'
+         and c.status = 'processing'
     `).pluck().get();
     if (lease !== null) candidates.push(lease);
     if (candidates.length === 0) return null;
