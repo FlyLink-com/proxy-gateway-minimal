@@ -58,6 +58,20 @@ const UI_PASSWORD =
 const UI_PORT = 3457;
 const TASK7_PROFILE = "task7";
 const UI_PROFILE = "ui";
+const UI_SEED_SOURCE_REF = "source_local_ui_validation_paid_coins_v1";
+const UI_SEED_SOURCE_DIGEST = createHash("sha256")
+  .update("local-ui-validation-paid-coins-v1", "utf8")
+  .digest("hex");
+const UI_SEED_IDEMPOTENCY_KEY =
+  "credit_local_ui_validation_paid_coins_v1";
+const UI_SEED_EVIDENCE = Object.freeze({
+  coinType: "paid_coins",
+  amountUnits: 1_000,
+  availability: "available",
+  sourceRef: UI_SEED_SOURCE_REF,
+  sourceDigest: UI_SEED_SOURCE_DIGEST,
+  idempotencyKey: UI_SEED_IDEMPOTENCY_KEY
+});
 const HANDLE_INTERNALS = new WeakMap();
 const DISABLED_SUBSCRIPTION_CORE = Object.freeze({});
 const UI_OFFERS = Object.freeze([
@@ -808,12 +822,10 @@ async function startLocalCoinCommerceValidationInternal(
       availability: "available",
       sourceType: "synthetic_seed",
       sourceRef: isUiProfile
-        ? "source_local_ui_validation_paid_coins_v1"
+        ? UI_SEED_SOURCE_REF
         : "source_local_commerce_funds",
       sourceDigest: isUiProfile
-        ? createHash("sha256")
-            .update("local-ui-validation-paid-coins-v1", "utf8")
-            .digest("hex")
+        ? UI_SEED_SOURCE_DIGEST
         : "a".repeat(64),
       policyRef: null,
       policyVersion: null,
@@ -823,7 +835,7 @@ async function startLocalCoinCommerceValidationInternal(
           ? "system:local-ui-validation"
           : "system:local-commerce-validation",
         idempotencyKey: isUiProfile
-          ? "credit_local_ui_validation_paid_coins_v1"
+          ? UI_SEED_IDEMPOTENCY_KEY
           : "credit_local_commerce_funds",
         actorType: "system",
         actorRef: isUiProfile
@@ -915,7 +927,8 @@ async function startLocalCoinCommerceValidationInternal(
             spendableUnits: funds.spendableUnits,
             heldUnits: funds.heldUnits,
             pendingUnits: funds.pendingUnits
-          })
+          }),
+          ...(isUiProfile ? { seed: UI_SEED_EVIDENCE } : {})
         });
       },
       stop: cleanup
