@@ -178,6 +178,20 @@ function deferred<T>() {
   };
 }
 
+function cssRuleBlock(css: string, selector: string) {
+  const escapedSelector = selector.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&"
+  );
+  const match = css.match(new RegExp(
+    `(?:^|})\\s*${escapedSelector}\\s*\\{([^{}]*)\\}`
+  ));
+  if (!match) {
+    throw new Error(`missing CSS rule: ${selector}`);
+  }
+  return match[1];
+}
+
 function commerceClient(
   overrides: Partial<PortalCoinCommerceClient> = {}
 ): PortalCoinCommerceClient {
@@ -300,12 +314,20 @@ describe("Portal server-backed Marketplace", () => {
       .toBeInTheDocument();
     expect(within(planCard as HTMLElement).queryByText(/42 Coins/))
       .not.toBeInTheDocument();
-    expect(within(planCard as HTMLElement).getByRole("button", {
+    const zhDetails = within(planCard as HTMLElement).getByRole("button", {
       name: "查看详情：服务端基础套餐"
-    })).toBeInTheDocument();
-    expect(within(planCard as HTMLElement).getByRole("button", {
+    });
+    const zhBuy = within(planCard as HTMLElement).getByRole("button", {
       name: "使用 Coins 购买：服务端基础套餐"
-    })).toBeInTheDocument();
+    });
+    expect(zhDetails.textContent).toBe("查看详情");
+    expect(zhDetails).toHaveAccessibleName(
+      `${zhDetails.textContent}：服务端基础套餐`
+    );
+    expect(zhBuy.textContent).toBe("使用 Coins 购买");
+    expect(zhBuy).toHaveAccessibleName(
+      `${zhBuy.textContent}：服务端基础套餐`
+    );
     expect(screen.getByRole("button", {
       name: "查看详情：服务端流量包"
     })).toBeInTheDocument();
@@ -828,12 +850,20 @@ describe("Portal server-backed Marketplace", () => {
       .toBeInTheDocument();
     expect(within(englishCard).getByText("Reference price").parentElement)
       .toHaveTextContent("Reference priceCNY 15.67");
-    expect(within(englishCard).getByRole("button", {
+    const englishDetails = within(englishCard).getByRole("button", {
       name: "Details: Server basic plan"
-    })).toBeInTheDocument();
-    expect(within(englishCard).getByRole("button", {
+    });
+    const englishBuy = within(englishCard).getByRole("button", {
       name: "Buy with Coins: Server basic plan"
-    })).toBeInTheDocument();
+    });
+    expect(englishDetails.textContent).toBe("Details");
+    expect(englishDetails).toHaveAccessibleName(
+      `${englishDetails.textContent}: Server basic plan`
+    );
+    expect(englishBuy.textContent).toBe("Buy with Coins");
+    expect(englishBuy).toHaveAccessibleName(
+      `${englishBuy.textContent}: Server basic plan`
+    );
     expect(screen.getByText("Coins · --")).toBeInTheDocument();
   });
 
@@ -1203,15 +1233,22 @@ describe("Portal server-backed Marketplace", () => {
       process.cwd(),
       "src/styles/portal-static-preserve/user-portal-commerce.css"
     ), "utf8");
-    expect(css).not.toContain(
-      "grid-template-rows: auto auto auto 1fr auto"
+    const articleRule = cssRuleBlock(
+      css,
+      ".portal-v2-shell .portal-marketplace-card article"
     );
-    expect(css).toMatch(
-      /\.portal-v2-shell \.portal-marketplace-card article\s*\{[\s\S]*?display: flex;[\s\S]*?flex-direction: column;[\s\S]*?\}/
+    const actionsRule = cssRuleBlock(
+      css,
+      ".portal-v2-shell .portal-marketplace-card__actions"
     );
-    expect(css).toMatch(
-      /\.portal-v2-shell \.portal-marketplace-card__actions\s*\{[\s\S]*?margin-top: auto;[\s\S]*?\}/
+    expect(css).not.toMatch(
+      /grid-template-rows\s*:\s*auto\s+auto\s+auto\s+1fr\s+auto\s*;/
     );
+    expect(articleRule).toMatch(/(?:^|\s)display\s*:\s*flex\s*;/);
+    expect(articleRule).toMatch(
+      /(?:^|\s)flex-direction\s*:\s*column\s*;/
+    );
+    expect(actionsRule).toMatch(/(?:^|\s)margin-top\s*:\s*auto\s*;/);
   });
 
   test("Commerce CSS keeps theme, focus, safe-area, and responsive rules scoped", () => {
@@ -1231,11 +1268,19 @@ describe("Portal server-backed Marketplace", () => {
     expect(css).not.toMatch(
       /(^|\n)\.portal-coins-dialog-backdrop\s*\{/
     );
-    expect(css).toMatch(
-      /\.portal-v2-shell\[data-portal-theme="dark"\]\s*\{[\s\S]*?--portal-commerce-focus-accent: #20d5e8;[\s\S]*?\}/
+    const darkThemeRule = cssRuleBlock(
+      css,
+      '.portal-v2-shell[data-portal-theme="dark"]'
     );
-    expect(css).toMatch(
-      /\.portal-v2-shell\[data-portal-theme="light"\]\s*\{[\s\S]*?--portal-commerce-focus-accent: #0969da;[\s\S]*?\}/
+    const lightThemeRule = cssRuleBlock(
+      css,
+      '.portal-v2-shell[data-portal-theme="light"]'
+    );
+    expect(darkThemeRule).toMatch(
+      /--portal-commerce-focus-accent\s*:\s*#20d5e8\s*;/
+    );
+    expect(lightThemeRule).toMatch(
+      /--portal-commerce-focus-accent\s*:\s*#0969da\s*;/
     );
     expect(css).toMatch(
       /\.portal-v2-shell button\.portal-coins-wallet-entry:focus-visible,\s*\.portal-v2-shell \.portal-commerce-layout button:focus-visible\s*\{\s*outline: 3px solid var\(--portal-commerce-focus-accent\);\s*outline-offset: 2px;\s*box-shadow: none;\s*\}/
