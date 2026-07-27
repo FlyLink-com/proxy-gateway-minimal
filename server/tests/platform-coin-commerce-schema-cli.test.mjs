@@ -221,6 +221,7 @@ test("dry-run leaves the source unchanged and exact apply then validates", () =>
       forbidden: [dbPath, "account_private", "order_private"]
     });
     assert.equal(applyOutput.ok, true);
+    assert.equal(applyOutput.sourceChanged, true);
     assert.deepEqual(applyOutput.appliedMigrationIds, [
       REQUIRED_COIN_COMMERCE_MIGRATION_ID
     ]);
@@ -290,6 +291,43 @@ test("unexpected operation errors are classified without exception text or priva
   assert.equal(outcome.exitCode, 4);
   assert.deepEqual(outcome.output.reasonCodes, ["unexpected_execution_failure"]);
   assert.equal(JSON.stringify(outcome.output).includes(privateValue), false);
+});
+
+test("unknown returned reason codes become a generic failure without leaking the raw value", async () => {
+  const privateReasonCode = "account_private_order_private";
+  const outcome = await runCoinCommerceSchemaCli({
+    argv: ["--mode", "validate", "--db-path", resolve("synthetic.sqlite")],
+    operations: {
+      validateCoinCommerceSchema() {
+        return {
+          ok: true,
+          mode: "validate",
+          schemaState: "ready",
+          sourceChanged: false,
+          checks: {
+            schemaExact: true,
+            walletDependency: true,
+            quickCheck: true,
+            foreignKeys: true
+          },
+          reasonCodes: [privateReasonCode],
+          appliedMigrationIds: [],
+          pendingMigrationIds: []
+        };
+      },
+      dryRunCoinCommerceMigrations() {
+        throw new Error("not called");
+      },
+      applyCoinCommerceMigrations() {
+        throw new Error("not called");
+      }
+    }
+  });
+  assert.equal(outcome.exitCode, 4);
+  assert.equal(outcome.output.ok, false);
+  assert.equal(outcome.output.schemaState, "unavailable");
+  assert.deepEqual(outcome.output.reasonCodes, ["unexpected_execution_failure"]);
+  assert.equal(JSON.stringify(outcome.output).includes(privateReasonCode), false);
 });
 
 test("migration confirmation identity is imported from the migration module", () => {

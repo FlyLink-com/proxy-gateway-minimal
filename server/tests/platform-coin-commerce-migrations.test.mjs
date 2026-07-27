@@ -58,7 +58,11 @@ const TRIGGERS = [
   "coin_commerce_quotes_status_transition",
   "coin_commerce_orders_payment_status_transition",
   "coin_commerce_operation_receipts_status_transition",
-  "coin_commerce_fulfillment_commands_status_transition"
+  "coin_commerce_fulfillment_commands_status_transition",
+  "coin_commerce_offer_versions_terminal_immutable_update",
+  "coin_commerce_quotes_terminal_immutable_update",
+  "coin_commerce_operation_receipts_identity_immutable_update",
+  "coin_commerce_operation_receipts_terminal_immutable_update"
 ];
 
 function withTempDirectory(action) {
@@ -169,6 +173,27 @@ test("requires the exact Wallet migration before Commerce apply", () => {
   });
 });
 
+test("rejects every pre-existing Commerce namespace object without the migration row", () => {
+  withTempDirectory((directory) => {
+    const dbPath = join(directory, "preexisting-extra.sqlite");
+    createWalletDatabase(dbPath);
+    const database = new Database(dbPath);
+    try {
+      database.exec(`
+        create table platform_coin_commerce_unreviewed (
+          id text primary key
+        )
+      `);
+      expectCode(
+        () => applyCoinCommerceMigrations(exactApplyInput(database)),
+        "commerce_owned_object_without_migration"
+      );
+    } finally {
+      database.close();
+    }
+  });
+});
+
 test("applies only Commerce-owned additive objects with the exact closed inspection", () => {
   withTempDirectory((directory) => {
     const dbPath = join(directory, "commerce.sqlite");
@@ -184,7 +209,7 @@ test("applies only Commerce-owned additive objects with the exact closed inspect
       assert.deepEqual(result.counts, {
         tables: 7,
         indexes: 9,
-        triggers: 12,
+        triggers: 16,
         migrationRows: 2,
         foreignKeyViolations: 0
       });
@@ -316,6 +341,48 @@ test("validation rejects altered columns, checks, foreign keys, indexes, trigger
   }
 });
 
+test("exact namespace inspection rejects extra Commerce tables and attached explicit indexes or triggers", () => {
+  for (const mutation of ["table", "index", "trigger"]) {
+    withTempDirectory((directory) => {
+      const dbPath = join(directory, `extra-${mutation}.sqlite`);
+      createWalletDatabase(dbPath);
+      const database = new Database(dbPath);
+      try {
+        applyCoinCommerceMigrations(exactApplyInput(database));
+        if (mutation === "table") {
+          database.exec(`
+            create table platform_coin_commerce_unreviewed (
+              id text primary key
+            )
+          `);
+        } else if (mutation === "index") {
+          database.exec(`
+            create index coin_commerce_unreviewed_idx
+              on platform_coin_commerce_quotes(created_at)
+          `);
+        } else {
+          database.exec(`
+            create trigger coin_commerce_unreviewed_trigger
+            before update on platform_coin_commerce_orders
+            begin
+              select raise(abort, 'unreviewed');
+            end
+          `);
+        }
+        const inspection = inspectCoinCommerceSchema({ database });
+        assert.equal(inspection.ok, false, mutation);
+        assert.equal(inspection.checks.schemaExact, false, mutation);
+        assert.ok(
+          inspection.reasonCodes.includes("commerce_owned_object_incompatible"),
+          mutation
+        );
+      } finally {
+        database.close();
+      }
+    });
+  }
+});
+
 test("inspection requires quick-check and foreign-key-check", () => {
   withTempDirectory((directory) => {
     const dbPath = join(directory, "integrity.sqlite");
@@ -438,12 +505,153 @@ test("Offer lifecycle permits publish and retire but rejects reverse transitions
         update platform_coin_commerce_offer_versions
            set status = 'draft', published_at = null, retired_at = null
          where offer_version_ref = ?
-      `).run("offerv_lifecycle_v1"), /offer_status_transition/i);
+      `).run("offerv_lifecycle_v1"), /offer_(status_transition|terminal_immutable)/i);
       assert.throws(() => database.prepare(`
         update platform_coin_commerce_offer_versions
            set summary_en = 'Changed'
          where offer_version_ref = ?
       `).run("offerv_lifecycle_v1"), /offer_content_immutable/i);
+      assert.throws(() => database.prepare(`
+        update platform_coin_commerce_offer_versions
+           set retired_at = ?
+         where offer_version_ref = ?
+      `).run("2026-07-28T00:00:00.000Z", "offerv_lifecycle_v1"), /immutable/i);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("Quote lifecycle allows active to consumed or expired once and freezes terminal timestamps", () => {
+  withTempDirectory((directory) => {
+    const dbPath = join(directory, "quote-lifecycle.sqlite");
+    createWalletDatabase(dbPath);
+    const database = new Database(dbPath);
+    try {
+      applyCoinCommerceMigrations(exactApplyInput(database));
+      database.pragma("foreign_keys = OFF");
+      database.exec(`
+        insert into platform_coin_commerce_offer_versions (
+          offer_version_ref, offer_ref, version, status, category,
+          title_zh, title_en, summary_zh, summary_en,
+          important_notices_zh_json, important_notices_en_json,
+          base_coin_units, reference_currency, reference_amount_minor,
+          accepted_coin_types_json, delivery_kind, duration_days,
+          monthly_traffic_gb, traffic_gb, never_expires,
+          discount_basis_points, created_at, published_at, retired_at
+        ) values (
+          'offerv_quotes_v1', 'offer_quotes', 1, 'published', 'plan',
+          '月卡', 'Monthly', '月度', 'Monthly',
+          '["平台自营"]', '["Platform-owned"]',
+          20, 'CNY', 2000, '["paid_coins"]',
+          'subscription_plan', 30, 50, null, 0, 0,
+          '${APPLIED_AT}', '${APPLIED_AT}', null
+        );
+      `);
+      const insertQuote = database.prepare(`
+        insert into platform_coin_commerce_quotes (
+          quote_ref, account_id, offer_version_ref, wallet_version,
+          amount_units, applied_discount_basis_points,
+          purchase_availability, shortfall_units, allocation_json,
+          before_balance_json, after_balance_json, status,
+          created_at, expires_at, consumed_at
+        ) values (?, 'account_synthetic', 'offerv_quotes_v1', 0,
+          20, 0, 'available', 0, '[]', '{}', '{}', 'active',
+          ?, ?, null)
+      `);
+      insertQuote.run("quote_consumed", APPLIED_AT, "2026-07-27T00:00:00.000Z");
+      insertQuote.run("quote_expired", APPLIED_AT, "2026-07-27T00:00:00.000Z");
+
+      database.prepare(`
+        update platform_coin_commerce_quotes
+           set status = 'consumed', consumed_at = ?
+         where quote_ref = 'quote_consumed'
+      `).run("2026-07-26T13:00:00.000Z");
+      database.exec(`
+        update platform_coin_commerce_quotes
+           set status = 'expired'
+         where quote_ref = 'quote_expired'
+      `);
+      assert.throws(() => database.prepare(`
+        update platform_coin_commerce_quotes
+           set consumed_at = ?
+         where quote_ref = 'quote_consumed'
+      `).run("2026-07-26T14:00:00.000Z"), /immutable/i);
+      assert.throws(() => database.exec(`
+        update platform_coin_commerce_quotes
+           set status = 'active'
+         where quote_ref = 'quote_expired'
+      `), /quote_(status_transition|terminal_immutable)/i);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("Operation receipt identity is immutable and terminal result facts are written exactly once", () => {
+  withTempDirectory((directory) => {
+    const dbPath = join(directory, "receipt-lifecycle.sqlite");
+    createWalletDatabase(dbPath);
+    const database = new Database(dbPath);
+    try {
+      applyCoinCommerceMigrations(exactApplyInput(database));
+      database.pragma("foreign_keys = OFF");
+      database.prepare(`
+        insert into platform_coin_commerce_operation_receipts (
+          operation_ref, account_id, actor_scope, operation_type,
+          idempotency_key, request_digest, status, result_ref,
+          safe_result_code, created_at, completed_at
+        ) values (?, ?, ?, ?, ?, ?, 'started', null, null, ?, null)
+      `).run(
+        "operation_lifecycle",
+        "account_synthetic",
+        "portal:synthetic",
+        "create_quote",
+        "idempotency_synthetic",
+        "digest_synthetic",
+        APPLIED_AT
+      );
+      assert.throws(() => database.exec(`
+        update platform_coin_commerce_operation_receipts
+           set request_digest = 'digest_changed'
+         where operation_ref = 'operation_lifecycle'
+      `), /immutable/i);
+      database.prepare(`
+        update platform_coin_commerce_operation_receipts
+           set status = 'succeeded', result_ref = ?, completed_at = ?
+         where operation_ref = 'operation_lifecycle'
+      `).run("quote_result", "2026-07-26T13:00:00.000Z");
+      assert.throws(() => database.prepare(`
+        update platform_coin_commerce_operation_receipts
+           set result_ref = ?, completed_at = ?
+         where operation_ref = 'operation_lifecycle'
+      `).run("quote_rewritten", "2026-07-26T14:00:00.000Z"), /immutable/i);
+
+      database.prepare(`
+        insert into platform_coin_commerce_operation_receipts (
+          operation_ref, account_id, actor_scope, operation_type,
+          idempotency_key, request_digest, status, result_ref,
+          safe_result_code, created_at, completed_at
+        ) values (?, ?, ?, ?, ?, ?, 'started', null, null, ?, null)
+      `).run(
+        "operation_failed",
+        "account_synthetic",
+        "system:synthetic",
+        "fulfillment_result",
+        "idempotency_failed",
+        "digest_failed",
+        APPLIED_AT
+      );
+      database.prepare(`
+        update platform_coin_commerce_operation_receipts
+           set status = 'failed', safe_result_code = ?, completed_at = ?
+         where operation_ref = 'operation_failed'
+      `).run("safe_failure", "2026-07-26T13:00:00.000Z");
+      assert.throws(() => database.prepare(`
+        update platform_coin_commerce_operation_receipts
+           set safe_result_code = ?, completed_at = ?
+         where operation_ref = 'operation_failed'
+      `).run("rewritten_failure", "2026-07-26T14:00:00.000Z"), /immutable/i);
     } finally {
       database.close();
     }
@@ -491,6 +699,100 @@ test("source dry-run rejects a missing Wallet dependency and cleans its owned di
     await assert.rejects(
       dryRunCoinCommerceMigrations({ dbPath, tempRoot }),
       (error) => error?.code === "commerce_migration_dependency_missing"
+    );
+    assert.deepEqual(readdirSync(tempRoot), []);
+  });
+});
+
+test("source dry-run fails closed on a concurrent WAL commit and cleans the owned snapshot", async () => {
+  await withTempDirectoryAsync(async (directory) => {
+    const dbPath = join(directory, "wal-source.sqlite");
+    const tempRoot = join(directory, "owned-temp");
+    createWalletDatabase(dbPath);
+    const setup = new Database(dbPath);
+    setup.pragma("journal_mode = WAL");
+    setup.close();
+
+    const originalBackup = Database.prototype.backup;
+    let wroteConcurrently = false;
+    Database.prototype.backup = async function patchedBackup(...args) {
+      const result = await originalBackup.apply(this, args);
+      if (this.readonly && !wroteConcurrently) {
+        const writer = new Database(dbPath);
+        try {
+          writer.prepare(`
+            update synthetic_sentinel
+               set sentinel_value = ?
+             where sentinel_key = ?
+          `).run("concurrent-commit", "preserve");
+          wroteConcurrently = true;
+        } finally {
+          writer.close();
+        }
+      }
+      return result;
+    };
+    try {
+      await assert.rejects(
+        dryRunCoinCommerceMigrations({ dbPath, tempRoot }),
+        (error) => error?.code === "commerce_source_changed_during_dry_run"
+      );
+      assert.equal(wroteConcurrently, true);
+      assert.deepEqual(readdirSync(tempRoot), []);
+    } finally {
+      Database.prototype.backup = originalBackup;
+    }
+  });
+});
+
+test("source dry-run cleanup is guaranteed when backup and source close both fail", async () => {
+  await withTempDirectoryAsync(async (directory) => {
+    const dbPath = join(directory, "close-failure.sqlite");
+    const tempRoot = join(directory, "owned-temp");
+    createWalletDatabase(dbPath);
+
+    const originalBackup = Database.prototype.backup;
+    const originalClose = Database.prototype.close;
+    Database.prototype.backup = async function failedBackup() {
+      throw new Error("synthetic backup failure");
+    };
+    Database.prototype.close = function failedReadonlyClose() {
+      const wasReadonly = this.readonly;
+      const result = originalClose.call(this);
+      if (wasReadonly) throw new Error("synthetic close failure");
+      return result;
+    };
+    try {
+      await assert.rejects(
+        dryRunCoinCommerceMigrations({ dbPath, tempRoot }),
+        /synthetic close failure/
+      );
+      assert.deepEqual(readdirSync(tempRoot), []);
+    } finally {
+      Database.prototype.backup = originalBackup;
+      Database.prototype.close = originalClose;
+    }
+  });
+});
+
+test("source dry-run cleans its owned snapshot after applied-schema validation failure", async () => {
+  await withTempDirectoryAsync(async (directory) => {
+    const dbPath = join(directory, "tampered-source.sqlite");
+    const tempRoot = join(directory, "owned-temp");
+    createWalletDatabase(dbPath);
+    const database = new Database(dbPath);
+    try {
+      applyCoinCommerceMigrations(exactApplyInput(database));
+      database.exec(`
+        create index coin_commerce_unreviewed_idx
+          on platform_coin_commerce_quotes(created_at)
+      `);
+    } finally {
+      database.close();
+    }
+    await assert.rejects(
+      dryRunCoinCommerceMigrations({ dbPath, tempRoot }),
+      (error) => error?.code === "commerce_applied_schema_incompatible"
     );
     assert.deepEqual(readdirSync(tempRoot), []);
   });
