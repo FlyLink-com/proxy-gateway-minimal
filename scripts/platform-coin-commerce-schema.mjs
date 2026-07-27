@@ -36,6 +36,26 @@ const CONTRACT_REASON_CODES = new Set([
   "temp_root_must_be_absolute",
   "unknown_argument"
 ]);
+const SAFE_REASON_CODES = new Set([
+  ...CONTRACT_REASON_CODES,
+  "commerce_applied_schema_incompatible",
+  "commerce_migration_checksum_mismatch",
+  "commerce_migration_dependency_missing",
+  "commerce_migration_ledger_incompatible",
+  "commerce_owned_object_incompatible",
+  "commerce_owned_object_missing",
+  "commerce_owned_object_without_migration",
+  "commerce_required_migration_missing",
+  "commerce_source_changed_during_dry_run",
+  "database_close_failed",
+  "database_inspection_failed",
+  "database_invalid",
+  "database_missing",
+  "database_unavailable",
+  "foreign_key_check_failed",
+  "quick_check_failed",
+  "unexpected_execution_failure"
+]);
 const SCHEMA_ERROR_CODES = new Set([
   "commerce_applied_schema_incompatible",
   "commerce_migration_checksum_mismatch",
@@ -162,7 +182,7 @@ function closedOutput({
       quickCheck: checks?.quickCheck === true,
       foreignKeys: checks?.foreignKeys === true
     },
-    reasonCodes: reasonCodes.filter((value) => typeof value === "string"),
+    reasonCodes: reasonCodes.filter((value) => SAFE_REASON_CODES.has(value)),
     appliedMigrationIds: appliedMigrationIds.filter(
       (value) => value === REQUIRED_COIN_COMMERCE_MIGRATION_ID
     ),
@@ -170,6 +190,11 @@ function closedOutput({
       (value) => value === REQUIRED_COIN_COMMERCE_MIGRATION_ID
     )
   };
+}
+
+function operationResultHasSafeReasons(result) {
+  return Array.isArray(result?.reasonCodes)
+    && result.reasonCodes.every((value) => SAFE_REASON_CODES.has(value));
 }
 
 function unavailableOutput(mode) {
@@ -232,6 +257,9 @@ async function execute(options, operations) {
     const result = operations.validateCoinCommerceSchema({
       dbPath: options.dbPath
     });
+    if (!operationResultHasSafeReasons(result)) {
+      return unexpectedExecutionOutcome(options.mode);
+    }
     const unavailable = preflightFailure(result, options.mode);
     if (unavailable) return unavailable;
     return {
@@ -243,6 +271,9 @@ async function execute(options, operations) {
   const validation = operations.validateCoinCommerceSchema({
     dbPath: options.dbPath
   });
+  if (!operationResultHasSafeReasons(validation)) {
+    return unexpectedExecutionOutcome(options.mode);
+  }
   const unavailable = preflightFailure(validation, options.mode);
   if (unavailable) return unavailable;
   try {
@@ -256,9 +287,17 @@ async function execute(options, operations) {
         expectedMigrationId: options.confirmMigrationId,
         expectedDdlChecksum: options.confirmDdlChecksum
       });
+    if (!operationResultHasSafeReasons(result)) {
+      return unexpectedExecutionOutcome(options.mode);
+    }
     return {
       exitCode: EXIT_SUCCESS,
-      output: closedOutput(result)
+      output: closedOutput({
+        ...result,
+        sourceChanged: options.mode === "apply"
+          ? true
+          : result.sourceChanged
+      })
     };
   } catch (error) {
     return operationFailure(error, options.mode);

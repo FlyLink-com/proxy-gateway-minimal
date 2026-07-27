@@ -13,8 +13,16 @@ The reviewed migration identity is:
 20260726_001_coin_commerce_foundation
 ```
 
-The exact DDL checksum must be read from the reviewed source with a local
-`validate` or `dry-run` result. Do not copy a checksum from an old report.
+The exact DDL checksum must be read from the reviewed source commit's
+`COIN_COMMERCE_MIGRATIONS[0].ddlChecksum` export. From that exact local
+checkout, use this read-only command; it opens no database and displays no
+database path:
+
+```powershell
+node --input-type=module -e "import { COIN_COMMERCE_MIGRATIONS } from './server/services/platform/coin-commerce-migrations.mjs'; process.stdout.write(COIN_COMMERCE_MIGRATIONS[0].ddlChecksum + '\n')"
+```
+
+Do not copy a checksum from an old report.
 Commerce reuses `platform_schema_migrations`; it does not create a second
 ledger. Apply requires the exact Wallet foundation migration and checksum.
 It adds only seven `platform_coin_commerce_*` tables and their named indexes
@@ -86,7 +94,7 @@ Immediately run `validate` and independently read back:
 - the exact Commerce migration row and checksum;
 - all seven ordered table definitions and column facts;
 - restrictive immediate foreign keys with no cascades;
-- all nine named indexes and twelve named immutability/lifecycle triggers;
+- all nine named indexes and sixteen named immutability/lifecycle triggers;
 - `quick_check` success and zero `foreign_key_check` rows;
 - unchanged Wallet-owned object SQL;
 - the approved database and release identities.

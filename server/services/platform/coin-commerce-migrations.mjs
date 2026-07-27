@@ -435,6 +435,7 @@ const MIGRATION_STATEMENTS = Object.freeze([
   `
     create trigger coin_commerce_quotes_snapshot_immutable_update
     before update of
+      quote_ref,
       account_id,
       offer_version_ref,
       wallet_version,
@@ -455,6 +456,7 @@ const MIGRATION_STATEMENTS = Object.freeze([
   `
     create trigger coin_commerce_orders_snapshot_immutable_update
     before update of
+      order_ref,
       account_id,
       quote_ref,
       offer_version_ref,
@@ -472,6 +474,7 @@ const MIGRATION_STATEMENTS = Object.freeze([
   `
     create trigger coin_commerce_offer_versions_content_immutable_update
     before update of
+      offer_version_ref,
       offer_ref,
       version,
       category,
@@ -581,6 +584,58 @@ const MIGRATION_STATEMENTS = Object.freeze([
     begin
       select raise(abort, 'coin_commerce_fulfillment_command_status_transition');
     end
+  `,
+  `
+    create trigger coin_commerce_offer_versions_terminal_immutable_update
+    before update of status, published_at, retired_at
+    on platform_coin_commerce_offer_versions
+    when
+      old.status = 'retired'
+      or (
+        old.status = 'published'
+        and not (
+          new.status = 'retired'
+          and new.published_at is old.published_at
+          and old.retired_at is null
+          and new.retired_at is not null
+        )
+      )
+    begin
+      select raise(abort, 'coin_commerce_offer_terminal_immutable');
+    end
+  `,
+  `
+    create trigger coin_commerce_quotes_terminal_immutable_update
+    before update of status, consumed_at
+    on platform_coin_commerce_quotes
+    when old.status in ('consumed', 'expired')
+    begin
+      select raise(abort, 'coin_commerce_quote_terminal_immutable');
+    end
+  `,
+  `
+    create trigger coin_commerce_operation_receipts_identity_immutable_update
+    before update of
+      operation_ref,
+      account_id,
+      actor_scope,
+      operation_type,
+      idempotency_key,
+      request_digest,
+      created_at
+    on platform_coin_commerce_operation_receipts
+    begin
+      select raise(abort, 'coin_commerce_operation_receipt_identity_immutable');
+    end
+  `,
+  `
+    create trigger coin_commerce_operation_receipts_terminal_immutable_update
+    before update of status, result_ref, safe_result_code, completed_at
+    on platform_coin_commerce_operation_receipts
+    when old.status in ('succeeded', 'failed')
+    begin
+      select raise(abort, 'coin_commerce_operation_receipt_terminal_immutable');
+    end
   `
 ]);
 
@@ -612,8 +667,16 @@ const OWNED_OBJECTS = Object.freeze([
   ["trigger", "coin_commerce_quotes_status_transition"],
   ["trigger", "coin_commerce_orders_payment_status_transition"],
   ["trigger", "coin_commerce_operation_receipts_status_transition"],
-  ["trigger", "coin_commerce_fulfillment_commands_status_transition"]
+  ["trigger", "coin_commerce_fulfillment_commands_status_transition"],
+  ["trigger", "coin_commerce_offer_versions_terminal_immutable_update"],
+  ["trigger", "coin_commerce_quotes_terminal_immutable_update"],
+  ["trigger", "coin_commerce_operation_receipts_identity_immutable_update"],
+  ["trigger", "coin_commerce_operation_receipts_terminal_immutable_update"]
 ]);
+
+const EXPECTED_NAMESPACE_OBJECTS = new Set(
+  OWNED_OBJECTS.map(([type, name]) => `${type}:${name}`)
+);
 
 const EXPECTED_COLUMNS = Object.freeze({
   platform_coin_commerce_offer_versions: [
@@ -884,6 +947,33 @@ function objectRow(database, type, name) {
   ).get(type, name) ?? null;
 }
 
+function commerceNamespaceObjects(database) {
+  return database.prepare(`
+    select type, name, tbl_name, sql
+      from sqlite_master
+     where (
+       type = 'table'
+       and name glob 'platform_coin_commerce_*'
+     )
+        or (
+          type in ('index', 'trigger')
+          and tbl_name glob 'platform_coin_commerce_*'
+        )
+     order by type, name
+  `).all().filter((row) => !(
+    row.type === "index"
+    && row.sql === null
+    && row.name.startsWith("sqlite_autoindex_")
+  ));
+}
+
+function commerceNamespaceIsExact(database) {
+  const actual = commerceNamespaceObjects(database)
+    .map(({ type, name }) => `${type}:${name}`);
+  return actual.length === EXPECTED_NAMESPACE_OBJECTS.size
+    && actual.every((key) => EXPECTED_NAMESPACE_OBJECTS.has(key));
+}
+
 function commerceMigrationRow(database) {
   if (!objectRow(database, "table", "platform_schema_migrations")) return null;
   return database.prepare(`
@@ -924,10 +1014,8 @@ function assertWalletDependency(database) {
 }
 
 function assertCommerceOwnedObjectsAreAbsent(database) {
-  for (const [type, name] of OWNED_OBJECTS) {
-    if (objectRow(database, type, name)) {
-      throw commerceMigrationError("commerce_owned_object_without_migration");
-    }
+  if (commerceNamespaceObjects(database).length > 0) {
+    throw commerceMigrationError("commerce_owned_object_without_migration");
   }
 }
 
@@ -1015,6 +1103,16 @@ function closedInspection(database) {
       reasons.push("commerce_owned_object_incompatible");
       schemaExact = false;
     }
+  }
+
+  try {
+    if (!commerceNamespaceIsExact(database)) {
+      reasons.push("commerce_owned_object_incompatible");
+      schemaExact = false;
+    }
+  } catch {
+    reasons.push("commerce_owned_object_incompatible");
+    schemaExact = false;
   }
 
   try {
@@ -1209,6 +1307,7 @@ export function applyCoinCommerceMigrations({
     return {
       ...inspection,
       mode: "apply",
+      sourceChanged: true,
       appliedMigrationIds
     };
   } catch (error) {
@@ -1238,6 +1337,18 @@ function safeRemoveOwnedDirectory(directory, root) {
   rmSync(resolvedDirectory, { recursive: true, force: true });
 }
 
+function sourceInspectionState(database) {
+  return {
+    dataVersion: database.pragma("data_version", { simple: true }),
+    schemaVersion: database.pragma("schema_version", { simple: true }),
+    inspection: inspectCoinCommerceSchema({ database })
+  };
+}
+
+function sourceInspectionStateIsUnchanged(before, after) {
+  return JSON.stringify(after) === JSON.stringify(before);
+}
+
 export async function dryRunCoinCommerceMigrations({ dbPath, tempRoot } = {}) {
   assertDatabasePath(dbPath);
   const root = tempRoot ?? tmpdir();
@@ -1253,9 +1364,8 @@ export async function dryRunCoinCommerceMigrations({ dbPath, tempRoot } = {}) {
     source = new Database(dbPath, { readonly: true, fileMustExist: true });
     assertWalletDependency(source);
     const wasApplied = Boolean(commerceMigrationRow(source));
+    const sourceStateBefore = sourceInspectionState(source);
     await source.backup(snapshotPath);
-    source.close();
-    source = null;
 
     const applied = applyCoinCommerceMigrations({
       dbPath: snapshotPath,
@@ -1266,7 +1376,11 @@ export async function dryRunCoinCommerceMigrations({ dbPath, tempRoot } = {}) {
     if (!validated.ok) {
       throw commerceMigrationError("commerce_applied_schema_incompatible");
     }
-    if (sha256File(dbPath) !== sourceHashBefore) {
+    const sourceStateAfter = sourceInspectionState(source);
+    if (
+      sha256File(dbPath) !== sourceHashBefore
+      || !sourceInspectionStateIsUnchanged(sourceStateBefore, sourceStateAfter)
+    ) {
       throw commerceMigrationError("commerce_source_changed_during_dry_run");
     }
     return {
@@ -1279,7 +1393,10 @@ export async function dryRunCoinCommerceMigrations({ dbPath, tempRoot } = {}) {
       appliedMigrationIds: applied.appliedMigrationIds
     };
   } finally {
-    source?.close();
-    safeRemoveOwnedDirectory(workDirectory, root);
+    try {
+      source?.close();
+    } finally {
+      safeRemoveOwnedDirectory(workDirectory, root);
+    }
   }
 }
