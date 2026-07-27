@@ -20,9 +20,10 @@ import {
 } from "../services/platform/coin-commerce-store.mjs";
 
 const CLOCK = "2026-07-26T12:34:56.000Z";
-const FINANCIAL_TABLES = [
+const ATOMIC_TABLES = [
   "platform_coin_wallets",
   "platform_coin_lots",
+  "platform_coin_credit_origins",
   "platform_coin_holds",
   "platform_coin_hold_allocations",
   "platform_coin_operation_receipts",
@@ -188,7 +189,7 @@ function confirm(state, quoteValue, key = "confirm_atomic") {
 }
 
 function snapshot(database) {
-  return Object.fromEntries(FINANCIAL_TABLES.map((table) => [
+  return Object.fromEntries(ATOMIC_TABLES.map((table) => [
     table,
     database.prepare(`select * from ${table} order by rowid`).all()
   ]));
@@ -215,9 +216,21 @@ function expectSafeRollback(state, before, action) {
   assert.deepEqual(snapshot(state.database), before);
 }
 
-test("confirm rolls all thirteen financial tables back at each observed statement boundary", () => {
+test("confirm rolls all fourteen financial tables back at every write boundary", () => {
   const boundaries = [
+    `before insert on platform_coin_commerce_operation_receipts
+      when new.status = 'started' and new.operation_type = 'confirm_order'`,
+    `before insert on platform_coin_operation_receipts
+      when new.status = 'started'`,
     "before insert on platform_coin_holds",
+    "before insert on platform_coin_hold_allocations",
+    `before update on platform_coin_lots
+      when new.held_units <> old.held_units`,
+    `before update on platform_coin_wallets
+      when new.version <> old.version`,
+    "before insert on platform_coin_ledger_entries",
+    `before update on platform_coin_operation_receipts
+      when new.status = 'succeeded'`,
     "before insert on platform_coin_commerce_orders",
     `before update on platform_coin_commerce_quotes
       when new.status = 'consumed'`,
@@ -245,8 +258,19 @@ test("confirm rolls all thirteen financial tables back at each observed statemen
 
 test("cancel rolls Wallet release and Commerce receipt/event/order writes back together", () => {
   const boundaries = [
+    `before insert on platform_coin_commerce_operation_receipts
+      when new.status = 'started' and new.operation_type = 'cancel_order'`,
+    `before insert on platform_coin_operation_receipts
+      when new.status = 'started'`,
+    `before update on platform_coin_lots
+      when new.held_units <> old.held_units`,
     `before update on platform_coin_holds
       when new.status = 'released'`,
+    `before update on platform_coin_wallets
+      when new.version <> old.version`,
+    "before insert on platform_coin_ledger_entries",
+    `before update on platform_coin_operation_receipts
+      when new.status = 'succeeded'`,
     `before update on platform_coin_commerce_orders
       when new.payment_status = 'cancelled'`,
     `before insert on platform_coin_commerce_order_events
@@ -273,8 +297,17 @@ test("cancel rolls Wallet release and Commerce receipt/event/order writes back t
 
 test("capture rolls Wallet consumption, Order, event, and outbox back together", () => {
   const boundaries = [
+    `before insert on platform_coin_operation_receipts
+      when new.status = 'started'`,
+    `before update on platform_coin_lots
+      when new.held_units <> old.held_units`,
     `before update on platform_coin_holds
       when new.status = 'captured'`,
+    `before update on platform_coin_wallets
+      when new.version <> old.version`,
+    "before insert on platform_coin_ledger_entries",
+    `before update on platform_coin_operation_receipts
+      when new.status = 'succeeded'`,
     `before update on platform_coin_commerce_orders
       when new.payment_status = 'captured'`,
     "before insert on platform_coin_commerce_fulfillment_commands",
@@ -300,30 +333,92 @@ test("capture rolls Wallet consumption, Order, event, and outbox back together",
   }
 });
 
-test("delivery receipt insertion failure restores the processing lease atomically", () => {
-  const state = fixture();
-  try {
-    const order = confirm(state, quote(state));
-    state.clock.value = order.cancelUntil;
-    state.store.claimDueCaptures({ limit: 1 });
-    state.store.captureClaimedOrder({ orderRef: order.orderRef });
-    const command = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
-    const before = snapshot(state.database);
-    installFault(
-      state.database,
-      "before insert on platform_coin_commerce_fulfillment_receipts"
-    );
-    expectSafeRollback(state, before, () => (
-      state.store.completeFulfillmentCommand({
-        commandRef: command.commandRef,
-        leaseGeneration: command.leaseGeneration,
-        leaseToken: command.leaseToken,
-        effectRef: "effect_atomic",
-        status: "delivered"
-      })
-    ));
-  } finally {
-    state.close();
+test("capture claim rolls all fourteen tables back at both write boundaries", () => {
+  const boundaries = [
+    `before update on platform_coin_commerce_orders
+      when new.payment_status = 'capture_pending'`,
+    `before insert on platform_coin_commerce_order_events
+      when new.event_type = 'capture_claimed'`
+  ];
+  for (const boundary of boundaries) {
+    const state = fixture();
+    try {
+      const order = confirm(state, quote(state));
+      state.clock.value = order.cancelUntil;
+      const before = snapshot(state.database);
+      installFault(state.database, boundary);
+      expectSafeRollback(
+        state,
+        before,
+        () => state.store.claimDueCaptures({ limit: 1 })
+      );
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("fulfillment completion rolls all fourteen tables back at every write boundary", () => {
+  const boundaries = [
+    `before update on platform_coin_commerce_fulfillment_commands
+      when new.status = 'delivered'`,
+    "before insert on platform_coin_commerce_fulfillment_receipts",
+    `before insert on platform_coin_commerce_order_events
+      when new.event_type = 'fulfillment_delivered'`
+  ];
+  for (const boundary of boundaries) {
+    const state = fixture();
+    try {
+      const order = confirm(state, quote(state));
+      state.clock.value = order.cancelUntil;
+      state.store.claimDueCaptures({ limit: 1 });
+      state.store.captureClaimedOrder({ orderRef: order.orderRef });
+      const command = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+      const before = snapshot(state.database);
+      installFault(state.database, boundary);
+      expectSafeRollback(state, before, () => (
+        state.store.completeFulfillmentCommand({
+          commandRef: command.commandRef,
+          leaseGeneration: command.leaseGeneration,
+          leaseToken: command.leaseToken,
+          effectRef: `effect_atomic_${boundaries.indexOf(boundary)}`,
+          status: "delivered"
+        })
+      ));
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("fulfillment failure rolls all fourteen tables back at every write boundary", () => {
+  const boundaries = [
+    `before update on platform_coin_commerce_fulfillment_commands
+      when new.status = 'failed'`,
+    `before insert on platform_coin_commerce_order_events
+      when new.event_type = 'fulfillment_failed'`
+  ];
+  for (const boundary of boundaries) {
+    const state = fixture();
+    try {
+      const order = confirm(state, quote(state));
+      state.clock.value = order.cancelUntil;
+      state.store.claimDueCaptures({ limit: 1 });
+      state.store.captureClaimedOrder({ orderRef: order.orderRef });
+      const command = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+      const before = snapshot(state.database);
+      installFault(state.database, boundary);
+      expectSafeRollback(state, before, () => (
+        state.store.failFulfillmentCommand({
+          commandRef: command.commandRef,
+          leaseGeneration: command.leaseGeneration,
+          leaseToken: command.leaseToken,
+          safeCode: "fulfillment_handler_failed"
+        })
+      ));
+    } finally {
+      state.close();
+    }
   }
 });
 

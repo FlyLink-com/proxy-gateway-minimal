@@ -133,18 +133,46 @@ function workerAction(data) {
     const worker = new Worker(new URL(import.meta.url), {
       workerData: { commerceTask4Worker: true, ...data }
     });
-    const timer = setTimeout(() => {
-      worker.terminate();
-      reject(new Error("commerce worker timeout"));
+    let message;
+    let workerError;
+    let timedOut = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      worker.removeListener("message", onMessage);
+      worker.removeListener("error", onError);
+      worker.removeListener("exit", onExit);
+    };
+    const onMessage = (value) => {
+      message = value;
+    };
+    const onError = (error) => {
+      workerError = error;
+    };
+    const onExit = (code) => {
+      if (timedOut) return;
+      cleanup();
+      if (workerError) {
+        reject(workerError);
+      } else if (code !== 0) {
+        reject(new Error(`commerce worker exited with code ${code}`));
+      } else if (message === undefined) {
+        reject(new Error("commerce worker exited without a result"));
+      } else {
+        resolve(message);
+      }
+    };
+    const timer = setTimeout(async () => {
+      timedOut = true;
+      try {
+        await worker.terminate();
+      } finally {
+        cleanup();
+        reject(new Error("commerce worker timeout"));
+      }
     }, 10_000);
-    worker.once("message", (message) => {
-      clearTimeout(timer);
-      resolve(message);
-    });
-    worker.once("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
+    worker.on("message", onMessage);
+    worker.on("error", onError);
+    worker.on("exit", onExit);
   });
 }
 
@@ -168,6 +196,8 @@ if (!isMainThread && workerData?.commerceTask4Worker) {
       value = store.claimDueCaptures({ limit: 10 });
     } else if (workerData.action === "capture") {
       value = store.captureClaimedOrder(workerData.input);
+    } else if (workerData.action === "claim_fulfillment") {
+      value = store.claimNextFulfillmentCommand({ leaseMs: 1000 });
     } else {
       throw new Error("unknown synthetic worker action");
     }
@@ -352,6 +382,52 @@ if (isMainThread) {
         assert.equal(database.prepare(
           "select count(*) from platform_coin_commerce_fulfillment_commands"
         ).pluck().get(), 1);
+      } finally {
+        database.close();
+      }
+    });
+  });
+
+  test("two independent outbox claimers grant one generation and token", async () => {
+    await withDatabase(async (dbPath) => {
+      const store = seed(dbPath, { cancelWindowMs: 1 });
+      const quote = store.createCheckoutQuote({
+        accountId: "acct_concurrency_1",
+        offerRef: offer().offerRef
+      });
+      const order = store.confirmOrder({
+        accountId: "acct_concurrency_1",
+        quoteRef: quote.quoteRef,
+        operation: commerceOperation("confirm_outbox_claim")
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      store.claimDueCaptures({ limit: 1 });
+      store.captureClaimedOrder({ orderRef: order.orderRef });
+      store.close();
+
+      const results = await Promise.all([
+        workerAction({ dbPath, action: "claim_fulfillment" }),
+        workerAction({ dbPath, action: "claim_fulfillment" })
+      ]);
+
+      assert.equal(results.every((result) => result.ok), true);
+      const claims = results
+        .map((result) => result.value)
+        .filter((value) => value !== null);
+      assert.equal(claims.length, 1);
+      assert.equal(claims[0].leaseGeneration, 1);
+      assert.match(claims[0].leaseToken, /^[0-9a-f]{64}$/);
+      const database = new Database(dbPath);
+      try {
+        assert.deepEqual(database.prepare(`
+          select status, lease_generation, lease_token
+            from platform_coin_commerce_fulfillment_commands
+           where order_ref = ?
+        `).get(order.orderRef), {
+          status: "processing",
+          lease_generation: claims[0].leaseGeneration,
+          lease_token: claims[0].leaseToken
+        });
       } finally {
         database.close();
       }
