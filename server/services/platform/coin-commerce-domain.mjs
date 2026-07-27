@@ -86,6 +86,30 @@ function normalizeDiscountBasisPoints(value, field) {
   return value;
 }
 
+function snapshotPlainArray(input, field, code) {
+  try {
+    if (!Array.isArray(input) || Object.getPrototypeOf(input) !== Array.prototype) {
+      throw commerceError(code, field);
+    }
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(input, "length");
+    if (!lengthDescriptor || !("value" in lengthDescriptor) || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) {
+      throw commerceError(code, field);
+    }
+    const { value: length } = lengthDescriptor;
+    const keys = Reflect.ownKeys(input);
+    if (keys.length !== length + 1) throw commerceError(code, field);
+    const snapshot = new Array(length);
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(input, String(index));
+      if (!descriptor || !("value" in descriptor)) throw commerceError(code, field);
+      snapshot[index] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    throw commerceError(code, field);
+  }
+}
+
 function deepFreeze(value) {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
     for (const child of Object.values(value)) deepFreeze(child);
@@ -111,12 +135,14 @@ function normalizeLocaleMap(input, field) {
 function normalizeImportantNotices(input) {
   const values = ownValues(input, ["zh", "en"], "importantNotices", "invalid_commerce_locale");
   const normalizeNotices = (notices, locale) => {
-    if (!Array.isArray(notices) || notices.length === 0) {
+    const snapshot = snapshotPlainArray(notices, `importantNotices.${locale}`, "invalid_commerce_locale");
+    if (snapshot.length === 0) {
       throw commerceError("invalid_commerce_locale", `importantNotices.${locale}`);
     }
-    const normalized = notices.map((notice, index) => (
-      assertNormalizedText(notice, `importantNotices.${locale}[${index}]`, "invalid_commerce_locale")
-    ));
+    const normalized = [];
+    for (let index = 0; index < snapshot.length; index += 1) {
+      normalized.push(assertNormalizedText(snapshot[index], `importantNotices.${locale}[${index}]`, "invalid_commerce_locale"));
+    }
     if (new Set(normalized).size !== normalized.length) {
       throw commerceError("invalid_commerce_locale", `importantNotices.${locale}`);
     }
@@ -172,7 +198,7 @@ export function normalizeCoinCommerceOffer(input) {
   }
   let acceptedCoinTypes;
   try {
-    acceptedCoinTypes = normalizeAcceptedCoinTypes(values.acceptedCoinTypes);
+    acceptedCoinTypes = normalizeAcceptedCoinTypes(snapshotPlainArray(values.acceptedCoinTypes, "acceptedCoinTypes", "invalid_commerce_offer"));
   } catch {
     throw commerceError("invalid_commerce_offer", "acceptedCoinTypes");
   }
