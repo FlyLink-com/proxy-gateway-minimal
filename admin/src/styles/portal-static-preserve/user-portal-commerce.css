@@ -977,16 +977,19 @@
 }
 
 .portal-v2-shell .portal-orders-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.portal-v2-shell[data-portal-theme="dark"] .portal-orders-panel {
   --portal-orders-text: #f5f7fb;
   --portal-orders-muted: #aeb8c8;
   --portal-orders-border: rgba(255, 255, 255, 0.14);
   --portal-orders-surface: #151b26;
   --portal-orders-subtle: #1c2432;
-  --portal-orders-accent: #5b8cff;
+  --portal-orders-accent: #3560c2;
   --portal-orders-on-accent: #ffffff;
   --portal-orders-focus: #8fb2ff;
-  display: grid;
-  gap: 18px;
 }
 
 .portal-v2-shell[data-portal-theme="light"] .portal-orders-panel {

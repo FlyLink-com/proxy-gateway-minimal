@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -114,11 +115,11 @@ export function PortalOrdersPanel({
   const loadMoreRequestRef = useRef(0);
   const shows = (section: PortalOrdersFilter) => filter === "all" || filter === section;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onSessionInvalidRef.current = onSessionInvalid;
   }, [onSessionInvalid]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const current: CurrentInputs = {
       alive: true,
       commerceClient,
@@ -378,7 +379,7 @@ export function PortalOrdersPanel({
             {rows.length > 0 ? (
               <div className="portal-orders-list" aria-label={copy(locale, "Coins 消费订单列表", "Coins consumption order list")}>
                 {rows.map((order) => (
-                  <button key={order.orderRef} type="button" aria-label={order.orderRef} onClick={() => void openDetail(order.orderRef)}>
+                  <button key={order.orderRef} type="button" onClick={() => void openDetail(order.orderRef)}>
                     <strong>{order.orderRef}</strong>
                     <span>{order.offer.title[locale]}</span>
                     <span>{order.paymentStatus}</span>

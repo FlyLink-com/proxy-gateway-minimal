@@ -1,6 +1,7 @@
-import { createElement } from "react";
+import { createElement, Fragment, useLayoutEffect } from "react";
 import { readFileSync } from "node:fs";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createRoot } from "react-dom/client";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -58,6 +59,46 @@ function deferred<T>() {
   return { promise, reject, resolve };
 }
 
+function CommitPhaseAction({
+  action,
+  armed
+}: {
+  action: () => void;
+  armed: boolean;
+}) {
+  useLayoutEffect(() => {
+    if (armed) action();
+  }, [action, armed]);
+  return null;
+}
+
+function ordersThemeTokens(css: string, theme: "dark" | "light") {
+  const selector = `.portal-v2-shell[data-portal-theme="${theme}"] .portal-orders-panel`;
+  const block = css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`));
+  expect(block, `missing explicit ${theme} Orders token block`).not.toBeNull();
+  return new Map(
+    [...(block?.[1] ?? "").matchAll(/(--portal-orders-[a-z-]+)\s*:\s*([^;]+);/g)]
+      .map((match) => [match[1], match[2].trim()])
+  );
+}
+
+function relativeLuminance(hex: string) {
+  const channels = hex.slice(1).match(/../g);
+  if (!channels || channels.length !== 3) throw new Error(`Expected six-digit hex color, received ${hex}`);
+  const [red, green, blue] = channels.map((channel) => {
+    const value = Number.parseInt(channel, 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
+}
+
+function contrastRatio(first: string, second: string) {
+  const firstLuminance = relativeLuminance(first);
+  const secondLuminance = relativeLuminance(second);
+  return (Math.max(firstLuminance, secondLuminance) + 0.05)
+    / (Math.min(firstLuminance, secondLuminance) + 0.05);
+}
+
 describe("PortalOrdersPanel", () => {
   test("provides roving keyboard tabs with stable tabpanel relationships", () => {
     render(createElement(PortalOrdersPanel, {
@@ -91,9 +132,105 @@ describe("PortalOrdersPanel", () => {
   test("defines every scoped Orders color token used by the component styles", () => {
     const css = readFileSync("src/styles/portal-static-preserve/user-portal-commerce.css", "utf8");
     const used = [...css.matchAll(/var\((--portal-orders-[a-z-]+)\)/g)].map((match) => match[1]);
-    const defined = new Set([...css.matchAll(/(--portal-orders-[a-z-]+)\s*:/g)].map((match) => match[1]));
-    expect(new Set(used)).toEqual(defined);
+    const usedTokens = new Set(used);
+    for (const theme of ["dark", "light"] as const) {
+      const themeTokens = ordersThemeTokens(css, theme);
+      expect(new Set(themeTokens.keys())).toEqual(usedTokens);
+      expect(contrastRatio(
+        themeTokens.get("--portal-orders-accent") ?? "",
+        themeTokens.get("--portal-orders-on-accent") ?? ""
+      )).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(
+        themeTokens.get("--portal-orders-focus") ?? "",
+        themeTokens.get("--portal-orders-surface") ?? ""
+      )).toBeGreaterThanOrEqual(3);
+    }
     expect(css).not.toMatch(/\.portal-v2-shell \.portal-orders-[^{]+\{[^}]*var\(--portal-v2-/s);
+  });
+
+  test("exposes product, payment, and fulfillment context in each consumption order button name", async () => {
+    const client = {
+      listOrders: vi.fn().mockResolvedValue({ orders: [ORDER], nextCursor: null })
+    } as unknown as PortalCoinCommerceClient;
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: client,
+      sessionRef: "session_accessible_order",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      renderHistoricalOrders: () => null
+    }));
+
+    expect(await screen.findByRole("button", {
+      name: /order_consumption_001.*Monthly 50 GB.*captured.*delivered/i
+    })).toBeInTheDocument();
+  });
+
+  test("invalidates old list and detail reads before a new identity passive effect can run", async () => {
+    const oldAppend = deferred<{ orders: PortalCoinOrder[]; nextCursor: null }>();
+    const oldDetail = deferred<PortalCoinOrder>();
+    const cursor = { afterCreatedAt: ORDER.createdAt, afterOrderRef: ORDER.orderRef };
+    const oldClient = {
+      listOrders: vi.fn()
+        .mockResolvedValueOnce({ orders: [ORDER], nextCursor: cursor })
+        .mockImplementationOnce(() => oldAppend.promise),
+      getOrder: vi.fn(() => oldDetail.promise)
+    } as unknown as PortalCoinCommerceClient;
+    const newClient = {
+      listOrders: vi.fn().mockResolvedValue({ orders: [], nextCursor: null })
+    } as unknown as PortalCoinCommerceClient;
+    const onSessionInvalid = vi.fn();
+    const identityCommitted = deferred<void>();
+    const commitAction = () => {
+      const invalid = new PortalCoinCommerceClientError("commerce_session_invalid", false);
+      oldAppend.reject(invalid);
+      oldDetail.reject(invalid);
+      identityCommitted.resolve();
+    };
+    const renderPanel = (current: "old" | "new") => createElement(Fragment, null,
+      createElement(PortalOrdersPanel, {
+        locale: "en",
+        commerceClient: current === "old" ? oldClient : newClient,
+        sessionRef: current === "old" ? "session_commit_old" : "session_commit_new",
+        sessionGeneration: current === "old" ? 1 : 2,
+        onSessionInvalid,
+        renderHistoricalOrders: () => null
+      }),
+      createElement(CommitPhaseAction, {
+        action: commitAction,
+        armed: current === "new"
+      })
+    );
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const actEnvironment = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+    };
+    const previousActEnvironment = actEnvironment.IS_REACT_ACT_ENVIRONMENT;
+    try {
+      await act(async () => root.render(renderPanel("old")));
+      const panel = within(container);
+      fireEvent.click(await panel.findByRole("button", { name: new RegExp(ORDER.orderRef) }));
+      fireEvent.click(panel.getByRole("button", { name: "Load more consumption orders" }));
+      await waitFor(() => {
+        expect(oldClient.getOrder).toHaveBeenCalledTimes(1);
+        expect(oldClient.listOrders).toHaveBeenCalledTimes(2);
+      });
+
+      actEnvironment.IS_REACT_ACT_ENVIRONMENT = false;
+      root.render(renderPanel("new"));
+      await identityCommitted.promise;
+      await Promise.resolve();
+
+      expect(onSessionInvalid).not.toHaveBeenCalled();
+      expect(panel.queryByRole("region", { name: "Coins consumption order detail" })).toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      actEnvironment.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+      await act(async () => root.unmount());
+      container.remove();
+    }
   });
 
   test("rejects visible state produced by a different client, session, or generation", () => {
@@ -156,7 +293,7 @@ describe("PortalOrdersPanel", () => {
       sessionRef: "session_current",
       limit: 25
     }));
-    expect(await screen.findByRole("button", { name: "order_consumption_001" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /order_consumption_001/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Load more consumption orders" }));
     await waitFor(() => expect(client.listOrders).toHaveBeenLastCalledWith({
       sessionRef: "session_current",
@@ -164,19 +301,16 @@ describe("PortalOrdersPanel", () => {
       afterCreatedAt: "2026-07-27T12:00:00.000Z",
       afterOrderRef: "order_consumption_001"
     }));
-    expect(screen.getAllByRole("button", { name: /order_consumption_00/ }).map((button) => button.getAttribute("aria-label"))).toEqual([
-      "order_consumption_001",
-      "order_consumption_002"
-    ]);
+    expect(screen.getAllByRole("button", { name: /order_consumption_00/ })).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole("button", { name: "order_consumption_001" }));
+    fireEvent.click(screen.getByRole("button", { name: /order_consumption_001/ }));
     await waitFor(() => expect(client.getOrder).toHaveBeenCalledWith({
       sessionRef: "session_current",
       orderRef: "order_consumption_001"
     }));
     expect(await screen.findByText("Payment: captured")).toBeInTheDocument();
     expect(screen.getByText("Fulfillment: delivered")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /cancel|pay|deliver/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^(cancel|pay|deliver)\b/i })).toBeNull();
   });
 
   test("keeps recharge static and maps only the current session-invalid read to logout", async () => {
@@ -308,7 +442,7 @@ describe("PortalOrdersPanel", () => {
       onSessionInvalid: vi.fn(),
       renderHistoricalOrders: () => null
     }));
-    await screen.findByRole("button", { name: "order_consumption_001" });
+    await screen.findByRole("button", { name: /order_consumption_001/ });
     const more = screen.getByRole("button", { name: "Load more consumption orders" });
     fireEvent.click(more);
     fireEvent.click(more);
@@ -345,8 +479,8 @@ describe("PortalOrdersPanel", () => {
       onSessionInvalid,
       renderHistoricalOrders: () => null
     }));
-    await screen.findByRole("button", { name: "order_consumption_001" });
-    fireEvent.click(screen.getByRole("button", { name: "order_consumption_001" }));
+    await screen.findByRole("button", { name: /order_consumption_001/ });
+    fireEvent.click(screen.getByRole("button", { name: /order_consumption_001/ }));
     await waitFor(() => expect(oldClient.getOrder).toHaveBeenCalledTimes(1));
     view.rerender(createElement(PortalOrdersPanel, {
       locale: "en",
@@ -365,7 +499,7 @@ describe("PortalOrdersPanel", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Coins Consumption Orders" }));
     await screen.findByText("No Coins consumption orders.");
-    expect(screen.queryByRole("button", { name: "order_consumption_001" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /order_consumption_001/ })).toBeNull();
   });
 
   test("logs out only when the current identity detail GET rejects as session invalid", async () => {
@@ -384,7 +518,7 @@ describe("PortalOrdersPanel", () => {
       onSessionInvalid,
       renderHistoricalOrders: () => null
     }));
-    fireEvent.click(await screen.findByRole("button", { name: ORDER.orderRef }));
+    fireEvent.click(await screen.findByRole("button", { name: new RegExp(ORDER.orderRef) }));
     await waitFor(() => expect(client.getOrder).toHaveBeenCalledWith({
       sessionRef: "session_current_detail",
       orderRef: ORDER.orderRef
@@ -409,7 +543,7 @@ describe("PortalOrdersPanel", () => {
       onSessionInvalid: vi.fn(),
       renderHistoricalOrders: () => null
     }));
-    fireEvent.click(await screen.findByRole("button", { name: ORDER.orderRef }));
+    fireEvent.click(await screen.findByRole("button", { name: new RegExp(ORDER.orderRef) }));
     await waitFor(() => expect(oldClient.getOrder).toHaveBeenCalledTimes(1));
     view.rerender(createElement(PortalOrdersPanel, {
       locale: "en",
@@ -421,7 +555,7 @@ describe("PortalOrdersPanel", () => {
     }));
     await act(async () => oldDetail.resolve(ORDER));
     expect(screen.queryByRole("region", { name: "Coins consumption order detail" })).toBeNull();
-    expect(screen.queryByRole("button", { name: ORDER.orderRef })).toBeNull();
+    expect(screen.queryByRole("button", { name: new RegExp(ORDER.orderRef) })).toBeNull();
   });
 
   test("retries the selected detail GET only and ignores an old list resolution", async () => {
@@ -454,11 +588,11 @@ describe("PortalOrdersPanel", () => {
       onSessionInvalid: vi.fn(),
       renderHistoricalOrders: () => null
     }));
-    await screen.findByRole("button", { name: "order_consumption_002" });
+    await screen.findByRole("button", { name: /order_consumption_002/ });
     await act(async () => oldList.resolve({ orders: [oldOnlyOrder], nextCursor: null }));
-    expect(screen.queryByRole("button", { name: "order_old_only" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /order_old_only/ })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "order_consumption_002" }));
+    fireEvent.click(screen.getByRole("button", { name: /order_consumption_002/ }));
     expect(await screen.findByText("Order detail is unavailable.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry order detail" }));
     await waitFor(() => expect(newClient.getOrder).toHaveBeenLastCalledWith({
@@ -495,7 +629,7 @@ describe("PortalOrdersPanel", () => {
       renderHistoricalOrders: () => null
     }));
     await act(async () => initialRead.resolve({ orders: [ORDER], nextCursor: null }));
-    expect(await screen.findByRole("button", { name: "order_consumption_001" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /order_consumption_001/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Historical Orders" }));
     fireEvent.click(screen.getByRole("tab", { name: "All" }));
     await waitFor(() => expect(latestCallback).toHaveBeenCalledTimes(1));
@@ -519,8 +653,8 @@ describe("PortalOrdersPanel", () => {
       onSessionInvalid: vi.fn(),
       renderHistoricalOrders: () => null
     }));
-    await screen.findByRole("button", { name: "order_consumption_001" });
-    fireEvent.click(screen.getByRole("button", { name: "order_consumption_001" }));
+    await screen.findByRole("button", { name: /order_consumption_001/ });
+    fireEvent.click(screen.getByRole("button", { name: /order_consumption_001/ }));
     expect(await screen.findByRole("region", { name: "Coins consumption order detail" })).toBeInTheDocument();
     view.rerender(createElement(PortalOrdersPanel, {
       locale: "en",
@@ -554,7 +688,7 @@ describe("PortalOrdersPanel", () => {
       onSessionInvalid: vi.fn(),
       renderHistoricalOrders: () => null
     }));
-    await screen.findByRole("button", { name: "order_consumption_001" });
+    await screen.findByRole("button", { name: /order_consumption_001/ });
     fireEvent.click(screen.getByRole("button", { name: "Load more consumption orders" }));
     view.rerender(createElement(PortalOrdersPanel, {
       locale: "en",
@@ -598,10 +732,10 @@ describe("PortalOrdersPanel", () => {
       onSessionInvalid: vi.fn(),
       renderHistoricalOrders: () => null
     }));
-    await screen.findByRole("button", { name: "order_consumption_001" });
+    await screen.findByRole("button", { name: /order_consumption_001/ });
     fireEvent.click(screen.getByRole("button", { name: "Load more consumption orders" }));
     expect(await screen.findByText("Coins consumption orders are unavailable.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "order_consumption_001" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /order_consumption_001/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more consumption orders" })).toBeNull();
     const retry = screen.getByRole("button", { name: "Retry consumption orders" });
     fireEvent.click(retry);
@@ -613,7 +747,7 @@ describe("PortalOrdersPanel", () => {
       ...cursor
     }));
     await act(async () => retryPage.resolve({ orders: [secondOrder], nextCursor: null }));
-    expect(await screen.findByRole("button", { name: "order_consumption_002" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "order_consumption_001" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /order_consumption_002/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /order_consumption_001/ })).toBeInTheDocument();
   });
 });
