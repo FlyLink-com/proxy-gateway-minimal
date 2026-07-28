@@ -1011,33 +1011,83 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   function projectListedOrderRow(row) {
-    const hasCommand = row.fulfillment_status !== null;
-    if (
-      hasCommand
-        ? (
-            !["pending", "processing", "delivered", "failed"]
-              .includes(row.fulfillment_status)
-            || (
-              row.fulfillment_status === "failed"
-                ? !FULFILLMENT_FAILURE_CODES.has(row.fulfillment_safe_code)
-                : row.fulfillment_safe_code !== null
-            )
-          )
-        : row.fulfillment_safe_code !== null
-    ) {
+    const commandFields = [
+      "fulfillment_command_ref",
+      "fulfillment_order_ref",
+      "fulfillment_account_id",
+      "fulfillment_payload_json",
+      "fulfillment_status",
+      "fulfillment_attempt_count",
+      "fulfillment_lease_generation",
+      "fulfillment_lease_token",
+      "fulfillment_lease_until",
+      "fulfillment_safe_code",
+      "fulfillment_created_at",
+      "fulfillment_updated_at"
+    ];
+    if (row.fulfillment_command_ref === null) {
+      if (
+        commandFields.some((field) => row[field] !== null)
+        || row.fulfillment_receipt_count !== 0
+        || row.fulfillment_receipt_ref !== null
+        || row.fulfillment_effect_ref !== null
+        || row.fulfillment_receipt_status !== null
+        || row.fulfillment_receipt_safe_code !== null
+        || row.fulfillment_recorded_at !== null
+        || row.payment_status === "captured"
+      ) {
+        throw commerceError("commerce_infrastructure_error");
+      }
+      return projectOrderValues(
+        row,
+        { status: "not_requested", safeCode: null }
+      );
+    }
+    const command = {
+      command_ref: row.fulfillment_command_ref,
+      order_ref: row.fulfillment_order_ref,
+      account_id: row.fulfillment_account_id,
+      payload_json: row.fulfillment_payload_json,
+      status: row.fulfillment_status,
+      attempt_count: row.fulfillment_attempt_count,
+      lease_generation: row.fulfillment_lease_generation,
+      lease_token: row.fulfillment_lease_token,
+      lease_until: row.fulfillment_lease_until,
+      safe_failure_code: row.fulfillment_safe_code,
+      created_at: row.fulfillment_created_at,
+      updated_at: row.fulfillment_updated_at
+    };
+    let receipts;
+    if (row.fulfillment_receipt_count === 0) {
+      if (
+        row.fulfillment_receipt_ref !== null
+        || row.fulfillment_effect_ref !== null
+        || row.fulfillment_receipt_status !== null
+        || row.fulfillment_receipt_safe_code !== null
+        || row.fulfillment_recorded_at !== null
+      ) {
+        throw commerceError("commerce_infrastructure_error");
+      }
+      receipts = [];
+    } else if (row.fulfillment_receipt_count === 1) {
+      receipts = [{
+        receipt_ref: row.fulfillment_receipt_ref,
+        command_ref: command.command_ref,
+        effect_ref: row.fulfillment_effect_ref,
+        status: row.fulfillment_receipt_status,
+        safe_code: row.fulfillment_receipt_safe_code,
+        recorded_at: row.fulfillment_recorded_at
+      }];
+    } else {
       throw commerceError("commerce_infrastructure_error");
     }
-    if (!hasCommand && row.payment_status === "captured") {
-      throw commerceError("commerce_infrastructure_error");
-    }
+    validateCommandAndReceiptSnapshot(command, row, receipts);
     return projectOrderValues(
       row,
-      hasCommand
-        ? {
-            status: row.fulfillment_status,
-            safeCode: row.fulfillment_safe_code
-          }
-        : { status: "not_requested", safeCode: null }
+      {
+        status: command.status,
+        safeCode: command.safe_failure_code
+      }
     );
   }
 
@@ -1707,11 +1757,38 @@ export function createSqliteCoinCommerceStore(options = {}) {
       const afterOrderRef = hasOrderRef ? value.afterOrderRef : null;
       const rows = db.prepare(`
         select o.*,
+               c.command_ref as fulfillment_command_ref,
+               c.order_ref as fulfillment_order_ref,
+               c.account_id as fulfillment_account_id,
+               c.payload_json as fulfillment_payload_json,
                c.status as fulfillment_status,
-               c.safe_failure_code as fulfillment_safe_code
+               c.attempt_count as fulfillment_attempt_count,
+               c.lease_generation as fulfillment_lease_generation,
+               c.lease_token as fulfillment_lease_token,
+               c.lease_until as fulfillment_lease_until,
+               c.safe_failure_code as fulfillment_safe_code,
+               c.created_at as fulfillment_created_at,
+               c.updated_at as fulfillment_updated_at,
+               coalesce(r.receipt_count, 0) as fulfillment_receipt_count,
+               r.receipt_ref as fulfillment_receipt_ref,
+               r.effect_ref as fulfillment_effect_ref,
+               r.status as fulfillment_receipt_status,
+               r.safe_code as fulfillment_receipt_safe_code,
+               r.recorded_at as fulfillment_recorded_at
           from platform_coin_commerce_orders o
           left join platform_coin_commerce_fulfillment_commands c
             on c.order_ref = o.order_ref
+          left join (
+            select command_ref,
+                   count(*) as receipt_count,
+                   min(receipt_ref) as receipt_ref,
+                   min(effect_ref) as effect_ref,
+                   min(status) as status,
+                   min(safe_code) as safe_code,
+                   min(recorded_at) as recorded_at
+              from platform_coin_commerce_fulfillment_receipts
+             group by command_ref
+          ) r on r.command_ref = c.command_ref
          where o.account_id = ?
            and (
              ? is null
@@ -1843,13 +1920,10 @@ export function createSqliteCoinCommerceStore(options = {}) {
     return { delivery: validateDelivery(payload.delivery) };
   }
 
-  function validateCommandAndReceipt(command, expectedOrder = null) {
+  function validateCommandAndReceiptSnapshot(command, order, receipts) {
     if (!command) {
       throw commerceError("commerce_infrastructure_error");
     }
-    const order = expectedOrder ?? db.prepare(`
-      select * from platform_coin_commerce_orders where order_ref = ?
-    `).get(command.order_ref);
     const refs = order
       && COMMERCE_REFERENCE.test(order.order_ref)
       ? deriveCommerceOperationRefs(order.order_ref)
@@ -1925,11 +1999,6 @@ export function createSqliteCoinCommerceStore(options = {}) {
     ) {
       throw commerceError("commerce_infrastructure_error");
     }
-    const receipts = db.prepare(`
-      select * from platform_coin_commerce_fulfillment_receipts
-       where command_ref = ?
-       order by receipt_ref
-    `).all(command.command_ref);
     if (
       (command.status === "delivered" && receipts.length !== 1)
       || (command.status !== "delivered" && receipts.length !== 0)
@@ -1950,6 +2019,20 @@ export function createSqliteCoinCommerceStore(options = {}) {
       }
     }
     return { order, payload, receipt: receipts[0] ?? null };
+  }
+
+  function validateCommandAndReceipt(command, expectedOrder = null) {
+    const order = expectedOrder ?? db.prepare(`
+      select * from platform_coin_commerce_orders where order_ref = ?
+    `).get(command?.order_ref);
+    const receipts = command
+      ? db.prepare(`
+          select * from platform_coin_commerce_fulfillment_receipts
+           where command_ref = ?
+           order by receipt_ref
+        `).all(command.command_ref)
+      : [];
+    return validateCommandAndReceiptSnapshot(command, order, receipts);
   }
 
   function ensureOutbox(order, occurredAt) {

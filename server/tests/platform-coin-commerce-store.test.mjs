@@ -592,6 +592,98 @@ test("listOrders is account-owned, deterministically paged, bounded, query-const
   }
 });
 
+test("listOrders projects valid delivered and failed fulfillment with one bounded query", () => {
+  for (const terminalStatus of ["delivered", "failed"]) {
+    const state = fixture();
+    try {
+      const { order } = captureToOutbox(state);
+      const claimed = state.store.claimNextFulfillmentCommand({
+        leaseMs: 1000
+      });
+      if (terminalStatus === "delivered") {
+        state.store.completeFulfillmentCommand({
+          commandRef: claimed.commandRef,
+          leaseGeneration: claimed.leaseGeneration,
+          leaseToken: claimed.leaseToken,
+          effectRef: "effect_list_valid_delivered",
+          status: "delivered"
+        });
+      } else {
+        state.store.failFulfillmentCommand({
+          commandRef: claimed.commandRef,
+          leaseGeneration: claimed.leaseGeneration,
+          leaseToken: claimed.leaseToken,
+          safeCode: "fulfillment_handler_failed"
+        });
+      }
+      const expected = state.store.getOrder({
+        accountId: "acct_synthetic_1",
+        orderRef: order.orderRef
+      });
+
+      state.preparedSql.length = 0;
+      assert.deepEqual(state.store.listOrders({
+        accountId: "acct_synthetic_1",
+        limit: 100
+      }), {
+        orders: [expected],
+        nextCursor: null
+      });
+      assert.equal(state.preparedSql.length, 2, terminalStatus);
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("listOrders fails closed on command state drift and missing delivered receipt without N+1", () => {
+  for (const corruption of ["held_with_pending_command", "delivered_without_receipt"]) {
+    const state = fixture();
+    try {
+      const { order } = captureToOutbox(state);
+      if (corruption === "held_with_pending_command") {
+        dropTableTriggers(
+          state.database,
+          "platform_coin_commerce_orders"
+        );
+        state.database.prepare(`
+          update platform_coin_commerce_orders
+             set payment_status = 'held'
+           where order_ref = ?
+        `).run(order.orderRef);
+      } else {
+        const claimed = state.store.claimNextFulfillmentCommand({
+          leaseMs: 1000
+        });
+        state.store.completeFulfillmentCommand({
+          commandRef: claimed.commandRef,
+          leaseGeneration: claimed.leaseGeneration,
+          leaseToken: claimed.leaseToken,
+          effectRef: "effect_list_missing_receipt",
+          status: "delivered"
+        });
+        dropTableTriggers(
+          state.database,
+          "platform_coin_commerce_fulfillment_receipts"
+        );
+        state.database.prepare(`
+          delete from platform_coin_commerce_fulfillment_receipts
+           where command_ref = ?
+        `).run(claimed.commandRef);
+      }
+
+      state.preparedSql.length = 0;
+      expectCode(() => state.store.listOrders({
+        accountId: "acct_synthetic_1",
+        limit: 100
+      }), "commerce_infrastructure_error");
+      assert.equal(state.preparedSql.length, 2, corruption);
+    } finally {
+      state.close();
+    }
+  }
+});
+
 test("trusted Offer bootstrap is versioned, replay-safe, global, and receipt-free", () => {
   const state = fixture();
   try {
