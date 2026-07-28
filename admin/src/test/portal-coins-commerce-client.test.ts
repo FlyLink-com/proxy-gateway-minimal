@@ -8,6 +8,20 @@ import { PortalCoinCommerceClientError } from "../features/user-portal/commerce"
 
 type CommerceSurface = {
   listOffers(input: { sessionRef: string }): Promise<unknown>;
+  listOrders(input:
+    | {
+        sessionRef: string;
+        limit: number;
+        afterCreatedAt?: never;
+        afterOrderRef?: never;
+      }
+    | {
+        sessionRef: string;
+        limit: number;
+        afterCreatedAt: string;
+        afterOrderRef: string;
+      }
+  ): Promise<unknown>;
   getOffer(input: { sessionRef: string; offerRef: string }): Promise<unknown>;
   previewCheckout(input: { sessionRef: string; offerRef: string }): Promise<unknown>;
   createOrder(input: {
@@ -147,6 +161,19 @@ const CANCELLED_ORDER = {
   paymentStatus: "cancelled",
   updatedAt: "2026-07-27T12:00:01.000Z"
 };
+
+function heldOrderAt(
+  orderRef: string,
+  createdAt: string
+) {
+  return {
+    ...clone(HELD_ORDER),
+    orderRef,
+    cancelUntil: new Date(Date.parse(createdAt) + 3_000).toISOString(),
+    createdAt,
+    updatedAt: createdAt
+  };
+}
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -552,6 +579,485 @@ describe("Portal Coins Commerce HTTP client", () => {
       await expectSafeFailure(
         client.listOffers({ sessionRef: "session_alpha" })
       );
+    }
+  });
+
+  test("exposes the strict consumption-order list capability", () => {
+    const commerce = commerceOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>()
+    }));
+
+    expect(typeof commerce.listOrders).toBe("function");
+  });
+
+  test("uses only the fixed relative order-list GET with stable paired cursor query", async () => {
+    const newest = heldOrderAt(
+      "order_page_newest",
+      "2026-07-27T12:00:00.000Z"
+    );
+    const older = heldOrderAt(
+      "order_page_older",
+      "2026-07-27T11:59:00.000Z"
+    );
+    const fetchFn = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(wireResponse({
+        orders: [newest],
+        nextCursor: null
+      }))
+      .mockResolvedValueOnce(wireResponse({
+        orders: [older],
+        nextCursor: {
+          afterCreatedAt: older.createdAt,
+          afterOrderRef: older.orderRef
+        }
+      }));
+    const commerce = commerceOf(createHttpUserPortalClient({
+      baseUrl: "https://must-not-be-used.example.test/redirect",
+      fetchFn
+    }));
+
+    await expect(commerce.listOrders({
+      sessionRef: "session_alpha",
+      limit: 25
+    })).resolves.toEqual({ orders: [newest], nextCursor: null });
+    await expect(commerce.listOrders({
+      sessionRef: "session_alpha",
+      limit: 10,
+      afterCreatedAt: newest.createdAt,
+      afterOrderRef: newest.orderRef
+    })).resolves.toEqual({
+      orders: [older],
+      nextCursor: {
+        afterCreatedAt: older.createdAt,
+        afterOrderRef: older.orderRef
+      }
+    });
+
+    expect(fetchFn.mock.calls).toEqual([
+      [
+        "/api/portal/commerce/orders?limit=25",
+        {
+          method: "GET",
+          headers: { "X-Portal-Session": "session_alpha" }
+        }
+      ],
+      [
+        "/api/portal/commerce/orders?limit=10&afterCreatedAt=2026-07-27T12%3A00%3A00.000Z&afterOrderRef=order_page_newest",
+        {
+          method: "GET",
+          headers: { "X-Portal-Session": "session_alpha" }
+        }
+      ]
+    ]);
+    expect(JSON.stringify(fetchFn.mock.calls)).not.toContain("accountId");
+  });
+
+  test("rejects malformed list caller input before fetch", async () => {
+    const fetchFn = vi.fn<typeof fetch>();
+    const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
+    const accessor = { sessionRef: "session_alpha", limit: 10 };
+    Object.defineProperty(accessor, "afterCreatedAt", {
+      enumerable: true,
+      get() {
+        throw new Error("accessor must not execute");
+      }
+    });
+    const symbol = {
+      sessionRef: "session_alpha",
+      limit: 10
+    } as Record<PropertyKey, unknown>;
+    symbol[Symbol("unsafe")] = true;
+    const invalidInputs: unknown[] = [
+      { sessionRef: "session_alpha", limit: 0 },
+      { sessionRef: "session_alpha", limit: 101 },
+      { sessionRef: "session_alpha", limit: 1.5 },
+      { sessionRef: "session_alpha", limit: Number.MAX_SAFE_INTEGER + 1 },
+      { sessionRef: "session_alpha", limit: "10" },
+      {
+        sessionRef: "session_alpha",
+        limit: 10,
+        afterCreatedAt: "2026-07-27T12:00:00.000Z"
+      },
+      {
+        sessionRef: "session_alpha",
+        limit: 10,
+        afterOrderRef: "order_page_newest"
+      },
+      {
+        sessionRef: "session_alpha",
+        limit: 10,
+        afterCreatedAt: "2026-07-27T12:00:00Z",
+        afterOrderRef: "order_page_newest"
+      },
+      {
+        sessionRef: "session_alpha",
+        limit: 10,
+        afterCreatedAt: "2026-07-27T12:00:00.000Z",
+        afterOrderRef: "../other-account"
+      },
+      {
+        sessionRef: "session_alpha",
+        limit: 10,
+        extra: true
+      },
+      accessor,
+      symbol,
+      Object.assign(Object.create(null), {
+        sessionRef: "session_alpha",
+        limit: 10
+      })
+    ];
+
+    for (const input of invalidInputs) {
+      await expectSafeFailure(
+        commerce.listOrders(input as never)
+      );
+    }
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  test("accepts only bounded strictly descending pages and matching cursors", async () => {
+    const newest = heldOrderAt(
+      "order_page_newest",
+      "2026-07-27T12:00:00.000Z"
+    );
+    const tieHigh = heldOrderAt(
+      "order_page_tie_b",
+      "2026-07-27T11:59:00.000Z"
+    );
+    const tieLow = heldOrderAt(
+      "order_page_tie_a",
+      "2026-07-27T11:59:00.000Z"
+    );
+    const older = heldOrderAt(
+      "order_page_older",
+      "2026-07-27T11:58:00.000Z"
+    );
+    const invalidCases = [
+      {
+        input: { sessionRef: "session_alpha", limit: 1 },
+        body: { orders: [newest, older], nextCursor: null }
+      },
+      {
+        input: { sessionRef: "session_alpha", limit: 3 },
+        body: { orders: [newest, newest], nextCursor: null }
+      },
+      {
+        input: { sessionRef: "session_alpha", limit: 3 },
+        body: {
+          orders: [
+            newest,
+            { ...older, orderRef: newest.orderRef }
+          ],
+          nextCursor: null
+        }
+      },
+      {
+        input: { sessionRef: "session_alpha", limit: 3 },
+        body: { orders: [older, newest], nextCursor: null }
+      },
+      {
+        input: { sessionRef: "session_alpha", limit: 3 },
+        body: { orders: [tieLow, tieHigh], nextCursor: null }
+      },
+      {
+        input: { sessionRef: "session_alpha", limit: 3 },
+        body: {
+          orders: [],
+          nextCursor: {
+            afterCreatedAt: older.createdAt,
+            afterOrderRef: older.orderRef
+          }
+        }
+      },
+      {
+        input: { sessionRef: "session_alpha", limit: 3 },
+        body: {
+          orders: [newest, older],
+          nextCursor: {
+            afterCreatedAt: newest.createdAt,
+            afterOrderRef: newest.orderRef
+          }
+        }
+      },
+      {
+        input: { sessionRef: "session_alpha", limit: 3 },
+        body: {
+          orders: [newest],
+          nextCursor: {
+            afterCreatedAt: newest.createdAt,
+            afterOrderRef: newest.orderRef,
+            extra: true
+          }
+        }
+      },
+      {
+        input: { sessionRef: "session_alpha", limit: 3 },
+        body: {
+          orders: [newest],
+          nextCursor: {
+            afterCreatedAt: "2026-07-27T12:00:00Z",
+            afterOrderRef: newest.orderRef
+          }
+        }
+      },
+      {
+        input: { sessionRef: "session_alpha", limit: 3 },
+        body: {
+          orders: [newest],
+          nextCursor: {
+            afterCreatedAt: newest.createdAt,
+            afterOrderRef: "../other-account"
+          }
+        }
+      },
+      {
+        input: {
+          sessionRef: "session_alpha",
+          limit: 3,
+          afterCreatedAt: newest.createdAt,
+          afterOrderRef: newest.orderRef
+        },
+        body: { orders: [newest], nextCursor: null }
+      },
+      {
+        input: {
+          sessionRef: "session_alpha",
+          limit: 3,
+          afterCreatedAt: tieHigh.createdAt,
+          afterOrderRef: tieHigh.orderRef
+        },
+        body: { orders: [newest], nextCursor: null }
+      }
+    ];
+
+    for (const entry of invalidCases) {
+      const commerce = commerceOf(createHttpUserPortalClient({
+        fetchFn: vi.fn<typeof fetch>(async () => wireResponse(entry.body))
+      }));
+      await expectSafeFailure(commerce.listOrders(entry.input));
+    }
+
+    const validRows = [newest, tieHigh, tieLow, older];
+    const commerce = commerceOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>(async () => wireResponse({
+        orders: validRows,
+        nextCursor: {
+          afterCreatedAt: older.createdAt,
+          afterOrderRef: older.orderRef
+        }
+      }))
+    }));
+    await expect(commerce.listOrders({
+      sessionRef: "session_alpha",
+      limit: 4
+    })).resolves.toEqual({
+      orders: validRows,
+      nextCursor: {
+        afterCreatedAt: older.createdAt,
+        afterOrderRef: older.orderRef
+      }
+    });
+  });
+
+  test("rejects hostile page shapes and malformed orders through the exact projector", async () => {
+    const order = heldOrderAt(
+      "order_page_newest",
+      "2026-07-27T12:00:00.000Z"
+    );
+    const sparse = new Array(1);
+    const accessor = { orders: [order] };
+    Object.defineProperty(accessor, "nextCursor", {
+      enumerable: true,
+      get() {
+        throw new Error("accessor must not execute");
+      }
+    });
+    const symbol = { orders: [order], nextCursor: null };
+    Object.defineProperty(symbol, Symbol("unsafe"), {
+      enumerable: true,
+      value: true
+    });
+    const cursorAccessor = {
+      afterCreatedAt: order.createdAt
+    };
+    Object.defineProperty(cursorAccessor, "afterOrderRef", {
+      enumerable: true,
+      get() {
+        throw new Error("accessor must not execute");
+      }
+    });
+    const cursorSymbol = {
+      afterCreatedAt: order.createdAt,
+      afterOrderRef: order.orderRef
+    };
+    Object.defineProperty(cursorSymbol, Symbol("unsafe"), {
+      enumerable: true,
+      value: true
+    });
+    const cursorPrototype = Object.assign(Object.create(null), {
+      afterCreatedAt: order.createdAt,
+      afterOrderRef: order.orderRef
+    });
+    const hostilePages: unknown[] = [
+      { orders: [order], nextCursor: null, extra: true },
+      { orders: [order] },
+      Object.assign(Object.create(null), {
+        orders: [order],
+        nextCursor: null
+      }),
+      accessor,
+      symbol,
+      { orders: sparse, nextCursor: null },
+      { orders: [order], nextCursor: cursorAccessor },
+      { orders: [order], nextCursor: cursorSymbol },
+      { orders: [order], nextCursor: cursorPrototype }
+    ];
+    for (const page of hostilePages) {
+      const fetchFn = vi.fn<typeof fetch>(async () => wireResponse("{}"));
+      const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
+      vi.spyOn(JSON, "parse").mockReturnValueOnce(page);
+      await expectSafeFailure(commerce.listOrders({
+        sessionRef: "session_alpha",
+        limit: 10
+      }));
+      vi.mocked(JSON.parse).mockRestore();
+    }
+
+    const invalidOrders = [
+      { ...clone(order), paymentStatus: "unknown" },
+      {
+        ...clone(order),
+        paymentStatus: "captured",
+        fulfillment: { status: "unknown", safeCode: null }
+      },
+      {
+        ...clone(order),
+        paymentStatus: "captured",
+        fulfillment: { status: "failed", safeCode: "internal_detail" }
+      },
+      { ...clone(order), amountUnits: Number.MAX_SAFE_INTEGER + 1 },
+      { ...clone(order), createdAt: "2026-07-27T12:00:00Z" }
+    ];
+    for (const invalidOrder of invalidOrders) {
+      const commerce = commerceOf(createHttpUserPortalClient({
+        fetchFn: vi.fn<typeof fetch>(async () => wireResponse({
+          orders: [invalidOrder],
+          nextCursor: null
+        }))
+      }));
+      await expectSafeFailure(commerce.listOrders({
+        sessionRef: "session_alpha",
+        limit: 10
+      }));
+    }
+  });
+
+  test("maps only the exact legacy list 401 while preserving structured session errors", async () => {
+    const exactLegacy = commerceOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>(async () => wireResponse({
+        error: "Unauthorized"
+      }, 401))
+    }));
+    await expectSafeFailure(
+      exactLegacy.listOrders({ sessionRef: "session_alpha", limit: 10 }),
+      "commerce_unavailable",
+      true
+    );
+
+    const hostileBodies: unknown[] = [
+      { error: "Unauthorized", extra: true },
+      { error: "unauthorized" },
+      { error: { code: "Unauthorized" } },
+      Object.assign(Object.create(null), { error: "Unauthorized" }),
+      (() => {
+        const value = {};
+        Object.defineProperty(value, "error", {
+          enumerable: true,
+          get() {
+            throw new Error("accessor must not execute");
+          }
+        });
+        return value;
+      })(),
+      (() => {
+        const value = { error: "Unauthorized" };
+        Object.defineProperty(value, Symbol("unsafe"), {
+          enumerable: true,
+          value: true
+        });
+        return value;
+      })()
+    ];
+    for (const body of hostileBodies) {
+      const fetchFn = vi.fn<typeof fetch>(async () => wireResponse("ignored", 401));
+      const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
+      vi.spyOn(JSON, "parse").mockReturnValueOnce(body);
+      await expectSafeFailure(commerce.listOrders({
+        sessionRef: "session_alpha",
+        limit: 10
+      }));
+      vi.mocked(JSON.parse).mockRestore();
+    }
+    const wrongStatus = commerceOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>(async () => wireResponse({
+        error: "Unauthorized"
+      }, 403))
+    }));
+    await expectSafeFailure(wrongStatus.listOrders({
+      sessionRef: "session_alpha",
+      limit: 10
+    }));
+
+    const structured = commerceOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>(async () => wireResponse({
+        error: {
+          code: "commerce_session_invalid",
+          retryable: false
+        }
+      }, 401))
+    }));
+    await expectSafeFailure(
+      structured.listOrders({ sessionRef: "session_alpha", limit: 10 }),
+      "commerce_session_invalid",
+      false
+    );
+  });
+
+  test("keeps legacy 401 fallback unchanged for all six existing requests", async () => {
+    const commerce = commerceOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>(async () => wireResponse({
+        error: "Unauthorized"
+      }, 401))
+    }));
+    const existingCalls = [
+      () => commerce.listOffers({ sessionRef: "session_alpha" }),
+      () => commerce.getOffer({
+        sessionRef: "session_alpha",
+        offerRef: "offer_data_100gb"
+      }),
+      () => commerce.previewCheckout({
+        sessionRef: "session_alpha",
+        offerRef: "offer_monthly_50gb"
+      }),
+      () => commerce.createOrder({
+        sessionRef: "session_alpha",
+        quoteRef: "quote_monthly_50gb_1",
+        idempotencyKey: "checkout-attempt-1"
+      }),
+      () => commerce.getOrder({
+        sessionRef: "session_alpha",
+        orderRef: "order_monthly_50gb_1"
+      }),
+      () => commerce.cancelOrder({
+        sessionRef: "session_alpha",
+        orderRef: "order_monthly_50gb_1",
+        idempotencyKey: "cancel-attempt-1"
+      })
+    ];
+
+    for (const existingCall of existingCalls) {
+      await expectSafeFailure(existingCall());
     }
   });
 });

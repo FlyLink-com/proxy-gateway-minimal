@@ -7,6 +7,7 @@ import type {
   PortalCoinFulfillment,
   PortalCoinOffer,
   PortalCoinOrder,
+  PortalCoinOrderPage,
   PortalCoinQuote,
   PortalCoinType
 } from "./api-contract";
@@ -595,6 +596,73 @@ function orderWrapper(input: unknown) {
   return orderProjection(exactObject(input, ["order"]).order);
 }
 
+type OrderCursor = {
+  afterCreatedAt: string;
+  afterOrderRef: string;
+};
+
+function isStrictlyAfter(
+  value: Pick<PortalCoinOrder, "createdAt" | "orderRef">,
+  cursor: OrderCursor
+) {
+  return value.createdAt < cursor.afterCreatedAt
+    || (
+      value.createdAt === cursor.afterCreatedAt
+      && value.orderRef < cursor.afterOrderRef
+    );
+}
+
+function orderPageProjection(
+  input: unknown,
+  limit: number,
+  requestCursor: OrderCursor | null
+): PortalCoinOrderPage {
+  const value = exactObject(input, ["orders", "nextCursor"]);
+  const orders = exactArray(value.orders).map(orderProjection);
+  if (orders.length > limit) return invalidProjection();
+  const seenOrderRefs = new Set<string>();
+  for (let index = 0; index < orders.length; index += 1) {
+    const order = orders[index];
+    if (seenOrderRefs.has(order.orderRef)) return invalidProjection();
+    seenOrderRefs.add(order.orderRef);
+    if (
+      index > 0
+      && !isStrictlyAfter(order, {
+        afterCreatedAt: orders[index - 1].createdAt,
+        afterOrderRef: orders[index - 1].orderRef
+      })
+    ) {
+      return invalidProjection();
+    }
+    if (requestCursor && !isStrictlyAfter(order, requestCursor)) {
+      return invalidProjection();
+    }
+  }
+  if (orders.length === 0) {
+    if (value.nextCursor !== null) return invalidProjection();
+    return { orders, nextCursor: null };
+  }
+  if (value.nextCursor === null) {
+    return { orders, nextCursor: null };
+  }
+  const cursorValue = exactObject(value.nextCursor, [
+    "afterCreatedAt",
+    "afterOrderRef"
+  ]);
+  const nextCursor = {
+    afterCreatedAt: utcTimestamp(cursorValue.afterCreatedAt),
+    afterOrderRef: commerceReference(cursorValue.afterOrderRef)
+  };
+  const finalOrder = orders[orders.length - 1];
+  if (
+    nextCursor.afterCreatedAt !== finalOrder.createdAt
+    || nextCursor.afterOrderRef !== finalOrder.orderRef
+  ) {
+    return invalidProjection();
+  }
+  return { orders, nextCursor };
+}
+
 function exactInput(input: unknown, fields: readonly string[]) {
   try {
     return exactObject(input, fields);
@@ -624,6 +692,50 @@ function callerIdempotencyKey(value: unknown) {
   return value;
 }
 
+function callerOrderListInput(input: unknown) {
+  try {
+    if (
+      !input
+      || typeof input !== "object"
+      || Array.isArray(input)
+      || Object.getPrototypeOf(input) !== Object.prototype
+    ) {
+      throw requestFailed();
+    }
+    const keys = Reflect.ownKeys(input);
+    const hasCreatedAt = keys.includes("afterCreatedAt");
+    const hasOrderRef = keys.includes("afterOrderRef");
+    if (hasCreatedAt !== hasOrderRef) throw requestFailed();
+    return exactObject(
+      input,
+      hasCreatedAt
+        ? ["sessionRef", "limit", "afterCreatedAt", "afterOrderRef"]
+        : ["sessionRef", "limit"]
+    );
+  } catch {
+    throw requestFailed();
+  }
+}
+
+function callerOrderListLimit(value: unknown) {
+  if (
+    !Number.isSafeInteger(value)
+    || (value as number) < 1
+    || (value as number) > 100
+  ) {
+    throw requestFailed();
+  }
+  return value as number;
+}
+
+function callerUtcTimestamp(value: unknown) {
+  try {
+    return utcTimestamp(value);
+  } catch {
+    throw requestFailed();
+  }
+}
+
 function structuredCommerceError(input: unknown) {
   const wrapper = exactObject(input, ["error"]);
   const error = exactObject(wrapper.error, ["code", "retryable"]);
@@ -649,13 +761,16 @@ async function request<T>(
   url: string,
   init: RequestInit,
   expectedStatus: number,
-  project: (input: unknown) => T
+  project: (input: unknown) => T,
+  options: { legacyUnauthorizedUnavailable?: boolean } = {}
 ): Promise<T> {
   let body: unknown;
   let ok: boolean;
+  let status: number;
   try {
     const response = await fetchFn(url, init);
     ok = response.ok;
+    status = response.status;
     if (typeof ok !== "boolean") throw requestFailed();
     if (ok && response.status !== expectedStatus) throw requestFailed();
     const text = await response.text();
@@ -665,6 +780,27 @@ async function request<T>(
     throw requestFailed();
   }
   if (!ok) {
+    if (
+      options.legacyUnauthorizedUnavailable
+      && status === 401
+    ) {
+      try {
+        const legacy = exactObject(body, ["error"]);
+        if (legacy.error === "Unauthorized") {
+          throw new PortalCoinCommerceClientError(
+            "commerce_unavailable",
+            true
+          );
+        }
+      } catch (error) {
+        if (
+          error instanceof PortalCoinCommerceClientError
+          && error.code === "commerce_unavailable"
+        ) {
+          throw error;
+        }
+      }
+    }
     try {
       throw structuredCommerceError(body);
     } catch (error) {
@@ -723,6 +859,31 @@ export function createPortalCoinCommerceClient(
         getInit(sessionRef),
         200,
         offerListWrapper
+      );
+    },
+
+    async listOrders(input) {
+      const value = callerOrderListInput(input);
+      const sessionRef = sessionReference(value.sessionRef);
+      const limit = callerOrderListLimit(value.limit);
+      let requestCursor: OrderCursor | null = null;
+      const query = new URLSearchParams();
+      query.set("limit", String(limit));
+      if (Object.hasOwn(value, "afterCreatedAt")) {
+        requestCursor = {
+          afterCreatedAt: callerUtcTimestamp(value.afterCreatedAt),
+          afterOrderRef: callerCommerceReference(value.afterOrderRef)
+        };
+        query.set("afterCreatedAt", requestCursor.afterCreatedAt);
+        query.set("afterOrderRef", requestCursor.afterOrderRef);
+      }
+      return request(
+        fetchFn,
+        `/api/portal/commerce/orders?${query.toString()}`,
+        getInit(sessionRef),
+        200,
+        (body) => orderPageProjection(body, limit, requestCursor),
+        { legacyUnauthorizedUnavailable: true }
       );
     },
 

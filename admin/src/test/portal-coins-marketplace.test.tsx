@@ -206,6 +206,7 @@ function commerceClient(
 ): PortalCoinCommerceClient {
   return {
     listOffers: vi.fn(async () => [planOffer, dataPackOffer]),
+    listOrders: vi.fn(async () => ({ orders: [], nextCursor: null })),
     getOffer: vi.fn(async ({ offerRef }) => (
       offerRef === dataPackOffer.offerRef ? dataPackOffer : planOffer
     )),

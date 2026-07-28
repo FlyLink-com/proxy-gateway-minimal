@@ -117,6 +117,28 @@ export type PortalCoinOrder = {
   updatedAt: string;
 };
 
+export type PortalCoinOrderPage = {
+  orders: PortalCoinOrder[];
+  nextCursor: {
+    afterCreatedAt: string;
+    afterOrderRef: string;
+  } | null;
+};
+
+export type PortalCoinOrderListInput =
+  | {
+      sessionRef: string;
+      limit: number;
+      afterCreatedAt?: never;
+      afterOrderRef?: never;
+    }
+  | {
+      sessionRef: string;
+      limit: number;
+      afterCreatedAt: string;
+      afterOrderRef: string;
+    };
+
 export type PortalCoinCommerceErrorCode =
   | "cancel_window_closed"
   | "capture_in_progress"
@@ -142,6 +164,7 @@ export type PortalCoinCommerceClient = {
   listOffers(input: {
     sessionRef: string;
   }): Promise<PortalCoinOffer[]>;
+  listOrders(input: PortalCoinOrderListInput): Promise<PortalCoinOrderPage>;
   getOffer(input: {
     sessionRef: string;
     offerRef: string;
