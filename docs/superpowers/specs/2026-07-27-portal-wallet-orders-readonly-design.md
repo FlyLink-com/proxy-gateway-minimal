@@ -10,8 +10,8 @@
 - Release units: `control-plane-app`, then `portal-static`
 - Identity impact: false
 - Production/AWS impact: none
-- Design state: approved for implementation
-- Implementation state: plan in progress
+- Design state: approved and implemented as a source reference
+- Implementation state: implemented / source-only / not_deployed
 - Implementation base:
   `c3d92ed3c4691f2512e80da3dffcab17e027b928`
 - Implementation base state: local source-only checkpoint, not deployed
@@ -76,7 +76,9 @@ Admin remains `unknown` and is outside this work.
 
 ## Problem Statement
 
-The current Portal checkpoint has four gaps:
+At implementation base
+`c3d92ed3c4691f2512e80da3dffcab17e027b928`, the Portal checkpoint had four
+gaps:
 
 1. The Wallet view is mounted in the real Portal shell, but its balances are
    `--`, its activity area has no data, and recharge remains disabled.
@@ -432,6 +434,7 @@ admin/src/features/user-portal/orders/
   portal-orders-panel.tsx
 
 admin/src/features/user-portal/profile/
+  portal-personal-center-panel.tsx
   portal-profile-panel.tsx
   portal-security-panel.tsx
 ```
@@ -534,10 +537,12 @@ git diff --check c3d92ed3c4691f2512e80da3dffcab17e027b928...HEAD
 git diff --check origin/master...HEAD
 ```
 
-The currently running local validation service owns port `3457`, so the root
-suite's local-validation containment tests cannot pass concurrently. The exact
-owned local validation process must be stopped before final `npm test`; that
-operational cleanup is not a product-code change.
+Before final `npm test`, port `3457` is subject to an ownership gate. No
+listener means validation may continue. A listener may be stopped only when
+its command line contains both the exact validation script
+`start-local-coin-commerce-validation.mjs` and this exact worktree path.
+Unknown, multiple, or unreadable ownership stops validation without
+terminating any process. This operational gate is not a product-code change.
 
 ## Stop Conditions
 
