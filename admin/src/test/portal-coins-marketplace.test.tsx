@@ -30,6 +30,15 @@ import {
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import { MarketplacePanel } from "../features/user-portal/portal-commerce-panels";
 
+const commerceCssPath = resolve(
+  process.cwd(),
+  "src/styles/portal-static-preserve/user-portal-commerce.css"
+);
+
+function readCommerceCss(): string {
+  return readFileSync(commerceCssPath, "utf8").replace(/\r\n?/g, "\n");
+}
+
 const session: PortalSession = {
   status: "authenticated_preview",
   sessionRef: "portal_session_marketplace",
@@ -1229,10 +1238,7 @@ describe("Portal server-backed Marketplace", () => {
     expect(actions?.parentElement).toBe(card);
     expect(card.lastElementChild).toBe(actions);
 
-    const css = readFileSync(resolve(
-      process.cwd(),
-      "src/styles/portal-static-preserve/user-portal-commerce.css"
-    ), "utf8");
+    const css = readCommerceCss();
     const articleRule = cssRuleBlock(
       css,
       ".portal-v2-shell .portal-marketplace-card article"
@@ -1252,10 +1258,7 @@ describe("Portal server-backed Marketplace", () => {
   });
 
   test("Commerce CSS keeps theme, focus, safe-area, and responsive rules scoped", () => {
-    const css = readFileSync(resolve(
-      process.cwd(),
-      "src/styles/portal-static-preserve/user-portal-commerce.css"
-    ), "utf8");
+    const css = readCommerceCss();
     expect(css).toMatch(
       /\.portal-coins-dialog-theme\s+\.portal-coins-dialog-backdrop\s*\{/
     );
