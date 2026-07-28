@@ -44,11 +44,14 @@ import {
   MarketplacePanel,
   RechargeDialog,
   ReferralRewardsPanel,
-  WalletPanel,
   type RechargeDenomination
 } from "./portal-commerce-panels";
 import { PORTAL_COIN_ORDER_STORAGE_KEY } from "./commerce";
 import { PortalPersonalCenterPanel } from "./profile/portal-personal-center-panel";
+import {
+  PortalWalletPanel,
+  usePortalWalletReadModel
+} from "./wallet";
 import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
 import type {
   PortalAccountEntitlement,
@@ -1038,6 +1041,8 @@ export function UserPortalPage({
   const { theme, setTheme } = usePublicThemePreference();
   const authCopy = portalAuthEntryCopy[locale];
   const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
+  const sessionGenerationRef = useRef(0);
+  const [sessionGeneration, setSessionGeneration] = useState(0);
   const [accountId, setAccountId] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -1091,6 +1096,13 @@ export function UserPortalPage({
   const [supportPending, setSupportPending] = useState(false);
   const [supportError, setSupportError] = useState("");
   const [supportResult, setSupportResult] = useState<PortalSupportRequest | null>(null);
+
+  const advanceSessionGeneration = useCallback(() => {
+    const nextGeneration = sessionGenerationRef.current + 1;
+    sessionGenerationRef.current = nextGeneration;
+    setSessionGeneration(nextGeneration);
+    return nextGeneration;
+  }, []);
 
   const userDisplayName = portalSession?.displayName ?? (accountId.trim() || "Portal User");
   const registrationDate = portalSession?.registeredAt ?? new Date("2026-05-31T00:00:00.000Z").toISOString();
@@ -1157,6 +1169,19 @@ export function UserPortalPage({
     });
   }, [locale, orderClientFilter, orderRows, orderSearch, orderSort, orderStatusFilter]);
 
+  const walletModel = usePortalWalletReadModel({
+    client: portalClient.wallet ?? null,
+    sessionRef: portalSession?.sessionRef ?? null,
+    sessionGeneration,
+    loadLedger: activeView === "wallet",
+    onSessionInvalid: logout
+  });
+  const authoritativeWalletBalance =
+    walletModel.summary.phase === "ready"
+    || walletModel.summary.phase === "empty"
+      ? walletModel.summary.value.spendableUnits
+      : null;
+
   const refreshHumanChallenge = useCallback(async () => {
     setHumanChallengeLoading(true);
     setHumanChallengeReady(false);
@@ -1178,26 +1203,17 @@ export function UserPortalPage({
   }, [refreshHumanChallenge]);
 
   async function hydratePortalSession(session: PortalSession) {
+    const hydrateGeneration = advanceSessionGeneration();
     const portalState = await portalClient.fetchCurrentState({
       userRef: session.userRef,
       sessionRef: session.sessionRef
     });
-    setPortalSession(session);
-    setSecondFactorChallenge(null);
-    setSecondFactorCode("");
-    setPasskeyProof("");
-    setSecondFactorError("");
-    setSecondFactorPending(false);
-    setAuthenticatorBound(portalState.security?.authenticatorBound ?? false);
-    setPasskeyExported(portalState.security?.passkeyExported ?? false);
-    setSecuritySetupRequired(portalState.security?.setupRequired ?? false);
     const accountEntitlementRows = portalState.accountEntitlements ?? [];
     const entitlementPlan = [...accountEntitlementRows]
       .reverse()
       .filter((entitlement) => usableTrafficEntitlement(entitlement))
       .map((entitlement) => planIdFromEntitlement(entitlement))
       .find((planId): planId is PortalPlanId => Boolean(planId && planId !== "trial"));
-    setAccountEntitlements(accountEntitlementRows);
     const subscriptionRequests = portalState.subscriptionRequests?.length
       ? portalState.subscriptionRequests
       : portalState.subscriptionRequest
@@ -1214,6 +1230,17 @@ export function UserPortalPage({
         hydratedPaymentOrders = [];
       }
     }
+    if (hydrateGeneration !== sessionGenerationRef.current) return;
+    setPortalSession(session);
+    setSecondFactorChallenge(null);
+    setSecondFactorCode("");
+    setPasskeyProof("");
+    setSecondFactorError("");
+    setSecondFactorPending(false);
+    setAuthenticatorBound(portalState.security?.authenticatorBound ?? false);
+    setPasskeyExported(portalState.security?.passkeyExported ?? false);
+    setSecuritySetupRequired(portalState.security?.setupRequired ?? false);
+    setAccountEntitlements(accountEntitlementRows);
     setPaymentOrders([...hydratedPaymentOrders].sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
     setLastPaymentOrderRef(hydratedPaymentOrders[0]?.orderRef ?? null);
     if (subscriptionRequests.length > 0) {
@@ -1631,6 +1658,7 @@ export function UserPortalPage({
   }
 
   function logout() {
+    advanceSessionGeneration();
     try {
       window.sessionStorage.removeItem(PORTAL_COIN_ORDER_STORAGE_KEY);
     } catch {
@@ -2017,13 +2045,19 @@ export function UserPortalPage({
                       )}
                       aria-label={uiText(
                         locale,
-                        "打开 Coins 钱包，余额尚未接入",
-                        "Open Coins wallet, balance is not connected yet"
+                        authoritativeWalletBalance === null
+                          ? "打开 Coins 钱包，余额暂不可用"
+                          : `打开 Coins 钱包，可用余额 ${authoritativeWalletBalance} Coins`,
+                        authoritativeWalletBalance === null
+                          ? "Open Coins wallet, balance is temporarily unavailable"
+                          : `Open Coins wallet, available balance ${authoritativeWalletBalance} Coins`
                       )}
                       onClick={() => navigatePortalView("wallet")}
                     >
                       <WalletCards aria-hidden="true" />
-                      <span>Coins · --</span>
+                      <span>
+                        Coins · {authoritativeWalletBalance ?? "--"}
+                      </span>
                     </button>
                     <button
                       type="button"
@@ -2111,7 +2145,9 @@ export function UserPortalPage({
               theme={theme}
             />
           ) : null}
-          {activeView === "wallet" ? <WalletPanel locale={locale} /> : null}
+          {activeView === "wallet" ? (
+            <PortalWalletPanel locale={locale} model={walletModel} />
+          ) : null}
           {activeView === "referrals" ? <ReferralRewardsPanel locale={locale} /> : null}
           {activeView === "start" ? (
             <UseGuide

@@ -375,6 +375,131 @@
   color: #1f2937;
 }
 
+.portal-v2-shell .portal-commerce-layout--wallet {
+  --portal-wallet-border: #30363d;
+  --portal-wallet-surface: #161b22;
+  --portal-wallet-text: #f0f6fc;
+  --portal-wallet-muted: #8b949e;
+  --portal-wallet-accent: #20d5e8;
+  align-content: start;
+}
+
+.portal-v2-shell[data-portal-theme="light"]
+  .portal-commerce-layout--wallet {
+  --portal-wallet-border: #d0d7de;
+  --portal-wallet-surface: #ffffff;
+  --portal-wallet-text: #1f2937;
+  --portal-wallet-muted: #57606a;
+  --portal-wallet-accent: #0969da;
+}
+
+.portal-v2-shell .portal-wallet-status {
+  margin: 0;
+  color: var(--portal-wallet-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.portal-v2-shell .portal-wallet-status strong {
+  color: var(--portal-wallet-text);
+}
+
+.portal-v2-shell .portal-wallet-balance-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.portal-v2-shell .portal-wallet-balance-grid > div {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--portal-wallet-border);
+  border-radius: 10px;
+  background: var(--portal-wallet-surface);
+  padding: 14px;
+}
+
+.portal-v2-shell .portal-wallet-balance-grid dt {
+  color: var(--portal-wallet-muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.portal-v2-shell .portal-wallet-balance-grid dd {
+  margin: 0;
+  color: var(--portal-wallet-text);
+  font-family: var(--portal-font-mono);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.portal-v2-shell .portal-wallet-state {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--portal-wallet-border);
+  border-radius: 10px;
+  background: var(--portal-wallet-surface);
+  color: var(--portal-wallet-muted);
+  padding: 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.portal-v2-shell .portal-wallet-state p {
+  margin: 0;
+}
+
+.portal-v2-shell .portal-wallet-state button,
+.portal-v2-shell button.portal-wallet-load-more {
+  min-height: 44px;
+  border-color: var(--portal-wallet-border);
+  background: var(--portal-wallet-surface);
+  color: var(--portal-wallet-text);
+  cursor: pointer;
+}
+
+.portal-v2-shell .portal-wallet-state button:focus-visible,
+.portal-v2-shell button.portal-wallet-load-more:focus-visible {
+  outline: 3px solid var(--portal-wallet-accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.portal-v2-shell .portal-wallet-ledger {
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  color: var(--portal-wallet-text);
+  font-size: 12px;
+}
+
+.portal-v2-shell .portal-wallet-ledger th,
+.portal-v2-shell .portal-wallet-ledger td {
+  border-bottom: 1px solid var(--portal-wallet-border);
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.portal-v2-shell .portal-wallet-ledger th {
+  color: var(--portal-wallet-muted);
+  font-weight: 700;
+}
+
+.portal-v2-shell .portal-wallet-ledger td {
+  font-family: var(--portal-font-mono);
+}
+
 @media (max-width: 1180px) {
   .portal-v2-shell .portal-commerce-layout__list,
   .portal-v2-shell .portal-commerce-layout__metrics {

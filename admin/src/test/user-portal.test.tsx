@@ -3,7 +3,7 @@ import { createElement } from "react";
 import "@testing-library/jest-dom/vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "../App";
 import {
   isLocalPortalShellPreviewEnabled,
@@ -40,6 +40,12 @@ import {
   type PortalUserState,
   type UserPortalClient
 } from "../features/user-portal/user-portal-client";
+import {
+  PortalWalletClientError,
+  type PortalWalletClient,
+  type PortalWalletLedgerEntry,
+  type PortalWalletSummary
+} from "../features/user-portal/wallet";
 
 afterEach(() => {
   cleanup();
@@ -407,6 +413,82 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
     })),
     ...overrides
   };
+}
+
+function portalWalletSession(
+  sessionRef: string,
+  userRef: string
+): PortalSession {
+  return {
+    status: "authenticated_preview",
+    sessionRef,
+    userRef,
+    displayName: userRef,
+    authMode: "password",
+    registeredAt: "2026-07-27T00:00:00.000Z",
+    safety: {
+      noAdminApi: true,
+      noPublicAuthActivated: true,
+      noRawPasswordReturned: true
+    }
+  };
+}
+
+function portalWalletSummary(
+  spendableUnits: number,
+  status: PortalWalletSummary["status"] = "active"
+): PortalWalletSummary {
+  if (status === "not_created") {
+    return {
+      status,
+      version: 0,
+      balances: {
+        paidCoins: 0,
+        bonusCoins: 0,
+        rewardCoins: 0
+      },
+      spendableUnits: 0,
+      heldUnits: 0,
+      pendingUnits: 0
+    };
+  }
+  return {
+    status,
+    version: 2,
+    balances: {
+      paidCoins: spendableUnits - 5,
+      bonusCoins: 4,
+      rewardCoins: 1
+    },
+    spendableUnits,
+    heldUnits: 3,
+    pendingUnits: 2
+  };
+}
+
+function portalWalletEntry(): PortalWalletLedgerEntry {
+  return {
+    entryRef: "entry_wallet_shell_001",
+    category: "credit",
+    coinType: "paid_coins",
+    amountUnits: 20,
+    availableDeltaUnits: null,
+    pendingDeltaUnits: null,
+    heldDeltaUnits: null,
+    totalDeltaUnits: 20,
+    relatedOrderRef: null,
+    occurredAt: "2026-07-27T12:00:00.000Z"
+  };
+}
+
+function deferredValue<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, reject, resolve };
 }
 
 function activeSubscriptionRequest(overrides: Partial<PortalSubscriptionRequest> = {}): PortalSubscriptionRequest {
@@ -2002,7 +2084,7 @@ describe("user portal product surface", () => {
 
     const topbar = document.querySelector(".portal-use-topbar");
     expect(topbar).not.toBeNull();
-    const walletButtons = within(topbar as HTMLElement).getAllByRole("button", { name: "打开 Coins 钱包，余额尚未接入" });
+    const walletButtons = within(topbar as HTMLElement).getAllByRole("button", { name: "打开 Coins 钱包，余额暂不可用" });
     expect(walletButtons).toHaveLength(1);
     const walletButton = walletButtons[0];
     expect(walletButton.closest(".portal-v2-utility-actions")).not.toBeNull();
@@ -2016,6 +2098,239 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("商品")).toBeNull();
     expect(screen.queryByText("增值项")).toBeNull();
     expect(screen.queryByRole("button", { name: "购买暂未开放" })).toBeNull();
+  });
+
+  test("Wallet loads summary for the authenticated shell and ledger only after opening", async () => {
+    const summary = deferredValue<PortalWalletSummary>();
+    const ledger = deferredValue<{
+      entries: PortalWalletLedgerEntry[];
+      nextCursor: null;
+    }>();
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(() => summary.promise),
+      listLedger: vi.fn(() => ledger.promise)
+    };
+    const session = portalWalletSession(
+      "session_wallet_shell_001",
+      "wallet-user@example.test"
+    );
+    const client = portalClient({ wallet });
+    render(createElement(UserPortalPage, {
+      initialSession: session,
+      portalClient: client
+    }));
+
+    const navigation = await screen.findByRole("navigation", {
+      name: "用户中心导航"
+    });
+    await waitFor(() => {
+      expect(wallet.getSummary).toHaveBeenCalledWith({
+        sessionRef: session.sessionRef
+      });
+    });
+    expect(wallet.listLedger).not.toHaveBeenCalled();
+    expect(within(navigation).queryByRole("button", { name: "钱包" })).toBeNull();
+    expect(within(navigation).queryByRole("button", { name: "Coins 钱包" })).toBeNull();
+    const topbar = document.querySelector(".portal-use-topbar");
+    expect(topbar).not.toBeNull();
+    expect(within(topbar as HTMLElement).getByText("Coins · --")).toBeInTheDocument();
+
+    await act(async () => {
+      summary.resolve(portalWalletSummary(155));
+      await summary.promise;
+    });
+    const walletButton = within(topbar as HTMLElement).getByRole("button", {
+      name: "打开 Coins 钱包，可用余额 155 Coins"
+    });
+    expect(walletButton).toHaveTextContent("Coins · 155");
+    expect(within(topbar as HTMLElement).getAllByRole("button", {
+      name: "打开 Coins 钱包，可用余额 155 Coins"
+    })).toHaveLength(1);
+
+    fireEvent.click(walletButton);
+    await waitFor(() => {
+      expect(wallet.listLedger).toHaveBeenCalledWith({
+        sessionRef: session.sessionRef,
+        limit: 25
+      });
+    });
+    expect(await screen.findByText("正在加载钱包流水…")).toBeInTheDocument();
+
+    await act(async () => {
+      ledger.resolve({
+        entries: [portalWalletEntry()],
+        nextCursor: null
+      });
+      await ledger.promise;
+    });
+    expect(await screen.findByRole("table", {
+      name: "Coins 钱包流水"
+    })).toBeInTheDocument();
+  });
+
+  test("Wallet uses only server-confirmed not-created as zero", async () => {
+    const session = portalWalletSession(
+      "session_wallet_zero_001",
+      "wallet-zero@example.test"
+    );
+    const confirmedZero: PortalWalletClient = {
+      getSummary: vi.fn(async () => portalWalletSummary(0, "not_created")),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    render(createElement(UserPortalPage, {
+      initialSession: session,
+      portalClient: portalClient({ wallet: confirmedZero })
+    }));
+
+    const zeroButton = await screen.findByRole("button", {
+      name: "打开 Coins 钱包，可用余额 0 Coins"
+    });
+    expect(zeroButton).toHaveTextContent("Coins · 0");
+
+    cleanup();
+    const failed: PortalWalletClient = {
+      getSummary: vi.fn(async () => {
+        throw new PortalWalletClientError("wallet_unavailable", true);
+      }),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    render(createElement(UserPortalPage, {
+      initialSession: portalWalletSession(
+        "session_wallet_failed_001",
+        "wallet-failed@example.test"
+      ),
+      portalClient: portalClient({ wallet: failed })
+    }));
+
+    const failedButton = await screen.findByRole("button", {
+      name: "打开 Coins 钱包，余额暂不可用"
+    });
+    expect(failedButton).toHaveTextContent("Coins · --");
+    expect(screen.queryByText("Coins · 0")).not.toBeInTheDocument();
+  });
+
+  test("Wallet hydrate generation ignores a late older session completion", async () => {
+    const firstState = deferredValue<PortalUserState>();
+    const secondState = deferredValue<PortalUserState>();
+    const firstSession = portalWalletSession(
+      "session_wallet_generation_old",
+      "wallet-old@example.test"
+    );
+    const secondSession = portalWalletSession(
+      "session_wallet_generation_new",
+      "wallet-new@example.test"
+    );
+    const stateTemplateClient = portalClient();
+    const oldState = await stateTemplateClient.fetchCurrentState({
+      userRef: firstSession.userRef,
+      sessionRef: firstSession.sessionRef
+    });
+    const newState = await stateTemplateClient.fetchCurrentState({
+      userRef: secondSession.userRef,
+      sessionRef: secondSession.sessionRef
+    });
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(async ({ sessionRef }) => (
+        sessionRef === secondSession.sessionRef
+          ? portalWalletSummary(222)
+          : portalWalletSummary(111)
+      )),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const client = portalClient({
+      wallet,
+      fetchCurrentState: vi.fn(({ sessionRef }) => (
+        sessionRef === firstSession.sessionRef
+          ? firstState.promise
+          : secondState.promise
+      ))
+    });
+    const { rerender } = render(createElement(UserPortalPage, {
+      initialSession: firstSession,
+      portalClient: client
+    }));
+    await waitFor(() => {
+      expect(client.fetchCurrentState).toHaveBeenCalledWith({
+        userRef: firstSession.userRef,
+        sessionRef: firstSession.sessionRef
+      });
+    });
+
+    rerender(createElement(UserPortalPage, {
+      initialSession: secondSession,
+      portalClient: client
+    }));
+    await waitFor(() => {
+      expect(client.fetchCurrentState).toHaveBeenCalledWith({
+        userRef: secondSession.userRef,
+        sessionRef: secondSession.sessionRef
+      });
+    });
+    await act(async () => {
+      secondState.resolve({ ...newState, userRef: secondSession.userRef });
+      await secondState.promise;
+    });
+    expect(await screen.findByText("Coins · 222")).toBeInTheDocument();
+
+    await act(async () => {
+      firstState.resolve({ ...oldState, userRef: firstSession.userRef });
+      await firstState.promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Coins · 222")).toBeInTheDocument();
+      expect(screen.queryByText("Coins · 111")).not.toBeInTheDocument();
+    });
+    expect(wallet.getSummary).not.toHaveBeenCalledWith({
+      sessionRef: firstSession.sessionRef
+    });
+  });
+
+  test("Wallet stale session-invalid cannot log out a newer login", async () => {
+    const oldSummary = deferredValue<PortalWalletSummary>();
+    const oldSession = portalWalletSession(
+      "session_wallet_logout_old",
+      "wallet-old@example.test"
+    );
+    const newSession = portalWalletSession(
+      "session_wallet_logout_new",
+      "wallet-new@example.test"
+    );
+    const authenticate = vi.fn()
+      .mockResolvedValueOnce(oldSession)
+      .mockResolvedValueOnce(newSession);
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(({ sessionRef }) => (
+        sessionRef === oldSession.sessionRef
+          ? oldSummary.promise
+          : Promise.resolve(portalWalletSummary(333))
+      )),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const client = portalClient({ authenticate, wallet });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    await waitFor(() => {
+      expect(wallet.getSummary).toHaveBeenCalledWith({
+        sessionRef: oldSession.sessionRef
+      });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    expect(await screen.findByRole("heading", { name: "账号登录" })).toBeInTheDocument();
+
+    await enterPortal();
+    expect(await screen.findByText("Coins · 333")).toBeInTheDocument();
+    await act(async () => {
+      oldSummary.reject(
+        new PortalWalletClientError("wallet_session_invalid", false)
+      );
+      await Promise.allSettled([oldSummary.promise]);
+    });
+
+    expect(screen.getByRole("navigation", {
+      name: "用户中心导航"
+    })).toBeInTheDocument();
+    expect(screen.getByText("Coins · 333")).toBeInTheDocument();
   });
 
   test("places Orders in navigation and returns legacy payment detail to Orders", async () => {
@@ -2052,7 +2367,7 @@ describe("user portal product surface", () => {
     await enterPortal();
     const topbar = document.querySelector(".portal-use-topbar");
     expect(topbar).not.toBeNull();
-    fireEvent.click(within(topbar as HTMLElement).getByRole("button", { name: "打开 Coins 钱包，余额尚未接入" }));
+    fireEvent.click(within(topbar as HTMLElement).getByRole("button", { name: "打开 Coins 钱包，余额暂不可用" }));
 
     expect(await screen.findAllByRole("heading", { level: 2, name: "余额与充值" })).toHaveLength(1);
     const walletSection = document.querySelector(".portal-commerce-layout--wallet");
@@ -2079,7 +2394,7 @@ describe("user portal product surface", () => {
     expect(within(englishTopbar as HTMLElement).getByText("Coins · --")).not.toBeNull();
     expect(within(screen.getByRole("navigation", { name: "User center navigation" })).queryByRole("button", { name: "Wallet" })).toBeNull();
     expect(within(screen.getByRole("navigation", { name: "User center navigation" })).queryByRole("button", { name: "Coins wallet" })).toBeNull();
-    fireEvent.click(within(englishTopbar as HTMLElement).getByRole("button", { name: "Open Coins wallet, balance is not connected yet" }));
+    fireEvent.click(within(englishTopbar as HTMLElement).getByRole("button", { name: "Open Coins wallet, balance is temporarily unavailable" }));
     expect(await screen.findAllByRole("heading", { level: 2, name: "Balance and recharge" })).toHaveLength(1);
     const englishWalletSection = document.querySelector(".portal-commerce-layout--wallet");
     expect(englishWalletSection).not.toBeNull();
@@ -2139,7 +2454,7 @@ describe("user portal product surface", () => {
       .getByRole("button", { name: "关闭" }));
 
     fireEvent.click(within(topbar as HTMLElement).getByRole("button", {
-      name: "打开 Coins 钱包，余额尚未接入"
+      name: "打开 Coins 钱包，余额暂不可用"
     }));
     expect(await screen.findByRole("heading", { name: "余额与充值" }))
       .not.toBeNull();

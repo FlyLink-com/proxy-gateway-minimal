@@ -670,40 +670,6 @@ export function MarketplacePanel({
   );
 }
 
-export function WalletPanel({ locale }: PanelProps) {
-  const zh = isChinese(locale);
-  const balances = zh ? ["已购 Coins", "赠送 Coins", "奖励 Coins"] : ["Paid Coins", "Bonus Coins", "Reward Coins"];
-
-  return (
-    <section className="portal-commerce-layout portal-commerce-layout--wallet" aria-labelledby="portal-commerce-wallet-heading">
-      <header className="portal-commerce-layout__header">
-        <h2 id="portal-commerce-wallet-heading">{zh ? "余额与充值" : "Balance and recharge"}</h2>
-      </header>
-      <section className="portal-commerce-layout__section" aria-labelledby="portal-commerce-wallet-balance-heading">
-        <h3 id="portal-commerce-wallet-balance-heading">{zh ? "余额" : "Balance"}</h3>
-        <div className="portal-commerce-layout__balances">
-          {balances.map((balance) => (
-            <article key={balance}>
-              <h4>{balance}</h4>
-              <p>--</p>
-            </article>
-          ))}
-        </div>
-      </section>
-      <section className="portal-commerce-layout__section" aria-labelledby="portal-commerce-wallet-recharge-heading">
-        <h3 id="portal-commerce-wallet-recharge-heading">{zh ? "充值" : "Recharge"}</h3>
-        <RechargeDenominationList locale={locale} mode="wallet-disabled" />
-      </section>
-      <section className="portal-commerce-layout__section" aria-label={zh ? "钱包功能" : "Wallet functions"}>
-        <ul className="portal-commerce-layout__list">
-          <li>{zh ? "流水" : "Activity"}</li>
-          <li>{zh ? "奖励" : "Rewards"}</li>
-        </ul>
-      </section>
-    </section>
-  );
-}
-
 export function ReferralRewardsPanel({ locale }: PanelProps) {
   const zh = isChinese(locale);
   const metrics = zh
