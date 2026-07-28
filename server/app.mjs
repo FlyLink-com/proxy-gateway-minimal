@@ -24,6 +24,7 @@ import { subscriptionRoutes } from "./routes/subscription.mjs";
 import { publicLeadRoutes } from "./routes/public-leads.mjs";
 import { userPortalRoutes } from "./routes/user-portal.mjs";
 import { portalCoinCommerceRoutes } from "./routes/portal-coin-commerce.mjs";
+import { createPortalCoinWalletRouter } from "./routes/portal-coin-wallet.mjs";
 import { dataPlaneAgentRoutes } from "./routes/data-plane-agent.mjs";
 import { resolveClientIp } from "./services/ip-address.mjs";
 
@@ -89,12 +90,14 @@ function subscriptionCredentialRateLimitKey(req, fallbackKeyFn) {
   return fallbackKey();
 }
 
-function matchesPortalCommerceNamespace(pathname) {
+function matchesProtectedPortalCoinNamespace(pathname) {
   return (
     pathname === "/api/portal/catalog"
     || pathname.startsWith("/api/portal/catalog/")
     || pathname === "/api/portal/commerce"
     || pathname.startsWith("/api/portal/commerce/")
+    || pathname === "/api/portal/coins/wallet"
+    || pathname.startsWith("/api/portal/coins/wallet/")
   );
 }
 
@@ -105,7 +108,7 @@ function decodeAsciiPercentLayer(value) {
   );
 }
 
-function isPortalCommerceNamespace(req) {
+function isProtectedPortalCoinNamespace(req) {
   const target = typeof req.originalUrl === "string"
     ? req.originalUrl
     : req.url;
@@ -113,7 +116,7 @@ function isPortalCommerceNamespace(req) {
   const queryIndex = target.indexOf("?");
   let candidate = queryIndex === -1 ? target : target.slice(0, queryIndex);
   for (let layer = 0; layer <= 3; layer += 1) {
-    if (matchesPortalCommerceNamespace(candidate.toLowerCase())) return true;
+    if (matchesProtectedPortalCoinNamespace(candidate.toLowerCase())) return true;
     if (layer === 3) break;
     const decoded = decodeAsciiPercentLayer(candidate);
     if (decoded === candidate) break;
@@ -202,10 +205,31 @@ function portalCoinCommerceRoutesEnabled(state) {
       "createCheckoutQuote",
       "confirmOrder",
       "cancelOrder",
-      "getOrder"
+      "getOrder",
+      "listOrders"
     ])
     && hasCallableSafeDescriptorChain(auth, ["requireSession"])
     && hasCallableOwnSurface(coordinator, ["start", "stop"])
+  );
+}
+
+function portalCoinWalletRoutesEnabled(state) {
+  const platform = state.platform;
+  if (!platform || typeof platform !== "object") return false;
+  if (
+    ownEnumerableDataValue(platform, "coinsWalletEnabled") !== true
+    || ownEnumerableDataValue(platform, "userPortalRoutesEnabled") !== true
+  ) {
+    return false;
+  }
+  const store = ownEnumerableDataValue(platform, "coinsWalletStore");
+  const auth = ownEnumerableDataValue(platform, "userPortalAuth");
+  return (
+    hasCallableOwnSurface(store, [
+      "getWalletProjection",
+      "listLedgerEntries"
+    ])
+    && hasCallableSafeDescriptorChain(auth, ["requireSession"])
   );
 }
 
@@ -216,14 +240,20 @@ export function createApp(state, options = {}) {
       nowFn: options.rateLimitNowFn
     }));
   }
-  const portalCommerceConsoleAuth = createAuthMiddleware({
+  if (portalCoinWalletRoutesEnabled(state)) {
+    app.use(createPortalCoinWalletRouter({
+      store: ownEnumerableDataValue(state.platform, "coinsWalletStore"),
+      auth: ownEnumerableDataValue(state.platform, "userPortalAuth")
+    }));
+  }
+  const protectedPortalCoinConsoleAuth = createAuthMiddleware({
     token: state.consoleToken,
     publicPaths: [],
     publicPathPrefixes: []
   });
   app.use((req, res, next) => {
-    if (isPortalCommerceNamespace(req)) {
-      portalCommerceConsoleAuth(req, res, next);
+    if (isProtectedPortalCoinNamespace(req)) {
+      protectedPortalCoinConsoleAuth(req, res, next);
       return;
     }
     next();

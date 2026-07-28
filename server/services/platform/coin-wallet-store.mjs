@@ -657,12 +657,19 @@ function mapReceipt(row) {
 
 function mapLedgerEntry(row) {
   if (!row) return null;
+  let coinType;
+  try {
+    coinType = normalizeCoinType(row.coin_type);
+  } catch {
+    throw storeError("wallet_infrastructure_error");
+  }
   return {
     entryRef: row.entry_ref,
     operationRef: row.operation_ref,
     walletRef: row.wallet_ref,
     lotRef: row.lot_ref,
     operation: row.operation,
+    coinType,
     amountUnits: row.amount_units,
     holdRef: row.hold_ref,
     orderRef: row.order_ref,
@@ -2781,15 +2788,18 @@ export function createSqliteCoinWalletStore(options = {}) {
         normalizedEntryRef = assertNormalizedString(afterEntryRef);
       }
       return db.prepare(`
-        select *
-          from platform_coin_ledger_entries
-         where wallet_ref = ?
+        select ledger.*, lot.coin_type as coin_type
+          from platform_coin_ledger_entries as ledger
+          left join platform_coin_lots as lot
+            on lot.lot_ref = ledger.lot_ref
+           and lot.wallet_ref = ledger.wallet_ref
+         where ledger.wallet_ref = ?
            and (
              ? is null
-             or occurred_at < ?
-             or (occurred_at = ? and entry_ref < ?)
+             or ledger.occurred_at < ?
+             or (ledger.occurred_at = ? and ledger.entry_ref < ?)
            )
-         order by occurred_at desc, entry_ref desc
+         order by ledger.occurred_at desc, ledger.entry_ref desc
          limit ?
       `).all(
         normalizedWalletRef,

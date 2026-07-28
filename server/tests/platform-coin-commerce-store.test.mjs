@@ -48,12 +48,13 @@ function refFactory() {
   };
 }
 
-function fixedClockDatabase(database, clock) {
+function fixedClockDatabase(database, clock, onPrepare = () => {}) {
   return new Proxy(database, {
     get(target, property) {
       if (property === "inTransaction") return target.inTransaction;
       if (property === "prepare") {
         return (sql) => {
+          onPrepare(sql);
           if (/select\s+strftime\('%Y-%m-%dT%H:%M:%fZ',\s*'now'\)/i.test(sql)) {
             return { pluck: () => ({ get: () => clock.value }) };
           }
@@ -213,8 +214,13 @@ function fixture(options = {}) {
   const database = createSchema(dbPath);
   insertAccount(database);
   const clock = { value: CLOCK };
+  const preparedSql = [];
   const store = createSqliteCoinCommerceStore({
-    database: fixedClockDatabase(database, clock),
+    database: fixedClockDatabase(
+      database,
+      clock,
+      (sql) => preparedSql.push(sql)
+    ),
     commerceRefFactory: refFactory(),
     walletRefFactory: refFactory(),
     ...options
@@ -224,6 +230,7 @@ function fixture(options = {}) {
     dbPath,
     database,
     clock,
+    preparedSql,
     store,
     close() {
       store.close();
@@ -403,6 +410,7 @@ test("factory enforces exact ownership, schemas, connection settings, and surfac
       "confirmOrder",
       "cancelOrder",
       "getOrder",
+      "listOrders",
       "claimDueCaptures",
       "captureClaimedOrder",
       "recoverNonTerminalOrders",
@@ -424,6 +432,362 @@ test("factory enforces exact ownership, schemas, connection settings, and surfac
   } finally {
     state.database.close();
     rmSync(state.directory, { recursive: true, force: true, maxRetries: 3 });
+  }
+});
+
+test("listOrders is account-owned, deterministically paged, bounded, query-constant, and read-only", () => {
+  const state = fixture();
+  try {
+    insertAccount(state.database, "acct_synthetic_2");
+    state.store.publishOfferVersion(offer());
+    credit(state.store, {
+      accountId: "acct_synthetic_1",
+      coinType: "paid_coins",
+      amountUnits: 100,
+      suffix: "list_owner"
+    });
+    credit(state.store, {
+      accountId: "acct_synthetic_2",
+      coinType: "paid_coins",
+      amountUnits: 100,
+      suffix: "list_other"
+    });
+
+    const createOrder = (accountId, createdAt, key) => {
+      state.clock.value = createdAt;
+      const quote = state.store.createCheckoutQuote({
+        accountId,
+        offerRef: "offer_monthly_basic"
+      });
+      return state.store.confirmOrder({
+        accountId,
+        quoteRef: quote.quoteRef,
+        operation: commerceOperation(key, accountId)
+      });
+    };
+    const oldest = createOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:34:54.000Z",
+      "list_owner_oldest"
+    );
+    const tiedLowerRef = createOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:34:56.000Z",
+      "list_owner_tied_lower"
+    );
+    const tiedHigherRef = createOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:34:56.000Z",
+      "list_owner_tied_higher"
+    );
+    createOrder(
+      "acct_synthetic_2",
+      "2026-07-26T12:34:57.000Z",
+      "list_other_newest"
+    );
+
+    const before = snapshotTables(
+      state.database,
+      [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+    );
+    state.preparedSql.length = 0;
+    const firstPage = state.store.listOrders({
+      accountId: "acct_synthetic_1",
+      limit: 2
+    });
+    assert.deepEqual(
+      firstPage.orders.map((order) => order.orderRef),
+      [tiedHigherRef.orderRef, tiedLowerRef.orderRef]
+    );
+    assert.deepEqual(firstPage.nextCursor, {
+      afterCreatedAt: tiedLowerRef.createdAt,
+      afterOrderRef: tiedLowerRef.orderRef
+    });
+    assert.equal(state.preparedSql.length, 2);
+    assert.equal(
+      state.preparedSql.filter(
+        (sql) => /platform_coin_commerce_fulfillment_commands/i.test(sql)
+      ).length,
+      1
+    );
+
+    const continuation = state.store.listOrders({
+      accountId: "acct_synthetic_1",
+      limit: 2,
+      afterCreatedAt: firstPage.nextCursor.afterCreatedAt,
+      afterOrderRef: firstPage.nextCursor.afterOrderRef
+    });
+    assert.deepEqual(
+      continuation.orders.map((order) => order.orderRef),
+      [oldest.orderRef]
+    );
+    assert.equal(continuation.nextCursor, null);
+
+    const one = state.store.listOrders({
+      accountId: "acct_synthetic_1",
+      limit: 1
+    });
+    assert.deepEqual(
+      one.orders.map((order) => order.orderRef),
+      [tiedHigherRef.orderRef]
+    );
+    assert.deepEqual(one.nextCursor, {
+      afterCreatedAt: tiedHigherRef.createdAt,
+      afterOrderRef: tiedHigherRef.orderRef
+    });
+    assert.equal(
+      state.store.listOrders({
+        accountId: "acct_synthetic_1",
+        limit: 100
+      }).orders.length,
+      3
+    );
+
+    for (const limit of [0, 101]) {
+      expectCode(() => state.store.listOrders({
+        accountId: "acct_synthetic_1",
+        limit
+      }), "invalid_pagination");
+    }
+    for (const input of [
+      {
+        accountId: "acct_synthetic_1",
+        limit: 2,
+        afterCreatedAt: tiedLowerRef.createdAt
+      },
+      {
+        accountId: "acct_synthetic_1",
+        limit: 2,
+        afterOrderRef: tiedLowerRef.orderRef
+      },
+      {
+        accountId: "acct_synthetic_1",
+        limit: 2,
+        afterCreatedAt: "2026-07-26T12:34:56Z",
+        afterOrderRef: tiedLowerRef.orderRef
+      },
+      {
+        accountId: "acct_synthetic_1",
+        limit: 2,
+        afterCreatedAt: tiedLowerRef.createdAt,
+        afterOrderRef: "ORDER_UNSAFE"
+      }
+    ]) {
+      expectCode(() => state.store.listOrders(input), "invalid_pagination");
+    }
+    expectCode(() => state.store.listOrders({
+      accountId: "acct_synthetic_1",
+      limit: 2,
+      unknown: true
+    }), "invalid_store_contract");
+    assert.deepEqual(
+      snapshotTables(
+        state.database,
+        [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+      ),
+      before
+    );
+  } finally {
+    state.close();
+  }
+});
+
+test("listOrders projects valid delivered and failed fulfillment with one bounded query", () => {
+  for (const terminalStatus of ["delivered", "failed"]) {
+    const state = fixture();
+    try {
+      const { order } = captureToOutbox(state);
+      const claimed = state.store.claimNextFulfillmentCommand({
+        leaseMs: 1000
+      });
+      if (terminalStatus === "delivered") {
+        state.store.completeFulfillmentCommand({
+          commandRef: claimed.commandRef,
+          leaseGeneration: claimed.leaseGeneration,
+          leaseToken: claimed.leaseToken,
+          effectRef: "effect_list_valid_delivered",
+          status: "delivered"
+        });
+      } else {
+        state.store.failFulfillmentCommand({
+          commandRef: claimed.commandRef,
+          leaseGeneration: claimed.leaseGeneration,
+          leaseToken: claimed.leaseToken,
+          safeCode: "fulfillment_handler_failed"
+        });
+      }
+      const expected = state.store.getOrder({
+        accountId: "acct_synthetic_1",
+        orderRef: order.orderRef
+      });
+
+      state.preparedSql.length = 0;
+      assert.deepEqual(state.store.listOrders({
+        accountId: "acct_synthetic_1",
+        limit: 100
+      }), {
+        orders: [expected],
+        nextCursor: null
+      });
+      assert.equal(state.preparedSql.length, 2, terminalStatus);
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("listOrders bounds receipt aggregation to the selected account page", () => {
+  const state = fixture();
+  try {
+    insertAccount(state.database, "acct_synthetic_2");
+    state.store.publishOfferVersion(offer());
+    for (const [accountId, suffix] of [
+      ["acct_synthetic_1", "receipt_bound_owner"],
+      ["acct_synthetic_2", "receipt_bound_other"]
+    ]) {
+      credit(state.store, {
+        accountId,
+        coinType: "paid_coins",
+        amountUnits: 100,
+        suffix
+      });
+    }
+
+    const createDeliveredOrder = (accountId, createdAt, key) => {
+      state.clock.value = createdAt;
+      const quote = state.store.createCheckoutQuote({
+        accountId,
+        offerRef: "offer_monthly_basic"
+      });
+      const order = state.store.confirmOrder({
+        accountId,
+        quoteRef: quote.quoteRef,
+        operation: commerceOperation(key, accountId)
+      });
+      state.clock.value = order.cancelUntil;
+      state.store.claimDueCaptures({ limit: 1 });
+      state.store.captureClaimedOrder({ orderRef: order.orderRef });
+      const command = state.store.claimNextFulfillmentCommand({
+        leaseMs: 1000
+      });
+      state.store.completeFulfillmentCommand({
+        commandRef: command.commandRef,
+        leaseGeneration: command.leaseGeneration,
+        leaseToken: command.leaseToken,
+        effectRef: `effect_${key}`,
+        status: "delivered"
+      });
+      return { order, commandRef: command.commandRef };
+    };
+
+    const other = createDeliveredOrder(
+      "acct_synthetic_2",
+      "2026-07-26T12:34:00.000Z",
+      "receipt_bound_other"
+    );
+    const ownerOutsidePage = createDeliveredOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:35:00.000Z",
+      "receipt_bound_owner_outside"
+    );
+    const ownerLookahead = createDeliveredOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:36:00.000Z",
+      "receipt_bound_owner_older"
+    );
+    const ownerSelected = createDeliveredOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:37:00.000Z",
+      "receipt_bound_owner_selected"
+    );
+
+    const observedCommandRefs = [];
+    state.database.function("observe_receipt_command", (commandRef) => {
+      observedCommandRefs.push(commandRef);
+      return 1;
+    });
+    state.database.exec(`
+      create temp view platform_coin_commerce_fulfillment_receipts as
+      select receipt_ref,
+             command_ref,
+             effect_ref,
+             status,
+             safe_code,
+             recorded_at
+        from main.platform_coin_commerce_fulfillment_receipts
+       where observe_receipt_command(command_ref) = 1
+    `);
+
+    state.preparedSql.length = 0;
+    const page = state.store.listOrders({
+      accountId: "acct_synthetic_1",
+      limit: 1
+    });
+
+    assert.deepEqual(
+      page.orders.map((order) => order.orderRef),
+      [ownerSelected.order.orderRef]
+    );
+    assert.deepEqual(
+      new Set(observedCommandRefs),
+      new Set([ownerSelected.commandRef, ownerLookahead.commandRef])
+    );
+    assert.equal(
+      observedCommandRefs.includes(ownerOutsidePage.commandRef),
+      false
+    );
+    assert.equal(observedCommandRefs.includes(other.commandRef), false);
+    assert.equal(state.preparedSql.length, 2);
+  } finally {
+    state.close();
+  }
+});
+
+test("listOrders fails closed on command state drift and missing delivered receipt without N+1", () => {
+  for (const corruption of ["held_with_pending_command", "delivered_without_receipt"]) {
+    const state = fixture();
+    try {
+      const { order } = captureToOutbox(state);
+      if (corruption === "held_with_pending_command") {
+        dropTableTriggers(
+          state.database,
+          "platform_coin_commerce_orders"
+        );
+        state.database.prepare(`
+          update platform_coin_commerce_orders
+             set payment_status = 'held'
+           where order_ref = ?
+        `).run(order.orderRef);
+      } else {
+        const claimed = state.store.claimNextFulfillmentCommand({
+          leaseMs: 1000
+        });
+        state.store.completeFulfillmentCommand({
+          commandRef: claimed.commandRef,
+          leaseGeneration: claimed.leaseGeneration,
+          leaseToken: claimed.leaseToken,
+          effectRef: "effect_list_missing_receipt",
+          status: "delivered"
+        });
+        dropTableTriggers(
+          state.database,
+          "platform_coin_commerce_fulfillment_receipts"
+        );
+        state.database.prepare(`
+          delete from platform_coin_commerce_fulfillment_receipts
+           where command_ref = ?
+        `).run(claimed.commandRef);
+      }
+
+      state.preparedSql.length = 0;
+      expectCode(() => state.store.listOrders({
+        accountId: "acct_synthetic_1",
+        limit: 100
+      }), "commerce_infrastructure_error");
+      assert.equal(state.preparedSql.length, 2, corruption);
+    } finally {
+      state.close();
+    }
   }
 });
 

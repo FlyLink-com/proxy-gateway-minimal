@@ -237,6 +237,16 @@ function createStore(overrides = {}) {
       calls.push(["cancelOrder", clone(input)]);
       return clone(FULL_CANCELLED_ORDER);
     },
+    listOrders(input) {
+      calls.push(["listOrders", clone(input)]);
+      return {
+        orders: [clone(FULL_HELD_ORDER)],
+        nextCursor: {
+          afterCreatedAt: FULL_HELD_ORDER.createdAt,
+          afterOrderRef: FULL_HELD_ORDER.orderRef
+        }
+      };
+    },
     getOrder(input) {
       calls.push(["getOrder", clone(input)]);
       return clone(FULL_HELD_ORDER);
@@ -365,7 +375,7 @@ async function expectCommerceError(response, status, code, retryable = false) {
   assert.deepEqual(await response.json(), COMMERCE_ERROR(code, retryable));
 }
 
-test("the six exact Portal Commerce routes return safe DTOs and session-owned Store inputs", async () => {
+test("the seven exact Portal Commerce routes return safe DTOs and session-owned Store inputs", async () => {
   const { store, calls } = createStore();
   const coordinatorReads = [];
   const coordinator = {
@@ -403,6 +413,21 @@ test("the six exact Portal Commerce routes return safe DTOs and session-owned St
     assert.equal(preview.status, 200);
     assert.deepEqual(await preview.json(), { quote: PORTAL_QUOTE });
 
+    const listOrders = await fetch(
+      `${baseUrl}/api/portal/commerce/orders?limit=1`
+        + "&afterCreatedAt=2026-07-27T00%3A00%3A00.000Z"
+        + "&afterOrderRef=order_monthly_basic_2",
+      { headers: portalHeaders("session_beta") }
+    );
+    assert.equal(listOrders.status, 200);
+    assert.deepEqual(await listOrders.json(), {
+      orders: [PORTAL_HELD_ORDER],
+      nextCursor: {
+        afterCreatedAt: PORTAL_HELD_ORDER.createdAt,
+        afterOrderRef: PORTAL_HELD_ORDER.orderRef
+      }
+    });
+
     const createOrder = await fetch(`${baseUrl}/api/portal/commerce/orders`, {
       method: "POST",
       headers: jsonHeaders("session_alpha", "idem-create-1"),
@@ -438,6 +463,12 @@ test("the six exact Portal Commerce routes return safe DTOs and session-owned St
       ["createCheckoutQuote", {
         accountId: "acct_alpha",
         offerRef: "offer_monthly_basic"
+      }],
+      ["listOrders", {
+        accountId: "acct_beta",
+        limit: 1,
+        afterCreatedAt: "2026-07-27T00:00:00.000Z",
+        afterOrderRef: "order_monthly_basic_2"
       }],
       ["confirmOrder", {
         accountId: "acct_alpha",
@@ -491,6 +522,9 @@ test("Commerce routes stay unmounted unless the flag and required runtime servic
     ["malformed Commerce Store surface", (state) => {
       state.platform.coinCommerceStore = {};
     }],
+    ["Commerce Store missing listOrders", (state) => {
+      delete state.platform.coinCommerceStore.listOrders;
+    }],
     ["malformed Portal auth surface", (state) => {
       state.platform.userPortalAuth = {};
     }],
@@ -542,6 +576,136 @@ test("Commerce routes stay unmounted unless the flag and required runtime servic
     });
   }
   assert.equal(serviceGetterReads, 0);
+});
+
+test("order-list query is canonical, bounded, paired, single-valued, and account-free", async (t) => {
+  const { store, calls } = createStore({
+    listOrders(input) {
+      calls.push(["listOrders", clone(input)]);
+      return { orders: [], nextCursor: null };
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(createState({ store })));
+  try {
+    for (const limit of [1, 100]) {
+      await t.test(`accepts limit ${limit}`, async () => {
+        const response = await fetch(
+          `${baseUrl}/api/portal/commerce/orders?limit=${limit}`,
+          { headers: portalHeaders() }
+        );
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), {
+          orders: [],
+          nextCursor: null
+        });
+      });
+    }
+
+    const beforeRejected = calls.length;
+    for (const query of [
+      "",
+      "?limit=0",
+      "?limit=101",
+      "?limit=01",
+      "?limit=1.0",
+      "?limit=1&unknown=true",
+      "?limit=1&accountId=acct_beta",
+      "?limit=1&limit=2",
+      "?limit=1&afterCreatedAt=2026-07-27T00%3A00%3A00.000Z",
+      "?limit=1&afterOrderRef=order_monthly_basic_1",
+      "?limit=1&afterCreatedAt=2026-07-27T00%3A00%3A00Z"
+        + "&afterOrderRef=order_monthly_basic_1",
+      "?limit=1&afterCreatedAt=2026-07-27T00%3A00%3A00.000Z"
+        + "&afterOrderRef=ORDER_UNSAFE",
+      "?limit=1&afterCreatedAt=2026-07-27T00%3A00%3A00.000Z"
+        + "&afterCreatedAt=2026-07-26T00%3A00%3A00.000Z"
+        + "&afterOrderRef=order_monthly_basic_1",
+      "?limit=1&afterCreatedAt=2026-07-27T00%3A00%3A00.000Z"
+        + "&afterOrderRef=order_monthly_basic_1"
+        + "&afterOrderRef=order_monthly_basic_2"
+    ]) {
+      await t.test(`rejects ${query || "missing query"}`, async () => {
+        const response = await fetch(
+          `${baseUrl}/api/portal/commerce/orders${query}`,
+          { headers: portalHeaders() }
+        );
+        await expectCommerceError(
+          response,
+          400,
+          "commerce_request_invalid"
+        );
+      });
+    }
+    assert.equal(calls.length, beforeRejected);
+    assert.deepEqual(calls, [
+      ["listOrders", { accountId: "acct_alpha", limit: 1 }],
+      ["listOrders", { accountId: "acct_alpha", limit: 100 }]
+    ]);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("order-list GET returns only its stable safe page without Commerce or Wallet mutation", async () => {
+  let mutationCalls = 0;
+  let walletMutationCalls = 0;
+  const { store, calls } = createStore({
+    createCheckoutQuote() {
+      mutationCalls += 1;
+    },
+    confirmOrder() {
+      mutationCalls += 1;
+    },
+    cancelOrder() {
+      mutationCalls += 1;
+    },
+    listOrders(input) {
+      calls.push(["listOrders", clone(input)]);
+      return {
+        orders: [clone(FULL_HELD_ORDER)],
+        nextCursor: {
+          afterCreatedAt: FULL_HELD_ORDER.createdAt,
+          afterOrderRef: FULL_HELD_ORDER.orderRef
+        }
+      };
+    }
+  });
+  const coordinator = {
+    start() {
+      mutationCalls += 1;
+    },
+    stop() {
+      mutationCalls += 1;
+    }
+  };
+  const state = createState({ store, coordinator });
+  state.platform.coinsWalletStore = {
+    debitCoins() {
+      walletMutationCalls += 1;
+    }
+  };
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const response = await fetch(
+      `${baseUrl}/api/portal/commerce/orders?limit=1`,
+      { headers: portalHeaders("session_beta") }
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      orders: [PORTAL_HELD_ORDER],
+      nextCursor: {
+        afterCreatedAt: PORTAL_HELD_ORDER.createdAt,
+        afterOrderRef: PORTAL_HELD_ORDER.orderRef
+      }
+    });
+    assert.deepEqual(calls, [
+      ["listOrders", { accountId: "acct_beta", limit: 1 }]
+    ]);
+    assert.equal(mutationCalls, 0);
+    assert.equal(walletMutationCalls, 0);
+  } finally {
+    await closeServer(server);
+  }
 });
 
 test("Portal session is raw-header-only and malformed successful auth projections fail closed", async (t) => {
