@@ -193,7 +193,7 @@ test("auth middleware rejects token query for protected paths", async () => {
   }
 });
 
-test("unmatched catalog and commerce namespace requests authenticate before legacy JSON parsing", async (t) => {
+test("unmatched Portal Commerce and Wallet namespace requests authenticate before legacy JSON parsing", async (t) => {
   const { server, baseUrl } = await listen(createApp(commerceAuthState()));
   try {
     for (const request of [
@@ -240,6 +240,31 @@ test("unmatched catalog and commerce namespace requests authenticate before lega
       {
         method: "POST",
         path: "/api%252fportal%252fcommerce/orders/extra",
+        body: "{"
+      },
+      {
+        method: "PUT",
+        path: "/api/portal/coins/wallet",
+        body: "{"
+      },
+      {
+        method: "POST",
+        path: "/api/portal/coins/wallet/unknown",
+        body: "{"
+      },
+      {
+        method: "POST",
+        path: "/api/portal/Coins/Wallet/unknown",
+        body: "{"
+      },
+      {
+        method: "POST",
+        path: "/api/portal/coins/%77allet/unknown",
+        body: "{"
+      },
+      {
+        method: "POST",
+        path: "/api%252fportal%252fcoins%252fwallet/unknown",
         body: "{"
       }
     ]) {
