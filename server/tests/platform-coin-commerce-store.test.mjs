@@ -636,6 +636,113 @@ test("listOrders projects valid delivered and failed fulfillment with one bounde
   }
 });
 
+test("listOrders bounds receipt aggregation to the selected account page", () => {
+  const state = fixture();
+  try {
+    insertAccount(state.database, "acct_synthetic_2");
+    state.store.publishOfferVersion(offer());
+    for (const [accountId, suffix] of [
+      ["acct_synthetic_1", "receipt_bound_owner"],
+      ["acct_synthetic_2", "receipt_bound_other"]
+    ]) {
+      credit(state.store, {
+        accountId,
+        coinType: "paid_coins",
+        amountUnits: 100,
+        suffix
+      });
+    }
+
+    const createDeliveredOrder = (accountId, createdAt, key) => {
+      state.clock.value = createdAt;
+      const quote = state.store.createCheckoutQuote({
+        accountId,
+        offerRef: "offer_monthly_basic"
+      });
+      const order = state.store.confirmOrder({
+        accountId,
+        quoteRef: quote.quoteRef,
+        operation: commerceOperation(key, accountId)
+      });
+      state.clock.value = order.cancelUntil;
+      state.store.claimDueCaptures({ limit: 1 });
+      state.store.captureClaimedOrder({ orderRef: order.orderRef });
+      const command = state.store.claimNextFulfillmentCommand({
+        leaseMs: 1000
+      });
+      state.store.completeFulfillmentCommand({
+        commandRef: command.commandRef,
+        leaseGeneration: command.leaseGeneration,
+        leaseToken: command.leaseToken,
+        effectRef: `effect_${key}`,
+        status: "delivered"
+      });
+      return { order, commandRef: command.commandRef };
+    };
+
+    const other = createDeliveredOrder(
+      "acct_synthetic_2",
+      "2026-07-26T12:34:00.000Z",
+      "receipt_bound_other"
+    );
+    const ownerOutsidePage = createDeliveredOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:35:00.000Z",
+      "receipt_bound_owner_outside"
+    );
+    const ownerLookahead = createDeliveredOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:36:00.000Z",
+      "receipt_bound_owner_older"
+    );
+    const ownerSelected = createDeliveredOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:37:00.000Z",
+      "receipt_bound_owner_selected"
+    );
+
+    const observedCommandRefs = [];
+    state.database.function("observe_receipt_command", (commandRef) => {
+      observedCommandRefs.push(commandRef);
+      return 1;
+    });
+    state.database.exec(`
+      create temp view platform_coin_commerce_fulfillment_receipts as
+      select receipt_ref,
+             command_ref,
+             effect_ref,
+             status,
+             safe_code,
+             recorded_at
+        from main.platform_coin_commerce_fulfillment_receipts
+       where observe_receipt_command(command_ref) = 1
+    `);
+
+    state.preparedSql.length = 0;
+    const page = state.store.listOrders({
+      accountId: "acct_synthetic_1",
+      limit: 1
+    });
+
+    assert.deepEqual(
+      page.orders.map((order) => order.orderRef),
+      [ownerSelected.order.orderRef]
+    );
+    assert.deepEqual(
+      new Set(observedCommandRefs),
+      new Set([ownerSelected.commandRef, ownerLookahead.commandRef])
+    );
+    assert.equal(
+      observedCommandRefs.includes(ownerOutsidePage.commandRef),
+      false
+    );
+    assert.equal(observedCommandRefs.includes(other.commandRef), false);
+    assert.equal(state.preparedSql.length, 2);
+  } finally {
+    state.close();
+  }
+});
+
 test("listOrders fails closed on command state drift and missing delivered receipt without N+1", () => {
   for (const corruption of ["held_with_pending_command", "delivered_without_receipt"]) {
     const state = fixture();

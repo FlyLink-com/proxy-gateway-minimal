@@ -1756,6 +1756,36 @@ export function createSqliteCoinCommerceStore(options = {}) {
       const afterCreatedAt = hasCreatedAt ? value.afterCreatedAt : null;
       const afterOrderRef = hasOrderRef ? value.afterOrderRef : null;
       const rows = db.prepare(`
+        with selected_orders as materialized (
+          select *
+            from platform_coin_commerce_orders
+           where account_id = ?
+             and (
+               ? is null
+               or created_at < ?
+               or (created_at = ? and order_ref < ?)
+             )
+           order by created_at desc, order_ref desc
+           limit ?
+        ),
+        selected_commands as materialized (
+          select c.*
+            from platform_coin_commerce_fulfillment_commands c
+            join selected_orders o on o.order_ref = c.order_ref
+        ),
+        receipt_summary as materialized (
+          select r.command_ref,
+                 count(*) as receipt_count,
+                 min(r.receipt_ref) as receipt_ref,
+                 min(r.effect_ref) as effect_ref,
+                 min(r.status) as status,
+                 min(r.safe_code) as safe_code,
+                 min(r.recorded_at) as recorded_at
+            from selected_commands c
+            cross join platform_coin_commerce_fulfillment_receipts r
+              on r.command_ref = c.command_ref
+           group by r.command_ref
+        )
         select o.*,
                c.command_ref as fulfillment_command_ref,
                c.order_ref as fulfillment_order_ref,
@@ -1775,28 +1805,11 @@ export function createSqliteCoinCommerceStore(options = {}) {
                r.status as fulfillment_receipt_status,
                r.safe_code as fulfillment_receipt_safe_code,
                r.recorded_at as fulfillment_recorded_at
-          from platform_coin_commerce_orders o
-          left join platform_coin_commerce_fulfillment_commands c
+          from selected_orders o
+          left join selected_commands c
             on c.order_ref = o.order_ref
-          left join (
-            select command_ref,
-                   count(*) as receipt_count,
-                   min(receipt_ref) as receipt_ref,
-                   min(effect_ref) as effect_ref,
-                   min(status) as status,
-                   min(safe_code) as safe_code,
-                   min(recorded_at) as recorded_at
-              from platform_coin_commerce_fulfillment_receipts
-             group by command_ref
-          ) r on r.command_ref = c.command_ref
-         where o.account_id = ?
-           and (
-             ? is null
-             or o.created_at < ?
-             or (o.created_at = ? and o.order_ref < ?)
-           )
+          left join receipt_summary r on r.command_ref = c.command_ref
          order by o.created_at desc, o.order_ref desc
-         limit ?
       `).all(
         accountId,
         afterCreatedAt,
