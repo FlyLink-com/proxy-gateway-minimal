@@ -48,6 +48,7 @@ import {
   type RechargeDenomination
 } from "./portal-commerce-panels";
 import { PORTAL_COIN_ORDER_STORAGE_KEY } from "./commerce";
+import { PortalPersonalCenterPanel } from "./profile/portal-personal-center-panel";
 import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
 import type {
   PortalAccountEntitlement,
@@ -1047,6 +1048,7 @@ export function UserPortalPage({
   const [humanChallengeReady, setHumanChallengeReady] = useState(false);
   const [humanChallengeLoading, setHumanChallengeLoading] = useState(true);
   const [activeView, setActiveView] = useState<PortalView>("start");
+  const [personalCenterSubview, setPersonalCenterSubview] = useState<"profile" | "security">("profile");
   const [selectedPlanId, setSelectedPlanId] = useState<PortalPlanId>("monthly_basic");
   const [clientTarget, setClientTarget] = useState<PortalClientId>("clash");
   const [paymentChannel, setPaymentChannel] = useState<PortalPaymentChannel>(() => defaultPaymentChannelForCurrentBrowser());
@@ -1497,6 +1499,9 @@ export function UserPortalPage({
 
   function navigatePortalView(view: PortalView) {
     setActivePaymentOrderRef(null);
+    if (view === "profile") {
+      setPersonalCenterSubview("profile");
+    }
     setActiveView(view);
   }
 
@@ -1641,6 +1646,7 @@ export function UserPortalPage({
     setHumanChallengeLoading(true);
     void refreshHumanChallenge();
     setActiveView("dashboard");
+    setPersonalCenterSubview("profile");
     setSelectedPlanId("monthly_basic");
     setClientTarget("clash");
     setOrderRows([]);
@@ -1902,6 +1908,18 @@ export function UserPortalPage({
     );
   }
 
+  const entitlementPlanId = setupPlanIdFromEntitlement(currentEntitlement);
+  const profileDisplayPlan = created
+    ? currentPlan
+    : entitlementPlanId
+      ? selectedPlan(entitlementPlanId, locale)
+      : currentPlan;
+  const profileDisplayLifecycle: SubscriptionLifecycle = created
+    ? lifecycle
+    : currentEntitlement
+      ? "active"
+      : lifecycle;
+  const hasCurrentPlan = Boolean(created || currentEntitlement);
   const shouldShowSecuritySetup = Boolean(
     securitySetupRequired
     && (!authenticatorBound || !passkeyExported)
@@ -2160,22 +2178,30 @@ export function UserPortalPage({
             />
           ) : null}
           {activeView === "profile" ? (
-            <ProfilePanel
-              created={created}
-              currentEntitlement={currentEntitlement}
-              currentPlan={currentPlan}
-              lifecycle={lifecycle}
-              registrationDate={registrationDate}
-              authMode={portalSession.authMode}
-              authenticatorBound={authenticatorBound}
-              authenticatorPending={authenticatorPending}
-              passkeyExported={passkeyExported}
-              passkeyError={passkeyError}
-              passkeyPending={passkeyPending}
-              exportPasskey={exportPasskey}
-              startAuthenticatorEnrollment={startAuthenticatorEnrollment}
-              userRef={portalSession.userRef}
+            <PortalPersonalCenterPanel
+              activeSubview={personalCenterSubview}
               locale={locale}
+              onSubviewChange={setPersonalCenterSubview}
+              profile={{
+                authModeLabel: authModeLabel(portalSession.authMode, locale),
+                userRef: portalSession.userRef,
+                registeredAtLabel: formatDateTime(registrationDate, locale),
+                currentPlanLabel: hasCurrentPlan
+                  ? `${profileDisplayPlan.label} · ${lifecycleLabel(profileDisplayLifecycle, locale)}`
+                  : uiText(locale, "未开通", "Not active"),
+                expiryLabel: created
+                  ? expiryDisplay(created, lifecycle, locale)
+                  : entitlementExpiryDisplay(currentEntitlement, locale)
+              }}
+              security={{
+                authenticatorBound,
+                authenticatorPending,
+                passkeyExported,
+                passkeyPending,
+                passkeyError,
+                onStartAuthenticatorEnrollment: startAuthenticatorEnrollment,
+                onExportPasskey: exportPasskey
+              }}
             />
           ) : null}
           {rechargeDialogOpen ? (
@@ -4573,145 +4599,5 @@ function AuthenticatorEnrollmentDialog({
         </button>
       </form>
     </ModalFrame>
-  );
-}
-
-function ProfilePanel({
-  created,
-  currentEntitlement,
-  currentPlan,
-  lifecycle,
-  locale,
-  registrationDate,
-  authMode,
-  authenticatorBound,
-  authenticatorPending,
-  passkeyExported,
-  passkeyError,
-  passkeyPending,
-  exportPasskey,
-  startAuthenticatorEnrollment,
-  userRef
-}: {
-  created: CreatedSubscription | null;
-  currentEntitlement: PortalAccountEntitlement | null;
-  currentPlan: PortalPlan;
-  lifecycle: SubscriptionLifecycle;
-  locale: PortalAuthLocale;
-  registrationDate: string;
-  authMode: PortalSession["authMode"];
-  authenticatorBound: boolean;
-  authenticatorPending: boolean;
-  passkeyExported: boolean;
-  passkeyError: string;
-  passkeyPending: boolean;
-  exportPasskey: () => Promise<void>;
-  startAuthenticatorEnrollment: () => Promise<void>;
-  userRef: string;
-}) {
-  const entitlementPlanId = setupPlanIdFromEntitlement(currentEntitlement);
-  const displayPlan = created
-    ? currentPlan
-    : entitlementPlanId
-      ? selectedPlan(entitlementPlanId, locale)
-      : currentPlan;
-  const displayLifecycle: SubscriptionLifecycle = created
-    ? lifecycle
-    : currentEntitlement
-      ? "active"
-      : lifecycle;
-  const hasCurrentPlan = Boolean(created || currentEntitlement);
-
-  return (
-    <section className="portal-use-card">
-      <div className="portal-section-heading">
-        <UserCog aria-hidden="true" />
-        <div>
-          <span className="portal-card-label">{uiText(locale, "个人中心", "Personal center")}</span>
-          <h2>{uiText(locale, "账户与安全设置", "Account and security")}</h2>
-          <p>{uiText(locale, "这里展示账户信息和安全设置。", "Review account info and security settings here.")}</p>
-        </div>
-      </div>
-
-      <div className="portal-profile-summary">
-        <dl className="portal-profile-list">
-          <div>
-            <dt>{uiText(locale, "登录方式", "Sign-in method")}</dt>
-            <dd>{authModeLabel(authMode, locale)}</dd>
-          </div>
-          <div>
-            <dt>{uiText(locale, "登录邮箱", "Sign-in email")}</dt>
-            <dd>{userRef}</dd>
-          </div>
-          <div>
-            <dt>{uiText(locale, "注册日期", "Registered")}</dt>
-            <dd>{formatDateTime(registrationDate, locale)}</dd>
-          </div>
-          <div>
-            <dt>{uiText(locale, "当前套餐", "Current plan")}</dt>
-            <dd>{hasCurrentPlan ? `${displayPlan.label} · ${lifecycleLabel(displayLifecycle, locale)}` : uiText(locale, "未开通", "Not active")}</dd>
-          </div>
-          <div>
-            <dt>{uiText(locale, "到期时间", "Expiry")}</dt>
-            <dd>{created ? expiryDisplay(created, lifecycle, locale) : entitlementExpiryDisplay(currentEntitlement, locale)}</dd>
-          </div>
-        </dl>
-      </div>
-
-      <div className="portal-security-panel">
-        <div className="portal-section-heading compact">
-          <ShieldCheck aria-hidden="true" />
-          <div>
-            <span className="portal-card-label">{uiText(locale, "安全", "Security")}</span>
-            <h3>{uiText(locale, "安全设置", "Security settings")}</h3>
-            <p>{uiText(locale, "身份验证器需要扫码并输入 6 位码后才会显示已绑定；通行密钥导出后请妥善保存。", "Authenticator is marked bound only after scanning and entering a 6-digit code. Store the exported passkey backup safely.")}</p>
-          </div>
-        </div>
-
-        <div className="portal-security-list">
-          <div className="portal-security-row">
-            <div>
-              <strong>{uiText(locale, "身份验证器", "Authenticator")}</strong>
-              <small>{uiText(locale, "绑定身份验证器应用后，后续可作为增强登录因子。", "After binding an authenticator app, it can be used as an enhanced sign-in factor.")}</small>
-            </div>
-            <span className={cn("portal-security-status", authenticatorBound && "enabled")}>
-              {authenticatorBound ? uiText(locale, "已绑定", "Bound") : uiText(locale, "未绑定", "Not bound")}
-            </span>
-            <button
-              className="portal-security-action"
-              type="button"
-              disabled={authenticatorPending || authenticatorBound}
-              onClick={startAuthenticatorEnrollment}
-            >
-              {authenticatorBound ? uiText(locale, "身份验证器已绑定", "Authenticator bound") : uiText(locale, "绑定身份验证器", "Bind authenticator")}
-            </button>
-          </div>
-
-          <div className="portal-security-row">
-            <div>
-              <strong>{uiText(locale, "通行密钥", "Passkey")}</strong>
-              <small>{uiText(locale, "导出通行密钥备份包；后续密码登录会要求二次验证。", "Export the passkey backup package. Future password sign-ins will require second-factor verification.")}</small>
-            </div>
-            <span className={cn("portal-security-status", passkeyExported && "enabled")}>
-              {passkeyExported ? uiText(locale, "已导出", "Exported") : uiText(locale, "未导出", "Not exported")}
-            </span>
-            <button
-              className="portal-security-action"
-              type="button"
-              disabled={passkeyPending}
-              onClick={exportPasskey}
-            >
-              {passkeyPending
-                ? uiText(locale, "导出中", "Exporting")
-                : passkeyExported
-                  ? uiText(locale, "重新导出通行密钥", "Export passkey again")
-                  : uiText(locale, "导出通行密钥", "Export passkey")}
-            </button>
-          </div>
-        </div>
-        {passkeyError ? <div className="alert alert-error">{passkeyError}</div> : null}
-      </div>
-
-    </section>
   );
 }

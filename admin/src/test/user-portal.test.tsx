@@ -748,9 +748,12 @@ describe("user portal route", () => {
     expect(screen.getByPlaceholderText("Describe the issue, client name, and steps you tried")).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Personal center" }));
-    expect(await screen.findByRole("heading", { name: "Account and security" })).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "Account management" })).not.toBeNull();
     expect(screen.getByText("Sign-in method")).not.toBeNull();
+    expect(screen.queryByText("Security settings")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Security" }));
     expect(screen.getByText("Security settings")).not.toBeNull();
+    expect(screen.queryByText("Sign-in method")).toBeNull();
   });
 
   test("lets a signed-in portal-only user leave back to account login", async () => {
@@ -1768,6 +1771,7 @@ describe("user portal product surface", () => {
 
     await enterPortal();
     fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+    fireEvent.click(screen.getByRole("tab", { name: "安全" }));
 
     expect(screen.getByRole("heading", { name: "安全设置" })).not.toBeNull();
     expect(screen.getByText("身份验证器")).not.toBeNull();
@@ -1810,6 +1814,7 @@ describe("user portal product surface", () => {
 
     await enterPortal();
     fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+    fireEvent.click(screen.getByRole("tab", { name: "安全" }));
     fireEvent.click(screen.getByRole("button", { name: "绑定身份验证器" }));
 
     expect(await screen.findByRole("dialog", { name: "绑定身份验证器" })).not.toBeNull();
@@ -2985,6 +2990,31 @@ describe("user portal product surface", () => {
     expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
   });
 
+  test("defaults Personal Center to profile and isolates security controls", async () => {
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+
+    expect(screen.getByRole("tab", { name: "资料" }))
+      .toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("登录邮箱")).not.toBeNull();
+    expect(screen.queryByText("安全设置")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "安全" }));
+
+    expect(screen.getByText("安全设置")).not.toBeNull();
+    expect(screen.queryByText("登录邮箱")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "概览" }));
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+
+    expect(screen.getByRole("tab", { name: "资料" }))
+      .toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("登录邮箱")).not.toBeNull();
+    expect(screen.queryByText("安全设置")).toBeNull();
+  });
+
   test("local preview client preserves server-owned package facts when refreshing", async () => {
     const client = createLocalUserPortalClient({
       now: () => new Date("2026-05-31T00:00:00.000Z"),
@@ -3324,7 +3354,7 @@ describe("user portal product surface", () => {
     expect(screen.getAllByText("0 B / 200 GB").length).toBeGreaterThan(0);
 
     openPortalProfile();
-    expect(await screen.findByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "账户管理" })).not.toBeNull();
     expect(screen.getByText("年度套餐 · 服务生效中")).not.toBeNull();
     expect(screen.getByText("2027/07/07 到期")).not.toBeNull();
   });
