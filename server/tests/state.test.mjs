@@ -17,10 +17,16 @@ import Database from "better-sqlite3";
 import { createRuntimeState } from "../state.mjs";
 import { createDataPlaneHandoffRuntimeAdapter } from "../services/edge/data-plane-handoff-runtime-adapter.mjs";
 import {
+  applyCoinCommerceMigrations,
+  COIN_COMMERCE_MIGRATIONS,
+  REQUIRED_COIN_COMMERCE_MIGRATION_ID
+} from "../services/platform/coin-commerce-migrations.mjs";
+import {
   applyCoinWalletMigrations,
   COIN_WALLET_MIGRATIONS,
   REQUIRED_COIN_WALLET_MIGRATION_ID
 } from "../services/platform/coin-wallet-migrations.mjs";
+import { createSqliteCoinCommerceStore } from "../services/platform/coin-commerce-store.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 import { createPortalTotpSecretProtector } from "../services/platform/portal-totp-verifier.mjs";
 
@@ -127,6 +133,130 @@ function prepareMigratedCoinWalletControlDatabase(directory) {
     nowFn: () => new Date("2026-07-23T00:00:00.000Z")
   });
   return controlDbPath;
+}
+
+function prepareMigratedCoinCommerceControlDatabase(directory) {
+  const controlDbPath = prepareMigratedCoinWalletControlDatabase(directory);
+  applyCoinCommerceMigrations({
+    dbPath: controlDbPath,
+    expectedMigrationId: REQUIRED_COIN_COMMERCE_MIGRATION_ID,
+    expectedDdlChecksum: COIN_COMMERCE_MIGRATIONS[0].ddlChecksum,
+    nowFn: () => new Date("2026-07-27T00:00:00.000Z")
+  });
+  return controlDbPath;
+}
+
+function fakeCoinCommerceStore(overrides = {}) {
+  const store = {
+    walletStore: {},
+    publishOfferVersion() {},
+    retireOfferVersion() {},
+    listPublishedOffers() {
+      return [];
+    },
+    getPublishedOffer() {
+      return null;
+    },
+    createCheckoutQuote() {
+      return null;
+    },
+    confirmOrder() {
+      return null;
+    },
+    cancelOrder() {
+      return null;
+    },
+    getOrder() {
+      return null;
+    },
+    claimDueCaptures() {
+      return [];
+    },
+    captureClaimedOrder() {
+      return null;
+    },
+    recoverNonTerminalOrders() {
+      return {
+        scanned: 0,
+        readyForCapture: 0,
+        captureRecovered: 0,
+        outboxRecovered: 0,
+        expiredHoldReleased: 0,
+        expiredLeaseObserved: 0,
+        reconciliationRequired: 0,
+        unchanged: 0
+      };
+    },
+    claimNextFulfillmentCommand() {
+      return null;
+    },
+    completeFulfillmentCommand() {
+      return null;
+    },
+    failFulfillmentCommand() {
+      return null;
+    },
+    nextWakeAt() {
+      return null;
+    },
+    close() {},
+    ...overrides
+  };
+  return store;
+}
+
+function coinCommerceFulfillmentHandler(overrides = {}) {
+  return {
+    idempotencyContract: "deduplicate_by_command_ref",
+    async execute() {
+      return {
+        status: "delivered",
+        effectRef: "synthetic_effect_order_1"
+      };
+    },
+    ...overrides
+  };
+}
+
+function injectedCommerceStateOptions(directory, {
+  env = {},
+  store = fakeCoinCommerceStore(),
+  fulfillmentHandler = coinCommerceFulfillmentHandler(),
+  userPortalAuth = {
+    createPasswordSetupSession() {
+      return {
+        session: {
+          sessionRef: "session_state_test"
+        }
+      };
+    },
+    requireSession({ sessionRef }) {
+      return {
+        sessionRef,
+        accountId: "account_state_test"
+      };
+    }
+  },
+  ...overrides
+} = {}) {
+  return {
+    rootDir: new URL("../../", import.meta.url),
+    env: runtimeEnv({
+      CONSOLE_TOKEN: "secret",
+      USER_PORTAL_ROUTES_ENABLED: "true",
+      COINS_WALLET_ENABLED: "true",
+      COINS_COMMERCE_ENABLED: "true",
+      ...env
+    }),
+    controlDbPath: join(directory, "control.sqlite"),
+    subscriptionDbPath: join(directory, "subscriptions.sqlite"),
+    coinsWalletStore: store.walletStore,
+    coinCommerceStore: store,
+    coinCommerceFulfillmentHandler: fulfillmentHandler,
+    platformUserPortalAuth: userPortalAuth,
+    autoStartHttpProxy: false,
+    ...overrides
+  };
 }
 
 test("createRuntimeState exposes expected ports and services", () => {
@@ -604,6 +734,1337 @@ test("createRuntimeState exposes but never closes an injected enabled Coins wall
     assert.equal(closeCount, 0);
   } finally {
     state?.close();
+    removeTempDir(dir);
+  }
+});
+
+for (const [label, configuredValue] of [
+  ["missing", undefined],
+  ["empty", ""],
+  ["false", "false"]
+]) {
+  test(`createRuntimeState keeps Coins commerce default-off for ${label} without touching injected Commerce getters`, () => {
+    const dir = mkdtempSync(join(tmpdir(), `proxy-gateway-commerce-disabled-${label}-`));
+    const env = runtimeEnv({ CONSOLE_TOKEN: "secret" });
+    if (configuredValue !== undefined) {
+      env.COINS_COMMERCE_ENABLED = configuredValue;
+    }
+    let getterCalls = 0;
+    let state;
+    const options = {
+      rootDir: new URL("../../", import.meta.url),
+      env,
+      controlDbPath: join(dir, "control.sqlite"),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      autoStartHttpProxy: false
+    };
+    for (const field of [
+      "coinCommerceStore",
+      "coinCommerceFulfillmentHandler",
+      "coinCommerceCoordinator",
+      "platformUserPortalAuth"
+    ]) {
+      Object.defineProperty(options, field, {
+        enumerable: true,
+        get() {
+          getterCalls += 1;
+          throw new Error(`unexpected ${field} getter`);
+        }
+      });
+    }
+
+    try {
+      state = createRuntimeState(options);
+      assert.equal(state.platform.coinsCommerceEnabled, false);
+      assert.equal(state.platform.coinCommerceStore, null);
+      assert.equal(state.platform.coinCommerceCoordinator, null);
+      assert.equal(getterCalls, 0);
+      assert.equal(state.close(), undefined);
+      state = null;
+    } finally {
+      state?.close();
+      removeTempDir(dir);
+    }
+  });
+}
+
+test("createRuntimeState fails enabled Commerce prerequisites with one fixed generic error", () => {
+  const cases = [
+    {
+      label: "portal routes disabled",
+      env: { USER_PORTAL_ROUTES_ENABLED: "false" },
+      fulfillmentHandler: coinCommerceFulfillmentHandler()
+    },
+    {
+      label: "wallet disabled",
+      env: { COINS_WALLET_ENABLED: "false" },
+      fulfillmentHandler: coinCommerceFulfillmentHandler()
+    },
+    {
+      label: "handler missing",
+      env: {},
+      fulfillmentHandler: undefined
+    }
+  ];
+  const messages = new Set();
+
+  for (const entry of cases) {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-prerequisite-"));
+    let unexpectedState;
+    try {
+      const store = fakeCoinCommerceStore();
+      const options = injectedCommerceStateOptions(dir, {
+        env: entry.env,
+        store
+      });
+      if (entry.fulfillmentHandler === undefined) {
+        delete options.coinCommerceFulfillmentHandler;
+      } else {
+        options.coinCommerceFulfillmentHandler = entry.fulfillmentHandler;
+      }
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState(options);
+        },
+        (error) => {
+          assert.equal(error?.code, "coin_commerce_prerequisite_missing", entry.label);
+          assert.equal(Object.hasOwn(error, "cause"), false, entry.label);
+          messages.add(error.message);
+          return true;
+        }
+      );
+    } finally {
+      unexpectedState?.close();
+      removeTempDir(dir);
+    }
+  }
+
+  assert.equal(messages.size, 1);
+});
+
+test("createRuntimeState preflights an injected Commerce auth before opening owned databases", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-auth-preflight-"));
+  const controlDbPath = join(dir, "control.sqlite");
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  let unexpectedState;
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState(injectedCommerceStateOptions(dir, {
+          userPortalAuth: {}
+        }));
+      },
+      (error) => error?.code === "coin_commerce_prerequisite_missing"
+    );
+    assert.equal(existsSync(controlDbPath), false);
+    assert.equal(existsSync(subscriptionDbPath), false);
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState requires both injected Commerce auth callables", () => {
+  const cases = [
+    {
+      label: "missing createPasswordSetupSession",
+      auth: {
+        requireSession() {
+          return null;
+        }
+      }
+    },
+    {
+      label: "accessor createPasswordSetupSession",
+      auth: (() => {
+        const auth = {
+          requireSession() {
+            return null;
+          }
+        };
+        Object.defineProperty(auth, "createPasswordSetupSession", {
+          enumerable: true,
+          get() {
+            throw new Error("auth setup accessor must not run");
+          }
+        });
+        return auth;
+      })()
+    }
+  ];
+
+  for (const entry of cases) {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-auth-callables-"));
+    let unexpectedState;
+    try {
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState(injectedCommerceStateOptions(dir, {
+            userPortalAuth: entry.auth,
+            platformPortalRegistrations: {}
+          }));
+        },
+        (error) => {
+          assert.equal(error?.code, "coin_commerce_prerequisite_missing", entry.label);
+          return true;
+        }
+      );
+      assert.equal(existsSync(join(dir, "control.sqlite")), false, entry.label);
+      assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false, entry.label);
+    } finally {
+      unexpectedState?.close();
+      removeTempDir(dir);
+    }
+  }
+});
+
+test("createRuntimeState rejects an injected Commerce auth option accessor without executing it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-auth-option-"));
+  const options = injectedCommerceStateOptions(dir);
+  let getterCalls = 0;
+  let unexpectedState;
+  delete options.platformUserPortalAuth;
+  Object.defineProperty(options, "platformUserPortalAuth", {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      throw new Error("auth option accessor must not run");
+    }
+  });
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState(options);
+      },
+      (error) => error?.code === "coin_commerce_prerequisite_missing"
+    );
+    assert.equal(getterCalls, 0);
+    assert.equal(existsSync(join(dir, "control.sqlite")), false);
+    assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false);
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState rejects an injected Commerce auth Proxy without executing traps", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-auth-proxy-"));
+  let trapCalls = 0;
+  let unexpectedState;
+  const auth = new Proxy({
+    createPasswordSetupSession() {
+      return null;
+    },
+    requireSession() {
+      return null;
+    }
+  }, {
+    getOwnPropertyDescriptor() {
+      trapCalls += 1;
+      throw new Error("auth Proxy descriptor trap must not run");
+    },
+    getPrototypeOf() {
+      trapCalls += 1;
+      throw new Error("auth Proxy prototype trap must not run");
+    }
+  });
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState(injectedCommerceStateOptions(dir, {
+          userPortalAuth: auth
+        }));
+      },
+      (error) => error?.code === "coin_commerce_prerequisite_missing"
+    );
+    assert.equal(trapCalls, 0);
+    assert.equal(existsSync(join(dir, "control.sqlite")), false);
+    assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false);
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState accepts injected Commerce auth methods from a safe class prototype", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-auth-prototype-"));
+  class PrototypePortalAuth {
+    createPasswordSetupSession() {
+      return {
+        session: {
+          sessionRef: "session_state_test"
+        }
+      };
+    }
+
+    requireSession({ sessionRef }) {
+      return {
+        sessionRef,
+        accountId: "account_state_test"
+      };
+    }
+  }
+  let state;
+
+  try {
+    state = createRuntimeState(injectedCommerceStateOptions(dir, {
+      userPortalAuth: new PrototypePortalAuth()
+    }));
+    assert.equal(state.platform.coinsCommerceEnabled, true);
+    assert.equal(
+      state.platform.userPortalAuth instanceof PrototypePortalAuth,
+      true
+    );
+    await state.close();
+    state = null;
+  } finally {
+    await Promise.resolve(state?.close());
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState rejects a Proxy fulfillment handler before reflection and database access", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-handler-proxy-"));
+  const controlDbPath = join(dir, "control.sqlite");
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  const trapCalls = {
+    getPrototypeOf: 0,
+    ownKeys: 0,
+    getOwnPropertyDescriptor: 0
+  };
+  const target = coinCommerceFulfillmentHandler();
+  const fulfillmentHandler = new Proxy(target, {
+    getPrototypeOf(value) {
+      trapCalls.getPrototypeOf += 1;
+      return Reflect.getPrototypeOf(value);
+    },
+    ownKeys(value) {
+      trapCalls.ownKeys += 1;
+      return Reflect.ownKeys(value);
+    },
+    getOwnPropertyDescriptor(value, field) {
+      trapCalls.getOwnPropertyDescriptor += 1;
+      return Reflect.getOwnPropertyDescriptor(value, field);
+    }
+  });
+  let unexpectedState;
+  let observedError;
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true",
+            COINS_COMMERCE_CANCEL_WINDOW_MS: "0"
+          }),
+          controlDbPath,
+          subscriptionDbPath,
+          coinCommerceFulfillmentHandler: fulfillmentHandler,
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => {
+        observedError = error;
+        return true;
+      }
+    );
+    assert.deepEqual(trapCalls, {
+      getPrototypeOf: 0,
+      ownKeys: 0,
+      getOwnPropertyDescriptor: 0
+    });
+    assert.equal(observedError?.code, "coin_commerce_prerequisite_missing");
+    assert.equal(Object.hasOwn(observedError, "cause"), false);
+    assert.equal(existsSync(controlDbPath), false);
+    assert.equal(existsSync(subscriptionDbPath), false);
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+for (const [label, createHandler] of [
+  ["wrong idempotency contract", () => coinCommerceFulfillmentHandler({
+    idempotencyContract: "at_least_once"
+  })],
+  ["non-callable execute", () => coinCommerceFulfillmentHandler({
+    execute: "not-a-function"
+  })],
+  ["extra field", () => coinCommerceFulfillmentHandler({
+    extra: true
+  })],
+  ["symbol field", () => {
+    const handler = coinCommerceFulfillmentHandler();
+    handler[Symbol("extra")] = true;
+    return handler;
+  }],
+  ["prototype drift", () => Object.assign(
+    Object.create({ inherited: true }),
+    coinCommerceFulfillmentHandler()
+  )],
+  ["non-enumerable field", () => {
+    const handler = coinCommerceFulfillmentHandler();
+    Object.defineProperty(handler, "execute", {
+      configurable: true,
+      enumerable: false,
+      value: handler.execute
+    });
+    return handler;
+  }],
+  ["accessor field", () => {
+    const handler = {
+      idempotencyContract: "deduplicate_by_command_ref"
+    };
+    Object.defineProperty(handler, "execute", {
+      enumerable: true,
+      get() {
+        throw new Error("handler accessor must not run");
+      }
+    });
+    return handler;
+  }]
+]) {
+  test(`createRuntimeState rejects ${label} fulfillment handler before Commerce schema access`, async () => {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-handler-"));
+    const controlDbPath = prepareMigratedCoinWalletControlDatabase(dir);
+    let unexpectedState;
+
+    try {
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState({
+            rootDir: new URL("../../", import.meta.url),
+            env: runtimeEnv({
+              CONSOLE_TOKEN: "secret",
+              USER_PORTAL_ROUTES_ENABLED: "true",
+              COINS_WALLET_ENABLED: "true",
+              COINS_COMMERCE_ENABLED: "true"
+            }),
+            controlDbPath,
+            subscriptionDbPath: join(dir, "commerce-handler-subscriptions.sqlite"),
+            coinCommerceFulfillmentHandler: createHandler(),
+            autoStartHttpProxy: false
+          });
+        },
+        (error) => error?.code === "coin_commerce_prerequisite_missing"
+      );
+
+      const database = new Database(controlDbPath, {
+        readonly: true,
+        fileMustExist: true
+      });
+      try {
+        const commerceObjects = database.prepare(`
+          select name
+            from sqlite_master
+           where name glob 'platform_coin_commerce_*'
+           order by name
+        `).all();
+        assert.deepEqual(commerceObjects, []);
+      } finally {
+        database.close();
+      }
+    } finally {
+      await Promise.resolve(unexpectedState?.close());
+      removeTempDir(dir);
+    }
+  });
+}
+
+test("createRuntimeState rejects an accessor fulfillment-handler option without executing it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-handler-getter-"));
+  const controlDbPath = prepareMigratedCoinWalletControlDatabase(dir);
+  let getterCalls = 0;
+  let unexpectedState;
+  const options = {
+    rootDir: new URL("../../", import.meta.url),
+    env: runtimeEnv({
+      CONSOLE_TOKEN: "secret",
+      USER_PORTAL_ROUTES_ENABLED: "true",
+      COINS_WALLET_ENABLED: "true",
+      COINS_COMMERCE_ENABLED: "true"
+    }),
+    controlDbPath,
+    subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+    autoStartHttpProxy: false
+  };
+  Object.defineProperty(options, "coinCommerceFulfillmentHandler", {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      throw new Error("handler option accessor must not run");
+    }
+  });
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState(options);
+      },
+      (error) => error?.code === "coin_commerce_prerequisite_missing"
+    );
+    assert.equal(getterCalls, 0);
+  } finally {
+    await Promise.resolve(unexpectedState?.close());
+    removeTempDir(dir);
+  }
+});
+
+for (const invalidCancelWindow of [
+  "0",
+  "-1",
+  "+1",
+  "01",
+  "1.0",
+  "1e3",
+  "1ms",
+  " 1",
+  "1 ",
+  "86400001",
+  "9007199254740992"
+]) {
+  test(`createRuntimeState rejects non-canonical Commerce cancel window ${JSON.stringify(invalidCancelWindow)}`, () => {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-window-invalid-"));
+    let unexpectedState;
+    try {
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState(injectedCommerceStateOptions(dir, {
+            env: {
+              COINS_COMMERCE_CANCEL_WINDOW_MS: invalidCancelWindow
+            }
+          }));
+        },
+        (error) => error?.code === "validation_error"
+      );
+    } finally {
+      unexpectedState?.close();
+      removeTempDir(dir);
+    }
+  });
+}
+
+for (const [label, configuredValue] of [
+  ["missing default", undefined],
+  ["empty default", ""],
+  ["minimum", "1"],
+  ["documented default", "3000"],
+  ["maximum", "86400000"]
+]) {
+  test(`createRuntimeState accepts Commerce cancel window ${label}`, async () => {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-window-valid-"));
+    let state;
+    try {
+      const env = {};
+      if (configuredValue !== undefined) {
+        env.COINS_COMMERCE_CANCEL_WINDOW_MS = configuredValue;
+      }
+      state = createRuntimeState(injectedCommerceStateOptions(dir, { env }));
+      assert.equal(state.platform.coinsCommerceEnabled, true);
+      await state.close();
+      state = null;
+    } finally {
+      await Promise.resolve(state?.close());
+      removeTempDir(dir);
+    }
+  });
+}
+
+for (const [label, mutateStore] of [
+  ["missing method", (store) => {
+    delete store.getOrder;
+  }],
+  ["extra field", (store) => {
+    store.extra = true;
+  }],
+  ["symbol field", (store) => {
+    store[Symbol("extra")] = true;
+  }],
+  ["accessor field", (store) => {
+    Object.defineProperty(store, "close", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        throw new Error("store accessor must not run");
+      }
+    });
+  }],
+  ["prototype drift", (store) => {
+    Object.setPrototypeOf(store, { inherited: true });
+  }]
+]) {
+  test(`createRuntimeState rejects injected Commerce Store with ${label}`, () => {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-store-invalid-"));
+    const store = fakeCoinCommerceStore();
+    mutateStore(store);
+    let unexpectedState;
+    try {
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState(injectedCommerceStateOptions(dir, {
+            store
+          }));
+        },
+        (error) => error?.code === "coin_commerce_prerequisite_missing"
+      );
+    } finally {
+      unexpectedState?.close();
+      removeTempDir(dir);
+    }
+  });
+}
+
+test("createRuntimeState rejects a Proxy Commerce Store before reflection or method use", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-store-proxy-"));
+  const controlDbPath = join(dir, "control.sqlite");
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  const trapCalls = {
+    getPrototypeOf: 0,
+    ownKeys: 0,
+    getOwnPropertyDescriptor: 0
+  };
+  let methodCalls = 0;
+  const target = fakeCoinCommerceStore();
+  for (const field of Reflect.ownKeys(target)) {
+    if (typeof target[field] === "function") {
+      target[field] = () => {
+        methodCalls += 1;
+        throw new Error("Commerce Store method must not run");
+      };
+    }
+  }
+  const store = new Proxy(target, {
+    getPrototypeOf(value) {
+      trapCalls.getPrototypeOf += 1;
+      return Reflect.getPrototypeOf(value);
+    },
+    ownKeys(value) {
+      trapCalls.ownKeys += 1;
+      return Reflect.ownKeys(value);
+    },
+    getOwnPropertyDescriptor(value, field) {
+      trapCalls.getOwnPropertyDescriptor += 1;
+      return Reflect.getOwnPropertyDescriptor(value, field);
+    }
+  });
+  let unexpectedState;
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true"
+          }),
+          controlDbPath,
+          subscriptionDbPath,
+          coinCommerceStore: store,
+          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+          platformUserPortalAuth: {},
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => {
+        assert.equal(error?.code, "coin_commerce_prerequisite_missing");
+        assert.equal(Object.hasOwn(error, "cause"), false);
+        return true;
+      }
+    );
+    assert.deepEqual(trapCalls, {
+      getPrototypeOf: 0,
+      ownKeys: 0,
+      getOwnPropertyDescriptor: 0
+    });
+    assert.equal(methodCalls, 0);
+    assert.equal(existsSync(controlDbPath), false);
+    assert.equal(existsSync(subscriptionDbPath), false);
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState rejects an injected Wallet that is not the Commerce Store wallet", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-wallet-mismatch-"));
+  let unexpectedState;
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState(injectedCommerceStateOptions(dir, {
+          coinsWalletStore: {}
+        }));
+      },
+      (error) => error?.code === "coin_commerce_prerequisite_missing"
+    );
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState rejects an external Wallet with an owned Commerce Store before opening it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-external-wallet-"));
+  const controlDbPath = prepareMigratedCoinWalletControlDatabase(dir);
+  let unexpectedState;
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true"
+          }),
+          controlDbPath,
+          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+          coinsWalletStore: {},
+          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "coin_commerce_prerequisite_missing"
+    );
+  } finally {
+    await Promise.resolve(unexpectedState?.close());
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState does not support an injected Commerce coordinator", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-coordinator-injected-"));
+  let unexpectedState;
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState(injectedCommerceStateOptions(dir, {
+          coinCommerceCoordinator: {
+            start() {},
+            stop() {}
+          }
+        }));
+      },
+      (error) => error?.code === "coin_commerce_prerequisite_missing"
+    );
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState exposes one injected Commerce Store wallet and never closes the Store", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-store-owned-externally-"));
+  let closeCount = 0;
+  const store = fakeCoinCommerceStore({
+    close() {
+      closeCount += 1;
+    }
+  });
+  let state;
+
+  try {
+    assert.equal(Reflect.ownKeys(store).length, 17);
+    state = createRuntimeState(injectedCommerceStateOptions(dir, { store }));
+    assert.equal(state.platform.coinsCommerceEnabled, true);
+    assert.equal(state.platform.coinCommerceStore, store);
+    assert.equal(state.platform.coinsWalletStore, store.walletStore);
+    assert.equal(typeof state.platform.coinCommerceCoordinator?.start, "function");
+    assert.equal(typeof state.platform.coinCommerceCoordinator?.stop, "function");
+
+    const firstClose = state.close();
+    const secondClose = state.close();
+    assert.equal(firstClose instanceof Promise, true);
+    assert.equal(secondClose, firstClose);
+    await firstClose;
+    state = null;
+    assert.equal(closeCount, 0);
+  } finally {
+    await Promise.resolve(state?.close());
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState validates Commerce schema without applying it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-schema-no-apply-"));
+  const controlDbPath = prepareMigratedCoinWalletControlDatabase(dir);
+  let unexpectedState;
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true"
+          }),
+          controlDbPath,
+          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "coin_commerce_schema_not_ready"
+    );
+
+    const database = new Database(controlDbPath, {
+      readonly: true,
+      fileMustExist: true
+    });
+    try {
+      const commerceObjects = database.prepare(`
+        select name
+          from sqlite_master
+         where name glob 'platform_coin_commerce_*'
+         order by name
+      `).all();
+      assert.deepEqual(commerceObjects, []);
+    } finally {
+      database.close();
+    }
+  } finally {
+    await Promise.resolve(unexpectedState?.close());
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState uses the owned Commerce Store as the only Wallet owner", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-owned-"));
+  const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "true"
+      }),
+      controlDbPath,
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(
+      state.platform.coinsWalletStore,
+      state.platform.coinCommerceStore.walletStore
+    );
+    const ownedStore = state.platform.coinCommerceStore;
+    const firstClose = state.close();
+    assert.equal(state.close(), firstClose);
+    await firstClose;
+    state = null;
+    assert.throws(
+      () => ownedStore.nextWakeAt(),
+      (error) => error?.code === "commerce_store_closed"
+    );
+  } finally {
+    await Promise.resolve(state?.close());
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState rejects malformed Portal auth before opening owned stores", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-auth-cleanup-"));
+  const controlDbPath = prepareMigratedCoinWalletControlDatabase(dir);
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  const releasedControlDbPath = join(dir, "released-control.sqlite");
+  let getterCalls = 0;
+  let unexpectedState;
+  const malformedAuth = {};
+  malformedAuth.createPasswordSetupSession = () => ({
+    session: {
+      sessionRef: "session_state_test"
+    }
+  });
+  Object.defineProperty(malformedAuth, "requireSession", {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      throw new Error("auth accessor must not run");
+    }
+  });
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true"
+          }),
+          controlDbPath,
+          subscriptionDbPath,
+          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+          platformUserPortalAuth: malformedAuth,
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "coin_commerce_prerequisite_missing"
+    );
+    assert.equal(getterCalls, 0);
+
+    renameSync(controlDbPath, releasedControlDbPath);
+    assert.equal(existsSync(releasedControlDbPath), true);
+    assert.equal(existsSync(subscriptionDbPath), false);
+  } finally {
+    await Promise.resolve(unexpectedState?.close());
+    removeTempDir(dir);
+  }
+});
+
+for (const [label, installThrowingGetter] of [
+  ["autoStartHttpProxy", (options) => {
+    delete options.autoStartHttpProxy;
+    Object.defineProperty(options, "autoStartHttpProxy", {
+      enumerable: true,
+      get() {
+        throw new Error("synthetic autoStartHttpProxy snapshot failure");
+      }
+    });
+  }],
+  ["security rate-limit env", (options) => {
+    Object.defineProperty(options.env, "SUB_RATE_LIMIT_WINDOW_MS", {
+      enumerable: true,
+      get() {
+        throw new Error("synthetic security snapshot failure");
+      }
+    });
+  }]
+]) {
+  test(`createRuntimeState snapshots ${label} before opening owned databases`, () => {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-return-snapshot-"));
+    const options = injectedCommerceStateOptions(dir);
+    installThrowingGetter(options);
+    let unexpectedState;
+
+    try {
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState(options);
+        },
+        (error) => error?.message.startsWith("synthetic ")
+      );
+      assert.equal(existsSync(join(dir, "control.sqlite")), false);
+      assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false);
+    } finally {
+      unexpectedState?.close();
+      removeTempDir(dir);
+    }
+  });
+}
+
+test("createRuntimeState awaits an in-flight coordinator stop with one idempotent close Promise", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-close-inflight-"));
+  let resolveFulfillment;
+  const fulfillment = new Promise((resolvePromise) => {
+    resolveFulfillment = resolvePromise;
+  });
+  let executeCount = 0;
+  let commandClaimed = false;
+  let storeCloseCount = 0;
+  const store = fakeCoinCommerceStore({
+    claimNextFulfillmentCommand() {
+      if (commandClaimed) return null;
+      commandClaimed = true;
+      return {
+        commandRef: "coincmd_state_close_1",
+        orderRef: "order_state_close_1",
+        accountId: "account_state_close_1",
+        delivery: {
+          kind: "subscription_plan",
+          durationDays: 30,
+          monthlyTrafficGb: 50,
+          trafficGb: null,
+          neverExpires: false,
+          discountBasisPoints: 0
+        },
+        leaseGeneration: 1,
+        leaseToken: "a".repeat(64)
+      };
+    },
+    close() {
+      storeCloseCount += 1;
+    }
+  });
+  const handler = coinCommerceFulfillmentHandler({
+    execute() {
+      executeCount += 1;
+      return fulfillment;
+    }
+  });
+  let state;
+
+  try {
+    state = createRuntimeState(injectedCommerceStateOptions(dir, {
+      store,
+      fulfillmentHandler: handler
+    }));
+    const startPromise = state.platform.coinCommerceCoordinator.start();
+    assert.equal(executeCount, 1);
+
+    const firstClose = state.close();
+    const secondClose = state.close();
+    assert.equal(firstClose, secondClose);
+    let closeSettled = false;
+    firstClose.then(() => {
+      closeSettled = true;
+    });
+    await Promise.resolve();
+    assert.equal(closeSettled, false);
+
+    resolveFulfillment({
+      status: "delivered",
+      effectRef: "synthetic_effect_state_close_1"
+    });
+    await startPromise;
+    await firstClose;
+    state = null;
+    assert.equal(storeCloseCount, 0);
+  } finally {
+    resolveFulfillment?.({
+      status: "delivered",
+      effectRef: "synthetic_effect_state_close_cleanup"
+    });
+    await Promise.resolve(state?.close());
+    removeTempDir(dir);
+  }
+});
+
+test("owned Commerce close waits for deferred fulfillment settlement", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-owned-inflight-"));
+  const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  const accountId = "account_state_owned_close";
+  const events = [];
+  let resolveFulfillment;
+  const fulfillment = new Promise((resolvePromise) => {
+    resolveFulfillment = resolvePromise;
+  });
+  const database = new Database(controlDbPath);
+  database.prepare(`
+    insert into platform_accounts
+      (id, owner_ref, status, created_at, updated_at, metadata_json)
+    values (?, ?, 'active', ?, ?, '{}')
+  `).run(
+    accountId,
+    `owner_${accountId}`,
+    "2026-07-27T00:00:00.000Z",
+    "2026-07-27T00:00:00.000Z"
+  );
+  database.close();
+  const seedStore = createSqliteCoinCommerceStore({
+    dbPath: controlDbPath,
+    cancelWindowMs: 1
+  });
+  let state;
+
+  try {
+    seedStore.walletStore.creditCoins({
+      accountId,
+      coinType: "paid_coins",
+      amountUnits: 20,
+      availability: "available",
+      sourceType: "synthetic_seed",
+      sourceRef: "source_state_owned_close",
+      sourceDigest: "a".repeat(64),
+      policyRef: null,
+      policyVersion: null,
+      expiresAt: null,
+      operation: {
+        actorScope: "system:state-test",
+        idempotencyKey: "credit_state_owned_close",
+        actorType: "system",
+        actorRef: "state_test"
+      }
+    });
+    seedStore.publishOfferVersion({
+      offerRef: "offer_state_owned_close",
+      offerVersionRef: "offerv_state_owned_close_v1",
+      version: 1,
+      category: "plan",
+      title: { zh: "测试月卡", en: "Test monthly plan" },
+      summary: { zh: "测试", en: "Test" },
+      importantNotices: {
+        zh: ["仅用于合成测试"],
+        en: ["Synthetic test only"]
+      },
+      baseCoinUnits: 20,
+      referencePrice: { currency: "CNY", amountMinor: 2_000 },
+      acceptedCoinTypes: ["paid_coins"],
+      delivery: {
+        kind: "subscription_plan",
+        durationDays: 30,
+        monthlyTrafficGb: 50,
+        trafficGb: null,
+        neverExpires: false,
+        discountBasisPoints: 0
+      }
+    });
+    const quote = seedStore.createCheckoutQuote({
+      accountId,
+      offerRef: "offer_state_owned_close"
+    });
+    const order = seedStore.confirmOrder({
+      accountId,
+      quoteRef: quote.quoteRef,
+      operation: {
+        actorScope: `portal:${accountId}`,
+        idempotencyKey: "confirm_state_owned_close",
+        actorType: "portal_user",
+        actorRef: accountId
+      }
+    });
+    sleepMs(5);
+    assert.deepEqual(
+      seedStore.claimDueCaptures({ limit: 1 }),
+      [{ orderRef: order.orderRef }]
+    );
+    seedStore.captureClaimedOrder({ orderRef: order.orderRef });
+    seedStore.close();
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "true",
+        COINS_COMMERCE_CANCEL_WINDOW_MS: "1"
+      }),
+      controlDbPath,
+      subscriptionDbPath,
+      coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler({
+        execute() {
+          events.push("fulfillment_started");
+          return fulfillment.then((result) => {
+            events.push("fulfillment_settled");
+            return result;
+          });
+        }
+      }),
+      autoStartHttpProxy: false
+    });
+    const ownedStore = state.platform.coinCommerceStore;
+    const originalClose = ownedStore.close;
+    ownedStore.close = function closeWithObservation() {
+      events.push("owned_store_close");
+      return originalClose.call(this);
+    };
+    const startPromise = state.platform.coinCommerceCoordinator.start();
+    assert.deepEqual(events, ["fulfillment_started"]);
+
+    const closePromise = state.close();
+    let closeSettled = false;
+    closePromise.finally(() => {
+      closeSettled = true;
+    });
+    await Promise.resolve();
+    assert.equal(closeSettled, false);
+    assert.doesNotThrow(() => ownedStore.nextWakeAt());
+    assert.deepEqual(events, ["fulfillment_started"]);
+
+    resolveFulfillment({
+      status: "delivered",
+      effectRef: "effect_state_owned_close"
+    });
+    await startPromise;
+    await closePromise;
+    state = null;
+    assert.deepEqual(events, [
+      "fulfillment_started",
+      "fulfillment_settled",
+      "owned_store_close"
+    ]);
+    assert.throws(
+      () => ownedStore.nextWakeAt(),
+      (error) => error?.code === "commerce_store_closed"
+    );
+  } finally {
+    resolveFulfillment?.({
+      status: "delivered",
+      effectRef: "effect_state_owned_close_cleanup"
+    });
+    seedStore.close();
+    await state?.close().catch(() => {});
+    removeTempDir(dir);
+  }
+});
+
+test("Commerce close preserves each first cleanup error and continues safe later phases once", async (t) => {
+  for (const failingPhase of [
+    "coordinator",
+    "commerce",
+    "control",
+    "subscription"
+  ]) {
+    await t.test(failingPhase, async () => {
+      const dir = mkdtempSync(join(tmpdir(), `proxy-gateway-commerce-close-${failingPhase}-`));
+      const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
+      const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+      const phaseError = new Error(`synthetic ${failingPhase} cleanup failure`);
+      const calls = {
+        coordinator: 0,
+        commerce: 0,
+        control: 0,
+        subscription: 0
+      };
+      const order = [];
+      const originalPromiseResolve = Promise.resolve;
+      let state;
+      let originalCommerceClose;
+      let originalControlClose;
+      let originalSubscriptionClose;
+
+      try {
+        state = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true"
+          }),
+          controlDbPath,
+          subscriptionDbPath,
+          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+          autoStartHttpProxy: false
+        });
+        const commerceStore = state.platform.coinCommerceStore;
+        const controlStore = state.platform.controlStore;
+        const subscriptionStore = state.subscriptions.store;
+        originalCommerceClose = commerceStore.close;
+        originalControlClose = controlStore.close;
+        originalSubscriptionClose = subscriptionStore.close;
+        commerceStore.close = function observedCommerceClose() {
+          calls.commerce += 1;
+          order.push("commerce");
+          const result = originalCommerceClose.call(this);
+          if (failingPhase === "commerce") throw phaseError;
+          return result;
+        };
+        controlStore.close = function observedControlClose() {
+          calls.control += 1;
+          order.push("control");
+          const result = originalControlClose.call(this);
+          if (failingPhase === "control") throw phaseError;
+          return result;
+        };
+        subscriptionStore.close = function observedSubscriptionClose() {
+          calls.subscription += 1;
+          order.push("subscription");
+          const result = originalSubscriptionClose.call(this);
+          if (failingPhase === "subscription") throw phaseError;
+          return result;
+        };
+        Promise.resolve = function observedCoordinatorStop(value) {
+          calls.coordinator += 1;
+          order.push("coordinator");
+          if (failingPhase === "coordinator") throw phaseError;
+          return originalPromiseResolve.call(Promise, value);
+        };
+        const closePromise = state.close();
+        Promise.resolve = originalPromiseResolve;
+
+        await assert.rejects(closePromise, (error) => error === phaseError);
+        assert.equal(state.close(), closePromise);
+        await assert.rejects(state.close(), (error) => error === phaseError);
+        assert.deepEqual(calls, {
+          coordinator: 1,
+          commerce: failingPhase === "coordinator" ? 0 : 1,
+          control: 1,
+          subscription: 1
+        });
+        assert.deepEqual(
+          order,
+          failingPhase === "coordinator"
+            ? ["coordinator", "control", "subscription"]
+            : ["coordinator", "commerce", "control", "subscription"]
+        );
+      } finally {
+        Promise.resolve = originalPromiseResolve;
+        if (state && calls.commerce === 0) {
+          originalCommerceClose?.call(state.platform.coinCommerceStore);
+        }
+        if (state && calls.control === 0) {
+          originalControlClose?.call(state.platform.controlStore);
+        }
+        if (state && calls.subscription === 0) {
+          originalSubscriptionClose?.call(state.subscriptions.store);
+        }
+        removeTempDir(dir);
+      }
+    });
+  }
+});
+
+test("final Commerce acquisition failure closes opened control and subscription databases", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-final-acquisition-"));
+  const controlDbPath = prepareMigratedCoinWalletControlDatabase(dir);
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  const closeDescriptor = Object.getOwnPropertyDescriptor(
+    Database.prototype,
+    "close"
+  );
+  const closedPaths = [];
+  let unexpectedState;
+
+  try {
+    Object.defineProperty(Database.prototype, "close", {
+      ...closeDescriptor,
+      value: function observedDatabaseClose() {
+        closedPaths.push(this.name);
+        return closeDescriptor.value.call(this);
+      }
+    });
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true"
+          }),
+          controlDbPath,
+          subscriptionDbPath,
+          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => {
+        assert.equal(error?.code, "coin_commerce_schema_not_ready");
+        assert.doesNotMatch(error?.message || "", /sqlite|select|insert|update|delete|proxy-gateway/i);
+        return true;
+      }
+    );
+    assert.equal(closedPaths.includes(controlDbPath), true);
+    assert.equal(closedPaths.includes(subscriptionDbPath), true);
+  } finally {
+    Object.defineProperty(Database.prototype, "close", closeDescriptor);
+    unexpectedState?.close();
     removeTempDir(dir);
   }
 });

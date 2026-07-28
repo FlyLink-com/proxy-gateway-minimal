@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve, join } from "node:path";
+import { types as utilTypes } from "node:util";
 import { createSsLocalService } from "./services/ss-local.mjs";
 import { createHttpProxyService } from "./services/http-proxy.mjs";
 import { createBridgeServer } from "./services/http-bridge.mjs";
@@ -13,6 +14,8 @@ import { createSqliteSubscriptionStore } from "./services/subscriptions/reposito
 import { createSubscriptionCore } from "./services/subscriptions/core.mjs";
 import { DEFAULT_ADMIN_ALLOWED_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS } from "./services/ip-address.mjs";
 import { createPlatformAccountEntitlementShell } from "./services/platform/account-entitlement-shell.mjs";
+import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
+import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
 import { createSqliteSubscriptionControlStore } from "./services/platform/subscription-control-db.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
@@ -55,6 +58,29 @@ import { createDataPlaneHandoffQueue } from "./services/edge/data-plane-handoff-
 import { createDataPlaneDesiredStateNotifier } from "./services/edge/data-plane-desired-state-notifier.mjs";
 import { createDataPlaneAgentService, scopedDesiredStateFrom } from "./services/edge/data-plane-agent-service.mjs";
 import { spawn } from "node:child_process";
+
+const COIN_COMMERCE_CANCEL_WINDOW_DEFAULT_MS = 3_000;
+const COIN_COMMERCE_CANCEL_WINDOW_MAX_MS = 86_400_000;
+const OWN_COIN_COMMERCE_PREREQUISITE_ERRORS = new WeakSet();
+const COIN_COMMERCE_STORE_FIELDS = Object.freeze([
+  "walletStore",
+  "publishOfferVersion",
+  "retireOfferVersion",
+  "listPublishedOffers",
+  "getPublishedOffer",
+  "createCheckoutQuote",
+  "confirmOrder",
+  "cancelOrder",
+  "getOrder",
+  "claimDueCaptures",
+  "captureClaimedOrder",
+  "recoverNonTerminalOrders",
+  "claimNextFulfillmentCommand",
+  "completeFulfillmentCommand",
+  "failFulfillmentCommand",
+  "nextWakeAt",
+  "close"
+]);
 
 function rootPathFrom(rootDir) {
   if (rootDir instanceof URL) {
@@ -146,6 +172,202 @@ function runtimeUsageError(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;
+}
+
+function coinCommercePrerequisiteError() {
+  const error = new Error("Coin commerce runtime prerequisites are not satisfied");
+  error.code = "coin_commerce_prerequisite_missing";
+  OWN_COIN_COMMERCE_PREREQUISITE_ERRORS.add(error);
+  return error;
+}
+
+function ownDataOption(options, field) {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(options, field);
+    if (!descriptor) {
+      return {
+        present: false,
+        value: undefined
+      };
+    }
+    if (!("value" in descriptor)) {
+      throw coinCommercePrerequisiteError();
+    }
+    return {
+      present: true,
+      value: descriptor.value
+    };
+  } catch (error) {
+    if (OWN_COIN_COMMERCE_PREREQUISITE_ERRORS.has(error)) {
+      throw error;
+    }
+    throw coinCommercePrerequisiteError();
+  }
+}
+
+function exactCoinCommerceFulfillmentHandler(options) {
+  const option = ownDataOption(options, "coinCommerceFulfillmentHandler");
+  const handler = option.value;
+  try {
+    if (
+      !option.present
+      || !handler
+      || typeof handler !== "object"
+      || Array.isArray(handler)
+      || utilTypes.isProxy(handler)
+      || Object.getPrototypeOf(handler) !== Object.prototype
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    const keys = Reflect.ownKeys(handler);
+    if (
+      keys.length !== 2
+      || !keys.includes("idempotencyContract")
+      || !keys.includes("execute")
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    const idempotency = Object.getOwnPropertyDescriptor(
+      handler,
+      "idempotencyContract"
+    );
+    const execute = Object.getOwnPropertyDescriptor(handler, "execute");
+    if (
+      !idempotency
+      || !idempotency.enumerable
+      || !("value" in idempotency)
+      || idempotency.value !== "deduplicate_by_command_ref"
+      || !execute
+      || !execute.enumerable
+      || !("value" in execute)
+      || typeof execute.value !== "function"
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    return handler;
+  } catch (error) {
+    if (OWN_COIN_COMMERCE_PREREQUISITE_ERRORS.has(error)) {
+      throw error;
+    }
+    throw coinCommercePrerequisiteError();
+  }
+}
+
+function exactInjectedCoinCommerceStore(store) {
+  try {
+    if (
+      !store
+      || typeof store !== "object"
+      || Array.isArray(store)
+      || utilTypes.isProxy(store)
+      || Object.getPrototypeOf(store) !== Object.prototype
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    const keys = Reflect.ownKeys(store);
+    if (
+      keys.length !== COIN_COMMERCE_STORE_FIELDS.length
+      || !COIN_COMMERCE_STORE_FIELDS.every((field) => keys.includes(field))
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    let walletStore;
+    for (const field of COIN_COMMERCE_STORE_FIELDS) {
+      const descriptor = Object.getOwnPropertyDescriptor(store, field);
+      if (
+        !descriptor
+        || !descriptor.enumerable
+        || !("value" in descriptor)
+      ) {
+        throw coinCommercePrerequisiteError();
+      }
+      if (field === "walletStore") {
+        walletStore = descriptor.value;
+      } else if (typeof descriptor.value !== "function") {
+        throw coinCommercePrerequisiteError();
+      }
+    }
+    if (
+      !walletStore
+      || (typeof walletStore !== "object" && typeof walletStore !== "function")
+      || Array.isArray(walletStore)
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    return {
+      store,
+      walletStore
+    };
+  } catch (error) {
+    if (OWN_COIN_COMMERCE_PREREQUISITE_ERRORS.has(error)) {
+      throw error;
+    }
+    throw coinCommercePrerequisiteError();
+  }
+}
+
+function callableFromSafeDescriptorChain(object, field) {
+  try {
+    if (
+      !object
+      || (typeof object !== "object" && typeof object !== "function")
+      || Array.isArray(object)
+      || utilTypes.isProxy(object)
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    const seen = new Set();
+    let current = object;
+    for (let depth = 0; current !== null && depth < 32; depth += 1) {
+      if (seen.has(current)) {
+        throw coinCommercePrerequisiteError();
+      }
+      seen.add(current);
+      const descriptor = Object.getOwnPropertyDescriptor(current, field);
+      if (descriptor) {
+        if (
+          !("value" in descriptor)
+          || typeof descriptor.value !== "function"
+          || utilTypes.isProxy(descriptor.value)
+        ) {
+          throw coinCommercePrerequisiteError();
+        }
+        return descriptor.value;
+      }
+      current = Object.getPrototypeOf(current);
+      if (current !== null && utilTypes.isProxy(current)) {
+        throw coinCommercePrerequisiteError();
+      }
+    }
+    throw coinCommercePrerequisiteError();
+  } catch (error) {
+    if (OWN_COIN_COMMERCE_PREREQUISITE_ERRORS.has(error)) {
+      throw error;
+    }
+    throw coinCommercePrerequisiteError();
+  }
+}
+
+function coinCommerceCancelWindowMs(value) {
+  if (value === undefined || value === null || value === "") {
+    return COIN_COMMERCE_CANCEL_WINDOW_DEFAULT_MS;
+  }
+  if (typeof value !== "string" || !/^[1-9][0-9]*$/.test(value)) {
+    throw runtimeValidationError(
+      "COINS_COMMERCE_CANCEL_WINDOW_MS must be a canonical decimal integer from 1 to 86400000"
+    );
+  }
+  const parsed = Number(value);
+  if (
+    !Number.isSafeInteger(parsed)
+    || parsed < 1
+    || parsed > COIN_COMMERCE_CANCEL_WINDOW_MAX_MS
+  ) {
+    throw runtimeValidationError(
+      "COINS_COMMERCE_CANCEL_WINDOW_MS must be a canonical decimal integer from 1 to 86400000"
+    );
+  }
+  return parsed;
 }
 
 function createOptionalPortalTotpSecretProtector(value) {
@@ -899,6 +1121,20 @@ export function createRuntimeState(options = {}) {
       "Japan TUIC repair observation and collector status paths must differ"
     );
   }
+  const subRateLimitWindowMs = Number.parseInt(
+    env.SUB_RATE_LIMIT_WINDOW_MS,
+    10
+  ) || 60000;
+  const subRateLimitMax = Number.parseInt(env.SUB_RATE_LIMIT_MAX, 10) || 30;
+  const subCredentialRateLimitWindowMs = envPositiveInteger(
+    env.SUB_CREDENTIAL_RATE_LIMIT_WINDOW_MS,
+    60000
+  );
+  const subCredentialRateLimitMax = envPositiveInteger(
+    env.SUB_CREDENTIAL_RATE_LIMIT_MAX,
+    30
+  );
+  const autoStartHttpProxy = options.autoStartHttpProxy ?? true;
   const host = "127.0.0.1";
   const consolePort = Number.parseInt(env.CONSOLE_PORT, 10) || 3456;
   const ports = { console: consolePort, socks: 1080, httpProxy: 18180 };
@@ -919,6 +1155,56 @@ export function createRuntimeState(options = {}) {
   const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
   const adminAuthRoutesEnabled = envFlag(env.ADMIN_AUTH_ROUTES_ENABLED || env.ADMIN_PROTECTED_ROUTE_AUTH_ENABLED);
   const coinsWalletEnabled = envFlag(env.COINS_WALLET_ENABLED);
+  const coinsCommerceEnabled = envFlag(env.COINS_COMMERCE_ENABLED);
+  let configuredCoinCommerceStore = null;
+  let configuredCoinCommerceWalletStore = null;
+  let configuredCoinCommerceFulfillmentHandler = null;
+  let configuredCoinCommerceCancelWindowMs = COIN_COMMERCE_CANCEL_WINDOW_DEFAULT_MS;
+  let configuredPlatformUserPortalAuth;
+  let hasConfiguredPlatformUserPortalAuth = false;
+  if (coinsCommerceEnabled) {
+    if (!userPortalRoutesEnabled || !coinsWalletEnabled) {
+      throw coinCommercePrerequisiteError();
+    }
+    configuredCoinCommerceFulfillmentHandler = exactCoinCommerceFulfillmentHandler(options);
+    configuredCoinCommerceCancelWindowMs = coinCommerceCancelWindowMs(
+      env.COINS_COMMERCE_CANCEL_WINDOW_MS
+    );
+    const coordinatorOption = ownDataOption(options, "coinCommerceCoordinator");
+    if (coordinatorOption.present && coordinatorOption.value !== undefined) {
+      throw coinCommercePrerequisiteError();
+    }
+    const commerceStoreOption = ownDataOption(options, "coinCommerceStore");
+    const walletStoreOption = ownDataOption(options, "coinsWalletStore");
+    if (commerceStoreOption.value === undefined) {
+      if (walletStoreOption.value !== undefined) {
+        throw coinCommercePrerequisiteError();
+      }
+    } else {
+      const injected = exactInjectedCoinCommerceStore(commerceStoreOption.value);
+      configuredCoinCommerceStore = injected.store;
+      configuredCoinCommerceWalletStore = injected.walletStore;
+      if (
+        walletStoreOption.value !== undefined
+        && walletStoreOption.value !== configuredCoinCommerceWalletStore
+      ) {
+        throw coinCommercePrerequisiteError();
+      }
+    }
+    const portalAuthOption = ownDataOption(options, "platformUserPortalAuth");
+    if (portalAuthOption.present && portalAuthOption.value !== undefined) {
+      callableFromSafeDescriptorChain(
+        portalAuthOption.value,
+        "requireSession"
+      );
+      callableFromSafeDescriptorChain(
+        portalAuthOption.value,
+        "createPasswordSetupSession"
+      );
+      configuredPlatformUserPortalAuth = portalAuthOption.value;
+      hasConfiguredPlatformUserPortalAuth = true;
+    }
+  }
   const localProxyControlRoutesEnabled = envFlag(env.LOCAL_PROXY_CONTROL_ROUTES_ENABLED, true);
   const adminAuthPortalAccountId = optionalEnvText(env.ADMIN_AUTH_PORTAL_ACCOUNT_ID);
   if (adminAuthRoutesEnabled && !adminAuthPortalAccountId) {
@@ -977,9 +1263,10 @@ export function createRuntimeState(options = {}) {
   );
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
-  const ownsCoinsWalletStore = coinsWalletEnabled && !options.coinsWalletStore;
+  const standaloneCoinsWalletEnabled = coinsWalletEnabled && !coinsCommerceEnabled;
+  const ownsCoinsWalletStore = standaloneCoinsWalletEnabled && !options.coinsWalletStore;
   let coinsWalletStore = null;
-  if (coinsWalletEnabled) {
+  if (standaloneCoinsWalletEnabled) {
     try {
       coinsWalletStore = options.coinsWalletStore || createSqliteCoinWalletStore({
         dbPath: controlDbPath
@@ -1385,16 +1672,20 @@ export function createRuntimeState(options = {}) {
       })
       : null
   );
-  const platformUserPortalAuth = options.platformUserPortalAuth || (
-    userPortalRoutesEnabled ? createUserPortalAuthService({
+  const platformUserPortalAuth = userPortalRoutesEnabled ? (
+    (
+      coinsCommerceEnabled && hasConfiguredPlatformUserPortalAuth
+        ? configuredPlatformUserPortalAuth
+        : (!coinsCommerceEnabled && options.platformUserPortalAuth)
+    ) || createUserPortalAuthService({
       controlStore: platformControlStore,
       nowFn: options.userPortalNowFn,
       totpVerifier: platformPortalTotpVerifier,
       totpSecretProtector: platformPortalTotpSecretProtector,
       passwordCredentialService: platformPortalPasswordCredentialService,
       allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION)
-    }) : null
-  );
+    })
+  ) : null;
   const platformPortalRegistrations = options.platformPortalRegistrations || (
     userPortalRoutesEnabled ? createPortalRegistrationService({
       controlStore: platformControlStore,
@@ -1483,26 +1774,11 @@ export function createRuntimeState(options = {}) {
       })
       : null
   );
+  let coinCommerceStore = null;
+  let coinCommerceCoordinator = null;
+  let ownsCoinCommerceStore = false;
   let closed = false;
-
-  function close() {
-    if (closed) return;
-    closed = true;
-    let firstError;
-    for (const [owned, store] of [
-      [ownsCoinsWalletStore, coinsWalletStore],
-      [ownsControlStore, platformControlStore],
-      [ownsSubscriptionStore, subscriptionStore]
-    ]) {
-      if (!owned) continue;
-      try {
-        store.close();
-      } catch (error) {
-        firstError ||= error;
-      }
-    }
-    if (firstError) throw firstError;
-  }
+  let closePromise = null;
 
   const bridgeServer = options.httpProxyServer || createBridgeServer({ socksPort: ports.socks });
   const ssLocal = createSsLocalService({
@@ -1604,6 +1880,112 @@ export function createRuntimeState(options = {}) {
     return runKnownCommand(name);
   }
 
+  if (coinsCommerceEnabled) {
+    try {
+      callableFromSafeDescriptorChain(platformUserPortalAuth, "requireSession");
+      callableFromSafeDescriptorChain(
+        platformUserPortalAuth,
+        "createPasswordSetupSession"
+      );
+      if (configuredCoinCommerceStore) {
+        coinCommerceStore = configuredCoinCommerceStore;
+      } else {
+        coinCommerceStore = createSqliteCoinCommerceStore({
+          dbPath: controlDbPath,
+          cancelWindowMs: configuredCoinCommerceCancelWindowMs
+        });
+        ownsCoinCommerceStore = true;
+      }
+      const exactStore = exactInjectedCoinCommerceStore(coinCommerceStore);
+      if (
+        configuredCoinCommerceWalletStore
+        && configuredCoinCommerceWalletStore !== exactStore.walletStore
+      ) {
+        throw coinCommercePrerequisiteError();
+      }
+      coinsWalletStore = exactStore.walletStore;
+      coinCommerceCoordinator = createCoinCommerceCoordinator({
+        store: coinCommerceStore,
+        fulfillmentHandler: configuredCoinCommerceFulfillmentHandler
+      });
+    } catch (error) {
+      if (ownsCoinCommerceStore && coinCommerceStore) {
+        try {
+          coinCommerceStore.close();
+        } catch {
+          // Preserve the final Commerce acquisition failure.
+        }
+      }
+      for (const [owned, store] of [
+        [ownsCoinsWalletStore, coinsWalletStore],
+        [ownsControlStore, platformControlStore],
+        [ownsSubscriptionStore, subscriptionStore]
+      ]) {
+        if (!owned) continue;
+        try {
+          store.close();
+        } catch {
+          // Preserve the final Commerce acquisition failure.
+        }
+      }
+      throw error;
+    }
+  }
+
+  function close() {
+    if (!coinsCommerceEnabled) {
+      if (closed) return;
+      closed = true;
+      let firstError;
+      for (const [owned, store] of [
+        [ownsCoinsWalletStore, coinsWalletStore],
+        [ownsControlStore, platformControlStore],
+        [ownsSubscriptionStore, subscriptionStore]
+      ]) {
+        if (!owned) continue;
+        try {
+          store.close();
+        } catch (error) {
+          firstError ||= error;
+        }
+      }
+      if (firstError) throw firstError;
+      return;
+    }
+    if (closePromise) return closePromise;
+    closed = true;
+    closePromise = (async () => {
+      let firstError;
+      let coordinatorStopped = false;
+      try {
+        await coinCommerceCoordinator.stop();
+        coordinatorStopped = true;
+      } catch (error) {
+        firstError ||= error;
+      }
+      if (coordinatorStopped && ownsCoinCommerceStore) {
+        try {
+          await coinCommerceStore.close();
+        } catch (error) {
+          firstError ||= error;
+        }
+      }
+      for (const [owned, store] of [
+        [ownsControlStore, platformControlStore],
+        [ownsSubscriptionStore, subscriptionStore]
+      ]) {
+        if (!owned) continue;
+        try {
+          await store.close();
+        } catch (error) {
+          firstError ||= error;
+        }
+      }
+      if (firstError) throw firstError;
+    })();
+    return closePromise;
+  }
+
   return {
     rootDir,
     host,
@@ -1633,6 +2015,9 @@ export function createRuntimeState(options = {}) {
       accessShell: platformAccessShell,
       coinsWalletEnabled,
       coinsWalletStore,
+      coinsCommerceEnabled,
+      coinCommerceStore,
+      coinCommerceCoordinator,
       adminAuthRoutesEnabled,
       adminAuth: platformAdminAuth,
       userPortalRoutesEnabled,
@@ -1664,17 +2049,17 @@ export function createRuntimeState(options = {}) {
       trustedProxyCidrs,
       dataPlaneAgentAllowedCidrs,
       subRateLimit: {
-        windowMs: Number.parseInt(env.SUB_RATE_LIMIT_WINDOW_MS, 10) || 60000,
-        max: Number.parseInt(env.SUB_RATE_LIMIT_MAX, 10) || 30
+        windowMs: subRateLimitWindowMs,
+        max: subRateLimitMax
       },
       subCredentialRateLimit: {
-        windowMs: envPositiveInteger(env.SUB_CREDENTIAL_RATE_LIMIT_WINDOW_MS, 60000),
-        max: envPositiveInteger(env.SUB_CREDENTIAL_RATE_LIMIT_MAX, 30)
+        windowMs: subCredentialRateLimitWindowMs,
+        max: subCredentialRateLimitMax
       }
     },
     close,
     runCommand,
     isPortListening,
-    autoStartHttpProxy: options.autoStartHttpProxy ?? true
+    autoStartHttpProxy
   };
 }
