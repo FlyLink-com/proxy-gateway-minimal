@@ -236,6 +236,25 @@ afterEach(() => {
 });
 
 describe("Portal Wallet HTTP client", () => {
+  test("types listLedger cursor fields as an all-or-none pair", () => {
+    const wallet = null as unknown as PortalWalletClient;
+    if (false) {
+      // @ts-expect-error afterOccurredAt requires afterEntryRef.
+      void wallet.listLedger({
+        sessionRef: "session_wallet_001",
+        limit: 10,
+        afterOccurredAt: "2026-07-27T12:08:00.000Z"
+      });
+      // @ts-expect-error afterEntryRef requires afterOccurredAt.
+      void wallet.listLedger({
+        sessionRef: "session_wallet_001",
+        limit: 10,
+        afterEntryRef: "entry_cursor_008"
+      });
+    }
+    expect(true).toBe(true);
+  });
+
   test("wires only the HTTP client to a relative session-only Wallet request", async () => {
     const fetchFn = vi.fn<typeof fetch>(async () => wireResponse({
       wallet: ACTIVE_SUMMARY
@@ -447,6 +466,72 @@ describe("Portal Wallet HTTP client", () => {
     }
   });
 
+  test("rejects ledger pages larger than the requested limit", async () => {
+    const wallet = walletOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>(async () => wireResponse(
+        ledgerBody(VALID_LEDGER_ENTRIES.slice(0, 2))
+      ))
+    }));
+
+    await expectSafeFailure(wallet.listLedger({
+      sessionRef: "session_wallet_001",
+      limit: 1
+    }));
+  });
+
+  test("requires a cursor page's first row to be strictly older than the request cursor", async () => {
+    const afterOccurredAt = "2026-07-27T12:08:00.000Z";
+    const afterEntryRef = "entry_cursor_008";
+    const strictlyOlderBodies = [
+      ledgerBody([VALID_LEDGER_ENTRIES[0]]),
+      ledgerBody([{
+        ...VALID_LEDGER_ENTRIES[0],
+        entryRef: "entry_cursor_007",
+        occurredAt: afterOccurredAt
+      }])
+    ];
+    for (const body of strictlyOlderBodies) {
+      const wallet = walletOf(createHttpUserPortalClient({
+        fetchFn: vi.fn<typeof fetch>(async () => wireResponse(body))
+      }));
+      await expect(wallet.listLedger({
+        sessionRef: "session_wallet_001",
+        limit: 1,
+        afterOccurredAt,
+        afterEntryRef
+      })).resolves.toEqual(body);
+    }
+
+    const invalidBodies = [
+      ledgerBody([{
+        ...VALID_LEDGER_ENTRIES[0],
+        entryRef: "entry_cursor_009",
+        occurredAt: "2026-07-27T12:09:00.000Z"
+      }]),
+      ledgerBody([{
+        ...VALID_LEDGER_ENTRIES[0],
+        entryRef: "entry_cursor_009",
+        occurredAt: afterOccurredAt
+      }]),
+      ledgerBody([{
+        ...VALID_LEDGER_ENTRIES[0],
+        entryRef: afterEntryRef,
+        occurredAt: afterOccurredAt
+      }])
+    ];
+    for (const body of invalidBodies) {
+      const wallet = walletOf(createHttpUserPortalClient({
+        fetchFn: vi.fn<typeof fetch>(async () => wireResponse(body))
+      }));
+      await expectSafeFailure(wallet.listLedger({
+        sessionRef: "session_wallet_001",
+        limit: 1,
+        afterOccurredAt,
+        afterEntryRef
+      }));
+    }
+  });
+
   test("rejects caller input drift before fetch", async () => {
     const fetchFn = vi.fn<typeof fetch>();
     const wallet = walletOf(createHttpUserPortalClient({ fetchFn }));
@@ -457,12 +542,13 @@ describe("Portal Wallet HTTP client", () => {
       Object.create({ inherited: true }),
       { sessionRef: "session_wallet_001" }
     );
+    const callerAccessorGetter = vi.fn(() => {
+      throw new Error("caller accessor must not execute");
+    });
     const accessorInput = {};
     Object.defineProperty(accessorInput, "sessionRef", {
       enumerable: true,
-      get() {
-        throw new Error("caller accessor must not execute");
-      }
+      get: callerAccessorGetter
     });
     const symbolInput = { sessionRef: "session_wallet_001" };
     Object.defineProperty(symbolInput, Symbol("unsafe"), {
@@ -510,12 +596,12 @@ describe("Portal Wallet HTTP client", () => {
         sessionRef: "session_wallet_001",
         limit: 10,
         afterOccurredAt: "2026-07-27T12:08:00.000Z"
-      }),
+      } as never),
       wallet.listLedger({
         sessionRef: "session_wallet_001",
         limit: 10,
         afterEntryRef: "entry_cursor_008"
-      }),
+      } as never),
       wallet.listLedger({
         sessionRef: "session_wallet_001",
         limit: 10,
@@ -551,6 +637,62 @@ describe("Portal Wallet HTTP client", () => {
       await expectSafeFailure(promise);
     }
     expect(fetchFn).not.toHaveBeenCalled();
+    expect(callerAccessorGetter).not.toHaveBeenCalled();
+  });
+
+  test("rejects hostile listLedger caller containers before fetch", async () => {
+    const fetchFn = vi.fn<typeof fetch>();
+    const wallet = walletOf(createHttpUserPortalClient({ fetchFn }));
+    const nullPrototypeInput = Object.assign(Object.create(null), {
+      sessionRef: "session_wallet_001",
+      limit: 10
+    });
+    const customPrototypeInput = Object.assign(
+      Object.create({ inherited: true }),
+      {
+        sessionRef: "session_wallet_001",
+        limit: 10
+      }
+    );
+    const ledgerAccessorGetter = vi.fn(() => {
+      throw new Error("ledger caller accessor must not execute");
+    });
+    const accessorInput = {
+      sessionRef: "session_wallet_001"
+    };
+    Object.defineProperty(accessorInput, "limit", {
+      enumerable: true,
+      get: ledgerAccessorGetter
+    });
+    const symbolInput = {
+      sessionRef: "session_wallet_001",
+      limit: 10
+    };
+    Object.defineProperty(symbolInput, Symbol("unsafe"), {
+      enumerable: true,
+      value: true
+    });
+    const nonEnumerableInput = {
+      sessionRef: "session_wallet_001"
+    };
+    Object.defineProperty(nonEnumerableInput, "limit", {
+      enumerable: false,
+      value: 10
+    });
+    const invalidInputs: unknown[] = [
+      null,
+      nullPrototypeInput,
+      customPrototypeInput,
+      accessorInput,
+      symbolInput,
+      nonEnumerableInput
+    ];
+
+    for (const input of invalidInputs) {
+      await expectSafeFailure(wallet.listLedger(input as never));
+    }
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(ledgerAccessorGetter).not.toHaveBeenCalled();
   });
 
   test("rejects enum, numeric, reference, timestamp, arithmetic, and exact-schema drift", async () => {
@@ -700,12 +842,13 @@ describe("Portal Wallet HTTP client", () => {
         sessionRef: "session_wallet_001"
       })
     });
+    const responseAccessorGetter = vi.fn(() => {
+      throw new Error("response accessor must not execute");
+    });
     const accessor = {};
     Object.defineProperty(accessor, "wallet", {
       enumerable: true,
-      get() {
-        throw new Error("accessor must not execute");
-      }
+      get: responseAccessorGetter
     });
     hostileBodies.push({
       body: accessor,
@@ -775,6 +918,7 @@ describe("Portal Wallet HTTP client", () => {
       await expectSafeFailure(request(wallet));
       vi.mocked(JSON.parse).mockRestore();
     }
+    expect(responseAccessorGetter).not.toHaveBeenCalled();
   });
 
   test("preserves only exact structured Wallet error mappings", async () => {
@@ -916,12 +1060,17 @@ describe("Portal Wallet HTTP client", () => {
       value: "Unauthorized"
     });
     hostileLegacyBodies.push(nonEnumerable);
+    const symbol = { error: "Unauthorized" };
+    Object.defineProperty(symbol, Symbol("unsafe"), {
+      enumerable: true,
+      value: true
+    });
+    hostileLegacyBodies.push(symbol);
+    const legacyAccessorGetter = vi.fn(() => "Unauthorized");
     const accessor = {};
     Object.defineProperty(accessor, "error", {
       enumerable: true,
-      get() {
-        return "Unauthorized";
-      }
+      get: legacyAccessorGetter
     });
     hostileLegacyBodies.push(accessor);
     for (const body of hostileLegacyBodies) {
@@ -937,5 +1086,6 @@ describe("Portal Wallet HTTP client", () => {
       }));
       vi.mocked(JSON.parse).mockRestore();
     }
+    expect(legacyAccessorGetter).not.toHaveBeenCalled();
   });
 });

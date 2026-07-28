@@ -55,12 +55,20 @@ export type PortalWalletLedgerEntry =
 
 export type PortalWalletClient = {
   getSummary(input: { sessionRef: string }): Promise<PortalWalletSummary>;
-  listLedger(input: {
-    sessionRef: string;
-    limit: number;
-    afterOccurredAt?: string;
-    afterEntryRef?: string;
-  }): Promise<{
+  listLedger(input:
+    | {
+        sessionRef: string;
+        limit: number;
+        afterOccurredAt?: never;
+        afterEntryRef?: never;
+      }
+    | {
+        sessionRef: string;
+        limit: number;
+        afterOccurredAt: string;
+        afterEntryRef: string;
+      }
+  ): Promise<{
     entries: PortalWalletLedgerEntry[];
     nextCursor: {
       afterOccurredAt: string;

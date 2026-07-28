@@ -341,9 +341,19 @@ function ledgerEntryProjection(input: unknown): PortalWalletLedgerEntry {
   };
 }
 
-function ledgerPageProjection(input: unknown) {
+function ledgerPageProjection(
+  input: unknown,
+  requestBoundary: {
+    limit: number;
+    cursor: {
+      afterOccurredAt: string;
+      afterEntryRef: string;
+    } | null;
+  }
+) {
   const value = exactObject(input, ["entries", "nextCursor"]);
   const entries = exactArray(value.entries).map(ledgerEntryProjection);
+  if (entries.length > requestBoundary.limit) return invalidProjection();
   const seenEntryRefs = new Set<string>();
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
@@ -360,6 +370,20 @@ function ledgerPageProjection(input: unknown) {
     ) {
       return invalidProjection();
     }
+  }
+  const firstEntry = entries[0];
+  if (
+    firstEntry
+    && requestBoundary.cursor
+    && (
+      firstEntry.occurredAt > requestBoundary.cursor.afterOccurredAt
+      || (
+        firstEntry.occurredAt === requestBoundary.cursor.afterOccurredAt
+        && firstEntry.entryRef >= requestBoundary.cursor.afterEntryRef
+      )
+    )
+  ) {
+    return invalidProjection();
   }
   if (value.nextCursor === null) {
     return { entries, nextCursor: null };
@@ -562,21 +586,29 @@ export function createPortalWalletClient(
       const sessionRef = sessionReference(value.sessionRef);
       const limit = callerLimit(value.limit);
       const query = new URLSearchParams({ limit: String(limit) });
+      let cursor: {
+        afterOccurredAt: string;
+        afterEntryRef: string;
+      } | null = null;
       if (Object.hasOwn(value, "afterOccurredAt")) {
+        cursor = {
+          afterOccurredAt: callerTimestamp(value.afterOccurredAt),
+          afterEntryRef: callerReference(value.afterEntryRef)
+        };
         query.set(
           "afterOccurredAt",
-          callerTimestamp(value.afterOccurredAt)
+          cursor.afterOccurredAt
         );
         query.set(
           "afterEntryRef",
-          callerReference(value.afterEntryRef)
+          cursor.afterEntryRef
         );
       }
       return request(
         fetchFn,
         `/api/portal/coins/wallet/ledger?${query.toString()}`,
         getInit(sessionRef),
-        ledgerPageProjection
+        (body) => ledgerPageProjection(body, { limit, cursor })
       );
     }
   };
