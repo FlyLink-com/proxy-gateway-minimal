@@ -975,3 +975,91 @@
     animation: none;
   }
 }
+
+.portal-v2-shell .portal-orders-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.portal-v2-shell .portal-orders-panel > h2,
+.portal-v2-shell .portal-orders-section > h3,
+.portal-v2-shell .portal-orders-detail > h4 {
+  margin: 0;
+  color: var(--portal-v2-text);
+}
+
+.portal-v2-shell .portal-orders-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.portal-v2-shell .portal-orders-filters button,
+.portal-v2-shell .portal-orders-section > button {
+  border: 1px solid var(--portal-v2-border);
+  border-radius: 9px;
+  background: var(--portal-v2-surface);
+  color: var(--portal-v2-text);
+  cursor: pointer;
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 700;
+}
+
+.portal-v2-shell .portal-orders-filters button[aria-selected="true"] {
+  border-color: var(--portal-v2-accent);
+  background: var(--portal-v2-accent);
+  color: var(--portal-v2-on-accent);
+}
+
+.portal-v2-shell .portal-orders-section,
+.portal-v2-shell .portal-orders-detail {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--portal-v2-border);
+  border-radius: 14px;
+  background: var(--portal-v2-surface);
+  padding: 16px;
+}
+
+.portal-v2-shell .portal-orders-section > p,
+.portal-v2-shell .portal-orders-detail > p {
+  margin: 0;
+  color: var(--portal-v2-muted);
+}
+
+.portal-v2-shell .portal-orders-list {
+  display: grid;
+  gap: 8px;
+}
+
+.portal-v2-shell .portal-orders-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--portal-v2-border);
+  border-radius: 10px;
+  background: var(--portal-v2-subtle);
+  color: var(--portal-v2-text);
+  cursor: pointer;
+  padding: 11px 12px;
+  text-align: left;
+}
+
+.portal-v2-shell .portal-orders-list button strong,
+.portal-v2-shell .portal-orders-list button span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.portal-v2-shell .portal-orders-list button span {
+  color: var(--portal-v2-muted);
+}
+
+.portal-v2-shell .portal-orders-filters button:focus-visible,
+.portal-v2-shell .portal-orders-section > button:focus-visible,
+.portal-v2-shell .portal-orders-list button:focus-visible {
+  outline: 3px solid var(--portal-v2-accent);
+  outline-offset: 2px;
+}

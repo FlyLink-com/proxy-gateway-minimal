@@ -2754,6 +2754,30 @@ describe("user portal product surface", () => {
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
+  test("Orders reuses historical records, short-circuits legacy payment detail, and keeps Personal Center order-free", async () => {
+    const client = portalClientWithPaymentOrders([paymentOrder()]);
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalOrders();
+
+    expect(await screen.findByRole("tab", { name: "Coins 充值订单" })).toBeInTheDocument();
+    expect(screen.getByText("充值订单数据源尚未接入")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "订单列表" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
+    expect(await screen.findByRole("button", { name: "返回订单" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Coins 充值订单" })).toBeNull();
+    expect(screen.queryByText("Coins 消费订单")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "返回订单" }));
+    expect(await screen.findByRole("tab", { name: "Coins 充值订单" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "订单列表" })).toBeInTheDocument();
+
+    openPortalProfile();
+    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "返回订单" })).toBeNull();
+  });
+
   test("routes every new-acquisition entry to Marketplace", async () => {
     const client = portalClient();
     render(createElement(UserPortalPage, { portalClient: client }));
