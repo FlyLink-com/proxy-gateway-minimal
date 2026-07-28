@@ -2564,11 +2564,13 @@ export function createSqliteCoinCommerceStore(options = {}) {
          and status = 'processing'
          and lease_generation = ?
          and lease_token = ?
+         and lease_until > ?
     `).run(
       occurredAt,
       request.commandRef,
       request.leaseGeneration,
-      request.leaseToken
+      request.leaseToken,
+      occurredAt
     );
     if (updated.changes !== 1) {
       throw commerceError("commerce_fulfillment_lease_lost");
@@ -2665,12 +2667,14 @@ export function createSqliteCoinCommerceStore(options = {}) {
          and status = 'processing'
          and lease_generation = ?
          and lease_token = ?
+         and lease_until > ?
     `).run(
       request.safeCode,
       occurredAt,
       request.commandRef,
       request.leaseGeneration,
-      request.leaseToken
+      request.leaseToken,
+      occurredAt
     );
     if (updated.changes !== 1) {
       throw commerceError("commerce_fulfillment_lease_lost");
