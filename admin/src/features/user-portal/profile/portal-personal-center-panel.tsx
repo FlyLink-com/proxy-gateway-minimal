@@ -1,3 +1,4 @@
+import { useRef, type KeyboardEvent } from "react";
 import { UserCog } from "lucide-react";
 import {
   PortalProfilePanel,
@@ -27,6 +28,36 @@ export function PortalPersonalCenterPanel({
   profile,
   security
 }: PortalPersonalCenterPanelProps) {
+  const profileTabRef = useRef<HTMLButtonElement>(null);
+  const securityTabRef = useRef<HTMLButtonElement>(null);
+
+  function activateSubview(view: PortalPersonalCenterPanelProps["activeSubview"]) {
+    onSubviewChange(view);
+    const target = view === "profile" ? profileTabRef : securityTabRef;
+    target.current?.focus();
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    const views: PortalPersonalCenterPanelProps["activeSubview"][] = ["profile", "security"];
+    const currentIndex = views.indexOf(activeSubview);
+    let nextView: PortalPersonalCenterPanelProps["activeSubview"] | null = null;
+
+    if (event.key === "ArrowRight") {
+      nextView = views[(currentIndex + 1) % views.length];
+    } else if (event.key === "ArrowLeft") {
+      nextView = views[(currentIndex - 1 + views.length) % views.length];
+    } else if (event.key === "Home") {
+      nextView = views[0];
+    } else if (event.key === "End") {
+      nextView = views[views.length - 1];
+    }
+
+    if (nextView) {
+      event.preventDefault();
+      activateSubview(nextView);
+    }
+  }
+
   return (
     <section className="portal-use-card">
       <div className="portal-section-heading">
@@ -48,6 +79,8 @@ export function PortalPersonalCenterPanel({
           aria-selected={activeSubview === "profile"}
           id="portal-personal-center-profile-tab"
           onClick={() => onSubviewChange("profile")}
+          onKeyDown={handleTabKeyDown}
+          ref={profileTabRef}
           role="tab"
           tabIndex={activeSubview === "profile" ? 0 : -1}
           type="button"
@@ -59,6 +92,8 @@ export function PortalPersonalCenterPanel({
           aria-selected={activeSubview === "security"}
           id="portal-personal-center-security-tab"
           onClick={() => onSubviewChange("security")}
+          onKeyDown={handleTabKeyDown}
+          ref={securityTabRef}
           role="tab"
           tabIndex={activeSubview === "security" ? 0 : -1}
           type="button"

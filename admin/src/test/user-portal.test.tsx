@@ -3015,6 +3015,45 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("安全设置")).toBeNull();
   });
 
+  test("supports keyboard navigation across Personal Center tabs", async () => {
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+
+    const profileTab = screen.getByRole("tab", { name: "资料" });
+    const securityTab = screen.getByRole("tab", { name: "安全" });
+    profileTab.focus();
+
+    fireEvent.keyDown(profileTab, { key: "ArrowRight" });
+
+    expect(securityTab).toHaveFocus();
+    expect(securityTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("安全设置")).not.toBeNull();
+
+    fireEvent.keyDown(securityTab, { key: "ArrowRight" });
+
+    expect(profileTab).toHaveFocus();
+    expect(profileTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("登录邮箱")).not.toBeNull();
+
+    fireEvent.keyDown(profileTab, { key: "ArrowLeft" });
+
+    expect(securityTab).toHaveFocus();
+    expect(securityTab).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(securityTab, { key: "Home" });
+
+    expect(profileTab).toHaveFocus();
+    expect(profileTab).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(profileTab, { key: "End" });
+
+    expect(securityTab).toHaveFocus();
+    expect(securityTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("安全设置")).not.toBeNull();
+  });
+
   test("local preview client preserves server-owned package facts when refreshing", async () => {
     const client = createLocalUserPortalClient({
       now: () => new Date("2026-05-31T00:00:00.000Z"),
