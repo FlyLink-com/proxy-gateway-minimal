@@ -217,6 +217,31 @@ function financialCounts(database) {
   };
 }
 
+function walletReadSnapshot(database) {
+  const tables = [
+    "platform_coin_wallets",
+    "platform_coin_lots",
+    "platform_coin_holds",
+    "platform_coin_hold_allocations",
+    "platform_coin_operation_receipts",
+    "platform_coin_credit_origins",
+    "platform_coin_ledger_entries"
+  ];
+  return {
+    schema: database.prepare(`
+      select type, name, tbl_name, sql
+        from sqlite_schema
+       where name = 'platform_schema_migrations'
+          or name like 'platform_coin_%'
+       order by type, name
+    `).all(),
+    rows: Object.fromEntries(tables.map((table) => [
+      table,
+      database.prepare(`select * from ${table} order by rowid`).all()
+    ]))
+  };
+}
+
 function holdFinancialSnapshot(database) {
   const tables = [
     "platform_coin_wallets",
@@ -279,6 +304,30 @@ function createObservedDatabase(database) {
     },
     arm() {
       rejectUnboundedProjectionReads = true;
+    }
+  };
+}
+
+function createLedgerReadProbeConnection(database) {
+  let armed = false;
+  const queries = [];
+  return {
+    connection: {
+      pragma: (...args) => database.pragma(...args),
+      prepare: (sql) => {
+        if (armed && /platform_coin_(?:ledger_entries|lots)/i.test(sql)) {
+          queries.push(sql);
+        }
+        return database.prepare(sql);
+      },
+      transaction: (...args) => database.transaction(...args)
+    },
+    arm() {
+      armed = true;
+      queries.length = 0;
+    },
+    queries() {
+      return [...queries];
     }
   };
 }
@@ -1370,15 +1419,16 @@ test("read methods map durable rows and apply closed list filters", () => {
   }
 });
 
-test("ledger pagination is bounded and uses the descending compound cursor", () => {
+test("ledger pagination returns joined coin type in one bounded read without mutations", () => {
   const database = createSyntheticDatabase();
   insertAccount(database, "account_1");
+  const probe = createLedgerReadProbeConnection(database);
   const timestamps = [
     "2026-07-23T12:34:54.000Z",
-    "2026-07-23T12:34:55.000Z",
+    "2026-07-23T12:34:56.000Z",
     "2026-07-23T12:34:56.000Z"
   ];
-  const store = createStore(database, {
+  const store = createStore(probe.connection, {
     nowFn: () => new Date(timestamps.shift())
   });
   try {
@@ -1392,12 +1442,24 @@ test("ledger pagination is bounded and uses the descending compound cursor", () 
         }
       }));
     }
+    const before = walletReadSnapshot(database);
+    probe.arm();
     const firstPage = store.listLedgerEntries({
       walletRef: "wallet_1",
       limit: 2
     });
     assert.deepEqual(firstPage.map(({ amountUnits }) => amountUnits), [3, 2]);
+    assert.deepEqual(
+      firstPage.map(({ coinType }) => coinType),
+      ["paid_coins", "paid_coins"]
+    );
+    assert.equal(probe.queries().length, 1);
+    assert.match(probe.queries()[0], /left\s+join\s+platform_coin_lots/i);
+    assert.match(probe.queries()[0], /limit\s+\?/i);
+    assert.deepEqual(walletReadSnapshot(database), before);
+
     const cursor = firstPage[1];
+    probe.arm();
     const secondPage = store.listLedgerEntries({
       walletRef: "wallet_1",
       afterOccurredAt: cursor.occurredAt,
@@ -1405,6 +1467,9 @@ test("ledger pagination is bounded and uses the descending compound cursor", () 
       limit: 2
     });
     assert.deepEqual(secondPage.map(({ amountUnits }) => amountUnits), [1]);
+    assert.deepEqual(secondPage.map(({ coinType }) => coinType), ["paid_coins"]);
+    assert.equal(probe.queries().length, 1);
+    assert.deepEqual(walletReadSnapshot(database), before);
 
     for (const limit of [0, -1, 1.5, 501, Number.MAX_SAFE_INTEGER + 1]) {
       expectCode(() => store.listLedgerEntries({
@@ -1424,6 +1489,45 @@ test("ledger pagination is bounded and uses the descending compound cursor", () 
   } finally {
     store.close();
     database.close();
+  }
+});
+
+test("ledger reads fail closed for invalid or missing joined coin type", () => {
+  for (const malformed of ["invalid", "orphan"]) {
+    const database = createSyntheticDatabase();
+    insertAccount(database, "account_1");
+    const store = createStore(database);
+    try {
+      store.creditCoins(validCredit());
+      const lotRef = database.prepare(`
+        select lot_ref
+          from platform_coin_ledger_entries
+         where wallet_ref = 'wallet_1'
+      `).pluck().get();
+      if (malformed === "invalid") {
+        database.pragma("ignore_check_constraints = ON");
+        database.prepare(`
+          update platform_coin_lots
+             set coin_type = 'gift_coins'
+           where lot_ref = ?
+        `).run(lotRef);
+      } else {
+        database.pragma("foreign_keys = OFF");
+        database.prepare(`
+          delete from platform_coin_lots
+           where lot_ref = ?
+        `).run(lotRef);
+      }
+      const before = walletReadSnapshot(database);
+      expectCode(() => store.listLedgerEntries({
+        walletRef: "wallet_1",
+        limit: 1
+      }), "wallet_infrastructure_error");
+      assert.deepEqual(walletReadSnapshot(database), before);
+    } finally {
+      store.close();
+      database.close();
+    }
   }
 });
 
