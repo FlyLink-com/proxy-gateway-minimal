@@ -1181,6 +1181,17 @@ export function UserPortalPage({
     || walletModel.summary.phase === "empty"
       ? walletModel.summary.value.spendableUnits
       : null;
+  const walletSummaryAriaLabel = walletModel.summary.phase === "loading"
+    ? uiText(locale, "打开 Coins 钱包，余额加载中", "Open Coins wallet, balance is loading")
+    : walletModel.summary.phase === "unavailable"
+      ? uiText(locale, "打开 Coins 钱包，余额暂不可用", "Open Coins wallet, balance is temporarily unavailable")
+      : walletModel.summary.phase === "error"
+        ? uiText(locale, "打开 Coins 钱包，余额加载失败", "Open Coins wallet, balance could not be loaded")
+        : uiText(
+          locale,
+          `打开 Coins 钱包，可用余额 ${authoritativeWalletBalance} Coins`,
+          `Open Coins wallet, available balance ${authoritativeWalletBalance} Coins`
+        );
 
   const refreshHumanChallenge = useCallback(async () => {
     setHumanChallengeLoading(true);
@@ -1202,73 +1213,81 @@ export function UserPortalPage({
     void refreshHumanChallenge();
   }, [refreshHumanChallenge]);
 
-  async function hydratePortalSession(session: PortalSession) {
+  function hydratePortalSession(session: PortalSession) {
     const hydrateGeneration = advanceSessionGeneration();
-    const portalState = await portalClient.fetchCurrentState({
-      userRef: session.userRef,
-      sessionRef: session.sessionRef
-    });
-    const accountEntitlementRows = portalState.accountEntitlements ?? [];
-    const entitlementPlan = [...accountEntitlementRows]
-      .reverse()
-      .filter((entitlement) => usableTrafficEntitlement(entitlement))
-      .map((entitlement) => planIdFromEntitlement(entitlement))
-      .find((planId): planId is PortalPlanId => Boolean(planId && planId !== "trial"));
-    const subscriptionRequests = portalState.subscriptionRequests?.length
-      ? portalState.subscriptionRequests
-      : portalState.subscriptionRequest
-        ? [portalState.subscriptionRequest]
-        : [];
-    let hydratedPaymentOrders = portalState.paymentOrders ?? [];
-    if (!hydratedPaymentOrders.length) {
-      try {
-        hydratedPaymentOrders = await portalClient.fetchPaymentOrders({
-          userRef: session.userRef,
-          sessionRef: session.sessionRef
-        });
-      } catch {
-        hydratedPaymentOrders = [];
+    const isCurrent = () => hydrateGeneration === sessionGenerationRef.current;
+    const promise = (async () => {
+      const portalState = await portalClient.fetchCurrentState({
+        userRef: session.userRef,
+        sessionRef: session.sessionRef
+      });
+      if (!isCurrent()) return;
+      const accountEntitlementRows = portalState.accountEntitlements ?? [];
+      const entitlementPlan = [...accountEntitlementRows]
+        .reverse()
+        .filter((entitlement) => usableTrafficEntitlement(entitlement))
+        .map((entitlement) => planIdFromEntitlement(entitlement))
+        .find((planId): planId is PortalPlanId => Boolean(planId && planId !== "trial"));
+      const subscriptionRequests = portalState.subscriptionRequests?.length
+        ? portalState.subscriptionRequests
+        : portalState.subscriptionRequest
+          ? [portalState.subscriptionRequest]
+          : [];
+      let hydratedPaymentOrders = portalState.paymentOrders ?? [];
+      if (!hydratedPaymentOrders.length) {
+        try {
+          hydratedPaymentOrders = await portalClient.fetchPaymentOrders({
+            userRef: session.userRef,
+            sessionRef: session.sessionRef
+          });
+        } catch {
+          if (!isCurrent()) return;
+          hydratedPaymentOrders = [];
+        }
       }
-    }
-    if (hydrateGeneration !== sessionGenerationRef.current) return;
-    setPortalSession(session);
-    setSecondFactorChallenge(null);
-    setSecondFactorCode("");
-    setPasskeyProof("");
-    setSecondFactorError("");
-    setSecondFactorPending(false);
-    setAuthenticatorBound(portalState.security?.authenticatorBound ?? false);
-    setPasskeyExported(portalState.security?.passkeyExported ?? false);
-    setSecuritySetupRequired(portalState.security?.setupRequired ?? false);
-    setAccountEntitlements(accountEntitlementRows);
-    setPaymentOrders([...hydratedPaymentOrders].sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
-    setLastPaymentOrderRef(hydratedPaymentOrders[0]?.orderRef ?? null);
-    if (subscriptionRequests.length > 0) {
-      const orders = subscriptionRequests
-        .map((request) => subscriptionRequestToOrder(request))
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-      const selected = orders.find((order) => order.requestRef === portalState.subscriptionRequest?.requestRef)
-        ?? orders[0];
-      const selectedOrderCanDriveSetup = selected.status === "active" || selected.status === "pending";
-      setSelectedPlanId(selectedOrderCanDriveSetup ? selected.planId : entitlementPlan ?? selected.planId);
-      setClientTarget(selected.clientTarget);
-      setOrderRows(orders);
-      setSelectedOrderRef(selectedOrderCanDriveSetup || !entitlementPlan ? selected.requestRef : null);
-    } else {
-      setOrderRows([]);
-      setSelectedOrderRef(null);
-      if (entitlementPlan) {
-        setSelectedPlanId(entitlementPlan);
+      if (!isCurrent()) return;
+      setPortalSession(session);
+      setSecondFactorChallenge(null);
+      setSecondFactorCode("");
+      setPasskeyProof("");
+      setSecondFactorError("");
+      setSecondFactorPending(false);
+      setAuthenticatorBound(portalState.security?.authenticatorBound ?? false);
+      setPasskeyExported(portalState.security?.passkeyExported ?? false);
+      setSecuritySetupRequired(portalState.security?.setupRequired ?? false);
+      setAccountEntitlements(accountEntitlementRows);
+      setPaymentOrders([...hydratedPaymentOrders].sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
+      setLastPaymentOrderRef(hydratedPaymentOrders[0]?.orderRef ?? null);
+      if (subscriptionRequests.length > 0) {
+        const orders = subscriptionRequests
+          .map((request) => subscriptionRequestToOrder(request))
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+        const selected = orders.find((order) => order.requestRef === portalState.subscriptionRequest?.requestRef)
+          ?? orders[0];
+        const selectedOrderCanDriveSetup = selected.status === "active" || selected.status === "pending";
+        setSelectedPlanId(selectedOrderCanDriveSetup ? selected.planId : entitlementPlan ?? selected.planId);
+        setClientTarget(selected.clientTarget);
+        setOrderRows(orders);
+        setSelectedOrderRef(selectedOrderCanDriveSetup || !entitlementPlan ? selected.requestRef : null);
+      } else {
+        setOrderRows([]);
+        setSelectedOrderRef(null);
+        if (entitlementPlan) {
+          setSelectedPlanId(entitlementPlan);
+        }
       }
-    }
-    setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
-    setActivePaymentOrderRef(null);
-    setActiveView("start");
+      setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
+      setActivePaymentOrderRef(null);
+      setActiveView("start");
+    })();
+    return { isCurrent, promise };
   }
 
   useEffect(() => {
     if (!initialSession || portalSession) return;
-    void hydratePortalSession(initialSession).catch((caughtError) => {
+    const hydration = hydratePortalSession(initialSession);
+    void hydration.promise.catch((caughtError) => {
+      if (!hydration.isCurrent()) return;
       setAuthError(portalUiErrorMessage(caughtError, "本地预览会话载入失败，请重新登录。", locale));
     });
   }, [initialSession, portalSession]);
@@ -1283,7 +1302,9 @@ export function UserPortalPage({
       if (!session || typeof session.userRef !== "string") {
         throw new Error("invalid registration session");
       }
-      void hydratePortalSession(session).catch((caughtError) => {
+      const hydration = hydratePortalSession(session);
+      void hydration.promise.catch((caughtError) => {
+        if (!hydration.isCurrent()) return;
         setAuthError(portalUiErrorMessage(caughtError, "注册会话载入失败，请重新登录。", locale));
       });
     } catch {
@@ -1296,6 +1317,7 @@ export function UserPortalPage({
     setAuthError("");
     setSecondFactorError("");
     setPending(true);
+    let hydrationIsCurrent: (() => boolean) | null = null;
     try {
       if (!humanChallengeReady || humanChallengeLoading) {
         throw new Error("防机器人校验尚未加载，请稍后重试。");
@@ -1313,13 +1335,18 @@ export function UserPortalPage({
         setSecondFactorCode("");
         return;
       }
-      await hydratePortalSession(result);
+      const hydration = hydratePortalSession(result);
+      hydrationIsCurrent = hydration.isCurrent;
+      await hydration.promise;
     } catch (requestError) {
+      if (hydrationIsCurrent && !hydrationIsCurrent()) return;
       setAuthError(portalUiErrorMessage(requestError, "操作失败。", locale));
       setRobotAnswer("");
       void refreshHumanChallenge();
     } finally {
-      setPending(false);
+      if (!hydrationIsCurrent || hydrationIsCurrent()) {
+        setPending(false);
+      }
     }
   }
 
@@ -1328,18 +1355,24 @@ export function UserPortalPage({
     if (!secondFactorChallenge) return;
     setSecondFactorError("");
     setSecondFactorPending(true);
+    let hydrationIsCurrent: (() => boolean) | null = null;
     try {
       const session = await portalClient.completeSecondFactor({
         challengeRef: secondFactorChallenge.challengeRef,
         factor: "authenticator",
         totpCode: secondFactorCode
       });
-      await hydratePortalSession(session);
+      const hydration = hydratePortalSession(session);
+      hydrationIsCurrent = hydration.isCurrent;
+      await hydration.promise;
     } catch (requestError) {
+      if (hydrationIsCurrent && !hydrationIsCurrent()) return;
       setSecondFactorError(portalUiErrorMessage(requestError, "二次验证失败。", locale));
       setSecondFactorCode("");
     } finally {
-      setSecondFactorPending(false);
+      if (!hydrationIsCurrent || hydrationIsCurrent()) {
+        setSecondFactorPending(false);
+      }
     }
   }
 
@@ -1348,18 +1381,24 @@ export function UserPortalPage({
     if (!secondFactorChallenge) return;
     setSecondFactorError("");
     setSecondFactorPending(true);
+    let hydrationIsCurrent: (() => boolean) | null = null;
     try {
       const session = await portalClient.completeSecondFactor({
         challengeRef: secondFactorChallenge.challengeRef,
         factor: "passkey",
         passkeyProof
       });
-      await hydratePortalSession(session);
+      const hydration = hydratePortalSession(session);
+      hydrationIsCurrent = hydration.isCurrent;
+      await hydration.promise;
     } catch (requestError) {
+      if (hydrationIsCurrent && !hydrationIsCurrent()) return;
       setSecondFactorError(portalUiErrorMessage(requestError, "通行密钥验证失败。", locale));
       setPasskeyProof("");
     } finally {
-      setSecondFactorPending(false);
+      if (!hydrationIsCurrent || hydrationIsCurrent()) {
+        setSecondFactorPending(false);
+      }
     }
   }
 
@@ -2043,15 +2082,7 @@ export function UserPortalPage({
                         "portal-coins-wallet-entry",
                         activeView === "wallet" && "active"
                       )}
-                      aria-label={uiText(
-                        locale,
-                        authoritativeWalletBalance === null
-                          ? "打开 Coins 钱包，余额暂不可用"
-                          : `打开 Coins 钱包，可用余额 ${authoritativeWalletBalance} Coins`,
-                        authoritativeWalletBalance === null
-                          ? "Open Coins wallet, balance is temporarily unavailable"
-                          : `Open Coins wallet, available balance ${authoritativeWalletBalance} Coins`
-                      )}
+                      aria-label={walletSummaryAriaLabel}
                       onClick={() => navigatePortalView("wallet")}
                     >
                       <WalletCards aria-hidden="true" />

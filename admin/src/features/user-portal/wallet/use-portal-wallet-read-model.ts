@@ -63,7 +63,7 @@ function failureState(error: unknown): {
     case "wallet_unavailable":
       return {
         kind: "state",
-        state: { phase: "unavailable", retryable: error.retryable }
+        state: { phase: "unavailable", retryable: true }
       };
     case "wallet_request_invalid":
       return {
@@ -123,15 +123,25 @@ export function usePortalWalletReadModel({
     pageRequestId: number;
   } | null>(null);
 
-  ledgerStateRef.current = ledger;
-  nextLedgerCursorRef.current = nextLedgerCursor;
-  onSessionInvalidRef.current = onSessionInvalid;
-  currentInputRef.current = {
+  useEffect(() => {
+    ledgerStateRef.current = ledger;
+    nextLedgerCursorRef.current = nextLedgerCursor;
+    onSessionInvalidRef.current = onSessionInvalid;
+    currentInputRef.current = {
+      client,
+      loadLedger,
+      sessionGeneration,
+      sessionRef
+    };
+  }, [
     client,
+    ledger,
     loadLedger,
+    nextLedgerCursor,
+    onSessionInvalid,
     sessionGeneration,
     sessionRef
-  };
+  ]);
 
   useEffect(() => {
     mountedRef.current = true;

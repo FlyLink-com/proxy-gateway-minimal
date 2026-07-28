@@ -108,8 +108,10 @@ function renderPanel(model: PortalWalletReadModel, locale: "zh" | "en" = "en") {
 }
 
 describe("PortalWalletPanel", () => {
-  test("renders authoritative balances and credit without inventing bucket allocation", () => {
-    renderPanel(walletModel());
+  test("maps each Wallet activity header to its ordered entry cell", () => {
+    renderPanel(walletModel({
+      ledger: { phase: "ready", value: [HELD_ENTRY] }
+    }));
 
     expect(screen.getByRole("heading", { name: "Balance and recharge" })).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
@@ -120,12 +122,29 @@ describe("PortalWalletPanel", () => {
     expect(screen.getByText("9", { selector: "dd" })).toBeInTheDocument();
     expect(screen.getByText("4", { selector: "dd" })).toBeInTheDocument();
 
-    const creditRow = screen.getByText("credit").closest("tr");
-    expect(creditRow).not.toBeNull();
-    expect(within(creditRow as HTMLElement).getByText("+40")).toBeInTheDocument();
-    expect(within(creditRow as HTMLElement).getAllByText("—")).toHaveLength(4);
-    expect(within(creditRow as HTMLElement).getByText("paid_coins")).toBeInTheDocument();
-    expect(within(creditRow as HTMLElement).getByText("2026-07-27T12:00:00.000Z")).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Coins Wallet activity" });
+    expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "Category",
+      "Coin type",
+      "Occurred at",
+      "Related order",
+      "Overall delta",
+      "Available",
+      "Pending",
+      "Held"
+    ]);
+    const heldRow = screen.getByText("available_to_held").closest("tr");
+    expect(heldRow).not.toBeNull();
+    expect(within(heldRow as HTMLElement).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "available_to_held",
+      "bonus_coins",
+      "2026-07-27T11:00:00.000Z",
+      "order_wallet_002",
+      "0",
+      "-5",
+      "0",
+      "+5"
+    ]);
   });
 
   test.each<{
@@ -381,7 +400,7 @@ describe("usePortalWalletReadModel", () => {
   test("maps not-created, missing client, and exact client failures without inventing zero", async () => {
     const unavailableClient: PortalWalletClient = {
       getSummary: vi.fn(async () => {
-        throw new PortalWalletClientError("wallet_unavailable", true);
+        throw new PortalWalletClientError("wallet_unavailable", false);
       }),
       listLedger: vi.fn(async () => {
         throw new PortalWalletClientError("wallet_request_invalid", false);
@@ -551,6 +570,54 @@ describe("usePortalWalletReadModel", () => {
       phase: "ready",
       value: [HELD_ENTRY]
     });
+  });
+
+  test("does not let a stale generation rejection invoke the committed session callback", async () => {
+    const staleSummary = deferred<PortalWalletSummary>();
+    const currentSummary = deferred<PortalWalletSummary>();
+    let summaryRequest = 0;
+    const client: PortalWalletClient = {
+      getSummary: vi.fn(() => {
+        summaryRequest += 1;
+        return (
+          summaryRequest === 1
+          ? staleSummary.promise
+          : currentSummary.promise
+        );
+      }),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const staleSessionInvalid = vi.fn();
+    const currentSessionInvalid = vi.fn();
+    const { result, rerender } = renderHook(
+      (props: { generation: number; onSessionInvalid: () => void }) => (
+        usePortalWalletReadModel({
+          client,
+          sessionRef: "session_wallet_same_ref",
+          sessionGeneration: props.generation,
+          loadLedger: false,
+          onSessionInvalid: props.onSessionInvalid
+        })
+      ),
+      {
+        initialProps: { generation: 1, onSessionInvalid: staleSessionInvalid }
+      }
+    );
+
+    rerender({ generation: 2, onSessionInvalid: currentSessionInvalid });
+    await act(async () => {
+      currentSummary.resolve(ACTIVE_SUMMARY);
+      await currentSummary.promise;
+    });
+    expect(result.current.summary).toEqual({ phase: "ready", value: ACTIVE_SUMMARY });
+
+    await act(async () => {
+      staleSummary.reject(new PortalWalletClientError("wallet_session_invalid", false));
+      await Promise.allSettled([staleSummary.promise]);
+    });
+    expect(result.current.summary).toEqual({ phase: "ready", value: ACTIVE_SUMMARY });
+    expect(staleSessionInvalid).not.toHaveBeenCalled();
+    expect(currentSessionInvalid).not.toHaveBeenCalled();
   });
 
   test("guards the exact load-more cursor, in-flight request, and cross-page duplicates", async () => {

@@ -2134,6 +2134,9 @@ describe("user portal product surface", () => {
     const topbar = document.querySelector(".portal-use-topbar");
     expect(topbar).not.toBeNull();
     expect(within(topbar as HTMLElement).getByText("Coins · --")).toBeInTheDocument();
+    expect(within(topbar as HTMLElement).getByRole("button", {
+      name: "打开 Coins 钱包，余额加载中"
+    })).toBeInTheDocument();
 
     await act(async () => {
       summary.resolve(portalWalletSummary(155));
@@ -2207,6 +2210,26 @@ describe("user portal product surface", () => {
     });
     expect(failedButton).toHaveTextContent("Coins · --");
     expect(screen.queryByText("Coins · 0")).not.toBeInTheDocument();
+
+    cleanup();
+    const rejected: PortalWalletClient = {
+      getSummary: vi.fn(async () => {
+        throw new PortalWalletClientError("wallet_request_failed", true);
+      }),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    render(createElement(UserPortalPage, {
+      initialSession: portalWalletSession(
+        "session_wallet_rejected_001",
+        "wallet-rejected@example.test"
+      ),
+      portalClient: portalClient({ wallet: rejected })
+    }));
+
+    const rejectedButton = await screen.findByRole("button", {
+      name: "打开 Coins 钱包，余额加载失败"
+    });
+    expect(rejectedButton).toHaveTextContent("Coins · --");
   });
 
   test("Wallet hydrate generation ignores a late older session completion", async () => {
@@ -2283,6 +2306,141 @@ describe("user portal product surface", () => {
     expect(wallet.getSummary).not.toHaveBeenCalledWith({
       sessionRef: firstSession.sessionRef
     });
+  });
+
+  test("Wallet hydrate generation ignores a late older session rejection", async () => {
+    const oldState = deferredValue<PortalUserState>();
+    const currentState = deferredValue<PortalUserState>();
+    const firstSession = portalWalletSession(
+      "session_wallet_rejection_old",
+      "wallet-rejection-old@example.test"
+    );
+    const secondSession = portalWalletSession(
+      "session_wallet_rejection_new",
+      "wallet-rejection-new@example.test"
+    );
+    const templateClient = portalClient();
+    const secondPortalState = await templateClient.fetchCurrentState({
+      userRef: secondSession.userRef,
+      sessionRef: secondSession.sessionRef
+    });
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(async ({ sessionRef }) => (
+        sessionRef === secondSession.sessionRef
+          ? portalWalletSummary(444)
+          : portalWalletSummary(111)
+      )),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const client = portalClient({
+      wallet,
+      fetchCurrentState: vi.fn(({ sessionRef }) => (
+        sessionRef === firstSession.sessionRef
+          ? oldState.promise
+          : currentState.promise
+      ))
+    });
+    const { rerender } = render(createElement(UserPortalPage, {
+      initialSession: firstSession,
+      portalClient: client
+    }));
+    await waitFor(() => {
+      expect(client.fetchCurrentState).toHaveBeenCalledWith({
+        userRef: firstSession.userRef,
+        sessionRef: firstSession.sessionRef
+      });
+    });
+
+    rerender(createElement(UserPortalPage, {
+      initialSession: secondSession,
+      portalClient: client
+    }));
+    await act(async () => {
+      currentState.resolve({ ...secondPortalState, userRef: secondSession.userRef });
+      await currentState.promise;
+    });
+    expect(await screen.findByText("Coins · 444")).toBeInTheDocument();
+
+    await act(async () => {
+      oldState.reject(new Error("synthetic stale hydrate rejection"));
+      await Promise.allSettled([oldState.promise]);
+    });
+    expect(screen.getByRole("navigation", {
+      name: "用户中心导航"
+    })).toBeInTheDocument();
+    expect(screen.getByText("Coins · 444")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "账号登录" })).toBeNull();
+  });
+
+  test("a stale login hydrate rejection cannot reset the committed session challenge", async () => {
+    const staleState = deferredValue<PortalUserState>();
+    const currentState = deferredValue<PortalUserState>();
+    const staleSession = portalWalletSession(
+      "session_wallet_login_rejection_old",
+      "wallet-login-rejection-old@example.test"
+    );
+    const currentSession = portalWalletSession(
+      "session_wallet_login_rejection_new",
+      "wallet-login-rejection-new@example.test"
+    );
+    const templateClient = portalClient();
+    const currentPortalState = await templateClient.fetchCurrentState({
+      userRef: currentSession.userRef,
+      sessionRef: currentSession.sessionRef
+    });
+    const issueHumanChallenge = vi.fn(async () => ({
+      challengeId: "challenge_current",
+      prompt: "1 + 1 = ?",
+      expiresInSeconds: 120
+    }));
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(async ({ sessionRef }) => (
+        sessionRef === currentSession.sessionRef
+          ? portalWalletSummary(555)
+          : portalWalletSummary(111)
+      )),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const client = portalClient({
+      authenticate: vi.fn(async () => staleSession),
+      fetchCurrentState: vi.fn(({ sessionRef }) => (
+        sessionRef === staleSession.sessionRef
+          ? staleState.promise
+          : currentState.promise
+      )),
+      issueHumanChallenge,
+      wallet
+    });
+    const { rerender } = render(createElement(UserPortalPage, { portalClient: client }));
+
+    await submitPortalLogin();
+    await waitFor(() => {
+      expect(client.fetchCurrentState).toHaveBeenCalledWith({
+        userRef: staleSession.userRef,
+        sessionRef: staleSession.sessionRef
+      });
+      expect(issueHumanChallenge).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(createElement(UserPortalPage, {
+      initialSession: currentSession,
+      portalClient: client
+    }));
+    await act(async () => {
+      currentState.resolve({ ...currentPortalState, userRef: currentSession.userRef });
+      await currentState.promise;
+    });
+    expect(await screen.findByText("Coins · 555")).toBeInTheDocument();
+
+    await act(async () => {
+      staleState.reject(new Error("synthetic stale login hydrate rejection"));
+      await Promise.allSettled([staleState.promise]);
+    });
+    expect(screen.getByRole("navigation", {
+      name: "用户中心导航"
+    })).toBeInTheDocument();
+    expect(screen.getByText("Coins · 555")).toBeInTheDocument();
+    expect(issueHumanChallenge).toHaveBeenCalledTimes(1);
   });
 
   test("Wallet stale session-invalid cannot log out a newer login", async () => {
