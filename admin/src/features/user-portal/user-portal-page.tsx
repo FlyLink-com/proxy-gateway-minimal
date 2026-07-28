@@ -69,14 +69,15 @@ import type {
 
 type DisplayAuthMode = PortalSession["authMode"];
 type PortalView =
+  | "start"
   | "dashboard"
   | "usage"
-  | "start"
-  | "profile"
-  | "support"
   | "marketplace"
+  | "orders"
   | "wallet"
-  | "referrals";
+  | "referrals"
+  | "profile"
+  | "support";
 
 type PortalPlan = {
   id: PortalPlanId;
@@ -182,8 +183,9 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "dashboard", label: "概览", description: "查看账户状态、当前套餐、流量和开始使用。", icon: LayoutGrid },
   { id: "usage", label: "用量", description: "查看流量消耗、套餐额度和用量更新状态。", icon: LineChart },
   { id: "marketplace", label: "商城", description: "浏览平台商品、套餐、流量包和增值项。", icon: ShoppingBag },
+  { id: "orders", label: "订单", description: "查看订单历史、支付状态和付款详情。", icon: ReceiptText },
   { id: "referrals", label: "推荐奖励", description: "查看推荐链接、归因绩效和奖励状态。", icon: Gift },
-  { id: "profile", label: "个人与安全", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
+  { id: "profile", label: "个人中心", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
 ];
 
@@ -403,6 +405,10 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
       label: uiText(locale, "商城", "Marketplace"),
       description: uiText(locale, "浏览平台商品、套餐、流量包和增值项。", "Browse platform products, plans, data packs, and add-ons.")
     },
+    orders: {
+      label: uiText(locale, "订单", "Orders"),
+      description: uiText(locale, "查看订单历史、支付状态和付款详情。", "Review order history, payment status, and payment details.")
+    },
     wallet: {
       label: uiText(locale, "Coins 钱包", "Coins wallet"),
       description: uiText(locale, "查看 Coins 分类、充值入口、流水和奖励结构。", "Review Coins categories, recharge entry, activity, and rewards.")
@@ -416,8 +422,8 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
       description: uiText(locale, "选择设备、下载客户端并完成连接。", "Choose a device, download a client, and connect step by step.")
     },
     profile: {
-      label: uiText(locale, "个人与安全", "Profile & security"),
-      description: uiText(locale, "查看账户信息和安全设置。", "Review account info and security setup.")
+      label: uiText(locale, "个人中心", "Personal center"),
+      description: uiText(locale, "管理账户信息、身份验证器和通行密钥。", "Manage account information, authenticators, and passkeys.")
     },
     support: {
       label: uiText(locale, "支持", "Support"),
@@ -696,7 +702,7 @@ function paymentFlowDescription(step: PaymentFlowStep, locale: PortalAuthLocale)
     return uiText(locale, "付款结果确认中，请不要重复提交订单。", "Payment is being confirmed. Do not submit another order.");
   }
   if (step === "failed") {
-    return uiText(locale, "付款未完成，可重新选择支付方式或返回个人与安全。", "Payment was not completed. Choose a payment method again or return to Profile & security.");
+    return uiText(locale, "付款未完成，可重新选择支付方式或返回订单。", "Payment was not completed. Choose a payment method again or return to Orders.");
   }
   return uiText(locale, "请在有效期内完成付款。", "Pay before the code expires.");
 }
@@ -1113,7 +1119,7 @@ export function UserPortalPage({
       : null,
     [activePaymentOrderRef, paymentOrders]
   );
-  const paymentFlowActive = activeView === "profile" && Boolean(activePaymentOrder);
+  const paymentFlowActive = activeView === "orders" && Boolean(activePaymentOrder);
   const created = useMemo(() => createdSubscriptionFromOrder(selectedOrder), [selectedOrder]);
   const lifecycle = resolveLifecycle(created);
   const currentPlan = subscriptionPlan(created, selectedPlanId, locale);
@@ -1365,7 +1371,7 @@ export function UserPortalPage({
       setLastPaymentOrderRef(checkout.order.orderRef);
       setSelectedPlanId(planId);
       setOrderFormOpen(false);
-      setActiveView("profile");
+      setActiveView("orders");
       setActivePaymentOrderRef(checkout.order.orderRef);
       const redirectUrl = paymentRedirectUrl(checkout.order);
       if (redirectUrl && shouldRedirectToPaymentProvider()) {
@@ -1481,7 +1487,7 @@ export function UserPortalPage({
     setActionError("");
     setOrderFormOpen(false);
     setLastPaymentOrderRef(order.orderRef);
-    setActiveView("profile");
+    setActiveView("orders");
     setActivePaymentOrderRef(order.orderRef);
     const redirectUrl = paymentRedirectUrl(order);
     if (redirectUrl && shouldRedirectToPaymentProvider()) {
@@ -2121,58 +2127,56 @@ export function UserPortalPage({
               locale={locale}
             />
           ) : null}
+          {activeView === "orders" ? (
+            <SubscriptionManager
+              activePaymentOrder={activePaymentOrder}
+              actionError={actionError}
+              orderClientFilter={orderClientFilter}
+              orderFormOpen={orderFormOpen}
+              orderRows={filteredOrderRows}
+              paymentOrders={paymentOrders}
+              lastPaymentOrderRef={lastPaymentOrderRef}
+              orderSearch={orderSearch}
+              orderSort={orderSort}
+              orderStatusFilter={orderStatusFilter}
+              paymentChannel={paymentChannel}
+              selectedOrderRef={selectedOrderRef}
+              selectedPlanId={selectedPlanId}
+              pending={pending}
+              setOrderClientFilter={setOrderClientFilter}
+              setOrderSearch={setOrderSearch}
+              setOrderSort={setOrderSort}
+              setOrderStatusFilter={setOrderStatusFilter}
+              setPaymentChannel={setPaymentChannel}
+              setSelectedPlanId={setSelectedPlanId}
+              closePaymentOrder={() => setActivePaymentOrderRef(null)}
+              openPaymentOrder={openPaymentOrder}
+              refreshPaymentOrders={refreshPaymentOrders}
+              submitSubscription={submitSubscription}
+              openMarketplace={openMarketplace}
+              closeOrderForm={closeOrderForm}
+              viewOrder={viewOrder}
+              locale={locale}
+            />
+          ) : null}
           {activeView === "profile" ? (
-            <>
-              {!paymentFlowActive ? (
-                <ProfilePanel
-                  created={created}
-                  currentEntitlement={currentEntitlement}
-                  currentPlan={currentPlan}
-                  lifecycle={lifecycle}
-                  registrationDate={registrationDate}
-                  authMode={portalSession.authMode}
-                  authenticatorBound={authenticatorBound}
-                  authenticatorPending={authenticatorPending}
-                  passkeyExported={passkeyExported}
-                  passkeyError={passkeyError}
-                  passkeyPending={passkeyPending}
-                  exportPasskey={exportPasskey}
-                  startAuthenticatorEnrollment={startAuthenticatorEnrollment}
-                  userRef={portalSession.userRef}
-                  locale={locale}
-                />
-              ) : null}
-              <SubscriptionManager
-                activePaymentOrder={activePaymentOrder}
-                actionError={actionError}
-                orderClientFilter={orderClientFilter}
-                orderFormOpen={orderFormOpen}
-                orderRows={filteredOrderRows}
-                paymentOrders={paymentOrders}
-                lastPaymentOrderRef={lastPaymentOrderRef}
-                orderSearch={orderSearch}
-                orderSort={orderSort}
-                orderStatusFilter={orderStatusFilter}
-                paymentChannel={paymentChannel}
-                selectedOrderRef={selectedOrderRef}
-                selectedPlanId={selectedPlanId}
-                pending={pending}
-                setOrderClientFilter={setOrderClientFilter}
-                setOrderSearch={setOrderSearch}
-                setOrderSort={setOrderSort}
-                setOrderStatusFilter={setOrderStatusFilter}
-                setPaymentChannel={setPaymentChannel}
-                setSelectedPlanId={setSelectedPlanId}
-                closePaymentOrder={() => setActivePaymentOrderRef(null)}
-                openPaymentOrder={openPaymentOrder}
-                refreshPaymentOrders={refreshPaymentOrders}
-                submitSubscription={submitSubscription}
-                openMarketplace={openMarketplace}
-                closeOrderForm={closeOrderForm}
-                viewOrder={viewOrder}
-                locale={locale}
-              />
-            </>
+            <ProfilePanel
+              created={created}
+              currentEntitlement={currentEntitlement}
+              currentPlan={currentPlan}
+              lifecycle={lifecycle}
+              registrationDate={registrationDate}
+              authMode={portalSession.authMode}
+              authenticatorBound={authenticatorBound}
+              authenticatorPending={authenticatorPending}
+              passkeyExported={passkeyExported}
+              passkeyError={passkeyError}
+              passkeyPending={passkeyPending}
+              exportPasskey={exportPasskey}
+              startAuthenticatorEnrollment={startAuthenticatorEnrollment}
+              userRef={portalSession.userRef}
+              locale={locale}
+            />
           ) : null}
           {rechargeDialogOpen ? (
             <RechargeDialog
@@ -3147,7 +3151,7 @@ function PortalPaymentFlow({
         <div className={cn("portal-payment-compact-header", isCheckout && "checkout")}>
           <button className="portal-payment-back-button" type="button" onClick={closePaymentOrder}>
             <ArrowLeft aria-hidden="true" />
-            {uiText(locale, "返回个人与安全", "Back to Profile")}
+            {uiText(locale, "返回订单", "Back to Orders")}
           </button>
           {isCheckout ? (
             <span className="portal-payment-compact-spacer" aria-hidden="true" />
@@ -3233,7 +3237,7 @@ function PortalPaymentFlow({
                     </button>
                   ) : null}
                   <button className="portal-secondary-button" type="button" onClick={closePaymentOrder}>
-                    {uiText(locale, "返回个人与安全", "Back to Profile")}
+                    {uiText(locale, "返回订单", "Back to Orders")}
                   </button>
                 </div>
               </div>
@@ -4415,7 +4419,7 @@ function SupportPanel({
           </span>
           <span>
             <strong>{uiText(locale, "账号安全", "Account security")}</strong>
-            <small>{uiText(locale, "身份验证器和通行密钥问题会在个人与安全页继续处理。", "Authenticator and passkey issues continue from Profile & security.")}</small>
+            <small>{uiText(locale, "身份验证器和通行密钥问题会在个人中心继续处理。", "Authenticator and passkey issues continue from Personal center.")}</small>
           </span>
         </div>
       </aside>
@@ -4623,7 +4627,7 @@ function ProfilePanel({
       <div className="portal-section-heading">
         <UserCog aria-hidden="true" />
         <div>
-          <span className="portal-card-label">{uiText(locale, "个人与安全", "Profile & security")}</span>
+          <span className="portal-card-label">{uiText(locale, "个人中心", "Personal center")}</span>
           <h2>{uiText(locale, "账户与安全设置", "Account and security")}</h2>
           <p>{uiText(locale, "这里展示账户信息和安全设置。", "Review account info and security settings here.")}</p>
         </div>
