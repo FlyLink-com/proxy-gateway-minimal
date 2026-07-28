@@ -48,12 +48,13 @@ function refFactory() {
   };
 }
 
-function fixedClockDatabase(database, clock) {
+function fixedClockDatabase(database, clock, onPrepare = () => {}) {
   return new Proxy(database, {
     get(target, property) {
       if (property === "inTransaction") return target.inTransaction;
       if (property === "prepare") {
         return (sql) => {
+          onPrepare(sql);
           if (/select\s+strftime\('%Y-%m-%dT%H:%M:%fZ',\s*'now'\)/i.test(sql)) {
             return { pluck: () => ({ get: () => clock.value }) };
           }
@@ -213,8 +214,13 @@ function fixture(options = {}) {
   const database = createSchema(dbPath);
   insertAccount(database);
   const clock = { value: CLOCK };
+  const preparedSql = [];
   const store = createSqliteCoinCommerceStore({
-    database: fixedClockDatabase(database, clock),
+    database: fixedClockDatabase(
+      database,
+      clock,
+      (sql) => preparedSql.push(sql)
+    ),
     commerceRefFactory: refFactory(),
     walletRefFactory: refFactory(),
     ...options
@@ -224,6 +230,7 @@ function fixture(options = {}) {
     dbPath,
     database,
     clock,
+    preparedSql,
     store,
     close() {
       store.close();
@@ -403,6 +410,7 @@ test("factory enforces exact ownership, schemas, connection settings, and surfac
       "confirmOrder",
       "cancelOrder",
       "getOrder",
+      "listOrders",
       "claimDueCaptures",
       "captureClaimedOrder",
       "recoverNonTerminalOrders",
@@ -424,6 +432,163 @@ test("factory enforces exact ownership, schemas, connection settings, and surfac
   } finally {
     state.database.close();
     rmSync(state.directory, { recursive: true, force: true, maxRetries: 3 });
+  }
+});
+
+test("listOrders is account-owned, deterministically paged, bounded, query-constant, and read-only", () => {
+  const state = fixture();
+  try {
+    insertAccount(state.database, "acct_synthetic_2");
+    state.store.publishOfferVersion(offer());
+    credit(state.store, {
+      accountId: "acct_synthetic_1",
+      coinType: "paid_coins",
+      amountUnits: 100,
+      suffix: "list_owner"
+    });
+    credit(state.store, {
+      accountId: "acct_synthetic_2",
+      coinType: "paid_coins",
+      amountUnits: 100,
+      suffix: "list_other"
+    });
+
+    const createOrder = (accountId, createdAt, key) => {
+      state.clock.value = createdAt;
+      const quote = state.store.createCheckoutQuote({
+        accountId,
+        offerRef: "offer_monthly_basic"
+      });
+      return state.store.confirmOrder({
+        accountId,
+        quoteRef: quote.quoteRef,
+        operation: commerceOperation(key, accountId)
+      });
+    };
+    const oldest = createOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:34:54.000Z",
+      "list_owner_oldest"
+    );
+    const tiedLowerRef = createOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:34:56.000Z",
+      "list_owner_tied_lower"
+    );
+    const tiedHigherRef = createOrder(
+      "acct_synthetic_1",
+      "2026-07-26T12:34:56.000Z",
+      "list_owner_tied_higher"
+    );
+    createOrder(
+      "acct_synthetic_2",
+      "2026-07-26T12:34:57.000Z",
+      "list_other_newest"
+    );
+
+    const before = snapshotTables(
+      state.database,
+      [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+    );
+    state.preparedSql.length = 0;
+    const firstPage = state.store.listOrders({
+      accountId: "acct_synthetic_1",
+      limit: 2
+    });
+    assert.deepEqual(
+      firstPage.orders.map((order) => order.orderRef),
+      [tiedHigherRef.orderRef, tiedLowerRef.orderRef]
+    );
+    assert.deepEqual(firstPage.nextCursor, {
+      afterCreatedAt: tiedLowerRef.createdAt,
+      afterOrderRef: tiedLowerRef.orderRef
+    });
+    assert.equal(state.preparedSql.length, 2);
+    assert.equal(
+      state.preparedSql.filter(
+        (sql) => /platform_coin_commerce_fulfillment_commands/i.test(sql)
+      ).length,
+      1
+    );
+
+    const continuation = state.store.listOrders({
+      accountId: "acct_synthetic_1",
+      limit: 2,
+      afterCreatedAt: firstPage.nextCursor.afterCreatedAt,
+      afterOrderRef: firstPage.nextCursor.afterOrderRef
+    });
+    assert.deepEqual(
+      continuation.orders.map((order) => order.orderRef),
+      [oldest.orderRef]
+    );
+    assert.equal(continuation.nextCursor, null);
+
+    const one = state.store.listOrders({
+      accountId: "acct_synthetic_1",
+      limit: 1
+    });
+    assert.deepEqual(
+      one.orders.map((order) => order.orderRef),
+      [tiedHigherRef.orderRef]
+    );
+    assert.deepEqual(one.nextCursor, {
+      afterCreatedAt: tiedHigherRef.createdAt,
+      afterOrderRef: tiedHigherRef.orderRef
+    });
+    assert.equal(
+      state.store.listOrders({
+        accountId: "acct_synthetic_1",
+        limit: 100
+      }).orders.length,
+      3
+    );
+
+    for (const limit of [0, 101]) {
+      expectCode(() => state.store.listOrders({
+        accountId: "acct_synthetic_1",
+        limit
+      }), "invalid_pagination");
+    }
+    for (const input of [
+      {
+        accountId: "acct_synthetic_1",
+        limit: 2,
+        afterCreatedAt: tiedLowerRef.createdAt
+      },
+      {
+        accountId: "acct_synthetic_1",
+        limit: 2,
+        afterOrderRef: tiedLowerRef.orderRef
+      },
+      {
+        accountId: "acct_synthetic_1",
+        limit: 2,
+        afterCreatedAt: "2026-07-26T12:34:56Z",
+        afterOrderRef: tiedLowerRef.orderRef
+      },
+      {
+        accountId: "acct_synthetic_1",
+        limit: 2,
+        afterCreatedAt: tiedLowerRef.createdAt,
+        afterOrderRef: "ORDER_UNSAFE"
+      }
+    ]) {
+      expectCode(() => state.store.listOrders(input), "invalid_pagination");
+    }
+    expectCode(() => state.store.listOrders({
+      accountId: "acct_synthetic_1",
+      limit: 2,
+      unknown: true
+    }), "invalid_store_contract");
+    assert.deepEqual(
+      snapshotTables(
+        state.database,
+        [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+      ),
+      before
+    );
+  } finally {
+    state.close();
   }
 });
 

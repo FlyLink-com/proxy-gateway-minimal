@@ -205,7 +205,8 @@ function portalCoinCommerceRoutesEnabled(state) {
       "createCheckoutQuote",
       "confirmOrder",
       "cancelOrder",
-      "getOrder"
+      "getOrder",
+      "listOrders"
     ])
     && hasCallableSafeDescriptorChain(auth, ["requireSession"])
     && hasCallableOwnSurface(coordinator, ["start", "stop"])

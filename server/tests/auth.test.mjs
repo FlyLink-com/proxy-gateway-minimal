@@ -50,6 +50,9 @@ function commerceAuthState() {
         },
         getOrder() {
           throw new Error("auth boundary test must not reach Commerce Store");
+        },
+        listOrders() {
+          throw new Error("auth boundary test must not reach Commerce Store");
         }
       },
       coinCommerceCoordinator: {
