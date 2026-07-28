@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type KeyboardEvent,
   type ReactNode
 } from "react";
 
@@ -46,11 +47,14 @@ type Cursor = {
   afterOrderRef: string;
 };
 
-type CurrentInputs = {
-  alive: boolean;
+export type PortalOrdersIdentity = {
   commerceClient: PortalCoinCommerceClient | null;
   sessionRef: string | null;
   sessionGeneration: number;
+};
+
+type CurrentInputs = PortalOrdersIdentity & {
+  alive: boolean;
 };
 
 function copy(locale: PortalOrdersPanelProps["locale"], zh: string, en: string) {
@@ -59,6 +63,15 @@ function copy(locale: PortalOrdersPanelProps["locale"], zh: string, en: string) 
 
 function stateValue<T>(state: ReadState<T>) {
   return "value" in state ? state.value : undefined;
+}
+
+export function portalOrdersIdentityMatches(
+  left: PortalOrdersIdentity,
+  right: PortalOrdersIdentity
+) {
+  return left.commerceClient === right.commerceClient
+    && left.sessionRef === right.sessionRef
+    && left.sessionGeneration === right.sessionGeneration;
 }
 
 export function PortalOrdersPanel({
@@ -83,7 +96,16 @@ export function PortalOrdersPanel({
     value: null as never
   });
   const [selectedDetailRef, setSelectedDetailRef] = useState<string | null>(null);
+  const initialIdentity = { commerceClient, sessionRef, sessionGeneration };
+  const [listIdentity, setListIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
+  const [detailIdentity, setDetailIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
   const currentRef = useRef<CurrentInputs | null>(null);
+  const filterRefs = useRef<Record<PortalOrdersFilter, HTMLButtonElement | null>>({
+    all: null,
+    coins_consumption: null,
+    coins_recharge: null,
+    historical: null
+  });
   const onSessionInvalidRef = useRef<(() => void) | null>(null);
   const listRequestRef = useRef(0);
   const detailRequestRef = useRef(0);
@@ -104,6 +126,9 @@ export function PortalOrdersPanel({
       sessionGeneration
     };
     currentRef.current = current;
+    setListIdentity(current);
+    setDetailIdentity(current);
+    setListState({ phase: "loading" });
     setDetailState({ phase: "empty", value: null as never });
     setSelectedDetailRef(null);
     setNextCursor(null);
@@ -172,6 +197,7 @@ export function PortalOrdersPanel({
       return;
     }
     if (listCurrent(current, requestId)) {
+      setListIdentity(current);
       setListRetryRequest({ cursor, append });
     }
     if (!append && listCurrent(current, requestId)) setListState({ phase: "loading" });
@@ -251,6 +277,7 @@ export function PortalOrdersPanel({
       }
       return;
     }
+    setDetailIdentity(current);
     if (detailCurrent(current, requestId)) setDetailState({ phase: "loading" });
     try {
       const order = await current.commerceClient.getOrder({
@@ -277,81 +304,122 @@ export function PortalOrdersPanel({
     }
   }, [detailCurrent]);
 
-  const rows = stateValue(listState) ?? [];
+  const renderedIdentity = { commerceClient, sessionRef, sessionGeneration };
+  const visibleListState = portalOrdersIdentityMatches(listIdentity, renderedIdentity)
+    ? listState
+    : { phase: "loading" as const };
+  const visibleDetailState = portalOrdersIdentityMatches(detailIdentity, renderedIdentity)
+    ? detailState
+    : { phase: "empty" as const, value: null as never };
+  const rows = stateValue(visibleListState) ?? [];
+  const selectFilter = (nextFilter: PortalOrdersFilter) => {
+    setFilter(nextFilter);
+    filterRefs.current[nextFilter]?.focus();
+  };
+  const handleFilterKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number
+  ) => {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % FILTERS.length;
+    if (event.key === "ArrowLeft") nextIndex = (index - 1 + FILTERS.length) % FILTERS.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = FILTERS.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    selectFilter(FILTERS[nextIndex].id);
+  };
+  const filterDomId = filter.replaceAll("_", "-");
 
   return (
     <section className="portal-orders-panel" aria-labelledby="portal-orders-heading">
       <h2 id="portal-orders-heading">{copy(locale, "订单", "Orders")}</h2>
       <div className="portal-orders-filters" role="tablist" aria-label={copy(locale, "订单分类", "Order categories")}>
-        {FILTERS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={filter === item.id}
-            onClick={() => setFilter(item.id)}
-          >
-            {copy(locale, item.zh, item.en)}
-          </button>
-        ))}
+        {FILTERS.map((item, index) => {
+          const itemDomId = item.id.replaceAll("_", "-");
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              id={`portal-orders-${itemDomId}-tab`}
+              aria-controls={`portal-orders-${itemDomId}-panel`}
+              aria-selected={filter === item.id}
+              tabIndex={filter === item.id ? 0 : -1}
+              onClick={() => setFilter(item.id)}
+              onKeyDown={(event) => handleFilterKeyDown(event, index)}
+              ref={(node) => {
+                filterRefs.current[item.id] = node;
+              }}
+            >
+              {copy(locale, item.zh, item.en)}
+            </button>
+          );
+        })}
       </div>
-      {shows("coins_consumption") ? (
-        <section className="portal-orders-section" aria-labelledby="portal-orders-consumption-heading">
-          <h3 id="portal-orders-consumption-heading">{copy(locale, "Coins 消费订单", "Coins consumption orders")}</h3>
-          {listState.phase === "loading" ? <p role="status">{copy(locale, "正在加载消费订单…", "Loading consumption orders…")}</p> : null}
-          {listState.phase === "empty" ? <p role="status">{copy(locale, "暂无 Coins 消费订单。", "No Coins consumption orders.")}</p> : null}
-          {listState.phase === "unavailable" || listState.phase === "error" ? (
-            <div role={listState.phase === "error" ? "alert" : "status"}>
-              <p>{listState.phase === "unavailable"
-                ? copy(locale, "Coins 消费订单暂不可用。", "Coins consumption orders are unavailable.")
-                : copy(locale, "Coins 消费订单加载失败。", "Coins consumption orders could not be loaded.")}</p>
-              {listState.retryable ? <button type="button" onClick={() => listRetryRequest.append ? loadMore() : void loadList(listRetryRequest.cursor, false)}>{copy(locale, "重试消费订单", "Retry consumption orders")}</button> : null}
-            </div>
-          ) : null}
-          {rows.length > 0 ? (
-            <div className="portal-orders-list" aria-label={copy(locale, "Coins 消费订单列表", "Coins consumption order list")}>
-              {rows.map((order) => (
-                <button key={order.orderRef} type="button" aria-label={order.orderRef} onClick={() => void openDetail(order.orderRef)}>
-                  <strong>{order.orderRef}</strong>
-                  <span>{order.offer.title[locale]}</span>
-                  <span>{order.paymentStatus}</span>
-                  <span>{order.fulfillment.status}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {nextCursor && rows.length > 0 && (listState.phase === "ready" || listState.phase === "empty") ? <button type="button" onClick={loadMore}>{copy(locale, "加载更多消费订单", "Load more consumption orders")}</button> : null}
-          {detailState.phase === "loading" ? <p role="status">{copy(locale, "正在加载订单详情…", "Loading order detail…")}</p> : null}
-          {detailState.phase === "unavailable" || detailState.phase === "error" ? (
-            <div role={detailState.phase === "error" ? "alert" : "status"}>
-              <p>{detailState.phase === "unavailable"
-                ? copy(locale, "订单详情暂不可用。", "Order detail is unavailable.")
-                : copy(locale, "订单详情加载失败。", "Order detail could not be loaded.")}</p>
-              {detailState.retryable && selectedDetailRef ? <button type="button" onClick={() => void openDetail(selectedDetailRef)}>{copy(locale, "重试订单详情", "Retry order detail")}</button> : null}
-            </div>
-          ) : null}
-          {detailState.phase === "ready" ? (
-            <section className="portal-orders-detail" aria-label={copy(locale, "Coins 消费订单详情", "Coins consumption order detail")}>
-              <h4>{detailState.value.orderRef}</h4>
-              <p>{copy(locale, "支付：", "Payment: ")}{detailState.value.paymentStatus}</p>
-              <p>{copy(locale, "履约：", "Fulfillment: ")}{detailState.value.fulfillment.status}</p>
-              <p>{copy(locale, "Coins：", "Coins: ")}{detailState.value.amountUnits}</p>
-            </section>
-          ) : null}
-        </section>
-      ) : null}
-      {shows("coins_recharge") ? (
-        <section className="portal-orders-section" aria-labelledby="portal-orders-recharge-heading">
-          <h3 id="portal-orders-recharge-heading">{copy(locale, "Coins 充值订单", "Coins recharge orders")}</h3>
-          <p>{copy(locale, "充值订单数据源尚未接入", "Recharge order data source is not connected yet")}</p>
-        </section>
-      ) : null}
-      {shows("historical") ? (
-        <section className="portal-orders-section" aria-labelledby="portal-orders-historical-heading">
-          <h3 id="portal-orders-historical-heading">{copy(locale, "历史订单", "Historical orders")}</h3>
-          {renderHistoricalOrders()}
-        </section>
-      ) : null}
+      <div
+        aria-labelledby={`portal-orders-${filterDomId}-tab`}
+        id={`portal-orders-${filterDomId}-panel`}
+        role="tabpanel"
+      >
+        {shows("coins_consumption") ? (
+          <section className="portal-orders-section" aria-labelledby="portal-orders-consumption-heading">
+            <h3 id="portal-orders-consumption-heading">{copy(locale, "Coins 消费订单", "Coins consumption orders")}</h3>
+            {visibleListState.phase === "loading" ? <p role="status">{copy(locale, "正在加载消费订单…", "Loading consumption orders…")}</p> : null}
+            {visibleListState.phase === "empty" ? <p role="status">{copy(locale, "暂无 Coins 消费订单。", "No Coins consumption orders.")}</p> : null}
+            {visibleListState.phase === "unavailable" || visibleListState.phase === "error" ? (
+              <div role={visibleListState.phase === "error" ? "alert" : "status"}>
+                <p>{visibleListState.phase === "unavailable"
+                  ? copy(locale, "Coins 消费订单暂不可用。", "Coins consumption orders are unavailable.")
+                  : copy(locale, "Coins 消费订单加载失败。", "Coins consumption orders could not be loaded.")}</p>
+                {visibleListState.retryable ? <button type="button" onClick={() => listRetryRequest.append ? loadMore() : void loadList(listRetryRequest.cursor, false)}>{copy(locale, "重试消费订单", "Retry consumption orders")}</button> : null}
+              </div>
+            ) : null}
+            {rows.length > 0 ? (
+              <div className="portal-orders-list" aria-label={copy(locale, "Coins 消费订单列表", "Coins consumption order list")}>
+                {rows.map((order) => (
+                  <button key={order.orderRef} type="button" aria-label={order.orderRef} onClick={() => void openDetail(order.orderRef)}>
+                    <strong>{order.orderRef}</strong>
+                    <span>{order.offer.title[locale]}</span>
+                    <span>{order.paymentStatus}</span>
+                    <span>{order.fulfillment.status}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {nextCursor && rows.length > 0 && (visibleListState.phase === "ready" || visibleListState.phase === "empty") ? <button type="button" onClick={loadMore}>{copy(locale, "加载更多消费订单", "Load more consumption orders")}</button> : null}
+            {visibleDetailState.phase === "loading" ? <p role="status">{copy(locale, "正在加载订单详情…", "Loading order detail…")}</p> : null}
+            {visibleDetailState.phase === "unavailable" || visibleDetailState.phase === "error" ? (
+              <div role={visibleDetailState.phase === "error" ? "alert" : "status"}>
+                <p>{visibleDetailState.phase === "unavailable"
+                  ? copy(locale, "订单详情暂不可用。", "Order detail is unavailable.")
+                  : copy(locale, "订单详情加载失败。", "Order detail could not be loaded.")}</p>
+                {visibleDetailState.retryable && selectedDetailRef ? <button type="button" onClick={() => void openDetail(selectedDetailRef)}>{copy(locale, "重试订单详情", "Retry order detail")}</button> : null}
+              </div>
+            ) : null}
+            {visibleDetailState.phase === "ready" ? (
+              <section className="portal-orders-detail" aria-label={copy(locale, "Coins 消费订单详情", "Coins consumption order detail")}>
+                <h4>{visibleDetailState.value.orderRef}</h4>
+                <p>{copy(locale, "支付：", "Payment: ")}{visibleDetailState.value.paymentStatus}</p>
+                <p>{copy(locale, "履约：", "Fulfillment: ")}{visibleDetailState.value.fulfillment.status}</p>
+                <p>{copy(locale, "Coins：", "Coins: ")}{visibleDetailState.value.amountUnits}</p>
+              </section>
+            ) : null}
+          </section>
+        ) : null}
+        {shows("coins_recharge") ? (
+          <section className="portal-orders-section" aria-labelledby="portal-orders-recharge-heading">
+            <h3 id="portal-orders-recharge-heading">{copy(locale, "Coins 充值订单", "Coins recharge orders")}</h3>
+            <p>{copy(locale, "充值订单数据源尚未接入", "Recharge order data source is not connected yet")}</p>
+          </section>
+        ) : null}
+        {shows("historical") ? (
+          <section className="portal-orders-section" aria-labelledby="portal-orders-historical-heading">
+            <h3 id="portal-orders-historical-heading">{copy(locale, "历史订单", "Historical orders")}</h3>
+            {renderHistoricalOrders()}
+          </section>
+        ) : null}
+      </div>
     </section>
   );
 }
