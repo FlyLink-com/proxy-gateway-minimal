@@ -610,6 +610,39 @@ function projectOfferList(input) {
   return projected;
 }
 
+function projectOrderPage(input) {
+  const value = snapshotExactObject(input, ["orders", "nextCursor"]);
+  const sourceOrders = snapshotPlainArray(value.orders);
+  const orders = new Array(sourceOrders.length);
+  for (let index = 0; index < sourceOrders.length; index += 1) {
+    orders[index] = projectOrder(sourceOrders[index]);
+  }
+  if (value.nextCursor === null) {
+    return { orders, nextCursor: null };
+  }
+  const cursor = snapshotExactObject(value.nextCursor, [
+    "afterCreatedAt",
+    "afterOrderRef"
+  ]);
+  const afterCreatedAt = requireUtcTimestamp(cursor.afterCreatedAt);
+  if (
+    typeof cursor.afterOrderRef !== "string"
+    || !COMMERCE_REFERENCE.test(cursor.afterOrderRef)
+    || orders.length === 0
+    || orders.at(-1).createdAt !== afterCreatedAt
+    || orders.at(-1).orderRef !== cursor.afterOrderRef
+  ) {
+    throw projectionInvalid();
+  }
+  return {
+    orders,
+    nextCursor: {
+      afterCreatedAt,
+      afterOrderRef: cursor.afterOrderRef
+    }
+  };
+}
+
 function readRawHeader(req, expectedName) {
   const rawHeaders = req.rawHeaders;
   if (!Array.isArray(rawHeaders) || rawHeaders.length % 2 !== 0) {
@@ -645,6 +678,60 @@ function requireNoQuery(req, res, next) {
     return;
   }
   next();
+}
+
+function parseOrderListQuery(req, res, next) {
+  const target = typeof req.originalUrl === "string"
+    ? req.originalUrl
+    : req.url;
+  const queryIndex = typeof target === "string" ? target.indexOf("?") : -1;
+  if (queryIndex === -1 || queryIndex === target.length - 1) {
+    sendCommerceError(res, 400, "commerce_request_invalid");
+    return;
+  }
+  const allowed = new Set(["limit", "afterCreatedAt", "afterOrderRef"]);
+  const values = {};
+  try {
+    const parameters = new URLSearchParams(target.slice(queryIndex + 1));
+    for (const [key, value] of parameters) {
+      if (!allowed.has(key) || Object.hasOwn(values, key)) {
+        throw projectionInvalid();
+      }
+      values[key] = value;
+    }
+    if (
+      !Object.hasOwn(values, "limit")
+      || !/^(?:[1-9]|[1-9][0-9]|100)$/.test(values.limit)
+    ) {
+      throw projectionInvalid();
+    }
+    const hasCreatedAt = Object.hasOwn(values, "afterCreatedAt");
+    const hasOrderRef = Object.hasOwn(values, "afterOrderRef");
+    if (
+      hasCreatedAt !== hasOrderRef
+      || (
+        hasCreatedAt
+        && (
+          requireUtcTimestamp(values.afterCreatedAt) !== values.afterCreatedAt
+          || !COMMERCE_REFERENCE.test(values.afterOrderRef)
+        )
+      )
+    ) {
+      throw projectionInvalid();
+    }
+    res.locals.portalCommerceOrderListQuery = {
+      limit: Number(values.limit),
+      ...(hasCreatedAt
+        ? {
+            afterCreatedAt: values.afterCreatedAt,
+            afterOrderRef: values.afterOrderRef
+          }
+        : {})
+    };
+    next();
+  } catch {
+    sendCommerceError(res, 400, "commerce_request_invalid");
+  }
 }
 
 function createSessionMiddleware(state) {
@@ -853,6 +940,7 @@ function isSelectedCommerceRoute(method, pathname) {
       pathname === "/api/portal/catalog/offers"
       || /^\/api\/portal\/catalog\/offers\/[a-z][a-z0-9_]{2,95}$/
         .test(pathname)
+      || pathname === "/api/portal/commerce/orders"
       || /^\/api\/portal\/commerce\/orders\/[a-z][a-z0-9_]{2,95}$/
         .test(pathname)
     );
@@ -938,6 +1026,25 @@ export function portalCoinCommerceRoutes(state, options = {}) {
           })
         );
         res.json({ quote });
+      } catch (error) {
+        sendStoreError(res, error);
+      }
+    }
+  );
+
+  router.get(
+    "/api/portal/commerce/orders",
+    parseOrderListQuery,
+    requireSession,
+    (_req, res) => {
+      try {
+        const page = projectOrderPage(
+          store.listOrders({
+            accountId: res.locals.portalCommerceSession.accountId,
+            ...res.locals.portalCommerceOrderListQuery
+          })
+        );
+        res.json(page);
       } catch (error) {
         sendStoreError(res, error);
       }

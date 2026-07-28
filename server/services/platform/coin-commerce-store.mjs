@@ -49,6 +49,7 @@ const STORE_METHODS = [
   "confirmOrder",
   "cancelOrder",
   "getOrder",
+  "listOrders",
   "claimDueCaptures",
   "captureClaimedOrder",
   "recoverNonTerminalOrders",
@@ -943,7 +944,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     `).get(...parameters) ?? null;
   }
 
-  function projectOrderRow(row) {
+  function projectOrderValues(row, fulfillment) {
     if (
       !row
       || !COMMERCE_REFERENCE.test(row.order_ref)
@@ -965,20 +966,6 @@ export function createSqliteCoinCommerceStore(options = {}) {
       parseJson(row.allocation_snapshot_json),
       row.amount_units
     );
-    const command = db.prepare(`
-      select * from platform_coin_commerce_fulfillment_commands
-       where order_ref = ?
-    `).get(row.order_ref);
-    let fulfillment = { status: "not_requested", safeCode: null };
-    if (command) {
-      validateCommandAndReceipt(command, row);
-      fulfillment = {
-        status: command.status,
-        safeCode: command.safe_failure_code
-      };
-    } else if (row.payment_status === "captured") {
-      throw commerceError("commerce_infrastructure_error");
-    }
     for (const timestamp of [
       row.cancel_until,
       row.created_at,
@@ -1003,6 +990,55 @@ export function createSqliteCoinCommerceStore(options = {}) {
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
+  }
+
+  function projectOrderRow(row) {
+    const command = db.prepare(`
+      select * from platform_coin_commerce_fulfillment_commands
+       where order_ref = ?
+    `).get(row.order_ref);
+    let fulfillment = { status: "not_requested", safeCode: null };
+    if (command) {
+      validateCommandAndReceipt(command, row);
+      fulfillment = {
+        status: command.status,
+        safeCode: command.safe_failure_code
+      };
+    } else if (row.payment_status === "captured") {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    return projectOrderValues(row, fulfillment);
+  }
+
+  function projectListedOrderRow(row) {
+    const hasCommand = row.fulfillment_status !== null;
+    if (
+      hasCommand
+        ? (
+            !["pending", "processing", "delivered", "failed"]
+              .includes(row.fulfillment_status)
+            || (
+              row.fulfillment_status === "failed"
+                ? !FULFILLMENT_FAILURE_CODES.has(row.fulfillment_safe_code)
+                : row.fulfillment_safe_code !== null
+            )
+          )
+        : row.fulfillment_safe_code !== null
+    ) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    if (!hasCommand && row.payment_status === "captured") {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    return projectOrderValues(
+      row,
+      hasCommand
+        ? {
+            status: row.fulfillment_status,
+            safeCode: row.fulfillment_safe_code
+          }
+        : { status: "not_requested", safeCode: null }
+    );
   }
 
   function projectOwnedOrder(accountId, orderRef) {
@@ -1634,6 +1670,76 @@ export function createSqliteCoinCommerceStore(options = {}) {
       throw commerceError("invalid_pagination");
     }
     return value;
+  }
+
+  function listOrders(listInput) {
+    return execute(() => {
+      const value = assertPlainObject(listInput);
+      const fields = new Set([
+        "accountId",
+        "limit",
+        "afterCreatedAt",
+        "afterOrderRef"
+      ]);
+      assertExactDataFields(
+        value,
+        fields,
+        new Set(["accountId", "limit"])
+      );
+      const accountId = requireAccount(value.accountId);
+      const limit = normalizeLimit(value.limit);
+      const hasCreatedAt = Object.hasOwn(value, "afterCreatedAt");
+      const hasOrderRef = Object.hasOwn(value, "afterOrderRef");
+      if (
+        hasCreatedAt !== hasOrderRef
+        || (
+          hasCreatedAt
+          && (
+            !isStrictIsoTimestamp(value.afterCreatedAt)
+            || typeof value.afterOrderRef !== "string"
+            || !COMMERCE_REFERENCE.test(value.afterOrderRef)
+          )
+        )
+      ) {
+        throw commerceError("invalid_pagination");
+      }
+      const afterCreatedAt = hasCreatedAt ? value.afterCreatedAt : null;
+      const afterOrderRef = hasOrderRef ? value.afterOrderRef : null;
+      const rows = db.prepare(`
+        select o.*,
+               c.status as fulfillment_status,
+               c.safe_failure_code as fulfillment_safe_code
+          from platform_coin_commerce_orders o
+          left join platform_coin_commerce_fulfillment_commands c
+            on c.order_ref = o.order_ref
+         where o.account_id = ?
+           and (
+             ? is null
+             or o.created_at < ?
+             or (o.created_at = ? and o.order_ref < ?)
+           )
+         order by o.created_at desc, o.order_ref desc
+         limit ?
+      `).all(
+        accountId,
+        afterCreatedAt,
+        afterCreatedAt,
+        afterCreatedAt,
+        afterOrderRef,
+        limit + 1
+      );
+      const hasMore = rows.length > limit;
+      const orders = rows.slice(0, limit).map(projectListedOrderRow);
+      return {
+        orders,
+        nextCursor: hasMore
+          ? {
+              afterCreatedAt: orders.at(-1).createdAt,
+              afterOrderRef: orders.at(-1).orderRef
+            }
+          : null
+      };
+    });
   }
 
   const claimCapturesTransaction = db.transaction((limit) => {
@@ -2838,6 +2944,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     confirmOrder,
     cancelOrder,
     getOrder,
+    listOrders,
     claimDueCaptures,
     captureClaimedOrder,
     recoverNonTerminalOrders,
