@@ -154,10 +154,8 @@ function PortalOrdersPanel(props: DirectPanelProps) {
     legacyPaymentOrders: [],
     serviceOrders: [],
     selectedServiceOrderRef: null,
-    selectedLegacyPaymentOrderRef: null,
     orderSearch: "",
     onOrderSearchChange: () => undefined,
-    onOpenLegacyPaymentOrder: () => undefined,
     onOpenServiceOrder: () => undefined,
     onOpenMarketplace: () => undefined,
     ...props
@@ -446,27 +444,166 @@ describe("PortalOrdersPanel", () => {
       name: /View.*service_request_001.*Monthly basic.*Active/i
     });
     expect(serviceAction).toHaveAttribute("aria-expanded", "false");
-    expect(serviceAction).toHaveAttribute("aria-controls");
+    expect(serviceAction).not.toHaveAttribute("aria-controls");
     const legacyAction = within(table).getByRole("button", {
       name: /View.*pay_001.*Basic monthly.*Payment failed/i
     });
-    expect(legacyAction).not.toHaveAttribute("aria-expanded");
+    expect(legacyAction).toHaveAttribute("aria-expanded", "false");
     expect(legacyAction).not.toHaveAttribute("aria-controls");
 
     const coinsAction = await within(table).findByRole("button", {
       name: /order_consumption_001.*Monthly 50 GB/i
     });
     expect(coinsAction).toHaveAttribute("aria-expanded", "false");
-    const detailId = coinsAction.getAttribute("aria-controls");
-    expect(detailId).toBeTruthy();
+    expect(coinsAction).not.toHaveAttribute("aria-controls");
     fireEvent.click(coinsAction);
 
     const detail = await screen.findByRole("region", {
       name: "Coins consumption order detail"
     });
+    const detailId = coinsAction.getAttribute("aria-controls");
+    expect(detailId).toBeTruthy();
     expect(coinsAction).toHaveAttribute("aria-expanded", "true");
     expect(detail).toHaveAttribute("id", detailId);
     expect(document.querySelectorAll(".portal-order-detail-row")).toHaveLength(1);
+
+    fireEvent.click(coinsAction);
+
+    expect(coinsAction).toHaveAttribute("aria-expanded", "false");
+    expect(coinsAction).not.toHaveAttribute("aria-controls");
+    expect(screen.queryByRole("region", {
+      name: "Coins consumption order detail"
+    })).toBeNull();
+    expect(client.getOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps a pending legacy payment inside Orders as a collapsible read-only detail", () => {
+    const pendingPaymentOrder: PortalPaymentOrder = {
+      ...PAYMENT_ORDER,
+      orderRef: "pay_pending_001",
+      status: "pending_payment",
+      paidAt: undefined
+    };
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: null,
+      sessionRef: null,
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      legacyPaymentOrders: [pendingPaymentOrder]
+    }));
+
+    const table = screen.getByRole("table", { name: "Orders" });
+    const action = within(table).getByRole("button", {
+      name: /View.*pay_pending_001.*Basic monthly.*Pending payment/i
+    });
+    expect(action).toHaveAttribute("aria-expanded", "false");
+    expect(action).not.toHaveAttribute("aria-controls");
+    expect(within(table).queryByRole("button", { name: /Pay now/i })).toBeNull();
+
+    fireEvent.click(action);
+
+    const detail = screen.getByRole("region", {
+      name: /Plan payment details: P-pending_001/i
+    });
+    const detailId = action.getAttribute("aria-controls");
+    expect(detailId).toBeTruthy();
+    expect(action).toHaveAttribute("aria-expanded", "true");
+    expect(detail).toHaveAttribute("id", detailId);
+    expect(within(detail).getByText("Pending payment")).toBeInTheDocument();
+
+    fireEvent.click(action);
+
+    expect(action).toHaveAttribute("aria-expanded", "false");
+    expect(action).not.toHaveAttribute("aria-controls");
+    expect(screen.queryByRole("region", {
+      name: /Plan payment details: P-pending_001/i
+    })).toBeNull();
+  });
+
+  test("does not restore a previously selected service after legacy detail closes", () => {
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: null,
+      sessionRef: "session_single_detail",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      legacyPaymentOrders: [PAYMENT_ORDER],
+      serviceOrders: [SERVICE_ORDER],
+      selectedServiceOrderRef: SERVICE_ORDER.requestRef
+    }));
+
+    expect(screen.getByRole("region", {
+      name: /Service record details:/i
+    })).toBeInTheDocument();
+    const legacyAction = screen.getByRole("button", {
+      name: /View.*pay_001.*Basic monthly.*Payment failed/i
+    });
+    fireEvent.click(legacyAction);
+    expect(screen.getByRole("region", {
+      name: /Plan payment details: P-001/i
+    })).toBeInTheDocument();
+    expect(screen.queryByRole("region", {
+      name: /Service record details:/i
+    })).toBeNull();
+
+    fireEvent.click(legacyAction);
+
+    expect(document.querySelectorAll(".portal-order-detail-row")).toHaveLength(0);
+    expect(legacyAction).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", {
+      name: /View.*service_request_001.*Monthly basic.*Active/i
+    })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("exposes the scrollable Orders table as a named keyboard-focusable region", () => {
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: null,
+      sessionRef: null,
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      legacyPaymentOrders: [PAYMENT_ORDER]
+    }));
+
+    const scrollRegion = screen.getByRole("region", {
+      name: "Scrollable orders table"
+    });
+    expect(scrollRegion).toHaveAttribute("tabindex", "0");
+    expect(within(scrollRegion).getByRole("table", { name: "Orders" })).toBeInTheDocument();
+  });
+
+  test("does not add a table-scroll focus stop to the mobile card layout", () => {
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 720
+    });
+    try {
+      render(createElement(PortalOrdersPanel, {
+        locale: "en",
+        commerceClient: null,
+        sessionRef: null,
+        sessionGeneration: 1,
+        onSessionInvalid: vi.fn(),
+        legacyPaymentOrders: [PAYMENT_ORDER]
+      }));
+
+      const wrapper = document.querySelector(".portal-order-table-wrap");
+      expect(wrapper).not.toBeNull();
+      expect(wrapper).not.toHaveAttribute("role");
+      expect(wrapper).not.toHaveAttribute("aria-label");
+      expect(wrapper).not.toHaveAttribute("tabindex");
+      expect(screen.queryByRole("region", {
+        name: "Scrollable orders table"
+      })).toBeNull();
+    } finally {
+      cleanup();
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalWidth
+      });
+    }
   });
 
   test("keeps accessible action names unique when displayed service refs share a prefix", async () => {
@@ -533,10 +670,8 @@ describe("PortalOrdersPanel", () => {
         legacyPaymentOrders: [],
         serviceOrders: [SERVICE_ORDER],
         selectedServiceOrderRef,
-        selectedLegacyPaymentOrderRef: null,
         orderSearch: "",
         onOrderSearchChange: () => undefined,
-        onOpenLegacyPaymentOrder: () => undefined,
         onOpenServiceOrder: (order) => setSelectedServiceOrderRef(order.requestRef),
         onOpenMarketplace: () => undefined
       });
@@ -552,6 +687,48 @@ describe("PortalOrdersPanel", () => {
     expect(screen.queryByRole("region", { name: "Coins consumption order detail" })).toBeNull();
     expect(screen.getByText("Client")).toBeInTheDocument();
     expect(document.querySelectorAll(".portal-order-detail-row")).toHaveLength(1);
+  });
+
+  test("invalidates an in-flight Coins detail before switching to a service detail", async () => {
+    const staleDetail = deferred<PortalCoinOrder>();
+    const onSessionInvalid = vi.fn();
+    const client = {
+      listOrders: vi.fn().mockResolvedValue({ orders: [ORDER], nextCursor: null }),
+      getOrder: vi.fn(() => staleDetail.promise)
+    } as unknown as PortalCoinCommerceClient;
+
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: client,
+      sessionRef: "session_switch_stale_detail",
+      sessionGeneration: 1,
+      onSessionInvalid,
+      serviceOrders: [SERVICE_ORDER]
+    }));
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: new RegExp(ORDER.orderRef)
+    }));
+    await waitFor(() => expect(client.getOrder).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", {
+      name: /View.*service_request_001.*Monthly basic.*Active/i
+    }));
+    expect(screen.getByText("Client")).toBeInTheDocument();
+
+    await act(async () => {
+      staleDetail.reject(new PortalCoinCommerceClientError(
+        "commerce_session_invalid",
+        false
+      ));
+      await Promise.resolve();
+    });
+
+    expect(onSessionInvalid).not.toHaveBeenCalled();
+    expect(screen.queryByRole("region", {
+      name: "Coins consumption order detail"
+    })).toBeNull();
+    expect(screen.getByText("Client")).toBeInTheDocument();
   });
 
   test("shows only the neutral table empty state when plans and services are selected", async () => {
@@ -1092,6 +1269,39 @@ describe("PortalOrdersPanel", () => {
       onSessionInvalid: vi.fn(),
     }));
     expect(screen.queryByRole("region", { name: "Coins consumption order detail" })).toBeNull();
+  });
+
+  test("clears an expanded legacy detail when the Portal identity changes", () => {
+    const view = render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: null,
+      sessionRef: "session_legacy_before",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      legacyPaymentOrders: [PAYMENT_ORDER]
+    }));
+    fireEvent.click(screen.getByRole("button", {
+      name: /View.*pay_001.*Basic monthly.*Payment failed/i
+    }));
+    expect(screen.getByRole("region", {
+      name: /Plan payment details: P-001/i
+    })).toBeInTheDocument();
+
+    view.rerender(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: null,
+      sessionRef: "session_legacy_after",
+      sessionGeneration: 2,
+      onSessionInvalid: vi.fn(),
+      legacyPaymentOrders: [PAYMENT_ORDER]
+    }));
+
+    expect(screen.queryByRole("region", {
+      name: /Plan payment details: P-001/i
+    })).toBeNull();
+    expect(screen.getByRole("button", {
+      name: /View.*pay_001.*Basic monthly.*Payment failed/i
+    })).toHaveAttribute("aria-expanded", "false");
   });
 
   test("rejects a duplicate cross-page ref and does not let an old same-cursor finalizer unlock the new request", async () => {

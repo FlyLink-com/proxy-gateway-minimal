@@ -100,12 +100,42 @@ function walletModel(
     retryLedger: vi.fn(),
     refreshWallet: vi.fn(),
     loadMoreLedger: vi.fn(),
-    ...overrides
+    ...overrides,
+    loadingMoreLedger: overrides.loadingMoreLedger ?? false,
+    loadMoreLedgerError: overrides.loadMoreLedgerError ?? null
   };
 }
 
 function renderPanel(model: PortalWalletReadModel, locale: "zh" | "en" = "en") {
   return render(createElement(PortalWalletPanel, { locale, model }));
+}
+
+function WalletHarness({
+  client,
+  modelRef
+}: {
+  client: PortalWalletClient;
+  modelRef: { current: PortalWalletReadModel | null };
+}) {
+  const model = usePortalWalletReadModel({
+    client,
+    sessionRef: "session_wallet_001",
+    sessionGeneration: 1,
+    loadLedger: true,
+    onSessionInvalid: () => undefined
+  });
+  modelRef.current = model;
+  return createElement(PortalWalletPanel, { locale: "en", model });
+}
+
+function renderWalletHarness(client: PortalWalletClient) {
+  const modelRef: { current: PortalWalletReadModel | null } = {
+    current: null
+  };
+  return {
+    ...render(createElement(WalletHarness, { client, modelRef })),
+    modelRef
+  };
 }
 
 describe("PortalWalletPanel", () => {
@@ -124,6 +154,13 @@ describe("PortalWalletPanel", () => {
     expect(screen.getByText("4", { selector: "dd" })).toBeInTheDocument();
 
     const table = screen.getByRole("table", { name: "Coins Wallet activity" });
+    const scrollRegion = screen.getByRole("region", {
+      name: "Coins Wallet activity table"
+    });
+    expect(scrollRegion).toHaveAttribute("tabindex", "0");
+    expect(within(scrollRegion).getByRole("table", {
+      name: "Coins Wallet activity"
+    })).toBe(table);
     expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
       "Category",
       "Coin type",
@@ -155,8 +192,34 @@ describe("PortalWalletPanel", () => {
       "dateTime",
       "2026-07-27T11:00:00.000Z"
     );
-    expect(screen.getByText(/Coins recharge is not available yet/))
-      .toBeInTheDocument();
+  });
+
+  test("does not add a ledger-scroll focus stop to the mobile layout", () => {
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 720
+    });
+    try {
+      renderPanel(walletModel({
+        ledger: { phase: "ready", value: [HELD_ENTRY] }
+      }));
+
+      const wrapper = document.querySelector(".portal-wallet-ledger-wrap");
+      expect(wrapper).not.toBeNull();
+      expect(wrapper).not.toHaveAttribute("role");
+      expect(wrapper).not.toHaveAttribute("aria-label");
+      expect(wrapper).not.toHaveAttribute("tabindex");
+      expect(screen.queryByRole("region", {
+        name: "Coins Wallet activity table"
+      })).toBeNull();
+    } finally {
+      cleanup();
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalWidth
+      });
+    }
   });
 
   test.each<{
@@ -289,22 +352,165 @@ describe("PortalWalletPanel", () => {
     expect(screen.queryByRole("button", { name: "Load more activity" })).not.toBeInTheDocument();
   });
 
-  test("keeps all six recharge denominations disabled", () => {
-    renderPanel(walletModel(), "zh");
+  test("marks the page-two control busy and blocks a duplicate request", async () => {
+    const cursor = {
+      afterOccurredAt: CREDIT_ENTRY.occurredAt,
+      afterEntryRef: CREDIT_ENTRY.entryRef
+    };
+    const pageTwo = deferred<{
+      entries: PortalWalletLedgerEntry[];
+      nextCursor: null;
+    }>();
+    const client: PortalWalletClient = {
+      getSummary: vi.fn(async () => ACTIVE_SUMMARY),
+      listLedger: vi.fn((input) => (
+        "afterOccurredAt" in input
+          ? pageTwo.promise
+          : Promise.resolve({
+              entries: [CREDIT_ENTRY],
+              nextCursor: cursor
+            })
+      ))
+    };
+    renderWalletHarness(client);
 
-    const recharge = screen.getByRole("list", { name: "Coins 充值档位" });
-    const buttons = within(recharge).getAllByRole("button");
-    expect(buttons.map((button) => button.textContent)).toEqual([
-      "10 Coins",
-      "30 Coins",
-      "50 Coins",
-      "100 Coins",
-      "200 Coins",
-      "300 Coins"
-    ]);
-    buttons.forEach((button) => {
-      expect(button).toBeDisabled();
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Load more activity"
+    }));
+
+    const busyButton = await screen.findByRole("button", {
+      name: "Loading more activity…"
     });
+    expect(busyButton).toBeDisabled();
+    expect(busyButton).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(busyButton);
+    expect(client.listLedger).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      pageTwo.resolve({ entries: [HELD_ENTRY], nextCursor: null });
+      await pageTwo.promise;
+    });
+  });
+
+  test("keeps page one and its cursor when page two fails retryably", async () => {
+    const cursor = {
+      afterOccurredAt: CREDIT_ENTRY.occurredAt,
+      afterEntryRef: CREDIT_ENTRY.entryRef
+    };
+    const pageTwo = deferred<{
+      entries: PortalWalletLedgerEntry[];
+      nextCursor: null;
+    }>();
+    const client: PortalWalletClient = {
+      getSummary: vi.fn(async () => ACTIVE_SUMMARY),
+      listLedger: vi.fn((input) => (
+        "afterOccurredAt" in input
+          ? pageTwo.promise
+          : Promise.resolve({
+              entries: [CREDIT_ENTRY],
+              nextCursor: cursor
+            })
+      ))
+    };
+    const { modelRef } = renderWalletHarness(client);
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Load more activity"
+    }));
+    await act(async () => {
+      pageTwo.reject(
+        new PortalWalletClientError("wallet_request_failed", true)
+      );
+      await Promise.allSettled([pageTwo.promise]);
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "More Wallet activity could not be loaded. Your current activity is still shown."
+    );
+    expect(screen.getByText("Coins credited")).toBeInTheDocument();
+    expect(screen.queryByText("Wallet activity could not be loaded."))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole("button", {
+      name: "Retry loading more activity"
+    })).toBeInTheDocument();
+    expect(modelRef.current?.ledger).toEqual({
+      phase: "ready",
+      value: [CREDIT_ENTRY]
+    });
+    expect(modelRef.current?.nextLedgerCursor).toEqual(cursor);
+  });
+
+  test("retries the failed page and appends each new ledger row once", async () => {
+    const cursor = {
+      afterOccurredAt: CREDIT_ENTRY.occurredAt,
+      afterEntryRef: CREDIT_ENTRY.entryRef
+    };
+    const failedPage = deferred<{
+      entries: PortalWalletLedgerEntry[];
+      nextCursor: null;
+    }>();
+    let pageRequest = 0;
+    const client: PortalWalletClient = {
+      getSummary: vi.fn(async () => ACTIVE_SUMMARY),
+      listLedger: vi.fn((input) => {
+        if (!("afterOccurredAt" in input)) {
+          return Promise.resolve({
+            entries: [CREDIT_ENTRY],
+            nextCursor: cursor
+          });
+        }
+        pageRequest += 1;
+        return pageRequest === 1
+          ? failedPage.promise
+          : Promise.resolve({
+              entries: [HELD_ENTRY],
+              nextCursor: null
+            });
+      })
+    };
+    const { modelRef } = renderWalletHarness(client);
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Load more activity"
+    }));
+    await act(async () => {
+      failedPage.reject(
+        new PortalWalletClientError("wallet_request_failed", true)
+      );
+      await Promise.allSettled([failedPage.promise]);
+    });
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Retry loading more activity"
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Reserved for order")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Coins credited")).toHaveLength(1);
+    expect(screen.getAllByText("Reserved for order")).toHaveLength(1);
+    expect(screen.queryByText(
+      "More Wallet activity could not be loaded. Your current activity is still shown."
+    )).not.toBeInTheDocument();
+    expect(modelRef.current?.ledger).toEqual({
+      phase: "ready",
+      value: [CREDIT_ENTRY, HELD_ENTRY]
+    });
+    expect(modelRef.current?.nextLedgerCursor).toBeNull();
+  });
+
+  test("keeps the Wallet focused on balances and activity while recharge is out of scope", () => {
+    renderPanel(walletModel());
+
+    expect(screen.getByRole("heading", { name: "Balance" }))
+      .toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Wallet activity" }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Recharge" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("list", {
+      name: "Coins recharge denominations"
+    })).not.toBeInTheDocument();
   });
 });
 
@@ -662,7 +868,7 @@ describe("usePortalWalletReadModel", () => {
     expect(currentSessionInvalid).not.toHaveBeenCalled();
   });
 
-  test("guards the exact load-more cursor, in-flight request, and cross-page duplicates", async () => {
+  test("guards the exact load-more cursor and preserves current rows on cross-page duplicates", async () => {
     const cursor = {
       afterOccurredAt: CREDIT_ENTRY.occurredAt,
       afterEntryRef: CREDIT_ENTRY.entryRef
@@ -712,10 +918,14 @@ describe("usePortalWalletReadModel", () => {
       await pageTwo.promise;
     });
     expect(result.current.ledger).toEqual({
+      phase: "ready",
+      value: [CREDIT_ENTRY]
+    });
+    expect(result.current.loadMoreLedgerError).toEqual({
       phase: "error",
       retryable: true
     });
-    expect(result.current.nextLedgerCursor).toBeNull();
+    expect(result.current.nextLedgerCursor).toEqual(cursor);
   });
 
   test("appends a unique cursor-matched page and ignores it after Wallet closes", async () => {

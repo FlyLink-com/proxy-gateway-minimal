@@ -904,7 +904,7 @@ describe("Portal server-backed Marketplace", () => {
     expect(screen.getByText("Coins · 800")).toBeInTheDocument();
   });
 
-  test("opens the existing non-executable Recharge dialog explicitly without overlapping modals", async () => {
+  test("keeps an insufficient Quote in the purchase dialog without exposing recharge UI", async () => {
     const commerce = commerceClient({
       previewCheckout: vi.fn(async () => insufficientQuote)
     });
@@ -922,29 +922,15 @@ describe("Portal server-backed Marketplace", () => {
     expect(within(coinsDialog).getByRole("button", {
       name: "确认购买"
     })).toBeDisabled();
-    fireEvent.click(within(coinsDialog).getByRole("button", {
+    expect(within(coinsDialog).queryByRole("button", {
       name: "打开充值"
-    }));
-
-    const recharge = await screen.findByRole("dialog", {
-      name: "充值 Coins"
-    });
+    })).not.toBeInTheDocument();
+    expect(within(coinsDialog).getByText(/缺少 5 Coins/))
+      .toBeInTheDocument();
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    expect(within(recharge).getByRole("heading", {
-      name: "充值 Coins"
-    })).toHaveFocus();
-    expect(within(recharge).getByText(
-      "Coins 充值暂未开放",
-      { exact: false }
-    )).toBeInTheDocument();
-    expect(within(recharge).getByRole("button", {
-      name: "当前不可充值"
-    })).toBeDisabled();
+    expect(screen.queryByRole("dialog", { name: "充值 Coins" }))
+      .not.toBeInTheDocument();
     expect(commerce.createOrder).not.toHaveBeenCalled();
-    fireEvent.click(within(recharge).getByRole("button", {
-      name: "关闭"
-    }));
-    await waitFor(() => expect(purchaseAction).toHaveFocus());
   });
 
   test("keeps bilingual capability parity and the unknown Wallet balance boundary", async () => {
@@ -988,14 +974,12 @@ describe("Portal server-backed Marketplace", () => {
     const view = render(createElement(MarketplacePanel, {
       commerceClient: commerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_first",
       theme: "light"
     }));
     view.rerender(createElement(MarketplacePanel, {
       commerceClient: commerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_second",
       theme: "light"
     }));
@@ -1054,7 +1038,6 @@ describe("Portal server-backed Marketplace", () => {
     const view = render(createElement(MarketplacePanel, {
       commerceClient: commerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_first",
       theme: "light"
     }));
@@ -1071,7 +1054,6 @@ describe("Portal server-backed Marketplace", () => {
     view.rerender(createElement(MarketplacePanel, {
       commerceClient: commerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_second",
       theme: "light"
     }));
@@ -1188,7 +1170,6 @@ describe("Portal server-backed Marketplace", () => {
     const view = render(createElement(MarketplacePanel, {
       commerceClient: oldCommerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_marketplace",
       theme: "dark"
     }));
@@ -1205,7 +1186,6 @@ describe("Portal server-backed Marketplace", () => {
     view.rerender(createElement(MarketplacePanel, {
       commerceClient: currentCommerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_marketplace",
       theme: "dark"
     }));
@@ -1251,7 +1231,6 @@ describe("Portal server-backed Marketplace", () => {
     const view = render(createElement(MarketplacePanel, {
       commerceClient: oldCommerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_marketplace",
       theme: "dark"
     }));
@@ -1274,7 +1253,6 @@ describe("Portal server-backed Marketplace", () => {
     view.rerender(createElement(MarketplacePanel, {
       commerceClient: currentCommerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_marketplace",
       theme: "dark"
     }));
@@ -1324,7 +1302,6 @@ describe("Portal server-backed Marketplace", () => {
         listOffers: vi.fn(async () => [noNoticeOffer])
       }),
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_marketplace",
       theme: "dark"
     }));

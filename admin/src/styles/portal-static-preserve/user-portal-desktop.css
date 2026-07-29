@@ -332,6 +332,12 @@
   font-weight: 700;
 }
 
+@media (min-width: 721px) {
+  .portal-v2-shell .portal-secondary-button.compact {
+    min-height: 40px;
+  }
+}
+
 .portal-v2-preference-switch {
   flex: 0 0 auto;
   border: 1px solid #30363d;

@@ -31,8 +31,15 @@ const REQUIRED_RUNTIME_MARKERS = [
 
 const REQUIRED_COMMERCE_LAYOUT_MARKERS = [
   "portal-commerce-layout",
-  "portal-coins-wallet-entry",
-  "portal-recharge-dialog"
+  "portal-coins-wallet-entry"
+];
+
+const FORBIDDEN_COMMERCE_LAYOUT_MARKERS = [
+  "portal-recharge-dialog",
+  "portal-recharge-entry",
+  "portal-recharge-denominations",
+  "portal-wallet-recharge-heading",
+  "portal-wallet-recharge-note"
 ];
 
 async function listFiles(dir) {
@@ -116,6 +123,14 @@ export async function verifyPortalBuildDirectory(buildDir) {
   const commerceCssContent = (await Promise.all(files
     .filter((file) => /\.css$/i.test(file))
     .map((file) => readFile(file, "utf8")))).join("\n");
+  const forbiddenCommerceContent = `${commerceMarkupContent}\n${commerceCssContent}`;
+  const forbiddenCommerceMarker = FORBIDDEN_COMMERCE_LAYOUT_MARKERS
+    .find((marker) => forbiddenCommerceContent.includes(marker));
+  if (forbiddenCommerceMarker) {
+    throw new Error(
+      `portal forbidden commerce marker found: ${forbiddenCommerceMarker}`
+    );
+  }
   for (const marker of REQUIRED_COMMERCE_LAYOUT_MARKERS) {
     const missingAssetClasses = [
       !commerceMarkupContent.includes(marker) && "HTML/JavaScript",
@@ -134,7 +149,8 @@ export async function verifyPortalBuildDirectory(buildDir) {
       noSecretMaterial: true,
       hasPortalHumanChallengeContract: true,
       hasPortalRegistrationContract: true,
-      hasCommerceLayoutContract: true
+      hasCommerceLayoutContract: true,
+      noRechargeUi: true
     }
   };
 }

@@ -22,7 +22,6 @@ export type CoinsPurchaseDialogProps = {
   locale: CommerceLocale;
   onCancel: () => void;
   onConfirm: () => void;
-  onOpenRecharge: () => void;
   onRefresh: () => void;
   onRequestClose: () => void;
   onRestoreFocus?: () => void;
@@ -164,7 +163,6 @@ export function CoinsPurchaseDialog({
   locale,
   onCancel,
   onConfirm,
-  onOpenRecharge,
   onRefresh,
   onRequestClose,
   onRestoreFocus,
@@ -196,21 +194,14 @@ export function CoinsPurchaseDialog({
       panelClassName="portal-coins-purchase-dialog"
       title={localized(locale, "确认 Coins 购买", "Confirm Coins purchase")}
       footer={quote && !order ? (
-        <>
-          {insufficient ? (
-            <button className="portal-coins-dialog__secondary" type="button" onClick={onOpenRecharge}>
-              {localized(locale, "打开充值", "Open recharge")}
-            </button>
-          ) : null}
-          <button
-            className="portal-coins-dialog__primary"
-            disabled={insufficient || submitting || confirmDisabled}
-            type="button"
-            onClick={onConfirm}
-          >
-            {localized(locale, "确认购买", "Confirm purchase")}
-          </button>
-        </>
+        <button
+          className="portal-coins-dialog__primary"
+          disabled={insufficient || submitting || confirmDisabled}
+          type="button"
+          onClick={onConfirm}
+        >
+          {localized(locale, "确认购买", "Confirm purchase")}
+        </button>
       ) : null}
     >
       {order ? (

@@ -6,12 +6,54 @@ import test from "node:test";
 
 import { verifyPortalBuildDirectory } from "../../scripts/verify-portal-build.mjs";
 
+const PORTAL_RUNTIME_MARKERS = [
+  "/portal/register",
+  "/api/portal/human-challenges",
+  "/api/portal/password/session",
+  "/api/portal/registration",
+  "/api/portal/registration/email-verification"
+];
+
+async function writePortalFixture(directory, {
+  javascript = "",
+  stylesheet = "",
+  runtimeMarkers = PORTAL_RUNTIME_MARKERS,
+  javascriptCommerceMarkers = [
+    "portal-commerce-layout",
+    "portal-coins-wallet-entry"
+  ],
+  stylesheetCommerceMarkers = [
+    "portal-commerce-layout",
+    "portal-coins-wallet-entry"
+  ]
+} = {}) {
+  await writeFile(
+    path.join(directory, "index.html"),
+    "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>"
+  );
+  await writeFile(
+    path.join(directory, "portal.js"),
+    [
+      ...runtimeMarkers,
+      ...javascriptCommerceMarkers,
+      javascript
+    ].join(" ")
+  );
+  await writeFile(
+    path.join(directory, "portal.css"),
+    [
+      ...stylesheetCommerceMarkers.map((marker) => `.${marker}{}`),
+      stylesheet
+    ].join("\n")
+  );
+}
+
 test("portal static build verifier rejects bundles that expose Admin shell markers", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
   try {
-    await writeFile(path.join(tempDir, "index.html"), "<div id=\"root\"></div><script src=\"/assets/index.js\"></script>");
-    await writeFile(path.join(tempDir, "index.js"), "console.log('Portal Requests AdminLayout Open user portal');");
-    await writeFile(path.join(tempDir, "index.css"), ".portal-auth-shell{}");
+    await writePortalFixture(tempDir, {
+      javascript: "Portal Requests AdminLayout Open user portal"
+    });
 
     await assert.rejects(
       () => verifyPortalBuildDirectory(tempDir),
@@ -22,24 +64,48 @@ test("portal static build verifier rejects bundles that expose Admin shell marke
   }
 });
 
-test("portal static build verifier accepts a portal-only shell", async () => {
+test("portal static build verifier accepts the Portal commerce shell without Recharge UI", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
   try {
-    await writeFile(path.join(tempDir, "index.html"), "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>");
-    await writeFile(
-      path.join(tempDir, "portal.js"),
-      "fetch('/api/portal/human-challenges'); fetch('/api/portal/password/session'); fetch('/api/portal/registration'); fetch('/api/portal/registration/email-verification'); console.log('/portal/register 账号登录 订阅管理 客服支持 个人中心 portal-commerce-layout portal-coins-wallet-entry portal-recharge-dialog');"
-    );
-    await writeFile(path.join(tempDir, "portal.css"), ".portal-auth-shell{} .portal-commerce-layout{} .portal-coins-wallet-entry{} .portal-recharge-dialog{}");
+    await writePortalFixture(tempDir);
 
     const summary = await verifyPortalBuildDirectory(tempDir);
 
     assert.equal(summary.status, "ok");
-    assert.equal(summary.safety.noAdminShellMarkers, true);
-    assert.equal(summary.safety.noSecretMaterial, true);
-    assert.equal(summary.safety.hasPortalHumanChallengeContract, true);
-    assert.equal(summary.safety.hasPortalRegistrationContract, true);
     assert.equal(summary.safety.hasCommerceLayoutContract, true);
+    assert.equal(summary.safety.noRechargeUi, true);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("portal static build verifier rejects Recharge UI in JavaScript", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
+  try {
+    await writePortalFixture(tempDir, {
+      javascript: "portal-recharge-dialog"
+    });
+
+    await assert.rejects(
+      () => verifyPortalBuildDirectory(tempDir),
+      /forbidden commerce marker found: portal-recharge-dialog/
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("portal static build verifier rejects Recharge UI in CSS", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
+  try {
+    await writePortalFixture(tempDir, {
+      stylesheet: ".portal-recharge-entry{}"
+    });
+
+    await assert.rejects(
+      () => verifyPortalBuildDirectory(tempDir),
+      /forbidden commerce marker found: portal-recharge-entry/
+    );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -48,12 +114,10 @@ test("portal static build verifier accepts a portal-only shell", async () => {
 test("portal static build verifier rejects bundles without commerce layout markers", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
   try {
-    await writeFile(path.join(tempDir, "index.html"), "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>");
-    await writeFile(
-      path.join(tempDir, "portal.js"),
-      "fetch('/api/portal/human-challenges'); fetch('/api/portal/password/session'); fetch('/api/portal/registration'); fetch('/api/portal/registration/email-verification'); console.log('/portal/register 账号登录');"
-    );
-    await writeFile(path.join(tempDir, "portal.css"), ".portal-auth-shell{}");
+    await writePortalFixture(tempDir, {
+      javascriptCommerceMarkers: [],
+      stylesheetCommerceMarkers: []
+    });
 
     await assert.rejects(
       () => verifyPortalBuildDirectory(tempDir),
@@ -64,34 +128,12 @@ test("portal static build verifier rejects bundles without commerce layout marke
   }
 });
 
-test("portal static build verifier rejects a missing recharge dialog from HTML and JavaScript", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
-  try {
-    await writeFile(path.join(tempDir, "index.html"), "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>");
-    await writeFile(
-      path.join(tempDir, "portal.js"),
-      "fetch('/api/portal/human-challenges'); fetch('/api/portal/password/session'); fetch('/api/portal/registration'); fetch('/api/portal/registration/email-verification'); console.log('/portal/register portal-commerce-layout portal-coins-wallet-entry');"
-    );
-    await writeFile(path.join(tempDir, "portal.css"), ".portal-auth-shell{} .portal-commerce-layout{} .portal-coins-wallet-entry{} .portal-recharge-dialog{}");
-
-    await assert.rejects(
-      () => verifyPortalBuildDirectory(tempDir),
-      /portal commerce layout marker missing: portal-recharge-dialog/
-    );
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
-  }
-});
-
 test("portal static build verifier rejects commerce markers missing from CSS", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
   try {
-    await writeFile(path.join(tempDir, "index.html"), "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>");
-    await writeFile(
-      path.join(tempDir, "portal.js"),
-      "fetch('/api/portal/human-challenges'); fetch('/api/portal/password/session'); fetch('/api/portal/registration'); fetch('/api/portal/registration/email-verification'); console.log('/portal/register portal-commerce-layout portal-coins-wallet-entry');"
-    );
-    await writeFile(path.join(tempDir, "portal.css"), ".portal-auth-shell{}");
+    await writePortalFixture(tempDir, {
+      stylesheetCommerceMarkers: []
+    });
 
     await assert.rejects(
       () => verifyPortalBuildDirectory(tempDir),
@@ -106,20 +148,20 @@ test("portal static build verifier rejects commerce markers missing from CSS", a
   }
 });
 
-test("portal static build verifier rejects a missing wallet entry from HTML and JavaScript", async () => {
+test("portal static build verifier rejects a missing wallet entry from JavaScript", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
   try {
-    await writeFile(path.join(tempDir, "index.html"), "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>");
-    await writeFile(
-      path.join(tempDir, "portal.js"),
-      "fetch('/api/portal/human-challenges'); fetch('/api/portal/password/session'); fetch('/api/portal/registration'); fetch('/api/portal/registration/email-verification'); console.log('/portal/register portal-commerce-layout');"
-    );
-    await writeFile(path.join(tempDir, "portal.css"), ".portal-auth-shell{} .portal-commerce-layout{} .portal-coins-wallet-entry{}");
+    await writePortalFixture(tempDir, {
+      javascriptCommerceMarkers: ["portal-commerce-layout"]
+    });
 
     await assert.rejects(
       () => verifyPortalBuildDirectory(tempDir),
       (error) => {
-        assert.match(error.message, /portal commerce layout marker missing: portal-coins-wallet-entry/);
+        assert.match(
+          error.message,
+          /portal commerce layout marker missing: portal-coins-wallet-entry/
+        );
         assert.match(error.message, /HTML\/JavaScript/);
         return true;
       }
@@ -132,9 +174,11 @@ test("portal static build verifier rejects a missing wallet entry from HTML and 
 test("portal static build verifier rejects bundles without backend human challenge wiring", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
   try {
-    await writeFile(path.join(tempDir, "index.html"), "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>");
-    await writeFile(path.join(tempDir, "portal.js"), "fetch('/api/portal/password/session'); fetch('/api/portal/registration'); fetch('/api/portal/registration/email-verification'); console.log('/portal/register 账号登录');");
-    await writeFile(path.join(tempDir, "portal.css"), ".portal-auth-shell{}");
+    await writePortalFixture(tempDir, {
+      runtimeMarkers: PORTAL_RUNTIME_MARKERS.filter(
+        (marker) => marker !== "/api/portal/human-challenges"
+      )
+    });
 
     await assert.rejects(
       () => verifyPortalBuildDirectory(tempDir),

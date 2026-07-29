@@ -5,7 +5,6 @@ import {
   useState,
   type MouseEvent
 } from "react";
-import { ModalFrame } from "../../components/modal-frame";
 import {
   CoinsPurchaseDialog,
   isPortalCoinOrderTerminal,
@@ -24,121 +23,12 @@ type PanelProps = {
   locale: PortalCommerceLocale;
 };
 
-export const RECHARGE_DENOMINATIONS = [10, 30, 50, 100, 200, 300] as const;
-
-export type RechargeDenomination =
-  (typeof RECHARGE_DENOMINATIONS)[number];
-
-export type RechargeDenominationListProps = {
-  autoFocusFirst?: boolean;
-  locale: PortalCommerceLocale;
-  mode: "dialog-selectable" | "wallet-disabled";
-  selectedAmount?: RechargeDenomination | null;
-  onSelect?: (amount: RechargeDenomination) => void;
-};
-
 function isChinese(locale: PortalCommerceLocale) {
   return locale === "zh";
 }
 
-export function RechargeDenominationList({
-  autoFocusFirst = false,
-  locale,
-  mode,
-  selectedAmount = null,
-  onSelect
-}: RechargeDenominationListProps) {
-  const zh = isChinese(locale);
-  const selectable = mode === "dialog-selectable";
-
-  return (
-    <ul
-      className={`portal-recharge-denominations portal-recharge-denominations--${mode}`}
-      aria-label={zh ? "Coins 充值档位" : "Coins recharge denominations"}
-    >
-      {RECHARGE_DENOMINATIONS.map((amount) => (
-        <li key={amount}>
-          <button
-            type="button"
-            autoFocus={
-              autoFocusFirst
-              && selectable
-              && amount === RECHARGE_DENOMINATIONS[0]
-            }
-            disabled={!selectable}
-            aria-pressed={selectable ? selectedAmount === amount : undefined}
-            aria-label={
-              selectable
-                ? zh
-                  ? `选择 ${amount} Coins`
-                  : `Select ${amount} Coins`
-                : zh
-                  ? `充值 ${amount} Coins 暂未开放`
-                  : `Recharge ${amount} Coins — not available yet`
-            }
-            onClick={selectable ? () => onSelect?.(amount) : undefined}
-          >
-            {amount} Coins
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-export function RechargeDialog({
-  locale,
-  selectedAmount,
-  onSelect,
-  onClose
-}: {
-  locale: PortalCommerceLocale;
-  selectedAmount: RechargeDenomination | null;
-  onSelect: (amount: RechargeDenomination) => void;
-  onClose: () => void;
-}) {
-  const zh = isChinese(locale);
-
-  return (
-    <ModalFrame
-      closeLabel={zh ? "关闭" : "Close"}
-      onClose={onClose}
-      panelClassName="portal-recharge-dialog"
-      title={zh ? "充值 Coins" : "Recharge Coins"}
-      titleId="portal-recharge-dialog-title"
-      footer={(
-        <button
-          className="portal-primary-button compact"
-          type="button"
-          disabled
-        >
-          {zh
-            ? "当前不可充值"
-            : "Recharge is not available yet"}
-        </button>
-      )}
-    >
-      <div className="portal-recharge-dialog__body">
-        <p>
-          {zh
-            ? "Coins 充值暂未开放。以下档位仅作展示，目前无法付款，也不会创建充值订单。"
-            : "Coins recharge is not available yet. The denominations below are shown for reference; payment is unavailable and no recharge order will be created."}
-        </p>
-        <RechargeDenominationList
-          autoFocusFirst
-          locale={locale}
-          mode="dialog-selectable"
-          selectedAmount={selectedAmount}
-          onSelect={onSelect}
-        />
-      </div>
-    </ModalFrame>
-  );
-}
-
 type MarketplacePanelProps = PanelProps & {
   commerceClient: PortalCoinCommerceClient | null;
-  onOpenRecharge: (returnFocus?: () => void) => void;
   onWalletMutation?: () => void;
   sessionGeneration?: number;
   sessionRef: string | null;
@@ -309,7 +199,6 @@ function MarketplaceOfferCard({
 export function MarketplacePanel({
   commerceClient,
   locale,
-  onOpenRecharge,
   onWalletMutation,
   sessionGeneration = 0,
   sessionRef,
@@ -332,7 +221,6 @@ export function MarketplacePanel({
   const latestProductSessionRef = useRef(sessionRef);
   const productIntentSequenceRef = useRef(0);
   const autoOpenedOrderRef = useRef<string | null>(null);
-  const suppressProductFocusRestoreRef = useRef(false);
   latestProductSessionRef.current = sessionRef;
   const purchaseFlow = useCoinsPurchaseFlow({
     client: commerceClient,
@@ -345,7 +233,6 @@ export function MarketplacePanel({
     if (productSessionRef.current === sessionRef) return;
     productSessionRef.current = sessionRef;
     productIntentSequenceRef.current += 1;
-    suppressProductFocusRestoreRef.current = false;
     setProductIntent(null);
     setDialogVisible(false);
     originFocusRef.current = null;
@@ -364,7 +251,6 @@ export function MarketplacePanel({
       || purchaseFlow.quote !== null;
     if (!hasProductReadState) return;
     productIntentSequenceRef.current += 1;
-    suppressProductFocusRestoreRef.current = false;
     setProductIntent(null);
     setDialogVisible(false);
     purchaseFlow.reset();
@@ -422,10 +308,6 @@ export function MarketplacePanel({
     || purchaseFlow.phase === "submitting";
 
   const restoreProductFocus = useCallback(() => {
-    if (suppressProductFocusRestoreRef.current) {
-      suppressProductFocusRestoreRef.current = false;
-      return;
-    }
     originFocusRef.current?.focus();
   }, []);
 
@@ -485,15 +367,6 @@ export function MarketplacePanel({
       purchaseFlow.reset();
     }
   }, [purchaseFlow]);
-
-  const openRechargeFromCoins = useCallback(() => {
-    productIntentSequenceRef.current += 1;
-    suppressProductFocusRestoreRef.current = true;
-    setDialogVisible(false);
-    setProductIntent(null);
-    purchaseFlow.reset();
-    onOpenRecharge(restoreProductFocus);
-  }, [onOpenRecharge, purchaseFlow, restoreProductFocus]);
 
   const retryProduct = useCallback(() => {
     if (!productIntent) return;
@@ -673,7 +546,6 @@ export function MarketplacePanel({
                 locale={locale}
                 onCancel={purchaseFlow.cancelPurchase}
                 onConfirm={purchaseFlow.confirmPurchase}
-                onOpenRecharge={openRechargeFromCoins}
                 onRefresh={purchaseFlow.refreshOrder}
                 onRequestClose={closeCoinsDialog}
                 onRestoreFocus={restoreProductFocus}

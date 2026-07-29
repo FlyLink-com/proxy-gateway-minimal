@@ -42,9 +42,7 @@ import {
 } from "./public-locale-switch";
 import {
   MarketplacePanel,
-  RechargeDialog,
-  ReferralRewardsPanel,
-  type RechargeDenomination
+  ReferralRewardsPanel
 } from "./portal-commerce-panels";
 import { PORTAL_COIN_ORDER_STORAGE_KEY } from "./commerce";
 import { PortalOrdersPanel } from "./orders/portal-orders-panel";
@@ -1057,10 +1055,6 @@ export function UserPortalPage({
   const [orderClientFilter, setOrderClientFilter] = useState<"all" | PortalClientId>("all");
   const [orderSort, setOrderSort] = useState<OrderSort>("newest");
   const [orderFormOpen, setOrderFormOpen] = useState(false);
-  const [rechargeDialogOpen, setRechargeDialogOpen] = useState(false);
-  const [selectedRechargeAmount, setSelectedRechargeAmount] =
-    useState<RechargeDenomination | null>(null);
-  const rechargeReturnFocusRef = useRef<(() => void) | null>(null);
   const [selectedOrderRef, setSelectedOrderRef] = useState<string | null>(null);
   const [activePaymentOrderRef, setActivePaymentOrderRef] = useState<string | null>(null);
   const [authError, setAuthError] = useState("");
@@ -1101,13 +1095,6 @@ export function UserPortalPage({
   useEffect(() => {
     document.title = portalSession ? authCopy.shellDocumentTitle : authCopy.documentTitle;
   }, [authCopy.documentTitle, authCopy.shellDocumentTitle, portalSession]);
-
-  useEffect(() => {
-    if (portalSession) return;
-    setRechargeDialogOpen(false);
-    setSelectedRechargeAmount(null);
-    rechargeReturnFocusRef.current = null;
-  }, [portalSession]);
 
   const currentEntitlement = useMemo(() => currentTrafficEntitlement(accountEntitlements), [accountEntitlements]);
   const selectedOrder = useMemo(() => {
@@ -1562,20 +1549,6 @@ export function UserPortalPage({
       setPersonalCenterSubview("profile");
     }
     setActiveView(view);
-  }
-
-  function openRechargeDialog(returnFocus?: () => void) {
-    rechargeReturnFocusRef.current = returnFocus ?? null;
-    setSelectedRechargeAmount(null);
-    setRechargeDialogOpen(true);
-  }
-
-  function closeRechargeDialog() {
-    const returnFocus = rechargeReturnFocusRef.current;
-    rechargeReturnFocusRef.current = null;
-    setSelectedRechargeAmount(null);
-    setRechargeDialogOpen(false);
-    returnFocus?.();
   }
 
   async function refreshPaymentOrders(targetOrderRef?: string) {
@@ -2141,19 +2114,6 @@ export function UserPortalPage({
                       {orderHealthLabel(orderRows, accountEntitlements, locale)}
                     </span>
                   </div>
-                  <div className="portal-v2-primary-actions">
-                    <button
-                      className="portal-primary-button compact portal-recharge-entry"
-                      type="button"
-                      onClick={(event) => {
-                        const origin = event.currentTarget;
-                        openRechargeDialog(() => origin.focus());
-                      }}
-                    >
-                      <Plus aria-hidden="true" />
-                      {uiText(locale, "充值 Coins", "Recharge Coins")}
-                    </button>
-                  </div>
                 </div>
               </header>
               <div className="portal-v2-mobile-title">
@@ -2190,7 +2150,6 @@ export function UserPortalPage({
             <MarketplacePanel
               commerceClient={portalClient.commerce ?? null}
               locale={locale}
-              onOpenRecharge={openRechargeDialog}
               onWalletMutation={walletModel.refreshWallet}
               sessionGeneration={sessionGeneration}
               sessionRef={portalSession.sessionRef ?? null}
@@ -2239,13 +2198,11 @@ export function UserPortalPage({
               commerceClient={portalClient.commerce ?? null}
               legacyPaymentOrders={paymentOrders}
               locale={locale}
-              onOpenLegacyPaymentOrder={openPaymentOrder}
               onOpenMarketplace={openMarketplace}
               onOpenServiceOrder={viewOrder}
               onOrderSearchChange={setOrderSearch}
               onSessionInvalid={logout}
               orderSearch={orderSearch}
-              selectedLegacyPaymentOrderRef={lastPaymentOrderRef}
               selectedServiceOrderRef={selectedOrderRef}
               serviceOrders={orderRows}
               sessionGeneration={sessionGeneration}
@@ -2277,14 +2234,6 @@ export function UserPortalPage({
                 onStartAuthenticatorEnrollment: startAuthenticatorEnrollment,
                 onExportPasskey: exportPasskey
               }}
-            />
-          ) : null}
-          {rechargeDialogOpen ? (
-            <RechargeDialog
-              locale={locale}
-              selectedAmount={selectedRechargeAmount}
-              onSelect={setSelectedRechargeAmount}
-              onClose={closeRechargeDialog}
             />
           ) : null}
         </main>

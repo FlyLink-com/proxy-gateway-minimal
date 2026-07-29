@@ -1,9 +1,9 @@
-import { RechargeDenominationList } from "../portal-commerce-panels";
 import {
   formatPortalDateTime,
   portalCoinTypeLabel,
   portalLedgerCategoryLabel
 } from "../portal-commerce-presentation";
+import { useDesktopScrollRegion } from "../use-desktop-scroll-region";
 import type {
   PortalWalletLedgerEntry,
   PortalWalletStatus,
@@ -175,12 +175,17 @@ function LedgerTable({
   locale: PortalWalletPanelProps["locale"];
 }) {
   const zh = locale === "zh";
+  const desktopScrollRegion = useDesktopScrollRegion();
   return (
     <div
-      aria-label={zh ? "Coins 钱包流水表" : "Coins Wallet activity table"}
+      aria-label={desktopScrollRegion
+        ? zh
+          ? "Coins 钱包流水表"
+          : "Coins Wallet activity table"
+        : undefined}
       className="portal-wallet-ledger-wrap"
-      role="region"
-      tabIndex={0}
+      role={desktopScrollRegion ? "region" : undefined}
+      tabIndex={desktopScrollRegion ? 0 : undefined}
     >
       <table
         className="portal-wallet-ledger"
@@ -268,13 +273,45 @@ function LedgerState({
   return (
     <>
       <LedgerTable entries={state.value} locale={locale} />
-      {model.nextLedgerCursor ? (
+      {model.loadMoreLedgerError ? (
+        <div
+          className="portal-wallet-state"
+          role={model.loadMoreLedgerError.phase === "unavailable"
+            ? "status"
+            : "alert"}
+        >
+          <p>
+            {model.loadMoreLedgerError.phase === "unavailable"
+              ? zh
+                ? "更多钱包流水暂不可用，当前已加载流水仍会保留。"
+                : "More Wallet activity is unavailable. Your current activity is still shown."
+              : zh
+                ? "更多钱包流水加载失败，当前已加载流水仍会保留。"
+                : "More Wallet activity could not be loaded. Your current activity is still shown."}
+          </p>
+          {model.loadMoreLedgerError.retryable ? (
+            <button type="button" onClick={model.loadMoreLedger}>
+              {zh
+                ? "重试加载更多流水"
+                : "Retry loading more activity"}
+            </button>
+          ) : null}
+        </div>
+      ) : model.nextLedgerCursor ? (
         <button
+          aria-busy={model.loadingMoreLedger}
           className="portal-wallet-load-more"
+          disabled={model.loadingMoreLedger}
           type="button"
           onClick={model.loadMoreLedger}
         >
-          {zh ? "加载更多流水" : "Load more activity"}
+          {model.loadingMoreLedger
+            ? zh
+              ? "正在加载更多流水…"
+              : "Loading more activity…"
+            : zh
+              ? "加载更多流水"
+              : "Load more activity"}
         </button>
       ) : null}
     </>
@@ -302,18 +339,6 @@ export function PortalWalletPanel({
       >
         <h3 id="portal-wallet-balance-heading">{zh ? "余额" : "Balance"}</h3>
         <SummaryState locale={locale} model={model} />
-      </section>
-      <section
-        className="portal-commerce-layout__section"
-        aria-labelledby="portal-wallet-recharge-heading"
-      >
-        <h3 id="portal-wallet-recharge-heading">{zh ? "充值" : "Recharge"}</h3>
-        <p className="portal-wallet-recharge-note">
-          {zh
-            ? "Coins 充值暂未开放；当前无法付款，也不会创建充值订单。"
-            : "Coins recharge is not available yet. Payment is unavailable and no recharge order will be created."}
-        </p>
-        <RechargeDenominationList locale={locale} mode="wallet-disabled" />
       </section>
       <section
         className="portal-commerce-layout__section"

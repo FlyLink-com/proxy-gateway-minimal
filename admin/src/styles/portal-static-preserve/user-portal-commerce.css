@@ -241,66 +241,6 @@
   font-size: 12px;
 }
 
-.portal-v2-shell .portal-recharge-dialog {
-  width: min(680px, calc(100vw - 32px));
-}
-
-.portal-v2-shell .portal-recharge-dialog__body {
-  display: grid;
-  gap: 16px;
-}
-
-.portal-v2-shell .portal-recharge-dialog__body > p {
-  margin: 0;
-  color: #8b949e;
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.portal-v2-shell .portal-recharge-denominations {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.portal-v2-shell .portal-recharge-denominations li {
-  min-width: 0;
-}
-
-.portal-v2-shell .portal-recharge-denominations button {
-  width: 100%;
-  min-height: 48px;
-  border: 1px solid #30363d;
-  border-radius: 10px;
-  background: #161b22;
-  color: #c9d1d9;
-  padding: 10px 12px;
-  font: inherit;
-  font-weight: 700;
-}
-
-.portal-v2-shell
-  .portal-recharge-denominations--dialog-selectable
-  button[aria-pressed="true"] {
-  border-color: rgba(32, 213, 232, 0.8);
-  background: rgba(32, 213, 232, 0.12);
-  color: #f0f6fc;
-}
-
-.portal-v2-shell .portal-recharge-denominations button:focus-visible {
-  outline: 3px solid #20d5e8;
-  outline-offset: 2px;
-  box-shadow: none;
-}
-
-.portal-v2-shell .portal-recharge-denominations button:disabled {
-  cursor: not-allowed;
-  opacity: 0.62;
-}
-
 .portal-v2-shell[data-portal-theme="light"] button.portal-coins-wallet-entry {
   border-color: #d0d7de;
   background: #ffffff;
@@ -346,33 +286,6 @@
 .portal-v2-shell[data-portal-theme="light"] .portal-commerce-layout__metric dt,
 .portal-v2-shell[data-portal-theme="light"] .portal-commerce-layout__balances h4 {
   color: #57606a;
-}
-
-.portal-v2-shell[data-portal-theme="light"]
-  .portal-recharge-dialog__body > p {
-  color: #57606a;
-}
-
-.portal-v2-shell[data-portal-theme="light"]
-  .portal-recharge-denominations button {
-  border-color: #d0d7de;
-  background: #ffffff;
-  color: #1f2937;
-}
-
-.portal-v2-shell[data-portal-theme="light"]
-  .portal-recharge-denominations button:focus-visible {
-  outline: 3px solid #0969da;
-  outline-offset: 2px;
-  box-shadow: none;
-}
-
-.portal-v2-shell[data-portal-theme="light"]
-  .portal-recharge-denominations--dialog-selectable
-  button[aria-pressed="true"] {
-  border-color: #13a9be;
-  background: #e8fbfd;
-  color: #1f2937;
 }
 
 .portal-v2-shell .portal-commerce-layout--wallet {
@@ -435,13 +348,6 @@
   font-size: 24px;
   font-weight: 700;
   line-height: 1;
-}
-
-.portal-v2-shell .portal-wallet-recharge-note {
-  margin: 0;
-  color: var(--portal-wallet-muted);
-  font-size: 13px;
-  line-height: 1.5;
 }
 
 .portal-v2-shell .portal-wallet-state {
@@ -508,46 +414,53 @@
 }
 
 @media (min-width: 721px) {
+  .portal-v2-shell .portal-commerce-layout--marketplace,
+  .portal-v2-shell .portal-commerce-layout--wallet,
+  .portal-v2-shell .portal-orders-panel {
+    max-width: 1200px;
+    margin-inline: auto;
+  }
+
+  .portal-v2-shell .portal-commerce-layout--marketplace {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portal-v2-shell
+    .portal-commerce-layout--marketplace
+    > .portal-marketplace-state,
+  .portal-v2-shell
+    .portal-commerce-layout--marketplace
+    > .portal-marketplace-flow-state {
+    grid-column: 1 / -1;
+  }
+
+  .portal-v2-shell
+    .portal-marketplace-group
+    > .portal-marketplace-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-v2-shell .portal-marketplace-group:only-of-type {
+    grid-column: 1 / -1;
+  }
+
+  .portal-v2-shell
+    .portal-marketplace-group:only-of-type
+    > .portal-marketplace-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .portal-v2-shell button.portal-coins-wallet-entry,
   .portal-v2-shell .portal-commerce-layout button {
     min-height: 44px;
   }
 
-  .portal-v2-shell .portal-primary-button.portal-recharge-entry {
-    min-height: 44px;
-    border: 1px solid rgba(32, 213, 232, 0.56);
-    background: rgba(32, 213, 232, 0.08);
-    color: #c9d1d9;
-  }
-
-  .portal-v2-shell .portal-primary-button.portal-recharge-entry:hover {
-    border-color: #20d5e8;
-    background: rgba(32, 213, 232, 0.14);
-    color: #f0f6fc;
-  }
-
-  .portal-v2-shell .portal-primary-button.portal-recharge-entry:focus-visible {
-    outline: 3px solid var(--portal-commerce-focus-accent);
-    outline-offset: 2px;
-    box-shadow: none;
-  }
-
-  .portal-v2-shell[data-portal-theme="light"]
-    .portal-primary-button.portal-recharge-entry {
-    border-color: #8c959f;
-    background: #ffffff;
-    color: #334155;
-  }
-
-  .portal-v2-shell[data-portal-theme="light"]
-    .portal-primary-button.portal-recharge-entry:hover {
-    border-color: #0969da;
-    background: #f0f7ff;
-    color: #0969da;
+  .portal-v2-shell .portal-wallet-balance-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
   }
 
   .portal-v2-shell .portal-wallet-balance-grid__spendable {
-    grid-column: span 2;
+    grid-column: span 6;
     border-color: color-mix(
       in srgb,
       var(--portal-wallet-accent) 62%,
@@ -558,6 +471,17 @@
       var(--portal-wallet-accent) 8%,
       var(--portal-wallet-surface)
     );
+  }
+
+  .portal-v2-shell .portal-wallet-balance-grid > div:nth-child(2),
+  .portal-v2-shell .portal-wallet-balance-grid > div:nth-child(3) {
+    grid-column: span 3;
+  }
+
+  .portal-v2-shell .portal-wallet-balance-grid > div:nth-child(4),
+  .portal-v2-shell .portal-wallet-balance-grid > div:nth-child(5),
+  .portal-v2-shell .portal-wallet-balance-grid > div:nth-child(6) {
+    grid-column: span 4;
   }
 
   .portal-v2-shell .portal-wallet-balance-grid__spendable dd {
@@ -578,9 +502,13 @@
   }
 
   .portal-v2-shell .portal-wallet-ledger {
-    min-width: 920px;
+    min-width: 1120px;
     table-layout: auto;
     line-height: 1.45;
+  }
+
+  .portal-v2-shell .portal-wallet-ledger tbody tr {
+    height: 48px;
   }
 
   .portal-v2-shell .portal-wallet-ledger th,
@@ -641,10 +569,6 @@
   .portal-v2-shell .portal-commerce-layout__balances,
   .portal-v2-shell .portal-commerce-layout__metrics {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .portal-v2-shell .portal-recharge-denominations {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .portal-v2-shell .portal-commerce-layout__list li:has(button) {
@@ -1029,15 +953,17 @@
     color: var(--portal-coins-dialog-on-accent);
   }
 
-  .portal-coins-dialog-theme
-    .portal-coins-dialog
-    button.portal-coins-dialog__secondary {
-    background: transparent;
-  }
 }
 
 @media (max-width: 960px) {
   .portal-v2-shell .portal-marketplace-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-v2-shell .portal-commerce-layout--marketplace,
+  .portal-v2-shell
+    .portal-marketplace-group:only-of-type
+    > .portal-marketplace-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -1333,7 +1259,7 @@
 
   .portal-v2-shell .portal-orders-panel .portal-order-table {
     table-layout: fixed;
-    min-width: 940px;
+    min-width: 1120px;
   }
 
   .portal-v2-shell .portal-orders-filters button,

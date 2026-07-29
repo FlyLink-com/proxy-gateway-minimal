@@ -159,7 +159,6 @@ describe("Portal Coins dialogs", () => {
         onConfirm: vi.fn(),
         onCancel,
         onRefresh: vi.fn(),
-        onOpenRecharge: vi.fn(),
         onRequestClose: orderClose
       })
     ));
@@ -174,9 +173,8 @@ describe("Portal Coins dialogs", () => {
     expect(lockedAncestorKeyDown).not.toHaveBeenCalled();
   });
 
-  test("insufficient confirmation shows server facts, disables confirm, and delegates recharge", () => {
+  test("insufficient confirmation shows server facts and disables confirm without a recharge path", () => {
     const onConfirm = vi.fn();
-    const onOpenRecharge = vi.fn();
     const onRequestClose = vi.fn();
     render(createElement(CoinsPurchaseDialog, {
       locale: "en",
@@ -188,7 +186,6 @@ describe("Portal Coins dialogs", () => {
       onConfirm,
       onCancel: vi.fn(),
       onRefresh: vi.fn(),
-      onOpenRecharge,
       onRequestClose
     }));
 
@@ -221,10 +218,9 @@ describe("Portal Coins dialogs", () => {
     expect(confirm).toBeDisabled();
     fireEvent.click(confirm);
     expect(onConfirm).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole("button", {
+    expect(within(dialog).queryByRole("button", {
       name: "Open recharge"
-    }));
-    expect(onOpenRecharge).toHaveBeenCalledTimes(1);
+    })).not.toBeInTheDocument();
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(onRequestClose).toHaveBeenCalledTimes(1);
   });
@@ -254,7 +250,6 @@ describe("Portal Coins dialogs", () => {
       onConfirm: vi.fn(),
       onCancel: vi.fn(),
       onRefresh: vi.fn(),
-      onOpenRecharge: vi.fn(),
       onRequestClose
     }));
 
@@ -283,7 +278,6 @@ describe("Portal Coins dialogs", () => {
       onConfirm: vi.fn(),
       onCancel,
       onRefresh,
-      onOpenRecharge: vi.fn(),
       onRequestClose
     }));
 
@@ -329,7 +323,6 @@ describe("Portal Coins dialogs", () => {
         onConfirm: vi.fn(),
         onCancel: vi.fn(),
         onRefresh: vi.fn(),
-        onOpenRecharge: vi.fn(),
         onRequestClose: vi.fn()
       }));
 
@@ -355,7 +348,6 @@ describe("Portal Coins dialogs", () => {
       onConfirm: vi.fn(),
       onCancel: vi.fn(),
       onRefresh: vi.fn(),
-      onOpenRecharge: vi.fn(),
       onRequestClose: vi.fn()
     }));
 
@@ -390,7 +382,6 @@ describe("Portal Coins dialogs", () => {
       onConfirm: vi.fn(),
       onCancel,
       onRefresh: vi.fn(),
-      onOpenRecharge: vi.fn(),
       onRequestClose
     }));
 

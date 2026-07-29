@@ -15,6 +15,7 @@ import {
 } from "../commerce";
 import { portalCoinTypeLabel } from "../portal-commerce-presentation";
 import type { PortalPaymentOrder } from "../user-portal-client";
+import { useDesktopScrollRegion } from "../use-desktop-scroll-region";
 import {
   buildPortalOrderCenterItems,
   type PortalOrderCenterItem,
@@ -33,10 +34,8 @@ export type PortalOrdersPanelProps = {
   legacyPaymentOrders: PortalPaymentOrder[];
   serviceOrders: PortalServiceOrder[];
   selectedServiceOrderRef: string | null;
-  selectedLegacyPaymentOrderRef: string | null;
   orderSearch: string;
   onOrderSearchChange: (value: string) => void;
-  onOpenLegacyPaymentOrder: (order: PortalPaymentOrder) => void;
   onOpenServiceOrder: (order: PortalServiceOrder) => void;
   onOpenMarketplace: () => void;
 };
@@ -336,13 +335,12 @@ export function PortalOrdersPanel({
   legacyPaymentOrders = [],
   serviceOrders = [],
   selectedServiceOrderRef = null,
-  selectedLegacyPaymentOrderRef = null,
   orderSearch = "",
   onOrderSearchChange = () => undefined,
-  onOpenLegacyPaymentOrder = () => undefined,
   onOpenServiceOrder = () => undefined,
   onOpenMarketplace = () => undefined
 }: PortalOrdersPanelProps) {
+  const desktopScrollRegion = useDesktopScrollRegion();
   const [filter, setFilter] = useState<PortalOrdersFilter>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | PortalOrderCenterStatus>("all");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
@@ -359,6 +357,10 @@ export function PortalOrdersPanel({
     value: null as never
   });
   const [selectedDetailRef, setSelectedDetailRef] = useState<string | null>(null);
+  const [selectedLegacyDetailRef, setSelectedLegacyDetailRef] =
+    useState<string | null>(null);
+  const [selectedServiceDetailRef, setSelectedServiceDetailRef] =
+    useState<string | null>(selectedServiceOrderRef);
   const initialIdentity = { commerceClient, sessionRef, sessionGeneration };
   const [listIdentity, setListIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
   const [detailIdentity, setDetailIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
@@ -388,6 +390,8 @@ export function PortalOrdersPanel({
     setListState({ phase: "loading" });
     setDetailState({ phase: "empty", value: null as never });
     setSelectedDetailRef(null);
+    setSelectedLegacyDetailRef(null);
+    setSelectedServiceDetailRef(null);
     setNextCursor(null);
     setListRetryRequest({ cursor: null, append: false });
     visibleOrderRefsRef.current.clear();
@@ -398,6 +402,10 @@ export function PortalOrdersPanel({
       loadingCursorsRef.current.clear();
     };
   }, [commerceClient, sessionGeneration, sessionRef]);
+
+  useLayoutEffect(() => {
+    setSelectedServiceDetailRef(selectedServiceOrderRef);
+  }, [selectedServiceOrderRef]);
 
   const listCurrent = useCallback((current: CurrentInputs, requestId: number) => (
     current.alive
@@ -524,6 +532,8 @@ export function PortalOrdersPanel({
   }, [loadList, nextCursor]);
 
   const openDetail = useCallback(async (orderRef: string) => {
+    setSelectedLegacyDetailRef(null);
+    setSelectedServiceDetailRef(null);
     setSelectedDetailRef(orderRef);
     const current = currentRef.current;
     const requestId = detailRequestRef.current + 1;
@@ -561,6 +571,20 @@ export function PortalOrdersPanel({
     }
   }, [detailCurrent]);
 
+  const invalidateCoinDetail = useCallback(() => {
+    detailRequestRef.current += 1;
+    setSelectedDetailRef(null);
+    setDetailState({ phase: "empty", value: null as never });
+  }, []);
+
+  const toggleCoinDetail = useCallback((orderRef: string) => {
+    if (selectedDetailRef === orderRef) {
+      invalidateCoinDetail();
+      return;
+    }
+    void openDetail(orderRef);
+  }, [invalidateCoinDetail, openDetail, selectedDetailRef]);
+
   const renderedIdentity = { commerceClient, sessionRef, sessionGeneration };
   const visibleListState = portalOrdersIdentityMatches(listIdentity, renderedIdentity)
     ? listState
@@ -589,10 +613,10 @@ export function PortalOrdersPanel({
     && (visibleListState.phase === "unavailable" || visibleListState.phase === "error");
   const selectedDetailKey = selectedDetailRef
     ? `coins_consumption:${selectedDetailRef}`
-    : selectedLegacyPaymentOrderRef
-      ? `legacy_payment:${selectedLegacyPaymentOrderRef}`
-      : selectedServiceOrderRef
-        ? `service_access:${selectedServiceOrderRef}`
+    : selectedLegacyDetailRef
+      ? `legacy_payment:${selectedLegacyDetailRef}`
+      : selectedServiceDetailRef
+        ? `service_access:${selectedServiceDetailRef}`
         : null;
 
   const detailContent = (item: PortalOrderCenterItem) => {
@@ -714,7 +738,14 @@ export function PortalOrdersPanel({
           ) : null}
         </div>
       ) : null}
-      <div className="portal-order-table-wrap">
+      <div
+        aria-label={desktopScrollRegion
+          ? copy(locale, "可滚动订单表格", "Scrollable orders table")
+          : undefined}
+        className="portal-order-table-wrap"
+        role={desktopScrollRegion ? "region" : undefined}
+        tabIndex={desktopScrollRegion ? 0 : undefined}
+      >
         <table className="portal-order-table" aria-label={copy(locale, "订单列表", "Orders")}>
           <thead>
             <tr>
@@ -742,22 +773,28 @@ export function PortalOrdersPanel({
                 </td>
               </tr>
             ) : visibleItems.map((item) => {
-              const actionLabel = item.kind === "legacy_payment" && item.source.status === "pending_payment"
-                ? copy(locale, "去付款", "Pay now")
-                : copy(locale, "查看", "View");
+              const actionLabel = copy(locale, "查看", "View");
               const action = item.kind === "coins_consumption"
-                ? () => void openDetail(item.source.orderRef)
+                ? () => toggleCoinDetail(item.source.orderRef)
                 : item.kind === "legacy_payment"
                   ? () => {
-                    setSelectedDetailRef(null);
-                    onOpenLegacyPaymentOrder(item.source);
+                    invalidateCoinDetail();
+                    setSelectedServiceDetailRef(null);
+                    setSelectedLegacyDetailRef((current) => (
+                      current === item.source.orderRef ? null : item.source.orderRef
+                    ));
                   }
                   : () => {
-                    setSelectedDetailRef(null);
-                    onOpenServiceOrder(item.source);
+                    const opening = selectedServiceDetailRef
+                      !== item.source.requestRef;
+                    invalidateCoinDetail();
+                    setSelectedLegacyDetailRef(null);
+                    setSelectedServiceDetailRef(
+                      opening ? item.source.requestRef : null
+                    );
+                    if (opening) onOpenServiceOrder(item.source);
                   };
               const expanded = selectedDetailKey === item.key;
-              const controlsDetails = item.kind !== "legacy_payment";
               const detailId = orderDetailId(item);
               const accessibleActionLabel = [
                 actionLabel,
@@ -787,8 +824,8 @@ export function PortalOrdersPanel({
                         <button
                           type="button"
                           onClick={action}
-                          aria-controls={controlsDetails ? detailId : undefined}
-                          aria-expanded={controlsDetails ? expanded : undefined}
+                          aria-controls={expanded ? detailId : undefined}
+                          aria-expanded={expanded}
                           aria-label={accessibleActionLabel}
                         >
                           {actionLabel}
