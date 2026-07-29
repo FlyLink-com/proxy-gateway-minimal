@@ -119,10 +119,15 @@ export function CoinsPaymentStatusCard({
   return (
     <section
       aria-label={localized(locale, "Coins 订单状态", "Coins Order status")}
+      aria-busy={cancelling || undefined}
       className={`portal-coins-payment-status portal-coins-payment-status--${state}`}
     >
-      <p aria-live="polite">{stateText(state, locale)}</p>
-      {pending ? (
+      <p aria-live="polite">
+        {cancelling
+          ? localized(locale, "正在取消订单…", "Cancelling the Order…")
+          : stateText(state, locale)}
+      </p>
+      {pending || cancelling ? (
         <span
           aria-hidden="true"
           className="portal-coins-status-spinner"
@@ -139,7 +144,7 @@ export function CoinsPaymentStatusCard({
             {localized(locale, "取消订单", "Cancel Order")}
           </button>
         ) : null}
-        <button type="button" onClick={onRefresh}>
+        <button disabled={cancelling} type="button" onClick={onRefresh}>
           {localized(locale, "刷新订单", "Refresh Order")}
         </button>
       </div>

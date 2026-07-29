@@ -398,15 +398,15 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
     },
     marketplace: {
       label: uiText(locale, "商城", "Marketplace"),
-      description: uiText(locale, "浏览平台商品、套餐、流量包和增值项。", "Browse platform products, plans, data packs, and add-ons.")
+      description: uiText(locale, "浏览套餐和流量包，使用 Coins 完成购买。", "Browse plans and data packs, then purchase with Coins.")
     },
     orders: {
       label: uiText(locale, "订单", "Orders"),
-      description: uiText(locale, "查看订单历史、支付状态和付款详情。", "Review order history, payment status, and payment details.")
+      description: uiText(locale, "统一查看商城消费、套餐付款和服务记录。", "Review Marketplace purchases, plan payments, and service records in one place.")
     },
     wallet: {
       label: uiText(locale, "Coins 钱包", "Coins wallet"),
-      description: uiText(locale, "查看 Coins 分类、充值入口、流水和奖励结构。", "Review Coins categories, recharge entry, activity, and rewards.")
+      description: uiText(locale, "查看可用余额、分类余额和钱包流水。", "Review spendable balance, balance categories, and Wallet activity.")
     },
     referrals: {
       label: uiText(locale, "推荐奖励", "Referral rewards"),
@@ -2020,7 +2020,7 @@ export function UserPortalPage({
 
   return (
     <>
-      <main className="portal-use-shell portal-v2-shell" data-portal-theme={theme}>
+      <div className="portal-use-shell portal-v2-shell" data-portal-theme={theme}>
         <aside className="portal-use-sidebar portal-v2-sidebar">
           <div className="portal-v2-brand">
             <span className="portal-v2-logo">
@@ -2040,6 +2040,7 @@ export function UserPortalPage({
                   key={item.id}
                   type="button"
                   aria-label={item.label}
+                  aria-current={activeView === item.id ? "page" : undefined}
                   data-portal-view={item.id}
                   className={cn("portal-use-nav-item", activeView === item.id && "active")}
                   onClick={() => navigatePortalView(item.id)}
@@ -2071,7 +2072,7 @@ export function UserPortalPage({
           </div>
         </aside>
 
-        <section className={cn(
+        <main className={cn(
           "portal-use-main portal-v2-main",
           paymentFlowActive && "portal-v2-main-payment"
         )}>
@@ -2085,7 +2086,7 @@ export function UserPortalPage({
                   <strong>GCC WebOS</strong>
                 </div>
                 <div className="portal-v2-page-title">
-                  <span>{activeViewCopy.label}</span>
+                  <span>{uiText(locale, "用户中心", "Account center")}</span>
                   <h1>{activeView === "dashboard" ? uiText(locale, "账户概览", "Account overview") : activeViewCopy.label}</h1>
                   <p>{topbarDescription(activeView, locale)}</p>
                 </div>
@@ -2108,6 +2109,7 @@ export function UserPortalPage({
                         activeView === "wallet" && "active"
                       )}
                       aria-label={walletSummaryAriaLabel}
+                      aria-current={activeView === "wallet" ? "page" : undefined}
                       onClick={() => navigatePortalView("wallet")}
                     >
                       <WalletCards aria-hidden="true" />
@@ -2140,16 +2142,8 @@ export function UserPortalPage({
                     </span>
                   </div>
                   <div className="portal-v2-primary-actions">
-                    <label className="portal-v2-global-search">
-                      <Search aria-hidden="true" />
-                      <input
-                        value={orderSearch}
-                        onChange={(event) => setOrderSearch(event.target.value)}
-                        placeholder={uiText(locale, "搜索商品、用量、客户端", "Search products, usage, clients")}
-                      />
-                    </label>
                     <button
-                      className="portal-primary-button compact"
+                      className="portal-primary-button compact portal-recharge-entry"
                       type="button"
                       onClick={(event) => {
                         const origin = event.currentTarget;
@@ -2293,8 +2287,8 @@ export function UserPortalPage({
               onClose={closeRechargeDialog}
             />
           ) : null}
-        </section>
-      </main>
+        </main>
+      </div>
       {shouldShowSecuritySetup ? (
         <SecuritySetupDialog
           authenticatorBound={authenticatorBound}

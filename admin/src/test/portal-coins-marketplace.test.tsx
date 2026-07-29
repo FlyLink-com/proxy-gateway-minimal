@@ -342,8 +342,11 @@ describe("Portal server-backed Marketplace", () => {
       .toHaveTextContent("参考价CNY 15.67");
     expect(within(planCard as HTMLElement).getByText("按订单状态交付"))
       .toBeInTheDocument();
-    expect(within(planCard as HTMLElement).getByText(/paid_coins/))
+    expect(within(planCard as HTMLElement).getByText("已购 Coins、奖励 Coins"))
       .toBeInTheDocument();
+    expect(planCard).not.toHaveTextContent(
+      /paid_coins|bonus_coins|reward_coins|held_coins/
+    );
     expect(within(planCard as HTMLElement).queryByText(/42 Coins/))
       .not.toBeInTheDocument();
     const zhDetails = within(planCard as HTMLElement).getByRole("button", {
@@ -795,6 +798,34 @@ describe("Portal server-backed Marketplace", () => {
     expect(commerce.createOrder).toHaveBeenCalledTimes(1);
   });
 
+  test("opens a recovered non-terminal Order once and respects an explicit close", async () => {
+    window.sessionStorage.setItem(
+      PORTAL_COIN_ORDER_STORAGE_KEY,
+      JSON.stringify({ orderRef: heldOrder.orderRef })
+    );
+    const getOrder = vi.fn(async () => heldOrder);
+    await openMarketplace(portalClientWithCommerce(commerceClient({
+      getOrder
+    })));
+
+    const recoveredDialog = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
+    });
+    expect(within(recoveredDialog).getByText("Coins 已预留"))
+      .toBeInTheDocument();
+    expect(getOrder).toHaveBeenCalledWith({
+      sessionRef: "portal_session_marketplace",
+      orderRef: heldOrder.orderRef
+    });
+
+    fireEvent.click(within(recoveredDialog).getByRole("button", {
+      name: "关闭"
+    }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
   test("uses GET refresh for captured delivery and never invents success", async () => {
     const commerce = commerceClient({
       previewCheckout: vi.fn(async () => availableQuote),
@@ -899,15 +930,15 @@ describe("Portal server-backed Marketplace", () => {
       name: "充值 Coins"
     });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    expect(within(recharge).getByRole("button", {
-      name: "选择 10 Coins"
+    expect(within(recharge).getByRole("heading", {
+      name: "充值 Coins"
     })).toHaveFocus();
     expect(within(recharge).getByText(
-      "本阶段不会创建订单或发起支付。",
+      "Coins 充值暂未开放",
       { exact: false }
     )).toBeInTheDocument();
     expect(within(recharge).getByRole("button", {
-      name: "支付通道将在下一阶段接入"
+      name: "当前不可充值"
     })).toBeDisabled();
     expect(commerce.createOrder).not.toHaveBeenCalled();
     fireEvent.click(within(recharge).getByRole("button", {

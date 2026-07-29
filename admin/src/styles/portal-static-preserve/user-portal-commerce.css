@@ -437,6 +437,13 @@
   line-height: 1;
 }
 
+.portal-v2-shell .portal-wallet-recharge-note {
+  margin: 0;
+  color: var(--portal-wallet-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .portal-v2-shell .portal-wallet-state {
   display: grid;
   justify-items: start;
@@ -498,6 +505,100 @@
 
 .portal-v2-shell .portal-wallet-ledger td {
   font-family: var(--portal-font-mono);
+}
+
+@media (min-width: 721px) {
+  .portal-v2-shell button.portal-coins-wallet-entry,
+  .portal-v2-shell .portal-commerce-layout button {
+    min-height: 44px;
+  }
+
+  .portal-v2-shell .portal-primary-button.portal-recharge-entry {
+    min-height: 44px;
+    border: 1px solid rgba(32, 213, 232, 0.56);
+    background: rgba(32, 213, 232, 0.08);
+    color: #c9d1d9;
+  }
+
+  .portal-v2-shell .portal-primary-button.portal-recharge-entry:hover {
+    border-color: #20d5e8;
+    background: rgba(32, 213, 232, 0.14);
+    color: #f0f6fc;
+  }
+
+  .portal-v2-shell .portal-primary-button.portal-recharge-entry:focus-visible {
+    outline: 3px solid var(--portal-commerce-focus-accent);
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  .portal-v2-shell[data-portal-theme="light"]
+    .portal-primary-button.portal-recharge-entry {
+    border-color: #8c959f;
+    background: #ffffff;
+    color: #334155;
+  }
+
+  .portal-v2-shell[data-portal-theme="light"]
+    .portal-primary-button.portal-recharge-entry:hover {
+    border-color: #0969da;
+    background: #f0f7ff;
+    color: #0969da;
+  }
+
+  .portal-v2-shell .portal-wallet-balance-grid__spendable {
+    grid-column: span 2;
+    border-color: color-mix(
+      in srgb,
+      var(--portal-wallet-accent) 62%,
+      var(--portal-wallet-border)
+    );
+    background: color-mix(
+      in srgb,
+      var(--portal-wallet-accent) 8%,
+      var(--portal-wallet-surface)
+    );
+  }
+
+  .portal-v2-shell .portal-wallet-balance-grid__spendable dd {
+    color: var(--portal-wallet-accent);
+    font-size: 30px;
+  }
+
+  .portal-v2-shell .portal-wallet-ledger-wrap {
+    min-width: 0;
+    border: 1px solid var(--portal-wallet-border);
+    border-radius: 10px;
+    overflow: auto;
+  }
+
+  .portal-v2-shell .portal-wallet-ledger-wrap:focus-visible {
+    outline: 3px solid var(--portal-wallet-accent);
+    outline-offset: 2px;
+  }
+
+  .portal-v2-shell .portal-wallet-ledger {
+    min-width: 920px;
+    table-layout: auto;
+    line-height: 1.45;
+  }
+
+  .portal-v2-shell .portal-wallet-ledger th,
+  .portal-v2-shell .portal-wallet-ledger td {
+    overflow-wrap: normal;
+  }
+
+  .portal-v2-shell .portal-wallet-ledger td {
+    font-family: inherit;
+  }
+
+  .portal-v2-shell .portal-wallet-ledger td:nth-child(n + 3) {
+    font-family: var(--portal-font-mono);
+  }
+
+  .portal-v2-shell .portal-wallet-ledger time {
+    white-space: nowrap;
+  }
 }
 
 @media (max-width: 1180px) {
@@ -911,6 +1012,30 @@
   }
 }
 
+@media (min-width: 721px) {
+  .portal-coins-dialog-theme[data-portal-theme="dark"] {
+    --portal-coins-dialog-on-accent: #06111f;
+  }
+
+  .portal-coins-dialog-theme[data-portal-theme="light"] {
+    --portal-coins-dialog-on-accent: #ffffff;
+  }
+
+  .portal-coins-dialog-theme
+    .portal-coins-dialog
+    button.portal-coins-dialog__primary {
+    border-color: var(--portal-coins-dialog-accent);
+    background: var(--portal-coins-dialog-accent);
+    color: var(--portal-coins-dialog-on-accent);
+  }
+
+  .portal-coins-dialog-theme
+    .portal-coins-dialog
+    button.portal-coins-dialog__secondary {
+    background: transparent;
+  }
+}
+
 @media (max-width: 960px) {
   .portal-v2-shell .portal-marketplace-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -1027,9 +1152,12 @@
   --portal-orders-closed-text: #5e6a7f;
 }
 
-.portal-v2-shell .portal-orders-panel h4 {
+.portal-v2-shell .portal-order-detail__title {
   margin: 0;
   color: var(--portal-orders-text);
+  font-family: var(--portal-font-display);
+  font-size: 16px;
+  line-height: 1.35;
 }
 
 .portal-v2-shell .portal-orders-filters {
@@ -1154,6 +1282,102 @@
 .portal-v2-shell .portal-orders-panel .portal-order-search-input:focus-visible {
   outline: 3px solid var(--portal-orders-focus);
   outline-offset: 2px;
+  box-shadow: none;
+}
+
+@media (min-width: 721px) {
+  .portal-v2-shell[data-portal-theme="dark"] .portal-orders-panel {
+    --portal-orders-text: #f0f6fc;
+    --portal-orders-border: #30363d;
+    --portal-orders-surface: #161b22;
+    --portal-orders-subtle: #0d1117;
+    --portal-orders-accent: #20d5e8;
+    --portal-orders-on-accent: #06111f;
+    --portal-orders-focus: #20d5e8;
+  }
+
+  .portal-v2-shell[data-portal-theme="light"] .portal-orders-panel {
+    --portal-orders-text: #1f2937;
+    --portal-orders-muted: #57606a;
+    --portal-orders-border: #d0d7de;
+    --portal-orders-subtle: #f6f8fa;
+    --portal-orders-accent: #0969da;
+    --portal-orders-focus: #0969da;
+  }
+
+  .portal-v2-shell .portal-use-nav-item {
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .portal-v2-shell .portal-logout-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .portal-v2-shell .portal-use-nav-item:focus-visible,
+  .portal-v2-shell .portal-logout-button:focus-visible {
+    outline: 3px solid var(--portal-commerce-focus-accent);
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  .portal-v2-shell .portal-orders-panel {
+    min-width: 0;
+    border: 1px solid var(--portal-orders-border);
+    border-radius: 16px;
+    background: var(--portal-orders-surface);
+    color: var(--portal-orders-text);
+    padding: 20px;
+  }
+
+  .portal-v2-shell .portal-orders-panel .portal-order-table {
+    table-layout: fixed;
+    min-width: 940px;
+  }
+
+  .portal-v2-shell .portal-orders-filters button,
+  .portal-v2-shell .portal-orders-panel .portal-order-search-input,
+  .portal-v2-shell .portal-orders-inline-note button,
+  .portal-v2-shell .portal-orders-panel .portal-order-toolbar select,
+  .portal-v2-shell .portal-orders-panel .portal-order-actions button,
+  .portal-v2-shell .portal-orders-load-more {
+    min-height: 44px;
+  }
+
+  .portal-v2-shell .portal-orders-panel .portal-order-table td {
+    line-height: 1.45;
+    white-space: normal;
+  }
+
+  .portal-v2-shell .portal-orders-panel .portal-order-main-text {
+    overflow-wrap: anywhere;
+  }
+
+  .portal-v2-shell .portal-orders-panel .portal-order-detail {
+    display: grid;
+    gap: 14px;
+  }
+
+  .portal-v2-shell .portal-orders-panel .portal-order-toolbar select:focus-visible,
+  .portal-v2-shell .portal-orders-panel .portal-order-actions button:focus-visible,
+  .portal-v2-shell .portal-orders-load-more:focus-visible {
+    outline: 3px solid var(--portal-orders-focus);
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  .portal-v2-shell .portal-orders-load-more {
+    justify-self: start;
+    border: 1px solid var(--portal-orders-border);
+    border-radius: 9px;
+    background: var(--portal-orders-surface);
+    color: var(--portal-orders-text);
+    cursor: pointer;
+    padding: 9px 13px;
+    font: inherit;
+    font-weight: 700;
+  }
 }
 
 @media (max-width: 720px) {

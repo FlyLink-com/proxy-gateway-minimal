@@ -393,6 +393,129 @@ describe("PortalOrdersPanel", () => {
     })).toBeInTheDocument();
   });
 
+  test("labels processing fulfillment as delivery in progress", async () => {
+    const processingOrder: PortalCoinOrder = {
+      ...ORDER,
+      orderRef: "order_consumption_processing",
+      fulfillment: { status: "processing", safeCode: null }
+    };
+    const client = {
+      listOrders: vi.fn().mockResolvedValue({
+        orders: [processingOrder],
+        nextCursor: null
+      })
+    } as unknown as PortalCoinCommerceClient;
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: client,
+      sessionRef: "session_processing_order",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn()
+    }));
+
+    expect(await screen.findByRole("button", {
+      name: /order_consumption_processing.*Payment complete.*Delivering/i
+    })).toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "Orders" }))
+      .queryByText("Needs attention")).toBeNull();
+  });
+
+  test("gives every order action unique context and links expanded details", async () => {
+    const client = {
+      listOrders: vi.fn().mockResolvedValue({ orders: [ORDER], nextCursor: null }),
+      getOrder: vi.fn().mockResolvedValue(ORDER)
+    } as unknown as PortalCoinCommerceClient;
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: client,
+      sessionRef: "session_accessible_details",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      legacyPaymentOrders: [PAYMENT_ORDER],
+      serviceOrders: [SERVICE_ORDER]
+    }));
+
+    const table = screen.getByRole("table", { name: "Orders" });
+    within(table).getAllByRole("columnheader").forEach((header) => {
+      expect(header).toHaveAttribute("scope", "col");
+    });
+    expect(within(table).getByRole("button", {
+      name: /View.*pay_001.*Basic monthly.*Payment failed/i
+    })).toBeInTheDocument();
+    const serviceAction = within(table).getByRole("button", {
+      name: /View.*service_request_001.*Monthly basic.*Active/i
+    });
+    expect(serviceAction).toHaveAttribute("aria-expanded", "false");
+    expect(serviceAction).toHaveAttribute("aria-controls");
+    const legacyAction = within(table).getByRole("button", {
+      name: /View.*pay_001.*Basic monthly.*Payment failed/i
+    });
+    expect(legacyAction).not.toHaveAttribute("aria-expanded");
+    expect(legacyAction).not.toHaveAttribute("aria-controls");
+
+    const coinsAction = await within(table).findByRole("button", {
+      name: /order_consumption_001.*Monthly 50 GB/i
+    });
+    expect(coinsAction).toHaveAttribute("aria-expanded", "false");
+    const detailId = coinsAction.getAttribute("aria-controls");
+    expect(detailId).toBeTruthy();
+    fireEvent.click(coinsAction);
+
+    const detail = await screen.findByRole("region", {
+      name: "Coins consumption order detail"
+    });
+    expect(coinsAction).toHaveAttribute("aria-expanded", "true");
+    expect(detail).toHaveAttribute("id", detailId);
+    expect(document.querySelectorAll(".portal-order-detail-row")).toHaveLength(1);
+  });
+
+  test("keeps accessible action names unique when displayed service refs share a prefix", async () => {
+    const secondServiceOrder: PortalServiceOrder = {
+      ...SERVICE_ORDER,
+      requestRef: "service_request_002"
+    };
+    const client = {
+      listOrders: vi.fn().mockResolvedValue({ orders: [], nextCursor: null })
+    } as unknown as PortalCoinCommerceClient;
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: client,
+      sessionRef: "session_unique_service_refs",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      serviceOrders: [SERVICE_ORDER, secondServiceOrder]
+    }));
+
+    const table = await screen.findByRole("table", { name: "Orders" });
+    const first = within(table).getByRole("button", {
+      name: /View.*service_request_001.*Monthly basic.*Active/i
+    });
+    const second = within(table).getByRole("button", {
+      name: /View.*service_request_002.*Monthly basic.*Active/i
+    });
+    expect(first).not.toHaveAccessibleName(second.getAttribute("aria-label") ?? "");
+  });
+
+  test("does not announce an empty result while the Coins source is loading", () => {
+    const pending = deferred<{ orders: PortalCoinOrder[]; nextCursor: null }>();
+    const client = {
+      listOrders: vi.fn(() => pending.promise)
+    } as unknown as PortalCoinCommerceClient;
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: client,
+      sessionRef: "session_loading_orders",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn()
+    }));
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Loading Marketplace orders…"
+    );
+    expect(screen.queryByText("No matching orders")).toBeNull();
+    expect(screen.queryByText("No Coins consumption orders.")).toBeNull();
+  });
+
   test("switches from a Coins detail to the selected service in the single detail surface", async () => {
     const client = {
       listOrders: vi.fn().mockResolvedValue({ orders: [ORDER], nextCursor: null }),
@@ -423,7 +546,9 @@ describe("PortalOrdersPanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: new RegExp(ORDER.orderRef) }));
     expect(await screen.findByRole("region", { name: "Coins consumption order detail" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: /View.*service_request_001.*Monthly basic.*Active/i
+    }));
     expect(screen.queryByRole("region", { name: "Coins consumption order detail" })).toBeNull();
     expect(screen.getByText("Client")).toBeInTheDocument();
     expect(document.querySelectorAll(".portal-order-detail-row")).toHaveLength(1);
@@ -467,7 +592,7 @@ describe("PortalOrdersPanel", () => {
 
     expect(await screen.findByText("Some Marketplace orders are temporarily unavailable")).toBeInTheDocument();
     const table = screen.getByRole("table", { name: "Orders" });
-    expect(within(table).getAllByText("Legacy plan payment")).toHaveLength(1);
+    expect(within(table).getAllByText("Plan payment")).toHaveLength(1);
     expect(within(table).getAllByText("Service record")).toHaveLength(1);
   });
 
@@ -902,7 +1027,10 @@ describe("PortalOrdersPanel", () => {
       sessionRef: "session_new",
       orderRef: "order_consumption_002"
     }));
-    expect(await screen.findByText("order_consumption_002", { selector: "h4" })).toBeInTheDocument();
+    expect(await screen.findByText(/order_consumption_002/, {
+      selector: ".portal-order-detail__title"
+    }))
+      .toBeInTheDocument();
   });
 
   test("keeps an in-flight read across a callback-only rerender and uses the latest committed callback", async () => {

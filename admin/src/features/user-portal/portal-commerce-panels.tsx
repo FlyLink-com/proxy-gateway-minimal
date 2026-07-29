@@ -16,6 +16,7 @@ import {
   type PortalCoinCommerceClient,
   type PortalCoinOffer
 } from "./commerce";
+import { portalCoinTypeListLabel } from "./portal-commerce-presentation";
 
 export type PortalCommerceLocale = "zh" | "en";
 
@@ -112,16 +113,16 @@ export function RechargeDialog({
           disabled
         >
           {zh
-            ? "支付通道将在下一阶段接入"
-            : "Payment channel will be connected in the next stage"}
+            ? "当前不可充值"
+            : "Recharge is not available yet"}
         </button>
       )}
     >
       <div className="portal-recharge-dialog__body">
         <p>
           {zh
-            ? "选择 Coins 档位。本阶段不会创建订单或发起支付。"
-            : "Choose a Coins denomination. This stage does not create an order or start payment."}
+            ? "Coins 充值暂未开放。以下档位仅作展示，目前无法付款，也不会创建充值订单。"
+            : "Coins recharge is not available yet. The denominations below are shown for reference; payment is unavailable and no recharge order will be created."}
         </p>
         <RechargeDenominationList
           autoFocusFirst
@@ -265,7 +266,7 @@ function MarketplaceOfferCard({
           </div>
           <div>
             <dt>{zh ? "接受的 Coins" : "Accepted Coins"}</dt>
-            <dd>{offer.acceptedCoinTypes.join(", ")}</dd>
+            <dd>{portalCoinTypeListLabel(offer.acceptedCoinTypes, locale)}</dd>
           </div>
         </dl>
         {notices.length > 0 ? (
@@ -330,6 +331,7 @@ export function MarketplacePanel({
   const productSessionRef = useRef(sessionRef);
   const latestProductSessionRef = useRef(sessionRef);
   const productIntentSequenceRef = useRef(0);
+  const autoOpenedOrderRef = useRef<string | null>(null);
   const suppressProductFocusRestoreRef = useRef(false);
   latestProductSessionRef.current = sessionRef;
   const purchaseFlow = useCoinsPurchaseFlow({
@@ -471,6 +473,9 @@ export function MarketplacePanel({
 
   const closeCoinsDialog = useCallback(() => {
     productIntentSequenceRef.current += 1;
+    if (purchaseFlow.order) {
+      autoOpenedOrderRef.current = purchaseFlow.order.orderRef;
+    }
     setDialogVisible(false);
     setProductIntent(null);
     if (
@@ -503,7 +508,13 @@ export function MarketplacePanel({
     && !purchaseFlow.errorRetryable
   );
   useEffect(() => {
-    if (!activeOrderRef) return;
+    if (
+      !activeOrderRef
+      || autoOpenedOrderRef.current === activeOrderRef
+    ) {
+      return;
+    }
+    autoOpenedOrderRef.current = activeOrderRef;
     setDialogVisible(true);
   }, [activeOrderRef]);
 
@@ -511,6 +522,7 @@ export function MarketplacePanel({
     <section
       className="portal-commerce-layout portal-commerce-layout--marketplace"
       aria-label={zh ? "商城目录" : "Marketplace catalog"}
+      aria-busy={catalog.status === "loading" || productBusy || undefined}
     >
       {catalog.status === "unavailable" ? (
         <div className="portal-marketplace-state" role="status">

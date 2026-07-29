@@ -114,7 +114,7 @@ describe("PortalWalletPanel", () => {
       ledger: { phase: "ready", value: [HELD_ENTRY] }
     }));
 
-    expect(screen.getByRole("heading", { name: "Balance and recharge" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Wallet overview" })).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
     expect(screen.getByText("120", { selector: "dd" })).toBeInTheDocument();
     expect(screen.getByText("30", { selector: "dd" })).toBeInTheDocument();
@@ -134,18 +134,29 @@ describe("PortalWalletPanel", () => {
       "Pending",
       "Held"
     ]);
-    const heldRow = screen.getByText("available_to_held").closest("tr");
+    const heldRow = screen.getByText("Reserved for order").closest("tr");
     expect(heldRow).not.toBeNull();
-    expect(within(heldRow as HTMLElement).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
-      "available_to_held",
-      "bonus_coins",
-      "2026-07-27T11:00:00.000Z",
+    const heldCells = within(heldRow as HTMLElement)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent);
+    expect(heldCells).toEqual([
+      "Reserved for order",
+      "Bonus Coins",
+      expect.not.stringContaining("2026-07-27T11:00:00.000Z"),
       "order_wallet_002",
       "0",
       "-5",
       "0",
       "+5"
     ]);
+    expect(heldRow).not.toHaveTextContent(/available_to_held|bonus_coins/);
+    const occurredAt = (heldRow as HTMLElement).querySelector("time");
+    expect(occurredAt).toHaveAttribute(
+      "dateTime",
+      "2026-07-27T11:00:00.000Z"
+    );
+    expect(screen.getByText(/Coins recharge is not available yet/))
+      .toBeInTheDocument();
   });
 
   test.each<{

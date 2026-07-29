@@ -101,6 +101,11 @@ describe("Portal Coins dialogs", () => {
     expect(within(dialog).getByText("Basic summary")).toBeInTheDocument();
     expect(within(dialog).getByText(/30 days/)).toBeInTheDocument();
     expect(within(dialog).getByText(/100 GB/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Purchased Coins, Reward Coins"))
+      .toBeInTheDocument();
+    expect(dialog).not.toHaveTextContent(
+      /paid_coins|bonus_coins|reward_coins|held_coins/
+    );
 
     const buttons = within(dialog).getAllByRole("button");
     fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
@@ -119,7 +124,7 @@ describe("Portal Coins dialogs", () => {
     expect(onRestoreFocus).toHaveBeenCalledTimes(1);
   });
 
-  test("Escape is consumed at the modal boundary whether or not close is enabled", () => {
+  test("Escape is consumed at the modal boundary and follows the visible Close action", () => {
     const ancestorKeyDown = vi.fn();
     const onRequestClose = vi.fn();
     const product = render(createElement(
@@ -139,7 +144,7 @@ describe("Portal Coins dialogs", () => {
     product.unmount();
 
     const lockedAncestorKeyDown = vi.fn();
-    const lockedClose = vi.fn();
+    const orderClose = vi.fn();
     const onCancel = vi.fn();
     render(createElement(
       "div",
@@ -155,14 +160,16 @@ describe("Portal Coins dialogs", () => {
         onCancel,
         onRefresh: vi.fn(),
         onOpenRecharge: vi.fn(),
-        onRequestClose: lockedClose
+        onRequestClose: orderClose
       })
     ));
-    const lockedDialog = screen.getByRole("dialog", {
+    const orderDialog = screen.getByRole("dialog", {
       name: "Confirm Coins purchase"
     });
-    expect(fireEvent.keyDown(lockedDialog, { key: "Escape" })).toBe(false);
-    expect(lockedClose).not.toHaveBeenCalled();
+    expect(within(orderDialog).getByRole("button", { name: "Close" }))
+      .toBeEnabled();
+    expect(fireEvent.keyDown(orderDialog, { key: "Escape" })).toBe(false);
+    expect(orderClose).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
     expect(lockedAncestorKeyDown).not.toHaveBeenCalled();
   });
@@ -197,9 +204,16 @@ describe("Portal Coins dialogs", () => {
     expect(within(dialog).getByText("Availability").parentElement)
       .toHaveTextContent("AvailabilityInsufficient balance");
     expect(within(dialog).getByText(/Shortfall: 5 Coins/)).toBeInTheDocument();
-    expect(within(dialog).getByText(
-      "2026-07-27T20:00:00.000Z"
-    )).toBeInTheDocument();
+    const expiry = dialog.querySelector("time");
+    expect(expiry).toHaveAttribute("dateTime", "2026-07-27T20:00:00.000Z");
+    expect(expiry).not.toHaveTextContent("2026-07-27T20:00:00.000Z");
+    expect(dialog).toHaveTextContent("Purchased Coins");
+    expect(dialog).toHaveTextContent("Bonus Coins");
+    expect(dialog).toHaveTextContent("Reward Coins");
+    expect(dialog).toHaveTextContent("Held Coins");
+    expect(dialog).not.toHaveTextContent(
+      /paid_coins|bonus_coins|reward_coins|held_coins/
+    );
 
     const confirm = within(dialog).getByRole("button", {
       name: "Confirm purchase"
@@ -252,6 +266,42 @@ describe("Portal Coins dialogs", () => {
       name: "Close"
     })).toBeDisabled();
     expect(fireEvent.keyDown(dialog, { key: "Escape" })).toBe(false);
+    expect(onRequestClose).not.toHaveBeenCalled();
+  });
+
+  test("cancelling marks the dialog busy, announces progress, and locks duplicate actions", () => {
+    const onCancel = vi.fn();
+    const onRefresh = vi.fn();
+    const onRequestClose = vi.fn();
+    render(createElement(CoinsPurchaseDialog, {
+      locale: "en",
+      quote: insufficientQuote,
+      order: heldOrder,
+      submitting: false,
+      cancelling: true,
+      errorCode: null,
+      onConfirm: vi.fn(),
+      onCancel,
+      onRefresh,
+      onOpenRecharge: vi.fn(),
+      onRequestClose
+    }));
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Confirm Coins purchase"
+    });
+    expect(dialog).toHaveAttribute("aria-busy", "true");
+    expect(within(dialog).getByText("Cancelling the Order…"))
+      .toHaveAttribute("aria-live", "polite");
+    expect(within(dialog).queryByRole("button", { name: "Cancel Order" }))
+      .toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Refresh Order" }))
+      .toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Close" }))
+      .toBeDisabled();
+    expect(fireEvent.keyDown(dialog, { key: "Escape" })).toBe(false);
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onRefresh).not.toHaveBeenCalled();
     expect(onRequestClose).not.toHaveBeenCalled();
   });
 
@@ -317,7 +367,7 @@ describe("Portal Coins dialogs", () => {
     );
   });
 
-  test("held status is polite, reduced-motion safe, cancellable, and Escape never cancels", () => {
+  test("held status is polite, reduced-motion safe, cancellable, and Escape only closes", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({
       matches: true,
       media: "(prefers-reduced-motion: reduce)",
@@ -353,7 +403,7 @@ describe("Portal Coins dialogs", () => {
     expect(spinner).toHaveAttribute("aria-hidden", "true");
     expect(spinner).toHaveAttribute("data-motion", "reduced");
     fireEvent.keyDown(dialog, { key: "Escape" });
-    expect(onRequestClose).not.toHaveBeenCalled();
+    expect(onRequestClose).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", {
       name: "Cancel Order"
