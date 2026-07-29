@@ -5,6 +5,7 @@ import {
   useId,
   useRef
 } from "react";
+import { portalCoinTypeListLabel } from "../../portal-commerce-presentation";
 import type { PortalCoinOffer } from "../api-contract";
 
 type CommerceLocale = "zh" | "en";
@@ -162,7 +163,11 @@ export function ProductDetailDialog({
       panelClassName="portal-coins-product-detail-dialog"
       title={localized}
       footer={(
-        <button type="button" onClick={onPreview}>
+        <button
+          className="portal-coins-dialog__primary"
+          type="button"
+          onClick={onPreview}
+        >
           {locale === "zh" ? "预览 Coins 结算" : "Preview Coins checkout"}
         </button>
       )}
@@ -175,7 +180,7 @@ export function ProductDetailDialog({
         </div>
         <div>
           <dt>{locale === "zh" ? "可用 Coins" : "Accepted Coins"}</dt>
-          <dd>{offer.acceptedCoinTypes.join(", ")}</dd>
+          <dd>{portalCoinTypeListLabel(offer.acceptedCoinTypes, locale)}</dd>
         </div>
       </dl>
       <ul>

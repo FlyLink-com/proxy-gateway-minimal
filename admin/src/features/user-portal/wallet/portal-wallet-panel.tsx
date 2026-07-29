@@ -1,4 +1,9 @@
-import { RechargeDenominationList } from "../portal-commerce-panels";
+import {
+  formatPortalDateTime,
+  portalCoinTypeLabel,
+  portalLedgerCategoryLabel
+} from "../portal-commerce-presentation";
+import { useDesktopScrollRegion } from "../use-desktop-scroll-region";
 import type {
   PortalWalletLedgerEntry,
   PortalWalletStatus,
@@ -94,12 +99,42 @@ function WalletSummary({
 }) {
   const zh = locale === "zh";
   const balances = [
-    [zh ? "已购 Coins" : "Paid Coins", summary.balances.paidCoins],
-    [zh ? "赠送 Coins" : "Bonus Coins", summary.balances.bonusCoins],
-    [zh ? "奖励 Coins" : "Reward Coins", summary.balances.rewardCoins],
-    [zh ? "可用余额" : "Spendable", summary.spendableUnits],
-    [zh ? "冻结中" : "Held", summary.heldUnits],
-    [zh ? "待确认" : "Pending", summary.pendingUnits]
+    {
+      id: "spendable",
+      label: zh ? "可用余额" : "Spendable balance",
+      value: summary.spendableUnits,
+      featured: true
+    },
+    {
+      id: "paid",
+      label: zh ? "已购 Coins" : "Purchased Coins",
+      value: summary.balances.paidCoins,
+      featured: false
+    },
+    {
+      id: "bonus",
+      label: zh ? "赠送 Coins" : "Bonus Coins",
+      value: summary.balances.bonusCoins,
+      featured: false
+    },
+    {
+      id: "reward",
+      label: zh ? "奖励 Coins" : "Reward Coins",
+      value: summary.balances.rewardCoins,
+      featured: false
+    },
+    {
+      id: "held",
+      label: zh ? "冻结中" : "Held",
+      value: summary.heldUnits,
+      featured: false
+    },
+    {
+      id: "pending",
+      label: zh ? "待确认" : "Pending",
+      value: summary.pendingUnits,
+      featured: false
+    }
   ] as const;
   return (
     <>
@@ -108,10 +143,15 @@ function WalletSummary({
         <strong>{walletStatusLabel(summary.status, locale)}</strong>
       </p>
       <dl className="portal-wallet-balance-grid">
-        {balances.map(([label, value]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
+        {balances.map((balance) => (
+          <div
+            className={balance.featured
+              ? "portal-wallet-balance-grid__spendable"
+              : undefined}
+            key={balance.id}
+          >
+            <dt>{balance.label}</dt>
+            <dd>{balance.value}</dd>
           </div>
         ))}
       </dl>
@@ -135,38 +175,54 @@ function LedgerTable({
   locale: PortalWalletPanelProps["locale"];
 }) {
   const zh = locale === "zh";
+  const desktopScrollRegion = useDesktopScrollRegion();
   return (
-    <table
-      className="portal-wallet-ledger"
-      aria-label={zh ? "Coins 钱包流水" : "Coins Wallet activity"}
+    <div
+      aria-label={desktopScrollRegion
+        ? zh
+          ? "Coins 钱包流水表"
+          : "Coins Wallet activity table"
+        : undefined}
+      className="portal-wallet-ledger-wrap"
+      role={desktopScrollRegion ? "region" : undefined}
+      tabIndex={desktopScrollRegion ? 0 : undefined}
     >
-      <thead>
-        <tr>
-          <th scope="col">{zh ? "类别" : "Category"}</th>
-          <th scope="col">{zh ? "币种" : "Coin type"}</th>
-          <th scope="col">{zh ? "发生时间" : "Occurred at"}</th>
-          <th scope="col">{zh ? "关联订单" : "Related order"}</th>
-          <th scope="col">{zh ? "总变动" : "Overall delta"}</th>
-          <th scope="col">{zh ? "可用" : "Available"}</th>
-          <th scope="col">{zh ? "待确认" : "Pending"}</th>
-          <th scope="col">{zh ? "冻结" : "Held"}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {entries.map((entry) => (
-          <tr key={entry.entryRef}>
-            <td>{entry.category}</td>
-            <td>{entry.coinType}</td>
-            <td>{entry.occurredAt}</td>
-            <td>{entry.relatedOrderRef ?? "—"}</td>
-            <td>{signedDelta(entry.totalDeltaUnits)}</td>
-            <td>{bucketDelta(entry.availableDeltaUnits)}</td>
-            <td>{bucketDelta(entry.pendingDeltaUnits)}</td>
-            <td>{bucketDelta(entry.heldDeltaUnits)}</td>
+      <table
+        className="portal-wallet-ledger"
+        aria-label={zh ? "Coins 钱包流水" : "Coins Wallet activity"}
+      >
+        <thead>
+          <tr>
+            <th scope="col">{zh ? "类别" : "Category"}</th>
+            <th scope="col">{zh ? "币种" : "Coin type"}</th>
+            <th scope="col">{zh ? "发生时间" : "Occurred at"}</th>
+            <th scope="col">{zh ? "关联订单" : "Related order"}</th>
+            <th scope="col">{zh ? "总变动" : "Overall delta"}</th>
+            <th scope="col">{zh ? "可用" : "Available"}</th>
+            <th scope="col">{zh ? "待确认" : "Pending"}</th>
+            <th scope="col">{zh ? "冻结" : "Held"}</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {entries.map((entry) => (
+            <tr key={entry.entryRef}>
+              <td>{portalLedgerCategoryLabel(entry.category, locale)}</td>
+              <td>{portalCoinTypeLabel(entry.coinType, locale)}</td>
+              <td>
+                <time dateTime={entry.occurredAt}>
+                  {formatPortalDateTime(entry.occurredAt, locale)}
+                </time>
+              </td>
+              <td>{entry.relatedOrderRef ?? "—"}</td>
+              <td>{signedDelta(entry.totalDeltaUnits)}</td>
+              <td>{bucketDelta(entry.availableDeltaUnits)}</td>
+              <td>{bucketDelta(entry.pendingDeltaUnits)}</td>
+              <td>{bucketDelta(entry.heldDeltaUnits)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -217,13 +273,45 @@ function LedgerState({
   return (
     <>
       <LedgerTable entries={state.value} locale={locale} />
-      {model.nextLedgerCursor ? (
+      {model.loadMoreLedgerError ? (
+        <div
+          className="portal-wallet-state"
+          role={model.loadMoreLedgerError.phase === "unavailable"
+            ? "status"
+            : "alert"}
+        >
+          <p>
+            {model.loadMoreLedgerError.phase === "unavailable"
+              ? zh
+                ? "更多钱包流水暂不可用，当前已加载流水仍会保留。"
+                : "More Wallet activity is unavailable. Your current activity is still shown."
+              : zh
+                ? "更多钱包流水加载失败，当前已加载流水仍会保留。"
+                : "More Wallet activity could not be loaded. Your current activity is still shown."}
+          </p>
+          {model.loadMoreLedgerError.retryable ? (
+            <button type="button" onClick={model.loadMoreLedger}>
+              {zh
+                ? "重试加载更多流水"
+                : "Retry loading more activity"}
+            </button>
+          ) : null}
+        </div>
+      ) : model.nextLedgerCursor ? (
         <button
+          aria-busy={model.loadingMoreLedger}
           className="portal-wallet-load-more"
+          disabled={model.loadingMoreLedger}
           type="button"
           onClick={model.loadMoreLedger}
         >
-          {zh ? "加载更多流水" : "Load more activity"}
+          {model.loadingMoreLedger
+            ? zh
+              ? "正在加载更多流水…"
+              : "Loading more activity…"
+            : zh
+              ? "加载更多流水"
+              : "Load more activity"}
         </button>
       ) : null}
     </>
@@ -242,7 +330,7 @@ export function PortalWalletPanel({
     >
       <header className="portal-commerce-layout__header">
         <h2 id="portal-wallet-heading">
-          {zh ? "余额与充值" : "Balance and recharge"}
+          {zh ? "钱包总览" : "Wallet overview"}
         </h2>
       </header>
       <section
@@ -251,13 +339,6 @@ export function PortalWalletPanel({
       >
         <h3 id="portal-wallet-balance-heading">{zh ? "余额" : "Balance"}</h3>
         <SummaryState locale={locale} model={model} />
-      </section>
-      <section
-        className="portal-commerce-layout__section"
-        aria-labelledby="portal-wallet-recharge-heading"
-      >
-        <h3 id="portal-wallet-recharge-heading">{zh ? "充值" : "Recharge"}</h3>
-        <RechargeDenominationList locale={locale} mode="wallet-disabled" />
       </section>
       <section
         className="portal-commerce-layout__section"

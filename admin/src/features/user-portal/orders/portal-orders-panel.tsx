@@ -7,13 +7,16 @@ import {
   useRef,
   useState
 } from "react";
+import { Search } from "lucide-react";
 
 import {
   PortalCoinCommerceClientError,
   type PortalCoinCommerceClient,
   type PortalCoinOrder
 } from "../commerce";
+import { portalCoinTypeLabel } from "../portal-commerce-presentation";
 import type { PortalPaymentOrder } from "../user-portal-client";
+import { useDesktopScrollRegion } from "../use-desktop-scroll-region";
 import {
   buildPortalOrderCenterItems,
   type PortalOrderCenterItem,
@@ -32,10 +35,8 @@ export type PortalOrdersPanelProps = {
   legacyPaymentOrders: PortalPaymentOrder[];
   serviceOrders: PortalServiceOrder[];
   selectedServiceOrderRef: string | null;
-  selectedLegacyPaymentOrderRef: string | null;
   orderSearch: string;
   onOrderSearchChange: (value: string) => void;
-  onOpenLegacyPaymentOrder: (order: PortalPaymentOrder) => void;
   onOpenServiceOrder: (order: PortalServiceOrder) => void;
   onOpenMarketplace: () => void;
 };
@@ -153,6 +154,7 @@ function fulfillmentLabel(
     case "not_requested":
       return copy(locale, "等待交付", "Awaiting delivery");
     case "pending":
+    case "processing":
       return copy(locale, "交付中", "Delivering");
     case "delivered":
       return copy(locale, "已交付", "Delivered");
@@ -200,7 +202,7 @@ function itemTypeLabel(
   locale: PortalOrdersPanelProps["locale"]
 ) {
   if (item.kind === "coins_consumption") return copy(locale, "商城消费", "Marketplace purchase");
-  if (item.kind === "legacy_payment") return copy(locale, "旧套餐付款", "Legacy plan payment");
+  if (item.kind === "legacy_payment") return copy(locale, "套餐付款", "Plan payment");
   return copy(locale, "服务记录", "Service record");
 }
 
@@ -249,6 +251,34 @@ function displayOrderRef(item: PortalOrderCenterItem) {
   return item.source.requestRef.replace(/^subreq[_-]?/i, "O-").slice(0, 18);
 }
 
+function accessibleOrderRef(item: PortalOrderCenterItem) {
+  if (item.kind === "coins_consumption") return item.source.orderRef;
+  if (item.kind === "legacy_payment") return item.source.orderRef;
+  return item.source.requestRef;
+}
+
+function orderDetailId(item: PortalOrderCenterItem) {
+  return `portal-order-detail-${item.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+function orderDetailLabel(
+  item: PortalOrderCenterItem,
+  locale: PortalOrdersPanelProps["locale"]
+) {
+  if (item.kind === "coins_consumption") {
+    return copy(
+      locale,
+      "Coins 消费订单详情",
+      "Coins consumption order detail"
+    );
+  }
+  return copy(
+    locale,
+    `${itemTypeLabel(item, locale)}详情：${displayOrderRef(item)}`,
+    `${itemTypeLabel(item, locale)} details: ${displayOrderRef(item)}`
+  );
+}
+
 function itemStatusLabel(
   item: PortalOrderCenterItem,
   locale: PortalOrdersPanelProps["locale"]
@@ -281,14 +311,11 @@ function allocationLabel(
   allocation: PortalCoinOrder["allocation"],
   locale: PortalOrdersPanelProps["locale"]
 ) {
-  return allocation.map((entry) => {
-    const coinType = entry.coinType === "paid_coins"
-      ? copy(locale, "充值 Coins", "Paid Coins")
-      : entry.coinType === "bonus_coins"
-        ? copy(locale, "赠送 Coins", "Bonus Coins")
-        : copy(locale, "奖励 Coins", "Reward Coins");
-    return `${coinType} ${entry.amountUnits}`;
-  }).join(" + ");
+  return allocation
+    .map((entry) => (
+      `${portalCoinTypeLabel(entry.coinType, locale)} ${entry.amountUnits}`
+    ))
+    .join(" + ");
 }
 
 export function portalOrdersIdentityMatches(
@@ -309,13 +336,16 @@ export function PortalOrdersPanel({
   legacyPaymentOrders = [],
   serviceOrders = [],
   selectedServiceOrderRef = null,
-  selectedLegacyPaymentOrderRef = null,
   orderSearch = "",
   onOrderSearchChange = () => undefined,
-  onOpenLegacyPaymentOrder = () => undefined,
   onOpenServiceOrder = () => undefined,
   onOpenMarketplace = () => undefined
 }: PortalOrdersPanelProps) {
+  const desktopScrollRegion = useDesktopScrollRegion();
+  const allFilterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const toolbarMarketplaceButtonRef = useRef<HTMLButtonElement | null>(null);
+  const emptyActionButtonRef = useRef<HTMLButtonElement | null>(null);
+  const emptyActionFocusedRef = useRef(false);
   const [filter, setFilter] = useState<PortalOrdersFilter>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | PortalOrderCenterStatus>("all");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
@@ -332,6 +362,10 @@ export function PortalOrdersPanel({
     value: null as never
   });
   const [selectedDetailRef, setSelectedDetailRef] = useState<string | null>(null);
+  const [selectedLegacyDetailRef, setSelectedLegacyDetailRef] =
+    useState<string | null>(null);
+  const [selectedServiceDetailRef, setSelectedServiceDetailRef] =
+    useState<string | null>(selectedServiceOrderRef);
   const initialIdentity = { commerceClient, sessionRef, sessionGeneration };
   const [listIdentity, setListIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
   const [detailIdentity, setDetailIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
@@ -361,6 +395,8 @@ export function PortalOrdersPanel({
     setListState({ phase: "loading" });
     setDetailState({ phase: "empty", value: null as never });
     setSelectedDetailRef(null);
+    setSelectedLegacyDetailRef(null);
+    setSelectedServiceDetailRef(null);
     setNextCursor(null);
     setListRetryRequest({ cursor: null, append: false });
     visibleOrderRefsRef.current.clear();
@@ -371,6 +407,10 @@ export function PortalOrdersPanel({
       loadingCursorsRef.current.clear();
     };
   }, [commerceClient, sessionGeneration, sessionRef]);
+
+  useLayoutEffect(() => {
+    setSelectedServiceDetailRef(selectedServiceOrderRef);
+  }, [selectedServiceOrderRef]);
 
   const listCurrent = useCallback((current: CurrentInputs, requestId: number) => (
     current.alive
@@ -497,6 +537,8 @@ export function PortalOrdersPanel({
   }, [loadList, nextCursor]);
 
   const openDetail = useCallback(async (orderRef: string) => {
+    setSelectedLegacyDetailRef(null);
+    setSelectedServiceDetailRef(null);
     setSelectedDetailRef(orderRef);
     const current = currentRef.current;
     const requestId = detailRequestRef.current + 1;
@@ -534,6 +576,20 @@ export function PortalOrdersPanel({
     }
   }, [detailCurrent]);
 
+  const invalidateCoinDetail = useCallback(() => {
+    detailRequestRef.current += 1;
+    setSelectedDetailRef(null);
+    setDetailState({ phase: "empty", value: null as never });
+  }, []);
+
+  const toggleCoinDetail = useCallback((orderRef: string) => {
+    if (selectedDetailRef === orderRef) {
+      invalidateCoinDetail();
+      return;
+    }
+    void openDetail(orderRef);
+  }, [invalidateCoinDetail, openDetail, selectedDetailRef]);
+
   const renderedIdentity = { commerceClient, sessionRef, sessionGeneration };
   const visibleListState = portalOrdersIdentityMatches(listIdentity, renderedIdentity)
     ? listState
@@ -560,12 +616,39 @@ export function PortalOrdersPanel({
   }, [allItems, filter, locale, orderSearch, sort, statusFilter]);
   const coinSourceFailed = showsCoins
     && (visibleListState.phase === "unavailable" || visibleListState.phase === "error");
+  const showEmptyState = visibleItems.length === 0
+    && !(showsCoins && (
+      visibleListState.phase === "loading"
+      || visibleListState.phase === "unavailable"
+      || visibleListState.phase === "error"
+    ));
+  const hasActiveFilters = filter !== "all"
+    || statusFilter !== "all"
+    || orderSearch.trim().length > 0;
+  const useContextualEmptyState = desktopScrollRegion && showEmptyState;
+  const clearFilters = () => {
+    setFilter("all");
+    setStatusFilter("all");
+    onOrderSearchChange("");
+    allFilterButtonRef.current?.focus();
+  };
+  useLayoutEffect(() => {
+    if (
+      useContextualEmptyState
+      && document.activeElement === toolbarMarketplaceButtonRef.current
+    ) {
+      emptyActionButtonRef.current?.focus();
+    } else if (!useContextualEmptyState && emptyActionFocusedRef.current) {
+      emptyActionFocusedRef.current = false;
+      toolbarMarketplaceButtonRef.current?.focus();
+    }
+  }, [useContextualEmptyState]);
   const selectedDetailKey = selectedDetailRef
     ? `coins_consumption:${selectedDetailRef}`
-    : selectedLegacyPaymentOrderRef
-      ? `legacy_payment:${selectedLegacyPaymentOrderRef}`
-      : selectedServiceOrderRef
-        ? `service_access:${selectedServiceOrderRef}`
+    : selectedLegacyDetailRef
+      ? `legacy_payment:${selectedLegacyDetailRef}`
+      : selectedServiceDetailRef
+        ? `service_access:${selectedServiceDetailRef}`
         : null;
 
   const detailContent = (item: PortalOrderCenterItem) => {
@@ -590,15 +673,14 @@ export function PortalOrdersPanel({
       if (visibleDetailState.phase !== "ready") return null;
       const order = visibleDetailState.value;
       return (
-        <section aria-label={copy(locale, "Coins 消费订单详情", "Coins consumption order detail")}>
-          <h4>{order.orderRef}</h4>
+        <>
           <div className="portal-order-detail-grid">
             <div><span>{copy(locale, "金额", "Amount")}</span><strong>{order.amountUnits} Coins</strong></div>
             <div><span>{copy(locale, "支付", "Payment")}</span><strong>{coinPaymentLabel(order.paymentStatus, locale)}</strong></div>
             <div><span>{copy(locale, "履约", "Fulfillment")}</span><strong>{fulfillmentLabel(order.fulfillment.status, locale)}</strong></div>
             <div><span>{copy(locale, "Coins 分配", "Coins allocation")}</span><strong>{allocationLabel(order.allocation, locale)}</strong></div>
           </div>
-        </section>
+        </>
       );
     }
     if (item.kind === "legacy_payment") {
@@ -631,6 +713,7 @@ export function PortalOrdersPanel({
         {FILTERS.map((item) => (
           <button
             key={item.id}
+            ref={item.id === "all" ? allFilterButtonRef : undefined}
             type="button"
             aria-pressed={filter === item.id}
             onClick={() => setFilter(item.id)}
@@ -641,14 +724,20 @@ export function PortalOrdersPanel({
       </div>
 
       <div className="portal-order-toolbar">
-        <label>
+        <label className="portal-order-search-control">
           <span>{copy(locale, "搜索订单", "Search orders")}</span>
-          <input
-            className="portal-order-search-input"
-            value={orderSearch}
-            onChange={(event) => onOrderSearchChange(event.target.value)}
-            placeholder={copy(locale, "订单 / 商品或服务 / 状态", "Order / product or service / status")}
-          />
+          <span
+            className="portal-order-search-field"
+            data-state={orderSearch.length === 0 ? "empty" : "filled"}
+          >
+            <Search aria-hidden="true" />
+            <input
+              className="portal-order-search-input"
+              value={orderSearch}
+              onChange={(event) => onOrderSearchChange(event.target.value)}
+              placeholder={copy(locale, "订单 / 商品或服务 / 状态", "Order / product or service / status")}
+            />
+          </span>
         </label>
         <label>
           <span>{copy(locale, "状态", "Status")}</span>
@@ -670,7 +759,15 @@ export function PortalOrdersPanel({
             <option value="oldest">{copy(locale, "最早创建", "Oldest")}</option>
           </select>
         </label>
-        <button className="portal-primary-button compact portal-toolbar-create" type="button" onClick={onOpenMarketplace}>
+        <button
+          aria-hidden={useContextualEmptyState ? "true" : undefined}
+          className="portal-primary-button compact portal-toolbar-create"
+          data-empty-hidden={useContextualEmptyState ? "true" : undefined}
+          ref={toolbarMarketplaceButtonRef}
+          tabIndex={useContextualEmptyState ? -1 : undefined}
+          type="button"
+          onClick={onOpenMarketplace}
+        >
           {copy(locale, "前往商城", "Go to Marketplace")}
         </button>
       </div>
@@ -688,44 +785,110 @@ export function PortalOrdersPanel({
           ) : null}
         </div>
       ) : null}
-      <div className="portal-order-table-wrap">
+      <div
+        aria-label={desktopScrollRegion && !showEmptyState
+          ? copy(locale, "可滚动订单表格", "Scrollable orders table")
+          : undefined}
+        className="portal-order-table-wrap"
+        data-empty={useContextualEmptyState ? "true" : undefined}
+        role={desktopScrollRegion && !showEmptyState ? "region" : undefined}
+        tabIndex={desktopScrollRegion && !showEmptyState ? 0 : undefined}
+      >
         <table className="portal-order-table" aria-label={copy(locale, "订单列表", "Orders")}>
           <thead>
             <tr>
-              <th>{copy(locale, "订单", "Order")}</th>
-              <th>{copy(locale, "类型", "Type")}</th>
-              <th>{copy(locale, "商品或服务", "Product or service")}</th>
-              <th>{copy(locale, "金额", "Amount")}</th>
-              <th>{copy(locale, "状态", "Status")}</th>
-              <th>{copy(locale, "创建时间", "Created")}</th>
-              <th>{copy(locale, "操作", "Actions")}</th>
+              <th scope="col">{copy(locale, "订单", "Order")}</th>
+              <th scope="col">{copy(locale, "类型", "Type")}</th>
+              <th scope="col">{copy(locale, "商品或服务", "Product or service")}</th>
+              <th scope="col">{copy(locale, "金额", "Amount")}</th>
+              <th scope="col">{copy(locale, "状态", "Status")}</th>
+              <th scope="col">{copy(locale, "创建时间", "Created")}</th>
+              <th scope="col">{copy(locale, "操作", "Actions")}</th>
             </tr>
           </thead>
           <tbody>
-            {visibleItems.length === 0 ? (
+            {showEmptyState ? (
               <tr>
                 <td colSpan={7} className="portal-order-empty-state">
-                  {filter !== "plans_services" && visibleListState.phase === "empty"
+                  {desktopScrollRegion ? (
+                    <div className="portal-order-empty-content">
+                      <strong>
+                        {hasActiveFilters
+                          ? copy(locale, "暂无符合条件的订单", "No matching orders")
+                          : copy(locale, "暂无订单", "No orders yet")}
+                      </strong>
+                      <span>
+                        {hasActiveFilters
+                          ? copy(locale, "调整筛选条件，或清除筛选查看全部订单。", "Adjust the filters, or clear them to see all orders.")
+                          : copy(locale, "商城购买和服务记录会在这里统一显示。", "Marketplace purchases and service records appear here.")}
+                      </span>
+                      {hasActiveFilters ? (
+                        <button
+                          className="portal-secondary-button compact"
+                          ref={emptyActionButtonRef}
+                          type="button"
+                          onBlur={() => {
+                            emptyActionFocusedRef.current = false;
+                          }}
+                          onClick={clearFilters}
+                          onFocus={() => {
+                            emptyActionFocusedRef.current = true;
+                          }}
+                        >
+                          {copy(locale, "清除筛选", "Clear filters")}
+                        </button>
+                      ) : (
+                        <button
+                          className="portal-primary-button compact"
+                          ref={emptyActionButtonRef}
+                          type="button"
+                          onBlur={() => {
+                            emptyActionFocusedRef.current = false;
+                          }}
+                          onClick={onOpenMarketplace}
+                          onFocus={() => {
+                            emptyActionFocusedRef.current = true;
+                          }}
+                        >
+                          {copy(locale, "前往商城", "Go to Marketplace")}
+                        </button>
+                      )}
+                    </div>
+                  ) : filter !== "plans_services" && visibleListState.phase === "empty"
                     ? copy(locale, "暂无 Coins 消费订单。", "No Coins consumption orders.")
                     : copy(locale, "暂无符合条件的订单", "No matching orders")}
                 </td>
               </tr>
             ) : visibleItems.map((item) => {
-              const actionLabel = item.kind === "legacy_payment" && item.source.status === "pending_payment"
-                ? copy(locale, "去付款", "Pay now")
-                : copy(locale, "查看", "View");
+              const actionLabel = copy(locale, "查看", "View");
               const action = item.kind === "coins_consumption"
-                ? () => void openDetail(item.source.orderRef)
+                ? () => toggleCoinDetail(item.source.orderRef)
                 : item.kind === "legacy_payment"
                   ? () => {
-                    setSelectedDetailRef(null);
-                    onOpenLegacyPaymentOrder(item.source);
+                    invalidateCoinDetail();
+                    setSelectedServiceDetailRef(null);
+                    setSelectedLegacyDetailRef((current) => (
+                      current === item.source.orderRef ? null : item.source.orderRef
+                    ));
                   }
                   : () => {
-                    setSelectedDetailRef(null);
-                    onOpenServiceOrder(item.source);
+                    const opening = selectedServiceDetailRef
+                      !== item.source.requestRef;
+                    invalidateCoinDetail();
+                    setSelectedLegacyDetailRef(null);
+                    setSelectedServiceDetailRef(
+                      opening ? item.source.requestRef : null
+                    );
+                    if (opening) onOpenServiceOrder(item.source);
                   };
               const expanded = selectedDetailKey === item.key;
+              const detailId = orderDetailId(item);
+              const accessibleActionLabel = [
+                actionLabel,
+                accessibleOrderRef(item),
+                productLabel(item, locale),
+                itemStatusLabel(item, locale)
+              ].join(locale === "zh" ? "：" : ": ");
               return (
                 <Fragment key={item.key}>
                   <tr className={expanded ? "selected" : undefined}>
@@ -738,15 +901,19 @@ export function PortalOrdersPanel({
                     <td data-label={copy(locale, "状态", "Status")}>
                       <span className={`portal-order-status ${item.status}`}>{itemStatusLabel(item, locale)}</span>
                     </td>
-                    <td data-label={copy(locale, "创建时间", "Created")}>{formatDateTime(item.createdAt, locale)}</td>
+                    <td data-label={copy(locale, "创建时间", "Created")}>
+                      <time dateTime={item.createdAt}>
+                        {formatDateTime(item.createdAt, locale)}
+                      </time>
+                    </td>
                     <td data-label={copy(locale, "操作", "Actions")}>
                       <div className="portal-order-actions">
                         <button
                           type="button"
                           onClick={action}
-                          aria-label={item.kind === "coins_consumption"
-                            ? `${actionLabel} ${item.source.orderRef} ${productLabel(item, locale)} ${itemStatusLabel(item, locale)}`
-                            : undefined}
+                          aria-controls={expanded ? detailId : undefined}
+                          aria-expanded={expanded}
+                          aria-label={accessibleActionLabel}
                         >
                           {actionLabel}
                         </button>
@@ -756,7 +923,17 @@ export function PortalOrdersPanel({
                   {expanded ? (
                     <tr className="portal-order-detail-row">
                       <td colSpan={7}>
-                        <div className="portal-order-detail">{detailContent(item)}</div>
+                        <div
+                          aria-label={orderDetailLabel(item, locale)}
+                          className="portal-order-detail"
+                          id={detailId}
+                          role="region"
+                        >
+                          <p className="portal-order-detail__title">
+                            {productLabel(item, locale)} · {displayOrderRef(item)}
+                          </p>
+                          {detailContent(item)}
+                        </div>
                       </td>
                     </tr>
                   ) : null}
@@ -767,7 +944,11 @@ export function PortalOrdersPanel({
         </table>
       </div>
       {nextCursor && coinOrders.length > 0 && showsCoins && (visibleListState.phase === "ready" || visibleListState.phase === "empty") ? (
-        <button type="button" onClick={loadMore}>
+        <button
+          className="portal-orders-load-more"
+          type="button"
+          onClick={loadMore}
+        >
           {copy(locale, "加载更多消费订单", "Load more consumption orders")}
         </button>
       ) : null}

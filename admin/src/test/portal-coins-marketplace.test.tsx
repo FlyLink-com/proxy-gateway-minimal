@@ -342,8 +342,11 @@ describe("Portal server-backed Marketplace", () => {
       .toHaveTextContent("参考价CNY 15.67");
     expect(within(planCard as HTMLElement).getByText("按订单状态交付"))
       .toBeInTheDocument();
-    expect(within(planCard as HTMLElement).getByText(/paid_coins/))
+    expect(within(planCard as HTMLElement).getByText("已购 Coins、奖励 Coins"))
       .toBeInTheDocument();
+    expect(planCard).not.toHaveTextContent(
+      /paid_coins|bonus_coins|reward_coins|held_coins/
+    );
     expect(within(planCard as HTMLElement).queryByText(/42 Coins/))
       .not.toBeInTheDocument();
     const zhDetails = within(planCard as HTMLElement).getByRole("button", {
@@ -389,20 +392,36 @@ describe("Portal server-backed Marketplace", () => {
     fireEvent.click(within(loadingNavigation).getByRole("button", {
       name: "商城"
     }));
-    expect(screen.getByRole("status")).toHaveTextContent("正在加载商城目录");
+    const loadingNotice = screen.getByRole("status");
+    expect(loadingNotice).toHaveTextContent("正在加载商城目录");
+    expect(loadingNotice).toHaveAttribute("data-state", "loading");
+    expect(loadingNotice.querySelector(
+      ".portal-notice__indicator--loading[aria-hidden=\"true\"]"
+    )).toBeInTheDocument();
     await act(async () => {
       pendingCatalog.resolve([]);
       await pendingCatalog.promise;
     });
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    const emptyNotice = await screen.findByRole("status");
+    expect(emptyNotice).toHaveTextContent(
       "当前没有可用商品"
     );
+    expect(emptyNotice).toHaveAttribute("data-state", "empty");
+    expect(emptyNotice).toHaveAttribute("aria-live", "polite");
+    const emptyMarker = emptyNotice.querySelector(
+      ".portal-notice__marker[aria-hidden=\"true\"]"
+    );
+    expect(emptyMarker).toBeInTheDocument();
+    expect(emptyMarker).toHaveAttribute("fill", "none");
     loadingView.unmount();
 
     await openMarketplace(createLocalUserPortalClient());
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    const unavailableNotice = await screen.findByRole("status");
+    expect(unavailableNotice).toHaveTextContent(
       "当前客户端未提供服务端商城能力"
     );
+    expect(unavailableNotice).toHaveAttribute("data-state", "unavailable");
+    expect(unavailableNotice).toHaveAttribute("aria-live", "polite");
     expect(screen.queryByText("服务端基础套餐")).not.toBeInTheDocument();
     cleanup();
 
@@ -416,6 +435,13 @@ describe("Portal server-backed Marketplace", () => {
     })));
     const authAlert = await screen.findByRole("alert");
     expect(authAlert).toHaveTextContent("商城会话已失效，请重新登录");
+    expect(authAlert).toHaveAttribute("data-state", "error");
+    expect(authAlert).toHaveAttribute("aria-live", "assertive");
+    const authMarker = authAlert.querySelector(
+      ".portal-notice__marker[aria-hidden=\"true\"]"
+    );
+    expect(authMarker).toBeInTheDocument();
+    expect(authMarker).toHaveAttribute("fill", "none");
     expect(within(authAlert).queryByRole("button", { name: "重试" }))
       .not.toBeInTheDocument();
     cleanup();
@@ -524,17 +550,24 @@ describe("Portal server-backed Marketplace", () => {
     });
     fireEvent.click(purchaseAction);
 
-    expect(screen.getByRole("status")).toHaveTextContent(
+    const detailLoadingNotice = screen.getByRole("status");
+    expect(detailLoadingNotice).toHaveTextContent(
       "正在加载商品详情"
     );
+    expect(detailLoadingNotice).toHaveAttribute("data-state", "loading");
+    expect(detailLoadingNotice.querySelector(
+      ".portal-notice__indicator--loading[aria-hidden=\"true\"]"
+    )).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await act(async () => {
       detail.resolve(planOffer);
       await detail.promise;
     });
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    const quoteLoadingNotice = await screen.findByRole("status");
+    expect(quoteLoadingNotice).toHaveTextContent(
       "正在获取服务端报价"
     );
+    expect(quoteLoadingNotice).toHaveAttribute("data-state", "loading");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await act(async () => {
       preview.reject(new PortalCoinCommerceClientError(
@@ -543,9 +576,12 @@ describe("Portal server-backed Marketplace", () => {
       ));
       await preview.promise.catch(() => undefined);
     });
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    const flowErrorNotice = await screen.findByRole("alert");
+    expect(flowErrorNotice).toHaveTextContent(
       "Coins 购买流程暂时不可用"
     );
+    expect(flowErrorNotice).toHaveAttribute("data-state", "error");
+    expect(flowErrorNotice).toHaveAttribute("aria-live", "assertive");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -795,6 +831,34 @@ describe("Portal server-backed Marketplace", () => {
     expect(commerce.createOrder).toHaveBeenCalledTimes(1);
   });
 
+  test("opens a recovered non-terminal Order once and respects an explicit close", async () => {
+    window.sessionStorage.setItem(
+      PORTAL_COIN_ORDER_STORAGE_KEY,
+      JSON.stringify({ orderRef: heldOrder.orderRef })
+    );
+    const getOrder = vi.fn(async () => heldOrder);
+    await openMarketplace(portalClientWithCommerce(commerceClient({
+      getOrder
+    })));
+
+    const recoveredDialog = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
+    });
+    expect(within(recoveredDialog).getByText("Coins 已预留"))
+      .toBeInTheDocument();
+    expect(getOrder).toHaveBeenCalledWith({
+      sessionRef: "portal_session_marketplace",
+      orderRef: heldOrder.orderRef
+    });
+
+    fireEvent.click(within(recoveredDialog).getByRole("button", {
+      name: "关闭"
+    }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
   test("uses GET refresh for captured delivery and never invents success", async () => {
     const commerce = commerceClient({
       previewCheckout: vi.fn(async () => availableQuote),
@@ -873,7 +937,7 @@ describe("Portal server-backed Marketplace", () => {
     expect(screen.getByText("Coins · 800")).toBeInTheDocument();
   });
 
-  test("opens the existing non-executable Recharge dialog explicitly without overlapping modals", async () => {
+  test("keeps an insufficient Quote in the purchase dialog without exposing recharge UI", async () => {
     const commerce = commerceClient({
       previewCheckout: vi.fn(async () => insufficientQuote)
     });
@@ -891,29 +955,15 @@ describe("Portal server-backed Marketplace", () => {
     expect(within(coinsDialog).getByRole("button", {
       name: "确认购买"
     })).toBeDisabled();
-    fireEvent.click(within(coinsDialog).getByRole("button", {
+    expect(within(coinsDialog).queryByRole("button", {
       name: "打开充值"
-    }));
-
-    const recharge = await screen.findByRole("dialog", {
-      name: "充值 Coins"
-    });
+    })).not.toBeInTheDocument();
+    expect(within(coinsDialog).getByText(/缺少 5 Coins/))
+      .toBeInTheDocument();
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    expect(within(recharge).getByRole("button", {
-      name: "选择 10 Coins"
-    })).toHaveFocus();
-    expect(within(recharge).getByText(
-      "本阶段不会创建订单或发起支付。",
-      { exact: false }
-    )).toBeInTheDocument();
-    expect(within(recharge).getByRole("button", {
-      name: "支付通道将在下一阶段接入"
-    })).toBeDisabled();
+    expect(screen.queryByRole("dialog", { name: "充值 Coins" }))
+      .not.toBeInTheDocument();
     expect(commerce.createOrder).not.toHaveBeenCalled();
-    fireEvent.click(within(recharge).getByRole("button", {
-      name: "关闭"
-    }));
-    await waitFor(() => expect(purchaseAction).toHaveFocus());
   });
 
   test("keeps bilingual capability parity and the unknown Wallet balance boundary", async () => {
@@ -957,14 +1007,12 @@ describe("Portal server-backed Marketplace", () => {
     const view = render(createElement(MarketplacePanel, {
       commerceClient: commerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_first",
       theme: "light"
     }));
     view.rerender(createElement(MarketplacePanel, {
       commerceClient: commerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_second",
       theme: "light"
     }));
@@ -1023,7 +1071,6 @@ describe("Portal server-backed Marketplace", () => {
     const view = render(createElement(MarketplacePanel, {
       commerceClient: commerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_first",
       theme: "light"
     }));
@@ -1040,7 +1087,6 @@ describe("Portal server-backed Marketplace", () => {
     view.rerender(createElement(MarketplacePanel, {
       commerceClient: commerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_second",
       theme: "light"
     }));
@@ -1157,7 +1203,6 @@ describe("Portal server-backed Marketplace", () => {
     const view = render(createElement(MarketplacePanel, {
       commerceClient: oldCommerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_marketplace",
       theme: "dark"
     }));
@@ -1174,7 +1219,6 @@ describe("Portal server-backed Marketplace", () => {
     view.rerender(createElement(MarketplacePanel, {
       commerceClient: currentCommerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_marketplace",
       theme: "dark"
     }));
@@ -1220,7 +1264,6 @@ describe("Portal server-backed Marketplace", () => {
     const view = render(createElement(MarketplacePanel, {
       commerceClient: oldCommerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_marketplace",
       theme: "dark"
     }));
@@ -1243,7 +1286,6 @@ describe("Portal server-backed Marketplace", () => {
     view.rerender(createElement(MarketplacePanel, {
       commerceClient: currentCommerce,
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_marketplace",
       theme: "dark"
     }));
@@ -1293,7 +1335,6 @@ describe("Portal server-backed Marketplace", () => {
         listOffers: vi.fn(async () => [noNoticeOffer])
       }),
       locale: "en",
-      onOpenRecharge: vi.fn(),
       sessionRef: "portal_session_marketplace",
       theme: "dark"
     }));

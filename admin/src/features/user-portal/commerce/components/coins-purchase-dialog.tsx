@@ -4,6 +4,11 @@ import type {
   PortalCoinQuote
 } from "../api-contract";
 import {
+  formatPortalDateTime,
+  portalCoinTypeLabel,
+  portalCoinTypeListLabel
+} from "../../portal-commerce-presentation";
+import {
   CoinsDialogFrame
 } from "./product-detail-dialog";
 import { CoinsPaymentStatusCard } from "./coins-payment-status-card";
@@ -17,7 +22,6 @@ export type CoinsPurchaseDialogProps = {
   locale: CommerceLocale;
   onCancel: () => void;
   onConfirm: () => void;
-  onOpenRecharge: () => void;
   onRefresh: () => void;
   onRequestClose: () => void;
   onRestoreFocus?: () => void;
@@ -95,7 +99,7 @@ function QuoteFacts({
       <dl>
         <div>
           <dt>{localized(locale, "接受的 Coins", "Accepted Coins")}</dt>
-          <dd>{quote.offer.acceptedCoinTypes.join(", ")}</dd>
+          <dd>{portalCoinTypeListLabel(quote.offer.acceptedCoinTypes, locale)}</dd>
         </div>
         <div>
           <dt>{localized(locale, "订单金额", "Order amount")}</dt>
@@ -108,7 +112,7 @@ function QuoteFacts({
               ? `${localized(locale, "无", "None")} · 0 Coins`
               : quote.allocation.map((item) => (
                 <span key={item.coinType}>
-                  {item.coinType}: {item.amountUnits}
+                  {portalCoinTypeLabel(item.coinType, locale)}: {item.amountUnits}
                 </span>
               ))}
           </dd>
@@ -120,16 +124,20 @@ function QuoteFacts({
             {" · "}
             <span>{localized(locale, "之后", "After")}: {balanceTotal(after)}</span>
             <ul>
-              <li>bonus_coins: {before.bonusCoins} → {after.bonusCoins}</li>
-              <li>paid_coins: {before.paidCoins} → {after.paidCoins}</li>
-              <li>reward_coins: {before.rewardCoins} → {after.rewardCoins}</li>
-              <li>held_coins: {before.heldCoins} → {after.heldCoins}</li>
+              <li>{portalCoinTypeLabel("bonus_coins", locale)}: {before.bonusCoins} → {after.bonusCoins}</li>
+              <li>{portalCoinTypeLabel("paid_coins", locale)}: {before.paidCoins} → {after.paidCoins}</li>
+              <li>{portalCoinTypeLabel("reward_coins", locale)}: {before.rewardCoins} → {after.rewardCoins}</li>
+              <li>{portalCoinTypeLabel("held_coins", locale)}: {before.heldCoins} → {after.heldCoins}</li>
             </ul>
           </dd>
         </div>
         <div>
           <dt>{localized(locale, "报价到期", "Quote expiry")}</dt>
-          <dd><time dateTime={quote.expiresAt}>{quote.expiresAt}</time></dd>
+          <dd>
+            <time dateTime={quote.expiresAt}>
+              {formatPortalDateTime(quote.expiresAt, locale)}
+            </time>
+          </dd>
         </div>
         <div>
           <dt>{localized(locale, "可购买状态", "Availability")}</dt>
@@ -155,7 +163,6 @@ export function CoinsPurchaseDialog({
   locale,
   onCancel,
   onConfirm,
-  onOpenRecharge,
   onRefresh,
   onRequestClose,
   onRestoreFocus,
@@ -178,29 +185,23 @@ export function CoinsPurchaseDialog({
 
   return (
     <CoinsDialogFrame
-      busy={submitting}
-      closeDisabled={submitting}
+      busy={submitting || cancelling}
+      closeDisabled={submitting || cancelling}
       closeLabel={localized(locale, "关闭", "Close")}
-      escapeCloseEnabled={order === null && !submitting}
+      escapeCloseEnabled={!submitting && !cancelling}
       onRequestClose={onRequestClose}
       onRestoreFocus={onRestoreFocus}
       panelClassName="portal-coins-purchase-dialog"
       title={localized(locale, "确认 Coins 购买", "Confirm Coins purchase")}
       footer={quote && !order ? (
-        <>
-          {insufficient ? (
-            <button type="button" onClick={onOpenRecharge}>
-              {localized(locale, "打开充值", "Open recharge")}
-            </button>
-          ) : null}
-          <button
-            disabled={insufficient || submitting || confirmDisabled}
-            type="button"
-            onClick={onConfirm}
-          >
-            {localized(locale, "确认购买", "Confirm purchase")}
-          </button>
-        </>
+        <button
+          className="portal-coins-dialog__primary"
+          disabled={insufficient || submitting || confirmDisabled}
+          type="button"
+          onClick={onConfirm}
+        >
+          {localized(locale, "确认购买", "Confirm purchase")}
+        </button>
       ) : null}
     >
       {order ? (

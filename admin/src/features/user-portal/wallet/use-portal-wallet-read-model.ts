@@ -19,6 +19,11 @@ export type ReadState<T> =
   | { phase: "unavailable"; retryable: boolean }
   | { phase: "error"; retryable: boolean };
 
+export type PortalWalletLedgerPageError = {
+  phase: "unavailable" | "error";
+  retryable: boolean;
+};
+
 export type PortalWalletReadModel = {
   summary: ReadState<PortalWalletSummary>;
   ledger: ReadState<PortalWalletLedgerEntry[]>;
@@ -26,6 +31,8 @@ export type PortalWalletReadModel = {
     afterOccurredAt: string;
     afterEntryRef: string;
   } | null;
+  loadingMoreLedger: boolean;
+  loadMoreLedgerError: PortalWalletLedgerPageError | null;
   retrySummary: () => void;
   retryLedger: () => void;
   refreshWallet: () => void;
@@ -105,6 +112,9 @@ export function usePortalWalletReadModel({
     useState<ReadState<PortalWalletLedgerEntry[]>>(INACTIVE_STATE);
   const [nextLedgerCursor, setNextLedgerCursor] =
     useState<PortalWalletReadModel["nextLedgerCursor"]>(null);
+  const [loadingMoreLedger, setLoadingMoreLedger] = useState(false);
+  const [loadMoreLedgerError, setLoadMoreLedgerError] =
+    useState<PortalWalletLedgerPageError | null>(null);
   const [summaryRevision, setSummaryRevision] = useState(0);
   const [ledgerRevision, setLedgerRevision] = useState(0);
   const wasLedgerOpenRef = useRef(loadLedger);
@@ -255,6 +265,8 @@ export function usePortalWalletReadModel({
     ledgerRequestIdRef.current = requestId;
     ledgerPageRequestIdRef.current += 1;
     loadMoreInFlightRef.current = null;
+    setLoadingMoreLedger(false);
+    setLoadMoreLedgerError(null);
     setNextLedgerCursor(null);
     if (!client || !sessionRef || !loadLedger) {
       setLedger(INACTIVE_STATE);
@@ -353,6 +365,8 @@ export function usePortalWalletReadModel({
     const capturedSessionRef = sessionRef;
     const capturedGeneration = sessionGeneration;
     const capturedCursor = { ...cursor };
+    setLoadingMoreLedger(true);
+    setLoadMoreLedgerError(null);
     void capturedClient.listLedger({
       sessionRef: capturedSessionRef,
       limit: 25,
@@ -376,8 +390,7 @@ export function usePortalWalletReadModel({
         current.value.map((entry) => entry.entryRef)
       );
       if (page.entries.some((entry) => seenEntryRefs.has(entry.entryRef))) {
-        setLedger({ phase: "error", retryable: true });
-        setNextLedgerCursor(null);
+        setLoadMoreLedgerError({ phase: "error", retryable: true });
         return;
       }
       setLedger({
@@ -385,6 +398,7 @@ export function usePortalWalletReadModel({
         value: [...current.value, ...page.entries]
       });
       setNextLedgerCursor(page.nextCursor);
+      setLoadMoreLedgerError(null);
     }).catch((error: unknown) => {
       if (
         !ledgerRequestIsCurrent(
@@ -403,11 +417,11 @@ export function usePortalWalletReadModel({
         onSessionInvalidRef.current();
         return;
       }
-      setLedger(failure.state);
-      setNextLedgerCursor(null);
+      setLoadMoreLedgerError(failure.state);
     }).finally(() => {
       if (loadMoreInFlightRef.current === flight) {
         loadMoreInFlightRef.current = null;
+        setLoadingMoreLedger(false);
       }
     });
   }, [
@@ -422,6 +436,8 @@ export function usePortalWalletReadModel({
     summary,
     ledger,
     nextLedgerCursor,
+    loadingMoreLedger,
+    loadMoreLedgerError,
     retrySummary,
     retryLedger,
     refreshWallet,

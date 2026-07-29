@@ -42,9 +42,7 @@ import {
 } from "./public-locale-switch";
 import {
   MarketplacePanel,
-  RechargeDialog,
-  ReferralRewardsPanel,
-  type RechargeDenomination
+  ReferralRewardsPanel
 } from "./portal-commerce-panels";
 import { PORTAL_COIN_ORDER_STORAGE_KEY } from "./commerce";
 import { PortalOrdersPanel } from "./orders/portal-orders-panel";
@@ -54,6 +52,7 @@ import {
   PortalWalletPanel,
   usePortalWalletReadModel
 } from "./wallet";
+import { useDesktopScrollRegion } from "./use-desktop-scroll-region";
 import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
 import type {
   PortalAccountEntitlement,
@@ -398,15 +397,15 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
     },
     marketplace: {
       label: uiText(locale, "商城", "Marketplace"),
-      description: uiText(locale, "浏览平台商品、套餐、流量包和增值项。", "Browse platform products, plans, data packs, and add-ons.")
+      description: uiText(locale, "浏览套餐和流量包，使用 Coins 完成购买。", "Browse plans and data packs, then purchase with Coins.")
     },
     orders: {
       label: uiText(locale, "订单", "Orders"),
-      description: uiText(locale, "查看订单历史、支付状态和付款详情。", "Review order history, payment status, and payment details.")
+      description: uiText(locale, "统一查看商城消费、套餐付款和服务记录。", "Review Marketplace purchases, plan payments, and service records in one place.")
     },
     wallet: {
       label: uiText(locale, "Coins 钱包", "Coins wallet"),
-      description: uiText(locale, "查看 Coins 分类、充值入口、流水和奖励结构。", "Review Coins categories, recharge entry, activity, and rewards.")
+      description: uiText(locale, "查看可用余额、分类余额和钱包流水。", "Review spendable balance, balance categories, and Wallet activity.")
     },
     referrals: {
       label: uiText(locale, "推荐奖励", "Referral rewards"),
@@ -1057,10 +1056,6 @@ export function UserPortalPage({
   const [orderClientFilter, setOrderClientFilter] = useState<"all" | PortalClientId>("all");
   const [orderSort, setOrderSort] = useState<OrderSort>("newest");
   const [orderFormOpen, setOrderFormOpen] = useState(false);
-  const [rechargeDialogOpen, setRechargeDialogOpen] = useState(false);
-  const [selectedRechargeAmount, setSelectedRechargeAmount] =
-    useState<RechargeDenomination | null>(null);
-  const rechargeReturnFocusRef = useRef<(() => void) | null>(null);
   const [selectedOrderRef, setSelectedOrderRef] = useState<string | null>(null);
   const [activePaymentOrderRef, setActivePaymentOrderRef] = useState<string | null>(null);
   const [authError, setAuthError] = useState("");
@@ -1101,13 +1096,6 @@ export function UserPortalPage({
   useEffect(() => {
     document.title = portalSession ? authCopy.shellDocumentTitle : authCopy.documentTitle;
   }, [authCopy.documentTitle, authCopy.shellDocumentTitle, portalSession]);
-
-  useEffect(() => {
-    if (portalSession) return;
-    setRechargeDialogOpen(false);
-    setSelectedRechargeAmount(null);
-    rechargeReturnFocusRef.current = null;
-  }, [portalSession]);
 
   const currentEntitlement = useMemo(() => currentTrafficEntitlement(accountEntitlements), [accountEntitlements]);
   const selectedOrder = useMemo(() => {
@@ -1564,20 +1552,6 @@ export function UserPortalPage({
     setActiveView(view);
   }
 
-  function openRechargeDialog(returnFocus?: () => void) {
-    rechargeReturnFocusRef.current = returnFocus ?? null;
-    setSelectedRechargeAmount(null);
-    setRechargeDialogOpen(true);
-  }
-
-  function closeRechargeDialog() {
-    const returnFocus = rechargeReturnFocusRef.current;
-    rechargeReturnFocusRef.current = null;
-    setSelectedRechargeAmount(null);
-    setRechargeDialogOpen(false);
-    returnFocus?.();
-  }
-
   async function refreshPaymentOrders(targetOrderRef?: string) {
     if (!portalSession) return;
     setActionError("");
@@ -2020,7 +1994,7 @@ export function UserPortalPage({
 
   return (
     <>
-      <main className="portal-use-shell portal-v2-shell" data-portal-theme={theme}>
+      <div className="portal-use-shell portal-v2-shell" data-portal-theme={theme}>
         <aside className="portal-use-sidebar portal-v2-sidebar">
           <div className="portal-v2-brand">
             <span className="portal-v2-logo">
@@ -2040,6 +2014,7 @@ export function UserPortalPage({
                   key={item.id}
                   type="button"
                   aria-label={item.label}
+                  aria-current={activeView === item.id ? "page" : undefined}
                   data-portal-view={item.id}
                   className={cn("portal-use-nav-item", activeView === item.id && "active")}
                   onClick={() => navigatePortalView(item.id)}
@@ -2071,7 +2046,7 @@ export function UserPortalPage({
           </div>
         </aside>
 
-        <section className={cn(
+        <main className={cn(
           "portal-use-main portal-v2-main",
           paymentFlowActive && "portal-v2-main-payment"
         )}>
@@ -2085,7 +2060,7 @@ export function UserPortalPage({
                   <strong>GCC WebOS</strong>
                 </div>
                 <div className="portal-v2-page-title">
-                  <span>{activeViewCopy.label}</span>
+                  <span>{uiText(locale, "用户中心", "Account center")}</span>
                   <h1>{activeView === "dashboard" ? uiText(locale, "账户概览", "Account overview") : activeViewCopy.label}</h1>
                   <p>{topbarDescription(activeView, locale)}</p>
                 </div>
@@ -2108,6 +2083,7 @@ export function UserPortalPage({
                         activeView === "wallet" && "active"
                       )}
                       aria-label={walletSummaryAriaLabel}
+                      aria-current={activeView === "wallet" ? "page" : undefined}
                       onClick={() => navigatePortalView("wallet")}
                     >
                       <WalletCards aria-hidden="true" />
@@ -2138,27 +2114,6 @@ export function UserPortalPage({
                       <span className="portal-status-dot" aria-hidden="true" />
                       {orderHealthLabel(orderRows, accountEntitlements, locale)}
                     </span>
-                  </div>
-                  <div className="portal-v2-primary-actions">
-                    <label className="portal-v2-global-search">
-                      <Search aria-hidden="true" />
-                      <input
-                        value={orderSearch}
-                        onChange={(event) => setOrderSearch(event.target.value)}
-                        placeholder={uiText(locale, "搜索商品、用量、客户端", "Search products, usage, clients")}
-                      />
-                    </label>
-                    <button
-                      className="portal-primary-button compact"
-                      type="button"
-                      onClick={(event) => {
-                        const origin = event.currentTarget;
-                        openRechargeDialog(() => origin.focus());
-                      }}
-                    >
-                      <Plus aria-hidden="true" />
-                      {uiText(locale, "充值 Coins", "Recharge Coins")}
-                    </button>
                   </div>
                 </div>
               </header>
@@ -2196,7 +2151,6 @@ export function UserPortalPage({
             <MarketplacePanel
               commerceClient={portalClient.commerce ?? null}
               locale={locale}
-              onOpenRecharge={openRechargeDialog}
               onWalletMutation={walletModel.refreshWallet}
               sessionGeneration={sessionGeneration}
               sessionRef={portalSession.sessionRef ?? null}
@@ -2245,13 +2199,11 @@ export function UserPortalPage({
               commerceClient={portalClient.commerce ?? null}
               legacyPaymentOrders={paymentOrders}
               locale={locale}
-              onOpenLegacyPaymentOrder={openPaymentOrder}
               onOpenMarketplace={openMarketplace}
               onOpenServiceOrder={viewOrder}
               onOrderSearchChange={setOrderSearch}
               onSessionInvalid={logout}
               orderSearch={orderSearch}
-              selectedLegacyPaymentOrderRef={lastPaymentOrderRef}
               selectedServiceOrderRef={selectedOrderRef}
               serviceOrders={orderRows}
               sessionGeneration={sessionGeneration}
@@ -2285,16 +2237,8 @@ export function UserPortalPage({
               }}
             />
           ) : null}
-          {rechargeDialogOpen ? (
-            <RechargeDialog
-              locale={locale}
-              selectedAmount={selectedRechargeAmount}
-              onSelect={setSelectedRechargeAmount}
-              onClose={closeRechargeDialog}
-            />
-          ) : null}
-        </section>
-      </main>
+        </main>
+      </div>
       {shouldShowSecuritySetup ? (
         <SecuritySetupDialog
           authenticatorBound={authenticatorBound}
@@ -2345,6 +2289,7 @@ function DashboardPanel({
   trafficSummary: ReturnType<typeof aggregateTrafficUsage>;
   locale: PortalAuthLocale;
 }) {
+  const desktopViewport = useDesktopScrollRegion();
   const activeOrders = activeOrderCount(orderRows);
   const pendingOrders = pendingOrderCount(orderRows);
   const entitlementPlanId = currentEntitlement ? planIdFromEntitlement(currentEntitlement) : null;
@@ -2367,6 +2312,7 @@ function DashboardPanel({
     .sort((left, right) => orderUsageSortValue(right) - orderUsageSortValue(left))
     .slice(0, 3);
   const currentStatus = selectedOrder?.status ?? (entitlementActive ? "active" : "pending");
+  const hasTrafficAccess = entitlementActive || selectedOrder?.status === "active";
 
   return (
     <div className="portal-v2-stack">
@@ -2388,8 +2334,16 @@ function DashboardPanel({
         </article>
         <article className="portal-v2-metric-card">
           <span><BarChart3 aria-hidden="true" /> {uiText(locale, "剩余流量", "Remaining traffic")}</span>
-          <strong>{planTrafficBytes > 0 ? formatTrafficBytes(remainingTrafficBytes) : uiText(locale, "未开通", "Not active")}</strong>
-          <small>{planTrafficBytes > 0 ? uiText(locale, `本月额度 ${formatTrafficBytes(planTrafficBytes)}`, `${formatTrafficBytes(planTrafficBytes)} monthly quota`) : uiText(locale, "流量权益交付后显示额度", "Traffic quota appears after entitlement delivery")}</small>
+          <strong>{desktopViewport && !hasTrafficAccess
+            ? uiText(locale, "未开通", "Not active")
+            : planTrafficBytes > 0
+              ? formatTrafficBytes(remainingTrafficBytes)
+              : uiText(locale, "未开通", "Not active")}</strong>
+          <small>{desktopViewport && !hasTrafficAccess
+            ? uiText(locale, "流量权益交付后显示额度", "Traffic quota appears after entitlement delivery")
+            : planTrafficBytes > 0
+              ? uiText(locale, `本月额度 ${formatTrafficBytes(planTrafficBytes)}`, `${formatTrafficBytes(planTrafficBytes)} monthly quota`)
+              : uiText(locale, "流量权益交付后显示额度", "Traffic quota appears after entitlement delivery")}</small>
         </article>
       </section>
 
@@ -2420,16 +2374,30 @@ function DashboardPanel({
           </dl>
           <div className="portal-v2-traffic-summary">
             <div>
-              <strong>{trafficSummary.totalBytes > 0 ? `${Math.round(trafficPercent)}%` : uiText(locale, "不限量", "Unlimited")}</strong>
-              <span>{trafficSummary.totalBytes > 0 ? uiText(locale, "共享流量使用率", "Shared quota used") : uiText(locale, "暂无流量上限", "No traffic limit")}</span>
+              <strong>
+                {desktopViewport && !hasTrafficAccess
+                  ? uiText(locale, "尚未开通", "Not active yet")
+                  : trafficSummary.totalBytes > 0
+                  ? `${Math.round(trafficPercent)}%`
+                  : uiText(locale, "不限量", "Unlimited")}
+              </strong>
+              <span>
+                {desktopViewport && !hasTrafficAccess
+                  ? uiText(locale, "开通后显示流量额度", "Traffic quota appears after activation")
+                  : trafficSummary.totalBytes > 0
+                  ? uiText(locale, "共享流量使用率", "Shared quota used")
+                  : uiText(locale, "暂无流量上限", "No traffic limit")}
+              </span>
             </div>
             <div className="portal-traffic-meter" aria-hidden="true">
               <span style={{ width: `${trafficPercent}%` }} />
             </div>
             <small>
-              {trafficSummary.totalBytes > 0
-                ? `${formatTrafficBytes(trafficSummary.usedBytes)} / ${formatTrafficBytes(trafficSummary.totalBytes)}`
-                : uiText(locale, `${formatTrafficBytes(trafficSummary.usedBytes)} 已计量`, `${formatTrafficBytes(trafficSummary.usedBytes)} measured`)}
+              {desktopViewport && !hasTrafficAccess
+                ? uiText(locale, "先前往商城选择套餐", "Choose a plan in Marketplace first")
+                : trafficSummary.totalBytes > 0
+                  ? `${formatTrafficBytes(trafficSummary.usedBytes)} / ${formatTrafficBytes(trafficSummary.totalBytes)}`
+                  : uiText(locale, `${formatTrafficBytes(trafficSummary.usedBytes)} 已计量`, `${formatTrafficBytes(trafficSummary.usedBytes)} measured`)}
             </small>
           </div>
         </article>
@@ -2440,12 +2408,24 @@ function DashboardPanel({
               <span className="portal-card-label">{uiText(locale, "最近订单", "Recent orders")}</span>
               <h3>{uiText(locale, "订单活动", "Order activity")}</h3>
             </div>
-            <button className="portal-link-button" type="button" onClick={() => setActiveView("usage")}>{uiText(locale, "查看用量", "View usage")}</button>
+            <button
+              className="portal-link-button"
+              type="button"
+              onClick={() => setActiveView(desktopViewport ? "orders" : "usage")}
+            >
+              {desktopViewport
+                ? uiText(locale, "查看订单", "View orders")
+                : uiText(locale, "查看用量", "View usage")}
+            </button>
           </div>
           {recentOrders.length > 0 ? (
             <div className="portal-v2-list">
               {recentOrders.map((order) => (
-                <button key={order.requestRef} type="button" onClick={() => setActiveView("usage")}>
+                <button
+                  key={order.requestRef}
+                  type="button"
+                  onClick={() => setActiveView(desktopViewport ? "orders" : "usage")}
+                >
                   <span>
                     <strong>{orderNumber(order.requestRef)}</strong>
                     <small>{selectedPlan(order.planId, locale).label} · {formatDateTime(order.createdAt, locale)}</small>
@@ -3498,6 +3478,7 @@ function UseGuide({
     options?: { refreshExisting?: boolean }
   ) => Promise<string | null>;
 }) {
+  const desktopViewport = useDesktopScrollRegion();
   type GuidePlatformId = "ios" | "android" | "harmony" | "macos" | "windows" | "linux";
   type GuideClientId = "clash" | "clashmi" | "hiddify";
   type GuideStepAction = "download" | "copy" | "import" | "connect" | "verify";
@@ -4014,16 +3995,35 @@ function UseGuide({
   };
   const ActiveGuideStepIcon = activeGuideStep ? guideStepIcon(activeGuideStep.action) : CheckCircle2;
   const SelectedGuideClientIcon = selectedGuide?.icon ?? AppWindow;
+  const needsPlanDesktop = desktopViewport && !hasSetupAccess;
 
   return (
-    <section className="portal-use-card portal-start-guide" aria-label={uiText(locale, "开始使用", "Start guide")}>
+    <section
+      aria-label={uiText(locale, "开始使用", "Start guide")}
+      className="portal-use-card portal-start-guide"
+      data-access={needsPlanDesktop ? "needs-plan" : undefined}
+    >
       {!guideStarted ? (
         <div className="portal-start-flow-panel portal-start-stage portal-start-welcome-stage">
-          <span className="portal-start-kicker">{uiText(locale, "快速使用指南", "Quick start guide")}</span>
-          <h2>{uiText(locale, "欢迎使用", "Welcome")}</h2>
-          <p>{uiText(locale, "只需几分钟，我们将一步步指引您完成配置。", "It only takes a few minutes. We will guide you through setup step by step.")}</p>
+          <span className="portal-start-kicker">
+            {needsPlanDesktop
+              ? uiText(locale, "开始前", "Before you start")
+              : uiText(locale, "快速使用指南", "Quick start guide")}
+          </span>
+          <h2>
+            {needsPlanDesktop
+              ? uiText(locale, "先选择适合你的套餐", "Choose a plan first")
+              : uiText(locale, "欢迎使用", "Welcome")}
+          </h2>
+          <p>
+            {needsPlanDesktop
+              ? uiText(locale, "使用 Coins 购买并完成交付后，再选择设备和客户端开始连接。", "Purchase with Coins and wait for delivery, then choose a device and client to connect.")
+              : uiText(locale, "只需几分钟，我们将一步步指引您完成配置。", "It only takes a few minutes. We will guide you through setup step by step.")}
+          </p>
           <button className="portal-start-config-button" type="button" onClick={startSetup}>
-            {uiText(locale, "开始配置", "Start setup")}
+            {needsPlanDesktop
+              ? uiText(locale, "前往商城", "Go to Marketplace")
+              : uiText(locale, "开始配置", "Start setup")}
             <ChevronRight aria-hidden="true" />
           </button>
         </div>

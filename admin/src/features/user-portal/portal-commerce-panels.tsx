@@ -5,7 +5,7 @@ import {
   useState,
   type MouseEvent
 } from "react";
-import { ModalFrame } from "../../components/modal-frame";
+import { Circle, LoaderCircle } from "lucide-react";
 import {
   CoinsPurchaseDialog,
   isPortalCoinOrderTerminal,
@@ -16,6 +16,7 @@ import {
   type PortalCoinCommerceClient,
   type PortalCoinOffer
 } from "./commerce";
+import { portalCoinTypeListLabel } from "./portal-commerce-presentation";
 
 export type PortalCommerceLocale = "zh" | "en";
 
@@ -23,121 +24,12 @@ type PanelProps = {
   locale: PortalCommerceLocale;
 };
 
-export const RECHARGE_DENOMINATIONS = [10, 30, 50, 100, 200, 300] as const;
-
-export type RechargeDenomination =
-  (typeof RECHARGE_DENOMINATIONS)[number];
-
-export type RechargeDenominationListProps = {
-  autoFocusFirst?: boolean;
-  locale: PortalCommerceLocale;
-  mode: "dialog-selectable" | "wallet-disabled";
-  selectedAmount?: RechargeDenomination | null;
-  onSelect?: (amount: RechargeDenomination) => void;
-};
-
 function isChinese(locale: PortalCommerceLocale) {
   return locale === "zh";
 }
 
-export function RechargeDenominationList({
-  autoFocusFirst = false,
-  locale,
-  mode,
-  selectedAmount = null,
-  onSelect
-}: RechargeDenominationListProps) {
-  const zh = isChinese(locale);
-  const selectable = mode === "dialog-selectable";
-
-  return (
-    <ul
-      className={`portal-recharge-denominations portal-recharge-denominations--${mode}`}
-      aria-label={zh ? "Coins 充值档位" : "Coins recharge denominations"}
-    >
-      {RECHARGE_DENOMINATIONS.map((amount) => (
-        <li key={amount}>
-          <button
-            type="button"
-            autoFocus={
-              autoFocusFirst
-              && selectable
-              && amount === RECHARGE_DENOMINATIONS[0]
-            }
-            disabled={!selectable}
-            aria-pressed={selectable ? selectedAmount === amount : undefined}
-            aria-label={
-              selectable
-                ? zh
-                  ? `选择 ${amount} Coins`
-                  : `Select ${amount} Coins`
-                : zh
-                  ? `充值 ${amount} Coins 暂未开放`
-                  : `Recharge ${amount} Coins — not available yet`
-            }
-            onClick={selectable ? () => onSelect?.(amount) : undefined}
-          >
-            {amount} Coins
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-export function RechargeDialog({
-  locale,
-  selectedAmount,
-  onSelect,
-  onClose
-}: {
-  locale: PortalCommerceLocale;
-  selectedAmount: RechargeDenomination | null;
-  onSelect: (amount: RechargeDenomination) => void;
-  onClose: () => void;
-}) {
-  const zh = isChinese(locale);
-
-  return (
-    <ModalFrame
-      closeLabel={zh ? "关闭" : "Close"}
-      onClose={onClose}
-      panelClassName="portal-recharge-dialog"
-      title={zh ? "充值 Coins" : "Recharge Coins"}
-      titleId="portal-recharge-dialog-title"
-      footer={(
-        <button
-          className="portal-primary-button compact"
-          type="button"
-          disabled
-        >
-          {zh
-            ? "支付通道将在下一阶段接入"
-            : "Payment channel will be connected in the next stage"}
-        </button>
-      )}
-    >
-      <div className="portal-recharge-dialog__body">
-        <p>
-          {zh
-            ? "选择 Coins 档位。本阶段不会创建订单或发起支付。"
-            : "Choose a Coins denomination. This stage does not create an order or start payment."}
-        </p>
-        <RechargeDenominationList
-          autoFocusFirst
-          locale={locale}
-          mode="dialog-selectable"
-          selectedAmount={selectedAmount}
-          onSelect={onSelect}
-        />
-      </div>
-    </ModalFrame>
-  );
-}
-
 type MarketplacePanelProps = PanelProps & {
   commerceClient: PortalCoinCommerceClient | null;
-  onOpenRecharge: (returnFocus?: () => void) => void;
   onWalletMutation?: () => void;
   sessionGeneration?: number;
   sessionRef: string | null;
@@ -170,6 +62,27 @@ function offerSummary(offer: PortalCoinOffer, locale: PortalCommerceLocale) {
 
 function referencePrice(offer: PortalCoinOffer) {
   return `CNY ${(offer.referencePrice.amountMinor / 100).toFixed(2)}`;
+}
+
+function MarketplaceNoticeIndicator({
+  state
+}: {
+  state: "loading" | "empty" | "unavailable" | "error";
+}) {
+  if (state === "loading") {
+    return (
+      <LoaderCircle
+        aria-hidden="true"
+        className="portal-notice__indicator portal-notice__indicator--loading"
+      />
+    );
+  }
+  return (
+    <Circle
+      aria-hidden="true"
+      className="portal-notice__indicator portal-notice__marker"
+    />
+  );
 }
 
 function safeCommerceFailure(error: unknown): {
@@ -265,7 +178,7 @@ function MarketplaceOfferCard({
           </div>
           <div>
             <dt>{zh ? "接受的 Coins" : "Accepted Coins"}</dt>
-            <dd>{offer.acceptedCoinTypes.join(", ")}</dd>
+            <dd>{portalCoinTypeListLabel(offer.acceptedCoinTypes, locale)}</dd>
           </div>
         </dl>
         {notices.length > 0 ? (
@@ -308,7 +221,6 @@ function MarketplaceOfferCard({
 export function MarketplacePanel({
   commerceClient,
   locale,
-  onOpenRecharge,
   onWalletMutation,
   sessionGeneration = 0,
   sessionRef,
@@ -330,7 +242,7 @@ export function MarketplacePanel({
   const productSessionRef = useRef(sessionRef);
   const latestProductSessionRef = useRef(sessionRef);
   const productIntentSequenceRef = useRef(0);
-  const suppressProductFocusRestoreRef = useRef(false);
+  const autoOpenedOrderRef = useRef<string | null>(null);
   latestProductSessionRef.current = sessionRef;
   const purchaseFlow = useCoinsPurchaseFlow({
     client: commerceClient,
@@ -343,7 +255,6 @@ export function MarketplacePanel({
     if (productSessionRef.current === sessionRef) return;
     productSessionRef.current = sessionRef;
     productIntentSequenceRef.current += 1;
-    suppressProductFocusRestoreRef.current = false;
     setProductIntent(null);
     setDialogVisible(false);
     originFocusRef.current = null;
@@ -362,7 +273,6 @@ export function MarketplacePanel({
       || purchaseFlow.quote !== null;
     if (!hasProductReadState) return;
     productIntentSequenceRef.current += 1;
-    suppressProductFocusRestoreRef.current = false;
     setProductIntent(null);
     setDialogVisible(false);
     purchaseFlow.reset();
@@ -420,10 +330,6 @@ export function MarketplacePanel({
     || purchaseFlow.phase === "submitting";
 
   const restoreProductFocus = useCallback(() => {
-    if (suppressProductFocusRestoreRef.current) {
-      suppressProductFocusRestoreRef.current = false;
-      return;
-    }
     originFocusRef.current?.focus();
   }, []);
 
@@ -471,6 +377,9 @@ export function MarketplacePanel({
 
   const closeCoinsDialog = useCallback(() => {
     productIntentSequenceRef.current += 1;
+    if (purchaseFlow.order) {
+      autoOpenedOrderRef.current = purchaseFlow.order.orderRef;
+    }
     setDialogVisible(false);
     setProductIntent(null);
     if (
@@ -480,15 +389,6 @@ export function MarketplacePanel({
       purchaseFlow.reset();
     }
   }, [purchaseFlow]);
-
-  const openRechargeFromCoins = useCallback(() => {
-    productIntentSequenceRef.current += 1;
-    suppressProductFocusRestoreRef.current = true;
-    setDialogVisible(false);
-    setProductIntent(null);
-    purchaseFlow.reset();
-    onOpenRecharge(restoreProductFocus);
-  }, [onOpenRecharge, purchaseFlow, restoreProductFocus]);
 
   const retryProduct = useCallback(() => {
     if (!productIntent) return;
@@ -503,7 +403,13 @@ export function MarketplacePanel({
     && !purchaseFlow.errorRetryable
   );
   useEffect(() => {
-    if (!activeOrderRef) return;
+    if (
+      !activeOrderRef
+      || autoOpenedOrderRef.current === activeOrderRef
+    ) {
+      return;
+    }
+    autoOpenedOrderRef.current = activeOrderRef;
     setDialogVisible(true);
   }, [activeOrderRef]);
 
@@ -511,9 +417,16 @@ export function MarketplacePanel({
     <section
       className="portal-commerce-layout portal-commerce-layout--marketplace"
       aria-label={zh ? "商城目录" : "Marketplace catalog"}
+      aria-busy={catalog.status === "loading" || productBusy || undefined}
     >
       {catalog.status === "unavailable" ? (
-        <div className="portal-marketplace-state" role="status">
+        <div
+          aria-live="polite"
+          className="portal-marketplace-state"
+          data-state="unavailable"
+          role="status"
+        >
+          <MarketplaceNoticeIndicator state="unavailable" />
           <p>
             {zh
               ? "商城目录暂不可用；当前客户端未提供服务端商城能力。"
@@ -522,12 +435,26 @@ export function MarketplacePanel({
         </div>
       ) : null}
       {catalog.status === "loading" ? (
-        <div className="portal-marketplace-state" role="status" aria-live="polite">
-          {zh ? "正在加载商城目录…" : "Loading Marketplace catalog…"}
+        <div
+          aria-live="polite"
+          className="portal-marketplace-state"
+          data-state="loading"
+          role="status"
+        >
+          <MarketplaceNoticeIndicator state="loading" />
+          <span>
+            {zh ? "正在加载商城目录…" : "Loading Marketplace catalog…"}
+          </span>
         </div>
       ) : null}
       {catalog.status === "error" ? (
-        <div className="portal-marketplace-state" role="alert">
+        <div
+          aria-live="assertive"
+          className="portal-marketplace-state"
+          data-state="error"
+          role="alert"
+        >
+          <MarketplaceNoticeIndicator state="error" />
           <p>{safeCommerceErrorText(catalog.errorCode, locale)}</p>
           {catalog.retryable ? (
             <button type="button" onClick={retryCatalog}>
@@ -537,8 +464,16 @@ export function MarketplacePanel({
         </div>
       ) : null}
       {catalog.status === "ready" && catalog.offers.length === 0 ? (
-        <div className="portal-marketplace-state" role="status">
-          {zh ? "当前没有可用商品。" : "No products are currently available."}
+        <div
+          aria-live="polite"
+          className="portal-marketplace-state"
+          data-state="empty"
+          role="status"
+        >
+          <MarketplaceNoticeIndicator state="empty" />
+          <span>
+            {zh ? "当前没有可用商品。" : "No products are currently available."}
+          </span>
         </div>
       ) : null}
       {catalog.status === "ready" && planOffers.length > 0 ? (
@@ -608,24 +543,34 @@ export function MarketplacePanel({
         </section>
       ) : null}
       {productBusy && !purchaseFlow.quote && !purchaseFlow.order ? (
-        <p
+        <div
           aria-live="polite"
           className="portal-marketplace-flow-state"
+          data-state="loading"
           role="status"
         >
-          {purchaseFlow.phase === "loading_preview"
-            ? zh
-              ? "正在获取服务端报价…"
-              : "Loading the server Quote…"
-            : zh
-              ? "正在加载商品详情…"
-              : "Loading product details…"}
-        </p>
+          <MarketplaceNoticeIndicator state="loading" />
+          <span>
+            {purchaseFlow.phase === "loading_preview"
+              ? zh
+                ? "正在获取服务端报价…"
+                : "Loading the server Quote…"
+              : zh
+                ? "正在加载商品详情…"
+                : "Loading product details…"}
+          </span>
+        </div>
       ) : null}
       {purchaseFlow.errorCode
         && !purchaseFlow.quote
         && !purchaseFlow.order ? (
-          <div className="portal-marketplace-flow-state" role="alert">
+          <div
+            aria-live="assertive"
+            className="portal-marketplace-flow-state"
+            data-state="error"
+            role="alert"
+          >
+            <MarketplaceNoticeIndicator state="error" />
             <p>{safeCommerceErrorText(purchaseFlow.errorCode, locale)}</p>
             {productIntent && (
               purchaseFlow.errorRetryable
@@ -661,7 +606,6 @@ export function MarketplacePanel({
                 locale={locale}
                 onCancel={purchaseFlow.cancelPurchase}
                 onConfirm={purchaseFlow.confirmPurchase}
-                onOpenRecharge={openRechargeFromCoins}
                 onRefresh={purchaseFlow.refreshOrder}
                 onRequestClose={closeCoinsDialog}
                 onRestoreFocus={restoreProductFocus}
