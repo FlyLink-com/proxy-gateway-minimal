@@ -342,6 +342,10 @@ export function PortalOrdersPanel({
   onOpenMarketplace = () => undefined
 }: PortalOrdersPanelProps) {
   const desktopScrollRegion = useDesktopScrollRegion();
+  const allFilterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const toolbarMarketplaceButtonRef = useRef<HTMLButtonElement | null>(null);
+  const emptyActionButtonRef = useRef<HTMLButtonElement | null>(null);
+  const emptyActionFocusedRef = useRef(false);
   const [filter, setFilter] = useState<PortalOrdersFilter>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | PortalOrderCenterStatus>("all");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
@@ -612,6 +616,33 @@ export function PortalOrdersPanel({
   }, [allItems, filter, locale, orderSearch, sort, statusFilter]);
   const coinSourceFailed = showsCoins
     && (visibleListState.phase === "unavailable" || visibleListState.phase === "error");
+  const showEmptyState = visibleItems.length === 0
+    && !(showsCoins && (
+      visibleListState.phase === "loading"
+      || visibleListState.phase === "unavailable"
+      || visibleListState.phase === "error"
+    ));
+  const hasActiveFilters = filter !== "all"
+    || statusFilter !== "all"
+    || orderSearch.trim().length > 0;
+  const useContextualEmptyState = desktopScrollRegion && showEmptyState;
+  const clearFilters = () => {
+    setFilter("all");
+    setStatusFilter("all");
+    onOrderSearchChange("");
+    allFilterButtonRef.current?.focus();
+  };
+  useLayoutEffect(() => {
+    if (
+      useContextualEmptyState
+      && document.activeElement === toolbarMarketplaceButtonRef.current
+    ) {
+      emptyActionButtonRef.current?.focus();
+    } else if (!useContextualEmptyState && emptyActionFocusedRef.current) {
+      emptyActionFocusedRef.current = false;
+      toolbarMarketplaceButtonRef.current?.focus();
+    }
+  }, [useContextualEmptyState]);
   const selectedDetailKey = selectedDetailRef
     ? `coins_consumption:${selectedDetailRef}`
     : selectedLegacyDetailRef
@@ -682,6 +713,7 @@ export function PortalOrdersPanel({
         {FILTERS.map((item) => (
           <button
             key={item.id}
+            ref={item.id === "all" ? allFilterButtonRef : undefined}
             type="button"
             aria-pressed={filter === item.id}
             onClick={() => setFilter(item.id)}
@@ -727,7 +759,15 @@ export function PortalOrdersPanel({
             <option value="oldest">{copy(locale, "最早创建", "Oldest")}</option>
           </select>
         </label>
-        <button className="portal-primary-button compact portal-toolbar-create" type="button" onClick={onOpenMarketplace}>
+        <button
+          aria-hidden={useContextualEmptyState ? "true" : undefined}
+          className="portal-primary-button compact portal-toolbar-create"
+          data-empty-hidden={useContextualEmptyState ? "true" : undefined}
+          ref={toolbarMarketplaceButtonRef}
+          tabIndex={useContextualEmptyState ? -1 : undefined}
+          type="button"
+          onClick={onOpenMarketplace}
+        >
           {copy(locale, "前往商城", "Go to Marketplace")}
         </button>
       </div>
@@ -746,12 +786,13 @@ export function PortalOrdersPanel({
         </div>
       ) : null}
       <div
-        aria-label={desktopScrollRegion
+        aria-label={desktopScrollRegion && !showEmptyState
           ? copy(locale, "可滚动订单表格", "Scrollable orders table")
           : undefined}
         className="portal-order-table-wrap"
-        role={desktopScrollRegion ? "region" : undefined}
-        tabIndex={desktopScrollRegion ? 0 : undefined}
+        data-empty={useContextualEmptyState ? "true" : undefined}
+        role={desktopScrollRegion && !showEmptyState ? "region" : undefined}
+        tabIndex={desktopScrollRegion && !showEmptyState ? 0 : undefined}
       >
         <table className="portal-order-table" aria-label={copy(locale, "订单列表", "Orders")}>
           <thead>
@@ -766,15 +807,54 @@ export function PortalOrdersPanel({
             </tr>
           </thead>
           <tbody>
-            {visibleItems.length === 0
-              && !(showsCoins && (
-                visibleListState.phase === "loading"
-                || visibleListState.phase === "unavailable"
-                || visibleListState.phase === "error"
-              )) ? (
+            {showEmptyState ? (
               <tr>
                 <td colSpan={7} className="portal-order-empty-state">
-                  {filter !== "plans_services" && visibleListState.phase === "empty"
+                  {desktopScrollRegion ? (
+                    <div className="portal-order-empty-content">
+                      <strong>
+                        {hasActiveFilters
+                          ? copy(locale, "暂无符合条件的订单", "No matching orders")
+                          : copy(locale, "暂无订单", "No orders yet")}
+                      </strong>
+                      <span>
+                        {hasActiveFilters
+                          ? copy(locale, "调整筛选条件，或清除筛选查看全部订单。", "Adjust the filters, or clear them to see all orders.")
+                          : copy(locale, "商城购买和服务记录会在这里统一显示。", "Marketplace purchases and service records appear here.")}
+                      </span>
+                      {hasActiveFilters ? (
+                        <button
+                          className="portal-secondary-button compact"
+                          ref={emptyActionButtonRef}
+                          type="button"
+                          onBlur={() => {
+                            emptyActionFocusedRef.current = false;
+                          }}
+                          onClick={clearFilters}
+                          onFocus={() => {
+                            emptyActionFocusedRef.current = true;
+                          }}
+                        >
+                          {copy(locale, "清除筛选", "Clear filters")}
+                        </button>
+                      ) : (
+                        <button
+                          className="portal-primary-button compact"
+                          ref={emptyActionButtonRef}
+                          type="button"
+                          onBlur={() => {
+                            emptyActionFocusedRef.current = false;
+                          }}
+                          onClick={onOpenMarketplace}
+                          onFocus={() => {
+                            emptyActionFocusedRef.current = true;
+                          }}
+                        >
+                          {copy(locale, "前往商城", "Go to Marketplace")}
+                        </button>
+                      )}
+                    </div>
+                  ) : filter !== "plans_services" && visibleListState.phase === "empty"
                     ? copy(locale, "暂无 Coins 消费订单。", "No Coins consumption orders.")
                     : copy(locale, "暂无符合条件的订单", "No matching orders")}
                 </td>

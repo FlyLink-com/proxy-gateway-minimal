@@ -790,7 +790,9 @@ describe("user portal route", () => {
       location: { hostname: "127.0.0.1" }
     }));
 
-    expect(await screen.findByRole("heading", { name: "欢迎使用" })).not.toBeNull();
+    expect(await screen.findByRole("heading", {
+      name: "先选择适合你的套餐"
+    })).not.toBeNull();
     await waitFor(() => expect(document.title).toBe("GCC WebOS - 用户中心"));
     expect(screen.getByRole("navigation", { name: "用户中心导航" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "开始使用" })).not.toBeNull();
@@ -846,7 +848,9 @@ describe("user portal route", () => {
 
     await enterPortal();
 
-    expect(await screen.findByRole("heading", { name: "欢迎使用" })).not.toBeNull();
+    expect(await screen.findByRole("heading", {
+      name: "先选择适合你的套餐"
+    })).not.toBeNull();
     openPortalDashboard();
     expect(screen.getByRole("group", { name: "显示偏好" })).not.toBeNull();
     expect(document.querySelector(".portal-v2-shell")?.getAttribute("data-portal-theme")).toBe("dark");
@@ -2109,7 +2113,12 @@ describe("user portal product surface", () => {
     expect(within(portalNav).getByRole("button", { name: "订单" })).not.toBeNull();
     expect(within(portalNav).queryByRole("button", { name: "订阅" })).toBeNull();
     expect(within(portalNav).queryByText("Dashboard")).toBeNull();
-    expect(screen.getByRole("heading", { name: "欢迎使用" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "先选择适合你的套餐" })).not.toBeNull();
+    expect(screen.getByRole("region", { name: "开始使用" })).toHaveAttribute(
+      "data-access",
+      "needs-plan"
+    );
+    expect(screen.getByRole("button", { name: "前往商城" })).not.toBeNull();
 
     fireEvent.click(within(portalNav).getByRole("button", { name: "概览" }));
     expect(screen.getByRole("heading", { name: "账户概览" })).not.toBeNull();
@@ -2121,6 +2130,137 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("订阅流量")).toBeNull();
     expect(screen.queryByText("流量仪表盘")).toBeNull();
     expect(screen.queryByText("安全清单")).toBeNull();
+    expect(screen.queryByText("不限量")).toBeNull();
+    expect(screen.getByText("开通后显示流量额度")).not.toBeNull();
+  });
+
+  test("routes Dashboard order activity to the unified Orders center", async () => {
+    render(createElement(UserPortalPage, {
+      portalClient: portalClientWithActiveSubscription()
+    }));
+
+    const portalNav = await enterPortal();
+    fireEvent.click(within(portalNav).getByRole("button", { name: "概览" }));
+
+    const orderActivity = screen.getByRole("heading", {
+      name: "订单活动"
+    }).closest("article");
+    expect(orderActivity).not.toBeNull();
+    const orderActivityButtons = within(orderActivity as HTMLElement).getAllByRole("button");
+    expect(orderActivityButtons).toHaveLength(2);
+    fireEvent.click(orderActivityButtons[1]);
+
+    expect(screen.getByRole("region", { name: "订单记录" })).not.toBeNull();
+    expect(screen.getAllByRole("heading", { name: "订单" }).length).toBeGreaterThan(0);
+
+    fireEvent.click(within(portalNav).getByRole("button", { name: "概览" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看订单" }));
+
+    expect(screen.getByRole("region", { name: "订单记录" })).not.toBeNull();
+  });
+
+  test("does not present historical usage as an active desktop plan", async () => {
+    render(createElement(UserPortalPage, {
+      portalClient: portalClientWithActiveSubscription({
+        lifecycle: "expired",
+        expiresAt: "2026-05-30T00:00:00.000Z",
+        usage: {
+          uploadBytes: 1024,
+          downloadBytes: 2048,
+          usedBytes: 3072,
+          totalBytes: 50 * 1024 ** 3,
+          usageRatio: 3072 / (50 * 1024 ** 3),
+          status: "within_limit",
+          collectionStatus: "measured",
+          channelCount: 1,
+          measuredChannelCount: 1,
+          updatedAt: "2026-05-30T00:00:00.000Z"
+        }
+      })
+    }));
+
+    const portalNav = await enterPortal();
+    fireEvent.click(within(portalNav).getByRole("button", { name: "概览" }));
+
+    expect(screen.getByText("尚未开通")).not.toBeNull();
+    expect(screen.getByText("开通后显示流量额度")).not.toBeNull();
+    expect(screen.getByText("先前往商城选择套餐")).not.toBeNull();
+    expect(screen.queryByText("不限量")).toBeNull();
+    expect(screen.queryByText("共享流量使用率")).toBeNull();
+    const remainingTrafficCard = screen.getByText("剩余流量").closest("article");
+    expect(remainingTrafficCard).not.toBeNull();
+    expect(within(remainingTrafficCard as HTMLElement).getByText("未开通")).not.toBeNull();
+    expect(within(remainingTrafficCard as HTMLElement).getByText(
+      "流量权益交付后显示额度"
+    )).not.toBeNull();
+    expect(within(remainingTrafficCard as HTMLElement).queryByText(
+      "本月额度 50.0 GB"
+    )).toBeNull();
+  });
+
+  test("preserves the legacy no-plan Start guide copy and route on mobile", async () => {
+    const restoreViewport = installMobilePaymentDevice();
+    try {
+      const client = portalClient();
+      render(createElement(UserPortalPage, { portalClient: client }));
+
+      const portalNav = await enterPortal();
+
+      fireEvent.click(within(portalNav).getByRole("button", { name: "概览" }));
+      expect(screen.getByText("不限量")).not.toBeNull();
+      expect(screen.queryByText("尚未开通")).toBeNull();
+      fireEvent.click(within(portalNav).getByRole("button", { name: "开始使用" }));
+
+      expect(screen.getByRole("heading", { name: "欢迎使用" })).not.toBeNull();
+      expect(screen.queryByRole("heading", {
+        name: "先选择适合你的套餐"
+      })).toBeNull();
+      expect(screen.getByRole("region", { name: "开始使用" })).not.toHaveAttribute(
+        "data-access"
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
+
+      expectMarketplaceWithoutLegacyCheckout(client);
+    } finally {
+      restoreViewport();
+    }
+  });
+
+  test("preserves the legacy Dashboard order activity route on mobile", async () => {
+    const restoreViewport = installMobilePaymentDevice();
+    try {
+      render(createElement(UserPortalPage, {
+        portalClient: portalClientWithActiveSubscription()
+      }));
+
+      const portalNav = await enterPortal();
+      fireEvent.click(within(portalNav).getByRole("button", { name: "概览" }));
+
+      const orderActivity = screen.getByRole("heading", {
+        name: "订单活动"
+      }).closest("article");
+      expect(orderActivity).not.toBeNull();
+      expect(within(orderActivity as HTMLElement).queryByRole("button", {
+        name: "查看订单"
+      })).toBeNull();
+      const orderActivityButtons = within(orderActivity as HTMLElement).getAllByRole("button");
+      expect(orderActivityButtons).toHaveLength(2);
+      fireEvent.click(orderActivityButtons[1]);
+
+      expect(screen.getByRole("heading", { name: "流量消耗" })).not.toBeNull();
+
+      fireEvent.click(within(portalNav).getByRole("button", { name: "概览" }));
+      fireEvent.click(within(screen.getByRole("heading", {
+        name: "订单活动"
+      }).closest("article") as HTMLElement).getByRole("button", {
+        name: "查看用量"
+      }));
+
+      expect(screen.getByRole("heading", { name: "流量消耗" })).not.toBeNull();
+    } finally {
+      restoreViewport();
+    }
   });
 
   test("adds commerce entries to the existing Portal shell", async () => {
@@ -2883,7 +3023,11 @@ describe("user portal product surface", () => {
 
     await enterPortal();
     openPortalStartGuide();
-    fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
+    expect(screen.getByRole("heading", {
+      name: "先选择适合你的套餐"
+    })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "开始配置" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "前往商城" }));
 
     expectMarketplaceWithoutLegacyCheckout(client);
     expect(screen.queryByRole("heading", {
@@ -3814,7 +3958,7 @@ describe("user portal product surface", () => {
 
     await enterPortal();
     openPortalStartGuide();
-    fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "前往商城" }));
 
     expectMarketplaceWithoutLegacyCheckout(client);
     expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
@@ -4267,6 +4411,20 @@ describe("user portal product surface", () => {
     expect(css).toContain(".portal-start-import-input span {\n  min-width: 0;\n  overflow: hidden;");
     expect(css).toContain("overflow-wrap: anywhere;\n  text-overflow: clip;\n  white-space: normal;\n  word-break: break-word;");
     expect(css).toContain(".portal-start-visual-step strong {\n  color: #111827;\n  font-size: 13px;\n  font-weight: 720;\n  overflow-wrap: anywhere;\n  white-space: normal;");
+  });
+
+  test("keeps the no-plan start stage compact on desktop without changing mobile", () => {
+    const css = readFileSync(
+      resolve("src/styles/portal-static-preserve/user-portal-desktop.css"),
+      "utf8"
+    ).replace(/\r\n?/g, "\n");
+
+    expect(css).toMatch(
+      /@media \(min-width: 721px\) \{[\s\S]*?\.portal-start-guide\[data-access="needs-plan"\]\s*\{[^}]*--portal-start-panel-height:\s*360px;/s
+    );
+    expect(css).not.toMatch(
+      /@media \(max-width: 720px\) \{[\s\S]*?\.portal-start-guide\[data-access="needs-plan"\]/s
+    );
   });
 
   test("mobile order layout prevents table and action overflow", () => {

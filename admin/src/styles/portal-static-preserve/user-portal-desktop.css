@@ -766,6 +766,12 @@
   min-height: 0;
 }
 
+@media (min-width: 721px) {
+  .portal-start-guide[data-access="needs-plan"] {
+    --portal-start-panel-height: 360px;
+  }
+}
+
 .portal-start-hero {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

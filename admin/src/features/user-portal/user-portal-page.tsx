@@ -52,6 +52,7 @@ import {
   PortalWalletPanel,
   usePortalWalletReadModel
 } from "./wallet";
+import { useDesktopScrollRegion } from "./use-desktop-scroll-region";
 import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
 import type {
   PortalAccountEntitlement,
@@ -2288,6 +2289,7 @@ function DashboardPanel({
   trafficSummary: ReturnType<typeof aggregateTrafficUsage>;
   locale: PortalAuthLocale;
 }) {
+  const desktopViewport = useDesktopScrollRegion();
   const activeOrders = activeOrderCount(orderRows);
   const pendingOrders = pendingOrderCount(orderRows);
   const entitlementPlanId = currentEntitlement ? planIdFromEntitlement(currentEntitlement) : null;
@@ -2310,6 +2312,7 @@ function DashboardPanel({
     .sort((left, right) => orderUsageSortValue(right) - orderUsageSortValue(left))
     .slice(0, 3);
   const currentStatus = selectedOrder?.status ?? (entitlementActive ? "active" : "pending");
+  const hasTrafficAccess = entitlementActive || selectedOrder?.status === "active";
 
   return (
     <div className="portal-v2-stack">
@@ -2331,8 +2334,16 @@ function DashboardPanel({
         </article>
         <article className="portal-v2-metric-card">
           <span><BarChart3 aria-hidden="true" /> {uiText(locale, "剩余流量", "Remaining traffic")}</span>
-          <strong>{planTrafficBytes > 0 ? formatTrafficBytes(remainingTrafficBytes) : uiText(locale, "未开通", "Not active")}</strong>
-          <small>{planTrafficBytes > 0 ? uiText(locale, `本月额度 ${formatTrafficBytes(planTrafficBytes)}`, `${formatTrafficBytes(planTrafficBytes)} monthly quota`) : uiText(locale, "流量权益交付后显示额度", "Traffic quota appears after entitlement delivery")}</small>
+          <strong>{desktopViewport && !hasTrafficAccess
+            ? uiText(locale, "未开通", "Not active")
+            : planTrafficBytes > 0
+              ? formatTrafficBytes(remainingTrafficBytes)
+              : uiText(locale, "未开通", "Not active")}</strong>
+          <small>{desktopViewport && !hasTrafficAccess
+            ? uiText(locale, "流量权益交付后显示额度", "Traffic quota appears after entitlement delivery")
+            : planTrafficBytes > 0
+              ? uiText(locale, `本月额度 ${formatTrafficBytes(planTrafficBytes)}`, `${formatTrafficBytes(planTrafficBytes)} monthly quota`)
+              : uiText(locale, "流量权益交付后显示额度", "Traffic quota appears after entitlement delivery")}</small>
         </article>
       </section>
 
@@ -2363,16 +2374,30 @@ function DashboardPanel({
           </dl>
           <div className="portal-v2-traffic-summary">
             <div>
-              <strong>{trafficSummary.totalBytes > 0 ? `${Math.round(trafficPercent)}%` : uiText(locale, "不限量", "Unlimited")}</strong>
-              <span>{trafficSummary.totalBytes > 0 ? uiText(locale, "共享流量使用率", "Shared quota used") : uiText(locale, "暂无流量上限", "No traffic limit")}</span>
+              <strong>
+                {desktopViewport && !hasTrafficAccess
+                  ? uiText(locale, "尚未开通", "Not active yet")
+                  : trafficSummary.totalBytes > 0
+                  ? `${Math.round(trafficPercent)}%`
+                  : uiText(locale, "不限量", "Unlimited")}
+              </strong>
+              <span>
+                {desktopViewport && !hasTrafficAccess
+                  ? uiText(locale, "开通后显示流量额度", "Traffic quota appears after activation")
+                  : trafficSummary.totalBytes > 0
+                  ? uiText(locale, "共享流量使用率", "Shared quota used")
+                  : uiText(locale, "暂无流量上限", "No traffic limit")}
+              </span>
             </div>
             <div className="portal-traffic-meter" aria-hidden="true">
               <span style={{ width: `${trafficPercent}%` }} />
             </div>
             <small>
-              {trafficSummary.totalBytes > 0
-                ? `${formatTrafficBytes(trafficSummary.usedBytes)} / ${formatTrafficBytes(trafficSummary.totalBytes)}`
-                : uiText(locale, `${formatTrafficBytes(trafficSummary.usedBytes)} 已计量`, `${formatTrafficBytes(trafficSummary.usedBytes)} measured`)}
+              {desktopViewport && !hasTrafficAccess
+                ? uiText(locale, "先前往商城选择套餐", "Choose a plan in Marketplace first")
+                : trafficSummary.totalBytes > 0
+                  ? `${formatTrafficBytes(trafficSummary.usedBytes)} / ${formatTrafficBytes(trafficSummary.totalBytes)}`
+                  : uiText(locale, `${formatTrafficBytes(trafficSummary.usedBytes)} 已计量`, `${formatTrafficBytes(trafficSummary.usedBytes)} measured`)}
             </small>
           </div>
         </article>
@@ -2383,12 +2408,24 @@ function DashboardPanel({
               <span className="portal-card-label">{uiText(locale, "最近订单", "Recent orders")}</span>
               <h3>{uiText(locale, "订单活动", "Order activity")}</h3>
             </div>
-            <button className="portal-link-button" type="button" onClick={() => setActiveView("usage")}>{uiText(locale, "查看用量", "View usage")}</button>
+            <button
+              className="portal-link-button"
+              type="button"
+              onClick={() => setActiveView(desktopViewport ? "orders" : "usage")}
+            >
+              {desktopViewport
+                ? uiText(locale, "查看订单", "View orders")
+                : uiText(locale, "查看用量", "View usage")}
+            </button>
           </div>
           {recentOrders.length > 0 ? (
             <div className="portal-v2-list">
               {recentOrders.map((order) => (
-                <button key={order.requestRef} type="button" onClick={() => setActiveView("usage")}>
+                <button
+                  key={order.requestRef}
+                  type="button"
+                  onClick={() => setActiveView(desktopViewport ? "orders" : "usage")}
+                >
                   <span>
                     <strong>{orderNumber(order.requestRef)}</strong>
                     <small>{selectedPlan(order.planId, locale).label} · {formatDateTime(order.createdAt, locale)}</small>
@@ -3441,6 +3478,7 @@ function UseGuide({
     options?: { refreshExisting?: boolean }
   ) => Promise<string | null>;
 }) {
+  const desktopViewport = useDesktopScrollRegion();
   type GuidePlatformId = "ios" | "android" | "harmony" | "macos" | "windows" | "linux";
   type GuideClientId = "clash" | "clashmi" | "hiddify";
   type GuideStepAction = "download" | "copy" | "import" | "connect" | "verify";
@@ -3957,16 +3995,35 @@ function UseGuide({
   };
   const ActiveGuideStepIcon = activeGuideStep ? guideStepIcon(activeGuideStep.action) : CheckCircle2;
   const SelectedGuideClientIcon = selectedGuide?.icon ?? AppWindow;
+  const needsPlanDesktop = desktopViewport && !hasSetupAccess;
 
   return (
-    <section className="portal-use-card portal-start-guide" aria-label={uiText(locale, "开始使用", "Start guide")}>
+    <section
+      aria-label={uiText(locale, "开始使用", "Start guide")}
+      className="portal-use-card portal-start-guide"
+      data-access={needsPlanDesktop ? "needs-plan" : undefined}
+    >
       {!guideStarted ? (
         <div className="portal-start-flow-panel portal-start-stage portal-start-welcome-stage">
-          <span className="portal-start-kicker">{uiText(locale, "快速使用指南", "Quick start guide")}</span>
-          <h2>{uiText(locale, "欢迎使用", "Welcome")}</h2>
-          <p>{uiText(locale, "只需几分钟，我们将一步步指引您完成配置。", "It only takes a few minutes. We will guide you through setup step by step.")}</p>
+          <span className="portal-start-kicker">
+            {needsPlanDesktop
+              ? uiText(locale, "开始前", "Before you start")
+              : uiText(locale, "快速使用指南", "Quick start guide")}
+          </span>
+          <h2>
+            {needsPlanDesktop
+              ? uiText(locale, "先选择适合你的套餐", "Choose a plan first")
+              : uiText(locale, "欢迎使用", "Welcome")}
+          </h2>
+          <p>
+            {needsPlanDesktop
+              ? uiText(locale, "使用 Coins 购买并完成交付后，再选择设备和客户端开始连接。", "Purchase with Coins and wait for delivery, then choose a device and client to connect.")
+              : uiText(locale, "只需几分钟，我们将一步步指引您完成配置。", "It only takes a few minutes. We will guide you through setup step by step.")}
+          </p>
           <button className="portal-start-config-button" type="button" onClick={startSetup}>
-            {uiText(locale, "开始配置", "Start setup")}
+            {needsPlanDesktop
+              ? uiText(locale, "前往商城", "Go to Marketplace")
+              : uiText(locale, "开始配置", "Start setup")}
             <ChevronRight aria-hidden="true" />
           </button>
         </div>

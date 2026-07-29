@@ -141,6 +141,31 @@ function deferred<T>() {
   return { promise, reject, resolve };
 }
 
+function installMobileViewport() {
+  const originalMatchMedia = window.matchMedia;
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  });
+  return () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: originalMatchMedia
+    });
+  };
+}
+
 type DirectPanelProps = Pick<
   PortalOrdersPanelProps,
   "locale" | "commerceClient" | "sessionRef" | "sessionGeneration" | "onSessionInvalid"
@@ -387,6 +412,12 @@ describe("PortalOrdersPanel", () => {
     );
     expect(css).toMatch(
       /@media \(max-width:\s*720px\)\s*\{[\s\S]*?\.portal-v2-shell \.portal-orders-panel td\.portal-order-empty-state\s*\{[^}]*display:\s*block;/s
+    );
+    expect(css).toMatch(
+      /@media \(min-width:\s*721px\)\s*\{[\s\S]*?\.portal-order-table-wrap\[data-empty="true"\]\s*\{[^}]*overflow-x:\s*hidden;/s
+    );
+    expect(css).toMatch(
+      /\.portal-order-table-wrap\[data-empty="true"\]\s+\.portal-order-table\s*\{[^}]*min-width:\s*100%;/s
     );
   });
 
@@ -765,7 +796,8 @@ describe("PortalOrdersPanel", () => {
     expect(screen.getByText("Client")).toBeInTheDocument();
   });
 
-  test("shows only the neutral table empty state when plans and services are selected", async () => {
+  test("turns the empty Orders table into a recoverable next step", async () => {
+    const onOpenMarketplace = vi.fn();
     const client = {
       listOrders: vi.fn().mockResolvedValue({ orders: [], nextCursor: null })
     } as unknown as PortalCoinCommerceClient;
@@ -774,15 +806,125 @@ describe("PortalOrdersPanel", () => {
       commerceClient: client,
       sessionRef: "session_empty_plans",
       sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      onOpenMarketplace
+    }));
+
+    expect(await screen.findByText("No orders yet")).toBeInTheDocument();
+    const tableWrap = document.querySelector(".portal-order-table-wrap");
+    expect(tableWrap).not.toBeNull();
+    expect(tableWrap).toHaveAttribute("data-empty", "true");
+    expect(tableWrap).not.toHaveAttribute("role");
+    expect(tableWrap).not.toHaveAttribute("tabindex");
+    expect(screen.getAllByRole("button", {
+      name: "Go to Marketplace"
+    })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Go to Marketplace" }));
+    expect(onOpenMarketplace).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Plans and services" }));
+
+    expect(screen.getByText("No matching orders")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "All" }));
+    expect(await screen.findByText("No orders yet")).toBeInTheDocument();
+  });
+
+  test("keeps focus inside Orders when loading resolves to the desktop empty state", async () => {
+    const list = deferred<{ orders: PortalCoinOrder[]; nextCursor: null }>();
+    const client = {
+      listOrders: vi.fn(() => list.promise)
+    } as unknown as PortalCoinCommerceClient;
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: client,
+      sessionRef: "session_empty_focus",
+      sessionGeneration: 1,
       onSessionInvalid: vi.fn()
     }));
 
-    expect(await screen.findByText("No Coins consumption orders.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Plans and services" }));
+    const loadingMarketplaceButton = screen.getByRole("button", {
+      name: "Go to Marketplace"
+    });
+    loadingMarketplaceButton.focus();
+    expect(document.activeElement).toBe(loadingMarketplaceButton);
 
-    expect(screen.queryByText("No Coins consumption orders.")).toBeNull();
-    expect(within(screen.getByRole("table", { name: "Orders" }))
-      .getAllByText("No matching orders")).toHaveLength(1);
+    await act(async () => {
+      list.resolve({ orders: [], nextCursor: null });
+      await list.promise;
+    });
+
+    expect(await screen.findByText("No orders yet")).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByRole("button", {
+      name: "Go to Marketplace"
+    }));
+  });
+
+  test("returns focus to the stable toolbar action when the desktop empty state gains an order", async () => {
+    const client = {
+      listOrders: vi.fn().mockResolvedValue({ orders: [], nextCursor: null })
+    } as unknown as PortalCoinCommerceClient;
+    const baseProps = {
+      locale: "en" as const,
+      commerceClient: client,
+      sessionRef: "session_empty_focus_return",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn()
+    };
+    const { rerender } = render(createElement(PortalOrdersPanel, baseProps));
+
+    expect(await screen.findByText("No orders yet")).toBeInTheDocument();
+    const emptyMarketplaceButton = screen.getByRole("button", {
+      name: "Go to Marketplace"
+    });
+    emptyMarketplaceButton.focus();
+    expect(document.activeElement).toBe(emptyMarketplaceButton);
+
+    rerender(createElement(PortalOrdersPanel, {
+      ...baseProps,
+      serviceOrders: [SERVICE_ORDER]
+    }));
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole("button", {
+        name: "Go to Marketplace"
+      }));
+    });
+    expect(screen.getByText("Monthly basic")).toBeInTheDocument();
+  });
+
+  test("preserves the legacy Orders empty state on mobile", async () => {
+    const restoreViewport = installMobileViewport();
+    try {
+      const client = {
+        listOrders: vi.fn().mockResolvedValue({ orders: [], nextCursor: null })
+      } as unknown as PortalCoinCommerceClient;
+      render(createElement(PortalOrdersPanel, {
+        locale: "en",
+        commerceClient: client,
+        sessionRef: "session_empty_mobile",
+        sessionGeneration: 1,
+        onSessionInvalid: vi.fn()
+      }));
+
+      expect(await screen.findByText("No Coins consumption orders.")).toBeInTheDocument();
+      expect(screen.queryByText("No orders yet")).toBeNull();
+      expect(screen.getAllByRole("button", {
+        name: "Go to Marketplace"
+      })).toHaveLength(1);
+      const tableWrap = document.querySelector(".portal-order-table-wrap");
+      expect(tableWrap).not.toBeNull();
+      expect(tableWrap).not.toHaveAttribute("data-empty");
+      expect(tableWrap).not.toHaveAttribute("role");
+      expect(tableWrap).not.toHaveAttribute("tabindex");
+    } finally {
+      restoreViewport();
+    }
   });
 
   test("keeps legacy and service rows when the Coins source is unavailable", async () => {
@@ -1042,7 +1184,7 @@ describe("PortalOrdersPanel", () => {
     }));
     expect(await screen.findByText("Some Marketplace orders are temporarily unavailable")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry consumption orders" }));
-    expect(await screen.findByText("No Coins consumption orders.")).toBeInTheDocument();
+    expect(await screen.findByText("No orders yet")).toBeInTheDocument();
     unavailableView.unmount();
 
     const errorClient = {
@@ -1142,7 +1284,7 @@ describe("PortalOrdersPanel", () => {
     expect(screen.queryByRole("region", { name: "Coins consumption order detail" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Marketplace purchases" }));
-    await screen.findByText("No Coins consumption orders.");
+    await screen.findByText("No matching orders");
     expect(screen.queryByRole("button", { name: /order_consumption_001/ })).toBeNull();
   });
 
