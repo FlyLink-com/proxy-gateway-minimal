@@ -11,6 +11,7 @@ import {
   Download,
   Eye,
   ExternalLink,
+  Gift,
   Headphones,
   History,
   LayoutGrid,
@@ -24,7 +25,9 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  ShoppingBag,
   UserCog,
+  WalletCards,
   Wifi,
   type LucideIcon
 } from "lucide-react";
@@ -37,6 +40,20 @@ import {
   usePublicLocalePreference,
   usePublicThemePreference
 } from "./public-locale-switch";
+import {
+  MarketplacePanel,
+  RechargeDialog,
+  ReferralRewardsPanel,
+  type RechargeDenomination
+} from "./portal-commerce-panels";
+import { PORTAL_COIN_ORDER_STORAGE_KEY } from "./commerce";
+import { PortalOrdersPanel } from "./orders/portal-orders-panel";
+import type { PortalServiceOrder } from "./orders/portal-order-center-model";
+import { PortalPersonalCenterPanel } from "./profile/portal-personal-center-panel";
+import {
+  PortalWalletPanel,
+  usePortalWalletReadModel
+} from "./wallet";
 import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
 import type {
   PortalAccountEntitlement,
@@ -57,7 +74,16 @@ import type {
 } from "./user-portal-client";
 
 type DisplayAuthMode = PortalSession["authMode"];
-type PortalView = "dashboard" | "usage" | "start" | "profile" | "support";
+type PortalView =
+  | "start"
+  | "dashboard"
+  | "usage"
+  | "marketplace"
+  | "orders"
+  | "wallet"
+  | "referrals"
+  | "profile"
+  | "support";
 
 type PortalPlan = {
   id: PortalPlanId;
@@ -80,18 +106,7 @@ type SubscriptionLifecycle = "none" | "pending" | "active" | "expired" | "disabl
 type OrderStatusFilter = "all" | "active" | "pending" | "disabled" | "expired";
 type OrderSort = "newest" | "oldest" | "expires";
 type PaymentFlowStep = "checkout" | "processing" | "success" | "failed";
-type PortalOrderRow = {
-  requestRef: string;
-  request: PortalSubscriptionRequest;
-  createdAt: string;
-  planId: PortalPlanId;
-  durationDays: number;
-  quantity: number;
-  clientTarget: PortalClientId;
-  status: Exclude<SubscriptionLifecycle, "none">;
-  expiresAt: string;
-  subscriptionUrl?: string;
-};
+type PortalOrderRow = PortalServiceOrder;
 
 const plans: PortalPlan[] = [
   {
@@ -162,7 +177,10 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "start", label: "开始使用", description: "下载客户端，并按步骤导入订阅。", icon: Wifi },
   { id: "dashboard", label: "概览", description: "查看账户状态、当前套餐、流量和开始使用。", icon: LayoutGrid },
   { id: "usage", label: "用量", description: "查看流量消耗、套餐额度和用量更新状态。", icon: LineChart },
-  { id: "profile", label: "个人与安全", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
+  { id: "marketplace", label: "商城", description: "浏览平台商品、套餐、流量包和增值项。", icon: ShoppingBag },
+  { id: "orders", label: "订单", description: "查看订单历史、支付状态和付款详情。", icon: ReceiptText },
+  { id: "referrals", label: "推荐奖励", description: "查看推荐链接、归因绩效和奖励状态。", icon: Gift },
+  { id: "profile", label: "个人中心", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
 ];
 
@@ -378,13 +396,29 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
       label: uiText(locale, "用量", "Usage"),
       description: uiText(locale, "查看账户共享流量额度和使用情况。", "Review shared account traffic quota and usage.")
     },
+    marketplace: {
+      label: uiText(locale, "商城", "Marketplace"),
+      description: uiText(locale, "浏览平台商品、套餐、流量包和增值项。", "Browse platform products, plans, data packs, and add-ons.")
+    },
+    orders: {
+      label: uiText(locale, "订单", "Orders"),
+      description: uiText(locale, "查看订单历史、支付状态和付款详情。", "Review order history, payment status, and payment details.")
+    },
+    wallet: {
+      label: uiText(locale, "Coins 钱包", "Coins wallet"),
+      description: uiText(locale, "查看 Coins 分类、充值入口、流水和奖励结构。", "Review Coins categories, recharge entry, activity, and rewards.")
+    },
+    referrals: {
+      label: uiText(locale, "推荐奖励", "Referral rewards"),
+      description: uiText(locale, "查看推荐链接、归因绩效和奖励状态。", "Review your referral link, attributed performance, and reward states.")
+    },
     start: {
       label: uiText(locale, "开始使用", "Start using"),
       description: uiText(locale, "选择设备、下载客户端并完成连接。", "Choose a device, download a client, and connect step by step.")
     },
     profile: {
-      label: uiText(locale, "个人与安全", "Profile & security"),
-      description: uiText(locale, "查看账户信息和安全设置。", "Review account info and security setup.")
+      label: uiText(locale, "个人中心", "Personal center"),
+      description: uiText(locale, "管理账户信息、身份验证器和通行密钥。", "Manage account information, authenticators, and passkeys.")
     },
     support: {
       label: uiText(locale, "支持", "Support"),
@@ -663,7 +697,7 @@ function paymentFlowDescription(step: PaymentFlowStep, locale: PortalAuthLocale)
     return uiText(locale, "付款结果确认中，请不要重复提交订单。", "Payment is being confirmed. Do not submit another order.");
   }
   if (step === "failed") {
-    return uiText(locale, "付款未完成，可重新选择支付方式或返回个人与安全。", "Payment was not completed. Choose a payment method again or return to Profile & security.");
+    return uiText(locale, "付款未完成，可重新选择支付方式或返回订单。", "Payment was not completed. Choose a payment method again or return to Orders.");
   }
   return uiText(locale, "请在有效期内完成付款。", "Pay before the code expires.");
 }
@@ -998,6 +1032,8 @@ export function UserPortalPage({
   const { theme, setTheme } = usePublicThemePreference();
   const authCopy = portalAuthEntryCopy[locale];
   const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
+  const sessionGenerationRef = useRef(0);
+  const [sessionGeneration, setSessionGeneration] = useState(0);
   const [accountId, setAccountId] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -1008,6 +1044,7 @@ export function UserPortalPage({
   const [humanChallengeReady, setHumanChallengeReady] = useState(false);
   const [humanChallengeLoading, setHumanChallengeLoading] = useState(true);
   const [activeView, setActiveView] = useState<PortalView>("start");
+  const [personalCenterSubview, setPersonalCenterSubview] = useState<"profile" | "security">("profile");
   const [selectedPlanId, setSelectedPlanId] = useState<PortalPlanId>("monthly_basic");
   const [clientTarget, setClientTarget] = useState<PortalClientId>("clash");
   const [paymentChannel, setPaymentChannel] = useState<PortalPaymentChannel>(() => defaultPaymentChannelForCurrentBrowser());
@@ -1020,6 +1057,10 @@ export function UserPortalPage({
   const [orderClientFilter, setOrderClientFilter] = useState<"all" | PortalClientId>("all");
   const [orderSort, setOrderSort] = useState<OrderSort>("newest");
   const [orderFormOpen, setOrderFormOpen] = useState(false);
+  const [rechargeDialogOpen, setRechargeDialogOpen] = useState(false);
+  const [selectedRechargeAmount, setSelectedRechargeAmount] =
+    useState<RechargeDenomination | null>(null);
+  const rechargeReturnFocusRef = useRef<(() => void) | null>(null);
   const [selectedOrderRef, setSelectedOrderRef] = useState<string | null>(null);
   const [activePaymentOrderRef, setActivePaymentOrderRef] = useState<string | null>(null);
   const [authError, setAuthError] = useState("");
@@ -1047,12 +1088,26 @@ export function UserPortalPage({
   const [supportError, setSupportError] = useState("");
   const [supportResult, setSupportResult] = useState<PortalSupportRequest | null>(null);
 
+  const advanceSessionGeneration = useCallback(() => {
+    const nextGeneration = sessionGenerationRef.current + 1;
+    sessionGenerationRef.current = nextGeneration;
+    setSessionGeneration(nextGeneration);
+    return nextGeneration;
+  }, []);
+
   const userDisplayName = portalSession?.displayName ?? (accountId.trim() || "Portal User");
   const registrationDate = portalSession?.registeredAt ?? new Date("2026-05-31T00:00:00.000Z").toISOString();
 
   useEffect(() => {
     document.title = portalSession ? authCopy.shellDocumentTitle : authCopy.documentTitle;
   }, [authCopy.documentTitle, authCopy.shellDocumentTitle, portalSession]);
+
+  useEffect(() => {
+    if (portalSession) return;
+    setRechargeDialogOpen(false);
+    setSelectedRechargeAmount(null);
+    rechargeReturnFocusRef.current = null;
+  }, [portalSession]);
 
   const currentEntitlement = useMemo(() => currentTrafficEntitlement(accountEntitlements), [accountEntitlements]);
   const selectedOrder = useMemo(() => {
@@ -1070,7 +1125,7 @@ export function UserPortalPage({
       : null,
     [activePaymentOrderRef, paymentOrders]
   );
-  const paymentFlowActive = activeView === "profile" && Boolean(activePaymentOrder);
+  const paymentFlowActive = activeView === "orders" && Boolean(activePaymentOrder);
   const created = useMemo(() => createdSubscriptionFromOrder(selectedOrder), [selectedOrder]);
   const lifecycle = resolveLifecycle(created);
   const currentPlan = subscriptionPlan(created, selectedPlanId, locale);
@@ -1106,6 +1161,30 @@ export function UserPortalPage({
     });
   }, [locale, orderClientFilter, orderRows, orderSearch, orderSort, orderStatusFilter]);
 
+  const walletModel = usePortalWalletReadModel({
+    client: portalClient.wallet ?? null,
+    sessionRef: portalSession?.sessionRef ?? null,
+    sessionGeneration,
+    loadLedger: activeView === "wallet",
+    onSessionInvalid: logout
+  });
+  const authoritativeWalletBalance =
+    walletModel.summary.phase === "ready"
+    || walletModel.summary.phase === "empty"
+      ? walletModel.summary.value.spendableUnits
+      : null;
+  const walletSummaryAriaLabel = walletModel.summary.phase === "loading"
+    ? uiText(locale, "打开 Coins 钱包，余额加载中", "Open Coins wallet, balance is loading")
+    : walletModel.summary.phase === "unavailable"
+      ? uiText(locale, "打开 Coins 钱包，余额暂不可用", "Open Coins wallet, balance is temporarily unavailable")
+      : walletModel.summary.phase === "error"
+        ? uiText(locale, "打开 Coins 钱包，余额加载失败", "Open Coins wallet, balance could not be loaded")
+        : uiText(
+          locale,
+          `打开 Coins 钱包，可用余额 ${authoritativeWalletBalance} Coins`,
+          `Open Coins wallet, available balance ${authoritativeWalletBalance} Coins`
+        );
+
   const refreshHumanChallenge = useCallback(async () => {
     setHumanChallengeLoading(true);
     setHumanChallengeReady(false);
@@ -1126,71 +1205,81 @@ export function UserPortalPage({
     void refreshHumanChallenge();
   }, [refreshHumanChallenge]);
 
-  async function hydratePortalSession(session: PortalSession) {
-    const portalState = await portalClient.fetchCurrentState({
-      userRef: session.userRef,
-      sessionRef: session.sessionRef
-    });
-    setPortalSession(session);
-    setSecondFactorChallenge(null);
-    setSecondFactorCode("");
-    setPasskeyProof("");
-    setSecondFactorError("");
-    setSecondFactorPending(false);
-    setAuthenticatorBound(portalState.security?.authenticatorBound ?? false);
-    setPasskeyExported(portalState.security?.passkeyExported ?? false);
-    setSecuritySetupRequired(portalState.security?.setupRequired ?? false);
-    const accountEntitlementRows = portalState.accountEntitlements ?? [];
-    const entitlementPlan = [...accountEntitlementRows]
-      .reverse()
-      .filter((entitlement) => usableTrafficEntitlement(entitlement))
-      .map((entitlement) => planIdFromEntitlement(entitlement))
-      .find((planId): planId is PortalPlanId => Boolean(planId && planId !== "trial"));
-    setAccountEntitlements(accountEntitlementRows);
-    const subscriptionRequests = portalState.subscriptionRequests?.length
-      ? portalState.subscriptionRequests
-      : portalState.subscriptionRequest
-        ? [portalState.subscriptionRequest]
-        : [];
-    let hydratedPaymentOrders = portalState.paymentOrders ?? [];
-    if (!hydratedPaymentOrders.length) {
-      try {
-        hydratedPaymentOrders = await portalClient.fetchPaymentOrders({
-          userRef: session.userRef,
-          sessionRef: session.sessionRef
-        });
-      } catch {
-        hydratedPaymentOrders = [];
+  function hydratePortalSession(session: PortalSession) {
+    const hydrateGeneration = advanceSessionGeneration();
+    const isCurrent = () => hydrateGeneration === sessionGenerationRef.current;
+    const promise = (async () => {
+      const portalState = await portalClient.fetchCurrentState({
+        userRef: session.userRef,
+        sessionRef: session.sessionRef
+      });
+      if (!isCurrent()) return;
+      const accountEntitlementRows = portalState.accountEntitlements ?? [];
+      const entitlementPlan = [...accountEntitlementRows]
+        .reverse()
+        .filter((entitlement) => usableTrafficEntitlement(entitlement))
+        .map((entitlement) => planIdFromEntitlement(entitlement))
+        .find((planId): planId is PortalPlanId => Boolean(planId && planId !== "trial"));
+      const subscriptionRequests = portalState.subscriptionRequests?.length
+        ? portalState.subscriptionRequests
+        : portalState.subscriptionRequest
+          ? [portalState.subscriptionRequest]
+          : [];
+      let hydratedPaymentOrders = portalState.paymentOrders ?? [];
+      if (!hydratedPaymentOrders.length) {
+        try {
+          hydratedPaymentOrders = await portalClient.fetchPaymentOrders({
+            userRef: session.userRef,
+            sessionRef: session.sessionRef
+          });
+        } catch {
+          if (!isCurrent()) return;
+          hydratedPaymentOrders = [];
+        }
       }
-    }
-    setPaymentOrders([...hydratedPaymentOrders].sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
-    setLastPaymentOrderRef(hydratedPaymentOrders[0]?.orderRef ?? null);
-    if (subscriptionRequests.length > 0) {
-      const orders = subscriptionRequests
-        .map((request) => subscriptionRequestToOrder(request))
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-      const selected = orders.find((order) => order.requestRef === portalState.subscriptionRequest?.requestRef)
-        ?? orders[0];
-      const selectedOrderCanDriveSetup = selected.status === "active" || selected.status === "pending";
-      setSelectedPlanId(selectedOrderCanDriveSetup ? selected.planId : entitlementPlan ?? selected.planId);
-      setClientTarget(selected.clientTarget);
-      setOrderRows(orders);
-      setSelectedOrderRef(selectedOrderCanDriveSetup || !entitlementPlan ? selected.requestRef : null);
-    } else {
-      setOrderRows([]);
-      setSelectedOrderRef(null);
-      if (entitlementPlan) {
-        setSelectedPlanId(entitlementPlan);
+      if (!isCurrent()) return;
+      setPortalSession(session);
+      setSecondFactorChallenge(null);
+      setSecondFactorCode("");
+      setPasskeyProof("");
+      setSecondFactorError("");
+      setSecondFactorPending(false);
+      setAuthenticatorBound(portalState.security?.authenticatorBound ?? false);
+      setPasskeyExported(portalState.security?.passkeyExported ?? false);
+      setSecuritySetupRequired(portalState.security?.setupRequired ?? false);
+      setAccountEntitlements(accountEntitlementRows);
+      setPaymentOrders([...hydratedPaymentOrders].sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
+      setLastPaymentOrderRef(hydratedPaymentOrders[0]?.orderRef ?? null);
+      if (subscriptionRequests.length > 0) {
+        const orders = subscriptionRequests
+          .map((request) => subscriptionRequestToOrder(request))
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+        const selected = orders.find((order) => order.requestRef === portalState.subscriptionRequest?.requestRef)
+          ?? orders[0];
+        const selectedOrderCanDriveSetup = selected.status === "active" || selected.status === "pending";
+        setSelectedPlanId(selectedOrderCanDriveSetup ? selected.planId : entitlementPlan ?? selected.planId);
+        setClientTarget(selected.clientTarget);
+        setOrderRows(orders);
+        setSelectedOrderRef(selectedOrderCanDriveSetup || !entitlementPlan ? selected.requestRef : null);
+      } else {
+        setOrderRows([]);
+        setSelectedOrderRef(null);
+        if (entitlementPlan) {
+          setSelectedPlanId(entitlementPlan);
+        }
       }
-    }
-    setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
-    setActivePaymentOrderRef(null);
-    setActiveView("start");
+      setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
+      setActivePaymentOrderRef(null);
+      setActiveView("start");
+    })();
+    return { isCurrent, promise };
   }
 
   useEffect(() => {
     if (!initialSession || portalSession) return;
-    void hydratePortalSession(initialSession).catch((caughtError) => {
+    const hydration = hydratePortalSession(initialSession);
+    void hydration.promise.catch((caughtError) => {
+      if (!hydration.isCurrent()) return;
       setAuthError(portalUiErrorMessage(caughtError, "本地预览会话载入失败，请重新登录。", locale));
     });
   }, [initialSession, portalSession]);
@@ -1205,7 +1294,9 @@ export function UserPortalPage({
       if (!session || typeof session.userRef !== "string") {
         throw new Error("invalid registration session");
       }
-      void hydratePortalSession(session).catch((caughtError) => {
+      const hydration = hydratePortalSession(session);
+      void hydration.promise.catch((caughtError) => {
+        if (!hydration.isCurrent()) return;
         setAuthError(portalUiErrorMessage(caughtError, "注册会话载入失败，请重新登录。", locale));
       });
     } catch {
@@ -1218,6 +1309,7 @@ export function UserPortalPage({
     setAuthError("");
     setSecondFactorError("");
     setPending(true);
+    let hydrationIsCurrent: (() => boolean) | null = null;
     try {
       if (!humanChallengeReady || humanChallengeLoading) {
         throw new Error("防机器人校验尚未加载，请稍后重试。");
@@ -1235,13 +1327,18 @@ export function UserPortalPage({
         setSecondFactorCode("");
         return;
       }
-      await hydratePortalSession(result);
+      const hydration = hydratePortalSession(result);
+      hydrationIsCurrent = hydration.isCurrent;
+      await hydration.promise;
     } catch (requestError) {
+      if (hydrationIsCurrent && !hydrationIsCurrent()) return;
       setAuthError(portalUiErrorMessage(requestError, "操作失败。", locale));
       setRobotAnswer("");
       void refreshHumanChallenge();
     } finally {
-      setPending(false);
+      if (!hydrationIsCurrent || hydrationIsCurrent()) {
+        setPending(false);
+      }
     }
   }
 
@@ -1250,18 +1347,24 @@ export function UserPortalPage({
     if (!secondFactorChallenge) return;
     setSecondFactorError("");
     setSecondFactorPending(true);
+    let hydrationIsCurrent: (() => boolean) | null = null;
     try {
       const session = await portalClient.completeSecondFactor({
         challengeRef: secondFactorChallenge.challengeRef,
         factor: "authenticator",
         totpCode: secondFactorCode
       });
-      await hydratePortalSession(session);
+      const hydration = hydratePortalSession(session);
+      hydrationIsCurrent = hydration.isCurrent;
+      await hydration.promise;
     } catch (requestError) {
+      if (hydrationIsCurrent && !hydrationIsCurrent()) return;
       setSecondFactorError(portalUiErrorMessage(requestError, "二次验证失败。", locale));
       setSecondFactorCode("");
     } finally {
-      setSecondFactorPending(false);
+      if (!hydrationIsCurrent || hydrationIsCurrent()) {
+        setSecondFactorPending(false);
+      }
     }
   }
 
@@ -1270,18 +1373,24 @@ export function UserPortalPage({
     if (!secondFactorChallenge) return;
     setSecondFactorError("");
     setSecondFactorPending(true);
+    let hydrationIsCurrent: (() => boolean) | null = null;
     try {
       const session = await portalClient.completeSecondFactor({
         challengeRef: secondFactorChallenge.challengeRef,
         factor: "passkey",
         passkeyProof
       });
-      await hydratePortalSession(session);
+      const hydration = hydratePortalSession(session);
+      hydrationIsCurrent = hydration.isCurrent;
+      await hydration.promise;
     } catch (requestError) {
+      if (hydrationIsCurrent && !hydrationIsCurrent()) return;
       setSecondFactorError(portalUiErrorMessage(requestError, "通行密钥验证失败。", locale));
       setPasskeyProof("");
     } finally {
-      setSecondFactorPending(false);
+      if (!hydrationIsCurrent || hydrationIsCurrent()) {
+        setSecondFactorPending(false);
+      }
     }
   }
 
@@ -1322,7 +1431,7 @@ export function UserPortalPage({
       setLastPaymentOrderRef(checkout.order.orderRef);
       setSelectedPlanId(planId);
       setOrderFormOpen(false);
-      setActiveView("profile");
+      setActiveView("orders");
       setActivePaymentOrderRef(checkout.order.orderRef);
       const redirectUrl = paymentRedirectUrl(checkout.order);
       if (redirectUrl && shouldRedirectToPaymentProvider()) {
@@ -1416,18 +1525,17 @@ export function UserPortalPage({
 
   function viewOrder(order: PortalOrderRow) {
     setActivePaymentOrderRef(null);
+    setLastPaymentOrderRef(null);
     setSelectedOrderRef(order.requestRef);
     setSelectedPlanId(order.planId);
     setClientTarget(order.clientTarget);
   }
 
-  function startNewOrder() {
-    setActiveView("profile");
+  function openMarketplace() {
+    setActionError("");
+    setOrderFormOpen(false);
     setActivePaymentOrderRef(null);
-    setSelectedPlanId("monthly_basic");
-    setClientTarget("clash");
-    setPaymentChannel(defaultPaymentChannelForCurrentBrowser());
-    setOrderFormOpen(true);
+    setActiveView("marketplace");
   }
 
   function closeOrderForm() {
@@ -1440,7 +1548,7 @@ export function UserPortalPage({
     setActionError("");
     setOrderFormOpen(false);
     setLastPaymentOrderRef(order.orderRef);
-    setActiveView("profile");
+    setActiveView("orders");
     setActivePaymentOrderRef(order.orderRef);
     const redirectUrl = paymentRedirectUrl(order);
     if (redirectUrl && shouldRedirectToPaymentProvider()) {
@@ -1450,7 +1558,24 @@ export function UserPortalPage({
 
   function navigatePortalView(view: PortalView) {
     setActivePaymentOrderRef(null);
+    if (view === "profile") {
+      setPersonalCenterSubview("profile");
+    }
     setActiveView(view);
+  }
+
+  function openRechargeDialog(returnFocus?: () => void) {
+    rechargeReturnFocusRef.current = returnFocus ?? null;
+    setSelectedRechargeAmount(null);
+    setRechargeDialogOpen(true);
+  }
+
+  function closeRechargeDialog() {
+    const returnFocus = rechargeReturnFocusRef.current;
+    rechargeReturnFocusRef.current = null;
+    setSelectedRechargeAmount(null);
+    setRechargeDialogOpen(false);
+    returnFocus?.();
   }
 
   async function refreshPaymentOrders(targetOrderRef?: string) {
@@ -1565,6 +1690,12 @@ export function UserPortalPage({
   }
 
   function logout() {
+    advanceSessionGeneration();
+    try {
+      window.sessionStorage.removeItem(PORTAL_COIN_ORDER_STORAGE_KEY);
+    } catch {
+      // Commerce recovery storage is optional; logout must still complete.
+    }
     setPortalSession(null);
     setAccountId("");
     setPassword("");
@@ -1575,6 +1706,7 @@ export function UserPortalPage({
     setHumanChallengeLoading(true);
     void refreshHumanChallenge();
     setActiveView("dashboard");
+    setPersonalCenterSubview("profile");
     setSelectedPlanId("monthly_basic");
     setClientTarget("clash");
     setOrderRows([]);
@@ -1836,10 +1968,54 @@ export function UserPortalPage({
     );
   }
 
+  const entitlementPlanId = setupPlanIdFromEntitlement(currentEntitlement);
+  const profileDisplayPlan = created
+    ? currentPlan
+    : entitlementPlanId
+      ? selectedPlan(entitlementPlanId, locale)
+      : currentPlan;
+  const profileDisplayLifecycle: SubscriptionLifecycle = created
+    ? lifecycle
+    : currentEntitlement
+      ? "active"
+      : lifecycle;
+  const hasCurrentPlan = Boolean(created || currentEntitlement);
   const shouldShowSecuritySetup = Boolean(
     securitySetupRequired
     && (!authenticatorBound || !passkeyExported)
     && !authenticatorEnrollment
+  );
+  const renderLegacyPaymentFlow = () => (
+    <SubscriptionManager
+      activePaymentOrder={activePaymentOrder}
+      actionError={actionError}
+      orderClientFilter={orderClientFilter}
+      orderFormOpen={orderFormOpen}
+      orderRows={filteredOrderRows}
+      paymentOrders={paymentOrders}
+      lastPaymentOrderRef={lastPaymentOrderRef}
+      orderSearch={orderSearch}
+      orderSort={orderSort}
+      orderStatusFilter={orderStatusFilter}
+      paymentChannel={paymentChannel}
+      selectedOrderRef={selectedOrderRef}
+      selectedPlanId={selectedPlanId}
+      pending={pending}
+      setOrderClientFilter={setOrderClientFilter}
+      setOrderSearch={setOrderSearch}
+      setOrderSort={setOrderSort}
+      setOrderStatusFilter={setOrderStatusFilter}
+      setPaymentChannel={setPaymentChannel}
+      setSelectedPlanId={setSelectedPlanId}
+      closePaymentOrder={() => setActivePaymentOrderRef(null)}
+      openPaymentOrder={openPaymentOrder}
+      refreshPaymentOrders={refreshPaymentOrders}
+      submitSubscription={submitSubscription}
+      openMarketplace={openMarketplace}
+      closeOrderForm={closeOrderForm}
+      viewOrder={viewOrder}
+      locale={locale}
+    />
   );
 
   return (
@@ -1927,6 +2103,20 @@ export function UserPortalPage({
                     />
                     <button
                       type="button"
+                      className={cn(
+                        "portal-coins-wallet-entry",
+                        activeView === "wallet" && "active"
+                      )}
+                      aria-label={walletSummaryAriaLabel}
+                      onClick={() => navigatePortalView("wallet")}
+                    >
+                      <WalletCards aria-hidden="true" />
+                      <span>
+                        Coins · {authoritativeWalletBalance ?? "--"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
                       className={cn("portal-v2-mobile-icon-button", activeView === "support" && "active")}
                       aria-label={uiText(locale, "打开支持", "Open support")}
                       onClick={() => navigatePortalView("support")}
@@ -1955,12 +2145,19 @@ export function UserPortalPage({
                       <input
                         value={orderSearch}
                         onChange={(event) => setOrderSearch(event.target.value)}
-                        placeholder={uiText(locale, "搜索套餐、用量、客户端", "Search plans, usage, clients")}
+                        placeholder={uiText(locale, "搜索商品、用量、客户端", "Search products, usage, clients")}
                       />
                     </label>
-                    <button className="portal-primary-button compact" type="button" onClick={startNewOrder}>
+                    <button
+                      className="portal-primary-button compact"
+                      type="button"
+                      onClick={(event) => {
+                        const origin = event.currentTarget;
+                        openRechargeDialog(() => origin.focus());
+                      }}
+                    >
                       <Plus aria-hidden="true" />
-                      {uiText(locale, "购买套餐", "Buy plan")}
+                      {uiText(locale, "充值 Coins", "Recharge Coins")}
                     </button>
                   </div>
                 </div>
@@ -1989,12 +2186,27 @@ export function UserPortalPage({
               orderRows={orderRows}
               currentEntitlement={currentEntitlement}
               setActiveView={setActiveView}
-              startNewOrder={startNewOrder}
+              openMarketplace={openMarketplace}
               trafficPercent={trafficPercent}
               trafficSummary={trafficSummary}
               locale={locale}
             />
           ) : null}
+          {activeView === "marketplace" ? (
+            <MarketplacePanel
+              commerceClient={portalClient.commerce ?? null}
+              locale={locale}
+              onOpenRecharge={openRechargeDialog}
+              onWalletMutation={walletModel.refreshWallet}
+              sessionGeneration={sessionGeneration}
+              sessionRef={portalSession.sessionRef ?? null}
+              theme={theme}
+            />
+          ) : null}
+          {activeView === "wallet" ? (
+            <PortalWalletPanel locale={locale} model={walletModel} />
+          ) : null}
+          {activeView === "referrals" ? <ReferralRewardsPanel locale={locale} /> : null}
           {activeView === "start" ? (
             <UseGuide
               actionError={actionError}
@@ -2005,7 +2217,7 @@ export function UserPortalPage({
               selectedOrder={selectedOrder}
               hasSetupAccess={hasSetupAccess}
               setActiveView={setActiveView}
-              startNewOrder={startNewOrder}
+              openMarketplace={openMarketplace}
               revealOrCreateSubscriptionLink={revealOrCreateSubscriptionLink}
             />
           ) : null}
@@ -2027,60 +2239,59 @@ export function UserPortalPage({
               locale={locale}
             />
           ) : null}
+          {activeView === "orders" && paymentFlowActive ? renderLegacyPaymentFlow() : null}
+          {activeView === "orders" && !paymentFlowActive ? (
+            <PortalOrdersPanel
+              commerceClient={portalClient.commerce ?? null}
+              legacyPaymentOrders={paymentOrders}
+              locale={locale}
+              onOpenLegacyPaymentOrder={openPaymentOrder}
+              onOpenMarketplace={openMarketplace}
+              onOpenServiceOrder={viewOrder}
+              onOrderSearchChange={setOrderSearch}
+              onSessionInvalid={logout}
+              orderSearch={orderSearch}
+              selectedLegacyPaymentOrderRef={lastPaymentOrderRef}
+              selectedServiceOrderRef={selectedOrderRef}
+              serviceOrders={orderRows}
+              sessionGeneration={sessionGeneration}
+              sessionRef={portalSession.sessionRef ?? null}
+            />
+          ) : null}
           {activeView === "profile" ? (
-            <>
-              {!paymentFlowActive ? (
-                <ProfilePanel
-                  created={created}
-                  currentEntitlement={currentEntitlement}
-                  currentPlan={currentPlan}
-                  lifecycle={lifecycle}
-                  registrationDate={registrationDate}
-                  authMode={portalSession.authMode}
-                  authenticatorBound={authenticatorBound}
-                  authenticatorPending={authenticatorPending}
-                  passkeyExported={passkeyExported}
-                  passkeyError={passkeyError}
-                  passkeyPending={passkeyPending}
-                  exportPasskey={exportPasskey}
-                  startAuthenticatorEnrollment={startAuthenticatorEnrollment}
-                  userRef={portalSession.userRef}
-                  locale={locale}
-                />
-              ) : null}
-              {paymentFlowActive || orderFormOpen ? (
-                <SubscriptionManager
-                  activePaymentOrder={activePaymentOrder}
-                  actionError={actionError}
-                  orderClientFilter={orderClientFilter}
-                  orderFormOpen={orderFormOpen}
-                  orderRows={filteredOrderRows}
-                  paymentOrders={paymentOrders}
-                  lastPaymentOrderRef={lastPaymentOrderRef}
-                  orderSearch={orderSearch}
-                  orderSort={orderSort}
-                  orderStatusFilter={orderStatusFilter}
-                  paymentChannel={paymentChannel}
-                  selectedOrderRef={selectedOrderRef}
-                  selectedPlanId={selectedPlanId}
-                  pending={pending}
-                  setOrderClientFilter={setOrderClientFilter}
-                  setOrderSearch={setOrderSearch}
-                  setOrderSort={setOrderSort}
-                  setOrderStatusFilter={setOrderStatusFilter}
-                  setPaymentChannel={setPaymentChannel}
-                  setSelectedPlanId={setSelectedPlanId}
-                  closePaymentOrder={() => setActivePaymentOrderRef(null)}
-                  openPaymentOrder={openPaymentOrder}
-                  refreshPaymentOrders={refreshPaymentOrders}
-                  submitSubscription={submitSubscription}
-                  startNewOrder={startNewOrder}
-                  closeOrderForm={closeOrderForm}
-                  viewOrder={viewOrder}
-                  locale={locale}
-                />
-              ) : null}
-            </>
+            <PortalPersonalCenterPanel
+              activeSubview={personalCenterSubview}
+              locale={locale}
+              onSubviewChange={setPersonalCenterSubview}
+              profile={{
+                authModeLabel: authModeLabel(portalSession.authMode, locale),
+                userRef: portalSession.userRef,
+                registeredAtLabel: formatDateTime(registrationDate, locale),
+                currentPlanLabel: hasCurrentPlan
+                  ? `${profileDisplayPlan.label} · ${lifecycleLabel(profileDisplayLifecycle, locale)}`
+                  : uiText(locale, "未开通", "Not active"),
+                expiryLabel: created
+                  ? expiryDisplay(created, lifecycle, locale)
+                  : entitlementExpiryDisplay(currentEntitlement, locale)
+              }}
+              security={{
+                authenticatorBound,
+                authenticatorPending,
+                passkeyExported,
+                passkeyPending,
+                passkeyError,
+                onStartAuthenticatorEnrollment: startAuthenticatorEnrollment,
+                onExportPasskey: exportPasskey
+              }}
+            />
+          ) : null}
+          {rechargeDialogOpen ? (
+            <RechargeDialog
+              locale={locale}
+              selectedAmount={selectedRechargeAmount}
+              onSelect={setSelectedRechargeAmount}
+              onClose={closeRechargeDialog}
+            />
           ) : null}
         </section>
       </main>
@@ -2163,7 +2374,7 @@ function DashboardPanel({
         <article className="portal-v2-metric-card">
           <span><Activity aria-hidden="true" /> {uiText(locale, "服务状态", "Service status")}</span>
           <strong>{orderHealthLabel(orderRows, currentEntitlement ? [currentEntitlement] : [], locale)}</strong>
-          <small>{activeOrders > 0 || entitlementActive ? uiText(locale, "当前套餐可用", "Current plan is active") : pendingOrders > 0 ? uiText(locale, `${pendingOrders} 个订单待处理`, `${pendingOrders} pending orders`) : uiText(locale, "购买套餐后开始计时", "Time starts after buying a plan")}</small>
+          <small>{activeOrders > 0 || entitlementActive ? uiText(locale, "当前套餐可用", "Current plan is active") : pendingOrders > 0 ? uiText(locale, `${pendingOrders} 个订单待处理`, `${pendingOrders} pending orders`) : uiText(locale, "商城订单交付后开始计时", "Time starts after a Marketplace order is fulfilled")}</small>
         </article>
         <article className="portal-v2-metric-card">
           <span><ReceiptText aria-hidden="true" /> {uiText(locale, "订单记录", "Order records")}</span>
@@ -2178,7 +2389,7 @@ function DashboardPanel({
         <article className="portal-v2-metric-card">
           <span><BarChart3 aria-hidden="true" /> {uiText(locale, "剩余流量", "Remaining traffic")}</span>
           <strong>{planTrafficBytes > 0 ? formatTrafficBytes(remainingTrafficBytes) : uiText(locale, "未开通", "Not active")}</strong>
-          <small>{planTrafficBytes > 0 ? uiText(locale, `本月额度 ${formatTrafficBytes(planTrafficBytes)}`, `${formatTrafficBytes(planTrafficBytes)} monthly quota`) : uiText(locale, "购买套餐后显示流量额度", "Traffic quota appears after buying a plan")}</small>
+          <small>{planTrafficBytes > 0 ? uiText(locale, `本月额度 ${formatTrafficBytes(planTrafficBytes)}`, `${formatTrafficBytes(planTrafficBytes)} monthly quota`) : uiText(locale, "流量权益交付后显示额度", "Traffic quota appears after entitlement delivery")}</small>
         </article>
       </section>
 
@@ -2247,7 +2458,7 @@ function DashboardPanel({
             <div className="portal-v2-empty">
               <ReceiptText aria-hidden="true" />
               <strong>{uiText(locale, "暂无订单", "No orders yet")}</strong>
-              <span>{uiText(locale, "购买套餐后会显示付款和续费记录。", "Payment and renewal records appear after you buy a plan.")}</span>
+              <span>{uiText(locale, "商城订单和续费记录会在这里显示。", "Marketplace orders and renewal records appear here.")}</span>
             </div>
           )}
         </article>
@@ -2291,7 +2502,7 @@ function UsagePanel({
   orderRows,
   currentEntitlement,
   setActiveView,
-  startNewOrder,
+  openMarketplace,
   trafficPercent,
   trafficSummary,
   locale
@@ -2299,7 +2510,7 @@ function UsagePanel({
   orderRows: PortalOrderRow[];
   currentEntitlement: PortalAccountEntitlement | null;
   setActiveView: (value: PortalView) => void;
-  startNewOrder: () => void;
+  openMarketplace: () => void;
   trafficPercent: number;
   trafficSummary: ReturnType<typeof aggregateTrafficUsage>;
   locale: PortalAuthLocale;
@@ -2362,7 +2573,7 @@ function UsagePanel({
               <LineChart aria-hidden="true" />
               <strong>{uiText(locale, "暂无可视化数据", "No chart data yet")}</strong>
               <span>{uiText(locale, "开始连接后会显示用量走势。", "Usage trends appear after you connect.")}</span>
-              <button className="portal-primary-button compact" type="button" onClick={currentEntitlement ? () => setActiveView("start") : startNewOrder}>{currentEntitlement ? uiText(locale, "开始使用", "Start using") : uiText(locale, "购买套餐", "Buy plan")}</button>
+              <button className="portal-primary-button compact" type="button" onClick={currentEntitlement ? () => setActiveView("start") : openMarketplace}>{currentEntitlement ? uiText(locale, "开始使用", "Start using") : uiText(locale, "前往商城", "Go to Marketplace")}</button>
             </div>
           )}
         </article>
@@ -2441,7 +2652,7 @@ function SubscriptionManager({
   openPaymentOrder,
   refreshPaymentOrders,
   submitSubscription,
-  startNewOrder,
+  openMarketplace,
   closeOrderForm,
   viewOrder,
   locale
@@ -2470,7 +2681,7 @@ function SubscriptionManager({
   openPaymentOrder: (order: PortalPaymentOrder) => void;
   refreshPaymentOrders: (targetOrderRef?: string) => Promise<void>;
   submitSubscription: (planIdOverride?: Exclude<PortalPlanId, "trial">, paymentChannelOverride?: PortalPaymentChannel) => Promise<boolean>;
-  startNewOrder: () => void;
+  openMarketplace: () => void;
   closeOrderForm: () => void;
   viewOrder: (order: PortalOrderRow) => void;
   locale: PortalAuthLocale;
@@ -2486,7 +2697,7 @@ function SubscriptionManager({
         order={activePaymentOrder}
         pending={pending}
         refreshPaymentOrders={refreshPaymentOrders}
-        startNewOrder={startNewOrder}
+        openMarketplace={openMarketplace}
       />
     );
   }
@@ -2548,7 +2759,11 @@ function SubscriptionManager({
             <div>
               <span className="portal-card-label">{uiText(locale, "订单", "Orders")}</span>
               <h2>{uiText(locale, "订单记录", "Order records")}</h2>
-              <p>{uiText(locale, "付款完成后为账户增加可用时间、套餐档位和共享流量额度。", "After payment, account time, plan tier, and shared traffic quota are credited here.")}</p>
+              <p>{uiText(
+                locale,
+                "订单、履约和权益状态在这里分别显示；流量仅在权益生效后可用。",
+                "Order, fulfillment, and entitlement states are shown separately. Traffic is available only after entitlement activation."
+              )}</p>
             </div>
           </div>
         </div>
@@ -2602,9 +2817,9 @@ function SubscriptionManager({
               <option value="expires">{uiText(locale, "到期时间", "Expiry")}</option>
             </select>
           </label>
-          <button className="portal-primary-button compact portal-toolbar-create" type="button" onClick={startNewOrder}>
+          <button className="portal-primary-button compact portal-toolbar-create" type="button" onClick={openMarketplace}>
             <Plus aria-hidden="true" />
-            {uiText(locale, "购买套餐", "Buy plan")}
+            {uiText(locale, "前往商城", "Go to Marketplace")}
           </button>
         </div>
 
@@ -2612,10 +2827,10 @@ function SubscriptionManager({
           <div className="portal-order-empty-state" role="status">
             <ReceiptText aria-hidden="true" />
             <strong>{uiText(locale, "暂无订单", "No orders yet")}</strong>
-            <p>{uiText(locale, "注册试用、套餐购买和续费记录会在这里统一显示。", "Trials, purchases, and renewals appear here.")}</p>
-            <button className="portal-primary-button compact" type="button" onClick={startNewOrder}>
+            <p>{uiText(locale, "商城订单和续费记录会在这里显示。", "Marketplace orders and renewal records appear here.")}</p>
+            <button className="portal-primary-button compact" type="button" onClick={openMarketplace}>
               <Plus aria-hidden="true" />
-              {uiText(locale, "购买套餐", "Buy plan")}
+              {uiText(locale, "前往商城", "Go to Marketplace")}
             </button>
           </div>
         ) : (
@@ -2955,7 +3170,7 @@ function PortalPaymentFlow({
   order,
   pending,
   refreshPaymentOrders,
-  startNewOrder
+  openMarketplace
 }: {
   actionError: string;
   closePaymentOrder: () => void;
@@ -2963,7 +3178,7 @@ function PortalPaymentFlow({
   order: PortalPaymentOrder;
   pending: boolean;
   refreshPaymentOrders: (targetOrderRef?: string) => Promise<void>;
-  startNewOrder: () => void;
+  openMarketplace: () => void;
 }) {
   const step = paymentFlowStep(order);
   const plan = selectedPlan(order.planId, locale);
@@ -3043,7 +3258,7 @@ function PortalPaymentFlow({
         <div className={cn("portal-payment-compact-header", isCheckout && "checkout")}>
           <button className="portal-payment-back-button" type="button" onClick={closePaymentOrder}>
             <ArrowLeft aria-hidden="true" />
-            {uiText(locale, "返回个人与安全", "Back to Profile")}
+            {uiText(locale, "返回订单", "Back to Orders")}
           </button>
           {isCheckout ? (
             <span className="portal-payment-compact-spacer" aria-hidden="true" />
@@ -3088,7 +3303,7 @@ function PortalPaymentFlow({
                 </div>
                 {!paymentCodeExpired && !paymentEntryAvailable ? (
                   <div className="alert alert-error">
-                    {uiText(locale, "暂时无法打开付款页面，请稍后重新提交订单。", "The payment page is not available yet. Submit the order again later.")}
+                    {uiText(locale, "暂时无法打开付款页面，请查看现有订单状态或前往商城。", "The payment page is not available yet. Check the existing order status or go to Marketplace.")}
                   </div>
                 ) : null}
                 {scanUnavailableMessage ? (
@@ -3114,7 +3329,7 @@ function PortalPaymentFlow({
                     {isSuccess
                       ? uiText(locale, "服务时间以订单详情中的生效和到期时间为准。", "Service time follows the effective and expiry dates in order details.")
                       : isFailed
-                        ? uiText(locale, "可以重试同一订单，或返回个人与安全后重新选择套餐。", "Retry this order, or return to Profile & security before choosing another plan.")
+                        ? uiText(locale, "请查看现有订单状态或前往商城。", "Check the existing order status or go to Marketplace.")
                         : uiText(locale, "请稍后刷新状态；如果长时间未确认，可联系支持。", "Refresh later. Contact support if confirmation takes too long.")}
                   </span>
                 </div>
@@ -3124,12 +3339,12 @@ function PortalPaymentFlow({
                     {pending ? uiText(locale, "检查中", "Checking") : uiText(locale, "检查状态", "Check status")}
                   </button>
                   {isFailed ? (
-                    <button className="portal-primary-button compact" type="button" onClick={startNewOrder}>
-                      {uiText(locale, "重新购买", "Buy again")}
+                    <button className="portal-primary-button compact" type="button" onClick={openMarketplace}>
+                      {uiText(locale, "前往商城", "Go to Marketplace")}
                     </button>
                   ) : null}
                   <button className="portal-secondary-button" type="button" onClick={closePaymentOrder}>
-                    {uiText(locale, "返回个人与安全", "Back to Profile")}
+                    {uiText(locale, "返回订单", "Back to Orders")}
                   </button>
                 </div>
               </div>
@@ -3266,7 +3481,7 @@ function UseGuide({
   selectedOrder,
   hasSetupAccess,
   setActiveView,
-  startNewOrder,
+  openMarketplace,
   revealOrCreateSubscriptionLink
 }: {
   actionError: string;
@@ -3277,7 +3492,7 @@ function UseGuide({
   selectedOrder: PortalOrderRow | null;
   hasSetupAccess: boolean;
   setActiveView: (value: PortalView) => void;
-  startNewOrder: () => void;
+  openMarketplace: () => void;
   revealOrCreateSubscriptionLink: (
     clientTarget: PortalClientId,
     options?: { refreshExisting?: boolean }
@@ -3770,7 +3985,7 @@ function UseGuide({
   };
   const startSetup = () => {
     if (!hasSetupAccess) {
-      startNewOrder();
+      openMarketplace();
       return;
     }
     setGuideStarted(true);
@@ -3944,8 +4159,8 @@ function UseGuide({
                     </p>
                   ) : null}
                   {!hasSetupAccess && !visibleSubscriptionUrl ? (
-                    <button className="portal-link-button" type="button" onClick={startNewOrder}>
-                      {uiText(locale, "没有可用流量套餐？先选择套餐", "No traffic plan? Choose a plan first")}
+                    <button className="portal-link-button" type="button" onClick={openMarketplace}>
+                      {uiText(locale, "需要流量权益？前往商城", "Need traffic entitlement? Go to Marketplace")}
                     </button>
                   ) : null}
                   {actionError ? <div className="alert alert-error">{actionError}</div> : null}
@@ -4311,7 +4526,7 @@ function SupportPanel({
           </span>
           <span>
             <strong>{uiText(locale, "账号安全", "Account security")}</strong>
-            <small>{uiText(locale, "身份验证器和通行密钥问题会在个人与安全页继续处理。", "Authenticator and passkey issues continue from Profile & security.")}</small>
+            <small>{uiText(locale, "身份验证器和通行密钥问题会在个人中心继续处理。", "Authenticator and passkey issues continue from Personal center.")}</small>
           </span>
         </div>
       </aside>
@@ -4465,145 +4680,5 @@ function AuthenticatorEnrollmentDialog({
         </button>
       </form>
     </ModalFrame>
-  );
-}
-
-function ProfilePanel({
-  created,
-  currentEntitlement,
-  currentPlan,
-  lifecycle,
-  locale,
-  registrationDate,
-  authMode,
-  authenticatorBound,
-  authenticatorPending,
-  passkeyExported,
-  passkeyError,
-  passkeyPending,
-  exportPasskey,
-  startAuthenticatorEnrollment,
-  userRef
-}: {
-  created: CreatedSubscription | null;
-  currentEntitlement: PortalAccountEntitlement | null;
-  currentPlan: PortalPlan;
-  lifecycle: SubscriptionLifecycle;
-  locale: PortalAuthLocale;
-  registrationDate: string;
-  authMode: PortalSession["authMode"];
-  authenticatorBound: boolean;
-  authenticatorPending: boolean;
-  passkeyExported: boolean;
-  passkeyError: string;
-  passkeyPending: boolean;
-  exportPasskey: () => Promise<void>;
-  startAuthenticatorEnrollment: () => Promise<void>;
-  userRef: string;
-}) {
-  const entitlementPlanId = setupPlanIdFromEntitlement(currentEntitlement);
-  const displayPlan = created
-    ? currentPlan
-    : entitlementPlanId
-      ? selectedPlan(entitlementPlanId, locale)
-      : currentPlan;
-  const displayLifecycle: SubscriptionLifecycle = created
-    ? lifecycle
-    : currentEntitlement
-      ? "active"
-      : lifecycle;
-  const hasCurrentPlan = Boolean(created || currentEntitlement);
-
-  return (
-    <section className="portal-use-card">
-      <div className="portal-section-heading">
-        <UserCog aria-hidden="true" />
-        <div>
-          <span className="portal-card-label">{uiText(locale, "个人与安全", "Profile & security")}</span>
-          <h2>{uiText(locale, "账户与安全设置", "Account and security")}</h2>
-          <p>{uiText(locale, "这里展示账户信息和安全设置。", "Review account info and security settings here.")}</p>
-        </div>
-      </div>
-
-      <div className="portal-profile-summary">
-        <dl className="portal-profile-list">
-          <div>
-            <dt>{uiText(locale, "登录方式", "Sign-in method")}</dt>
-            <dd>{authModeLabel(authMode, locale)}</dd>
-          </div>
-          <div>
-            <dt>{uiText(locale, "登录邮箱", "Sign-in email")}</dt>
-            <dd>{userRef}</dd>
-          </div>
-          <div>
-            <dt>{uiText(locale, "注册日期", "Registered")}</dt>
-            <dd>{formatDateTime(registrationDate, locale)}</dd>
-          </div>
-          <div>
-            <dt>{uiText(locale, "当前套餐", "Current plan")}</dt>
-            <dd>{hasCurrentPlan ? `${displayPlan.label} · ${lifecycleLabel(displayLifecycle, locale)}` : uiText(locale, "未开通", "Not active")}</dd>
-          </div>
-          <div>
-            <dt>{uiText(locale, "到期时间", "Expiry")}</dt>
-            <dd>{created ? expiryDisplay(created, lifecycle, locale) : entitlementExpiryDisplay(currentEntitlement, locale)}</dd>
-          </div>
-        </dl>
-      </div>
-
-      <div className="portal-security-panel">
-        <div className="portal-section-heading compact">
-          <ShieldCheck aria-hidden="true" />
-          <div>
-            <span className="portal-card-label">{uiText(locale, "安全", "Security")}</span>
-            <h3>{uiText(locale, "安全设置", "Security settings")}</h3>
-            <p>{uiText(locale, "身份验证器需要扫码并输入 6 位码后才会显示已绑定；通行密钥导出后请妥善保存。", "Authenticator is marked bound only after scanning and entering a 6-digit code. Store the exported passkey backup safely.")}</p>
-          </div>
-        </div>
-
-        <div className="portal-security-list">
-          <div className="portal-security-row">
-            <div>
-              <strong>{uiText(locale, "身份验证器", "Authenticator")}</strong>
-              <small>{uiText(locale, "绑定身份验证器应用后，后续可作为增强登录因子。", "After binding an authenticator app, it can be used as an enhanced sign-in factor.")}</small>
-            </div>
-            <span className={cn("portal-security-status", authenticatorBound && "enabled")}>
-              {authenticatorBound ? uiText(locale, "已绑定", "Bound") : uiText(locale, "未绑定", "Not bound")}
-            </span>
-            <button
-              className="portal-security-action"
-              type="button"
-              disabled={authenticatorPending || authenticatorBound}
-              onClick={startAuthenticatorEnrollment}
-            >
-              {authenticatorBound ? uiText(locale, "身份验证器已绑定", "Authenticator bound") : uiText(locale, "绑定身份验证器", "Bind authenticator")}
-            </button>
-          </div>
-
-          <div className="portal-security-row">
-            <div>
-              <strong>{uiText(locale, "通行密钥", "Passkey")}</strong>
-              <small>{uiText(locale, "导出通行密钥备份包；后续密码登录会要求二次验证。", "Export the passkey backup package. Future password sign-ins will require second-factor verification.")}</small>
-            </div>
-            <span className={cn("portal-security-status", passkeyExported && "enabled")}>
-              {passkeyExported ? uiText(locale, "已导出", "Exported") : uiText(locale, "未导出", "Not exported")}
-            </span>
-            <button
-              className="portal-security-action"
-              type="button"
-              disabled={passkeyPending}
-              onClick={exportPasskey}
-            >
-              {passkeyPending
-                ? uiText(locale, "导出中", "Exporting")
-                : passkeyExported
-                  ? uiText(locale, "重新导出通行密钥", "Export passkey again")
-                  : uiText(locale, "导出通行密钥", "Export passkey")}
-            </button>
-          </div>
-        </div>
-        {passkeyError ? <div className="alert alert-error">{passkeyError}</div> : null}
-      </div>
-
-    </section>
   );
 }

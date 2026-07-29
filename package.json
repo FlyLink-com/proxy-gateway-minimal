@@ -90,6 +90,7 @@
     "platform:coin-wallet:schema": "node scripts/platform-coin-wallet-schema.mjs",
     "platform:coin-commerce:schema": "node scripts/platform-coin-commerce-schema.mjs",
     "platform:coin-commerce:local-validation": "node scripts/start-local-coin-commerce-validation.mjs",
+    "platform:coin-commerce:local-ui-validation": "node scripts/start-local-coin-commerce-ui-validation.mjs",
     "docs:authority:check": "node scripts/check-document-authority.mjs",
     "governance:check": "node scripts/check-gate-governance.mjs --snapshot",
     "project-state:check": "node bin/gccgw.mjs project check",

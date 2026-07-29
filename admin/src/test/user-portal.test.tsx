@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
+import "@testing-library/jest-dom/vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "../App";
 import {
   isLocalPortalShellPreviewEnabled,
@@ -39,6 +40,16 @@ import {
   type PortalUserState,
   type UserPortalClient
 } from "../features/user-portal/user-portal-client";
+import {
+  PortalWalletClientError,
+  type PortalWalletClient,
+  type PortalWalletLedgerEntry,
+  type PortalWalletSummary
+} from "../features/user-portal/wallet";
+import type {
+  PortalCoinCommerceClient,
+  PortalCoinOrder
+} from "../features/user-portal/commerce";
 
 afterEach(() => {
   cleanup();
@@ -408,6 +419,82 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
   };
 }
 
+function portalWalletSession(
+  sessionRef: string,
+  userRef: string
+): PortalSession {
+  return {
+    status: "authenticated_preview",
+    sessionRef,
+    userRef,
+    displayName: userRef,
+    authMode: "password",
+    registeredAt: "2026-07-27T00:00:00.000Z",
+    safety: {
+      noAdminApi: true,
+      noPublicAuthActivated: true,
+      noRawPasswordReturned: true
+    }
+  };
+}
+
+function portalWalletSummary(
+  spendableUnits: number,
+  status: PortalWalletSummary["status"] = "active"
+): PortalWalletSummary {
+  if (status === "not_created") {
+    return {
+      status,
+      version: 0,
+      balances: {
+        paidCoins: 0,
+        bonusCoins: 0,
+        rewardCoins: 0
+      },
+      spendableUnits: 0,
+      heldUnits: 0,
+      pendingUnits: 0
+    };
+  }
+  return {
+    status,
+    version: 2,
+    balances: {
+      paidCoins: spendableUnits - 5,
+      bonusCoins: 4,
+      rewardCoins: 1
+    },
+    spendableUnits,
+    heldUnits: 3,
+    pendingUnits: 2
+  };
+}
+
+function portalWalletEntry(): PortalWalletLedgerEntry {
+  return {
+    entryRef: "entry_wallet_shell_001",
+    category: "credit",
+    coinType: "paid_coins",
+    amountUnits: 20,
+    availableDeltaUnits: null,
+    pendingDeltaUnits: null,
+    heldDeltaUnits: null,
+    totalDeltaUnits: 20,
+    relatedOrderRef: null,
+    occurredAt: "2026-07-27T12:00:00.000Z"
+  };
+}
+
+function deferredValue<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, reject, resolve };
+}
+
 function activeSubscriptionRequest(overrides: Partial<PortalSubscriptionRequest> = {}): PortalSubscriptionRequest {
   return {
     status: "subscription_ready",
@@ -431,6 +518,114 @@ function activeSubscriptionRequest(overrides: Partial<PortalSubscriptionRequest>
     },
     ...overrides
   };
+}
+
+function paymentOrder(
+  overrides: Partial<PortalPaymentOrder> = {}
+): PortalPaymentOrder {
+  return {
+    orderRef: "pay_existing_monthly",
+    planId: "monthly_basic",
+    planLabel: "基础月付",
+    amountMinor: 2000,
+    channel: "alipay",
+    currency: "CNY",
+    status: "pending_payment",
+    checkoutUrl: "https://pay.example.test/existing",
+    createdAt: "2026-05-31T00:00:00.000Z",
+    paymentExpiresAt: "2099-01-01T00:00:00.000Z",
+    safety: {
+      noRawMerchantKey: true,
+      noRawProviderPayload: true
+    },
+    ...overrides
+  };
+}
+
+function marketplaceOrder(): PortalCoinOrder {
+  return {
+    orderRef: "commerce_order_001",
+    offer: {
+      offerRef: "offer_marketplace_001",
+      offerVersionRef: "offer_version_marketplace_001",
+      category: "plan",
+      title: { zh: "商城测试商品", en: "Marketplace test offer" },
+      summary: { zh: "统一订单列表测试商品", en: "Unified order list test offer" },
+      importantNotices: {
+        zh: ["仅用于订单中心测试"],
+        en: ["Order-center fixture only"]
+      },
+      referencePrice: { currency: "CNY", amountMinor: 2_000 },
+      acceptedCoinTypes: ["paid_coins"],
+      delivery: {
+        kind: "subscription_plan",
+        durationDays: 30,
+        monthlyTrafficGb: 50,
+        trafficGb: null,
+        neverExpires: false,
+        discountBasisPoints: 0
+      }
+    },
+    amountUnits: 20,
+    allocation: [{ coinType: "paid_coins", amountUnits: 20 }],
+    paymentStatus: "captured",
+    cancelUntil: "2026-07-28T12:30:00.000Z",
+    fulfillment: { status: "delivered", safeCode: null },
+    createdAt: "2026-07-28T12:00:00.000Z",
+    updatedAt: "2026-07-28T12:01:00.000Z"
+  };
+}
+
+async function authenticatedSessionWithRef(input: PortalAuthInput): Promise<PortalSession> {
+  return {
+    status: "authenticated_preview",
+    sessionRef: "portal_session_orders_test",
+    userRef: "user_safe_ref",
+    displayName: input.mode === "token"
+      ? "user_safe_ref"
+      : input.mode === "email"
+        ? input.email
+        : input.accountId,
+    authMode: input.mode,
+    registeredAt: "2026-05-31T00:00:00.000Z",
+    safety: {
+      noAdminApi: true,
+      noPublicAuthActivated: true,
+      noRawPasswordReturned: true
+    }
+  };
+}
+
+function portalClientWithPaymentOrders(
+  paymentOrders: PortalPaymentOrder[],
+  stateOverrides: Partial<Omit<PortalUserState, "userRef">> = {},
+  clientOverrides: Partial<UserPortalClient> = {}
+): UserPortalClient {
+  return portalClient({
+    fetchCurrentState: vi.fn(async (input: {
+      userRef: string;
+    }): Promise<PortalUserState> => ({
+      userRef: input.userRef,
+      subscriptionRequest: null,
+      paymentOrders,
+      historySummary: [],
+      security: {
+        authenticatorBound: false,
+        initialAccount: false,
+        passkeyEnabled: false,
+        passkeyExported: false,
+        setupRequired: false
+      },
+      updatedAt: "2026-05-31T00:00:00.000Z",
+      safety: {
+        noAdminApi: true,
+        noPaymentActivation: true,
+        noPublicAdmin: true
+      },
+      ...stateOverrides
+    })),
+    ...clientOverrides
+  });
 }
 
 function portalClientWithActiveSubscription(
@@ -515,23 +710,23 @@ function openPortalDashboard() {
 }
 
 function openPortalProfile() {
-  fireEvent.click(screen.getByRole("button", { name: "个人与安全" }));
+  fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
 }
 
-function openNewOrderForm() {
-  const visibleBuyButtons = screen.queryAllByRole("button", { name: "购买套餐" });
-  if (visibleBuyButtons.length > 0) {
-    fireEvent.click(visibleBuyButtons[0]);
-    return;
-  }
-  openPortalDashboard();
-  fireEvent.click(screen.getAllByRole("button", { name: "购买套餐" })[0]);
+function openPortalOrders() {
+  fireEvent.click(screen.getByRole("button", { name: "订单" }));
 }
 
-function continueFromCashier(paymentMethod = "支付宝") {
-  const cashierDialog = screen.getByRole("dialog", { name: "选择支付方式" });
-  fireEvent.click(within(cashierDialog).getByRole("button", { name: paymentMethod }));
-  fireEvent.click(within(cashierDialog).getByRole("button", { name: "继续支付" }));
+function expectMarketplaceWithoutLegacyCheckout(client: UserPortalClient) {
+  expect(screen.getByRole("region", { name: "商城目录" })).not.toBeNull();
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "当前客户端未提供服务端商城能力"
+  );
+  expect(screen.queryByRole("heading", { name: "平台服务商城" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
+  expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+  expect(client.applyForSubscription).not.toHaveBeenCalled();
 }
 
 function openPortalSubscriptions() {
@@ -599,7 +794,7 @@ describe("user portal route", () => {
     await waitFor(() => expect(document.title).toBe("GCC WebOS - 用户中心"));
     expect(screen.getByRole("navigation", { name: "用户中心导航" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "开始使用" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "订单" })).toBeNull();
+    expect(screen.getByRole("button", { name: "订单" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "订阅" })).toBeNull();
     expect(screen.queryByRole("region", { name: "用户登录" })).toBeNull();
   });
@@ -672,7 +867,7 @@ describe("user portal route", () => {
     openPortalStartGuide();
     expect(await screen.findByRole("heading", { name: "Welcome" })).not.toBeNull();
     expect(screen.getByRole("navigation", { name: "User center navigation" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Orders" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Orders" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Subscriptions" })).toBeNull();
 
     expect(screen.getByRole("button", { name: "Start setup" })).not.toBeNull();
@@ -687,18 +882,22 @@ describe("user portal route", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Overview" }));
     expect(await screen.findByRole("heading", { name: "Account overview" })).not.toBeNull();
-    expect(screen.getByPlaceholderText("Search plans, usage, clients")).not.toBeNull();
-    expect(screen.getAllByRole("button", { name: "Buy plan" }).length).toBeGreaterThan(0);
+    expect(screen.getByPlaceholderText("Search products, usage, clients")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Recharge Coins" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Buy plan" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Support" }));
     expect(await screen.findByRole("heading", { name: "Submit a request" })).not.toBeNull();
     expect(screen.getByLabelText("Request type")).not.toBeNull();
     expect(screen.getByPlaceholderText("Describe the issue, client name, and steps you tried")).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Profile & security" }));
-    expect(await screen.findByRole("heading", { name: "Account and security" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Personal center" }));
+    expect(await screen.findByRole("heading", { name: "Account management" })).not.toBeNull();
     expect(screen.getByText("Sign-in method")).not.toBeNull();
+    expect(screen.queryByText("Security settings")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Security" }));
     expect(screen.getByText("Security settings")).not.toBeNull();
+    expect(screen.queryByText("Sign-in method")).toBeNull();
   });
 
   test("lets a signed-in portal-only user leave back to account login", async () => {
@@ -1715,7 +1914,8 @@ describe("user portal product surface", () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
     await enterPortal();
-    fireEvent.click(screen.getByRole("button", { name: "个人与安全" }));
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+    fireEvent.click(screen.getByRole("tab", { name: "安全" }));
 
     expect(screen.getByRole("heading", { name: "安全设置" })).not.toBeNull();
     expect(screen.getByText("身份验证器")).not.toBeNull();
@@ -1757,7 +1957,8 @@ describe("user portal product surface", () => {
     render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
-    fireEvent.click(screen.getByRole("button", { name: "个人与安全" }));
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+    fireEvent.click(screen.getByRole("tab", { name: "安全" }));
     fireEvent.click(screen.getByRole("button", { name: "绑定身份验证器" }));
 
     expect(await screen.findByRole("dialog", { name: "绑定身份验证器" })).not.toBeNull();
@@ -1903,9 +2104,9 @@ describe("user portal product surface", () => {
     expect(within(portalNav).getByRole("button", { name: "开始使用" })).not.toBeNull();
     expect(within(portalNav).getByRole("button", { name: "概览" })).not.toBeNull();
     expect(within(portalNav).getByRole("button", { name: "用量" })).not.toBeNull();
-    expect(within(portalNav).getByRole("button", { name: "个人与安全" })).not.toBeNull();
+    expect(within(portalNav).getByRole("button", { name: "个人中心" })).not.toBeNull();
     expect(within(portalNav).getByRole("button", { name: "支持" })).not.toBeNull();
-    expect(within(portalNav).queryByRole("button", { name: "订单" })).toBeNull();
+    expect(within(portalNav).getByRole("button", { name: "订单" })).not.toBeNull();
     expect(within(portalNav).queryByRole("button", { name: "订阅" })).toBeNull();
     expect(within(portalNav).queryByText("Dashboard")).toBeNull();
     expect(screen.getByRole("heading", { name: "欢迎使用" })).not.toBeNull();
@@ -1922,16 +2123,644 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("安全清单")).toBeNull();
   });
 
+  test("adds commerce entries to the existing Portal shell", async () => {
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    const portalNav = await enterPortal();
+
+    expect(within(portalNav).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "开始使用",
+      "概览",
+      "用量",
+      "商城",
+      "订单",
+      "推荐奖励",
+      "个人中心",
+      "支持"
+    ]);
+    expect(within(portalNav).getByRole("button", { name: "商城" })).not.toBeNull();
+    expect(within(portalNav).getByRole("button", { name: "推荐奖励" })).not.toBeNull();
+    expect(within(portalNav).queryByRole("button", { name: "钱包" })).toBeNull();
+    expect(within(portalNav).queryByRole("button", { name: "Coins 钱包" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Coins 支付" })).toBeNull();
+
+    const topbar = document.querySelector(".portal-use-topbar");
+    expect(topbar).not.toBeNull();
+    const walletButtons = within(topbar as HTMLElement).getAllByRole("button", { name: "打开 Coins 钱包，余额暂不可用" });
+    expect(walletButtons).toHaveLength(1);
+    const walletButton = walletButtons[0];
+    expect(walletButton.closest(".portal-v2-utility-actions")).not.toBeNull();
+    expect(walletButton.closest(".portal-v2-primary-actions")).toBeNull();
+
+    fireEvent.click(within(portalNav).getByRole("button", { name: "商城" }));
+    expect(await screen.findByRole("region", { name: "商城目录" })).not.toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "当前客户端未提供服务端商城能力"
+    );
+    expect(screen.queryByText("商品")).toBeNull();
+    expect(screen.queryByText("增值项")).toBeNull();
+    expect(screen.queryByRole("button", { name: "购买暂未开放" })).toBeNull();
+  });
+
+  test("Wallet loads summary for the authenticated shell and ledger only after opening", async () => {
+    const summary = deferredValue<PortalWalletSummary>();
+    const ledger = deferredValue<{
+      entries: PortalWalletLedgerEntry[];
+      nextCursor: null;
+    }>();
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(() => summary.promise),
+      listLedger: vi.fn(() => ledger.promise)
+    };
+    const session = portalWalletSession(
+      "session_wallet_shell_001",
+      "wallet-user@example.test"
+    );
+    const client = portalClient({ wallet });
+    render(createElement(UserPortalPage, {
+      initialSession: session,
+      portalClient: client
+    }));
+
+    const navigation = await screen.findByRole("navigation", {
+      name: "用户中心导航"
+    });
+    await waitFor(() => {
+      expect(wallet.getSummary).toHaveBeenCalledWith({
+        sessionRef: session.sessionRef
+      });
+    });
+    expect(wallet.listLedger).not.toHaveBeenCalled();
+    expect(within(navigation).queryByRole("button", { name: "钱包" })).toBeNull();
+    expect(within(navigation).queryByRole("button", { name: "Coins 钱包" })).toBeNull();
+    const topbar = document.querySelector(".portal-use-topbar");
+    expect(topbar).not.toBeNull();
+    expect(within(topbar as HTMLElement).getByText("Coins · --")).toBeInTheDocument();
+    expect(within(topbar as HTMLElement).getByRole("button", {
+      name: "打开 Coins 钱包，余额加载中"
+    })).toBeInTheDocument();
+
+    await act(async () => {
+      summary.resolve(portalWalletSummary(155));
+      await summary.promise;
+    });
+    const walletButton = within(topbar as HTMLElement).getByRole("button", {
+      name: "打开 Coins 钱包，可用余额 155 Coins"
+    });
+    expect(walletButton).toHaveTextContent("Coins · 155");
+    expect(within(topbar as HTMLElement).getAllByRole("button", {
+      name: "打开 Coins 钱包，可用余额 155 Coins"
+    })).toHaveLength(1);
+
+    fireEvent.click(walletButton);
+    await waitFor(() => {
+      expect(wallet.listLedger).toHaveBeenCalledWith({
+        sessionRef: session.sessionRef,
+        limit: 25
+      });
+    });
+    expect(await screen.findByText("正在加载钱包流水…")).toBeInTheDocument();
+
+    await act(async () => {
+      ledger.resolve({
+        entries: [portalWalletEntry()],
+        nextCursor: null
+      });
+      await ledger.promise;
+    });
+    expect(await screen.findByRole("table", {
+      name: "Coins 钱包流水"
+    })).toBeInTheDocument();
+  });
+
+  test("Wallet uses only server-confirmed not-created as zero", async () => {
+    const session = portalWalletSession(
+      "session_wallet_zero_001",
+      "wallet-zero@example.test"
+    );
+    const confirmedZero: PortalWalletClient = {
+      getSummary: vi.fn(async () => portalWalletSummary(0, "not_created")),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    render(createElement(UserPortalPage, {
+      initialSession: session,
+      portalClient: portalClient({ wallet: confirmedZero })
+    }));
+
+    const zeroButton = await screen.findByRole("button", {
+      name: "打开 Coins 钱包，可用余额 0 Coins"
+    });
+    expect(zeroButton).toHaveTextContent("Coins · 0");
+
+    cleanup();
+    const failed: PortalWalletClient = {
+      getSummary: vi.fn(async () => {
+        throw new PortalWalletClientError("wallet_unavailable", true);
+      }),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    render(createElement(UserPortalPage, {
+      initialSession: portalWalletSession(
+        "session_wallet_failed_001",
+        "wallet-failed@example.test"
+      ),
+      portalClient: portalClient({ wallet: failed })
+    }));
+
+    const failedButton = await screen.findByRole("button", {
+      name: "打开 Coins 钱包，余额暂不可用"
+    });
+    expect(failedButton).toHaveTextContent("Coins · --");
+    expect(screen.queryByText("Coins · 0")).not.toBeInTheDocument();
+
+    cleanup();
+    const rejected: PortalWalletClient = {
+      getSummary: vi.fn(async () => {
+        throw new PortalWalletClientError("wallet_request_failed", true);
+      }),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    render(createElement(UserPortalPage, {
+      initialSession: portalWalletSession(
+        "session_wallet_rejected_001",
+        "wallet-rejected@example.test"
+      ),
+      portalClient: portalClient({ wallet: rejected })
+    }));
+
+    const rejectedButton = await screen.findByRole("button", {
+      name: "打开 Coins 钱包，余额加载失败"
+    });
+    expect(rejectedButton).toHaveTextContent("Coins · --");
+  });
+
+  test("Wallet hydrate generation ignores a late older session completion", async () => {
+    const firstState = deferredValue<PortalUserState>();
+    const secondState = deferredValue<PortalUserState>();
+    const firstSession = portalWalletSession(
+      "session_wallet_generation_old",
+      "wallet-old@example.test"
+    );
+    const secondSession = portalWalletSession(
+      "session_wallet_generation_new",
+      "wallet-new@example.test"
+    );
+    const stateTemplateClient = portalClient();
+    const oldState = await stateTemplateClient.fetchCurrentState({
+      userRef: firstSession.userRef,
+      sessionRef: firstSession.sessionRef
+    });
+    const newState = await stateTemplateClient.fetchCurrentState({
+      userRef: secondSession.userRef,
+      sessionRef: secondSession.sessionRef
+    });
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(async ({ sessionRef }) => (
+        sessionRef === secondSession.sessionRef
+          ? portalWalletSummary(222)
+          : portalWalletSummary(111)
+      )),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const client = portalClient({
+      wallet,
+      fetchCurrentState: vi.fn(({ sessionRef }) => (
+        sessionRef === firstSession.sessionRef
+          ? firstState.promise
+          : secondState.promise
+      ))
+    });
+    const { rerender } = render(createElement(UserPortalPage, {
+      initialSession: firstSession,
+      portalClient: client
+    }));
+    await waitFor(() => {
+      expect(client.fetchCurrentState).toHaveBeenCalledWith({
+        userRef: firstSession.userRef,
+        sessionRef: firstSession.sessionRef
+      });
+    });
+
+    rerender(createElement(UserPortalPage, {
+      initialSession: secondSession,
+      portalClient: client
+    }));
+    await waitFor(() => {
+      expect(client.fetchCurrentState).toHaveBeenCalledWith({
+        userRef: secondSession.userRef,
+        sessionRef: secondSession.sessionRef
+      });
+    });
+    await act(async () => {
+      secondState.resolve({ ...newState, userRef: secondSession.userRef });
+      await secondState.promise;
+    });
+    expect(await screen.findByText("Coins · 222")).toBeInTheDocument();
+
+    await act(async () => {
+      firstState.resolve({ ...oldState, userRef: firstSession.userRef });
+      await firstState.promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Coins · 222")).toBeInTheDocument();
+      expect(screen.queryByText("Coins · 111")).not.toBeInTheDocument();
+    });
+    expect(wallet.getSummary).not.toHaveBeenCalledWith({
+      sessionRef: firstSession.sessionRef
+    });
+  });
+
+  test("Wallet hydrate generation ignores a late older session rejection", async () => {
+    const oldState = deferredValue<PortalUserState>();
+    const currentState = deferredValue<PortalUserState>();
+    const firstSession = portalWalletSession(
+      "session_wallet_rejection_old",
+      "wallet-rejection-old@example.test"
+    );
+    const secondSession = portalWalletSession(
+      "session_wallet_rejection_new",
+      "wallet-rejection-new@example.test"
+    );
+    const templateClient = portalClient();
+    const secondPortalState = await templateClient.fetchCurrentState({
+      userRef: secondSession.userRef,
+      sessionRef: secondSession.sessionRef
+    });
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(async ({ sessionRef }) => (
+        sessionRef === secondSession.sessionRef
+          ? portalWalletSummary(444)
+          : portalWalletSummary(111)
+      )),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const client = portalClient({
+      wallet,
+      fetchCurrentState: vi.fn(({ sessionRef }) => (
+        sessionRef === firstSession.sessionRef
+          ? oldState.promise
+          : currentState.promise
+      ))
+    });
+    const { rerender } = render(createElement(UserPortalPage, {
+      initialSession: firstSession,
+      portalClient: client
+    }));
+    await waitFor(() => {
+      expect(client.fetchCurrentState).toHaveBeenCalledWith({
+        userRef: firstSession.userRef,
+        sessionRef: firstSession.sessionRef
+      });
+    });
+
+    rerender(createElement(UserPortalPage, {
+      initialSession: secondSession,
+      portalClient: client
+    }));
+    await act(async () => {
+      currentState.resolve({ ...secondPortalState, userRef: secondSession.userRef });
+      await currentState.promise;
+    });
+    expect(await screen.findByText("Coins · 444")).toBeInTheDocument();
+
+    await act(async () => {
+      oldState.reject(new Error("synthetic stale hydrate rejection"));
+      await Promise.allSettled([oldState.promise]);
+    });
+    expect(screen.getByRole("navigation", {
+      name: "用户中心导航"
+    })).toBeInTheDocument();
+    expect(screen.getByText("Coins · 444")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "账号登录" })).toBeNull();
+  });
+
+  test("a stale login hydrate rejection cannot reset the committed session challenge", async () => {
+    const staleState = deferredValue<PortalUserState>();
+    const currentState = deferredValue<PortalUserState>();
+    const staleSession = portalWalletSession(
+      "session_wallet_login_rejection_old",
+      "wallet-login-rejection-old@example.test"
+    );
+    const currentSession = portalWalletSession(
+      "session_wallet_login_rejection_new",
+      "wallet-login-rejection-new@example.test"
+    );
+    const templateClient = portalClient();
+    const currentPortalState = await templateClient.fetchCurrentState({
+      userRef: currentSession.userRef,
+      sessionRef: currentSession.sessionRef
+    });
+    const issueHumanChallenge = vi.fn(async () => ({
+      challengeId: "challenge_current",
+      prompt: "1 + 1 = ?",
+      expiresInSeconds: 120
+    }));
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(async ({ sessionRef }) => (
+        sessionRef === currentSession.sessionRef
+          ? portalWalletSummary(555)
+          : portalWalletSummary(111)
+      )),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const client = portalClient({
+      authenticate: vi.fn(async () => staleSession),
+      fetchCurrentState: vi.fn(({ sessionRef }) => (
+        sessionRef === staleSession.sessionRef
+          ? staleState.promise
+          : currentState.promise
+      )),
+      issueHumanChallenge,
+      wallet
+    });
+    const { rerender } = render(createElement(UserPortalPage, { portalClient: client }));
+
+    await submitPortalLogin();
+    await waitFor(() => {
+      expect(client.fetchCurrentState).toHaveBeenCalledWith({
+        userRef: staleSession.userRef,
+        sessionRef: staleSession.sessionRef
+      });
+      expect(issueHumanChallenge).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(createElement(UserPortalPage, {
+      initialSession: currentSession,
+      portalClient: client
+    }));
+    await act(async () => {
+      currentState.resolve({ ...currentPortalState, userRef: currentSession.userRef });
+      await currentState.promise;
+    });
+    expect(await screen.findByText("Coins · 555")).toBeInTheDocument();
+
+    await act(async () => {
+      staleState.reject(new Error("synthetic stale login hydrate rejection"));
+      await Promise.allSettled([staleState.promise]);
+    });
+    expect(screen.getByRole("navigation", {
+      name: "用户中心导航"
+    })).toBeInTheDocument();
+    expect(screen.getByText("Coins · 555")).toBeInTheDocument();
+    expect(issueHumanChallenge).toHaveBeenCalledTimes(1);
+  });
+
+  test("Wallet stale session-invalid cannot log out a newer login", async () => {
+    const oldSummary = deferredValue<PortalWalletSummary>();
+    const oldSession = portalWalletSession(
+      "session_wallet_logout_old",
+      "wallet-old@example.test"
+    );
+    const newSession = portalWalletSession(
+      "session_wallet_logout_new",
+      "wallet-new@example.test"
+    );
+    const authenticate = vi.fn()
+      .mockResolvedValueOnce(oldSession)
+      .mockResolvedValueOnce(newSession);
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(({ sessionRef }) => (
+        sessionRef === oldSession.sessionRef
+          ? oldSummary.promise
+          : Promise.resolve(portalWalletSummary(333))
+      )),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const client = portalClient({ authenticate, wallet });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    await waitFor(() => {
+      expect(wallet.getSummary).toHaveBeenCalledWith({
+        sessionRef: oldSession.sessionRef
+      });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    expect(await screen.findByRole("heading", { name: "账号登录" })).toBeInTheDocument();
+
+    await enterPortal();
+    expect(await screen.findByText("Coins · 333")).toBeInTheDocument();
+    await act(async () => {
+      oldSummary.reject(
+        new PortalWalletClientError("wallet_session_invalid", false)
+      );
+      await Promise.allSettled([oldSummary.promise]);
+    });
+
+    expect(screen.getByRole("navigation", {
+      name: "用户中心导航"
+    })).toBeInTheDocument();
+    expect(screen.getByText("Coins · 333")).toBeInTheDocument();
+  });
+
+  test("places Orders in navigation and returns legacy payment detail to Orders", async () => {
+    const client = portalClientWithPaymentOrders([paymentOrder()]);
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    const navigation = await enterPortal();
+
+    expect(
+      within(navigation)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label"))
+    ).toEqual([
+      "开始使用",
+      "概览",
+      "用量",
+      "商城",
+      "订单",
+      "推荐奖励",
+      "个人中心",
+      "支持"
+    ]);
+
+    openPortalOrders();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
+    fireEvent.click(await screen.findByRole("button", { name: "返回订单" }));
+
+    expect(screen.getByRole("table", { name: "订单列表" })).not.toBeNull();
+  });
+
+  test("shows recharge denominations in the disabled Coins wallet", async () => {
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    await enterPortal();
+    const topbar = document.querySelector(".portal-use-topbar");
+    expect(topbar).not.toBeNull();
+    fireEvent.click(within(topbar as HTMLElement).getByRole("button", { name: "打开 Coins 钱包，余额暂不可用" }));
+
+    expect(await screen.findAllByRole("heading", { level: 2, name: "余额与充值" })).toHaveLength(1);
+    const walletSection = document.querySelector(".portal-commerce-layout--wallet");
+    expect(walletSection).not.toBeNull();
+
+    for (const amount of [10, 30, 50, 100, 200, 300]) {
+      expect(screen.getByText(`${amount} Coins`)).not.toBeNull();
+      const rechargeButton = within(walletSection as HTMLElement).getAllByRole("button", {
+        name: `充值 ${amount} Coins 暂未开放`
+      });
+      expect(rechargeButton).toHaveLength(1);
+      expect((rechargeButton[0] as HTMLButtonElement).disabled).toBe(true);
+    }
+    const rechargeButtons = within(walletSection as HTMLElement).getAllByRole("button", { name: /Coins/ });
+    expect(rechargeButtons).toHaveLength(6);
+    rechargeButtons.forEach((button) => {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "EN" }));
+
+    const englishTopbar = document.querySelector(".portal-use-topbar");
+    expect(englishTopbar).not.toBeNull();
+    expect(within(englishTopbar as HTMLElement).getByText("Coins · --")).not.toBeNull();
+    expect(within(screen.getByRole("navigation", { name: "User center navigation" })).queryByRole("button", { name: "Wallet" })).toBeNull();
+    expect(within(screen.getByRole("navigation", { name: "User center navigation" })).queryByRole("button", { name: "Coins wallet" })).toBeNull();
+    fireEvent.click(within(englishTopbar as HTMLElement).getByRole("button", { name: "Open Coins wallet, balance is temporarily unavailable" }));
+    expect(await screen.findAllByRole("heading", { level: 2, name: "Balance and recharge" })).toHaveLength(1);
+    const englishWalletSection = document.querySelector(".portal-commerce-layout--wallet");
+    expect(englishWalletSection).not.toBeNull();
+    for (const amount of [10, 300]) {
+      const rechargeButton = within(englishWalletSection as HTMLElement).getAllByRole("button", {
+        name: `Recharge ${amount} Coins — not available yet`
+      });
+      expect(rechargeButton).toHaveLength(1);
+      expect((rechargeButton[0] as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
+  test("opens a six-tier recharge dialog without starting payment or changing the wallet route", async () => {
+    const client = portalClient();
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    const topbar = document.querySelector(".portal-use-topbar");
+    expect(topbar).not.toBeNull();
+
+    const recharge = within(topbar as HTMLElement).getByRole("button", {
+      name: "充值 Coins"
+    });
+    fireEvent.click(recharge);
+
+    const dialog = screen.getByRole("dialog", { name: "充值 Coins" });
+    const choices = within(dialog).getAllByRole("button", {
+      name: /选择 \d+ Coins/
+    });
+    expect(choices.map((choice) => choice.textContent?.trim())).toEqual([
+      "10 Coins",
+      "30 Coins",
+      "50 Coins",
+      "100 Coins",
+      "200 Coins",
+      "300 Coins"
+    ]);
+    expect(within(dialog).getByRole("button", {
+      name: "支付通道将在下一阶段接入"
+    })).toBeDisabled();
+    const choice = within(dialog).getByRole("button", {
+      name: "选择 100 Coins"
+    });
+    fireEvent.click(choice);
+    expect(choice).toHaveAttribute("aria-pressed", "true");
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog", { name: "充值 Coins" })).toBeNull();
+
+    fireEvent.click(recharge);
+    expect(within(screen.getByRole("dialog", { name: "充值 Coins" }))
+      .getByRole("button", { name: "选择 100 Coins" }))
+      .toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(within(screen.getByRole("dialog", { name: "充值 Coins" }))
+      .getByRole("button", { name: "关闭" }));
+
+    fireEvent.click(within(topbar as HTMLElement).getByRole("button", {
+      name: "打开 Coins 钱包，余额暂不可用"
+    }));
+    expect(await screen.findByRole("heading", { name: "余额与充值" }))
+      .not.toBeNull();
+    expect(screen.queryByRole("dialog", { name: "充值 Coins" })).toBeNull();
+  });
+
+  test("clears recharge selection when the Portal session ends", async () => {
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "充值 Coins" }));
+    fireEvent.click(within(screen.getByRole("dialog", {
+      name: "充值 Coins"
+    })).getByRole("button", { name: "选择 30 Coins" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    expect(await screen.findByRole("heading", { name: "账号登录" })).not.toBeNull();
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "充值 Coins" }));
+    expect(within(screen.getByRole("dialog", { name: "充值 Coins" }))
+      .getByRole("button", { name: "选择 30 Coins" }))
+      .toHaveAttribute("aria-pressed", "false");
+  });
+
+  test("does not grant traffic or alter entitlement state when a recharge denomination is selected", async () => {
+    const client = portalClientWithActiveSubscription();
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalOrders();
+    const orderRowsBefore = within(screen.getByRole("table", {
+      name: "订单列表"
+    })).getAllByRole("row").length;
+    openPortalDashboard();
+    const statusBefore = screen.getByText("当前套餐可用").textContent;
+    const quotaBefore = screen.getAllByText(/GB/).map((node) => node.textContent);
+
+    fireEvent.click(screen.getByRole("button", { name: "充值 Coins" }));
+    fireEvent.click(within(screen.getByRole("dialog", {
+      name: "充值 Coins"
+    })).getByRole("button", { name: "选择 300 Coins" }));
+    fireEvent.click(within(screen.getByRole("dialog", {
+      name: "充值 Coins"
+    })).getByRole("button", { name: "关闭" }));
+
+    expect(screen.getByText("当前套餐可用").textContent).toBe(statusBefore);
+    expect(screen.getAllByText(/GB/).map((node) => node.textContent))
+      .toEqual(quotaBefore);
+    openPortalOrders();
+    expect(within(screen.getByRole("table", {
+      name: "订单列表"
+    })).getAllByRole("row")).toHaveLength(orderRowsBefore);
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
+  });
+
+  test("keeps referral rewards as one-link placeholders without cash-out actions", async () => {
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    const portalNav = await enterPortal();
+    fireEvent.click(within(portalNav).getByRole("button", { name: "推荐奖励" }));
+
+    expect(await screen.findByRole("heading", { name: "推广绩效" })).not.toBeNull();
+    expect(screen.getAllByText("我的推荐链接")).toHaveLength(1);
+    expect(screen.getByText("有效注册")).not.toBeNull();
+    expect(screen.getByText("归因消费")).not.toBeNull();
+    expect(screen.getByText("待确认奖励")).not.toBeNull();
+    expect(screen.getByText("可用奖励")).not.toBeNull();
+    expect(screen.getAllByText("--")).toHaveLength(4);
+    expect((screen.getByRole("button", { name: "生成推荐链接（暂未开放）" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: /提现/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /转账/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Admin/ })).toBeNull();
+  });
+
   test("uses user-facing wording instead of internal entitlement language", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClientWithActiveSubscription() }));
 
     const portalNav = await enterPortal();
 
-    fireEvent.click(within(portalNav).getByRole("button", { name: "个人与安全" }));
-    expect(await screen.findByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
-    expect(screen.queryByText("订单与付款记录")).toBeNull();
+    fireEvent.click(within(portalNav).getByRole("button", { name: "订单" }));
     expect(screen.queryByText("统一查看订单记录")).toBeNull();
-    expect(screen.queryByRole("region", { name: "订单记录" })).toBeNull();
+    expect(screen.getByRole("region", { name: "订单记录" })).not.toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "订单管理" })).toBeNull();
     expect(screen.queryByText(/订阅链接和用量记录/)).toBeNull();
 
@@ -1944,7 +2773,7 @@ describe("user portal product surface", () => {
     expect(document.querySelector('[data-portal-view="start"]')?.classList.contains("active")).toBe(true);
 
     expect(within(portalNav).queryByRole("button", { name: "订阅" })).toBeNull();
-    expect(within(portalNav).queryByRole("button", { name: "订单" })).toBeNull();
+    expect(within(portalNav).getByRole("button", { name: "订单" })).not.toBeNull();
 
     fireEvent.click(within(portalNav).getByRole("button", { name: "开始使用" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "欢迎使用" })).not.toBeNull());
@@ -1972,342 +2801,301 @@ describe("user portal product surface", () => {
     expect(screen.queryByText(/账户权益|节点|支付渠道|订阅内容/)).toBeNull();
   });
 
-  test("keeps the new order form collapsed until the user starts a new order", async () => {
-    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+  test("keeps existing order history reachable without opening legacy purchase dialogs", async () => {
+    const client = portalClientWithPaymentOrders([paymentOrder()]);
+    render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
-    openPortalDashboard();
+    openPortalOrders();
 
-    expect(screen.getAllByRole("button", { name: "购买套餐" }).length).toBeGreaterThan(0);
-    expect(screen.getByText("暂无订单")).not.toBeNull();
-    expect(screen.getAllByRole("button", { name: "购买套餐" }).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
-    expect(screen.queryByLabelText("订单时长")).toBeNull();
-    expect(screen.queryByLabelText("数量")).toBeNull();
-    expect(screen.queryByRole("button", { name: "提交订单" })).toBeNull();
-
-    openNewOrderForm();
-
-    const orderDialog = screen.getByRole("dialog", { name: "选择套餐" });
-    expect(within(orderDialog).getByRole("button", { name: /选择基础月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择标准月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择年度套餐/ })).not.toBeNull();
-    expect(within(orderDialog).queryByText("首选客户端")).toBeNull();
-    expect(within(orderDialog).queryByText("支付宝 / 微信支付")).toBeNull();
-    expect(within(orderDialog).queryByText("提交订单后进入支付确认页。")).toBeNull();
-    expect(within(orderDialog).queryByText("聚合扫码支付")).toBeNull();
-    expect(within(orderDialog).queryByRole("radio", { name: /微信支付/ })).toBeNull();
-    expect(within(orderDialog).queryByRole("radio", { name: /支付宝支付/ })).toBeNull();
-    expect(within(orderDialog).queryByText("应付")).toBeNull();
-    expect(within(orderDialog).getAllByText("20 元 / 月").length).toBeGreaterThan(0);
-    expect(within(orderDialog).queryByLabelText("订单时长")).toBeNull();
-    expect(within(orderDialog).queryByLabelText("数量")).toBeNull();
-    expect(within(orderDialog).queryByText(/删除操作|停用处理/)).toBeNull();
-    expect(within(orderDialog).queryByRole("button", { name: "取消" })).toBeNull();
-    expect(within(orderDialog).queryByRole("button", { name: "提交订单" })).toBeNull();
-
-    fireEvent.click(within(orderDialog).getByRole("button", { name: "关闭" }));
+    expect(await screen.findByRole("table", { name: "订单列表" })).not.toBeNull();
+    expect(screen.getByText("P-existing_monthly")).not.toBeNull();
     expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
-  test("creates yearly payment checkout through the user-scoped client", async () => {
-    const client = portalClient();
-    const paymentRedirect = vi.fn();
-    render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
+  test("keeps Orders to one heading, one type filter, and one list", async () => {
+    const commerceClient = {
+      listOrders: vi.fn(async () => ({ orders: [marketplaceOrder()], nextCursor: null }))
+    } as unknown as PortalCoinCommerceClient;
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({ planLabel: "遗留套餐测试" })
+    ], {
+      subscriptionRequest: activeSubscriptionRequest({
+        historySummary: [{
+          recordRef: "service_record_001",
+          label: "订阅服务测试",
+          status: "已开通",
+          occurredAt: "2026-07-28T11:00:00.000Z"
+        }]
+      }),
+      historySummary: [{
+        recordRef: "service_record_001",
+        label: "订阅服务测试",
+        status: "已开通",
+        occurredAt: "2026-07-28T11:00:00.000Z"
+      }]
+    }, {
+      authenticate: vi.fn(authenticatedSessionWithRef),
+      commerce: commerceClient
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择年度套餐/ }));
-    expect(screen.getByRole("dialog", { name: "选择支付方式" })).not.toBeNull();
-    continueFromCashier("微信支付");
+    openPortalOrders();
 
-    expect((await screen.findAllByText("待付款")).length).toBeGreaterThan(0);
-    expect(client.createPaymentCheckout).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userRef: "user_safe_ref",
-        planId: "yearly",
-        clientTarget: "clash",
-        channel: "wxpay"
-      })
-    );
-    expect(client.applyForSubscription).not.toHaveBeenCalled();
-    expect(screen.queryByText("https://sub.example.test/import/visible-once")).toBeNull();
-    expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "订单摘要" })).not.toBeNull();
-    expect(screen.queryByRole("heading", { name: "支持的支付方式" })).toBeNull();
-    expect(screen.getByText("支付至")).not.toBeNull();
-    expect(screen.getByText("订单信息")).not.toBeNull();
-    expect(screen.getByText("计费周期")).not.toBeNull();
-    expect(screen.getByText("交易编号")).not.toBeNull();
-    expect(screen.getByText("订单金额")).not.toBeNull();
-    expect(screen.queryByText("优惠")).toBeNull();
-    expect(screen.getByText("支付总额")).not.toBeNull();
-    expect(screen.getByText("此支付链接将在")).not.toBeNull();
-    expect(screen.getByText("后失效")).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "已付款？检查状态" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "切换支付方式" })).toBeNull();
-    expect(screen.queryByText("等待付款确认...")).toBeNull();
-    expect(screen.queryByText("继续支付即表示你同意服务条款和隐私政策。")).toBeNull();
-    expect(screen.getAllByText("微信支付").length).toBeGreaterThan(0);
-    expect(screen.queryByText("支付宝")).toBeNull();
-    expect(screen.getByText("请使用微信扫码付款。")).not.toBeNull();
-    expect(screen.queryByText("二维码仅限本订单使用。")).toBeNull();
-    expect(screen.queryByText("聚合扫码支付")).toBeNull();
-    expect(screen.queryByText(/以后端回调|后台回调|系统会按套餐周期/)).toBeNull();
-    expect(screen.queryByRole("button", { name: "打开支付平台" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
-    fireEvent.click(screen.getAllByRole("button", { name: "返回个人与安全" })[0]);
-    expect(screen.getByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
+    expect(screen.getByRole("group", { name: "订单类型" })).toBeInTheDocument();
+    expect(screen.getAllByRole("table", { name: "订单列表" })).toHaveLength(1);
+    const ordersRegion = screen.getByRole("region", { name: "订单记录" });
+    expect(within(ordersRegion).queryByRole("heading")).toBeNull();
+    expect(document.querySelector(".portal-v2-page-title h1")).not.toBeNull();
+    expect(document.querySelector(".portal-v2-mobile-title h1")).not.toHaveAttribute("aria-hidden");
+    expect(screen.queryByText("订单记录")).toBeNull();
+    expect(screen.queryByText("历史订单")).toBeNull();
+    expect(screen.queryByText("充值订单数据源尚未接入")).toBeNull();
+  });
+
+  test("keeps marketplace, legacy payment, and service rows in the shared Orders list", async () => {
+    const commerceClient = {
+      listOrders: vi.fn(async () => ({ orders: [marketplaceOrder()], nextCursor: null }))
+    } as unknown as PortalCoinCommerceClient;
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({ planLabel: "遗留套餐测试" })
+    ], {
+      subscriptionRequest: activeSubscriptionRequest({
+        historySummary: [{
+          recordRef: "service_record_001",
+          label: "订阅服务测试",
+          status: "已开通",
+          occurredAt: "2026-07-28T11:00:00.000Z"
+        }]
+      }),
+      historySummary: [{
+        recordRef: "service_record_001",
+        label: "订阅服务测试",
+        status: "已开通",
+        occurredAt: "2026-07-28T11:00:00.000Z"
+      }]
+    }, {
+      authenticate: vi.fn(authenticatedSessionWithRef),
+      commerce: commerceClient
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalOrders();
+
+    const orderTable = await screen.findByRole("table", { name: "订单列表" });
+    expect(await within(orderTable).findByText("商城消费")).toBeInTheDocument();
+    expect(within(orderTable).getByText("商城测试商品")).toBeInTheDocument();
+    expect(within(orderTable).getByText("旧套餐付款")).toBeInTheDocument();
+    expect(within(orderTable).getByText("遗留套餐测试")).toBeInTheDocument();
+    expect(within(orderTable).getByText("服务记录")).toBeInTheDocument();
+    expect(within(orderTable).getByText("订阅服务测试")).toBeInTheDocument();
+
+    fireEvent.click(within(orderTable).getByRole("button", { name: "查看" }));
+    expect(within(orderTable).getByText("客户端")).toBeInTheDocument();
+  });
+
+  test("keeps direct-payment return and Personal Center free of order records", async () => {
+    const client = portalClientWithPaymentOrders([paymentOrder()]);
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalOrders();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
+    expect(await screen.findByRole("button", { name: "返回订单" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "返回订单" }));
+    expect(await screen.findByRole("table", { name: "订单列表" })).toBeInTheDocument();
+
+    openPortalProfile();
     expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
-    expect(screen.getByText("邮箱：user_safe_ref")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "返回订单" })).toBeNull();
+  });
+
+  test("routes every new-acquisition entry to Marketplace", async () => {
+    const client = portalClient();
+    render(createElement(UserPortalPage, { portalClient: client }));
+    const portalNav = await enterPortal();
+
+    expect(screen.queryByRole("button", { name: "购买套餐" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Buy plan" })).toBeNull();
+
+    fireEvent.click(within(portalNav).getByRole("button", { name: "用量" }));
+    fireEvent.click(screen.getByRole("button", { name: "前往商城" }));
+    expectMarketplaceWithoutLegacyCheckout(client);
+  });
+
+  test("routes users without delivered traffic entitlement to Marketplace", async () => {
+    const client = portalClient();
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalStartGuide();
+    fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
+
+    expectMarketplaceWithoutLegacyCheckout(client);
+    expect(screen.queryByRole("heading", {
+      name: "你要在哪台设备上使用？"
+    })).toBeNull();
+  });
+
+  test("routes order creation controls to Marketplace", async () => {
+    const client = portalClient();
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalOrders();
+
+    const orders = screen.getByRole("region", { name: "订单记录" });
+    const acquisitionButtons = within(orders).getAllByRole("button", {
+      name: "前往商城"
+    });
+    expect(acquisitionButtons).toHaveLength(1);
+    fireEvent.click(acquisitionButtons[0]);
+
+    expectMarketplaceWithoutLegacyCheckout(client);
+  });
+
+  test("routes failed legacy payment replacement to Marketplace", async () => {
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({ status: "payment_failed" })
+    ]);
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalOrders();
+    fireEvent.click(screen.getByRole("button", { name: "查看" }));
+    expect(screen.getByText("请查看现有订单状态或前往商城。")).not.toBeNull();
+    expect(screen.queryByText("可以重试同一订单，或返回个人与安全后重新选择套餐。")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "前往商城" }));
+
+    expectMarketplaceWithoutLegacyCheckout(client);
   });
 
   test("does not render a fake WeChat QR code from a hosted checkout URL", async () => {
-    const client = portalClient({
-      createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
-        order: {
-          orderRef: "pay_wx_hosted_only",
-          planId: "monthly_basic",
-          amountMinor: 2000,
-          channel: "wxpay",
-          currency: "CNY",
-          status: "pending_payment",
-          checkoutUrl: "https://pay.example.test/wxpay/hosted-only",
-          createdAt: "2026-05-31T00:00:00.000Z",
-          paymentExpiresAt: "2099-01-01T00:00:00.000Z",
-          safety: {
-            noRawMerchantKey: true,
-            noRawProviderPayload: true
-          }
-        },
-        safety: {
-          noRawMerchantKey: true,
-          noRawProviderPayload: true,
-          noSubscriptionIssued: true
-        }
-      }))
-    });
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({
+        orderRef: "pay_wx_hosted_only",
+        channel: "wxpay",
+        checkoutUrl: "https://pay.example.test/wxpay/hosted-only"
+      })
+    ]);
     render(createElement(UserPortalPage, { portalClient: client, paymentRedirect: vi.fn() }));
 
     await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-    continueFromCashier("微信支付");
+    openPortalOrders();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
 
     expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
     expect(screen.queryByAltText("微信支付二维码")).toBeNull();
     expect(screen.getByText("微信支付暂未返回可扫码付款码，请改用支付宝，或在手机端重新提交后跳转微信支付。")).not.toBeNull();
-  });
-
-  test("uses the mobile default wallet before external checkout", async () => {
-    const restoreDevice = installMobilePaymentDevice();
-    const client = portalClient({
-      createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
-        order: {
-          orderRef: "pay_mobile_alipay",
-          planId: input.planId,
-          amountMinor: 2000,
-          channel: input.channel,
-          currency: "CNY",
-          status: "pending_payment",
-          checkoutUrl: `https://pay.example.test/${input.channel}/monthly_basic`,
-          urlScheme: `${input.channel}://pay/monthly_basic`,
-          createdAt: "2026-05-31T00:00:00.000Z",
-          safety: {
-            noRawMerchantKey: true,
-            noRawProviderPayload: true
-          }
-        },
-        safety: {
-          noRawMerchantKey: true,
-          noRawProviderPayload: true,
-          noSubscriptionIssued: true
-        }
-      }))
-    });
-    const paymentRedirect = vi.fn();
-    try {
-      render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
-
-      await enterPortal();
-      openNewOrderForm();
-      fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-      continueFromCashier("微信支付");
-
-      await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userRef: "user_safe_ref",
-          planId: "monthly_basic",
-          clientTarget: "clash",
-          channel: "wxpay",
-          device: "mobile"
-        })
-      ));
-      await waitFor(() => expect(paymentRedirect).toHaveBeenCalledWith("wxpay://pay/monthly_basic"));
-    } finally {
-      restoreDevice();
-    }
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("redirects mobile payment checkout to the provider for wallet handoff", async () => {
     const restoreDevice = installMobilePaymentDevice();
-    const client = portalClient({
-      createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
-        order: {
-          orderRef: "pay_mobile_scheme",
-          planId: input.planId,
-          amountMinor: 2000,
-          channel: input.channel,
-          currency: "CNY",
-          status: "pending_payment",
-          checkoutUrl: "https://pay.example.test/monthly_basic",
-          urlScheme: "weixin://pay/monthly_basic",
-          createdAt: "2026-05-31T00:00:00.000Z",
-          safety: {
-            noRawMerchantKey: true,
-            noRawProviderPayload: true
-          }
-        },
-        safety: {
-          noRawMerchantKey: true,
-          noRawProviderPayload: true,
-          noSubscriptionIssued: true
-        }
-      }))
-    });
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({
+        orderRef: "pay_mobile_scheme",
+        channel: "wxpay",
+        checkoutUrl: "https://pay.example.test/monthly_basic",
+        urlScheme: "weixin://pay/monthly_basic"
+      })
+    ]);
     const paymentRedirect = vi.fn();
     try {
       render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
 
       await enterPortal();
-      openNewOrderForm();
-      fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-      continueFromCashier("微信支付");
+      openPortalOrders();
+      fireEvent.click(screen.getByRole("button", { name: "去付款" }));
 
-      await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalled());
-      expect(client.createPaymentCheckout).toHaveBeenCalledWith(expect.objectContaining({ device: "mobile" }));
       await waitFor(() => expect(paymentRedirect).toHaveBeenCalledWith("weixin://pay/monthly_basic"));
+      expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+      expect(client.applyForSubscription).not.toHaveBeenCalled();
     } finally {
       restoreDevice();
     }
   });
 
   test("falls back to the in-panel payment status when checkout URL is unavailable", async () => {
-    const client = portalClient({
-      createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
-        provider: "niuniu-pay",
-        order: {
-          orderRef: "pay_without_url",
-          planId: input.planId,
-          amountMinor: 2000,
-          channel: input.channel,
-          currency: "CNY",
-          status: "pending_payment",
-          createdAt: "2026-05-31T00:00:00.000Z",
-          safety: {
-            noRawMerchantKey: true,
-            noRawProviderPayload: true
-          }
-        },
-        safety: {
-          noRawMerchantKey: true,
-          noRawProviderPayload: true,
-          noSubscriptionIssued: true
-        }
-      }))
-    });
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({
+        orderRef: "pay_without_url",
+        checkoutUrl: undefined
+      })
+    ]);
     const paymentRedirect = vi.fn();
     render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
 
     await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-    continueFromCashier();
+    openPortalOrders();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
 
-    await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalled());
     expect(paymentRedirect).not.toHaveBeenCalled();
     expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
-  });
-
-  test("purchase form does not expose the registration-only 7 day trial", async () => {
-    const client = portalClient();
-    render(createElement(UserPortalPage, { portalClient: client }));
-
-    await enterPortal();
-    openNewOrderForm();
-    const orderDialog = screen.getByRole("dialog", { name: "选择套餐" });
-
-    expect(within(orderDialog).queryByRole("button", { name: /7 天/ })).toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择基础月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择标准月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择年度套餐/ })).not.toBeNull();
+    expect(screen.getByText("暂时无法打开付款页面，请查看现有订单状态或前往商城。")).not.toBeNull();
+    expect(screen.queryByText("暂时无法打开付款页面，请稍后重新提交订单。")).toBeNull();
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("keeps package payment records in the order table", async () => {
-    const client = portalClient();
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({
+        orderRef: "pay_monthly_plus",
+        planId: "monthly_plus",
+        amountMinor: 3000
+      })
+    ]);
     const paymentRedirect = vi.fn();
     render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
 
     await enterPortal();
-
-    openPortalDashboard();
-    expect(screen.getAllByRole("button", { name: "购买套餐" }).length).toBeGreaterThan(0);
-    openNewOrderForm();
-    expect(screen.getByRole("button", { name: /选择基础月付/ })).not.toBeNull();
-    expect(screen.getByRole("button", { name: /选择标准月付/ })).not.toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: /选择标准月付/ }));
-    continueFromCashier();
-
-    await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userRef: "user_safe_ref",
-        planId: "monthly_plus",
-        clientTarget: "clash",
-        channel: "alipay"
-      })
-    ));
-    expect(client.applyForSubscription).not.toHaveBeenCalled();
+    openPortalOrders();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
 
     expect(paymentRedirect).not.toHaveBeenCalled();
     expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
     expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
-    fireEvent.click(screen.getAllByRole("button", { name: "返回个人与安全" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "返回订单" })[0]);
 
-    expect(screen.getByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "去付款" })).toBeNull();
+    const orderTable = screen.getByRole("table", { name: "订单列表" });
+    expect(within(orderTable).getByText("P-monthly_plus")).not.toBeNull();
+    expect(within(orderTable).getByRole("button", { name: "去付款" })).not.toBeNull();
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("keeps pending payment records separate from subscription setup", async () => {
-    const client = portalClient();
+    const client = portalClientWithPaymentOrders([paymentOrder()]);
     const paymentRedirect = vi.fn();
     render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
 
     await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-    continueFromCashier();
+    openPortalOrders();
+    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
 
-    await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalled());
     expect(paymentRedirect).not.toHaveBeenCalled();
     expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
     expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
-    fireEvent.click(screen.getAllByRole("button", { name: "返回个人与安全" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "返回订单" })[0]);
 
-    expect(screen.getByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "去付款" })).toBeNull();
+    const orderTable = screen.getByRole("table", { name: "订单列表" });
+    expect(within(orderTable).getByText("P-existing_monthly")).not.toBeNull();
+    expect(within(orderTable).getByRole("button", { name: "去付款" })).not.toBeNull();
 
     expect(screen.queryByRole("region", { name: "订阅状态" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "当前订阅" })).toBeNull();
     expect(screen.queryByText("授权完成后显示订阅链接")).toBeNull();
     expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
     expect(screen.queryByRole("button", { name: "刷新当前订阅" })).toBeNull();
+    expect(client.createPaymentCheckout).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("local portal client records 7 day orders without direct subscription generation when requestOnly is set", async () => {
@@ -2336,34 +3124,6 @@ describe("user portal product surface", () => {
     });
     expect(repeat.lifecycle).toBe("pending");
     expect(repeat.requestRef).not.toBe(request.requestRef);
-  });
-
-  test("does not collect contact details before package application", async () => {
-    const client = portalClient();
-    const paymentRedirect = vi.fn();
-    render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
-
-    await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-    continueFromCashier();
-
-    expect(screen.queryByText("请先填写授权联系资料。")).toBeNull();
-    expect(screen.queryByRole("dialog", { name: "填写联系资料" })).toBeNull();
-    expect(screen.queryByLabelText("联系手机号")).toBeNull();
-    expect(screen.queryByLabelText("Telegram 账号")).toBeNull();
-    await waitFor(() => expect(client.createPaymentCheckout).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userRef: "user_safe_ref",
-        planId: "monthly_basic",
-        clientTarget: "clash",
-        channel: "alipay"
-      })
-    ));
-    expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(await screen.findByRole("heading", { name: "扫码支付" })).not.toBeNull();
-    expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
-    expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
   test("uses the start guide for an active subscription link without exposing lifecycle controls", async () => {
@@ -2587,9 +3347,9 @@ describe("user portal product surface", () => {
     expect(await screen.findByRole("button", { name: "复制链接" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: /刷新订阅/ })).toBeNull();
     expect(screen.getByDisplayValue("https://sub.example.test/import/existing-visible-once")).not.toBeNull();
-    openPortalProfile();
-    expect(screen.queryByText("订单与付款记录")).toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
+    openPortalOrders();
+    const orderTable = screen.getByRole("table", { name: "订单列表" });
+    expect(within(orderTable).getByText("O-existing_yearly")).not.toBeNull();
     expect(screen.queryByRole("button", { name: /刷新订阅/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "停用订阅" })).toBeNull();
     expect(client.applyForSubscription).not.toHaveBeenCalled();
@@ -2667,10 +3427,10 @@ describe("user portal product surface", () => {
 
     await enterPortal();
 
-    openPortalProfile();
-    expect(await screen.findByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
-    expect(screen.queryByText("订单与付款记录")).toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
+    openPortalOrders();
+    const orderTable = screen.getByRole("table", { name: "订单列表" });
+    expect(within(orderTable).getByText("pareq_trial_1")).not.toBeNull();
+    expect(within(orderTable).getByText("pareq_monthly_2")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "用量" }));
     expect(await screen.findByRole("heading", { name: "流量消耗" })).not.toBeNull();
     expect(screen.getAllByText(/7 天/).length).toBeGreaterThan(0);
@@ -2683,7 +3443,7 @@ describe("user portal product surface", () => {
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
-  test("does not invent profile history from current subscription state", async () => {
+  test("keeps current service state free of fabricated completion history", async () => {
     const client = portalClient({
       fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
         userRef: input.userRef,
@@ -2716,12 +3476,11 @@ describe("user portal product surface", () => {
     render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
-    fireEvent.click(screen.getByRole("button", { name: "个人与安全" }));
+    fireEvent.click(screen.getByRole("button", { name: "订单" }));
 
-    expect(await screen.findByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
     expect(screen.queryByText("暂无完成套餐记录")).toBeNull();
-    expect(screen.queryByText("订单与付款记录")).toBeNull();
-    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
+    const orderTable = screen.getByRole("table", { name: "订单列表" });
+    expect(within(orderTable).getByText("O-existing_yearly")).not.toBeNull();
     expect(screen.queryByText(/申请年度套餐（已开通）/)).toBeNull();
   });
 
@@ -2848,53 +3607,85 @@ describe("user portal product surface", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://sub.example.test/import/paid-visible-once"));
   });
 
-  test("default local portal client is safe by default and exposes no subscription link", async () => {
-    const client = createLocalUserPortalClient({
-      now: () => new Date("2026-05-31T00:00:00.000Z")
-    });
-    const paymentRedirect = vi.fn();
-    render(createElement(UserPortalPage, { portalClient: client, paymentRedirect }));
-
-    await enterPortal();
-    openNewOrderForm();
-    fireEvent.click(screen.getByRole("button", { name: /选择基础月付/ }));
-    continueFromCashier();
-
-    expect((await screen.findAllByText("待付款")).length).toBeGreaterThan(0);
-    expect(paymentRedirect).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "扫码支付" })).not.toBeNull();
-    expect(screen.queryByRole("link", { name: "打开支付页面" })).toBeNull();
-    expect(screen.queryByText("下一步：开通中")).toBeNull();
-    expect(screen.queryByText("授权完成后显示订阅链接")).toBeNull();
-    expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "提交订单" })).toBeNull();
-    expect(screen.getByRole("button", { name: "返回个人与安全" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "购买套餐" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "个人与安全" }));
-
-    expect(screen.getByText("这里展示账户信息和安全设置。")).not.toBeNull();
-    expect(screen.queryByText("基础月付 · 开通中")).toBeNull();
-    expect(screen.queryByText("开通中")).toBeNull();
-    expect(screen.queryByText("授权联系资料")).toBeNull();
-    expect(screen.queryByRole("button", { name: "修改资料" })).toBeNull();
-    expect(screen.queryByText(/申请基础月付（待开通）/)).toBeNull();
-    expect(screen.queryByText("2026/06/30 到期")).toBeNull();
-    expect(screen.queryByText("月卡 / 年卡套餐，申请开通；生效期内可刷新当前订阅。")).toBeNull();
-  });
-
   test("personal center does not collect profile contact info", async () => {
     const client = portalClient();
     render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
-    fireEvent.click(screen.getByRole("button", { name: "个人与安全" }));
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
 
     expect(screen.queryByRole("button", { name: "填写资料" })).toBeNull();
     expect(screen.queryByRole("button", { name: "修改资料" })).toBeNull();
     expect(screen.queryByLabelText("联系手机号")).toBeNull();
     expect(screen.queryByLabelText("Telegram 账号")).toBeNull();
     expect(screen.queryByRole("dialog", { name: "填写联系资料" })).toBeNull();
+    expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "选择支付方式" })).toBeNull();
+  });
+
+  test("defaults Personal Center to profile and isolates security controls", async () => {
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+
+    expect(screen.getByRole("tab", { name: "资料" }))
+      .toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("登录邮箱")).not.toBeNull();
+    expect(screen.queryByText("安全设置")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "安全" }));
+
+    expect(screen.getByText("安全设置")).not.toBeNull();
+    expect(screen.queryByText("登录邮箱")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "概览" }));
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+
+    expect(screen.getByRole("tab", { name: "资料" }))
+      .toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("登录邮箱")).not.toBeNull();
+    expect(screen.queryByText("安全设置")).toBeNull();
+  });
+
+  test("supports keyboard navigation across Personal Center tabs", async () => {
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+
+    const profileTab = screen.getByRole("tab", { name: "资料" });
+    const securityTab = screen.getByRole("tab", { name: "安全" });
+    profileTab.focus();
+
+    fireEvent.keyDown(profileTab, { key: "ArrowRight" });
+
+    expect(securityTab).toHaveFocus();
+    expect(securityTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("安全设置")).not.toBeNull();
+
+    fireEvent.keyDown(securityTab, { key: "ArrowRight" });
+
+    expect(profileTab).toHaveFocus();
+    expect(profileTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("登录邮箱")).not.toBeNull();
+
+    fireEvent.keyDown(profileTab, { key: "ArrowLeft" });
+
+    expect(securityTab).toHaveFocus();
+    expect(securityTab).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(securityTab, { key: "Home" });
+
+    expect(profileTab).toHaveFocus();
+    expect(profileTab).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(profileTab, { key: "End" });
+
+    expect(securityTab).toHaveFocus();
+    expect(securityTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("安全设置")).not.toBeNull();
   });
 
   test("local preview client preserves server-owned package facts when refreshing", async () => {
@@ -3040,7 +3831,7 @@ describe("user portal product surface", () => {
     expect(screen.queryByRole("button", { name: "提交问题" })).toBeNull();
     expect(screen.getByRole("button", { name: "再提一个问题" })).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "个人与安全" }));
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
     expect(screen.getAllByText("注册日期").length).toBe(1);
     expect(screen.queryByText("订单与付款记录")).toBeNull();
     expect(screen.queryByText("充值")).toBeNull();
@@ -3048,7 +3839,7 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("扣费")).toBeNull();
   });
 
-  test("requires a purchased plan before starting the setup guide", async () => {
+  test("requires delivered entitlement before setup and sends acquisition to Marketplace", async () => {
     const client = portalClient();
     render(createElement(UserPortalPage, { portalClient: client }));
 
@@ -3056,13 +3847,11 @@ describe("user portal product surface", () => {
     openPortalStartGuide();
     fireEvent.click(screen.getByRole("button", { name: "开始配置" }));
 
-    const orderDialog = screen.getByRole("dialog", { name: "选择套餐" });
-    expect(within(orderDialog).getByRole("button", { name: /选择基础月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择标准月付/ })).not.toBeNull();
-    expect(within(orderDialog).getByRole("button", { name: /选择年度套餐/ })).not.toBeNull();
-    expect(screen.queryByRole("heading", { name: "你要在哪台设备上使用？" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Apple iOS iPhone / iPad" })).toBeNull();
-    expect(client.applyForSubscription).not.toHaveBeenCalled();
+    expectMarketplaceWithoutLegacyCheckout(client);
+    expect(screen.queryByRole("dialog", { name: "选择套餐" })).toBeNull();
+    expect(screen.queryByRole("heading", {
+      name: "你要在哪台设备上使用？"
+    })).toBeNull();
   });
 
   test("lets a registration trial order start setup without forcing a paid plan", async () => {
@@ -3238,7 +4027,7 @@ describe("user portal product surface", () => {
     expect(screen.getAllByText("0 B / 200 GB").length).toBeGreaterThan(0);
 
     openPortalProfile();
-    expect(await screen.findByRole("heading", { name: "账户与安全设置" })).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "账户管理" })).not.toBeNull();
     expect(screen.getByText("年度套餐 · 服务生效中")).not.toBeNull();
     expect(screen.getByText("2027/07/07 到期")).not.toBeNull();
   });

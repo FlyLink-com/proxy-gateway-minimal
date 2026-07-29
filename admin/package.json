@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:portal:local-api-validation": "vite --config vite.portal.local-api-validation.config.ts",
     "build": "tsc --noEmit && vite build",
     "build:portal": "tsc --noEmit && vite build --config vite.portal.config.ts",
     "build:site": "tsc --noEmit && vite build --config vite.site.config.ts",

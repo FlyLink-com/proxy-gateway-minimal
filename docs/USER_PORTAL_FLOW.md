@@ -1,6 +1,6 @@
 # User Portal Flow
 
-Last updated: 2026-07-09.
+Last updated: 2026-07-28.
 
 This document is the review baseline for the customer-facing portal flow. It
 exists to keep product outline, page copy, component behavior, tests, and future
@@ -73,16 +73,57 @@ Current implementation is repository-safe and entry-gated:
 The user portal may reuse domain concepts and client contracts, but it must not
 depend on operator CLI commands as its normal execution path.
 
+### Current Source-Only Integration State
+
+The Wallet, Orders, and Personal Center changes described below are implemented
+in the recorded Portal source boundary, but remain source-only:
+
+```yaml
+release_units:
+  - control-plane-app
+  - portal-static
+frontend_surface: portal
+state: source-only
+deployment: not_deployed
+activation: not_activated
+current_live_reverified: false
+coverage: desktop
+mobile: deferred
+```
+
+The Portal artifact/source identity used to authorize this implementation is a
+dated 2026-07-26 record. It does not prove that the current live Portal still
+matches, and it is not deployment or activation evidence. This source work also
+does not prove Coins recharge settlement, payment-provider operation,
+fulfillment, or mobile compatibility. Those remain separate gates.
+
 ## Page Outline
 
-The customer portal has four top-level views:
+The desktop sidebar order is:
+
+```text
+开始使用 -> 概览 -> 用量 -> 商城 -> 订单 -> 推荐奖励 -> 个人中心 -> 支持
+```
+
+Wallet is not a sidebar item. The single Coins balance control in the top bar
+opens the Wallet view.
 
 | View | Purpose | Allowed user actions | Not allowed |
 | --- | --- | --- | --- |
-| Subscription Management | Manage subscription orders for 7-day, monthly, or yearly durations. | Choose duration, quantity, and client preference; submit an order; view, edit display fields, copy issued material when available, refresh or disable issued orders; keep delete disabled. | Payment capture, direct subscription generation from the request step, production issuance without a separate gate, delete order/subscription records, node/operator controls. |
-| Use Guide | Explain client import and refresh behavior. | Read client instructions and navigate back to Subscription Management. | Admin diagnostics, traffic dashboards, node internals. |
-| Support | Provide customer support handoff. | Read support options and prepare account/subscription issue context. | Bot automation execution, payment provider operation, Admin mutation. |
-| Profile | Show account facts, history records, and account security settings. | View account facts, view current package result, view history summary, bind a local-preview TOTP authenticator through QR/manual key plus 6-digit confirmation, and export the local-preview passkey backup package. | Package application, subscription refresh, personal contact collection, production credential/key registration mutation, backend secret persistence, or real WebAuthn registration as primary actions. |
+| 开始使用 / Use Guide | Explain client import and refresh behavior. | Read client instructions and continue to the appropriate service surface. | Admin diagnostics, node internals, or payment-provider operation. |
+| 概览 / Overview | Summarize returned account, service, package, and usage facts. | Read server- or client-returned state and navigate to a dedicated view. | Invent lifecycle, balance, entitlement, or fulfillment facts. |
+| 用量 / Usage | Show returned traffic and package-usage facts. | Review usage and continue to Marketplace where appropriate. | Derive production accounting completeness from browser state. |
+| 商城 / Marketplace | Present platform-owned packages, traffic packs, and reviewed add-ons. | Browse the existing catalog and use only currently enabled checkout behavior. | Third-party merchant payment, withdrawal, transfer, exchange, or a fulfillment claim without backend evidence. |
+| 订单 / Orders | Keep Coins consumption, Coins recharge, and historical subscription/payment domains separate. | Read account-owned Coins consumption pages and details; use the existing historical order presentation. | Merge unrelated ledgers, fabricate recharge rows or counts, or claim recharge settlement. |
+| 推荐奖励 / Referral Rewards | Present the existing referral-reward surface. | Review the currently returned referral presentation. | Grant Admin access or claim a new settlement implementation from this UI task. |
+| 个人中心 / Personal Center | Separate read-mostly profile facts from security controls. | Switch between Profile and Security; use the existing authenticator/passkey behavior. | Order/payment tables, profile-edit API claims, or a second Portal shell. |
+| 支持 / Support | Provide customer-support handoff. | Read support options and prepare safe issue context. | Bot automation execution, payment-provider operation, or Admin mutation. |
+| Coins Wallet (top bar only) | Show Wallet summary, disabled recharge choices, and Wallet ledger as separate read domains. | Open the Wallet, retry safe reads, and page Wallet activity. | Sidebar duplication, synthetic zero balances, recharge mutation, provider calls, or settlement claims. |
+
+This phase validates desktop behavior only. The shared Portal navigation DOM and
+base styles are affected at all widths, but mobile layout, navigation,
+interaction, and compatibility were not validated. No mobile-only DOM,
+breakpoint, or responsive rule was added by this phase.
 
 ## Data Ownership
 
@@ -96,7 +137,11 @@ It renders facts returned by the user-scoped backend or injected preview client.
 | Lifecycle state | Backend policy result | Render the returned state and matching copy. | Derive `expired`, `active`, or `pending` from browser time or local flags. |
 | Expiry result | Backend subscription/control data | Display the returned expiry or pending/empty label. | Calculate expiry locally or show a fixed date before approval. |
 | Subscription material | Backend visible-once response or injected demo client | Display and copy only when material is present. | Persist raw URLs in docs, logs, tests, local storage, or chat output. |
-| History summary | Backend read model | Display immutable application/authorization/refresh events. | Treat in-memory UI events as durable history. |
+| Historical subscription/order presentation | Existing Portal state and order clients | Render through the Orders view's existing `SubscriptionManager`; preserve the active legacy payment-detail return path. | Describe frontend-only or injected data as a newly verified durable history source. |
+| Wallet summary | Session-owned Wallet GET | Load independently from Wallet activity; render a real zero only for an exact server-confirmed `not_created` result. | Convert network, parser, disabled, unavailable, or server errors into a zero balance. |
+| Wallet ledger | Session-owned bounded Wallet-ledger GET | Load independently from summary, page with the returned paired cursor, and render only the safe projection. | Treat ledger entries as orders or expose internal wallet, lot, actor, source, or request evidence. |
+| Coins consumption orders | Session-owned Commerce Store list/detail GETs | Render bounded account-owned pages and safe read-only details. | Supply an account id from the browser, fabricate rows, or infer cross-account access. |
+| Coins recharge orders | No durable source in this phase | Render a static unavailable state without issuing a recharge-order read. | Display a fake row, count, empty/zero proof, provider state, settlement, refund, or chargeback result. |
 | Page copy and navigation | Frontend | Render the agreed customer-facing views. | Mix operator diagnostics, node controls, or Admin workbenches into portal pages. |
 
 ## Protected Admin Review Surface
@@ -206,9 +251,9 @@ subscription request.
 
 ## API Contract Matrix
 
-The frontend contract is intentionally small. These names describe the portal
-client boundary; they do not require public production routes in the current
-local preview implementation.
+The frontend contract is intentionally small. These names describe the Portal
+client boundary; their presence in source does not activate public production
+routes.
 
 | Method | Intent | Required input | Returns | Mutation | Not allowed |
 | --- | --- | --- | --- | --- | --- |
@@ -221,41 +266,72 @@ local preview implementation.
 | `refreshSubscription` | Reissue the current delivery generation for an already-issued order. | Session/user reference, request reference, and client target. | Stable imported subscription URL, safe delivery-generation metadata, and delivery-generation-reissued event. | Backend-controlled reissue only when active and issued. | New package application, duration extension, payment capture, direct request-step issuance, account disable, usage reset, artifact URL rotation, or operator override. |
 | `disableSubscription` | Legacy API name for stopping an already-issued order/resource without deleting the account or order/request record. | Session/user reference and request reference. | Disabled lifecycle summary. | Backend-controlled order/resource stop only when active and issued. | Account disable, physical delete, payment refund logic, operator override, or hidden record removal. |
 | `suspendTrafficSupply` | Suspend traffic supply for an already-issued order/resource when a controlled lifecycle decision such as quota exhaustion fires. | Session/user reference and request reference. | Traffic-supply suspended summary and safe event metadata. | Backend-controlled traffic-supply suspension only when active and issued; quota exhaustion is executed automatically by the usage collector once the gate is enabled. | Account disable, physical delete, payment refund logic, operator override, or hidden record removal. |
-| `fetchSubscriptionHistory` | Read account history for Profile. | Session/user reference. | Application, approval, refresh, expiry, and support summary rows. | None. | Raw secrets, full database rows, or operator audit dumps. |
+| `fetchSubscriptionHistory` | Read the existing subscription history used by the historical Orders presentation. | Session/user reference. | Application, approval, refresh, expiry, and support summary rows. | None. | Raw secrets, full database rows, operator audit dumps, or presenting this as a newly verified durable source. |
+| `wallet.getSummary` | Read the authenticated Wallet summary independently from its ledger. | Portal session reference only. | Safe Wallet state, coin-type balances, spendable, held, pending, and version fields. | None. | Browser-supplied account id, Wallet creation, balance mutation, or synthetic zero on errors. |
+| `wallet.listLedger` | Read one bounded Wallet-ledger page independently from summary. | Portal session reference, limit, and optional paired cursor. | Safe projected entries and optional paired next cursor. | None. | Internal wallet/lot/actor/source fields, treating entries as orders, or client-side settlement reconstruction. |
+| `commerce.listOrders` | Read one account-owned Coins consumption-order page. | Portal session reference, limit, and optional paired cursor. | Strictly parsed safe order rows and optional paired next cursor. | None. | Browser-supplied account id, recharge-order inference, or cross-domain aggregation. |
+| `commerce.getOrder` | Read one account-owned Coins consumption-order detail. | Portal session reference and safe order reference. | Strictly parsed safe order detail. | None. | Cross-account disclosure, provider evidence, or fulfillment claims beyond returned state. |
 | `requestSupport` | Prepare a support handoff. | Session/user reference, issue category, safe message/context. | Support handoff reference or guidance. | Support record only if implemented. | Bot execution, payment operation, Admin mutation, or subscription issuance. |
 
 ## View Responsibilities
 
-### Subscription Management
+### Orders
 
-This is the only primary action surface for:
+Orders owns four localized filters:
 
-- Applying for a package.
-- Refreshing an active subscription.
-- Disabling an active subscription without physical delete.
-- Copying the currently visible subscription material when the client returns it.
+```text
+全部 / All
+Coins 消费订单 / Coins Consumption Orders
+Coins 充值订单 / Coins Recharge Orders
+历史订单 / Historical Orders
+```
 
-It must show:
+`All` renders three separate domain sections. It does not merge Wallet ledger
+entries, Coins consumption orders, recharge records, or historical subscription
+records into one synthetic timeline.
 
-- Package choice when not locked.
-- Current package when locked.
-- Current lifecycle state.
-- Next support action when pending.
-- Current subscription link only when available.
+- Coins consumption uses strict, account-owned, cursor-paged GETs and safe
+  read-only detail requests.
+- Coins recharge is a static unavailable section. It issues no recharge-order
+  request and supplies no row, count, zero-state proof, provider state, or
+  settlement claim.
+- Historical Orders reuses the existing `SubscriptionManager`. Its existing
+  package application, refresh, disable, visible-once material, and legacy
+  payment-detail behavior retain their prior contracts.
+- When a legacy payment detail is active, that existing detail return path
+  remains intact instead of nesting a second Orders panel around it.
 
-It must keep intent calls separate:
+Historical subscription intents remain separate:
 
-- Read current portal state after login: `fetchCurrentState`.
-- Apply/open package: `applyForSubscription`.
-- Refresh current active subscription: `refreshSubscription`.
-- Stop current active subscription/order through the legacy portal action:
-  `disableSubscription`.
-- Suspend traffic supply for an active order/resource when usage reaches the
-  configured limit: `suspendTrafficSupply` through the automatic collector gate.
+- state read: `fetchCurrentState`;
+- package request: `applyForSubscription`;
+- active delivery refresh: `refreshSubscription`;
+- stop through the legacy Portal action: `disableSubscription`;
+- controlled traffic-supply suspension: `suspendTrafficSupply`.
 
-These actions must not share an overloaded request method, because opening a new
-package and refreshing an existing subscription have different backend
-authorization semantics.
+These methods must not be overloaded into a generic order mutation.
+
+### Wallet
+
+Wallet is reachable only through the top Coins balance entry. Summary and
+ledger are separate read models with independent loading, ready, empty,
+unavailable, and error states.
+
+- A server-confirmed `not_created` summary may show a real zero.
+- Network, parser, disabled-feature, unavailable, and server errors retain an
+  unavailable/error value and must not show zero.
+- The ledger loads when Wallet is open, supports its returned paired cursor,
+  and remains distinct from Orders.
+- Recharge denominations remain disabled in this source phase. Opening or
+  selecting the existing recharge UI is not payment, provider, settlement, or
+  Wallet-credit evidence.
+
+### Marketplace
+
+Marketplace presents platform-owned products and keeps Coins checkout inside
+the product flow. It is not a second shell or a global payment workspace. This
+documentation update does not add provider, settlement, Wallet-credit, or
+fulfillment capability.
 
 ### Use Guide
 
@@ -281,25 +357,27 @@ This is the handoff surface for:
 Current support wording may mention Telegram as a future support channel, but the
 Telegram bot is not embedded into the portal flow.
 
-### Profile
+### Personal Center
 
-This is the read-mostly account surface for:
+This first-level view defaults to the Profile subview and provides a separate
+Security subview. Profile is a read-mostly account surface for:
 
 - Login entry method.
 - Account ID / user reference.
 - Registration date.
 - Current package and lifecycle label.
 - Expiry result.
-- History summary.
-- Account security settings for local-preview authenticator binding and passkey
-  export.
 
-It must not carry the primary apply/refresh action copy. Action guidance belongs
-in Subscription Management or Support.
+Security retains the existing authenticator and passkey controls. Personal
+Center contains no order table, order filters, payment detail, purchase action,
+or profile-edit API. A future profile editor can use this module boundary only
+after its own backend contract is approved.
 
 ## Rendering Rules
 
-The four views must render the same backend state consistently.
+Each read domain renders only its own authoritative state. An empty state is
+valid only after a successful response; unavailable capability and request
+failure are not empty data.
 
 ### Global account summary
 
@@ -309,7 +387,7 @@ The four views must render the same backend state consistently.
 - `active`: show current package and backend-provided expiry.
 - `expired`: show the expired package result and expired date when returned.
 
-### Subscription Management
+### Historical Orders
 
 - `none`: show package selector, client target, and `Apply`.
 - `pending`: lock package choice, disable duplicate application, and guide the
@@ -323,6 +401,32 @@ The four views must render the same backend state consistently.
   imported runtime configuration has been replaced while the subscription URL
   remains stable; do not create a separate lifecycle state for it.
 
+### Coins Consumption Orders
+
+- Keep loading, empty, unavailable, error, ready rows, and detail states
+  distinct.
+- Show `empty` only after a successful account-owned list read.
+- Append only a unique page returned for the exact paired cursor.
+- Ignore stale list/detail results after client, session, or session-generation
+  changes.
+- Retry only safe GET requests.
+
+### Coins Recharge Orders
+
+- Always state that the recharge-order data source is not connected in this
+  phase.
+- Do not issue a recharge-order request.
+- Do not show a fake row, count, empty/zero result, provider result, settlement,
+  refund, or chargeback state.
+
+### Wallet
+
+- Load summary independently after authenticated shell hydration.
+- Load ledger independently while Wallet is open.
+- Render zero only for an exact server-confirmed `not_created` Wallet.
+- Preserve unavailable/error values as unavailable/error values.
+- Keep ledger entries separate from order history.
+
 ### Use Guide
 
 - Keep instructions static and customer-facing.
@@ -335,13 +439,13 @@ The four views must render the same backend state consistently.
 - Telegram may appear only as a support contact direction, not as an embedded
   portal authority or bot automation flow.
 
-### Profile
+### Personal Center
 
-- Show account facts, lifecycle, package result, expiry result, registration
-  date, and history summary.
-- Do not show primary apply/refresh buttons here.
-- Empty history must be explicit, for example `No completed package history
-  yet`, instead of showing fake order rows.
+- Profile shows account facts, lifecycle, package result, expiry result, and
+  registration date.
+- Security contains the existing authenticator and passkey controls.
+- Do not show order/payment content or primary purchase/apply/refresh actions.
+- Do not render editable profile controls without an approved profile-edit API.
 
 ## Visible-Once Subscription Material
 
@@ -359,7 +463,8 @@ Visible subscription material is a sensitive output, not ordinary profile data.
 
 ## Backend Integration Milestones
 
-The local preview UI should advance toward real backend support in small gates:
+Portal integration advances toward real backend support in small gates. The
+legacy subscription milestones remain:
 
 | Phase | Scope | Risk | Notes |
 | --- | --- | --- | --- |
@@ -370,6 +475,12 @@ The local preview UI should advance toward real backend support in small gates:
 | 4 | Active subscription refresh/disable. | A for production mutation | Must revoke/expire old material, keep audit rows, never physically delete from user portal, and return only safe visible-once output when applicable. |
 | 5 | History and support read models. | B/A depending on data exposure | Must avoid raw secrets, contact profiles, and operator-only evidence. |
 
+The Wallet and Coins consumption-order GET contracts are now implemented as
+source-only read foundations outside that legacy milestone table. They are not
+deployed or activated and do not establish the missing Coins recharge-order,
+provider, settlement, refund/chargeback, Wallet-credit, or fulfillment
+lifecycle.
+
 ## Code Alignment Points
 
 Current frontend anchors:
@@ -377,13 +488,37 @@ Current frontend anchors:
 - `admin/src/features/user-portal/user-portal-page.tsx`
   - `PortalView`
   - `navItems`
+  - topbar-only Wallet navigation and Wallet read-model composition
+  - `renderHistoricalOrders`
+  - `PortalOrdersPanel`
+  - `PortalPersonalCenterPanel`
   - `resolveLifecycle`
   - `lifecycleLabel`
   - `subscriptionCtaLabel`
   - `SubscriptionManager`
   - `UseGuide`
   - `SupportPanel`
-  - `ProfilePanel`
+- `admin/src/features/user-portal/wallet/api-contract.ts`
+  - safe Wallet summary, ledger, cursor, and error contracts
+- `admin/src/features/user-portal/wallet/wallet-client.ts`
+  - strict same-origin Wallet GET parsing
+- `admin/src/features/user-portal/wallet/use-portal-wallet-read-model.ts`
+  - independent summary/ledger state and stale-session guards
+- `admin/src/features/user-portal/wallet/portal-wallet-panel.tsx`
+  - Wallet summary, disabled recharge choices, and ledger presentation
+- `admin/src/features/user-portal/orders/portal-orders-panel.tsx`
+  - four filters, separated domains, cursor paging, safe detail reads, and the
+    static recharge-unavailable section
+- `admin/src/features/user-portal/commerce/api-contract.ts`
+  - safe Coins consumption-order DTOs and list contract
+- `admin/src/features/user-portal/commerce/commerce-client.ts`
+  - strict Coins consumption-order list/detail client
+- `admin/src/features/user-portal/profile/portal-personal-center-panel.tsx`
+  - Profile/Security tab ownership
+- `admin/src/features/user-portal/profile/portal-profile-panel.tsx`
+  - read-mostly account summary
+- `admin/src/features/user-portal/profile/portal-security-panel.tsx`
+  - existing authenticator/passkey controls
 - `admin/src/features/user-portal/user-portal-client.ts`
   - `UserPortalClient`
   - `createLocalUserPortalClient`
@@ -393,26 +528,34 @@ Current frontend anchors:
   - `refreshSubscription`
   - `disableSubscription`
 - `admin/src/test/user-portal.test.tsx`
-  - page outline checks
+  - navigation, shell composition, Wallet, Orders, and Personal Center checks
   - authentication mode rendering, local anti-bot checks, and login state hydration
   - package application and refresh behavior
-  - profile state consistency
+  - Personal Center state consistency
   - safe default local client behavior
+- `admin/src/test/portal-wallet-client.test.ts`
+  - strict Wallet HTTP/parser contract
+- `admin/src/test/portal-wallet-panel.test.tsx`
+  - independent Wallet states, stale-session protection, and ledger paging
+- `admin/src/test/portal-orders-panel.test.tsx`
+  - domain separation, accessible filters, safe list/detail reads, and recharge
+    unavailability
 
 Any future change to portal copy, navigation, state labels, package behavior,
-support handoff, or visible-once subscription handling should update this
-document and the matching tests in the same PR.
+Wallet, Orders, Personal Center, support handoff, or visible-once subscription
+handling should update this document and the matching tests in the same PR.
 
 ## Review Checklist
 
 Before changing the user portal:
 
 1. Identify which top-level view is affected.
-2. Confirm whether the change modifies lifecycle state, package model, support
-   handoff, or copy only.
+2. Confirm whether the change modifies lifecycle state, package model, Wallet,
+   an Orders domain, Personal Center, support handoff, or copy only.
 3. Check the affected code anchor against this document.
-4. Update `admin/src/test/user-portal.test.tsx` for behavior/copy that defines a
-   user-visible contract.
+4. Update the focused Wallet, Orders, Personal Center, or
+   `admin/src/test/user-portal.test.tsx` coverage for behavior/copy that defines
+   a user-visible contract.
 5. Keep Admin/operator CLI behavior separate unless the task explicitly changes a
    shared domain service.
 6. Do not introduce payment, public auth activation, production DB mutation, real

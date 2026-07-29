@@ -29,6 +29,12 @@ const REQUIRED_RUNTIME_MARKERS = [
   "/api/portal/registration/email-verification"
 ];
 
+const REQUIRED_COMMERCE_LAYOUT_MARKERS = [
+  "portal-commerce-layout",
+  "portal-coins-wallet-entry",
+  "portal-recharge-dialog"
+];
+
 async function listFiles(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
   const files = [];
@@ -104,6 +110,22 @@ export async function verifyPortalBuildDirectory(buildDir) {
     }
   }
 
+  const commerceMarkupContent = (await Promise.all(files
+    .filter((file) => /\.(html|js)$/i.test(file))
+    .map((file) => readFile(file, "utf8")))).join("\n");
+  const commerceCssContent = (await Promise.all(files
+    .filter((file) => /\.css$/i.test(file))
+    .map((file) => readFile(file, "utf8")))).join("\n");
+  for (const marker of REQUIRED_COMMERCE_LAYOUT_MARKERS) {
+    const missingAssetClasses = [
+      !commerceMarkupContent.includes(marker) && "HTML/JavaScript",
+      !commerceCssContent.includes(marker) && "CSS"
+    ].filter(Boolean);
+    if (missingAssetClasses.length > 0) {
+      throw new Error(`portal commerce layout marker missing: ${marker} (${missingAssetClasses.join(", ")})`);
+    }
+  }
+
   return {
     status: "ok",
     files: relativeFiles.length,
@@ -111,7 +133,8 @@ export async function verifyPortalBuildDirectory(buildDir) {
       noAdminShellMarkers: true,
       noSecretMaterial: true,
       hasPortalHumanChallengeContract: true,
-      hasPortalRegistrationContract: true
+      hasPortalRegistrationContract: true,
+      hasCommerceLayoutContract: true
     }
   };
 }

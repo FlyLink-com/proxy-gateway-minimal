@@ -4,6 +4,14 @@ import {
   randomBase32Secret,
   verifyTotpCode
 } from "./totp-preview";
+import {
+  createPortalCoinCommerceClient,
+  type PortalCoinCommerceClient
+} from "./commerce";
+import {
+  createPortalWalletClient,
+  type PortalWalletClient
+} from "./wallet";
 
 export const PORTAL_REGISTRATION_SESSION_STORAGE_KEY = "gccwebos-portal-registration-session";
 
@@ -437,6 +445,8 @@ export type PortalPasskeyExport = {
 };
 
 export type UserPortalClient = {
+  commerce?: PortalCoinCommerceClient;
+  wallet?: PortalWalletClient;
   issueHumanChallenge(input?: PortalHumanChallengeRequestInput): Promise<PortalHumanVerificationChallenge>;
   requestEmailCode(input: PortalEmailCodeRequestInput): Promise<PortalEmailCodeChallenge>;
   requestRegistrationEmailVerification(
@@ -1812,7 +1822,12 @@ function mapSecurityState(raw: Record<string, unknown> | undefined): PortalUserS
   };
 }
 
-export function createHttpUserPortalClient(options: HttpUserPortalClientOptions = {}): UserPortalClient {
+export function createHttpUserPortalClient(
+  options: HttpUserPortalClientOptions = {}
+): UserPortalClient & {
+  commerce: PortalCoinCommerceClient;
+  wallet: PortalWalletClient;
+} {
   const baseUrl = options.baseUrl ?? "";
   const fetchFn = options.fetchFn ?? fetch;
   const now = options.now ?? (() => new Date());
@@ -1838,6 +1853,8 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
   }
 
   return {
+    commerce: createPortalCoinCommerceClient({ fetchFn }),
+    wallet: createPortalWalletClient({ fetchFn }),
     async issueHumanChallenge(input = {}) {
       const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/human-challenges"), {
         method: "POST",
