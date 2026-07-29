@@ -2085,6 +2085,50 @@ test("fulfillment lease is owned immediately before expiry and reclaimable at eq
   }
 });
 
+test("expired fulfillment leases cannot complete or fail before reclaim", () => {
+  for (const callback of ["complete", "fail"]) {
+    const state = fixture();
+    try {
+      captureToOutbox(state);
+      const lease = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+      state.clock.value = "2026-07-26T12:35:00.000Z";
+      expectCode(() => {
+        if (callback === "complete") {
+          state.store.completeFulfillmentCommand({
+            commandRef: lease.commandRef,
+            leaseGeneration: lease.leaseGeneration,
+            leaseToken: lease.leaseToken,
+            effectRef: `effect_expired_${callback}`,
+            status: "delivered"
+          });
+          return;
+        }
+        state.store.failFulfillmentCommand({
+          commandRef: lease.commandRef,
+          leaseGeneration: lease.leaseGeneration,
+          leaseToken: lease.leaseToken,
+          safeCode: "fulfillment_handler_failed"
+        });
+      }, "commerce_fulfillment_lease_lost");
+      assert.deepEqual(state.database.prepare(`
+        select status, lease_generation, lease_token, lease_until
+          from platform_coin_commerce_fulfillment_commands
+         where command_ref = ?
+      `).get(lease.commandRef), {
+        status: "processing",
+        lease_generation: lease.leaseGeneration,
+        lease_token: lease.leaseToken,
+        lease_until: state.clock.value
+      });
+      const reclaimed = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+      assert.equal(reclaimed.leaseGeneration, lease.leaseGeneration + 1);
+      assert.notEqual(reclaimed.leaseToken, lease.leaseToken);
+    } finally {
+      state.close();
+    }
+  }
+});
+
 test("stale fulfillment generation and token are fenced independently", () => {
   const state = fixture();
   try {
