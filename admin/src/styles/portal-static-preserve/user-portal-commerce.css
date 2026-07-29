@@ -990,6 +990,18 @@
   --portal-orders-accent: #3560c2;
   --portal-orders-on-accent: #ffffff;
   --portal-orders-focus: #8fb2ff;
+  --portal-orders-in-progress-border: rgba(143, 178, 255, 0.42);
+  --portal-orders-in-progress-background: rgba(53, 96, 194, 0.18);
+  --portal-orders-in-progress-text: #b8ceff;
+  --portal-orders-successful-border: rgba(126, 231, 135, 0.38);
+  --portal-orders-successful-background: rgba(63, 185, 80, 0.14);
+  --portal-orders-successful-text: #7ee787;
+  --portal-orders-attention-border: rgba(242, 204, 96, 0.42);
+  --portal-orders-attention-background: rgba(187, 128, 9, 0.18);
+  --portal-orders-attention-text: #f2cc60;
+  --portal-orders-closed-border: rgba(174, 184, 200, 0.32);
+  --portal-orders-closed-background: #1c2432;
+  --portal-orders-closed-text: #aeb8c8;
 }
 
 .portal-v2-shell[data-portal-theme="light"] .portal-orders-panel {
@@ -1001,11 +1013,21 @@
   --portal-orders-accent: #2858d8;
   --portal-orders-on-accent: #ffffff;
   --portal-orders-focus: #1747c5;
+  --portal-orders-in-progress-border: rgba(23, 71, 197, 0.28);
+  --portal-orders-in-progress-background: #eef4ff;
+  --portal-orders-in-progress-text: #1747c5;
+  --portal-orders-successful-border: rgba(23, 108, 47, 0.26);
+  --portal-orders-successful-background: #edf9f0;
+  --portal-orders-successful-text: #176c2f;
+  --portal-orders-attention-border: rgba(154, 77, 8, 0.28);
+  --portal-orders-attention-background: #fff7ed;
+  --portal-orders-attention-text: #9a4d08;
+  --portal-orders-closed-border: #d9dfeb;
+  --portal-orders-closed-background: #f4f7fb;
+  --portal-orders-closed-text: #5e6a7f;
 }
 
-.portal-v2-shell .portal-orders-panel > h2,
-.portal-v2-shell .portal-orders-section > h3,
-.portal-v2-shell .portal-orders-detail > h4 {
+.portal-v2-shell .portal-orders-panel h4 {
   margin: 0;
   color: var(--portal-orders-text);
 }
@@ -1016,8 +1038,7 @@
   gap: 8px;
 }
 
-.portal-v2-shell .portal-orders-filters button,
-.portal-v2-shell .portal-orders-section > button {
+.portal-v2-shell .portal-orders-filters button {
   border: 1px solid var(--portal-orders-border);
   border-radius: 9px;
   background: var(--portal-orders-surface);
@@ -1028,60 +1049,121 @@
   font-weight: 700;
 }
 
-.portal-v2-shell .portal-orders-filters button[aria-selected="true"] {
+.portal-v2-shell .portal-orders-filters button[aria-pressed="true"] {
   border-color: var(--portal-orders-accent);
   background: var(--portal-orders-accent);
   color: var(--portal-orders-on-accent);
 }
 
-.portal-v2-shell .portal-orders-section,
-.portal-v2-shell .portal-orders-detail {
-  display: grid;
-  gap: 12px;
+.portal-v2-shell .portal-orders-panel .portal-order-search-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
   border: 1px solid var(--portal-orders-border);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--portal-orders-surface);
-  padding: 16px;
+  color: var(--portal-orders-text);
+  padding: 0 12px;
+  font: inherit;
 }
 
-.portal-v2-shell .portal-orders-section > p,
-.portal-v2-shell .portal-orders-detail > p {
-  margin: 0;
+.portal-v2-shell .portal-orders-panel .portal-order-search-input::placeholder {
   color: var(--portal-orders-muted);
+  opacity: 1;
 }
 
-.portal-v2-shell .portal-orders-list {
-  display: grid;
-  gap: 8px;
-}
-
-.portal-v2-shell .portal-orders-list button {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+.portal-v2-shell .portal-orders-inline-note {
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+  margin: 0;
   border: 1px solid var(--portal-orders-border);
   border-radius: 10px;
   background: var(--portal-orders-subtle);
+  color: var(--portal-orders-muted);
+  padding: 10px 12px;
+}
+
+.portal-v2-shell .portal-orders-inline-note button {
+  border: 1px solid var(--portal-orders-border);
+  border-radius: 8px;
+  background: var(--portal-orders-surface);
   color: var(--portal-orders-text);
   cursor: pointer;
-  padding: 11px 12px;
-  text-align: left;
+  padding: 6px 10px;
 }
 
-.portal-v2-shell .portal-orders-list button strong,
-.portal-v2-shell .portal-orders-list button span {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.portal-v2-shell .portal-orders-panel .portal-order-table-wrap {
+  border-color: var(--portal-orders-border);
+  background: var(--portal-orders-surface);
 }
 
-.portal-v2-shell .portal-orders-list button span {
+.portal-v2-shell .portal-orders-panel .portal-order-table th,
+.portal-v2-shell .portal-orders-panel .portal-order-table td {
+  border-color: var(--portal-orders-border);
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-table th {
   color: var(--portal-orders-muted);
 }
 
+.portal-v2-shell .portal-orders-panel .portal-order-table td {
+  color: var(--portal-orders-text);
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-status.in_progress {
+  border-color: var(--portal-orders-in-progress-border);
+  background: var(--portal-orders-in-progress-background);
+  color: var(--portal-orders-in-progress-text);
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-status.successful {
+  border-color: var(--portal-orders-successful-border);
+  background: var(--portal-orders-successful-background);
+  color: var(--portal-orders-successful-text);
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-status.attention {
+  border-color: var(--portal-orders-attention-border);
+  background: var(--portal-orders-attention-background);
+  color: var(--portal-orders-attention-text);
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-status.closed {
+  border-color: var(--portal-orders-closed-border);
+  background: var(--portal-orders-closed-background);
+  color: var(--portal-orders-closed-text);
+}
+
+.portal-v2-shell .portal-orders-panel .portal-order-detail {
+  border-color: var(--portal-orders-border);
+  background: var(--portal-orders-subtle);
+}
+
+.portal-v2-shell .portal-orders-panel td.portal-order-empty-state {
+  display: table-cell;
+  min-height: 0;
+  color: var(--portal-orders-muted);
+  padding: 72px 20px;
+  text-align: center;
+}
+
 .portal-v2-shell .portal-orders-filters button:focus-visible,
-.portal-v2-shell .portal-orders-section > button:focus-visible,
-.portal-v2-shell .portal-orders-list button:focus-visible {
+.portal-v2-shell .portal-orders-inline-note button:focus-visible,
+.portal-v2-shell .portal-orders-panel .portal-order-search-input:focus-visible {
   outline: 3px solid var(--portal-orders-focus);
   outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .portal-v2-shell .portal-orders-panel td.portal-order-empty-state {
+    display: block;
+    min-height: 0;
+    padding: 28px 16px;
+  }
+
+  .portal-v2-shell .portal-orders-panel td.portal-order-empty-state::before {
+    display: none;
+  }
 }

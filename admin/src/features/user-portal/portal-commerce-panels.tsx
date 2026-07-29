@@ -138,6 +138,8 @@ export function RechargeDialog({
 type MarketplacePanelProps = PanelProps & {
   commerceClient: PortalCoinCommerceClient | null;
   onOpenRecharge: (returnFocus?: () => void) => void;
+  onWalletMutation?: () => void;
+  sessionGeneration?: number;
   sessionRef: string | null;
   theme: "light" | "dark";
 };
@@ -307,6 +309,8 @@ export function MarketplacePanel({
   commerceClient,
   locale,
   onOpenRecharge,
+  onWalletMutation,
+  sessionGeneration = 0,
   sessionRef,
   theme
 }: MarketplacePanelProps) {
@@ -330,6 +334,8 @@ export function MarketplacePanel({
   latestProductSessionRef.current = sessionRef;
   const purchaseFlow = useCoinsPurchaseFlow({
     client: commerceClient,
+    onWalletMutation,
+    sessionGeneration,
     sessionRef
   });
 

@@ -29,6 +29,10 @@ import {
 } from "../features/user-portal/user-portal-client";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import { MarketplacePanel } from "../features/user-portal/portal-commerce-panels";
+import type {
+  PortalWalletClient,
+  PortalWalletSummary
+} from "../features/user-portal/wallet";
 
 const commerceCssPath = resolve(
   process.cwd(),
@@ -172,6 +176,24 @@ const deliveredOrder: PortalCoinOrder = {
   fulfillment: { status: "delivered", safeCode: null },
   updatedAt: "2026-07-27T19:57:00.000Z"
 };
+
+function walletSummary(
+  spendableUnits: number,
+  heldUnits: number
+): PortalWalletSummary {
+  return {
+    status: "active",
+    version: heldUnits === 0 ? 1 : 2,
+    balances: {
+      paidCoins: spendableUnits,
+      bonusCoins: 0,
+      rewardCoins: 0
+    },
+    spendableUnits,
+    heldUnits,
+    pendingUnits: 0
+  };
+}
 
 function deferred<T>() {
   let resolvePromise!: (value: T) => void;
@@ -801,6 +823,54 @@ describe("Portal server-backed Marketplace", () => {
     }));
     expect(await within(dialog).findByText("购买和交付已完成"))
       .toBeInTheDocument();
+  });
+
+  test("refreshes the real Portal Wallet balance after Marketplace Hold and capture", async () => {
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn()
+        .mockResolvedValueOnce(walletSummary(1000, 0))
+        .mockResolvedValueOnce(walletSummary(800, 200))
+        .mockResolvedValue(walletSummary(800, 0)),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const commerce = commerceClient({
+      previewCheckout: vi.fn(async () => availableQuote),
+      createOrder: vi.fn(async () => heldOrder),
+      getOrder: vi.fn(async () => deliveredOrder)
+    });
+    const client = portalClientWithCommerce(commerce);
+    client.wallet = wallet;
+
+    await openMarketplace(client);
+    expect(await screen.findByText("Coins · 1000")).toBeInTheDocument();
+
+    const planCard = (await screen.findByRole("heading", {
+      name: "服务端基础套餐"
+    })).closest("article") as HTMLElement;
+    fireEvent.click(within(planCard).getByRole("button", {
+      name: "使用 Coins 购买：服务端基础套餐"
+    }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "确认 Coins 购买"
+    });
+    fireEvent.click(within(dialog).getByRole("button", {
+      name: "确认购买"
+    }));
+
+    expect(await within(dialog).findByText("Coins 已预留"))
+      .toBeInTheDocument();
+    expect(await screen.findByText("Coins · 800")).toBeInTheDocument();
+    expect(wallet.getSummary).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(within(dialog).getByRole("button", {
+      name: "刷新订单"
+    }));
+    expect(await within(dialog).findByText("购买和交付已完成"))
+      .toBeInTheDocument();
+    await waitFor(() => {
+      expect(wallet.getSummary).toHaveBeenCalledTimes(3);
+    });
+    expect(screen.getByText("Coins · 800")).toBeInTheDocument();
   });
 
   test("opens the existing non-executable Recharge dialog explicitly without overlapping modals", async () => {

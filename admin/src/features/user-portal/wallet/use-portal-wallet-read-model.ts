@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState
 } from "react";
@@ -27,6 +28,7 @@ export type PortalWalletReadModel = {
   } | null;
   retrySummary: () => void;
   retryLedger: () => void;
+  refreshWallet: () => void;
   loadMoreLedger: () => void;
 };
 
@@ -105,6 +107,7 @@ export function usePortalWalletReadModel({
     useState<PortalWalletReadModel["nextLedgerCursor"]>(null);
   const [summaryRevision, setSummaryRevision] = useState(0);
   const [ledgerRevision, setLedgerRevision] = useState(0);
+  const wasLedgerOpenRef = useRef(loadLedger);
   const mountedRef = useRef(true);
   const summaryRequestIdRef = useRef(0);
   const ledgerRequestIdRef = useRef(0);
@@ -123,7 +126,7 @@ export function usePortalWalletReadModel({
     pageRequestId: number;
   } | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     ledgerStateRef.current = ledger;
     nextLedgerCursorRef.current = nextLedgerCursor;
     onSessionInvalidRef.current = onSessionInvalid;
@@ -153,6 +156,14 @@ export function usePortalWalletReadModel({
       loadMoreInFlightRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const didOpenLedger = loadLedger && !wasLedgerOpenRef.current;
+    wasLedgerOpenRef.current = loadLedger;
+    if (didOpenLedger) {
+      setSummaryRevision((revision) => revision + 1);
+    }
+  }, [loadLedger]);
 
   const summaryRequestIsCurrent = useCallback((
     requestId: number,
@@ -312,6 +323,13 @@ export function usePortalWalletReadModel({
     setLedgerRevision((revision) => revision + 1);
   }, []);
 
+  const refreshWallet = useCallback(() => {
+    setSummaryRevision((revision) => revision + 1);
+    if (loadLedger) {
+      setLedgerRevision((revision) => revision + 1);
+    }
+  }, [loadLedger]);
+
   const loadMoreLedger = useCallback(() => {
     const cursor = nextLedgerCursorRef.current;
     const currentLedger = ledgerStateRef.current;
@@ -406,6 +424,7 @@ export function usePortalWalletReadModel({
     nextLedgerCursor,
     retrySummary,
     retryLedger,
+    refreshWallet,
     loadMoreLedger
   };
 }

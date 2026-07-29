@@ -543,11 +543,13 @@ describe("Portal Coins purchase flow", () => {
     const getOrder = vi.fn(async () => cancelledOrder);
     const client = commerceClient({ cancelOrder, getOrder });
     const cancelIdempotencyKey = vi.fn(() => "cancel_intent_1");
+    const onWalletMutation = vi.fn();
     const { result } = renderHook(() => commerce.useCoinsPurchaseFlow({
       client,
       sessionRef: "session-1",
       createIdempotencyKey: () => "create_intent_1",
-      cancelIdempotencyKey
+      cancelIdempotencyKey,
+      onWalletMutation
     }));
     await act(async () => {
       await result.current.openProduct("offer_basic");
@@ -577,6 +579,7 @@ describe("Portal Coins purchase flow", () => {
       orderRef: "order_basic"
     });
     expect(result.current.order).toEqual(cancelledOrder);
+    expect(onWalletMutation).toHaveBeenCalledTimes(2);
   });
 
   test("cancel fences stale reads and blocks refresh or polling until its protected readback", async () => {
@@ -675,6 +678,65 @@ describe("Portal Coins purchase flow", () => {
     }
   });
 
+  test("invalidates Wallet once for the Hold and once when capture commits", async () => {
+    const onWalletMutation = vi.fn();
+    const client = commerceClient({
+      getOrder: vi.fn(async () => deliveredOrder)
+    });
+    const { result } = renderHook(() => commerce.useCoinsPurchaseFlow({
+      client,
+      sessionRef: "session-1",
+      createIdempotencyKey: () => "create_wallet_refresh",
+      pollIntervalMs: 60_000,
+      onWalletMutation
+    }));
+
+    await act(async () => {
+      await result.current.openProduct("offer_basic");
+      await result.current.previewCheckout();
+      await result.current.confirmPurchase();
+    });
+    expect(onWalletMutation).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await result.current.refreshOrder();
+      await result.current.refreshOrder();
+    });
+    expect(result.current.order).toEqual(deliveredOrder);
+    expect(onWalletMutation).toHaveBeenCalledTimes(2);
+  });
+
+  test("invalidates Wallet when a reconciliation state later resolves to captured", async () => {
+    const reconciliationOrder: PortalCoinOrder = {
+      ...heldOrder,
+      paymentStatus: "reconciliation_required"
+    };
+    const onWalletMutation = vi.fn();
+    const client = commerceClient({
+      createOrder: vi.fn(async () => reconciliationOrder),
+      getOrder: vi.fn(async () => deliveredOrder)
+    });
+    const { result } = renderHook(() => commerce.useCoinsPurchaseFlow({
+      client,
+      sessionRef: "session-1",
+      createIdempotencyKey: () => "create_reconciliation_refresh",
+      onWalletMutation
+    }));
+
+    await act(async () => {
+      await result.current.openProduct("offer_basic");
+      await result.current.previewCheckout();
+      await result.current.confirmPurchase();
+    });
+    expect(onWalletMutation).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await result.current.refreshOrder();
+    });
+    expect(result.current.order).toEqual(deliveredOrder);
+    expect(onWalletMutation).toHaveBeenCalledTimes(2);
+  });
+
   test("keeps polling unchanged non-terminal Orders until the server returns a terminal Order", async () => {
     vi.useFakeTimers();
     try {
@@ -752,6 +814,45 @@ describe("Portal Coins purchase flow", () => {
     });
     expect(result.current.phase).toBe("idle");
     expect(result.current.offer).toBeNull();
+  });
+
+  test("does not notify Wallet from an old generation reusing the same session reference", async () => {
+    const pendingOrder = deferred<PortalCoinOrder>();
+    const oldGenerationMutation = vi.fn();
+    const currentGenerationMutation = vi.fn();
+    const client = commerceClient({
+      createOrder: vi.fn(() => pendingOrder.promise)
+    });
+    const { result, rerender } = renderHook(
+      ({ sessionGeneration }) => commerce.useCoinsPurchaseFlow({
+        client,
+        sessionRef: "session-reused",
+        sessionGeneration,
+        createIdempotencyKey: () => "create_old_generation",
+        onWalletMutation: sessionGeneration === 1
+          ? oldGenerationMutation
+          : currentGenerationMutation
+      }),
+      { initialProps: { sessionGeneration: 1 } }
+    );
+    await act(async () => {
+      await result.current.openProduct("offer_basic");
+      await result.current.previewCheckout();
+    });
+    let createRequest!: Promise<void>;
+    act(() => {
+      createRequest = result.current.confirmPurchase();
+    });
+
+    rerender({ sessionGeneration: 2 });
+    await act(async () => {
+      pendingOrder.resolve(heldOrder);
+      await createRequest;
+    });
+
+    expect(result.current.order).toBeNull();
+    expect(oldGenerationMutation).not.toHaveBeenCalled();
+    expect(currentGenerationMutation).not.toHaveBeenCalled();
   });
 
   test("persists only the Order reference and restores it through GET", async () => {

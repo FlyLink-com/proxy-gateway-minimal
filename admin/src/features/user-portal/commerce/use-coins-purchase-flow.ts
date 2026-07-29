@@ -145,6 +145,13 @@ export function isPortalCoinOrderTerminal(order: PortalCoinOrder): boolean {
     || order.paymentStatus === "reconciliation_required";
 }
 
+function hasCommittedWalletSettlement(order: PortalCoinOrder): boolean {
+  return order.paymentStatus === "captured"
+    || order.paymentStatus === "cancelled"
+    || order.paymentStatus === "capture_failed"
+    || order.paymentStatus === "reconciliation_required";
+}
+
 export type PortalCoinOrderUiState =
   | "reserved"
   | "settling"
@@ -180,7 +187,9 @@ export type UseCoinsPurchaseFlowOptions = {
   cancelIdempotencyKey?: () => string;
   client: PortalCoinCommerceClient | null;
   createIdempotencyKey?: () => string;
+  onWalletMutation?: () => void;
   pollIntervalMs?: number;
+  sessionGeneration?: number;
   sessionRef: string | null;
   storage?: PortalCoinOrderStorage | null;
 };
@@ -189,7 +198,9 @@ export function useCoinsPurchaseFlow({
   cancelIdempotencyKey = () => crypto.randomUUID(),
   client,
   createIdempotencyKey = () => crypto.randomUUID(),
+  onWalletMutation,
   pollIntervalMs = 2_000,
+  sessionGeneration = 0,
   sessionRef,
   storage = browserSessionStorage()
 }: UseCoinsPurchaseFlowOptions) {
@@ -197,7 +208,8 @@ export function useCoinsPurchaseFlow({
   const [pollRevision, setPollRevision] = useState(0);
   const clientRef = useRef(client);
   const sessionRefRef = useRef(sessionRef);
-  const identityRef = useRef({ client, sessionRef });
+  const sessionGenerationRef = useRef(sessionGeneration);
+  const identityRef = useRef({ client, sessionGeneration, sessionRef });
   const storageRef = useRef(storage);
   const generationRef = useRef(0);
   const offerRef = useRef<string | null>(null);
@@ -205,6 +217,7 @@ export function useCoinsPurchaseFlow({
   const orderRef = useRef<PortalCoinOrder | null>(null);
   const createIdempotencyKeyRef = useRef(createIdempotencyKey);
   const cancelIdempotencyKeyRef = useRef(cancelIdempotencyKey);
+  const onWalletMutationRef = useRef(onWalletMutation);
   const createIntentRef = useRef<{
     key: string;
     pending: boolean;
@@ -221,8 +234,10 @@ export function useCoinsPurchaseFlow({
   const orderReadSequenceRef = useRef(0);
   clientRef.current = client;
   sessionRefRef.current = sessionRef;
+  sessionGenerationRef.current = sessionGeneration;
   createIdempotencyKeyRef.current = createIdempotencyKey;
   cancelIdempotencyKeyRef.current = cancelIdempotencyKey;
+  onWalletMutationRef.current = onWalletMutation;
   storageRef.current = storage;
 
   const invalidateFlow = useCallback((discardRecovery: boolean) => {
@@ -252,18 +267,27 @@ export function useCoinsPurchaseFlow({
 
   useEffect(() => {
     const previous = identityRef.current;
-    if (previous.client === client && previous.sessionRef === sessionRef) return;
-    identityRef.current = { client, sessionRef };
-    if (previous.sessionRef === sessionRef) return;
+    if (
+      previous.client === client
+      && previous.sessionRef === sessionRef
+      && previous.sessionGeneration === sessionGeneration
+    ) {
+      return;
+    }
+    identityRef.current = { client, sessionGeneration, sessionRef };
+    const sessionIdentityChanged = previous.sessionRef !== sessionRef
+      || previous.sessionGeneration !== sessionGeneration;
+    if (!sessionIdentityChanged) return;
     const discardRecovery = previous.sessionRef !== null;
     invalidateFlow(discardRecovery);
-  }, [client, invalidateFlow, sessionRef]);
+  }, [client, invalidateFlow, sessionGeneration, sessionRef]);
 
   const openProduct = useCallback(async (nextOfferRef: string) => {
     const activeClient = clientRef.current;
     const activeSessionRef = sessionRefRef.current;
     if (!activeClient || !activeSessionRef) return;
     const generation = generationRef.current;
+    const sessionEpoch = sessionGenerationRef.current;
     const sequence = detailRequestSequenceRef.current + 1;
     detailRequestSequenceRef.current = sequence;
     quoteRequestSequenceRef.current += 1;
@@ -284,6 +308,7 @@ export function useCoinsPurchaseFlow({
       });
       if (
         generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
         || sequence !== detailRequestSequenceRef.current
       ) {
         return;
@@ -303,6 +328,7 @@ export function useCoinsPurchaseFlow({
     } catch (error) {
       if (
         generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
         || sequence !== detailRequestSequenceRef.current
       ) {
         return;
@@ -323,6 +349,7 @@ export function useCoinsPurchaseFlow({
     const activeOfferRef = offerRef.current;
     if (!activeClient || !activeSessionRef || !activeOfferRef) return;
     const generation = generationRef.current;
+    const sessionEpoch = sessionGenerationRef.current;
     const sequence = quoteRequestSequenceRef.current + 1;
     quoteRequestSequenceRef.current = sequence;
     setState((current) => ({
@@ -338,6 +365,7 @@ export function useCoinsPurchaseFlow({
       });
       if (
         generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
         || sequence !== quoteRequestSequenceRef.current
       ) {
         return;
@@ -354,6 +382,7 @@ export function useCoinsPurchaseFlow({
     } catch (error) {
       if (
         generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
         || sequence !== quoteRequestSequenceRef.current
       ) {
         return;
@@ -393,6 +422,8 @@ export function useCoinsPurchaseFlow({
     if (intent.pending) return;
     intent.pending = true;
     const generation = generationRef.current;
+    const sessionEpoch = sessionGenerationRef.current;
+    const notifyWalletMutation = onWalletMutationRef.current;
     setState((current) => ({
       ...current,
       phase: "submitting",
@@ -405,7 +436,12 @@ export function useCoinsPurchaseFlow({
         quoteRef: activeQuote.quoteRef,
         idempotencyKey: intent.key
       });
-      if (generation !== generationRef.current) return;
+      if (
+        generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
+      ) {
+        return;
+      }
       orderReadSequenceRef.current += 1;
       orderRef.current = nextOrder;
       quoteRef.current = null;
@@ -420,8 +456,14 @@ export function useCoinsPurchaseFlow({
         errorCode: null,
         errorRetryable: false
       }));
+      notifyWalletMutation?.();
     } catch (error) {
-      if (generation !== generationRef.current) return;
+      if (
+        generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
+      ) {
+        return;
+      }
       const failure = safeError(error);
       const requiresNewPreview = failure.code === "quote_expired"
         || failure.code === "quote_stale";
@@ -467,6 +509,8 @@ export function useCoinsPurchaseFlow({
     if (intent.pending) return;
     intent.pending = true;
     const generation = generationRef.current;
+    const sessionEpoch = sessionGenerationRef.current;
+    const notifyWalletMutation = onWalletMutationRef.current;
     orderReadSequenceRef.current += 1;
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
@@ -484,7 +528,12 @@ export function useCoinsPurchaseFlow({
         orderRef: activeOrder.orderRef,
         idempotencyKey: intent.key
       });
-      if (generation !== generationRef.current) return;
+      if (
+        generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
+      ) {
+        return;
+      }
       const sequence = orderReadSequenceRef.current + 1;
       orderReadSequenceRef.current = sequence;
       const readback = await activeClient.getOrder({
@@ -493,6 +542,7 @@ export function useCoinsPurchaseFlow({
       });
       if (
         generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
         || sequence !== orderReadSequenceRef.current
         || orderRef.current?.orderRef !== activeOrder.orderRef
       ) {
@@ -509,8 +559,16 @@ export function useCoinsPurchaseFlow({
         errorCode: null,
         errorRetryable: false
       }));
+      if (hasCommittedWalletSettlement(readback)) {
+        notifyWalletMutation?.();
+      }
     } catch (error) {
-      if (generation !== generationRef.current) return;
+      if (
+        generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
+      ) {
+        return;
+      }
       const failure = safeError(error);
       setState((current) => ({
         ...current,
@@ -523,7 +581,10 @@ export function useCoinsPurchaseFlow({
       if (cancelIntentRef.current === intent) {
         intent.pending = false;
       }
-      if (generation === generationRef.current) {
+      if (
+        generation === generationRef.current
+        && sessionEpoch === sessionGenerationRef.current
+      ) {
         setState((current) => (
           current.cancelling ? { ...current, cancelling: false } : current
         ));
@@ -544,6 +605,8 @@ export function useCoinsPurchaseFlow({
       return;
     }
     const generation = generationRef.current;
+    const sessionEpoch = sessionGenerationRef.current;
+    const notifyWalletMutation = onWalletMutationRef.current;
     const sequence = orderReadSequenceRef.current + 1;
     orderReadSequenceRef.current = sequence;
     try {
@@ -553,11 +616,15 @@ export function useCoinsPurchaseFlow({
       });
       if (
         generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
         || sequence !== orderReadSequenceRef.current
         || orderRef.current?.orderRef !== activeOrder.orderRef
       ) {
         return;
       }
+      const committedWalletSettlement =
+        activeOrder.paymentStatus !== readback.paymentStatus
+        && hasCommittedWalletSettlement(readback);
       orderRef.current = readback;
       persistOrderReference(storageRef.current, readback.orderRef);
       setPollRevision((current) => current + 1);
@@ -568,9 +635,13 @@ export function useCoinsPurchaseFlow({
         errorCode: null,
         errorRetryable: false
       }));
+      if (committedWalletSettlement) {
+        notifyWalletMutation?.();
+      }
     } catch (error) {
       if (
         generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
         || sequence !== orderReadSequenceRef.current
       ) {
         return;
@@ -588,6 +659,7 @@ export function useCoinsPurchaseFlow({
     const storedOrderRef = readStoredOrderReference(storage);
     if (!client || !sessionRef || !storedOrderRef) return;
     const generation = generationRef.current;
+    const sessionEpoch = sessionGenerationRef.current;
     const sequence = orderReadSequenceRef.current + 1;
     orderReadSequenceRef.current = sequence;
     void client.getOrder({
@@ -596,6 +668,7 @@ export function useCoinsPurchaseFlow({
     }).then((readback) => {
       if (
         generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
         || sequence !== orderReadSequenceRef.current
         || clientRef.current !== client
         || sessionRefRef.current !== sessionRef
@@ -616,6 +689,7 @@ export function useCoinsPurchaseFlow({
     }).catch((error: unknown) => {
       if (
         generation !== generationRef.current
+        || sessionEpoch !== sessionGenerationRef.current
         || sequence !== orderReadSequenceRef.current
         || clientRef.current !== client
         || sessionRefRef.current !== sessionRef
@@ -629,7 +703,7 @@ export function useCoinsPurchaseFlow({
         errorRetryable: failure.retryable
       }));
     });
-  }, [client, sessionRef, storage]);
+  }, [client, sessionGeneration, sessionRef, storage]);
 
   const activeOrderRef = state.order?.orderRef ?? null;
   const activePaymentStatus = state.order?.paymentStatus ?? null;

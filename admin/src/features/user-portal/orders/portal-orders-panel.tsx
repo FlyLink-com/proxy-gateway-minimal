@@ -1,11 +1,11 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode
+  useState
 } from "react";
 
 import {
@@ -13,12 +13,15 @@ import {
   type PortalCoinCommerceClient,
   type PortalCoinOrder
 } from "../commerce";
+import type { PortalPaymentOrder } from "../user-portal-client";
+import {
+  buildPortalOrderCenterItems,
+  type PortalOrderCenterItem,
+  type PortalOrderCenterStatus,
+  type PortalServiceOrder
+} from "./portal-order-center-model";
 
-export type PortalOrdersFilter =
-  | "all"
-  | "coins_consumption"
-  | "coins_recharge"
-  | "historical";
+export type PortalOrdersFilter = "all" | "coins_consumption" | "plans_services";
 
 export type PortalOrdersPanelProps = {
   locale: "zh" | "en";
@@ -26,14 +29,21 @@ export type PortalOrdersPanelProps = {
   sessionRef: string | null;
   sessionGeneration: number;
   onSessionInvalid: () => void;
-  renderHistoricalOrders: () => ReactNode;
+  legacyPaymentOrders: PortalPaymentOrder[];
+  serviceOrders: PortalServiceOrder[];
+  selectedServiceOrderRef: string | null;
+  selectedLegacyPaymentOrderRef: string | null;
+  orderSearch: string;
+  onOrderSearchChange: (value: string) => void;
+  onOpenLegacyPaymentOrder: (order: PortalPaymentOrder) => void;
+  onOpenServiceOrder: (order: PortalServiceOrder) => void;
+  onOpenMarketplace: () => void;
 };
 
 const FILTERS: Array<{ id: PortalOrdersFilter; zh: string; en: string }> = [
   { id: "all", zh: "全部", en: "All" },
-  { id: "coins_consumption", zh: "Coins 消费订单", en: "Coins Consumption Orders" },
-  { id: "coins_recharge", zh: "Coins 充值订单", en: "Coins Recharge Orders" },
-  { id: "historical", zh: "历史订单", en: "Historical Orders" }
+  { id: "coins_consumption", zh: "商城消费", en: "Marketplace purchases" },
+  { id: "plans_services", zh: "套餐与服务", en: "Plans and services" }
 ];
 
 type ReadState<T> =
@@ -66,6 +76,221 @@ function stateValue<T>(state: ReadState<T>) {
   return "value" in state ? state.value : undefined;
 }
 
+function formatDateTime(value: string, locale: PortalOrdersPanelProps["locale"]) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+}
+
+function formatBytes(value: number) {
+  let amount = Number.isFinite(value) && value > 0 ? value : 0;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) {
+    amount /= 1024;
+    unit += 1;
+  }
+  return `${amount >= 10 || unit === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unit]}`;
+}
+
+function paymentAmount(order: PortalPaymentOrder) {
+  const amount = Number.isFinite(order.amountMinor) ? order.amountMinor / 100 : 0;
+  return `${order.currency} ${amount.toFixed(2)}`;
+}
+
+function paymentStatusLabel(
+  status: PortalPaymentOrder["status"],
+  locale: PortalOrdersPanelProps["locale"]
+) {
+  switch (status) {
+    case "pending_payment":
+      return copy(locale, "待付款", "Pending payment");
+    case "payment_amount_mismatch":
+      return copy(locale, "金额异常", "Amount mismatch");
+    case "payment_failed":
+      return copy(locale, "支付失败", "Payment failed");
+    case "paid_pending_admin_review":
+      return copy(locale, "待开通", "Pending activation");
+    case "paid_access_delivered":
+      return copy(locale, "已开通", "Activated");
+    case "paid_delivery_blocked":
+      return copy(locale, "开通异常", "Activation issue");
+    default:
+      return copy(locale, "需要处理", "Needs attention");
+  }
+}
+
+function coinPaymentLabel(
+  status: PortalCoinOrder["paymentStatus"],
+  locale: PortalOrdersPanelProps["locale"]
+) {
+  switch (status) {
+    case "held":
+      return copy(locale, "Coins 已预留", "Coins reserved");
+    case "capture_pending":
+      return copy(locale, "支付确认中", "Payment processing");
+    case "captured":
+      return copy(locale, "支付完成", "Payment complete");
+    case "cancelled":
+      return copy(locale, "已取消", "Cancelled");
+    case "capture_failed":
+      return copy(locale, "支付失败", "Payment failed");
+    case "reconciliation_required":
+      return copy(locale, "需要人工核对", "Review required");
+    default:
+      return copy(locale, "需要处理", "Needs attention");
+  }
+}
+
+function fulfillmentLabel(
+  status: PortalCoinOrder["fulfillment"]["status"],
+  locale: PortalOrdersPanelProps["locale"]
+) {
+  switch (status) {
+    case "not_requested":
+      return copy(locale, "等待交付", "Awaiting delivery");
+    case "pending":
+      return copy(locale, "交付中", "Delivering");
+    case "delivered":
+      return copy(locale, "已交付", "Delivered");
+    case "failed":
+      return copy(locale, "交付异常", "Delivery issue");
+    default:
+      return copy(locale, "需要处理", "Needs attention");
+  }
+}
+
+function serviceStatusLabel(
+  status: PortalServiceOrder["status"],
+  locale: PortalOrdersPanelProps["locale"]
+) {
+  switch (status) {
+    case "active":
+      return copy(locale, "生效中", "Active");
+    case "pending":
+      return copy(locale, "待开通", "Pending");
+    case "expired":
+      return copy(locale, "已过期", "Expired");
+    case "disabled":
+      return copy(locale, "已停用", "Disabled");
+  }
+}
+
+function centerStatusLabel(
+  status: PortalOrderCenterStatus,
+  locale: PortalOrdersPanelProps["locale"]
+) {
+  switch (status) {
+    case "in_progress":
+      return copy(locale, "处理中", "In progress");
+    case "successful":
+      return copy(locale, "已完成", "Completed");
+    case "attention":
+      return copy(locale, "需要处理", "Needs attention");
+    case "closed":
+      return copy(locale, "已关闭", "Closed");
+  }
+}
+
+function itemTypeLabel(
+  item: PortalOrderCenterItem,
+  locale: PortalOrdersPanelProps["locale"]
+) {
+  if (item.kind === "coins_consumption") return copy(locale, "商城消费", "Marketplace purchase");
+  if (item.kind === "legacy_payment") return copy(locale, "旧套餐付款", "Legacy plan payment");
+  return copy(locale, "服务记录", "Service record");
+}
+
+function serviceProductLabel(
+  order: PortalServiceOrder,
+  locale: PortalOrdersPanelProps["locale"]
+) {
+  const historyLabel = order.request.historySummary?.[0]?.label;
+  if (historyLabel) return historyLabel;
+  if (order.planId === "trial") return copy(locale, "试用套餐", "Trial plan");
+  if (order.planId === "yearly") return copy(locale, "年付套餐", "Annual plan");
+  return copy(locale, "基础月付", "Monthly basic");
+}
+
+function legacyPaymentProductLabel(
+  order: PortalPaymentOrder,
+  locale: PortalOrdersPanelProps["locale"]
+) {
+  if (locale === "zh") {
+    const explicitLabel = order.planLabel?.trim();
+    if (explicitLabel) return explicitLabel;
+  }
+  if (order.planId === "yearly") return copy(locale, "年度套餐", "Annual plan");
+  if (order.planId === "monthly_plus") return copy(locale, "标准月付", "Standard monthly");
+  if (order.planId === "trial") return copy(locale, "7 天订阅", "7-day plan");
+  return copy(locale, "基础月付", "Basic monthly");
+}
+
+function productLabel(item: PortalOrderCenterItem, locale: PortalOrdersPanelProps["locale"]) {
+  if (item.kind === "coins_consumption") return item.source.offer.title[locale];
+  if (item.kind === "legacy_payment") return legacyPaymentProductLabel(item.source, locale);
+  return serviceProductLabel(item.source, locale);
+}
+
+function amountLabel(item: PortalOrderCenterItem) {
+  if (item.kind === "coins_consumption") return `${item.source.amountUnits} Coins`;
+  if (item.kind === "legacy_payment") return paymentAmount(item.source);
+  return "—";
+}
+
+function displayOrderRef(item: PortalOrderCenterItem) {
+  if (item.kind === "coins_consumption") return item.source.orderRef;
+  if (item.kind === "legacy_payment") {
+    return item.source.orderRef.replace(/^pay[_-]?/i, "P-").slice(0, 18);
+  }
+  return item.source.requestRef.replace(/^subreq[_-]?/i, "O-").slice(0, 18);
+}
+
+function itemStatusLabel(
+  item: PortalOrderCenterItem,
+  locale: PortalOrdersPanelProps["locale"]
+) {
+  if (item.kind === "coins_consumption") {
+    return `${coinPaymentLabel(item.source.paymentStatus, locale)} · ${fulfillmentLabel(item.source.fulfillment.status, locale)}`;
+  }
+  if (item.kind === "legacy_payment") return paymentStatusLabel(item.source.status, locale);
+  return serviceStatusLabel(item.source.status, locale);
+}
+
+function itemSearchText(item: PortalOrderCenterItem, locale: PortalOrdersPanelProps["locale"]) {
+  return [
+    item.key,
+    itemTypeLabel(item, locale),
+    productLabel(item, locale),
+    amountLabel(item),
+    itemStatusLabel(item, locale),
+    centerStatusLabel(item.status, locale)
+  ].join(" ").toLowerCase();
+}
+
+function clientLabel(client: PortalServiceOrder["clientTarget"]) {
+  if (client === "karing") return "Clash / Mihomo";
+  if (client === "clash") return "Clash";
+  return client;
+}
+
+function allocationLabel(
+  allocation: PortalCoinOrder["allocation"],
+  locale: PortalOrdersPanelProps["locale"]
+) {
+  return allocation.map((entry) => {
+    const coinType = entry.coinType === "paid_coins"
+      ? copy(locale, "充值 Coins", "Paid Coins")
+      : entry.coinType === "bonus_coins"
+        ? copy(locale, "赠送 Coins", "Bonus Coins")
+        : copy(locale, "奖励 Coins", "Reward Coins");
+    return `${coinType} ${entry.amountUnits}`;
+  }).join(" + ");
+}
+
 export function portalOrdersIdentityMatches(
   left: PortalOrdersIdentity,
   right: PortalOrdersIdentity
@@ -81,9 +306,19 @@ export function PortalOrdersPanel({
   sessionRef,
   sessionGeneration,
   onSessionInvalid,
-  renderHistoricalOrders
+  legacyPaymentOrders = [],
+  serviceOrders = [],
+  selectedServiceOrderRef = null,
+  selectedLegacyPaymentOrderRef = null,
+  orderSearch = "",
+  onOrderSearchChange = () => undefined,
+  onOpenLegacyPaymentOrder = () => undefined,
+  onOpenServiceOrder = () => undefined,
+  onOpenMarketplace = () => undefined
 }: PortalOrdersPanelProps) {
   const [filter, setFilter] = useState<PortalOrdersFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | PortalOrderCenterStatus>("all");
+  const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [listState, setListState] = useState<ReadState<PortalCoinOrder[]>>({
     phase: "loading"
   });
@@ -101,19 +336,13 @@ export function PortalOrdersPanel({
   const [listIdentity, setListIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
   const [detailIdentity, setDetailIdentity] = useState<PortalOrdersIdentity>(initialIdentity);
   const currentRef = useRef<CurrentInputs | null>(null);
-  const filterRefs = useRef<Record<PortalOrdersFilter, HTMLButtonElement | null>>({
-    all: null,
-    coins_consumption: null,
-    coins_recharge: null,
-    historical: null
-  });
   const onSessionInvalidRef = useRef<(() => void) | null>(null);
   const listRequestRef = useRef(0);
   const detailRequestRef = useRef(0);
   const visibleOrderRefsRef = useRef(new Set<string>());
   const loadingCursorsRef = useRef(new Map<string, number>());
   const loadMoreRequestRef = useRef(0);
-  const shows = (section: PortalOrdersFilter) => filter === "all" || filter === section;
+  const showsCoins = filter === "all" || filter === "coins_consumption";
 
   useLayoutEffect(() => {
     onSessionInvalidRef.current = onSessionInvalid;
@@ -239,14 +468,14 @@ export function PortalOrdersPanel({
     listRequestRef.current += 1;
     loadingCursorsRef.current.clear();
     visibleOrderRefsRef.current.clear();
-    if (!shows("coins_consumption")) return;
+    if (!showsCoins) return;
     void loadList(null, false);
     return () => {
       listRequestRef.current += 1;
       loadingCursorsRef.current.clear();
       visibleOrderRefsRef.current.clear();
     };
-  }, [filter, loadList]);
+  }, [loadList, showsCoins]);
 
   const loadMore = useCallback(() => {
     if (!nextCursor) return;
@@ -312,115 +541,236 @@ export function PortalOrdersPanel({
   const visibleDetailState = portalOrdersIdentityMatches(detailIdentity, renderedIdentity)
     ? detailState
     : { phase: "empty" as const, value: null as never };
-  const rows = stateValue(visibleListState) ?? [];
-  const selectFilter = (nextFilter: PortalOrdersFilter) => {
-    setFilter(nextFilter);
-    filterRefs.current[nextFilter]?.focus();
+  const coinOrders = stateValue(visibleListState) ?? [];
+  const allItems = useMemo(() => buildPortalOrderCenterItems({
+    coinOrders,
+    legacyPaymentOrders,
+    serviceOrders
+  }), [coinOrders, legacyPaymentOrders, serviceOrders]);
+  const visibleItems = useMemo(() => {
+    const search = orderSearch.trim().toLowerCase();
+    const filtered = allItems.filter((item) => {
+      const matchesType = filter === "all"
+        || (filter === "coins_consumption" && item.kind === "coins_consumption")
+        || (filter === "plans_services" && item.kind !== "coins_consumption");
+      const matchesStatus = statusFilter === "all" || item.status === statusFilter;
+      return matchesType && matchesStatus && (!search || itemSearchText(item, locale).includes(search));
+    });
+    return sort === "newest" ? filtered : [...filtered].reverse();
+  }, [allItems, filter, locale, orderSearch, sort, statusFilter]);
+  const coinSourceFailed = showsCoins
+    && (visibleListState.phase === "unavailable" || visibleListState.phase === "error");
+  const selectedDetailKey = selectedDetailRef
+    ? `coins_consumption:${selectedDetailRef}`
+    : selectedLegacyPaymentOrderRef
+      ? `legacy_payment:${selectedLegacyPaymentOrderRef}`
+      : selectedServiceOrderRef
+        ? `service_access:${selectedServiceOrderRef}`
+        : null;
+
+  const detailContent = (item: PortalOrderCenterItem) => {
+    if (item.kind === "coins_consumption") {
+      if (visibleDetailState.phase === "loading") {
+        return <p role="status">{copy(locale, "正在加载订单详情…", "Loading order detail…")}</p>;
+      }
+      if (visibleDetailState.phase === "unavailable" || visibleDetailState.phase === "error") {
+        return (
+          <div role={visibleDetailState.phase === "error" ? "alert" : "status"}>
+            <p>{visibleDetailState.phase === "unavailable"
+              ? copy(locale, "订单详情暂不可用。", "Order detail is unavailable.")
+              : copy(locale, "订单详情加载失败。", "Order detail could not be loaded.")}</p>
+            {visibleDetailState.retryable && selectedDetailRef ? (
+              <button type="button" onClick={() => void openDetail(selectedDetailRef)}>
+                {copy(locale, "重试订单详情", "Retry order detail")}
+              </button>
+            ) : null}
+          </div>
+        );
+      }
+      if (visibleDetailState.phase !== "ready") return null;
+      const order = visibleDetailState.value;
+      return (
+        <section aria-label={copy(locale, "Coins 消费订单详情", "Coins consumption order detail")}>
+          <h4>{order.orderRef}</h4>
+          <div className="portal-order-detail-grid">
+            <div><span>{copy(locale, "金额", "Amount")}</span><strong>{order.amountUnits} Coins</strong></div>
+            <div><span>{copy(locale, "支付", "Payment")}</span><strong>{coinPaymentLabel(order.paymentStatus, locale)}</strong></div>
+            <div><span>{copy(locale, "履约", "Fulfillment")}</span><strong>{fulfillmentLabel(order.fulfillment.status, locale)}</strong></div>
+            <div><span>{copy(locale, "Coins 分配", "Coins allocation")}</span><strong>{allocationLabel(order.allocation, locale)}</strong></div>
+          </div>
+        </section>
+      );
+    }
+    if (item.kind === "legacy_payment") {
+      const order = item.source;
+      return (
+        <div className="portal-order-detail-grid">
+          <div><span>{copy(locale, "金额", "Amount")}</span><strong>{paymentAmount(order)}</strong></div>
+          <div><span>{copy(locale, "支付状态", "Payment status")}</span><strong>{paymentStatusLabel(order.status, locale)}</strong></div>
+          <div><span>{copy(locale, "创建时间", "Created")}</span><strong>{formatDateTime(order.createdAt, locale)}</strong></div>
+          <div><span>{copy(locale, "付款时间", "Paid")}</span><strong>{order.paidAt ? formatDateTime(order.paidAt, locale) : "—"}</strong></div>
+        </div>
+      );
+    }
+    const order = item.source;
+    const usage = order.request.usage;
+    return (
+      <div className="portal-order-detail-grid">
+        <div><span>{copy(locale, "套餐", "Plan")}</span><strong>{serviceProductLabel(order, locale)}</strong></div>
+        <div><span>{copy(locale, "客户端", "Client")}</span><strong>{clientLabel(order.clientTarget)}</strong></div>
+        <div><span>{copy(locale, "额度 / 用量", "Quota / usage")}</span><strong>{usage ? `${formatBytes(usage.usedBytes)} / ${formatBytes(usage.totalBytes)}` : "—"}</strong></div>
+        <div><span>{copy(locale, "状态", "Lifecycle")}</span><strong>{serviceStatusLabel(order.status, locale)}</strong></div>
+        <div><span>{copy(locale, "到期时间", "Expires")}</span><strong>{formatDateTime(order.expiresAt, locale)}</strong></div>
+      </div>
+    );
   };
-  const handleFilterKeyDown = (
-    event: KeyboardEvent<HTMLButtonElement>,
-    index: number
-  ) => {
-    let nextIndex: number | null = null;
-    if (event.key === "ArrowRight") nextIndex = (index + 1) % FILTERS.length;
-    if (event.key === "ArrowLeft") nextIndex = (index - 1 + FILTERS.length) % FILTERS.length;
-    if (event.key === "Home") nextIndex = 0;
-    if (event.key === "End") nextIndex = FILTERS.length - 1;
-    if (nextIndex === null) return;
-    event.preventDefault();
-    selectFilter(FILTERS[nextIndex].id);
-  };
-  const filterDomId = filter.replaceAll("_", "-");
 
   return (
-    <section className="portal-orders-panel" aria-labelledby="portal-orders-heading">
-      <h2 id="portal-orders-heading">{copy(locale, "订单", "Orders")}</h2>
-      <div className="portal-orders-filters" role="tablist" aria-label={copy(locale, "订单分类", "Order categories")}>
-        {FILTERS.map((item, index) => {
-          const itemDomId = item.id.replaceAll("_", "-");
-          return (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              id={`portal-orders-${itemDomId}-tab`}
-              aria-controls={`portal-orders-${itemDomId}-panel`}
-              aria-selected={filter === item.id}
-              tabIndex={filter === item.id ? 0 : -1}
-              onClick={() => setFilter(item.id)}
-              onKeyDown={(event) => handleFilterKeyDown(event, index)}
-              ref={(node) => {
-                filterRefs.current[item.id] = node;
-              }}
-            >
-              {copy(locale, item.zh, item.en)}
+    <section className="portal-orders-panel" aria-label={copy(locale, "订单记录", "Order records")}>
+      <div className="portal-orders-filters" role="group" aria-label={copy(locale, "订单类型", "Order type")}>
+        {FILTERS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={filter === item.id}
+            onClick={() => setFilter(item.id)}
+          >
+            {copy(locale, item.zh, item.en)}
+          </button>
+        ))}
+      </div>
+
+      <div className="portal-order-toolbar">
+        <label>
+          <span>{copy(locale, "搜索订单", "Search orders")}</span>
+          <input
+            className="portal-order-search-input"
+            value={orderSearch}
+            onChange={(event) => onOrderSearchChange(event.target.value)}
+            placeholder={copy(locale, "订单 / 商品或服务 / 状态", "Order / product or service / status")}
+          />
+        </label>
+        <label>
+          <span>{copy(locale, "状态", "Status")}</span>
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as "all" | PortalOrderCenterStatus)}
+          >
+            <option value="all">{copy(locale, "全部状态", "All statuses")}</option>
+            <option value="in_progress">{copy(locale, "处理中", "In progress")}</option>
+            <option value="successful">{copy(locale, "已完成", "Completed")}</option>
+            <option value="attention">{copy(locale, "需要处理", "Needs attention")}</option>
+            <option value="closed">{copy(locale, "已关闭", "Closed")}</option>
+          </select>
+        </label>
+        <label>
+          <span>{copy(locale, "排序", "Sort")}</span>
+          <select value={sort} onChange={(event) => setSort(event.target.value as "newest" | "oldest")}>
+            <option value="newest">{copy(locale, "最新创建", "Newest")}</option>
+            <option value="oldest">{copy(locale, "最早创建", "Oldest")}</option>
+          </select>
+        </label>
+        <button className="portal-primary-button compact portal-toolbar-create" type="button" onClick={onOpenMarketplace}>
+          {copy(locale, "前往商城", "Go to Marketplace")}
+        </button>
+      </div>
+
+      {visibleListState.phase === "loading" && showsCoins ? (
+        <p className="portal-orders-inline-note" role="status">{copy(locale, "正在加载商城订单…", "Loading Marketplace orders…")}</p>
+      ) : null}
+      {coinSourceFailed ? (
+        <div className="portal-orders-inline-note" role={visibleListState.phase === "error" ? "alert" : "status"}>
+          <span>{copy(locale, "部分商城订单暂不可用", "Some Marketplace orders are temporarily unavailable")}</span>
+          {visibleListState.retryable ? (
+            <button type="button" onClick={() => listRetryRequest.append ? loadMore() : void loadList(listRetryRequest.cursor, false)}>
+              {copy(locale, "重试消费订单", "Retry consumption orders")}
             </button>
-          );
-        })}
+          ) : null}
+        </div>
+      ) : null}
+      <div className="portal-order-table-wrap">
+        <table className="portal-order-table" aria-label={copy(locale, "订单列表", "Orders")}>
+          <thead>
+            <tr>
+              <th>{copy(locale, "订单", "Order")}</th>
+              <th>{copy(locale, "类型", "Type")}</th>
+              <th>{copy(locale, "商品或服务", "Product or service")}</th>
+              <th>{copy(locale, "金额", "Amount")}</th>
+              <th>{copy(locale, "状态", "Status")}</th>
+              <th>{copy(locale, "创建时间", "Created")}</th>
+              <th>{copy(locale, "操作", "Actions")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleItems.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="portal-order-empty-state">
+                  {filter !== "plans_services" && visibleListState.phase === "empty"
+                    ? copy(locale, "暂无 Coins 消费订单。", "No Coins consumption orders.")
+                    : copy(locale, "暂无符合条件的订单", "No matching orders")}
+                </td>
+              </tr>
+            ) : visibleItems.map((item) => {
+              const actionLabel = item.kind === "legacy_payment" && item.source.status === "pending_payment"
+                ? copy(locale, "去付款", "Pay now")
+                : copy(locale, "查看", "View");
+              const action = item.kind === "coins_consumption"
+                ? () => void openDetail(item.source.orderRef)
+                : item.kind === "legacy_payment"
+                  ? () => {
+                    setSelectedDetailRef(null);
+                    onOpenLegacyPaymentOrder(item.source);
+                  }
+                  : () => {
+                    setSelectedDetailRef(null);
+                    onOpenServiceOrder(item.source);
+                  };
+              const expanded = selectedDetailKey === item.key;
+              return (
+                <Fragment key={item.key}>
+                  <tr className={expanded ? "selected" : undefined}>
+                    <td data-label={copy(locale, "订单", "Order")}>
+                      <span className="portal-order-main-text">{displayOrderRef(item)}</span>
+                    </td>
+                    <td data-label={copy(locale, "类型", "Type")}>{itemTypeLabel(item, locale)}</td>
+                    <td data-label={copy(locale, "商品或服务", "Product or service")}>{productLabel(item, locale)}</td>
+                    <td data-label={copy(locale, "金额", "Amount")}>{amountLabel(item)}</td>
+                    <td data-label={copy(locale, "状态", "Status")}>
+                      <span className={`portal-order-status ${item.status}`}>{itemStatusLabel(item, locale)}</span>
+                    </td>
+                    <td data-label={copy(locale, "创建时间", "Created")}>{formatDateTime(item.createdAt, locale)}</td>
+                    <td data-label={copy(locale, "操作", "Actions")}>
+                      <div className="portal-order-actions">
+                        <button
+                          type="button"
+                          onClick={action}
+                          aria-label={item.kind === "coins_consumption"
+                            ? `${actionLabel} ${item.source.orderRef} ${productLabel(item, locale)} ${itemStatusLabel(item, locale)}`
+                            : undefined}
+                        >
+                          {actionLabel}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {expanded ? (
+                    <tr className="portal-order-detail-row">
+                      <td colSpan={7}>
+                        <div className="portal-order-detail">{detailContent(item)}</div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-      <div
-        aria-labelledby={`portal-orders-${filterDomId}-tab`}
-        id={`portal-orders-${filterDomId}-panel`}
-        role="tabpanel"
-      >
-        {shows("coins_consumption") ? (
-          <section className="portal-orders-section" aria-labelledby="portal-orders-consumption-heading">
-            <h3 id="portal-orders-consumption-heading">{copy(locale, "Coins 消费订单", "Coins consumption orders")}</h3>
-            {visibleListState.phase === "loading" ? <p role="status">{copy(locale, "正在加载消费订单…", "Loading consumption orders…")}</p> : null}
-            {visibleListState.phase === "empty" ? <p role="status">{copy(locale, "暂无 Coins 消费订单。", "No Coins consumption orders.")}</p> : null}
-            {visibleListState.phase === "unavailable" || visibleListState.phase === "error" ? (
-              <div role={visibleListState.phase === "error" ? "alert" : "status"}>
-                <p>{visibleListState.phase === "unavailable"
-                  ? copy(locale, "Coins 消费订单暂不可用。", "Coins consumption orders are unavailable.")
-                  : copy(locale, "Coins 消费订单加载失败。", "Coins consumption orders could not be loaded.")}</p>
-                {visibleListState.retryable ? <button type="button" onClick={() => listRetryRequest.append ? loadMore() : void loadList(listRetryRequest.cursor, false)}>{copy(locale, "重试消费订单", "Retry consumption orders")}</button> : null}
-              </div>
-            ) : null}
-            {rows.length > 0 ? (
-              <div className="portal-orders-list" aria-label={copy(locale, "Coins 消费订单列表", "Coins consumption order list")}>
-                {rows.map((order) => (
-                  <button key={order.orderRef} type="button" onClick={() => void openDetail(order.orderRef)}>
-                    <strong>{order.orderRef}</strong>
-                    <span>{order.offer.title[locale]}</span>
-                    <span>{order.paymentStatus}</span>
-                    <span>{order.fulfillment.status}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            {nextCursor && rows.length > 0 && (visibleListState.phase === "ready" || visibleListState.phase === "empty") ? <button type="button" onClick={loadMore}>{copy(locale, "加载更多消费订单", "Load more consumption orders")}</button> : null}
-            {visibleDetailState.phase === "loading" ? <p role="status">{copy(locale, "正在加载订单详情…", "Loading order detail…")}</p> : null}
-            {visibleDetailState.phase === "unavailable" || visibleDetailState.phase === "error" ? (
-              <div role={visibleDetailState.phase === "error" ? "alert" : "status"}>
-                <p>{visibleDetailState.phase === "unavailable"
-                  ? copy(locale, "订单详情暂不可用。", "Order detail is unavailable.")
-                  : copy(locale, "订单详情加载失败。", "Order detail could not be loaded.")}</p>
-                {visibleDetailState.retryable && selectedDetailRef ? <button type="button" onClick={() => void openDetail(selectedDetailRef)}>{copy(locale, "重试订单详情", "Retry order detail")}</button> : null}
-              </div>
-            ) : null}
-            {visibleDetailState.phase === "ready" ? (
-              <section className="portal-orders-detail" aria-label={copy(locale, "Coins 消费订单详情", "Coins consumption order detail")}>
-                <h4>{visibleDetailState.value.orderRef}</h4>
-                <p>{copy(locale, "支付：", "Payment: ")}{visibleDetailState.value.paymentStatus}</p>
-                <p>{copy(locale, "履约：", "Fulfillment: ")}{visibleDetailState.value.fulfillment.status}</p>
-                <p>{copy(locale, "Coins：", "Coins: ")}{visibleDetailState.value.amountUnits}</p>
-              </section>
-            ) : null}
-          </section>
-        ) : null}
-        {shows("coins_recharge") ? (
-          <section className="portal-orders-section" aria-labelledby="portal-orders-recharge-heading">
-            <h3 id="portal-orders-recharge-heading">{copy(locale, "Coins 充值订单", "Coins recharge orders")}</h3>
-            <p>{copy(locale, "充值订单数据源尚未接入", "Recharge order data source is not connected yet")}</p>
-          </section>
-        ) : null}
-        {shows("historical") ? (
-          <section className="portal-orders-section" aria-labelledby="portal-orders-historical-heading">
-            <h3 id="portal-orders-historical-heading">{copy(locale, "历史订单", "Historical orders")}</h3>
-            {renderHistoricalOrders()}
-          </section>
-        ) : null}
-      </div>
+      {nextCursor && coinOrders.length > 0 && showsCoins && (visibleListState.phase === "ready" || visibleListState.phase === "empty") ? (
+        <button type="button" onClick={loadMore}>
+          {copy(locale, "加载更多消费订单", "Load more consumption orders")}
+        </button>
+      ) : null}
     </section>
   );
 }

@@ -98,6 +98,7 @@ function walletModel(
     nextLedgerCursor: null,
     retrySummary: vi.fn(),
     retryLedger: vi.fn(),
+    refreshWallet: vi.fn(),
     loadMoreLedger: vi.fn(),
     ...overrides
   };
@@ -373,6 +374,7 @@ describe("usePortalWalletReadModel", () => {
         value: []
       });
     });
+    expect(client.getSummary).toHaveBeenCalledTimes(2);
     expect(client.listLedger).toHaveBeenCalledWith({
       sessionRef: "session_wallet_001",
       limit: 25
@@ -498,6 +500,35 @@ describe("usePortalWalletReadModel", () => {
     act(() => result.current.retryLedger());
     await waitFor(() => expect(client.listLedger).toHaveBeenCalledTimes(2));
     expect(client.getSummary).toHaveBeenCalledTimes(2);
+  });
+
+  test("refreshes summary and the visible ledger through one Wallet invalidation", async () => {
+    const client: PortalWalletClient = {
+      getSummary: vi.fn(async () => ACTIVE_SUMMARY),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const { result } = renderHook(() => usePortalWalletReadModel({
+      client,
+      sessionRef: "session_wallet_001",
+      sessionGeneration: 1,
+      loadLedger: true,
+      onSessionInvalid: vi.fn()
+    }));
+
+    await waitFor(() => {
+      expect(result.current.summary.phase).toBe("ready");
+      expect(result.current.ledger.phase).toBe("empty");
+    });
+    expect(client.getSummary).toHaveBeenCalledTimes(1);
+    expect(client.listLedger).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current.refreshWallet();
+    });
+    await waitFor(() => {
+      expect(client.getSummary).toHaveBeenCalledTimes(2);
+      expect(client.listLedger).toHaveBeenCalledTimes(2);
+    });
   });
 
   test("ignores old generation results and stale session-invalid failures", async () => {

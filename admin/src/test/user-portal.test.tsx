@@ -46,6 +46,10 @@ import {
   type PortalWalletLedgerEntry,
   type PortalWalletSummary
 } from "../features/user-portal/wallet";
+import type {
+  PortalCoinCommerceClient,
+  PortalCoinOrder
+} from "../features/user-portal/commerce";
 
 afterEach(() => {
   cleanup();
@@ -538,8 +542,64 @@ function paymentOrder(
   };
 }
 
+function marketplaceOrder(): PortalCoinOrder {
+  return {
+    orderRef: "commerce_order_001",
+    offer: {
+      offerRef: "offer_marketplace_001",
+      offerVersionRef: "offer_version_marketplace_001",
+      category: "plan",
+      title: { zh: "商城测试商品", en: "Marketplace test offer" },
+      summary: { zh: "统一订单列表测试商品", en: "Unified order list test offer" },
+      importantNotices: {
+        zh: ["仅用于订单中心测试"],
+        en: ["Order-center fixture only"]
+      },
+      referencePrice: { currency: "CNY", amountMinor: 2_000 },
+      acceptedCoinTypes: ["paid_coins"],
+      delivery: {
+        kind: "subscription_plan",
+        durationDays: 30,
+        monthlyTrafficGb: 50,
+        trafficGb: null,
+        neverExpires: false,
+        discountBasisPoints: 0
+      }
+    },
+    amountUnits: 20,
+    allocation: [{ coinType: "paid_coins", amountUnits: 20 }],
+    paymentStatus: "captured",
+    cancelUntil: "2026-07-28T12:30:00.000Z",
+    fulfillment: { status: "delivered", safeCode: null },
+    createdAt: "2026-07-28T12:00:00.000Z",
+    updatedAt: "2026-07-28T12:01:00.000Z"
+  };
+}
+
+async function authenticatedSessionWithRef(input: PortalAuthInput): Promise<PortalSession> {
+  return {
+    status: "authenticated_preview",
+    sessionRef: "portal_session_orders_test",
+    userRef: "user_safe_ref",
+    displayName: input.mode === "token"
+      ? "user_safe_ref"
+      : input.mode === "email"
+        ? input.email
+        : input.accountId,
+    authMode: input.mode,
+    registeredAt: "2026-05-31T00:00:00.000Z",
+    safety: {
+      noAdminApi: true,
+      noPublicAuthActivated: true,
+      noRawPasswordReturned: true
+    }
+  };
+}
+
 function portalClientWithPaymentOrders(
-  paymentOrders: PortalPaymentOrder[]
+  paymentOrders: PortalPaymentOrder[],
+  stateOverrides: Partial<Omit<PortalUserState, "userRef">> = {},
+  clientOverrides: Partial<UserPortalClient> = {}
 ): UserPortalClient {
   return portalClient({
     fetchCurrentState: vi.fn(async (input: {
@@ -561,8 +621,10 @@ function portalClientWithPaymentOrders(
         noAdminApi: true,
         noPaymentActivation: true,
         noPublicAdmin: true
-      }
-    }))
+      },
+      ...stateOverrides
+    })),
+    ...clientOverrides
   });
 }
 
@@ -2754,24 +2816,99 @@ describe("user portal product surface", () => {
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
 
-  test("Orders reuses historical records, short-circuits legacy payment detail, and keeps Personal Center order-free", async () => {
-    const client = portalClientWithPaymentOrders([paymentOrder()]);
+  test("keeps Orders to one heading, one type filter, and one list", async () => {
+    const commerceClient = {
+      listOrders: vi.fn(async () => ({ orders: [marketplaceOrder()], nextCursor: null }))
+    } as unknown as PortalCoinCommerceClient;
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({ planLabel: "遗留套餐测试" })
+    ], {
+      subscriptionRequest: activeSubscriptionRequest({
+        historySummary: [{
+          recordRef: "service_record_001",
+          label: "订阅服务测试",
+          status: "已开通",
+          occurredAt: "2026-07-28T11:00:00.000Z"
+        }]
+      }),
+      historySummary: [{
+        recordRef: "service_record_001",
+        label: "订阅服务测试",
+        status: "已开通",
+        occurredAt: "2026-07-28T11:00:00.000Z"
+      }]
+    }, {
+      authenticate: vi.fn(authenticatedSessionWithRef),
+      commerce: commerceClient
+    });
     render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
     openPortalOrders();
 
-    expect(await screen.findByRole("tab", { name: "Coins 充值订单" })).toBeInTheDocument();
-    expect(screen.getByText("充值订单数据源尚未接入")).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "订单列表" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "订单类型" })).toBeInTheDocument();
+    expect(screen.getAllByRole("table", { name: "订单列表" })).toHaveLength(1);
+    const ordersRegion = screen.getByRole("region", { name: "订单记录" });
+    expect(within(ordersRegion).queryByRole("heading")).toBeNull();
+    expect(document.querySelector(".portal-v2-page-title h1")).not.toBeNull();
+    expect(document.querySelector(".portal-v2-mobile-title h1")).not.toHaveAttribute("aria-hidden");
+    expect(screen.queryByText("订单记录")).toBeNull();
+    expect(screen.queryByText("历史订单")).toBeNull();
+    expect(screen.queryByText("充值订单数据源尚未接入")).toBeNull();
+  });
+
+  test("keeps marketplace, legacy payment, and service rows in the shared Orders list", async () => {
+    const commerceClient = {
+      listOrders: vi.fn(async () => ({ orders: [marketplaceOrder()], nextCursor: null }))
+    } as unknown as PortalCoinCommerceClient;
+    const client = portalClientWithPaymentOrders([
+      paymentOrder({ planLabel: "遗留套餐测试" })
+    ], {
+      subscriptionRequest: activeSubscriptionRequest({
+        historySummary: [{
+          recordRef: "service_record_001",
+          label: "订阅服务测试",
+          status: "已开通",
+          occurredAt: "2026-07-28T11:00:00.000Z"
+        }]
+      }),
+      historySummary: [{
+        recordRef: "service_record_001",
+        label: "订阅服务测试",
+        status: "已开通",
+        occurredAt: "2026-07-28T11:00:00.000Z"
+      }]
+    }, {
+      authenticate: vi.fn(authenticatedSessionWithRef),
+      commerce: commerceClient
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalOrders();
+
+    const orderTable = await screen.findByRole("table", { name: "订单列表" });
+    expect(await within(orderTable).findByText("商城消费")).toBeInTheDocument();
+    expect(within(orderTable).getByText("商城测试商品")).toBeInTheDocument();
+    expect(within(orderTable).getByText("旧套餐付款")).toBeInTheDocument();
+    expect(within(orderTable).getByText("遗留套餐测试")).toBeInTheDocument();
+    expect(within(orderTable).getByText("服务记录")).toBeInTheDocument();
+    expect(within(orderTable).getByText("订阅服务测试")).toBeInTheDocument();
+
+    fireEvent.click(within(orderTable).getByRole("button", { name: "查看" }));
+    expect(within(orderTable).getByText("客户端")).toBeInTheDocument();
+  });
+
+  test("keeps direct-payment return and Personal Center free of order records", async () => {
+    const client = portalClientWithPaymentOrders([paymentOrder()]);
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    openPortalOrders();
     fireEvent.click(screen.getByRole("button", { name: "去付款" }));
     expect(await screen.findByRole("button", { name: "返回订单" })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Coins 充值订单" })).toBeNull();
-    expect(screen.queryByText("Coins 消费订单")).toBeNull();
-
     fireEvent.click(screen.getByRole("button", { name: "返回订单" }));
-    expect(await screen.findByRole("tab", { name: "Coins 充值订单" })).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "订单列表" })).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "订单列表" })).toBeInTheDocument();
 
     openPortalProfile();
     expect(screen.queryByRole("table", { name: "订单列表" })).toBeNull();
@@ -2816,7 +2953,7 @@ describe("user portal product surface", () => {
     const acquisitionButtons = within(orders).getAllByRole("button", {
       name: "前往商城"
     });
-    expect(acquisitionButtons).toHaveLength(2);
+    expect(acquisitionButtons).toHaveLength(1);
     fireEvent.click(acquisitionButtons[0]);
 
     expectMarketplaceWithoutLegacyCheckout(client);
@@ -2830,7 +2967,7 @@ describe("user portal product surface", () => {
 
     await enterPortal();
     openPortalOrders();
-    fireEvent.click(screen.getByRole("button", { name: "去付款" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看" }));
     expect(screen.getByText("请查看现有订单状态或前往商城。")).not.toBeNull();
     expect(screen.queryByText("可以重试同一订单，或返回个人与安全后重新选择套餐。")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "前往商城" }));

@@ -48,6 +48,7 @@ import {
 } from "./portal-commerce-panels";
 import { PORTAL_COIN_ORDER_STORAGE_KEY } from "./commerce";
 import { PortalOrdersPanel } from "./orders/portal-orders-panel";
+import type { PortalServiceOrder } from "./orders/portal-order-center-model";
 import { PortalPersonalCenterPanel } from "./profile/portal-personal-center-panel";
 import {
   PortalWalletPanel,
@@ -105,18 +106,7 @@ type SubscriptionLifecycle = "none" | "pending" | "active" | "expired" | "disabl
 type OrderStatusFilter = "all" | "active" | "pending" | "disabled" | "expired";
 type OrderSort = "newest" | "oldest" | "expires";
 type PaymentFlowStep = "checkout" | "processing" | "success" | "failed";
-type PortalOrderRow = {
-  requestRef: string;
-  request: PortalSubscriptionRequest;
-  createdAt: string;
-  planId: PortalPlanId;
-  durationDays: number;
-  quantity: number;
-  clientTarget: PortalClientId;
-  status: Exclude<SubscriptionLifecycle, "none">;
-  expiresAt: string;
-  subscriptionUrl?: string;
-};
+type PortalOrderRow = PortalServiceOrder;
 
 const plans: PortalPlan[] = [
   {
@@ -1113,6 +1103,7 @@ export function UserPortalPage({
   }, [authCopy.documentTitle, authCopy.shellDocumentTitle, portalSession]);
 
   useEffect(() => {
+    if (portalSession) return;
     setRechargeDialogOpen(false);
     setSelectedRechargeAmount(null);
     rechargeReturnFocusRef.current = null;
@@ -1534,6 +1525,7 @@ export function UserPortalPage({
 
   function viewOrder(order: PortalOrderRow) {
     setActivePaymentOrderRef(null);
+    setLastPaymentOrderRef(null);
     setSelectedOrderRef(order.requestRef);
     setSelectedPlanId(order.planId);
     setClientTarget(order.clientTarget);
@@ -1993,7 +1985,7 @@ export function UserPortalPage({
     && (!authenticatorBound || !passkeyExported)
     && !authenticatorEnrollment
   );
-  const renderHistoricalOrders = () => (
+  const renderLegacyPaymentFlow = () => (
     <SubscriptionManager
       activePaymentOrder={activePaymentOrder}
       actionError={actionError}
@@ -2205,6 +2197,8 @@ export function UserPortalPage({
               commerceClient={portalClient.commerce ?? null}
               locale={locale}
               onOpenRecharge={openRechargeDialog}
+              onWalletMutation={walletModel.refreshWallet}
+              sessionGeneration={sessionGeneration}
               sessionRef={portalSession.sessionRef ?? null}
               theme={theme}
             />
@@ -2245,13 +2239,21 @@ export function UserPortalPage({
               locale={locale}
             />
           ) : null}
-          {activeView === "orders" && paymentFlowActive ? renderHistoricalOrders() : null}
+          {activeView === "orders" && paymentFlowActive ? renderLegacyPaymentFlow() : null}
           {activeView === "orders" && !paymentFlowActive ? (
             <PortalOrdersPanel
               commerceClient={portalClient.commerce ?? null}
+              legacyPaymentOrders={paymentOrders}
               locale={locale}
+              onOpenLegacyPaymentOrder={openPaymentOrder}
+              onOpenMarketplace={openMarketplace}
+              onOpenServiceOrder={viewOrder}
+              onOrderSearchChange={setOrderSearch}
               onSessionInvalid={logout}
-              renderHistoricalOrders={renderHistoricalOrders}
+              orderSearch={orderSearch}
+              selectedLegacyPaymentOrderRef={lastPaymentOrderRef}
+              selectedServiceOrderRef={selectedOrderRef}
+              serviceOrders={orderRows}
               sessionGeneration={sessionGeneration}
               sessionRef={portalSession.sessionRef ?? null}
             />
