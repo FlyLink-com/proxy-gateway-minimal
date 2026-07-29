@@ -15,6 +15,12 @@ import {
   type PortalCoinOrder,
   type PortalCoinQuote
 } from "../features/user-portal/commerce";
+import {
+  CoinsPaymentStatusCard
+} from "../features/user-portal/commerce/components/coins-payment-status-card";
+import type {
+  PortalCoinOrderUiState
+} from "../features/user-portal/commerce/use-coins-purchase-flow";
 
 const offer: PortalCoinOffer = {
   offerRef: "offer_basic",
@@ -390,9 +396,17 @@ describe("Portal Coins dialogs", () => {
     });
     const status = within(dialog).getByText("Coins reserved");
     expect(status).toHaveAttribute("aria-live", "polite");
-    const spinner = dialog.querySelector(".portal-coins-status-spinner");
+    expect(status.parentElement).toHaveClass(
+      "portal-coins-payment-status__status"
+    );
+    const spinner = dialog.querySelector<HTMLElement>(
+      ".portal-coins-status-spinner"
+    );
     expect(spinner).toHaveAttribute("aria-hidden", "true");
     expect(spinner).toHaveAttribute("data-motion", "reduced");
+    expect(spinner?.tagName).toBe("svg");
+    expect(spinner).toHaveClass("lucide-loader-circle");
+    expect(status.parentElement).toContainElement(spinner);
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(onRequestClose).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
@@ -400,5 +414,114 @@ describe("Portal Coins dialogs", () => {
       name: "Cancel Order"
     }));
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  test("uses the frozen pending indicator, terminal marker, and action availability for all eight order states", () => {
+    const stateCases = {
+      reserved: {
+        order: heldOrder,
+        pending: true
+      },
+      settling: {
+        order: { ...heldOrder, paymentStatus: "capture_pending" },
+        pending: true
+      },
+      delivering: {
+        order: {
+          ...heldOrder,
+          paymentStatus: "captured",
+          fulfillment: { status: "pending", safeCode: null }
+        },
+        pending: true
+      },
+      succeeded: {
+        order: {
+          ...heldOrder,
+          paymentStatus: "captured",
+          fulfillment: { status: "delivered", safeCode: null }
+        },
+        pending: false
+      },
+      delivery_failed: {
+        order: {
+          ...heldOrder,
+          paymentStatus: "captured",
+          fulfillment: {
+            status: "failed",
+            safeCode: "fulfillment_handler_failed"
+          }
+        },
+        pending: false
+      },
+      cancelled: {
+        order: { ...heldOrder, paymentStatus: "cancelled" },
+        pending: false
+      },
+      capture_failed: {
+        order: { ...heldOrder, paymentStatus: "capture_failed" },
+        pending: false
+      },
+      reconciliation_required: {
+        order: {
+          ...heldOrder,
+          paymentStatus: "reconciliation_required"
+        },
+        pending: false
+      }
+    } satisfies Record<
+      PortalCoinOrderUiState,
+      { order: PortalCoinOrder; pending: boolean }
+    >;
+
+    Object.entries(stateCases).forEach(([
+      expectedState,
+      { order, pending }
+    ]) => {
+      const view = render(createElement(CoinsPaymentStatusCard, {
+        cancelling: false,
+        errorCode: null,
+        locale: "en",
+        onCancel: vi.fn(),
+        onRefresh: vi.fn(),
+        order
+      }));
+      const card = screen.getByRole("region", {
+        name: "Coins Order status"
+      });
+      expect(card).toHaveClass(
+        `portal-coins-payment-status--${expectedState}`
+      );
+      expect(card.querySelector(".portal-coins-payment-status__status"))
+        .toBeInTheDocument();
+      const spinner = card.querySelector(".portal-coins-status-spinner");
+      const marker = card.querySelector(".portal-coins-status-marker");
+      if (pending) {
+        expect(spinner).toBeInTheDocument();
+        expect(spinner).toHaveClass("lucide-loader-circle");
+        expect(marker).not.toBeInTheDocument();
+      } else {
+        expect(spinner).not.toBeInTheDocument();
+        expect(marker).toBeInTheDocument();
+        expect(marker).toHaveClass("lucide-circle");
+        expect(marker).toHaveAttribute("fill", "none");
+      }
+      const cancel = within(card).queryByRole("button", {
+        name: "Cancel Order"
+      });
+      if (expectedState === "reserved") {
+        expect(cancel).toBeInTheDocument();
+        expect(cancel).toHaveClass(
+          "portal-coins-payment-status__action--quiet"
+        );
+      } else {
+        expect(cancel).not.toBeInTheDocument();
+      }
+      expect(within(card).getByRole("button", {
+        name: "Refresh Order"
+      })).toHaveClass(
+        "portal-coins-payment-status__action--secondary"
+      );
+      view.unmount();
+    });
   });
 });

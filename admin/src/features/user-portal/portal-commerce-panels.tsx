@@ -5,6 +5,7 @@ import {
   useState,
   type MouseEvent
 } from "react";
+import { Circle, LoaderCircle } from "lucide-react";
 import {
   CoinsPurchaseDialog,
   isPortalCoinOrderTerminal,
@@ -61,6 +62,27 @@ function offerSummary(offer: PortalCoinOffer, locale: PortalCommerceLocale) {
 
 function referencePrice(offer: PortalCoinOffer) {
   return `CNY ${(offer.referencePrice.amountMinor / 100).toFixed(2)}`;
+}
+
+function MarketplaceNoticeIndicator({
+  state
+}: {
+  state: "loading" | "empty" | "unavailable" | "error";
+}) {
+  if (state === "loading") {
+    return (
+      <LoaderCircle
+        aria-hidden="true"
+        className="portal-notice__indicator portal-notice__indicator--loading"
+      />
+    );
+  }
+  return (
+    <Circle
+      aria-hidden="true"
+      className="portal-notice__indicator portal-notice__marker"
+    />
+  );
 }
 
 function safeCommerceFailure(error: unknown): {
@@ -398,7 +420,13 @@ export function MarketplacePanel({
       aria-busy={catalog.status === "loading" || productBusy || undefined}
     >
       {catalog.status === "unavailable" ? (
-        <div className="portal-marketplace-state" role="status">
+        <div
+          aria-live="polite"
+          className="portal-marketplace-state"
+          data-state="unavailable"
+          role="status"
+        >
+          <MarketplaceNoticeIndicator state="unavailable" />
           <p>
             {zh
               ? "商城目录暂不可用；当前客户端未提供服务端商城能力。"
@@ -407,12 +435,26 @@ export function MarketplacePanel({
         </div>
       ) : null}
       {catalog.status === "loading" ? (
-        <div className="portal-marketplace-state" role="status" aria-live="polite">
-          {zh ? "正在加载商城目录…" : "Loading Marketplace catalog…"}
+        <div
+          aria-live="polite"
+          className="portal-marketplace-state"
+          data-state="loading"
+          role="status"
+        >
+          <MarketplaceNoticeIndicator state="loading" />
+          <span>
+            {zh ? "正在加载商城目录…" : "Loading Marketplace catalog…"}
+          </span>
         </div>
       ) : null}
       {catalog.status === "error" ? (
-        <div className="portal-marketplace-state" role="alert">
+        <div
+          aria-live="assertive"
+          className="portal-marketplace-state"
+          data-state="error"
+          role="alert"
+        >
+          <MarketplaceNoticeIndicator state="error" />
           <p>{safeCommerceErrorText(catalog.errorCode, locale)}</p>
           {catalog.retryable ? (
             <button type="button" onClick={retryCatalog}>
@@ -422,8 +464,16 @@ export function MarketplacePanel({
         </div>
       ) : null}
       {catalog.status === "ready" && catalog.offers.length === 0 ? (
-        <div className="portal-marketplace-state" role="status">
-          {zh ? "当前没有可用商品。" : "No products are currently available."}
+        <div
+          aria-live="polite"
+          className="portal-marketplace-state"
+          data-state="empty"
+          role="status"
+        >
+          <MarketplaceNoticeIndicator state="empty" />
+          <span>
+            {zh ? "当前没有可用商品。" : "No products are currently available."}
+          </span>
         </div>
       ) : null}
       {catalog.status === "ready" && planOffers.length > 0 ? (
@@ -493,24 +543,34 @@ export function MarketplacePanel({
         </section>
       ) : null}
       {productBusy && !purchaseFlow.quote && !purchaseFlow.order ? (
-        <p
+        <div
           aria-live="polite"
           className="portal-marketplace-flow-state"
+          data-state="loading"
           role="status"
         >
-          {purchaseFlow.phase === "loading_preview"
-            ? zh
-              ? "正在获取服务端报价…"
-              : "Loading the server Quote…"
-            : zh
-              ? "正在加载商品详情…"
-              : "Loading product details…"}
-        </p>
+          <MarketplaceNoticeIndicator state="loading" />
+          <span>
+            {purchaseFlow.phase === "loading_preview"
+              ? zh
+                ? "正在获取服务端报价…"
+                : "Loading the server Quote…"
+              : zh
+                ? "正在加载商品详情…"
+                : "Loading product details…"}
+          </span>
+        </div>
       ) : null}
       {purchaseFlow.errorCode
         && !purchaseFlow.quote
         && !purchaseFlow.order ? (
-          <div className="portal-marketplace-flow-state" role="alert">
+          <div
+            aria-live="assertive"
+            className="portal-marketplace-flow-state"
+            data-state="error"
+            role="alert"
+          >
+            <MarketplaceNoticeIndicator state="error" />
             <p>{safeCommerceErrorText(purchaseFlow.errorCode, locale)}</p>
             {productIntent && (
               purchaseFlow.errorRetryable

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Circle, LoaderCircle } from "lucide-react";
 import type {
   PortalCoinCommerceClientErrorCode,
   PortalCoinFulfillmentSafeCode,
@@ -122,29 +123,45 @@ export function CoinsPaymentStatusCard({
       aria-busy={cancelling || undefined}
       className={`portal-coins-payment-status portal-coins-payment-status--${state}`}
     >
-      <p aria-live="polite">
-        {cancelling
-          ? localized(locale, "正在取消订单…", "Cancelling the Order…")
-          : stateText(state, locale)}
-      </p>
-      {pending || cancelling ? (
-        <span
-          aria-hidden="true"
-          className="portal-coins-status-spinner"
-          data-motion={reducedMotion ? "reduced" : "full"}
-        />
-      ) : null}
+      <div className="portal-coins-payment-status__status">
+        <p aria-live="polite">
+          {cancelling
+            ? localized(locale, "正在取消订单…", "Cancelling the Order…")
+            : stateText(state, locale)}
+        </p>
+        {pending || cancelling ? (
+          <LoaderCircle
+            aria-hidden="true"
+            className="portal-coins-status-spinner"
+            data-motion={reducedMotion ? "reduced" : "full"}
+          />
+        ) : (
+          <Circle
+            aria-hidden="true"
+            className="portal-coins-status-marker"
+          />
+        )}
+      </div>
       {safeFailure ? <p>{safeFailure}</p> : null}
       {errorCode ? (
         <p role="alert">{commerceErrorText(errorCode, locale)}</p>
       ) : null}
       <div className="portal-coins-payment-status__actions">
         {state === "reserved" && !cancelling ? (
-          <button type="button" onClick={onCancel}>
+          <button
+            className="portal-coins-payment-status__action--quiet"
+            type="button"
+            onClick={onCancel}
+          >
             {localized(locale, "取消订单", "Cancel Order")}
           </button>
         ) : null}
-        <button disabled={cancelling} type="button" onClick={onRefresh}>
+        <button
+          className="portal-coins-payment-status__action--secondary"
+          disabled={cancelling}
+          type="button"
+          onClick={onRefresh}
+        >
           {localized(locale, "刷新订单", "Refresh Order")}
         </button>
       </div>

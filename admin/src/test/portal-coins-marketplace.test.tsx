@@ -392,20 +392,36 @@ describe("Portal server-backed Marketplace", () => {
     fireEvent.click(within(loadingNavigation).getByRole("button", {
       name: "商城"
     }));
-    expect(screen.getByRole("status")).toHaveTextContent("正在加载商城目录");
+    const loadingNotice = screen.getByRole("status");
+    expect(loadingNotice).toHaveTextContent("正在加载商城目录");
+    expect(loadingNotice).toHaveAttribute("data-state", "loading");
+    expect(loadingNotice.querySelector(
+      ".portal-notice__indicator--loading[aria-hidden=\"true\"]"
+    )).toBeInTheDocument();
     await act(async () => {
       pendingCatalog.resolve([]);
       await pendingCatalog.promise;
     });
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    const emptyNotice = await screen.findByRole("status");
+    expect(emptyNotice).toHaveTextContent(
       "当前没有可用商品"
     );
+    expect(emptyNotice).toHaveAttribute("data-state", "empty");
+    expect(emptyNotice).toHaveAttribute("aria-live", "polite");
+    const emptyMarker = emptyNotice.querySelector(
+      ".portal-notice__marker[aria-hidden=\"true\"]"
+    );
+    expect(emptyMarker).toBeInTheDocument();
+    expect(emptyMarker).toHaveAttribute("fill", "none");
     loadingView.unmount();
 
     await openMarketplace(createLocalUserPortalClient());
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    const unavailableNotice = await screen.findByRole("status");
+    expect(unavailableNotice).toHaveTextContent(
       "当前客户端未提供服务端商城能力"
     );
+    expect(unavailableNotice).toHaveAttribute("data-state", "unavailable");
+    expect(unavailableNotice).toHaveAttribute("aria-live", "polite");
     expect(screen.queryByText("服务端基础套餐")).not.toBeInTheDocument();
     cleanup();
 
@@ -419,6 +435,13 @@ describe("Portal server-backed Marketplace", () => {
     })));
     const authAlert = await screen.findByRole("alert");
     expect(authAlert).toHaveTextContent("商城会话已失效，请重新登录");
+    expect(authAlert).toHaveAttribute("data-state", "error");
+    expect(authAlert).toHaveAttribute("aria-live", "assertive");
+    const authMarker = authAlert.querySelector(
+      ".portal-notice__marker[aria-hidden=\"true\"]"
+    );
+    expect(authMarker).toBeInTheDocument();
+    expect(authMarker).toHaveAttribute("fill", "none");
     expect(within(authAlert).queryByRole("button", { name: "重试" }))
       .not.toBeInTheDocument();
     cleanup();
@@ -527,17 +550,24 @@ describe("Portal server-backed Marketplace", () => {
     });
     fireEvent.click(purchaseAction);
 
-    expect(screen.getByRole("status")).toHaveTextContent(
+    const detailLoadingNotice = screen.getByRole("status");
+    expect(detailLoadingNotice).toHaveTextContent(
       "正在加载商品详情"
     );
+    expect(detailLoadingNotice).toHaveAttribute("data-state", "loading");
+    expect(detailLoadingNotice.querySelector(
+      ".portal-notice__indicator--loading[aria-hidden=\"true\"]"
+    )).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await act(async () => {
       detail.resolve(planOffer);
       await detail.promise;
     });
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    const quoteLoadingNotice = await screen.findByRole("status");
+    expect(quoteLoadingNotice).toHaveTextContent(
       "正在获取服务端报价"
     );
+    expect(quoteLoadingNotice).toHaveAttribute("data-state", "loading");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await act(async () => {
       preview.reject(new PortalCoinCommerceClientError(
@@ -546,9 +576,12 @@ describe("Portal server-backed Marketplace", () => {
       ));
       await preview.promise.catch(() => undefined);
     });
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    const flowErrorNotice = await screen.findByRole("alert");
+    expect(flowErrorNotice).toHaveTextContent(
       "Coins 购买流程暂时不可用"
     );
+    expect(flowErrorNotice).toHaveAttribute("data-state", "error");
+    expect(flowErrorNotice).toHaveAttribute("aria-live", "assertive");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 

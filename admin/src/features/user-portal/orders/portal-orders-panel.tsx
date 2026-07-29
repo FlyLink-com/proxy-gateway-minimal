@@ -7,6 +7,7 @@ import {
   useRef,
   useState
 } from "react";
+import { Search } from "lucide-react";
 
 import {
   PortalCoinCommerceClientError,
@@ -691,14 +692,20 @@ export function PortalOrdersPanel({
       </div>
 
       <div className="portal-order-toolbar">
-        <label>
+        <label className="portal-order-search-control">
           <span>{copy(locale, "搜索订单", "Search orders")}</span>
-          <input
-            className="portal-order-search-input"
-            value={orderSearch}
-            onChange={(event) => onOrderSearchChange(event.target.value)}
-            placeholder={copy(locale, "订单 / 商品或服务 / 状态", "Order / product or service / status")}
-          />
+          <span
+            className="portal-order-search-field"
+            data-state={orderSearch.length === 0 ? "empty" : "filled"}
+          >
+            <Search aria-hidden="true" />
+            <input
+              className="portal-order-search-input"
+              value={orderSearch}
+              onChange={(event) => onOrderSearchChange(event.target.value)}
+              placeholder={copy(locale, "订单 / 商品或服务 / 状态", "Order / product or service / status")}
+            />
+          </span>
         </label>
         <label>
           <span>{copy(locale, "状态", "Status")}</span>

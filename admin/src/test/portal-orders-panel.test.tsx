@@ -327,6 +327,40 @@ describe("PortalOrdersPanel", () => {
     expect(screen.queryByRole("heading", { name: "历史订单" })).toBeNull();
   });
 
+  test("keeps the labelled Orders search contract while composing the frozen Empty and Filled field", () => {
+    const onOrderSearchChange = vi.fn();
+    const props: DirectPanelProps = {
+      locale: "en",
+      commerceClient: null,
+      sessionRef: null,
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      orderSearch: "",
+      onOrderSearchChange
+    };
+    const view = render(PortalOrdersPanel(props));
+
+    const input = screen.getByRole("textbox", { name: "Search orders" });
+    expect(input).not.toHaveAttribute("role", "searchbox");
+    const field = input.parentElement;
+    expect(field).toHaveClass("portal-order-search-field");
+    expect(field?.tagName).toBe("SPAN");
+    expect(field).toHaveAttribute("data-state", "empty");
+    const icon = field?.firstElementChild;
+    expect(icon?.tagName).toBe("svg");
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+    fireEvent.change(input, { target: { value: "order_001" } });
+    expect(onOrderSearchChange).toHaveBeenCalledWith("order_001");
+
+    view.rerender(PortalOrdersPanel({
+      ...props,
+      orderSearch: "order_001"
+    }));
+    expect(screen.getByRole("textbox", {
+      name: "Search orders"
+    }).parentElement).toHaveAttribute("data-state", "filled");
+  });
+
   test("defines every scoped Orders color token used by the component styles", () => {
     const css = readFileSync("src/styles/portal-static-preserve/user-portal-commerce.css", "utf8");
     const used = [...css.matchAll(/var\((--portal-orders-[a-z-]+)\)/g)].map((match) => match[1]);
