@@ -12,9 +12,5 @@ export function authorizeAdmin(input = {}) {
     };
   }
 
-  return {
-    allowed: false,
-    capability,
-    reasonCode: "capability_missing"
-  };
+  return undefined;
 }
