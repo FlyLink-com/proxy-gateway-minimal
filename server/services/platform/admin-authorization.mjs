@@ -14,8 +14,9 @@ const SUPER_ADMIN_READ_CAPABILITIES = Object.freeze([
 ]);
 
 export function createAdminPrincipal(input = {}) {
-  const session = input.session;
-  const role = String(input.role || "").trim();
+  const context = input && typeof input === "object" ? input : {};
+  const session = context.session;
+  const role = String(context.role || "").trim();
 
   if (
     !session ||
@@ -49,8 +50,9 @@ export function createAdminPrincipal(input = {}) {
 }
 
 export function authorizeAdmin(input = {}) {
-  const capability = String(input.capability || "").trim();
-  if (!input.principal) {
+  const context = input && typeof input === "object" ? input : {};
+  const capability = String(context.capability || "").trim();
+  if (!context.principal) {
     return {
       allowed: false,
       capability,
@@ -58,8 +60,8 @@ export function authorizeAdmin(input = {}) {
     };
   }
 
-  const capabilities = Array.isArray(input.principal.capabilities)
-    ? input.principal.capabilities
+  const capabilities = Array.isArray(context.principal.capabilities)
+    ? context.principal.capabilities
     : [];
 
   if (capability && capabilities.includes(capability)) {
