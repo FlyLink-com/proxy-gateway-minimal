@@ -48,3 +48,44 @@ test("Operations Read Envelope creates the exact authorized v1 response", () => 
   });
   assert.notEqual(envelope.data, sourceData);
 });
+
+const validEnvelopeInput = {
+  schemaVersion: "operations-overview-read-envelope/v1",
+  freshness: "fresh",
+  sourceState: "implemented_source",
+  data: { total: 0 },
+  warnings: [],
+  access: {
+    allowed: true,
+    capability: "operations.read",
+    reasonCode: "allowed"
+  }
+};
+
+for (const [label, override] of [
+  ["blank schema", { schemaVersion: "" }],
+  ["unsupported freshness", { freshness: "disconnected" }],
+  ["unsupported source state", { sourceState: "deployed" }],
+  ["array data", { data: [] }],
+  ["free-form warning", { warnings: [{ code: "source_stale", message: "raw" }] }],
+  ["denied access", { access: { allowed: false, capability: "operations.read", reasonCode: "capability_missing" } }]
+]) {
+  test(`Operations Read Envelope rejects ${label}`, () => {
+    assert.throws(
+      () => createOperationsReadEnvelope(
+        { ...validEnvelopeInput, ...override },
+        { nowFn: () => new Date("2026-07-31T00:00:00.000Z") }
+      ),
+      (error) => error.code === "operations_read_contract_error"
+    );
+  });
+}
+
+test("Operations Read Envelope rejects an invalid generation time", () => {
+  assert.throws(
+    () => createOperationsReadEnvelope(validEnvelopeInput, {
+      nowFn: () => new Date("invalid")
+    }),
+    (error) => error.code === "operations_read_contract_error"
+  );
+});
