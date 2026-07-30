@@ -269,17 +269,28 @@ test("Operations Read Envelope requires warning's sole own key to be code", () =
 });
 
 
-test("Operations Overview Projector returns only allowlisted counts", () => {
-  const source = {
+function validOperationsOverviewSource() {
+  return {
     ok: true,
     total: 12,
     active: 8,
     expiring: 2,
-    disabledOrExpired: 2,
+    disabled: 1,
+    expired: 1,
+    counts: {
+      total: 12,
+      active: 8,
+      expiring: 2,
+      disabledOrExpired: 2
+    },
     nodes: [{ name: "node-secret" }],
     distribution: { "credential-secret": 1 },
     token: "must-not-cross"
   };
+}
+
+test("Operations Overview Projector returns only allowlisted Owner counts", () => {
+  const source = validOperationsOverviewSource();
 
   const projected = projectOperationsOverviewReadModel(source);
 
@@ -290,9 +301,12 @@ test("Operations Overview Projector returns only allowlisted counts", () => {
     disabledOrExpired: 2
   });
   assert.notEqual(projected, source);
-  assert.doesNotMatch(JSON.stringify(projected), /node-secret|credential-secret|must-not-cross/);
+  assert.notEqual(projected, source.counts);
+  assert.doesNotMatch(
+    JSON.stringify(projected),
+    /node-secret|credential-secret|must-not-cross/
+  );
 });
-
 
 function assertOperationsReadContractError(run) {
   assert.throws(run, (error) => {
@@ -302,69 +316,157 @@ function assertOperationsReadContractError(run) {
   });
 }
 
+test("Operations Overview Projector rejects a missing total count", () => {
+  const source = validOperationsOverviewSource();
+  delete source.counts.total;
+
+  assertOperationsReadContractError(
+    () => projectOperationsOverviewReadModel(source)
+  );
+});
+
 for (const [label, field, value] of [
-  ["missing", "total", undefined],
   ["negative", "active", -1],
   ["fractional", "expiring", 1.5],
   ["string", "disabledOrExpired", "2"],
   ["null", "total", null]
 ]) {
   test(`Operations Overview Projector rejects a ${label} ${field} count`, () => {
-    const source = {
-      total: 0,
-      active: 0,
-      expiring: 0,
-      disabledOrExpired: 0,
-      [field]: value
-    };
+    const source = validOperationsOverviewSource();
+    source.counts[field] = value;
+
     assertOperationsReadContractError(
       () => projectOperationsOverviewReadModel(source)
     );
   });
 }
 
-test("Operations Overview Projector snapshots count getters once", () => {
-  const source = {};
-  const reads = {};
-  for (const [field, value] of [
-    ["total", 12],
-    ["active", 8],
-    ["expiring", 2],
-    ["disabledOrExpired", 2]
-  ]) {
-    reads[field] = 0;
-    Object.defineProperty(source, field, {
-      enumerable: true,
-      get() {
-        reads[field] += 1;
-        return reads[field] === 1 ? value : "caller-controlled";
-      }
-    });
-  }
+test("Operations Overview Projector rejects a missing counts object", () => {
+  const source = validOperationsOverviewSource();
+  delete source.counts;
 
-  assert.deepEqual(projectOperationsOverviewReadModel(source), {
-    total: 12,
-    active: 8,
-    expiring: 2,
-    disabledOrExpired: 2
-  });
-  assert.deepEqual(reads, {
-    total: 1,
-    active: 1,
-    expiring: 1,
-    disabledOrExpired: 1
-  });
+  assertOperationsReadContractError(
+    () => projectOperationsOverviewReadModel(source)
+  );
 });
 
-test("Operations Overview Projector normalizes caller failures without detail", () => {
-  const source = {
-    active: 8,
-    expiring: 2,
-    disabledOrExpired: 2
-  };
-  Object.defineProperty(source, "total", {
+test("Operations Overview Projector rejects an inherited counts object", () => {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "counts"
+  );
+  const source = validOperationsOverviewSource();
+  const inheritedCounts = source.counts;
+  delete source.counts;
+
+  try {
+    Object.defineProperty(Object.prototype, "counts", {
+      value: inheritedCounts,
+      writable: true,
+      enumerable: true,
+      configurable: true
+    });
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(source)
+    );
+  } finally {
+    if (originalDescriptor) {
+      Object.defineProperty(Object.prototype, "counts", originalDescriptor);
+    } else {
+      delete Object.prototype.counts;
+    }
+  }
+});
+
+test("Operations Overview Projector rejects a counts accessor without reading it", () => {
+  const source = validOperationsOverviewSource();
+  let reads = 0;
+  Object.defineProperty(source, "counts", {
     enumerable: true,
+    configurable: true,
     get() {
+      reads += 1;
+      return validOperationsOverviewSource().counts;
+    }
+  });
+
+  assertOperationsReadContractError(
+    () => projectOperationsOverviewReadModel(source)
+  );
+  assert.equal(reads, 0);
+});
+
+for (const [label, counts] of [
+  ["an array", []],
+  ["a null-prototype object", Object.create(null)],
+  ["a custom-prototype object", Object.create({})]
+]) {
+  test(`Operations Overview Projector rejects ${label} as counts`, () => {
+    const source = validOperationsOverviewSource();
+    source.counts = counts;
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(source)
+    );
+  });
+}
+
+for (const field of [
+  "total",
+  "active",
+  "expiring",
+  "disabledOrExpired"
+]) {
+  test(`Operations Overview Projector rejects an inherited ${field} count`, () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      Object.prototype,
+      field
+    );
+    const source = validOperationsOverviewSource();
+    const inheritedValue = source.counts[field];
+    delete source.counts[field];
+
+    try {
+      Object.defineProperty(Object.prototype, field, {
+        value: inheritedValue,
+        writable: true,
+        enumerable: true,
+        configurable: true
+      });
+      assertOperationsReadContractError(
+        () => projectOperationsOverviewReadModel(source)
+      );
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Object.prototype, field, originalDescriptor);
+      } else {
+        delete Object.prototype[field];
+      }
+    }
+  });
+
+  test(`Operations Overview Projector rejects an accessor ${field} count without reading it`, () => {
+    const source = validOperationsOverviewSource();
+    let reads = 0;
+    Object.defineProperty(source.counts, field, {
+      enumerable: true,
+      configurable: true,
+      get() {
+        reads += 1;
+        return 0;
+      }
+    });
+
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(source)
+    );
+    assert.equal(reads, 0);
+  });
+}
+
+test("Operations Overview Projector normalizes nested descriptor failures without detail", () => {
+  const source = validOperationsOverviewSource();
+  source.counts = new Proxy(source.counts, {
+    getOwnPropertyDescriptor() {
       throw new Error("owner-secret-must-not-cross");
     }
   });
@@ -387,30 +489,20 @@ for (const [label, input] of [
   });
 }
 
-
-test("Operations Overview Projector keeps validated snapshots as own properties under inherited setters", () => {
+test("Operations Overview Projector keeps result counts as own properties under inherited setters", () => {
   const originalTotalDescriptor = Object.getOwnPropertyDescriptor(
     Object.prototype,
     "total"
   );
-  const source = {
-    active: 8,
-    expiring: 2,
-    disabledOrExpired: 2
-  };
-  Object.defineProperty(source, "total", {
-    enumerable: true,
-    get() {
-      Object.defineProperty(Object.prototype, "total", {
-        configurable: true,
-        set() {}
-      });
-      return 12;
-    }
-  });
 
   try {
-    const projected = projectOperationsOverviewReadModel(source);
+    Object.defineProperty(Object.prototype, "total", {
+      configurable: true,
+      set() {}
+    });
+    const projected = projectOperationsOverviewReadModel(
+      validOperationsOverviewSource()
+    );
     assert.deepEqual(projected, {
       total: 12,
       active: 8,
@@ -438,29 +530,19 @@ test("Operations Overview Projector keeps validated snapshots as own properties 
   }
 });
 
-
 test("Operations Overview Projector preserves safe error code under inherited setters", () => {
   const originalCodeDescriptor = Object.getOwnPropertyDescriptor(
     Object.prototype,
     "code"
   );
-  const source = {
-    active: 8,
-    expiring: 2,
-    disabledOrExpired: 2
-  };
-  Object.defineProperty(source, "total", {
-    enumerable: true,
-    get() {
-      Object.defineProperty(Object.prototype, "code", {
-        configurable: true,
-        set() {}
-      });
-      throw new Error("caller-secret-must-not-cross");
-    }
-  });
+  const source = validOperationsOverviewSource();
+  delete source.counts.total;
 
   try {
+    Object.defineProperty(Object.prototype, "code", {
+      configurable: true,
+      set() {}
+    });
     assertOperationsReadContractError(
       () => projectOperationsOverviewReadModel(source)
     );
