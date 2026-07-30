@@ -304,3 +304,97 @@ test("Operations Overview Projector returns only allowlisted counts", () => {
   assert.notEqual(projected, source);
   assert.doesNotMatch(JSON.stringify(projected), /node-secret|credential-secret|must-not-cross/);
 });
+
+
+function assertOperationsReadContractError(run) {
+  assert.throws(run, (error) => {
+    assert.equal(error.code, "operations_read_contract_error");
+    assert.equal(error.message, "Operations read contract is invalid");
+    return true;
+  });
+}
+
+for (const [label, field, value] of [
+  ["missing", "total", undefined],
+  ["negative", "active", -1],
+  ["fractional", "expiring", 1.5],
+  ["string", "disabledOrExpired", "2"],
+  ["null", "total", null]
+]) {
+  test(`Operations Overview Projector rejects a ${label} ${field} count`, () => {
+    const source = {
+      total: 0,
+      active: 0,
+      expiring: 0,
+      disabledOrExpired: 0,
+      [field]: value
+    };
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(source)
+    );
+  });
+}
+
+test("Operations Overview Projector snapshots count getters once", () => {
+  const source = {};
+  const reads = {};
+  for (const [field, value] of [
+    ["total", 12],
+    ["active", 8],
+    ["expiring", 2],
+    ["disabledOrExpired", 2]
+  ]) {
+    reads[field] = 0;
+    Object.defineProperty(source, field, {
+      enumerable: true,
+      get() {
+        reads[field] += 1;
+        return reads[field] === 1 ? value : "caller-controlled";
+      }
+    });
+  }
+
+  assert.deepEqual(projectOperationsOverviewReadModel(source), {
+    total: 12,
+    active: 8,
+    expiring: 2,
+    disabledOrExpired: 2
+  });
+  assert.deepEqual(reads, {
+    total: 1,
+    active: 1,
+    expiring: 1,
+    disabledOrExpired: 1
+  });
+});
+
+test("Operations Overview Projector normalizes caller failures without detail", () => {
+  const source = {
+    active: 8,
+    expiring: 2,
+    disabledOrExpired: 2
+  };
+  Object.defineProperty(source, "total", {
+    enumerable: true,
+    get() {
+      throw new Error("owner-secret-must-not-cross");
+    }
+  });
+
+  assertOperationsReadContractError(
+    () => projectOperationsOverviewReadModel(source)
+  );
+});
+
+for (const [label, input] of [
+  ["null", null],
+  ["an array", []],
+  ["a null-prototype object", Object.create(null)],
+  ["a custom-prototype object", Object.create({})]
+]) {
+  test(`Operations Overview Projector rejects ${label}`, () => {
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(input)
+    );
+  });
+}
