@@ -1,14 +1,15 @@
-const COUNT_FIELDS = Object.freeze([
-  "total",
-  "active",
-  "expiring",
-  "disabledOrExpired"
-]);
-
 function operationsReadContractError() {
   const error = new Error("Operations read contract is invalid");
   error.code = "operations_read_contract_error";
   return error;
+}
+
+function validatedCount(input, field) {
+  const value = input[field];
+  if (!Number.isInteger(value) || value < 0) {
+    throw operationsReadContractError();
+  }
+  return value;
 }
 
 export function projectOperationsOverviewReadModel(input = {}) {
@@ -22,15 +23,12 @@ export function projectOperationsOverviewReadModel(input = {}) {
       throw operationsReadContractError();
     }
 
-    const projected = {};
-    for (const field of COUNT_FIELDS) {
-      const value = input[field];
-      if (!Number.isInteger(value) || value < 0) {
-        throw operationsReadContractError();
-      }
-      projected[field] = value;
-    }
-    return projected;
+    const total = validatedCount(input, "total");
+    const active = validatedCount(input, "active");
+    const expiring = validatedCount(input, "expiring");
+    const disabledOrExpired = validatedCount(input, "disabledOrExpired");
+
+    return { total, active, expiring, disabledOrExpired };
   } catch {
     throw operationsReadContractError();
   }
