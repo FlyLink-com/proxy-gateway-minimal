@@ -1,6 +1,11 @@
 function operationsReadContractError() {
   const error = new Error("Operations read contract is invalid");
-  error.code = "operations_read_contract_error";
+  Object.defineProperty(error, "code", {
+    value: "operations_read_contract_error",
+    writable: true,
+    enumerable: true,
+    configurable: true
+  });
   return error;
 }
 
