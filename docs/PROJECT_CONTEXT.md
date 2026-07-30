@@ -27,6 +27,20 @@ This file is the compact entrypoint for continuing
 `proxy-gateway-minimal`. Historical execution detail belongs in the indexed
 records under `docs/`, not in this handoff.
 
+## Operations Plane Source Reality Addendum (2026-07-30)
+
+Issue #561 established a source-only inventory at
+`master@1b41a63337271cf1d5f0553ef4e3a61c3190e5e5`. Read
+`docs/OPERATIONS_PLANE_SOURCE_REALITY.md` before opening new Admin,
+Operations, Wallet, Commerce, Dashboard, or audit implementation work.
+
+The inventory proves that Admin auth/session, the manifest-backed Admin shell,
+safe-read owner models, protected traffic projection, Portal Wallet/Ledger
+reads, and Coins Commerce order foundations already exist in source. Remaining
+Operations work must extend those capabilities rather than create parallel
+subsystems. Source availability does not prove artifact, deployment, provider,
+production, or current-live state.
+
 ## Read First
 
 Use this order before any work:

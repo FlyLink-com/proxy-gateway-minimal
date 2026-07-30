@@ -10,6 +10,21 @@ Last updated: 2026-06-16, America/Los_Angeles.
 >   Nginx, systemd, DB, runtime, auth model, schema/migration, token,
 >   credential, subscription URL, or customer-data actions
 
+## Source-Reality Addendum (2026-07-30)
+
+This file remains the visual and product-direction baseline; it is not the
+current implementation inventory. Since this baseline was written, the
+manifest-backed Admin shell, safe-read projection/query models, Operations,
+Accounts, and Usage owner models, Admin auth/session foundation, and protected
+traffic projection have advanced in source.
+
+Read `docs/OPERATIONS_PLANE_SOURCE_REALITY.md` before using any
+`Needs ... review`, `planned`, or `future` label below as an implementation
+claim. Current work must reconcile existing source and extend only proven gaps.
+The full RBAC/capability boundary, backend-owned commercial metrics, and general
+Admin action audit remain incomplete; source existence still does not prove
+deployment or current-live state.
+
 This document records the first New Admin Console rebuild baseline. The
 existing `admin/` app is implementation material and a protected local testing
 surface; it is not the final product-design baseline by itself.

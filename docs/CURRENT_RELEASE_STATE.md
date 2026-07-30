@@ -23,6 +23,21 @@ document_metadata:
 > - Live verification: Production upgrade validation completed with service stability confirmed
 > - Execution authority: None
 
+## Source-Only Reconciliation Addendum (2026-07-30)
+
+A read-only GitHub inventory for #561 observed
+`master@1b41a63337271cf1d5f0553ef4e3a61c3190e5e5`. This is newer than the
+primary source cutoffs retained below. The Operations/Admin/Commerce capability
+matrix is `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`.
+
+The newer source includes Admin authentication/session foundations, manifest
+and safe-read owner models, protected traffic collector projection, Portal
+Wallet/Ledger reads, and Commerce catalog/order foundations. It does not by
+itself update any artifact, deployment, provider, production, or current-live
+identity below. The historical deployment records remain intact until a
+separate release-state reconciliation or fresh approved live inventory replaces
+them.
+
 Read this file for the latest repository-backed release identity before reading
 historical deployment records. It does not replace live read-only inventory
 before a Risk A action and does not authorize promotion, rollback, runtime

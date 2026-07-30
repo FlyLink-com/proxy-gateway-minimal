@@ -12,6 +12,27 @@ Last updated: 2026-06-21, Asia/Shanghai.
 >   credential, subscription URL, raw config/log/env, raw log, audit export,
 >   SQLite row, or customer-data actions.
 
+## Source-Reality Addendum (2026-07-30)
+
+The manifest, navigation, System Search, page/module registration, safe-read
+projection models, and Operations/Accounts/Usage owner models now exist in
+source. This document remains the app-registration map, but older
+`planned`/`follow-up` labels must not be interpreted as proof that the whole
+surface is absent.
+
+Use `docs/OPERATIONS_PLANE_SOURCE_REALITY.md` to distinguish:
+
+- implemented manifest/frontend source;
+- fixture or static presentation;
+- backend-owned implemented facts;
+- document-only DTOs and permissions;
+- missing Operations capabilities;
+- source-only capabilities with unknown or separate deployment state.
+
+Frontend registration and visibility still do not provide backend
+authorization. Explicit role/capability enforcement remains a proven gap to be
+reconciled under #558.
+
 The Admin console is a protected operator workspace. A page is a workspace
 area, and each page module is a page-owned panel. System Search is the only
 current global search/discovery and restore surface for workspace pages,

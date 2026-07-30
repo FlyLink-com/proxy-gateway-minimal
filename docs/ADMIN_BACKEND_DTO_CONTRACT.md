@@ -11,6 +11,26 @@ Last updated: 2026-06-21, Asia/Shanghai.
 >   credential, subscription URL, raw config/log/env, raw log, audit export,
 >   SQLite row, or customer-data actions.
 
+## Source-Reality Addendum (2026-07-30)
+
+The statement below that this is not an implemented API applies to the proposed
+DTO family as a whole; it must no longer be read as saying that every safe
+Admin/Operations read capability is absent.
+
+Source now contains, among other foundations:
+
+- Admin authentication/session routes and services;
+- manifest-backed safe-read projection, page, query, and owner models;
+- a protected traffic collector Admin projection;
+- Portal Wallet projection and Ledger reads;
+- Portal Coins Commerce catalog, quote, and account-owned order reads.
+
+The exact matrix is `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`. Each DTO family
+must be classified as `implemented_source`, `partial`,
+`fixture_or_static_only`, `document_only`, or `missing` before a new
+backend slice is opened. Similar frontend fields are not evidence that the
+named backend DTO exists.
+
 This document turns the Admin console UI work into a backend DTO contract plan.
 It is not an implemented API, migration plan, auth model change, retention
 policy change, or production execution gate.
