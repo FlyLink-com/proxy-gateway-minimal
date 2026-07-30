@@ -483,22 +483,19 @@ test("Operations Read Envelope preserves safe error code under inherited setters
     Object.prototype,
     "code"
   );
-  const input = { ...validEnvelopeInput };
-  Object.defineProperty(input, "schemaVersion", {
-    enumerable: true,
-    get() {
-      Object.defineProperty(Object.prototype, "code", {
-        configurable: true,
-        set() {}
-      });
-      throw new Error("caller-secret-must-not-cross");
-    }
-  });
 
   let caught;
   try {
+    Object.defineProperty(Object.prototype, "code", {
+      configurable: true,
+      set() {}
+    });
     try {
-      createOperationsReadEnvelope(input);
+      createOperationsReadEnvelope(validEnvelopeInput, {
+        nowFn: () => {
+          throw new Error("caller-secret-must-not-cross");
+        }
+      });
     } catch (error) {
       caught = error;
     }
