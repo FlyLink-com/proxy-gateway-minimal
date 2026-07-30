@@ -5,6 +5,10 @@ import {
   createOperationsReadEnvelope
 } from "../services/platform/operations-read-envelope.mjs";
 
+import {
+  projectOperationsOverviewReadModel
+} from "../services/platform/operations-overview-read-model.mjs";
+
 test("Operations Read Envelope creates the exact authorized v1 response", () => {
   const sourceData = {
     total: 12,
@@ -274,4 +278,29 @@ test("Operations Read Envelope requires warning's sole own key to be code", () =
     }),
     (error) => error.code === "operations_read_contract_error"
   );
+});
+
+
+test("Operations Overview Projector returns only allowlisted counts", () => {
+  const source = {
+    ok: true,
+    total: 12,
+    active: 8,
+    expiring: 2,
+    disabledOrExpired: 2,
+    nodes: [{ name: "node-secret" }],
+    distribution: { "credential-secret": 1 },
+    token: "must-not-cross"
+  };
+
+  const projected = projectOperationsOverviewReadModel(source);
+
+  assert.deepEqual(projected, {
+    total: 12,
+    active: 8,
+    expiring: 2,
+    disabledOrExpired: 2
+  });
+  assert.notEqual(projected, source);
+  assert.doesNotMatch(JSON.stringify(projected), /node-secret|credential-secret|must-not-cross/);
 });
