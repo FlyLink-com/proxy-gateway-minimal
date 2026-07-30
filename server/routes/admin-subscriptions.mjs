@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAdminCapability } from "./admin-auth.mjs";
+import { requireAdminCapability } from "../middleware/admin-authorization.mjs";
 
 function sendError(res, error) {
   if (error.code === "validation_error") {
