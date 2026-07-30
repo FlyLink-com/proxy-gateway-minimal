@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-07-26, America/Los_Angeles.
+Last updated: 2026-07-30, Asia/Tokyo.
 
 ```yaml
 document_metadata:
@@ -75,6 +75,7 @@ release, deployment, runtime, or production authority.
 
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
+| `docs/OPERATIONS_PLANE_SOURCE_REALITY.md` | Exact source/test capability matrix for Operations, Admin, Wallet, Commerce, traffic projections, RBAC gaps, metrics, and audit. | Active source-only reconciliation for #561; no production authority. | Read before planning or implementing #557–#560 so existing source is not rebuilt. |
 | `docs/CURRENT_RELEASE_STATE.md` | Compact documented snapshot of each release unit, unresolved production lineage, and master-only capabilities after Version Management Baseline v1. | Active release-state entrypoint; dated repository evidence only, not live inventory or execution authority. | Read first when resuming the project, then verify live before any Risk A action. |
 | `docs/PROJECT_CONTEXT.md` | Compact current handoff, active blockers, documented production snapshot, validation baseline, and latest durable next-step context. | Active current-state handoff; not the full docs index or execution-history archive. | Read first when resuming the repo or before changing project direction, then use this index for detailed docs navigation and execution records. |
 | `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` | Current docs/status baseline for the Vultr Japan control plane and Vultr Japan/Singapore data-plane direction, with explicit no-mutation boundaries. | Active docs/status baseline; no execution authority and not a replacement for live inventory or execution records. | Read before aligning current project direction, preparing a new Risk A gate, or replacing stale Aliyun-current wording. |
