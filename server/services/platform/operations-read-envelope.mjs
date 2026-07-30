@@ -11,6 +11,8 @@ const WARNING_CODES = new Set([
 ]);
 const SCHEMA_VERSION_PATTERN = /^[a-z][a-z0-9-]*\/v[1-9][0-9]*$/;
 const UNSAFE_DATA_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const DATE_GET_TIME = Date.prototype.getTime;
+const DATE_TO_ISO_STRING = Date.prototype.toISOString;
 
 function operationsReadContractError() {
   const error = new Error("Operations read contract is invalid");
@@ -80,6 +82,7 @@ export function createOperationsReadEnvelope(input = {}, options = {}) {
     const schemaVersion = input.schemaVersion;
     const freshness = input.freshness;
     const sourceState = input.sourceState;
+    const data = input.data;
     const warnings = input.warnings;
     const access = input.access;
     const nowFn = Object.hasOwn(options, "nowFn")
@@ -93,39 +96,59 @@ export function createOperationsReadEnvelope(input = {}, options = {}) {
       || !SCHEMA_VERSION_PATTERN.test(schemaVersion)
       || !FRESHNESS_VALUES.has(freshness)
       || !SOURCE_STATE_VALUES.has(sourceState)
-      || !isPlainObject(input.data)
+      || !isPlainObject(data)
       || !Array.isArray(warnings)
-      || !warnings.every((warning) => (
-        isPlainObject(warning)
-        && Object.keys(warning).length === 1
-        && WARNING_CODES.has(warning.code)
-      ))
       || !isPlainObject(access)
-      || access.allowed !== true
-      || typeof access.capability !== "string"
-      || !access.capability
-      || access.reasonCode !== "allowed"
       || typeof nowFn !== "function"
     ) {
       throw operationsReadContractError();
     }
 
+    const warningSnapshots = warnings.map((warning) => {
+      if (
+        !isPlainObject(warning)
+        || Object.keys(warning).length !== 1
+      ) {
+        throw operationsReadContractError();
+      }
+      const code = warning.code;
+      if (!WARNING_CODES.has(code)) {
+        throw operationsReadContractError();
+      }
+      return { code };
+    });
+
+    const accessAllowed = access.allowed;
+    const accessCapability = access.capability;
+    const accessReasonCode = access.reasonCode;
+    if (
+      accessAllowed !== true
+      || typeof accessCapability !== "string"
+      || !accessCapability
+      || accessReasonCode !== "allowed"
+    ) {
+      throw operationsReadContractError();
+    }
+
     const now = nowFn();
-    if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+    const timestamp = now instanceof Date
+      ? DATE_GET_TIME.call(now)
+      : Number.NaN;
+    if (!Number.isFinite(timestamp)) {
       throw operationsReadContractError();
     }
 
     return {
       schemaVersion,
-      generatedAt: now.toISOString(),
+      generatedAt: DATE_TO_ISO_STRING.call(new Date(timestamp)),
       freshness,
       sourceState,
-      data: cloneDataValue(input.data),
-      warnings: warnings.map((warning) => ({ code: warning.code })),
+      data: cloneDataValue(data),
+      warnings: warningSnapshots,
       access: {
-        allowed: true,
-        capability: access.capability,
-        reasonCode: "allowed"
+        allowed: accessAllowed,
+        capability: accessCapability,
+        reasonCode: accessReasonCode
       }
     };
   } catch {
