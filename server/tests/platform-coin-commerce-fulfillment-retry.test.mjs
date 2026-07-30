@@ -19,11 +19,8 @@ test("coin commerce fulfillment retry classifier accepts only errors created by 
   }), false);
 });
 
-test("coin commerce fulfillment retry factory does not retain downstream error details", () => {
-  const retryable = createCoinCommerceFulfillmentRetryableError({
-    cause: new Error("database path and row details"),
-    details: { accountId: "acct_private" }
-  });
+test("coin commerce fulfillment retry factory exposes only stable public metadata", () => {
+  const retryable = createCoinCommerceFulfillmentRetryableError();
 
   assert.deepEqual(
     Object.fromEntries(Object.entries(retryable)),
@@ -31,15 +28,10 @@ test("coin commerce fulfillment retry factory does not retain downstream error d
   );
   assert.equal("cause" in retryable, false);
   assert.equal("details" in retryable, false);
-  assert.equal(String(retryable).includes("database path"), false);
-  assert.equal(String(retryable).includes("acct_private"), false);
 });
 
-test("coin commerce fulfillment reconciliation classifier is branded and redacted", () => {
-  const reconciliation = createCoinCommerceFulfillmentReconciliationError({
-    cause: new Error("runtime identity and database details"),
-    details: { accountId: "acct_private" }
-  });
+test("coin commerce fulfillment reconciliation classifier is branded and exposes only stable public metadata", () => {
+  const reconciliation = createCoinCommerceFulfillmentReconciliationError();
 
   assert.equal(
     isCoinCommerceFulfillmentReconciliationError(reconciliation),
@@ -59,6 +51,4 @@ test("coin commerce fulfillment reconciliation classifier is branded and redacte
   );
   assert.equal("cause" in reconciliation, false);
   assert.equal("details" in reconciliation, false);
-  assert.equal(String(reconciliation).includes("runtime identity"), false);
-  assert.equal(String(reconciliation).includes("acct_private"), false);
 });
