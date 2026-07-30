@@ -1,10 +1,10 @@
 # Operations Overview Read Envelope Design
 
-Date: 2026-07-31  
-Issue: #559  
-Parent: #557  
-Dependency: #558 Admin authorization v1  
-Risk: B for source-only implementation  
+Date: 2026-07-31
+Issue: #559
+Parent: #557
+Dependency: #558 Admin authorization v1
+Risk: B for source-only implementation
 Production impact: none
 
 ## Status
