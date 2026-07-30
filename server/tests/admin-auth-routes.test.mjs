@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import express from "express";
 import { createApp } from "../app.mjs";
-import { requireAdminCapability } from "../routes/admin-auth.mjs";
+import { requireAdminCapability } from "../middleware/admin-authorization.mjs";
 import { createPortalAccountAdminAuthService } from "../services/platform/admin-auth.mjs";
 import { createPortalPasswordCredentialService } from "../services/platform/portal-password-credentials.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
