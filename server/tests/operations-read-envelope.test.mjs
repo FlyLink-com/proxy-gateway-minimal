@@ -449,3 +449,42 @@ test("Operations Overview Projector keeps validated snapshots as own properties 
     }
   }
 });
+
+
+test("Operations Overview Projector preserves safe error code under inherited setters", () => {
+  const originalCodeDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "code"
+  );
+  const source = {
+    active: 8,
+    expiring: 2,
+    disabledOrExpired: 2
+  };
+  Object.defineProperty(source, "total", {
+    enumerable: true,
+    get() {
+      Object.defineProperty(Object.prototype, "code", {
+        configurable: true,
+        set() {}
+      });
+      throw new Error("caller-secret-must-not-cross");
+    }
+  });
+
+  try {
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(source)
+    );
+  } finally {
+    if (originalCodeDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "code",
+        originalCodeDescriptor
+      );
+    } else {
+      delete Object.prototype.code;
+    }
+  }
+});
