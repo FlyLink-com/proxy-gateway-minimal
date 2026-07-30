@@ -147,7 +147,14 @@ export function adminSubscriptionRoutes(state) {
           capability: "operations.read"
         });
         if (!decision.allowed) {
-          res.status(401).json({ error: "admin_authentication_required" });
+          if (decision.reasonCode === "principal_missing") {
+            res.status(401).json({ error: "admin_authentication_required" });
+            return;
+          }
+          res.status(403).json({
+            error: "admin_capability_required",
+            capability: decision.capability
+          });
           return;
         }
       }
