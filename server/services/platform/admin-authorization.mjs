@@ -50,7 +50,15 @@ export function createAdminPrincipal(input = {}) {
 
 export function authorizeAdmin(input = {}) {
   const capability = String(input.capability || "").trim();
-  const capabilities = Array.isArray(input.principal?.capabilities)
+  if (!input.principal) {
+    return {
+      allowed: false,
+      capability,
+      reasonCode: "principal_missing"
+    };
+  }
+
+  const capabilities = Array.isArray(input.principal.capabilities)
     ? input.principal.capabilities
     : [];
 
