@@ -1,15 +1,5 @@
 # Operations Plane Source Reality
 
-```yaml
-document_metadata:
-  doc_type: operational
-  lifecycle: active
-  authority_scope: operations_plane_source_reality
-  superseded_by: null
-  last_verified_at: 2026-07-30
-  production_authority: false
-```
-
 > Status:
 > - GitHub: #561 under #557
 > - Inventory ref: `master@1b41a63337271cf1d5f0553ef4e3a61c3190e5e5`
