@@ -927,9 +927,8 @@ test("Operations overview returns an allowlisted authorized Envelope", async () 
     });
     assert.equal(new Date(body.generatedAt).toISOString(), body.generatedAt);
     assert.equal(overviewCalls, 1);
-    const envelopeWithUnexpectedTopLevelOk = { ...body, ok: true };
     assert.deepEqual(
-      Object.keys(envelopeWithUnexpectedTopLevelOk).sort(),
+      Object.keys(body).sort(),
       [
         "access",
         "data",
