@@ -1,5 +1,11 @@
 import { Router } from "express";
 import { requireAdminCapability } from "../middleware/admin-authorization.mjs";
+import {
+  createOperationsReadEnvelope
+} from "../services/platform/operations-read-envelope.mjs";
+import {
+  projectOperationsOverviewReadModel
+} from "../services/platform/operations-overview-read-model.mjs";
 
 function sendError(res, error) {
   if (error.code === "validation_error") {
@@ -150,6 +156,32 @@ export function adminSubscriptionRoutes(state) {
       sendError(res, error);
     }
   });
+
+  if (state.platform?.adminAuthorizationEnabled === true) {
+    router.get(
+      "/api/admin/operations/overview",
+      requireAdminCapability("operations.read"),
+      (_req, res) => {
+        try {
+          const data = projectOperationsOverviewReadModel(core.overview());
+          res.json(createOperationsReadEnvelope({
+            schemaVersion: "operations-overview-read-envelope/v1",
+            freshness: "fresh",
+            sourceState: "implemented_source",
+            data,
+            warnings: [],
+            access: {
+              allowed: true,
+              capability: "operations.read",
+              reasonCode: "allowed"
+            }
+          }));
+        } catch (error) {
+          sendError(res, error);
+        }
+      }
+    );
+  }
 
   return router;
 }
