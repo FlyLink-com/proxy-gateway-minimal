@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { authorizeAdmin } from "../services/platform/admin-authorization.mjs";
 
 function sendError(res, error) {
   if (error.code === "validation_error") {
@@ -138,8 +139,18 @@ export function adminSubscriptionRoutes(state) {
     }
   });
 
-  router.get("/api/admin/overview", (_req, res) => {
+  router.get("/api/admin/overview", (req, res) => {
     try {
+      if (state.platform?.adminAuthorizationEnabled) {
+        const decision = authorizeAdmin({
+          principal: req.adminPrincipal,
+          capability: "operations.read"
+        });
+        if (!decision.allowed) {
+          res.status(401).json({ error: "admin_authentication_required" });
+          return;
+        }
+      }
       res.json(core.overview());
     } catch (error) {
       sendError(res, error);
