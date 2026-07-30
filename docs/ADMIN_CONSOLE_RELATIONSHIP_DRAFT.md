@@ -1,5 +1,24 @@
 # Admin Console Relationship Draft
 
+
+## Source-Reality Addendum (2026-07-30)
+
+This relationship model remains useful for ownership and sequencing, but its
+older `design-only` wave labels predate substantial source work. The current
+source/test inventory is `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`.
+
+Already-present source includes Admin auth/session foundations, manifest-backed
+page/module registration, safe-read owner models, protected traffic projection,
+Portal Wallet/Ledger reads, and Coins Commerce order foundations. The model must
+therefore be used to locate remaining gaps, not as authority to rebuild those
+capabilities.
+
+The full generic DTO family, explicit backend RBAC/capability enforcement,
+commercial metric truth, and general Admin action audit remain partial,
+document-only, or missing as recorded in the matrix. Production/runtime state
+remains separate.
+
+
 Last updated: 2026-06-21, Asia/Shanghai.
 
 > Status:
