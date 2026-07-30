@@ -795,7 +795,7 @@ test("opaque artifact provider profile uses configured public subscription base 
   }
 });
 
-test("Admin overview requires an authenticated principal when capability authorization is enabled", async () => {
+test("Admin overview returns 401 without a principal when capability authorization is enabled", async () => {
   const state = fakeState();
   state.platform = {
     adminAuthorizationEnabled: true
