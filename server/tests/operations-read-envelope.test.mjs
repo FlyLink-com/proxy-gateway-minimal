@@ -611,3 +611,126 @@ test("Operations Read Envelope defines warning snapshots as own array elements",
   assert.deepEqual(envelope.warnings, [{ code: "source_stale" }]);
   assert.equal(Object.hasOwn(envelope.warnings, 0), true);
 });
+
+
+for (const [field, inheritedValue] of [
+  ["schemaVersion", "operations-overview-read-envelope/v1"],
+  ["freshness", "fresh"],
+  ["sourceState", "implemented_source"],
+  ["data", { total: 0 }],
+  ["warnings", []],
+  ["access", {
+    allowed: true,
+    capability: "operations.read",
+    reasonCode: "allowed"
+  }]
+]) {
+  test(`Operations Read Envelope rejects inherited required ${field}`, () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      Object.prototype,
+      field
+    );
+    const input = { ...validEnvelopeInput };
+    delete input[field];
+
+    try {
+      Object.defineProperty(Object.prototype, field, {
+        configurable: true,
+        value: inheritedValue,
+        writable: true
+      });
+      assertOperationsReadContractError(
+        () => createOperationsReadEnvelope(input)
+      );
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(
+          Object.prototype,
+          field,
+          originalDescriptor
+        );
+      } else {
+        delete Object.prototype[field];
+      }
+    }
+  });
+}
+
+for (const [field, inheritedValue] of [
+  ["allowed", true],
+  ["capability", "operations.read"],
+  ["reasonCode", "allowed"]
+]) {
+  test(`Operations Read Envelope rejects inherited access ${field}`, () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      Object.prototype,
+      field
+    );
+    const access = { ...validEnvelopeInput.access };
+    delete access[field];
+
+    try {
+      Object.defineProperty(Object.prototype, field, {
+        configurable: true,
+        value: inheritedValue,
+        writable: true
+      });
+      assertOperationsReadContractError(
+        () => createOperationsReadEnvelope({
+          ...validEnvelopeInput,
+          access
+        })
+      );
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(
+          Object.prototype,
+          field,
+          originalDescriptor
+        );
+      } else {
+        delete Object.prototype[field];
+      }
+    }
+  });
+}
+
+test("Operations Read Envelope rejects accessor-driven data structure mutation", () => {
+  const originalLaterDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "later"
+  );
+  const data = { later: "safe-own-value" };
+  Object.defineProperty(data, "first", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      delete data.later;
+      Object.defineProperty(Object.prototype, "later", {
+        configurable: true,
+        value: "polluted-inherited-value",
+        writable: true
+      });
+      return "first-value";
+    }
+  });
+
+  try {
+    assertOperationsReadContractError(
+      () => createOperationsReadEnvelope({
+        ...validEnvelopeInput,
+        data
+      })
+    );
+  } finally {
+    if (originalLaterDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "later",
+        originalLaterDescriptor
+      );
+    } else {
+      delete Object.prototype.later;
+    }
+  }
+});
