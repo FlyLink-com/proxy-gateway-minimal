@@ -67,6 +67,7 @@ const planOffer: PortalCoinOffer = {
     zh: ["按订单状态交付"],
     en: ["Delivery follows the Order state"]
   },
+  baseCoinUnits: 42,
   referencePrice: { currency: "CNY", amountMinor: 1567 },
   acceptedCoinTypes: ["paid_coins", "reward_coins"],
   delivery: {
@@ -89,6 +90,7 @@ const dataPackOffer: PortalCoinOffer = {
     zh: ["以订单交付结果为准"],
     en: ["The Order delivery result is authoritative"]
   },
+  baseCoinUnits: 30,
   referencePrice: { currency: "CNY", amountMinor: 990 },
   acceptedCoinTypes: ["paid_coins"],
   delivery: {
@@ -315,7 +317,7 @@ describe("Portal server-backed Marketplace", () => {
     })).toBeInTheDocument();
   });
 
-  test("keeps one Portal shell and renders only server facts without a catalog Coins price", async () => {
+  test("keeps one Portal shell and renders the server Coins catalog price", async () => {
     await openMarketplace(portalClientWithCommerce(commerceClient()));
 
     expect(document.querySelectorAll(".portal-v2-shell")).toHaveLength(1);
@@ -338,8 +340,10 @@ describe("Portal server-backed Marketplace", () => {
       .toBeInTheDocument();
     expect(within(planCard as HTMLElement).getByText("30 天 · 每月 100 GB"))
       .toBeInTheDocument();
-    expect(within(planCard as HTMLElement).getByText("参考价").parentElement)
-      .toHaveTextContent("参考价CNY 15.67");
+    expect(within(planCard as HTMLElement).getByText("价格").parentElement)
+      .toHaveTextContent("价格42 Coins");
+    expect(within(planCard as HTMLElement).queryByText("参考价"))
+      .not.toBeInTheDocument();
     expect(within(planCard as HTMLElement).getByText("按订单状态交付"))
       .toBeInTheDocument();
     expect(within(planCard as HTMLElement).getByText("已购 Coins、奖励 Coins"))
@@ -347,8 +351,8 @@ describe("Portal server-backed Marketplace", () => {
     expect(planCard).not.toHaveTextContent(
       /paid_coins|bonus_coins|reward_coins|held_coins/
     );
-    expect(within(planCard as HTMLElement).queryByText(/42 Coins/))
-      .not.toBeInTheDocument();
+    expect(within(planCard as HTMLElement).getByText("42 Coins"))
+      .toBeInTheDocument();
     const zhDetails = within(planCard as HTMLElement).getByRole("button", {
       name: "查看详情：服务端基础套餐"
     });
@@ -978,8 +982,8 @@ describe("Portal server-backed Marketplace", () => {
     }).closest("article") as HTMLElement;
     expect(within(englishCard).getByText("Server plan summary"))
       .toBeInTheDocument();
-    expect(within(englishCard).getByText("Reference price").parentElement)
-      .toHaveTextContent("Reference priceCNY 15.67");
+    expect(within(englishCard).getByText("Price").parentElement)
+      .toHaveTextContent("Price42 Coins");
     const englishDetails = within(englishCard).getByRole("button", {
       name: "Details: Server basic plan"
     });
@@ -1231,7 +1235,7 @@ describe("Portal server-backed Marketplace", () => {
         name: "Confirm Coins purchase"
       })).not.toBeInTheDocument();
     });
-    expect(screen.queryByText("42 Coins")).not.toBeInTheDocument();
+    expect(screen.getAllByText("42 Coins")).toHaveLength(1);
 
     const currentCard = (await screen.findByRole("heading", {
       name: "Server basic plan"
@@ -1302,7 +1306,7 @@ describe("Portal server-backed Marketplace", () => {
         name: "Confirm Coins purchase"
       })).not.toBeInTheDocument();
     });
-    expect(screen.queryByText("42 Coins")).not.toBeInTheDocument();
+    expect(screen.getAllByText("42 Coins")).toHaveLength(1);
 
     const currentCard = (await screen.findByRole("heading", {
       name: "Server basic plan"

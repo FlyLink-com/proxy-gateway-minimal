@@ -279,6 +279,7 @@ function offerProjection(input: unknown): PortalCoinOffer {
     "title",
     "summary",
     "importantNotices",
+    "baseCoinUnits",
     "referencePrice",
     "acceptedCoinTypes",
     "delivery"
@@ -289,6 +290,7 @@ function offerProjection(input: unknown): PortalCoinOffer {
     title: localeMap(value.title),
     summary: localeMap(value.summary),
     importantNotices: noticeMap(value.importantNotices),
+    baseCoinUnits: positiveSafeInteger(value.baseCoinUnits),
     referencePrice: (() => {
       const price = exactObject(value.referencePrice, [
         "currency",

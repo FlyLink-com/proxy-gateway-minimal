@@ -61,6 +61,7 @@ const PORTAL_OFFER = {
     zh: ["购买后自动交付"],
     en: ["Delivered automatically after purchase"]
   },
+  baseCoinUnits: 100,
   referencePrice: {
     currency: "CNY",
     amountMinor: 1_000

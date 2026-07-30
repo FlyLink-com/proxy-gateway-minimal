@@ -47,6 +47,7 @@ const PLAN_OFFER = {
     zh: ["购买后自动交付"],
     en: ["Delivered automatically after purchase"]
   },
+  baseCoinUnits: 20,
   referencePrice: { currency: "CNY", amountMinor: 2_000 },
   acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
   delivery: {
@@ -69,6 +70,7 @@ const DATA_PACK_OFFER = {
     zh: ["仅限平台自营服务"],
     en: ["For platform-operated services only"]
   },
+  baseCoinUnits: 30,
   referencePrice: { currency: "CNY", amountMinor: 3_000 },
   acceptedCoinTypes: ["paid_coins", "reward_coins"],
   delivery: {
@@ -475,6 +477,14 @@ describe("Portal Coins Commerce HTTP client", () => {
     extraOffer.internal = true;
     const wrongDelivery = clone(PLAN_OFFER);
     wrongDelivery.delivery.kind = "data_pack";
+    const missingBaseCoinUnits = clone(PLAN_OFFER) as Partial<typeof PLAN_OFFER>;
+    delete missingBaseCoinUnits.baseCoinUnits;
+    const zeroBaseCoinUnits = clone(PLAN_OFFER);
+    zeroBaseCoinUnits.baseCoinUnits = 0;
+    const fractionalBaseCoinUnits = clone(PLAN_OFFER);
+    fractionalBaseCoinUnits.baseCoinUnits = 1.5;
+    const unsafeBaseCoinUnits = clone(PLAN_OFFER);
+    unsafeBaseCoinUnits.baseCoinUnits = Number.MAX_SAFE_INTEGER + 1;
     const unsafeQuote = clone(AVAILABLE_QUOTE);
     unsafeQuote.amountUnits = Number.MAX_SAFE_INTEGER + 1;
     const invalidTimestamp = clone(AVAILABLE_QUOTE);
@@ -500,6 +510,10 @@ describe("Portal Coins Commerce HTTP client", () => {
       { offers: null },
       { offers: [extraOffer] },
       { offers: [wrongDelivery] },
+      { offers: [missingBaseCoinUnits] },
+      { offers: [zeroBaseCoinUnits] },
+      { offers: [fractionalBaseCoinUnits] },
+      { offers: [unsafeBaseCoinUnits] },
       { offers: [PLAN_OFFER], extra: true },
       { quote: unsafeQuote },
       { quote: invalidTimestamp },

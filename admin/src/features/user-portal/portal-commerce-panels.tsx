@@ -60,10 +60,6 @@ function offerSummary(offer: PortalCoinOffer, locale: PortalCommerceLocale) {
   return locale === "zh" ? offer.summary.zh : offer.summary.en;
 }
 
-function referencePrice(offer: PortalCoinOffer) {
-  return `CNY ${(offer.referencePrice.amountMinor / 100).toFixed(2)}`;
-}
-
 function MarketplaceNoticeIndicator({
   state
 }: {
@@ -173,8 +169,8 @@ function MarketplaceOfferCard({
             <dd>{delivery}</dd>
           </div>
           <div>
-            <dt>{zh ? "参考价" : "Reference price"}</dt>
-            <dd>{referencePrice(offer)}</dd>
+            <dt>{zh ? "价格" : "Price"}</dt>
+            <dd>{offer.baseCoinUnits} Coins</dd>
           </div>
           <div>
             <dt>{zh ? "接受的 Coins" : "Accepted Coins"}</dt>

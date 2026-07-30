@@ -111,7 +111,7 @@ function assertExactKeys(value, keys, label) {
 }
 
 function assertOffer(offer) {
-  assertExactKeys(offer, ["offerRef", "offerVersionRef", "category", "title", "summary", "importantNotices", "referencePrice", "acceptedCoinTypes", "delivery"], "offer");
+  assertExactKeys(offer, ["offerRef", "offerVersionRef", "category", "title", "summary", "importantNotices", "baseCoinUnits", "referencePrice", "acceptedCoinTypes", "delivery"], "offer");
   assertExactKeys(offer.title, ["zh", "en"], "offer.title");
   assertExactKeys(offer.summary, ["zh", "en"], "offer.summary");
   assertExactKeys(offer.importantNotices, ["zh", "en"], "offer.importantNotices");

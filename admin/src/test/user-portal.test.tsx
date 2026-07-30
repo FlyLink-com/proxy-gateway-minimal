@@ -555,6 +555,7 @@ function marketplaceOrder(): PortalCoinOrder {
         zh: ["仅用于订单中心测试"],
         en: ["Order-center fixture only"]
       },
+      baseCoinUnits: 20,
       referencePrice: { currency: "CNY", amountMinor: 2_000 },
       acceptedCoinTypes: ["paid_coins"],
       delivery: {

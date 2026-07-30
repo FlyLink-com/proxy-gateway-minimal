@@ -330,6 +330,7 @@ function normalizeAndProjectOffer(input) {
         zh: copyArray(normalized.importantNotices.zh),
         en: copyArray(normalized.importantNotices.en)
       },
+      baseCoinUnits: normalized.baseCoinUnits,
       referencePrice: {
         currency: normalized.referencePrice.currency,
         amountMinor: normalized.referencePrice.amountMinor
