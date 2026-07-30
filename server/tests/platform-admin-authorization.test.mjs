@@ -107,3 +107,17 @@ test("Super Admin principal adds audit read without activating mutation capabili
     false
   );
 });
+
+test("Admin authorization fails closed with an explicit reason when no principal exists", () => {
+  assert.deepEqual(
+    adminAuth.authorizeAdmin({
+      principal: null,
+      capability: "wallet.read"
+    }),
+    {
+      allowed: false,
+      capability: "wallet.read",
+      reasonCode: "principal_missing"
+    }
+  );
+});
