@@ -217,3 +217,61 @@ test("Operations Read Envelope snapshots warning and access getters once", () =>
   assert.equal(warningReads, 1);
   assert.equal(capabilityReads, 1);
 });
+
+
+test("Operations Read Envelope clones nested arrays without caller map dispatch", () => {
+  const owned = { active: 8 };
+  const nested = [owned];
+  nested.map = () => owned;
+
+  const envelope = createOperationsReadEnvelope({
+    ...validEnvelopeInput,
+    data: { nested }
+  }, {
+    nowFn: () => new Date("2026-07-31T00:00:00.000Z")
+  });
+
+  assert.deepEqual(envelope.data, { nested: [{ active: 8 }] });
+  assert.notEqual(envelope.data.nested, nested);
+  assert.notEqual(envelope.data.nested[0], owned);
+});
+
+test("Operations Read Envelope validates warnings without caller map dispatch", () => {
+  const warnings = [{ code: "source_stale" }];
+  warnings.map = () => [{ code: "caller-controlled", message: "raw" }];
+
+  const envelope = createOperationsReadEnvelope({
+    ...validEnvelopeInput,
+    warnings
+  }, {
+    nowFn: () => new Date("2026-07-31T00:00:00.000Z")
+  });
+
+  assert.deepEqual(envelope.warnings, [{ code: "source_stale" }]);
+});
+
+test("Operations Read Envelope rejects sparse warnings", () => {
+  assert.throws(
+    () => createOperationsReadEnvelope({
+      ...validEnvelopeInput,
+      warnings: new Array(1)
+    }),
+    (error) => error.code === "operations_read_contract_error"
+  );
+});
+
+test("Operations Read Envelope requires warning's sole own key to be code", () => {
+  const warning = { message: "not allowed" };
+  Object.defineProperty(warning, "code", {
+    value: "source_stale",
+    enumerable: false
+  });
+
+  assert.throws(
+    () => createOperationsReadEnvelope({
+      ...validEnvelopeInput,
+      warnings: [warning]
+    }),
+    (error) => error.code === "operations_read_contract_error"
+  );
+});
