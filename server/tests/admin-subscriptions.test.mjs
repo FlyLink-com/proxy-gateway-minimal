@@ -935,3 +935,121 @@ test("Operations overview returns an allowlisted authorized Envelope", async () 
     server.close();
   }
 });
+
+
+test("Operations overview route requires the authorization flag to be exactly true", async () => {
+  let overviewCalls = 0;
+  const service = {
+    ...fakeService(),
+    overview: () => {
+      overviewCalls += 1;
+      return fakeService().overview();
+    }
+  };
+  const state = fakeState(service);
+  state.platform = { adminAuthorizationEnabled: 1 };
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 404);
+    assert.equal(overviewCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("Operations overview returns 401 without an Admin principal", async () => {
+  let overviewCalls = 0;
+  const service = {
+    ...fakeService(),
+    overview: () => {
+      overviewCalls += 1;
+      return fakeService().overview();
+    }
+  };
+  const state = fakeState(service);
+  state.platform = { adminAuthorizationEnabled: true };
+  const app = express();
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), {
+      error: "admin_authentication_required"
+    });
+    assert.equal(overviewCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("Operations overview returns 403 without operations.read", async () => {
+  let overviewCalls = 0;
+  const service = {
+    ...fakeService(),
+    overview: () => {
+      overviewCalls += 1;
+      return fakeService().overview();
+    }
+  };
+  const state = fakeState(service);
+  state.platform = { adminAuthorizationEnabled: true };
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["users.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: "admin_capability_required",
+      capability: "operations.read"
+    });
+    assert.equal(overviewCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("Operations overview hides invalid owner data behind a safe internal error", async () => {
+  const state = fakeState();
+  state.platform = { adminAuthorizationEnabled: true };
+  state.subscriptions.service.overview = () => ({
+    total: "12",
+    active: 8,
+    expiring: 2,
+    disabledOrExpired: 2,
+    secret: "must-not-cross"
+  });
+
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 500);
+    const body = await response.json();
+    assert.deepEqual(body, { error: "internal_error" });
+    assert.doesNotMatch(JSON.stringify(body), /must-not-cross|12/);
+  } finally {
+    server.close();
+  }
+});
