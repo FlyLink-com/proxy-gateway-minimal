@@ -303,7 +303,8 @@ export function createApp(state, options = {}) {
     app.use(adminAuthRoutes(state));
     app.use("/api/admin", createAdminSessionGatewayMiddleware({
       adminAuth: state.platform.adminAuth,
-      consoleToken: state.consoleToken
+      consoleToken: state.consoleToken,
+      role: state.platform.adminRole || "admin"
     }));
   }
   if (dataPlaneAgentRoutesEnabled) {
