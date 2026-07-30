@@ -121,3 +121,28 @@ test("Admin authorization fails closed with an explicit reason when no principal
     }
   );
 });
+
+test("Admin principal rejects inactive, unknown-role, and incomplete session inputs", () => {
+  const activeSession = {
+    sessionRef: "admin_session_3",
+    operatorRef: "admin_operator_3",
+    authMethod: "totp",
+    status: "active",
+    issuedAt: "2026-07-30T00:00:00.000Z",
+    expiresAt: "2026-07-30T01:00:00.000Z"
+  };
+
+  const rejectedInputs = [
+    { session: { ...activeSession, status: "expired" }, role: "admin" },
+    { session: { ...activeSession, status: "revoked" }, role: "admin" },
+    { session: activeSession, role: "unknown" },
+    {
+      session: { ...activeSession, operatorRef: "" },
+      role: "admin"
+    }
+  ];
+
+  for (const input of rejectedInputs) {
+    assert.equal(adminAuth.createAdminPrincipal(input), null);
+  }
+});
