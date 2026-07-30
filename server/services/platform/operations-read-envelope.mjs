@@ -47,7 +47,13 @@ function cloneDataValue(value, ancestors = new Set()) {
       throw operationsReadContractError();
     }
     ancestors.add(value);
-    const clone = value.map((item) => cloneDataValue(item, ancestors));
+    const clone = [];
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.hasOwn(value, index)) {
+        throw operationsReadContractError();
+      }
+      clone[index] = cloneDataValue(value[index], ancestors);
+    }
     ancestors.delete(value);
     return clone;
   }
@@ -104,19 +110,22 @@ export function createOperationsReadEnvelope(input = {}, options = {}) {
       throw operationsReadContractError();
     }
 
-    const warningSnapshots = warnings.map((warning) => {
-      if (
-        !isPlainObject(warning)
-        || Object.keys(warning).length !== 1
-      ) {
+    const warningSnapshots = [];
+    for (let index = 0; index < warnings.length; index += 1) {
+      if (!Object.hasOwn(warnings, index)) {
+        throw operationsReadContractError();
+      }
+      const warning = warnings[index];
+      const keys = isPlainObject(warning) ? Reflect.ownKeys(warning) : [];
+      if (keys.length !== 1 || keys[0] !== "code") {
         throw operationsReadContractError();
       }
       const code = warning.code;
       if (!WARNING_CODES.has(code)) {
         throw operationsReadContractError();
       }
-      return { code };
-    });
+      warningSnapshots[index] = { code };
+    }
 
     const accessAllowed = access.allowed;
     const accessCapability = access.capability;
