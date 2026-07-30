@@ -72,14 +72,25 @@ function cloneDataValue(value, ancestors = new Set()) {
     throw operationsReadContractError();
   }
 
-  ancestors.add(value);
-  const clone = {};
-  for (const key of Object.keys(value)) {
-    if (UNSAFE_DATA_KEYS.has(key)) {
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors);
+  for (const key of keys) {
+    const descriptor = descriptors[key];
+    if (
+      typeof key !== "string"
+      || UNSAFE_DATA_KEYS.has(key)
+      || descriptor.enumerable !== true
+      || !Object.hasOwn(descriptor, "value")
+    ) {
       throw operationsReadContractError();
     }
+  }
+
+  ancestors.add(value);
+  const clone = {};
+  for (const key of keys) {
     Object.defineProperty(clone, key, {
-      value: cloneDataValue(value[key], ancestors),
+      value: cloneDataValue(descriptors[key].value, ancestors),
       enumerable: true,
       configurable: true,
       writable: true
@@ -92,6 +103,17 @@ function cloneDataValue(value, ancestors = new Set()) {
 export function createOperationsReadEnvelope(input = {}, options = {}) {
   try {
     if (!isPlainObject(input) || !isPlainObject(options)) {
+      throw operationsReadContractError();
+    }
+
+    if (
+      !Object.hasOwn(input, "schemaVersion")
+      || !Object.hasOwn(input, "freshness")
+      || !Object.hasOwn(input, "sourceState")
+      || !Object.hasOwn(input, "data")
+      || !Object.hasOwn(input, "warnings")
+      || !Object.hasOwn(input, "access")
+    ) {
       throw operationsReadContractError();
     }
 
@@ -140,6 +162,14 @@ export function createOperationsReadEnvelope(input = {}, options = {}) {
         configurable: true,
         writable: true
       });
+    }
+
+    if (
+      !Object.hasOwn(access, "allowed")
+      || !Object.hasOwn(access, "capability")
+      || !Object.hasOwn(access, "reasonCode")
+    ) {
+      throw operationsReadContractError();
     }
 
     const accessAllowed = access.allowed;
