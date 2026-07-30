@@ -398,3 +398,54 @@ for (const [label, input] of [
     );
   });
 }
+
+
+test("Operations Overview Projector keeps validated snapshots as own properties under inherited setters", () => {
+  const originalTotalDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "total"
+  );
+  const source = {
+    active: 8,
+    expiring: 2,
+    disabledOrExpired: 2
+  };
+  Object.defineProperty(source, "total", {
+    enumerable: true,
+    get() {
+      Object.defineProperty(Object.prototype, "total", {
+        configurable: true,
+        set() {}
+      });
+      return 12;
+    }
+  });
+
+  try {
+    const projected = projectOperationsOverviewReadModel(source);
+    assert.deepEqual(projected, {
+      total: 12,
+      active: 8,
+      expiring: 2,
+      disabledOrExpired: 2
+    });
+    for (const field of [
+      "total",
+      "active",
+      "expiring",
+      "disabledOrExpired"
+    ]) {
+      assert.equal(Object.hasOwn(projected, field), true);
+    }
+  } finally {
+    if (originalTotalDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "total",
+        originalTotalDescriptor
+      );
+    } else {
+      delete Object.prototype.total;
+    }
+  }
+});
