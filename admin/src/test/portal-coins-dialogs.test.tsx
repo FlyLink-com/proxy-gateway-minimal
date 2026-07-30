@@ -32,6 +32,7 @@ const offer: PortalCoinOffer = {
     zh: ["购买后按订单状态交付"],
     en: ["Delivery follows the Order state"]
   },
+  baseCoinUnits: 15,
   referencePrice: { currency: "CNY", amountMinor: 1500 },
   acceptedCoinTypes: ["paid_coins", "reward_coins"],
   delivery: {

@@ -40,6 +40,7 @@ type PortalCoinOfferBase = {
     zh: string[];
     en: string[];
   };
+  baseCoinUnits: number;
   referencePrice: PortalCoinReferencePrice;
   acceptedCoinTypes: PortalCoinType[];
 };

@@ -41,6 +41,7 @@ const ORDER: PortalCoinOrder = {
       zh: ["购买后自动交付"],
       en: ["Delivered automatically after purchase"]
     },
+    baseCoinUnits: 20,
     referencePrice: { currency: "CNY", amountMinor: 2_000 },
     acceptedCoinTypes: ["paid_coins"],
     delivery: {
