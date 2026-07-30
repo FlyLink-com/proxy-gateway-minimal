@@ -100,29 +100,33 @@ function cloneDataValue(value, ancestors = new Set()) {
   return clone;
 }
 
+function requiredOwnDataValue(descriptors, key) {
+  if (!Object.hasOwn(descriptors, key)) {
+    throw operationsReadContractError();
+  }
+  const descriptor = descriptors[key];
+  if (!Object.hasOwn(descriptor, "value")) {
+    throw operationsReadContractError();
+  }
+  return descriptor.value;
+}
+
 export function createOperationsReadEnvelope(input = {}, options = {}) {
   try {
     if (!isPlainObject(input) || !isPlainObject(options)) {
       throw operationsReadContractError();
     }
 
-    if (
-      !Object.hasOwn(input, "schemaVersion")
-      || !Object.hasOwn(input, "freshness")
-      || !Object.hasOwn(input, "sourceState")
-      || !Object.hasOwn(input, "data")
-      || !Object.hasOwn(input, "warnings")
-      || !Object.hasOwn(input, "access")
-    ) {
-      throw operationsReadContractError();
-    }
-
-    const schemaVersion = input.schemaVersion;
-    const freshness = input.freshness;
-    const sourceState = input.sourceState;
-    const data = input.data;
-    const warnings = input.warnings;
-    const access = input.access;
+    const inputDescriptors = Object.getOwnPropertyDescriptors(input);
+    const schemaVersion = requiredOwnDataValue(
+      inputDescriptors,
+      "schemaVersion"
+    );
+    const freshness = requiredOwnDataValue(inputDescriptors, "freshness");
+    const sourceState = requiredOwnDataValue(inputDescriptors, "sourceState");
+    const data = requiredOwnDataValue(inputDescriptors, "data");
+    const warnings = requiredOwnDataValue(inputDescriptors, "warnings");
+    const access = requiredOwnDataValue(inputDescriptors, "access");
     const nowFn = Object.hasOwn(options, "nowFn")
       ? options.nowFn
       : () => new Date();
@@ -164,17 +168,16 @@ export function createOperationsReadEnvelope(input = {}, options = {}) {
       });
     }
 
-    if (
-      !Object.hasOwn(access, "allowed")
-      || !Object.hasOwn(access, "capability")
-      || !Object.hasOwn(access, "reasonCode")
-    ) {
-      throw operationsReadContractError();
-    }
-
-    const accessAllowed = access.allowed;
-    const accessCapability = access.capability;
-    const accessReasonCode = access.reasonCode;
+    const accessDescriptors = Object.getOwnPropertyDescriptors(access);
+    const accessAllowed = requiredOwnDataValue(accessDescriptors, "allowed");
+    const accessCapability = requiredOwnDataValue(
+      accessDescriptors,
+      "capability"
+    );
+    const accessReasonCode = requiredOwnDataValue(
+      accessDescriptors,
+      "reasonCode"
+    );
     if (
       accessAllowed !== true
       || typeof accessCapability !== "string"
