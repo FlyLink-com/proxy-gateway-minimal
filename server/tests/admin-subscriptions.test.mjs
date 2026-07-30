@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import express from "express";
 import { createApp } from "../app.mjs";
 import { adminSubscriptionRoutes } from "../routes/admin-subscriptions.mjs";
+import { createSubscriptionCore } from "../services/subscriptions/core.mjs";
 import { createSubscriptionRepository } from "../services/subscriptions/repository.mjs";
 import { createSubscriptionService } from "../services/subscriptions/service.mjs";
 import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
@@ -882,7 +883,14 @@ test("Operations overview returns an allowlisted authorized Envelope", async () 
       total: 12,
       active: 8,
       expiring: 2,
-      disabledOrExpired: 2,
+      disabled: 1,
+      expired: 1,
+      counts: {
+        total: 12,
+        active: 8,
+        expiring: 2,
+        disabledOrExpired: 2
+      },
       nodes: [{ name: "node-secret" }],
       distribution: { "credential-secret": 1 },
       token: "must-not-cross",
@@ -945,6 +953,53 @@ test("Operations overview returns an allowlisted authorized Envelope", async () 
     );
   } finally {
     server.close();
+  }
+});
+
+
+test("Operations overview accepts the real Subscription Core overview shape", async () => {
+  const database = new Database(":memory:");
+  const store = createSubscriptionRepository({ database });
+  const core = createSubscriptionCore({
+    store,
+    proxyConfig: sampleProxyConfig(),
+    publicSubscriptionBaseUrl: "https://gateway.example.com",
+    nowFn: () => new Date("2026-05-21T00:00:00.000Z")
+  });
+  const state = fakeState(core, "core");
+  state.platform = { adminAuthorizationEnabled: true };
+
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.data, {
+      total: 0,
+      active: 0,
+      expiring: 0,
+      disabledOrExpired: 0
+    });
+    assert.deepEqual(Object.keys(body).sort(), [
+      "access",
+      "data",
+      "freshness",
+      "generatedAt",
+      "schemaVersion",
+      "sourceState",
+      "warnings"
+    ]);
+  } finally {
+    server.close();
+    store.close();
+    database.close();
   }
 });
 
