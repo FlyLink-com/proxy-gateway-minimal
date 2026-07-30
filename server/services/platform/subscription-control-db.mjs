@@ -1344,6 +1344,9 @@ export function createSqliteSubscriptionControlStore({
       createdAt: isoText(input.createdAt, "createdAt"),
       updatedAt: isoText(input.updatedAt, "updatedAt")
     };
+    if (record.validFrom >= record.validUntil) {
+      throw platformError("validation_error", "validFrom must be before validUntil");
+    }
     sqliteRun(db.prepare(`
       insert into platform_entitlements (
         id, account_id, plan, status, valid_from, valid_until,
@@ -1392,9 +1395,16 @@ export function createSqliteSubscriptionControlStore({
       portalPlan: requiredText(input.portalPlan, "portalPlan"),
       durationDays: integer(input.durationDays, "durationDays", { min: 1 }),
       monthlyTrafficGb: integer(input.monthlyTrafficGb, "monthlyTrafficGb", { min: 1 }),
+      requireExistingEffect: input.requireExistingEffect === true,
       recoveryOnly: input.recoveryOnly === true,
       now: isoText(input.now, "now")
     };
+    if (
+      input.requireExistingEffect !== true
+      && input.requireExistingEffect !== false
+    ) {
+      throw platformError("validation_error", "requireExistingEffect must be boolean");
+    }
     if (input.recoveryOnly !== true && input.recoveryOnly !== false) {
       throw platformError("validation_error", "recoveryOnly must be boolean");
     }
@@ -1553,7 +1563,7 @@ export function createSqliteSubscriptionControlStore({
         if (
           candidate.id !== effectRefForCommand(candidateMetadata.commandRef)
           || previousValidUntil >= targetValidUntil
-          || validFrom > targetValidUntil
+          || validFrom >= targetValidUntil
         ) {
           failDrift();
         }
@@ -1629,11 +1639,12 @@ export function createSqliteSubscriptionControlStore({
           runtimeTargetValidUntil: currentEffect.targetValidUntil
         });
       }
+      if (record.requireExistingEffect) failDrift();
       if (record.recoveryOnly) failDrift();
 
       const previousValidFrom = isoText(entitlement.validFrom, "validFrom");
       const previousValidUntil = isoText(entitlement.validUntil, "validUntil");
-      if (previousValidFrom > previousValidUntil) failDrift();
+      if (previousValidFrom >= previousValidUntil) failDrift();
       const validFrom = entitlement.plan === record.offerVersionRef
         ? previousValidFrom
         : record.now;

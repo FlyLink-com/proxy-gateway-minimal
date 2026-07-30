@@ -75,6 +75,25 @@ test("platform account and entitlement contracts separate commercial state from 
   assert.equal(isEntitlementUsable(entitlement, { now: "2026-07-01T00:00:00.000Z" }), false);
 });
 
+test("platform entitlement contract rejects equal and reversed validity intervals", () => {
+  for (const [validFrom, validUntil] of [
+    ["2026-06-26T00:00:00.000Z", "2026-06-26T00:00:00.000Z"],
+    ["2026-06-27T00:00:00.000Z", "2026-06-26T00:00:00.000Z"]
+  ]) {
+    assert.throws(
+      () => normalizePlatformEntitlement({
+        id: "ent_invalid_interval",
+        accountId: "acct_1",
+        plan: "pilot",
+        status: "active",
+        validFrom,
+        validUntil
+      }, { now: NOW }),
+      (error) => error.code === "validation_error"
+    );
+  }
+});
+
 test("subscription access grant summary keeps dynamic entry metadata operator-safe", () => {
   const grant = normalizeSubscriptionAccessGrant({
     id: "access_1",

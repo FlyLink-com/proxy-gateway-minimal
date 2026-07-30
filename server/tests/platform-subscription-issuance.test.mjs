@@ -77,7 +77,7 @@ test("executeSubscriptionIssuance - success writes runtime tenant/artifact and s
   const input = {
     nodeId: "primary_node",
     artifact: { create: true },
-    expiresAt: "2026-12-31T23:59:59Z",
+    expiresAt: "2099-12-31T23:59:59Z",
     control: {
       accountId: "acct_1",
       ownerRef: "owner_hash",
@@ -130,7 +130,7 @@ test("executeSubscriptionIssuance - trial uses the fixed five GiB allowance", ()
     input: {
       nodeId: "primary_node",
       artifact: { create: true },
-      expiresAt: "2026-12-31T23:59:59Z",
+      expiresAt: "2099-12-31T23:59:59Z",
       control: {
         accountId: "acct_trial_5g",
         ownerRef: "owner_trial_5g",
@@ -157,6 +157,7 @@ test("executeSubscriptionIssuance - safety: summary does not contain subscriptio
   const input = {
     nodeId: "primary_node",
     artifact: { create: true },
+    expiresAt: "2099-12-31T23:59:59Z",
     control: {
       accountId: "acct_2",
       ownerRef: "owner_hash",
@@ -259,7 +260,7 @@ test("executeSubscriptionIssuance - saga compensates runtime tenant and artifact
       input: {
         nodeId: "primary_node",
         artifact: { create: true },
-        expiresAt: "2026-12-31T23:59:59Z",
+        expiresAt: "2099-12-31T23:59:59Z",
         control: {
           accountId: "acct_compensate",
           ownerRef: "owner_hash",

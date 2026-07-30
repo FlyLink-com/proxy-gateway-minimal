@@ -46,6 +46,34 @@ function durableLead(overrides = {}) {
   };
 }
 
+test("subscription control store rejects a zero-length entitlement validity interval", () => {
+  withStore((store) => {
+    const now = "2026-07-30T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_zero_length_entitlement",
+      ownerRef: "portal_user_zero_length_entitlement",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    assert.throws(
+      () => store.createEntitlement({
+        id: "ent_zero_length",
+        accountId: "acct_zero_length_entitlement",
+        plan: "monthly",
+        status: "active",
+        validFrom: now,
+        validUntil: now,
+        createdAt: now,
+        updatedAt: now
+      }),
+      (error) => error.code === "validation_error"
+    );
+    assert.equal(store.getEntitlement("ent_zero_length"), null);
+  });
+});
+
 test("subscription control store persists the business issuance lifecycle", () => {
   withStore((store) => {
     const now = "2026-05-29T00:00:00.000Z";

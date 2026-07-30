@@ -76,14 +76,14 @@ try {
 
   const inputRaw = readFileSync(resolve(inputFile), "utf-8");
   const input = JSON.parse(inputRaw);
+  const now = new Date().toISOString();
 
   // Validate input BEFORE opening any databases
-  validateIssuanceInput(input);
+  validateIssuanceInput(input, { now });
 
   let state;
   let controlStore;
   try {
-    const now = new Date().toISOString();
     controlStore = createSqliteSubscriptionControlStore({
       dbPath: resolve(controlDbPath)
     });

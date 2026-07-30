@@ -184,6 +184,51 @@ test("admin platform routes create and list account entitlements", async () => {
   }
 });
 
+test("admin platform routes reject invalid in-memory entitlement validity intervals", async (t) => {
+  const leadQueue = createPlatformLeadReviewQueue({
+    nowFn: () => "2026-05-26T10:00:00.000Z",
+    idFactory: () => "lead_1"
+  });
+  const accountShell = createPlatformAccountEntitlementShell({
+    nowFn: () => "2026-05-26T10:05:00.000Z",
+    accountIdFactory: () => "acct_1",
+    entitlementIdFactory: () => "ent_invalid"
+  });
+  const lead = leadQueue.getLead(leadQueue.enqueueLead(sampleLead()).id);
+  accountShell.createAccountFromLead(lead);
+
+  const { server, baseUrl } = await listen(createApp(fakeState({ leadQueue, accountShell })));
+  try {
+    for (const [name, validFrom, validUntil] of [
+      ["equal", "2026-06-26T00:00:00.000Z", "2026-06-26T00:00:00.000Z"],
+      ["reversed", "2026-06-27T00:00:00.000Z", "2026-06-26T00:00:00.000Z"]
+    ]) {
+      await t.test(name, async () => {
+        const response = await fetch(
+          `${baseUrl}/api/admin/platform/accounts/acct_1/entitlements`,
+          {
+            method: "POST",
+            headers: {
+              ...authHeaders(),
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              plan: "pilot",
+              status: "active",
+              validFrom,
+              validUntil
+            })
+          }
+        );
+        assert.equal(response.status, 400);
+        assert.deepEqual(accountShell.listEntitlements({ accountId: "acct_1" }), []);
+      });
+    }
+  } finally {
+    server.close();
+  }
+});
+
 test("admin platform routes list portal registration accounts from control store", async () => {
   const leadQueue = createPlatformLeadReviewQueue();
   const accountShell = createPlatformAccountEntitlementShell();
