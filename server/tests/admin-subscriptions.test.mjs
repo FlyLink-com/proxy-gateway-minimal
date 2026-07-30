@@ -867,3 +867,71 @@ test("Operations overview route is absent while Admin authorization is disabled"
     server.close();
   }
 });
+
+
+test("Operations overview returns an allowlisted authorized Envelope", async () => {
+  const state = fakeState();
+  state.platform = {
+    adminAuthorizationEnabled: true
+  };
+  let overviewCalls = 0;
+  state.subscriptions.service.overview = () => {
+    overviewCalls += 1;
+    return {
+      ok: true,
+      total: 12,
+      active: 8,
+      expiring: 2,
+      disabledOrExpired: 2,
+      nodes: [{ name: "node-secret" }],
+      distribution: { "credential-secret": 1 },
+      token: "must-not-cross",
+      futureSourceField: "future-must-not-cross"
+    };
+  };
+
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = {
+      capabilities: ["operations.read"]
+    };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.schemaVersion, "operations-overview-read-envelope/v1");
+    assert.equal(body.freshness, "fresh");
+    assert.equal(body.sourceState, "implemented_source");
+    assert.deepEqual(body.data, {
+      total: 12,
+      active: 8,
+      expiring: 2,
+      disabledOrExpired: 2
+    });
+    assert.deepEqual(Object.keys(body.data), [
+      "total",
+      "active",
+      "expiring",
+      "disabledOrExpired"
+    ]);
+    assert.deepEqual(body.warnings, []);
+    assert.deepEqual(body.access, {
+      allowed: true,
+      capability: "operations.read",
+      reasonCode: "allowed"
+    });
+    assert.equal(new Date(body.generatedAt).toISOString(), body.generatedAt);
+    assert.equal(overviewCalls, 1);
+    assert.doesNotMatch(
+      JSON.stringify(body),
+      /node-secret|credential-secret|must-not-cross|futureSourceField|\\"ok\\"/
+    );
+  } finally {
+    server.close();
+  }
+});
