@@ -16,7 +16,12 @@ const DATE_TO_ISO_STRING = Date.prototype.toISOString;
 
 function operationsReadContractError() {
   const error = new Error("Operations read contract is invalid");
-  error.code = "operations_read_contract_error";
+  Object.defineProperty(error, "code", {
+    value: "operations_read_contract_error",
+    enumerable: true,
+    configurable: true,
+    writable: true
+  });
   return error;
 }
 
@@ -52,7 +57,12 @@ function cloneDataValue(value, ancestors = new Set()) {
       if (!Object.hasOwn(value, index)) {
         throw operationsReadContractError();
       }
-      clone[index] = cloneDataValue(value[index], ancestors);
+      Object.defineProperty(clone, index, {
+        value: cloneDataValue(value[index], ancestors),
+        enumerable: true,
+        configurable: true,
+        writable: true
+      });
     }
     ancestors.delete(value);
     return clone;
@@ -124,7 +134,12 @@ export function createOperationsReadEnvelope(input = {}, options = {}) {
       if (!WARNING_CODES.has(code)) {
         throw operationsReadContractError();
       }
-      warningSnapshots[index] = { code };
+      Object.defineProperty(warningSnapshots, index, {
+        value: { code },
+        enumerable: true,
+        configurable: true,
+        writable: true
+      });
     }
 
     const accessAllowed = access.allowed;
