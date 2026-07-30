@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authorizeAdmin } from "../services/platform/admin-authorization.mjs";
+import { requireAdminCapability } from "./admin-auth.mjs";
 
 function sendError(res, error) {
   if (error.code === "validation_error") {
@@ -139,25 +139,12 @@ export function adminSubscriptionRoutes(state) {
     }
   });
 
-  router.get("/api/admin/overview", (req, res) => {
+  const operationsReadGate = state.platform?.adminAuthorizationEnabled
+    ? requireAdminCapability("operations.read")
+    : (_req, _res, next) => next();
+
+  router.get("/api/admin/overview", operationsReadGate, (_req, res) => {
     try {
-      if (state.platform?.adminAuthorizationEnabled) {
-        const decision = authorizeAdmin({
-          principal: req.adminPrincipal,
-          capability: "operations.read"
-        });
-        if (!decision.allowed) {
-          if (decision.reasonCode === "principal_missing") {
-            res.status(401).json({ error: "admin_authentication_required" });
-            return;
-          }
-          res.status(403).json({
-            error: "admin_capability_required",
-            capability: decision.capability
-          });
-          return;
-        }
-      }
       res.json(core.overview());
     } catch (error) {
       sendError(res, error);
