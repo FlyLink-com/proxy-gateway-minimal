@@ -12,22 +12,26 @@ function operationsReadContractError() {
 }
 
 export function projectOperationsOverviewReadModel(input = {}) {
-  if (
-    !input
-    || typeof input !== "object"
-    || Array.isArray(input)
-    || Object.getPrototypeOf(input) !== Object.prototype
-  ) {
-    throw operationsReadContractError();
-  }
-
-  const projected = {};
-  for (const field of COUNT_FIELDS) {
-    const value = input[field];
-    if (!Number.isInteger(value) || value < 0) {
+  try {
+    if (
+      !input
+      || typeof input !== "object"
+      || Array.isArray(input)
+      || Object.getPrototypeOf(input) !== Object.prototype
+    ) {
       throw operationsReadContractError();
     }
-    projected[field] = value;
+
+    const projected = {};
+    for (const field of COUNT_FIELDS) {
+      const value = input[field];
+      if (!Number.isInteger(value) || value < 0) {
+        throw operationsReadContractError();
+      }
+      projected[field] = value;
+    }
+    return projected;
+  } catch {
+    throw operationsReadContractError();
   }
-  return projected;
 }
