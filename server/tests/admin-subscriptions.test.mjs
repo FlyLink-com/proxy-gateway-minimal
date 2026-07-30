@@ -1120,3 +1120,85 @@ test("Operations overview hides invalid owner data behind a safe internal error"
     server.close();
   }
 });
+
+
+function errorWithInheritedCode(code, message) {
+  const error = new Error(message);
+  Object.setPrototypeOf(error, Object.create(Error.prototype, {
+    code: {
+      value: code,
+      enumerable: true,
+      configurable: true
+    }
+  }));
+  return error;
+}
+
+for (const [label, failureFactory] of [
+  [
+    "an own validation_error",
+    () => serviceError("validation_error", "owner-secret-own-validation")
+  ],
+  [
+    "an own not_found error",
+    () => serviceError("not_found", "owner-secret-own-not-found")
+  ],
+  [
+    "an inherited validation_error",
+    () => errorWithInheritedCode(
+      "validation_error",
+      "owner-secret-inherited-validation"
+    )
+  ],
+  [
+    "an inherited not_found error",
+    () => errorWithInheritedCode(
+      "not_found",
+      "owner-secret-inherited-not-found"
+    )
+  ],
+  ["a null throw", () => null],
+  [
+    "a throwing code accessor",
+    () => {
+      const error = new Error("owner-secret-throwing-code");
+      Object.defineProperty(error, "code", {
+        configurable: true,
+        get() {
+          throw new Error("owner-secret-code-accessor");
+        }
+      });
+      return error;
+    }
+  ]
+]) {
+  test(`Operations overview safely normalizes ${label} from the Owner`, async () => {
+    const state = fakeState({
+      ...fakeService(),
+      overview: () => {
+        throw failureFactory();
+      }
+    });
+    state.platform = { adminAuthorizationEnabled: true };
+
+    const app = express();
+    app.use((req, _res, next) => {
+      req.adminPrincipal = { capabilities: ["operations.read"] };
+      next();
+    });
+    app.use(adminSubscriptionRoutes(state));
+
+    const { server, baseUrl } = await listen(app);
+    try {
+      const failed = await requestJson(baseUrl, "/api/admin/operations/overview");
+      assert.equal(failed.response.status, 500);
+      assert.deepEqual(failed.body, { error: "internal_error" });
+      assert.doesNotMatch(
+        JSON.stringify(failed.body),
+        /owner-secret|validation_error|not_found/
+      );
+    } finally {
+      server.close();
+    }
+  });
+}
