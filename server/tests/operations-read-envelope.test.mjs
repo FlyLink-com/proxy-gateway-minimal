@@ -89,3 +89,64 @@ test("Operations Read Envelope rejects an invalid generation time", () => {
     (error) => error.code === "operations_read_contract_error"
   );
 });
+
+test("Operations Read Envelope normalizes a code-spoofed caller error", () => {
+  assert.throws(
+    () => createOperationsReadEnvelope(validEnvelopeInput, {
+      nowFn: () => {
+        throw Object.assign(new Error("secret caller detail"), {
+          code: "operations_read_contract_error"
+        });
+      }
+    }),
+    (error) => {
+      assert.equal(error.code, "operations_read_contract_error");
+      assert.equal(error.message, "Operations read contract is invalid");
+      return true;
+    }
+  );
+});
+
+test("Operations Read Envelope deep-copies safe nested data values", () => {
+  const sourceData = {
+    summary: {
+      totals: [12, { active: 8 }]
+    }
+  };
+  const envelope = createOperationsReadEnvelope({
+    ...validEnvelopeInput,
+    data: sourceData
+  }, {
+    nowFn: () => new Date("2026-07-31T00:00:00.000Z")
+  });
+
+  assert.notEqual(envelope.data, sourceData);
+  assert.notEqual(envelope.data.summary, sourceData.summary);
+  assert.notEqual(envelope.data.summary.totals, sourceData.summary.totals);
+  assert.notEqual(envelope.data.summary.totals[1], sourceData.summary.totals[1]);
+  envelope.data.summary.totals[1].active = 99;
+  assert.equal(sourceData.summary.totals[1].active, 8);
+});
+
+for (const [label, input, options] of [
+  ["a coercible schema object", {
+    ...validEnvelopeInput,
+    schemaVersion: { toString: () => "operations-overview-read-envelope/v1" }
+  }, {}],
+  ["a coercible freshness object", {
+    ...validEnvelopeInput,
+    freshness: { toString: () => "fresh" }
+  }, {}],
+  ["a coercible source-state object", {
+    ...validEnvelopeInput,
+    sourceState: { toString: () => "implemented_source" }
+  }, {}],
+  ["an explicitly empty nowFn", validEnvelopeInput, { nowFn: "" }]
+]) {
+  test(`Operations Read Envelope rejects ${label}`, () => {
+    assert.throws(
+      () => createOperationsReadEnvelope(input, options),
+      (error) => error.code === "operations_read_contract_error"
+    );
+  });
+}
