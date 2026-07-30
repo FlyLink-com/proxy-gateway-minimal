@@ -78,3 +78,32 @@ test("Admin principal derives the fixed admin read-capability set from an active
     authStrength: "session"
   });
 });
+
+test("Super Admin principal adds audit read without activating mutation capabilities", () => {
+  const principal = adminAuth.createAdminPrincipal?.({
+    session: {
+      sessionRef: "admin_session_2",
+      operatorRef: "admin_operator_2",
+      authMethod: "totp",
+      status: "active",
+      issuedAt: "2026-07-30T00:00:00.000Z",
+      expiresAt: "2026-07-30T01:00:00.000Z"
+    },
+    role: "super_admin"
+  });
+
+  assert.deepEqual(principal?.capabilities, [
+    "operations.read",
+    "users.read",
+    "commerce.read",
+    "payments.read",
+    "wallet.read",
+    "catalog.read",
+    "runtime.read",
+    "audit.read"
+  ]);
+  assert.equal(
+    principal?.capabilities.some((capability) => !capability.endsWith(".read")),
+    false
+  );
+});
