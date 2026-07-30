@@ -105,6 +105,83 @@ test("repository configures sqlite busy timeout", () => {
   }
 });
 
+test("repository renewal keeps the later expiry and original updatedAt for an idempotent shorter target", async () => {
+  await withRepository((repository) => {
+    repository.createTenant(tenantInput({
+      expiresAt: "2026-08-01T00:00:00.000Z",
+      now: "2026-05-22T00:00:00.000Z"
+    }));
+
+    const renewed = repository.renewTenant("tenant_1", {
+      expiresAt: "2026-07-01T00:00:00.000Z",
+      now: "2026-05-23T00:00:00.000Z"
+    });
+
+    assert.equal(renewed.status, "active");
+    assert.equal(renewed.expiresAt, "2026-08-01T00:00:00.000Z");
+    assert.equal(renewed.updatedAt, "2026-05-22T00:00:00.000Z");
+  });
+});
+
+test("repository renewal stays monotonic across two SQLite connections applied T2 then T1", () => {
+  const dir = mkdtempSync(join(tmpdir(), "subscription-repo-monotonic-"));
+  const dbPath = join(dir, "subscriptions.sqlite");
+  const first = createSubscriptionRepository({ dbPath });
+  const second = createSubscriptionRepository({ dbPath });
+
+  try {
+    first.createTenant(tenantInput());
+
+    const t2 = second.renewTenant("tenant_1", {
+      expiresAt: "2026-09-01T00:00:00.000Z",
+      now: "2026-05-23T00:00:00.000Z"
+    });
+    const t1 = first.renewTenant("tenant_1", {
+      expiresAt: "2026-08-01T00:00:00.000Z",
+      now: "2026-05-22T00:00:00.000Z"
+    });
+
+    assert.equal(t2.expiresAt, "2026-09-01T00:00:00.000Z");
+    assert.equal(t1.expiresAt, "2026-09-01T00:00:00.000Z");
+    assert.equal(second.getTenant("tenant_1").expiresAt, "2026-09-01T00:00:00.000Z");
+    assert.equal(second.getTenant("tenant_1").updatedAt, "2026-05-23T00:00:00.000Z");
+  } finally {
+    first.close();
+    second.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("repository renewal does not change or re-enable a tenant disabled by another connection", () => {
+  const dir = mkdtempSync(join(tmpdir(), "subscription-repo-disabled-renew-"));
+  const dbPath = join(dir, "subscriptions.sqlite");
+  const first = createSubscriptionRepository({ dbPath });
+  const second = createSubscriptionRepository({ dbPath });
+
+  try {
+    first.createTenant(tenantInput());
+    second.setTenantStatus("tenant_1", {
+      status: "disabled",
+      now: "2026-05-22T00:00:00.000Z"
+    });
+
+    const renewed = first.renewTenant("tenant_1", {
+      expiresAt: "2026-09-01T00:00:00.000Z",
+      now: "2026-05-23T00:00:00.000Z"
+    });
+    const stored = second.getTenant("tenant_1");
+
+    assert.equal(renewed, null);
+    assert.equal(stored.status, "disabled");
+    assert.equal(stored.expiresAt, "2026-06-21T00:00:00.000Z");
+    assert.equal(stored.updatedAt, "2026-05-22T00:00:00.000Z");
+  } finally {
+    first.close();
+    second.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("repository rejects invalid tenant enum fields", async () => {
   await withRepository((repository) => {
     assert.throws(() => {

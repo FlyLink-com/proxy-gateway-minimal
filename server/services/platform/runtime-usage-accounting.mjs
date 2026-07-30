@@ -68,6 +68,21 @@ function trafficSupplyLifecycleMissingResult() {
   };
 }
 
+function quotaCycleRolloverExceptionResult() {
+  return {
+    ok: false,
+    status: "quota_cycle_rollover_sweep_failed",
+    scannedCount: 0,
+    appliedCount: 0,
+    pendingCount: 0,
+    failedCount: 1,
+    skippedCount: 0,
+    mutation: false,
+    blockers: [redactedBlocker("quota_cycle_rollover_exception")],
+    nextAction: "review_quota_cycle_rollover_failure"
+  };
+}
+
 function safeCollectorObservability(result = {}) {
   const value = result?.observability;
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -116,6 +131,26 @@ function safeLifecycleSummary(result = {}) {
   };
 }
 
+function safeCount(value) {
+  const count = Number(value);
+  return Number.isInteger(count) && count >= 0 ? count : 0;
+}
+
+function safeQuotaCycleRolloverSummary(result = {}) {
+  return {
+    ok: result?.ok === true,
+    status: text(result?.status),
+    scannedCount: safeCount(result?.scannedCount),
+    appliedCount: safeCount(result?.appliedCount),
+    pendingCount: safeCount(result?.pendingCount),
+    failedCount: safeCount(result?.failedCount),
+    skippedCount: safeCount(result?.skippedCount),
+    mutation: result?.mutation === true,
+    blockers: blockerCodes(result),
+    nextAction: text(result?.nextAction)
+  };
+}
+
 export function createRuntimeUsageAccountingService({
   collectors = [],
   accounting,
@@ -128,6 +163,10 @@ export function createRuntimeUsageAccountingService({
   const lifecycleGate = trafficSupplyLifecycleGate
     && typeof trafficSupplyLifecycleGate.handleUsageDecision === "function"
     ? trafficSupplyLifecycleGate
+    : null;
+  const quotaCycleRolloverSweep = trafficSupplyLifecycleGate
+    && typeof trafficSupplyLifecycleGate.sweepQuotaCycleRollovers === "function"
+    ? trafficSupplyLifecycleGate.sweepQuotaCycleRollovers.bind(trafficSupplyLifecycleGate)
     : null;
 
   async function collectAndRecord({ since, sinceByChannelRef = {} } = {}) {
@@ -266,9 +305,25 @@ export function createRuntimeUsageAccountingService({
       });
     }
 
+    let quotaCycleRollover = null;
+    if (quotaCycleRolloverSweep) {
+      try {
+        quotaCycleRollover = safeQuotaCycleRolloverSummary(
+          await quotaCycleRolloverSweep({
+            limit: 100,
+            reviewedByRef: "usage_quota_rollover_gate"
+          })
+        );
+      } catch {
+        quotaCycleRollover = safeQuotaCycleRolloverSummary(
+          quotaCycleRolloverExceptionResult()
+        );
+      }
+    }
     const ok = reports.every((report) => report.collectorOk && report.unresolvedCount === 0)
       && trafficSupplySuspendFailedCount === 0
-      && trafficSupplySuspendPendingCount === 0;
+      && trafficSupplySuspendPendingCount === 0
+      && (!quotaCycleRollover || quotaCycleRollover.ok === true);
     const unresolvedReasonCounts = normalizeUnresolvedReasonCounts(
       reports.reduce((counts, report) => ({
         bindingMissing: counts.bindingMissing + Number(report.unresolvedReasonCounts?.bindingMissing || 0),
@@ -292,6 +347,7 @@ export function createRuntimeUsageAccountingService({
       trafficSupplySuspendExecutedCount,
       trafficSupplySuspendFailedCount,
       trafficSupplySuspendPendingCount,
+      ...(quotaCycleRollover ? { quotaCycleRollover } : {}),
       reports,
       nextAction: ok ? "continue_usage_monitoring" : "review_usage_collector_mapping_or_traffic_supply_lifecycle",
       execution: {

@@ -455,7 +455,17 @@ test("exact apply migrates a synthetic database and validate reads it back", () 
     assert.equal(applied.ok, true);
     assert.equal(applied.mode, "apply");
     assert.equal(applied.schemaState, "ready");
+    assert.equal(applied.sourceChanged, true);
     assert.deepEqual(applied.appliedMigrationIds, [MIGRATION_ID]);
+
+    const reapplyResult = runCli(exactApplyArguments(dbPath));
+    assert.equal(reapplyResult.status, EXIT_SUCCESS);
+    const reapplied = parseClosedOutput(reapplyResult, { dbPath });
+    assert.equal(reapplied.ok, true);
+    assert.equal(reapplied.mode, "apply");
+    assert.equal(reapplied.schemaState, "ready");
+    assert.equal(reapplied.sourceChanged, false);
+    assert.deepEqual(reapplied.appliedMigrationIds, []);
 
     const validateResult = runCli(["--mode", "validate", "--db-path", dbPath]);
     assert.equal(validateResult.status, EXIT_SUCCESS);

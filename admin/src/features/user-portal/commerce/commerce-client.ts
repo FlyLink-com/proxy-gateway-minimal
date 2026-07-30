@@ -214,6 +214,15 @@ function safeAdd(left: number, right: number) {
   return result;
 }
 
+function applyCoinDiscount(
+  baseCoinUnits: number,
+  discountBasisPoints: number
+) {
+  const numerator = BigInt(baseCoinUnits)
+    * BigInt(10_000 - discountBasisPoints);
+  return Number((numerator + 9_999n) / 10_000n);
+}
+
 function utcTimestamp(value: unknown) {
   if (
     typeof value !== "string"
@@ -424,6 +433,14 @@ function quoteProjection(input: unknown): PortalCoinQuote {
   );
   if (appliedDiscountBasisPoints > 10_000) return invalidProjection();
   if (
+    amountUnits !== applyCoinDiscount(
+      offer.baseCoinUnits,
+      appliedDiscountBasisPoints
+    )
+  ) {
+    return invalidProjection();
+  }
+  if (
     value.purchaseAvailability !== "available"
     && value.purchaseAvailability !== "insufficient_balance"
   ) {
@@ -498,27 +515,46 @@ function quoteProjection(input: unknown): PortalCoinQuote {
 
 function fulfillmentProjection(
   input: unknown,
-  captured: boolean
+  paymentStatus: PortalCoinOrder["paymentStatus"]
 ): PortalCoinFulfillment {
   const value = exactObject(input, ["status", "safeCode"]);
   if (!FULFILLMENT_STATUSES.has(value.status as string)) {
     return invalidProjection();
   }
-  if (!captured) {
-    if (value.status !== "not_requested" || value.safeCode !== null) {
+  const status = value.status as PortalCoinFulfillment["status"];
+  if (
+    paymentStatus !== "captured"
+    && paymentStatus !== "reconciliation_required"
+  ) {
+    if (status !== "not_requested" || value.safeCode !== null) {
       return invalidProjection();
     }
     return { status: "not_requested", safeCode: null };
   }
   if (
-    value.status !== "pending"
-    && value.status !== "processing"
-    && value.status !== "delivered"
-    && value.status !== "failed"
+    paymentStatus === "reconciliation_required"
+    && status !== "not_requested"
+    && status !== "delivered"
+    && status !== "failed"
   ) {
     return invalidProjection();
   }
-  if (value.status === "failed") {
+  if (
+    paymentStatus === "captured"
+    && status !== "pending"
+    && status !== "processing"
+    && status !== "delivered"
+    && status !== "failed"
+  ) {
+    return invalidProjection();
+  }
+  if (
+    status === "not_requested"
+    && value.safeCode === null
+  ) {
+    return { status: "not_requested", safeCode: null };
+  }
+  if (status === "failed") {
     if (!FULFILLMENT_SAFE_CODES.has(value.safeCode as string)) {
       return invalidProjection();
     }
@@ -531,7 +567,7 @@ function fulfillmentProjection(
     };
   }
   if (value.safeCode !== null) return invalidProjection();
-  return { status: value.status, safeCode: null };
+  return { status, safeCode: null };
 }
 
 function orderProjection(input: unknown): PortalCoinOrder {
@@ -551,6 +587,7 @@ function orderProjection(input: unknown): PortalCoinOrder {
   }
   const offer = offerProjection(value.offer);
   const amountUnits = positiveSafeInteger(value.amountUnits);
+  if (amountUnits > offer.baseCoinUnits) return invalidProjection();
   const createdAt = utcTimestamp(value.createdAt);
   const cancelUntil = utcTimestamp(value.cancelUntil);
   const updatedAt = utcTimestamp(value.updatedAt);
@@ -574,7 +611,7 @@ function orderProjection(input: unknown): PortalCoinOrder {
     cancelUntil,
     fulfillment: fulfillmentProjection(
       value.fulfillment,
-      value.paymentStatus === "captured"
+      value.paymentStatus as PortalCoinOrder["paymentStatus"]
     ),
     createdAt,
     updatedAt
@@ -898,7 +935,11 @@ export function createPortalCoinCommerceClient(
         `/api/portal/catalog/offers/${offerRef}`,
         getInit(sessionRef),
         200,
-        offerWrapper
+        (body) => {
+          const offer = offerWrapper(body);
+          if (offer.offerRef !== offerRef) return invalidProjection();
+          return offer;
+        }
       );
     },
 
@@ -911,7 +952,11 @@ export function createPortalCoinCommerceClient(
         "/api/portal/commerce/checkout-preview",
         postInit(sessionRef, JSON.stringify({ offerRef })),
         200,
-        quoteWrapper
+        (body) => {
+          const quote = quoteWrapper(body);
+          if (quote.offer.offerRef !== offerRef) return invalidProjection();
+          return quote;
+        }
       );
     },
 
@@ -946,7 +991,11 @@ export function createPortalCoinCommerceClient(
         `/api/portal/commerce/orders/${orderRef}`,
         getInit(sessionRef),
         200,
-        orderWrapper
+        (body) => {
+          const order = orderWrapper(body);
+          if (order.orderRef !== orderRef) return invalidProjection();
+          return order;
+        }
       );
     },
 
@@ -964,7 +1013,11 @@ export function createPortalCoinCommerceClient(
         `/api/portal/commerce/orders/${orderRef}/cancel`,
         postInit(sessionRef, "{}", idempotencyKey),
         200,
-        orderWrapper
+        (body) => {
+          const order = orderWrapper(body);
+          if (order.orderRef !== orderRef) return invalidProjection();
+          return order;
+        }
       );
     }
   };

@@ -1,5 +1,8 @@
 import "dotenv/config";
-import { installProcessHandlers, startProxyGateway } from "./start.mjs";
+import {
+  startProductionProxyGateway
+} from "./services/platform/coin-commerce-production-runtime.mjs";
+import { installProcessHandlers } from "./start.mjs";
 
-const handle = await startProxyGateway();
+const handle = await startProductionProxyGateway();
 installProcessHandlers(handle);

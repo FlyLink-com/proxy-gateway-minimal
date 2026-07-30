@@ -226,6 +226,15 @@ test("dry-run leaves the source unchanged and exact apply then validates", () =>
       REQUIRED_COIN_COMMERCE_MIGRATION_ID
     ]);
 
+    const reapply = runCli(exactApplyArguments(dbPath));
+    assert.equal(reapply.status, 0);
+    const reapplyOutput = parseClosedOutput(reapply, {
+      forbidden: [dbPath, "account_private", "order_private"]
+    });
+    assert.equal(reapplyOutput.ok, true);
+    assert.equal(reapplyOutput.sourceChanged, false);
+    assert.deepEqual(reapplyOutput.appliedMigrationIds, []);
+
     const validate = runCli(["--mode", "validate", "--db-path", dbPath]);
     assert.equal(validate.status, 0);
     const validateOutput = parseClosedOutput(validate, { forbidden: [dbPath] });

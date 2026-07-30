@@ -1,15 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
+import Database from "better-sqlite3";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createOrderEdgeCredentialIssuer } from "../services/edge/order-credential-issuer.mjs";
 import { createOrderCredentialLifecycleService } from "../services/edge/order-credential-lifecycle.mjs";
+import { createDataPlaneDesiredStateNotifier } from "../services/edge/data-plane-desired-state-notifier.mjs";
 import { createPortalAccessRequestService } from "../services/platform/portal-access-requests.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
+import { createSubscriptionCore } from "../services/subscriptions/core.mjs";
+import { createSubscriptionRepository } from "../services/subscriptions/repository.mjs";
+import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
 
 const NOW = "2026-05-31T00:00:00.000Z";
+
+function safeIssuedRef(prefix, value) {
+  return `${prefix}ref_${createHash("sha256")
+    .update(String(value))
+    .digest("hex")
+    .slice(0, 16)}`;
+}
 
 function service() {
   return createPortalAccessRequestService({
@@ -332,9 +345,13 @@ function seedUsageOrder(store, overrides = {}) {
   const entitlementId = overrides.entitlementId || "ent_usage_summary_1";
   const tenantRef = overrides.tenantRef || "tenant_usage_summary_1";
   const artifactRef = overrides.artifactRef || "artifact_usage_summary_1";
+  const issuedTenantRef = overrides.issuedTenantRef || tenantRef;
+  const issuedArtifactRef = overrides.issuedArtifactRef || artifactRef;
   const edgeCredentialRef = overrides.edgeCredentialRef || `edgecred_${requestId}`;
+  const edgeChannelRef = overrides.edgeChannelRef || "channel-vultr-a-vless-reality-tcp";
   const edgeCredentials = Array.isArray(overrides.edgeCredentials) ? overrides.edgeCredentials : undefined;
   const plan = overrides.plan || "monthly";
+  const entitlementPlan = overrides.entitlementPlan || plan;
   const durationDays = overrides.durationDays ?? (plan === "yearly" ? 365 : 30);
   const validUntil = overrides.validUntil || "2026-07-06T00:00:00.000Z";
 
@@ -348,7 +365,7 @@ function seedUsageOrder(store, overrides = {}) {
   store.createEntitlement({
     id: entitlementId,
     accountId,
-    plan,
+    plan: entitlementPlan,
     status: "active",
     validFrom: now,
     validUntil,
@@ -363,7 +380,7 @@ function seedUsageOrder(store, overrides = {}) {
     approvalRef: `approval_${requestId}`,
     status: "issued",
     quantity: 1,
-    nodeId: "channel-vultr-a-vless-reality-tcp",
+    nodeId: edgeChannelRef,
     purpose: "portal_auto_issuance",
     requestedByRef: "portal_auto_issuer",
     createdAt: now,
@@ -372,8 +389,8 @@ function seedUsageOrder(store, overrides = {}) {
   store.linkIssuedSubscription({
     id: `link_${requestId}`,
     requestId,
-    tenantRef,
-    artifactRef,
+    tenantRef: issuedTenantRef,
+    artifactRef: issuedArtifactRef,
     status: "active",
     createdAt: now,
     updatedAt: now
@@ -400,13 +417,312 @@ function seedUsageOrder(store, overrides = {}) {
     tenantId: tenantRef,
     artifactId: artifactRef,
     subscriptionUrl: "https://sub.example.test/import/visible-once",
-    edgeChannelRef: "channel-vultr-a-vless-reality-tcp",
+    edgeChannelRef,
     edgeCredentialRef,
     edgeMaterialDigest: `sha256:digest_${requestId}`,
     ...(edgeCredentials ? { edgeCredentials } : {})
   });
 
   return { now, requestId, accountId, entitlementId, edgeCredentialRef };
+}
+
+function quotaResumeFixture({
+  entitlementPlan = "offerv_plan_365d_200gb_monthly_v1",
+  validFrom = "2026-01-31T00:00:00.000Z",
+  validUntil = "2027-01-31T00:00:00.000Z",
+  tenantExpiresAt = validUntil,
+  requestPlan = "yearly",
+  usageSamples = [],
+  resumeLifecycleResult = {
+    ok: true,
+    mutation: true,
+    runtimeReceipt: { status: "applied" },
+    redacted: true
+  },
+  rollbackLifecycleResult = {
+    ok: true,
+    mutation: true,
+    runtimeReceipt: { status: "applied" },
+    redacted: true
+  },
+  enableTenantResult,
+  readbackTenantResult,
+  bindingOverrides = {},
+  controlOverrides = {},
+  edgeDesiredStateNotifier = null,
+  suspendWithQuota = true
+} = {}) {
+  let now = "2026-02-15T00:00:00.000Z";
+  let tenantStatus = "active";
+  let artifactStatus = "active";
+  let enableCount = 0;
+  let disableCount = 0;
+  let usageReadCount = 0;
+  let runtimeReadCount = 0;
+  const lifecycleReasons = [];
+  const account = {
+    id: "portal_user_quota_fixture",
+    ownerRef: "portal_user_quota_fixture",
+    status: "active",
+    ...bindingOverrides.account
+  };
+  const entitlement = {
+    id: "ent_quota_fixture",
+    accountId: account.id,
+    plan: entitlementPlan,
+    status: "active",
+    validFrom,
+    validUntil,
+    trafficLimitBytes: 1000,
+    ...bindingOverrides.entitlement
+  };
+  const issuance = {
+    id: "pareq_quota_fixture",
+    accountId: account.id,
+    entitlementId: entitlement.id,
+    status: "issued",
+    ...bindingOverrides.issuance
+  };
+  const issuedLink = {
+    id: "link_pareq_quota_fixture",
+    requestId: issuance.id,
+    tenantRef: safeIssuedRef("tenant", "tenant_quota_fixture"),
+    artifactRef: safeIssuedRef("artifact", "artifact_quota_fixture"),
+    status: "active",
+    ...bindingOverrides.issuedLink
+  };
+  const defaultBinding = {
+    id: issuedLink.id,
+    linkId: issuedLink.id,
+    requestId: issuance.id,
+    accountId: account.id,
+    entitlementId: entitlement.id,
+    tenantRef: issuedLink.tenantRef,
+    artifactRef: issuedLink.artifactRef,
+    status: "active",
+    requestStatus: "issued",
+    entitlementStatus: "active"
+  };
+  const bindings = bindingOverrides.bindings ?? [{
+    ...defaultBinding,
+    ...bindingOverrides.binding
+  }];
+  const runtimeCore = {
+    revokeSubscriptionArtifact(id) {
+      artifactStatus = "revoked";
+      return { id, status: artifactStatus };
+    },
+    disableTenant(id) {
+      disableCount += 1;
+      tenantStatus = "disabled";
+      return { id, status: tenantStatus, expiresAt: tenantExpiresAt };
+    },
+    enableTenant(id) {
+      enableCount += 1;
+      tenantStatus = "active";
+      return typeof enableTenantResult === "function"
+        ? enableTenantResult({ id, status: tenantStatus, expiresAt: tenantExpiresAt })
+        : (enableTenantResult ?? { id, status: tenantStatus, expiresAt: tenantExpiresAt });
+    },
+    getTenant(id) {
+      runtimeReadCount += 1;
+      if (tenantStatus === "active" && readbackTenantResult !== undefined) {
+        return typeof readbackTenantResult === "function"
+          ? readbackTenantResult({ id, status: tenantStatus, expiresAt: tenantExpiresAt })
+          : readbackTenantResult;
+      }
+      return { id, status: tenantStatus, expiresAt: tenantExpiresAt };
+    },
+    listSubscriptionArtifacts() {
+      runtimeReadCount += 1;
+      return [{
+        id: "artifact_quota_fixture",
+        tenantId: "tenant_quota_fixture",
+        status: artifactStatus
+      }];
+    }
+  };
+  const control = {
+    getAccount() {
+      return bindingOverrides.account === null ? null : account;
+    },
+    getEntitlement() {
+      return bindingOverrides.entitlement === null ? null : entitlement;
+    },
+    getIssuanceRequest() {
+      return bindingOverrides.issuance === null ? null : issuance;
+    },
+    listIssuedSubscriptionBindings() {
+      return bindings;
+    },
+    getIssuedLink() {
+      return bindingOverrides.issuedLink === null ? null : issuedLink;
+    },
+    listUsageSamples() {
+      usageReadCount += 1;
+      return usageSamples;
+    },
+    ...controlOverrides
+  };
+  const requestStore = portalRequestStoreWith([]);
+  const createRequests = () => createPortalAccessRequestService({
+    nowFn: () => now,
+    requestIdFactory: () => "pareq_quota_fixture",
+    runtimeCore,
+    controlStore: control,
+    portalAccessRequestStore: requestStore,
+    ...(edgeDesiredStateNotifier ? { edgeDesiredStateNotifier } : {}),
+    edgeLifecycleService: {
+      reconcileOrderLifecycle({ reason }) {
+        lifecycleReasons.push(reason);
+        if (reason === "traffic_supply_resumed") {
+          return typeof resumeLifecycleResult === "function"
+            ? resumeLifecycleResult()
+            : resumeLifecycleResult;
+        }
+        if (reason === "traffic_supply_resume_rolled_back") {
+          return typeof rollbackLifecycleResult === "function"
+            ? rollbackLifecycleResult()
+            : rollbackLifecycleResult;
+        }
+        return {
+          ok: true,
+          mutation: true,
+          runtimeReceipt: { status: "applied" },
+          redacted: true
+        };
+      }
+    }
+  });
+  const requests = createRequests();
+  requests.submitRequest({
+    portalUserRef: "portal_user_quota_fixture",
+    plan: requestPlan
+  });
+  requests.markDelivered("pareq_quota_fixture", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_quota_fixture",
+    accessGrantRef: "grant_quota_fixture",
+    tenantId: "tenant_quota_fixture",
+    artifactId: "artifact_quota_fixture",
+    subscriptionUrl: "https://gateway.example.test/sub/a/quota-fixture.yaml",
+    expiresAt: validUntil
+  });
+  if (suspendWithQuota) {
+    requests.suspendTrafficSupply({
+      portalUserRef: "portal_user_quota_fixture",
+      requestRef: "pareq_quota_fixture"
+    });
+  } else {
+    requests.disableSubscription({
+      portalUserRef: "portal_user_quota_fixture",
+      requestRef: "pareq_quota_fixture"
+    });
+  }
+  return {
+    requests,
+    reopenRequests: createRequests,
+    requestStore,
+    lifecycleReasons,
+    setNow(value) {
+      now = value;
+    },
+    enableCount() {
+      return enableCount;
+    },
+    disableCount() {
+      return disableCount;
+    },
+    usageReadCount() {
+      return usageReadCount;
+    },
+    runtimeReadCount() {
+      return runtimeReadCount;
+    },
+    tenantStatus() {
+      return tenantStatus;
+    },
+    setTenantStatus(value) {
+      tenantStatus = value;
+    },
+    artifactStatus() {
+      return artifactStatus;
+    }
+  };
+}
+
+function quotaResumeCrashFixture({
+  desiredStateStatus = "applied",
+  lifecycleRevisionSafe = true,
+  validUntil
+} = {}) {
+  const channelRef = "channel-quota-crash-recovery";
+  const nodeRef = "node-quota-crash-recovery";
+  const desiredStateRef = "desired_state_quota_crash_recovery";
+  const generation = "gen_quota_crash_recovery";
+  const notificationId = "edge_state_notify_quota_crash_recovery";
+  let persistedReason = "traffic_supply_resumed";
+  const notification = () => ({
+    id: notificationId,
+    nodeRef,
+    channelRef,
+    desiredStateRef,
+    generation,
+    reason: persistedReason,
+    status: desiredStateStatus
+  });
+  const fixture = quotaResumeFixture({
+    ...(validUntil ? { validUntil } : {}),
+    controlOverrides: {
+      getLatestEdgeDesiredStateForChannel() {
+        return {
+          nodeRef,
+          channelRefs: [channelRef],
+          desiredStateRef,
+          generation,
+          lifecycleRevisionSafe
+        };
+      },
+      getEdgeDesiredStateNotification() {
+        return notification();
+      },
+      listEdgeApplyReceipts() {
+        return desiredStateStatus === "applied"
+          ? [{
+            id: "receipt_quota_crash_recovery",
+            channelRef,
+            desiredStateRef,
+            status: "applied",
+            configTestOk: true,
+            serviceActive: true,
+            listenerUdp443: true,
+            createdAt: "2026-03-01T00:00:00.000Z"
+          }]
+          : [];
+      }
+    },
+    edgeDesiredStateNotifier: {
+      notifyOrderLifecycle({ reason }) {
+        persistedReason = reason;
+        return {
+          ok: true,
+          notificationCount: 1,
+          notifications: [notification()],
+          redacted: true
+        };
+      }
+    }
+  });
+  fixture.setNow("2026-03-01T00:00:00.000Z");
+  const pending = fixture.requestStore.getPortalAccessRequest("pareq_quota_fixture");
+  fixture.requestStore.upsertPortalAccessRequest({
+    ...pending,
+    status: "disabled",
+    nextAction: "traffic_supply_resume_pending",
+    updatedAt: "2026-03-01T00:00:00.000Z"
+  });
+  fixture.setTenantStatus("active");
+  return fixture;
 }
 
 const SAFE_ROUTINE_SUMMARY_MARKERS = [
@@ -3916,7 +4232,7 @@ test("disable revokes the active artifact and disables the delivered tenant with
   assert.equal(requests.getRequest("pareq_disable_1").status, "disabled");
 });
 
-test("traffic supply suspension revokes access while preserving the order record", () => {
+test("legacy traffic supply suspension keeps the original revoke behavior", () => {
   const runtimeCore = lifecycleRuntimeCore();
   const edgeLifecycle = edgeLifecycleService({ applied: true });
   const requests = createPortalAccessRequestService({
@@ -3952,6 +4268,2205 @@ test("traffic supply suspension revokes access while preserving the order record
   assert.equal(edgeLifecycle.calls.length, 1);
   assert.equal(edgeLifecycle.calls[0].reason, "traffic_supply_suspended");
   assert.equal(requests.getRequest("pareq_suspend_traffic_1").nextAction, "traffic_supply_suspended_quota");
+});
+
+test("each new traffic supply suspension gets a durable non-clock lifecycle revision", () => {
+  const requestStore = portalRequestStoreWith([
+    materialBearingPortalRequest({
+      id: "pareq_suspend_revision",
+      portalUserRef: "portal_user_suspend_revision",
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      event: null
+    })
+  ]);
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    portalAccessRequestStore: requestStore,
+    runtimeCore: {
+      revokeSubscriptionArtifact(id) {
+        return { id, status: "revoked" };
+      },
+      disableTenant(id) {
+        return { id, status: "disabled" };
+      }
+    }
+  });
+
+  const firstSummary = requests.suspendTrafficSupply({
+    portalUserRef: "portal_user_suspend_revision",
+    requestRef: "pareq_suspend_revision"
+  });
+  const firstRecord = requestStore.getPortalAccessRequest("pareq_suspend_revision");
+
+  assert.match(
+    firstRecord.event.lifecycleRevisionRef,
+    /^lifecycle_ref_[a-f0-9]{32}$/
+  );
+  assert.equal(
+    JSON.stringify(firstSummary).includes(firstRecord.event.lifecycleRevisionRef),
+    false
+  );
+
+  requestStore.upsertPortalAccessRequest({
+    ...firstRecord,
+    status: "delivered",
+    nextAction: "user_can_use_access",
+    subscriptionUrl: "safe-visible-once-link",
+    event: {
+      type: "traffic_supply_resumed",
+      occurredAt: NOW,
+      previousStatus: "delivered",
+      lifecycleRevisionRef: firstRecord.event.lifecycleRevisionRef
+    }
+  });
+  requests.suspendTrafficSupply({
+    portalUserRef: "portal_user_suspend_revision",
+    requestRef: "pareq_suspend_revision"
+  });
+  const secondRecord = requestStore.getPortalAccessRequest("pareq_suspend_revision");
+
+  assert.match(
+    secondRecord.event.lifecycleRevisionRef,
+    /^lifecycle_ref_[a-f0-9]{32}$/
+  );
+  assert.notEqual(
+    secondRecord.event.lifecycleRevisionRef,
+    firstRecord.event.lifecycleRevisionRef
+  );
+});
+
+test("30-day Coins quota suspension preserves stable delivery for a possible renewed cycle", () => {
+  const runtimeCore = lifecycleRuntimeCore();
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_suspend_30d_coins",
+    runtimeCore,
+    controlStore: {
+      getEntitlement() {
+        return {
+          id: "ent_30d_coins",
+          plan: "offerv_plan_30d_50gb_monthly_v1"
+        };
+      }
+    }
+  });
+  requests.submitRequest({
+    portalUserRef: "portal_user_30d_coins",
+    plan: "monthly"
+  });
+  requests.markDelivered("pareq_suspend_30d_coins", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_30d_coins",
+    accessGrantRef: "grant_30d_coins",
+    tenantId: "tenant_30d_coins",
+    artifactId: "artifact_30d_coins",
+    subscriptionUrl: "https://sub.example.test/import/30d-coins",
+    expiresAt: "2026-06-30T00:00:00.000Z"
+  });
+
+  requests.suspendTrafficSupply({
+    portalUserRef: "portal_user_30d_coins",
+    requestRef: "pareq_suspend_30d_coins"
+  });
+
+  assert.deepEqual(runtimeCore.calls, [
+    ["disableTenant", "tenant_30d_coins"]
+  ]);
+});
+
+test("a new annual quota cycle resumes the same tenant, artifact, credential, and stable link exactly once", () => {
+  withControlStore((store) => {
+    let now = "2026-02-15T00:00:00.000Z";
+    const seeded = seedUsageOrder(store, {
+      now: "2026-01-31T00:00:00.000Z",
+      requestId: "pareq_quota_resume_1",
+      accountId: "portal_user_usage_summary_1",
+      entitlementId: "ent_quota_resume_1",
+      tenantRef: "tenant_quota_resume_1",
+      artifactRef: "artifact_quota_resume_1",
+      issuedTenantRef: safeIssuedRef("tenant", "tenant_quota_resume_1"),
+      issuedArtifactRef: safeIssuedRef("artifact", "artifact_quota_resume_1"),
+      edgeCredentialRef: "edgecred_quota_resume_1",
+      plan: "yearly",
+      entitlementPlan: "offerv_plan_365d_200gb_monthly_v1",
+      durationDays: 365,
+      validUntil: "2027-01-31T00:00:00.000Z"
+    });
+    const database = new Database(":memory:");
+    const repository = createSubscriptionRepository({ database });
+    const rawArtifact = "synthetic_stable_quota_artifact";
+    const rawToken = "pgsub_synthetic_quota_token";
+    try {
+      const core = createSubscriptionCore({
+        repository,
+        proxyConfig: {
+          servers: [{
+            id: "node_quota_resume_1",
+            name: "quota-resume-test-node",
+            region: "Test",
+            host: "192.0.2.10",
+            port: 443,
+            method: "aes-256-gcm",
+            password: "synthetic-test-password",
+            status: "online"
+          }]
+        },
+        publicSubscriptionBaseUrl: "https://gateway.example.test/",
+        nowFn: () => new Date(now),
+        tokenFactory: () => ({
+          rawToken,
+          tokenHash: hashSubscriptionToken(rawToken),
+          tokenPrefix: rawToken.slice(0, 14)
+        }),
+        artifactSecretFactory: () => rawArtifact,
+        idFactory: () => "tenant_quota_resume_1",
+        artifactIdFactory: () => "artifact_quota_resume_1"
+      });
+      const tenant = core.createTenant({
+        displayName: "Quota resume fixture",
+        expiresAt: "2027-01-31T00:00:00.000Z"
+      });
+      const artifact = core.createSubscriptionArtifact(tenant.tenant.id);
+      const stored = store.getPortalAccessRequest(seeded.requestId);
+      store.upsertPortalAccessRequest({
+        ...stored,
+        tenantId: tenant.tenant.id,
+        artifactId: artifact.artifact.id,
+        subscriptionUrl: artifact.subscriptionUrl
+      });
+      let enableCount = 0;
+      const runtimeCore = {
+        ...core,
+        enableTenant(id) {
+          enableCount += 1;
+          return core.enableTenant(id);
+        }
+      };
+      const edgeLifecycle = edgeLifecycleService({ applied: true });
+      const requests = createPortalAccessRequestService({
+        nowFn: () => now,
+        controlStore: store,
+        runtimeCore,
+        edgeLifecycleService: edgeLifecycle
+      });
+
+      assert.equal(core.resolveSubscriptionArtifact(rawArtifact).ok, true);
+      const suspended = requests.suspendTrafficSupply({
+        portalUserRef: "portal_user_usage_summary_1",
+        requestRef: seeded.requestId
+      });
+      assert.equal(suspended.status, "disabled");
+      assert.equal(core.resolveSubscriptionArtifact(rawArtifact).status, 403);
+      assert.equal(core.listSubscriptionArtifacts(tenant.tenant.id)[0].status, "active");
+
+      now = "2026-03-01T00:00:00.000Z";
+      const resumed = requests.resumeTrafficSupply({
+        portalUserRef: "portal_user_usage_summary_1",
+        requestRef: seeded.requestId,
+        reviewedByRef: "usage_quota_rollover_gate"
+      });
+      const repeated = requests.resumeTrafficSupply({
+        portalUserRef: "portal_user_usage_summary_1",
+        requestRef: seeded.requestId,
+        reviewedByRef: "usage_quota_rollover_gate"
+      });
+      const resumedRecord = store.getPortalAccessRequest(seeded.requestId);
+
+      assert.equal(resumed.status, "quota_traffic_supply_resumed");
+      assert.equal(resumed.runtimeEnforcement.state, "applied");
+      assert.equal(repeated.status, "quota_traffic_supply_already_resumed");
+      assert.equal(enableCount, 1);
+      assert.equal(resumedRecord.status, "delivered");
+      assert.equal(resumedRecord.tenantId, "tenant_quota_resume_1");
+      assert.equal(resumedRecord.artifactId, "artifact_quota_resume_1");
+      assert.equal(resumedRecord.edgeCredentialRef, "edgecred_quota_resume_1");
+      assert.equal(resumedRecord.subscriptionUrl, artifact.subscriptionUrl);
+      assert.equal(core.resolveSubscriptionArtifact(rawArtifact).ok, true);
+      assert.equal(edgeLifecycle.calls.at(-1).reason, "traffic_supply_resumed");
+      assert.equal(resumed.request.subscriptionUrl, undefined);
+      assert.doesNotMatch(JSON.stringify(resumed), /synthetic_stable_quota_artifact/i);
+    } finally {
+      repository.close();
+      database.close();
+    }
+  });
+});
+
+test("default-off rollover does not auto-resume a legacy yearly entitlement", () => {
+  let now = "2026-02-15T00:00:00.000Z";
+  let tenantStatus = "active";
+  let enableCount = 0;
+  let revokeCount = 0;
+  const runtimeCore = {
+    revokeSubscriptionArtifact() {
+      revokeCount += 1;
+      return { id: "artifact_legacy_yearly", status: "revoked" };
+    },
+    disableTenant() {
+      tenantStatus = "disabled";
+      return { id: "tenant_legacy_yearly", status: tenantStatus };
+    },
+    enableTenant() {
+      enableCount += 1;
+      tenantStatus = "active";
+      return { id: "tenant_legacy_yearly", status: tenantStatus };
+    },
+    getTenant() {
+      return { id: "tenant_legacy_yearly", status: tenantStatus };
+    },
+    listSubscriptionArtifacts() {
+      return [{ id: "artifact_legacy_yearly", status: "active" }];
+    }
+  };
+  const requests = createPortalAccessRequestService({
+    nowFn: () => now,
+    requestIdFactory: () => "pareq_legacy_yearly",
+    runtimeCore,
+    controlStore: {
+      getEntitlement() {
+        return {
+          id: "ent_legacy_yearly",
+          plan: "yearly",
+          status: "active",
+          validFrom: "2026-01-31T00:00:00.000Z",
+          validUntil: "2027-01-31T00:00:00.000Z",
+          trafficLimitBytes: 1000
+        };
+      },
+      listUsageSamples() {
+        return [];
+      }
+    },
+    edgeLifecycleService: edgeLifecycleService({ applied: true })
+  });
+  requests.submitRequest({
+    portalUserRef: "portal_user_legacy_yearly",
+    plan: "yearly"
+  });
+  requests.markDelivered("pareq_legacy_yearly", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_legacy_yearly",
+    accessGrantRef: "grant_legacy_yearly",
+    tenantId: "tenant_legacy_yearly",
+    artifactId: "artifact_legacy_yearly",
+    subscriptionUrl: "https://gateway.example.test/sub/a/legacy-yearly.yaml",
+    expiresAt: "2027-01-31T00:00:00.000Z"
+  });
+  requests.suspendTrafficSupply({
+    portalUserRef: "portal_user_legacy_yearly",
+    requestRef: "pareq_legacy_yearly"
+  });
+
+  now = "2026-03-01T00:00:00.000Z";
+  const result = requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_legacy_yearly",
+    requestRef: "pareq_legacy_yearly",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.status, "quota_traffic_supply_resume_not_eligible");
+  assert.deepEqual(result.blockers, [{ code: "plan_not_rollover_managed" }]);
+  assert.equal(enableCount, 0);
+  assert.equal(revokeCount, 1);
+  assert.equal(requests.getRequest("pareq_legacy_yearly").status, "disabled");
+});
+
+test("an early-renewed 30-day Coins offer resumes at its next anchored cycle", () => {
+  const fixture = quotaResumeFixture({
+    entitlementPlan: "offerv_plan_30d_50gb_monthly_v1",
+    validUntil: "2026-04-01T00:00:00.000Z",
+    requestPlan: "monthly"
+  });
+  assert.equal(fixture.artifactStatus(), "active");
+  fixture.setNow("2026-03-02T00:00:00.000Z");
+
+  const result = fixture.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.status, "quota_traffic_supply_resumed");
+  assert.equal(result.runtimeEnforcement.state, "applied");
+  assert.equal(fixture.enableCount(), 1);
+  assert.equal(fixture.tenantStatus(), "active");
+  assert.equal(fixture.artifactStatus(), "active");
+});
+
+test("an unrenewed 30-day Coins offer revokes its stable delivery at the final boundary", () => {
+  const fixture = quotaResumeFixture({
+    entitlementPlan: "offerv_plan_30d_100gb_monthly_v1",
+    validUntil: "2026-03-02T00:00:00.000Z",
+    requestPlan: "monthly"
+  });
+  assert.equal(fixture.artifactStatus(), "active");
+  fixture.setNow("2026-03-02T00:00:00.000Z");
+
+  const result = fixture.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.status, "quota_traffic_supply_expiry_cleanup_completed");
+  assert.equal(result.runtimeEnforcement.state, "applied");
+  assert.equal(result.mutation, true);
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.tenantStatus(), "disabled");
+  assert.equal(fixture.artifactStatus(), "revoked");
+  assert.equal(
+    fixture.requests.getRequest("pareq_quota_fixture").nextAction,
+    "subscription_expired"
+  );
+  assert.equal(
+    fixture.requests.getRequest("pareq_quota_fixture").event.type,
+    "subscription_expired"
+  );
+  assert.equal(
+    fixture.lifecycleReasons.at(-1),
+    "traffic_supply_expired"
+  );
+});
+
+test("30-day expiry cleanup converges across process reopen only after the exact tombstone receipt", () => {
+  withControlStore((store) => {
+    const channelRef = "channel-quota-expiry-remote";
+    const validUntil = "2026-03-02T00:00:00.000Z";
+    const seeded = seedUsageOrder(store, {
+      now: "2026-01-31T00:00:00.000Z",
+      requestId: "pareq_quota_expiry_remote",
+      accountId: "portal_user_usage_summary_1",
+      entitlementId: "ent_quota_expiry_remote",
+      tenantRef: "tenant_quota_expiry_remote",
+      artifactRef: "artifact_quota_expiry_remote",
+      issuedTenantRef: safeIssuedRef("tenant", "tenant_quota_expiry_remote"),
+      issuedArtifactRef: safeIssuedRef("artifact", "artifact_quota_expiry_remote"),
+      edgeChannelRef: channelRef,
+      edgeCredentialRef: "edgecred_quota_expiry_remote",
+      plan: "monthly",
+      entitlementPlan: "offerv_plan_30d_50gb_monthly_v1",
+      durationDays: 30,
+      validUntil
+    });
+    let now = "2026-02-15T00:00:00.000Z";
+    let tenantStatus = "active";
+    let artifactStatus = "active";
+    let enableCount = 0;
+    let revokeCount = 0;
+    const runtimeCore = {
+      disableTenant(id) {
+        tenantStatus = "disabled";
+        return { id, status: tenantStatus, expiresAt: validUntil };
+      },
+      enableTenant(id) {
+        enableCount += 1;
+        tenantStatus = "active";
+        return { id, status: tenantStatus, expiresAt: validUntil };
+      },
+      getTenant(id) {
+        return { id, status: tenantStatus, expiresAt: validUntil };
+      },
+      listSubscriptionArtifacts(id) {
+        return [{
+          id: "artifact_quota_expiry_remote",
+          tenantId: id,
+          status: artifactStatus
+        }];
+      },
+      revokeSubscriptionArtifact(id) {
+        revokeCount += 1;
+        artifactStatus = "revoked";
+        return { id, status: artifactStatus };
+      }
+    };
+    const lifecycle = {
+      reconcileOrderLifecycle({ reason }) {
+        if (reason === "traffic_supply_expired") {
+          return {
+            ok: true,
+            mutation: false,
+            reports: [{
+              ok: true,
+              mutation: false,
+              channelRef,
+              runtimeStatus: "pending",
+              nextAction: "complete_data_plane_handoff",
+              redacted: true
+            }],
+            redacted: true
+          };
+        }
+        return {
+          ok: true,
+          mutation: true,
+          runtimeReceipt: { status: "applied" },
+          redacted: true
+        };
+      }
+    };
+    const createRequests = () => createPortalAccessRequestService({
+      nowFn: () => now,
+      controlStore: store,
+      runtimeCore,
+      edgeLifecycleService: lifecycle,
+      edgeDesiredStateNotifier: createDataPlaneDesiredStateNotifier({
+        controlStore: store,
+        servers: [{
+          id: channelRef,
+          name: channelRef,
+          physicalNodeRef: "node-quota-expiry-remote",
+          runtimeAdapter: "remote-data-plane-handoff"
+        }],
+        nowFn: () => now
+      })
+    });
+
+    const firstProcess = createRequests();
+    firstProcess.suspendTrafficSupply({
+      portalUserRef: "portal_user_usage_summary_1",
+      requestRef: seeded.requestId
+    });
+    now = validUntil;
+    assert.deepEqual(
+      firstProcess.listQuotaSuspendedTrafficSupplies({ limit: 10 }),
+      [{
+        requestRef: seeded.requestId,
+        portalUserRef: "portal_user_usage_summary_1"
+      }]
+    );
+    const pending = firstProcess.resumeTrafficSupply({
+      portalUserRef: "portal_user_usage_summary_1",
+      requestRef: seeded.requestId,
+      reviewedByRef: "usage_quota_rollover_gate"
+    });
+    const pendingRecord = store.getPortalAccessRequest(seeded.requestId);
+    const expiryNotifications = store
+      .listEdgeDesiredStateNotifications()
+      .filter((notification) => notification.reason === "traffic_supply_expired");
+
+    assert.equal(pending.status, "quota_traffic_supply_expiry_cleanup_pending");
+    assert.equal(pending.runtimeEnforcement.state, "pending");
+    assert.equal(pendingRecord.nextAction, "traffic_supply_expiry_cleanup_pending");
+    assert.equal(pendingRecord.subscriptionUrl, null);
+    assert.equal(artifactStatus, "revoked");
+    assert.equal(revokeCount, 1);
+    assert.equal(enableCount, 0);
+    assert.equal(expiryNotifications.length, 1);
+
+    now = "2026-03-03T00:00:00.000Z";
+    const secondProcess = createRequests();
+    assert.deepEqual(
+      secondProcess.listQuotaSuspendedTrafficSupplies({ limit: 10 }),
+      [{
+        requestRef: seeded.requestId,
+        portalUserRef: "portal_user_usage_summary_1"
+      }]
+    );
+    const repeatedPending = secondProcess.resumeTrafficSupply({
+      portalUserRef: "portal_user_usage_summary_1",
+      requestRef: seeded.requestId,
+      reviewedByRef: "usage_quota_rollover_gate"
+    });
+    const repeatedNotifications = store
+      .listEdgeDesiredStateNotifications()
+      .filter((notification) => notification.reason === "traffic_supply_expired");
+
+    assert.equal(repeatedPending.status, "quota_traffic_supply_expiry_cleanup_pending");
+    assert.equal(revokeCount, 1);
+    assert.equal(repeatedNotifications.length, 1);
+    assert.equal(
+      repeatedNotifications[0].desiredStateRef,
+      expiryNotifications[0].desiredStateRef
+    );
+
+    store.recordEdgeApplyReceipt({
+      id: "receipt_quota_expiry_remote",
+      channelRef,
+      desiredStateRef: expiryNotifications[0].desiredStateRef,
+      status: "applied",
+      actionCounts: { add: 0, revoke: 1, rotate: 0, unchanged: 0 },
+      configTestOk: true,
+      serviceActive: true,
+      listenerUdp443: true,
+      appliedAt: now,
+      createdAt: now
+    });
+    now = "2026-03-04T00:00:00.000Z";
+    const thirdProcess = createRequests();
+    const completed = thirdProcess.resumeTrafficSupply({
+      portalUserRef: "portal_user_usage_summary_1",
+      requestRef: seeded.requestId,
+      reviewedByRef: "usage_quota_rollover_gate"
+    });
+    const completedRecord = store.getPortalAccessRequest(seeded.requestId);
+    const completedDesiredState = store.getLatestEdgeDesiredStateForChannel(channelRef, {
+      nodeRef: "node-quota-expiry-remote"
+    });
+
+    assert.equal(completed.status, "quota_traffic_supply_expiry_cleanup_completed");
+    assert.equal(completed.runtimeEnforcement.state, "applied");
+    assert.equal(completedRecord.status, "disabled");
+    assert.equal(completedRecord.nextAction, "subscription_expired");
+    assert.equal(completedRecord.subscriptionUrl, null);
+    assert.equal(completedRecord.event.type, "subscription_expired");
+    assert.equal(completedDesiredState.desiredStateRef, expiryNotifications[0].desiredStateRef);
+    assert.equal(revokeCount, 1);
+    assert.equal(enableCount, 0);
+    assert.deepEqual(thirdProcess.listQuotaSuspendedTrafficSupplies({ limit: 10 }), []);
+  });
+});
+
+test("rollover candidates include only explicit Coins quota suspensions", () => {
+  const records = [
+    {
+      id: "pareq_coins_quota_expired",
+      portalUserRef: "portal_user_expired",
+      entitlementRef: "ent_coins_expired",
+      tenantId: "tenant_quota_candidate",
+      artifactId: "artifact_quota_candidate",
+      subscriptionUrl: "https://gateway.example.test/sub/a/quota-candidate.yaml",
+      expiresAt: "2026-02-20T00:00:00.000Z",
+      validUntil: "2026-02-20T00:00:00.000Z",
+      status: "disabled",
+      nextAction: "traffic_supply_suspended_quota",
+      event: {
+        type: "traffic_supply_suspended",
+        occurredAt: "2026-02-15T00:00:00.000Z",
+        previousStatus: "delivered"
+      }
+    },
+    {
+      id: "pareq_coins_quota_suspended",
+      portalUserRef: "portal_user_coins",
+      entitlementRef: "ent_coins_annual",
+      tenantId: "tenant_quota_candidate",
+      artifactId: "artifact_quota_candidate",
+      subscriptionUrl: "https://gateway.example.test/sub/a/quota-candidate.yaml",
+      expiresAt: "2027-01-31T00:00:00.000Z",
+      validUntil: "2027-01-31T00:00:00.000Z",
+      status: "disabled",
+      nextAction: "traffic_supply_suspended_quota",
+      event: {
+        type: "traffic_supply_suspended",
+        occurredAt: "2026-02-15T00:00:00.000Z",
+        previousStatus: "delivered"
+      }
+    },
+    {
+      id: "pareq_legacy_quota_suspended",
+      portalUserRef: "portal_user_legacy",
+      entitlementRef: "ent_legacy_yearly",
+      status: "disabled",
+      nextAction: "traffic_supply_suspended_quota",
+      event: {
+        type: "traffic_supply_suspended",
+        occurredAt: "2026-02-15T00:00:00.000Z",
+        previousStatus: "delivered"
+      }
+    },
+    {
+      id: "pareq_coins_manually_disabled",
+      portalUserRef: "portal_user_manual",
+      entitlementRef: "ent_coins_annual",
+      status: "disabled",
+      nextAction: "subscription_disabled",
+      event: {
+        type: "subscription_disabled",
+        occurredAt: "2026-02-15T00:00:00.000Z",
+        previousStatus: "delivered"
+      }
+    }
+  ];
+  const requests = createPortalAccessRequestService({
+    nowFn: () => "2026-03-01T00:00:00.000Z",
+    portalAccessRequestStore: {
+      getPortalAccessRequest(id) {
+        return records.find((record) => record.id === id) || null;
+      },
+      listPortalAccessRequests() {
+        return records;
+      },
+      upsertPortalAccessRequest(record) {
+        return record;
+      }
+    },
+    controlStore: {
+      getEntitlement(id) {
+        const accountId = id === "ent_coins_annual"
+          ? "portal_user_coins"
+          : id === "ent_coins_expired"
+            ? "portal_user_expired"
+            : "portal_user_legacy";
+        return {
+          id,
+          accountId,
+          plan: id.startsWith("ent_coins_")
+            ? "offerv_plan_365d_200gb_monthly_v1"
+            : "yearly",
+          status: "active",
+          validFrom: "2026-01-31T00:00:00.000Z",
+          validUntil: id === "ent_coins_expired"
+            ? "2026-02-20T00:00:00.000Z"
+            : "2027-01-31T00:00:00.000Z",
+          trafficLimitBytes: 1000
+        };
+      },
+      getAccount(id) {
+        return { id, ownerRef: id, status: "active" };
+      },
+      getIssuanceRequest(id) {
+        if (id !== "pareq_coins_quota_suspended") return null;
+        return {
+          id,
+          accountId: "portal_user_coins",
+          entitlementId: "ent_coins_annual",
+          status: "issued"
+        };
+      },
+      listIssuedSubscriptionBindings() {
+        return [{
+          id: "link_pareq_coins_quota_suspended",
+          requestId: "pareq_coins_quota_suspended",
+          accountId: "portal_user_coins",
+          entitlementId: "ent_coins_annual",
+          tenantRef: safeIssuedRef("tenant", "tenant_quota_candidate"),
+          artifactRef: safeIssuedRef("artifact", "artifact_quota_candidate"),
+          status: "active",
+          requestStatus: "issued",
+          entitlementStatus: "active"
+        }];
+      },
+      getIssuedLink() {
+        return {
+          id: "link_pareq_coins_quota_suspended",
+          requestId: "pareq_coins_quota_suspended",
+          tenantRef: safeIssuedRef("tenant", "tenant_quota_candidate"),
+          artifactRef: safeIssuedRef("artifact", "artifact_quota_candidate"),
+          status: "active"
+        };
+      },
+      listUsageSamples() {
+        return [];
+      }
+    },
+    runtimeCore: {
+      getTenant() {
+        return {
+          id: "tenant_quota_candidate",
+          status: "disabled",
+          expiresAt: "2027-01-31T00:00:00.000Z"
+        };
+      },
+      listSubscriptionArtifacts() {
+        return [{
+          id: "artifact_quota_candidate",
+          tenantId: "tenant_quota_candidate",
+          status: "active"
+        }];
+      },
+      enableTenant() {
+        throw new Error("candidate listing must not enable a tenant");
+      },
+      disableTenant() {
+        throw new Error("candidate listing must not disable a tenant");
+      }
+    }
+  });
+
+  const candidates = [
+    ...requests.listQuotaSuspendedTrafficSupplies({ limit: 1 }),
+    ...requests.listQuotaSuspendedTrafficSupplies({ limit: 1 }),
+    ...requests.listQuotaSuspendedTrafficSupplies({ limit: 1 })
+  ];
+  assert.deepEqual(candidates, [{
+    requestRef: "pareq_coins_quota_suspended",
+    portalUserRef: "portal_user_coins"
+  }]);
+});
+
+test("rollover candidate pagination bounds expensive reads and rotates pending work", () => {
+  const validUntil = "2027-01-31T00:00:00.000Z";
+  const records = Array.from({ length: 5 }, (_, index) => ({
+    ...materialBearingPortalRequest({
+      id: `pareq_quota_page_${index}`,
+      portalUserRef: `portal_user_quota_page_${index}`,
+      plan: "yearly",
+      durationDays: 365,
+      status: "disabled",
+      nextAction: index === 0
+        ? "traffic_supply_resume_pending"
+        : "traffic_supply_suspended_quota",
+      submittedAt: `2026-01-31T00:00:0${index}.000Z`,
+      updatedAt: "2026-02-15T00:00:00.000Z",
+      expiresAt: validUntil,
+      validUntil,
+      entitlementRef: `ent_quota_page_${index}`,
+      tenantId: `tenant_quota_page_${index}`,
+      artifactId: `artifact_quota_page_${index}`,
+      subscriptionUrl: `https://gateway.example.test/sub/a/quota-page-${index}.yaml`,
+      event: {
+        type: "traffic_supply_suspended",
+        occurredAt: "2026-02-15T00:00:00.000Z",
+        previousStatus: "delivered"
+      }
+    })
+  }));
+  let usageReads = 0;
+  let runtimeReads = 0;
+  const requests = createPortalAccessRequestService({
+    nowFn: () => "2026-03-01T00:00:00.000Z",
+    portalAccessRequestStore: portalRequestStoreWith(records),
+    controlStore: {
+      getEntitlement(id) {
+        const index = id.at(-1);
+        return {
+          id,
+          accountId: `portal_user_quota_page_${index}`,
+          plan: "offerv_plan_365d_200gb_monthly_v1",
+          status: "active",
+          validFrom: "2026-01-31T00:00:00.000Z",
+          validUntil,
+          trafficLimitBytes: 1000
+        };
+      },
+      getAccount(id) {
+        return { id, ownerRef: id, status: "active" };
+      },
+      getIssuanceRequest(id) {
+        const index = id.at(-1);
+        return {
+          id,
+          accountId: `portal_user_quota_page_${index}`,
+          entitlementId: `ent_quota_page_${index}`,
+          status: "issued"
+        };
+      },
+      listIssuedSubscriptionBindings({ tenantRef }) {
+        const record = records.find((item) =>
+          safeIssuedRef("tenant", item.tenantId) === tenantRef
+        );
+        if (!record) return [];
+        return [{
+          id: `link_${record.id}`,
+          requestId: record.id,
+          accountId: record.portalUserRef,
+          entitlementId: record.entitlementRef,
+          tenantRef,
+          artifactRef: safeIssuedRef("artifact", record.artifactId),
+          status: "active",
+          requestStatus: "issued",
+          entitlementStatus: "active"
+        }];
+      },
+      getIssuedLink(id) {
+        const record = records.find((item) => id === `link_${item.id}`);
+        return record ? {
+          id,
+          requestId: record.id,
+          tenantRef: safeIssuedRef("tenant", record.tenantId),
+          artifactRef: safeIssuedRef("artifact", record.artifactId),
+          status: "active"
+        } : null;
+      },
+      listUsageSamples() {
+        usageReads += 1;
+        return [];
+      }
+    },
+    runtimeCore: {
+      getTenant(id) {
+        runtimeReads += 1;
+        return { id, status: "disabled", expiresAt: validUntil };
+      },
+      listSubscriptionArtifacts(id) {
+        runtimeReads += 1;
+        return [{
+          id: id.replace("tenant_", "artifact_"),
+          tenantId: id,
+          status: "active"
+        }];
+      },
+      enableTenant() {
+        throw new Error("candidate listing must not enable");
+      },
+      disableTenant() {
+        throw new Error("candidate listing must not disable");
+      }
+    }
+  });
+
+  const first = requests.listQuotaSuspendedTrafficSupplies({ limit: 2 });
+  assert.deepEqual(first.map((item) => item.requestRef), [
+    "pareq_quota_page_0",
+    "pareq_quota_page_1"
+  ]);
+  assert.equal(usageReads, 2);
+  assert.equal(runtimeReads, 4);
+
+  usageReads = 0;
+  runtimeReads = 0;
+  const second = requests.listQuotaSuspendedTrafficSupplies({ limit: 2 });
+  assert.deepEqual(second.map((item) => item.requestRef), [
+    "pareq_quota_page_2",
+    "pareq_quota_page_3"
+  ]);
+  assert.equal(usageReads, 2);
+  assert.equal(runtimeReads, 4);
+
+  usageReads = 0;
+  runtimeReads = 0;
+  const third = requests.listQuotaSuspendedTrafficSupplies({ limit: 2 });
+  assert.deepEqual(third.map((item) => item.requestRef), [
+    "pareq_quota_page_4",
+    "pareq_quota_page_0"
+  ]);
+  assert.equal(usageReads, 2);
+  assert.equal(runtimeReads, 4);
+});
+
+test("expiry cleanup pending remains retryable when later binding or runtime reads drift", () => {
+  const record = materialBearingPortalRequest({
+    id: "pareq_quota_cleanup_retry",
+    portalUserRef: "portal_user_quota_cleanup_retry",
+    status: "disabled",
+    nextAction: "traffic_supply_expiry_cleanup_pending",
+    entitlementRef: "ent_quota_cleanup_retry",
+    tenantId: "tenant_quota_cleanup_retry",
+    artifactId: "artifact_quota_cleanup_retry",
+    subscriptionUrl: null,
+    event: {
+      type: "traffic_supply_suspended",
+      occurredAt: "2026-02-15T00:00:00.000Z",
+      previousStatus: "delivered"
+    }
+  });
+  const requests = createPortalAccessRequestService({
+    nowFn: () => "2026-03-03T00:00:00.000Z",
+    portalAccessRequestStore: portalRequestStoreWith([record]),
+    controlStore: {},
+    runtimeCore: {}
+  });
+
+  assert.deepEqual(
+    requests.listQuotaSuspendedTrafficSupplies({ limit: 10 }),
+    [{
+      requestRef: "pareq_quota_cleanup_retry",
+      portalUserRef: "portal_user_quota_cleanup_retry"
+    }]
+  );
+  const result = requests.resumeTrafficSupply({
+    requestRef: "pareq_quota_cleanup_retry",
+    portalUserRef: "portal_user_quota_cleanup_retry",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "quota_traffic_supply_expiry_cleanup_failed");
+  assert.equal(result.runtimeEnforcement.state, "failed");
+  assert.deepEqual(
+    requests.listQuotaSuspendedTrafficSupplies({ limit: 10 }),
+    [{
+      requestRef: "pareq_quota_cleanup_retry",
+      portalUserRef: "portal_user_quota_cleanup_retry"
+    }]
+  );
+});
+
+test("default-off inventory with no immutable rollover offer performs zero expensive reads or mutation", () => {
+  const record = materialBearingPortalRequest({
+    id: "pareq_quota_default_off_legacy",
+    portalUserRef: "portal_user_quota_default_off_legacy",
+    status: "disabled",
+    nextAction: "traffic_supply_suspended_quota",
+    entitlementRef: "ent_quota_default_off_legacy",
+    event: {
+      type: "traffic_supply_suspended",
+      occurredAt: "2026-02-15T00:00:00.000Z",
+      previousStatus: "delivered"
+    }
+  });
+  let mutationCount = 0;
+  const requests = createPortalAccessRequestService({
+    nowFn: () => "2026-03-01T00:00:00.000Z",
+    portalAccessRequestStore: portalRequestStoreWith([record]),
+    controlStore: {
+      getEntitlement() {
+        return {
+          id: "ent_quota_default_off_legacy",
+          plan: "yearly",
+          status: "active",
+          validFrom: "2026-01-31T00:00:00.000Z",
+          validUntil: "2027-01-31T00:00:00.000Z",
+          trafficLimitBytes: 1000
+        };
+      },
+      listUsageSamples() {
+        throw new Error("legacy inventory must not read usage");
+      }
+    },
+    runtimeCore: {
+      getTenant() {
+        throw new Error("legacy inventory must not read runtime");
+      },
+      listSubscriptionArtifacts() {
+        throw new Error("legacy inventory must not read runtime");
+      },
+      enableTenant() {
+        mutationCount += 1;
+      },
+      disableTenant() {
+        mutationCount += 1;
+      }
+    }
+  });
+
+  assert.deepEqual(requests.listQuotaSuspendedTrafficSupplies({ limit: 10 }), []);
+  assert.equal(mutationCount, 0);
+});
+
+test("quota resume fails closed when a remote handoff lacks authoritative desired-state receipts", () => {
+  const fixture = quotaResumeFixture({
+    resumeLifecycleResult: {
+      ok: true,
+      mutation: false,
+      nextAction: "complete_data_plane_handoff",
+      channelRef: "channel-quota-fixture",
+      runtimeReceipt: { status: "pending" },
+      redacted: true
+    }
+  });
+  fixture.setNow("2026-03-01T00:00:00.000Z");
+
+  const result = fixture.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+  const repeated = fixture.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "quota_traffic_supply_resume_failed");
+  assert.equal(result.mutation, false);
+  assert.equal(result.runtimeEnforcement.state, "failed");
+  assert.deepEqual(result.blockers, [{ code: "edge_runtime_enforcement_failed" }]);
+  assert.equal(repeated.status, "quota_traffic_supply_resume_failed");
+  assert.equal(fixture.requests.getRequest("pareq_quota_fixture").status, "disabled");
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.tenantStatus(), "disabled");
+  assert.equal(fixture.artifactStatus(), "active");
+});
+
+test("an applied direct lifecycle result cannot bypass a pending desired-state channel", () => {
+  const channelRef = "channel-quota-direct-with-remote";
+  const nodeRef = "node-quota-direct-with-remote";
+  const desiredStateRef = "desired_state_quota_direct_with_remote";
+  const generation = "gen_quota_direct_with_remote";
+  const notificationId = "edge_state_notify_quota_direct_with_remote";
+  let persistedReason = "traffic_supply_suspended";
+  const notification = () => ({
+    id: notificationId,
+    nodeRef,
+    channelRef,
+    desiredStateRef,
+    generation,
+    reason: persistedReason,
+    status: "pending"
+  });
+  const fixture = quotaResumeFixture({
+    controlOverrides: {
+      getLatestEdgeDesiredStateForChannel() {
+        return {
+          nodeRef,
+          channelRefs: [channelRef],
+          desiredStateRef,
+          generation
+        };
+      },
+      getEdgeDesiredStateNotification() {
+        return notification();
+      },
+      listEdgeApplyReceipts() {
+        return [];
+      }
+    },
+    edgeDesiredStateNotifier: {
+      notifyOrderLifecycle({ reason }) {
+        persistedReason = reason;
+        return {
+          ok: true,
+          notificationCount: 1,
+          notifications: [notification()],
+          redacted: true
+        };
+      }
+    }
+  });
+  fixture.setNow("2026-03-01T00:00:00.000Z");
+
+  const result = fixture.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.status, "quota_traffic_supply_resume_pending");
+  assert.equal(result.runtimeEnforcement.state, "pending");
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.tenantStatus(), "disabled");
+});
+
+test("quota resume converges across process reopen only after every exact active desired receipt is applied", () => {
+  withControlStore((store) => {
+    const channels = ["channel-quota-remote-a", "channel-quota-remote-b"];
+    const edgeCredentials = channels.map((channelRef, index) => ({
+      edgeChannelRef: channelRef,
+      edgeCredentialRef: `edgecred_quota_remote_${index}`,
+      edgeMaterialDigest: `sha256:quota_remote_digest_${index}`
+    }));
+    const seeded = seedUsageOrder(store, {
+      now: "2026-01-31T00:00:00.000Z",
+      requestId: "pareq_quota_remote",
+      accountId: "portal_user_usage_summary_1",
+      entitlementId: "ent_quota_remote",
+      tenantRef: "tenant_quota_remote",
+      artifactRef: "artifact_quota_remote",
+      issuedTenantRef: safeIssuedRef("tenant", "tenant_quota_remote"),
+      issuedArtifactRef: safeIssuedRef("artifact", "artifact_quota_remote"),
+      edgeChannelRef: channels[0],
+      edgeCredentialRef: edgeCredentials[0].edgeCredentialRef,
+      edgeCredentials,
+      plan: "yearly",
+      entitlementPlan: "offerv_plan_365d_200gb_monthly_v1",
+      durationDays: 365,
+      validUntil: "2027-01-31T00:00:00.000Z"
+    });
+    let now = "2026-02-15T00:00:00.000Z";
+    let tenantStatus = "active";
+    let enableCount = 0;
+    const runtimeCore = {
+      disableTenant(id) {
+        tenantStatus = "disabled";
+        return {
+          id,
+          status: tenantStatus,
+          expiresAt: "2027-01-31T00:00:00.000Z"
+        };
+      },
+      enableTenant(id) {
+        enableCount += 1;
+        tenantStatus = "active";
+        return {
+          id,
+          status: tenantStatus,
+          expiresAt: "2027-01-31T00:00:00.000Z"
+        };
+      },
+      getTenant(id) {
+        return {
+          id,
+          status: tenantStatus,
+          expiresAt: "2027-01-31T00:00:00.000Z"
+        };
+      },
+      listSubscriptionArtifacts(id) {
+        return [{
+          id: "artifact_quota_remote",
+          tenantId: id,
+          status: "active"
+        }];
+      }
+    };
+    const servers = channels.map((channelRef) => ({
+      id: channelRef,
+      name: channelRef,
+      physicalNodeRef: `node-${channelRef}`,
+      runtimeAdapter: "remote-data-plane-handoff"
+    }));
+    const lifecycle = {
+      reconcileOrderLifecycle({ reason }) {
+        if (
+          reason === "traffic_supply_resumed"
+          || reason === "traffic_supply_resume_rolled_back"
+        ) {
+          return {
+            ok: true,
+            mutation: false,
+            reports: channels.map((channelRef) => ({
+              ok: true,
+              mutation: false,
+              channelRef,
+              runtimeStatus: "pending",
+              nextAction: "complete_data_plane_handoff",
+              redacted: true
+            })),
+            redacted: true
+          };
+        }
+        return {
+          ok: true,
+          mutation: true,
+          runtimeReceipt: { status: "applied" },
+          redacted: true
+        };
+      }
+    };
+    const createRequests = () => createPortalAccessRequestService({
+      nowFn: () => now,
+      controlStore: store,
+      runtimeCore,
+      edgeLifecycleService: lifecycle,
+      edgeDesiredStateNotifier: createDataPlaneDesiredStateNotifier({
+        controlStore: store,
+        servers,
+        nowFn: () => now
+      })
+    });
+    const recordApplied = (notification, suffix) => {
+      store.recordEdgeApplyReceipt({
+        id: `receipt_${suffix}_${notification.channelRef}`,
+        channelRef: notification.channelRef,
+        desiredStateRef: notification.desiredStateRef,
+        status: "applied",
+        actionCounts: { add: 0, revoke: 0, rotate: 0, unchanged: 1 },
+        configTestOk: true,
+        serviceActive: true,
+        listenerUdp443: true,
+        appliedAt: now,
+        createdAt: now
+      });
+    };
+
+    const firstProcess = createRequests();
+    firstProcess.suspendTrafficSupply({
+      portalUserRef: "portal_user_usage_summary_1",
+      requestRef: seeded.requestId
+    });
+    const suspensionLifecycleRevisionRef = store
+      .getPortalAccessRequest(seeded.requestId)
+      .event
+      .lifecycleRevisionRef;
+    assert.match(
+      suspensionLifecycleRevisionRef,
+      /^lifecycle_ref_[a-f0-9]{32}$/
+    );
+    const tombstoneNotifications = store
+      .listEdgeDesiredStateNotifications()
+      .filter((notification) => notification.reason === "traffic_supply_suspended");
+    assert.equal(tombstoneNotifications.length, channels.length);
+    for (const notification of tombstoneNotifications) {
+      recordApplied(notification, "tombstone");
+    }
+
+    now = "2026-03-01T00:00:00.000Z";
+    const firstAttempt = firstProcess.resumeTrafficSupply({
+      portalUserRef: "portal_user_usage_summary_1",
+      requestRef: seeded.requestId,
+      reviewedByRef: "usage_quota_rollover_gate"
+    });
+    assert.equal(firstAttempt.status, "quota_traffic_supply_resume_pending");
+    assert.equal(enableCount, 0);
+    assert.equal(tenantStatus, "disabled");
+    assert.equal(
+      store.getPortalAccessRequest(seeded.requestId).nextAction,
+      "traffic_supply_resume_pending"
+    );
+    assert.equal(
+      store.getPortalAccessRequest(seeded.requestId).event.lifecycleRevisionRef,
+      suspensionLifecycleRevisionRef
+    );
+    const activeNotifications = store
+      .listEdgeDesiredStateNotifications()
+      .filter((notification) => notification.reason === "traffic_supply_resumed");
+    assert.equal(activeNotifications.length, channels.length);
+    assert.equal(
+      activeNotifications.some((notification) =>
+        tombstoneNotifications.some((tombstone) =>
+          tombstone.channelRef === notification.channelRef
+          && tombstone.desiredStateRef === notification.desiredStateRef
+        )
+      ),
+      false
+    );
+
+    recordApplied(activeNotifications[0], "active_a");
+    now = "2026-03-02T00:00:00.000Z";
+    const secondProcess = createRequests();
+    const secondAttempt = secondProcess.resumeTrafficSupply({
+      portalUserRef: "portal_user_usage_summary_1",
+      requestRef: seeded.requestId,
+      reviewedByRef: "usage_quota_rollover_gate"
+    });
+    assert.equal(secondAttempt.status, "quota_traffic_supply_resume_pending");
+    assert.equal(enableCount, 0);
+    assert.equal(tenantStatus, "disabled");
+    assert.equal(
+      store.getPortalAccessRequest(seeded.requestId).event.lifecycleRevisionRef,
+      suspensionLifecycleRevisionRef
+    );
+
+    recordApplied(activeNotifications[1], "active_b");
+    now = "2026-03-03T00:00:00.000Z";
+    const thirdProcess = createRequests();
+    const applied = thirdProcess.resumeTrafficSupply({
+      portalUserRef: "portal_user_usage_summary_1",
+      requestRef: seeded.requestId,
+      reviewedByRef: "usage_quota_rollover_gate"
+    });
+
+    assert.equal(applied.status, "quota_traffic_supply_resumed");
+    assert.equal(applied.runtimeEnforcement.state, "applied");
+    assert.equal(enableCount, 1);
+    assert.equal(tenantStatus, "active");
+    assert.equal(store.getPortalAccessRequest(seeded.requestId).status, "delivered");
+    assert.equal(
+      store.getPortalAccessRequest(seeded.requestId).nextAction,
+      "user_can_use_access"
+    );
+
+    now = "2026-03-15T00:00:00.000Z";
+    const fourthProcess = createRequests();
+    fourthProcess.suspendTrafficSupply({
+      portalUserRef: "portal_user_usage_summary_1",
+      requestRef: seeded.requestId
+    });
+    const firstTombstoneIds = new Set(
+      tombstoneNotifications.map((notification) => notification.id)
+    );
+    const nextTombstoneNotifications = store
+      .listEdgeDesiredStateNotifications()
+      .filter((notification) => (
+        notification.reason === "traffic_supply_suspended"
+        && !firstTombstoneIds.has(notification.id)
+      ));
+    assert.equal(nextTombstoneNotifications.length, channels.length);
+    for (const notification of nextTombstoneNotifications) {
+      recordApplied(notification, "next_tombstone");
+    }
+
+    now = "2026-04-01T00:00:00.000Z";
+    const nextCycleAttempt = createRequests().resumeTrafficSupply({
+      portalUserRef: "portal_user_usage_summary_1",
+      requestRef: seeded.requestId,
+      reviewedByRef: "usage_quota_rollover_gate"
+    });
+    assert.equal(nextCycleAttempt.status, "quota_traffic_supply_resume_pending");
+    assert.equal(enableCount, 1);
+    assert.equal(tenantStatus, "disabled");
+    const firstActiveIds = new Set(
+      activeNotifications.map((notification) => notification.id)
+    );
+    const nextActiveNotifications = store
+      .listEdgeDesiredStateNotifications()
+      .filter((notification) => (
+        notification.reason === "traffic_supply_resumed"
+        && !firstActiveIds.has(notification.id)
+      ));
+    assert.equal(nextActiveNotifications.length, channels.length);
+    assert.equal(
+      nextActiveNotifications.some((notification) =>
+        activeNotifications.some((priorNotification) =>
+          priorNotification.channelRef === notification.channelRef
+          && priorNotification.desiredStateRef === notification.desiredStateRef
+        )
+      ),
+      false
+    );
+  });
+});
+
+test("quota resume finalizes an exact active crash state after process reopen without enabling twice", () => {
+  const fixture = quotaResumeCrashFixture({ desiredStateStatus: "applied" });
+
+  const result = fixture.reopenRequests().resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+  const stored = fixture.requestStore.getPortalAccessRequest("pareq_quota_fixture");
+
+  assert.equal(result.status, "quota_traffic_supply_resumed");
+  assert.equal(result.runtimeEnforcement.state, "applied");
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.tenantStatus(), "active");
+  assert.equal(stored.status, "delivered");
+  assert.equal(stored.nextAction, "user_can_use_access");
+});
+
+test("quota resume disables an exact active crash state when applied evidence is incomplete", () => {
+  const fixture = quotaResumeCrashFixture({ desiredStateStatus: "pending" });
+  const disableCountBeforeRecovery = fixture.disableCount();
+
+  const result = fixture.reopenRequests().resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+  const stored = fixture.requestStore.getPortalAccessRequest("pareq_quota_fixture");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "quota_traffic_supply_resume_failed");
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.disableCount(), disableCountBeforeRecovery + 1);
+  assert.equal(fixture.tenantStatus(), "disabled");
+  assert.equal(stored.status, "disabled");
+  assert.equal(stored.nextAction, "traffic_supply_resume_rollback_pending");
+});
+
+test("an exact active crash state cannot finalize without an exact desired-state receipt", () => {
+  const fixture = quotaResumeFixture();
+  fixture.setNow("2026-03-01T00:00:00.000Z");
+  const suspended = fixture.requestStore.getPortalAccessRequest("pareq_quota_fixture");
+  fixture.requestStore.upsertPortalAccessRequest({
+    ...suspended,
+    status: "disabled",
+    nextAction: "traffic_supply_resume_pending",
+    updatedAt: "2026-03-01T00:00:00.000Z"
+  });
+  fixture.setTenantStatus("active");
+
+  const result = fixture.reopenRequests().resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "quota_traffic_supply_resume_failed");
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.tenantStatus(), "disabled");
+});
+
+test("an active pending resume fails closed when its lifecycle revision is missing", () => {
+  const fixture = quotaResumeFixture();
+  fixture.setNow("2026-03-01T00:00:00.000Z");
+  const pending = fixture.requestStore.getPortalAccessRequest("pareq_quota_fixture");
+  fixture.requestStore.upsertPortalAccessRequest({
+    ...pending,
+    status: "disabled",
+    nextAction: "traffic_supply_resume_pending",
+    updatedAt: "2026-03-01T00:00:00.000Z",
+    event: {
+      ...pending.event,
+      lifecycleRevisionRef: undefined
+    }
+  });
+  fixture.setTenantStatus("active");
+
+  const result = fixture.reopenRequests().resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "quota_traffic_supply_resume_failed");
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.tenantStatus(), "disabled");
+  assert.match(
+    fixture.requestStore
+      .getPortalAccessRequest("pareq_quota_fixture")
+      .event
+      .lifecycleRevisionRef,
+    /^lifecycle_ref_[a-f0-9]{32}$/
+  );
+});
+
+test("an active pending resume rejects desired-state evidence with an unsafe lifecycle revision", () => {
+  const fixture = quotaResumeCrashFixture({ lifecycleRevisionSafe: false });
+
+  const result = fixture.reopenRequests().resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "quota_traffic_supply_resume_failed");
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.tenantStatus(), "disabled");
+});
+
+test("a legacy disabled resume intent backfills one lifecycle revision and keeps it across retries", () => {
+  const fixture = quotaResumeCrashFixture({ desiredStateStatus: "pending" });
+  fixture.setTenantStatus("disabled");
+  const suspended = fixture.requestStore.getPortalAccessRequest("pareq_quota_fixture");
+  fixture.requestStore.upsertPortalAccessRequest({
+    ...suspended,
+    status: "disabled",
+    nextAction: "traffic_supply_suspended_quota",
+    event: {
+      ...suspended.event,
+      lifecycleRevisionRef: undefined
+    }
+  });
+
+  const first = fixture.reopenRequests().resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+  const firstRevision = fixture.requestStore
+    .getPortalAccessRequest("pareq_quota_fixture")
+    .event
+    .lifecycleRevisionRef;
+  const second = fixture.reopenRequests().resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(first.status, "quota_traffic_supply_resume_pending");
+  assert.equal(second.status, "quota_traffic_supply_resume_pending");
+  assert.match(firstRevision, /^lifecycle_ref_[a-f0-9]{32}$/);
+  assert.equal(
+    fixture.requestStore
+      .getPortalAccessRequest("pareq_quota_fixture")
+      .event
+      .lifecycleRevisionRef,
+    firstRevision
+  );
+});
+
+test("a legacy expiry cleanup intent backfills one lifecycle revision and keeps it across retries", () => {
+  const fixture = quotaResumeCrashFixture({
+    desiredStateStatus: "pending",
+    validUntil: "2026-02-20T00:00:00.000Z"
+  });
+  fixture.setTenantStatus("disabled");
+  const suspended = fixture.requestStore.getPortalAccessRequest("pareq_quota_fixture");
+  fixture.requestStore.upsertPortalAccessRequest({
+    ...suspended,
+    status: "disabled",
+    nextAction: "traffic_supply_suspended_quota",
+    event: {
+      ...suspended.event,
+      lifecycleRevisionRef: undefined
+    }
+  });
+
+  const first = fixture.reopenRequests().resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+  const firstRevision = fixture.requestStore
+    .getPortalAccessRequest("pareq_quota_fixture")
+    .event
+    .lifecycleRevisionRef;
+  const second = fixture.reopenRequests().resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(first.status, "quota_traffic_supply_expiry_cleanup_pending");
+  assert.equal(second.status, "quota_traffic_supply_expiry_cleanup_pending");
+  assert.match(firstRevision, /^lifecycle_ref_[a-f0-9]{32}$/);
+  assert.equal(
+    fixture.requestStore
+      .getPortalAccessRequest("pareq_quota_fixture")
+      .event
+      .lifecycleRevisionRef,
+    firstRevision
+  );
+});
+
+test("an ordinary suspended request never treats an active tenant as a resumable crash state", () => {
+  const fixture = quotaResumeFixture();
+  fixture.setNow("2026-03-01T00:00:00.000Z");
+  fixture.setTenantStatus("active");
+
+  const result = fixture.reopenRequests().resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.status, "quota_traffic_supply_resume_not_eligible");
+  assert.deepEqual(
+    result.blockers,
+    [{ code: "stable_subscription_not_resumable" }]
+  );
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(
+    fixture.requestStore.getPortalAccessRequest("pareq_quota_fixture").nextAction,
+    "traffic_supply_suspended_quota"
+  );
+});
+
+test("quota resume rechecks entitlement expiry after edge reconcile before enabling", () => {
+  let entitlementValidUntil = "2027-01-31T00:00:00.000Z";
+  const fixture = quotaResumeFixture({
+    controlOverrides: {
+      getEntitlement() {
+        return {
+          id: "ent_quota_fixture",
+          accountId: "portal_user_quota_fixture",
+          plan: "offerv_plan_365d_200gb_monthly_v1",
+          status: "active",
+          validFrom: "2026-01-31T00:00:00.000Z",
+          validUntil: entitlementValidUntil,
+          trafficLimitBytes: 1000
+        };
+      }
+    },
+    resumeLifecycleResult() {
+      entitlementValidUntil = "2027-02-28T00:00:00.000Z";
+      return {
+        ok: true,
+        mutation: true,
+        runtimeReceipt: { status: "applied" },
+        redacted: true
+      };
+    }
+  });
+  fixture.setNow("2026-03-01T00:00:00.000Z");
+
+  const result = fixture.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "quota_traffic_supply_resume_failed");
+  assert.deepEqual(
+    result.blockers,
+    [{ code: "edge_runtime_enforcement_failed" }]
+  );
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.tenantStatus(), "disabled");
+  assert.equal(
+    fixture.requestStore.getPortalAccessRequest("pareq_quota_fixture").nextAction,
+    "traffic_supply_suspended_quota"
+  );
+});
+
+test("quota resume uses a fresh clock after edge reconcile before enabling", () => {
+  let fixture;
+  fixture = quotaResumeFixture({
+    validUntil: "2026-03-01T00:00:01.000Z",
+    resumeLifecycleResult() {
+      fixture.setNow("2026-03-01T00:00:02.000Z");
+      return {
+        ok: true,
+        mutation: true,
+        runtimeReceipt: { status: "applied" },
+        redacted: true
+      };
+    }
+  });
+  fixture.setNow("2026-03-01T00:00:00.000Z");
+
+  const result = fixture.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "quota_traffic_supply_resume_failed");
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.tenantStatus(), "disabled");
+});
+
+test("quota resume rolls back local enablement when edge enforcement fails", () => {
+  const fixture = quotaResumeFixture({
+    resumeLifecycleResult: {
+      ok: false,
+      mutation: false,
+      runtimeReceipt: { status: "failed" },
+      redacted: true
+    }
+  });
+  fixture.setNow("2026-03-01T00:00:00.000Z");
+
+  const result = fixture.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "quota_traffic_supply_resume_failed");
+  assert.equal(result.mutation, false);
+  assert.equal(result.runtimeEnforcement.state, "failed");
+  assert.equal(fixture.requests.getRequest("pareq_quota_fixture").status, "disabled");
+  assert.equal(fixture.tenantStatus(), "disabled");
+  assert.equal(fixture.enableCount(), 0);
+});
+
+test("quota resume rejects an inexact tenant enable result or readback and preserves expiry", () => {
+  const cases = [
+    {
+      name: "wrong enable id",
+      enableTenantResult: {
+        id: "tenant_other",
+        status: "active",
+        expiresAt: "2027-01-31T00:00:00.000Z"
+      }
+    },
+    {
+      name: "enable status is not active",
+      enableTenantResult: {
+        id: "tenant_quota_fixture",
+        status: "disabled",
+        expiresAt: "2027-01-31T00:00:00.000Z"
+      }
+    },
+    {
+      name: "wrong readback id",
+      readbackTenantResult: {
+        id: "tenant_other",
+        status: "active",
+        expiresAt: "2027-01-31T00:00:00.000Z"
+      }
+    },
+    {
+      name: "readback status is not active",
+      readbackTenantResult: {
+        id: "tenant_quota_fixture",
+        status: "disabled",
+        expiresAt: "2027-01-31T00:00:00.000Z"
+      }
+    },
+    {
+      name: "readback expiry changed",
+      readbackTenantResult: {
+        id: "tenant_quota_fixture",
+        status: "active",
+        expiresAt: "2027-02-01T00:00:00.000Z"
+      }
+    }
+  ];
+
+  for (const fixtureCase of cases) {
+    const fixture = quotaResumeFixture(fixtureCase);
+    fixture.setNow("2026-03-01T00:00:00.000Z");
+
+    const result = fixture.requests.resumeTrafficSupply({
+      portalUserRef: "portal_user_quota_fixture",
+      requestRef: "pareq_quota_fixture",
+      reviewedByRef: "usage_quota_rollover_gate"
+    });
+
+    assert.equal(result.ok, false, fixtureCase.name);
+    assert.equal(result.status, "quota_traffic_supply_resume_failed", fixtureCase.name);
+    assert.deepEqual(
+      result.blockers,
+      [{ code: "edge_runtime_enforcement_failed" }],
+      fixtureCase.name
+    );
+    assert.equal(
+      fixture.requests.getRequest("pareq_quota_fixture").status,
+      "disabled",
+      fixtureCase.name
+    );
+    assert.equal(
+      fixture.requests.getRequest("pareq_quota_fixture").nextAction,
+      "traffic_supply_suspended_quota",
+      fixtureCase.name
+    );
+    assert.equal(fixture.tenantStatus(), "disabled", fixtureCase.name);
+  }
+});
+
+test("quota resume fails closed on account, issuance, or issued-link binding drift before expensive reads", () => {
+  const exactBinding = {
+    id: "link_pareq_quota_fixture",
+    linkId: "link_pareq_quota_fixture",
+    requestId: "pareq_quota_fixture",
+    accountId: "portal_user_quota_fixture",
+    entitlementId: "ent_quota_fixture",
+    tenantRef: safeIssuedRef("tenant", "tenant_quota_fixture"),
+    artifactRef: safeIssuedRef("artifact", "artifact_quota_fixture"),
+    status: "active",
+    requestStatus: "issued",
+    entitlementStatus: "active"
+  };
+  const cases = [
+    {
+      name: "account inactive",
+      bindingOverrides: { account: { status: "disabled" } }
+    },
+    {
+      name: "issuance not issued",
+      bindingOverrides: { issuance: { status: "planned" } }
+    },
+    {
+      name: "issuance entitlement drift",
+      bindingOverrides: { issuance: { entitlementId: "ent_other" } }
+    },
+    {
+      name: "tenant hash drift",
+      bindingOverrides: { binding: { tenantRef: "tenantref_other" } }
+    },
+    {
+      name: "artifact hash drift",
+      bindingOverrides: { binding: { artifactRef: "artifactref_other" } }
+    },
+    {
+      name: "ambiguous exact binding",
+      bindingOverrides: {
+        bindings: [
+          exactBinding,
+          { ...exactBinding, id: "link_duplicate", linkId: "link_duplicate" }
+        ]
+      }
+    },
+    {
+      name: "issued link inactive on exact readback",
+      bindingOverrides: { issuedLink: { status: "revoked" } }
+    }
+  ];
+
+  for (const fixtureCase of cases) {
+    const fixture = quotaResumeFixture(fixtureCase);
+    fixture.setNow("2026-03-01T00:00:00.000Z");
+
+    const result = fixture.requests.resumeTrafficSupply({
+      portalUserRef: "portal_user_quota_fixture",
+      requestRef: "pareq_quota_fixture",
+      reviewedByRef: "usage_quota_rollover_gate"
+    });
+
+    assert.equal(
+      result.status,
+      "quota_traffic_supply_resume_not_eligible",
+      fixtureCase.name
+    );
+    assert.deepEqual(
+      result.blockers,
+      [{ code: "quota_binding_not_resumable" }],
+      fixtureCase.name
+    );
+    assert.equal(fixture.usageReadCount(), 0, fixtureCase.name);
+    assert.equal(fixture.runtimeReadCount(), 0, fixtureCase.name);
+    assert.equal(fixture.enableCount(), 0, fixtureCase.name);
+  }
+});
+
+test("quota resume reports uncertain rollback unless forward edge compensation is applied", () => {
+  const rollbackCases = [
+    {
+      name: "pending compensation",
+      rollbackLifecycleResult: {
+        ok: true,
+        mutation: false,
+        nextAction: "complete_data_plane_handoff",
+        channelRef: "channel-quota-fixture",
+        runtimeReceipt: { status: "pending" },
+        redacted: true
+      }
+    },
+    {
+      name: "unknown compensation",
+      rollbackLifecycleResult: {
+        ok: true,
+        mutation: false,
+        redacted: true
+      }
+    }
+  ];
+
+  for (const rollbackCase of rollbackCases) {
+    const fixture = quotaResumeFixture({
+      ...rollbackCase,
+      enableTenantResult: {
+        id: "tenant_other",
+        status: "active",
+        expiresAt: "2027-01-31T00:00:00.000Z"
+      }
+    });
+    fixture.setNow("2026-03-01T00:00:00.000Z");
+
+    const result = fixture.requests.resumeTrafficSupply({
+      portalUserRef: "portal_user_quota_fixture",
+      requestRef: "pareq_quota_fixture",
+      reviewedByRef: "usage_quota_rollover_gate"
+    });
+
+    assert.equal(result.ok, false, rollbackCase.name);
+    assert.deepEqual(
+      result.blockers,
+      [{ code: "quota_resume_rollback_failed" }],
+      rollbackCase.name
+    );
+    assert.equal(fixture.tenantStatus(), "disabled", rollbackCase.name);
+    assert.equal(
+      fixture.requests.getRequest("pareq_quota_fixture").status,
+      "disabled",
+      rollbackCase.name
+    );
+    assert.equal(
+      fixture.requests.getRequest("pareq_quota_fixture").nextAction,
+      "traffic_supply_resume_rollback_pending",
+      rollbackCase.name
+    );
+  }
+});
+
+test("expired subscriptions clean up and manually disabled subscriptions never auto-resume", () => {
+  const expired = quotaResumeFixture({
+    validUntil: "2026-02-20T00:00:00.000Z"
+  });
+  expired.setNow("2026-03-01T00:00:00.000Z");
+  const expiredResult = expired.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  const manual = quotaResumeFixture({ suspendWithQuota: false });
+  manual.setNow("2026-03-01T00:00:00.000Z");
+  const manualResult = manual.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(expiredResult.status, "quota_traffic_supply_expiry_cleanup_completed");
+  assert.equal(expiredResult.runtimeEnforcement.state, "applied");
+  assert.equal(expired.enableCount(), 0);
+  assert.equal(expired.artifactStatus(), "revoked");
+  assert.equal(manualResult.status, "quota_traffic_supply_resume_not_eligible");
+  assert.deepEqual(manualResult.blockers, [{ code: "not_quota_suspended" }]);
+  assert.equal(manual.enableCount(), 0);
+  assert.equal(manual.artifactStatus(), "revoked");
+});
+
+test("manual disable converts a quota suspension into a permanent disabled subscription", () => {
+  const fixture = quotaResumeFixture();
+
+  const disabled = fixture.requests.disableSubscription({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "operator_safe_ref"
+  });
+  fixture.setNow("2026-03-01T00:00:00.000Z");
+  const resumeAttempt = fixture.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(disabled.status, "disabled");
+  assert.equal(disabled.nextAction, "subscription_disabled");
+  assert.equal(disabled.event.type, "subscription_disabled");
+  assert.equal(disabled.runtimeEnforcement.state, "applied");
+  assert.equal(disabled.subscriptionUrl, undefined);
+  assert.equal(fixture.tenantStatus(), "disabled");
+  assert.equal(fixture.artifactStatus(), "revoked");
+  assert.equal(resumeAttempt.status, "quota_traffic_supply_resume_not_eligible");
+  assert.deepEqual(resumeAttempt.blockers, [{ code: "not_quota_suspended" }]);
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(
+    fixture.requests.listQuotaSuspendedTrafficSupplies({ limit: 10 }).length,
+    0
+  );
+});
+
+test("manual disable clears a pending quota-resume intent while edge enforcement remains receipt-gated", () => {
+  const record = materialBearingPortalRequest({
+    id: "pareq_quota_manual_pending",
+    portalUserRef: "portal_user_quota_manual_pending",
+    status: "disabled",
+    nextAction: "traffic_supply_resume_pending",
+    entitlementRef: "ent_quota_manual_pending",
+    tenantId: "tenant_quota_manual_pending",
+    artifactId: "artifact_quota_manual_pending",
+    subscriptionUrl: "https://gateway.example.test/sub/a/quota-manual-pending.yaml",
+    event: {
+      type: "traffic_supply_suspended",
+      occurredAt: "2026-02-15T00:00:00.000Z",
+      previousStatus: "delivered"
+    }
+  });
+  const requestStore = portalRequestStoreWith([record]);
+  let artifactStatus = "active";
+  let tenantStatus = "disabled";
+  const requests = createPortalAccessRequestService({
+    nowFn: () => "2026-03-01T00:00:00.000Z",
+    portalAccessRequestStore: requestStore,
+    runtimeCore: {
+      revokeSubscriptionArtifact(id) {
+        artifactStatus = "revoked";
+        return { id, status: artifactStatus };
+      },
+      disableTenant(id) {
+        tenantStatus = "disabled";
+        return { id, status: tenantStatus };
+      }
+    },
+    edgeLifecycleService: {
+      reconcileOrderLifecycle() {
+        return {
+          ok: true,
+          mutation: false,
+          channelRef: "channel-quota-manual-pending",
+          runtimeReceipt: { status: "pending" },
+          nextAction: "complete_data_plane_handoff",
+          redacted: true
+        };
+      }
+    },
+    edgeDesiredStateNotifier: {
+      notifyOrderLifecycle() {
+        return {
+          ok: true,
+          notificationCount: 1,
+          notifications: [{
+            channelRef: "channel-quota-manual-pending",
+            status: "pending"
+          }],
+          redacted: true
+        };
+      }
+    }
+  });
+
+  const disabled = requests.disableSubscription({
+    portalUserRef: "portal_user_quota_manual_pending",
+    requestRef: "pareq_quota_manual_pending",
+    reviewedByRef: "operator_safe_ref"
+  });
+  const stored = requestStore.getPortalAccessRequest("pareq_quota_manual_pending");
+  const resumeAttempt = requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_manual_pending",
+    requestRef: "pareq_quota_manual_pending",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(disabled.runtimeEnforcement.state, "pending");
+  assert.equal(stored.status, "disabled");
+  assert.equal(stored.nextAction, "subscription_disabled");
+  assert.equal(stored.event.type, "subscription_disabled");
+  assert.equal(stored.subscriptionUrl, null);
+  assert.equal(artifactStatus, "revoked");
+  assert.equal(tenantStatus, "disabled");
+  assert.equal(resumeAttempt.status, "quota_traffic_supply_resume_not_eligible");
+  assert.deepEqual(resumeAttempt.blockers, [{ code: "not_quota_suspended" }]);
+});
+
+test("manual disable permanently closes an expiry cleanup pending intent", () => {
+  const record = materialBearingPortalRequest({
+    id: "pareq_quota_manual_expiry_pending",
+    portalUserRef: "portal_user_quota_manual_expiry_pending",
+    status: "disabled",
+    nextAction: "traffic_supply_expiry_cleanup_pending",
+    entitlementRef: "ent_quota_manual_expiry_pending",
+    tenantId: "tenant_quota_manual_expiry_pending",
+    artifactId: "artifact_quota_manual_expiry_pending",
+    subscriptionUrl: null,
+    event: {
+      type: "traffic_supply_suspended",
+      occurredAt: "2026-02-15T00:00:00.000Z",
+      previousStatus: "delivered"
+    }
+  });
+  const requestStore = portalRequestStoreWith([record]);
+  let artifactStatus = "revoked";
+  const requests = createPortalAccessRequestService({
+    nowFn: () => "2026-03-03T00:00:00.000Z",
+    portalAccessRequestStore: requestStore,
+    runtimeCore: {
+      revokeSubscriptionArtifact(id) {
+        artifactStatus = "revoked";
+        return { id, status: artifactStatus };
+      },
+      disableTenant(id) {
+        return { id, status: "disabled" };
+      }
+    },
+    edgeLifecycleService: edgeLifecycleService({ applied: true })
+  });
+
+  const disabled = requests.disableSubscription({
+    portalUserRef: "portal_user_quota_manual_expiry_pending",
+    requestRef: "pareq_quota_manual_expiry_pending",
+    reviewedByRef: "operator_safe_ref"
+  });
+  const stored = requestStore.getPortalAccessRequest("pareq_quota_manual_expiry_pending");
+
+  assert.equal(disabled.nextAction, "subscription_disabled");
+  assert.equal(stored.nextAction, "subscription_disabled");
+  assert.equal(stored.event.type, "subscription_disabled");
+  assert.equal(stored.subscriptionUrl, null);
+  assert.equal(artifactStatus, "revoked");
+  assert.deepEqual(requests.listQuotaSuspendedTrafficSupplies({ limit: 10 }), []);
+});
+
+test("quota resume stays disabled when the new cycle is already exhausted", () => {
+  const fixture = quotaResumeFixture({
+    usageSamples: [{
+      uploadBytes: 400,
+      downloadBytes: 600,
+      totalBytes: 1000,
+      observedAt: "2026-03-01T00:05:00.000Z",
+      createdAt: "2026-03-01T00:05:00.000Z"
+    }]
+  });
+  fixture.setNow("2026-03-01T00:10:00.000Z");
+
+  const result = fixture.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.status, "quota_traffic_supply_resume_not_eligible");
+  assert.deepEqual(result.blockers, [{ code: "current_cycle_quota_exhausted" }]);
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.requests.getRequest("pareq_quota_fixture").status, "disabled");
+});
+
+test("quota resume rejects a disabled tenant whose expiry drifted from the entitlement", () => {
+  const fixture = quotaResumeFixture({
+    tenantExpiresAt: "2026-12-31T00:00:00.000Z"
+  });
+  fixture.setNow("2026-03-01T00:00:00.000Z");
+
+  const result = fixture.requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_fixture",
+    requestRef: "pareq_quota_fixture",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.status, "quota_traffic_supply_resume_not_eligible");
+  assert.deepEqual(result.blockers, [{ code: "stable_subscription_not_resumable" }]);
+  assert.equal(fixture.enableCount(), 0);
+  assert.equal(fixture.tenantStatus(), "disabled");
+});
+
+test("quota resume restores an originally issued Portal request to issued", () => {
+  let tenantStatus = "disabled";
+  const record = materialBearingPortalRequest({
+    id: "pareq_quota_issued",
+    portalUserRef: "portal_user_quota_issued",
+    plan: "yearly",
+    durationDays: 365,
+    status: "disabled",
+    nextAction: "traffic_supply_suspended_quota",
+    submittedAt: "2026-01-31T00:00:00.000Z",
+    updatedAt: "2026-02-15T00:00:00.000Z",
+    expiresAt: "2027-01-31T00:00:00.000Z",
+    validUntil: "2027-01-31T00:00:00.000Z",
+    entitlementRef: "ent_quota_issued",
+    tenantId: "tenant_quota_issued",
+    artifactId: "artifact_quota_issued",
+    subscriptionUrl: "https://gateway.example.test/sub/a/quota-issued.yaml",
+    event: {
+      type: "traffic_supply_suspended",
+      occurredAt: "2026-02-15T00:00:00.000Z",
+      previousStatus: "issued"
+    }
+  });
+  const store = portalRequestStoreWith([record]);
+  const requests = createPortalAccessRequestService({
+    nowFn: () => "2026-03-01T00:00:00.000Z",
+    portalAccessRequestStore: store,
+    controlStore: {
+      getEntitlement() {
+        return {
+          id: "ent_quota_issued",
+          accountId: "portal_user_quota_issued",
+          plan: "offerv_plan_365d_200gb_monthly_v1",
+          status: "active",
+          validFrom: "2026-01-31T00:00:00.000Z",
+          validUntil: "2027-01-31T00:00:00.000Z",
+          trafficLimitBytes: 1000
+        };
+      },
+      getAccount() {
+        return {
+          id: "portal_user_quota_issued",
+          ownerRef: "portal_user_quota_issued",
+          status: "active"
+        };
+      },
+      getIssuanceRequest() {
+        return {
+          id: "pareq_quota_issued",
+          accountId: "portal_user_quota_issued",
+          entitlementId: "ent_quota_issued",
+          status: "issued"
+        };
+      },
+      listIssuedSubscriptionBindings() {
+        return [{
+          id: "link_pareq_quota_issued",
+          requestId: "pareq_quota_issued",
+          accountId: "portal_user_quota_issued",
+          entitlementId: "ent_quota_issued",
+          tenantRef: safeIssuedRef("tenant", "tenant_quota_issued"),
+          artifactRef: safeIssuedRef("artifact", "artifact_quota_issued"),
+          status: "active",
+          requestStatus: "issued",
+          entitlementStatus: "active"
+        }];
+      },
+      getIssuedLink() {
+        return {
+          id: "link_pareq_quota_issued",
+          requestId: "pareq_quota_issued",
+          tenantRef: safeIssuedRef("tenant", "tenant_quota_issued"),
+          artifactRef: safeIssuedRef("artifact", "artifact_quota_issued"),
+          status: "active"
+        };
+      },
+      listUsageSamples() {
+        return [];
+      }
+    },
+    runtimeCore: {
+      getTenant() {
+        return {
+          id: "tenant_quota_issued",
+          status: tenantStatus,
+          expiresAt: "2027-01-31T00:00:00.000Z"
+        };
+      },
+      listSubscriptionArtifacts() {
+        return [{
+          id: "artifact_quota_issued",
+          tenantId: "tenant_quota_issued",
+          status: "active"
+        }];
+      },
+      enableTenant() {
+        tenantStatus = "active";
+        return {
+          id: "tenant_quota_issued",
+          status: tenantStatus,
+          expiresAt: "2027-01-31T00:00:00.000Z"
+        };
+      },
+      disableTenant() {
+        tenantStatus = "disabled";
+        return {
+          id: "tenant_quota_issued",
+          status: tenantStatus,
+          expiresAt: "2027-01-31T00:00:00.000Z"
+        };
+      }
+    },
+    edgeLifecycleService: edgeLifecycleService({ applied: true })
+  });
+
+  const result = requests.resumeTrafficSupply({
+    portalUserRef: "portal_user_quota_issued",
+    requestRef: "pareq_quota_issued",
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.equal(result.status, "quota_traffic_supply_resumed");
+  assert.equal(result.request.status, "issued");
+  assert.equal(store.getPortalAccessRequest("pareq_quota_issued").status, "issued");
 });
 
 test("refresh and disable notify the optional edge lifecycle service", () => {

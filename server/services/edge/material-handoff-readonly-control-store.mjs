@@ -3,6 +3,14 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,160}$/;
+const SAFE_LIFECYCLE_REVISION_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
+const UNSAFE_LIFECYCLE_REVISION_REF_PATTERN =
+  /https?:|token=|secret|credential|password|private|customer|@|\/sub\/clash\.yaml|(?:\d{1,3}\.){3}\d{1,3}|[a-z0-9-]+\.[a-z]{2,}/i;
+const TRAFFIC_LIFECYCLE_PENDING_ACTIONS = new Set([
+  "traffic_supply_expiry_cleanup_pending",
+  "traffic_supply_resume_pending",
+  "traffic_supply_resume_rollback_pending"
+]);
 
 function text(value) {
   return String(value ?? "").trim();
@@ -23,6 +31,37 @@ function parseJsonArray(value) {
   } catch {
     return [];
   }
+}
+
+function parseJsonObject(value) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function desiredStateLifecycleRevision(row) {
+  const event = parseJsonObject(row.event_json);
+  const candidate = text(event.lifecycleRevisionRef);
+  const lifecycleRevisionRef = (
+    SAFE_LIFECYCLE_REVISION_REF_PATTERN.test(candidate)
+    && !UNSAFE_LIFECYCLE_REVISION_REF_PATTERN.test(candidate)
+  ) ? candidate : "";
+  const required = TRAFFIC_LIFECYCLE_PENDING_ACTIONS.has(text(row.next_action));
+  return {
+    fingerprint: lifecycleRevisionRef
+      ? {
+        requestRef: row.request_id,
+        lifecycleRevisionRef
+      }
+      : {
+        requestRef: row.request_id,
+        updatedAt: row.updated_at
+      },
+    safe: !required || Boolean(lifecycleRevisionRef)
+  };
 }
 
 function mapEdgeRegisteredNode(row) {
@@ -79,8 +118,10 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
         select
           r.id as request_id,
           r.status as request_status,
+          r.next_action,
           coalesce(r.valid_until, r.expires_at) as valid_until,
           r.updated_at,
+          r.event_json,
           c.edge_channel_ref,
           c.edge_credential_ref,
           c.edge_material_digest
@@ -99,7 +140,13 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
           ...row,
           validUntilMs: Date.parse(row.valid_until)
         }))
-        .filter((row) => ["delivered", "issued"].includes(row.request_status))
+        .filter((row) => (
+          ["delivered", "issued"].includes(row.request_status)
+          || (
+            row.request_status === "disabled"
+            && row.next_action === "traffic_supply_resume_pending"
+          )
+        ))
         .filter((row) => row.edge_credential_ref && row.edge_material_digest)
         .filter((row) => row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs);
 
@@ -112,6 +159,15 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
           digest: row.edge_material_digest
         }))
         .sort((a, b) => a.edgeCredentialRef.localeCompare(b.edgeCredentialRef));
+      const lifecycleRevisionStates = rows.map(desiredStateLifecycleRevision);
+      const lifecycleRevisions = lifecycleRevisionStates
+        .map(({ fingerprint }) => fingerprint)
+        .sort((left, right) => (
+          left.requestRef.localeCompare(right.requestRef)
+          || String(left.lifecycleRevisionRef || left.updatedAt)
+            .localeCompare(String(right.lifecycleRevisionRef || right.updatedAt))
+        ));
+      const lifecycleRevisionSafe = lifecycleRevisionStates.every(({ safe }) => safe);
       const lifecycleTimes = rows
         .flatMap((row) => [Date.parse(row.valid_until), Date.parse(row.updated_at)])
         .filter((value) => !Number.isNaN(value));
@@ -123,6 +179,7 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
         channelRef: safeChannelRef,
         edgeCredentialRefs,
         materialDigests,
+        lifecycleRevisions,
         validUntil
       })).slice(0, 24);
 
@@ -134,6 +191,7 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
         edgeCredentialRefs,
         materialDigests,
         validUntil,
+        lifecycleRevisionSafe,
         redacted: true
       };
     }

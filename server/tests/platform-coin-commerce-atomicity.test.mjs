@@ -767,6 +767,41 @@ test("fulfillment failure rolls all fourteen tables back at every write boundary
   }
 });
 
+test("fulfillment reconciliation failure rolls command, events, and Order isolation back together", () => {
+  const boundaries = [
+    `before update on platform_coin_commerce_fulfillment_commands
+      when new.status = 'failed'`,
+    `before insert on platform_coin_commerce_order_events
+      when new.event_type = 'fulfillment_failed'`,
+    `before update on platform_coin_commerce_orders
+      when new.payment_status = 'reconciliation_required'`,
+    `before insert on platform_coin_commerce_order_events
+      when new.event_type = 'reconciliation_required'`
+  ];
+  for (const boundary of boundaries) {
+    const state = fixture();
+    try {
+      const order = confirm(state, quote(state));
+      state.clock.value = order.cancelUntil;
+      state.store.claimDueCaptures({ limit: 1 });
+      state.store.captureClaimedOrder({ orderRef: order.orderRef });
+      const command = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+      const before = snapshot(state.database);
+      installFault(state.database, boundary);
+      expectSafeRollback(state, before, () => (
+        state.store.failFulfillmentCommand({
+          commandRef: command.commandRef,
+          leaseGeneration: command.leaseGeneration,
+          leaseToken: command.leaseToken,
+          safeCode: "fulfillment_handler_unavailable"
+        })
+      ));
+    } finally {
+      state.close();
+    }
+  }
+});
+
 test("restart recovery captures one pending Order with original deterministic references", () => {
   const state = fixture();
   const order = confirm(state, quote(state));

@@ -2,6 +2,10 @@ import {
   normalizeCoinCommerceOffer,
   normalizeFulfillmentResult
 } from "./coin-commerce-domain.mjs";
+import {
+  isCoinCommerceFulfillmentReconciliationError,
+  isCoinCommerceFulfillmentRetryableError
+} from "./coin-commerce-fulfillment-retry.mjs";
 
 const OPTION_FIELDS = new Set([
   "store",
@@ -27,6 +31,7 @@ const COMMAND_FIELDS = [
   "commandRef",
   "orderRef",
   "accountId",
+  "offerVersionRef",
   "delivery",
   "leaseGeneration",
   "leaseToken"
@@ -267,6 +272,7 @@ function normalizeCommand(input) {
       commandRef: normalizeReference(values.commandRef),
       orderRef: normalizeReference(values.orderRef),
       accountId: normalizeReference(values.accountId),
+      offerVersionRef: normalizeReference(values.offerVersionRef),
       delivery: normalizedOffer.delivery,
       leaseGeneration: values.leaseGeneration,
       leaseToken: values.leaseToken
@@ -408,6 +414,9 @@ export function createCoinCommerceCoordinator(options = {}) {
 
   async function performPass() {
     const summary = freshSummary();
+    const commandRefsSeen = new Set();
+    let commandClaimAttempts = 0;
+    const maxCommandClaimAttempts = captureBatchSize * 2;
     try {
       storeMethods.recoverNonTerminalOrders({ limit: captureBatchSize });
       summary.recoveryPasses = 1;
@@ -426,6 +435,7 @@ export function createCoinCommerceCoordinator(options = {}) {
       }
       while (
         summary.commandsClaimed < captureBatchSize
+        && commandClaimAttempts < maxCommandClaimAttempts
         && lifecycle !== "stopping"
         && lifecycle !== "stopped"
       ) {
@@ -433,24 +443,36 @@ export function createCoinCommerceCoordinator(options = {}) {
           leaseMs: commandLeaseMs
         });
         if (command === null) break;
+        commandClaimAttempts += 1;
         const normalizedCommand = normalizeCommand(command);
+        if (commandRefsSeen.has(normalizedCommand.commandRef)) {
+          continue;
+        }
+        commandRefsSeen.add(normalizedCommand.commandRef);
         summary.commandsClaimed += 1;
         const handlerInput = Object.freeze({
           commandRef: normalizedCommand.commandRef,
           orderRef: normalizedCommand.orderRef,
           accountId: normalizedCommand.accountId,
+          offerVersionRef: normalizedCommand.offerVersionRef,
           delivery: normalizedCommand.delivery
         });
         let rawResult;
         try {
           rawResult = await executeFulfillment(handlerInput);
-        } catch {
+        } catch (error) {
+          if (isCoinCommerceFulfillmentRetryableError(error)) {
+            summary.commandsDeferred += 1;
+            continue;
+          }
           try {
             storeMethods.failFulfillmentCommand({
               commandRef: normalizedCommand.commandRef,
               leaseGeneration: normalizedCommand.leaseGeneration,
               leaseToken: normalizedCommand.leaseToken,
-              safeCode: "fulfillment_handler_failed"
+              safeCode: isCoinCommerceFulfillmentReconciliationError(error)
+                ? "fulfillment_handler_unavailable"
+                : "fulfillment_handler_failed"
             });
             summary.commandsFailed += 1;
           } catch {

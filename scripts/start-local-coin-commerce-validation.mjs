@@ -105,7 +105,7 @@ const UI_OFFERS = Object.freeze([
       monthlyTrafficGb: 50,
       trafficGb: null,
       neverExpires: false,
-      discountBasisPoints: 500
+      discountBasisPoints: 0
     })
   }),
   Object.freeze({
@@ -138,7 +138,7 @@ const UI_OFFERS = Object.freeze([
       monthlyTrafficGb: 100,
       trafficGb: null,
       neverExpires: false,
-      discountBasisPoints: 1_000
+      discountBasisPoints: 0
     })
   }),
   Object.freeze({
@@ -171,7 +171,7 @@ const UI_OFFERS = Object.freeze([
       monthlyTrafficGb: 200,
       trafficGb: null,
       neverExpires: false,
-      discountBasisPoints: 2_000
+      discountBasisPoints: 0
     })
   }),
   Object.freeze({

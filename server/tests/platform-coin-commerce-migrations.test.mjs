@@ -399,7 +399,8 @@ test("repeated apply is a no-op and unrelated future migration rows are tolerate
     createWalletDatabase(dbPath);
     const database = new Database(dbPath);
     try {
-      applyCoinCommerceMigrations(exactApplyInput(database));
+      const applied = applyCoinCommerceMigrations(exactApplyInput(database));
+      assert.equal(applied.sourceChanged, true);
       database.prepare(`
         insert into platform_schema_migrations
           (migration_id, ddl_checksum, applied_at)
@@ -407,6 +408,7 @@ test("repeated apply is a no-op and unrelated future migration rows are tolerate
       `).run("20991231_001_future", "f".repeat(64), APPLIED_AT);
       const result = applyCoinCommerceMigrations(exactApplyInput(database));
       assert.deepEqual(result.appliedMigrationIds, []);
+      assert.equal(result.sourceChanged, false);
       assert.equal(result.ok, true);
       assert.equal(result.counts.migrationRows, 3);
     } finally {

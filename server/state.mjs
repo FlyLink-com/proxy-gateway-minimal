@@ -64,6 +64,7 @@ const COIN_COMMERCE_CANCEL_WINDOW_MAX_MS = 86_400_000;
 const OWN_COIN_COMMERCE_PREREQUISITE_ERRORS = new WeakSet();
 const COIN_COMMERCE_STORE_FIELDS = Object.freeze([
   "walletStore",
+  "bootstrapPublishedOffers",
   "publishOfferVersion",
   "retireOfferVersion",
   "listPublishedOffers",
@@ -206,13 +207,10 @@ function ownDataOption(options, field) {
   }
 }
 
-function exactCoinCommerceFulfillmentHandler(options) {
-  const option = ownDataOption(options, "coinCommerceFulfillmentHandler");
-  const handler = option.value;
+function exactCoinCommerceFulfillmentHandlerValue(handler) {
   try {
     if (
-      !option.present
-      || !handler
+      !handler
       || typeof handler !== "object"
       || Array.isArray(handler)
       || utilTypes.isProxy(handler)
@@ -246,6 +244,66 @@ function exactCoinCommerceFulfillmentHandler(options) {
       throw coinCommercePrerequisiteError();
     }
     return handler;
+  } catch (error) {
+    if (OWN_COIN_COMMERCE_PREREQUISITE_ERRORS.has(error)) {
+      throw error;
+    }
+    throw coinCommercePrerequisiteError();
+  }
+}
+
+function exactCoinCommerceFulfillmentFactory(value) {
+  if (typeof value !== "function" || utilTypes.isProxy(value)) {
+    throw coinCommercePrerequisiteError();
+  }
+  return value;
+}
+
+function exactCoinCommerceFulfillmentBinding(value) {
+  try {
+    if (
+      !value
+      || typeof value !== "object"
+      || Array.isArray(value)
+      || utilTypes.isProxy(value)
+      || Object.getPrototypeOf(value) !== Object.prototype
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== 2
+      || !keys.includes("fulfillmentHandler")
+      || !keys.includes("purchaseEligibilityReader")
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    const fulfillmentHandler = Object.getOwnPropertyDescriptor(
+      value,
+      "fulfillmentHandler"
+    );
+    const purchaseEligibilityReader = Object.getOwnPropertyDescriptor(
+      value,
+      "purchaseEligibilityReader"
+    );
+    if (
+      !fulfillmentHandler
+      || !fulfillmentHandler.enumerable
+      || !("value" in fulfillmentHandler)
+      || !purchaseEligibilityReader
+      || !purchaseEligibilityReader.enumerable
+      || !("value" in purchaseEligibilityReader)
+      || typeof purchaseEligibilityReader.value !== "function"
+      || utilTypes.isProxy(purchaseEligibilityReader.value)
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    return {
+      fulfillmentHandler: exactCoinCommerceFulfillmentHandlerValue(
+        fulfillmentHandler.value
+      ),
+      purchaseEligibilityReader: purchaseEligibilityReader.value
+    };
   } catch (error) {
     if (OWN_COIN_COMMERCE_PREREQUISITE_ERRORS.has(error)) {
       throw error;
@@ -369,6 +427,46 @@ function coinCommerceCancelWindowMs(value) {
     );
   }
   return parsed;
+}
+
+function coinCommerceCanaryAccountActivationReader(value) {
+  const maximumCanaryAccounts = 32;
+  const maximumEncodedLength = maximumCanaryAccounts * 64
+    + (maximumCanaryAccounts - 1);
+  if (
+    typeof value !== "string"
+    || !value.trim()
+    || value.length > maximumEncodedLength
+  ) {
+    throw coinCommercePrerequisiteError();
+  }
+  const hashes = new Set();
+  const items = value.split(",");
+  if (items.length > maximumCanaryAccounts) {
+    throw coinCommercePrerequisiteError();
+  }
+  for (const item of items) {
+    const normalized = item.trim().toLowerCase();
+    if (
+      !/^[0-9a-f]{64}$/.test(normalized)
+      || hashes.has(normalized)
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    hashes.add(normalized);
+  }
+  return ({ accountId } = {}) => {
+    if (
+      typeof accountId !== "string"
+      || !accountId
+      || accountId.trim() !== accountId
+    ) {
+      return false;
+    }
+    return hashes.has(
+      createHash("sha256").update(accountId).digest("hex")
+    );
+  };
 }
 
 function createOptionalPortalTotpSecretProtector(value) {
@@ -1159,7 +1257,11 @@ export function createRuntimeState(options = {}) {
   const coinsCommerceEnabled = envFlag(env.COINS_COMMERCE_ENABLED);
   let configuredCoinCommerceStore = null;
   let configuredCoinCommerceWalletStore = null;
+  let configuredCoinCommerceCatalog;
   let configuredCoinCommerceFulfillmentHandler = null;
+  let configuredCoinCommerceFulfillmentFactory = null;
+  let configuredCoinCommerceAccountActivationReader;
+  let configuredCoinCommercePurchaseEligibilityReader;
   let configuredCoinCommerceCancelWindowMs = COIN_COMMERCE_CANCEL_WINDOW_DEFAULT_MS;
   let configuredPlatformUserPortalAuth;
   let hasConfiguredPlatformUserPortalAuth = false;
@@ -1167,7 +1269,40 @@ export function createRuntimeState(options = {}) {
     if (!userPortalRoutesEnabled || !coinsWalletEnabled) {
       throw coinCommercePrerequisiteError();
     }
-    configuredCoinCommerceFulfillmentHandler = exactCoinCommerceFulfillmentHandler(options);
+    const fulfillmentHandlerOption = ownDataOption(
+      options,
+      "coinCommerceFulfillmentHandler"
+    );
+    const fulfillmentFactoryOption = ownDataOption(
+      options,
+      "coinCommerceFulfillmentFactory"
+    );
+    const hasFulfillmentHandler = (
+      fulfillmentHandlerOption.present
+      && fulfillmentHandlerOption.value !== undefined
+    );
+    const hasFulfillmentFactory = (
+      fulfillmentFactoryOption.present
+      && fulfillmentFactoryOption.value !== undefined
+    );
+    if (hasFulfillmentHandler === hasFulfillmentFactory) {
+      throw coinCommercePrerequisiteError();
+    }
+    if (hasFulfillmentHandler) {
+      configuredCoinCommerceFulfillmentHandler =
+        exactCoinCommerceFulfillmentHandlerValue(
+          fulfillmentHandlerOption.value
+        );
+    } else {
+      configuredCoinCommerceFulfillmentFactory =
+        exactCoinCommerceFulfillmentFactory(
+          fulfillmentFactoryOption.value
+        );
+      configuredCoinCommerceAccountActivationReader =
+        coinCommerceCanaryAccountActivationReader(
+          env.COINS_COMMERCE_CANARY_ACCOUNT_HASHES
+        );
+    }
     configuredCoinCommerceCancelWindowMs = coinCommerceCancelWindowMs(
       env.COINS_COMMERCE_CANCEL_WINDOW_MS
     );
@@ -1176,12 +1311,17 @@ export function createRuntimeState(options = {}) {
       throw coinCommercePrerequisiteError();
     }
     const commerceStoreOption = ownDataOption(options, "coinCommerceStore");
+    const commerceCatalogOption = ownDataOption(options, "coinCommerceCatalog");
+    configuredCoinCommerceCatalog = commerceCatalogOption.value;
     const walletStoreOption = ownDataOption(options, "coinsWalletStore");
     if (commerceStoreOption.value === undefined) {
       if (walletStoreOption.value !== undefined) {
         throw coinCommercePrerequisiteError();
       }
     } else {
+      if (configuredCoinCommerceFulfillmentFactory) {
+        throw coinCommercePrerequisiteError();
+      }
       const injected = exactInjectedCoinCommerceStore(commerceStoreOption.value);
       configuredCoinCommerceStore = injected.store;
       configuredCoinCommerceWalletStore = injected.walletStore;
@@ -1891,9 +2031,29 @@ export function createRuntimeState(options = {}) {
       if (configuredCoinCommerceStore) {
         coinCommerceStore = configuredCoinCommerceStore;
       } else {
+        if (configuredCoinCommerceFulfillmentFactory) {
+          const fulfillmentBinding = exactCoinCommerceFulfillmentBinding(
+            configuredCoinCommerceFulfillmentFactory({
+              controlStore: platformControlStore,
+              runtimeCore: subscriptionCore,
+              accountActivationReader:
+                configuredCoinCommerceAccountActivationReader
+            })
+          );
+          configuredCoinCommerceFulfillmentHandler =
+            fulfillmentBinding.fulfillmentHandler;
+          configuredCoinCommercePurchaseEligibilityReader =
+            fulfillmentBinding.purchaseEligibilityReader;
+        }
         coinCommerceStore = createSqliteCoinCommerceStore({
           dbPath: controlDbPath,
-          cancelWindowMs: configuredCoinCommerceCancelWindowMs
+          cancelWindowMs: configuredCoinCommerceCancelWindowMs,
+          ...(configuredCoinCommercePurchaseEligibilityReader
+            ? {
+              purchaseEligibilityReader:
+                configuredCoinCommercePurchaseEligibilityReader
+            }
+            : {})
         });
         ownsCoinCommerceStore = true;
       }
@@ -1905,6 +2065,11 @@ export function createRuntimeState(options = {}) {
         throw coinCommercePrerequisiteError();
       }
       coinsWalletStore = exactStore.walletStore;
+      if (configuredCoinCommerceCatalog !== undefined) {
+        coinCommerceStore.bootstrapPublishedOffers(
+          configuredCoinCommerceCatalog
+        );
+      }
       coinCommerceCoordinator = createCoinCommerceCoordinator({
         store: coinCommerceStore,
         fulfillmentHandler: configuredCoinCommerceFulfillmentHandler

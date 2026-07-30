@@ -27,12 +27,12 @@ import {
 
 const APPLIED_AT = "2026-07-26T12:34:56.000Z";
 
-function commerceOperation(key) {
+function commerceOperation(key, accountId = "acct_concurrency_1") {
   return {
-    actorScope: "portal:acct_concurrency_1",
+    actorScope: `portal:${accountId}`,
     idempotencyKey: key,
     actorType: "portal_user",
-    actorRef: "acct_concurrency_1"
+    actorRef: accountId
   };
 }
 
@@ -76,6 +76,12 @@ function initialize(dbPath) {
     values (
       'acct_concurrency_1', 'owner_concurrency_1', 'active',
       '${APPLIED_AT}', '${APPLIED_AT}', '{}'
+    );
+    insert into platform_accounts
+      (id, owner_ref, status, created_at, updated_at, metadata_json)
+    values (
+      'acct_concurrency_2', 'owner_concurrency_2', 'active',
+      '${APPLIED_AT}', '${APPLIED_AT}', '{}'
     )
   `);
   applyCoinWalletMigrations({
@@ -93,28 +99,87 @@ function initialize(dbPath) {
   database.close();
 }
 
-function seed(dbPath, { cancelWindowMs = 3_000 } = {}) {
-  const store = createSqliteCoinCommerceStore({ dbPath, cancelWindowMs });
+function creditAccount(store, accountId, suffix) {
   store.walletStore.creditCoins({
-    accountId: "acct_concurrency_1",
+    accountId,
     coinType: "paid_coins",
     amountUnits: 100,
     availability: "available",
     sourceType: "synthetic_seed",
-    sourceRef: "source_concurrency",
-    sourceDigest: "c".repeat(64),
+    sourceRef: `source_${suffix}`,
+    sourceDigest: suffix.padEnd(64, "c").slice(0, 64),
     policyRef: null,
     policyVersion: null,
     expiresAt: null,
     operation: {
       actorScope: "system:concurrency",
-      idempotencyKey: "credit_concurrency",
+      idempotencyKey: `credit_${suffix}`,
       actorType: "system",
       actorRef: "concurrency_seed"
     }
   });
+}
+
+function seed(dbPath, { cancelWindowMs = 3_000 } = {}) {
+  const store = createSqliteCoinCommerceStore({ dbPath, cancelWindowMs });
+  creditAccount(store, "acct_concurrency_1", "concurrency");
   store.publishOfferVersion(offer());
   return store;
+}
+
+function fixedClockDatabase(database, clock) {
+  return new Proxy(database, {
+    get(target, property) {
+      if (property === "inTransaction") return target.inTransaction;
+      if (property === "prepare") {
+        return (sql) => {
+          if (/select\s+strftime\('%Y-%m-%dT%H:%M:%fZ',\s*'now'\)/i.test(sql)) {
+            return { pluck: () => ({ get: () => clock.value }) };
+          }
+          return target.prepare(sql);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+
+function openFixedClockStore(dbPath, clock) {
+  const database = new Database(dbPath);
+  database.pragma("foreign_keys = ON");
+  const store = createSqliteCoinCommerceStore({
+    database: fixedClockDatabase(database, clock),
+    cancelWindowMs: 0
+  });
+  return {
+    database,
+    store,
+    close() {
+      store.close();
+      database.close();
+    }
+  };
+}
+
+function createCapturedCommand(store, { accountId, suffix }) {
+  const quote = store.createCheckoutQuote({
+    accountId,
+    offerRef: offer().offerRef
+  });
+  const order = store.confirmOrder({
+    accountId,
+    quoteRef: quote.quoteRef,
+    operation: commerceOperation(`confirm_${suffix}`, accountId)
+  });
+  assert.deepEqual(store.claimDueCaptures({ limit: 1 }), [{
+    orderRef: order.orderRef
+  }]);
+  assert.equal(
+    store.captureClaimedOrder({ orderRef: order.orderRef }).paymentStatus,
+    "captured"
+  );
+  return order;
 }
 
 async function withDatabase(action) {
@@ -430,6 +495,161 @@ if (isMainThread) {
         });
       } finally {
         database.close();
+      }
+    });
+  });
+
+  test("per-account FIFO holds a later pending command behind an unexpired predecessor until terminal", async (t) => {
+    for (const terminalStatus of ["delivered", "failed"]) {
+      await t.test(terminalStatus, async () => {
+        await withDatabase(async (dbPath) => {
+          const clock = { value: APPLIED_AT };
+          const first = openFixedClockStore(dbPath, clock);
+          const second = openFixedClockStore(dbPath, clock);
+          try {
+            creditAccount(first.store, "acct_concurrency_1", `fifo_${terminalStatus}`);
+            first.store.publishOfferVersion(offer());
+            const predecessor = createCapturedCommand(first.store, {
+              accountId: "acct_concurrency_1",
+              suffix: `fifo_${terminalStatus}_a`
+            });
+            clock.value = "2026-07-26T12:34:56.001Z";
+            const successor = createCapturedCommand(first.store, {
+              accountId: "acct_concurrency_1",
+              suffix: `fifo_${terminalStatus}_b`
+            });
+            clock.value = "2026-07-26T12:34:56.010Z";
+            const predecessorLease = first.store.claimNextFulfillmentCommand({
+              leaseMs: 1000
+            });
+            assert.equal(predecessorLease.orderRef, predecessor.orderRef);
+
+            assert.equal(
+              second.store.claimNextFulfillmentCommand({ leaseMs: 1000 }),
+              null
+            );
+            assert.equal(
+              second.store.nextWakeAt(),
+              "2026-07-26T12:34:57.010Z"
+            );
+
+            if (terminalStatus === "delivered") {
+              second.store.completeFulfillmentCommand({
+                commandRef: predecessorLease.commandRef,
+                leaseGeneration: predecessorLease.leaseGeneration,
+                leaseToken: predecessorLease.leaseToken,
+                effectRef: "effect_fifo_delivered",
+                status: "delivered"
+              });
+            } else {
+              second.store.failFulfillmentCommand({
+                commandRef: predecessorLease.commandRef,
+                leaseGeneration: predecessorLease.leaseGeneration,
+                leaseToken: predecessorLease.leaseToken,
+                safeCode: "fulfillment_handler_failed"
+              });
+            }
+            assert.equal(
+              second.store.claimNextFulfillmentCommand({ leaseMs: 1000 }).orderRef,
+              successor.orderRef
+            );
+          } finally {
+            second.close();
+            first.close();
+          }
+        });
+      });
+    }
+  });
+
+  test("pending priority cannot bypass an expired processing predecessor", async () => {
+    await withDatabase(async (dbPath) => {
+      const clock = { value: APPLIED_AT };
+      const first = openFixedClockStore(dbPath, clock);
+      const second = openFixedClockStore(dbPath, clock);
+      try {
+        creditAccount(first.store, "acct_concurrency_1", "fifo_expired");
+        first.store.publishOfferVersion(offer());
+        const predecessor = createCapturedCommand(first.store, {
+          accountId: "acct_concurrency_1",
+          suffix: "fifo_expired_a"
+        });
+        clock.value = "2026-07-26T12:34:56.001Z";
+        createCapturedCommand(first.store, {
+          accountId: "acct_concurrency_1",
+          suffix: "fifo_expired_b"
+        });
+        clock.value = "2026-07-26T12:34:56.010Z";
+        const firstLease = first.store.claimNextFulfillmentCommand({
+          leaseMs: 1000
+        });
+        assert.equal(firstLease.orderRef, predecessor.orderRef);
+
+        clock.value = "2026-07-26T12:34:57.010Z";
+        const reclaimed = second.store.claimNextFulfillmentCommand({
+          leaseMs: 1000
+        });
+        assert.equal(reclaimed.orderRef, predecessor.orderRef);
+        assert.equal(reclaimed.leaseGeneration, 2);
+        assert.equal(
+          second.store.claimNextFulfillmentCommand({ leaseMs: 1000 }),
+          null
+        );
+        assert.equal(
+          second.store.nextWakeAt(),
+          "2026-07-26T12:34:58.010Z"
+        );
+      } finally {
+        second.close();
+        first.close();
+      }
+    });
+  });
+
+  test("an account with an active predecessor does not block another account", async () => {
+    await withDatabase(async (dbPath) => {
+      const clock = { value: APPLIED_AT };
+      const first = openFixedClockStore(dbPath, clock);
+      const second = openFixedClockStore(dbPath, clock);
+      try {
+        creditAccount(first.store, "acct_concurrency_1", "fifo_account_1");
+        creditAccount(first.store, "acct_concurrency_2", "fifo_account_2");
+        first.store.publishOfferVersion(offer());
+        const predecessor = createCapturedCommand(first.store, {
+          accountId: "acct_concurrency_1",
+          suffix: "fifo_account_1_a"
+        });
+        clock.value = "2026-07-26T12:34:56.001Z";
+        createCapturedCommand(first.store, {
+          accountId: "acct_concurrency_1",
+          suffix: "fifo_account_1_b"
+        });
+        clock.value = "2026-07-26T12:34:56.002Z";
+        const independent = createCapturedCommand(first.store, {
+          accountId: "acct_concurrency_2",
+          suffix: "fifo_account_2_a"
+        });
+        clock.value = "2026-07-26T12:34:56.010Z";
+        assert.equal(
+          first.store.claimNextFulfillmentCommand({ leaseMs: 1000 }).orderRef,
+          predecessor.orderRef
+        );
+
+        assert.equal(
+          second.store.claimNextFulfillmentCommand({ leaseMs: 1000 }).orderRef,
+          independent.orderRef
+        );
+        assert.equal(
+          second.store.claimNextFulfillmentCommand({ leaseMs: 1000 }),
+          null
+        );
+        assert.equal(
+          second.store.nextWakeAt(),
+          "2026-07-26T12:34:57.010Z"
+        );
+      } finally {
+        second.close();
+        first.close();
       }
     });
   });

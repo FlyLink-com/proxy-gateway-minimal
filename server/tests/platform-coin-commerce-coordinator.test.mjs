@@ -9,6 +9,10 @@ import {
   createCoinCommerceCoordinator
 } from "../services/platform/coin-commerce-coordinator.mjs";
 import {
+  createCoinCommerceFulfillmentReconciliationError,
+  createCoinCommerceFulfillmentRetryableError
+} from "../services/platform/coin-commerce-fulfillment-retry.mjs";
+import {
   COIN_COMMERCE_MIGRATIONS,
   REQUIRED_COIN_COMMERCE_MIGRATION_ID,
   applyCoinCommerceMigrations
@@ -168,6 +172,7 @@ function commandFixture({
   commandRef = "coincmd_order_1",
   orderRef = "order_1",
   accountId = "account_1",
+  offerVersionRef = "offerv_plan_30d_50gb_monthly_v1",
   leaseGeneration = 1,
   leaseToken = "a".repeat(64)
 } = {}) {
@@ -175,6 +180,7 @@ function commandFixture({
     commandRef,
     orderRef,
     accountId,
+    offerVersionRef,
     delivery: planDelivery(),
     leaseGeneration,
     leaseToken
@@ -964,6 +970,7 @@ test("one pass preserves Store order, contains capture failures, and bounds both
           "commandRef",
           "orderRef",
           "accountId",
+          "offerVersionRef",
           "delivery"
         ]);
         assert.equal(Object.hasOwn(input, "leaseGeneration"), false);
@@ -1030,6 +1037,43 @@ test("one pass preserves Store order, contains capture failures, and bounds both
       }
     ]
   );
+});
+
+test("one pass preserves the immutable offer version binding for the handler", async () => {
+  const store = makeStore();
+  let claimed = false;
+  store.claimNextFulfillmentCommand = () => {
+    if (claimed) return null;
+    claimed = true;
+    return {
+      ...commandFixture(),
+      offerVersionRef: "offerv_plan_30d_50gb_monthly_v1"
+    };
+  };
+  let handlerInput;
+  const coordinator = createCoinCommerceCoordinator({
+    store,
+    fulfillmentHandler: makeHandler({
+      async execute(input) {
+        handlerInput = input;
+        return {
+          status: "delivered",
+          effectRef: "effect_offer_version_binding"
+        };
+      }
+    })
+  });
+
+  const summary = await coordinator.runOnce();
+
+  assert.equal(summary.commandsDelivered, 1);
+  assert.deepEqual(handlerInput, {
+    commandRef: "coincmd_order_1",
+    orderRef: "order_1",
+    accountId: "account_1",
+    offerVersionRef: "offerv_plan_30d_50gb_monthly_v1",
+    delivery: planDelivery()
+  });
 });
 
 test("capture summary reports processing without claiming a captured business outcome", async () => {
@@ -1219,6 +1263,253 @@ test("handler throws and invalid results map to fixed safe failure codes and lat
   assert.equal(summary.commandsFailed, 2);
   assert.equal(summary.commandsDelivered, 1);
   assert.equal(summary.commandsDeferred, 0);
+});
+
+test("a branded retryable handler error preserves its lease once per pass and later pending commands continue", async () => {
+  const commands = [
+    commandFixture(),
+    commandFixture({
+      commandRef: "coincmd_order_2",
+      orderRef: "order_2",
+      leaseToken: "b".repeat(64)
+    })
+  ];
+  const executions = [];
+  const completions = [];
+  const failures = [];
+  let claimCalls = 0;
+  const store = makeStore();
+  store.claimNextFulfillmentCommand = () => {
+    claimCalls += 1;
+    return commands.shift() ?? null;
+  };
+  store.completeFulfillmentCommand = (input) => {
+    completions.push(input);
+    return { status: "delivered" };
+  };
+  store.failFulfillmentCommand = (input) => {
+    failures.push(input);
+    return { status: "failed", safeCode: input.safeCode };
+  };
+  const coordinator = createCoinCommerceCoordinator({
+    store,
+    fulfillmentHandler: makeHandler({
+      async execute(input) {
+        executions.push(input.commandRef);
+        if (input.commandRef === "coincmd_order_1") {
+          throw createCoinCommerceFulfillmentRetryableError();
+        }
+        return {
+          status: "delivered",
+          effectRef: "effect_order_2"
+        };
+      }
+    }),
+    captureBatchSize: 3
+  });
+
+  const summary = await coordinator.runOnce();
+  assert.deepEqual(executions, ["coincmd_order_1", "coincmd_order_2"]);
+  assert.equal(claimCalls, 3);
+  assert.deepEqual(
+    completions.map(({ commandRef }) => commandRef),
+    ["coincmd_order_2"]
+  );
+  assert.deepEqual(failures, []);
+  assert.deepEqual(summary, {
+    recoveryPasses: 1,
+    capturesClaimed: 0,
+    capturesProcessed: 0,
+    capturesDeferred: 0,
+    commandsClaimed: 2,
+    commandsDelivered: 1,
+    commandsFailed: 0,
+    commandsDeferred: 1
+  });
+});
+
+test("a branded reconciliation error records an explicit unavailable failure instead of retrying forever", async () => {
+  let claimed = false;
+  const failures = [];
+  const store = makeStore();
+  store.claimNextFulfillmentCommand = () => {
+    if (claimed) return null;
+    claimed = true;
+    return commandFixture();
+  };
+  store.failFulfillmentCommand = (input) => {
+    failures.push(input);
+    return { status: "failed", safeCode: input.safeCode };
+  };
+  const coordinator = createCoinCommerceCoordinator({
+    store,
+    fulfillmentHandler: makeHandler({
+      async execute() {
+        throw createCoinCommerceFulfillmentReconciliationError();
+      }
+    })
+  });
+
+  const summary = await coordinator.runOnce();
+  assert.deepEqual(
+    failures.map(({ safeCode }) => safeCode),
+    ["fulfillment_handler_unavailable"]
+  );
+  assert.equal(summary.commandsClaimed, 1);
+  assert.equal(summary.commandsFailed, 1);
+  assert.equal(summary.commandsDeferred, 0);
+});
+
+test("a retryable handler crossing its lease executes once per pass without starving later pending commands", async () => {
+  const clock = { value: 0 };
+  const records = [
+    {
+      command: commandFixture(),
+      status: "pending",
+      leaseUntil: null,
+      leaseGeneration: 0
+    },
+    {
+      command: commandFixture({
+        commandRef: "coincmd_order_2",
+        orderRef: "order_2",
+        leaseToken: "b".repeat(64)
+      }),
+      status: "pending",
+      leaseUntil: null,
+      leaseGeneration: 0
+    }
+  ];
+  const executions = [];
+  const completions = [];
+  let claimCalls = 0;
+  const store = makeStore();
+  store.claimNextFulfillmentCommand = ({ leaseMs }) => {
+    claimCalls += 1;
+    const record = records.find((candidate) => (
+      candidate.status === "pending"
+      || (
+        candidate.status === "processing"
+        && candidate.leaseUntil <= clock.value
+      )
+    ));
+    if (!record) return null;
+    record.status = "processing";
+    record.leaseUntil = clock.value + leaseMs;
+    record.leaseGeneration += 1;
+    return {
+      ...record.command,
+      leaseGeneration: record.leaseGeneration,
+      leaseToken: record.leaseGeneration.toString(16).padStart(64, "0")
+    };
+  };
+  store.completeFulfillmentCommand = (input) => {
+    const record = records.find(
+      ({ command }) => command.commandRef === input.commandRef
+    );
+    record.status = "delivered";
+    completions.push(input.commandRef);
+    return { status: "delivered" };
+  };
+  const coordinator = createCoinCommerceCoordinator({
+    store,
+    fulfillmentHandler: makeHandler({
+      async execute(input) {
+        executions.push(input.commandRef);
+        if (
+          input.commandRef === "coincmd_order_1"
+          && executions.filter((commandRef) => (
+            commandRef === "coincmd_order_1"
+          )).length === 1
+        ) {
+          clock.value = 1_000;
+          throw createCoinCommerceFulfillmentRetryableError();
+        }
+        return {
+          status: "delivered",
+          effectRef: `effect_${input.orderRef}`
+        };
+      }
+    }),
+    captureBatchSize: 2,
+    commandLeaseMs: 1_000
+  });
+
+  const firstSummary = await coordinator.runOnce();
+  assert.deepEqual(executions, ["coincmd_order_1", "coincmd_order_2"]);
+  assert.deepEqual(completions, ["coincmd_order_2"]);
+  assert.equal(claimCalls, 3);
+  assert.deepEqual(firstSummary, {
+    recoveryPasses: 1,
+    capturesClaimed: 0,
+    capturesProcessed: 0,
+    capturesDeferred: 0,
+    commandsClaimed: 2,
+    commandsDelivered: 1,
+    commandsFailed: 0,
+    commandsDeferred: 1
+  });
+  assert.equal(records[0].status, "processing");
+  assert.equal(records[0].leaseGeneration, 2);
+  assert.equal(records[0].leaseUntil, 2_000);
+
+  const beforeExpirySummary = await coordinator.runOnce();
+  assert.equal(beforeExpirySummary.commandsClaimed, 0);
+  assert.deepEqual(executions, ["coincmd_order_1", "coincmd_order_2"]);
+
+  clock.value = 2_000;
+  const nextPassSummary = await coordinator.runOnce();
+  assert.deepEqual(
+    executions,
+    ["coincmd_order_1", "coincmd_order_2", "coincmd_order_1"]
+  );
+  assert.deepEqual(
+    completions,
+    ["coincmd_order_2", "coincmd_order_1"]
+  );
+  assert.equal(nextPassSummary.commandsDelivered, 1);
+  assert.equal(nextPassSummary.commandsDeferred, 0);
+  assert.equal(records[0].leaseGeneration, 3);
+});
+
+test("forged retryable codes and properties remain terminal handler failures", async () => {
+  const branded = createCoinCommerceFulfillmentRetryableError();
+  const forgedErrors = [
+    Object.assign(new Error("forged code"), { code: branded.code }),
+    Object.assign(new Error("forged property"), {
+      code: branded.code,
+      retryable: true
+    })
+  ];
+
+  for (const forgedError of forgedErrors) {
+    let claimed = false;
+    const failures = [];
+    const store = makeStore();
+    store.claimNextFulfillmentCommand = () => {
+      if (claimed) return null;
+      claimed = true;
+      return commandFixture();
+    };
+    store.failFulfillmentCommand = (input) => {
+      failures.push(input);
+      return { status: "failed", safeCode: input.safeCode };
+    };
+    const coordinator = createCoinCommerceCoordinator({
+      store,
+      fulfillmentHandler: makeHandler({
+        async execute() {
+          throw forgedError;
+        }
+      })
+    });
+
+    const summary = await coordinator.runOnce();
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].safeCode, "fulfillment_handler_failed");
+    assert.equal(summary.commandsFailed, 1);
+    assert.equal(summary.commandsDeferred, 0);
+  }
 });
 
 test("all malformed handler result shapes fail closed without executing getters", async () => {
@@ -1509,6 +1800,101 @@ test("file restart replays one command effect after completion-write loss and re
     } catch {
       // Best-effort synthetic cleanup after assertions.
     }
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3 });
+  }
+});
+
+test("a real Store retries a branded error only after lease expiry without capturing Coins twice", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "coin-commerce-coordinator-retry-"));
+  const dbPath = join(directory, "commerce.sqlite");
+  const clock = { value: RESTART_CLOCK };
+  const database = createCoordinatorSchema(dbPath);
+  const store = createSqliteCoinCommerceStore({
+    database: fixedCoordinatorClockDatabase(database, clock)
+  });
+  let handlerCalls = 0;
+  const coordinator = createCoinCommerceCoordinator({
+    store,
+    fulfillmentHandler: makeHandler({
+      async execute() {
+        handlerCalls += 1;
+        if (handlerCalls === 1) {
+          throw createCoinCommerceFulfillmentRetryableError();
+        }
+        return {
+          status: "delivered",
+          effectRef: "synthetic_effect_retry_1"
+        };
+      }
+    }),
+    commandLeaseMs: 1000
+  });
+
+  try {
+    const order = seedCapturedRestartOrder(store, clock);
+    const walletCaptureCount = () => database.prepare(`
+      select count(*)
+        from platform_coin_operation_receipts
+       where operation_type = 'capture_coin_hold'
+    `).pluck().get();
+    const consumedLedgerCount = () => database.prepare(`
+      select count(*)
+        from platform_coin_ledger_entries
+       where operation = 'held_to_consumed'
+         and order_ref = ?
+    `).pluck().get(order.orderRef);
+
+    assert.equal(walletCaptureCount(), 1);
+    assert.equal(consumedLedgerCount(), 1);
+
+    const firstSummary = await coordinator.runOnce();
+    assert.equal(firstSummary.commandsDeferred, 1);
+    assert.equal(firstSummary.commandsFailed, 0);
+    assert.equal(firstSummary.commandsDelivered, 0);
+    assert.equal(handlerCalls, 1);
+
+    const leasedCommand = database.prepare(`
+      select *
+        from platform_coin_commerce_fulfillment_commands
+       where order_ref = ?
+    `).get(order.orderRef);
+    assert.equal(leasedCommand.status, "processing");
+    assert.equal(leasedCommand.lease_generation, 1);
+    assert.equal(database.prepare(`
+      select count(*)
+        from platform_coin_commerce_fulfillment_receipts
+       where command_ref = ?
+    `).pluck().get(leasedCommand.command_ref), 0);
+
+    const beforeExpirySummary = await coordinator.runOnce();
+    assert.equal(beforeExpirySummary.commandsClaimed, 0);
+    assert.equal(handlerCalls, 1);
+
+    clock.value = leasedCommand.lease_until;
+    const retrySummary = await coordinator.runOnce();
+    assert.equal(retrySummary.commandsDelivered, 1);
+    assert.equal(retrySummary.commandsDeferred, 0);
+    assert.equal(retrySummary.commandsFailed, 0);
+    assert.equal(handlerCalls, 2);
+
+    const deliveredCommand = database.prepare(`
+      select *
+        from platform_coin_commerce_fulfillment_commands
+       where command_ref = ?
+    `).get(leasedCommand.command_ref);
+    assert.equal(deliveredCommand.status, "delivered");
+    assert.equal(deliveredCommand.lease_generation, 2);
+    assert.equal(database.prepare(`
+      select count(*)
+        from platform_coin_commerce_fulfillment_receipts
+       where command_ref = ?
+    `).pluck().get(leasedCommand.command_ref), 1);
+    assert.equal(walletCaptureCount(), 1);
+    assert.equal(consumedLedgerCount(), 1);
+  } finally {
+    await coordinator.stop();
+    store.close();
+    database.close();
     rmSync(directory, { recursive: true, force: true, maxRetries: 3 });
   }
 });

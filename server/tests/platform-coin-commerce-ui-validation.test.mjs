@@ -472,7 +472,10 @@ test("fixed UI profile uses real password auth, five offers, and reversible 20-C
     assert.deepEqual(
       offersWithPrices
         .map(({ offer, quote }) => ({
-          baseCoinUnits: quote.amountUnits,
+          baseCoinUnits: offer.baseCoinUnits,
+          amountUnits: quote.amountUnits,
+          appliedDiscountBasisPoints: quote.appliedDiscountBasisPoints,
+          acceptedCoinTypes: offer.acceptedCoinTypes,
           kind: offer.delivery.kind,
           durationDays: offer.delivery.durationDays,
           monthlyTrafficGb: offer.delivery.monthlyTrafficGb,
@@ -487,6 +490,9 @@ test("fixed UI profile uses real password auth, five offers, and reversible 20-C
       [
         {
           baseCoinUnits: 30,
+          amountUnits: 30,
+          appliedDiscountBasisPoints: 0,
+          acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
           kind: "data_pack",
           durationDays: null,
           monthlyTrafficGb: null,
@@ -496,6 +502,9 @@ test("fixed UI profile uses real password auth, five offers, and reversible 20-C
         },
         {
           baseCoinUnits: 50,
+          amountUnits: 50,
+          appliedDiscountBasisPoints: 0,
+          acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
           kind: "data_pack",
           durationDays: null,
           monthlyTrafficGb: null,
@@ -505,30 +514,39 @@ test("fixed UI profile uses real password auth, five offers, and reversible 20-C
         },
         {
           baseCoinUnits: 20,
+          amountUnits: 20,
+          appliedDiscountBasisPoints: 0,
+          acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
           kind: "subscription_plan",
           durationDays: 30,
           monthlyTrafficGb: 50,
           trafficGb: null,
           neverExpires: false,
-          discountBasisPoints: 500
+          discountBasisPoints: 0
         },
         {
           baseCoinUnits: 30,
+          amountUnits: 30,
+          appliedDiscountBasisPoints: 0,
+          acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
           kind: "subscription_plan",
           durationDays: 30,
           monthlyTrafficGb: 100,
           trafficGb: null,
           neverExpires: false,
-          discountBasisPoints: 1000
+          discountBasisPoints: 0
         },
         {
           baseCoinUnits: 200,
+          amountUnits: 200,
+          appliedDiscountBasisPoints: 0,
+          acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
           kind: "subscription_plan",
           durationDays: 365,
           monthlyTrafficGb: 200,
           trafficGb: null,
           neverExpires: false,
-          discountBasisPoints: 2000
+          discountBasisPoints: 0
         }
       ]
     );
