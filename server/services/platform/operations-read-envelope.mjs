@@ -10,6 +10,7 @@ const WARNING_CODES = new Set([
   "source_unavailable"
 ]);
 const SCHEMA_VERSION_PATTERN = /^[a-z][a-z0-9-]*\/v[1-9][0-9]*$/;
+const UNSAFE_DATA_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 function operationsReadContractError() {
   const error = new Error("Operations read contract is invalid");
@@ -26,21 +27,70 @@ function isPlainObject(value) {
   );
 }
 
+function cloneDataValue(value, ancestors = new Set()) {
+  if (
+    value === null
+    || typeof value === "string"
+    || typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    if (ancestors.has(value)) {
+      throw operationsReadContractError();
+    }
+    ancestors.add(value);
+    const clone = value.map((item) => cloneDataValue(item, ancestors));
+    ancestors.delete(value);
+    return clone;
+  }
+
+  if (!isPlainObject(value) || ancestors.has(value)) {
+    throw operationsReadContractError();
+  }
+
+  ancestors.add(value);
+  const clone = {};
+  for (const key of Object.keys(value)) {
+    if (UNSAFE_DATA_KEYS.has(key)) {
+      throw operationsReadContractError();
+    }
+    Object.defineProperty(clone, key, {
+      value: cloneDataValue(value[key], ancestors),
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
+  }
+  ancestors.delete(value);
+  return clone;
+}
+
 export function createOperationsReadEnvelope(input = {}, options = {}) {
   try {
     if (!isPlainObject(input) || !isPlainObject(options)) {
       throw operationsReadContractError();
     }
 
-    const schemaVersion = String(input.schemaVersion || "");
-    const freshness = String(input.freshness || "");
-    const sourceState = String(input.sourceState || "");
+    const schemaVersion = input.schemaVersion;
+    const freshness = input.freshness;
+    const sourceState = input.sourceState;
     const warnings = input.warnings;
     const access = input.access;
-    const nowFn = options.nowFn || (() => new Date());
+    const nowFn = Object.hasOwn(options, "nowFn")
+      ? options.nowFn
+      : () => new Date();
 
     if (
-      !SCHEMA_VERSION_PATTERN.test(schemaVersion)
+      typeof schemaVersion !== "string"
+      || typeof freshness !== "string"
+      || typeof sourceState !== "string"
+      || !SCHEMA_VERSION_PATTERN.test(schemaVersion)
       || !FRESHNESS_VALUES.has(freshness)
       || !SOURCE_STATE_VALUES.has(sourceState)
       || !isPlainObject(input.data)
@@ -70,7 +120,7 @@ export function createOperationsReadEnvelope(input = {}, options = {}) {
       generatedAt: now.toISOString(),
       freshness,
       sourceState,
-      data: { ...input.data },
+      data: cloneDataValue(input.data),
       warnings: warnings.map((warning) => ({ code: warning.code })),
       access: {
         allowed: true,
@@ -78,10 +128,7 @@ export function createOperationsReadEnvelope(input = {}, options = {}) {
         reasonCode: "allowed"
       }
     };
-  } catch (error) {
-    if (error?.code === "operations_read_contract_error") {
-      throw error;
-    }
+  } catch {
     throw operationsReadContractError();
   }
 }
