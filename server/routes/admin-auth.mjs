@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { createAdminPrincipal } from "../services/platform/admin-auth.mjs";
+import { authorizeAdmin } from "../services/platform/admin-authorization.mjs";
 
 const ADMIN_AUTH_ATTEMPT_WINDOW_MS = 60_000;
 const ADMIN_AUTH_ATTEMPT_MAX = 10;
@@ -125,6 +126,28 @@ export function adminAuthRoutes(state, options = {}) {
   });
 
   return router;
+}
+
+export function requireAdminCapability(capability) {
+  return (req, res, next) => {
+    const decision = authorizeAdmin({
+      principal: req.adminPrincipal,
+      capability
+    });
+
+    if (decision.allowed) {
+      next();
+      return;
+    }
+    if (decision.reasonCode === "principal_missing") {
+      res.status(401).json({ error: "admin_authentication_required" });
+      return;
+    }
+    res.status(403).json({
+      error: "admin_capability_required",
+      capability: decision.capability
+    });
+  };
 }
 
 export function createAdminSessionGatewayMiddleware({ adminAuth, consoleToken, role = "admin" }) {
