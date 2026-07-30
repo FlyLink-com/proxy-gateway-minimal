@@ -1312,7 +1312,7 @@ export function applyCoinCommerceMigrations({
     return {
       ...inspection,
       mode: "apply",
-      sourceChanged: true,
+      sourceChanged: appliedMigrationIds.length > 0,
       appliedMigrationIds
     };
   } catch (error) {

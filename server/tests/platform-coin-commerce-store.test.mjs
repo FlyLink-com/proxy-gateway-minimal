@@ -18,6 +18,9 @@ import {
 import {
   createSqliteCoinCommerceStore
 } from "../services/platform/coin-commerce-store.mjs";
+import {
+  COIN_COMMERCE_PRODUCTION_OFFERS
+} from "../services/platform/coin-commerce-production-catalog.mjs";
 
 const CLOCK = "2026-07-26T12:34:56.000Z";
 const COMMERCE_TABLES = [
@@ -387,6 +390,21 @@ function confirm(state, quote, key = "confirm_1") {
 
 test("factory enforces exact ownership, schemas, connection settings, and surface", () => {
   expectCode(() => createSqliteCoinCommerceStore(), "invalid_store_contract");
+  const invalidReaderDatabase = new Database(":memory:");
+  try {
+    invalidReaderDatabase.pragma("foreign_keys = ON");
+    for (const purchaseEligibilityReader of [null, true, {}]) {
+      expectCode(
+        () => createSqliteCoinCommerceStore({
+          database: invalidReaderDatabase,
+          purchaseEligibilityReader
+        }),
+        "invalid_store_contract"
+      );
+    }
+  } finally {
+    invalidReaderDatabase.close();
+  }
   const invalid = new Database(":memory:");
   try {
     invalid.pragma("foreign_keys = ON");
@@ -402,6 +420,7 @@ test("factory enforces exact ownership, schemas, connection settings, and surfac
   try {
     assert.deepEqual(Reflect.ownKeys(state.store), [
       "walletStore",
+      "bootstrapPublishedOffers",
       "publishOfferVersion",
       "retireOfferVersion",
       "listPublishedOffers",
@@ -432,6 +451,408 @@ test("factory enforces exact ownership, schemas, connection settings, and surfac
   } finally {
     state.database.close();
     rmSync(state.directory, { recursive: true, force: true, maxRetries: 3 });
+  }
+});
+
+test("purchase eligibility is server-authoritative and fails closed before offer or Quote access", () => {
+  for (const scenario of [
+    {
+      name: "false",
+      purchaseEligibilityReader: () => false
+    },
+    {
+      name: "throw",
+      purchaseEligibilityReader: () => {
+        throw new Error("private eligibility failure");
+      }
+    },
+    {
+      name: "undefined",
+      purchaseEligibilityReader: () => undefined
+    },
+    {
+      name: "async",
+      purchaseEligibilityReader: () => Promise.resolve(true)
+    }
+  ]) {
+    const reads = [];
+    const state = fixture({
+      purchaseEligibilityReader(input) {
+        reads.push(input);
+        return scenario.purchaseEligibilityReader(input);
+      }
+    });
+    try {
+      state.store.publishOfferVersion(offer());
+      const before = snapshotTables(state.database, COMMERCE_TABLES);
+      for (const action of [
+        () => state.store.listPublishedOffers({
+          accountId: "acct_synthetic_1"
+        }),
+        () => state.store.getPublishedOffer({
+          accountId: "acct_synthetic_1",
+          offerRef: "offer_monthly_basic"
+        }),
+        () => state.store.createCheckoutQuote({
+          accountId: "acct_synthetic_1",
+          offerRef: "offer_monthly_basic"
+        })
+      ]) {
+        expectCode(action, "offer_unavailable");
+      }
+      assert.deepEqual(
+        reads,
+        new Array(3).fill(null).map(() => ({
+          accountId: "acct_synthetic_1",
+          offerVersionRef: "offerv_monthly_basic_v1"
+        })),
+        scenario.name
+      );
+      assert.deepEqual(snapshotTables(state.database, COMMERCE_TABLES), before);
+      assert.equal(
+        commerceCounts(state.database).platform_coin_commerce_quotes,
+        0
+      );
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("purchase eligibility is offer-specific and filters active-plan switches before Quote creation", () => {
+  const eligibilityReads = [];
+  const allowedOfferVersionRef = "offerv_monthly_basic_v1";
+  const blockedOffer = offer({
+    offerRef: "offer_monthly_plus",
+    offerVersionRef: "offerv_monthly_plus_v1",
+    baseCoinUnits: 30,
+    referencePrice: { currency: "CNY", amountMinor: 3_000 },
+    delivery: {
+      kind: "subscription_plan",
+      durationDays: 30,
+      monthlyTrafficGb: 100,
+      trafficGb: null,
+      neverExpires: false,
+      discountBasisPoints: 0
+    }
+  });
+  const state = fixture({
+    purchaseEligibilityReader(input) {
+      eligibilityReads.push(input);
+      return input.offerVersionRef === allowedOfferVersionRef;
+    }
+  });
+  try {
+    state.store.publishOfferVersion(offer());
+    state.store.publishOfferVersion(blockedOffer);
+
+    assert.deepEqual(
+      state.store.listPublishedOffers({
+        accountId: "acct_synthetic_1"
+      }).map((candidate) => candidate.offerVersionRef),
+      [allowedOfferVersionRef]
+    );
+    expectCode(
+      () => state.store.getPublishedOffer({
+        accountId: "acct_synthetic_1",
+        offerRef: blockedOffer.offerRef
+      }),
+      "offer_unavailable"
+    );
+    expectCode(
+      () => state.store.createCheckoutQuote({
+        accountId: "acct_synthetic_1",
+        offerRef: blockedOffer.offerRef
+      }),
+      "offer_unavailable"
+    );
+    assert.equal(
+      state.store.createCheckoutQuote({
+        accountId: "acct_synthetic_1",
+        offerRef: "offer_monthly_basic"
+      }).offer.offerVersionRef,
+      allowedOfferVersionRef
+    );
+    assert.equal(
+      eligibilityReads.every((input) => (
+        input.accountId === "acct_synthetic_1"
+        && [
+          allowedOfferVersionRef,
+          blockedOffer.offerVersionRef
+        ].includes(input.offerVersionRef)
+      )),
+      true
+    );
+  } finally {
+    state.close();
+  }
+});
+
+test("a confirmed nonterminal plan blocks a different-plan Quote and confirm race before a second Hold", () => {
+  const secondOffer = offer({
+    offerRef: "offer_monthly_plus",
+    offerVersionRef: "offerv_monthly_plus_v1",
+    baseCoinUnits: 30,
+    referencePrice: { currency: "CNY", amountMinor: 3_000 },
+    delivery: {
+      kind: "subscription_plan",
+      durationDays: 30,
+      monthlyTrafficGb: 100,
+      trafficGb: null,
+      neverExpires: false,
+      discountBasisPoints: 0
+    }
+  });
+  const state = fixture({
+    purchaseEligibilityReader: () => true
+  });
+  try {
+    seedWallet(state.store);
+    credit(state.store, {
+      coinType: "paid_coins",
+      amountUnits: 100,
+      suffix: "plan_switch_race"
+    });
+    state.store.publishOfferVersion(offer());
+    state.store.publishOfferVersion(secondOffer);
+    const firstQuote = state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1",
+      offerRef: "offer_monthly_basic"
+    });
+    const competingQuote = state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1",
+      offerRef: secondOffer.offerRef
+    });
+    const firstOrder = confirm(state, firstQuote, "confirm_plan_switch_first");
+    const before = snapshotTables(
+      state.database,
+      [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+    );
+
+    expectCode(
+      () => state.store.createCheckoutQuote({
+        accountId: "acct_synthetic_1",
+        offerRef: secondOffer.offerRef
+      }),
+      "offer_unavailable"
+    );
+    expectCode(
+      () => state.store.confirmOrder({
+        accountId: "acct_synthetic_1",
+        quoteRef: competingQuote.quoteRef,
+        operation: commerceOperation("confirm_plan_switch_competing")
+      }),
+      "offer_unavailable"
+    );
+    assert.deepEqual(
+      snapshotTables(
+        state.database,
+        [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+      ),
+      before
+    );
+    assert.equal(state.store.getOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: firstOrder.orderRef
+    }).paymentStatus, "held");
+  } finally {
+    state.close();
+  }
+});
+
+test("revoked purchase eligibility blocks confirm without financial writes but preserves existing Order access", () => {
+  let eligible = true;
+  const state = fixture({
+    purchaseEligibilityReader({ accountId }) {
+      assert.equal(accountId, "acct_synthetic_1");
+      return eligible;
+    }
+  });
+  try {
+    seedWallet(state.store);
+    const order = confirm(state, publishAndQuote(state));
+    const pendingQuote = state.store.createCheckoutQuote({
+      accountId: "acct_synthetic_1",
+      offerRef: "offer_monthly_basic"
+    });
+    const before = snapshotTables(
+      state.database,
+      [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+    );
+    const beforeCounts = {
+      ledger: state.database.prepare(
+        "select count(*) from platform_coin_ledger_entries"
+      ).pluck().get(),
+      holds: state.database.prepare(
+        "select count(*) from platform_coin_holds"
+      ).pluck().get(),
+      orders: state.database.prepare(
+        "select count(*) from platform_coin_commerce_orders"
+      ).pluck().get(),
+      receipts: state.database.prepare(`
+        select count(*) from platform_coin_commerce_operation_receipts
+      `).pluck().get()
+    };
+
+    eligible = false;
+    expectCode(
+      () => state.store.confirmOrder({
+        accountId: "acct_synthetic_1",
+        quoteRef: pendingQuote.quoteRef,
+        operation: commerceOperation("confirm_revoked")
+      }),
+      "offer_unavailable"
+    );
+    assert.deepEqual(
+      snapshotTables(
+        state.database,
+        [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+      ),
+      before
+    );
+    assert.deepEqual({
+      ledger: state.database.prepare(
+        "select count(*) from platform_coin_ledger_entries"
+      ).pluck().get(),
+      holds: state.database.prepare(
+        "select count(*) from platform_coin_holds"
+      ).pluck().get(),
+      orders: state.database.prepare(
+        "select count(*) from platform_coin_commerce_orders"
+      ).pluck().get(),
+      receipts: state.database.prepare(`
+        select count(*) from platform_coin_commerce_operation_receipts
+      `).pluck().get()
+    }, beforeCounts);
+
+    assert.deepEqual(state.store.getOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef
+    }), order);
+    assert.deepEqual(
+      state.store.listOrders({
+        accountId: "acct_synthetic_1",
+        limit: 10
+      }).orders,
+      [order]
+    );
+    assert.equal(state.store.cancelOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: order.orderRef,
+      operation: commerceOperation("cancel_after_revocation")
+    }).paymentStatus, "cancelled");
+  } finally {
+    state.close();
+  }
+});
+
+test("successful confirm replay bypasses changed purchase eligibility without new durable mutations", () => {
+  for (const blockedBehavior of ["false", "throw"]) {
+    let eligibility = "allow";
+    let eligibilityReads = 0;
+    const state = fixture({
+      purchaseEligibilityReader({ accountId }) {
+        assert.equal(accountId, "acct_synthetic_1");
+        eligibilityReads += 1;
+        if (eligibility === "throw") {
+          throw new Error("private eligibility failure");
+        }
+        return eligibility === "allow";
+      }
+    });
+    try {
+      seedWallet(state.store);
+      const quote = publishAndQuote(state);
+      const order = confirm(state, quote);
+      const readsBeforeReplay = eligibilityReads;
+      const beforeReplay = snapshotTables(
+        state.database,
+        [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+      );
+
+      eligibility = blockedBehavior;
+      assert.deepEqual(confirm(state, quote), order, blockedBehavior);
+      assert.equal(eligibilityReads, readsBeforeReplay, blockedBehavior);
+      assert.deepEqual(
+        snapshotTables(
+          state.database,
+          [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+        ),
+        beforeReplay,
+        blockedBehavior
+      );
+    } finally {
+      state.close();
+    }
+  }
+});
+
+test("new confirm checks purchase eligibility inside its immediate transaction before Hold", () => {
+  for (const blockedBehavior of ["false", "throw"]) {
+    let confirmPhase = false;
+    let competingDatabase;
+    let state;
+    const observations = [];
+    state = fixture({
+      purchaseEligibilityReader({ accountId }) {
+        assert.equal(accountId, "acct_synthetic_1");
+        if (!confirmPhase) return true;
+        const observation = {
+          inTransaction: state.database.inTransaction,
+          holdCount: state.database.prepare(
+            "select count(*) from platform_coin_holds"
+          ).pluck().get(),
+          competingWriterBlocked: false
+        };
+        try {
+          competingDatabase.exec("begin immediate");
+        } catch (error) {
+          if (!String(error?.code).startsWith("SQLITE_BUSY")) throw error;
+          observation.competingWriterBlocked = true;
+        } finally {
+          if (competingDatabase.inTransaction) {
+            competingDatabase.exec("rollback");
+          }
+        }
+        observations.push(observation);
+        if (blockedBehavior === "throw") {
+          throw new Error("private eligibility failure");
+        }
+        return false;
+      }
+    });
+    try {
+      seedWallet(state.store);
+      const quote = publishAndQuote(state);
+      competingDatabase = new Database(state.dbPath);
+      competingDatabase.pragma("busy_timeout = 0");
+      const before = snapshotTables(
+        state.database,
+        [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+      );
+
+      confirmPhase = true;
+      expectCode(
+        () => confirm(state, quote, `confirm_blocked_${blockedBehavior}`),
+        "offer_unavailable"
+      );
+      assert.deepEqual(observations, [{
+        inTransaction: true,
+        holdCount: 0,
+        competingWriterBlocked: true
+      }], blockedBehavior);
+      assert.deepEqual(
+        snapshotTables(
+          state.database,
+          [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+        ),
+        before,
+        blockedBehavior
+      );
+    } finally {
+      competingDatabase?.close();
+      state.close();
+    }
   }
 });
 
@@ -832,6 +1253,150 @@ test("trusted Offer bootstrap is versioned, replay-safe, global, and receipt-fre
   }
 });
 
+test("batch Offer bootstrap is normalized before one atomic replay-safe transaction", () => {
+  const state = fixture();
+  try {
+    const monthly50 = offer({
+      offerRef: "offer_plan_30d_50gb",
+      offerVersionRef: "offerv_plan_30d_50gb_v1",
+      delivery: {
+        ...offer().delivery,
+        discountBasisPoints: 0
+      }
+    });
+    const monthly100 = offer({
+      offerRef: "offer_plan_30d_100gb",
+      offerVersionRef: "offerv_plan_30d_100gb_v1",
+      title: { zh: "100 GB 月卡", en: "100 GB monthly plan" },
+      summary: { zh: "每月 100 GB", en: "100 GB monthly" },
+      baseCoinUnits: 30,
+      referencePrice: { currency: "CNY", amountMinor: 3_000 },
+      delivery: {
+        ...offer().delivery,
+        monthlyTrafficGb: 100,
+        discountBasisPoints: 0
+      }
+    });
+
+    assert.deepEqual(
+      state.store.bootstrapPublishedOffers([monthly50, monthly100]),
+      [monthly50, monthly100]
+    );
+    const firstSnapshot = snapshotTables(state.database, COMMERCE_TABLES);
+    assert.deepEqual(
+      state.store.bootstrapPublishedOffers([monthly50, monthly100]),
+      [monthly50, monthly100]
+    );
+    assert.deepEqual(snapshotTables(state.database, COMMERCE_TABLES), firstSnapshot);
+    assert.deepEqual(commerceCounts(state.database), {
+      platform_coin_commerce_offer_versions: 2,
+      platform_coin_commerce_quotes: 0,
+      platform_coin_commerce_orders: 0,
+      platform_coin_commerce_operation_receipts: 0,
+      platform_coin_commerce_order_events: 0,
+      platform_coin_commerce_fulfillment_commands: 0,
+      platform_coin_commerce_fulfillment_receipts: 0
+    });
+
+    expectCode(
+      () => state.store.bootstrapPublishedOffers([
+        offer({
+          offerRef: "offer_fresh_before_conflict",
+          offerVersionRef: "offerv_fresh_before_conflict_v1"
+        }),
+        {
+          ...monthly100,
+          title: { zh: "发生漂移", en: "Drifted" }
+        }
+      ]),
+      "offer_unavailable"
+    );
+    assert.deepEqual(snapshotTables(state.database, COMMERCE_TABLES), firstSnapshot);
+
+    expectCode(
+      () => state.store.bootstrapPublishedOffers([
+        monthly50,
+        { ...monthly100, clientPrice: 30 }
+      ]),
+      "invalid_store_contract"
+    );
+    assert.deepEqual(snapshotTables(state.database, COMMERCE_TABLES), firstSnapshot);
+  } finally {
+    state.close();
+  }
+});
+
+test("production Offer bootstrap lists plans by authoritative Coin amount", () => {
+  const state = fixture();
+  try {
+    state.store.bootstrapPublishedOffers(COIN_COMMERCE_PRODUCTION_OFFERS);
+    assert.deepEqual(
+      state.store.listPublishedOffers({
+        accountId: "acct_synthetic_1"
+      }).map((publishedOffer) => [
+        publishedOffer.offerRef,
+        publishedOffer.baseCoinUnits
+      ]),
+      [
+        ["offer_plan_30d_50gb_monthly", 20],
+        ["offer_plan_30d_100gb_monthly", 30],
+        ["offer_plan_365d_200gb_monthly", 200]
+      ]
+    );
+  } finally {
+    state.close();
+  }
+});
+
+test("production Offer bootstrap rejects an extra published offer atomically but retains retired history", () => {
+  const state = fixture();
+  try {
+    const retiredHistory = offer({
+      offerRef: "offer_retired_history",
+      offerVersionRef: "offerv_retired_history_v1"
+    });
+    const extraPublished = offer({
+      offerRef: "offer_extra_published",
+      offerVersionRef: "offerv_extra_published_v1"
+    });
+    state.store.publishOfferVersion(retiredHistory);
+    state.store.retireOfferVersion({
+      offerRef: retiredHistory.offerRef,
+      offerVersionRef: retiredHistory.offerVersionRef
+    });
+    state.store.publishOfferVersion(extraPublished);
+    const before = snapshotTables(state.database, COMMERCE_TABLES);
+
+    expectCode(
+      () => state.store.bootstrapPublishedOffers(
+        COIN_COMMERCE_PRODUCTION_OFFERS
+      ),
+      "offer_unavailable"
+    );
+    assert.deepEqual(snapshotTables(state.database, COMMERCE_TABLES), before);
+
+    state.store.retireOfferVersion({
+      offerRef: extraPublished.offerRef,
+      offerVersionRef: extraPublished.offerVersionRef
+    });
+    assert.deepEqual(
+      state.store.bootstrapPublishedOffers(COIN_COMMERCE_PRODUCTION_OFFERS),
+      COIN_COMMERCE_PRODUCTION_OFFERS
+    );
+    assert.deepEqual(state.database.prepare(`
+      select status, count(*) as count
+        from platform_coin_commerce_offer_versions
+       group by status
+       order by status
+    `).all(), [
+      { status: "published", count: 3 },
+      { status: "retired", count: 2 }
+    ]);
+  } finally {
+    state.close();
+  }
+});
+
 test("Quote reads discount outside the transaction and returns an exact lot-free snapshot", () => {
   let observedInTransaction = null;
   const state = fixture({
@@ -1054,6 +1619,68 @@ test("confirm consumes the exact Quote, creates one Hold and safe Order, and rep
         operation: commerceOperation("confirm_1")
       }),
       "idempotency_key_reused"
+    );
+  } finally {
+    state.close();
+  }
+});
+
+test("confirm rejects a persisted Quote amount drift even when allocation is synchronized", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const quote = publishAndQuote(state);
+    dropTableTriggers(state.database, "platform_coin_commerce_quotes");
+    state.database.prepare(`
+      update platform_coin_commerce_quotes
+         set amount_units = 18,
+             allocation_json = ?
+       where quote_ref = ?
+    `).run(JSON.stringify([
+      { coinType: "bonus_coins", amountUnits: 5 },
+      { coinType: "paid_coins", amountUnits: 13 }
+    ]), quote.quoteRef);
+    const before = snapshotTables(
+      state.database,
+      [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+    );
+
+    expectCode(() => confirm(state, quote), "commerce_infrastructure_error");
+    assert.deepEqual(
+      snapshotTables(
+        state.database,
+        [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+      ),
+      before
+    );
+  } finally {
+    state.close();
+  }
+});
+
+test("confirm rejects a persisted Quote discount drift before financial writes", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const quote = publishAndQuote(state);
+    dropTableTriggers(state.database, "platform_coin_commerce_quotes");
+    state.database.prepare(`
+      update platform_coin_commerce_quotes
+         set applied_discount_basis_points = 1000
+       where quote_ref = ?
+    `).run(quote.quoteRef);
+    const before = snapshotTables(
+      state.database,
+      [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+    );
+
+    expectCode(() => confirm(state, quote), "commerce_infrastructure_error");
+    assert.deepEqual(
+      snapshotTables(
+        state.database,
+        [...COMMERCE_TABLES, ...WALLET_FINANCIAL_TABLES]
+      ),
+      before
     );
   } finally {
     state.close();
@@ -2015,16 +2642,27 @@ test("outbox leases fence stale workers, complete atomically, and fail only once
     state.clock.value = order.cancelUntil;
     state.store.claimDueCaptures({ limit: 1 });
     state.store.captureClaimedOrder({ orderRef: order.orderRef });
+    const persistedCommand = state.database.prepare(`
+      select payload_json
+        from platform_coin_commerce_fulfillment_commands
+       where order_ref = ?
+    `).get(order.orderRef);
+    assert.deepEqual(JSON.parse(persistedCommand.payload_json), {
+      offerVersionRef: offer().offerVersionRef,
+      delivery: offer().delivery
+    });
     const first = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
     assert.match(first.leaseToken, /^[0-9a-f]{64}$/);
     assert.deepEqual(Reflect.ownKeys(first), [
       "commandRef",
       "orderRef",
       "accountId",
+      "offerVersionRef",
       "delivery",
       "leaseGeneration",
       "leaseToken"
     ]);
+    assert.equal(first.offerVersionRef, offer().offerVersionRef);
     state.clock.value = "2026-07-26T12:35:00.000Z";
     const second = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
     assert.equal(second.leaseGeneration, first.leaseGeneration + 1);
@@ -2190,6 +2828,63 @@ test("failed fulfillment has no receipt and repeated fail loses the lease", () =
     assert.equal(state.database.prepare(
       "select count(*) from platform_coin_commerce_fulfillment_receipts"
     ).pluck().get(), 0);
+  } finally {
+    state.close();
+  }
+});
+
+test("permanent fulfillment unavailability atomically isolates the captured order for reconciliation", () => {
+  const state = fixture();
+  try {
+    seedWallet(state.store);
+    const held = confirm(state, publishAndQuote(state));
+    state.clock.value = held.cancelUntil;
+    state.store.claimDueCaptures({ limit: 1 });
+    state.store.captureClaimedOrder({ orderRef: held.orderRef });
+    const command = state.store.claimNextFulfillmentCommand({ leaseMs: 1000 });
+
+    assert.deepEqual(state.store.failFulfillmentCommand({
+      commandRef: command.commandRef,
+      leaseGeneration: command.leaseGeneration,
+      leaseToken: command.leaseToken,
+      safeCode: "fulfillment_handler_unavailable"
+    }), {
+      status: "failed",
+      safeCode: "fulfillment_handler_unavailable"
+    });
+    const isolated = state.store.getOrder({
+      accountId: "acct_synthetic_1",
+      orderRef: held.orderRef
+    });
+    assert.equal(isolated.paymentStatus, "reconciliation_required");
+    assert.deepEqual(isolated.fulfillment, {
+      status: "failed",
+      safeCode: "fulfillment_handler_unavailable"
+    });
+    assert.deepEqual(state.database.prepare(`
+      select event_type, safe_code
+        from platform_coin_commerce_order_events
+       where order_ref = ?
+         and event_type in ('fulfillment_failed', 'reconciliation_required')
+       order by event_type
+    `).all(held.orderRef), [
+      {
+        event_type: "fulfillment_failed",
+        safe_code: "fulfillment_handler_unavailable"
+      },
+      {
+        event_type: "reconciliation_required",
+        safe_code: "reconciliation_required"
+      }
+    ]);
+    assert.equal(state.store.claimNextFulfillmentCommand({ leaseMs: 1000 }), null);
+    expectCode(
+      () => state.store.createCheckoutQuote({
+        accountId: "acct_synthetic_1",
+        offerRef: "offer_monthly_basic"
+      }),
+      "offer_unavailable"
+    );
   } finally {
     state.close();
   }
@@ -2836,6 +3531,14 @@ test("construction rejects schema-valid but unsafe outbox payloads and lease tok
     (database) => database.prepare(`
       update platform_coin_commerce_fulfillment_commands
          set payload_json = '{}'
+    `).run(),
+    (database) => database.prepare(`
+      update platform_coin_commerce_fulfillment_commands
+         set payload_json = json_set(
+           payload_json,
+           '$.offerVersionRef',
+           'offerv_monthly_basic_v2'
+         )
     `).run(),
     (database) => database.prepare(`
       update platform_coin_commerce_fulfillment_commands

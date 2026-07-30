@@ -18,6 +18,11 @@ const UNSAFE_FIELD_PARTS = [
 const SAFE_CONTROL_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
 const UNSAFE_CONTROL_VALUE_PATTERN =
   /https?:|token=|secret|credential|password|private|customer|@|\/sub\/clash\.yaml|(?:\d{1,3}\.){3}\d{1,3}|[a-z0-9-]+\.[a-z]{2,}/i;
+const TRAFFIC_LIFECYCLE_PENDING_ACTIONS = new Set([
+  "traffic_supply_expiry_cleanup_pending",
+  "traffic_supply_resume_pending",
+  "traffic_supply_resume_rollback_pending"
+]);
 
 function platformError(code, message) {
   const error = new Error(message);
@@ -183,6 +188,28 @@ function parseJsonArray(value) {
   } catch {
     return [];
   }
+}
+
+function desiredStateLifecycleRevision(row) {
+  const event = parseJsonObject(row.event_json);
+  const candidate = text(event.lifecycleRevisionRef);
+  const lifecycleRevisionRef = (
+    SAFE_CONTROL_REF_PATTERN.test(candidate)
+    && !UNSAFE_CONTROL_VALUE_PATTERN.test(candidate)
+  ) ? candidate : "";
+  const required = TRAFFIC_LIFECYCLE_PENDING_ACTIONS.has(text(row.next_action));
+  return {
+    fingerprint: lifecycleRevisionRef
+      ? {
+        requestRef: row.request_id,
+        lifecycleRevisionRef
+      }
+      : {
+        requestRef: row.request_id,
+        updatedAt: row.updated_at
+      },
+    safe: !required || Boolean(lifecycleRevisionRef)
+  };
 }
 
 function sqliteRun(statement, input) {
@@ -1350,6 +1377,353 @@ export function createSqliteSubscriptionControlStore({
     return getEntitlement(id);
   }
 
+  function applyCoinCommerceSubscriptionFulfillment(input) {
+    assertNoUnsafeFields(input);
+    const record = {
+      commandRef: safeControlRef(input.commandRef, "commandRef"),
+      orderRef: safeControlRef(input.orderRef, "orderRef"),
+      accountId: safeControlRef(input.accountId, "accountId"),
+      requestRef: safeControlRef(input.requestRef, "requestRef"),
+      entitlementRef: safeControlRef(input.entitlementRef, "entitlementRef"),
+      issuedLinkRef: safeControlRef(input.issuedLinkRef, "issuedLinkRef"),
+      tenantRef: safeControlRef(input.tenantRef, "tenantRef"),
+      artifactRef: safeControlRef(input.artifactRef, "artifactRef"),
+      offerVersionRef: safeControlRef(input.offerVersionRef, "offerVersionRef"),
+      portalPlan: requiredText(input.portalPlan, "portalPlan"),
+      durationDays: integer(input.durationDays, "durationDays", { min: 1 }),
+      monthlyTrafficGb: integer(input.monthlyTrafficGb, "monthlyTrafficGb", { min: 1 }),
+      recoveryOnly: input.recoveryOnly === true,
+      now: isoText(input.now, "now")
+    };
+    if (input.recoveryOnly !== true && input.recoveryOnly !== false) {
+      throw platformError("validation_error", "recoveryOnly must be boolean");
+    }
+    if (record.portalPlan !== "monthly" && record.portalPlan !== "yearly") {
+      throw platformError("validation_error", "portalPlan must be monthly or yearly");
+    }
+    const trafficLimitBytes = record.monthlyTrafficGb * (1024 ** 3);
+    if (!Number.isSafeInteger(trafficLimitBytes)) {
+      throw platformError("validation_error", "trafficLimitBytes is outside the safe integer range");
+    }
+    const durationMs = record.durationDays * 24 * 60 * 60 * 1000;
+    if (!Number.isSafeInteger(durationMs)) {
+      throw platformError("validation_error", "durationDays is outside the safe Date range");
+    }
+    const effectRefForCommand = (commandRef) => `effect_coin_commerce_${sha256(
+      `GCCWEBOS:COIN_COMMERCE_SUBSCRIPTION_FULFILLMENT:v1\0${commandRef}`
+    )}`;
+    const effectRef = effectRefForCommand(record.commandRef);
+
+    const failDrift = () => {
+      throw platformError(
+        "coin_commerce_subscription_fulfillment_drift",
+        "Coin Commerce subscription fulfillment state is inconsistent"
+      );
+    };
+    const sameKeys = (value, expectedKeys) => (
+      value
+      && typeof value === "object"
+      && !Array.isArray(value)
+      && Object.keys(value).sort().join("\0") === [...expectedKeys].sort().join("\0")
+    );
+
+    const apply = db.transaction(() => {
+      const account = getAccount(record.accountId);
+      if (!account || account.status !== "active") failDrift();
+      const activeAccessRequests = listPortalAccessRequests({
+        portalUserRef: record.accountId
+      }).filter((request) => request.status === "delivered" || request.status === "issued");
+      if (activeAccessRequests.length !== 1) failDrift();
+      const [accessRequest] = activeAccessRequests;
+      if (
+        accessRequest.id !== record.requestRef
+        || accessRequest.portalUserRef !== record.accountId
+        || accessRequest.entitlementRef !== record.entitlementRef
+        || !optionalText(accessRequest.tenantId)
+        || !optionalText(accessRequest.artifactId)
+      ) {
+        failDrift();
+      }
+
+      const issuanceRequest = getIssuanceRequest(record.requestRef);
+      const entitlement = getEntitlement(record.entitlementRef);
+      const bindings = listIssuedSubscriptionBindings()
+        .filter((binding) => binding.requestId === record.requestRef);
+      if (
+        !issuanceRequest
+        || issuanceRequest.status !== "issued"
+        || issuanceRequest.accountId !== record.accountId
+        || issuanceRequest.entitlementId !== record.entitlementRef
+        || !entitlement
+        || entitlement.status !== "active"
+        || entitlement.accountId !== record.accountId
+        || accessRequest.expiresAt !== entitlement.validUntil
+        || accessRequest.validUntil !== entitlement.validUntil
+        || bindings.length !== 1
+      ) {
+        failDrift();
+      }
+      const [binding] = bindings;
+      if (
+        binding.id !== record.issuedLinkRef
+        || binding.accountId !== record.accountId
+        || binding.entitlementId !== record.entitlementRef
+        || binding.tenantRef !== record.tenantRef
+        || binding.artifactRef !== record.artifactRef
+        || record.tenantRef !== `tenantref_${sha256(accessRequest.tenantId).slice(0, 16)}`
+        || record.artifactRef !== `artifactref_${sha256(accessRequest.artifactId).slice(0, 16)}`
+      ) {
+        failDrift();
+      }
+
+      const identityMetadata = {
+        version: 1,
+        commandRef: record.commandRef,
+        orderRef: record.orderRef,
+        accountId: record.accountId,
+        requestRef: record.requestRef,
+        entitlementRef: record.entitlementRef,
+        issuedLinkRef: record.issuedLinkRef,
+        tenantRef: record.tenantRef,
+        artifactRef: record.artifactRef,
+        offerVersionRef: record.offerVersionRef,
+        portalPlan: record.portalPlan,
+        durationDays: record.durationDays,
+        monthlyTrafficGb: record.monthlyTrafficGb,
+        trafficLimitBytes
+      };
+      const stableIdentityMetadata = {
+        version: identityMetadata.version,
+        accountId: identityMetadata.accountId,
+        requestRef: identityMetadata.requestRef,
+        entitlementRef: identityMetadata.entitlementRef,
+        issuedLinkRef: identityMetadata.issuedLinkRef,
+        tenantRef: identityMetadata.tenantRef,
+        artifactRef: identityMetadata.artifactRef
+      };
+      const metadataKeys = [
+        ...Object.keys(identityMetadata),
+        "validFrom",
+        "previousValidUntil",
+        "targetValidUntil"
+      ];
+      const parseFulfillmentEffect = (candidate) => {
+        const candidateMetadata = candidate?.metadata;
+        if (
+          !candidate
+          || candidate.entityType !== "coin_commerce_subscription_fulfillment"
+          || candidate.entityRef !== record.entitlementRef
+          || candidate.action !== "subscription_fulfillment_applied"
+          || candidate.actorRef !== "coin_commerce_fulfillment"
+          || !sameKeys(candidateMetadata, metadataKeys)
+          || Object.entries(stableIdentityMetadata)
+            .some(([key, value]) => candidateMetadata[key] !== value)
+          || !Number.isSafeInteger(candidateMetadata.durationDays)
+          || candidateMetadata.durationDays < 1
+          || !Number.isSafeInteger(candidateMetadata.monthlyTrafficGb)
+          || candidateMetadata.monthlyTrafficGb < 1
+          || candidateMetadata.trafficLimitBytes
+            !== candidateMetadata.monthlyTrafficGb * (1024 ** 3)
+          || (candidateMetadata.portalPlan !== "monthly"
+            && candidateMetadata.portalPlan !== "yearly")
+        ) {
+          failDrift();
+        }
+        let validFrom;
+        let previousValidUntil;
+        let targetValidUntil;
+        let createdAt;
+        try {
+          safeControlRef(candidateMetadata.commandRef, "commandRef");
+          safeControlRef(candidateMetadata.orderRef, "orderRef");
+          safeControlRef(candidateMetadata.offerVersionRef, "offerVersionRef");
+          validFrom = isoText(candidateMetadata.validFrom, "validFrom");
+          previousValidUntil = isoText(
+            candidateMetadata.previousValidUntil,
+            "previousValidUntil"
+          );
+          targetValidUntil = isoText(
+            candidateMetadata.targetValidUntil,
+            "targetValidUntil"
+          );
+          createdAt = isoText(candidate.createdAt, "createdAt");
+        } catch {
+          failDrift();
+        }
+        if (
+          candidate.id !== effectRefForCommand(candidateMetadata.commandRef)
+          || previousValidUntil >= targetValidUntil
+          || validFrom > targetValidUntil
+        ) {
+          failDrift();
+        }
+        return Object.freeze({
+          id: candidate.id,
+          createdAt,
+          commandRef: candidateMetadata.commandRef,
+          offerVersionRef: candidateMetadata.offerVersionRef,
+          portalPlan: candidateMetadata.portalPlan,
+          durationDays: candidateMetadata.durationDays,
+          trafficLimitBytes: candidateMetadata.trafficLimitBytes,
+          validFrom,
+          previousValidUntil,
+          targetValidUntil
+        });
+      };
+      const fulfillmentEffectMatchesLiveState = (candidate) => (
+        entitlement.plan === candidate.offerVersionRef
+        && entitlement.validFrom === candidate.validFrom
+        && entitlement.validUntil === candidate.targetValidUntil
+        && entitlement.trafficLimitBytes === candidate.trafficLimitBytes
+        && accessRequest.plan === candidate.portalPlan
+        && accessRequest.durationDays === candidate.durationDays
+        && accessRequest.expiresAt === candidate.targetValidUntil
+        && accessRequest.validUntil === candidate.targetValidUntil
+      );
+      const audit = getAuditEvent(effectRef);
+      if (audit) {
+        const metadata = audit.metadata;
+        if (
+          !sameKeys(metadata, metadataKeys)
+          || Object.entries(identityMetadata).some(([key, value]) => metadata[key] !== value)
+        ) {
+          failDrift();
+        }
+        const originalEffect = parseFulfillmentEffect(audit);
+        let currentEffect = originalEffect;
+        if (!fulfillmentEffectMatchesLiveState(currentEffect)) {
+          const fulfillmentEffects = db.prepare(`
+            select * from platform_audit_events
+            where entity_type = 'coin_commerce_subscription_fulfillment'
+              and entity_ref = ?
+              and action = 'subscription_fulfillment_applied'
+              and actor_ref = 'coin_commerce_fulfillment'
+          `).all(record.entitlementRef)
+            .map(mapAuditEvent)
+            .map(parseFulfillmentEffect);
+          const visitedEffectRefs = new Set([currentEffect.id]);
+          while (!fulfillmentEffectMatchesLiveState(currentEffect)) {
+            const nextEffects = fulfillmentEffects.filter((candidate) =>
+              candidate.previousValidUntil === currentEffect.targetValidUntil
+            );
+            if (nextEffects.length !== 1) failDrift();
+            const [nextEffect] = nextEffects;
+            if (
+              visitedEffectRefs.has(nextEffect.id)
+              || nextEffect.targetValidUntil <= currentEffect.targetValidUntil
+              || (
+                nextEffect.offerVersionRef === currentEffect.offerVersionRef
+                  ? nextEffect.validFrom !== currentEffect.validFrom
+                  : nextEffect.validFrom !== nextEffect.createdAt
+              )
+            ) {
+              failDrift();
+            }
+            visitedEffectRefs.add(nextEffect.id);
+            currentEffect = nextEffect;
+          }
+        }
+        return Object.freeze({
+          effectRef,
+          targetValidUntil: originalEffect.targetValidUntil,
+          runtimeTargetValidUntil: currentEffect.targetValidUntil
+        });
+      }
+      if (record.recoveryOnly) failDrift();
+
+      const previousValidFrom = isoText(entitlement.validFrom, "validFrom");
+      const previousValidUntil = isoText(entitlement.validUntil, "validUntil");
+      if (previousValidFrom > previousValidUntil) failDrift();
+      const validFrom = entitlement.plan === record.offerVersionRef
+        ? previousValidFrom
+        : record.now;
+      const anchorMs = Math.max(
+        Date.parse(record.now),
+        Date.parse(previousValidUntil)
+      );
+      const targetMs = anchorMs + durationMs;
+      if (
+        !Number.isSafeInteger(targetMs)
+        || Math.abs(targetMs) > 8.64e15
+      ) {
+        throw platformError("validation_error", "durationDays is outside the safe Date range");
+      }
+      const targetValidUntil = new Date(targetMs).toISOString();
+      const metadata = {
+        ...identityMetadata,
+        validFrom,
+        previousValidUntil,
+        targetValidUntil
+      };
+
+      const entitlementUpdate = db.prepare(`
+        update platform_entitlements
+        set plan = ?, valid_from = ?, valid_until = ?,
+            traffic_limit_bytes = ?, updated_at = ?
+        where id = ? and account_id = ? and status = 'active'
+          and plan = ? and valid_from = ? and valid_until = ?
+          and traffic_limit_bytes = ?
+      `).run(
+        record.offerVersionRef,
+        validFrom,
+        targetValidUntil,
+        trafficLimitBytes,
+        record.now,
+        record.entitlementRef,
+        record.accountId,
+        entitlement.plan,
+        entitlement.validFrom,
+        entitlement.validUntil,
+        entitlement.trafficLimitBytes
+      );
+      if (entitlementUpdate.changes !== 1) failDrift();
+
+      const requestUpdate = db.prepare(`
+        update platform_portal_access_requests
+        set plan = ?, duration_days = ?, expires_at = ?, valid_until = ?,
+            updated_at = ?
+        where id = ? and portal_user_ref = ?
+          and status in ('delivered', 'issued')
+          and entitlement_ref = ? and tenant_id = ? and artifact_id = ?
+          and plan = ? and duration_days = ?
+          and expires_at = ? and valid_until = ?
+      `).run(
+        record.portalPlan,
+        record.durationDays,
+        targetValidUntil,
+        targetValidUntil,
+        record.now,
+        record.requestRef,
+        record.accountId,
+        record.entitlementRef,
+        accessRequest.tenantId,
+        accessRequest.artifactId,
+        accessRequest.plan,
+        accessRequest.durationDays,
+        accessRequest.expiresAt,
+        accessRequest.validUntil
+      );
+      if (requestUpdate.changes !== 1) failDrift();
+
+      recordAuditEvent({
+        id: effectRef,
+        entityType: "coin_commerce_subscription_fulfillment",
+        entityRef: record.entitlementRef,
+        action: "subscription_fulfillment_applied",
+        actorRef: "coin_commerce_fulfillment",
+        createdAt: record.now,
+        metadata
+      });
+      return Object.freeze({
+        effectRef,
+        targetValidUntil,
+        runtimeTargetValidUntil: targetValidUntil
+      });
+    });
+
+    return apply.immediate();
+  }
+
   function createIssuanceRequest(input) {
     assertNoUnsafeFields(input);
     const record = {
@@ -2109,8 +2483,10 @@ export function createSqliteSubscriptionControlStore({
       select
         r.id as request_id,
         r.status as request_status,
+        r.next_action,
         coalesce(r.valid_until, r.expires_at) as valid_until,
         r.updated_at,
+        r.event_json,
         c.edge_channel_ref,
         c.edge_credential_ref,
         c.edge_material_digest
@@ -2128,7 +2504,13 @@ export function createSqliteSubscriptionControlStore({
         ...row,
         validUntilMs: Date.parse(row.valid_until)
       }))
-      .filter((row) => ["delivered", "issued"].includes(row.request_status))
+      .filter((row) => (
+        ["delivered", "issued"].includes(row.request_status)
+        || (
+          row.request_status === "disabled"
+          && row.next_action === "traffic_supply_resume_pending"
+        )
+      ))
       .filter((row) => row.edge_credential_ref && row.edge_material_digest)
       .filter((row) => row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs);
     const edgeCredentialRefs = [...new Set(activeRows.map((row) => row.edge_credential_ref))].sort((a, b) => a.localeCompare(b));
@@ -2139,6 +2521,15 @@ export function createSqliteSubscriptionControlStore({
         digest: row.edge_material_digest
       }))
       .sort((a, b) => a.edgeCredentialRef.localeCompare(b.edgeCredentialRef));
+    const lifecycleRevisionStates = rows.map(desiredStateLifecycleRevision);
+    const lifecycleRevisions = lifecycleRevisionStates
+      .map(({ fingerprint }) => fingerprint)
+      .sort((left, right) => (
+        left.requestRef.localeCompare(right.requestRef)
+        || String(left.lifecycleRevisionRef || left.updatedAt)
+          .localeCompare(String(right.lifecycleRevisionRef || right.updatedAt))
+      ));
+    const lifecycleRevisionSafe = lifecycleRevisionStates.every(({ safe }) => safe);
     const lifecycleTimes = rows
       .flatMap((row) => [Date.parse(row.valid_until), Date.parse(row.updated_at)])
       .filter((value) => !Number.isNaN(value));
@@ -2150,6 +2541,7 @@ export function createSqliteSubscriptionControlStore({
       channelRef: safeChannelRef,
       edgeCredentialRefs,
       materialDigests,
+      lifecycleRevisions,
       validUntil
     })).slice(0, 24);
     const generation = `gen_${fingerprint}`;
@@ -2161,6 +2553,7 @@ export function createSqliteSubscriptionControlStore({
       edgeCredentialRefs,
       materialDigests,
       validUntil,
+      lifecycleRevisionSafe,
       redacted: true
     };
   }
@@ -2272,6 +2665,7 @@ export function createSqliteSubscriptionControlStore({
       generation: requiredText(input.generation, "generation"),
       reason: requiredText(input.reason, "reason"),
       status: requiredText(input.status || "pending", "status"),
+      preserveApplied: input.lifecycleRevisionSafe === false ? 0 : 1,
       createdAt: isoText(input.createdAt || now, "createdAt"),
       updatedAt: now
     };
@@ -2289,8 +2683,28 @@ export function createSqliteSubscriptionControlStore({
         desired_state_ref = excluded.desired_state_ref,
         generation = excluded.generation,
         reason = excluded.reason,
-        status = excluded.status,
-        updated_at = excluded.updated_at
+        status = case
+          when platform_edge_desired_state_notifications.status = 'applied'
+            and @preserveApplied = 1
+            and platform_edge_desired_state_notifications.node_ref = excluded.node_ref
+            and platform_edge_desired_state_notifications.channel_ref = excluded.channel_ref
+            and platform_edge_desired_state_notifications.desired_state_ref = excluded.desired_state_ref
+            and platform_edge_desired_state_notifications.generation = excluded.generation
+            and platform_edge_desired_state_notifications.reason = excluded.reason
+          then platform_edge_desired_state_notifications.status
+          else excluded.status
+        end,
+        updated_at = case
+          when platform_edge_desired_state_notifications.status = 'applied'
+            and @preserveApplied = 1
+            and platform_edge_desired_state_notifications.node_ref = excluded.node_ref
+            and platform_edge_desired_state_notifications.channel_ref = excluded.channel_ref
+            and platform_edge_desired_state_notifications.desired_state_ref = excluded.desired_state_ref
+            and platform_edge_desired_state_notifications.generation = excluded.generation
+            and platform_edge_desired_state_notifications.reason = excluded.reason
+          then platform_edge_desired_state_notifications.updated_at
+          else excluded.updated_at
+        end
     `), record);
     return getEdgeDesiredStateNotification(record.id);
   }
@@ -3006,6 +3420,7 @@ export function createSqliteSubscriptionControlStore({
     createEntitlement,
     getEntitlement,
     updateEntitlementTrafficLimit,
+    applyCoinCommerceSubscriptionFulfillment,
     createIssuanceRequest,
     getIssuanceRequest,
     setIssuanceRequestStatus,

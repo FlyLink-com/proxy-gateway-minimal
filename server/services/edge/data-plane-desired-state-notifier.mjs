@@ -82,6 +82,21 @@ export function createDataPlaneDesiredStateNotifier({
         : "",
       `edge_state_notify_${sha256(`${reason}:${nodeRef}:${channelRef}:${desiredState.desiredStateRef}`).slice(0, 16)}`
     );
+    if (typeof controlStore.getEdgeDesiredStateNotification === "function") {
+      const existing = controlStore.getEdgeDesiredStateNotification(id);
+      if (
+        existing?.id === id
+        && existing.nodeRef === nodeRef
+        && existing.channelRef === channelRef
+        && existing.desiredStateRef === desiredState.desiredStateRef
+        && existing.generation === desiredState.generation
+        && existing.reason === reason
+        && desiredState.lifecycleRevisionSafe === true
+        && existing.status === "applied"
+      ) {
+        return existing;
+      }
+    }
     return controlStore.recordEdgeDesiredStateNotification({
       id,
       nodeRef,
@@ -90,6 +105,7 @@ export function createDataPlaneDesiredStateNotifier({
       generation: desiredState.generation,
       reason,
       status: "pending",
+      lifecycleRevisionSafe: desiredState.lifecycleRevisionSafe === true,
       createdAt,
       updatedAt: createdAt
     });
@@ -147,7 +163,9 @@ export function createDataPlaneDesiredStateNotifier({
           status: notification.status
         })),
         nextAction: notifications.length > 0
-          ? "remote_data_plane_desired_state_notification_pending"
+          ? notifications.every((notification) => notification.status === "applied")
+            ? "remote_data_plane_desired_state_applied"
+            : "remote_data_plane_desired_state_notification_pending"
           : "no_remote_data_plane_notification_required"
       };
     }

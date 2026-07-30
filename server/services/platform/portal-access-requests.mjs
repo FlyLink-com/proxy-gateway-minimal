@@ -1,11 +1,13 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { executeSubscriptionIssuance } from "./subscription-issuance.mjs";
 import {
   TRIAL_DURATION_DAYS,
   TRIAL_TRAFFIC_LIMIT_BYTES
 } from "./subscription-package-policy.mjs";
 import {
+  isQuotaRolloverManagedBinding,
   summarizeUsageSamples,
+  usageCycleForBinding,
   usageCycleFiltersForBinding
 } from "./usage-billing-cycle.mjs";
 
@@ -19,10 +21,13 @@ const SAFE_SUMMARY_EVENT_TYPES = new Set([
   "delivery_generation_reissued",
   "old_link_invalidated",
   "subscription_disabled",
-  "traffic_supply_suspended"
+  "subscription_expired",
+  "traffic_supply_suspended",
+  "traffic_supply_resumed"
 ]);
 const SAFE_REASON_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:-]{0,79}$/;
 const UNSAFE_REASON_CODE_PATTERN = /https?:|token|secret|credential|password|private|customer|@|\//i;
+const SAFE_LIFECYCLE_REVISION_REF_PATTERN = /^lifecycle_ref_[a-f0-9]{32}$/;
 
 function platformError(code, message) {
   const error = new Error(message);
@@ -103,6 +108,27 @@ function auditIdForTrafficLimit({ requestRef, reviewedByRef, reasonCode, previou
     .digest("hex")
     .slice(0, 16);
   return `audit_${digest}`;
+}
+
+function safeIssuedRef(prefix, value) {
+  return `${prefix}ref_${createHash("sha256")
+    .update(String(value))
+    .digest("hex")
+    .slice(0, 16)}`;
+}
+
+function newLifecycleRevisionRef() {
+  return `lifecycle_ref_${createHash("sha256")
+    .update(randomUUID())
+    .digest("hex")
+    .slice(0, 32)}`;
+}
+
+function lifecycleRevisionRefFor(event) {
+  const candidate = String(event?.lifecycleRevisionRef || "").trim();
+  return SAFE_LIFECYCLE_REVISION_REF_PATTERN.test(candidate)
+    ? candidate
+    : newLifecycleRevisionRef();
 }
 
 function normalizeChannelRefs(value) {
@@ -574,6 +600,7 @@ export function createPortalAccessRequestService(options = {}) {
     ? options.edgeLifecycleScheduler
     : (task) => setImmediate(task);
   let sequence = 0;
+  let quotaRolloverCursorRef = "";
 
   function getRecord(id) {
     const request = requestStore.getPortalAccessRequest(text(id, "requestRef"));
@@ -889,6 +916,144 @@ export function createPortalAccessRequestService(options = {}) {
     }
   }
 
+  function exactDesiredStateApplyDisposition(
+    reason,
+    desiredStateResult,
+    expectedChannelRefs,
+    { requireLifecycleRevisionSafe = false } = {}
+  ) {
+    const expected = [...new Set(expectedChannelRefs)].sort((left, right) =>
+      left.localeCompare(right)
+    );
+    const notifications = Array.isArray(desiredStateResult?.notifications)
+      ? desiredStateResult.notifications
+      : [];
+    const notificationChannelRefs = notifications
+      .map((notification) => String(notification?.channelRef || "").trim())
+      .sort((left, right) => left.localeCompare(right));
+    if (
+      desiredStateResult?.ok !== true
+      || expected.length === 0
+      || desiredStateResult?.notificationCount !== notifications.length
+      || notifications.length !== expected.length
+      || notificationChannelRefs.some((channelRef) => !channelRef)
+      || new Set(notificationChannelRefs).size !== notificationChannelRefs.length
+      || expected.some((channelRef, index) => channelRef !== notificationChannelRefs[index])
+      || !controlStore
+      || typeof controlStore.getLatestEdgeDesiredStateForChannel !== "function"
+      || typeof controlStore.getEdgeDesiredStateNotification !== "function"
+      || typeof controlStore.listEdgeApplyReceipts !== "function"
+    ) {
+      return "unavailable";
+    }
+    const dispositions = [];
+    try {
+      for (const notification of notifications) {
+        const {
+          id,
+          nodeRef,
+          channelRef,
+          desiredStateRef,
+          generation
+        } = notification;
+        if ([id, nodeRef, channelRef, desiredStateRef, generation].some((value) => (
+          typeof value !== "string"
+          || !value
+          || value.trim() !== value
+        ))) {
+          return "unavailable";
+        }
+        const authoritative = controlStore.getLatestEdgeDesiredStateForChannel(channelRef, {
+          nodeRef,
+          channelRefs: [channelRef]
+        });
+        const persisted = controlStore.getEdgeDesiredStateNotification(id);
+        if (
+          authoritative?.nodeRef !== nodeRef
+          || !Array.isArray(authoritative?.channelRefs)
+          || authoritative.channelRefs.length !== 1
+          || authoritative.channelRefs[0] !== channelRef
+          || authoritative.desiredStateRef !== desiredStateRef
+          || authoritative.generation !== generation
+          || (
+            requireLifecycleRevisionSafe
+            && authoritative.lifecycleRevisionSafe !== true
+          )
+          || persisted?.id !== id
+          || persisted.nodeRef !== nodeRef
+          || persisted.channelRef !== channelRef
+          || persisted.desiredStateRef !== desiredStateRef
+          || persisted.generation !== generation
+          || persisted.reason !== reason
+        ) {
+          return "unavailable";
+        }
+        const matchingReceipts = controlStore.listEdgeApplyReceipts({ channelRef })
+          .filter((receipt) => (
+            receipt?.channelRef === channelRef
+            && receipt?.desiredStateRef === desiredStateRef
+          ))
+          .sort((left, right) => (
+            String(left.createdAt || "").localeCompare(String(right.createdAt || ""))
+            || String(left.id || "").localeCompare(String(right.id || ""))
+          ));
+        const latestReceipt = matchingReceipts.at(-1);
+        if (persisted.status === "failed" || latestReceipt?.status === "failed") {
+          dispositions.push("failed");
+        } else if (
+          persisted.status === "applied"
+          && latestReceipt?.status === "applied"
+          && latestReceipt.configTestOk === true
+          && latestReceipt.serviceActive === true
+          && latestReceipt.listenerUdp443 === true
+        ) {
+          dispositions.push("applied");
+        } else {
+          dispositions.push("pending");
+        }
+      }
+    } catch {
+      return "unavailable";
+    }
+    if (dispositions.includes("failed")) return "failed";
+    return dispositions.every((disposition) => disposition === "applied")
+      ? "applied"
+      : "pending";
+  }
+
+  function quotaResumeEdgeEnforcementState(reason, lifecycleResult, desiredStateResult) {
+    const lifecycle = refreshLifecycleDisposition(lifecycleResult);
+    if (lifecycle.disposition === "applied") {
+      const notifications = Array.isArray(desiredStateResult?.notifications)
+        ? desiredStateResult.notifications
+        : [];
+      if (
+        desiredStateResult?.notificationCount > 0
+        || notifications.length > 0
+      ) {
+        return exactDesiredStateApplyDisposition(
+          reason,
+          desiredStateResult,
+          notifications.map((notification) =>
+            String(notification?.channelRef || "").trim()
+          )
+        );
+      }
+      return "applied";
+    }
+    if (lifecycle.disposition === "failed") {
+      return "failed";
+    }
+    if (lifecycle.disposition !== "remote_pending") {
+      return "unavailable";
+    }
+    return exactDesiredStateApplyDisposition(
+      reason,
+      desiredStateResult,
+      lifecycle.pendingChannelRefs
+    );
+  }
+
   function withRuntimeEnforcement(summary, lifecycleResult, desiredStateResult) {
     return {
       ...summary,
@@ -1020,12 +1185,43 @@ export function createPortalAccessRequestService(options = {}) {
   function revokeDeliveredTrafficSupply(input = {}, {
     nextAction,
     eventType,
-    edgeReason
+    edgeReason,
+    revokeArtifact = true,
+    clearSubscriptionUrl = true,
+    allowQuotaSuspended = false
   } = {}) {
     const now = isoNow(nowFn);
-    const request = getOwnedDeliveredRecord(input);
+    const request = allowQuotaSuspended
+      ? getRecord(input.requestRef)
+      : getOwnedDeliveredRecord(input);
+    if (allowQuotaSuspended) {
+      const portalUserRef = text(input.portalUserRef, "portalUserRef");
+      const isQuotaSuspended = (
+        request.status === "disabled"
+        && [
+          "traffic_supply_suspended_quota",
+          "traffic_supply_resume_pending",
+          "traffic_supply_resume_rollback_pending",
+          "traffic_supply_expiry_cleanup_pending"
+        ].includes(request.nextAction)
+        && request.event?.type === "traffic_supply_suspended"
+      );
+      if (request.portalUserRef !== portalUserRef) {
+        throw platformError("not_found", "portal access request not found");
+      }
+      if (
+        !["delivered", "issued"].includes(request.status)
+        && !isQuotaSuspended
+      ) {
+        throw platformError("validation_error", "subscription order is not active");
+      }
+    }
+    const previousStatus = request.status;
+    const lifecycleRevisionRef = eventType === "traffic_supply_suspended"
+      ? newLifecycleRevisionRef()
+      : null;
 
-    if (request.artifactId) {
+    if (revokeArtifact && request.artifactId) {
       requireRuntimeMethod("revokeSubscriptionArtifact")(request.artifactId);
     }
     if (request.tenantId) {
@@ -1034,10 +1230,14 @@ export function createPortalAccessRequestService(options = {}) {
 
     request.status = "disabled";
     request.nextAction = nextAction;
-    request.subscriptionUrl = null;
+    if (clearSubscriptionUrl) {
+      request.subscriptionUrl = null;
+    }
     request.event = {
       type: eventType,
-      occurredAt: now
+      occurredAt: now,
+      previousStatus,
+      ...(lifecycleRevisionRef ? { lifecycleRevisionRef } : {})
     };
     request.updatedAt = now;
     saveRecord(request);
@@ -1049,6 +1249,454 @@ export function createPortalAccessRequestService(options = {}) {
       lifecycleResult,
       desiredStateResult
     );
+  }
+
+  function quotaResumeResult(status, request, {
+    ok = true,
+    mutation = false,
+    runtimeEnforcementState = null,
+    blocker = null
+  } = {}) {
+    return {
+      ok,
+      type: "portal_quota_traffic_supply_resume",
+      status,
+      mutation,
+      request: summarize(request),
+      ...(runtimeEnforcementState ? {
+        runtimeEnforcement: {
+          state: runtimeEnforcementState,
+          redacted: true
+        }
+      } : {}),
+      ...(blocker ? { blockers: [{ code: blocker }] } : {}),
+      safety: {
+        noSubscriptionUrl: true,
+        noRuntimeSecretMaterial: true,
+        noRawRuntimePayload: true
+      },
+      redacted: true
+    };
+  }
+
+  function quotaResumeEligibility(request, now) {
+    if (
+      request.status !== "disabled"
+      || ![
+        "traffic_supply_suspended_quota",
+        "traffic_supply_resume_pending"
+      ].includes(request.nextAction)
+      || request.event?.type !== "traffic_supply_suspended"
+      || !["delivered", "issued"].includes(request.event?.previousStatus)
+    ) {
+      return { eligible: false, reason: "not_quota_suspended" };
+    }
+    if (
+      !controlStore
+      || typeof controlStore.getEntitlement !== "function"
+      || typeof controlStore.listUsageSamples !== "function"
+    ) {
+      return { eligible: false, reason: "quota_state_unavailable" };
+    }
+    const entitlement = controlStore.getEntitlement(request.entitlementRef);
+    if (!isQuotaRolloverManagedBinding(entitlement)) {
+      return { eligible: false, reason: "plan_not_rollover_managed" };
+    }
+    const nowMs = Date.parse(now);
+    const validFromMs = Date.parse(entitlement?.validFrom || "");
+    const validUntilMs = Date.parse(entitlement?.validUntil || "");
+    if (
+      !entitlement
+      || entitlement.status !== "active"
+      || !Number.isFinite(validFromMs)
+      || !Number.isFinite(validUntilMs)
+      || nowMs < validFromMs
+      || nowMs >= validUntilMs
+    ) {
+      return { eligible: false, reason: "entitlement_inactive" };
+    }
+    if (
+      typeof controlStore.getAccount !== "function"
+      || typeof controlStore.getIssuanceRequest !== "function"
+      || typeof controlStore.listIssuedSubscriptionBindings !== "function"
+      || typeof controlStore.getIssuedLink !== "function"
+    ) {
+      return { eligible: false, reason: "quota_binding_unavailable" };
+    }
+    try {
+      const account = controlStore.getAccount(request.portalUserRef);
+      const issuance = controlStore.getIssuanceRequest(request.id);
+      const expectedTenantRef = safeIssuedRef("tenant", request.tenantId);
+      const expectedArtifactRef = safeIssuedRef("artifact", request.artifactId);
+      if (
+        !account
+        || account.id !== request.portalUserRef
+        || account.ownerRef !== request.portalUserRef
+        || account.status !== "active"
+        || !issuance
+        || issuance.id !== request.id
+        || issuance.status !== "issued"
+        || issuance.accountId !== account.id
+        || issuance.entitlementId !== entitlement.id
+        || entitlement.accountId !== account.id
+        || request.entitlementRef !== entitlement.id
+        || request.expiresAt !== entitlement.validUntil
+        || request.validUntil !== entitlement.validUntil
+      ) {
+        return { eligible: false, reason: "quota_binding_not_resumable" };
+      }
+      const exactBindings = controlStore
+        .listIssuedSubscriptionBindings({ tenantRef: expectedTenantRef })
+        .filter((binding) => (
+          binding?.requestId === request.id
+          && binding?.accountId === account.id
+          && binding?.entitlementId === entitlement.id
+          && binding?.tenantRef === expectedTenantRef
+          && binding?.artifactRef === expectedArtifactRef
+          && binding?.status === "active"
+          && binding?.requestStatus === "issued"
+          && binding?.entitlementStatus === "active"
+        ));
+      if (exactBindings.length !== 1) {
+        return { eligible: false, reason: "quota_binding_not_resumable" };
+      }
+      const binding = exactBindings[0];
+      const issuedLink = controlStore.getIssuedLink(binding.id);
+      if (
+        !issuedLink
+        || issuedLink.id !== binding.id
+        || issuedLink.status !== "active"
+        || issuedLink.requestId !== request.id
+        || issuedLink.tenantRef !== expectedTenantRef
+        || issuedLink.artifactRef !== expectedArtifactRef
+      ) {
+        return { eligible: false, reason: "quota_binding_not_resumable" };
+      }
+    } catch {
+      return { eligible: false, reason: "quota_binding_not_resumable" };
+    }
+    const suspendedCycle = usageCycleForBinding(entitlement, request.event.occurredAt);
+    const currentCycle = usageCycleForBinding(entitlement, now);
+    if (
+      !suspendedCycle
+      || !currentCycle
+      || currentCycle.startedAt <= suspendedCycle.startedAt
+    ) {
+      return { eligible: false, reason: "new_quota_cycle_not_started" };
+    }
+    const trafficLimitBytes = nonNegativeInteger(entitlement.trafficLimitBytes);
+    if (trafficLimitBytes <= 0) {
+      return { eligible: false, reason: "quota_limit_unavailable" };
+    }
+    const currentUsage = summarizeUsageSamples(controlStore.listUsageSamples({
+      requestId: request.id,
+      observedFrom: currentCycle.startedAt,
+      observedTo: currentCycle.endedAt
+    }));
+    if (currentUsage.totalBytes >= trafficLimitBytes) {
+      return { eligible: false, reason: "current_cycle_quota_exhausted" };
+    }
+    if (
+      !request.tenantId
+      || !request.artifactId
+      || !request.subscriptionUrl
+      || !runtimeCore
+      || typeof runtimeCore.getTenant !== "function"
+      || typeof runtimeCore.listSubscriptionArtifacts !== "function"
+      || typeof runtimeCore.enableTenant !== "function"
+      || typeof runtimeCore.disableTenant !== "function"
+    ) {
+      return { eligible: false, reason: "stable_subscription_unavailable" };
+    }
+    let eligibleTenant;
+    try {
+      const tenant = runtimeCore.getTenant(request.tenantId);
+      const artifacts = runtimeCore.listSubscriptionArtifacts(request.tenantId);
+      const artifact = artifacts.find((item) => item?.id === request.artifactId);
+      const tenantStatusIsResumable = (
+        tenant?.status === "disabled"
+        || (
+          request.nextAction === "traffic_supply_resume_pending"
+          && tenant?.status === "active"
+        )
+      );
+      if (
+        tenant?.id !== request.tenantId
+        || !tenantStatusIsResumable
+        || tenant?.expiresAt !== entitlement.validUntil
+        || artifact?.tenantId !== request.tenantId
+        || artifact?.status !== "active"
+      ) {
+        return { eligible: false, reason: "stable_subscription_not_resumable" };
+      }
+      eligibleTenant = tenant;
+    } catch {
+      return { eligible: false, reason: "stable_subscription_unavailable" };
+    }
+    return {
+      eligible: true,
+      entitlement,
+      tenantStatus: eligibleTenant.status
+    };
+  }
+
+  function isQuotaExpiryCleanupPending(request) {
+    return (
+      request.status === "disabled"
+      && request.nextAction === "traffic_supply_expiry_cleanup_pending"
+      && request.event?.type === "traffic_supply_suspended"
+      && ["delivered", "issued"].includes(request.event?.previousStatus)
+    );
+  }
+
+  function quotaExpiryCleanupEligibility(request, now) {
+    const isSuspendedIntent = (
+      [
+        "traffic_supply_suspended_quota",
+        "traffic_supply_resume_pending",
+        "traffic_supply_resume_rollback_pending",
+        "traffic_supply_expiry_cleanup_pending"
+      ].includes(request.nextAction)
+      && request.event?.type === "traffic_supply_suspended"
+    );
+    if (
+      request.status !== "disabled"
+      || !isSuspendedIntent
+      || !["delivered", "issued"].includes(request.event?.previousStatus)
+    ) {
+      return { eligible: false, reason: "not_quota_expiry_cleanup" };
+    }
+    if (
+      !controlStore
+      || typeof controlStore.getEntitlement !== "function"
+      || typeof controlStore.getAccount !== "function"
+      || typeof controlStore.getIssuanceRequest !== "function"
+      || typeof controlStore.listIssuedSubscriptionBindings !== "function"
+      || typeof controlStore.getIssuedLink !== "function"
+    ) {
+      return { eligible: false, reason: "quota_binding_unavailable" };
+    }
+    const entitlement = controlStore.getEntitlement(request.entitlementRef);
+    const nowMs = Date.parse(now);
+    const validUntilMs = Date.parse(entitlement?.validUntil || "");
+    if (
+      !isQuotaRolloverManagedBinding(entitlement)
+      || !Number.isFinite(nowMs)
+      || !Number.isFinite(validUntilMs)
+      || nowMs < validUntilMs
+    ) {
+      return { eligible: false, reason: "entitlement_not_at_final_boundary" };
+    }
+    try {
+      const account = controlStore.getAccount(request.portalUserRef);
+      const issuance = controlStore.getIssuanceRequest(request.id);
+      const expectedTenantRef = safeIssuedRef("tenant", request.tenantId);
+      const expectedArtifactRef = safeIssuedRef("artifact", request.artifactId);
+      if (
+        !account
+        || account.id !== request.portalUserRef
+        || account.ownerRef !== request.portalUserRef
+        || !["active", "suspended", "disabled"].includes(account.status)
+        || !issuance
+        || issuance.id !== request.id
+        || issuance.status !== "issued"
+        || issuance.accountId !== account.id
+        || issuance.entitlementId !== entitlement.id
+        || entitlement.accountId !== account.id
+        || !["active", "expired"].includes(entitlement.status)
+        || request.entitlementRef !== entitlement.id
+        || request.expiresAt !== entitlement.validUntil
+        || request.validUntil !== entitlement.validUntil
+        || !request.tenantId
+        || !request.artifactId
+      ) {
+        return { eligible: false, reason: "quota_binding_not_cleanup_safe" };
+      }
+      const exactBindings = controlStore
+        .listIssuedSubscriptionBindings({ tenantRef: expectedTenantRef })
+        .filter((binding) => (
+          binding?.requestId === request.id
+          && binding?.accountId === account.id
+          && binding?.entitlementId === entitlement.id
+          && binding?.tenantRef === expectedTenantRef
+          && binding?.artifactRef === expectedArtifactRef
+          && binding?.status === "active"
+          && binding?.requestStatus === "issued"
+          && ["active", "expired"].includes(binding?.entitlementStatus)
+        ));
+      if (exactBindings.length !== 1) {
+        return { eligible: false, reason: "quota_binding_not_cleanup_safe" };
+      }
+      const binding = exactBindings[0];
+      const issuedLink = controlStore.getIssuedLink(binding.id);
+      if (
+        !issuedLink
+        || issuedLink.id !== binding.id
+        || issuedLink.status !== "active"
+        || issuedLink.requestId !== request.id
+        || issuedLink.tenantRef !== expectedTenantRef
+        || issuedLink.artifactRef !== expectedArtifactRef
+      ) {
+        return { eligible: false, reason: "quota_binding_not_cleanup_safe" };
+      }
+    } catch {
+      return { eligible: false, reason: "quota_binding_not_cleanup_safe" };
+    }
+    if (
+      !runtimeCore
+      || typeof runtimeCore.getTenant !== "function"
+      || typeof runtimeCore.disableTenant !== "function"
+      || typeof runtimeCore.listSubscriptionArtifacts !== "function"
+      || typeof runtimeCore.revokeSubscriptionArtifact !== "function"
+    ) {
+      return { eligible: false, reason: "stable_subscription_unavailable" };
+    }
+    return { eligible: true, entitlement };
+  }
+
+  function cleanupExpiredQuotaTrafficSupply(request, now) {
+    const intentRevision = request.nextAction === "traffic_supply_expiry_cleanup_pending"
+      ? request.updatedAt
+      : now;
+    const previousStatus = request.event.previousStatus;
+    const pendingRequest = cloneRecord(request);
+    pendingRequest.status = "disabled";
+    pendingRequest.nextAction = "traffic_supply_expiry_cleanup_pending";
+    pendingRequest.subscriptionUrl = null;
+    pendingRequest.event = {
+      ...cloneRecord(request.event),
+      lifecycleRevisionRef: lifecycleRevisionRefFor(request.event)
+    };
+    pendingRequest.updatedAt = intentRevision;
+    saveRecord(pendingRequest);
+
+    try {
+      const tenant = runtimeCore.getTenant(pendingRequest.tenantId);
+      if (
+        tenant?.id !== pendingRequest.tenantId
+        || !["active", "disabled"].includes(tenant?.status)
+        || String(tenant?.expiresAt || "") !== String(pendingRequest.validUntil || "")
+      ) {
+        throw platformError("edge_lifecycle_failed", "tenant expiry cleanup state is not exact");
+      }
+      const disabledTenant = tenant.status === "active"
+        ? runtimeCore.disableTenant(pendingRequest.tenantId)
+        : tenant;
+      const disabledTenantReadback = runtimeCore.getTenant(pendingRequest.tenantId);
+      if (
+        disabledTenant?.id !== pendingRequest.tenantId
+        || disabledTenant?.status !== "disabled"
+        || String(disabledTenant?.expiresAt || "") !== String(pendingRequest.validUntil || "")
+        || disabledTenantReadback?.id !== pendingRequest.tenantId
+        || disabledTenantReadback?.status !== "disabled"
+        || String(disabledTenantReadback?.expiresAt || "") !== String(pendingRequest.validUntil || "")
+      ) {
+        throw platformError("edge_lifecycle_failed", "tenant expiry cleanup did not converge");
+      }
+
+      const artifacts = runtimeCore.listSubscriptionArtifacts(pendingRequest.tenantId);
+      const artifact = artifacts.find((item) => item?.id === pendingRequest.artifactId);
+      if (
+        artifact?.tenantId !== pendingRequest.tenantId
+        || !["active", "revoked"].includes(artifact?.status)
+      ) {
+        throw platformError("edge_lifecycle_failed", "artifact expiry cleanup state is not exact");
+      }
+      if (artifact.status === "active") {
+        const revokedArtifact = runtimeCore.revokeSubscriptionArtifact(pendingRequest.artifactId);
+        if (
+          revokedArtifact?.id !== pendingRequest.artifactId
+          || revokedArtifact?.status !== "revoked"
+        ) {
+          throw platformError("edge_lifecycle_failed", "artifact expiry cleanup did not converge");
+        }
+      }
+      const artifactReadback = runtimeCore
+        .listSubscriptionArtifacts(pendingRequest.tenantId)
+        .find((item) => item?.id === pendingRequest.artifactId);
+      if (
+        artifactReadback?.tenantId !== pendingRequest.tenantId
+        || artifactReadback?.status !== "revoked"
+      ) {
+        throw platformError("edge_lifecycle_failed", "artifact expiry cleanup readback is not exact");
+      }
+
+      const lifecycleResult = reconcileEdgeLifecycle(
+        "traffic_supply_expired",
+        pendingRequest
+      );
+      const desiredStateResult = notifyEdgeDesiredState(
+        "traffic_supply_expired",
+        pendingRequest
+      );
+      const runtimeEnforcementState = quotaResumeEdgeEnforcementState(
+        "traffic_supply_expired",
+        lifecycleResult,
+        desiredStateResult
+      );
+      if (runtimeEnforcementState === "pending") {
+        return quotaResumeResult(
+          "quota_traffic_supply_expiry_cleanup_pending",
+          pendingRequest,
+          { runtimeEnforcementState }
+        );
+      }
+      if (runtimeEnforcementState !== "applied") {
+        return quotaResumeResult(
+          "quota_traffic_supply_expiry_cleanup_failed",
+          pendingRequest,
+          {
+            ok: false,
+            runtimeEnforcementState: "failed",
+            blocker: "edge_runtime_enforcement_failed"
+          }
+        );
+      }
+
+      const completedRequest = cloneRecord(pendingRequest);
+      completedRequest.nextAction = "subscription_expired";
+      completedRequest.event = {
+        type: "subscription_expired",
+        occurredAt: now,
+        previousStatus,
+        lifecycleRevisionRef: pendingRequest.event.lifecycleRevisionRef
+      };
+      completedRequest.updatedAt = intentRevision;
+      recordEdgeLifecycleResult(completedRequest, lifecycleResult);
+      saveRecord(completedRequest);
+      return quotaResumeResult(
+        "quota_traffic_supply_expiry_cleanup_completed",
+        completedRequest,
+        {
+          mutation: true,
+          runtimeEnforcementState
+        }
+      );
+    } catch {
+      return quotaResumeResult(
+        "quota_traffic_supply_expiry_cleanup_failed",
+        pendingRequest,
+        {
+          ok: false,
+          runtimeEnforcementState: "failed",
+          blocker: "edge_runtime_enforcement_failed"
+        }
+      );
+    }
+  }
+
+  function isRolloverManagedQuotaRequest(input = {}) {
+    if (!controlStore || typeof controlStore.getEntitlement !== "function") {
+      return false;
+    }
+    try {
+      const request = getRecord(input.requestRef);
+      return isQuotaRolloverManagedBinding(
+        controlStore.getEntitlement(request.entitlementRef)
+      );
+    } catch {
+      return false;
+    }
   }
 
   function hasPriorTrial(portalUserRef) {
@@ -1175,6 +1823,55 @@ export function createPortalAccessRequestService(options = {}) {
       return listRecords({ ...filters, status, portalUserRef })
         .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
         .map(summarize);
+    },
+
+    listQuotaSuspendedTrafficSupplies({ limit: requestedLimit = 100 } = {}) {
+      const numericLimit = Number(requestedLimit);
+      const limit = Number.isInteger(numericLimit)
+        ? Math.min(Math.max(numericLimit, 1), 100)
+        : 100;
+      const now = isoNow(nowFn);
+      const cheapCandidates = listRecords({ status: "disabled" })
+        .filter((request) => (
+          request.status === "disabled"
+          && [
+            "traffic_supply_suspended_quota",
+            "traffic_supply_resume_pending",
+            "traffic_supply_resume_rollback_pending",
+            "traffic_supply_expiry_cleanup_pending"
+          ].includes(request.nextAction)
+          && request.event?.type === "traffic_supply_suspended"
+          && ["delivered", "issued"].includes(request.event?.previousStatus)
+        ))
+        .sort((left, right) => (
+          String(left.submittedAt || "").localeCompare(String(right.submittedAt || ""))
+          || String(left.id || "").localeCompare(String(right.id || ""))
+        ));
+      if (cheapCandidates.length === 0) {
+        quotaRolloverCursorRef = "";
+        return [];
+      }
+      const cursorIndex = cheapCandidates.findIndex(
+        (request) => request.id === quotaRolloverCursorRef
+      );
+      const startIndex = cursorIndex >= 0
+        ? (cursorIndex + 1) % cheapCandidates.length
+        : 0;
+      const pageSize = Math.min(limit, cheapCandidates.length);
+      const page = Array.from({ length: pageSize }, (_, index) => (
+        cheapCandidates[(startIndex + index) % cheapCandidates.length]
+      ));
+      quotaRolloverCursorRef = page.at(-1)?.id || "";
+      return page
+        .filter((request) => (
+          isQuotaExpiryCleanupPending(request)
+          || quotaExpiryCleanupEligibility(request, now).eligible
+          || quotaResumeEligibility(request, now).eligible
+        ))
+        .map((request) => ({
+          requestRef: request.id,
+          portalUserRef: request.portalUserRef
+        }));
     },
 
     listEdgeCredentialOrders(filters = {}) {
@@ -1550,18 +2247,280 @@ export function createPortalAccessRequestService(options = {}) {
     },
 
     suspendTrafficSupply(input = {}) {
+      const rolloverManaged = isRolloverManagedQuotaRequest(input);
       return revokeDeliveredTrafficSupply(input, {
         nextAction: "traffic_supply_suspended_quota",
         eventType: "traffic_supply_suspended",
-        edgeReason: "traffic_supply_suspended"
+        edgeReason: "traffic_supply_suspended",
+        revokeArtifact: !rolloverManaged,
+        clearSubscriptionUrl: !rolloverManaged
       });
+    },
+
+    resumeTrafficSupply(input = {}) {
+      const now = isoNow(nowFn);
+      const request = getRecord(input.requestRef);
+      const portalUserRef = text(input.portalUserRef, "portalUserRef");
+      if (request.portalUserRef !== portalUserRef) {
+        throw platformError("not_found", "portal access request not found");
+      }
+      if (
+        ["delivered", "issued"].includes(request.status)
+        && request.event?.type === "traffic_supply_resumed"
+      ) {
+        return quotaResumeResult("quota_traffic_supply_already_resumed", request);
+      }
+      if (isQuotaExpiryCleanupPending(request)) {
+        return cleanupExpiredQuotaTrafficSupply(request, now);
+      }
+      const cleanupEligibility = quotaExpiryCleanupEligibility(request, now);
+      if (cleanupEligibility.eligible) {
+        return cleanupExpiredQuotaTrafficSupply(request, now);
+      }
+      const eligibility = quotaResumeEligibility(request, now);
+      if (!eligibility.eligible) {
+        return quotaResumeResult("quota_traffic_supply_resume_not_eligible", request, {
+          blocker: eligibility.reason
+        });
+      }
+
+      const lifecycleRevisionRef = lifecycleRevisionRefFor(request.event);
+      const previousRequest = cloneRecord(request);
+      previousRequest.event = {
+        ...previousRequest.event,
+        lifecycleRevisionRef
+      };
+      const pendingRequest = cloneRecord(request);
+      const resumeIntentRevision = request.nextAction === "traffic_supply_resume_pending"
+        ? request.updatedAt
+        : now;
+      pendingRequest.nextAction = "traffic_supply_resume_pending";
+      pendingRequest.event = {
+        ...pendingRequest.event,
+        lifecycleRevisionRef
+      };
+      pendingRequest.updatedAt = resumeIntentRevision;
+      const resumedRequest = cloneRecord(request);
+      resumedRequest.status = request.event.previousStatus;
+      resumedRequest.nextAction = "user_can_use_access";
+      resumedRequest.event = {
+        type: "traffic_supply_resumed",
+        occurredAt: now,
+        lifecycleRevisionRef
+      };
+      resumedRequest.updatedAt = resumeIntentRevision;
+      let tenantEnableAttempted = false;
+      let tenantRequiresDisable = eligibility.tenantStatus === "active";
+      let tenantExpiresAtBeforeEnable = tenantRequiresDisable
+        ? String(eligibility.entitlement?.validUntil || "")
+        : "";
+      let runtimeMayHaveMutated = false;
+      let desiredStateAttempted = false;
+      let forwardIntentPersisted = false;
+      try {
+        saveRecord(pendingRequest);
+        forwardIntentPersisted = true;
+        const lifecycleResult = reconcileEdgeLifecycle("traffic_supply_resumed", resumedRequest);
+        const lifecycleDisposition = refreshLifecycleDisposition(lifecycleResult);
+        runtimeMayHaveMutated = lifecycleDisposition.runtimeMayHaveMutated;
+        if (
+          lifecycleDisposition.disposition === "failed"
+          || lifecycleDisposition.disposition === "unavailable"
+        ) {
+          throw platformError("edge_lifecycle_failed", "edge lifecycle reconciliation failed");
+        }
+        desiredStateAttempted = Boolean(edgeDesiredStateNotifier);
+        const desiredStateResult = notifyEdgeDesiredState(
+          "traffic_supply_resumed",
+          resumedRequest
+        );
+        const runtimeEnforcementState = quotaResumeEdgeEnforcementState(
+          "traffic_supply_resumed",
+          lifecycleResult,
+          desiredStateResult
+        );
+        const finalNow = isoNow(nowFn);
+        const finalEligibility = quotaResumeEligibility(pendingRequest, finalNow);
+        if (!finalEligibility.eligible) {
+          throw platformError("edge_lifecycle_failed", "quota resume binding changed");
+        }
+        tenantRequiresDisable = finalEligibility.tenantStatus === "active";
+        tenantExpiresAtBeforeEnable = tenantRequiresDisable
+          ? String(finalEligibility.entitlement?.validUntil || "")
+          : tenantExpiresAtBeforeEnable;
+        if (runtimeEnforcementState === "pending") {
+          if (tenantRequiresDisable) {
+            throw platformError("edge_lifecycle_failed", "active tenant lacks applied edge evidence");
+          }
+          return quotaResumeResult(
+            "quota_traffic_supply_resume_pending",
+            pendingRequest,
+            {
+              runtimeEnforcementState
+            }
+          );
+        }
+        if (runtimeEnforcementState !== "applied") {
+          throw platformError("edge_lifecycle_failed", "edge lifecycle reconciliation failed");
+        }
+        if (finalEligibility.tenantStatus === "active") {
+          const activeNotifications = Array.isArray(desiredStateResult?.notifications)
+            ? desiredStateResult.notifications
+            : [];
+          const activeDesiredState = activeNotifications.length > 0
+            ? exactDesiredStateApplyDisposition(
+              "traffic_supply_resumed",
+              desiredStateResult,
+              activeNotifications.map((notification) =>
+                String(notification?.channelRef || "").trim()
+              ),
+              { requireLifecycleRevisionSafe: true }
+            )
+            : "unavailable";
+          if (activeDesiredState !== "applied") {
+            throw platformError(
+              "edge_lifecycle_failed",
+              "active tenant lacks exact desired-state evidence"
+            );
+          }
+        }
+        resumedRequest.event.occurredAt = finalNow;
+        const tenantBeforeEnable = runtimeCore.getTenant(resumedRequest.tenantId);
+        const expectedTenantId = resumedRequest.tenantId;
+        const expectedExpiresAt = String(finalEligibility.entitlement?.validUntil || "");
+        tenantExpiresAtBeforeEnable = expectedExpiresAt;
+        if (
+          tenantBeforeEnable?.id !== expectedTenantId
+          || !["active", "disabled"].includes(tenantBeforeEnable?.status)
+          || (
+            tenantBeforeEnable?.status === "active"
+            && pendingRequest.nextAction !== "traffic_supply_resume_pending"
+          )
+          || String(tenantBeforeEnable?.expiresAt || "") !== expectedExpiresAt
+          || String(pendingRequest.validUntil || "") !== expectedExpiresAt
+          || String(pendingRequest.expiresAt || "") !== expectedExpiresAt
+        ) {
+          throw platformError("edge_lifecycle_failed", "tenant pre-enable state is not exact");
+        }
+        tenantRequiresDisable = tenantBeforeEnable.status === "active";
+        const enabledTenant = tenantBeforeEnable.status === "active"
+          ? tenantBeforeEnable
+          : (() => {
+            tenantEnableAttempted = true;
+            tenantRequiresDisable = true;
+            return runtimeCore.enableTenant(expectedTenantId);
+          })();
+        if (
+          enabledTenant?.id !== expectedTenantId
+          || enabledTenant?.status !== "active"
+          || String(enabledTenant?.expiresAt || "") !== expectedExpiresAt
+        ) {
+          throw platformError("edge_lifecycle_failed", "tenant enable result is not exact");
+        }
+        const enabledTenantReadback = runtimeCore.getTenant(expectedTenantId);
+        if (
+          enabledTenantReadback?.id !== expectedTenantId
+          || enabledTenantReadback?.status !== "active"
+          || String(enabledTenantReadback?.expiresAt || "") !== expectedExpiresAt
+        ) {
+          throw platformError("edge_lifecycle_failed", "tenant enable readback is not exact");
+        }
+        recordEdgeLifecycleResult(resumedRequest, lifecycleResult);
+        saveRecord(resumedRequest);
+        return quotaResumeResult(
+          "quota_traffic_supply_resumed",
+          resumedRequest,
+          {
+            mutation: true,
+            runtimeEnforcementState
+          }
+        );
+      } catch {
+        let rollbackFailed = false;
+        let failureRequest = cloneRecord(previousRequest);
+        const rollbackIntent = cloneRecord(previousRequest);
+        rollbackIntent.status = "disabled";
+        rollbackIntent.nextAction = "traffic_supply_resume_rollback_pending";
+        rollbackIntent.updatedAt = now;
+        let rollbackIntentPersisted = false;
+        try {
+          saveRecord(rollbackIntent);
+          rollbackIntentPersisted = true;
+          failureRequest = rollbackIntent;
+        } catch {
+          rollbackFailed = true;
+        }
+        if (tenantEnableAttempted || tenantRequiresDisable) {
+          try {
+            const disabledTenant = runtimeCore.disableTenant(resumedRequest.tenantId);
+            const disabledTenantReadback = runtimeCore.getTenant(resumedRequest.tenantId);
+            if (
+              disabledTenant?.id !== resumedRequest.tenantId
+              || disabledTenant?.status !== "disabled"
+              || String(disabledTenant?.expiresAt || "") !== tenantExpiresAtBeforeEnable
+              || disabledTenantReadback?.id !== resumedRequest.tenantId
+              || disabledTenantReadback?.status !== "disabled"
+              || String(disabledTenantReadback?.expiresAt || "") !== tenantExpiresAtBeforeEnable
+            ) {
+              rollbackFailed = true;
+            }
+          } catch {
+            rollbackFailed = true;
+          }
+        }
+        if (
+          rollbackIntentPersisted
+          && (
+            forwardIntentPersisted
+            || runtimeMayHaveMutated
+            || desiredStateAttempted
+          )
+        ) {
+          try {
+            const rollbackLifecycle = reconcileEdgeLifecycle(
+              "traffic_supply_resume_rolled_back",
+              rollbackIntent
+            );
+            let rollbackDesiredState = null;
+            if (edgeDesiredStateNotifier) {
+              rollbackDesiredState = notifyEdgeDesiredState(
+                "traffic_supply_resume_rolled_back",
+                rollbackIntent
+              );
+            }
+            const rollbackState = quotaResumeEdgeEnforcementState(
+              "traffic_supply_resume_rolled_back",
+              rollbackLifecycle,
+              rollbackDesiredState
+            );
+            if (rollbackState !== "applied") {
+              rollbackFailed = true;
+            } else {
+              const completedRollback = cloneRecord(rollbackIntent);
+              completedRollback.nextAction = "traffic_supply_suspended_quota";
+              completedRollback.updatedAt = now;
+              failureRequest = saveRecord(completedRollback);
+            }
+          } catch {
+            rollbackFailed = true;
+          }
+        } else if (!rollbackIntentPersisted) {
+          rollbackFailed = true;
+        }
+        return quotaResumeResult("quota_traffic_supply_resume_failed", failureRequest, {
+          ok: false,
+          runtimeEnforcementState: "failed",
+          blocker: rollbackFailed ? "quota_resume_rollback_failed" : "edge_runtime_enforcement_failed"
+        });
+      }
     },
 
     disableSubscription(input = {}) {
       return revokeDeliveredTrafficSupply(input, {
         nextAction: "subscription_disabled",
         eventType: "subscription_disabled",
-        edgeReason: "order_disabled"
+        edgeReason: "order_disabled",
+        allowQuotaSuspended: true
       });
     }
   };

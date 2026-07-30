@@ -103,6 +103,12 @@ export function createOrderUsageQuotaLifecycleGate({
   const suspendTrafficSupply = typeof orderLifecycleService.suspendTrafficSupply === "function"
     ? orderLifecycleService.suspendTrafficSupply.bind(orderLifecycleService)
     : orderLifecycleService.disableSubscription.bind(orderLifecycleService);
+  const listQuotaSuspendedTrafficSupplies = typeof orderLifecycleService.listQuotaSuspendedTrafficSupplies === "function"
+    ? orderLifecycleService.listQuotaSuspendedTrafficSupplies.bind(orderLifecycleService)
+    : null;
+  const resumeTrafficSupply = typeof orderLifecycleService.resumeTrafficSupply === "function"
+    ? orderLifecycleService.resumeTrafficSupply.bind(orderLifecycleService)
+    : null;
 
   function handleUsageDecision(decision = {}, options = {}) {
     const resultBase = baseResult(decision);
@@ -219,7 +225,116 @@ export function createOrderUsageQuotaLifecycleGate({
     };
   }
 
+  function sweepQuotaCycleRollovers(options = {}) {
+    const requestedLimit = Number(options.limit ?? 100);
+    const limit = Number.isInteger(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 100)
+      : 100;
+    const report = {
+      type: "quota_cycle_rollover_sweep",
+      ok: true,
+      status: "quota_cycle_rollover_sweep_completed",
+      scannedCount: 0,
+      appliedCount: 0,
+      pendingCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+      mutation: false,
+      bounded: true,
+      limit,
+      safety: {
+        noSubscriptionUrl: true,
+        noRuntimeSecretMaterial: true,
+        noRawRuntimePayload: true,
+        aggregateOnly: true
+      },
+      redacted: true
+    };
+    if (!listQuotaSuspendedTrafficSupplies || !resumeTrafficSupply) {
+      return {
+        ...report,
+        ok: false,
+        status: "quota_cycle_rollover_sweep_unavailable",
+        failedCount: 1,
+        blockers: [{ code: "quota_cycle_rollover_service_missing" }],
+        nextAction: "configure_quota_cycle_rollover_service"
+      };
+    }
+
+    let candidates;
+    try {
+      candidates = listQuotaSuspendedTrafficSupplies({ limit });
+    } catch {
+      return {
+        ...report,
+        ok: false,
+        status: "quota_cycle_rollover_sweep_failed",
+        failedCount: 1,
+        blockers: [{ code: "quota_cycle_rollover_failed" }],
+        nextAction: "review_quota_cycle_rollover_failure"
+      };
+    }
+    const boundedCandidates = (Array.isArray(candidates) ? candidates : []).slice(0, limit);
+    report.scannedCount = boundedCandidates.length;
+    for (const candidate of boundedCandidates) {
+      let result;
+      try {
+        result = resumeTrafficSupply({
+          requestRef: safeRef(candidate?.requestRef),
+          portalUserRef: safeRef(candidate?.portalUserRef),
+          reviewedByRef: safeRef(options.reviewedByRef) || "usage_quota_rollover_gate"
+        });
+      } catch {
+        report.failedCount += 1;
+        continue;
+      }
+      const runtimeState = text(result?.runtimeEnforcement?.state);
+      if (
+        result?.ok === true
+        && result?.mutation === true
+        && runtimeState === "applied"
+      ) {
+        report.appliedCount += 1;
+      } else if (
+        result?.ok === true
+        && result?.mutation !== true
+        && runtimeState === "pending"
+      ) {
+        report.pendingCount += 1;
+      } else if (
+        result?.ok === true
+        && [
+          "quota_traffic_supply_already_resumed",
+          "quota_traffic_supply_resume_not_eligible"
+        ].includes(result?.status)
+      ) {
+        report.skippedCount += 1;
+      } else {
+        report.failedCount += 1;
+      }
+    }
+    report.mutation = report.appliedCount > 0;
+    report.ok = report.failedCount === 0 && report.pendingCount === 0;
+    report.status = report.ok
+      ? "quota_cycle_rollover_sweep_completed"
+      : report.failedCount > 0
+        ? "quota_cycle_rollover_sweep_failed"
+        : "quota_cycle_rollover_sweep_pending";
+    report.nextAction = report.ok
+      ? "continue_usage_monitoring"
+      : report.failedCount > 0
+        ? "review_quota_cycle_rollover_failure"
+        : "wait_for_edge_runtime_enforcement";
+    if (report.failedCount > 0) {
+      report.blockers = [{ code: "quota_cycle_rollover_failed" }];
+    }
+    return report;
+  }
+
   return {
-    handleUsageDecision
+    handleUsageDecision,
+    ...(listQuotaSuspendedTrafficSupplies && resumeTrafficSupply
+      ? { sweepQuotaCycleRollovers }
+      : {})
   };
 }

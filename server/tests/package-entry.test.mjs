@@ -226,7 +226,11 @@ test("candidate release startup shim is versioned and packageable", () => {
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
 
   assert.equal(existsSync(shimPath), true);
-  assert.match(source, /from "\.\/server\/start\.mjs"/);
+  assert.match(
+    source,
+    /from "\.\/server\/services\/platform\/coin-commerce-production-runtime\.mjs"/
+  );
+  assert.doesNotMatch(source, /\bstartProxyGateway\b/);
   assert.doesNotMatch(source, /process\.env\.[A-Z0-9_]*(TOKEN|SECRET|PASSWORD)/i);
   assert.equal(packageJson.files.includes("candidate-start.mjs"), true);
 });

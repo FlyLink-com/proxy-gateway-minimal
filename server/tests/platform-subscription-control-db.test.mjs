@@ -538,6 +538,35 @@ test("subscription control store marks matching desired-state notification appli
     assert.equal(applied.status, "applied");
     assert.equal(applied.updatedAt, "2026-06-14T00:01:00.000Z");
     assert.equal(old.status, "pending");
+
+    const repeated = store.recordEdgeDesiredStateNotification({
+      id: "edge_state_notify_apply_001",
+      nodeRef: "vultr-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: "desired_state_channel-sgp-a-hy2_current",
+      generation: "gen_current",
+      reason: "order_delivered",
+      status: "pending",
+      createdAt: now,
+      updatedAt: "2026-06-14T00:02:00.000Z"
+    });
+    assert.equal(repeated.status, "applied");
+    assert.equal(repeated.updatedAt, "2026-06-14T00:01:00.000Z");
+
+    const unsafeReplay = store.recordEdgeDesiredStateNotification({
+      id: "edge_state_notify_apply_001",
+      nodeRef: "vultr-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: "desired_state_channel-sgp-a-hy2_current",
+      generation: "gen_current",
+      reason: "order_delivered",
+      status: "pending",
+      lifecycleRevisionSafe: false,
+      createdAt: now,
+      updatedAt: "2026-06-14T00:03:00.000Z"
+    });
+    assert.equal(unsafeReplay.status, "pending");
+    assert.equal(unsafeReplay.updatedAt, "2026-06-14T00:03:00.000Z");
   });
 });
 
@@ -638,11 +667,35 @@ test("subscription control store emits an empty desired-state after the last cha
     assert.deepEqual(tombstone.materialDigests, []);
     assert.notEqual(tombstone.desiredStateRef, active.desiredStateRef);
 
+    const pendingResume = store.upsertPortalAccessRequest({
+      ...delivered,
+      status: "disabled",
+      nextAction: "traffic_supply_resume_pending",
+      updatedAt: "2026-07-11T00:03:00.000Z"
+    });
+    const resumedIntent = store.getLatestEdgeDesiredStateForChannel("channel-sgp-a-hy2", {
+      nodeRef: "vultr-sgp-a"
+    });
+    assert.deepEqual(resumedIntent.edgeCredentialRefs, ["edgecred_desired_tombstone_001"]);
+    assert.deepEqual(resumedIntent.materialDigests, [{
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: "edgecred_desired_tombstone_001",
+      digest: "sha256:digest_desired_tombstone_001"
+    }]);
+    assert.notEqual(resumedIntent.desiredStateRef, active.desiredStateRef);
+    assert.notEqual(resumedIntent.generation, active.generation);
+
+    store.upsertPortalAccessRequest({
+      ...pendingResume,
+      nextAction: "subscription_disabled",
+      subscriptionUrl: null,
+      updatedAt: "2026-07-11T00:04:00.000Z"
+    });
     const repeated = store.getLatestEdgeDesiredStateForChannel("channel-sgp-a-hy2", {
       nodeRef: "vultr-sgp-a"
     });
-    assert.equal(repeated.desiredStateRef, tombstone.desiredStateRef);
-    assert.equal(repeated.generation, tombstone.generation);
+    assert.notEqual(repeated.desiredStateRef, tombstone.desiredStateRef);
+    assert.notEqual(repeated.generation, tombstone.generation);
     assert.deepEqual(repeated.edgeCredentialRefs, []);
     assert.equal(
       store.getPortalEdgeCredentialChannelRef("edgecred_desired_tombstone_001"),

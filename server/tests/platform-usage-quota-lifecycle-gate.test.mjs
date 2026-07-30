@@ -310,3 +310,110 @@ test("usage quota lifecycle gate does not treat a partial failed runtime mutatio
   assert.equal(result.execution.trafficSupplySuspendExecuted, false);
   assert.deepEqual(result.blockers, [{ code: "edge_runtime_enforcement_failed" }]);
 });
+
+test("quota rollover sweep is bounded, receipt-aware, idempotent, and returns aggregates only", () => {
+  const candidates = [
+    { requestRef: "pareq_rollover_applied", portalUserRef: "portal_user_applied" },
+    { requestRef: "pareq_rollover_pending", portalUserRef: "portal_user_pending" },
+    { requestRef: "pareq_rollover_outside_bound", portalUserRef: "portal_user_outside_bound" }
+  ];
+  const resumed = new Set();
+  const listLimits = [];
+  const gate = createOrderUsageQuotaLifecycleGate({
+    orderLifecycleService: {
+      suspendTrafficSupply() {
+        throw new Error("suspend is not part of rollover sweep");
+      },
+      listQuotaSuspendedTrafficSupplies({ limit }) {
+        listLimits.push(limit);
+        return candidates.filter((candidate) => !resumed.has(candidate.requestRef)).slice(0, limit);
+      },
+      resumeTrafficSupply(input) {
+        resumed.add(input.requestRef);
+        return input.requestRef === "pareq_rollover_applied"
+          ? {
+              ok: true,
+              status: "quota_traffic_supply_expiry_cleanup_completed",
+              mutation: true,
+              runtimeEnforcement: { state: "applied", redacted: true }
+            }
+          : {
+              ok: true,
+              status: "quota_traffic_supply_expiry_cleanup_pending",
+              mutation: false,
+              runtimeEnforcement: { state: "pending", redacted: true }
+            };
+      }
+    }
+  });
+
+  const first = gate.sweepQuotaCycleRollovers({
+    limit: 2,
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+  const repeated = gate.sweepQuotaCycleRollovers({
+    limit: 2,
+    reviewedByRef: "usage_quota_rollover_gate"
+  });
+
+  assert.deepEqual(listLimits, [2, 2]);
+  assert.equal(first.ok, false);
+  assert.equal(first.scannedCount, 2);
+  assert.equal(first.appliedCount, 1);
+  assert.equal(first.pendingCount, 1);
+  assert.equal(first.failedCount, 0);
+  assert.equal(repeated.scannedCount, 1);
+  assert.equal(repeated.appliedCount, 0);
+  assert.equal(repeated.pendingCount, 1);
+  assert.equal(repeated.failedCount, 0);
+  assert.doesNotMatch(
+    JSON.stringify({ first, repeated }),
+    /pareq_rollover|portal_user|requestRef|portalUserRef/i
+  );
+});
+
+test("quota rollover sweep reports failed receipts without claiming a mutation", () => {
+  const gate = createOrderUsageQuotaLifecycleGate({
+    orderLifecycleService: {
+      suspendTrafficSupply() {
+        throw new Error("suspend is not part of rollover sweep");
+      },
+      listQuotaSuspendedTrafficSupplies() {
+        return [{ requestRef: "pareq_rollover_failed", portalUserRef: "portal_user_failed" }];
+      },
+      resumeTrafficSupply() {
+        return {
+          ok: false,
+          status: "quota_traffic_supply_expiry_cleanup_failed",
+          mutation: false,
+          runtimeEnforcement: { state: "failed", redacted: true }
+        };
+      }
+    }
+  });
+
+  const result = gate.sweepQuotaCycleRollovers();
+
+  assert.equal(result.ok, false);
+  assert.equal(result.appliedCount, 0);
+  assert.equal(result.pendingCount, 0);
+  assert.equal(result.failedCount, 1);
+  assert.equal(result.mutation, false);
+  assert.deepEqual(result.blockers, [{ code: "quota_cycle_rollover_failed" }]);
+});
+
+test("legacy lifecycle services do not expose an unavailable rollover sweep", () => {
+  const gate = createOrderUsageQuotaLifecycleGate({
+    orderLifecycleService: {
+      suspendTrafficSupply() {
+        return {
+          status: "disabled",
+          runtimeEnforcement: { state: "applied" }
+        };
+      }
+    }
+  });
+
+  assert.equal("sweepQuotaCycleRollovers" in gate, false);
+  assert.equal(typeof gate.handleUsageDecision, "function");
+});

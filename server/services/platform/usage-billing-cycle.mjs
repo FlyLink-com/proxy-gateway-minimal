@@ -19,6 +19,21 @@ function addUtcMonthsClamped(anchor, months) {
   ));
 }
 
+const FIXED_30_DAY_PLANS = new Set([
+  "offerv_plan_30d_50gb_monthly_v1",
+  "offerv_plan_30d_100gb_monthly_v1"
+]);
+const FIXED_30_DAY_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+const ROLLOVER_MANAGED_PLANS = new Set([
+  "offerv_plan_30d_50gb_monthly_v1",
+  "offerv_plan_30d_100gb_monthly_v1",
+  "offerv_plan_365d_200gb_monthly_v1"
+]);
+
+export function isQuotaRolloverManagedBinding(binding) {
+  return ROLLOVER_MANAGED_PLANS.has(String(binding?.plan || "").trim());
+}
+
 export function monthlyUsageCycleFor({ validFrom, validUntil, at } = {}) {
   const anchor = dateFromIso(validFrom);
   const observed = dateFromIso(at);
@@ -51,6 +66,39 @@ export function monthlyUsageCycleFor({ validFrom, validUntil, at } = {}) {
   };
 }
 
+export function usageCycleForBinding(binding, at) {
+  if (FIXED_30_DAY_PLANS.has(String(binding?.plan || "").trim())) {
+    const anchor = dateFromIso(binding?.validFrom);
+    const entitlementEnd = dateFromIso(binding?.validUntil);
+    const observedAt = dateFromIso(at);
+    if (!anchor || !entitlementEnd || !observedAt || entitlementEnd <= anchor) {
+      return null;
+    }
+    const effectiveAt = observedAt >= entitlementEnd
+      ? new Date(entitlementEnd.getTime() - 1)
+      : observedAt;
+    const elapsedMs = Math.max(0, effectiveAt.getTime() - anchor.getTime());
+    const cycleIndex = Math.floor(elapsedMs / FIXED_30_DAY_DURATION_MS);
+    const startedAt = new Date(anchor.getTime() + cycleIndex * FIXED_30_DAY_DURATION_MS);
+    const uncappedEnd = new Date(startedAt.getTime() + FIXED_30_DAY_DURATION_MS);
+    const endedAt = uncappedEnd < entitlementEnd ? uncappedEnd : entitlementEnd;
+    if (endedAt <= startedAt) {
+      return null;
+    }
+    return {
+      startedAt: startedAt.toISOString(),
+      endedAt: endedAt.toISOString(),
+      cadence: "fixed_30_days"
+    };
+  }
+  const cycle = monthlyUsageCycleFor({
+    validFrom: binding?.validFrom,
+    validUntil: binding?.validUntil,
+    at
+  });
+  return cycle ? { ...cycle, cadence: "monthly_anniversary" } : null;
+}
+
 export function summarizeUsageSamples(samples = []) {
   return samples.reduce((totals, sample) => {
     const uploadBytes = nonNegativeNumber(sample?.uploadBytes);
@@ -79,11 +127,7 @@ export function summarizeUsageSamples(samples = []) {
 }
 
 export function usageCycleFiltersForBinding(binding, at) {
-  const cycle = monthlyUsageCycleFor({
-    validFrom: binding?.validFrom,
-    validUntil: binding?.validUntil,
-    at
-  });
+  const cycle = usageCycleForBinding(binding, at);
   if (!cycle) {
     return {};
   }

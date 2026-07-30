@@ -36,11 +36,13 @@ const FACTORY_FIELDS = new Set([
   "commerceRefFactory",
   "walletRefFactory",
   "discountReader",
+  "purchaseEligibilityReader",
   "cancelWindowMs",
   "quoteTtlMs"
 ]);
 const STORE_METHODS = [
   "walletStore",
+  "bootstrapPublishedOffers",
   "publishOfferVersion",
   "retireOfferVersion",
   "listPublishedOffers",
@@ -354,6 +356,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     commerceRefFactory,
     walletRefFactory,
     discountReader = () => 0,
+    purchaseEligibilityReader = () => true,
     cancelWindowMs = DEFAULT_CANCEL_WINDOW_MS,
     quoteTtlMs = DEFAULT_QUOTE_TTL_MS
   } = input;
@@ -365,6 +368,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     || (commerceRefFactory !== undefined && typeof commerceRefFactory !== "function")
     || (walletRefFactory !== undefined && typeof walletRefFactory !== "function")
     || typeof discountReader !== "function"
+    || typeof purchaseEligibilityReader !== "function"
   ) {
     throw commerceError("invalid_store_contract");
   }
@@ -488,35 +492,41 @@ export function createSqliteCoinCommerceStore(options = {}) {
     `).get(offerRef) ?? null;
   }
 
-  const publishTransaction = db.transaction((normalizedOffer) => {
-    const existing = findOfferVersion(normalizedOffer.offerVersionRef);
-    if (existing) {
-      const projected = offerFromRow(existing);
-      if (
-        existing.status === "published"
-        && offersEquivalent(projected, normalizedOffer)
-      ) {
-        return projected;
-      }
-      throw commerceError("offer_unavailable");
-    }
-    const sameOfferPublished = findPublishedOffer(normalizedOffer.offerRef);
-    if (sameOfferPublished) throw commerceError("offer_unavailable");
-    const highestVersion = db.prepare(`
-      select max(version) from platform_coin_commerce_offer_versions
-       where offer_ref = ?
-    `).pluck().get(normalizedOffer.offerRef);
-    if (
-      highestVersion !== null
-      && (
-        !Number.isSafeInteger(highestVersion)
-        || normalizedOffer.version <= highestVersion
-      )
-    ) {
-      throw commerceError("offer_unavailable");
-    }
-    const occurredAt = readDatabaseUtc(db);
-    db.prepare(`
+  function hasConflictingNonterminalPlan(accountId, offerVersionRef) {
+    const requested = findOfferVersion(offerVersionRef);
+    if (!requested || requested.category !== "plan") return false;
+    return Boolean(db.prepare(`
+      select 1
+        from platform_coin_commerce_orders o
+        join platform_coin_commerce_offer_versions v
+          on v.offer_version_ref = o.offer_version_ref
+        left join platform_coin_commerce_fulfillment_commands c
+          on c.order_ref = o.order_ref
+       where o.account_id = ?
+         and v.category = 'plan'
+         and (
+           o.payment_status in ('capture_failed', 'reconciliation_required')
+           or (
+             o.payment_status = 'captured'
+             and (c.command_ref is null or c.status = 'failed')
+           )
+           or (
+             o.offer_version_ref <> ?
+             and (
+               o.payment_status in ('held', 'capture_pending')
+               or (
+                 o.payment_status = 'captured'
+                 and c.status <> 'delivered'
+               )
+             )
+           )
+         )
+       limit 1
+    `).get(accountId, offerVersionRef));
+  }
+
+  function insertPublishedOffer(normalizedOffer, occurredAt) {
+    const inserted = db.prepare(`
       insert into platform_coin_commerce_offer_versions (
         offer_version_ref, offer_ref, version, status, category,
         title_zh, title_en, summary_zh, summary_en,
@@ -553,6 +563,62 @@ export function createSqliteCoinCommerceStore(options = {}) {
       occurredAt,
       occurredAt
     );
+    if (inserted.changes !== 1) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+  }
+
+  function isPurchaseEligible(accountId, offerVersionRef) {
+    let eligible;
+    try {
+      eligible = purchaseEligibilityReader({
+        accountId,
+        offerVersionRef
+      });
+    } catch {
+      return false;
+    }
+    return (
+      eligible === true
+      && !hasConflictingNonterminalPlan(accountId, offerVersionRef)
+    );
+  }
+
+  function requirePurchaseEligibility(accountId, offerVersionRef) {
+    if (!isPurchaseEligible(accountId, offerVersionRef)) {
+      throw commerceError("offer_unavailable");
+    }
+  }
+
+  const publishTransaction = db.transaction((normalizedOffer) => {
+    const existing = findOfferVersion(normalizedOffer.offerVersionRef);
+    if (existing) {
+      const projected = offerFromRow(existing);
+      if (
+        existing.status === "published"
+        && offersEquivalent(projected, normalizedOffer)
+      ) {
+        return projected;
+      }
+      throw commerceError("offer_unavailable");
+    }
+    const sameOfferPublished = findPublishedOffer(normalizedOffer.offerRef);
+    if (sameOfferPublished) throw commerceError("offer_unavailable");
+    const highestVersion = db.prepare(`
+      select max(version) from platform_coin_commerce_offer_versions
+       where offer_ref = ?
+    `).pluck().get(normalizedOffer.offerRef);
+    if (
+      highestVersion !== null
+      && (
+        !Number.isSafeInteger(highestVersion)
+        || normalizedOffer.version <= highestVersion
+      )
+    ) {
+      throw commerceError("offer_unavailable");
+    }
+    const occurredAt = readDatabaseUtc(db);
+    insertPublishedOffer(normalizedOffer, occurredAt);
     return offerFromRow(findOfferVersion(normalizedOffer.offerVersionRef));
   });
 
@@ -565,6 +631,127 @@ export function createSqliteCoinCommerceStore(options = {}) {
         throw commerceError("invalid_store_contract");
       }
       return publishTransaction.immediate(normalized);
+    });
+  }
+
+  const bootstrapTransaction = db.transaction((normalizedOffers) => {
+    const pending = [];
+    for (const normalizedOffer of normalizedOffers) {
+      const existing = findOfferVersion(normalizedOffer.offerVersionRef);
+      if (existing) {
+        const projected = offerFromRow(existing);
+        if (
+          existing.status === "published"
+          && offersEquivalent(projected, normalizedOffer)
+        ) {
+          continue;
+        }
+        throw commerceError("offer_unavailable");
+      }
+      if (findPublishedOffer(normalizedOffer.offerRef)) {
+        throw commerceError("offer_unavailable");
+      }
+      const highestVersion = db.prepare(`
+        select max(version) from platform_coin_commerce_offer_versions
+         where offer_ref = ?
+      `).pluck().get(normalizedOffer.offerRef);
+      if (
+        highestVersion !== null
+        && (
+          !Number.isSafeInteger(highestVersion)
+          || normalizedOffer.version <= highestVersion
+        )
+      ) {
+        throw commerceError("offer_unavailable");
+      }
+      pending.push(normalizedOffer);
+    }
+
+    if (pending.length > 0) {
+      const occurredAt = readDatabaseUtc(db);
+      for (const normalizedOffer of pending) {
+        insertPublishedOffer(normalizedOffer, occurredAt);
+      }
+    }
+    const expectedPublished = new Map(normalizedOffers.map(
+      (normalizedOffer) => [
+        normalizedOffer.offerVersionRef,
+        normalizedOffer.offerRef
+      ]
+    ));
+    const publishedRows = db.prepare(`
+      select offer_version_ref, offer_ref
+        from platform_coin_commerce_offer_versions
+       where status = 'published'
+    `).all();
+    if (
+      publishedRows.length !== expectedPublished.size
+      || publishedRows.some((row) => (
+        expectedPublished.get(row.offer_version_ref) !== row.offer_ref
+      ))
+    ) {
+      throw commerceError("offer_unavailable");
+    }
+    return normalizedOffers.map((normalizedOffer) => (
+      offerFromRow(findOfferVersion(normalizedOffer.offerVersionRef))
+    ));
+  });
+
+  function bootstrapPublishedOffers(offersInput) {
+    return execute(() => {
+      let offerInputs;
+      try {
+        if (
+          !Array.isArray(offersInput)
+          || Object.getPrototypeOf(offersInput) !== Array.prototype
+        ) {
+          throw commerceError("invalid_store_contract");
+        }
+        const length = Object.getOwnPropertyDescriptor(offersInput, "length")?.value;
+        if (
+          !Number.isSafeInteger(length)
+          || length < 1
+          || Reflect.ownKeys(offersInput).length !== length + 1
+        ) {
+          throw commerceError("invalid_store_contract");
+        }
+        offerInputs = new Array(length);
+        for (let index = 0; index < length; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(
+            offersInput,
+            String(index)
+          );
+          if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+            throw commerceError("invalid_store_contract");
+          }
+          offerInputs[index] = descriptor.value;
+        }
+      } catch (error) {
+        if (isCommerceError(error)) throw error;
+        throw commerceError("invalid_store_contract");
+      }
+
+      const normalizedOffers = [];
+      const offerRefs = new Set();
+      const offerVersionRefs = new Set();
+      try {
+        for (const offerInput of offerInputs) {
+          const normalizedOffer = normalizeCoinCommerceOffer(offerInput);
+          if (
+            offerRefs.has(normalizedOffer.offerRef)
+            || offerVersionRefs.has(normalizedOffer.offerVersionRef)
+          ) {
+            throw commerceError("invalid_store_contract");
+          }
+          offerRefs.add(normalizedOffer.offerRef);
+          offerVersionRefs.add(normalizedOffer.offerVersionRef);
+          normalizedOffers.push(normalizedOffer);
+        }
+      } catch (error) {
+        if (isCommerceError(error)) throw error;
+        throw commerceError("invalid_store_contract");
+      }
+      return bootstrapTransaction.immediate(normalizedOffers);
     });
   }
 
@@ -607,11 +794,20 @@ export function createSqliteCoinCommerceStore(options = {}) {
       const fields = new Set(["accountId"]);
       assertExactDataFields(value, fields);
       requireAccount(value.accountId);
-      return db.prepare(`
+      const offers = db.prepare(`
         select * from platform_coin_commerce_offer_versions
          where status = 'published'
-         order by category, published_at desc, offer_ref
-      `).all().map(offerFromRow);
+         order by category, base_coin_units, published_at desc, offer_ref
+      `).all()
+        .map(offerFromRow)
+        .filter((offer) => isPurchaseEligible(
+          value.accountId,
+          offer.offerVersionRef
+        ));
+      if (offers.length === 0) {
+        throw commerceError("offer_unavailable");
+      }
+      return offers;
     });
   }
 
@@ -623,7 +819,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
       requireAccount(value.accountId);
       const row = findPublishedOffer(normalizeReference(value.offerRef));
       if (!row) throw commerceError("offer_unavailable");
-      return offerFromRow(row);
+      const offer = offerFromRow(row);
+      requirePurchaseEligibility(value.accountId, offer.offerVersionRef);
+      return offer;
     });
   }
 
@@ -637,6 +835,10 @@ export function createSqliteCoinCommerceStore(options = {}) {
     ) {
       throw commerceError("offer_unavailable");
     }
+    requirePurchaseEligibility(
+      request.accountId,
+      request.offer.offerVersionRef
+    );
     const occurredAt = readDatabaseUtc(db);
     const preview = walletParticipant.previewCoinHoldInTransaction({
       accountId: request.accountId,
@@ -1431,6 +1633,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
       || row.wallet_version < 0
       || !Number.isSafeInteger(row.amount_units)
       || row.amount_units < 1
+      || !Number.isSafeInteger(row.applied_discount_basis_points)
+      || row.applied_discount_basis_points < 0
+      || row.applied_discount_basis_points > 10_000
       || !["available", "insufficient_balance"].includes(
         row.purchase_availability
       )
@@ -1438,9 +1643,22 @@ export function createSqliteCoinCommerceStore(options = {}) {
     ) {
       throw commerceError("commerce_infrastructure_error");
     }
+    const offer = offerFromRow(findOfferVersion(row.offer_version_ref));
+    let expectedAmountUnits;
+    try {
+      expectedAmountUnits = applyCoinDiscount({
+        baseCoinUnits: offer.baseCoinUnits,
+        discountBasisPoints: row.applied_discount_basis_points
+      });
+    } catch {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    if (row.amount_units !== expectedAmountUnits) {
+      throw commerceError("commerce_infrastructure_error");
+    }
     return {
       ...row,
-      offer: offerFromRow(findOfferVersion(row.offer_version_ref)),
+      offer,
       allocation: normalizeAllocation(
         parseJson(row.allocation_json),
         row.purchase_availability === "available" ? row.amount_units : 0
@@ -1465,6 +1683,10 @@ export function createSqliteCoinCommerceStore(options = {}) {
     `).get(request.quoteRef, request.accountId);
     if (!quoteRow) throw commerceError("commerce_not_found");
     const quote = parseQuoteRow(quoteRow);
+    requirePurchaseEligibility(
+      request.accountId,
+      quote.offer.offerVersionRef
+    );
     if (quote.status !== "active") throw commerceError("quote_stale");
     if (quote.expires_at <= occurredAt) throw commerceError("quote_expired");
     if (quote.purchase_availability !== "available") {
@@ -1876,7 +2098,10 @@ export function createSqliteCoinCommerceStore(options = {}) {
     const offerSnapshot = normalizeStoredOffer(
       parseJson(order.offer_snapshot_json)
     );
-    return { delivery: offerSnapshot.delivery };
+    return {
+      offerVersionRef: offerSnapshot.offerVersionRef,
+      delivery: offerSnapshot.delivery
+    };
   }
 
   function validateDelivery(value) {
@@ -1925,12 +2150,16 @@ export function createSqliteCoinCommerceStore(options = {}) {
       || typeof payload !== "object"
       || Array.isArray(payload)
       || Object.getPrototypeOf(payload) !== Object.prototype
-      || Reflect.ownKeys(payload).length !== 1
+      || Reflect.ownKeys(payload).length !== 2
+      || !Object.hasOwn(payload, "offerVersionRef")
       || !Object.hasOwn(payload, "delivery")
     ) {
       throw commerceError("commerce_infrastructure_error");
     }
-    return { delivery: validateDelivery(payload.delivery) };
+    return {
+      offerVersionRef: normalizeReference(payload.offerVersionRef),
+      delivery: validateDelivery(payload.delivery)
+    };
   }
 
   function validateCommandAndReceiptSnapshot(command, order, receipts) {
@@ -2615,13 +2844,26 @@ export function createSqliteCoinCommerceStore(options = {}) {
         from platform_coin_commerce_fulfillment_commands c
         join platform_coin_commerce_orders o on o.order_ref = c.order_ref
        where o.payment_status = 'captured'
-         and (
-           c.status = 'pending'
-           or (c.status = 'processing' and c.lease_until <= ?)
-         )
+          and (
+            c.status = 'pending'
+            or (c.status = 'processing' and c.lease_until <= ?)
+          )
+          and not exists (
+            select 1
+              from platform_coin_commerce_fulfillment_commands predecessor
+             where predecessor.account_id = c.account_id
+               and predecessor.status in ('pending', 'processing')
+               and (
+                 predecessor.created_at < c.created_at
+                 or (
+                   predecessor.created_at = c.created_at
+                   and predecessor.command_ref < c.command_ref
+                 )
+               )
+          )
        order by
-         case c.status when 'pending' then 0 else 1 end,
-         coalesce(c.lease_until, c.updated_at),
+          case c.status when 'pending' then 0 else 1 end,
+          coalesce(c.lease_until, c.updated_at),
          c.command_ref
        limit 1
     `).get(occurredAt);
@@ -2710,6 +2952,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
       commandRef: leased.command_ref,
       orderRef: leased.order_ref,
       accountId: leased.account_id,
+      offerVersionRef: payload.offerVersionRef,
       delivery: payload.delivery,
       leaseGeneration,
       leaseToken
@@ -2889,6 +3132,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
       actorRef: "coin_commerce_fulfillment",
       occurredAt
     });
+    if (request.safeCode === "fulfillment_handler_unavailable") {
+      markReconciliation(validated.order, occurredAt);
+    }
     validateCommandAndReceipt(db.prepare(`
       select * from platform_coin_commerce_fulfillment_commands
        where command_ref = ?
@@ -2967,7 +3213,20 @@ export function createSqliteCoinCommerceStore(options = {}) {
         from platform_coin_commerce_fulfillment_commands c
         join platform_coin_commerce_orders o on o.order_ref = c.order_ref
        where o.payment_status = 'captured'
-         and c.status = 'pending'
+          and c.status = 'pending'
+          and not exists (
+            select 1
+              from platform_coin_commerce_fulfillment_commands predecessor
+             where predecessor.account_id = c.account_id
+               and predecessor.status in ('pending', 'processing')
+               and (
+                 predecessor.created_at < c.created_at
+                 or (
+                   predecessor.created_at = c.created_at
+                   and predecessor.command_ref < c.command_ref
+                 )
+               )
+          )
        limit 1
     `).get();
     if (pending) candidates.push(occurredAt);
@@ -2976,7 +3235,20 @@ export function createSqliteCoinCommerceStore(options = {}) {
         from platform_coin_commerce_fulfillment_commands c
         join platform_coin_commerce_orders o on o.order_ref = c.order_ref
        where o.payment_status = 'captured'
-         and c.status = 'processing'
+          and c.status = 'processing'
+          and not exists (
+            select 1
+              from platform_coin_commerce_fulfillment_commands predecessor
+             where predecessor.account_id = c.account_id
+               and predecessor.status in ('pending', 'processing')
+               and (
+                 predecessor.created_at < c.created_at
+                 or (
+                   predecessor.created_at = c.created_at
+                   and predecessor.command_ref < c.command_ref
+                 )
+               )
+          )
     `).pluck().get();
     if (lease !== null) candidates.push(lease);
     if (candidates.length === 0) return null;
@@ -3036,6 +3308,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
 
   const store = {
     walletStore,
+    bootstrapPublishedOffers,
     publishOfferVersion,
     retireOfferVersion,
     listPublishedOffers,

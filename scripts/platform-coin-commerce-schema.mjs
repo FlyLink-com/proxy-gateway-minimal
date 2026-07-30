@@ -294,9 +294,7 @@ async function execute(options, operations) {
       exitCode: EXIT_SUCCESS,
       output: closedOutput({
         ...result,
-        sourceChanged: options.mode === "apply"
-          ? true
-          : result.sourceChanged
+        sourceChanged: result.sourceChanged
       })
     };
   } catch (error) {

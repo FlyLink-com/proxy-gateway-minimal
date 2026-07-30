@@ -490,6 +490,102 @@ test("tenant lookup and mutations throw not_found for missing tenants", async ()
   });
 });
 
+test("service renews a serialized expired tenant when its persisted status remains active", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, {
+      expiresAt: "2026-05-21T23:59:59.000Z"
+    });
+    assert.equal(context.repository.getTenant("tenant_1").status, "active");
+    assert.equal(context.service.getTenant("tenant_1").status, "expired");
+
+    const renewed = context.service.renewTenant("tenant_1", {
+      expiresAt: "2026-07-21T00:00:00.000Z"
+    });
+
+    assert.equal(renewed.status, "active");
+    assert.equal(renewed.expiresAt, "2026-07-21T00:00:00.000Z");
+  });
+});
+
+test("service renews a serialized expiring tenant when its persisted status remains active", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, {
+      expiresAt: "2026-05-25T00:00:00.000Z"
+    });
+    assert.equal(context.repository.getTenant("tenant_1").status, "active");
+    assert.equal(context.service.getTenant("tenant_1").status, "expiring");
+
+    const renewed = context.service.renewTenant("tenant_1", {
+      expiresAt: "2026-07-21T00:00:00.000Z"
+    });
+
+    assert.equal(renewed.status, "active");
+    assert.equal(renewed.expiresAt, "2026-07-21T00:00:00.000Z");
+  });
+});
+
+test("service treats a shorter renewal target as idempotent and returns the stored later expiry", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, {
+      expiresAt: "2026-08-21T00:00:00.000Z"
+    });
+
+    const renewed = context.service.renewTenant("tenant_1", {
+      expiresAt: "2026-07-21T00:00:00.000Z"
+    });
+
+    assert.equal(renewed.status, "active");
+    assert.equal(renewed.expiresAt, "2026-08-21T00:00:00.000Z");
+  });
+});
+
+test("service rejects renewal for a manually disabled tenant without changing its expiry", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context);
+    context.service.disableTenant("tenant_1");
+
+    assertCode("subscription_not_active", () => context.service.renewTenant("tenant_1", {
+      expiresAt: "2026-08-21T00:00:00.000Z"
+    }));
+
+    const stored = context.repository.getTenant("tenant_1");
+    assert.equal(stored.status, "disabled");
+    assert.equal(stored.expiresAt, "2026-06-21T00:00:00.000Z");
+  });
+});
+
+test("service fails closed when a tenant becomes disabled before renewal readback", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context);
+    const renewTenant = context.repository.renewTenant.bind(context.repository);
+    context.repository.renewTenant = (id, input) => {
+      const renewed = renewTenant(id, input);
+      context.repository.setTenantStatus(id, {
+        status: "disabled",
+        now: "2026-05-22T00:00:01.000Z"
+      });
+      return renewed;
+    };
+
+    assertCode("subscription_not_active", () => context.service.renewTenant("tenant_1", {
+      expiresAt: "2026-08-21T00:00:00.000Z"
+    }));
+    assert.equal(context.repository.getTenant("tenant_1").status, "disabled");
+  });
+});
+
+test("service fails closed when renewal storage does not converge on the requested minimum expiry", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context);
+    context.repository.renewTenant = (id) => context.repository.getTenant(id);
+
+    assertCode("subscription_renewal_not_converged", () => context.service.renewTenant("tenant_1", {
+      expiresAt: "2026-08-21T00:00:00.000Z"
+    }));
+    assert.equal(context.repository.getTenant("tenant_1").expiresAt, "2026-06-21T00:00:00.000Z");
+  });
+});
+
 test("service rejects invalid public subscription base URL", () => {
   const database = new Database(":memory:");
   const repository = createSubscriptionRepository({ database });

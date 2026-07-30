@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import {
+  createOrderUsageQuotaLifecycleGate
+} from "../services/platform/order-usage-quota-lifecycle-gate.mjs";
 import { createRuntimeUsageAccountingService } from "../services/platform/runtime-usage-accounting.mjs";
 
 function observation(overrides = {}) {
@@ -497,4 +500,132 @@ test("runtime usage accounting automatically suspends traffic supply at quota li
   assert.equal(report.reports[0].recorded[0].trafficSupplyLifecycle.mutation, true);
   assert.equal(report.reports[0].recorded[0].trafficSupplyLifecycle.execution.accountMutationRequired, false);
   assert.doesNotMatch(JSON.stringify(report), /password|token|subscriptionUrl|rawConfig/i);
+});
+
+test("runtime usage accounting runs one bounded rollover sweep even without observations", async () => {
+  let sweepCount = 0;
+  const service = createRuntimeUsageAccountingService({
+    collectors: [{
+      channelRef: "channel-idle",
+      collect: async () => ({
+        ok: true,
+        status: "idle_no_user_traffic",
+        observations: [],
+        nextAction: "continue_usage_monitoring"
+      })
+    }],
+    accounting: {
+      recordUsageObservation() {
+        throw new Error("idle collector must not record usage");
+      }
+    },
+    trafficSupplyLifecycleGate: {
+      handleUsageDecision() {
+        throw new Error("idle collector must not suspend traffic supply");
+      },
+      sweepQuotaCycleRollovers({ limit, reviewedByRef }) {
+        sweepCount += 1;
+        assert.equal(limit, 100);
+        assert.equal(reviewedByRef, "usage_quota_rollover_gate");
+        return {
+          ok: true,
+          status: "quota_cycle_rollover_sweep_completed",
+          scannedCount: 1,
+          appliedCount: 1,
+          pendingCount: 0,
+          failedCount: 0,
+          skippedCount: 0,
+          mutation: true,
+          requestRef: "must_not_escape_aggregate_report",
+          portalUserRef: "must_not_escape_aggregate_report"
+        };
+      }
+    }
+  });
+
+  const report = await service.collectAndRecord();
+
+  assert.equal(sweepCount, 1);
+  assert.equal(report.ok, true);
+  assert.deepEqual(report.quotaCycleRollover, {
+    ok: true,
+    status: "quota_cycle_rollover_sweep_completed",
+    scannedCount: 1,
+    appliedCount: 1,
+    pendingCount: 0,
+    failedCount: 0,
+    skippedCount: 0,
+    mutation: true,
+    blockers: [],
+    nextAction: ""
+  });
+  assert.doesNotMatch(
+    JSON.stringify(report),
+    /must_not_escape_aggregate_report|requestRef|portalUserRef/i
+  );
+});
+
+test("runtime usage accounting preserves the legacy idle path when rollover methods are absent", async () => {
+  const legacyGate = createOrderUsageQuotaLifecycleGate({
+    orderLifecycleService: {
+      suspendTrafficSupply() {
+        throw new Error("idle legacy path must not suspend traffic supply");
+      }
+    }
+  });
+  const service = createRuntimeUsageAccountingService({
+    collectors: [{
+      channelRef: "channel-legacy-idle",
+      collect: async () => ({
+        ok: true,
+        status: "idle_no_user_traffic",
+        accountingMode: "cumulative",
+        observations: []
+      })
+    }],
+    accounting: {
+      recordUsageObservation() {
+        throw new Error("idle legacy path must not record usage");
+      }
+    },
+    trafficSupplyLifecycleGate: legacyGate
+  });
+
+  const report = await service.collectAndRecord();
+
+  assert.equal(report.ok, true);
+  assert.equal(report.idleCollectorCount, 1);
+  assert.equal(report.observationCount, 0);
+  assert.equal(Object.hasOwn(report, "quotaCycleRollover"), false);
+});
+
+test("runtime usage accounting reports rollover sweep failures without a hot loop or leaked details", async () => {
+  let sweepCount = 0;
+  const service = createRuntimeUsageAccountingService({
+    collectors: [],
+    accounting: {
+      recordUsageObservation() {
+        throw new Error("no observation is expected");
+      }
+    },
+    trafficSupplyLifecycleGate: {
+      handleUsageDecision() {
+        throw new Error("no usage decision is expected");
+      },
+      sweepQuotaCycleRollovers() {
+        sweepCount += 1;
+        throw new Error("sensitive requestRef pareq_secret must not leak");
+      }
+    }
+  });
+
+  const report = await service.collectAndRecord();
+
+  assert.equal(sweepCount, 1);
+  assert.equal(report.ok, false);
+  assert.equal(report.quotaCycleRollover.ok, false);
+  assert.equal(report.quotaCycleRollover.status, "quota_cycle_rollover_sweep_failed");
+  assert.equal(report.quotaCycleRollover.failedCount, 1);
+  assert.deepEqual(report.quotaCycleRollover.blockers, ["quota_cycle_rollover_exception"]);
+  assert.doesNotMatch(JSON.stringify(report), /pareq_secret|sensitive requestRef/i);
 });

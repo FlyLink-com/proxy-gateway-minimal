@@ -228,12 +228,15 @@ export function createSqliteSubscriptionStore({ dbPath, database } = {}) {
   }
 
   function renewTenant(id, { expiresAt, now }) {
-    const result = db.prepare(`
+    const row = db.prepare(`
       update subscription_tenants
-      set expires_at = ?, status = 'active', updated_at = ?
-      where id = ?
-    `).run(expiresAt, now, id);
-    return result.changes === 1 ? getTenant(id) : null;
+      set
+        expires_at = case when expires_at < @expiresAt then @expiresAt else expires_at end,
+        updated_at = case when expires_at < @expiresAt then @now else updated_at end
+      where id = @id and status = 'active'
+      returning *
+    `).get({ id, expiresAt, now });
+    return mapTenant(row);
   }
 
   function setTenantNode(id, { nodeId, now }) {

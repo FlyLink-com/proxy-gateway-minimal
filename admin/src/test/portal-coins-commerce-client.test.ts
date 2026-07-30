@@ -86,13 +86,13 @@ const DATA_PACK_OFFER = {
 const AVAILABLE_QUOTE = {
   quoteRef: "quote_monthly_50gb_1",
   offer: PLAN_OFFER,
-  amountUnits: 20,
+  amountUnits: 19,
   appliedDiscountBasisPoints: 500,
   purchaseAvailability: "available",
   shortfallUnits: 0,
   allocation: [
     { coinType: "bonus_coins", amountUnits: 5 },
-    { coinType: "paid_coins", amountUnits: 15 }
+    { coinType: "paid_coins", amountUnits: 14 }
   ],
   balances: {
     before: {
@@ -103,9 +103,9 @@ const AVAILABLE_QUOTE = {
     },
     after: {
       bonusCoins: 0,
-      paidCoins: 980,
+      paidCoins: 981,
       rewardCoins: 0,
-      heldCoins: 20
+      heldCoins: 19
     }
   },
   expiresAt: "2026-07-27T12:01:00.000Z"
@@ -162,6 +162,23 @@ const CANCELLED_ORDER = {
   ...HELD_ORDER,
   paymentStatus: "cancelled",
   updatedAt: "2026-07-27T12:00:01.000Z"
+};
+
+const RECONCILIATION_FAILED_ORDER = {
+  ...HELD_ORDER,
+  paymentStatus: "reconciliation_required",
+  fulfillment: {
+    status: "failed",
+    safeCode: "fulfillment_handler_unavailable"
+  },
+  updatedAt: "2026-07-27T12:00:02.000Z"
+};
+
+const RECONCILIATION_DELIVERED_ORDER = {
+  ...HELD_ORDER,
+  paymentStatus: "reconciliation_required",
+  fulfillment: { status: "delivered", safeCode: null },
+  updatedAt: "2026-07-27T12:00:02.000Z"
 };
 
 function heldOrderAt(
@@ -359,13 +376,15 @@ describe("Portal Coins Commerce HTTP client", () => {
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 
-  test("accepts both Quote states and the held, captured, and cancelled Order states", async () => {
+  test("accepts both Quote states and every coherent projected Order state", async () => {
     const bodies = [
       { quote: AVAILABLE_QUOTE },
       { quote: INSUFFICIENT_QUOTE },
       { order: HELD_ORDER },
       { order: CAPTURED_ORDER },
-      { order: CANCELLED_ORDER }
+      { order: CANCELLED_ORDER },
+      { order: RECONCILIATION_FAILED_ORDER },
+      { order: RECONCILIATION_DELIVERED_ORDER }
     ];
     const fetchFn = vi.fn<typeof fetch>(async () => wireResponse(bodies.shift()));
     const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
@@ -378,12 +397,106 @@ describe("Portal Coins Commerce HTTP client", () => {
       sessionRef: "session_alpha",
       offerRef: "offer_data_100gb"
     })).resolves.toEqual(INSUFFICIENT_QUOTE);
-    for (const order of [HELD_ORDER, CAPTURED_ORDER, CANCELLED_ORDER]) {
+    for (const order of [
+      HELD_ORDER,
+      CAPTURED_ORDER,
+      CANCELLED_ORDER,
+      RECONCILIATION_FAILED_ORDER,
+      RECONCILIATION_DELIVERED_ORDER
+    ]) {
       await expect(commerce.getOrder({
         sessionRef: "session_alpha",
         orderRef: "order_monthly_50gb_1"
       })).resolves.toEqual(order);
     }
+  });
+
+  test("rejects quote totals that drift from the offer price and applied discount", async () => {
+    const amountDrift = clone(AVAILABLE_QUOTE);
+    amountDrift.amountUnits = 18;
+    amountDrift.allocation[1].amountUnits = 13;
+    amountDrift.balances.after.paidCoins = 982;
+    amountDrift.balances.after.heldCoins = 18;
+    const discountDrift = clone(AVAILABLE_QUOTE);
+    discountDrift.appliedDiscountBasisPoints = 1_000;
+    const responses = [
+      { quote: amountDrift },
+      { quote: discountDrift }
+    ];
+    const fetchFn = vi.fn<typeof fetch>(
+      async () => wireResponse(responses.shift())
+    );
+    const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
+
+    for (const offerRef of [PLAN_OFFER.offerRef, PLAN_OFFER.offerRef]) {
+      await expectSafeFailure(commerce.previewCheckout({
+        sessionRef: "session_alpha",
+        offerRef
+      }));
+    }
+  });
+
+  test("rejects a valid offer response bound to a different requested offer", async () => {
+    const commerce = commerceOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>(
+        async () => wireResponse({ offer: PLAN_OFFER })
+      )
+    }));
+
+    await expectSafeFailure(commerce.getOffer({
+      sessionRef: "session_alpha",
+      offerRef: "offer_data_100gb"
+    }));
+  });
+
+  test("rejects a valid quote response bound to a different requested offer", async () => {
+    const commerce = commerceOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>(
+        async () => wireResponse({ quote: AVAILABLE_QUOTE })
+      )
+    }));
+
+    await expectSafeFailure(commerce.previewCheckout({
+      sessionRef: "session_alpha",
+      offerRef: "offer_data_100gb"
+    }));
+  });
+
+  test("rejects get and cancel responses bound to a different requested Order", async () => {
+    const otherOrder = {
+      ...clone(HELD_ORDER),
+      orderRef: "order_monthly_50gb_other"
+    };
+    const fetchFn = vi.fn<typeof fetch>(
+      async () => wireResponse({ order: otherOrder })
+    );
+    const commerce = commerceOf(createHttpUserPortalClient({ fetchFn }));
+
+    await expectSafeFailure(commerce.getOrder({
+      sessionRef: "session_alpha",
+      orderRef: HELD_ORDER.orderRef
+    }));
+    await expectSafeFailure(commerce.cancelOrder({
+      sessionRef: "session_alpha",
+      orderRef: HELD_ORDER.orderRef,
+      idempotencyKey: "cancel-bound-order"
+    }));
+  });
+
+  test("rejects an order amount above its embedded offer base price", async () => {
+    const overpricedOrder = clone(HELD_ORDER);
+    overpricedOrder.amountUnits = 21;
+    overpricedOrder.allocation[1].amountUnits = 16;
+    const commerce = commerceOf(createHttpUserPortalClient({
+      fetchFn: vi.fn<typeof fetch>(
+        async () => wireResponse({ order: overpricedOrder })
+      )
+    }));
+
+    await expectSafeFailure(commerce.getOrder({
+      sessionRef: "session_alpha",
+      orderRef: "order_monthly_50gb_1"
+    }));
   });
 
   test("rejects malformed caller references and account overrides before fetch", async () => {

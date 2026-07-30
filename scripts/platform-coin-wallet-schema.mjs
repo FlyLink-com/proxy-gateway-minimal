@@ -254,7 +254,12 @@ async function execute(options, operations) {
       });
     return {
       exitCode: EXIT_SUCCESS,
-      output: closedOutput(result)
+      output: closedOutput({
+        ...result,
+        sourceChanged: options.mode === "apply"
+          ? result.appliedMigrationIds?.includes(REQUIRED_COIN_WALLET_MIGRATION_ID)
+          : result.sourceChanged
+      })
     };
   } catch (error) {
     return operationFailure(error, options.mode);

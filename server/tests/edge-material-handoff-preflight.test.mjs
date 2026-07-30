@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
+import { createDataPlaneDesiredStateNotifier } from "../services/edge/data-plane-desired-state-notifier.mjs";
 import { buildProtectedMaterialHandoffPreflight } from "../services/edge/material-handoff-preflight.mjs";
 import { createReadOnlyMaterialHandoffControlStore } from "../services/edge/material-handoff-readonly-control-store.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
@@ -354,6 +355,267 @@ test("read-only material handoff keeps an active credential beside disabled chan
     mutableStore?.close();
     rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
+});
+
+test("read-only material handoff mirrors a durable quota-resume desired-state intent", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "edge-material-handoff-readonly-resume-intent-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  let mutableStore;
+  let readOnlyStore;
+  try {
+    mutableStore = createSqliteSubscriptionControlStore({ dbPath });
+    const delivered = seedDeliveredOrder(mutableStore);
+    mutableStore.upsertPortalAccessRequest({
+      ...delivered,
+      status: "disabled",
+      nextAction: "traffic_supply_resume_pending",
+      updatedAt: "2026-06-13T12:01:00.000Z"
+    });
+    const mutableProjection = mutableStore.getLatestEdgeDesiredStateForChannel(
+      "channel-sgp-a-hy2",
+      { nodeRef: "edge-node-sgp-a" }
+    );
+    assert.deepEqual(
+      mutableProjection.edgeCredentialRefs,
+      ["edgecred_material_handoff_hy2"]
+    );
+    mutableStore.close();
+    mutableStore = null;
+
+    readOnlyStore = createReadOnlyMaterialHandoffControlStore({ dbPath });
+    const readOnlyProjection = readOnlyStore.getLatestEdgeDesiredStateForChannel(
+      "channel-sgp-a-hy2",
+      { nodeRef: "edge-node-sgp-a" }
+    );
+
+    assert.deepEqual(readOnlyProjection, mutableProjection);
+  } finally {
+    readOnlyStore?.close();
+    mutableStore?.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("material handoff lifecycle revision prevents clock-rollback desired-state replay", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "edge-material-handoff-lifecycle-revision-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  let mutableStore;
+  let readOnlyStore;
+  try {
+    mutableStore = createSqliteSubscriptionControlStore({ dbPath });
+    const delivered = seedDeliveredOrder(mutableStore);
+    const resumeAt = "2026-06-13T12:01:00.000Z";
+    const firstResume = mutableStore.upsertPortalAccessRequest({
+      ...delivered,
+      status: "disabled",
+      nextAction: "traffic_supply_resume_pending",
+      updatedAt: resumeAt,
+      event: {
+        type: "traffic_supply_suspended",
+        occurredAt: resumeAt,
+        previousStatus: "delivered",
+        lifecycleRevisionRef: "lifecycle_revision_resume_a"
+      }
+    });
+    const firstProjection = mutableStore.getLatestEdgeDesiredStateForChannel(
+      "channel-sgp-a-hy2",
+      { nodeRef: "edge-node-sgp-a" }
+    );
+    const notifier = createDataPlaneDesiredStateNotifier({
+      controlStore: mutableStore,
+      servers: [{
+        name: "channel-sgp-a-hy2",
+        nodeRef: "edge-node-sgp-a",
+        runtimeAdapter: "remote-data-plane-handoff"
+      }],
+      nowFn: () => resumeAt
+    });
+    const lifecycleNotification = {
+      reason: "traffic_supply_resumed",
+      order: { edgeChannelRef: "channel-sgp-a-hy2" }
+    };
+    const firstNotification = notifier.notifyOrderLifecycle(lifecycleNotification);
+    mutableStore.recordEdgeApplyReceipt({
+      id: "edge_receipt_lifecycle_resume_a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: firstProjection.desiredStateRef,
+      status: "applied",
+      actionCounts: {
+        add: 1,
+        revoke: 0,
+        rotate: 0,
+        unchanged: 0
+      },
+      configTestOk: true,
+      serviceActive: true,
+      listenerUdp443: true,
+      appliedAt: resumeAt,
+      createdAt: resumeAt
+    });
+    assert.equal(
+      notifier.notifyOrderLifecycle(lifecycleNotification).notifications[0].status,
+      "applied"
+    );
+
+    mutableStore.upsertPortalAccessRequest({
+      ...firstResume,
+      nextAction: "traffic_supply_suspended_quota",
+      updatedAt: "2026-06-13T12:02:00.000Z",
+      event: {
+        ...firstResume.event,
+        lifecycleRevisionRef: "lifecycle_revision_tombstone_b"
+      }
+    });
+    const tombstoneProjection = mutableStore.getLatestEdgeDesiredStateForChannel(
+      "channel-sgp-a-hy2",
+      { nodeRef: "edge-node-sgp-a" }
+    );
+
+    mutableStore.upsertPortalAccessRequest({
+      ...firstResume,
+      updatedAt: resumeAt,
+      event: {
+        ...firstResume.event,
+        lifecycleRevisionRef: "lifecycle_revision_resume_c"
+      }
+    });
+    const rollbackProjection = mutableStore.getLatestEdgeDesiredStateForChannel(
+      "channel-sgp-a-hy2",
+      { nodeRef: "edge-node-sgp-a" }
+    );
+
+    assert.notEqual(tombstoneProjection.desiredStateRef, firstProjection.desiredStateRef);
+    assert.notEqual(rollbackProjection.desiredStateRef, firstProjection.desiredStateRef);
+    assert.notEqual(rollbackProjection.generation, firstProjection.generation);
+    assert.equal(rollbackProjection.lifecycleRevisionSafe, true);
+    const rollbackNotification = notifier.notifyOrderLifecycle(lifecycleNotification);
+    assert.notEqual(rollbackNotification.notifications[0].id, firstNotification.notifications[0].id);
+    assert.equal(rollbackNotification.notifications[0].status, "pending");
+
+    mutableStore.upsertPortalAccessRequest({
+      ...firstResume,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      updatedAt: "2026-06-13T12:03:00.000Z",
+      event: {
+        type: "traffic_supply_resumed",
+        occurredAt: "2026-06-13T12:03:00.000Z",
+        lifecycleRevisionRef: "lifecycle_revision_resume_c"
+      }
+    });
+    const completedProjection = mutableStore.getLatestEdgeDesiredStateForChannel(
+      "channel-sgp-a-hy2",
+      { nodeRef: "edge-node-sgp-a" }
+    );
+    assert.equal(completedProjection.desiredStateRef, rollbackProjection.desiredStateRef);
+    assert.equal(completedProjection.generation, rollbackProjection.generation);
+
+    mutableStore.close();
+    mutableStore = null;
+    readOnlyStore = createReadOnlyMaterialHandoffControlStore({ dbPath });
+    assert.deepEqual(
+      readOnlyStore.getLatestEdgeDesiredStateForChannel(
+        "channel-sgp-a-hy2",
+        { nodeRef: "edge-node-sgp-a" }
+      ),
+      completedProjection
+    );
+  } finally {
+    readOnlyStore?.close();
+    mutableStore?.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("legacy traffic lifecycle state requeues an applied notification fail closed", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "edge-material-handoff-legacy-lifecycle-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  let store;
+  try {
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    const delivered = seedDeliveredOrder(store);
+    store.upsertPortalAccessRequest({
+      ...delivered,
+      status: "disabled",
+      nextAction: "traffic_supply_resume_pending",
+      updatedAt: "2026-06-13T12:01:00.000Z",
+      event: null
+    });
+    const desiredState = store.getLatestEdgeDesiredStateForChannel(
+      "channel-sgp-a-hy2",
+      { nodeRef: "edge-node-sgp-a" }
+    );
+    assert.equal(desiredState.lifecycleRevisionSafe, false);
+
+    const notifier = createDataPlaneDesiredStateNotifier({
+      controlStore: store,
+      servers: [{
+        name: "channel-sgp-a-hy2",
+        nodeRef: "edge-node-sgp-a",
+        runtimeAdapter: "remote-data-plane-handoff"
+      }],
+      nowFn: () => "2026-06-13T12:01:00.000Z"
+    });
+    const input = {
+      reason: "traffic_supply_resumed",
+      order: { edgeChannelRef: "channel-sgp-a-hy2" }
+    };
+    const first = notifier.notifyOrderLifecycle(input);
+    store.recordEdgeApplyReceipt({
+      id: "edge_receipt_legacy_lifecycle",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: desiredState.desiredStateRef,
+      status: "applied",
+      actionCounts: {
+        add: 1,
+        revoke: 0,
+        rotate: 0,
+        unchanged: 0
+      },
+      configTestOk: true,
+      serviceActive: true,
+      listenerUdp443: true,
+      appliedAt: "2026-06-13T12:02:00.000Z",
+      createdAt: "2026-06-13T12:02:00.000Z"
+    });
+
+    const repeated = notifier.notifyOrderLifecycle(input);
+
+    assert.equal(first.notifications[0].status, "pending");
+    assert.equal(repeated.notifications[0].status, "pending");
+    assert.equal(
+      store.getEdgeDesiredStateNotification(first.notifications[0].id).status,
+      "pending"
+    );
+  } finally {
+    store?.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("dormant legacy suspension does not poison channel lifecycle replay safety", () => {
+  withStore((store) => {
+    const delivered = seedDeliveredOrder(store);
+    store.upsertPortalAccessRequest({
+      ...delivered,
+      status: "disabled",
+      nextAction: "traffic_supply_suspended_quota",
+      updatedAt: "2026-06-13T12:01:00.000Z",
+      event: {
+        type: "traffic_supply_suspended",
+        occurredAt: "2026-06-13T12:01:00.000Z",
+        previousStatus: "delivered"
+      }
+    });
+
+    const desiredState = store.getLatestEdgeDesiredStateForChannel(
+      "channel-sgp-a-hy2",
+      { nodeRef: "edge-node-sgp-a" }
+    );
+
+    assert.equal(desiredState.lifecycleRevisionSafe, true);
+    assert.deepEqual(desiredState.edgeCredentialRefs, []);
+  });
 });
 
 test("material handoff preflight fails closed when protected material is missing or mismatched", () => {

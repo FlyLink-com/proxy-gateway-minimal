@@ -26,6 +26,7 @@ import {
   normalizeNote,
   normalizePublicSubscriptionBaseUrl,
   notFoundError,
+  serviceError,
   validationError
 } from "./validation.mjs";
 
@@ -371,12 +372,32 @@ export function createSubscriptionCore({
   }
 
   function renewTenant(id, input) {
-    const tenant = subscriptionStore.renewTenant(id, {
-      expiresAt: normalizeExpiresAt(input.expiresAt),
+    const expiresAt = normalizeExpiresAt(input.expiresAt);
+    subscriptionStore.renewTenant(id, {
+      expiresAt,
       now: isoNow(nowFn)
     });
+
+    const tenant = subscriptionStore.getTenant(id);
     if (!tenant) {
       throw notFoundError(id);
+    }
+    if (tenant.status !== "active") {
+      throw serviceError(
+        `Subscription tenant is not active: ${id}`,
+        "subscription_not_active"
+      );
+    }
+    const storedExpiryMs = new Date(tenant.expiresAt).getTime();
+    const targetExpiryMs = new Date(expiresAt).getTime();
+    if (
+      !Number.isFinite(storedExpiryMs)
+      || storedExpiryMs < targetExpiryMs
+    ) {
+      throw serviceError(
+        `Subscription renewal did not converge: ${id}`,
+        "subscription_renewal_not_converged"
+      );
     }
     return serializeTenant(tenant);
   }
