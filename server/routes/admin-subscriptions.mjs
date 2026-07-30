@@ -176,8 +176,8 @@ export function adminSubscriptionRoutes(state) {
               reasonCode: "allowed"
             }
           }));
-        } catch (error) {
-          sendError(res, error);
+        } catch {
+          res.status(500).json({ error: "internal_error" });
         }
       }
     );
