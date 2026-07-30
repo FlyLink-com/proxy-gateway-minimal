@@ -734,3 +734,81 @@ test("Operations Read Envelope rejects accessor-driven data structure mutation",
     }
   }
 });
+
+
+test("Operations Read Envelope rejects top-level own-to-inherited mutation", () => {
+  const originalFreshnessDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "freshness"
+  );
+  const input = { ...validEnvelopeInput };
+  Object.defineProperty(input, "schemaVersion", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      delete input.freshness;
+      Object.defineProperty(Object.prototype, "freshness", {
+        configurable: true,
+        value: "fresh",
+        writable: true
+      });
+      return "operations-overview-read-envelope/v1";
+    }
+  });
+
+  try {
+    assertOperationsReadContractError(
+      () => createOperationsReadEnvelope(input)
+    );
+  } finally {
+    if (originalFreshnessDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "freshness",
+        originalFreshnessDescriptor
+      );
+    } else {
+      delete Object.prototype.freshness;
+    }
+  }
+});
+
+test("Operations Read Envelope rejects access own-to-inherited mutation", () => {
+  const originalCapabilityDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "capability"
+  );
+  const access = { ...validEnvelopeInput.access };
+  Object.defineProperty(access, "allowed", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      delete access.capability;
+      Object.defineProperty(Object.prototype, "capability", {
+        configurable: true,
+        value: "operations.read",
+        writable: true
+      });
+      return true;
+    }
+  });
+
+  try {
+    assertOperationsReadContractError(
+      () => createOperationsReadEnvelope({
+        ...validEnvelopeInput,
+        access
+      })
+    );
+  } finally {
+    if (originalCapabilityDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "capability",
+        originalCapabilityDescriptor
+      );
+    } else {
+      delete Object.prototype.capability;
+    }
+  }
+});
