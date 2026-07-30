@@ -840,3 +840,30 @@ test("Admin overview returns 403 when the principal lacks operations.read", asyn
     server.close();
   }
 });
+
+
+test("Operations overview route is absent while Admin authorization is disabled", async () => {
+  let overviewCalls = 0;
+  const service = {
+    ...fakeService(),
+    overview: () => {
+      overviewCalls += 1;
+      return fakeService().overview();
+    }
+  };
+  const state = fakeState(service);
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const operations = await requestJson(baseUrl, "/api/admin/operations/overview");
+    assert.equal(operations.response.status, 404);
+    assert.equal(overviewCalls, 0);
+
+    const legacy = await requestJson(baseUrl, "/api/admin/overview");
+    assert.equal(legacy.response.status, 200);
+    assert.equal(legacy.body.ok, true);
+    assert.equal(typeof legacy.body.counts, "object");
+    assert.equal(overviewCalls, 1);
+  } finally {
+    server.close();
+  }
+});
