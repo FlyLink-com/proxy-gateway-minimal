@@ -116,9 +116,11 @@ The authorized response is:
 - `schemaVersion` identifies this endpoint-specific v1 contract.
 - `generatedAt` is an ISO-8601 server generation timestamp.
 - `freshness: "fresh"` means the response was generated from a direct current query of the Subscription Owner Store. It does not claim that production deployment, nodes, Providers, collectors, or external systems are healthy or recently observed.
+- Supported freshness values are exactly `fresh`, `stale`, `partial`, and `unknown`.
 - `sourceState: "implemented_source"` identifies implemented source ownership. It is not production deployment evidence.
-- `warnings` is an empty array in this slice. No warning is fabricated without an owned warning source.
-- `access` contains only the safe allowed authorization decision.
+- Supported source-state values are exactly `implemented_source`, `source_not_deployed`, and `production_unknown`.
+- `warnings` is an empty array in this slice. A future warning may contain only a code from `source_stale`, `source_partial`, or `source_unavailable`; free-form warning messages are excluded from v1.
+- `access` contains only `{ allowed: true, capability: "operations.read", reasonCode: "allowed" }`. Reaching the handler proves the middleware allowed that capability; the handler does not repeat authorization or read policy internals.
 
 ## Allowlisted Data Model
 
@@ -143,10 +145,10 @@ A pure reusable Envelope Builder.
 
 Responsibilities:
 
-- require an explicit schema version;
-- require a valid ISO generation time;
-- accept only supported freshness and source-state values;
-- accept a safe data object, warnings array, and allowed access decision;
+- require an explicit schema version matching the lowercase `<contract>/v<number>` form;
+- require a valid canonical ISO generation time;
+- accept only the explicitly supported freshness and source-state values;
+- accept a safe data object, the bounded warning-code array, and the exact allowed access decision;
 - construct a new response object;
 - reject malformed inputs with a safe validation error;
 - allow a deterministic time source in unit tests.
@@ -177,7 +179,7 @@ Responsibilities:
 - apply `requireAdminCapability("operations.read")`;
 - call `core.overview()`;
 - pass its result through the allowlist Projector;
-- build the Envelope with the allowed access decision;
+- after the capability middleware reaches the handler, build the Envelope with the fixed safe allowed metadata for the enforced `operations.read` capability;
 - return the safe response;
 - map unexpected failures to the existing safe internal error behavior.
 
@@ -188,6 +190,7 @@ The existing legacy route remains unchanged.
 ```text
 Admin Session Gateway
   -> requireAdminCapability("operations.read")
+  -> allowed handler entry
   -> GET /api/admin/operations/overview
   -> Subscription core.overview()
   -> projectOperationsOverviewReadModel()
