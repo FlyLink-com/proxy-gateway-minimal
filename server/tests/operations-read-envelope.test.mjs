@@ -150,3 +150,70 @@ for (const [label, input, options] of [
     );
   });
 }
+
+
+test("Operations Read Envelope generates canonical time from trusted Date internals", () => {
+  const now = new Date("2026-07-31T00:00:00.000Z");
+  now.toISOString = () => "caller-controlled";
+
+  const envelope = createOperationsReadEnvelope(validEnvelopeInput, {
+    nowFn: () => now
+  });
+
+  assert.equal(envelope.generatedAt, "2026-07-31T00:00:00.000Z");
+});
+
+test("Operations Read Envelope rejects an invalid Date with overridden methods", () => {
+  const now = new Date("invalid");
+  now.getTime = () => 0;
+  now.toISOString = () => "caller-controlled";
+
+  assert.throws(
+    () => createOperationsReadEnvelope(validEnvelopeInput, {
+      nowFn: () => now
+    }),
+    (error) => error.code === "operations_read_contract_error"
+  );
+});
+
+test("Operations Read Envelope snapshots warning and access getters once", () => {
+  let warningReads = 0;
+  const warning = {};
+  Object.defineProperty(warning, "code", {
+    enumerable: true,
+    get() {
+      warningReads += 1;
+      return warningReads === 1 ? "source_stale" : "caller-controlled";
+    }
+  });
+
+  let capabilityReads = 0;
+  const access = {
+    allowed: true,
+    reasonCode: "allowed"
+  };
+  Object.defineProperty(access, "capability", {
+    enumerable: true,
+    get() {
+      capabilityReads += 1;
+      return capabilityReads === 1 ? "operations.read" : "caller-controlled";
+    }
+  });
+
+  const envelope = createOperationsReadEnvelope({
+    ...validEnvelopeInput,
+    warnings: [warning],
+    access
+  }, {
+    nowFn: () => new Date("2026-07-31T00:00:00.000Z")
+  });
+
+  assert.deepEqual(envelope.warnings, [{ code: "source_stale" }]);
+  assert.deepEqual(envelope.access, {
+    allowed: true,
+    capability: "operations.read",
+    reasonCode: "allowed"
+  });
+  assert.equal(warningReads, 1);
+  assert.equal(capabilityReads, 1);
+});
