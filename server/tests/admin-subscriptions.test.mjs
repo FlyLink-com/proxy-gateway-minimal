@@ -927,9 +927,22 @@ test("Operations overview returns an allowlisted authorized Envelope", async () 
     });
     assert.equal(new Date(body.generatedAt).toISOString(), body.generatedAt);
     assert.equal(overviewCalls, 1);
+    const envelopeWithUnexpectedTopLevelOk = { ...body, ok: true };
+    assert.deepEqual(
+      Object.keys(envelopeWithUnexpectedTopLevelOk).sort(),
+      [
+        "access",
+        "data",
+        "freshness",
+        "generatedAt",
+        "schemaVersion",
+        "sourceState",
+        "warnings"
+      ]
+    );
     assert.doesNotMatch(
       JSON.stringify(body),
-      /node-secret|credential-secret|must-not-cross|futureSourceField|\\"ok\\"/
+      /node-secret|credential-secret|must-not-cross|futureSourceField/
     );
   } finally {
     server.close();
