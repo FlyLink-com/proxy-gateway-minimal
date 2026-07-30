@@ -8,11 +8,20 @@ const ADMIN_READ_CAPABILITIES = Object.freeze([
   "runtime.read"
 ]);
 
+const SUPER_ADMIN_READ_CAPABILITIES = Object.freeze([
+  ...ADMIN_READ_CAPABILITIES,
+  "audit.read"
+]);
+
 export function createAdminPrincipal(input = {}) {
   const session = input.session;
   const role = String(input.role || "").trim();
 
-  if (!session || session.status !== "active" || role !== "admin") {
+  if (
+    !session ||
+    session.status !== "active" ||
+    !["admin", "super_admin"].includes(role)
+  ) {
     return null;
   }
 
@@ -29,7 +38,10 @@ export function createAdminPrincipal(input = {}) {
     operatorRef,
     sessionRef,
     role,
-    capabilities: [...ADMIN_READ_CAPABILITIES],
+    capabilities:
+      role === "super_admin"
+        ? [...SUPER_ADMIN_READ_CAPABILITIES]
+        : [...ADMIN_READ_CAPABILITIES],
     authenticatedAt,
     expiresAt,
     authStrength: "session"
