@@ -794,3 +794,20 @@ test("opaque artifact provider profile uses configured public subscription base 
     context.close();
   }
 });
+
+test("Admin overview requires an authenticated principal when capability authorization is enabled", async () => {
+  const state = fakeState();
+  state.platform = {
+    adminAuthorizationEnabled: true
+  };
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const overview = await requestJson(baseUrl, "/api/admin/overview");
+    assert.equal(overview.response.status, 401);
+    assert.deepEqual(overview.body, {
+      error: "admin_authentication_required"
+    });
+  } finally {
+    server.close();
+  }
+});
