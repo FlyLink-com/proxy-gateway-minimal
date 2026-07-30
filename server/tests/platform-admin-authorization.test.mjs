@@ -45,3 +45,36 @@ test("Admin authorization denies a read capability not held by the principal", (
     reasonCode: "capability_missing"
   });
 });
+
+
+test("Admin principal derives the fixed admin read-capability set from an active session", () => {
+  const principal = adminAuth.createAdminPrincipal?.({
+    session: {
+      sessionRef: "admin_session_1",
+      operatorRef: "admin_operator_1",
+      authMethod: "totp",
+      status: "active",
+      issuedAt: "2026-07-30T00:00:00.000Z",
+      expiresAt: "2026-07-30T01:00:00.000Z"
+    },
+    role: "admin"
+  });
+
+  assert.deepEqual(principal, {
+    operatorRef: "admin_operator_1",
+    sessionRef: "admin_session_1",
+    role: "admin",
+    capabilities: [
+      "operations.read",
+      "users.read",
+      "commerce.read",
+      "payments.read",
+      "wallet.read",
+      "catalog.read",
+      "runtime.read"
+    ],
+    authenticatedAt: "2026-07-30T00:00:00.000Z",
+    expiresAt: "2026-07-30T01:00:00.000Z",
+    authStrength: "session"
+  });
+});
