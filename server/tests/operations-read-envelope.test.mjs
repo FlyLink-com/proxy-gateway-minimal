@@ -488,3 +488,126 @@ test("Operations Overview Projector preserves safe error code under inherited se
     }
   }
 });
+
+
+test("Operations Read Envelope preserves safe error code under inherited setters", () => {
+  const originalCodeDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "code"
+  );
+  const input = { ...validEnvelopeInput };
+  Object.defineProperty(input, "schemaVersion", {
+    enumerable: true,
+    get() {
+      Object.defineProperty(Object.prototype, "code", {
+        configurable: true,
+        set() {}
+      });
+      throw new Error("caller-secret-must-not-cross");
+    }
+  });
+
+  let caught;
+  try {
+    try {
+      createOperationsReadEnvelope(input);
+    } catch (error) {
+      caught = error;
+    }
+  } finally {
+    if (originalCodeDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "code",
+        originalCodeDescriptor
+      );
+    } else {
+      delete Object.prototype.code;
+    }
+  }
+
+  assert.equal(caught?.message, "Operations read contract is invalid");
+  assert.equal(caught?.code, "operations_read_contract_error");
+  assert.equal(Object.hasOwn(caught, "code"), true);
+});
+
+test("Operations Read Envelope defines cloned data array elements as own properties", () => {
+  const originalZeroDescriptor = Object.getOwnPropertyDescriptor(
+    Array.prototype,
+    "0"
+  );
+  const nested = [];
+  Object.defineProperty(nested, "0", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      Object.defineProperty(Array.prototype, "0", {
+        configurable: true,
+        set() {}
+      });
+      return { active: 8 };
+    }
+  });
+  nested.length = 1;
+
+  let envelope;
+  try {
+    envelope = createOperationsReadEnvelope({
+      ...validEnvelopeInput,
+      data: { nested }
+    });
+  } finally {
+    if (originalZeroDescriptor) {
+      Object.defineProperty(
+        Array.prototype,
+        "0",
+        originalZeroDescriptor
+      );
+    } else {
+      delete Array.prototype[0];
+    }
+  }
+
+  assert.deepEqual(envelope.data.nested, [{ active: 8 }]);
+  assert.equal(Object.hasOwn(envelope.data.nested, 0), true);
+});
+
+test("Operations Read Envelope defines warning snapshots as own array elements", () => {
+  const originalZeroDescriptor = Object.getOwnPropertyDescriptor(
+    Array.prototype,
+    "0"
+  );
+  const warning = {};
+  Object.defineProperty(warning, "code", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      Object.defineProperty(Array.prototype, "0", {
+        configurable: true,
+        set() {}
+      });
+      return "source_stale";
+    }
+  });
+
+  let envelope;
+  try {
+    envelope = createOperationsReadEnvelope({
+      ...validEnvelopeInput,
+      warnings: [warning]
+    });
+  } finally {
+    if (originalZeroDescriptor) {
+      Object.defineProperty(
+        Array.prototype,
+        "0",
+        originalZeroDescriptor
+      );
+    } else {
+      delete Array.prototype[0];
+    }
+  }
+
+  assert.deepEqual(envelope.warnings, [{ code: "source_stale" }]);
+  assert.equal(Object.hasOwn(envelope.warnings, 0), true);
+});
