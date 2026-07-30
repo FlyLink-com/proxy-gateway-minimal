@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import Database from "better-sqlite3";
+import express from "express";
 import { createApp } from "../app.mjs";
+import { adminSubscriptionRoutes } from "../routes/admin-subscriptions.mjs";
 import { createSubscriptionRepository } from "../services/subscriptions/repository.mjs";
 import { createSubscriptionService } from "../services/subscriptions/service.mjs";
 import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
@@ -792,5 +794,49 @@ test("opaque artifact provider profile uses configured public subscription base 
   } finally {
     server.close();
     context.close();
+  }
+});
+
+test("Admin overview returns 401 without a principal when capability authorization is enabled", async () => {
+  const state = fakeState();
+  state.platform = {
+    adminAuthorizationEnabled: true
+  };
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const overview = await requestJson(baseUrl, "/api/admin/overview");
+    assert.equal(overview.response.status, 401);
+    assert.deepEqual(overview.body, {
+      error: "admin_authentication_required"
+    });
+  } finally {
+    server.close();
+  }
+});
+
+test("Admin overview returns 403 when the principal lacks operations.read", async () => {
+  const state = fakeState();
+  state.platform = {
+    adminAuthorizationEnabled: true
+  };
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = {
+      capabilities: ["users.read"]
+    };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/overview`);
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: "admin_capability_required",
+      capability: "operations.read"
+    });
+  } finally {
+    server.close();
   }
 });

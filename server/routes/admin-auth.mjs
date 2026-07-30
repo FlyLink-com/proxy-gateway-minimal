@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
+import { createAdminPrincipal } from "../services/platform/admin-auth.mjs";
 
 const ADMIN_AUTH_ATTEMPT_WINDOW_MS = 60_000;
 const ADMIN_AUTH_ATTEMPT_MAX = 10;
@@ -126,11 +127,12 @@ export function adminAuthRoutes(state, options = {}) {
   return router;
 }
 
-export function createAdminSessionGatewayMiddleware({ adminAuth, consoleToken }) {
+export function createAdminSessionGatewayMiddleware({ adminAuth, consoleToken, role = "admin" }) {
   return (req, _res, next) => {
     delete req.headers.authorization;
     const session = adminAuth.authenticateCookie({ cookieHeader: req.get("cookie") });
     if (session) {
+      req.adminPrincipal = createAdminPrincipal({ session, role });
       req.headers.authorization = `Bearer ${consoleToken}`;
     }
     next();

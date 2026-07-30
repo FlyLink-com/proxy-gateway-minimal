@@ -287,3 +287,47 @@ test("portal-account admin auth permits only portal_user_20260604_001 with passw
     rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 });
+
+test("Admin session principal with operations.read reaches the protected overview", async () => {
+  const overviewPayload = {
+    ok: true,
+    total: 1,
+    active: 1
+  };
+  const state = baseState({
+    subscriptions: {
+      service: {
+        overview: () => overviewPayload
+      }
+    },
+    platform: {
+      adminAuthRoutesEnabled: true,
+      adminAuthorizationEnabled: true,
+      adminAuth: {
+        sessionStatus: () => ({ authenticated: false }),
+        authenticateCookie: ({ cookieHeader }) => (
+          String(cookieHeader || "").includes("gcc_admin_session=valid")
+            ? {
+              sessionRef: "admin_session_operations_1",
+              operatorRef: ADMIN_ACCOUNT_ID,
+              authMethod: "totp",
+              status: "active",
+              issuedAt: "2026-07-30T00:00:00.000Z",
+              expiresAt: "2026-07-30T01:00:00.000Z"
+            }
+            : null
+        )
+      }
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/overview`, {
+      headers: { Cookie: "gcc_admin_session=valid" }
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), overviewPayload);
+  } finally {
+    server.close();
+  }
+});
