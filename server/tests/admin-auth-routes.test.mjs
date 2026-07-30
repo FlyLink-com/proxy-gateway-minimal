@@ -3,7 +3,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import express from "express";
 import { createApp } from "../app.mjs";
+import { requireAdminCapability } from "../middleware/admin-authorization.mjs";
 import { createPortalAccountAdminAuthService } from "../services/platform/admin-auth.mjs";
 import { createPortalPasswordCredentialService } from "../services/platform/portal-password-credentials.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
@@ -327,6 +329,26 @@ test("Admin session principal with operations.read reaches the protected overvie
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), overviewPayload);
+  } finally {
+    server.close();
+  }
+});
+
+test("requireAdminCapability rejects a request without an Admin principal", async () => {
+  const app = express();
+  app.get(
+    "/protected",
+    requireAdminCapability("operations.read"),
+    (_req, res) => res.json({ ok: true })
+  );
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/protected`);
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), {
+      error: "admin_authentication_required"
+    });
   } finally {
     server.close();
   }

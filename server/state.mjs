@@ -1253,6 +1253,7 @@ export function createRuntimeState(options = {}) {
   });
   const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
   const adminAuthRoutesEnabled = envFlag(env.ADMIN_AUTH_ROUTES_ENABLED || env.ADMIN_PROTECTED_ROUTE_AUTH_ENABLED);
+  const adminAuthorizationEnabled = envFlag(env.ADMIN_AUTHORIZATION_ENABLED);
   const coinsWalletEnabled = envFlag(env.COINS_WALLET_ENABLED);
   const coinsCommerceEnabled = envFlag(env.COINS_COMMERCE_ENABLED);
   let configuredCoinCommerceStore = null;
@@ -2185,6 +2186,7 @@ export function createRuntimeState(options = {}) {
       coinCommerceStore,
       coinCommerceCoordinator,
       adminAuthRoutesEnabled,
+      adminAuthorizationEnabled,
       adminAuth: platformAdminAuth,
       userPortalRoutesEnabled,
       userPortalAuth: platformUserPortalAuth,

@@ -2660,6 +2660,32 @@ test("createRuntimeState wires portal-account admin auth to the configured singl
   }
 });
 
+test("createRuntimeState exposes the opt-in Admin authorization flag", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-admin-authorization-wiring-"));
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        ADMIN_AUTH_ROUTES_ENABLED: "true",
+        ADMIN_AUTHORIZATION_ENABLED: "true",
+        ADMIN_AUTH_SESSION_SECRET: "synthetic-admin-session-secret",
+        ADMIN_AUTH_PORTAL_ACCOUNT_ID: "portal_user_20260604_001"
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(state.platform.adminAuthorizationEnabled, true);
+  } finally {
+    state?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
 test("createRuntimeState fails closed when admin auth lacks the portal admin account", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-admin-auth-fail-closed-"));
 
