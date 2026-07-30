@@ -126,14 +126,22 @@ export function normalizePlatformEntitlement(payload = {}, options = {}) {
   if (!ENTITLEMENT_PLANS.has(plan)) {
     throw contractError("plan is invalid");
   }
+  const validFrom = normalizeIsoDate(payload.validFrom, "validFrom", timestamp);
+  const validUntil = normalizeIsoDate(payload.validUntil, "validUntil");
+  if (
+    options.allowUnusableValidityInterval !== true
+    && (!validUntil || validFrom >= validUntil)
+  ) {
+    throw contractError("validFrom must be before validUntil");
+  }
   return {
     id: requiredString(payload.id ?? options.idFactory?.(), "id", 80),
     type: "platform_entitlement",
     accountId: requiredString(payload.accountId, "accountId", 80),
     plan,
     status: normalizeStatus(payload.status, ENTITLEMENT_STATUSES, "status", "pending"),
-    validFrom: normalizeIsoDate(payload.validFrom, "validFrom", timestamp),
-    validUntil: normalizeIsoDate(payload.validUntil, "validUntil"),
+    validFrom,
+    validUntil,
     quota: normalizeQuota(payload.quota),
     createdAt: normalizeIsoDate(payload.createdAt, "createdAt", timestamp),
     updatedAt: normalizeIsoDate(payload.updatedAt, "updatedAt", timestamp)

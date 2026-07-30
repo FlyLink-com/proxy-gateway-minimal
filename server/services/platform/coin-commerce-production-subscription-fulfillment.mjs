@@ -219,6 +219,8 @@ function resolveEligibleSubscriptionBinding({ controlStore, runtimeCore, account
 
   const issuanceRequest = controlStore.getIssuanceRequest(accessRequest.id);
   const entitlement = controlStore.getEntitlement(accessRequest.entitlementRef);
+  const entitlementValidFrom = canonicalTimestamp(entitlement?.validFrom);
+  const entitlementValidUntil = canonicalTimestamp(entitlement?.validUntil);
   if (
     !issuanceRequest
     || issuanceRequest.status !== "issued"
@@ -227,6 +229,9 @@ function resolveEligibleSubscriptionBinding({ controlStore, runtimeCore, account
     || !entitlement
     || entitlement.status !== "active"
     || entitlement.accountId !== accountId
+    || entitlementValidFrom === null
+    || entitlementValidUntil === null
+    || entitlementValidFrom >= entitlementValidUntil
     || accessRequest.expiresAt !== entitlement.validUntil
     || accessRequest.validUntil !== entitlement.validUntil
   ) {
@@ -437,13 +442,11 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         candidate.offerVersionRef === resolved.entitlement.plan
       )
     );
-    if (
+    const requireExistingEffect = Boolean(
       currentOffer
       && currentOffer.offerVersionRef !== offer.offerVersionRef
       && canonicalTimestamp(resolved.entitlement.validUntil) > now
-    ) {
-      throw createCoinCommerceFulfillmentReconciliationError();
-    }
+    );
     const portalPlan = offer.delivery.durationDays === 365 ? "yearly" : "monthly";
     let effect;
     try {
@@ -460,6 +463,7 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         portalPlan,
         durationDays: offer.delivery.durationDays,
         monthlyTrafficGb: offer.delivery.monthlyTrafficGb,
+        requireExistingEffect,
         recoveryOnly: resolved.runtimeReady !== true,
         now
       });

@@ -136,7 +136,10 @@ function buildBlockers({ entitlementUsable, access, activation }) {
 export function buildPlatformResourcePackage(input = {}) {
   const generatedAt = safeIso(input.generatedAt) || new Date().toISOString();
   const account = normalizePlatformAccount(input.account || {}, { now: generatedAt });
-  const entitlement = normalizePlatformEntitlement(input.entitlement || {}, { now: generatedAt });
+  const entitlement = normalizePlatformEntitlement(input.entitlement || {}, {
+    now: generatedAt,
+    allowUnusableValidityInterval: true
+  });
   const access = normalizeAccessGrant(input.accessGrant || {});
   const entitlementUsable = entitlement.accountId === account.id
     && isEntitlementUsable(entitlement, { now: generatedAt });

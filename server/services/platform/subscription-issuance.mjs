@@ -12,6 +12,15 @@ function validationError(msg) {
   return err;
 }
 
+function canonicalTimestamp(value, field) {
+  const raw = String(value ?? "").trim();
+  const date = new Date(raw);
+  if (!raw || Number.isNaN(date.getTime())) {
+    throw validationError(`${field} must be a valid ISO timestamp`);
+  }
+  return date.toISOString();
+}
+
 function bestEffort(step) {
   try {
     step();
@@ -77,7 +86,7 @@ function runControlFinalization(controlStore, finalize) {
   return finalize();
 }
 
-export function validateIssuanceInput(input) {
+export function validateIssuanceInput(input, { now = null } = {}) {
   function throwError(msg) {
     throw validationError(msg);
   }
@@ -105,6 +114,14 @@ export function validateIssuanceInput(input) {
       throwError(`control.${field} is mandatory for real issuance.`);
     }
   }
+  const validUntil = canonicalTimestamp(input.expiresAt, "expiresAt");
+  const effectiveValidFrom = control.validFrom || now;
+  if (effectiveValidFrom) {
+    const validFrom = canonicalTimestamp(effectiveValidFrom, "validFrom");
+    if (validFrom >= validUntil) {
+      throwError("validFrom must be before expiresAt");
+    }
+  }
   return input;
 }
 
@@ -112,8 +129,8 @@ export function validateIssuanceInput(input) {
  * previewSubscriptionIssuance validates the input and returns an execution plan
  * without performing any mutation.
  */
-export function previewSubscriptionIssuance({ input }) {
-  validateIssuanceInput(input);
+export function previewSubscriptionIssuance({ input, now = new Date().toISOString() }) {
+  validateIssuanceInput(input, { now });
   const control = input.control;
 
   return {
@@ -141,7 +158,7 @@ export function planSubscriptionIssuance({ controlStore, input, approvalRef, now
   if (!approvalRef) throw validationError("approvalRef is mandatory for planned issuance request.");
   if (!now) throw new Error("now is required");
 
-  validateIssuanceInput(input);
+  validateIssuanceInput(input, { now });
   const control = input.control;
 
   // Account
@@ -235,7 +252,7 @@ export function executeSubscriptionIssuance({ controlStore, runtimeCore, input, 
   if (!approvalRef) throw new Error("approvalRef is required");
   if (!now) throw new Error("now is required");
 
-  validateIssuanceInput(input);
+  validateIssuanceInput(input, { now });
   const control = input.control;
 
   // Account

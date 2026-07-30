@@ -32,7 +32,7 @@ const VULTR_MULTICHANNEL_ENV = {
 function inputFixture(overrides = {}) {
   return {
     displayName: "Test User",
-    expiresAt: "2026-06-04T00:00:00.000Z",
+    expiresAt: "2099-06-04T00:00:00.000Z",
     nodeId: "channel-vultr-a-vless-reality-tcp",
     note: "test-note",
     control: {
@@ -302,4 +302,48 @@ test("platform issue-subscription strictly fails closed without creating runtime
     assert.ok(!existsSync(controlDbPath), "control DB must not be created on invalid input");
     assert.ok(!existsSync(handoffPath), "handoff file must not be created on invalid input");
   }, inputFixture({ nodeId: "" }));
+});
+
+test("platform issue-subscription rejects invalid validity intervals before opening databases", async (t) => {
+  const cases = [
+    {
+      name: "equal",
+      validFrom: "2099-06-04T00:00:00.000Z",
+      expiresAt: "2099-06-04T00:00:00.000Z"
+    },
+    {
+      name: "reversed",
+      validFrom: "2099-06-05T00:00:00.000Z",
+      expiresAt: "2099-06-04T00:00:00.000Z"
+    }
+  ];
+
+  for (const { name, validFrom, expiresAt } of cases) {
+    await t.test(name, () => {
+      const base = inputFixture();
+      withCleanEnv(({ inputPath, dbPath, controlDbPath, handoffPath }) => {
+        const err = runCliThrows([
+          "--execute-production-mutation",
+          "--approval-ref", "PR-123",
+          "--db-path", dbPath,
+          "--control-db-path", controlDbPath,
+          "--public-base-url", "https://example.com",
+          "--handoff-file", handoffPath,
+          inputPath
+        ]);
+        assert.ok(err);
+        assert.match(err.stderr || err.message, /validFrom must be before expiresAt/);
+        assert.ok(!existsSync(dbPath), "runtime DB must not be created on invalid interval");
+        assert.ok(!existsSync(controlDbPath), "control DB must not be created on invalid interval");
+        assert.ok(!existsSync(handoffPath), "handoff file must not be created on invalid interval");
+      }, {
+        ...base,
+        expiresAt,
+        control: {
+          ...base.control,
+          validFrom
+        }
+      });
+    });
+  }
 });

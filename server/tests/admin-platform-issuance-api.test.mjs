@@ -168,6 +168,18 @@ test("admin platform issuance preview rejects invalid input", async () => {
     assert.equal(res.status, 400);
     const body = await res.json();
     assert.equal(body.error, "validation_error");
+
+    const expired = await fetch(`${baseUrl}/api/admin/platform/subscription-issuance/preview`, {
+      method: "POST",
+      headers: authHeaders(state),
+      body: JSON.stringify({
+        ...validIssuanceInput,
+        expiresAt: new Date(Date.now() - 86400000).toISOString()
+      })
+    });
+
+    assert.equal(expired.status, 400);
+    assert.equal((await expired.json()).error, "validation_error");
   } finally {
     server.close();
     state.close();

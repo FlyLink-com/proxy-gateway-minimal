@@ -1169,6 +1169,171 @@ test("an older command replay follows the fulfillment chain despite wall-clock r
   }
 });
 
+test("an older command replay follows a later cross-product fulfillment", () => {
+  const fixture = createFixture();
+  try {
+    let currentNow = NOW;
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(currentNow)
+    });
+    const firstInput = productionInput(fixture);
+    const first = service.fulfillmentHandler.execute(firstInput);
+
+    currentNow = "2026-10-02T00:00:00.000Z";
+    fixture.setNow(currentNow);
+    const later = service.fulfillmentHandler.execute(productionInput(
+      fixture,
+      COIN_COMMERCE_PRODUCTION_OFFERS[1],
+      {
+        commandRef: "coincmd_fulfillment_cross_product_later",
+        orderRef: "coinord_fulfillment_cross_product_later"
+      }
+    ));
+    assert.notEqual(later.effectRef, first.effectRef);
+    assert.deepEqual({
+      plan: fixture.controlStore.getEntitlement(fixture.entitlementRef).plan,
+      validFrom: fixture.controlStore.getEntitlement(fixture.entitlementRef).validFrom,
+      validUntil: fixture.controlStore.getEntitlement(fixture.entitlementRef).validUntil
+    }, {
+      plan: COIN_COMMERCE_PRODUCTION_OFFERS[1].offerVersionRef,
+      validFrom: currentNow,
+      validUntil: "2026-11-01T00:00:00.000Z"
+    });
+
+    currentNow = "2026-10-03T00:00:00.000Z";
+    fixture.setNow(currentNow);
+    const replay = service.fulfillmentHandler.execute(firstInput);
+
+    assert.deepEqual(replay, first);
+    assert.deepEqual({
+      plan: fixture.controlStore.getEntitlement(fixture.entitlementRef).plan,
+      validFrom: fixture.controlStore.getEntitlement(fixture.entitlementRef).validFrom,
+      validUntil: fixture.controlStore.getEntitlement(fixture.entitlementRef).validUntil,
+      runtimeValidUntil: fixture.runtimeCore.getTenant(fixture.tenantId).expiresAt
+    }, {
+      plan: COIN_COMMERCE_PRODUCTION_OFFERS[1].offerVersionRef,
+      validFrom: "2026-10-02T00:00:00.000Z",
+      validUntil: "2026-11-01T00:00:00.000Z",
+      runtimeValidUntil: "2026-11-01T00:00:00.000Z"
+    });
+    assert.equal(
+      fixture.controlStore.getAccountControlSummary(fixture.accountId)
+        .auditEvents.filter((event) =>
+          event.action === "subscription_fulfillment_applied"
+        ).length,
+      2
+    );
+  } finally {
+    fixture.close();
+  }
+});
+
+test("a phantom deterministic effect cannot turn replay into a new active product switch", () => {
+  const fixture = createFixture({
+    entitlementPlan: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+  });
+  try {
+    const controlStore = {
+      ...fixture.controlStore,
+      getAuditEvent(effectRef) {
+        return { id: effectRef };
+      }
+    };
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    assert.throws(
+      () => service.fulfillmentHandler.execute(productionInput(
+        fixture,
+        COIN_COMMERCE_PRODUCTION_OFFERS[1],
+        {
+          commandRef: "coincmd_fulfillment_phantom_effect",
+          orderRef: "coinord_fulfillment_phantom_effect"
+        }
+      )),
+      (error) => (
+        isCoinCommerceFulfillmentReconciliationError(error)
+        && !isCoinCommerceFulfillmentRetryableError(error)
+      )
+    );
+    assert.deepEqual({
+      plan: fixture.controlStore.getEntitlement(fixture.entitlementRef).plan,
+      validUntil: fixture.controlStore.getEntitlement(fixture.entitlementRef).validUntil,
+      runtimeValidUntil: fixture.runtimeCore.getTenant(fixture.tenantId).expiresAt
+    }, {
+      plan: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef,
+      validUntil: CURRENT_VALID_UNTIL,
+      runtimeValidUntil: CURRENT_VALID_UNTIL
+    });
+    assert.equal(
+      fixture.controlStore.getAccountControlSummary(fixture.accountId)
+        .auditEvents.filter((event) =>
+          event.action === "subscription_fulfillment_applied"
+        ).length,
+      0
+    );
+  } finally {
+    fixture.close();
+  }
+});
+
+test("a mismatched deterministic effect cannot bypass the active product switch guard", () => {
+  const fixture = createFixture({
+    entitlementPlan: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+  });
+  try {
+    const commandRef = "coincmd_fulfillment_mismatched_effect";
+    fixture.controlStore.recordAuditEvent({
+      id: fulfillmentEffectRef(commandRef),
+      entityType: "unrelated_control_event",
+      entityRef: fixture.entitlementRef,
+      action: "unrelated_action",
+      actorRef: "unrelated_actor",
+      createdAt: NOW,
+      metadata: { commandRef }
+    });
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    assert.throws(
+      () => service.fulfillmentHandler.execute(productionInput(
+        fixture,
+        COIN_COMMERCE_PRODUCTION_OFFERS[1],
+        {
+          commandRef,
+          orderRef: "coinord_fulfillment_mismatched_effect"
+        }
+      )),
+      (error) => (
+        isCoinCommerceFulfillmentReconciliationError(error)
+        && !isCoinCommerceFulfillmentRetryableError(error)
+      )
+    );
+    assert.deepEqual({
+      plan: fixture.controlStore.getEntitlement(fixture.entitlementRef).plan,
+      validUntil: fixture.controlStore.getEntitlement(fixture.entitlementRef).validUntil,
+      runtimeValidUntil: fixture.runtimeCore.getTenant(fixture.tenantId).expiresAt
+    }, {
+      plan: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef,
+      validUntil: CURRENT_VALID_UNTIL,
+      runtimeValidUntil: CURRENT_VALID_UNTIL
+    });
+  } finally {
+    fixture.close();
+  }
+});
+
 test("fulfillment replay fails closed on a branched, broken, or forged effect chain", async (t) => {
   function createTwoEffects(fixture) {
     const service = createCoinCommerceProductionSubscriptionFulfillment({
@@ -1277,6 +1442,39 @@ test("fulfillment replay fails closed on a branched, broken, or forged effect ch
       fixture.close();
     }
   });
+
+  await t.test("zero-length validity interval", () => {
+    const fixture = createFixture();
+    try {
+      const { service, firstInput, later } = createTwoEffects(fixture);
+      const laterAudit = fixture.controlStore.getAuditEvent(later.effectRef);
+      const commandRef = "coincmd_fulfillment_chain_zero_length";
+      const targetValidUntil = "2026-11-30T00:00:00.000Z";
+      fixture.controlStore.recordAuditEvent({
+        id: fulfillmentEffectRef(commandRef),
+        entityType: "coin_commerce_subscription_fulfillment",
+        entityRef: fixture.entitlementRef,
+        action: "subscription_fulfillment_applied",
+        actorRef: "coin_commerce_fulfillment",
+        createdAt: targetValidUntil,
+        metadata: {
+          ...laterAudit.metadata,
+          commandRef,
+          orderRef: "coinord_fulfillment_chain_zero_length",
+          validFrom: targetValidUntil,
+          previousValidUntil: laterAudit.metadata.targetValidUntil,
+          targetValidUntil
+        }
+      });
+
+      assert.throws(
+        () => service.fulfillmentHandler.execute(firstInput),
+        (error) => isCoinCommerceFulfillmentReconciliationError(error)
+      );
+    } finally {
+      fixture.close();
+    }
+  });
 });
 
 test("the control transaction rejects Portal expiry drift introduced after preflight", () => {
@@ -1325,10 +1523,19 @@ test("the control transaction rejects Portal expiry drift introduced after prefl
 
 test("same-product fulfillment rejects an impossible validFrom after validUntil", () => {
   const fixture = createFixture({
-    entitlementPlan: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef,
-    entitlementValidFrom: "2027-01-01T00:00:00.000Z"
+    entitlementPlan: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
   });
   try {
+    const directDb = new Database(fixture.controlDbPath);
+    try {
+      directDb.prepare(`
+        update platform_entitlements
+        set valid_from = ?
+        where id = ?
+      `).run("2027-01-01T00:00:00.000Z", fixture.entitlementRef);
+    } finally {
+      directDb.close();
+    }
     const service = createCoinCommerceProductionSubscriptionFulfillment({
       controlStore: fixture.controlStore,
       runtimeCore: fixture.runtimeCore,
@@ -1343,6 +1550,83 @@ test("same-product fulfillment rejects an impossible validFrom after validUntil"
     assert.equal(
       fixture.controlStore.getEntitlement(fixture.entitlementRef).validUntil,
       CURRENT_VALID_UNTIL
+    );
+  } finally {
+    fixture.close();
+  }
+});
+
+test("purchase eligibility and fulfillment reject a persisted zero-length validity interval", () => {
+  const fixture = createFixture({
+    entitlementPlan: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+  });
+  try {
+    const directDb = new Database(fixture.controlDbPath);
+    try {
+      directDb.prepare(`
+        update platform_entitlements
+        set valid_from = valid_until
+        where id = ?
+      `).run(fixture.entitlementRef);
+    } finally {
+      directDb.close();
+    }
+    assert.throws(
+      () => fixture.controlStore.applyCoinCommerceSubscriptionFulfillment({
+        commandRef: "coincmd_fulfillment_zero_length_direct",
+        orderRef: "coinord_fulfillment_zero_length_direct",
+        accountId: fixture.accountId,
+        requestRef: fixture.requestRef,
+        entitlementRef: fixture.entitlementRef,
+        issuedLinkRef: fixture.issuedLinkRef,
+        tenantRef: fixture.issuedTenantRef,
+        artifactRef: fixture.issuedArtifactRef,
+        offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef,
+        portalPlan: "monthly",
+        durationDays: 30,
+        monthlyTrafficGb: 50,
+        requireExistingEffect: false,
+        recoveryOnly: false,
+        now: NOW
+      }),
+      (error) => error.code === "coin_commerce_subscription_fulfillment_drift"
+    );
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    assert.equal(service.purchaseEligibilityReader({
+      accountId: fixture.accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    }), false);
+    assert.throws(
+      () => service.fulfillmentHandler.execute(productionInput(fixture)),
+      (error) => isCoinCommerceFulfillmentReconciliationError(error)
+    );
+    assert.deepEqual({
+      validFrom: fixture.controlStore.getEntitlement(fixture.entitlementRef).validFrom,
+      validUntil: fixture.controlStore.getEntitlement(fixture.entitlementRef).validUntil
+    }, {
+      validFrom: CURRENT_VALID_UNTIL,
+      validUntil: CURRENT_VALID_UNTIL
+    });
+    assert.equal(
+      fixture.controlStore.getPortalAccessRequest(fixture.requestRef).validUntil,
+      CURRENT_VALID_UNTIL
+    );
+    assert.equal(
+      fixture.runtimeCore.getTenant(fixture.tenantId).expiresAt,
+      CURRENT_VALID_UNTIL
+    );
+    assert.equal(
+      fixture.controlStore.getAccountControlSummary(fixture.accountId)
+        .auditEvents.filter((event) =>
+          event.action === "subscription_fulfillment_applied"
+        ).length,
+      0
     );
   } finally {
     fixture.close();
@@ -1366,6 +1650,7 @@ test("the control store rejects fulfillment durations outside the safe Date rang
         portalPlan: "monthly",
         durationDays: Number.MAX_SAFE_INTEGER,
         monthlyTrafficGb: 50,
+        requireExistingEffect: false,
         recoveryOnly: false,
         now: NOW
       }),
