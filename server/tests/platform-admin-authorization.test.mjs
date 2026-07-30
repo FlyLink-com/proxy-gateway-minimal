@@ -146,3 +146,12 @@ test("Admin principal rejects inactive, unknown-role, and incomplete session inp
     assert.equal(adminAuth.createAdminPrincipal(input), null);
   }
 });
+
+test("Admin authorization fails closed for a null input envelope", () => {
+  assert.equal(adminAuth.createAdminPrincipal(null), null);
+  assert.deepEqual(adminAuth.authorizeAdmin(null), {
+    allowed: false,
+    capability: "",
+    reasonCode: "principal_missing"
+  });
+});
