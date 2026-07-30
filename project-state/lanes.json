@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-07-15.1",
-  "lastUpdated": "2026-07-15",
+  "lastUpdated": "2026-07-30",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current lane index for Phase 2. Historical lanes remain in Git history and indexed execution records, not in the active Agent queue.",
@@ -22,9 +22,18 @@
       "492": "0601e79e965ead2d8ec1af81d1db87a1c23372a2",
       "494": "5b61d9d787e2f98e9f834fe05de6dcbb6805cea7"
     },
-    "openDraftPrs": [476, 479],
+    "openDraftPrs": [
+      476,
+      479
+    ],
     "openNonDraftPrs": [],
-    "openIssues": [437, 438, 439, 440, 475]
+    "openIssues": [
+      437,
+      438,
+      439,
+      440,
+      475
+    ]
   },
   "governanceBoundary": {
     "ci": "29418796398 success",
@@ -36,6 +45,7 @@
     "sourceSecurity": "0 open code-scanning alerts; 0 open Dependabot alerts; 0 open secret-scanning alerts at the 2026-07-15 read-only API cutoff. Future scans remain independent evidence."
   },
   "nextActionQueue": [
+    "Complete #561 source-reality reconciliation before selecting any #557 Operations Plane implementation slice.",
     "Establish a new durable successor Gate on #437 after the blocked and consumed PR #479 Gate -003.",
     "Complete any newly authorized PR #479 source remediation, current-master integration, exact-head checks, formal review, Ready, and merge through independent approvals.",
     "Finish the Gate ledger and validator, stable CI contexts plus settings Gate, durable artifact retention and binding, and the minimal organization and runtime-evidence model through separate PRs.",
@@ -48,7 +58,8 @@
     "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
     "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
     "docs/BILLING_RECHARGE_CONTRACT.md",
-    "docs/PROJECT_SIMPLIFICATION_MAP.md"
+    "docs/PROJECT_SIMPLIFICATION_MAP.md",
+    "docs/OPERATIONS_PLANE_SOURCE_REALITY.md"
   ],
   "lanes": [
     {
@@ -146,25 +157,29 @@
     },
     {
       "id": "operations-foundation",
-      "name": "Operations Foundation",
-      "status": "open-source-schema-draft",
+      "name": "Operations Plane Foundation",
+      "status": "docs-reconciliation-active",
       "riskBoundary": "A for schema or migration source changes, provider access, deployment, or runtime mutation; C only for factual docs and index updates",
-      "purpose": "Track open Issue #475 and Draft PR #476 as a separate source/schema-only lane. The Draft is not deployed and carries no production schema initialization, provider, or runtime mutation authority.",
+      "purpose": "Track #557 as the Operations Plane v1 parent and #561 as the active source/document reconciliation slice. Reuse existing Admin, traffic, Wallet, Commerce, and Lead capabilities; #475 does not establish a generic Operations event or Admin audit store.",
       "primaryDocs": [
+        "docs/OPERATIONS_PLANE_SOURCE_REALITY.md",
         "docs/PROJECT_CONTEXT.md",
         "docs/CURRENT_RELEASE_STATE.md",
-        "docs/GITHUB_ISSUE_PR_WORKFLOW.md"
+        "docs/ADMIN_CONSOLE_APP_MAP.md",
+        "docs/ADMIN_BACKEND_DTO_CONTRACT.md"
       ],
       "primaryCodeAreas": [
-        "schemas/",
-        "server/services/",
+        "admin/src/app/",
+        "server/routes/",
+        "server/services/platform/",
         "project-state/"
       ],
       "nonGoals": [
-        "treating Draft PR #476 as merged or Ready",
+        "rebuilding existing Admin auth, safe-read, traffic, Wallet, or Commerce source",
+        "treating #475 as a generic Operations event or Admin audit implementation",
         "schema migration without an exact Risk A gate",
-        "provider or production access",
-        "runtime mutation or deployment"
+        "provider, credential, production, runtime mutation, or deployment",
+        "starting #558-#560 implementation before #561 proves the remaining gap"
       ]
     },
     {
