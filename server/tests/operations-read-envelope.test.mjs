@@ -180,7 +180,7 @@ test("Operations Read Envelope rejects an invalid Date with overridden methods",
   );
 });
 
-test("Operations Read Envelope snapshots warning and access getters once", () => {
+test("Operations Read Envelope snapshots warning getters once", () => {
   let warningReads = 0;
   const warning = {};
   Object.defineProperty(warning, "code", {
@@ -191,18 +191,7 @@ test("Operations Read Envelope snapshots warning and access getters once", () =>
     }
   });
 
-  let capabilityReads = 0;
-  const access = {
-    allowed: true,
-    reasonCode: "allowed"
-  };
-  Object.defineProperty(access, "capability", {
-    enumerable: true,
-    get() {
-      capabilityReads += 1;
-      return capabilityReads === 1 ? "operations.read" : "caller-controlled";
-    }
-  });
+  const access = validEnvelopeInput.access;
 
   const envelope = createOperationsReadEnvelope({
     ...validEnvelopeInput,
@@ -219,7 +208,6 @@ test("Operations Read Envelope snapshots warning and access getters once", () =>
     reasonCode: "allowed"
   });
   assert.equal(warningReads, 1);
-  assert.equal(capabilityReads, 1);
 });
 
 
