@@ -173,6 +173,7 @@ This document is complete only when:
 No statement in this document authorizes production, provider, credential,
 schema, payment, wallet, account, node, runtime, artifact, deployment, or live
 verification work.
+
 ## 2026-07-31 Post-Merge Source Reconciliation
 
 This addendum records repository source progress after the historical inventory
