@@ -161,12 +161,20 @@ const KNOWN_ERROR_CODES = new Set([
   "source_changed_during_dry_run"
 ]);
 
-const INTERNAL_MIGRATION_ERRORS = new WeakSet();
+const INTERNAL_MIGRATION_ERRORS = new WeakMap();
 
-function migrationError(code) {
+function safeMigrationError(code) {
   const error = new Error("Coin wallet reference-index schema rejected");
   error.code = code;
-  INTERNAL_MIGRATION_ERRORS.add(error);
+  return error;
+}
+
+function migrationError(code, invocationToken) {
+  const error = safeMigrationError(code);
+  INTERNAL_MIGRATION_ERRORS.set(error, Object.freeze({
+    code,
+    invocationToken
+  }));
   return error;
 }
 
@@ -174,20 +182,25 @@ function isSqliteContention(error) {
   return /^SQLITE_(?:BUSY|LOCKED)(?:_|$)/.test(error?.code ?? "");
 }
 
-function closedOperationError(error) {
+function closedOperationError(error, invocationToken) {
   if (isSqliteContention(error)) {
-    return migrationError("database_unavailable");
+    return safeMigrationError("database_unavailable");
   }
+  const provenance = INTERNAL_MIGRATION_ERRORS.get(error);
   if (
-    INTERNAL_MIGRATION_ERRORS.has(error)
-    && KNOWN_ERROR_CODES.has(error?.code)
+    provenance?.invocationToken === invocationToken
+    && KNOWN_ERROR_CODES.has(provenance.code)
   ) {
-    return error;
+    return safeMigrationError(provenance.code);
   }
-  return migrationError("migration_apply_failed");
+  return safeMigrationError("migration_apply_failed");
 }
 
-function inspectForApply(database, operation) {
+function inspectWithContentionTracking(
+  database,
+  operation,
+  contentionError
+) {
   let contention = false;
 
   function recordContention(error) {
@@ -248,16 +261,24 @@ function inspectForApply(database, operation) {
   try {
     result = operation(databaseView);
   } catch (error) {
-    if (contention) throw migrationError("database_unavailable");
+    if (contention) throw contentionError();
     throw error;
   }
-  if (contention) throw migrationError("database_unavailable");
+  if (contention) throw contentionError();
   return result;
+}
+
+function inspectForApply(database, operation, invocationToken) {
+  return inspectWithContentionTracking(
+    database,
+    operation,
+    () => migrationError("database_unavailable", invocationToken)
+  );
 }
 
 function assertDatabasePath(dbPath) {
   if (typeof dbPath !== "string" || !isAbsolute(dbPath)) {
-    throw migrationError("invalid_database_path");
+    throw safeMigrationError("invalid_database_path");
   }
 }
 
@@ -445,7 +466,7 @@ export function inspectCoinWalletReferenceIndexSchema({ database } = {}) {
     || typeof database.prepare !== "function"
     || typeof database.pragma !== "function"
   ) {
-    throw migrationError("invalid_migration_contract");
+    throw safeMigrationError("invalid_migration_contract");
   }
   return closedInspection(database);
 }
@@ -476,6 +497,9 @@ function closedValidationFailure(reasonCode) {
 
 function validationFailureReason(dbPath, error) {
   if (!existsSync(dbPath)) return "database_missing";
+  if (error?.code === "database_unavailable") {
+    return "database_unavailable";
+  }
   if (error?.code === "SQLITE_NOTADB") return "database_invalid";
   if (/^SQLITE_(?:BUSY|LOCKED)(?:_|$)/.test(error?.code ?? "")) {
     return "database_unavailable";
@@ -495,7 +519,14 @@ export function validateCoinWalletReferenceIndexSchema({
   let result;
   try {
     owned = new Database(dbPath, { readonly: true, fileMustExist: true });
-    result = inspectCoinWalletReferenceIndexSchema({ database: owned });
+    result = inspectWithContentionTracking(
+      owned,
+      (inspectionDatabase) =>
+        inspectCoinWalletReferenceIndexSchema({
+          database: inspectionDatabase
+        }),
+      () => safeMigrationError("database_unavailable")
+    );
   } catch (error) {
     result = closedValidationFailure(validationFailureReason(dbPath, error));
   }
@@ -507,46 +538,53 @@ export function validateCoinWalletReferenceIndexSchema({
   return result;
 }
 
-function assertFoundationDependency(database) {
+function assertFoundationDependency(database, invocationToken) {
   if (
     !inspectForApply(
       database,
       (inspectionDatabase) =>
-        foundationDependencyIsExact(inspectionDatabase)
+        foundationDependencyIsExact(inspectionDatabase),
+      invocationToken
     )
   ) {
-    throw migrationError("migration_dependency_missing");
+    throw migrationError("migration_dependency_missing", invocationToken);
   }
 }
 
-function assertOwnedIndexesAreAbsent(database) {
+function assertOwnedIndexesAreAbsent(database, invocationToken) {
   if (
     Object.keys(EXPECTED_INDEXES)
       .some((name) => namedObjectRow(database, name))
   ) {
-    throw migrationError("owned_object_without_migration");
+    throw migrationError(
+      "owned_object_without_migration",
+      invocationToken
+    );
   }
 }
 
-function normalizeAppliedAt(nowFn) {
+function normalizeAppliedAt(nowFn, invocationToken) {
   const value = nowFn();
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
-    throw migrationError("invalid_migration_contract");
+    throw migrationError("invalid_migration_contract", invocationToken);
   }
   return value.toISOString();
 }
 
-function applyWithDatabase(database, nowFn) {
+function applyWithDatabase(database, nowFn, invocationToken) {
   database.pragma("foreign_keys = ON");
   const migrate = database.transaction(() => {
-    assertFoundationDependency(database);
+    assertFoundationDependency(database, invocationToken);
     const applied = migrationRow(
       database,
       REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID
     );
     if (applied) {
       if (applied.ddl_checksum !== DDL_CHECKSUM) {
-        throw migrationError("migration_checksum_mismatch");
+        throw migrationError(
+          "migration_checksum_mismatch",
+          invocationToken
+        );
       }
       if (
         !inspectForApply(
@@ -554,14 +592,18 @@ function applyWithDatabase(database, nowFn) {
           (inspectionDatabase) =>
             inspectCoinWalletReferenceIndexSchema({
               database: inspectionDatabase
-            })
+            }),
+          invocationToken
         ).ok
       ) {
-        throw migrationError("applied_schema_incompatible");
+        throw migrationError(
+          "applied_schema_incompatible",
+          invocationToken
+        );
       }
       return [];
     }
-    assertOwnedIndexesAreAbsent(database);
+    assertOwnedIndexesAreAbsent(database, invocationToken);
     for (const statement of MIGRATION_STATEMENTS) database.exec(statement);
     database.prepare(`
       insert into platform_schema_migrations
@@ -570,7 +612,7 @@ function applyWithDatabase(database, nowFn) {
     `).run(
       REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID,
       DDL_CHECKSUM,
-      normalizeAppliedAt(nowFn)
+      normalizeAppliedAt(nowFn, invocationToken)
     );
     if (
       !inspectForApply(
@@ -578,10 +620,14 @@ function applyWithDatabase(database, nowFn) {
         (inspectionDatabase) =>
           inspectCoinWalletReferenceIndexSchema({
             database: inspectionDatabase
-          })
+          }),
+        invocationToken
       ).ok
     ) {
-      throw migrationError("applied_schema_incompatible");
+      throw migrationError(
+        "applied_schema_incompatible",
+        invocationToken
+      );
     }
     return [REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID];
   });
@@ -599,30 +645,39 @@ export function applyCoinWalletReferenceIndexMigrations({
     expectedMigrationId
     !== REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID
   ) {
-    throw migrationError("migration_id_mismatch");
+    throw safeMigrationError("migration_id_mismatch");
   }
   if (expectedDdlChecksum !== DDL_CHECKSUM) {
-    throw migrationError("migration_checksum_mismatch");
+    throw safeMigrationError("migration_checksum_mismatch");
   }
   if (typeof nowFn !== "function" || (!database && dbPath === undefined)) {
-    throw migrationError("invalid_migration_contract");
+    throw safeMigrationError("invalid_migration_contract");
   }
   if (!database) assertDatabasePath(dbPath);
 
+  const invocationToken = Object.freeze({});
   let owned;
   try {
     const connection =
       database ?? (owned = new Database(dbPath, { fileMustExist: true }));
-    const appliedMigrationIds = applyWithDatabase(connection, nowFn);
+    const appliedMigrationIds = applyWithDatabase(
+      connection,
+      nowFn,
+      invocationToken
+    );
     const inspection = inspectForApply(
       connection,
       (inspectionDatabase) =>
         inspectCoinWalletReferenceIndexSchema({
           database: inspectionDatabase
-        })
+        }),
+      invocationToken
     );
     if (!inspection.ok) {
-      throw migrationError("applied_schema_incompatible");
+      throw migrationError(
+        "applied_schema_incompatible",
+        invocationToken
+      );
     }
     return {
       ...inspection,
@@ -631,13 +686,13 @@ export function applyCoinWalletReferenceIndexMigrations({
       appliedMigrationIds
     };
   } catch (error) {
-    throw closedOperationError(error);
+    throw closedOperationError(error, invocationToken);
   } finally {
     if (owned) {
       try {
         owned.close();
       } catch {
-        throw migrationError("database_close_failed");
+        throw safeMigrationError("database_close_failed");
       }
     }
   }

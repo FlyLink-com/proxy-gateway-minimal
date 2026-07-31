@@ -1302,3 +1302,74 @@ test("unbranded nowFn errors cannot spoof known migration codes", async () => {
     );
   }
 });
+
+test("a public error cannot be mutated and replayed as an internal error", () => {
+  let captured;
+  assert.throws(
+    () => applyCoinWalletReferenceIndexMigrations({
+      expectedMigrationId: "wrong_migration",
+      expectedDdlChecksum: SUCCESSOR_CHECKSUM
+    }),
+    (error) => {
+      captured = error;
+      return error.code === "migration_id_mismatch";
+    }
+  );
+  const rawMessage = "synthetic private replay detail";
+  captured.code = "migration_apply_failed";
+  captured.message = rawMessage;
+  const database = {
+    pragma() {
+      throw captured;
+    }
+  };
+
+  assert.throws(
+    () => exactApply({ database }),
+    (error) => {
+      assert.notEqual(error, captured);
+      assert.equal(error.code, "migration_apply_failed");
+      assert.equal(
+        error.message,
+        "Coin wallet reference-index schema rejected"
+      );
+      assert.equal(error.message.includes(rawMessage), false);
+      return true;
+    }
+  );
+});
+
+test("path validation maps deep database contention to database_unavailable", async () => {
+  for (const code of ["SQLITE_BUSY", "SQLITE_LOCKED"]) {
+    await withOwnedDatabase(
+      `wallet-reference-validate-contention-${code}-`,
+      ({ dbPath }) => {
+        createFoundationDatabase(dbPath);
+        const originalPragma = Database.prototype.pragma;
+        const rawMessage = `synthetic private validation detail for ${code}`;
+        Database.prototype.pragma = function pragmaWithContention(
+          source,
+          ...args
+        ) {
+          if (String(source).trim() === "quick_check") {
+            throw syntheticCodedError(code, rawMessage);
+          }
+          return originalPragma.call(this, source, ...args);
+        };
+        let result;
+        try {
+          result = validateCoinWalletReferenceIndexSchema({ dbPath });
+        } finally {
+          Database.prototype.pragma = originalPragma;
+        }
+
+        assert.equal(result.ok, false);
+        assert.equal(result.schemaState, "blocked");
+        assert.deepEqual(result.reasonCodes, ["database_unavailable"]);
+        assert.deepEqual(result.pendingMigrationIds, []);
+        assert.equal(JSON.stringify(result).includes(rawMessage), false);
+        assert.doesNotThrow(() => rmSync(dbPath));
+      }
+    );
+  }
+});
