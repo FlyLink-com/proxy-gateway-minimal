@@ -48,6 +48,44 @@ const SUCCESSOR_INDEX_STATEMENTS = [
   `
 ];
 
+const LEDGER_PLAN_SQL = `
+WITH target_ledger AS (
+  SELECT *
+    FROM platform_coin_ledger_entries
+   WHERE wallet_ref = ?
+  UNION
+  SELECT *
+    FROM platform_coin_ledger_entries
+   WHERE lot_ref IN (SELECT value FROM json_each(?))
+  UNION
+  SELECT *
+    FROM platform_coin_ledger_entries
+   WHERE hold_ref IN (SELECT value FROM json_each(?))
+)
+SELECT * FROM target_ledger
+ ORDER BY entry_ref
+`;
+
+const ALLOCATION_PLAN_SQL = `
+WITH target_allocations AS (
+  SELECT *
+    FROM platform_coin_hold_allocations
+   WHERE hold_ref IN (SELECT value FROM json_each(?))
+  UNION
+  SELECT *
+    FROM platform_coin_hold_allocations
+   WHERE lot_ref IN (SELECT value FROM json_each(?))
+)
+SELECT a.*,
+       CASE WHEN h.hold_ref IS NULL THEN 0 ELSE 1 END AS hold_exists,
+       h.wallet_ref AS hold_wallet_ref,
+       CASE WHEN l.lot_ref IS NULL THEN 0 ELSE 1 END AS lot_exists
+  FROM target_allocations a
+  LEFT JOIN platform_coin_holds h ON h.hold_ref = a.hold_ref
+  LEFT JOIN platform_coin_lots l ON l.lot_ref = a.lot_ref
+ ORDER BY a.allocation_ref
+`;
+
 const EXPECTED_TEST_INDEXES = Object.freeze({
   platform_coin_hold_allocations_lot_ref_idx: {
     table: "platform_coin_hold_allocations",
@@ -315,6 +353,10 @@ function exactApply({ dbPath, database, nowFn } = {}) {
   });
 }
 
+function explainQueryPlan(database, sql, parameters) {
+  return database.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...parameters);
+}
+
 function assertFoundationReadyAndSuccessorAbsent(dbPath) {
   assert.equal(walletFoundation.validateCoinWalletSchema({ dbPath }).ok, true);
   assertPending(validateCoinWalletReferenceIndexSchema({ dbPath }));
@@ -471,6 +513,112 @@ test("exports one frozen successor identity without changing the foundation name
   }]);
   assert.equal(Object.isFrozen(COIN_WALLET_REFERENCE_INDEX_MIGRATIONS), true);
   assert.equal(Object.isFrozen(COIN_WALLET_REFERENCE_INDEX_MIGRATIONS[0]), true);
+});
+
+test("foundation-only plan exposes exactly three missing reverse-reference scans", async () => {
+  await withOwnedDatabase(
+    "wallet-reference-foundation-plan-",
+    ({ dbPath }) => {
+      createFoundationDatabase(dbPath);
+      const database = new Database(dbPath, {
+        readonly: true,
+        fileMustExist: true
+      });
+      try {
+        const foundationDetails = [
+          ...explainQueryPlan(database, LEDGER_PLAN_SQL, [
+            "wallet_private",
+            JSON.stringify(["lot_private"]),
+            JSON.stringify(["hold_private"])
+          ]),
+          ...explainQueryPlan(database, ALLOCATION_PLAN_SQL, [
+            JSON.stringify(["hold_private"]),
+            JSON.stringify(["lot_private"])
+          ])
+        ].map(({ detail }) => detail);
+
+        assert.equal(foundationDetails.filter(
+          (detail) =>
+            /\bSCAN platform_coin_(?:ledger_entries|hold_allocations)\b/i
+              .test(detail)
+        ).length, 3);
+        assert.equal(foundationDetails.filter(
+          (detail) =>
+            /^SEARCH platform_coin_(?:ledger_entries|hold_allocations)\b/i
+              .test(detail)
+        ).length, 2);
+      } finally {
+        database.close();
+      }
+    }
+  );
+});
+
+test("five reverse-reference branches use indexed SEARCH plans without base-table SCAN", async () => {
+  await withOwnedDatabase(
+    "wallet-reference-applied-plan-",
+    ({ dbPath }) => {
+      createFoundationDatabase(dbPath);
+      exactApply({ dbPath });
+      const database = new Database(dbPath, {
+        readonly: true,
+        fileMustExist: true
+      });
+      try {
+        const ledgerPlan = explainQueryPlan(database, LEDGER_PLAN_SQL, [
+          "wallet_private",
+          JSON.stringify(["lot_private"]),
+          JSON.stringify(["hold_private"])
+        ]);
+        const allocationPlan = explainQueryPlan(
+          database,
+          ALLOCATION_PLAN_SQL,
+          [
+            JSON.stringify(["hold_private"]),
+            JSON.stringify(["lot_private"])
+          ]
+        );
+        const details = [...ledgerPlan, ...allocationPlan]
+          .map(({ detail }) => detail);
+        const ledgerSearches = details.filter(
+          (detail) =>
+            /^SEARCH platform_coin_ledger_entries\b/i.test(detail)
+        );
+        const allocationSearches = details.filter(
+          (detail) =>
+            /^SEARCH platform_coin_hold_allocations\b/i.test(detail)
+        );
+        assert.equal(ledgerSearches.length, 3);
+        assert.equal(allocationSearches.length, 2);
+        for (const indexName of [
+          "platform_coin_hold_allocations_lot_ref_idx",
+          "platform_coin_ledger_entries_lot_ref_idx",
+          "platform_coin_ledger_entries_hold_ref_idx",
+          "platform_coin_ledger_entries_wallet_page_idx"
+        ]) {
+          assert.equal(
+            details.some((detail) => detail.includes(indexName)),
+            true
+          );
+        }
+        assert.equal(
+          allocationSearches.some(
+            (detail) => /\(hold_ref=\?\)/i.test(detail)
+          ),
+          true
+        );
+        assert.equal(
+          details.some((detail) =>
+            /\bSCAN platform_coin_(?:ledger_entries|hold_allocations)\b/i
+              .test(detail)
+          ),
+          false
+        );
+      } finally {
+        database.close();
+      }
+    }
+  );
 });
 
 test("dry-run applies only its owned snapshot and preserves source bytes and logical state", async () => {
