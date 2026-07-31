@@ -336,7 +336,7 @@ function readOperationResult(result, { target = false } = {}) {
   const reasonCodes = readArray(result, "reasonCodes");
   if (
     !reasonCodes.every(
-      (code) => typeof code === "string" && SAFE_REASON_CODES.has(code)
+      (code) => typeof code === "string" && OPERATION_REASON_CODES.has(code)
     )
   ) {
     throw new Error("unsafe result reason");
@@ -565,13 +565,18 @@ function operationFrom(operations, name) {
 }
 
 async function executeParsedOperation(parsed, operations) {
-  const validate = operationFrom(
-    operations,
-    "validateCoinWalletReferenceIndexSchema"
-  );
-  const validation = readOperationResult(
-    validate({ dbPath: parsed.dbPath })
-  );
+  let validation;
+  try {
+    const validate = operationFrom(
+      operations,
+      "validateCoinWalletReferenceIndexSchema"
+    );
+    validation = readOperationResult(
+      await validate({ dbPath: parsed.dbPath })
+    );
+  } catch (error) {
+    return operationErrorOutcome(error, parsed.mode);
+  }
   const preflight = validationOutcome(validation, parsed.mode);
   if (parsed.mode === "validate" || preflight.mayContinue !== true) {
     return {
@@ -581,8 +586,8 @@ async function executeParsedOperation(parsed, operations) {
   }
 
   try {
-    const rawResult = parsed.mode === "dry-run"
-      ? await operationFrom(
+    const rawResult = await (parsed.mode === "dry-run"
+      ? operationFrom(
         operations,
         "dryRunCoinWalletReferenceIndexMigrations"
       )({
@@ -596,7 +601,7 @@ async function executeParsedOperation(parsed, operations) {
         dbPath: parsed.dbPath,
         expectedMigrationId: parsed.expectedMigrationId,
         expectedDdlChecksum: parsed.expectedDdlChecksum
-      });
+      }));
     return targetOutcome(
       readOperationResult(rawResult, { target: true }),
       parsed.mode

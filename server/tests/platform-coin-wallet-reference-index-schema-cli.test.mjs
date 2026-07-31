@@ -281,6 +281,77 @@ function runCli(args, { timeout = 10_000 } = {}) {
   });
 }
 
+function runStrictInjectionProbe(mode, behavior) {
+  const marker = `${mode}_${behavior}_source_private`;
+  const ready = JSON.stringify(readyValidation());
+  const pending = JSON.stringify(pendingValidation());
+  const dryRunReady = JSON.stringify(successfulOperation("dry-run", {
+    appliedMigrationIds: [SUCCESSOR_ID],
+    pendingMigrationIds: [SUCCESSOR_ID]
+  }));
+  const applyReady = JSON.stringify(successfulOperation("apply"));
+  const operationResult = behavior === "rejected-promise"
+    ? "Promise.reject(new Error(marker))"
+    : mode === "validate"
+      ? `throwingThenable(${ready})`
+      : mode === "dry-run"
+        ? `throwingThenable(${dryRunReady})`
+        : `throwingThenable(${applyReady})`;
+  const validateResult = mode === "validate"
+    ? operationResult
+    : pending;
+  const dryRunResult = mode === "dry-run"
+    ? operationResult
+    : "(() => { throw new Error('operation_private'); })()";
+  const applyResult = mode === "apply"
+    ? operationResult
+    : "(() => { throw new Error('origin_private'); })()";
+  const source = `
+    import { runCoinWalletReferenceIndexSchemaCli }
+      from ${JSON.stringify(pathToFileURL(CLI_PATH).href)};
+    const marker = ${JSON.stringify(marker)};
+    function throwingThenable(value) {
+      return Object.defineProperty(value, "then", {
+        get() {
+          throw new Error(marker);
+        }
+      });
+    }
+    const operations = {
+      validateCoinWalletReferenceIndexSchema() {
+        return ${validateResult};
+      },
+      dryRunCoinWalletReferenceIndexMigrations() {
+        return ${dryRunResult};
+      },
+      applyCoinWalletReferenceIndexMigrations() {
+        return ${applyResult};
+      }
+    };
+    const outcome = await runCoinWalletReferenceIndexSchemaCli({
+      argv: ${JSON.stringify(injectionArgv(mode))},
+      operations
+    });
+    process.stdout.write(JSON.stringify(outcome.output) + "\\n");
+    process.exitCode = outcome.exitCode;
+  `;
+  return {
+    marker,
+    result: spawnSync(process.execPath, [
+      "--unhandled-rejections=strict",
+      "--input-type=module",
+      "--eval",
+      source
+    ], {
+      cwd: REPOSITORY_ROOT,
+      encoding: "utf8",
+      env: {},
+      timeout: 10_000,
+      windowsHide: true
+    })
+  };
+}
+
 function parseProcessOutput(result, { paths = [], extraForbidden = [] } = {}) {
   assert.equal(result.error, undefined);
   assert.equal(result.stderr, "");
@@ -972,6 +1043,200 @@ test("unknown returned reason codes become unexpected_execution_failure", async 
       JSON.stringify(outcome.output).includes("migration_apply_failed"),
       false
     );
+  }
+});
+
+test("validate dry-run and apply await rejected Promises without unhandled output", () => {
+  for (const mode of ["validate", "dry-run", "apply"]) {
+    const { marker, result } =
+      runStrictInjectionProbe(mode, "rejected-promise");
+    assert.equal(result.status, EXIT_INFRASTRUCTURE_FAILURE);
+    const output = parseProcessOutput(result, {
+      extraForbidden: [marker]
+    });
+    assertClosedFailureDefaults({ output });
+    assert.equal(output.mode, mode);
+    assert.deepEqual(
+      output.reasonCodes,
+      ["unexpected_execution_failure"]
+    );
+  }
+});
+
+test("validate dry-run and apply assimilate hostile thenables", () => {
+  for (const mode of ["validate", "dry-run", "apply"]) {
+    const { marker, result } =
+      runStrictInjectionProbe(mode, "hostile-thenable");
+    assert.equal(result.status, EXIT_INFRASTRUCTURE_FAILURE);
+    const output = parseProcessOutput(result, {
+      extraForbidden: [marker]
+    });
+    assertClosedFailureDefaults({ output });
+    assert.equal(output.mode, mode);
+    assert.deepEqual(
+      output.reasonCodes,
+      ["unexpected_execution_failure"]
+    );
+  }
+});
+
+test("validate thrown operation codes use the closed operation mapper", async () => {
+  const cases = [
+    ["SQLITE_BUSY", EXIT_INFRASTRUCTURE_FAILURE, "database_unavailable"],
+    [
+      "SQLITE_LOCKED_SHAREDCACHE",
+      EXIT_INFRASTRUCTURE_FAILURE,
+      "database_unavailable"
+    ],
+    [
+      "database_close_failed",
+      EXIT_INFRASTRUCTURE_FAILURE,
+      "database_close_failed"
+    ],
+    [
+      "database_inspection_failed",
+      EXIT_INFRASTRUCTURE_FAILURE,
+      "database_inspection_failed"
+    ],
+    [
+      "database_unavailable",
+      EXIT_INFRASTRUCTURE_FAILURE,
+      "database_unavailable"
+    ],
+    [
+      "source_changed_during_dry_run",
+      EXIT_INFRASTRUCTURE_FAILURE,
+      "source_changed_during_dry_run"
+    ],
+    ["applied_schema_incompatible", EXIT_SCHEMA_REJECTED, "applied_schema_incompatible"],
+    ["database_invalid", EXIT_SCHEMA_REJECTED, "database_invalid"],
+    ["database_missing", EXIT_SCHEMA_REJECTED, "database_missing"],
+    ["foreign_key_check_failed", EXIT_SCHEMA_REJECTED, "foreign_key_check_failed"],
+    ["migration_checksum_mismatch", EXIT_SCHEMA_REJECTED, "migration_checksum_mismatch"],
+    ["migration_dependency_missing", EXIT_SCHEMA_REJECTED, "migration_dependency_missing"],
+    ["migration_id_mismatch", EXIT_SCHEMA_REJECTED, "migration_id_mismatch"],
+    ["migration_ledger_incompatible", EXIT_SCHEMA_REJECTED, "migration_ledger_incompatible"],
+    ["owned_object_incompatible", EXIT_SCHEMA_REJECTED, "owned_object_incompatible"],
+    ["owned_object_missing", EXIT_SCHEMA_REJECTED, "owned_object_missing"],
+    ["owned_object_without_migration", EXIT_SCHEMA_REJECTED, "owned_object_without_migration"],
+    ["quick_check_failed", EXIT_SCHEMA_REJECTED, "quick_check_failed"],
+    ["required_migration_missing", EXIT_SCHEMA_REJECTED, "required_migration_missing"]
+  ];
+  for (const [code, exitCode, reasonCode] of cases) {
+    const privateMessage = `${code}_account_private`;
+    const outcome =
+      await successorCli.runCoinWalletReferenceIndexSchemaCli({
+        argv: injectionArgv("validate"),
+        operations: {
+          validateCoinWalletReferenceIndexSchema() {
+            throw Object.assign(new Error(privateMessage), { code });
+          },
+          dryRunCoinWalletReferenceIndexMigrations() {
+            throw new Error("owner_private");
+          },
+          applyCoinWalletReferenceIndexMigrations() {
+            throw new Error("wallet_private");
+          }
+        }
+      });
+    assert.equal(outcome.exitCode, exitCode);
+    assertClosedFailureDefaults(outcome);
+    assert.deepEqual(outcome.output.reasonCodes, [reasonCode]);
+    assert.equal(
+      JSON.stringify(outcome.output).includes(privateMessage),
+      false
+    );
+  }
+
+  const hostileCode = {};
+  Object.defineProperty(hostileCode, "code", {
+    get() {
+      throw new Error("operation_private");
+    }
+  });
+  for (const thrown of ["origin_private", hostileCode]) {
+    const outcome =
+      await successorCli.runCoinWalletReferenceIndexSchemaCli({
+        argv: injectionArgv("validate"),
+        operations: {
+          validateCoinWalletReferenceIndexSchema() {
+            throw thrown;
+          },
+          dryRunCoinWalletReferenceIndexMigrations() {
+            throw new Error("lot_private");
+          },
+          applyCoinWalletReferenceIndexMigrations() {
+            throw new Error("hold_private");
+          }
+        }
+      });
+    assert.equal(outcome.exitCode, EXIT_INFRASTRUCTURE_FAILURE);
+    assertClosedFailureDefaults(outcome);
+    assert.deepEqual(
+      outcome.output.reasonCodes,
+      ["unexpected_execution_failure"]
+    );
+    assert.equal(
+      JSON.stringify(outcome.output).includes("origin_private"),
+      false
+    );
+  }
+});
+
+test("returned unexpected and parser-only reasons fail as unexpected execution", async () => {
+  const parserOnlyReasons = [
+    "apply_confirmation_required",
+    "argument_not_allowed_for_mode",
+    "database_path_must_be_absolute",
+    "database_path_required",
+    "duplicate_argument",
+    "empty_argument",
+    "invalid_mode",
+    "mode_required",
+    "temp_root_must_be_absolute",
+    "unknown_argument"
+  ];
+  for (const mode of ["validate", "apply"]) {
+    for (const returnedReason of [
+      "unexpected_execution_failure",
+      ...parserOnlyReasons
+    ]) {
+      const returned = {
+        ...blockedValidation(returnedReason),
+        mode,
+        sourceChanged: true,
+        appliedMigrationIds: [SUCCESSOR_ID]
+      };
+      const outcome =
+        await successorCli.runCoinWalletReferenceIndexSchemaCli({
+          argv: injectionArgv(mode),
+          operations: {
+            validateCoinWalletReferenceIndexSchema() {
+              return mode === "validate"
+                ? returned
+                : pendingValidation();
+            },
+            dryRunCoinWalletReferenceIndexMigrations() {
+              throw new Error("allocation_private");
+            },
+            applyCoinWalletReferenceIndexMigrations() {
+              return returned;
+            }
+          }
+        });
+      assert.equal(outcome.exitCode, EXIT_INFRASTRUCTURE_FAILURE);
+      assertClosedFailureDefaults(outcome);
+      assert.deepEqual(
+        outcome.output.reasonCodes,
+        ["unexpected_execution_failure"]
+      );
+      if (returnedReason !== "unexpected_execution_failure") {
+        assert.equal(
+          JSON.stringify(outcome.output).includes(returnedReason),
+          false
+        );
+      }
+    }
   }
 });
 
