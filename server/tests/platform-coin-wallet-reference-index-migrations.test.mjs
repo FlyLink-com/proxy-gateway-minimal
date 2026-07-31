@@ -65,6 +65,21 @@ const CANONICAL_TABLES = Object.freeze([
   ["ledgerEntries", "platform_coin_ledger_entries", "entry_ref"]
 ]);
 
+const KNOWN_TEST_ERROR_CODES = Object.freeze([
+  "migration_apply_failed",
+  "applied_schema_incompatible",
+  "database_close_failed",
+  "database_unavailable",
+  "invalid_database_path",
+  "invalid_migration_contract",
+  "invalid_temp_root",
+  "migration_checksum_mismatch",
+  "migration_dependency_missing",
+  "migration_id_mismatch",
+  "owned_object_without_migration",
+  "source_changed_during_dry_run"
+]);
+
 function fileSha256(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
@@ -329,6 +344,20 @@ function assertRollbackState(dbPath, beforeState) {
     database.close();
   }
   assert.deepEqual(canonicalDatabaseState(dbPath), beforeState);
+}
+
+function syntheticCodedError(code, rawMessage) {
+  const error = new Error(rawMessage);
+  error.code = code;
+  return error;
+}
+
+function assertClosedApplyError(action, expectedCode, rawMessage) {
+  assert.throws(action, (error) => {
+    assert.equal(error.code, expectedCode);
+    assert.equal(error.message.includes(rawMessage), false);
+    return true;
+  });
 }
 
 function canonicalState(dbPath) {
@@ -1131,4 +1160,145 @@ test("postcondition failure rolls back indexes and successor row", async () => {
     }
     assertRollbackState(dbPath, beforeState);
   });
+});
+
+test("deep foundation database contention maps to database_unavailable", async () => {
+  const cases = [
+    {
+      name: "migration-row-busy",
+      inject(database, rawMessage) {
+        const originalPrepare = database.prepare.bind(database);
+        let injected = false;
+        database.prepare = (sql) => {
+          const statement = originalPrepare(sql);
+          if (
+            !injected
+            && String(sql).includes("select migration_id, ddl_checksum")
+            && String(sql).includes("from platform_schema_migrations")
+          ) {
+            injected = true;
+            statement.get = () => {
+              throw syntheticCodedError("SQLITE_BUSY", rawMessage);
+            };
+          }
+          return statement;
+        };
+      }
+    },
+    {
+      name: "inspection-quick-check-locked",
+      inject(database, rawMessage) {
+        const originalPragma = database.pragma.bind(database);
+        database.pragma = (source, ...args) => {
+          if (String(source).trim() === "quick_check") {
+            throw syntheticCodedError("SQLITE_LOCKED", rawMessage);
+          }
+          return originalPragma(source, ...args);
+        };
+      }
+    }
+  ];
+
+  for (const fixture of cases) {
+    await withOwnedDatabase(
+      `wallet-reference-deep-${fixture.name}-`,
+      ({ dbPath }) => {
+        createFoundationDatabase(dbPath);
+        const beforeState = canonicalDatabaseState(dbPath);
+        const database = new Database(dbPath);
+        const rawMessage = `synthetic private ${fixture.name}`;
+        fixture.inject(database, rawMessage);
+        try {
+          assertClosedApplyError(
+            () => exactApply({ database }),
+            "database_unavailable",
+            rawMessage
+          );
+        } finally {
+          database.close();
+        }
+        assertRollbackState(dbPath, beforeState);
+      }
+    );
+  }
+});
+
+test("postcondition contention maps safely and rolls back", async () => {
+  await withOwnedDatabase(
+    "wallet-reference-postcondition-contention-",
+    ({ dbPath }) => {
+      createFoundationDatabase(dbPath);
+      const beforeState = canonicalDatabaseState(dbPath);
+      const database = new Database(dbPath);
+      const originalPragma = database.pragma.bind(database);
+      const rawMessage = "synthetic private postcondition busy snapshot";
+      let quickChecks = 0;
+      database.pragma = (source, ...args) => {
+        if (String(source).trim() === "quick_check") {
+          quickChecks += 1;
+          if (quickChecks === 3) {
+            throw syntheticCodedError("SQLITE_BUSY_SNAPSHOT", rawMessage);
+          }
+        }
+        return originalPragma(source, ...args);
+      };
+      try {
+        assertClosedApplyError(
+          () => exactApply({ database }),
+          "database_unavailable",
+          rawMessage
+        );
+      } finally {
+        database.close();
+      }
+      assert.equal(quickChecks, 3);
+      assertRollbackState(dbPath, beforeState);
+    }
+  );
+});
+
+test("unbranded database errors cannot spoof known migration codes", () => {
+  for (const code of KNOWN_TEST_ERROR_CODES) {
+    const rawMessage = `synthetic private database detail for ${code}`;
+    const database = {
+      pragma() {
+        throw syntheticCodedError(code, rawMessage);
+      }
+    };
+
+    assertClosedApplyError(
+      () => exactApply({ database }),
+      "migration_apply_failed",
+      rawMessage
+    );
+  }
+});
+
+test("unbranded nowFn errors cannot spoof known migration codes", async () => {
+  for (const code of KNOWN_TEST_ERROR_CODES) {
+    await withOwnedDatabase(
+      `wallet-reference-now-spoof-${code}-`,
+      ({ dbPath }) => {
+        createFoundationDatabase(dbPath);
+        const beforeState = canonicalDatabaseState(dbPath);
+        const database = new Database(dbPath);
+        const rawMessage = `synthetic private nowFn detail for ${code}`;
+        try {
+          assertClosedApplyError(
+            () => exactApply({
+              database,
+              nowFn() {
+                throw syntheticCodedError(code, rawMessage);
+              }
+            }),
+            "migration_apply_failed",
+            rawMessage
+          );
+        } finally {
+          database.close();
+        }
+        assertRollbackState(dbPath, beforeState);
+      }
+    );
+  }
 });

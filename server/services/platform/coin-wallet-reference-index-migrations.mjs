@@ -161,18 +161,98 @@ const KNOWN_ERROR_CODES = new Set([
   "source_changed_during_dry_run"
 ]);
 
+const INTERNAL_MIGRATION_ERRORS = new WeakSet();
+
 function migrationError(code) {
   const error = new Error("Coin wallet reference-index schema rejected");
   error.code = code;
+  INTERNAL_MIGRATION_ERRORS.add(error);
   return error;
 }
 
+function isSqliteContention(error) {
+  return /^SQLITE_(?:BUSY|LOCKED)(?:_|$)/.test(error?.code ?? "");
+}
+
 function closedOperationError(error) {
-  if (KNOWN_ERROR_CODES.has(error?.code)) return error;
-  if (/^SQLITE_(?:BUSY|LOCKED)(?:_|$)/.test(error?.code ?? "")) {
+  if (isSqliteContention(error)) {
     return migrationError("database_unavailable");
   }
+  if (
+    INTERNAL_MIGRATION_ERRORS.has(error)
+    && KNOWN_ERROR_CODES.has(error?.code)
+  ) {
+    return error;
+  }
   return migrationError("migration_apply_failed");
+}
+
+function inspectForApply(database, operation) {
+  let contention = false;
+
+  function recordContention(error) {
+    if (isSqliteContention(error)) contention = true;
+  }
+
+  function statementView(statement) {
+    let view;
+    view = new Proxy(statement, {
+      get(target, property) {
+        let member;
+        try {
+          member = Reflect.get(target, property, target);
+        } catch (error) {
+          recordContention(error);
+          throw error;
+        }
+        if (typeof member !== "function") return member;
+        return (...args) => {
+          try {
+            const result = member.apply(target, args);
+            return result === target ? view : result;
+          } catch (error) {
+            recordContention(error);
+            throw error;
+          }
+        };
+      }
+    });
+    return view;
+  }
+
+  let databaseView;
+  databaseView = new Proxy(database, {
+    get(target, property) {
+      let member;
+      try {
+        member = Reflect.get(target, property, target);
+      } catch (error) {
+        recordContention(error);
+        throw error;
+      }
+      if (typeof member !== "function") return member;
+      return (...args) => {
+        try {
+          const result = member.apply(target, args);
+          if (property === "prepare") return statementView(result);
+          return result === target ? databaseView : result;
+        } catch (error) {
+          recordContention(error);
+          throw error;
+        }
+      };
+    }
+  });
+
+  let result;
+  try {
+    result = operation(databaseView);
+  } catch (error) {
+    if (contention) throw migrationError("database_unavailable");
+    throw error;
+  }
+  if (contention) throw migrationError("database_unavailable");
+  return result;
 }
 
 function assertDatabasePath(dbPath) {
@@ -428,7 +508,13 @@ export function validateCoinWalletReferenceIndexSchema({
 }
 
 function assertFoundationDependency(database) {
-  if (!foundationDependencyIsExact(database)) {
+  if (
+    !inspectForApply(
+      database,
+      (inspectionDatabase) =>
+        foundationDependencyIsExact(inspectionDatabase)
+    )
+  ) {
     throw migrationError("migration_dependency_missing");
   }
 }
@@ -462,7 +548,15 @@ function applyWithDatabase(database, nowFn) {
       if (applied.ddl_checksum !== DDL_CHECKSUM) {
         throw migrationError("migration_checksum_mismatch");
       }
-      if (!inspectCoinWalletReferenceIndexSchema({ database }).ok) {
+      if (
+        !inspectForApply(
+          database,
+          (inspectionDatabase) =>
+            inspectCoinWalletReferenceIndexSchema({
+              database: inspectionDatabase
+            })
+        ).ok
+      ) {
         throw migrationError("applied_schema_incompatible");
       }
       return [];
@@ -478,7 +572,15 @@ function applyWithDatabase(database, nowFn) {
       DDL_CHECKSUM,
       normalizeAppliedAt(nowFn)
     );
-    if (!inspectCoinWalletReferenceIndexSchema({ database }).ok) {
+    if (
+      !inspectForApply(
+        database,
+        (inspectionDatabase) =>
+          inspectCoinWalletReferenceIndexSchema({
+            database: inspectionDatabase
+          })
+      ).ok
+    ) {
       throw migrationError("applied_schema_incompatible");
     }
     return [REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID];
@@ -512,8 +614,13 @@ export function applyCoinWalletReferenceIndexMigrations({
     const connection =
       database ?? (owned = new Database(dbPath, { fileMustExist: true }));
     const appliedMigrationIds = applyWithDatabase(connection, nowFn);
-    const inspection =
-      inspectCoinWalletReferenceIndexSchema({ database: connection });
+    const inspection = inspectForApply(
+      connection,
+      (inspectionDatabase) =>
+        inspectCoinWalletReferenceIndexSchema({
+          database: inspectionDatabase
+        })
+    );
     if (!inspection.ok) {
       throw migrationError("applied_schema_incompatible");
     }
