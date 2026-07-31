@@ -1373,3 +1373,156 @@ test("path validation maps deep database contention to database_unavailable", as
     );
   }
 });
+
+test("hostile database code accessors stay inside the apply boundary", () => {
+  const cases = [
+    {
+      name: "throwing-getter",
+      create(rawMessage) {
+        return {
+          get code() {
+            throw new Error(rawMessage);
+          }
+        };
+      }
+    },
+    {
+      name: "throwing-coercion",
+      create(rawMessage) {
+        return {
+          code: {
+            [Symbol.toPrimitive]() {
+              throw new Error(rawMessage);
+            }
+          }
+        };
+      }
+    }
+  ];
+
+  for (const fixture of cases) {
+    const rawMessage = `synthetic private ${fixture.name} detail`;
+    const hostileError = fixture.create(rawMessage);
+    const database = {
+      pragma() {
+        throw hostileError;
+      }
+    };
+
+    assertClosedApplyError(
+      () => exactApply({ database }),
+      "migration_apply_failed",
+      rawMessage
+    );
+  }
+});
+
+test("current invocation provenance ignores a hostile public code accessor", async () => {
+  await withOwnedDatabase("wallet-reference-current-provenance-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    const database = new Database(dbPath);
+    const rawMessage = "synthetic private current invocation detail";
+    let capturedInternal;
+    let hostileCodeReads = 0;
+    try {
+      database.exec(SUCCESSOR_INDEX_STATEMENTS[0]);
+      const originalTransaction = database.transaction.bind(database);
+      database.transaction = (callback) => {
+        const transaction = originalTransaction(callback);
+        const wrapped = (...args) => transaction(...args);
+        wrapped.immediate = (...args) => {
+          try {
+            return transaction.immediate(...args);
+          } catch (error) {
+            capturedInternal = error;
+            Object.defineProperty(error, "code", {
+              configurable: true,
+              get() {
+                hostileCodeReads += 1;
+                throw new Error(rawMessage);
+              }
+            });
+            throw error;
+          }
+        };
+        return wrapped;
+      };
+
+      assert.throws(
+        () => exactApply({ database }),
+        (error) => {
+          assert.notEqual(error, capturedInternal);
+          assert.equal(error.code, "owned_object_without_migration");
+          assert.equal(
+            error.message,
+            "Coin wallet reference-index schema rejected"
+          );
+          assert.equal(error.message.includes(rawMessage), false);
+          return true;
+        }
+      );
+      assert.equal(hostileCodeReads, 0);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("path validation closes owned databases after hostile code accessors", async () => {
+  await withOwnedDatabase(
+    "wallet-reference-validate-hostile-stateful-",
+    ({ dbPath }) => {
+      createFoundationDatabase(dbPath);
+      const originalPrepare = Database.prototype.prepare;
+      const rawMessage = "synthetic private validation stateful detail";
+      let codeReads = 0;
+      const hostileError = {
+        get code() {
+          codeReads += 1;
+          if (codeReads === 1) return "SYNTHETIC_NOT_CONTENTION";
+          throw new Error(rawMessage);
+        }
+      };
+      let injected = false;
+      Database.prototype.prepare = function prepareWithHostileCode(
+        sql,
+        ...args
+      ) {
+        if (
+          !injected
+          && String(sql).includes(
+            "select type, name, tbl_name, sql from sqlite_master"
+          )
+        ) {
+          injected = true;
+          throw hostileError;
+        }
+        return originalPrepare.call(this, sql, ...args);
+      };
+      let result;
+      let escaped;
+      try {
+        result = validateCoinWalletReferenceIndexSchema({ dbPath });
+      } catch (error) {
+        escaped = error;
+      } finally {
+        Database.prototype.prepare = originalPrepare;
+      }
+      let removalError;
+      try {
+        rmSync(dbPath);
+      } catch (error) {
+        removalError = error;
+      }
+
+      assert.equal(escaped, undefined);
+      assert.equal(removalError, undefined);
+      assert.equal(result.ok, false);
+      assert.equal(result.schemaState, "blocked");
+      assert.deepEqual(result.reasonCodes, ["database_inspection_failed"]);
+      assert.deepEqual(result.pendingMigrationIds, []);
+      assert.equal(JSON.stringify(result).includes(rawMessage), false);
+      assert.equal(codeReads, 2);
+    }
+  );
+});

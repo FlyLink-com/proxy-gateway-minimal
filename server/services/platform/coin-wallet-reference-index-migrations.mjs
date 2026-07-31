@@ -178,20 +178,32 @@ function migrationError(code, invocationToken) {
   return error;
 }
 
-function isSqliteContention(error) {
-  return /^SQLITE_(?:BUSY|LOCKED)(?:_|$)/.test(error?.code ?? "");
+function safeErrorCode(error) {
+  try {
+    const code = error?.code;
+    return typeof code === "string" ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+function isSqliteContentionCode(code) {
+  return (
+    typeof code === "string"
+    && /^SQLITE_(?:BUSY|LOCKED)(?:_|$)/.test(code)
+  );
 }
 
 function closedOperationError(error, invocationToken) {
-  if (isSqliteContention(error)) {
-    return safeMigrationError("database_unavailable");
-  }
   const provenance = INTERNAL_MIGRATION_ERRORS.get(error);
   if (
     provenance?.invocationToken === invocationToken
     && KNOWN_ERROR_CODES.has(provenance.code)
   ) {
     return safeMigrationError(provenance.code);
+  }
+  if (isSqliteContentionCode(safeErrorCode(error))) {
+    return safeMigrationError("database_unavailable");
   }
   return safeMigrationError("migration_apply_failed");
 }
@@ -204,7 +216,9 @@ function inspectWithContentionTracking(
   let contention = false;
 
   function recordContention(error) {
-    if (isSqliteContention(error)) contention = true;
+    if (isSqliteContentionCode(safeErrorCode(error))) {
+      contention = true;
+    }
   }
 
   function statementView(statement) {
@@ -497,11 +511,12 @@ function closedValidationFailure(reasonCode) {
 
 function validationFailureReason(dbPath, error) {
   if (!existsSync(dbPath)) return "database_missing";
-  if (error?.code === "database_unavailable") {
+  const code = safeErrorCode(error);
+  if (code === "database_unavailable") {
     return "database_unavailable";
   }
-  if (error?.code === "SQLITE_NOTADB") return "database_invalid";
-  if (/^SQLITE_(?:BUSY|LOCKED)(?:_|$)/.test(error?.code ?? "")) {
+  if (code === "SQLITE_NOTADB") return "database_invalid";
+  if (isSqliteContentionCode(code)) {
     return "database_unavailable";
   }
   return "database_inspection_failed";
@@ -517,22 +532,35 @@ export function validateCoinWalletReferenceIndexSchema({
   assertDatabasePath(dbPath);
   let owned;
   let result;
+  let closeFailed = false;
   try {
-    owned = new Database(dbPath, { readonly: true, fileMustExist: true });
-    result = inspectWithContentionTracking(
-      owned,
-      (inspectionDatabase) =>
-        inspectCoinWalletReferenceIndexSchema({
-          database: inspectionDatabase
-        }),
-      () => safeMigrationError("database_unavailable")
-    );
-  } catch (error) {
-    result = closedValidationFailure(validationFailureReason(dbPath, error));
+    try {
+      owned = new Database(dbPath, { readonly: true, fileMustExist: true });
+      result = inspectWithContentionTracking(
+        owned,
+        (inspectionDatabase) =>
+          inspectCoinWalletReferenceIndexSchema({
+            database: inspectionDatabase
+          }),
+        () => safeMigrationError("database_unavailable")
+      );
+    } catch (error) {
+      try {
+        result = closedValidationFailure(
+          validationFailureReason(dbPath, error)
+        );
+      } catch {
+        result = closedValidationFailure("database_inspection_failed");
+      }
+    }
+  } finally {
+    try {
+      owned?.close();
+    } catch {
+      closeFailed = true;
+    }
   }
-  try {
-    owned?.close();
-  } catch {
+  if (closeFailed) {
     return closedValidationFailure("database_close_failed");
   }
   return result;
