@@ -725,3 +725,134 @@ export function applyCoinWalletReferenceIndexMigrations({
     }
   }
 }
+
+function assertAbsoluteTempRoot(root, invocationToken) {
+  if (typeof root !== "string" || !isAbsolute(root)) {
+    throw migrationError("invalid_temp_root", invocationToken);
+  }
+}
+
+function sha256File(filePath) {
+  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
+}
+
+function sourceInspectionState(database) {
+  return {
+    dataVersion: database.pragma("data_version", { simple: true }),
+    schemaVersion: database.pragma("schema_version", { simple: true }),
+    inspection: inspectCoinWalletReferenceIndexSchema({ database })
+  };
+}
+
+function sourceInspectionStateIsUnchanged(before, after) {
+  return before.dataVersion === after.dataVersion
+    && before.schemaVersion === after.schemaVersion
+    && JSON.stringify(before.inspection) === JSON.stringify(after.inspection);
+}
+
+function safeRemoveOwnedDirectory(directory, root, invocationToken) {
+  const resolvedDirectory = resolve(directory);
+  const resolvedRoot = resolve(root);
+  const child = relative(resolvedRoot, resolvedDirectory);
+  if (
+    child.length === 0
+    || child === ".."
+    || child.startsWith(`..${sep}`)
+    || isAbsolute(child)
+  ) {
+    throw migrationError("invalid_temp_root", invocationToken);
+  }
+  try {
+    rmSync(resolvedDirectory, { recursive: true, force: true });
+  } catch {
+    throw migrationError("migration_apply_failed", invocationToken);
+  }
+}
+
+export async function dryRunCoinWalletReferenceIndexMigrations({
+  dbPath,
+  tempRoot
+} = {}) {
+  assertDatabasePath(dbPath);
+  const invocationToken = Object.freeze({});
+  const root = tempRoot ?? tmpdir();
+  let workDirectory;
+  let source;
+  try {
+    assertAbsoluteTempRoot(root, invocationToken);
+    mkdirSync(root, { recursive: true });
+    workDirectory = mkdtempSync(
+      join(root, "coin-wallet-reference-index-dry-run-")
+    );
+    const snapshotPath = join(workDirectory, "snapshot.sqlite");
+    const sourceHashBefore = sha256File(dbPath);
+    source = new Database(dbPath, { readonly: true, fileMustExist: true });
+    assertFoundationDependency(source, invocationToken);
+    const sourceInspectionBefore =
+      inspectCoinWalletReferenceIndexSchema({ database: source });
+    const sourceStateBefore = sourceInspectionState(source);
+    const wasApplied = sourceInspectionBefore.ok;
+    await source.backup(snapshotPath);
+    const applied = applyCoinWalletReferenceIndexMigrations({
+      dbPath: snapshotPath,
+      expectedMigrationId:
+        REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID,
+      expectedDdlChecksum: DDL_CHECKSUM
+    });
+    const validated =
+      validateCoinWalletReferenceIndexSchema({ dbPath: snapshotPath });
+    if (!validated.ok) {
+      throw migrationError(
+        "applied_schema_incompatible",
+        invocationToken
+      );
+    }
+    if (
+      sha256File(dbPath) !== sourceHashBefore
+      || !sourceInspectionStateIsUnchanged(
+        sourceStateBefore,
+        sourceInspectionState(source)
+      )
+    ) {
+      throw migrationError(
+        "source_changed_during_dry_run",
+        invocationToken
+      );
+    }
+    return {
+      ...validated,
+      mode: "dry-run",
+      sourceChanged: false,
+      pendingMigrationIds: wasApplied
+        ? []
+        : [REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID],
+      appliedMigrationIds: applied.appliedMigrationIds
+    };
+  } catch (error) {
+    throw closedOperationError(error, invocationToken);
+  } finally {
+    let cleanupError = null;
+    try {
+      source?.close();
+    } catch {
+      cleanupError = migrationError(
+        "database_close_failed",
+        invocationToken
+      );
+    }
+    if (workDirectory) {
+      try {
+        safeRemoveOwnedDirectory(
+          workDirectory,
+          root,
+          invocationToken
+        );
+      } catch (error) {
+        cleanupError ??= error;
+      }
+    }
+    if (cleanupError) {
+      throw closedOperationError(cleanupError, invocationToken);
+    }
+  }
+}

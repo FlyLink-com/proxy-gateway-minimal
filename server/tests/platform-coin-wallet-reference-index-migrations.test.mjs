@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,6 +15,8 @@ import test from "node:test";
 import Database from "better-sqlite3";
 
 import * as walletFoundation from "../services/platform/coin-wallet-migrations.mjs";
+import * as walletReferenceIndexes
+  from "../services/platform/coin-wallet-reference-index-migrations.mjs";
 import {
   applyCoinWalletMigrations
 } from "../services/platform/coin-wallet-migrations.mjs";
@@ -397,6 +405,51 @@ function canonicalState(dbPath) {
   }
 }
 
+function sourceFacts(database, dbPath) {
+  return {
+    fileSha256: fileSha256(dbPath),
+    dataVersion: database.pragma("data_version", { simple: true }),
+    schemaVersion: database.pragma("schema_version", { simple: true }),
+    inspection: inspectCoinWalletReferenceIndexSchema({ database }),
+    validation: validateCoinWalletReferenceIndexSchema({ dbPath }),
+    canonical: canonicalDatabaseState(dbPath),
+    sentinelRows: database.prepare(`
+      select sentinel_key, sentinel_value
+        from synthetic_reference_index_sentinel
+       order by sentinel_key
+    `).all()
+  };
+}
+
+async function assertClosedDryRunError(
+  operation,
+  expectedCode,
+  rejectedDetails
+) {
+  await assert.rejects(operation, (error) => {
+    assert.equal(error.code, expectedCode);
+    assert.equal(
+      error.message,
+      "Coin wallet reference-index schema rejected"
+    );
+    for (const detail of rejectedDetails) {
+      assert.equal(error.message.includes(detail), false);
+    }
+    return true;
+  });
+}
+
+test("successor module exports exactly the six frozen public names", () => {
+  assert.deepEqual(Object.keys(walletReferenceIndexes).sort(), [
+    "COIN_WALLET_REFERENCE_INDEX_MIGRATIONS",
+    "REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID",
+    "applyCoinWalletReferenceIndexMigrations",
+    "dryRunCoinWalletReferenceIndexMigrations",
+    "inspectCoinWalletReferenceIndexSchema",
+    "validateCoinWalletReferenceIndexSchema"
+  ]);
+});
+
 test("exports one frozen successor identity without changing the foundation namespace", () => {
   assert.deepEqual(Object.keys(walletFoundation).sort(), [
     "COIN_WALLET_MIGRATIONS",
@@ -418,6 +471,264 @@ test("exports one frozen successor identity without changing the foundation name
   }]);
   assert.equal(Object.isFrozen(COIN_WALLET_REFERENCE_INDEX_MIGRATIONS), true);
   assert.equal(Object.isFrozen(COIN_WALLET_REFERENCE_INDEX_MIGRATIONS[0]), true);
+});
+
+test("dry-run applies only its owned snapshot and preserves source bytes and logical state", async () => {
+  await withOwnedDatabase(
+    "wallet-reference-dry-run-pending-",
+    async ({ directory, dbPath }) => {
+      createFoundationDatabase(dbPath);
+      const tempRoot = mkdtempSync(join(directory, "dry-run-root-"));
+      const source = new Database(dbPath, {
+        readonly: true,
+        fileMustExist: true
+      });
+      try {
+        assert.deepEqual(readdirSync(tempRoot), []);
+        const before = sourceFacts(source, dbPath);
+        assertPending(before.inspection);
+        assertPending(before.validation);
+
+        const result = await walletReferenceIndexes
+          .dryRunCoinWalletReferenceIndexMigrations({ dbPath, tempRoot });
+
+        assert.equal(result.ok, true);
+        assert.equal(result.schemaState, "ready");
+        assert.equal(result.mode, "dry-run");
+        assert.equal(result.sourceChanged, false);
+        assert.deepEqual(result.pendingMigrationIds, [
+          REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID
+        ]);
+        assert.deepEqual(result.appliedMigrationIds, [
+          REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID
+        ]);
+        assert.deepEqual(sourceFacts(source, dbPath), before);
+        assert.deepEqual(readdirSync(tempRoot), []);
+      } finally {
+        source.close();
+      }
+    }
+  );
+});
+
+test("dry-run exact replay changes neither source nor snapshot identity", async () => {
+  await withOwnedDatabase(
+    "wallet-reference-dry-run-replay-",
+    async ({ directory, dbPath }) => {
+      createFoundationDatabase(dbPath);
+      exactApply({ dbPath });
+      const tempRoot = mkdtempSync(join(directory, "dry-run-root-"));
+      const source = new Database(dbPath, {
+        readonly: true,
+        fileMustExist: true
+      });
+      try {
+        assert.deepEqual(readdirSync(tempRoot), []);
+        const before = sourceFacts(source, dbPath);
+        assert.equal(before.inspection.ok, true);
+        assert.equal(before.validation.ok, true);
+
+        const result = await walletReferenceIndexes
+          .dryRunCoinWalletReferenceIndexMigrations({ dbPath, tempRoot });
+
+        assert.equal(result.ok, true);
+        assert.equal(result.schemaState, "ready");
+        assert.equal(result.mode, "dry-run");
+        assert.equal(result.sourceChanged, false);
+        assert.deepEqual(result.pendingMigrationIds, []);
+        assert.deepEqual(result.appliedMigrationIds, []);
+        assert.deepEqual(sourceFacts(source, dbPath), before);
+        assert.deepEqual(readdirSync(tempRoot), []);
+      } finally {
+        source.close();
+      }
+    }
+  );
+});
+
+test("dry-run detects a concurrent source commit and cleans its owned directory", async () => {
+  await withOwnedDatabase(
+    "wallet-reference-dry-run-concurrent-",
+    async ({ directory, dbPath }) => {
+      createFoundationDatabase(dbPath);
+      const tempRoot = mkdtempSync(join(directory, "dry-run-root-"));
+      const originalBackup = Database.prototype.backup;
+      let sourceDataVersionBefore;
+      let sourceDataVersionAfter;
+      let wroteConcurrently = false;
+      Database.prototype.backup = async function backupThenCommit(...args) {
+        const result = await originalBackup.apply(this, args);
+        sourceDataVersionBefore =
+          this.pragma("data_version", { simple: true });
+        const writer = new Database(dbPath);
+        try {
+          writer.transaction(() => {
+            writer.prepare(`
+              update synthetic_reference_index_sentinel
+                 set sentinel_value = ?
+               where sentinel_key = ?
+            `).run("concurrent-commit", "preserve");
+          }).immediate();
+          wroteConcurrently = true;
+        } finally {
+          writer.close();
+        }
+        sourceDataVersionAfter =
+          this.pragma("data_version", { simple: true });
+        return result;
+      };
+      try {
+        await assert.rejects(
+          walletReferenceIndexes
+            .dryRunCoinWalletReferenceIndexMigrations({ dbPath, tempRoot }),
+          (error) => error.code === "source_changed_during_dry_run"
+        );
+        assert.equal(wroteConcurrently, true);
+        assert.notEqual(sourceDataVersionAfter, sourceDataVersionBefore);
+        assert.deepEqual(readdirSync(tempRoot), []);
+      } finally {
+        Database.prototype.backup = originalBackup;
+      }
+    }
+  );
+});
+
+test("dry-run folds busy backup generic backup and close failures to safe codes", async () => {
+  const cases = [
+    {
+      name: "busy-backup",
+      method: "backup",
+      expectedCode: "database_unavailable",
+      rawMessage: "synthetic private SQLITE_BUSY backup detail",
+      replacement() {
+        return async function busyBackup() {
+          throw syntheticCodedError(
+            "SQLITE_BUSY",
+            "synthetic private SQLITE_BUSY backup detail"
+          );
+        };
+      }
+    },
+    {
+      name: "generic-backup",
+      method: "backup",
+      expectedCode: "migration_apply_failed",
+      rawMessage: "synthetic private generic backup detail",
+      replacement() {
+        return async function failedBackup() {
+          throw new Error("synthetic private generic backup detail");
+        };
+      }
+    },
+    {
+      name: "close",
+      method: "close",
+      expectedCode: "database_close_failed",
+      rawMessage: "synthetic private source close detail",
+      replacement(original) {
+        return function closeThenThrow(...args) {
+          original.apply(this, args);
+          throw new Error("synthetic private source close detail");
+        };
+      }
+    }
+  ];
+
+  for (const fixture of cases) {
+    await withOwnedDatabase(
+      `wallet-reference-dry-run-${fixture.name}-`,
+      async ({ directory, dbPath }) => {
+        createFoundationDatabase(dbPath);
+        const tempRoot = mkdtempSync(join(directory, "dry-run-root-"));
+        const original = Database.prototype[fixture.method];
+        Database.prototype[fixture.method] =
+          fixture.replacement(original);
+        try {
+          await assertClosedDryRunError(
+            walletReferenceIndexes
+              .dryRunCoinWalletReferenceIndexMigrations({
+                dbPath,
+                tempRoot
+              }),
+            fixture.expectedCode,
+            [fixture.rawMessage, dbPath, "SQLITE_BUSY"]
+          );
+          assert.deepEqual(readdirSync(tempRoot), []);
+        } finally {
+          Database.prototype[fixture.method] = original;
+        }
+      }
+    );
+  }
+});
+
+test("disposable rollback removes only successor logical state", async () => {
+  await withOwnedDatabase(
+    "wallet-reference-disposable-rollback-",
+    ({ dbPath }) => {
+      createFoundationDatabase(dbPath);
+      exactApply({ dbPath });
+      const beforeState = canonicalDatabaseState(dbPath);
+      const database = new Database(dbPath);
+      try {
+        database.exec(`
+          drop index platform_coin_hold_allocations_lot_ref_idx;
+          drop index platform_coin_ledger_entries_lot_ref_idx;
+          drop index platform_coin_ledger_entries_hold_ref_idx;
+        `);
+        const deleted = database.prepare(`
+          delete from platform_schema_migrations
+           where migration_id = ?
+        `).run(REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID);
+        assert.equal(deleted.changes, 1);
+      } finally {
+        database.close();
+      }
+
+      assert.equal(
+        walletFoundation.validateCoinWalletSchema({ dbPath }).ok,
+        true
+      );
+      assertPending(validateCoinWalletReferenceIndexSchema({ dbPath }));
+      assert.deepEqual(canonicalDatabaseState(dbPath), beforeState);
+      const rolledBack = new Database(dbPath, {
+        readonly: true,
+        fileMustExist: true
+      });
+      try {
+        assert.deepEqual(
+          rolledBack.pragma("quick_check"),
+          [{ quick_check: "ok" }]
+        );
+        assert.deepEqual(rolledBack.pragma("foreign_key_check"), []);
+      } finally {
+        rolledBack.close();
+      }
+    }
+  );
+});
+
+test("a pre-apply backup opens independently and restores foundation-only state", async () => {
+  await withOwnedDatabase(
+    "wallet-reference-pre-apply-backup-",
+    async ({ directory, dbPath }) => {
+      createFoundationDatabase(dbPath);
+      const backupPath = join(directory, "foundation-backup.sqlite");
+      const restoredPath = join(directory, "restored.sqlite");
+      const beforeState = canonicalDatabaseState(dbPath);
+      const source = new Database(dbPath, { fileMustExist: true });
+      try {
+        await source.backup(backupPath);
+      } finally {
+        source.close();
+      }
+
+      assertFoundationReadyAndSuccessorAbsent(backupPath);
+      exactApply({ dbPath });
+      copyFileSync(backupPath, restoredPath);
+      assertRollbackState(restoredPath, beforeState);
+    }
+  );
 });
 
 test("importing the successor module has no database or filesystem side effect", () => {
