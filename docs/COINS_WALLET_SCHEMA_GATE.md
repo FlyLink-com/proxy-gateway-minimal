@@ -57,6 +57,30 @@ safe status fields and aggregate checks; it must not include an absolute path,
 database filename, raw exception, SQL, SQLite row, account ID, wallet or order
 reference, customer data, secret, token, subscription URL, or credential.
 
+## Wallet reference-index successor
+
+The independent Wallet reference-index successor is
+`20260730_001_coin_wallet_reference_indexes`, with DDL checksum
+`2d8a0122a5a9078e9d6422f5230b03ae54789d50d0252485a29766dd3ab71d2b`.
+It requires the exact Wallet foundation ledger row and foundation checksum
+before it can validate, dry-run, or apply its own three-index migration.
+
+The closed successor CLI is available only for source or synthetic SQLite
+paths:
+
+```powershell
+npm run platform:coin-wallet:reference-index-schema -- --mode validate --db-path "C:\synthetic\wallet.sqlite"
+npm run platform:coin-wallet:reference-index-schema -- --mode dry-run --db-path "C:\synthetic\wallet.sqlite" --temp-root "C:\synthetic\wallet-index-dry-run"
+npm run platform:coin-wallet:reference-index-schema -- --mode apply --db-path "C:\synthetic\wallet.sqlite" --confirm-migration-id "20260730_001_coin_wallet_reference_indexes" --confirm-ddl-checksum "2d8a0122a5a9078e9d6422f5230b03ae54789d50d0252485a29766dd3ab71d2b"
+```
+
+Source presence and a successful local dry-run do not prove production apply.
+Any future production apply still requires a fresh inventory, verified backup,
+the exact artifact, maintenance/stop/rollback conditions, and explicit
+operator approval for one exact target. The successor has no production down
+CLI; forward-fix is preferred. Its production schema readback stops before
+Wallet or Commerce runtime activation, which remain separate later approvals.
+
 Stable exit classes are:
 
 | Exit | Meaning |
@@ -106,9 +130,10 @@ evidence and must not be reported as production-ready.
 
 ## Rollback and financial-data boundary
 
-There is no automatic down migration after financial data exists. Dropping or
-rewriting Coins tables would destroy ledger meaning and is forbidden.
-Forward-fix is the preferred response to an additive schema defect.
+There is no automatic down migration or production down CLI after financial
+data exists. Dropping or rewriting Coins tables would destroy ledger meaning
+and is forbidden. Forward-fix is the preferred response to an additive schema
+defect.
 
 A whole-database restore may also roll back unrelated business writes. It is
 allowed only after an explicit recovery-point objective (RPO) decision accepts
@@ -123,8 +148,11 @@ These commands validate repository source only and use no production database:
 
 ```powershell
 node --test server/tests/platform-coin-wallet-schema-cli.test.mjs
+node --test server/tests/platform-coin-wallet-reference-index-migrations.test.mjs
+node --test server/tests/platform-coin-wallet-reference-index-schema-cli.test.mjs
 npm run docs:authority:check
 node --check scripts/platform-coin-wallet-schema.mjs
+node --check scripts/platform-coin-wallet-reference-index-schema.mjs
 git diff --check
 ```
 
