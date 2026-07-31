@@ -1,7 +1,7 @@
 # Coin Wallet Reference Indexes Design
 
 > Status:
-> - Type: design specification pending written-spec review
+> - Type: approved design specification
 > - Approved through: scope, DDL shape, migration isolation, rollback boundary,
 >   and local validation contract
 > - Source baseline:
@@ -114,18 +114,22 @@ The successor migration identity is:
 20260730_001_coin_wallet_reference_indexes
 ```
 
-It has an independently derived SHA-256 DDL checksum. The implementation will
-derive that digest from the exact normalized statements below using this exact
-domain-separated byte sequence:
+The approved normalized statements below produce this independently derived
+SHA-256 DDL checksum:
+
+```text
+2d8a0122a5a9078e9d6422f5230b03ae54789d50d0252485a29766dd3ab71d2b
+```
+
+The module derives it using this exact domain-separated byte sequence:
 
 ```text
 GCCWEBOS:COIN_WALLET_REFERENCE_INDEX_DDL:v1\0<normalized statement 1>\0<normalized statement 2>\0<normalized statement 3>
 ```
 
 Statement normalization is byte-for-byte equivalent to the frozen Wallet
-foundation normalizer. The implementation then freezes the resulting digest
-through module and CLI tests. The spec does not invent a digest before the
-implementation bytes exist.
+foundation normalizer. Module and CLI tests freeze the literal above and
+independently derive it from the exact DDL bytes.
 
 The exact DDL is:
 
