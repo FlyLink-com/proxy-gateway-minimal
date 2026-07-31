@@ -204,13 +204,16 @@ repository source. `ADMIN_AUTHORIZATION_ENABLED` remains default-off, and
 this reconciliation has not verified production deployment or activated the
 authorization path in production.
 
-### Pending Follow-Up And Remaining Scope
+### Merged Follow-Up And Remaining Scope
 
-Draft PR #567 at
-`bc5b33f8ee2f8b2354593558f3035caf3a4cafda` is a pending, unmerged Risk B
-follow-up for the real `createApp()` HTTP 401 contract and its integration
-coverage. CI #1360 passed and independent review passed. Those facts do not
-make its source part of `master`.
+PR #567 is merged. Its source head was
+`bc5b33f8ee2f8b2354593558f3035caf3a4cafda`, and the corresponding master
+merge commit is `1429ed7ca398e8ec622bfcbcc1fd565aa085b736`.
+Comparing that source head with the merge commit yields zero file changes; the
+merge commit is one commit ahead. PR-head CI #1360 passed and independent
+review passed. This establishes the real `createApp()` HTTP 401 contract and
+its integration coverage in repository source; it does not prove deployment or
+production authorization activation.
 
 Issue #559 remains open and partial. The complete Operations DTO and metrics
 family, domain-owned definitions, freshness and denominator contracts,
