@@ -173,3 +173,55 @@ This document is complete only when:
 No statement in this document authorizes production, provider, credential,
 schema, payment, wallet, account, node, runtime, artifact, deployment, or live
 verification work.
+
+## 2026-07-31 Post-Merge Source Reconciliation
+
+This addendum records repository source progress after the historical inventory
+above. It does not rewrite that inventory and does not establish artifact,
+deployment, configuration, or live-runtime state.
+
+### Operations Overview Read Envelope
+
+PR #566 is merged. Its source head was
+`cf0e945e6814d425ae6a4a6d896e3e76894c6b58`, and the corresponding master
+merge commit is `b4125acd543c422e854ba142e3a2bfc227470012`.
+Comparing that PR head with the merge commit yields zero file changes; the
+merge commit is one commit ahead. PR-head CI #1357 passed. No separate
+merge-commit CI run is claimed here.
+
+The first versioned Operations Overview Envelope source slice is now
+`implemented_source`:
+
+- `GET /api/admin/operations/overview`;
+- route registration gated by the Admin authorization feature flag;
+- required capability `operations.read`;
+- Subscription Owner counts allowlisted to exactly `total`, `active`,
+  `expiring`, and `disabledOrExpired`;
+- successful HTTP 200 responses use the versioned Operations read Envelope.
+
+This establishes a read-only Admin capability and Envelope implementation in
+repository source. `ADMIN_AUTHORIZATION_ENABLED` remains default-off, and
+this reconciliation has not verified production deployment or activated the
+authorization path in production.
+
+### Merged Follow-Up And Remaining Scope
+
+PR #567 is merged. Its source head was
+`bc5b33f8ee2f8b2354593558f3035caf3a4cafda`, and the corresponding master
+merge commit is `1429ed7ca398e8ec622bfcbcc1fd565aa085b736`.
+Comparing that source head with the merge commit yields zero file changes; the
+merge commit is one commit ahead. PR-head CI #1360 passed and independent
+review passed. This establishes the real `createApp()` HTTP 401 contract and
+its integration coverage in repository source; it does not prove deployment or
+production authorization activation.
+
+Issue #559 remains open and partial. The complete Operations DTO and metrics
+family, domain-owned definitions, freshness and denominator contracts,
+financial reconciliation, and deterministic drill-down coverage are not
+completed by the first Overview slice.
+
+Repository source recorded by this reconciliation now includes both the
+versioned Operations Overview Envelope and the merged real-`createApp()` HTTP
+401 integration coverage for both capability-protected Overview paths. No production authorization flag, environment,
+deployment, artifact, provider, credential, schema, payment, Wallet, Runtime,
+or node state was changed or activated by this Risk C reconciliation.
