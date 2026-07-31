@@ -220,6 +220,8 @@ family, domain-owned definitions, freshness and denominator contracts,
 financial reconciliation, and deterministic drill-down coverage are not
 completed by the first Overview slice.
 
-No production authorization flag, environment, deployment, artifact,
-provider, credential, schema, payment, Wallet, Runtime, or node state was
-changed or activated by this Risk C reconciliation.
+Repository source recorded by this reconciliation now includes both the
+versioned Overview Envelope and the merged real-`createApp()` HTTP 401
+integration coverage. No production authorization flag, environment,
+deployment, artifact, provider, credential, schema, payment, Wallet, Runtime,
+or node state was changed or activated by this Risk C reconciliation.
