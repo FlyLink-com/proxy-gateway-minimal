@@ -161,13 +161,14 @@ function assertDatabasePath(dbPath) {
 function objectRow(database, type, name) {
   return database.prepare(
     "select type, name, tbl_name, sql from sqlite_master"
-      + " where type = ? and name = ?"
+      + " where type = ? and name = ? collate nocase"
   ).get(type, name) ?? null;
 }
 
 function namedObjectRow(database, name) {
   return database.prepare(
-    "select type, name, tbl_name, sql from sqlite_master where name = ?"
+    "select type, name, tbl_name, sql from sqlite_master"
+      + " where name = ? collate nocase"
   ).get(name) ?? null;
 }
 
@@ -202,6 +203,7 @@ function ownedIndexIsExact(database, name) {
   const row = objectRow(database, "index", name);
   if (
     !row
+    || row.name !== name
     || row.tbl_name !== expected.table
     || normalizeSql(row.sql) !== EXPECTED_INDEX_SQL.get(name)
   ) {

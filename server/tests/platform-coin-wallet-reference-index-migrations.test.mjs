@@ -624,3 +624,60 @@ test("partial successor state and applied index drift are blocked", async () => 
     );
   }
 });
+
+test("case-fold uppercase target collision without successor row is blocked", async () => {
+  await withOwnedDatabase("wallet-reference-case-fold-collision-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    const database = new Database(dbPath);
+    try {
+      database.exec(`
+        create index PLATFORM_COIN_HOLD_ALLOCATIONS_LOT_REF_IDX
+          on platform_coin_hold_allocations(lot_ref)
+      `);
+    } finally {
+      database.close();
+    }
+
+    const result = validateCoinWalletReferenceIndexSchema({ dbPath });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.schemaState, "blocked");
+    assert.equal(result.checks.schemaExact, false);
+    assert.deepEqual(result.reasonCodes, ["owned_object_without_migration"]);
+    assert.deepEqual(result.pendingMigrationIds, []);
+  });
+});
+
+test("case-fold target name drift with successor row is incompatible", async () => {
+  await withOwnedDatabase("wallet-reference-case-fold-drift-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    const database = new Database(dbPath);
+    try {
+      database.exec(`
+        create index Platform_Coin_Hold_Allocations_Lot_Ref_Idx
+          on platform_coin_hold_allocations(lot_ref)
+      `);
+      database.exec(SUCCESSOR_INDEX_STATEMENTS[1]);
+      database.exec(SUCCESSOR_INDEX_STATEMENTS[2]);
+      database.prepare(`
+        insert into platform_schema_migrations
+          (migration_id, ddl_checksum, applied_at)
+        values (?, ?, ?)
+      `).run(
+        REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID,
+        SUCCESSOR_CHECKSUM,
+        "2026-07-30T00:01:00.000Z"
+      );
+    } finally {
+      database.close();
+    }
+
+    const result = validateCoinWalletReferenceIndexSchema({ dbPath });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.schemaState, "blocked");
+    assert.equal(result.checks.schemaExact, false);
+    assert.deepEqual(result.reasonCodes, ["owned_object_incompatible"]);
+    assert.deepEqual(result.pendingMigrationIds, []);
+  });
+});
