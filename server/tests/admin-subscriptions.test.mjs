@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import express from "express";
 import { createApp } from "../app.mjs";
 import { adminSubscriptionRoutes } from "../routes/admin-subscriptions.mjs";
+import { createSubscriptionCore } from "../services/subscriptions/core.mjs";
 import { createSubscriptionRepository } from "../services/subscriptions/repository.mjs";
 import { createSubscriptionService } from "../services/subscriptions/service.mjs";
 import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
@@ -840,3 +841,364 @@ test("Admin overview returns 403 when the principal lacks operations.read", asyn
     server.close();
   }
 });
+
+
+test("Operations overview route is absent while Admin authorization is disabled", async () => {
+  let overviewCalls = 0;
+  const service = {
+    ...fakeService(),
+    overview: () => {
+      overviewCalls += 1;
+      return fakeService().overview();
+    }
+  };
+  const state = fakeState(service);
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const operations = await requestJson(baseUrl, "/api/admin/operations/overview");
+    assert.equal(operations.response.status, 404);
+    assert.equal(overviewCalls, 0);
+
+    const legacy = await requestJson(baseUrl, "/api/admin/overview");
+    assert.equal(legacy.response.status, 200);
+    assert.equal(legacy.body.ok, true);
+    assert.equal(typeof legacy.body.counts, "object");
+    assert.equal(overviewCalls, 1);
+  } finally {
+    server.close();
+  }
+});
+
+
+test("Operations overview returns an allowlisted authorized Envelope", async () => {
+  const state = fakeState();
+  state.platform = {
+    adminAuthorizationEnabled: true
+  };
+  let overviewCalls = 0;
+  state.subscriptions.service.overview = () => {
+    overviewCalls += 1;
+    return {
+      ok: true,
+      total: 12,
+      active: 8,
+      expiring: 2,
+      disabled: 1,
+      expired: 1,
+      counts: {
+        total: 12,
+        active: 8,
+        expiring: 2,
+        disabledOrExpired: 2
+      },
+      nodes: [{ name: "node-secret" }],
+      distribution: { "credential-secret": 1 },
+      token: "must-not-cross",
+      futureSourceField: "future-must-not-cross"
+    };
+  };
+
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = {
+      capabilities: ["operations.read"]
+    };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.schemaVersion, "operations-overview-read-envelope/v1");
+    assert.equal(body.freshness, "fresh");
+    assert.equal(body.sourceState, "implemented_source");
+    assert.deepEqual(body.data, {
+      total: 12,
+      active: 8,
+      expiring: 2,
+      disabledOrExpired: 2
+    });
+    assert.deepEqual(Object.keys(body.data), [
+      "total",
+      "active",
+      "expiring",
+      "disabledOrExpired"
+    ]);
+    assert.deepEqual(body.warnings, []);
+    assert.deepEqual(body.access, {
+      allowed: true,
+      capability: "operations.read",
+      reasonCode: "allowed"
+    });
+    assert.equal(new Date(body.generatedAt).toISOString(), body.generatedAt);
+    assert.equal(overviewCalls, 1);
+    assert.deepEqual(
+      Object.keys(body).sort(),
+      [
+        "access",
+        "data",
+        "freshness",
+        "generatedAt",
+        "schemaVersion",
+        "sourceState",
+        "warnings"
+      ]
+    );
+    assert.doesNotMatch(
+      JSON.stringify(body),
+      /node-secret|credential-secret|must-not-cross|futureSourceField/
+    );
+  } finally {
+    server.close();
+  }
+});
+
+
+test("Operations overview accepts the real Subscription Core overview shape", async () => {
+  const database = new Database(":memory:");
+  const store = createSubscriptionRepository({ database });
+  const core = createSubscriptionCore({
+    store,
+    proxyConfig: sampleProxyConfig(),
+    publicSubscriptionBaseUrl: "https://gateway.example.com",
+    nowFn: () => new Date("2026-05-21T00:00:00.000Z")
+  });
+  const state = fakeState(core, "core");
+  state.platform = { adminAuthorizationEnabled: true };
+
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.data, {
+      total: 0,
+      active: 0,
+      expiring: 0,
+      disabledOrExpired: 0
+    });
+    assert.deepEqual(Object.keys(body).sort(), [
+      "access",
+      "data",
+      "freshness",
+      "generatedAt",
+      "schemaVersion",
+      "sourceState",
+      "warnings"
+    ]);
+  } finally {
+    server.close();
+    store.close();
+    database.close();
+  }
+});
+
+
+test("Operations overview route requires the authorization flag to be exactly true", async () => {
+  let overviewCalls = 0;
+  const service = {
+    ...fakeService(),
+    overview: () => {
+      overviewCalls += 1;
+      return fakeService().overview();
+    }
+  };
+  const state = fakeState(service);
+  state.platform = { adminAuthorizationEnabled: 1 };
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 404);
+    assert.equal(overviewCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("Operations overview returns 401 without an Admin principal", async () => {
+  let overviewCalls = 0;
+  const service = {
+    ...fakeService(),
+    overview: () => {
+      overviewCalls += 1;
+      return fakeService().overview();
+    }
+  };
+  const state = fakeState(service);
+  state.platform = { adminAuthorizationEnabled: true };
+  const app = express();
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), {
+      error: "admin_authentication_required"
+    });
+    assert.equal(overviewCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("Operations overview returns 403 without operations.read", async () => {
+  let overviewCalls = 0;
+  const service = {
+    ...fakeService(),
+    overview: () => {
+      overviewCalls += 1;
+      return fakeService().overview();
+    }
+  };
+  const state = fakeState(service);
+  state.platform = { adminAuthorizationEnabled: true };
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["users.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: "admin_capability_required",
+      capability: "operations.read"
+    });
+    assert.equal(overviewCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("Operations overview hides invalid owner data behind a safe internal error", async () => {
+  const state = fakeState();
+  state.platform = { adminAuthorizationEnabled: true };
+  state.subscriptions.service.overview = () => ({
+    total: "12",
+    active: 8,
+    expiring: 2,
+    disabledOrExpired: 2,
+    secret: "must-not-cross"
+  });
+
+  const app = express();
+  app.use((req, _res, next) => {
+    req.adminPrincipal = { capabilities: ["operations.read"] };
+    next();
+  });
+  app.use(adminSubscriptionRoutes(state));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`);
+    assert.equal(response.status, 500);
+    const body = await response.json();
+    assert.deepEqual(body, { error: "internal_error" });
+    assert.doesNotMatch(JSON.stringify(body), /must-not-cross|12/);
+  } finally {
+    server.close();
+  }
+});
+
+
+function errorWithInheritedCode(code, message) {
+  const error = new Error(message);
+  Object.setPrototypeOf(error, Object.create(Error.prototype, {
+    code: {
+      value: code,
+      enumerable: true,
+      configurable: true
+    }
+  }));
+  return error;
+}
+
+for (const [label, failureFactory] of [
+  [
+    "an own validation_error",
+    () => serviceError("validation_error", "owner-secret-own-validation")
+  ],
+  [
+    "an own not_found error",
+    () => serviceError("not_found", "owner-secret-own-not-found")
+  ],
+  [
+    "an inherited validation_error",
+    () => errorWithInheritedCode(
+      "validation_error",
+      "owner-secret-inherited-validation"
+    )
+  ],
+  [
+    "an inherited not_found error",
+    () => errorWithInheritedCode(
+      "not_found",
+      "owner-secret-inherited-not-found"
+    )
+  ],
+  ["a null throw", () => null],
+  [
+    "a throwing code accessor",
+    () => {
+      const error = new Error("owner-secret-throwing-code");
+      Object.defineProperty(error, "code", {
+        configurable: true,
+        get() {
+          throw new Error("owner-secret-code-accessor");
+        }
+      });
+      return error;
+    }
+  ]
+]) {
+  test(`Operations overview safely normalizes ${label} from the Owner`, async () => {
+    const state = fakeState({
+      ...fakeService(),
+      overview: () => {
+        throw failureFactory();
+      }
+    });
+    state.platform = { adminAuthorizationEnabled: true };
+
+    const app = express();
+    app.use((req, _res, next) => {
+      req.adminPrincipal = { capabilities: ["operations.read"] };
+      next();
+    });
+    app.use(adminSubscriptionRoutes(state));
+
+    const { server, baseUrl } = await listen(app);
+    try {
+      const failed = await requestJson(baseUrl, "/api/admin/operations/overview");
+      assert.equal(failed.response.status, 500);
+      assert.deepEqual(failed.body, { error: "internal_error" });
+      assert.doesNotMatch(
+        JSON.stringify(failed.body),
+        /owner-secret|validation_error|not_found/
+      );
+    } finally {
+      server.close();
+    }
+  });
+}

@@ -1,0 +1,881 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  createOperationsReadEnvelope
+} from "../services/platform/operations-read-envelope.mjs";
+
+import {
+  projectOperationsOverviewReadModel
+} from "../services/platform/operations-overview-read-model.mjs";
+
+test("Operations Read Envelope creates the exact authorized v1 response", () => {
+  const sourceData = {
+    total: 12,
+    active: 8,
+    expiring: 2,
+    disabledOrExpired: 2
+  };
+
+  const envelope = createOperationsReadEnvelope({
+    schemaVersion: "operations-overview-read-envelope/v1",
+    freshness: "fresh",
+    sourceState: "implemented_source",
+    data: sourceData,
+    warnings: [],
+    access: {
+      allowed: true,
+      capability: "operations.read",
+      reasonCode: "allowed"
+    }
+  }, {
+    nowFn: () => new Date("2026-07-31T00:00:00.000Z")
+  });
+
+  assert.deepEqual(envelope, {
+    schemaVersion: "operations-overview-read-envelope/v1",
+    generatedAt: "2026-07-31T00:00:00.000Z",
+    freshness: "fresh",
+    sourceState: "implemented_source",
+    data: {
+      total: 12,
+      active: 8,
+      expiring: 2,
+      disabledOrExpired: 2
+    },
+    warnings: [],
+    access: {
+      allowed: true,
+      capability: "operations.read",
+      reasonCode: "allowed"
+    }
+  });
+  assert.notEqual(envelope.data, sourceData);
+});
+
+const validEnvelopeInput = {
+  schemaVersion: "operations-overview-read-envelope/v1",
+  freshness: "fresh",
+  sourceState: "implemented_source",
+  data: { total: 0 },
+  warnings: [],
+  access: {
+    allowed: true,
+    capability: "operations.read",
+    reasonCode: "allowed"
+  }
+};
+
+for (const [label, override] of [
+  ["blank schema", { schemaVersion: "" }],
+  ["unsupported freshness", { freshness: "disconnected" }],
+  ["unsupported source state", { sourceState: "deployed" }],
+  ["array data", { data: [] }],
+  ["free-form warning", { warnings: [{ code: "source_stale", message: "raw" }] }],
+  ["denied access", { access: { allowed: false, capability: "operations.read", reasonCode: "capability_missing" } }]
+]) {
+  test(`Operations Read Envelope rejects ${label}`, () => {
+    assert.throws(
+      () => createOperationsReadEnvelope(
+        { ...validEnvelopeInput, ...override },
+        { nowFn: () => new Date("2026-07-31T00:00:00.000Z") }
+      ),
+      (error) => error.code === "operations_read_contract_error"
+    );
+  });
+}
+
+test("Operations Read Envelope rejects an invalid generation time", () => {
+  assert.throws(
+    () => createOperationsReadEnvelope(validEnvelopeInput, {
+      nowFn: () => new Date("invalid")
+    }),
+    (error) => error.code === "operations_read_contract_error"
+  );
+});
+
+test("Operations Read Envelope normalizes a code-spoofed caller error", () => {
+  assert.throws(
+    () => createOperationsReadEnvelope(validEnvelopeInput, {
+      nowFn: () => {
+        throw Object.assign(new Error("secret caller detail"), {
+          code: "operations_read_contract_error"
+        });
+      }
+    }),
+    (error) => {
+      assert.equal(error.code, "operations_read_contract_error");
+      assert.equal(error.message, "Operations read contract is invalid");
+      return true;
+    }
+  );
+});
+
+test("Operations Read Envelope deep-copies safe nested data values", () => {
+  const sourceData = {
+    summary: {
+      totals: [12, { active: 8 }]
+    }
+  };
+  const envelope = createOperationsReadEnvelope({
+    ...validEnvelopeInput,
+    data: sourceData
+  }, {
+    nowFn: () => new Date("2026-07-31T00:00:00.000Z")
+  });
+
+  assert.notEqual(envelope.data, sourceData);
+  assert.notEqual(envelope.data.summary, sourceData.summary);
+  assert.notEqual(envelope.data.summary.totals, sourceData.summary.totals);
+  assert.notEqual(envelope.data.summary.totals[1], sourceData.summary.totals[1]);
+  envelope.data.summary.totals[1].active = 99;
+  assert.equal(sourceData.summary.totals[1].active, 8);
+});
+
+for (const [label, input, options] of [
+  ["a coercible schema object", {
+    ...validEnvelopeInput,
+    schemaVersion: { toString: () => "operations-overview-read-envelope/v1" }
+  }, {}],
+  ["a coercible freshness object", {
+    ...validEnvelopeInput,
+    freshness: { toString: () => "fresh" }
+  }, {}],
+  ["a coercible source-state object", {
+    ...validEnvelopeInput,
+    sourceState: { toString: () => "implemented_source" }
+  }, {}],
+  ["an explicitly empty nowFn", validEnvelopeInput, { nowFn: "" }]
+]) {
+  test(`Operations Read Envelope rejects ${label}`, () => {
+    assert.throws(
+      () => createOperationsReadEnvelope(input, options),
+      (error) => error.code === "operations_read_contract_error"
+    );
+  });
+}
+
+
+test("Operations Read Envelope generates canonical time from trusted Date internals", () => {
+  const now = new Date("2026-07-31T00:00:00.000Z");
+  now.toISOString = () => "caller-controlled";
+
+  const envelope = createOperationsReadEnvelope(validEnvelopeInput, {
+    nowFn: () => now
+  });
+
+  assert.equal(envelope.generatedAt, "2026-07-31T00:00:00.000Z");
+});
+
+test("Operations Read Envelope rejects an invalid Date with overridden methods", () => {
+  const now = new Date("invalid");
+  now.getTime = () => 0;
+  now.toISOString = () => "caller-controlled";
+
+  assert.throws(
+    () => createOperationsReadEnvelope(validEnvelopeInput, {
+      nowFn: () => now
+    }),
+    (error) => error.code === "operations_read_contract_error"
+  );
+});
+
+test("Operations Read Envelope snapshots warning getters once", () => {
+  let warningReads = 0;
+  const warning = {};
+  Object.defineProperty(warning, "code", {
+    enumerable: true,
+    get() {
+      warningReads += 1;
+      return warningReads === 1 ? "source_stale" : "caller-controlled";
+    }
+  });
+
+  const access = validEnvelopeInput.access;
+
+  const envelope = createOperationsReadEnvelope({
+    ...validEnvelopeInput,
+    warnings: [warning],
+    access
+  }, {
+    nowFn: () => new Date("2026-07-31T00:00:00.000Z")
+  });
+
+  assert.deepEqual(envelope.warnings, [{ code: "source_stale" }]);
+  assert.deepEqual(envelope.access, {
+    allowed: true,
+    capability: "operations.read",
+    reasonCode: "allowed"
+  });
+  assert.equal(warningReads, 1);
+});
+
+
+test("Operations Read Envelope clones nested arrays without caller map dispatch", () => {
+  const owned = { active: 8 };
+  const nested = [owned];
+  nested.map = () => owned;
+
+  const envelope = createOperationsReadEnvelope({
+    ...validEnvelopeInput,
+    data: { nested }
+  }, {
+    nowFn: () => new Date("2026-07-31T00:00:00.000Z")
+  });
+
+  assert.deepEqual(envelope.data, { nested: [{ active: 8 }] });
+  assert.notEqual(envelope.data.nested, nested);
+  assert.notEqual(envelope.data.nested[0], owned);
+});
+
+test("Operations Read Envelope validates warnings without caller map dispatch", () => {
+  const warnings = [{ code: "source_stale" }];
+  warnings.map = () => [{ code: "caller-controlled", message: "raw" }];
+
+  const envelope = createOperationsReadEnvelope({
+    ...validEnvelopeInput,
+    warnings
+  }, {
+    nowFn: () => new Date("2026-07-31T00:00:00.000Z")
+  });
+
+  assert.deepEqual(envelope.warnings, [{ code: "source_stale" }]);
+});
+
+test("Operations Read Envelope rejects sparse warnings", () => {
+  assert.throws(
+    () => createOperationsReadEnvelope({
+      ...validEnvelopeInput,
+      warnings: new Array(1)
+    }),
+    (error) => error.code === "operations_read_contract_error"
+  );
+});
+
+test("Operations Read Envelope requires warning's sole own key to be code", () => {
+  const warning = { message: "not allowed" };
+  Object.defineProperty(warning, "code", {
+    value: "source_stale",
+    enumerable: false
+  });
+
+  assert.throws(
+    () => createOperationsReadEnvelope({
+      ...validEnvelopeInput,
+      warnings: [warning]
+    }),
+    (error) => error.code === "operations_read_contract_error"
+  );
+});
+
+
+function validOperationsOverviewSource() {
+  return {
+    ok: true,
+    total: 12,
+    active: 8,
+    expiring: 2,
+    disabled: 1,
+    expired: 1,
+    counts: {
+      total: 12,
+      active: 8,
+      expiring: 2,
+      disabledOrExpired: 2
+    },
+    nodes: [{ name: "node-secret" }],
+    distribution: { "credential-secret": 1 },
+    token: "must-not-cross"
+  };
+}
+
+test("Operations Overview Projector returns only allowlisted Owner counts", () => {
+  const source = validOperationsOverviewSource();
+
+  const projected = projectOperationsOverviewReadModel(source);
+
+  assert.deepEqual(projected, {
+    total: 12,
+    active: 8,
+    expiring: 2,
+    disabledOrExpired: 2
+  });
+  assert.notEqual(projected, source);
+  assert.notEqual(projected, source.counts);
+  assert.doesNotMatch(
+    JSON.stringify(projected),
+    /node-secret|credential-secret|must-not-cross/
+  );
+});
+
+function assertOperationsReadContractError(run) {
+  assert.throws(run, (error) => {
+    assert.equal(error.code, "operations_read_contract_error");
+    assert.equal(error.message, "Operations read contract is invalid");
+    return true;
+  });
+}
+
+test("Operations Overview Projector rejects a missing total count", () => {
+  const source = validOperationsOverviewSource();
+  delete source.counts.total;
+
+  assertOperationsReadContractError(
+    () => projectOperationsOverviewReadModel(source)
+  );
+});
+
+for (const [label, field, value] of [
+  ["negative", "active", -1],
+  ["fractional", "expiring", 1.5],
+  ["string", "disabledOrExpired", "2"],
+  ["null", "total", null]
+]) {
+  test(`Operations Overview Projector rejects a ${label} ${field} count`, () => {
+    const source = validOperationsOverviewSource();
+    source.counts[field] = value;
+
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(source)
+    );
+  });
+}
+
+test("Operations Overview Projector rejects a missing counts object", () => {
+  const source = validOperationsOverviewSource();
+  delete source.counts;
+
+  assertOperationsReadContractError(
+    () => projectOperationsOverviewReadModel(source)
+  );
+});
+
+test("Operations Overview Projector rejects an inherited counts object", () => {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "counts"
+  );
+  const source = validOperationsOverviewSource();
+  const inheritedCounts = source.counts;
+  delete source.counts;
+
+  try {
+    Object.defineProperty(Object.prototype, "counts", {
+      value: inheritedCounts,
+      writable: true,
+      enumerable: true,
+      configurable: true
+    });
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(source)
+    );
+  } finally {
+    if (originalDescriptor) {
+      Object.defineProperty(Object.prototype, "counts", originalDescriptor);
+    } else {
+      delete Object.prototype.counts;
+    }
+  }
+});
+
+test("Operations Overview Projector rejects a counts accessor without reading it", () => {
+  const source = validOperationsOverviewSource();
+  let reads = 0;
+  Object.defineProperty(source, "counts", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      reads += 1;
+      return validOperationsOverviewSource().counts;
+    }
+  });
+
+  assertOperationsReadContractError(
+    () => projectOperationsOverviewReadModel(source)
+  );
+  assert.equal(reads, 0);
+});
+
+for (const [label, counts] of [
+  ["an array", []],
+  ["a null-prototype object", Object.create(null)],
+  ["a custom-prototype object", Object.create({})]
+]) {
+  test(`Operations Overview Projector rejects ${label} as counts`, () => {
+    const source = validOperationsOverviewSource();
+    source.counts = counts;
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(source)
+    );
+  });
+}
+
+for (const field of [
+  "total",
+  "active",
+  "expiring",
+  "disabledOrExpired"
+]) {
+  test(`Operations Overview Projector rejects an inherited ${field} count`, () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      Object.prototype,
+      field
+    );
+    const source = validOperationsOverviewSource();
+    const inheritedValue = source.counts[field];
+    delete source.counts[field];
+
+    try {
+      Object.defineProperty(Object.prototype, field, {
+        value: inheritedValue,
+        writable: true,
+        enumerable: true,
+        configurable: true
+      });
+      assertOperationsReadContractError(
+        () => projectOperationsOverviewReadModel(source)
+      );
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Object.prototype, field, originalDescriptor);
+      } else {
+        delete Object.prototype[field];
+      }
+    }
+  });
+
+  test(`Operations Overview Projector rejects an accessor ${field} count without reading it`, () => {
+    const source = validOperationsOverviewSource();
+    let reads = 0;
+    Object.defineProperty(source.counts, field, {
+      enumerable: true,
+      configurable: true,
+      get() {
+        reads += 1;
+        return 0;
+      }
+    });
+
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(source)
+    );
+    assert.equal(reads, 0);
+  });
+}
+
+test("Operations Overview Projector normalizes nested descriptor failures without detail", () => {
+  const source = validOperationsOverviewSource();
+  source.counts = new Proxy(source.counts, {
+    getOwnPropertyDescriptor() {
+      throw new Error("owner-secret-must-not-cross");
+    }
+  });
+
+  assertOperationsReadContractError(
+    () => projectOperationsOverviewReadModel(source)
+  );
+});
+
+for (const [label, input] of [
+  ["null", null],
+  ["an array", []],
+  ["a null-prototype object", Object.create(null)],
+  ["a custom-prototype object", Object.create({})]
+]) {
+  test(`Operations Overview Projector rejects ${label}`, () => {
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(input)
+    );
+  });
+}
+
+test("Operations Overview Projector keeps result counts as own properties under inherited setters", () => {
+  const originalTotalDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "total"
+  );
+
+  try {
+    Object.defineProperty(Object.prototype, "total", {
+      configurable: true,
+      set() {}
+    });
+    const projected = projectOperationsOverviewReadModel(
+      validOperationsOverviewSource()
+    );
+    assert.deepEqual(projected, {
+      total: 12,
+      active: 8,
+      expiring: 2,
+      disabledOrExpired: 2
+    });
+    for (const field of [
+      "total",
+      "active",
+      "expiring",
+      "disabledOrExpired"
+    ]) {
+      assert.equal(Object.hasOwn(projected, field), true);
+    }
+  } finally {
+    if (originalTotalDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "total",
+        originalTotalDescriptor
+      );
+    } else {
+      delete Object.prototype.total;
+    }
+  }
+});
+
+test("Operations Overview Projector preserves safe error code under inherited setters", () => {
+  const originalCodeDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "code"
+  );
+  const source = validOperationsOverviewSource();
+  delete source.counts.total;
+
+  try {
+    Object.defineProperty(Object.prototype, "code", {
+      configurable: true,
+      set() {}
+    });
+    assertOperationsReadContractError(
+      () => projectOperationsOverviewReadModel(source)
+    );
+  } finally {
+    if (originalCodeDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "code",
+        originalCodeDescriptor
+      );
+    } else {
+      delete Object.prototype.code;
+    }
+  }
+});
+
+
+test("Operations Read Envelope preserves safe error code under inherited setters", () => {
+  const originalCodeDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "code"
+  );
+
+  let caught;
+  try {
+    Object.defineProperty(Object.prototype, "code", {
+      configurable: true,
+      set() {}
+    });
+    try {
+      createOperationsReadEnvelope(validEnvelopeInput, {
+        nowFn: () => {
+          throw new Error("caller-secret-must-not-cross");
+        }
+      });
+    } catch (error) {
+      caught = error;
+    }
+  } finally {
+    if (originalCodeDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "code",
+        originalCodeDescriptor
+      );
+    } else {
+      delete Object.prototype.code;
+    }
+  }
+
+  assert.equal(caught?.message, "Operations read contract is invalid");
+  assert.equal(caught?.code, "operations_read_contract_error");
+  assert.equal(Object.hasOwn(caught, "code"), true);
+});
+
+test("Operations Read Envelope defines cloned data array elements as own properties", () => {
+  const originalZeroDescriptor = Object.getOwnPropertyDescriptor(
+    Array.prototype,
+    "0"
+  );
+  const nested = [];
+  Object.defineProperty(nested, "0", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      Object.defineProperty(Array.prototype, "0", {
+        configurable: true,
+        set() {}
+      });
+      return { active: 8 };
+    }
+  });
+  nested.length = 1;
+
+  let envelope;
+  try {
+    envelope = createOperationsReadEnvelope({
+      ...validEnvelopeInput,
+      data: { nested }
+    });
+  } finally {
+    if (originalZeroDescriptor) {
+      Object.defineProperty(
+        Array.prototype,
+        "0",
+        originalZeroDescriptor
+      );
+    } else {
+      delete Array.prototype[0];
+    }
+  }
+
+  assert.deepEqual(envelope.data.nested, [{ active: 8 }]);
+  assert.equal(Object.hasOwn(envelope.data.nested, 0), true);
+});
+
+test("Operations Read Envelope defines warning snapshots as own array elements", () => {
+  const originalZeroDescriptor = Object.getOwnPropertyDescriptor(
+    Array.prototype,
+    "0"
+  );
+  const warning = {};
+  Object.defineProperty(warning, "code", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      Object.defineProperty(Array.prototype, "0", {
+        configurable: true,
+        set() {}
+      });
+      return "source_stale";
+    }
+  });
+
+  let envelope;
+  try {
+    envelope = createOperationsReadEnvelope({
+      ...validEnvelopeInput,
+      warnings: [warning]
+    });
+  } finally {
+    if (originalZeroDescriptor) {
+      Object.defineProperty(
+        Array.prototype,
+        "0",
+        originalZeroDescriptor
+      );
+    } else {
+      delete Array.prototype[0];
+    }
+  }
+
+  assert.deepEqual(envelope.warnings, [{ code: "source_stale" }]);
+  assert.equal(Object.hasOwn(envelope.warnings, 0), true);
+});
+
+
+for (const [field, inheritedValue] of [
+  ["schemaVersion", "operations-overview-read-envelope/v1"],
+  ["freshness", "fresh"],
+  ["sourceState", "implemented_source"],
+  ["data", { total: 0 }],
+  ["warnings", []],
+  ["access", {
+    allowed: true,
+    capability: "operations.read",
+    reasonCode: "allowed"
+  }]
+]) {
+  test(`Operations Read Envelope rejects inherited required ${field}`, () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      Object.prototype,
+      field
+    );
+    const input = { ...validEnvelopeInput };
+    delete input[field];
+
+    try {
+      Object.defineProperty(Object.prototype, field, {
+        configurable: true,
+        value: inheritedValue,
+        writable: true
+      });
+      assertOperationsReadContractError(
+        () => createOperationsReadEnvelope(input)
+      );
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(
+          Object.prototype,
+          field,
+          originalDescriptor
+        );
+      } else {
+        delete Object.prototype[field];
+      }
+    }
+  });
+}
+
+for (const [field, inheritedValue] of [
+  ["allowed", true],
+  ["capability", "operations.read"],
+  ["reasonCode", "allowed"]
+]) {
+  test(`Operations Read Envelope rejects inherited access ${field}`, () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      Object.prototype,
+      field
+    );
+    const access = { ...validEnvelopeInput.access };
+    delete access[field];
+
+    try {
+      Object.defineProperty(Object.prototype, field, {
+        configurable: true,
+        value: inheritedValue,
+        writable: true
+      });
+      assertOperationsReadContractError(
+        () => createOperationsReadEnvelope({
+          ...validEnvelopeInput,
+          access
+        })
+      );
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(
+          Object.prototype,
+          field,
+          originalDescriptor
+        );
+      } else {
+        delete Object.prototype[field];
+      }
+    }
+  });
+}
+
+test("Operations Read Envelope rejects accessor-driven data structure mutation", () => {
+  const originalLaterDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "later"
+  );
+  const data = { later: "safe-own-value" };
+  Object.defineProperty(data, "first", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      delete data.later;
+      Object.defineProperty(Object.prototype, "later", {
+        configurable: true,
+        value: "polluted-inherited-value",
+        writable: true
+      });
+      return "first-value";
+    }
+  });
+
+  try {
+    assertOperationsReadContractError(
+      () => createOperationsReadEnvelope({
+        ...validEnvelopeInput,
+        data
+      })
+    );
+  } finally {
+    if (originalLaterDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "later",
+        originalLaterDescriptor
+      );
+    } else {
+      delete Object.prototype.later;
+    }
+  }
+});
+
+
+test("Operations Read Envelope rejects top-level own-to-inherited mutation", () => {
+  const originalFreshnessDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "freshness"
+  );
+  const input = { ...validEnvelopeInput };
+  Object.defineProperty(input, "schemaVersion", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      delete input.freshness;
+      Object.defineProperty(Object.prototype, "freshness", {
+        configurable: true,
+        value: "fresh",
+        writable: true
+      });
+      return "operations-overview-read-envelope/v1";
+    }
+  });
+
+  try {
+    assertOperationsReadContractError(
+      () => createOperationsReadEnvelope(input)
+    );
+  } finally {
+    if (originalFreshnessDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "freshness",
+        originalFreshnessDescriptor
+      );
+    } else {
+      delete Object.prototype.freshness;
+    }
+  }
+});
+
+test("Operations Read Envelope rejects access own-to-inherited mutation", () => {
+  const originalCapabilityDescriptor = Object.getOwnPropertyDescriptor(
+    Object.prototype,
+    "capability"
+  );
+  const access = { ...validEnvelopeInput.access };
+  Object.defineProperty(access, "allowed", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      delete access.capability;
+      Object.defineProperty(Object.prototype, "capability", {
+        configurable: true,
+        value: "operations.read",
+        writable: true
+      });
+      return true;
+    }
+  });
+
+  try {
+    assertOperationsReadContractError(
+      () => createOperationsReadEnvelope({
+        ...validEnvelopeInput,
+        access
+      })
+    );
+  } finally {
+    if (originalCapabilityDescriptor) {
+      Object.defineProperty(
+        Object.prototype,
+        "capability",
+        originalCapabilityDescriptor
+      );
+    } else {
+      delete Object.prototype.capability;
+    }
+  }
+});
