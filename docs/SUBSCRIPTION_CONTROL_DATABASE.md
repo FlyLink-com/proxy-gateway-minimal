@@ -1,6 +1,6 @@
 # Subscription Control Database
 
-Last updated: 2026-06-11, Asia/Shanghai.
+Last updated: 2026-07-31, Asia/Shanghai.
 
 This document defines the repository-local business-control database layer for
 subscription operations. It is separate from the existing technical
@@ -70,6 +70,13 @@ module and the separately gated `platform_schema_migrations` ledger described
 in `docs/COINS_WALLET_SCHEMA_GATE.md`. The presence of that source and CLI does
 not prove that a production migration occurred and does not authorize startup
 DDL to absorb Coins ownership.
+
+The independent Wallet reference-index successor owns only
+`platform_coin_hold_allocations_lot_ref_idx`,
+`platform_coin_ledger_entries_lot_ref_idx`,
+`platform_coin_ledger_entries_hold_ref_idx`, and its own row in the shared
+`platform_schema_migrations` ledger. Startup DDL, Wallet Store, Commerce Store,
+and payment code neither own nor auto-apply this successor.
 
 Coins Commerce schema ownership is also separate. Its additive migration
 requires the exact Wallet migration ledger row and checksum, reuses the same
