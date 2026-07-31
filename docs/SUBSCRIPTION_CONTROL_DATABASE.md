@@ -1,6 +1,6 @@
 # Subscription Control Database
 
-Last updated: 2026-06-11, Asia/Shanghai.
+Last updated: 2026-07-31, Asia/Shanghai.
 
 This document defines the repository-local business-control database layer for
 subscription operations. It is separate from the existing technical

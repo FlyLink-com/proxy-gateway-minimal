@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-07-30, Asia/Tokyo.
+Last updated: 2026-07-31, Asia/Tokyo.
 
 ```yaml
 document_metadata:

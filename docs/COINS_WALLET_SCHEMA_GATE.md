@@ -65,8 +65,8 @@ The independent Wallet reference-index successor is
 It requires the exact Wallet foundation ledger row and foundation checksum
 before it can validate, dry-run, or apply its own three-index migration.
 
-The closed successor CLI is available only for source or synthetic SQLite
-paths:
+The following successor CLI examples are for source or synthetic SQLite paths
+only:
 
 ```powershell
 npm run platform:coin-wallet:reference-index-schema -- --mode validate --db-path "C:\synthetic\wallet.sqlite"
@@ -75,11 +75,14 @@ npm run platform:coin-wallet:reference-index-schema -- --mode apply --db-path "C
 ```
 
 Source presence and a successful local dry-run do not prove production apply.
-Any future production apply still requires a fresh inventory, verified backup,
-the exact artifact, maintenance/stop/rollback conditions, and explicit
-operator approval for one exact target. The successor has no production down
-CLI; forward-fix is preferred. Its production schema readback stops before
-Wallet or Commerce runtime activation, which remain separate later approvals.
+The CLI mechanism accepts an explicit absolute database path, but invocation
+against a production database remains prohibited until a separate fresh Risk A
+gate and explicit approval exist for one exact target. That future production
+apply still requires a fresh inventory, verified backup, the exact artifact,
+maintenance/stop/rollback conditions, and explicit operator approval. The
+successor has no production down CLI; forward-fix is preferred. Its production
+schema readback stops before Wallet or Commerce runtime activation, which
+remain separate later approvals.
 
 Stable exit classes are:
 
