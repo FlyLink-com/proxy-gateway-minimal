@@ -30,6 +30,10 @@ import { resolveClientIp } from "./services/ip-address.mjs";
 
 const PUBLIC_PATHS = ["/api/health", "/api/public/leads", "/proxy.pac", "/sub/clash.yaml"];
 const PUBLIC_PATH_PREFIXES = ["/sub/a/"];
+const ADMIN_CAPABILITY_PROTECTED_PATHS = [
+  "/api/admin/overview",
+  "/api/admin/operations/overview"
+];
 const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/human-challenges",
   "/api/portal/registration",
@@ -286,7 +290,13 @@ export function createApp(state, options = {}) {
   const authPublicPaths = [
     ...PUBLIC_PATHS,
     ...(userPortalRoutesEnabled ? USER_PORTAL_PUBLIC_PATHS : []),
-    ...(adminAuthRoutesEnabled ? ADMIN_AUTH_PUBLIC_PATHS : [])
+    ...(adminAuthRoutesEnabled ? ADMIN_AUTH_PUBLIC_PATHS : []),
+    ...(
+      adminAuthRoutesEnabled
+      && state.platform?.adminAuthorizationEnabled === true
+        ? ADMIN_CAPABILITY_PROTECTED_PATHS
+        : []
+    )
   ];
   const clientIpResolver = options.clientIpResolver || ((req) => resolveClientIp(req, {
     trustedProxyCidrs: security.trustedProxyCidrs

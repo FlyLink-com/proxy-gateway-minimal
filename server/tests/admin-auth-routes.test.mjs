@@ -334,6 +334,157 @@ test("Admin session principal with operations.read reaches the protected overvie
   }
 });
 
+test("createApp returns the Admin-specific 401 for unauthenticated protected Overview paths", async () => {
+  let overviewCallCount = 0;
+  const state = baseState({
+    subscriptions: {
+      service: {
+        overview: () => {
+          overviewCallCount += 1;
+          return {
+            counts: {
+              total: 4,
+              active: 2,
+              expiring: 1,
+              disabledOrExpired: 1
+            }
+          };
+        }
+      }
+    },
+    platform: {
+      adminAuthRoutesEnabled: true,
+      adminAuthorizationEnabled: true,
+      adminAuth: {
+        sessionStatus: () => ({ authenticated: false }),
+        authenticateCookie: () => null
+      }
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    for (const pathname of [
+      "/api/admin/overview",
+      "/api/admin/operations/overview"
+    ]) {
+      const response = await fetch(`${baseUrl}${pathname}`);
+      assert.equal(response.status, 401);
+      assert.deepEqual(await response.json(), {
+        error: "admin_authentication_required"
+      });
+      assert.equal(overviewCallCount, 0);
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test("valid Admin session reaches the Operations Overview exact Envelope through createApp", async () => {
+  let overviewCallCount = 0;
+  const state = baseState({
+    subscriptions: {
+      service: {
+        overview: () => {
+          overviewCallCount += 1;
+          return {
+            counts: {
+              total: 8,
+              active: 5,
+              expiring: 2,
+              disabledOrExpired: 1,
+              internalOnly: 99
+            },
+            internalOnly: "must-not-leak"
+          };
+        }
+      }
+    },
+    platform: {
+      adminAuthRoutesEnabled: true,
+      adminAuthorizationEnabled: true,
+      adminAuth: {
+        sessionStatus: () => ({ authenticated: false }),
+        authenticateCookie: ({ cookieHeader }) => (
+          String(cookieHeader || "").includes("gcc_admin_session=valid")
+            ? {
+              sessionRef: "admin_session_operations_envelope_1",
+              operatorRef: ADMIN_ACCOUNT_ID,
+              authMethod: "totp",
+              status: "active",
+              issuedAt: "2026-07-30T00:00:00.000Z",
+              expiresAt: "2026-07-30T01:00:00.000Z"
+            }
+            : null
+        )
+      }
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/operations/overview`, {
+      headers: { Cookie: "gcc_admin_session=valid" }
+    });
+    assert.equal(response.status, 200);
+    const envelope = await response.json();
+    assert.match(
+      envelope.generatedAt,
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+    );
+    assert.deepEqual(envelope, {
+      schemaVersion: "operations-overview-read-envelope/v1",
+      generatedAt: envelope.generatedAt,
+      freshness: "fresh",
+      sourceState: "implemented_source",
+      data: {
+        total: 8,
+        active: 5,
+        expiring: 2,
+        disabledOrExpired: 1
+      },
+      warnings: [],
+      access: {
+        allowed: true,
+        capability: "operations.read",
+        reasonCode: "allowed"
+      }
+    });
+    assert.equal(overviewCallCount, 1);
+  } finally {
+    server.close();
+  }
+});
+
+test("unrelated protected Admin paths retain global auth behavior through createApp", async () => {
+  let listTenantsCallCount = 0;
+  const state = baseState({
+    subscriptions: {
+      service: {
+        listTenants: () => {
+          listTenantsCallCount += 1;
+          return [];
+        }
+      }
+    },
+    platform: {
+      adminAuthRoutesEnabled: true,
+      adminAuthorizationEnabled: true,
+      adminAuth: {
+        sessionStatus: () => ({ authenticated: false }),
+        authenticateCookie: () => null
+      }
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/subscriptions`);
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: "Unauthorized" });
+    assert.equal(listTenantsCallCount, 0);
+  } finally {
+    server.close();
+  }
+});
+
 test("requireAdminCapability rejects a request without an Admin principal", async () => {
   const app = express();
   app.get(
