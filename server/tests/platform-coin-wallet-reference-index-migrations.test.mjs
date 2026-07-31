@@ -13,6 +13,7 @@ import {
   applyCoinWalletMigrations
 } from "../services/platform/coin-wallet-migrations.mjs";
 import {
+  applyCoinWalletReferenceIndexMigrations,
   COIN_WALLET_REFERENCE_INDEX_MIGRATIONS,
   REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID,
   inspectCoinWalletReferenceIndexSchema,
@@ -38,6 +39,31 @@ const SUCCESSOR_INDEX_STATEMENTS = [
       on platform_coin_ledger_entries(hold_ref)
   `
 ];
+
+const EXPECTED_TEST_INDEXES = Object.freeze({
+  platform_coin_hold_allocations_lot_ref_idx: {
+    table: "platform_coin_hold_allocations",
+    columns: ["lot_ref"]
+  },
+  platform_coin_ledger_entries_lot_ref_idx: {
+    table: "platform_coin_ledger_entries",
+    columns: ["lot_ref"]
+  },
+  platform_coin_ledger_entries_hold_ref_idx: {
+    table: "platform_coin_ledger_entries",
+    columns: ["hold_ref"]
+  }
+});
+
+const CANONICAL_TABLES = Object.freeze([
+  ["wallets", "platform_coin_wallets", "wallet_ref"],
+  ["lots", "platform_coin_lots", "lot_ref"],
+  ["holds", "platform_coin_holds", "hold_ref"],
+  ["allocations", "platform_coin_hold_allocations", "allocation_ref"],
+  ["receipts", "platform_coin_operation_receipts", "operation_ref"],
+  ["origins", "platform_coin_credit_origins", "credit_origin_ref"],
+  ["ledgerEntries", "platform_coin_ledger_entries", "entry_ref"]
+]);
 
 function fileSha256(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
@@ -222,6 +248,87 @@ function installExactSuccessor(database, { checksum = SUCCESSOR_CHECKSUM } = {})
     checksum,
     "2026-07-30T00:01:00.000Z"
   );
+}
+
+function canonicalDatabaseState(dbPath) {
+  const database = new Database(dbPath, {
+    readonly: true,
+    fileMustExist: true
+  });
+  try {
+    return {
+      foundationMigration: database.prepare(`
+        select migration_id, ddl_checksum, applied_at
+          from platform_schema_migrations
+         where migration_id = ?
+      `).get(walletFoundation.REQUIRED_COIN_WALLET_MIGRATION_ID),
+      tables: Object.fromEntries(CANONICAL_TABLES.map(
+        ([key, table, orderColumn]) => [
+          key,
+          database.prepare(
+            `select * from ${table} order by ${orderColumn}`
+          ).all()
+        ]
+      )),
+      sentinelRows: database.prepare(`
+        select sentinel_key, sentinel_value
+          from synthetic_reference_index_sentinel
+         order by sentinel_key
+      `).all()
+    };
+  } finally {
+    database.close();
+  }
+}
+
+function exactApply({ dbPath, database, nowFn } = {}) {
+  return applyCoinWalletReferenceIndexMigrations({
+    dbPath,
+    database,
+    expectedMigrationId:
+      REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID,
+    expectedDdlChecksum: SUCCESSOR_CHECKSUM,
+    nowFn: nowFn ?? (() => new Date("2026-07-30T00:00:00.000Z"))
+  });
+}
+
+function assertFoundationReadyAndSuccessorAbsent(dbPath) {
+  assert.equal(walletFoundation.validateCoinWalletSchema({ dbPath }).ok, true);
+  assertPending(validateCoinWalletReferenceIndexSchema({ dbPath }));
+  const database = new Database(dbPath, {
+    readonly: true,
+    fileMustExist: true
+  });
+  try {
+    for (const name of Object.keys(EXPECTED_TEST_INDEXES)) {
+      assert.equal(
+        database.prepare(
+          "select 1 from sqlite_master where type='index' and name=?"
+        ).get(name),
+        undefined
+      );
+    }
+    assert.equal(database.prepare(`
+      select 1 from platform_schema_migrations where migration_id = ?
+    `).get(REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID), undefined);
+  } finally {
+    database.close();
+  }
+}
+
+function assertRollbackState(dbPath, beforeState) {
+  assertFoundationReadyAndSuccessorAbsent(dbPath);
+  const database = new Database(dbPath, {
+    readonly: true,
+    fileMustExist: true
+  });
+  try {
+    assert.deepEqual(database.pragma("quick_check"), [{ quick_check: "ok" }]);
+    assert.deepEqual(database.pragma("foreign_key_check"), []);
+  } finally {
+    database.close();
+  }
+  assert.deepEqual(canonicalDatabaseState(dbPath), beforeState);
 }
 
 function canonicalState(dbPath) {
@@ -679,5 +786,349 @@ test("case-fold target name drift with successor row is incompatible", async () 
     assert.equal(result.checks.schemaExact, false);
     assert.deepEqual(result.reasonCodes, ["owned_object_incompatible"]);
     assert.deepEqual(result.pendingMigrationIds, []);
+  });
+});
+
+test("apply creates exactly three approved indexes and one successor row", async () => {
+  await withOwnedDatabase("wallet-reference-apply-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    const beforeState = canonicalDatabaseState(dbPath);
+
+    const result = exactApply({ dbPath });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.schemaState, "ready");
+    assert.equal(result.sourceChanged, true);
+    assert.deepEqual(result.appliedMigrationIds, [
+      REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID
+    ]);
+    assert.deepEqual(result.pendingMigrationIds, []);
+    const database = new Database(dbPath, {
+      readonly: true,
+      fileMustExist: true
+    });
+    try {
+      assert.deepEqual(database.prepare(`
+        select migration_id, ddl_checksum
+          from platform_schema_migrations
+         where migration_id = ?
+      `).get(REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID), {
+        migration_id: REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID,
+        ddl_checksum: SUCCESSOR_CHECKSUM
+      });
+      for (const [name, expected] of Object.entries(EXPECTED_TEST_INDEXES)) {
+        const listed = database.pragma(`index_list(${expected.table})`)
+          .find((candidate) => candidate.name === name);
+        assert.equal(listed?.unique, 0, name);
+        assert.equal(listed?.partial, 0, name);
+        assert.deepEqual(
+          database.pragma(`index_info(${name})`)
+            .map(({ name: column }) => column),
+          expected.columns,
+          name
+        );
+      }
+    } finally {
+      database.close();
+    }
+    assert.deepEqual(canonicalDatabaseState(dbPath), beforeState);
+  });
+});
+
+test("exact replay is a no-op and tolerates future rows and unrelated indexes", async () => {
+  await withOwnedDatabase("wallet-reference-replay-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    exactApply({ dbPath });
+    const database = new Database(dbPath);
+    try {
+      database.exec(`
+        create index synthetic_equivalent_ledger_lot_ref_idx
+          on platform_coin_ledger_entries(lot_ref)
+      `);
+      database.prepare(`
+        insert into platform_schema_migrations
+          (migration_id, ddl_checksum, applied_at)
+        values (?, ?, ?)
+      `).run(
+        "20990101_001_synthetic_future",
+        "f".repeat(64),
+        "2099-01-01T00:00:00.000Z"
+      );
+    } finally {
+      database.close();
+    }
+    const beforeState = canonicalDatabaseState(dbPath);
+    const beforeSchema =
+      validateCoinWalletReferenceIndexSchema({ dbPath });
+
+    const result = exactApply({
+      dbPath,
+      nowFn() {
+        throw new Error("nowFn must not run on replay");
+      }
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.schemaState, "ready");
+    assert.equal(result.sourceChanged, false);
+    assert.deepEqual(result.appliedMigrationIds, []);
+    assert.deepEqual(result.pendingMigrationIds, []);
+    assert.deepEqual(canonicalDatabaseState(dbPath), beforeState);
+    assert.deepEqual(
+      validateCoinWalletReferenceIndexSchema({ dbPath }),
+      beforeSchema
+    );
+  });
+});
+
+test("confirmation mismatch rejects before database access", () => {
+  let accessed = false;
+  const database = new Proxy({}, {
+    get() {
+      accessed = true;
+      throw new Error("database access forbidden");
+    }
+  });
+
+  assert.throws(
+    () => applyCoinWalletReferenceIndexMigrations({
+      database,
+      expectedMigrationId: "wrong_migration",
+      expectedDdlChecksum: SUCCESSOR_CHECKSUM
+    }),
+    (error) => error.code === "migration_id_mismatch"
+  );
+  assert.equal(accessed, false);
+  assert.throws(
+    () => applyCoinWalletReferenceIndexMigrations({
+      database,
+      expectedMigrationId:
+        REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID,
+      expectedDdlChecksum: "0".repeat(64)
+    }),
+    (error) => error.code === "migration_checksum_mismatch"
+  );
+  assert.equal(accessed, false);
+});
+
+test("target-name collision rejects without adopting or mutating it", async () => {
+  for (let index = 0; index < SUCCESSOR_INDEX_STATEMENTS.length; index += 1) {
+    await withOwnedDatabase(
+      `wallet-reference-collision-${index + 1}-`,
+      ({ dbPath }) => {
+        createFoundationDatabase(dbPath);
+        const database = new Database(dbPath);
+        try {
+          database.exec(SUCCESSOR_INDEX_STATEMENTS[index]);
+        } finally {
+          database.close();
+        }
+        const beforeState = canonicalDatabaseState(dbPath);
+        const beforeSchema =
+          validateCoinWalletReferenceIndexSchema({ dbPath });
+
+        assert.throws(
+          () => exactApply({ dbPath }),
+          (error) => error.code === "owned_object_without_migration"
+        );
+
+        assert.deepEqual(canonicalDatabaseState(dbPath), beforeState);
+        assert.deepEqual(
+          validateCoinWalletReferenceIndexSchema({ dbPath }),
+          beforeSchema
+        );
+      }
+    );
+  }
+});
+
+test("apply maps SQLite busy and locked errors without exposing raw details", () => {
+  for (const code of [
+    "SQLITE_BUSY",
+    "SQLITE_BUSY_SNAPSHOT",
+    "SQLITE_LOCKED"
+  ]) {
+    const rawMessage = `synthetic raw detail for ${code}`;
+    const database = {
+      pragma() {
+        const error = new Error(rawMessage);
+        error.code = code;
+        throw error;
+      }
+    };
+    assert.throws(
+      () => exactApply({ database }),
+      (error) => {
+        assert.equal(error.code, "database_unavailable");
+        assert.equal(error.message.includes(rawMessage), false);
+        assert.equal(error.message.includes(code), false);
+        return true;
+      }
+    );
+  }
+});
+
+test("database ownership is explicit on apply success and failure", async () => {
+  await withOwnedDatabase("wallet-reference-owned-success-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    exactApply({ dbPath });
+    assert.doesNotThrow(() => rmSync(dbPath));
+  });
+
+  await withOwnedDatabase("wallet-reference-owned-failure-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    const database = new Database(dbPath);
+    try {
+      database.exec(`
+        create trigger synthetic_owned_insert_abort
+        before insert on platform_schema_migrations
+        when new.migration_id =
+          '20260730_001_coin_wallet_reference_indexes'
+        begin
+          select raise(abort, 'synthetic owned apply fault');
+        end
+      `);
+    } finally {
+      database.close();
+    }
+    assert.throws(
+      () => exactApply({ dbPath }),
+      (error) => error.code === "migration_apply_failed"
+    );
+    assert.doesNotThrow(() => rmSync(dbPath));
+  });
+
+  await withOwnedDatabase("wallet-reference-injected-success-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    const database = new Database(dbPath);
+    try {
+      exactApply({ database });
+      assert.equal(database.prepare("select 1").pluck().get(), 1);
+    } finally {
+      database.close();
+    }
+  });
+
+  await withOwnedDatabase("wallet-reference-injected-failure-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    const database = new Database(dbPath);
+    try {
+      database.exec(SUCCESSOR_INDEX_STATEMENTS[0]);
+      assert.throws(
+        () => exactApply({ database }),
+        (error) => error.code === "owned_object_without_migration"
+      );
+      assert.equal(database.prepare("select 1").pluck().get(), 1);
+    } finally {
+      database.close();
+    }
+  });
+
+  await withOwnedDatabase("wallet-reference-close-failure-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    const originalClose = Database.prototype.close;
+    Database.prototype.close = function closeThenThrow() {
+      originalClose.call(this);
+      throw new Error("synthetic close fault");
+    };
+    try {
+      assert.throws(
+        () => exactApply({ dbPath }),
+        (error) => error.code === "database_close_failed"
+      );
+    } finally {
+      Database.prototype.close = originalClose;
+    }
+    assert.doesNotThrow(() => rmSync(dbPath));
+  });
+});
+
+test("DDL faults roll back every successor mutation", async () => {
+  for (const failAfter of [1, 2, 3]) {
+    await withOwnedDatabase(
+      `wallet-reference-ddl-${failAfter}-`,
+      ({ dbPath }) => {
+        createFoundationDatabase(dbPath);
+        const beforeState = canonicalDatabaseState(dbPath);
+        const database = new Database(dbPath);
+        const originalExec = database.exec.bind(database);
+        let executed = 0;
+        database.exec = (sql) => {
+          const result = originalExec(sql);
+          executed += 1;
+          if (executed === failAfter) {
+            throw new Error("synthetic ddl fault");
+          }
+          return result;
+        };
+        try {
+          assert.throws(
+            () => exactApply({ database }),
+            (error) => error.code === "migration_apply_failed"
+          );
+        } finally {
+          database.close();
+        }
+        assertRollbackState(dbPath, beforeState);
+      }
+    );
+  }
+});
+
+test("ledger insertion fault rolls back indexes and successor row", async () => {
+  await withOwnedDatabase("wallet-reference-ledger-fault-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    const beforeState = canonicalDatabaseState(dbPath);
+    const database = new Database(dbPath);
+    try {
+      database.exec(`
+        create trigger synthetic_successor_insert_abort
+        before insert on platform_schema_migrations
+        when new.migration_id =
+          '20260730_001_coin_wallet_reference_indexes'
+        begin
+          select raise(abort, 'synthetic successor insert fault');
+        end
+      `);
+      assert.throws(
+        () => exactApply({ database }),
+        (error) => error.code === "migration_apply_failed"
+      );
+    } finally {
+      database.close();
+    }
+    assertRollbackState(dbPath, beforeState);
+  });
+});
+
+test("postcondition failure rolls back indexes and successor row", async () => {
+  await withOwnedDatabase("wallet-reference-postcondition-", ({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    const beforeState = canonicalDatabaseState(dbPath);
+    const database = new Database(dbPath);
+    try {
+      assert.throws(
+        () => exactApply({
+          database,
+          nowFn() {
+            database.exec(`
+              create temp trigger synthetic_successor_row_delete
+              after insert on platform_schema_migrations
+              when new.migration_id =
+                '20260730_001_coin_wallet_reference_indexes'
+              begin
+                delete from platform_schema_migrations
+                 where migration_id = new.migration_id;
+              end
+            `);
+            return new Date("2026-07-30T00:00:00.000Z");
+          }
+        }),
+        (error) => error.code === "applied_schema_incompatible"
+      );
+    } finally {
+      database.close();
+    }
+    assertRollbackState(dbPath, beforeState);
   });
 });

@@ -146,10 +146,33 @@ const SAFE_INSPECTION_REASONS = new Set([
   "required_migration_missing"
 ]);
 
+const KNOWN_ERROR_CODES = new Set([
+  "applied_schema_incompatible",
+  "database_close_failed",
+  "database_unavailable",
+  "invalid_database_path",
+  "invalid_migration_contract",
+  "invalid_temp_root",
+  "migration_apply_failed",
+  "migration_checksum_mismatch",
+  "migration_dependency_missing",
+  "migration_id_mismatch",
+  "owned_object_without_migration",
+  "source_changed_during_dry_run"
+]);
+
 function migrationError(code) {
   const error = new Error("Coin wallet reference-index schema rejected");
   error.code = code;
   return error;
+}
+
+function closedOperationError(error) {
+  if (KNOWN_ERROR_CODES.has(error?.code)) return error;
+  if (/^SQLITE_(?:BUSY|LOCKED)(?:_|$)/.test(error?.code ?? "")) {
+    return migrationError("database_unavailable");
+  }
+  return migrationError("migration_apply_failed");
 }
 
 function assertDatabasePath(dbPath) {
@@ -402,4 +425,113 @@ export function validateCoinWalletReferenceIndexSchema({
     return closedValidationFailure("database_close_failed");
   }
   return result;
+}
+
+function assertFoundationDependency(database) {
+  if (!foundationDependencyIsExact(database)) {
+    throw migrationError("migration_dependency_missing");
+  }
+}
+
+function assertOwnedIndexesAreAbsent(database) {
+  if (
+    Object.keys(EXPECTED_INDEXES)
+      .some((name) => namedObjectRow(database, name))
+  ) {
+    throw migrationError("owned_object_without_migration");
+  }
+}
+
+function normalizeAppliedAt(nowFn) {
+  const value = nowFn();
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    throw migrationError("invalid_migration_contract");
+  }
+  return value.toISOString();
+}
+
+function applyWithDatabase(database, nowFn) {
+  database.pragma("foreign_keys = ON");
+  const migrate = database.transaction(() => {
+    assertFoundationDependency(database);
+    const applied = migrationRow(
+      database,
+      REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID
+    );
+    if (applied) {
+      if (applied.ddl_checksum !== DDL_CHECKSUM) {
+        throw migrationError("migration_checksum_mismatch");
+      }
+      if (!inspectCoinWalletReferenceIndexSchema({ database }).ok) {
+        throw migrationError("applied_schema_incompatible");
+      }
+      return [];
+    }
+    assertOwnedIndexesAreAbsent(database);
+    for (const statement of MIGRATION_STATEMENTS) database.exec(statement);
+    database.prepare(`
+      insert into platform_schema_migrations
+        (migration_id, ddl_checksum, applied_at)
+      values (?, ?, ?)
+    `).run(
+      REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID,
+      DDL_CHECKSUM,
+      normalizeAppliedAt(nowFn)
+    );
+    if (!inspectCoinWalletReferenceIndexSchema({ database }).ok) {
+      throw migrationError("applied_schema_incompatible");
+    }
+    return [REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID];
+  });
+  return migrate.immediate();
+}
+
+export function applyCoinWalletReferenceIndexMigrations({
+  dbPath,
+  database,
+  expectedMigrationId,
+  expectedDdlChecksum,
+  nowFn = () => new Date()
+} = {}) {
+  if (
+    expectedMigrationId
+    !== REQUIRED_COIN_WALLET_REFERENCE_INDEX_MIGRATION_ID
+  ) {
+    throw migrationError("migration_id_mismatch");
+  }
+  if (expectedDdlChecksum !== DDL_CHECKSUM) {
+    throw migrationError("migration_checksum_mismatch");
+  }
+  if (typeof nowFn !== "function" || (!database && dbPath === undefined)) {
+    throw migrationError("invalid_migration_contract");
+  }
+  if (!database) assertDatabasePath(dbPath);
+
+  let owned;
+  try {
+    const connection =
+      database ?? (owned = new Database(dbPath, { fileMustExist: true }));
+    const appliedMigrationIds = applyWithDatabase(connection, nowFn);
+    const inspection =
+      inspectCoinWalletReferenceIndexSchema({ database: connection });
+    if (!inspection.ok) {
+      throw migrationError("applied_schema_incompatible");
+    }
+    return {
+      ...inspection,
+      mode: "apply",
+      sourceChanged: appliedMigrationIds.length === 1,
+      appliedMigrationIds
+    };
+  } catch (error) {
+    throw closedOperationError(error);
+  } finally {
+    if (owned) {
+      try {
+        owned.close();
+      } catch {
+        throw migrationError("database_close_failed");
+      }
+    }
+  }
 }
