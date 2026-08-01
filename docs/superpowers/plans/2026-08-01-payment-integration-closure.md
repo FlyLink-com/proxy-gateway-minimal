@@ -679,14 +679,14 @@ git commit -m "feat(portal): connect Coins recharge flow"
 - Produces one reviewable default-off Risk A source branch.
 - Does not push, open/ready/merge a PR, inject credentials, call PayPal, mutate production schema, or activate runtime.
 
-- [ ] **Step 1: Update source-truth documentation**
+- [x] **Step 1: Update source-truth documentation**
 
 Record that PayPal's compiled Adapter and durable source path exist but remain
 runtime default-off and have not been live Sandbox-validated. Change the design
 state to `implemented_source_pending_validation` only after code exists; retain
 `production authority: none`.
 
-- [ ] **Step 2: Run focused backend suites**
+- [x] **Step 2: Run focused backend suites**
 
 ```powershell
 node --test server/tests/platform-payment-store-migrations.test.mjs server/tests/platform-payment-store.test.mjs server/tests/platform-payment-recharge-coordinator.test.mjs server/tests/platform-paypal-payment-adapter.test.mjs server/tests/platform-paypal-payment-protocol-codec.test.mjs server/tests/platform-paypal-payment-runtime.test.mjs server/tests/platform-payment-provider-adapter-registry.test.mjs server/tests/platform-payment-provider-source-boundary.test.mjs server/tests/portal-coin-recharge-routes.test.mjs server/tests/state.test.mjs server/tests/app-security-boundary.test.mjs
@@ -694,7 +694,7 @@ node --test server/tests/platform-payment-store-migrations.test.mjs server/tests
 
 Expected: PASS.
 
-- [ ] **Step 3: Run the complete validation contract**
+- [x] **Step 3: Run the complete validation contract**
 
 ```powershell
 npm run admin:test
@@ -708,7 +708,7 @@ git diff --check origin/master...HEAD
 
 Expected: every command exits 0 with no unexpected warning or secret output.
 
-- [ ] **Step 4: Review the complete diff**
+- [x] **Step 4: Review the complete diff**
 
 Run:
 
@@ -722,14 +722,14 @@ Confirm exactly two payment tables, no second Wallet ledger, no legacy direct
 checkout restoration, no committed artifact/config secret, and no production
 mutation.
 
-- [ ] **Step 5: Commit documentation closeout**
+- [x] **Step 5: Commit documentation closeout**
 
 ```powershell
 git add docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md docs/superpowers/specs/2026-08-01-payment-integration-closure-design.md
 git commit -m "docs(payment): record default-off integration closure"
 ```
 
-- [ ] **Step 6: Stop at source review**
+- [x] **Step 6: Stop at source review**
 
 Report the exact branch/head, validation evidence, known gaps, and the separate
 PayPal Sandbox Risk A Gate still required. Do not push, merge, deploy, inject

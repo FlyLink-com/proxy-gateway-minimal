@@ -1,21 +1,21 @@
 # Payment Provider Adapter Template
 
-Last updated: 2026-07-24, America/Los_Angeles.
+Last updated: 2026-08-01, America/Los_Angeles.
 
 This document defines the repository-local adapter template for future payment
 provider integration.
 
-The commercial authority is `docs/COMMERCIAL_MODEL_V1.md`. The template and
-Provider Core V1 are source-only. The legacy environment-summary helper remains
-independent and unregistered; every named Adapter is `unverified` and fully
-disabled. This is not evidence for any real API, signature, callback, refund,
-reconciliation, status mapping, sandbox, or live capability.
+The commercial authority is `docs/COMMERCIAL_MODEL_V1.md`. Provider Core V1,
+the durable Recharge path, and the PayPal Sandbox Adapter are source-only and
+runtime default-off. The legacy environment-summary helper remains independent
+and unregistered. This source state is not evidence of a live Sandbox call,
+credential validation, callback registration, production payment, refund,
+reconciliation, or provider activation.
 
-It does **not** activate a provider call or credential, payment, checkout,
-callback registration or route, callback verification against a real provider,
-Payment Store or schema, billing or wallet settlement, UI, runtime activation,
-production database migration, product fulfillment, subscription issuance, or
-production deployment.
+It does **not** activate a provider call or credential, register a callback,
+apply the Payment schema to production, enable Wallet credit, create a real
+payment, fulfill a product, issue a subscription, or deploy any release. Those
+remain separate Risk A runtime and production Gates.
 
 ## Boundary
 
@@ -31,9 +31,13 @@ paid_coins hold/capture
   -> fulfillment decision
 ```
 
-Neither target flow is implemented or proven in production by this template.
-The legacy billing helper remains optional traffic-topup compatibility and is
-not the Provider Core Adapter contract or a Coins wallet.
+The first flow now has a default-off source implementation: two durable payment
+tables, one recharge coordinator, one protected Portal route family, and the
+existing Wallet Store's `paid_coins` credit operation. It has been validated
+only with local synthetic provider facts and SQLite. It has not been proven
+against PayPal Sandbox or production. The legacy billing helper remains
+optional traffic-topup compatibility and is not the Provider Core Adapter
+contract or a Coins wallet.
 
 ## Repository Pieces
 
@@ -50,6 +54,27 @@ not the Provider Core Adapter contract or a Coins wallet.
   - placeholder-only environment template;
   - no real API token, AK, SK, private key, webhook secret, merchant account,
     or payment credential belongs in Git.
+- `server/services/platform/payment-store-migrations.mjs`
+  - defines additive migration `20260801_001_payment_integration_closure`;
+  - creates only `platform_payment_orders` and
+    `platform_payment_receipts`, with readback and rollback support.
+- `server/services/platform/payment-store.mjs`
+  - persists server-owned recharge orders and immutable normalized provider
+    receipts without raw callbacks, payer data, or credentials.
+- `server/services/platform/payment-recharge-coordinator.mjs`
+  - converges capture and callback facts into the existing Wallet Store;
+  - uses invariant provider capture identity for exactly-once `paid_coins`.
+- `server/services/platform/paypal-payment-adapter.mjs` and
+  `paypal-payment-runtime.mjs`
+  - implement the compiled PayPal V1 contract and credential-scoped Sandbox
+    transport;
+  - make no request during startup and remain unreachable unless both runtime
+    flags and every prerequisite are present.
+- `server/routes/portal-coin-recharge.mjs`
+  - exposes authenticated offer/order/capture projections and one bounded
+    provider callback route;
+  - derives account authority from the Portal session and accepts no client
+    price or Coin quantity.
 
 ## Supported Provider Vocabulary
 
@@ -124,39 +149,43 @@ to the credential-scoped Provider Core contract.
 
 ## Static Registry And Evidence Boundary
 
-The static Registry contains exactly these named, disabled identities:
+The static Registry contains exactly these compiled identities. Resolution is
+still fail-closed: without an approved credential profile, transport, declared
+capabilities, and runtime flags, each identity resolves as unavailable.
 
 | `adapterKey` | `providerId` | Contract state | Methods / capabilities |
 | --- | --- | --- | --- |
-| `paypal_v1` | `paypal_commerce` | `unverified` | empty / every flag `false` |
+| `paypal_v1` | `paypal_commerce` | compiled V1; default-off | PayPal method and Recharge/callback capabilities only inside an enabled credential-scoped Sandbox binding |
 | `xsd_v1` | `xsd` | `unverified` | empty / every flag `false` |
 | `chaojipay_v1` | `chaojipay` | `unverified` | empty / every flag `false` |
 
-The PayPal and XSD protocol codecs are synthetic, detached local evidence only;
-they do not select or enable a provider, send a request, or establish a
-credential, callback, settlement, runtime, or deployment path. ChaoJiPay is an
-identity-only disabled Adapter with no guessed protocol surface. Monetary
-operation inputs and payment facts always carry an explicit
-`currencyExponent`; no codec infers it from a currency string.
+The PayPal protocol codec and Adapter/runtime tests are synthetic local evidence
+only; they do not select or enable a provider, validate a real credential, or
+register a webhook. XSD remains a detached codec boundary, and ChaoJiPay remains
+an identity-only disabled Adapter with no guessed protocol surface. Monetary
+operation inputs and payment facts always carry an explicit `currencyExponent`;
+no codec infers it from a currency string.
 
 ## Risk Gates
 
-Separate approval is required for:
+The source implementation does not remove any production Gate. Separate
+approval is required for:
 
-- adding a public checkout endpoint;
-- registering a provider callback;
-- storing provider order/payment rows;
-- adding a Payment Store, wallet ledger, schema, or migration;
+- applying the additive Payment migration to a runtime database;
+- exposing the protected Recharge endpoints or provider callback in a deployed
+  control plane;
+- registering the PayPal callback or injecting Sandbox credentials;
 - enabling any real provider API key, token, AK/SK, certificate, or private key;
 - crediting `paid_coins` or another production balance;
 - enabling product fulfillment or subscription issuance after payment.
 
 ## Recommended Next Steps
 
-1. Keep the template unregistered and disabled.
-2. Verify a provider's real protocol and trust boundary before changing its
-   Adapter contract version or capability flags.
-3. Add durable payment and wallet storage only through a separate
-   schema/migration-gated task.
+1. Keep both `PLATFORM_COIN_RECHARGE_ENABLED` and
+   `PLATFORM_PAYPAL_SANDBOX_ENABLED` false outside an approved Gate.
+2. Review and apply the Payment migration through its own schema Gate before
+   any runtime activation.
+3. Validate one synthetic account end to end against PayPal Sandbox with an
+   isolated USD price book before considering production CNY.
 4. Keep recharge, Coins hold/capture, product order, and fulfillment as
    separate decisions.

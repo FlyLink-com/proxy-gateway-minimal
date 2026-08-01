@@ -11,8 +11,8 @@
 - Source baseline: `master@fea0daf5bee5c57297ae1de727bde6ce88d65cec`
 - Production impact: none
 - Production authority: none
-- Design state: draft for written review
-- Implementation state: not started
+- Design state: frozen source baseline
+- Implementation state: implemented_source_pending_validation
 
 ## Purpose
 
@@ -38,9 +38,11 @@ The implementation reuses these current-master capabilities:
 - the existing Commerce path that consumes Coins after a separate product
   order is created.
 
-The current `paypal_v1` Adapter is disabled and unverified. The existing
-legacy `/api/portal/payments/*` plan-checkout client and old direct checkout are
-not the recharge integration target and must not regain authority.
+The `paypal_v1` Adapter now has a compiled V1 implementation and a
+credential-scoped Sandbox runtime, but both runtime flags default to false and
+no live Sandbox call has been made. The existing legacy
+`/api/portal/payments/*` plan-checkout client and old direct checkout are not
+the recharge integration target and must not regain authority.
 
 ## Selected Approach
 
