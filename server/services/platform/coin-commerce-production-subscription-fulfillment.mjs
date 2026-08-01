@@ -199,14 +199,32 @@ function exactProductionOfferVersion({
   }
 }
 
-function resolveEligibleSubscriptionBinding({ controlStore, runtimeCore, accountId }) {
+function resolveAccountProductEntitlement({ controlStore, accountId, now }) {
   if (!hasText(accountId)) return null;
   const account = controlStore.getAccount(accountId);
   if (!account || account.status !== "active") return null;
+  const entitlement = controlStore.resolveAccountServiceEntitlement({
+    accountId,
+    now
+  });
+  return entitlement ? { account, entitlement } : null;
+}
+
+function resolveEligibleSubscriptionBinding({ controlStore, runtimeCore, accountId, now }) {
+  const productState = resolveAccountProductEntitlement({
+    controlStore,
+    accountId,
+    now
+  });
+  if (!productState) return null;
+  const { account, entitlement } = productState;
 
   const accessRequests = controlStore
     .listPortalAccessRequests({ portalUserRef: accountId })
-    .filter((request) => request.status === "delivered" || request.status === "issued");
+    .filter((request) => (
+      (request.status === "delivered" || request.status === "issued")
+      && request.entitlementRef === entitlement.id
+    ));
   if (accessRequests.length !== 1) return null;
   const [accessRequest] = accessRequests;
   if (
@@ -218,7 +236,6 @@ function resolveEligibleSubscriptionBinding({ controlStore, runtimeCore, account
   }
 
   const issuanceRequest = controlStore.getIssuanceRequest(accessRequest.id);
-  const entitlement = controlStore.getEntitlement(accessRequest.entitlementRef);
   const entitlementValidFrom = canonicalTimestamp(entitlement?.validFrom);
   const entitlementValidUntil = canonicalTimestamp(entitlement?.validUntil);
   if (
@@ -353,19 +370,19 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
     if (!requestedOffer) return false;
     if (!isAccountActivated(accountId)) return false;
     try {
-      const resolved = resolveEligibleSubscriptionBinding({
-        controlStore,
-        runtimeCore,
-        accountId
-      });
-      if (resolved?.runtimeReady !== true) return false;
       const now = new Date(nowFn()).toISOString();
+      const productState = resolveAccountProductEntitlement({
+        controlStore,
+        accountId,
+        now
+      });
+      if (!productState) return false;
       const currentOffer = fulfillmentCatalogSnapshot.find(
-        (offer) => offer.offerVersionRef === resolved.entitlement.plan
+        (offer) => offer.offerVersionRef === productState.entitlement.plan
       );
       if (
         currentOffer
-        && canonicalTimestamp(resolved.entitlement.validUntil) > now
+        && canonicalTimestamp(productState.entitlement.validUntil) > now
       ) {
         return currentOffer.offerVersionRef === requestedOffer.offerVersionRef;
       }
@@ -400,12 +417,22 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         "Coin Commerce subscription fulfillment delivery is invalid"
       );
     }
+    let now;
+    try {
+      now = new Date(nowFn()).toISOString();
+    } catch {
+      throw safeFulfillmentError(
+        "coin_commerce_fulfillment_unavailable",
+        "Coin Commerce subscription fulfillment is unavailable"
+      );
+    }
     let resolved;
     try {
       resolved = resolveEligibleSubscriptionBinding({
         controlStore,
         runtimeCore,
-        accountId: command.accountId
+        accountId: command.accountId,
+        now
       });
     } catch (error) {
       throw createCoinCommerceFulfillmentRetryableError();
@@ -428,15 +455,6 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       throw createCoinCommerceFulfillmentReconciliationError();
     }
 
-    let now;
-    try {
-      now = new Date(nowFn()).toISOString();
-    } catch {
-      throw safeFulfillmentError(
-        "coin_commerce_fulfillment_unavailable",
-        "Coin Commerce subscription fulfillment is unavailable"
-      );
-    }
     const currentOffer = fulfillmentCatalogSnapshot.find(
       (candidate) => (
         candidate.offerVersionRef === resolved.entitlement.plan
