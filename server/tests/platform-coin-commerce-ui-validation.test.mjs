@@ -595,6 +595,45 @@ test("fixed UI profile uses real password auth, five offers, and reversible 20-C
       pendingUnits: 0
     });
 
+    const rechargeOffers = await localHttp(handle.baseUrl, {
+      path: "/api/portal/coins/recharge/offers",
+      headers: sessionHeaders
+    });
+    assert.equal(rechargeOffers.status, 200);
+    assert.deepEqual(rechargeOffers.json.offers, [{
+      offerRef: "coins_30",
+      quoteVersion: 1,
+      paidCoinUnits: 30,
+      amountMinor: 100,
+      currency: "USD",
+      currencyExponent: 2
+    }]);
+    const rechargeCreated = await localHttp(handle.baseUrl, {
+      method: "POST",
+      path: "/api/portal/coins/recharge/orders",
+      headers: sessionHeaders,
+      body: {
+        offerRef: "coins_30",
+        idempotencyKey: "ui_validation_recharge_create_v1"
+      }
+    });
+    assert.equal(rechargeCreated.status, 201);
+    assert.equal(rechargeCreated.json.recharge.order.status, "entry_ready");
+    const rechargeCaptured = await localHttp(handle.baseUrl, {
+      method: "POST",
+      path: `/api/portal/coins/recharge/orders/${rechargeCreated.json.recharge.order.orderRef}/capture`,
+      headers: sessionHeaders,
+      body: { idempotencyKey: "ui_validation_recharge_capture_v1" }
+    });
+    assert.equal(rechargeCaptured.status, 200);
+    assert.equal(rechargeCaptured.json.recharge.order.status, "credited");
+    assert.deepEqual(handle.inspect().funds, {
+      status: "active",
+      spendableUnits: 1030,
+      heldUnits: 0,
+      pendingUnits: 0
+    });
+
     const noCreditEndpoint = await localHttp(handle.baseUrl, {
       method: "POST",
       path: "/api/portal/commerce/credit",
@@ -604,7 +643,7 @@ test("fixed UI profile uses real password auth, five offers, and reversible 20-C
     assert.equal([401, 404].includes(noCreditEndpoint.status), true);
     assert.deepEqual(handle.inspect().funds, {
       status: "active",
-      spendableUnits: 1000,
+      spendableUnits: 1030,
       heldUnits: 0,
       pendingUnits: 0
     });
