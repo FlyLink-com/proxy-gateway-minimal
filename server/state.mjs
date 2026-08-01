@@ -2234,15 +2234,16 @@ export function createRuntimeState(options = {}) {
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch { /* preserve prerequisite failure */ }
       }
-      if (!coinsCommerceEnabled) {
-        for (const [owned, store] of [
-          [ownsCoinsWalletStore, coinsWalletStore],
-          [ownsControlStore, platformControlStore],
-          [ownsSubscriptionStore, subscriptionStore]
-        ]) {
-          if (!owned) continue;
-          try { store.close(); } catch { /* preserve prerequisite failure */ }
-        }
+      if (ownsCoinCommerceStore && coinCommerceStore) {
+        try { coinCommerceStore.close(); } catch { /* preserve prerequisite failure */ }
+      }
+      for (const [owned, store] of [
+        [ownsCoinsWalletStore, coinsWalletStore],
+        [ownsControlStore, platformControlStore],
+        [ownsSubscriptionStore, subscriptionStore]
+      ]) {
+        if (!owned) continue;
+        try { store.close(); } catch { /* preserve prerequisite failure */ }
       }
       if (error?.code === "coin_recharge_prerequisite_missing") throw error;
       throw coinRechargePrerequisiteError();

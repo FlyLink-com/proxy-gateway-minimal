@@ -627,6 +627,37 @@ test("createRuntimeState requires both recharge and PayPal Sandbox flags", () =>
   }
 });
 
+test("createRuntimeState closes an owned Commerce Store when Recharge assembly fails", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-recharge-commerce-cleanup-"));
+  const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
+  const movedControlDbPath = `${controlDbPath}.closed`;
+  try {
+    assert.throws(
+      () => createRuntimeState({
+        rootDir: new URL("../../", import.meta.url),
+        env: runtimeEnv({
+          CONSOLE_TOKEN: "secret",
+          USER_PORTAL_ROUTES_ENABLED: "true",
+          COINS_WALLET_ENABLED: "true",
+          COINS_COMMERCE_ENABLED: "true",
+          PLATFORM_COIN_RECHARGE_ENABLED: "true",
+          PLATFORM_PAYPAL_SANDBOX_ENABLED: "true"
+        }),
+        controlDbPath,
+        subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+        coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+        autoStartHttpProxy: false
+      }),
+      (error) => error?.code === "coin_recharge_prerequisite_missing"
+    );
+
+    renameSync(controlDbPath, movedControlDbPath);
+    renameSync(movedControlDbPath, controlDbPath);
+  } finally {
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState assembles the default-off PayPal Sandbox recharge runtime only when complete", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-recharge-enabled-"));
   const controlDbPath = prepareMigratedPaymentControlDatabase(dir);
