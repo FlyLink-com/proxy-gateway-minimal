@@ -10,6 +10,7 @@ import { createOrderEdgeCredentialIssuer } from "../services/edge/order-credenti
 import { createOrderCredentialLifecycleService } from "../services/edge/order-credential-lifecycle.mjs";
 import { createDataPlaneDesiredStateNotifier } from "../services/edge/data-plane-desired-state-notifier.mjs";
 import { createPortalAccessRequestService } from "../services/platform/portal-access-requests.mjs";
+import { COIN_COMMERCE_PRODUCTION_OFFERS } from "../services/platform/coin-commerce-production-catalog.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { createSubscriptionCore } from "../services/subscriptions/core.mjs";
 import { createSubscriptionRepository } from "../services/subscriptions/repository.mjs";
@@ -947,6 +948,129 @@ test("portal access request service auto-delivers 7-day orders when auto issuanc
   assert.equal(runtimeCore.calls[1][0], "createSubscriptionArtifact");
   assert.deepEqual(edgeLifecycle.calls.map((call) => call.reason), ["order_delivered"]);
   assert.doesNotMatch(JSON.stringify(request), /uuid|password|edgecred|digest|tenant_runtime_auto_1|artifact_runtime_auto_1/i);
+});
+
+test("commerce product fulfillment creates one stable account resource and replays across delivery refresh", () => {
+  withControlStore((store) => {
+    const runtimeCore = lifecycleRuntimeCore();
+    const requests = createPortalAccessRequestService({
+      nowFn: () => NOW,
+      runtimeCore,
+      controlStore: store,
+      edgeCredentialIssuer: edgeCredentialIssuer(),
+      edgeLifecycleService: edgeLifecycleService(),
+      autoIssuance: {
+        enabled: true,
+        nodeId: "channel-aliyun-a-tuic",
+        reviewedByRef: "commerce_product_issuer"
+      }
+    });
+    const input = {
+      commandRef: "coincmd_first_account_resource_1",
+      orderRef: "coinord_first_account_resource_1",
+      accountId: "acct_first_account_resource_1",
+      offerVersionRef: "offerv_plan_30d_50gb_monthly_v1",
+      portalPlan: "monthly",
+      durationDays: 30,
+      trafficLimitBytes: 50 * 1024 ** 3
+    };
+
+    store.createAccount({
+      id: input.accountId,
+      ownerRef: input.accountId,
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+
+    assert.equal(requests.isCommerceProductFulfillmentReady(), true);
+    const first = requests.fulfillCommerceProduct(input);
+    assert.equal(first.status, "delivered");
+    assert.equal(first.redacted, true);
+
+    const [resource] = store.listPortalAccessRequests({
+      portalUserRef: input.accountId
+    });
+    const entitlement = store.getEntitlement(resource.entitlementRef);
+    assert.equal(entitlement.plan, input.offerVersionRef);
+    assert.equal(entitlement.validFrom, NOW);
+    assert.equal(entitlement.validUntil, "2026-06-30T00:00:00.000Z");
+    assert.equal(entitlement.trafficLimitBytes, input.trafficLimitBytes);
+
+    assert.equal(resource.id, first.requestRef);
+    assert.equal(resource.status, "delivered");
+    assert.equal(resource.entitlementRef, entitlement.id);
+    assert.equal(runtimeCore.calls.filter(([name]) => name === "createTenant").length, 1);
+    assert.equal(runtimeCore.calls.filter(([name]) => name === "createSubscriptionArtifact").length, 1);
+
+    store.upsertPortalAccessRequest({
+      ...resource,
+      event: {
+        type: "delivery_generation_reissued",
+        occurredAt: "2026-06-01T00:00:00.000Z"
+      },
+      updatedAt: "2026-06-01T00:00:00.000Z"
+    });
+
+    const replay = requests.fulfillCommerceProduct(input);
+    assert.deepEqual(replay, first);
+    assert.equal(store.getAccountControlSummary(input.accountId).entitlements.length, 1);
+    assert.equal(store.listPortalAccessRequests({ portalUserRef: input.accountId }).length, 1);
+    assert.equal(runtimeCore.calls.filter(([name]) => name === "createTenant").length, 1);
+    assert.equal(runtimeCore.calls.filter(([name]) => name === "createSubscriptionArtifact").length, 1);
+    assert.throws(
+      () => requests.fulfillCommerceProduct({
+        ...input,
+        orderRef: "coinord_conflicting_replay"
+      }),
+      (error) => error?.code === "commerce_product_fulfillment_drift"
+    );
+  });
+});
+
+test("every production Commerce product can issue its exact first account resource", async (t) => {
+  for (const [index, offer] of COIN_COMMERCE_PRODUCTION_OFFERS.entries()) {
+    await t.test(offer.offerVersionRef, () => withControlStore((store) => {
+      const accountId = `acct_first_product_${index}`;
+      const requests = createPortalAccessRequestService({
+        nowFn: () => NOW,
+        runtimeCore: lifecycleRuntimeCore(),
+        controlStore: store,
+        autoIssuance: {
+          enabled: true,
+          nodeId: "channel-aliyun-a-tuic",
+          reviewedByRef: "commerce_product_issuer"
+        }
+      });
+      store.createAccount({
+        id: accountId,
+        ownerRef: accountId,
+        status: "active",
+        createdAt: NOW,
+        updatedAt: NOW
+      });
+
+      const delivered = requests.fulfillCommerceProduct({
+        commandRef: `coincmd_first_product_${index}`,
+        orderRef: `coinord_first_product_${index}`,
+        accountId,
+        offerVersionRef: offer.offerVersionRef,
+        portalPlan: offer.delivery.durationDays === 365 ? "yearly" : "monthly",
+        durationDays: offer.delivery.durationDays,
+        trafficLimitBytes: offer.delivery.monthlyTrafficGb * 1024 ** 3
+      });
+      const request = store.getPortalAccessRequest(delivered.requestRef);
+      const entitlement = store.getEntitlement(request.entitlementRef);
+
+      assert.equal(request.status, "delivered");
+      assert.equal(request.durationDays, offer.delivery.durationDays);
+      assert.equal(entitlement.plan, offer.offerVersionRef);
+      assert.equal(
+        entitlement.trafficLimitBytes,
+        offer.delivery.monthlyTrafficGb * 1024 ** 3
+      );
+    }));
+  }
 });
 
 test("portal access request service records order quantity and client target", () => {

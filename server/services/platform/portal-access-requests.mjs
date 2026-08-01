@@ -117,6 +117,18 @@ function safeIssuedRef(prefix, value) {
     .slice(0, 16)}`;
 }
 
+function commerceProductRef(prefix, ...values) {
+  return `${prefix}_${createHash("sha256")
+    .update(values.map((value) => String(value)).join("\0"))
+    .digest("hex")}`;
+}
+
+function commerceProductFulfillmentError(message) {
+  const error = new Error(message);
+  error.code = "commerce_product_fulfillment_drift";
+  return error;
+}
+
 function newLifecycleRevisionRef() {
   return `lifecycle_ref_${createHash("sha256")
     .update(randomUUID())
@@ -1715,6 +1727,102 @@ export function createPortalAccessRequestService(options = {}) {
     }
   }
 
+  function isCommerceProductFulfillmentReady() {
+    return (
+      autoIssuance.enabled
+      && Boolean(autoIssuance.nodeId)
+      && Boolean(runtimeCore)
+      && Boolean(controlStore)
+      && typeof controlStore.getAccount === "function"
+      && typeof controlStore.getEntitlement === "function"
+      && typeof controlStore.getIssuanceRequest === "function"
+      && typeof controlStore.listIssuedSubscriptionBindings === "function"
+      && typeof controlStore.getIssuedLink === "function"
+      && typeof controlStore.resolveAccountServiceEntitlement === "function"
+    );
+  }
+
+  function normalizeCommerceProductInput(input = {}) {
+    const commandRef = text(input.commandRef, "commandRef");
+    const orderRef = text(input.orderRef, "orderRef");
+    const accountId = text(input.accountId, "accountId");
+    const offerVersionRef = text(input.offerVersionRef, "offerVersionRef");
+    const portalPlan = normalizePlan(input.portalPlan);
+    const durationDays = Number(input.durationDays);
+    const trafficLimitBytes = Number(input.trafficLimitBytes);
+    if (
+      !Number.isSafeInteger(durationDays)
+      || durationDays <= 0
+      || PLANS[portalPlan].durationDays !== durationDays
+      || !Number.isSafeInteger(trafficLimitBytes)
+      || trafficLimitBytes <= 0
+    ) {
+      throw commerceProductFulfillmentError("commerce product delivery is invalid");
+    }
+    return {
+      commandRef,
+      orderRef,
+      accountId,
+      offerVersionRef,
+      portalPlan,
+      durationDays,
+      trafficLimitBytes,
+      requestRef: commerceProductRef("pareq_commerce", commandRef),
+      entitlementRef: commerceProductRef("ent_commerce", commandRef),
+      accessGrantRef: commerceProductRef("grant_commerce", commandRef),
+      approvalRef: commerceProductRef("approval_commerce", commandRef, orderRef)
+    };
+  }
+
+  function commerceProductReplay(input) {
+    const request = requestStore.getPortalAccessRequest(input.requestRef);
+    if (!request) return null;
+    const entitlement = controlStore.getEntitlement(input.entitlementRef);
+    const issuance = controlStore.getIssuanceRequest(input.requestRef);
+    const bindings = controlStore
+      .listIssuedSubscriptionBindings()
+      .filter((binding) => binding.requestId === input.requestRef);
+    const [binding] = bindings;
+    const issuedLink = binding ? controlStore.getIssuedLink(binding.id) : null;
+    const exact = (
+      ["delivered", "issued"].includes(request.status)
+      && request.portalUserRef === input.accountId
+      && request.plan === input.portalPlan
+      && request.durationDays === input.durationDays
+      && request.entitlementRef === input.entitlementRef
+      && request.accessGrantRef === input.accessGrantRef
+      && request.expiresAt === entitlement?.validUntil
+      && request.validUntil === entitlement?.validUntil
+      && Boolean(request.tenantId)
+      && Boolean(request.artifactId)
+      && entitlement?.id === input.entitlementRef
+      && entitlement.accountId === input.accountId
+      && entitlement.plan === input.offerVersionRef
+      && entitlement.status === "active"
+      && entitlement.trafficLimitBytes === input.trafficLimitBytes
+      && issuance?.id === input.requestRef
+      && issuance.accountId === input.accountId
+      && issuance.entitlementId === input.entitlementRef
+      && issuance.approvalRef === input.approvalRef
+      && issuance.status === "issued"
+      && bindings.length === 1
+      && binding.accountId === input.accountId
+      && binding.entitlementId === input.entitlementRef
+      && binding.tenantRef === safeIssuedRef("tenant", request.tenantId)
+      && binding.artifactRef === safeIssuedRef("artifact", request.artifactId)
+      && issuedLink?.id === binding.id
+      && issuedLink.status === "active"
+    );
+    if (!exact) {
+      throw commerceProductFulfillmentError("commerce product fulfillment state drifted");
+    }
+    return Object.freeze({
+      status: "delivered",
+      requestRef: request.id,
+      redacted: true
+    });
+  }
+
   function assertAutoIssuanceLimit({ id, portalUserRef, plan, submittedAt }) {
     const limit = autoIssuance.monthlyLimits[plan];
     if (!limit) return;
@@ -1777,6 +1885,97 @@ export function createPortalAccessRequestService(options = {}) {
   }
 
   return {
+    isCommerceProductFulfillmentReady,
+
+    fulfillCommerceProduct(input = {}) {
+      if (!isCommerceProductFulfillmentReady()) {
+        throw commerceProductFulfillmentError("commerce product fulfillment is not configured");
+      }
+      const product = normalizeCommerceProductInput(input);
+      const replay = commerceProductReplay(product);
+      if (replay) return replay;
+
+      const account = controlStore.getAccount(product.accountId);
+      const now = isoNow(nowFn);
+      if (
+        !account
+        || account.id !== product.accountId
+        || account.status !== "active"
+        || controlStore.resolveAccountServiceEntitlement({
+          accountId: product.accountId,
+          now
+        }) !== null
+        || controlStore.getEntitlement(product.entitlementRef)
+        || controlStore.getIssuanceRequest(product.requestRef)
+      ) {
+        throw commerceProductFulfillmentError("commerce product account resource is not eligible");
+      }
+
+      const expiresAt = expiresAtFromDuration(now, product.durationDays);
+      const record = {
+        id: product.requestRef,
+        portalUserRef: product.accountId,
+        plan: product.portalPlan,
+        clientTarget: "clash",
+        durationDays: product.durationDays,
+        quantity: 1,
+        status: "pending_admin_review",
+        nextAction: "admin_review_required",
+        noteProvided: false,
+        priorTrialState: "not_applicable",
+        submittedAt: now,
+        updatedAt: now,
+        reviewedAt: null,
+        reviewedByRef: null,
+        safeReasonCode: null,
+        expiresAt: null,
+        validUntil: null,
+        entitlementRef: null,
+        accessGrantRef: null,
+        tenantId: null,
+        artifactId: null,
+        subscriptionUrl: null,
+        event: null
+      };
+      saveRecord(record);
+      const issued = executeSubscriptionIssuance({
+        controlStore,
+        runtimeCore,
+        approvalRef: product.approvalRef,
+        now,
+        input: {
+          displayName: product.accountId,
+          expiresInDays: product.durationDays,
+          expiresAt,
+          validUntil: expiresAt,
+          plan: product.offerVersionRef,
+          nodeId: autoIssuance.nodeId,
+          note: "commerce-product-issuance",
+          artifact: { create: true },
+          control: {
+            accountId: product.accountId,
+            ownerRef: product.accountId,
+            entitlementId: product.entitlementRef,
+            requestId: product.requestRef,
+            requestedByRef: autoIssuance.reviewedByRef,
+            purpose: "coin_commerce_product_fulfillment",
+            plan: product.offerVersionRef,
+            trafficLimitBytes: product.trafficLimitBytes
+          }
+        }
+      });
+      this.markDelivered(product.requestRef, {
+        reviewedByRef: autoIssuance.reviewedByRef,
+        entitlementRef: product.entitlementRef,
+        accessGrantRef: product.accessGrantRef,
+        tenantId: issued.handoffMaterial.tenantId,
+        artifactId: issued.handoffMaterial.artifactId,
+        subscriptionUrl: issued.handoffMaterial.subscriptionUrl,
+        expiresAt
+      });
+      return commerceProductReplay(product);
+    },
+
     submitRequest(input = {}) {
       const now = isoNow(nowFn);
       const plan = normalizePlan(input.plan);

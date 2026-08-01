@@ -2049,6 +2049,7 @@ export function createRuntimeState(options = {}) {
             configuredCoinCommerceFulfillmentFactory({
               controlStore: platformControlStore,
               runtimeCore: subscriptionCore,
+              accountResourceIssuer: platformPortalAccessRequests,
               accountActivationReader:
                 configuredCoinCommerceAccountActivationReader
             })

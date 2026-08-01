@@ -31,6 +31,9 @@ import {
   createSqliteSubscriptionControlStore
 } from "../services/platform/subscription-control-db.mjs";
 import {
+  createPortalAccessRequestService
+} from "../services/platform/portal-access-requests.mjs";
+import {
   applyCoinWalletMigrations,
   COIN_WALLET_MIGRATIONS,
   REQUIRED_COIN_WALLET_MIGRATION_ID
@@ -579,10 +582,23 @@ test("purchase eligibility fails closed for inactive accounts", async (t) => {
   }
 });
 
-test("an account without a prior entitlement can browse while first fulfillment stays fail closed", () => {
+test("an account without a prior entitlement can purchase into one stable account resource", () => {
   const directory = mkdtempSync(join(tmpdir(), "coin-commerce-account-eligibility-"));
   const controlStore = createSqliteSubscriptionControlStore({
     dbPath: join(directory, "control.sqlite")
+  });
+  const runtimeStore = createSqliteSubscriptionStore({
+    dbPath: join(directory, "runtime.sqlite")
+  });
+  const runtimeCore = createSubscriptionCore({
+    store: runtimeStore,
+    proxyConfig: sampleProxyConfig(),
+    publicSubscriptionBaseUrl: "https://gateway.example.test",
+    nowFn: () => new Date(NOW),
+    tokenFactory,
+    artifactSecretFactory: () => "synthetic_first_account_resource",
+    idFactory: () => "tenant_first_account_resource_001",
+    artifactIdFactory: () => "artifact_first_account_resource_001"
   });
   const accountId = "acct_storefront_without_entitlement";
   try {
@@ -593,8 +609,41 @@ test("an account without a prior entitlement can browse while first fulfillment 
       createdAt: NOW,
       updatedAt: NOW
     });
-    const service = createCoinCommerceProductionSubscriptionFulfillment({
+    const unavailableService = createCoinCommerceProductionSubscriptionFulfillment({
       controlStore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+    assert.equal(unavailableService.purchaseEligibilityReader({
+      accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    }), false);
+    const accountResourceIssuer = createPortalAccessRequestService({
+      nowFn: () => NOW,
+      controlStore,
+      runtimeCore,
+      autoIssuance: {
+        enabled: true,
+        nodeId: "node_sg",
+        reviewedByRef: "commerce_product_issuer"
+      }
+    });
+    let applyAttempts = 0;
+    const fulfillmentControlStore = Object.create(controlStore);
+    fulfillmentControlStore.applyCoinCommerceSubscriptionFulfillment = (input) => {
+      applyAttempts += 1;
+      if (applyAttempts === 1) {
+        const error = new Error("synthetic busy after initial issuance");
+        error.code = "SQLITE_BUSY_RECOVERY";
+        throw error;
+      }
+      return controlStore.applyCoinCommerceSubscriptionFulfillment(input);
+    };
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fulfillmentControlStore,
+      runtimeCore,
+      accountResourceIssuer,
+      nowFn: () => new Date(NOW),
       accountActivationReader: ACTIVATED_ACCOUNT_READER
     });
 
@@ -609,23 +658,43 @@ test("an account without a prior entitlement can browse while first fulfillment 
     assert.equal(service.purchaseEligibilityReader({
       accountId,
       offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
-    }), false);
+    }), true);
+    const command = {
+      commandRef: "coincmd_first_account_resource_1",
+      orderRef: "coinord_first_account_resource_1",
+      accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef,
+      delivery: { ...COIN_COMMERCE_PRODUCTION_OFFERS[0].delivery }
+    };
     assert.throws(
-      () => service.fulfillmentHandler.execute({
-        commandRef: "coincmd_first_service_not_implemented",
-        orderRef: "coinord_first_service_not_implemented",
-        accountId,
-        offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef,
-        delivery: { ...COIN_COMMERCE_PRODUCTION_OFFERS[0].delivery }
-      }),
-      (error) => isCoinCommerceFulfillmentReconciliationError(error)
+      () => service.fulfillmentHandler.execute(command),
+      (error) => isCoinCommerceFulfillmentRetryableError(error)
     );
-    assert.deepEqual(
-      controlStore.getAccountControlSummary(accountId).entitlements,
-      []
-    );
+    const delivered = service.fulfillmentHandler.execute(command);
+    assert.equal(delivered.status, "delivered");
+
+    const [resource] = controlStore.listPortalAccessRequests({ portalUserRef: accountId });
+    const entitlement = controlStore.getEntitlement(resource.entitlementRef);
+    assert.equal(resource.status, "delivered");
+    assert.equal(entitlement.plan, COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef);
+    assert.equal(entitlement.trafficLimitBytes, 50 * GIB);
+    assert.equal(entitlement.validUntil, "2026-08-29T00:00:00.000Z");
+    assert.equal(controlStore.getAccountControlSummary(accountId).entitlements.length, 1);
+
+    controlStore.upsertPortalAccessRequest({
+      ...resource,
+      event: {
+        type: "delivery_generation_reissued",
+        occurredAt: "2026-07-30T00:01:00.000Z"
+      },
+      updatedAt: "2026-07-30T00:01:00.000Z"
+    });
+    assert.deepEqual(service.fulfillmentHandler.execute(command), delivered);
+    assert.equal(controlStore.getAccountControlSummary(accountId).entitlements.length, 1);
+    assert.equal(controlStore.listPortalAccessRequests({ portalUserRef: accountId }).length, 1);
   } finally {
     controlStore.close();
+    runtimeStore.close();
     rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 });
