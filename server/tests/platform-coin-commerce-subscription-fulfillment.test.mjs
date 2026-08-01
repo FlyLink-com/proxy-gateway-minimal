@@ -209,6 +209,69 @@ function createFixture(options = {}) {
     edgeMaterialDigest
   });
 
+  if (options.legacyExpiredPortalRequest) {
+    controlStore.createEntitlement({
+      id: "ent_fulfillment_legacy_expired",
+      accountId,
+      plan: "trial",
+      status: "active",
+      validFrom: "2026-06-01T00:00:00.000Z",
+      validUntil: "2026-07-15T00:00:00.000Z",
+      maxArtifacts: 1,
+      maxDevices: 2,
+      trafficLimitBytes: 5 * GIB,
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z"
+    });
+    controlStore.createIssuanceRequest({
+      id: "pareq_fulfillment_legacy_expired",
+      accountId,
+      entitlementId: "ent_fulfillment_legacy_expired",
+      approvalRef: "approval_fulfillment_legacy_expired",
+      status: "issued",
+      quantity: 1,
+      nodeId: edgeChannelRef,
+      purpose: "portal_access_request",
+      requestedByRef: "operator_fulfillment_legacy_expired",
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z"
+    });
+    controlStore.linkIssuedSubscription({
+      id: "link_fulfillment_legacy_expired",
+      requestId: "pareq_fulfillment_legacy_expired",
+      tenantRef: safeIssuedRef("tenant", "tenant_fulfillment_legacy_expired"),
+      artifactRef: safeIssuedRef("artifact", "artifact_fulfillment_legacy_expired"),
+      status: "active",
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z"
+    });
+    controlStore.upsertPortalAccessRequest({
+      id: "pareq_fulfillment_legacy_expired",
+      portalUserRef: accountId,
+      plan: "trial",
+      clientTarget: "clash",
+      durationDays: 7,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+      reviewedAt: "2026-06-01T00:00:00.000Z",
+      reviewedByRef: "operator_fulfillment_legacy_expired",
+      expiresAt: "2026-07-15T00:00:00.000Z",
+      validUntil: "2026-07-15T00:00:00.000Z",
+      entitlementRef: "ent_fulfillment_legacy_expired",
+      accessGrantRef: "grant_fulfillment_legacy_expired",
+      tenantId: "tenant_fulfillment_legacy_expired",
+      artifactId: "artifact_fulfillment_legacy_expired",
+      edgeChannelRef,
+      edgeCredentialRef: "edgecred_fulfillment_legacy_expired",
+      edgeMaterialDigest: "sha256:synthetic_fulfillment_legacy_expired"
+    });
+  }
+
   if (options.duplicatePortalRequest) {
     const duplicate = controlStore.getPortalAccessRequest(requestRef);
     delete duplicate.edgeCredentials;
@@ -484,15 +547,44 @@ test("an expiring but enabled runtime tenant remains eligible to renew its stabl
   }
 });
 
-test("purchase eligibility fails closed for incomplete, ambiguous, inactive, or drifted subscription bindings", async (t) => {
+test("purchase eligibility fails closed for inactive account-level product state", async (t) => {
   const cases = [
     ["inactive account", { accountStatus: "suspended" }],
+    ["inactive entitlement", { entitlementStatus: "suspended" }]
+  ];
+
+  for (const [name, options] of cases) {
+    await t.test(name, () => {
+      const fixture = createFixture(options);
+      try {
+        const service = createCoinCommerceProductionSubscriptionFulfillment({
+          controlStore: fixture.controlStore,
+          runtimeCore: fixture.runtimeCore,
+          accountActivationReader: ACTIVATED_ACCOUNT_READER,
+          nowFn: () => new Date(NOW)
+        });
+
+        assert.equal(
+          service.purchaseEligibilityReader({
+            accountId: fixture.accountId,
+            offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+          }),
+          false
+        );
+      } finally {
+        fixture.close();
+      }
+    });
+  }
+});
+
+test("purchase eligibility ignores incomplete, ambiguous, or drifted delivery projections", async (t) => {
+  const cases = [
     ["ambiguous access requests", { duplicatePortalRequest: true }],
     ["missing entitlement reference", { portalEntitlementRef: null }],
     ["missing tenant reference", { portalTenantId: null }],
     ["missing artifact reference", { portalArtifactId: null }],
     ["mismatched entitlement binding", { portalEntitlementRef: "ent_mismatch" }],
-    ["inactive entitlement", { entitlementStatus: "suspended" }],
     ["inactive runtime tenant", { tenantStatus: "disabled" }],
     ["inactive runtime artifact", { artifactStatus: "revoked" }],
     ["runtime expiry drift", { runtimeValidUntil: "2026-09-02T00:00:00.000Z" }],
@@ -515,7 +607,7 @@ test("purchase eligibility fails closed for incomplete, ambiguous, inactive, or 
             accountId: fixture.accountId,
             offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
           }),
-          false
+          true
         );
       } finally {
         fixture.close();
@@ -587,6 +679,339 @@ test("purchase eligibility allows only the current active Coins plan and permits
   } finally {
     activeFixture.close();
     expiredFixture.close();
+  }
+});
+
+test("purchase eligibility ignores expired legacy delivery history", () => {
+  const fixture = createFixture({ legacyExpiredPortalRequest: true });
+  try {
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    assert.equal(
+      service.purchaseEligibilityReader({
+        accountId: fixture.accountId,
+        offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+      }),
+      true
+    );
+  } finally {
+    fixture.close();
+  }
+});
+
+test("a future entitlement does not displace the current user product state", () => {
+  const fixture = createFixture({
+    entitlementPlan: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+  });
+  try {
+    fixture.controlStore.createEntitlement({
+      id: "ent_fulfillment_future",
+      accountId: fixture.accountId,
+      plan: COIN_COMMERCE_PRODUCTION_OFFERS[1].offerVersionRef,
+      status: "active",
+      validFrom: "2026-10-01T00:00:00.000Z",
+      validUntil: "2026-11-01T00:00:00.000Z",
+      maxArtifacts: 1,
+      maxDevices: 2,
+      trafficLimitBytes: 100 * GIB,
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    assert.equal(service.purchaseEligibilityReader({
+      accountId: fixture.accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    }), true);
+    assert.equal(service.purchaseEligibilityReader({
+      accountId: fixture.accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[1].offerVersionRef
+    }), false);
+  } finally {
+    fixture.close();
+  }
+});
+
+test("a malformed audit row cannot unlock an unapplied future entitlement", () => {
+  const futureValidFrom = "2026-10-01T00:00:00.000Z";
+  const futureValidUntil = "2026-11-01T00:00:00.000Z";
+  const fixture = createFixture({
+    entitlementValidFrom: futureValidFrom,
+    baseValidUntil: futureValidUntil,
+    portalValidUntil: futureValidUntil,
+    runtimeValidUntil: futureValidUntil
+  });
+  try {
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+    const eligibility = () => service.purchaseEligibilityReader({
+      accountId: fixture.accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    });
+
+    assert.equal(eligibility(), false);
+    fixture.controlStore.recordAuditEvent({
+      id: "effect_coin_commerce_malformed_future",
+      entityType: "coin_commerce_subscription_fulfillment",
+      entityRef: fixture.entitlementRef,
+      action: "subscription_fulfillment_applied",
+      actorRef: "coin_commerce_fulfillment",
+      createdAt: NOW,
+      metadata: {}
+    });
+    assert.equal(eligibility(), false);
+  } finally {
+    fixture.close();
+  }
+});
+
+test("fresh fulfillment rejects malformed pre-existing Commerce history without mutation", () => {
+  const fixture = createFixture();
+  try {
+    fixture.controlStore.recordAuditEvent({
+      id: "effect_coin_commerce_malformed_history",
+      entityType: "coin_commerce_subscription_fulfillment",
+      entityRef: fixture.entitlementRef,
+      action: "subscription_fulfillment_applied",
+      actorRef: "coin_commerce_fulfillment",
+      createdAt: NOW,
+      metadata: {}
+    });
+    const before = fixture.controlStore.getEntitlement(fixture.entitlementRef);
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    assert.throws(
+      () => service.fulfillmentHandler.execute(productionInput(fixture)),
+      (error) => isCoinCommerceFulfillmentReconciliationError(error)
+    );
+    assert.deepEqual(
+      fixture.controlStore.getEntitlement(fixture.entitlementRef),
+      before
+    );
+  } finally {
+    fixture.close();
+  }
+});
+
+test("multiple current user entitlements fail closed before purchase or fulfillment", () => {
+  const fixture = createFixture();
+  try {
+    fixture.controlStore.createEntitlement({
+      id: "ent_fulfillment_second_current",
+      accountId: fixture.accountId,
+      plan: "trial",
+      status: "active",
+      validFrom: "2026-07-15T00:00:00.000Z",
+      validUntil: "2026-10-01T00:00:00.000Z",
+      maxArtifacts: 1,
+      maxDevices: 2,
+      trafficLimitBytes: 5 * GIB,
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    assert.equal(service.purchaseEligibilityReader({
+      accountId: fixture.accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    }), false);
+    assert.throws(
+      () => service.fulfillmentHandler.execute(productionInput(fixture)),
+      (error) => isCoinCommerceFulfillmentReconciliationError(error)
+    );
+  } finally {
+    fixture.close();
+  }
+});
+
+test("tied latest lapsed entitlements fail closed instead of guessing a user target", () => {
+  const fixture = createFixture({
+    baseValidUntil: "2026-07-29T00:00:00.000Z"
+  });
+  try {
+    fixture.controlStore.createEntitlement({
+      id: "ent_fulfillment_tied_lapsed",
+      accountId: fixture.accountId,
+      plan: "trial",
+      status: "active",
+      validFrom: "2026-06-15T00:00:00.000Z",
+      validUntil: "2026-07-29T00:00:00.000Z",
+      maxArtifacts: 1,
+      maxDevices: 2,
+      trafficLimitBytes: 5 * GIB,
+      createdAt: "2026-06-15T00:00:00.000Z",
+      updatedAt: "2026-06-15T00:00:00.000Z"
+    });
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    assert.equal(service.purchaseEligibilityReader({
+      accountId: fixture.accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    }), false);
+    assert.throws(
+      () => service.fulfillmentHandler.execute(productionInput(fixture)),
+      (error) => isCoinCommerceFulfillmentReconciliationError(error)
+    );
+  } finally {
+    fixture.close();
+  }
+});
+
+test("fulfillment applies the product to the current user entitlement without rewriting expired history", () => {
+  const fixture = createFixture({ legacyExpiredPortalRequest: true });
+  try {
+    const legacyBefore = fixture.controlStore.getEntitlement(
+      "ent_fulfillment_legacy_expired"
+    );
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    assert.equal(
+      service.fulfillmentHandler.execute(productionInput(fixture)).status,
+      "delivered"
+    );
+    assert.deepEqual({
+      plan: fixture.controlStore.getEntitlement(fixture.entitlementRef).plan,
+      validUntil: fixture.controlStore.getEntitlement(fixture.entitlementRef).validUntil,
+      trafficLimitBytes: fixture.controlStore.getEntitlement(
+        fixture.entitlementRef
+      ).trafficLimitBytes
+    }, {
+      plan: "offerv_plan_30d_50gb_monthly_v1",
+      validUntil: "2026-10-01T00:00:00.000Z",
+      trafficLimitBytes: 50 * GIB
+    });
+    assert.deepEqual(
+      fixture.controlStore.getEntitlement("ent_fulfillment_legacy_expired"),
+      legacyBefore
+    );
+  } finally {
+    fixture.close();
+  }
+});
+
+test("lapsed fulfillment renews the most recent user entitlement without reviving older history", () => {
+  const fixture = createFixture({
+    baseValidUntil: "2026-07-29T00:00:00.000Z",
+    legacyExpiredPortalRequest: true
+  });
+  try {
+    const legacyBefore = fixture.controlStore.getEntitlement(
+      "ent_fulfillment_legacy_expired"
+    );
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    assert.equal(
+      service.fulfillmentHandler.execute(productionInput(
+        fixture,
+        COIN_COMMERCE_PRODUCTION_OFFERS[1]
+      )).status,
+      "delivered"
+    );
+    assert.deepEqual({
+      plan: fixture.controlStore.getEntitlement(fixture.entitlementRef).plan,
+      validUntil: fixture.controlStore.getEntitlement(fixture.entitlementRef).validUntil,
+      trafficLimitBytes: fixture.controlStore.getEntitlement(
+        fixture.entitlementRef
+      ).trafficLimitBytes
+    }, {
+      plan: "offerv_plan_30d_100gb_monthly_v1",
+      validUntil: "2026-08-29T00:00:00.000Z",
+      trafficLimitBytes: 100 * GIB
+    });
+    assert.deepEqual(
+      fixture.controlStore.getEntitlement("ent_fulfillment_legacy_expired"),
+      legacyBefore
+    );
+  } finally {
+    fixture.close();
+  }
+});
+
+test("fulfillment rechecks unique user entitlement inside the control transaction", () => {
+  const fixture = createFixture();
+  try {
+    const controlStore = {
+      ...fixture.controlStore,
+      applyCoinCommerceSubscriptionFulfillment(input) {
+        fixture.controlStore.createEntitlement({
+          id: "ent_fulfillment_concurrent",
+          accountId: fixture.accountId,
+          plan: "trial",
+          status: "active",
+          validFrom: "2026-07-15T00:00:00.000Z",
+          validUntil: "2026-10-01T00:00:00.000Z",
+          maxArtifacts: 1,
+          maxDevices: 2,
+          trafficLimitBytes: 5 * GIB,
+          createdAt: NOW,
+          updatedAt: NOW
+        });
+        return fixture.controlStore.applyCoinCommerceSubscriptionFulfillment(input);
+      }
+    };
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    assert.throws(
+      () => service.fulfillmentHandler.execute(productionInput(fixture)),
+      (error) => isCoinCommerceFulfillmentReconciliationError(error)
+    );
+    assert.deepEqual({
+      plan: fixture.controlStore.getEntitlement(fixture.entitlementRef).plan,
+      validUntil: fixture.controlStore.getEntitlement(fixture.entitlementRef).validUntil,
+      trafficLimitBytes: fixture.controlStore.getEntitlement(
+        fixture.entitlementRef
+      ).trafficLimitBytes
+    }, {
+      plan: "trial",
+      validUntil: CURRENT_VALID_UNTIL,
+      trafficLimitBytes: 5 * GIB
+    });
+  } finally {
+    fixture.close();
   }
 });
 
@@ -1127,7 +1552,7 @@ test("same-product renewal keeps validFrom while an active product switch is blo
 });
 
 test("an older command replay follows the fulfillment chain despite wall-clock rollback", () => {
-  const fixture = createFixture();
+  const fixture = createFixture({ legacyExpiredPortalRequest: true });
   try {
     let currentNow = NOW;
     const service = createCoinCommerceProductionSubscriptionFulfillment({

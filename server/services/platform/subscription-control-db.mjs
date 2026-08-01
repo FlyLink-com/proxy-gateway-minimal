@@ -1363,6 +1363,273 @@ export function createSqliteSubscriptionControlStore({
     return mapEntitlement(db.prepare("select * from platform_entitlements where id = ?").get(requiredText(id, "id")));
   }
 
+  function listEntitlements(filters = {}) {
+    assertNoUnsafeFields(filters);
+    const clauses = [];
+    const params = [];
+    const accountId = optionalText(filters.accountId);
+    const status = optionalText(filters.status);
+    if (accountId) {
+      clauses.push("account_id = ?");
+      params.push(accountId);
+    }
+    if (status) {
+      clauses.push("status = ?");
+      params.push(status);
+    }
+    const where = clauses.length ? `where ${clauses.join(" and ")}` : "";
+    return db.prepare(`
+      select * from platform_entitlements
+      ${where}
+      order by valid_until desc, id asc
+    `).all(...params).map(mapEntitlement);
+  }
+
+  const coinCommerceFulfillmentMetadataKeys = Object.freeze([
+    "version",
+    "commandRef",
+    "orderRef",
+    "accountId",
+    "requestRef",
+    "entitlementRef",
+    "issuedLinkRef",
+    "tenantRef",
+    "artifactRef",
+    "offerVersionRef",
+    "portalPlan",
+    "durationDays",
+    "monthlyTrafficGb",
+    "trafficLimitBytes",
+    "validFrom",
+    "previousValidUntil",
+    "targetValidUntil"
+  ]);
+
+  const sameKeys = (value, expectedKeys) => (
+    value
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && Object.keys(value).sort().join("\0") === [...expectedKeys].sort().join("\0")
+  );
+
+  const effectRefForCommand = (commandRef) => `effect_coin_commerce_${sha256(
+    `GCCWEBOS:COIN_COMMERCE_SUBSCRIPTION_FULFILLMENT:v1\0${commandRef}`
+  )}`;
+
+  function parseCoinCommerceFulfillmentEffect(candidate, { accountId, entitlementRef }) {
+    const metadata = candidate?.metadata;
+    if (
+      !candidate
+      || candidate.entityType !== "coin_commerce_subscription_fulfillment"
+      || candidate.entityRef !== entitlementRef
+      || candidate.action !== "subscription_fulfillment_applied"
+      || candidate.actorRef !== "coin_commerce_fulfillment"
+      || !sameKeys(metadata, coinCommerceFulfillmentMetadataKeys)
+      || metadata.version !== 1
+      || metadata.accountId !== accountId
+      || metadata.entitlementRef !== entitlementRef
+      || !Number.isSafeInteger(metadata.durationDays)
+      || metadata.durationDays < 1
+      || !Number.isSafeInteger(metadata.monthlyTrafficGb)
+      || metadata.monthlyTrafficGb < 1
+      || metadata.trafficLimitBytes !== metadata.monthlyTrafficGb * (1024 ** 3)
+      || (metadata.portalPlan !== "monthly" && metadata.portalPlan !== "yearly")
+    ) {
+      return null;
+    }
+    let validFrom;
+    let previousValidUntil;
+    let targetValidUntil;
+    let createdAt;
+    try {
+      for (const key of [
+        "commandRef",
+        "orderRef",
+        "accountId",
+        "requestRef",
+        "entitlementRef",
+        "issuedLinkRef",
+        "tenantRef",
+        "artifactRef",
+        "offerVersionRef"
+      ]) {
+        safeControlRef(metadata[key], key);
+      }
+      validFrom = isoText(metadata.validFrom, "validFrom");
+      previousValidUntil = isoText(metadata.previousValidUntil, "previousValidUntil");
+      targetValidUntil = isoText(metadata.targetValidUntil, "targetValidUntil");
+      createdAt = isoText(candidate.createdAt, "createdAt");
+    } catch {
+      return null;
+    }
+    if (
+      candidate.id !== effectRefForCommand(metadata.commandRef)
+      || previousValidUntil >= targetValidUntil
+      || validFrom >= targetValidUntil
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      id: candidate.id,
+      createdAt,
+      ...metadata,
+      validFrom,
+      previousValidUntil,
+      targetValidUntil
+    });
+  }
+
+  function resolveLiveCoinCommerceFulfillmentEffect({ accountId, entitlement }) {
+    const accessRequests = listPortalAccessRequests({
+      portalUserRef: accountId
+    }).filter((request) => (
+      (request.status === "delivered" || request.status === "issued")
+      && request.entitlementRef === entitlement.id
+    ));
+    if (accessRequests.length !== 1) return null;
+    const [accessRequest] = accessRequests;
+    if (
+      accessRequest.portalUserRef !== accountId
+      || !optionalText(accessRequest.tenantId)
+      || !optionalText(accessRequest.artifactId)
+      || accessRequest.expiresAt !== entitlement.validUntil
+      || accessRequest.validUntil !== entitlement.validUntil
+    ) {
+      return null;
+    }
+    const issuanceRequest = getIssuanceRequest(accessRequest.id);
+    const bindings = listIssuedSubscriptionBindings()
+      .filter((binding) => binding.requestId === accessRequest.id);
+    if (
+      !issuanceRequest
+      || issuanceRequest.status !== "issued"
+      || issuanceRequest.accountId !== accountId
+      || issuanceRequest.entitlementId !== entitlement.id
+      || bindings.length !== 1
+    ) {
+      return null;
+    }
+    const [binding] = bindings;
+    if (
+      binding.accountId !== accountId
+      || binding.entitlementId !== entitlement.id
+      || binding.tenantRef !== `tenantref_${sha256(accessRequest.tenantId).slice(0, 16)}`
+      || binding.artifactRef !== `artifactref_${sha256(accessRequest.artifactId).slice(0, 16)}`
+    ) {
+      return null;
+    }
+    const audits = db.prepare(`
+      select * from platform_audit_events
+      where entity_type = 'coin_commerce_subscription_fulfillment'
+        and entity_ref = ?
+        and action = 'subscription_fulfillment_applied'
+        and actor_ref = 'coin_commerce_fulfillment'
+      order by created_at asc, id asc
+    `).all(entitlement.id).map(mapAuditEvent);
+    if (audits.length === 0) return null;
+    const effects = [];
+    for (const audit of audits) {
+      const effect = parseCoinCommerceFulfillmentEffect(audit, {
+        accountId,
+        entitlementRef: entitlement.id
+      });
+      if (
+        !effect
+        || effect.requestRef !== accessRequest.id
+        || effect.issuedLinkRef !== binding.id
+        || effect.tenantRef !== binding.tenantRef
+        || effect.artifactRef !== binding.artifactRef
+      ) {
+        return null;
+      }
+      effects.push(effect);
+    }
+    const starts = effects.filter((candidate) => (
+      !effects.some((other) => other.targetValidUntil === candidate.previousValidUntil)
+    ));
+    if (starts.length !== 1) return null;
+    let terminalEffect = starts[0];
+    const visited = new Set([terminalEffect.id]);
+    while (true) {
+      const nextEffects = effects.filter(
+        (candidate) => candidate.previousValidUntil === terminalEffect.targetValidUntil
+      );
+      if (nextEffects.length === 0) break;
+      if (nextEffects.length !== 1) return null;
+      const [nextEffect] = nextEffects;
+      if (
+        visited.has(nextEffect.id)
+        || nextEffect.targetValidUntil <= terminalEffect.targetValidUntil
+        || (
+          nextEffect.offerVersionRef === terminalEffect.offerVersionRef
+            ? nextEffect.validFrom !== terminalEffect.validFrom
+            : nextEffect.validFrom !== nextEffect.createdAt
+        )
+      ) {
+        return null;
+      }
+      visited.add(nextEffect.id);
+      terminalEffect = nextEffect;
+    }
+    if (
+      visited.size !== effects.length
+      || entitlement.plan !== terminalEffect.offerVersionRef
+      || entitlement.validFrom !== terminalEffect.validFrom
+      || entitlement.validUntil !== terminalEffect.targetValidUntil
+      || entitlement.trafficLimitBytes !== terminalEffect.trafficLimitBytes
+      || accessRequest.plan !== terminalEffect.portalPlan
+      || accessRequest.durationDays !== terminalEffect.durationDays
+      || accessRequest.expiresAt !== terminalEffect.targetValidUntil
+      || accessRequest.validUntil !== terminalEffect.targetValidUntil
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      effects: Object.freeze(effects),
+      terminalEffect
+    });
+  }
+
+  function resolveAccountServiceEntitlement(input = {}) {
+    assertNoUnsafeFields(input);
+    const accountId = requiredText(input.accountId, "accountId");
+    const now = isoText(input.now, "now");
+    const account = getAccount(accountId);
+    if (!account || account.status !== "active") return null;
+    const entitlements = listEntitlements({
+      accountId,
+      status: "active"
+    }).filter((entitlement) => (
+      entitlement.accountId === accountId
+      && entitlement.validFrom < entitlement.validUntil
+    ));
+    const current = entitlements.filter((entitlement) => (
+      entitlement.validFrom <= now
+      && entitlement.validUntil > now
+    ));
+    if (current.length > 1) return null;
+    if (current.length === 1) return current[0];
+    const effectBackedFuture = entitlements.filter((entitlement) => (
+      entitlement.validFrom > now
+      && entitlement.validUntil > now
+      && Boolean(resolveLiveCoinCommerceFulfillmentEffect({ accountId, entitlement }))
+    ));
+    if (effectBackedFuture.length > 1) return null;
+    if (effectBackedFuture.length === 1) return effectBackedFuture[0];
+    const lapsed = entitlements.filter((entitlement) => (
+      entitlement.validFrom <= now
+      && entitlement.validUntil <= now
+    ));
+    if (lapsed.length > 0) {
+      const latestValidUntil = lapsed[0].validUntil;
+      const latest = lapsed.filter(
+        (entitlement) => entitlement.validUntil === latestValidUntil
+      );
+      return latest.length === 1 ? latest[0] : null;
+    }
+    return null;
+  }
+
   function updateEntitlementTrafficLimit(id, { trafficLimitBytes, updatedAt }) {
     assertNoUnsafeFields({ trafficLimitBytes, updatedAt });
     const result = db.prepare(`
@@ -1419,9 +1686,6 @@ export function createSqliteSubscriptionControlStore({
     if (!Number.isSafeInteger(durationMs)) {
       throw platformError("validation_error", "durationDays is outside the safe Date range");
     }
-    const effectRefForCommand = (commandRef) => `effect_coin_commerce_${sha256(
-      `GCCWEBOS:COIN_COMMERCE_SUBSCRIPTION_FULFILLMENT:v1\0${commandRef}`
-    )}`;
     const effectRef = effectRefForCommand(record.commandRef);
 
     const failDrift = () => {
@@ -1430,19 +1694,22 @@ export function createSqliteSubscriptionControlStore({
         "Coin Commerce subscription fulfillment state is inconsistent"
       );
     };
-    const sameKeys = (value, expectedKeys) => (
-      value
-      && typeof value === "object"
-      && !Array.isArray(value)
-      && Object.keys(value).sort().join("\0") === [...expectedKeys].sort().join("\0")
-    );
-
     const apply = db.transaction(() => {
       const account = getAccount(record.accountId);
       if (!account || account.status !== "active") failDrift();
+      const serviceEntitlement = resolveAccountServiceEntitlement({
+        accountId: record.accountId,
+        now: record.now
+      });
+      if (!serviceEntitlement || serviceEntitlement.id !== record.entitlementRef) {
+        failDrift();
+      }
       const activeAccessRequests = listPortalAccessRequests({
         portalUserRef: record.accountId
-      }).filter((request) => request.status === "delivered" || request.status === "issued");
+      }).filter((request) => (
+        (request.status === "delivered" || request.status === "issued")
+        && request.entitlementRef === record.entitlementRef
+      ));
       if (activeAccessRequests.length !== 1) failDrift();
       const [accessRequest] = activeAccessRequests;
       if (
@@ -1502,142 +1769,46 @@ export function createSqliteSubscriptionControlStore({
         monthlyTrafficGb: record.monthlyTrafficGb,
         trafficLimitBytes
       };
-      const stableIdentityMetadata = {
-        version: identityMetadata.version,
-        accountId: identityMetadata.accountId,
-        requestRef: identityMetadata.requestRef,
-        entitlementRef: identityMetadata.entitlementRef,
-        issuedLinkRef: identityMetadata.issuedLinkRef,
-        tenantRef: identityMetadata.tenantRef,
-        artifactRef: identityMetadata.artifactRef
-      };
-      const metadataKeys = [
-        ...Object.keys(identityMetadata),
-        "validFrom",
-        "previousValidUntil",
-        "targetValidUntil"
-      ];
-      const parseFulfillmentEffect = (candidate) => {
-        const candidateMetadata = candidate?.metadata;
-        if (
-          !candidate
-          || candidate.entityType !== "coin_commerce_subscription_fulfillment"
-          || candidate.entityRef !== record.entitlementRef
-          || candidate.action !== "subscription_fulfillment_applied"
-          || candidate.actorRef !== "coin_commerce_fulfillment"
-          || !sameKeys(candidateMetadata, metadataKeys)
-          || Object.entries(stableIdentityMetadata)
-            .some(([key, value]) => candidateMetadata[key] !== value)
-          || !Number.isSafeInteger(candidateMetadata.durationDays)
-          || candidateMetadata.durationDays < 1
-          || !Number.isSafeInteger(candidateMetadata.monthlyTrafficGb)
-          || candidateMetadata.monthlyTrafficGb < 1
-          || candidateMetadata.trafficLimitBytes
-            !== candidateMetadata.monthlyTrafficGb * (1024 ** 3)
-          || (candidateMetadata.portalPlan !== "monthly"
-            && candidateMetadata.portalPlan !== "yearly")
-        ) {
-          failDrift();
-        }
-        let validFrom;
-        let previousValidUntil;
-        let targetValidUntil;
-        let createdAt;
-        try {
-          safeControlRef(candidateMetadata.commandRef, "commandRef");
-          safeControlRef(candidateMetadata.orderRef, "orderRef");
-          safeControlRef(candidateMetadata.offerVersionRef, "offerVersionRef");
-          validFrom = isoText(candidateMetadata.validFrom, "validFrom");
-          previousValidUntil = isoText(
-            candidateMetadata.previousValidUntil,
-            "previousValidUntil"
-          );
-          targetValidUntil = isoText(
-            candidateMetadata.targetValidUntil,
-            "targetValidUntil"
-          );
-          createdAt = isoText(candidate.createdAt, "createdAt");
-        } catch {
-          failDrift();
-        }
-        if (
-          candidate.id !== effectRefForCommand(candidateMetadata.commandRef)
-          || previousValidUntil >= targetValidUntil
-          || validFrom >= targetValidUntil
-        ) {
-          failDrift();
-        }
-        return Object.freeze({
-          id: candidate.id,
-          createdAt,
-          commandRef: candidateMetadata.commandRef,
-          offerVersionRef: candidateMetadata.offerVersionRef,
-          portalPlan: candidateMetadata.portalPlan,
-          durationDays: candidateMetadata.durationDays,
-          trafficLimitBytes: candidateMetadata.trafficLimitBytes,
-          validFrom,
-          previousValidUntil,
-          targetValidUntil
-        });
-      };
-      const fulfillmentEffectMatchesLiveState = (candidate) => (
-        entitlement.plan === candidate.offerVersionRef
-        && entitlement.validFrom === candidate.validFrom
-        && entitlement.validUntil === candidate.targetValidUntil
-        && entitlement.trafficLimitBytes === candidate.trafficLimitBytes
-        && accessRequest.plan === candidate.portalPlan
-        && accessRequest.durationDays === candidate.durationDays
-        && accessRequest.expiresAt === candidate.targetValidUntil
-        && accessRequest.validUntil === candidate.targetValidUntil
-      );
       const audit = getAuditEvent(effectRef);
       if (audit) {
         const metadata = audit.metadata;
         if (
-          !sameKeys(metadata, metadataKeys)
+          !sameKeys(metadata, coinCommerceFulfillmentMetadataKeys)
           || Object.entries(identityMetadata).some(([key, value]) => metadata[key] !== value)
         ) {
           failDrift();
         }
-        const originalEffect = parseFulfillmentEffect(audit);
-        let currentEffect = originalEffect;
-        if (!fulfillmentEffectMatchesLiveState(currentEffect)) {
-          const fulfillmentEffects = db.prepare(`
-            select * from platform_audit_events
-            where entity_type = 'coin_commerce_subscription_fulfillment'
-              and entity_ref = ?
-              and action = 'subscription_fulfillment_applied'
-              and actor_ref = 'coin_commerce_fulfillment'
-          `).all(record.entitlementRef)
-            .map(mapAuditEvent)
-            .map(parseFulfillmentEffect);
-          const visitedEffectRefs = new Set([currentEffect.id]);
-          while (!fulfillmentEffectMatchesLiveState(currentEffect)) {
-            const nextEffects = fulfillmentEffects.filter((candidate) =>
-              candidate.previousValidUntil === currentEffect.targetValidUntil
-            );
-            if (nextEffects.length !== 1) failDrift();
-            const [nextEffect] = nextEffects;
-            if (
-              visitedEffectRefs.has(nextEffect.id)
-              || nextEffect.targetValidUntil <= currentEffect.targetValidUntil
-              || (
-                nextEffect.offerVersionRef === currentEffect.offerVersionRef
-                  ? nextEffect.validFrom !== currentEffect.validFrom
-                  : nextEffect.validFrom !== nextEffect.createdAt
-              )
-            ) {
-              failDrift();
-            }
-            visitedEffectRefs.add(nextEffect.id);
-            currentEffect = nextEffect;
-          }
-        }
+        const liveFulfillment = resolveLiveCoinCommerceFulfillmentEffect({
+          accountId: record.accountId,
+          entitlement
+        });
+        const originalEffect = liveFulfillment?.effects.find(
+          (candidate) => candidate.id === effectRef
+        );
+        if (!originalEffect) failDrift();
         return Object.freeze({
           effectRef,
           targetValidUntil: originalEffect.targetValidUntil,
-          runtimeTargetValidUntil: currentEffect.targetValidUntil
+          runtimeTargetValidUntil: liveFulfillment.terminalEffect.targetValidUntil
         });
+      }
+      const hasExistingFulfillmentHistory = Boolean(db.prepare(`
+        select 1
+        from platform_audit_events
+        where entity_type = 'coin_commerce_subscription_fulfillment'
+          and entity_ref = ?
+          and action = 'subscription_fulfillment_applied'
+          and actor_ref = 'coin_commerce_fulfillment'
+        limit 1
+      `).get(record.entitlementRef));
+      if (
+        hasExistingFulfillmentHistory
+        && !resolveLiveCoinCommerceFulfillmentEffect({
+          accountId: record.accountId,
+          entitlement
+        })
+      ) {
+        failDrift();
       }
       if (record.requireExistingEffect) failDrift();
       if (record.recoveryOnly) failDrift();
@@ -3430,6 +3601,7 @@ export function createSqliteSubscriptionControlStore({
     resolvePortalLoginAccount,
     createEntitlement,
     getEntitlement,
+    resolveAccountServiceEntitlement,
     updateEntitlementTrafficLimit,
     applyCoinCommerceSubscriptionFulfillment,
     createIssuanceRequest,
