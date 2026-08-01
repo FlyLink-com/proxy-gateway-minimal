@@ -560,7 +560,7 @@ Run the three tests from Step 2. Expected: PASS for session isolation, console
 auth boundary, callback signature boundary, size limits, content type, duplicate
 delivery, and disabled runtime.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add server/routes/portal-coin-recharge.mjs server/state.mjs server/app.mjs server/tests/portal-coin-recharge-routes.test.mjs server/tests/state.test.mjs server/tests/app-security-boundary.test.mjs .env.example
@@ -590,7 +590,7 @@ git commit -m "feat(payment): expose protected recharge runtime"
 - `PortalRechargeOrder.status` is exactly `created | entry_ready | pending | payment_verified | credited | failed_no_charge | reconciliation_required | expired`.
 - The real HTTP Portal client exposes `recharge`; local/mock clients expose no recharge capability unless a test injects one explicitly.
 
-- [ ] **Step 1: Write failing client and interaction tests**
+- [x] **Step 1: Write failing client and interaction tests**
 
 ```tsx
 test("server-backed recharge opens PayPal and refreshes Wallet after credit", async () => {
@@ -614,7 +614,7 @@ test("Portal without recharge capability exposes no recharge action", async () =
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run:
 
@@ -629,14 +629,14 @@ try {
 
 Expected: FAIL because the real recharge client and dialog do not exist.
 
-- [ ] **Step 3: Implement the real client and hook**
+- [x] **Step 3: Implement the real client and hook**
 
 Map only safe server fields. The hook owns one session generation, one active
 order, redirect action, polling/manual refresh, and Wallet refresh after the
 first transition to `credited`. It aborts stale results after logout or session
 replacement and never stores an order in local storage.
 
-- [ ] **Step 4: Implement the existing-shell UI connection**
+- [x] **Step 4: Implement the existing-shell UI connection**
 
 Render `充值 Coins` only when `portalClient.recharge` exists. The dialog lists
 only returned server offers, shows exact USD Sandbox amount, launches the
@@ -646,7 +646,7 @@ Pending, verified, credited, expired, failed, and reconciliation states use
 existing order center as a new source kind, without changing product-order or
 legacy-order logic.
 
-- [ ] **Step 5: Run GREEN and Portal build verification**
+- [x] **Step 5: Run GREEN and Portal build verification**
 
 Run the focused command from Step 2, then:
 

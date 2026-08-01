@@ -52,6 +52,7 @@ import {
   PortalWalletPanel,
   usePortalWalletReadModel
 } from "./wallet";
+import { usePortalRecharge } from "./recharge";
 import { useDesktopScrollRegion } from "./use-desktop-scroll-region";
 import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
 import type {
@@ -1156,6 +1157,15 @@ export function UserPortalPage({
     loadLedger: activeView === "wallet",
     onSessionInvalid: logout
   });
+  const rechargeModel = usePortalRecharge({
+    client: portalClient.recharge ?? null,
+    enabled: activeView === "wallet",
+    sessionRef: portalSession?.sessionRef ?? null,
+    sessionGeneration,
+    onSessionInvalid: logout,
+    onWalletMutation: walletModel.refreshWallet,
+    paymentRedirect
+  });
   const authoritativeWalletBalance =
     walletModel.summary.phase === "ready"
     || walletModel.summary.phase === "empty"
@@ -2158,7 +2168,11 @@ export function UserPortalPage({
             />
           ) : null}
           {activeView === "wallet" ? (
-            <PortalWalletPanel locale={locale} model={walletModel} />
+            <PortalWalletPanel
+              locale={locale}
+              model={walletModel}
+              rechargeModel={rechargeModel}
+            />
           ) : null}
           {activeView === "referrals" ? <ReferralRewardsPanel locale={locale} /> : null}
           {activeView === "start" ? (
@@ -2197,6 +2211,7 @@ export function UserPortalPage({
           {activeView === "orders" && !paymentFlowActive ? (
             <PortalOrdersPanel
               commerceClient={portalClient.commerce ?? null}
+              rechargeClient={portalClient.recharge ?? null}
               legacyPaymentOrders={paymentOrders}
               locale={locale}
               onOpenMarketplace={openMarketplace}

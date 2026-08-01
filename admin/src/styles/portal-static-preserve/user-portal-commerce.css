@@ -583,6 +583,108 @@
   }
 }
 
+.portal-v2-shell .portal-wallet-recharge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.portal-v2-shell .portal-wallet-recharge h3,
+.portal-v2-shell .portal-wallet-recharge p {
+  margin: 0;
+}
+
+.portal-v2-shell .portal-wallet-recharge p {
+  margin-top: 6px;
+  color: var(--portal-wallet-muted);
+}
+
+.portal-v2-shell .portal-recharge-dialog {
+  width: min(680px, calc(100vw - 40px));
+}
+
+.portal-v2-shell .portal-recharge-dialog > .portal-recharge-offers,
+.portal-v2-shell .portal-recharge-dialog > .portal-recharge-order,
+.portal-v2-shell .portal-recharge-dialog > .portal-recharge-state {
+  margin: 0;
+  padding: 20px;
+}
+
+.portal-v2-shell .portal-recharge-offers {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+}
+
+.portal-v2-shell .portal-recharge-offers li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border: 1px solid var(--portal-wallet-border);
+  border-radius: 10px;
+  background: var(--portal-wallet-surface);
+  padding: 16px;
+}
+
+.portal-v2-shell .portal-recharge-offers li > div {
+  display: grid;
+  gap: 4px;
+}
+
+.portal-v2-shell .portal-recharge-offers span,
+.portal-v2-shell .portal-recharge-order dt {
+  color: var(--portal-wallet-muted);
+}
+
+.portal-v2-shell .portal-recharge-dialog button {
+  min-height: 44px;
+}
+
+.portal-v2-shell .portal-recharge-order,
+.portal-v2-shell .portal-recharge-order dl {
+  display: grid;
+  gap: 12px;
+}
+
+.portal-v2-shell .portal-recharge-order dl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.portal-v2-shell .portal-recharge-order dl > div {
+  min-width: 0;
+  border: 1px solid var(--portal-wallet-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.portal-v2-shell .portal-recharge-order dt,
+.portal-v2-shell .portal-recharge-order dd,
+.portal-v2-shell .portal-recharge-status,
+.portal-v2-shell .portal-recharge-success {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.portal-v2-shell .portal-recharge-order dd {
+  margin-top: 4px;
+  font-weight: 700;
+}
+
+.portal-v2-shell .portal-recharge-success {
+  color: var(--portal-wallet-accent);
+  font-weight: 700;
+}
+
+.portal-v2-shell .portal-recharge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .portal-v2-shell .portal-commerce-layout--marketplace {
   --portal-commerce-surface: #0d1117;
   --portal-commerce-surface-raised: #161b22;

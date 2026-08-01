@@ -11,7 +11,9 @@ const PORTAL_RUNTIME_MARKERS = [
   "/api/portal/human-challenges",
   "/api/portal/password/session",
   "/api/portal/registration",
-  "/api/portal/registration/email-verification"
+  "/api/portal/registration/email-verification",
+  "/api/portal/coins/recharge/offers",
+  "/api/portal/coins/recharge/orders"
 ];
 
 async function writePortalFixture(directory, {
@@ -20,11 +22,13 @@ async function writePortalFixture(directory, {
   runtimeMarkers = PORTAL_RUNTIME_MARKERS,
   javascriptCommerceMarkers = [
     "portal-commerce-layout",
-    "portal-coins-wallet-entry"
+    "portal-coins-wallet-entry",
+    "portal-recharge-dialog"
   ],
   stylesheetCommerceMarkers = [
     "portal-commerce-layout",
-    "portal-coins-wallet-entry"
+    "portal-coins-wallet-entry",
+    "portal-recharge-dialog"
   ]
 } = {}) {
   await writeFile(
@@ -64,7 +68,7 @@ test("portal static build verifier rejects bundles that expose Admin shell marke
   }
 });
 
-test("portal static build verifier accepts the Portal commerce shell without Recharge UI", async () => {
+test("portal static build verifier accepts the Portal commerce shell with protected Recharge UI", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
   try {
     await writePortalFixture(tempDir);
@@ -73,22 +77,22 @@ test("portal static build verifier accepts the Portal commerce shell without Rec
 
     assert.equal(summary.status, "ok");
     assert.equal(summary.safety.hasCommerceLayoutContract, true);
-    assert.equal(summary.safety.noRechargeUi, true);
+    assert.equal(summary.safety.hasProtectedRechargeContract, true);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
 });
 
-test("portal static build verifier rejects Recharge UI in JavaScript", async () => {
+test("portal static build verifier rejects legacy Recharge UI in JavaScript", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
   try {
     await writePortalFixture(tempDir, {
-      javascript: "portal-recharge-dialog"
+      javascript: "portal-recharge-denominations"
     });
 
     await assert.rejects(
       () => verifyPortalBuildDirectory(tempDir),
-      /forbidden commerce marker found: portal-recharge-dialog/
+      /forbidden commerce marker found: portal-recharge-denominations/
     );
   } finally {
     await rm(tempDir, { recursive: true, force: true });

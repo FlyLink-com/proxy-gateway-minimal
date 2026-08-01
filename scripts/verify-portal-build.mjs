@@ -26,19 +26,20 @@ const REQUIRED_RUNTIME_MARKERS = [
   "/api/portal/human-challenges",
   "/api/portal/password/session",
   "/api/portal/registration",
-  "/api/portal/registration/email-verification"
+  "/api/portal/registration/email-verification",
+  "/api/portal/coins/recharge/offers",
+  "/api/portal/coins/recharge/orders"
 ];
 
 const REQUIRED_COMMERCE_LAYOUT_MARKERS = [
   "portal-commerce-layout",
-  "portal-coins-wallet-entry"
+  "portal-coins-wallet-entry",
+  "portal-recharge-dialog"
 ];
 
 const FORBIDDEN_COMMERCE_LAYOUT_MARKERS = [
-  "portal-recharge-dialog",
   "portal-recharge-entry",
   "portal-recharge-denominations",
-  "portal-wallet-recharge-heading",
   "portal-wallet-recharge-note"
 ];
 
@@ -150,7 +151,7 @@ export async function verifyPortalBuildDirectory(buildDir) {
       hasPortalHumanChallengeContract: true,
       hasPortalRegistrationContract: true,
       hasCommerceLayoutContract: true,
-      noRechargeUi: true
+      hasProtectedRechargeContract: true
     }
   };
 }

@@ -12,6 +12,10 @@ import {
   createPortalWalletClient,
   type PortalWalletClient
 } from "./wallet";
+import {
+  createPortalRechargeClient,
+  type PortalRechargeClient
+} from "./recharge";
 
 export const PORTAL_REGISTRATION_SESSION_STORAGE_KEY = "gccwebos-portal-registration-session";
 
@@ -447,6 +451,7 @@ export type PortalPasskeyExport = {
 export type UserPortalClient = {
   commerce?: PortalCoinCommerceClient;
   wallet?: PortalWalletClient;
+  recharge?: PortalRechargeClient;
   issueHumanChallenge(input?: PortalHumanChallengeRequestInput): Promise<PortalHumanVerificationChallenge>;
   requestEmailCode(input: PortalEmailCodeRequestInput): Promise<PortalEmailCodeChallenge>;
   requestRegistrationEmailVerification(
@@ -1827,6 +1832,7 @@ export function createHttpUserPortalClient(
 ): UserPortalClient & {
   commerce: PortalCoinCommerceClient;
   wallet: PortalWalletClient;
+  recharge: PortalRechargeClient;
 } {
   const baseUrl = options.baseUrl ?? "";
   const fetchFn = options.fetchFn ?? fetch;
@@ -1855,6 +1861,7 @@ export function createHttpUserPortalClient(
   return {
     commerce: createPortalCoinCommerceClient({ fetchFn }),
     wallet: createPortalWalletClient({ fetchFn }),
+    recharge: createPortalRechargeClient({ baseUrl, fetchFn }),
     async issueHumanChallenge(input = {}) {
       const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/human-challenges"), {
         method: "POST",
