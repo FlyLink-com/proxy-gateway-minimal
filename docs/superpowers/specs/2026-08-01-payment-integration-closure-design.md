@@ -145,9 +145,13 @@ Rules:
   receipt acceptance path;
 - the verified receipt is committed before provider acknowledgement or Wallet
   mutation;
-- settlement calls the existing Wallet Store with `coinType: paid_coins`, the
-  verified payment identity as `sourceRef`, and a domain-separated operation
-  idempotency key;
+- settlement derives one canonical capture identity from Adapter key,
+  merchant-scope digest, and `providerCaptureRef`; both an authenticated
+  capture response and a later callback for that capture use this same Wallet
+  `sourceRef` and a domain-separated operation idempotency key;
+- the Wallet source digest is derived only from invariant verified payment
+  facts (order, provider order/capture, merchant, money, and Coin units), never
+  from channel-specific callback/capture payload bytes;
 - Wallet credit-origin uniqueness and operation receipts provide exactly-once
   Coins credit;
 - if the process stops after Wallet credit but before the payment order becomes
