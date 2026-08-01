@@ -25,6 +25,7 @@ import { publicLeadRoutes } from "./routes/public-leads.mjs";
 import { userPortalRoutes } from "./routes/user-portal.mjs";
 import { portalCoinCommerceRoutes } from "./routes/portal-coin-commerce.mjs";
 import { createPortalCoinWalletRouter } from "./routes/portal-coin-wallet.mjs";
+import { createPortalCoinRechargeRouter } from "./routes/portal-coin-recharge.mjs";
 import { dataPlaneAgentRoutes } from "./routes/data-plane-agent.mjs";
 import { resolveClientIp } from "./services/ip-address.mjs";
 
@@ -237,8 +238,47 @@ function portalCoinWalletRoutesEnabled(state) {
   );
 }
 
+function portalCoinRechargeRoutesEnabled(state) {
+  const platform = state.platform;
+  if (!platform || typeof platform !== "object") return false;
+  if (
+    ownEnumerableDataValue(platform, "coinRechargeEnabled") !== true
+    || ownEnumerableDataValue(platform, "userPortalRoutesEnabled") !== true
+  ) return false;
+  const coordinator = ownEnumerableDataValue(platform, "paymentRechargeCoordinator");
+  const auth = ownEnumerableDataValue(platform, "userPortalAuth");
+  return hasCallableOwnSurface(coordinator, [
+    "acceptProviderCallback",
+    "captureRechargeOrder",
+    "createRechargeOrder",
+    "getRechargeOrder",
+    "listOffers",
+    "listRechargeOrders",
+  ]) && hasCallableSafeDescriptorChain(auth, ["requireSession"]);
+}
+
 export function createApp(state, options = {}) {
   const app = express();
+  if (portalCoinRechargeRoutesEnabled(state)) {
+    app.use(createPortalCoinRechargeRouter({
+      coordinator: ownEnumerableDataValue(state.platform, "paymentRechargeCoordinator"),
+      auth: ownEnumerableDataValue(state.platform, "userPortalAuth"),
+      nowFn: options.paymentNowFn,
+    }));
+  } else {
+    app.use((req, res, next) => {
+      const pathname = (req.originalUrl || req.url || "").split("?", 1)[0];
+      if (
+        pathname === "/api/platform/payments/paypal/callback"
+        || pathname === "/api/portal/coins/recharge"
+        || pathname.startsWith("/api/portal/coins/recharge/")
+      ) {
+        res.status(404).end();
+        return;
+      }
+      next();
+    });
+  }
   if (portalCoinCommerceRoutesEnabled(state)) {
     app.use(portalCoinCommerceRoutes(state, {
       nowFn: options.rateLimitNowFn

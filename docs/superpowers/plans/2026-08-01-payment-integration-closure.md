@@ -475,7 +475,7 @@ node --test server/tests/platform-paypal-payment-adapter.test.mjs server/tests/p
 Expected: PASS with zero live requests and no secret marker in serialized
 outputs.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add server/services/platform/paypal-payment-adapter.mjs server/services/platform/paypal-payment-protocol-codec.mjs server/services/platform/payment-provider-adapter-registry.mjs server/services/platform/paypal-payment-runtime.mjs server/tests/platform-paypal-payment-adapter.test.mjs server/tests/platform-paypal-payment-protocol-codec.test.mjs server/tests/platform-paypal-payment-runtime.test.mjs server/tests/platform-payment-provider-adapter-registry.test.mjs server/tests/platform-payment-provider-source-boundary.test.mjs
@@ -500,7 +500,7 @@ git commit -m "feat(payment): wire paypal sandbox adapter"
 - Provider route: `POST /api/platform/payments/paypal/callback`.
 - State exposes `coinRechargeEnabled`, `paymentStore`, and `paymentRechargeCoordinator` only as safe runtime objects.
 
-- [ ] **Step 1: Write failing route and default-off tests**
+- [x] **Step 1: Write failing route and default-off tests**
 
 ```js
 test("recharge namespace is unavailable and side-effect free by default", async () => {
@@ -524,7 +524,7 @@ test("authenticated account creates and captures only its server-priced order", 
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run:
 
@@ -534,7 +534,7 @@ node --test server/tests/portal-coin-recharge-routes.test.mjs server/tests/state
 
 Expected: FAIL because routes and state capabilities do not exist.
 
-- [ ] **Step 3: Implement routes and strict state assembly**
+- [x] **Step 3: Implement routes and strict state assembly**
 
 Require both `PLATFORM_COIN_RECHARGE_ENABLED=true` and
 `PLATFORM_PAYPAL_SANDBOX_ENABLED=true`. When either is absent/false, do not
@@ -554,7 +554,7 @@ The callback dispatcher reads at most 1 MiB, preserves the exact bytes as
 base64 for Provider Core, copies only its allowlisted PayPal headers, and emits
 the Adapter ACK only after durable acceptance.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run the three tests from Step 2. Expected: PASS for session isolation, console
 auth boundary, callback signature boundary, size limits, content type, duplicate

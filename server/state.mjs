@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve, join } from "node:path";
@@ -17,6 +17,11 @@ import { createPlatformAccountEntitlementShell } from "./services/platform/accou
 import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
+import { createSqlitePaymentStore } from "./services/platform/payment-store.mjs";
+import { createPaymentRechargeCoordinator } from "./services/platform/payment-recharge-coordinator.mjs";
+import { createPaymentRechargeOfferCatalog } from "./services/platform/payment-recharge-offer-catalog.mjs";
+import { createStaticPaymentProviderAdapterRegistry } from "./services/platform/payment-provider-adapter-registry.mjs";
+import { createPayPalSandboxRuntime } from "./services/platform/paypal-payment-runtime.mjs";
 import { createSqliteSubscriptionControlStore } from "./services/platform/subscription-control-db.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
@@ -180,6 +185,12 @@ function coinCommercePrerequisiteError() {
   const error = new Error("Coin commerce runtime prerequisites are not satisfied");
   error.code = "coin_commerce_prerequisite_missing";
   OWN_COIN_COMMERCE_PREREQUISITE_ERRORS.add(error);
+  return error;
+}
+
+function coinRechargePrerequisiteError() {
+  const error = new Error("Coin recharge runtime prerequisites are not satisfied");
+  error.code = "coin_recharge_prerequisite_missing";
   return error;
 }
 
@@ -1267,6 +1278,12 @@ export function createRuntimeState(options = {}) {
   const adminAuthorizationEnabled = envFlag(env.ADMIN_AUTHORIZATION_ENABLED);
   const coinsWalletEnabled = envFlag(env.COINS_WALLET_ENABLED);
   const coinsCommerceEnabled = envFlag(env.COINS_COMMERCE_ENABLED);
+  const coinRechargeRequested = envFlag(env.PLATFORM_COIN_RECHARGE_ENABLED);
+  const paypalSandboxRequested = envFlag(env.PLATFORM_PAYPAL_SANDBOX_ENABLED);
+  if (coinRechargeRequested !== paypalSandboxRequested) {
+    throw coinRechargePrerequisiteError();
+  }
+  const coinRechargeEnabled = coinRechargeRequested && paypalSandboxRequested;
   let configuredCoinCommerceStore = null;
   let configuredCoinCommerceWalletStore = null;
   let configuredCoinCommerceCatalog;
@@ -1930,6 +1947,9 @@ export function createRuntimeState(options = {}) {
   );
   let coinCommerceStore = null;
   let coinCommerceCoordinator = null;
+  let paymentStore = null;
+  let paymentRechargeCoordinator = null;
+  let ownsPaymentStore = false;
   let ownsCoinCommerceStore = false;
   let closed = false;
   let closePromise = null;
@@ -2120,11 +2140,123 @@ export function createRuntimeState(options = {}) {
     }
   }
 
+  if (coinRechargeEnabled) {
+    try {
+      if (!userPortalRoutesEnabled || !coinsWalletEnabled || !coinsWalletStore) {
+        throw coinRechargePrerequisiteError();
+      }
+      callableFromSafeDescriptorChain(platformUserPortalAuth, "requireSession");
+      const offers = parseJsonArrayEnv(
+        env.PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON,
+        "PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON"
+      );
+      const credential = {
+        clientId: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_CLIENT_ID),
+        clientSecret: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_CLIENT_SECRET),
+        webhookId: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_WEBHOOK_ID),
+        merchantScopeDigest: optionalEnvText(
+          env.PLATFORM_PAYPAL_SANDBOX_MERCHANT_SCOPE_DIGEST
+        )
+      };
+      const callbackUrl = optionalEnvText(env.PLATFORM_PAYPAL_CALLBACK_URL);
+      const returnUrl = optionalEnvText(env.PLATFORM_PAYPAL_RETURN_URL);
+      if (
+        offers.length === 0
+        || Object.values(credential).some((value) => !value)
+        || !callbackUrl
+        || !returnUrl
+      ) {
+        throw coinRechargePrerequisiteError();
+      }
+      const nowFn = options.paymentNowFn || (() => new Date().toISOString());
+      const fetchFn = options.paypalFetchFn || globalThis.fetch?.bind(globalThis);
+      if (typeof fetchFn !== "function" || typeof nowFn !== "function") {
+        throw coinRechargePrerequisiteError();
+      }
+      const offerCatalog = createPaymentRechargeOfferCatalog({
+        environment: "sandbox",
+        offers
+      });
+      const paypalRuntime = createPayPalSandboxRuntime({
+        credential,
+        fetchFn,
+        apiOrigin: "https://api-m.sandbox.paypal.com",
+        allowedActionOrigins: ["https://www.sandbox.paypal.com"],
+        routeMap: {
+          portal_payment_callback_v1: callbackUrl,
+          portal_wallet_return_v1: returnUrl
+        },
+        nowFn
+      });
+      const registry = createStaticPaymentProviderAdapterRegistry({
+        credentialLoader: paypalRuntime.credentialLoader,
+        transports: { paypal_v1: paypalRuntime.transport },
+        nowFn
+      });
+      const resolvedAdapter = registry.resolve({
+        adapterKey: "paypal_v1",
+        profileRef: "paypal_sandbox_primary",
+        contractVersion: "v1",
+        credentialProfileRef: "paypal_sandbox_primary",
+        declaredCapabilities: {
+          createRechargeOrder: true,
+          queryPayment: true,
+          capturePayment: true,
+          verifyCallback: true,
+          refund: false,
+          reconcile: false,
+          repeatCreateIdempotent: true,
+          repeatCaptureIdempotent: true
+        }
+      });
+      const adapter = Object.freeze({
+        ...resolvedAdapter,
+        paymentMethod: "paypal",
+        merchantBindingRef: "paypal_sandbox_primary"
+      });
+      paymentStore = createSqlitePaymentStore({
+        dbPath: controlDbPath,
+        nowFn,
+        refFactory: options.paymentRefFactory
+          || ((kind) => `${kind}_${randomUUID()}`)
+      });
+      ownsPaymentStore = true;
+      paymentRechargeCoordinator = createPaymentRechargeCoordinator({
+        store: paymentStore,
+        walletStore: coinsWalletStore,
+        offerCatalog,
+        adapter,
+        nowFn,
+        refFactory: options.paymentRefFactory
+          || ((kind) => `${kind}_${randomUUID()}`)
+      });
+    } catch (error) {
+      if (ownsPaymentStore && paymentStore) {
+        try { paymentStore.close(); } catch { /* preserve prerequisite failure */ }
+      }
+      if (!coinsCommerceEnabled) {
+        for (const [owned, store] of [
+          [ownsCoinsWalletStore, coinsWalletStore],
+          [ownsControlStore, platformControlStore],
+          [ownsSubscriptionStore, subscriptionStore]
+        ]) {
+          if (!owned) continue;
+          try { store.close(); } catch { /* preserve prerequisite failure */ }
+        }
+      }
+      if (error?.code === "coin_recharge_prerequisite_missing") throw error;
+      throw coinRechargePrerequisiteError();
+    }
+  }
+
   function close() {
     if (!coinsCommerceEnabled) {
       if (closed) return;
       closed = true;
       let firstError;
+      if (ownsPaymentStore && paymentStore) {
+        try { paymentStore.close(); } catch (error) { firstError ||= error; }
+      }
       for (const [owned, store] of [
         [ownsCoinsWalletStore, coinsWalletStore],
         [ownsControlStore, platformControlStore],
@@ -2144,6 +2276,9 @@ export function createRuntimeState(options = {}) {
     closed = true;
     closePromise = (async () => {
       let firstError;
+      if (ownsPaymentStore && paymentStore) {
+        try { paymentStore.close(); } catch (error) { firstError ||= error; }
+      }
       let coordinatorStopped = false;
       try {
         await coinCommerceCoordinator.stop();
@@ -2206,6 +2341,9 @@ export function createRuntimeState(options = {}) {
       coinsCommerceEnabled,
       coinCommerceStore,
       coinCommerceCoordinator,
+      coinRechargeEnabled,
+      paymentStore,
+      paymentRechargeCoordinator,
       adminAuthRoutesEnabled,
       adminAuthorizationEnabled,
       adminAuth: platformAdminAuth,
