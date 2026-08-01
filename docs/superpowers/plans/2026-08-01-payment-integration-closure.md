@@ -263,7 +263,7 @@ Run: `node --test server/tests/platform-payment-store.test.mjs`
 Expected: PASS for account isolation, quote immutability, legal transitions,
 replay, conflicts, concurrent unique keys, close/reopen, and hostile inputs.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add server/services/platform/payment-recharge-offer-catalog.mjs server/services/platform/payment-store.mjs server/tests/platform-payment-store.test.mjs
@@ -283,7 +283,7 @@ git commit -m "feat(payment): persist recharge orders and receipts"
 - Public methods: `listOffers()`, `createRechargeOrder({ accountId, offerRef, idempotencyKey })`, `getRechargeOrder({ accountId, orderRef })`, `listRechargeOrders({ accountId, limit, cursor })`, `captureRechargeOrder({ accountId, orderRef, idempotencyKey })`, and `acceptProviderCallback({ callbackRequestRef, receivedAt, bodyBase64, headerEntries })`.
 - Calls existing `walletStore.creditCoins()` only after `store.acceptVerifiedPayment()` succeeds.
 
-- [ ] **Step 1: Write the failing exactly-once and crash-recovery tests**
+- [x] **Step 1: Write the failing exactly-once and crash-recovery tests**
 
 ```js
 test("duplicate capture and callback converge to one paid_coins lot", async () => {
@@ -310,13 +310,13 @@ test("replay after credit-before-order-close uses the Wallet receipt", async () 
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `node --test server/tests/platform-payment-recharge-coordinator.test.mjs`
 
 Expected: FAIL because the coordinator does not exist.
 
-- [ ] **Step 3: Implement minimal orchestration**
+- [x] **Step 3: Implement minimal orchestration**
 
 Settlement derives `settlementRef` as a SHA-256 safe reference over
 `adapterKey + merchantScopeDigest + providerCaptureRef`. It derives
@@ -352,7 +352,7 @@ persists it before Wallet mutation, treats Wallet replay as success, and marks
 the order credited last. Unknown or contradictory facts become
 `reconciliation_required` and never call the Wallet.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `node --test server/tests/platform-payment-recharge-coordinator.test.mjs`
 

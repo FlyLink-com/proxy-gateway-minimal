@@ -676,8 +676,24 @@ export function createSqlitePaymentStore(options = {}) {
       `).get(request.orderRef);
       if (!order) fail("payment_order_not_found");
       if (order.status === "credited") {
+        const candidateReceipt = mapReceipt(db.prepare(`
+          select * from platform_payment_receipts
+           where receipt_ref = ? and payment_order_ref = ? and verification_result = 'verified'
+        `).get(request.receiptRef, request.orderRef));
+        const creditedReceipt = mapReceipt(db.prepare(`
+          select * from platform_payment_receipts
+           where receipt_ref = ? and payment_order_ref = ? and verification_result = 'verified'
+        `).get(order.latest_receipt_ref, request.orderRef));
         if (
-          order.latest_receipt_ref !== request.receiptRef
+          !candidateReceipt
+          || !creditedReceipt
+          || candidateReceipt.providerOrderRef !== creditedReceipt.providerOrderRef
+          || candidateReceipt.providerCaptureRef !== creditedReceipt.providerCaptureRef
+          || candidateReceipt.merchantScopeDigest !== creditedReceipt.merchantScopeDigest
+          || candidateReceipt.amountMinor !== creditedReceipt.amountMinor
+          || candidateReceipt.currency !== creditedReceipt.currency
+          || candidateReceipt.currencyExponent !== creditedReceipt.currencyExponent
+          || candidateReceipt.expectedPaidCoinUnits !== creditedReceipt.expectedPaidCoinUnits
           || order.wallet_operation_ref !== request.walletOperationRef
           || order.wallet_lot_ref !== request.walletLotRef
         ) {
@@ -710,6 +726,79 @@ export function createSqlitePaymentStore(options = {}) {
       if (error?.code?.startsWith("payment_")) throw error;
       fail("payment_store_write_failed");
     }
+  }
+
+  function markOrderReconciliationRequired(input) {
+    assertOpen();
+    const request = snapshotExact(input, ["orderRef", "receiptRef"]);
+    request.orderRef = safeRef(request.orderRef);
+    request.receiptRef = safeRef(request.receiptRef);
+    const run = db.transaction(() => {
+      const order = db.prepare(`
+        select * from platform_payment_orders where payment_order_ref = ?
+      `).get(request.orderRef);
+      if (!order) fail("payment_order_not_found");
+      const receipt = db.prepare(`
+        select receipt_ref from platform_payment_receipts
+         where receipt_ref = ? and payment_order_ref = ? and verification_result = 'verified'
+      `).get(request.receiptRef, request.orderRef);
+      if (!receipt) fail("payment_receipt_not_found");
+      if (order.status === "reconciliation_required") {
+        return Object.freeze({ order: mapOrder(findOrder(request.orderRef)), replayed: true });
+      }
+      const updatedAt = nowIso(nowFn);
+      db.prepare(`
+        update platform_payment_orders
+           set status = 'reconciliation_required', latest_receipt_ref = ?, updated_at = ?
+         where payment_order_ref = ?
+      `).run(request.receiptRef, updatedAt, request.orderRef);
+      return Object.freeze({ order: mapOrder(findOrder(request.orderRef)), replayed: false });
+    });
+    try { return run.immediate(); } catch (error) {
+      if (error?.code?.startsWith("payment_")) throw error;
+      fail("payment_store_write_failed");
+    }
+  }
+
+  function getSettlementContext(input) {
+    assertOpen();
+    const request = snapshotExact(input, ["orderRef", "receiptRef"]);
+    request.orderRef = safeRef(request.orderRef);
+    request.receiptRef = safeRef(request.receiptRef);
+    const order = db.prepare(`
+      select * from platform_payment_orders where payment_order_ref = ?
+    `).get(request.orderRef);
+    if (!order) fail("payment_order_not_found");
+    const receipt = mapReceipt(db.prepare(`
+      select * from platform_payment_receipts
+       where receipt_ref = ? and payment_order_ref = ? and verification_result = 'verified'
+    `).get(request.receiptRef, request.orderRef));
+    if (!receipt) fail("payment_receipt_not_found");
+    let creditedReceipt = null;
+    if (order.status === "credited") {
+      creditedReceipt = mapReceipt(db.prepare(`
+        select * from platform_payment_receipts
+         where receipt_ref = ? and payment_order_ref = ? and verification_result = 'verified'
+      `).get(order.latest_receipt_ref, request.orderRef));
+      if (!creditedReceipt) fail("payment_store_corrupt");
+    }
+    return Object.freeze({
+      accountId: safeRef(order.account_id, "payment_store_corrupt"),
+      adapterKey: safeRef(order.adapter_key, "payment_store_corrupt"),
+      orderRef: safeRef(order.payment_order_ref, "payment_store_corrupt"),
+      expectedPaidCoinUnits: positiveInteger(
+        order.expected_paid_coin_units,
+        "payment_store_corrupt",
+      ),
+      amountMinor: positiveInteger(order.amount_minor, "payment_store_corrupt"),
+      currency: order.currency,
+      currencyExponent: currencyExponent(
+        order.currency_exponent,
+        "payment_store_corrupt",
+      ),
+      receipt,
+      creditedReceipt,
+    });
   }
 
   function getOrderForAccount(input) {
@@ -745,8 +834,10 @@ export function createSqlitePaymentStore(options = {}) {
     close,
     createOrder,
     getOrderForAccount,
+    getSettlementContext,
     listOrdersForAccount,
     markOrderCredited,
+    markOrderReconciliationRequired,
     recordOperationReceipt,
   });
 }
