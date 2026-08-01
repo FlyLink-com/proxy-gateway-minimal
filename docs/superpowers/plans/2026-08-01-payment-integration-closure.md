@@ -196,7 +196,7 @@ git commit -m "feat(payment): add durable recharge schema"
 - Produces: `createSqlitePaymentStore({ database, dbPath, nowFn, idFactory })` with `createOrder`, `getOrderForAccount`, `listOrdersForAccount`, `recordOperationReceipt`, `acceptVerifiedPayment`, `markOrderCredited`, and `close`.
 - Store order creation consumes an already-resolved frozen offer; it never accepts account, money, or Coin authority from a Portal body.
 
-- [ ] **Step 1: Write failing catalog and store tests**
+- [x] **Step 1: Write failing catalog and store tests**
 
 ```js
 test("createOrder snapshots the server offer and replays one idempotency key", () => {
@@ -229,13 +229,13 @@ test("verified events dedupe but conflicting event facts fail closed", () => {
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `node --test server/tests/platform-payment-store.test.mjs`
 
 Expected: FAIL because the catalog and store factories do not exist.
 
-- [ ] **Step 3: Implement exact normalization and state transitions**
+- [x] **Step 3: Implement exact normalization and state transitions**
 
 Use integer money and canonical request digests. The catalog accepts only:
 
@@ -256,7 +256,7 @@ currencies, unsafe refs, accessors/Proxies, zero units, floating point values,
 and client-shaped extra fields. Store write methods use `better-sqlite3`
 transactions and map only safe projections.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `node --test server/tests/platform-payment-store.test.mjs`
 

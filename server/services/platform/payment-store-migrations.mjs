@@ -77,12 +77,23 @@ const MIGRATION_STATEMENTS = Object.freeze([
           'reconciliation_required'
         )
       ),
+      charge_certainty text not null check (
+        charge_certainty in (
+          'unknown', 'possibly_charged',
+          'confirmed_no_charge', 'confirmed_charged'
+        )
+      ),
       provider_order_ref text,
       provider_capture_ref text,
       provider_event_ref text,
       event_dedupe_key text,
       merchant_scope_digest text,
       payload_digest text,
+      next_action_type text check (
+        next_action_type is null or next_action_type in ('redirect', 'qr_code')
+      ),
+      next_action_url text,
+      next_action_expires_at text,
       verification_result text not null
         check (verification_result in ('not_applicable', 'verified')),
       amount_minor integer not null
@@ -96,6 +107,19 @@ const MIGRATION_STATEMENTS = Object.freeze([
       accepted_at text not null,
       unique (provider_request_ref, receipt_type),
       unique (merchant_scope_digest, event_dedupe_key),
+      check (
+        (
+          next_action_type is null
+          and next_action_url is null
+          and next_action_expires_at is null
+        )
+        or
+        (
+          next_action_type is not null
+          and next_action_url is not null
+          and next_action_expires_at is not null
+        )
+      ),
       check (
         (
           verification_result = 'not_applicable'
@@ -228,12 +252,16 @@ const EXPECTED_COLUMNS = Object.freeze({
     ["provider_request_ref", "TEXT", 1, 0],
     ["receipt_type", "TEXT", 1, 0],
     ["canonical_state", "TEXT", 1, 0],
+    ["charge_certainty", "TEXT", 1, 0],
     ["provider_order_ref", "TEXT", 0, 0],
     ["provider_capture_ref", "TEXT", 0, 0],
     ["provider_event_ref", "TEXT", 0, 0],
     ["event_dedupe_key", "TEXT", 0, 0],
     ["merchant_scope_digest", "TEXT", 0, 0],
     ["payload_digest", "TEXT", 0, 0],
+    ["next_action_type", "TEXT", 0, 0],
+    ["next_action_url", "TEXT", 0, 0],
+    ["next_action_expires_at", "TEXT", 0, 0],
     ["verification_result", "TEXT", 1, 0],
     ["amount_minor", "INTEGER", 1, 0],
     ["currency", "TEXT", 1, 0],

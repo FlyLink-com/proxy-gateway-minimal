@@ -72,14 +72,14 @@ function seedVerifiedReceipt(database) {
   database.prepare(`
     insert into platform_payment_receipts (
       receipt_ref, payment_order_ref, attempt_ref, provider_request_ref,
-      receipt_type, canonical_state, provider_order_ref,
+      receipt_type, canonical_state, charge_certainty, provider_order_ref,
       provider_capture_ref, provider_event_ref, event_dedupe_key,
       merchant_scope_digest, payload_digest, verification_result,
       amount_minor, currency, currency_exponent, expected_paid_coin_units,
       accepted_at
     ) values (
       'payment_receipt_1', 'payment_order_1', 'payment_attempt_1',
-      'provider_request_1', 'callback', 'payment_succeeded',
+      'provider_request_1', 'callback', 'payment_succeeded', 'confirmed_charged',
       'provider_order_1', 'provider_capture_1', 'provider_event_1',
       'event_dedupe_1', @merchant, @payload, 'verified',
       100, 'USD', 2, 30, @now
