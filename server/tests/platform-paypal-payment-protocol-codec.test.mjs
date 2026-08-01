@@ -22,7 +22,7 @@ import {
 
 const ACTION_ORIGIN = "https://payer-action.synthetic.invalid";
 const ACTION_URL = `${ACTION_ORIGIN}/checkout/order-1`;
-const CERT_URL = "https://cert.synthetic.invalid/paypal.pem";
+const CERT_URL = "https://api.paypal.com/v1/notifications/certs/CERT-safe";
 const RECEIVED_AT = "2026-07-24T12:34:56.000Z";
 const EXPIRES_AT = "2026-07-24T12:49:56.000Z";
 const MERCHANT_SCOPE_DIGEST = "a".repeat(64);
@@ -221,6 +221,10 @@ test("PayPal create codec emits a detached descriptor and maps an allowlisted pa
       operation: "create_recharge_order",
       requestRef: CREATE_INPUT.providerRequestRef,
     }),
+    routeRefs: {
+      callbackRouteRef: CREATE_INPUT.callbackRouteRef,
+      returnRouteRef: CREATE_INPUT.returnRouteRef,
+    },
     body: {
       intent: "CAPTURE",
       purchase_units: [{
@@ -1089,9 +1093,12 @@ test("PayPal protocol module has no credential network environment Store route o
   );
   assert.doesNotMatch(
     codecSource,
-    /api-m\.paypal|paypal\.com\/v2|client[_-]?secret|oauth|process\.env|globalThis\.fetch|fetch\s*\(|node:https|node:http|createConnection|paymentStore|walletStore|Date\.now\s*\(|new Date\s*\(\s*\)/iu,
+    /\/v2\/checkout\/orders|\/v1\/oauth2\/token|client[_-]?secret|process\.env|globalThis\.fetch|fetch\s*\(|node:https|node:http|createConnection|paymentStore|walletStore|Date\.now\s*\(|new Date\s*\(\s*\)/iu,
   );
-  assert.doesNotMatch(adapterSource, /paypal-payment-protocol-codec/u);
-  assert.match(adapterSource, /createUnverifiedPaymentAdapter/u);
+  assert.match(adapterSource, /paypal-payment-protocol-codec/u);
+  assert.doesNotMatch(
+    adapterSource,
+    /paypal-payment-runtime|client[_-]?secret|process\.env|globalThis\.fetch|fetch\s*\(/iu,
+  );
   assert.match(adapterSource, /adapterKey:\s*"paypal_v1"/u);
 });

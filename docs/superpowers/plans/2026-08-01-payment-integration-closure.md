@@ -360,7 +360,7 @@ Expected: PASS for capture/callback races, duplicate delivery, mismatch,
 wrong account, expiry, disabled offers, Wallet unavailable, and both crash
 windows.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add server/services/platform/payment-recharge-coordinator.mjs server/tests/platform-payment-recharge-coordinator.test.mjs
@@ -387,7 +387,7 @@ git commit -m "feat(payment): settle verified recharges to wallet"
 - `createPayPalSandboxRuntime({ credential, fetchFn, apiOrigin, allowedActionOrigins, routeMap, nowFn })` produces `{ credentialLoader, transport }` for registry injection.
 - Adapter operations consume and return only canonical Provider Core objects.
 
-- [ ] **Step 1: Replace the unverified expectations with failing v1 behavior tests**
+- [x] **Step 1: Replace the unverified expectations with failing v1 behavior tests**
 
 ```js
 test("PayPal v1 creates and captures through the scoped transport", async () => {
@@ -406,7 +406,7 @@ Transport tests use an injected `fetchFn` to assert OAuth, Orders create/query/
 capture, Webhook verification, bounded JSON parsing, `PayPal-Request-Id`, and
 safe error mapping without making a network call.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run:
 
@@ -417,7 +417,7 @@ node --test server/tests/platform-paypal-payment-adapter.test.mjs server/tests/p
 Expected: FAIL because PayPal is still `unverified` and no runtime transport
 exists.
 
-- [ ] **Step 3: Implement the Adapter with existing codecs**
+- [x] **Step 3: Implement the Adapter with existing codecs**
 
 Each method follows this form:
 
@@ -444,7 +444,7 @@ The callback method uses `encodePayPalWebhookVerificationRequest()` and
 `decodeVerifiedPayPalWebhook()` in the same scoped receipt. `webhookSuccessAck`
 returns exact JSON/plain safe success bytes only for a branded callback fact.
 
-- [ ] **Step 4: Implement the injected PayPal HTTP transport**
+- [x] **Step 4: Implement the injected PayPal HTTP transport**
 
 The credential object is accepted only by the runtime factory:
 
@@ -464,7 +464,7 @@ it never returns an access token, credential handle, raw body, or headers.
 Symbolic route refs are resolved through the injected `routeMap`, never through
 Portal input.
 
-- [ ] **Step 5: Run GREEN and source-boundary tests**
+- [x] **Step 5: Run GREEN and source-boundary tests**
 
 Run:
 

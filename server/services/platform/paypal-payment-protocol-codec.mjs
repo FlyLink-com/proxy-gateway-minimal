@@ -5,7 +5,6 @@ import { formatPaymentAmountMinor, parsePaymentAmountMinor } from "./payment-mon
 
 const INVALID_PROTOCOL = "invalid_paypal_protocol";
 const UNVERIFIED_CONTRACT = "provider_contract_unverified";
-const ACTION_CERT_URL = "https://cert.synthetic.invalid/paypal.pem";
 const REQUIRED_WEBHOOK_HEADERS = Object.freeze([
   "paypal-auth-algo",
   "paypal-cert-url",
@@ -188,6 +187,25 @@ function canonicalTimestamp(value) {
     invalidProtocol();
   }
   return value;
+}
+
+function paypalCertificateUrl(value) {
+  let parsed;
+  try { parsed = new URL(value); } catch { invalidProtocol(); }
+  if (
+    parsed.protocol !== "https:"
+    || parsed.username !== ""
+    || parsed.password !== ""
+    || parsed.search !== ""
+    || parsed.hash !== ""
+    || !new Set([
+      "api.paypal.com",
+      "api-m.paypal.com",
+      "api-m.sandbox.paypal.com",
+    ]).has(parsed.hostname)
+    || !parsed.pathname.startsWith("/v1/notifications/certs/")
+  ) invalidProtocol();
+  return parsed.toString();
 }
 
 function compiledMoney(currency, currencyExponent) {
@@ -388,7 +406,7 @@ function normalizedCallbackInput(value) {
     }
     required[name] = matches[0].value;
   }
-  if (required["paypal-cert-url"] !== ACTION_CERT_URL) invalidProtocol();
+  required["paypal-cert-url"] = paypalCertificateUrl(required["paypal-cert-url"]);
   canonicalTimestamp(required["paypal-transmission-time"]);
   safeRef(required["paypal-transmission-id"]);
   return {
@@ -463,6 +481,10 @@ export function encodePayPalCreateOrderRequest(value) {
         operation: "create_recharge_order",
         requestRef: input.providerRequestRef,
       }),
+      routeRefs: {
+        callbackRouteRef: input.callbackRouteRef,
+        returnRouteRef: input.returnRouteRef,
+      },
       body: {
         intent: "CAPTURE",
         purchase_units: [{

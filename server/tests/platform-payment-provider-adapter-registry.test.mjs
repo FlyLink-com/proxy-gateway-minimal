@@ -61,6 +61,16 @@ const TRUE_CAPABILITIES = Object.freeze({
   repeatCreateIdempotent: true,
   repeatCaptureIdempotent: true,
 });
+const PAYPAL_CAPABILITIES = Object.freeze({
+  createRechargeOrder: true,
+  queryPayment: true,
+  capturePayment: true,
+  verifyCallback: true,
+  refund: false,
+  reconcile: false,
+  repeatCreateIdempotent: true,
+  repeatCaptureIdempotent: true,
+});
 const OPERATIONS = [
   "createRechargeOrder",
   "queryPayment",
@@ -72,10 +82,11 @@ const OPERATIONS = [
 ];
 
 function knownResolution(overrides = {}) {
+  const adapterKey = overrides.adapterKey ?? "paypal_v1";
   return {
-    adapterKey: "paypal_v1",
+    adapterKey,
     profileRef: "profile-1",
-    contractVersion: "unverified",
+    contractVersion: adapterKey === "paypal_v1" ? "v1" : "unverified",
     credentialProfileRef: "credential-profile-1",
     declaredCapabilities: { ...FALSE_CAPABILITIES },
     ...overrides,
@@ -126,9 +137,9 @@ test("static registry lists three detached frozen descriptors in compiled order"
     {
       adapterKey: "paypal_v1",
       providerId: "paypal_commerce",
-      contractVersion: "unverified",
-      capabilities: { ...FALSE_CAPABILITIES },
-      supportedPaymentMethods: [],
+      contractVersion: "v1",
+      capabilities: { ...PAYPAL_CAPABILITIES },
+      supportedPaymentMethods: ["paypal"],
     },
     {
       adapterKey: "xsd_v1",
@@ -219,7 +230,7 @@ test("known resolution requires exact safe refs, version, and full strict declar
     knownResolution({ profileRef: "" }),
     knownResolution({ profileRef: "unsafe ref" }),
     knownResolution({ credentialProfileRef: "../unsafe" }),
-    knownResolution({ contractVersion: "v1" }),
+    knownResolution({ contractVersion: "unverified" }),
     { ...knownResolution(), extra: true },
   );
 
@@ -338,8 +349,18 @@ test("database declarations can only reduce every compiled capability", () => {
         credentialProfileRef: `credential-${adapterKey}`,
         declaredCapabilities,
       }));
-      assert.deepEqual(adapter.capabilities, FALSE_CAPABILITIES);
-      assert.deepEqual(adapter.supportedPaymentMethods, []);
+      const expected = adapterKey === "paypal_v1"
+        ? Object.freeze(Object.fromEntries(CAPABILITY_KEYS.map((key) => [
+            key,
+            PAYPAL_CAPABILITIES[key] && declaredCapabilities[key],
+          ])))
+        : FALSE_CAPABILITIES;
+      assert.deepEqual(adapter.capabilities, expected);
+      assert.deepEqual(
+        adapter.supportedPaymentMethods,
+        adapterKey === "paypal_v1"
+          && Object.values(expected).some(Boolean) ? ["paypal"] : [],
+      );
     }
 
     const allRequested = registry.resolve(knownResolution({
@@ -347,8 +368,14 @@ test("database declarations can only reduce every compiled capability", () => {
       credentialProfileRef: `credential-all-${adapterKey}`,
       declaredCapabilities: { ...TRUE_CAPABILITIES },
     }));
-    assert.deepEqual(allRequested.capabilities, FALSE_CAPABILITIES);
-    assert.deepEqual(allRequested.supportedPaymentMethods, []);
+    assert.deepEqual(
+      allRequested.capabilities,
+      adapterKey === "paypal_v1" ? PAYPAL_CAPABILITIES : FALSE_CAPABILITIES,
+    );
+    assert.deepEqual(
+      allRequested.supportedPaymentMethods,
+      adapterKey === "paypal_v1" ? ["paypal"] : [],
+    );
   }
 });
 
@@ -400,9 +427,8 @@ test("successful resolution returns only distinct canonical frozen Adapters", ()
   }
 });
 
-test("raw factories stay unverified while resolved normalized operations stay disabled", async () => {
+test("PayPal is v1 while unresolved providers remain unverified and declarations reduce all", async () => {
   for (const [factory, adapterKey] of [
-    [createPayPalPaymentAdapter, "paypal_v1"],
     [createXsdPaymentAdapter, "xsd_v1"],
     [createChaoJiPayPaymentAdapter, "chaojipay_v1"],
   ]) {
@@ -432,6 +458,26 @@ test("raw factories stay unverified while resolved normalized operations stay di
     assert.equal(providerError.code, "provider_contract_unverified");
     assert.equal(providerError.operation, "refund");
   }
+
+  const paypalRaw = createPayPalPaymentAdapter({
+    executionScope: Object.freeze({
+      withCredential() {
+        return Promise.reject(new Error("must-not-run"));
+      },
+    }),
+    nowFn: () => NOW,
+  });
+  assert.equal(paypalRaw.contractVersion, "v1");
+  assert.deepEqual(paypalRaw.capabilities, PAYPAL_CAPABILITIES);
+  const registry = createStaticPaymentProviderAdapterRegistry({ nowFn: () => NOW });
+  const paypal = registry.resolve(knownResolution({
+    declaredCapabilities: { ...TRUE_CAPABILITIES },
+  }));
+  assert.deepEqual(paypal.capabilities, PAYPAL_CAPABILITIES);
+  assert.equal(paypal.normalizeError({
+    operation: "refund",
+    error: new Error("ignored"),
+  }).code, "provider_operation_failed");
 });
 
 test("constructor is closed over loader, time, and the three compiled transport entries", () => {
@@ -605,10 +651,17 @@ test("construct, list, resolve, and disabled rejection perform no loader, reques
       credentialProfileRef: `credential-${adapterKey}`,
       declaredCapabilities: { ...TRUE_CAPABILITIES },
     }));
-    await assert.rejects(
-      () => adapter.createRechargeOrder({}),
-      /payment_provider_capability_disabled/u,
-    );
+    if (adapterKey === "paypal_v1") {
+      await assert.rejects(
+        () => adapter.createRechargeOrder({}),
+        /invalid_payment_operation_input/u,
+      );
+    } else {
+      await assert.rejects(
+        () => adapter.createRechargeOrder({}),
+        /payment_provider_capability_disabled/u,
+      );
+    }
   }
   assert.deepEqual(counters, { loader: 0, request: 0, now: 0 });
 
