@@ -272,8 +272,9 @@ function exactCoinCommerceFulfillmentBinding(value) {
     }
     const keys = Reflect.ownKeys(value);
     if (
-      keys.length !== 2
+      keys.length !== 3
       || !keys.includes("fulfillmentHandler")
+      || !keys.includes("storefrontEligibilityReader")
       || !keys.includes("purchaseEligibilityReader")
     ) {
       throw coinCommercePrerequisiteError();
@@ -286,10 +287,19 @@ function exactCoinCommerceFulfillmentBinding(value) {
       value,
       "purchaseEligibilityReader"
     );
+    const storefrontEligibilityReader = Object.getOwnPropertyDescriptor(
+      value,
+      "storefrontEligibilityReader"
+    );
     if (
       !fulfillmentHandler
       || !fulfillmentHandler.enumerable
       || !("value" in fulfillmentHandler)
+      || !storefrontEligibilityReader
+      || !storefrontEligibilityReader.enumerable
+      || !("value" in storefrontEligibilityReader)
+      || typeof storefrontEligibilityReader.value !== "function"
+      || utilTypes.isProxy(storefrontEligibilityReader.value)
       || !purchaseEligibilityReader
       || !purchaseEligibilityReader.enumerable
       || !("value" in purchaseEligibilityReader)
@@ -302,6 +312,7 @@ function exactCoinCommerceFulfillmentBinding(value) {
       fulfillmentHandler: exactCoinCommerceFulfillmentHandlerValue(
         fulfillmentHandler.value
       ),
+      storefrontEligibilityReader: storefrontEligibilityReader.value,
       purchaseEligibilityReader: purchaseEligibilityReader.value
     };
   } catch (error) {
@@ -1262,6 +1273,7 @@ export function createRuntimeState(options = {}) {
   let configuredCoinCommerceFulfillmentHandler = null;
   let configuredCoinCommerceFulfillmentFactory = null;
   let configuredCoinCommerceAccountActivationReader;
+  let configuredCoinCommerceStorefrontEligibilityReader;
   let configuredCoinCommercePurchaseEligibilityReader;
   let configuredCoinCommerceCancelWindowMs = COIN_COMMERCE_CANCEL_WINDOW_DEFAULT_MS;
   let configuredPlatformUserPortalAuth;
@@ -2043,12 +2055,20 @@ export function createRuntimeState(options = {}) {
           );
           configuredCoinCommerceFulfillmentHandler =
             fulfillmentBinding.fulfillmentHandler;
+          configuredCoinCommerceStorefrontEligibilityReader =
+            fulfillmentBinding.storefrontEligibilityReader;
           configuredCoinCommercePurchaseEligibilityReader =
             fulfillmentBinding.purchaseEligibilityReader;
         }
         coinCommerceStore = createSqliteCoinCommerceStore({
           dbPath: controlDbPath,
           cancelWindowMs: configuredCoinCommerceCancelWindowMs,
+          ...(configuredCoinCommerceStorefrontEligibilityReader
+            ? {
+              storefrontEligibilityReader:
+                configuredCoinCommerceStorefrontEligibilityReader
+            }
+            : {}),
           ...(configuredCoinCommercePurchaseEligibilityReader
             ? {
               purchaseEligibilityReader:

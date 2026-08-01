@@ -354,7 +354,8 @@ test("production subscription fulfillment exposes the exact factory contract for
 
     assert.deepEqual(Object.keys(service).sort(), [
       "fulfillmentHandler",
-      "purchaseEligibilityReader"
+      "purchaseEligibilityReader",
+      "storefrontEligibilityReader"
     ]);
     assert.deepEqual(
       Object.keys(service.fulfillmentHandler).sort(),
@@ -547,10 +548,10 @@ test("an expiring but enabled runtime tenant remains eligible to renew its stabl
   }
 });
 
-test("purchase eligibility fails closed for inactive account-level product state", async (t) => {
+test("purchase eligibility fails closed for inactive accounts", async (t) => {
   const cases = [
-    ["inactive account", { accountStatus: "suspended" }],
-    ["inactive entitlement", { entitlementStatus: "suspended" }]
+    ["suspended account", { accountStatus: "suspended" }],
+    ["disabled account", { accountStatus: "disabled" }]
   ];
 
   for (const [name, options] of cases) {
@@ -578,20 +579,72 @@ test("purchase eligibility fails closed for inactive account-level product state
   }
 });
 
-test("purchase eligibility ignores incomplete, ambiguous, or drifted delivery projections", async (t) => {
+test("an account without a prior entitlement can browse while first fulfillment stays fail closed", () => {
+  const directory = mkdtempSync(join(tmpdir(), "coin-commerce-account-eligibility-"));
+  const controlStore = createSqliteSubscriptionControlStore({
+    dbPath: join(directory, "control.sqlite")
+  });
+  const accountId = "acct_storefront_without_entitlement";
+  try {
+    controlStore.createAccount({
+      id: accountId,
+      ownerRef: "owner_storefront_without_entitlement",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER
+    });
+
+    assert.deepEqual(
+      controlStore.getAccountControlSummary(accountId).entitlements,
+      []
+    );
+    assert.equal(service.storefrontEligibilityReader({
+      accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    }), true);
+    assert.equal(service.purchaseEligibilityReader({
+      accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    }), false);
+    assert.throws(
+      () => service.fulfillmentHandler.execute({
+        commandRef: "coincmd_first_service_not_implemented",
+        orderRef: "coinord_first_service_not_implemented",
+        accountId,
+        offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef,
+        delivery: { ...COIN_COMMERCE_PRODUCTION_OFFERS[0].delivery }
+      }),
+      (error) => isCoinCommerceFulfillmentReconciliationError(error)
+    );
+    assert.deepEqual(
+      controlStore.getAccountControlSummary(accountId).entitlements,
+      []
+    );
+  } finally {
+    controlStore.close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("storefront eligibility ignores service projections while purchase readiness stays fail closed", async (t) => {
   const cases = [
-    ["ambiguous access requests", { duplicatePortalRequest: true }],
-    ["missing entitlement reference", { portalEntitlementRef: null }],
-    ["missing tenant reference", { portalTenantId: null }],
-    ["missing artifact reference", { portalArtifactId: null }],
-    ["mismatched entitlement binding", { portalEntitlementRef: "ent_mismatch" }],
-    ["inactive runtime tenant", { tenantStatus: "disabled" }],
-    ["inactive runtime artifact", { artifactStatus: "revoked" }],
-    ["runtime expiry drift", { runtimeValidUntil: "2026-09-02T00:00:00.000Z" }],
-    ["portal expiry drift", { portalValidUntil: "2026-09-02T00:00:00.000Z" }]
+    ["inactive entitlement", { entitlementStatus: "suspended" }, false],
+    ["ambiguous access requests", { duplicatePortalRequest: true }, true],
+    ["missing entitlement reference", { portalEntitlementRef: null }, true],
+    ["missing tenant reference", { portalTenantId: null }, true],
+    ["missing artifact reference", { portalArtifactId: null }, true],
+    ["mismatched entitlement binding", { portalEntitlementRef: "ent_mismatch" }, true],
+    ["inactive runtime tenant", { tenantStatus: "disabled" }, true],
+    ["inactive runtime artifact", { artifactStatus: "revoked" }, true],
+    ["runtime expiry drift", { runtimeValidUntil: "2026-09-02T00:00:00.000Z" }, true],
+    ["portal expiry drift", { portalValidUntil: "2026-09-02T00:00:00.000Z" }, true]
   ];
 
-  for (const [name, options] of cases) {
+  for (const [name, options, expectedPurchaseEligibility] of cases) {
     await t.test(name, () => {
       const fixture = createFixture(options);
       try {
@@ -602,12 +655,14 @@ test("purchase eligibility ignores incomplete, ambiguous, or drifted delivery pr
           nowFn: () => new Date(NOW)
         });
 
+        const input = {
+          accountId: fixture.accountId,
+          offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+        };
+        assert.equal(service.storefrontEligibilityReader(input), true);
         assert.equal(
-          service.purchaseEligibilityReader({
-            accountId: fixture.accountId,
-            offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
-          }),
-          true
+          service.purchaseEligibilityReader(input),
+          expectedPurchaseEligibility
         );
       } finally {
         fixture.close();
@@ -616,7 +671,7 @@ test("purchase eligibility ignores incomplete, ambiguous, or drifted delivery pr
   }
 });
 
-test("purchase eligibility allows only the current active Coins plan and permits a new choice after expiry", () => {
+test("the account storefront exposes every published plan regardless of current service expiry", () => {
   const activeFixture = createFixture({
     entitlementPlan: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
   });
@@ -635,6 +690,13 @@ test("purchase eligibility allows only the current active Coins plan and permits
       activeService.purchaseEligibilityReader({
         accountId: activeFixture.accountId,
         offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+      }),
+      true
+    );
+    assert.equal(
+      activeService.storefrontEligibilityReader({
+        accountId: activeFixture.accountId,
+        offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[1].offerVersionRef
       }),
       true
     );
@@ -704,7 +766,7 @@ test("purchase eligibility ignores expired legacy delivery history", () => {
   }
 });
 
-test("a future entitlement does not displace the current user product state", () => {
+test("a future entitlement does not constrain the account storefront", () => {
   const fixture = createFixture({
     entitlementPlan: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
   });
@@ -733,6 +795,10 @@ test("a future entitlement does not displace the current user product state", ()
       accountId: fixture.accountId,
       offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
     }), true);
+    assert.equal(service.storefrontEligibilityReader({
+      accountId: fixture.accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[1].offerVersionRef
+    }), true);
     assert.equal(service.purchaseEligibilityReader({
       accountId: fixture.accountId,
       offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[1].offerVersionRef
@@ -742,7 +808,7 @@ test("a future entitlement does not displace the current user product state", ()
   }
 });
 
-test("a malformed audit row cannot unlock an unapplied future entitlement", () => {
+test("fulfillment audit history does not control the account storefront", () => {
   const futureValidFrom = "2026-10-01T00:00:00.000Z";
   const futureValidUntil = "2026-11-01T00:00:00.000Z";
   const fixture = createFixture({
@@ -758,12 +824,17 @@ test("a malformed audit row cannot unlock an unapplied future entitlement", () =
       accountActivationReader: ACTIVATED_ACCOUNT_READER,
       nowFn: () => new Date(NOW)
     });
-    const eligibility = () => service.purchaseEligibilityReader({
+    const storefrontEligibility = () => service.storefrontEligibilityReader({
+      accountId: fixture.accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    });
+    const purchaseEligibility = () => service.purchaseEligibilityReader({
       accountId: fixture.accountId,
       offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
     });
 
-    assert.equal(eligibility(), false);
+    assert.equal(storefrontEligibility(), true);
+    assert.equal(purchaseEligibility(), false);
     fixture.controlStore.recordAuditEvent({
       id: "effect_coin_commerce_malformed_future",
       entityType: "coin_commerce_subscription_fulfillment",
@@ -773,7 +844,8 @@ test("a malformed audit row cannot unlock an unapplied future entitlement", () =
       createdAt: NOW,
       metadata: {}
     });
-    assert.equal(eligibility(), false);
+    assert.equal(storefrontEligibility(), true);
+    assert.equal(purchaseEligibility(), false);
   } finally {
     fixture.close();
   }
@@ -812,7 +884,7 @@ test("fresh fulfillment rejects malformed pre-existing Commerce history without 
   }
 });
 
-test("multiple current user entitlements fail closed before purchase or fulfillment", () => {
+test("multiple current entitlements do not hide the account storefront while fulfillment stays fail closed", () => {
   const fixture = createFixture();
   try {
     fixture.controlStore.createEntitlement({
@@ -835,10 +907,12 @@ test("multiple current user entitlements fail closed before purchase or fulfillm
       nowFn: () => new Date(NOW)
     });
 
-    assert.equal(service.purchaseEligibilityReader({
+    const eligibilityInput = {
       accountId: fixture.accountId,
       offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
-    }), false);
+    };
+    assert.equal(service.storefrontEligibilityReader(eligibilityInput), true);
+    assert.equal(service.purchaseEligibilityReader(eligibilityInput), false);
     assert.throws(
       () => service.fulfillmentHandler.execute(productionInput(fixture)),
       (error) => isCoinCommerceFulfillmentReconciliationError(error)
@@ -848,7 +922,7 @@ test("multiple current user entitlements fail closed before purchase or fulfillm
   }
 });
 
-test("tied latest lapsed entitlements fail closed instead of guessing a user target", () => {
+test("tied latest lapsed entitlements do not hide the storefront while fulfillment stays fail closed", () => {
   const fixture = createFixture({
     baseValidUntil: "2026-07-29T00:00:00.000Z"
   });
@@ -873,10 +947,12 @@ test("tied latest lapsed entitlements fail closed instead of guessing a user tar
       nowFn: () => new Date(NOW)
     });
 
-    assert.equal(service.purchaseEligibilityReader({
+    const eligibilityInput = {
       accountId: fixture.accountId,
       offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
-    }), false);
+    };
+    assert.equal(service.storefrontEligibilityReader(eligibilityInput), true);
+    assert.equal(service.purchaseEligibilityReader(eligibilityInput), false);
     assert.throws(
       () => service.fulfillmentHandler.execute(productionInput(fixture)),
       (error) => isCoinCommerceFulfillmentReconciliationError(error)
@@ -1981,7 +2057,7 @@ test("same-product fulfillment rejects an impossible validFrom after validUntil"
   }
 });
 
-test("purchase eligibility and fulfillment reject a persisted zero-length validity interval", () => {
+test("a zero-length entitlement does not hide the storefront while fulfillment rejects it", () => {
   const fixture = createFixture({
     entitlementPlan: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
   });
@@ -2023,10 +2099,12 @@ test("purchase eligibility and fulfillment reject a persisted zero-length validi
       nowFn: () => new Date(NOW)
     });
 
-    assert.equal(service.purchaseEligibilityReader({
+    const eligibilityInput = {
       accountId: fixture.accountId,
       offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
-    }), false);
+    };
+    assert.equal(service.storefrontEligibilityReader(eligibilityInput), true);
+    assert.equal(service.purchaseEligibilityReader(eligibilityInput), false);
     assert.throws(
       () => service.fulfillmentHandler.execute(productionInput(fixture)),
       (error) => isCoinCommerceFulfillmentReconciliationError(error)
