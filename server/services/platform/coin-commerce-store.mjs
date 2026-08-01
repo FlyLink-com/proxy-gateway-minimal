@@ -36,6 +36,7 @@ const FACTORY_FIELDS = new Set([
   "commerceRefFactory",
   "walletRefFactory",
   "discountReader",
+  "storefrontEligibilityReader",
   "purchaseEligibilityReader",
   "cancelWindowMs",
   "quoteTtlMs"
@@ -357,6 +358,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     walletRefFactory,
     discountReader = () => 0,
     purchaseEligibilityReader = () => true,
+    storefrontEligibilityReader = purchaseEligibilityReader,
     cancelWindowMs = DEFAULT_CANCEL_WINDOW_MS,
     quoteTtlMs = DEFAULT_QUOTE_TTL_MS
   } = input;
@@ -368,6 +370,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     || (commerceRefFactory !== undefined && typeof commerceRefFactory !== "function")
     || (walletRefFactory !== undefined && typeof walletRefFactory !== "function")
     || typeof discountReader !== "function"
+    || typeof storefrontEligibilityReader !== "function"
     || typeof purchaseEligibilityReader !== "function"
   ) {
     throw commerceError("invalid_store_contract");
@@ -568,18 +571,30 @@ export function createSqliteCoinCommerceStore(options = {}) {
     }
   }
 
-  function isPurchaseEligible(accountId, offerVersionRef) {
+  function readEligibility(reader, accountId, offerVersionRef) {
     let eligible;
     try {
-      eligible = purchaseEligibilityReader({
+      eligible = reader({
         accountId,
         offerVersionRef
       });
     } catch {
       return false;
     }
+    return eligible === true;
+  }
+
+  function isStorefrontEligible(accountId, offerVersionRef) {
+    return readEligibility(
+      storefrontEligibilityReader,
+      accountId,
+      offerVersionRef
+    );
+  }
+
+  function isPurchaseEligible(accountId, offerVersionRef) {
     return (
-      eligible === true
+      readEligibility(purchaseEligibilityReader, accountId, offerVersionRef)
       && !hasConflictingNonterminalPlan(accountId, offerVersionRef)
     );
   }
@@ -800,7 +815,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
          order by category, base_coin_units, published_at desc, offer_ref
       `).all()
         .map(offerFromRow)
-        .filter((offer) => isPurchaseEligible(
+        .filter((offer) => isStorefrontEligible(
           value.accountId,
           offer.offerVersionRef
         ));
@@ -820,7 +835,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
       const row = findPublishedOffer(normalizeReference(value.offerRef));
       if (!row) throw commerceError("offer_unavailable");
       const offer = offerFromRow(row);
-      requirePurchaseEligibility(value.accountId, offer.offerVersionRef);
+      if (!isStorefrontEligible(value.accountId, offer.offerVersionRef)) {
+        throw commerceError("offer_unavailable");
+      }
       return offer;
     });
   }

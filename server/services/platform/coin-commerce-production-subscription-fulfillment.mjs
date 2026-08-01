@@ -357,6 +357,26 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
     }
   }
 
+  function storefrontEligibilityReader(input = {}) {
+    const snapshot = exactPlainDataSnapshot(input, [
+      "accountId",
+      "offerVersionRef"
+    ]);
+    if (!snapshot) return false;
+    const { accountId, offerVersionRef } = snapshot;
+    const requestedOffer = publishedCatalogSnapshot.find(
+      (offer) => offer.offerVersionRef === offerVersionRef
+    );
+    if (!requestedOffer) return false;
+    if (!isAccountActivated(accountId)) return false;
+    try {
+      const account = controlStore.getAccount(accountId);
+      return account?.id === accountId && account.status === "active";
+    } catch {
+      return false;
+    }
+  }
+
   function purchaseEligibilityReader(input = {}) {
     const snapshot = exactPlainDataSnapshot(input, [
       "accountId",
@@ -576,6 +596,7 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
 
   return Object.freeze({
     fulfillmentHandler,
+    storefrontEligibilityReader,
     purchaseEligibilityReader
   });
 }

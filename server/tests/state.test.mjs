@@ -1674,7 +1674,7 @@ test("createRuntimeState builds owned Commerce fulfillment after runtime depende
         assert.equal(typeof runtimeCore.getTenant, "function");
         return {
           fulfillmentHandler: coinCommerceFulfillmentHandler(),
-          purchaseEligibilityReader({
+          storefrontEligibilityReader({
             accountId: requestedAccountId,
             offerVersionRef
           }) {
@@ -1682,6 +1682,12 @@ test("createRuntimeState builds owned Commerce fulfillment after runtime depende
               accountId: requestedAccountId,
               offerVersionRef
             });
+            return false;
+          },
+          purchaseEligibilityReader({
+            accountId: requestedAccountId,
+            offerVersionRef
+          }) {
             return false;
           }
         };
@@ -1749,6 +1755,7 @@ test("createRuntimeState exposes production Commerce only to accounts in the has
         assert.equal(typeof accountActivationReader, "function");
         return {
           fulfillmentHandler: coinCommerceFulfillmentHandler(),
+          storefrontEligibilityReader: accountActivationReader,
           purchaseEligibilityReader: accountActivationReader
         };
       },
@@ -1811,6 +1818,7 @@ test("createRuntimeState rejects a non-exact production fulfillment factory resu
           coinCommerceFulfillmentFactory() {
             return {
               fulfillmentHandler: coinCommerceFulfillmentHandler(),
+              storefrontEligibilityReader: () => true,
               purchaseEligibilityReader: () => true,
               unexpected: true
             };
@@ -1854,6 +1862,7 @@ test("createRuntimeState replays the production catalog without adding duplicate
         coinCommerceFulfillmentFactory() {
           return {
             fulfillmentHandler: coinCommerceFulfillmentHandler(),
+            storefrontEligibilityReader: () => true,
             purchaseEligibilityReader: () => true
           };
         },
@@ -1923,6 +1932,7 @@ test("createRuntimeState closes every owned database when catalog bootstrap dete
           coinCommerceFulfillmentFactory() {
             return {
               fulfillmentHandler: coinCommerceFulfillmentHandler(),
+              storefrontEligibilityReader: () => true,
               purchaseEligibilityReader: () => true
             };
           },

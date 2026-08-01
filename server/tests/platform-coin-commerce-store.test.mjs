@@ -393,14 +393,19 @@ test("factory enforces exact ownership, schemas, connection settings, and surfac
   const invalidReaderDatabase = new Database(":memory:");
   try {
     invalidReaderDatabase.pragma("foreign_keys = ON");
-    for (const purchaseEligibilityReader of [null, true, {}]) {
-      expectCode(
-        () => createSqliteCoinCommerceStore({
-          database: invalidReaderDatabase,
-          purchaseEligibilityReader
-        }),
-        "invalid_store_contract"
-      );
+    for (const field of [
+      "storefrontEligibilityReader",
+      "purchaseEligibilityReader"
+    ]) {
+      for (const value of [null, true, {}]) {
+        expectCode(
+          () => createSqliteCoinCommerceStore({
+            database: invalidReaderDatabase,
+            [field]: value
+          }),
+          "invalid_store_contract"
+        );
+      }
     }
   } finally {
     invalidReaderDatabase.close();
@@ -454,7 +459,7 @@ test("factory enforces exact ownership, schemas, connection settings, and surfac
   }
 });
 
-test("purchase eligibility is server-authoritative and fails closed before offer or Quote access", () => {
+test("account storefront access is independent from purchase fulfillment readiness", () => {
   for (const scenario of [
     {
       name: "false",
@@ -475,39 +480,53 @@ test("purchase eligibility is server-authoritative and fails closed before offer
       purchaseEligibilityReader: () => Promise.resolve(true)
     }
   ]) {
-    const reads = [];
+    const storefrontReads = [];
+    const purchaseReads = [];
     const state = fixture({
+      storefrontEligibilityReader(input) {
+        storefrontReads.push(input);
+        return true;
+      },
       purchaseEligibilityReader(input) {
-        reads.push(input);
+        purchaseReads.push(input);
         return scenario.purchaseEligibilityReader(input);
       }
     });
     try {
       state.store.publishOfferVersion(offer());
       const before = snapshotTables(state.database, COMMERCE_TABLES);
-      for (const action of [
-        () => state.store.listPublishedOffers({
+      assert.equal(
+        state.store.listPublishedOffers({
           accountId: "acct_synthetic_1"
-        }),
-        () => state.store.getPublishedOffer({
+        }).length,
+        1
+      );
+      assert.equal(
+        state.store.getPublishedOffer({
           accountId: "acct_synthetic_1",
           offerRef: "offer_monthly_basic"
-        }),
+        }).offerVersionRef,
+        "offerv_monthly_basic_v1"
+      );
+      expectCode(
         () => state.store.createCheckoutQuote({
           accountId: "acct_synthetic_1",
           offerRef: "offer_monthly_basic"
-        })
-      ]) {
-        expectCode(action, "offer_unavailable");
-      }
+        }),
+        "offer_unavailable"
+      );
       assert.deepEqual(
-        reads,
-        new Array(3).fill(null).map(() => ({
+        storefrontReads,
+        new Array(2).fill(null).map(() => ({
           accountId: "acct_synthetic_1",
           offerVersionRef: "offerv_monthly_basic_v1"
         })),
         scenario.name
       );
+      assert.deepEqual(purchaseReads, [{
+        accountId: "acct_synthetic_1",
+        offerVersionRef: "offerv_monthly_basic_v1"
+      }], scenario.name);
       assert.deepEqual(snapshotTables(state.database, COMMERCE_TABLES), before);
       assert.equal(
         commerceCounts(state.database).platform_coin_commerce_quotes,
