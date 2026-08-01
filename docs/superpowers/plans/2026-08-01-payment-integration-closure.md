@@ -79,7 +79,7 @@
 - Produces: `REQUIRED_PAYMENT_STORE_MIGRATION_ID`, `applyPaymentStoreMigrations({ database, nowFn })`, `inspectPaymentStoreSchema({ database })`, `validatePaymentStoreSchema({ database })`, and `dryRunPaymentStoreMigrations({ dbPath, tempRoot })`.
 - Consumes: existing `platform_accounts` and `platform_schema_migrations`; creates no Wallet object.
 
-- [ ] **Step 1: Write the failing exact-schema test**
+- [x] **Step 1: Write the failing exact-schema test**
 
 ```js
 test("payment migration creates exactly orders and receipts with immutable fact guards", () => {
@@ -96,13 +96,13 @@ test("payment migration creates exactly orders and receipts with immutable fact 
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `node --test server/tests/platform-payment-store-migrations.test.mjs`
 
 Expected: FAIL because `payment-store-migrations.mjs` does not exist.
 
-- [ ] **Step 3: Implement the minimal migration**
+- [x] **Step 3: Implement the minimal migration**
 
 Define `20260801_001_payment_integration_closure` with:
 
@@ -168,14 +168,14 @@ Add exact schema/checksum inspection, legal order-state trigger, immutable
 receipt-fact update/delete triggers, and transaction rollback tests by forcing
 the second DDL statement to fail in a disposable database.
 
-- [ ] **Step 4: Run GREEN and migration dry-run tests**
+- [x] **Step 4: Run GREEN and migration dry-run tests**
 
 Run: `node --test server/tests/platform-payment-store-migrations.test.mjs`
 
 Expected: PASS, including apply, reapply, checksum mismatch, reopen,
 foreign-key check, quick check, and forced-failure rollback.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add server/services/platform/payment-store-migrations.mjs server/tests/platform-payment-store-migrations.test.mjs
