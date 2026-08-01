@@ -34,6 +34,12 @@ function safeIssuedRef(prefix, value) {
     .slice(0, 16)}`;
 }
 
+function fulfillmentEffectRef(commandRef) {
+  return `effect_coin_commerce_${createHash("sha256")
+    .update(`GCCWEBOS:COIN_COMMERCE_SUBSCRIPTION_FULFILLMENT:v1\0${commandRef}`)
+    .digest("hex")}`;
+}
+
 function hasText(value) {
   return typeof value === "string" && value.trim() === value && value.length > 0;
 }
@@ -308,9 +314,45 @@ function resolveEligibleSubscriptionBinding({ controlStore, runtimeCore, account
   };
 }
 
+function isUnrecordedInitialCommerceIssuance({
+  controlStore,
+  resolved,
+  commandRef,
+  offer
+}) {
+  try {
+    if (
+      typeof controlStore.getAuditEvent !== "function"
+      || controlStore.getAuditEvent(fulfillmentEffectRef(commandRef))
+      || resolved.issuanceRequest.purpose !== "coin_commerce_product_fulfillment"
+      || resolved.entitlement.plan !== offer.offerVersionRef
+      || resolved.entitlement.validFrom !== resolved.accessRequest.submittedAt
+      || resolved.entitlement.createdAt !== resolved.accessRequest.submittedAt
+      || resolved.accessRequest.plan !== (
+        offer.delivery.durationDays === 365 ? "yearly" : "monthly"
+      )
+      || resolved.accessRequest.durationDays !== offer.delivery.durationDays
+      || resolved.entitlement.trafficLimitBytes
+        !== offer.delivery.monthlyTrafficGb * 1024 ** 3
+    ) {
+      return false;
+    }
+    const targetMs = Date.parse(resolved.accessRequest.submittedAt)
+      + offer.delivery.durationDays * 24 * 60 * 60 * 1000;
+    return (
+      Number.isSafeInteger(targetMs)
+      && Math.abs(targetMs) <= 8.64e15
+      && resolved.entitlement.validUntil === new Date(targetMs).toISOString()
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function createCoinCommerceProductionSubscriptionFulfillment({
   controlStore,
   runtimeCore,
+  accountResourceIssuer,
   accountActivationReader,
   publishedCatalog = COIN_COMMERCE_PRODUCTION_PUBLISHED_OFFERS,
   fulfillmentCatalog =
@@ -377,6 +419,36 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
     }
   }
 
+  function canIssueInitialAccountResource(accountId, now) {
+    try {
+      if (
+        !accountResourceIssuer
+        || typeof accountResourceIssuer.isCommerceProductFulfillmentReady !== "function"
+        || typeof accountResourceIssuer.fulfillCommerceProduct !== "function"
+        || accountResourceIssuer.isCommerceProductFulfillmentReady() !== true
+      ) {
+        return false;
+      }
+      const account = controlStore.getAccount(accountId);
+      const summary = controlStore.getAccountControlSummary(accountId);
+      if (
+        !account
+        || account.id !== accountId
+        || account.status !== "active"
+        || !summary
+        || !Array.isArray(summary.entitlements)
+      ) {
+        return false;
+      }
+      return summary.entitlements.every((entitlement) => {
+        const validUntil = canonicalTimestamp(entitlement?.validUntil);
+        return validUntil !== null && validUntil <= now;
+      });
+    } catch {
+      return false;
+    }
+  }
+
   function purchaseEligibilityReader(input = {}) {
     const snapshot = exactPlainDataSnapshot(input, [
       "accountId",
@@ -396,7 +468,9 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         accountId,
         now
       });
-      if (!productState) return false;
+      if (!productState) {
+        return canIssueInitialAccountResource(accountId, now);
+      }
       const currentOffer = fulfillmentCatalogSnapshot.find(
         (offer) => offer.offerVersionRef === productState.entitlement.plan
       );
@@ -446,7 +520,9 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         "Coin Commerce subscription fulfillment is unavailable"
       );
     }
+    const portalPlan = offer.delivery.durationDays === 365 ? "yearly" : "monthly";
     let resolved;
+    let issuedInitialResource = false;
     try {
       resolved = resolveEligibleSubscriptionBinding({
         controlStore,
@@ -456,6 +532,31 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       });
     } catch (error) {
       throw createCoinCommerceFulfillmentRetryableError();
+    }
+    if (!resolved && canIssueInitialAccountResource(command.accountId, now)) {
+      try {
+        accountResourceIssuer.fulfillCommerceProduct({
+          commandRef: command.commandRef,
+          orderRef: command.orderRef,
+          accountId: command.accountId,
+          offerVersionRef: offer.offerVersionRef,
+          portalPlan,
+          durationDays: offer.delivery.durationDays,
+          trafficLimitBytes: offer.delivery.monthlyTrafficGb * 1024 ** 3
+        });
+        issuedInitialResource = true;
+        resolved = resolveEligibleSubscriptionBinding({
+          controlStore,
+          runtimeCore,
+          accountId: command.accountId,
+          now
+        });
+      } catch (error) {
+        if (isTemporaryDependencyError(error)) {
+          throw createCoinCommerceFulfillmentRetryableError();
+        }
+        throw createCoinCommerceFulfillmentReconciliationError();
+      }
     }
     if (!resolved) {
       throw createCoinCommerceFulfillmentReconciliationError();
@@ -485,7 +586,6 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       && currentOffer.offerVersionRef !== offer.offerVersionRef
       && canonicalTimestamp(resolved.entitlement.validUntil) > now
     );
-    const portalPlan = offer.delivery.durationDays === 365 ? "yearly" : "monthly";
     let effect;
     try {
       effect = controlStore.applyCoinCommerceSubscriptionFulfillment({
@@ -501,6 +601,12 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         portalPlan,
         durationDays: offer.delivery.durationDays,
         monthlyTrafficGb: offer.delivery.monthlyTrafficGb,
+        initialIssuance: issuedInitialResource || isUnrecordedInitialCommerceIssuance({
+          controlStore,
+          resolved,
+          commandRef: command.commandRef,
+          offer
+        }),
         requireExistingEffect,
         recoveryOnly: resolved.runtimeReady !== true,
         now

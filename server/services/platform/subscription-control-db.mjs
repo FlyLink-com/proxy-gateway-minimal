@@ -1662,10 +1662,18 @@ export function createSqliteSubscriptionControlStore({
       portalPlan: requiredText(input.portalPlan, "portalPlan"),
       durationDays: integer(input.durationDays, "durationDays", { min: 1 }),
       monthlyTrafficGb: integer(input.monthlyTrafficGb, "monthlyTrafficGb", { min: 1 }),
+      initialIssuance: input.initialIssuance === true,
       requireExistingEffect: input.requireExistingEffect === true,
       recoveryOnly: input.recoveryOnly === true,
       now: isoText(input.now, "now")
     };
+    if (
+      input.initialIssuance !== undefined
+      && input.initialIssuance !== true
+      && input.initialIssuance !== false
+    ) {
+      throw platformError("validation_error", "initialIssuance must be boolean");
+    }
     if (
       input.requireExistingEffect !== true
       && input.requireExistingEffect !== false
@@ -1814,16 +1822,37 @@ export function createSqliteSubscriptionControlStore({
       if (record.recoveryOnly) failDrift();
 
       const previousValidFrom = isoText(entitlement.validFrom, "validFrom");
-      const previousValidUntil = isoText(entitlement.validUntil, "validUntil");
-      if (previousValidFrom >= previousValidUntil) failDrift();
+      const storedValidUntil = isoText(entitlement.validUntil, "validUntil");
+      if (previousValidFrom >= storedValidUntil) failDrift();
+      const expectedInitialTargetMs = Date.parse(record.now) + durationMs;
+      const expectedInitialTarget = Number.isSafeInteger(expectedInitialTargetMs)
+        && Math.abs(expectedInitialTargetMs) <= 8.64e15
+        ? new Date(expectedInitialTargetMs).toISOString()
+        : null;
+      if (
+        record.initialIssuance
+        && (
+          entitlement.plan !== record.offerVersionRef
+          || entitlement.validFrom !== record.now
+          || entitlement.createdAt !== record.now
+          || entitlement.trafficLimitBytes !== trafficLimitBytes
+          || accessRequest.plan !== record.portalPlan
+          || accessRequest.durationDays !== record.durationDays
+          || accessRequest.submittedAt !== record.now
+          || storedValidUntil !== expectedInitialTarget
+        )
+      ) {
+        failDrift();
+      }
       const validFrom = entitlement.plan === record.offerVersionRef
         ? previousValidFrom
         : record.now;
-      const anchorMs = Math.max(
-        Date.parse(record.now),
-        Date.parse(previousValidUntil)
-      );
-      const targetMs = anchorMs + durationMs;
+      const previousValidUntil = record.initialIssuance
+        ? record.now
+        : storedValidUntil;
+      const targetMs = record.initialIssuance
+        ? Date.parse(storedValidUntil)
+        : Math.max(Date.parse(record.now), Date.parse(storedValidUntil)) + durationMs;
       if (
         !Number.isSafeInteger(targetMs)
         || Math.abs(targetMs) > 8.64e15
