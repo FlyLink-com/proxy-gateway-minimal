@@ -8,9 +8,11 @@ const OFFER_FIELDS = Object.freeze([
   "amountMinor",
   "currency",
   "currencyExponent",
+  "paymentMethods",
   "enabled",
 ]);
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const PAYMENT_METHODS = Object.freeze(["alipay", "wechat_pay", "paypal"]);
 const BRANDED_OFFERS = new WeakSet();
 
 function catalogError() {
@@ -54,6 +56,24 @@ function positiveInteger(value) {
   return value;
 }
 
+function canonicalPaymentMethods(value) {
+  if (!Array.isArray(value) || utilTypes.isProxy(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+    catalogError();
+  }
+  const methods = [...value];
+  if (
+    methods.length === 0
+    || methods.some((method) => typeof method !== "string" || !PAYMENT_METHODS.includes(method))
+    || methods.some((method, index) => methods.indexOf(method) !== index)
+    || methods.some((method, index) => (
+      PAYMENT_METHODS.indexOf(method) <= (index === 0 ? -1 : PAYMENT_METHODS.indexOf(methods[index - 1]))
+    ))
+  ) {
+    catalogError();
+  }
+  return Object.freeze(methods);
+}
+
 function normalizeOffer(value, environment) {
   const input = snapshotExact(value, OFFER_FIELDS);
   if (
@@ -74,10 +94,19 @@ function normalizeOffer(value, environment) {
     amountMinor: positiveInteger(input.amountMinor),
     currency: input.currency,
     currencyExponent: input.currencyExponent,
+    paymentMethods: canonicalPaymentMethods(input.paymentMethods),
     environment,
   };
   const quoteDigest = createHash("sha256")
-    .update(JSON.stringify(canonical), "utf8")
+    .update(JSON.stringify({
+      offerRef: canonical.offerRef,
+      quoteVersion: canonical.quoteVersion,
+      paidCoinUnits: canonical.paidCoinUnits,
+      amountMinor: canonical.amountMinor,
+      currency: canonical.currency,
+      currencyExponent: canonical.currencyExponent,
+      environment: canonical.environment,
+    }), "utf8")
     .digest("hex");
   const offer = Object.freeze({ ...canonical, quoteDigest });
   BRANDED_OFFERS.add(offer);

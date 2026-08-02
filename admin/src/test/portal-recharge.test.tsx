@@ -1,4 +1,6 @@
 import { createElement } from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -14,6 +16,41 @@ import {
 } from "../features/user-portal/recharge";
 import { createHttpUserPortalClient } from "../features/user-portal/user-portal-client";
 
+const RECHARGE_OFFERS_SELECTOR = ".portal-v2-shell .portal-recharge-offers";
+const RECHARGE_COMMERCE_CSS = readFileSync(
+  resolve("src/styles/portal-static-preserve/user-portal-commerce.css"),
+  "utf8",
+);
+
+function rechargeCssDeclaration(
+  mediaCondition: string | null,
+  property: string,
+) {
+  const style = document.createElement("style");
+  style.textContent = RECHARGE_COMMERCE_CSS;
+  document.head.append(style);
+  const sheet = style.sheet;
+  let value = "";
+  if (sheet) {
+    for (const rule of Array.from(sheet.cssRules)) {
+      const rules = mediaCondition === null && rule instanceof CSSStyleRule
+        ? [rule]
+        : rule instanceof CSSMediaRule && rule.conditionText === mediaCondition
+          ? Array.from(rule.cssRules).filter((nestedRule): nestedRule is CSSStyleRule => (
+            nestedRule instanceof CSSStyleRule
+          ))
+          : [];
+      for (const candidate of rules) {
+        if (candidate.selectorText.split(",").map((selector) => selector.trim()).includes(RECHARGE_OFFERS_SELECTOR)) {
+          value = candidate.style.getPropertyValue(property).trim() || value;
+        }
+      }
+    }
+  }
+  style.remove();
+  return value;
+}
+
 const OFFER: PortalRechargeOffer = {
   offerRef: "coins_30",
   quoteVersion: 1,
@@ -21,6 +58,7 @@ const OFFER: PortalRechargeOffer = {
   amountMinor: 100,
   currency: "USD",
   currencyExponent: 2,
+  paymentMethods: ["paypal"],
 };
 
 function rechargeOrder(status: PortalRechargeOrder["status"]): PortalRechargeOrder {
@@ -122,6 +160,7 @@ describe("Portal recharge client", () => {
       ...OFFER,
       amountMinor: 950,
       currency: "CNY",
+      paymentMethods: ["alipay", "wechat_pay"],
     };
     const fetchFn = vi.fn(async () => new Response(
       JSON.stringify({ offers: [cnyOffer] }),
@@ -132,6 +171,72 @@ describe("Portal recharge client", () => {
     await expect(client.listOffers({
       sessionRef: "session_recharge_1",
     })).resolves.toEqual([cnyOffer]);
+  });
+
+  test("requests v2 offers while strictly projecting a BASE v1 service response", async () => {
+    const baseOffer = {
+      offerRef: OFFER.offerRef,
+      quoteVersion: OFFER.quoteVersion,
+      paidCoinUnits: OFFER.paidCoinUnits,
+      amountMinor: OFFER.amountMinor,
+      currency: OFFER.currency,
+      currencyExponent: OFFER.currencyExponent,
+    };
+    const fetchFn = vi.fn(async () => new Response(
+      JSON.stringify({ offers: [baseOffer] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    const client = createPortalRechargeClient({ fetchFn });
+
+    await expect(client.listOffers({
+      sessionRef: "session_recharge_1",
+    })).resolves.toEqual([{ ...baseOffer, paymentMethods: [] }]);
+    expect(fetchFn).toHaveBeenCalledWith(
+      "/api/portal/coins/recharge/offers",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-Portal-Recharge-Offers-Version": "2",
+        }),
+      }),
+    );
+  });
+
+  test("accepts only exact canonical payment method projections for recharge offers", async () => {
+    const offer = {
+      ...OFFER,
+      currency: "CNY",
+      paymentMethods: ["alipay", "wechat_pay"],
+    };
+    const fetchFn = vi.fn(async () => new Response(
+      JSON.stringify({ offers: [offer] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+
+    await expect(createPortalRechargeClient({ fetchFn }).listOffers({
+      sessionRef: "session_recharge_1",
+    })).resolves.toEqual([offer]);
+
+    for (const paymentMethods of [
+      [],
+      ["alipay", "alipay"],
+      ["wechat_pay", "alipay"],
+      ["xsd_v1"],
+      ["alipay", "wechat_pay", "paypal", "merchant"],
+    ]) {
+      const invalidFetch = vi.fn(async () => new Response(JSON.stringify({
+        offers: [{ ...OFFER, paymentMethods }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      await expect(createPortalRechargeClient({ fetchFn: invalidFetch }).listOffers({
+        sessionRef: "session_recharge_1",
+      })).rejects.toMatchObject({ code: "payment_recharge_request_failed" });
+    }
+
+    const arbitraryFieldFetch = vi.fn(async () => new Response(JSON.stringify({
+      offers: [{ ...offer, providerIdentity: "browser_supplied" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    await expect(createPortalRechargeClient({ fetchFn: arbitraryFieldFetch }).listOffers({
+      sessionRef: "session_recharge_1",
+    })).rejects.toMatchObject({ code: "payment_recharge_request_failed" });
   });
 
   test("keeps historical orders readable when an unknown adapter has no payment handoff", async () => {
@@ -339,11 +444,63 @@ function rechargeOfferDialogModel(
 }
 
 describe("Portal recharge interaction", () => {
+  test("keeps the recharge card grid desktop-only and leaves the base layout single-column", () => {
+    expect(rechargeCssDeclaration(null, "grid-template-columns")).toBe("");
+    expect(rechargeCssDeclaration("(min-width: 721px)", "grid-template-columns"))
+      .toBe("repeat(3, minmax(0, 1fr))");
+  });
+
+  test("renders six formal CNY cards with neutral method labels and server-only actions", () => {
+    const cnyOffers = [
+      ["coins_10", 10, 1000],
+      ["coins_30", 30, 3000],
+      ["coins_50", 50, 5000],
+      ["coins_100", 100, 10000],
+      ["coins_200", 200, 20000],
+      ["coins_300", 300, 30000],
+    ] as const;
+    const offers: PortalRechargeOffer[] = cnyOffers.map(([offerRef, paidCoinUnits, amountMinor]) => ({
+      ...OFFER,
+      offerRef,
+      paidCoinUnits,
+      amountMinor,
+      currency: "CNY",
+      paymentMethods: ["alipay", "wechat_pay"],
+    }));
+    const model: PortalRechargeModel = {
+      ...rechargeOfferDialogModel(OFFER),
+      offers,
+    };
+    render(createElement(PortalRechargeDialog, { locale: "en", model }));
+
+    const dialog = screen.getByRole("dialog", { name: "Recharge Coins" });
+    expect(within(dialog).getAllByRole("listitem")).toHaveLength(6);
+    for (const [, paidCoinUnits, amountMinor] of [
+      ["coins_10", 10, 1000],
+      ["coins_30", 30, 3000],
+      ["coins_50", 50, 5000],
+      ["coins_100", 100, 10000],
+      ["coins_200", 200, 20000],
+      ["coins_300", 300, 30000],
+    ] as const) {
+      expect(within(dialog).getByText(`${paidCoinUnits} Coins`)).toBeInTheDocument();
+      expect(within(dialog).getByText(`CNY ${(amountMinor / 100).toFixed(2)}`)).toBeInTheDocument();
+    }
+    expect(within(dialog).getAllByText("Alipay")).toHaveLength(6);
+    expect(within(dialog).getAllByText("WeChat Pay")).toHaveLength(6);
+    expect(dialog).not.toHaveTextContent(/xsd_v1|chaojipay_v1|merchant|sandbox|bonus|discount|expiry/i);
+    fireEvent.click(within(dialog).getByRole("button", {
+      name: "Continue to payment for 10 Coins, CNY 10.00, option 1",
+    }));
+    expect(model.createOrder).toHaveBeenCalledWith("coins_10");
+  });
+
   test("presents server pricing and payment entry without provider-specific copy", () => {
     const model = rechargeOfferDialogModel({
       ...OFFER,
       amountMinor: 950,
       currency: "CNY",
+      paymentMethods: ["alipay", "wechat_pay"],
     });
     render(createElement(PortalRechargeDialog, { locale: "en", model }));
 

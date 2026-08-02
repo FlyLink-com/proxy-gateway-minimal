@@ -482,7 +482,8 @@ const RETURN_RECHARGE_OFFER: PortalRechargeOffer = {
   paidCoinUnits: 30,
   amountMinor: 100,
   currency: "USD",
-  currencyExponent: 2
+  currencyExponent: 2,
+  paymentMethods: ["paypal"]
 };
 
 function returnedRechargeOrder(
@@ -2921,6 +2922,7 @@ describe("user portal product surface", () => {
     expect(within(walletSection as HTMLElement).queryByRole("list", {
       name: "Coins 充值档位"
     })).toBeNull();
+    expect(within(walletSection as HTMLElement).queryByText("CNY 10.00")).toBeNull();
 
     openPortalSettings();
     fireEvent.click(screen.getByRole("button", { name: "EN" }));
@@ -2946,6 +2948,7 @@ describe("user portal product surface", () => {
     expect(within(englishWalletSection as HTMLElement).queryByRole("list", {
       name: "Coins recharge denominations"
     })).toBeNull();
+    expect(within(englishWalletSection as HTMLElement).queryByText("CNY 10.00")).toBeNull();
   });
 
   test("does not expose Recharge Coins from the signed-in topbar", async () => {

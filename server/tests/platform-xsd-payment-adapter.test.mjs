@@ -17,6 +17,7 @@ test("XSD is the exact xsd_v1 unverified disabled Adapter", () => {
   assert.equal(raw.contractVersion, "unverified");
   assert.deepEqual(raw.capabilities, FALSE_CAPABILITIES);
   assert.deepEqual(raw.supportedPaymentMethods, []);
+  assert.deepEqual(Object.values(raw.capabilities), Array(8).fill(false));
   assert.deepEqual(assertPaymentProviderAdapterContract(raw).capabilities, FALSE_CAPABILITIES);
 });
 

@@ -4,6 +4,7 @@ import { ModalFrame } from "../../../components/modal-frame";
 
 import { formatPortalRechargeAmount } from "./portal-recharge-presentation";
 import type { PortalRechargeModel } from "./use-portal-recharge";
+import type { PortalRechargePaymentMethod } from "./portal-recharge-client";
 
 type RechargeStatusTone = "neutral" | "pending" | "success" | "attention";
 
@@ -80,6 +81,12 @@ function statusIcon(tone: RechargeStatusTone) {
   return Circle;
 }
 
+function paymentMethodLabel(paymentMethod: PortalRechargePaymentMethod, zh: boolean) {
+  if (paymentMethod === "alipay") return zh ? "支付宝" : "Alipay";
+  if (paymentMethod === "wechat_pay") return zh ? "微信支付" : "WeChat Pay";
+  return "PayPal";
+}
+
 export function PortalRechargeDialog({
   locale,
   model,
@@ -147,7 +154,15 @@ export function PortalRechargeDialog({
               : `Creating order for ${offer.paidCoinUnits} Coins, ${amount}, option ${index + 1}`;
             return (
               <li key={offer.offerRef}>
-                <div><strong>{offer.paidCoinUnits} Coins</strong><span>{amount}</span></div>
+                <div className="portal-recharge-offer-details">
+                  <strong>{offer.paidCoinUnits} Coins</strong>
+                  <span>{amount}</span>
+                  <div className="portal-recharge-payment-methods" aria-label={zh ? "支付方式" : "Payment methods"}>
+                    {offer.paymentMethods.map((paymentMethod) => (
+                      <span key={paymentMethod}>{paymentMethodLabel(paymentMethod, zh)}</span>
+                    ))}
+                  </div>
+                </div>
                 <button
                   aria-busy={model.busy ? "true" : undefined}
                   aria-label={model.busy ? creatingOrderLabel : paymentLabel}

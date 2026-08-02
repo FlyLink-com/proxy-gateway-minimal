@@ -48,6 +48,7 @@ function createCoordinator() {
         amountMinor: 100,
         currency: "USD",
         currencyExponent: 2,
+        paymentMethods: ["paypal"],
         environment: "sandbox",
         quoteDigest: "a".repeat(64),
       }];
@@ -155,6 +156,25 @@ test("authenticated account creates and captures only its server-priced order", 
       currency: "USD",
       currencyExponent: 2,
     });
+    const versionedOffersResponse = await fetch(
+      `${baseUrl}/api/portal/coins/recharge/offers`,
+      {
+        headers: {
+          "X-Portal-Session": SESSION_REF,
+          "X-Portal-Recharge-Offers-Version": "2",
+        },
+      },
+    );
+    assert.equal(versionedOffersResponse.status, 200);
+    assert.deepEqual((await versionedOffersResponse.json()).offers[0], {
+      offerRef: "coins_30",
+      quoteVersion: 1,
+      paidCoinUnits: 30,
+      amountMinor: 100,
+      currency: "USD",
+      currencyExponent: 2,
+      paymentMethods: ["paypal"],
+    });
     const createdResponse = await fetch(`${baseUrl}/api/portal/coins/recharge/orders`, {
       method: "POST",
       headers,
@@ -174,7 +194,7 @@ test("authenticated account creates and captures only its server-priced order", 
     );
     assert.equal(capturedResponse.status, 200);
     assert.equal((await capturedResponse.json()).recharge.order.status, "credited");
-    assert.deepEqual(coordinator.calls.slice(1, 3), [
+    assert.deepEqual(coordinator.calls.slice(2, 4), [
       ["createRechargeOrder", {
         accountId: ACCOUNT_ID,
         offerRef: "coins_30",

@@ -43,6 +43,7 @@ function createCatalog() {
         amountMinor: 100,
         currency: "USD",
         currencyExponent: 2,
+        paymentMethods: ["paypal"],
         enabled: true,
       },
       {
@@ -52,6 +53,7 @@ function createCatalog() {
         amountMinor: 300,
         currency: "USD",
         currencyExponent: 2,
+        paymentMethods: ["paypal"],
         enabled: false,
       },
     ],
@@ -123,6 +125,20 @@ function paymentFact(overrides = {}) {
   };
 }
 
+function verifiedPaymentInput(overrides = {}) {
+  return {
+    orderRef: "payment_order_1",
+    attemptRef: "payment_attempt_1",
+    providerRequestRef: "provider_callback_1",
+    receiptType: "callback",
+    adapterKey: "paypal_v1",
+    paymentMethod: "paypal",
+    merchantBindingRef: "paypal_sandbox_primary",
+    paymentFact: paymentFact(),
+    ...overrides,
+  };
+}
+
 test("sandbox catalog exposes only immutable server-authored USD offers", () => {
   const catalog = createCatalog();
   assert.deepEqual(catalog.listOffers(), [{
@@ -132,6 +148,7 @@ test("sandbox catalog exposes only immutable server-authored USD offers", () => 
     amountMinor: 100,
     currency: "USD",
     currencyExponent: 2,
+    paymentMethods: ["paypal"],
     environment: "sandbox",
     quoteDigest: catalog.getOffer("coins_30").quoteDigest,
   }]);
@@ -146,6 +163,7 @@ test("sandbox catalog exposes only immutable server-authored USD offers", () => 
       amountMinor: 100,
       currency: "CNY",
       currencyExponent: 2,
+      paymentMethods: ["paypal"],
       enabled: true,
     }],
   }), /invalid_payment_recharge_catalog/u);
@@ -191,12 +209,66 @@ test("createOrder snapshots the server offer and replays one account idempotency
             amountMinor: 200,
             currency: "USD",
             currencyExponent: 2,
+            paymentMethods: ["paypal"],
             enabled: true,
           }],
         }).getOffer("coins_50"),
       }),
       /payment_order_idempotency_conflict/u,
     );
+    for (const [field, value] of [
+      ["adapterKey", "stripe_v1"],
+      ["paymentMethod", "stripe"],
+      ["merchantBindingRef", "stripe_sandbox_primary"],
+    ]) {
+      assert.throws(
+        () => createOrder(store, { [field]: value }),
+        /payment_order_idempotency_conflict/u,
+      );
+    }
+    assert.deepEqual(createOrder(store).order, first.order);
+  } finally {
+    store.close();
+    database.close();
+  }
+});
+
+test("a BASE v1 Sandbox order replays on HEAD without changing the quote meaning", () => {
+  const database = createDatabase();
+  const store = createStore(database);
+  try {
+    database.prepare(`
+      insert into platform_payment_orders (
+        payment_order_ref, account_id, offer_ref, create_idempotency_key,
+        create_request_digest, quote_version, expected_paid_coin_units,
+        amount_minor, currency, currency_exponent, quote_digest, adapter_key,
+        payment_method, merchant_binding_ref, status, latest_receipt_ref,
+        wallet_operation_ref, wallet_lot_ref, provider_order_ref, expires_at,
+        created_at, updated_at
+      ) values (
+        'payment_order_base_1', 'account_1', 'coins_30', 'portal_create_base_1',
+        'c7be188447bb2f41d79e1cd2f17e67b93f0d95f82a8eacfb73329c24555b5e98',
+        1, 30, 100, 'USD', 2,
+        '2f6b309c8236ff8bb7dcc0cba500bede41314242eade75b6b5cb139818d1ff4f',
+        'paypal_v1', 'paypal', 'paypal_sandbox_primary', 'created', null,
+        null, null, null, '${EXPIRES_AT}', '${NOW}', '${NOW}'
+      )
+    `).run();
+    const offer = createCatalog().getOffer("coins_30");
+    assert.equal(
+      offer.quoteDigest,
+      "2f6b309c8236ff8bb7dcc0cba500bede41314242eade75b6b5cb139818d1ff4f",
+    );
+    const replay = store.createOrder({
+      accountId: "account_1",
+      offer,
+      idempotencyKey: "portal_create_base_1",
+      adapterKey: "paypal_v1",
+      paymentMethod: "paypal",
+      merchantBindingRef: "paypal_sandbox_primary",
+    });
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.order.orderRef, "payment_order_base_1");
   } finally {
     store.close();
     database.close();
@@ -229,6 +301,17 @@ test("create receipt durably restores the allowlisted provider entry action", ()
     });
     assert.equal(replay.replayed, true);
     assert.deepEqual(replay.order.nextAction, entryReadyResult().nextAction);
+    assert.throws(() => store.recordOperationReceipt({
+      orderRef: order.orderRef,
+      attemptRef: "payment_attempt_2",
+      providerRequestRef: "provider_create_2",
+      receiptType: "create",
+      operationResult: { ...entryReadyResult(), providerOrderRef: "provider_order_2" },
+    }), /payment_provider_order_conflict/u);
+    assert.equal(store.getOrderForAccount({
+      accountId: "account_1",
+      orderRef: order.orderRef,
+    }).providerOrderRef, "provider_order_1");
   } finally {
     store.close();
     database.close();
@@ -247,37 +330,63 @@ test("verified events dedupe and mismatched money never advances the order", () 
       receiptType: "create",
       operationResult: entryReadyResult(),
     });
-    const accepted = store.acceptVerifiedPayment({
-      orderRef: order.orderRef,
-      attemptRef: "payment_attempt_1",
-      providerRequestRef: "provider_callback_1",
-      receiptType: "callback",
-      paymentFact: paymentFact(),
-    });
+    const accepted = store.acceptVerifiedPayment(verifiedPaymentInput({ orderRef: order.orderRef }));
     assert.equal(accepted.replayed, false);
     assert.equal(accepted.order.status, "payment_verified");
     assert.equal(accepted.receipt.verificationResult, "verified");
 
-    const replay = store.acceptVerifiedPayment({
-      orderRef: order.orderRef,
-      attemptRef: "payment_attempt_1",
-      providerRequestRef: "provider_callback_1",
-      receiptType: "callback",
-      paymentFact: paymentFact(),
-    });
+    const replay = store.acceptVerifiedPayment(verifiedPaymentInput({ orderRef: order.orderRef }));
     assert.equal(replay.replayed, true);
 
-    assert.throws(() => store.acceptVerifiedPayment({
+    assert.throws(() => store.acceptVerifiedPayment(verifiedPaymentInput({
       orderRef: order.orderRef,
-      attemptRef: "payment_attempt_1",
       providerRequestRef: "provider_callback_2",
-      receiptType: "callback",
       paymentFact: paymentFact({ amountMinor: 200 }),
-    }), /payment_fact_mismatch/u);
+    })), /payment_fact_mismatch/u);
     assert.equal(store.getOrderForAccount({
       accountId: "account_1",
       orderRef: order.orderRef,
     }).status, "payment_verified");
+  } finally {
+    store.close();
+    database.close();
+  }
+});
+
+test("verified payment accepts only the immutable order payment binding", () => {
+  const database = createDatabase();
+  const store = createStore(database);
+  try {
+    const { order } = createOrder(store);
+    store.recordOperationReceipt({
+      orderRef: order.orderRef,
+      attemptRef: "payment_attempt_1",
+      providerRequestRef: "provider_create_1",
+      receiptType: "create",
+      operationResult: entryReadyResult(),
+    });
+    for (const [field, value] of [
+      ["adapterKey", "stripe_v1"],
+      ["paymentMethod", "stripe"],
+      ["merchantBindingRef", "stripe_sandbox_primary"],
+    ]) {
+      assert.throws(
+        () => store.acceptVerifiedPayment(verifiedPaymentInput({
+          orderRef: order.orderRef,
+          providerRequestRef: `provider_callback_${field}`,
+          [field]: value,
+        })),
+        /payment_fact_mismatch/u,
+      );
+      assert.equal(database.prepare(`
+        select count(*) as count from platform_payment_receipts
+         where verification_result = 'verified'
+      `).get().count, 0);
+      const unchanged = store.getOrderForAccount({ accountId: "account_1", orderRef: order.orderRef });
+      assert.equal(unchanged.status, "entry_ready");
+      assert.equal(unchanged.walletOperationRef, null);
+      assert.equal(unchanged.walletLotRef, null);
+    }
   } finally {
     store.close();
     database.close();
@@ -296,13 +405,7 @@ test("markOrderCredited closes once and account reads remain isolated", () => {
       receiptType: "create",
       operationResult: entryReadyResult(),
     });
-    const verified = store.acceptVerifiedPayment({
-      orderRef: order.orderRef,
-      attemptRef: "payment_attempt_1",
-      providerRequestRef: "provider_callback_1",
-      receiptType: "callback",
-      paymentFact: paymentFact(),
-    });
+    const verified = store.acceptVerifiedPayment(verifiedPaymentInput({ orderRef: order.orderRef }));
     const credited = store.markOrderCredited({
       orderRef: order.orderRef,
       receiptRef: verified.receipt.receiptRef,
