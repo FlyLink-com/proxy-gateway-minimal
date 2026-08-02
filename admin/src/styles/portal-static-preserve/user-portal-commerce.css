@@ -52,46 +52,12 @@
   color: #1f2937;
 }
 
-.portal-v2-shell button.portal-coins-wallet-entry {
-  display: inline-flex;
-  min-width: 118px;
-  min-height: 40px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid #30363d;
-  border-radius: 10px;
-  background: #0d1117;
-  color: #f0f6fc;
-  cursor: pointer;
-  padding: 9px 12px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.portal-v2-shell button.portal-coins-wallet-entry svg {
-  width: 16px;
-  height: 16px;
-  color: #20d5e8;
-}
-
-.portal-v2-shell button.portal-coins-wallet-entry:hover,
-.portal-v2-shell button.portal-coins-wallet-entry.active {
-  border-color: rgba(32, 213, 232, 0.72);
-  background: rgba(32, 213, 232, 0.1);
-}
-
-.portal-v2-shell button.portal-coins-wallet-entry:focus-visible,
 .portal-v2-shell .portal-commerce-layout button:focus-visible {
   outline: 3px solid var(--portal-commerce-focus-accent);
   outline-offset: 2px;
   box-shadow: none;
 }
 
-.portal-v2-shell button.portal-coins-wallet-entry:disabled,
 .portal-v2-shell .portal-commerce-layout button:disabled {
   cursor: not-allowed;
   opacity: 0.62;
@@ -241,18 +207,6 @@
   font-size: 12px;
 }
 
-.portal-v2-shell[data-portal-theme="light"] button.portal-coins-wallet-entry {
-  border-color: #d0d7de;
-  background: #ffffff;
-  color: #1f2937;
-}
-
-.portal-v2-shell[data-portal-theme="light"] button.portal-coins-wallet-entry:hover,
-.portal-v2-shell[data-portal-theme="light"] button.portal-coins-wallet-entry.active {
-  border-color: #13a9be;
-  background: #e8fbfd;
-}
-
 .portal-v2-shell[data-portal-theme="light"] .portal-commerce-layout,
 .portal-v2-shell[data-portal-theme="light"] .portal-commerce-layout__balances article,
 .portal-v2-shell[data-portal-theme="light"] .portal-commerce-layout__metric,
@@ -294,6 +248,12 @@
   --portal-wallet-text: #f0f6fc;
   --portal-wallet-muted: #8b949e;
   --portal-wallet-accent: #20d5e8;
+  --portal-recharge-attention-bg: rgba(187, 128, 9, 0.18);
+  --portal-recharge-attention-border: rgba(242, 204, 96, 0.42);
+  --portal-recharge-attention-text: #f2cc60;
+  --portal-recharge-success-bg: rgba(46, 160, 67, 0.16);
+  --portal-recharge-success-border: rgba(63, 185, 80, 0.42);
+  --portal-recharge-success-text: #56d364;
   align-content: start;
 }
 
@@ -304,6 +264,12 @@
   --portal-wallet-text: #1f2937;
   --portal-wallet-muted: #57606a;
   --portal-wallet-accent: #0969da;
+  --portal-recharge-attention-bg: #fff3cd;
+  --portal-recharge-attention-border: #d4a72c;
+  --portal-recharge-attention-text: #9a6700;
+  --portal-recharge-success-bg: #dafbe1;
+  --portal-recharge-success-border: #4ac26b;
+  --portal-recharge-success-text: #1a7f37;
 }
 
 .portal-v2-shell .portal-wallet-status {
@@ -450,7 +416,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .portal-v2-shell button.portal-coins-wallet-entry,
   .portal-v2-shell .portal-commerce-layout button {
     min-height: 44px;
   }
@@ -537,30 +502,6 @@
 }
 
 @media (max-width: 720px) {
-  .portal-v2-shell button.portal-coins-wallet-entry {
-    min-width: 40px;
-    padding-inline: 11px;
-  }
-
-  .portal-v2-shell button.portal-coins-wallet-entry span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
-
-  .portal-v2-shell .portal-v2-topbar:has(button.portal-coins-wallet-entry) .portal-v2-mobile-brand {
-    flex: 0 0 28px;
-    width: 28px;
-    gap: 0;
-  }
-
-  .portal-v2-shell .portal-v2-topbar:has(button.portal-coins-wallet-entry) .portal-v2-mobile-brand strong {
-    display: none;
-  }
-
   .portal-v2-shell .portal-commerce-layout {
     padding: 16px;
   }
@@ -650,14 +591,15 @@
 
 .portal-v2-shell .portal-recharge-order dl {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--portal-wallet-border);
   margin: 0;
+  padding-top: 18px;
 }
 
 .portal-v2-shell .portal-recharge-order dl > div {
   min-width: 0;
-  border: 1px solid var(--portal-wallet-border);
-  border-radius: 10px;
-  padding: 12px;
+  padding: 0 8px;
+  text-align: center;
 }
 
 .portal-v2-shell .portal-recharge-order dt,
@@ -673,16 +615,78 @@
   font-weight: 700;
 }
 
-.portal-v2-shell .portal-recharge-success {
-  color: var(--portal-wallet-accent);
-  font-weight: 700;
+.portal-v2-shell .portal-recharge-status-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 28px 20px 24px;
+  text-align: center;
 }
 
-.portal-v2-shell .portal-recharge-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
+.portal-v2-shell .portal-recharge-status-card__icon {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border: 1px solid var(--portal-recharge-attention-border);
+  border-radius: 50%;
+  background: var(--portal-recharge-attention-bg);
+  color: var(--portal-recharge-attention-text);
+}
+
+.portal-v2-shell .portal-recharge-status-card__icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.portal-v2-shell .portal-recharge-status-card h4,
+.portal-v2-shell .portal-recharge-status-card p {
+  margin: 0;
+}
+
+.portal-v2-shell .portal-recharge-status-card h4 {
+  color: var(--portal-wallet-text);
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.portal-v2-shell .portal-recharge-status-card > p {
+  color: var(--portal-wallet-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.portal-v2-shell .portal-recharge-status-card__note {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--portal-recharge-attention-text) !important;
+  font-size: 13px !important;
+  font-weight: 600;
+}
+
+.portal-v2-shell .portal-recharge-status-card__spinner {
+  width: 16px;
+  height: 16px;
+  animation: portal-recharge-status-spin 1s linear infinite;
+}
+
+.portal-v2-shell .portal-recharge-status-card--success {
+  --portal-recharge-attention-bg: var(--portal-recharge-success-bg);
+  --portal-recharge-attention-border: var(--portal-recharge-success-border);
+  --portal-recharge-attention-text: var(--portal-recharge-success-text);
+}
+
+@keyframes portal-recharge-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-v2-shell .portal-recharge-status-card__spinner {
+    animation: none;
+  }
 }
 
 .portal-v2-shell .portal-commerce-layout--marketplace {

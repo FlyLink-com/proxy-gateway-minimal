@@ -386,8 +386,17 @@ describe("PortalOrdersPanel", () => {
   });
 
   test("loads durable Coins recharge orders into the unified center", async () => {
+    const providerNeutralOrder: PortalRechargeOrder = {
+      ...RECHARGE_ORDER,
+      amountMinor: 950,
+      currency: "CNY",
+      adapterKey: "chaojipay_v1",
+      paymentMethod: "alipay",
+      status: "entry_ready",
+      providerOrderRef: "chaojipay_order_001",
+    };
     const rechargeClient = {
-      listOrders: vi.fn(async () => [RECHARGE_ORDER])
+      listOrders: vi.fn(async () => [providerNeutralOrder])
     } as unknown as PortalRechargeClient;
     render(createElement(PortalOrdersPanel, {
       locale: "en",
@@ -400,13 +409,21 @@ describe("PortalOrdersPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Coins recharges" }));
     const rowAction = await screen.findByRole("button", {
-      name: /payment_recharge_001.*30 paid Coins.*Credited/i
+      name: /payment_recharge_001.*30 paid Coins.*Awaiting payment/i
     });
-    expect(screen.getByText("USD 1.00")).toBeInTheDocument();
+    expect(screen.getByText("CNY 9.50")).toBeInTheDocument();
+    expect(rowAction).not.toHaveTextContent(/PayPal|Sandbox|chaojipay_v1/i);
     fireEvent.click(rowAction);
-    expect(screen.getByRole("region", {
+    const detail = screen.getByRole("region", {
       name: "Coins recharge order detail"
-    })).toHaveTextContent("PayPal Sandbox");
+    });
+    const paymentMethodField = within(detail).getByText("Payment method").closest("div");
+    expect(paymentMethodField).not.toBeNull();
+    expect(within(paymentMethodField as HTMLElement).getByText("Alipay", {
+      selector: "strong"
+    })).toBeInTheDocument();
+    expect(within(detail).getAllByText("Alipay")).toHaveLength(1);
+    expect(detail).not.toHaveTextContent(/PayPal|Sandbox|chaojipay_v1/i);
     expect(rechargeClient.listOrders).toHaveBeenCalledWith({
       sessionRef: "session_recharge_orders"
     });

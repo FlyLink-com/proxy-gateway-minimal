@@ -32,9 +32,11 @@ const REQUIRED_RUNTIME_MARKERS = [
 ];
 
 const REQUIRED_COMMERCE_LAYOUT_MARKERS = [
-  "portal-commerce-layout",
-  "portal-coins-wallet-entry",
-  "portal-recharge-dialog"
+  { marker: "portal-commerce-layout", markup: true, css: true },
+  { marker: "portal-wallet-nav-balance", markup: true, css: false },
+  { marker: "portal-v2-global-search-form", markup: true, css: true },
+  { marker: "portal-v2-settings-preference-grid", markup: true, css: true },
+  { marker: "portal-recharge-dialog", markup: true, css: true }
 ];
 
 const FORBIDDEN_COMMERCE_LAYOUT_MARKERS = [
@@ -132,10 +134,10 @@ export async function verifyPortalBuildDirectory(buildDir) {
       `portal forbidden commerce marker found: ${forbiddenCommerceMarker}`
     );
   }
-  for (const marker of REQUIRED_COMMERCE_LAYOUT_MARKERS) {
+  for (const { marker, markup, css } of REQUIRED_COMMERCE_LAYOUT_MARKERS) {
     const missingAssetClasses = [
-      !commerceMarkupContent.includes(marker) && "HTML/JavaScript",
-      !commerceCssContent.includes(marker) && "CSS"
+      markup && !commerceMarkupContent.includes(marker) && "HTML/JavaScript",
+      css && !commerceCssContent.includes(marker) && "CSS"
     ].filter(Boolean);
     if (missingAssetClasses.length > 0) {
       throw new Error(`portal commerce layout marker missing: ${marker} (${missingAssetClasses.join(", ")})`);

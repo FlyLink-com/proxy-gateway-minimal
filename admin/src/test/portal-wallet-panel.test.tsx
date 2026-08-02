@@ -24,6 +24,7 @@ import type {
   PortalWalletSummary
 } from "../features/user-portal/wallet";
 import { PortalWalletClientError } from "../features/user-portal/wallet";
+import type { PortalRechargeModel } from "../features/user-portal/recharge";
 
 const ACTIVE_SUMMARY: PortalWalletSummary = {
   status: "active",
@@ -511,6 +512,54 @@ describe("PortalWalletPanel", () => {
     expect(screen.queryByRole("list", {
       name: "Coins recharge denominations"
     })).not.toBeInTheDocument();
+  });
+
+  test.each([
+    {
+      locale: "en" as const,
+      heading: "Wallet overview",
+      description: "Choose a recharge denomination. Purchased Coins are credited automatically after payment confirmation.",
+      button: "Recharge Coins",
+    },
+    {
+      locale: "zh" as const,
+      heading: "钱包总览",
+      description: "选择充值档位；支付确认后，已购 Coins 将自动入账。",
+      button: "充值 Coins",
+    },
+  ])("keeps $locale recharge entry internal and provider-neutral", ({
+    locale,
+    heading,
+    description,
+    button,
+  }) => {
+    const openDialog = vi.fn();
+    const rechargeModel: PortalRechargeModel = {
+      available: true,
+      dialogOpen: false,
+      offers: [],
+      activeOrder: null,
+      busy: false,
+      error: null,
+      openDialog,
+      closeDialog: vi.fn(),
+      createOrder: vi.fn(async () => undefined),
+      captureOrder: vi.fn(async () => undefined),
+      refreshOrder: vi.fn(async () => undefined),
+    };
+    render(createElement(PortalWalletPanel, {
+      locale,
+      model: walletModel(),
+      rechargeModel,
+    }));
+
+    const wallet = screen.getByRole("region", { name: heading });
+    expect(within(wallet).getByText(description)).toBeInTheDocument();
+    expect(wallet).not.toHaveTextContent(
+      /PayPal|Sandbox|USD|adapter|支付宝|Alipay|微信支付|WeChat/i,
+    );
+    fireEvent.click(within(wallet).getByRole("button", { name: button }));
+    expect(openDialog).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -19,6 +19,10 @@ import {
   type PortalRechargeClient,
   type PortalRechargeOrder
 } from "../recharge";
+import {
+  formatPortalRechargeAmount,
+  portalRechargePaymentMethodLabel
+} from "../recharge/portal-recharge-presentation";
 import { portalCoinTypeLabel } from "../portal-commerce-presentation";
 import type { PortalPaymentOrder } from "../user-portal-client";
 import { useDesktopScrollRegion } from "../use-desktop-scroll-region";
@@ -252,7 +256,7 @@ function productLabel(item: PortalOrderCenterItem, locale: PortalOrdersPanelProp
 
 function amountLabel(item: PortalOrderCenterItem) {
   if (item.kind === "coins_consumption") return `${item.source.amountUnits} Coins`;
-  if (item.kind === "coin_recharge") return `USD ${(item.source.amountMinor / 100).toFixed(2)}`;
+  if (item.kind === "coin_recharge") return formatPortalRechargeAmount(item.source);
   if (item.kind === "legacy_payment") return paymentAmount(item.source);
   return "—";
 }
@@ -308,7 +312,7 @@ function itemStatusLabel(
   if (item.kind === "coin_recharge") {
     const labels: Record<PortalRechargeOrder["status"], [string, string]> = {
       created: ["正在创建", "Creating"],
-      entry_ready: ["待 PayPal 付款", "Awaiting PayPal payment"],
+      entry_ready: ["待付款", "Awaiting payment"],
       pending: ["确认中", "Confirming"],
       payment_verified: ["正在入账", "Crediting Wallet"],
       credited: ["已到账", "Credited"],
@@ -768,7 +772,7 @@ export function PortalOrdersPanel({
         <div className="portal-order-detail-grid">
           <div><span>{copy(locale, "到账", "Credit")}</span><strong>{order.expectedPaidCoinUnits} paid Coins</strong></div>
           <div><span>{copy(locale, "支付金额", "Payment amount")}</span><strong>{amountLabel(item)}</strong></div>
-          <div><span>{copy(locale, "支付方式", "Payment method")}</span><strong>PayPal Sandbox</strong></div>
+          <div><span>{copy(locale, "支付方式", "Payment method")}</span><strong>{portalRechargePaymentMethodLabel(order.paymentMethod, locale)}</strong></div>
           <div><span>{copy(locale, "状态", "Status")}</span><strong>{itemStatusLabel(item, locale)}</strong></div>
         </div>
       );

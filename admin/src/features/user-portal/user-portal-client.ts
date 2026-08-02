@@ -14,7 +14,8 @@ import {
 } from "./wallet";
 import {
   createPortalRechargeClient,
-  type PortalRechargeClient
+  type PortalRechargeClient,
+  type PortalRechargeTrustedActionOriginsByAdapter
 } from "./recharge";
 
 export const PORTAL_REGISTRATION_SESSION_STORAGE_KEY = "gccwebos-portal-registration-session";
@@ -492,6 +493,7 @@ export type HttpUserPortalClientOptions = {
   baseUrl?: string;
   fetchFn?: typeof fetch;
   now?: () => Date;
+  rechargeTrustedActionOriginsByAdapter?: PortalRechargeTrustedActionOriginsByAdapter;
 };
 
 async function createQrDataUri(otpauthUri: string) {
@@ -1862,7 +1864,11 @@ export function createHttpUserPortalClient(
   return {
     commerce: createPortalCoinCommerceClient({ fetchFn }),
     wallet: createPortalWalletClient({ fetchFn }),
-    recharge: createPortalRechargeClient({ baseUrl, fetchFn }),
+    recharge: createPortalRechargeClient({
+      baseUrl,
+      fetchFn,
+      trustedActionOriginsByAdapter: options.rechargeTrustedActionOriginsByAdapter,
+    }),
     async issueHumanChallenge(input = {}) {
       const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/human-challenges"), {
         method: "POST",

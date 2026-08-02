@@ -5,6 +5,7 @@ export type {
   PortalRechargeOffer,
   PortalRechargeOrder,
   PortalRechargeOrderStatus,
+  PortalRechargeTrustedActionOriginsByAdapter,
 } from "./portal-recharge-client";
 export { PortalRechargeDialog } from "./portal-recharge-dialog";
 export {

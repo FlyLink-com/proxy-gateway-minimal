@@ -753,6 +753,14 @@ function openPortalProfile() {
   fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
 }
 
+function openPortalSettings() {
+  fireEvent.click(screen.getByRole("button", { name: "设置" }));
+}
+
+function openPortalWallet() {
+  fireEvent.click(screen.getByRole("button", { name: "Coins 钱包" }));
+}
+
 function openPortalOrders() {
   fireEvent.click(screen.getByRole("button", { name: "订单" }));
 }
@@ -892,6 +900,8 @@ describe("user portal route", () => {
       name: "先选择适合你的套餐"
     })).not.toBeNull();
     openPortalDashboard();
+    expect(screen.queryByRole("group", { name: "显示偏好" })).toBeNull();
+    openPortalSettings();
     expect(screen.getByRole("group", { name: "显示偏好" })).not.toBeNull();
     expect(document.querySelector(".portal-v2-shell")?.getAttribute("data-portal-theme")).toBe("dark");
 
@@ -906,6 +916,7 @@ describe("user portal route", () => {
     await enterPortal();
 
     openPortalDashboard();
+    openPortalSettings();
     fireEvent.click(screen.getByRole("button", { name: "EN" }));
 
     openPortalStartGuide();
@@ -2314,23 +2325,23 @@ describe("user portal product surface", () => {
       "用量",
       "商城",
       "订单",
+      "Coins 钱包",
       "推荐奖励",
       "个人中心",
+      "设置",
       "支持"
     ]);
     expect(within(portalNav).getByRole("button", { name: "商城" })).not.toBeNull();
+    expect(within(portalNav).getByRole("button", { name: "Coins 钱包" })).not.toBeNull();
     expect(within(portalNav).getByRole("button", { name: "推荐奖励" })).not.toBeNull();
     expect(within(portalNav).queryByRole("button", { name: "钱包" })).toBeNull();
-    expect(within(portalNav).queryByRole("button", { name: "Coins 钱包" })).toBeNull();
+    expect(within(portalNav).getByRole("button", { name: "设置" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Coins 支付" })).toBeNull();
 
     const topbar = document.querySelector(".portal-use-topbar");
     expect(topbar).not.toBeNull();
-    const walletButtons = within(topbar as HTMLElement).getAllByRole("button", { name: "打开 Coins 钱包，余额暂不可用" });
-    expect(walletButtons).toHaveLength(1);
-    const walletButton = walletButtons[0];
-    expect(walletButton.closest(".portal-v2-utility-actions")).not.toBeNull();
-    expect(walletButton.closest(".portal-v2-primary-actions")).toBeNull();
+    expect(within(topbar as HTMLElement).queryByRole("button", { name: /Coins 钱包/ })).toBeNull();
+    expect(within(topbar as HTMLElement).queryByRole("group", { name: "显示偏好" })).toBeNull();
 
     fireEvent.click(within(portalNav).getByRole("button", { name: "商城" }));
     expect(await screen.findByRole("region", { name: "商城目录" })).not.toBeNull();
@@ -2421,25 +2432,17 @@ describe("user portal product surface", () => {
     });
     expect(wallet.listLedger).not.toHaveBeenCalled();
     expect(within(navigation).queryByRole("button", { name: "钱包" })).toBeNull();
-    expect(within(navigation).queryByRole("button", { name: "Coins 钱包" })).toBeNull();
+    const walletButton = within(navigation).getByRole("button", { name: "Coins 钱包" });
     const topbar = document.querySelector(".portal-use-topbar");
     expect(topbar).not.toBeNull();
-    expect(within(topbar as HTMLElement).getByText("Coins · --")).toBeInTheDocument();
-    expect(within(topbar as HTMLElement).getByRole("button", {
-      name: "打开 Coins 钱包，余额加载中"
-    })).toBeInTheDocument();
+    expect(within(topbar as HTMLElement).queryByText("Coins · --")).toBeNull();
+    expect(within(navigation).getByText("Coins · --")).toBeInTheDocument();
 
     await act(async () => {
       summary.resolve(portalWalletSummary(155));
       await summary.promise;
     });
-    const walletButton = within(topbar as HTMLElement).getByRole("button", {
-      name: "打开 Coins 钱包，可用余额 155 Coins"
-    });
-    expect(walletButton).toHaveTextContent("Coins · 155");
-    expect(within(topbar as HTMLElement).getAllByRole("button", {
-      name: "打开 Coins 钱包，可用余额 155 Coins"
-    })).toHaveLength(1);
+    expect(await within(navigation).findByText("Coins · 155")).toBeInTheDocument();
 
     fireEvent.click(walletButton);
     await waitFor(() => {
@@ -2476,10 +2479,8 @@ describe("user portal product surface", () => {
       portalClient: portalClient({ wallet: confirmedZero })
     }));
 
-    const zeroButton = await screen.findByRole("button", {
-      name: "打开 Coins 钱包，可用余额 0 Coins"
-    });
-    expect(zeroButton).toHaveTextContent("Coins · 0");
+    const zeroBalance = await screen.findByText("Coins · 0");
+    expect(zeroBalance.closest("button")).toHaveAttribute("aria-label", "Coins 钱包");
 
     cleanup();
     const failed: PortalWalletClient = {
@@ -2496,10 +2497,9 @@ describe("user portal product surface", () => {
       portalClient: portalClient({ wallet: failed })
     }));
 
-    const failedButton = await screen.findByRole("button", {
-      name: "打开 Coins 钱包，余额暂不可用"
-    });
-    expect(failedButton).toHaveTextContent("Coins · --");
+    await waitFor(() => expect(failed.getSummary).toHaveBeenCalled());
+    const failedBalance = screen.getByText("Coins · --");
+    expect(failedBalance.closest("button")).toHaveAttribute("aria-label", "Coins 钱包");
     expect(screen.queryByText("Coins · 0")).not.toBeInTheDocument();
 
     cleanup();
@@ -2517,10 +2517,9 @@ describe("user portal product surface", () => {
       portalClient: portalClient({ wallet: rejected })
     }));
 
-    const rejectedButton = await screen.findByRole("button", {
-      name: "打开 Coins 钱包，余额加载失败"
-    });
-    expect(rejectedButton).toHaveTextContent("Coins · --");
+    await waitFor(() => expect(rejected.getSummary).toHaveBeenCalled());
+    const rejectedBalance = screen.getByText("Coins · --");
+    expect(rejectedBalance.closest("button")).toHaveAttribute("aria-label", "Coins 钱包");
   });
 
   test("Wallet hydrate generation ignores a late older session completion", async () => {
@@ -2798,8 +2797,10 @@ describe("user portal product surface", () => {
       "用量",
       "商城",
       "订单",
+      "Coins 钱包",
       "推荐奖励",
       "个人中心",
+      "设置",
       "支持"
     ]);
 
@@ -2817,7 +2818,7 @@ describe("user portal product surface", () => {
     expect(screen.getByRole("table", { name: "订单列表" })).not.toBeNull();
   });
 
-  test("marks only the current commerce destination and removes the fake global search", async () => {
+  test("keeps the Header focused on search and moves Wallet and preferences into navigation", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
     const navigation = await enterPortal();
@@ -2832,28 +2833,50 @@ describe("user portal product surface", () => {
 
     const topbar = document.querySelector(".portal-use-topbar");
     expect(topbar).not.toBeNull();
-    expect((topbar as HTMLElement).querySelector(".portal-v2-global-search"))
+    const globalSearch = within(topbar as HTMLElement).getByRole("searchbox", {
+      name: "全局搜索"
+    });
+    expect(globalSearch).toHaveAttribute("placeholder", "搜索订单、套餐或状态");
+    expect((topbar as HTMLElement).querySelector(".portal-v2-page-title > span"))
       .toBeNull();
-    const walletEntry = within(topbar as HTMLElement).getByRole("button", {
-      name: "打开 Coins 钱包，余额暂不可用"
+    expect((topbar as HTMLElement).querySelector(".portal-v2-page-title > p"))
+      .toBeNull();
+    fireEvent.change(globalSearch, { target: { value: "待付款" } });
+    fireEvent.submit(globalSearch.closest("form") as HTMLFormElement);
+    expect(within(topbar as HTMLElement).getByRole("heading", {
+      level: 1,
+      name: "订单"
+    })).toBeInTheDocument();
+    expect(within(topbar as HTMLElement).queryByRole("button", {
+      name: /Coins 钱包/
+    })).toBeNull();
+    expect(within(topbar as HTMLElement).queryByRole("group", {
+      name: "显示偏好"
+    })).toBeNull();
+    expect((topbar as HTMLElement).querySelector(".portal-status-indicator"))
+      .toBeNull();
+    const walletEntry = within(navigation).getByRole("button", {
+      name: "Coins 钱包"
     });
     fireEvent.click(walletEntry);
     expect(walletEntry).toHaveAttribute("aria-current", "page");
-    expect(navigation.querySelectorAll('[aria-current="page"]')).toHaveLength(0);
+    expect(navigation.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "EN" }));
-    expect(within(topbar as HTMLElement).getByRole("button", {
-      name: "Open Coins wallet, balance is temporarily unavailable"
-    })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(within(navigation).getByRole("button", { name: "设置" }));
+    const preferences = screen.getByRole("group", { name: "显示偏好" });
+    fireEvent.click(within(preferences).getByRole("button", { name: "EN" }));
+    expect(within(screen.getByRole("navigation", {
+      name: "User center navigation"
+    })).getByRole("button", { name: "Coins wallet" })).toBeInTheDocument();
   });
 
   test("keeps the Wallet focused on balances and activity without recharge controls", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
-    await enterPortal();
+    const navigation = await enterPortal();
     const topbar = document.querySelector(".portal-use-topbar");
     expect(topbar).not.toBeNull();
-    fireEvent.click(within(topbar as HTMLElement).getByRole("button", { name: "打开 Coins 钱包，余额暂不可用" }));
+    fireEvent.click(within(navigation).getByRole("button", { name: "Coins 钱包" }));
 
     expect(await screen.findAllByRole("heading", { level: 2, name: "钱包总览" })).toHaveLength(1);
     const walletSection = document.querySelector(".portal-commerce-layout--wallet");
@@ -2871,14 +2894,12 @@ describe("user portal product surface", () => {
       name: "Coins 充值档位"
     })).toBeNull();
 
+    openPortalSettings();
     fireEvent.click(screen.getByRole("button", { name: "EN" }));
 
-    const englishTopbar = document.querySelector(".portal-use-topbar");
-    expect(englishTopbar).not.toBeNull();
-    expect(within(englishTopbar as HTMLElement).getByText("Coins · --")).not.toBeNull();
-    expect(within(screen.getByRole("navigation", { name: "User center navigation" })).queryByRole("button", { name: "Wallet" })).toBeNull();
-    expect(within(screen.getByRole("navigation", { name: "User center navigation" })).queryByRole("button", { name: "Coins wallet" })).toBeNull();
-    fireEvent.click(within(englishTopbar as HTMLElement).getByRole("button", { name: "Open Coins wallet, balance is temporarily unavailable" }));
+    const englishNavigation = screen.getByRole("navigation", { name: "User center navigation" });
+    expect(within(englishNavigation).queryByRole("button", { name: "Wallet" })).toBeNull();
+    fireEvent.click(within(englishNavigation).getByRole("button", { name: "Coins wallet" }));
     expect(await screen.findAllByRole("heading", { level: 2, name: "Wallet overview" })).toHaveLength(1);
     const englishWalletSection = document.querySelector(".portal-commerce-layout--wallet");
     expect(englishWalletSection).not.toBeNull();

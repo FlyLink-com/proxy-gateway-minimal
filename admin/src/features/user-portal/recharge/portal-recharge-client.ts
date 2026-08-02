@@ -3,8 +3,16 @@ export type PortalRechargeOffer = {
   quoteVersion: number;
   paidCoinUnits: number;
   amountMinor: number;
-  currency: "USD";
-  currencyExponent: 2;
+  currency: string;
+  currencyExponent: number;
+};
+
+export type PortalRechargePaymentMethod = "alipay" | "wechat_pay" | "paypal";
+
+export type PortalRechargeNextAction = {
+  type: "redirect";
+  url: string;
+  expiresAt: string;
 };
 
 export type PortalRechargeOrderStatus =
@@ -23,17 +31,13 @@ export type PortalRechargeOrder = {
   quoteVersion: number;
   expectedPaidCoinUnits: number;
   amountMinor: number;
-  currency: "USD";
-  currencyExponent: 2;
-  adapterKey: "paypal_v1";
-  paymentMethod: "paypal";
+  currency: string;
+  currencyExponent: number;
+  adapterKey: string;
+  paymentMethod: PortalRechargePaymentMethod;
   status: PortalRechargeOrderStatus;
   providerOrderRef: string | null;
-  nextAction: {
-    type: "redirect";
-    url: string;
-    expiresAt: string;
-  } | null;
+  nextAction: PortalRechargeNextAction | null;
   walletOperationRef: string | null;
   walletLotRef: string | null;
   expiresAt: string;
@@ -80,6 +84,10 @@ export class PortalRechargeClientError extends Error {
 }
 
 const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const CURRENCY = /^[A-Z]{3}$/u;
+const PAYMENT_METHODS = new Set<PortalRechargePaymentMethod>([
+  "alipay", "wechat_pay", "paypal",
+]);
 const STATUSES = new Set<PortalRechargeOrderStatus>([
   "created", "entry_ready", "pending", "payment_verified", "credited",
   "failed_no_charge", "reconciliation_required", "expired",
@@ -122,6 +130,23 @@ function positiveInteger(value: unknown) {
   return value as number;
 }
 
+function currencyCode(value: unknown) {
+  if (typeof value !== "string" || !CURRENCY.test(value)) return invalidProjection();
+  return value;
+}
+
+function currencyExponent(value: unknown) {
+  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > 9) {
+    return invalidProjection();
+  }
+  return value as number;
+}
+
+function paymentMethod(value: unknown): PortalRechargePaymentMethod {
+  if (!PAYMENT_METHODS.has(value as PortalRechargePaymentMethod)) return invalidProjection();
+  return value as PortalRechargePaymentMethod;
+}
+
 function nullableReference(value: unknown) {
   return value === null ? null : reference(value);
 }
@@ -139,54 +164,127 @@ function offerProjection(value: unknown): PortalRechargeOffer {
   const offer = exactObject(value, [
     "offerRef", "quoteVersion", "paidCoinUnits", "amountMinor", "currency", "currencyExponent",
   ]);
-  if (offer.currency !== "USD" || offer.currencyExponent !== 2) return invalidProjection();
   return {
     offerRef: reference(offer.offerRef),
     quoteVersion: positiveInteger(offer.quoteVersion),
     paidCoinUnits: positiveInteger(offer.paidCoinUnits),
     amountMinor: positiveInteger(offer.amountMinor),
-    currency: "USD",
-    currencyExponent: 2,
+    currency: currencyCode(offer.currency),
+    currencyExponent: currencyExponent(offer.currencyExponent),
   };
 }
 
-function nextActionProjection(value: unknown): PortalRechargeOrder["nextAction"] {
-  if (value === null) return null;
-  const action = exactObject(value, ["type", "url", "expiresAt"]);
-  if (action.type !== "redirect" || typeof action.url !== "string") return invalidProjection();
-  let url: URL;
-  try { url = new URL(action.url); } catch { return invalidProjection(); }
-  if (url.origin !== "https://www.sandbox.paypal.com") return invalidProjection();
-  return { type: "redirect", url: url.toString(), expiresAt: timestamp(action.expiresAt) };
+export type PortalRechargeTrustedActionOriginsByAdapter = Readonly<
+  Record<string, readonly string[]>
+>;
+
+const DEFAULT_TRUSTED_ACTION_ORIGINS_BY_ADAPTER: PortalRechargeTrustedActionOriginsByAdapter =
+  Object.freeze({
+    paypal_v1: Object.freeze(["https://www.sandbox.paypal.com"]),
+  });
+
+function isUnsafeActionHost(hostname: string) {
+  const normalized = hostname.toLowerCase();
+  return normalized === "localhost"
+    || normalized.endsWith(".localhost")
+    || normalized.endsWith(".")
+    || /^\d{1,3}(?:\.\d{1,3}){3}$/u.test(normalized)
+    || (normalized.startsWith("[") && normalized.endsWith("]"));
 }
 
-function orderProjection(value: unknown): PortalRechargeOrder {
+function trustedActionOrigins(
+  configured: PortalRechargeTrustedActionOriginsByAdapter | undefined,
+) {
+  if (
+    configured
+    && Object.keys(configured).some((adapterKey) => (
+      Object.hasOwn(DEFAULT_TRUSTED_ACTION_ORIGINS_BY_ADAPTER, adapterKey)
+    ))
+  ) return invalidProjection();
+  const merged: Record<string, readonly string[]> = {
+    ...DEFAULT_TRUSTED_ACTION_ORIGINS_BY_ADAPTER,
+    ...(configured ?? {}),
+  };
+  const result = new Map<string, ReadonlySet<string>>();
+  for (const [adapterKey, values] of Object.entries(merged)) {
+    reference(adapterKey);
+    if (!Array.isArray(values)) return invalidProjection();
+    const origins = new Set<string>();
+    for (const value of values) {
+      if (typeof value !== "string" || /[^\x20-\x7e]/u.test(value)) {
+        return invalidProjection();
+      }
+      let url: URL;
+      try { url = new URL(value); } catch { return invalidProjection(); }
+      if (
+        url.protocol !== "https:"
+        || url.origin !== value
+        || url.username !== ""
+        || url.password !== ""
+        || isUnsafeActionHost(url.hostname)
+      ) return invalidProjection();
+      origins.add(url.origin);
+    }
+    if (origins.size !== values.length) return invalidProjection();
+    result.set(adapterKey, origins);
+  }
+  return result;
+}
+
+function nextActionProjection(
+  value: unknown,
+  adapterKey: string,
+  trustedOrigins: ReadonlyMap<string, ReadonlySet<string>>,
+): PortalRechargeOrder["nextAction"] {
+  if (value === null) return null;
+  const action = exactObject(value, ["type", "url", "expiresAt"]);
+  if (
+    action.type !== "redirect"
+    || typeof action.url !== "string"
+    || /[^\x20-\x7e]/u.test(action.url)
+  ) return invalidProjection();
+  let url: URL;
+  try { url = new URL(action.url); } catch { return invalidProjection(); }
+  if (
+    url.protocol !== "https:"
+    || url.username !== ""
+    || url.password !== ""
+    || url.hash !== ""
+    || isUnsafeActionHost(url.hostname)
+    || !trustedOrigins.get(adapterKey)?.has(url.origin)
+  ) return invalidProjection();
+  return {
+    type: "redirect",
+    url: action.url,
+    expiresAt: timestamp(action.expiresAt),
+  };
+}
+
+function orderProjection(
+  value: unknown,
+  trustedOrigins: ReadonlyMap<string, ReadonlySet<string>>,
+): PortalRechargeOrder {
   const order = exactObject(value, [
     "orderRef", "offerRef", "quoteVersion", "expectedPaidCoinUnits", "amountMinor",
     "currency", "currencyExponent", "adapterKey", "paymentMethod", "status",
     "providerOrderRef", "nextAction", "walletOperationRef", "walletLotRef",
     "expiresAt", "createdAt", "updatedAt",
   ]);
-  if (
-    order.currency !== "USD"
-    || order.currencyExponent !== 2
-    || order.adapterKey !== "paypal_v1"
-    || order.paymentMethod !== "paypal"
-    || !STATUSES.has(order.status as PortalRechargeOrderStatus)
-  ) return invalidProjection();
+  if (!STATUSES.has(order.status as PortalRechargeOrderStatus)) return invalidProjection();
+  const adapterKey = reference(order.adapterKey);
   return {
     orderRef: reference(order.orderRef),
     offerRef: reference(order.offerRef),
     quoteVersion: positiveInteger(order.quoteVersion),
     expectedPaidCoinUnits: positiveInteger(order.expectedPaidCoinUnits),
     amountMinor: positiveInteger(order.amountMinor),
-    currency: "USD",
-    currencyExponent: 2,
-    adapterKey: "paypal_v1",
-    paymentMethod: "paypal",
+    currency: currencyCode(order.currency),
+    currencyExponent: currencyExponent(order.currencyExponent),
+    adapterKey,
+    paymentMethod: paymentMethod(order.paymentMethod),
     status: order.status as PortalRechargeOrderStatus,
     providerOrderRef: nullableReference(order.providerOrderRef),
-    nextAction: nextActionProjection(order.nextAction),
+    nextAction: nextActionProjection(order.nextAction, adapterKey, trustedOrigins),
     walletOperationRef: nullableReference(order.walletOperationRef),
     walletLotRef: nullableReference(order.walletLotRef),
     expiresAt: timestamp(order.expiresAt),
@@ -235,10 +333,13 @@ function headers(sessionRef: string, json = false): Record<string, string> {
 export function createPortalRechargeClient({
   baseUrl = "",
   fetchFn = fetch,
+  trustedActionOriginsByAdapter,
 }: {
   baseUrl?: string;
   fetchFn?: typeof fetch;
+  trustedActionOriginsByAdapter?: PortalRechargeTrustedActionOriginsByAdapter;
 } = {}): PortalRechargeClient {
+  const trustedOrigins = trustedActionOrigins(trustedActionOriginsByAdapter);
   return Object.freeze({
     listOffers({ sessionRef }) {
       return request(
@@ -259,7 +360,10 @@ export function createPortalRechargeClient({
           body: JSON.stringify({ offerRef: reference(offerRef), idempotencyKey: reference(idempotencyKey) }),
         },
         201,
-        (body) => orderProjection(exactObject(exactObject(body, ["recharge"]).recharge, ["order"]).order),
+        (body) => orderProjection(
+          exactObject(exactObject(body, ["recharge"]).recharge, ["order"]).order,
+          trustedOrigins,
+        ),
       );
     },
     listOrders({ sessionRef }) {
@@ -268,7 +372,8 @@ export function createPortalRechargeClient({
         endpoint(baseUrl, "/api/portal/coins/recharge/orders"),
         { method: "GET", headers: headers(sessionRef) },
         200,
-        (body) => exactArray(exactObject(body, ["recharges"]).recharges).map(orderProjection),
+        (body) => exactArray(exactObject(body, ["recharges"]).recharges)
+          .map((order) => orderProjection(order, trustedOrigins)),
       );
     },
     getOrder({ sessionRef, orderRef }) {
@@ -279,7 +384,10 @@ export function createPortalRechargeClient({
         { method: "GET", headers: headers(sessionRef) },
         200,
         (body) => {
-          const order = orderProjection(exactObject(exactObject(body, ["recharge"]).recharge, ["order"]).order);
+          const order = orderProjection(
+            exactObject(exactObject(body, ["recharge"]).recharge, ["order"]).order,
+            trustedOrigins,
+          );
           return order.orderRef === expectedRef ? order : invalidProjection();
         },
       );
@@ -296,7 +404,10 @@ export function createPortalRechargeClient({
         },
         200,
         (body) => {
-          const order = orderProjection(exactObject(exactObject(body, ["recharge"]).recharge, ["order"]).order);
+          const order = orderProjection(
+            exactObject(exactObject(body, ["recharge"]).recharge, ["order"]).order,
+            trustedOrigins,
+          );
           return order.orderRef === expectedRef ? order : invalidProjection();
         },
       );

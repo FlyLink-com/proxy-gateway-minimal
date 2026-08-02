@@ -22,12 +22,15 @@ async function writePortalFixture(directory, {
   runtimeMarkers = PORTAL_RUNTIME_MARKERS,
   javascriptCommerceMarkers = [
     "portal-commerce-layout",
-    "portal-coins-wallet-entry",
+    "portal-wallet-nav-balance",
+    "portal-v2-global-search-form",
+    "portal-v2-settings-preference-grid",
     "portal-recharge-dialog"
   ],
   stylesheetCommerceMarkers = [
     "portal-commerce-layout",
-    "portal-coins-wallet-entry",
+    "portal-v2-global-search-form",
+    "portal-v2-settings-preference-grid",
     "portal-recharge-dialog"
   ]
 } = {}) {
@@ -152,11 +155,16 @@ test("portal static build verifier rejects commerce markers missing from CSS", a
   }
 });
 
-test("portal static build verifier rejects a missing wallet entry from JavaScript", async () => {
+test("portal static build verifier rejects a missing Wallet navigation integration from JavaScript", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
   try {
     await writePortalFixture(tempDir, {
-      javascriptCommerceMarkers: ["portal-commerce-layout"]
+      javascriptCommerceMarkers: [
+        "portal-commerce-layout",
+        "portal-v2-global-search-form",
+        "portal-v2-settings-preference-grid",
+        "portal-recharge-dialog"
+      ]
     });
 
     await assert.rejects(
@@ -164,7 +172,7 @@ test("portal static build verifier rejects a missing wallet entry from JavaScrip
       (error) => {
         assert.match(
           error.message,
-          /portal commerce layout marker missing: portal-coins-wallet-entry/
+          /portal commerce layout marker missing: portal-wallet-nav-balance/
         );
         assert.match(error.message, /HTML\/JavaScript/);
         return true;

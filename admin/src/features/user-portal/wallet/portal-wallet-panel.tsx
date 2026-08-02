@@ -357,8 +357,8 @@ export function PortalWalletPanel({
             </h3>
             <p>
               {zh
-                ? "通过 PayPal Sandbox 购买 paid Coins；测试价格以 USD 显示。"
-                : "Purchase paid Coins through PayPal Sandbox with USD test pricing."}
+                ? "选择充值档位；支付确认后，已购 Coins 将自动入账。"
+                : "Choose a recharge denomination. Purchased Coins are credited automatically after payment confirmation."}
             </p>
           </div>
           <button

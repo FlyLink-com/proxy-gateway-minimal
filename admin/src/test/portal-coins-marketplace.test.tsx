@@ -973,7 +973,14 @@ describe("Portal server-backed Marketplace", () => {
   test("keeps bilingual capability parity and the unknown Wallet balance boundary", async () => {
     await openMarketplace(portalClientWithCommerce(commerceClient()));
     expect(await screen.findByText("Coins · --")).toBeInTheDocument();
+    const navigation = screen.getByRole("navigation", {
+      name: "用户中心导航"
+    });
+    fireEvent.click(within(navigation).getByRole("button", { name: "设置" }));
     fireEvent.click(screen.getByRole("button", { name: "EN" }));
+    fireEvent.click(within(screen.getByRole("navigation", {
+      name: "User center navigation"
+    })).getByRole("button", { name: "Marketplace" }));
 
     expect(await screen.findByRole("heading", { name: "Plans" }))
       .toBeInTheDocument();
@@ -1401,8 +1408,9 @@ describe("Portal server-backed Marketplace", () => {
     expect(lightThemeRule).toMatch(
       /--portal-commerce-focus-accent\s*:\s*#0969da\s*;/
     );
+    expect(css).not.toContain("portal-coins-wallet-entry");
     expect(css).toMatch(
-      /\.portal-v2-shell button\.portal-coins-wallet-entry:focus-visible,\s*\.portal-v2-shell \.portal-commerce-layout button:focus-visible\s*\{\s*outline: 3px solid var\(--portal-commerce-focus-accent\);\s*outline-offset: 2px;\s*box-shadow: none;\s*\}/
+      /\.portal-v2-shell \.portal-commerce-layout button:focus-visible\s*\{\s*outline: 3px solid var\(--portal-commerce-focus-accent\);\s*outline-offset: 2px;\s*box-shadow: none;\s*\}/
     );
     expect(css).not.toContain(
       "box-shadow: 0 0 0 3px rgba(32, 213, 232, 0.2)"
