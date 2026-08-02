@@ -29,6 +29,9 @@ const ORDER_FIELDS = Object.freeze([
   "createdAt",
   "updatedAt",
 ]);
+const OFFER_V1_FIELDS = Object.freeze([
+  "offerRef", "quoteVersion", "paidCoinUnits", "amountMinor", "currency", "currencyExponent",
+]);
 
 function sendError(res, status, code, retryable = false) {
   res.status(status).json({ error: { code, retryable } });
@@ -62,12 +65,27 @@ function safeReference(value) {
   return value;
 }
 
-function projectOffer(value) {
+function projectOffer(value, version) {
   const result = {};
-  for (const field of [
-    "offerRef", "quoteVersion", "paidCoinUnits", "amountMinor", "currency", "currencyExponent", "paymentMethods",
-  ]) result[field] = value[field];
+  for (const field of OFFER_V1_FIELDS) result[field] = value[field];
+  if (version === 2) result.paymentMethods = value.paymentMethods;
   return result;
+}
+
+function offerProjectionVersion(req) {
+  if (!Array.isArray(req.rawHeaders) || req.rawHeaders.length % 2 !== 0) throw new Error();
+  let value = null;
+  for (let index = 0; index < req.rawHeaders.length; index += 2) {
+    const name = req.rawHeaders[index];
+    const candidate = req.rawHeaders[index + 1];
+    if (typeof name !== "string" || typeof candidate !== "string") throw new Error();
+    if (name.toLowerCase() !== "x-portal-recharge-offers-version") continue;
+    if (value !== null) throw new Error();
+    value = candidate;
+  }
+  if (value === null) return 1;
+  if (value === "2") return 2;
+  throw new Error();
 }
 
 function projectOrder(value) {
@@ -166,7 +184,10 @@ export function createPortalCoinRechargeRouter({ coordinator, auth, nowFn = () =
   const jsonBody = json({ limit: "32kb", strict: true, type: "application/json" });
 
   router.get("/api/portal/coins/recharge/offers", withoutQuery, requireSession, asyncHandler(
-    async (_req, res) => res.json({ offers: coordinator.listOffers().map(projectOffer) }),
+    async (req, res) => {
+      const version = offerProjectionVersion(req);
+      res.json({ offers: coordinator.listOffers().map((offer) => projectOffer(offer, version)) });
+    },
   ));
   router.post("/api/portal/coins/recharge/orders", withoutQuery, requireSession, jsonBody, asyncHandler(
     async (req, res) => {

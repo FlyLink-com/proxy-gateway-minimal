@@ -233,6 +233,48 @@ test("createOrder snapshots the server offer and replays one account idempotency
   }
 });
 
+test("a BASE v1 Sandbox order replays on HEAD without changing the quote meaning", () => {
+  const database = createDatabase();
+  const store = createStore(database);
+  try {
+    database.prepare(`
+      insert into platform_payment_orders (
+        payment_order_ref, account_id, offer_ref, create_idempotency_key,
+        create_request_digest, quote_version, expected_paid_coin_units,
+        amount_minor, currency, currency_exponent, quote_digest, adapter_key,
+        payment_method, merchant_binding_ref, status, latest_receipt_ref,
+        wallet_operation_ref, wallet_lot_ref, provider_order_ref, expires_at,
+        created_at, updated_at
+      ) values (
+        'payment_order_base_1', 'account_1', 'coins_30', 'portal_create_base_1',
+        'c7be188447bb2f41d79e1cd2f17e67b93f0d95f82a8eacfb73329c24555b5e98',
+        1, 30, 100, 'USD', 2,
+        '2f6b309c8236ff8bb7dcc0cba500bede41314242eade75b6b5cb139818d1ff4f',
+        'paypal_v1', 'paypal', 'paypal_sandbox_primary', 'created', null,
+        null, null, null, '${EXPIRES_AT}', '${NOW}', '${NOW}'
+      )
+    `).run();
+    const offer = createCatalog().getOffer("coins_30");
+    assert.equal(
+      offer.quoteDigest,
+      "2f6b309c8236ff8bb7dcc0cba500bede41314242eade75b6b5cb139818d1ff4f",
+    );
+    const replay = store.createOrder({
+      accountId: "account_1",
+      offer,
+      idempotencyKey: "portal_create_base_1",
+      adapterKey: "paypal_v1",
+      paymentMethod: "paypal",
+      merchantBindingRef: "paypal_sandbox_primary",
+    });
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.order.orderRef, "payment_order_base_1");
+  } finally {
+    store.close();
+    database.close();
+  }
+});
+
 test("create receipt durably restores the allowlisted provider entry action", () => {
   const database = createDatabase();
   const store = createStore(database);

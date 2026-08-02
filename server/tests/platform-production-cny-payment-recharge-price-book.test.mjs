@@ -44,7 +44,7 @@ test("production CNY price book returns a fresh deeply frozen six-offer source a
   }
 });
 
-test("production CNY catalog accepts only canonical non-empty payment methods and includes them in quotes", () => {
+test("production CNY catalog validates payment methods without redefining an existing quote version", () => {
   const catalog = productionCatalog();
   const offer = catalog.getOffer("coins_10");
   assert.deepEqual(offer.paymentMethods, ["alipay", "wechat_pay"]);
@@ -70,7 +70,7 @@ test("production CNY catalog accepts only canonical non-empty payment methods an
     paymentMethods: ["alipay"],
     extra: true,
   }]), /invalid_payment_recharge_catalog/u);
-  assert.notEqual(
+  assert.equal(
     catalog.getOffer("coins_10").quoteDigest,
     productionCatalog([{
       ...createProductionCnyPaymentRechargeOffers()[0],

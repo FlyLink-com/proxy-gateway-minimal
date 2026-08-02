@@ -391,7 +391,7 @@ In the client tests, accept only exact `paymentMethods`, reject `xsd_v1`, `chaoj
 Run:
 
 ```powershell
-npm run admin:test -- --run admin/src/test/portal-recharge.test.tsx admin/src/test/user-portal.test.tsx
+npm --prefix admin test -- src/test/portal-recharge.test.tsx src/test/user-portal.test.tsx
 ```
 
 Expected: the client rejects the new field or the current list presentation does not satisfy the six-card assertions.
@@ -412,7 +412,7 @@ Run:
 
 ```powershell
 node --test server/tests/platform-production-cny-payment-recharge-price-book.test.mjs server/tests/platform-payment-store.test.mjs server/tests/platform-payment-recharge-coordinator.test.mjs server/tests/portal-coin-recharge-routes.test.mjs server/tests/state.test.mjs
-npm run admin:test -- --run admin/src/test/portal-recharge.test.tsx admin/src/test/user-portal.test.tsx
+npm --prefix admin test -- src/test/portal-recharge.test.tsx src/test/user-portal.test.tsx
 ```
 
 Expected: PASS while the default-off route tests still return 404 with zero coordinator calls.

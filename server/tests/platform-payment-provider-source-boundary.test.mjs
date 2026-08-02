@@ -71,6 +71,25 @@ async function listRootProductionSourceFiles() {
     .sort();
 }
 
+function isDocumentationOrTestPath(path) {
+  return path.endsWith(".md")
+    || /(?:^|\/)tests?(?:\/|$)/u.test(path)
+    || /(?:^|\/)__tests__(?:\/|$)/u.test(path)
+    || /\.(?:test|spec)\.[^/]+$/u.test(path);
+}
+
+async function listDocumentedCandidateBoundaryPaths() {
+  const paths = [
+    ...await listRootProductionSourceFiles(),
+    ...await listFiles("server"),
+    ...await listFiles("bin"),
+    ...await listFiles("scripts"),
+    ...await listFiles("agent"),
+    ...await listFiles("ops"),
+  ].filter((path) => !isDocumentationOrTestPath(path));
+  return [...new Set(paths)].sort();
+}
+
 async function assertCorpusDoesNotMatch(paths, pattern, message, read = readSource) {
   for (const path of paths) {
     const source = await read(path);
@@ -95,6 +114,38 @@ test("complete production source corpus detects a candidate reached through an i
       return true;
     },
   );
+});
+
+test("documented-candidate corpus includes every executable and publishable source root", async () => {
+  const paths = await listDocumentedCandidateBoundaryPaths();
+  for (const prefix of ["bin/", "scripts/", "agent/", "ops/"]) {
+    assert.equal(
+      paths.some((path) => path.startsWith(prefix)),
+      true,
+      `documented_candidate_boundary_missing_root:${prefix}`,
+    );
+  }
+  assert.equal(paths.some((path) => path.endsWith("README.md")), false);
+  assert.equal(paths.some((path) => /(?:^|\/)tests?(?:\/|$)/u.test(path)), false);
+});
+
+test("documented-candidate corpus rejects an indirect import from every added root", async () => {
+  for (const root of ["bin", "scripts", "agent", "ops"]) {
+    const sources = new Map([
+      [`${root}/entry.mjs`, 'import "./intermediate.mjs";'],
+      [`${root}/intermediate.mjs`,
+        'import "../server/services/platform/xsd-documented-payment-candidate.mjs";'],
+    ]);
+    await assert.rejects(
+      () => assertCorpusDoesNotMatch(
+        [...sources.keys()],
+        /(?:xsd|chaojipay)-documented-payment-candidate\.mjs/u,
+        `documented_payment_candidate_${root}_import_detected`,
+        async (path) => sources.get(path),
+      ),
+      new RegExp(`documented_payment_candidate_${root}_import_detected`, "u"),
+    );
+  }
 });
 
 test("source scanner extracts multiline imports side-effect imports and export-from declarations", () => {
@@ -470,10 +521,7 @@ test("source scanner validates roots before reads deduplicates roots and redacts
     );
   }
 
-  const runtimeBoundaryPaths = [
-    ...await listRootProductionSourceFiles(),
-    ...(await listFiles("server")).filter((path) => !path.startsWith("server/tests/")),
-  ].sort();
+  const runtimeBoundaryPaths = await listDocumentedCandidateBoundaryPaths();
   assert.equal(runtimeBoundaryPaths.includes("index.mjs"), true);
   await assertCorpusDoesNotMatch(
     runtimeBoundaryPaths,

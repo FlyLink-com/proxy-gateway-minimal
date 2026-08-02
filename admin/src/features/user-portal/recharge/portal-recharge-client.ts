@@ -174,9 +174,15 @@ function timestamp(value: unknown) {
 }
 
 function offerProjection(value: unknown): PortalRechargeOffer {
-  const offer = exactObject(value, [
-    "offerRef", "quoteVersion", "paidCoinUnits", "amountMinor", "currency", "currencyExponent", "paymentMethods",
-  ]);
+  const baseFields = [
+    "offerRef", "quoteVersion", "paidCoinUnits", "amountMinor", "currency", "currencyExponent",
+  ];
+  const keys = value && typeof value === "object" && !Array.isArray(value)
+    ? Reflect.ownKeys(value)
+    : [];
+  const isV1 = keys.length === baseFields.length
+    && keys.every((key) => typeof key === "string" && baseFields.includes(key));
+  const offer = exactObject(value, isV1 ? baseFields : [...baseFields, "paymentMethods"]);
   return {
     offerRef: reference(offer.offerRef),
     quoteVersion: positiveInteger(offer.quoteVersion),
@@ -184,7 +190,7 @@ function offerProjection(value: unknown): PortalRechargeOffer {
     amountMinor: positiveInteger(offer.amountMinor),
     currency: currencyCode(offer.currency),
     currencyExponent: currencyExponent(offer.currencyExponent),
-    paymentMethods: paymentMethods(offer.paymentMethods),
+    paymentMethods: isV1 ? Object.freeze([]) : paymentMethods(offer.paymentMethods),
   };
 }
 
@@ -359,7 +365,13 @@ export function createPortalRechargeClient({
       return request(
         fetchFn,
         endpoint(baseUrl, "/api/portal/coins/recharge/offers"),
-        { method: "GET", headers: headers(sessionRef) },
+        {
+          method: "GET",
+          headers: {
+            ...headers(sessionRef),
+            "X-Portal-Recharge-Offers-Version": "2",
+          },
+        },
         200,
         (body) => exactArray(exactObject(body, ["offers"]).offers).map(offerProjection),
       );

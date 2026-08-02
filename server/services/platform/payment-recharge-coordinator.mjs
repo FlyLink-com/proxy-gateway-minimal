@@ -8,7 +8,7 @@ import {
 
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PROVIDER_CAPTURE_ORDER_STATUSES = new Set([
-  "entry_ready", "pending", "payment_verified",
+  "entry_ready", "pending",
 ]);
 
 function coordinatorError(code) {
@@ -65,7 +65,9 @@ function canonicalDigest(value) {
 
 function settlementIdentity(context, receipt) {
   const settlementHash = canonicalDigest({
-    paymentOrderRef: context.orderRef,
+    adapterKey: context.adapterKey,
+    merchantScopeDigest: receipt.merchantScopeDigest,
+    providerCaptureRef: receipt.providerCaptureRef,
   });
   return Object.freeze({
     settlementRef: `payment_settlement_${settlementHash}`,
@@ -101,8 +103,8 @@ export function createPaymentRechargeCoordinator(options = {}) {
   for (const method of [
     "createOrder", "recordOperationReceipt", "acceptVerifiedPayment",
     "markOrderCredited", "markOrderReconciliationRequired",
-    "getOrderForAccount", "getOrderForVerifiedCallback",
-    "getSettlementContext", "listOrdersForAccount",
+    "getOrderForAccount", "getOrderForCapture", "getOrderForVerifiedCallback",
+    "getVerifiedPaymentForOrder", "getSettlementContext", "listOrdersForAccount",
   ]) assertMethod(store, method);
   for (const method of ["creditCoins"]) assertMethod(walletStore, method);
   for (const method of ["getOffer", "listOffers"]) assertMethod(offerCatalog, method);
@@ -181,6 +183,12 @@ export function createPaymentRechargeCoordinator(options = {}) {
       receiptRef: accepted.receipt.receiptRef,
     });
     const identity = settlementIdentity(context, context.receipt);
+    if (
+      context.priorVerifiedReceipt !== null
+      && !sameSettlement(identity, settlementIdentity(context, context.priorVerifiedReceipt))
+    ) {
+      requireSettlementReconciliation(context);
+    }
     const hasWalletOperation = context.walletOperationRef !== null;
     const hasWalletLot = context.walletLotRef !== null;
     if (hasWalletOperation !== hasWalletLot) fail("payment_reconciliation_required");
@@ -309,6 +317,9 @@ export function createPaymentRechargeCoordinator(options = {}) {
     if (order.status === "failed_no_charge" || order.status === "reconciliation_required") {
       fail("payment_reconciliation_required");
     }
+    if (order.status === "payment_verified") {
+      return settle(store.getVerifiedPaymentForOrder({ orderRef }));
+    }
     if (!PROVIDER_CAPTURE_ORDER_STATUSES.has(order.status)) {
       fail("payment_recharge_order_not_ready");
     }
@@ -353,7 +364,13 @@ export function createPaymentRechargeCoordinator(options = {}) {
     const accountId = safeRef(request.accountId);
     const orderRef = safeRef(request.orderRef);
     safeRef(request.idempotencyKey);
-    const order = store.getOrderForAccount({ accountId, orderRef });
+    const order = store.getOrderForCapture({
+      accountId,
+      orderRef,
+      adapterKey,
+      paymentMethod,
+      merchantBindingRef,
+    });
     if (order === null) fail("payment_recharge_order_not_found");
     return captureKnownOrder(order);
   }

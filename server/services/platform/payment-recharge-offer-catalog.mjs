@@ -98,7 +98,15 @@ function normalizeOffer(value, environment) {
     environment,
   };
   const quoteDigest = createHash("sha256")
-    .update(JSON.stringify(canonical), "utf8")
+    .update(JSON.stringify({
+      offerRef: canonical.offerRef,
+      quoteVersion: canonical.quoteVersion,
+      paidCoinUnits: canonical.paidCoinUnits,
+      amountMinor: canonical.amountMinor,
+      currency: canonical.currency,
+      currencyExponent: canonical.currencyExponent,
+      environment: canonical.environment,
+    }), "utf8")
     .digest("hex");
   const offer = Object.freeze({ ...canonical, quoteDigest });
   BRANDED_OFFERS.add(offer);

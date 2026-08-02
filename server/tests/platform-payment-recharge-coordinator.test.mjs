@@ -52,7 +52,9 @@ function createDatabase() {
     );
     insert into platform_accounts (
       id, owner_ref, status, created_at, updated_at, metadata_json
-    ) values ('account_1', 'owner_account_1', 'active', '${NOW}', '${NOW}', '{}');
+    ) values
+      ('account_1', 'owner_account_1', 'active', '${NOW}', '${NOW}', '{}'),
+      ('account_2', 'owner_account_2', 'active', '${NOW}', '${NOW}', '{}');
   `);
   applyCoinWalletMigrations({
     database,
@@ -118,14 +120,18 @@ function createAdapter({
   callbackFactOverrides = {},
   callbackFactOverridesSequence = [],
   callbackDisposition = "settle",
+  capturePaymentFact = "default",
+  adapterKey = "paypal_v1",
+  paymentMethod = "paypal",
+  merchantBindingRef = "paypal_sandbox_primary",
   captureInputs = [],
   acknowledgementCalls = [],
 } = {}) {
   let callbackFactCallCount = 0;
   return Object.freeze({
-    adapterKey: "paypal_v1",
-    paymentMethod: "paypal",
-    merchantBindingRef: "paypal_sandbox_primary",
+    adapterKey,
+    paymentMethod,
+    merchantBindingRef,
     async createRechargeOrder() {
       return {
         providerOrderRef: "paypal_order_1",
@@ -149,16 +155,20 @@ function createAdapter({
           captureOutcome: {
             operationResult: {
               providerOrderRef: "paypal_order_1",
-              status: "succeeded",
-              chargeCertainty: "confirmed_charged",
+              status: capturePaymentFact === null ? "pending" : "succeeded",
+              chargeCertainty: capturePaymentFact === null
+                ? "possibly_charged"
+                : "confirmed_charged",
               nextAction: null,
               occurredAt: NOW,
             },
-            paymentFact: paymentFact({
-              sourceType: "authenticated_capture_response",
-              eventDedupeKey: "capture_event_1",
-              payloadDigest: CAPTURE_PAYLOAD_DIGEST,
-            }),
+            paymentFact: capturePaymentFact === null
+              ? null
+              : paymentFact({
+                  sourceType: "authenticated_capture_response",
+                  eventDedupeKey: "capture_event_1",
+                  payloadDigest: CAPTURE_PAYLOAD_DIGEST,
+                }),
           },
         };
       });
@@ -192,6 +202,7 @@ function createSystem({
   callbackFactOverrides = {},
   callbackFactOverridesSequence = [],
   callbackDisposition = "settle",
+  capturePaymentFact = "default",
   failCreditOnce = false,
   failMarkOnce = false,
   offerEnabled = true,
@@ -259,6 +270,7 @@ function createSystem({
       callbackFactOverrides,
       callbackFactOverridesSequence,
       callbackDisposition,
+      capturePaymentFact,
       captureInputs,
       acknowledgementCalls,
     }),
@@ -273,6 +285,23 @@ function createSystem({
     walletStore,
     acknowledgementCalls: () => acknowledgementCalls.length,
     walletCreditCalls: () => walletCreditCalls,
+    createCoordinator(adapterOptions = {}) {
+      const alternateCaptureInputs = [];
+      return {
+        coordinator: createPaymentRechargeCoordinator({
+          store: paymentStore,
+          walletStore: injectedWalletStore,
+          offerCatalog,
+          adapter: createAdapter({
+            ...adapterOptions,
+            captureInputs: alternateCaptureInputs,
+          }),
+          nowFn: () => new Date(currentNow),
+          refFactory: refFactory("alternate_coordinator"),
+        }),
+        captureInputs: alternateCaptureInputs,
+      };
+    },
     setNow(value) {
       currentNow = value;
     },
@@ -290,6 +319,43 @@ async function createRechargeOrder(coordinator) {
     offerRef: "coins_30",
     idempotencyKey: "portal_create_1",
   });
+}
+
+function seedLegacyVerifiedWalletCredit(system, orderRef) {
+  const accepted = system.paymentStore.acceptVerifiedPayment({
+    orderRef,
+    attemptRef: "attempt_legacy_callback_1",
+    providerRequestRef: "provider_legacy_callback_1",
+    receiptType: "callback",
+    adapterKey: "paypal_v1",
+    paymentMethod: "paypal",
+    merchantBindingRef: "paypal_sandbox_primary",
+    paymentFact: paymentFact({
+      sourceType: "callback",
+      eventDedupeKey: "legacy_callback_event_1",
+      payloadDigest: CALLBACK_PAYLOAD_DIGEST,
+    }),
+  });
+  const wallet = system.walletStore.creditCoins({
+    accountId: "account_1",
+    coinType: "paid_coins",
+    amountUnits: 30,
+    availability: "available",
+    sourceType: "verified_payment_capture",
+    sourceRef: "payment_settlement_d71fa888d1f6195cfa6ca987c160846a92d655de88106039a7ce4c008e48db0e",
+    sourceDigest: "c5d1f52353e09d438bc5384ef6df2570f9388b3c22674bb1a8c7d1cada7aaa78",
+    policyRef: null,
+    policyVersion: null,
+    expiresAt: null,
+    operation: {
+      actorScope: "payment:paypal_v1",
+      actorType: "payment_provider",
+      actorRef: "paypal_v1",
+      idempotencyKey: "payment_settlement_d71fa888d1f6195cfa6ca987c160846a92d655de88106039a7ce4c008e48db0e",
+    },
+  });
+  assert.equal(accepted.order.status, "payment_verified");
+  assert.equal(wallet.replayed, false);
 }
 
 const CALLBACK_INPUT = Object.freeze({
@@ -318,6 +384,69 @@ test("duplicate capture and callback converge to one paid_coins lot", async () =
       30,
     );
     assert.equal(callback.wallet, null);
+  } finally {
+    system.close();
+  }
+});
+
+test("Wallet settlement preserves the canonical merchant-scoped capture identity", async () => {
+  const system = createSystem();
+  try {
+    const created = await createRechargeOrder(system.coordinator);
+    await system.coordinator.captureRechargeOrder({
+      accountId: "account_1",
+      orderRef: created.order.orderRef,
+      idempotencyKey: "capture_canonical_identity_1",
+    });
+    const lot = system.database.prepare(`
+      select source_ref from platform_coin_lots
+       where source_type = 'verified_payment_capture'
+    `).get();
+    assert.equal(
+      lot.source_ref,
+      "payment_settlement_d71fa888d1f6195cfa6ca987c160846a92d655de88106039a7ce4c008e48db0e",
+    );
+  } finally {
+    system.close();
+  }
+});
+
+test("one merchant-scoped provider capture cannot credit two payment orders", async () => {
+  const system = createSystem({
+    callbackFactOverridesSequence: [
+      {},
+      {
+        paymentOrderRef: "payment_payment_order_2",
+        providerEventRef: "paypal_event_2",
+        eventDedupeKey: "callback_event_2",
+      },
+    ],
+  });
+  try {
+    await createRechargeOrder(system.coordinator);
+    await system.coordinator.acceptProviderCallback(CALLBACK_INPUT);
+    const second = await system.coordinator.createRechargeOrder({
+      accountId: "account_2",
+      offerRef: "coins_30",
+      idempotencyKey: "portal_create_2",
+    });
+    await assert.rejects(
+      () => system.coordinator.acceptProviderCallback({
+        ...CALLBACK_INPUT,
+        callbackRequestRef: "callback_request_2",
+      }),
+      /payment_reconciliation_required/u,
+    );
+    assert.equal(system.walletStore.getWalletProjection({
+      accountId: "account_1",
+    }).totals.paid_coins, 30);
+    assert.equal(system.walletStore.getWalletProjection({
+      accountId: "account_2",
+    }).totals.paid_coins, 0);
+    assert.equal(system.coordinator.getRechargeOrder({
+      accountId: "account_2",
+      orderRef: second.order.orderRef,
+    }).status, "reconciliation_required");
   } finally {
     system.close();
   }
@@ -373,6 +502,52 @@ test("verified approval callback captures the order server-side and credits Coin
     );
     const wallet = system.walletStore.getWalletByAccountId("account_1");
     assert.equal(system.walletStore.listLots({ walletRef: wallet.walletRef }).length, 1);
+  } finally {
+    system.close();
+  }
+});
+
+test("payment_verified direct capture resumes the durable legacy settlement without provider recapture", async () => {
+  const system = createSystem();
+  try {
+    const created = await createRechargeOrder(system.coordinator);
+    seedLegacyVerifiedWalletCredit(system, created.order.orderRef);
+    const recovered = await system.coordinator.captureRechargeOrder({
+      accountId: "account_1",
+      orderRef: created.order.orderRef,
+      idempotencyKey: "capture_verified_recovery_1",
+    });
+    assert.equal(recovered.order.status, "credited");
+    assert.equal(recovered.wallet.replayed, true);
+    assert.equal(system.captureInputs.length, 0);
+    assert.equal(system.walletStore.getWalletProjection({
+      accountId: "account_1",
+    }).totals.paid_coins, 30);
+    const wallet = system.walletStore.getWalletByAccountId("account_1");
+    assert.equal(system.walletStore.listLots({ walletRef: wallet.walletRef }).length, 1);
+  } finally {
+    system.close();
+  }
+});
+
+test("payment_verified pending callback resumes the durable receipt without provider recapture", async () => {
+  const system = createSystem({
+    callbackFactOverrides: {
+      eventType: "payment_pending",
+      providerCaptureRef: null,
+    },
+  });
+  try {
+    const created = await createRechargeOrder(system.coordinator);
+    seedLegacyVerifiedWalletCredit(system, created.order.orderRef);
+    const recovered = await system.coordinator.acceptProviderCallback(CALLBACK_INPUT);
+    assert.equal(recovered.order.status, "credited");
+    assert.equal(recovered.wallet.replayed, true);
+    assert.equal(recovered.acknowledgement.statusCode, 204);
+    assert.equal(system.captureInputs.length, 0);
+    assert.equal(system.walletStore.getWalletProjection({
+      accountId: "account_1",
+    }).totals.paid_coins, 30);
   } finally {
     system.close();
   }
@@ -706,6 +881,40 @@ test("direct capture rejects terminal payment states before provider capture", a
         /payment_reconciliation_required/u,
       );
       assert.equal(system.captureInputs.length, 0);
+    } finally {
+      system.close();
+    }
+  }
+});
+
+test("direct capture validates every durable payment binding before a pending provider side effect", async () => {
+  for (const [field, value] of [
+    ["adapterKey", "paypal_v2"],
+    ["paymentMethod", "wechat_pay"],
+    ["merchantBindingRef", "paypal_sandbox_other"],
+  ]) {
+    const system = createSystem();
+    try {
+      const created = await createRechargeOrder(system.coordinator);
+      const mismatched = system.createCoordinator({
+        capturePaymentFact: null,
+        [field]: value,
+      });
+      const receiptCountBefore = system.database.prepare(`
+        select count(*) as count from platform_payment_receipts
+      `).get().count;
+      await assert.rejects(
+        () => mismatched.coordinator.captureRechargeOrder({
+          accountId: "account_1",
+          orderRef: created.order.orderRef,
+          idempotencyKey: `capture_binding_mismatch_${field}`,
+        }),
+        /payment_fact_mismatch/u,
+      );
+      assert.equal(mismatched.captureInputs.length, 0);
+      assert.equal(system.database.prepare(`
+        select count(*) as count from platform_payment_receipts
+      `).get().count, receiptCountBefore);
     } finally {
       system.close();
     }

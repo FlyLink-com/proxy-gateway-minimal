@@ -791,6 +791,14 @@ export function createSqlitePaymentStore(options = {}) {
        where receipt_ref = ? and payment_order_ref = ? and verification_result = 'verified'
     `).get(request.receiptRef, request.orderRef));
     if (!receipt) fail("payment_receipt_not_found");
+    const priorVerifiedReceipt = mapReceipt(db.prepare(`
+      select * from platform_payment_receipts
+       where payment_order_ref = ?
+         and receipt_ref <> ?
+         and verification_result = 'verified'
+       order by accepted_at desc, receipt_ref desc
+       limit 1
+    `).get(request.orderRef, request.receiptRef));
     let creditedReceipt = null;
     if (order.status === "credited") {
       creditedReceipt = mapReceipt(db.prepare(`
@@ -818,6 +826,7 @@ export function createSqlitePaymentStore(options = {}) {
         "payment_store_corrupt",
       ),
       receipt,
+      priorVerifiedReceipt,
       creditedReceipt,
     });
   }
@@ -829,6 +838,45 @@ export function createSqlitePaymentStore(options = {}) {
       where o.account_id = ? and o.payment_order_ref = ?
     `).get(safeRef(request.accountId), safeRef(request.orderRef));
     return mapOrder(row);
+  }
+
+  function getOrderForCapture(input) {
+    assertOpen();
+    const request = snapshotExact(input, [
+      "accountId", "orderRef", "adapterKey", "paymentMethod", "merchantBindingRef",
+    ]);
+    const accountId = safeRef(request.accountId);
+    const orderRef = safeRef(request.orderRef);
+    const adapterKey = safeRef(request.adapterKey);
+    const paymentMethod = safeRef(request.paymentMethod);
+    const merchantBindingRef = safeRef(request.merchantBindingRef);
+    const row = db.prepare(`${ORDER_SELECT}
+      where o.account_id = ? and o.payment_order_ref = ?
+    `).get(accountId, orderRef);
+    if (!row) return null;
+    if (
+      row.adapter_key !== adapterKey
+      || row.payment_method !== paymentMethod
+      || row.merchant_binding_ref !== merchantBindingRef
+    ) {
+      fail("payment_fact_mismatch");
+    }
+    return mapOrder(row);
+  }
+
+  function getVerifiedPaymentForOrder(input) {
+    assertOpen();
+    const request = snapshotExact(input, ["orderRef"]);
+    const orderRef = safeRef(request.orderRef);
+    const row = findOrder(orderRef);
+    if (!row) fail("payment_order_not_found");
+    if (row.status !== "payment_verified") fail("payment_order_state_conflict");
+    const receipt = mapReceipt(db.prepare(`
+      select * from platform_payment_receipts
+       where receipt_ref = ? and payment_order_ref = ? and verification_result = 'verified'
+    `).get(row.latest_receipt_ref, orderRef));
+    if (!receipt) fail("payment_store_corrupt");
+    return Object.freeze({ order: mapOrder(row), receipt, replayed: true });
   }
 
   function getOrderForVerifiedCallback(input) {
@@ -893,7 +941,9 @@ export function createSqlitePaymentStore(options = {}) {
     close,
     createOrder,
     getOrderForAccount,
+    getOrderForCapture,
     getOrderForVerifiedCallback,
+    getVerifiedPaymentForOrder,
     getSettlementContext,
     listOrdersForAccount,
     markOrderCredited,

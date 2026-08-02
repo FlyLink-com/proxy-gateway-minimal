@@ -173,6 +173,34 @@ describe("Portal recharge client", () => {
     })).resolves.toEqual([cnyOffer]);
   });
 
+  test("requests v2 offers while strictly projecting a BASE v1 service response", async () => {
+    const baseOffer = {
+      offerRef: OFFER.offerRef,
+      quoteVersion: OFFER.quoteVersion,
+      paidCoinUnits: OFFER.paidCoinUnits,
+      amountMinor: OFFER.amountMinor,
+      currency: OFFER.currency,
+      currencyExponent: OFFER.currencyExponent,
+    };
+    const fetchFn = vi.fn(async () => new Response(
+      JSON.stringify({ offers: [baseOffer] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    const client = createPortalRechargeClient({ fetchFn });
+
+    await expect(client.listOffers({
+      sessionRef: "session_recharge_1",
+    })).resolves.toEqual([{ ...baseOffer, paymentMethods: [] }]);
+    expect(fetchFn).toHaveBeenCalledWith(
+      "/api/portal/coins/recharge/offers",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-Portal-Recharge-Offers-Version": "2",
+        }),
+      }),
+    );
+  });
+
   test("accepts only exact canonical payment method projections for recharge offers", async () => {
     const offer = {
       ...OFFER,
@@ -189,7 +217,6 @@ describe("Portal recharge client", () => {
     })).resolves.toEqual([offer]);
 
     for (const paymentMethods of [
-      undefined,
       [],
       ["alipay", "alipay"],
       ["wechat_pay", "alipay"],
@@ -203,6 +230,13 @@ describe("Portal recharge client", () => {
         sessionRef: "session_recharge_1",
       })).rejects.toMatchObject({ code: "payment_recharge_request_failed" });
     }
+
+    const arbitraryFieldFetch = vi.fn(async () => new Response(JSON.stringify({
+      offers: [{ ...offer, providerIdentity: "browser_supplied" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    await expect(createPortalRechargeClient({ fetchFn: arbitraryFieldFetch }).listOffers({
+      sessionRef: "session_recharge_1",
+    })).rejects.toMatchObject({ code: "payment_recharge_request_failed" });
   });
 
   test("keeps historical orders readable when an unknown adapter has no payment handoff", async () => {

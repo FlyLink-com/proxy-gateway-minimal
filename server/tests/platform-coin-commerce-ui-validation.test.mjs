@@ -610,7 +610,10 @@ test("fixed UI profile uses real password auth, five offers, and reversible 20-C
 
     const rechargeOffers = await localHttp(handle.baseUrl, {
       path: "/api/portal/coins/recharge/offers",
-      headers: sessionHeaders
+      headers: {
+        ...sessionHeaders,
+        "X-Portal-Recharge-Offers-Version": "2"
+      }
     });
     assert.equal(rechargeOffers.status, 200);
     assert.deepEqual(rechargeOffers.json.offers, [{
