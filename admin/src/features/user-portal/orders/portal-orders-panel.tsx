@@ -58,7 +58,7 @@ export type PortalOrdersPanelProps = {
 const FILTERS: Array<{ id: PortalOrdersFilter; zh: string; en: string }> = [
   { id: "all", zh: "全部", en: "All" },
   { id: "coins_consumption", zh: "商城消费", en: "Marketplace purchases" },
-  { id: "coin_recharge", zh: "Coins 充值", en: "Coins recharges" },
+  { id: "coin_recharge", zh: "充值订单", en: "Coins recharges" },
   { id: "plans_services", zh: "套餐与服务", en: "Plans and services" }
 ];
 
@@ -217,7 +217,7 @@ function itemTypeLabel(
   locale: PortalOrdersPanelProps["locale"]
 ) {
   if (item.kind === "coins_consumption") return copy(locale, "商城消费", "Marketplace purchase");
-  if (item.kind === "coin_recharge") return copy(locale, "Coins 充值", "Coins recharge");
+  if (item.kind === "coin_recharge") return copy(locale, "Coins 充值订单", "Coins recharge");
   if (item.kind === "legacy_payment") return copy(locale, "套餐付款", "Plan payment");
   return copy(locale, "服务记录", "Service record");
 }
@@ -707,6 +707,12 @@ export function PortalOrdersPanel({
     || statusFilter !== "all"
     || orderSearch.trim().length > 0;
   const useContextualEmptyState = desktopScrollRegion && showEmptyState;
+  const isLoadingOrders = (showsCoins && visibleListState.phase === "loading")
+    || (showsRecharge && rechargeLoading);
+  const showLoadingRow = isLoadingOrders && visibleItems.length === 0;
+  const loadingLabel = showsCoins
+    ? copy(locale, "正在加载商城订单…", "Loading Marketplace orders…")
+    : copy(locale, "正在加载 Coins 充值订单…", "Loading Coins recharge orders…");
   const clearFilters = () => {
     setFilter("all");
     setStatusFilter("all");
@@ -816,6 +822,17 @@ export function PortalOrdersPanel({
           </button>
         ))}
       </div>
+      <p
+        className="portal-orders-scope-note"
+        role="note"
+        aria-label={copy(locale, "订单与钱包职责说明", "Order and Wallet responsibilities")}
+      >
+        {copy(
+          locale,
+          "订单中心记录订单生命周期；充值订单记录 Coins 入账状态；钱包账变记录已到账或已消费的余额变化。",
+          "Orders track order lifecycles; recharge orders track Coins crediting; Wallet activity records credited or spent balance changes."
+        )}
+      </p>
 
       <div className="portal-order-toolbar">
         <label className="portal-order-search-control">
@@ -896,8 +913,10 @@ export function PortalOrdersPanel({
         aria-label={desktopScrollRegion && !showEmptyState
           ? copy(locale, "可滚动订单表格", "Scrollable orders table")
           : undefined}
+        aria-busy={isLoadingOrders ? "true" : undefined}
         className="portal-order-table-wrap"
         data-empty={useContextualEmptyState ? "true" : undefined}
+        data-loading={isLoadingOrders ? "true" : undefined}
         role={desktopScrollRegion && !showEmptyState ? "region" : undefined}
         tabIndex={desktopScrollRegion && !showEmptyState ? 0 : undefined}
       >
@@ -914,7 +933,13 @@ export function PortalOrdersPanel({
             </tr>
           </thead>
           <tbody>
-            {showEmptyState ? (
+            {showLoadingRow ? (
+              <tr>
+                <td colSpan={7} className="portal-order-loading-state">
+                  <span>{loadingLabel}</span>
+                </td>
+              </tr>
+            ) : showEmptyState ? (
               <tr>
                 <td colSpan={7} className="portal-order-empty-state">
                   {desktopScrollRegion ? (

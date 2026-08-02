@@ -482,7 +482,8 @@ describe("Portal commerce desktop style contract", () => {
     [
       ".portal-v2-shell .portal-marketplace-state .portal-notice__indicator--loading",
       ".portal-v2-shell .portal-marketplace-flow-state .portal-notice__indicator--loading",
-      ".portal-coins-dialog-theme .portal-coins-status-spinner"
+      ".portal-coins-dialog-theme .portal-coins-status-spinner",
+      ".portal-v2-shell .modal-backdrop .portal-recharge-status-card__spinner"
     ].forEach((selector) => {
       expect(mediaDeclaration(
         commerceStyles,
@@ -595,51 +596,64 @@ describe("Portal commerce desktop style contract", () => {
     )).toBe("3px solid var(--portal-orders-focus)");
   });
 
-  test("lays out all six Wallet balances without an orphaned desktop card", () => {
+  test("composes the Wallet overview as four primary cards with secondary status and a rules aside", () => {
+    expect(desktopDeclaration(
+      commerceStyles,
+      ".portal-v2-shell .portal-wallet-overview-content",
+      "grid-template-columns"
+    )).toBe("minmax(0, 1fr) minmax(268px, 0.38fr)");
     expect(desktopDeclaration(
       commerceStyles,
       ".portal-v2-shell .portal-wallet-balance-grid",
       "grid-template-columns"
-    )).toBe("repeat(12, minmax(0, 1fr))");
+    )).toBe("repeat(4, minmax(0, 1fr))");
     expect(desktopDeclaration(
       commerceStyles,
-      ".portal-v2-shell .portal-wallet-balance-grid__spendable",
-      "grid-column"
-    )).toBe("span 6");
-
-    [
-      ".portal-v2-shell .portal-wallet-balance-grid > div:nth-child(2)",
-      ".portal-v2-shell .portal-wallet-balance-grid > div:nth-child(3)"
-    ].forEach((selector) => {
-      expect(desktopDeclaration(commerceStyles, selector, "grid-column"))
-        .toBe("span 3");
-    });
-
-    [
-      ".portal-v2-shell .portal-wallet-balance-grid > div:nth-child(4)",
-      ".portal-v2-shell .portal-wallet-balance-grid > div:nth-child(5)",
-      ".portal-v2-shell .portal-wallet-balance-grid > div:nth-child(6)"
-    ].forEach((selector) => {
-      expect(desktopDeclaration(commerceStyles, selector, "grid-column"))
-        .toBe("span 4");
-    });
+      ".portal-v2-shell .portal-wallet-status-grid",
+      "grid-template-columns"
+    )).toBe("repeat(2, minmax(0, 1fr))");
+    expect(desktopDeclaration(
+      commerceStyles,
+      ".portal-v2-shell .portal-wallet-header",
+      "align-items"
+    )).toBe("center");
   });
 
-  test("preserves readable desktop density for Wallet and Orders data tables", () => {
+  test("keeps recent activity compact and scopes recharge colors to the actual Portal modal descendant", () => {
     expect(desktopDeclaration(
       commerceStyles,
-      ".portal-v2-shell .portal-wallet-ledger",
+      ".portal-v2-shell .portal-wallet-ledger--all",
       "min-width"
     )).toBe("1120px");
     expect(desktopDeclaration(
       commerceStyles,
-      ".portal-v2-shell .portal-wallet-ledger tbody tr",
+      ".portal-v2-shell .portal-wallet-ledger--overview",
+      "min-width"
+    )).toBe("0");
+    expect(desktopDeclaration(
+      commerceStyles,
+      ".portal-v2-shell .portal-wallet-ledger--all tbody tr",
       "height"
     )).toBe("48px");
     expect(desktopDeclaration(
       commerceStyles,
+      ".portal-v2-shell .modal-backdrop .portal-recharge-dialog",
+      "--portal-wallet-text"
+    )).toBe("#f0f6fc");
+    expect(desktopDeclaration(
+      commerceStyles,
+      ".portal-v2-shell[data-portal-theme=\"light\"] .modal-backdrop .portal-recharge-dialog",
+      "--portal-wallet-text"
+    )).toBe("#1f2937");
+    expect(desktopDeclaration(
+      commerceStyles,
+      ".portal-v2-shell .modal-backdrop .portal-recharge-offers strong",
+      "color"
+    )).toBe("var(--portal-wallet-text)");
+    expect(desktopDeclaration(
+      commerceStyles,
       ".portal-v2-shell .portal-orders-panel .portal-order-table",
       "min-width"
-    )).toBe("1120px");
+    )).toBe("100%");
   });
 });

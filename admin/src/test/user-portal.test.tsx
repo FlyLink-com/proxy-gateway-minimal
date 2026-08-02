@@ -2173,16 +2173,21 @@ describe("user portal product surface", () => {
 
     fireEvent.click(within(portalNav).getByRole("button", { name: "概览" }));
     expect(screen.getByRole("heading", { name: "账户概览" })).not.toBeNull();
+    expect(screen.getByRole("region", { name: "账户资源状态" })).toHaveAttribute(
+      "data-state",
+      "empty"
+    );
+    expect(screen.getByRole("button", { name: "前往商城" })).not.toBeNull();
     expect(screen.getByText("订单活动")).not.toBeNull();
     expect(screen.getByText("服务状态")).not.toBeNull();
-    expect(screen.getAllByText("当前套餐").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("账户资源").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("共享月流量").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("剩余流量")).not.toBeNull();
     expect(screen.queryByText("订阅流量")).toBeNull();
     expect(screen.queryByText("流量仪表盘")).toBeNull();
     expect(screen.queryByText("安全清单")).toBeNull();
     expect(screen.queryByText("不限量")).toBeNull();
-    expect(screen.getByText("开通后显示流量额度")).not.toBeNull();
+    expect(screen.getByText("资源开通后显示当前额度")).not.toBeNull();
   });
 
   test("routes Dashboard order activity to the unified Orders center", async () => {
@@ -2233,16 +2238,17 @@ describe("user portal product surface", () => {
     const portalNav = await enterPortal();
     fireEvent.click(within(portalNav).getByRole("button", { name: "概览" }));
 
-    expect(screen.getByText("尚未开通")).not.toBeNull();
-    expect(screen.getByText("开通后显示流量额度")).not.toBeNull();
-    expect(screen.getByText("先前往商城选择套餐")).not.toBeNull();
+    expect(screen.getByRole("region", { name: "账户资源状态" }))
+      .toHaveAttribute("data-state", "empty");
+    expect(screen.getByRole("heading", { name: "账户尚未开通服务" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "前往商城" })).not.toBeNull();
     expect(screen.queryByText("不限量")).toBeNull();
     expect(screen.queryByText("共享流量使用率")).toBeNull();
     const remainingTrafficCard = screen.getByText("剩余流量").closest("article");
     expect(remainingTrafficCard).not.toBeNull();
-    expect(within(remainingTrafficCard as HTMLElement).getByText("未开通")).not.toBeNull();
+    expect(within(remainingTrafficCard as HTMLElement).getByText("—")).not.toBeNull();
     expect(within(remainingTrafficCard as HTMLElement).getByText(
-      "流量权益交付后显示额度"
+      "资源开通后显示当前额度"
     )).not.toBeNull();
     expect(within(remainingTrafficCard as HTMLElement).queryByText(
       "本月额度 50.0 GB"
@@ -2337,6 +2343,16 @@ describe("user portal product surface", () => {
     expect(within(portalNav).queryByRole("button", { name: "钱包" })).toBeNull();
     expect(within(portalNav).getByRole("button", { name: "设置" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Coins 支付" })).toBeNull();
+    expect([...portalNav.querySelectorAll(".portal-nav-group-label")].map((node) => node.textContent)).toEqual([
+      "服务与用量",
+      "资产与权益",
+      "账户",
+      "帮助"
+    ]);
+    expect(within(portalNav).getByRole("button", { name: "Coins 钱包" })
+      .closest("[data-portal-nav-group]")).toHaveAttribute("data-portal-nav-group", "assets");
+    expect(within(portalNav).getByRole("button", { name: "设置" })
+      .closest("[data-portal-nav-group]")).toHaveAttribute("data-portal-nav-group", "account");
 
     const topbar = document.querySelector(".portal-use-topbar");
     expect(topbar).not.toBeNull();
@@ -2460,6 +2476,10 @@ describe("user portal product surface", () => {
       });
       await ledger.promise;
     });
+    expect(await screen.findByRole("table", {
+      name: "近期 Coins 钱包流水"
+    })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "查看全部" }));
     expect(await screen.findByRole("table", {
       name: "Coins 钱包流水"
     })).toBeInTheDocument();
@@ -2818,7 +2838,7 @@ describe("user portal product surface", () => {
     expect(screen.getByRole("table", { name: "订单列表" })).not.toBeNull();
   });
 
-  test("keeps the Header focused on search and moves Wallet and preferences into navigation", async () => {
+  test("keeps the Header focused on Orders search and moves Wallet and preferences into navigation", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
     const navigation = await enterPortal();
@@ -2834,7 +2854,7 @@ describe("user portal product surface", () => {
     const topbar = document.querySelector(".portal-use-topbar");
     expect(topbar).not.toBeNull();
     const globalSearch = within(topbar as HTMLElement).getByRole("searchbox", {
-      name: "全局搜索"
+      name: "订单搜索"
     });
     expect(globalSearch).toHaveAttribute("placeholder", "搜索订单、套餐或状态");
     expect((topbar as HTMLElement).querySelector(".portal-v2-page-title > span"))
@@ -2864,13 +2884,15 @@ describe("user portal product surface", () => {
 
     fireEvent.click(within(navigation).getByRole("button", { name: "设置" }));
     const preferences = screen.getByRole("group", { name: "显示偏好" });
+    expect(within(preferences).getByRole("heading", { name: "外观" })).toBeInTheDocument();
+    expect(preferences).toHaveAttribute("data-config-group", "appearance");
     fireEvent.click(within(preferences).getByRole("button", { name: "EN" }));
     expect(within(screen.getByRole("navigation", {
       name: "User center navigation"
     })).getByRole("button", { name: "Coins wallet" })).toBeInTheDocument();
   });
 
-  test("keeps the Wallet focused on balances and activity without recharge controls", async () => {
+  test("keeps the Wallet overview focused on balances, recent activity, and rules without recharge controls", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
     const navigation = await enterPortal();
@@ -2885,8 +2907,14 @@ describe("user portal product surface", () => {
       name: "余额"
     })).not.toBeNull();
     expect(within(walletSection as HTMLElement).getByRole("heading", {
-      name: "钱包流水"
+      name: "近期账变明细"
     })).not.toBeNull();
+    expect(within(walletSection as HTMLElement).getByRole("complementary", {
+      name: "钱包规则指南"
+    })).not.toBeNull();
+    expect(within(walletSection as HTMLElement).queryByRole("button", {
+      name: "充值 Coins"
+    })).toBeNull();
     expect(within(walletSection as HTMLElement).queryByRole("heading", {
       name: "充值"
     })).toBeNull();
@@ -2903,6 +2931,15 @@ describe("user portal product surface", () => {
     expect(await screen.findAllByRole("heading", { level: 2, name: "Wallet overview" })).toHaveLength(1);
     const englishWalletSection = document.querySelector(".portal-commerce-layout--wallet");
     expect(englishWalletSection).not.toBeNull();
+    expect(within(englishWalletSection as HTMLElement).getByRole("heading", {
+      name: "Recent Wallet activity"
+    })).not.toBeNull();
+    expect(within(englishWalletSection as HTMLElement).getByRole("complementary", {
+      name: "Wallet guide"
+    })).not.toBeNull();
+    expect(within(englishWalletSection as HTMLElement).queryByRole("button", {
+      name: "Recharge Coins"
+    })).toBeNull();
     expect(within(englishWalletSection as HTMLElement).queryByRole("heading", {
       name: "Recharge"
     })).toBeNull();
@@ -4251,8 +4288,8 @@ describe("user portal product surface", () => {
 
     openPortalProfile();
     expect(await screen.findByRole("heading", { name: "账户管理" })).not.toBeNull();
-    expect(screen.getByText("年度套餐 · 服务生效中")).not.toBeNull();
-    expect(screen.getByText("2027/07/07 到期")).not.toBeNull();
+    expect(screen.queryByText("年度套餐 · 服务生效中")).toBeNull();
+    expect(screen.queryByText("2027/07/07 到期")).toBeNull();
   });
 
   test("uses an admin-granted yearly entitlement instead of a disabled trial when generating the setup link", async () => {

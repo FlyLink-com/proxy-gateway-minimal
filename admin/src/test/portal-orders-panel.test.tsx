@@ -370,7 +370,7 @@ describe("PortalOrdersPanel", () => {
     expect(buttons.map((button) => button.textContent)).toEqual([
       "全部",
       "商城消费",
-      "Coins 充值",
+      "充值订单",
       "套餐与服务"
     ]);
     expect(buttons.map((button) => button.getAttribute("aria-pressed"))).toEqual([
@@ -383,6 +383,21 @@ describe("PortalOrdersPanel", () => {
     expect(screen.queryByRole("heading", { name: "Coins 消费订单" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Coins 充值订单" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "历史订单" })).toBeNull();
+  });
+
+  test("explains the boundary between order lifecycle, recharge orders, and Wallet activity", () => {
+    render(createElement(PortalOrdersPanel, {
+      locale: "zh",
+      commerceClient: null,
+      sessionRef: null,
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+    }));
+
+    const note = screen.getByRole("note", { name: "订单与钱包职责说明" });
+    expect(note).toHaveTextContent("订单中心记录订单生命周期");
+    expect(note).toHaveTextContent("充值订单记录 Coins 入账状态");
+    expect(note).toHaveTextContent("钱包账变记录已到账或已消费的余额变化");
   });
 
   test("loads durable Coins recharge orders into the unified center", async () => {
@@ -793,6 +808,27 @@ describe("PortalOrdersPanel", () => {
     );
     expect(screen.queryByText("No matching orders")).toBeNull();
     expect(screen.queryByText("No Coins consumption orders.")).toBeNull();
+  });
+
+  test("keeps the table layout explicit while Orders data is loading", () => {
+    const pending = deferred<{ orders: PortalCoinOrder[]; nextCursor: null }>();
+    const client = {
+      listOrders: vi.fn(() => pending.promise)
+    } as unknown as PortalCoinCommerceClient;
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: client,
+      sessionRef: "session_loading_layout",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn()
+    }));
+
+    const tableWrap = document.querySelector(".portal-order-table-wrap");
+    expect(tableWrap).toHaveAttribute("data-loading", "true");
+    expect(tableWrap).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByText("Loading Marketplace orders…", {
+      selector: ".portal-order-loading-state span"
+    })).toBeInTheDocument();
   });
 
   test("switches from a Coins detail to the selected service in the single detail surface", async () => {

@@ -351,9 +351,47 @@ describe("Portal recharge interaction", () => {
     expect(within(dialog).getByText("CNY 9.50")).toBeInTheDocument();
     expect(dialog).not.toHaveTextContent(/PayPal|Sandbox|USD/i);
     fireEvent.click(within(dialog).getByRole("button", {
-      name: "Continue to payment",
+      name: "Continue to payment for 30 Coins, CNY 9.50, option 1",
     }));
     expect(model.createOrder).toHaveBeenCalledWith("coins_30");
+  });
+
+  test("gives each recharge offer a unique accessible payment label", () => {
+    const model: PortalRechargeModel = {
+      ...rechargeOfferDialogModel(OFFER),
+      offers: [
+        OFFER,
+        {
+          ...OFFER,
+          offerRef: "coins_30_duplicate",
+        },
+      ],
+    };
+    render(createElement(PortalRechargeDialog, { locale: "en", model }));
+
+    const dialog = screen.getByRole("dialog", { name: "Recharge Coins" });
+    expect(within(dialog).getByRole("button", {
+      name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+    })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", {
+      name: "Continue to payment for 30 Coins, USD 1.00, option 2",
+    })).toBeInTheDocument();
+  });
+
+  test("announces the creating-order state with its offer identity", () => {
+    const model: PortalRechargeModel = {
+      ...rechargeOfferDialogModel(OFFER),
+      busy: true,
+    };
+    render(createElement(PortalRechargeDialog, { locale: "en", model }));
+
+    const dialog = screen.getByRole("dialog", { name: "Recharge Coins" });
+    const button = within(dialog).getByRole("button", {
+      name: "Creating order for 30 Coins, USD 1.00, option 1",
+    });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button).toHaveTextContent("Creating order…");
   });
 
   test("uses provider-neutral lifecycle copy for an entry-ready order", () => {
@@ -436,7 +474,9 @@ describe("Portal recharge interaction", () => {
     expect(screen.getByText("30 Coins")).toBeInTheDocument();
     expect(screen.getByText("USD 1.00")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Continue to payment" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: "Continue to payment for 30 Coins, USD 1.00, option 1"
+    }));
     await waitFor(() => expect(client.createOrder).toHaveBeenCalledWith({
       sessionRef: "session_recharge_1",
       offerRef: "coins_30",

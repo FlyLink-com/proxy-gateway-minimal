@@ -2,8 +2,6 @@ export type PortalProfileSummary = {
   authModeLabel: string;
   userRef: string;
   registeredAtLabel: string;
-  currentPlanLabel: string;
-  expiryLabel: string;
 };
 
 export type PortalProfilePanelProps = {
@@ -30,14 +28,6 @@ export function PortalProfilePanel({ locale, summary }: PortalProfilePanelProps)
         <div>
           <dt>{text(locale, "注册日期", "Registered")}</dt>
           <dd>{summary.registeredAtLabel}</dd>
-        </div>
-        <div>
-          <dt>{text(locale, "当前套餐", "Current plan")}</dt>
-          <dd>{summary.currentPlanLabel}</dd>
-        </div>
-        <div>
-          <dt>{text(locale, "到期时间", "Expiry")}</dt>
-          <dd>{summary.expiryLabel}</dd>
         </div>
       </dl>
     </div>
