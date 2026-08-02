@@ -698,15 +698,15 @@
 
 .portal-v2-shell .portal-recharge-offers {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   list-style: none;
 }
 
 .portal-v2-shell .portal-recharge-offers li {
-  display: grid;
-  align-content: space-between;
-  gap: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
   border: 1px solid var(--portal-wallet-border);
   border-radius: 10px;
   background: var(--portal-wallet-surface);
@@ -1176,6 +1176,16 @@
 }
 
 @media (min-width: 721px) {
+  .portal-v2-shell .portal-recharge-offers {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .portal-v2-shell .portal-recharge-offers li {
+    display: grid;
+    align-content: space-between;
+    gap: 16px;
+  }
+
   .portal-v2-shell .portal-marketplace-state,
   .portal-v2-shell .portal-marketplace-flow-state {
     box-sizing: border-box;

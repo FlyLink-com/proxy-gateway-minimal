@@ -1,4 +1,6 @@
 import { createElement } from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -13,6 +15,41 @@ import {
   type PortalRechargeOrder,
 } from "../features/user-portal/recharge";
 import { createHttpUserPortalClient } from "../features/user-portal/user-portal-client";
+
+const RECHARGE_OFFERS_SELECTOR = ".portal-v2-shell .portal-recharge-offers";
+const RECHARGE_COMMERCE_CSS = readFileSync(
+  resolve("src/styles/portal-static-preserve/user-portal-commerce.css"),
+  "utf8",
+);
+
+function rechargeCssDeclaration(
+  mediaCondition: string | null,
+  property: string,
+) {
+  const style = document.createElement("style");
+  style.textContent = RECHARGE_COMMERCE_CSS;
+  document.head.append(style);
+  const sheet = style.sheet;
+  let value = "";
+  if (sheet) {
+    for (const rule of Array.from(sheet.cssRules)) {
+      const rules = mediaCondition === null && rule instanceof CSSStyleRule
+        ? [rule]
+        : rule instanceof CSSMediaRule && rule.conditionText === mediaCondition
+          ? Array.from(rule.cssRules).filter((nestedRule): nestedRule is CSSStyleRule => (
+            nestedRule instanceof CSSStyleRule
+          ))
+          : [];
+      for (const candidate of rules) {
+        if (candidate.selectorText.split(",").map((selector) => selector.trim()).includes(RECHARGE_OFFERS_SELECTOR)) {
+          value = candidate.style.getPropertyValue(property).trim() || value;
+        }
+      }
+    }
+  }
+  style.remove();
+  return value;
+}
 
 const OFFER: PortalRechargeOffer = {
   offerRef: "coins_30",
@@ -373,6 +410,12 @@ function rechargeOfferDialogModel(
 }
 
 describe("Portal recharge interaction", () => {
+  test("keeps the recharge card grid desktop-only and leaves the base layout single-column", () => {
+    expect(rechargeCssDeclaration(null, "grid-template-columns")).toBe("");
+    expect(rechargeCssDeclaration("(min-width: 721px)", "grid-template-columns"))
+      .toBe("repeat(3, minmax(0, 1fr))");
+  });
+
   test("renders six formal CNY cards with neutral method labels and server-only actions", () => {
     const cnyOffers = [
       ["coins_10", 10, 1000],
