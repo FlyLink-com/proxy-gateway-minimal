@@ -14,6 +14,7 @@ import {
   buildPortalOrderCenterItems,
   orderCenterStatusForCoin,
   orderCenterStatusForPayment,
+  orderCenterStatusForRecharge,
   orderCenterStatusForService,
   type PortalServiceOrder
 } from "../features/user-portal/orders/portal-order-center-model";
@@ -22,6 +23,10 @@ import type {
   PortalCoinOrder
 } from "../features/user-portal/commerce";
 import { PortalCoinCommerceClientError } from "../features/user-portal/commerce";
+import type {
+  PortalRechargeClient,
+  PortalRechargeOrder
+} from "../features/user-portal/recharge";
 import type {
   PortalPaymentOrder,
   PortalSubscriptionRequest
@@ -83,6 +88,26 @@ const PAYMENT_ORDER: PortalPaymentOrder = {
     noRawMerchantKey: true,
     noRawProviderPayload: true
   }
+};
+
+const RECHARGE_ORDER: PortalRechargeOrder = {
+  orderRef: "payment_recharge_001",
+  offerRef: "coins_30",
+  quoteVersion: 1,
+  expectedPaidCoinUnits: 30,
+  amountMinor: 100,
+  currency: "USD",
+  currencyExponent: 2,
+  adapterKey: "paypal_v1",
+  paymentMethod: "paypal",
+  status: "credited",
+  providerOrderRef: "paypal_order_001",
+  nextAction: null,
+  walletOperationRef: "wallet_operation_001",
+  walletLotRef: "wallet_lot_001",
+  expiresAt: "2026-07-27T15:30:00.000Z",
+  createdAt: "2026-07-27T15:00:00.000Z",
+  updatedAt: "2026-07-27T15:01:00.000Z"
 };
 
 const SERVICE_REQUEST: PortalSubscriptionRequest = {
@@ -246,6 +271,11 @@ describe("PortalOrdersPanel", () => {
       })
     ],
     [
+      "credited Coins recharge",
+      "successful",
+      () => orderCenterStatusForRecharge(RECHARGE_ORDER)
+    ],
+    [
       "failed legacy payment",
       "attention",
       () => orderCenterStatusForPayment(PAYMENT_ORDER)
@@ -340,10 +370,12 @@ describe("PortalOrdersPanel", () => {
     expect(buttons.map((button) => button.textContent)).toEqual([
       "全部",
       "商城消费",
+      "Coins 充值",
       "套餐与服务"
     ]);
     expect(buttons.map((button) => button.getAttribute("aria-pressed"))).toEqual([
       "true",
+      "false",
       "false",
       "false"
     ]);
@@ -351,6 +383,50 @@ describe("PortalOrdersPanel", () => {
     expect(screen.queryByRole("heading", { name: "Coins 消费订单" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Coins 充值订单" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "历史订单" })).toBeNull();
+  });
+
+  test("loads durable Coins recharge orders into the unified center", async () => {
+    const providerNeutralOrder: PortalRechargeOrder = {
+      ...RECHARGE_ORDER,
+      amountMinor: 950,
+      currency: "CNY",
+      adapterKey: "chaojipay_v1",
+      paymentMethod: "alipay",
+      status: "entry_ready",
+      providerOrderRef: "chaojipay_order_001",
+    };
+    const rechargeClient = {
+      listOrders: vi.fn(async () => [providerNeutralOrder])
+    } as unknown as PortalRechargeClient;
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: null,
+      rechargeClient,
+      sessionRef: "session_recharge_orders",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Coins recharges" }));
+    const rowAction = await screen.findByRole("button", {
+      name: /payment_recharge_001.*30 paid Coins.*Awaiting payment/i
+    });
+    expect(screen.getByText("CNY 9.50")).toBeInTheDocument();
+    expect(rowAction).not.toHaveTextContent(/PayPal|Sandbox|chaojipay_v1/i);
+    fireEvent.click(rowAction);
+    const detail = screen.getByRole("region", {
+      name: "Coins recharge order detail"
+    });
+    const paymentMethodField = within(detail).getByText("Payment method").closest("div");
+    expect(paymentMethodField).not.toBeNull();
+    expect(within(paymentMethodField as HTMLElement).getByText("Alipay", {
+      selector: "strong"
+    })).toBeInTheDocument();
+    expect(within(detail).getAllByText("Alipay")).toHaveLength(1);
+    expect(detail).not.toHaveTextContent(/PayPal|Sandbox|chaojipay_v1/i);
+    expect(rechargeClient.listOrders).toHaveBeenCalledWith({
+      sessionRef: "session_recharge_orders"
+    });
   });
 
   test("keeps the labelled Orders search contract while composing the frozen Empty and Filled field", () => {

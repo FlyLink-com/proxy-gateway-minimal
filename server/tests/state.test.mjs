@@ -31,6 +31,7 @@ import {
   COIN_COMMERCE_PRODUCTION_OFFERS
 } from "../services/platform/coin-commerce-production-catalog.mjs";
 import { createSqliteCoinCommerceStore } from "../services/platform/coin-commerce-store.mjs";
+import { applyPaymentStoreMigrations } from "../services/platform/payment-store-migrations.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 import { createPortalTotpSecretProtector } from "../services/platform/portal-totp-verifier.mjs";
 
@@ -151,6 +152,21 @@ function prepareMigratedCoinCommerceControlDatabase(directory) {
     expectedDdlChecksum: COIN_COMMERCE_MIGRATIONS[0].ddlChecksum,
     nowFn: () => new Date("2026-07-27T00:00:00.000Z")
   });
+  return controlDbPath;
+}
+
+function prepareMigratedPaymentControlDatabase(directory) {
+  const controlDbPath = prepareMigratedCoinWalletControlDatabase(directory);
+  const database = new Database(controlDbPath);
+  try {
+    database.pragma("foreign_keys = on");
+    applyPaymentStoreMigrations({
+      database,
+      nowFn: () => "2026-08-01T00:00:00.000Z"
+    });
+  } finally {
+    database.close();
+  }
   return controlDbPath;
 }
 
@@ -545,6 +561,144 @@ test("createRuntimeState ignores an injected Coins wallet store while disabled a
     state.close();
     state = null;
     assert.equal(closeCount, 0);
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState keeps payment recharge inert by default without reading provider configuration", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-recharge-disabled-"));
+  const env = runtimeEnv({ CONSOLE_TOKEN: "secret" });
+  let getterCalls = 0;
+  for (const field of [
+    "PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON",
+    "PLATFORM_PAYPAL_SANDBOX_CLIENT_ID",
+    "PLATFORM_PAYPAL_SANDBOX_CLIENT_SECRET",
+    "PLATFORM_PAYPAL_SANDBOX_WEBHOOK_ID",
+    "PLATFORM_PAYPAL_SANDBOX_MERCHANT_SCOPE_DIGEST",
+    "PLATFORM_PAYPAL_CALLBACK_URL",
+    "PLATFORM_PAYPAL_RETURN_URL"
+  ]) {
+    Object.defineProperty(env, field, {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        throw new Error(`unexpected ${field} read`);
+      }
+    });
+  }
+  let state;
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env,
+      controlDbPath: join(dir, "control.sqlite"),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      autoStartHttpProxy: false
+    });
+    assert.equal(state.platform.coinRechargeEnabled, false);
+    assert.equal(state.platform.paymentStore, null);
+    assert.equal(state.platform.paymentRechargeCoordinator, null);
+    assert.equal(getterCalls, 0);
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState requires both recharge and PayPal Sandbox flags", () => {
+  for (const enabledField of [
+    "PLATFORM_COIN_RECHARGE_ENABLED",
+    "PLATFORM_PAYPAL_SANDBOX_ENABLED"
+  ]) {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-recharge-flags-"));
+    try {
+      assert.throws(() => createRuntimeState({
+        rootDir: new URL("../../", import.meta.url),
+        env: runtimeEnv({ CONSOLE_TOKEN: "secret", [enabledField]: "true" }),
+        controlDbPath: join(dir, "control.sqlite"),
+        subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+        autoStartHttpProxy: false
+      }), (error) => error?.code === "coin_recharge_prerequisite_missing");
+    } finally {
+      removeTempDir(dir);
+    }
+  }
+});
+
+test("createRuntimeState closes an owned Commerce Store when Recharge assembly fails", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-recharge-commerce-cleanup-"));
+  const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
+  const movedControlDbPath = `${controlDbPath}.closed`;
+  try {
+    assert.throws(
+      () => createRuntimeState({
+        rootDir: new URL("../../", import.meta.url),
+        env: runtimeEnv({
+          CONSOLE_TOKEN: "secret",
+          USER_PORTAL_ROUTES_ENABLED: "true",
+          COINS_WALLET_ENABLED: "true",
+          COINS_COMMERCE_ENABLED: "true",
+          PLATFORM_COIN_RECHARGE_ENABLED: "true",
+          PLATFORM_PAYPAL_SANDBOX_ENABLED: "true"
+        }),
+        controlDbPath,
+        subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+        coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+        autoStartHttpProxy: false
+      }),
+      (error) => error?.code === "coin_recharge_prerequisite_missing"
+    );
+
+    renameSync(controlDbPath, movedControlDbPath);
+    renameSync(movedControlDbPath, controlDbPath);
+  } finally {
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState assembles the default-off PayPal Sandbox recharge runtime only when complete", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-recharge-enabled-"));
+  const controlDbPath = prepareMigratedPaymentControlDatabase(dir);
+  let state;
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        PLATFORM_COIN_RECHARGE_ENABLED: "true",
+        PLATFORM_PAYPAL_SANDBOX_ENABLED: "true",
+        PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON: JSON.stringify([{
+          offerRef: "coins_30",
+          quoteVersion: 1,
+          paidCoinUnits: 30,
+          amountMinor: 100,
+          currency: "USD",
+          currencyExponent: 2,
+          enabled: true
+        }]),
+        PLATFORM_PAYPAL_SANDBOX_CLIENT_ID: "synthetic-client-id",
+        PLATFORM_PAYPAL_SANDBOX_CLIENT_SECRET: "synthetic-client-secret",
+        PLATFORM_PAYPAL_SANDBOX_WEBHOOK_ID: "synthetic-webhook-id",
+        PLATFORM_PAYPAL_SANDBOX_MERCHANT_SCOPE_DIGEST: "a".repeat(64),
+        PLATFORM_PAYPAL_CALLBACK_URL: "https://portal.example.test/api/platform/payments/paypal/callback",
+        PLATFORM_PAYPAL_RETURN_URL: "https://portal.example.test/wallet"
+      }),
+      controlDbPath,
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      paypalFetchFn: async () => { throw new Error("provider must not be called during startup"); },
+      autoStartHttpProxy: false
+    });
+    assert.equal(state.platform.coinRechargeEnabled, true);
+    assert.equal(typeof state.platform.paymentStore?.createOrder, "function");
+    assert.equal(typeof state.platform.paymentRechargeCoordinator?.createRechargeOrder, "function");
+    assert.deepEqual(
+      state.platform.paymentRechargeCoordinator.listOffers().map((offer) => offer.currency),
+      ["USD"]
+    );
   } finally {
     state?.close();
     removeTempDir(dir);

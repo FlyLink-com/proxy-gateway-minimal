@@ -24,6 +24,7 @@ import {
   ReceiptText,
   RefreshCw,
   Search,
+  Settings,
   ShieldCheck,
   ShoppingBag,
   UserCog,
@@ -36,7 +37,9 @@ import { copyText } from "../../lib/clipboard";
 import { errorMessage } from "../../lib/errors";
 import { cn } from "../../lib/utils";
 import {
+  PublicLocaleSwitch,
   PublicPreferenceSwitch,
+  PublicThemeSwitch,
   usePublicLocalePreference,
   usePublicThemePreference
 } from "./public-locale-switch";
@@ -52,8 +55,16 @@ import {
   PortalWalletPanel,
   usePortalWalletReadModel
 } from "./wallet";
+import {
+  clearPortalRechargeReturn,
+  readPortalRechargeReturn,
+  usePortalRecharge
+} from "./recharge";
 import { useDesktopScrollRegion } from "./use-desktop-scroll-region";
-import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
+import {
+  PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY,
+  PORTAL_REGISTRATION_SESSION_STORAGE_KEY
+} from "./user-portal-client";
 import type {
   PortalAccountEntitlement,
   PortalAuthenticatorEnrollment,
@@ -82,6 +93,7 @@ type PortalView =
   | "wallet"
   | "referrals"
   | "profile"
+  | "settings"
   | "support";
 
 type PortalPlan = {
@@ -178,8 +190,10 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "usage", label: "用量", description: "查看流量消耗、套餐额度和用量更新状态。", icon: LineChart },
   { id: "marketplace", label: "商城", description: "浏览平台商品、套餐、流量包和增值项。", icon: ShoppingBag },
   { id: "orders", label: "订单", description: "查看订单历史、支付状态和付款详情。", icon: ReceiptText },
+  { id: "wallet", label: "Coins 钱包", description: "查看可用余额、分类余额和钱包流水。", icon: WalletCards },
   { id: "referrals", label: "推荐奖励", description: "查看推荐链接、归因绩效和奖励状态。", icon: Gift },
   { id: "profile", label: "个人中心", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
+  { id: "settings", label: "设置", description: "管理界面语言和显示主题。", icon: Settings },
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
 ];
 
@@ -419,6 +433,10 @@ function localizedPortalViewCopy(view: PortalView, locale: PortalAuthLocale) {
       label: uiText(locale, "个人中心", "Personal center"),
       description: uiText(locale, "管理账户信息、身份验证器和通行密钥。", "Manage account information, authenticators, and passkeys.")
     },
+    settings: {
+      label: uiText(locale, "设置", "Settings"),
+      description: uiText(locale, "管理界面语言和显示主题。", "Manage interface language and display theme.")
+    },
     support: {
       label: uiText(locale, "支持", "Support"),
       description: uiText(locale, "提交客户端、套餐或账户问题并追踪处理编号。", "Send client, plan, or account questions and track the support reference.")
@@ -453,10 +471,6 @@ function localizedSupportCategories(locale: PortalAuthLocale) {
       other: uiText(locale, "其他问题", "Other")
     }[item.id]
   }));
-}
-
-function topbarDescription(view: PortalView, locale: PortalAuthLocale) {
-  return localizedPortalViewCopy(view, locale).description;
 }
 
 function orderStatusLabel(status: PortalOrderRow["status"], locale: PortalAuthLocale = "zh") {
@@ -1119,11 +1133,6 @@ export function UserPortalPage({
   const currentPlan = subscriptionPlan(created, selectedPlanId, locale);
   const shellNavItems = useMemo(() => localizedNavItems(locale), [locale]);
   const activeViewCopy = useMemo(() => localizedPortalViewCopy(activeView, locale), [activeView, locale]);
-  const serviceLifecycle: SubscriptionLifecycle = lifecycle === "active" || lifecycle === "pending"
-    ? lifecycle
-    : currentEntitlement
-      ? "active"
-      : lifecycle;
   const trafficSummary = useMemo(() => aggregateTrafficUsage(orderRows, accountEntitlements), [orderRows, accountEntitlements]);
   const trafficPercent = aggregateTrafficPercent(trafficSummary);
   const hasSetupAccess = orderRows.some((row) => row.status === "active")
@@ -1156,22 +1165,33 @@ export function UserPortalPage({
     loadLedger: activeView === "wallet",
     onSessionInvalid: logout
   });
+  const rechargePaymentRedirect = useCallback((url: string) => {
+    try {
+      if (portalSession && readPortalRechargeReturn()) {
+        window.sessionStorage.setItem(
+          PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY,
+          JSON.stringify(portalSession)
+        );
+      }
+    } catch {
+      // The durable order remains recoverable after a normal login.
+    }
+    paymentRedirect(url);
+  }, [paymentRedirect, portalSession]);
+  const rechargeModel = usePortalRecharge({
+    client: portalClient.recharge ?? null,
+    enabled: activeView === "wallet",
+    sessionRef: portalSession?.sessionRef ?? null,
+    sessionGeneration,
+    onSessionInvalid: logout,
+    onWalletMutation: walletModel.refreshWallet,
+    paymentRedirect: rechargePaymentRedirect
+  });
   const authoritativeWalletBalance =
     walletModel.summary.phase === "ready"
     || walletModel.summary.phase === "empty"
       ? walletModel.summary.value.spendableUnits
       : null;
-  const walletSummaryAriaLabel = walletModel.summary.phase === "loading"
-    ? uiText(locale, "打开 Coins 钱包，余额加载中", "Open Coins wallet, balance is loading")
-    : walletModel.summary.phase === "unavailable"
-      ? uiText(locale, "打开 Coins 钱包，余额暂不可用", "Open Coins wallet, balance is temporarily unavailable")
-      : walletModel.summary.phase === "error"
-        ? uiText(locale, "打开 Coins 钱包，余额加载失败", "Open Coins wallet, balance could not be loaded")
-        : uiText(
-          locale,
-          `打开 Coins 钱包，可用余额 ${authoritativeWalletBalance} Coins`,
-          `Open Coins wallet, available balance ${authoritativeWalletBalance} Coins`
-        );
 
   const refreshHumanChallenge = useCallback(async () => {
     setHumanChallengeLoading(true);
@@ -1193,7 +1213,10 @@ export function UserPortalPage({
     void refreshHumanChallenge();
   }, [refreshHumanChallenge]);
 
-  function hydratePortalSession(session: PortalSession) {
+  function hydratePortalSession(
+    session: PortalSession,
+    destination: PortalView = readPortalRechargeReturn() ? "wallet" : "start"
+  ) {
     const hydrateGeneration = advanceSessionGeneration();
     const isCurrent = () => hydrateGeneration === sessionGenerationRef.current;
     const promise = (async () => {
@@ -1258,7 +1281,7 @@ export function UserPortalPage({
       }
       setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
       setActivePaymentOrderRef(null);
-      setActiveView("start");
+      setActiveView(destination);
     })();
     return { isCurrent, promise };
   }
@@ -1274,21 +1297,37 @@ export function UserPortalPage({
 
   useEffect(() => {
     if (portalSession) return;
-    const rawSession = window.sessionStorage.getItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
+    const paymentReturnSession = window.sessionStorage.getItem(
+      PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY
+    );
+    const registrationSession = window.sessionStorage.getItem(
+      PORTAL_REGISTRATION_SESSION_STORAGE_KEY
+    );
+    const rawSession = paymentReturnSession ?? registrationSession;
     if (!rawSession) return;
-    window.sessionStorage.removeItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
+    const storageKey = paymentReturnSession
+      ? PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY
+      : PORTAL_REGISTRATION_SESSION_STORAGE_KEY;
+    window.sessionStorage.removeItem(storageKey);
+    const failureMessage = paymentReturnSession
+      ? "支付返回会话载入失败，请重新登录后查看充值订单。"
+      : "注册会话载入失败，请重新登录。";
     try {
       const session = JSON.parse(rawSession) as PortalSession;
-      if (!session || typeof session.userRef !== "string") {
-        throw new Error("invalid registration session");
+      if (
+        !session
+        || typeof session.userRef !== "string"
+        || (paymentReturnSession && typeof session.sessionRef !== "string")
+      ) {
+        throw new Error("invalid stored session");
       }
       const hydration = hydratePortalSession(session);
       void hydration.promise.catch((caughtError) => {
         if (!hydration.isCurrent()) return;
-        setAuthError(portalUiErrorMessage(caughtError, "注册会话载入失败，请重新登录。", locale));
+        setAuthError(portalUiErrorMessage(caughtError, failureMessage, locale));
       });
     } catch {
-      setAuthError("注册会话载入失败，请重新登录。");
+      setAuthError(failureMessage);
     }
   }, [portalSession]);
 
@@ -1667,6 +1706,8 @@ export function UserPortalPage({
     advanceSessionGeneration();
     try {
       window.sessionStorage.removeItem(PORTAL_COIN_ORDER_STORAGE_KEY);
+      window.sessionStorage.removeItem(PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY);
+      clearPortalRechargeReturn();
     } catch {
       // Commerce recovery storage is optional; logout must still complete.
     }
@@ -2014,6 +2055,7 @@ export function UserPortalPage({
                   key={item.id}
                   type="button"
                   aria-label={item.label}
+                  aria-describedby={item.id === "wallet" ? "portal-wallet-nav-balance" : undefined}
                   aria-current={activeView === item.id ? "page" : undefined}
                   data-portal-view={item.id}
                   className={cn("portal-use-nav-item", activeView === item.id && "active")}
@@ -2024,6 +2066,11 @@ export function UserPortalPage({
                     <strong>{item.label}</strong>
                     <small>{item.description}</small>
                   </span>
+                  {item.id === "wallet" ? (
+                    <span className="sr-only" id="portal-wallet-nav-balance">
+                      Coins · {authoritativeWalletBalance ?? "--"}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}
@@ -2060,37 +2107,30 @@ export function UserPortalPage({
                   <strong>GCC WebOS</strong>
                 </div>
                 <div className="portal-v2-page-title">
-                  <span>{uiText(locale, "用户中心", "Account center")}</span>
                   <h1>{activeView === "dashboard" ? uiText(locale, "账户概览", "Account overview") : activeViewCopy.label}</h1>
-                  <p>{topbarDescription(activeView, locale)}</p>
                 </div>
                 <div className="portal-v2-topbar-actions">
-                  <div className="portal-v2-utility-actions" aria-label={uiText(locale, "偏好和状态", "Preferences and status")}>
-                    <PublicPreferenceSwitch
-                      ariaLabel={authCopy.preferences}
-                      localeAriaLabel={authCopy.language}
-                      themeAriaLabel={authCopy.theme}
-                      locale={locale}
-                      theme={theme}
-                      onLocaleChange={setLocale}
-                      onThemeChange={setTheme}
-                      className="portal-v2-preference-switch"
-                    />
-                    <button
-                      type="button"
-                      className={cn(
-                        "portal-coins-wallet-entry",
-                        activeView === "wallet" && "active"
-                      )}
-                      aria-label={walletSummaryAriaLabel}
-                      aria-current={activeView === "wallet" ? "page" : undefined}
-                      onClick={() => navigatePortalView("wallet")}
-                    >
-                      <WalletCards aria-hidden="true" />
-                      <span>
-                        Coins · {authoritativeWalletBalance ?? "--"}
-                      </span>
-                    </button>
+                  <form
+                    className="portal-v2-primary-actions portal-v2-global-search-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      navigatePortalView("orders");
+                    }}
+                  >
+                    <label className="portal-v2-global-search" htmlFor="portal-global-search">
+                      <Search aria-hidden="true" />
+                      <span className="sr-only">{uiText(locale, "全局搜索", "Global search")}</span>
+                      <input
+                        id="portal-global-search"
+                        type="search"
+                        aria-label={uiText(locale, "全局搜索", "Global search")}
+                        value={orderSearch}
+                        onChange={(event) => setOrderSearch(event.target.value)}
+                        placeholder={uiText(locale, "搜索订单、套餐或状态", "Search orders, plans, or status")}
+                      />
+                    </label>
+                  </form>
+                  <div className="portal-v2-utility-actions" aria-label={uiText(locale, "快速操作", "Quick actions")}>
                     <button
                       type="button"
                       className={cn("portal-v2-mobile-icon-button", activeView === "support" && "active")}
@@ -2107,13 +2147,6 @@ export function UserPortalPage({
                     >
                       <LogOut aria-hidden="true" />
                     </button>
-                    <span
-                      className={cn("portal-status-indicator", serviceLifecycle, serviceLifecycle === "active" && "active")}
-                      aria-label={`${uiText(locale, "服务状态：", "Service status: ")}${serviceLifecycle === "disabled" ? uiText(locale, "已停用", "Disabled") : lifecycleLabel(serviceLifecycle, locale)}`}
-                    >
-                      <span className="portal-status-dot" aria-hidden="true" />
-                      {orderHealthLabel(orderRows, accountEntitlements, locale)}
-                    </span>
                   </div>
                 </div>
               </header>
@@ -2158,7 +2191,11 @@ export function UserPortalPage({
             />
           ) : null}
           {activeView === "wallet" ? (
-            <PortalWalletPanel locale={locale} model={walletModel} />
+            <PortalWalletPanel
+              locale={locale}
+              model={walletModel}
+              rechargeModel={rechargeModel}
+            />
           ) : null}
           {activeView === "referrals" ? <ReferralRewardsPanel locale={locale} /> : null}
           {activeView === "start" ? (
@@ -2197,6 +2234,7 @@ export function UserPortalPage({
           {activeView === "orders" && !paymentFlowActive ? (
             <PortalOrdersPanel
               commerceClient={portalClient.commerce ?? null}
+              rechargeClient={portalClient.recharge ?? null}
               legacyPaymentOrders={paymentOrders}
               locale={locale}
               onOpenMarketplace={openMarketplace}
@@ -2209,6 +2247,50 @@ export function UserPortalPage({
               sessionGeneration={sessionGeneration}
               sessionRef={portalSession.sessionRef ?? null}
             />
+          ) : null}
+          {activeView === "settings" ? (
+            <section
+              className="portal-use-card portal-v2-settings-panel"
+              aria-labelledby="portal-settings-heading"
+            >
+              <div className="portal-section-heading">
+                <Settings aria-hidden="true" />
+                <div>
+                  <span className="portal-card-label">{uiText(locale, "设置", "Settings")}</span>
+                  <h2 id="portal-settings-heading">{uiText(locale, "显示偏好", "Display preferences")}</h2>
+                  <p>{uiText(locale, "管理用户中心的界面语言和显示主题。", "Manage the User Center language and display theme.")}</p>
+                </div>
+              </div>
+              <div
+                className="portal-v2-settings-preference-grid"
+                role="group"
+                aria-label={authCopy.preferences}
+              >
+                <section className="portal-v2-settings-preference-card">
+                  <div>
+                    <strong>{uiText(locale, "界面语言", "Interface language")}</strong>
+                    <small>{uiText(locale, "选择用户中心使用的语言。", "Choose the language used in the User Center.")}</small>
+                  </div>
+                  <PublicLocaleSwitch
+                    ariaLabel={authCopy.language}
+                    locale={locale}
+                    onLocaleChange={setLocale}
+                  />
+                </section>
+                <section className="portal-v2-settings-preference-card">
+                  <div>
+                    <strong>{uiText(locale, "显示主题", "Display theme")}</strong>
+                    <small>{uiText(locale, "选择日间或夜间显示。", "Choose light or dark display.")}</small>
+                  </div>
+                  <PublicThemeSwitch
+                    ariaLabel={authCopy.theme}
+                    locale={locale}
+                    theme={theme}
+                    onThemeChange={setTheme}
+                  />
+                </section>
+              </div>
+            </section>
           ) : null}
           {activeView === "profile" ? (
             <PortalPersonalCenterPanel

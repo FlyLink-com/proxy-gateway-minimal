@@ -1,4 +1,5 @@
 import type { PortalCoinOrder } from "../commerce";
+import type { PortalRechargeOrder } from "../recharge";
 import type {
   PortalClientId,
   PortalPaymentOrder,
@@ -8,6 +9,7 @@ import type {
 
 export type PortalOrderCenterKind =
   | "coins_consumption"
+  | "coin_recharge"
   | "legacy_payment"
   | "service_access";
 
@@ -37,6 +39,13 @@ export type PortalOrderCenterItem =
       createdAt: string;
       status: PortalOrderCenterStatus;
       source: PortalCoinOrder;
+    }
+  | {
+      kind: "coin_recharge";
+      key: string;
+      createdAt: string;
+      status: PortalOrderCenterStatus;
+      source: PortalRechargeOrder;
     }
   | {
       kind: "legacy_payment";
@@ -82,6 +91,23 @@ export function orderCenterStatusForPayment(order: PortalPaymentOrder): PortalOr
   }
 }
 
+export function orderCenterStatusForRecharge(order: PortalRechargeOrder): PortalOrderCenterStatus {
+  switch (order.status) {
+    case "created":
+    case "entry_ready":
+    case "pending":
+    case "payment_verified":
+      return "in_progress";
+    case "credited":
+      return "successful";
+    case "reconciliation_required":
+      return "attention";
+    case "failed_no_charge":
+    case "expired":
+      return "closed";
+  }
+}
+
 export function orderCenterStatusForService(order: PortalServiceOrder): PortalOrderCenterStatus {
   if (order.status === "active") return "successful";
   if (order.status === "pending") return "in_progress";
@@ -90,6 +116,7 @@ export function orderCenterStatusForService(order: PortalServiceOrder): PortalOr
 
 export function buildPortalOrderCenterItems(input: {
   coinOrders: PortalCoinOrder[];
+  rechargeOrders?: PortalRechargeOrder[];
   legacyPaymentOrders: PortalPaymentOrder[];
   serviceOrders: PortalServiceOrder[];
 }): PortalOrderCenterItem[] {
@@ -99,6 +126,13 @@ export function buildPortalOrderCenterItems(input: {
       key: `coins_consumption:${source.orderRef}`,
       createdAt: source.createdAt,
       status: orderCenterStatusForCoin(source),
+      source
+    })),
+    ...(input.rechargeOrders ?? []).map((source): PortalOrderCenterItem => ({
+      kind: "coin_recharge",
+      key: `coin_recharge:${source.orderRef}`,
+      createdAt: source.createdAt,
+      status: orderCenterStatusForRecharge(source),
       source
     })),
     ...input.legacyPaymentOrders.map((source): PortalOrderCenterItem => ({

@@ -22,6 +22,10 @@ const UI_SCRIPT = resolve(
   ROOT,
   "scripts/start-local-coin-commerce-ui-validation.mjs"
 );
+const PAYPAL_SANDBOX_UI_SCRIPT = resolve(
+  ROOT,
+  "scripts/run-local-paypal-sandbox-ui-validation.mjs"
+);
 const PACKAGE_PATH = resolve(ROOT, "package.json");
 const OWNED_PREFIX = "coin-commerce-local-validation-";
 const SYNTHETIC_LOGIN = "local-ui-validation@example.test";
@@ -57,6 +61,11 @@ const ERROR_RECORD = {
   type: "coin_commerce_local_ui_validation",
   ok: false,
   error: "local_ui_validation_failed"
+};
+const PAYPAL_SANDBOX_ERROR_RECORD = {
+  type: "local_paypal_sandbox_ui_validation",
+  ok: false,
+  error: "local_paypal_sandbox_ui_validation_failed"
 };
 const SEED_EVIDENCE = {
   coinType: "paid_coins",
@@ -259,9 +268,9 @@ function waitForUiCliResult(harness, timeoutMs = 8_000) {
   });
 }
 
-function runUiCliWithArguments(args) {
+function runCliWithArguments(script, args) {
   return new Promise((resolveResult, rejectResult) => {
-    const child = spawn(process.execPath, [UI_SCRIPT, ...args], {
+    const child = spawn(process.execPath, [script, ...args], {
       cwd: ROOT,
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -304,6 +313,10 @@ function runUiCliWithArguments(args) {
       });
     });
   });
+}
+
+function runUiCliWithArguments(args) {
+  return runCliWithArguments(UI_SCRIPT, args);
 }
 
 function listenOnUiPort(server) {
@@ -595,6 +608,45 @@ test("fixed UI profile uses real password auth, five offers, and reversible 20-C
       pendingUnits: 0
     });
 
+    const rechargeOffers = await localHttp(handle.baseUrl, {
+      path: "/api/portal/coins/recharge/offers",
+      headers: sessionHeaders
+    });
+    assert.equal(rechargeOffers.status, 200);
+    assert.deepEqual(rechargeOffers.json.offers, [{
+      offerRef: "coins_30",
+      quoteVersion: 1,
+      paidCoinUnits: 30,
+      amountMinor: 100,
+      currency: "USD",
+      currencyExponent: 2
+    }]);
+    const rechargeCreated = await localHttp(handle.baseUrl, {
+      method: "POST",
+      path: "/api/portal/coins/recharge/orders",
+      headers: sessionHeaders,
+      body: {
+        offerRef: "coins_30",
+        idempotencyKey: "ui_validation_recharge_create_v1"
+      }
+    });
+    assert.equal(rechargeCreated.status, 201);
+    assert.equal(rechargeCreated.json.recharge.order.status, "entry_ready");
+    const rechargeCaptured = await localHttp(handle.baseUrl, {
+      method: "POST",
+      path: `/api/portal/coins/recharge/orders/${rechargeCreated.json.recharge.order.orderRef}/capture`,
+      headers: sessionHeaders,
+      body: { idempotencyKey: "ui_validation_recharge_capture_v1" }
+    });
+    assert.equal(rechargeCaptured.status, 200);
+    assert.equal(rechargeCaptured.json.recharge.order.status, "credited");
+    assert.deepEqual(handle.inspect().funds, {
+      status: "active",
+      spendableUnits: 1030,
+      heldUnits: 0,
+      pendingUnits: 0
+    });
+
     const noCreditEndpoint = await localHttp(handle.baseUrl, {
       method: "POST",
       path: "/api/portal/commerce/credit",
@@ -604,10 +656,213 @@ test("fixed UI profile uses real password auth, five offers, and reversible 20-C
     assert.equal([401, 404].includes(noCreditEndpoint.status), true);
     assert.deepEqual(handle.inspect().funds, {
       status: "active",
-      spendableUnits: 1000,
+      spendableUnits: 1030,
       heldUnits: 0,
       pendingUnits: 0
     });
+  } finally {
+    await handle.stop();
+  }
+  assert.deepEqual(ownedRoots(), before);
+});
+
+test("live Sandbox UI profile uses injected PayPal capture and verified callback bindings", async () => {
+  const before = ownedRoots();
+  const module = await moduleUnderTest();
+  assert.equal(
+    typeof module.startLocalPayPalSandboxUiValidation,
+    "function"
+  );
+  const calls = [];
+  let paymentOrderRef = null;
+  const providerOrderRef = "9AB12345CD678901E";
+  const fetchFn = async (url, init = {}) => {
+    calls.push(url);
+    if (url.endsWith("/v1/oauth2/token")) {
+      return {
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            access_token: "injected-sandbox-access-token",
+            token_type: "Bearer",
+            expires_in: 3600
+          });
+        }
+      };
+    }
+    if (url.endsWith("/v2/checkout/orders")) {
+      const body = JSON.parse(init.body);
+      paymentOrderRef = body.purchase_units[0].custom_id;
+      return {
+        status: 201,
+        async text() {
+          return JSON.stringify({
+            id: providerOrderRef,
+            status: "CREATED",
+            links: [{
+              rel: "approve",
+              href: `https://www.sandbox.paypal.com/checkoutnow?token=${providerOrderRef}`
+            }]
+          });
+        }
+      };
+    }
+    if (url.endsWith(`/v2/checkout/orders/${providerOrderRef}/capture`)) {
+      return {
+        status: 201,
+        async text() {
+          return JSON.stringify({
+            id: providerOrderRef,
+            status: "COMPLETED",
+            purchase_units: [{
+              custom_id: paymentOrderRef,
+              payments: {
+                captures: [{
+                  id: "8XY12345ZA678901B",
+                  status: "COMPLETED",
+                  amount: { currency_code: "USD", value: "1.00" }
+                }]
+              }
+            }]
+          });
+        }
+      };
+    }
+    if (url.endsWith("/v1/notifications/verify-webhook-signature")) {
+      const body = JSON.parse(init.body);
+      assert.equal(body.webhook_id, "injected-sandbox-webhook-id");
+      return {
+        status: 200,
+        async text() {
+          return JSON.stringify({ verification_status: "SUCCESS" });
+        }
+      };
+    }
+    throw new Error("unexpected injected PayPal request");
+  };
+  const handle = await module.startLocalPayPalSandboxUiValidation({
+    credential: {
+      clientId: "injected-sandbox-client-id",
+      clientSecret: "injected-sandbox-client-secret",
+      webhookId: "injected-sandbox-webhook-id",
+      merchantScopeDigest: "d".repeat(64)
+    },
+    callbackUrl: "https://callback.synthetic.invalid/api/platform/payments/paypal/callback",
+    returnUrl: "https://return.synthetic.invalid/portal/",
+    fetchFn,
+    nowFn: () => "2026-08-01T00:00:00.000Z"
+  });
+  try {
+    const sessionRef = await passwordLogin(handle.baseUrl);
+    const headers = { "X-Portal-Session": sessionRef };
+    const created = await localHttp(handle.baseUrl, {
+      method: "POST",
+      path: "/api/portal/coins/recharge/orders",
+      headers,
+      body: {
+        offerRef: "coins_30",
+        idempotencyKey: "live_sandbox_ui_create_v1"
+      }
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.json.recharge.order.status, "entry_ready");
+    const approvedCallback = await fetch(
+      `${handle.baseUrl}/api/platform/payments/paypal/callback`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "PayPal-Auth-Algo": "SHA256withRSA",
+          "PayPal-Cert-Url": "https://api-m.paypal.com/v1/notifications/certs/CERT-safe",
+          "PayPal-Transmission-Id": "transmission-approved-safe-1",
+          "PayPal-Transmission-Sig": "signature-approved-safe-1",
+          "PayPal-Transmission-Time": "2026-08-01T00:00:00.000Z"
+        },
+        body: JSON.stringify({
+          id: "provider-event-approved-safe-1",
+          create_time: "2026-08-01T00:00:00.000Z",
+          resource_type: "checkout-order",
+          event_type: "CHECKOUT.ORDER.APPROVED",
+          summary: "A buyer approved an order",
+          resource: {
+            id: providerOrderRef,
+            status: "APPROVED",
+            intent: "CAPTURE",
+            purchase_units: [{
+              custom_id: paymentOrderRef,
+              amount: { currency_code: "USD", value: "1.00" }
+            }]
+          },
+          links: [],
+          event_version: "1.0",
+          resource_version: "2.0"
+        })
+      }
+    );
+    assert.equal(approvedCallback.status, 204);
+    assert.deepEqual(handle.inspect().funds, {
+      status: "active",
+      spendableUnits: 1030,
+      heldUnits: 0,
+      pendingUnits: 0
+    });
+    const captured = await localHttp(handle.baseUrl, {
+      method: "POST",
+      path: `/api/portal/coins/recharge/orders/${created.json.recharge.order.orderRef}/capture`,
+      headers,
+      body: { idempotencyKey: "live_sandbox_ui_capture_v1" }
+    });
+    assert.equal(captured.status, 200);
+    assert.equal(captured.json.recharge.order.status, "credited");
+    const callback = await fetch(
+      `${handle.baseUrl}/api/platform/payments/paypal/callback`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "PayPal-Auth-Algo": "SHA256withRSA",
+          "PayPal-Cert-Url": "https://api-m.paypal.com/v1/notifications/certs/CERT-safe",
+          "PayPal-Transmission-Id": "transmission-safe-1",
+          "PayPal-Transmission-Sig": "signature-safe-1",
+          "PayPal-Transmission-Time": "2026-08-01T00:00:00.000Z"
+        },
+        body: JSON.stringify({
+          id: "provider-event-safe-1",
+          event_type: "PAYMENT.CAPTURE.COMPLETED",
+          resource: {
+            id: "8XY12345ZA678901B",
+            status: "COMPLETED",
+            custom_id: paymentOrderRef,
+            supplementary_data: {
+              related_ids: { order_id: providerOrderRef }
+            },
+            amount: { currency_code: "USD", value: "1.00" }
+          }
+        })
+      }
+    );
+    assert.equal(callback.status, 204);
+    assert.deepEqual(handle.inspect().funds, {
+      status: "active",
+      spendableUnits: 1030,
+      heldUnits: 0,
+      pendingUnits: 0
+    });
+    assert.deepEqual(calls, [
+      "https://api-m.sandbox.paypal.com/v1/oauth2/token",
+      "https://api-m.sandbox.paypal.com/v2/checkout/orders",
+      "https://api-m.sandbox.paypal.com/v1/oauth2/token",
+      "https://api-m.sandbox.paypal.com/v1/notifications/verify-webhook-signature",
+      "https://api-m.sandbox.paypal.com/v1/oauth2/token",
+      `https://api-m.sandbox.paypal.com/v2/checkout/orders/${providerOrderRef}/capture`,
+      "https://api-m.sandbox.paypal.com/v1/oauth2/token",
+      "https://api-m.sandbox.paypal.com/v1/notifications/verify-webhook-signature"
+    ]);
+    assert.equal(
+      JSON.stringify({ created: created.json, captured: captured.json })
+        .includes("injected-sandbox-client-secret"),
+      false
+    );
   } finally {
     await handle.stop();
   }
@@ -762,6 +1017,39 @@ test("UI runner rejects arbitrary runtime arguments without echoing them", async
   assert.equal(result.stderr.includes("--port=1"), false);
   assert.equal(result.stderr.includes(SYNTHETIC_LOGIN), false);
   assert.equal(result.stderr.includes(SYNTHETIC_PASSWORD), false);
+  assert.equal(ownedRoots(result.pid).size, 0);
+});
+
+test("PayPal Sandbox runner masks credential-file startup failures", async () => {
+  const sensitiveCredentialPath = resolve(
+    tmpdir(),
+    "merchant-sandbox-credential-must-not-leak.txt"
+  );
+  const result = await runCliWithArguments(PAYPAL_SANDBOX_UI_SCRIPT, [
+    "--credential-file",
+    sensitiveCredentialPath,
+    "--merchant-scope-digest",
+    "e".repeat(64),
+    "--webhook-id",
+    "WH_TEST_ONLY",
+    "--callback-url",
+    "https://callback.synthetic.invalid/api/platform/payments/paypal/callback",
+    "--return-url",
+    "https://portal.synthetic.invalid/portal/"
+  ]);
+
+  assert.notEqual(result.code, 0);
+  assert.equal(result.signal, null);
+  assert.equal(result.closeConfirmed, true);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr.includes(sensitiveCredentialPath), false);
+  assert.deepEqual(
+    result.stderr
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line)),
+    [PAYPAL_SANDBOX_ERROR_RECORD]
+  );
   assert.equal(ownedRoots(result.pid).size, 0);
 });
 

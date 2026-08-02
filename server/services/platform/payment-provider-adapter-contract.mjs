@@ -113,6 +113,7 @@ const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9a-z]{1,128}$/;
 
 const verifiedPaymentFacts = new WeakMap();
+const verifiedCallbackAcknowledgements = new WeakSet();
 const transportReceipts = new WeakMap();
 const providerErrors = new WeakSet();
 
@@ -579,6 +580,23 @@ export function normalizeVerifiedPaymentEvent(value) {
     sourceType,
     "invalid_verified_payment_event",
   );
+}
+
+export function normalizeVerifiedPaymentCallback(value) {
+  if (
+    value !== null
+    && typeof value === "object"
+    && !utilTypes.isProxy(value)
+    && Object.isFrozen(value)
+    && verifiedCallbackAcknowledgements.has(value)
+  ) {
+    return value;
+  }
+  const paymentFact = normalizeVerifiedPaymentEvent(value);
+  if (verifiedPaymentFacts.get(paymentFact) !== "callback") {
+    throw contractError("invalid_verified_payment_event");
+  }
+  return paymentFact;
 }
 
 function createProviderError(input) {
@@ -1048,7 +1066,7 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
         return invokeCompiled(
           methods.verifyAndNormalizeCallback,
           normalized,
-          (output) => normalizeVerifiedPaymentEvent(output),
+          (output) => normalizeVerifiedPaymentCallback(output),
           "verify_callback",
         );
       }
@@ -1086,7 +1104,10 @@ export function assertPaymentProviderAdapterContract(adapter, options = {}) {
           event === null
           || typeof event !== "object"
           || utilTypes.isProxy(event)
-          || verifiedPaymentFacts.get(event) !== "callback"
+          || (
+            verifiedPaymentFacts.get(event) !== "callback"
+            && !verifiedCallbackAcknowledgements.has(event)
+          )
         ) {
           return reject("invalid_payment_webhook_ack");
         }
@@ -1235,11 +1256,12 @@ function normalizeExecutionOutput(
       ["transportReceipt", "paymentFact"],
       code,
     );
-    const paymentFact = normalizeRawVerifiedPaymentFact(
-      envelope.paymentFact,
-      code,
-    );
-    if (paymentFact.sourceType !== "callback") throw contractError(code);
+    const paymentFact = envelope.paymentFact === null
+      ? null
+      : normalizeRawVerifiedPaymentFact(envelope.paymentFact, code);
+    if (paymentFact !== null && paymentFact.sourceType !== "callback") {
+      throw contractError(code);
+    }
     consumeTransportReceipt({
       transportReceipt: envelope.transportReceipt,
       scopeToken,
@@ -1248,8 +1270,13 @@ function normalizeExecutionOutput(
       paymentFact,
       code,
     });
-    verifiedPaymentFacts.set(paymentFact, "callback");
-    return paymentFact;
+    if (paymentFact !== null) {
+      verifiedPaymentFacts.set(paymentFact, "callback");
+      return paymentFact;
+    }
+    const acknowledgement = Object.freeze({ disposition: "acknowledge" });
+    verifiedCallbackAcknowledgements.add(acknowledgement);
+    return acknowledgement;
   }
   if (operation === "capture_payment") {
     const code = "invalid_payment_operation_result";

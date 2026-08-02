@@ -13,10 +13,15 @@ import type {
   PortalWalletReadModel,
   ReadState
 } from "./use-portal-wallet-read-model";
+import {
+  PortalRechargeDialog,
+  type PortalRechargeModel
+} from "../recharge";
 
 export type PortalWalletPanelProps = {
   locale: "zh" | "en";
   model: PortalWalletReadModel;
+  rechargeModel?: PortalRechargeModel;
 };
 
 function walletStatusLabel(
@@ -320,7 +325,8 @@ function LedgerState({
 
 export function PortalWalletPanel({
   locale,
-  model
+  model,
+  rechargeModel
 }: PortalWalletPanelProps) {
   const zh = locale === "zh";
   return (
@@ -340,6 +346,30 @@ export function PortalWalletPanel({
         <h3 id="portal-wallet-balance-heading">{zh ? "余额" : "Balance"}</h3>
         <SummaryState locale={locale} model={model} />
       </section>
+      {rechargeModel?.available ? (
+        <section
+          className="portal-commerce-layout__section portal-wallet-recharge"
+          aria-labelledby="portal-wallet-recharge-heading"
+        >
+          <div>
+            <h3 id="portal-wallet-recharge-heading">
+              {zh ? "充值" : "Recharge"}
+            </h3>
+            <p>
+              {zh
+                ? "选择充值档位；支付确认后，已购 Coins 将自动入账。"
+                : "Choose a recharge denomination. Purchased Coins are credited automatically after payment confirmation."}
+            </p>
+          </div>
+          <button
+            className="portal-primary-button compact"
+            type="button"
+            onClick={rechargeModel.openDialog}
+          >
+            {zh ? "充值 Coins" : "Recharge Coins"}
+          </button>
+        </section>
+      ) : null}
       <section
         className="portal-commerce-layout__section"
         aria-labelledby="portal-wallet-ledger-heading"
@@ -349,6 +379,9 @@ export function PortalWalletPanel({
         </h3>
         <LedgerState locale={locale} model={model} />
       </section>
+      {rechargeModel?.dialogOpen ? (
+        <PortalRechargeDialog locale={locale} model={rechargeModel} />
+      ) : null}
     </section>
   );
 }

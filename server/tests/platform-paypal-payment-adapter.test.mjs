@@ -1,96 +1,226 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { assertPaymentProviderAdapterContract } from "../services/platform/payment-provider-adapter-contract.mjs";
+import {
+  assertPaymentProviderAdapterContract,
+  createCredentialScopedPaymentExecution,
+} from "../services/platform/payment-provider-adapter-contract.mjs";
 import { createPayPalPaymentAdapter } from "../services/platform/paypal-payment-adapter.mjs";
 
-const FALSE_CAPABILITIES = Object.freeze({
-  createRechargeOrder: false,
-  queryPayment: false,
-  capturePayment: false,
-  verifyCallback: false,
-  refund: false,
-  reconcile: false,
-  repeatCreateIdempotent: false,
-  repeatCaptureIdempotent: false,
-});
-const OPERATIONS = Object.freeze([
-  ["createRechargeOrder", "create_recharge_order"],
-  ["queryPayment", "query_payment"],
-  ["capturePayment", "capture_payment"],
-  ["verifyAndNormalizeCallback", "verify_callback"],
-  ["webhookSuccessAck", "verify_callback"],
-  ["refund", "refund"],
-  ["reconcile", "reconcile"],
-]);
-const SENTINEL_TIME = "1970-01-01T00:00:00.000Z";
+const NOW = "2026-08-01T00:00:00.000Z";
+const EXPIRES_AT = "2026-08-01T00:10:00.000Z";
+const ACTION_ORIGIN = "https://www.sandbox.paypal.com";
+const MERCHANT_DIGEST = "a".repeat(64);
+const PAYLOAD_DIGEST = "b".repeat(64);
 
-function assertUnverified(error, operation) {
-  assert.equal(error?.code, "provider_contract_unverified");
-  assert.equal(error?.operation, operation);
-  assert.equal(error?.chargeCertainty, "confirmed_no_charge");
-  assert.equal(error?.occurredAt, SENTINEL_TIME);
+const CREATE_INPUT = Object.freeze({
+  paymentOrderRef: "payment_order_1",
+  attemptRef: "attempt_1",
+  providerRequestRef: "provider_create_1",
+  paymentMethod: "paypal",
+  amountMinor: 100,
+  currency: "USD",
+  currencyExponent: 2,
+  expectedPaidCoins: 30,
+  quoteDigest: "c".repeat(64),
+  expiresAt: EXPIRES_AT,
+  callbackRouteRef: "portal_payment_callback_v1",
+  returnRouteRef: "portal_wallet_return_v1",
+});
+
+const CAPTURE_INPUT = Object.freeze({
+  paymentOrderRef: "payment_order_1",
+  attemptRef: "attempt_1",
+  providerOrderRef: "paypal_order_1",
+  captureRequestRef: "provider_capture_1",
+  amountMinor: 100,
+  currency: "USD",
+  currencyExponent: 2,
+});
+
+function callbackInput(event = null) {
+  const webhookEvent = event ?? {
+    id: "paypal_event_1",
+    event_type: "PAYMENT.CAPTURE.COMPLETED",
+    resource: {
+      id: "paypal_capture_1",
+      status: "COMPLETED",
+      custom_id: "payment_order_1",
+      supplementary_data: { related_ids: { order_id: "paypal_order_1" } },
+      amount: { currency_code: "USD", value: "1.00" },
+    },
+  };
+  return {
+    callbackRequestRef: "callback_request_1",
+    receivedAt: NOW,
+    bodyBase64: Buffer.from(JSON.stringify(webhookEvent), "utf8").toString("base64"),
+    headerEntries: [
+      { name: "paypal-auth-algo", value: "SHA256withRSA" },
+      { name: "paypal-cert-url", value: "https://api.paypal.com/v1/notifications/certs/CERT-safe" },
+      { name: "paypal-transmission-id", value: "transmission_1" },
+      { name: "paypal-transmission-sig", value: "signature_1" },
+      { name: "paypal-transmission-time", value: NOW },
+    ],
+  };
 }
 
-test("PayPal is the exact paypal_v1 unverified disabled Adapter", () => {
-  const raw = createPayPalPaymentAdapter();
-  assert.deepEqual(Object.keys(raw), [
-    "adapterKey", "providerId", "contractVersion", "capabilities",
-    "supportedPaymentMethods", "createRechargeOrder", "queryPayment",
-    "capturePayment", "verifyAndNormalizeCallback", "normalizeError",
-    "webhookSuccessAck", "refund", "reconcile",
-  ]);
-  assert.equal(raw.adapterKey, "paypal_v1");
-  assert.equal(raw.providerId, "paypal_commerce");
-  assert.equal(raw.contractVersion, "unverified");
-  assert.deepEqual(raw.capabilities, FALSE_CAPABILITIES);
-  assert.deepEqual(raw.supportedPaymentMethods, []);
-  assert.deepEqual(assertPaymentProviderAdapterContract(raw).capabilities, FALSE_CAPABILITIES);
-});
-
-test("PayPal rejects hostile options and operations without reading input or scope", () => {
-  const optionCalls = { get: 0, ownKeys: 0, descriptor: 0 };
-  const hostileOptions = new Proxy({}, {
-    get() { optionCalls.get += 1; throw new Error("synthetic-secret-marker"); },
-    ownKeys() { optionCalls.ownKeys += 1; throw new Error("synthetic-secret-marker"); },
-    getOwnPropertyDescriptor() { optionCalls.descriptor += 1; throw new Error("synthetic-secret-marker"); },
+function createExecutionScope() {
+  return createCredentialScopedPaymentExecution({
+    profileRef: "paypal_sandbox_profile",
+    adapterKey: "paypal_v1",
+    contractVersion: "v1",
+    credentialProfileRef: "paypal_sandbox_credential",
+    credentialLoader: {
+      withCredential(_binding, callback) {
+        return callback({ opaque: "secret-marker" });
+      },
+    },
+    requestFn({ request }) {
+      if (request.action === "paypal_orders_create") {
+        return {
+          response: {
+            id: "paypal_order_1",
+            status: "CREATED",
+            links: [{
+              rel: "approve",
+              href: `${ACTION_ORIGIN}/checkoutnow?token=safe`,
+            }],
+          },
+          evidence: null,
+        };
+      }
+      if (request.action === "paypal_orders_query") {
+        return {
+          response: { id: "paypal_order_1", status: "APPROVED" },
+          evidence: null,
+        };
+      }
+      if (request.action === "paypal_orders_capture") {
+        return {
+          response: {
+            id: "paypal_order_1",
+            status: "COMPLETED",
+            purchase_units: [{
+              custom_id: "payment_order_1",
+              payments: { captures: [{
+                id: "paypal_capture_1",
+                status: "COMPLETED",
+                amount: { currency_code: "USD", value: "1.00" },
+              }] },
+            }],
+          },
+          evidence: {
+            merchantScopeDigest: MERCHANT_DIGEST,
+            payloadDigest: PAYLOAD_DIGEST,
+          },
+        };
+      }
+      return {
+        response: { verification_status: "SUCCESS" },
+        evidence: {
+          merchantScopeDigest: MERCHANT_DIGEST,
+          payloadDigest: PAYLOAD_DIGEST,
+        },
+      };
+    },
+    allowedActionOrigins: [ACTION_ORIGIN],
   });
-  assert.throws(() => createPayPalPaymentAdapter(hostileOptions), /invalid_payment_provider_adapter/u);
-  assert.deepEqual(optionCalls, { get: 0, ownKeys: 0, descriptor: 0 });
+}
 
-  const counters = { get: 0, ownKeys: 0, descriptor: 0, scope: 0, clock: 0 };
+test("PayPal v1 creates, queries, captures, and verifies through scoped transport", async () => {
   const raw = createPayPalPaymentAdapter({
-    executionScope: { withCredential() { counters.scope += 1; } },
-    nowFn() { counters.clock += 1; return "unexpected"; },
+    executionScope: createExecutionScope(),
+    nowFn: () => NOW,
   });
-  for (const [method, operation] of OPERATIONS) {
-    const input = new Proxy({ marker: "synthetic-secret-marker" }, {
-      get(target, key, receiver) { counters.get += 1; return Reflect.get(target, key, receiver); },
-      ownKeys(target) { counters.ownKeys += 1; return Reflect.ownKeys(target); },
-      getOwnPropertyDescriptor(target, key) { counters.descriptor += 1; return Reflect.getOwnPropertyDescriptor(target, key); },
-    });
-    assert.throws(() => raw[method](input), (error) => {
-      assertUnverified(error, operation);
-      assert.doesNotMatch(JSON.stringify(error), /synthetic-secret-marker/u);
-      return true;
-    });
-  }
-  assert.deepEqual(counters, { get: 0, ownKeys: 0, descriptor: 0, scope: 0, clock: 0 });
+  assert.equal(raw.contractVersion, "v1");
+  assert.deepEqual(raw.supportedPaymentMethods, ["paypal"]);
+  assert.deepEqual(raw.capabilities, {
+    createRechargeOrder: true,
+    queryPayment: true,
+    capturePayment: true,
+    verifyCallback: true,
+    refund: false,
+    reconcile: false,
+    repeatCreateIdempotent: true,
+    repeatCaptureIdempotent: true,
+  });
+  const adapter = assertPaymentProviderAdapterContract(raw, {
+    allowedActionOrigins: [ACTION_ORIGIN],
+  });
+  const created = await adapter.createRechargeOrder(CREATE_INPUT);
+  assert.equal(created.status, "entry_ready");
+  assert.equal(created.providerOrderRef, "paypal_order_1");
+  const queried = await adapter.queryPayment({
+    paymentOrderRef: "payment_order_1",
+    attemptRef: "attempt_1",
+    providerOrderRef: "paypal_order_1",
+  });
+  assert.equal(queried.status, "pending");
+  const captured = await adapter.capturePayment(CAPTURE_INPUT);
+  assert.equal(captured.paymentFact.eventType, "payment_succeeded");
+  assert.equal(captured.paymentFact.providerCaptureRef, "paypal_capture_1");
+  const callback = await adapter.verifyAndNormalizeCallback(callbackInput());
+  assert.equal(callback.sourceType, "callback");
+  assert.deepEqual(await adapter.webhookSuccessAck(callback), {
+    statusCode: 204,
+    contentType: "text/plain",
+    body: "",
+  });
+  assert.doesNotMatch(JSON.stringify({ created, queried, captured, callback }), /secret-marker/u);
+  await assert.rejects(() => adapter.refund({}), /payment_provider_capability_disabled/u);
+  await assert.rejects(() => adapter.reconcile({}), /payment_provider_capability_disabled/u);
 });
 
-test("PayPal normalizes capture_payment without leaking the raw error", () => {
-  const raw = createPayPalPaymentAdapter();
-  const marker = "synthetic-secret-marker";
-  assert.deepEqual(raw.normalizeError({ operation: "capture_payment", error: new Error(marker) }), {
-    code: "provider_contract_unverified",
-    operation: "capture_payment",
-    retryable: false,
-    chargeCertainty: "confirmed_no_charge",
-    providerOrderRef: null,
-    occurredAt: SENTINEL_TIME,
+test("PayPal v1 exposes a verified approval as a pending server-capture fact", async () => {
+  const adapter = assertPaymentProviderAdapterContract(createPayPalPaymentAdapter({
+    executionScope: createExecutionScope(),
+    nowFn: () => NOW,
+  }), {
+    allowedActionOrigins: [ACTION_ORIGIN],
   });
-  const normalized = assertPaymentProviderAdapterContract(raw);
-  const error = normalized.normalizeError({ operation: "capture_payment", error: new Error(marker) });
-  assertUnverified(error, "capture_payment");
-  assert.doesNotMatch(JSON.stringify(error), new RegExp(marker, "u"));
+  const callback = await adapter.verifyAndNormalizeCallback(callbackInput({
+    id: "paypal_event_approved_1",
+    create_time: NOW,
+    resource_type: "checkout-order",
+    event_type: "CHECKOUT.ORDER.APPROVED",
+    summary: "A buyer approved an order",
+    resource: {
+      id: "paypal_order_1",
+      status: "APPROVED",
+      intent: "CAPTURE",
+      purchase_units: [{
+        custom_id: "payment_order_1",
+        amount: { currency_code: "USD", value: "1.00" },
+      }],
+    },
+    links: [],
+    event_version: "1.0",
+    resource_version: "2.0",
+  }));
+  assert.equal(callback.sourceType, "callback");
+  assert.equal(callback.eventType, "payment_pending");
+  assert.equal(callback.paymentOrderRef, "payment_order_1");
+  assert.equal(callback.providerOrderRef, "paypal_order_1");
+  assert.equal(callback.providerCaptureRef, null);
+  assert.equal(callback.amountMinor, 100);
+  assert.equal(callback.currency, "USD");
+  assert.deepEqual(await adapter.webhookSuccessAck(callback), {
+    statusCode: 204,
+    contentType: "text/plain",
+    body: "",
+  });
+});
+
+test("PayPal adapter requires an exact injected scope and canonical clock", () => {
+  for (const options of [
+    {},
+    { executionScope: {}, nowFn: () => NOW },
+    { executionScope: createExecutionScope(), nowFn: "invalid" },
+    { executionScope: createExecutionScope(), nowFn: () => NOW, extra: true },
+  ]) {
+    assert.throws(
+      () => createPayPalPaymentAdapter(options),
+      /invalid_payment_provider_adapter/u,
+    );
+  }
 });

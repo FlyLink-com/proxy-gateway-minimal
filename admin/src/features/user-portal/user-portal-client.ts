@@ -12,8 +12,14 @@ import {
   createPortalWalletClient,
   type PortalWalletClient
 } from "./wallet";
+import {
+  createPortalRechargeClient,
+  type PortalRechargeClient,
+  type PortalRechargeTrustedActionOriginsByAdapter
+} from "./recharge";
 
 export const PORTAL_REGISTRATION_SESSION_STORAGE_KEY = "gccwebos-portal-registration-session";
+export const PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY = "gccwebos-portal-payment-return-session-v1";
 
 export type PortalAuthMode = "email" | "authenticator" | "token" | "password" | "passkey";
 export type PortalPlanId = "trial" | "monthly" | "monthly_basic" | "monthly_plus" | "yearly";
@@ -447,6 +453,7 @@ export type PortalPasskeyExport = {
 export type UserPortalClient = {
   commerce?: PortalCoinCommerceClient;
   wallet?: PortalWalletClient;
+  recharge?: PortalRechargeClient;
   issueHumanChallenge(input?: PortalHumanChallengeRequestInput): Promise<PortalHumanVerificationChallenge>;
   requestEmailCode(input: PortalEmailCodeRequestInput): Promise<PortalEmailCodeChallenge>;
   requestRegistrationEmailVerification(
@@ -486,6 +493,7 @@ export type HttpUserPortalClientOptions = {
   baseUrl?: string;
   fetchFn?: typeof fetch;
   now?: () => Date;
+  rechargeTrustedActionOriginsByAdapter?: PortalRechargeTrustedActionOriginsByAdapter;
 };
 
 async function createQrDataUri(otpauthUri: string) {
@@ -1827,6 +1835,7 @@ export function createHttpUserPortalClient(
 ): UserPortalClient & {
   commerce: PortalCoinCommerceClient;
   wallet: PortalWalletClient;
+  recharge: PortalRechargeClient;
 } {
   const baseUrl = options.baseUrl ?? "";
   const fetchFn = options.fetchFn ?? fetch;
@@ -1855,6 +1864,11 @@ export function createHttpUserPortalClient(
   return {
     commerce: createPortalCoinCommerceClient({ fetchFn }),
     wallet: createPortalWalletClient({ fetchFn }),
+    recharge: createPortalRechargeClient({
+      baseUrl,
+      fetchFn,
+      trustedActionOriginsByAdapter: options.rechargeTrustedActionOriginsByAdapter,
+    }),
     async issueHumanChallenge(input = {}) {
       const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/human-challenges"), {
         method: "POST",

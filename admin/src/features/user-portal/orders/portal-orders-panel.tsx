@@ -14,6 +14,15 @@ import {
   type PortalCoinCommerceClient,
   type PortalCoinOrder
 } from "../commerce";
+import {
+  PortalRechargeClientError,
+  type PortalRechargeClient,
+  type PortalRechargeOrder
+} from "../recharge";
+import {
+  formatPortalRechargeAmount,
+  portalRechargePaymentMethodLabel
+} from "../recharge/portal-recharge-presentation";
 import { portalCoinTypeLabel } from "../portal-commerce-presentation";
 import type { PortalPaymentOrder } from "../user-portal-client";
 import { useDesktopScrollRegion } from "../use-desktop-scroll-region";
@@ -24,11 +33,16 @@ import {
   type PortalServiceOrder
 } from "./portal-order-center-model";
 
-export type PortalOrdersFilter = "all" | "coins_consumption" | "plans_services";
+export type PortalOrdersFilter =
+  | "all"
+  | "coins_consumption"
+  | "coin_recharge"
+  | "plans_services";
 
 export type PortalOrdersPanelProps = {
   locale: "zh" | "en";
   commerceClient: PortalCoinCommerceClient | null;
+  rechargeClient?: PortalRechargeClient | null;
   sessionRef: string | null;
   sessionGeneration: number;
   onSessionInvalid: () => void;
@@ -44,6 +58,7 @@ export type PortalOrdersPanelProps = {
 const FILTERS: Array<{ id: PortalOrdersFilter; zh: string; en: string }> = [
   { id: "all", zh: "全部", en: "All" },
   { id: "coins_consumption", zh: "商城消费", en: "Marketplace purchases" },
+  { id: "coin_recharge", zh: "Coins 充值", en: "Coins recharges" },
   { id: "plans_services", zh: "套餐与服务", en: "Plans and services" }
 ];
 
@@ -202,6 +217,7 @@ function itemTypeLabel(
   locale: PortalOrdersPanelProps["locale"]
 ) {
   if (item.kind === "coins_consumption") return copy(locale, "商城消费", "Marketplace purchase");
+  if (item.kind === "coin_recharge") return copy(locale, "Coins 充值", "Coins recharge");
   if (item.kind === "legacy_payment") return copy(locale, "套餐付款", "Plan payment");
   return copy(locale, "服务记录", "Service record");
 }
@@ -233,18 +249,21 @@ function legacyPaymentProductLabel(
 
 function productLabel(item: PortalOrderCenterItem, locale: PortalOrdersPanelProps["locale"]) {
   if (item.kind === "coins_consumption") return item.source.offer.title[locale];
+  if (item.kind === "coin_recharge") return `${item.source.expectedPaidCoinUnits} paid Coins`;
   if (item.kind === "legacy_payment") return legacyPaymentProductLabel(item.source, locale);
   return serviceProductLabel(item.source, locale);
 }
 
 function amountLabel(item: PortalOrderCenterItem) {
   if (item.kind === "coins_consumption") return `${item.source.amountUnits} Coins`;
+  if (item.kind === "coin_recharge") return formatPortalRechargeAmount(item.source);
   if (item.kind === "legacy_payment") return paymentAmount(item.source);
   return "—";
 }
 
 function displayOrderRef(item: PortalOrderCenterItem) {
   if (item.kind === "coins_consumption") return item.source.orderRef;
+  if (item.kind === "coin_recharge") return item.source.orderRef;
   if (item.kind === "legacy_payment") {
     return item.source.orderRef.replace(/^pay[_-]?/i, "P-").slice(0, 18);
   }
@@ -253,6 +272,7 @@ function displayOrderRef(item: PortalOrderCenterItem) {
 
 function accessibleOrderRef(item: PortalOrderCenterItem) {
   if (item.kind === "coins_consumption") return item.source.orderRef;
+  if (item.kind === "coin_recharge") return item.source.orderRef;
   if (item.kind === "legacy_payment") return item.source.orderRef;
   return item.source.requestRef;
 }
@@ -272,6 +292,9 @@ function orderDetailLabel(
       "Coins consumption order detail"
     );
   }
+  if (item.kind === "coin_recharge") {
+    return copy(locale, "Coins 充值订单详情", "Coins recharge order detail");
+  }
   return copy(
     locale,
     `${itemTypeLabel(item, locale)}详情：${displayOrderRef(item)}`,
@@ -285,6 +308,19 @@ function itemStatusLabel(
 ) {
   if (item.kind === "coins_consumption") {
     return `${coinPaymentLabel(item.source.paymentStatus, locale)} · ${fulfillmentLabel(item.source.fulfillment.status, locale)}`;
+  }
+  if (item.kind === "coin_recharge") {
+    const labels: Record<PortalRechargeOrder["status"], [string, string]> = {
+      created: ["正在创建", "Creating"],
+      entry_ready: ["待付款", "Awaiting payment"],
+      pending: ["确认中", "Confirming"],
+      payment_verified: ["正在入账", "Crediting Wallet"],
+      credited: ["已到账", "Credited"],
+      failed_no_charge: ["未扣款", "No charge"],
+      reconciliation_required: ["需要人工核对", "Review required"],
+      expired: ["已过期", "Expired"]
+    };
+    return copy(locale, ...labels[item.source.status]);
   }
   if (item.kind === "legacy_payment") return paymentStatusLabel(item.source.status, locale);
   return serviceStatusLabel(item.source.status, locale);
@@ -330,6 +366,7 @@ export function portalOrdersIdentityMatches(
 export function PortalOrdersPanel({
   locale,
   commerceClient,
+  rechargeClient = null,
   sessionRef,
   sessionGeneration,
   onSessionInvalid,
@@ -364,6 +401,8 @@ export function PortalOrdersPanel({
   const [selectedDetailRef, setSelectedDetailRef] = useState<string | null>(null);
   const [selectedLegacyDetailRef, setSelectedLegacyDetailRef] =
     useState<string | null>(null);
+  const [selectedRechargeDetailRef, setSelectedRechargeDetailRef] =
+    useState<string | null>(null);
   const [selectedServiceDetailRef, setSelectedServiceDetailRef] =
     useState<string | null>(selectedServiceOrderRef);
   const initialIdentity = { commerceClient, sessionRef, sessionGeneration };
@@ -376,7 +415,13 @@ export function PortalOrdersPanel({
   const visibleOrderRefsRef = useRef(new Set<string>());
   const loadingCursorsRef = useRef(new Map<string, number>());
   const loadMoreRequestRef = useRef(0);
+  const rechargeRequestRef = useRef(0);
+  const [rechargeRevision, setRechargeRevision] = useState(0);
+  const [rechargeOrders, setRechargeOrders] = useState<PortalRechargeOrder[]>([]);
+  const [rechargeFailure, setRechargeFailure] = useState(false);
+  const [rechargeLoading, setRechargeLoading] = useState(false);
   const showsCoins = filter === "all" || filter === "coins_consumption";
+  const showsRecharge = filter === "all" || filter === "coin_recharge";
 
   useLayoutEffect(() => {
     onSessionInvalidRef.current = onSessionInvalid;
@@ -396,6 +441,7 @@ export function PortalOrdersPanel({
     setDetailState({ phase: "empty", value: null as never });
     setSelectedDetailRef(null);
     setSelectedLegacyDetailRef(null);
+    setSelectedRechargeDetailRef(null);
     setSelectedServiceDetailRef(null);
     setNextCursor(null);
     setListRetryRequest({ cursor: null, append: false });
@@ -407,6 +453,35 @@ export function PortalOrdersPanel({
       loadingCursorsRef.current.clear();
     };
   }, [commerceClient, sessionGeneration, sessionRef]);
+
+  useEffect(() => {
+    const requestId = rechargeRequestRef.current + 1;
+    rechargeRequestRef.current = requestId;
+    setRechargeOrders([]);
+    setRechargeFailure(false);
+    setRechargeLoading(Boolean(rechargeClient && sessionRef));
+    if (!rechargeClient || !sessionRef) return;
+    void rechargeClient.listOrders({ sessionRef }).then((orders) => {
+      if (rechargeRequestRef.current !== requestId) return;
+      setRechargeOrders(orders);
+    }).catch((error: unknown) => {
+      if (rechargeRequestRef.current !== requestId) return;
+      if (
+        error instanceof PortalRechargeClientError
+        && error.code === "payment_recharge_session_invalid"
+      ) {
+        onSessionInvalidRef.current?.();
+        return;
+      }
+      if (
+        !(error instanceof PortalRechargeClientError)
+        || error.code !== "payment_recharge_unavailable"
+      ) setRechargeFailure(true);
+    }).finally(() => {
+      if (rechargeRequestRef.current === requestId) setRechargeLoading(false);
+    });
+    return () => { rechargeRequestRef.current += 1; };
+  }, [rechargeClient, rechargeRevision, sessionGeneration, sessionRef]);
 
   useLayoutEffect(() => {
     setSelectedServiceDetailRef(selectedServiceOrderRef);
@@ -538,6 +613,7 @@ export function PortalOrdersPanel({
 
   const openDetail = useCallback(async (orderRef: string) => {
     setSelectedLegacyDetailRef(null);
+    setSelectedRechargeDetailRef(null);
     setSelectedServiceDetailRef(null);
     setSelectedDetailRef(orderRef);
     const current = currentRef.current;
@@ -600,15 +676,19 @@ export function PortalOrdersPanel({
   const coinOrders = stateValue(visibleListState) ?? [];
   const allItems = useMemo(() => buildPortalOrderCenterItems({
     coinOrders,
+    rechargeOrders,
     legacyPaymentOrders,
     serviceOrders
-  }), [coinOrders, legacyPaymentOrders, serviceOrders]);
+  }), [coinOrders, legacyPaymentOrders, rechargeOrders, serviceOrders]);
   const visibleItems = useMemo(() => {
     const search = orderSearch.trim().toLowerCase();
     const filtered = allItems.filter((item) => {
       const matchesType = filter === "all"
         || (filter === "coins_consumption" && item.kind === "coins_consumption")
-        || (filter === "plans_services" && item.kind !== "coins_consumption");
+        || (filter === "coin_recharge" && item.kind === "coin_recharge")
+        || (filter === "plans_services" && (
+          item.kind === "legacy_payment" || item.kind === "service_access"
+        ));
       const matchesStatus = statusFilter === "all" || item.status === statusFilter;
       return matchesType && matchesStatus && (!search || itemSearchText(item, locale).includes(search));
     });
@@ -621,7 +701,8 @@ export function PortalOrdersPanel({
       visibleListState.phase === "loading"
       || visibleListState.phase === "unavailable"
       || visibleListState.phase === "error"
-    ));
+    ))
+    && !(showsRecharge && rechargeLoading);
   const hasActiveFilters = filter !== "all"
     || statusFilter !== "all"
     || orderSearch.trim().length > 0;
@@ -645,6 +726,8 @@ export function PortalOrdersPanel({
   }, [useContextualEmptyState]);
   const selectedDetailKey = selectedDetailRef
     ? `coins_consumption:${selectedDetailRef}`
+    : selectedRechargeDetailRef
+      ? `coin_recharge:${selectedRechargeDetailRef}`
     : selectedLegacyDetailRef
       ? `legacy_payment:${selectedLegacyDetailRef}`
       : selectedServiceDetailRef
@@ -681,6 +764,17 @@ export function PortalOrdersPanel({
             <div><span>{copy(locale, "Coins 分配", "Coins allocation")}</span><strong>{allocationLabel(order.allocation, locale)}</strong></div>
           </div>
         </>
+      );
+    }
+    if (item.kind === "coin_recharge") {
+      const order = item.source;
+      return (
+        <div className="portal-order-detail-grid">
+          <div><span>{copy(locale, "到账", "Credit")}</span><strong>{order.expectedPaidCoinUnits} paid Coins</strong></div>
+          <div><span>{copy(locale, "支付金额", "Payment amount")}</span><strong>{amountLabel(item)}</strong></div>
+          <div><span>{copy(locale, "支付方式", "Payment method")}</span><strong>{portalRechargePaymentMethodLabel(order.paymentMethod, locale)}</strong></div>
+          <div><span>{copy(locale, "状态", "Status")}</span><strong>{itemStatusLabel(item, locale)}</strong></div>
+        </div>
       );
     }
     if (item.kind === "legacy_payment") {
@@ -785,6 +879,19 @@ export function PortalOrdersPanel({
           ) : null}
         </div>
       ) : null}
+      {rechargeLoading && showsRecharge ? (
+        <p className="portal-orders-inline-note" role="status">
+          {copy(locale, "正在加载 Coins 充值订单…", "Loading Coins recharge orders…")}
+        </p>
+      ) : null}
+      {rechargeFailure && showsRecharge ? (
+        <div className="portal-orders-inline-note" role="alert">
+          <span>{copy(locale, "部分 Coins 充值订单暂不可用", "Some Coins recharge orders are temporarily unavailable")}</span>
+          <button type="button" onClick={() => setRechargeRevision((revision) => revision + 1)}>
+            {copy(locale, "重试充值订单", "Retry recharge orders")}
+          </button>
+        </div>
+      ) : null}
       <div
         aria-label={desktopScrollRegion && !showEmptyState
           ? copy(locale, "可滚动订单表格", "Scrollable orders table")
@@ -863,9 +970,19 @@ export function PortalOrdersPanel({
               const actionLabel = copy(locale, "查看", "View");
               const action = item.kind === "coins_consumption"
                 ? () => toggleCoinDetail(item.source.orderRef)
+                : item.kind === "coin_recharge"
+                  ? () => {
+                    invalidateCoinDetail();
+                    setSelectedLegacyDetailRef(null);
+                    setSelectedServiceDetailRef(null);
+                    setSelectedRechargeDetailRef((current) => (
+                      current === item.source.orderRef ? null : item.source.orderRef
+                    ));
+                  }
                 : item.kind === "legacy_payment"
                   ? () => {
                     invalidateCoinDetail();
+                    setSelectedRechargeDetailRef(null);
                     setSelectedServiceDetailRef(null);
                     setSelectedLegacyDetailRef((current) => (
                       current === item.source.orderRef ? null : item.source.orderRef
@@ -875,6 +992,7 @@ export function PortalOrdersPanel({
                     const opening = selectedServiceDetailRef
                       !== item.source.requestRef;
                     invalidateCoinDetail();
+                    setSelectedRechargeDetailRef(null);
                     setSelectedLegacyDetailRef(null);
                     setSelectedServiceDetailRef(
                       opening ? item.source.requestRef : null

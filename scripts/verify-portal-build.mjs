@@ -26,19 +26,22 @@ const REQUIRED_RUNTIME_MARKERS = [
   "/api/portal/human-challenges",
   "/api/portal/password/session",
   "/api/portal/registration",
-  "/api/portal/registration/email-verification"
+  "/api/portal/registration/email-verification",
+  "/api/portal/coins/recharge/offers",
+  "/api/portal/coins/recharge/orders"
 ];
 
 const REQUIRED_COMMERCE_LAYOUT_MARKERS = [
-  "portal-commerce-layout",
-  "portal-coins-wallet-entry"
+  { marker: "portal-commerce-layout", markup: true, css: true },
+  { marker: "portal-wallet-nav-balance", markup: true, css: false },
+  { marker: "portal-v2-global-search-form", markup: true, css: true },
+  { marker: "portal-v2-settings-preference-grid", markup: true, css: true },
+  { marker: "portal-recharge-dialog", markup: true, css: true }
 ];
 
 const FORBIDDEN_COMMERCE_LAYOUT_MARKERS = [
-  "portal-recharge-dialog",
   "portal-recharge-entry",
   "portal-recharge-denominations",
-  "portal-wallet-recharge-heading",
   "portal-wallet-recharge-note"
 ];
 
@@ -131,10 +134,10 @@ export async function verifyPortalBuildDirectory(buildDir) {
       `portal forbidden commerce marker found: ${forbiddenCommerceMarker}`
     );
   }
-  for (const marker of REQUIRED_COMMERCE_LAYOUT_MARKERS) {
+  for (const { marker, markup, css } of REQUIRED_COMMERCE_LAYOUT_MARKERS) {
     const missingAssetClasses = [
-      !commerceMarkupContent.includes(marker) && "HTML/JavaScript",
-      !commerceCssContent.includes(marker) && "CSS"
+      markup && !commerceMarkupContent.includes(marker) && "HTML/JavaScript",
+      css && !commerceCssContent.includes(marker) && "CSS"
     ].filter(Boolean);
     if (missingAssetClasses.length > 0) {
       throw new Error(`portal commerce layout marker missing: ${marker} (${missingAssetClasses.join(", ")})`);
@@ -150,7 +153,7 @@ export async function verifyPortalBuildDirectory(buildDir) {
       hasPortalHumanChallengeContract: true,
       hasPortalRegistrationContract: true,
       hasCommerceLayoutContract: true,
-      noRechargeUi: true
+      hasProtectedRechargeContract: true
     }
   };
 }

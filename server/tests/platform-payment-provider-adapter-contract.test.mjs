@@ -9,6 +9,7 @@ import {
   normalizePaymentNextAction,
   normalizePaymentOperationResult,
   normalizePaymentProviderError,
+  normalizeVerifiedPaymentCallback,
   normalizeVerifiedPaymentEvent,
 } from "../services/platform/payment-provider-adapter-contract.mjs";
 
@@ -320,6 +321,7 @@ test("payment methods include paypal while provider identity remains distinct", 
     "normalizePaymentNextAction",
     "normalizePaymentOperationResult",
     "normalizePaymentProviderError",
+    "normalizeVerifiedPaymentCallback",
     "normalizeVerifiedPaymentEvent",
   ]);
   assert.deepEqual(PAYMENT_METHODS_V1, ["alipay", "wechat_pay", "paypal"]);
@@ -967,14 +969,20 @@ test("failed zero-request reused and cross-scope receipts cannot mint facts", as
     })),
     (error) => error?.code === "provider_operation_failed",
   );
-  await assert.rejects(
-    () => execution.withCredential("verify_callback", async ({ request }) => {
+  const acknowledgement = await execution.withCredential(
+    "verify_callback",
+    async ({ request }) => {
       const { transportReceipt } = await request({
         callbackRequestRef: "callback-request-null-fact",
       });
       return { transportReceipt, paymentFact: null };
-    }),
-    (error) => error?.code === "provider_operation_failed",
+    },
+  );
+  assert.deepEqual(acknowledgement, { disposition: "acknowledge" });
+  assert.equal(normalizeVerifiedPaymentCallback(acknowledgement), acknowledgement);
+  assert.throws(
+    () => normalizeVerifiedPaymentCallback({ disposition: "acknowledge" }),
+    expectCode("invalid_verified_payment_event"),
   );
 
   let retainedReceipt;
@@ -1590,6 +1598,10 @@ test("normalizes safe webhook acknowledgements and requires branded events", asy
   const adapter = assertPaymentProviderAdapterContract(enabledAdapter());
   await assert.rejects(
     () => adapter.webhookSuccessAck(validEvent()),
+    expectCode("invalid_payment_webhook_ack"),
+  );
+  await assert.rejects(
+    () => adapter.webhookSuccessAck({ disposition: "acknowledge" }),
     expectCode("invalid_payment_webhook_ack"),
   );
   for (const ack of [

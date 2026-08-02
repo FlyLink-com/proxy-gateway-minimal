@@ -64,6 +64,24 @@ function desktopDeclaration(
 }
 
 describe("Portal commerce desktop style contract", () => {
+  test("keeps the signed-in desktop Header focused on title and global search", () => {
+    expect(desktopDeclaration(
+      desktopStyles,
+      ".portal-v2-shell .portal-v2-utility-actions",
+      "display"
+    )).toBe("none");
+    expect(desktopDeclaration(
+      desktopStyles,
+      ".portal-v2-shell .portal-v2-global-search input",
+      "min-height"
+    )).toBe("44px");
+    expect(desktopDeclaration(
+      desktopStyles,
+      ".portal-v2-shell .portal-v2-settings-preference-grid",
+      "display"
+    )).toBe("grid");
+  });
+
   test("keeps compact secondary controls on the frozen 40px control token", () => {
     expect(desktopDeclaration(
       desktopStyles,

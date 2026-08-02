@@ -16,6 +16,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { types as utilTypes } from "node:util";
+import Database from "better-sqlite3";
 
 import { createApp } from "../server/app.mjs";
 import { createRuntimeState } from "../server/state.mjs";
@@ -32,6 +33,9 @@ import {
 import {
   createSqliteSubscriptionControlStore
 } from "../server/services/platform/subscription-control-db.mjs";
+import {
+  applyPaymentStoreMigrations
+} from "../server/services/platform/payment-store-migrations.mjs";
 import {
   createSqliteSubscriptionStore
 } from "../server/services/subscriptions/repository.mjs";
@@ -72,8 +76,82 @@ const UI_SEED_EVIDENCE = Object.freeze({
   sourceDigest: UI_SEED_SOURCE_DIGEST,
   idempotencyKey: UI_SEED_IDEMPOTENCY_KEY
 });
+const UI_RECHARGE_NOW = "2026-08-01T00:00:00.000Z";
+const UI_RECHARGE_MERCHANT_DIGEST = createHash("sha256")
+  .update("local-ui-validation-paypal-sandbox-merchant-v1", "utf8")
+  .digest("hex");
 const HANDLE_INTERNALS = new WeakMap();
 const DISABLED_SUBSCRIPTION_CORE = Object.freeze({});
+
+function localPayPalResponse(status, body) {
+  return Object.freeze({
+    status,
+    async text() {
+      return JSON.stringify(body);
+    }
+  });
+}
+
+function createLocalPayPalSandboxFetch() {
+  const orders = new Map();
+  return async (url, init = {}) => {
+    if (url === "https://api-m.sandbox.paypal.com/v1/oauth2/token") {
+      return localPayPalResponse(200, {
+        access_token: "local-synthetic-access-token",
+        token_type: "Bearer",
+        expires_in: 3600
+      });
+    }
+    if (url === "https://api-m.sandbox.paypal.com/v2/checkout/orders") {
+      const body = JSON.parse(init.body);
+      const purchaseUnit = body.purchase_units[0];
+      const providerOrderRef = `paypal_order_${createHash("sha256")
+        .update(purchaseUnit.custom_id, "utf8")
+        .digest("hex")
+        .slice(0, 24)}`;
+      orders.set(providerOrderRef, {
+        paymentOrderRef: purchaseUnit.custom_id,
+        currency: purchaseUnit.amount.currency_code,
+        value: purchaseUnit.amount.value
+      });
+      return localPayPalResponse(201, {
+        id: providerOrderRef,
+        status: "CREATED",
+        links: [{
+          rel: "approve",
+          href: `https://www.sandbox.paypal.com/checkoutnow?token=${providerOrderRef}`
+        }]
+      });
+    }
+    const captureMatch = url.match(
+      /^https:\/\/api-m\.sandbox\.paypal\.com\/v2\/checkout\/orders\/([^/]+)\/capture$/u
+    );
+    if (captureMatch) {
+      const providerOrderRef = decodeURIComponent(captureMatch[1]);
+      const order = orders.get(providerOrderRef);
+      if (!order) return localPayPalResponse(404, { name: "RESOURCE_NOT_FOUND" });
+      return localPayPalResponse(201, {
+        id: providerOrderRef,
+        status: "COMPLETED",
+        purchase_units: [{
+          custom_id: order.paymentOrderRef,
+          payments: {
+            captures: [{
+              id: `paypal_capture_${providerOrderRef.slice(-24)}`,
+              status: "COMPLETED",
+              amount: {
+                currency_code: order.currency,
+                value: order.value
+              }
+            }]
+          }
+        }]
+      });
+    }
+    return localPayPalResponse(404, { name: "RESOURCE_NOT_FOUND" });
+  };
+}
+
 const UI_OFFERS = Object.freeze([
   Object.freeze({
     offerRef: "offer_local_ui_monthly_50gb",
@@ -284,6 +362,93 @@ function exactOptions(options) {
     throw validationFailure();
   }
   return { failureStage: descriptor.value };
+}
+
+function exactPlainObject(value, fields) {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || utilTypes.isProxy(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw validationFailure();
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors);
+  if (
+    keys.length !== fields.length
+    || keys.some((key) => typeof key !== "string" || !fields.includes(key))
+    || fields.some((field) => {
+      const descriptor = descriptors[field];
+      return !descriptor?.enumerable || !("value" in descriptor);
+    })
+  ) {
+    throw validationFailure();
+  }
+  return Object.fromEntries(fields.map((field) => [
+    field,
+    descriptors[field].value
+  ]));
+}
+
+function exactPayPalSandboxUiOptions(options) {
+  const input = exactPlainObject(options, [
+    "credential",
+    "callbackUrl",
+    "returnUrl",
+    "fetchFn",
+    "nowFn"
+  ]);
+  const credential = exactPlainObject(input.credential, [
+    "clientId",
+    "clientSecret",
+    "webhookId",
+    "merchantScopeDigest"
+  ]);
+  let callbackUrl;
+  let returnUrl;
+  try {
+    callbackUrl = new URL(input.callbackUrl);
+    returnUrl = new URL(input.returnUrl);
+  } catch {
+    throw validationFailure();
+  }
+  if (
+    typeof credential.clientId !== "string"
+    || credential.clientId.length < 1
+    || credential.clientId.length > 4096
+    || /[\0\r\n]/u.test(credential.clientId)
+    || typeof credential.clientSecret !== "string"
+    || credential.clientSecret.length < 1
+    || credential.clientSecret.length > 4096
+    || /[\0\r\n]/u.test(credential.clientSecret)
+    || typeof credential.webhookId !== "string"
+    || !/^[A-Za-z0-9_-]{1,128}$/u.test(credential.webhookId)
+    || typeof credential.merchantScopeDigest !== "string"
+    || !/^[a-f0-9]{64}$/u.test(credential.merchantScopeDigest)
+    || callbackUrl.protocol !== "https:"
+    || callbackUrl.username !== ""
+    || callbackUrl.password !== ""
+    || callbackUrl.pathname !== "/api/platform/payments/paypal/callback"
+    || callbackUrl.search !== ""
+    || callbackUrl.hash !== ""
+    || returnUrl.protocol !== "https:"
+    || returnUrl.username !== ""
+    || returnUrl.password !== ""
+    || returnUrl.hash !== ""
+    || typeof input.fetchFn !== "function"
+    || typeof input.nowFn !== "function"
+  ) {
+    throw validationFailure();
+  }
+  return Object.freeze({
+    credential: Object.freeze(credential),
+    callbackUrl: callbackUrl.href,
+    returnUrl: returnUrl.href,
+    fetchFn: input.fetchFn,
+    nowFn: input.nowFn
+  });
 }
 
 function randomText(bytes = 24) {
@@ -611,13 +776,16 @@ function requestJson(baseUrl, ownedRequests, {
 async function startLocalCoinCommerceValidationInternal(
   options,
   beforeRootRemovalHook = null,
-  profile = TASK7_PROFILE
+  profile = TASK7_PROFILE,
+  payPalSandboxUiOptions = null
 ) {
   const { failureStage } = exactOptions(options);
   if (![TASK7_PROFILE, UI_PROFILE].includes(profile)) {
     throw validationFailure();
   }
   const isUiProfile = profile === UI_PROFILE;
+  const livePayPalSandbox = payPalSandboxUiOptions !== null;
+  if (livePayPalSandbox && !isUiProfile) throw validationFailure();
   if (
     beforeRootRemovalHook !== null
     && typeof beforeRootRemovalHook !== "function"
@@ -775,6 +943,20 @@ async function startLocalCoinCommerceValidationInternal(
       expectedDdlChecksum: COIN_COMMERCE_MIGRATIONS[0].ddlChecksum
     });
     failAt(failureStage, "after_commerce_migration");
+    if (isUiProfile) {
+      const paymentDatabase = new Database(controlDbPath);
+      try {
+        paymentDatabase.pragma("foreign_keys = on");
+        applyPaymentStoreMigrations({
+          database: paymentDatabase,
+          nowFn: livePayPalSandbox
+            ? payPalSandboxUiOptions.nowFn
+            : () => UI_RECHARGE_NOW
+        });
+      } finally {
+        paymentDatabase.close();
+      }
+    }
 
     const env = {
       CONSOLE_TOKEN: consoleToken,
@@ -783,7 +965,40 @@ async function startLocalCoinCommerceValidationInternal(
       COINS_COMMERCE_ENABLED: "true",
       COINS_COMMERCE_CANCEL_WINDOW_MS: isUiProfile ? "3000" : "1000",
       ...(isUiProfile
-        ? { USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION: "true" }
+        ? {
+            USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION: "true",
+            PLATFORM_COIN_RECHARGE_ENABLED: "true",
+            PLATFORM_PAYPAL_SANDBOX_ENABLED: "true",
+            PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON: JSON.stringify([{
+              offerRef: "coins_30",
+              quoteVersion: 1,
+              paidCoinUnits: 30,
+              amountMinor: 100,
+              currency: "USD",
+              currencyExponent: 2,
+              enabled: true
+            }]),
+            PLATFORM_PAYPAL_SANDBOX_CLIENT_ID: livePayPalSandbox
+              ? payPalSandboxUiOptions.credential.clientId
+              : "local-synthetic-client-id",
+            PLATFORM_PAYPAL_SANDBOX_CLIENT_SECRET: livePayPalSandbox
+              ? payPalSandboxUiOptions.credential.clientSecret
+              : "local-synthetic-client-secret",
+            PLATFORM_PAYPAL_SANDBOX_WEBHOOK_ID: livePayPalSandbox
+              ? payPalSandboxUiOptions.credential.webhookId
+              : "local-synthetic-webhook-id",
+            PLATFORM_PAYPAL_SANDBOX_MERCHANT_SCOPE_DIGEST:
+              livePayPalSandbox
+                ? payPalSandboxUiOptions.credential.merchantScopeDigest
+                : UI_RECHARGE_MERCHANT_DIGEST,
+            PLATFORM_PAYPAL_CALLBACK_URL:
+              livePayPalSandbox
+                ? payPalSandboxUiOptions.callbackUrl
+                : "https://portal.example.test/api/platform/payments/paypal/callback",
+            PLATFORM_PAYPAL_RETURN_URL: livePayPalSandbox
+              ? payPalSandboxUiOptions.returnUrl
+              : "https://portal.example.test/wallet"
+          }
         : {}),
       LOCAL_PROXY_CONTROL_ROUTES_ENABLED: "false"
     };
@@ -804,6 +1019,16 @@ async function startLocalCoinCommerceValidationInternal(
         fulfillmentActivity,
         effectNamespace
       ),
+      ...(isUiProfile
+        ? {
+            paypalFetchFn: livePayPalSandbox
+              ? payPalSandboxUiOptions.fetchFn
+              : createLocalPayPalSandboxFetch(),
+            paymentNowFn: livePayPalSandbox
+              ? payPalSandboxUiOptions.nowFn
+              : () => UI_RECHARGE_NOW
+          }
+        : {}),
       ...(isUiProfile
         ? {}
         : {
@@ -958,6 +1183,16 @@ export async function startLocalCoinCommerceUiValidation() {
     undefined,
     null,
     UI_PROFILE
+  );
+}
+
+export async function startLocalPayPalSandboxUiValidation(options) {
+  if (arguments.length !== 1) throw validationFailure();
+  return startLocalCoinCommerceValidationInternal(
+    undefined,
+    null,
+    UI_PROFILE,
+    exactPayPalSandboxUiOptions(options)
   );
 }
 
