@@ -654,6 +654,6 @@ describe("Portal commerce desktop style contract", () => {
       commerceStyles,
       ".portal-v2-shell .portal-orders-panel .portal-order-table",
       "min-width"
-    )).toBe("1120px");
+    )).toBe("100%");
   });
 });

@@ -78,6 +78,32 @@ const HELD_ENTRY: PortalWalletLedgerEntry = {
   occurredAt: "2026-07-27T11:00:00.000Z"
 };
 
+const CONSUMED_ENTRY: PortalWalletLedgerEntry = {
+  entryRef: "entry_consumed_003",
+  category: "held_to_consumed",
+  coinType: "paid_coins",
+  amountUnits: 7,
+  availableDeltaUnits: 0,
+  pendingDeltaUnits: 0,
+  heldDeltaUnits: -7,
+  totalDeltaUnits: -7,
+  relatedOrderRef: "order_wallet_003",
+  occurredAt: "2026-07-27T10:00:00.000Z"
+};
+
+const EXPIRED_ENTRY: PortalWalletLedgerEntry = {
+  entryRef: "entry_expired_004",
+  category: "available_to_expired",
+  coinType: "bonus_coins",
+  amountUnits: 3,
+  availableDeltaUnits: -3,
+  pendingDeltaUnits: 0,
+  heldDeltaUnits: 0,
+  totalDeltaUnits: -3,
+  relatedOrderRef: null,
+  occurredAt: "2026-07-27T09:00:00.000Z"
+};
+
 const RECENT_LEDGER_ENTRIES: PortalWalletLedgerEntry[] = [
   CREDIT_ENTRY,
   HELD_ENTRY,
@@ -249,6 +275,29 @@ describe("PortalWalletPanel", () => {
       .toBeInTheDocument();
     expect(within(secondaryBalances as HTMLElement).getByText("Pending rewards"))
       .toBeInTheDocument();
+  });
+
+  test("shows signed Wallet changes in recent activity", () => {
+    renderPanel(walletModel({
+      ledger: {
+        phase: "ready",
+        value: [CREDIT_ENTRY, HELD_ENTRY, CONSUMED_ENTRY, EXPIRED_ENTRY]
+      }
+    }));
+
+    const table = screen.getByRole("table", {
+      name: "Recent Coins Wallet activity"
+    });
+    expect(within(table).getAllByRole("columnheader").map((header) => header.textContent))
+      .toEqual(["Category", "Coin type", "Occurred at", "Change"]);
+    expect(within(screen.getByText("Coins credited").closest("tr") as HTMLElement)
+      .getAllByRole("cell").at(-1)).toHaveTextContent("+40");
+    expect(within(screen.getByText("Reserved for order").closest("tr") as HTMLElement)
+      .getAllByRole("cell").at(-1)).toHaveTextContent("-5");
+    expect(within(screen.getByText("Purchase completed").closest("tr") as HTMLElement)
+      .getAllByRole("cell").at(-1)).toHaveTextContent("-7");
+    expect(within(screen.getByText("Available balance expired").closest("tr") as HTMLElement)
+      .getAllByRole("cell").at(-1)).toHaveTextContent("-3");
   });
 
   test("shows only five recent ledger entries until the user opens all activity", () => {

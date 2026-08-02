@@ -229,6 +229,13 @@ function bucketDelta(value: number | null) {
   return value === null ? "—" : signedDelta(value);
 }
 
+function recentActivityDelta(entry: PortalWalletLedgerEntry) {
+  if (entry.category === "credit") return entry.totalDeltaUnits;
+  return entry.availableDeltaUnits !== 0
+    ? entry.availableDeltaUnits
+    : entry.totalDeltaUnits;
+}
+
 function LedgerTable({
   entries,
   locale,
@@ -272,7 +279,7 @@ function LedgerTable({
                 <th scope="col">{zh ? "待确认" : "Pending"}</th>
                 <th scope="col">{zh ? "冻结" : "Held"}</th>
               </>
-            ) : <th scope="col">{zh ? "数量" : "Amount"}</th>}
+            ) : <th scope="col">{zh ? "变动" : "Change"}</th>}
           </tr>
         </thead>
         <tbody>
@@ -293,7 +300,7 @@ function LedgerTable({
                   <td>{bucketDelta(entry.pendingDeltaUnits)}</td>
                   <td>{bucketDelta(entry.heldDeltaUnits)}</td>
                 </>
-              ) : <td>{entry.amountUnits}</td>}
+              ) : <td>{signedDelta(recentActivityDelta(entry))}</td>}
             </tr>
           ))}
         </tbody>

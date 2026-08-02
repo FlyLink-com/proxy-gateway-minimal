@@ -197,6 +197,40 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
 ];
 
+type PortalNavigationGroup = {
+  id: "service" | "assets" | "account" | "help";
+  zh: string;
+  en: string;
+  itemIds: PortalView[];
+};
+
+const portalNavigationGroups: PortalNavigationGroup[] = [
+  {
+    id: "service",
+    zh: "服务与用量",
+    en: "Services and usage",
+    itemIds: ["start", "dashboard", "usage"]
+  },
+  {
+    id: "assets",
+    zh: "资产与权益",
+    en: "Assets and benefits",
+    itemIds: ["marketplace", "orders", "wallet", "referrals"]
+  },
+  {
+    id: "account",
+    zh: "账户",
+    en: "Account",
+    itemIds: ["profile", "settings"]
+  },
+  {
+    id: "help",
+    zh: "帮助",
+    en: "Help",
+    itemIds: ["support"]
+  }
+];
+
 const supportCategories: Array<{ id: PortalSupportCategory; label: string }> = [
   {
     id: "subscription",
@@ -448,6 +482,13 @@ function localizedNavItems(locale: PortalAuthLocale) {
   return navItems.map((item) => ({ ...item, ...localizedPortalViewCopy(item.id, locale) }));
 }
 
+function localizedNavGroups(locale: PortalAuthLocale) {
+  return portalNavigationGroups.map((group) => ({
+    ...group,
+    label: uiText(locale, group.zh, group.en)
+  }));
+}
+
 function localizedOrderStatusTabs(locale: PortalAuthLocale) {
   return orderStatusTabs.map((tab) => ({
     ...tab,
@@ -504,21 +545,6 @@ function paymentStatusLabel(status: PortalPaymentOrder["status"], locale: Portal
       return uiText(locale, "开通异常", "Delivery issue");
     default:
       return status;
-  }
-}
-
-function lifecycleLabel(lifecycle: SubscriptionLifecycle, locale: PortalAuthLocale = "zh") {
-  switch (lifecycle) {
-    case "active":
-      return uiText(locale, "服务生效中", "Service active");
-    case "pending":
-      return uiText(locale, "开通中", "Activation pending");
-    case "expired":
-      return uiText(locale, "已过期", "Expired");
-    case "disabled":
-      return uiText(locale, "订阅已停用", "Subscription disabled");
-    default:
-      return uiText(locale, "未开通", "Not active");
   }
 }
 
@@ -967,10 +993,6 @@ function resolveLifecycle(created: CreatedSubscription | null): SubscriptionLife
   return created.request.lifecycle;
 }
 
-function subscriptionPlan(created: CreatedSubscription | null, fallbackPlanId: PortalPlanId, locale: PortalAuthLocale = "zh") {
-  return selectedPlan(created?.request.planId ?? fallbackPlanId, locale);
-}
-
 function authModeLabel(mode: DisplayAuthMode, locale: PortalAuthLocale = "zh") {
   if (mode === "email") return uiText(locale, "邮箱验证码（未启用）", "Email code (disabled)");
   if (mode === "token") return uiText(locale, "一次性登录", "One-time sign-in");
@@ -1130,8 +1152,11 @@ export function UserPortalPage({
   const paymentFlowActive = activeView === "orders" && Boolean(activePaymentOrder);
   const created = useMemo(() => createdSubscriptionFromOrder(selectedOrder), [selectedOrder]);
   const lifecycle = resolveLifecycle(created);
-  const currentPlan = subscriptionPlan(created, selectedPlanId, locale);
   const shellNavItems = useMemo(() => localizedNavItems(locale), [locale]);
+  const shellNavGroups = useMemo(() => localizedNavGroups(locale).map((group) => ({
+    ...group,
+    items: shellNavItems.filter((item) => group.itemIds.includes(item.id))
+  })), [locale, shellNavItems]);
   const activeViewCopy = useMemo(() => localizedPortalViewCopy(activeView, locale), [activeView, locale]);
   const trafficSummary = useMemo(() => aggregateTrafficUsage(orderRows, accountEntitlements), [orderRows, accountEntitlements]);
   const trafficPercent = aggregateTrafficPercent(trafficSummary);
@@ -1983,18 +2008,6 @@ export function UserPortalPage({
     );
   }
 
-  const entitlementPlanId = setupPlanIdFromEntitlement(currentEntitlement);
-  const profileDisplayPlan = created
-    ? currentPlan
-    : entitlementPlanId
-      ? selectedPlan(entitlementPlanId, locale)
-      : currentPlan;
-  const profileDisplayLifecycle: SubscriptionLifecycle = created
-    ? lifecycle
-    : currentEntitlement
-      ? "active"
-      : lifecycle;
-  const hasCurrentPlan = Boolean(created || currentEntitlement);
   const shouldShowSecuritySetup = Boolean(
     securitySetupRequired
     && (!authenticatorBound || !passkeyExported)
@@ -2048,32 +2061,45 @@ export function UserPortalPage({
           </div>
 
           <nav className="portal-use-nav" aria-label={uiText(locale, "用户中心导航", "User center navigation")}>
-            {shellNavItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-label={item.label}
-                  aria-describedby={item.id === "wallet" ? "portal-wallet-nav-balance" : undefined}
-                  aria-current={activeView === item.id ? "page" : undefined}
-                  data-portal-view={item.id}
-                  className={cn("portal-use-nav-item", activeView === item.id && "active")}
-                  onClick={() => navigatePortalView(item.id)}
-                >
-                  <Icon aria-hidden="true" />
-                  <span>
-                    <strong>{item.label}</strong>
-                    <small>{item.description}</small>
-                  </span>
-                  {item.id === "wallet" ? (
-                    <span className="sr-only" id="portal-wallet-nav-balance">
-                      Coins · {authoritativeWalletBalance ?? "--"}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
+            {shellNavGroups.map((group) => (
+              <div
+                key={group.id}
+                className="portal-nav-group"
+                data-portal-nav-group={group.id}
+                role="group"
+                aria-labelledby={`portal-nav-group-${group.id}`}
+              >
+                <span className="portal-nav-group-label" id={`portal-nav-group-${group.id}`}>
+                  {group.label}
+                </span>
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      aria-label={item.label}
+                      aria-describedby={item.id === "wallet" ? "portal-wallet-nav-balance" : undefined}
+                      aria-current={activeView === item.id ? "page" : undefined}
+                      data-portal-view={item.id}
+                      className={cn("portal-use-nav-item", activeView === item.id && "active")}
+                      onClick={() => navigatePortalView(item.id)}
+                    >
+                      <Icon aria-hidden="true" />
+                      <span>
+                        <strong>{item.label}</strong>
+                        <small>{item.description}</small>
+                      </span>
+                      {item.id === "wallet" ? (
+                        <span className="sr-only" id="portal-wallet-nav-balance">
+                          Coins · {authoritativeWalletBalance ?? "--"}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
 
           <div className="portal-user-card portal-v2-user-card portal-v2-account-card">
@@ -2119,11 +2145,11 @@ export function UserPortalPage({
                   >
                     <label className="portal-v2-global-search" htmlFor="portal-global-search">
                       <Search aria-hidden="true" />
-                      <span className="sr-only">{uiText(locale, "全局搜索", "Global search")}</span>
+                      <span className="sr-only">{uiText(locale, "订单搜索", "Orders search")}</span>
                       <input
                         id="portal-global-search"
                         type="search"
-                        aria-label={uiText(locale, "全局搜索", "Global search")}
+                        aria-label={uiText(locale, "订单搜索", "Orders search")}
                         value={orderSearch}
                         onChange={(event) => setOrderSearch(event.target.value)}
                         placeholder={uiText(locale, "搜索订单、套餐或状态", "Search orders, plans, or status")}
@@ -2265,7 +2291,12 @@ export function UserPortalPage({
                 className="portal-v2-settings-preference-grid"
                 role="group"
                 aria-label={authCopy.preferences}
+                data-config-group="appearance"
               >
+                <div className="portal-v2-settings-group-heading">
+                  <h3>{uiText(locale, "外观", "Appearance")}</h3>
+                  <p>{uiText(locale, "语言和主题仅影响当前用户中心的显示。", "Language and theme affect only this User Center display.")}</p>
+                </div>
                 <section className="portal-v2-settings-preference-card">
                   <div>
                     <strong>{uiText(locale, "界面语言", "Interface language")}</strong>
@@ -2300,13 +2331,7 @@ export function UserPortalPage({
               profile={{
                 authModeLabel: authModeLabel(portalSession.authMode, locale),
                 userRef: portalSession.userRef,
-                registeredAtLabel: formatDateTime(registrationDate, locale),
-                currentPlanLabel: hasCurrentPlan
-                  ? `${profileDisplayPlan.label} · ${lifecycleLabel(profileDisplayLifecycle, locale)}`
-                  : uiText(locale, "未开通", "Not active"),
-                expiryLabel: created
-                  ? expiryDisplay(created, lifecycle, locale)
-                  : entitlementExpiryDisplay(currentEntitlement, locale)
+                registeredAtLabel: formatDateTime(registrationDate, locale)
               }}
               security={{
                 authenticatorBound,
@@ -2393,16 +2418,86 @@ function DashboardPanel({
   const heavyUsageOrders = [...orderRows]
     .sort((left, right) => orderUsageSortValue(right) - orderUsageSortValue(left))
     .slice(0, 3);
-  const currentStatus = selectedOrder?.status ?? (entitlementActive ? "active" : "pending");
   const hasTrafficAccess = entitlementActive || selectedOrder?.status === "active";
+  const currentStatus = selectedOrder?.status ?? (entitlementActive ? "active" : "pending");
+  const resourceState = hasTrafficAccess ? "active" : pendingOrders > 0 ? "pending" : "empty";
+  const resourceHeading = resourceState === "active"
+    ? currentPlan?.label ?? uiText(locale, "账户资源已开通", "Account resource is active")
+    : resourceState === "pending"
+      ? uiText(locale, "服务订单处理中", "Service order is processing")
+      : uiText(locale, "账户尚未开通服务", "No account service yet");
+  const resourceDescription = resourceState === "active"
+    ? uiText(locale, "当前资源已下发到账户；续期会更新账户的可用时间。", "The current resource is available to this account; renewal updates its available time.")
+    : resourceState === "pending"
+      ? uiText(locale, "订单确认完成后，服务资源会自动下发到当前账户。", "After the order is confirmed, the service resource is delivered to this account automatically.")
+      : uiText(locale, "在商城购买服务后，资源会下发到当前账户。", "After you buy a service in Marketplace, its resource is delivered to this account.");
+  const resourceActionView: PortalView = resourceState === "active"
+    ? "start"
+    : resourceState === "pending"
+      ? "orders"
+      : "marketplace";
+  const resourceActionLabel = resourceState === "active"
+    ? uiText(locale, "开始使用", "Start using")
+    : resourceState === "pending"
+      ? uiText(locale, "查看订单", "View orders")
+      : uiText(locale, "前往商城", "Go to Marketplace");
 
   return (
     <div className="portal-v2-stack">
+      {desktopViewport ? <section
+        className="portal-v2-resource-state"
+        aria-label={uiText(locale, "账户资源状态", "Account resource status")}
+        aria-live="polite"
+        data-state={resourceState}
+      >
+        <div className="portal-v2-resource-state-copy">
+          <span className="portal-card-label"><Activity aria-hidden="true" /> {uiText(locale, "账户资源", "Account resource")}</span>
+          <h2>{resourceHeading}</h2>
+          <p>{resourceDescription}</p>
+        </div>
+        {resourceState === "active" ? (
+          <dl className="portal-v2-resource-state-details">
+            <div>
+              <dt>{uiText(locale, "可用时间", "Available time")}</dt>
+              <dd>{selectedOrder ? expiryDisplay(created, lifecycle, locale) : entitlementExpiryDisplay(currentEntitlement, locale)}</dd>
+            </div>
+            <div>
+              <dt>{uiText(locale, "当前额度", "Current quota")}</dt>
+              <dd>{planTrafficBytes > 0 ? formatTrafficBytes(planTrafficBytes) : uiText(locale, "未设置", "Not set")}</dd>
+            </div>
+          </dl>
+        ) : null}
+        <div className="portal-v2-resource-state-actions">
+          <span className={cn("portal-order-status", resourceState === "active" ? "active" : "pending")}>
+            {resourceState === "active"
+              ? uiText(locale, "生效中", "Active")
+              : resourceState === "pending"
+                ? uiText(locale, "处理中", "Processing")
+                : uiText(locale, "待开通", "Not active")}
+          </span>
+          <button
+            className="portal-primary-button compact"
+            type="button"
+            onClick={() => setActiveView(resourceActionView)}
+          >
+            {resourceActionLabel}
+          </button>
+        </div>
+      </section> : null}
+
       <section className="portal-v2-metric-grid" aria-label={uiText(locale, "账户指标", "Account metrics")}>
         <article className="portal-v2-metric-card">
           <span><Activity aria-hidden="true" /> {uiText(locale, "服务状态", "Service status")}</span>
-          <strong>{orderHealthLabel(orderRows, currentEntitlement ? [currentEntitlement] : [], locale)}</strong>
-          <small>{activeOrders > 0 || entitlementActive ? uiText(locale, "当前套餐可用", "Current plan is active") : pendingOrders > 0 ? uiText(locale, `${pendingOrders} 个订单待处理`, `${pendingOrders} pending orders`) : uiText(locale, "商城订单交付后开始计时", "Time starts after a Marketplace order is fulfilled")}</small>
+          <strong>{resourceState === "active"
+            ? orderHealthLabel(orderRows, currentEntitlement ? [currentEntitlement] : [], locale)
+            : resourceState === "pending"
+              ? uiText(locale, "处理中", "Processing")
+              : uiText(locale, "待开通", "Not active")}</strong>
+          <small>{resourceState === "active"
+            ? uiText(locale, "当前账户资源可用", "Current account resource is available")
+            : resourceState === "pending"
+              ? uiText(locale, `${pendingOrders} 个服务订单待处理`, `${pendingOrders} service orders pending`)
+              : uiText(locale, "购买服务后开始计时", "Time starts after service delivery")}</small>
         </article>
         <article className="portal-v2-metric-card">
           <span><ReceiptText aria-hidden="true" /> {uiText(locale, "订单记录", "Order records")}</span>
@@ -2411,26 +2506,24 @@ function DashboardPanel({
         </article>
         <article className="portal-v2-metric-card">
           <span><BarChart3 aria-hidden="true" /> {uiText(locale, "共享月流量", "Shared monthly traffic")}</span>
-          <strong>{formatTrafficBytes(trafficSummary.usedBytes)}</strong>
-          <small>{trafficSummary.measuredOrders > 0 ? uiText(locale, "所有设备共享账户流量池", "All devices share the account pool") : uiText(locale, "使用后显示", "Shown after use")}</small>
+          <strong>{hasTrafficAccess ? formatTrafficBytes(trafficSummary.usedBytes) : "—"}</strong>
+          <small>{hasTrafficAccess
+            ? trafficSummary.measuredOrders > 0
+              ? uiText(locale, "所有设备共享账户流量池", "All devices share the account pool")
+              : uiText(locale, "开始使用后显示", "Shown after you start using the service")
+            : uiText(locale, "资源开通后开始计量", "Measured after the resource is active")}</small>
         </article>
         <article className="portal-v2-metric-card">
           <span><BarChart3 aria-hidden="true" /> {uiText(locale, "剩余流量", "Remaining traffic")}</span>
-          <strong>{desktopViewport && !hasTrafficAccess
-            ? uiText(locale, "未开通", "Not active")
-            : planTrafficBytes > 0
-              ? formatTrafficBytes(remainingTrafficBytes)
-              : uiText(locale, "未开通", "Not active")}</strong>
-          <small>{desktopViewport && !hasTrafficAccess
-            ? uiText(locale, "流量权益交付后显示额度", "Traffic quota appears after entitlement delivery")
-            : planTrafficBytes > 0
-              ? uiText(locale, `本月额度 ${formatTrafficBytes(planTrafficBytes)}`, `${formatTrafficBytes(planTrafficBytes)} monthly quota`)
-              : uiText(locale, "流量权益交付后显示额度", "Traffic quota appears after entitlement delivery")}</small>
+          <strong>{hasTrafficAccess && planTrafficBytes > 0 ? formatTrafficBytes(remainingTrafficBytes) : "—"}</strong>
+          <small>{hasTrafficAccess && planTrafficBytes > 0
+            ? uiText(locale, `本月额度 ${formatTrafficBytes(planTrafficBytes)}`, `${formatTrafficBytes(planTrafficBytes)} monthly quota`)
+            : uiText(locale, "资源开通后显示当前额度", "Current quota appears after the resource is active")}</small>
         </article>
       </section>
 
       <section className="portal-v2-dashboard-grid">
-        <article className="portal-v2-panel portal-v2-subscription-panel">
+        {!desktopViewport ? <article className="portal-v2-panel portal-v2-subscription-panel">
           <div className="portal-v2-panel-header">
             <div>
               <span className="portal-card-label">{uiText(locale, "当前套餐", "Current plan")}</span>
@@ -2456,33 +2549,17 @@ function DashboardPanel({
           </dl>
           <div className="portal-v2-traffic-summary">
             <div>
-              <strong>
-                {desktopViewport && !hasTrafficAccess
-                  ? uiText(locale, "尚未开通", "Not active yet")
-                  : trafficSummary.totalBytes > 0
-                  ? `${Math.round(trafficPercent)}%`
-                  : uiText(locale, "不限量", "Unlimited")}
-              </strong>
-              <span>
-                {desktopViewport && !hasTrafficAccess
-                  ? uiText(locale, "开通后显示流量额度", "Traffic quota appears after activation")
-                  : trafficSummary.totalBytes > 0
-                  ? uiText(locale, "共享流量使用率", "Shared quota used")
-                  : uiText(locale, "暂无流量上限", "No traffic limit")}
-              </span>
+              <strong>{trafficSummary.totalBytes > 0 ? `${Math.round(trafficPercent)}%` : uiText(locale, "不限量", "Unlimited")}</strong>
+              <span>{trafficSummary.totalBytes > 0 ? uiText(locale, "共享流量使用率", "Shared quota used") : uiText(locale, "暂无流量上限", "No traffic limit")}</span>
             </div>
             <div className="portal-traffic-meter" aria-hidden="true">
               <span style={{ width: `${trafficPercent}%` }} />
             </div>
-            <small>
-              {desktopViewport && !hasTrafficAccess
-                ? uiText(locale, "先前往商城选择套餐", "Choose a plan in Marketplace first")
-                : trafficSummary.totalBytes > 0
-                  ? `${formatTrafficBytes(trafficSummary.usedBytes)} / ${formatTrafficBytes(trafficSummary.totalBytes)}`
-                  : uiText(locale, `${formatTrafficBytes(trafficSummary.usedBytes)} 已计量`, `${formatTrafficBytes(trafficSummary.usedBytes)} measured`)}
-            </small>
+            <small>{trafficSummary.totalBytes > 0
+              ? `${formatTrafficBytes(trafficSummary.usedBytes)} / ${formatTrafficBytes(trafficSummary.totalBytes)}`
+              : uiText(locale, `${formatTrafficBytes(trafficSummary.usedBytes)} 已计量`, `${formatTrafficBytes(trafficSummary.usedBytes)} measured`)}</small>
           </div>
-        </article>
+        </article> : null}
 
         <article className="portal-v2-panel">
           <div className="portal-v2-panel-header">

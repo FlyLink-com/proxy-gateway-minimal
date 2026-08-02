@@ -378,6 +378,22 @@ describe("Portal recharge interaction", () => {
     })).toBeInTheDocument();
   });
 
+  test("announces the creating-order state with its offer identity", () => {
+    const model: PortalRechargeModel = {
+      ...rechargeOfferDialogModel(OFFER),
+      busy: true,
+    };
+    render(createElement(PortalRechargeDialog, { locale: "en", model }));
+
+    const dialog = screen.getByRole("dialog", { name: "Recharge Coins" });
+    const button = within(dialog).getByRole("button", {
+      name: "Creating order for 30 Coins, USD 1.00, option 1",
+    });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button).toHaveTextContent("Creating order…");
+  });
+
   test("uses provider-neutral lifecycle copy for an entry-ready order", () => {
     render(createElement(PortalRechargeDialog, {
       locale: "en",
