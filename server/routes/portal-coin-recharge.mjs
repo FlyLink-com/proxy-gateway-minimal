@@ -65,7 +65,7 @@ function safeReference(value) {
 function projectOffer(value) {
   const result = {};
   for (const field of [
-    "offerRef", "quoteVersion", "paidCoinUnits", "amountMinor", "currency", "currencyExponent",
+    "offerRef", "quoteVersion", "paidCoinUnits", "amountMinor", "currency", "currencyExponent", "paymentMethods",
   ]) result[field] = value[field];
   return result;
 }

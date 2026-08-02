@@ -2175,7 +2175,7 @@ export function createRuntimeState(options = {}) {
       }
       const offerCatalog = createPaymentRechargeOfferCatalog({
         environment: "sandbox",
-        offers
+        offers: offers.map((offer) => ({ ...offer, paymentMethods: ["paypal"] }))
       });
       const paypalRuntime = createPayPalSandboxRuntime({
         credential,

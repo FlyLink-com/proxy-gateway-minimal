@@ -43,6 +43,7 @@ function createCatalog() {
         amountMinor: 100,
         currency: "USD",
         currencyExponent: 2,
+        paymentMethods: ["paypal"],
         enabled: true,
       },
       {
@@ -52,6 +53,7 @@ function createCatalog() {
         amountMinor: 300,
         currency: "USD",
         currencyExponent: 2,
+        paymentMethods: ["paypal"],
         enabled: false,
       },
     ],
@@ -146,6 +148,7 @@ test("sandbox catalog exposes only immutable server-authored USD offers", () => 
     amountMinor: 100,
     currency: "USD",
     currencyExponent: 2,
+    paymentMethods: ["paypal"],
     environment: "sandbox",
     quoteDigest: catalog.getOffer("coins_30").quoteDigest,
   }]);
@@ -160,6 +163,7 @@ test("sandbox catalog exposes only immutable server-authored USD offers", () => 
       amountMinor: 100,
       currency: "CNY",
       currencyExponent: 2,
+      paymentMethods: ["paypal"],
       enabled: true,
     }],
   }), /invalid_payment_recharge_catalog/u);
@@ -205,6 +209,7 @@ test("createOrder snapshots the server offer and replays one account idempotency
             amountMinor: 200,
             currency: "USD",
             currencyExponent: 2,
+            paymentMethods: ["paypal"],
             enabled: true,
           }],
         }).getOffer("coins_50"),

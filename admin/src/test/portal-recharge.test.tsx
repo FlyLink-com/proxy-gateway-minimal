@@ -21,6 +21,7 @@ const OFFER: PortalRechargeOffer = {
   amountMinor: 100,
   currency: "USD",
   currencyExponent: 2,
+  paymentMethods: ["paypal"],
 };
 
 function rechargeOrder(status: PortalRechargeOrder["status"]): PortalRechargeOrder {
@@ -122,6 +123,7 @@ describe("Portal recharge client", () => {
       ...OFFER,
       amountMinor: 950,
       currency: "CNY",
+      paymentMethods: ["alipay", "wechat_pay"],
     };
     const fetchFn = vi.fn(async () => new Response(
       JSON.stringify({ offers: [cnyOffer] }),
@@ -132,6 +134,38 @@ describe("Portal recharge client", () => {
     await expect(client.listOffers({
       sessionRef: "session_recharge_1",
     })).resolves.toEqual([cnyOffer]);
+  });
+
+  test("accepts only exact canonical payment method projections for recharge offers", async () => {
+    const offer = {
+      ...OFFER,
+      currency: "CNY",
+      paymentMethods: ["alipay", "wechat_pay"],
+    };
+    const fetchFn = vi.fn(async () => new Response(
+      JSON.stringify({ offers: [offer] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+
+    await expect(createPortalRechargeClient({ fetchFn }).listOffers({
+      sessionRef: "session_recharge_1",
+    })).resolves.toEqual([offer]);
+
+    for (const paymentMethods of [
+      undefined,
+      [],
+      ["alipay", "alipay"],
+      ["wechat_pay", "alipay"],
+      ["xsd_v1"],
+      ["alipay", "wechat_pay", "paypal", "merchant"],
+    ]) {
+      const invalidFetch = vi.fn(async () => new Response(JSON.stringify({
+        offers: [{ ...OFFER, paymentMethods }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      await expect(createPortalRechargeClient({ fetchFn: invalidFetch }).listOffers({
+        sessionRef: "session_recharge_1",
+      })).rejects.toMatchObject({ code: "payment_recharge_request_failed" });
+    }
   });
 
   test("keeps historical orders readable when an unknown adapter has no payment handoff", async () => {
@@ -339,11 +373,57 @@ function rechargeOfferDialogModel(
 }
 
 describe("Portal recharge interaction", () => {
+  test("renders six formal CNY cards with neutral method labels and server-only actions", () => {
+    const cnyOffers = [
+      ["coins_10", 10, 1000],
+      ["coins_30", 30, 3000],
+      ["coins_50", 50, 5000],
+      ["coins_100", 100, 10000],
+      ["coins_200", 200, 20000],
+      ["coins_300", 300, 30000],
+    ] as const;
+    const offers: PortalRechargeOffer[] = cnyOffers.map(([offerRef, paidCoinUnits, amountMinor]) => ({
+      ...OFFER,
+      offerRef,
+      paidCoinUnits,
+      amountMinor,
+      currency: "CNY",
+      paymentMethods: ["alipay", "wechat_pay"],
+    }));
+    const model: PortalRechargeModel = {
+      ...rechargeOfferDialogModel(OFFER),
+      offers,
+    };
+    render(createElement(PortalRechargeDialog, { locale: "en", model }));
+
+    const dialog = screen.getByRole("dialog", { name: "Recharge Coins" });
+    expect(within(dialog).getAllByRole("listitem")).toHaveLength(6);
+    for (const [, paidCoinUnits, amountMinor] of [
+      ["coins_10", 10, 1000],
+      ["coins_30", 30, 3000],
+      ["coins_50", 50, 5000],
+      ["coins_100", 100, 10000],
+      ["coins_200", 200, 20000],
+      ["coins_300", 300, 30000],
+    ]) {
+      expect(within(dialog).getByText(`${paidCoinUnits} Coins`)).toBeInTheDocument();
+      expect(within(dialog).getByText(`CNY ${(amountMinor / 100).toFixed(2)}`)).toBeInTheDocument();
+    }
+    expect(within(dialog).getAllByText("Alipay")).toHaveLength(6);
+    expect(within(dialog).getAllByText("WeChat Pay")).toHaveLength(6);
+    expect(dialog).not.toHaveTextContent(/xsd_v1|chaojipay_v1|merchant|sandbox|bonus|discount|expiry/i);
+    fireEvent.click(within(dialog).getByRole("button", {
+      name: "Continue to payment for 10 Coins, CNY 10.00, option 1",
+    }));
+    expect(model.createOrder).toHaveBeenCalledWith("coins_10");
+  });
+
   test("presents server pricing and payment entry without provider-specific copy", () => {
     const model = rechargeOfferDialogModel({
       ...OFFER,
       amountMinor: 950,
       currency: "CNY",
+      paymentMethods: ["alipay", "wechat_pay"],
     });
     render(createElement(PortalRechargeDialog, { locale: "en", model }));
 

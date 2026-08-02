@@ -48,6 +48,7 @@ function createCoordinator() {
         amountMinor: 100,
         currency: "USD",
         currencyExponent: 2,
+        paymentMethods: ["paypal"],
         environment: "sandbox",
         quoteDigest: "a".repeat(64),
       }];
@@ -154,6 +155,7 @@ test("authenticated account creates and captures only its server-priced order", 
       amountMinor: 100,
       currency: "USD",
       currencyExponent: 2,
+      paymentMethods: ["paypal"],
     });
     const createdResponse = await fetch(`${baseUrl}/api/portal/coins/recharge/orders`, {
       method: "POST",

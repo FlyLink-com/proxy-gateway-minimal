@@ -698,24 +698,47 @@
 
 .portal-v2-shell .portal-recharge-offers {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   list-style: none;
 }
 
 .portal-v2-shell .portal-recharge-offers li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  display: grid;
+  align-content: space-between;
+  gap: 16px;
   border: 1px solid var(--portal-wallet-border);
   border-radius: 10px;
   background: var(--portal-wallet-surface);
   padding: 16px;
+  transition: border-color 160ms ease, background 160ms ease;
 }
 
-.portal-v2-shell .portal-recharge-offers li > div {
+.portal-v2-shell .portal-recharge-offers li:hover,
+.portal-v2-shell .portal-recharge-offers li:focus-within {
+  border-color: color-mix(in srgb, var(--portal-wallet-accent) 62%, var(--portal-wallet-border));
+  background: color-mix(in srgb, var(--portal-wallet-accent) 8%, var(--portal-wallet-surface));
+}
+
+.portal-v2-shell .portal-recharge-offer-details {
   display: grid;
   gap: 4px;
+}
+
+.portal-v2-shell .portal-recharge-payment-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.portal-v2-shell .portal-recharge-payment-methods span {
+  border: 1px solid var(--portal-wallet-border);
+  border-radius: 999px;
+  color: var(--portal-wallet-text);
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .portal-v2-shell .portal-recharge-offers span,
@@ -730,6 +753,11 @@
 
 .portal-v2-shell .portal-recharge-dialog button {
   min-height: 44px;
+}
+
+.portal-v2-shell .portal-recharge-offers button:focus-visible {
+  outline: 3px solid var(--portal-wallet-accent);
+  outline-offset: 2px;
 }
 
 .portal-v2-shell .portal-recharge-order,

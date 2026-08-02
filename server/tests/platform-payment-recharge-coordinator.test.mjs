@@ -243,6 +243,7 @@ function createSystem({
       amountMinor: 100,
       currency: "USD",
       currencyExponent: 2,
+      paymentMethods: ["paypal"],
       enabled: offerEnabled,
     }],
   });

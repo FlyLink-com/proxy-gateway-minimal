@@ -5,6 +5,7 @@ export type PortalRechargeOffer = {
   amountMinor: number;
   currency: string;
   currencyExponent: number;
+  paymentMethods: readonly PortalRechargePaymentMethod[];
 };
 
 export type PortalRechargePaymentMethod = "alipay" | "wechat_pay" | "paypal";
@@ -85,9 +86,9 @@ export class PortalRechargeClientError extends Error {
 
 const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const CURRENCY = /^[A-Z]{3}$/u;
-const PAYMENT_METHODS = new Set<PortalRechargePaymentMethod>([
+const PAYMENT_METHODS = Object.freeze([
   "alipay", "wechat_pay", "paypal",
-]);
+]) as readonly PortalRechargePaymentMethod[];
 const STATUSES = new Set<PortalRechargeOrderStatus>([
   "created", "entry_ready", "pending", "payment_verified", "credited",
   "failed_no_charge", "reconciliation_required", "expired",
@@ -143,8 +144,20 @@ function currencyExponent(value: unknown) {
 }
 
 function paymentMethod(value: unknown): PortalRechargePaymentMethod {
-  if (!PAYMENT_METHODS.has(value as PortalRechargePaymentMethod)) return invalidProjection();
+  if (!PAYMENT_METHODS.includes(value as PortalRechargePaymentMethod)) return invalidProjection();
   return value as PortalRechargePaymentMethod;
+}
+
+function paymentMethods(value: unknown): readonly PortalRechargePaymentMethod[] {
+  const values = exactArray(value).map(paymentMethod);
+  if (
+    values.length === 0
+    || values.some((method, index) => values.indexOf(method) !== index)
+    || values.some((method, index) => (
+      PAYMENT_METHODS.indexOf(method) <= (index === 0 ? -1 : PAYMENT_METHODS.indexOf(values[index - 1]))
+    ))
+  ) return invalidProjection();
+  return Object.freeze(values);
 }
 
 function nullableReference(value: unknown) {
@@ -162,7 +175,7 @@ function timestamp(value: unknown) {
 
 function offerProjection(value: unknown): PortalRechargeOffer {
   const offer = exactObject(value, [
-    "offerRef", "quoteVersion", "paidCoinUnits", "amountMinor", "currency", "currencyExponent",
+    "offerRef", "quoteVersion", "paidCoinUnits", "amountMinor", "currency", "currencyExponent", "paymentMethods",
   ]);
   return {
     offerRef: reference(offer.offerRef),
@@ -171,6 +184,7 @@ function offerProjection(value: unknown): PortalRechargeOffer {
     amountMinor: positiveInteger(offer.amountMinor),
     currency: currencyCode(offer.currency),
     currencyExponent: currencyExponent(offer.currencyExponent),
+    paymentMethods: paymentMethods(offer.paymentMethods),
   };
 }
 

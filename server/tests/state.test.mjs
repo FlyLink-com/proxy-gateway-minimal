@@ -699,6 +699,10 @@ test("createRuntimeState assembles the default-off PayPal Sandbox recharge runti
       state.platform.paymentRechargeCoordinator.listOffers().map((offer) => offer.currency),
       ["USD"]
     );
+    assert.deepEqual(
+      state.platform.paymentRechargeCoordinator.listOffers().map((offer) => offer.paymentMethods),
+      [["paypal"]]
+    );
   } finally {
     state?.close();
     removeTempDir(dir);
