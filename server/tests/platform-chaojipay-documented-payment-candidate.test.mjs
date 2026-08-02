@@ -108,3 +108,30 @@ test("ChaoJiPay candidate fails closed for unsafe or non-documentation inputs", 
     );
   }
 });
+
+test("ChaoJiPay candidate rejects hostile proxies before reflection traps and delimiter collisions", () => {
+  let getPrototypeOfCalls = 0;
+  let ownKeysCalls = 0;
+  const hostile = new Proxy({}, {
+    getPrototypeOf() {
+      getPrototypeOfCalls += 1;
+      return Object.prototype;
+    },
+    ownKeys() {
+      ownKeysCalls += 1;
+      return [];
+    },
+  });
+  assertCandidateError(
+    () => chaoJiPayCandidate.canonicalizeChaoJiPayCreateSigningCandidate(hostile),
+    "invalid_documented_payment_candidate",
+  );
+  assert.equal(getPrototypeOfCalls, 0);
+  assert.equal(ownKeysCalls, 0);
+  for (const merchantId of ["merchant_demo&amount=1", "merchant=demo"]) {
+    assertCandidateError(
+      () => chaoJiPayCandidate.canonicalizeChaoJiPayCreateSigningCandidate({ merchantId }),
+      "invalid_documented_payment_candidate",
+    );
+  }
+});

@@ -466,7 +466,7 @@ test("source scanner validates roots before reads deduplicates roots and redacts
   for (const path of DOCUMENTED_CANDIDATE_ROOTS) {
     assert.deepEqual(
       extractStaticModuleSpecifiers(await readSource(path), path),
-      ["node:crypto"],
+      ["node:crypto", "node:util"],
     );
   }
 

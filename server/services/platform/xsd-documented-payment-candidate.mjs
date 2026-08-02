@@ -1,6 +1,7 @@
 // Synthetic candidate only: passing local tests is not provider compatibility evidence.
 // This module must remain unreachable from runtime until a later Risk A contract-validation Gate.
 import { createHash } from "node:crypto";
+import { types as utilTypes } from "node:util";
 
 export const XSD_DOCUMENTED_PAYMENT_CANDIDATE = Object.freeze({
   adapterKey: "xsd_v1",
@@ -21,6 +22,7 @@ const CREATE_FIELDS = Object.freeze([
 const QUERY_FIELDS = Object.freeze(["attach", "format", "mch_id", "out_trade_no", "sign"]);
 const EXCLUDED_FIELDS = new Set(["sign", "format", "attach"]);
 const SAFE_ORDER_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const CANONICAL_VALUE_DELIMITER = /[&=]/u;
 const SYNTHETIC_SECRET = "synthetic_secret";
 const SYNTHETIC_CANONICAL_TEXTS = Object.freeze([
   "mch_create_ip=203.0.113.10&mch_id=merchant_demo&out_trade_no=order_demo_1&total_fee=1200",
@@ -37,6 +39,7 @@ function isPlainObject(value) {
   try {
     return value !== null
       && typeof value === "object"
+      && !utilTypes.isProxy(value)
       && Object.getPrototypeOf(value) === Object.prototype;
   } catch {
     return false;
@@ -64,6 +67,7 @@ function snapshotFields(value, allowedFields) {
       !Object.hasOwn(descriptor, "value")
       || descriptor.enumerable !== true
       || typeof descriptor.value !== "string"
+      || CANONICAL_VALUE_DELIMITER.test(descriptor.value)
     ) throw candidateError("invalid_documented_payment_candidate");
     snapshot[key] = descriptor.value;
   }

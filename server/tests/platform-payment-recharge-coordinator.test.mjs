@@ -116,10 +116,12 @@ function createExecution() {
 
 function createAdapter({
   callbackFactOverrides = {},
+  callbackFactOverridesSequence = [],
   callbackDisposition = "settle",
   captureInputs = [],
   acknowledgementCalls = [],
 } = {}) {
+  let callbackFactCallCount = 0;
   return Object.freeze({
     adapterKey: "paypal_v1",
     paymentMethod: "paypal",
@@ -174,6 +176,7 @@ function createAdapter({
                 eventDedupeKey: "callback_event_1",
                 payloadDigest: CALLBACK_PAYLOAD_DIGEST,
                 ...callbackFactOverrides,
+                ...(callbackFactOverridesSequence[callbackFactCallCount++] ?? {}),
               }),
         };
       });
@@ -187,6 +190,7 @@ function createAdapter({
 
 function createSystem({
   callbackFactOverrides = {},
+  callbackFactOverridesSequence = [],
   callbackDisposition = "settle",
   failCreditOnce = false,
   failMarkOnce = false,
@@ -253,6 +257,7 @@ function createSystem({
     offerCatalog,
     adapter: createAdapter({
       callbackFactOverrides,
+      callbackFactOverridesSequence,
       callbackDisposition,
       captureInputs,
       acknowledgementCalls,
@@ -471,6 +476,54 @@ test("contradictory money and capture identity never mint additional Coins", asy
   }
 });
 
+test("conflicting verified capture after an unclosed Wallet credit reconciles without a second lot", async () => {
+  const system = createSystem({
+    failMarkOnce: true,
+    callbackFactOverridesSequence: [
+      {},
+      {
+        providerCaptureRef: "paypal_capture_2",
+        providerEventRef: "paypal_event_2",
+        eventDedupeKey: "callback_event_2",
+      },
+    ],
+  });
+  try {
+    const created = await createRechargeOrder(system.coordinator);
+    await assert.rejects(
+      () => system.coordinator.acceptProviderCallback(CALLBACK_INPUT),
+      /payment_order_close_failed/u,
+    );
+    const wallet = system.walletStore.getWalletByAccountId("account_1");
+    assert.equal(system.walletStore.getWalletProjection({ accountId: "account_1" }).totals.paid_coins, 30);
+    assert.equal(system.walletStore.listLots({ walletRef: wallet.walletRef }).length, 1);
+    assert.equal(system.database.prepare(`
+      select count(*) as count from platform_coin_operation_receipts
+       where operation_type = 'credit_coins' and status = 'succeeded'
+    `).get().count, 1);
+
+    await assert.rejects(
+      () => system.coordinator.acceptProviderCallback({
+        ...CALLBACK_INPUT,
+        callbackRequestRef: "callback_request_2",
+      }),
+      /payment_reconciliation_required/u,
+    );
+    assert.equal(system.walletStore.getWalletProjection({ accountId: "account_1" }).totals.paid_coins, 30);
+    assert.equal(system.walletStore.listLots({ walletRef: wallet.walletRef }).length, 1);
+    assert.equal(system.database.prepare(`
+      select count(*) as count from platform_coin_operation_receipts
+       where operation_type = 'credit_coins' and status = 'succeeded'
+    `).get().count, 1);
+    assert.equal(system.coordinator.getRechargeOrder({
+      accountId: "account_1",
+      orderRef: created.order.orderRef,
+    }).status, "reconciliation_required");
+  } finally {
+    system.close();
+  }
+});
+
 test("persisted partial Wallet references block every callback before Wallet credit", async () => {
   for (const [column, value] of [
     ["wallet_operation_ref", "wallet_operation_1"],
@@ -599,6 +652,60 @@ test("pending callbacks for terminal payment states reject before capture, Walle
         accountId: "account_1",
         orderRef: created.order.orderRef,
       }).status, terminalState);
+    } finally {
+      system.close();
+    }
+  }
+});
+
+test("direct capture rejects terminal payment states before provider capture", async () => {
+  for (const terminalState of ["failed_no_charge", "reconciliation_required"]) {
+    const system = createSystem();
+    try {
+      const created = await createRechargeOrder(system.coordinator);
+      if (terminalState === "failed_no_charge") {
+        system.paymentStore.recordOperationReceipt({
+          orderRef: created.order.orderRef,
+          attemptRef: "attempt_failed_direct_1",
+          providerRequestRef: "provider_failed_direct_1",
+          receiptType: "capture",
+          operationResult: {
+            providerOrderRef: "paypal_order_1",
+            status: "failed_no_charge",
+            chargeCertainty: "confirmed_no_charge",
+            nextAction: null,
+            occurredAt: NOW,
+          },
+        });
+      } else {
+        const accepted = system.paymentStore.acceptVerifiedPayment({
+          orderRef: created.order.orderRef,
+          attemptRef: "attempt_reconciliation_direct_1",
+          providerRequestRef: "provider_reconciliation_direct_1",
+          receiptType: "capture",
+          adapterKey: "paypal_v1",
+          paymentMethod: "paypal",
+          merchantBindingRef: "paypal_sandbox_primary",
+          paymentFact: paymentFact({
+            sourceType: "authenticated_capture_response",
+            eventDedupeKey: "reconciliation_direct_event_1",
+            payloadDigest: CAPTURE_PAYLOAD_DIGEST,
+          }),
+        });
+        system.paymentStore.markOrderReconciliationRequired({
+          orderRef: created.order.orderRef,
+          receiptRef: accepted.receipt.receiptRef,
+        });
+      }
+      await assert.rejects(
+        () => system.coordinator.captureRechargeOrder({
+          accountId: "account_1",
+          orderRef: created.order.orderRef,
+          idempotencyKey: "capture_terminal_1",
+        }),
+        /payment_reconciliation_required/u,
+      );
+      assert.equal(system.captureInputs.length, 0);
     } finally {
       system.close();
     }

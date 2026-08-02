@@ -619,7 +619,8 @@ test("fixed UI profile uses real password auth, five offers, and reversible 20-C
       paidCoinUnits: 30,
       amountMinor: 100,
       currency: "USD",
-      currencyExponent: 2
+      currencyExponent: 2,
+      paymentMethods: ["paypal"]
     }]);
     const rechargeCreated = await localHttp(handle.baseUrl, {
       method: "POST",

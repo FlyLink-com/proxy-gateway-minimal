@@ -7,6 +7,9 @@ import {
 } from "./payment-provider-adapter-contract.mjs";
 
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const PROVIDER_CAPTURE_ORDER_STATUSES = new Set([
+  "entry_ready", "pending", "payment_verified",
+]);
 
 function coordinatorError(code) {
   const error = new Error(code);
@@ -62,9 +65,7 @@ function canonicalDigest(value) {
 
 function settlementIdentity(context, receipt) {
   const settlementHash = canonicalDigest({
-    adapterKey: context.adapterKey,
-    merchantScopeDigest: receipt.merchantScopeDigest,
-    providerCaptureRef: receipt.providerCaptureRef,
+    paymentOrderRef: context.orderRef,
   });
   return Object.freeze({
     settlementRef: `payment_settlement_${settlementHash}`,
@@ -162,6 +163,18 @@ export function createPaymentRechargeCoordinator(options = {}) {
     return Object.freeze({ order: publicOrder(order), wallet, ...extra });
   }
 
+  function requireSettlementReconciliation(context) {
+    try {
+      store.markOrderReconciliationRequired({
+        orderRef: context.orderRef,
+        receiptRef: context.receipt.receiptRef,
+      });
+    } catch {
+      fail("payment_reconciliation_persistence_failed");
+    }
+    fail("payment_reconciliation_required");
+  }
+
   async function settle(accepted) {
     const context = store.getSettlementContext({
       orderRef: accepted.order.orderRef,
@@ -179,14 +192,7 @@ export function createPaymentRechargeCoordinator(options = {}) {
         return publicResult(accepted.order, null, { replayed: true });
       }
       if (context.creditedReceipt !== null) {
-        try {
-          store.markOrderReconciliationRequired({
-            orderRef: context.orderRef,
-            receiptRef: context.receipt.receiptRef,
-          });
-        } catch {
-          fail("payment_reconciliation_persistence_failed");
-        }
+        requireSettlementReconciliation(context);
       }
       fail("payment_reconciliation_required");
     }
@@ -210,7 +216,13 @@ export function createPaymentRechargeCoordinator(options = {}) {
           idempotencyKey: identity.settlementRef,
         },
       });
-    } catch {
+    } catch (error) {
+      if (
+        error?.code === "idempotency_conflict"
+        || error?.code === "credit_origin_conflict"
+      ) {
+        requireSettlementReconciliation(context);
+      }
       fail("payment_wallet_credit_failed");
     }
     if (typeof wallet?.operationRef !== "string" || typeof wallet?.resultRef !== "string") {
@@ -294,6 +306,12 @@ export function createPaymentRechargeCoordinator(options = {}) {
     const orderRef = order.orderRef;
     if (order.status === "credited") return publicResult(order, null, { replayed: true });
     if (Date.parse(nowIso()) >= Date.parse(order.expiresAt)) fail("payment_recharge_order_expired");
+    if (order.status === "failed_no_charge" || order.status === "reconciliation_required") {
+      fail("payment_reconciliation_required");
+    }
+    if (!PROVIDER_CAPTURE_ORDER_STATUSES.has(order.status)) {
+      fail("payment_recharge_order_not_ready");
+    }
     if (order.providerOrderRef === null) fail("payment_recharge_order_not_ready");
     const attemptRef = providerRef("attempt_capture", orderRef);
     const providerRequestRef = providerRef("provider_capture", orderRef);
