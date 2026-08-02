@@ -20,6 +20,7 @@ const REQUEST_OPERATIONS = new Set([
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DIGEST_RE = /^[a-f0-9]{64}$/u;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const PROVIDER_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9a-z]{1,128}$/u;
 const STATUS_RE = /^[A-Z][A-Z0-9_.-]{0,63}$/u;
 const CURRENCY_RE = /^[A-Z]{3}$/u;
@@ -77,6 +78,38 @@ function snapshotObject(value, expectedKeys) {
     result[key] = descriptor.value;
   }
   return result;
+}
+
+function snapshotFields(value, requiredKeys) {
+  if (
+    value === null
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || utilTypes.isProxy(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    invalidProtocol();
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors);
+  if (
+    keys.length > 128
+    || keys.some((key) => typeof key !== "string")
+    || requiredKeys.some((key) => !Object.hasOwn(descriptors, key))
+  ) {
+    invalidProtocol();
+  }
+  for (const key of keys) {
+    const descriptor = descriptors[key];
+    if (
+      !descriptor
+      || !Object.hasOwn(descriptor, "value")
+      || descriptor.enumerable !== true
+    ) {
+      invalidProtocol();
+    }
+  }
+  return Object.fromEntries(requiredKeys.map((key) => [key, descriptors[key].value]));
 }
 
 function snapshotArray(value, maximumLength = Number.MAX_SAFE_INTEGER) {
@@ -189,6 +222,22 @@ function canonicalTimestamp(value) {
   return value;
 }
 
+function providerTimestamp(value) {
+  if (typeof value !== "string" || !PROVIDER_TIMESTAMP_RE.test(value)) {
+    invalidProtocol();
+  }
+  try {
+    const canonical = new Date(value).toISOString();
+    const expected = value.includes(".")
+      ? canonical
+      : canonical.replace(".000Z", "Z");
+    if (expected !== value) invalidProtocol();
+  } catch {
+    invalidProtocol();
+  }
+  return value;
+}
+
 function paypalCertificateUrl(value) {
   let parsed;
   try { parsed = new URL(value); } catch { invalidProtocol(); }
@@ -201,6 +250,7 @@ function paypalCertificateUrl(value) {
     || !new Set([
       "api.paypal.com",
       "api-m.paypal.com",
+      "api.sandbox.paypal.com",
       "api-m.sandbox.paypal.com",
     ]).has(parsed.hostname)
     || !parsed.pathname.startsWith("/v1/notifications/certs/")
@@ -407,7 +457,7 @@ function normalizedCallbackInput(value) {
     required[name] = matches[0].value;
   }
   required["paypal-cert-url"] = paypalCertificateUrl(required["paypal-cert-url"]);
-  canonicalTimestamp(required["paypal-transmission-time"]);
+  providerTimestamp(required["paypal-transmission-time"]);
   safeRef(required["paypal-transmission-id"]);
   return {
     callbackRequestRef,
@@ -424,38 +474,36 @@ function normalizedCallbackInput(value) {
 }
 
 function normalizedWebhookEvent(value) {
-  const event = snapshotObject(value, ["id", "event_type", "resource"]);
-  const resource = snapshotObject(event.resource, [
-    "id",
-    "status",
-    "custom_id",
-    "supplementary_data",
-    "amount",
-  ]);
-  const supplementary = snapshotObject(
-    resource.supplementary_data,
-    ["related_ids"],
-  );
-  const relatedIds = snapshotObject(supplementary.related_ids, ["order_id"]);
-  const amount = snapshotObject(resource.amount, ["currency_code", "value"]);
-  return {
-    id: safeRef(event.id),
-    event_type: providerStatus(event.event_type),
-    resource: {
-      id: safeRef(resource.id),
-      status: providerStatus(resource.status),
-      custom_id: safeRef(resource.custom_id),
-      supplementary_data: {
-        related_ids: {
-          order_id: safeRef(relatedIds.order_id),
-        },
-      },
-      amount: {
-        currency_code: currencyCode(amount.currency_code),
-        value: boundedText(amount.value, 64),
-      },
-    },
-  };
+  const event = snapshotFields(value, ["id", "event_type", "resource"]);
+  const eventType = providerStatus(event.event_type);
+  if (!new Set([
+    "CHECKOUT.ORDER.APPROVED",
+    "PAYMENT.CAPTURE.COMPLETED",
+  ]).has(eventType)) invalidProtocol();
+  const resource = snapshotFields(event.resource, ["id", "status"]);
+  safeRef(event.id);
+  safeRef(resource.id);
+  const resourceStatus = providerStatus(resource.status);
+  if (eventType === "CHECKOUT.ORDER.APPROVED") {
+    if (resourceStatus !== "APPROVED") invalidProtocol();
+  } else {
+    const capture = snapshotFields(event.resource, [
+      "custom_id",
+      "supplementary_data",
+      "amount",
+    ]);
+    const supplementary = snapshotFields(
+      capture.supplementary_data,
+      ["related_ids"],
+    );
+    const relatedIds = snapshotFields(supplementary.related_ids, ["order_id"]);
+    const amount = snapshotFields(capture.amount, ["currency_code", "value"]);
+    safeRef(capture.custom_id);
+    safeRef(relatedIds.order_id);
+    currencyCode(amount.currency_code);
+    boundedText(amount.value, 64);
+  }
+  return deepFreeze(value);
 }
 
 export function derivePayPalProviderRequestId(value) {
@@ -668,7 +716,10 @@ export function decodePayPalCaptureOrderResponse(value) {
       "amount",
     ]);
     const providerCaptureRef = safeRef(capture.id);
-    if (capture.status !== "COMPLETED") invalidProtocol();
+    const captureStatus = providerStatus(capture.status);
+    if (captureStatus !== "COMPLETED" && captureStatus !== "PENDING") {
+      invalidProtocol();
+    }
     const amount = snapshotObject(capture.amount, ["currency_code", "value"]);
     if (amount.currency_code !== captureInput.currency) invalidProtocol();
     const amountMinor = parsedAmountMinor(
@@ -677,6 +728,17 @@ export function decodePayPalCaptureOrderResponse(value) {
     );
     if (amountMinor !== captureInput.amountMinor) invalidProtocol();
     compiledMoney(captureInput.currency, captureInput.currencyExponent);
+    if (captureStatus === "PENDING") {
+      return deepFreeze({
+        operationResult: operationResult(
+          providerOrderRef,
+          "pending",
+          "possibly_charged",
+          receivedAt,
+        ),
+        paymentFact: null,
+      });
+    }
     const paymentFact = {
       sourceType: "authenticated_capture_response",
       providerEventRef: null,
@@ -744,17 +806,66 @@ export function decodeVerifiedPayPalWebhook(value) {
     }
     if (verification.verification_status !== "SUCCESS") invalidProtocol();
     const event = callbackInput.webhookEvent;
+    if (event.event_type === "CHECKOUT.ORDER.APPROVED") {
+      const approved = snapshotFields(event.resource, [
+        "id",
+        "status",
+        "purchase_units",
+      ]);
+      if (approved.status !== "APPROVED") invalidProtocol();
+      const purchaseUnits = snapshotArray(approved.purchase_units, 1);
+      if (purchaseUnits.length !== 1) invalidProtocol();
+      const purchaseUnit = snapshotFields(purchaseUnits[0], ["custom_id", "amount"]);
+      const amount = snapshotFields(purchaseUnit.amount, ["currency_code", "value"]);
+      const currency = currencyCode(amount.currency_code);
+      const amountMinor = parsedAmountMinor(boundedText(amount.value, 64), 2);
+      compiledMoney(currency, 2);
+      return deepFreeze({
+        sourceType: "callback",
+        providerEventRef: event.id,
+        eventDedupeKey: hashRef("pp_", [
+          "GCCWEBOS:PAYPAL_WEBHOOK_EVENT:v1",
+          callbackInput.transmission.transmissionId,
+          event.id,
+        ]),
+        eventType: "payment_pending",
+        paymentOrderRef: safeRef(purchaseUnit.custom_id),
+        providerOrderRef: safeRef(approved.id),
+        providerCaptureRef: null,
+        providerRefundRef: null,
+        amountMinor,
+        currency,
+        currencyExponent: 2,
+        merchantScopeDigest,
+        payloadDigest,
+        occurredAt: callbackInput.receivedAt,
+        verificationResult: "verified",
+      });
+    }
     if (
       event.event_type !== "PAYMENT.CAPTURE.COMPLETED"
-      || event.resource.status !== "COMPLETED"
     ) {
       invalidProtocol();
     }
-    const currency = event.resource.amount.currency_code;
-    const amountMinor = parsedAmountMinor(event.resource.amount.value, 2);
+    const resource = snapshotFields(event.resource, [
+      "id",
+      "status",
+      "custom_id",
+      "supplementary_data",
+      "amount",
+    ]);
+    if (resource.status !== "COMPLETED") invalidProtocol();
+    const supplementary = snapshotFields(
+      resource.supplementary_data,
+      ["related_ids"],
+    );
+    const relatedIds = snapshotFields(supplementary.related_ids, ["order_id"]);
+    const amount = snapshotFields(resource.amount, ["currency_code", "value"]);
+    const currency = currencyCode(amount.currency_code);
+    const amountMinor = parsedAmountMinor(boundedText(amount.value, 64), 2);
     compiledMoney(currency, 2);
-    const providerOrderRef = event.resource.supplementary_data.related_ids.order_id;
-    const providerCaptureRef = event.resource.id;
+    const providerOrderRef = safeRef(relatedIds.order_id);
+    const providerCaptureRef = safeRef(resource.id);
     return deepFreeze({
       sourceType: "callback",
       providerEventRef: event.id,
@@ -764,7 +875,7 @@ export function decodeVerifiedPayPalWebhook(value) {
         event.id,
       ]),
       eventType: "payment_succeeded",
-      paymentOrderRef: event.resource.custom_id,
+      paymentOrderRef: safeRef(resource.custom_id),
       providerOrderRef,
       providerCaptureRef,
       providerRefundRef: null,

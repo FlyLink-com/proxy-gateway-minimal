@@ -18,6 +18,7 @@ import {
 } from "./recharge";
 
 export const PORTAL_REGISTRATION_SESSION_STORAGE_KEY = "gccwebos-portal-registration-session";
+export const PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY = "gccwebos-portal-payment-return-session-v1";
 
 export type PortalAuthMode = "email" | "authenticator" | "token" | "password" | "passkey";
 export type PortalPlanId = "trial" | "monthly" | "monthly_basic" | "monthly_plus" | "yearly";

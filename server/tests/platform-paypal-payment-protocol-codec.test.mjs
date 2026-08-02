@@ -120,6 +120,7 @@ function completedCaptureResponse({
   orderId = CAPTURE_INPUT.providerOrderRef,
   customId = CAPTURE_INPUT.paymentOrderRef,
   captureId = "provider_capture_1",
+  captureStatus = "COMPLETED",
   currency = CAPTURE_INPUT.currency,
   value = "12.34",
 } = {}) {
@@ -131,7 +132,7 @@ function completedCaptureResponse({
       payments: {
         captures: [{
           id: captureId,
-          status: "COMPLETED",
+          status: captureStatus,
           amount: {
             currency_code: currency,
             value,
@@ -169,6 +170,33 @@ function completedWebhookEvent({
         value,
       },
     },
+  };
+}
+
+function approvedWebhookEvent() {
+  return {
+    id: "provider_event_approved_1",
+    create_time: "2026-08-01T00:00:00.000Z",
+    resource_type: "checkout-order",
+    event_type: "CHECKOUT.ORDER.APPROVED",
+    summary: "A buyer approved an order",
+    resource: {
+      id: CAPTURE_INPUT.providerOrderRef,
+      status: "APPROVED",
+      intent: "CAPTURE",
+      purchase_units: [{
+        reference_id: "default",
+        custom_id: CAPTURE_INPUT.paymentOrderRef,
+        amount: { currency_code: "USD", value: "12.34" },
+      }],
+    },
+    links: [{
+      href: "https://api-m.sandbox.paypal.com/v1/notifications/webhooks-events/safe",
+      rel: "self",
+      method: "GET",
+    }],
+    event_version: "1.0",
+    resource_version: "2.0",
   };
 }
 
@@ -589,6 +617,23 @@ test("PayPal capture codec returns a matching raw authenticated-capture fact", a
   assert.equal(fetchCount, 0);
 });
 
+test("PayPal capture codec preserves an accepted pending capture without minting a payment fact", () => {
+  const raw = decodePayPalCaptureOrderResponse(captureDecodeInput({
+    providerResponse: completedCaptureResponse({ captureStatus: "PENDING" }),
+  }));
+  assert.deepEqual(raw, {
+    operationResult: {
+      providerOrderRef: CAPTURE_INPUT.providerOrderRef,
+      status: "pending",
+      chargeCertainty: "possibly_charged",
+      nextAction: null,
+      occurredAt: RECEIVED_AT,
+    },
+    paymentFact: null,
+  });
+  assertDeepFrozen(raw);
+});
+
 test("PayPal capture rejects mismatched order amount currency exponent and missing capture reference", () => {
   for (const providerResponse of [
     completedCaptureResponse({ orderId: "provider_order_other" }),
@@ -854,7 +899,34 @@ test("PayPal callback codec mints a raw fact only after injected verification su
   assert.equal(fetchCount, 0);
 });
 
-test("PayPal callback rejects FAILURE unsupported malformed ambiguous and mismatched events with one safe error", () => {
+test("PayPal callback turns a verified approval into a pending fact for server-side capture", () => {
+  const event = approvedWebhookEvent();
+  const input = callbackInput(event);
+  assert.deepEqual(encodePayPalWebhookVerificationRequest(input), {
+    action: "paypal_webhook_verify",
+    transmission: {
+      authAlgo: "SHA256withRSA",
+      certUrl: CERT_URL,
+      transmissionId: "transmission_1",
+      transmissionSig: "signature_1",
+      transmissionTime: RECEIVED_AT,
+    },
+    webhookEvent: event,
+  });
+  const fact = decodeVerifiedPayPalWebhook(webhookDecodeInput(input));
+  assert.equal(fact.sourceType, "callback");
+  assert.equal(fact.providerEventRef, "provider_event_approved_1");
+  assert.equal(fact.eventType, "payment_pending");
+  assert.equal(fact.paymentOrderRef, CAPTURE_INPUT.paymentOrderRef);
+  assert.equal(fact.providerOrderRef, CAPTURE_INPUT.providerOrderRef);
+  assert.equal(fact.providerCaptureRef, null);
+  assert.equal(fact.amountMinor, 1234);
+  assert.equal(fact.currency, "USD");
+  assert.equal(fact.currencyExponent, 2);
+  assert.equal(fact.verificationResult, "verified");
+});
+
+test("PayPal callback rejects FAILURE unsupported malformed and mismatched events with one safe error", () => {
   const valid = callbackInput();
   const cases = [
     webhookDecodeInput(valid, {
@@ -876,13 +948,6 @@ test("PayPal callback rejects FAILURE unsupported malformed ambiguous and mismat
   for (const value of cases) {
     assert.throws(() => decodeVerifiedPayPalWebhook(value), protocolError());
   }
-
-  const malformedEvent = completedWebhookEvent();
-  malformedEvent.extra = "ambiguous";
-  assert.throws(
-    () => encodePayPalWebhookVerificationRequest(callbackInput(malformedEvent)),
-    protocolError(),
-  );
   assert.throws(
     () => decodeVerifiedPayPalWebhook(webhookDecodeInput(callbackInput(
       completedWebhookEvent({ currency: "usd" }),
@@ -960,6 +1025,34 @@ test("PayPal callback requires each verification header exactly once and rejects
     ...required,
     { name: "x-synthetic-ignored", value: "" },
   ])));
+});
+
+test("PayPal callback preserves a second-precision transmission timestamp for verification", () => {
+  const transmissionTime = "2026-08-01T00:00:00Z";
+  const headerEntries = callbackInput().headerEntries.map((entry) => (
+    entry.name === "paypal-transmission-time"
+      ? { ...entry, value: transmissionTime }
+      : entry
+  ));
+  const descriptor = encodePayPalWebhookVerificationRequest(callbackInput(
+    completedWebhookEvent(),
+    headerEntries,
+  ));
+  assert.equal(descriptor.transmission.transmissionTime, transmissionTime);
+});
+
+test("PayPal callback accepts the exact Sandbox certificate host", () => {
+  const certUrl = "https://api.sandbox.paypal.com/v1/notifications/certs/CERT-safe";
+  const headerEntries = callbackInput().headerEntries.map((entry) => (
+    entry.name === "paypal-cert-url"
+      ? { ...entry, value: certUrl }
+      : entry
+  ));
+  const descriptor = encodePayPalWebhookVerificationRequest(callbackInput(
+    completedWebhookEvent(),
+    headerEntries,
+  ));
+  assert.equal(descriptor.transmission.certUrl, certUrl);
 });
 
 test("PayPal raw decoded facts have no Provider Core provenance", () => {

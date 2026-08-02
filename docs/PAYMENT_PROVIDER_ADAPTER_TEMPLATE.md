@@ -8,7 +8,7 @@ provider integration.
 The commercial authority is `docs/COMMERCIAL_MODEL_V1.md`. Provider Core V1,
 the durable Recharge path, and the PayPal Sandbox Adapter are source-only and
 runtime default-off. The legacy environment-summary helper remains independent
-and unregistered. This source state is not evidence of a live Sandbox call,
+and unregistered. This source state by itself is not evidence of a live Sandbox call,
 credential validation, callback registration, production payment, refund,
 reconciliation, or provider activation.
 
@@ -33,9 +33,12 @@ paid_coins hold/capture
 
 The first flow now has a default-off source implementation: two durable payment
 tables, one recharge coordinator, one protected Portal route family, and the
-existing Wallet Store's `paid_coins` credit operation. It has been validated
-only with local synthetic provider facts and SQLite. It has not been proven
-against PayPal Sandbox or production. The legacy billing helper remains
+existing Wallet Store's `paid_coins` credit operation. Synthetic SQLite tests
+validate callback/capture convergence and exactly-once Wallet settlement. A
+separately approved local Gate has additionally proven real PayPal Sandbox
+order creation, buyer approval, and callback transport; final local verified
+receipt, Wallet credit, and Portal return evidence remain pending. Nothing in
+this evidence proves or activates production. The legacy billing helper remains
 optional traffic-topup compatibility and is not the Provider Core Adapter
 contract or a Coins wallet.
 

@@ -52,9 +52,16 @@ import {
   PortalWalletPanel,
   usePortalWalletReadModel
 } from "./wallet";
-import { usePortalRecharge } from "./recharge";
+import {
+  clearPortalRechargeReturn,
+  readPortalRechargeReturn,
+  usePortalRecharge
+} from "./recharge";
 import { useDesktopScrollRegion } from "./use-desktop-scroll-region";
-import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
+import {
+  PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY,
+  PORTAL_REGISTRATION_SESSION_STORAGE_KEY
+} from "./user-portal-client";
 import type {
   PortalAccountEntitlement,
   PortalAuthenticatorEnrollment,
@@ -1157,6 +1164,19 @@ export function UserPortalPage({
     loadLedger: activeView === "wallet",
     onSessionInvalid: logout
   });
+  const rechargePaymentRedirect = useCallback((url: string) => {
+    try {
+      if (portalSession && readPortalRechargeReturn()) {
+        window.sessionStorage.setItem(
+          PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY,
+          JSON.stringify(portalSession)
+        );
+      }
+    } catch {
+      // The durable order remains recoverable after a normal login.
+    }
+    paymentRedirect(url);
+  }, [paymentRedirect, portalSession]);
   const rechargeModel = usePortalRecharge({
     client: portalClient.recharge ?? null,
     enabled: activeView === "wallet",
@@ -1164,7 +1184,7 @@ export function UserPortalPage({
     sessionGeneration,
     onSessionInvalid: logout,
     onWalletMutation: walletModel.refreshWallet,
-    paymentRedirect
+    paymentRedirect: rechargePaymentRedirect
   });
   const authoritativeWalletBalance =
     walletModel.summary.phase === "ready"
@@ -1203,7 +1223,10 @@ export function UserPortalPage({
     void refreshHumanChallenge();
   }, [refreshHumanChallenge]);
 
-  function hydratePortalSession(session: PortalSession) {
+  function hydratePortalSession(
+    session: PortalSession,
+    destination: PortalView = readPortalRechargeReturn() ? "wallet" : "start"
+  ) {
     const hydrateGeneration = advanceSessionGeneration();
     const isCurrent = () => hydrateGeneration === sessionGenerationRef.current;
     const promise = (async () => {
@@ -1268,7 +1291,7 @@ export function UserPortalPage({
       }
       setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
       setActivePaymentOrderRef(null);
-      setActiveView("start");
+      setActiveView(destination);
     })();
     return { isCurrent, promise };
   }
@@ -1284,21 +1307,37 @@ export function UserPortalPage({
 
   useEffect(() => {
     if (portalSession) return;
-    const rawSession = window.sessionStorage.getItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
+    const paymentReturnSession = window.sessionStorage.getItem(
+      PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY
+    );
+    const registrationSession = window.sessionStorage.getItem(
+      PORTAL_REGISTRATION_SESSION_STORAGE_KEY
+    );
+    const rawSession = paymentReturnSession ?? registrationSession;
     if (!rawSession) return;
-    window.sessionStorage.removeItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
+    const storageKey = paymentReturnSession
+      ? PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY
+      : PORTAL_REGISTRATION_SESSION_STORAGE_KEY;
+    window.sessionStorage.removeItem(storageKey);
+    const failureMessage = paymentReturnSession
+      ? "支付返回会话载入失败，请重新登录后查看充值订单。"
+      : "注册会话载入失败，请重新登录。";
     try {
       const session = JSON.parse(rawSession) as PortalSession;
-      if (!session || typeof session.userRef !== "string") {
-        throw new Error("invalid registration session");
+      if (
+        !session
+        || typeof session.userRef !== "string"
+        || (paymentReturnSession && typeof session.sessionRef !== "string")
+      ) {
+        throw new Error("invalid stored session");
       }
       const hydration = hydratePortalSession(session);
       void hydration.promise.catch((caughtError) => {
         if (!hydration.isCurrent()) return;
-        setAuthError(portalUiErrorMessage(caughtError, "注册会话载入失败，请重新登录。", locale));
+        setAuthError(portalUiErrorMessage(caughtError, failureMessage, locale));
       });
     } catch {
-      setAuthError("注册会话载入失败，请重新登录。");
+      setAuthError(failureMessage);
     }
   }, [portalSession]);
 
@@ -1677,6 +1716,8 @@ export function UserPortalPage({
     advanceSessionGeneration();
     try {
       window.sessionStorage.removeItem(PORTAL_COIN_ORDER_STORAGE_KEY);
+      window.sessionStorage.removeItem(PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY);
+      clearPortalRechargeReturn();
     } catch {
       // Commerce recovery storage is optional; logout must still complete.
     }

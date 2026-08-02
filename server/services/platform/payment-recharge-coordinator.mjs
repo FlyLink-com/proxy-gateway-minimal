@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { types as utilTypes } from "node:util";
 
 import {
+  normalizeVerifiedPaymentCallback,
   normalizeVerifiedPaymentEvent,
 } from "./payment-provider-adapter-contract.mjs";
 
@@ -97,7 +98,8 @@ export function createPaymentRechargeCoordinator(options = {}) {
   for (const method of [
     "createOrder", "recordOperationReceipt", "acceptVerifiedPayment",
     "markOrderCredited", "markOrderReconciliationRequired",
-    "getOrderForAccount", "getSettlementContext", "listOrdersForAccount",
+    "getOrderForAccount", "getOrderForVerifiedCallback",
+    "getSettlementContext", "listOrdersForAccount",
   ]) assertMethod(store, method);
   for (const method of ["creditCoins"]) assertMethod(walletStore, method);
   for (const method of ["getOffer", "listOffers"]) assertMethod(offerCatalog, method);
@@ -139,8 +141,23 @@ export function createPaymentRechargeCoordinator(options = {}) {
     return safeRef(value, "payment_recharge_reference_unavailable");
   }
 
+  function publicOrder(order, readAt = nowIso()) {
+    if (
+      order !== null
+      && ["created", "entry_ready", "pending"].includes(order.status)
+      && Date.parse(readAt) >= Date.parse(order.expiresAt)
+    ) {
+      return Object.freeze({
+        ...order,
+        status: "expired",
+        nextAction: null,
+      });
+    }
+    return order;
+  }
+
   function publicResult(order, wallet = null, extra = {}) {
-    return Object.freeze({ order, wallet, ...extra });
+    return Object.freeze({ order: publicOrder(order), wallet, ...extra });
   }
 
   async function settle(accepted) {
@@ -244,33 +261,29 @@ export function createPaymentRechargeCoordinator(options = {}) {
 
   function getRechargeOrder(value) {
     const request = plainObject(value, ["accountId", "orderRef"]);
-    return store.getOrderForAccount({
+    return publicOrder(store.getOrderForAccount({
       accountId: safeRef(request.accountId),
       orderRef: safeRef(request.orderRef),
-    });
+    }));
   }
 
   function listRechargeOrders(value) {
     const request = plainObject(value, ["accountId", "limit", "cursor"]);
     if (request.cursor !== null) fail("payment_recharge_cursor_not_supported");
+    const readAt = nowIso();
     return store.listOrdersForAccount({
       accountId: safeRef(request.accountId),
       limit: positiveInteger(request.limit),
-    });
+    }).map((order) => publicOrder(order, readAt));
   }
 
-  async function captureRechargeOrder(value) {
-    const request = plainObject(value, ["accountId", "orderRef", "idempotencyKey"]);
-    const accountId = safeRef(request.accountId);
-    const orderRef = safeRef(request.orderRef);
-    const idempotencyKey = safeRef(request.idempotencyKey);
-    const order = store.getOrderForAccount({ accountId, orderRef });
-    if (order === null) fail("payment_recharge_order_not_found");
+  async function captureKnownOrder(order) {
+    const orderRef = order.orderRef;
     if (order.status === "credited") return publicResult(order, null, { replayed: true });
     if (Date.parse(nowIso()) >= Date.parse(order.expiresAt)) fail("payment_recharge_order_expired");
     if (order.providerOrderRef === null) fail("payment_recharge_order_not_ready");
-    const attemptRef = providerRef("attempt_capture", orderRef, idempotencyKey);
-    const providerRequestRef = providerRef("provider_capture", orderRef, idempotencyKey);
+    const attemptRef = providerRef("attempt_capture", orderRef);
+    const providerRequestRef = providerRef("provider_capture", orderRef);
     const outcome = await adapter.capturePayment({
       paymentOrderRef: orderRef,
       attemptRef,
@@ -301,14 +314,45 @@ export function createPaymentRechargeCoordinator(options = {}) {
     return settle(accepted);
   }
 
+  async function captureRechargeOrder(value) {
+    const request = plainObject(value, ["accountId", "orderRef", "idempotencyKey"]);
+    const accountId = safeRef(request.accountId);
+    const orderRef = safeRef(request.orderRef);
+    safeRef(request.idempotencyKey);
+    const order = store.getOrderForAccount({ accountId, orderRef });
+    if (order === null) fail("payment_recharge_order_not_found");
+    return captureKnownOrder(order);
+  }
+
   async function acceptProviderCallback(value) {
     const request = plainObject(value, [
       "callbackRequestRef", "receivedAt", "bodyBase64", "headerEntries",
     ]);
     const callbackRequestRef = safeRef(request.callbackRequestRef);
-    const fact = normalizeVerifiedPaymentEvent(
+    const callback = normalizeVerifiedPaymentCallback(
       await adapter.verifyAndNormalizeCallback(request),
     );
+    if (callback.disposition === "acknowledge") {
+      const acknowledgement = await adapter.webhookSuccessAck(callback);
+      return publicResult(null, null, { acknowledgement });
+    }
+    const fact = normalizeVerifiedPaymentEvent(callback);
+    if (fact.eventType === "payment_pending") {
+      const order = store.getOrderForVerifiedCallback({
+        orderRef: fact.paymentOrderRef,
+        providerOrderRef: fact.providerOrderRef,
+        amountMinor: fact.amountMinor,
+        currency: fact.currency,
+        currencyExponent: fact.currencyExponent,
+        adapterKey,
+      });
+      const result = await captureKnownOrder(order);
+      const acknowledgement = await adapter.webhookSuccessAck(callback);
+      return publicResult(result.order, result.wallet, {
+        acknowledgement,
+        ...(result.replayed === undefined ? {} : { replayed: result.replayed }),
+      });
+    }
     const accepted = store.acceptVerifiedPayment({
       orderRef: fact.paymentOrderRef,
       attemptRef: providerRef("attempt_callback", fact.paymentOrderRef),
@@ -317,7 +361,7 @@ export function createPaymentRechargeCoordinator(options = {}) {
       paymentFact: fact,
     });
     const result = await settle(accepted);
-    const acknowledgement = await adapter.webhookSuccessAck(fact);
+    const acknowledgement = await adapter.webhookSuccessAck(callback);
     return publicResult(result.order, result.wallet, { acknowledgement });
   }
 

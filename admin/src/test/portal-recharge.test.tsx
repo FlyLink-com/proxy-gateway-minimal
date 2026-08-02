@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -47,7 +47,10 @@ function rechargeOrder(status: PortalRechargeOrder["status"]): PortalRechargeOrd
   };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.sessionStorage.clear();
+});
 
 describe("Portal recharge client", () => {
   test("submits only the server offer identity and client idempotency key", async () => {
@@ -128,6 +131,13 @@ describe("Portal recharge interaction", () => {
     expect(paymentRedirect).toHaveBeenCalledWith(
       "https://www.sandbox.paypal.com/checkoutnow?token=safe",
     );
+    expect(JSON.parse(String(window.sessionStorage.getItem(
+      "gccwebos-portal-recharge-return-v1",
+    )))).toEqual({
+      version: 1,
+      orderRef: "payment_order_1",
+      captureIdempotencyKey: expect.stringMatching(/^portal_capture_/),
+    });
     expect(refreshWallet).not.toHaveBeenCalled();
 
     fireEvent.click(await screen.findByRole("button", { name: "Confirm PayPal payment" }));
@@ -138,5 +148,89 @@ describe("Portal recharge interaction", () => {
     }));
     expect(await screen.findByText("30 paid Coins are available.")).toBeInTheDocument();
     expect(refreshWallet).toHaveBeenCalledTimes(1);
+  });
+
+  test("resumes the exact returned order and captures it once with the staged idempotency key", async () => {
+    window.sessionStorage.setItem(
+      "gccwebos-portal-recharge-return-v1",
+      JSON.stringify({
+        version: 1,
+        orderRef: "payment_order_1",
+        captureIdempotencyKey: "portal_capture_return_1",
+      }),
+    );
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [OFFER]),
+      listOrders: vi.fn(async () => [rechargeOrder("entry_ready")]),
+      createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+      getOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+      captureOrder: vi.fn(async () => rechargeOrder("pending")),
+    };
+    const refreshWallet = vi.fn();
+
+    render(createElement(RechargeHarness, {
+      client,
+      paymentRedirect: vi.fn(),
+      refreshWallet,
+    }));
+
+    expect(await screen.findByRole("dialog", { name: "Recharge Coins" }))
+      .toBeInTheDocument();
+    await waitFor(() => expect(client.captureOrder).toHaveBeenCalledWith({
+      sessionRef: "session_recharge_1",
+      orderRef: "payment_order_1",
+      idempotencyKey: "portal_capture_return_1",
+    }));
+    expect(client.captureOrder).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Payment confirmation pending")).toBeInTheDocument();
+    expect(refreshWallet).not.toHaveBeenCalled();
+  });
+
+  test("polls a returned pending order until the durable credited receipt is visible", async () => {
+    vi.useFakeTimers();
+    try {
+      window.sessionStorage.setItem(
+        "gccwebos-portal-recharge-return-v1",
+        JSON.stringify({
+          version: 1,
+          orderRef: "payment_order_1",
+          captureIdempotencyKey: "portal_capture_return_1",
+        }),
+      );
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => [rechargeOrder("pending")]),
+        createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+        getOrder: vi.fn(async () => rechargeOrder("credited")),
+        captureOrder: vi.fn(async () => rechargeOrder("pending")),
+      };
+      const refreshWallet = vi.fn();
+
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect: vi.fn(),
+        refreshWallet,
+      }));
+
+      await act(async () => { await Promise.resolve(); });
+      expect(screen.getByRole("dialog", { name: "Recharge Coins" }))
+        .toBeInTheDocument();
+      expect(screen.getByText("Payment confirmation pending")).toBeInTheDocument();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+
+      expect(client.getOrder).toHaveBeenCalledWith({
+        sessionRef: "session_recharge_1",
+        orderRef: "payment_order_1",
+      });
+      expect(client.captureOrder).not.toHaveBeenCalled();
+      expect(screen.getByText("30 paid Coins are available.")).toBeInTheDocument();
+      expect(refreshWallet).toHaveBeenCalledTimes(1);
+      expect(window.sessionStorage.getItem(
+        "gccwebos-portal-recharge-return-v1",
+      )).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

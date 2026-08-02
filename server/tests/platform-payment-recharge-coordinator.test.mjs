@@ -114,7 +114,11 @@ function createExecution() {
   });
 }
 
-function createAdapter({ callbackFactOverrides = {} } = {}) {
+function createAdapter({
+  callbackFactOverrides = {},
+  callbackDisposition = "settle",
+  captureInputs = [],
+} = {}) {
   return Object.freeze({
     adapterKey: "paypal_v1",
     paymentMethod: "paypal",
@@ -132,7 +136,8 @@ function createAdapter({ callbackFactOverrides = {} } = {}) {
         occurredAt: NOW,
       };
     },
-    async capturePayment() {
+    async capturePayment(input) {
+      captureInputs.push(structuredClone(input));
       const execution = createExecution();
       return execution.withCredential("capture_payment", async ({ request }) => {
         const { transportReceipt } = await request({ captureRequestRef: "capture_request_1" });
@@ -161,12 +166,14 @@ function createAdapter({ callbackFactOverrides = {} } = {}) {
         const { transportReceipt } = await request({ callbackRequestRef: "callback_request_1" });
         return {
           transportReceipt,
-          paymentFact: paymentFact({
-            sourceType: "callback",
-            eventDedupeKey: "callback_event_1",
-            payloadDigest: CALLBACK_PAYLOAD_DIGEST,
-            ...callbackFactOverrides,
-          }),
+          paymentFact: callbackDisposition === "acknowledge"
+            ? null
+            : paymentFact({
+                sourceType: "callback",
+                eventDedupeKey: "callback_event_1",
+                payloadDigest: CALLBACK_PAYLOAD_DIGEST,
+                ...callbackFactOverrides,
+              }),
         };
       });
     },
@@ -178,11 +185,13 @@ function createAdapter({ callbackFactOverrides = {} } = {}) {
 
 function createSystem({
   callbackFactOverrides = {},
+  callbackDisposition = "settle",
   failCreditOnce = false,
   failMarkOnce = false,
   offerEnabled = true,
 } = {}) {
   const database = createDatabase();
+  const captureInputs = [];
   let currentNow = NOW;
   const walletStore = createSqliteCoinWalletStore({
     database,
@@ -232,12 +241,17 @@ function createSystem({
     store: paymentStore,
     walletStore: injectedWalletStore,
     offerCatalog,
-    adapter: createAdapter({ callbackFactOverrides }),
+    adapter: createAdapter({
+      callbackFactOverrides,
+      callbackDisposition,
+      captureInputs,
+    }),
     nowFn: () => new Date(currentNow),
     refFactory: refFactory("coordinator"),
   });
   return {
     coordinator,
+    captureInputs,
     database,
     walletStore,
     setNow(value) {
@@ -285,6 +299,61 @@ test("duplicate capture and callback converge to one paid_coins lot", async () =
       30,
     );
     assert.equal(capture.wallet.resultRef, callback.wallet.resultRef);
+  } finally {
+    system.close();
+  }
+});
+
+test("verified non-settlement callback is acknowledged without a receipt or Wallet credit", async () => {
+  const system = createSystem({ callbackDisposition: "acknowledge" });
+  try {
+    const created = await createRechargeOrder(system.coordinator);
+    const callback = await system.coordinator.acceptProviderCallback(CALLBACK_INPUT);
+    assert.deepEqual(callback, {
+      order: null,
+      wallet: null,
+      acknowledgement: { statusCode: 204, contentType: "text/plain", body: "" },
+    });
+    assert.equal(system.coordinator.getRechargeOrder({
+      accountId: "account_1",
+      orderRef: created.order.orderRef,
+    }).status, "entry_ready");
+    assert.equal(
+      system.walletStore.getWalletProjection({ accountId: "account_1" }).totals.paid_coins,
+      0,
+    );
+    assert.equal(
+      system.database.prepare("select count(*) as count from platform_payment_receipts").get().count,
+      1,
+    );
+  } finally {
+    system.close();
+  }
+});
+
+test("verified approval callback captures the order server-side and credits Coins once", async () => {
+  const system = createSystem({
+    callbackFactOverrides: {
+      eventType: "payment_pending",
+      providerCaptureRef: null,
+    },
+  });
+  try {
+    const created = await createRechargeOrder(system.coordinator);
+    const first = await system.coordinator.acceptProviderCallback(CALLBACK_INPUT);
+    const replay = await system.coordinator.acceptProviderCallback(CALLBACK_INPUT);
+
+    assert.equal(first.order.status, "credited");
+    assert.equal(replay.order.status, "credited");
+    assert.equal(first.acknowledgement.statusCode, 204);
+    assert.equal(replay.acknowledgement.statusCode, 204);
+    assert.equal(system.captureInputs.length, 1);
+    assert.equal(
+      system.walletStore.getWalletProjection({ accountId: "account_1" }).totals.paid_coins,
+      30,
+    );
+    const wallet = system.walletStore.getWalletByAccountId("account_1");
+    assert.equal(system.walletStore.listLots({ walletRef: wallet.walletRef }).length, 1);
   } finally {
     system.close();
   }
@@ -415,6 +484,20 @@ test("expired orders pause capture before provider and Wallet mutation", async (
   try {
     const created = await createRechargeOrder(system.coordinator);
     system.setNow(EXPIRES_AT);
+    const fetched = system.coordinator.getRechargeOrder({
+      accountId: "account_1",
+      orderRef: created.order.orderRef,
+    });
+    const listed = system.coordinator.listRechargeOrders({
+      accountId: "account_1",
+      limit: 50,
+      cursor: null,
+    });
+    assert.equal(fetched.status, "expired");
+    assert.equal(fetched.nextAction, null);
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].status, "expired");
+    assert.equal(listed[0].nextAction, null);
     await assert.rejects(() => system.coordinator.captureRechargeOrder({
       accountId: "account_1",
       orderRef: created.order.orderRef,

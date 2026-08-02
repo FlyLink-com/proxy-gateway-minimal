@@ -12,7 +12,7 @@
 - Production impact: none
 - Production authority: none
 - Design state: frozen source baseline
-- Implementation state: implemented_source_pending_validation
+- Implementation state: source_validated_sandbox_payment_proven_settlement_gate_pending
 
 ## Purpose
 
@@ -39,8 +39,11 @@ The implementation reuses these current-master capabilities:
   order is created.
 
 The `paypal_v1` Adapter now has a compiled V1 implementation and a
-credential-scoped Sandbox runtime, but both runtime flags default to false and
-no live Sandbox call has been made. The existing legacy
+credential-scoped Sandbox runtime, while both runtime flags still default to
+false. A separately approved local Gate has proven real Sandbox order creation,
+buyer approval, and callback transport. Local verified receipt, Wallet credit,
+and Portal success-return validation remain pending; no production call or
+activation has occurred. The existing legacy
 `/api/portal/payments/*` plan-checkout client and old direct checkout are not
 the recharge integration target and must not regain authority.
 

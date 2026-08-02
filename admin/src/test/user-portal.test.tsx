@@ -50,10 +50,16 @@ import type {
   PortalCoinCommerceClient,
   PortalCoinOrder
 } from "../features/user-portal/commerce";
+import type {
+  PortalRechargeClient,
+  PortalRechargeOffer,
+  PortalRechargeOrder
+} from "../features/user-portal/recharge";
 
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  window.sessionStorage.clear();
   window.location.hash = "";
   vi.restoreAllMocks();
 });
@@ -467,6 +473,39 @@ function portalWalletSummary(
     spendableUnits,
     heldUnits: 3,
     pendingUnits: 2
+  };
+}
+
+const RETURN_RECHARGE_OFFER: PortalRechargeOffer = {
+  offerRef: "coins_30",
+  quoteVersion: 1,
+  paidCoinUnits: 30,
+  amountMinor: 100,
+  currency: "USD",
+  currencyExponent: 2
+};
+
+function returnedRechargeOrder(
+  status: PortalRechargeOrder["status"]
+): PortalRechargeOrder {
+  return {
+    orderRef: "payment_return_order_1",
+    offerRef: RETURN_RECHARGE_OFFER.offerRef,
+    quoteVersion: 1,
+    expectedPaidCoinUnits: 30,
+    amountMinor: 100,
+    currency: "USD",
+    currencyExponent: 2,
+    adapterKey: "paypal_v1",
+    paymentMethod: "paypal",
+    status,
+    providerOrderRef: "paypal_return_order_1",
+    nextAction: null,
+    walletOperationRef: null,
+    walletLotRef: null,
+    expiresAt: "2026-08-02T05:00:00.000Z",
+    createdAt: "2026-08-02T03:00:00.000Z",
+    updatedAt: "2026-08-02T03:10:00.000Z"
   };
 }
 
@@ -2301,6 +2340,55 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("商品")).toBeNull();
     expect(screen.queryByText("增值项")).toBeNull();
     expect(screen.queryByRole("button", { name: "购买暂未开放" })).toBeNull();
+  });
+
+  test("restores the payment handoff session and opens the durable returned recharge receipt", async () => {
+    const session = portalWalletSession(
+      "session_payment_return_001",
+      "payment-return@example.test"
+    );
+    window.sessionStorage.setItem(
+      "gccwebos-portal-payment-return-session-v1",
+      JSON.stringify(session)
+    );
+    window.sessionStorage.setItem(
+      "gccwebos-portal-recharge-return-v1",
+      JSON.stringify({
+        version: 1,
+        orderRef: "payment_return_order_1",
+        captureIdempotencyKey: "portal_capture_return_1"
+      })
+    );
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(async () => portalWalletSummary(1000)),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const recharge: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [RETURN_RECHARGE_OFFER]),
+      listOrders: vi.fn(async () => [returnedRechargeOrder("pending")]),
+      createOrder: vi.fn(async () => returnedRechargeOrder("entry_ready")),
+      getOrder: vi.fn(async () => returnedRechargeOrder("pending")),
+      captureOrder: vi.fn(async () => returnedRechargeOrder("pending"))
+    };
+    const client = portalClient({ wallet, recharge });
+
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    expect(await screen.findByRole("navigation", { name: "用户中心导航" }))
+      .toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "钱包总览" }))
+      .toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "充值 Coins" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("支付确认中")).toBeInTheDocument();
+    expect(client.fetchCurrentState).toHaveBeenCalledWith({
+      userRef: session.userRef,
+      sessionRef: session.sessionRef
+    });
+    expect(recharge.captureOrder).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(
+      "gccwebos-portal-payment-return-session-v1"
+    )).toBeNull();
   });
 
   test("Wallet loads summary for the authenticated shell and ledger only after opening", async () => {

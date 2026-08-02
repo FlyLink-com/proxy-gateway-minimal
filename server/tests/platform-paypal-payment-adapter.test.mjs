@@ -38,8 +38,8 @@ const CAPTURE_INPUT = Object.freeze({
   currencyExponent: 2,
 });
 
-function callbackInput() {
-  const event = {
+function callbackInput(event = null) {
+  const webhookEvent = event ?? {
     id: "paypal_event_1",
     event_type: "PAYMENT.CAPTURE.COMPLETED",
     resource: {
@@ -53,7 +53,7 @@ function callbackInput() {
   return {
     callbackRequestRef: "callback_request_1",
     receivedAt: NOW,
-    bodyBase64: Buffer.from(JSON.stringify(event), "utf8").toString("base64"),
+    bodyBase64: Buffer.from(JSON.stringify(webhookEvent), "utf8").toString("base64"),
     headerEntries: [
       { name: "paypal-auth-algo", value: "SHA256withRSA" },
       { name: "paypal-cert-url", value: "https://api.paypal.com/v1/notifications/certs/CERT-safe" },
@@ -169,6 +169,46 @@ test("PayPal v1 creates, queries, captures, and verifies through scoped transpor
   assert.doesNotMatch(JSON.stringify({ created, queried, captured, callback }), /secret-marker/u);
   await assert.rejects(() => adapter.refund({}), /payment_provider_capability_disabled/u);
   await assert.rejects(() => adapter.reconcile({}), /payment_provider_capability_disabled/u);
+});
+
+test("PayPal v1 exposes a verified approval as a pending server-capture fact", async () => {
+  const adapter = assertPaymentProviderAdapterContract(createPayPalPaymentAdapter({
+    executionScope: createExecutionScope(),
+    nowFn: () => NOW,
+  }), {
+    allowedActionOrigins: [ACTION_ORIGIN],
+  });
+  const callback = await adapter.verifyAndNormalizeCallback(callbackInput({
+    id: "paypal_event_approved_1",
+    create_time: NOW,
+    resource_type: "checkout-order",
+    event_type: "CHECKOUT.ORDER.APPROVED",
+    summary: "A buyer approved an order",
+    resource: {
+      id: "paypal_order_1",
+      status: "APPROVED",
+      intent: "CAPTURE",
+      purchase_units: [{
+        custom_id: "payment_order_1",
+        amount: { currency_code: "USD", value: "1.00" },
+      }],
+    },
+    links: [],
+    event_version: "1.0",
+    resource_version: "2.0",
+  }));
+  assert.equal(callback.sourceType, "callback");
+  assert.equal(callback.eventType, "payment_pending");
+  assert.equal(callback.paymentOrderRef, "payment_order_1");
+  assert.equal(callback.providerOrderRef, "paypal_order_1");
+  assert.equal(callback.providerCaptureRef, null);
+  assert.equal(callback.amountMinor, 100);
+  assert.equal(callback.currency, "USD");
+  assert.deepEqual(await adapter.webhookSuccessAck(callback), {
+    statusCode: 204,
+    contentType: "text/plain",
+    body: "",
+  });
 });
 
 test("PayPal adapter requires an exact injected scope and canonical clock", () => {

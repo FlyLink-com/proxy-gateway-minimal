@@ -810,6 +810,38 @@ export function createSqlitePaymentStore(options = {}) {
     return mapOrder(row);
   }
 
+  function getOrderForVerifiedCallback(input) {
+    assertOpen();
+    const request = snapshotExact(input, [
+      "orderRef",
+      "providerOrderRef",
+      "amountMinor",
+      "currency",
+      "currencyExponent",
+      "adapterKey",
+    ]);
+    request.orderRef = safeRef(request.orderRef);
+    request.providerOrderRef = safeRef(request.providerOrderRef);
+    request.amountMinor = positiveInteger(request.amountMinor);
+    if (typeof request.currency !== "string" || !CURRENCY_RE.test(request.currency)) {
+      fail("invalid_payment_store_request");
+    }
+    request.currencyExponent = currencyExponent(request.currencyExponent);
+    request.adapterKey = safeRef(request.adapterKey);
+    const row = findOrder(request.orderRef);
+    if (!row) fail("payment_order_not_found");
+    if (
+      row.provider_order_ref !== request.providerOrderRef
+      || row.amount_minor !== request.amountMinor
+      || row.currency !== request.currency
+      || row.currency_exponent !== request.currencyExponent
+      || row.adapter_key !== request.adapterKey
+    ) {
+      fail("payment_fact_mismatch");
+    }
+    return mapOrder(row);
+  }
+
   function listOrdersForAccount(input) {
     assertOpen();
     const request = snapshotExact(input, ["accountId", "limit"]);
@@ -834,6 +866,7 @@ export function createSqlitePaymentStore(options = {}) {
     close,
     createOrder,
     getOrderForAccount,
+    getOrderForVerifiedCallback,
     getSettlementContext,
     listOrdersForAccount,
     markOrderCredited,
