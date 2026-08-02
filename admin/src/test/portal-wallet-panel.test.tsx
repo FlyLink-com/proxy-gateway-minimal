@@ -78,6 +78,35 @@ const HELD_ENTRY: PortalWalletLedgerEntry = {
   occurredAt: "2026-07-27T11:00:00.000Z"
 };
 
+const RECENT_LEDGER_ENTRIES: PortalWalletLedgerEntry[] = [
+  CREDIT_ENTRY,
+  HELD_ENTRY,
+  {
+    ...CREDIT_ENTRY,
+    entryRef: "entry_credit_003",
+    occurredAt: "2026-07-27T10:00:00.000Z",
+    relatedOrderRef: "order_wallet_003"
+  },
+  {
+    ...CREDIT_ENTRY,
+    entryRef: "entry_credit_004",
+    occurredAt: "2026-07-27T09:00:00.000Z",
+    relatedOrderRef: "order_wallet_004"
+  },
+  {
+    ...CREDIT_ENTRY,
+    entryRef: "entry_credit_005",
+    occurredAt: "2026-07-27T08:00:00.000Z",
+    relatedOrderRef: "order_wallet_005"
+  },
+  {
+    ...CREDIT_ENTRY,
+    entryRef: "entry_credit_006",
+    occurredAt: "2026-07-27T07:00:00.000Z",
+    relatedOrderRef: "order_wallet_006"
+  }
+];
+
 afterEach(cleanup);
 
 function deferred<T>() {
@@ -154,6 +183,10 @@ describe("PortalWalletPanel", () => {
     expect(screen.getByText("9", { selector: "dd" })).toBeInTheDocument();
     expect(screen.getByText("4", { selector: "dd" })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "View all activity" }));
+
+    expect(screen.getByRole("heading", { name: "All Wallet activity" })).toBeInTheDocument();
+
     const table = screen.getByRole("table", { name: "Coins Wallet activity" });
     const scrollRegion = screen.getByRole("region", {
       name: "Coins Wallet activity table"
@@ -195,6 +228,72 @@ describe("PortalWalletPanel", () => {
     );
   });
 
+  test("keeps order reserves and pending rewards outside the four primary balance cards", () => {
+    renderPanel(walletModel());
+
+    const primaryBalances = document.querySelector(".portal-wallet-balance-grid");
+    expect(primaryBalances).not.toBeNull();
+    expect(within(primaryBalances as HTMLElement).getAllByRole("term")).toHaveLength(4);
+    expect(within(primaryBalances as HTMLElement).getByText("Spendable balance"))
+      .toBeInTheDocument();
+    expect(within(primaryBalances as HTMLElement).getByText("Purchased available"))
+      .toBeInTheDocument();
+    expect(within(primaryBalances as HTMLElement).getByText("Bonus available"))
+      .toBeInTheDocument();
+    expect(within(primaryBalances as HTMLElement).getByText("Reward available"))
+      .toBeInTheDocument();
+
+    const secondaryBalances = document.querySelector(".portal-wallet-status-grid");
+    expect(secondaryBalances).not.toBeNull();
+    expect(within(secondaryBalances as HTMLElement).getByText("Order reserved"))
+      .toBeInTheDocument();
+    expect(within(secondaryBalances as HTMLElement).getByText("Pending rewards"))
+      .toBeInTheDocument();
+  });
+
+  test("shows only five recent ledger entries until the user opens all activity", () => {
+    const loadMoreLedger = vi.fn();
+    renderPanel(walletModel({
+      ledger: { phase: "ready", value: RECENT_LEDGER_ENTRIES },
+      loadMoreLedger
+    }));
+
+    const recentTable = screen.getByRole("table", {
+      name: "Recent Coins Wallet activity"
+    });
+    expect(within(recentTable).getAllByRole("row")).toHaveLength(6);
+    expect(screen.queryByText("order_wallet_006")).not.toBeInTheDocument();
+    expect(loadMoreLedger).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "View all activity" }));
+
+    const allActivity = screen.getByRole("heading", { name: "All Wallet activity" });
+    expect(allActivity).toBeInTheDocument();
+    const completeTable = screen.getByRole("table", { name: "Coins Wallet activity" });
+    expect(within(completeTable).getAllByRole("row")).toHaveLength(7);
+    expect(screen.getByText("order_wallet_006")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to Wallet overview" }));
+    const returnedRecentTable = screen.getByRole("table", {
+      name: "Recent Coins Wallet activity"
+    });
+    expect(within(returnedRecentTable).getAllByRole("row")).toHaveLength(6);
+    expect(screen.queryByText("order_wallet_006")).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Coins Wallet activity" })).toBeNull();
+    expect(loadMoreLedger).not.toHaveBeenCalled();
+  });
+
+  test("explains Wallet rules without inventing expiry or payment-provider data", () => {
+    renderPanel(walletModel());
+
+    const guide = screen.getByRole("complementary", { name: "Wallet guide" });
+    expect(within(guide).getByText("Coins types")).toBeInTheDocument();
+    expect(within(guide).getByText("How Coins are used")).toBeInTheDocument();
+    expect(within(guide).getByText("Order reserves and pending rewards"))
+      .toBeInTheDocument();
+    expect(guide).not.toHaveTextContent(/30 days|expires in|PayPal|Sandbox|Store orders/i);
+  });
+
   test("does not add a ledger-scroll focus stop to the mobile layout", () => {
     const originalWidth = window.innerWidth;
     Object.defineProperty(window, "innerWidth", {
@@ -205,6 +304,8 @@ describe("PortalWalletPanel", () => {
       renderPanel(walletModel({
         ledger: { phase: "ready", value: [HELD_ENTRY] }
       }));
+
+      fireEvent.click(screen.getByRole("button", { name: "View all activity" }));
 
       const wrapper = document.querySelector(".portal-wallet-ledger-wrap");
       expect(wrapper).not.toBeNull();
@@ -343,6 +444,8 @@ describe("PortalWalletPanel", () => {
     });
     const { rerender } = renderPanel(model);
 
+    fireEvent.click(screen.getByRole("button", { name: "View all activity" }));
+
     fireEvent.click(screen.getByRole("button", { name: "Load more activity" }));
     expect(loadMoreLedger).toHaveBeenCalledTimes(1);
 
@@ -374,6 +477,10 @@ describe("PortalWalletPanel", () => {
       ))
     };
     renderWalletHarness(client);
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: "View all activity"
+    }));
 
     fireEvent.click(await screen.findByRole("button", {
       name: "Load more activity"
@@ -414,6 +521,10 @@ describe("PortalWalletPanel", () => {
       ))
     };
     const { modelRef } = renderWalletHarness(client);
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: "View all activity"
+    }));
 
     fireEvent.click(await screen.findByRole("button", {
       name: "Load more activity"
@@ -472,6 +583,10 @@ describe("PortalWalletPanel", () => {
     const { modelRef } = renderWalletHarness(client);
 
     fireEvent.click(await screen.findByRole("button", {
+      name: "View all activity"
+    }));
+
+    fireEvent.click(await screen.findByRole("button", {
       name: "Load more activity"
     }));
     await act(async () => {
@@ -500,14 +615,16 @@ describe("PortalWalletPanel", () => {
     expect(modelRef.current?.nextLedgerCursor).toBeNull();
   });
 
-  test("keeps the Wallet focused on balances and activity while recharge is out of scope", () => {
+  test("keeps the Wallet overview focused on balances, recent activity, and rules while recharge is unavailable", () => {
     renderPanel(walletModel());
 
     expect(screen.getByRole("heading", { name: "Balance" }))
       .toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Wallet activity" }))
+    expect(screen.getByRole("heading", { name: "Recent Wallet activity" }))
       .toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Recharge" }))
+    expect(screen.getByRole("complementary", { name: "Wallet guide" }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Recharge Coins" }))
       .not.toBeInTheDocument();
     expect(screen.queryByRole("list", {
       name: "Coins recharge denominations"
@@ -518,19 +635,16 @@ describe("PortalWalletPanel", () => {
     {
       locale: "en" as const,
       heading: "Wallet overview",
-      description: "Choose a recharge denomination. Purchased Coins are credited automatically after payment confirmation.",
       button: "Recharge Coins",
     },
     {
       locale: "zh" as const,
       heading: "钱包总览",
-      description: "选择充值档位；支付确认后，已购 Coins 将自动入账。",
       button: "充值 Coins",
     },
-  ])("keeps $locale recharge entry internal and provider-neutral", ({
+  ])("keeps the $locale recharge action in the Wallet header and provider-neutral", ({
     locale,
     heading,
-    description,
     button,
   }) => {
     const openDialog = vi.fn();
@@ -554,11 +668,12 @@ describe("PortalWalletPanel", () => {
     }));
 
     const wallet = screen.getByRole("region", { name: heading });
-    expect(within(wallet).getByText(description)).toBeInTheDocument();
+    const header = within(wallet).getByRole("banner");
+    expect(within(header).getByRole("button", { name: button })).toBeInTheDocument();
     expect(wallet).not.toHaveTextContent(
       /PayPal|Sandbox|USD|adapter|支付宝|Alipay|微信支付|WeChat/i,
     );
-    fireEvent.click(within(wallet).getByRole("button", { name: button }));
+    fireEvent.click(within(header).getByRole("button", { name: button }));
     expect(openDialog).toHaveBeenCalledTimes(1);
   });
 });

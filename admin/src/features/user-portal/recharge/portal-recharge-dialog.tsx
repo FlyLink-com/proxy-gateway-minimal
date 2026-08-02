@@ -137,16 +137,27 @@ export function PortalRechargeDialog({
         </section>
       ) : (
         <ul className="portal-recharge-offers" aria-label={zh ? "Coins 充值档位" : "Coins recharge denominations"}>
-          {model.offers.map((offer) => (
-            <li key={offer.offerRef}>
-              <div><strong>{offer.paidCoinUnits} Coins</strong><span>{formatPortalRechargeAmount(offer)}</span></div>
-              <button type="button" disabled={model.busy} onClick={() => void model.createOrder(offer.offerRef)}>
-                {model.busy
-                  ? zh ? "正在创建订单…" : "Creating order…"
-                  : zh ? "继续支付" : "Continue to payment"}
-              </button>
-            </li>
-          ))}
+          {model.offers.map((offer, index) => {
+            const amount = formatPortalRechargeAmount(offer);
+            const paymentLabel = zh
+              ? `继续支付 ${offer.paidCoinUnits} Coins，${amount}，第 ${index + 1} 个档位`
+              : `Continue to payment for ${offer.paidCoinUnits} Coins, ${amount}, option ${index + 1}`;
+            return (
+              <li key={offer.offerRef}>
+                <div><strong>{offer.paidCoinUnits} Coins</strong><span>{amount}</span></div>
+                <button
+                  aria-label={paymentLabel}
+                  type="button"
+                  disabled={model.busy}
+                  onClick={() => void model.createOrder(offer.offerRef)}
+                >
+                  {model.busy
+                    ? zh ? "正在创建订单…" : "Creating order…"
+                    : zh ? "继续支付" : "Continue to payment"}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </ModalFrame>

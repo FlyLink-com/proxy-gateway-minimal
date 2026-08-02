@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import {
   formatPortalDateTime,
   portalCoinTypeLabel,
@@ -23,6 +25,10 @@ export type PortalWalletPanelProps = {
   model: PortalWalletReadModel;
   rechargeModel?: PortalRechargeModel;
 };
+
+type WalletLedgerView = "overview" | "all";
+
+const RECENT_LEDGER_LIMIT = 5;
 
 function walletStatusLabel(
   status: PortalWalletStatus,
@@ -103,7 +109,7 @@ function WalletSummary({
   summary: PortalWalletSummary;
 }) {
   const zh = locale === "zh";
-  const balances = [
+  const primaryBalances = [
     {
       id: "spendable",
       label: zh ? "可用余额" : "Spendable balance",
@@ -112,33 +118,33 @@ function WalletSummary({
     },
     {
       id: "paid",
-      label: zh ? "已购 Coins" : "Purchased Coins",
+      label: zh ? "已购可用" : "Purchased available",
       value: summary.balances.paidCoins,
       featured: false
     },
     {
       id: "bonus",
-      label: zh ? "赠送 Coins" : "Bonus Coins",
+      label: zh ? "赠送可用" : "Bonus available",
       value: summary.balances.bonusCoins,
       featured: false
     },
     {
       id: "reward",
-      label: zh ? "奖励 Coins" : "Reward Coins",
+      label: zh ? "奖励可用" : "Reward available",
       value: summary.balances.rewardCoins,
       featured: false
-    },
+    }
+  ] as const;
+  const statusBalances = [
     {
       id: "held",
-      label: zh ? "冻结中" : "Held",
-      value: summary.heldUnits,
-      featured: false
+      label: zh ? "订单预留" : "Order reserved",
+      value: summary.heldUnits
     },
     {
       id: "pending",
-      label: zh ? "待确认" : "Pending",
-      value: summary.pendingUnits,
-      featured: false
+      label: zh ? "待确认奖励" : "Pending rewards",
+      value: summary.pendingUnits
     }
   ] as const;
   return (
@@ -148,7 +154,7 @@ function WalletSummary({
         <strong>{walletStatusLabel(summary.status, locale)}</strong>
       </p>
       <dl className="portal-wallet-balance-grid">
-        {balances.map((balance) => (
+        {primaryBalances.map((balance) => (
           <div
             className={balance.featured
               ? "portal-wallet-balance-grid__spendable"
@@ -160,7 +166,58 @@ function WalletSummary({
           </div>
         ))}
       </dl>
+      <dl
+        className="portal-wallet-status-grid"
+        aria-label={zh ? "订单与奖励状态" : "Order and reward status"}
+      >
+        {statusBalances.map((balance) => (
+          <div key={balance.id}>
+            <dt>{balance.label}</dt>
+            <dd>{balance.value}</dd>
+          </div>
+        ))}
+      </dl>
     </>
+  );
+}
+
+function WalletGuide({ locale }: Pick<PortalWalletPanelProps, "locale">) {
+  const zh = locale === "zh";
+  return (
+    <aside
+      aria-labelledby="portal-wallet-guide-heading"
+      className="portal-wallet-guide"
+    >
+      <h3 id="portal-wallet-guide-heading">
+        {zh ? "钱包规则指南" : "Wallet guide"}
+      </h3>
+      <ol>
+        <li>
+          <strong>{zh ? "Coins 有何区别？" : "Coins types"}</strong>
+          <p>
+            {zh
+              ? "已购 Coins 通过充值获得；赠送 Coins 可能有有效期；奖励 Coins 来自活动或推广奖励。"
+              : "Purchased Coins come from recharge. Bonus Coins may have an expiry. Reward Coins come from promotions or referral rewards."}
+          </p>
+        </li>
+        <li>
+          <strong>{zh ? "系统如何使用 Coins？" : "How Coins are used"}</strong>
+          <p>
+            {zh
+              ? "商品可接受的 Coins 类型以商品详情为准；符合规则时，系统会优先使用较早到期的赠送 Coins。"
+              : "Eligible Coin types are shown on each product. When the rules allow it, the system uses bonus Coins with an earlier expiry first."}
+          </p>
+        </li>
+        <li>
+          <strong>{zh ? "订单预留与待确认是什么？" : "Order reserves and pending rewards"}</strong>
+          <p>
+            {zh
+              ? "订单预留表示 Coins 正被订单处理占用；待确认奖励不等同于充值支付状态。充值进度请在订单中查看。"
+              : "Order reserves mean Coins are being held while an order is processed. Pending rewards are not recharge payment status. View recharge progress in Orders."}
+          </p>
+        </li>
+      </ol>
+    </aside>
   );
 }
 
@@ -174,38 +231,48 @@ function bucketDelta(value: number | null) {
 
 function LedgerTable({
   entries,
-  locale
+  locale,
+  view
 }: {
   entries: PortalWalletLedgerEntry[];
   locale: PortalWalletPanelProps["locale"];
+  view: WalletLedgerView;
 }) {
   const zh = locale === "zh";
   const desktopScrollRegion = useDesktopScrollRegion();
+  const fullActivity = view === "all";
+  const scrollable = fullActivity && desktopScrollRegion;
   return (
     <div
-      aria-label={desktopScrollRegion
+      aria-label={scrollable
         ? zh
           ? "Coins 钱包流水表"
           : "Coins Wallet activity table"
         : undefined}
-      className="portal-wallet-ledger-wrap"
-      role={desktopScrollRegion ? "region" : undefined}
-      tabIndex={desktopScrollRegion ? 0 : undefined}
+      className={`portal-wallet-ledger-wrap portal-wallet-ledger-wrap--${view}`}
+      role={scrollable ? "region" : undefined}
+      tabIndex={scrollable ? 0 : undefined}
     >
       <table
-        className="portal-wallet-ledger"
-        aria-label={zh ? "Coins 钱包流水" : "Coins Wallet activity"}
+        className={`portal-wallet-ledger portal-wallet-ledger--${view}`}
+        aria-label={fullActivity
+          ? zh ? "Coins 钱包流水" : "Coins Wallet activity"
+          : zh ? "近期 Coins 钱包流水" : "Recent Coins Wallet activity"}
       >
         <thead>
           <tr>
             <th scope="col">{zh ? "类别" : "Category"}</th>
             <th scope="col">{zh ? "币种" : "Coin type"}</th>
             <th scope="col">{zh ? "发生时间" : "Occurred at"}</th>
-            <th scope="col">{zh ? "关联订单" : "Related order"}</th>
-            <th scope="col">{zh ? "总变动" : "Overall delta"}</th>
-            <th scope="col">{zh ? "可用" : "Available"}</th>
-            <th scope="col">{zh ? "待确认" : "Pending"}</th>
-            <th scope="col">{zh ? "冻结" : "Held"}</th>
+            {fullActivity ? (
+              <>
+                <th scope="col">{zh ? "关联订单" : "Related order"}</th>
+                <th scope="col">{zh ? "总变动" : "Overall delta"}</th>
+                <th scope="col">{zh ? "可用" : "Available"}</th>
+                <th scope="col">{zh ? "待确认" : "Pending"}</th>
+                <th scope="col">{zh ? "冻结" : "Held"}</th>
+              </>
+            ) : <th scope="col">{zh ? "数量" : "Amount"}</th>}
           </tr>
         </thead>
         <tbody>
@@ -218,11 +285,15 @@ function LedgerTable({
                   {formatPortalDateTime(entry.occurredAt, locale)}
                 </time>
               </td>
-              <td>{entry.relatedOrderRef ?? "—"}</td>
-              <td>{signedDelta(entry.totalDeltaUnits)}</td>
-              <td>{bucketDelta(entry.availableDeltaUnits)}</td>
-              <td>{bucketDelta(entry.pendingDeltaUnits)}</td>
-              <td>{bucketDelta(entry.heldDeltaUnits)}</td>
+              {fullActivity ? (
+                <>
+                  <td>{entry.relatedOrderRef ?? "—"}</td>
+                  <td>{signedDelta(entry.totalDeltaUnits)}</td>
+                  <td>{bucketDelta(entry.availableDeltaUnits)}</td>
+                  <td>{bucketDelta(entry.pendingDeltaUnits)}</td>
+                  <td>{bucketDelta(entry.heldDeltaUnits)}</td>
+                </>
+              ) : <td>{entry.amountUnits}</td>}
             </tr>
           ))}
         </tbody>
@@ -233,8 +304,9 @@ function LedgerTable({
 
 function LedgerState({
   locale,
-  model
-}: PortalWalletPanelProps) {
+  model,
+  view
+}: PortalWalletPanelProps & { view: WalletLedgerView }) {
   const zh = locale === "zh";
   const state: ReadState<PortalWalletLedgerEntry[]> = model.ledger;
   if (state.phase === "loading") {
@@ -277,8 +349,14 @@ function LedgerState({
   }
   return (
     <>
-      <LedgerTable entries={state.value} locale={locale} />
-      {model.loadMoreLedgerError ? (
+      <LedgerTable
+        entries={view === "overview"
+          ? state.value.slice(0, RECENT_LEDGER_LIMIT)
+          : state.value}
+        locale={locale}
+        view={view}
+      />
+      {view === "all" && model.loadMoreLedgerError ? (
         <div
           className="portal-wallet-state"
           role={model.loadMoreLedgerError.phase === "unavailable"
@@ -302,7 +380,7 @@ function LedgerState({
             </button>
           ) : null}
         </div>
-      ) : model.nextLedgerCursor ? (
+      ) : view === "all" && model.nextLedgerCursor ? (
         <button
           aria-busy={model.loadingMoreLedger}
           className="portal-wallet-load-more"
@@ -329,38 +407,28 @@ export function PortalWalletPanel({
   rechargeModel
 }: PortalWalletPanelProps) {
   const zh = locale === "zh";
+  const [ledgerView, setLedgerView] = useState<WalletLedgerView>("overview");
+  const allActivity = ledgerView === "all";
   return (
     <section
       className="portal-commerce-layout portal-commerce-layout--wallet"
       aria-labelledby="portal-wallet-heading"
     >
-      <header className="portal-commerce-layout__header">
+      <header className="portal-commerce-layout__header portal-wallet-header">
         <h2 id="portal-wallet-heading">
-          {zh ? "钱包总览" : "Wallet overview"}
+          {allActivity
+            ? zh ? "全部钱包流水" : "All Wallet activity"
+            : zh ? "钱包总览" : "Wallet overview"}
         </h2>
-      </header>
-      <section
-        className="portal-commerce-layout__section"
-        aria-labelledby="portal-wallet-balance-heading"
-      >
-        <h3 id="portal-wallet-balance-heading">{zh ? "余额" : "Balance"}</h3>
-        <SummaryState locale={locale} model={model} />
-      </section>
-      {rechargeModel?.available ? (
-        <section
-          className="portal-commerce-layout__section portal-wallet-recharge"
-          aria-labelledby="portal-wallet-recharge-heading"
-        >
-          <div>
-            <h3 id="portal-wallet-recharge-heading">
-              {zh ? "充值" : "Recharge"}
-            </h3>
-            <p>
-              {zh
-                ? "选择充值档位；支付确认后，已购 Coins 将自动入账。"
-                : "Choose a recharge denomination. Purchased Coins are credited automatically after payment confirmation."}
-            </p>
-          </div>
+        {allActivity ? (
+          <button
+            className="portal-secondary-button compact"
+            type="button"
+            onClick={() => setLedgerView("overview")}
+          >
+            {zh ? "返回钱包总览" : "Back to Wallet overview"}
+          </button>
+        ) : rechargeModel?.available ? (
           <button
             className="portal-primary-button compact"
             type="button"
@@ -368,17 +436,50 @@ export function PortalWalletPanel({
           >
             {zh ? "充值 Coins" : "Recharge Coins"}
           </button>
+        ) : null}
+      </header>
+      {allActivity ? (
+        <section
+          className="portal-commerce-layout__section portal-wallet-all-activity"
+          aria-labelledby="portal-wallet-ledger-heading"
+        >
+          <h3 id="portal-wallet-ledger-heading">
+            {zh ? "全部流水" : "All activity"}
+          </h3>
+          <LedgerState locale={locale} model={model} view="all" />
         </section>
-      ) : null}
-      <section
-        className="portal-commerce-layout__section"
-        aria-labelledby="portal-wallet-ledger-heading"
-      >
-        <h3 id="portal-wallet-ledger-heading">
-          {zh ? "钱包流水" : "Wallet activity"}
-        </h3>
-        <LedgerState locale={locale} model={model} />
-      </section>
+      ) : (
+        <div className="portal-wallet-overview-content">
+          <div className="portal-wallet-overview-main">
+            <section
+              className="portal-commerce-layout__section"
+              aria-labelledby="portal-wallet-balance-heading"
+            >
+              <h3 id="portal-wallet-balance-heading">{zh ? "余额" : "Balance"}</h3>
+              <SummaryState locale={locale} model={model} />
+            </section>
+            <section
+              className="portal-commerce-layout__section portal-wallet-recent-activity"
+              aria-labelledby="portal-wallet-ledger-heading"
+            >
+              <div className="portal-wallet-section-heading">
+                <h3 id="portal-wallet-ledger-heading">
+                  {zh ? "近期账变明细" : "Recent Wallet activity"}
+                </h3>
+                <button
+                  className="portal-wallet-view-all"
+                  type="button"
+                  onClick={() => setLedgerView("all")}
+                >
+                  {zh ? "查看全部" : "View all activity"}
+                </button>
+              </div>
+              <LedgerState locale={locale} model={model} view="overview" />
+            </section>
+          </div>
+          <WalletGuide locale={locale} />
+        </div>
+      )}
       {rechargeModel?.dialogOpen ? (
         <PortalRechargeDialog locale={locale} model={rechargeModel} />
       ) : null}

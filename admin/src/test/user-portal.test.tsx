@@ -2461,6 +2461,10 @@ describe("user portal product surface", () => {
       await ledger.promise;
     });
     expect(await screen.findByRole("table", {
+      name: "近期 Coins 钱包流水"
+    })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "查看全部" }));
+    expect(await screen.findByRole("table", {
       name: "Coins 钱包流水"
     })).toBeInTheDocument();
   });
@@ -2870,7 +2874,7 @@ describe("user portal product surface", () => {
     })).getByRole("button", { name: "Coins wallet" })).toBeInTheDocument();
   });
 
-  test("keeps the Wallet focused on balances and activity without recharge controls", async () => {
+  test("keeps the Wallet overview focused on balances, recent activity, and rules without recharge controls", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
     const navigation = await enterPortal();
@@ -2885,8 +2889,14 @@ describe("user portal product surface", () => {
       name: "余额"
     })).not.toBeNull();
     expect(within(walletSection as HTMLElement).getByRole("heading", {
-      name: "钱包流水"
+      name: "近期账变明细"
     })).not.toBeNull();
+    expect(within(walletSection as HTMLElement).getByRole("complementary", {
+      name: "钱包规则指南"
+    })).not.toBeNull();
+    expect(within(walletSection as HTMLElement).queryByRole("button", {
+      name: "充值 Coins"
+    })).toBeNull();
     expect(within(walletSection as HTMLElement).queryByRole("heading", {
       name: "充值"
     })).toBeNull();
@@ -2903,6 +2913,15 @@ describe("user portal product surface", () => {
     expect(await screen.findAllByRole("heading", { level: 2, name: "Wallet overview" })).toHaveLength(1);
     const englishWalletSection = document.querySelector(".portal-commerce-layout--wallet");
     expect(englishWalletSection).not.toBeNull();
+    expect(within(englishWalletSection as HTMLElement).getByRole("heading", {
+      name: "Recent Wallet activity"
+    })).not.toBeNull();
+    expect(within(englishWalletSection as HTMLElement).getByRole("complementary", {
+      name: "Wallet guide"
+    })).not.toBeNull();
+    expect(within(englishWalletSection as HTMLElement).queryByRole("button", {
+      name: "Recharge Coins"
+    })).toBeNull();
     expect(within(englishWalletSection as HTMLElement).queryByRole("heading", {
       name: "Recharge"
     })).toBeNull();
