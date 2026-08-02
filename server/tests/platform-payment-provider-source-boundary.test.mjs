@@ -38,6 +38,15 @@ const EXCLUDED_PRODUCTION_SURFACE_DIRECTORIES = new Set([
   "test",
   "tests",
 ]);
+const ADMIN_PRODUCTION_BUILD_ROOTS = Object.freeze([
+  "admin/index.html",
+  "admin/package.json",
+  "admin/portal/index.html",
+  "admin/site/index.html",
+  "admin/vite.config.ts",
+  "admin/vite.portal.config.ts",
+  "admin/vite.site.config.ts",
+]);
 
 async function readSource(modulePath) {
   // The helper has already validated the normalized repository-relative path.
@@ -125,6 +134,7 @@ async function listDocumentedCandidateBoundaryPaths() {
   const paths = [
     ...await listRootExecutableSourceFiles(),
     ...await listPackagePublishablePaths(),
+    ...ADMIN_PRODUCTION_BUILD_ROOTS,
     ...await listProductionSurfaceFiles("admin/src"),
   ].filter((path) => !isDocumentationOrTestPath(path));
   return [...new Set(paths)].sort();
@@ -181,6 +191,13 @@ test("documented-candidate corpus includes every executable and publishable sour
   for (const path of [
     "package.json",
     "start-server.ps1",
+    "admin/package.json",
+    "admin/vite.config.ts",
+    "admin/vite.portal.config.ts",
+    "admin/vite.site.config.ts",
+    "admin/index.html",
+    "admin/portal/index.html",
+    "admin/site/index.html",
     "admin/src/main.tsx",
     "admin/src/portal-main.tsx",
     "admin/src/site-main.tsx",
@@ -195,6 +212,7 @@ test("documented-candidate corpus includes every executable and publishable sour
   assert.equal(paths.some((path) => /(?:^|\/)tests?(?:\/|$)/u.test(path)), false);
   assert.equal(paths.some((path) => /(?:^|\/)node_modules(?:\/|$)/u.test(path)), false);
   assert.equal(paths.some((path) => /^admin\/dist(?:-|\/|$)/u.test(path)), false);
+  assert.equal(paths.includes("admin/vite.portal.local-api-validation.config.ts"), false);
 });
 
 test("documented-candidate corpus rejects an indirect import from every added root", async () => {
@@ -252,6 +270,63 @@ test("documented-candidate corpus rejects direct and indirect references from ro
         () => assertCorpusDoesNotMatch(
           [...sources.keys()],
           /(?:xsd|chaojipay)-documented-payment-candidate\.mjs/u,
+          message,
+          async (path) => sources.get(path),
+        ),
+        new RegExp(message, "u"),
+      );
+    }
+  }
+});
+
+test("discovered Admin production build corpus rejects direct and indirect candidate references", async () => {
+  const candidatePath = "server/services/platform/xsd-documented-payment-candidate.mjs";
+  const candidatePattern = /(?:xsd|chaojipay)-documented-payment-candidate\.mjs/u;
+  const discoveredPaths = await listDocumentedCandidateBoundaryPaths();
+  for (const [referenceKind, sources] of [
+    ["direct", new Map([
+      ["admin/vite.config.ts", candidatePath],
+    ])],
+    ["indirect", new Map([
+      ["admin/vite.portal.config.ts", 'import "./src/portal-main.tsx";'],
+      ["admin/src/portal-main.tsx", candidatePath],
+    ])],
+  ]) {
+    const message = `documented_payment_candidate_discovered_admin_${referenceKind}_reference_detected`;
+    await assert.rejects(
+      () => assertCorpusDoesNotMatch(
+        discoveredPaths,
+        candidatePattern,
+        message,
+        async (path) => sources.get(path) ?? "",
+      ),
+      new RegExp(message, "u"),
+    );
+  }
+
+  const buildRoots = [
+    "admin/package.json",
+    "admin/vite.config.ts",
+    "admin/vite.portal.config.ts",
+    "admin/vite.site.config.ts",
+    "admin/index.html",
+    "admin/portal/index.html",
+    "admin/site/index.html",
+  ];
+
+  for (const [index, buildRoot] of buildRoots.entries()) {
+    for (const [referenceKind, sources] of [
+      ["direct", new Map([[buildRoot, candidatePath]])],
+      ["indirect", new Map([
+        [buildRoot, `./src/admin-build-intermediate-${index}.mjs`],
+        [`admin/src/admin-build-intermediate-${index}.mjs`, candidatePath],
+      ])],
+    ]) {
+      const message = `documented_payment_candidate_admin_build_root_${index}_${referenceKind}_reference_detected`;
+      await assert.rejects(
+        () => assertCorpusDoesNotMatch(
+          [...sources.keys()],
+          candidatePattern,
           message,
           async (path) => sources.get(path),
         ),
