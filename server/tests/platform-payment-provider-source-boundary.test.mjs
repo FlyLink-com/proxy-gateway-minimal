@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -27,6 +27,16 @@ const PHASE_ONE_ROOTS = Object.freeze([
 const DOCUMENTED_CANDIDATE_ROOTS = Object.freeze([
   "server/services/platform/xsd-documented-payment-candidate.mjs",
   "server/services/platform/chaojipay-documented-payment-candidate.mjs",
+]);
+const ROOT_EXECUTABLE_SOURCE_PATTERN = /\.(?:bat|cjs|js|mjs|ps1)$/u;
+const EXCLUDED_PRODUCTION_SURFACE_DIRECTORIES = new Set([
+  "__tests__",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "test",
+  "tests",
 ]);
 
 async function readSource(modulePath) {
@@ -63,12 +73,45 @@ async function listFiles(relativeDirectory) {
   return paths.sort();
 }
 
-async function listRootProductionSourceFiles() {
+async function listRootExecutableSourceFiles() {
   const entries = await readdir(REPO_ROOT_URL, { withFileTypes: true });
   return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".mjs"))
+    .filter((entry) => entry.isFile() && ROOT_EXECUTABLE_SOURCE_PATTERN.test(entry.name))
     .map((entry) => entry.name)
     .sort();
+}
+
+async function listProductionSurfaceFiles(relativeDirectory) {
+  const entries = await readdir(
+    new URL(`${relativeDirectory}/`, REPO_ROOT_URL),
+    { withFileTypes: true },
+  );
+  const paths = [];
+  for (const entry of entries) {
+    const relativePath = `${relativeDirectory}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (!EXCLUDED_PRODUCTION_SURFACE_DIRECTORIES.has(entry.name)) {
+        paths.push(...await listProductionSurfaceFiles(relativePath));
+      }
+    } else if (entry.isFile()) {
+      paths.push(relativePath);
+    }
+  }
+  return paths.sort();
+}
+
+async function listPackagePublishablePaths() {
+  const packageMetadata = JSON.parse(await readSource("package.json"));
+  const paths = ["package.json"];
+  for (const relativePath of packageMetadata.files) {
+    const details = await stat(new URL(relativePath, REPO_ROOT_URL));
+    if (details.isDirectory()) {
+      paths.push(...await listProductionSurfaceFiles(relativePath));
+    } else if (details.isFile()) {
+      paths.push(relativePath);
+    }
+  }
+  return paths.sort();
 }
 
 function isDocumentationOrTestPath(path) {
@@ -80,12 +123,9 @@ function isDocumentationOrTestPath(path) {
 
 async function listDocumentedCandidateBoundaryPaths() {
   const paths = [
-    ...await listRootProductionSourceFiles(),
-    ...await listFiles("server"),
-    ...await listFiles("bin"),
-    ...await listFiles("scripts"),
-    ...await listFiles("agent"),
-    ...await listFiles("ops"),
+    ...await listRootExecutableSourceFiles(),
+    ...await listPackagePublishablePaths(),
+    ...await listProductionSurfaceFiles("admin/src"),
   ].filter((path) => !isDocumentationOrTestPath(path));
   return [...new Set(paths)].sort();
 }
@@ -118,6 +158,19 @@ test("complete production source corpus detects a candidate reached through an i
 
 test("documented-candidate corpus includes every executable and publishable source root", async () => {
   const paths = await listDocumentedCandidateBoundaryPaths();
+  const packageMetadata = JSON.parse(await readSource("package.json"));
+  for (const publishedPath of packageMetadata.files) {
+    if (isDocumentationOrTestPath(publishedPath)) continue;
+    const details = await stat(new URL(publishedPath, REPO_ROOT_URL));
+    const included = details.isDirectory()
+      ? paths.some((path) => path.startsWith(`${publishedPath}/`))
+      : paths.includes(publishedPath);
+    assert.equal(
+      included,
+      true,
+      `documented_candidate_boundary_missing_package_file:${publishedPath}`,
+    );
+  }
   for (const prefix of ["bin/", "scripts/", "agent/", "ops/"]) {
     assert.equal(
       paths.some((path) => path.startsWith(prefix)),
@@ -125,8 +178,23 @@ test("documented-candidate corpus includes every executable and publishable sour
       `documented_candidate_boundary_missing_root:${prefix}`,
     );
   }
+  for (const path of [
+    "package.json",
+    "start-server.ps1",
+    "admin/src/main.tsx",
+    "admin/src/portal-main.tsx",
+    "admin/src/site-main.tsx",
+  ]) {
+    assert.equal(
+      paths.includes(path),
+      true,
+      `documented_candidate_boundary_missing_surface:${path}`,
+    );
+  }
   assert.equal(paths.some((path) => path.endsWith("README.md")), false);
   assert.equal(paths.some((path) => /(?:^|\/)tests?(?:\/|$)/u.test(path)), false);
+  assert.equal(paths.some((path) => /(?:^|\/)node_modules(?:\/|$)/u.test(path)), false);
+  assert.equal(paths.some((path) => /^admin\/dist(?:-|\/|$)/u.test(path)), false);
 });
 
 test("documented-candidate corpus rejects an indirect import from every added root", async () => {
@@ -145,6 +213,51 @@ test("documented-candidate corpus rejects an indirect import from every added ro
       ),
       new RegExp(`documented_payment_candidate_${root}_import_detected`, "u"),
     );
+  }
+});
+
+test("documented-candidate corpus rejects direct and indirect references from root publish surfaces and admin source", async () => {
+  const candidatePath = "server/services/platform/xsd-documented-payment-candidate.mjs";
+  const surfaces = [
+    {
+      name: "root_entry",
+      directPath: "start-server.ps1",
+      intermediatePath: "root-intermediate.mjs",
+      entrySource: "node ./root-intermediate.mjs",
+    },
+    {
+      name: "package_metadata",
+      directPath: "package.json",
+      intermediatePath: "package-intermediate.mjs",
+      entrySource: '{"scripts":{"start":"node package-intermediate.mjs"}}',
+    },
+    {
+      name: "admin_source",
+      directPath: "admin/src/portal-main.tsx",
+      intermediatePath: "admin/src/payment-intermediate.ts",
+      entrySource: 'import "./payment-intermediate";',
+    },
+  ];
+
+  for (const surface of surfaces) {
+    for (const [referenceKind, sources] of [
+      ["direct", new Map([[surface.directPath, candidatePath]])],
+      ["indirect", new Map([
+        [surface.directPath, surface.entrySource],
+        [surface.intermediatePath, candidatePath],
+      ])],
+    ]) {
+      const message = `documented_payment_candidate_${surface.name}_${referenceKind}_reference_detected`;
+      await assert.rejects(
+        () => assertCorpusDoesNotMatch(
+          [...sources.keys()],
+          /(?:xsd|chaojipay)-documented-payment-candidate\.mjs/u,
+          message,
+          async (path) => sources.get(path),
+        ),
+        new RegExp(message, "u"),
+      );
+    }
   }
 });
 
