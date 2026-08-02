@@ -21,6 +21,12 @@ const PHASE_ONE_ROOTS = Object.freeze([
   "server/services/platform/chaojipay-payment-adapter.mjs",
   "server/services/platform/paypal-payment-protocol-codec.mjs",
   "server/services/platform/xsd-payment-protocol-boundary.mjs",
+  "server/services/platform/xsd-documented-payment-candidate.mjs",
+  "server/services/platform/chaojipay-documented-payment-candidate.mjs",
+]);
+const DOCUMENTED_CANDIDATE_ROOTS = Object.freeze([
+  "server/services/platform/xsd-documented-payment-candidate.mjs",
+  "server/services/platform/chaojipay-documented-payment-candidate.mjs",
 ]);
 
 async function readSource(modulePath) {
@@ -424,6 +430,27 @@ test("source scanner validates roots before reads deduplicates roots and redacts
     readSource,
   });
   assert.deepEqual(phaseOneGraph, [...PHASE_ONE_ROOTS].sort());
+
+  const documentedCandidateGraph = await collectProviderModuleGraph({
+    rootModulePaths: DOCUMENTED_CANDIDATE_ROOTS,
+    readSource,
+  });
+  assert.deepEqual(documentedCandidateGraph, [...DOCUMENTED_CANDIDATE_ROOTS].sort());
+  for (const path of DOCUMENTED_CANDIDATE_ROOTS) {
+    assert.deepEqual(
+      extractStaticModuleSpecifiers(await readSource(path), path),
+      ["node:crypto"],
+    );
+  }
+
+  const runtimeBoundaryPaths = (await listFiles("server"))
+    .filter((path) => !path.startsWith("server/tests/"))
+    .filter((path) => /(?:adapter|registry|runtime|route|store|wallet|credential|index)/iu.test(path));
+  await assertCorpusDoesNotMatch(
+    runtimeBoundaryPaths,
+    /(?:xsd|chaojipay)-documented-payment-candidate\.mjs/u,
+    "documented_payment_candidate_runtime_import_detected",
+  );
 
   const residuePaths = [
     ...await listFiles("server/services/platform"),

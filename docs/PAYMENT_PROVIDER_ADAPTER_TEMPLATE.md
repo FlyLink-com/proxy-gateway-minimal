@@ -169,6 +169,25 @@ an identity-only disabled Adapter with no guessed protocol surface. Monetary
 operation inputs and payment facts always carry an explicit `currencyExponent`;
 no codec infers it from a currency string.
 
+XSD and ChaoJiPay also have detached documented-payment candidates. They are
+not Adapter, registry, runtime, route, Store, Wallet, credential-loader, or
+public-index dependencies. Their frozen metadata records only the documented
+channels/methods and public create/query locations; their MD5 helpers operate
+only on synthetic canonical strings and a test-supplied synthetic secret. Local
+candidate tests are not evidence of provider compatibility, an executable
+signing contract, callback verification, acknowledgement behavior, or a
+provider response parser.
+
+Both documented candidates remain blocked on all of the following before any
+Risk A contract-validation Gate may make them reachable:
+
+- official fixed signing vectors;
+- exact callback field inclusion;
+- stable provider transaction identity;
+- authoritative no-charge semantics;
+- exact acknowledgement and retry contract; and
+- allowed action URL behavior.
+
 ## Risk Gates
 
 The source implementation does not remove any production Gate. Separate

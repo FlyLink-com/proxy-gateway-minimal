@@ -422,6 +422,13 @@ bytes: the complete exclusion set, character encoding, form-encoding order, and
 digest representation case are not all verified by an authoritative test
 vector.
 
+The detached `xsd-documented-payment-candidate.mjs` records only unverified
+documentation metadata: Alipay channel `1917`, WeChat Pay channel `1923`, form
+encoding, and the public create/query locations. Its synthetic canonicalization
+excludes `sign`, `format`, and `attach`; its lowercase MD5 helper accepts only a
+test-supplied synthetic secret. It is not an Adapter dependency and its local
+tests are not provider compatibility evidence.
+
 Phase 1 therefore does not implement an outbound XSD signer or callback
 verifier. It records only the closed documented field and status vocabulary,
 the exact acknowledgement bytes, and an explicit
@@ -485,6 +492,22 @@ The Adapter is an identity-only disabled registration:
 - no network call;
 - no callback acknowledgement;
 - every capability false.
+
+The detached `chaojipay-documented-payment-candidate.mjs` records only
+unverified documentation metadata: WeChat Pay, product code `726`, JSON
+encoding, and the public create/query locations. Its synthetic canonicalization
+excludes `sign` and `realName`; its uppercase MD5 helper accepts only a
+test-supplied synthetic secret. It is not an Adapter dependency and its local
+tests are not provider compatibility evidence.
+
+Neither documented candidate provides a callback verifier, status-to-settlement
+mapper, acknowledgement encoder, provider response parser, transport,
+credential reader, or environment reader. Both remain unreachable from the
+Adapter, registry, runtime, routes, Store, Wallet, and public index until a
+separate Risk A contract-validation Gate resolves official fixed signing
+vectors, exact callback field inclusion, stable provider transaction identity,
+authoritative no-charge semantics, the exact acknowledgement/retry contract,
+and allowed action URL behavior.
 
 Merchant withdrawal, payout, and settlement APIs are permanently outside the
 closed-loop Coins Adapter.
