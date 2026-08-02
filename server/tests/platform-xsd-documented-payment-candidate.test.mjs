@@ -99,6 +99,10 @@ test("XSD candidate fails closed for unsafe or non-documentation inputs", () => 
     { canonicalText: "mch_id=merchant_demo", syntheticSecret: "" },
     { canonicalText: "mch_id=merchant_demo", syntheticSecret: "not_synthetic" },
     { canonicalText: "mch_id=merchant_live", syntheticSecret: "synthetic_secret" },
+    { canonicalText: "mch_id=merchant_demo&mch_id=merchant_demo", syntheticSecret: "synthetic_secret" },
+    { canonicalText: "unknown=merchant_demo", syntheticSecret: "synthetic_secret" },
+    { canonicalText: "attach=merchant_demo", syntheticSecret: "synthetic_secret" },
+    { canonicalText: "out_trade_no=order_demo_1&mch_id=merchant_demo", syntheticSecret: "synthetic_secret" },
     { canonicalText: 1, syntheticSecret: "synthetic_secret" },
     { canonicalText: "mch_id=merchant_demo", syntheticSecret: "synthetic_secret", extra: "value" },
   ]) {

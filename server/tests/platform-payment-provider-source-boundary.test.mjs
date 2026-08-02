@@ -63,12 +63,39 @@ async function listFiles(relativeDirectory) {
   return paths.sort();
 }
 
-async function assertCorpusDoesNotMatch(paths, pattern, message) {
+async function listRootProductionSourceFiles() {
+  const entries = await readdir(REPO_ROOT_URL, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".mjs"))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+async function assertCorpusDoesNotMatch(paths, pattern, message, read = readSource) {
   for (const path of paths) {
-    const source = await readFile(new URL(path, REPO_ROOT_URL), "utf8");
+    const source = await read(path);
     assert.equal(pattern.test(source), false, message);
   }
 }
+
+test("complete production source corpus detects a candidate reached through an intermediate module", async () => {
+  const sources = new Map([
+    ["index.mjs", 'import "./server/app.mjs";'],
+    ["server/app.mjs", 'import "./services/platform/xsd-documented-payment-candidate.mjs";'],
+  ]);
+  await assert.rejects(
+    () => assertCorpusDoesNotMatch(
+      ["index.mjs", "server/app.mjs"],
+      /(?:xsd|chaojipay)-documented-payment-candidate\.mjs/u,
+      "documented_payment_candidate_runtime_import_detected",
+      async (path) => sources.get(path),
+    ),
+    (error) => {
+      assert.match(error.message, /documented_payment_candidate_runtime_import_detected/u);
+      return true;
+    },
+  );
+});
 
 test("source scanner extracts multiline imports side-effect imports and export-from declarations", () => {
   const source = `
@@ -443,9 +470,11 @@ test("source scanner validates roots before reads deduplicates roots and redacts
     );
   }
 
-  const runtimeBoundaryPaths = (await listFiles("server"))
-    .filter((path) => !path.startsWith("server/tests/"))
-    .filter((path) => /(?:adapter|registry|runtime|route|store|wallet|credential|index)/iu.test(path));
+  const runtimeBoundaryPaths = [
+    ...await listRootProductionSourceFiles(),
+    ...(await listFiles("server")).filter((path) => !path.startsWith("server/tests/")),
+  ].sort();
+  assert.equal(runtimeBoundaryPaths.includes("index.mjs"), true);
   await assertCorpusDoesNotMatch(
     runtimeBoundaryPaths,
     /(?:xsd|chaojipay)-documented-payment-candidate\.mjs/u,

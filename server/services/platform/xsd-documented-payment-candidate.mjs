@@ -22,7 +22,10 @@ const QUERY_FIELDS = Object.freeze(["attach", "format", "mch_id", "out_trade_no"
 const EXCLUDED_FIELDS = new Set(["sign", "format", "attach"]);
 const SAFE_ORDER_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SYNTHETIC_SECRET = "synthetic_secret";
-const SYNTHETIC_CANONICAL_PART = /^[A-Za-z][A-Za-z0-9_]*=(?:merchant_demo|order_demo_1|203\.0\.113\.10|1200|726)$/u;
+const SYNTHETIC_CANONICAL_TEXTS = Object.freeze([
+  "mch_create_ip=203.0.113.10&mch_id=merchant_demo&out_trade_no=order_demo_1&total_fee=1200",
+  "mch_id=merchant_demo&out_trade_no=order_demo_1",
+]);
 
 function candidateError(code) {
   const error = new TypeError(code);
@@ -85,7 +88,7 @@ function canonicalize(fields, allowedFields) {
 }
 
 function isSyntheticCanonicalText(value) {
-  return value.split("&").every((part) => SYNTHETIC_CANONICAL_PART.test(part));
+  return SYNTHETIC_CANONICAL_TEXTS.includes(value);
 }
 
 function snapshotDigestInput(value) {
