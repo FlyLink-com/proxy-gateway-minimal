@@ -448,7 +448,7 @@ describe("Portal recharge interaction", () => {
       ["coins_100", 100, 10000],
       ["coins_200", 200, 20000],
       ["coins_300", 300, 30000],
-    ]) {
+    ] as const) {
       expect(within(dialog).getByText(`${paidCoinUnits} Coins`)).toBeInTheDocument();
       expect(within(dialog).getByText(`CNY ${(amountMinor / 100).toFixed(2)}`)).toBeInTheDocument();
     }
