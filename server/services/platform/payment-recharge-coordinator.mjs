@@ -353,24 +353,6 @@ export function createPaymentRechargeCoordinator(options = {}) {
       return publicResult(null, null, { acknowledgement });
     }
     const fact = normalizeVerifiedPaymentEvent(callback);
-    if (fact.eventType === "payment_pending") {
-      const order = store.getOrderForVerifiedCallback({
-        orderRef: fact.paymentOrderRef,
-        providerOrderRef: fact.providerOrderRef,
-        amountMinor: fact.amountMinor,
-        currency: fact.currency,
-        currencyExponent: fact.currencyExponent,
-        adapterKey,
-        paymentMethod,
-        merchantBindingRef,
-      });
-      const result = await captureKnownOrder(order);
-      const acknowledgement = await adapter.webhookSuccessAck(callback);
-      return publicResult(result.order, result.wallet, {
-        acknowledgement,
-        ...(result.replayed === undefined ? {} : { replayed: result.replayed }),
-      });
-    }
     const order = store.getOrderForVerifiedCallback({
       orderRef: fact.paymentOrderRef,
       providerOrderRef: fact.providerOrderRef,
@@ -383,6 +365,14 @@ export function createPaymentRechargeCoordinator(options = {}) {
     });
     if (order.status === "failed_no_charge" || order.status === "reconciliation_required") {
       fail("payment_reconciliation_required");
+    }
+    if (fact.eventType === "payment_pending") {
+      const result = await captureKnownOrder(order);
+      const acknowledgement = await adapter.webhookSuccessAck(callback);
+      return publicResult(result.order, result.wallet, {
+        acknowledgement,
+        ...(result.replayed === undefined ? {} : { replayed: result.replayed }),
+      });
     }
     const accepted = store.acceptVerifiedPayment({
       orderRef: fact.paymentOrderRef,

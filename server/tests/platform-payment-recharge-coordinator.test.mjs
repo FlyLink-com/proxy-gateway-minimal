@@ -543,6 +543,67 @@ test("late verified success after failed_no_charge requires reconciliation witho
   }
 });
 
+test("pending callbacks for terminal payment states reject before capture, Wallet, or acknowledgement", async () => {
+  for (const terminalState of ["failed_no_charge", "reconciliation_required"]) {
+    const system = createSystem({
+      callbackFactOverrides: {
+        eventType: "payment_pending",
+        providerCaptureRef: null,
+      },
+    });
+    try {
+      const created = await createRechargeOrder(system.coordinator);
+      if (terminalState === "failed_no_charge") {
+        system.paymentStore.recordOperationReceipt({
+          orderRef: created.order.orderRef,
+          attemptRef: "attempt_failed_pending_1",
+          providerRequestRef: "provider_failed_pending_1",
+          receiptType: "capture",
+          operationResult: {
+            providerOrderRef: "paypal_order_1",
+            status: "failed_no_charge",
+            chargeCertainty: "confirmed_no_charge",
+            nextAction: null,
+            occurredAt: NOW,
+          },
+        });
+      } else {
+        const accepted = system.paymentStore.acceptVerifiedPayment({
+          orderRef: created.order.orderRef,
+          attemptRef: "attempt_reconciliation_1",
+          providerRequestRef: "provider_reconciliation_1",
+          receiptType: "capture",
+          adapterKey: "paypal_v1",
+          paymentMethod: "paypal",
+          merchantBindingRef: "paypal_sandbox_primary",
+          paymentFact: paymentFact({
+            sourceType: "authenticated_capture_response",
+            eventDedupeKey: "reconciliation_event_1",
+            payloadDigest: CAPTURE_PAYLOAD_DIGEST,
+          }),
+        });
+        system.paymentStore.markOrderReconciliationRequired({
+          orderRef: created.order.orderRef,
+          receiptRef: accepted.receipt.receiptRef,
+        });
+      }
+      await assert.rejects(
+        () => system.coordinator.acceptProviderCallback(CALLBACK_INPUT),
+        /payment_reconciliation_required/u,
+      );
+      assert.equal(system.captureInputs.length, 0);
+      assert.equal(system.walletCreditCalls(), 0);
+      assert.equal(system.acknowledgementCalls(), 0);
+      assert.equal(system.coordinator.getRechargeOrder({
+        accountId: "account_1",
+        orderRef: created.order.orderRef,
+      }).status, terminalState);
+    } finally {
+      system.close();
+    }
+  }
+});
+
 test("a Wallet response missing either persisted reference cannot close an order as credited", async () => {
   for (const response of [
     { operationRef: undefined },
