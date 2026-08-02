@@ -442,6 +442,13 @@ export function createSqlitePaymentStore(options = {}) {
       const sourceOrder = db.prepare(`
         select * from platform_payment_orders where payment_order_ref = ?
       `).get(request.orderRef);
+      if (
+        sourceOrder.provider_order_ref !== null
+        && result.providerOrderRef !== null
+        && sourceOrder.provider_order_ref !== result.providerOrderRef
+      ) {
+        fail("payment_provider_order_conflict");
+      }
       const existingRow = db.prepare(`
         select * from platform_payment_receipts
          where provider_request_ref = ? and receipt_type = ?
@@ -490,7 +497,10 @@ export function createSqlitePaymentStore(options = {}) {
         update platform_payment_orders
            set status = ?,
                latest_receipt_ref = ?,
-               provider_order_ref = coalesce(?, provider_order_ref),
+               provider_order_ref = case
+                 when provider_order_ref is null then ?
+                 else provider_order_ref
+               end,
                updated_at = ?
          where payment_order_ref = ?
       `).run(
@@ -569,11 +579,15 @@ export function createSqlitePaymentStore(options = {}) {
   function acceptVerifiedPayment(input) {
     assertOpen();
     const request = snapshotExact(input, [
-      "orderRef", "attemptRef", "providerRequestRef", "receiptType", "paymentFact",
+      "orderRef", "attemptRef", "providerRequestRef", "receiptType", "adapterKey",
+      "paymentMethod", "merchantBindingRef", "paymentFact",
     ]);
     request.orderRef = safeRef(request.orderRef);
     request.attemptRef = safeRef(request.attemptRef);
     request.providerRequestRef = safeRef(request.providerRequestRef);
+    request.adapterKey = safeRef(request.adapterKey);
+    request.paymentMethod = safeRef(request.paymentMethod);
+    request.merchantBindingRef = safeRef(request.merchantBindingRef);
     if (request.receiptType !== "capture" && request.receiptType !== "callback") {
       fail("invalid_payment_store_request");
     }
@@ -584,7 +598,10 @@ export function createSqlitePaymentStore(options = {}) {
       `).get(request.orderRef);
       if (!order) fail("payment_order_not_found");
       if (
-        fact.paymentOrderRef !== order.payment_order_ref
+        request.adapterKey !== order.adapter_key
+        || request.paymentMethod !== order.payment_method
+        || request.merchantBindingRef !== order.merchant_binding_ref
+        || fact.paymentOrderRef !== order.payment_order_ref
         || fact.providerOrderRef !== order.provider_order_ref
         || fact.amountMinor !== order.amount_minor
         || fact.currency !== order.currency
@@ -785,7 +802,11 @@ export function createSqlitePaymentStore(options = {}) {
     return Object.freeze({
       accountId: safeRef(order.account_id, "payment_store_corrupt"),
       adapterKey: safeRef(order.adapter_key, "payment_store_corrupt"),
+      paymentMethod: safeRef(order.payment_method, "payment_store_corrupt"),
+      merchantBindingRef: safeRef(order.merchant_binding_ref, "payment_store_corrupt"),
       orderRef: safeRef(order.payment_order_ref, "payment_store_corrupt"),
+      walletOperationRef: nullableSafeRef(order.wallet_operation_ref, "payment_store_corrupt"),
+      walletLotRef: nullableSafeRef(order.wallet_lot_ref, "payment_store_corrupt"),
       expectedPaidCoinUnits: positiveInteger(
         order.expected_paid_coin_units,
         "payment_store_corrupt",
@@ -819,6 +840,8 @@ export function createSqlitePaymentStore(options = {}) {
       "currency",
       "currencyExponent",
       "adapterKey",
+      "paymentMethod",
+      "merchantBindingRef",
     ]);
     request.orderRef = safeRef(request.orderRef);
     request.providerOrderRef = safeRef(request.providerOrderRef);
@@ -828,6 +851,8 @@ export function createSqlitePaymentStore(options = {}) {
     }
     request.currencyExponent = currencyExponent(request.currencyExponent);
     request.adapterKey = safeRef(request.adapterKey);
+    request.paymentMethod = safeRef(request.paymentMethod);
+    request.merchantBindingRef = safeRef(request.merchantBindingRef);
     const row = findOrder(request.orderRef);
     if (!row) fail("payment_order_not_found");
     if (
@@ -836,6 +861,8 @@ export function createSqlitePaymentStore(options = {}) {
       || row.currency !== request.currency
       || row.currency_exponent !== request.currencyExponent
       || row.adapter_key !== request.adapterKey
+      || row.payment_method !== request.paymentMethod
+      || row.merchant_binding_ref !== request.merchantBindingRef
     ) {
       fail("payment_fact_mismatch");
     }

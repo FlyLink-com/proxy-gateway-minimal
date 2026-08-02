@@ -70,6 +70,8 @@ function settlementIdentity(context, receipt) {
     settlementRef: `payment_settlement_${settlementHash}`,
     settlementDigest: canonicalDigest({
       paymentOrderRef: context.orderRef,
+      paymentMethod: context.paymentMethod,
+      merchantBindingRef: context.merchantBindingRef,
       providerOrderRef: receipt.providerOrderRef,
       providerCaptureRef: receipt.providerCaptureRef,
       merchantScopeDigest: receipt.merchantScopeDigest,
@@ -166,9 +168,17 @@ export function createPaymentRechargeCoordinator(options = {}) {
       receiptRef: accepted.receipt.receiptRef,
     });
     const identity = settlementIdentity(context, context.receipt);
-    if (context.creditedReceipt !== null) {
-      const creditedIdentity = settlementIdentity(context, context.creditedReceipt);
-      if (!sameSettlement(identity, creditedIdentity)) {
+    const hasWalletOperation = context.walletOperationRef !== null;
+    const hasWalletLot = context.walletLotRef !== null;
+    if (hasWalletOperation !== hasWalletLot) fail("payment_reconciliation_required");
+    if (hasWalletOperation) {
+      if (
+        context.creditedReceipt !== null
+        && sameSettlement(identity, settlementIdentity(context, context.creditedReceipt))
+      ) {
+        return publicResult(accepted.order, null, { replayed: true });
+      }
+      if (context.creditedReceipt !== null) {
         try {
           store.markOrderReconciliationRequired({
             orderRef: context.orderRef,
@@ -177,8 +187,8 @@ export function createPaymentRechargeCoordinator(options = {}) {
         } catch {
           fail("payment_reconciliation_persistence_failed");
         }
-        fail("payment_reconciliation_required");
       }
+      fail("payment_reconciliation_required");
     }
     let wallet;
     try {
@@ -202,6 +212,9 @@ export function createPaymentRechargeCoordinator(options = {}) {
       });
     } catch {
       fail("payment_wallet_credit_failed");
+    }
+    if (typeof wallet?.operationRef !== "string" || typeof wallet?.resultRef !== "string") {
+      fail("payment_order_close_failed");
     }
     let closed;
     try {
@@ -309,6 +322,9 @@ export function createPaymentRechargeCoordinator(options = {}) {
       attemptRef,
       providerRequestRef,
       receiptType: "capture",
+      adapterKey,
+      paymentMethod,
+      merchantBindingRef,
       paymentFact: fact,
     });
     return settle(accepted);
@@ -345,6 +361,8 @@ export function createPaymentRechargeCoordinator(options = {}) {
         currency: fact.currency,
         currencyExponent: fact.currencyExponent,
         adapterKey,
+        paymentMethod,
+        merchantBindingRef,
       });
       const result = await captureKnownOrder(order);
       const acknowledgement = await adapter.webhookSuccessAck(callback);
@@ -353,11 +371,27 @@ export function createPaymentRechargeCoordinator(options = {}) {
         ...(result.replayed === undefined ? {} : { replayed: result.replayed }),
       });
     }
+    const order = store.getOrderForVerifiedCallback({
+      orderRef: fact.paymentOrderRef,
+      providerOrderRef: fact.providerOrderRef,
+      amountMinor: fact.amountMinor,
+      currency: fact.currency,
+      currencyExponent: fact.currencyExponent,
+      adapterKey,
+      paymentMethod,
+      merchantBindingRef,
+    });
+    if (order.status === "failed_no_charge" || order.status === "reconciliation_required") {
+      fail("payment_reconciliation_required");
+    }
     const accepted = store.acceptVerifiedPayment({
       orderRef: fact.paymentOrderRef,
       attemptRef: providerRef("attempt_callback", fact.paymentOrderRef),
       providerRequestRef: callbackRequestRef,
       receiptType: "callback",
+      adapterKey,
+      paymentMethod,
+      merchantBindingRef,
       paymentFact: fact,
     });
     const result = await settle(accepted);
