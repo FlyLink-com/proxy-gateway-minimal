@@ -1,35 +1,61 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { assertPaymentProviderAdapterContract } from "../services/platform/payment-provider-adapter-contract.mjs";
+import { assertPaymentProviderAdapterContract, createCredentialScopedPaymentExecution } from "../services/platform/payment-provider-adapter-contract.mjs";
 import { createChaoJiPayPaymentAdapter } from "../services/platform/chaojipay-payment-adapter.mjs";
 
-const FALSE_CAPABILITIES = Object.freeze({
-  createRechargeOrder: false, queryPayment: false, capturePayment: false,
-  verifyCallback: false, refund: false, reconcile: false,
-  repeatCreateIdempotent: false, repeatCaptureIdempotent: false,
+const NOW = "2026-08-02T00:00:00.000Z";
+const ACTION_ORIGIN = "https://checkout.example.test";
+const CAPABILITIES = Object.freeze({
+  createRechargeOrder: true, queryPayment: false, capturePayment: false, verifyCallback: true,
+  refund: false, reconcile: false, repeatCreateIdempotent: false, repeatCaptureIdempotent: false,
+});
+const CREATE_INPUT = Object.freeze({
+  paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1",
+  paymentMethod: "wechat_pay", amountMinor: 1200, currency: "CNY", currencyExponent: 2,
+  expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z",
+  callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1",
 });
 
-test("ChaoJiPay is the exact identity-only unverified disabled Adapter", () => {
+function executionScope() {
+  return createCredentialScopedPaymentExecution({
+    profileRef: "chaojipay_profile", adapterKey: "chaojipay_v1", contractVersion: "v1",
+    credentialProfileRef: "chaojipay_credential",
+    credentialLoader: { withCredential(_binding, callback) { return callback({ opaque: "credential" }); } },
+    requestFn({ request }) {
+      if (request.action === "chaojipay_payment_create") return { response: { data: { payUrl: `${ACTION_ORIGIN}/pay/1` } }, evidence: null };
+      return {
+        response: { orderId: "provider_capture_1", orderStatus: "1", outTradeId: "payment_order_1", amount: "12.00" },
+        evidence: { merchantScopeDigest: "a".repeat(64), payloadDigest: "b".repeat(64) },
+      };
+    },
+    allowedActionOrigins: [ACTION_ORIGIN],
+  });
+}
+
+test("ChaoJiPay remains unverified and disabled without a credential-scoped execution scope", () => {
   const raw = createChaoJiPayPaymentAdapter();
-  assert.equal(raw.adapterKey, "chaojipay_v1");
-  assert.equal(raw.providerId, "chaojipay");
   assert.equal(raw.contractVersion, "unverified");
-  assert.deepEqual(raw.capabilities, FALSE_CAPABILITIES);
   assert.deepEqual(raw.supportedPaymentMethods, []);
-  assert.deepEqual(Object.values(raw.capabilities), Array(8).fill(false));
-  assert.deepEqual(assertPaymentProviderAdapterContract(raw).capabilities, FALSE_CAPABILITIES);
+  assert.equal(raw.capabilities.createRechargeOrder, false);
+  const withClockOnly = createChaoJiPayPaymentAdapter({ nowFn: () => NOW });
+  assert.equal(withClockOnly.contractVersion, "unverified");
+  assert.equal(withClockOnly.capabilities.verifyCallback, false);
 });
 
-test("ChaoJiPay exports no protocol codec status acknowledgement endpoint or payment method surface", async () => {
-  const source = await readFile(
-    new URL("../services/platform/chaojipay-payment-adapter.mjs", import.meta.url),
-    "utf8",
-  );
-  assert.match(source, /createUnverifiedPaymentAdapter/u);
-  assert.doesNotMatch(source, /codec|endpoint|signature|merchant|credential|\bstatus\b|paymentMethod/iu);
-  assert.deepEqual(Object.keys(await import("../services/platform/chaojipay-payment-adapter.mjs")), [
-    "createChaoJiPayPaymentAdapter",
-  ]);
+test("ChaoJiPay v1 exposes only WeChat create and verified callback", async () => {
+  const raw = createChaoJiPayPaymentAdapter({ executionScope: executionScope(), nowFn: () => NOW });
+  assert.deepEqual(raw.capabilities, CAPABILITIES);
+  assert.deepEqual(raw.supportedPaymentMethods, ["wechat_pay"]);
+  const adapter = assertPaymentProviderAdapterContract(raw, { allowedActionOrigins: [ACTION_ORIGIN] });
+  assert.equal((await adapter.createRechargeOrder(CREATE_INPUT)).status, "entry_ready");
+  const callback = await adapter.verifyAndNormalizeCallback({
+    callbackRequestRef: "callback_request_1", receivedAt: NOW,
+    bodyBase64: Buffer.from("amount=12.00&orderId=provider_capture_1&orderStatus=1&outTradeId=payment_order_1&sign=synthetic", "utf8").toString("base64"),
+    headerEntries: [{ name: "content-type", value: "application/form" }],
+  });
+  assert.equal(callback.eventType, "payment_succeeded");
+  assert.deepEqual(await adapter.webhookSuccessAck(callback), { statusCode: 200, contentType: "text/plain", body: "success" });
+  await assert.rejects(() => adapter.queryPayment({ paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerOrderRef: "payment_order_1" }), /payment_provider_capability_disabled/u);
+  await assert.rejects(() => adapter.createRechargeOrder({ ...CREATE_INPUT, paymentMethod: "alipay" }), /provider_operation_failed/u);
 });
