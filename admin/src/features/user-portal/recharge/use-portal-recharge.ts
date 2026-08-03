@@ -21,13 +21,42 @@ export type PortalRechargeModel = {
   offers: PortalRechargeOffer[];
   activeOrder: PortalRechargeOrder | null;
   busy: boolean;
-  error: "unavailable" | "failed" | null;
+  error: "unavailable" | "failed" | "delayed" | null;
   openDialog: () => void;
   closeDialog: () => void;
   createOrder: (offerRef: string) => Promise<void>;
-  captureOrder: () => Promise<void>;
-  refreshOrder: () => Promise<void>;
 };
+
+class SettlementDeadlineExceededError extends Error {}
+
+function settlementRemainingMs(startedAt: number) {
+  return Math.max(0, SETTLEMENT_POLL_WINDOW_MS - (Date.now() - startedAt));
+}
+
+function withSettlementDeadline<T>(request: Promise<T>, startedAt: number) {
+  const remaining = settlementRemainingMs(startedAt);
+  if (remaining === 0) {
+    return Promise.reject(new SettlementDeadlineExceededError());
+  }
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      reject(new SettlementDeadlineExceededError());
+    }, remaining);
+    void request.then((value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    }, (caught: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(caught);
+    });
+  });
+}
 
 function idempotencyKey(kind: "create" | "capture") {
   const random = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -101,6 +130,7 @@ export function usePortalRecharge({
   const redirectedOrderRefsRef = useRef(new Set<string>());
   const settlementPollStartedAtRef = useRef(new Map<string, number>());
   const trackedSettlementOrderRefsRef = useRef(new Set<string>());
+  const readbackOnlyOrderRefsRef = useRef(new Set<string>());
   const identityRef = useRef({ client, sessionRef, sessionGeneration });
   identityRef.current = { client, sessionRef, sessionGeneration };
   const callbacksRef = useRef({ onSessionInvalid, onWalletMutation, paymentRedirect });
@@ -184,6 +214,7 @@ export function usePortalRecharge({
     creditedRefsRef.current.clear();
     settlementPollStartedAtRef.current.clear();
     trackedSettlementOrderRefsRef.current.clear();
+    readbackOnlyOrderRefsRef.current.clear();
     if (!enabled || !client || !sessionRef) return;
     setBusy(true);
     const returnIntent = readPortalRechargeReturn();
@@ -219,22 +250,41 @@ export function usePortalRecharge({
       const captureStartedAt = Date.now();
       let capturedOrder: PortalRechargeOrder | null = null;
       while (requestRef.current === requestId) {
+        if (settlementRemainingMs(captureStartedAt) === 0) {
+          readbackOnlyOrderRefsRef.current.add(returnedOrder.orderRef);
+          setError("delayed");
+          return;
+        }
         try {
-          capturedOrder = await captureOrderOnce(
-            client,
-            sessionRef,
-            returnedOrder.orderRef,
-            returnIntent.captureIdempotencyKey,
+          capturedOrder = await withSettlementDeadline(
+            captureOrderOnce(
+              client,
+              sessionRef,
+              returnedOrder.orderRef,
+              returnIntent.captureIdempotencyKey,
+            ),
+            captureStartedAt,
           );
           break;
         } catch (caught) {
           if (requestRef.current !== requestId) return;
-          if (
-            !retryableRechargeFailure(caught)
-            || Date.now() - captureStartedAt >= SETTLEMENT_POLL_WINDOW_MS
-          ) throw caught;
+          if (caught instanceof SettlementDeadlineExceededError) {
+            readbackOnlyOrderRefsRef.current.add(returnedOrder.orderRef);
+            setError("delayed");
+            return;
+          }
+          if (!retryableRechargeFailure(caught)) throw caught;
+          const retryDelay = Math.min(
+            SETTLEMENT_POLL_INTERVAL_MS,
+            settlementRemainingMs(captureStartedAt),
+          );
+          if (retryDelay === 0) {
+            readbackOnlyOrderRefsRef.current.add(returnedOrder.orderRef);
+            setError("delayed");
+            return;
+          }
           await new Promise<void>((resolve) => {
-            setTimeout(resolve, SETTLEMENT_POLL_INTERVAL_MS);
+            setTimeout(resolve, retryDelay);
           });
         }
       }
@@ -288,10 +338,13 @@ export function usePortalRecharge({
       || !client
       || !sessionRef
       || !activeOrder
-      || !pollAfterReturn(
-        activeOrder,
-        returnIntent?.orderRef,
-        trackedSettlementOrderRefsRef.current.has(activeOrder.orderRef),
+      || (
+        !readbackOnlyOrderRefsRef.current.has(activeOrder.orderRef)
+        && !pollAfterReturn(
+          activeOrder,
+          returnIntent?.orderRef,
+          trackedSettlementOrderRefsRef.current.has(activeOrder.orderRef),
+        )
       )
     ) return;
     const capturedClient = client;
@@ -300,7 +353,14 @@ export function usePortalRecharge({
     const orderRef = activeOrder.orderRef;
     const pollStartedAt = settlementPollStartedAtRef.current.get(orderRef) ?? Date.now();
     settlementPollStartedAtRef.current.set(orderRef, pollStartedAt);
-    if (Date.now() - pollStartedAt >= SETTLEMENT_POLL_WINDOW_MS) return;
+    const markSettlementDelayed = () => {
+      readbackOnlyOrderRefsRef.current.add(orderRef);
+      setError("delayed");
+    };
+    if (settlementRemainingMs(pollStartedAt) === 0) {
+      markSettlementDelayed();
+      return;
+    }
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const stillCurrent = () => {
@@ -310,17 +370,36 @@ export function usePortalRecharge({
         && current.sessionRef === capturedSessionRef
         && current.sessionGeneration === capturedGeneration;
     };
+    const scheduleNextPoll = () => {
+      const remaining = settlementRemainingMs(pollStartedAt);
+      if (remaining === 0) {
+        markSettlementDelayed();
+        return;
+      }
+      timer = setTimeout(
+        () => void poll(),
+        Math.min(SETTLEMENT_POLL_INTERVAL_MS, remaining),
+      );
+    };
     const poll = async () => {
+      if (settlementRemainingMs(pollStartedAt) === 0) {
+        if (stillCurrent()) markSettlementDelayed();
+        return;
+      }
       try {
-        const order = await capturedClient.getOrder({
-          sessionRef: capturedSessionRef,
-          orderRef,
-        });
+        const order = await withSettlementDeadline(
+          capturedClient.getOrder({
+            sessionRef: capturedSessionRef,
+            orderRef,
+          }),
+          pollStartedAt,
+        );
         if (!stillCurrent()) return;
         applyCreditedOrder(order);
+        const readbackOnly = readbackOnlyOrderRefsRef.current.has(orderRef);
         const trackedWithoutReturn = returnIntent?.orderRef !== orderRef
           && trackedSettlementOrderRefsRef.current.has(orderRef);
-        const redirectResult = trackedWithoutReturn
+        const redirectResult = trackedWithoutReturn && !readbackOnly
           ? redirectOrderToPayment(order)
           : "not_applicable";
         if (redirectResult !== "not_applicable") {
@@ -331,24 +410,32 @@ export function usePortalRecharge({
         if (returnResolved(order)) {
           settlementPollStartedAtRef.current.delete(orderRef);
           trackedSettlementOrderRefsRef.current.delete(orderRef);
+          readbackOnlyOrderRefsRef.current.delete(orderRef);
           clearPortalRechargeReturn();
           return;
         }
-        if (Date.now() - pollStartedAt >= SETTLEMENT_POLL_WINDOW_MS) return;
-        timer = setTimeout(() => void poll(), SETTLEMENT_POLL_INTERVAL_MS);
+        scheduleNextPoll();
       } catch (caught) {
         if (!stillCurrent()) return;
+        if (caught instanceof SettlementDeadlineExceededError) {
+          markSettlementDelayed();
+          return;
+        }
         if (
           retryableRechargeFailure(caught)
-          && Date.now() - pollStartedAt < SETTLEMENT_POLL_WINDOW_MS
+          && settlementRemainingMs(pollStartedAt) > 0
         ) {
-          timer = setTimeout(() => void poll(), SETTLEMENT_POLL_INTERVAL_MS);
+          scheduleNextPoll();
+          return;
+        }
+        if (retryableRechargeFailure(caught)) {
+          markSettlementDelayed();
           return;
         }
         applyFailure(caught);
       }
     };
-    timer = setTimeout(() => void poll(), SETTLEMENT_POLL_INTERVAL_MS);
+    scheduleNextPoll();
     return () => {
       stopped = true;
       if (timer !== null) clearTimeout(timer);
@@ -395,64 +482,6 @@ export function usePortalRecharge({
     }
   }, [applyFailure, client, operationIsCurrent, redirectOrderToPayment, sessionGeneration, sessionRef]);
 
-  const captureOrder = useCallback(async () => {
-    if (!client || !sessionRef || !activeOrder) return;
-    const operationId = operationRef.current + 1;
-    operationRef.current = operationId;
-    const capturedClient = client;
-    const capturedSessionRef = sessionRef;
-    const capturedGeneration = sessionGeneration;
-    setBusy(true);
-    setError(null);
-    try {
-      const returnIntent = readPortalRechargeReturn();
-      const order = await capturedClient.captureOrder({
-        sessionRef: capturedSessionRef,
-        orderRef: activeOrder.orderRef,
-        idempotencyKey: returnIntent?.orderRef === activeOrder.orderRef
-          ? returnIntent.captureIdempotencyKey
-          : idempotencyKey("capture"),
-      });
-      if (!operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) return;
-      applyCreditedOrder(order);
-      if (returnResolved(order)) clearPortalRechargeReturn();
-    } catch (caught) {
-      if (!operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) return;
-      applyFailure(caught);
-    } finally {
-      if (operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) {
-        setBusy(false);
-      }
-    }
-  }, [activeOrder, applyCreditedOrder, applyFailure, client, operationIsCurrent, sessionGeneration, sessionRef]);
-
-  const refreshOrder = useCallback(async () => {
-    if (!client || !sessionRef || !activeOrder) return;
-    const operationId = operationRef.current + 1;
-    operationRef.current = operationId;
-    const capturedClient = client;
-    const capturedSessionRef = sessionRef;
-    const capturedGeneration = sessionGeneration;
-    setBusy(true);
-    setError(null);
-    try {
-      const order = await capturedClient.getOrder({
-        sessionRef: capturedSessionRef,
-        orderRef: activeOrder.orderRef
-      });
-      if (!operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) return;
-      applyCreditedOrder(order);
-      if (returnResolved(order)) clearPortalRechargeReturn();
-    } catch (caught) {
-      if (!operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) return;
-      applyFailure(caught);
-    } finally {
-      if (operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) {
-        setBusy(false);
-      }
-    }
-  }, [activeOrder, applyCreditedOrder, applyFailure, client, operationIsCurrent, sessionGeneration, sessionRef]);
-
   return {
     available: offers.length > 0,
     dialogOpen,
@@ -460,7 +489,13 @@ export function usePortalRecharge({
     activeOrder,
     busy,
     error,
-    openDialog: () => setDialogOpen(true),
+    openDialog: () => {
+      if (error === "delayed" && activeOrder && nonTerminal(activeOrder)) {
+        settlementPollStartedAtRef.current.delete(activeOrder.orderRef);
+        setError(null);
+      }
+      setDialogOpen(true);
+    },
     closeDialog: () => {
       if (!busy) {
         operationRef.current += 1;
@@ -468,7 +503,5 @@ export function usePortalRecharge({
       }
     },
     createOrder,
-    captureOrder,
-    refreshOrder,
   };
 }

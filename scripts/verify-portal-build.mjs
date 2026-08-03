@@ -117,8 +117,15 @@ function verifyRechargeConfigIdentity(value) {
   const sha256 = createHash("sha256").update(canonical).digest("hex");
   if (sha256 !== value.sha256) return invalidRechargeConfigIdentity();
   return {
-    sha256,
-    configuredAdapters: Object.keys(normalized)
+    runtimeBinding: [
+      "portal-recharge-config-v1",
+      sha256,
+      Buffer.from(canonical, "utf8").toString("base64")
+    ].join("."),
+    summary: {
+      sha256,
+      configuredAdapters: Object.keys(normalized)
+    }
   };
 }
 
@@ -208,7 +215,7 @@ export async function verifyPortalBuildDirectory(buildDir) {
   const runtimeContent = (await Promise.all(files
     .filter((file) => /\.(html|js)$/i.test(file))
     .map((file) => readFile(file, "utf8")))).join("\n");
-  if (!runtimeContent.includes(rechargeConfigIdentity.sha256)) {
+  if (!runtimeContent.includes(rechargeConfigIdentity.runtimeBinding)) {
     throw new Error("portal recharge config runtime binding missing");
   }
   for (const marker of REQUIRED_RUNTIME_MARKERS) {
@@ -253,7 +260,7 @@ export async function verifyPortalBuildDirectory(buildDir) {
       hasProtectedRechargeContract: true,
       hasRechargeConfigIdentity: true
     },
-    rechargeConfigIdentity
+    rechargeConfigIdentity: rechargeConfigIdentity.summary
   };
 }
 

@@ -193,6 +193,11 @@ describe("Portal local API validation config", () => {
       const expectedConfigSha256 = createHash("sha256")
         .update(canonicalConfig)
         .digest("hex");
+      const expectedRuntimeBinding = [
+        "portal-recharge-config-v1",
+        expectedConfigSha256,
+        Buffer.from(canonicalConfig, "utf8").toString("base64"),
+      ].join(".");
       expect(rechargeConfig).toEqual({
         schemaVersion: "1",
         sha256: expectedConfigSha256,
@@ -200,7 +205,7 @@ describe("Portal local API validation config", () => {
       });
       expect(Object.keys(rechargeConfig.trustedActionOriginsByAdapter))
         .toEqual(["I_v1", "i_v1", "xsd_v1"]);
-      expect(runtimeBundleText).toContain(expectedConfigSha256);
+      expect(runtimeBundleText).toContain(expectedRuntimeBinding);
     } finally {
       if (previousTrustedOrigins === undefined) {
         delete process.env.VITE_PORTAL_RECHARGE_TRUSTED_ACTION_ORIGINS_JSON;

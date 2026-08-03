@@ -511,8 +511,6 @@ function rechargeDialogModel(order: PortalRechargeOrder): PortalRechargeModel {
     openDialog: vi.fn(),
     closeDialog: vi.fn(),
     createOrder: vi.fn(async () => undefined),
-    captureOrder: vi.fn(async () => undefined),
-    refreshOrder: vi.fn(async () => undefined),
   };
 }
 
@@ -1121,6 +1119,58 @@ describe("Portal recharge interaction", () => {
     }
   });
 
+  test("ends repeated retryable PayPal capture failures as delayed without changing idempotency", async () => {
+    vi.useFakeTimers();
+    try {
+      window.sessionStorage.setItem(
+        "gccwebos-portal-recharge-return-v1",
+        JSON.stringify({
+          version: 1,
+          orderRef: "payment_order_1",
+          captureIdempotencyKey: "portal_capture_paypal_deadline_1",
+        }),
+      );
+      const captureOrder = vi.fn(async (
+        _input: Parameters<PortalRechargeClient["captureOrder"]>[0],
+      ) => {
+        throw new PortalRechargeClientError(
+          "payment_recharge_request_failed",
+          true,
+        );
+      });
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => [rechargeOrder("entry_ready")]),
+        createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+        getOrder: vi.fn(async () => rechargeOrder("credited")),
+        captureOrder,
+      };
+
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect: vi.fn(),
+        refreshWallet: vi.fn(),
+      }));
+
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(121_000); });
+      const callsAtDeadline = captureOrder.mock.calls.length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+
+      expect(callsAtDeadline).toBeGreaterThan(1);
+      expect(captureOrder).toHaveBeenCalledTimes(callsAtDeadline);
+      expect(captureOrder.mock.calls.every(([input]) => (
+        input.idempotencyKey === "portal_capture_paypal_deadline_1"
+      ))).toBe(true);
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Payment confirmation is taking longer than expected.",
+      );
+      expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("retries the same PayPal capture safely after the Portal identity is disabled and restored", async () => {
     vi.useFakeTimers();
     try {
@@ -1287,6 +1337,17 @@ describe("Portal recharge interaction", () => {
         paymentMethod: "alipay",
         currency: "CNY",
       };
+      const historicalRedirectOrder: PortalRechargeOrder = {
+        ...rechargeOrder("entry_ready"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+        nextAction: {
+          type: "redirect",
+          url: "https://cashier.example.com/historical-return",
+          expiresAt: "2026-08-01T00:10:00.000Z",
+        },
+      };
       const client: PortalRechargeClient = {
         listOffers: vi.fn(async () => [OFFER]),
         listOrders: vi.fn(async () => []),
@@ -1294,11 +1355,13 @@ describe("Portal recharge interaction", () => {
         getOrder: vi.fn(async () => pendingOrder),
         captureOrder: vi.fn(async () => rechargeOrder("pending")),
       };
+      const refreshWallet = vi.fn();
+      const paymentRedirect = vi.fn();
 
       render(createElement(RechargeHarness, {
         client,
-        paymentRedirect: vi.fn(),
-        refreshWallet: vi.fn(),
+        paymentRedirect,
+        refreshWallet,
       }));
 
       await act(async () => { await Promise.resolve(); });
@@ -1315,6 +1378,134 @@ describe("Portal recharge interaction", () => {
       expect(callsAtDeadline).toBeGreaterThan(0);
       expect(client.getOrder).toHaveBeenCalledTimes(callsAtDeadline);
       expect(client.captureOrder).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Payment confirmation is taking longer than expected. We will check again when you return to Wallet. Do not pay again.",
+      );
+
+      vi.mocked(client.getOrder)
+        .mockResolvedValueOnce(historicalRedirectOrder)
+        .mockResolvedValueOnce(rechargeOrder("credited"));
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(4_100); });
+
+      expect(client.getOrder).toHaveBeenCalledTimes(callsAtDeadline + 2);
+      expect(paymentRedirect).not.toHaveBeenCalled();
+      expect(client.captureOrder).not.toHaveBeenCalled();
+      expect(refreshWallet).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("30 paid Coins are available.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("bounds an unresolved callback status read and exposes a delayed state", async () => {
+    vi.useFakeTimers();
+    try {
+      window.sessionStorage.setItem(
+        "gccwebos-portal-recharge-return-v1",
+        JSON.stringify({
+          version: 1,
+          orderRef: "payment_order_1",
+          captureIdempotencyKey: "portal_capture_callback_timeout_1",
+        }),
+      );
+      const pendingOrder: PortalRechargeOrder = {
+        ...rechargeOrder("pending"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+      };
+      const neverSettles = new Promise<PortalRechargeOrder>(() => undefined);
+      const refreshWallet = vi.fn();
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => [pendingOrder]),
+        createOrder: vi.fn(async () => pendingOrder),
+        getOrder: vi.fn()
+          .mockImplementationOnce(() => neverSettles)
+          .mockResolvedValueOnce(rechargeOrder("credited")),
+        captureOrder: vi.fn(async () => rechargeOrder("credited")),
+      };
+
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect: vi.fn(),
+        refreshWallet,
+      }));
+
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(121_000); });
+
+      expect(client.getOrder).toHaveBeenCalledTimes(1);
+      expect(client.captureOrder).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Payment confirmation is taking longer than expected.",
+      );
+      expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
+      expect(screen.getByRole("status", {
+        name: "Payment confirmation pending",
+      })).not.toHaveAttribute("aria-busy");
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_100); });
+
+      expect(client.getOrder).toHaveBeenCalledTimes(2);
+      expect(client.captureOrder).not.toHaveBeenCalled();
+      expect(refreshWallet).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("bounds an unresolved PayPal return capture without starting a duplicate", async () => {
+    vi.useFakeTimers();
+    try {
+      window.sessionStorage.setItem(
+        "gccwebos-portal-recharge-return-v1",
+        JSON.stringify({
+          version: 1,
+          orderRef: "payment_order_1",
+          captureIdempotencyKey: "portal_capture_paypal_timeout_1",
+        }),
+      );
+      const neverSettles = new Promise<PortalRechargeOrder>(() => undefined);
+      const captureOrder = vi.fn(() => neverSettles);
+      const refreshWallet = vi.fn();
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => [rechargeOrder("entry_ready")]),
+        createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+        getOrder: vi.fn(async () => rechargeOrder("credited")),
+        captureOrder,
+      };
+
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect: vi.fn(),
+        refreshWallet,
+      }));
+
+      await act(async () => { await Promise.resolve(); });
+      expect(captureOrder).toHaveBeenCalledTimes(1);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(121_000); });
+
+      expect(captureOrder).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Payment confirmation is taking longer than expected.",
+      );
+      expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_100); });
+
+      expect(captureOrder).toHaveBeenCalledTimes(1);
+      expect(client.getOrder).toHaveBeenCalledTimes(1);
+      expect(refreshWallet).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("30 paid Coins are available.")).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

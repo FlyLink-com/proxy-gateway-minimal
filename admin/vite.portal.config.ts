@@ -32,17 +32,21 @@ function portalRechargeBuildConfig(): Plugin {
           ]),
       );
       const canonical = JSON.stringify(normalized);
+      const sha256 = createHash("sha256").update(canonical).digest("hex");
       identity = {
         schemaVersion: "1",
-        sha256: createHash("sha256").update(canonical).digest("hex"),
+        sha256,
         trustedActionOriginsByAdapter: normalized,
       };
+      const runtimeBinding = [
+        "portal-recharge-config-v1",
+        sha256,
+        Buffer.from(canonical, "utf8").toString("base64"),
+      ].join(".");
       return {
         define: {
-          "import.meta.env.VITE_PORTAL_RECHARGE_TRUSTED_ACTION_ORIGINS_JSON":
-            JSON.stringify(canonical),
-          "import.meta.env.VITE_PORTAL_RECHARGE_CONFIG_SHA256":
-            JSON.stringify(identity.sha256),
+          "import.meta.env.VITE_PORTAL_RECHARGE_CONFIG_BINDING":
+            JSON.stringify(runtimeBinding),
         },
       };
     },

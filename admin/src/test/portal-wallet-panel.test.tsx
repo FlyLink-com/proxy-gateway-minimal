@@ -707,8 +707,6 @@ describe("PortalWalletPanel", () => {
       openDialog,
       closeDialog: vi.fn(),
       createOrder: vi.fn(async () => undefined),
-      captureOrder: vi.fn(async () => undefined),
-      refreshOrder: vi.fn(async () => undefined),
     };
     render(createElement(PortalWalletPanel, {
       locale,
