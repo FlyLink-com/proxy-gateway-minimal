@@ -6,6 +6,7 @@ import { formatPaymentAmountMinor, parsePaymentAmountMinor } from "./payment-mon
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DIGEST_RE = /^[a-f0-9]{64}$/u;
 const MAX_JSON_BYTES = 1_048_576;
+const MAX_JSON_CHUNKS = 4_096;
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=utf-8";
 const MAX_CALLBACK_BASE64_CHARS = 16_384;
 const OPERATION_BY_ACTION = Object.freeze({
@@ -114,33 +115,38 @@ function formattedAmount(value) {
 }
 
 async function jsonResponse(response, requestUrl) {
-  if (response === null || typeof response !== "object" || !Number.isSafeInteger(response.status) || response.body === null || typeof response.body?.getReader !== "function") fail();
+  if (response === null || typeof response !== "object") fail();
+  let body;
   try {
-    if (response.redirected !== undefined && response.redirected !== false) fail();
+    if (!Number.isSafeInteger(response.status) || response.redirected !== false) fail();
     if (typeof response.url !== "string" || response.url.length < 1 || response.url !== requestUrl) fail();
     const declaredLength = response.headers?.get?.("content-length");
     if (declaredLength !== null && declaredLength !== undefined && (!/^(?:0|[1-9]\d*)$/u.test(declaredLength) || Number(declaredLength) > MAX_JSON_BYTES)) fail();
+    if (response.status < 200 || response.status > 299) fail();
+    body = response.body;
+    if (body === null || typeof body?.getReader !== "function") fail();
   } catch { fail(); }
-  if (response.status < 200 || response.status > 299) fail();
-  const reader = response.body.getReader();
-  const chunks = [];
-  let bytes = 0;
+  let reader;
+  try { reader = body.getReader(); } catch { fail(); }
+  const bytes = Buffer.allocUnsafe(MAX_JSON_BYTES);
+  let offset = 0;
+  let chunks = 0;
   try {
     for (;;) {
       const item = await reader.read();
       if (item.done) break;
-      if (!(item.value instanceof Uint8Array)) fail();
-      bytes += item.value.byteLength;
-      if (bytes > MAX_JSON_BYTES) {
-        await reader.cancel();
+      chunks += 1;
+      if (!(item.value instanceof Uint8Array) || item.value.byteLength < 1 || chunks > MAX_JSON_CHUNKS || item.value.byteLength > MAX_JSON_BYTES - offset) {
+        try { await reader.cancel(); } catch {}
         fail();
       }
-      chunks.push(item.value);
+      bytes.set(item.value, offset);
+      offset += item.value.byteLength;
     }
   } catch { fail(); }
   finally { try { reader.releaseLock(); } catch {} }
   let text;
-  try { text = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)); } catch { fail(); }
+  try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, offset)); } catch { fail(); }
   try { return JSON.parse(text); } catch { fail(); }
 }
 

@@ -66,7 +66,7 @@ test("XSD runtime signs UTF-8 create and query form requests with injected trans
 });
 
 test("XSD runtime rejects empty, redirected, or mismatched final URLs even when their bodies are valid", async () => {
-  const redirected = response(200, { code: "0", datas: { url: "https://checkout.example.test/pay/1" } }, { redirected: true, url: "https://other.example.test/redirected" });
+  const redirected = response(200, { code: "0", datas: { url: "https://checkout.example.test/pay/1" } }, { redirected: true, url: `${API_ORIGIN}/api/gaia/unifiedorder` });
   const value = runtime(async () => redirected);
   await assert.rejects(() => request(value, "create_recharge_order", {
     action: "xsd_payment_create",
@@ -80,16 +80,25 @@ test("XSD runtime rejects empty, redirected, or mismatched final URLs even when 
     });
     await assert.rejects(() => request(query, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" }), /xsd_transport_failed/u);
   }
+  const standard = new Response(JSON.stringify({ code: "0", datas: { url: "https://checkout.example.test/pay/1" } }), { status: 200 });
+  const missingRedirected = Object.freeze({ status: standard.status, headers: standard.headers, body: standard.body, url: `${API_ORIGIN}/api/gaia/unifiedorder` });
+  await assert.rejects(() => request(runtime(async () => missingRedirected), "create_recharge_order", {
+    action: "xsd_payment_create",
+    createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
+    routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
+  }), /xsd_transport_failed/u);
 });
 
 test("XSD runtime rejects mismatched profile bindings before issuing a handle", async () => {
-  let fetchCalls = 0;
-  const value = runtime(async () => { fetchCalls += 1; throw new Error("must-not-fetch"); });
-  const body = { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" };
-  for (const bindingOverride of [{ profileRef: "wrong_profile" }, { credentialProfileRef: "wrong_credential" }]) {
-    await assert.rejects(() => request(value, "query_payment", body, bindingOverride), /xsd_transport_failed/u);
+  let callbacks = 0;
+  const value = runtime(async () => { throw new Error("must-not-fetch"); });
+  for (const binding of [
+    { profileRef: "wrong_profile", adapterKey: "xsd_v1", contractVersion: "v1", credentialProfileRef: "xsd_credential", operation: "query_payment" },
+    { profileRef: "xsd_profile", adapterKey: "xsd_v1", contractVersion: "v1", credentialProfileRef: "wrong_credential", operation: "query_payment" },
+  ]) {
+    assert.throws(() => value.credentialLoader.withCredential(binding, () => { callbacks += 1; }), /xsd_transport_failed/u);
   }
-  assert.equal(fetchCalls, 0);
+  assert.equal(callbacks, 0);
 });
 
 test("XSD runtime rechecks profile bindings when an issued handle is used", async () => {
@@ -105,17 +114,51 @@ test("XSD runtime rechecks profile bindings when an issued handle is used", asyn
   assert.equal(fetchCalls, 0);
 });
 
-test("XSD runtime bounds declared and chunked JSON Responses without retaining body material", async () => {
+test("XSD runtime rejects declared oversize JSON before accessing its body", async () => {
   const body = { action: "xsd_payment_create", createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" }, routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" } };
-  const declared = runtime(async () => response(200, "synthetic-oversize-body", { headers: { "content-length": "1048577" } }));
+  let bodyGets = 0;
+  let readerGets = 0;
+  let reads = 0;
+  const validJson = new TextEncoder().encode(JSON.stringify({ code: "0", datas: { url: "https://checkout.example.test/pay/1" } }));
+  const declaredResponse = { status: 200, redirected: false, url: `${API_ORIGIN}/api/gaia/unifiedorder`, headers: new Headers({ "content-length": "1048577" }) };
+  Object.defineProperty(declaredResponse, "body", { enumerable: true, get() {
+    bodyGets += 1;
+    return { getReader() { readerGets += 1; return { async read() { reads += 1; return reads === 1 ? { done: false, value: validJson } : { done: true }; } }; } };
+  } });
+  const declared = runtime(async () => declaredResponse);
   await assert.rejects(() => request(declared, "create_recharge_order", body), /xsd_transport_failed/u);
+  assert.deepEqual({ bodyGets, readerGets, reads }, { bodyGets: 0, readerGets: 0, reads: 0 });
+});
+
+test("XSD runtime cancels zero-length and excessive-chunk Responses", async () => {
+  const body = { action: "xsd_payment_create", createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" }, routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" } };
   let cancelled = false;
-  const chunked = runtime(async () => streamResponse(new ReadableStream({
-    start(controller) { controller.enqueue(new Uint8Array(1_048_576)); controller.enqueue(new Uint8Array([1])); },
-    cancel() { cancelled = true; },
-  })));
-  await assert.rejects(() => request(chunked, "create_recharge_order", body), /xsd_transport_failed/u);
-  assert.equal(cancelled, true);
+  for (const stream of [
+    new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(1_048_576)); controller.enqueue(new Uint8Array([1])); }, cancel() { cancelled = true; } }),
+    new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array()); }, cancel() { cancelled = true; } }),
+    new ReadableStream({ start(controller) { for (let index = 0; index < 4097; index += 1) controller.enqueue(new Uint8Array([1])); }, cancel() { cancelled = true; } }),
+  ]) {
+    cancelled = false;
+    await assert.rejects(() => request(runtime(async () => streamResponse(stream)), "create_recharge_order", body), /xsd_transport_failed/u);
+    assert.equal(cancelled, true);
+  }
+});
+
+test("XSD runtime collapses reader exceptions without exposing their messages", async () => {
+  const body = { action: "xsd_payment_create", createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" }, routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" } };
+  const sensitive = "synthetic-sensitive-reader-text";
+  const hostile = Object.freeze({ status: 200, redirected: false, url: `${API_ORIGIN}/api/gaia/unifiedorder`, headers: new Headers(), body: { getReader() { throw new Error(sensitive); } } });
+  await assert.rejects(() => request(runtime(async () => hostile), "create_recharge_order", body), (error) => {
+    assert.equal(error.message, "xsd_transport_failed");
+    assert.equal(error.message.includes(sensitive), false);
+    return true;
+  });
+});
+
+test("XSD runtime rejects malformed fatal UTF-8 Responses", async () => {
+  const body = { action: "xsd_payment_create", createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" }, routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" } };
+  const malformed = runtime(async () => streamResponse(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([0xc3, 0x28])); controller.close(); } })));
+  await assert.rejects(() => request(malformed, "create_recharge_order", body), /xsd_transport_failed/u);
 });
 
 test("XSD runtime verifies only signed form callback input and returns redacted evidence", async () => {
@@ -137,7 +180,7 @@ test("XSD runtime fails closed on transport, response, identity, signature, orde
   await assert.rejects(() => request(malformed, "create_recharge_order", {
     action: "xsd_payment_create", createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" }, routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
   }), /xsd_transport_failed/u);
-  const value = runtime(async () => response(200, { mch_order_no: "other_order", mchId: "merchant_demo", status: "00", amount: "12.00", sign: "0".repeat(32) }));
+  const value = runtime(async (url) => response(200, { mch_order_no: "other_order", mchId: "merchant_demo", status: "00", amount: "12.00", sign: "0".repeat(32) }, { url }));
   await assert.rejects(() => request(value, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" }), /xsd_transport_failed/u);
   const callback = runtime(async () => response(500, {}));
   for (const fields of [
