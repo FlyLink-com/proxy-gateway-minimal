@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { createXsdPaymentRuntime } from "../services/platform/xsd-payment-runtime.mjs";
 
-const API_ORIGIN = "https://xsd-api.example.test";
+const API_ORIGIN = "https://www.xsd8866.com";
 const SECRET = "synthetic-xsd-secret";
 const MERCHANT_DIGEST = "a".repeat(64);
 
@@ -22,7 +22,7 @@ function streamResponse(stream, { url = `${API_ORIGIN}/api/gaia/unifiedorder`, .
   return Object.freeze({ status: standard.status, headers: standard.headers, body: standard.body, redirected: false, url, ...extras });
 }
 
-function runtime(fetchFn) {
+function runtime(fetchFn, overrides = {}) {
   return createXsdPaymentRuntime({
     credential: { merchantId: "merchant_demo", merchantSecret: SECRET, merchantScopeDigest: MERCHANT_DIGEST },
     fetchFn, apiOrigin: API_ORIGIN, allowedActionOrigins: ["https://checkout.example.test"],
@@ -31,6 +31,7 @@ function runtime(fetchFn) {
       portal_wallet_return_v1: "https://portal.example.test/wallet",
     }, nowFn: () => "2026-08-02T00:00:00.000Z",
     profileRef: "xsd_profile", credentialProfileRef: "xsd_credential",
+    ...overrides,
   });
 }
 
@@ -38,6 +39,61 @@ async function request(runtimeValue, operation, request, bindingOverride = {}) {
   const binding = Object.freeze({ profileRef: "xsd_profile", adapterKey: "xsd_v1", contractVersion: "v1", credentialProfileRef: "xsd_credential", operation, ...bindingOverride });
   return runtimeValue.credentialLoader.withCredential(binding, (credentialHandle) => runtimeValue.transport.requestFn({ binding, credentialHandle, request }));
 }
+
+test("XSD runtime accepts only the source-owned API origin before credential or fetch", () => {
+  let fetchCalls = 0;
+  const fetchFn = async () => {
+    fetchCalls += 1;
+    throw new Error("unexpected fetch");
+  };
+  for (const apiOrigin of [
+    "https://redirect.example.test",
+    "https://sub.www.xsd8866.com",
+    "https://www.xsd8866.com:443",
+    "https://www.xsd8866.com/path",
+    "https://www.xsd8866.com?query=1",
+    "https://www.xsd8866.com#fragment",
+    "https://user@www.xsd8866.com",
+    "https://WWW.XSD8866.COM",
+    "https://payment.chaojipay.me",
+  ]) {
+    assert.throws(() => runtime(fetchFn, { apiOrigin }), /xsd_transport_failed/u);
+  }
+  assert.equal(fetchCalls, 0);
+  assert.equal(typeof runtime(fetchFn).credentialLoader.withCredential, "function");
+  assert.equal(fetchCalls, 0);
+});
+
+test("XSD runtime rejects a wrong origin before nested credential inspection", { concurrency: false }, () => {
+  const credential = {
+    merchantId: "merchant_demo",
+    merchantSecret: SECRET,
+    merchantScopeDigest: MERCHANT_DIGEST,
+  };
+  const original = Object.getOwnPropertyDescriptor(Object, "getOwnPropertyDescriptors");
+  let credentialDescriptorReads = 0;
+  let fetchCalls = 0;
+  Object.defineProperty(Object, "getOwnPropertyDescriptors", {
+    ...original,
+    value(value) {
+      if (value === credential) credentialDescriptorReads += 1;
+      return original.value(value);
+    },
+  });
+  try {
+    assert.throws(() => runtime(async () => {
+      fetchCalls += 1;
+      throw new Error("must_not_fetch");
+    }, {
+      apiOrigin: "https://wrong.example.test",
+      credential,
+    }), /xsd_transport_failed/u);
+  } finally {
+    Object.defineProperty(Object, "getOwnPropertyDescriptors", original);
+  }
+  assert.equal(credentialDescriptorReads, 0);
+  assert.equal(fetchCalls, 0);
+});
 
 test("XSD runtime signs UTF-8 create and query form requests with injected transport", async () => {
   const calls = [];

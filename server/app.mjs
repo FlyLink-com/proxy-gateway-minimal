@@ -31,6 +31,11 @@ import { resolveClientIp } from "./services/ip-address.mjs";
 
 const PUBLIC_PATHS = ["/api/health", "/api/public/leads", "/proxy.pac", "/sub/clash.yaml"];
 const PUBLIC_PATH_PREFIXES = ["/sub/a/"];
+const PAYMENT_CALLBACK_PATHS = Object.freeze([
+  "/api/platform/payments/paypal/callback",
+  "/api/platform/payments/xsd/callback",
+  "/api/platform/payments/chaojipay/callback",
+]);
 const ADMIN_CAPABILITY_PROTECTED_PATHS = [
   "/api/admin/overview",
   "/api/admin/operations/overview"
@@ -128,6 +133,14 @@ function isProtectedPortalCoinNamespace(req) {
     candidate = decoded;
   }
   return false;
+}
+
+function resemblesKnownPaymentCallback(pathname) {
+  const withoutTrailingSlash = pathname.endsWith("/")
+    ? pathname.slice(0, -1)
+    : pathname;
+  const normalized = withoutTrailingSlash.toLowerCase();
+  return PAYMENT_CALLBACK_PATHS.includes(normalized);
 }
 
 function ownEnumerableDataValue(value, field) {
@@ -245,6 +258,8 @@ function portalCoinRechargeRoutesEnabled(state) {
     ownEnumerableDataValue(platform, "coinRechargeEnabled") !== true
     || ownEnumerableDataValue(platform, "userPortalRoutesEnabled") !== true
   ) return false;
+  const provider = ownEnumerableDataValue(platform, "paymentRechargeProvider");
+  if (!["paypal_sandbox", "xsd", "chaojipay"].includes(provider)) return false;
   const coordinator = ownEnumerableDataValue(platform, "paymentRechargeCoordinator");
   const auth = ownEnumerableDataValue(platform, "userPortalAuth");
   return hasCallableOwnSurface(coordinator, [
@@ -259,26 +274,35 @@ function portalCoinRechargeRoutesEnabled(state) {
 
 export function createApp(state, options = {}) {
   const app = express();
-  if (portalCoinRechargeRoutesEnabled(state)) {
+  const rechargeRoutesEnabled = portalCoinRechargeRoutesEnabled(state);
+  if (rechargeRoutesEnabled) {
     app.use(createPortalCoinRechargeRouter({
       coordinator: ownEnumerableDataValue(state.platform, "paymentRechargeCoordinator"),
       auth: ownEnumerableDataValue(state.platform, "userPortalAuth"),
+      paymentRechargeProvider: ownEnumerableDataValue(
+        state.platform,
+        "paymentRechargeProvider"
+      ),
       nowFn: options.paymentNowFn,
     }));
-  } else {
-    app.use((req, res, next) => {
-      const pathname = (req.originalUrl || req.url || "").split("?", 1)[0];
-      if (
-        pathname === "/api/platform/payments/paypal/callback"
-        || pathname === "/api/portal/coins/recharge"
-        || pathname.startsWith("/api/portal/coins/recharge/")
-      ) {
-        res.status(404).end();
-        return;
-      }
-      next();
-    });
   }
+  app.use((req, res, next) => {
+    const pathname = (req.originalUrl || req.url || "").split("?", 1)[0];
+    if (
+      resemblesKnownPaymentCallback(pathname)
+      || (
+        !rechargeRoutesEnabled
+        && (
+          pathname === "/api/portal/coins/recharge"
+          || pathname.startsWith("/api/portal/coins/recharge/")
+        )
+      )
+    ) {
+      res.status(404).end();
+      return;
+    }
+    next();
+  });
   if (portalCoinCommerceRoutesEnabled(state)) {
     app.use(portalCoinCommerceRoutes(state, {
       nowFn: options.rateLimitNowFn

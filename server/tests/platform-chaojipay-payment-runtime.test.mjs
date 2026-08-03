@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { createChaoJiPayPaymentRuntime } from "../services/platform/chaojipay-payment-runtime.mjs";
 
-const API_ORIGIN = "https://payment.chaojipay.example.test";
+const API_ORIGIN = "https://payment.chaojipay.me";
 const SECRET = "synthetic-chaojipay-secret";
 const REQUEST_IP = "1.1.1.1";
 const MERCHANT_DIGEST = "a".repeat(64);
@@ -59,6 +59,61 @@ async function request(value, operation, body, bindingOverride = {}) {
   return value.credentialLoader.withCredential(binding, (credentialHandle) => value.transport.requestFn({ binding, credentialHandle, request: body }));
 }
 
+test("ChaoJiPay runtime accepts only the source-owned API origin before credential or fetch", () => {
+  let fetchCalls = 0;
+  const fetchFn = async () => {
+    fetchCalls += 1;
+    throw new Error("unexpected fetch");
+  };
+  for (const apiOrigin of [
+    "https://redirect.example.test",
+    "https://sub.payment.chaojipay.me",
+    "https://payment.chaojipay.me:443",
+    "https://payment.chaojipay.me/path",
+    "https://payment.chaojipay.me?query=1",
+    "https://payment.chaojipay.me#fragment",
+    "https://user@payment.chaojipay.me",
+    "https://PAYMENT.CHAOJIPAY.ME",
+    "https://www.xsd8866.com",
+  ]) {
+    assert.throws(() => runtime(fetchFn, { apiOrigin }), /chaojipay_transport_failed/u);
+  }
+  assert.equal(fetchCalls, 0);
+  assert.equal(typeof runtime(fetchFn).credentialLoader.withCredential, "function");
+  assert.equal(fetchCalls, 0);
+});
+
+test("ChaoJiPay runtime rejects a wrong origin before nested credential inspection", { concurrency: false }, () => {
+  const credential = {
+    merchantId: "merchant_demo",
+    merchantSecret: SECRET,
+    merchantScopeDigest: MERCHANT_DIGEST,
+  };
+  const original = Object.getOwnPropertyDescriptor(Object, "getOwnPropertyDescriptors");
+  let credentialDescriptorReads = 0;
+  let fetchCalls = 0;
+  Object.defineProperty(Object, "getOwnPropertyDescriptors", {
+    ...original,
+    value(value) {
+      if (value === credential) credentialDescriptorReads += 1;
+      return original.value(value);
+    },
+  });
+  try {
+    assert.throws(() => runtime(async () => {
+      fetchCalls += 1;
+      throw new Error("must_not_fetch");
+    }, {
+      apiOrigin: "https://wrong.example.test",
+      credential,
+    }), /chaojipay_transport_failed/u);
+  } finally {
+    Object.defineProperty(Object, "getOwnPropertyDescriptors", original);
+  }
+  assert.equal(credentialDescriptorReads, 0);
+  assert.equal(fetchCalls, 0);
+});
+
 test("ChaoJiPay runtime sends the exact signed JSON create body with the injected public IP", async () => {
   const calls = [];
   const value = runtime(async (url, init) => {
@@ -74,6 +129,81 @@ test("ChaoJiPay runtime sends the exact signed JSON create body with the injecte
   assert.equal(calls[0].url, `${API_ORIGIN}/api/order/create`);
   assert.deepEqual(calls[0].init, { method: "POST", headers: { "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ ...fields, sign: signature(fields) }), redirect: "error" });
   assert.deepEqual(result, { response: { data: { payUrl: "https://checkout.example.test/pay/1" } }, evidence: null });
+});
+
+test("ChaoJiPay runtime requires explicit non-redirection response metadata", async () => {
+  const standard = new Response(JSON.stringify({
+    data: { payUrl: "https://checkout.example.test/pay/1" },
+  }), { status: 200 });
+  const missingRedirected = Object.freeze({
+    status: standard.status,
+    headers: standard.headers,
+    body: standard.body,
+    url: `${API_ORIGIN}/api/order/create`,
+  });
+  await assert.rejects(
+    () => request(
+      runtime(async () => missingRedirected),
+      "create_recharge_order",
+      {
+        action: "chaojipay_payment_create",
+        createInput: CREATE_INPUT,
+        routeRefs: { callbackRouteRef: "portal_payment_callback_v1" },
+      },
+    ),
+    (error) => {
+      assert.equal(error.message, "chaojipay_transport_failed");
+      return true;
+    },
+  );
+});
+
+test("ChaoJiPay runtime genericizes hostile response metadata and reader access", async () => {
+  const marker = "synthetic-sensitive-response-marker";
+  const validBody = new Response(JSON.stringify({
+    data: { payUrl: "https://checkout.example.test/pay/1" },
+  }), { status: 200 }).body;
+  const base = {
+    status: 200,
+    headers: new Headers(),
+    body: validBody,
+    redirected: false,
+    url: `${API_ORIGIN}/api/order/create`,
+  };
+  const hostileResponses = [];
+  for (const field of ["status", "headers", "body"]) {
+    const hostile = { ...base };
+    Object.defineProperty(hostile, field, {
+      enumerable: true,
+      get() { throw new Error(marker); },
+    });
+    hostileResponses.push(hostile);
+  }
+  hostileResponses.push({
+    ...base,
+    body: {
+      getReader() { throw new Error(marker); },
+    },
+  });
+  const createRequest = {
+    action: "chaojipay_payment_create",
+    createInput: CREATE_INPUT,
+    routeRefs: { callbackRouteRef: "portal_payment_callback_v1" },
+  };
+  for (const providerResponse of hostileResponses) {
+    await assert.rejects(
+      () => request(
+        runtime(async () => providerResponse),
+        "create_recharge_order",
+        createRequest,
+      ),
+      (error) => {
+        assert.equal(error.message, "chaojipay_transport_failed");
+        assert.equal(String(error).includes(marker), false);
+        return true;
+      },
+    );
+  }
 });
 
 test("ChaoJiPay runtime verifies signed conventional or documented callback forms without a network call", async () => {

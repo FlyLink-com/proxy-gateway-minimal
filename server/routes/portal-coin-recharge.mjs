@@ -10,6 +10,29 @@ const PAYPAL_HEADERS = Object.freeze([
   "paypal-transmission-sig",
   "paypal-transmission-time",
 ]);
+const CALLBACKS = Object.freeze({
+  paypal_sandbox: Object.freeze({
+    path: "/api/platform/payments/paypal/callback",
+    prefix: "paypal_callback",
+  }),
+  xsd: Object.freeze({
+    path: "/api/platform/payments/xsd/callback",
+    prefix: "xsd_callback",
+    contentTypes: Object.freeze([
+      "application/x-www-form-urlencoded; charset=utf-8",
+    ]),
+  }),
+  chaojipay: Object.freeze({
+    path: "/api/platform/payments/chaojipay/callback",
+    prefix: "chaojipay_callback",
+    contentTypes: Object.freeze([
+      "application/form",
+      "application/form; charset=utf-8",
+      "application/x-www-form-urlencoded",
+      "application/x-www-form-urlencoded; charset=utf-8",
+    ]),
+  }),
+});
 const ORDER_FIELDS = Object.freeze([
   "orderRef",
   "offerRef",
@@ -49,6 +72,17 @@ function readRawHeader(req, expectedName) {
     value = candidate;
   }
   return value;
+}
+
+function hasRawHeader(req, expectedName) {
+  if (!Array.isArray(req.rawHeaders) || req.rawHeaders.length % 2 !== 0) return true;
+  for (let index = 0; index < req.rawHeaders.length; index += 2) {
+    const name = req.rawHeaders[index];
+    const value = req.rawHeaders[index + 1];
+    if (typeof name !== "string" || typeof value !== "string") return true;
+    if (name.toLowerCase() === expectedName) return true;
+  }
+  return false;
 }
 
 function exactObject(value, fields) {
@@ -133,6 +167,56 @@ function requireJsonContentType(req, res, next) {
   next();
 }
 
+function requireFormContentType(contentTypes) {
+  return function validateFormContentType(req, res, next) {
+    const contentType = readRawHeader(req, "content-type");
+    if (
+      contentType === null
+      || !contentTypes.includes(contentType)
+      || hasRawHeader(req, "content-encoding")
+    ) {
+      sendError(res, 415, "payment_recharge_content_type_invalid");
+      return;
+    }
+    res.locals.paymentRechargeContentType = contentType;
+    next();
+  };
+}
+
+const formRawBody = raw({
+  limit: 16_384,
+  inflate: false,
+  type: () => true,
+});
+
+function parseFormRawBody(req, res, next) {
+  formRawBody(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error?.type === "entity.too.large") {
+      sendError(res, 413, "payment_recharge_body_too_large");
+      return;
+    }
+    sendError(res, 400, "payment_recharge_request_invalid");
+  });
+}
+
+function requireValidFormBytes(req, res, next) {
+  if (!Buffer.isBuffer(req.body)) {
+    sendError(res, 400, "payment_recharge_request_invalid");
+    return;
+  }
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(req.body);
+  } catch {
+    sendError(res, 400, "payment_recharge_request_invalid");
+    return;
+  }
+  next();
+}
+
 function asyncHandler(handler) {
   return async (req, res) => {
     try {
@@ -143,7 +227,7 @@ function asyncHandler(handler) {
   };
 }
 
-function callbackHeaders(req) {
+function paypalCallbackHeaders(req) {
   return PAYPAL_HEADERS.map((name) => {
     const value = readRawHeader(req, name);
     if (value === null || value.length === 0) throw new Error();
@@ -151,7 +235,7 @@ function callbackHeaders(req) {
   });
 }
 
-function callbackReference(transmissionId, body) {
+function paypalCallbackReference(transmissionId, body) {
   const digest = createHash("sha256")
     .update(transmissionId, "utf8")
     .update("\0", "utf8")
@@ -160,14 +244,18 @@ function callbackReference(transmissionId, body) {
   return `paypal_callback_${digest}`;
 }
 
+function cnyCallbackReference(prefix, body) {
+  return `${prefix}_${createHash("sha256").update(body).digest("hex")}`;
+}
+
 function selectedPath(req) {
   const target = req.originalUrl || req.url || "";
   const query = target.indexOf("?");
   return query === -1 ? target : target.slice(0, query);
 }
 
-function isSelectedRoute(method, pathname) {
-  if (method === "POST" && pathname === "/api/platform/payments/paypal/callback") return true;
+function isSelectedRoute(method, pathname, callbackPath) {
+  if (method === "POST" && pathname === callbackPath) return true;
   if (method === "GET" && pathname === "/api/portal/coins/recharge/offers") return true;
   if (method === "POST" && pathname === "/api/portal/coins/recharge/orders") return true;
   if (method === "GET" && pathname === "/api/portal/coins/recharge/orders") return true;
@@ -175,10 +263,19 @@ function isSelectedRoute(method, pathname) {
     && (method === "GET" || method === "POST");
 }
 
-export function createPortalCoinRechargeRouter({ coordinator, auth, nowFn = () => new Date() }) {
+export function createPortalCoinRechargeRouter({
+  coordinator,
+  auth,
+  paymentRechargeProvider,
+  nowFn = () => new Date(),
+}) {
   if (!coordinator || !auth || typeof auth.requireSession !== "function") {
     throw new TypeError("Portal recharge dependencies unavailable");
   }
+  if (!Object.hasOwn(CALLBACKS, paymentRechargeProvider)) {
+    throw new TypeError("Portal recharge provider unavailable");
+  }
+  const callback = CALLBACKS[paymentRechargeProvider];
   const router = Router({ caseSensitive: true, strict: true });
   const requireSession = sessionMiddleware(auth);
   const jsonBody = json({ limit: "32kb", strict: true, type: "application/json" });
@@ -238,37 +335,67 @@ export function createPortalCoinRechargeRouter({ coordinator, auth, nowFn = () =
       res.json({ recharge: { order: projectOrder(result.order) } });
     }),
   );
-  router.post(
-    "/api/platform/payments/paypal/callback",
-    withoutQuery,
-    requireJsonContentType,
-    raw({ limit: "1mb", type: "application/json" }),
-    asyncHandler(async (req, res) => {
-      if (!Buffer.isBuffer(req.body)) throw new Error();
-      const headerEntries = callbackHeaders(req);
-      const transmissionId = headerEntries.find(
-        ({ name }) => name === "paypal-transmission-id",
-      ).value;
-      const received = nowFn();
-      const receivedAt = received instanceof Date ? received.toISOString() : received;
-      if (typeof receivedAt !== "string" || new Date(receivedAt).toISOString() !== receivedAt) {
-        throw new Error();
-      }
-      const result = await coordinator.acceptProviderCallback({
-        callbackRequestRef: callbackReference(transmissionId, req.body),
-        receivedAt,
-        bodyBase64: req.body.toString("base64"),
-        headerEntries,
-      });
-      const acknowledgement = result.acknowledgement;
-      res.status(acknowledgement.statusCode);
-      res.type(acknowledgement.contentType);
-      res.send(acknowledgement.body);
-    }),
-  );
+  if (paymentRechargeProvider === "paypal_sandbox") {
+    router.post(
+      callback.path,
+      withoutQuery,
+      requireJsonContentType,
+      raw({ limit: "1mb", type: "application/json" }),
+      asyncHandler(async (req, res) => {
+        if (!Buffer.isBuffer(req.body)) throw new Error();
+        const headerEntries = paypalCallbackHeaders(req);
+        const transmissionId = headerEntries.find(
+          ({ name }) => name === "paypal-transmission-id",
+        ).value;
+        const received = nowFn();
+        const receivedAt = received instanceof Date ? received.toISOString() : received;
+        if (typeof receivedAt !== "string" || new Date(receivedAt).toISOString() !== receivedAt) {
+          throw new Error();
+        }
+        const result = await coordinator.acceptProviderCallback({
+          callbackRequestRef: paypalCallbackReference(transmissionId, req.body),
+          receivedAt,
+          bodyBase64: req.body.toString("base64"),
+          headerEntries,
+        });
+        const acknowledgement = result.acknowledgement;
+        res.status(acknowledgement.statusCode);
+        res.type(acknowledgement.contentType);
+        res.send(acknowledgement.body);
+      }),
+    );
+  } else {
+    router.post(
+      callback.path,
+      withoutQuery,
+      requireFormContentType(callback.contentTypes),
+      parseFormRawBody,
+      requireValidFormBytes,
+      asyncHandler(async (req, res) => {
+        const received = nowFn();
+        const receivedAt = received instanceof Date ? received.toISOString() : received;
+        if (typeof receivedAt !== "string" || new Date(receivedAt).toISOString() !== receivedAt) {
+          throw new Error();
+        }
+        const result = await coordinator.acceptProviderCallback({
+          callbackRequestRef: cnyCallbackReference(callback.prefix, req.body),
+          receivedAt,
+          bodyBase64: req.body.toString("base64"),
+          headerEntries: [Object.freeze({
+            name: "content-type",
+            value: res.locals.paymentRechargeContentType,
+          })],
+        });
+        const acknowledgement = result.acknowledgement;
+        res.status(acknowledgement.statusCode);
+        res.type(acknowledgement.contentType);
+        res.send(acknowledgement.body);
+      }),
+    );
+  }
 
   return function portalCoinRechargeDispatcher(req, res, next) {
-    if (!isSelectedRoute(req.method, selectedPath(req))) {
+    if (!isSelectedRoute(req.method, selectedPath(req), callback.path)) {
       next();
       return;
     }

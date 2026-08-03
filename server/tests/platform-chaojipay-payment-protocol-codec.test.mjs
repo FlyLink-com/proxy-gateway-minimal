@@ -49,6 +49,9 @@ test("ChaoJiPay codec maps only verified signed status one to a success fact", (
 
 test("ChaoJiPay codec fails closed for unsupported methods, malformed callbacks, and unsafe response fields", () => {
   for (const input of [{ ...CREATE_INPUT, paymentMethod: "alipay" }, { ...CREATE_INPUT, currency: "USD" }, { ...CREATE_INPUT, currencyExponent: 0 }, { ...CREATE_INPUT, paymentOrderRef: "unsafe/ref" }]) invalid(() => encodeChaoJiPayCreateRequest(input));
-  invalid(() => encodeChaoJiPayCallbackVerificationRequest({ ...CALLBACK_INPUT, bodyBase64: Buffer.alloc(12_289, "a").toString("base64") }));
+  const atLimit = Buffer.alloc(16_384, 0x61).toString("base64");
+  const overLimit = Buffer.alloc(16_385, 0x61).toString("base64");
+  assert.doesNotThrow(() => encodeChaoJiPayCallbackVerificationRequest({ ...CALLBACK_INPUT, bodyBase64: atLimit }));
+  invalid(() => encodeChaoJiPayCallbackVerificationRequest({ ...CALLBACK_INPUT, bodyBase64: overLimit }));
   invalid(() => decodeVerifiedChaoJiPayCallback({ callbackInput: CALLBACK_INPUT, providerResponse: { orderId: "provider_capture_1", orderStatus: "1", outTradeId: "payment_order_1", amount: "12.00", param: "forbidden" }, merchantScopeDigest: "a".repeat(64), payloadDigest: "b".repeat(64) }));
 });

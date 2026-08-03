@@ -6,8 +6,8 @@ import { parsePaymentAmountMinor } from "./payment-money-codec.mjs";
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DIGEST_RE = /^[a-f0-9]{64}$/u;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-const MAX_CALLBACK_BASE64_CHARS = 16_384;
 const MAX_CALLBACK_BYTES = 16_384;
+const MAX_CALLBACK_BASE64_CHARS = Math.ceil(MAX_CALLBACK_BYTES / 3) * 4;
 const CALLBACK_TYPES = new Set([
   "application/form", "application/form; charset=utf-8",
   "application/x-www-form-urlencoded", "application/x-www-form-urlencoded; charset=utf-8",

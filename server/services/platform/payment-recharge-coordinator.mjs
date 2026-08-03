@@ -118,9 +118,11 @@ export function createPaymentRechargeCoordinator(options = {}) {
     || typeof adapter.adapterKey !== "string"
     || typeof adapter.paymentMethod !== "string"
     || typeof adapter.merchantBindingRef !== "string"
+    || typeof adapter.capabilities?.repeatCreateIdempotent !== "boolean"
   ) {
     fail("invalid_payment_recharge_coordinator");
   }
+  const repeatCreateIdempotent = adapter.capabilities.repeatCreateIdempotent;
   const adapterKey = safeRef(adapter.adapterKey, "invalid_payment_recharge_coordinator");
   const paymentMethod = safeRef(adapter.paymentMethod, "invalid_payment_recharge_coordinator");
   const merchantBindingRef = safeRef(
@@ -266,6 +268,9 @@ export function createPaymentRechargeCoordinator(options = {}) {
       merchantBindingRef,
     });
     if (created.order.status !== "created") return publicResult(created.order);
+    if (created.replayed && !repeatCreateIdempotent) {
+      return publicResult(created.order, null, { replayed: true });
+    }
     const attemptRef = providerRef("attempt_create", created.order.orderRef);
     const providerRequestRef = providerRef("provider_create", created.order.orderRef);
     const operationResult = await adapter.createRechargeOrder({

@@ -146,8 +146,11 @@ test("XSD codec fails closed for non-CNY inputs, hostile objects, unsafe referen
   assertInvalid(() => encodeXsdCallbackVerificationRequest({ ...CALLBACK_INPUT, headerEntries: headerAccessor }));
   assert.equal(reads, 0);
   assertInvalid(() => encodeXsdCallbackVerificationRequest({ ...CALLBACK_INPUT, attach: "unexpected" }));
-  const oversizedCanonicalBase64 = Buffer.alloc(12_289, "a").toString("base64");
-  assertInvalid(() => encodeXsdCallbackVerificationRequest({ ...CALLBACK_INPUT, bodyBase64: oversizedCanonicalBase64 }));
+  const atLimit = Buffer.alloc(16_384, 0x61).toString("base64");
+  const overLimit = Buffer.alloc(16_385, 0x61).toString("base64");
+  assert.equal(atLimit.length, 21_848);
+  assert.doesNotThrow(() => encodeXsdCallbackVerificationRequest({ ...CALLBACK_INPUT, bodyBase64: atLimit }));
+  assertInvalid(() => encodeXsdCallbackVerificationRequest({ ...CALLBACK_INPUT, bodyBase64: overLimit }));
   assertInvalid(() => decodeXsdQueryResponse({
     queryInput: QUERY_INPUT,
     providerResponse: { mch_order_no: "payment_order_1", status: "unknown" },
