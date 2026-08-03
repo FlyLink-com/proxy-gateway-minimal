@@ -251,6 +251,26 @@ function trustedActionOrigins(
   return result;
 }
 
+export function parsePortalRechargeTrustedActionOriginsJson(
+  raw: unknown,
+): PortalRechargeTrustedActionOriginsByAdapter | undefined {
+  if (raw === undefined || (typeof raw === "string" && raw.trim() === "")) {
+    return undefined;
+  }
+  if (typeof raw !== "string") return invalidProjection();
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return invalidProjection(); }
+  if (
+    !parsed
+    || typeof parsed !== "object"
+    || Array.isArray(parsed)
+    || Object.getPrototypeOf(parsed) !== Object.prototype
+  ) return invalidProjection();
+  const configured = parsed as PortalRechargeTrustedActionOriginsByAdapter;
+  trustedActionOrigins(configured);
+  return configured;
+}
+
 function nextActionProjection(
   value: unknown,
   adapterKey: string,

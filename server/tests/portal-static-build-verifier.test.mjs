@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -32,8 +33,21 @@ async function writePortalFixture(directory, {
     "portal-v2-global-search-form",
     "portal-v2-settings-preference-grid",
     "portal-recharge-dialog"
-  ]
+  ],
+  rechargeConfig = {},
+  runtimeRechargeConfig = rechargeConfig,
+  runtimeRechargeDigest
 } = {}) {
+  const canonicalRechargeConfig = JSON.stringify(rechargeConfig);
+  const canonicalRuntimeRechargeConfig = JSON.stringify(runtimeRechargeConfig);
+  const runtimeRechargeConfigSha256 = createHash("sha256")
+    .update(canonicalRuntimeRechargeConfig)
+    .digest("hex");
+  const runtimeRechargeBinding = [
+    "portal-recharge-config-v1",
+    runtimeRechargeConfigSha256,
+    Buffer.from(canonicalRuntimeRechargeConfig, "utf8").toString("base64")
+  ].join(".");
   await writeFile(
     path.join(directory, "index.html"),
     "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>"
@@ -43,6 +57,8 @@ async function writePortalFixture(directory, {
     [
       ...runtimeMarkers,
       ...javascriptCommerceMarkers,
+      runtimeRechargeDigest ?? runtimeRechargeConfigSha256,
+      runtimeRechargeBinding,
       javascript
     ].join(" ")
   );
@@ -52,6 +68,14 @@ async function writePortalFixture(directory, {
       ...stylesheetCommerceMarkers.map((marker) => `.${marker}{}`),
       stylesheet
     ].join("\n")
+  );
+  await writeFile(
+    path.join(directory, "portal-recharge-config.json"),
+    `${JSON.stringify({
+      schemaVersion: "1",
+      sha256: createHash("sha256").update(canonicalRechargeConfig).digest("hex"),
+      trustedActionOriginsByAdapter: rechargeConfig
+    }, null, 2)}\n`
   );
 }
 
@@ -81,6 +105,54 @@ test("portal static build verifier accepts the Portal commerce shell with protec
     assert.equal(summary.status, "ok");
     assert.equal(summary.safety.hasCommerceLayoutContract, true);
     assert.equal(summary.safety.hasProtectedRechargeContract, true);
+    assert.equal(summary.safety.hasRechargeConfigIdentity, true);
+    assert.deepEqual(summary.rechargeConfigIdentity.configuredAdapters, []);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("portal static build verifier rejects a Recharge identity not bound to runtime JavaScript", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
+  try {
+    const rechargeConfig = {
+      xsd_v1: ["https://cashier.example.invalid"]
+    };
+    const rechargeConfigSha256 = createHash("sha256")
+      .update(JSON.stringify(rechargeConfig))
+      .digest("hex");
+    await writePortalFixture(tempDir, {
+      rechargeConfig,
+      runtimeRechargeConfig: {},
+      runtimeRechargeDigest: rechargeConfigSha256
+    });
+
+    await assert.rejects(
+      () => verifyPortalBuildDirectory(tempDir),
+      /portal recharge config runtime binding missing/
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("portal static build verifier rejects a tampered Recharge config identity", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
+  try {
+    await writePortalFixture(tempDir, {
+      rechargeConfig: {
+        xsd_v1: ["https://cashier.example.invalid"]
+      }
+    });
+    const configPath = path.join(tempDir, "portal-recharge-config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.sha256 = "0".repeat(64);
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
+    await assert.rejects(
+      () => verifyPortalBuildDirectory(tempDir),
+      /portal recharge config identity invalid/
+    );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -199,4 +271,20 @@ test("portal static build verifier rejects bundles without backend human challen
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
+});
+
+test("Portal artifact workflow binds an explicit public Recharge config input", async () => {
+  const workflow = await readFile(
+    new URL("../../.github/workflows/release-artifact.yml", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    workflow,
+    /portal_recharge_trusted_action_origins_json:[\s\S]*?description: Public HTTPS origins JSON for Portal Recharge redirects\./u
+  );
+  assert.match(
+    workflow,
+    /Build Portal static[\s\S]*?VITE_PORTAL_RECHARGE_TRUSTED_ACTION_ORIGINS_JSON: \$\{\{ inputs\.portal_recharge_trusted_action_origins_json \|\| '' \}\}/u
+  );
 });

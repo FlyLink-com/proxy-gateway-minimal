@@ -5,15 +5,51 @@ import { UserPortalPage } from "./features/user-portal/user-portal-page";
 import { createHttpUserPortalClient } from "./features/user-portal/user-portal-client";
 import "./portal-static-preserve.css";
 
+type PortalImportMeta = ImportMeta & {
+  readonly env: {
+    readonly VITE_PORTAL_RECHARGE_CONFIG_BINDING: string;
+  };
+};
+
+function readRechargeRuntimeConfig(binding: string) {
+  const match = /^portal-recharge-config-v1\.([0-9a-f]{64})\.([A-Za-z0-9+/]+={0,2})$/u.exec(binding);
+  if (!match) throw new Error("Portal recharge runtime config is invalid");
+  let canonical: string;
+  try {
+    canonical = window.atob(match[2]);
+  } catch {
+    throw new Error("Portal recharge runtime config is invalid");
+  }
+  if (window.btoa(canonical) !== match[2]) {
+    throw new Error("Portal recharge runtime config is invalid");
+  }
+  return {
+    rechargeConfigSha256: match[1],
+    rechargeTrustedActionOriginsJson: canonical,
+  };
+}
+
+const {
+  rechargeConfigSha256,
+  rechargeTrustedActionOriginsJson,
+} = readRechargeRuntimeConfig(
+  (import.meta as PortalImportMeta).env.VITE_PORTAL_RECHARGE_CONFIG_BINDING,
+);
+
 function PortalOnlyApp() {
-  const portalClient = useMemo(() => createHttpUserPortalClient(), []);
+  const portalClient = useMemo(() => createHttpUserPortalClient({
+    rechargeTrustedActionOriginsJson,
+  }), []);
   if (window.location.pathname.startsWith("/portal/register")) {
     return <UserRegistrationPage portalClient={portalClient} />;
   }
   return <UserPortalPage portalClient={portalClient} />;
 }
 
-createRoot(document.getElementById("root")!).render(
+const portalRoot = document.getElementById("root")!;
+portalRoot.dataset.portalRechargeConfigSha256 = rechargeConfigSha256;
+
+createRoot(portalRoot).render(
   <StrictMode>
     <PortalOnlyApp />
   </StrictMode>

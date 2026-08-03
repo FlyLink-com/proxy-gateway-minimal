@@ -98,7 +98,9 @@ export function PortalRechargeDialog({
   const order = model.activeOrder;
   const meta = order ? statusMeta(order.status, zh, order.expectedPaidCoinUnits) : null;
   const Icon = meta ? statusIcon(meta.tone) : null;
-  const pending = order?.status === "pending" || order?.status === "payment_verified";
+  const delayed = model.error === "delayed";
+  const pending = !delayed
+    && (order?.status === "pending" || order?.status === "payment_verified");
   return (
     <ModalFrame
       closeDisabled={model.busy}
@@ -112,7 +114,11 @@ export function PortalRechargeDialog({
         <div className="portal-recharge-state" role="alert">
           {model.error === "unavailable"
             ? zh ? "Coins 充值暂不可用。" : "Coins recharge is unavailable."
-            : zh ? "充值请求失败，请安全重试。" : "Recharge request failed. Retry safely."}
+            : model.error === "delayed"
+              ? zh
+                ? "支付确认时间较长。再次进入钱包时系统会继续查询，请勿重复支付。"
+                : "Payment confirmation is taking longer than expected. We will check again when you return to Wallet. Do not pay again."
+              : zh ? "充值请求失败，请安全重试。" : "Recharge request failed. Retry safely."}
         </div>
       ) : null}
       {order ? (
@@ -129,7 +135,7 @@ export function PortalRechargeDialog({
             </div>
             <h4>{meta?.title}</h4>
             <p>{meta?.description}</p>
-            {meta?.note ? (
+            {meta?.note && !delayed ? (
               <p className="portal-recharge-status-card__note">
                 <LoaderCircle aria-hidden="true" className="portal-recharge-status-card__spinner" />
                 {meta.note}
