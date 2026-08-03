@@ -22,6 +22,9 @@ import { createPaymentRechargeCoordinator } from "./services/platform/payment-re
 import { createPaymentRechargeOfferCatalog } from "./services/platform/payment-recharge-offer-catalog.mjs";
 import { createStaticPaymentProviderAdapterRegistry } from "./services/platform/payment-provider-adapter-registry.mjs";
 import { createPayPalSandboxRuntime } from "./services/platform/paypal-payment-runtime.mjs";
+import { createXsdPaymentRuntime } from "./services/platform/xsd-payment-runtime.mjs";
+import { createChaoJiPayPaymentRuntime } from "./services/platform/chaojipay-payment-runtime.mjs";
+import { createProductionCnyPaymentRechargeOffers } from "./services/platform/production-cny-payment-recharge-price-book.mjs";
 import { createSqliteSubscriptionControlStore } from "./services/platform/subscription-control-db.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
@@ -531,6 +534,41 @@ function parseJsonArrayEnv(value, field) {
   } catch {
     throw runtimeValidationError(`${field} must be a JSON array`);
   }
+}
+
+function providerHttpsUrl(value, { callbackPath = null, originOnly = false } = {}) {
+  const text = optionalEnvText(value);
+  let parsed;
+  try {
+    parsed = new URL(text);
+  } catch {
+    throw coinRechargePrerequisiteError();
+  }
+  if (
+    parsed.protocol !== "https:"
+    || parsed.username !== ""
+    || parsed.password !== ""
+    || parsed.hash !== ""
+    || (callbackPath !== null && (
+      parsed.pathname !== callbackPath || parsed.search !== ""
+    ))
+    || (originOnly && (
+      text !== parsed.origin
+      || parsed.pathname !== "/"
+      || parsed.search !== ""
+    ))
+  ) {
+    throw coinRechargePrerequisiteError();
+  }
+  return originOnly ? parsed.origin : parsed.toString();
+}
+
+function providerActionOrigins(value, field) {
+  const items = parseJsonArrayEnv(value, field);
+  if (items.length < 1 || items.length > 8) throw coinRechargePrerequisiteError();
+  const origins = items.map((item) => providerHttpsUrl(item, { originOnly: true }));
+  if (new Set(origins).size !== origins.length) throw coinRechargePrerequisiteError();
+  return Object.freeze(origins);
 }
 
 function parseJsonObjectEnv(value, field) {
@@ -1279,11 +1317,21 @@ export function createRuntimeState(options = {}) {
   const coinsWalletEnabled = envFlag(env.COINS_WALLET_ENABLED);
   const coinsCommerceEnabled = envFlag(env.COINS_COMMERCE_ENABLED);
   const coinRechargeRequested = envFlag(env.PLATFORM_COIN_RECHARGE_ENABLED);
-  const paypalSandboxRequested = envFlag(env.PLATFORM_PAYPAL_SANDBOX_ENABLED);
-  if (coinRechargeRequested !== paypalSandboxRequested) {
+  const requestedPaymentProviders = [
+    ["paypal_sandbox", envFlag(env.PLATFORM_PAYPAL_SANDBOX_ENABLED)],
+    ["xsd", envFlag(env.PLATFORM_XSD_PAYMENT_ENABLED)],
+    ["chaojipay", envFlag(env.PLATFORM_CHAOJIPAY_PAYMENT_ENABLED)],
+  ].filter(([, enabled]) => enabled).map(([provider]) => provider);
+  if (
+    (!coinRechargeRequested && requestedPaymentProviders.length !== 0)
+    || (coinRechargeRequested && requestedPaymentProviders.length !== 1)
+  ) {
     throw coinRechargePrerequisiteError();
   }
-  const coinRechargeEnabled = coinRechargeRequested && paypalSandboxRequested;
+  const paymentRechargeProvider = coinRechargeRequested
+    ? requestedPaymentProviders[0]
+    : null;
+  const coinRechargeEnabled = paymentRechargeProvider !== null;
   let configuredCoinCommerceStore = null;
   let configuredCoinCommerceWalletStore = null;
   let configuredCoinCommerceCatalog;
@@ -2146,77 +2194,71 @@ export function createRuntimeState(options = {}) {
         throw coinRechargePrerequisiteError();
       }
       callableFromSafeDescriptorChain(platformUserPortalAuth, "requireSession");
-      const offers = parseJsonArrayEnv(
-        env.PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON,
-        "PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON"
-      );
-      const credential = {
-        clientId: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_CLIENT_ID),
-        clientSecret: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_CLIENT_SECRET),
-        webhookId: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_WEBHOOK_ID),
-        merchantScopeDigest: optionalEnvText(
-          env.PLATFORM_PAYPAL_SANDBOX_MERCHANT_SCOPE_DIGEST
-        )
-      };
-      const callbackUrl = optionalEnvText(env.PLATFORM_PAYPAL_CALLBACK_URL);
-      const returnUrl = optionalEnvText(env.PLATFORM_PAYPAL_RETURN_URL);
-      if (
-        offers.length === 0
-        || Object.values(credential).some((value) => !value)
-        || !callbackUrl
-        || !returnUrl
-      ) {
-        throw coinRechargePrerequisiteError();
+      let assembled;
+      if (paymentRechargeProvider === "paypal_sandbox") {
+        const offers = parseJsonArrayEnv(
+          env.PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON,
+          "PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON"
+        );
+        const credential = {
+          clientId: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_CLIENT_ID),
+          clientSecret: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_CLIENT_SECRET),
+          webhookId: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_WEBHOOK_ID),
+          merchantScopeDigest: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_MERCHANT_SCOPE_DIGEST)
+        };
+        const callbackUrl = optionalEnvText(env.PLATFORM_PAYPAL_CALLBACK_URL);
+        const returnUrl = optionalEnvText(env.PLATFORM_PAYPAL_RETURN_URL);
+        if (offers.length === 0 || Object.values(credential).some((value) => !value) || !callbackUrl || !returnUrl) throw coinRechargePrerequisiteError();
+        const nowFn = options.paymentNowFn || (() => new Date().toISOString());
+        const fetchFn = options.paypalFetchFn || globalThis.fetch?.bind(globalThis);
+        if (typeof fetchFn !== "function" || typeof nowFn !== "function") throw coinRechargePrerequisiteError();
+        const offerCatalog = createPaymentRechargeOfferCatalog({ environment: "sandbox", offers: offers.map((offer) => ({ ...offer, paymentMethods: ["paypal"] })) });
+        const runtime = createPayPalSandboxRuntime({ credential, fetchFn, apiOrigin: "https://api-m.sandbox.paypal.com", allowedActionOrigins: ["https://www.sandbox.paypal.com"], routeMap: { portal_payment_callback_v1: callbackUrl, portal_wallet_return_v1: returnUrl }, nowFn });
+        const registry = createStaticPaymentProviderAdapterRegistry({ credentialLoader: runtime.credentialLoader, transports: { paypal_v1: runtime.transport }, nowFn });
+        const resolvedAdapter = registry.resolve({ adapterKey: "paypal_v1", profileRef: "paypal_sandbox_primary", contractVersion: "v1", credentialProfileRef: "paypal_sandbox_primary", declaredCapabilities: { createRechargeOrder: true, queryPayment: true, capturePayment: true, verifyCallback: true, refund: false, reconcile: false, repeatCreateIdempotent: true, repeatCaptureIdempotent: true } });
+        assembled = { offerCatalog, adapter: Object.freeze({ ...resolvedAdapter, paymentMethod: "paypal", merchantBindingRef: "paypal_sandbox_primary" }), nowFn };
+      } else if (paymentRechargeProvider === "xsd") {
+        const paymentMethod = optionalEnvText(env.PLATFORM_XSD_PAYMENT_METHOD);
+        if (paymentMethod !== "alipay" && paymentMethod !== "wechat_pay") throw coinRechargePrerequisiteError();
+        const nowFn = options.paymentNowFn || (() => new Date().toISOString());
+        const fetchFn = options.xsdFetchFn || globalThis.fetch?.bind(globalThis);
+        const runtime = createXsdPaymentRuntime({
+          credential: { merchantId: optionalEnvText(env.PLATFORM_XSD_MERCHANT_ID), merchantSecret: optionalEnvText(env.PLATFORM_XSD_MERCHANT_SECRET), merchantScopeDigest: optionalEnvText(env.PLATFORM_XSD_MERCHANT_SCOPE_DIGEST) },
+          fetchFn,
+          apiOrigin: "https://www.xsd8866.com",
+          allowedActionOrigins: providerActionOrigins(env.PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON, "PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON"),
+          routeMap: { portal_payment_callback_v1: providerHttpsUrl(env.PLATFORM_XSD_CALLBACK_URL, { callbackPath: "/api/platform/payments/xsd/callback" }), portal_wallet_return_v1: providerHttpsUrl(env.PLATFORM_XSD_RETURN_URL) },
+          profileRef: "xsd_production_primary",
+          credentialProfileRef: "xsd_production_primary",
+          nowFn,
+        });
+        const offerCatalog = createPaymentRechargeOfferCatalog({ environment: "production", offers: createProductionCnyPaymentRechargeOffers().map((offer) => ({ ...offer, paymentMethods: [paymentMethod] })) });
+        const registry = createStaticPaymentProviderAdapterRegistry({ credentialLoader: runtime.credentialLoader, transports: { xsd_v1: runtime.transport }, nowFn });
+        const resolvedAdapter = registry.resolve({ adapterKey: "xsd_v1", profileRef: "xsd_production_primary", contractVersion: "v1", credentialProfileRef: "xsd_production_primary", declaredCapabilities: { createRechargeOrder: true, queryPayment: true, capturePayment: false, verifyCallback: true, refund: false, reconcile: false, repeatCreateIdempotent: false, repeatCaptureIdempotent: false } });
+        assembled = { offerCatalog, adapter: Object.freeze({ ...resolvedAdapter, paymentMethod, merchantBindingRef: "xsd_production_primary" }), nowFn };
+      } else {
+        const paymentMethod = "wechat_pay";
+        const nowFn = options.paymentNowFn || (() => new Date().toISOString());
+        const fetchFn = options.chaojipayFetchFn || globalThis.fetch?.bind(globalThis);
+        const runtime = createChaoJiPayPaymentRuntime({
+          credential: { merchantId: optionalEnvText(env.PLATFORM_CHAOJIPAY_MERCHANT_ID), merchantSecret: optionalEnvText(env.PLATFORM_CHAOJIPAY_MERCHANT_SECRET), merchantScopeDigest: optionalEnvText(env.PLATFORM_CHAOJIPAY_MERCHANT_SCOPE_DIGEST) },
+          fetchFn,
+          apiOrigin: "https://payment.chaojipay.me",
+          allowedActionOrigins: providerActionOrigins(env.PLATFORM_CHAOJIPAY_ALLOWED_ACTION_ORIGINS_JSON, "PLATFORM_CHAOJIPAY_ALLOWED_ACTION_ORIGINS_JSON"),
+          routeMap: { portal_payment_callback_v1: providerHttpsUrl(env.PLATFORM_CHAOJIPAY_CALLBACK_URL, { callbackPath: "/api/platform/payments/chaojipay/callback" }) },
+          profileRef: "chaojipay_production_primary",
+          credentialProfileRef: "chaojipay_production_primary",
+          createRequestIp: optionalEnvText(env.PLATFORM_CHAOJIPAY_CREATE_REQUEST_IP),
+          nowFn,
+        });
+        const offerCatalog = createPaymentRechargeOfferCatalog({ environment: "production", offers: createProductionCnyPaymentRechargeOffers().map((offer) => ({ ...offer, paymentMethods: [paymentMethod] })) });
+        const registry = createStaticPaymentProviderAdapterRegistry({ credentialLoader: runtime.credentialLoader, transports: { chaojipay_v1: runtime.transport }, nowFn });
+        const resolvedAdapter = registry.resolve({ adapterKey: "chaojipay_v1", profileRef: "chaojipay_production_primary", contractVersion: "v1", credentialProfileRef: "chaojipay_production_primary", declaredCapabilities: { createRechargeOrder: true, queryPayment: false, capturePayment: false, verifyCallback: true, refund: false, reconcile: false, repeatCreateIdempotent: false, repeatCaptureIdempotent: false } });
+        assembled = { offerCatalog, adapter: Object.freeze({ ...resolvedAdapter, paymentMethod, merchantBindingRef: "chaojipay_production_primary" }), nowFn };
       }
-      const nowFn = options.paymentNowFn || (() => new Date().toISOString());
-      const fetchFn = options.paypalFetchFn || globalThis.fetch?.bind(globalThis);
-      if (typeof fetchFn !== "function" || typeof nowFn !== "function") {
-        throw coinRechargePrerequisiteError();
-      }
-      const offerCatalog = createPaymentRechargeOfferCatalog({
-        environment: "sandbox",
-        offers: offers.map((offer) => ({ ...offer, paymentMethods: ["paypal"] }))
-      });
-      const paypalRuntime = createPayPalSandboxRuntime({
-        credential,
-        fetchFn,
-        apiOrigin: "https://api-m.sandbox.paypal.com",
-        allowedActionOrigins: ["https://www.sandbox.paypal.com"],
-        routeMap: {
-          portal_payment_callback_v1: callbackUrl,
-          portal_wallet_return_v1: returnUrl
-        },
-        nowFn
-      });
-      const registry = createStaticPaymentProviderAdapterRegistry({
-        credentialLoader: paypalRuntime.credentialLoader,
-        transports: { paypal_v1: paypalRuntime.transport },
-        nowFn
-      });
-      const resolvedAdapter = registry.resolve({
-        adapterKey: "paypal_v1",
-        profileRef: "paypal_sandbox_primary",
-        contractVersion: "v1",
-        credentialProfileRef: "paypal_sandbox_primary",
-        declaredCapabilities: {
-          createRechargeOrder: true,
-          queryPayment: true,
-          capturePayment: true,
-          verifyCallback: true,
-          refund: false,
-          reconcile: false,
-          repeatCreateIdempotent: true,
-          repeatCaptureIdempotent: true
-        }
-      });
-      const adapter = Object.freeze({
-        ...resolvedAdapter,
-        paymentMethod: "paypal",
-        merchantBindingRef: "paypal_sandbox_primary"
-      });
       paymentStore = createSqlitePaymentStore({
         dbPath: controlDbPath,
-        nowFn,
+        nowFn: assembled.nowFn,
         refFactory: options.paymentRefFactory
           || ((kind) => `${kind}_${randomUUID()}`)
       });
@@ -2224,9 +2266,9 @@ export function createRuntimeState(options = {}) {
       paymentRechargeCoordinator = createPaymentRechargeCoordinator({
         store: paymentStore,
         walletStore: coinsWalletStore,
-        offerCatalog,
-        adapter,
-        nowFn,
+        offerCatalog: assembled.offerCatalog,
+        adapter: assembled.adapter,
+        nowFn: assembled.nowFn,
         refFactory: options.paymentRefFactory
           || ((kind) => `${kind}_${randomUUID()}`)
       });
@@ -2343,6 +2385,7 @@ export function createRuntimeState(options = {}) {
       coinCommerceStore,
       coinCommerceCoordinator,
       coinRechargeEnabled,
+      paymentRechargeProvider,
       paymentStore,
       paymentRechargeCoordinator,
       adminAuthRoutesEnabled,

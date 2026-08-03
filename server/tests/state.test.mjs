@@ -120,6 +120,39 @@ function runtimeEnv(overrides = {}) {
   };
 }
 
+function xsdRechargeEnv(overrides = {}) {
+  return {
+    PLATFORM_COIN_RECHARGE_ENABLED: "true",
+    PLATFORM_XSD_PAYMENT_ENABLED: "true",
+    PLATFORM_XSD_PAYMENT_METHOD: "alipay",
+    PLATFORM_XSD_MERCHANT_ID: "merchant_xsd_demo",
+    PLATFORM_XSD_MERCHANT_SECRET: "synthetic-xsd-secret",
+    PLATFORM_XSD_MERCHANT_SCOPE_DIGEST: "b".repeat(64),
+    PLATFORM_XSD_CALLBACK_URL:
+      "https://portal.example.test/api/platform/payments/xsd/callback",
+    PLATFORM_XSD_RETURN_URL: "https://portal.example.test/portal/wallet",
+    PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON:
+      JSON.stringify(["https://cashier.example.test"]),
+    ...overrides,
+  };
+}
+
+function chaoJiPayRechargeEnv(overrides = {}) {
+  return {
+    PLATFORM_COIN_RECHARGE_ENABLED: "true",
+    PLATFORM_CHAOJIPAY_PAYMENT_ENABLED: "true",
+    PLATFORM_CHAOJIPAY_MERCHANT_ID: "merchant_chao_demo",
+    PLATFORM_CHAOJIPAY_MERCHANT_SECRET: "synthetic-chao-secret",
+    PLATFORM_CHAOJIPAY_MERCHANT_SCOPE_DIGEST: "c".repeat(64),
+    PLATFORM_CHAOJIPAY_CALLBACK_URL:
+      "https://portal.example.test/api/platform/payments/chaojipay/callback",
+    PLATFORM_CHAOJIPAY_ALLOWED_ACTION_ORIGINS_JSON:
+      JSON.stringify(["https://cashier.example.test"]),
+    PLATFORM_CHAOJIPAY_CREATE_REQUEST_IP: "8.8.8.8",
+    ...overrides,
+  };
+}
+
 function accountHash(accountId) {
   return createHash("sha256").update(accountId).digest("hex");
 }
@@ -578,7 +611,20 @@ test("createRuntimeState keeps payment recharge inert by default without reading
     "PLATFORM_PAYPAL_SANDBOX_WEBHOOK_ID",
     "PLATFORM_PAYPAL_SANDBOX_MERCHANT_SCOPE_DIGEST",
     "PLATFORM_PAYPAL_CALLBACK_URL",
-    "PLATFORM_PAYPAL_RETURN_URL"
+    "PLATFORM_PAYPAL_RETURN_URL",
+    "PLATFORM_XSD_PAYMENT_METHOD",
+    "PLATFORM_XSD_MERCHANT_ID",
+    "PLATFORM_XSD_MERCHANT_SECRET",
+    "PLATFORM_XSD_MERCHANT_SCOPE_DIGEST",
+    "PLATFORM_XSD_CALLBACK_URL",
+    "PLATFORM_XSD_RETURN_URL",
+    "PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON",
+    "PLATFORM_CHAOJIPAY_MERCHANT_ID",
+    "PLATFORM_CHAOJIPAY_MERCHANT_SECRET",
+    "PLATFORM_CHAOJIPAY_MERCHANT_SCOPE_DIGEST",
+    "PLATFORM_CHAOJIPAY_CALLBACK_URL",
+    "PLATFORM_CHAOJIPAY_ALLOWED_ACTION_ORIGINS_JSON",
+    "PLATFORM_CHAOJIPAY_CREATE_REQUEST_IP"
   ]) {
     Object.defineProperty(env, field, {
       enumerable: true,
@@ -590,14 +636,25 @@ test("createRuntimeState keeps payment recharge inert by default without reading
   }
   let state;
   try {
-    state = createRuntimeState({
+    const options = {
       rootDir: new URL("../../", import.meta.url),
       env,
       controlDbPath: join(dir, "control.sqlite"),
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       autoStartHttpProxy: false
-    });
+    };
+    for (const field of ["xsdFetchFn", "chaojipayFetchFn", "paymentNowFn", "paymentRefFactory"]) {
+      Object.defineProperty(options, field, {
+        enumerable: true,
+        get() {
+          getterCalls += 1;
+          throw new Error(`unexpected ${field} read`);
+        },
+      });
+    }
+    state = createRuntimeState(options);
     assert.equal(state.platform.coinRechargeEnabled, false);
+    assert.equal(state.platform.paymentRechargeProvider, null);
     assert.equal(state.platform.paymentStore, null);
     assert.equal(state.platform.paymentRechargeCoordinator, null);
     assert.equal(getterCalls, 0);
@@ -607,25 +664,97 @@ test("createRuntimeState keeps payment recharge inert by default without reading
   }
 });
 
-test("createRuntimeState requires both recharge and PayPal Sandbox flags", () => {
-  for (const enabledField of [
-    "PLATFORM_COIN_RECHARGE_ENABLED",
-    "PLATFORM_PAYPAL_SANDBOX_ENABLED"
-  ]) {
+test("createRuntimeState requires exactly one enabled payment provider with recharge", () => {
+  const flagCases = [
+    [{}, false, null],
+    [{ PLATFORM_COIN_RECHARGE_ENABLED: "true" }, "error", null],
+    [{ PLATFORM_PAYPAL_SANDBOX_ENABLED: "true" }, "error", null],
+    [{ PLATFORM_XSD_PAYMENT_ENABLED: "true" }, "error", null],
+    [{ PLATFORM_CHAOJIPAY_PAYMENT_ENABLED: "true" }, "error", null],
+    [{
+      PLATFORM_COIN_RECHARGE_ENABLED: "true",
+      PLATFORM_PAYPAL_SANDBOX_ENABLED: "true",
+      PLATFORM_XSD_PAYMENT_ENABLED: "true",
+    }, "error", null],
+    [{
+      PLATFORM_COIN_RECHARGE_ENABLED: "true",
+      PLATFORM_XSD_PAYMENT_ENABLED: "true",
+      PLATFORM_CHAOJIPAY_PAYMENT_ENABLED: "true",
+    }, "error", null],
+  ];
+  for (const [overrides, expectedEnabled, expectedProvider] of flagCases) {
     const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-recharge-flags-"));
+    let state;
     try {
-      assert.throws(() => createRuntimeState({
-        rootDir: new URL("../../", import.meta.url),
-        env: runtimeEnv({ CONSOLE_TOKEN: "secret", [enabledField]: "true" }),
-        controlDbPath: join(dir, "control.sqlite"),
-        subscriptionDbPath: join(dir, "subscriptions.sqlite"),
-        autoStartHttpProxy: false
-      }), (error) => error?.code === "coin_recharge_prerequisite_missing");
+      if (expectedEnabled === "error") {
+        assert.throws(() => createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({ CONSOLE_TOKEN: "secret", ...overrides }),
+          controlDbPath: join(dir, "control.sqlite"),
+          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+          autoStartHttpProxy: false,
+        }), (error) => error?.code === "coin_recharge_prerequisite_missing");
+      } else {
+        state = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({ CONSOLE_TOKEN: "secret", ...overrides }),
+          controlDbPath: join(dir, "control.sqlite"),
+          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+          autoStartHttpProxy: false,
+        });
+        assert.equal(state.platform.coinRechargeEnabled, expectedEnabled);
+        assert.equal(state.platform.paymentRechargeProvider, expectedProvider);
+      }
     } finally {
+      state?.close();
       removeTempDir(dir);
     }
   }
 });
+
+for (const [provider, selectedEnv, disabledFields] of [
+  ["paypal_sandbox", {
+    PLATFORM_COIN_RECHARGE_ENABLED: "true",
+    PLATFORM_PAYPAL_SANDBOX_ENABLED: "true",
+    PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON: JSON.stringify([{ offerRef: "coins_30", quoteVersion: 1, paidCoinUnits: 30, amountMinor: 100, currency: "USD", currencyExponent: 2, enabled: true }]),
+    PLATFORM_PAYPAL_SANDBOX_CLIENT_ID: "synthetic-client-id",
+    PLATFORM_PAYPAL_SANDBOX_CLIENT_SECRET: "synthetic-client-secret",
+    PLATFORM_PAYPAL_SANDBOX_WEBHOOK_ID: "synthetic-webhook-id",
+    PLATFORM_PAYPAL_SANDBOX_MERCHANT_SCOPE_DIGEST: "a".repeat(64),
+    PLATFORM_PAYPAL_CALLBACK_URL: "https://portal.example.test/api/platform/payments/paypal/callback",
+    PLATFORM_PAYPAL_RETURN_URL: "https://portal.example.test/wallet",
+  }, ["PLATFORM_XSD_PAYMENT_METHOD", "PLATFORM_XSD_MERCHANT_ID", "PLATFORM_XSD_MERCHANT_SECRET", "PLATFORM_XSD_MERCHANT_SCOPE_DIGEST", "PLATFORM_XSD_CALLBACK_URL", "PLATFORM_XSD_RETURN_URL", "PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON", "PLATFORM_CHAOJIPAY_MERCHANT_ID", "PLATFORM_CHAOJIPAY_MERCHANT_SECRET", "PLATFORM_CHAOJIPAY_MERCHANT_SCOPE_DIGEST", "PLATFORM_CHAOJIPAY_CALLBACK_URL", "PLATFORM_CHAOJIPAY_ALLOWED_ACTION_ORIGINS_JSON", "PLATFORM_CHAOJIPAY_CREATE_REQUEST_IP"]],
+  ["xsd", xsdRechargeEnv(), ["PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON", "PLATFORM_PAYPAL_SANDBOX_CLIENT_ID", "PLATFORM_PAYPAL_SANDBOX_CLIENT_SECRET", "PLATFORM_PAYPAL_SANDBOX_WEBHOOK_ID", "PLATFORM_PAYPAL_SANDBOX_MERCHANT_SCOPE_DIGEST", "PLATFORM_PAYPAL_CALLBACK_URL", "PLATFORM_PAYPAL_RETURN_URL", "PLATFORM_CHAOJIPAY_MERCHANT_ID", "PLATFORM_CHAOJIPAY_MERCHANT_SECRET", "PLATFORM_CHAOJIPAY_MERCHANT_SCOPE_DIGEST", "PLATFORM_CHAOJIPAY_CALLBACK_URL", "PLATFORM_CHAOJIPAY_ALLOWED_ACTION_ORIGINS_JSON", "PLATFORM_CHAOJIPAY_CREATE_REQUEST_IP"]],
+  ["chaojipay", chaoJiPayRechargeEnv(), ["PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON", "PLATFORM_PAYPAL_SANDBOX_CLIENT_ID", "PLATFORM_PAYPAL_SANDBOX_CLIENT_SECRET", "PLATFORM_PAYPAL_SANDBOX_WEBHOOK_ID", "PLATFORM_PAYPAL_SANDBOX_MERCHANT_SCOPE_DIGEST", "PLATFORM_PAYPAL_CALLBACK_URL", "PLATFORM_PAYPAL_RETURN_URL", "PLATFORM_XSD_PAYMENT_METHOD", "PLATFORM_XSD_MERCHANT_ID", "PLATFORM_XSD_MERCHANT_SECRET", "PLATFORM_XSD_MERCHANT_SCOPE_DIGEST", "PLATFORM_XSD_CALLBACK_URL", "PLATFORM_XSD_RETURN_URL", "PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON"]],
+]) {
+  test(`createRuntimeState reads only selected ${provider} provider configuration`, () => {
+    const dir = mkdtempSync(join(tmpdir(), `proxy-gateway-recharge-${provider}-selected-`));
+    const env = runtimeEnv({ CONSOLE_TOKEN: "secret", USER_PORTAL_ROUTES_ENABLED: "true", COINS_WALLET_ENABLED: "true", ...selectedEnv });
+    const controlDbPath = prepareMigratedPaymentControlDatabase(dir);
+    let state;
+    let calls = 0;
+    for (const field of disabledFields) {
+      Object.defineProperty(env, field, { enumerable: true, get() { calls += 1; throw new Error(`unexpected ${field} read`); } });
+    }
+    try {
+      state = createRuntimeState({
+        rootDir: new URL("../../", import.meta.url),
+        env,
+        controlDbPath,
+        subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+        paypalFetchFn: async () => { calls += 1; throw new Error("fetch must not run"); },
+        xsdFetchFn: async () => { calls += 1; throw new Error("fetch must not run"); },
+        chaojipayFetchFn: async () => { calls += 1; throw new Error("fetch must not run"); },
+        autoStartHttpProxy: false,
+      });
+      assert.equal(state.platform.paymentRechargeProvider, provider);
+      assert.equal(calls, 0);
+    } finally {
+      state?.close();
+      removeTempDir(dir);
+    }
+  });
+}
 
 test("createRuntimeState closes an owned Commerce Store when Recharge assembly fails", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-recharge-commerce-cleanup-"));
@@ -693,6 +822,7 @@ test("createRuntimeState assembles the default-off PayPal Sandbox recharge runti
       autoStartHttpProxy: false
     });
     assert.equal(state.platform.coinRechargeEnabled, true);
+    assert.equal(state.platform.paymentRechargeProvider, "paypal_sandbox");
     assert.equal(typeof state.platform.paymentStore?.createOrder, "function");
     assert.equal(typeof state.platform.paymentRechargeCoordinator?.createRechargeOrder, "function");
     assert.deepEqual(
@@ -708,6 +838,76 @@ test("createRuntimeState assembles the default-off PayPal Sandbox recharge runti
     removeTempDir(dir);
   }
 });
+
+for (const [provider, makeEnv, methods] of [
+  ["xsd", xsdRechargeEnv, ["alipay"]],
+  ["chaojipay", chaoJiPayRechargeEnv, ["wechat_pay"]],
+]) {
+  test(`createRuntimeState assembles ${provider} recharge without provider fetch`, () => {
+    const dir = mkdtempSync(join(tmpdir(), `proxy-gateway-recharge-${provider}-enabled-`));
+    const controlDbPath = prepareMigratedPaymentControlDatabase(dir);
+    let state;
+    let fetchCalls = 0;
+    try {
+      state = createRuntimeState({
+        rootDir: new URL("../../", import.meta.url),
+        env: runtimeEnv({ CONSOLE_TOKEN: "secret", USER_PORTAL_ROUTES_ENABLED: "true", COINS_WALLET_ENABLED: "true", ...makeEnv() }),
+        controlDbPath,
+        subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+        xsdFetchFn: async () => { fetchCalls += 1; throw new Error("provider must not be called during startup"); },
+        chaojipayFetchFn: async () => { fetchCalls += 1; throw new Error("provider must not be called during startup"); },
+        autoStartHttpProxy: false,
+      });
+      assert.equal(state.platform.coinRechargeEnabled, true);
+      assert.equal(state.platform.paymentRechargeProvider, provider);
+      assert.deepEqual(state.platform.paymentRechargeCoordinator.listOffers().map((offer) => ({ currency: offer.currency, paymentMethods: offer.paymentMethods })), Array(6).fill({ currency: "CNY", paymentMethods: methods }));
+      assert.equal(fetchCalls, 0);
+    } finally {
+      state?.close();
+      removeTempDir(dir);
+    }
+  });
+}
+
+test("createRuntimeState assembles XSD WeChat Pay offers", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-recharge-xsd-wechat-"));
+  let state;
+  try {
+    state = createRuntimeState({ rootDir: new URL("../../", import.meta.url), env: runtimeEnv({ CONSOLE_TOKEN: "secret", USER_PORTAL_ROUTES_ENABLED: "true", COINS_WALLET_ENABLED: "true", ...xsdRechargeEnv({ PLATFORM_XSD_PAYMENT_METHOD: "wechat_pay" }) }), controlDbPath: prepareMigratedPaymentControlDatabase(dir), subscriptionDbPath: join(dir, "subscriptions.sqlite"), xsdFetchFn: async () => { throw new Error("fetch must not run"); }, autoStartHttpProxy: false });
+    assert.equal(state.platform.paymentRechargeProvider, "xsd");
+    assert.deepEqual(state.platform.paymentRechargeCoordinator.listOffers().map((offer) => ({ currency: offer.currency, paymentMethods: offer.paymentMethods })), Array(6).fill({ currency: "CNY", paymentMethods: ["wechat_pay"] }));
+  } finally { state?.close(); removeTempDir(dir); }
+});
+
+for (const [provider, makeEnv, invalids] of [
+  ["xsd", xsdRechargeEnv, [
+    ...["PLATFORM_XSD_PAYMENT_METHOD", "PLATFORM_XSD_MERCHANT_ID", "PLATFORM_XSD_MERCHANT_SECRET", "PLATFORM_XSD_MERCHANT_SCOPE_DIGEST", "PLATFORM_XSD_CALLBACK_URL", "PLATFORM_XSD_RETURN_URL", "PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON"].map((field) => ({ [field]: "" })),
+    { PLATFORM_XSD_PAYMENT_METHOD: "unionpay" },
+    ...["http://portal.example.test/api/platform/payments/xsd/callback", "https://user@portal.example.test/api/platform/payments/xsd/callback", "https://portal.example.test/wrong", "https://portal.example.test/api/platform/payments/xsd/callback?q=1", "https://portal.example.test/api/platform/payments/xsd/callback#x"].map((value) => ({ PLATFORM_XSD_CALLBACK_URL: value })),
+    ...["", "http://portal.example.test/wallet", "https://user@portal.example.test/wallet"].map((value) => ({ PLATFORM_XSD_RETURN_URL: value })),
+    ...["[]", JSON.stringify(Array(9).fill("https://cashier.example.test")), JSON.stringify(["https://cashier.example.test", "https://cashier.example.test"]), JSON.stringify(["https://cashier.example.test/path"]), JSON.stringify(["https://cashier.example.test?q=1"]), JSON.stringify(["https://user@cashier.example.test"])].map((value) => ({ PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON: value })),
+    { PLATFORM_XSD_MERCHANT_SCOPE_DIGEST: "not-a-digest" },
+  ]],
+  ["chaojipay", chaoJiPayRechargeEnv, [
+    ...["PLATFORM_CHAOJIPAY_MERCHANT_ID", "PLATFORM_CHAOJIPAY_MERCHANT_SECRET", "PLATFORM_CHAOJIPAY_MERCHANT_SCOPE_DIGEST", "PLATFORM_CHAOJIPAY_CALLBACK_URL", "PLATFORM_CHAOJIPAY_ALLOWED_ACTION_ORIGINS_JSON", "PLATFORM_CHAOJIPAY_CREATE_REQUEST_IP"].map((field) => ({ [field]: "" })),
+    ...["http://portal.example.test/api/platform/payments/chaojipay/callback", "https://user@portal.example.test/api/platform/payments/chaojipay/callback", "https://portal.example.test/wrong", "https://portal.example.test/api/platform/payments/chaojipay/callback?q=1", "https://portal.example.test/api/platform/payments/chaojipay/callback#x"].map((value) => ({ PLATFORM_CHAOJIPAY_CALLBACK_URL: value })),
+    ...["[]", JSON.stringify(Array(9).fill("https://cashier.example.test")), JSON.stringify(["https://cashier.example.test", "https://cashier.example.test"]), JSON.stringify(["https://cashier.example.test/path"]), JSON.stringify(["https://cashier.example.test?q=1"]), JSON.stringify(["https://user@cashier.example.test"])].map((value) => ({ PLATFORM_CHAOJIPAY_ALLOWED_ACTION_ORIGINS_JSON: value })),
+    { PLATFORM_CHAOJIPAY_MERCHANT_SCOPE_DIGEST: "not-a-digest" },
+    ...["10.0.0.1", "127.0.0.1", "192.0.2.1", "224.0.0.1", "not-an-ip"].map((value) => ({ PLATFORM_CHAOJIPAY_CREATE_REQUEST_IP: value })),
+  ]],
+]) {
+  test(`createRuntimeState fails closed for malformed ${provider} configuration`, () => {
+    for (const overrides of invalids) {
+      const dir = mkdtempSync(join(tmpdir(), `proxy-gateway-recharge-${provider}-invalid-`));
+      const controlDbPath = prepareMigratedPaymentControlDatabase(dir);
+      let fetchCalls = 0;
+      try {
+        assert.throws(() => createRuntimeState({ rootDir: new URL("../../", import.meta.url), env: runtimeEnv({ CONSOLE_TOKEN: "secret", USER_PORTAL_ROUTES_ENABLED: "true", COINS_WALLET_ENABLED: "true", ...makeEnv(overrides) }), controlDbPath, subscriptionDbPath: join(dir, "subscriptions.sqlite"), xsdFetchFn: async () => { fetchCalls += 1; }, chaojipayFetchFn: async () => { fetchCalls += 1; }, autoStartHttpProxy: false }), (error) => error?.code === "coin_recharge_prerequisite_missing");
+        assert.equal(fetchCalls, 0);
+      } finally { removeTempDir(dir); }
+    }
+  });
+}
 
 test("createRuntimeState fails closed when Coins wallet is enabled without its migration", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-coins-unmigrated-"));

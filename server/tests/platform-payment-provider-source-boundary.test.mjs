@@ -217,8 +217,11 @@ test("documented-candidate corpus includes every executable and publishable sour
   assert.equal(paths.includes("admin/vite.portal.local-api-validation.config.ts"), false);
 });
 
-test("CNY provider runtimes stay absent from runtime assembly and public roots", async () => {
+test("state is the only production composition root allowed to import CNY payment runtimes", async () => {
   const paths = await listDocumentedCandidateBoundaryPaths();
+  const stateSource = await readSource("server/state.mjs");
+  assert.match(stateSource, /\.\/services\/platform\/xsd-payment-runtime\.mjs/u);
+  assert.match(stateSource, /\.\/services\/platform\/chaojipay-payment-runtime\.mjs/u);
   for (const path of [
     "index.mjs",
     "server/index.mjs",
@@ -238,9 +241,9 @@ test("CNY provider runtimes stay absent from runtime assembly and public roots",
     );
   }
   await assertCorpusDoesNotMatch(
-    paths,
+    paths.filter((path) => path !== "server/state.mjs"),
     /(?:xsd|chaojipay)-payment-runtime\.mjs/u,
-    "cny_provider_runtime_assembly_import_detected",
+    "cny_provider_runtime_outside_state_detected",
   );
 });
 
