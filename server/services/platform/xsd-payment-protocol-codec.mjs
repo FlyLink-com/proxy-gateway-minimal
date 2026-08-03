@@ -7,6 +7,7 @@ const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DIGEST_RE = /^[a-f0-9]{64}$/u;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=utf-8";
+const MAX_CALLBACK_BASE64_CHARS = 16_384;
 
 function fail() { throw new TypeError("invalid_xsd_payment_protocol"); }
 
@@ -98,7 +99,7 @@ function queryInput(value) {
 
 function callbackInput(value) {
   const input = snapshot(value, ["callbackRequestRef", "receivedAt", "bodyBase64", "headerEntries"]);
-  if (typeof input.bodyBase64 !== "string" || input.bodyBase64.length < 4 || input.bodyBase64.length % 4 !== 0) fail();
+  if (typeof input.bodyBase64 !== "string" || input.bodyBase64.length < 4 || input.bodyBase64.length > MAX_CALLBACK_BASE64_CHARS || input.bodyBase64.length % 4 !== 0) fail();
   let body;
   try { body = Buffer.from(input.bodyBase64, "base64"); } catch { fail(); }
   if (body.length < 1 || body.length > 16_384 || body.toString("base64") !== input.bodyBase64 || /[\0\r\n]/u.test(body.toString("utf8"))) fail();
@@ -117,8 +118,8 @@ function amount(value) {
   try { return parsePaymentAmountMinor(value, 2); } catch { fail(); }
 }
 
-function eventKey(callbackRequestRef, providerOrderRef) {
-  return `xsd_${createHash("sha256").update(`${callbackRequestRef}\0${providerOrderRef}`, "utf8").digest("hex")}`;
+function eventKey(merchantScopeDigest, providerCaptureRef) {
+  return `xsd_${createHash("sha256").update(`${merchantScopeDigest}\0${providerCaptureRef}`, "utf8").digest("hex")}`;
 }
 
 export function encodeXsdCreateRequest(value) {
@@ -165,7 +166,7 @@ export function decodeVerifiedXsdCallback(value) {
   const input = callbackInput(envelope.callbackInput);
   const response = snapshot(envelope.providerResponse, ["mch_order_no", "partnerorderid", "status", "mchId", "amount"]);
   const paymentOrderRef = safeRef(response.mch_order_no);
-  const providerOrderRef = safeRef(response.partnerorderid);
+  const providerCaptureRef = safeRef(response.partnerorderid);
   const status = numericStatus(response.status);
   safeRef(response.mchId);
   const amountMinor = amount(response.amount);
@@ -174,9 +175,9 @@ export function decodeVerifiedXsdCallback(value) {
   if (status === "-1") return null;
   if (status !== "1") fail();
   return freeze({
-    sourceType: "callback", providerEventRef: providerOrderRef,
-    eventDedupeKey: eventKey(input.callbackRequestRef, providerOrderRef), eventType: "payment_succeeded",
-    paymentOrderRef, providerOrderRef, providerCaptureRef: providerOrderRef, providerRefundRef: null,
+    sourceType: "callback", providerEventRef: providerCaptureRef,
+    eventDedupeKey: eventKey(merchantScopeDigest, providerCaptureRef), eventType: "payment_succeeded",
+    paymentOrderRef, providerOrderRef: paymentOrderRef, providerCaptureRef, providerRefundRef: null,
     amountMinor, currency: "CNY", currencyExponent: 2, merchantScopeDigest, payloadDigest,
     occurredAt: input.receivedAt, verificationResult: "verified",
   });

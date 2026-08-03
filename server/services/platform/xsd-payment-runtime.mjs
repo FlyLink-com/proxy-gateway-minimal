@@ -7,6 +7,7 @@ const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DIGEST_RE = /^[a-f0-9]{64}$/u;
 const MAX_JSON_BYTES = 1_048_576;
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=utf-8";
+const MAX_CALLBACK_BASE64_CHARS = 16_384;
 const OPERATION_BY_ACTION = Object.freeze({
   xsd_payment_create: "create_recharge_order",
   xsd_payment_query: "query_payment",
@@ -112,8 +113,12 @@ function formattedAmount(value) {
   try { return formatPaymentAmountMinor(value, 2); } catch { fail(); }
 }
 
-async function jsonResponse(response) {
+async function jsonResponse(response, requestUrl) {
   if (response === null || typeof response !== "object" || !Number.isSafeInteger(response.status) || typeof response.text !== "function") fail();
+  try {
+    if (response.redirected !== undefined && response.redirected !== false) fail();
+    if (response.url !== undefined && response.url !== requestUrl) fail();
+  } catch { fail(); }
   let text;
   try { text = await response.text(); } catch { fail(); }
   if (typeof text !== "string" || Buffer.byteLength(text, "utf8") > MAX_JSON_BYTES || response.status < 200 || response.status > 299) fail();
@@ -122,7 +127,7 @@ async function jsonResponse(response) {
 
 function strictCallbackForm(callback) {
   const input = snapshot(callback, ["callbackRequestRef", "receivedAt", "bodyBase64", "headerEntries"]);
-  if (typeof input.bodyBase64 !== "string" || input.bodyBase64.length < 4 || input.bodyBase64.length % 4 !== 0) fail();
+  if (typeof input.bodyBase64 !== "string" || input.bodyBase64.length < 4 || input.bodyBase64.length > MAX_CALLBACK_BASE64_CHARS || input.bodyBase64.length % 4 !== 0) fail();
   let body;
   try { body = Buffer.from(input.bodyBase64, "base64"); } catch { fail(); }
   if (body.length < 1 || body.length > MAX_JSON_BYTES || body.toString("base64") !== input.bodyBase64 || /[\0\r\n]/u.test(body.toString("utf8"))) fail();
@@ -226,8 +231,9 @@ export function createXsdPaymentRuntime(value = {}) {
     const compiled = action === "xsd_payment_create" ? createRequest(rawRequest, current, routes) : queryRequest(rawRequest, current);
     const path = action === "xsd_payment_create" ? "/api/gaia/unifiedorder" : "/api/gaia/query";
     let response;
-    try { response = await input.fetchFn(`${apiOrigin}${path}`, { method: "POST", headers: { "Content-Type": FORM_CONTENT_TYPE }, body: formBody(compiled.fields) }); } catch { fail(); }
-    const body = await jsonResponse(response);
+    const requestUrl = `${apiOrigin}${path}`;
+    try { response = await input.fetchFn(requestUrl, { method: "POST", headers: { "Content-Type": FORM_CONTENT_TYPE }, body: formBody(compiled.fields), redirect: "error" }); } catch { fail(); }
+    const body = await jsonResponse(response, requestUrl);
     const projected = action === "xsd_payment_create" ? projectCreateResponse(body) : projectQueryResponse(body, current, compiled.paymentOrderRef);
     return Object.freeze({ response: projected, evidence: null });
   }

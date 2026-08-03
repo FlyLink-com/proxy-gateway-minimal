@@ -103,10 +103,21 @@ test("XSD codec returns only entry-ready redirect, signed query states, and sign
   });
   assert.equal(fact.eventType, "payment_succeeded");
   assert.equal(fact.paymentOrderRef, "payment_order_1");
+  assert.equal(fact.providerOrderRef, "payment_order_1");
   assert.equal(fact.providerCaptureRef, "provider_order_1");
   assert.equal(fact.amountMinor, 1200);
   assert.equal(fact.currency, "CNY");
   assert.equal(fact.currencyExponent, 2);
+  const replay = decodeVerifiedXsdCallback({
+    callbackInput: { ...CALLBACK_INPUT, callbackRequestRef: "callback_request_replay_2" },
+    providerResponse: {
+      mch_order_no: "payment_order_1", partnerorderid: "provider_order_1",
+      status: "1", mchId: "merchant_demo", amount: "12.00",
+    },
+    merchantScopeDigest: MERCHANT_DIGEST,
+    payloadDigest: PAYLOAD_DIGEST,
+  });
+  assert.equal(replay.eventDedupeKey, fact.eventDedupeKey);
   assert.equal(decodeVerifiedXsdCallback({
     callbackInput: CALLBACK_INPUT,
     providerResponse: { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", status: "-1", mchId: "merchant_demo", amount: "12.00" },
@@ -135,6 +146,8 @@ test("XSD codec fails closed for non-CNY inputs, hostile objects, unsafe referen
   assertInvalid(() => encodeXsdCallbackVerificationRequest({ ...CALLBACK_INPUT, headerEntries: headerAccessor }));
   assert.equal(reads, 0);
   assertInvalid(() => encodeXsdCallbackVerificationRequest({ ...CALLBACK_INPUT, attach: "unexpected" }));
+  const oversizedCanonicalBase64 = Buffer.alloc(12_289, "a").toString("base64");
+  assertInvalid(() => encodeXsdCallbackVerificationRequest({ ...CALLBACK_INPUT, bodyBase64: oversizedCanonicalBase64 }));
   assertInvalid(() => decodeXsdQueryResponse({
     queryInput: QUERY_INPUT,
     providerResponse: { mch_order_no: "payment_order_1", status: "unknown" },

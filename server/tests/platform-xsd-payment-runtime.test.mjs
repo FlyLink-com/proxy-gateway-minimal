@@ -47,13 +47,37 @@ test("XSD runtime signs UTF-8 create and query form requests with injected trans
   });
   assert.equal(calls[0].url, `${API_ORIGIN}/api/gaia/unifiedorder`);
   assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[0].init.redirect, "error");
   assert.equal(calls[0].init.headers["Content-Type"], "application/x-www-form-urlencoded; charset=utf-8");
   assert.equal(calls[0].init.body, `amount=12.00&callbackurl=https%3A%2F%2Fportal.example.test%2Fwallet&channel=1917&format=json&mchId=merchant_demo&mch_order_no=payment_order_1&notifyurl=https%3A%2F%2Fportal.example.test%2Fapi%2Fpayment%2Fxsd%2Fcallback&sign=${signature({ mch_order_no: "payment_order_1", amount: "12.00", notifyurl: "https://portal.example.test/api/payment/xsd/callback", callbackurl: "https://portal.example.test/wallet", mchId: "merchant_demo", channel: "1917", format: "json" })}`);
   assert.deepEqual(created, { response: { url: "https://checkout.example.test/pay/1" }, evidence: null });
   const queried = await request(value, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" });
   assert.equal(calls[1].url, `${API_ORIGIN}/api/gaia/query`);
+  assert.equal(calls[1].init.redirect, "error");
   assert.equal(calls[1].init.body, `mchId=merchant_demo&mch_order_no=payment_order_1&sign=${signature({ mch_order_no: "payment_order_1", mchId: "merchant_demo" })}`);
   assert.deepEqual(queried, { response: { mch_order_no: "payment_order_1", status: "00" }, evidence: null });
+});
+
+test("XSD runtime rejects redirected create and query responses even when their bodies are valid", async () => {
+  const redirected = Object.freeze({
+    status: 200, redirected: true, url: "https://other.example.test/redirected",
+    async text() { return JSON.stringify({ code: "0", datas: { url: "https://checkout.example.test/pay/1" } }); },
+  });
+  const value = runtime(async () => redirected);
+  await assert.rejects(() => request(value, "create_recharge_order", {
+    action: "xsd_payment_create",
+    createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
+    routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
+  }), /xsd_transport_failed/u);
+  const queryRedirect = Object.freeze({
+    status: 200, redirected: false, url: "https://other.example.test/redirected",
+    async text() {
+      const fields = { mch_order_no: "payment_order_1", mchId: "merchant_demo", status: "00", amount: "12.00" };
+      return JSON.stringify({ ...fields, sign: signature(fields) });
+    },
+  });
+  const queried = runtime(async () => queryRedirect);
+  await assert.rejects(() => request(queried, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" }), /xsd_transport_failed/u);
 });
 
 test("XSD runtime verifies only signed form callback input and returns redacted evidence", async () => {
