@@ -21,6 +21,12 @@ const OPERATION_BY_ACTION = Object.freeze({
   chaojipay_payment_create: "create_recharge_order",
   chaojipay_callback_verify: "verify_callback",
 });
+const NON_GLOBAL_IPV4_CIDRS = Object.freeze([
+  [0x00000000, 8], [0x0a000000, 8], [0x64400000, 10], [0x7f000000, 8],
+  [0xa9fe0000, 16], [0xac100000, 12], [0xc0000000, 24], [0xc0000200, 24],
+  [0xc0586300, 24], [0xc0a80000, 16], [0xc6120000, 15], [0xc6336400, 24],
+  [0xcb007100, 24], [0xe0000000, 4], [0xf0000000, 4],
+]);
 
 function fail() { throw new Error("chaojipay_transport_failed"); }
 
@@ -82,17 +88,10 @@ function publicIpv4(value) {
     typeof value !== "string"
     || !/^(?:0|[1-9]\d{0,2})\.(?:0|[1-9]\d{0,2})\.(?:0|[1-9]\d{0,2})\.(?:0|[1-9]\d{0,2})$/u.test(value)
   ) fail();
-  const [first, second] = value.split(".").map(Number);
-  if (value.split(".").some((part) => Number(part) > 255)) fail();
-  if (
-    first === 0 || first === 10 || first === 127 || first >= 224
-    || (first === 100 && second >= 64 && second <= 127)
-    || (first === 169 && second === 254)
-    || (first === 172 && second >= 16 && second <= 31)
-    || (first === 192 && (second === 0 || second === 168 || second === 2))
-    || (first === 198 && (second === 18 || second === 19 || second === 51))
-    || (first === 203 && second === 0)
-  ) fail();
+  const parts = value.split(".").map(Number);
+  if (parts.some((part) => part > 255)) fail();
+  const address = (((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3]) >>> 0;
+  if (NON_GLOBAL_IPV4_CIDRS.some(([network, prefix]) => (address >>> (32 - prefix)) === (network >>> (32 - prefix)))) fail();
   return value;
 }
 
@@ -177,7 +176,7 @@ async function responseText(response, requestUrl) {
   if (response === null || typeof response !== "object" || !Number.isSafeInteger(response.status) || response.body === null || typeof response.body?.getReader !== "function") fail();
   try {
     if (response.redirected !== undefined && response.redirected !== false) fail();
-    if (response.url !== undefined && response.url !== "" && response.url !== requestUrl) fail();
+    if (typeof response.url !== "string" || response.url !== requestUrl) fail();
     const declaredLength = response.headers?.get?.("content-length");
     if (declaredLength !== null && declaredLength !== undefined && (!/^(?:0|[1-9]\d*)$/u.test(declaredLength) || Number(declaredLength) > MAX_JSON_BYTES)) fail();
   } catch { fail(); }
