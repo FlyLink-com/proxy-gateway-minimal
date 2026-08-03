@@ -17,13 +17,13 @@ const CREATE_INPUT = Object.freeze({
   callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1",
 });
 
-function executionScope() {
+function executionScope(actionOrigin = ACTION_ORIGIN) {
   return createCredentialScopedPaymentExecution({
     profileRef: "chaojipay_profile", adapterKey: "chaojipay_v1", contractVersion: "v1",
     credentialProfileRef: "chaojipay_credential",
     credentialLoader: { withCredential(_binding, callback) { return callback({ opaque: "credential" }); } },
     requestFn({ request }) {
-      if (request.action === "chaojipay_payment_create") return { response: { data: { payUrl: `${ACTION_ORIGIN}/pay/1` } }, evidence: null };
+      if (request.action === "chaojipay_payment_create") return { response: { data: { payUrl: `${actionOrigin}/pay/1` } }, evidence: null };
       return {
         response: { orderId: "provider_capture_1", orderStatus: "1", outTradeId: "payment_order_1", amount: "12.00" },
         evidence: { merchantScopeDigest: "a".repeat(64), payloadDigest: "b".repeat(64) },
@@ -41,6 +41,16 @@ test("ChaoJiPay remains unverified and disabled without a credential-scoped exec
   const withClockOnly = createChaoJiPayPaymentAdapter({ nowFn: () => NOW });
   assert.equal(withClockOnly.contractVersion, "unverified");
   assert.equal(withClockOnly.capabilities.verifyCallback, false);
+});
+
+test("ChaoJiPay rejects non-HTTPS and unallowlisted checkout actions through the complete Adapter contract", async () => {
+  for (const actionOrigin of ["http://checkout.example.test", "https://unallowlisted.example.test"]) {
+    const adapter = assertPaymentProviderAdapterContract(
+      createChaoJiPayPaymentAdapter({ executionScope: executionScope(actionOrigin), nowFn: () => NOW }),
+      { allowedActionOrigins: [ACTION_ORIGIN] },
+    );
+    await assert.rejects(() => adapter.createRechargeOrder(CREATE_INPUT), /provider_operation_failed/u);
+  }
 });
 
 test("ChaoJiPay v1 exposes only WeChat create and verified callback", async () => {
