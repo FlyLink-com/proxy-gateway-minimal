@@ -1,9 +1,10 @@
 # CNY Payment Provider Single-Active Assembly Design
 
-**Status:** Approved design, implementation pending
+**Status:** Approved design; source implementation is in final-review remediation
 **Risk:** B source change inside a future Risk A provider-activation boundary
 **Expected PR count:** 1 follow-up PR after PR #577
 **Source evidence baseline:** `d2636c5e0b8cd2798fa0c92dce4679f640576c32`
+**Final-review remediation baseline:** `acb41449a483e47d02b71dc357d265c056076aa0`
 **Production state:** `not_deployed`
 **Identity impact:** `false`
 
@@ -58,6 +59,10 @@ implementation validation and PR creation.
 - Use the immutable production CNY price book for XSD and ChaoJiPay.
 - Bind one payment method to each active Coordinator instance.
 - Harden XSD and ChaoJiPay outbound API origins to exact source-owned values.
+- Enforce capability-aware, at-most-once provider-create dispatch for adapters
+  that declare `repeatCreateIdempotent: false`, using the existing durable order
+  replay result as the dispatch claim.
+- Fail closed around missing or hostile ChaoJiPay response metadata and accessors.
 - Add full synthetic HTTP callback-to-Store-to-Wallet tests.
 
 ### Out of scope
@@ -70,6 +75,8 @@ implementation validation and PR creation.
 - New Portal or Admin UI.
 - Schema, migration, Payment Store semantics, Wallet ledger semantics, Coins
   price changes, marketplace orders, fulfillment, refund, or chargeback work.
+- Automatic recovery of a provider create whose response was not durably
+  recorded, or a new provider-attempt/lease/reconciliation state machine.
 - XSD query as settlement authority.
 - ChaoJiPay query support.
 - Production credentials, provider calls, callback registration, public
@@ -85,6 +92,33 @@ current single-Coordinator architecture, and permits one-provider-at-a-time
 canaries without changing the Portal or order contract. Adding a provider
 requires a new explicit provider branch and tests; unrecognized environment
 values cannot dynamically select an Adapter.
+
+### Controlled final-review revision
+
+The final whole-branch review found that the Coordinator ignored
+`createOrder().replayed`. That made the newly reachable XSD and ChaoJiPay paths
+capable of repeating a provider create even though both Adapters explicitly
+declare `repeatCreateIdempotent: false`.
+
+Three approaches were evaluated:
+
+1. **Use the existing durable order as the dispatch claim (selected).** The
+   SQLite `IMMEDIATE` transaction and unique `(account_id,
+   create_idempotency_key)` constraint permit exactly one caller to receive
+   `replayed: false`. Only that caller may dispatch a non-idempotent provider
+   create. This is the minimum Risk B correction and requires no Store or
+   schema change.
+2. **Add a durable provider-attempt state machine (deferred).** This could
+   distinguish not-started, started, unknown, and recovered outcomes, but it
+   changes Store/schema semantics and therefore requires a separate Risk A
+   design and migration gate.
+3. **Retry or switch providers automatically (rejected).** Missing provider or
+   receipt evidence is not proof of no charge. Repeating a non-idempotent call
+   or selecting a fallback could create a duplicate or orphan payment order.
+
+The selected approach guarantees same-account, same-idempotency-key
+at-most-once dispatch. It deliberately does not claim automatic recovery for
+the window between provider dispatch and durable create-receipt storage.
 
 ## Enablement Contract
 
@@ -173,12 +207,12 @@ both at the same time requires a later Portal/API design.
 
 The outbound API origin is fixed in source to
 `https://www.xsd8866.com`. The runtime must reject any other API origin before
-credential use or `fetch`. The callback URL must be an absolute,
-credential-free HTTPS URL with the exact callback path defined below and no
-query or fragment. The return URL must be an absolute, credential-free HTTPS
-URL. Every allowed action origin must be an exact origin string with no path,
-query, fragment, or credentials, and the list must be non-empty, unique, and
-bounded.
+credential inspection, credential normalization, or `fetch`. The callback URL
+must be an absolute, credential-free HTTPS URL with the exact callback path
+defined below and no query or fragment. The return URL must be an absolute,
+credential-free HTTPS URL. Every allowed action origin must be an exact origin
+string with no path, query, fragment, or credentials, and the list must be
+non-empty, unique, and bounded.
 
 ### ChaoJiPay
 
@@ -195,7 +229,8 @@ PLATFORM_CHAOJIPAY_CREATE_REQUEST_IP
 
 The payment method is fixed to `wechat_pay`. The outbound API origin is fixed
 in source to `https://payment.chaojipay.me`, and the runtime must reject any
-other origin before credential use or `fetch`. The callback URL and action
+other origin before credential inspection, credential normalization, or
+`fetch`. The callback URL and action
 origin list obey the same absolute HTTPS, credential-free, exact-path/origin,
 unique, non-empty, and bounded rules as XSD.
 
@@ -297,6 +332,25 @@ The selected Coordinator fixes `adapterKey`, `paymentMethod`, and
 persists those bindings with the immutable quote, amount, currency, exponent,
 expected Coins, provider-order reference, and expiry.
 
+Provider create dispatch follows this sequence:
+
+1. `createOrder()` durably inserts or replays the account-scoped idempotency
+   claim in an SQLite `IMMEDIATE` transaction.
+2. An order that already has a durable create receipt is returned with its
+   existing status, provider reference, and action; no provider call is made.
+3. For an Adapter with `repeatCreateIdempotent: false`, a replayed order that
+   remains `created` is returned as the same stable durable claim with no
+   action. The Coordinator does not call the provider, query automatically, or
+   select a fallback.
+4. Only a newly inserted claim, or a replay for an Adapter that explicitly
+   declares `repeatCreateIdempotent: true`, may dispatch provider create.
+5. A successful response is persisted through the existing create receipt;
+   subsequent reads recover the durable provider reference and action.
+
+For a non-idempotent Adapter, `created` plus no durable action is an unresolved
+provider outcome, not proof that no provider request occurred and not a payment
+success. The current source-only PR does not add a recovery state machine.
+
 The callback flow is:
 
 1. The static provider route preserves raw callback bytes.
@@ -339,6 +393,28 @@ Expected protocol-level request errors may use a specific 4xx boundary such as
 return a generic retryable failure without internal details. No rejected or
 ambiguous callback writes Coins.
 
+### Non-idempotent provider create
+
+- `createOrder().replayed: false` is the sole non-idempotent provider-create
+  dispatch right for that account and idempotency key.
+- Concurrent or later replays that remain `created` return the same stable
+  order and make zero additional provider calls.
+- If the provider response and create receipt are durable, replay returns the
+  saved provider reference and action.
+- If the process stops before dispatch, or provider dispatch occurs but its
+  response/receipt is lost, the two cases are intentionally indistinguishable
+  and remain unresolved. Neither timeout nor order expiry proves no charge.
+- PayPal keeps its existing repeat-create behavior only because its compiled
+  Adapter capability explicitly declares `repeatCreateIdempotent: true`.
+- Automatic query, retry, fallback, callback rebinding, and Wallet credit are
+  prohibited for the unresolved window. Recovery requires a later provider-
+  specific query/manual-reconciliation design.
+
+Before any CNY provider activation, the Portal/operator flow must treat a
+durable `created` order with no action as unresolved, poll/read only by its
+stable order reference, and prevent automatic create retry or provider switch.
+This is an additional pre-activation blocker alongside the callback-return gap.
+
 ### Acknowledgements
 
 Two callback outcomes may be acknowledged:
@@ -365,6 +441,11 @@ proof of no charge.
 
 - Provider API origins are exact source constants, not generic environment
   destinations.
+- Exact API-origin rejection occurs before nested credential inspection or
+  normalization.
+- ChaoJiPay accepts only a non-redirected response whose final URL exactly
+  matches the request URL; missing redirect metadata and all hostile response
+  accessors collapse to the generic transport error.
 - Action URLs remain constrained by an explicit HTTPS origin allowlist that a
   provider response cannot expand.
 - Each provider has an independent Registry, credential loader, transport,
@@ -397,8 +478,10 @@ to make each boundary pass.
 
 ### Runtime and Registry tests
 
-- XSD and ChaoJiPay reject a non-exact API origin before credential use and
-  fetch.
+- XSD and ChaoJiPay reject a non-exact API origin before credential inspection,
+  credential normalization, and fetch.
+- ChaoJiPay rejects missing redirect metadata and genericizes exceptions from
+  response status, headers, body, reader acquisition, and stream reads.
 - Each selected provider uses its own loader, transport, profile, credential
   profile, and merchant binding.
 - A wrong Adapter/profile/merchant binding rejects before fetch.
@@ -434,6 +517,18 @@ Tests prove:
   and
 - acknowledgement occurs only after durable `credited` state.
 
+### Provider-create replay tests
+
+- Concurrent same-key non-idempotent creates dispatch exactly one provider
+  call; the replay returns the same durable `created` claim.
+- Provider success followed by create-receipt persistence failure leaves one
+  unresolved order, and a replay makes zero additional provider calls.
+- A durable create receipt/action is returned on replay without another
+  provider call.
+- An Adapter with `repeatCreateIdempotent: true` retains its existing
+  deterministic retry behavior.
+- Store/schema, order API, Wallet, and fallback behavior remain unchanged.
+
 ### Required validation
 
 ```text
@@ -456,10 +551,11 @@ is expected to remain limited to:
 - `server/state.mjs`
 - `server/app.mjs`
 - `server/routes/portal-coin-recharge.mjs`
+- `server/services/platform/payment-recharge-coordinator.mjs`
 - `server/services/platform/xsd-payment-runtime.mjs`
 - `server/services/platform/chaojipay-payment-runtime.mjs`
-- the corresponding state, app/route, runtime, Registry/source-boundary, and
-  full settlement tests
+- the corresponding state, app/route, Coordinator, runtime,
+  Registry/source-boundary, and full settlement tests
 - this design and its implementation plan
 
 No Payment Store, Wallet, schema, Portal UI, Admin UI, package dependency, or
@@ -478,10 +574,13 @@ Merging the source PR does not enable or deploy a provider. After an exact
 5. observed action-origin allowlist confirmation;
 6. provider-specific ACK/retry and terminal-state confirmation;
 7. ChaoJiPay request-IP semantic binding, where applicable;
-8. unpaid create/query probes within documented provider capability;
-9. one-provider-at-a-time small-value paid canary;
-10. Payment Store, Wallet, order, and callback readback; and
-11. rollback or promotion decision.
+8. Portal/operator proof that an unresolved `created` claim never triggers a
+   second create or provider switch, plus callback-driven return polling that
+   does not call unsupported capture;
+9. unpaid create/query probes within documented provider capability;
+10. one-provider-at-a-time small-value paid canary;
+11. Payment Store, Wallet, order, and callback readback; and
+12. rollback or promotion decision.
 
 PayPal Sandbox, XSD, and ChaoJiPay activations remain separate. Approval for
 one provider cannot be reused for another provider or for production
@@ -500,8 +599,12 @@ The source task is complete only when:
 7. real source components complete synthetic callback-to-Wallet tests with
    exactly-once Coins credit;
 8. partial settlement replay cannot duplicate Coins;
-9. PayPal Sandbox remains compatible;
-10. the required validation matrix passes for the exact head;
-11. independent review reports no unresolved blocking finding; and
-12. the PR continues to state `production_state: not_deployed` and grants no
+9. same-key replay cannot repeat a non-idempotent provider create, including
+   concurrent and create-receipt-loss cases;
+10. exact-origin rejection precedes credential inspection, and hostile
+    ChaoJiPay responses collapse to a generic error;
+11. PayPal Sandbox remains compatible;
+12. the required validation matrix passes for the exact head;
+13. independent review reports no unresolved blocking finding; and
+14. the PR continues to state `production_state: not_deployed` and grants no
     provider or production authority.
