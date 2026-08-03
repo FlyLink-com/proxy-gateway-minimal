@@ -349,12 +349,15 @@ is not a Registry option or production setting: for ChaoJiPay it remains an
 explicit runtime constructor input whose payer-versus-egress semantics and
 trusted origin binding require a separate Risk A decision.
 
-Task 4 review continuation fact: runtime absence is checked from
-production/public assembly roots rather than treating `package.json.files` as
-an execution root. The graph resolves static and literal dynamic imports, but
-rejects computed imports and dynamic-code loading; each fresh factory metadata
-snapshot must exactly match the compiled descriptor before capabilities or
-payment methods are exposed.
+Task 4 review continuation fact: the source-boundary test is a lightweight
+static/literal audit of tracked production/public roots, not a claim to prove
+the absence of deliberately computed or obfuscated loading. It directly shows
+that tracked state and routes do not import either CNY runtime, while ordinary
+code review and any applicable security scan cover deliberately computed
+loading. Publishable `package.json.files` members remain a separate audit
+corpus rather than execution roots; each fresh factory metadata snapshot must
+exactly match the compiled descriptor before capabilities or payment methods
+are exposed.
 
 ---
 

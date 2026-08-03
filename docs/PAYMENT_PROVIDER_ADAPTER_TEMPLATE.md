@@ -177,14 +177,15 @@ Sandbox, production, credential, callback-registration, or payment
 compatibility. Neither runtime is imported by `server/state.mjs`, routes,
 Payment Store, Wallet, public indexes, or Portal/Admin bootstrap roots.
 
-The default-off source boundary starts from production/public assembly entries:
-package `main`/`exports`/`bin`, `start`/`server` entries, server state and
-routes, payment Store/Wallet, public indexes, and the Admin/Portal HTML,
-bootstrap, and Vite roots. It follows static imports/exports and literal
-dynamic imports; computed imports and dynamic-code loading (`eval`,
-`Function`, `createRequire`, or `require`) are forbidden in that assembly
-graph. Publishable `package.json.files` members remain a separate literal
-basename audit corpus, not executable assembly roots.
+The default-off source boundary is a lightweight static/literal audit of
+tracked production/public roots: package `main`/`exports`/`bin`,
+`start`/`server` entries, server state and routes, payment Store/Wallet, public
+indexes, and the Admin/Portal HTML/bootstrap/Vite roots. It establishes the
+direct source fact that the tracked state and routes do not import either CNY
+runtime. Publishable `package.json.files` members remain a separate literal
+basename audit corpus, not executable assembly roots. This lightweight test
+does not prove the absence of deliberately computed or obfuscated loading;
+such code requires ordinary code review and any applicable security scan.
 
 Confirmed synthetic source facts are deliberately narrow:
 
