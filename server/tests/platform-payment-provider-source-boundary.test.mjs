@@ -20,6 +20,7 @@ const PHASE_ONE_ROOTS = Object.freeze([
   "server/services/platform/xsd-payment-adapter.mjs",
   "server/services/platform/chaojipay-payment-adapter.mjs",
   "server/services/platform/paypal-payment-protocol-codec.mjs",
+  "server/services/platform/xsd-payment-protocol-codec.mjs",
   "server/services/platform/xsd-payment-protocol-boundary.mjs",
   "server/services/platform/xsd-documented-payment-candidate.mjs",
   "server/services/platform/chaojipay-documented-payment-candidate.mjs",

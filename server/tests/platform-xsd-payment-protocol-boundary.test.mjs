@@ -106,7 +106,7 @@ function findBoundaryViolations(source) {
   return [...violations].sort();
 }
 
-test("XSD boundary exposes only frozen documented field roles", () => {
+test("legacy XSD boundary remains frozen read-only documentation isolation", () => {
   assert.deepEqual(Object.keys(xsdBoundary).sort(), [
     "XSD_DOCUMENTED_FIELD_ROLES",
     "classifyXsdCallbackStatus",
@@ -155,7 +155,7 @@ test("XSD query status classifier maps only documented values", () => {
   }
 });
 
-test("XSD callback classifier remains unverified and never creates a payment fact", () => {
+test("legacy XSD callback classifier remains unverified and never creates a payment fact", () => {
   const results = [
     ["1", { eventType: "payment_succeeded", verificationResult: "unverified" }],
     ["-1", { eventType: "payment_pending", verificationResult: "unverified" }],
