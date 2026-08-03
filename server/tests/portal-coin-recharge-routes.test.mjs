@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { request as httpRequest } from "node:http";
 import test from "node:test";
 
 import { createApp } from "../app.mjs";
@@ -8,6 +10,11 @@ const ROOT_DIR = new URL("../../", import.meta.url).pathname;
 const SESSION_REF = "session_recharge_1";
 const ACCOUNT_ID = "account_recharge_1";
 const NOW = "2026-08-01T00:00:00.000Z";
+const CALLBACKS = Object.freeze({
+  paypal_sandbox: "/api/platform/payments/paypal/callback",
+  xsd: "/api/platform/payments/xsd/callback",
+  chaojipay: "/api/platform/payments/chaojipay/callback",
+});
 
 function order(status = "entry_ready") {
   return {
@@ -80,7 +87,11 @@ function createCoordinator() {
   };
 }
 
-function createState({ enabled = true, coordinator = createCoordinator() } = {}) {
+function createState({
+  enabled = true,
+  paymentRechargeProvider = "paypal_sandbox",
+  coordinator = createCoordinator(),
+} = {}) {
   return {
     rootDir: ROOT_DIR,
     consoleToken: "console-secret",
@@ -96,6 +107,7 @@ function createState({ enabled = true, coordinator = createCoordinator() } = {})
     },
     platform: {
       coinRechargeEnabled: enabled,
+      paymentRechargeProvider: enabled ? paymentRechargeProvider : null,
       paymentRechargeCoordinator: enabled ? coordinator : null,
       userPortalRoutesEnabled: true,
       userPortalAuth: {
@@ -105,6 +117,35 @@ function createState({ enabled = true, coordinator = createCoordinator() } = {})
       },
     },
   };
+}
+
+function rawHttpRequest(baseUrl, {
+  path,
+  method = "POST",
+  rawHeaders = [],
+  body = Buffer.alloc(0),
+}) {
+  const url = new URL(path, baseUrl);
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(url, {
+      method,
+      headers: [
+        "Host", url.host,
+        ...rawHeaders,
+        "Content-Length", String(body.byteLength),
+      ],
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => resolve({
+        status: response.statusCode,
+        headers: response.headers,
+        body: Buffer.concat(chunks),
+      }));
+    });
+    request.on("error", reject);
+    request.end(body);
+  });
 }
 
 async function closeServer(server) {
@@ -129,6 +170,92 @@ test("recharge namespace is unavailable and side-effect free by default", async 
       body: JSON.stringify({ offerRef: "coins_30", idempotencyKey: "create_1" }),
     });
     assert.equal(response.status, 404);
+    assert.deepEqual(coordinator.calls, []);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("disabled recharge exposes none of the three provider callbacks", async () => {
+  const coordinator = createCoordinator();
+  const { server, baseUrl } = await listen(createApp(createState({
+    enabled: false,
+    coordinator,
+  })));
+  try {
+    for (const path of Object.values(CALLBACKS)) {
+      const response = await fetch(`${baseUrl}${path}`, { method: "POST" });
+      assert.equal(response.status, 404, path);
+    }
+    assert.deepEqual(coordinator.calls, []);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+for (const [provider, callbackPath] of Object.entries(CALLBACKS)) {
+  test(`${provider} exposes only its exact callback route`, async () => {
+    const coordinator = createCoordinator();
+    const { server, baseUrl } = await listen(createApp(createState({
+      paymentRechargeProvider: provider,
+      coordinator,
+    })));
+    try {
+      const variants = [
+        { path: callbackPath, method: "GET", expectedStatus: 404 },
+        { path: `${callbackPath}?attempt=1`, method: "POST", expectedStatus: 400 },
+        { path: callbackPath.replace("/api/", "/API/"), method: "POST", expectedStatus: 404 },
+        { path: `${callbackPath}/`, method: "POST", expectedStatus: 404 },
+      ];
+      for (const variant of variants) {
+        const response = await fetch(`${baseUrl}${variant.path}`, { method: variant.method });
+        assert.equal(response.status, variant.expectedStatus, `${variant.method} ${variant.path}`);
+      }
+      for (const inactivePath of Object.values(CALLBACKS).filter((path) => path !== callbackPath)) {
+        const response = await fetch(`${baseUrl}${inactivePath}`, { method: "POST" });
+        assert.equal(response.status, 404, inactivePath);
+      }
+      assert.deepEqual(coordinator.calls, []);
+    } finally {
+      await closeServer(server);
+    }
+  });
+}
+
+test("unsupported provider enum leaves recharge routes unavailable", async () => {
+  const coordinator = createCoordinator();
+  const { server, baseUrl } = await listen(createApp(createState({
+    paymentRechargeProvider: "unsupported",
+    coordinator,
+  })));
+  try {
+    for (const path of [
+      ...Object.values(CALLBACKS),
+      "/api/portal/coins/recharge/orders",
+    ]) {
+      const response = await fetch(`${baseUrl}${path}`, { method: "POST" });
+      assert.equal(response.status, 404, path);
+    }
+    assert.deepEqual(coordinator.calls, []);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("provider and recharge query capabilities are not exposed", async () => {
+  const coordinator = createCoordinator();
+  const { server, baseUrl } = await listen(createApp(createState({ coordinator })));
+  try {
+    for (const path of [
+      "/api/platform/payments/xsd/query",
+      "/api/platform/payments/chaojipay/query",
+      "/api/portal/coins/recharge/orders/payment_order_1/query",
+    ]) {
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: { Authorization: "Bearer console-secret" },
+      });
+      assert.equal(response.status, 404, path);
+    }
     assert.deepEqual(coordinator.calls, []);
   } finally {
     await closeServer(server);
@@ -241,10 +368,155 @@ test("PayPal callback preserves bounded bytes and acknowledges only coordinator 
       "paypal-transmission-sig",
       "paypal-transmission-time",
     ]);
+    const digest = createHash("sha256")
+      .update("transmission_1", "utf8")
+      .update("\0", "utf8")
+      .update(Buffer.from(body, "utf8"))
+      .digest("hex");
+    assert.equal(callback.callbackRequestRef, `paypal_callback_${digest}`);
   } finally {
     await closeServer(server);
   }
 });
+
+for (const { provider, path, contentType } of [
+  {
+    provider: "xsd",
+    path: CALLBACKS.xsd,
+    contentType: "application/x-www-form-urlencoded; charset=utf-8",
+  },
+  {
+    provider: "chaojipay",
+    path: CALLBACKS.chaojipay,
+    contentType: "application/form; charset=utf-8",
+  },
+]) {
+  test(`${provider} callback preserves accepted form bytes and one content-type header`, async () => {
+    const coordinator = createCoordinator();
+    const { server, baseUrl } = await listen(createApp(createState({
+      paymentRechargeProvider: provider,
+      coordinator,
+    }), { paymentNowFn: () => NOW }));
+    const body = Buffer.from("amount=100&note=%E4%B8%AD", "utf8");
+    try {
+      const response = await rawHttpRequest(baseUrl, {
+        path,
+        rawHeaders: ["Content-Type", contentType],
+        body,
+      });
+      assert.equal(response.status, 204);
+      assert.equal(coordinator.calls.length, 1);
+      const callback = coordinator.calls[0][1];
+      assert.deepEqual(Buffer.from(callback.bodyBase64, "base64"), body);
+      assert.deepEqual(callback.headerEntries, [{ name: "content-type", value: contentType }]);
+      const digest = createHash("sha256").update(body).digest("hex");
+      assert.equal(callback.callbackRequestRef, `${provider}_callback_${digest}`);
+      assert.equal(callback.receivedAt, NOW);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  test(`${provider} callback rejects content-type and content-encoding faults before coordinator use`, async () => {
+    const coordinator = createCoordinator();
+    const { server, baseUrl } = await listen(createApp(createState({
+      paymentRechargeProvider: provider,
+      coordinator,
+    })));
+    const body = Buffer.from("amount=100", "utf8");
+    const cases = [
+      { name: "missing", rawHeaders: [] },
+      {
+        name: "duplicate",
+        rawHeaders: ["Content-Type", contentType, "Content-Type", contentType],
+      },
+      { name: "unsupported", rawHeaders: ["Content-Type", "application/json"] },
+      {
+        name: "identity encoding",
+        rawHeaders: ["Content-Type", contentType, "Content-Encoding", "identity"],
+      },
+      {
+        name: "gzip encoding",
+        rawHeaders: ["Content-Type", contentType, "Content-Encoding", "gzip"],
+      },
+    ];
+    try {
+      for (const item of cases) {
+        const response = await rawHttpRequest(baseUrl, {
+          path,
+          rawHeaders: item.rawHeaders,
+          body,
+        });
+        assert.equal(response.status, 415, item.name);
+        assert.deepEqual(JSON.parse(response.body.toString("utf8")), {
+          error: { code: "payment_recharge_content_type_invalid", retryable: false },
+        });
+      }
+      assert.deepEqual(coordinator.calls, []);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  test(`${provider} callback rejects invalid UTF-8 before coordinator use`, async () => {
+    const coordinator = createCoordinator();
+    const { server, baseUrl } = await listen(createApp(createState({
+      paymentRechargeProvider: provider,
+      coordinator,
+    })));
+    try {
+      const response = await rawHttpRequest(baseUrl, {
+        path,
+        rawHeaders: ["Content-Type", contentType],
+        body: Buffer.from([0xc3, 0x28]),
+      });
+      assert.equal(response.status, 400);
+      assert.deepEqual(JSON.parse(response.body.toString("utf8")), {
+        error: { code: "payment_recharge_request_invalid", retryable: false },
+      });
+      assert.deepEqual(coordinator.calls, []);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  test(`${provider} callback accepts 16384 bytes and generically rejects 16385 bytes`, async () => {
+    const coordinator = createCoordinator();
+    const { server, baseUrl } = await listen(createApp(createState({
+      paymentRechargeProvider: provider,
+      coordinator,
+    })));
+    const acceptedBody = Buffer.alloc(16_384, 0x61);
+    const rejectedBody = Buffer.alloc(16_385, 0x62);
+    try {
+      const accepted = await rawHttpRequest(baseUrl, {
+        path,
+        rawHeaders: ["Content-Type", contentType],
+        body: acceptedBody,
+      });
+      assert.equal(accepted.status, 204);
+      assert.equal(coordinator.calls.length, 1);
+      assert.deepEqual(
+        Buffer.from(coordinator.calls[0][1].bodyBase64, "base64"),
+        acceptedBody,
+      );
+
+      const rejected = await rawHttpRequest(baseUrl, {
+        path,
+        rawHeaders: ["Content-Type", contentType],
+        body: rejectedBody,
+      });
+      assert.equal(rejected.status, 413);
+      assert.deepEqual(JSON.parse(rejected.body.toString("utf8")), {
+        error: { code: "payment_recharge_body_too_large", retryable: false },
+      });
+      assert.equal(rejected.body.includes(Buffer.from("bbbb", "utf8")), false);
+      assert.equal(coordinator.calls.length, 1);
+    } finally {
+      await closeServer(server);
+    }
+  });
+}
 
 test("PayPal callback rejects an unsupported content type before coordinator use", async () => {
   const coordinator = createCoordinator();
