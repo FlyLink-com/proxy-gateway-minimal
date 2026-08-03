@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Assemble PayPal Sandbox, XSD, or ChaoJiPay as exactly one default-off Coins recharge provider, expose only that provider's static callback route, and prove exactly-once CNY settlement through the existing Payment Store and Coins Wallet.
+**Goal:** Assemble PayPal Sandbox, XSD, or ChaoJiPay as exactly one default-off Coins recharge provider, expose only that provider's static callback route, prevent repeat dispatch of non-idempotent provider creates, and prove exactly-once CNY settlement through the existing Payment Store and Coins Wallet.
 
-**Architecture:** `server/state.mjs` remains the only composition root and derives one internal provider enum from three explicit enable flags. It creates one provider Runtime, one Registry, one resolved Adapter, and one Coordinator; `app.mjs` passes only the safe enum and Coordinator to the existing recharge router. Provider callbacks preserve raw bytes and reuse the existing provider-neutral Payment Store and Wallet settlement transaction boundaries; no selector, fallback dispatcher, schema, ledger, order-contract, or Portal change is introduced.
+**Architecture:** `server/state.mjs` remains the only composition root and derives one internal provider enum from three explicit enable flags. It creates one provider Runtime, one Registry, one resolved Adapter, and one Coordinator; `app.mjs` passes only the safe enum and Coordinator to the existing recharge router. The existing durable order row is also the provider-create dispatch claim: only a newly inserted claim may call an Adapter that declares `repeatCreateIdempotent: false`. Provider callbacks preserve raw bytes and reuse the existing provider-neutral Payment Store and Wallet settlement transaction boundaries; no selector, fallback dispatcher, schema, ledger, order-contract, or Portal change is introduced.
 
 **Tech Stack:** Node.js ESM, Express, `better-sqlite3`, Node test runner, existing Payment Provider Adapter Registry, Payment Recharge Coordinator, Payment Store, Coin Wallet Store, and the existing immutable CNY recharge price book.
+
+**Implementation status:** Tasks 1–4 are implemented and task-reviewed. Final review at `acb41449a483e47d02b71dc357d265c056076aa0` identified one blocking create-dispatch issue and two Runtime hardening issues. The approved controlled revision is committed at `e53e50814f63acd17c9174e62cdb3e2a1552f63a`; Task 5 is the single permitted final-review fix wave.
 
 ## Risk Declaration
 
@@ -41,6 +43,13 @@
 - XSD and ChaoJiPay callback routes retain raw bytes, never use `express.urlencoded()`, and enforce an exact 16,384-byte HTTP body limit.
 - Success acknowledgement is sent only for authenticated documented non-settlement status or after the verified receipt, one `paid_coins` Wallet lot, and final `credited` order are durable.
 - Unknown, malformed, mismatched, partially settled, or unknown-charge states receive no success acknowledgement and never select another provider.
+- `createOrder().replayed: false` is the only dispatch right for an Adapter whose compiled `repeatCreateIdempotent` capability is false.
+- A non-idempotent replay that remains `created` returns the same durable order with no action and makes zero provider calls. It is unresolved, not proof of no charge.
+- A replay with a durable create receipt returns the existing provider reference/action without another provider call.
+- PayPal may repeat create only because its compiled Adapter capability is exactly `repeatCreateIdempotent: true`.
+- The unresolved create window never triggers automatic query, retry, callback rebinding, Wallet credit, or provider fallback. Automated recovery remains outside this Risk B PR.
+- XSD and ChaoJiPay reject a non-exact API origin before nested credential inspection or normalization.
+- ChaoJiPay requires `redirected === false`; response metadata, body, and reader access failures collapse to `chaojipay_transport_failed` without the provider marker.
 - Do not change Payment Store, Wallet, schema/migrations, Coins ledger semantics, recharge order contract, marketplace order logic, fulfillment, refunds, chargebacks, Portal/Admin UI, dependencies, or production configuration.
 - Do not store, log, or emit credentials, merchant values, callback bodies, signatures, provider responses, customer identity, account balances, or SQLite rows as evidence.
 - Every production-code task follows RED, observed expected failure, minimal GREEN, focused pass, and a dedicated commit.
@@ -81,6 +90,7 @@ The two provider protocol codec files are a controlled refinement of the design'
 - `server/services/platform/chaojipay-payment-runtime.mjs` — enforce the exact source-owned ChaoJiPay API origin before credential scope or fetch.
 - `server/services/platform/xsd-payment-protocol-codec.mjs` — align the Base64 callback envelope ceiling with 16,384 raw bytes.
 - `server/services/platform/chaojipay-payment-protocol-codec.mjs` — align the Base64 callback envelope ceiling with 16,384 raw bytes.
+- `server/services/platform/payment-recharge-coordinator.mjs` — honor the resolved Adapter's repeat-create capability and use `createOrder().replayed` as the non-idempotent dispatch gate.
 - `server/state.mjs` — derive the single-active provider, validate only its configuration, build one provider stack, and expose the safe provider enum.
 - `server/app.mjs` — require a recognized provider enum for recharge routing and include all three static callback paths in the disabled boundary.
 - `server/routes/portal-coin-recharge.mjs` — accept the safe provider enum, mount one static callback, preserve provider-specific raw bytes and headers, and keep the Portal order API unchanged.
@@ -88,6 +98,7 @@ The two provider protocol codec files are a controlled refinement of the design'
 - `server/tests/platform-chaojipay-payment-runtime.test.mjs` — exact-origin failure before credential/fetch.
 - `server/tests/platform-xsd-payment-protocol-codec.test.mjs` — 16,384/16,385 decoded-byte envelope limits.
 - `server/tests/platform-chaojipay-payment-protocol-codec.test.mjs` — 16,384/16,385 decoded-byte envelope limits.
+- `server/tests/platform-payment-recharge-coordinator.test.mjs` — concurrent replay, create-receipt-loss, durable-action replay, and PayPal repeat-create compatibility.
 - `server/tests/state.test.mjs` — enablement truth table, disabled getter tripwires, selected-only config reads, strict configuration validation, and one-stack startup assertions.
 - `server/tests/portal-coin-recharge-routes.test.mjs` — callback path isolation, content-type/header rules, raw-byte preservation, exact body limit, URL shape, and generic errors.
 - `server/tests/app-security-boundary.test.mjs` — keep Runtime, credentials, and provider configuration out of App routing.
@@ -96,7 +107,6 @@ The two provider protocol codec files are a controlled refinement of the design'
 **Explicitly unchanged:**
 
 - `server/services/platform/payment-provider-adapter-registry.mjs`
-- `server/services/platform/payment-recharge-coordinator.mjs`
 - `server/services/platform/payment-store.mjs`
 - `server/services/platform/payment-store-migrations.mjs`
 - `server/services/platform/coin-wallet-store.mjs`
@@ -120,7 +130,7 @@ If an implementation task requires any explicitly unchanged file, stop and retur
 - Each selected branch creates one Runtime, one `createStaticPaymentProviderAdapterRegistry(...)`, one resolved Adapter, and one `createPaymentRechargeCoordinator(...)`.
 - No Registry, Adapter, Coordinator, Payment Store, Wallet, or schema signature changes.
 
-- [ ] **Step 1: Add RED enablement and disabled-read tests**
+- [x] **Step 1: Add RED enablement and disabled-read tests**
 
 Replace the PayPal two-flag test with a table covering the top-level flag and all three provider flags:
 
@@ -164,7 +174,7 @@ Each must construct without invoking the disabled getters or provider fetch.
 
 Create each `env` with `runtimeEnv(selectedProviderValues)` first, then attach disabled-provider accessors with `Object.defineProperty`. Do not pass accessor-bearing objects through the `runtimeEnv()` spread because spreading would itself invoke the getter before `createRuntimeState()` is under test.
 
-- [ ] **Step 2: Add RED strict-configuration and successful-assembly tests**
+- [x] **Step 2: Add RED strict-configuration and successful-assembly tests**
 
 Add exact synthetic configuration helpers in `state.test.mjs`:
 
@@ -231,7 +241,7 @@ Add invalid tables which independently remove each required selected-provider va
 
 Every case must throw an error with `code === "coin_recharge_prerequisite_missing"`, make zero fetch calls, and leave the temporary database removable after cleanup.
 
-- [ ] **Step 3: Run state and source-boundary tests and observe RED**
+- [x] **Step 3: Run state and source-boundary tests and observe RED**
 
 Run:
 
@@ -241,7 +251,7 @@ node --test server/tests/state.test.mjs server/tests/platform-payment-provider-s
 
 Expected: state rejects XSD/ChaoJiPay as flag mismatches or lacks `paymentRechargeProvider`; the current source-boundary test also forbids the required Runtime imports from `server/state.mjs`.
 
-- [ ] **Step 4: Implement the fail-closed provider selector**
+- [x] **Step 4: Implement the fail-closed provider selector**
 
 At the existing flag block, replace the PayPal equality rule with:
 
@@ -268,7 +278,7 @@ const coinRechargeEnabled = paymentRechargeProvider !== null;
 
 Do not access any provider-specific configuration before this selector completes.
 
-- [ ] **Step 5: Add strict URL/origin helpers inside `state.mjs`**
+- [x] **Step 5: Add strict URL/origin helpers inside `state.mjs`**
 
 Add internal helpers next to the existing env parsers. They throw `coinRechargePrerequisiteError()` and never include the rejected value in the error:
 
@@ -305,7 +315,7 @@ function providerActionOrigins(value, field) {
 
 For XSD return URL, call `providerHttpsUrl()` without `callbackPath` or `originOnly`; this allows an application path and query but rejects HTTP, credentials, and fragments. For callback URLs, supply the exact provider callback path, which also rejects query and fragment.
 
-- [ ] **Step 6: Build one provider-specific stack and one shared durable layer**
+- [x] **Step 6: Build one provider-specific stack and one shared durable layer**
 
 Add imports for both CNY Runtimes and `createProductionCnyPaymentRechargeOffers()`. Inside the existing `if (coinRechargeEnabled)` block, keep prerequisite validation first, then branch exactly once on `paymentRechargeProvider`.
 
@@ -411,7 +421,7 @@ Keep the existing PayPal branch behavior and USD offer parser unchanged. In ever
 
 Expose `paymentRechargeProvider` beside `coinRechargeEnabled` in `state.platform`. Runtime construction must not call provider fetch, Payment Store write methods, or Wallet write methods.
 
-- [ ] **Step 7: Narrowly update the source boundary**
+- [x] **Step 7: Narrowly update the source boundary**
 
 Rename the current boundary test to:
 
@@ -439,7 +449,7 @@ await assertCorpusDoesNotMatch(
 
 Keep `server/app.mjs`, `server/routes/portal-coin-recharge.mjs`, Payment Store, Wallet Store, root entries, and Admin/Portal sources inside that corpus. Do not add the Runtimes to `PHASE_ONE_ROOTS`; the phase-one graph intentionally forbids credential and network seams.
 
-- [ ] **Step 8: Run focused GREEN tests**
+- [x] **Step 8: Run focused GREEN tests**
 
 Run:
 
@@ -449,7 +459,7 @@ node --test server/tests/state.test.mjs server/tests/platform-payment-provider-s
 
 Expected: PASS; default-off reads are zero, invalid combinations fail before provider config, exactly one complete provider stack assembles without fetch, CNY offers expose one method, PayPal remains USD-compatible, and only `state.mjs` imports the CNY Runtimes.
 
-- [ ] **Step 9: Commit the state assembly**
+- [x] **Step 9: Commit the state assembly**
 
 ```powershell
 git add server/state.mjs server/tests/state.test.mjs server/tests/platform-payment-provider-source-boundary.test.mjs
@@ -475,7 +485,7 @@ git commit -m "feat(payment): assemble single-active provider"
 - Produces: the same signatures, but `apiOrigin` accepts only the exact source constant for its provider. Rejection occurs during construction, before `credentialLoader.withCredential()` or `fetchFn()` can run. Callback envelope validation accepts at most 16,384 decoded bytes, represented by at most 21,848 canonical Base64 characters.
 - No Adapter, Registry, Coordinator, or route interface changes in this task.
 
-- [ ] **Step 1: Add RED exact-origin tests**
+- [x] **Step 1: Add RED exact-origin tests**
 
 Extend each runtime test with a credential and fetch tripwire. The XSD test uses this structure:
 
@@ -578,7 +588,7 @@ invalid(() => encodeChaoJiPayCallbackVerificationRequest({
 
 Use each test file's existing provider-specific callback helper and header value. This step changes only the envelope size check; the callback field/signature parser remains unchanged.
 
-- [ ] **Step 2: Run the runtime tests and observe RED**
+- [x] **Step 2: Run the runtime tests and observe RED**
 
 Run:
 
@@ -588,7 +598,7 @@ node --test server/tests/platform-xsd-payment-runtime.test.mjs server/tests/plat
 
 Expected: the new alternate valid HTTPS origins construct successfully on the baseline, so the exact-origin assertions fail; `fetchCalls` remains `0`.
 
-- [ ] **Step 3: Add source-owned constants and exact checks**
+- [x] **Step 3: Add source-owned constants and exact checks**
 
 At module scope add:
 
@@ -620,7 +630,7 @@ const MAX_CALLBACK_BASE64_CHARS = Math.ceil(MAX_CALLBACK_BYTES / 3) * 4;
 
 Require both canonical Base64 round-trip and `body.length <= MAX_CALLBACK_BYTES`. In XSD, stop comparing callback bytes to `MAX_JSON_BYTES`; that constant remains only for provider JSON responses.
 
-- [ ] **Step 4: Run focused GREEN tests**
+- [x] **Step 4: Run focused GREEN tests**
 
 Run:
 
@@ -630,7 +640,7 @@ node --test server/tests/platform-xsd-payment-runtime.test.mjs server/tests/plat
 
 Expected: PASS; exact origins construct, every lookalike fails before credential use/fetch, and compiled capabilities remain unchanged.
 
-- [ ] **Step 5: Commit the runtime hardening**
+- [x] **Step 5: Commit the runtime hardening**
 
 ```powershell
 git add server/services/platform/xsd-payment-runtime.mjs server/services/platform/chaojipay-payment-runtime.mjs server/services/platform/xsd-payment-protocol-codec.mjs server/services/platform/chaojipay-payment-protocol-codec.mjs server/tests/platform-xsd-payment-runtime.test.mjs server/tests/platform-chaojipay-payment-runtime.test.mjs server/tests/platform-xsd-payment-protocol-codec.test.mjs server/tests/platform-chaojipay-payment-protocol-codec.test.mjs
@@ -655,7 +665,7 @@ git commit -m "fix(payment): pin cny provider api origins"
 - PayPal callback keeps the current raw JSON parser, five verification headers, and `sha256(transmissionId + NUL + rawBody)` reference algorithm.
 - XSD/ChaoJiPay pass one normalized content-type header and use `<provider>_callback_<sha256(rawBody)>`.
 
-- [ ] **Step 1: Add RED routing-isolation tests**
+- [x] **Step 1: Add RED routing-isolation tests**
 
 Update the route test's state helper to set the selected provider:
 
@@ -705,7 +715,7 @@ For each active callback path, send wrong method, exact path plus query, case-ch
 
 Request `/api/platform/payments/xsd/query`, `/api/platform/payments/chaojipay/query`, and `/api/portal/coins/recharge/orders/payment_order_1/query`; all must return 404 with zero Coordinator calls. This locks XSD query as internal Adapter capability only and keeps ChaoJiPay query unavailable.
 
-- [ ] **Step 2: Add a raw HTTP helper and RED form-boundary tests**
+- [x] **Step 2: Add a raw HTTP helper and RED form-boundary tests**
 
 Import the Node HTTP client:
 
@@ -778,7 +788,7 @@ assert.equal(callback.callbackRequestRef, `${provider}_callback_${digest}`);
 
 Keep the existing PayPal raw-byte test unchanged and explicitly reassert its reference includes the transmission ID rather than using the CNY algorithm.
 
-- [ ] **Step 3: Run route/security tests and observe RED**
+- [x] **Step 3: Run route/security tests and observe RED**
 
 Run:
 
@@ -788,7 +798,7 @@ node --test server/tests/portal-coin-recharge-routes.test.mjs server/tests/app-s
 
 Expected: CNY paths are absent, inactive callbacks can fall into authentication instead of 404, the router does not accept `paymentRechargeProvider`, and no stable 16,384/16,385 parser boundary exists.
 
-- [ ] **Step 4: Add the safe enum to App routing and an early 404 boundary**
+- [x] **Step 4: Add the safe enum to App routing and an early 404 boundary**
 
 In `portalCoinRechargeRoutesEnabled(state)`, require:
 
@@ -817,7 +827,7 @@ function resemblesKnownPaymentCallback(pathname) {
 
 Use the query-free pathname already derived from `req.originalUrl`. Return an empty 404 for `resemblesKnownPaymentCallback(pathname)`. When recharge is disabled, retain the existing 404 boundary for `/api/portal/coins/recharge` and its children. Do not read Runtime, credential, merchant, or provider-specific environment fields in `app.mjs`.
 
-- [ ] **Step 5: Add fixed callback descriptors and safe raw middleware**
+- [x] **Step 5: Add fixed callback descriptors and safe raw middleware**
 
 In `portal-coin-recharge.mjs`, add a frozen source table:
 
@@ -884,7 +894,7 @@ new TextDecoder("utf-8", { fatal: true }).decode(req.body);
 
 Catch decoding failure as `payment_recharge_request_invalid` with status 400.
 
-- [ ] **Step 6: Register one provider-specific callback handler**
+- [x] **Step 6: Register one provider-specific callback handler**
 
 Keep the PayPal handler and helper names provider-specific:
 
@@ -923,7 +933,7 @@ const result = await coordinator.acceptProviderCallback({
 
 Use the existing ISO timestamp check and acknowledgement projection. A Coordinator error remains generic retryable 503 and never emits `SUCCESS` or `success`.
 
-- [ ] **Step 7: Strengthen the App source boundary**
+- [x] **Step 7: Strengthen the App source boundary**
 
 Extend `app-security-boundary.test.mjs`:
 
@@ -937,7 +947,7 @@ assert.doesNotMatch(
 
 Assert the three callback paths are present only as static literals in the selected recharge route and App's pre-auth fallback. Do not permit dynamic import, provider Runtime import, or credential module import in App or the route.
 
-- [ ] **Step 8: Run focused GREEN tests**
+- [x] **Step 8: Run focused GREEN tests**
 
 Run:
 
@@ -947,7 +957,7 @@ node --test server/tests/portal-coin-recharge-routes.test.mjs server/tests/app-s
 
 Expected: PASS; only one exact callback is reachable, inactive/case/trailing/method variants are 404, selected query is 400, content and encoding faults stop before Coordinator, 16,384 bytes are preserved, 16,385 bytes receive generic 413, and no Runtime/credential surface reaches App or route.
 
-- [ ] **Step 9: Commit the HTTP boundary**
+- [x] **Step 9: Commit the HTTP boundary**
 
 ```powershell
 git add server/app.mjs server/routes/portal-coin-recharge.mjs server/tests/portal-coin-recharge-routes.test.mjs server/tests/app-security-boundary.test.mjs
@@ -971,7 +981,7 @@ git commit -m "feat(payment): route single-active callbacks"
 - Uses `coins_30`, amount `3000` minor CNY units, and exactly `30 paid_coins`.
 - Uses no merchant file, external network, public callback, production endpoint, or real account.
 
-- [ ] **Step 1: Build the real synthetic harness in a new test file**
+- [x] **Step 1: Build the real synthetic harness in a new test file**
 
 Import exactly these production components:
 
@@ -1120,7 +1130,7 @@ const coordinatorWallet = Object.freeze({
 
 Use the same shape for `markOrderCredited`. Close the HTTP server, both stores, and the database in `finally` blocks.
 
-- [ ] **Step 2: Define exact XSD and ChaoJiPay provider cases**
+- [x] **Step 2: Define exact XSD and ChaoJiPay provider cases**
 
 Use these durable logical bindings and synthetic secrets:
 
@@ -1236,7 +1246,7 @@ Generate ChaoJiPay success fields:
 
 Append the matching signature, then encode with `new URLSearchParams(fields).toString()` without re-encoding it after the HTTP body is built.
 
-- [ ] **Step 3: Add real signed success and duplicate-replay tests**
+- [x] **Step 3: Add real signed success and duplicate-replay tests**
 
 For each provider:
 
@@ -1280,7 +1290,7 @@ assert.equal(
 
 Capture receipt/operation/lot/credit-origin refs after the first callback and prove the second callback leaves all four arrays byte-for-byte equal.
 
-- [ ] **Step 4: Add non-settlement, rejection, and Wallet-failure tests**
+- [x] **Step 4: Add non-settlement, rejection, and Wallet-failure tests**
 
 For signed non-settlement, use XSD status `-1` and ChaoJiPay status `0`, recompute the signature, and assert HTTP 200 with the documented acknowledgement, zero verified callback receipts, zero Wallet operation receipts, zero paid lots, and zero paid balance.
 
@@ -1296,7 +1306,7 @@ Run the existing Coordinator regression in the same focused command to retain ze
 
 With `failWalletOnce: true`, the first signed success must return generic 503 with one verified callback receipt and zero Wallet lots; the byte-identical retry must return the exact success acknowledgement, close the same order as credited, and leave exactly one operation, one lot, and one credit origin.
 
-- [ ] **Step 5: Add post-credit close-failure recovery proof**
+- [x] **Step 5: Add post-credit close-failure recovery proof**
 
 With `failCloseOnce: true`:
 
@@ -1309,7 +1319,7 @@ With `failCloseOnce: true`:
 
 This is the exact proof that acknowledgement follows durable order close and that replay reuses the original settlement identity rather than minting another lot.
 
-- [ ] **Step 6: Run the real integration and durable regressions**
+- [x] **Step 6: Run the real integration and durable regressions**
 
 Run:
 
@@ -1319,14 +1329,375 @@ node --test server/tests/platform-cny-payment-recharge-http-settlement.test.mjs 
 
 Expected: PASS for both providers, with exact acknowledgements only after durable completion and exactly one verified callback receipt, Wallet operation, paid lot, and credit origin after any replay.
 
-If this test requires a Payment Store, Wallet, schema/migration, Adapter protocol, or Coordinator semantic change, stop. That is outside this approved implementation surface and requires design review rather than an opportunistic fix.
+If this test requires a Payment Store, Wallet, schema/migration, or Adapter protocol change, stop. The final review did require one narrow Coordinator semantic change; that exception returned to design and was approved in `docs/superpowers/specs/2026-08-03-cny-payment-provider-single-active-assembly-design.md`. No other Coordinator expansion is authorized.
 
-- [ ] **Step 7: Commit the full-stack evidence**
+- [x] **Step 7: Commit the full-stack evidence**
 
 ```powershell
 git add server/tests/platform-cny-payment-recharge-http-settlement.test.mjs
 git commit -m "test(payment): prove cny callback settlement"
 ```
+
+---
+
+### Task 5: Close Final-Review Create-Dispatch And Runtime Gaps
+
+This task is the single final-review fix wave required by
+`superpowers:subagent-driven-development`. It carries the complete blocking
+finding list. After it, run exactly one scoped re-review; do not start a second
+fix wave.
+
+**Files:**
+
+- Modify: `server/services/platform/payment-recharge-coordinator.mjs:98-130,253-293`
+- Test: `server/tests/platform-payment-recharge-coordinator.test.mjs:119-321`
+- Modify: `server/services/platform/xsd-payment-runtime.mjs:234-243`
+- Test: `server/tests/platform-xsd-payment-runtime.test.mjs:25-65`
+- Modify: `server/services/platform/chaojipay-payment-runtime.mjs:177-213,254-265`
+- Test: `server/tests/platform-chaojipay-payment-runtime.test.mjs:47-150,178-236`
+- Modify: `docs/superpowers/specs/2026-08-03-cny-payment-provider-single-active-assembly-design.md`
+- Modify: `docs/superpowers/plans/2026-08-03-cny-payment-provider-single-active-assembly.md`
+
+**Interfaces:**
+
+- Consumes: `store.createOrder(input) -> { order, replayed }`, where
+  `replayed: false` is granted to exactly one account/idempotency-key claim.
+- Consumes: `adapter.capabilities.repeatCreateIdempotent: boolean`, already
+  normalized by the compiled Adapter contract and Registry.
+- Produces: the existing `createRechargeOrder(value) -> { order, wallet,
+  replayed? }` result without changing the Portal HTTP order projection.
+- Produces: exact-origin rejection before credential inspection and a generic
+  ChaoJiPay response failure boundary.
+- Does not produce: Store/schema fields, retry leases, provider fallback,
+  automatic query/reconciliation, callback rebinding, or Portal behavior.
+
+- [ ] **Step 1: Add RED Coordinator tests for the durable dispatch claim**
+
+Extend the existing `createAdapter()` test helper with a real capability and an
+injectable create function:
+
+```js
+function createAdapter({
+  repeatCreateIdempotent = true,
+  createRechargeOrderFn = null,
+  callbackFactOverrides = {},
+  callbackFactOverridesSequence = [],
+  callbackDisposition = "settle",
+  capturePaymentFact = "default",
+  adapterKey = "paypal_v1",
+  paymentMethod = "paypal",
+  merchantBindingRef = "paypal_sandbox_primary",
+  captureInputs = [],
+  acknowledgementCalls = [],
+} = {}) {
+  return Object.freeze({
+    adapterKey,
+    paymentMethod,
+    merchantBindingRef,
+    capabilities: Object.freeze({ repeatCreateIdempotent }),
+    async createRechargeOrder(input) {
+      if (createRechargeOrderFn) return createRechargeOrderFn(input);
+      return {
+        providerOrderRef: "paypal_order_1",
+        status: "entry_ready",
+        chargeCertainty: "possibly_charged",
+        nextAction: {
+          type: "redirect",
+          url: "https://www.sandbox.paypal.com/checkoutnow?token=safe",
+          expiresAt: EXPIRES_AT,
+        },
+        occurredAt: NOW,
+      };
+    },
+  });
+}
+```
+
+Add the `capabilities` property and injectable branch to the existing helper;
+do not delete or otherwise change its existing capture, callback, error, and
+acknowledgement methods.
+
+Allow `createSystem()` to pass `adapterOptions` and to wrap only
+`recordOperationReceipt()` with `failCreateReceiptOnce`. Keep the real SQLite
+Payment Store and Wallet; the wrapper must delegate every non-injected call.
+
+Add a concurrency test whose first provider call waits on a controlled Promise
+and whose second provider call throws `duplicate_provider_dispatch`. Start the
+first Coordinator call, wait until it enters the provider, then invoke the same
+account/offer/idempotency key again. The desired assertions are literal:
+
+```js
+assert.equal(replay.order.orderRef, firstOrderRef);
+assert.equal(replay.order.status, "created");
+assert.equal(replay.order.nextAction, null);
+assert.equal(replay.replayed, true);
+assert.equal(providerCalls, 1);
+```
+
+Release the first provider call in `finally`, await it, then call the
+Coordinator a third time and assert the durable `entry_ready` order and exact
+redirect action are returned while `providerCalls` remains `1`.
+
+Add a create-receipt-loss test with `repeatCreateIdempotent: false` and
+`failCreateReceiptOnce: true`:
+
+```js
+await assert.rejects(() => firstCreate, /injected_create_receipt_failure/u);
+const replay = await createRechargeOrder(system.coordinator);
+assert.equal(replay.order.status, "created");
+assert.equal(replay.order.providerOrderRef, null);
+assert.equal(replay.order.nextAction, null);
+assert.equal(replay.replayed, true);
+assert.equal(providerCalls, 1);
+assert.equal(database.prepare(
+  "select count(*) as count from platform_payment_receipts where receipt_type = 'create'",
+).get().count, 0);
+```
+
+Add a PayPal compatibility test with `repeatCreateIdempotent: true` and the same
+one-time receipt failure. The second call must dispatch the same deterministic
+`providerRequestRef`, persist the receipt, and return `entry_ready`; a third
+call returns the saved action without dispatch. Assert provider call counts
+`1`, `2`, and `2` at the three boundaries.
+
+- [ ] **Step 2: Run the Coordinator tests and observe RED**
+
+Run:
+
+```powershell
+node --test server/tests/platform-payment-recharge-coordinator.test.mjs
+```
+
+Expected RED evidence:
+
+- the non-idempotent concurrent replay reaches
+  `duplicate_provider_dispatch`, or provider call count becomes `2`;
+- the receipt-loss replay calls the provider a second time instead of returning
+  the unresolved durable order.
+
+Do not edit production code until these failures have been observed and copied
+to the task report.
+
+- [ ] **Step 3: Implement the minimal capability-aware Coordinator gate**
+
+At construction, extend the existing validation condition with this exact
+clause, then snapshot the capability immediately after the validation block:
+
+```js
+|| typeof adapter.capabilities?.repeatCreateIdempotent !== "boolean"
+```
+
+```js
+const repeatCreateIdempotent = adapter.capabilities.repeatCreateIdempotent;
+```
+
+Immediately after the existing terminal/status replay return, add only this
+dispatch gate:
+
+```js
+if (created.order.status !== "created") return publicResult(created.order);
+if (created.replayed && !repeatCreateIdempotent) {
+  return publicResult(created.order, null, { replayed: true });
+}
+```
+
+Do not mark the order failed, expired, verified, or reconciliation-required.
+Do not query a provider, synthesize a receipt/action, change the Store, or add a
+fallback.
+
+- [ ] **Step 4: Run the Coordinator tests and observe GREEN**
+
+Run:
+
+```powershell
+node --test server/tests/platform-payment-recharge-coordinator.test.mjs
+```
+
+Expected: all Coordinator tests pass; the new non-idempotent cases observe one
+provider call, and the PayPal compatibility case observes two calls only until
+the durable receipt exists.
+
+- [ ] **Step 5: Add RED Runtime tests for credential order and hostile responses**
+
+In each Runtime test file, add a test with `{ concurrency: false }` using this
+exact inspection pattern around its existing `runtime()` helper. Use
+`https://wrong.example.test` as the origin and the provider's existing generic
+transport error in `assert.throws`:
+
+```js
+const credential = {
+  merchantId: "merchant_demo",
+  merchantSecret: SECRET,
+  merchantScopeDigest: MERCHANT_DIGEST,
+};
+const original = Object.getOwnPropertyDescriptor(Object, "getOwnPropertyDescriptors");
+let credentialDescriptorReads = 0;
+let fetchCalls = 0;
+Object.defineProperty(Object, "getOwnPropertyDescriptors", {
+  ...original,
+  value(value) {
+    if (value === credential) credentialDescriptorReads += 1;
+    return original.value(value);
+  },
+});
+try {
+  assert.throws(() => runtime(async () => {
+    fetchCalls += 1;
+    throw new Error("must_not_fetch");
+  }, {
+    apiOrigin: "https://wrong.example.test",
+    credential,
+  }), /_transport_failed/u);
+} finally {
+  Object.defineProperty(Object, "getOwnPropertyDescriptors", original);
+}
+```
+
+Assert both literals:
+
+```js
+assert.equal(credentialDescriptorReads, 0);
+assert.equal(fetchCalls, 0);
+```
+
+The current implementation must fail this test with
+`credentialDescriptorReads === 1`.
+
+In the ChaoJiPay Runtime tests, create a valid 200 response with no
+`redirected` own property and assert exact rejection
+`chaojipay_transport_failed`. Add hostile objects whose `status` getter, `body`
+getter, and `body.getReader()` respectively throw
+`synthetic-sensitive-response-marker`. For every case, assert:
+
+```js
+await assert.rejects(operation, (error) => {
+  assert.equal(error.message, "chaojipay_transport_failed");
+  assert.equal(String(error).includes("synthetic-sensitive-response-marker"), false);
+  return true;
+});
+```
+
+- [ ] **Step 6: Run the Runtime tests and observe RED**
+
+Run:
+
+```powershell
+node --test `
+  server/tests/platform-xsd-payment-runtime.test.mjs `
+  server/tests/platform-chaojipay-payment-runtime.test.mjs
+```
+
+Expected RED evidence:
+
+- each wrong-origin constructor inspects its credential once;
+- the ChaoJiPay response without `redirected` is accepted; and
+- at least the hostile `status` or `getReader()` marker escapes instead of the
+  generic transport error.
+
+- [ ] **Step 7: Implement exact-origin-first and generic ChaoJiPay response reads**
+
+In the XSD Runtime constructor, keep the outer `snapshot()` first, then use
+this exact order before profile, function, allowlist, or route-map
+normalization:
+
+```js
+const input = snapshot(value, [
+  "credential", "fetchFn", "apiOrigin", "allowedActionOrigins", "routeMap",
+  "profileRef", "credentialProfileRef", "nowFn",
+]);
+const apiOrigin = origin(input.apiOrigin);
+if (apiOrigin !== XSD_API_ORIGIN || input.apiOrigin !== XSD_API_ORIGIN) fail();
+const currentCredential = credential(input.credential);
+```
+
+Apply the corresponding exact order in ChaoJiPay:
+
+```js
+const input = snapshot(value, [
+  "credential", "fetchFn", "apiOrigin", "allowedActionOrigins", "routeMap",
+  "profileRef", "credentialProfileRef", "createRequestIp", "nowFn",
+]);
+const apiOrigin = origin(input.apiOrigin);
+if (apiOrigin !== CHAOJIPAY_API_ORIGIN || input.apiOrigin !== CHAOJIPAY_API_ORIGIN) fail();
+const currentCredential = credential(input.credential);
+```
+
+For ChaoJiPay `responseText()`, read response metadata, body, and reader once
+inside one genericizing `try` and require explicit non-redirection:
+
+```js
+let status;
+let reader;
+try {
+  if (response === null || typeof response !== "object") fail();
+  status = response.status;
+  if (!Number.isSafeInteger(status) || response.redirected !== false) fail();
+  if (typeof response.url !== "string" || response.url !== requestUrl) fail();
+  const declaredLength = response.headers?.get?.("content-length");
+  if (
+    declaredLength !== null
+    && declaredLength !== undefined
+    && (!/^(?:0|[1-9]\\d*)$/u.test(declaredLength)
+      || Number(declaredLength) > MAX_JSON_BYTES)
+  ) fail();
+  if (status < 200 || status > 299) fail();
+  const body = response.body;
+  if (body === null || typeof body?.getReader !== "function") fail();
+  reader = body.getReader();
+} catch {
+  fail();
+}
+```
+
+Retain the existing bounded stream loop, cancellation, release, fatal UTF-8,
+and JSON parsing behavior unchanged.
+
+- [ ] **Step 8: Run focused GREEN and regression tests**
+
+Run:
+
+```powershell
+node --test `
+  server/tests/platform-payment-recharge-coordinator.test.mjs `
+  server/tests/platform-xsd-payment-runtime.test.mjs `
+  server/tests/platform-chaojipay-payment-runtime.test.mjs `
+  server/tests/platform-payment-provider-adapter-registry.test.mjs `
+  server/tests/platform-cny-payment-recharge-http-settlement.test.mjs `
+  server/tests/portal-coin-recharge-routes.test.mjs
+```
+
+Expected: all tests pass with synthetic inputs, zero external provider calls,
+and no Store/schema/Wallet/Portal source changes.
+
+- [ ] **Step 9: Update source-only status and commit the complete fix wave**
+
+Set the design status to `Implemented source-only; scoped re-review and
+exact-head validation pending`. In this plan, check every completed Task 5 step
+and append the actual RED/GREEN command results and commit identity to the
+implementation-status paragraph. Keep `production_state: not_deployed` and do
+not claim activation or deployment.
+
+Run:
+
+```powershell
+git diff --check
+git diff --name-only acb41449a483e47d02b71dc357d265c056076aa0...HEAD
+git status --short --branch
+git add `
+  server/services/platform/payment-recharge-coordinator.mjs `
+  server/tests/platform-payment-recharge-coordinator.test.mjs `
+  server/services/platform/xsd-payment-runtime.mjs `
+  server/tests/platform-xsd-payment-runtime.test.mjs `
+  server/services/platform/chaojipay-payment-runtime.mjs `
+  server/tests/platform-chaojipay-payment-runtime.test.mjs `
+  docs/superpowers/specs/2026-08-03-cny-payment-provider-single-active-assembly-design.md `
+  docs/superpowers/plans/2026-08-03-cny-payment-provider-single-active-assembly.md
+git commit -m "fix(payment): close provider assembly review gaps"
+```
+
+Expected: the fix range contains only the eight listed files; no Store,
+migration, Wallet, Portal/Admin, dependency, or production configuration file
+is modified.
 
 ---
 
@@ -1386,7 +1757,10 @@ Required final assertions:
 - ChaoJiPay binds WeChat and only its callback path;
 - inactive callback paths and case/method/trailing variants are 404 before authentication;
 - selected callback query is 400; content/encoding faults are 400/415; 16,385 bytes is generic 413;
-- provider API origins cannot be redirected by environment or URL lookalikes;
+- provider API origins cannot be redirected by environment or URL lookalikes and reject before nested credential inspection;
+- missing or hostile ChaoJiPay response metadata/accessors produce only `chaojipay_transport_failed`;
+- concurrent and receipt-loss replay dispatch a non-idempotent provider create at most once and return the same unresolved durable order;
+- a saved create receipt/action replays without another provider call, while PayPal retains capability-authorized deterministic create retry;
 - real signed XSD and ChaoJiPay callbacks settle exactly one `paid_coins` lot;
 - duplicate, Wallet-failure retry, and post-credit close-failure retry reuse the same verified receipt, Wallet operation, lot, and credit origin;
 - signed non-settlement status acknowledges with zero Wallet writes;
@@ -1403,12 +1777,14 @@ production_state: not_deployed
 identity_impact: false
 source_dependency: "PR #577 merged at exact master ancestor"
 provider_model: single_active_default_off
+provider_create_replay_model: durable_order_claim_at_most_once
 schema_change: false
 wallet_semantics_change: false
 portal_contract_change: false
+unknown_create_recovery: deferred_risk_a
 production_authority: none
 ```
 
 Keep the PR Draft until the exact-head validation and both final reviews are clean. Ready/merge is a separate user decision. Merge does not authorize production deployment, credential binding, callback ingress, provider activation, or a paid canary; each provider still requires its own later Risk A gate. The ChaoJiPay gate must additionally resolve whether `PLATFORM_CHAOJIPAY_CREATE_REQUEST_IP` means payer IP or merchant egress IP before any activation.
 
-Known pre-activation frontend gap: the current Portal return hook invokes the capture endpoint when a returned order is still `entry_ready`. XSD and ChaoJiPay intentionally have no capture capability; they settle by callback. This default-off backend PR does not change Portal code under the approved scope. Before either CNY provider can be activated for users, a separate reviewed frontend design/source change must make callback-driven returned orders poll their durable order state without attempting provider capture. A fast webhook that happens to credit before return is not sufficient proof, and the Risk A activation gate must stop if this gap remains.
+Known pre-activation frontend gaps: the current Portal return hook invokes the capture endpoint when a returned order is still `entry_ready`, while XSD and ChaoJiPay intentionally have no capture capability and settle by callback. The Portal also does not poll a `created` order with no action, which is the conservative result of replaying an unresolved non-idempotent dispatch claim. This default-off backend PR does not change Portal code under the approved scope. Before either CNY provider can be activated for users, a separate reviewed frontend design/source change must poll callback-driven and unresolved durable order states without attempting unsupported capture, repeat create, or provider fallback. A fast webhook that happens to credit before return is not sufficient proof, and the Risk A activation gate must stop if either gap remains.
