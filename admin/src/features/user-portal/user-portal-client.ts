@@ -14,6 +14,7 @@ import {
 } from "./wallet";
 import {
   createPortalRechargeClient,
+  parsePortalRechargeTrustedActionOriginsJson,
   type PortalRechargeClient,
   type PortalRechargeTrustedActionOriginsByAdapter
 } from "./recharge";
@@ -493,6 +494,7 @@ export type HttpUserPortalClientOptions = {
   baseUrl?: string;
   fetchFn?: typeof fetch;
   now?: () => Date;
+  rechargeTrustedActionOriginsJson?: string;
   rechargeTrustedActionOriginsByAdapter?: PortalRechargeTrustedActionOriginsByAdapter;
 };
 
@@ -507,6 +509,19 @@ async function createQrDataUri(otpauthUri: string) {
 
 function portalError(message: string) {
   return new Error(message);
+}
+
+function rechargeTrustedActionOrigins(
+  options: HttpUserPortalClientOptions,
+): PortalRechargeTrustedActionOriginsByAdapter | undefined {
+  const configured = parsePortalRechargeTrustedActionOriginsJson(
+    options.rechargeTrustedActionOriginsJson,
+  );
+  if (
+    configured !== undefined
+    && options.rechargeTrustedActionOriginsByAdapter !== undefined
+  ) throw portalError("Portal recharge configuration is invalid.");
+  return configured ?? options.rechargeTrustedActionOriginsByAdapter;
 }
 
 function requiredText(value: string | undefined, message: string) {
@@ -1840,6 +1855,7 @@ export function createHttpUserPortalClient(
   const baseUrl = options.baseUrl ?? "";
   const fetchFn = options.fetchFn ?? fetch;
   const now = options.now ?? (() => new Date());
+  const rechargeActionOrigins = rechargeTrustedActionOrigins(options);
 
   async function createSession(
     accountId: string,
@@ -1867,7 +1883,7 @@ export function createHttpUserPortalClient(
     recharge: createPortalRechargeClient({
       baseUrl,
       fetchFn,
-      trustedActionOriginsByAdapter: options.rechargeTrustedActionOriginsByAdapter,
+      trustedActionOriginsByAdapter: rechargeActionOrigins,
     }),
     async issueHumanChallenge(input = {}) {
       const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/human-challenges"), {

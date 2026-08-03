@@ -12,6 +12,9 @@ import {
   stagePortalRechargeReturn,
 } from "./portal-recharge-return";
 
+const SETTLEMENT_POLL_INTERVAL_MS = 2_000;
+const SETTLEMENT_POLL_WINDOW_MS = 120_000;
+
 export type PortalRechargeModel = {
   available: boolean;
   dialogOpen: boolean;
@@ -44,6 +47,29 @@ function returnResolved(order: PortalRechargeOrder) {
   return !nonTerminal(order);
 }
 
+function captureOnReturn(order: PortalRechargeOrder) {
+  return order.status === "entry_ready" && order.adapterKey === "paypal_v1";
+}
+
+function retryableRechargeFailure(caught: unknown) {
+  return caught instanceof PortalRechargeClientError && caught.retryable;
+}
+
+type PaymentRedirectResult = "not_applicable" | "blocked" | "redirected";
+
+function pollAfterReturn(
+  order: PortalRechargeOrder,
+  returnOrderRef: string | undefined,
+  trackedWithoutReturn: boolean,
+) {
+  if (trackedWithoutReturn) return nonTerminal(order);
+  if (order.status === "created") return order.nextAction === null;
+  if (returnOrderRef !== order.orderRef) return false;
+  return order.status === "pending"
+    || order.status === "payment_verified"
+    || (order.status === "entry_ready" && !captureOnReturn(order));
+}
+
 export function usePortalRecharge({
   client,
   enabled,
@@ -69,7 +95,12 @@ export function usePortalRecharge({
   const requestRef = useRef(0);
   const operationRef = useRef(0);
   const creditedRefsRef = useRef(new Set<string>());
-  const recoveredCaptureKeysRef = useRef(new Set<string>());
+  const recoveredCaptureRequestsRef = useRef(
+    new Map<string, Promise<PortalRechargeOrder>>(),
+  );
+  const redirectedOrderRefsRef = useRef(new Set<string>());
+  const settlementPollStartedAtRef = useRef(new Map<string, number>());
+  const trackedSettlementOrderRefsRef = useRef(new Set<string>());
   const identityRef = useRef({ client, sessionRef, sessionGeneration });
   identityRef.current = { client, sessionRef, sessionGeneration };
   const callbacksRef = useRef({ onSessionInvalid, onWalletMutation, paymentRedirect });
@@ -87,6 +118,61 @@ export function usePortalRecharge({
       && caught.code === "payment_recharge_unavailable" ? "unavailable" : "failed");
   }, []);
 
+  const notifyWalletIfCredited = useCallback((order: PortalRechargeOrder) => {
+    if (order.status === "credited" && !creditedRefsRef.current.has(order.orderRef)) {
+      creditedRefsRef.current.add(order.orderRef);
+      callbacksRef.current.onWalletMutation();
+    }
+  }, []);
+
+  const captureOrderOnce = useCallback((
+    capturedClient: PortalRechargeClient,
+    capturedSessionRef: string,
+    orderRef: string,
+    captureIdempotencyKey: string,
+  ) => {
+    const existing = recoveredCaptureRequestsRef.current.get(captureIdempotencyKey);
+    if (existing) return existing;
+    let request!: Promise<PortalRechargeOrder>;
+    request = Promise.resolve().then(() => capturedClient.captureOrder({
+      sessionRef: capturedSessionRef,
+      orderRef,
+      idempotencyKey: captureIdempotencyKey,
+    })).catch((caught: unknown) => {
+      if (
+        retryableRechargeFailure(caught)
+        && recoveredCaptureRequestsRef.current.get(captureIdempotencyKey) === request
+      ) {
+        recoveredCaptureRequestsRef.current.delete(captureIdempotencyKey);
+      }
+      throw caught;
+    });
+    recoveredCaptureRequestsRef.current.set(captureIdempotencyKey, request);
+    return request;
+  }, []);
+
+  const redirectOrderToPayment = useCallback((
+    order: PortalRechargeOrder,
+  ): PaymentRedirectResult => {
+    if (
+      order.status !== "entry_ready"
+      || order.nextAction?.type !== "redirect"
+      || redirectedOrderRefsRef.current.has(order.orderRef)
+    ) return "not_applicable";
+    const staged = stagePortalRechargeReturn({
+      version: 1,
+      orderRef: order.orderRef,
+      captureIdempotencyKey: idempotencyKey("capture"),
+    });
+    if (!staged) {
+      setError("failed");
+      return "blocked";
+    }
+    redirectedOrderRefsRef.current.add(order.orderRef);
+    callbacksRef.current.paymentRedirect(order.nextAction.url);
+    return "redirected";
+  }, []);
+
   useEffect(() => {
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
@@ -96,6 +182,8 @@ export function usePortalRecharge({
     setError(null);
     operationRef.current += 1;
     creditedRefsRef.current.clear();
+    settlementPollStartedAtRef.current.clear();
+    trackedSettlementOrderRefsRef.current.clear();
     if (!enabled || !client || !sessionRef) return;
     setBusy(true);
     const returnIntent = readPortalRechargeReturn();
@@ -110,22 +198,47 @@ export function usePortalRecharge({
         : null;
       const nextActiveOrder = returnedOrder ?? orders.find(nonTerminal) ?? null;
       setActiveOrder(nextActiveOrder);
+      if (
+        nextActiveOrder
+        && (
+          (nextActiveOrder.status === "created" && nextActiveOrder.nextAction === null)
+          || nextActiveOrder.status === "pending"
+          || nextActiveOrder.status === "payment_verified"
+        )
+      ) trackedSettlementOrderRefsRef.current.add(nextActiveOrder.orderRef);
       if (!returnedOrder || !returnIntent) return;
       setDialogOpen(true);
       if (returnResolved(returnedOrder)) {
+        notifyWalletIfCredited(returnedOrder);
         clearPortalRechargeReturn();
         return;
       }
       if (
-        returnedOrder.status !== "entry_ready"
-        || recoveredCaptureKeysRef.current.has(returnIntent.captureIdempotencyKey)
+        !captureOnReturn(returnedOrder)
       ) return;
-      recoveredCaptureKeysRef.current.add(returnIntent.captureIdempotencyKey);
-      const capturedOrder = await client.captureOrder({
-        sessionRef,
-        orderRef: returnedOrder.orderRef,
-        idempotencyKey: returnIntent.captureIdempotencyKey,
-      });
+      const captureStartedAt = Date.now();
+      let capturedOrder: PortalRechargeOrder | null = null;
+      while (requestRef.current === requestId) {
+        try {
+          capturedOrder = await captureOrderOnce(
+            client,
+            sessionRef,
+            returnedOrder.orderRef,
+            returnIntent.captureIdempotencyKey,
+          );
+          break;
+        } catch (caught) {
+          if (requestRef.current !== requestId) return;
+          if (
+            !retryableRechargeFailure(caught)
+            || Date.now() - captureStartedAt >= SETTLEMENT_POLL_WINDOW_MS
+          ) throw caught;
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, SETTLEMENT_POLL_INTERVAL_MS);
+          });
+        }
+      }
+      if (!capturedOrder) return;
       if (requestRef.current !== requestId) return;
       setActiveOrder(capturedOrder);
       if (capturedOrder.status === "credited" && !creditedRefsRef.current.has(capturedOrder.orderRef)) {
@@ -140,7 +253,15 @@ export function usePortalRecharge({
       if (requestRef.current === requestId) setBusy(false);
     });
     return () => { requestRef.current += 1; };
-  }, [applyFailure, client, enabled, sessionGeneration, sessionRef]);
+  }, [
+    applyFailure,
+    captureOrderOnce,
+    client,
+    enabled,
+    notifyWalletIfCredited,
+    sessionGeneration,
+    sessionRef,
+  ]);
 
   const operationIsCurrent = useCallback((
     operationId: number,
@@ -157,11 +278,8 @@ export function usePortalRecharge({
 
   const applyCreditedOrder = useCallback((order: PortalRechargeOrder) => {
     setActiveOrder(order);
-    if (order.status === "credited" && !creditedRefsRef.current.has(order.orderRef)) {
-      creditedRefsRef.current.add(order.orderRef);
-      callbacksRef.current.onWalletMutation();
-    }
-  }, []);
+    notifyWalletIfCredited(order);
+  }, [notifyWalletIfCredited]);
 
   useEffect(() => {
     const returnIntent = readPortalRechargeReturn();
@@ -170,13 +288,19 @@ export function usePortalRecharge({
       || !client
       || !sessionRef
       || !activeOrder
-      || returnIntent?.orderRef !== activeOrder.orderRef
-      || (activeOrder.status !== "pending" && activeOrder.status !== "payment_verified")
+      || !pollAfterReturn(
+        activeOrder,
+        returnIntent?.orderRef,
+        trackedSettlementOrderRefsRef.current.has(activeOrder.orderRef),
+      )
     ) return;
     const capturedClient = client;
     const capturedSessionRef = sessionRef;
     const capturedGeneration = sessionGeneration;
     const orderRef = activeOrder.orderRef;
+    const pollStartedAt = settlementPollStartedAtRef.current.get(orderRef) ?? Date.now();
+    settlementPollStartedAtRef.current.set(orderRef, pollStartedAt);
+    if (Date.now() - pollStartedAt >= SETTLEMENT_POLL_WINDOW_MS) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const stillCurrent = () => {
@@ -194,16 +318,37 @@ export function usePortalRecharge({
         });
         if (!stillCurrent()) return;
         applyCreditedOrder(order);
+        const trackedWithoutReturn = returnIntent?.orderRef !== orderRef
+          && trackedSettlementOrderRefsRef.current.has(orderRef);
+        const redirectResult = trackedWithoutReturn
+          ? redirectOrderToPayment(order)
+          : "not_applicable";
+        if (redirectResult !== "not_applicable") {
+          settlementPollStartedAtRef.current.delete(orderRef);
+          trackedSettlementOrderRefsRef.current.delete(orderRef);
+          return;
+        }
         if (returnResolved(order)) {
+          settlementPollStartedAtRef.current.delete(orderRef);
+          trackedSettlementOrderRefsRef.current.delete(orderRef);
           clearPortalRechargeReturn();
           return;
         }
-        timer = setTimeout(() => void poll(), 2_000);
+        if (Date.now() - pollStartedAt >= SETTLEMENT_POLL_WINDOW_MS) return;
+        timer = setTimeout(() => void poll(), SETTLEMENT_POLL_INTERVAL_MS);
       } catch (caught) {
-        if (stillCurrent()) applyFailure(caught);
+        if (!stillCurrent()) return;
+        if (
+          retryableRechargeFailure(caught)
+          && Date.now() - pollStartedAt < SETTLEMENT_POLL_WINDOW_MS
+        ) {
+          timer = setTimeout(() => void poll(), SETTLEMENT_POLL_INTERVAL_MS);
+          return;
+        }
+        applyFailure(caught);
       }
     };
-    timer = setTimeout(() => void poll(), 2_000);
+    timer = setTimeout(() => void poll(), SETTLEMENT_POLL_INTERVAL_MS);
     return () => {
       stopped = true;
       if (timer !== null) clearTimeout(timer);
@@ -214,6 +359,7 @@ export function usePortalRecharge({
     applyFailure,
     client,
     dialogOpen,
+    redirectOrderToPayment,
     sessionGeneration,
     sessionRef,
   ]);
@@ -235,14 +381,10 @@ export function usePortalRecharge({
       });
       if (!operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) return;
       setActiveOrder(order);
-      if (order.nextAction?.type === "redirect") {
-        stagePortalRechargeReturn({
-          version: 1,
-          orderRef: order.orderRef,
-          captureIdempotencyKey: idempotencyKey("capture"),
-        });
-        callbacksRef.current.paymentRedirect(order.nextAction.url);
+      if (order.status === "created" && order.nextAction === null) {
+        trackedSettlementOrderRefsRef.current.add(order.orderRef);
       }
+      redirectOrderToPayment(order);
     } catch (caught) {
       if (!operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) return;
       applyFailure(caught);
@@ -251,7 +393,7 @@ export function usePortalRecharge({
         setBusy(false);
       }
     }
-  }, [applyFailure, client, operationIsCurrent, sessionGeneration, sessionRef]);
+  }, [applyFailure, client, operationIsCurrent, redirectOrderToPayment, sessionGeneration, sessionRef]);
 
   const captureOrder = useCallback(async () => {
     if (!client || !sessionRef || !activeOrder) return;

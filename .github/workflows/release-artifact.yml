@@ -10,6 +10,10 @@ on:
         description: Release label. Defaults to the current short SHA.
         required: false
         type: string
+      portal_recharge_trusted_action_origins_json:
+        description: Public HTTPS origins JSON for Portal Recharge redirects.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -135,6 +139,8 @@ jobs:
         run: npm ci --prefix admin
 
       - name: Build Portal static
+        env:
+          VITE_PORTAL_RECHARGE_TRUSTED_ACTION_ORIGINS_JSON: ${{ inputs.portal_recharge_trusted_action_origins_json || '' }}
         run: npm run admin:portal:build
 
       - name: Verify Portal static

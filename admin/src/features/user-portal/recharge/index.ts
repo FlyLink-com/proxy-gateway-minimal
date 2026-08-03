@@ -1,4 +1,8 @@
-export { createPortalRechargeClient, PortalRechargeClientError } from "./portal-recharge-client";
+export {
+  createPortalRechargeClient,
+  parsePortalRechargeTrustedActionOriginsJson,
+  PortalRechargeClientError,
+} from "./portal-recharge-client";
 export type {
   PortalRechargeClient,
   PortalRechargeClientErrorCode,

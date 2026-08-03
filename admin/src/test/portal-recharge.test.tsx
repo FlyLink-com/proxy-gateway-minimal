@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, StrictMode } from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   PortalRechargeDialog,
+  PortalRechargeClientError,
   createPortalRechargeClient,
   usePortalRecharge,
   type PortalRechargeClient,
@@ -153,6 +154,82 @@ describe("Portal recharge client", () => {
       offerRef: "coins_30",
       idempotencyKey: "create_assembly_1",
     })).resolves.toEqual(alternativeOrder);
+  });
+
+  test("accepts reviewed public action origins from the Portal build JSON", async () => {
+    const alternativeOrder = {
+      ...rechargeOrder("entry_ready"),
+      currency: "CNY",
+      adapterKey: "xsd_v1",
+      paymentMethod: "alipay",
+      providerOrderRef: "xsd_order_public_config_1",
+      nextAction: {
+        type: "redirect",
+        url: "https://cashier.example.com/checkout?token=public_config_safe",
+        expiresAt: "2026-08-01T00:10:00.000Z",
+      },
+    };
+    const fetchFn = vi.fn(async () => new Response(
+      JSON.stringify({ recharge: { order: alternativeOrder } }),
+      { status: 201, headers: { "Content-Type": "application/json" } },
+    ));
+    const client = createHttpUserPortalClient({
+      fetchFn,
+      rechargeTrustedActionOriginsJson: JSON.stringify({
+        xsd_v1: ["https://cashier.example.com"],
+      }),
+    } as unknown as Parameters<typeof createHttpUserPortalClient>[0]);
+
+    await expect(client.recharge.createOrder({
+      sessionRef: "session_recharge_1",
+      offerRef: "coins_30",
+      idempotencyKey: "create_public_config_1",
+    })).resolves.toEqual(alternativeOrder);
+  });
+
+  test("fails closed when the Portal build action-origin JSON is invalid", () => {
+    expect(() => createHttpUserPortalClient({
+      rechargeTrustedActionOriginsJson: "{invalid-json",
+    } as unknown as Parameters<typeof createHttpUserPortalClient>[0])).toThrow();
+  });
+
+  test.each([
+    ["null", "null"],
+    ["an array", "[]"],
+    ["a non-array adapter value", '{"xsd_v1":"https://cashier.example.com"}'],
+    ["a PayPal override", '{"paypal_v1":["https://pay.example.com"]}'],
+    ["an escaped PayPal override", '{"\\u0070aypal_v1":["https://pay.example.com"]}'],
+    ["a prototype key", '{"__proto__":["https://pay.example.com"]}'],
+    ["HTTP", '{"xsd_v1":["http://cashier.example.com"]}'],
+    ["credentials", '{"xsd_v1":["https://user:pass@cashier.example.com"]}'],
+    ["a path", '{"xsd_v1":["https://cashier.example.com/checkout"]}'],
+    ["a query", '{"xsd_v1":["https://cashier.example.com?mode=pay"]}'],
+    ["a fragment", '{"xsd_v1":["https://cashier.example.com#pay"]}'],
+    ["a duplicate origin", '{"xsd_v1":["https://cashier.example.com","https://cashier.example.com"]}'],
+  ])("rejects Portal build origin JSON containing %s", (_case, raw) => {
+    expect(() => createHttpUserPortalClient({
+      rechargeTrustedActionOriginsJson: raw,
+    })).toThrow();
+  });
+
+  test("retains the compiled PayPal trust root when a CNY origin is configured", async () => {
+    const paypalOrder = rechargeOrder("entry_ready");
+    const fetchFn = vi.fn(async () => new Response(
+      JSON.stringify({ recharge: { order: paypalOrder } }),
+      { status: 201, headers: { "Content-Type": "application/json" } },
+    ));
+    const client = createHttpUserPortalClient({
+      fetchFn,
+      rechargeTrustedActionOriginsJson: JSON.stringify({
+        xsd_v1: ["https://cashier.example.com"],
+      }),
+    });
+
+    await expect(client.recharge.createOrder({
+      sessionRef: "session_recharge_1",
+      offerRef: "coins_30",
+      idempotencyKey: "create_paypal_with_cny_config_1",
+    })).resolves.toEqual(paypalOrder);
   });
 
   test("projects server-authoritative CNY offers without assuming the sandbox currency", async () => {
@@ -391,18 +468,24 @@ describe("Portal recharge client", () => {
 
 function RechargeHarness({
   client,
+  enabled = true,
   paymentRedirect,
   refreshWallet,
+  sessionGeneration = 1,
+  sessionRef = "session_recharge_1",
 }: {
   client: PortalRechargeClient;
+  enabled?: boolean;
   paymentRedirect: (url: string) => void;
   refreshWallet: () => void;
+  sessionGeneration?: number;
+  sessionRef?: string | null;
 }) {
   const model = usePortalRecharge({
     client,
-    enabled: true,
-    sessionRef: "session_recharge_1",
-    sessionGeneration: 1,
+    enabled,
+    sessionRef,
+    sessionGeneration,
     onSessionInvalid: () => undefined,
     onWalletMutation: refreshWallet,
     paymentRedirect,
@@ -690,6 +773,715 @@ describe("Portal recharge interaction", () => {
     expect(client.captureOrder).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("Payment confirmation pending")).toBeInTheDocument();
     expect(refreshWallet).not.toHaveBeenCalled();
+  });
+
+  test("fails closed when the return intent cannot be staged before provider handoff", async () => {
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => { throw new DOMException("storage unavailable"); });
+    try {
+      const paymentRedirect = vi.fn();
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => []),
+        createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+        getOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+        captureOrder: vi.fn(async () => rechargeOrder("credited")),
+      };
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect,
+        refreshWallet: vi.fn(),
+      }));
+
+      const open = await screen.findByRole("button", { name: "Recharge Coins" });
+      await waitFor(() => expect(open).toBeEnabled());
+      fireEvent.click(open);
+      fireEvent.click(await screen.findByRole("button", {
+        name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+      }));
+
+      expect(await screen.findByRole("alert"))
+        .toHaveTextContent("Recharge request failed. Retry safely.");
+      expect(paymentRedirect).not.toHaveBeenCalled();
+    } finally {
+      storageWrite.mockRestore();
+    }
+  });
+
+  test("captures a staged PayPal return exactly once under StrictMode", async () => {
+    window.sessionStorage.setItem(
+      "gccwebos-portal-recharge-return-v1",
+      JSON.stringify({
+        version: 1,
+        orderRef: "payment_order_1",
+        captureIdempotencyKey: "portal_capture_strict_paypal_1",
+      }),
+    );
+    const captureOrder = vi.fn(async () => rechargeOrder("pending"));
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [OFFER]),
+      listOrders: vi.fn(async () => [rechargeOrder("entry_ready")]),
+      createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+      getOrder: vi.fn(async () => rechargeOrder("pending")),
+      captureOrder,
+    };
+
+    render(createElement(StrictMode, null, createElement(RechargeHarness, {
+      client,
+      paymentRedirect: vi.fn(),
+      refreshWallet: vi.fn(),
+    })));
+
+    await waitFor(() => expect(captureOrder).toHaveBeenCalledTimes(1));
+    expect(captureOrder).toHaveBeenCalledWith({
+      sessionRef: "session_recharge_1",
+      orderRef: "payment_order_1",
+      idempotencyKey: "portal_capture_strict_paypal_1",
+    });
+  });
+
+  test("never captures a callback-driven return under StrictMode", async () => {
+    vi.useFakeTimers();
+    try {
+      window.sessionStorage.setItem(
+        "gccwebos-portal-recharge-return-v1",
+        JSON.stringify({
+          version: 1,
+          orderRef: "payment_order_1",
+          captureIdempotencyKey: "portal_capture_strict_xsd_1",
+        }),
+      );
+      const callbackOrder: PortalRechargeOrder = {
+        ...rechargeOrder("entry_ready"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+      };
+      const creditedOrder: PortalRechargeOrder = {
+        ...rechargeOrder("credited"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+      };
+      const refreshWallet = vi.fn();
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => [callbackOrder]),
+        createOrder: vi.fn(async () => callbackOrder),
+        getOrder: vi.fn(async () => creditedOrder),
+        captureOrder: vi.fn(async () => rechargeOrder("credited")),
+      };
+
+      render(createElement(StrictMode, null, createElement(RechargeHarness, {
+        client,
+        paymentRedirect: vi.fn(),
+        refreshWallet,
+      })));
+
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_100); });
+
+      expect(client.captureOrder).not.toHaveBeenCalled();
+      expect(refreshWallet).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test.each([
+    ["entry_ready", "Waiting for payment"],
+    ["pending", "Payment confirmation pending"],
+  ] as const)(
+    "never reopens the provider for a returned %s order carrying a historical action",
+    async (status, statusLabel) => {
+      vi.useFakeTimers();
+      try {
+        window.sessionStorage.setItem(
+          "gccwebos-portal-recharge-return-v1",
+          JSON.stringify({
+            version: 1,
+            orderRef: "payment_order_1",
+            captureIdempotencyKey: "portal_capture_return_historical_action_1",
+          }),
+        );
+        const returnedOrder: PortalRechargeOrder = {
+          ...rechargeOrder(status),
+          adapterKey: "xsd_v1",
+          paymentMethod: "alipay",
+          currency: "CNY",
+          nextAction: {
+            type: "redirect",
+            url: "https://cashier.example.com/checkout?token=already_returned",
+            expiresAt: "2026-08-01T00:10:00.000Z",
+          },
+        };
+        const paymentRedirect = vi.fn();
+        const client: PortalRechargeClient = {
+          listOffers: vi.fn(async () => [OFFER]),
+          listOrders: vi.fn(async () => [returnedOrder]),
+          createOrder: vi.fn(async () => returnedOrder),
+          getOrder: vi.fn(async () => returnedOrder),
+          captureOrder: vi.fn(async () => rechargeOrder("pending")),
+        };
+
+        render(createElement(RechargeHarness, {
+          client,
+          paymentRedirect,
+          refreshWallet: vi.fn(),
+        }));
+
+        await act(async () => { await Promise.resolve(); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(4_100); });
+
+        expect(screen.getByText(statusLabel)).toBeInTheDocument();
+        expect(client.captureOrder).not.toHaveBeenCalled();
+        expect(paymentRedirect).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test.each([
+    ["xsd_v1", "alipay"],
+    ["chaojipay_v1", "wechat_pay"],
+  ] as const)(
+    "polls a returned callback-driven %s order without invoking capture",
+    async (adapterKey, paymentMethod) => {
+      vi.useFakeTimers();
+      try {
+        window.sessionStorage.setItem(
+          "gccwebos-portal-recharge-return-v1",
+          JSON.stringify({
+            version: 1,
+            orderRef: "payment_order_1",
+            captureIdempotencyKey: "portal_capture_return_1",
+          }),
+        );
+        const callbackOrder: PortalRechargeOrder = {
+          ...rechargeOrder("entry_ready"),
+          adapterKey,
+          paymentMethod,
+          currency: "CNY",
+        };
+        const creditedOrder: PortalRechargeOrder = {
+          ...rechargeOrder("credited"),
+          adapterKey,
+          paymentMethod,
+          currency: "CNY",
+        };
+        const client: PortalRechargeClient = {
+          listOffers: vi.fn(async () => [OFFER]),
+          listOrders: vi.fn(async () => [callbackOrder]),
+          createOrder: vi.fn(async () => callbackOrder),
+          getOrder: vi.fn(async () => creditedOrder),
+          captureOrder: vi.fn(async () => {
+            throw new Error("callback-driven providers do not support capture");
+          }),
+        };
+        const refreshWallet = vi.fn();
+
+        render(createElement(RechargeHarness, {
+          client,
+          paymentRedirect: vi.fn(),
+          refreshWallet,
+        }));
+
+        await act(async () => { await Promise.resolve(); });
+        expect(screen.getByRole("dialog", { name: "Recharge Coins" }))
+          .toBeInTheDocument();
+        expect(client.captureOrder).not.toHaveBeenCalled();
+
+        await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+
+        expect(client.getOrder).toHaveBeenCalledWith({
+          sessionRef: "session_recharge_1",
+          orderRef: "payment_order_1",
+        });
+        expect(client.captureOrder).not.toHaveBeenCalled();
+        expect(screen.getByText("30 paid Coins are available.")).toBeInTheDocument();
+        expect(refreshWallet).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test("retries a transient callback status read until the durable credit is visible", async () => {
+    vi.useFakeTimers();
+    try {
+      window.sessionStorage.setItem(
+        "gccwebos-portal-recharge-return-v1",
+        JSON.stringify({
+          version: 1,
+          orderRef: "payment_order_1",
+          captureIdempotencyKey: "portal_capture_callback_retry_1",
+        }),
+      );
+      const callbackOrder: PortalRechargeOrder = {
+        ...rechargeOrder("entry_ready"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+      };
+      const creditedOrder: PortalRechargeOrder = {
+        ...rechargeOrder("credited"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+      };
+      const refreshWallet = vi.fn();
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => [callbackOrder]),
+        createOrder: vi.fn(async () => callbackOrder),
+        getOrder: vi.fn()
+          .mockRejectedValueOnce(new PortalRechargeClientError(
+            "payment_recharge_request_failed",
+            true,
+          ))
+          .mockResolvedValueOnce(creditedOrder),
+        captureOrder: vi.fn(async () => rechargeOrder("pending")),
+      };
+
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect: vi.fn(),
+        refreshWallet,
+      }));
+
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(4_100); });
+
+      expect(client.getOrder).toHaveBeenCalledTimes(2);
+      expect(client.captureOrder).not.toHaveBeenCalled();
+      expect(refreshWallet).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("30 paid Coins are available.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("retries PayPal capture with the staged idempotency key after a transient failure", async () => {
+    vi.useFakeTimers();
+    try {
+      window.sessionStorage.setItem(
+        "gccwebos-portal-recharge-return-v1",
+        JSON.stringify({
+          version: 1,
+          orderRef: "payment_order_1",
+          captureIdempotencyKey: "portal_capture_paypal_retry_1",
+        }),
+      );
+      const captureOrder = vi.fn()
+        .mockRejectedValueOnce(new PortalRechargeClientError(
+          "payment_recharge_request_failed",
+          true,
+        ))
+        .mockResolvedValueOnce(rechargeOrder("credited"));
+      const refreshWallet = vi.fn();
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => [rechargeOrder("entry_ready")]),
+        createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+        getOrder: vi.fn(async () => rechargeOrder("credited")),
+        captureOrder,
+      };
+
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect: vi.fn(),
+        refreshWallet,
+      }));
+
+      await act(async () => { await Promise.resolve(); });
+      expect(captureOrder).toHaveBeenCalledTimes(1);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_100); });
+
+      expect(captureOrder).toHaveBeenCalledTimes(2);
+      expect(captureOrder.mock.calls).toEqual([
+        [{
+          sessionRef: "session_recharge_1",
+          orderRef: "payment_order_1",
+          idempotencyKey: "portal_capture_paypal_retry_1",
+        }],
+        [{
+          sessionRef: "session_recharge_1",
+          orderRef: "payment_order_1",
+          idempotencyKey: "portal_capture_paypal_retry_1",
+        }],
+      ]);
+      expect(refreshWallet).toHaveBeenCalledTimes(1);
+      expect(window.sessionStorage.getItem(
+        "gccwebos-portal-recharge-return-v1",
+      )).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("retries the same PayPal capture safely after the Portal identity is disabled and restored", async () => {
+    vi.useFakeTimers();
+    try {
+      window.sessionStorage.setItem(
+        "gccwebos-portal-recharge-return-v1",
+        JSON.stringify({
+          version: 1,
+          orderRef: "payment_order_1",
+          captureIdempotencyKey: "portal_capture_paypal_identity_retry_1",
+        }),
+      );
+      const captureOrder = vi.fn()
+        .mockRejectedValueOnce(new PortalRechargeClientError(
+          "payment_recharge_request_failed",
+          true,
+        ))
+        .mockResolvedValueOnce(rechargeOrder("credited"));
+      const refreshWallet = vi.fn();
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => [rechargeOrder("entry_ready")]),
+        createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+        getOrder: vi.fn(async () => rechargeOrder("credited")),
+        captureOrder,
+      };
+      const props = {
+        client,
+        paymentRedirect: vi.fn(),
+        refreshWallet,
+        sessionGeneration: 1,
+      };
+      const { rerender } = render(createElement(RechargeHarness, props));
+
+      await act(async () => { await Promise.resolve(); });
+      expect(captureOrder).toHaveBeenCalledTimes(1);
+
+      rerender(createElement(RechargeHarness, { ...props, enabled: false }));
+      await act(async () => { await Promise.resolve(); });
+      rerender(createElement(RechargeHarness, { ...props, enabled: true }));
+      await act(async () => { await Promise.resolve(); });
+
+      expect(captureOrder).toHaveBeenCalledTimes(2);
+      expect(captureOrder.mock.calls).toEqual([
+        [{
+          sessionRef: "session_recharge_1",
+          orderRef: "payment_order_1",
+          idempotencyKey: "portal_capture_paypal_identity_retry_1",
+        }],
+        [{
+          sessionRef: "session_recharge_1",
+          orderRef: "payment_order_1",
+          idempotencyKey: "portal_capture_paypal_identity_retry_1",
+        }],
+      ]);
+      expect(refreshWallet).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("reuses an unresolved PayPal capture when the Portal identity is disabled and restored", async () => {
+    window.sessionStorage.setItem(
+      "gccwebos-portal-recharge-return-v1",
+      JSON.stringify({
+        version: 1,
+        orderRef: "payment_order_1",
+        captureIdempotencyKey: "portal_capture_paypal_inflight_1",
+      }),
+    );
+    let resolveCapture!: (order: PortalRechargeOrder) => void;
+    const unresolvedCapture = new Promise<PortalRechargeOrder>((resolve) => {
+      resolveCapture = resolve;
+    });
+    const captureOrder = vi.fn()
+      .mockImplementationOnce(() => unresolvedCapture)
+      .mockResolvedValue(rechargeOrder("credited"));
+    const refreshWallet = vi.fn();
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [OFFER]),
+      listOrders: vi.fn(async () => [rechargeOrder("entry_ready")]),
+      createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+      getOrder: vi.fn(async () => rechargeOrder("credited")),
+      captureOrder,
+    };
+    const props = {
+      client,
+      paymentRedirect: vi.fn(),
+      refreshWallet,
+      sessionGeneration: 1,
+    };
+    const { rerender } = render(createElement(RechargeHarness, props));
+
+    await waitFor(() => expect(captureOrder).toHaveBeenCalledTimes(1));
+    rerender(createElement(RechargeHarness, { ...props, enabled: false }));
+    rerender(createElement(RechargeHarness, { ...props, enabled: true }));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(captureOrder).toHaveBeenCalledTimes(1);
+
+    await act(async () => { resolveCapture(rechargeOrder("credited")); });
+    await waitFor(() => expect(refreshWallet).toHaveBeenCalledTimes(1));
+    expect(captureOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps polling an unresolved created claim without repeat create or capture", async () => {
+    vi.useFakeTimers();
+    try {
+      const unresolvedOrder: PortalRechargeOrder = {
+        ...rechargeOrder("created"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+        providerOrderRef: null,
+        nextAction: null,
+      };
+      const paymentRedirect = vi.fn();
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => []),
+        createOrder: vi.fn(async () => unresolvedOrder),
+        getOrder: vi.fn(async () => unresolvedOrder),
+        captureOrder: vi.fn(async () => rechargeOrder("pending")),
+      };
+
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect,
+        refreshWallet: vi.fn(),
+      }));
+
+      await act(async () => { await Promise.resolve(); });
+      fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
+      fireEvent.click(screen.getByRole("button", {
+        name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+      }));
+      await act(async () => { await Promise.resolve(); });
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(4_100); });
+
+      expect(client.createOrder).toHaveBeenCalledTimes(1);
+      expect(client.getOrder).toHaveBeenCalledTimes(2);
+      expect(client.captureOrder).not.toHaveBeenCalled();
+      expect(paymentRedirect).not.toHaveBeenCalled();
+      expect(screen.getByText("Creating recharge order")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("stops successful non-terminal settlement polling at the two minute deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const unresolvedOrder: PortalRechargeOrder = {
+        ...rechargeOrder("created"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+        providerOrderRef: null,
+        nextAction: null,
+      };
+      const pendingOrder: PortalRechargeOrder = {
+        ...rechargeOrder("pending"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+      };
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => []),
+        createOrder: vi.fn(async () => unresolvedOrder),
+        getOrder: vi.fn(async () => pendingOrder),
+        captureOrder: vi.fn(async () => rechargeOrder("pending")),
+      };
+
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect: vi.fn(),
+        refreshWallet: vi.fn(),
+      }));
+
+      await act(async () => { await Promise.resolve(); });
+      fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
+      fireEvent.click(screen.getByRole("button", {
+        name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+      }));
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(121_000); });
+      const callsAtDeadline = vi.mocked(client.getOrder).mock.calls.length;
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+
+      expect(callsAtDeadline).toBeGreaterThan(0);
+      expect(client.getOrder).toHaveBeenCalledTimes(callsAtDeadline);
+      expect(client.captureOrder).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("hands off an unresolved created claim when a redirect becomes ready exactly once", async () => {
+    vi.useFakeTimers();
+    try {
+      const unresolvedOrder: PortalRechargeOrder = {
+        ...rechargeOrder("created"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+        providerOrderRef: null,
+        nextAction: null,
+      };
+      const redirectOrder: PortalRechargeOrder = {
+        ...rechargeOrder("entry_ready"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+        providerOrderRef: "xsd_order_delayed_redirect_1",
+        nextAction: {
+          type: "redirect",
+          url: "https://cashier.example.com/checkout?token=delayed_safe",
+          expiresAt: "2026-08-01T00:10:00.000Z",
+        },
+      };
+      const paymentRedirect = vi.fn();
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => []),
+        createOrder: vi.fn(async () => unresolvedOrder),
+        getOrder: vi.fn(async () => redirectOrder),
+        captureOrder: vi.fn(async () => rechargeOrder("pending")),
+      };
+
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect,
+        refreshWallet: vi.fn(),
+      }));
+
+      await act(async () => { await Promise.resolve(); });
+      fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
+      fireEvent.click(screen.getByRole("button", {
+        name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+      }));
+      await act(async () => { await Promise.resolve(); });
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(4_100); });
+
+      expect(client.createOrder).toHaveBeenCalledTimes(1);
+      expect(client.captureOrder).not.toHaveBeenCalled();
+      expect(paymentRedirect).toHaveBeenCalledTimes(1);
+      expect(paymentRedirect).toHaveBeenCalledWith(
+        "https://cashier.example.com/checkout?token=delayed_safe",
+      );
+      expect(JSON.parse(String(window.sessionStorage.getItem(
+        "gccwebos-portal-recharge-return-v1",
+      )))).toEqual({
+        version: 1,
+        orderRef: "payment_order_1",
+        captureIdempotencyKey: expect.stringMatching(/^portal_capture_/),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("keeps polling an unresolved created claim through pending until credited", async () => {
+    vi.useFakeTimers();
+    try {
+      const unresolvedOrder: PortalRechargeOrder = {
+        ...rechargeOrder("created"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+        providerOrderRef: null,
+        nextAction: null,
+      };
+      const pendingOrder: PortalRechargeOrder = {
+        ...rechargeOrder("pending"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+      };
+      const verifiedOrder: PortalRechargeOrder = {
+        ...rechargeOrder("payment_verified"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+      };
+      const creditedOrder: PortalRechargeOrder = {
+        ...rechargeOrder("credited"),
+        adapterKey: "xsd_v1",
+        paymentMethod: "alipay",
+        currency: "CNY",
+      };
+      const refreshWallet = vi.fn();
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => []),
+        createOrder: vi.fn(async () => unresolvedOrder),
+        getOrder: vi.fn()
+          .mockResolvedValueOnce(pendingOrder)
+          .mockResolvedValueOnce(verifiedOrder)
+          .mockResolvedValueOnce(creditedOrder),
+        captureOrder: vi.fn(async () => rechargeOrder("pending")),
+      };
+
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect: vi.fn(),
+        refreshWallet,
+      }));
+
+      await act(async () => { await Promise.resolve(); });
+      fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
+      fireEvent.click(screen.getByRole("button", {
+        name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+      }));
+      await act(async () => { await Promise.resolve(); });
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(6_100); });
+
+      expect(client.createOrder).toHaveBeenCalledTimes(1);
+      expect(client.getOrder).toHaveBeenCalledTimes(3);
+      expect(client.captureOrder).not.toHaveBeenCalled();
+      expect(refreshWallet).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("30 paid Coins are available.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("refreshes the wallet when a staged return is already credited", async () => {
+    window.sessionStorage.setItem(
+      "gccwebos-portal-recharge-return-v1",
+      JSON.stringify({
+        version: 1,
+        orderRef: "payment_order_1",
+        captureIdempotencyKey: "portal_capture_return_credited_1",
+      }),
+    );
+    const refreshWallet = vi.fn();
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [OFFER]),
+      listOrders: vi.fn(async () => [rechargeOrder("credited")]),
+      createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+      getOrder: vi.fn(async () => rechargeOrder("credited")),
+      captureOrder: vi.fn(async () => rechargeOrder("credited")),
+    };
+
+    render(createElement(RechargeHarness, {
+      client,
+      paymentRedirect: vi.fn(),
+      refreshWallet,
+    }));
+
+    expect(await screen.findByRole("dialog", { name: "Recharge Coins" }))
+      .toBeInTheDocument();
+    await waitFor(() => expect(refreshWallet).toHaveBeenCalledTimes(1));
+    expect(client.captureOrder).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(
+      "gccwebos-portal-recharge-return-v1",
+    )).toBeNull();
   });
 
   test("polls a returned pending order until the durable credited receipt is visible", async () => {
