@@ -43,6 +43,96 @@ test("ChaoJiPay remains unverified and disabled without a credential-scoped exec
   assert.equal(withClockOnly.capabilities.verifyCallback, false);
 });
 
+test("ChaoJiPay rejects non-exact execution scopes without invoking accessors", () => {
+  let getterCalls = 0;
+  const accessorScope = {};
+  Object.defineProperty(accessorScope, "withCredential", {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return () => Promise.reject(new Error("must-not-run"));
+    },
+  });
+
+  assert.throws(
+    () => createChaoJiPayPaymentAdapter({
+      executionScope: accessorScope,
+      nowFn: () => NOW,
+    }),
+    /invalid_payment_provider_adapter/u,
+  );
+  assert.equal(getterCalls, 0);
+
+  const withCredential = () => Promise.reject(new Error("must-not-run"));
+  const inherited = Object.create({ withCredential });
+  const nullPrototype = Object.assign(Object.create(null), { withCredential });
+  const nonEnumerable = {};
+  Object.defineProperty(nonEnumerable, "withCredential", {
+    value: withCredential,
+    enumerable: false,
+  });
+  const symbolic = { withCredential };
+  symbolic[Symbol("extra")] = true;
+
+  for (const executionScopeValue of [
+    inherited,
+    nullPrototype,
+    nonEnumerable,
+    { withCredential, extra: true },
+    symbolic,
+  ]) {
+    assert.throws(
+      () => createChaoJiPayPaymentAdapter({
+        executionScope: executionScopeValue,
+        nowFn: () => NOW,
+      }),
+      /invalid_payment_provider_adapter/u,
+    );
+  }
+});
+
+test("ChaoJiPay snapshots the execution method while preserving its receiver", async () => {
+  let originalCalls = 0;
+  let replacementCalls = 0;
+  const mutableScope = {
+    withCredential(operation, callback) {
+      assert.equal(this, mutableScope);
+      assert.equal(operation, "create_recharge_order");
+      originalCalls += 1;
+      return callback({
+        request: async (request) => {
+          assert.equal(request.action, "chaojipay_payment_create");
+          return {
+            response: {
+              data: { payUrl: `${ACTION_ORIGIN}/pay/snapshotted` },
+            },
+          };
+        },
+      });
+    },
+  };
+  const raw = createChaoJiPayPaymentAdapter({
+    executionScope: mutableScope,
+    nowFn: () => NOW,
+  });
+  mutableScope.withCredential = () => {
+    replacementCalls += 1;
+    return Promise.reject(new Error("replacement_scope_called"));
+  };
+  const adapter = assertPaymentProviderAdapterContract(raw, {
+    allowedActionOrigins: [ACTION_ORIGIN],
+  });
+
+  const result = await adapter.createRechargeOrder(CREATE_INPUT);
+
+  assert.equal(result.status, "entry_ready");
+  assert.equal(result.nextAction.url, `${ACTION_ORIGIN}/pay/snapshotted`);
+  assert.deepEqual({ originalCalls, replacementCalls }, {
+    originalCalls: 1,
+    replacementCalls: 0,
+  });
+});
+
 test("ChaoJiPay rejects non-HTTPS and unallowlisted checkout actions through the complete Adapter contract", async () => {
   for (const actionOrigin of ["http://checkout.example.test", "https://unallowlisted.example.test"]) {
     const adapter = assertPaymentProviderAdapterContract(

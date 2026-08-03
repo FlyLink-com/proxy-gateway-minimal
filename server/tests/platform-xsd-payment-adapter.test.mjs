@@ -38,6 +38,92 @@ test("XSD remains default-off until a credential-scoped execution scope is injec
   assert.equal(raw.capabilities.createRechargeOrder, false);
 });
 
+test("XSD rejects non-exact execution scopes without invoking accessors", () => {
+  let getterCalls = 0;
+  const accessorScope = {};
+  Object.defineProperty(accessorScope, "withCredential", {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return () => Promise.reject(new Error("must-not-run"));
+    },
+  });
+
+  assert.throws(
+    () => createXsdPaymentAdapter({
+      executionScope: accessorScope,
+      nowFn: () => NOW,
+    }),
+    /invalid_payment_provider_adapter/u,
+  );
+  assert.equal(getterCalls, 0);
+
+  const withCredential = () => Promise.reject(new Error("must-not-run"));
+  const inherited = Object.create({ withCredential });
+  const nullPrototype = Object.assign(Object.create(null), { withCredential });
+  const nonEnumerable = {};
+  Object.defineProperty(nonEnumerable, "withCredential", {
+    value: withCredential,
+    enumerable: false,
+  });
+  const symbolic = { withCredential };
+  symbolic[Symbol("extra")] = true;
+
+  for (const executionScopeValue of [
+    inherited,
+    nullPrototype,
+    nonEnumerable,
+    { withCredential, extra: true },
+    symbolic,
+  ]) {
+    assert.throws(
+      () => createXsdPaymentAdapter({
+        executionScope: executionScopeValue,
+        nowFn: () => NOW,
+      }),
+      /invalid_payment_provider_adapter/u,
+    );
+  }
+});
+
+test("XSD snapshots the execution method while preserving its receiver", async () => {
+  let originalCalls = 0;
+  let replacementCalls = 0;
+  const mutableScope = {
+    withCredential(operation, callback) {
+      assert.equal(this, mutableScope);
+      assert.equal(operation, "create_recharge_order");
+      originalCalls += 1;
+      return callback({
+        request: async (request) => {
+          assert.equal(request.action, "xsd_payment_create");
+          return { response: { url: `${ACTION_ORIGIN}/pay/snapshotted` } };
+        },
+      });
+    },
+  };
+  const raw = createXsdPaymentAdapter({
+    executionScope: mutableScope,
+    nowFn: () => NOW,
+  });
+  mutableScope.withCredential = () => {
+    replacementCalls += 1;
+    return Promise.reject(new Error("replacement_scope_called"));
+  };
+  const adapter = assertPaymentProviderAdapterContract(raw, {
+    allowedActionOrigins: [ACTION_ORIGIN],
+  });
+
+  const result = await adapter.createRechargeOrder(CREATE_INPUT);
+
+  assert.equal(result.status, "entry_ready");
+  assert.equal(result.nextAction.url, `${ACTION_ORIGIN}/pay/snapshotted`);
+  assert.deepEqual({ originalCalls, replacementCalls }, {
+    originalCalls: 1,
+    replacementCalls: 0,
+  });
+});
+
 test("XSD v1 exposes only create, query, and verified callback capabilities", async () => {
   const raw = createXsdPaymentAdapter({ executionScope: executionScope(), nowFn: () => NOW });
   assert.deepEqual({

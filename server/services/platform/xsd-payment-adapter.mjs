@@ -17,8 +17,13 @@ function options(value) {
   if (Reflect.ownKeys(descriptors).length !== 2 || !Object.hasOwn(descriptors, "executionScope") || !Object.hasOwn(descriptors, "nowFn")) invalid();
   const executionScope = descriptors.executionScope.value;
   const nowFn = descriptors.nowFn.value;
-  if (!descriptors.executionScope.enumerable || !descriptors.nowFn.enumerable || executionScope === null || typeof executionScope !== "object" || utilTypes.isProxy(executionScope) || typeof executionScope.withCredential !== "function" || utilTypes.isProxy(executionScope.withCredential) || typeof nowFn !== "function" || utilTypes.isProxy(nowFn)) invalid();
-  return { executionScope, nowFn };
+  if (!descriptors.executionScope.enumerable || !descriptors.nowFn.enumerable || executionScope === null || typeof executionScope !== "object" || utilTypes.isProxy(executionScope) || Object.getPrototypeOf(executionScope) !== Object.prototype || typeof nowFn !== "function" || utilTypes.isProxy(nowFn)) invalid();
+  const executionDescriptors = Object.getOwnPropertyDescriptors(executionScope);
+  if (Reflect.ownKeys(executionDescriptors).length !== 1 || !Object.hasOwn(executionDescriptors, "withCredential")) invalid();
+  const withCredentialDescriptor = executionDescriptors.withCredential;
+  const withCredential = withCredentialDescriptor.value;
+  if (!withCredentialDescriptor.enumerable || !Object.hasOwn(withCredentialDescriptor, "value") || typeof withCredential !== "function" || utilTypes.isProxy(withCredential)) invalid();
+  return { executionScope, nowFn, withCredential };
 }
 
 function now(nowFn) {
@@ -44,20 +49,20 @@ export function createXsdPaymentAdapter(value = {}) {
   ) {
     return createUnverifiedPaymentAdapter({ adapterKey: "xsd_v1", providerId: "xsd" });
   }
-  const { executionScope, nowFn } = options(value);
+  const { executionScope, nowFn, withCredential } = options(value);
   const unsupported = () => Promise.reject(new Error("payment_provider_capability_disabled"));
   return Object.freeze({
     adapterKey: "xsd_v1", providerId: "xsd", contractVersion: "v1",
     capabilities: Object.freeze({ createRechargeOrder: true, queryPayment: true, capturePayment: false, verifyCallback: true, refund: false, reconcile: false, repeatCreateIdempotent: false, repeatCaptureIdempotent: false }),
     supportedPaymentMethods: Object.freeze(["alipay", "wechat_pay"]),
     createRechargeOrder(input) {
-      return executionScope.withCredential("create_recharge_order", async ({ request }) => decodeXsdCreateResponse({ createInput: input, providerResponse: (await request(encodeXsdCreateRequest(input))).response, receivedAt: now(nowFn) }));
+      return withCredential.call(executionScope, "create_recharge_order", async ({ request }) => decodeXsdCreateResponse({ createInput: input, providerResponse: (await request(encodeXsdCreateRequest(input))).response, receivedAt: now(nowFn) }));
     },
     queryPayment(input) {
-      return executionScope.withCredential("query_payment", async ({ request }) => decodeXsdQueryResponse({ queryInput: input, providerResponse: (await request(encodeXsdQueryRequest(input))).response, receivedAt: now(nowFn) }));
+      return withCredential.call(executionScope, "query_payment", async ({ request }) => decodeXsdQueryResponse({ queryInput: input, providerResponse: (await request(encodeXsdQueryRequest(input))).response, receivedAt: now(nowFn) }));
     },
     verifyAndNormalizeCallback(input) {
-      return executionScope.withCredential("verify_callback", async ({ request }) => {
+      return withCredential.call(executionScope, "verify_callback", async ({ request }) => {
         const transport = await request(encodeXsdCallbackVerificationRequest(input));
         const paymentFact = decodeVerifiedXsdCallback({ callbackInput: input, providerResponse: transport.response, merchantScopeDigest: transport.evidence.merchantScopeDigest, payloadDigest: transport.evidence.payloadDigest });
         return { transportReceipt: transport.transportReceipt, paymentFact };

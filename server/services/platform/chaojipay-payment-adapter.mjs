@@ -15,8 +15,13 @@ function options(value) {
   const descriptors = Object.getOwnPropertyDescriptors(value);
   if (Reflect.ownKeys(descriptors).length !== 2 || !Object.hasOwn(descriptors, "executionScope") || !Object.hasOwn(descriptors, "nowFn")) invalid();
   const { executionScope, nowFn } = Object.fromEntries(Object.entries(descriptors).map(([key, descriptor]) => [key, descriptor.value]));
-  if (!descriptors.executionScope.enumerable || !descriptors.nowFn.enumerable || executionScope === null || typeof executionScope !== "object" || utilTypes.isProxy(executionScope) || typeof executionScope.withCredential !== "function" || utilTypes.isProxy(executionScope.withCredential) || typeof nowFn !== "function" || utilTypes.isProxy(nowFn)) invalid();
-  return { executionScope, nowFn };
+  if (!descriptors.executionScope.enumerable || !descriptors.nowFn.enumerable || executionScope === null || typeof executionScope !== "object" || utilTypes.isProxy(executionScope) || Object.getPrototypeOf(executionScope) !== Object.prototype || typeof nowFn !== "function" || utilTypes.isProxy(nowFn)) invalid();
+  const executionDescriptors = Object.getOwnPropertyDescriptors(executionScope);
+  if (Reflect.ownKeys(executionDescriptors).length !== 1 || !Object.hasOwn(executionDescriptors, "withCredential")) invalid();
+  const withCredentialDescriptor = executionDescriptors.withCredential;
+  const withCredential = withCredentialDescriptor.value;
+  if (!withCredentialDescriptor.enumerable || !Object.hasOwn(withCredentialDescriptor, "value") || typeof withCredential !== "function" || utilTypes.isProxy(withCredential)) invalid();
+  return { executionScope, nowFn, withCredential };
 }
 
 function now(nowFn) {
@@ -40,7 +45,7 @@ export function createChaoJiPayPaymentAdapter(value = {}) {
     const descriptors = Object.getOwnPropertyDescriptors(value);
     if (Reflect.ownKeys(descriptors).length === 1 && Object.hasOwn(descriptors, "nowFn") && descriptors.nowFn.enumerable && Object.hasOwn(descriptors.nowFn, "value") && typeof descriptors.nowFn.value === "function" && !utilTypes.isProxy(descriptors.nowFn.value)) return createUnverifiedPaymentAdapter({ adapterKey: "chaojipay_v1", providerId: "chaojipay" });
   }
-  const { executionScope, nowFn } = options(value);
+  const { executionScope, nowFn, withCredential } = options(value);
   const queryDisabled = () => Promise.reject(new Error("payment_provider_capability_disabled"));
   const captureDisabled = () => Promise.reject(new Error("payment_provider_capability_disabled"));
   const refundDisabled = () => Promise.reject(new Error("payment_provider_capability_disabled"));
@@ -50,10 +55,10 @@ export function createChaoJiPayPaymentAdapter(value = {}) {
     capabilities: Object.freeze({ createRechargeOrder: true, queryPayment: false, capturePayment: false, verifyCallback: true, refund: false, reconcile: false, repeatCreateIdempotent: false, repeatCaptureIdempotent: false }),
     supportedPaymentMethods: Object.freeze(["wechat_pay"]),
     createRechargeOrder(input) {
-      return executionScope.withCredential("create_recharge_order", async ({ request }) => decodeChaoJiPayCreateResponse({ createInput: input, providerResponse: (await request(encodeChaoJiPayCreateRequest(input))).response, receivedAt: now(nowFn) }));
+      return withCredential.call(executionScope, "create_recharge_order", async ({ request }) => decodeChaoJiPayCreateResponse({ createInput: input, providerResponse: (await request(encodeChaoJiPayCreateRequest(input))).response, receivedAt: now(nowFn) }));
     },
     verifyAndNormalizeCallback(input) {
-      return executionScope.withCredential("verify_callback", async ({ request }) => {
+      return withCredential.call(executionScope, "verify_callback", async ({ request }) => {
         const transport = await request(encodeChaoJiPayCallbackVerificationRequest(input));
         return { transportReceipt: transport.transportReceipt, paymentFact: decodeVerifiedChaoJiPayCallback({ callbackInput: input, providerResponse: transport.response, merchantScopeDigest: transport.evidence.merchantScopeDigest, payloadDigest: transport.evidence.payloadDigest }) };
       });
