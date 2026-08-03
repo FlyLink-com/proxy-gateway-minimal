@@ -63,7 +63,7 @@
 - `createXsdPaymentRuntime({ credential, fetchFn, apiOrigin, allowedActionOrigins, routeMap, profileRef, credentialProfileRef, nowFn })` returns `{ credentialLoader, transport }`; both refs bind credential issuance and use, and it is not imported by `server/state.mjs`.
 - `createXsdPaymentAdapter({ executionScope, nowFn })` returns `contractVersion: "v1"`, supports `alipay` and `wechat_pay`, and enables create/query/callback verification only.
 
-- [ ] **Step 1: Write RED codec and Adapter tests**
+- [x] **Step 1: Write RED codec and Adapter tests**
 
 Use literal synthetic fixtures to require:
 
@@ -88,7 +88,7 @@ Use literal synthetic fixtures to require:
 
 Assert the codec rejects wrong currency/exponent, unsafe refs, accessors, proxies, extra fields, unknown status values, unsigned callback projections, untrusted action URLs, and any callback containing the optional `attach` field. The project never sends `attach`, so its unexpected presence remains an unresolved contract shape and fails closed.
 
-- [ ] **Step 2: Run codec and Adapter tests and observe RED**
+- [x] **Step 2: Run codec and Adapter tests and observe RED**
 
 Run:
 
@@ -98,7 +98,7 @@ node --test server/tests/platform-xsd-payment-protocol-codec.test.mjs server/tes
 
 Expected: FAIL because the codec does not exist and the Adapter is still unverified.
 
-- [ ] **Step 3: Implement the minimal codec and Adapter**
+- [x] **Step 3: Implement the minimal codec and Adapter**
 
 Use exact documented field names:
 
@@ -110,7 +110,7 @@ callback accepted shape: mch_order_no, partnerorderid, status, mchId, amount, si
 
 For signing, omit `sign`, omit empty values, sort keys with JavaScript ordinal string order, join `key=value` with `&`, append the secret directly, and output lowercase MD5. `format` is excluded from create signing. Parse and format form-urlencoded bodies as UTF-8. Return ACK `{ statusCode: 200, contentType: "text/plain", body: "SUCCESS" }` only for a credential-scoped verified callback result.
 
-- [ ] **Step 4: Write RED runtime tests**
+- [x] **Step 4: Write RED runtime tests**
 
 Using a synthetic credential and injected `fetchFn`, assert:
 
@@ -120,7 +120,7 @@ Using a synthetic credential and injected `fetchFn`, assert:
 - create/query HTTP failures, oversized responses, non-JSON bodies, unexpected fields, wrong merchant id, bad signatures, and mismatched order or amount fail closed;
 - returned `datas.url` is only projected; the existing Adapter contract enforces the configured action-origin allowlist.
 
-- [ ] **Step 5: Run runtime tests and observe RED**
+- [x] **Step 5: Run runtime tests and observe RED**
 
 Run:
 
@@ -130,11 +130,11 @@ node --test server/tests/platform-xsd-payment-runtime.test.mjs
 
 Expected: FAIL because `createXsdPaymentRuntime` does not exist.
 
-- [ ] **Step 6: Implement the injected runtime and update documented evidence**
+- [x] **Step 6: Implement the injected runtime and update documented evidence**
 
 The credential contains only runtime-scoped `merchantId`, `merchantSecret`, and `merchantScopeDigest`. The route map resolves the existing logical callback and return refs; it does not register a public route. Update the detached candidate from the superseded field vocabulary to the exact field names above, while retaining an explicit read-only-evidence warning and no runtime imports from the candidate.
 
-- [ ] **Step 7: Run focused GREEN tests and commit**
+- [x] **Step 7: Run focused GREEN tests and commit**
 
 Run:
 
@@ -168,7 +168,7 @@ Commit: `feat(payment): add default-off xsd protocol`
 - `createChaoJiPayPaymentRuntime({ credential, fetchFn, apiOrigin, allowedActionOrigins, routeMap, profileRef, credentialProfileRef, createRequestIp, nowFn })` returns `{ credentialLoader, transport }`; both refs bind credential issuance and use, and `createRequestIp` is a caller-supplied public IPv4 value for the emitted `ip` field. It is not imported by `server/state.mjs`.
 - `createChaoJiPayPaymentAdapter({ executionScope, nowFn })` returns `contractVersion: "v1"`, supports only `wechat_pay`, enables create/callback verification, and leaves query disabled because the documented query response does not provide an authoritative verifiable field contract.
 
-- [ ] **Step 1: Write RED codec and Adapter tests**
+- [x] **Step 1: Write RED codec and Adapter tests**
 
 Require the exact capabilities:
 
@@ -187,7 +187,7 @@ Require the exact capabilities:
 
 The Adapter supports only `wechat_pay`; any Alipay input, wrong product, wrong currency/exponent, unsafe ref, malformed callback, or unknown callback status fails closed.
 
-- [ ] **Step 2: Run codec and Adapter tests and observe RED**
+- [x] **Step 2: Run codec and Adapter tests and observe RED**
 
 Run:
 
@@ -197,7 +197,7 @@ node --test server/tests/platform-chaojipay-payment-protocol-codec.test.mjs serv
 
 Expected: FAIL because the codec does not exist and the Adapter is still unverified.
 
-- [ ] **Step 3: Implement the minimal codec and Adapter**
+- [x] **Step 3: Implement the minimal codec and Adapter**
 
 Use exact documented field names:
 
@@ -208,7 +208,7 @@ callback accepted shape: orderId, orderStatus, outTradeId, amount, sign
 
 Omit optional `realName` and `param`; reject them if unexpectedly returned in a callback. For signing, omit `sign`, omit empty values, sort keys with JavaScript ordinal string order, join `key=value` with `&`, append `&key=<secret>`, and output uppercase MD5. Return ACK `{ statusCode: 200, contentType: "text/plain", body: "success" }` only after credential-scoped signature verification.
 
-- [ ] **Step 4: Write RED runtime tests**
+- [x] **Step 4: Write RED runtime tests**
 
 Using synthetic credentials and injected `fetchFn`, assert:
 
@@ -218,7 +218,7 @@ Using synthetic credentials and injected `fetchFn`, assert:
 - bad signatures, wrong merchant/product/order/amount, malformed JSON, oversized responses, unexpected response fields, and non-HTTPS or unallowlisted actions fail closed;
 - no query network request exists in this task.
 
-- [ ] **Step 5: Run runtime tests and observe RED**
+- [x] **Step 5: Run runtime tests and observe RED**
 
 Run:
 
@@ -228,11 +228,11 @@ node --test server/tests/platform-chaojipay-payment-runtime.test.mjs
 
 Expected: FAIL because `createChaoJiPayPaymentRuntime` does not exist.
 
-- [ ] **Step 6: Implement the injected runtime and update documented evidence**
+- [x] **Step 6: Implement the injected runtime and update documented evidence**
 
 The credential contains runtime-scoped `merchantId`, `merchantSecret`, and `merchantScopeDigest`. Route refs are resolved from an injected map. Update the detached candidate to `outTradeId`/`ip`/`notifyUrl` and remove the incorrect `orderNo`/`body`/`returnUrl` vocabulary. Keep the candidate detached from Adapter and runtime imports.
 
-- [ ] **Step 7: Run focused GREEN tests and commit**
+- [x] **Step 7: Run focused GREEN tests and commit**
 
 Run:
 
