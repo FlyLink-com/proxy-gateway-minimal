@@ -571,7 +571,7 @@ for (const providerCase of PROVIDERS) {
       const body = signedCallbackBody(providerCase, orderRef);
 
       await assertGeneric503(await postCallback(baseUrl, providerCase, body));
-      assertSettlementCounts(system.database, {
+      const failedRefs = assertSettlementCounts(system.database, {
         receipts: 1, operations: 0, lots: 0, origins: 0,
       });
       assert.equal(paymentOrder(system.database, orderRef).status, "payment_verified");
@@ -580,9 +580,10 @@ for (const providerCase of PROVIDERS) {
       const retry = await postCallback(baseUrl, providerCase, body);
       assert.equal(retry.status, 200);
       assert.equal(await retry.text(), providerCase.acknowledgementBody);
-      assertSettlementCounts(system.database, {
+      const recoveredRefs = assertSettlementCounts(system.database, {
         receipts: 1, operations: 1, lots: 1, origins: 1,
       });
+      assert.deepEqual(recoveredRefs.receipts, failedRefs.receipts);
       assert.equal(paymentOrder(system.database, orderRef).status, "credited");
       assertPaidBalance(system, 30);
     } finally {
