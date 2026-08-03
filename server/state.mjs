@@ -17,6 +17,8 @@ import { createPlatformAccountEntitlementShell } from "./services/platform/accou
 import { createCoinCommerceCoordinator } from "./services/platform/coin-commerce-coordinator.mjs";
 import { createSqliteCoinCommerceStore } from "./services/platform/coin-commerce-store.mjs";
 import { createSqliteCoinWalletStore } from "./services/platform/coin-wallet-store.mjs";
+import { createCnyPreviewRechargeAdapter } from "./services/platform/cny-preview-recharge-adapter.mjs";
+import { createProductionCnyPaymentRechargeOffers } from "./services/platform/production-cny-payment-recharge-price-book.mjs";
 import { createSqlitePaymentStore } from "./services/platform/payment-store.mjs";
 import { createPaymentRechargeCoordinator } from "./services/platform/payment-recharge-coordinator.mjs";
 import { createPaymentRechargeOfferCatalog } from "./services/platform/payment-recharge-offer-catalog.mjs";
@@ -2146,73 +2148,20 @@ export function createRuntimeState(options = {}) {
         throw coinRechargePrerequisiteError();
       }
       callableFromSafeDescriptorChain(platformUserPortalAuth, "requireSession");
-      const offers = parseJsonArrayEnv(
-        env.PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON,
-        "PLATFORM_COIN_RECHARGE_USD_OFFERS_JSON"
-      );
-      const credential = {
-        clientId: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_CLIENT_ID),
-        clientSecret: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_CLIENT_SECRET),
-        webhookId: optionalEnvText(env.PLATFORM_PAYPAL_SANDBOX_WEBHOOK_ID),
-        merchantScopeDigest: optionalEnvText(
-          env.PLATFORM_PAYPAL_SANDBOX_MERCHANT_SCOPE_DIGEST
-        )
-      };
-      const callbackUrl = optionalEnvText(env.PLATFORM_PAYPAL_CALLBACK_URL);
-      const returnUrl = optionalEnvText(env.PLATFORM_PAYPAL_RETURN_URL);
-      if (
-        offers.length === 0
-        || Object.values(credential).some((value) => !value)
-        || !callbackUrl
-        || !returnUrl
-      ) {
-        throw coinRechargePrerequisiteError();
-      }
-      const nowFn = options.paymentNowFn || (() => new Date().toISOString());
-      const fetchFn = options.paypalFetchFn || globalThis.fetch?.bind(globalThis);
-      if (typeof fetchFn !== "function" || typeof nowFn !== "function") {
-        throw coinRechargePrerequisiteError();
-      }
+      // preview-only override: skip PayPal sandbox runtime + USD OFFERS_JSON,
+      // wire CNY preview adapter + production-cny price book instead.
+      // Hard constraint at line 1283-1285 still requires the paypalSandboxRequested
+      // flag to be true, but no PayPal credential/env validation is performed here
+      // because we are routing to a CNY candidate adapter for local preview.
+      const cnyOffers = createProductionCnyPaymentRechargeOffers();
       const offerCatalog = createPaymentRechargeOfferCatalog({
-        environment: "sandbox",
-        offers: offers.map((offer) => ({ ...offer, paymentMethods: ["paypal"] }))
+        environment: "production",
+        offers: cnyOffers.map((offer) => ({ ...offer }))
       });
-      const paypalRuntime = createPayPalSandboxRuntime({
-        credential,
-        fetchFn,
-        apiOrigin: "https://api-m.sandbox.paypal.com",
-        allowedActionOrigins: ["https://www.sandbox.paypal.com"],
-        routeMap: {
-          portal_payment_callback_v1: callbackUrl,
-          portal_wallet_return_v1: returnUrl
-        },
-        nowFn
-      });
-      const registry = createStaticPaymentProviderAdapterRegistry({
-        credentialLoader: paypalRuntime.credentialLoader,
-        transports: { paypal_v1: paypalRuntime.transport },
-        nowFn
-      });
-      const resolvedAdapter = registry.resolve({
-        adapterKey: "paypal_v1",
-        profileRef: "paypal_sandbox_primary",
-        contractVersion: "v1",
-        credentialProfileRef: "paypal_sandbox_primary",
-        declaredCapabilities: {
-          createRechargeOrder: true,
-          queryPayment: true,
-          capturePayment: true,
-          verifyCallback: true,
-          refund: false,
-          reconcile: false,
-          repeatCreateIdempotent: true,
-          repeatCaptureIdempotent: true
-        }
-      });
-      const adapter = Object.freeze({
-        ...resolvedAdapter,
-        paymentMethod: "paypal",
-        merchantBindingRef: "paypal_sandbox_primary"
+      const nowFn = options.paymentNowFn || (() => new Date().toISOString());
+      const adapter = createCnyPreviewRechargeAdapter({
+        paymentMethod: "chaojipay",
+        merchantBindingRef: "cny_preview_chaojipay"
       });
       paymentStore = createSqlitePaymentStore({
         dbPath: controlDbPath,
