@@ -1164,7 +1164,7 @@ const PROVIDERS = Object.freeze([
 For XSD, construct the Runtime with exact source origin, callback/return route refs, action origin `https://cashier.example.test`, and an injected fetch which accepts only `/api/gaia/unifiedorder` and returns:
 
 ```js
-{ code: "0", datas: { url: "https://cashier.example.test/pay/synthetic" } }
+{ code: "200", error: "请求成功", datas: { url: "https://cashier.example.test/pay/synthetic" } }
 ```
 
 For ChaoJiPay, accept only `/api/order/create`, use public synthetic request IP `8.8.8.8`, and return:
