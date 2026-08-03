@@ -132,7 +132,7 @@ function xsdRechargeEnv(overrides = {}) {
       "https://portal.example.test/api/platform/payments/xsd/callback",
     PLATFORM_XSD_RETURN_URL: "https://portal.example.test/portal/wallet",
     PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON:
-      JSON.stringify(["https://cashier.example.test"]),
+      JSON.stringify(["https://www.xsd8866.com"]),
     ...overrides,
   };
 }
@@ -885,7 +885,7 @@ for (const [provider, makeEnv, invalids] of [
     { PLATFORM_XSD_PAYMENT_METHOD: "unionpay" },
     ...["http://portal.example.test/api/platform/payments/xsd/callback", "https://user@portal.example.test/api/platform/payments/xsd/callback", "https://portal.example.test/wrong", "https://portal.example.test/api/platform/payments/xsd/callback?q=1", "https://portal.example.test/api/platform/payments/xsd/callback#x"].map((value) => ({ PLATFORM_XSD_CALLBACK_URL: value })),
     ...["", "http://portal.example.test/wallet", "https://user@portal.example.test/wallet", "https://portal.example.test/wallet#x"].map((value) => ({ PLATFORM_XSD_RETURN_URL: value })),
-    ...["[]", JSON.stringify(Array(9).fill("https://cashier.example.test")), JSON.stringify(["https://cashier.example.test", "https://cashier.example.test"]), JSON.stringify(["https://cashier.example.test/path"]), JSON.stringify(["https://cashier.example.test?q=1"]), JSON.stringify(["https://cashier.example.test#x"]), JSON.stringify(["https://user@cashier.example.test"])].map((value) => ({ PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON: value })),
+    ...["[]", JSON.stringify(["https://cashier.example.test"]), JSON.stringify(Array(9).fill("https://www.xsd8866.com")), JSON.stringify(["https://www.xsd8866.com", "https://www.xsd8866.com"]), JSON.stringify(["https://www.xsd8866.com/path"]), JSON.stringify(["https://www.xsd8866.com?q=1"]), JSON.stringify(["https://www.xsd8866.com#x"]), JSON.stringify(["https://user@www.xsd8866.com"])].map((value) => ({ PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON: value })),
     { PLATFORM_XSD_MERCHANT_SCOPE_DIGEST: "not-a-digest" },
   ]],
   ["chaojipay", chaoJiPayRechargeEnv, [

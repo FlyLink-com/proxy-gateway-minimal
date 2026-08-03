@@ -33,6 +33,7 @@ const NOW = "2026-08-03T00:00:00.000Z";
 const ACCOUNT_ID = "account_cny_recharge_1";
 const SESSION_REF = "session_cny_recharge_1";
 const ACTION_ORIGIN = "https://cashier.example.test";
+const XSD_ACTION_ORIGIN = "https://www.xsd8866.com";
 const XSD_SECRET = "synthetic-xsd-settlement-secret";
 const CHAOJIPAY_SECRET = "synthetic-chaojipay-settlement-secret";
 
@@ -145,11 +146,11 @@ function createRuntime(providerCase) {
         return providerJsonResponse(url, {
           code: "200",
           error: "请求成功",
-          datas: { url: `${ACTION_ORIGIN}/pay/synthetic` },
+          datas: { code_url: `${XSD_ACTION_ORIGIN}/pay/synthetic` },
         });
       },
       apiOrigin,
-      allowedActionOrigins: [ACTION_ORIGIN],
+      allowedActionOrigins: [XSD_ACTION_ORIGIN],
       routeMap: {
         portal_payment_callback_v1:
           `https://portal.example.test${providerCase.callbackPath}`,

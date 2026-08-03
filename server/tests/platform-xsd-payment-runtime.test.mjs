@@ -5,6 +5,7 @@ import test from "node:test";
 import { createXsdPaymentRuntime } from "../services/platform/xsd-payment-runtime.mjs";
 
 const API_ORIGIN = "https://www.xsd8866.com";
+const ACTION_ORIGIN = "https://www.xsd8866.com";
 const SECRET = "synthetic-xsd-secret";
 const MERCHANT_DIGEST = "a".repeat(64);
 
@@ -25,7 +26,7 @@ function streamResponse(stream, { url = `${API_ORIGIN}/api/gaia/unifiedorder`, .
 function runtime(fetchFn, overrides = {}) {
   return createXsdPaymentRuntime({
     credential: { merchantId: "merchant_demo", merchantSecret: SECRET, merchantScopeDigest: MERCHANT_DIGEST },
-    fetchFn, apiOrigin: API_ORIGIN, allowedActionOrigins: ["https://checkout.example.test"],
+    fetchFn, apiOrigin: API_ORIGIN, allowedActionOrigins: [ACTION_ORIGIN],
     routeMap: {
       portal_payment_callback_v1: "https://portal.example.test/api/payment/xsd/callback",
       portal_wallet_return_v1: "https://portal.example.test/wallet",
@@ -95,18 +96,59 @@ test("XSD runtime rejects a wrong origin before nested credential inspection", {
   assert.equal(fetchCalls, 0);
 });
 
-test("XSD runtime accepts the documented create response envelope", async () => {
+test("XSD runtime accepts only the observed action origin", () => {
+  let fetchCalls = 0;
+  const fetchFn = async () => {
+    fetchCalls += 1;
+    throw new Error("unexpected fetch");
+  };
+  for (const allowedActionOrigins of [
+    ["https://checkout.example.test"],
+    ["https://sub.www.xsd8866.com"],
+    ["https://www.xsd8866.com:443"],
+    ["https://WWW.XSD8866.COM"],
+    [ACTION_ORIGIN, "https://checkout.example.test"],
+  ]) {
+    assert.throws(
+      () => runtime(fetchFn, { allowedActionOrigins }),
+      /xsd_transport_failed/u,
+    );
+  }
+  assert.deepEqual(runtime(fetchFn).transport.allowedActionOrigins, [ACTION_ORIGIN]);
+  assert.equal(fetchCalls, 0);
+});
+
+test("XSD runtime maps the live create response code_url to the internal url contract", async () => {
   const value = runtime(async () => response(200, {
     code: "200",
     error: "请求成功",
-    datas: { url: "https://checkout.example.test/pay/1" },
+    datas: { code_url: `${ACTION_ORIGIN}/pay/1` },
   }));
   const created = await request(value, "create_recharge_order", {
     action: "xsd_payment_create",
     createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
     routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
   });
-  assert.deepEqual(created, { response: { url: "https://checkout.example.test/pay/1" }, evidence: null });
+  assert.deepEqual(created, { response: { url: `${ACTION_ORIGIN}/pay/1` }, evidence: null });
+});
+
+test("XSD runtime rejects legacy or expanded create response envelopes", async () => {
+  for (const datas of [
+    { url: `${ACTION_ORIGIN}/pay/1` },
+    { code_url: `${ACTION_ORIGIN}/pay/1`, url: `${ACTION_ORIGIN}/pay/1` },
+    { code_url: `${ACTION_ORIGIN}/pay/1`, extra: "not-allowed" },
+  ]) {
+    const value = runtime(async () => response(200, {
+      code: "200",
+      error: "请求成功",
+      datas,
+    }));
+    await assert.rejects(() => request(value, "create_recharge_order", {
+      action: "xsd_payment_create",
+      createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
+      routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
+    }), /xsd_transport_failed/u);
+  }
 });
 
 test("XSD runtime verifies the documented nested query response envelope", async () => {
@@ -146,7 +188,7 @@ test("XSD runtime signs UTF-8 create and query form requests with injected trans
   const calls = [];
   const value = runtime(async (url, init) => {
     calls.push({ url, init });
-    if (url.endsWith("/unifiedorder")) return response(200, { code: "200", error: "请求成功", datas: { url: "https://checkout.example.test/pay/1" } });
+    if (url.endsWith("/unifiedorder")) return response(200, { code: "200", error: "请求成功", datas: { code_url: `${ACTION_ORIGIN}/pay/1` } });
     const fields = { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", amount: "12.00", status: "00" };
     return response(200, { code: "200", error: "查询成功", datas: { ...fields, sign: signature(fields) } }, { url });
   });
@@ -160,7 +202,7 @@ test("XSD runtime signs UTF-8 create and query form requests with injected trans
   assert.equal(calls[0].init.redirect, "error");
   assert.equal(calls[0].init.headers["Content-Type"], "application/x-www-form-urlencoded; charset=utf-8");
   assert.equal(calls[0].init.body, `amount=12.00&callbackurl=https%3A%2F%2Fportal.example.test%2Fwallet&channel=1917&format=json&mchId=merchant_demo&mch_order_no=payment_order_1&notifyurl=https%3A%2F%2Fportal.example.test%2Fapi%2Fpayment%2Fxsd%2Fcallback&sign=${signature({ mch_order_no: "payment_order_1", amount: "12.00", notifyurl: "https://portal.example.test/api/payment/xsd/callback", callbackurl: "https://portal.example.test/wallet", mchId: "merchant_demo", channel: "1917", format: "json" })}`);
-  assert.deepEqual(created, { response: { url: "https://checkout.example.test/pay/1" }, evidence: null });
+  assert.deepEqual(created, { response: { url: `${ACTION_ORIGIN}/pay/1` }, evidence: null });
   const queried = await request(value, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" });
   assert.equal(calls[1].url, `${API_ORIGIN}/api/gaia/query`);
   assert.equal(calls[1].init.redirect, "error");
@@ -169,7 +211,7 @@ test("XSD runtime signs UTF-8 create and query form requests with injected trans
 });
 
 test("XSD runtime rejects empty, redirected, or mismatched final URLs even when their bodies are valid", async () => {
-  const redirected = response(200, { code: "200", error: "请求成功", datas: { url: "https://checkout.example.test/pay/1" } }, { redirected: true, url: `${API_ORIGIN}/api/gaia/unifiedorder` });
+  const redirected = response(200, { code: "200", error: "请求成功", datas: { code_url: `${ACTION_ORIGIN}/pay/1` } }, { redirected: true, url: `${API_ORIGIN}/api/gaia/unifiedorder` });
   const value = runtime(async () => redirected);
   await assert.rejects(() => request(value, "create_recharge_order", {
     action: "xsd_payment_create",
@@ -183,7 +225,7 @@ test("XSD runtime rejects empty, redirected, or mismatched final URLs even when 
     });
     await assert.rejects(() => request(query, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" }), /xsd_transport_failed/u);
   }
-  const standard = new Response(JSON.stringify({ code: "200", error: "请求成功", datas: { url: "https://checkout.example.test/pay/1" } }), { status: 200 });
+  const standard = new Response(JSON.stringify({ code: "200", error: "请求成功", datas: { code_url: `${ACTION_ORIGIN}/pay/1` } }), { status: 200 });
   const missingRedirected = Object.freeze({ status: standard.status, headers: standard.headers, body: standard.body, url: `${API_ORIGIN}/api/gaia/unifiedorder` });
   await assert.rejects(() => request(runtime(async () => missingRedirected), "create_recharge_order", {
     action: "xsd_payment_create",
@@ -222,7 +264,7 @@ test("XSD runtime rejects declared oversize JSON before accessing its body", asy
   let bodyGets = 0;
   let readerGets = 0;
   let reads = 0;
-  const validJson = new TextEncoder().encode(JSON.stringify({ code: "200", error: "请求成功", datas: { url: "https://checkout.example.test/pay/1" } }));
+  const validJson = new TextEncoder().encode(JSON.stringify({ code: "200", error: "请求成功", datas: { code_url: `${ACTION_ORIGIN}/pay/1` } }));
   const declaredResponse = { status: 200, redirected: false, url: `${API_ORIGIN}/api/gaia/unifiedorder`, headers: new Headers({ "content-length": "1048577" }) };
   Object.defineProperty(declaredResponse, "body", { enumerable: true, get() {
     bodyGets += 1;
