@@ -7,7 +7,8 @@ const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DIGEST_RE = /^[a-f0-9]{64}$/u;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=utf-8";
-const MAX_CALLBACK_BASE64_CHARS = 16_384;
+const MAX_CALLBACK_BYTES = 16_384;
+const MAX_CALLBACK_BASE64_CHARS = Math.ceil(MAX_CALLBACK_BYTES / 3) * 4;
 
 function fail() { throw new TypeError("invalid_xsd_payment_protocol"); }
 
@@ -102,7 +103,7 @@ function callbackInput(value) {
   if (typeof input.bodyBase64 !== "string" || input.bodyBase64.length < 4 || input.bodyBase64.length > MAX_CALLBACK_BASE64_CHARS || input.bodyBase64.length % 4 !== 0) fail();
   let body;
   try { body = Buffer.from(input.bodyBase64, "base64"); } catch { fail(); }
-  if (body.length < 1 || body.length > 16_384 || body.toString("base64") !== input.bodyBase64 || /[\0\r\n]/u.test(body.toString("utf8"))) fail();
+  if (body.length < 1 || body.length > MAX_CALLBACK_BYTES || body.toString("base64") !== input.bodyBase64 || /[\0\r\n]/u.test(body.toString("utf8"))) fail();
   return {
     callbackRequestRef: safeRef(input.callbackRequestRef), receivedAt: canonicalTime(input.receivedAt),
     bodyBase64: input.bodyBase64, headerEntries: callbackHeaders(input.headerEntries),

@@ -10,8 +10,9 @@ const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DIGEST_RE = /^[a-f0-9]{64}$/u;
 const MAX_JSON_BYTES = 1_048_576;
 const MAX_JSON_CHUNKS = 4_096;
-const MAX_CALLBACK_BASE64_CHARS = 16_384;
+const CHAOJIPAY_API_ORIGIN = "https://payment.chaojipay.me";
 const MAX_CALLBACK_BYTES = 16_384;
+const MAX_CALLBACK_BASE64_CHARS = Math.ceil(MAX_CALLBACK_BYTES / 3) * 4;
 const CALLBACK_TYPES = new Set([
   "application/form",
   "application/form; charset=utf-8",
@@ -257,6 +258,7 @@ export function createChaoJiPayPaymentRuntime(value = {}) {
   const credentialProfileRef = safeRef(input.credentialProfileRef);
   if (typeof input.fetchFn !== "function" || utilTypes.isProxy(input.fetchFn) || typeof input.nowFn !== "function" || utilTypes.isProxy(input.nowFn)) fail();
   const apiOrigin = origin(input.apiOrigin);
+  if (apiOrigin !== CHAOJIPAY_API_ORIGIN || input.apiOrigin !== CHAOJIPAY_API_ORIGIN) fail();
   const actionOrigins = allowedOrigins(input.allowedActionOrigins);
   const routes = routeMap(input.routeMap);
   const createRequestIp = publicIpv4(input.createRequestIp);

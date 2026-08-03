@@ -8,7 +8,9 @@ const DIGEST_RE = /^[a-f0-9]{64}$/u;
 const MAX_JSON_BYTES = 1_048_576;
 const MAX_JSON_CHUNKS = 4_096;
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=utf-8";
-const MAX_CALLBACK_BASE64_CHARS = 16_384;
+const XSD_API_ORIGIN = "https://www.xsd8866.com";
+const MAX_CALLBACK_BYTES = 16_384;
+const MAX_CALLBACK_BASE64_CHARS = Math.ceil(MAX_CALLBACK_BYTES / 3) * 4;
 const OPERATION_BY_ACTION = Object.freeze({
   xsd_payment_create: "create_recharge_order",
   xsd_payment_query: "query_payment",
@@ -155,7 +157,7 @@ function strictCallbackForm(callback) {
   if (typeof input.bodyBase64 !== "string" || input.bodyBase64.length < 4 || input.bodyBase64.length > MAX_CALLBACK_BASE64_CHARS || input.bodyBase64.length % 4 !== 0) fail();
   let body;
   try { body = Buffer.from(input.bodyBase64, "base64"); } catch { fail(); }
-  if (body.length < 1 || body.length > MAX_JSON_BYTES || body.toString("base64") !== input.bodyBase64 || /[\0\r\n]/u.test(body.toString("utf8"))) fail();
+  if (body.length < 1 || body.length > MAX_CALLBACK_BYTES || body.toString("base64") !== input.bodyBase64 || /[\0\r\n]/u.test(body.toString("utf8"))) fail();
   if (!Array.isArray(input.headerEntries) || utilTypes.isProxy(input.headerEntries) || input.headerEntries.length !== 1) fail();
   const headerDescriptors = Object.getOwnPropertyDescriptors(input.headerEntries);
   if (Reflect.ownKeys(headerDescriptors).length !== 2 || !Object.hasOwn(headerDescriptors, "0") || !Object.hasOwn(headerDescriptors, "length") || !Object.hasOwn(headerDescriptors["0"], "value")) fail();
@@ -236,6 +238,7 @@ export function createXsdPaymentRuntime(value = {}) {
   const credentialProfileRef = safeRef(input.credentialProfileRef);
   if (typeof input.fetchFn !== "function" || utilTypes.isProxy(input.fetchFn) || typeof input.nowFn !== "function" || utilTypes.isProxy(input.nowFn)) fail();
   const apiOrigin = origin(input.apiOrigin);
+  if (apiOrigin !== XSD_API_ORIGIN || input.apiOrigin !== XSD_API_ORIGIN) fail();
   const actionOrigins = allowedOrigins(input.allowedActionOrigins);
   const routes = routeMap(input.routeMap);
   const handles = new WeakMap();

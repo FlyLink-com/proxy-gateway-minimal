@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { createChaoJiPayPaymentRuntime } from "../services/platform/chaojipay-payment-runtime.mjs";
 
-const API_ORIGIN = "https://payment.chaojipay.example.test";
+const API_ORIGIN = "https://payment.chaojipay.me";
 const SECRET = "synthetic-chaojipay-secret";
 const REQUEST_IP = "1.1.1.1";
 const MERCHANT_DIGEST = "a".repeat(64);
@@ -58,6 +58,30 @@ async function request(value, operation, body, bindingOverride = {}) {
   const binding = Object.freeze({ profileRef: "chaojipay_profile", adapterKey: "chaojipay_v1", contractVersion: "v1", credentialProfileRef: "chaojipay_credential", operation, ...bindingOverride });
   return value.credentialLoader.withCredential(binding, (credentialHandle) => value.transport.requestFn({ binding, credentialHandle, request: body }));
 }
+
+test("ChaoJiPay runtime accepts only the source-owned API origin before credential or fetch", () => {
+  let fetchCalls = 0;
+  const fetchFn = async () => {
+    fetchCalls += 1;
+    throw new Error("unexpected fetch");
+  };
+  for (const apiOrigin of [
+    "https://redirect.example.test",
+    "https://sub.payment.chaojipay.me",
+    "https://payment.chaojipay.me:443",
+    "https://payment.chaojipay.me/path",
+    "https://payment.chaojipay.me?query=1",
+    "https://payment.chaojipay.me#fragment",
+    "https://user@payment.chaojipay.me",
+    "https://PAYMENT.CHAOJIPAY.ME",
+    "https://www.xsd8866.com",
+  ]) {
+    assert.throws(() => runtime(fetchFn, { apiOrigin }), /chaojipay_transport_failed/u);
+  }
+  assert.equal(fetchCalls, 0);
+  assert.equal(typeof runtime(fetchFn).credentialLoader.withCredential, "function");
+  assert.equal(fetchCalls, 0);
+});
 
 test("ChaoJiPay runtime sends the exact signed JSON create body with the injected public IP", async () => {
   const calls = [];
