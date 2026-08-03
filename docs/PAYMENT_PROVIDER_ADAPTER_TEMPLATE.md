@@ -1,6 +1,6 @@
 # Payment Provider Adapter Template
 
-Last updated: 2026-08-01, America/Los_Angeles.
+Last updated: 2026-08-02, America/Los_Angeles.
 
 This document defines the repository-local adapter template for future payment
 provider integration.
@@ -158,35 +158,65 @@ capabilities, and runtime flags, each identity resolves as unavailable.
 
 | `adapterKey` | `providerId` | Contract state | Methods / capabilities |
 | --- | --- | --- | --- |
-| `paypal_v1` | `paypal_commerce` | compiled V1; default-off | PayPal method and Recharge/callback capabilities only inside an enabled credential-scoped Sandbox binding |
-| `xsd_v1` | `xsd` | `unverified` | empty / every flag `false` |
-| `chaojipay_v1` | `chaojipay` | `unverified` | empty / every flag `false` |
+| `paypal_v1` | `paypal_commerce` | compiled V1; default-off | `paypal`; create/query/capture/callback plus both declared idempotency flags |
+| `xsd_v1` | `xsd` | compiled V1; default-off | `alipay`, `wechat_pay`; create/query/callback only |
+| `chaojipay_v1` | `chaojipay` | compiled V1; default-off | `wechat_pay`; create/callback only; query remains disabled |
 
-The PayPal protocol codec and Adapter/runtime tests are synthetic local evidence
-only; they do not select or enable a provider, validate a real credential, or
-register a webhook. XSD remains a detached codec boundary, and ChaoJiPay remains
-an identity-only disabled Adapter with no guessed protocol surface. Monetary
-operation inputs and payment facts always carry an explicit `currencyExponent`;
-no codec infers it from a currency string.
+The Registry builds those descriptors with one inert, deterministic execution
+scope. Listing metadata neither opens a credential nor invokes a transport or
+clock. Resolving a usable Adapter still requires explicit declared capabilities
+and injected credential/transport bindings; the effective capability is the
+intersection of the declaration and the compiled capability. A declaration
+with every flag `false` has no payment method and every operation rejects before
+credential, transport, or clock use. Missing credential or transport bindings
+fail closed on the first valid enabled operation.
 
-XSD and ChaoJiPay also have detached documented-payment candidates. They are
-not Adapter, registry, runtime, route, Store, Wallet, credential-loader, or
-public-index dependencies. Their frozen metadata records only the documented
-channels/methods and public create/query locations; their MD5 helpers operate
-only on synthetic canonical strings and a test-supplied synthetic secret. Local
-candidate tests are not evidence of provider compatibility, an executable
-signing contract, callback verification, acknowledgement behavior, or a
-provider response parser.
+The XSD and ChaoJiPay codecs, injected runtimes, and Adapters have only
+synthetic local-test evidence. They are not evidence of provider, merchant,
+Sandbox, production, credential, callback-registration, or payment
+compatibility. Neither runtime is imported by `server/state.mjs`, routes,
+Payment Store, Wallet, public indexes, or Portal/Admin bootstrap roots.
 
-Both documented candidates remain blocked on all of the following before any
-Risk A contract-validation Gate may make them reachable:
+The default-off source boundary is a lightweight static/literal audit of
+tracked production/public roots: package `main`/`exports`/`bin`,
+`start`/`server` entries, server state and routes, payment Store/Wallet, public
+indexes, and the Admin/Portal HTML/bootstrap/Vite roots. It establishes the
+direct source fact that the tracked state and routes do not import either CNY
+runtime. Publishable `package.json.files` members remain a separate literal
+basename audit corpus, not executable assembly roots. This lightweight test
+does not prove the absence of deliberately computed or obfuscated loading;
+such code requires ordinary code review and any applicable security scan.
 
-- official fixed signing vectors;
-- exact callback field inclusion;
-- stable provider transaction identity;
-- authoritative no-charge semantics;
-- exact acknowledgement and retry contract; and
-- allowed action URL behavior.
+Confirmed synthetic source facts are deliberately narrow:
+
+- XSD accepts only CNY/2-decimal create inputs for Alipay channel `1917` and
+  WeChat channel `1923`; it constructs form requests and lower-case MD5 signing
+  inside an injected credential scope. Its callback verifier projects only a
+  signed success, rejects unexpected `attach`, and uses `SUCCESS` only as a
+  pure acknowledgement codec.
+- ChaoJiPay accepts only CNY/2-decimal WeChat product `726`; it constructs JSON
+  create requests and uppercase MD5 signing inside an injected credential scope.
+  It verifies signed callback success and exposes `success` only as a pure
+  acknowledgement codec. Its documented query response lacks an authoritative
+  signed field contract, so query is compiled disabled.
+- XSD's `succeeded` query projection is not a verified payment fact; no query,
+  callback, redirect, or acknowledgement is wired to Store, Wallet, or Coins
+  credit in this source change.
+
+`createRequestIp` is a ChaoJiPay runtime constructor input that is only
+synthetically validated as a public IPv4 value and emitted in the create
+request's `ip` field. The source cannot establish whether that field means the
+payer IP or a merchant egress IP. Selecting or deriving it from a real request,
+proxy, or host is a separate Risk A trusted-binding blocker, not a default or
+fallback in this implementation.
+
+Before a Risk A gate can make either runtime reachable, evidence must resolve
+the observed action origin and allowlist mutation, callback retry and ACK
+behavior, terminal no-charge semantics, exact credential binding, and provider
+transaction identity. Required gates include protected credential injection,
+callback route/public-ingress registration, production runtime assembly,
+unpaid create/query probes, and one-provider-at-a-time small-value paid
+canaries with a rollback plan.
 
 ## Risk Gates
 

@@ -37,6 +37,21 @@ const CAPABILITY_KEYS = [
   "repeatCreateIdempotent",
   "repeatCaptureIdempotent",
 ];
+const ADAPTER_RAW_KEYS = [
+  "adapterKey",
+  "providerId",
+  "contractVersion",
+  "capabilities",
+  "supportedPaymentMethods",
+  "createRechargeOrder",
+  "queryPayment",
+  "capturePayment",
+  "verifyAndNormalizeCallback",
+  "normalizeError",
+  "webhookSuccessAck",
+  "refund",
+  "reconcile",
+];
 const OPERATION_CAPABILITY_KEYS = [
   "createRechargeOrder",
   "queryPayment",
@@ -164,6 +179,10 @@ const DEFAULT_TRANSPORT = Object.freeze({
   requestFn: failClosedRequest,
   allowedActionOrigins: Object.freeze([]),
 });
+const INERT_DESCRIPTOR_EXECUTION_SCOPE = Object.freeze({
+  withCredential: failClosedCredentialUse,
+});
+const INERT_DESCRIPTOR_NOW = () => "1970-01-01T00:00:00.000Z";
 
 function normalizeCredentialLoader(value) {
   if (value === undefined) return DEFAULT_CREDENTIAL_LOADER;
@@ -247,17 +266,62 @@ function normalizeTransports(value, credentialLoader) {
   return Object.freeze(result);
 }
 
+function snapshotAdapterMetadata(value, code) {
+  const input = snapshotObject(value, ADAPTER_RAW_KEYS, true, code);
+  const capabilities = snapshotObject(
+    input.capabilities,
+    CAPABILITY_KEYS,
+    true,
+    code,
+  );
+  if (CAPABILITY_KEYS.some((key) => typeof capabilities[key] !== "boolean")) {
+    fail(code);
+  }
+  const supportedPaymentMethods = snapshotArray(
+    input.supportedPaymentMethods,
+    code,
+  );
+  if (supportedPaymentMethods.some((method) => typeof method !== "string")) {
+    fail(code);
+  }
+  if (input.contractVersion !== "v1" && input.contractVersion !== "unverified") {
+    fail(code);
+  }
+  return Object.freeze({
+    adapterKey: safeRef(input.adapterKey, code),
+    providerId: safeRef(input.providerId, code),
+    contractVersion: input.contractVersion,
+    capabilities: Object.freeze({ ...capabilities }),
+    supportedPaymentMethods: Object.freeze([...supportedPaymentMethods]),
+  });
+}
+
+function adapterMetadataMatchesDescriptor(raw, descriptor) {
+  return (
+    raw.adapterKey === descriptor.adapterKey
+    && raw.providerId === descriptor.providerId
+    && raw.contractVersion === descriptor.contractVersion
+    && CAPABILITY_KEYS.every(
+      (key) => raw.capabilities[key] === descriptor.capabilities[key],
+    )
+    && raw.supportedPaymentMethods.length === descriptor.supportedPaymentMethods.length
+    && raw.supportedPaymentMethods.every(
+      (method, index) => method === descriptor.supportedPaymentMethods[index],
+    )
+  );
+}
+
 function compiledDescriptor(adapterKey, factory) {
-  const raw = adapterKey === "paypal_v1"
-    ? factory({
-        executionScope: Object.freeze({
-          withCredential() {
-            return Promise.reject(new Error("payment_provider_transport_unavailable"));
-          },
-        }),
-        nowFn: () => "1970-01-01T00:00:00.000Z",
-      })
-    : factory();
+  let raw;
+  try {
+    raw = snapshotAdapterMetadata(factory({
+      executionScope: INERT_DESCRIPTOR_EXECUTION_SCOPE,
+      nowFn: INERT_DESCRIPTOR_NOW,
+    }), "invalid_payment_adapter_registry");
+  } catch {
+    fail("invalid_payment_adapter_registry");
+  }
+  if (raw.adapterKey !== adapterKey) fail("invalid_payment_adapter_registry");
   return Object.freeze({
     adapterKey,
     providerId: raw.providerId,
@@ -413,33 +477,41 @@ export function createStaticPaymentProviderAdapterRegistry(options = {}) {
     }
 
     const factory = ADAPTER_FACTORIES[known.adapterKey];
+    let rawAdapter;
+    try {
+      rawAdapter = factory({
+        executionScope,
+        nowFn: nowFn ?? (() => new Date().toISOString()),
+      });
+    } catch {
+      fail("invalid_payment_adapter_resolution");
+    }
     let raw;
     try {
-      raw = known.adapterKey === "paypal_v1"
-        ? factory({
-            executionScope,
-            nowFn: nowFn ?? (() => new Date().toISOString()),
-          })
-        : factory(nowFn === undefined
-          ? { executionScope }
-          : { executionScope, nowFn });
+      raw = snapshotAdapterMetadata(
+        rawAdapter,
+        "invalid_payment_adapter_resolution",
+      );
     } catch {
+      fail("invalid_payment_adapter_resolution");
+    }
+    if (!adapterMetadataMatchesDescriptor(raw, descriptor)) {
       fail("invalid_payment_adapter_resolution");
     }
     const capabilities = Object.freeze(Object.fromEntries(
       CAPABILITY_KEYS.map((key) => [
         key,
-        raw.capabilities[key] && declaredCapabilities[key],
+        descriptor.capabilities[key] && declaredCapabilities[key],
       ]),
     ));
     const anyOperationEnabled = OPERATION_CAPABILITY_KEYS.some(
       (key) => capabilities[key],
     );
     const supportedPaymentMethods = Object.freeze(
-      anyOperationEnabled ? [...raw.supportedPaymentMethods] : [],
+      anyOperationEnabled ? [...descriptor.supportedPaymentMethods] : [],
     );
     const effective = {
-      ...raw,
+      ...rawAdapter,
       capabilities,
       supportedPaymentMethods,
     };

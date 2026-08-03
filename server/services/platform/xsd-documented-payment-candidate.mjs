@@ -5,28 +5,29 @@ import { types as utilTypes } from "node:util";
 
 export const XSD_DOCUMENTED_PAYMENT_CANDIDATE = Object.freeze({
   adapterKey: "xsd_v1",
-  contractVersion: "unverified",
+  contractVersion: "v1",
   documentedChannels: Object.freeze({ alipay: "1917", wechat_pay: "1923" }),
   requestEncoding: "application/x-www-form-urlencoded; charset=utf-8",
   createOrigin: "https://www.xsd8866.com",
   createPath: "/api/gaia/unifiedorder",
   queryPath: "/api/gaia/query",
-  callbackVerification: "unverified",
-  acknowledgement: "unverified",
+  createFields: Object.freeze(["mch_order_no", "amount", "notifyurl", "callbackurl", "mchId", "channel", "format", "sign"]),
+  queryFields: Object.freeze(["mch_order_no", "mchId", "sign"]),
+  callbackFields: Object.freeze(["mch_order_no", "partnerorderid", "status", "mchId", "amount", "sign"]),
+  readOnlyEvidenceWarning: "Documented field evidence only; no runtime linkage or provider compatibility claim.",
 });
 
 const CREATE_FIELDS = Object.freeze([
-  "attach", "body", "format", "mch_create_ip", "mch_id", "notify_url",
-  "out_trade_no", "return_url", "service", "sign", "total_fee",
+  "mch_order_no", "amount", "notifyurl", "callbackurl", "mchId", "channel", "format", "sign",
 ]);
-const QUERY_FIELDS = Object.freeze(["attach", "format", "mch_id", "out_trade_no", "sign"]);
-const EXCLUDED_FIELDS = new Set(["sign", "format", "attach"]);
+const QUERY_FIELDS = Object.freeze(["mch_order_no", "mchId", "sign"]);
+const EXCLUDED_FIELDS = new Set(["sign", "format"]);
 const SAFE_ORDER_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const CANONICAL_VALUE_DELIMITER = /[&=]/u;
 const SYNTHETIC_SECRET = "synthetic_secret";
 const SYNTHETIC_CANONICAL_TEXTS = Object.freeze([
-  "mch_create_ip=203.0.113.10&mch_id=merchant_demo&out_trade_no=order_demo_1&total_fee=1200",
-  "mch_id=merchant_demo&out_trade_no=order_demo_1",
+  "amount=12.00&callbackurl=https://return.example.test&channel=1917&mchId=merchant_demo&mch_order_no=order_demo_1&notifyurl=https://callback.example.test",
+  "mchId=merchant_demo&mch_order_no=order_demo_1",
 ]);
 
 function candidateError(code) {
@@ -77,8 +78,8 @@ function snapshotFields(value, allowedFields) {
     throw candidateError("invalid_documented_payment_candidate");
   }
   if (
-    Object.hasOwn(snapshot, "out_trade_no")
-    && !SAFE_ORDER_REFERENCE.test(snapshot.out_trade_no)
+    Object.hasOwn(snapshot, "mch_order_no")
+    && !SAFE_ORDER_REFERENCE.test(snapshot.mch_order_no)
   ) throw candidateError("invalid_documented_payment_candidate");
   return snapshot;
 }

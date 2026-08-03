@@ -6,7 +6,7 @@
 >   security, and test boundary
 > - Source baseline:
 >   `master@a5c80f44a47389d65907ba1cdd58649a1e41ac83`
-> - Phase 1 risk: B, source-only Provider Core and disabled Adapters
+> - Phase 1 risk: B, source-only Provider Core and default-off compiled Adapters
 > - Deferred risk: A for schema/migration, provider access, sandbox or
 >   production activation, callback routes, wallet credit, and deployment
 > - Expected Phase 1 PR count: 1
@@ -38,11 +38,11 @@ Coins remain closed-loop:
 
 | Surface | Classification | Evidence boundary |
 | --- | --- | --- |
-| Provider Core at the source baseline | Confirmed local source | Canonical Adapter contract, static registry, disabled provisional Adapters, credential-scoped execution, and safe automatic routing exist on local `master`. This is not pushed or deployed evidence. |
+| Provider Core at the source baseline | Confirmed local source | Canonical Adapter contract, static registry, default-off compiled Adapters, credential-scoped execution, and safe automatic routing exist in source. This is not deployed evidence. |
 | Legacy PayPal branch | Draft donor, source-only | OAuth, Orders create/capture, approval-link parsing, webhook verification mapping, and injected-transport tests may be re-imported after review. Direct environment access, in-memory order state, old routes, and old Portal checkout are forbidden. |
-| XSD provider manual | Read-only provider documentation | Create, query, callback fields, signing rules, status mapping, and exact callback acknowledgement were observed. Sandbox identity, replay controls, refunds, reconciliation, callback retries, and stable action origins are not documented. |
-| ChaoJiPay material | Unverified | Available material is insufficient to verify signing, status, callback, idempotency, refund, or reconciliation behavior. Merchant withdrawal APIs are outside scope. |
-| Runtime and production | Unverified and disabled | No Adapter capability, provider call, callback route, schema, wallet mutation, deployment, or production activation is authorized by this design. |
+| XSD adapter/runtime source | Synthetic local tests | CNY create/query/callback codec, injected signing/transport boundary, and compiled `v1` metadata are covered without a provider call. Action origin, retry, replay, terminal no-charge, real credentials, and production compatibility remain unverified. |
+| ChaoJiPay adapter/runtime source | Synthetic local tests | CNY WeChat product `726` create/callback codec, injected signing/transport boundary, and compiled `v1` metadata are covered without a provider call. Query is disabled; `ip` payer-versus-egress semantics and a trusted source binding remain unverified. |
+| Runtime and production | Default-off and unassembled | No XSD or ChaoJiPay runtime is assembled in state, routes, Store, Wallet, public indexes, or Portal/Admin bootstrap. No XSD or ChaoJiPay provider call or callback route, schema, wallet mutation, deployment, or production activation is authorized by this design. |
 
 No credential, merchant identifier, token, account data, order URL, raw provider
 payload, or customer data may be copied into source, tests, documentation, or
@@ -114,9 +114,9 @@ The static registry contains exactly:
 
 | `adapterKey` | `providerId` | Initial version |
 | --- | --- | --- |
-| `paypal_v1` | `paypal_commerce` | `unverified` |
-| `xsd_v1` | `xsd` | `unverified` |
-| `chaojipay_v1` | `chaojipay` | `unverified` |
+| `paypal_v1` | `paypal_commerce` | `v1`, default-off |
+| `xsd_v1` | `xsd` | `v1`, default-off |
+| `chaojipay_v1` | `chaojipay` | `v1`, default-off |
 
 Provider identity and payment method remain distinct. Canonical payment methods
 are ordered and frozen as:
@@ -127,9 +127,11 @@ wechat_pay
 paypal
 ```
 
-Provider Core itself is finalized as contract `v1`. Each provider Adapter
-remains `unverified` until an independent provider-validation gate supplies
-enough evidence to promote that Adapter to `v1`.
+Provider Core and all three compiled descriptors are contract `v1`. A compiled
+descriptor is not a runtime activation decision: resolution must intersect its
+capabilities with an explicit declared-capability record and use injected
+credential/transport bindings. An all-false declaration remains disabled; a
+declaration cannot expand a compiled capability.
 
 ### Operations and Capabilities
 
@@ -348,12 +350,13 @@ exponent, order, and capture validation.
 
 ## Adapter Mapping
 
-Every registry-published named Adapter is initially `unverified`, preserves the
-full exact rejective method shape, has an empty `supportedPaymentMethods`
-projection, and has no enabled operation. Pure protocol codecs may be exercised
-by the injected local validation harness, but no registry resolution can select
-or enable them. The harness is not a runtime configuration seam. The following
-are validation targets, not current capability claims.
+The Registry publishes three compiled `v1` descriptors. Descriptor construction
+uses an inert failing execution scope and a deterministic clock exclusively to
+read metadata; it does not read a credential, call a transport, or make a
+network request. Runtime resolution is still default-off: it requires explicit
+declared capabilities plus injected credential and transport bindings, and it
+intersects rather than expands the compiled capability set. The local synthetic
+harness is not a runtime configuration seam or provider-compatibility proof.
 
 ### `paypal_v1`
 
@@ -400,114 +403,45 @@ and validated.
 
 ### `xsd_v1`
 
-Target payment methods:
+The compiled descriptor supports `alipay` and `wechat_pay`, with only
+create/query/callback-verification enabled. Its injected runtime accepts only
+CNY at exponent 2, maps Alipay to channel `1917` and WeChat Pay to `1923`, and
+uses lower-case MD5 form signing inside a credential scope. The source tests
+cover the exact closed create/query/callback field shapes, signature checking,
+status handling, response bounds, and `SUCCESS` acknowledgement codec. An
+unexpected callback `attach` field fails closed.
 
-```text
-alipay
-wechat_pay
-```
-
-Target operations after provider validation:
-
-```text
-create
-query
-callback verification
-```
-
-The provider manual describes a partial form-signing recipe: sort eligible
-non-empty fields by key, join `key=value` pairs, append the merchant secret, and
-apply MD5. It does not provide enough evidence to freeze the exact encoded
-bytes: the complete exclusion set, character encoding, form-encoding order, and
-digest representation case are not all verified by an authoritative test
-vector.
-
-The detached `xsd-documented-payment-candidate.mjs` records only unverified
-documentation metadata: Alipay channel `1917`, WeChat Pay channel `1923`, form
-encoding, and the public create/query locations. Its synthetic canonicalization
-excludes `sign`, `format`, and `attach`; its lowercase MD5 helper accepts only a
-test-supplied synthetic secret. It is not an Adapter dependency and its local
-tests are not provider compatibility evidence.
-
-Phase 1 therefore does not implement an outbound XSD signer or callback
-verifier. It records only the closed documented field and status vocabulary,
-the exact acknowledgement bytes, and an explicit
-`provider_contract_unverified` rejection. After authoritative vectors are
-obtained, signing and constant-time verification will run inside the
-credential boundary without exposing the secret.
-
-The read-only provider manual establishes these non-secret semantic field
-roles, but not enough canonical encoded bytes to create or verify a signed
-wire request:
-
-```text
-create:
-merchant_order_ref, amount, notify_target, return_target,
-merchant_scope, channel, signature, response_format, attachment
-
-query:
-merchant_order_ref, merchant_scope, signature
-
-callback:
-merchant_order_ref, provider_order_ref, merchant_scope,
-amount, status, signature, attachment
-```
-
-Known observed status mappings:
-
-- query `"3"` maps to `succeeded`;
-- query `"00"` maps to `pending`;
-- callback `"1"` maps to `payment_succeeded`;
-- callback `"-1"` maps to `payment_pending`;
-- unknown values map to `reconciliation_required`, never to failure or success.
-
-An XSD query result of `succeeded` is an observation only. It cannot mint a
-verified payment fact or settle Coins. Without a verified callback or a later
-separately designed authenticated reconciliation fact, it remains outside the
-wallet-credit path.
-
-The provider success acknowledgement codec defines the exact plain-text
-`SUCCESS` body. The future callback orchestrator may send it only after the
-verified event has been durably accepted.
-
-The provider manual does not establish:
-
-- sandbox versus production identity;
-- create or callback replay protection;
-- timestamp or nonce semantics;
-- callback retry policy;
-- refund, chargeback, or reconciliation APIs;
-- a stable safe redirect or QR action origin.
-
-Therefore create, query, callback, repeat-create, capture, refund, and
-reconciliation capabilities remain false until those activation blockers are
-resolved or explicitly accepted under a separate provider gate.
+The synthetic implementation is deliberately not a merchant or provider
+compatibility claim. The action origin is only an injected HTTPS allowlist;
+there is no observed provider action origin. Sandbox identity, replay/timestamp
+semantics, callback retries, terminal no-charge evidence, refunds,
+chargebacks, reconciliation, real credentials, public route registration, and
+production assembly remain separate Risk A work. An XSD query `succeeded`
+projection is not a verified payment fact and cannot settle Coins.
 
 ### `chaojipay_v1`
 
-The Adapter is an identity-only disabled registration:
+The compiled descriptor supports only `wechat_pay`, with create and callback
+verification enabled and query/capture/refund/reconcile/idempotency disabled.
+Its injected runtime accepts only CNY at exponent 2 and product code `726`,
+uses upper-case MD5 JSON signing inside a credential scope, and has a pure
+`success` acknowledgement codec. The local tests cover the closed request and
+callback shapes, bounded response handling, and failure paths; they do not call
+a provider.
 
-- no supported payment method;
-- no protocol codec;
-- no network call;
-- no callback acknowledgement;
-- every capability false.
+The runtime's `createRequestIp` is an exact public IPv4 constructor input
+emitted as the create request `ip` field. It is not inferred from a browser,
+request header, proxy, server, or environment. The source does not establish
+whether the provider interprets `ip` as payer IP or merchant egress IP, so a
+trusted real-world binding is a Risk A blocker. The documented query response
+has no authoritative signed field contract, so query remains disabled. Action
+origin evidence, callback ACK/retry behavior, terminal no-charge semantics,
+credential binding, public callbacks, unpaid probes, and paid canaries remain
+separate Risk A gates.
 
-The detached `chaojipay-documented-payment-candidate.mjs` records only
-unverified documentation metadata: WeChat Pay, product code `726`, JSON
-encoding, and the public create/query locations. Its synthetic canonicalization
-excludes `sign` and `realName`; its uppercase MD5 helper accepts only a
-test-supplied synthetic secret. It is not an Adapter dependency and its local
-tests are not provider compatibility evidence.
-
-Neither documented candidate provides a callback verifier, status-to-settlement
-mapper, acknowledgement encoder, provider response parser, transport,
-credential reader, or environment reader. Both remain unreachable from the
-Adapter, registry, runtime, routes, Store, Wallet, and public index until a
-separate Risk A contract-validation Gate resolves official fixed signing
-vectors, exact callback field inclusion, stable provider transaction identity,
-authoritative no-charge semantics, the exact acknowledgement/retry contract,
-and allowed action URL behavior.
+Both CNY runtime modules remain absent from `server/state.mjs`, routes, Store,
+Wallet, public indexes, and Portal/Admin bootstrap roots. Neither is a
+fallback target, callback route, credential reader, or environment reader.
 
 Merchant withdrawal, payout, and settlement APIs are permanently outside the
 closed-loop Coins Adapter.
@@ -518,6 +452,7 @@ Adapters never read `process.env`, files, databases, or raw secrets.
 
 The static registry closes over:
 
+- a non-secret `profileRef` and `credentialProfileRef` for every resolution;
 - a credential loader identified only by `credentialProfileRef`;
 - a provider-specific request transport;
 - a fixed allowlist of canonical HTTPS action origins.
@@ -563,11 +498,13 @@ scope, invalidates any receipt, and returns no payment fact. This is distinct
 from a shape-valid non-success capture outcome, which contains
 `paymentFact: null`.
 
-PayPal OAuth tokens cannot cross credential profiles. XSD signing and callback
-verification will occur inside its credential scope only after the exact
-signing bytes are independently verified. Neither Adapter can return a
-credential handle, raw token, signing secret, or request object containing
-secret material.
+PayPal OAuth tokens cannot cross credential profiles. XSD and ChaoJiPay source
+runtimes require constructor-bound `profileRef` and `credentialProfileRef`, and
+their loader and request bindings must match both refs, Adapter identity, and
+`v1`. ChaoJiPay additionally requires a caller-supplied public IPv4
+`createRequestIp`; no source path derives it from a payer or egress network
+identity. Neither Adapter can return a credential handle, raw token, signing
+secret, or request object containing secret material.
 
 Provider action URLs must be HTTPS, contain no credentials, reject loopback and
 trailing-dot hosts, and match an exact compiled origin allowlist. User input,
@@ -770,10 +707,11 @@ cross-Coin compensation.
 - No test, fixture, documentation, or error output contains real credentials,
   merchant identifiers, account data, or customer data.
 
-XSD lacks documented timestamp, nonce, and callback retry semantics. Event
-deduplication prevents duplicate Coins credit but does not prove cryptographic
-freshness. The Adapter therefore remains disabled until an independent
-activation decision resolves this residual risk.
+XSD lacks documented timestamp, nonce, and callback retry semantics. ChaoJiPay
+has unresolved ACK/retry, query, terminal-no-charge, and `ip` source-semantics
+evidence. Event deduplication prevents duplicate Coins credit but does not
+prove cryptographic freshness. Both compiled Adapters remain unassembled and
+default-off until an independent activation decision resolves these risks.
 
 ## Phase 1 Implementation Scope
 
@@ -788,9 +726,10 @@ One source PR contains:
 - registry replacement of provisional A/B identities with the three named
   Adapters;
 - PayPal protocol codecs using injected transport and synthetic data;
-- XSD documented field/status/ACK boundaries plus an explicit unverified
-  signer/verifier rejection;
-- a ChaoJiPay disabled identity-only Adapter;
+- XSD create/query/callback codec and injected runtime with synthetic signing,
+  verification, and bounded-response tests;
+- ChaoJiPay create/callback codec and injected runtime with synthetic signing,
+  verification, and bounded-response tests; query remains disabled;
 - contract, registry, routing, Adapter, security, and source-boundary tests;
 - aligned Adapter documentation.
 
@@ -801,7 +740,7 @@ Phase 1 explicitly excludes:
 - wallet, order, product, fulfillment, reward, or recovery mutation;
 - environment-variable or file-based credential loading;
 - real provider calls, sandbox calls, or production calls;
-- activation of any Adapter capability;
+- runtime assembly or activation of any Adapter capability;
 - deployment, provider configuration, callback registration, or static
   publication;
 - old PayPal compatibility exports, routes, in-memory order state, or Portal
@@ -813,7 +752,8 @@ Focused tests must prove:
 
 - exact canonical Adapter, capability, payment-method, capture-input, capture
   outcome, verified-fact, error, and acknowledgement shapes;
-- all `unverified` capabilities are false;
+- each default-off resolution with all declared capabilities false exposes no
+  method and rejects before loader, transport, or clock use;
 - configuration can only reduce compiled capabilities;
 - disabled methods perform zero loader, request, or clock calls;
 - a zero-request, failed-request, fabricated, reused, cross-scope,
@@ -834,11 +774,23 @@ Focused tests must prove:
 - capture retry is impossible without both capability gates;
 - PayPal create, query, capture, action-link, idempotency, and callback mappings
   use injected transport only;
-- XSD documented field/status mappings, unknown status, exact acknowledgement
-  bytes, and fail-closed absence of a canonical signer/verifier;
+- XSD documented field/status mappings, synthetic credential-scoped signing and
+  callback verification, exact acknowledgement bytes, and fail-closed
+  unexpected `attach` or unknown status handling;
 - a verified fact alone cannot obtain a sendable ACK from the disabled Adapter,
   and Phase 1 contains no callback or ACK transport;
-- ChaoJiPay exposes no method or protocol surface;
+- ChaoJiPay exposes only WeChat product `726` create/callback behavior through
+  synthetic injected bindings; query remains disabled;
+- Registry descriptors compile through an inert failing scope without
+  credential, transport, or clock access, while enabled operations fail closed
+  without injected credential or transport bindings;
+- CNY runtime modules are absent from the tracked production/public roots:
+  package entrypoints, server state/routes, Store/Wallet, public indexes, and
+  Portal/Admin HTML/bootstrap/Vite roots. This is a lightweight static/literal
+  audit, with the direct fact that tracked state/routes do not import either
+  CNY runtime; it does not prove the absence of deliberately computed or
+  obfuscated loading, which requires ordinary code review and any applicable
+  security scan;
 - routing never falls back after entry issuance or uncertain charge evidence;
 - the Phase 1 modified Adapter runtime modules and their transitive imports
   contain no `process.env`, dynamic import, direct HTTP client, Store, SQLite,
@@ -863,12 +815,17 @@ The following require separate design confirmation and Risk A execution:
 2. recharge orchestrator, event inbox, settlement, wallet credit, reversal, and
    recovery implementation behind a default-off runtime gate;
 3. PayPal sandbox credential injection, API and webhook validation;
-4. XSD environment identity, action-origin, replay, callback, and reconciliation
-   validation;
-5. production provider capability activation and callback registration;
-6. Portal payment UI after backend closure and Portal production-surface
+4. XSD environment identity, observed action-origin, replay, callback-retry,
+   terminal-no-charge, and reconciliation validation;
+5. ChaoJiPay `ip` payer-versus-egress semantics, trusted real binding,
+   authoritative signed query, ACK/retry, and terminal-no-charge validation;
+6. protected credential injection, callback ingress/route registration, unpaid
+   create/query probes, and one-provider-at-a-time paid canaries;
+7. production provider runtime assembly, capability activation, and callback
+   registration;
+8. Portal payment UI after backend closure and Portal production-surface
    identity confirmation;
-7. production schema migration, deployment, validation, and rollback.
+9. production schema migration, deployment, validation, and rollback.
 
 No later phase inherits execution authority from this design or from a merged
 Phase 1 PR.
@@ -879,12 +836,14 @@ Phase 1 is complete only when:
 
 1. Provider Core is the sole payment Adapter contract;
 2. the old PayPal runtime is absent from the new branch;
-3. all three named Adapters resolve as detached, frozen, disabled, and
-   unverified;
-4. PayPal protocol behavior and the bounded documented XSD status/ACK contract
-   are covered by synthetic tests without a provider call or guessed XSD
-   signer;
-5. ChaoJiPay contains no guessed protocol behavior;
+3. all three named Adapters list as detached, frozen, compiled `v1` metadata;
+   all-false declarations resolve as disabled, and no declaration expands a
+   compiled capability;
+4. PayPal, XSD, and ChaoJiPay protocol behavior is covered by synthetic tests
+   without a provider call; XSD exposes only Alipay/WeChat behavior and
+   ChaoJiPay exposes only WeChat product `726` with query disabled;
+5. both CNY runtimes remain unassembled and absent from state, routes, Store,
+   Wallet, public indexes, and Portal/Admin bootstrap roots;
 6. capture is explicit, idempotency-gated, and cannot mutate a wallet;
 7. verified facts contain sufficient safe identity for future settlement;
 8. every focused and repository validation command passes;

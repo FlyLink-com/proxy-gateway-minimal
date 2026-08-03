@@ -5,15 +5,6 @@ import test from "node:test";
 import {
   createStaticPaymentProviderAdapterRegistry,
 } from "../services/platform/payment-provider-adapter-registry.mjs";
-import {
-  createPayPalPaymentAdapter,
-} from "../services/platform/paypal-payment-adapter.mjs";
-import {
-  createXsdPaymentAdapter,
-} from "../services/platform/xsd-payment-adapter.mjs";
-import {
-  createChaoJiPayPaymentAdapter,
-} from "../services/platform/chaojipay-payment-adapter.mjs";
 
 const NOW = "2026-07-23T12:34:56.789Z";
 const ADAPTER_KEYS = [
@@ -71,6 +62,66 @@ const PAYPAL_CAPABILITIES = Object.freeze({
   repeatCreateIdempotent: true,
   repeatCaptureIdempotent: true,
 });
+const XSD_CAPABILITIES = Object.freeze({
+  createRechargeOrder: true,
+  queryPayment: true,
+  capturePayment: false,
+  verifyCallback: true,
+  refund: false,
+  reconcile: false,
+  repeatCreateIdempotent: false,
+  repeatCaptureIdempotent: false,
+});
+const CHAOJIPAY_CAPABILITIES = Object.freeze({
+  createRechargeOrder: true,
+  queryPayment: false,
+  capturePayment: false,
+  verifyCallback: true,
+  refund: false,
+  reconcile: false,
+  repeatCreateIdempotent: false,
+  repeatCaptureIdempotent: false,
+});
+const COMPILED_CAPABILITIES = Object.freeze({
+  paypal_v1: PAYPAL_CAPABILITIES,
+  xsd_v1: XSD_CAPABILITIES,
+  chaojipay_v1: CHAOJIPAY_CAPABILITIES,
+});
+const COMPILED_PAYMENT_METHODS = Object.freeze({
+  paypal_v1: Object.freeze(["paypal"]),
+  xsd_v1: Object.freeze(["alipay", "wechat_pay"]),
+  chaojipay_v1: Object.freeze(["wechat_pay"]),
+});
+const CNY_CREATE_INPUTS = Object.freeze({
+  xsd_v1: Object.freeze({
+    paymentOrderRef: "xsd_payment_order_1",
+    attemptRef: "xsd_attempt_1",
+    providerRequestRef: "xsd_provider_request_1",
+    paymentMethod: "alipay",
+    amountMinor: 1200,
+    currency: "CNY",
+    currencyExponent: 2,
+    expectedPaidCoins: 30,
+    quoteDigest: "c".repeat(64),
+    expiresAt: "2026-08-02T00:10:00.000Z",
+    callbackRouteRef: "portal_payment_callback_v1",
+    returnRouteRef: "portal_wallet_return_v1",
+  }),
+  chaojipay_v1: Object.freeze({
+    paymentOrderRef: "chaojipay_payment_order_1",
+    attemptRef: "chaojipay_attempt_1",
+    providerRequestRef: "chaojipay_provider_request_1",
+    paymentMethod: "wechat_pay",
+    amountMinor: 1200,
+    currency: "CNY",
+    currencyExponent: 2,
+    expectedPaidCoins: 30,
+    quoteDigest: "c".repeat(64),
+    expiresAt: "2026-08-02T00:10:00.000Z",
+    callbackRouteRef: "portal_payment_callback_v1",
+    returnRouteRef: "portal_wallet_return_v1",
+  }),
+});
 const OPERATIONS = [
   "createRechargeOrder",
   "queryPayment",
@@ -86,7 +137,7 @@ function knownResolution(overrides = {}) {
   return {
     adapterKey,
     profileRef: "profile-1",
-    contractVersion: adapterKey === "paypal_v1" ? "v1" : "unverified",
+    contractVersion: "v1",
     credentialProfileRef: "credential-profile-1",
     declaredCapabilities: { ...FALSE_CAPABILITIES },
     ...overrides,
@@ -144,16 +195,16 @@ test("static registry lists three detached frozen descriptors in compiled order"
     {
       adapterKey: "xsd_v1",
       providerId: "xsd",
-      contractVersion: "unverified",
-      capabilities: { ...FALSE_CAPABILITIES },
-      supportedPaymentMethods: [],
+      contractVersion: "v1",
+      capabilities: { ...XSD_CAPABILITIES },
+      supportedPaymentMethods: ["alipay", "wechat_pay"],
     },
     {
       adapterKey: "chaojipay_v1",
       providerId: "chaojipay",
-      contractVersion: "unverified",
-      capabilities: { ...FALSE_CAPABILITIES },
-      supportedPaymentMethods: [],
+      contractVersion: "v1",
+      capabilities: { ...CHAOJIPAY_CAPABILITIES },
+      supportedPaymentMethods: ["wechat_pay"],
     },
   ]);
 
@@ -349,17 +400,15 @@ test("database declarations can only reduce every compiled capability", () => {
         credentialProfileRef: `credential-${adapterKey}`,
         declaredCapabilities,
       }));
-      const expected = adapterKey === "paypal_v1"
-        ? Object.freeze(Object.fromEntries(CAPABILITY_KEYS.map((key) => [
-            key,
-            PAYPAL_CAPABILITIES[key] && declaredCapabilities[key],
-          ])))
-        : FALSE_CAPABILITIES;
+      const expected = Object.freeze(Object.fromEntries(CAPABILITY_KEYS.map((key) => [
+        key,
+        COMPILED_CAPABILITIES[adapterKey][key] && declaredCapabilities[key],
+      ])));
       assert.deepEqual(adapter.capabilities, expected);
       assert.deepEqual(
         adapter.supportedPaymentMethods,
-        adapterKey === "paypal_v1"
-          && Object.values(expected).some(Boolean) ? ["paypal"] : [],
+        Object.values(expected).some(Boolean)
+          ? COMPILED_PAYMENT_METHODS[adapterKey] : [],
       );
     }
 
@@ -370,11 +419,11 @@ test("database declarations can only reduce every compiled capability", () => {
     }));
     assert.deepEqual(
       allRequested.capabilities,
-      adapterKey === "paypal_v1" ? PAYPAL_CAPABILITIES : FALSE_CAPABILITIES,
+      COMPILED_CAPABILITIES[adapterKey],
     );
     assert.deepEqual(
       allRequested.supportedPaymentMethods,
-      adapterKey === "paypal_v1" ? ["paypal"] : [],
+      COMPILED_PAYMENT_METHODS[adapterKey],
     );
   }
 });
@@ -427,57 +476,63 @@ test("successful resolution returns only distinct canonical frozen Adapters", ()
   }
 });
 
-test("PayPal is v1 while unresolved providers remain unverified and declarations reduce all", async () => {
-  for (const [factory, adapterKey] of [
-    [createXsdPaymentAdapter, "xsd_v1"],
-    [createChaoJiPayPaymentAdapter, "chaojipay_v1"],
-  ]) {
-    const raw = factory({ nowFn: () => NOW });
-    assert.throws(() => raw.createRechargeOrder({}), (error) => (
-      error.code === "provider_contract_unverified"
-      && error.operation === "create_recharge_order"
-      && error.chargeCertainty === "confirmed_no_charge"
-    ));
-
-    const registry = createStaticPaymentProviderAdapterRegistry({ nowFn: () => NOW });
-    const normalized = registry.resolve(knownResolution({
+test("compiled CNY v1 Adapters stay disabled until their capabilities are explicitly declared", async () => {
+  const registry = createStaticPaymentProviderAdapterRegistry({ nowFn: () => NOW });
+  for (const adapterKey of ["xsd_v1", "chaojipay_v1"]) {
+    const adapter = registry.resolve(knownResolution({
       adapterKey,
       credentialProfileRef: `credential-${adapterKey}`,
-      declaredCapabilities: { ...TRUE_CAPABILITIES },
+      declaredCapabilities: { ...FALSE_CAPABILITIES },
     }));
+    assert.equal(adapter.contractVersion, "v1");
+    assert.deepEqual(adapter.capabilities, FALSE_CAPABILITIES);
+    assert.deepEqual(adapter.supportedPaymentMethods, []);
     for (const operation of OPERATIONS) {
       await assert.rejects(
-        () => normalized[operation]({}),
-        (error) => error.message === "payment_provider_capability_disabled",
+        () => adapter[operation]({}),
+        /payment_provider_capability_disabled/u,
       );
     }
-    const providerError = normalized.normalizeError({
-      operation: "refund",
-      error: new Error("ignored"),
-    });
-    assert.equal(providerError.code, "provider_contract_unverified");
-    assert.equal(providerError.operation, "refund");
   }
+});
 
-  const paypalRaw = createPayPalPaymentAdapter({
-    executionScope: Object.freeze({
-      withCredential() {
-        return Promise.reject(new Error("must-not-run"));
+test("enabled CNY operations fail closed without injected credential or transport bindings", async () => {
+  for (const adapterKey of ["xsd_v1", "chaojipay_v1"]) {
+    const resolution = knownResolution({
+      adapterKey,
+      credentialProfileRef: `credential-${adapterKey}`,
+      declaredCapabilities: {
+        ...FALSE_CAPABILITIES,
+        createRechargeOrder: true,
       },
-    }),
-    nowFn: () => NOW,
-  });
-  assert.equal(paypalRaw.contractVersion, "v1");
-  assert.deepEqual(paypalRaw.capabilities, PAYPAL_CAPABILITIES);
-  const registry = createStaticPaymentProviderAdapterRegistry({ nowFn: () => NOW });
-  const paypal = registry.resolve(knownResolution({
-    declaredCapabilities: { ...TRUE_CAPABILITIES },
-  }));
-  assert.deepEqual(paypal.capabilities, PAYPAL_CAPABILITIES);
-  assert.equal(paypal.normalizeError({
-    operation: "refund",
-    error: new Error("ignored"),
-  }).code, "provider_operation_failed");
+    });
+    const missingCredential = createStaticPaymentProviderAdapterRegistry()
+      .resolve(resolution);
+    await assert.rejects(
+      () => missingCredential.createRechargeOrder(CNY_CREATE_INPUTS[adapterKey]),
+      (error) => (
+        error.code === "provider_operation_failed"
+        && error.operation === "create_recharge_order"
+        && error.chargeCertainty === "unknown"
+      ),
+    );
+
+    const missingTransport = createStaticPaymentProviderAdapterRegistry({
+      credentialLoader: {
+        withCredential(_binding, callback) {
+          return callback(Object.freeze({ opaque: "synthetic-credential" }));
+        },
+      },
+    }).resolve(resolution);
+    await assert.rejects(
+      () => missingTransport.createRechargeOrder(CNY_CREATE_INPUTS[adapterKey]),
+      (error) => (
+        error.code === "provider_operation_failed"
+        && error.operation === "create_recharge_order"
+        && error.chargeCertainty === "unknown"
+      ),
+    );
+  }
 });
 
 test("constructor is closed over loader, time, and the three compiled transport entries", () => {
@@ -649,19 +704,12 @@ test("construct, list, resolve, and disabled rejection perform no loader, reques
     const adapter = registry.resolve(knownResolution({
       adapterKey,
       credentialProfileRef: `credential-${adapterKey}`,
-      declaredCapabilities: { ...TRUE_CAPABILITIES },
+      declaredCapabilities: { ...FALSE_CAPABILITIES },
     }));
-    if (adapterKey === "paypal_v1") {
-      await assert.rejects(
-        () => adapter.createRechargeOrder({}),
-        /invalid_payment_operation_input/u,
-      );
-    } else {
-      await assert.rejects(
-        () => adapter.createRechargeOrder({}),
-        /payment_provider_capability_disabled/u,
-      );
-    }
+    await assert.rejects(
+      () => adapter.createRechargeOrder({}),
+      /payment_provider_capability_disabled/u,
+    );
   }
   assert.deepEqual(counters, { loader: 0, request: 0, now: 0 });
 
@@ -726,4 +774,24 @@ test("registry source is static and contains no runtime or provider integration 
   assert.doesNotMatch(source, /\b(?:fetch|axios|undici|http|https)\b/iu);
   assert.doesNotMatch(source, /\b(?:route|router|listen|server)\b/iu);
   assert.doesNotMatch(source, /createRequire|modulePath|importSpecifier/u);
+});
+
+test("registry source snapshots factory metadata before it derives effective capabilities", async () => {
+  const source = await readFile(
+    new URL(
+      "../services/platform/payment-provider-adapter-registry.mjs",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(source, /function snapshotAdapterMetadata\(/u);
+  assert.match(source, /function adapterMetadataMatchesDescriptor\(/u);
+  assert.match(
+    source,
+    /if \(!adapterMetadataMatchesDescriptor\(raw, descriptor\)\)/u,
+  );
+  assert.match(
+    source,
+    /key,\s*descriptor\.capabilities\[key\] && declaredCapabilities\[key\]/u,
+  );
 });
