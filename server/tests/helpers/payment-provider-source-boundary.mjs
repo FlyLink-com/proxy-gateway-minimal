@@ -39,6 +39,7 @@ const ALLOWED_NODE_SPECIFIERS = new Set([
 ]);
 const FORBIDDEN_SIBLING_SEGMENT_RE =
   /(?:^|-)(?:store|sqlite|wallet|portal|admin|route|router|listener|server|credential|environment|env|file)(?:-|$)/iu;
+const PROVIDER_RUNTIME_FILE_RE = /^(?:xsd|chaojipay)-payment-runtime\.mjs$/u;
 const SAFE_SENTINEL = "<invalid>";
 
 function isModulePath(value) {
@@ -169,7 +170,10 @@ function parseStaticModuleDeclarations(source, modulePath) {
 function resolveSiblingModulePath(modulePath, specifier) {
   const fileName = specifier.slice(2);
   const stem = fileName.slice(0, -4);
-  if (FORBIDDEN_SIBLING_SEGMENT_RE.test(stem)) {
+  if (
+    FORBIDDEN_SIBLING_SEGMENT_RE.test(stem)
+    || PROVIDER_RUNTIME_FILE_RE.test(fileName)
+  ) {
     throw boundaryError("forbidden_module_specifier", modulePath, true);
   }
   const separatorIndex = modulePath.lastIndexOf("/");

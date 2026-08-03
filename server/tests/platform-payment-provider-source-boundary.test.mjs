@@ -19,6 +19,7 @@ const PHASE_ONE_ROOTS = Object.freeze([
   "server/services/platform/paypal-payment-adapter.mjs",
   "server/services/platform/xsd-payment-adapter.mjs",
   "server/services/platform/chaojipay-payment-adapter.mjs",
+  "server/services/platform/chaojipay-payment-protocol-codec.mjs",
   "server/services/platform/paypal-payment-protocol-codec.mjs",
   "server/services/platform/xsd-payment-protocol-codec.mjs",
   "server/services/platform/xsd-payment-protocol-boundary.mjs",
@@ -216,6 +217,33 @@ test("documented-candidate corpus includes every executable and publishable sour
   assert.equal(paths.includes("admin/vite.portal.local-api-validation.config.ts"), false);
 });
 
+test("CNY provider runtimes stay absent from runtime assembly and public roots", async () => {
+  const paths = await listDocumentedCandidateBoundaryPaths();
+  for (const path of [
+    "index.mjs",
+    "server/index.mjs",
+    "server/state.mjs",
+    "server/routes/portal-coin-recharge.mjs",
+    "server/services/platform/payment-store.mjs",
+    "server/services/platform/coin-wallet-store.mjs",
+    "admin/index.html",
+    "admin/portal/index.html",
+    "admin/src/main.tsx",
+    "admin/src/portal-main.tsx",
+  ]) {
+    assert.equal(
+      paths.includes(path),
+      true,
+      `cny_provider_runtime_boundary_missing_surface:${path}`,
+    );
+  }
+  await assertCorpusDoesNotMatch(
+    paths,
+    /(?:xsd|chaojipay)-payment-runtime\.mjs/u,
+    "cny_provider_runtime_assembly_import_detected",
+  );
+});
+
 test("documented-candidate corpus rejects an indirect import from every added root", async () => {
   for (const root of ["bin", "scripts", "agent", "ops"]) {
     const sources = new Map([
@@ -402,6 +430,8 @@ test("source scanner rejects dynamic imports require bare packages parent traver
     'import "./nested/evil.mjs";',
     'import "./evil.mjs?mode=test";',
     'import "./evil.mjs#fragment";',
+    'import "./xsd-payment-runtime.mjs";',
+    'import "./chaojipay-payment-runtime.mjs";',
     'import "https://network.invalid/evil.mjs";',
     'import "./%2e%2e/evil.mjs";',
     'import "./evil";',
@@ -706,7 +736,9 @@ test("source scanner validates roots before reads deduplicates roots and redacts
   for (const path of DOCUMENTED_CANDIDATE_ROOTS) {
     assert.deepEqual(
       extractStaticModuleSpecifiers(await readSource(path), path),
-      ["node:crypto", "node:util"],
+      path === "server/services/platform/xsd-documented-payment-candidate.mjs"
+        ? ["node:crypto", "node:util"]
+        : [],
     );
   }
 

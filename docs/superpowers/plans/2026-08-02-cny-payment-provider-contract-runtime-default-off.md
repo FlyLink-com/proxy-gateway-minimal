@@ -60,7 +60,7 @@
 - `decodeXsdCreateResponse({ createInput, providerResponse, receivedAt })` returns `entry_ready`, uses `createInput.paymentOrderRef` as `providerOrderRef`, and projects only a redirect action.
 - `decodeXsdQueryResponse({ queryInput, providerResponse, receivedAt })` maps only signed `3` to `succeeded`, signed `00` to `pending`, and everything else to `reconciliation_required`.
 - `decodeVerifiedXsdCallback({ callbackInput, providerResponse, merchantScopeDigest, payloadDigest })` returns a verified `payment_succeeded` fact only for signed status `1`; signed `-1` returns `null`; all other values reject.
-- `createXsdPaymentRuntime({ credential, fetchFn, apiOrigin, allowedActionOrigins, routeMap, nowFn })` returns `{ credentialLoader, transport }`; it is not imported by `server/state.mjs`.
+- `createXsdPaymentRuntime({ credential, fetchFn, apiOrigin, allowedActionOrigins, routeMap, profileRef, credentialProfileRef, nowFn })` returns `{ credentialLoader, transport }`; both refs bind credential issuance and use, and it is not imported by `server/state.mjs`.
 - `createXsdPaymentAdapter({ executionScope, nowFn })` returns `contractVersion: "v1"`, supports `alipay` and `wechat_pay`, and enables create/query/callback verification only.
 
 - [ ] **Step 1: Write RED codec and Adapter tests**
@@ -165,7 +165,7 @@ Commit: `feat(payment): add default-off xsd protocol`
 - `encodeChaoJiPayCallbackVerificationRequest(input)` produces action `chaojipay_callback_verify` with the callback envelope.
 - `decodeChaoJiPayCreateResponse({ createInput, providerResponse, receivedAt })` returns an allowlist-gated redirect using `data.payUrl` and `createInput.paymentOrderRef` as `providerOrderRef`.
 - `decodeVerifiedChaoJiPayCallback({ callbackInput, providerResponse, merchantScopeDigest, payloadDigest })` returns a verified success fact only for signed status `1`; signed `0`, `2`, or `3` returns `null`; unknown statuses reject.
-- `createChaoJiPayPaymentRuntime({ credential, fetchFn, apiOrigin, allowedActionOrigins, routeMap, nowFn })` returns `{ credentialLoader, transport }`; it is not imported by `server/state.mjs`.
+- `createChaoJiPayPaymentRuntime({ credential, fetchFn, apiOrigin, allowedActionOrigins, routeMap, profileRef, credentialProfileRef, createRequestIp, nowFn })` returns `{ credentialLoader, transport }`; both refs bind credential issuance and use, and `createRequestIp` is a caller-supplied public IPv4 value for the emitted `ip` field. It is not imported by `server/state.mjs`.
 - `createChaoJiPayPaymentAdapter({ executionScope, nowFn })` returns `contractVersion: "v1"`, supports only `wechat_pay`, enables create/callback verification, and leaves query disabled because the documented query response does not provide an authoritative verifiable field contract.
 
 - [ ] **Step 1: Write RED codec and Adapter tests**
@@ -257,11 +257,11 @@ Commit: `feat(payment): add default-off chaojipay protocol`
 - Credential handles are issued and used only when the execution binding matches both refs, `xsd_v1`, and contract `v1`.
 - Provider responses are read incrementally from a standard `Response` stream, reject an oversized declared length before reading, cancel on chunked overflow, reject malformed UTF-8/JSON, and require a non-empty final URL exactly equal to the fixed request URL.
 
-- [ ] **Step 1: Write RED runtime hardening tests**
+- [x] **Step 1: Write RED runtime hardening tests**
 
 Assert wrong loader-time and request-time profile/credential-profile bindings reject before fetch. Assert declared and chunked responses over 1 MiB fail closed without returning body material. Assert an empty, redirected, or mismatched final URL fails closed.
 
-- [ ] **Step 2: Run the focused test and observe RED**
+- [x] **Step 2: Run the focused test and observe RED**
 
 Run:
 
@@ -271,11 +271,11 @@ node --test server/tests/platform-xsd-payment-runtime.test.mjs
 
 Expected: FAIL because XSD still accepts an unbound execution profile and buffers responses through `response.text()`.
 
-- [ ] **Step 3: Implement the minimal parity hardening**
+- [x] **Step 3: Implement the minimal parity hardening**
 
 Keep XSD signing, request fields, callback verification, Adapter capabilities, and default-off assembly unchanged. Do not introduce a shared abstraction merely to deduplicate the two provider runtimes.
 
-- [ ] **Step 4: Run focused GREEN tests and commit**
+- [x] **Step 4: Run focused GREEN tests and commit**
 
 Run:
 
@@ -286,6 +286,11 @@ git diff --check
 ```
 
 Commit: `fix(payment): bind and bound xsd runtime`
+
+Task 3 continuation fact: `createXsdPaymentRuntime(...)` now has the exact
+constructor binding `profileRef` and `credentialProfileRef`; the issued handle
+and every transport request must match those refs, `xsd_v1`, and `v1`. This is
+synthetic source evidence only and did not supply any real binding.
 
 ---
 
@@ -306,11 +311,11 @@ Commit: `fix(payment): bind and bound xsd runtime`
 - The inert descriptor factory uses a failing execution scope for all three adapters; it performs no credential or network access.
 - Source-boundary tests prove both provider runtimes are absent from `server/state.mjs`, routes, Portal/Admin bootstrap roots, Store, Wallet, and public indexes.
 
-- [ ] **Step 1: Write RED registry and source-boundary tests**
+- [x] **Step 1: Write RED registry and source-boundary tests**
 
 Assert XSD and ChaoJiPay list as `v1` with the exact capabilities from Tasks 1 and 2. Resolving either Adapter with all declared capabilities false remains disabled. Enabling a capability without an injected credential/transport must fail closed on first invocation. Scan all runtime assembly and public route roots and require zero imports of either provider runtime module.
 
-- [ ] **Step 2: Run integration tests and observe RED**
+- [x] **Step 2: Run integration tests and observe RED**
 
 Run:
 
@@ -320,11 +325,11 @@ node --test server/tests/platform-payment-provider-adapter-registry.test.mjs ser
 
 Expected: FAIL because the registry still assumes only PayPal needs an execution scope and still expects both providers to be unverified.
 
-- [ ] **Step 3: Implement minimal registry support and update documentation**
+- [x] **Step 3: Implement minimal registry support and update documentation**
 
 Generalize inert descriptor construction without adding state assembly. Document the confirmed request/signing/callback facts, the unresolved action-origin/retry/terminal-no-charge evidence, ChaoJiPay `ip` field semantics and trusted binding, and the separate future Risk A gates for credentials, routes, production runtime assembly, unpaid create/query probes, and one-provider-at-a-time paid canaries.
 
-- [ ] **Step 4: Run focused GREEN tests and commit**
+- [x] **Step 4: Run focused GREEN tests and commit**
 
 Run:
 
@@ -333,6 +338,16 @@ node --test server/tests/platform-xsd-payment-protocol-codec.test.mjs server/tes
 ```
 
 Commit: `test(payment): prove cny providers remain default off`
+
+Task 4 continuation fact: the Registry lists the compiled XSD/ChaoJiPay `v1`
+metadata through one inert failing execution scope and a deterministic clock;
+descriptor construction does not read a credential or issue a request.
+Resolution still creates a scope only from `profileRef`, `credentialProfileRef`,
+the injected credential loader, and the matching injected transport. A declared
+capability can reduce, never expand, the compiled capability. `createRequestIp`
+is not a Registry option or production setting: for ChaoJiPay it remains an
+explicit runtime constructor input whose payer-versus-egress semantics and
+trusted origin binding require a separate Risk A decision.
 
 ---
 

@@ -164,6 +164,10 @@ const DEFAULT_TRANSPORT = Object.freeze({
   requestFn: failClosedRequest,
   allowedActionOrigins: Object.freeze([]),
 });
+const INERT_DESCRIPTOR_EXECUTION_SCOPE = Object.freeze({
+  withCredential: failClosedCredentialUse,
+});
+const INERT_DESCRIPTOR_NOW = () => "1970-01-01T00:00:00.000Z";
 
 function normalizeCredentialLoader(value) {
   if (value === undefined) return DEFAULT_CREDENTIAL_LOADER;
@@ -248,16 +252,10 @@ function normalizeTransports(value, credentialLoader) {
 }
 
 function compiledDescriptor(adapterKey, factory) {
-  const raw = adapterKey === "paypal_v1"
-    ? factory({
-        executionScope: Object.freeze({
-          withCredential() {
-            return Promise.reject(new Error("payment_provider_transport_unavailable"));
-          },
-        }),
-        nowFn: () => "1970-01-01T00:00:00.000Z",
-      })
-    : factory();
+  const raw = factory({
+    executionScope: INERT_DESCRIPTOR_EXECUTION_SCOPE,
+    nowFn: INERT_DESCRIPTOR_NOW,
+  });
   return Object.freeze({
     adapterKey,
     providerId: raw.providerId,
@@ -415,14 +413,10 @@ export function createStaticPaymentProviderAdapterRegistry(options = {}) {
     const factory = ADAPTER_FACTORIES[known.adapterKey];
     let raw;
     try {
-      raw = known.adapterKey === "paypal_v1"
-        ? factory({
-            executionScope,
-            nowFn: nowFn ?? (() => new Date().toISOString()),
-          })
-        : factory(nowFn === undefined
-          ? { executionScope }
-          : { executionScope, nowFn });
+      raw = factory({
+        executionScope,
+        nowFn: nowFn ?? (() => new Date().toISOString()),
+      });
     } catch {
       fail("invalid_payment_adapter_resolution");
     }
