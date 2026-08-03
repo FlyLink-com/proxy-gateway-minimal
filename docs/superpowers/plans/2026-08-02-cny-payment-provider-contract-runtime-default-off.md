@@ -246,7 +246,50 @@ Commit: `feat(payment): add default-off chaojipay protocol`
 
 ---
 
-### Task 3: Compile The Adapters Without Runtime Activation
+### Task 3: Harden XSD Runtime Binding And Response Limits
+
+**Files:**
+- Modify: `server/services/platform/xsd-payment-runtime.mjs`
+- Modify: `server/tests/platform-xsd-payment-runtime.test.mjs`
+
+**Interfaces:**
+- `createXsdPaymentRuntime(...)` additionally requires exact `profileRef` and `credentialProfileRef` bindings.
+- Credential handles are issued and used only when the execution binding matches both refs, `xsd_v1`, and contract `v1`.
+- Provider responses are read incrementally from a standard `Response` stream, reject an oversized declared length before reading, cancel on chunked overflow, reject malformed UTF-8/JSON, and require a non-empty final URL exactly equal to the fixed request URL.
+
+- [ ] **Step 1: Write RED runtime hardening tests**
+
+Assert wrong loader-time and request-time profile/credential-profile bindings reject before fetch. Assert declared and chunked responses over 1 MiB fail closed without returning body material. Assert an empty, redirected, or mismatched final URL fails closed.
+
+- [ ] **Step 2: Run the focused test and observe RED**
+
+Run:
+
+```powershell
+node --test server/tests/platform-xsd-payment-runtime.test.mjs
+```
+
+Expected: FAIL because XSD still accepts an unbound execution profile and buffers responses through `response.text()`.
+
+- [ ] **Step 3: Implement the minimal parity hardening**
+
+Keep XSD signing, request fields, callback verification, Adapter capabilities, and default-off assembly unchanged. Do not introduce a shared abstraction merely to deduplicate the two provider runtimes.
+
+- [ ] **Step 4: Run focused GREEN tests and commit**
+
+Run:
+
+```powershell
+node --check server/services/platform/xsd-payment-runtime.mjs
+node --test server/tests/platform-xsd-payment-protocol-codec.test.mjs server/tests/platform-xsd-payment-runtime.test.mjs server/tests/platform-xsd-payment-adapter.test.mjs server/tests/platform-payment-provider-adapter-contract.test.mjs
+git diff --check
+```
+
+Commit: `fix(payment): bind and bound xsd runtime`
+
+---
+
+### Task 4: Compile The Adapters Without Runtime Activation
 
 **Files:**
 - Modify: `server/services/platform/payment-provider-adapter-registry.mjs`
@@ -279,7 +322,7 @@ Expected: FAIL because the registry still assumes only PayPal needs an execution
 
 - [ ] **Step 3: Implement minimal registry support and update documentation**
 
-Generalize inert descriptor construction without adding state assembly. Document the confirmed request/signing/callback facts, the unresolved action-origin/retry/terminal-no-charge evidence, and the separate future Risk A gates for credentials, routes, production runtime assembly, unpaid create/query probes, and one-provider-at-a-time paid canaries.
+Generalize inert descriptor construction without adding state assembly. Document the confirmed request/signing/callback facts, the unresolved action-origin/retry/terminal-no-charge evidence, ChaoJiPay `ip` field semantics and trusted binding, and the separate future Risk A gates for credentials, routes, production runtime assembly, unpaid create/query probes, and one-provider-at-a-time paid canaries.
 
 - [ ] **Step 4: Run focused GREEN tests and commit**
 
