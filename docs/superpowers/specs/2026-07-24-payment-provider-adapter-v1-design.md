@@ -42,7 +42,7 @@ Coins remain closed-loop:
 | Legacy PayPal branch | Draft donor, source-only | OAuth, Orders create/capture, approval-link parsing, webhook verification mapping, and injected-transport tests may be re-imported after review. Direct environment access, in-memory order state, old routes, and old Portal checkout are forbidden. |
 | XSD adapter/runtime source | Synthetic local tests | CNY create/query/callback codec, injected signing/transport boundary, and compiled `v1` metadata are covered without a provider call. Action origin, retry, replay, terminal no-charge, real credentials, and production compatibility remain unverified. |
 | ChaoJiPay adapter/runtime source | Synthetic local tests | CNY WeChat product `726` create/callback codec, injected signing/transport boundary, and compiled `v1` metadata are covered without a provider call. Query is disabled; `ip` payer-versus-egress semantics and a trusted source binding remain unverified. |
-| Runtime and production | Default-off and unassembled | No provider runtime is assembled in state, routes, Store, Wallet, public indexes, or Portal/Admin bootstrap. No provider call, callback route, schema, wallet mutation, deployment, or production activation is authorized by this design. |
+| Runtime and production | Default-off and unassembled | No XSD or ChaoJiPay runtime is assembled in state, routes, Store, Wallet, public indexes, or Portal/Admin bootstrap. No XSD or ChaoJiPay provider call or callback route, schema, wallet mutation, deployment, or production activation is authorized by this design. |
 
 No credential, merchant identifier, token, account data, order URL, raw provider
 payload, or customer data may be copied into source, tests, documentation, or
