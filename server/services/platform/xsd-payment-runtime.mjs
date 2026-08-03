@@ -216,19 +216,22 @@ function queryRequest(value, current) {
 }
 
 function projectCreateResponse(value) {
-  const response = snapshot(value, ["code", "datas"]);
-  if (response.code !== "0") fail();
+  const response = snapshot(value, ["code", "error", "datas"]);
+  if (response.code !== "200" || typeof response.error !== "string" || response.error.length < 1 || response.error.length > 4096 || /[\0\r\n]/u.test(response.error)) fail();
   const datas = snapshot(response.datas, ["url"]);
   if (typeof datas.url !== "string" || datas.url.length < 1 || datas.url.length > 2048) fail();
   return Object.freeze({ url: datas.url });
 }
 
 function projectQueryResponse(value, current, expectedOrderRef) {
-  const response = snapshot(value, ["mch_order_no", "mchId", "status", "amount", "sign"]);
-  if (safeRef(response.mch_order_no) !== expectedOrderRef || safeRef(response.mchId) !== current.merchantId || !/^-?\d{1,2}$/u.test(response.status)) fail();
-  amountMinor(response.amount);
-  constantTimeSignature(response.sign, formSignature(response, current.merchantSecret));
-  return Object.freeze({ mch_order_no: response.mch_order_no, status: response.status });
+  const envelope = snapshot(value, ["code", "error", "datas"]);
+  if (envelope.code !== "200" || typeof envelope.error !== "string" || envelope.error.length < 1 || envelope.error.length > 4096 || /[\0\r\n]/u.test(envelope.error)) fail();
+  const datas = snapshot(envelope.datas, ["mch_order_no", "partnerorderid", "amount", "status", "sign"]);
+  if (safeRef(datas.mch_order_no) !== expectedOrderRef || !/^-?\d{1,2}$/u.test(datas.status)) fail();
+  safeRef(datas.partnerorderid);
+  amountMinor(datas.amount);
+  constantTimeSignature(datas.sign, formSignature(datas, current.merchantSecret));
+  return Object.freeze({ mch_order_no: datas.mch_order_no, status: datas.status });
 }
 
 export function createXsdPaymentRuntime(value = {}) {

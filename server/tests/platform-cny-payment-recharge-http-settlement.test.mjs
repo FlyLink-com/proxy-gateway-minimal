@@ -143,7 +143,8 @@ function createRuntime(providerCase) {
       async fetchFn(url) {
         assert.equal(url, `${apiOrigin}/api/gaia/unifiedorder`);
         return providerJsonResponse(url, {
-          code: "0",
+          code: "200",
+          error: "请求成功",
           datas: { url: `${ACTION_ORIGIN}/pay/synthetic` },
         });
       },

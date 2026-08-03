@@ -95,13 +95,60 @@ test("XSD runtime rejects a wrong origin before nested credential inspection", {
   assert.equal(fetchCalls, 0);
 });
 
+test("XSD runtime accepts the documented create response envelope", async () => {
+  const value = runtime(async () => response(200, {
+    code: "200",
+    error: "请求成功",
+    datas: { url: "https://checkout.example.test/pay/1" },
+  }));
+  const created = await request(value, "create_recharge_order", {
+    action: "xsd_payment_create",
+    createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
+    routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
+  });
+  assert.deepEqual(created, { response: { url: "https://checkout.example.test/pay/1" }, evidence: null });
+});
+
+test("XSD runtime verifies the documented nested query response envelope", async () => {
+  const fields = { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", amount: "12.00", status: "00" };
+  const value = runtime(async (url) => response(200, {
+    code: "200",
+    error: "查询成功",
+    datas: { ...fields, sign: signature(fields) },
+  }, { url }));
+  const queried = await request(value, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" });
+  assert.deepEqual(queried, { response: { mch_order_no: "payment_order_1", status: "00" }, evidence: null });
+});
+
+test("XSD runtime rejects a query when any signed response field is tampered", async () => {
+  const signedFields = { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", amount: "12.00", status: "00" };
+  const signed = signature(signedFields);
+  const responses = [
+    { ...signedFields, sign: "0".repeat(32) },
+    { ...signedFields, partnerorderid: "provider_order_2", sign: signed },
+    { ...signedFields, amount: "13.00", sign: signed },
+    { ...signedFields, status: "3", sign: signed },
+  ];
+  for (const datas of responses) {
+    const value = runtime(async (url) => response(200, {
+      code: "200",
+      error: "查询成功",
+      datas,
+    }, { url }));
+    await assert.rejects(
+      () => request(value, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" }),
+      /xsd_transport_failed/u,
+    );
+  }
+});
+
 test("XSD runtime signs UTF-8 create and query form requests with injected transport", async () => {
   const calls = [];
   const value = runtime(async (url, init) => {
     calls.push({ url, init });
-    if (url.endsWith("/unifiedorder")) return response(200, { code: "0", datas: { url: "https://checkout.example.test/pay/1" } });
-    const fields = { mch_order_no: "payment_order_1", mchId: "merchant_demo", status: "00", amount: "12.00" };
-    return response(200, { ...fields, sign: signature(fields) }, { url });
+    if (url.endsWith("/unifiedorder")) return response(200, { code: "200", error: "请求成功", datas: { url: "https://checkout.example.test/pay/1" } });
+    const fields = { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", amount: "12.00", status: "00" };
+    return response(200, { code: "200", error: "查询成功", datas: { ...fields, sign: signature(fields) } }, { url });
   });
   const created = await request(value, "create_recharge_order", {
     action: "xsd_payment_create",
@@ -122,7 +169,7 @@ test("XSD runtime signs UTF-8 create and query form requests with injected trans
 });
 
 test("XSD runtime rejects empty, redirected, or mismatched final URLs even when their bodies are valid", async () => {
-  const redirected = response(200, { code: "0", datas: { url: "https://checkout.example.test/pay/1" } }, { redirected: true, url: `${API_ORIGIN}/api/gaia/unifiedorder` });
+  const redirected = response(200, { code: "200", error: "请求成功", datas: { url: "https://checkout.example.test/pay/1" } }, { redirected: true, url: `${API_ORIGIN}/api/gaia/unifiedorder` });
   const value = runtime(async () => redirected);
   await assert.rejects(() => request(value, "create_recharge_order", {
     action: "xsd_payment_create",
@@ -131,12 +178,12 @@ test("XSD runtime rejects empty, redirected, or mismatched final URLs even when 
   }), /xsd_transport_failed/u);
   for (const url of ["", "https://other.example.test/redirected"]) {
     const query = runtime(async () => {
-      const fields = { mch_order_no: "payment_order_1", mchId: "merchant_demo", status: "00", amount: "12.00" };
-      return response(200, { ...fields, sign: signature(fields) }, { url });
+      const fields = { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", amount: "12.00", status: "00" };
+      return response(200, { code: "200", error: "查询成功", datas: { ...fields, sign: signature(fields) } }, { url });
     });
     await assert.rejects(() => request(query, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" }), /xsd_transport_failed/u);
   }
-  const standard = new Response(JSON.stringify({ code: "0", datas: { url: "https://checkout.example.test/pay/1" } }), { status: 200 });
+  const standard = new Response(JSON.stringify({ code: "200", error: "请求成功", datas: { url: "https://checkout.example.test/pay/1" } }), { status: 200 });
   const missingRedirected = Object.freeze({ status: standard.status, headers: standard.headers, body: standard.body, url: `${API_ORIGIN}/api/gaia/unifiedorder` });
   await assert.rejects(() => request(runtime(async () => missingRedirected), "create_recharge_order", {
     action: "xsd_payment_create",
@@ -175,7 +222,7 @@ test("XSD runtime rejects declared oversize JSON before accessing its body", asy
   let bodyGets = 0;
   let readerGets = 0;
   let reads = 0;
-  const validJson = new TextEncoder().encode(JSON.stringify({ code: "0", datas: { url: "https://checkout.example.test/pay/1" } }));
+  const validJson = new TextEncoder().encode(JSON.stringify({ code: "200", error: "请求成功", datas: { url: "https://checkout.example.test/pay/1" } }));
   const declaredResponse = { status: 200, redirected: false, url: `${API_ORIGIN}/api/gaia/unifiedorder`, headers: new Headers({ "content-length": "1048577" }) };
   Object.defineProperty(declaredResponse, "body", { enumerable: true, get() {
     bodyGets += 1;
@@ -236,7 +283,7 @@ test("XSD runtime fails closed on transport, response, identity, signature, orde
   await assert.rejects(() => request(malformed, "create_recharge_order", {
     action: "xsd_payment_create", createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" }, routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
   }), /xsd_transport_failed/u);
-  const value = runtime(async (url) => response(200, { mch_order_no: "other_order", mchId: "merchant_demo", status: "00", amount: "12.00", sign: "0".repeat(32) }, { url }));
+  const value = runtime(async (url) => response(200, { code: "200", error: "查询成功", datas: { mch_order_no: "other_order", partnerorderid: "provider_order_1", status: "00", amount: "12.00", sign: "0".repeat(32) } }, { url }));
   await assert.rejects(() => request(value, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" }), /xsd_transport_failed/u);
   const callback = runtime(async () => response(500, {}));
   for (const fields of [
