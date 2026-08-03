@@ -25,7 +25,7 @@
 - Never return, log, persist, or include raw credentials, raw provider responses, raw callback bodies, customer identity, merchant values, or settlement data in errors or public results.
 - No source file may call a live provider during tests. All HTTP is injected through `fetchFn` and synthetic responses.
 - `server/state.mjs`, public callback routes, recharge routes, Portal UI, CNY price book, Payment Store, Wallet, schema/migrations, marketplace orders, fulfillment, and production configuration are out of scope.
-- No provider is imported or assembled by `server/state.mjs`. PayPal Sandbox remains the only assembled payment runtime.
+- No XSD or ChaoJiPay provider runtime is imported or assembled by `server/state.mjs`. PayPal Sandbox remains the only assembled payment runtime.
 - No automatic provider fallback is added. A created order never changes Adapter, payment method, or merchant binding.
 - Unknown, undocumented, malformed, unsigned, or ambiguous states fail closed. They never become `failed_no_charge`, never credit Coins, and never authorize another provider.
 - Returned payment actions must pass the existing HTTPS `allowedActionOrigins` contract. The provider response cannot expand that allowlist.
