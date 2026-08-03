@@ -9,6 +9,7 @@ import {
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DIGEST_RE = /^[a-f0-9]{64}$/u;
 const MAX_JSON_BYTES = 1_048_576;
+const MAX_JSON_CHUNKS = 4_096;
 const MAX_CALLBACK_BASE64_CHARS = 16_384;
 const MAX_CALLBACK_BYTES = 16_384;
 const CALLBACK_TYPES = new Set([
@@ -184,11 +185,20 @@ async function responseText(response, requestUrl) {
   const reader = response.body.getReader();
   const chunks = [];
   let bytes = 0;
+  let chunkCount = 0;
   try {
     for (;;) {
       const item = await reader.read();
       if (item.done) break;
-      if (!(item.value instanceof Uint8Array)) fail();
+      chunkCount += 1;
+      if (
+        !(item.value instanceof Uint8Array)
+        || item.value.byteLength < 1
+        || chunkCount > MAX_JSON_CHUNKS
+      ) {
+        try { await reader.cancel(); } catch {}
+        fail();
+      }
       bytes += item.value.byteLength;
       if (bytes > MAX_JSON_BYTES) {
         await reader.cancel();

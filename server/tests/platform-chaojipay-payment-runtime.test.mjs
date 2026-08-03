@@ -30,6 +30,20 @@ function streamResponse(stream, extras = {}) {
   return Object.freeze({ status: standard.status, headers: standard.headers, body: standard.body, redirected: false, url: `${API_ORIGIN}/api/order/create`, ...extras });
 }
 
+function readerResponse({ read, cancel }) {
+  return Object.freeze({
+    status: 200,
+    headers: new Headers(),
+    body: Object.freeze({
+      getReader() {
+        return Object.freeze({ read, cancel, releaseLock() {} });
+      },
+    }),
+    redirected: false,
+    url: `${API_ORIGIN}/api/order/create`,
+  });
+}
+
 function runtime(fetchFn, options = {}) {
   return createChaoJiPayPaymentRuntime({
     credential: { merchantId: "merchant_demo", merchantSecret: SECRET, merchantScopeDigest: MERCHANT_DIGEST },
@@ -151,4 +165,48 @@ test("ChaoJiPay runtime bounds malformed declared-length and chunked JSON Respon
   const duplicateFields = `orderId=provider_capture_wrong&orderId=provider_capture_1&orderStatus=1&outTradeId=payment_order_1&amount=12.00&sign=${duplicateSignature}`;
   const callbackRuntime = runtime(async () => { throw new Error("callback must not fetch"); });
   await assert.rejects(() => request(callbackRuntime, "verify_callback", { action: "chaojipay_callback_verify", callbackInput: { callbackRequestRef: "callback_request_1", receivedAt: "2026-08-02T00:00:00.000Z", bodyBase64: Buffer.from(duplicateFields, "utf8").toString("base64"), headerEntries: [{ name: "content-type", value: "application/form" }] } }), /chaojipay_transport_failed/u);
+});
+
+test("ChaoJiPay runtime rejects and cancels a zero-length done-false Response chunk", async () => {
+  const body = { action: "chaojipay_payment_create", createInput: CREATE_INPUT, routeRefs: { callbackRouteRef: "portal_payment_callback_v1" } };
+  let reads = 0;
+  let cancelled = false;
+  const providerResponse = readerResponse({
+    async read() {
+      reads += 1;
+      return reads === 1
+        ? { done: false, value: new Uint8Array() }
+        : { done: true, value: undefined };
+    },
+    async cancel() { cancelled = true; },
+  });
+
+  await assert.rejects(
+    () => request(runtime(async () => providerResponse), "create_recharge_order", body),
+    /chaojipay_transport_failed/u,
+  );
+  assert.equal(reads, 1);
+  assert.equal(cancelled, true);
+});
+
+test("ChaoJiPay runtime rejects and cancels Response chunk 4097", async () => {
+  const body = { action: "chaojipay_payment_create", createInput: CREATE_INPUT, routeRefs: { callbackRouteRef: "portal_payment_callback_v1" } };
+  let reads = 0;
+  let cancelled = false;
+  const providerResponse = readerResponse({
+    async read() {
+      reads += 1;
+      return reads <= 4_097
+        ? { done: false, value: new Uint8Array([0x7b]) }
+        : { done: true, value: undefined };
+    },
+    async cancel() { cancelled = true; },
+  });
+
+  await assert.rejects(
+    () => request(runtime(async () => providerResponse), "create_recharge_order", body),
+    /chaojipay_transport_failed/u,
+  );
+  assert.equal(reads, 4_097);
+  assert.equal(cancelled, true);
 });
