@@ -64,6 +64,37 @@ test("XSD runtime accepts only the source-owned API origin before credential or 
   assert.equal(fetchCalls, 0);
 });
 
+test("XSD runtime rejects a wrong origin before nested credential inspection", { concurrency: false }, () => {
+  const credential = {
+    merchantId: "merchant_demo",
+    merchantSecret: SECRET,
+    merchantScopeDigest: MERCHANT_DIGEST,
+  };
+  const original = Object.getOwnPropertyDescriptor(Object, "getOwnPropertyDescriptors");
+  let credentialDescriptorReads = 0;
+  let fetchCalls = 0;
+  Object.defineProperty(Object, "getOwnPropertyDescriptors", {
+    ...original,
+    value(value) {
+      if (value === credential) credentialDescriptorReads += 1;
+      return original.value(value);
+    },
+  });
+  try {
+    assert.throws(() => runtime(async () => {
+      fetchCalls += 1;
+      throw new Error("must_not_fetch");
+    }, {
+      apiOrigin: "https://wrong.example.test",
+      credential,
+    }), /xsd_transport_failed/u);
+  } finally {
+    Object.defineProperty(Object, "getOwnPropertyDescriptors", original);
+  }
+  assert.equal(credentialDescriptorReads, 0);
+  assert.equal(fetchCalls, 0);
+});
+
 test("XSD runtime signs UTF-8 create and query form requests with injected transport", async () => {
   const calls = [];
   const value = runtime(async (url, init) => {

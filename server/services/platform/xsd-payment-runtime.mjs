@@ -233,12 +233,12 @@ function projectQueryResponse(value, current, expectedOrderRef) {
 
 export function createXsdPaymentRuntime(value = {}) {
   const input = snapshot(value, ["credential", "fetchFn", "apiOrigin", "allowedActionOrigins", "routeMap", "profileRef", "credentialProfileRef", "nowFn"]);
+  const apiOrigin = origin(input.apiOrigin);
+  if (apiOrigin !== XSD_API_ORIGIN || input.apiOrigin !== XSD_API_ORIGIN) fail();
   const currentCredential = credential(input.credential);
   const profileRef = safeRef(input.profileRef);
   const credentialProfileRef = safeRef(input.credentialProfileRef);
   if (typeof input.fetchFn !== "function" || utilTypes.isProxy(input.fetchFn) || typeof input.nowFn !== "function" || utilTypes.isProxy(input.nowFn)) fail();
-  const apiOrigin = origin(input.apiOrigin);
-  if (apiOrigin !== XSD_API_ORIGIN || input.apiOrigin !== XSD_API_ORIGIN) fail();
   const actionOrigins = allowedOrigins(input.allowedActionOrigins);
   const routes = routeMap(input.routeMap);
   const handles = new WeakMap();

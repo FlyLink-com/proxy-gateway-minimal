@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node.js ESM, Express, `better-sqlite3`, Node test runner, existing Payment Provider Adapter Registry, Payment Recharge Coordinator, Payment Store, Coin Wallet Store, and the existing immutable CNY recharge price book.
 
-**Implementation status:** Tasks 1–4 are implemented and task-reviewed. Final review at `acb41449a483e47d02b71dc357d265c056076aa0` identified one blocking create-dispatch issue and two Runtime hardening issues. The approved controlled revision is committed at `e53e50814f63acd17c9174e62cdb3e2a1552f63a`; Task 5 is the single permitted final-review fix wave.
+**Implementation status:** Tasks 1–4 are implemented and task-reviewed. Final review at `acb41449a483e47d02b71dc357d265c056076aa0` identified one blocking create-dispatch issue and two Runtime hardening issues; the approved controlled revision is committed at `e53e50814f63acd17c9174e62cdb3e2a1552f63a`. Task 5 is implemented source-only under commit identity `fix(payment): close provider assembly review gaps` (the exact SHA is recorded in `task-5-report.md` after commit), while scoped re-review and exact-head validation remain pending. Actual RED: Coordinator 20/22 passed with concurrent duplicate dispatch and receipt-loss replay failures; Runtime 20/24 passed with two credential-inspection, missing-`redirected`, and hostile-accessor failures. Actual GREEN: Coordinator 22/22, Runtime 24/24, and the six-file focused regression 97/97 passed. `production_state: not_deployed`; no activation or production authority is granted.
 
 ## Risk Declaration
 
@@ -1371,7 +1371,7 @@ fix wave.
 - Does not produce: Store/schema fields, retry leases, provider fallback,
   automatic query/reconciliation, callback rebinding, or Portal behavior.
 
-- [ ] **Step 1: Add RED Coordinator tests for the durable dispatch claim**
+- [x] **Step 1: Add RED Coordinator tests for the durable dispatch claim**
 
 Extend the existing `createAdapter()` test helper with a real capability and an
 injectable create function:
@@ -1460,7 +1460,7 @@ one-time receipt failure. The second call must dispatch the same deterministic
 call returns the saved action without dispatch. Assert provider call counts
 `1`, `2`, and `2` at the three boundaries.
 
-- [ ] **Step 2: Run the Coordinator tests and observe RED**
+- [x] **Step 2: Run the Coordinator tests and observe RED**
 
 Run:
 
@@ -1478,7 +1478,7 @@ Expected RED evidence:
 Do not edit production code until these failures have been observed and copied
 to the task report.
 
-- [ ] **Step 3: Implement the minimal capability-aware Coordinator gate**
+- [x] **Step 3: Implement the minimal capability-aware Coordinator gate**
 
 At construction, extend the existing validation condition with this exact
 clause, then snapshot the capability immediately after the validation block:
@@ -1505,7 +1505,7 @@ Do not mark the order failed, expired, verified, or reconciliation-required.
 Do not query a provider, synthesize a receipt/action, change the Store, or add a
 fallback.
 
-- [ ] **Step 4: Run the Coordinator tests and observe GREEN**
+- [x] **Step 4: Run the Coordinator tests and observe GREEN**
 
 Run:
 
@@ -1517,7 +1517,7 @@ Expected: all Coordinator tests pass; the new non-idempotent cases observe one
 provider call, and the PayPal compatibility case observes two calls only until
 the durable receipt exists.
 
-- [ ] **Step 5: Add RED Runtime tests for credential order and hostile responses**
+- [x] **Step 5: Add RED Runtime tests for credential order and hostile responses**
 
 In each Runtime test file, add a test with `{ concurrency: false }` using this
 exact inspection pattern around its existing `runtime()` helper. Use
@@ -1577,7 +1577,7 @@ await assert.rejects(operation, (error) => {
 });
 ```
 
-- [ ] **Step 6: Run the Runtime tests and observe RED**
+- [x] **Step 6: Run the Runtime tests and observe RED**
 
 Run:
 
@@ -1594,7 +1594,7 @@ Expected RED evidence:
 - at least the hostile `status` or `getReader()` marker escapes instead of the
   generic transport error.
 
-- [ ] **Step 7: Implement exact-origin-first and generic ChaoJiPay response reads**
+- [x] **Step 7: Implement exact-origin-first and generic ChaoJiPay response reads**
 
 In the XSD Runtime constructor, keep the outer `snapshot()` first, then use
 this exact order before profile, function, allowlist, or route-map
@@ -1652,7 +1652,7 @@ try {
 Retain the existing bounded stream loop, cancellation, release, fatal UTF-8,
 and JSON parsing behavior unchanged.
 
-- [ ] **Step 8: Run focused GREEN and regression tests**
+- [x] **Step 8: Run focused GREEN and regression tests**
 
 Run:
 
@@ -1669,7 +1669,7 @@ node --test `
 Expected: all tests pass with synthetic inputs, zero external provider calls,
 and no Store/schema/Wallet/Portal source changes.
 
-- [ ] **Step 9: Update source-only status and commit the complete fix wave**
+- [x] **Step 9: Update source-only status and commit the complete fix wave**
 
 Set the design status to `Implemented source-only; scoped re-review and
 exact-head validation pending`. In this plan, check every completed Task 5 step

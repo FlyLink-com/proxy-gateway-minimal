@@ -1,6 +1,6 @@
 # CNY Payment Provider Single-Active Assembly Design
 
-**Status:** Approved design; source implementation is in final-review remediation
+**Status:** Implemented source-only; scoped re-review and exact-head validation pending
 **Risk:** B source change inside a future Risk A provider-activation boundary
 **Expected PR count:** 1 follow-up PR after PR #577
 **Source evidence baseline:** `d2636c5e0b8cd2798fa0c92dce4679f640576c32`

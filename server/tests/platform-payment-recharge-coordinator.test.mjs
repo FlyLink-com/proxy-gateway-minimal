@@ -117,6 +117,8 @@ function createExecution() {
 }
 
 function createAdapter({
+  repeatCreateIdempotent = true,
+  createRechargeOrderFn = null,
   callbackFactOverrides = {},
   callbackFactOverridesSequence = [],
   callbackDisposition = "settle",
@@ -132,7 +134,9 @@ function createAdapter({
     adapterKey,
     paymentMethod,
     merchantBindingRef,
-    async createRechargeOrder() {
+    capabilities: Object.freeze({ repeatCreateIdempotent }),
+    async createRechargeOrder(input) {
+      if (createRechargeOrderFn) return createRechargeOrderFn(input);
       return {
         providerOrderRef: "paypal_order_1",
         status: "entry_ready",
@@ -199,11 +203,13 @@ function createAdapter({
 }
 
 function createSystem({
+  adapterOptions = {},
   callbackFactOverrides = {},
   callbackFactOverridesSequence = [],
   callbackDisposition = "settle",
   capturePaymentFact = "default",
   failCreditOnce = false,
+  failCreateReceiptOnce = false,
   failMarkOnce = false,
   offerEnabled = true,
   walletResponseOverrides = null,
@@ -223,8 +229,16 @@ function createSystem({
     refFactory: refFactory("payment"),
   });
   let shouldFailMark = failMarkOnce;
+  let shouldFailCreateReceipt = failCreateReceiptOnce;
   const paymentStore = Object.freeze({
     ...rawPaymentStore,
+    recordOperationReceipt(input) {
+      if (shouldFailCreateReceipt && input.receiptType === "create") {
+        shouldFailCreateReceipt = false;
+        throw new Error("injected_create_receipt_failure");
+      }
+      return rawPaymentStore.recordOperationReceipt(input);
+    },
     markOrderCredited(input) {
       if (shouldFailMark) {
         shouldFailMark = false;
@@ -267,6 +281,7 @@ function createSystem({
     walletStore: injectedWalletStore,
     offerCatalog,
     adapter: createAdapter({
+      ...adapterOptions,
       callbackFactOverrides,
       callbackFactOverridesSequence,
       callbackDisposition,
@@ -363,6 +378,141 @@ const CALLBACK_INPUT = Object.freeze({
   receivedAt: NOW,
   bodyBase64: Buffer.from("verified callback", "utf8").toString("base64"),
   headerEntries: [{ name: "paypal-transmission-id", value: "safe" }],
+});
+
+test("non-idempotent concurrent create replays the unresolved durable claim without provider redispatch", async () => {
+  let providerCalls = 0;
+  let firstOrderRef = null;
+  let releaseFirstProvider;
+  let signalFirstProvider;
+  const firstProviderEntered = new Promise((resolve) => { signalFirstProvider = resolve; });
+  const firstProviderRelease = new Promise((resolve) => { releaseFirstProvider = resolve; });
+  const nextAction = Object.freeze({
+    type: "redirect",
+    url: "https://checkout.example.test/pay/1",
+    expiresAt: EXPIRES_AT,
+  });
+  const system = createSystem({
+    adapterOptions: {
+      repeatCreateIdempotent: false,
+      async createRechargeOrderFn(input) {
+        providerCalls += 1;
+        if (providerCalls !== 1) throw new Error("duplicate_provider_dispatch");
+        firstOrderRef = input.paymentOrderRef;
+        signalFirstProvider();
+        await firstProviderRelease;
+        return {
+          providerOrderRef: "provider_order_1",
+          status: "entry_ready",
+          chargeCertainty: "possibly_charged",
+          nextAction,
+          occurredAt: NOW,
+        };
+      },
+    },
+  });
+  try {
+    const firstCreate = createRechargeOrder(system.coordinator);
+    await firstProviderEntered;
+    try {
+      const replay = await createRechargeOrder(system.coordinator);
+      assert.equal(replay.order.orderRef, firstOrderRef);
+      assert.equal(replay.order.status, "created");
+      assert.equal(replay.order.nextAction, null);
+      assert.equal(replay.replayed, true);
+      assert.equal(providerCalls, 1);
+    } finally {
+      releaseFirstProvider();
+      await firstCreate;
+    }
+    const saved = await createRechargeOrder(system.coordinator);
+    assert.equal(saved.order.orderRef, firstOrderRef);
+    assert.equal(saved.order.status, "entry_ready");
+    assert.deepEqual(saved.order.nextAction, nextAction);
+    assert.equal(providerCalls, 1);
+  } finally {
+    system.close();
+  }
+});
+
+test("non-idempotent create receipt loss replays the unresolved durable claim without provider redispatch", async () => {
+  let providerCalls = 0;
+  const system = createSystem({
+    failCreateReceiptOnce: true,
+    adapterOptions: {
+      repeatCreateIdempotent: false,
+      async createRechargeOrderFn() {
+        providerCalls += 1;
+        return {
+          providerOrderRef: "provider_order_1",
+          status: "entry_ready",
+          chargeCertainty: "possibly_charged",
+          nextAction: {
+            type: "redirect",
+            url: "https://checkout.example.test/pay/1",
+            expiresAt: EXPIRES_AT,
+          },
+          occurredAt: NOW,
+        };
+      },
+    },
+  });
+  try {
+    const firstCreate = createRechargeOrder(system.coordinator);
+    await assert.rejects(() => firstCreate, /injected_create_receipt_failure/u);
+    const replay = await createRechargeOrder(system.coordinator);
+    assert.equal(replay.order.status, "created");
+    assert.equal(replay.order.providerOrderRef, null);
+    assert.equal(replay.order.nextAction, null);
+    assert.equal(replay.replayed, true);
+    assert.equal(providerCalls, 1);
+    assert.equal(system.database.prepare(
+      "select count(*) as count from platform_payment_receipts where receipt_type = 'create'",
+    ).get().count, 0);
+  } finally {
+    system.close();
+  }
+});
+
+test("repeat-create-idempotent provider retries the deterministic request after receipt loss", async () => {
+  const providerRequestRefs = [];
+  const system = createSystem({
+    failCreateReceiptOnce: true,
+    adapterOptions: {
+      repeatCreateIdempotent: true,
+      async createRechargeOrderFn(input) {
+        providerRequestRefs.push(input.providerRequestRef);
+        return {
+          providerOrderRef: "paypal_order_1",
+          status: "entry_ready",
+          chargeCertainty: "possibly_charged",
+          nextAction: {
+            type: "redirect",
+            url: "https://www.sandbox.paypal.com/checkoutnow?token=safe",
+            expiresAt: EXPIRES_AT,
+          },
+          occurredAt: NOW,
+        };
+      },
+    },
+  });
+  try {
+    await assert.rejects(
+      () => createRechargeOrder(system.coordinator),
+      /injected_create_receipt_failure/u,
+    );
+    assert.equal(providerRequestRefs.length, 1);
+    const retry = await createRechargeOrder(system.coordinator);
+    assert.equal(retry.order.status, "entry_ready");
+    assert.equal(providerRequestRefs.length, 2);
+    assert.equal(providerRequestRefs[1], providerRequestRefs[0]);
+    const replay = await createRechargeOrder(system.coordinator);
+    assert.equal(replay.order.status, "entry_ready");
+    assert.deepEqual(replay.order.nextAction, retry.order.nextAction);
+    assert.equal(providerRequestRefs.length, 2);
+  } finally {
+    system.close();
+  }
 });
 
 test("duplicate capture and callback converge to one paid_coins lot", async () => {

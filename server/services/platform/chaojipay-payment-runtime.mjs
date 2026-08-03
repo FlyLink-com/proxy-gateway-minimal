@@ -175,15 +175,25 @@ function createRequest(value, current, routes, createRequestIp) {
 }
 
 async function responseText(response, requestUrl) {
-  if (response === null || typeof response !== "object" || !Number.isSafeInteger(response.status) || response.body === null || typeof response.body?.getReader !== "function") fail();
+  let status;
+  let reader;
   try {
-    if (response.redirected !== undefined && response.redirected !== false) fail();
+    if (response === null || typeof response !== "object") fail();
+    status = response.status;
+    if (!Number.isSafeInteger(status) || response.redirected !== false) fail();
     if (typeof response.url !== "string" || response.url !== requestUrl) fail();
     const declaredLength = response.headers?.get?.("content-length");
-    if (declaredLength !== null && declaredLength !== undefined && (!/^(?:0|[1-9]\d*)$/u.test(declaredLength) || Number(declaredLength) > MAX_JSON_BYTES)) fail();
+    if (
+      declaredLength !== null
+      && declaredLength !== undefined
+      && (!/^(?:0|[1-9]\d*)$/u.test(declaredLength)
+        || Number(declaredLength) > MAX_JSON_BYTES)
+    ) fail();
+    if (status < 200 || status > 299) fail();
+    const body = response.body;
+    if (body === null || typeof body?.getReader !== "function") fail();
+    reader = body.getReader();
   } catch { fail(); }
-  if (response.status < 200 || response.status > 299) fail();
-  const reader = response.body.getReader();
   const chunks = [];
   let bytes = 0;
   let chunkCount = 0;
@@ -253,12 +263,12 @@ function callbackProjection(value, current) {
 
 export function createChaoJiPayPaymentRuntime(value = {}) {
   const input = snapshot(value, ["credential", "fetchFn", "apiOrigin", "allowedActionOrigins", "routeMap", "profileRef", "credentialProfileRef", "createRequestIp", "nowFn"]);
+  const apiOrigin = origin(input.apiOrigin);
+  if (apiOrigin !== CHAOJIPAY_API_ORIGIN || input.apiOrigin !== CHAOJIPAY_API_ORIGIN) fail();
   const currentCredential = credential(input.credential);
   const profileRef = safeRef(input.profileRef);
   const credentialProfileRef = safeRef(input.credentialProfileRef);
   if (typeof input.fetchFn !== "function" || utilTypes.isProxy(input.fetchFn) || typeof input.nowFn !== "function" || utilTypes.isProxy(input.nowFn)) fail();
-  const apiOrigin = origin(input.apiOrigin);
-  if (apiOrigin !== CHAOJIPAY_API_ORIGIN || input.apiOrigin !== CHAOJIPAY_API_ORIGIN) fail();
   const actionOrigins = allowedOrigins(input.allowedActionOrigins);
   const routes = routeMap(input.routeMap);
   const createRequestIp = publicIpv4(input.createRequestIp);
