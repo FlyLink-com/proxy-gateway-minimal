@@ -12,8 +12,14 @@ function signature(fields) {
   return createHash("md5").update(Object.keys(fields).filter((key) => key !== "sign" && key !== "format" && fields[key] !== "").sort().map((key) => `${key}=${fields[key]}`).join("&") + SECRET, "utf8").digest("hex");
 }
 
-function response(status, body) {
-  return Object.freeze({ status, async text() { return typeof body === "string" ? body : JSON.stringify(body); } });
+function response(status, body, { headers, url = `${API_ORIGIN}/api/gaia/unifiedorder`, ...extras } = {}) {
+  const standard = new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers });
+  return Object.freeze({ status: standard.status, headers: standard.headers, body: standard.body, redirected: false, url, ...extras });
+}
+
+function streamResponse(stream, { url = `${API_ORIGIN}/api/gaia/unifiedorder`, ...extras } = {}) {
+  const standard = new Response(stream, { status: 200 });
+  return Object.freeze({ status: standard.status, headers: standard.headers, body: standard.body, redirected: false, url, ...extras });
 }
 
 function runtime(fetchFn) {
@@ -24,11 +30,12 @@ function runtime(fetchFn) {
       portal_payment_callback_v1: "https://portal.example.test/api/payment/xsd/callback",
       portal_wallet_return_v1: "https://portal.example.test/wallet",
     }, nowFn: () => "2026-08-02T00:00:00.000Z",
+    profileRef: "xsd_profile", credentialProfileRef: "xsd_credential",
   });
 }
 
-async function request(runtimeValue, operation, request) {
-  const binding = Object.freeze({ profileRef: "xsd_profile", adapterKey: "xsd_v1", contractVersion: "v1", credentialProfileRef: "xsd_credential", operation });
+async function request(runtimeValue, operation, request, bindingOverride = {}) {
+  const binding = Object.freeze({ profileRef: "xsd_profile", adapterKey: "xsd_v1", contractVersion: "v1", credentialProfileRef: "xsd_credential", operation, ...bindingOverride });
   return runtimeValue.credentialLoader.withCredential(binding, (credentialHandle) => runtimeValue.transport.requestFn({ binding, credentialHandle, request }));
 }
 
@@ -38,7 +45,7 @@ test("XSD runtime signs UTF-8 create and query form requests with injected trans
     calls.push({ url, init });
     if (url.endsWith("/unifiedorder")) return response(200, { code: "0", datas: { url: "https://checkout.example.test/pay/1" } });
     const fields = { mch_order_no: "payment_order_1", mchId: "merchant_demo", status: "00", amount: "12.00" };
-    return response(200, { ...fields, sign: signature(fields) });
+    return response(200, { ...fields, sign: signature(fields) }, { url });
   });
   const created = await request(value, "create_recharge_order", {
     action: "xsd_payment_create",
@@ -58,26 +65,57 @@ test("XSD runtime signs UTF-8 create and query form requests with injected trans
   assert.deepEqual(queried, { response: { mch_order_no: "payment_order_1", status: "00" }, evidence: null });
 });
 
-test("XSD runtime rejects redirected create and query responses even when their bodies are valid", async () => {
-  const redirected = Object.freeze({
-    status: 200, redirected: true, url: "https://other.example.test/redirected",
-    async text() { return JSON.stringify({ code: "0", datas: { url: "https://checkout.example.test/pay/1" } }); },
-  });
+test("XSD runtime rejects empty, redirected, or mismatched final URLs even when their bodies are valid", async () => {
+  const redirected = response(200, { code: "0", datas: { url: "https://checkout.example.test/pay/1" } }, { redirected: true, url: "https://other.example.test/redirected" });
   const value = runtime(async () => redirected);
   await assert.rejects(() => request(value, "create_recharge_order", {
     action: "xsd_payment_create",
     createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
     routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" },
   }), /xsd_transport_failed/u);
-  const queryRedirect = Object.freeze({
-    status: 200, redirected: false, url: "https://other.example.test/redirected",
-    async text() {
+  for (const url of ["", "https://other.example.test/redirected"]) {
+    const query = runtime(async () => {
       const fields = { mch_order_no: "payment_order_1", mchId: "merchant_demo", status: "00", amount: "12.00" };
-      return JSON.stringify({ ...fields, sign: signature(fields) });
-    },
+      return response(200, { ...fields, sign: signature(fields) }, { url });
+    });
+    await assert.rejects(() => request(query, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" }), /xsd_transport_failed/u);
+  }
+});
+
+test("XSD runtime rejects mismatched profile bindings before issuing a handle", async () => {
+  let fetchCalls = 0;
+  const value = runtime(async () => { fetchCalls += 1; throw new Error("must-not-fetch"); });
+  const body = { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" };
+  for (const bindingOverride of [{ profileRef: "wrong_profile" }, { credentialProfileRef: "wrong_credential" }]) {
+    await assert.rejects(() => request(value, "query_payment", body, bindingOverride), /xsd_transport_failed/u);
+  }
+  assert.equal(fetchCalls, 0);
+});
+
+test("XSD runtime rechecks profile bindings when an issued handle is used", async () => {
+  let fetchCalls = 0;
+  const value = runtime(async () => { fetchCalls += 1; throw new Error("must-not-fetch"); });
+  const correctBinding = Object.freeze({ profileRef: "xsd_profile", adapterKey: "xsd_v1", contractVersion: "v1", credentialProfileRef: "xsd_credential", operation: "query_payment" });
+  const body = { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" };
+  await value.credentialLoader.withCredential(correctBinding, async (credentialHandle) => {
+    for (const binding of [{ ...correctBinding, profileRef: "wrong_profile" }, { ...correctBinding, credentialProfileRef: "wrong_credential" }]) {
+      await assert.rejects(() => value.transport.requestFn({ binding, credentialHandle, request: body }), /xsd_transport_failed/u);
+    }
   });
-  const queried = runtime(async () => queryRedirect);
-  await assert.rejects(() => request(queried, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" }), /xsd_transport_failed/u);
+  assert.equal(fetchCalls, 0);
+});
+
+test("XSD runtime bounds declared and chunked JSON Responses without retaining body material", async () => {
+  const body = { action: "xsd_payment_create", createInput: { paymentOrderRef: "payment_order_1", attemptRef: "attempt_1", providerRequestRef: "provider_request_1", paymentMethod: "alipay", amountMinor: 1200, currency: "CNY", currencyExponent: 2, expectedPaidCoins: 30, quoteDigest: "c".repeat(64), expiresAt: "2026-08-02T00:10:00.000Z", callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" }, routeRefs: { callbackRouteRef: "portal_payment_callback_v1", returnRouteRef: "portal_wallet_return_v1" } };
+  const declared = runtime(async () => response(200, "synthetic-oversize-body", { headers: { "content-length": "1048577" } }));
+  await assert.rejects(() => request(declared, "create_recharge_order", body), /xsd_transport_failed/u);
+  let cancelled = false;
+  const chunked = runtime(async () => streamResponse(new ReadableStream({
+    start(controller) { controller.enqueue(new Uint8Array(1_048_576)); controller.enqueue(new Uint8Array([1])); },
+    cancel() { cancelled = true; },
+  })));
+  await assert.rejects(() => request(chunked, "create_recharge_order", body), /xsd_transport_failed/u);
+  assert.equal(cancelled, true);
 });
 
 test("XSD runtime verifies only signed form callback input and returns redacted evidence", async () => {

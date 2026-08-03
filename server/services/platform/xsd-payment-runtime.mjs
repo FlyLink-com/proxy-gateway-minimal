@@ -114,14 +114,33 @@ function formattedAmount(value) {
 }
 
 async function jsonResponse(response, requestUrl) {
-  if (response === null || typeof response !== "object" || !Number.isSafeInteger(response.status) || typeof response.text !== "function") fail();
+  if (response === null || typeof response !== "object" || !Number.isSafeInteger(response.status) || response.body === null || typeof response.body?.getReader !== "function") fail();
   try {
     if (response.redirected !== undefined && response.redirected !== false) fail();
-    if (response.url !== undefined && response.url !== requestUrl) fail();
+    if (typeof response.url !== "string" || response.url.length < 1 || response.url !== requestUrl) fail();
+    const declaredLength = response.headers?.get?.("content-length");
+    if (declaredLength !== null && declaredLength !== undefined && (!/^(?:0|[1-9]\d*)$/u.test(declaredLength) || Number(declaredLength) > MAX_JSON_BYTES)) fail();
   } catch { fail(); }
+  if (response.status < 200 || response.status > 299) fail();
+  const reader = response.body.getReader();
+  const chunks = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      const item = await reader.read();
+      if (item.done) break;
+      if (!(item.value instanceof Uint8Array)) fail();
+      bytes += item.value.byteLength;
+      if (bytes > MAX_JSON_BYTES) {
+        await reader.cancel();
+        fail();
+      }
+      chunks.push(item.value);
+    }
+  } catch { fail(); }
+  finally { try { reader.releaseLock(); } catch {} }
   let text;
-  try { text = await response.text(); } catch { fail(); }
-  if (typeof text !== "string" || Buffer.byteLength(text, "utf8") > MAX_JSON_BYTES || response.status < 200 || response.status > 299) fail();
+  try { text = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)); } catch { fail(); }
   try { return JSON.parse(text); } catch { fail(); }
 }
 
@@ -159,7 +178,13 @@ function callbackProjection(callback, current) {
 function binding(value) {
   const input = snapshot(value, ["profileRef", "adapterKey", "contractVersion", "credentialProfileRef", "operation"]);
   if (input.adapterKey !== "xsd_v1" || input.contractVersion !== "v1" || !Object.values(OPERATION_BY_ACTION).includes(input.operation)) fail();
-  return input;
+  return { ...input, profileRef: safeRef(input.profileRef), credentialProfileRef: safeRef(input.credentialProfileRef) };
+}
+
+function assertCredentialBinding(value, profileRef, credentialProfileRef) {
+  const verified = binding(value);
+  if (verified.profileRef !== profileRef || verified.credentialProfileRef !== credentialProfileRef) fail();
+  return verified;
 }
 
 function createRequest(value, current, routes) {
@@ -199,8 +224,10 @@ function projectQueryResponse(value, current, expectedOrderRef) {
 }
 
 export function createXsdPaymentRuntime(value = {}) {
-  const input = snapshot(value, ["credential", "fetchFn", "apiOrigin", "allowedActionOrigins", "routeMap", "nowFn"]);
+  const input = snapshot(value, ["credential", "fetchFn", "apiOrigin", "allowedActionOrigins", "routeMap", "profileRef", "credentialProfileRef", "nowFn"]);
   const currentCredential = credential(input.credential);
+  const profileRef = safeRef(input.profileRef);
+  const credentialProfileRef = safeRef(input.credentialProfileRef);
   if (typeof input.fetchFn !== "function" || utilTypes.isProxy(input.fetchFn) || typeof input.nowFn !== "function" || utilTypes.isProxy(input.nowFn)) fail();
   const apiOrigin = origin(input.apiOrigin);
   const actionOrigins = allowedOrigins(input.allowedActionOrigins);
@@ -208,7 +235,7 @@ export function createXsdPaymentRuntime(value = {}) {
   const handles = new WeakMap();
   const credentialLoader = Object.freeze({
     withCredential(rawBinding, callback) {
-      const verifiedBinding = binding(rawBinding);
+      assertCredentialBinding(rawBinding, profileRef, credentialProfileRef);
       if (typeof callback !== "function" || utilTypes.isProxy(callback)) fail();
       const handle = Object.freeze({ kind: "xsd_payment_credential_handle" });
       handles.set(handle, currentCredential);
@@ -218,7 +245,7 @@ export function createXsdPaymentRuntime(value = {}) {
     },
   });
   async function requestFn({ binding: rawBinding, credentialHandle, request: rawRequest }) {
-    const verifiedBinding = binding(rawBinding);
+    const verifiedBinding = assertCredentialBinding(rawBinding, profileRef, credentialProfileRef);
     const current = handles.get(credentialHandle);
     if (!current || rawRequest === null || typeof rawRequest !== "object" || utilTypes.isProxy(rawRequest)) fail();
     const action = rawRequest.action;
