@@ -784,8 +784,11 @@ Focused tests must prove:
 - Registry descriptors compile through an inert failing scope without
   credential, transport, or clock access, while enabled operations fail closed
   without injected credential or transport bindings;
-- CNY runtime modules are absent from state, routes, Store, Wallet, public
-  indexes, and Portal/Admin bootstrap roots;
+- CNY runtime modules are absent from the production/public assembly graph,
+  which starts at package entrypoints, server state/routes, Store/Wallet,
+  public indexes, and Portal/Admin HTML/bootstrap/Vite roots; it follows
+  static and literal dynamic imports while rejecting computed or dynamic-code
+  loading;
 - routing never falls back after entry issuance or uncertain charge evidence;
 - the Phase 1 modified Adapter runtime modules and their transitive imports
   contain no `process.env`, dynamic import, direct HTTP client, Store, SQLite,

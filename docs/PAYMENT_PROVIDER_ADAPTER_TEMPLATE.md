@@ -177,6 +177,15 @@ Sandbox, production, credential, callback-registration, or payment
 compatibility. Neither runtime is imported by `server/state.mjs`, routes,
 Payment Store, Wallet, public indexes, or Portal/Admin bootstrap roots.
 
+The default-off source boundary starts from production/public assembly entries:
+package `main`/`exports`/`bin`, `start`/`server` entries, server state and
+routes, payment Store/Wallet, public indexes, and the Admin/Portal HTML,
+bootstrap, and Vite roots. It follows static imports/exports and literal
+dynamic imports; computed imports and dynamic-code loading (`eval`,
+`Function`, `createRequire`, or `require`) are forbidden in that assembly
+graph. Publishable `package.json.files` members remain a separate literal
+basename audit corpus, not executable assembly roots.
+
 Confirmed synthetic source facts are deliberately narrow:
 
 - XSD accepts only CNY/2-decimal create inputs for Alipay channel `1917` and

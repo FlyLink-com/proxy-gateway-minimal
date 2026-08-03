@@ -349,6 +349,13 @@ is not a Registry option or production setting: for ChaoJiPay it remains an
 explicit runtime constructor input whose payer-versus-egress semantics and
 trusted origin binding require a separate Risk A decision.
 
+Task 4 review continuation fact: runtime absence is checked from
+production/public assembly roots rather than treating `package.json.files` as
+an execution root. The graph resolves static and literal dynamic imports, but
+rejects computed imports and dynamic-code loading; each fresh factory metadata
+snapshot must exactly match the compiled descriptor before capabilities or
+payment methods are exposed.
+
 ---
 
 ## Final Validation And Review

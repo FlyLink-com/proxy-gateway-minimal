@@ -775,3 +775,23 @@ test("registry source is static and contains no runtime or provider integration 
   assert.doesNotMatch(source, /\b(?:route|router|listen|server)\b/iu);
   assert.doesNotMatch(source, /createRequire|modulePath|importSpecifier/u);
 });
+
+test("registry source snapshots factory metadata before it derives effective capabilities", async () => {
+  const source = await readFile(
+    new URL(
+      "../services/platform/payment-provider-adapter-registry.mjs",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(source, /function snapshotAdapterMetadata\(/u);
+  assert.match(source, /function adapterMetadataMatchesDescriptor\(/u);
+  assert.match(
+    source,
+    /if \(!adapterMetadataMatchesDescriptor\(raw, descriptor\)\)/u,
+  );
+  assert.match(
+    source,
+    /key,\s*descriptor\.capabilities\[key\] && declaredCapabilities\[key\]/u,
+  );
+});

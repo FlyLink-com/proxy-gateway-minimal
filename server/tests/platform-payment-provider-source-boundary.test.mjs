@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { readFile, readdir, stat } from "node:fs/promises";
 import test from "node:test";
 
-import {
+import * as sourceBoundary from "./helpers/payment-provider-source-boundary.mjs";
+
+const {
   assertProviderModuleSourceBoundary,
   collectProviderModuleGraph,
   extractStaticModuleSpecifiers,
-} from "./helpers/payment-provider-source-boundary.mjs";
+} = sourceBoundary;
 
 const REPO_ROOT_URL = new URL("../../", import.meta.url);
 const MODULE_PATH = "server/services/platform/payment-adapter-fixture.mjs";
@@ -31,6 +33,7 @@ const DOCUMENTED_CANDIDATE_ROOTS = Object.freeze([
   "server/services/platform/chaojipay-documented-payment-candidate.mjs",
 ]);
 const ROOT_EXECUTABLE_SOURCE_PATTERN = /\.(?:bat|cjs|js|mjs|ps1)$/u;
+const ASSEMBLY_SCRIPT_PATH_PATTERN = /\.(?:cjs|js|mjs|ts|tsx)$/u;
 const EXCLUDED_PRODUCTION_SURFACE_DIRECTORIES = new Set([
   "__tests__",
   "build",
@@ -142,6 +145,66 @@ async function listDocumentedCandidateBoundaryPaths() {
   return [...new Set(paths)].sort();
 }
 
+function packageEntryPath(value) {
+  assert.equal(typeof value, "string");
+  assert.match(value, /^\.\/[A-Za-z0-9./-]+$/u);
+  return value.slice(2);
+}
+
+function packageExportPaths(value) {
+  if (typeof value === "string") return [packageEntryPath(value)];
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("invalid_package_export_path");
+  }
+  return Object.values(value).flatMap(packageExportPaths);
+}
+
+async function listProductionAssemblyRoots() {
+  const packageMetadata = JSON.parse(await readSource("package.json"));
+  const roots = new Set([
+    packageEntryPath(packageMetadata.main),
+    ...packageExportPaths(packageMetadata.exports),
+    ...Object.values(packageMetadata.bin).map(packageEntryPath),
+    ...["start", "server"].flatMap((scriptName) => {
+      const match = /^node\s+([A-Za-z0-9./-]+\.mjs)$/u
+        .exec(packageMetadata.scripts[scriptName]);
+      assert.ok(match, `assembly_root_missing_script_entry:${scriptName}`);
+      return [match[1]];
+    }),
+    "server/index.mjs",
+    "server/start.mjs",
+    "server/app.mjs",
+    "server/state.mjs",
+    "server/services/platform/payment-store.mjs",
+    "server/services/platform/coin-wallet-store.mjs",
+    ...await listFiles("server/routes"),
+    ...ADMIN_PRODUCTION_BUILD_ROOTS,
+    "admin/src/main.tsx",
+    "admin/src/portal-main.tsx",
+    "admin/src/site-main.tsx",
+    ...(await listFiles("public")).filter((path) => /(?:^|\/)index\.[a-z0-9]+$/u.test(path)),
+  ]);
+  return [...roots].sort();
+}
+
+async function collectProductionAssemblyGraph(input) {
+  assert.equal(
+    typeof sourceBoundary.collectProductionAssemblyGraph,
+    "function",
+    "production_assembly_graph_scanner_missing",
+  );
+  return sourceBoundary.collectProductionAssemblyGraph(input);
+}
+
+async function assertProductionAssemblyExcludesProviderRuntimes(input) {
+  assert.equal(
+    typeof sourceBoundary.assertProductionAssemblyExcludesProviderRuntimes,
+    "function",
+    "production_assembly_runtime_guard_missing",
+  );
+  return sourceBoundary.assertProductionAssemblyExcludesProviderRuntimes(input);
+}
+
 async function assertCorpusDoesNotMatch(paths, pattern, message, read = readSource) {
   for (const path of paths) {
     const source = await read(path);
@@ -217,6 +280,142 @@ test("documented-candidate corpus includes every executable and publishable sour
   assert.equal(paths.includes("admin/vite.portal.local-api-validation.config.ts"), false);
 });
 
+test("production assembly roots are entrypoints rather than every package files member", async () => {
+  const assemblyRoots = await listProductionAssemblyRoots();
+  const publishablePaths = await listDocumentedCandidateBoundaryPaths();
+  for (const path of [
+    "index.mjs",
+    "server/index.mjs",
+    "server/start.mjs",
+    "server/app.mjs",
+    "server/state.mjs",
+    "server/routes/portal-coin-recharge.mjs",
+    "server/services/platform/payment-store.mjs",
+    "server/services/platform/coin-wallet-store.mjs",
+    "admin/index.html",
+    "admin/portal/index.html",
+    "admin/src/main.tsx",
+    "admin/src/portal-main.tsx",
+  ]) {
+    assert.equal(
+      assemblyRoots.includes(path),
+      true,
+      `production_assembly_root_missing:${path}`,
+    );
+  }
+  assert.equal(
+    publishablePaths.includes("scripts/channel-benchmark-runner.mjs"),
+    true,
+  );
+  assert.equal(
+    assemblyRoots.includes("scripts/channel-benchmark-runner.mjs"),
+    false,
+  );
+});
+
+test("production assembly graph rejects dynamic code and computed module loading", async () => {
+  const root = "server/app.mjs";
+  const fixtures = [
+    'const family = "xsd";\nawait import("./" + family + "-payment-runtime.mjs");',
+    'new Function("return import(\\"./xsd-payment-runtime.mjs\\")")();',
+    'Function("return import(\\"./chaojipay-payment-runtime.mjs\\")")();',
+    'eval("require(\\"./xsd-payment-runtime.mjs\\")");',
+    'const family = "chaojipay";\nrequire("./" + family + "-payment-runtime.mjs");',
+    'const family = "xsd";\nimport(`./${family}-payment-runtime.mjs`);',
+    'const load = createRequire(import.meta.url);\nload("./xsd-payment-runtime.mjs");',
+  ];
+  for (const source of fixtures) {
+    await assert.rejects(
+      () => collectProductionAssemblyGraph({
+        rootModulePaths: [root],
+        readSource: async () => source,
+      }),
+      {
+        message: `payment_provider_source_boundary:forbidden_dynamic_module_loading:${root}`,
+      },
+    );
+  }
+});
+
+test("production assembly graph detects a provider runtime through a public static wrapper", async () => {
+  const root = "server/app.mjs";
+  const wrapper = "server/public-payment-wrapper.mjs";
+  const runtime = "server/services/platform/xsd-payment-runtime.mjs";
+  const sources = new Map([
+    [root, 'export { createPublicPayment } from "./public-payment-wrapper.mjs";'],
+    [wrapper, 'export * from "./services/platform/xsd-payment-runtime.mjs";'],
+    [runtime, "export const createPublicPayment = () => undefined;"],
+  ]);
+  const graph = await collectProductionAssemblyGraph({
+    rootModulePaths: [root],
+    readSource: async (modulePath) => sources.get(modulePath),
+  });
+  assert.deepEqual(graph, [root, wrapper, runtime]);
+  await assert.rejects(
+    () => assertProductionAssemblyExcludesProviderRuntimes({
+      rootModulePaths: [root],
+      readSource: async (modulePath) => sources.get(modulePath),
+    }),
+    {
+      message: `payment_provider_source_boundary:provider_runtime_module_reachable:${runtime}`,
+    },
+  );
+});
+
+test("production assembly graph resolves literal dynamic imports and rejects runtime targets", async () => {
+  const root = "server/app.mjs";
+  const wrapper = "server/public-payment-wrapper.mjs";
+  const runtime = "server/services/platform/chaojipay-payment-runtime.mjs";
+  const sources = new Map([
+    [root, 'export const load = () => import("./public-payment-wrapper.mjs");'],
+    [wrapper, 'export * from "./services/platform/chaojipay-payment-runtime.mjs";'],
+    [runtime, "export const createPublicPayment = () => undefined;"],
+  ]);
+  assert.deepEqual(
+    await collectProductionAssemblyGraph({
+      rootModulePaths: [root],
+      readSource: async (modulePath) => sources.get(modulePath),
+    }),
+    [root, wrapper, runtime],
+  );
+
+  assert.deepEqual(
+    await collectProductionAssemblyGraph({
+      rootModulePaths: [root],
+      readSource: async () => 'export const loadQr = () => import("qrcode");',
+    }),
+    [root],
+  );
+
+  await assert.rejects(
+    () => collectProductionAssemblyGraph({
+      rootModulePaths: [root],
+      readSource: async () => 'export const load = () => import("xsd-payment-runtime.mjs");',
+    }),
+    {
+      message: `payment_provider_source_boundary:provider_runtime_module_reachable:${root}`,
+    },
+  );
+
+  await assert.rejects(
+    () => assertProductionAssemblyExcludesProviderRuntimes({
+      rootModulePaths: [root],
+      readSource: async (modulePath) => {
+        if (modulePath === root) {
+          return 'export const load = () => import("./services/platform/xsd-payment-runtime.mjs");';
+        }
+        if (modulePath === "server/services/platform/xsd-payment-runtime.mjs") {
+          return "export const createPayment = () => undefined;";
+        }
+        return undefined;
+      },
+    }),
+    {
+      message: "payment_provider_source_boundary:provider_runtime_module_reachable:server/services/platform/xsd-payment-runtime.mjs",
+    },
+  );
+});
+
 test("CNY provider runtimes stay absent from runtime assembly and public roots", async () => {
   const paths = await listDocumentedCandidateBoundaryPaths();
   for (const path of [
@@ -242,6 +441,23 @@ test("CNY provider runtimes stay absent from runtime assembly and public roots",
     /(?:xsd|chaojipay)-payment-runtime\.mjs/u,
     "cny_provider_runtime_assembly_import_detected",
   );
+
+  const assemblyRoots = await listProductionAssemblyRoots();
+  const assemblyGraph = await collectProductionAssemblyGraph({
+    rootModulePaths: assemblyRoots,
+    readSource,
+  });
+  for (const root of assemblyRoots.filter((path) => ASSEMBLY_SCRIPT_PATH_PATTERN.test(path))) {
+    assert.equal(
+      assemblyGraph.includes(root),
+      true,
+      `production_assembly_graph_missing_root:${root}`,
+    );
+  }
+  await assertProductionAssemblyExcludesProviderRuntimes({
+    rootModulePaths: assemblyRoots,
+    readSource,
+  });
 });
 
 test("documented-candidate corpus rejects an indirect import from every added root", async () => {
