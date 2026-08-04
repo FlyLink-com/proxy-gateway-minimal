@@ -695,6 +695,27 @@ describe("Portal recharge interaction", () => {
   });
 
   test.each([
+    {
+      locale: "en" as const,
+      message: "Payment confirmation is taking longer than expected. Check Orders for the latest status. Do not pay again.",
+    },
+    {
+      locale: "zh" as const,
+      message: "支付确认时间较长。可前往订单中心查看最新状态，请勿重复支付。",
+    },
+  ])("routes the $locale delayed-state follow-up to Orders", ({ locale, message }) => {
+    render(createElement(PortalRechargeDialog, {
+      locale,
+      model: {
+        ...rechargeDialogModel(rechargeOrder("pending")),
+        error: "delayed",
+      },
+    }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(message);
+  });
+
+  test.each([
     "created",
     "entry_ready",
     "pending",
@@ -804,6 +825,100 @@ describe("Portal recharge interaction", () => {
     expect(screen.queryByRole("dialog", { name: "Recharge Coins" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
 
+    const reopened = await screen.findByRole("dialog", { name: "Recharge Coins" });
+    expect(within(reopened).getByRole("list", {
+      name: "Coins recharge denominations",
+    })).toBeInTheDocument();
+    expect(within(reopened).queryByRole("status")).toBeNull();
+  });
+
+  test("clears a stale return intent when the user explicitly opens a fresh recharge", async () => {
+    const staleOrder: PortalRechargeOrder = {
+      ...rechargeOrder("entry_ready"),
+      orderRef: "payment_order_stale_return_1",
+    };
+    window.sessionStorage.setItem(
+      "gccwebos-portal-recharge-return-v1",
+      JSON.stringify({
+        version: 1,
+        orderRef: staleOrder.orderRef,
+        captureIdempotencyKey: "portal_capture_stale_return_1",
+      }),
+    );
+    const listOrders = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([staleOrder]);
+    const captureOrder = vi.fn(async () => staleOrder);
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [OFFER]),
+      listOrders,
+      createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+      getOrder: vi.fn(async () => staleOrder),
+      captureOrder,
+    };
+    const props = {
+      client,
+      paymentRedirect: vi.fn(),
+      refreshWallet: vi.fn(),
+    };
+
+    const firstMount = render(createElement(RechargeHarness, props));
+    const open = await screen.findByRole("button", { name: "Recharge Coins" });
+    await waitFor(() => expect(open).toBeEnabled());
+    fireEvent.click(open);
+    expect(await screen.findByRole("list", {
+      name: "Coins recharge denominations",
+    })).toBeInTheDocument();
+
+    firstMount.unmount();
+    render(createElement(RechargeHarness, props));
+
+    const remountedOpen = await screen.findByRole("button", { name: "Recharge Coins" });
+    await waitFor(() => expect(remountedOpen).toBeEnabled());
+    expect(screen.queryByRole("dialog", { name: "Recharge Coins" })).toBeNull();
+    expect(captureOrder).not.toHaveBeenCalled();
+  });
+
+  test("keeps a dismissed recharge return out of Wallet after remounting", async () => {
+    const entryReadyOrder = rechargeOrder("entry_ready");
+    const listOrders = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([entryReadyOrder]);
+    const captureOrder = vi.fn(async () => entryReadyOrder);
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [OFFER]),
+      listOrders,
+      createOrder: vi.fn(async () => entryReadyOrder),
+      getOrder: vi.fn(async () => entryReadyOrder),
+      captureOrder,
+    };
+    const props = {
+      client,
+      paymentRedirect: vi.fn(),
+      refreshWallet: vi.fn(),
+    };
+
+    const firstMount = render(createElement(RechargeHarness, props));
+
+    const open = await screen.findByRole("button", { name: "Recharge Coins" });
+    await waitFor(() => expect(open).toBeEnabled());
+    fireEvent.click(open);
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Create order and pay for 30 Coins, USD 1.00, option 1",
+    }));
+    expect(await screen.findByRole("status", { name: "Waiting for payment" }))
+      .toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    firstMount.unmount();
+    render(createElement(RechargeHarness, props));
+
+    const remountedOpen = await screen.findByRole("button", { name: "Recharge Coins" });
+    await waitFor(() => expect(remountedOpen).toBeEnabled());
+    expect(screen.queryByRole("dialog", { name: "Recharge Coins" })).toBeNull();
+    expect(captureOrder).not.toHaveBeenCalled();
+
+    fireEvent.click(remountedOpen);
     const reopened = await screen.findByRole("dialog", { name: "Recharge Coins" });
     expect(within(reopened).getByRole("list", {
       name: "Coins recharge denominations",
@@ -1486,7 +1601,7 @@ describe("Portal recharge interaction", () => {
       expect(client.getOrder).toHaveBeenCalledTimes(callsAtDeadline);
       expect(client.captureOrder).not.toHaveBeenCalled();
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Payment confirmation is taking longer than expected. We will check again when you return to Wallet. Do not pay again.",
+        "Payment confirmation is taking longer than expected. Check Orders for the latest status. Do not pay again.",
       );
 
       fireEvent.click(screen.getByRole("button", { name: "Close" }));

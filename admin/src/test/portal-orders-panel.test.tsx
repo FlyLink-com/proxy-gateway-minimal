@@ -537,7 +537,11 @@ describe("PortalOrdersPanel", () => {
       listOrders: vi.fn(async () => [{
         ...RECHARGE_ORDER,
         status,
-        nextAction: null,
+        nextAction: {
+          type: "redirect" as const,
+          url: "https://cashier.example.test/continue/payment_recharge_001",
+          expiresAt: "2026-08-01T00:10:00.000Z",
+        },
       }])
     } as unknown as PortalRechargeClient;
     render(createElement(PortalOrdersPanel, {

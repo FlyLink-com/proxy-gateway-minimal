@@ -116,8 +116,8 @@ export function PortalRechargeDialog({
             ? zh ? "Coins 充值暂不可用。" : "Coins recharge is unavailable."
             : model.error === "delayed"
               ? zh
-                ? "支付确认时间较长。再次进入钱包时系统会继续查询，请勿重复支付。"
-                : "Payment confirmation is taking longer than expected. We will check again when you return to Wallet. Do not pay again."
+                ? "支付确认时间较长。可前往订单中心查看最新状态，请勿重复支付。"
+                : "Payment confirmation is taking longer than expected. Check Orders for the latest status. Do not pay again."
               : zh ? "充值请求失败，请安全重试。" : "Recharge request failed. Retry safely."}
         </div>
       ) : null}

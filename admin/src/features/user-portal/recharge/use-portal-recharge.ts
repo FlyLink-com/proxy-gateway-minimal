@@ -477,6 +477,7 @@ export function usePortalRecharge({
     busy,
     error,
     openDialog: () => {
+      clearPortalRechargeReturn();
       if (activeOrder) {
         settlementPollStartedAtRef.current.delete(activeOrder.orderRef);
         trackedSettlementOrderRefsRef.current.delete(activeOrder.orderRef);
@@ -489,6 +490,7 @@ export function usePortalRecharge({
     closeDialog: () => {
       if (!busy) {
         operationRef.current += 1;
+        clearPortalRechargeReturn();
         if (activeOrder) {
           settlementPollStartedAtRef.current.delete(activeOrder.orderRef);
           trackedSettlementOrderRefsRef.current.delete(activeOrder.orderRef);
