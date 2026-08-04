@@ -1,6 +1,6 @@
 # Payment Provider Adapter Template
 
-Last updated: 2026-08-02, America/Los_Angeles.
+Last updated: 2026-08-03, America/Los_Angeles.
 
 This document defines the repository-local adapter template for future payment
 provider integration.
@@ -59,8 +59,14 @@ contract or a Coins wallet.
     or payment credential belongs in Git.
 - `server/services/platform/payment-store-migrations.mjs`
   - defines additive migration `20260801_001_payment_integration_closure`;
-  - creates only `platform_payment_orders` and
-    `platform_payment_receipts`, with readback and rollback support.
+  - creates only the active `platform_payment_orders` and
+    `platform_payment_receipts` tables, with readback and rollback support;
+  - when the exact frozen legacy `platform_payment_orders` schema is present,
+    atomically renames it to a write-protected archive before creating the two
+    active Payment tables and records compatibility migration
+    `20260803_001_legacy_payment_orders_archive`; schema drift or external
+    dependencies fail closed, and no legacy row is read, copied, backfilled,
+    or deleted.
 - `server/services/platform/payment-store.mjs`
   - persists server-owned recharge orders and immutable normalized provider
     receipts without raw callbacks, payer data, or credentials.
