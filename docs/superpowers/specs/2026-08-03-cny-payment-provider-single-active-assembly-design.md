@@ -212,7 +212,13 @@ must be an absolute, credential-free HTTPS URL with the exact callback path
 defined below and no query or fragment. The return URL must be an absolute,
 credential-free HTTPS URL. Every allowed action origin must be an exact origin
 string with no path, query, fragment, or credentials, and the list must be
-non-empty, unique, and bounded.
+non-empty, unique, and bounded. For XSD specifically, the environment value
+must decode to the single-item list `["https://www.xsd8866.com"]`; the runtime
+pins the same origin in source and fails closed for every other list.
+
+The XSD create response accepts the exact live provider envelope field
+`datas.code_url` and maps it to the internal `{ url }` transport contract.
+Legacy `datas.url`, aliases, and additional `datas` fields fail closed.
 
 ### ChaoJiPay
 

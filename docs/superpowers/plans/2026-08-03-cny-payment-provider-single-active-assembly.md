@@ -191,7 +191,7 @@ function xsdRechargeEnv(overrides = {}) {
       "https://portal.example.test/api/platform/payments/xsd/callback",
     PLATFORM_XSD_RETURN_URL: "https://portal.example.test/portal/wallet",
     PLATFORM_XSD_ALLOWED_ACTION_ORIGINS_JSON:
-      JSON.stringify(["https://cashier.example.test"]),
+      JSON.stringify(["https://www.xsd8866.com"]),
     ...overrides,
   };
 }
@@ -501,7 +501,7 @@ function runtime(fetchFn, overrides = {}) {
     },
     fetchFn,
     apiOrigin: API_ORIGIN,
-    allowedActionOrigins: ["https://checkout.example.test"],
+    allowedActionOrigins: [API_ORIGIN],
     routeMap: {
       portal_payment_callback_v1:
         "https://portal.example.test/api/payment/xsd/callback",
@@ -1161,10 +1161,10 @@ const PROVIDERS = Object.freeze([
 ]);
 ```
 
-For XSD, construct the Runtime with exact source origin, callback/return route refs, action origin `https://cashier.example.test`, and an injected fetch which accepts only `/api/gaia/unifiedorder` and returns:
+For XSD, construct the Runtime with exact source origin, callback/return route refs, action origin `https://www.xsd8866.com`, and an injected fetch which accepts only `/api/gaia/unifiedorder` and returns:
 
 ```js
-{ code: "200", error: "请求成功", datas: { url: "https://cashier.example.test/pay/synthetic" } }
+{ code: "200", error: "请求成功", datas: { code_url: "https://www.xsd8866.com/pay/synthetic" } }
 ```
 
 For ChaoJiPay, accept only `/api/order/create`, use public synthetic request IP `8.8.8.8`, and return:

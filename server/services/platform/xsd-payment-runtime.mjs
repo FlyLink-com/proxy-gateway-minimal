@@ -9,6 +9,7 @@ const MAX_JSON_BYTES = 1_048_576;
 const MAX_JSON_CHUNKS = 4_096;
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=utf-8";
 const XSD_API_ORIGIN = "https://www.xsd8866.com";
+const XSD_ACTION_ORIGIN = XSD_API_ORIGIN;
 const MAX_CALLBACK_BYTES = 16_384;
 const MAX_CALLBACK_BASE64_CHARS = Math.ceil(MAX_CALLBACK_BYTES / 3) * 4;
 const OPERATION_BY_ACTION = Object.freeze({
@@ -102,9 +103,9 @@ function routeMap(value) {
   return routes;
 }
 
-function allowedOrigins(value) {
-  if (!Array.isArray(value) || utilTypes.isProxy(value) || value.length < 1 || value.length > 8) fail();
-  return Object.freeze(value.map(origin));
+function xsdActionOrigins(value) {
+  if (!Array.isArray(value) || utilTypes.isProxy(value) || value.length !== 1 || value[0] !== XSD_ACTION_ORIGIN) fail();
+  return Object.freeze([XSD_ACTION_ORIGIN]);
 }
 
 function amountMinor(value) {
@@ -218,9 +219,9 @@ function queryRequest(value, current) {
 function projectCreateResponse(value) {
   const response = snapshot(value, ["code", "error", "datas"]);
   if (response.code !== "200" || typeof response.error !== "string" || response.error.length < 1 || response.error.length > 4096 || /[\0\r\n]/u.test(response.error)) fail();
-  const datas = snapshot(response.datas, ["url"]);
-  if (typeof datas.url !== "string" || datas.url.length < 1 || datas.url.length > 2048) fail();
-  return Object.freeze({ url: datas.url });
+  const datas = snapshot(response.datas, ["code_url"]);
+  if (typeof datas.code_url !== "string" || datas.code_url.length < 1 || datas.code_url.length > 2048) fail();
+  return Object.freeze({ url: datas.code_url });
 }
 
 function projectQueryResponse(value, current, expectedOrderRef) {
@@ -242,7 +243,7 @@ export function createXsdPaymentRuntime(value = {}) {
   const profileRef = safeRef(input.profileRef);
   const credentialProfileRef = safeRef(input.credentialProfileRef);
   if (typeof input.fetchFn !== "function" || utilTypes.isProxy(input.fetchFn) || typeof input.nowFn !== "function" || utilTypes.isProxy(input.nowFn)) fail();
-  const actionOrigins = allowedOrigins(input.allowedActionOrigins);
+  const actionOrigins = xsdActionOrigins(input.allowedActionOrigins);
   const routes = routeMap(input.routeMap);
   const handles = new WeakMap();
   const credentialLoader = Object.freeze({
