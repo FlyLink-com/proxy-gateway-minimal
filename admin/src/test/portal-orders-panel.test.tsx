@@ -198,7 +198,11 @@ type DirectPanelProps = Pick<
 > & Partial<Omit<
   PortalOrdersPanelProps,
   "locale" | "commerceClient" | "sessionRef" | "sessionGeneration" | "onSessionInvalid"
->>;
+>> & {
+  onContinueRechargeOrder?: (order: PortalRechargeOrder) => (
+    "redirected" | "blocked" | "not_applicable"
+  );
+};
 
 function PortalOrdersPanel(props: DirectPanelProps) {
   return createElement(PortalOrdersPanelComponent, {
@@ -442,6 +446,136 @@ describe("PortalOrdersPanel", () => {
     expect(rechargeClient.listOrders).toHaveBeenCalledWith({
       sessionRef: "session_recharge_orders"
     });
+  });
+
+  test("continues only the exact server-ready recharge order without creating a new one", async () => {
+    const entryReadyOrder: PortalRechargeOrder = {
+      ...RECHARGE_ORDER,
+      status: "entry_ready",
+      walletOperationRef: null,
+      walletLotRef: null,
+      nextAction: {
+        type: "redirect",
+        url: "https://cashier.example.test/continue/payment_recharge_001",
+        expiresAt: "2026-08-01T00:10:00.000Z"
+      }
+    };
+    const onContinueRechargeOrder = vi.fn(() => "redirected" as const);
+    const rechargeClient = {
+      listOrders: vi.fn(async () => [entryReadyOrder])
+    } as unknown as PortalRechargeClient;
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: null,
+      rechargeClient,
+      sessionRef: "session_recharge_orders",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      onContinueRechargeOrder,
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Coins recharges" }));
+    const continuePayment = await screen.findByRole("button", {
+      name: /continue payment.*payment_recharge_001/i
+    });
+    fireEvent.click(continuePayment);
+
+    expect(onContinueRechargeOrder).toHaveBeenCalledTimes(1);
+    expect(onContinueRechargeOrder).toHaveBeenCalledWith(entryReadyOrder);
+    expect(screen.queryByRole("region", {
+      name: "Coins recharge order detail"
+    })).toBeNull();
+  });
+
+  test("shows an accessible error when an exact recharge handoff is blocked", async () => {
+    const entryReadyOrder: PortalRechargeOrder = {
+      ...RECHARGE_ORDER,
+      status: "entry_ready",
+      walletOperationRef: null,
+      walletLotRef: null,
+      nextAction: {
+        type: "redirect",
+        url: "https://cashier.example.test/continue/payment_recharge_001",
+        expiresAt: "2026-08-01T00:10:00.000Z"
+      }
+    };
+    const rechargeClient = {
+      listOrders: vi.fn(async () => [entryReadyOrder])
+    } as unknown as PortalRechargeClient;
+    const onContinueRechargeOrder = vi.fn(() => "blocked" as const);
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: null,
+      rechargeClient,
+      sessionRef: "session_recharge_orders",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      onContinueRechargeOrder,
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Coins recharges" }));
+    fireEvent.click(await screen.findByRole("button", {
+      name: /continue payment.*payment_recharge_001/i
+    }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Could not safely continue this payment. No new recharge order was created."
+    );
+    expect(onContinueRechargeOrder).toHaveBeenCalledWith(entryReadyOrder);
+  });
+
+  test.each([
+    "created",
+    "pending",
+    "payment_verified",
+    "credited",
+    "failed_no_charge",
+    "reconciliation_required",
+    "expired",
+  ] as const)("does not offer continuation for a %s recharge order", async (status) => {
+    const rechargeClient = {
+      listOrders: vi.fn(async () => [{
+        ...RECHARGE_ORDER,
+        status,
+        nextAction: null,
+      }])
+    } as unknown as PortalRechargeClient;
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: null,
+      rechargeClient,
+      sessionRef: "session_recharge_orders",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      onContinueRechargeOrder: vi.fn(() => "redirected" as const),
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Coins recharges" }));
+    await waitFor(() => expect(rechargeClient.listOrders).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("button", { name: /continue payment/i })).toBeNull();
+  });
+
+  test("does not offer continuation when a ready recharge has no server action", async () => {
+    const rechargeClient = {
+      listOrders: vi.fn(async () => [{
+        ...RECHARGE_ORDER,
+        status: "entry_ready" as const,
+        nextAction: null,
+      }])
+    } as unknown as PortalRechargeClient;
+    render(createElement(PortalOrdersPanel, {
+      locale: "en",
+      commerceClient: null,
+      rechargeClient,
+      sessionRef: "session_recharge_orders",
+      sessionGeneration: 1,
+      onSessionInvalid: vi.fn(),
+      onContinueRechargeOrder: vi.fn(() => "redirected" as const),
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Coins recharges" }));
+    await waitFor(() => expect(rechargeClient.listOrders).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("button", { name: /continue payment/i })).toBeNull();
   });
 
   test("keeps the labelled Orders search contract while composing the frozen Empty and Filled field", () => {

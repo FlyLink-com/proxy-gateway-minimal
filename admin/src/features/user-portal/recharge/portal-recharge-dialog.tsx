@@ -153,8 +153,8 @@ export function PortalRechargeDialog({
           {model.offers.map((offer, index) => {
             const amount = formatPortalRechargeAmount(offer);
             const paymentLabel = zh
-              ? `继续支付 ${offer.paidCoinUnits} Coins，${amount}，第 ${index + 1} 个档位`
-              : `Continue to payment for ${offer.paidCoinUnits} Coins, ${amount}, option ${index + 1}`;
+              ? `创建订单并支付 ${offer.paidCoinUnits} Coins，${amount}，第 ${index + 1} 个档位`
+              : `Create order and pay for ${offer.paidCoinUnits} Coins, ${amount}, option ${index + 1}`;
             const creatingOrderLabel = zh
               ? `正在创建订单：${offer.paidCoinUnits} Coins，${amount}，第 ${index + 1} 个档位`
               : `Creating order for ${offer.paidCoinUnits} Coins, ${amount}, option ${index + 1}`;
@@ -178,7 +178,7 @@ export function PortalRechargeDialog({
                 >
                   {model.busy
                     ? zh ? "正在创建订单…" : "Creating order…"
-                    : zh ? "继续支付" : "Continue to payment"}
+                    : zh ? "创建订单并支付" : "Create order and pay"}
                 </button>
               </li>
             );

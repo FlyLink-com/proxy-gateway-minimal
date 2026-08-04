@@ -2267,6 +2267,7 @@ export function UserPortalPage({
               onOpenServiceOrder={viewOrder}
               onOrderSearchChange={setOrderSearch}
               onSessionInvalid={logout}
+              onContinueRechargeOrder={rechargeModel.continueOrderPayment}
               orderSearch={orderSearch}
               selectedServiceOrderRef={selectedOrderRef}
               serviceOrders={orderRows}

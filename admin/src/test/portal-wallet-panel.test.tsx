@@ -385,7 +385,7 @@ describe("PortalWalletPanel", () => {
     },
     {
       state: { phase: "empty", value: NOT_CREATED_SUMMARY },
-      message: "Wallet not created. Available balance is 0 Coins.",
+      message: "No Coins have been credited yet. Your Wallet will activate automatically after the first successful recharge.",
       retry: false
     },
     {
@@ -707,6 +707,7 @@ describe("PortalWalletPanel", () => {
       openDialog,
       closeDialog: vi.fn(),
       createOrder: vi.fn(async () => undefined),
+      continueOrderPayment: vi.fn(() => "not_applicable" as const),
     };
     render(createElement(PortalWalletPanel, {
       locale,

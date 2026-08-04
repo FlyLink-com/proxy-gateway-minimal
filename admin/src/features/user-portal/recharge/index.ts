@@ -19,5 +19,10 @@ export {
   stagePortalRechargeReturn,
 } from "./portal-recharge-return";
 export type { PortalRechargeReturnIntent } from "./portal-recharge-return";
+export {
+  canContinuePortalRechargeOrder,
+  handoffPortalRechargeOrderToPayment,
+} from "./portal-recharge-payment-handoff";
+export type { PortalRechargePaymentRedirectResult } from "./portal-recharge-payment-handoff";
 export { usePortalRecharge } from "./use-portal-recharge";
 export type { PortalRechargeModel } from "./use-portal-recharge";
