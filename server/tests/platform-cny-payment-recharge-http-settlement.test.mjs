@@ -113,7 +113,7 @@ function providerJsonResponse(url, body) {
 
 function signXsd(fields, secret) {
   const canonical = Object.keys(fields)
-    .filter((key) => key !== "sign" && key !== "format" && fields[key] !== "")
+    .filter((key) => key !== "sign" && key !== "format" && key !== "attach" && fields[key] !== "")
     .sort()
     .map((key) => `${key}=${fields[key]}`)
     .join("&");
@@ -366,10 +366,10 @@ async function createOrder(baseUrl) {
   return orderRef;
 }
 
-function postCallback(baseUrl, providerCase, body) {
+function postCallback(baseUrl, providerCase, body, contentType = providerCase.contentType) {
   return fetch(`${baseUrl}${providerCase.callbackPath}`, {
     method: "POST",
-    headers: { "Content-Type": providerCase.contentType },
+    headers: { "Content-Type": contentType },
     body,
   });
 }
@@ -621,3 +621,77 @@ for (const providerCase of PROVIDERS) {
     }
   });
 }
+
+test("xsd documented no-charset callback with unsigned attach settles once and replays idempotently", async () => {
+  const providerCase = PROVIDERS.find(({ provider }) => provider === "xsd");
+  const system = createSystem(providerCase);
+  const { server, baseUrl } = await listen(system.app);
+  try {
+    const orderRef = await createOrder(baseUrl);
+    const body = signedCallbackBody(providerCase, orderRef, {
+      attach: "merchant_metadata_1",
+    });
+
+    const first = await postCallback(
+      baseUrl,
+      providerCase,
+      body,
+      "application/x-www-form-urlencoded",
+    );
+    assert.equal(first.status, 200);
+    assert.equal(await first.text(), "SUCCESS");
+    const firstRefs = assertSettlementCounts(system.database, {
+      receipts: 1, operations: 1, lots: 1, origins: 1,
+    });
+    assert.equal(paymentOrder(system.database, orderRef).status, "credited");
+    assertPaidBalance(system, 30);
+
+    const replay = await postCallback(
+      baseUrl,
+      providerCase,
+      body,
+      "application/x-www-form-urlencoded",
+    );
+    assert.equal(replay.status, 200);
+    assert.equal(await replay.text(), "SUCCESS");
+    assert.deepEqual(settlementRefs(system.database), firstRefs);
+    assertPaidBalance(system, 30);
+
+    const changedUnsignedAttach = signedCallbackBody(providerCase, orderRef, {
+      attach: "merchant_metadata_changed",
+    });
+    await assertGeneric503(await postCallback(
+      baseUrl,
+      providerCase,
+      changedUnsignedAttach,
+      "application/x-www-form-urlencoded",
+    ));
+    assert.deepEqual(settlementRefs(system.database), firstRefs);
+    assertPaidBalance(system, 30);
+  } finally {
+    await closeSystem(server, system);
+  }
+});
+
+test("xsd rejects unsupported callback content types before any settlement write", async () => {
+  const providerCase = PROVIDERS.find(({ provider }) => provider === "xsd");
+  const system = createSystem(providerCase);
+  const { server, baseUrl } = await listen(system.app);
+  try {
+    const orderRef = await createOrder(baseUrl);
+    const response = await postCallback(
+      baseUrl,
+      providerCase,
+      signedCallbackBody(providerCase, orderRef),
+      "application/json",
+    );
+    assert.equal(response.status, 415);
+    assertSettlementCounts(system.database, {
+      receipts: 0, operations: 0, lots: 0, origins: 0,
+    });
+    assert.equal(paymentOrder(system.database, orderRef).status, "entry_ready");
+    assertPaidBalance(system, 0);
+  } finally {
+    await closeSystem(server, system);
+  }
+});

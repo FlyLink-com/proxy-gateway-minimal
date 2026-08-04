@@ -197,9 +197,10 @@ Confirmed synthetic source facts are deliberately narrow:
 
 - XSD accepts only CNY/2-decimal create inputs for Alipay channel `1917` and
   WeChat channel `1923`; it constructs form requests and lower-case MD5 signing
-  inside an injected credential scope. Its callback verifier projects only a
-  signed success, rejects unexpected `attach`, and uses `SUCCESS` only as a
-  pure acknowledgement codec.
+  inside an injected credential scope. Its callback verifier accepts only the
+  two exact supported form content types, permits one optional `attach` while
+  excluding it from the signature and settlement projection, projects only a
+  signed success, and uses `SUCCESS` only as a pure acknowledgement codec.
 - ChaoJiPay accepts only CNY/2-decimal WeChat product `726`; it constructs JSON
   create requests and uppercase MD5 signing inside an injected credential scope.
   It verifies signed callback success and exposes `success` only as a pure

@@ -8,6 +8,10 @@ const DIGEST_RE = /^[a-f0-9]{64}$/u;
 const MAX_JSON_BYTES = 1_048_576;
 const MAX_JSON_CHUNKS = 4_096;
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=utf-8";
+const CALLBACK_CONTENT_TYPES = Object.freeze([
+  "application/x-www-form-urlencoded",
+  FORM_CONTENT_TYPE,
+]);
 const XSD_API_ORIGIN = "https://www.xsd8866.com";
 const XSD_ACTION_ORIGIN = XSD_API_ORIGIN;
 const MAX_CALLBACK_BYTES = 16_384;
@@ -65,7 +69,7 @@ function routeUrl(value) {
 }
 
 function formSignature(fields, merchantSecret) {
-  const text = Object.keys(fields).filter((key) => key !== "sign" && key !== "format" && fields[key] !== "").sort().map((key) => `${key}=${fields[key]}`).join("&");
+  const text = Object.keys(fields).filter((key) => key !== "sign" && key !== "format" && key !== "attach" && fields[key] !== "").sort().map((key) => `${key}=${fields[key]}`).join("&");
   return createHash("md5").update(`${text}${merchantSecret}`, "utf8").digest("hex");
 }
 
@@ -163,11 +167,12 @@ function strictCallbackForm(callback) {
   const headerDescriptors = Object.getOwnPropertyDescriptors(input.headerEntries);
   if (Reflect.ownKeys(headerDescriptors).length !== 2 || !Object.hasOwn(headerDescriptors, "0") || !Object.hasOwn(headerDescriptors, "length") || !Object.hasOwn(headerDescriptors["0"], "value")) fail();
   const header = snapshot(headerDescriptors["0"].value, ["name", "value"]);
-  if (header.name !== "content-type" || header.value !== FORM_CONTENT_TYPE) fail();
+  if (header.name !== "content-type" || !CALLBACK_CONTENT_TYPES.includes(header.value)) fail();
   let entries;
   try { entries = [...new URLSearchParams(body.toString("utf8")).entries()]; } catch { fail(); }
   const expected = ["mch_order_no", "partnerorderid", "status", "mchId", "amount", "sign"];
-  if (entries.length !== expected.length || entries.some(([key]) => !expected.includes(key)) || new Set(entries.map(([key]) => key)).size !== expected.length) fail();
+  const allowed = [...expected, "attach"];
+  if (entries.length < expected.length || entries.length > allowed.length || entries.some(([key]) => !allowed.includes(key)) || new Set(entries.map(([key]) => key)).size !== entries.length) fail();
   const fields = Object.fromEntries(entries);
   for (const key of expected) if (!Object.hasOwn(fields, key) || fields[key] === "") fail();
   return { fields, body: body.toString("utf8") };
