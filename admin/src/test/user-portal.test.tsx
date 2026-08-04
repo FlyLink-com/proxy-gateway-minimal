@@ -2419,6 +2419,63 @@ describe("user portal product surface", () => {
     )).toBeNull();
   });
 
+  test("continues one exact ready recharge from Orders without creating a replacement order", async () => {
+    const session = portalWalletSession(
+      "session_recharge_continue_001",
+      "recharge-continue@example.test"
+    );
+    const entryReadyOrder: PortalRechargeOrder = {
+      ...returnedRechargeOrder("entry_ready"),
+      nextAction: {
+        type: "redirect",
+        url: "https://cashier.example.test/continue/payment_return_order_1",
+        expiresAt: "2026-08-02T05:00:00.000Z"
+      }
+    };
+    const recharge: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [RETURN_RECHARGE_OFFER]),
+      listOrders: vi.fn(async () => [entryReadyOrder]),
+      createOrder: vi.fn(async () => returnedRechargeOrder("entry_ready")),
+      getOrder: vi.fn(async () => entryReadyOrder),
+      captureOrder: vi.fn(async () => entryReadyOrder)
+    };
+    const wallet: PortalWalletClient = {
+      getSummary: vi.fn(async () => portalWalletSummary(0, "not_created")),
+      listLedger: vi.fn(async () => ({ entries: [], nextCursor: null }))
+    };
+    const paymentRedirect = vi.fn();
+    const client = portalClient({ wallet, recharge });
+
+    render(createElement(UserPortalPage, {
+      initialSession: session,
+      paymentRedirect,
+      portalClient: client
+    }));
+
+    expect(await screen.findByRole("navigation", { name: "用户中心导航" }))
+      .toBeInTheDocument();
+    openPortalOrders();
+    fireEvent.click(screen.getByRole("button", { name: "充值订单" }));
+    fireEvent.click(await screen.findByRole("button", {
+      name: /继续支付.*payment_return_order_1/
+    }));
+
+    expect(paymentRedirect).toHaveBeenCalledWith(
+      "https://cashier.example.test/continue/payment_return_order_1"
+    );
+    expect(recharge.createOrder).not.toHaveBeenCalled();
+    expect(JSON.parse(String(window.sessionStorage.getItem(
+      "gccwebos-portal-recharge-return-v1"
+    )))).toEqual({
+      version: 1,
+      orderRef: "payment_return_order_1",
+      captureIdempotencyKey: expect.stringMatching(/^portal_capture_/)
+    });
+    expect(JSON.parse(String(window.sessionStorage.getItem(
+      "gccwebos-portal-payment-return-session-v1"
+    )))).toEqual(session);
+  });
+
   test("Wallet loads summary for the authenticated shell and ledger only after opening", async () => {
     const summary = deferredValue<PortalWalletSummary>();
     const ledger = deferredValue<{

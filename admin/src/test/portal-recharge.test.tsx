@@ -511,6 +511,7 @@ function rechargeDialogModel(order: PortalRechargeOrder): PortalRechargeModel {
     openDialog: vi.fn(),
     closeDialog: vi.fn(),
     createOrder: vi.fn(async () => undefined),
+    continueOrderPayment: vi.fn(() => "not_applicable" as const),
   };
 }
 
@@ -571,7 +572,7 @@ describe("Portal recharge interaction", () => {
     expect(within(dialog).getAllByText("WeChat Pay")).toHaveLength(6);
     expect(dialog).not.toHaveTextContent(/xsd_v1|chaojipay_v1|merchant|sandbox|bonus|discount|expiry/i);
     fireEvent.click(within(dialog).getByRole("button", {
-      name: "Continue to payment for 10 Coins, CNY 10.00, option 1",
+      name: "Create order and pay for 10 Coins, CNY 10.00, option 1",
     }));
     expect(model.createOrder).toHaveBeenCalledWith("coins_10");
   });
@@ -589,7 +590,7 @@ describe("Portal recharge interaction", () => {
     expect(within(dialog).getByText("CNY 9.50")).toBeInTheDocument();
     expect(dialog).not.toHaveTextContent(/PayPal|Sandbox|USD/i);
     fireEvent.click(within(dialog).getByRole("button", {
-      name: "Continue to payment for 30 Coins, CNY 9.50, option 1",
+      name: "Create order and pay for 30 Coins, CNY 9.50, option 1",
     }));
     expect(model.createOrder).toHaveBeenCalledWith("coins_30");
   });
@@ -609,10 +610,10 @@ describe("Portal recharge interaction", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Recharge Coins" });
     expect(within(dialog).getByRole("button", {
-      name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+      name: "Create order and pay for 30 Coins, USD 1.00, option 1",
     })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", {
-      name: "Continue to payment for 30 Coins, USD 1.00, option 2",
+      name: "Create order and pay for 30 Coins, USD 1.00, option 2",
     })).toBeInTheDocument();
   });
 
@@ -693,6 +694,238 @@ describe("Portal recharge interaction", () => {
     expect(within(dialog).queryByRole("button", { name: "刷新订单" })).toBeNull();
   });
 
+  test.each([
+    {
+      locale: "en" as const,
+      message: "Payment confirmation is taking longer than expected. Check Orders for the latest status. Do not pay again.",
+    },
+    {
+      locale: "zh" as const,
+      message: "支付确认时间较长。可前往订单中心查看最新状态，请勿重复支付。",
+    },
+  ])("routes the $locale delayed-state follow-up to Orders", ({ locale, message }) => {
+    render(createElement(PortalRechargeDialog, {
+      locale,
+      model: {
+        ...rechargeDialogModel(rechargeOrder("pending")),
+        error: "delayed",
+      },
+    }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(message);
+  });
+
+  test.each([
+    "created",
+    "entry_ready",
+    "pending",
+    "payment_verified",
+  ] as const)(
+    "keeps a historical %s recharge order out of the fresh recharge chooser",
+    async (status) => {
+      const historicalOrder: PortalRechargeOrder = {
+        ...rechargeOrder(status),
+        orderRef: `payment_order_history_${status}`,
+      };
+      const client: PortalRechargeClient = {
+        listOffers: vi.fn(async () => [OFFER]),
+        listOrders: vi.fn(async () => [historicalOrder]),
+        createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+        getOrder: vi.fn(async () => historicalOrder),
+        captureOrder: vi.fn(async () => historicalOrder),
+      };
+
+      render(createElement(RechargeHarness, {
+        client,
+        paymentRedirect: vi.fn(),
+        refreshWallet: vi.fn(),
+      }));
+
+      const open = await screen.findByRole("button", { name: "Recharge Coins" });
+      await waitFor(() => expect(client.listOrders).toHaveBeenCalledTimes(1));
+      fireEvent.click(open);
+
+      const dialog = await screen.findByRole("dialog", { name: "Recharge Coins" });
+      expect(within(dialog).getByRole("list", {
+        name: "Coins recharge denominations",
+      })).toBeInTheDocument();
+      expect(within(dialog).queryByRole("status")).toBeNull();
+      expect(client.getOrder).not.toHaveBeenCalled();
+      expect(client.captureOrder).not.toHaveBeenCalled();
+    },
+  );
+
+  test("creates a distinct recharge order even when an unpaid historical order exists", async () => {
+    const historicalOrder: PortalRechargeOrder = {
+      ...rechargeOrder("entry_ready"),
+      orderRef: "payment_order_history_1",
+      nextAction: {
+        type: "redirect",
+        url: "https://www.sandbox.paypal.com/checkoutnow?token=historical",
+        expiresAt: "2026-08-01T00:10:00.000Z",
+      },
+    };
+    const freshOrder: PortalRechargeOrder = {
+      ...rechargeOrder("entry_ready"),
+      orderRef: "payment_order_fresh_1",
+      nextAction: {
+        type: "redirect",
+        url: "https://www.sandbox.paypal.com/checkoutnow?token=fresh",
+        expiresAt: "2026-08-01T00:10:00.000Z",
+      },
+    };
+    const paymentRedirect = vi.fn();
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [OFFER]),
+      listOrders: vi.fn(async () => [historicalOrder]),
+      createOrder: vi.fn(async () => freshOrder),
+      getOrder: vi.fn(async () => freshOrder),
+      captureOrder: vi.fn(async () => freshOrder),
+    };
+
+    render(createElement(RechargeHarness, { client, paymentRedirect, refreshWallet: vi.fn() }));
+
+    const open = await screen.findByRole("button", { name: "Recharge Coins" });
+    await waitFor(() => expect(client.listOrders).toHaveBeenCalledTimes(1));
+    fireEvent.click(open);
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Create order and pay for 30 Coins, USD 1.00, option 1",
+    }));
+
+    await waitFor(() => expect(client.createOrder).toHaveBeenCalledTimes(1));
+    expect(paymentRedirect).toHaveBeenCalledWith(
+      "https://www.sandbox.paypal.com/checkoutnow?token=fresh",
+    );
+    expect(JSON.parse(String(window.sessionStorage.getItem(
+      "gccwebos-portal-recharge-return-v1",
+    )))).toEqual(expect.objectContaining({ orderRef: "payment_order_fresh_1" }));
+  });
+
+  test("returns to the fresh recharge chooser after closing a current recharge order", async () => {
+    const paymentRedirect = vi.fn();
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [OFFER]),
+      listOrders: vi.fn(async () => []),
+      createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+      getOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+      captureOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+    };
+
+    render(createElement(RechargeHarness, { client, paymentRedirect, refreshWallet: vi.fn() }));
+
+    const open = await screen.findByRole("button", { name: "Recharge Coins" });
+    fireEvent.click(open);
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Create order and pay for 30 Coins, USD 1.00, option 1",
+    }));
+    expect(await screen.findByRole("status", { name: "Waiting for payment" }))
+      .toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Recharge Coins" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
+
+    const reopened = await screen.findByRole("dialog", { name: "Recharge Coins" });
+    expect(within(reopened).getByRole("list", {
+      name: "Coins recharge denominations",
+    })).toBeInTheDocument();
+    expect(within(reopened).queryByRole("status")).toBeNull();
+  });
+
+  test("clears a stale return intent when the user explicitly opens a fresh recharge", async () => {
+    const staleOrder: PortalRechargeOrder = {
+      ...rechargeOrder("entry_ready"),
+      orderRef: "payment_order_stale_return_1",
+    };
+    window.sessionStorage.setItem(
+      "gccwebos-portal-recharge-return-v1",
+      JSON.stringify({
+        version: 1,
+        orderRef: staleOrder.orderRef,
+        captureIdempotencyKey: "portal_capture_stale_return_1",
+      }),
+    );
+    const listOrders = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([staleOrder]);
+    const captureOrder = vi.fn(async () => staleOrder);
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [OFFER]),
+      listOrders,
+      createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+      getOrder: vi.fn(async () => staleOrder),
+      captureOrder,
+    };
+    const props = {
+      client,
+      paymentRedirect: vi.fn(),
+      refreshWallet: vi.fn(),
+    };
+
+    const firstMount = render(createElement(RechargeHarness, props));
+    const open = await screen.findByRole("button", { name: "Recharge Coins" });
+    await waitFor(() => expect(open).toBeEnabled());
+    fireEvent.click(open);
+    expect(await screen.findByRole("list", {
+      name: "Coins recharge denominations",
+    })).toBeInTheDocument();
+
+    firstMount.unmount();
+    render(createElement(RechargeHarness, props));
+
+    const remountedOpen = await screen.findByRole("button", { name: "Recharge Coins" });
+    await waitFor(() => expect(remountedOpen).toBeEnabled());
+    expect(screen.queryByRole("dialog", { name: "Recharge Coins" })).toBeNull();
+    expect(captureOrder).not.toHaveBeenCalled();
+  });
+
+  test("keeps a dismissed recharge return out of Wallet after remounting", async () => {
+    const entryReadyOrder = rechargeOrder("entry_ready");
+    const listOrders = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([entryReadyOrder]);
+    const captureOrder = vi.fn(async () => entryReadyOrder);
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [OFFER]),
+      listOrders,
+      createOrder: vi.fn(async () => entryReadyOrder),
+      getOrder: vi.fn(async () => entryReadyOrder),
+      captureOrder,
+    };
+    const props = {
+      client,
+      paymentRedirect: vi.fn(),
+      refreshWallet: vi.fn(),
+    };
+
+    const firstMount = render(createElement(RechargeHarness, props));
+
+    const open = await screen.findByRole("button", { name: "Recharge Coins" });
+    await waitFor(() => expect(open).toBeEnabled());
+    fireEvent.click(open);
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Create order and pay for 30 Coins, USD 1.00, option 1",
+    }));
+    expect(await screen.findByRole("status", { name: "Waiting for payment" }))
+      .toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    firstMount.unmount();
+    render(createElement(RechargeHarness, props));
+
+    const remountedOpen = await screen.findByRole("button", { name: "Recharge Coins" });
+    await waitFor(() => expect(remountedOpen).toBeEnabled());
+    expect(screen.queryByRole("dialog", { name: "Recharge Coins" })).toBeNull();
+    expect(captureOrder).not.toHaveBeenCalled();
+
+    fireEvent.click(remountedOpen);
+    const reopened = await screen.findByRole("dialog", { name: "Recharge Coins" });
+    expect(within(reopened).getByRole("list", {
+      name: "Coins recharge denominations",
+    })).toBeInTheDocument();
+    expect(within(reopened).queryByRole("status")).toBeNull();
+  });
+
   test("opens the provider handoff from a server offer without manual settlement actions", async () => {
     const paymentRedirect = vi.fn();
     const refreshWallet = vi.fn();
@@ -713,7 +946,7 @@ describe("Portal recharge interaction", () => {
     expect(screen.getByText("USD 1.00")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", {
-      name: "Continue to payment for 30 Coins, USD 1.00, option 1"
+      name: "Create order and pay for 30 Coins, USD 1.00, option 1"
     }));
     await waitFor(() => expect(client.createOrder).toHaveBeenCalledWith({
       sessionRef: "session_recharge_1",
@@ -795,7 +1028,7 @@ describe("Portal recharge interaction", () => {
       await waitFor(() => expect(open).toBeEnabled());
       fireEvent.click(open);
       fireEvent.click(await screen.findByRole("button", {
-        name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+        name: "Create order and pay for 30 Coins, USD 1.00, option 1",
       }));
 
       expect(await screen.findByRole("alert"))
@@ -1304,7 +1537,7 @@ describe("Portal recharge interaction", () => {
       await act(async () => { await Promise.resolve(); });
       fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
       fireEvent.click(screen.getByRole("button", {
-        name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+        name: "Create order and pay for 30 Coins, USD 1.00, option 1",
       }));
       await act(async () => { await Promise.resolve(); });
 
@@ -1337,17 +1570,6 @@ describe("Portal recharge interaction", () => {
         paymentMethod: "alipay",
         currency: "CNY",
       };
-      const historicalRedirectOrder: PortalRechargeOrder = {
-        ...rechargeOrder("entry_ready"),
-        adapterKey: "xsd_v1",
-        paymentMethod: "alipay",
-        currency: "CNY",
-        nextAction: {
-          type: "redirect",
-          url: "https://cashier.example.com/historical-return",
-          expiresAt: "2026-08-01T00:10:00.000Z",
-        },
-      };
       const client: PortalRechargeClient = {
         listOffers: vi.fn(async () => [OFFER]),
         listOrders: vi.fn(async () => []),
@@ -1367,7 +1589,7 @@ describe("Portal recharge interaction", () => {
       await act(async () => { await Promise.resolve(); });
       fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
       fireEvent.click(screen.getByRole("button", {
-        name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+        name: "Create order and pay for 30 Coins, USD 1.00, option 1",
       }));
       await act(async () => { await Promise.resolve(); });
       await act(async () => { await vi.advanceTimersByTimeAsync(121_000); });
@@ -1379,21 +1601,20 @@ describe("Portal recharge interaction", () => {
       expect(client.getOrder).toHaveBeenCalledTimes(callsAtDeadline);
       expect(client.captureOrder).not.toHaveBeenCalled();
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Payment confirmation is taking longer than expected. We will check again when you return to Wallet. Do not pay again.",
+        "Payment confirmation is taking longer than expected. Check Orders for the latest status. Do not pay again.",
       );
 
-      vi.mocked(client.getOrder)
-        .mockResolvedValueOnce(historicalRedirectOrder)
-        .mockResolvedValueOnce(rechargeOrder("credited"));
       fireEvent.click(screen.getByRole("button", { name: "Close" }));
       fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
       await act(async () => { await vi.advanceTimersByTimeAsync(4_100); });
 
-      expect(client.getOrder).toHaveBeenCalledTimes(callsAtDeadline + 2);
+      expect(screen.getByRole("list", {
+        name: "Coins recharge denominations",
+      })).toBeInTheDocument();
+      expect(client.getOrder).toHaveBeenCalledTimes(callsAtDeadline);
       expect(paymentRedirect).not.toHaveBeenCalled();
       expect(client.captureOrder).not.toHaveBeenCalled();
-      expect(refreshWallet).toHaveBeenCalledTimes(1);
-      expect(screen.getByText("30 paid Coins are available.")).toBeInTheDocument();
+      expect(refreshWallet).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -1451,9 +1672,12 @@ describe("Portal recharge interaction", () => {
       fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
       await act(async () => { await vi.advanceTimersByTimeAsync(2_100); });
 
-      expect(client.getOrder).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole("list", {
+        name: "Coins recharge denominations",
+      })).toBeInTheDocument();
+      expect(client.getOrder).toHaveBeenCalledTimes(1);
       expect(client.captureOrder).not.toHaveBeenCalled();
-      expect(refreshWallet).toHaveBeenCalledTimes(1);
+      expect(refreshWallet).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -1503,9 +1727,11 @@ describe("Portal recharge interaction", () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(2_100); });
 
       expect(captureOrder).toHaveBeenCalledTimes(1);
-      expect(client.getOrder).toHaveBeenCalledTimes(1);
-      expect(refreshWallet).toHaveBeenCalledTimes(1);
-      expect(screen.getByText("30 paid Coins are available.")).toBeInTheDocument();
+      expect(screen.getByRole("list", {
+        name: "Coins recharge denominations",
+      })).toBeInTheDocument();
+      expect(client.getOrder).not.toHaveBeenCalled();
+      expect(refreshWallet).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -1552,7 +1778,7 @@ describe("Portal recharge interaction", () => {
       await act(async () => { await Promise.resolve(); });
       fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
       fireEvent.click(screen.getByRole("button", {
-        name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+        name: "Create order and pay for 30 Coins, USD 1.00, option 1",
       }));
       await act(async () => { await Promise.resolve(); });
 
@@ -1626,7 +1852,7 @@ describe("Portal recharge interaction", () => {
       await act(async () => { await Promise.resolve(); });
       fireEvent.click(screen.getByRole("button", { name: "Recharge Coins" }));
       fireEvent.click(screen.getByRole("button", {
-        name: "Continue to payment for 30 Coins, USD 1.00, option 1",
+        name: "Create order and pay for 30 Coins, USD 1.00, option 1",
       }));
       await act(async () => { await Promise.resolve(); });
 

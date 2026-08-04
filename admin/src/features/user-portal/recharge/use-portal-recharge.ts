@@ -9,8 +9,12 @@ import {
 import {
   clearPortalRechargeReturn,
   readPortalRechargeReturn,
-  stagePortalRechargeReturn,
 } from "./portal-recharge-return";
+import {
+  createPortalRechargeIdempotencyKey,
+  handoffPortalRechargeOrderToPayment,
+  type PortalRechargePaymentRedirectResult,
+} from "./portal-recharge-payment-handoff";
 
 const SETTLEMENT_POLL_INTERVAL_MS = 2_000;
 const SETTLEMENT_POLL_WINDOW_MS = 120_000;
@@ -25,6 +29,7 @@ export type PortalRechargeModel = {
   openDialog: () => void;
   closeDialog: () => void;
   createOrder: (offerRef: string) => Promise<void>;
+  continueOrderPayment: (order: PortalRechargeOrder) => PortalRechargePaymentRedirectResult;
 };
 
 class SettlementDeadlineExceededError extends Error {}
@@ -58,13 +63,6 @@ function withSettlementDeadline<T>(request: Promise<T>, startedAt: number) {
   });
 }
 
-function idempotencyKey(kind: "create" | "capture") {
-  const random = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  return `portal_${kind}_${random}`;
-}
-
 function nonTerminal(order: PortalRechargeOrder) {
   return order.status === "created"
     || order.status === "entry_ready"
@@ -83,8 +81,6 @@ function captureOnReturn(order: PortalRechargeOrder) {
 function retryableRechargeFailure(caught: unknown) {
   return caught instanceof PortalRechargeClientError && caught.retryable;
 }
-
-type PaymentRedirectResult = "not_applicable" | "blocked" | "redirected";
 
 function pollAfterReturn(
   order: PortalRechargeOrder,
@@ -183,24 +179,15 @@ export function usePortalRecharge({
 
   const redirectOrderToPayment = useCallback((
     order: PortalRechargeOrder,
-  ): PaymentRedirectResult => {
-    if (
-      order.status !== "entry_ready"
-      || order.nextAction?.type !== "redirect"
-      || redirectedOrderRefsRef.current.has(order.orderRef)
-    ) return "not_applicable";
-    const staged = stagePortalRechargeReturn({
-      version: 1,
-      orderRef: order.orderRef,
-      captureIdempotencyKey: idempotencyKey("capture"),
-    });
-    if (!staged) {
-      setError("failed");
-      return "blocked";
-    }
-    redirectedOrderRefsRef.current.add(order.orderRef);
-    callbacksRef.current.paymentRedirect(order.nextAction.url);
-    return "redirected";
+  ): PortalRechargePaymentRedirectResult => {
+    if (redirectedOrderRefsRef.current.has(order.orderRef)) return "not_applicable";
+    const result = handoffPortalRechargeOrderToPayment(
+      order,
+      callbacksRef.current.paymentRedirect,
+    );
+    if (result === "blocked") setError("failed");
+    if (result === "redirected") redirectedOrderRefsRef.current.add(order.orderRef);
+    return result;
   }, []);
 
   useEffect(() => {
@@ -227,7 +214,7 @@ export function usePortalRecharge({
       const returnedOrder = returnIntent
         ? orders.find((order) => order.orderRef === returnIntent.orderRef) ?? null
         : null;
-      const nextActiveOrder = returnedOrder ?? orders.find(nonTerminal) ?? null;
+      const nextActiveOrder = returnedOrder;
       setActiveOrder(nextActiveOrder);
       if (
         nextActiveOrder
@@ -464,7 +451,7 @@ export function usePortalRecharge({
       const order = await capturedClient.createOrder({
         sessionRef: capturedSessionRef,
         offerRef,
-        idempotencyKey: idempotencyKey("create"),
+        idempotencyKey: createPortalRechargeIdempotencyKey("create"),
       });
       if (!operationIsCurrent(operationId, capturedClient, capturedSessionRef, capturedGeneration)) return;
       setActiveOrder(order);
@@ -490,18 +477,31 @@ export function usePortalRecharge({
     busy,
     error,
     openDialog: () => {
-      if (error === "delayed" && activeOrder && nonTerminal(activeOrder)) {
+      clearPortalRechargeReturn();
+      if (activeOrder) {
         settlementPollStartedAtRef.current.delete(activeOrder.orderRef);
-        setError(null);
+        trackedSettlementOrderRefsRef.current.delete(activeOrder.orderRef);
+        readbackOnlyOrderRefsRef.current.delete(activeOrder.orderRef);
       }
+      setActiveOrder(null);
+      setError(null);
       setDialogOpen(true);
     },
     closeDialog: () => {
       if (!busy) {
         operationRef.current += 1;
+        clearPortalRechargeReturn();
+        if (activeOrder) {
+          settlementPollStartedAtRef.current.delete(activeOrder.orderRef);
+          trackedSettlementOrderRefsRef.current.delete(activeOrder.orderRef);
+          readbackOnlyOrderRefsRef.current.delete(activeOrder.orderRef);
+        }
+        setActiveOrder(null);
+        setError(null);
         setDialogOpen(false);
       }
     },
     createOrder,
+    continueOrderPayment: redirectOrderToPayment,
   };
 }

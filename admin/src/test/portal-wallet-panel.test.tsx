@@ -385,7 +385,7 @@ describe("PortalWalletPanel", () => {
     },
     {
       state: { phase: "empty", value: NOT_CREATED_SUMMARY },
-      message: "Wallet not created. Available balance is 0 Coins.",
+      message: "No Coins have been credited yet. Your Wallet will activate automatically after the first successful recharge.",
       retry: false
     },
     {
@@ -426,6 +426,30 @@ describe("PortalWalletPanel", () => {
     } else {
       expect(retryButton).not.toBeInTheDocument();
     }
+  });
+
+  test.each([
+    {
+      locale: "en" as const,
+      statusLabel: "Awaiting first credit",
+      emptyMessage: "No Coins have been credited yet. Your Wallet will activate automatically after the first successful recharge."
+    },
+    {
+      locale: "zh" as const,
+      statusLabel: "待首次入账",
+      emptyMessage: "尚无 Coins 入账。首次充值到账后，钱包将自动启用。"
+    }
+  ])("renders the $locale first-credit Wallet state", ({
+    locale,
+    statusLabel,
+    emptyMessage
+  }) => {
+    renderPanel(walletModel({
+      summary: { phase: "empty", value: NOT_CREATED_SUMMARY }
+    }), locale);
+
+    expect(screen.getByText(statusLabel, { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(emptyMessage);
   });
 
   test.each<{
@@ -707,6 +731,7 @@ describe("PortalWalletPanel", () => {
       openDialog,
       closeDialog: vi.fn(),
       createOrder: vi.fn(async () => undefined),
+      continueOrderPayment: vi.fn(() => "not_applicable" as const),
     };
     render(createElement(PortalWalletPanel, {
       locale,

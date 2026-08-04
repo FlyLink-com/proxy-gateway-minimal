@@ -116,8 +116,8 @@ export function PortalRechargeDialog({
             ? zh ? "Coins 充值暂不可用。" : "Coins recharge is unavailable."
             : model.error === "delayed"
               ? zh
-                ? "支付确认时间较长。再次进入钱包时系统会继续查询，请勿重复支付。"
-                : "Payment confirmation is taking longer than expected. We will check again when you return to Wallet. Do not pay again."
+                ? "支付确认时间较长。可前往订单中心查看最新状态，请勿重复支付。"
+                : "Payment confirmation is taking longer than expected. Check Orders for the latest status. Do not pay again."
               : zh ? "充值请求失败，请安全重试。" : "Recharge request failed. Retry safely."}
         </div>
       ) : null}
@@ -153,8 +153,8 @@ export function PortalRechargeDialog({
           {model.offers.map((offer, index) => {
             const amount = formatPortalRechargeAmount(offer);
             const paymentLabel = zh
-              ? `继续支付 ${offer.paidCoinUnits} Coins，${amount}，第 ${index + 1} 个档位`
-              : `Continue to payment for ${offer.paidCoinUnits} Coins, ${amount}, option ${index + 1}`;
+              ? `创建订单并支付 ${offer.paidCoinUnits} Coins，${amount}，第 ${index + 1} 个档位`
+              : `Create order and pay for ${offer.paidCoinUnits} Coins, ${amount}, option ${index + 1}`;
             const creatingOrderLabel = zh
               ? `正在创建订单：${offer.paidCoinUnits} Coins，${amount}，第 ${index + 1} 个档位`
               : `Creating order for ${offer.paidCoinUnits} Coins, ${amount}, option ${index + 1}`;
@@ -178,7 +178,7 @@ export function PortalRechargeDialog({
                 >
                   {model.busy
                     ? zh ? "正在创建订单…" : "Creating order…"
-                    : zh ? "继续支付" : "Continue to payment"}
+                    : zh ? "创建订单并支付" : "Create order and pay"}
                 </button>
               </li>
             );

@@ -36,13 +36,13 @@ function walletStatusLabel(
 ) {
   const labels = locale === "zh"
     ? {
-        not_created: "尚未创建",
+        not_created: "待首次入账",
         active: "正常",
         frozen: "已冻结",
         closed: "已关闭"
       }
     : {
-        not_created: "Not created",
+        not_created: "Awaiting first credit",
         active: "Active",
         frozen: "Frozen",
         closed: "Closed"
@@ -92,8 +92,8 @@ function SummaryState({
       {state.phase === "empty" ? (
         <p className="portal-wallet-state" role="status">
           {zh
-            ? "钱包尚未创建，当前可用余额为 0 Coins。"
-            : "Wallet not created. Available balance is 0 Coins."}
+            ? "尚无 Coins 入账。首次充值到账后，钱包将自动启用。"
+            : "No Coins have been credited yet. Your Wallet will activate automatically after the first successful recharge."}
         </p>
       ) : null}
       <WalletSummary locale={locale} summary={state.value} />

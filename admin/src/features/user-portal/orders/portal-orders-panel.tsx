@@ -15,9 +15,11 @@ import {
   type PortalCoinOrder
 } from "../commerce";
 import {
+  canContinuePortalRechargeOrder,
   PortalRechargeClientError,
   type PortalRechargeClient,
-  type PortalRechargeOrder
+  type PortalRechargeOrder,
+  type PortalRechargePaymentRedirectResult,
 } from "../recharge";
 import {
   formatPortalRechargeAmount,
@@ -53,6 +55,9 @@ export type PortalOrdersPanelProps = {
   onOrderSearchChange: (value: string) => void;
   onOpenServiceOrder: (order: PortalServiceOrder) => void;
   onOpenMarketplace: () => void;
+  onContinueRechargeOrder?: (
+    order: PortalRechargeOrder,
+  ) => PortalRechargePaymentRedirectResult;
 };
 
 const FILTERS: Array<{ id: PortalOrdersFilter; zh: string; en: string }> = [
@@ -376,7 +381,8 @@ export function PortalOrdersPanel({
   orderSearch = "",
   onOrderSearchChange = () => undefined,
   onOpenServiceOrder = () => undefined,
-  onOpenMarketplace = () => undefined
+  onOpenMarketplace = () => undefined,
+  onContinueRechargeOrder
 }: PortalOrdersPanelProps) {
   const desktopScrollRegion = useDesktopScrollRegion();
   const allFilterButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -420,6 +426,7 @@ export function PortalOrdersPanel({
   const [rechargeOrders, setRechargeOrders] = useState<PortalRechargeOrder[]>([]);
   const [rechargeFailure, setRechargeFailure] = useState(false);
   const [rechargeLoading, setRechargeLoading] = useState(false);
+  const [rechargeContinuationError, setRechargeContinuationError] = useState(false);
   const showsCoins = filter === "all" || filter === "coins_consumption";
   const showsRecharge = filter === "all" || filter === "coin_recharge";
 
@@ -443,6 +450,7 @@ export function PortalOrdersPanel({
     setSelectedLegacyDetailRef(null);
     setSelectedRechargeDetailRef(null);
     setSelectedServiceDetailRef(null);
+    setRechargeContinuationError(false);
     setNextCursor(null);
     setListRetryRequest({ cursor: null, append: false });
     visibleOrderRefsRef.current.clear();
@@ -909,6 +917,15 @@ export function PortalOrdersPanel({
           </button>
         </div>
       ) : null}
+      {rechargeContinuationError && showsRecharge ? (
+        <div className="portal-orders-inline-note" role="alert">
+          {copy(
+            locale,
+            "无法安全继续该笔充值支付，未创建新的充值订单。",
+            "Could not safely continue this payment. No new recharge order was created."
+          )}
+        </div>
+      ) : null}
       <div
         aria-label={desktopScrollRegion && !showEmptyState
           ? copy(locale, "可滚动订单表格", "Scrollable orders table")
@@ -1032,6 +1049,16 @@ export function PortalOrdersPanel({
                 productLabel(item, locale),
                 itemStatusLabel(item, locale)
               ].join(locale === "zh" ? "：" : ": ");
+              const rechargeOrderForContinuation: PortalRechargeOrder | null = (
+                item.kind === "coin_recharge"
+                && onContinueRechargeOrder
+                && canContinuePortalRechargeOrder(item.source)
+              ) ? item.source : null;
+              const continuePaymentLabel = [
+                copy(locale, "继续支付", "Continue payment"),
+                accessibleOrderRef(item),
+                productLabel(item, locale),
+              ].join(locale === "zh" ? "：" : ": ");
               return (
                 <Fragment key={item.key}>
                   <tr className={expanded ? "selected" : undefined}>
@@ -1060,6 +1087,18 @@ export function PortalOrdersPanel({
                         >
                           {actionLabel}
                         </button>
+                        {rechargeOrderForContinuation && onContinueRechargeOrder ? (
+                          <button
+                            type="button"
+                            aria-label={continuePaymentLabel}
+                            onClick={() => {
+                              const result = onContinueRechargeOrder(rechargeOrderForContinuation);
+                              setRechargeContinuationError(result !== "redirected");
+                            }}
+                          >
+                            {copy(locale, "继续支付", "Continue payment")}
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
