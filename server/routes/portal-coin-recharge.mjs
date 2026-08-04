@@ -19,6 +19,7 @@ const CALLBACKS = Object.freeze({
     path: "/api/platform/payments/xsd/callback",
     prefix: "xsd_callback",
     contentTypes: Object.freeze([
+      "application/x-www-form-urlencoded",
       "application/x-www-form-urlencoded; charset=utf-8",
     ]),
   }),

@@ -10,7 +10,7 @@ const SECRET = "synthetic-xsd-secret";
 const MERCHANT_DIGEST = "a".repeat(64);
 
 function signature(fields) {
-  return createHash("md5").update(Object.keys(fields).filter((key) => key !== "sign" && key !== "format" && fields[key] !== "").sort().map((key) => `${key}=${fields[key]}`).join("&") + SECRET, "utf8").digest("hex");
+  return createHash("md5").update(Object.keys(fields).filter((key) => key !== "sign" && key !== "format" && key !== "attach" && fields[key] !== "").sort().map((key) => `${key}=${fields[key]}`).join("&") + SECRET, "utf8").digest("hex");
 }
 
 function response(status, body, { headers, url = `${API_ORIGIN}/api/gaia/unifiedorder`, ...extras } = {}) {
@@ -320,6 +320,38 @@ test("XSD runtime verifies only signed form callback input and returns redacted 
   assert.equal(JSON.stringify(result).includes(body), false);
 });
 
+test("XSD runtime accepts the documented callback content type without charset", async () => {
+  const value = runtime(async () => { throw new Error("callback must not fetch"); });
+  const fields = { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", status: "1", mchId: "merchant_demo", amount: "12.00" };
+  const body = new URLSearchParams({ ...fields, sign: signature(fields) }).toString();
+  const result = await request(value, "verify_callback", {
+    action: "xsd_callback_verify",
+    callbackInput: { callbackRequestRef: "callback_request_no_charset_1", receivedAt: "2026-08-02T00:00:00.000Z", bodyBase64: Buffer.from(body, "utf8").toString("base64"), headerEntries: [{ name: "content-type", value: "application/x-www-form-urlencoded" }] },
+  });
+  assert.deepEqual(result.response, fields);
+});
+
+test("XSD runtime accepts optional attach without including it in the signature or settlement projection", async () => {
+  const value = runtime(async () => { throw new Error("callback must not fetch"); });
+  const fields = { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", status: "1", mchId: "merchant_demo", amount: "12.00" };
+  const callbackFields = { ...fields, attach: "merchant_metadata_1" };
+  const body = new URLSearchParams({
+    ...callbackFields,
+    sign: "e78d12c8b7c16ac59b8a46408c84b312",
+  }).toString();
+  const result = await request(value, "verify_callback", {
+    action: "xsd_callback_verify",
+    callbackInput: { callbackRequestRef: "callback_request_attach_1", receivedAt: "2026-08-02T00:00:00.000Z", bodyBase64: Buffer.from(body, "utf8").toString("base64"), headerEntries: [{ name: "content-type", value: "application/x-www-form-urlencoded; charset=utf-8" }] },
+  });
+  assert.deepEqual(result.response, fields);
+
+  const duplicateAttachBody = `${body}&attach=duplicate`;
+  await assert.rejects(() => request(value, "verify_callback", {
+    action: "xsd_callback_verify",
+    callbackInput: { callbackRequestRef: "callback_request_attach_duplicate_1", receivedAt: "2026-08-02T00:00:00.000Z", bodyBase64: Buffer.from(duplicateAttachBody, "utf8").toString("base64"), headerEntries: [{ name: "content-type", value: "application/x-www-form-urlencoded; charset=utf-8" }] },
+  }), /xsd_transport_failed/u);
+});
+
 test("XSD runtime fails closed on transport, response, identity, signature, order, amount, and callback-shape faults", async () => {
   const malformed = runtime(async () => response(200, "not-json"));
   await assert.rejects(() => request(malformed, "create_recharge_order", {
@@ -329,7 +361,7 @@ test("XSD runtime fails closed on transport, response, identity, signature, orde
   await assert.rejects(() => request(value, "query_payment", { action: "xsd_payment_query", paymentOrderRef: "payment_order_1" }), /xsd_transport_failed/u);
   const callback = runtime(async () => response(500, {}));
   for (const fields of [
-    { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", status: "1", mchId: "merchant_demo", amount: "12.00", attach: "unexpected", sign: "x" },
+    { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", status: "1", mchId: "merchant_demo", amount: "12.00", unexpected: "field", sign: "x" },
     { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", status: "1", mchId: "wrong_merchant", amount: "12.00", sign: "x" },
     { mch_order_no: "payment_order_1", partnerorderid: "provider_order_1", status: "1", mchId: "merchant_demo", amount: "12.001", sign: "x" },
   ]) {

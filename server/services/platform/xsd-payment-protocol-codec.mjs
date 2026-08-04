@@ -7,6 +7,10 @@ const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DIGEST_RE = /^[a-f0-9]{64}$/u;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=utf-8";
+const CALLBACK_CONTENT_TYPES = Object.freeze([
+  "application/x-www-form-urlencoded",
+  FORM_CONTENT_TYPE,
+]);
 const MAX_CALLBACK_BYTES = 16_384;
 const MAX_CALLBACK_BASE64_CHARS = Math.ceil(MAX_CALLBACK_BYTES / 3) * 4;
 
@@ -62,7 +66,7 @@ function callbackHeaders(value) {
   const index = descriptors["0"];
   if (!index.enumerable || !Object.hasOwn(index, "value")) fail();
   const entry = snapshot(index.value, ["name", "value"]);
-  if (entry.name !== "content-type" || entry.value !== FORM_CONTENT_TYPE) fail();
+  if (entry.name !== "content-type" || !CALLBACK_CONTENT_TYPES.includes(entry.value)) fail();
   return [{ name: entry.name, value: entry.value }];
 }
 

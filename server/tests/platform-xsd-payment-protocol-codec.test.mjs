@@ -67,6 +67,28 @@ test("XSD codec freezes opaque create, query, and callback transport envelopes w
   });
 });
 
+test("XSD codec accepts only the two documented form callback content types", () => {
+  for (const value of [
+    "application/x-www-form-urlencoded",
+    "application/x-www-form-urlencoded; charset=utf-8",
+  ]) {
+    assert.doesNotThrow(() => encodeXsdCallbackVerificationRequest({
+      ...CALLBACK_INPUT,
+      headerEntries: [{ name: "content-type", value }],
+    }));
+  }
+  for (const value of [
+    "application/json",
+    "application/x-www-form-urlencoded; charset=gbk",
+    "application/x-www-form-urlencoded; profile=unexpected",
+  ]) {
+    assertInvalid(() => encodeXsdCallbackVerificationRequest({
+      ...CALLBACK_INPUT,
+      headerEntries: [{ name: "content-type", value }],
+    }));
+  }
+});
+
 test("XSD codec returns only entry-ready redirect, signed query states, and signed callback success facts", () => {
   assert.deepEqual(decodeXsdCreateResponse({
     createInput: CREATE_INPUT,
@@ -126,7 +148,7 @@ test("XSD codec returns only entry-ready redirect, signed query states, and sign
   }), null);
 });
 
-test("XSD codec fails closed for non-CNY inputs, hostile objects, unsafe references, extra fields, unsigned projection, and attach", () => {
+test("XSD codec fails closed for non-CNY inputs, hostile objects, unsafe references, callback envelope extras, and unsigned projection", () => {
   const accessor = {};
   let reads = 0;
   Object.defineProperty(accessor, "paymentOrderRef", { enumerable: true, get() { reads += 1; return "payment_order_1"; } });
