@@ -1130,13 +1130,18 @@ for (const [label, configuredValue] of [
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       autoStartHttpProxy: false
     };
-    Object.defineProperty(env, "COINS_COMMERCE_CANARY_ACCOUNT_HASHES", {
-      enumerable: true,
-      get() {
-        getterCalls += 1;
-        throw new Error("unexpected canary account hash getter");
-      }
-    });
+    for (const field of [
+      "COINS_COMMERCE_AUDIENCE",
+      "COINS_COMMERCE_CANARY_ACCOUNT_HASHES"
+    ]) {
+      Object.defineProperty(env, field, {
+        enumerable: true,
+        get() {
+          getterCalls += 1;
+          throw new Error(`unexpected ${field} getter`);
+        }
+      });
+    }
     for (const field of [
       "coinCommerceStore",
       "coinCommerceCatalog",
@@ -2149,6 +2154,127 @@ test("createRuntimeState exposes production Commerce only to accounts in the has
     removeTempDir(dir);
   }
 });
+
+test("createRuntimeState exposes production Commerce to every active account in all-active audience mode", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-all-active-"));
+  const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
+  const accountIds = [
+    "account_state_all_active_first",
+    "account_state_all_active_second"
+  ];
+  const database = new Database(controlDbPath);
+  const insertAccount = database.prepare(`
+    insert into platform_accounts
+      (id, owner_ref, status, created_at, updated_at, metadata_json)
+    values (?, ?, 'active', ?, ?, '{}')
+  `);
+  for (const accountId of accountIds) {
+    insertAccount.run(
+      accountId,
+      `owner_${accountId}`,
+      "2026-07-29T00:00:00.000Z",
+      "2026-07-29T00:00:00.000Z"
+    );
+  }
+  database.close();
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "true",
+        COINS_COMMERCE_AUDIENCE: "all_active"
+      }),
+      controlDbPath,
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      coinCommerceCatalog: COIN_COMMERCE_PRODUCTION_OFFERS,
+      coinCommerceFulfillmentFactory({ accountActivationReader }) {
+        assert.equal(typeof accountActivationReader, "function");
+        return {
+          fulfillmentHandler: coinCommerceFulfillmentHandler(),
+          storefrontEligibilityReader: accountActivationReader,
+          purchaseEligibilityReader: accountActivationReader
+        };
+      },
+      autoStartHttpProxy: false
+    });
+
+    for (const accountId of accountIds) {
+      assert.deepEqual(
+        state.platform.coinCommerceStore
+          .listPublishedOffers({ accountId })
+          .map((offer) => offer.baseCoinUnits),
+        [20, 30, 200]
+      );
+      assert.equal(
+        state.platform.coinCommerceStore.createCheckoutQuote({
+          accountId,
+          offerRef: "offer_plan_30d_50gb_monthly"
+        }).amountUnits,
+        20
+      );
+    }
+  } finally {
+    await Promise.resolve(state?.close());
+    removeTempDir(dir);
+  }
+});
+
+for (const [label, audience, canaryAccountHashes] of [
+  [
+    "all-active audience combined with canary hashes",
+    "all_active",
+    accountHash("account_state_all_active_conflict")
+  ],
+  [
+    "unknown audience",
+    "everyone",
+    accountHash("account_state_unknown_audience")
+  ]
+]) {
+  test(`createRuntimeState rejects ${label}`, async () => {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-audience-invalid-"));
+    const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
+    let unexpectedState;
+
+    try {
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState({
+            rootDir: new URL("../../", import.meta.url),
+            env: runtimeEnv({
+              CONSOLE_TOKEN: "secret",
+              USER_PORTAL_ROUTES_ENABLED: "true",
+              COINS_WALLET_ENABLED: "true",
+              COINS_COMMERCE_ENABLED: "true",
+              COINS_COMMERCE_AUDIENCE: audience,
+              COINS_COMMERCE_CANARY_ACCOUNT_HASHES: canaryAccountHashes
+            }),
+            controlDbPath,
+            subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+            coinCommerceCatalog: COIN_COMMERCE_PRODUCTION_OFFERS,
+            coinCommerceFulfillmentFactory() {
+              return {
+                fulfillmentHandler: coinCommerceFulfillmentHandler(),
+                storefrontEligibilityReader: () => true,
+                purchaseEligibilityReader: () => true
+              };
+            },
+            autoStartHttpProxy: false
+          });
+        },
+        (error) => error?.code === "coin_commerce_prerequisite_missing"
+      );
+    } finally {
+      await Promise.resolve(unexpectedState?.close());
+      removeTempDir(dir);
+    }
+  });
+}
 
 test("createRuntimeState rejects a non-exact production fulfillment factory result and releases owned databases", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-commerce-factory-result-"));
