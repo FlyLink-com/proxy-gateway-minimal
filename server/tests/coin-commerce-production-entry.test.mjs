@@ -275,6 +275,61 @@ test("production entry starts with the authoritative catalog and production fulf
   }
 });
 
+test("production entry starts all-active Commerce without canary hashes and keeps inactive accounts excluded", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "proxy-gateway-production-commerce-all-active-"));
+  const paths = prepareRuntime(directory);
+  const consolePort = await reservePort();
+  const activeAccountId = "account_production_all_active";
+  const inactiveAccountId = "account_production_all_inactive";
+  const database = new Database(paths.controlDbPath);
+  const insertAccount = database.prepare(`
+    insert into platform_accounts
+      (id, owner_ref, status, created_at, updated_at, metadata_json)
+    values (?, ?, ?, ?, ?, '{}')
+  `);
+  insertAccount.run(
+    activeAccountId,
+    `owner_${activeAccountId}`,
+    "active",
+    "2026-07-29T00:00:00.000Z",
+    "2026-07-29T00:00:00.000Z"
+  );
+  insertAccount.run(
+    inactiveAccountId,
+    `owner_${inactiveAccountId}`,
+    "suspended",
+    "2026-07-29T00:00:00.000Z",
+    "2026-07-29T00:00:00.000Z"
+  );
+  database.close();
+  const runtimeOptions = productionRuntimeOptions(paths, consolePort);
+  runtimeOptions.env.COINS_COMMERCE_AUDIENCE = "all_active";
+  delete runtimeOptions.env.COINS_COMMERCE_CANARY_ACCOUNT_HASHES;
+  let handle;
+
+  try {
+    handle = await startProductionProxyGateway({
+      runtimeOptions,
+      logger: false
+    });
+    assert.deepEqual(
+      handle.state.platform.coinCommerceStore
+        .listPublishedOffers({ accountId: activeAccountId })
+        .map((offer) => offer.baseCoinUnits),
+      [20, 30, 200]
+    );
+    assert.throws(
+      () => handle.state.platform.coinCommerceStore.listPublishedOffers({
+        accountId: inactiveAccountId
+      }),
+      (error) => error?.code === "commerce_not_found"
+    );
+  } finally {
+    await handle?.stop();
+    removeTempDir(directory);
+  }
+});
+
 test("production entry leaves its listener unopened when catalog bootstrap detects drift", async () => {
   const directory = mkdtempSync(join(tmpdir(), "proxy-gateway-production-commerce-drift-"));
   const paths = prepareRuntime(directory);

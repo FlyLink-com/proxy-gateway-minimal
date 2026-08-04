@@ -494,6 +494,35 @@ function coinCommerceCanaryAccountActivationReader(value) {
   };
 }
 
+function coinCommerceAccountActivationReader({
+  audience,
+  canaryAccountHashes
+}) {
+  if (audience === "all_active") {
+    if (
+      canaryAccountHashes !== undefined
+      && canaryAccountHashes !== null
+      && canaryAccountHashes !== ""
+    ) {
+      throw coinCommercePrerequisiteError();
+    }
+    return ({ accountId } = {}) => (
+      typeof accountId === "string"
+      && Boolean(accountId)
+      && accountId.trim() === accountId
+    );
+  }
+  if (
+    audience !== undefined
+    && audience !== null
+    && audience !== ""
+    && audience !== "canary"
+  ) {
+    throw coinCommercePrerequisiteError();
+  }
+  return coinCommerceCanaryAccountActivationReader(canaryAccountHashes);
+}
+
 function createOptionalPortalTotpSecretProtector(value) {
   const key = optionalEnvText(value);
   if (!key) {
@@ -1377,9 +1406,11 @@ export function createRuntimeState(options = {}) {
           fulfillmentFactoryOption.value
         );
       configuredCoinCommerceAccountActivationReader =
-        coinCommerceCanaryAccountActivationReader(
-          env.COINS_COMMERCE_CANARY_ACCOUNT_HASHES
-        );
+        coinCommerceAccountActivationReader({
+          audience: env.COINS_COMMERCE_AUDIENCE,
+          canaryAccountHashes:
+            env.COINS_COMMERCE_CANARY_ACCOUNT_HASHES
+        });
     }
     configuredCoinCommerceCancelWindowMs = coinCommerceCancelWindowMs(
       env.COINS_COMMERCE_CANCEL_WINDOW_MS
