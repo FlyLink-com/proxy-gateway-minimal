@@ -209,11 +209,18 @@ function resolveAccountProductEntitlement({ controlStore, accountId, now }) {
   if (!hasText(accountId)) return null;
   const account = controlStore.getAccount(accountId);
   if (!account || account.status !== "active") return null;
+  const bindings = controlStore.listIssuedSubscriptionBindings({ accountId });
+  if (!Array.isArray(bindings) || bindings.length === 0) return null;
   const entitlement = controlStore.resolveAccountServiceEntitlement({
     accountId,
     now
   });
-  return entitlement ? { account, entitlement } : null;
+  if (!entitlement) return null;
+  const matchingBindings = bindings.filter((binding) => (
+    binding.accountId === accountId
+    && binding.entitlementId === entitlement.id
+  ));
+  return matchingBindings.length === 1 ? { account, entitlement } : null;
 }
 
 function resolveEligibleSubscriptionBinding({ controlStore, runtimeCore, accountId, now }) {
@@ -431,12 +438,31 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       }
       const account = controlStore.getAccount(accountId);
       const summary = controlStore.getAccountControlSummary(accountId);
+      const bindings = controlStore.listIssuedSubscriptionBindings({ accountId });
+      const accessRequests = controlStore.listPortalAccessRequests({
+        portalUserRef: accountId
+      });
       if (
         !account
         || account.id !== accountId
         || account.status !== "active"
         || !summary
         || !Array.isArray(summary.entitlements)
+        || !Array.isArray(summary.issuanceRequests)
+        || !Array.isArray(summary.issuedLinks)
+        || !Array.isArray(bindings)
+        || !Array.isArray(accessRequests)
+        || bindings.length !== 0
+        || summary.issuanceRequests.some(
+          (request) => request.status === "planned" || request.status === "issued"
+        )
+        || summary.issuedLinks.some((link) => link.status === "active")
+        || accessRequests.some((request) => [
+          "pending_admin_review",
+          "approved_pending_delivery",
+          "delivered",
+          "issued"
+        ].includes(request.status))
       ) {
         return false;
       }
