@@ -1603,31 +1603,62 @@ export function createSqliteSubscriptionControlStore({
       entitlement.accountId === accountId
       && entitlement.validFrom < entitlement.validUntil
     ));
-    const current = entitlements.filter((entitlement) => (
-      entitlement.validFrom <= now
-      && entitlement.validUntil > now
-    ));
-    if (current.length > 1) return null;
-    if (current.length === 1) return current[0];
-    const effectBackedFuture = entitlements.filter((entitlement) => (
-      entitlement.validFrom > now
-      && entitlement.validUntil > now
-      && Boolean(resolveLiveCoinCommerceFulfillmentEffect({ accountId, entitlement }))
-    ));
-    if (effectBackedFuture.length > 1) return null;
-    if (effectBackedFuture.length === 1) return effectBackedFuture[0];
-    const lapsed = entitlements.filter((entitlement) => (
-      entitlement.validFrom <= now
-      && entitlement.validUntil <= now
-    ));
-    if (lapsed.length > 0) {
-      const latestValidUntil = lapsed[0].validUntil;
+    const selectServiceEntitlement = (candidates) => {
+      const current = candidates.filter((entitlement) => (
+        entitlement.validFrom <= now
+        && entitlement.validUntil > now
+      ));
+      if (current.length > 1) return null;
+      if (current.length === 1) return current[0];
+      const effectBackedFuture = candidates.filter((entitlement) => (
+        entitlement.validFrom > now
+        && entitlement.validUntil > now
+        && Boolean(resolveLiveCoinCommerceFulfillmentEffect({ accountId, entitlement }))
+      ));
+      if (effectBackedFuture.length > 1) return null;
+      if (effectBackedFuture.length === 1) return effectBackedFuture[0];
+      const lapsed = candidates.filter((entitlement) => (
+        entitlement.validFrom <= now
+        && entitlement.validUntil <= now
+      ));
+      if (lapsed.length === 0) return null;
+      const latestValidUntil = lapsed.reduce(
+        (latest, entitlement) => (
+          entitlement.validUntil > latest ? entitlement.validUntil : latest
+        ),
+        lapsed[0].validUntil
+      );
       const latest = lapsed.filter(
         (entitlement) => entitlement.validUntil === latestValidUntil
       );
       return latest.length === 1 ? latest[0] : null;
+    };
+
+    const resourceBindings = listIssuedSubscriptionBindings({ accountId });
+    if (resourceBindings.length > 0) {
+      const boundEntitlements = [];
+      for (const binding of resourceBindings) {
+        const entitlement = entitlements.find(
+          (candidate) => candidate.id === binding.entitlementId
+        );
+        if (
+          !entitlement
+          || binding.accountId !== accountId
+          || binding.entitlementStatus !== "active"
+          || binding.requestStatus !== "issued"
+          || binding.status !== "active"
+          || binding.plan !== entitlement.plan
+          || binding.validFrom !== entitlement.validFrom
+          || binding.validUntil !== entitlement.validUntil
+          || binding.trafficLimitBytes !== entitlement.trafficLimitBytes
+        ) {
+          return null;
+        }
+        boundEntitlements.push(entitlement);
+      }
+      return selectServiceEntitlement(boundEntitlements);
     }
-    return null;
+    return selectServiceEntitlement(entitlements);
   }
 
   function updateEntitlementTrafficLimit(id, { trafficLimitBytes, updatedAt }) {
@@ -2026,8 +2057,13 @@ export function createSqliteSubscriptionControlStore({
       "e.status = 'active'"
     ];
     const params = [];
+    const accountId = optionalText(filters.accountId);
     const nodeId = optionalText(filters.nodeId);
     const tenantRef = optionalText(filters.tenantRef);
+    if (accountId) {
+      clauses.push("r.account_id = ?");
+      params.push(accountId);
+    }
     if (nodeId) {
       clauses.push("r.node_id = ?");
       params.push(nodeId);

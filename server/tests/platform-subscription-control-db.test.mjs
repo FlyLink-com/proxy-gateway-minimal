@@ -861,8 +861,48 @@ test("subscription control store lists issued subscription bindings for edge rec
       createdAt: now,
       updatedAt: now
     });
+    store.createAccount({
+      id: "acct_edge_recovery_other",
+      ownerRef: "portal_user_edge_recovery_other",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_edge_recovery_other",
+      accountId: "acct_edge_recovery_other",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-07-05T00:00:00.000Z",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createIssuanceRequest({
+      id: "pareq_edge_recovery_other",
+      accountId: "acct_edge_recovery_other",
+      entitlementId: "ent_edge_recovery_other",
+      approvalRef: "approval_edge_recovery_other",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel-aliyun-a-tuic",
+      purpose: "portal_access_request",
+      requestedByRef: "portal_auto_issuer",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.linkIssuedSubscription({
+      id: "link_edge_recovery_other",
+      requestId: "pareq_edge_recovery_other",
+      tenantRef: "tenant_edge_recovery_other",
+      artifactRef: "artifact_edge_recovery_other",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
 
     const bindings = store.listIssuedSubscriptionBindings({
+      accountId: "acct_edge_recovery",
       nodeId: "channel-aliyun-a-tuic"
     });
     assert.equal(bindings.length, 1);
@@ -889,6 +929,18 @@ test("subscription control store lists issued subscription bindings for edge rec
     assert.equal(
       store.findIssuedSubscriptionBindingByTenantRef("tenant_edge_recovery_001").requestId,
       "pareq_edge_recovery_001"
+    );
+    assert.equal(
+      store.listIssuedSubscriptionBindings({
+        accountId: "acct_edge_recovery_other"
+      }).length,
+      1
+    );
+    assert.deepEqual(
+      store.listIssuedSubscriptionBindings({
+        accountId: "acct_edge_recovery_missing"
+      }),
+      []
     );
     assert.doesNotMatch(JSON.stringify(bindings), /password|token|subscriptionUrl|uuid|rawConfig/i);
   });

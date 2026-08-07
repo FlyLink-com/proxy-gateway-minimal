@@ -699,6 +699,201 @@ test("an account without a prior entitlement can purchase into one stable accoun
   }
 });
 
+test("ambiguous lapsed issued resources never fall back to initial issuance", () => {
+  const fixture = createFixture({
+    baseValidUntil: "2026-07-29T00:00:00.000Z"
+  });
+  try {
+    fixture.controlStore.createEntitlement({
+      id: "ent_fulfillment_second_lapsed_bound",
+      accountId: fixture.accountId,
+      plan: "trial",
+      status: "active",
+      validFrom: "2026-07-15T00:00:00.000Z",
+      validUntil: "2026-07-29T00:00:00.000Z",
+      maxArtifacts: 1,
+      maxDevices: 2,
+      trafficLimitBytes: 5 * GIB,
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    fixture.controlStore.createIssuanceRequest({
+      id: "pareq_fulfillment_second_lapsed_bound",
+      accountId: fixture.accountId,
+      entitlementId: "ent_fulfillment_second_lapsed_bound",
+      approvalRef: "approval_fulfillment_second_lapsed_bound",
+      status: "issued",
+      quantity: 1,
+      nodeId: fixture.edgeChannelRef,
+      purpose: "portal_access_request",
+      requestedByRef: "operator_fulfillment_second_lapsed_bound",
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    fixture.controlStore.linkIssuedSubscription({
+      id: "link_fulfillment_second_lapsed_bound",
+      requestId: "pareq_fulfillment_second_lapsed_bound",
+      tenantRef: safeIssuedRef("tenant", "tenant_fulfillment_second_lapsed_bound"),
+      artifactRef: safeIssuedRef("artifact", "artifact_fulfillment_second_lapsed_bound"),
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    let initialIssuanceAttempts = 0;
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountResourceIssuer: {
+        isCommerceProductFulfillmentReady: () => true,
+        fulfillCommerceProduct() {
+          initialIssuanceAttempts += 1;
+        }
+      },
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+    const eligibilityInput = {
+      accountId: fixture.accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    };
+
+    assert.equal(service.purchaseEligibilityReader(eligibilityInput), false);
+    assert.throws(
+      () => service.fulfillmentHandler.execute(productionInput(fixture)),
+      (error) => isCoinCommerceFulfillmentReconciliationError(error)
+    );
+    assert.equal(initialIssuanceAttempts, 0);
+  } finally {
+    fixture.close();
+  }
+});
+
+test("a current unbound entitlement is not a Commerce account resource", () => {
+  const directory = mkdtempSync(join(tmpdir(), "coin-commerce-unbound-entitlement-"));
+  const controlStore = createSqliteSubscriptionControlStore({
+    dbPath: join(directory, "control.sqlite")
+  });
+  const accountId = "acct_fulfillment_unbound_current";
+  let initialIssuanceAttempts = 0;
+  try {
+    controlStore.createAccount({
+      id: accountId,
+      ownerRef: "owner_fulfillment_unbound_current",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    controlStore.createEntitlement({
+      id: "ent_fulfillment_unbound_current",
+      accountId,
+      plan: "trial",
+      status: "active",
+      validFrom: "2026-07-15T00:00:00.000Z",
+      validUntil: "2026-10-01T00:00:00.000Z",
+      maxArtifacts: 1,
+      maxDevices: 2,
+      trafficLimitBytes: 5 * GIB,
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore,
+      accountResourceIssuer: {
+        isCommerceProductFulfillmentReady: () => true,
+        fulfillCommerceProduct() {
+          initialIssuanceAttempts += 1;
+        }
+      },
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+    const eligibilityInput = {
+      accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    };
+
+    assert.equal(service.storefrontEligibilityReader(eligibilityInput), true);
+    assert.equal(service.purchaseEligibilityReader(eligibilityInput), false);
+    assert.throws(
+      () => service.fulfillmentHandler.execute({
+        ...productionInput({ accountId }),
+        accountId
+      }),
+      (error) => isCoinCommerceFulfillmentReconciliationError(error)
+    );
+    assert.equal(initialIssuanceAttempts, 0);
+  } finally {
+    controlStore.close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("nonterminal unbound issuance never falls back to a new account resource", async (t) => {
+  for (const status of ["planned", "issued"]) {
+    await t.test(status, () => {
+      const directory = mkdtempSync(join(tmpdir(), "coin-commerce-unbound-issuance-"));
+      const controlStore = createSqliteSubscriptionControlStore({
+        dbPath: join(directory, "control.sqlite")
+      });
+      const accountId = `acct_fulfillment_unbound_${status}`;
+      try {
+        controlStore.createAccount({
+          id: accountId,
+          ownerRef: `owner_fulfillment_unbound_${status}`,
+          status: "active",
+          createdAt: NOW,
+          updatedAt: NOW
+        });
+        controlStore.createEntitlement({
+          id: `ent_fulfillment_unbound_${status}`,
+          accountId,
+          plan: "trial",
+          status: "active",
+          validFrom: "2026-07-01T00:00:00.000Z",
+          validUntil: "2026-07-29T00:00:00.000Z",
+          maxArtifacts: 1,
+          maxDevices: 2,
+          trafficLimitBytes: 5 * GIB,
+          createdAt: NOW,
+          updatedAt: NOW
+        });
+        controlStore.createIssuanceRequest({
+          id: `pareq_fulfillment_unbound_${status}`,
+          accountId,
+          entitlementId: `ent_fulfillment_unbound_${status}`,
+          approvalRef: `approval_fulfillment_unbound_${status}`,
+          status,
+          quantity: 1,
+          nodeId: "channel-vultr-a-tuic",
+          purpose: "portal_access_request",
+          requestedByRef: `operator_fulfillment_unbound_${status}`,
+          createdAt: NOW,
+          updatedAt: NOW
+        });
+        const service = createCoinCommerceProductionSubscriptionFulfillment({
+          controlStore,
+          accountResourceIssuer: {
+            isCommerceProductFulfillmentReady: () => true,
+            fulfillCommerceProduct() {
+              throw new Error("unexpected initial issuance");
+            }
+          },
+          accountActivationReader: ACTIVATED_ACCOUNT_READER,
+          nowFn: () => new Date(NOW)
+        });
+
+        assert.equal(service.purchaseEligibilityReader({
+          accountId,
+          offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+        }), false);
+      } finally {
+        controlStore.close();
+        rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+      }
+    });
+  }
+});
+
 test("storefront eligibility ignores service projections while purchase readiness stays fail closed", async (t) => {
   const cases = [
     ["inactive entitlement", { entitlementStatus: "suspended" }, false],
@@ -953,7 +1148,7 @@ test("fresh fulfillment rejects malformed pre-existing Commerce history without 
   }
 });
 
-test("multiple current entitlements do not hide the account storefront while fulfillment stays fail closed", () => {
+test("unbound current legacy entitlements do not block the unique issued account resource", () => {
   const fixture = createFixture();
   try {
     fixture.controlStore.createEntitlement({
@@ -966,6 +1161,125 @@ test("multiple current entitlements do not hide the account storefront while ful
       maxArtifacts: 1,
       maxDevices: 2,
       trafficLimitBytes: 5 * GIB,
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    const unboundBefore = fixture.controlStore.getEntitlement(
+      "ent_fulfillment_second_current"
+    );
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+
+    const eligibilityInput = {
+      accountId: fixture.accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    };
+    assert.equal(service.storefrontEligibilityReader(eligibilityInput), true);
+    assert.equal(service.purchaseEligibilityReader(eligibilityInput), true);
+    assert.equal(
+      service.fulfillmentHandler.execute(productionInput(fixture)).status,
+      "delivered"
+    );
+    assert.deepEqual(
+      fixture.controlStore.getEntitlement("ent_fulfillment_second_current"),
+      unboundBefore
+    );
+  } finally {
+    fixture.close();
+  }
+});
+
+test("a lapsed issued account resource remains authoritative over current unbound history", () => {
+  const fixture = createFixture({
+    baseValidUntil: "2026-07-29T00:00:00.000Z"
+  });
+  try {
+    for (const [id, validUntil] of [
+      ["ent_fulfillment_current_unbound_a", "2026-10-01T00:00:00.000Z"],
+      ["ent_fulfillment_current_unbound_b", "2026-11-01T00:00:00.000Z"]
+    ]) {
+      fixture.controlStore.createEntitlement({
+        id,
+        accountId: fixture.accountId,
+        plan: "trial",
+        status: "active",
+        validFrom: "2026-07-15T00:00:00.000Z",
+        validUntil,
+        maxArtifacts: 1,
+        maxDevices: 2,
+        trafficLimitBytes: 5 * GIB,
+        createdAt: NOW,
+        updatedAt: NOW
+      });
+    }
+    const unboundBefore = [
+      fixture.controlStore.getEntitlement("ent_fulfillment_current_unbound_a"),
+      fixture.controlStore.getEntitlement("ent_fulfillment_current_unbound_b")
+    ];
+    const service = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: fixture.controlStore,
+      runtimeCore: fixture.runtimeCore,
+      accountActivationReader: ACTIVATED_ACCOUNT_READER,
+      nowFn: () => new Date(NOW)
+    });
+    const eligibilityInput = {
+      accountId: fixture.accountId,
+      offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
+    };
+
+    assert.equal(service.purchaseEligibilityReader(eligibilityInput), true);
+    assert.equal(
+      service.fulfillmentHandler.execute(productionInput(fixture)).status,
+      "delivered"
+    );
+    assert.deepEqual([
+      fixture.controlStore.getEntitlement("ent_fulfillment_current_unbound_a"),
+      fixture.controlStore.getEntitlement("ent_fulfillment_current_unbound_b")
+    ], unboundBefore);
+  } finally {
+    fixture.close();
+  }
+});
+
+test("multiple active issued account resources remain fail closed", () => {
+  const fixture = createFixture();
+  try {
+    fixture.controlStore.createEntitlement({
+      id: "ent_fulfillment_second_bound",
+      accountId: fixture.accountId,
+      plan: "trial",
+      status: "active",
+      validFrom: "2026-07-15T00:00:00.000Z",
+      validUntil: "2026-10-01T00:00:00.000Z",
+      maxArtifacts: 1,
+      maxDevices: 2,
+      trafficLimitBytes: 5 * GIB,
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    fixture.controlStore.createIssuanceRequest({
+      id: "pareq_fulfillment_second_bound",
+      accountId: fixture.accountId,
+      entitlementId: "ent_fulfillment_second_bound",
+      approvalRef: "approval_fulfillment_second_bound",
+      status: "issued",
+      quantity: 1,
+      nodeId: fixture.edgeChannelRef,
+      purpose: "portal_access_request",
+      requestedByRef: "operator_fulfillment_second_bound",
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    fixture.controlStore.linkIssuedSubscription({
+      id: "link_fulfillment_second_bound",
+      requestId: "pareq_fulfillment_second_bound",
+      tenantRef: safeIssuedRef("tenant", "tenant_fulfillment_second_bound"),
+      artifactRef: safeIssuedRef("artifact", "artifact_fulfillment_second_bound"),
+      status: "active",
       createdAt: NOW,
       updatedAt: NOW
     });
@@ -991,7 +1305,7 @@ test("multiple current entitlements do not hide the account storefront while ful
   }
 });
 
-test("tied latest lapsed entitlements do not hide the storefront while fulfillment stays fail closed", () => {
+test("tied unbound lapsed history does not block the unique issued account resource", () => {
   const fixture = createFixture({
     baseValidUntil: "2026-07-29T00:00:00.000Z"
   });
@@ -1009,6 +1323,9 @@ test("tied latest lapsed entitlements do not hide the storefront while fulfillme
       createdAt: "2026-06-15T00:00:00.000Z",
       updatedAt: "2026-06-15T00:00:00.000Z"
     });
+    const unboundBefore = fixture.controlStore.getEntitlement(
+      "ent_fulfillment_tied_lapsed"
+    );
     const service = createCoinCommerceProductionSubscriptionFulfillment({
       controlStore: fixture.controlStore,
       runtimeCore: fixture.runtimeCore,
@@ -1021,10 +1338,14 @@ test("tied latest lapsed entitlements do not hide the storefront while fulfillme
       offerVersionRef: COIN_COMMERCE_PRODUCTION_OFFERS[0].offerVersionRef
     };
     assert.equal(service.storefrontEligibilityReader(eligibilityInput), true);
-    assert.equal(service.purchaseEligibilityReader(eligibilityInput), false);
-    assert.throws(
-      () => service.fulfillmentHandler.execute(productionInput(fixture)),
-      (error) => isCoinCommerceFulfillmentReconciliationError(error)
+    assert.equal(service.purchaseEligibilityReader(eligibilityInput), true);
+    assert.equal(
+      service.fulfillmentHandler.execute(productionInput(fixture)).status,
+      "delivered"
+    );
+    assert.deepEqual(
+      fixture.controlStore.getEntitlement("ent_fulfillment_tied_lapsed"),
+      unboundBefore
     );
   } finally {
     fixture.close();
@@ -1111,7 +1432,7 @@ test("lapsed fulfillment renews the most recent user entitlement without revivin
   }
 });
 
-test("fulfillment rechecks unique user entitlement inside the control transaction", () => {
+test("fulfillment rechecks the unique issued account resource inside the control transaction", () => {
   const fixture = createFixture();
   try {
     const controlStore = {
@@ -1127,6 +1448,28 @@ test("fulfillment rechecks unique user entitlement inside the control transactio
           maxArtifacts: 1,
           maxDevices: 2,
           trafficLimitBytes: 5 * GIB,
+          createdAt: NOW,
+          updatedAt: NOW
+        });
+        fixture.controlStore.createIssuanceRequest({
+          id: "pareq_fulfillment_concurrent",
+          accountId: fixture.accountId,
+          entitlementId: "ent_fulfillment_concurrent",
+          approvalRef: "approval_fulfillment_concurrent",
+          status: "issued",
+          quantity: 1,
+          nodeId: fixture.edgeChannelRef,
+          purpose: "portal_access_request",
+          requestedByRef: "operator_fulfillment_concurrent",
+          createdAt: NOW,
+          updatedAt: NOW
+        });
+        fixture.controlStore.linkIssuedSubscription({
+          id: "link_fulfillment_concurrent",
+          requestId: "pareq_fulfillment_concurrent",
+          tenantRef: safeIssuedRef("tenant", "tenant_fulfillment_concurrent"),
+          artifactRef: safeIssuedRef("artifact", "artifact_fulfillment_concurrent"),
+          status: "active",
           createdAt: NOW,
           updatedAt: NOW
         });
