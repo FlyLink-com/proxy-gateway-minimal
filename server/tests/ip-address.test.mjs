@@ -14,10 +14,18 @@ function request({ remoteAddress, forwardedFor }) {
   };
 }
 
-test("normalizeIpAddress handles IPv6 mapped IPv4 and loopback aliases", () => {
-  assert.equal(normalizeIpAddress("::ffff:203.0.113.10"), "203.0.113.10");
-  assert.equal(normalizeIpAddress("::1"), "::1");
-  assert.equal(normalizeIpAddress(" 127.0.0.1 "), "127.0.0.1");
+test("normalizeIpAddress handles IPv4-mapped IPv6 addresses and preserves invalid input", () => {
+  const cases = [
+    ["::ffff:203.0.113.10", "203.0.113.10"],
+    ["::FFFF:203.0.113.10", "203.0.113.10"],
+    ["::ffff:not-an-ip", "::ffff:not-an-ip"],
+    ["::1", "::1"],
+    [" 127.0.0.1 ", "127.0.0.1"]
+  ];
+
+  for (const [input, expected] of cases) {
+    assert.equal(normalizeIpAddress(input), expected, input);
+  }
 });
 
 test("private and loopback detection covers default admin ranges", () => {

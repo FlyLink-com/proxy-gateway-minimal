@@ -1,6 +1,6 @@
 # Server Workspace
 
-This file is a responsibility and navigation entrypoint. It does not establish
+This file is a responsibility and navigation entry point. It does not establish
 global, release, deployment, runtime, or production authority.
 
 ## Responsibility
