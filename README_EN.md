@@ -122,7 +122,7 @@ changes require a fresh Risk A gate.
 
 | Item | Requirement |
 | --- | --- |
-| Node.js | Follow `package.json` `engines.node`; the current range includes `20.x` and the listed `22.x` through `26.x` versions. |
+| Node.js | Follow `package.json` `engines.node`; Node 20 support starts at `20.10.0`, alongside the listed `22.x` through `26.x` versions. |
 | Package manager | Use `npm` and the repository `package-lock.json`; prefer `npm ci` for a clean install. |
 | Admin dependencies | Install the Admin workspace separately with `npm ci --prefix admin`. |
 | Operating system | Windows supports local development, preview, and diagnostics. A real Linux target must run its own target-host preflight. |

@@ -105,7 +105,7 @@ D:\Projects\proxy-gateway-minimal
 
 | 项目 | 要求 |
 | --- | --- |
-| Node.js | 以 `package.json` 的 `engines.node` 为准；当前支持 `20.x`、`22.x` 至 `26.x` 中列明的版本。 |
+| Node.js | 以 `package.json` 的 `engines.node` 为准；Node 20 从 `20.10.0` 起支持，另包括 `22.x` 至 `26.x` 中列明的版本。 |
 | 包管理器 | 使用 `npm` 和仓库 `package-lock.json`；干净安装优先执行 `npm ci`。 |
 | Admin 依赖 | Admin workspace 独立安装，执行 `npm ci --prefix admin`。 |
 | 操作系统 | Windows 用于本地开发、预览和诊断；真实 Linux 目标必须重新执行目标机 preflight。 |

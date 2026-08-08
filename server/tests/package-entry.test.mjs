@@ -218,6 +218,20 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof startProxyGateway, "function");
 });
 
+test("package test-runner contract requires Node concurrency support", () => {
+  const rootDir = resolve(fileURLToPath(new URL("../../", import.meta.url)));
+  const packageJson = JSON.parse(readFileSync(resolve(rootDir, "package.json"), "utf8"));
+
+  assert.equal(
+    packageJson.engines.node,
+    ">=20.10.0 <21 || 22.x || 23.x || 24.x || 25.x || 26.x"
+  );
+  assert.equal(
+    packageJson.scripts["test:server"],
+    "node --test --test-concurrency=4 server/tests/*.test.mjs"
+  );
+});
+
 test("candidate release startup shim is versioned and packageable", () => {
   const rootDir = resolve(fileURLToPath(new URL("../../", import.meta.url)));
   const shimPath = resolve(rootDir, "candidate-start.mjs");
