@@ -16,6 +16,16 @@ import Database from "better-sqlite3";
 import {
   startProductionProxyGateway
 } from "../services/platform/coin-commerce-production-runtime.mjs";
+import {
+  ACCOUNT_RESOURCE_AUTHORITY_MIGRATIONS,
+  REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_MIGRATION_ID,
+  applyAccountResourceAuthorityMigrations
+} from "../services/platform/account-resource-authority-migrations.mjs";
+import {
+  ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATIONS,
+  REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+  applyAccountResourceAuthorityCommerceMigrations
+} from "../services/platform/account-resource-authority-commerce-migrations.mjs";
 import { createRuntimeState } from "../state.mjs";
 import {
   applyCoinCommerceMigrations,
@@ -69,7 +79,7 @@ async function assertPortBindable(port) {
   }
 }
 
-function prepareRuntime(directory) {
+function prepareRuntime(directory, { authority = false } = {}) {
   const controlDbPath = join(directory, "control.sqlite");
   const subscriptionDbPath = join(directory, "subscriptions.sqlite");
   const proxyConfigPath = join(directory, "proxy-config.json");
@@ -107,6 +117,22 @@ function prepareRuntime(directory) {
     expectedDdlChecksum: COIN_COMMERCE_MIGRATIONS[0].ddlChecksum,
     nowFn: () => new Date("2026-07-29T00:00:00.000Z")
   });
+  if (authority) {
+    applyAccountResourceAuthorityMigrations({
+      dbPath: controlDbPath,
+      expectedMigrationId: REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_MIGRATION_ID,
+      expectedDdlChecksum: ACCOUNT_RESOURCE_AUTHORITY_MIGRATIONS[0].ddlChecksum,
+      nowFn: () => new Date("2026-08-08T00:00:00.000Z")
+    });
+    applyAccountResourceAuthorityCommerceMigrations({
+      dbPath: controlDbPath,
+      expectedMigrationId:
+        REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+      expectedDdlChecksum:
+        ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATIONS[0].ddlChecksum,
+      nowFn: () => new Date("2026-08-08T00:00:00.000Z")
+    });
+  }
   return {
     controlDbPath,
     subscriptionDbPath,
@@ -231,6 +257,51 @@ test("production entry does not read overridden Commerce options while default-o
     });
     assert.equal(catalogGetterReads, 0);
     assert.equal(handle.state.platform.coinsCommerceEnabled, false);
+    assert.equal(handle.state.platform.coinsCommerceAuthorityEnabled, false);
+  } finally {
+    await handle?.stop();
+    removeTempDir(directory);
+  }
+});
+
+test("production entry rejects Authority mode unless Commerce is enabled", async () => {
+  const directory = mkdtempSync(join(
+    tmpdir(),
+    "proxy-gateway-production-authority-prerequisite-"
+  ));
+  const paths = prepareRuntime(directory);
+  const consolePort = await reservePort();
+  const runtimeOptions = productionRuntimeOptions(paths, consolePort);
+  runtimeOptions.env.COINS_WALLET_ENABLED = "false";
+  runtimeOptions.env.COINS_COMMERCE_ENABLED = "false";
+  runtimeOptions.env.COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED = "true";
+
+  try {
+    await assert.rejects(
+      startProductionProxyGateway({ runtimeOptions, logger: false }),
+      (error) => error?.code === "coin_commerce_prerequisite_missing"
+    );
+    await assertPortBindable(consolePort);
+  } finally {
+    removeTempDir(directory);
+  }
+});
+
+test("production entry wires Authority mode only after both exact schemas exist", async () => {
+  const directory = mkdtempSync(join(
+    tmpdir(),
+    "proxy-gateway-production-authority-runtime-"
+  ));
+  const paths = prepareRuntime(directory, { authority: true });
+  const consolePort = await reservePort();
+  const runtimeOptions = productionRuntimeOptions(paths, consolePort);
+  runtimeOptions.env.COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED = "true";
+  let handle;
+
+  try {
+    handle = await startProductionProxyGateway({ runtimeOptions, logger: false });
+    assert.equal(handle.state.platform.coinsCommerceEnabled, true);
+    assert.equal(handle.state.platform.coinsCommerceAuthorityEnabled, true);
   } finally {
     await handle?.stop();
     removeTempDir(directory);
