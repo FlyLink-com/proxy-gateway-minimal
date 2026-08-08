@@ -22,12 +22,24 @@ import {
   createCoinWalletTransactionParticipant,
   createSqliteCoinWalletStore
 } from "./coin-wallet-store.mjs";
+import {
+  createAccountResourceAuthorityStore
+} from "./account-resource-authority.mjs";
+import {
+  validateAccountResourceAuthoritySchema
+} from "./account-resource-authority-migrations.mjs";
+import {
+  validateAccountResourceAuthorityCommerceSchema
+} from "./account-resource-authority-commerce-migrations.mjs";
 
 const BUSY_TIMEOUT_MS = 2_000;
 const DEFAULT_CANCEL_WINDOW_MS = 3_000;
 const DEFAULT_QUOTE_TTL_MS = 300_000;
 const MAX_SERVER_INTERVAL_MS = 86_400_000;
 const COMMERCE_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
+const AUTHORITY_REFERENCE = /^[A-Za-z0-9._:-]{1,128}$/;
+const AUTHORITY_SECRET_LIKE =
+  /^(?:https?:|mailto:|bearer[ .:_-]|sk[-_]|eyj[a-z0-9_-]{10,})/i;
 const CANCEL_RECONCILIATION = Symbol("cancel_reconciliation");
 const FULFILLMENT_LEASE_LOST = Symbol("fulfillment_lease_lost");
 const FACTORY_FIELDS = new Set([
@@ -38,6 +50,7 @@ const FACTORY_FIELDS = new Set([
   "discountReader",
   "storefrontEligibilityReader",
   "purchaseEligibilityReader",
+  "authorityEnabled",
   "cancelWindowMs",
   "quoteTtlMs"
 ]);
@@ -67,6 +80,8 @@ const KNOWN_CODES = new Set([
   "commerce_store_closed",
   "coin_wallet_schema_not_ready",
   "coin_commerce_schema_not_ready",
+  "account_resource_authority_schema_not_ready",
+  "account_resource_authority_commerce_schema_not_ready",
   "commerce_not_found",
   "offer_unavailable",
   "quote_expired",
@@ -359,6 +374,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     discountReader = () => 0,
     purchaseEligibilityReader = () => true,
     storefrontEligibilityReader = purchaseEligibilityReader,
+    authorityEnabled = false,
     cancelWindowMs = DEFAULT_CANCEL_WINDOW_MS,
     quoteTtlMs = DEFAULT_QUOTE_TTL_MS
   } = input;
@@ -372,6 +388,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     || typeof discountReader !== "function"
     || typeof storefrontEligibilityReader !== "function"
     || typeof purchaseEligibilityReader !== "function"
+    || typeof authorityEnabled !== "boolean"
   ) {
     throw commerceError("invalid_store_contract");
   }
@@ -386,6 +403,8 @@ export function createSqliteCoinCommerceStore(options = {}) {
   let db;
   let walletStore;
   let walletParticipant;
+  let authorityStore;
+  let authorityBindingTableAvailable = false;
   try {
     if (hasPath) {
       ownedDatabase = new Database(dbPath, { fileMustExist: true });
@@ -408,6 +427,28 @@ export function createSqliteCoinCommerceStore(options = {}) {
     }
     if (!validateCoinCommerceSchema({ database: db }).ok) {
       throw commerceError("coin_commerce_schema_not_ready");
+    }
+    if (authorityEnabled) {
+      if (!validateAccountResourceAuthoritySchema({ database: db }).ok) {
+        throw commerceError("account_resource_authority_schema_not_ready");
+      }
+      if (!validateAccountResourceAuthorityCommerceSchema({ database: db }).ok) {
+        throw commerceError(
+          "account_resource_authority_commerce_schema_not_ready"
+        );
+      }
+      authorityStore = createAccountResourceAuthorityStore({
+        database: db,
+        nowFn: () => new Date(readDatabaseUtc(db))
+      });
+      authorityBindingTableAvailable = true;
+    } else {
+      authorityBindingTableAvailable = Boolean(db.prepare(`
+        select 1
+          from sqlite_master
+         where type = 'table'
+           and name = 'platform_commerce_authority_quote_bindings'
+      `).pluck().get());
     }
     walletStore = createSqliteCoinWalletStore({
       database: db,
@@ -603,6 +644,127 @@ export function createSqliteCoinCommerceStore(options = {}) {
     if (!isPurchaseEligible(accountId, offerVersionRef)) {
       throw commerceError("offer_unavailable");
     }
+  }
+
+  function normalizedAuthorityRef(value) {
+    if (
+      typeof value !== "string"
+      || !AUTHORITY_REFERENCE.test(value)
+      || AUTHORITY_SECRET_LIKE.test(value)
+    ) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    return value;
+  }
+
+  function normalizeAuthoritySnapshot(value) {
+    if (
+      !value
+      || typeof value !== "object"
+      || Array.isArray(value)
+      || Object.getPrototypeOf(value) !== Object.prototype
+      || Reflect.ownKeys(value).length !== 5
+      || ![
+        "authorityRef",
+        "authorityVersion",
+        "resourceRequestId",
+        "entitlementId",
+        "issuedLinkId"
+      ].every((field) => Object.hasOwn(value, field))
+      || !Number.isSafeInteger(value.authorityVersion)
+      || value.authorityVersion < 1
+    ) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    return {
+      authorityRef: normalizedAuthorityRef(value.authorityRef),
+      authorityVersion: value.authorityVersion,
+      resourceRequestId: normalizedAuthorityRef(value.resourceRequestId),
+      entitlementId: normalizedAuthorityRef(value.entitlementId),
+      issuedLinkId: normalizedAuthorityRef(value.issuedLinkId)
+    };
+  }
+
+  function authoritySnapshotFromResolution(resolved) {
+    return normalizeAuthoritySnapshot({
+      authorityRef: resolved.authorityRef,
+      authorityVersion: resolved.authorityVersion,
+      resourceRequestId: resolved.resourceRequestId,
+      entitlementId: resolved.entitlementId,
+      issuedLinkId: resolved.issuedLinkId
+    });
+  }
+
+  function resolveCurrentAuthority(accountId, expected = null) {
+    if (!authorityEnabled || !authorityStore || db.inTransaction !== true) {
+      return null;
+    }
+    try {
+      const resolved = authorityStore.resolveCommerceAuthority({
+        accountId,
+        ...(expected
+          ? { expectedAuthorityVersion: expected.authorityVersion }
+          : {})
+      });
+      if (resolved?.ok !== true || resolved.accountId !== accountId) return null;
+      const snapshot = authoritySnapshotFromResolution(resolved);
+      if (
+        expected
+        && JSON.stringify(snapshot) !== JSON.stringify(expected)
+      ) {
+        return null;
+      }
+      return snapshot;
+    } catch {
+      return null;
+    }
+  }
+
+  function readQuoteAuthoritySnapshot(quoteRef, accountId) {
+    if (!authorityBindingTableAvailable) {
+      authorityBindingTableAvailable = Boolean(db.prepare(`
+        select 1
+          from sqlite_master
+         where type = 'table'
+           and name = 'platform_commerce_authority_quote_bindings'
+      `).pluck().get());
+      if (!authorityBindingTableAvailable) return null;
+    }
+    const row = db.prepare(`
+      select authority_ref, authority_version, resource_request_id,
+             entitlement_id, issued_link_id
+        from platform_commerce_authority_quote_bindings
+       where quote_ref = ? and account_id = ?
+    `).get(quoteRef, accountId);
+    if (!row) return null;
+    try {
+      return normalizeAuthoritySnapshot({
+        authorityRef: row.authority_ref,
+        authorityVersion: row.authority_version,
+        resourceRequestId: row.resource_request_id,
+        entitlementId: row.entitlement_id,
+        issuedLinkId: row.issued_link_id
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  function isOrderAuthorityActionable(order, payload = null) {
+    const expected = readQuoteAuthoritySnapshot(
+      order.quote_ref,
+      order.account_id
+    );
+    const payloadUsesAuthority = payload !== null
+      && Object.hasOwn(payload, "authority");
+    if (!authorityEnabled) {
+      return expected === null && !payloadUsesAuthority;
+    }
+    return Boolean(
+      expected
+      && (payload === null || payloadUsesAuthority)
+      && resolveCurrentAuthority(order.account_id, expected)
+    );
   }
 
   const publishTransaction = db.transaction((normalizedOffer) => {
@@ -844,6 +1006,12 @@ export function createSqliteCoinCommerceStore(options = {}) {
 
   const createQuoteTransaction = db.transaction((request) => {
     requireAccount(request.accountId);
+    const authority = authorityEnabled
+      ? resolveCurrentAuthority(request.accountId)
+      : null;
+    if (authorityEnabled && !authority) {
+      throw commerceError("offer_unavailable");
+    }
     const lockedOfferRow = findOfferVersion(request.offer.offerVersionRef);
     if (
       !lockedOfferRow
@@ -910,6 +1078,26 @@ export function createSqliteCoinCommerceStore(options = {}) {
       occurredAt,
       expiresAt
     );
+    if (authorityEnabled) {
+      const inserted = db.prepare(`
+        insert into platform_commerce_authority_quote_bindings (
+          quote_ref, authority_ref, account_id, authority_version,
+          resource_request_id, entitlement_id, issued_link_id, created_at
+        ) values (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        quoteRef,
+        authority.authorityRef,
+        request.accountId,
+        authority.authorityVersion,
+        authority.resourceRequestId,
+        authority.entitlementId,
+        authority.issuedLinkId,
+        occurredAt
+      );
+      if (inserted.changes !== 1) {
+        throw commerceError("commerce_infrastructure_error");
+      }
+    }
     return {
       quoteRef,
       offer: request.offer,
@@ -1700,10 +1888,30 @@ export function createSqliteCoinCommerceStore(options = {}) {
     `).get(request.quoteRef, request.accountId);
     if (!quoteRow) throw commerceError("commerce_not_found");
     const quote = parseQuoteRow(quoteRow);
+    const expectedAuthority = readQuoteAuthoritySnapshot(
+      quote.quote_ref,
+      request.accountId
+    );
+    if (authorityEnabled) {
+      if (
+        !expectedAuthority
+        || !resolveCurrentAuthority(request.accountId, expectedAuthority)
+      ) {
+        throw commerceError("quote_stale");
+      }
+    } else if (expectedAuthority) {
+      throw commerceError("quote_stale");
+    }
     requirePurchaseEligibility(
       request.accountId,
       quote.offer.offerVersionRef
     );
+    if (
+      authorityEnabled
+      && !resolveCurrentAuthority(request.accountId, expectedAuthority)
+    ) {
+      throw commerceError("quote_stale");
+    }
     if (quote.status !== "active") throw commerceError("quote_stale");
     if (quote.expires_at <= occurredAt) throw commerceError("quote_expired");
     if (quote.purchase_availability !== "available") {
@@ -1803,7 +2011,14 @@ export function createSqliteCoinCommerceStore(options = {}) {
       occurredAt
     });
     completeCommerceReceipt(receiptRef, orderRef, occurredAt);
-    return projectOwnedOrder(request.accountId, orderRef);
+    const projected = projectOwnedOrder(request.accountId, orderRef);
+    if (
+      authorityEnabled
+      && !resolveCurrentAuthority(request.accountId, expectedAuthority)
+    ) {
+      throw commerceError("quote_stale");
+    }
+    return projected;
   });
 
   function confirmOrder(confirmInput) {
@@ -2115,10 +2330,19 @@ export function createSqliteCoinCommerceStore(options = {}) {
     const offerSnapshot = normalizeStoredOffer(
       parseJson(order.offer_snapshot_json)
     );
-    return {
+    const payload = {
       offerVersionRef: offerSnapshot.offerVersionRef,
       delivery: offerSnapshot.delivery
     };
+    if (!authorityEnabled) return payload;
+    const authority = readQuoteAuthoritySnapshot(
+      order.quote_ref,
+      order.account_id
+    );
+    if (!authority) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    return { ...payload, authority };
   }
 
   function validateDelivery(value) {
@@ -2162,21 +2386,50 @@ export function createSqliteCoinCommerceStore(options = {}) {
 
   function parseCommandPayload(payloadJson) {
     const payload = parseJson(payloadJson);
+    const hasAuthority = Boolean(
+      payload
+      && typeof payload === "object"
+      && Object.hasOwn(payload, "authority")
+    );
+    const expectedFields = hasAuthority
+      ? ["offerVersionRef", "delivery", "authority"]
+      : ["offerVersionRef", "delivery"];
     if (
       !payload
       || typeof payload !== "object"
       || Array.isArray(payload)
       || Object.getPrototypeOf(payload) !== Object.prototype
-      || Reflect.ownKeys(payload).length !== 2
-      || !Object.hasOwn(payload, "offerVersionRef")
-      || !Object.hasOwn(payload, "delivery")
+      || Reflect.ownKeys(payload).length !== expectedFields.length
+      || !expectedFields.every((field) => Object.hasOwn(payload, field))
     ) {
       throw commerceError("commerce_infrastructure_error");
     }
     return {
       offerVersionRef: normalizeReference(payload.offerVersionRef),
-      delivery: validateDelivery(payload.delivery)
+      delivery: validateDelivery(payload.delivery),
+      ...(hasAuthority
+        ? { authority: normalizeAuthoritySnapshot(payload.authority) }
+        : {})
     };
+  }
+
+  function expectedStoredCommandPayload(order, payload) {
+    const offerSnapshot = normalizeStoredOffer(
+      parseJson(order.offer_snapshot_json)
+    );
+    const expected = {
+      offerVersionRef: offerSnapshot.offerVersionRef,
+      delivery: offerSnapshot.delivery
+    };
+    if (!Object.hasOwn(payload, "authority")) return expected;
+    const authority = readQuoteAuthoritySnapshot(
+      order.quote_ref,
+      order.account_id
+    );
+    if (!authority) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    return { ...expected, authority };
   }
 
   function validateCommandAndReceiptSnapshot(command, order, receipts) {
@@ -2188,7 +2441,9 @@ export function createSqliteCoinCommerceStore(options = {}) {
       ? deriveCommerceOperationRefs(order.order_ref)
       : null;
     const payload = parseCommandPayload(command.payload_json);
-    const expectedPayload = order ? commandPayloadForOrder(order) : null;
+    const expectedPayload = order
+      ? expectedStoredCommandPayload(order, payload)
+      : null;
     const commandMatchesOrderState = (
       order?.payment_status === "captured"
       || (
@@ -2444,20 +2699,53 @@ export function createSqliteCoinCommerceStore(options = {}) {
     return projectOrderRow(findOrder(order.order_ref));
   }
 
+  function projectSuccessfulCapture(order) {
+    const projected = projectOrderRow(findOrder(order.order_ref));
+    if (!isOrderAuthorityActionable(order)) {
+      throw commerceError("capture_in_progress");
+    }
+    return projected;
+  }
+
   function captureOrderBody(orderRef, { recovery = false } = {}) {
     const occurredAt = readDatabaseUtc(db);
     const order = findOrder(orderRef);
     if (!order) throw commerceError("commerce_not_found");
+    if (order.payment_status === "reconciliation_required") {
+      return projectOrderRow(order);
+    }
+    if (!isOrderAuthorityActionable(order)) {
+      if (order.payment_status === "captured") {
+        const binding = readOrderHoldInvariant(order);
+        if (!binding.valid || binding.hold.status !== "captured") {
+          return isolateCapturedOrder(order, occurredAt);
+        }
+        const command = db.prepare(`
+          select * from platform_coin_commerce_fulfillment_commands
+           where order_ref = ?
+        `).get(order.order_ref);
+        if (command) {
+          validateCommandAndReceipt(command, order);
+          if (["delivered", "failed"].includes(command.status)) {
+            return projectOrderRow(order);
+          }
+        }
+        return isolateCapturedOrder(order, occurredAt);
+      }
+      if (["held", "capture_pending", "capture_failed"].includes(
+        order.payment_status
+      )) {
+        return isolateCapture(order, occurredAt);
+      }
+      throw commerceError("capture_in_progress");
+    }
     if (order.payment_status === "captured") {
       const binding = readOrderHoldInvariant(order);
       if (!binding.valid || binding.hold.status !== "captured") {
         return isolateCapturedOrder(order, occurredAt);
       }
       ensureOutbox(order, occurredAt);
-      return projectOrderRow(findOrder(orderRef));
-    }
-    if (order.payment_status === "reconciliation_required") {
-      return projectOrderRow(order);
+      return projectSuccessfulCapture(order);
     }
     if (order.payment_status !== "capture_pending") {
       throw commerceError("capture_in_progress");
@@ -2489,7 +2777,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
           ? recoveryEventRef(order.order_ref, "payment_captured")
           : null
       });
-      return projectOrderRow(findOrder(order.order_ref));
+      return projectSuccessfulCapture(order);
     }
     if (hold.status !== "active") {
       return isolateCapture(order, occurredAt, binding);
@@ -2547,7 +2835,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
         ? recoveryEventRef(order.order_ref, "payment_captured")
         : null
     });
-    return projectOrderRow(findOrder(order.order_ref));
+    return projectSuccessfulCapture(order);
   }
 
   const captureTransaction = db.transaction(captureOrderBody);
@@ -2791,14 +3079,26 @@ export function createSqliteCoinCommerceStore(options = {}) {
         select * from platform_coin_commerce_fulfillment_commands
          where order_ref = ?
       `).get(order.order_ref);
+      const validated = command
+        ? validateCommandAndReceipt(command, order)
+        : null;
+      const terminalHistory = command
+        && ["delivered", "failed"].includes(command.status);
+      if (
+        !terminalHistory
+        && !isOrderAuthorityActionable(order, validated?.payload ?? null)
+      ) {
+        isolateCapturedOrder(order, occurredAt);
+        result.reconciliationRequired += 1;
+        continue;
+      }
       if (!command) {
         ensureOutbox(order, occurredAt);
         result.outboxRecovered += 1;
       } else {
-        validateCommandAndReceipt(command, order);
         if (
-        command.status === "processing"
-        && command.lease_until <= occurredAt
+          command.status === "processing"
+          && command.lease_until <= occurredAt
         ) {
           result.expiredLeaseObserved += 1;
         } else {
@@ -2885,7 +3185,11 @@ export function createSqliteCoinCommerceStore(options = {}) {
        limit 1
     `).get(occurredAt);
     if (!command) return null;
-    const { order } = validateCommandAndReceipt(command);
+    const { order, payload: commandPayload } = validateCommandAndReceipt(command);
+    if (!isOrderAuthorityActionable(order, commandPayload)) {
+      isolateCapturedOrder(order, occurredAt);
+      return null;
+    }
     const binding = readOrderHoldInvariant(order);
     if (!binding.valid || binding.hold.status !== "captured") {
       isolateCapturedOrder(order, occurredAt);
@@ -2971,6 +3275,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
       accountId: leased.account_id,
       offerVersionRef: payload.offerVersionRef,
       delivery: payload.delivery,
+      ...(authorityEnabled ? { authority: payload.authority } : {}),
       leaseGeneration,
       leaseToken
     };
