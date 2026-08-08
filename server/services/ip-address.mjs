@@ -65,11 +65,14 @@ export function isPrivateOrLoopbackIp(value) {
 }
 
 function forwardedForChain(value) {
-  const rawValues = Array.isArray(value) ? value : [String(value || "")];
-  return rawValues
+  const rawValues = Array.isArray(value) ? value : [String(value ?? "")];
+  const chain = rawValues
     .flatMap((item) => String(item).split(","))
-    .map((item) => normalizeIpAddress(item))
-    .filter((item) => isIP(item));
+    .map((item) => normalizeIpAddress(item));
+
+  // Keep malformed claims distinct from a missing header so callers cannot
+  // mistake a trusted proxy's address for the originating client address.
+  return chain.length > 0 && chain.every((item) => isIP(item)) ? chain : null;
 }
 
 function trustedProxyAllowlist(entries = DEFAULT_TRUSTED_PROXY_CIDRS) {
@@ -84,9 +87,12 @@ export function resolveClientIp(req, { trustedProxyCidrs = DEFAULT_TRUSTED_PROXY
   }
 
   const forwarded = req.headers?.["x-forwarded-for"];
-  const chain = forwardedForChain(forwarded);
-  if (chain.length === 0) {
+  if (forwarded === undefined) {
     return directIp;
+  }
+  const chain = forwardedForChain(forwarded);
+  if (chain === null) {
+    return "";
   }
 
   for (let index = chain.length - 1; index >= 0; index -= 1) {

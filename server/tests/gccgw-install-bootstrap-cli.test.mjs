@@ -68,6 +68,7 @@ test("gccgw install bootstrap validates configure plan before host mutation chec
 test("gccgw install bootstrap reaches host gate after a valid configure plan", () => {
   const dir = mkdtempSync(join(tmpdir(), "gccgw-bootstrap-"));
   const planPath = join(dir, "valid-plan.json");
+  const blockedAppDir = join(dir, "bootstrap-must-not-run");
   writeFileSync(planPath, JSON.stringify({
     type: "gccgw_install_configure_plan",
     ok: true,
@@ -82,9 +83,11 @@ test("gccgw install bootstrap reaches host gate after a valid configure plan", (
     }
   }));
 
-  const expectedHostGate = process.platform === "linux"
-    ? /bootstrap\.sh must run as root via sudo/
-    : /install bootstrap can only run on a Linux server host/;
+  const expectedHostGate = process.platform !== "linux"
+    ? /install bootstrap can only run on a Linux server host/
+    : typeof process.getuid === "function" && process.getuid() === 0
+      ? /repository checkout is .*expected APP_DIR=.*bootstrap-must-not-run/
+      : /bootstrap\.sh must run as root via sudo/;
 
   assert.throws(
     () => execFileSync(process.execPath, [
@@ -96,6 +99,11 @@ test("gccgw install bootstrap reaches host gate after a valid configure plan", (
     ], {
       cwd: new URL("../../", import.meta.url),
       encoding: "utf8",
+      env: {
+        ...process.env,
+        APP_DIR: blockedAppDir,
+        ALLOW_REPO_ROOT_MISMATCH: "false"
+      },
       stdio: "pipe"
     }),
     expectedHostGate

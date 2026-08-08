@@ -122,7 +122,7 @@ changes require a fresh Risk A gate.
 
 | Item | Requirement |
 | --- | --- |
-| Node.js | Follow `package.json` `engines.node`; the current range includes `20.x` and the listed `22.x` through `26.x` versions. |
+| Node.js | Follow `package.json` `engines.node`; Node 20 support starts at `20.10.0`, alongside the listed `22.x` through `26.x` versions. |
 | Package manager | Use `npm` and the repository `package-lock.json`; prefer `npm ci` for a clean install. |
 | Admin dependencies | Install the Admin workspace separately with `npm ci --prefix admin`. |
 | Operating system | Windows supports local development, preview, and diagnostics. A real Linux target must run its own target-host preflight. |
@@ -185,6 +185,12 @@ Rules:
 - Admin and data-plane agent allowlists default to loopback. Production private
   networks or fixed operator sources must be written explicitly on the target
   host.
+- `TRUSTED_PROXY_CIDRS` is empty by default. Only `X-Forwarded-For` received
+  from an explicitly trusted proxy participates in client-address resolution,
+  and IPv4-mapped IPv6 addresses are normalized first. If any address in the
+  forwarded chain is invalid, resolution fails closed to a non-matching result
+  so the trusted proxy's direct address is not mistaken for the originating
+  client address.
 - `USER_PORTAL_TOTP_SECRET_KEY` is target-host only. It must encode a 32-byte
   key as hex, base64, or base64url and protects new TOTP credentials at rest.
 - Real tokens, passwords, node credentials, subscription URLs, SQLite files,
