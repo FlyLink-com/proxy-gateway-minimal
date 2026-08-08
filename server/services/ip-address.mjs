@@ -66,10 +66,13 @@ export function isPrivateOrLoopbackIp(value) {
 
 function forwardedForChain(value) {
   const rawValues = Array.isArray(value) ? value : [String(value || "")];
-  return rawValues
+  const chain = rawValues
     .flatMap((item) => String(item).split(","))
-    .map((item) => normalizeIpAddress(item))
-    .filter((item) => isIP(item));
+    .map((item) => normalizeIpAddress(item));
+
+  // Reject the complete forwarding claim if any hop is malformed. Dropping an
+  // invalid hop would join addresses that were never adjacent in the chain.
+  return chain.length > 0 && chain.every((item) => isIP(item)) ? chain : [];
 }
 
 function trustedProxyAllowlist(entries = DEFAULT_TRUSTED_PROXY_CIDRS) {

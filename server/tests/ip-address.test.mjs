@@ -66,6 +66,22 @@ test("resolveClientIp derives the rightmost untrusted forwarded IP from trusted 
   })), "127.0.0.1:1234");
 });
 
+test("resolveClientIp rejects the complete forwarded chain when any hop is malformed", () => {
+  const trustedProxyCidrs = ["127.0.0.1/32", "10.0.0.0/8"];
+  const malformedChains = [
+    "198.51.100.10, not-an-ip, 10.0.0.5",
+    "198.51.100.10, , 10.0.0.5",
+    ["198.51.100.10", "10.0.0.5:443"]
+  ];
+
+  for (const forwardedFor of malformedChains) {
+    assert.equal(resolveClientIp(request({
+      remoteAddress: "127.0.0.1",
+      forwardedFor
+    }), { trustedProxyCidrs }), "127.0.0.1", String(forwardedFor));
+  }
+});
+
 test("createIpAllowlist matches exact IPv4, IPv4 CIDR, and IPv6 loopback", () => {
   const allowlist = createIpAllowlist(["127.0.0.1", "::1", "10.0.0.0/8", "203.0.113.5/32"]);
 

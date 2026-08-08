@@ -164,10 +164,11 @@ SUBSCRIPTION_TEMP_LINK_TTL_MINUTES
 规则：
 
 - `.env.example` 只放占位符和安全默认形状。
-- 管理面和 data-plane agent allowlist 默认只包含 loopback；生产私网或固定
+- 管理面和 data-plane agent allowlists 默认只包含 loopback；生产私网或固定
   operator 来源必须在目标机显式写入对应 CIDR。
 - `TRUSTED_PROXY_CIDRS` 默认为空；仅来自显式信任代理的
-  `X-Forwarded-For` 才参与客户端地址解析，IPv4-mapped IPv6 地址会先规范化。
+  `X-Forwarded-For` 才参与客户端地址解析，IPv4-mapped IPv6 地址会先规范化；
+  转发链中任一地址格式无效时会忽略整条转发声明并使用直连地址。
 - `USER_PORTAL_TOTP_SECRET_KEY` 只在目标机配置，必须是 32-byte key 的
   hex/base64/base64url 表示；用于新 TOTP credential 的 at-rest 保护。
 - 真实 token、密码、节点凭据、订阅 URL、SQLite、客户数据只允许留在目标机
