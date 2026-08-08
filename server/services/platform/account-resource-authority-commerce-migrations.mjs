@@ -178,7 +178,7 @@ function assertDatabasePath(dbPath) {
 function objectRow(database, type, name) {
   return database.prepare(`
     select type, name, tbl_name, sql
-      from sqlite_master
+      from main.sqlite_master
      where type = ? and name = ? collate nocase
   `).get(type, name) ?? null;
 }
@@ -186,7 +186,7 @@ function objectRow(database, type, name) {
 function namedObjectRow(database, name) {
   return database.prepare(`
     select type, name, tbl_name, sql
-      from sqlite_master
+      from main.sqlite_master
      where name = ? collate nocase
   `).get(name) ?? null;
 }
@@ -195,7 +195,7 @@ function migrationRow(database, migrationId) {
   if (!objectRow(database, "table", "platform_schema_migrations")) return null;
   return database.prepare(`
     select migration_id, ddl_checksum, applied_at
-      from platform_schema_migrations
+      from main.platform_schema_migrations
      where migration_id = ?
   `).get(migrationId) ?? null;
 }
@@ -237,7 +237,7 @@ function presentOwnedObjects(database) {
 function namespaceIsExact(database) {
   const actual = database.prepare(`
     select type, name
-      from sqlite_master
+      from main.sqlite_master
      where name = ? or tbl_name = ?
      order by type, name
   `).all(TABLE, TABLE).filter(({ name }) => !name.startsWith(
@@ -261,6 +261,17 @@ function integrity(database) {
     };
   } catch {
     return { quickCheck: false, foreignKeyViolations: 0, failed: true };
+  }
+}
+
+function bindingRowCount(database) {
+  if (!objectRow(database, "table", TABLE)) return 0;
+  try {
+    const count = database.prepare(`select count(*) from main.${TABLE}`)
+      .pluck().get();
+    return Number.isSafeInteger(count) && count >= 0 ? count : null;
+  } catch {
+    return null;
   }
 }
 
@@ -295,9 +306,10 @@ function closedInspection(database) {
     }
   }
 
-  const bindingRows = ownedObjectIsExact(database, "table", TABLE)
-    ? database.prepare(`select count(*) from ${TABLE}`).pluck().get()
-    : 0;
+  const bindingRows = bindingRowCount(database);
+  if (bindingRows === null) {
+    reasonCodes.push("binding_row_count_unknown");
+  }
   const health = integrity(database);
   if (!health.quickCheck || health.failed) reasonCodes.push("quick_check_failed");
   if (health.foreignKeyViolations > 0 || health.failed) {
@@ -322,7 +334,7 @@ function closedInspection(database) {
     database,
     "table",
     "platform_schema_migrations"
-  ) ? database.prepare("select count(*) from platform_schema_migrations")
+  ) ? database.prepare("select count(*) from main.platform_schema_migrations")
     .pluck().get() : 0;
 
   return {
@@ -371,7 +383,7 @@ function closedValidation(reason) {
     requiredMigrationId:
       REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
     counts: {
-      bindingRows: 0,
+      bindingRows: null,
       ownedObjects: 0,
       migrationRows: 0,
       foreignKeyViolations: 0
@@ -380,7 +392,7 @@ function closedValidation(reason) {
       authorityDependency: false,
       commerceDependency: false,
       schemaExact: false,
-      zeroBackfill: true,
+      zeroBackfill: false,
       quickCheck: false,
       foreignKeys: false
     },
@@ -474,7 +486,7 @@ function applyWithDatabase(database, nowFn) {
     }
     for (const statement of MIGRATION_STATEMENTS) database.exec(statement);
     database.prepare(`
-      insert into platform_schema_migrations (
+      insert into main.platform_schema_migrations (
         migration_id, ddl_checksum, applied_at
       ) values (?, ?, ?)
     `).run(

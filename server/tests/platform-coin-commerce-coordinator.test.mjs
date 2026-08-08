@@ -1039,6 +1039,60 @@ test("one pass preserves Store order, contains capture failures, and bounds both
   );
 });
 
+test("coordinator preserves the exact immutable Authority DTO", async () => {
+  const log = [];
+  const store = makeStore(log);
+  const authority = {
+    authorityRef: "authority.coordinator:1",
+    authorityVersion: 3,
+    resourceRequestId: "request.coordinator:1",
+    entitlementId: "entitlement.coordinator:1",
+    issuedLinkId: "link.coordinator:1"
+  };
+  let claimed = false;
+  store.claimNextFulfillmentCommand = (input) => {
+    log.push(["claimNextFulfillmentCommand", input]);
+    if (claimed) return null;
+    claimed = true;
+    return { ...commandFixture(), authority };
+  };
+  const executions = [];
+  const coordinator = createCoinCommerceCoordinator({
+    store,
+    fulfillmentHandler: makeHandler({
+      async execute(input) {
+        executions.push(input);
+        assert.equal(Object.isFrozen(input), true);
+        assert.equal(Object.isFrozen(input.authority), true);
+        return { status: "delivered", effectRef: "effect_order_1" };
+      }
+    }),
+    captureBatchSize: 1
+  });
+
+  const summary = await coordinator.runOnce();
+  assert.equal(summary.commandsDelivered, 1);
+  assert.deepEqual(executions, [{
+    commandRef: "coincmd_order_1",
+    orderRef: "order_1",
+    accountId: "account_1",
+    offerVersionRef: "offerv_plan_30d_50gb_monthly_v1",
+    delivery: planDelivery(),
+    authority
+  }]);
+  assert.deepEqual(
+    log.filter(([operation]) => operation === "completeFulfillmentCommand")
+      .map(([, input]) => input),
+    [{
+      commandRef: "coincmd_order_1",
+      leaseGeneration: 1,
+      leaseToken: "a".repeat(64),
+      effectRef: "effect_order_1",
+      status: "delivered"
+    }]
+  );
+});
+
 test("one pass preserves the immutable offer version binding for the handler", async () => {
   const store = makeStore();
   let claimed = false;

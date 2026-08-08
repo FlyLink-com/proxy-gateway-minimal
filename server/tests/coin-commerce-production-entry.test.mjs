@@ -287,6 +287,52 @@ test("production entry rejects Authority mode unless Commerce is enabled", async
   }
 });
 
+test("production entry rejects each missing Authority schema independently", async (t) => {
+  for (const scenario of [
+    {
+      label: "foundation_missing",
+      installFoundation: false,
+      code: "account_resource_authority_schema_not_ready"
+    },
+    {
+      label: "quote_binding_missing",
+      installFoundation: true,
+      code: "account_resource_authority_commerce_schema_not_ready"
+    }
+  ]) {
+    await t.test(scenario.label, async () => {
+      const directory = mkdtempSync(join(
+        tmpdir(),
+        `proxy-gateway-production-authority-${scenario.label}-`
+      ));
+      const paths = prepareRuntime(directory);
+      if (scenario.installFoundation) {
+        applyAccountResourceAuthorityMigrations({
+          dbPath: paths.controlDbPath,
+          expectedMigrationId: REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_MIGRATION_ID,
+          expectedDdlChecksum:
+            ACCOUNT_RESOURCE_AUTHORITY_MIGRATIONS[0].ddlChecksum,
+          nowFn: () => new Date("2026-08-08T00:00:00.000Z")
+        });
+      }
+      const consolePort = await reservePort();
+      const runtimeOptions = productionRuntimeOptions(paths, consolePort);
+      runtimeOptions.env.COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED =
+        "true";
+
+      try {
+        await assert.rejects(
+          startProductionProxyGateway({ runtimeOptions, logger: false }),
+          (error) => error?.code === scenario.code
+        );
+        await assertPortBindable(consolePort);
+      } finally {
+        removeTempDir(directory);
+      }
+    });
+  }
+});
+
 test("production entry wires Authority mode only after both exact schemas exist", async () => {
   const directory = mkdtempSync(join(
     tmpdir(),

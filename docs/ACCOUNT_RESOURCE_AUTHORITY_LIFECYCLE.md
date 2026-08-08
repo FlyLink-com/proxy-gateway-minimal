@@ -116,7 +116,12 @@ exists from an earlier enabled runtime, the disabled runtime reads only that
 immutable provenance: bound active Quotes are stale, bound nonterminal Orders
 are released or isolated before capture/dispatch, and terminal command history
 remains read-only. Turning the flag off therefore cannot downgrade an existing
-Authority-bound artifact into the legacy resolver path.
+Authority-bound artifact into the legacy resolver path **when every process is
+running this new binary**. This is not compatibility with a pre-Authority
+release. Before activation, a Runtime Gate must prove that no old process
+remains. After activation, rollback first means disabling the flag on this new
+binary; returning to a pre-Authority release requires a separate drain,
+artifact inventory, and rollback Gate.
 
 An existing active offer may be renewed or extended only when the immutable
 `offer_version_ref` is the same. Switching between monthly/annual products,
@@ -124,9 +129,11 @@ traffic sizes, or any other offer version requires a separately reviewed
 product-transition contract. This PR does not infer or implement cross-package
 replacement behavior.
 
-## CLI Contract
+## Foundational CLI Contract
 
 The closed CLI is `scripts/platform-account-resource-authority-schema.mjs`.
+It is inherited from the already-merged foundational Authority change; this PR
+does not add or extend that CLI.
 It accepts an absolute database path and emits one aggregate-only JSON object.
 It never emits database paths, account identifiers, resource/request/
 entitlement/link references, raw rows, SQL, credentials, subscription URLs, or
@@ -187,11 +194,8 @@ is empty and `externalDependencies = 0` immediately before execution.
 
 Included:
 
-- the foundational Authority migration, model, and exact schema validator;
 - a separate additive Quote-binding migration and validator with zero backfill;
-- empty-table-only rollback;
-- authority model and fail-closed resolver;
-- migration and resolver dry-run paths;
+- runtime use of the already-merged Authority model and fail-closed resolver;
 - default-off runtime wiring from Quote through capture, outbox, coordinator,
   and the exact fulfillment transaction;
 - TDD for schema, lifecycle, stale-version/no-debit, idempotency, concurrency,
@@ -201,7 +205,13 @@ Included:
 Excluded:
 
 - automatic backfill or automatic keeper selection;
+- an operator CLI, dry-run, or rollback API for the Quote-binding integration
+  schema;
+- an operator assignment/reassignment CLI for the foundational Authority data;
 - any assignment for `case_02` or the other ambiguous production accounts;
+- first-purchase bootstrap for an account without an explicit Authority;
+  zero-resource/no-Authority accounts remain fail-closed and are not eligible
+  for an all-account Commerce activation or canary;
 - production database access or mutation;
 - Portal/static deployment;
 - Commerce runtime activation, Quote canary, production Order creation, Coins
@@ -216,18 +226,21 @@ Each phase requires a separate Risk A review and approval:
 
 1. **Schema Gate**: fresh read-only inventory, backup identity, migration
    dry-run, apply the empty schema, exact readback, integrity checks, and an
-   empty-table/no-external-consumer rollback proof.
+   empty-table/no-external-consumer rollback proof for the already-merged
+   foundational Authority schema.
 2. **Data Gate**: assign only explicitly approved account/resource chains.
    `case_02` requires its own exact assignment approval; unresolved resources
-   remain unchanged.
+   remain unchanged. A reviewed controlled assignment runner or CLI is a
+   source prerequisite; ad hoc SQL is forbidden.
 3. **Integration Schema Gate**: separately dry-run/apply the empty immutable
    Quote-binding table and validate both dependency schemas. This source PR
-   does not authorize that mutation. The source module exposes the closed
-   migration API, but an operator CLI for this integration schema is not part
-   of this PR and must be separately reviewed before this Gate can execute.
+   does not authorize that mutation. The source module exposes inspect,
+   validate, and apply APIs only. A reviewed operator entry point plus an exact
+   rollback or backup-recovery contract is a source prerequisite before this
+   Gate can execute.
 4. **Runtime Gate**: deploy the resolver and integration with the Authority
-   Commerce flag still default-off, run
-   aggregate `resolve-dry-run`, and verify fail-closed behavior.
+   Commerce flag still default-off, prove that no pre-Authority process remains,
+   run aggregate `resolve-dry-run`, and verify fail-closed behavior.
 5. **Commerce Gate**: separately approve activation and a bounded Quote canary.
 
 No phase inherits production authority from the preceding PR or Gate.
@@ -257,7 +270,9 @@ the dependency schema is not exact, integrity checks fail, migration identity
 or checksum differs, owned objects drift, or a write would exceed the approved
 phase.
 
-For an empty schema deployment, rollback is allowed only while the authority
-table contains zero rows and has zero external schema consumers. After any
+For the foundational empty schema, rollback is allowed only while the authority
+table contains zero rows and has zero external schema consumers. The
+Quote-binding sidecar in this PR has no operator rollback API; its production
+Gate must first bind a reviewed rollback or backup-recovery contract. After any
 assignment or dependent schema integration, rollback must stop and move to a
 separately designed data-retention and compatibility procedure.

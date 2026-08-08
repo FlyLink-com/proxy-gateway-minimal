@@ -405,6 +405,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
   let walletParticipant;
   let authorityStore;
   let authorityBindingTableAvailable = false;
+  let authorityBindingSchemaVersion = null;
   try {
     if (hasPath) {
       ownedDatabase = new Database(dbPath, { fileMustExist: true });
@@ -445,10 +446,19 @@ export function createSqliteCoinCommerceStore(options = {}) {
     } else {
       authorityBindingTableAvailable = Boolean(db.prepare(`
         select 1
-          from sqlite_master
+          from main.sqlite_master
          where type = 'table'
            and name = 'platform_commerce_authority_quote_bindings'
       `).pluck().get());
+    }
+    authorityBindingSchemaVersion = db.pragma("schema_version", {
+      simple: true
+    });
+    if (
+      !Number.isSafeInteger(authorityBindingSchemaVersion)
+      || authorityBindingSchemaVersion < 0
+    ) {
+      throw commerceError("commerce_infrastructure_error");
     }
     walletStore = createSqliteCoinWalletStore({
       database: db,
@@ -720,22 +730,26 @@ export function createSqliteCoinCommerceStore(options = {}) {
     }
   }
 
-  function readQuoteAuthoritySnapshot(quoteRef, accountId) {
-    if (!authorityBindingTableAvailable) {
-      authorityBindingTableAvailable = Boolean(db.prepare(`
-        select 1
-          from sqlite_master
-         where type = 'table'
-           and name = 'platform_commerce_authority_quote_bindings'
-      `).pluck().get());
-      if (!authorityBindingTableAvailable) return null;
+  function refreshAuthorityBindingTableAvailability() {
+    const schemaVersion = db.pragma("schema_version", { simple: true });
+    if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 0) {
+      throw commerceError("commerce_infrastructure_error");
     }
-    const row = db.prepare(`
-      select authority_ref, authority_version, resource_request_id,
-             entitlement_id, issued_link_id
-        from platform_commerce_authority_quote_bindings
-       where quote_ref = ? and account_id = ?
-    `).get(quoteRef, accountId);
+    if (
+      !authorityBindingTableAvailable
+      && schemaVersion !== authorityBindingSchemaVersion
+    ) {
+      authorityBindingTableAvailable = db.pragma("table_list").some(
+        (row) => row.schema === "main"
+          && row.name === "platform_commerce_authority_quote_bindings"
+          && row.type === "table"
+      );
+    }
+    authorityBindingSchemaVersion = schemaVersion;
+    return authorityBindingTableAvailable;
+  }
+
+  function authoritySnapshotFromBindingRow(row) {
     if (!row) return null;
     try {
       return normalizeAuthoritySnapshot({
@@ -748,6 +762,17 @@ export function createSqliteCoinCommerceStore(options = {}) {
     } catch {
       return null;
     }
+  }
+
+  function readQuoteAuthoritySnapshot(quoteRef, accountId) {
+    if (!refreshAuthorityBindingTableAvailability()) return null;
+    const row = db.prepare(`
+      select authority_ref, authority_version, resource_request_id,
+             entitlement_id, issued_link_id
+        from main.platform_commerce_authority_quote_bindings
+       where quote_ref = ? and account_id = ?
+    `).get(quoteRef, accountId);
+    return authoritySnapshotFromBindingRow(row);
   }
 
   function isOrderAuthorityActionable(order, payload = null) {
@@ -1080,7 +1105,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
     );
     if (authorityEnabled) {
       const inserted = db.prepare(`
-        insert into platform_commerce_authority_quote_bindings (
+        insert into main.platform_commerce_authority_quote_bindings (
           quote_ref, authority_ref, account_id, authority_version,
           resource_request_id, entitlement_id, issued_link_id, created_at
         ) values (?, ?, ?, ?, ?, ?, ?, ?)
@@ -1418,6 +1443,34 @@ export function createSqliteCoinCommerceStore(options = {}) {
   }
 
   function projectListedOrderRow(row) {
+    const authorityFields = [
+      "authority_binding_ref",
+      "authority_binding_version",
+      "authority_binding_request_id",
+      "authority_binding_entitlement_id",
+      "authority_binding_link_id"
+    ];
+    const authorityFieldPresence = authorityFields.map(
+      (field) => row[field] !== null
+    );
+    if (
+      authorityFieldPresence.some(Boolean)
+      && !authorityFieldPresence.every(Boolean)
+    ) {
+      throw commerceError("commerce_infrastructure_error");
+    }
+    const authoritySnapshot = authorityFieldPresence.every(Boolean)
+      ? authoritySnapshotFromBindingRow({
+          authority_ref: row.authority_binding_ref,
+          authority_version: row.authority_binding_version,
+          resource_request_id: row.authority_binding_request_id,
+          entitlement_id: row.authority_binding_entitlement_id,
+          issued_link_id: row.authority_binding_link_id
+        })
+      : null;
+    if (authorityFieldPresence.every(Boolean) && authoritySnapshot === null) {
+      throw commerceError("commerce_infrastructure_error");
+    }
     const commandFields = [
       "fulfillment_command_ref",
       "fulfillment_order_ref",
@@ -1488,7 +1541,12 @@ export function createSqliteCoinCommerceStore(options = {}) {
     } else {
       throw commerceError("commerce_infrastructure_error");
     }
-    validateCommandAndReceiptSnapshot(command, row, receipts);
+    validateCommandAndReceiptSnapshot(
+      command,
+      row,
+      receipts,
+      authoritySnapshot
+    );
     return projectOrderValues(
       row,
       {
@@ -2209,6 +2267,26 @@ export function createSqliteCoinCommerceStore(options = {}) {
       }
       const afterCreatedAt = hasCreatedAt ? value.afterCreatedAt : null;
       const afterOrderRef = hasOrderRef ? value.afterOrderRef : null;
+      const includeAuthorityBindings =
+        refreshAuthorityBindingTableAvailability();
+      const authorityProjection = includeAuthorityBindings
+        ? `
+               b.authority_ref as authority_binding_ref,
+               b.authority_version as authority_binding_version,
+               b.resource_request_id as authority_binding_request_id,
+               b.entitlement_id as authority_binding_entitlement_id,
+               b.issued_link_id as authority_binding_link_id`
+        : `
+               null as authority_binding_ref,
+               null as authority_binding_version,
+               null as authority_binding_request_id,
+               null as authority_binding_entitlement_id,
+               null as authority_binding_link_id`;
+      const authorityJoin = includeAuthorityBindings
+        ? `
+          left join main.platform_commerce_authority_quote_bindings b
+            on b.quote_ref = o.quote_ref and b.account_id = o.account_id`
+        : "";
       const rows = db.prepare(`
         with selected_orders as materialized (
           select *
@@ -2258,11 +2336,13 @@ export function createSqliteCoinCommerceStore(options = {}) {
                r.effect_ref as fulfillment_effect_ref,
                r.status as fulfillment_receipt_status,
                r.safe_code as fulfillment_receipt_safe_code,
-               r.recorded_at as fulfillment_recorded_at
+               r.recorded_at as fulfillment_recorded_at,
+               ${authorityProjection}
           from selected_orders o
           left join selected_commands c
             on c.order_ref = o.order_ref
           left join receipt_summary r on r.command_ref = c.command_ref
+          ${authorityJoin}
          order by o.created_at desc, o.order_ref desc
       `).all(
         accountId,
@@ -2413,7 +2493,11 @@ export function createSqliteCoinCommerceStore(options = {}) {
     };
   }
 
-  function expectedStoredCommandPayload(order, payload) {
+  function expectedStoredCommandPayload(
+    order,
+    payload,
+    authoritySnapshot = undefined
+  ) {
     const offerSnapshot = normalizeStoredOffer(
       parseJson(order.offer_snapshot_json)
     );
@@ -2421,18 +2505,28 @@ export function createSqliteCoinCommerceStore(options = {}) {
       offerVersionRef: offerSnapshot.offerVersionRef,
       delivery: offerSnapshot.delivery
     };
-    if (!Object.hasOwn(payload, "authority")) return expected;
-    const authority = readQuoteAuthoritySnapshot(
-      order.quote_ref,
-      order.account_id
-    );
-    if (!authority) {
+    const authority = authoritySnapshot === undefined
+      ? readQuoteAuthoritySnapshot(order.quote_ref, order.account_id)
+      : authoritySnapshot;
+    const payloadUsesAuthority = Object.hasOwn(payload, "authority");
+    if (authority === null) {
+      if (payloadUsesAuthority) {
+        throw commerceError("commerce_infrastructure_error");
+      }
+      return expected;
+    }
+    if (!payloadUsesAuthority) {
       throw commerceError("commerce_infrastructure_error");
     }
     return { ...expected, authority };
   }
 
-  function validateCommandAndReceiptSnapshot(command, order, receipts) {
+  function validateCommandAndReceiptSnapshot(
+    command,
+    order,
+    receipts,
+    authoritySnapshot = undefined
+  ) {
     if (!command) {
       throw commerceError("commerce_infrastructure_error");
     }
@@ -2442,7 +2536,7 @@ export function createSqliteCoinCommerceStore(options = {}) {
       : null;
     const payload = parseCommandPayload(command.payload_json);
     const expectedPayload = order
-      ? expectedStoredCommandPayload(order, payload)
+      ? expectedStoredCommandPayload(order, payload, authoritySnapshot)
       : null;
     const commandMatchesOrderState = (
       order?.payment_status === "captured"

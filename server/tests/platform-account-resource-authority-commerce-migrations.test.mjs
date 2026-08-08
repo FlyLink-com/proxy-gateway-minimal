@@ -517,8 +517,297 @@ test("validator fails closed on a malformed injected migration ledger", () => {
     assert.deepEqual(validation.reasonCodes, ["database_inspection_failed"]);
     assert.equal(validation.checks.schemaExact, false);
     assert.equal(validation.checks.quickCheck, false);
+    assert.equal(validation.counts.bindingRows, null);
+    assert.equal(validation.checks.zeroBackfill, false);
     assert.deepEqual(validation.pendingMigrationIds, []);
   } finally {
     database.close();
   }
+});
+
+test("apply is idempotent and rejects mismatched identity before database access", () => {
+  withTempDirectory((directory) => {
+    const dbPath = join(directory, "idempotent.sqlite");
+    createFoundation(dbPath);
+    const database = new Database(dbPath);
+    try {
+      const exact = {
+        database,
+        expectedMigrationId:
+          REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+        expectedDdlChecksum:
+          ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATIONS[0].ddlChecksum,
+        nowFn: () => new Date(APPLIED_AT)
+      };
+      const first = applyAccountResourceAuthorityCommerceMigrations(exact);
+      const replay = applyAccountResourceAuthorityCommerceMigrations(exact);
+      assert.equal(first.sourceChanged, true);
+      assert.deepEqual(first.appliedMigrationIds, [
+        REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID
+      ]);
+      assert.equal(replay.sourceChanged, false);
+      assert.deepEqual(replay.appliedMigrationIds, []);
+      assert.equal(replay.ok, true);
+      assert.equal(database.prepare(`
+        select count(*) from platform_schema_migrations
+         where migration_id = ?
+      `).pluck().get(
+        REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID
+      ), 1);
+    } finally {
+      database.close();
+    }
+  });
+
+  const unopened = new Proxy({}, {
+    get() {
+      throw new Error("database must not be accessed");
+    }
+  });
+  assert.throws(() => applyAccountResourceAuthorityCommerceMigrations({
+    database: unopened,
+    expectedMigrationId: "20260808_999_wrong",
+    expectedDdlChecksum:
+      ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATIONS[0].ddlChecksum
+  }), { code: "authority_commerce_migration_id_mismatch" });
+  assert.throws(() => applyAccountResourceAuthorityCommerceMigrations({
+    database: unopened,
+    expectedMigrationId:
+      REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+    expectedDdlChecksum: "0".repeat(64)
+  }), { code: "authority_commerce_migration_checksum_mismatch" });
+});
+
+test("post-apply owned schema drift is rejected without replay mutation", () => {
+  withTempDirectory((directory) => {
+    const dbPath = join(directory, "post-apply-drift.sqlite");
+    createFoundation(dbPath);
+    const database = new Database(dbPath);
+    try {
+      const exact = {
+        database,
+        expectedMigrationId:
+          REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+        expectedDdlChecksum:
+          ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATIONS[0].ddlChecksum,
+        nowFn: () => new Date(APPLIED_AT)
+      };
+      applyAccountResourceAuthorityCommerceMigrations(exact);
+      database.exec(
+        "drop trigger commerce_authority_quote_bindings_update_deny"
+      );
+
+      const validation = validateAccountResourceAuthorityCommerceSchema({
+        database
+      });
+      assert.equal(validation.ok, false);
+      assert.equal(validation.schemaState, "blocked");
+      assert.equal(validation.checks.schemaExact, false);
+      assert.equal(validation.counts.bindingRows, 0);
+      assert.equal(validation.checks.zeroBackfill, true);
+      assert.deepEqual(validation.reasonCodes, [
+        "owned_object_incompatible",
+        "owned_object_missing"
+      ]);
+      assert.throws(
+        () => applyAccountResourceAuthorityCommerceMigrations(exact),
+        { code: "authority_commerce_applied_schema_incompatible" }
+      );
+      assert.equal(database.prepare(`
+        select count(*) from platform_schema_migrations
+         where migration_id = ? and ddl_checksum = ?
+      `).pluck().get(
+        REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+        ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATIONS[0].ddlChecksum
+      ), 1);
+      assert.equal(database.prepare(`
+        select count(*) from sqlite_master
+         where type = 'table' and name = ?
+      `).pluck().get(TABLE), 1);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("validator reports populated drift without inventing zero backfill", () => {
+  withTempDirectory((directory) => {
+    const dbPath = join(directory, "populated-drift.sqlite");
+    createFoundation(dbPath);
+    const database = new Database(dbPath);
+    try {
+      database.exec(`
+        create table ${TABLE} (marker text not null);
+        insert into ${TABLE} (marker) values ('retained');
+      `);
+      const validation = validateAccountResourceAuthorityCommerceSchema({
+        database
+      });
+      assert.equal(validation.ok, false);
+      assert.equal(validation.schemaState, "blocked");
+      assert.equal(validation.counts.bindingRows, 1);
+      assert.equal(validation.checks.zeroBackfill, false);
+      assert.deepEqual(validation.reasonCodes, [
+        "owned_object_without_migration"
+      ]);
+      assert.throws(() => applyAccountResourceAuthorityCommerceMigrations({
+        database,
+        expectedMigrationId:
+          REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+        expectedDdlChecksum:
+          ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATIONS[0].ddlChecksum,
+        nowFn: () => new Date(APPLIED_AT)
+      }), { code: "authority_commerce_owned_object_without_migration" });
+      assert.equal(database.prepare(`
+        select count(*) from ${TABLE}
+      `).pluck().get(), 1);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("migration ledger checksum drift is rejected without creating objects", () => {
+  withTempDirectory((directory) => {
+    const dbPath = join(directory, "ledger-drift.sqlite");
+    createFoundation(dbPath);
+    const database = new Database(dbPath);
+    try {
+      database.prepare(`
+        insert into platform_schema_migrations (
+          migration_id, ddl_checksum, applied_at
+        ) values (?, ?, ?)
+      `).run(
+        REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+        "f".repeat(64),
+        APPLIED_AT
+      );
+      const validation = validateAccountResourceAuthorityCommerceSchema({
+        database
+      });
+      assert.equal(validation.ok, false);
+      assert.equal(validation.schemaState, "blocked");
+      assert.deepEqual(validation.reasonCodes, [
+        "migration_checksum_mismatch"
+      ]);
+      assert.equal(validation.counts.ownedObjects, 0);
+      assert.equal(validation.counts.bindingRows, 0);
+      assert.equal(validation.checks.zeroBackfill, true);
+      assert.throws(() => applyAccountResourceAuthorityCommerceMigrations({
+        database,
+        expectedMigrationId:
+          REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+        expectedDdlChecksum:
+          ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATIONS[0].ddlChecksum,
+        nowFn: () => new Date(APPLIED_AT)
+      }), { code: "authority_commerce_migration_checksum_mismatch" });
+      assert.equal(database.prepare(`
+        select count(*) from sqlite_master
+         where name = ? or tbl_name = ?
+      `).pluck().get(TABLE, TABLE), 0);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("validator fails closed when a binding row count cannot be proven", () => {
+  withTempDirectory((directory) => {
+    const dbPath = join(directory, "unknown-row-count.sqlite");
+    createFoundation(dbPath);
+    const database = new Database(dbPath);
+    try {
+      applyAccountResourceAuthorityCommerceMigrations({
+        database,
+        expectedMigrationId:
+          REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+        expectedDdlChecksum:
+          ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATIONS[0].ddlChecksum,
+        nowFn: () => new Date(APPLIED_AT)
+      });
+      const injected = new Proxy(database, {
+        get(target, property) {
+          if (property === "prepare") {
+            return (sql) => {
+              if (/select count\(\*\) from main\.platform_commerce_authority_quote_bindings/i.test(
+                sql
+              )) {
+                throw new Error("injected count failure");
+              }
+              return target.prepare(sql);
+            };
+          }
+          const value = Reflect.get(target, property, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+      });
+      const validation = validateAccountResourceAuthorityCommerceSchema({
+        database: injected
+      });
+      assert.equal(validation.ok, false);
+      assert.equal(validation.schemaState, "blocked");
+      assert.equal(validation.counts.bindingRows, null);
+      assert.equal(validation.checks.zeroBackfill, false);
+      assert.deepEqual(validation.reasonCodes, [
+        "binding_row_count_unknown"
+      ]);
+    } finally {
+      database.close();
+    }
+  });
+});
+
+test("migration DDL and ledger roll back together on an injected failure", () => {
+  withTempDirectory((directory) => {
+    const dbPath = join(directory, "transaction-rollback.sqlite");
+    createFoundation(dbPath);
+    const database = new Database(dbPath);
+    try {
+      let execCount = 0;
+      const injected = new Proxy(database, {
+        get(target, property) {
+          if (property === "exec") {
+            return (sql) => {
+              execCount += 1;
+              if (execCount === 2) {
+                const error = new Error("injected migration failure");
+                error.code = "SQLITE_IOERR";
+                throw error;
+              }
+              return target.exec(sql);
+            };
+          }
+          const value = Reflect.get(target, property, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+      });
+      assert.throws(() => applyAccountResourceAuthorityCommerceMigrations({
+        database: injected,
+        expectedMigrationId:
+          REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+        expectedDdlChecksum:
+          ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATIONS[0].ddlChecksum,
+        nowFn: () => new Date(APPLIED_AT)
+      }), { code: "authority_commerce_migration_apply_failed" });
+      assert.equal(database.prepare(`
+        select count(*) from sqlite_master
+         where name = ? or tbl_name = ?
+      `).pluck().get(TABLE, TABLE), 0);
+      assert.equal(database.prepare(`
+        select count(*) from platform_schema_migrations
+         where migration_id = ?
+      `).pluck().get(
+        REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID
+      ), 0);
+      const pending = validateAccountResourceAuthorityCommerceSchema({
+        database
+      });
+      assert.equal(pending.schemaState, "pending");
+      assert.deepEqual(pending.pendingMigrationIds, [
+        REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID
+      ]);
+    } finally {
+      database.close();
+    }
+  });
 });

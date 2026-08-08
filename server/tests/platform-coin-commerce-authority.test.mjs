@@ -25,6 +25,9 @@ import {
   applyCoinCommerceMigrations
 } from "../services/platform/coin-commerce-migrations.mjs";
 import {
+  createCoinCommerceCoordinator
+} from "../services/platform/coin-commerce-coordinator.mjs";
+import {
   createCoinCommerceProductionSubscriptionFulfillment
 } from "../services/platform/coin-commerce-production-subscription-fulfillment.mjs";
 import {
@@ -71,6 +74,22 @@ function fixedClockDatabase(database) {
           if (/select\s+strftime\('%Y-%m-%dT%H:%M:%fZ',\s*'now'\)/i.test(sql)) {
             return { pluck: () => ({ get: () => NOW }) };
           }
+          return target.prepare(sql);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+
+function observedPrepareDatabase(database, preparedSql) {
+  return new Proxy(database, {
+    get(target, property) {
+      if (property === "inTransaction") return target.inTransaction;
+      if (property === "prepare") {
+        return (sql) => {
+          preparedSql.push(sql);
           return target.prepare(sql);
         };
       }
@@ -375,6 +394,72 @@ test("authority flag on binds an exact Authority identity, version, and resource
   }
 });
 
+test("a TEMP sidecar cannot shadow the durable main Authority binding", () => {
+  const state = createFoundation();
+  let store;
+  try {
+    const accountId = seedAccount(state.controlStore, "acct_temp_shadow");
+    const resourceA = seedResource(state.controlStore, {
+      accountId,
+      suffix: "temp_shadow"
+    });
+    const authority = assign(
+      state.database,
+      resourceA,
+      "authority_temp_shadow"
+    );
+    store = createCommerceStore(state.database, { authorityEnabled: true });
+    state.database.exec(`
+      create temp table platform_commerce_authority_quote_bindings as
+      select *
+        from main.platform_commerce_authority_quote_bindings
+       where 0
+    `);
+    seedWalletAndOffer(store, accountId);
+    const created = quote(store, accountId);
+    assert.equal(state.database.prepare(`
+      select count(*)
+        from main.platform_commerce_authority_quote_bindings
+       where quote_ref = ?
+    `).pluck().get(created.quoteRef), 1);
+    assert.equal(state.database.prepare(`
+      select count(*)
+        from temp.platform_commerce_authority_quote_bindings
+    `).pluck().get(), 0);
+    state.database.prepare(`
+      insert into temp.platform_commerce_authority_quote_bindings (
+        quote_ref, authority_ref, account_id, authority_version,
+        resource_request_id, entitlement_id, issued_link_id, created_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      created.quoteRef,
+      authority.authorityRef,
+      accountId,
+      authority.authorityVersion + 1,
+      resourceA.resourceRequestId,
+      resourceA.entitlementId,
+      resourceA.issuedLinkId,
+      NOW
+    );
+
+    const order = confirm(
+      store,
+      created,
+      "confirm_temp_shadow",
+      accountId
+    );
+    store.claimDueCaptures({ limit: 1 });
+    store.captureClaimedOrder({ orderRef: order.orderRef });
+    assert.equal(
+      store.listOrders({ accountId, limit: 100 }).orders[0].orderRef,
+      order.orderRef
+    );
+  } finally {
+    store?.close();
+    state.database.close();
+  }
+});
+
 test("missing or drifted Authority creates no Quote", () => {
   for (const drift of [false, true]) {
     const state = createFoundation();
@@ -402,6 +487,40 @@ test("missing or drifted Authority creates no Quote", () => {
     } finally {
       state.database.close();
     }
+  }
+});
+
+test("Authority mode never bootstraps a first resource during Quote", () => {
+  const state = createFoundation();
+  try {
+    const accountId = seedAccount(state.controlStore, "acct_no_authority");
+    const store = createCommerceStore(state.database, { authorityEnabled: true });
+    try {
+      seedWalletAndOffer(store, accountId);
+      const beforeWallet = walletFinancialSnapshot(state.database);
+      assert.throws(() => quote(store, accountId), {
+        code: "offer_unavailable"
+      });
+      assert.deepEqual(walletFinancialSnapshot(state.database), beforeWallet);
+      assert.equal(state.database.prepare(
+        "select count(*) from platform_coin_commerce_quotes"
+      ).pluck().get(), 0);
+      for (const table of [
+        "platform_entitlements",
+        "platform_issuance_requests",
+        "platform_issued_subscription_links",
+        "platform_portal_access_requests",
+        "platform_account_resource_authorities"
+      ]) {
+        assert.equal(state.database.prepare(
+          `select count(*) from ${table}`
+        ).pluck().get(), 0);
+      }
+    } finally {
+      store.close();
+    }
+  } finally {
+    state.database.close();
   }
 });
 
@@ -700,6 +819,154 @@ test("Authority-bound Confirm and capture retries do not duplicate Coin, Order, 
       store.close();
     }
   } finally {
+    state.database.close();
+  }
+});
+
+test("Authority command payload cannot drop its immutable Quote binding", () => {
+  const state = createFoundation();
+  let store;
+  try {
+    const accountId = seedAccount(state.controlStore);
+    const resourceA = seedResource(state.controlStore, {
+      accountId,
+      suffix: "payload_downgrade"
+    });
+    assign(state.database, resourceA, "authority_payload_downgrade");
+    store = createCommerceStore(state.database, { authorityEnabled: true });
+    seedWalletAndOffer(store, accountId);
+    const created = quote(store, accountId);
+    const order = confirm(
+      store,
+      created,
+      "confirm_authority_payload_downgrade",
+      accountId
+    );
+    store.claimDueCaptures({ limit: 1 });
+    store.captureClaimedOrder({ orderRef: order.orderRef });
+    store.close();
+    store = null;
+
+    state.database.prepare(`
+      update platform_coin_commerce_fulfillment_commands
+         set payload_json = json_remove(payload_json, '$.authority')
+       where order_ref = ?
+    `).run(order.orderRef);
+
+    assert.throws(
+      () => createCommerceStore(state.database, { authorityEnabled: true }),
+      { code: "commerce_infrastructure_error" }
+    );
+  } finally {
+    store?.close();
+    state.database.close();
+  }
+});
+
+test("Authority command completion rejects a payload downgrade atomically", () => {
+  const state = createFoundation();
+  let store;
+  try {
+    const accountId = seedAccount(state.controlStore);
+    const resourceA = seedResource(state.controlStore, {
+      accountId,
+      suffix: "completion_downgrade"
+    });
+    assign(state.database, resourceA, "authority_completion_downgrade");
+    store = createCommerceStore(state.database, { authorityEnabled: true });
+    seedWalletAndOffer(store, accountId);
+    const created = quote(store, accountId);
+    const order = confirm(
+      store,
+      created,
+      "confirm_authority_completion_downgrade",
+      accountId
+    );
+    store.claimDueCaptures({ limit: 1 });
+    store.captureClaimedOrder({ orderRef: order.orderRef });
+    const command = store.claimNextFulfillmentCommand({ leaseMs: 30_000 });
+
+    state.database.prepare(`
+      update platform_coin_commerce_fulfillment_commands
+         set payload_json = json_remove(payload_json, '$.authority')
+       where command_ref = ?
+    `).run(command.commandRef);
+
+    assert.throws(() => store.completeFulfillmentCommand({
+      commandRef: command.commandRef,
+      leaseGeneration: command.leaseGeneration,
+      leaseToken: command.leaseToken,
+      effectRef: "effect_authority_completion_downgrade",
+      status: "delivered"
+    }), { code: "commerce_infrastructure_error" });
+    assert.deepEqual(state.database.prepare(`
+      select status, lease_generation as leaseGeneration,
+             lease_token as leaseToken
+        from platform_coin_commerce_fulfillment_commands
+       where command_ref = ?
+    `).get(command.commandRef), {
+      status: "processing",
+      leaseGeneration: command.leaseGeneration,
+      leaseToken: command.leaseToken
+    });
+    assert.equal(state.database.prepare(`
+      select count(*)
+        from platform_coin_commerce_fulfillment_receipts
+       where command_ref = ?
+    `).pluck().get(command.commandRef), 0);
+  } finally {
+    store?.close();
+    state.database.close();
+  }
+});
+
+test("Authority-bound order listing stays bounded and rejects payload downgrade", () => {
+  const state = createFoundation();
+  const preparedSql = [];
+  let store;
+  try {
+    const accountId = seedAccount(state.controlStore, "acct_authority_list");
+    const resourceA = seedResource(state.controlStore, {
+      accountId,
+      suffix: "authority_list"
+    });
+    assign(state.database, resourceA, "authority_list");
+    store = createCommerceStore(
+      observedPrepareDatabase(state.database, preparedSql),
+      { authorityEnabled: true }
+    );
+    seedWalletAndOffer(store, accountId);
+    const orders = [];
+    for (let index = 1; index <= 3; index += 1) {
+      const created = quote(store, accountId);
+      const order = confirm(
+        store,
+        created,
+        `confirm_authority_list_${index}`,
+        accountId
+      );
+      store.claimDueCaptures({ limit: 1 });
+      store.captureClaimedOrder({ orderRef: order.orderRef });
+      orders.push(order);
+    }
+
+    preparedSql.length = 0;
+    assert.equal(store.listOrders({ accountId, limit: 100 }).orders.length, 3);
+    assert.equal(preparedSql.length, 2);
+
+    state.database.prepare(`
+      update platform_coin_commerce_fulfillment_commands
+         set payload_json = json_remove(payload_json, '$.authority')
+       where order_ref = ?
+    `).run(orders[1].orderRef);
+    preparedSql.length = 0;
+    assert.throws(
+      () => store.listOrders({ accountId, limit: 100 }),
+      { code: "commerce_infrastructure_error" }
+    );
+    assert.equal(preparedSql.length, 2);
+  } finally {
+    store?.close();
     state.database.close();
   }
 });
@@ -1187,6 +1454,130 @@ test("Authority mode never infers an active cross-product transition", () => {
   }
 });
 
+test("Store, coordinator, and production fulfillment mutate only Resource A", async () => {
+  const state = createFoundation();
+  let store;
+  try {
+    const accountId = seedAccount(state.controlStore, "acct_authority_e2e");
+    const resourceA = seedResource(state.controlStore, {
+      accountId,
+      suffix: "e2e_a"
+    });
+    const resourceB = seedResource(state.controlStore, {
+      accountId,
+      suffix: "e2e_b"
+    });
+    assign(state.database, resourceA, "authority_e2e_a");
+    const beforeA = resourceSnapshot(state.database, resourceA);
+    const beforeB = resourceSnapshot(state.database, resourceB);
+    const tenants = new Map([
+      [resourceA.tenantId, {
+        id: resourceA.tenantId,
+        status: "active",
+        expiresAt: VALID_UNTIL
+      }],
+      [resourceB.tenantId, {
+        id: resourceB.tenantId,
+        status: "active",
+        expiresAt: VALID_UNTIL
+      }]
+    ]);
+    const artifacts = new Map([
+      [resourceA.tenantId, [{
+        id: resourceA.artifactId,
+        tenantId: resourceA.tenantId,
+        status: "active"
+      }]],
+      [resourceB.tenantId, [{
+        id: resourceB.artifactId,
+        tenantId: resourceB.tenantId,
+        status: "active"
+      }]]
+    ]);
+    const runtimeCore = {
+      getTenant(tenantId) {
+        return tenants.get(tenantId) ?? null;
+      },
+      listSubscriptionArtifacts(tenantId) {
+        return artifacts.get(tenantId) ?? [];
+      },
+      renewTenant(tenantId, { expiresAt }) {
+        const renewed = {
+          ...tenants.get(tenantId),
+          status: "active",
+          expiresAt
+        };
+        tenants.set(tenantId, renewed);
+        return renewed;
+      }
+    };
+    const productionOffer = {
+      ...OFFER,
+      title: { ...OFFER.title },
+      summary: { ...OFFER.summary },
+      importantNotices: {
+        zh: [...OFFER.importantNotices.zh],
+        en: [...OFFER.importantNotices.en]
+      },
+      acceptedCoinTypes: [...OFFER.acceptedCoinTypes],
+      delivery: { ...OFFER.delivery }
+    };
+    const binding = createCoinCommerceProductionSubscriptionFulfillment({
+      controlStore: state.controlStore,
+      runtimeCore,
+      accountActivationReader: () => true,
+      publishedCatalog: [productionOffer],
+      fulfillmentCatalog: [productionOffer],
+      authorityEnabled: true,
+      nowFn: () => new Date(NOW)
+    });
+    store = createCommerceStore(state.database, { authorityEnabled: true });
+    seedWalletAndOffer(store, accountId);
+    const created = quote(store, accountId);
+    const order = confirm(
+      store,
+      created,
+      "confirm_authority_e2e",
+      accountId
+    );
+    const coordinator = createCoinCommerceCoordinator({
+      store,
+      fulfillmentHandler: binding.fulfillmentHandler,
+      captureBatchSize: 1,
+      commandLeaseMs: 30_000
+    });
+
+    const summary = await coordinator.runOnce();
+    assert.equal(summary.capturesProcessed, 1);
+    assert.equal(summary.commandsDelivered, 1);
+    const afterA = resourceSnapshot(state.database, resourceA);
+    assert.notEqual(
+      afterA.entitlement.valid_until,
+      beforeA.entitlement.valid_until
+    );
+    assert.equal(
+      tenants.get(resourceA.tenantId).expiresAt,
+      afterA.entitlement.valid_until
+    );
+    assert.deepEqual(resourceSnapshot(state.database, resourceB), beforeB);
+    assert.equal(tenants.get(resourceB.tenantId).expiresAt, VALID_UNTIL);
+    assert.equal(state.database.prepare(`
+      select count(*) from platform_coin_ledger_entries
+       where operation = 'held_to_consumed'
+    `).pluck().get(), 1);
+    assert.equal(state.database.prepare(`
+      select count(*)
+        from platform_coin_commerce_fulfillment_receipts r
+        join platform_coin_commerce_fulfillment_commands c
+          on c.command_ref = r.command_ref
+       where c.order_ref = ? and r.status = 'delivered'
+    `).pluck().get(order.orderRef), 1);
+  } finally {
+    store?.close();
+    state.database.close();
+  }
+});
+
 test("Authority fulfillment accepts public Authority refs, mutates only Resource A, and leaves B unchanged", async () => {
   const state = createFoundation();
   try {
@@ -1197,6 +1588,7 @@ test("Authority fulfillment accepts public Authority refs, mutates only Resource
     });
     const resourceB = seedResource(state.controlStore, { accountId, suffix: "b" });
     const authority = assign(state.database, resourceA, ".authority.a");
+    const beforeA = resourceSnapshot(state.database, resourceA);
     const beforeB = resourceSnapshot(state.database, resourceB);
     const tenants = new Map([
       [resourceA.tenantId, {
@@ -1272,7 +1664,21 @@ test("Authority fulfillment accepts public Authority refs, mutates only Resource
     };
     const first = await binding.fulfillmentHandler.execute(command);
     const replay = await binding.fulfillmentHandler.execute(command);
+    const afterA = resourceSnapshot(state.database, resourceA);
     assert.deepEqual(replay, first);
+    assert.notEqual(
+      afterA.entitlement.valid_until,
+      beforeA.entitlement.valid_until
+    );
+    assert.equal(
+      afterA.entitlement.valid_until,
+      afterA.portal.valid_until
+    );
+    assert.equal(afterA.entitlement.valid_until, afterA.portal.expires_at);
+    assert.equal(
+      tenants.get(resourceA.tenantId).expiresAt,
+      afterA.entitlement.valid_until
+    );
     assert.deepEqual(resourceSnapshot(state.database, resourceB), beforeB);
     assert.equal(state.database.prepare(`
       select count(*) from platform_audit_events
