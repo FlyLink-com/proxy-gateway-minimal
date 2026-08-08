@@ -706,21 +706,67 @@ test("reassign rolls back the old revocation when the new authority insert fails
     assert.throws(() => store.reassignAuthority({
       ...assignment(second),
       expectedVersion: 1,
+      expectedPreviousAuthorityRef: "authority_collision",
       revokedBy: "operator_ref",
       revocationReason: "collision_rollback_proof"
     }), (error) => (
       error?.code === "account_resource_authority_assignment_conflict"
     ));
     assert.deepEqual(database.prepare(`
-      select authority_ref, status, version, revoked_at
+      select authority_ref, status, version, previous_authority_ref,
+             created_at, updated_at, revoked_at, revoked_by, revocation_reason
         from platform_account_resource_authorities
        order by version
     `).all(), [{
       authority_ref: "authority_collision",
       status: "active",
       version: 1,
-      revoked_at: null
+      previous_authority_ref: null,
+      created_at: NOW,
+      updated_at: NOW,
+      revoked_at: null,
+      revoked_by: null,
+      revocation_reason: null
     }]);
+  } finally {
+    database.close();
+  }
+});
+
+test("reassign rejects a wrong expected previous ref without mutation", () => {
+  const database = createMigrationBackedFixture();
+  try {
+    seedMigrationBackedAccount(database, "account_previous_ref_cas");
+    const first = seedMigrationBackedResource(database, {
+      accountId: "account_previous_ref_cas",
+      suffix: "previous_ref_a"
+    });
+    const second = seedMigrationBackedResource(database, {
+      accountId: "account_previous_ref_cas",
+      suffix: "previous_ref_b"
+    });
+    const store = createAccountResourceAuthorityStore({
+      database,
+      nowFn: () => new Date(NOW),
+      idFactory: () => "authority_previous_ref_v1"
+    });
+    store.assignAuthority(assignment(first));
+    const before = database.prepare(`
+      select * from platform_account_resource_authorities order by version
+    `).all();
+
+    assert.throws(() => store.reassignAuthority({
+      ...assignment(second),
+      expectedVersion: 1,
+      expectedPreviousAuthorityRef: "authority_wrong_previous",
+      revokedBy: "operator_ref",
+      revocationReason: "previous_ref_cas_guard"
+    }), (error) => (
+      error?.code === "account_resource_authority_version_conflict"
+    ));
+    assert.deepEqual(database.prepare(`
+      select * from platform_account_resource_authorities order by version
+    `).all(), before);
   } finally {
     database.close();
   }

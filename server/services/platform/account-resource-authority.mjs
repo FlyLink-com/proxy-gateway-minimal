@@ -106,21 +106,10 @@ function closeKnownError(error, fallbackCode) {
   return authorityError(fallbackCode);
 }
 
-export function createAccountResourceAuthorityStore({
-  database,
-  nowFn = () => new Date(),
-  idFactory = () => `authority_${randomUUID()}`
-} = {}) {
-  if (
-    !database
-    || typeof database.prepare !== "function"
-    || typeof database.transaction !== "function"
-    || typeof nowFn !== "function"
-    || typeof idFactory !== "function"
-  ) {
+export function createAccountResourceAuthorityTargetReader({ database } = {}) {
+  if (!database || typeof database.prepare !== "function") {
     throw authorityError("account_resource_authority_invalid_contract");
   }
-
   const selectTarget = database.prepare(`
     select
       a.id as account_id,
@@ -147,13 +136,42 @@ export function createAccountResourceAuthorityStore({
       p.artifact_id as portal_artifact_id,
       p.expires_at as portal_expires_at,
       p.valid_until as portal_valid_until
-    from platform_accounts a
-    left join platform_entitlements e on e.id = @entitlementId
-    left join platform_issuance_requests r on r.id = @resourceRequestId
-    left join platform_issued_subscription_links l on l.id = @issuedLinkId
-    left join platform_portal_access_requests p on p.id = r.id
+    from main.platform_accounts a
+    left join main.platform_entitlements e on e.id = @entitlementId
+    left join main.platform_issuance_requests r on r.id = @resourceRequestId
+    left join main.platform_issued_subscription_links l on l.id = @issuedLinkId
+    left join main.platform_portal_access_requests p on p.id = r.id
     where a.id = @accountId
   `);
+
+  function readExactTarget(target, now) {
+    return targetRowIsExact(selectTarget.get({
+      accountId: target.accountId,
+      resourceRequestId: target.resourceRequestId,
+      entitlementId: target.entitlementId,
+      issuedLinkId: target.issuedLinkId
+    }), now);
+  }
+
+  return Object.freeze({ readExactTarget });
+}
+
+export function createAccountResourceAuthorityStore({
+  database,
+  nowFn = () => new Date(),
+  idFactory = () => `authority_${randomUUID()}`
+} = {}) {
+  if (
+    !database
+    || typeof database.prepare !== "function"
+    || typeof database.transaction !== "function"
+    || typeof nowFn !== "function"
+    || typeof idFactory !== "function"
+  ) {
+    throw authorityError("account_resource_authority_invalid_contract");
+  }
+
+  const targetReader = createAccountResourceAuthorityTargetReader({ database });
   const selectCandidateTargets = database.prepare(`
     select
       a.id as account_id,
@@ -250,12 +268,7 @@ export function createAccountResourceAuthorityStore({
   }
 
   function exactTarget(target, now) {
-    return targetRowIsExact(selectTarget.get({
-      accountId: target.accountId,
-      resourceRequestId: target.resourceRequestId,
-      entitlementId: target.entitlementId,
-      issuedLinkId: target.issuedLinkId
-    }), now);
+    return targetReader.readExactTarget(target, now);
   }
 
   function safeResolved(authority, exact) {
@@ -353,6 +366,10 @@ export function createAccountResourceAuthorityStore({
 
   const reassignImmediate = database.transaction((input) => {
     const target = normalizeTarget(input);
+    const expectedPreviousAuthorityRef =
+      input.expectedPreviousAuthorityRef === undefined
+        ? undefined
+        : requireRef(input.expectedPreviousAuthorityRef);
     const revokedBy = requireRef(input.revokedBy);
     const revocationReason = requireRef(input.revocationReason);
     if (target.expectedVersion < 1) {
@@ -362,6 +379,10 @@ export function createAccountResourceAuthorityStore({
     if (
       active.length !== 1
       || active[0].version !== target.expectedVersion
+      || (
+        expectedPreviousAuthorityRef !== undefined
+        && active[0].authority_ref !== expectedPreviousAuthorityRef
+      )
     ) {
       throw authorityError("account_resource_authority_version_conflict");
     }

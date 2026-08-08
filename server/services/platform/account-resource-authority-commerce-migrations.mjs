@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import Database from "better-sqlite3";
 
 import {
@@ -150,9 +157,28 @@ export const ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATIONS = Object.freeze([
   })
 ]);
 
+const INTERNAL_ERRORS = new WeakMap();
+const INTERNAL_CODES = new Set([
+  "authority_commerce_applied_schema_incompatible",
+  "authority_commerce_invalid_migration_contract",
+  "authority_commerce_invalid_temp_root",
+  "authority_commerce_migration_checksum_mismatch",
+  "authority_commerce_migration_dependency_missing",
+  "authority_commerce_owned_object_without_migration",
+  "authority_commerce_rollback_dependency_present",
+  "authority_commerce_rollback_rows_present",
+  "authority_commerce_source_changed_during_dry_run"
+]);
+
 function migrationError(code) {
   const error = new Error("Account resource authority Commerce schema rejected");
   error.code = code;
+  return error;
+}
+
+function internalError(code, token) {
+  const error = migrationError(code);
+  INTERNAL_ERRORS.set(error, { code, token });
   return error;
 }
 
@@ -167,6 +193,17 @@ function safeCode(error) {
 function isContention(code) {
   return typeof code === "string"
     && /^SQLITE_(?:BUSY|LOCKED)(?:_|$)/.test(code);
+}
+
+function closeOperationError(error, token) {
+  const provenance = INTERNAL_ERRORS.get(error);
+  if (provenance?.token === token && INTERNAL_CODES.has(provenance.code)) {
+    return migrationError(provenance.code);
+  }
+  if (isContention(safeCode(error))) {
+    return migrationError("authority_commerce_database_unavailable");
+  }
+  return migrationError("authority_commerce_migration_apply_failed");
 }
 
 function assertDatabasePath(dbPath) {
@@ -250,6 +287,213 @@ function namespaceIsExact(database) {
     === JSON.stringify(expected);
 }
 
+const OWNED_OBJECT_KEYS = new Set(
+  OWNED_OBJECTS.map(([type, name]) => `${type}:${name}`)
+);
+
+function quotedIdentifier(value) {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+function schemaObjects(database, schema) {
+  return database.prepare(`
+    select type, name, tbl_name, sql
+      from ${schema}.sqlite_master
+     where sql is not null
+       and name not like 'sqlite_%'
+     order by type, name
+  `).all();
+}
+
+function sqliteTokens(sql) {
+  const source = String(sql);
+  const tokens = [];
+  let index = 0;
+  const identifierStart = (value) => /[A-Za-z_\u0080-\uFFFF]/.test(value);
+  const identifierPart = (value) => /[A-Za-z0-9_$\u0080-\uFFFF]/.test(value);
+
+  while (index < source.length) {
+    const character = source[index];
+    if (/\s/.test(character)) {
+      index += 1;
+      continue;
+    }
+    if (character === "-" && source[index + 1] === "-") {
+      const newline = source.indexOf("\n", index + 2);
+      index = newline === -1 ? source.length : newline + 1;
+      continue;
+    }
+    if (character === "/" && source[index + 1] === "*") {
+      const end = source.indexOf("*/", index + 2);
+      if (end === -1) return null;
+      index = end + 2;
+      continue;
+    }
+    if (character === "'") {
+      let value = "";
+      index += 1;
+      let closed = false;
+      while (index < source.length) {
+        if (source[index] !== "'") {
+          value += source[index];
+          index += 1;
+          continue;
+        }
+        if (source[index + 1] === "'") {
+          value += "'";
+          index += 2;
+          continue;
+        }
+        index += 1;
+        closed = true;
+        break;
+      }
+      if (!closed) return null;
+      tokens.push({ type: "single-quoted", value: value.toLowerCase() });
+      continue;
+    }
+    if (character === '"' || character === "`") {
+      const delimiter = character;
+      let value = "";
+      let closed = false;
+      index += 1;
+      while (index < source.length) {
+        if (source[index] !== delimiter) {
+          value += source[index];
+          index += 1;
+          continue;
+        }
+        if (source[index + 1] === delimiter) {
+          value += delimiter;
+          index += 2;
+          continue;
+        }
+        index += 1;
+        closed = true;
+        break;
+      }
+      if (!closed) return null;
+      tokens.push({ type: "identifier", value: value.toLowerCase() });
+      continue;
+    }
+    if (character === "[") {
+      const end = source.indexOf("]", index + 1);
+      if (end === -1) return null;
+      tokens.push({
+        type: "identifier",
+        value: source.slice(index + 1, end).toLowerCase()
+      });
+      index = end + 1;
+      continue;
+    }
+    if (identifierStart(character)) {
+      let end = index + 1;
+      while (end < source.length && identifierPart(source[end])) end += 1;
+      tokens.push({
+        type: "word",
+        value: source.slice(index, end).toLowerCase()
+      });
+      index = end;
+      continue;
+    }
+    tokens.push({ type: "symbol", value: character });
+    index += 1;
+  }
+  return tokens;
+}
+
+function triggerTargetsExactTempShadow(row) {
+  const tokens = sqliteTokens(row.sql);
+  if (!tokens) return false;
+  const tableName = TABLE.toLowerCase();
+  if (tokens.some(({ type, value }) =>
+    type === "single-quoted" && value === tableName
+  )) {
+    return false;
+  }
+  const tableReferences = tokens.filter(({ type, value }) =>
+    (type === "word" || type === "identifier") && value === tableName
+  );
+  if (tableReferences.length !== 1) return false;
+  const trigger = tokens.findIndex(({ type, value }) =>
+    type === "word" && value === "trigger"
+  );
+  const on = tokens.findIndex(({ type, value }, index) =>
+    index > trigger && type === "word" && value === "on"
+  );
+  if (trigger === -1 || on === -1) return false;
+  const schema = tokens[on + 1];
+  const dot = tokens[on + 2];
+  const table = tokens[on + 3];
+  return (schema?.type === "word" || schema?.type === "identifier")
+    && schema.value === "temp"
+    && dot?.type === "symbol"
+    && dot.value === "."
+    && (table?.type === "word" || table?.type === "identifier")
+    && table.value === tableName;
+}
+
+function exactTempShadowKeys(objects) {
+  const relevant = objects.filter(({ name, tbl_name: tableName }) =>
+    name === TABLE || tableName === TABLE
+  );
+  const actual = relevant
+    .map(({ type, name }) => `${type}:${name}`)
+    .sort();
+  const expected = OWNED_OBJECTS
+    .map(([type, name]) => `${type}:${name}`)
+    .sort();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    return new Set();
+  }
+  const rows = new Map(
+    relevant.map((row) => [`${row.type}:${row.name}`, row])
+  );
+  for (const [type, name] of OWNED_OBJECTS) {
+    if (type === "table") continue;
+    if (!triggerTargetsExactTempShadow(rows.get(`${type}:${name}`))) {
+      return new Set();
+    }
+  }
+  return new Set(expected);
+}
+
+function externalDependencyCount(database) {
+  const consumers = new Set();
+  const tableName = TABLE.toLowerCase();
+  const objectsBySchema = {
+    main: schemaObjects(database, "main"),
+    temp: schemaObjects(database, "temp")
+  };
+  const tempShadowKeys = exactTempShadowKeys(objectsBySchema.temp);
+
+  for (const [schema, objects] of Object.entries(objectsBySchema)) {
+    for (const row of objects) {
+      const objectKey = `${row.type}:${row.name}`;
+      const consumerKey = `${schema}:${objectKey}`;
+      if (
+        (schema === "main" && OWNED_OBJECT_KEYS.has(objectKey))
+        || (schema === "temp" && tempShadowKeys.has(objectKey))
+      ) {
+        continue;
+      }
+      if (String(row.sql).toLowerCase().includes(tableName)) {
+        consumers.add(consumerKey);
+      }
+      if (row.type !== "table" || row.name === TABLE) continue;
+      const foreignKeys = database.pragma(
+        `${schema}.foreign_key_list(${quotedIdentifier(row.name)})`
+      );
+      if (foreignKeys.some((foreignKey) =>
+        String(foreignKey.table).toLowerCase() === tableName
+      )) {
+        consumers.add(consumerKey);
+      }
+    }
+  }
+  return consumers.size;
+}
+
 function integrity(database) {
   try {
     const quick = database.pragma("quick_check");
@@ -310,6 +554,7 @@ function closedInspection(database) {
   if (bindingRows === null) {
     reasonCodes.push("binding_row_count_unknown");
   }
+  const externalDependencies = externalDependencyCount(database);
   const health = integrity(database);
   if (!health.quickCheck || health.failed) reasonCodes.push("quick_check_failed");
   if (health.foreignKeyViolations > 0 || health.failed) {
@@ -344,6 +589,7 @@ function closedInspection(database) {
       REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
     counts: {
       bindingRows,
+      externalDependencies,
       ownedObjects: present.length,
       migrationRows,
       foreignKeyViolations: health.foreignKeyViolations
@@ -352,6 +598,8 @@ function closedInspection(database) {
       authorityDependency: deps.authority,
       commerceDependency: deps.commerce,
       schemaExact,
+      rollbackSafe:
+        bindingRows === 0 && externalDependencies === 0,
       zeroBackfill: bindingRows === 0,
       quickCheck: health.quickCheck && !health.failed,
       foreignKeys: health.foreignKeyViolations === 0 && !health.failed
@@ -384,6 +632,7 @@ function closedValidation(reason) {
       REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
     counts: {
       bindingRows: null,
+      externalDependencies: null,
       ownedObjects: 0,
       migrationRows: 0,
       foreignKeyViolations: 0
@@ -392,6 +641,7 @@ function closedValidation(reason) {
       authorityDependency: false,
       commerceDependency: false,
       schemaExact: false,
+      rollbackSafe: false,
       zeroBackfill: false,
       quickCheck: false,
       foreignKeys: false
@@ -457,12 +707,15 @@ function assertExpected({ expectedMigrationId, expectedDdlChecksum }) {
   }
 }
 
-function applyWithDatabase(database, nowFn) {
+function applyWithDatabase(database, nowFn, token) {
   database.pragma("foreign_keys = ON");
   const migrate = database.transaction(() => {
     const deps = dependencies(database);
     if (!(deps.authority && deps.commerce)) {
-      throw migrationError("authority_commerce_migration_dependency_missing");
+      throw internalError(
+        "authority_commerce_migration_dependency_missing",
+        token
+      );
     }
     const applied = migrationRow(
       database,
@@ -470,19 +723,31 @@ function applyWithDatabase(database, nowFn) {
     );
     if (applied) {
       if (applied.ddl_checksum !== DDL_CHECKSUM) {
-        throw migrationError("authority_commerce_migration_checksum_mismatch");
+        throw internalError(
+          "authority_commerce_migration_checksum_mismatch",
+          token
+        );
       }
       if (!inspectAccountResourceAuthorityCommerceSchema({ database }).ok) {
-        throw migrationError("authority_commerce_applied_schema_incompatible");
+        throw internalError(
+          "authority_commerce_applied_schema_incompatible",
+          token
+        );
       }
       return [];
     }
     if (presentOwnedObjects(database).length > 0) {
-      throw migrationError("authority_commerce_owned_object_without_migration");
+      throw internalError(
+        "authority_commerce_owned_object_without_migration",
+        token
+      );
     }
     const now = nowFn();
     if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
-      throw migrationError("authority_commerce_invalid_migration_contract");
+      throw internalError(
+        "authority_commerce_invalid_migration_contract",
+        token
+      );
     }
     for (const statement of MIGRATION_STATEMENTS) database.exec(statement);
     database.prepare(`
@@ -496,7 +761,10 @@ function applyWithDatabase(database, nowFn) {
     );
     const inspection = inspectAccountResourceAuthorityCommerceSchema({ database });
     if (!inspection.ok || inspection.counts.bindingRows !== 0) {
-      throw migrationError("authority_commerce_applied_schema_incompatible");
+      throw internalError(
+        "authority_commerce_applied_schema_incompatible",
+        token
+      );
     }
     return [REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID];
   });
@@ -515,16 +783,20 @@ export function applyAccountResourceAuthorityCommerceMigrations({
     throw migrationError("authority_commerce_invalid_migration_contract");
   }
   if (!database) assertDatabasePath(dbPath);
+  const token = Object.freeze({});
   let owned;
   try {
     const connection = database
       ?? (owned = new Database(dbPath, { fileMustExist: true }));
-    const appliedMigrationIds = applyWithDatabase(connection, nowFn);
+    const appliedMigrationIds = applyWithDatabase(connection, nowFn, token);
     const inspection = inspectAccountResourceAuthorityCommerceSchema({
       database: connection
     });
     if (!inspection.ok) {
-      throw migrationError("authority_commerce_applied_schema_incompatible");
+      throw internalError(
+        "authority_commerce_applied_schema_incompatible",
+        token
+      );
     }
     return {
       ...inspection,
@@ -533,12 +805,305 @@ export function applyAccountResourceAuthorityCommerceMigrations({
       appliedMigrationIds
     };
   } catch (error) {
-    const code = safeCode(error);
-    if (code?.startsWith("authority_commerce_")) throw error;
-    if (isContention(code)) {
-      throw migrationError("authority_commerce_database_unavailable");
+    throw closeOperationError(error, token);
+  } finally {
+    if (owned) {
+      try {
+        owned.close();
+      } catch {
+        throw migrationError("authority_commerce_database_close_failed");
+      }
     }
-    throw migrationError("authority_commerce_migration_apply_failed");
+  }
+}
+
+function sha256File(filePath) {
+  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
+}
+
+function sourceSchemaState(database) {
+  return {
+    schemaVersion: database.pragma("schema_version", { simple: true }),
+    inspection: inspectAccountResourceAuthorityCommerceSchema({ database })
+  };
+}
+
+function removeOwnedDirectory(directory, root, token) {
+  const resolvedDirectory = resolve(directory);
+  const resolvedRoot = resolve(root);
+  const child = relative(resolvedRoot, resolvedDirectory);
+  if (
+    child.length === 0
+    || child === ".."
+    || child.startsWith(`..${sep}`)
+    || isAbsolute(child)
+  ) {
+    throw internalError("authority_commerce_invalid_temp_root", token);
+  }
+  rmSync(resolvedDirectory, { recursive: true, force: true });
+}
+
+export async function dryRunAccountResourceAuthorityCommerceMigrations({
+  dbPath,
+  tempRoot
+} = {}) {
+  assertDatabasePath(dbPath);
+  const token = Object.freeze({});
+  const root = tempRoot ?? tmpdir();
+  let workDirectory;
+  let source;
+  try {
+    if (typeof root !== "string" || !isAbsolute(root)) {
+      throw internalError("authority_commerce_invalid_temp_root", token);
+    }
+    mkdirSync(root, { recursive: true });
+    workDirectory = mkdtempSync(join(root, "authority-commerce-dry-run-"));
+    const snapshotPath = join(workDirectory, "snapshot.sqlite");
+    source = new Database(dbPath, { readonly: true, fileMustExist: true });
+    const initialVersionBefore = source.pragma("data_version", {
+      simple: true
+    });
+    const sourceHash = sha256File(dbPath);
+    const deps = dependencies(source);
+    if (!(deps.authority && deps.commerce)) {
+      throw internalError(
+        "authority_commerce_migration_dependency_missing",
+        token
+      );
+    }
+    const before = sourceSchemaState(source);
+    const initialVersionAfter = source.pragma("data_version", {
+      simple: true
+    });
+    if (initialVersionBefore !== initialVersionAfter) {
+      throw internalError(
+        "authority_commerce_source_changed_during_dry_run",
+        token
+      );
+    }
+    if (!before.inspection.ok && before.inspection.schemaState !== "pending") {
+      throw internalError(
+        "authority_commerce_applied_schema_incompatible",
+        token
+      );
+    }
+    const wasApplied = before.inspection.ok;
+    await source.backup(snapshotPath);
+    const applied = applyAccountResourceAuthorityCommerceMigrations({
+      dbPath: snapshotPath,
+      expectedMigrationId:
+        REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+      expectedDdlChecksum: DDL_CHECKSUM
+    });
+    const validated = validateAccountResourceAuthorityCommerceSchema({
+      dbPath: snapshotPath
+    });
+    if (!validated.ok) {
+      throw internalError(
+        "authority_commerce_applied_schema_incompatible",
+        token
+      );
+    }
+    const finalVersionBefore = source.pragma("data_version", {
+      simple: true
+    });
+    const finalHash = sha256File(dbPath);
+    const after = sourceSchemaState(source);
+    const finalVersionAfter = source.pragma("data_version", {
+      simple: true
+    });
+    if (
+      finalHash !== sourceHash
+      || initialVersionBefore !== finalVersionBefore
+      || initialVersionBefore !== finalVersionAfter
+      || before.schemaVersion !== after.schemaVersion
+      || JSON.stringify(before.inspection) !== JSON.stringify(after.inspection)
+    ) {
+      throw internalError(
+        "authority_commerce_source_changed_during_dry_run",
+        token
+      );
+    }
+    return {
+      ...validated,
+      mode: "dry-run",
+      sourceChanged: false,
+      pendingMigrationIds: wasApplied
+        ? []
+        : [REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID],
+      appliedMigrationIds: applied.appliedMigrationIds
+    };
+  } catch (error) {
+    throw closeOperationError(error, token);
+  } finally {
+    let cleanupError = null;
+    try {
+      source?.close();
+    } catch (error) {
+      cleanupError = error;
+    }
+    if (workDirectory) {
+      try {
+        removeOwnedDirectory(workDirectory, root, token);
+      } catch (error) {
+        cleanupError ??= error;
+      }
+    }
+    if (cleanupError) throw closeOperationError(cleanupError, token);
+  }
+}
+
+function rollbackWithDatabase(database, token) {
+  database.pragma("foreign_keys = ON");
+  const rollback = database.transaction(() => {
+    const deps = dependencies(database);
+    if (!(deps.authority && deps.commerce)) {
+      throw internalError(
+        "authority_commerce_migration_dependency_missing",
+        token
+      );
+    }
+    const applied = migrationRow(
+      database,
+      REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID
+    );
+    const present = presentOwnedObjects(database);
+    if (!applied) {
+      if (present.length > 0) {
+        throw internalError(
+          "authority_commerce_owned_object_without_migration",
+          token
+        );
+      }
+      const pending = inspectAccountResourceAuthorityCommerceSchema({
+        database
+      });
+      if (pending.counts.externalDependencies !== 0) {
+        throw internalError(
+          "authority_commerce_rollback_dependency_present",
+          token
+        );
+      }
+      if (
+        pending.schemaState !== "pending"
+        || pending.counts.bindingRows !== 0
+        || pending.counts.ownedObjects !== 0
+        || pending.pendingMigrationIds.length !== 1
+        || pending.pendingMigrationIds[0]
+          !== REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID
+      ) {
+        throw internalError(
+          "authority_commerce_applied_schema_incompatible",
+          token
+        );
+      }
+      return [];
+    }
+    if (applied.ddl_checksum !== DDL_CHECKSUM) {
+      throw internalError(
+        "authority_commerce_migration_checksum_mismatch",
+        token
+      );
+    }
+    const inspection = inspectAccountResourceAuthorityCommerceSchema({
+      database
+    });
+    if (!inspection.ok) {
+      throw internalError(
+        "authority_commerce_applied_schema_incompatible",
+        token
+      );
+    }
+    if (inspection.counts.bindingRows !== 0) {
+      throw internalError(
+        "authority_commerce_rollback_rows_present",
+        token
+      );
+    }
+    if (inspection.counts.externalDependencies !== 0) {
+      throw internalError(
+        "authority_commerce_rollback_dependency_present",
+        token
+      );
+    }
+    for (const [type, name] of [...OWNED_OBJECTS].reverse()) {
+      database.exec(`drop ${type} main.${quotedIdentifier(name)}`);
+    }
+    const deleted = database.prepare(`
+      delete from main.platform_schema_migrations
+       where migration_id = ? and ddl_checksum = ?
+    `).run(
+      REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID,
+      DDL_CHECKSUM
+    );
+    if (deleted.changes !== 1) {
+      throw internalError(
+        "authority_commerce_applied_schema_incompatible",
+        token
+      );
+    }
+    const pending = inspectAccountResourceAuthorityCommerceSchema({
+      database
+    });
+    if (
+      pending.schemaState !== "pending"
+      || pending.counts.bindingRows !== 0
+      || pending.counts.externalDependencies !== 0
+      || pending.counts.ownedObjects !== 0
+      || pending.pendingMigrationIds.length !== 1
+      || pending.pendingMigrationIds[0]
+        !== REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID
+    ) {
+      throw internalError(
+        "authority_commerce_applied_schema_incompatible",
+        token
+      );
+    }
+    return [REQUIRED_ACCOUNT_RESOURCE_AUTHORITY_COMMERCE_MIGRATION_ID];
+  });
+  return rollback.immediate();
+}
+
+export function rollbackAccountResourceAuthorityCommerceMigration({
+  dbPath,
+  database,
+  expectedMigrationId,
+  expectedDdlChecksum
+} = {}) {
+  assertExpected({ expectedMigrationId, expectedDdlChecksum });
+  if (!database && dbPath === undefined) {
+    throw migrationError("authority_commerce_invalid_migration_contract");
+  }
+  if (!database) assertDatabasePath(dbPath);
+  const token = Object.freeze({});
+  let owned;
+  try {
+    const connection = database
+      ?? (owned = new Database(dbPath, { fileMustExist: true }));
+    if (connection.inTransaction === true) {
+      throw internalError(
+        "authority_commerce_invalid_migration_contract",
+        token
+      );
+    }
+    const rolledBackMigrationIds = rollbackWithDatabase(connection, token);
+    const inspection = inspectAccountResourceAuthorityCommerceSchema({
+      database: connection
+    });
+    if (inspection.schemaState !== "pending") {
+      throw internalError(
+        "authority_commerce_applied_schema_incompatible",
+        token
+      );
+    }
+    return {
+      ...inspection,
+      mode: "rollback",
+      sourceChanged: rolledBackMigrationIds.length === 1,
+      rolledBackMigrationIds
+    };
+  } catch (error) {
+    throw closeOperationError(error, token);
   } finally {
     if (owned) {
       try {

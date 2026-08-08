@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -332,4 +332,36 @@ test("Release Artifact workflow treats dispatch release labels as shell data", (
     3,
     "each artifact job must validate the environment value"
   );
+});
+
+test("control-plane source archives cover the Authority operator paths", () => {
+  const workflow = readFileSync(
+    resolve(REPOSITORY_ROOT, ".github/workflows/release-artifact.yml"),
+    "utf8"
+  );
+  const controlPlaneJobIndex = workflow.indexOf("  package:");
+  const nextJobIndex = workflow.indexOf("\n  portal-static:", controlPlaneJobIndex);
+
+  assert.ok(controlPlaneJobIndex >= 0, "workflow must define the control-plane-app package job");
+  assert.ok(nextJobIndex > controlPlaneJobIndex, "control-plane-app package job must be bounded");
+  const controlPlaneJob = workflow.slice(controlPlaneJobIndex, nextJobIndex);
+  assert.match(
+    controlPlaneJob,
+    /git archive --format=zip --output "\$artifact" HEAD/,
+    "future exact-HEAD source archives must use generic git archive packaging"
+  );
+
+  const futureArchivePaths = [
+    "scripts/platform-account-resource-authority-commerce-schema.mjs",
+    "scripts/platform-account-resource-authority-assignment.mjs",
+    "server/services/platform/account-resource-authority-commerce-migrations.mjs",
+    "server/services/platform/account-resource-authority-operator.mjs"
+  ];
+  for (const archivePath of futureArchivePaths) {
+    assert.equal(
+      existsSync(resolve(REPOSITORY_ROOT, archivePath)),
+      true,
+      `future exact-HEAD source archive path must exist: ${archivePath}`
+    );
+  }
 });

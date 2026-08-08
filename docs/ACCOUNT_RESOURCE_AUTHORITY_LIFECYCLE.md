@@ -78,6 +78,12 @@ triad. It does not alter either foundational migration checksum and performs no
 backfill. The Authority Commerce flag may be enabled only after both schemas
 validate exactly.
 
+The first successfully committed Authority-enabled Quote inserts one durable,
+immutable sidecar binding in the same `BEGIN IMMEDIATE` as the Quote. From then
+on `bindingRows > 0`. Quote expiry/staleness, Order terminalization, command
+completion, and flag disablement never update or delete it. Operators must not
+delete rows to manufacture `rollbackSafe = true`.
+
 ## Resolver And Transaction Contract
 
 `resolveCommerceAuthority(account)` is fail-closed:
@@ -190,35 +196,96 @@ node scripts/platform-account-resource-authority-schema.mjs `
 approval. A production Gate must name rollback explicitly and prove the table
 is empty and `externalDependencies = 0` immediately before execution.
 
-## This PR
+## Commerce Schema And Assignment CLI Contract
+
+The Commerce sidecar schema command and the foundational Authority assignment
+command are separate closed operator entry points:
+
+```text
+npm run platform:account-resource-authority-commerce:schema -- ...
+npm run platform:account-resource-authority:assignment -- ...
+```
+
+The schema command supports only `validate`, `dry-run`, `apply`, and `rollback`.
+The assignment command supports only `plan`, `assign`, and `reassign`.
+Assignment mutation requires the exact canonical request digest. The private
+JSON fixes `newAuthorityRef`; reassign also fixes
+`expectedPreviousAuthorityRef`, `expectedVersion`, and the target Resource
+triad. Command output is aggregate-safe and never includes paths,
+account/ref/triad/metadata, or private JSON.
+
+The private JSON request and digest are fixed before execution. `plan` compares
+the full exact lineage: authority ref, version, previous ref, Resource triad,
+createdBy/reason, and prior revocation state. Reassign revoke+insert stays in
+one top-level `BEGIN IMMEDIATE` and is atomic. No command automatically promotes
+plan to apply or retries.
+
+### Unknown-result recovery
+
+After an unknown mutation result, a future production Gate may authorize
+exactly one read-only `plan` with the same private request/digest:
+
+| Classification | Required action |
+| --- | --- |
+| `applied_exact` | The transaction is exactly committed; mutation replay is forbidden; emit only the local `recovered_after_unknown` receipt. |
+| `not_applied` | The exact prestate is unchanged; only an independently pre-authorized Gate may run one conditional mutation, which rechecks CAS inside its transaction. |
+| `drift` | Any extra version, different ref, partial state, metadata/triad difference, or concurrency means stop and investigate. |
+| `unknown` | The DB/plan cannot be read or the outcome cannot be proven; never reinterpret as `not_applied`; stop. |
+
+The safe JSON is a local receipt. This change adds no receipt table and no other
+schema.
+
+## Schema Rollback And Recovery Boundaries
+
+Sidecar rollback is allowed only for exact owned schema with `bindingRows = 0`
+and `externalDependencies = 0`. Unknown counts, dependency enumeration failure,
+checksum/schema drift, lock, or transaction failure stop with zero write.
+
+Both schema dry-runs use SQLite online backup from a read-only source into an
+owned disposable temporary snapshot. The snapshot proves migration mechanics
+only; it is not a retained production backup and proves no RPO/restore
+capability.
+
+If both schemas are empty, rollback/readback order is mandatory: Commerce
+sidecar first, then a separately approved foundational Authority rollback.
+Reverse order is forbidden.
+
+Once a binding exists, flag-off on the current Authority-aware binary is only
+containment. Keep both schemas and use an additive forward fix. Any restore
+alternative needs an independent Risk A RPO Backup/Recovery Gate naming the
+exact backup identity, recovery point, acceptable data loss, writer quiescence,
+and restore validation. Dry-run snapshot never qualifies. The existing runtime
+boundary remains mandatory: before activation, prove that no old process
+remains; returning to a pre-Authority release requires a separate drain,
+artifact inventory, and rollback Gate.
+
+## This Source-only PR
 
 Included:
 
-- a separate additive Quote-binding migration and validator with zero backfill;
-- runtime use of the already-merged Authority model and fail-closed resolver;
-- default-off runtime wiring from Quote through capture, outbox, coordinator,
-  and the exact fulfillment transaction;
-- TDD for schema, lifecycle, stale-version/no-debit, idempotency, concurrency,
-  and Resource A/B isolation boundaries;
-- this Risk A runbook.
+- source, tests, docs, this Risk A runbook, and future artifact coverage.
 
-Excluded:
+This PR contains source, tests, docs, and future artifact coverage only. It
+performs no production inventory, backup, database access, schema apply, schema
+rollback, Authority mutation, deployment, flag activation, Quote canary,
+fulfillment, artifact build, publication, release, or release-state claim. It
+adds no receipt table or other schema.
+
+Still excluded:
 
 - automatic backfill or automatic keeper selection;
-- an operator CLI, dry-run, or rollback API for the Quote-binding integration
-  schema;
-- an operator assignment/reassignment CLI for the foundational Authority data;
 - any assignment for `case_02` or the other ambiguous production accounts;
 - first-purchase bootstrap for an account without an explicit Authority;
   zero-resource/no-Authority accounts remain fail-closed and are not eligible
   for an all-account Commerce activation or canary;
-- production database access or mutation;
-- Portal/static deployment;
-- Commerce runtime activation, Quote canary, production Order creation, Coins
-  capture, or fulfillment;
 - payment-provider or recharge changes;
 - retirement, archival, deletion, or status changes for unresolved resources;
 - cross-package product transitions.
+
+The `control-plane-app` package job uses generic exact-HEAD `git archive`
+packaging. Because the source tree contains the two operator scripts and their
+two service modules, a future exact-HEAD source archive will include those four
+tracked paths. No artifact was built, published, released, or deployed here.
 
 ## Promotion Sequence
 
@@ -234,10 +301,9 @@ Each phase requires a separate Risk A review and approval:
    source prerequisite; ad hoc SQL is forbidden.
 3. **Integration Schema Gate**: separately dry-run/apply the empty immutable
    Quote-binding table and validate both dependency schemas. This source PR
-   does not authorize that mutation. The source module exposes inspect,
-   validate, and apply APIs only. A reviewed operator entry point plus an exact
-   rollback or backup-recovery contract is a source prerequisite before this
-   Gate can execute.
+   does not authorize that mutation. The reviewed Commerce schema command and
+   the exact rollback or backup-recovery contract remain prerequisites before
+   this Gate can execute.
 4. **Runtime Gate**: deploy the resolver and integration with the Authority
    Commerce flag still default-off, prove that no pre-Authority process remains,
    run aggregate `resolve-dry-run`, and verify fail-closed behavior.
@@ -271,8 +337,8 @@ or checksum differs, owned objects drift, or a write would exceed the approved
 phase.
 
 For the foundational empty schema, rollback is allowed only while the authority
-table contains zero rows and has zero external schema consumers. The
-Quote-binding sidecar in this PR has no operator rollback API; its production
-Gate must first bind a reviewed rollback or backup-recovery contract. After any
-assignment or dependent schema integration, rollback must stop and move to a
-separately designed data-retention and compatibility procedure.
+table contains zero rows and has zero external schema consumers. Sidecar
+rollback is separately allowed only under the exact empty-owned-schema contract
+above. After a binding exists, keep both schemas and use an additive forward fix
+unless an independently approved Risk A RPO Backup/Recovery Gate authorizes a
+fully specified restore.
