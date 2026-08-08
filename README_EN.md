@@ -185,6 +185,12 @@ Rules:
 - Admin and data-plane agent allowlists default to loopback. Production private
   networks or fixed operator sources must be written explicitly on the target
   host.
+- `TRUSTED_PROXY_CIDRS` is empty by default. Only `X-Forwarded-For` received
+  from an explicitly trusted proxy participates in client-address resolution,
+  and IPv4-mapped IPv6 addresses are normalized first. If any address in the
+  forwarded chain is invalid, resolution fails closed to a non-matching result
+  so the trusted proxy's direct address is not mistaken for the originating
+  client address.
 - `USER_PORTAL_TOTP_SECRET_KEY` is target-host only. It must encode a 32-byte
   key as hex, base64, or base64url and protects new TOTP credentials at rest.
 - Real tokens, passwords, node credentials, subscription URLs, SQLite files,
