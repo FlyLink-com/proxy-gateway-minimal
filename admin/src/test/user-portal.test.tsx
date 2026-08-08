@@ -2953,10 +2953,10 @@ describe("user portal product surface", () => {
   test("keeps the Wallet overview focused on balances, recent activity, and rules without recharge controls", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
-    const navigation = await enterPortal();
+    await enterPortal();
     const topbar = document.querySelector(".portal-use-topbar");
     expect(topbar).not.toBeNull();
-    fireEvent.click(within(navigation).getByRole("button", { name: "Coins 钱包" }));
+    openPortalWallet();
 
     expect(await screen.findAllByRole("heading", { level: 2, name: "钱包总览" })).toHaveLength(1);
     const walletSection = document.querySelector(".portal-commerce-layout--wallet");

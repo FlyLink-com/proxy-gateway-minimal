@@ -125,12 +125,6 @@ function validCredit(overrides = {}) {
     policyRef: null,
     policyVersion: null,
     expiresAt: null,
-    operation: {
-      actorScope: "account:account_1",
-      idempotencyKey: "credit_1",
-      actorType: "system",
-      actorRef: "settlement_worker"
-    },
     ...overrides,
     operation: {
       actorScope: "account:account_1",
@@ -146,12 +140,6 @@ function validConfirmation(overrides = {}) {
   return {
     lotRef: "lot_1",
     amountUnits: 4,
-    operation: {
-      actorScope: "account:account_1",
-      idempotencyKey: "confirm_1",
-      actorType: "system",
-      actorRef: "reward_confirmer"
-    },
     ...overrides,
     operation: {
       actorScope: "account:account_1",
@@ -171,12 +159,6 @@ function validHold(overrides = {}) {
     amountUnits: 10,
     acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
     expiresAt: "2026-07-24T12:34:56.000Z",
-    operation: {
-      actorScope: "account:account_1",
-      idempotencyKey: "hold_1",
-      actorType: "user",
-      actorRef: "account_1"
-    },
     ...overrides,
     operation: {
       actorScope: "account:account_1",
@@ -2890,10 +2872,6 @@ function validLifecycleOperation(overrides = {}) {
 function validCapture(holdRef, overrides = {}) {
   return {
     holdRef,
-    operation: validLifecycleOperation({
-      idempotencyKey: "capture_1",
-      ...(overrides.operation ?? {})
-    }),
     ...overrides,
     operation: validLifecycleOperation({
       idempotencyKey: "capture_1",
@@ -2905,10 +2883,6 @@ function validCapture(holdRef, overrides = {}) {
 function validRelease(holdRef, overrides = {}) {
   return {
     holdRef,
-    operation: validLifecycleOperation({
-      idempotencyKey: "release_1",
-      ...(overrides.operation ?? {})
-    }),
     ...overrides,
     operation: validLifecycleOperation({
       idempotencyKey: "release_1",

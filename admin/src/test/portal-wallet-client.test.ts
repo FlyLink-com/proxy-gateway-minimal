@@ -237,8 +237,7 @@ afterEach(() => {
 
 describe("Portal Wallet HTTP client", () => {
   test("types listLedger cursor fields as an all-or-none pair", () => {
-    const wallet = null as unknown as PortalWalletClient;
-    if (false) {
+    const typecheckCursorPair = (wallet: PortalWalletClient) => {
       // @ts-expect-error afterOccurredAt requires afterEntryRef.
       void wallet.listLedger({
         sessionRef: "session_wallet_001",
@@ -251,8 +250,8 @@ describe("Portal Wallet HTTP client", () => {
         limit: 10,
         afterEntryRef: "entry_cursor_008"
       });
-    }
-    expect(true).toBe(true);
+    };
+    expect(typeof typecheckCursorPair).toBe("function");
   });
 
   test("wires only the HTTP client to a relative session-only Wallet request", async () => {

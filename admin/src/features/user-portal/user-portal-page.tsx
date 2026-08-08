@@ -2398,7 +2398,6 @@ function DashboardPanel({
   locale: PortalAuthLocale;
 }) {
   const desktopViewport = useDesktopScrollRegion();
-  const activeOrders = activeOrderCount(orderRows);
   const pendingOrders = pendingOrderCount(orderRows);
   const entitlementPlanId = currentEntitlement ? planIdFromEntitlement(currentEntitlement) : null;
   const currentPlan = selectedOrder
