@@ -641,6 +641,8 @@ test("verified approval callback captures the order server-side and credits Coin
     const first = await system.coordinator.acceptProviderCallback(CALLBACK_INPUT);
     const replay = await system.coordinator.acceptProviderCallback(CALLBACK_INPUT);
 
+    assert.equal(first.order.orderRef, created.order.orderRef);
+    assert.equal(replay.order.orderRef, created.order.orderRef);
     assert.equal(first.order.status, "credited");
     assert.equal(replay.order.status, "credited");
     assert.equal(first.acknowledgement.statusCode, 204);

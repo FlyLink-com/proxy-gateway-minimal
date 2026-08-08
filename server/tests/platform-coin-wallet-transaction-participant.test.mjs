@@ -171,12 +171,6 @@ function validHold(overrides = {}) {
     amountUnits: 10,
     acceptedCoinTypes: ["bonus_coins", "paid_coins", "reward_coins"],
     expiresAt: "2099-07-27T12:34:56.000Z",
-    operation: {
-      actorScope: "account:account_1",
-      idempotencyKey: "hold_1",
-      actorType: "user",
-      actorRef: "account_1"
-    },
     ...overrides,
     operation: {
       actorScope: "account:account_1",

@@ -76,6 +76,22 @@ test("createIpAllowlist matches exact IPv4, IPv4 CIDR, and IPv6 loopback", () =>
   assert.equal(allowlist("203.0.113.6"), false);
 });
 
+test("trust-boundary parsing rejects ambiguous and suffix-bearing address literals", () => {
+  const allowlist = createIpAllowlist(["127.0.0.1", "10.0.0.0/8"]);
+
+  assert.equal(allowlist("::ffff:10.0.0.1"), true);
+  assert.equal(allowlist("012.0.0.1"), false);
+  assert.equal(allowlist("010.0.0.1"), false);
+  assert.equal(allowlist("10.0.0.1/0"), false);
+  assert.equal(allowlist("127.0.0.1/0"), false);
+  assert.equal(allowlist("::ffff:012.0.0.1"), false);
+
+  assert.equal(resolveClientIp(request({
+    remoteAddress: "127.0.0.1",
+    forwardedFor: "012.0.0.1"
+  }), { trustedProxyCidrs: ["127.0.0.1/32"] }), "127.0.0.1");
+});
+
 test("IP helpers reject malformed IPv4 addresses and CIDR rules", () => {
   assert.equal(isPrivateOrLoopbackIp("127.0.0.1:1234"), false);
   assert.equal(isPrivateOrLoopbackIp("10x.0.0.1"), false);

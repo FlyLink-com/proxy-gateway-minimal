@@ -6,7 +6,6 @@ import {
   Check,
   ChevronDown,
   Compass,
-  FileText,
   Globe2,
   Handshake,
   Info,
