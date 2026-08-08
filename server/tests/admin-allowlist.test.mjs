@@ -91,6 +91,14 @@ test("admin allowlist uses X-Forwarded-For only for configured trusted proxies",
       }
     });
     assert.equal(response.status, 403);
+
+    const malformedResponse = await fetch(`${baseUrl}/api/admin/subscriptions`, {
+      headers: {
+        authorization: "Bearer secret",
+        "x-forwarded-for": "10.0.0.8, not-an-ip"
+      }
+    });
+    assert.equal(malformedResponse.status, 403);
   } finally {
     server.close();
   }
