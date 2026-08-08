@@ -9,8 +9,9 @@ export const DEFAULT_TRUSTED_PROXY_CIDRS = [];
 
 export function normalizeIpAddress(value) {
   const ip = String(value || "").trim();
-  if (ip.startsWith("::ffff:")) {
-    return ip.slice("::ffff:".length);
+  const mappedIpv4 = /^::ffff:(.+)$/i.exec(ip)?.[1];
+  if (isIP(mappedIpv4) === 4) {
+    return mappedIpv4;
   }
   return ip;
 }
