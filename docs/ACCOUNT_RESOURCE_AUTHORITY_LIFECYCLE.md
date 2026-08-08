@@ -1,6 +1,6 @@
 # Account Resource Authority Lifecycle
 
-Last updated: 2026-08-07.
+Last updated: 2026-08-08.
 
 > Status:
 > - Type: Source implementation and Risk A runbook
@@ -71,6 +71,13 @@ same account. A foreign-key-valid but cross-wired chain is invalid.
 The migration is additive and performs no authority assignment or historical
 resource mutation.
 
+The Commerce integration owns a separate additive table,
+`platform_commerce_authority_quote_bindings`. It records the immutable Quote
+reference, Authority identity and version, and exact request/entitlement/link
+triad. It does not alter either foundational migration checksum and performs no
+backfill. The Authority Commerce flag may be enabled only after both schemas
+validate exactly.
+
 ## Resolver And Transaction Contract
 
 `resolveCommerceAuthority(account)` is fail-closed:
@@ -84,13 +91,37 @@ one exact valid chain      -> authority + authority_version
 
 There is no implicit fallback.
 
-The future Commerce runtime integration must record the resolved authority
-identity and version on Quote creation. Purchase confirmation must then re-read
-and validate the authority inside the same database transaction that creates
-the Order and fulfillment command. A changed version invalidates the Quote and
-requires a new Quote; the transaction must not debit Coins or create partial
-fulfillment state. This PR supplies the authority model and version contract,
-but does not wire it into Quote, Order, debit, or fulfillment execution.
+With `COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED=true`, Quote creation
+records the resolved Authority identity, version, and exact resource triad in
+the same `BEGIN IMMEDIATE` transaction as the Quote. Confirm re-reads that
+snapshot and the active Authority in its Order/Hold transaction before any
+Wallet write. A changed version or target invalidates the Quote and requires a
+new Quote; the transaction does not create a Hold, Order, receipt, or event.
+
+The existing Commerce cancel-window architecture creates the fulfillment
+outbox only when Coins are captured, rather than during Confirm. Capture
+therefore revalidates the same immutable snapshot again before `held` Coins can
+become `consumed` or an outbox command can be created. The command carries the
+snapshot through the coordinator. The subscription-control mutation then
+revalidates Authority and version on its own SQLite connection inside the exact
+transaction that mutates the authoritative entitlement and Portal request.
+Only the recorded request/entitlement/link triad is eligible; the legacy
+account-wide resolver, latest-lapsed selection, usage inference, initial
+issuance, and old-resource fallback are not called in Authority mode.
+
+The flag defaults to `false`. A fresh legacy database does not require an
+Authority schema and does not call the Authority resolver; legacy Quote and
+command shapes remain unchanged. If an exact Quote-binding namespace already
+exists from an earlier enabled runtime, the disabled runtime reads only that
+immutable provenance: bound active Quotes are stale, bound nonterminal Orders
+are released or isolated before capture/dispatch, and terminal command history
+remains read-only. Turning the flag off therefore cannot downgrade an existing
+Authority-bound artifact into the legacy resolver path **when every process is
+running this new binary**. This is not compatibility with a pre-Authority
+release. Before activation, a Runtime Gate must prove that no old process
+remains. After activation, rollback first means disabling the flag on this new
+binary; returning to a pre-Authority release requires a separate drain,
+artifact inventory, and rollback Gate.
 
 An existing active offer may be renewed or extended only when the immutable
 `offer_version_ref` is the same. Switching between monthly/annual products,
@@ -98,9 +129,11 @@ traffic sizes, or any other offer version requires a separately reviewed
 product-transition contract. This PR does not infer or implement cross-package
 replacement behavior.
 
-## CLI Contract
+## Foundational CLI Contract
 
 The closed CLI is `scripts/platform-account-resource-authority-schema.mjs`.
+It is inherited from the already-merged foundational Authority change; this PR
+does not add or extend that CLI.
 It accepts an absolute database path and emits one aggregate-only JSON object.
 It never emits database paths, account identifiers, resource/request/
 entitlement/link references, raw rows, SQL, credentials, subscription URLs, or
@@ -161,22 +194,28 @@ is empty and `externalDependencies = 0` immediately before execution.
 
 Included:
 
-- additive migration and exact schema validator;
-- empty-table-only rollback;
-- authority model and fail-closed resolver;
-- migration and resolver dry-run paths;
-- TDD for schema, lifecycle, redaction, concurrency, and stale-version
-  boundaries;
+- a separate additive Quote-binding migration and validator with zero backfill;
+- runtime use of the already-merged Authority model and fail-closed resolver;
+- default-off runtime wiring from Quote through capture, outbox, coordinator,
+  and the exact fulfillment transaction;
+- TDD for schema, lifecycle, stale-version/no-debit, idempotency, concurrency,
+  and Resource A/B isolation boundaries;
 - this Risk A runbook.
 
 Excluded:
 
 - automatic backfill or automatic keeper selection;
+- an operator CLI, dry-run, or rollback API for the Quote-binding integration
+  schema;
+- an operator assignment/reassignment CLI for the foundational Authority data;
 - any assignment for `case_02` or the other ambiguous production accounts;
+- first-purchase bootstrap for an account without an explicit Authority;
+  zero-resource/no-Authority accounts remain fail-closed and are not eligible
+  for an all-account Commerce activation or canary;
 - production database access or mutation;
 - Portal/static deployment;
-- Commerce runtime activation, Quote canary, Order creation, Coins capture, or
-  fulfillment;
+- Commerce runtime activation, Quote canary, production Order creation, Coins
+  capture, or fulfillment;
 - payment-provider or recharge changes;
 - retirement, archival, deletion, or status changes for unresolved resources;
 - cross-package product transitions.
@@ -187,13 +226,22 @@ Each phase requires a separate Risk A review and approval:
 
 1. **Schema Gate**: fresh read-only inventory, backup identity, migration
    dry-run, apply the empty schema, exact readback, integrity checks, and an
-   empty-table/no-external-consumer rollback proof.
+   empty-table/no-external-consumer rollback proof for the already-merged
+   foundational Authority schema.
 2. **Data Gate**: assign only explicitly approved account/resource chains.
    `case_02` requires its own exact assignment approval; unresolved resources
-   remain unchanged.
-3. **Runtime Gate**: deploy the resolver with Commerce still default-off, run
-   aggregate `resolve-dry-run`, and verify fail-closed behavior.
-4. **Commerce Gate**: separately approve activation and a bounded Quote canary.
+   remain unchanged. A reviewed controlled assignment runner or CLI is a
+   source prerequisite; ad hoc SQL is forbidden.
+3. **Integration Schema Gate**: separately dry-run/apply the empty immutable
+   Quote-binding table and validate both dependency schemas. This source PR
+   does not authorize that mutation. The source module exposes inspect,
+   validate, and apply APIs only. A reviewed operator entry point plus an exact
+   rollback or backup-recovery contract is a source prerequisite before this
+   Gate can execute.
+4. **Runtime Gate**: deploy the resolver and integration with the Authority
+   Commerce flag still default-off, prove that no pre-Authority process remains,
+   run aggregate `resolve-dry-run`, and verify fail-closed behavior.
+5. **Commerce Gate**: separately approve activation and a bounded Quote canary.
 
 No phase inherits production authority from the preceding PR or Gate.
 
@@ -205,6 +253,8 @@ Focused source validation:
 node --test server/tests/platform-account-resource-authority-migrations.test.mjs
 node --test server/tests/platform-account-resource-authority.test.mjs
 node --test server/tests/platform-account-resource-authority-schema-cli.test.mjs
+node --test server/tests/platform-account-resource-authority-commerce-migrations.test.mjs
+node --test server/tests/platform-coin-commerce-authority.test.mjs
 npm test
 git diff --check origin/master...HEAD
 ```
@@ -220,7 +270,9 @@ the dependency schema is not exact, integrity checks fail, migration identity
 or checksum differs, owned objects drift, or a write would exceed the approved
 phase.
 
-For an empty schema deployment, rollback is allowed only while the authority
-table contains zero rows and has zero external schema consumers. After any
+For the foundational empty schema, rollback is allowed only while the authority
+table contains zero rows and has zero external schema consumers. The
+Quote-binding sidecar in this PR has no operator rollback API; its production
+Gate must first bind a reviewed rollback or backup-recovery contract. After any
 assignment or dependent schema integration, rollback must stop and move to a
 separately designed data-retention and compatibility procedure.
