@@ -1345,6 +1345,12 @@ export function createRuntimeState(options = {}) {
   const adminAuthorizationEnabled = envFlag(env.ADMIN_AUTHORIZATION_ENABLED);
   const coinsWalletEnabled = envFlag(env.COINS_WALLET_ENABLED);
   const coinsCommerceEnabled = envFlag(env.COINS_COMMERCE_ENABLED);
+  const coinsCommerceAuthorityEnabled = envFlag(
+    env.COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED
+  );
+  if (coinsCommerceAuthorityEnabled && !coinsCommerceEnabled) {
+    throw coinCommercePrerequisiteError();
+  }
   const coinRechargeRequested = envFlag(env.PLATFORM_COIN_RECHARGE_ENABLED);
   const requestedPaymentProviders = [
     ["paypal_sandbox", envFlag(env.PLATFORM_PAYPAL_SANDBOX_ENABLED)],
@@ -1395,6 +1401,9 @@ export function createRuntimeState(options = {}) {
     if (hasFulfillmentHandler === hasFulfillmentFactory) {
       throw coinCommercePrerequisiteError();
     }
+    if (coinsCommerceAuthorityEnabled && hasFulfillmentHandler) {
+      throw coinCommercePrerequisiteError();
+    }
     if (hasFulfillmentHandler) {
       configuredCoinCommerceFulfillmentHandler =
         exactCoinCommerceFulfillmentHandlerValue(
@@ -1428,6 +1437,9 @@ export function createRuntimeState(options = {}) {
         throw coinCommercePrerequisiteError();
       }
     } else {
+      if (coinsCommerceAuthorityEnabled) {
+        throw coinCommercePrerequisiteError();
+      }
       if (configuredCoinCommerceFulfillmentFactory) {
         throw coinCommercePrerequisiteError();
       }
@@ -2150,7 +2162,10 @@ export function createRuntimeState(options = {}) {
               runtimeCore: subscriptionCore,
               accountResourceIssuer: platformPortalAccessRequests,
               accountActivationReader:
-                configuredCoinCommerceAccountActivationReader
+                configuredCoinCommerceAccountActivationReader,
+              ...(coinsCommerceAuthorityEnabled
+                ? { authorityEnabled: true }
+                : {})
             })
           );
           configuredCoinCommerceFulfillmentHandler =
@@ -2163,6 +2178,9 @@ export function createRuntimeState(options = {}) {
         coinCommerceStore = createSqliteCoinCommerceStore({
           dbPath: controlDbPath,
           cancelWindowMs: configuredCoinCommerceCancelWindowMs,
+          ...(coinsCommerceAuthorityEnabled
+            ? { authorityEnabled: true }
+            : {}),
           ...(configuredCoinCommerceStorefrontEligibilityReader
             ? {
               storefrontEligibilityReader:
@@ -2413,6 +2431,7 @@ export function createRuntimeState(options = {}) {
       coinsWalletEnabled,
       coinsWalletStore,
       coinsCommerceEnabled,
+      coinsCommerceAuthorityEnabled,
       coinCommerceStore,
       coinCommerceCoordinator,
       coinRechargeEnabled,

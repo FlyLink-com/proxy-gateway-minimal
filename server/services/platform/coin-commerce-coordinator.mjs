@@ -36,6 +36,15 @@ const COMMAND_FIELDS = [
   "leaseGeneration",
   "leaseToken"
 ];
+const AUTHORITY_COMMAND_FIELDS = [...COMMAND_FIELDS, "authority"];
+const AUTHORITY_FIELDS = [
+  "authorityRef",
+  "authorityVersion",
+  "resourceRequestId",
+  "entitlementId",
+  "issuedLinkId"
+];
+const AUTHORITY_REFERENCE = /^[A-Za-z0-9._:-]{1,128}$/;
 const OWN_COORDINATOR_ERRORS = new WeakSet();
 
 function coordinatorError(code) {
@@ -196,6 +205,30 @@ function normalizeReference(value) {
   return value;
 }
 
+function normalizeAuthorityReference(value) {
+  if (typeof value !== "string" || !AUTHORITY_REFERENCE.test(value)) {
+    throw coordinatorError("coin_commerce_coordinator_unavailable");
+  }
+  return value;
+}
+
+function normalizeAuthority(input) {
+  const values = exactPlainDataValues(input, AUTHORITY_FIELDS);
+  if (
+    !Number.isSafeInteger(values.authorityVersion)
+    || values.authorityVersion < 1
+  ) {
+    throw coordinatorError("coin_commerce_coordinator_unavailable");
+  }
+  return Object.freeze({
+    authorityRef: normalizeAuthorityReference(values.authorityRef),
+    authorityVersion: values.authorityVersion,
+    resourceRequestId: normalizeAuthorityReference(values.resourceRequestId),
+    entitlementId: normalizeAuthorityReference(values.entitlementId),
+    issuedLinkId: normalizeAuthorityReference(values.issuedLinkId)
+  });
+}
+
 function normalizeClaimList(input, limit) {
   try {
     if (!Array.isArray(input) || Object.getPrototypeOf(input) !== Array.prototype) {
@@ -232,7 +265,11 @@ function normalizeClaimList(input, limit) {
 
 function normalizeCommand(input) {
   try {
-    const values = exactPlainDataValues(input, COMMAND_FIELDS);
+    const hasAuthority = Reflect.ownKeys(input ?? {}).includes("authority");
+    const values = exactPlainDataValues(
+      input,
+      hasAuthority ? AUTHORITY_COMMAND_FIELDS : COMMAND_FIELDS
+    );
     if (
       !Number.isSafeInteger(values.leaseGeneration)
       || values.leaseGeneration < 1
@@ -274,6 +311,7 @@ function normalizeCommand(input) {
       accountId: normalizeReference(values.accountId),
       offerVersionRef: normalizeReference(values.offerVersionRef),
       delivery: normalizedOffer.delivery,
+      ...(hasAuthority ? { authority: normalizeAuthority(values.authority) } : {}),
       leaseGeneration: values.leaseGeneration,
       leaseToken: values.leaseToken
     });
@@ -455,7 +493,10 @@ export function createCoinCommerceCoordinator(options = {}) {
           orderRef: normalizedCommand.orderRef,
           accountId: normalizedCommand.accountId,
           offerVersionRef: normalizedCommand.offerVersionRef,
-          delivery: normalizedCommand.delivery
+          delivery: normalizedCommand.delivery,
+          ...(normalizedCommand.authority
+            ? { authority: normalizedCommand.authority }
+            : {})
         });
         let rawResult;
         try {
