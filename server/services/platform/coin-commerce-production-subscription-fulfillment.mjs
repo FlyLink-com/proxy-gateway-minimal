@@ -26,6 +26,13 @@ const DELIVERY_FIELDS = Object.freeze([
   "discountBasisPoints"
 ]);
 const COMMERCE_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
+const AUTHORITY_FIELDS = Object.freeze([
+  "authorityRef",
+  "authorityVersion",
+  "resourceRequestId",
+  "entitlementId",
+  "issuedLinkId"
+]);
 
 function safeIssuedRef(prefix, value) {
   return `${prefix}ref_${createHash("sha256")
@@ -205,6 +212,43 @@ function exactProductionOfferVersion({
   }
 }
 
+function exactAuthoritySnapshot(value) {
+  const snapshot = exactPlainDataSnapshot(value, AUTHORITY_FIELDS);
+  if (
+    !snapshot
+    || !Number.isSafeInteger(snapshot.authorityVersion)
+    || snapshot.authorityVersion < 1
+    || ![
+      snapshot.authorityRef,
+      snapshot.resourceRequestId,
+      snapshot.entitlementId,
+      snapshot.issuedLinkId
+    ].every(hasText)
+  ) {
+    return null;
+  }
+  return Object.freeze(snapshot);
+}
+
+function resolveExpectedAuthority({ controlStore, accountId, expected }) {
+  try {
+    const resolved = controlStore.resolveCommerceAuthority({
+      accountId,
+      expectedAuthorityVersion: expected.authorityVersion
+    });
+    return (
+      resolved?.ok === true
+      && resolved.accountId === accountId
+      && resolved.authorityRef === expected.authorityRef
+      && resolved.resourceRequestId === expected.resourceRequestId
+      && resolved.entitlementId === expected.entitlementId
+      && resolved.issuedLinkId === expected.issuedLinkId
+    ) ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
 function resolveAccountProductEntitlement({ controlStore, accountId, now }) {
   if (!hasText(accountId)) return null;
   const account = controlStore.getAccount(accountId);
@@ -223,21 +267,46 @@ function resolveAccountProductEntitlement({ controlStore, accountId, now }) {
   return matchingBindings.length === 1 ? { account, entitlement } : null;
 }
 
-function resolveEligibleSubscriptionBinding({ controlStore, runtimeCore, accountId, now }) {
-  const productState = resolveAccountProductEntitlement({
-    controlStore,
-    accountId,
-    now
-  });
+function resolveEligibleSubscriptionBinding({
+  controlStore,
+  runtimeCore,
+  accountId,
+  now,
+  authority = null
+}) {
+  const productState = authority
+    ? (() => {
+      const account = controlStore.getAccount(accountId);
+      const entitlement = controlStore.getEntitlement(authority.entitlementId);
+      return (
+        account?.id === accountId
+        && account.status === "active"
+        && entitlement?.id === authority.entitlementId
+        && entitlement.accountId === accountId
+        && entitlement.status === "active"
+      ) ? { account, entitlement } : null;
+    })()
+    : resolveAccountProductEntitlement({
+      controlStore,
+      accountId,
+      now
+    });
   if (!productState) return null;
   const { account, entitlement } = productState;
 
-  const accessRequests = controlStore
-    .listPortalAccessRequests({ portalUserRef: accountId })
-    .filter((request) => (
-      (request.status === "delivered" || request.status === "issued")
-      && request.entitlementRef === entitlement.id
-    ));
+  const accessRequests = authority
+    ? [controlStore.getPortalAccessRequest(authority.resourceRequestId)]
+      .filter((request) => (
+        request
+        && (request.status === "delivered" || request.status === "issued")
+        && request.entitlementRef === entitlement.id
+      ))
+    : controlStore
+      .listPortalAccessRequests({ portalUserRef: accountId })
+      .filter((request) => (
+        (request.status === "delivered" || request.status === "issued")
+        && request.entitlementRef === entitlement.id
+      ));
   if (accessRequests.length !== 1) return null;
   const [accessRequest] = accessRequests;
   if (
@@ -268,14 +337,21 @@ function resolveEligibleSubscriptionBinding({ controlStore, runtimeCore, account
     return null;
   }
 
-  const bindings = controlStore
-    .listIssuedSubscriptionBindings()
-    .filter((binding) => binding.requestId === accessRequest.id);
+  const bindings = authority
+    ? controlStore.listIssuedSubscriptionBindings({ accountId })
+      .filter((binding) => (
+        binding.id === authority.issuedLinkId
+        && binding.requestId === accessRequest.id
+      ))
+    : controlStore
+      .listIssuedSubscriptionBindings()
+      .filter((binding) => binding.requestId === accessRequest.id);
   if (bindings.length !== 1) return null;
   const [binding] = bindings;
   if (
     binding.accountId !== accountId
     || binding.entitlementId !== accessRequest.entitlementRef
+    || (authority && binding.id !== authority.issuedLinkId)
     || binding.tenantRef !== safeIssuedRef("tenant", accessRequest.tenantId)
     || binding.artifactRef !== safeIssuedRef("artifact", accessRequest.artifactId)
   ) {
@@ -364,6 +440,7 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
   publishedCatalog = COIN_COMMERCE_PRODUCTION_PUBLISHED_OFFERS,
   fulfillmentCatalog =
     COIN_COMMERCE_PRODUCTION_FULFILLMENT_OFFER_VERSIONS,
+  authorityEnabled = false,
   nowFn = () => new Date()
 } = {}) {
   const publishedCatalogSnapshot = snapshotProductionCatalog(publishedCatalog);
@@ -395,6 +472,22 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
     throw safeFulfillmentError(
       "coin_commerce_fulfillment_activation_reader_invalid",
       "Coin Commerce fulfillment activation reader is invalid"
+    );
+  }
+  if (
+    typeof authorityEnabled !== "boolean"
+    || (
+      authorityEnabled
+      && (
+        typeof controlStore?.resolveCommerceAuthority !== "function"
+        || typeof controlStore?.getPortalAccessRequest !== "function"
+        || typeof controlStore?.getEntitlement !== "function"
+      )
+    )
+  ) {
+    throw safeFulfillmentError(
+      "coin_commerce_fulfillment_authority_invalid",
+      "Coin Commerce fulfillment Authority binding is invalid"
     );
   }
 
@@ -489,6 +582,24 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
     if (!isAccountActivated(accountId)) return false;
     try {
       const now = new Date(nowFn()).toISOString();
+      if (authorityEnabled) {
+        const authority = controlStore.resolveCommerceAuthority({ accountId });
+        if (authority?.ok !== true) return false;
+        const entitlement = controlStore.getEntitlement(
+          authority.entitlementId
+        );
+        if (
+          !entitlement
+          || entitlement.accountId !== accountId
+          || entitlement.status !== "active"
+        ) {
+          return false;
+        }
+        const currentOffer = fulfillmentCatalogSnapshot.find(
+          (offer) => offer.offerVersionRef === entitlement.plan
+        );
+        return currentOffer?.offerVersionRef === requestedOffer.offerVersionRef;
+      }
       const productState = resolveAccountProductEntitlement({
         controlStore,
         accountId,
@@ -518,7 +629,8 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       "orderRef",
       "accountId",
       "offerVersionRef",
-      "delivery"
+      "delivery",
+      ...(authorityEnabled ? ["authority"] : [])
     ]);
     if (!command) {
       throw safeFulfillmentError(
@@ -547,6 +659,22 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
       );
     }
     const portalPlan = offer.delivery.durationDays === 365 ? "yearly" : "monthly";
+    const authority = authorityEnabled
+      ? exactAuthoritySnapshot(command.authority)
+      : null;
+    if (
+      authorityEnabled
+      && (
+        !authority
+        || !resolveExpectedAuthority({
+          controlStore,
+          accountId: command.accountId,
+          expected: authority
+        })
+      )
+    ) {
+      throw createCoinCommerceFulfillmentReconciliationError();
+    }
     let resolved;
     let issuedInitialResource = false;
     try {
@@ -554,12 +682,17 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         controlStore,
         runtimeCore,
         accountId: command.accountId,
-        now
+        now,
+        authority
       });
     } catch (error) {
       throw createCoinCommerceFulfillmentRetryableError();
     }
-    if (!resolved && canIssueInitialAccountResource(command.accountId, now)) {
+    if (
+      !authorityEnabled
+      && !resolved
+      && canIssueInitialAccountResource(command.accountId, now)
+    ) {
       try {
         accountResourceIssuer.fulfillCommerceProduct({
           commandRef: command.commandRef,
@@ -575,7 +708,8 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
           controlStore,
           runtimeCore,
           accountId: command.accountId,
-          now
+          now,
+          authority: null
         });
       } catch (error) {
         if (isTemporaryDependencyError(error)) {
@@ -607,11 +741,13 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         candidate.offerVersionRef === resolved.entitlement.plan
       )
     );
-    const requireExistingEffect = Boolean(
-      currentOffer
-      && currentOffer.offerVersionRef !== offer.offerVersionRef
-      && canonicalTimestamp(resolved.entitlement.validUntil) > now
-    );
+    const requireExistingEffect = authorityEnabled
+      ? resolved.entitlement.plan !== offer.offerVersionRef
+      : Boolean(
+        currentOffer
+        && currentOffer.offerVersionRef !== offer.offerVersionRef
+        && canonicalTimestamp(resolved.entitlement.validUntil) > now
+      );
     let effect;
     try {
       effect = controlStore.applyCoinCommerceSubscriptionFulfillment({
@@ -627,14 +763,17 @@ export function createCoinCommerceProductionSubscriptionFulfillment({
         portalPlan,
         durationDays: offer.delivery.durationDays,
         monthlyTrafficGb: offer.delivery.monthlyTrafficGb,
-        initialIssuance: issuedInitialResource || isUnrecordedInitialCommerceIssuance({
-          controlStore,
-          resolved,
-          commandRef: command.commandRef,
-          offer
-        }),
+        initialIssuance: authorityEnabled
+          ? false
+          : issuedInitialResource || isUnrecordedInitialCommerceIssuance({
+            controlStore,
+            resolved,
+            commandRef: command.commandRef,
+            offer
+          }),
         requireExistingEffect,
         recoveryOnly: resolved.runtimeReady !== true,
+        ...(authority ? { authority } : {}),
         now
       });
     } catch (error) {
