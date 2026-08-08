@@ -1542,29 +1542,21 @@ test("contract validation and execution failures keep sourceChanged false and ap
 });
 
 test("CLI import emits no output and uses the module migration identity", async () => {
-  const originalStdoutWrite = process.stdout.write;
-  const originalStderrWrite = process.stderr.write;
-  const originalExitCode = process.exitCode;
-  const writes = [];
-  let imported;
-  process.stdout.write = (chunk) => {
-    writes.push(String(chunk));
-    return true;
-  };
-  process.stderr.write = (chunk) => {
-    writes.push(String(chunk));
-    return true;
-  };
-  try {
-    imported = await import(
-      `${pathToFileURL(CLI_PATH).href}?silent-import=${Date.now()}`
-    );
-  } finally {
-    process.stdout.write = originalStdoutWrite;
-    process.stderr.write = originalStderrWrite;
-    process.exitCode = originalExitCode;
-  }
-  assert.deepEqual(writes, []);
+  const importUrl = `${pathToFileURL(CLI_PATH).href}?silent-import=${Date.now()}`;
+  const importProbe = spawnSync(process.execPath, [
+    "--input-type=module",
+    "--eval",
+    `await import(${JSON.stringify(importUrl)})`
+  ], {
+    cwd: REPOSITORY_ROOT,
+    encoding: "utf8",
+    env: {},
+    windowsHide: true
+  });
+  assert.equal(importProbe.status, 0);
+  assert.equal(importProbe.stdout, "");
+  assert.equal(importProbe.stderr, "");
+  const imported = await import(importUrl);
   assert.deepEqual(
     Object.keys(imported),
     ["runCoinWalletReferenceIndexSchemaCli"]

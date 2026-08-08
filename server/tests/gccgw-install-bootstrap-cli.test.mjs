@@ -82,9 +82,11 @@ test("gccgw install bootstrap reaches host gate after a valid configure plan", (
     }
   }));
 
-  const expectedHostGate = process.platform === "linux"
-    ? /bootstrap\.sh must run as root via sudo/
-    : /install bootstrap can only run on a Linux server host/;
+  const expectedHostGate = process.platform !== "linux"
+    ? /install bootstrap can only run on a Linux server host/
+    : typeof process.getuid === "function" && process.getuid() === 0
+      ? /repository checkout is .*expected APP_DIR=\/opt\/proxy-gateway-minimal/
+      : /bootstrap\.sh must run as root via sudo/;
 
   assert.throws(
     () => execFileSync(process.execPath, [

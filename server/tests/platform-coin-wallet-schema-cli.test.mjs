@@ -264,23 +264,21 @@ test("unexpected execution errors are closed infrastructure failures", async () 
     const dbPath = join(directory, "synthetic.sqlite");
     const arbitraryReason = "arbitrary_reason_from_execution_layer";
     const privateMessage = `${dbPath}: private raw execution detail`;
-    const originalWrite = process.stdout.write;
-    const originalExitCode = process.exitCode;
-    const importWrites = [];
-    let cliModule;
-    process.stdout.write = (chunk) => {
-      importWrites.push(String(chunk));
-      return true;
-    };
-    try {
-      cliModule = await import(
-        `${pathToFileURL(CLI_PATH).href}?unexpected-execution-unit`
-      );
-    } finally {
-      process.stdout.write = originalWrite;
-      process.exitCode = originalExitCode;
-    }
-    assert.deepEqual(importWrites, []);
+    const importUrl = `${pathToFileURL(CLI_PATH).href}?unexpected-execution-unit`;
+    const importProbe = spawnSync(process.execPath, [
+      "--input-type=module",
+      "--eval",
+      `await import(${JSON.stringify(importUrl)})`
+    ], {
+      cwd: REPOSITORY_ROOT,
+      encoding: "utf8",
+      env: {},
+      windowsHide: true
+    });
+    assert.equal(importProbe.status, 0);
+    assert.equal(importProbe.stdout, "");
+    assert.equal(importProbe.stderr, "");
+    const cliModule = await import(importUrl);
     assert.equal(typeof cliModule.runCoinWalletSchemaCli, "function");
 
     const outcome = await cliModule.runCoinWalletSchemaCli({
