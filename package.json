@@ -90,6 +90,7 @@
     "platform:coin-wallet:schema": "node scripts/platform-coin-wallet-schema.mjs",
     "platform:coin-wallet:reference-index-schema": "node scripts/platform-coin-wallet-reference-index-schema.mjs",
     "platform:coin-commerce:schema": "node scripts/platform-coin-commerce-schema.mjs",
+    "platform:account-resource-authority:schema": "node scripts/platform-account-resource-authority-schema.mjs",
     "platform:coin-commerce:local-validation": "node scripts/start-local-coin-commerce-validation.mjs",
     "platform:coin-commerce:local-ui-validation": "node scripts/start-local-coin-commerce-ui-validation.mjs",
     "docs:authority:check": "node scripts/check-document-authority.mjs",
