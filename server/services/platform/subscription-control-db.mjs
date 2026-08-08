@@ -2,6 +2,9 @@ import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import {
+  createAccountResourceAuthorityStore
+} from "./account-resource-authority.mjs";
 
 const UNSAFE_FIELD_PARTS = [
   "email",
@@ -16,6 +19,9 @@ const UNSAFE_FIELD_PARTS = [
   "sspassword"
 ];
 const SAFE_CONTROL_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
+const SAFE_AUTHORITY_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+const AUTHORITY_SECRET_LIKE_PATTERN =
+  /^(?:https?:|mailto:|bearer[ .:_-]|sk[-_]|eyj[a-z0-9_-]{10,})/i;
 const UNSAFE_CONTROL_VALUE_PATTERN =
   /https?:|token=|secret|credential|password|private|customer|@|\/sub\/clash\.yaml|(?:\d{1,3}\.){3}\d{1,3}|[a-z0-9-]+\.[a-z]{2,}/i;
 const TRAFFIC_LIFECYCLE_PENDING_ACTIONS = new Set([
@@ -54,6 +60,20 @@ function safeControlRef(value, field) {
     throw platformError("validation_error", `${field} must be a safe control-plane reference`);
   }
   return normalized;
+}
+
+function safeAuthorityRef(value, field) {
+  if (
+    typeof value !== "string"
+    || !SAFE_AUTHORITY_REF_PATTERN.test(value)
+    || AUTHORITY_SECRET_LIKE_PATTERN.test(value)
+  ) {
+    throw platformError(
+      "validation_error",
+      `${field} must be a safe Authority reference`
+    );
+  }
+  return value;
 }
 
 function safeControlRefList(value, field) {
@@ -1385,6 +1405,18 @@ export function createSqliteSubscriptionControlStore({
     `).all(...params).map(mapEntitlement);
   }
 
+  let accountResourceAuthorityStore = null;
+
+  function resolveCommerceAuthority(input = {}) {
+    assertNoUnsafeFields(input);
+    if (!accountResourceAuthorityStore) {
+      accountResourceAuthorityStore = createAccountResourceAuthorityStore({
+        database: db
+      });
+    }
+    return accountResourceAuthorityStore.resolveCommerceAuthority(input);
+  }
+
   const coinCommerceFulfillmentMetadataKeys = Object.freeze([
     "version",
     "commandRef",
@@ -1446,14 +1478,18 @@ export function createSqliteSubscriptionControlStore({
         "commandRef",
         "orderRef",
         "accountId",
-        "requestRef",
-        "entitlementRef",
-        "issuedLinkRef",
         "tenantRef",
         "artifactRef",
         "offerVersionRef"
       ]) {
         safeControlRef(metadata[key], key);
+      }
+      for (const key of [
+        "requestRef",
+        "entitlementRef",
+        "issuedLinkRef"
+      ]) {
+        safeAuthorityRef(metadata[key], key);
       }
       validFrom = isoText(metadata.validFrom, "validFrom");
       previousValidUntil = isoText(metadata.previousValidUntil, "previousValidUntil");
@@ -1680,13 +1716,58 @@ export function createSqliteSubscriptionControlStore({
 
   function applyCoinCommerceSubscriptionFulfillment(input) {
     assertNoUnsafeFields(input);
+    let authority = null;
+    if (input.authority !== undefined) {
+      const expectedAuthorityFields = [
+        "authorityRef",
+        "authorityVersion",
+        "resourceRequestId",
+        "entitlementId",
+        "issuedLinkId"
+      ];
+      if (!sameKeys(input.authority, expectedAuthorityFields)) {
+        throw platformError("validation_error", "authority must be an exact snapshot");
+      }
+      authority = {
+        authorityRef: safeAuthorityRef(
+          input.authority.authorityRef,
+          "authorityRef"
+        ),
+        authorityVersion: integer(
+          input.authority.authorityVersion,
+          "authorityVersion",
+          { min: 1 }
+        ),
+        resourceRequestId: safeAuthorityRef(
+          input.authority.resourceRequestId,
+          "resourceRequestId"
+        ),
+        entitlementId: safeAuthorityRef(
+          input.authority.entitlementId,
+          "entitlementId"
+        ),
+        issuedLinkId: safeAuthorityRef(
+          input.authority.issuedLinkId,
+          "issuedLinkId"
+        )
+      };
+    }
+    const fulfillmentResourceRef = authority
+      ? safeAuthorityRef
+      : safeControlRef;
     const record = {
       commandRef: safeControlRef(input.commandRef, "commandRef"),
       orderRef: safeControlRef(input.orderRef, "orderRef"),
       accountId: safeControlRef(input.accountId, "accountId"),
-      requestRef: safeControlRef(input.requestRef, "requestRef"),
-      entitlementRef: safeControlRef(input.entitlementRef, "entitlementRef"),
-      issuedLinkRef: safeControlRef(input.issuedLinkRef, "issuedLinkRef"),
+      requestRef: fulfillmentResourceRef(input.requestRef, "requestRef"),
+      entitlementRef: fulfillmentResourceRef(
+        input.entitlementRef,
+        "entitlementRef"
+      ),
+      issuedLinkRef: fulfillmentResourceRef(
+        input.issuedLinkRef,
+        "issuedLinkRef"
+      ),
       tenantRef: safeControlRef(input.tenantRef, "tenantRef"),
       artifactRef: safeControlRef(input.artifactRef, "artifactRef"),
       offerVersionRef: safeControlRef(input.offerVersionRef, "offerVersionRef"),
@@ -1696,6 +1777,7 @@ export function createSqliteSubscriptionControlStore({
       initialIssuance: input.initialIssuance === true,
       requireExistingEffect: input.requireExistingEffect === true,
       recoveryOnly: input.recoveryOnly === true,
+      authority,
       now: isoText(input.now, "now")
     };
     if (
@@ -1736,19 +1818,51 @@ export function createSqliteSubscriptionControlStore({
     const apply = db.transaction(() => {
       const account = getAccount(record.accountId);
       if (!account || account.status !== "active") failDrift();
-      const serviceEntitlement = resolveAccountServiceEntitlement({
-        accountId: record.accountId,
-        now: record.now
-      });
+      if (record.authority) {
+        let currentAuthority;
+        try {
+          currentAuthority = resolveCommerceAuthority({
+            accountId: record.accountId,
+            expectedAuthorityVersion: record.authority.authorityVersion
+          });
+        } catch {
+          failDrift();
+        }
+        if (
+          currentAuthority?.ok !== true
+          || currentAuthority.authorityRef !== record.authority.authorityRef
+          || currentAuthority.resourceRequestId
+            !== record.authority.resourceRequestId
+          || currentAuthority.entitlementId !== record.authority.entitlementId
+          || currentAuthority.issuedLinkId !== record.authority.issuedLinkId
+          || record.requestRef !== record.authority.resourceRequestId
+          || record.entitlementRef !== record.authority.entitlementId
+          || record.issuedLinkRef !== record.authority.issuedLinkId
+        ) {
+          failDrift();
+        }
+      }
+      const serviceEntitlement = record.authority
+        ? getEntitlement(record.entitlementRef)
+        : resolveAccountServiceEntitlement({
+          accountId: record.accountId,
+          now: record.now
+        });
       if (!serviceEntitlement || serviceEntitlement.id !== record.entitlementRef) {
         failDrift();
       }
-      const activeAccessRequests = listPortalAccessRequests({
-        portalUserRef: record.accountId
-      }).filter((request) => (
-        (request.status === "delivered" || request.status === "issued")
-        && request.entitlementRef === record.entitlementRef
-      ));
+      const activeAccessRequests = record.authority
+        ? [getPortalAccessRequest(record.requestRef)].filter((request) => (
+          request
+          && (request.status === "delivered" || request.status === "issued")
+          && request.entitlementRef === record.entitlementRef
+        ))
+        : listPortalAccessRequests({
+          portalUserRef: record.accountId
+        }).filter((request) => (
+          (request.status === "delivered" || request.status === "issued")
+          && request.entitlementRef === record.entitlementRef
+        ));
       if (activeAccessRequests.length !== 1) failDrift();
       const [accessRequest] = activeAccessRequests;
       if (
@@ -3666,6 +3780,7 @@ export function createSqliteSubscriptionControlStore({
     resolvePortalLoginAccount,
     createEntitlement,
     getEntitlement,
+    resolveCommerceAuthority,
     resolveAccountServiceEntitlement,
     updateEntitlementTrafficLimit,
     applyCoinCommerceSubscriptionFulfillment,
