@@ -244,8 +244,9 @@ file change and no independent commit.
 - Consumes current `origin/master` and the reviewed runtime/header/compiler
   contracts.
 - Produces the same-branch Foundation checkpoint commits, canonical codec,
-  durable store, complete native capability surface, and target-Linux
-  eligibility receipt consumed by later tasks.
+  durable store, complete native capability surface, and a PR-only
+  GitHub-hosted `ubuntu-24.04` target-Linux eligibility receipt consumed by later
+  tasks. The runner is an ephemeral Linux VM, not WSL or a production host.
 
 **Plan:** `docs/superpowers/plans/2026-08-08-github-control-plane-foundation-and-linux-feasibility.md`
 
@@ -270,7 +271,10 @@ npm run control-plane:foundation:linux
 git diff --check origin/master...HEAD
 ```
 
-Expected: all Node tests pass; the target-matched Linux receipt is eligible; diff check exits 0. A Windows-local skip is not evidence for the Linux receipt.
+Expected: all Node tests pass; the target-matched GitHub-hosted `ubuntu-24.04`
+receipt is eligible; diff check exits 0. A Windows-local or WSL skip is not
+evidence for the Linux receipt. The PR-only workflow contains no secret,
+Environment, host, provider, Release, deployment, or write operation.
 
 - [ ] **Step 3: Review the exact Foundation diff**
 

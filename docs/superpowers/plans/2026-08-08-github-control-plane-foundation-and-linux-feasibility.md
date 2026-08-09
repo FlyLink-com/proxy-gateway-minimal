@@ -4,9 +4,9 @@
 
 **Goal:** Build the strict canonical-byte, durable-filesystem, and Linux-native capability foundation, and stop the program unless the target-matched Linux environment can prove every kernel, SQLite-handle, descriptor-custody, and systemd primitive required by the approved deployment design.
 
-**Architecture:** Pure Node.js modules own canonical contracts and dependency-injected durable state, while every state-changing durable operation is one native fixed-logical-ID transaction rather than a JavaScript read-then-write sequence. A small Node-API C addon exposes only the four closed logical read/publish-no-replace/CAS/verified-unlink operations under OFD locks, sealed anonymous memory, exact descriptor inheritance, directory-FD durability, authenticated `SCM_RIGHTS`, and actual SQLite main-handle proof. One digest-bound build-time registry owns logical records, spawn profiles, the frozen standalone compiler profile, and reviewed standalone targets; later Bootstrap sources may add one reviewed extension fragment and manifest entry without a runtime registration path, caller-selected compile input, or public native ABI change. A disposable Linux harness is the authoritative stop/go gate; no later plan may replace a failed native proof with path, process, or service-name inference.
+**Architecture:** Pure Node.js modules own canonical contracts and dependency-injected durable state, while every state-changing durable operation is one native fixed-logical-ID transaction rather than a JavaScript read-then-write sequence. A small Node-API C addon exposes only the four closed logical read/publish-no-replace/CAS/verified-unlink operations under OFD locks, sealed anonymous memory, exact descriptor inheritance, directory-FD durability, authenticated `SCM_RIGHTS`, and actual SQLite main-handle proof. One digest-bound build-time registry owns logical records, spawn profiles, the frozen standalone compiler profile, and reviewed standalone targets; later Bootstrap sources may add one reviewed extension fragment and manifest entry without a runtime registration path, caller-selected compile input, or public native ABI change. A GitHub-hosted `ubuntu-24.04` virtual machine, started only by the one source Draft PR, is the authoritative disposable Linux stop/go harness; it is not WSL, a self-hosted runner, or production infrastructure. No later plan may replace a failed native proof with path, process, or service-name inference.
 
-**Tech Stack:** Node.js 22 ESM, `node:test`, Node-API C, `node-gyp@11.4.2`, Linux `memfd_create`, `openat2`, OFD locks, Unix-domain sockets, SQLite, systemd, PowerShell as the local orchestration shell.
+**Tech Stack:** Node.js 22 ESM, `node:test`, Node-API C, `node-gyp@11.4.2`, GitHub-hosted `ubuntu-24.04`, Linux `memfd_create`, `openat2`, OFD locks, Unix-domain sockets, SQLite, systemd, and PowerShell for local orchestration only.
 
 ## Global Constraints
 
@@ -15,6 +15,7 @@
 - Release unit is exactly `control-plane-app`; source PR state remains `production_state: not_deployed` and `identity_impact: false`.
 - Root Node engine support remains `>=20.10.0 <21 || 22.x || 23.x || 24.x || 25.x || 26.x`; repository CI for this capability uses Node 22.
 - No Redis, queue, cluster, daemon, interactive shell, SCP, rsync, PTY, forwarding, self-hosted Actions runner, operator key, or runtime-config repair identity is introduced.
+- The authoritative Foundation execution environment is a `pull_request`-only, no-secret, `contents: read` GitHub-hosted `ubuntu-24.04` VM. It uses exact-SHA action references, checks out the pull-request head SHA with persisted credentials disabled, installs dependencies with `npm ci --ignore-scripts`, and runs only the Foundation test and receipt commands. It has no `push`, `workflow_dispatch`, schedule, environment, artifact upload, SSH, provider, Release, host, or deployment operation. Local Windows or WSL observations may aid development but never substitute for this receipt.
 - No production `.env`, SQLite file, protected config, credential, endpoint, raw log, or customer data enters a source fixture or artifact.
 - Native APIs accept closed logical IDs, directory FDs, and authenticated capabilities; they never accept an external absolute path, executable path, arbitrary FD slot, unit name, UID, or shell fragment. Durable state publish, CAS, and verified unlink resolve only a reviewed logical-record registry and hold one inter-process OFD lock from current-byte reread through digest comparison, atomic rename-or-unlink, parent `fsync`, and exact readback.
 - `createSealedMemfd` must apply mode `0600` and verify regular-file type, effective-UID ownership, and exact permission bits before writing the first protected byte. A permission or ownership failure closes the descriptor and is a program stop; no named-file or unverified-descriptor fallback exists.
@@ -57,6 +58,8 @@
 - `server/tests/control-plane-node-headers-contract.test.mjs`
 - `server/tests/control-plane-native-toolchain-contract.test.mjs`
 - `server/tests/control-plane-linux-capability-probe.test.mjs`
+- `server/tests/control-plane-foundation-linux-workflow.test.mjs` — locks the PR-only GitHub-hosted Linux harness to its source-only boundary.
+- `.github/workflows/control-plane-foundation-linux.yml` — exact-SHA, PR-only `ubuntu-24.04` Foundation receipt gate.
 
 **Modify:**
 
@@ -1867,13 +1870,15 @@ git commit -m "feat: prove database capability custody"
 
 - Create: `scripts/control-plane-linux-capability-probe.mjs`
 - Create: `server/tests/control-plane-linux-capability-probe.test.mjs`
+- Create: `server/tests/control-plane-foundation-linux-workflow.test.mjs`
+- Create: `.github/workflows/control-plane-foundation-linux.yml`
 - Modify: `integration/control-plane-deploy/foundation-linux.test.mjs`
 - Modify: `package.json`
 
 **Interfaces:**
 
 - Consumes: all preceding native and durable-store tests.
-- Produces: one aggregate-only synthetic receipt with no path, kernel release, hostname, UID, process ID, device/inode, config, or credential value.
+- Produces: one aggregate-only synthetic receipt with no path, kernel release, hostname, UID, process ID, device/inode, config, or credential value, plus one PR-only GitHub-hosted Linux check that never persists or publishes that receipt.
 
 - [ ] **Step 1: Write the closed capability receipt test**
 
@@ -1953,6 +1958,29 @@ feature stops execution before every later Master DAG stage. An eligible receipt
 permits only the next checkpoint, Host/DB Tasks 0-1; it does not permit a direct
 jump to Artifact, Bootstrap, later Host/DB, Receipt, or rollout work.
 
+- [ ] **Step 5: Write the PR-only Linux-harness test, then implement and verify GREEN**
+
+The test reads `.github/workflows/control-plane-foundation-linux.yml` as text and
+must reject a mutable action reference, a runner other than `ubuntu-24.04`, any
+event other than `pull_request` to `master`, `push`, `workflow_dispatch`,
+schedule, `pull_request_target`, an Environment, secret expression, write
+permission, self-hosted runner, artifact upload, SSH/provider/deploy command, or
+a checkout that is not `${{ github.event.pull_request.head.sha }}` with
+`persist-credentials: false`. It must require Node 22, `npm ci --ignore-scripts`,
+and `npm run control-plane:foundation:linux`.
+
+Implement the matching workflow with `permissions: { contents: read }`, the
+repository's reviewed exact-SHA `actions/checkout` and `actions/setup-node`
+references, a bounded job timeout, and no other job. It exists only to prove the
+Foundation receipt in a disposable GitHub-hosted VM; it never uploads or exposes
+the receipt and never makes a GitHub, host, provider, or production mutation.
+
+Run: `node --test server/tests/control-plane-foundation-linux-workflow.test.mjs`
+
+Expected: GREEN locally. The actual `ubuntu-24.04` receipt is evaluated only when
+the one Draft source PR is opened, and a failed or unavailable run remains an
+ineligible Foundation gate rather than a local-WSL fallback.
+
 `memfdOwnerMode0600` is true only when `fchmod(0600)` plus regular-file,
 effective-UID, and exact-mode `fstat` checks completed before the dummy byte was
 written. `sealedOpenSshDescriptorHandoff` is true only after both an accepted
@@ -1967,7 +1995,7 @@ single-predecessor race and every crash boundary pass. The receipt must not
 collapse these into generic `memfdFullSeals`, `ofdIdentityLease`, or
 `directoryFsyncDurability` booleans.
 
-- [ ] **Step 5: Run repository regression validation**
+- [ ] **Step 6: Run repository regression validation**
 
 Run:
 
@@ -1979,10 +2007,10 @@ git diff --check origin/master...HEAD
 
 Expected: all commands exit 0.
 
-- [ ] **Step 6: Commit the Foundation gate**
+- [ ] **Step 7: Commit the Foundation gate**
 
 ```powershell
-git add scripts/control-plane-linux-capability-probe.mjs server/tests/control-plane-linux-capability-probe.test.mjs integration/control-plane-deploy/foundation-linux.test.mjs package.json
+git add .github/workflows/control-plane-foundation-linux.yml scripts/control-plane-linux-capability-probe.mjs server/tests/control-plane-foundation-linux-workflow.test.mjs server/tests/control-plane-linux-capability-probe.test.mjs integration/control-plane-deploy/foundation-linux.test.mjs package.json
 git commit -m "test: gate control-plane linux feasibility"
 ```
 
