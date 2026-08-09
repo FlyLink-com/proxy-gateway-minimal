@@ -93,6 +93,7 @@
     "platform:account-resource-authority:schema": "node scripts/platform-account-resource-authority-schema.mjs",
     "platform:coin-commerce:local-validation": "node scripts/start-local-coin-commerce-validation.mjs",
     "platform:coin-commerce:local-ui-validation": "node scripts/start-local-coin-commerce-ui-validation.mjs",
+    "control-plane:native:test": "node --test --test-concurrency=1 server/tests/control-plane-native-contract.test.mjs server/tests/control-plane-native-registry.test.mjs server/tests/control-plane-native-toolchain-contract.test.mjs",
     "docs:authority:check": "node scripts/check-document-authority.mjs",
     "governance:check": "node scripts/check-gate-governance.mjs --snapshot",
     "project-state:check": "node bin/gccgw.mjs project check",
@@ -134,7 +135,8 @@
     "admin:test": "npm run test --prefix admin"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.78.0"
+    "@anthropic-ai/sdk": "^0.78.0",
+    "node-gyp": "11.4.2"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

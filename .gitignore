@@ -29,3 +29,4 @@ test-results/
 handoff/
 admin/dist-site/
 runtime-identities/
+ops/control-plane-deploy/native/build/
