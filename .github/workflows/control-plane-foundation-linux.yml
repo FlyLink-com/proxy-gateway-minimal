@@ -1,0 +1,37 @@
+name: Control Plane Foundation Linux Feasibility
+
+on:
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-foundation-linux-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  foundation-linux:
+    name: Foundation Linux feasibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout pull-request head
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Run Foundation Linux feasibility gate
+        run: npm run control-plane:foundation:linux
