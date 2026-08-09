@@ -2,8 +2,8 @@
 
 ```yaml
 document_metadata:
-  doc_type: design
-  lifecycle: proposed
+  doc_type: canonical
+  lifecycle: active
   authority_scope: source_design
   superseded_by: null
   last_verified_at: 2026-08-08
@@ -11,7 +11,8 @@ document_metadata:
 ```
 
 > Status:
-> - Type: Approved conversational design pending written review
+> - Type: Approved written design; implementation planning authorized; pre-
+>   implementation security corrections incorporated
 > - Source baseline: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
 > - Risk: C for this design-only commit; the deployment capability, credential
 >   bootstrap, host access, and every production run remain Risk A
@@ -130,6 +131,126 @@ The design fixes the following decisions:
     shared identity-lease contract. Fresh observed schema, reviewed migration
     input/expected post, start state, transition, ledger, and terminal identities
     are distinct evidence.
+16. Every durable cross-process state transition uses one reviewed native
+    compare-and-swap, no-replace publish, or expected-object unlink primitive.
+    JavaScript read-check-write sequences are not atomic authorization or replay
+    controls. A successful transition includes parent-directory fsync and exact
+    readback; contention and crash boundaries are mandatory tests.
+17. Artifacts crossing from an unprotected or tokenless job into a protected
+    job are data-only. A protected production or publication job never executes
+    a script, action, checksum verifier, manifest generator, or lifecycle hook
+    supplied by that artifact. Its executable control plane is independently
+    anchored to the reviewed workflow and exact protected source SHA; the
+    candidate artifact cannot authenticate its own verifier or publisher.
+18. Every `workflow_dispatch` value enters a process as data through a strict
+    parser or step environment. GitHub expressions containing user input are
+    never interpolated into shell source, command names, paths, or executable
+    arguments before closed-grammar validation.
+19. Preapproval evidence contains no claim that the protected job was approved.
+    The first trusted postapproval step independently rereads the exact current
+    Environment policy, exhaustive protected-master ruleset, exact check tuples,
+    and this run/attempt's approval history, then creates one canonical
+    authorization record bound to the Gate, plan, source, workflow path/ref/SHA,
+    run/attempt, reviewer, installed authorization generation, effective expiry,
+    and nonce. The OIDC audience binds that record. Before accepting artifact
+    bytes or any status mutation, the host verifies issuer, signature, audience,
+    claims, workflow identity, expiry, and installed state, then atomically
+    consumes the Gate digest, JTI, token digest, authorization-record digest,
+    and transaction or closeout reservation. A reusable SSH key is never
+    sufficient authorization.
+20. Upload-start, closeout ACK, and every other controller-to-host state change
+    use a separately typed, short-lived OIDC authorization bound to that exact
+    transition and immutable terminal/closeout evidence. Status reads remain
+    read-only; possession of the fixed SSH credential alone cannot advance
+    durable host state.
+21. Artifact admission verifies the signed provenance identity, not merely a
+    matching subject digest. The verified tuple includes the expected issuer,
+    repository, protected ref, reviewed workflow path and SHA, source commit,
+    predicate type, subject name/digest, and certificate or bundle identity.
+22. The artifact publisher proves the live `artifact-publication` policy and a
+    fresh approval by an authorized reviewer distinct from the dispatcher for
+    the exact run, attempt, source, and publication envelope before any Release
+    or attestation write. The canonical policy includes the complete immutable
+    reviewer identity set, self-review rule, deployment-branch rule, and
+    own boolean `can_admins_bypass: false`. Policy shape alone is not approval
+    evidence.
+23. Production credentials are available only through the Foundation-owned
+    lazy sealed-material interface and fixed credential identifiers after the
+    relevant capability and authorization checks. Secret memory FDs are created
+    with sealing enabled, explicitly set and read back as mode `0600` before any
+    protected byte is written, inherit only fixed reviewed slots, and are never
+    eagerly materialized for convenience.
+24. The database terminal validator requires the exact closed logical-database
+    set, with each ID present exactly once. Missing, duplicate, extra, or unknown
+    logical IDs fail closed before a terminal result or production claim.
+25. Every root transaction, migration, recovery, finalizer, and bootstrap unit
+    has an exact reviewed systemd sandbox and capability set. General host
+    filesystem, device, network, namespace, kernel-tuning, module, tracing,
+    ptrace, and arbitrary-unit authority are denied; each phase receives only
+    the paths, FDs, identities, address families, and systemd operations needed
+    by that fixed phase.
+26. The terminal publisher persists and reads back the canonical terminal body,
+    outer record, replay record, and closeout lease in their one-way hash order
+    before controller publication. A Deploy Note is written only after a
+    separate final read-only validation binds the same run and terminal result.
+    It uses result-specific wording; diagnostic/no-claim or nonterminal evidence
+    produces no Deploy Note, and only a validated deployed result uses
+    `deployed_at`.
+27. Compatibility discovery uses a separately typed, domain-separated receipt
+    that proves only the staged content, exact rollback/runtime/writer/database
+    baseline, and eligibility decision available before final credential
+    bootstrap. It cannot masquerade as a normal protected inventory receipt or
+    contain future bootstrap, authorization-generation, or Production Gate
+    evidence.
+28. Host is the sole provider of both pre-Gate inventory readers. Its private-
+    branded frozen pair exposes only exact read-only `{read(request)}` members;
+    Bootstrap must assert that pair before routing either inventory codec. Host
+    also solely owns the source-tested G1a bundle installer, whose only operation
+    installs and reads back the fixed staged manifest/content/approval tuple.
+29. Compatibility inventory and compatibility activation are different
+    authorities. G2 uses only a read-only inventory request/response ABI. G3
+    requires a fresh Gate-bound `bootstrap_activation` request/response ABI
+    that alone reaches the fixed root launcher; no G2 inventory frame, receipt,
+    or read-only `activationId` evidence can be replayed as G3 authority. The
+    caller observes one
+    synchronous terminal response, while an internal
+    `bootstrap_activation_ready_v1` frame alone may move the relay from its
+    ten-second pre-auth bound to the fixed 910,000-ms authenticated bound.
+    Bootstrap transport alone owns the 900,000-ms operation, 910,000-ms
+    authenticated, and 925,000-ms request limits; the protocol service uses
+    `RuntimeMaxSec=930s`.
+30. Bootstrap maintenance is part of production composition, not a library-only
+    test seam: admission runs before accepted-plan publication, and every normal,
+    recovery, or critical terminal path runs terminal/closeout maintenance
+    before immutable terminal/closeout publication. Host and Receipt never call
+    either compactor directly.
+31. The native root relay uses nonblocking connect under one absolute ten-second
+    pre-authentication deadline. Authentication progress does not refresh it;
+    accepted artifact transfer receives one separate absolute 300-second bound
+    inside the same authenticated task.
+32. Every protected executable preflight anchors checkout and readback to the
+    literal `${{ github.sha }}`. Approval binds the full live Environment
+    policy, including the immutable identity of every required reviewer and the
+    explicit `can_admins_bypass: false` setting; a display name, missing bypass
+    bit, or partial policy is not authority.
+33. Each durable Release asset owns one and only one attestation statement whose
+    sole subject is that exact asset name and digest. A shared, reused, zero-
+    subject, or multi-subject statement fails closed.
+34. `terminal_quiescence_rejected` is an existing-transaction transitional
+    nonterminal result. Controllers continue bounded ordinary polling until a
+    Host-proof-backed immutable critical status plus exact terminal bundle is
+    available or the fixed deadline expires. The classifier reserves
+    `admission_rejected_no_transaction` only for a future Bootstrap-owner-
+    branded exact `{preAdmissionDurableRejection:true,admissionAccepted:false}`
+    value. Version 1 defines no such producer, so that branch is unreachable;
+    a caller-built object or bare rejection boolean fails closed to controller
+    no-claim.
+35. Artifact Tasks 11-12 solely own production controller/workflow wiring and
+    the final bounded Deploy Note sink; Integration Task 6 performs no-change
+    conformance. Source documentation, including `RELEASE_MANIFEST.md`, may
+    record only source capability and `not_deployed`; a real G9 closeout appends
+    at most one Deploy Note comment to the merged source PR after final read-only
+    validation.
 
 ## Non-Goals
 
@@ -189,6 +310,36 @@ runner cannot query GitHub repository content, Actions, or deployment APIs or
 select a different target; its only GitHub network trust is fixed-issuer OIDC
 discovery/JWKS verification during admission. The receipt validator cannot
 perform a host mutation.
+
+The source ownership graph is provider-before-consumer. Host Task 11A owns
+`control-plane-host-inventory-readers.mjs` and exports only
+`createControlPlaneHostInventoryReaders(deps)` plus
+`assertControlPlaneHostInventoryReaders(value)`. The factory returns one
+private-branded frozen exact
+`{normalInventoryReader,compatibilityInventoryReader}` pair, and each member is
+the frozen exact `{read(request)}` surface. Bootstrap's fixed deploy and
+bootstrap routers both consume that asserted pair; neither
+accepts individual injected reader lookalikes. After
+Integration freezes the final staged manifest, Host Task 14A separately owns
+`control-plane-host-bundle-installer.mjs` and
+`createControlPlaneHostBundleInstaller(deps) ->
+{installAndReadBack({stagedManifestBytes,contentReceiptBytes,approvalBinding})}`.
+That return is one frozen exact method surface. The source PR tests but never
+invokes that installer; only post-merge G1a may do so under a fresh Risk A
+approval. The inventory-reader provider exists before
+Bootstrap's final Linux proof; after Integration Task 1 supplies the final
+manifest, the G1a installer provider exists before Integration composes the
+external workflows that consume its contract.
+
+Integration Task 2 separately owns
+`control-plane-required-check-registry.mjs`. Its only export is
+`resolveControlPlaneRequiredCheckContracts({sourceCommit,rulesetRequirements,checkRuns})`,
+which resolves a private fixed semantic/workflow registry against live
+`integrationId`/`appSlug` evidence and returns the exact
+`canonicalizeRequiredCheckContracts(...)` result
+`{requiredCheckContracts,bytes,sha256}`. Artifact and workflow consumers import
+that result; YAML, the design, and later Integration tasks do not recreate the
+registry or eight-field ordering.
 
 ### Manual Trigger Contract
 
@@ -278,8 +429,12 @@ createdAt: RFC 3339 UTC timestamp
 expiresAt: createdAt plus two hours
 ```
 
-The publisher uses a tracked strict serializer, rejects unknown or duplicate
-fields and hashes the exact canonical UTF-8 bytes. Only after hashing does it
+The publisher uses the one tracked strict serializer. Its contract recursively
+fixes field order for every object, fixes array element contracts and order,
+rejects unknown or duplicate fields at every nesting depth, and emits exactly
+one canonical UTF-8 encoding for one logical value; reordered input objects
+therefore serialize to the same bytes while a reordered contract-defined array
+does not. Only after hashing those exact bytes does it
 construct the external `production_gate_id`, uploads the receipt under the fixed
 digest-derived asset name after all referenced assets are durable, and refuses
 replacement. The operator reviews that exact receipt and safe summary before
@@ -477,9 +632,18 @@ must prove all of the following:
   and its plan-template digest reproduces the complete stable plan body before
   the fixed Gate/run envelope is added;
 - the run ref is protected `master`;
+- every checkout or executable source step fixes `ref: ${{ github.sha }}` and
+  proves the checked-out `HEAD` byte-equals that workflow-run SHA before
+  executing repository code;
 - the bound source commit is still the current remote `master` head;
-- live `vultr-japan-production` readback shows required reviewers,
-  `prevent_self_review: true`, and protected-branches-only deployment;
+- live `vultr-japan-production` readback canonicalizes the complete protection
+  tuple with exact ordered fields `environment`, `preventSelfReview`,
+  `protectedBranches`, `customBranchPolicies`, `adminBypassAllowed`, and
+  `reviewers`: every reviewer binds type, stable decimal ID, and normalized user
+  login or team slug; `prevent_self_review` is true, deployment is
+  protected-branches-only, and the API response has an own boolean
+  `can_admins_bypass: false` from which `adminBypassAllowed: false` is derived;
+  any omitted, unknown, or changed field fails closed;
 - required CI, CodeQL, and source Release Artifact checks succeeded for that
   exact commit;
 - the durable asset, checksum, and manifest agree on source commit, release
@@ -493,6 +657,10 @@ must prove all of the following:
 - the GitHub build-provenance attestation binds that digest to this repository,
   the reviewed manual Control-Plane Artifact Gate workflow, and the exact
   protected `master` commit;
+- every durable asset has exactly one verified attestation statement whose
+  subject array contains exactly one subject equal to that asset's canonical
+  name and SHA-256 digest; a statement shared by assets or containing zero,
+  multiple, or mismatched subjects is not accepted;
 - the canonical source ZIP nested in the deployment bundle passes
   `scripts/artifact-git-tree-verifier.mjs` against that exact commit;
 - the independently discovered canonical candidate `writer-registry.json` bytes
@@ -550,12 +718,20 @@ engine contract. It publishes the plan and safe reviewer summary, then the deplo
 
 Immediately after approval, the protected job's first step references no
 Environment secret. With only the job's `GITHUB_TOKEN` and `actions: read`, it
-reads back `vultr-japan-production` and this run's approval history. It requires
-the exact Environment, at least one required reviewer, `prevent_self_review:
-true`, protected-branches-only deployment, an approved review bound to this run
-and Environment, and an approving user distinct from both `github.actor` and
-`github.triggering_actor`. Missing, bypassed, stale, self, or policy-drifted
-approval stops before any deployment secret is materialized into a file.
+reads back `vultr-japan-production` and this run's approval history. The
+Environment read follows GitHub's official
+[`GET /repos/{owner}/{repo}/environments/{environment_name}` permission
+contract](https://docs.github.com/en/rest/deployments/environments?apiVersion=2022-11-28),
+which requires repository `Actions: read`; no invented `Environments: read`
+permission is added to this job. It requires the exact canonical Environment
+tuple captured by preflight, including the complete immutable required-reviewer
+identity set, `prevent_self_review: true`, protected-branches-only deployment,
+and exact `can_admins_bypass: false`. The approved review must bind this
+run and Environment, and its immutable actor ID must be a member of that
+authorized set and distinct from both `github.actor` and
+`github.triggering_actor`; a matching display name is insufficient. Missing,
+administratively bypassed, stale, self, or policy-drifted approval stops before
+any deployment secret is materialized into a file.
 
 The same step repeats current-master, build-attestation, canonical Git-tree,
 bundle, inventory expiry, Production Gate expiry, effective plan expiry,
@@ -571,8 +747,9 @@ no-secret preflight opts in only to `actions: read`, `checks: read`,
 `contents: read`, `statuses: read`, and `attestations: read`. The protected
 deployment job receives the same reads plus `id-token: write` solely to mint the
 one-time admission assertion after live approval validation. GitHub's current
-REST contract requires `Actions: read`, not repository Administration, for both
-the Environment GET and workflow-run approval-history GET endpoints;
+REST contract requires `Actions: read`, not repository Administration or an
+invented Environment-read scope, for both the Environment GET and workflow-run
+approval-history GET endpoints;
 attestation verification is separately explicit. Neither job receives package,
 pull-request, issue, deployment, administration, or contents write authority,
 and no GitHub App/PAT with source, Actions, deployment, write, OIDC, or host
@@ -584,19 +761,39 @@ here. Every referenced action is pinned to a reviewed full commit digest.
 
 Artifact source preparation, dependency build, and publication are separate
 jobs. Source preparation has only `contents: read`, checks out with
-`persist-credentials: false`, creates the canonical exact-tree input, and
-executes no lifecycle/native code. The disposable dependency builder declares
-`permissions: {}`, has no checkout, does not pass `GITHUB_TOKEN` into steps, and
-gives its automatically issued token no repository permission. It receives only
-the immutable job input through GitHub's job-scoped artifact transport; before
-any lifecycle/native subprocess, the wrapper removes every GitHub, Actions,
-OIDC, artifact-service, proxy, and credential environment value. The durable
-publisher is a distinct write-capability job: it receives `actions: read`,
-`contents: write`, `id-token: write`, and `attestations: write` only. It does not
-checkout repository source, invoke a package manager, extract/execute the
-candidate, import lifecycle/native code, or run any builder output. A fixed
-bounded publication-envelope parser re-hashes the opaque final files and the
-pinned GitHub attestation/release operations attest and upload them.
+`persist-credentials: false`, creates the canonical exact-tree input by fixed
+workflow-owned Git/hash/size operations, and executes no setup-node, package,
+repository, lifecycle, native, or candidate command. The disposable dependency
+builder declares `permissions: {}`, has no checkout or setup-node, does not pass
+`GITHUB_TOKEN` into steps, and gives its automatically issued token no
+repository permission. It receives only the immutable job input through
+GitHub's job-scoped artifact transport; before any lifecycle/native subprocess,
+the wrapper removes every GitHub, Actions, OIDC, artifact-service, proxy, and
+credential environment value. The durable publisher is a distinct
+write-capability job: it receives `actions: read`, `contents: write`,
+`id-token: write`, and `attestations: write` only. It has no checkout or
+setup-node, cannot invoke a package manager, candidate byte, builder output, or
+repository script, and executes only pinned GitHub operations plus one fixed
+bounded publication control over opaque verified envelope assets. That control
+recursively canonical-validates every nested contract, rejects unknown fields
+at every depth, and independently re-hashes each asset before either write.
+
+Artifact owns the only tracked-attestation trust closure. Its public trust
+surface is `createTrackedGithubAttestationVerifier({ clock }) -> { verify }`
+plus `validateExactPublicationPredicateBindings({ predicateType,
+predicateBindings })`; the factory reads the tracked trust bundle and its
+digest itself and keeps Fulcio roots and Rekor keys private. Preflight and the
+immutable publisher construct that closure directly and may pass only its
+`verify` method or the owner-returned canonical predicate value/bytes/digest.
+No workflow, publisher, fixture, or caller may inject roots, keys, trust bytes,
+verification time, predicate field order, or a second verifier. The recursive
+publication envelope binds the complete source tree, builder image, Node
+headers, compiler/toolchain custody, executed-tool digest set, outputs, and
+predicate bytes; a self-carried verifier or checksum is never authority.
+Publication applies that trust closure independently per asset. For each asset,
+the accepted statement has exactly one subject and that subject is the asset's
+exact canonical name/SHA-256 pair. An attestation cannot cover, authorize, or be
+resumed for a second asset, and a multi-subject statement is always conflict.
 
 Those write scopes exist only on the protected `artifact-publication` job and
 are used only to publish and attest the canonical asset set; the deployment
@@ -622,24 +819,31 @@ Production Gate receipt digest, inventory/Gate/effective expiry triple,
 transaction ID, exact Environment identity, current bootstrap generation and
 receipt/state pointers plus authorization HMAC, run ID/attempt, source commit,
 and host-execution contract
-digest plus an aggregate approval-history digest. It
+digest plus the canonical full Environment-policy digest (including immutable
+reviewer identities and `can_admins_bypass: false`) and an aggregate
+approval-history digest. It
 requests one GitHub OIDC token whose
 audience contains the authorization-record digest. The token is accepted for at
 most five minutes and is never written to the Actions summary, artifact, log, or
 receipt.
 
-Admission requires both the restricted SSH key and this token. The root launcher
+Admission requires both the restricted SSH key and this token. The root protocol service
 validates the fixed GitHub issuer and signature against the fixed discovery/JWKS
 endpoints, then requires exact repository, protected `master` ref, source SHA,
-workflow path/ref, Environment subject, run ID, run attempt `1`, audience,
-workflow SHA, `runner_environment: github-hosted`, issued-at, not-before,
-expiry, and `jti` claims against a freshly verified host clock. It persists the
-consumed `jti`, token digest, and transaction reservation only after every claim
-and installed-host contract passes but before requesting artifact bytes; each
-can be admitted only once. Discovery/JWKS or clock validation failure is a safe,
-non-persistent admission rejection, never a fallback to SSH-only authority. The
-raw token is held only in bounded protected memory and is removed immediately
-after validation.
+Environment subject, run ID, run attempt `1`, audience,
+`workflow_ref`, `workflow_sha`, `runner_environment: github-hosted`, `iat`,
+`nbf`, `exp`, and `jti` claims against a freshly verified host clock. This is a
+direct workflow, so `job_workflow_ref` and `job_workflow_sha` are neither
+required nor accepted as substitutes for the direct-workflow claims. Temporal
+validation independently requires `nbf <= now + skew`, `iat <= now + skew`,
+`exp > now`, and a bounded `exp - iat`; it accepts the standard `nbf < iat`
+shape and never requires `nbf >= iat`. It persists the consumed `jti`, token
+digest, and transaction reservation only after every claim and installed-host
+contract passes but before requesting artifact bytes; each can be admitted only
+once. Discovery/JWKS or clock validation failure is a safe, non-persistent
+admission rejection, never a fallback to SSH-only authority. The raw token is
+held only in bounded protected memory and is removed immediately after
+validation.
 
 ## Artifact And Release Assembly
 
@@ -668,6 +872,20 @@ dispatch, or PR trigger. Its operator inputs are only:
 inventory_gate_id: safe identifier of the exact validated inventory receipt
 confirmation: publish japan control-plane artifact
 ```
+
+The inventory identifier uses the closed ASCII grammar
+`^ig1\.[0-9a-f]{40}\.[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.[0-9a-f]{64}$`.
+Its fields are the literal version, protected-master source commit, allowlisted
+runtime-contract ID, and canonical inventory-receipt SHA-256. The receipt omits
+that external identifier, is published immutably as
+`inventory-receipt-{receiptSha256}.json` in Release
+`control-plane-inventory-{sourceCommit}-{runtimeContractId}`, and expires
+exactly two hours after `createdAt`. The protected inventory job has no
+repository write permission; a later isolated publisher with no production
+Environment, SSH material, or host route may publish only the already validated
+aggregate receipt and its attestation. Retrieval reserializes the ID and receipt
+canonically, derives the Release and asset names from those bytes, and rejects
+aliases, replacement, outer/inner mismatch, expiry, or missing provenance.
 
 The normal Artifact Gate requires that inventory to bind an already active,
 read-back `bootstrapReceiptSha256`; it never accepts a staged/future receipt. To
@@ -728,8 +946,12 @@ the protected publisher only re-hashes the opaque files, attests, and uploads.
 Across those separated jobs, the workflow:
 
 - pins an exact Node version allowed by the root engine contract;
-- pins the disposable builder image, compiler/toolchain, and local Node headers
-  by reviewed digest in the release declaration;
+- pins the disposable builder image, complete compiler/toolchain tree, and local
+  Node headers tree by reviewed digest in the release declaration. The builder
+  verifies the six closed custody inputs for the two trees, derives the sole
+  narrow `PATH` and fixed `CC`, `CXX`, `AR`, `LD`, `PYTHON`, and `MAKE` paths
+  from the verified toolchain, pins the lockfile `node-gyp` entrypoint, and binds
+  every actually executed tool digest into the build receipt;
 - in a first network-enabled fetch phase, retrieves only package tarballs whose
   integrity matches the exact lockfile while lifecycle scripts are disabled,
   then freezes the verified package cache;
@@ -915,7 +1137,10 @@ non-secret fixed `JAPAN_CONTROL_DEPLOY_METADATA_APP_ID` and
 has only repository `Metadata: read`, `Environments: read`, `Secrets: read`, and
 `Variables: read`, plus organization `Secrets: read` and `Variables: read`; it
 has no write, Actions, contents, deployments, administration, attestation,
-OIDC, or production-host permission.
+OIDC, or production-host permission. Here `Environments: read` is scoped solely
+to the later secret/variable-name enumeration endpoints; it is not asserted or
+added for Environment GET, whose separate official contract above is
+`Actions: read`.
 No repository-, organization-, or workstation-scoped fallback credential is
 accepted.
 
@@ -1173,21 +1398,42 @@ The host authorization and privilege boundary must:
 - lock password login and provide no unforced interactive login route;
 - keep the account, its home, and its root-owned authorized-key binding
   unwritable by `github-control-deploy`;
-- force the no-argument, root-owned launcher
-  `/usr/local/sbin/proxy-gateway-control-plane-deploy` for the sole key;
+- force the no-argument, root-owned native unprivileged entry shim
+  `/usr/local/libexec/proxy-gateway-control-plane-deploy-entry` for the sole key;
 - disable interactive shell, PTY, X11, agent and TCP forwarding, user rc, and
   environment injection;
-- grant one non-interactive sudoers entry for that exact launcher with no
-  caller-supplied arguments, while rejecting any non-empty process argv or
-  unexpected original SSH command inside the launcher;
-- execute `systemd-run` only inside the reviewed root launcher with either the
-  exact Gate-derived deployment-transaction unit template or the exact
-  plan-bound migration unit/cgroup template and dedicated UID, never as a generic
-  unit/command selector or sudoers command available to the SSH principal;
-- keep the launcher and its libraries root-owned and non-writable, and keep the
+- grant one generation-bound temporary non-interactive sudoers fragment for the
+  shim to invoke only the no-argument native root relay
+  `/usr/local/libexec/proxy-gateway-control-plane-deploy-root-relay`, while rejecting any
+  non-empty process argv or unexpected original SSH command. The separate
+  credential/authorization Gate publishes, fsyncs, reads back, and later removes
+  and absence-readbacks that exact fragment as part of the same credential-
+  generation lifecycle; the normal deployment workflow cannot create, replace,
+  or retain it;
+- make that tiny reviewed root relay do only a bounded byte relay to the one
+  fixed root-owned `AF_UNIX` socket
+  `/run/proxy-gateway-control-plane/host-protocol.sock`; it exposes no parser, path,
+  command, environment, unit, or second-socket selector and grants no general
+  sudo or systemd authority;
+- run the root protocol service behind an `Accept=no` systemd socket/service
+  pair. The service receives the one listening socket as FD 3, applies its exact
+  root sandbox, and its reviewed native helper calls `accept4` with closed flags
+  before any bounded Node protocol parser receives the connected FD; neither
+  `Accept=yes` instances nor direct Node listening/accept are allowed;
+- deny the root protocol service access to the systemd manager, D-Bus,
+  `systemd-run`, and every caller-selected unit/action. After durable accepted
+  evidence it may call only the Host-owned fixed
+  `startAcceptedTransaction({ transactionId, invocationSha256 })` broker client;
+  the separate reviewed broker authenticates the peer/cgroup and independently
+  re-reads the accepted-start evidence before mapping a closed operation to one
+  literal manager action. Neither the SSH principal, shim, relay, parser, nor
+  transaction/recovery consumer receives a manager socket or general systemd
+  authority;
+- keep the shim, relay, protocol service, native accept helper, and their
+  libraries root-owned and non-writable, and keep the
   release root, backup root, transaction journal, receipts, service unit, and
   protected configuration root-owned and non-writable by the SSH principal;
-- restrict the launcher's effective-root operations to the fixed release root,
+- restrict the protocol service's effective-root operations to the fixed release root,
   approved application service, exact reviewed auxiliary-writer unit set,
   exact Gate-derived deployment-transaction unit lifecycle,
   exact plan-bound migration transient unit/cgroup create/start/terminate/
@@ -1196,6 +1442,36 @@ The host authorization and privilege boundary must:
   Gate-owned transaction state;
   and
 - record only key type and public fingerprint in Gate evidence.
+
+The two `Accept=no` protocol services do not own process-local admission limits.
+A separate long-lived root-only `proxy-gateway-control-session-limit-broker`
+service accepts bounded clients on its fixed mode-`0600` `AF_UNIX` socket and is
+the single volatile truth across every parser start. It has only the two compiled
+principals `github-control-deploy` and `github-control-bootstrap`; each owns an
+independent capacity-four token bucket refilled by exactly one token per ten
+monotonic seconds plus one active connection-bound lease. The root scripts use a
+principal-bound no-argument client, and no frame, argv, environment, or router
+dependency can select another principal. Broker restart invalidates every lease
+and token and makes connected parsers fail closed; it persists nothing.
+
+Before connecting, each compiled principal's native root relay verifies its own
+fixed root-owned mode-`0600` regular single-link lock file and takes
+`flock(LOCK_EX | LOCK_NB)`, holding that kernel FD until outermost cleanup. This
+bounds each principal to one active-or-pending authenticated relay even when the
+parser/broker is unavailable, and process death releases the slot. The relay
+then performs only a nonblocking connect to its fixed socket; one monotonic
+absolute ten-second pre-authentication deadline covers connect,
+peer authentication, accept, and frame authentication before the Node parser
+may admit the request. Read/write progress never refreshes it. After successful
+authentication, artifact continuation remains inside that same bounded
+authenticated task but receives its own monotonic absolute 300-second deadline;
+no reconnect, child task, or progress event restarts either clock. Each
+deploy/bootstrap parser unit fixes `StartLimitIntervalSec=60`,
+`StartLimitBurst=16`, and `StartLimitAction=none`, which remains reachable under
+the broker's maximum admissible starts. A maximum terminal-bundle read stays in
+one authenticated connection, one broker lease/token, and one parser start while
+streaming at most 342 frames; it never creates 342 SSH authentications, broker
+tokens, or systemd starts.
 
 The three bootstrap-lifecycle receipts use strict versioned canonical UTF-8 JSON
 schemas. Every parser rejects unknown, missing, duplicate, or out-of-order
@@ -1390,7 +1666,7 @@ becomes manual intervention while the existing application state is left alone.
 The credential/authorization Gate uses its separately approved temporary
 provider identity to list the Environment secret names without reading values;
 official GitHub REST permissions require repository `Environments: read` for
-that operation. It also lists repository/organization secret and variable names
+that name-enumeration operation only, not for Environment GET. It also lists repository/organization secret and variable names
 and proves that every reserved `JAPAN_CONTROL_DEPLOY_*` deployment name exists
 only at `vultr-japan-production`, with no same-name repository or organization
 fallback visible to this repository. The temporary identity is not stored in the
@@ -1477,9 +1753,10 @@ recomputes the host authorization HMAC over installed state with the root-only
 evidence key; a matching receipt ID without matching bytes, helper/key
 generation, or HMAC is rejected.
 
-Every plan carries the expected launcher, recovery target/unit bundle, service
-drop-in digests, contract IDs, and bootstrap receipt ID. Before accepting an
-admission, the root launcher re-hashes its installed executable/libraries,
+Every plan carries the expected entry shim, root relay, fixed socket/protocol
+service, recovery target/unit bundle, service drop-in digests, contract IDs, and
+bootstrap receipt ID. Before accepting an admission, the root protocol service
+re-hashes those installed executables/libraries,
 every recovery phase target/oneshot/guard/permit/drop-in plus the critical
 recorder, business-mutation lease helper and guard, migration-admission adapter,
 writer-registry verifier, database-binding helper/key generation, sudoers
@@ -1497,25 +1774,61 @@ The OIDC authorization digest, durable journal, and final receipt bind the same
 values. A stale, partially upgraded, or locally changed host execution bundle is
 an admission rejection and cannot interpret a newer plan.
 
-The launcher starts with a fixed absolute executable/interpreter path, a clean
-environment, fixed `PATH`, restrictive `umask`, bounded file sizes and runtime,
-and no caller-controlled working directory. Its execute protocol is a strict
-two-step handshake. First it accepts at most 64 KiB containing only the bounded
-plan, authorization record, and OIDC token. It validates grammar, plan/host
-digests, token signature/claims/audience, clock, the independently parsed
-inventory/Gate/effective-plan expiries, current bootstrap generation/receipt/
-HMAC/outer-state,
-absence of any prepared/committing rotation fence, replay, quota, and lock
-availability before asking for any artifact byte. An invalid first frame creates
-no durable file, tombstone, receipt, transaction, or Gate-owned directory.
+The root protocol service starts with a fixed absolute executable/interpreter
+path, a clean environment, fixed `PATH`, restrictive `umask`, bounded file sizes
+and runtime, and no caller-controlled working directory. Its execute protocol is
+a strict two-step handshake. The first canonical wire frame is at most 65,536
+bytes and has exactly the five ordered fields `type`,
+`deploymentPlanBytesBase64`, `productionGateReceiptBytesBase64`,
+`authorizationRecordBytesBase64`, and `oidcTokenBytesBase64`. It carries no
+request correlation, precomputed digest, path, command, host selector, or
+artifact body. After strict canonical Base64 decoding, the service
+canonical-parses and byte-compares all three byte objects, recomputes
+`deploymentPlanSha256`, `productionGateReceiptSha256`, and
+`authorizationRecordSha256`, and validates their complete cross-bindings,
+effective expiry, installed host contract, token signature/claims/audience,
+clock, current bootstrap generation/receipt/HMAC/outer-state, rotation fence,
+replay, quota, and lock availability before asking for any artifact byte. An
+invalid first frame creates no durable file, tombstone, receipt, transaction, or
+Gate-owned directory.
 
-Only after successful two-factor validation does the launcher atomically
-consume/reserve the `jti`/token/transaction and return a bounded
-`ready_for_artifact` response. It then accepts exactly `artifact.sizeBytes`
-within a fixed transfer deadline, hashes while streaming into one quota-bounded
-temporary file, and rejects truncation, trailing data, or digest mismatch. Only
-a fully verified artifact can become an accepted transaction and start the
-host-local unit.
+Only after successful two-factor validation does the service publish, file- and
+parent-fsync, and exact-readback the fixed canonical `accepted-plan` object
+binding the independently derived Gate-receipt, deployment-plan, and
+authorization-record digests, transaction/recovery IDs, source, artifact
+identity/size, installed bootstrap/host-execution expectations, and
+`acceptedAt`. No predicted or caller-created accepted-plan digest is accepted. It then
+atomically consumes and reserves the Gate, authorization record, `jti`, token,
+and transaction and binds the accepted-plan digest. Only after both durable
+steps may it return a bounded `ready_for_artifact` response. It accepts exactly
+`artifact.sizeBytes` within a 300-second transfer deadline, hashes while
+streaming into one quota-bounded temporary file, and rejects truncation,
+trailing data, or digest mismatch. Only a fully verified artifact can become an
+accepted transaction and start the host-local unit.
+
+The accepted-plan reader and accepted-start reader are deliberately distinct.
+Bootstrap owns accepted-plan publication/readback. Host journal
+`readAccepted(transactionId)` may parse and freeze only that immutable approved
+plan/Gate value plus `acceptedPlanSha256`; it rejects an accepted-record,
+authorization-reservation, artifact-capability-identity, or invocation field and
+does not read the later projection. After artifact custody is durable, the
+Host-owned accepted-start canonicalizer emits one separate four-field projection
+containing exactly
+`acceptedArtifactRecordSha256`, `acceptedPlanSha256`,
+`authorizationReservationSha256`, and `artifactCapabilityIdentitySha256`.
+Bootstrap publishes/fsyncs/reads back exactly the owner-returned bytes only after
+independently validating and reading back those four sources. Host's separate
+`createAcceptedStartEvidenceReader` then no-follow reopens the projection, the
+accepted-plan digest, and all four fixed source objects, returns only its private
+branded evidence capability, and never substitutes the accepted-plan reader.
+The narrow broker accepts that same capability by reference, independently
+byte-compares every source, and computes
+`invocationSha256 = SHA-256(UTF8("control-plane-transaction-start-accepted-v1") || 0x00 || projectionBytes)`
+before it can start the fixed transaction unit. Host is the sole owner of that
+domain literal, field order, canonicalizer, reader, and assertion; Bootstrap
+imports them and never copies or re-exports a competing contract. A missing source object,
+alternate field, projection mismatch, caller-supplied invocation digest, or
+failed readback starts nothing.
 Pre-backup dependency/native/candidate checks run only as the isolated
 validation identity and namespace above. Fixed runner validators may inspect
 live database/config metadata without importing candidate code. After coherent
@@ -1542,6 +1855,24 @@ lines, another key or key type, duplicate endpoints, aliases, hashed hosts,
 wildcards, comma lists, `@cert-authority`, `@revoked`, any other marker, and
 non-canonical base64. The HMAC and bootstrap Gate bind the complete tuple, not a
 standalone fingerprint.
+
+Bootstrap's transport owner is also the sole credential-expectation and
+known-host parser owner. `createFixedCredentialExpectation(...)` returns a
+privately branded value with exactly these eight ordered fields:
+`credentialId`, `principal`, `authorizationGeneration`,
+`bootstrapReceiptSha256`, `knownHostsFingerprint`,
+`knownHostsTupleSha256`, `expiresAt`, and `observedAt`; the factory derives the
+fixed principal from the fixed credential ID and accepts no caller principal,
+user, endpoint, clock alias, or raw expectation object. The known-host owner API
+`deriveKnownHostsBinding({ host, port, knownHostsBytes })` returns only the
+branded exact four-field `{ host, port, knownHostsFingerprint,
+knownHostsTupleSha256 }`, and
+`assertKnownHostsRecordExpectation({ binding, material })` byte-compares that
+brand with the protected material. The materializer returns one frozen exact-key
+`{ material, expectation }` capture; transport validates the real eleven-field
+material only against that brand before sealing it. A clone, reconstructed
+expectation, parser duplicate, alternate endpoint spelling, or known-host tuple
+drift rejects before spawn.
 
 Before any protected value is read, the fixed controller performs a non-secret
 capability probe using `memfd_create(MFD_CLOEXEC | MFD_ALLOW_SEALING)`, mode
@@ -1605,16 +1936,21 @@ requires a separate Risk A Gate. The source PR creates none of them.
 
 ### Ownership And Durability
 
-The fixed root launcher first validates the bounded authentication frame under a
-single volatile concurrency/rate semaphore, then acquires the host-local
-exclusive deployment lock only to create the authenticated reservation. Before
-that reservation it may return a bounded `accepted: false` safe reason for
-envelope, ownership, identity, lock, quota, or replay rejection, with zero
-durable write. The authenticated `ready_for_artifact` and final acceptance forms
+The fixed root protocol service first validates the bounded authentication frame
+under the per-principal volatile concurrency/token-bucket controls, then acquires
+the host-local exclusive deployment lock for accepted-plan publication and the
+authenticated reservation. Before accepted-plan publication it may return a
+bounded `accepted: false` safe reason for envelope, ownership, identity, lock,
+quota, or replay precheck rejection, with zero durable write. A competing atomic
+reservation loss after accepted-plan readback produces no readiness or acceptance
+and leaves only that fixed unadmitted object for idempotent reconciliation. The
+authenticated `ready_for_artifact` and final acceptance forms
 are each at most 2 KiB and echo the exact bindings. On full artifact acceptance,
-the launcher starts a bounded host-local transaction in a transient systemd unit
-and returns one aggregate acknowledgement containing only `gateId`,
-`planDigest`, `transactionId`, `acceptedAt`, and `accepted: true`. Once admitted,
+the protocol service completes the accepted-start/broker proof above and returns
+one canonical aggregate acknowledgement containing exactly the five ordered
+fields `gateId`, `deploymentPlanSha256`, `transactionId`, `acceptedAt`, and
+`accepted: true`. No status, terminal, invocation, or artifact evidence is added
+to that acknowledgement. Once admitted,
 the host transaction owns completion rather than the SSH connection. The unit
 keeps the transaction and rollback watchdog alive if GitHub is cancelled or the
 network disconnects. It has a 15-minute runtime maximum, uses a Gate-derived
@@ -1745,8 +2081,9 @@ global identity lease and business lease. The fence prevents any reviewed helper
 from racing that post-exit proof. If the finalizer hangs, a holder prevents either
 exclusive lease, any executable/handle/capability/permit/guard/fence proof is
 unavailable, or the post-exit lock/inactive readback fails, status remains
-`critical_nonterminal_manual_intervention_required` and emits no valid terminal
-receipt. Boot terminates an over-deadline finalizer, relies on OFD release at
+`terminal_quiescence_pending` or `terminal_quiescence_rejected` and emits no
+valid terminal receipt. Both observations retain the existing transaction and
+the bounded ordinary poll. Boot terminates an over-deadline finalizer, relies on OFD release at
 process death, and idempotently requeues only this finalization step after the
 original units are inactive; it never reruns production mutation.
 
@@ -1796,21 +2133,123 @@ path, response-body, and database-row values and require their absence from the
 system journal, retained state, and controller evidence.
 
 The transaction stores a Gate-owned state journal, durable authenticated
-admission state, and the combined terminal receipt/replay record. The bootstrap
-fixes a bounded volatile per-principal authentication semaphore/token bucket and
-a durable state quota. At most one authenticated artifact reservation and 128
-terminal admission/transaction records may exist; each schema and file has a
-fixed byte cap. A deterministic compactor may remove rejection/replay records
-only after 24 hours, when every bound token and plan is unusable, and ordinary
-terminal deployment receipts only after 30 days. It never removes an active,
-nonterminal, in-retention, latest target-state, or latest critical record. If
-quota cannot be safely recovered, a valid OIDC request is rejected before
-artifact transfer. An
-SSH-key-only attacker can therefore consume only the bounded pre-auth CPU/time
-and volatile rate state, not artifact bandwidth or durable state.
-A status invocation may read only the state or receipt for the exact
-`gateId`/`planDigest`/`transactionId`; it cannot run a command or select another
-receipt. Concurrent or replayed execution is rejected.
+admission state, and the combined terminal receipt/replay record. The replay
+ledger exposes the one atomic reservation transition, `bindTerminal(...)`,
+`readLedgerIdentity()`, the protected-nonterminal listing, and the owner-only
+`compactEligible({ expectedLedgerSha256, now, maintenanceCapability })`; no
+caller may rewrite or unlink a ledger record directly. At most one authenticated
+artifact reservation and 128 durable admission/transaction records may exist,
+and each schema/file has a fixed byte cap. Every replay dimension rejects for at
+least 24 hours and every terminal replay entry remains protected for at least 30
+days. Replay compaction never removes an active/nonterminal or in-retention
+entry, the newest terminal for each target, or the newest critical terminal.
+Crash, reboot, or a competing compactor
+before/after every CAS must converge without over-quota admission or evidence
+loss.
+
+Bootstrap owns the only production maintenance capability.
+`control-plane-bootstrap-maintenance.mjs` exports only
+`createBootstrapMaintenanceCoordinator({ native, clock })` and
+`assertBootstrapMaintenanceCapability(value)`; its returned surface is exactly
+`{ runAdmissionPreflight, runTerminalCloseoutPreflight }`. Admission calls only
+`runAdmissionPreflight({ admissionReplayLedger })`, and the production router
+must complete it before accepted-plan publication or any replay reservation.
+Before terminal/closeout publication, every normal transaction finalizer,
+recovery finalizer, and external critical finalizer is composed with the same
+coordinator and calls only
+`runTerminalCloseoutPreflight({ admissionReplayLedger,
+controllerCloseoutStore })`. The latter supplies the replay owner's protected
+nonterminal IDs to the closeout owner's branded
+`readCompactionPreflight({ protectedNonterminalTransactionIds })`, then passes
+that exact retention proof to closeout
+`compactEligible({ retentionProof, now, maintenanceCapability })`. Both replay
+and the maximum-1,024-entry closeout index compact through deterministic CAS
+under the same fixed lock and clock; there is no timer, generic maintenance
+command, raw index delete, or Host-local compactor. Boundary tests are exact at
+128/129 replay entries and 1,024/1,025 closeout entries. The closeout proof
+protects every entry younger than 35 days, every active/nonterminal entry, the
+newest entry per target, the newest critical entry, and all parser- or
+recovery-retained evidence. Failure, CAS loss, or a
+still-full quota stops before accepted-plan publication at admission and before
+any immutable terminal/closeout object is published at finalization.
+Receipt and Host receive no maintenance capability or direct compactor function;
+a missing coordinator, post-publication preflight, or test-only invocation is a
+program stop rather than permission to bypass maintenance.
+
+The separate recovery-challenge broker purges expired entries before insertion,
+holds at most 64 entries, and uses a per-principal capacity-four bucket refilled
+by one token per 15 seconds; capacity/rate failure persists nothing. Together
+with the long-lived session-limit broker above, an SSH-key-only slowloris or
+flood can consume only bounded volatile CPU/time and never artifact bandwidth or
+durable state.
+
+An ordinary status invocation uses exactly the canonical selector
+`{requestId, gateId, deploymentPlanSha256, transactionId}` in that order;
+`requestId` is correlation only and never participates in durable identity or
+record selection. It cannot run a command or select another receipt. Its exact
+16-field response is separately typed and ordered as `type`, `requestType`,
+`requestId`, `gateId`, `deploymentPlanSha256`, `transactionId`,
+`controllerRecoveryId`, `immutableTerminal`, `durableRejection`, `resultCode`,
+`hostFinalState`, `terminalReceiptSha256`, `closeoutState`,
+`closeoutRecordSha256`, `terminalBundleSha256`, and `terminalBundleSize`.
+Acceptance frames, status responses, and terminal evidence are not
+interchangeable.
+
+When that status proves an immutable terminal tuple, the controller may read the
+separate Receipt-owned terminal bundle only through one
+`requestStatusBundle(...)` authenticated session and contiguous read-only
+frames. The session opens with one offset-zero request; the host then streams and
+closes without accepting a second request frame. The bundle is at most 262,144
+bytes; each chunk contains at most 768 raw bytes, offsets are contiguous, the
+maximum chunk count is 342, and every complete canonical response envelope
+remains at most 2,048 bytes even with maximum-length identifiers. Per-chunk and
+complete-bundle digests, declared total size, terminal status binding, EOF,
+gap/overlap, and trailing-byte checks are mandatory. The stream exposes no path
+or random-access object/offset selector and uses one authentication, limiter
+lease/token, and `Accept=no` service start.
+
+Pre-Gate normal inventory and compatibility inventory use two independent,
+domain-separated, read-only request/response codecs owned by Bootstrap. Neither
+requires or fabricates a Gate, deployment plan, or transaction selector, and a
+compatibility inventory frame cannot validate as normal inventory. Deployment
+ordinary-status codecs are never reused as an inventory alias.
+Compatibility inventory is one exact 10,000-ms single-response operation and
+rejects `bootstrap_activation_ready_v1`; only G3 activation may emit that
+internal phase frame or reach the fixed root launcher.
+Bootstrap's fixed deploy and bootstrap routers may construct their respective
+normal and compatibility handlers only from Host's asserted private-branded
+frozen `createControlPlaneHostInventoryReaders(deps)` result.
+The exact pair is `{normalInventoryReader,compatibilityInventoryReader}`, each
+reader exposes only frozen exact `{read(request)}`, and both perform zero CAS,
+execute, artifact, acknowledgement, launcher, or installation operation.
+
+Compatibility activation is a third, disjoint protocol family. Bootstrap alone
+owns `encodeBootstrapActivationRequestFrame` and
+`validateBootstrapActivationResponseFrame`; the request is bound to a fresh G3
+approval/activation/content receipt and only its fixed handler can invoke the
+no-argument root launcher. G2 compatibility inventory never enters that handler,
+and its activation ID, request, response, or receipt cannot satisfy or select a
+G3 activation. Both operations may use the transport method `requestBootstrap`,
+but the closed request/response type domain—not the method name—determines the
+allowed authority.
+
+G3 remains a synchronous terminal API to its workflow caller. Internally, the
+root launcher holds the fixed activation lock, completes every authorization and
+installed-state readback, and immediately before its first CAS invokes only its
+fixed `onAuthorized` callback. That callback must emit
+`bootstrap_activation_ready_v1`; failure to write/read back the ready frame
+causes zero mutation. The native relay recognizes only that exact frame and only
+then replaces the ten-second pre-auth deadline with one non-refreshing
+authenticated deadline. Bootstrap's `control-plane-transport-contract.mjs`
+alone owns `BOOTSTRAP_ACTIVATION_OPERATION_MAX_MS=900000`,
+`BOOTSTRAP_ACTIVATION_AUTHENTICATED_DEADLINE_MS=910000`, and
+`BOOTSTRAP_ACTIVATION_REQUEST_TIMEOUT_MS=925000`; the fixed protocol service
+uses `RuntimeMaxSec=930s`. `requestBootstrap` validates and consumes the ready frame
+inside transport, so the caller receives only the final
+`bootstrap_activation_response_v1`. A disconnect after ready never replays the
+operation: the root launcher converges the now-authorized attempt through its
+durable journal/recovery state and the caller may later read only its terminal
+evidence.
 
 Admission also creates a durable `controller_closeout_pending` lease bound to
 run/attempt, transaction, generation, and `controllerRecoveryId`. Terminal
@@ -1824,9 +2263,10 @@ body. The lease begins with `controllerCloseoutArtifactState: not_started`. A
 successful controller validates the outer record and terminal receipt, then uses
 the fixed status-only route to CAS that field to `upload_started` before any
 GitHub artifact upload. It uploads the canonical controller-closeout artifact
-with retention at least 35 days, uses `actions: read` to verify the exact old
-run/attempt artifact ID, digest, size, creation time, and unexpired retention,
-then sends one bound acknowledgement carrying that safe evidence digest. The host
+with the workflow input `retention-days: 35`, uses `actions: read` to verify the
+exact old run/attempt artifact ID, API archive digest, payload digest, size,
+`created_at`, and `expires_at`, and requires the observed interval to be at least
+35 days, then sends one bound acknowledgement carrying that safe evidence digest. The host
 CASes the lease to `upload_committed_observed`, fsyncs the evidence digest, and
 only then releases it. A controller that never starts upload leaves
 `not_started`; loss after the CAS but before committed readback leaves
@@ -1855,10 +2295,11 @@ only a fixed aggregate critical status.
 
 Pre-auth validation has a ten-second maximum, one concurrent slot, and no
 persistent state. After successful OIDC and host-contract validation, the
-launcher atomically writes `artifact_pending` with the consumed replay bindings
-before emitting `ready_for_artifact`. It replaces that state within a 300-second
-transfer maximum with either an authenticated rejection tombstone or the
-accepted transaction journal. It cannot mutate the runtime while pending.
+protocol service first publishes/fsyncs/readbacks the accepted-plan object, then
+atomically writes `artifact_pending` with the consumed replay bindings before
+emitting `ready_for_artifact`. It replaces that state within a 300-second transfer
+maximum with either an authenticated rejection tombstone or the accepted
+transaction journal. It cannot mutate the runtime while pending.
 Timeout, connection loss, or reboot in `artifact_pending` removes the bounded
 temporary artifact, fsyncs the state parent, records only the authenticated
 rejection, and never enters production recovery because no host transaction or
@@ -1866,13 +2307,21 @@ recovery guard existed.
 
 The GitHub controller sends only the small authentication frame, waits for the
 validated `ready_for_artifact`, and only then streams the artifact. It never
-replays either phase. A validated `accepted: false` response maps directly to
-`admission_rejected_no_transaction`; it is not a host transaction state. If a
-response is lost, the controller switches directly to status lookups for the
-pre-bound gate identity. Status returns only `unknown`, `artifact_pending`,
-`admission_rejected`, an aggregate active stage (including
-`critical_nonterminal_manual_intervention_required`), or the terminal receipt. A lost
-pre-auth response may remain `unknown`, but the launcher cannot reserve anything
+replays either phase. The result classifier reserves
+`admission_rejected_no_transaction` for an exact Bootstrap-owner-branded
+`{preAdmissionDurableRejection:true,admissionAccepted:false}` value, but Version
+1 has no producer for that brand and cannot reach the branch. A bare
+`admissionAccepted:false`, caller-built lookalike, or arbitrary ordinary-status
+rejection fails closed to `controller_incomplete_no_production_claim`. If a
+response is lost, the controller switches directly to status
+lookups for the pre-bound Gate identity. Status returns only `unknown`,
+`artifact_pending`, `admission_rejected`, an aggregate active stage,
+`terminal_quiescence_pending`, `terminal_quiescence_rejected`, or the immutable
+terminal receipt. Both quiescence values belong to an existing transaction and
+are transitional nonterminal observations: they continue the same bounded
+ordinary-status poll and can never be reclassified as pre-admission rejection.
+A lost
+pre-auth response may remain `unknown`, but the protocol service cannot reserve anything
 after its ten-second validation maximum; the controller still waits the full
 30-second admission deadline before closing without a production claim. The
 controller polls every five seconds until a durable rejection or terminal
@@ -1880,8 +2329,12 @@ receipt is available, or the 30-second authentication, 300-second artifact
 transfer, 15-minute transaction, four-minute recovery, and 60-second controller
 grace bounds expire. Transient SSH failure is
 retried only for this same status operation and transaction; it is never treated
-as permission to replay execution. A terminal host state maps deterministically
-to the controller result described below.
+as permission to replay execution. A later Host-proof-backed immutable critical
+status plus exact bundle maps to `validated_critical_failure`; ordinary polling
+deadline exhaustion maps to `controller_incomplete_no_production_claim`.
+`receipt_invalid_no_production_claim` is reserved for an actual immutable bundle
+that entered Receipt validation and failed. A terminal host state otherwise
+maps deterministically to the controller result described below.
 
 ### Stages
 
@@ -2104,7 +2557,7 @@ migration, ledger/schema readback, and recovery classification. Closing SQLite
 write-exclusion connections never releases that identity lease.
 
 No exited oneshot is assumed to pass an FD to a later systemd unit. Immediately
-after quiescence and the final identity proof, the launcher starts one exact
+after quiescence and the final identity proof, the transaction runner starts one exact
 plan-bound, transaction-local database-capability custody helper. This bounded
 root-owned transient service holds the exclusive identity-lease open-file
 description plus both pinned parent/file capabilities across phase-unit exits.
@@ -2118,8 +2571,12 @@ The helper accepts only a closed state-dependent protocol. It authenticates the
 requesting peer by `SO_PEERCRED`, exact UID, systemd unit/cgroup/invocation ID,
 transaction permit, journal phase, and requested logical database/operation,
 then duplicates only the permitted existing open-file descriptions with
-`SCM_RIGHTS`. It never sends a path or opens a caller-selected file. Migration
-and backup clients receive bounded duplicates while the helper retains custody.
+`SCM_RIGHTS`. Each logical database transfer carries exactly two FDs in the
+fixed order `databaseFd`, `identityLeaseFd`; a third FD, missing FD, extra
+ancillary message, path, or caller-selected descriptor is rejected. Parent-
+directory capabilities remain private to the helper and are never transferred.
+It never sends a path or opens a caller-selected file. Migration and backup
+clients receive only those bounded duplicates while the helper retains custody.
 For application handoff, the exact startup guardian receives the lease and
 database-file descriptions, changes the lease open-file description from
 exclusive to shared with no unlocked interval, and starts the candidate child
@@ -2284,7 +2741,7 @@ bootstrap receipt, release declaration, plan, OIDC authorization, journal, and
 receipt; a separate Risk A migration Gate needs its own equally explicit
 authorization and cannot reuse this deployment transaction.
 
-The root launcher has auxiliary-unit authority only over the exact reviewed
+The root transaction runner has auxiliary-unit authority only over the exact reviewed
 units bound into the plan and bootstrap receipt. It snapshots their
 enabled/active states, stops timers before draining their in-flight one-shots,
 then separately stops the fixed application service and obtains both SQLite
@@ -2514,8 +2971,9 @@ conclusion, invents its missing artifact, or reuses its production approval.
 Recovery is a separate manual-only `workflow_dispatch` with no execute path. Its
 only safe inputs are one canonical `controller_recovery_id` matching
 `^cr1\.[0-9a-f]{64}$`, `original_run_id` matching `^[1-9][0-9]{0,19}$`,
-`original_run_attempt` matching `^[1-9][0-9]{0,9}$`, and a fixed confirmation
-phrase. The original no-secret summary emits all three safe values. The ID is computed in the
+`original_run_attempt` matching `^[1-9][0-9]{0,9}$`, and the exact confirmation
+phrase `recover japan control-plane receipt`. The original no-secret summary
+emits all three safe values. The ID is computed in the
 original no-secret plan as SHA-256 over strict canonical UTF-8 JSON with exactly
 the ordered fields `schemaVersion`, `domain: controller-recovery`,
 `productionGateReceiptSha256`, `transactionId`, `target`, and `sourceCommit`;
@@ -2531,21 +2989,29 @@ The receipt-recovery job requires a new independent approval on the protected
 `actions: read`, `contents: read`, `attestations: read`, and `id-token: write`; pull-request, issues,
 deployments, `attestations: write`, packages, security-events, and every repository write
 are absent. It checks out only the protected current `master` fixed controller
-with persisted Git credentials disabled and verifies the Git tree plus exact
+at literal `ref: ${{ github.sha }}` with persisted Git credentials disabled,
+byte-compares checked-out `HEAD` to that run SHA, and verifies the Git tree plus exact
 `receiptRecoveryWorkflowSha256`, `receiptRecoveryControllerSha256`, and
 `receiptRecoveryParserRegistrySha256` from the current active bootstrap receipt.
 
 Before requesting approval or SSH material, `actions: read` must prove the exact
 input original run and attempt have `status: completed`, their conclusion is exactly
-one of `cancelled | failure | timed_out | stale | startup_failure`, and completion
-was no more than 24 hours ago. `success`, `neutral`, `skipped`, `action_required`,
-null/in-progress, another attempt, or an older/ambiguous run is ineligible. The
+one of `cancelled | failure | timed_out | stale | startup_failure`, and the
+attempt-specific API `updated_at` was no more than 24 hours ago. `updated_at` is
+accepted as completion-window evidence only after `status: completed` is proven;
+the controller does not invent an undocumented `completed_at` field. `success`,
+`neutral`, `skipped`, `action_required`, null/in-progress, another attempt, or
+an older/ambiguous run is ineligible. The
 shared `japan-control-plane-production-authority` concurrency key prevents this
 recovery from overlapping the original deployment, another recovery, or a
-bootstrap rotation. Preflight also verifies the repository Actions artifact
-retention is at least 35 days and records the exact original closeout-artifact
-API readback; an expired/deleted/retention-ambiguous artifact never counts as
-proof that no artifact existed.
+bootstrap rotation. Preflight does not query repository artifact-retention
+settings because that endpoint requires repository Administration permission.
+Instead, it records the exact original closeout-artifact API readback. A present
+artifact must expose an exact `sha256:` API digest and `created_at`/`expires_at`
+interval of at least 35 days; an expired, deleted, or retention-ambiguous
+artifact never counts as proof that no artifact existed. The sole absence case
+remains the host-monotonic `not_started` state plus exact API absence inside the
+24-hour recovery window.
 
 Recovery authentication is an explicit two-phase, read-only challenge, so the
 opaque ID does not create a lookup/OIDC cycle. In phase one the current forced-
@@ -2560,7 +3026,8 @@ persists nothing, exposes no credential/customer/path/database value or terminal
 result, and cannot select a second record.
 
 In phase two the runner mints a fresh OIDC token whose audience is that exact
-challenge digest, then invokes only `status_recover`. The host validates the
+challenge digest, then invokes `status_recover` only as the authenticated
+recovery selector. The host validates the
 challenge HMAC/expiry and OIDC repository/owner, `workflow_dispatch`, protected
 `refs/heads/master` commit, exact recovery workflow path/ref/SHA, Environment
 subject `vultr-japan-production`, GitHub-hosted runner, new run/attempt, current
@@ -2572,6 +3039,34 @@ evidence; the host-indexed original run/attempt must equal the safe dispatch
 inputs and preapproval Actions readback byte for byte. Zero, multiple, expired,
 nonterminal, unbound, or parser-incompatible
 records return no production claim.
+
+The selector does not carry or substitute the retained terminal bundle. Receipt
+passes its exact private recovery brand only to Bootstrap
+`createPostRecoveryStatusRequest({ validatedRecoveredStatus, requestId })`,
+which returns the exact four-field ordinary-status request/expected tuple for the
+same Gate/plan/transaction. On the same sealed transport, the controller sends
+that request and only successful response bytes plus the owner expected tuple
+may enter `validateStatusResponseFrame`. The transport retains exactly
+`{execute,request,requestStatusBundle,requestBootstrap,close}`. Recovery uses a
+variable bounded sequence on that one instance: one challenge request, one
+selector request, then one through seven ordinary requests with fresh
+correlation IDs at fixed five-second intervals under one non-refreshing absolute
+30-second deadline. Every operation receives one fresh non-aliased protected-
+material clone, and the outer controller calls exactly one idempotent `close()`.
+A critical `terminal_quiescence_pending` or
+`terminal_quiescence_rejected` response is bounded-polled and never locally
+rebranded; neither is an admission rejection. The resulting immutable ordinary-
+status brand transitively includes the Host proof that the finalizer is
+inactive, its fence unchanged, and both leases free. Only that ordinary-status
+brand may open exactly one
+`requestStatusBundle(...)` authenticated stream and validate one through 342
+contiguous frames through the retained parser. The ordered host interaction is
+therefore challenge, recovery selector, ordinary status, then one bundle stream,
+not an asserted two-request transport. Host-proof-backed immutable critical
+status plus an exact bundle maps to `recovered_validated_critical_failure`;
+deadline exhaustion maps to `recovery_not_terminal_no_claim`. Only an actual
+immutable bundle that fails Receipt validation maps to
+`recovery_receipt_invalid_no_claim`.
 
 Artifact evidence is accepted only by a closed state table. An exact present,
 unexpired artifact must match its API digest and any host
@@ -2625,6 +3120,9 @@ asset or attestation, wrong recovery/original run/terminal/artifact-state bindin
 replacement, or post-write readback failure remains fenced. A partial exact pair
 is never accepted as final but is never made permanently unrecoverable by a crash
 between the two writes.
+The attestation statement contains exactly one subject equal to this recovery
+asset's canonical name/digest; a multi-subject or reused statement is a conflict
+even when one subject happens to match.
 
 ### Schema Boundary
 
@@ -2750,15 +3248,34 @@ helper duplicate/socket closed, and `migration-execution-closed: true`.
 | `stopped_pre_switch` | exact previous application plus exact reviewed prior auxiliary state | previous-release-bound permits are current; only its validated runtime handles/shared identity leases may remain | removed/fsynced/read back absent | no new schema commit and pre-run production state restored |
 | `schema_committed_previous_release_validated` | exact previous application plus exact reviewed prior auxiliary state | previous-release-bound permits are current; only its validated runtime handles/shared identity leases may remain | removed/fsynced/read back absent | exact committed additive ledger/schema vector valid |
 | `rolled_back` | exact previous application plus exact reviewed prior auxiliary state | rollback-bound permits are current; only its validated runtime handles/shared identity leases may remain | removed/fsynced/read back absent | rollback pointer, health, writers, and durability valid |
-| `critical_manual_intervention_required` | no application or auxiliary writer active | permits closed; no runtime or transient DB capability/handle/shared identity-lease holder remains | recovery guard and critical identity fence retained/fsynced/read back present | external critical finalizer held the exclusive business lease and single global database-identity OFD lease through record publication, then status proved it inactive and both leases free under the fence |
+| `critical_manual_intervention_required` | no application or auxiliary writer active | permits closed; no runtime or transient DB capability/handle/shared identity-lease holder remains | recovery guard and critical identity fence retained/fsynced/read back present | immutable receipt proves the active external critical finalizer held the exclusive business lease and single global database-identity OFD lease through publication; a later ordinary status separately proves the finalizer inactive and both leases free under the unchanged fence |
+
+Host alone owns the later critical proof reader.
+`createCriticalPostPublicationProofReader(...)` exposes only
+`readAndVerify({ transactionId, expectedCriticalIdentityFenceSha256 })`, and
+`assertCriticalPostPublicationProof(...)` accepts only that module-private
+brand. It verifies the fixed finalizer/transaction/recovery/recorder/custody/
+migration units inactive, the finalizer cgroup absent, the fence digest
+unchanged, and fresh exclusive acquire/readback/release proof for both leases;
+its three safe fields are exactly `transactionId`,
+`criticalIdentityFenceSha256`, and `observedAt`. Bootstrap's ordinary-status
+reader consumes that Host brand and returns its own private 16-field status
+brand. Receipt receives only the publication-time terminal bundle and the later
+Bootstrap status brand; it neither instantiates the Host reader nor obtains a
+lease, unit selector, FD/OFD proof, fence bytes, path, or database value.
 
 A structurally valid critical receipt may carry false only for the registry/
 schema/health/rollback proof that caused bounded recovery to fail, and only when
 it also proves no deployment-success claim, the exact critical stage, the
 state-specific row above, and the dedicated `critical_terminal_record`
-transition. A lingering executable, capability, handle, permit, identity/business
-lease, unknown guard, active critical finalizer, or mere
-`critical_nonterminal_manual_intervention_required` journal marker has no
+transition. At receipt publication the external critical finalizer is expected
+to remain active while holding the exact exclusive global identity and business
+leases; the immutable receipt binds that held-lock/fence proof and must not
+require those transient authorities to be inactive or free. After publication
+and exact readback, the finalizer releases both leases and exits. A lingering
+application/recovery executable, database capability/handle, permit, unknown
+guard, wrong finalizer/lease identity, or mere
+`critical_finalize_pending` journal marker has no
 terminal receipt. A live controller maps it to
 `controller_incomplete_no_production_claim` and may advance only the monotonic
 upload state before it exits; hard runner loss makes no further transition.
@@ -2776,8 +3293,12 @@ states—all four bidirectional-join
 booleans plus `migration-execution-closed` were true. For the exact critical
 state it instead validates the conditional false-proof/retained-guard contract
 and the exact state-specific runtime/transient matrix above, including the
-external critical-finalizer inactive plus exclusive identity/business lease
-proof when critical. The combined terminal record retained its replay binding, the transaction and recovery units
+publication-time held-lock/finalizer proof. It then requires a distinct later
+ordinary-status response for the same Gate/plan/transaction to prove the
+external critical finalizer inactive, the critical fence unchanged, and both
+exclusive identity/business leases freshly acquired/released as free. The
+terminal bundle and that ordinary status are both required and neither rewrites
+or substitutes for the other. The combined terminal record retained its replay binding, the transaction and recovery units
 plus database-capability custody unit/socket reached terminal/inactive/absent
 states, the host lock was proven free
 by the fixed status readback, and GitHub-runner temporary files were absent
@@ -2808,7 +3329,10 @@ loss.
 
 GitHub publishes only the validated aggregate admission response or host
 receipt plus controller closeout as run evidence. Raw remote stdout/stderr is
-never uploaded. The related PR receives a concise successful Deploy Note only
+never uploaded. Artifact Tasks 11-12 own the sole controller/workflow sink;
+Integration Task 6 may only validate it without editing owner files. After the
+final read-only validation, the isolated no-secret writer may append exactly one
+bounded comment to the merged source PR. That comment is a concise successful Deploy Note only
 when the host state is `deployed_validated`, controller result is
 `validated_deployment`, and runner cleanup has passed. It includes
 `deployed_at`, `release_unit`, `source_commit`, durable artifact identity,
@@ -2821,6 +3345,9 @@ the previous source release remained active. Admission rejection,
 invalid-receipt, or incomplete-controller results record no unverified host
 claim and require the prescribed read-only closeout. None of these states
 changes `production_state` to the candidate deployment.
+The source PR body instead says only `Production status: not_deployed`; neither
+it nor `RELEASE_MANIFEST.md` pre-creates a Deploy Note or implies first-use
+execution.
 
 ## Testing Strategy
 
@@ -2844,6 +3371,36 @@ Implementation begins with failing tests for:
   staged host-content receipt, fixes `automatedDeploymentEligible: false`, and
   cannot feed the production workflow; the normal Gate rejects a staged,
   placeholder, compatibility-mode, or future bootstrap receipt;
+- Host is the sole producer of the private-branded frozen normal/compatibility
+  inventory-reader pair, Bootstrap rejects every unbranded/lookalike provider,
+  and both readers prove zero mutation; Host's G1a installer separately proves
+  fixed allowlists, no-replace/fsync/readback, and no external call in the source
+  PR;
+- G2 accepts only compatibility-inventory frames, stays a 10,000-ms single-
+  response operation, rejects every activation-ready frame, and never reaches
+  the launcher;
+  G3 accepts only the fresh Gate-bound `bootstrap_activation` ABI, reaches only
+  the fixed root launcher, and cross-rejects every G2 request, response, receipt,
+  or read-only `activationId` evidence; ready-write failure before the first CAS
+  proves zero mutation, only the exact internal ready frame changes the relay
+  from ten seconds to the fixed 910,000-ms authenticated deadline, the
+  900,000-ms operation and 925,000-ms request bounds plus
+  `RuntimeMaxSec=930s` compose,
+  transport hides ready from the caller, and a post-ready disconnect recovers
+  durable state without replay;
+- the native root relay uses nonblocking connect and one non-refreshing absolute
+  pre-auth deadline, while accepted artifact continuation uses one distinct
+  absolute 300-second deadline in the same authenticated task; fixed-lock
+  identity, busy rejection, held-through-cleanup, and crash-release behavior are
+  proven for each compiled principal;
+- the required-check semantic/workflow registry has one Integration-owned
+  resolver, keeps its fixed registry private, injects live integration/app
+  identity evidence, and returns only canonical eight-field contract bytes;
+- protected preflight checks out literal `${{ github.sha }}`, binds every
+  required reviewer immutable identity and own boolean
+  `can_admins_bypass: false`,
+  and rejects a display-name-only approval; each asset cross-rejects zero-,
+  multi-, shared-, reused-, or mismatched-subject attestations;
 - an empty-host genesis first invokes only the exact
   `bootstrapStaticPrepareHelperSha256` under its provider-console Gate: the helper
   binds the pre-existing provider authorization receipt, reviewed static
@@ -2965,7 +3522,8 @@ Implementation begins with failing tests for:
   removes the fence only after every prior fsync/readback and can resume the same
   journal without a surviving bootstrap credential;
 - the manual receipt-recovery workflow accepts only the canonical recovery ID,
-  safe original run ID/attempt, and phrase; it rejects any extra input and
+  safe original run ID/attempt, and exact phrase
+  `recover japan control-plane receipt`; it rejects any extra input and
   byte-compares the host-indexed tuple to those inputs. It requires a new protected approval plus
   a current-key bounded challenge followed by challenge-audience OIDC, and reads
   exactly one retained historical terminal record without execute/ACK/journal
@@ -2973,7 +3531,14 @@ Implementation begins with failing tests for:
   Environment/runner/workflow path-ref-SHA, controller/parser/bootstrap digest,
   stale challenge, dropped retained parser, rotation fence, old-key use, missing
   shared concurrency, an old attempt not completed or outside the closed failure/
-  cancelled/timed-out/stale/startup-failure set, and a recovery after 24 hours.
+  cancelled/timed-out/stale/startup-failure set, and an attempt-specific
+  `updated_at` outside the 24-hour window.
+  One five-method transport performs challenge, selector, one through seven
+  fresh-ID ordinary requests under one absolute deadline, then exactly one
+  terminal-only bundle stream and one outer-finally close. Tests prove both
+  quiescence observations remain transaction-bound, exact critical proof plus
+  bundle maps to recovered critical failure, deadline maps to not-terminal,
+  and no path aliases either result to no-transaction admission rejection.
   The artifact-state table tests exact present/readback, sole
   not-started-plus-absence eligibility, started-plus-absence ambiguity,
   committed-plus-missing/deleted/expired rejection, nonterminal/ambiguous ID, and
@@ -3089,11 +3654,14 @@ Implementation begins with failing tests for:
 - exact launcher, recovery target/units, service drop-in, migration-admission
   adapter, writer-registry verifier, contract digest, and bootstrap receipt
   binding in plan, OIDC authorization, journal, and receipt;
-- effective root can create/start/read back only the exact Gate-derived
-  deployment transaction and can create/start/terminate/read back only the exact
-  plan-bound migration unit/cgroup under its fixed UID; an arbitrary unit,
+- only the authenticated fixed-systemd broker's effective root can start/read
+  back the exact Gate-derived deployment transaction or map a plan-bound
+  migration operation to its literal manager action/fixed UID; the protocol
+  parser and every consumer remain manager-denied, and an arbitrary unit,
   executable, UID, cgroup, or generic `systemd-run` request is rejected;
-- fixed SSH principal, root-owned launcher, no-argument sudo boundary, and
+- fixed SSH principal, unprivileged forced native shim, exact no-argument
+  generation-bound sudo boundary, tiny root relay, fixed root-only `AF_UNIX`
+  socket, `Accept=no` sandboxed protocol service, native `accept4` on FD 3, and
   unprivileged ownership rejection;
 - strict SSH flags with no default config, agent, key, host file, PTY, or
   forwarding fallback;
@@ -3262,6 +3830,12 @@ logs.
 
 The single source implementation PR must pass:
 
+- an Integration-owned import/readback of Foundation's complete executable
+  contract: all four atomic logical-record exports, all fifteen native-wrapper
+  exports, the exact standalone compiler flags, and the ordered fourteen-feature
+  feasibility vector. Every production entrypoint must require the whole vector
+  before protected reads or mutations; a partial local capability subset or
+  copied feature list fails;
 - targeted workflow, artifact, plan, host-runner, health, receipt, schema, and
   cleanup tests;
 - full `npm test`;
@@ -3284,9 +3858,13 @@ The implementation and first use remain separate:
    runbook updates in one source-only Draft PR.
 2. Complete clean validation, exact-head checks, independent review, Ready,
    and merge. No production credential or deployment is created by the PR.
-3. Through a separate Risk A inventory and approval, stage the exact root-owned
-   host execution bundle, approve the static contract set and nonce in a
-   pre-existing provider authorization receipt, derive `rotationId` only from
+3. Through a separate Risk A inventory and approval, invoke only Host's G1a
+   `installAndReadBack({stagedManifestBytes,contentReceiptBytes,approvalBinding})`
+   to stage and independently read back the exact root-owned host execution
+   bundle. The installer uses its compiled source/root/layout allowlists and
+   no-replace/fsync/readback contract; no caller selects a path or unit. Approve
+   the static contract set and nonce in a pre-existing provider authorization
+   receipt, derive `rotationId` only from
    that receipt/static prepare envelope, and invoke the exact no-argument
    `bootstrapStaticPrepareHelperSha256`. The helper alone publishes/fsyncs and
    reads back the admission fence, `rotation_prepared` journal, and content-
@@ -3299,19 +3877,31 @@ The implementation and first use remain separate:
    the compatibility publisher. Do not create a production GitHub credential,
    configure `vultr-japan-production` secrets, enable the deployment lane, or
    activate application/recovery bindings yet.
-4. If the installed previous release lacks either the no-bypass
-   business-mutation lease/guard contract or its canonical registry and
-   independent durable proof chain, run the distinct compatibility Artifact
-   Gate against that staged receipt, then use a separate approved backup/manual
-   deployment Gate to install the exact compatibility bundle and atomically
-   activate/read back the matching host bytes. If the previous release already
-   satisfies the source contract, use the same separate activation Gate without
+4. G2 uses a fresh provider-approved compatibility-inventory evidence binding
+   only to perform the separately typed inventory through Host's asserted
+   compatibility reader. Its canonical `activationId` remains read-only
+   evidence and never invokes activation. The codec and handler are strictly
+   read-only: they perform no CAS, execute,
+   install, root-launcher, or activation operation. If that evidence proves the
+   installed previous release lacks either the no-bypass business-mutation
+   lease/guard contract or its canonical registry and independent durable proof
+   chain, run the distinct compatibility Artifact Gate against the staged
+   receipt; publication still performs no SSH.
+5. G3 requires a different fresh activation plus a separate approved
+   backup/manual Gate. It sends only
+   `encodeBootstrapActivationRequestFrame(...)`, accepts only
+   `validateBootstrapActivationResponseFrame(...)`, and reaches only the fixed
+   root launcher to install/activate/read back the exact compatibility bundle.
+   It never sends a compatibility-inventory frame or reuses any G2 inventory
+   evidence, including its read-only `activationId`. If the previous release
+   already satisfies the source contract, the
+   same separate G3 activation Gate activates existing reviewed bindings without
    a compatibility source deployment. Either path must end with a healthy exact
    rollback release and intermediate `hostActivationReceiptSha256`; that receipt
    is not valid for a normal Artifact Gate or deployment admission. The
    implementation release cannot be introduced as its own first automatic
    rollback baseline.
-5. Establish a separate Risk A credential/authorization Gate, including
+6. Establish a separate Risk A credential/authorization Gate, including
     a provider-console-approved, maximum-15-minute bootstrap activation for the
     locked `github-control-bootstrap` principal and its exact staging lease plus
     ephemeral key/activation/sudoers triple, forced entry shim/root launcher,
@@ -3333,7 +3923,9 @@ The implementation and first use remain separate:
     one-hour platform expiry plus 15-minute controller-use bound and recovery contract,
     controller-closeout finalizer timer/service, external critical-terminal
     finalizer, receipt-recovery challenge/workflow/controller/parser registry,
-    Environment-only reserved-name
+    long-lived fixed-principal session-limit broker and exact service start-limit
+    tuple, Bootstrap maintenance coordinator plus replay/closeout compaction
+    capability contracts, Environment-only reserved-name
     proof, and cycle-free service ordering,
     `vultr-japan-production` Environment protection, production secret
     configuration, and readback. After those host and GitHub authorization
@@ -3359,8 +3951,9 @@ The implementation and first use remain separate:
     does not recreate the earlier
     `artifact-publication` policy. Any partial transition remains fail-closed and
     requires the exact resume/abort Gate above.
-6. Execute a protected read-only GitHub transport and inventory proof. Stop on
-   any target, release, service, systemd recovery/guard feature, architecture,
+7. Execute a protected read-only GitHub transport and inventory proof. Stop on
+   any target, release, service, systemd recovery/guard feature, session-limit
+   broker/principal/start-limit state, maintenance-capability/readback state, architecture,
    libc, Node ABI, database binding/config generation/schema identity,
    database-consumer, final bootstrap receipt byte/digest, bootstrap closeout
    evidence/updater-App/finalizer contract, receipt-recovery challenge/workflow/
@@ -3368,28 +3961,37 @@ The implementation and first use remain separate:
    independent source/artifact/provenance proof, bidirectional join,
    migration-admission adapter, lease/guard contract, config, or health
    ambiguity.
-7. For that exact fresh runtime contract and merged `master` commit, run the
+8. For that exact fresh runtime contract and merged `master` commit, run the
    separate manual-only Artifact Gate. Its tokenless builder performs the
    offline source-native dependency build; after no-write verification, the
    isolated publisher reads back `artifact-publication`, waits for independent
    approval, re-hashes opaque outputs, and uses only the minimum
    publication/attestation writes to attest and upload the durable target-matched
-   bundle, final bootstrap-receipt companion, and other companions. The Gate verifies exact Git-tree, provenance, bytes,
+   bundle, final bootstrap-receipt companion, and other companions. Each asset
+   receives its own exactly-one-subject attestation bound to its exact name and
+   digest; statements are never shared between assets. The Gate verifies exact Git-tree, provenance, bytes,
    and retrievability, then publishes last the immutable, attested, unexpired
    Production Gate receipt derived from that inventory, final bootstrap receipt,
    artifact, and canonical plan template. It publishes no production deployment.
-8. The operator reviews that exact durable Production Gate receipt and safe
+9. The operator reviews that exact durable Production Gate receipt and safe
    summary, then manually dispatches the workflow with only its closed
    content-addressed ID and the confirmation phrase. The no-secret preflight
    materializes it into the new run-bound plan; it does not create, select, or
    consume a Gate. The host consumes the receipt digest only after approval and
    successful OIDC admission.
-9. An independent reviewer approves the exact pending Environment deployment
-   and its run-bound plan derived from that pre-dispatch Gate.
-10. GitHub completes deployment, validation, automatic code rollback when
-   required, cleanup, and receipt validation.
-11. Perform final read-only validation and record the Deploy Note or failed/
-   rolled-back attempt accurately.
+10. After `${{ github.sha }}` exact-head readback and canonical comparison of
+   the full Environment reviewer-identity/admin-bypass tuple, an independent
+   including own boolean `can_admins_bypass: false`, an independent authorized
+   reviewer approves the exact pending Environment deployment and
+   its run-bound plan derived from that pre-dispatch Gate.
+11. GitHub first runs the capability-gated admission maintenance preflight,
+   then completes deployment, validation, automatic code rollback when
+   required, the terminal/closeout maintenance preflight, cleanup, and receipt
+   validation. Either quota/retention/CAS preflight failure stops before its
+   corresponding irreversible publication.
+12. Perform final read-only validation. Only then may the Artifact-owned
+   isolated writer append exactly one bounded Deploy Note comment, or record the
+   failed/rolled-back attempt accurately without a deployment-success claim.
 
 No source approval is reusable as a production approval. No failed or stopped
 workflow run is retried under the old Environment approval.
@@ -3404,6 +4006,9 @@ The design is implemented only when all of these are true:
   reproduces its stable plan body, effective expiry never exceeds a parent, and
   host admission consumes the receipt digest at most once;
 - a distinct reviewer must approve the exact protected job;
+- protected preflight checks out only `ref: ${{ github.sha }}`, reads that exact
+  head back, and binds the full Environment reviewer immutable-identity set plus
+  own boolean `can_admins_bypass: false` before accepting the approval;
 - approval releases only the dedicated forced-command deployment identity;
 - host admission also requires a fresh Environment-bound GitHub OIDC assertion
   for the exact plan/run and consumes it once;
@@ -3411,7 +4016,42 @@ The design is implemented only when all of these are true:
   source commit;
 - the SSH principal cannot write its authorization, launcher, release root,
   backup root, service definition, protected config, or transaction records,
-  and has no privilege outside the exact no-argument root launcher;
+  and has no privilege outside the exact no-argument native relay into the
+  fixed root-only protocol socket;
+- all `Accept=no` parser starts share the long-lived root-only limiter's two
+  fixed principal buckets and single-active leases; pre-authentication and
+  artifact continuation keep non-refreshing absolute ten-/300-second deadlines,
+  each principal's verified kernel relay lock bounds active-or-pending work, the
+  relay connect is nonblocking and remains in the same bounded authenticated
+  task, the service
+  start-limit tuple remains reachable, and a 342-frame terminal bundle uses one
+  authenticated `requestStatusBundle` session;
+- the exact-eight-field privately branded credential expectation and the
+  known-host owner's branded four-field endpoint/key binding are the only route
+  from protected materialization into sealed transport custody;
+- Host's asserted private-branded normal/compatibility inventory-reader pair is
+  the only router provider, both readers are strictly read-only, and the G1a
+  installer alone installs/fsyncs/reads back the approved staged bundle;
+- G2 inventory cannot reach the root launcher, while G3 accepts only the fresh
+  Gate-bound `bootstrap_activation` request/response ABI and cannot reuse G2
+  activation evidence; the fixed root launcher emits the internal ready frame
+  only after authorization/readback and immediately before first CAS, ready
+  failure mutates nothing, transport alone consumes it, the caller sees only
+  terminal, and the exact 900,000-ms operation, 910,000-ms authenticated, and
+  925,000-ms request limits plus `RuntimeMaxSec=930s` bound both live execution
+  and durable post-ready recovery;
+- Bootstrap's accepted-plan store/Host `readAccepted` path never absorbs the
+  later accepted-record/reservation/capability/invocation fields; the separate
+  Host accepted-start reader reopens all four sources and the projection before
+  the broker independently recomputes the domain-separated start digest;
+- only the Bootstrap maintenance coordinator can invoke replay and closeout
+  compaction, before accepted-plan publication and before every normal/recovery/
+  critical terminal/closeout publication respectively;
+  deterministic CAS preserves the replay ledger's 24-hour rejection/30-day
+  terminal rules and protects closeout entries younger than 35 days plus active,
+  nonterminal, newest-target, newest-critical, retained-parser, and eligible-
+  recovery evidence across exact 128/129 and 1,024/1,025 quota boundaries; any
+  failure precedes irreversible publication;
 - staged-content, compatibility-activation, and final bootstrap receipts use
   disjoint canonical type domains and an exact one-time parent chain; only the
   final authorization- and installed-state-bound receipt can enter a normal Gate,
@@ -3452,10 +4092,17 @@ The design is implemented only when all of these are true:
   identity fence; only the external critical finalizer may publish the
   durable `critical_terminal_record`, and status must prove that finalizer itself
   inactive before yielding `validated_critical_failure`;
+- the fixed recovery/boot chain automatically queues that external critical
+  finalizer after the recorder and prerequisite units exit; no fresh manual Gate
+  is required to run it, while any later removal of the retained critical fence
+  remains a separate approved Risk A recovery;
 - irrecoverable runner loss never changes the old run after the fact: a distinct
   manual-only, independently approved workflow must complete the current-key
   bounded challenge then recovery-audience OIDC with exact workflow/controller/
-  retained-parser identities before it may read one historical record by its
+  retained-parser identities, select one record, derive and validate its
+  ordinary status brand (including critical post-finalizer eligibility), then
+  read its terminal bundle in one same-transport stream before it may
+  validate one historical record by its
   canonical recovery ID plus safe original run/attempt inputs, require the host
   index to match them, and publish a separate recovered-closeout result, with
   no deployment, acknowledgement, host-state write, old-run rewrite, or old
