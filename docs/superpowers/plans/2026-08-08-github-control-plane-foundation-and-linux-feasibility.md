@@ -998,6 +998,61 @@ after that Gate has its own explicit approval may the compile profile record the
 real compiler digest, the six custody inputs refer to the published immutable
 asset, and Task 3 continue to the actual build.
 
+#### Approved 2026-08-09 v2 Complete-Closure Correction
+
+The v1 candidate digest is retained as historical review evidence but is not a
+publishable toolchain identity: it binds six role files and Node headers, while
+the build contract requires every compiler-internal executable/helper to be
+immutable as well. Version 2 therefore uses one complete OCI platform manifest
+as the closure boundary. The only allowed image is
+`docker.io/library/node:22.23.1-bookworm@sha256:175215a1f306ed5df592434b99cc2019f70624373fe49cb659240a618a846aed`
+for `linux/amd64`. The platform-manifest digest binds the full root filesystem;
+the inventory additionally hashes the fixed Node headers tree and ordered six
+role files from inside that exact image. A different tag, digest, platform,
+runtime identity, role path/digest, or headers tree is a new candidate requiring
+another inventory and review.
+
+Modify the existing inventory workflow/controller rather than creating a
+parallel authority. It remains `pull_request` to `master`, `contents: read`,
+GitHub-hosted `ubuntu-24.04`, no secret/environment/write permission, no setup
+Node, no dependency install, no compiler/tool execution, no cache/artifact, and
+no publication. Its job-level `container` is the exact image reference above.
+The canonical v2 line contains `schemaVersion:"2"`, `closureKind:
+"oci_platform_manifest"`, exact image/tag/manifest/platform fields, Node
+identity, the ordered role table, headers digest, and a domain-separated
+`candidateClosureSha256`; it remains `authority:"inventory_only"` and
+`eligible:false`.
+
+Add one separate `.github/workflows/control-plane-foundation-toolchain-publish.yml`.
+It is `workflow_dispatch` only, runs only from `refs/heads/master`, and accepts
+exactly `source_commit`, decimal `inventory_run_id`, lowercase 64-hex
+`candidate_closure_sha256`, and confirmation
+`publish Foundation toolchain lock`. Its read-only preflight checks out the
+trusted master workflow source, retrieves the exact successful inventory run,
+extracts exactly one canonical v2 receipt, verifies run/head/workflow/receipt and
+input equality, and produces one canonical lock body. The publisher is a
+distinct job bound to `artifact-publication` with only `actions:read`,
+`contents:write`, `id-token:write`, and `attestations:write`; it has no checkout
+or setup-node and cannot execute repository/candidate/build code.
+
+The fixed release tag is
+`control-plane-foundation-toolchain-v2-{candidateClosureSha256}` and the sole
+asset is
+`foundation-toolchain-lock-v2-{candidateClosureSha256}.json`. The publisher
+requires the repository immutable-release API to return `enabled:true`, creates
+a draft, uploads and attests that exact asset, publishes the draft, then reads
+back `immutable:true`, the exact target commit, exactly one asset, and GitHub's
+`sha256:` digest matching the local bytes. It never enables/disables immutable
+releases and never replaces/deletes/clobbers an existing object. Any partial or
+conflicting state fails closed for manual investigation. This source change and
+the v2 inventory run are approved now; after the new digest is emitted, stop for
+human review. No publication workflow dispatch is authorized by this step.
+
+The exact release target commit is the inventory receipt's independently
+revalidated `sourceCommit`; it is passed from the read-only preflight as an
+opaque output. The write-capability job must not substitute its later workflow
+dispatch SHA or resolve a mutable branch/tag for that target.
+
 - [ ] **Step 1: Write failing closed-export, registry, compiler, and standalone-target tests**
 
 ```js

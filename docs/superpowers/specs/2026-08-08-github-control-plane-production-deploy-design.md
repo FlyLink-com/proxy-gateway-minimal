@@ -263,6 +263,37 @@ The design fixes the following decisions:
     The final Foundation build accepts only the published asset identity and
     digest recorded by that later Gate; it never falls back to ambient runner
     tools, WSL, a mutable tag, or inventory output from another run.
+37. The approved v2 correction defines the complete Foundation toolchain
+    closure as one exact `linux/amd64` OCI platform manifest, not a collection
+    of copied ambient runner executables. The fixed image is
+    `docker.io/library/node:22.23.1-bookworm` at platform-manifest digest
+    `sha256:175215a1f306ed5df592434b99cc2019f70624373fe49cb659240a618a846aed`.
+    A PR-only v2 inventory runs inside that digest-pinned image on a GitHub-hosted
+    `ubuntu-24.04` VM and binds the platform manifest, Node/ABI/N-API identity,
+    the fixed Node headers tree, and the ordered `CC`, `CXX`, `AR`, `LD`,
+    `PYTHON`, and `MAKE` role-file digests. The OCI platform manifest is the
+    authority for every compiler-internal helper, library, and filesystem byte;
+    no mutable tag or host file may supplement it. The inventory remains
+    `inventory_only`, `eligible:false`, performs no compiler/build/network/write
+    operation, and emits no asset.
+38. The separately approved Foundation publication Gate is manual-only on
+    protected `master`, uses the existing `artifact-publication` Environment,
+    accepts only the exact source commit, inventory run ID, v2 closure digest,
+    and fixed confirmation phrase, and publishes one canonical content-addressed
+    toolchain-lock JSON asset. It first proves the inventory run succeeded for
+    the exact PR head/workflow and that the canonical receipt matches every
+    operator input. The release tag and asset name are pure functions of the v2
+    closure digest. The publisher has no checkout, setup-node, build, package
+    manager, host/provider route, production credential, or deployment authority.
+    It creates a draft release, uploads and attests the single lock asset, then
+    publishes and requires GitHub readback `immutable:true` plus the exact asset
+    SHA-256. The release target is the exact revalidated inventory
+    `sourceCommit`, never the later dispatch SHA or a mutable ref. Repository
+    immutable releases must already be enabled by a separate
+    settings Gate; this workflow cannot enable, disable, or bypass that setting.
+    Any existing conflicting tag/release/asset, mutable-release setting, wrong
+    run/head/workflow/digest, extra asset, or partial state fails closed. The
+    lock is supply-chain input only and never authorizes production deployment.
 
 ## Non-Goals
 
