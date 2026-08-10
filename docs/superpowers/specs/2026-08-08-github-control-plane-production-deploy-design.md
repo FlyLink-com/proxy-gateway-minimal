@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: source_design
   superseded_by: null
-  last_verified_at: 2026-08-08
+  last_verified_at: 2026-08-09
   production_authority: false
 ```
 
@@ -251,6 +251,18 @@ The design fixes the following decisions:
     record only source capability and `not_deployed`; a real G9 closeout appends
     at most one Deploy Note comment to the merged source PR after final read-only
     validation.
+36. Foundation toolchain bootstrap is two separately approved stages. The
+    source-only Draft PR may run one `pull_request`-only, no-secret,
+    `contents: read` inventory job on GitHub-hosted `ubuntu-24.04`. That job
+    invokes no compiler or project build, uploads no artifact or cache, writes
+    no Release/package/container, and emits only a canonical safe manifest plus
+    aggregate digests for the exact observed Node headers and native-tool roles.
+    Its output is inventory evidence, never an eligibility receipt or build
+    input. After human review, publishing an immutable Foundation toolchain
+    asset requires a new explicit approval and an independently protected Gate.
+    The final Foundation build accepts only the published asset identity and
+    digest recorded by that later Gate; it never falls back to ambient runner
+    tools, WSL, a mutable tag, or inventory output from another run.
 
 ## Non-Goals
 

@@ -16,6 +16,7 @@
 - Root Node engine support remains `>=20.10.0 <21 || 22.x || 23.x || 24.x || 25.x || 26.x`; repository CI for this capability uses Node 22.
 - No Redis, queue, cluster, daemon, interactive shell, SCP, rsync, PTY, forwarding, self-hosted Actions runner, operator key, or runtime-config repair identity is introduced.
 - The authoritative Foundation execution environment is a `pull_request`-only, no-secret, `contents: read` GitHub-hosted `ubuntu-24.04` VM. It uses exact-SHA action references, checks out the pull-request head SHA with persisted credentials disabled, installs dependencies with `npm ci --ignore-scripts`, and runs only the Foundation test and receipt commands. It has no `push`, `workflow_dispatch`, schedule, environment, artifact upload, SSH, provider, Release, host, or deployment operation. Local Windows or WSL observations may aid development but never substitute for this receipt.
+- A separate `pull_request`-only Foundation toolchain inventory job is approved solely to generate candidate review evidence. It has the same no-secret, `contents: read`, exact-head, GitHub-hosted `ubuntu-24.04` boundary; invokes no compiler, linker, make, Python, node-gyp, lifecycle script, or project build; uploads no artifact/cache; and writes no Release, package, container, Environment, host, provider, or production state. It emits one canonical safe manifest and aggregate digests only. The inventory result is not a build input and never satisfies Foundation eligibility. Publishing the reviewed immutable toolchain asset remains a distinct future Gate requiring a new explicit approval.
 - No production `.env`, SQLite file, protected config, credential, endpoint, raw log, or customer data enters a source fixture or artifact.
 - Native APIs accept closed logical IDs, directory FDs, and authenticated capabilities; they never accept an external absolute path, executable path, arbitrary FD slot, unit name, UID, or shell fragment. Durable state publish, CAS, and verified unlink resolve only a reviewed logical-record registry and hold one inter-process OFD lock from current-byte reread through digest comparison, atomic rename-or-unlink, parent `fsync`, and exact readback.
 - `createSealedMemfd` must apply mode `0600` and verify regular-file type, effective-UID ownership, and exact permission bits before writing the first protected byte. A permission or ownership failure closes the descriptor and is a program stop; no named-file or unverified-descriptor fallback exists.
@@ -60,6 +61,10 @@
 - `server/tests/control-plane-linux-capability-probe.test.mjs`
 - `server/tests/control-plane-foundation-linux-workflow.test.mjs` — locks the PR-only GitHub-hosted Linux harness to its source-only boundary.
 - `.github/workflows/control-plane-foundation-linux.yml` — exact-SHA, PR-only `ubuntu-24.04` Foundation receipt gate.
+- `.github/workflows/control-plane-foundation-toolchain-inventory.yml` — exact-SHA, PR-only, no-secret inventory evidence; no build or artifact publication.
+- `scripts/control-plane-foundation-toolchain-inventory.mjs` — fixed-role read-only inventory controller that emits only canonical review-safe evidence.
+- `server/tests/control-plane-foundation-toolchain-inventory.test.mjs` — locks the inventory schema, command prohibition, and non-authoritative boundary.
+- `server/tests/control-plane-foundation-toolchain-inventory-workflow.test.mjs` — locks the inventory workflow to the approved source-only GitHub boundary.
 
 **Modify:**
 
@@ -959,6 +964,39 @@ git commit -m "feat: add durable deployment state store"
   `hardened-c17-pie-v1` and the existing adapter; there is no runtime registration
   function, plugin search path, second registry root, environment-selected
   fragment, or additional public spawn ABI.
+
+#### Approved 2026-08-09 Toolchain Inventory Bootstrap
+
+Before Step 1, implement the separately named Foundation toolchain inventory
+workflow and controller. The controller has no CLI selector and observes only
+the fixed Node headers root plus the six fixed tool roles `CC`, `CXX`, `AR`,
+`LD`, `PYTHON`, and `MAKE` resolved from the reviewed inventory contract. It
+must not execute any observed file. It recursively rejects symlinks, nonregular
+entries, duplicate realpaths, unknown fields, and path escape; hashes bytes in
+stable POSIX-relative order; and emits one canonical JSON line containing only
+schema/type, source commit, fixed workflow identity, Node version/ABI/N-API,
+the ordered role-to-content-digest table, headers tree digest, candidate
+toolchain tree digest, and candidate bundle digest. No absolute path, runner
+name, hostname, UID, PID, device/inode, environment value, or raw command output
+may appear.
+
+The workflow is `pull_request` to `master` only, runs on `ubuntu-24.04`, uses
+the reviewed exact-SHA checkout/setup-node actions, checks out
+`${{ github.event.pull_request.head.sha }}` with persisted credentials disabled,
+and runs only the inventory-focused tests and controller. It has no dependency
+install, compiler, node-gyp, project build, environment, secret expression,
+cache, artifact upload, GitHub write permission, SSH, provider, Release,
+package, container, host, or production operation. The controller's stdout is
+review evidence only. The workflow and controller must label the result
+`eligible:false` and `authority:"inventory_only"`; no downstream code accepts
+that schema as a toolchain, build, Artifact Gate, or production receipt.
+
+After the inventory run, stop. Human review verifies the exact run/head and
+candidate digests. Creating or publishing the immutable Foundation toolchain
+asset is a separate, later Gate and is not authorized by this plan update. Only
+after that Gate has its own explicit approval may the compile profile record the
+real compiler digest, the six custody inputs refer to the published immutable
+asset, and Task 3 continue to the actual build.
 
 - [ ] **Step 1: Write failing closed-export, registry, compiler, and standalone-target tests**
 
