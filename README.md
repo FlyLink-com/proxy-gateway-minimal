@@ -51,8 +51,8 @@ project_status:
 
 | 事实面 | 当前结论 |
 | --- | --- |
-| 仓库基线 | `master@3a194bcd5adbaf22c35fdd8ce5ed46ee9253e68c`；该提交仅合并文档治理 PR #595。 |
-| 可执行源码截止点 | `02fc63a3f949b748dcccf26ba7d310be82f4b6df`；#595 没有修改代码、配置或部署工作流。 |
+| 复核输入 | 2026-08-10 只读复核以 `master@b7276cff9a9cb7c3983ae42f2be2ef9fa8483c12` 为输入；这是审计基线，不是永久“当前 master”，执行前必须实时刷新。 |
+| 可执行源码截止点 | `02fc63a3f949b748dcccf26ba7d310be82f4b6df`；从该提交到本次复核输入仅有 docs、`project-state` 与 README 变更。 |
 | Operations Plane | #557 仍为 `partial`；#558 的授权边界、#559 的完整指标合同和 #560 的通用 Admin action audit 尚未闭环。 |
 | Commerce / Authority | Wallet、Coin Ledger、Recharge/Payment、Commerce 与 Account Resource Authority 已有较完整的源码基础；#592 仍是未部署的 Draft source candidate。 |
 | 部署基础 | #593 是设计/计划 Draft；#594 是 Foundation Draft，inventory 仅为 `inventory_only`，不构成制品发布或生产授权。 |
@@ -60,6 +60,18 @@ project_status:
 
 以上是源码与仓库治理快照，不是生产健康声明。开放 PR、Issue、Actions 和 provider 状态
 属于可变事实，在审核、合并或生产决策前必须重新读取。
+
+### 工程成熟度下一阶段
+
+定性结论：受控平台基础已经建立，下一阶段的主线是补齐生产证据成熟度，而不是继续用
+源码数量代替上线事实。
+
+| 优先级 | 目标 | 追踪 |
+| --- | --- | --- |
+| P0 | 新鲜对账 Source、Artifact、Release、Deployment 与 Runtime，并建立可覆盖部署/回滚窗口的 durable immutable artifact retention | [Release Maturity P0](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/597)、[#437](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/437) |
+| P1 | 补齐 SBOM、provenance、signing、Action full-SHA pinning，以及完整 metric/freshness/SLO 边界 | [Supply Chain P1](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/598)、[#559](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/559) |
+| P2 | 将 default-off/source-only capability 按 implemented → validated → staged → promoted → observed 逐项晋升 | [#524](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/524) 及对应 domain gate |
+| P3 | 只展示可由默认分支和机器证据支撑的 badges/status；展示层不替代 release 或 runtime evidence | 后续展示治理 |
 
 当前边界：
 
