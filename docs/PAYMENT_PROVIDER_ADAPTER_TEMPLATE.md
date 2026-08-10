@@ -1,16 +1,18 @@
 # Payment Provider Adapter Template
 
-Last updated: 2026-08-03, America/Los_Angeles.
+Last updated: 2026-08-09, America/Los_Angeles.
+
+Source evidence cutoff: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`.
 
 This document defines the repository-local adapter template for future payment
 provider integration.
 
 The commercial authority is `docs/COMMERCIAL_MODEL_V1.md`. Provider Core V1,
-the durable Recharge path, and the PayPal Sandbox Adapter are source-only and
-runtime default-off. The legacy environment-summary helper remains independent
-and unregistered. This source state by itself is not evidence of a live Sandbox call,
-credential validation, callback registration, production payment, refund,
-reconciliation, or provider activation.
+the durable Recharge path, PayPal Sandbox, XSD, and ChaoJiPay are source-only
+and runtime default-off. The legacy environment-summary helper remains
+independent and unregistered. This source state by itself is not evidence of a
+live provider call, credential validation, callback registration, production
+payment, refund, reconciliation, or provider activation.
 
 It does **not** activate a provider call or credential, register a callback,
 apply the Payment schema to production, enable Wallet credit, create a real
@@ -79,6 +81,18 @@ contract or a Coins wallet.
     transport;
   - make no request during startup and remain unreachable unless both runtime
     flags and every prerequisite are present.
+- `server/services/platform/xsd-payment-*.mjs` and
+  `server/services/platform/chaojipay-payment-*.mjs`
+  - implement strict CNY codecs, credential-scoped runtimes, and bounded
+    compiled capabilities with synthetic source/test evidence only;
+  - keep XSD capture and both providers' refund/reconcile disabled; ChaoJiPay
+    query also remains disabled.
+- `server/state.mjs`
+  - is the sole production composition root allowed to import the CNY
+    runtimes;
+  - fails closed unless Recharge is requested with exactly one of PayPal
+    Sandbox, XSD, or ChaoJiPay enabled and every provider prerequisite present;
+  - leaves Recharge and all three providers disabled by default.
 - `server/routes/portal-coin-recharge.mjs`
   - exposes authenticated offer/order/capture projections and one bounded
     provider callback route;
@@ -177,21 +191,23 @@ with every flag `false` has no payment method and every operation rejects before
 credential, transport, or clock use. Missing credential or transport bindings
 fail closed on the first valid enabled operation.
 
-The XSD and ChaoJiPay codecs, injected runtimes, and Adapters have only
-synthetic local-test evidence. They are not evidence of provider, merchant,
-Sandbox, production, credential, callback-registration, or payment
-compatibility. Neither runtime is imported by `server/state.mjs`, routes,
-Payment Store, Wallet, public indexes, or Portal/Admin bootstrap roots.
+The XSD and ChaoJiPay codecs, injected runtimes, Adapters, and single-active
+assembly have only synthetic local-test evidence. They are not evidence of
+provider, merchant, production, credential, callback-registration, or payment
+compatibility. `server/state.mjs` is the only permitted production composition
+root that imports either CNY runtime; routes, Payment Store, Wallet, public
+indexes, and Portal/Admin bootstrap roots do not import them directly.
 
-The default-off source boundary is a lightweight static/literal audit of
-tracked production/public roots: package `main`/`exports`/`bin`,
-`start`/`server` entries, server state and routes, payment Store/Wallet, public
-indexes, and the Admin/Portal HTML/bootstrap/Vite roots. It establishes the
-direct source fact that the tracked state and routes do not import either CNY
-runtime. Publishable `package.json.files` members remain a separate literal
-basename audit corpus, not executable assembly roots. This lightweight test
-does not prove the absence of deliberately computed or obfuscated loading;
-such code requires ordinary code review and any applicable security scan.
+The default-off source boundary audits tracked production/public roots:
+package `main`/`exports`/`bin`, `start`/`server` entries, server state and
+routes, Payment Store/Wallet, public indexes, and Admin/Portal
+HTML/bootstrap/Vite roots. It permits the two CNY runtime imports only in
+`server/state.mjs` and rejects them elsewhere in that corpus. State tests also
+assert Recharge's exactly-one-provider prerequisite. Publishable
+`package.json.files` members remain a separate audit corpus. This source check
+does not prove runtime configuration or the absence of deliberately computed
+or obfuscated loading; ordinary review and applicable security scans still
+apply.
 
 Confirmed synthetic source facts are deliberately narrow:
 
@@ -206,9 +222,12 @@ Confirmed synthetic source facts are deliberately narrow:
   It verifies signed callback success and exposes `success` only as a pure
   acknowledgement codec. Its documented query response lacks an authoritative
   signed field contract, so query is compiled disabled.
-- XSD's `succeeded` query projection is not a verified payment fact; no query,
-  callback, redirect, or acknowledgement is wired to Store, Wallet, or Coins
-  credit in this source change.
+- XSD's `succeeded` query projection is not a verified payment fact and cannot
+  settle an order. A separately verified signed callback is wired through the
+  default-off Portal callback route and Recharge coordinator to Payment Store
+  and exactly-once `paid_coins` Wallet credit. That source path does not prove
+  production callback ingress, credentials, provider compatibility, schema
+  apply, runtime activation, or settlement.
 
 `createRequestIp` is a ChaoJiPay runtime constructor input that is only
 synthetically validated as a public IPv4 value and emitted in the create
@@ -240,8 +259,11 @@ approval is required for:
 
 ## Recommended Next Steps
 
-1. Keep both `PLATFORM_COIN_RECHARGE_ENABLED` and
-   `PLATFORM_PAYPAL_SANDBOX_ENABLED` false outside an approved Gate.
+1. Keep `PLATFORM_COIN_RECHARGE_ENABLED` and all provider flags
+   (`PLATFORM_PAYPAL_SANDBOX_ENABLED`, `PLATFORM_XSD_PAYMENT_ENABLED`, and
+   `PLATFORM_CHAOJIPAY_PAYMENT_ENABLED`) false outside an approved Gate. The
+   general `.env.example` does not yet enumerate both CNY flags, so it must not
+   be treated as a complete provider-assembly inventory.
 2. Review and apply the Payment migration through its own schema Gate before
    any runtime activation.
 3. Validate one synthetic account end to end against PayPal Sandbox with an

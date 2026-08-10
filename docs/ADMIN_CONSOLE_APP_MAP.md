@@ -1,6 +1,6 @@
 # Admin Console App Map
 
-Last updated: 2026-06-21, Asia/Shanghai.
+Last updated: 2026-08-09, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-74 under GCC-81 / GCC-42
@@ -12,7 +12,9 @@ Last updated: 2026-06-21, Asia/Shanghai.
 >   credential, subscription URL, raw config/log/env, raw log, audit export,
 >   SQLite row, or customer-data actions.
 
-## Source-Reality Addendum (2026-07-30)
+## Source-Reality Addendum (2026-08-09)
+
+Source evidence cutoff: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`.
 
 The manifest, navigation, System Search, page/module registration, safe-read
 projection models, and Operations/Accounts/Usage owner models now exist in
@@ -30,8 +32,17 @@ Use `docs/OPERATIONS_PLANE_SOURCE_REALITY.md` to distinguish:
 - source-only capabilities with unknown or separate deployment state.
 
 Frontend registration and visibility still do not provide backend
-authorization. Explicit role/capability enforcement remains a proven gap to be
-reconciled under #558.
+authorization. Backend source now defines `admin` / `super_admin` read
+capabilities and enforces `operations.read` on bounded Overview routes behind
+default-off `ADMIN_AUTHORIZATION_ENABLED`; full route coverage and mutation
+authority remain gaps under #558. The manifest's `view`/`inspect` vocabulary is
+not an alias for backend `*.read`, and frontend `superAdmin` presentation must
+not be conflated with backend role `super_admin`.
+
+The backend collector-status projection and protected route exist, but
+`Usage & Channels` does not consume that route at this cutoff. Its collector
+and receipt fields remain static/injected presentation until an explicit
+frontend adapter is implemented.
 
 The Admin console is a protected operator workspace. A page is a workspace
 area, and each page module is a page-owned panel. System Search is the only
@@ -80,7 +91,7 @@ control-console pattern source. The local mapping is:
 | --- | --- |
 | Dashboard | Workspace app: `operations-overview`, `accounts-resources`, `usage-channels`, and future gated workspaces. |
 | Panel | Plugin app/module owned by one workspace page. |
-| Data source | Safe backend summary/API domain such as accounts, orders, usage ledger, channels, collectors, receipts, or gates. |
+| Data source | Safe backend summary/API domain such as accounts, orders, traffic usage samples/rollups, channels, collectors, receipts, or gates. |
 | Library | Manifest-backed System Search index, page/module recovery, and future safe tags/folders. |
 | Alert | Risk queue or anomaly item that routes to safe evidence, not production execution. |
 | Explore | Read-only drilldown from overview to account, order, channel, collector, receipt, or gate evidence. |
@@ -95,8 +106,11 @@ System Search is the top-bar search, route discovery, and hidden-module
 recovery surface. It is not a remote plugin market, not an app drawer, and not
 an authorization layer.
 
-Future search work should define an explicit `SystemSearchDocument` shape
-instead of scraping rendered UI labels. The document may include only:
+Source already defines and tests `AdminAppSearchDocument` and
+`createAdminAppSearchDocument()` from the registered manifest instead of
+scraping rendered UI labels. Future search work may extend that contract or
+connect additional backend-owned safe facts, but the document may include
+only:
 
 - app id, labels, aliases, safe descriptions, category, owner area, route
   target, capabilities, and `catalog.searchableFields`;
@@ -128,6 +142,10 @@ plugin, utility, and planned app:
 | `evidenceRoutes` | Use safe evidence labels such as `account-ref`, `order-ref`, `channel-ref`, `receipt-state`, or `risk-case`. |
 | `transformBoundary` | Always `display-only`; quota, lifecycle, risk, auth, and runtime decisions remain backend/domain owned. |
 
+`usage-ledger-summary` and plugin id `usage-ledger` are retained legacy
+frontend identifiers. In this document they mean traffic usage samples and
+rollups; they are not the immutable financial Coin Ledger.
+
 This is a frontend manifest contract only. It does not authorize new API
 endpoints, raw query browsing, log/config browsing, production execution,
 runtime mutation, or arbitrary external data-source configuration.
@@ -138,7 +156,7 @@ runtime mutation, or arbitrary external data-source configuration.
 | --- | --- | --- | --- | --- | --- | --- |
 | `operations-overview` | 运营概览 | Operations Overview | Monitoring | platform health, risk case, activity event, channel summary | health summary, risk queue, next action routing | `GCC-75` |
 | `accounts-resources` | 账号与资源 | Accounts & Resources | Management | user account, resource, order, subscription artifact, quota policy | account directory, resources and orders, quota and usage, lifecycle, history and events | `GCC-75` |
-| `usage-channels` | 使用情况和渠道 | Usage & Channels | Monitoring | usage sample, channel, collector, receipt, safe edge reference | collection freshness, channel coverage, usage ledger, anomalies, receipts and collectors | `GCC-75` |
+| `usage-channels` | 使用情况和渠道 | Usage & Channels | Monitoring | usage sample, channel, collector, receipt, safe edge reference | collection freshness, channel coverage, traffic usage rollups, anomalies, receipts and collectors | `GCC-75` |
 
 ## Plugin Apps
 

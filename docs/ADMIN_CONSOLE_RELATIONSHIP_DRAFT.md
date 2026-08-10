@@ -1,25 +1,30 @@
 # Admin Console Relationship Draft
 
 
-## Source-Reality Addendum (2026-07-30)
+## Source-Reality Addendum (2026-08-09)
+
+Source evidence cutoff: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`.
 
 This relationship model remains useful for ownership and sequencing, but its
 older `design-only` wave labels predate substantial source work. The current
 source/test inventory is `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`.
 
-Already-present source includes Admin auth/session foundations, manifest-backed
-page/module registration, safe-read owner models, protected traffic projection,
-Portal Wallet/Ledger reads, and Coins Commerce order foundations. The model must
-therefore be used to locate remaining gaps, not as authority to rebuild those
-capabilities.
+Already-present source includes backend Admin auth/session foundations,
+manifest-backed page/module registration, safe-read owner models, a protected
+traffic projection route, Coin Wallet/Coin Ledger reads, reference indexes,
+Coin Commerce, Account Resource Authority, and default-off Recharge/Payment
+foundations. The model must therefore be used to locate remaining gaps, not as
+authority to rebuild those capabilities.
 
-The full generic DTO family, explicit backend RBAC/capability enforcement,
-commercial metric truth, and general Admin action audit remain partial,
-document-only, or missing as recorded in the matrix. Production/runtime state
-remains separate.
+Backend `admin` / `super_admin` read capabilities and bounded Overview route
+enforcement exist behind a default-off flag. Full route coverage, mutation
+authority, the generic DTO family, commercial metric truth, and general Admin
+action audit remain partial, document-only, or missing. The Admin frontend has
+no `/api/admin-auth/*` integration, and `Usage & Channels` has no collector
+route consumer at this cutoff. Production/runtime state remains separate.
 
 
-Last updated: 2026-06-21, Asia/Shanghai.
+Last updated: 2026-08-09, America/Los_Angeles.
 
 > Status:
 > - Type: Active relationship and page-design contract.
@@ -54,21 +59,23 @@ The draft uses four front-end principles:
 4. Keep raw logs, audit details, and key material behind backend authority,
    super-admin permission, fresh MFA, reason code, TTL, and audit retention.
 
-## Current Execution Boundary
+## Historical Execution Boundary (2026-06-21)
 
-This relationship model is intentionally larger than the current delivery
-batch. Do not treat every surface below as simultaneous implementation work.
+This retained wave table records the delivery boundary when the relationship
+draft was written. It is not the current GitHub queue. Current Operations
+sequencing belongs to #557-#561 and `project-state/*.json`; do not treat every
+surface below as simultaneous implementation work.
 
 | Wave | Linear scope | Delivery boundary |
 | --- | --- | --- |
 | Closed | `GCC-109`, `GCC-103` | Relationship model, Admin IA/docs, and Figma/UI handoff boundaries are documented. |
 | Closed | `GCC-110`, `GCC-111` | Capability-gated frontend registration and static Platform Monitoring details are on `master`. |
-| Current | `GCC-101`, `GCC-112` | Design backend DTO, redaction, retention, and privilege contracts before live integration. This remains C while it is design-only and becomes A if auth/schema/retention changes start. |
+| Then-current | `GCC-101`, `GCC-112` | Design backend DTO, redaction, retention, and privilege contracts before live integration. This remains C while it is design-only and becomes A if auth/schema/retention changes start. |
 | Deferred | `GCC-113`, `GCC-114` | Keep super-admin Key/Audit/Log fixture surfaces and User/Order page splitting out of the current wave. |
 
-Current WIP limit: `GCC-101` / `GCC-112` design-only contract work. The rest of
-this document is a map for sequencing, not a commitment to finish every page in
-one PR.
+Dated WIP limit at this baseline: `GCC-101` / `GCC-112` design-only contract
+work. The rest of this document is a relationship map, not current sequencing
+authority or a commitment to finish every page in one PR.
 
 ## Object Relationship Model
 

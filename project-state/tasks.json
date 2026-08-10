@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2026-07-15.1",
-  "lastUpdated": "2026-07-30",
+  "schemaVersion": "2026-08-09.1",
+  "lastUpdated": "2026-08-09",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-current-queue",
   "purpose": "Current Phase 2 queue and recently completed gates needed for safe Agent continuation. Older completed work remains traceable in Git history and indexed records.",
@@ -12,27 +12,44 @@
     "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
     "docs/IDENTITY_LIFECYCLE.md",
     "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
+    "docs/ACCOUNT_RESOURCE_AUTHORITY_LIFECYCLE.md",
     "docs/BILLING_RECHARGE_CONTRACT.md",
+    "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
+    "docs/COINS_WALLET_SCHEMA_GATE.md",
+    "docs/COINS_COMMERCE_SCHEMA_GATE.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/OPERATIONS_PLANE_SOURCE_REALITY.md"
   ],
   "historicalBoundary": {
-    "sourceSnapshotAtReconciliation": "5b61d9d787e2f98e9f834fe05de6dcbb6805cea7",
-    "productionRuntimeEvidenceCutoff": "2026-07-11T13:03:40Z",
+    "sourceSnapshotAtReconciliation": "02fc63a3f949b748dcccf26ba7d310be82f4b6df",
+    "productionRuntimeEvidenceCutoff": "2026-07-20T06:21:00Z",
+    "requiresLiveVerification": true,
     "rule": "Use Git history and docs/archive indexes for completed or superseded tasks; do not re-add them to the current queue without a new Issue and fresh evidence."
   },
   "sourceReceipts": {
-    "inventoryDate": "2026-07-15",
-    "master": "5b61d9d787e2f98e9f834fe05de6dcbb6805cea7",
-    "remoteBranchCount": 16,
-    "openPrCount": 2,
-    "openIssueCount": 5,
+    "inventoryDate": "2026-08-09",
+    "master": "02fc63a3f949b748dcccf26ba7d310be82f4b6df",
+    "remoteBranchCount": 70,
+    "openPrCount": 3,
+    "openDraftPrCount": 3,
+    "openNonDraftPrCount": 0,
+    "openIssueCount": 15,
     "openIssues": [
       437,
       438,
       439,
-      440,
-      475
+      521,
+      522,
+      523,
+      524,
+      525,
+      527,
+      551,
+      557,
+      558,
+      559,
+      560,
+      561
     ],
     "merged": [
       {
@@ -174,76 +191,148 @@
         "lane": "version-management",
         "receipt": "canonical authority metadata normalization",
         "productionState": "not_applicable"
+      },
+      {
+        "pr": 582,
+        "sourceCommit": "a3c38ffc1446e6934c6fd3e2f7c2afe87a167ad8",
+        "lane": "commercial-foundation",
+        "receipt": "fail-closed archive compatibility for the exact legacy Payment schema",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 583,
+        "sourceCommit": "001e3e97b1a062a1692bd310cdf4bf29ef8a5af8",
+        "lane": "portal-lifecycle",
+        "receipt": "separate Portal Recharge entry from incomplete order continuation",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 584,
+        "sourceCommit": "285e723a9773cc10d56682ea24abed228298384a",
+        "lane": "commercial-foundation",
+        "receipt": "XSD callback form and optional attach compatibility",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 585,
+        "sourceCommit": "064d68e6a3b50714642550b6dcbcf93989817ac9",
+        "lane": "commercial-foundation",
+        "receipt": "explicit all-active Coins Commerce audience source contract",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 586,
+        "sourceCommit": "54d1956d501e268ed2b1199ae19c68807fe56abf",
+        "lane": "commercial-foundation",
+        "receipt": "fail-closed Commerce purchase resolution by account resource",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 587,
+        "sourceCommit": "7ae86f0d32ddb8bf9d9eb3a4600047169e02779b",
+        "lane": "code-boundary",
+        "receipt": "IPv4-mapped IPv6 normalization and trusted-proxy boundary hardening",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 588,
+        "sourceCommit": "a745bced1a4983551d214c6768e2d84b07cda598",
+        "lane": "commercial-foundation",
+        "receipt": "Account Resource Authority schema lifecycle and fail-closed model",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 589,
+        "sourceCommit": "0ac923f5559de0bbf84f9b469b77bf800d470265",
+        "lane": "code-boundary",
+        "receipt": "Code Quality fixes and compatible ip-address lockfile remediation",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 591,
+        "sourceCommit": "64c6eadf34dd3de764238b010ed791048549c80f",
+        "lane": "commercial-foundation",
+        "receipt": "default-off Coins Commerce binding to explicit Account Resource Authority",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 590,
+        "sourceCommit": "02fc63a3f949b748dcccf26ba7d310be82f4b6df",
+        "lane": "code-boundary",
+        "receipt": "fail-closed malformed forwarded-chain handling, stable server test concurrency, and exact-master artifact proof",
+        "productionState": "not_deployed",
+        "artifactEvidence": "Release Artifact run 31267179669 success; three artifacts temporary through 2026-08-22"
       }
     ],
     "openDrafts": [
       {
-        "pr": 476,
-        "issue": 475,
-        "lane": "operations-foundation",
-        "head": "3de9396910c30ba8d3bf14d6018c7b0e819ebd9e",
-        "mergeState": "conflicts",
-        "sourceState": "source_schema_only_conflicts",
+        "pr": 592,
+        "lane": "commercial-foundation",
+        "branch": "codex/authority-commerce-operators",
+        "head": "35a46387024c331f9bbf6454d70b8bf0531335e7",
+        "mergeState": "not_refreshed_at_inventory",
+        "sourceState": "source_only_operator_entrypoints",
         "productionState": "not_deployed",
-        "authority": "none"
+        "identityImpact": false,
+        "authority": "none_for_production"
       },
       {
-        "pr": 479,
-        "issue": 437,
-        "lane": "traffic-accounting",
-        "state": "open_draft",
-        "head": "58ccdccc6af5ed120541f03d2713857e4a9a8a65",
-        "mergeState": "behind",
-        "unresolvedNonOutdatedThreads": 0,
-        "sourceState": "blocked_successor_gate_003_terminal",
+        "pr": 593,
+        "lane": "version-management",
+        "branch": "docs/github-control-plane-deploy-design",
+        "head": "bc7b1d26cd4db66cbfe3fbd86e5255169e068974",
+        "mergeState": "not_refreshed_at_inventory",
+        "sourceState": "spec_and_plan_only",
         "productionState": "not_deployed",
-        "identityGate": "pending",
-        "predecessorTerminalReceipt": "issuecomment-4966594034",
-        "predecessorResult": "blocked",
-        "predecessorApprovalState": "consumed",
-        "durableSuccessorGate": "terminal_blocked",
-        "successorProposal": "pr479-forward-pending-rollback-obligation-remediation-20260715-003",
-        "successorApprovalReceipt": "issuecomment-4979572712",
-        "successorTerminalReceipt": "issuecomment-4979585832",
-        "successorResult": "blocked",
-        "successorBlockedStage": "fresh_binding",
-        "successorApprovalState": "consumed",
-        "requiredNextGate": "new exact successor gate after blocked -003; none currently exists"
+        "identityImpact": false,
+        "authority": "none_for_deployment"
+      },
+      {
+        "pr": 594,
+        "lane": "version-management",
+        "branch": "codex/github-control-plane-production-deploy",
+        "head": "a3f2817d696ee9bb66f1e849e0b35e77105fde8e",
+        "mergeState": "not_refreshed_at_inventory",
+        "sourceState": "source_only_deployment_foundation_inventory",
+        "productionState": "not_deployed",
+        "identityImpact": false,
+        "authority": "none_for_production"
       }
     ],
     "openNonDraftPrs": []
   },
   "issue437Reconciliation": {
     "state": "open",
-    "receipt": "issuecomment-4976074286",
-    "reason": "PR #482 was recorded as the closer despite its PR body explicitly denying resolution.",
-    "latestGateProposal": "pr479-forward-pending-rollback-obligation-remediation-20260715-003",
-    "latestGateApproval": "issuecomment-4979572712",
-    "latestGateTerminalReceipt": "issuecomment-4979585832",
-    "latestGateResult": "blocked",
-    "latestGateApprovalState": "consumed"
+    "pr479State": "merged_source_only",
+    "productionState": "not_deployed",
+    "reason": "PR #479 merged source-only, but Issue #437 remains open and no production or runtime completion is inferred."
   },
   "ciGovernance": {
-    "routing": "PR #483 introduced docs-only and code lanes with always-run diff checking while retaining one stable required Validate context.",
-    "ci": "29418796398 success",
-    "releaseArtifact": "29418796724 success",
-    "codeql": "29418794902 and 29418794903 success",
-    "cloudflareWorkflow": "29391680029 success_build_verify_deploy_skipped",
-    "ruleset": "18935716 strict Validate; zero approvals; no review-thread resolution",
-    "environments": "Six exist; only artifact-publication has a branch policy; none has reviewer enforcement."
+    "inventoryDate": "2026-08-09",
+    "master": "02fc63a3f949b748dcccf26ba7d310be82f4b6df",
+    "releaseArtifact": "31267179669 success for exact master; three artifacts temporary through 2026-08-22",
+    "ci": "not_refreshed_for_exact_master",
+    "codeql": "not_refreshed_for_exact_master",
+    "cloudflareWorkflow": "not_refreshed_for_exact_master",
+    "ruleset": "not_refreshed",
+    "environments": "not_refreshed",
+    "requiresLiveVerification": true
   },
   "sourceSecurity": {
-    "codeScanning": "0 open",
-    "dependabot": "0 open",
-    "secretScanning": "0 open",
-    "boundary": "Zero open alerts is a dated API observation, not a guarantee about future scans or production deployment."
+    "codeScanning": "not_refreshed",
+    "dependabot": "not_refreshed",
+    "secretScanning": "not_refreshed",
+    "codeQuality": "not_refreshed",
+    "recentRemediation": "PR #589 merged fixes for 11 Code Quality instances and three known ip-address advisories; current alert counts remain unclaimed.",
+    "requiresLiveVerification": true,
+    "boundary": "Source remediation and successful workflows do not establish current default-branch alert counts or required security gates."
   },
   "nextActionQueue": [
-    "Complete #561 source-reality reconciliation before selecting any #557 Operations Plane implementation slice.",
-    "Establish a new durable successor Gate on #437 after the blocked and consumed PR #479 Gate -003.",
-    "Complete any newly authorized PR #479 source remediation, current-master integration, exact-head checks, formal review, Ready, and merge through independent approvals.",
-    "Finish the Gate ledger and validator, stable CI contexts plus settings Gate, durable artifact retention and binding, and the minimal organization and runtime-evidence model through separate PRs.",
-    "Only then establish independent Artifact and Risk A production-alignment Gates."
+    "Complete active #561 source-language reconciliation before selecting the remaining #558-#560 Operations Plane gaps.",
+    "Review Draft #592 against current master while keeping schema apply, Authority assignment, artifact publication, deployment, runtime activation, and Commerce canaries outside its source-only authority.",
+    "Review Drafts #593 and #594 as design/foundation work only; neither is implemented production deployment authority.",
+    "Establish durable artifact and rollback identity before run 31267179669 artifacts expire on 2026-08-22.",
+    "Refresh GitHub rulesets, required checks, environments, alert counts, provider state, deployments, and production runtime evidence before relying on them."
   ],
   "tasks": [
     {
@@ -500,19 +589,23 @@
     {
       "id": "B-phase2-portal-lifecycle-contract",
       "risk": "B",
-      "status": "queued-after-traffic-accounting",
+      "status": "active-source-foundation-issue-438",
       "lane": "portal-lifecycle",
       "title": "Define the Portal user and resource lifecycle contract",
-      "goal": "Implement Issue #438 over existing account, entitlement, delivery, usage, quota, and renewal facts without a first-slice schema migration.",
+      "goal": "Continue Issue #438 over the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders and Recharge surfaces, and Account Resource Authority source without conflating source with current production state.",
       "allowedFiles": [
         "server/services/platform/**/*.mjs",
         "server/services/subscriptions/**/*.mjs",
         "server/tests/**/*.test.mjs",
-        "admin/src/features/user-portal/**/*"
+        "admin/src/features/user-portal/**/*",
+        "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
+        "docs/ACCOUNT_RESOURCE_AUTHORITY_LIFECYCLE.md",
+        "docs/USER_PORTAL_FLOW.md",
+        "docs/USER_PORTAL_AUTH_BOUNDARY.md"
       ],
       "forbiddenActions": [
         "treat payment as subscription state",
-        "perform a schema migration in the first slice",
+        "apply schema, activate Payment, Wallet, Commerce, or Authority production paths without separate exact Risk A gates",
         "retire legacy access or redesign the Portal broadly"
       ],
       "validation": [
@@ -525,18 +618,23 @@
     {
       "id": "B-phase2-commercial-foundation-contract",
       "risk": "B",
-      "status": "queued-after-portal-lifecycle",
+      "status": "active-default-off-source-foundation",
       "lane": "commercial-foundation",
       "title": "Harden provider-neutral commercial contracts with all live providers disabled",
-      "goal": "Implement Issue #439 with fail-closed payment capabilities, verified fact boundaries, and a redacted event catalog.",
+      "goal": "Continue Issues #439 and #522-#524 from the existing Wallet/Ledger, Payment/Recharge, provider Adapter, Coins Commerce, fulfillment, and Account Resource Authority source while keeping current master not deployed and production paths default-off or separately gated.",
       "allowedFiles": [
         "server/services/platform/**/*.mjs",
         "server/tests/**/*.test.mjs",
-        "docs/BILLING_RECHARGE_CONTRACT.md"
+        "admin/src/features/user-portal/**/*",
+        "docs/BILLING_RECHARGE_CONTRACT.md",
+        "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
+        "docs/COINS_WALLET_SCHEMA_GATE.md",
+        "docs/COINS_COMMERCE_SCHEMA_GATE.md",
+        "docs/ACCOUNT_RESOURCE_AUTHORITY_LIFECYCLE.md"
       ],
       "forbiddenActions": [
         "activate a payment provider or AppsFlyer",
-        "add provider credentials, live webhooks, settlement, or payout",
+        "read provider credentials or perform live callbacks, settlement, Wallet credit, Authority assignment, Commerce activation, or payout without an exact Risk A gate",
         "let payment facts directly generate runtime or subscription material"
       ],
       "validation": [
@@ -548,10 +646,10 @@
     {
       "id": "B-phase2-code-boundary-cleanup",
       "risk": "B",
-      "status": "guardrail-when-touched",
+      "status": "inactive-guardrail-when-touched",
       "lane": "code-boundary",
       "title": "Extract only measured code boundaries exposed by active work",
-      "goal": "Use Issue #440 for one behavior-preserving extraction at a time while keeping the modular monolith intact.",
+      "goal": "Perform one behavior-preserving extraction only when active work exposes a measured ownership problem; Issue #440 is not in the current open-Issue inventory and the modular monolith remains intact.",
       "allowedFiles": [
         "server/state.mjs",
         "server/services/**/*.mjs",
@@ -573,24 +671,33 @@
     {
       "id": "C-operations-plane-source-reality",
       "risk": "C",
-      "status": "in-progress-docs-reconciliation",
+      "status": "active-docs-reconciliation",
       "lane": "operations-foundation",
       "title": "Reconcile Operations Plane planning with current source reality",
-      "goal": "Use Issue #561 to classify existing Admin, Operations, Wallet, Commerce, traffic, metric, RBAC, and audit capabilities before opening implementation work under #557.",
+      "goal": "Use active Issue #561 to classify existing Admin, Operations, traffic, Wallet/Ledger, Payment/Recharge, Coins Commerce, Account Resource Authority, metric, RBAC, and audit capabilities before selecting the remaining implementation gaps under #557-#560.",
       "allowedFiles": [
-        "docs/OPERATIONS_PLANE_SOURCE_REALITY.md",
+        "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
         "docs/PROJECT_CONTEXT.md",
         "docs/README.md",
-        "docs/ADMIN_CONSOLE_*.md",
-        "project-state/tasks.json",
-        "project-state/lanes.json"
+        "docs/OPERATIONS_PLANE_SOURCE_REALITY.md",
+        "docs/ADMIN_BACKEND_DTO_CONTRACT.md",
+        "docs/ADMIN_CONSOLE_APP_MAP.md",
+        "docs/ADMIN_CONSOLE_REBUILD_BASELINE.md",
+        "docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md",
+        "docs/BILLING_RECHARGE_CONTRACT.md",
+        "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
+        "docs/NETWORK_FORWARDING.md",
+        "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
+        "project-state/current.json",
+        "project-state/lanes.json",
+        "project-state/tasks.json"
       ],
       "forbiddenActions": [
-        "change Admin, Wallet, Commerce, traffic, payment, or runtime behavior",
+        "change Admin, traffic, Wallet, Payment, Commerce, Account Resource Authority, or runtime behavior",
         "claim source as deployment or current-live evidence",
         "initialize schema or access provider credentials",
-        "close #437, #438, #439, #524, or #557 from documentation alignment"
+        "close #437, #438, #439, #524, or #557-#561 from documentation alignment"
       ],
       "validation": [
         "every implemented claim names source and focused tests",

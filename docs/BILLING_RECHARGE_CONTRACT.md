@@ -1,6 +1,8 @@
 # Billing Recharge Contract
 
-Last updated: 2026-07-23, America/Los_Angeles.
+Last updated: 2026-08-09, America/Los_Angeles.
+
+Source evidence cutoff: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`.
 
 This document defines the boundary of the existing repository-local billing
 helper. That helper is legacy optional traffic-topup compatibility. It is not
@@ -27,10 +29,20 @@ paid_coins hold/capture
   -> fulfillment decision
 ```
 
-Those latter two flows are target architecture. They remain unimplemented and
-unproven in production. This document does **not** activate a real payment
-provider, public checkout, webhook endpoint, Payment Store or schema, wallet
-credit, subscription issuance, fulfillment, or runtime mutation.
+Those latter two flows now have separate repository source, focused tests, and
+additive migration definitions:
+
+- Recharge/Payment: Recharge Offer -> Recharge/Payment Order -> immutable
+  normalized Payment Receipt -> exactly-once `paid_coins` Coin Ledger posting;
+- Coin Commerce: Offer -> Checkout Quote -> Commerce Order -> Coin hold/capture
+  -> Fulfillment Command/result.
+
+They remain default-off and unproven in production. A Commerce Order spends
+Coins for a product and is not a Recharge/Payment Order. Coin Ledger is the
+immutable financial fact; Coin Wallet is its projection. This document does
+**not** activate a provider, expose a deployed checkout/callback, apply a
+Payment or Wallet migration, credit a production Wallet, issue a subscription,
+fulfill a product, or mutate runtime state.
 
 ## Model
 
@@ -87,9 +99,11 @@ mock
 ```
 
 These labels are not Adapter Registry identities and do not mean any provider
-is live or verified. Real provider protocols, checkout URL creation, callback
-registration and verification, refund, reconciliation, or sandbox/live
-execution remain separately gated work.
+is live or verified. The separate static Registry and runtime assembly contain
+default-off PayPal Sandbox, XSD, and ChaoJiPay source paths; Recharge activation
+requires exactly one provider flag. Credentials, callback registration,
+provider compatibility, live settlement, refund, reconciliation, and
+production activation remain separately gated work.
 
 ## Subscription Boundary
 
@@ -129,16 +143,18 @@ a payment event.
 
 ## Next Gates
 
-Recommended next implementation layers:
+Recommended next Gates:
 
 1. Keep legacy traffic-topup compatibility separate from the target Coins
    recharge path.
-2. Define durable payment-order/event and wallet storage in a separate
-   schema/migration-gated task.
-3. Prove idempotent `paid_coins` credit before enabling any recharge action.
-4. Define product-order hold/capture and fulfillment decisions separately from
-   recharge payment.
-5. Verify one real provider contract before enabling its Adapter capabilities.
+2. Review and apply the existing Payment, Coin Wallet, and Coin Commerce
+   migrations only through their separate schema Gates.
+3. Preserve focused exactly-once `paid_coins` settlement and Coin
+   hold/capture/fulfillment tests before any runtime activation.
+4. Keep Recharge/Payment Orders, Commerce Orders, and Account Resource
+   Authority selections as separate domain facts.
+5. Verify one provider contract, credential binding, callback/return ingress,
+   and rollback plan before enabling exactly one Adapter runtime.
 
 Any real provider, public payment API, callback endpoint, production DB
 migration, wallet mutation, fulfillment, or automatic issuance remains outside

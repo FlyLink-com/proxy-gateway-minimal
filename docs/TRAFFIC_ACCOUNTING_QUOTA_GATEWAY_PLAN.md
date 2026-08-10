@@ -1,6 +1,10 @@
 # Traffic Accounting and Quota Gateway Plan
 
-Last updated: 2026-07-10, America/Los_Angeles.
+Last updated: 2026-08-09, America/Los_Angeles.
+
+Source evidence cutoff: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`.
+Open Draft PRs #592-#594 are outside this cutoff. Production/live traffic
+identity was not refreshed.
 
 This document defines the repo-only plan for adding per-subscription traffic
 accounting, quota enforcement, and abuse containment to the current
@@ -12,11 +16,17 @@ customer-data mutation.
 
 ## Current Facts
 
-The current source contains the durable usage ledger, rollups, quota decisions,
-traffic-aware subscription headers, collector adapters, and automatic
-traffic-supply suspension path. The documented Japan production release also
-contains an earlier working metering baseline, but current `master` remains
-source-ahead of that deployed control-plane identity.
+The current source contains durable traffic usage samples and rollups, quota
+decisions, traffic-aware subscription headers, collector adapters, and an
+automatic traffic-supply suspension path. The documented Japan production
+release contains an earlier working metering baseline, but current `master`
+remains source-ahead of the latest recorded deployed control-plane identity.
+
+Terminology is strict: `platform_usage_samples` and
+`platform_usage_rollups` are traffic accounting evidence. They are not the Coin
+Ledger. Coin Ledger records immutable paid/bonus/reward Coin movements; Coin
+Wallet is its projection. Payment Receipts, Recharge/Payment Orders, Commerce
+Orders, Coin Ledger entries, and traffic evidence remain separate domains.
 
 Known current behavior:
 
@@ -31,12 +41,16 @@ Known current behavior:
   runtime credentials;
 - PR #441 defines canonical collector state, PR #459 preserves redacted adapter
   error provenance, and PR #460 exposes a protected read-only collector status
-  projection; all three remain source-only until separately deployed;
+  projection; those three capabilities are recorded in the dated
+  `9bc03b413e58198a08617f2e587e0120eb4d6cb2` production control-plane snapshot,
+  but current live state was not refreshed and later source deltas remain
+  separately gated;
 - protected Japan TUIC map verification and SGP TUIC sidecar status are not yet
   integrated as complete producers for that projection.
 
 The remaining Phase 2 work is operational closure and production
-reconciliation, not creation of a second usage ledger or quota model.
+reconciliation, not creation of a second traffic sample/rollup store or quota
+model.
 
 ## Goal
 
@@ -45,7 +59,7 @@ Add a minimal, durable, per-order traffic accounting path:
 ```text
 edge runtime observation
   -> edgeCredentialRef usage sample
-  -> control-plane usage ledger
+  -> control-plane traffic usage sample and rollup
   -> rollup against entitlement traffic limit
   -> quota decision
   -> controlled disable/revoke gate
@@ -97,16 +111,17 @@ order/access request
   -> protected runtime credential material
   -> rendered client profile credential
   -> runtime usage observation
-  -> ledger sample and rollup
+  -> traffic usage sample and rollup
 ```
 
 Public, admin, test, and report outputs must never expose the raw runtime
 credential material. They may expose safe refs, digests, counts, and aggregate
 usage numbers only.
 
-### 1. Durable Usage Ledger
+### 1. Durable Traffic Usage Evidence
 
-Add a schema-gated usage ledger separate from generic quota counters.
+Use the schema-gated usage sample/rollup store separately from generic quota
+counters and from the Coin Ledger.
 
 Suggested tables:
 
@@ -242,7 +257,7 @@ runtime payloads, or customer-private rows.
 
 ### 5. Subscription Header Backfill
 
-After the ledger exists, subscription routes should set:
+After traffic rollup evidence exists, subscription routes should set:
 
 ```text
 Subscription-Userinfo:
@@ -252,7 +267,7 @@ Subscription-Userinfo:
   expire=<entitlement.valid_until epoch seconds>
 ```
 
-If no ledger data exists yet:
+If no traffic rollup data exists yet:
 
 - `upload=0` and `download=0` are allowed;
 - `total` should use `traffic_limit_bytes` if configured;
@@ -263,7 +278,7 @@ If no ledger data exists yet:
 
 Status as of 2026-07-10:
 
-- The durable usage ledger, rollups, quota decision service, traffic-aware
+- The durable traffic usage samples/rollups, quota decision service, traffic-aware
   subscription header backfill, and automatic traffic-supply suspension path
   have moved from repo-only plan into the current backend source.
 - Japan production metering uses the main traffic collector for Xray VLESS,
@@ -281,8 +296,9 @@ Status as of 2026-07-10:
 - The SGP TUIC sidecar records per-connection deltas only from observed active
   connection windows. The accepted residual risk is that timer polling can
   undercount connections that start and finish between polling windows.
-- The protected read-only Admin projection combines canonical collector and
-  accounting state without triggering collection. Source support now also
+- The protected read-only backend projection combines canonical collector and
+  accounting state without triggering collection. No `admin/src` consumer is
+  established at this cutoff. Backend source support now also
   accepts independent redacted producer snapshots for Japan TUIC map
   verification and the SGP TUIC sidecar. Missing or malformed producer evidence
   remains explicit as `not_observed` or `invalid_observation`.
@@ -326,7 +342,7 @@ Historical status as of 2026-06-06:
   aggregate-only snapshots;
 - AWS staging Gate 6C proved the control-plane usage anchor chain from
   synthetic order issuance to `edgeCredentialRef`, rendered per-order
-  credential output, and usage ledger rollup without exposing raw runtime
+  credential output, and traffic usage rollup without exposing raw runtime
   material;
 - repo-only Gate 7 preparation added a loopback-only Mihomo external-controller
   usage snapshot reader and a redacted staging proof script; the reader converts
@@ -335,9 +351,9 @@ Historical status as of 2026-06-06:
 - AWS staging Gate 7 proved the loopback-only controller boundary but the
   current Mihomo TUIC metrics surface returned aggregate/connection-level usage
   only, so the collector correctly reported `collector_not_supported` with
-  `node_aggregate_only` and did not write usage ledger samples;
+  `node_aggregate_only` and did not write traffic usage samples;
 - repo-only atomic usage calculation now normalizes runtime counter models into
-  ledger-ready delta observations: direct delta/read-and-clear observations pass
+  sample-ready delta observations: direct delta/read-and-clear observations pass
   through, cumulative counters require a prior cursor before charging bytes, and
   counter resets fail closed without writing usage;
 - the cumulative accounting hardening slice now carries the source accounting
@@ -403,13 +419,13 @@ runtime integration.
 
 Scope:
 
-- normalize multiple runtime accounting modes into one ledger input shape keyed
+- normalize multiple runtime accounting modes into one traffic-sample input shape keyed
   by `edgeCredentialRef`;
 - accept already-delta or read-and-clear samples as atomic observations;
 - convert cumulative counters into positive byte deltas only when a prior cursor
   exists;
 - initialize new cumulative cursors without charging historical bytes;
-- detect counter resets and fail closed without ledger writes;
+- detect counter resets and fail closed without traffic-sample writes;
 - keep raw runtime payloads, credential material, tokens, URLs, and configs out
   of return values.
 
@@ -498,7 +514,9 @@ Production remains blocked until:
 2. Whether quota should be enforced by hard disable immediately or by a warning
    threshold before disable.
 3. Whether prepaid traffic balance and package traffic limit should share one
-   ledger or remain separate until payment integration is approved.
+   traffic accounting model or remain separate until payment integration is
+   approved. Neither becomes part of the Coin Ledger merely by sharing a
+   balance or quota presentation.
 
 ## Decision
 
@@ -510,12 +528,13 @@ The common repo model is now:
 ```text
 runtime-specific snapshot
   -> adapter emits safe per-edgeCredentialRef counter
-  -> atomic calculator produces ledger-safe delta
+  -> atomic calculator produces traffic-sample-safe delta
   -> traffic accounting service records sample and rollup
   -> quota decision requests lifecycle/reconciliation action
 ```
 
 The next gate is not another shared calculator. It is clean artifact validation
 followed by a separately approved production schema/runtime alignment. Any
-customer usage correction must preserve the pre-change ledger and remain a
+customer usage correction must preserve the pre-change traffic samples and
+rollups and remain a
 separate approved execution after the corrected collector path is active.

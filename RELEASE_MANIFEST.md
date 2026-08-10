@@ -6,16 +6,19 @@ document_metadata:
   lifecycle: active
   authority_scope: release_traceability
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-09
   production_authority: false
 ```
 
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-07-15, America/Los_Angeles
-> - Source inventory baseline: `master` at `5b61d9d7`
-> - Production/runtime evidence cutoff: `2026-07-11T13:03:40Z`; dated evidence only
+> - Last updated: 2026-08-09, America/Los_Angeles
+> - Source inventory baseline:
+>   `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
+> - Latest recorded production deployment event: 2026-07-20, source
+>   `9982d378f93dd506c24c137197293f6942dc45ee`; current live identity was not
+>   freshly inventoried
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -245,10 +248,12 @@ for source `4fbe022264e30acd9e487dd880b7d4ed544be259`. Its uploaded ZIP, checksu
 sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size,
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
-The latest verified `master` proof at this inventory cutoff is Release Artifact
-run `29418796724` for source
-`5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`. It completed the control-plane,
-Portal, and Admin artifact jobs. This is build evidence, not production
+The latest verified exact-`master` proof at this inventory cutoff is Release
+Artifact run `31267179669` for source
+`02fc63a3f949b748dcccf26ba7d310be82f4b6df`. It completed the control-plane,
+Portal, and Admin artifact jobs. The source artifact is
+`proxy-gateway-02fc63a3f949` and was observed to expire on 2026-08-22. This is
+short-lived build evidence, not durable release retention or production
 promotion evidence.
 
 ## Runtime Config Identity v1
@@ -286,10 +291,10 @@ is ignored and must not be committed as current production evidence. A real
 Japan or SGP observation remains a separate Risk A read-only action with its own
 approval and execution evidence.
 
-## Current PR Mapping
+## Historical PR Mapping (2026-07-15)
 
-This is the current compact view of the ten most recently merged PRs at source
-baseline `5b61d9d7`. The detailed
+This table is retained as a dated July source-governance snapshot at baseline
+`5b61d9d7`; it is not the current merge queue or release assignment. The detailed
 `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md` is a frozen historical snapshot
 and is not appended with later PRs.
 
@@ -335,37 +340,35 @@ though the PR body explicitly denied resolution. The blocked predecessor is
 not rewritten as successful, and the four checks from PR #479's old head are
 not current-`master` integration evidence.
 
+PRs #476 and #479 are no longer open. Their status and Gate narrative above are
+historical evidence only and must not be used to sequence current work.
+
 ## Current Source Governance Boundary
 
-PRs #486-#492 and #494 are merged after PR #483; current `master` is
-`5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`. PR #483 routes docs-only and code
-changes separately and always runs diff checking while retaining one stable
-required `Validate` context. The observed repository has 16 remote branches,
-two open Draft PRs (#476/#479), no open non-Draft PRs, and five open Issues
-(#437/#438/#439/#440/#475).
-Exact-`master` runs are CI
-`29418796398` success, Release Artifact `29418796724` success, and CodeQL
-`29418794902`/`29418794903` success. Cloudflare workflow `29391680029`
-completed build and verification for `329eb282ef88e7ab41bee1252f22fe3570f7d3c8`,
-with deploy skipped.
+The exact source cutoff observed on 2026-08-09 is
+`master@02fc63a3f949b748dcccf26ba7d310be82f4b6df` (merged PR #590). The same
+inventory observed three open Draft PRs (#592-#594), no open non-Draft PR, and
+fifteen open Issues. Those counts are mutable dated facts; current sequencing
+belongs to live Issues and `project-state/*.json`, not to this stable release
+contract. Open Draft PRs are excluded from the source baseline.
 
-Ruleset `18935716` strictly requires `Validate`, requires zero approvals, and
-does not require review-thread resolution. Six environments exist; only
-`artifact-publication` has a branch policy, and none has reviewer enforcement.
-GitHub reports 0 open code-scanning alerts, 0 open Dependabot alerts, and 0 open
-secret-scanning alerts at this cutoff. Successful CodeQL execution remains
-source-analysis evidence rather than production proof.
+The current source language includes Admin/Operations read foundations, Wallet
+and immutable Coin Ledger, durable Recharge/Payment, Coins Commerce, Account
+Resource Authority, traffic usage projections, and trusted-proxy attribution.
+These are source/test/migration/default-off capabilities. Their exact consumer
+and gap boundaries are maintained in
+`docs/OPERATIONS_PLANE_SOURCE_REALITY.md`; none is assigned to a deployed
+release by this manifest.
 
-The next sequence is: establish a new durable successor proposal on #437 after
-the blocked, consumed Gate
-`pr479-forward-pending-rollback-obligation-remediation-20260715-003`; complete
-any newly authorized PR #479 remediation, current-`master` integration,
-exact-head checks, formal review, Ready, and merge through independent
-approvals; implement the
-Gate ledger/validator, stable CI contexts plus settings Gate, durable artifact
-retention/binding, and minimal organization/runtime-evidence model through
-separate PRs; only then establish independent Artifact and Risk A
-production-alignment Gates.
+Release Artifact run `31267179669` successfully built the control-plane,
+Portal, and Admin units at the exact source cutoff. The source artifact
+`proxy-gateway-02fc63a3f949` was observed to expire on 2026-08-22, so it is
+short-lived build evidence rather than durable Artifact Gate evidence.
+
+This reconciliation did not refresh code-scanning, Dependabot,
+secret-scanning, ruleset, environment-protection, provider, or deployment
+settings. Older settings and alert counts remain dated evidence and are not
+current claims.
 
 No new release is declared `ready` or `deployed` by this manifest. A source-only
 PR may say that deployment is not applicable; that statement is not a Deploy
