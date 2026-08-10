@@ -1,6 +1,12 @@
 # Network Forwarding Architecture
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-08-09, America/Los_Angeles.
+
+> Source evidence cutoff:
+> `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`.
+> Production/live network identity was not refreshed. Host, DNS, IP, service,
+> and port statements retained from the 2026-05-24 snapshot are historical
+> configuration evidence, not current-live proof.
 
 This document describes how traffic moves through `proxy-gateway-minimal`.
 It is an architecture and operations reference only. It does not authorize AWS,
@@ -24,6 +30,21 @@ Local system proxy mode uses the local HTTP-to-SOCKS bridge or local SOCKS5.
 Clash/Mihomo subscription mode does not use local ss-local after it has the YAML.
 ```
 
+### Inbound Client-IP Trust Boundary
+
+The current source resolves the direct socket peer first. `X-Forwarded-For` is
+consulted only when that peer matches explicit `TRUSTED_PROXY_CIDRS`, whose
+default is empty. The resolver walks the forwarded chain from the trusted edge
+toward the client and selects the rightmost untrusted address. IPv4-mapped IPv6
+addresses are normalized. If any forwarded-chain element is malformed, the
+resolver fails closed with an unmatchable result instead of falling back to the
+trusted proxy address.
+
+Source and focused tests live in `server/services/ip-address.mjs` and
+`server/tests/ip-address.test.mjs`. This is a source contract only. It does not
+prove the deployed trusted-proxy allowlist, reverse-proxy headers, or live
+client-IP behavior.
+
 ## Mode A: Windows Local Forwarding
 
 This mode is used when the Windows system proxy, user proxy environment
@@ -36,11 +57,11 @@ Windows application
   -> WinINet, PAC, HTTP_PROXY, or HTTPS_PROXY
   -> 127.0.0.1:18180 Node HTTP-to-SOCKS bridge
   -> 127.0.0.1:1080 ss-local SOCKS5
-  -> ss-sg.globalcirclecat.com:18388 current production Shadowsocks node
+  -> ss-sg.globalcirclecat.com:18388 node recorded in the 2026-05-24 snapshot
 
 ALL_PROXY-aware application
   -> 127.0.0.1:1080 ss-local SOCKS5
-  -> ss-sg.globalcirclecat.com:18388 current production Shadowsocks node
+  -> ss-sg.globalcirclecat.com:18388 node recorded in the 2026-05-24 snapshot
 ```
 
 Implementation notes:
@@ -50,9 +71,10 @@ Implementation notes:
 - `server/services/http-proxy.mjs` binds that bridge to `127.0.0.1:18180`.
 - `server/services/ss-local.mjs` starts `bin/sslocal.exe` from
   `config/ss-local.json`.
-- `config/ss-local.json` currently points at the production primary
-  Shadowsocks DNS name, `ss-sg.globalcirclecat.com:18388`, and binds local
-  SOCKS5 on `127.0.0.1:1080`.
+- At the current source cutoff, `config/ss-local.json` points at the DNS/port
+  recorded by this historical snapshot and binds local SOCKS5 on
+  `127.0.0.1:1080`. Repository configuration does not prove the current DNS
+  target or production runtime identity.
 
 Security boundary:
 
@@ -73,7 +95,7 @@ Application
   -> DIRECT or 127.0.0.1:18180
   -> Node HTTP-to-SOCKS bridge
   -> ss-local
-  -> AWS Shadowsocks server
+  -> configured remote Shadowsocks node
 ```
 
 PAC behavior:
@@ -171,21 +193,21 @@ Boundaries:
   backend-returned visible-once results after create, reset, or temporary-link
   generation.
 
-## Production Runtime Roles
+## Historical Production Runtime Roles (2026-05-24 Snapshot)
 
-The current production primary node is provider-neutral `prod-edge-a`. The
-subscription gateway and primary Shadowsocks node DNS names currently resolve
-to the `prod-edge-a` production target:
+The 2026-05-24 record identified the production primary node as
+provider-neutral `prod-edge-a` and recorded the following DNS roles. This
+section has not been revalidated as current-live state:
 
 ```text
 sub.globalcirclecat.com   -> production subscription gateway
 ss-sg.globalcirclecat.com -> primary Shadowsocks node
 ```
 
-Legacy blue `47.129.247.102` is not the current production target. It remains
-under retirement review only.
+At that cutoff, legacy blue `47.129.247.102` was not the production target and
+remained under retirement review only.
 
-On production, the server has two separate runtime roles:
+The dated production record described two separate runtime roles:
 
 ```text
 Express Console/API

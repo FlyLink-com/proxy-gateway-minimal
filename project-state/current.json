@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2026-07-15.1",
-  "lastUpdated": "2026-07-15",
+  "schemaVersion": "2026-08-09.1",
+  "lastUpdated": "2026-08-09",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current project state for Agent orientation. Verify drift-prone GitHub, deployment, and production facts live before any Risk A action.",
@@ -13,7 +13,12 @@
     "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
     "docs/IDENTITY_LIFECYCLE.md",
     "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
+    "docs/ACCOUNT_RESOURCE_AUTHORITY_LIFECYCLE.md",
     "docs/BILLING_RECHARGE_CONTRACT.md",
+    "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
+    "docs/COINS_WALLET_SCHEMA_GATE.md",
+    "docs/COINS_COMMERCE_SCHEMA_GATE.md",
+    "docs/OPERATIONS_PLANE_SOURCE_REALITY.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md"
   ],
   "repo": {
@@ -25,123 +30,106 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "sourceSnapshotAtInventory": "5b61d9d787e2f98e9f834fe05de6dcbb6805cea7",
-    "sourceInventoryDate": "2026-07-15",
-    "observedOpenPrCount": 2,
-    "observedOpenIssueCount": 5,
-    "observedRemoteBranchCount": 16,
+    "sourceSnapshotAtInventory": "02fc63a3f949b748dcccf26ba7d310be82f4b6df",
+    "sourceInventoryDate": "2026-08-09",
+    "observedOpenPrCount": 3,
+    "observedOpenDraftPrCount": 3,
+    "observedOpenNonDraftPrCount": 0,
+    "observedOpenIssueCount": 15,
+    "observedRemoteBranchCount": 70,
     "activeIssues": [
       437,
       438,
       439,
-      440,
-      475
+      521,
+      522,
+      523,
+      524,
+      525,
+      527,
+      551,
+      557,
+      558,
+      559,
+      560,
+      561
     ],
-    "remoteBranches": [
-      "codex/ci-lane-split",
-      "codex/commercial-model-v1",
-      "codex/fix-cumulative-usage-accounting",
-      "codex/fix-pr471-credential-lifecycle-review",
-      "codex/fix-trial-traffic-limit",
-      "codex/operations-foundation",
-      "codex/test-edge-material-valid-until",
-      "codex/traffic-accounting-observation-validator",
-      "codex/traffic-accounting-unresolved-provenance",
-      "codex/traffic-lifecycle-enforcement",
-      "docs/current-source-state-reconciliation",
-      "docs/governance-state-reconciliation-20260714",
-      "docs/infrastructure-access-rule",
-      "docs/project-intelligence-layer",
-      "docs/release-governance-calibration",
-      "master"
+    "remoteBranchInventory": "Count-only observation; the 70 branch names are not reproduced in this compact state file.",
+    "openDraftHeadBranches": [
+      "codex/authority-commerce-operators",
+      "docs/github-control-plane-deploy-design",
+      "codex/github-control-plane-production-deploy"
     ],
     "recentMergedPrs": [
-      482,
-      483,
-      486,
-      487,
-      488,
-      489,
-      490,
-      491,
-      492,
-      494
+      582,
+      583,
+      584,
+      585,
+      586,
+      587,
+      588,
+      589,
+      591,
+      590
     ],
     "mergedPrs": {
-      "482": "06d69b2da07a50322a260bd08f160febaf7b6a7d",
-      "483": "2413c101724df45579ebf4b9e0f306d32d9bb1af",
-      "486": "fdf5eedee7b34b934ad79d6472ecc33a86db67fa",
-      "487": "20954248a7f2df4511d2d412c56ae4e887f91f9a",
-      "488": "1d02b0ad5482c3b5d61c9e8aff051f9833c8430a",
-      "489": "f054ac443b576db068b379293cc73b1c459f5e0b",
-      "490": "a764f48f006722951393f1a5e251b567476c28dc",
-      "491": "329eb282ef88e7ab41bee1252f22fe3570f7d3c8",
-      "492": "0601e79e965ead2d8ec1af81d1db87a1c23372a2",
-      "494": "5b61d9d787e2f98e9f834fe05de6dcbb6805cea7"
+      "582": "a3c38ffc1446e6934c6fd3e2f7c2afe87a167ad8",
+      "583": "001e3e97b1a062a1692bd310cdf4bf29ef8a5af8",
+      "584": "285e723a9773cc10d56682ea24abed228298384a",
+      "585": "064d68e6a3b50714642550b6dcbcf93989817ac9",
+      "586": "54d1956d501e268ed2b1199ae19c68807fe56abf",
+      "587": "7ae86f0d32ddb8bf9d9eb3a4600047169e02779b",
+      "588": "a745bced1a4983551d214c6768e2d84b07cda598",
+      "589": "0ac923f5559de0bbf84f9b469b77bf800d470265",
+      "591": "64c6eadf34dd3de764238b010ed791048549c80f",
+      "590": "02fc63a3f949b748dcccf26ba7d310be82f4b6df"
     },
     "openDraftPrs": [
       {
-        "pr": 476,
-        "issue": 475,
-        "lane": "operations-foundation",
-        "head": "3de9396910c30ba8d3bf14d6018c7b0e819ebd9e",
-        "mergeState": "conflicts",
-        "sourceState": "source_schema_only_conflicts",
-        "productionState": "not_deployed"
+        "pr": 592,
+        "lane": "commercial-foundation",
+        "branch": "codex/authority-commerce-operators",
+        "head": "35a46387024c331f9bbf6454d70b8bf0531335e7",
+        "mergeState": "not_refreshed_at_inventory",
+        "sourceState": "source_only_operator_entrypoints",
+        "productionState": "not_deployed",
+        "identityImpact": false
       },
       {
-        "pr": 479,
-        "issue": 437,
-        "lane": "traffic-accounting",
-        "state": "open_draft",
-        "head": "58ccdccc6af5ed120541f03d2713857e4a9a8a65",
-        "mergeState": "behind",
-        "unresolvedNonOutdatedThreads": 0,
-        "sourceState": "blocked_successor_gate_003_terminal",
+        "pr": 593,
+        "lane": "version-management",
+        "branch": "docs/github-control-plane-deploy-design",
+        "head": "bc7b1d26cd4db66cbfe3fbd86e5255169e068974",
+        "mergeState": "not_refreshed_at_inventory",
+        "sourceState": "spec_and_plan_only",
         "productionState": "not_deployed",
-        "identityGate": "pending",
-        "predecessorTerminalReceipt": "issuecomment-4966594034",
-        "predecessorResult": "blocked",
-        "predecessorApprovalState": "consumed",
-        "durableSuccessorGate": "terminal_blocked",
-        "successorProposal": "pr479-forward-pending-rollback-obligation-remediation-20260715-003",
-        "successorApprovalReceipt": "issuecomment-4979572712",
-        "successorTerminalReceipt": "issuecomment-4979585832",
-        "successorResult": "blocked",
-        "successorBlockedStage": "fresh_binding",
-        "successorApprovalState": "consumed",
-        "requiredNextGate": "new exact successor gate after blocked -003; absent at this cutoff"
+        "identityImpact": false
+      },
+      {
+        "pr": 594,
+        "lane": "version-management",
+        "branch": "codex/github-control-plane-production-deploy",
+        "head": "a3f2817d696ee9bb66f1e849e0b35e77105fde8e",
+        "mergeState": "not_refreshed_at_inventory",
+        "sourceState": "source_only_deployment_foundation_inventory",
+        "productionState": "not_deployed",
+        "identityImpact": false
       }
     ],
     "openNonDraftPrs": [],
     "mergePolicyObservation": {
-      "allowSquashMerge": true,
-      "allowMergeCommit": true,
-      "allowRebaseMerge": true,
-      "deleteBranchOnMerge": false,
-      "branchProtectionAvailability": "master is protected by the active master-governance-single-owner repository ruleset.",
-      "ruleset": {
-        "id": 18935716,
-        "requiredPullRequest": true,
-        "requiredCheck": "Validate",
-        "strictRequiredChecks": true,
-        "requiredApprovals": 0,
-        "requiredReviewThreadResolution": false,
-        "bypassActorCount": 0,
-        "deletionBlocked": true,
-        "nonFastForwardBlocked": true
-      },
-      "environmentProtection": "Six environments exist. Only artifact-publication has a branch policy; no environment has reviewer enforcement."
+      "inventoryDate": "2026-08-09",
+      "rulesetState": "not_refreshed",
+      "environmentState": "not_refreshed",
+      "alertGateState": "not_refreshed",
+      "requiresLiveVerification": true,
+      "boundary": "Refresh repository rulesets, required checks, review policy, environment protection, and alert gates before any merge or Risk A action."
     },
     "issue437Reconciliation": {
       "state": "open",
-      "receipt": "issuecomment-4976074286",
-      "reason": "PR #482 was recorded as the closer even though its PR body explicitly denied resolving Issue #437.",
-      "latestGateProposal": "pr479-forward-pending-rollback-obligation-remediation-20260715-003",
-      "latestGateApproval": "issuecomment-4979572712",
-      "latestGateTerminalReceipt": "issuecomment-4979585832",
-      "latestGateResult": "blocked",
-      "latestGateApprovalState": "consumed"
+      "pr479State": "merged_source_only",
+      "productionState": "not_deployed",
+      "reason": "PR #479 merged source-only, but Issue #437 remains open and no production or runtime completion is inferred."
     },
     "note": "This is a dated source snapshot. Re-run git status, git fetch, PR/Issue inventory, and required checks before making current claims."
   },
@@ -171,24 +159,38 @@
   ],
   "activeDirections": [
     "Phase 2 is Operational Reliability, not broad feature expansion.",
-    "Issue #437 remains the primary implementation Epic; #475 is a separate operations-foundation source/schema lane, #438 and #439 are queued, and #440 is an opportunistic guardrail.",
-    "Issues #457 and #462 are closed after Vercel and Cloudflare merge-versus-promotion boundaries were proved.",
-    "Traffic Evidence Runtime is active observation-only and reconciled; identity sync remains degraded and cannot influence accounting, quota, recovery, or trust decisions.",
-    "Merged source progress through #494 does not change production state. PRs #486/#487/#488 update Admin dependencies, #490/#491 are source-only security changes, and #489/#492/#494 are governance or documentation only.",
-    "Issue #437 was reopened by Risk C receipt issuecomment-4976074286 because PR #482 was recorded as its closer despite explicitly denying resolution.",
-    "Draft PR #476 is operations-foundation source/schema work only and currently conflicts with master. Draft PR #479 is at 58ccdccc6af5ed120541f03d2713857e4a9a8a65, behind master, with zero unresolved non-outdated threads; Gate -003 ended blocked at fresh_binding with approval consumed, no later successor Gate exists, and it is not deployed.",
-    "PR #483 introduced docs-only/code routing and always-run diff checking while retaining one stable required Validate context. PR #494 normalized nine canonical documentation authority scopes without adding a validator or production authority.",
-    "PR #472 records the commercial package model and #474 records a source-only trial limit; billing and AppsFlyer remain disabled/non-live, and architecture stays a modular monolith."
+    "Issue #437 remains open after PR #479 merged source-only; no production or runtime completion is inferred. Issues #438 and #439 now have substantial Portal and commercial source foundations rather than being greenfield queues.",
+    "Current master includes default-off, not-deployed Wallet/Ledger, Payment/Recharge, Coins Commerce, and Account Resource Authority foundations. Their schemas, providers, callbacks, settlement, authority assignment, Commerce activation, and production rollout remain separately gated.",
+    "Issues #557-#561 govern the Operations Plane. #561 remains the active documentation/source-reality reconciliation, while #558-#560 must extend existing Admin, traffic, Wallet, Payment, Commerce, and Authority capabilities instead of rebuilding them.",
+    "Issues #521, #525, #527, and #551 track retirement or quarantine of legacy product identities and source surfaces; #522-#524 govern the Coins-first decision, Portal integration, and durable settlement/fulfillment lifecycle.",
+    "PR #476 is closed unmerged. PR #479 is merged source-only. Open Draft PRs #592, #593, and #594 are not part of master and carry no production authority.",
+    "Release Artifact run 31267179669 succeeded for exact master 02fc63a3f949b748dcccf26ba7d310be82f4b6df; its three artifacts are temporary through 2026-08-22 and are artifact evidence only.",
+    "Repository rulesets, required checks, environment protection, and current security-alert counts were not refreshed in the 2026-08-09 inventory and require live readback before merge or Risk A work.",
+    "Production facts below are dated historical evidence. This reconciliation performed no deployment, provider access, runtime mutation, schema apply, payment activation, Wallet credit, Commerce activation, or Authority assignment."
   ],
   "activeGoal": {
     "id": "phase-2-operational-reliability",
     "name": "GCC WebOS Phase 2 Operational Reliability",
     "primaryIssue": 437,
-    "separateOperationsFoundationIssue": 475,
-    "queuedIssues": [
-      438,
-      439,
-      440
+    "portalLifecycleIssue": 438,
+    "commercialFoundationIssue": 439,
+    "coinsLifecycleIssues": [
+      522,
+      523,
+      524
+    ],
+    "legacyRetirementIssues": [
+      521,
+      525,
+      527,
+      551
+    ],
+    "operationsPlaneIssues": [
+      557,
+      558,
+      559,
+      560,
+      561
     ],
     "leadAgent": "Codex",
     "operatorRole": "The operator approves or rejects exact Risk A gates after the reviewer defines scope, validation, rollback, and stop conditions.",
@@ -196,7 +198,8 @@
   },
   "productionSnapshot": {
     "requiresLiveVerification": true,
-    "evidenceCutoff": "2026-07-11T13:03:40Z",
+    "evidenceCutoff": "2026-07-20T06:21:00Z",
+    "snapshotState": "historical_dated_requires_live_verification",
     "controlPlaneAuthority": "Vultr Japan",
     "dataPlaneCapacity": [
       "Vultr Japan",
@@ -206,7 +209,7 @@
       {
         "id": "control-plane-app",
         "state": "active_documented",
-        "identity": "phase2-control-plane-artifact-alignment-20260710-001; source 9bc03b413e58198a08617f2e587e0120eb4d6cb2; artifact proxy-gateway-9bc03b413e58.zip"
+        "identity": "Dated 2026-07-20 deployment record: master-upgrade-20260720-9982d378 from source 9982d378f93dd506c24c137197293f6942dc45ee; requires live verification"
       },
       {
         "id": "company-site-static",
@@ -244,7 +247,20 @@
         "identity": "disabled/dry-run only"
       }
     ],
+    "newerSourceNotDeployed": {
+      "sourceCommit": "02fc63a3f949b748dcccf26ba7d310be82f4b6df",
+      "productionState": "not_deployed",
+      "defaultOffCapabilities": [
+        "Coins Wallet and durable Ledger",
+        "Payment and Recharge settlement",
+        "Coins Commerce runtime",
+        "Account Resource Authority and Commerce binding"
+      ],
+      "boundary": "Source, tests, and a successful temporary artifact run do not prove schema application, feature activation, provider readiness, deployment, or current runtime state."
+    },
     "companySitePromotionBoundary": {
+      "requiresLiveVerification": true,
+      "historicalEvidenceCutoff": "2026-07-10",
       "productionBranch": "master",
       "autoAssignCustomDomains": false,
       "currentDeployment": "proxy-gateway-minimal-hqdudl13g-gccltd.vercel.app",
@@ -266,6 +282,8 @@
       "promotionAuthority": "separate exact Risk A approval"
     },
     "cloudflareSiteBoundary": {
+      "requiresLiveVerification": true,
+      "historicalEvidenceCutoff": "2026-07-10T14:04:05Z",
       "githubWorkflowAutoDeploy": false,
       "githubWorkflowEnvironment": "cloudflare-production",
       "nativeGitTrigger": "b9abcb0e-7bda-4116-8520-b3adb7ddaa36",
@@ -281,6 +299,8 @@
       "activeDeploymentLiveReadAtThisCutoff": false
     },
     "trafficEvidence": {
+      "requiresLiveVerification": true,
+      "historicalEvidenceCutoff": "2026-07-11T13:03:40Z",
       "capabilitySource": "9bc03b413e58198a08617f2e587e0120eb4d6cb2",
       "runtimeState": "active_observation_only",
       "reconciliationState": "verified",
@@ -303,7 +323,7 @@
       "automation": "disabled"
     },
     "notes": [
-      "No production-host mutation or new host inventory was performed by this C-tier reconciliation.",
+      "No production-host mutation or new live host inventory was performed by this 2026-08-09 C-tier source reconciliation.",
       "Offline Runtime Config Identity and active traffic Evidence Runtime are separate evidence domains.",
       "Do not infer production runtime identity from master, a GitHub artifact, a Vercel candidate, or a Cloudflare saved version.",
       "Do not output subscription material, credentials, raw config, raw logs, environment values, SQLite rows, or customer data."
@@ -316,27 +336,31 @@
     "internalRuntime": "metering and control endpoints remain loopback/private according to documented execution records and require live verification before mutation"
   },
   "validationSnapshot": {
-    "masterAtInventory": "5b61d9d787e2f98e9f834fe05de6dcbb6805cea7",
-    "latestCiRun": "29418796398 success",
-    "latestReleaseArtifactRun": "29418796724 success",
-    "latestCodeqlRun": "29418794902 and 29418794903 success",
-    "latestCloudflareWorkflowRun": "29391680029 success: build and verification succeeded; deploy skipped",
-    "ciRouting": "PR #483 routes docs-only and code changes and always runs diff checking while retaining one stable required Validate context.",
+    "masterAtInventory": "02fc63a3f949b748dcccf26ba7d310be82f4b6df",
+    "inventoryDate": "2026-08-09",
+    "latestReleaseArtifactRun": "31267179669 success for exact master",
+    "releaseArtifactCount": 3,
+    "releaseArtifactAvailability": "temporary through 2026-08-22",
+    "latestCiRun": "not_refreshed_for_exact_master",
+    "latestCodeqlRun": "not_refreshed_for_exact_master",
+    "latestCloudflareWorkflowRun": "not_refreshed_for_exact_master",
+    "githubGateBoundary": "Rulesets, required checks, review requirements, environments, and alert gates require live verification.",
     "projectStateCheck": "required whenever project-state files change",
     "cTierDiffCheck": "git diff --check origin/master...HEAD"
   },
   "sourceSecuritySnapshot": {
-    "codeScanningOpen": 0,
-    "codeScanningSeverity": {},
-    "dependabotOpen": 0,
-    "dependabotSeverity": {},
-    "secretScanningOpen": 0,
-    "boundary": "Successful scan execution does not resolve alerts or prove exploitability. Triage, remediation, dismissal, required-check policy, and production decisions remain separate reviewed actions."
+    "inventoryDate": "2026-08-09",
+    "codeScanningOpen": "not_refreshed",
+    "dependabotOpen": "not_refreshed",
+    "secretScanningOpen": "not_refreshed",
+    "recentRemediation": "PR #589 merged source and lockfile fixes for 11 Code Quality instances and three known ip-address advisories; current default-branch alert counts remain unclaimed pending fresh API readback.",
+    "requiresLiveVerification": true,
+    "boundary": "Successful source remediation or scan execution does not establish the current alert count, resolve required-check policy, prove exploitability, or authorize production."
   },
   "activeBlockers": [
     {
       "id": "japan-tuic-identity-sync",
-      "summary": "Issue #437 observed two missing and nineteen stale Japan TUIC map bindings. At least one active missing binding was observed; accounting completeness is not quantified, additive repair is not deployed, and map apply has not started.",
+      "summary": "The dated 2026-07-11 Issue #437 evidence observed two missing and nineteen stale Japan TUIC map bindings. PR #479 later merged source-only, but Issue #437 remains open and current production state requires live verification.",
       "sourceDoc": "docs/CURRENT_RELEASE_STATE.md"
     },
     {
@@ -351,25 +375,26 @@
     },
     {
       "id": "commercial-providers-disabled",
-      "summary": "Billing and AppsFlyer remain intentionally non-live and fail-closed.",
+      "summary": "Wallet/Ledger, Payment/Recharge, Coins Commerce, and Account Resource Authority now have substantial source foundations, but current master remains not deployed and the relevant production paths are default-off or separately gated.",
       "sourceDoc": "docs/BILLING_RECHARGE_CONTRACT.md"
     },
     {
-      "id": "github-machine-enforcement-incomplete",
-      "summary": "master has an active PR and strict-Validate ruleset with no bypass actors, but it requires zero approvals and no review-thread resolution; deployment environments have no reviewer enforcement.",
-      "sourceDoc": "docs/PROJECT_CONTEXT.md"
+      "id": "temporary-master-artifacts",
+      "summary": "Release Artifact run 31267179669 succeeded for exact master, but its three artifacts are temporary through 2026-08-22 and do not form a durable deployment or rollback identity.",
+      "sourceDoc": "RELEASE_MANIFEST.md"
     },
     {
-      "id": "pr-479-successor-gate-003-blocked",
-      "summary": "PR #479 is behind current master with zero unresolved non-outdated threads. Durable successor Gate -003 ended blocked at fresh_binding, its approval is consumed, no later successor Gate exists, and its successful head checks are not current-master integration evidence.",
-      "sourceDoc": "docs/project-state/BLOCKERS.md"
+      "id": "github-live-gates-not-refreshed",
+      "summary": "The 2026-08-09 inventory did not refresh rulesets, required checks, review policy, environment protection, or current Code Quality, CodeQL, Dependabot, and secret-scanning counts.",
+      "sourceDoc": "docs/GITHUB_ISSUE_PR_WORKFLOW.md"
     }
   ],
   "nextRecommendedQueue": [
-    "Establish a new durable successor Gate on Issue #437 after the blocked and consumed PR #479 Gate -003.",
-    "Complete any newly authorized PR #479 source remediation, current-master integration, exact-head checks, formal review, Ready, and merge through independent approvals.",
-    "Finish the Gate ledger and validator, stable CI contexts plus settings Gate, durable artifact retention and binding, and the minimal organization and runtime-evidence model through separate PRs.",
-    "Only then establish independent Artifact and Risk A production-alignment Gates."
+    "Complete the active #561 source-language reconciliation and keep #558-#560 scoped to gaps that remain after existing Admin, Wallet, Payment, Commerce, traffic, and Authority source is counted.",
+    "Review Draft PRs #592, #593, and #594 independently against current master; do not infer readiness, merge authority, artifact publication, or deployment from their Draft state.",
+    "Establish a durable artifact/rollback identity before the three exact-master artifacts from run 31267179669 expire on 2026-08-22.",
+    "Continue #437, #438, #439, #522-#524, and the legacy-retirement issues through their existing source boundaries without parallel replacement subsystems.",
+    "Run fresh ruleset, environment, alert, provider, deployment, and production read-only inventories before any merge gate that depends on them or any Risk A action."
   ],
   "forbiddenInStateFiles": [
     "raw subscription URLs",

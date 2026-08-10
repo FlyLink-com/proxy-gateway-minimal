@@ -1,6 +1,6 @@
 # Admin Backend DTO Contract
 
-Last updated: 2026-06-21, Asia/Shanghai.
+Last updated: 2026-08-09, America/Los_Angeles.
 
 > Status:
 > - Type: GCC-101 / GCC-112 backend contract design.
@@ -11,25 +11,36 @@ Last updated: 2026-06-21, Asia/Shanghai.
 >   credential, subscription URL, raw config/log/env, raw log, audit export,
 >   SQLite row, or customer-data actions.
 
-## Source-Reality Addendum (2026-07-30)
+## Source-Reality Addendum (2026-08-09)
+
+Source evidence cutoff: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`.
 
 The statement below that this is not an implemented API applies to the proposed
 DTO family as a whole; it must no longer be read as saying that every safe
 Admin/Operations read capability is absent.
 
-Source now contains, among other foundations:
+Source at this cutoff contains, among other foundations:
 
-- Admin authentication/session routes and services;
+- backend Admin authentication/session routes and services; `admin/src` has no
+  `/api/admin-auth/*` client and the current app still uses its console-token
+  path, so frontend login integration is pending;
+- backend `admin` / `super_admin` read-capability definitions and bounded
+  Operations Overview enforcement behind default-off
+  `ADMIN_AUTHORIZATION_ENABLED`; full route coverage and mutation authority are
+  not implemented;
 - manifest-backed safe-read projection, page, query, and owner models;
-- a protected traffic collector Admin projection;
-- Portal Wallet projection and Ledger reads;
-- Portal Coins Commerce catalog, quote, and account-owned order reads.
+- a protected traffic collector Admin projection and route, with no proven
+  `Usage & Channels` frontend consumer;
+- Portal Coin Wallet projection, Coin Ledger reads, and reference indexes;
+- Portal Coin Commerce catalog/Quote/Order reads, Account Resource Authority,
+  and default-off durable Recharge/Payment reads.
 
 The exact matrix is `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`. Each DTO family
 must be classified as `implemented_source`, `partial`,
 `fixture_or_static_only`, `document_only`, or `missing` before a new
 backend slice is opened. Similar frontend fields are not evidence that the
-named backend DTO exists.
+named backend DTO exists. Frontend manifest `view`/`inspect` permissions and
+backend `*.read` capabilities are separate contracts.
 
 This document turns the Admin console UI work into a backend DTO contract plan.
 It is not an implemented API, migration plan, auth model change, retention

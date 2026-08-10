@@ -1,55 +1,69 @@
 {
-  "schemaVersion": "2026-07-15.1",
-  "lastUpdated": "2026-07-30",
+  "schemaVersion": "2026-08-09.1",
+  "lastUpdated": "2026-08-09",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current lane index for Phase 2. Historical lanes remain in Git history and indexed execution records, not in the active Agent queue.",
   "sourceInventory": {
-    "snapshot": "5b61d9d787e2f98e9f834fe05de6dcbb6805cea7",
-    "date": "2026-07-15",
-    "remoteBranchCount": 16,
-    "openPrCount": 2,
-    "openIssueCount": 5,
+    "snapshot": "02fc63a3f949b748dcccf26ba7d310be82f4b6df",
+    "date": "2026-08-09",
+    "remoteBranchCount": 70,
+    "openPrCount": 3,
+    "openDraftPrCount": 3,
+    "openNonDraftPrCount": 0,
+    "openIssueCount": 15,
     "mergedPrs": {
-      "482": "06d69b2da07a50322a260bd08f160febaf7b6a7d",
-      "483": "2413c101724df45579ebf4b9e0f306d32d9bb1af",
-      "486": "fdf5eedee7b34b934ad79d6472ecc33a86db67fa",
-      "487": "20954248a7f2df4511d2d412c56ae4e887f91f9a",
-      "488": "1d02b0ad5482c3b5d61c9e8aff051f9833c8430a",
-      "489": "f054ac443b576db068b379293cc73b1c459f5e0b",
-      "490": "a764f48f006722951393f1a5e251b567476c28dc",
-      "491": "329eb282ef88e7ab41bee1252f22fe3570f7d3c8",
-      "492": "0601e79e965ead2d8ec1af81d1db87a1c23372a2",
-      "494": "5b61d9d787e2f98e9f834fe05de6dcbb6805cea7"
+      "582": "a3c38ffc1446e6934c6fd3e2f7c2afe87a167ad8",
+      "583": "001e3e97b1a062a1692bd310cdf4bf29ef8a5af8",
+      "584": "285e723a9773cc10d56682ea24abed228298384a",
+      "585": "064d68e6a3b50714642550b6dcbcf93989817ac9",
+      "586": "54d1956d501e268ed2b1199ae19c68807fe56abf",
+      "587": "7ae86f0d32ddb8bf9d9eb3a4600047169e02779b",
+      "588": "a745bced1a4983551d214c6768e2d84b07cda598",
+      "589": "0ac923f5559de0bbf84f9b469b77bf800d470265",
+      "591": "64c6eadf34dd3de764238b010ed791048549c80f",
+      "590": "02fc63a3f949b748dcccf26ba7d310be82f4b6df"
     },
     "openDraftPrs": [
-      476,
-      479
+      592,
+      593,
+      594
     ],
     "openNonDraftPrs": [],
     "openIssues": [
       437,
       438,
       439,
-      440,
-      475
+      521,
+      522,
+      523,
+      524,
+      525,
+      527,
+      551,
+      557,
+      558,
+      559,
+      560,
+      561
     ]
   },
   "governanceBoundary": {
-    "ci": "29418796398 success",
-    "releaseArtifact": "29418796724 success",
-    "codeql": "29418794902 and 29418794903 success",
-    "cloudflareWorkflow": "29391680029 success_build_verify_deploy_skipped",
-    "ruleset": "18935716 strict Validate; zero approvals; no review-thread resolution",
-    "environments": "Six exist; only artifact-publication has a branch policy; none has reviewer enforcement.",
-    "sourceSecurity": "0 open code-scanning alerts; 0 open Dependabot alerts; 0 open secret-scanning alerts at the 2026-07-15 read-only API cutoff. Future scans remain independent evidence."
+    "releaseArtifact": "31267179669 success for exact master; three artifacts temporary through 2026-08-22",
+    "ci": "not_refreshed_for_exact_master",
+    "codeql": "not_refreshed_for_exact_master",
+    "cloudflareWorkflow": "not_refreshed_for_exact_master",
+    "ruleset": "not_refreshed_at_2026-08-09_inventory",
+    "environments": "not_refreshed_at_2026-08-09_inventory",
+    "sourceSecurity": "current code-scanning, Dependabot, secret-scanning, and Code Quality counts were not refreshed; PR #589 remediation is source evidence, not a current zero-alert claim",
+    "requiresLiveVerification": true
   },
   "nextActionQueue": [
-    "Complete #561 source-reality reconciliation before selecting any #557 Operations Plane implementation slice.",
-    "Establish a new durable successor Gate on #437 after the blocked and consumed PR #479 Gate -003.",
-    "Complete any newly authorized PR #479 source remediation, current-master integration, exact-head checks, formal review, Ready, and merge through independent approvals.",
-    "Finish the Gate ledger and validator, stable CI contexts plus settings Gate, durable artifact retention and binding, and the minimal organization and runtime-evidence model through separate PRs.",
-    "Only then establish independent Artifact and Risk A production-alignment Gates."
+    "Complete active #561 source-language reconciliation before selecting the remaining #558-#560 Operations Plane gaps.",
+    "Review Draft PR #592 as source-only Commerce Authority operator work; schema apply, Authority assignment, artifact publication, and runtime activation remain separate Risk A gates.",
+    "Review Draft PRs #593 and #594 as design/foundation work only; neither implements nor authorizes production deployment.",
+    "Create a durable artifact/rollback identity before run 31267179669 artifacts expire on 2026-08-22.",
+    "Refresh GitHub rulesets, required checks, environments, alerts, provider state, deployment identity, and production runtime evidence before relying on any of them."
   ],
   "sourceDocs": [
     "docs/CURRENT_RELEASE_STATE.md",
@@ -57,7 +71,11 @@
     "docs/GITHUB_ISSUE_PR_WORKFLOW.md",
     "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
     "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
+    "docs/ACCOUNT_RESOURCE_AUTHORITY_LIFECYCLE.md",
     "docs/BILLING_RECHARGE_CONTRACT.md",
+    "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
+    "docs/COINS_WALLET_SCHEMA_GATE.md",
+    "docs/COINS_COMMERCE_SCHEMA_GATE.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/OPERATIONS_PLANE_SOURCE_REALITY.md"
   ],
@@ -67,7 +85,7 @@
       "name": "Version And Deployment Governance",
       "status": "active-source-governance-hardening",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
-      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Current master 5b61d9d787e2f98e9f834fe05de6dcbb6805cea7 includes source, dependency, security, governance, topology, and authority-metadata merges through PR #494. PR #483 routes docs-only/code changes and always runs diff checking while retaining one stable required Validate context. Release Artifact run 29418796724 succeeded, but ruleset 18935716 still requires zero approvals and no review-thread resolution, only artifact-publication has a branch policy across six environments, and none has reviewer enforcement.",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Current master is 02fc63a3f949b748dcccf26ba7d310be82f4b6df. Release Artifact run 31267179669 succeeded for that exact source, but its three artifacts are temporary through 2026-08-22. Draft #593 is design/plan only and Draft #594 is a source-only deployment foundation; neither authorizes artifact publication or production. Current ruleset, required-check, environment, and alert settings were not refreshed.",
       "primaryDocs": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -91,7 +109,7 @@
       "name": "Traffic Accounting",
       "status": "active-controlled-remediation",
       "riskBoundary": "B for collector contracts, redacted provenance, tests, and protected read-only projection; A for runtime, service, config, quota, or traffic-supply mutation",
-      "purpose": "Complete Issue #437, reopened by Risk C receipt issuecomment-4976074286 after PR #482 was recorded as its closer despite explicitly denying resolution. Draft PR #479 remains at 58ccdccc6af5ed120541f03d2713857e4a9a8a65, behind master, with zero unresolved non-outdated threads. Gate -003 ended blocked at fresh_binding with approval consumed; no later successor Gate exists, and PR #479 is not deployed.",
+      "purpose": "Complete Issue #437. PR #479 is merged source-only and is no longer an open Draft, but Issue #437 remains open. No production deployment, current runtime reconciliation, accounting completeness, or identity-health conclusion is inferred from that merge.",
       "primaryDocs": [
         "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
         "docs/CURRENT_RELEASE_STATE.md"
@@ -112,9 +130,9 @@
     {
       "id": "portal-lifecycle",
       "name": "Portal User And Resource Lifecycle",
-      "status": "planned",
+      "status": "active-source-foundation",
       "riskBoundary": "B for lifecycle mapping, safe DTOs, tests, and focused UI consumption; A for auth activation, schema, or production static replacement",
-      "purpose": "Execute Issue #438 after traffic and quota semantics stabilize, without redesigning the Portal or merging payment state into subscription state.",
+      "purpose": "Continue Issue #438 from the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders surfaces, Recharge entry boundary, and Account Resource Authority source. The Portal and control-plane foundations must remain separate from Payment facts and from current production state; newer source is not deployed and commercial paths remain default-off or gated.",
       "primaryDocs": [
         "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
         "docs/USER_PORTAL_FLOW.md",
@@ -135,12 +153,15 @@
     {
       "id": "commercial-foundation",
       "name": "Commercial Foundation",
-      "status": "planned-with-source-foundation",
+      "status": "active-default-off-source-foundation",
       "riskBoundary": "B for provider-neutral contracts, event catalogs, disabled adapters, and tests; A for live payment, credentials, webhooks, settlement, or AppsFlyer dispatch",
-      "purpose": "Execute Issue #439 only after operational lifecycle contracts are stable. PR #472 records the v1 package model and PR #474 adds a source-only trial-limit guard; all providers remain disabled and fail-closed.",
+      "purpose": "Continue Issues #439 and #522-#524 from implemented source foundations for Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority. PRs #582-#586, #588, and #591 advance those foundations; current master remains not deployed, production paths remain default-off or separately gated, and Draft #592 adds no production authority.",
       "primaryDocs": [
         "docs/BILLING_RECHARGE_CONTRACT.md",
         "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
+        "docs/COINS_WALLET_SCHEMA_GATE.md",
+        "docs/COINS_COMMERCE_SCHEMA_GATE.md",
+        "docs/ACCOUNT_RESOURCE_AUTHORITY_LIFECYCLE.md",
         "docs/PARTNER_ATTRIBUTION_SETTLEMENT_ARCHITECTURE.md"
       ],
       "primaryCodeAreas": [
@@ -149,18 +170,18 @@
         "admin/src/"
       ],
       "nonGoals": [
-        "live checkout",
+        "treating default-off source as live checkout",
         "provider credentials",
-        "payment-driven subscription issuance",
+        "schema apply, Wallet credit, Authority assignment, Commerce activation, or payment-driven subscription issuance without exact Risk A gates",
         "live AppsFlyer activation"
       ]
     },
     {
       "id": "operations-foundation",
       "name": "Operations Plane Foundation",
-      "status": "docs-reconciliation-active",
+      "status": "active-source-reconciliation",
       "riskBoundary": "A for schema or migration source changes, provider access, deployment, or runtime mutation; C only for factual docs and index updates",
-      "purpose": "Track #557 as the Operations Plane v1 parent and #561 as the active source/document reconciliation slice. Reuse existing Admin, traffic, Wallet, Commerce, and Lead capabilities; #475 does not establish a generic Operations event or Admin audit store.",
+      "purpose": "Track #557 as the Operations Plane v1 parent and #561 as the active source/document reconciliation slice. Reuse existing Admin auth/safe-read, traffic, Wallet/Ledger, Payment/Recharge, Coins Commerce, Account Resource Authority, and Lead capabilities. #558-#560 may add only proven RBAC, metric, and audit gaps; closed-unmerged PR #476 and the historical #475 lane do not establish a generic Operations event or Admin audit store.",
       "primaryDocs": [
         "docs/OPERATIONS_PLANE_SOURCE_REALITY.md",
         "docs/PROJECT_CONTEXT.md",
@@ -175,8 +196,8 @@
         "project-state/"
       ],
       "nonGoals": [
-        "rebuilding existing Admin auth, safe-read, traffic, Wallet, or Commerce source",
-        "treating #475 as a generic Operations event or Admin audit implementation",
+        "rebuilding existing Admin auth, safe-read, traffic, Wallet, Payment, Commerce, or Account Resource Authority source",
+        "treating closed-unmerged PR #476 or historical #475 work as a generic Operations event or Admin audit implementation",
         "schema migration without an exact Risk A gate",
         "provider, credential, production, runtime mutation, or deployment",
         "starting #558-#560 implementation before #561 proves the remaining gap"
@@ -187,7 +208,7 @@
       "name": "Code Boundary Cleanup",
       "status": "planned-guardrail",
       "riskBoundary": "B for one behavior-preserving extraction with contract tests; A if a refactor changes auth, schema, runtime, or public behavior",
-      "purpose": "Use Issue #440 only when Phase 2 work exposes a measured ownership or dependency problem; keep the modular monolith intact.",
+      "purpose": "Keep behavior-preserving boundary cleanup as an opportunistic guardrail only when active work exposes a measured ownership or dependency problem; keep the modular monolith intact. Issue #440 is not in the current open-Issue inventory.",
       "primaryDocs": [
         "docs/PROJECT_SIMPLIFICATION_MAP.md",
         "docs/DOMAIN_UNIT_BOUNDARIES.md",
@@ -210,7 +231,7 @@
       "name": "Production Operations",
       "status": "active-boundary",
       "riskBoundary": "A for every production, provider, DNS, Nginx, systemd, firewall, schema, deployment, promotion, rollback, or live customer-data action",
-      "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog. The current production/runtime evidence cutoff remains dated at 2026-07-11T13:03:40Z; this C-tier reconciliation performed no fresh inventory or mutation.",
+      "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog. The latest retained control-plane production record is dated 2026-07-20T06:21:00Z, older traffic/runtime evidence has its own dated cutoff, and all production facts require live verification. This C-tier reconciliation performed no fresh production inventory or mutation.",
       "primaryDocs": [
         "docs/CURRENT_RELEASE_STATE.md",
         "docs/RUNTIME_LANE_AUTHORITY.md",
