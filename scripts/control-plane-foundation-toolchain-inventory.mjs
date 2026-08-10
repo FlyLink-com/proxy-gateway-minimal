@@ -8,6 +8,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  parseCanonicalJsonBytes,
   serializeCanonicalJsonBytes,
   sha256Hex
 } from "../server/services/deployment/canonical-json.mjs";
@@ -25,12 +26,18 @@ export const FOUNDATION_TOOL_ROLES = Object.freeze([
   "MAKE"
 ]);
 
+export const FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE =
+  "docker.io/library/node:22.23.1-bookworm@sha256:175215a1f306ed5df592434b99cc2019f70624373fe49cb659240a618a846aed";
+export const FOUNDATION_TOOLCHAIN_PLATFORM = "linux/amd64";
+const FOUNDATION_TOOLCHAIN_CONTAINER_MANIFEST_SHA256 =
+  FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE.slice(FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE.indexOf("@sha256:") + 8);
+
 const FIXED_TOOL_PATHS = Object.freeze({
-  CC: "/usr/bin/x86_64-linux-gnu-gcc-13",
-  CXX: "/usr/bin/x86_64-linux-gnu-g++-13",
+  CC: "/usr/bin/x86_64-linux-gnu-gcc-12",
+  CXX: "/usr/bin/x86_64-linux-gnu-g++-12",
   AR: "/usr/bin/x86_64-linux-gnu-ar",
   LD: "/usr/bin/x86_64-linux-gnu-ld.bfd",
-  PYTHON: "/usr/bin/python3.12",
+  PYTHON: "/usr/bin/python3.11",
   MAKE: "/usr/bin/make"
 });
 
@@ -63,7 +70,7 @@ const TOOL_ROLE_CONTRACT = frozenContract(
 );
 
 const INVENTORY_CONTRACT = frozenContract(
-  "control_plane_foundation_toolchain_inventory_v1",
+  "control_plane_foundation_toolchain_inventory_v2",
   [
     "schemaVersion",
     "receiptType",
@@ -72,24 +79,32 @@ const INVENTORY_CONTRACT = frozenContract(
     "sourceCommit",
     "workflowPath",
     "workflowSha256",
+    "closureKind",
+    "containerImage",
+    "containerManifestSha256",
+    "platform",
     "nodeVersion",
     "nodeModuleAbi",
     "nodeApiVersion",
     "toolRoles",
+    "toolRolesSha256",
     "headersTreeSha256",
-    "candidateToolchainTreeSha256",
-    "candidateBundleSha256"
+    "candidateClosureSha256"
   ],
   {
     nested: { role: TOOL_ROLE_CONTRACT },
     arrays: { toolRoles: "role" },
     validate(value) {
-      if (value.schemaVersion !== "1"
-          || value.receiptType !== "control_plane_foundation_toolchain_inventory"
+      if (value.schemaVersion !== "2"
+          || value.receiptType !== "control_plane_foundation_toolchain_inventory_v2"
           || value.authority !== "inventory_only"
           || value.eligible !== false
           || !SOURCE_COMMIT_PATTERN.test(value.sourceCommit)
           || value.workflowPath !== WORKFLOW_PATH
+          || value.closureKind !== "oci_platform_manifest"
+          || value.containerImage !== FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE
+          || value.containerManifestSha256 !== FOUNDATION_TOOLCHAIN_CONTAINER_MANIFEST_SHA256
+          || value.platform !== FOUNDATION_TOOLCHAIN_PLATFORM
           || typeof value.nodeVersion !== "string" || !/^v\d+\.\d+\.\d+$/.test(value.nodeVersion)
           || typeof value.nodeModuleAbi !== "string" || !/^\d+$/.test(value.nodeModuleAbi)
           || typeof value.nodeApiVersion !== "string" || !/^\d+$/.test(value.nodeApiVersion)) {
@@ -97,9 +112,9 @@ const INVENTORY_CONTRACT = frozenContract(
       }
       for (const field of [
         "workflowSha256",
+        "toolRolesSha256",
         "headersTreeSha256",
-        "candidateToolchainTreeSha256",
-        "candidateBundleSha256"
+        "candidateClosureSha256"
       ]) {
         assertSha256(value[field], "foundation_toolchain_inventory_invalid");
       }
@@ -166,47 +181,60 @@ function digestToolRoles(toolRoles) {
 export function buildToolchainInventoryEvidence({
   sourceCommit,
   workflowSha256,
+  containerImage,
   nodeVersion,
   nodeModuleAbi,
   nodeApiVersion,
   toolRoles,
   headersTreeSha256
 }) {
+  if (containerImage !== FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE) {
+    throw new Error("foundation_toolchain_inventory_container_invalid");
+  }
   if (!Array.isArray(toolRoles)
       || toolRoles.length !== FOUNDATION_TOOL_ROLES.length
       || toolRoles.some(({ role }, index) => role !== FOUNDATION_TOOL_ROLES[index])) {
     throw new Error("foundation_toolchain_inventory_role_order_invalid");
   }
   for (const { sha256 } of toolRoles) assertSha256(sha256, "foundation_toolchain_inventory_role_invalid");
+  if (new Set(toolRoles.map(({ sha256 }) => sha256)).size !== toolRoles.length) {
+    throw new Error("foundation_toolchain_inventory_duplicate_tool_bytes");
+  }
   assertSha256(headersTreeSha256, "foundation_toolchain_inventory_headers_digest_invalid");
   assertSha256(workflowSha256, "foundation_toolchain_inventory_workflow_digest_invalid");
   if (typeof sourceCommit !== "string" || !SOURCE_COMMIT_PATTERN.test(sourceCommit)) {
     throw new Error("foundation_toolchain_inventory_source_commit_invalid");
   }
-  const candidateToolchainTreeSha256 = digestToolRoles(toolRoles);
-  const candidateBundleSha256 = sha256Hex(Buffer.from([
-    "control-plane-foundation-toolchain-candidate-v1",
+  const toolRolesSha256 = digestToolRoles(toolRoles);
+  const candidateClosureSha256 = sha256Hex(Buffer.from([
+    "control-plane-foundation-toolchain-closure-v2",
+    FOUNDATION_TOOLCHAIN_CONTAINER_MANIFEST_SHA256,
+    FOUNDATION_TOOLCHAIN_PLATFORM,
     nodeVersion,
     nodeModuleAbi,
     nodeApiVersion,
     headersTreeSha256,
-    candidateToolchainTreeSha256
+    toolRolesSha256
   ].join("\0"), "utf8"));
   return Object.freeze({
-    schemaVersion: "1",
-    receiptType: "control_plane_foundation_toolchain_inventory",
+    schemaVersion: "2",
+    receiptType: "control_plane_foundation_toolchain_inventory_v2",
     authority: "inventory_only",
     eligible: false,
     sourceCommit,
     workflowPath: WORKFLOW_PATH,
     workflowSha256,
+    closureKind: "oci_platform_manifest",
+    containerImage: FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE,
+    containerManifestSha256: FOUNDATION_TOOLCHAIN_CONTAINER_MANIFEST_SHA256,
+    platform: FOUNDATION_TOOLCHAIN_PLATFORM,
     nodeVersion,
     nodeModuleAbi,
     nodeApiVersion,
     toolRoles: Object.freeze(toolRoles.map((entry) => Object.freeze({ ...entry }))),
+    toolRolesSha256,
     headersTreeSha256,
-    candidateToolchainTreeSha256,
-    candidateBundleSha256
+    candidateClosureSha256
   });
 }
 
@@ -215,6 +243,10 @@ export function serializeToolchainInventoryLine(evidence) {
     serializeCanonicalJsonBytes(evidence, INVENTORY_CONTRACT),
     Buffer.from("\n", "utf8")
   ]);
+}
+
+export function parseToolchainInventoryBytes(bytes) {
+  return parseCanonicalJsonBytes(bytes, INVENTORY_CONTRACT);
 }
 
 export function collectFoundationToolchainInventory({ sourceCommit }) {
@@ -241,6 +273,7 @@ export function collectFoundationToolchainInventory({ sourceCommit }) {
   return buildToolchainInventoryEvidence({
     sourceCommit,
     workflowSha256: sha256Hex(readFileSync(workflowFile)),
+    containerImage: process.env.CONTROL_PLANE_FOUNDATION_CONTAINER_IMAGE,
     nodeVersion: process.version,
     nodeModuleAbi: process.versions.modules,
     nodeApiVersion: process.versions.napi,

@@ -1,0 +1,200 @@
+name: Control Plane Foundation Toolchain Publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact PR-head commit from the reviewed v2 inventory run.
+        required: true
+        type: string
+      inventory_run_id:
+        description: Exact successful v2 inventory workflow run ID.
+        required: true
+        type: string
+      candidate_closure_sha256:
+        description: Exact reviewed v2 complete-closure digest.
+        required: true
+        type: string
+      confirmation:
+        description: Type publish Foundation toolchain lock
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: control-plane-foundation-toolchain-publication
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Validate exact v2 inventory
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      lock_base64: ${{ steps.lock.outputs.lock_base64 }}
+      lock_sha256: ${{ steps.lock.outputs.lock_sha256 }}
+      target_commit: ${{ steps.lock.outputs.target_commit }}
+      release_tag: ${{ steps.lock.outputs.release_tag }}
+      asset_name: ${{ steps.lock.outputs.asset_name }}
+
+    steps:
+      - name: Validate fixed operator inputs before API use
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INVENTORY_RUN_ID: ${{ inputs.inventory_run_id }}
+          CLOSURE_SHA256: ${{ inputs.candidate_closure_sha256 }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$INVENTORY_RUN_ID" =~ ^[1-9][0-9]{0,19}$ ]]
+          [[ "$CLOSURE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test "$CONFIRMATION" = 'publish Foundation toolchain lock'
+
+      - name: Checkout trusted master source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up reviewed Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+
+      - name: Read exact inventory run and logs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          INVENTORY_RUN_ID: ${{ inputs.inventory_run_id }}
+        run: |
+          set -euo pipefail
+          umask 077
+          gh api "repos/$GH_REPO/actions/runs/$INVENTORY_RUN_ID" \
+            > "$RUNNER_TEMP/foundation-inventory-run.json"
+          gh run view "$INVENTORY_RUN_ID" --repo "$GH_REPO" --log \
+            > "$RUNNER_TEMP/foundation-inventory.log"
+
+      - name: Build canonical publication lock
+        id: lock
+        env:
+          CONTROL_PLANE_FOUNDATION_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          CONTROL_PLANE_FOUNDATION_INVENTORY_RUN_ID: ${{ inputs.inventory_run_id }}
+          CONTROL_PLANE_FOUNDATION_CLOSURE_SHA256: ${{ inputs.candidate_closure_sha256 }}
+          CONTROL_PLANE_FOUNDATION_CONFIRMATION: ${{ inputs.confirmation }}
+        run: node scripts/control-plane-foundation-toolchain-publication.mjs
+
+  publish:
+    name: Publish one immutable toolchain lock
+    needs: preflight
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: artifact-publication
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Reconstruct and verify exact lock bytes
+        shell: bash
+        env:
+          LOCK_BASE64: ${{ needs.preflight.outputs.lock_base64 }}
+          LOCK_SHA256: ${{ needs.preflight.outputs.lock_sha256 }}
+          ASSET_NAME: ${{ needs.preflight.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$LOCK_BASE64" | base64 --decode > "$RUNNER_TEMP/$ASSET_NAME"
+          printf '%s  %s\n' "$LOCK_SHA256" "$RUNNER_TEMP/$ASSET_NAME" | sha256sum --check --strict
+
+      - name: Require repository immutable releases without changing settings
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test "$(gh api -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$GH_REPO/immutable-releases" --jq '.enabled')" = true
+
+      - name: Require unused content-addressed release identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+          TARGET_COMMIT: ${{ needs.preflight.outputs.target_commit }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo foundation_toolchain_release_identity_already_exists >&2
+            exit 1
+          fi
+
+      - name: Create empty draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" --repo "$GH_REPO" --draft \
+            --target "$TARGET_COMMIT" --title "$RELEASE_TAG" \
+            --notes 'Content-addressed Foundation toolchain lock. Not production authority.'
+
+      - name: Attest exact lock bytes
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: ${{ runner.temp }}/${{ needs.preflight.outputs.asset_name }}
+
+      - name: Upload sole lock asset without replacement
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+          ASSET_NAME: ${{ needs.preflight.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/$ASSET_NAME#$ASSET_NAME" --repo "$GH_REPO"
+
+      - name: Publish draft and activate GitHub immutability
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --draft=false --latest=false
+
+      - name: Read back immutable release and exact sole asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+          ASSET_NAME: ${{ needs.preflight.outputs.asset_name }}
+          LOCK_SHA256: ${{ needs.preflight.outputs.lock_sha256 }}
+          TARGET_COMMIT: ${{ needs.preflight.outputs.target_commit }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" \
+            > "$RUNNER_TEMP/foundation-release-readback.json"
+          jq --exit-status --arg tag "$RELEASE_TAG" --arg commit "$TARGET_COMMIT" \
+            --arg asset "$ASSET_NAME" --arg digest "sha256:$LOCK_SHA256" \
+            '.immutable == true and .tag_name == $tag and .target_commitish == $commit and
+             (.assets | length == 1) and .assets[0].name == $asset and
+             .assets[0].digest == $digest' \
+            "$RUNNER_TEMP/foundation-release-readback.json" >/dev/null
