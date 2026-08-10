@@ -47,6 +47,20 @@ project_status:
   production: partially operational; reconciliation incomplete
 ```
 
+### 2026-08-10 源码快照
+
+| 事实面 | 当前结论 |
+| --- | --- |
+| 仓库基线 | `master@3a194bcd5adbaf22c35fdd8ce5ed46ee9253e68c`；该提交仅合并文档治理 PR #595。 |
+| 可执行源码截止点 | `02fc63a3f949b748dcccf26ba7d310be82f4b6df`；#595 没有修改代码、配置或部署工作流。 |
+| Operations Plane | #557 仍为 `partial`；#558 的授权边界、#559 的完整指标合同和 #560 的通用 Admin action audit 尚未闭环。 |
+| Commerce / Authority | Wallet、Coin Ledger、Recharge/Payment、Commerce 与 Account Resource Authority 已有较完整的源码基础；#592 仍是未部署的 Draft source candidate。 |
+| 部署基础 | #593 是设计/计划 Draft；#594 是 Foundation Draft，inventory 仅为 `inventory_only`，不构成制品发布或生产授权。 |
+| 生产状态 | 当前 live artifact、runtime identity、provider flags、schema 与服务状态未做新鲜盘点；最近记录的生产部署事件仍是 2026-07-20 的 `9982d378…`。 |
+
+以上是源码与仓库治理快照，不是生产健康声明。开放 PR、Issue、Actions 和 provider 状态
+属于可变事实，在审核、合并或生产决策前必须重新读取。
+
 当前边界：
 
 - 核心架构是单体 Node/Express 服务 + SQLite 业务状态 + `gccgw` operator CLI。
