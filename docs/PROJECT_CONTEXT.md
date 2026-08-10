@@ -154,6 +154,16 @@ Issues are durable index cards; PRs are execution summaries and validation
 receipts. Passing a source, merge, or artifact gate does not authorize the next
 gate.
 
+The manual Japan runtime-config additive-repair workflow has a narrower active
+source-only authorization contract. `approval_pr` must resolve a merged PR at
+the exact workflow commit, its final head must have a successful `Validate`
+check, and the latest-state approval must come from a reviewer other than the
+actual triggering actor. While those conditions remain true, the merged-PR
+source authorization is reusable; `approval_pr` is not a one-time or consumed
+credential. It does not authorize workflow dispatch, host access, map apply,
+deployment, runtime mutation, or production success; each remains a separate
+exact Risk A gate.
+
 ## Active Work Lanes
 
 Do not infer a single fixed serial order from the July snapshots. Use the live
