@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -131,15 +131,13 @@ test("freezes the new immutable artifact and non-replayable execution gate", () 
   );
 });
 
-test("workflow preflight and execution consume the same new immutable artifact", () => {
-  const workflow = readFileSync(
-    new URL("../../.github/workflows/japan-runtime-config-additive-repair.yml", import.meta.url),
-    "utf8"
+test("retired workflow is absent from the current artifact contract", () => {
+  assert.equal(
+    existsSync(
+      new URL("../../.github/workflows/japan-runtime-config-additive-repair.yml", import.meta.url)
+    ),
+    false
   );
-  assert.match(workflow, /run-id: 30092196734/g);
-  assert.match(workflow, /proxy-gateway-japan-tuic-additive-repair-20260724-001/g);
-  assert.match(workflow, /proxy-gateway-japan-tuic-additive-repair-20260724-001\.zip/g);
-  assert.match(workflow, /70880d83761b165e91e9c521ec480fcc840375fb/g);
 });
 
 test("accepts only an exact unexpired Environment-issued approval for this run attempt", () => {

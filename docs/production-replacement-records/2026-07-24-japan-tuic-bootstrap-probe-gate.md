@@ -1,8 +1,12 @@
 # Japan TUIC Bootstrap Probe Gate
 
-> Status: source-only Gate record. It creates no credential, secret, host
-> authorization, deployment, map mutation, service operation, or production
-> result by itself.
+> Status: historical source-only Gate record.
+> Lifecycle: historical.
+> Retirement note (2026-08-11): this record no longer authorizes workflow dispatch or retry.
+> The remaining sections preserve the original Gate boundary for audit only;
+> they are not current operating instructions and create no credential, secret,
+> host authorization, deployment, map mutation, service operation, or
+> production result.
 
 ## Authority And Exact Source Binding
 

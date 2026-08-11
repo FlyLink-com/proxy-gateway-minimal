@@ -3,7 +3,8 @@
 ```yaml
 record_type: production_execution_gate
 risk: A
-status: approved_for_one_manual_dispatch_pending_environment_approval
+lifecycle: historical
+status: retired_no_dispatch_authority
 release_unit: japan-runtime-config
 identity_impact: true
 production_state: not_deployed
@@ -11,7 +12,11 @@ production_state: not_deployed
 
 ## Scope
 
-This record authorizes exactly one manual invocation of the protected Japan
+> Retirement note (2026-08-11): this record no longer authorizes workflow dispatch or retry.
+> The remaining text preserves the originally approved boundary as historical
+> evidence and is not a current operating instruction.
+
+This record originally authorized exactly one manual invocation of the protected Japan
 runtime-config additive-repair workflow. The dispatching account is
 `gccltdco-cmd`; the protected Environment reviewer is `gaoyi1020-web` and must
 approve the resulting deployment separately. A failed or cancelled run is not

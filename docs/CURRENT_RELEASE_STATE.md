@@ -180,20 +180,25 @@ Those records prove the boundary for those executions; they are not a fresh
 2026-08-09 readback of provider settings, domains, deployments, or runtime
 state. Any provider promotion or rollback remains a separate exact Risk A gate.
 
-## Manual Japan Additive-Repair Source Authorization
+## Retired Japan Additive-Repair GitHub Lanes
 
-The manual Japan runtime-config additive-repair workflow retains one active
-source-only authorization contract. `approval_pr` must resolve a merged PR at
-the exact workflow commit, its final head must have a successful `Validate`
-check, and the latest-state approval must come from a reviewer other than the
-actual triggering actor. While those conditions remain true, this merged-PR
-source authorization is reusable; `approval_pr` is not a one-time or consumed
-credential.
+In this source revision,
+`.github/workflows/japan-runtime-config-additive-repair.yml` and
+`.github/workflows/japan-runtime-config-bootstrap-probe.yml` are retired and
+absent. The repository therefore has no manual GitHub Actions entry point for
+new dispatches of the former Japan additive-repair or bootstrap-probe path.
 
-This contract authorizes source admission only. It does not bootstrap host
-access, authorize workflow dispatch, read connection material, apply a map,
-deploy a release, mutate runtime state, or prove production success. Each such
-action remains behind its separate exact Risk A gate and current evidence.
+This is source-layer retirement. It does not cancel or disable reruns of
+historical workflow runs. No rerun is authorized by this source change, and a
+read-only historical-run inventory is required before operational closure can
+be claimed.
+
+This source retirement does not authorize dispatch, prove the absence of
+Environment secrets or host authorization, alter `vultr-japan-production`, or
+change production state. Restoring either historical workflow alone does not
+authorize dispatch. Any reactivation requires fresh read-only inventory, a new
+immutable artifact and source-to-runtime review, an explicit rollback plan, and
+a new exact Risk A approval.
 
 ## Source And Production Drift
 

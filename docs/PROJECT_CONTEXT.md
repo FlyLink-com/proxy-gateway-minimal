@@ -154,15 +154,22 @@ Issues are durable index cards; PRs are execution summaries and validation
 receipts. Passing a source, merge, or artifact gate does not authorize the next
 gate.
 
-The manual Japan runtime-config additive-repair workflow has a narrower active
-source-only authorization contract. `approval_pr` must resolve a merged PR at
-the exact workflow commit, its final head must have a successful `Validate`
-check, and the latest-state approval must come from a reviewer other than the
-actual triggering actor. While those conditions remain true, the merged-PR
-source authorization is reusable; `approval_pr` is not a one-time or consumed
-credential. It does not authorize workflow dispatch, host access, map apply,
-deployment, runtime mutation, or production success; each remains a separate
-exact Risk A gate.
+The former Japan runtime-config additive-repair and bootstrap-probe workflows
+are retired and absent in this source revision:
+
+- `.github/workflows/japan-runtime-config-additive-repair.yml`
+- `.github/workflows/japan-runtime-config-bootstrap-probe.yml`
+
+Their dated Gate and execution records remain historical evidence only. This
+source retirement does not authorize dispatch, modify Secrets or the protected
+Environment, prove host cleanup, or change production state. Restoring the old
+files alone provides no execution authority; reactivation requires fresh
+read-only inventory, dry-run validation, rollback planning, and a new exact
+Risk A approval.
+
+This is source-layer retirement only. It does not cancel or disable historical
+run reruns; none is authorized here. A read-only historical-run inventory is
+required before operational closure can be claimed.
 
 ## Active Work Lanes
 

@@ -64,190 +64,32 @@ It does not:
 - mutate Nginx, DNS, firewall, systemd, runtime configs, or SQLite;
 - read or print protected runtime material.
 
-### Japan Runtime-Config Additive Repair
+### Retired Japan Runtime-Config Repair Lanes
 
-`.github/workflows/japan-runtime-config-additive-repair.yml` defines a manual,
-source-only production capability for release unit `japan-runtime-config` and
-strategy `additive_missing_only`. Its protected Environment is
-`vultr-japan-production`. Merging this workflow does not approve or perform a
-production operation. Every dispatch and execution remains behind a separate
-exact Risk A Gate.
+In this source revision, both former production-connected manual entry points
+are retired and absent:
 
-This lane consumes only the new immutable source artifact from run
-`30092196734`:
+- `.github/workflows/japan-runtime-config-additive-repair.yml`
+- `.github/workflows/japan-runtime-config-bootstrap-probe.yml`
 
-- source commit: `70880d83761b165e91e9c521ec480fcc840375fb`;
-- artifact file: `proxy-gateway-japan-tuic-additive-repair-20260724-001.zip`;
-- artifact size: `4829111` bytes;
-- artifact SHA-256:
-  `43d5cea28dc70b838f95706690b45282297b1dae3cfe3b76ab941660ed7a83fe`;
-- gate basis: `japan-tuic-identity-additive-repair-20260724-003`;
-- execution gate: `github-actions-japan-tuic-additive-repair-20260724-002`;
-- candidate: `add=3`, `remove=0`, `deferred_remove=46`, `changed=0`,
-  `missing_material=0`, `projected_map=82`.
+The dated artifact, Gate, receipt, design, and execution records remain audit
+history only. They do not provide a runnable recovery lane, retry authority, or
+evidence about current Environment secrets, host authorization, runtime state,
+or production identity.
 
-The artifact manifest uses `control-plane-app` because the ZIP carries the
-reviewed helper source. The archive is only an immutable tool carrier in this
-lane: **control-plane-app is not authorized**. Application installation,
-release switching, service or timer restart, stale deletion, schema/database
-changes, and adjacent infrastructure mutation remain prohibited.
+This is source-layer retirement. It prevents new dispatches after merge because
+the manual workflow definitions are absent from the default branch, but it does
+not cancel or disable historical run reruns. GitHub can retain rerun capability
+for a historical run after the source file is deleted. No rerun is authorized
+by this change. A read-only historical-run inventory is required before
+operational closure can be claimed.
 
-The fixed 2026-07-24 map-repair ZIP remains unchanged. It can establish only
-the reviewed map-helper boundary it contains; it cannot prove that a newer
-host-side sibling helper is deployed. Before bootstrap, the separately approved
-Risk A Gate must bind both the deployed forced-command runner and its sibling
-helper to the reviewed source release. This source/deployment binding is a
-bootstrap prerequisite, not evidence that bootstrap, dispatch, map apply, or
-closed-loop repair succeeded.
-
-The preflight job has no production secrets. It validates the exact artifact
-digest and independently compares the archive's canonical paths, blobs, and
-executable modes with the artifact Git tree at
-`70880d83761b165e91e9c521ec480fcc840375fb`. The dispatcher supplies the
-required `approval_pr` number, not an approval token or confirmation value.
-Before artifact download or any connection-secret reference, the protected
-execute job queries that PR and accepts it only when its exact merge commit is
-the workflow commit, its `Validate` check passed, and the latest state from an
-approving reviewer other than the actual triggering actor is `APPROVED` on the
-PR final head. This source authorization is reusable while those conditions
-remain true; `approval_pr` is not a one-time or consumed credential. It then
-streams the verified archive to a host-side forced command; it does not receive
-an interactive shell, PTY, forwarding, SCP, rsync, or an operator SSH identity.
-Logs and summaries contain aggregate receipts only.
-
-#### Bootstrap Probe Before a New Execution Identity
-
-After any execution that lacks a validated receipt, use
-`.github/workflows/japan-runtime-config-bootstrap-probe.yml` before creating a
-new final execution identity. The probe is manual-only, uses the same protected
-Environment and five temporary connection secrets, and deliberately streams no
-artifact input to the restricted command. It can only be accepted when the
-aggregate receipt proves `stopped_pre_apply`, `artifact_identity_mismatch`,
-verified host authorization cleanup, and the expected nonzero SSH status. It
-does not download an artifact, apply a map, alter a service or timer, or change
-any production configuration.
-
-The probe consumes its temporary identity. On either success or failure, delete
-all five temporary GitHub Environment secrets, read back their name absence,
-and independently verify that the one marked host authorization is absent before
-creating the distinct final execution identity. A
-`receipt_validation_failed_without_production_claim` summary is diagnostic
-evidence only: it does not prove map apply, rollback, host cleanup, or a
-production result.
-
-#### Japan TUIC Observation Source Prerequisite
-
-The Japan TUIC repair-observation source is a bounded `Risk: B` capability for
-release unit `control-plane-app` with `identity_impact: true`. Its deployment,
-protected observation-file path, and active timer are recorded separately from
-this source gate. Neither the writer deployment nor this new immutable artifact
-creates CI credentials or bindings, changes a protected map, or dispatches this
-workflow. They are not closed-loop repair results.
-
-Before any repair execution, a separately approved Risk A sequence must occur
-in this order:
-
-1. deploy the reviewed control-plane source;
-2. configure one protected observation-file path;
-3. wait for two naturally timer-written accepted Japan observations;
-4. complete a fresh aggregate preflight;
-5. bootstrap the temporary forced-command identity;
-6. dispatch one run; and
-7. prove host and GitHub cleanup.
-
-Each numbered action remains independently bounded by its applicable Risk A
-authorization. The collector timer is the only observation producer: the
-repair runner must not manually invoke, restart, enable, or disable it.
-
-#### CI Identity Bootstrap Gate
-
-> **Blocked pending a separate exact Risk A authorization.** This runbook does
-> not authorize host bootstrap or workflow dispatch. A typed confirmation,
-> unprotected manual run, or an `approval_pr` alone is not an acceptable
-> substitute. The merged-PR check below is source authorization only; source
-> authorization is not production success.
-
-This independent exact Risk A Gate must be approved and completed before any
-workflow dispatch. It creates a new temporary, dedicated CI SSH identity,
-installs only the reviewed forced-command runner and its reviewed sibling
-helper from the same reviewed source release, installs one marked restricted
-authorization, pins the target host key, and writes only these five temporary
-connection Environment secrets:
-
-- `JAPAN_CI_HOST`
-- `JAPAN_CI_PORT`
-- `JAPAN_CI_USER`
-- `JAPAN_CI_PRIVATE_KEY`
-- `JAPAN_CI_KNOWN_HOSTS`
-
-The Gate must bind the merged workflow commit, runner SHA-256, CI public-key
-fingerprint, redacted endpoint/host-key identities, exact host and GitHub
-mutations, and cleanup readback. It must stop if the principal would gain a
-general shell or broader sudo authority. It must not create a production user,
-daemon, provider resource, network rule, reusable deploy key, or generic
-deployment access.
-
-Bootstrap stops if the restricted principal would gain a general shell or
-broader sudo authority. A typed dispatcher value, an unprotected manual run,
-or an `approval_pr` that fails the exact merged-commit, final-head review,
-`Validate`, or triggering actor checks is not an acceptable fallback.
-
-#### Quantitative Production Execution Gate
-
-After bootstrap readback, a second independent exact Risk A Gate authorizes one
-manual workflow run and no automatic retry. The dispatcher starts the workflow
-on the exact merged `master` commit and supplies `approval_pr`. Before artifact
-download or any `JAPAN_CI_*` secret reference, the execute job uses its
-ephemeral GitHub token to verify that the nominated PR was merged at that exact
-workflow commit, has a passed `Validate` check, and has a latest-state
-`APPROVED` review on its final head from an account other than the actual
-triggering actor. The check is fail-closed; missing, unmerged, drifted,
-stale-head, failed-`Validate`, or triggering-actor-only review evidence stops
-the run before protected material is read. A rerun requires a new exact Risk A
-dispatch/execution Gate, but may reuse the same `approval_pr` source
-authorization while all merged-commit, final-head-review, `Validate`, and
-triggering-actor conditions still pass. The earlier
-`japan-tuic-identity-additive-repair-20260724-003` review is evidence for the
-new source artifact and candidate counts; it is not CI execution authority.
-
-The merged-PR check is reusable source authorization, not a one-time or
-consumed credential. It authorizes only the reviewed source boundary. It does
-not bootstrap a host identity, authorize dispatch, apply the map, or establish
-a successful production result; those remain separately authorized and
-validated Risk A actions.
-
-The run must reproduce two stable pre-apply snapshots with the exact candidate
-above before backup or mutation. A successful apply must produce this
-aggregate Identity Gate:
-
-```yaml
-runtime_count: 36
-mapped_count: 36
-missing: 0
-stale: 46
-changed: 0
-missing_material: 0
-retention_state: pending
-state: degraded
-```
-
-The runner creates a protected local backup, replaces only the approved map,
-waits for a bounded natural timer-driven observation, and restores the backup
-on any post-apply or observation failure. It never manually invokes or restarts
-the collector. The fixed helper invocation never receives `--status-path`, so
-dry-run, apply, rollback validation, and failure handling cannot write producer
-status outside the protected-map backup boundary. The acceptance read uses a
-fresh timer/service snapshot after the candidate observation. `stale=46`
-remains unresolved; success must not be reported as identity healthy or
-retention complete.
-
-Closeout is mandatory after either apply or rollback. The forced command must
-perform and verify **host authorization revocation** for only its marked key and
-remove its Gate-owned temporary material. A separately authorized GitHub
-mutation must then perform **GitHub secret deletion** for all five temporary
-Environment connection secrets and read back name absence. Until both readbacks
-succeed, the operation is incomplete and no later `control-plane-app` canary
-Gate may be submitted.
+This retirement does not authorize dispatch and does not modify
+`vultr-japan-production`, Secrets, host credentials, services, runtime
+configuration, or provider state. Restoring either file alone is not a
+reactivation procedure. Any future lane requires fresh read-only inventory, a
+new immutable artifact and source-to-runtime review, a dry-run, an explicit
+rollback plan, and a new exact Risk A approval.
 
 ## Future Production Promotion Gate
 
