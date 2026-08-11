@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-08-09, America/Los_Angeles.
+Last updated: 2026-08-11, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-08-09
+  last_verified_at: 2026-08-11
   production_authority: false
 ```
 
@@ -24,7 +24,8 @@ runbooks, and fixed-cadence reports belong under `docs/archive/` with index
 pointers instead of competing with current runbooks in the root docs directory.
 Before importing anything from old local checkouts, worktrees, archive
 directories, generated artifacts, or release packages, read
-`docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md` and keep current source,
+`docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`. Before choosing archive or
+destruction, read `docs/MASTER_ARCHIVE_BOUNDARY.md`. Keep current source,
 historical reference, and runtime material separated.
 
 ## Document Metadata Contract
@@ -80,7 +81,7 @@ release, deployment, runtime, or production authority.
 | `docs/CURRENT_RELEASE_STATE.md` | Compact documented snapshot of each release unit, unresolved production lineage, and master-only capabilities after Version Management Baseline v1. | Active release-state entrypoint; dated repository evidence only, not live inventory or execution authority. | Read first when resuming the project, then verify live before any Risk A action. |
 | `docs/PROJECT_CONTEXT.md` | Compact current handoff, active blockers, documented production snapshot, validation baseline, and latest durable next-step context. | Active current-state handoff; not the full docs index or execution-history archive. | Read first when resuming the repo or before changing project direction, then use this index for detailed docs navigation and execution records. |
 | `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` | Current docs/status baseline for the Vultr Japan control plane and Vultr Japan/Singapore data-plane direction, with explicit no-mutation boundaries. | Active docs/status baseline; no execution authority and not a replacement for live inventory or execution records. | Read before aligning current project direction, preparing a new Risk A gate, or replacing stale Aliyun-current wording. |
-| `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md` | Current checkout, historical local paths, generated-runtime folders, README update rule, and re-import guardrails for keeping outdated material out of the active project. | Active repository hygiene boundary; no production, cloud, deploy, secret, runtime, or file-move authority by itself. | Read before using old checkouts, `docs/archive/`, `.worktrees/`, generated outputs, release packages, or previous execution artifacts as source material. |
+| `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md` | Current checkout, historical local paths, generated-runtime folders, README update rule, and re-import guardrails for keeping outdated material out of the active project. | Active local source/archive boundary; no production, cloud, deploy, secret, runtime, or file-move authority by itself. | Read before using old checkouts, `docs/archive/`, `.worktrees/`, generated outputs, release packages, or previous execution artifacts as source material. Use `docs/MASTER_ARCHIVE_BOUNDARY.md` for disposition decisions. |
 | `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md` | Current Git/docs closeout index after the July 8/9 focused PRs, local worktree cleanup, stale branch deletion, and remote head cleanup. | Active repo-hygiene index; no production, runtime, deploy, provider, credential, payment, or file-move authority by itself. | Read before deciding whether old carrier branches, local worktrees, or July 8 closeout notes still represent current Git state. |
 | `docs/FOUNDATION_FREEZE_2026_07_09.md` | Phase foundation freeze before the operating-lifecycle and AppsFlyer/attribution scale-up lanes. | Active phase-freeze boundary; no production, runtime, deploy, provider, credential, payment, AppsFlyer live, or file-move authority by itself. | Read before starting next-phase lifecycle, attribution, release/versioning, Admin/User Portal, or extension/plugin-boundary work. |
 | `RELEASE_MANIFEST.md` | Stable source, artifact, release-unit, deployment, and runtime-state model, with a dated source-governance boundary. | Active traceability baseline; no deployment or runtime authority. | Read before assigning a release, building an artifact, promoting any unit, or inferring production state from `master`. |
@@ -135,7 +136,7 @@ makes no current claim about them.
 | `docs/DOMAIN_UNIT_BOUNDARIES.md` | Domain-unit boundary model separating product business, commercial entitlement, subscription access, edge nodes, local client, validation, operator lab, and production operations. | Active architecture boundary; no execution authority. | Read before mixing business, commercial, node, CI, HP Relay, Local Edge Agent, or production-ops responsibilities in one task. |
 | `docs/units/README.md` | Per-unit design index for Product Business, Commercial / Entitlement, Subscription Access Control, Edge / Node Capacity, Local Client, Validation / CI, Operator Lab, and Production Operations. | Active unit design index; no execution authority. | Read when assigning a task to one primary unit or checking a unit-specific interface. |
 | `docs/PROJECT_SIMPLIFICATION_MAP.md` | Project simplification map for product spine, active lanes, cleanup queue, code-inventory candidates, and stop-doing boundaries. | Active simplification map; no execution authority. | Read before slimming docs, classifying modules, or deciding whether a new idea belongs on the main product path. |
-| `docs/MASTER_ARCHIVE_BOUNDARY.md` | Boundary for what belongs on `master`, what should move to archive, what must stay out of Git, and how release/runtime state should be referenced. | Active repository hygiene policy; no production or file-move authority by itself. | Read before moving historical docs, archiving stale workspaces, slimming current context, or adding release-manifest tooling. |
+| `docs/MASTER_ARCHIVE_BOUNDARY.md` | Canonical DDD policy for what belongs on `master` and how an exact `DispositionCase` reaches `KEEP_ACTIVE`, `ON_HOLD`, `QUARANTINE`, `ARCHIVE`, `RETIRE_SOURCE`, or `DESTROY`. | Active repository-hygiene and records-disposition policy; it defines decisions, invariants, receipts, and risk floors but grants no archive, deletion, provider, runtime, or production authority. | Read before moving or deleting historical docs, source, workflows, runs, artifacts, evidence, stale workspaces, generated residue, or sensitive material. |
 | `docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md` | Minimal local operator/developer environment boundary: local checkout, local backend/UI, safe CLI previews, optional manual validation, production observation, and release mode. | Active environment boundary; no production authority. | Read before adding dev tooling, CI lanes, release tooling, local operator workflows, or cloud-backed development assumptions. |
 | `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md` | Boundary for importing a redacted, versionable view of live server project shape before deeper code refactoring. | Active import boundary; server inspection/copy remains Risk A. | Read before SSH/Cloud Assistant/rsync/scp inventory, importing service/Nginx/release metadata, or comparing live server layout with repository source. |
 | `docs/SERVER_IMPORT_MANIFEST_2026_06_01.md` | Redacted server import manifest and drift matrix derived from the approved 2026-06-01 Aliyun read-only inventory. | Active import-planning manifest; no production authority. | Read before claiming live/local release parity, resolving package/template drift, or deciding which server templates are already represented in Git. |
