@@ -1,15 +1,50 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import {
+
+const CANONICAL_URL = new URL("../services/deployment/canonical-json.mjs", import.meta.url);
+const SCANNER_URL = new URL("../services/deployment/strict-json-scan.mjs", import.meta.url);
+const canonicalSource = readFileSync(CANONICAL_URL, "utf8").replace(/\r\n/g, "\n");
+const scannerSource = readFileSync(SCANNER_URL, "utf8").replace(/\r\n/g, "\n");
+assert.equal(
+  createHash("sha256").update(canonicalSource).digest("hex"),
+  "a6183ec26b92debd486ee1ce43532f37f62acf77cef68a2917a5188635f0fb23"
+);
+assert.equal(
+  createHash("sha256").update(scannerSource).digest("hex"),
+  "c3ed625964b61ff43dc91ad688e04c4459220aa4094c2b6e3d76795decf9d010"
+);
+const canonicalJson = await import(CANONICAL_URL.href);
+const strictJsonScan = await import(SCANNER_URL.href);
+const {
   parseCanonicalJsonBytes,
   serializeCanonicalJsonBytes,
   sha256Hex
-} from "../services/deployment/canonical-json.mjs";
+} = canonicalJson;
+
+test("canonical JSON module namespace is exactly the three bootstrap exports", () => {
+  assert.deepEqual(Object.keys(canonicalJson).sort(), [
+    "parseCanonicalJsonBytes",
+    "serializeCanonicalJsonBytes",
+    "sha256Hex"
+  ]);
+  assert.deepEqual(Object.keys(strictJsonScan), ["assertNoDuplicateObjectKeys"]);
+  const source = readFileSync(
+    new URL("../services/deployment/canonical-json.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.doesNotMatch(source, /INLINE_RUNTIME|createCanonicalJsonInlineRuntimeFixture/);
+  assert.equal(
+    sha256Hex(Buffer.from("abc", "utf8")),
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  );
+});
 
 const METADATA_CONTRACT = Object.freeze({
   schemaId: "foundation-fixture-metadata-v1",
   maxBytes: 128,
-  fieldOrder: ["owner", "enabled"],
+  fieldOrder: Object.freeze(["owner", "enabled"]),
   nested: Object.freeze({}),
   arrays: Object.freeze({}),
   validate(value) {
@@ -21,7 +56,7 @@ const METADATA_CONTRACT = Object.freeze({
 const CHECK_CONTRACT = Object.freeze({
   schemaId: "foundation-fixture-check-v1",
   maxBytes: 256,
-  fieldOrder: ["checkId", "metadata", "tags"],
+  fieldOrder: Object.freeze(["checkId", "metadata", "tags"]),
   nested: Object.freeze({ metadata: METADATA_CONTRACT }),
   arrays: Object.freeze({
     tags: Object.freeze({ elementType: "string" })
@@ -37,7 +72,7 @@ const CHECK_CONTRACT = Object.freeze({
 const PROFILE_CONTRACT = Object.freeze({
   schemaId: "foundation-fixture-profile-v1",
   maxBytes: 128,
-  fieldOrder: ["name", "generation"],
+  fieldOrder: Object.freeze(["name", "generation"]),
   nested: Object.freeze({}),
   arrays: Object.freeze({}),
   validate(value) {
@@ -49,7 +84,7 @@ const PROFILE_CONTRACT = Object.freeze({
 const CONTRACT = Object.freeze({
   schemaId: "foundation-fixture-v1",
   maxBytes: 2048,
-  fieldOrder: ["schemaVersion", "logicalId", "count", "profile", "checks", "labels"],
+  fieldOrder: Object.freeze(["schemaVersion", "logicalId", "count", "profile", "checks", "labels"]),
   nested: Object.freeze({
     profile: PROFILE_CONTRACT,
     "check-v1": CHECK_CONTRACT
@@ -128,7 +163,13 @@ test("deep object key permutations produce the same exact bytes", () => {
 
 test("accepts only the exact canonical bytes", () => {
   const canonical = serializeCanonicalJsonBytes(validValue(), CONTRACT);
-  assert.deepEqual(parseCanonicalJsonBytes(canonical, CONTRACT), validValue());
+  const parsed = parseCanonicalJsonBytes(canonical, CONTRACT);
+  assert.deepEqual(parsed, validValue());
+  assert.equal(Object.isFrozen(parsed), true);
+  assert.equal(Object.isFrozen(parsed.profile), true);
+  assert.equal(Object.isFrozen(parsed.checks), true);
+  assert.equal(Object.isFrozen(parsed.checks[0]), true);
+  assert.equal(Object.isFrozen(parsed.labels), true);
   assert.throws(
     () => parseCanonicalJsonBytes(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), canonical]), CONTRACT),
     /canonical_json_bom_forbidden/
@@ -210,4 +251,171 @@ test("rejects dense-array, nested-contract, scalar, and byte-limit violations", 
   );
   const tooSmall = Object.freeze({ ...CONTRACT, maxBytes: 8 });
   assert.throws(() => serializeCanonicalJsonBytes(valid, tooSmall), /foundation-fixture-v1_too_large/);
+});
+
+test("contracts are exact, recursively frozen data-only descriptors", () => {
+  const unfrozen = {
+    ...CONTRACT,
+    fieldOrder: [...CONTRACT.fieldOrder]
+  };
+  assert.throws(
+    () => serializeCanonicalJsonBytes(validValue(), unfrozen),
+    /canonical_json_contract_invalid/
+  );
+  const withExtra = Object.freeze({ ...CONTRACT, authority: true });
+  assert.throws(
+    () => serializeCanonicalJsonBytes(validValue(), withExtra),
+    /canonical_json_contract_invalid/
+  );
+  const accessor = {};
+  Object.defineProperties(accessor, {
+    schemaId: { enumerable: true, get: () => CONTRACT.schemaId },
+    maxBytes: { enumerable: true, value: CONTRACT.maxBytes },
+    fieldOrder: { enumerable: true, value: CONTRACT.fieldOrder },
+    nested: { enumerable: true, value: CONTRACT.nested },
+    arrays: { enumerable: true, value: CONTRACT.arrays },
+    validate: { enumerable: true, value: CONTRACT.validate }
+  });
+  Object.freeze(accessor);
+  assert.throws(
+    () => serializeCanonicalJsonBytes(validValue(), accessor),
+    /canonical_json_contract_invalid/
+  );
+  const prototypeFieldContract = Object.freeze({
+    schemaId: "foundation-prototype-field-v1",
+    maxBytes: 128,
+    fieldOrder: Object.freeze(["__proto__"]),
+    nested: Object.freeze({}),
+    arrays: Object.freeze({}),
+    validate() {}
+  });
+  const prototypeFieldValue = {};
+  Object.defineProperty(prototypeFieldValue, "__proto__", {
+    enumerable: true,
+    value: "forbidden"
+  });
+  assert.throws(
+    () => serializeCanonicalJsonBytes(prototypeFieldValue, prototypeFieldContract),
+    /canonical_json_contract_invalid/
+  );
+  let elementTypeReads = 0;
+  const statefulArrayDescriptor = {};
+  Object.defineProperty(statefulArrayDescriptor, "elementType", {
+    enumerable: true,
+    get() {
+      elementTypeReads += 1;
+      return elementTypeReads === 1 ? "string" : "number";
+    }
+  });
+  Object.freeze(statefulArrayDescriptor);
+  const statefulArrayContract = Object.freeze({
+    ...CONTRACT,
+    arrays: Object.freeze({ ...CONTRACT.arrays, labels: statefulArrayDescriptor })
+  });
+  assert.throws(
+    () => serializeCanonicalJsonBytes({ ...validValue(), labels: [1.5] }, statefulArrayContract),
+    /foundation-fixture-v1_labels_array_contract_invalid/
+  );
+  let fieldReads = 0;
+  const statefulFieldOrder = ["count"];
+  Object.defineProperty(statefulFieldOrder, "0", {
+    enumerable: true,
+    get() {
+      fieldReads += 1;
+      return fieldReads === 1 ? "count" : "__proto__";
+    }
+  });
+  Object.freeze(statefulFieldOrder);
+  const statefulFieldContract = Object.freeze({
+    schemaId: "foundation-stateful-field-v1",
+    maxBytes: 128,
+    fieldOrder: statefulFieldOrder,
+    nested: Object.freeze({}),
+    arrays: Object.freeze({}),
+    validate() {}
+  });
+  assert.throws(
+    () => serializeCanonicalJsonBytes({ count: 1 }, statefulFieldContract),
+    /canonical_json_contract_invalid/
+  );
+});
+
+test("contract validators cannot mutate the structurally checked canonical value", () => {
+  const scalarMutation = Object.freeze({
+    schemaId: "foundation-mutating-scalar-v1",
+    maxBytes: 128,
+    fieldOrder: Object.freeze(["count"]),
+    nested: Object.freeze({}),
+    arrays: Object.freeze({}),
+    validate(value) {
+      value.count = 1.5;
+    }
+  });
+  const fieldMutation = Object.freeze({
+    ...scalarMutation,
+    schemaId: "foundation-mutating-field-v1",
+    validate(value) {
+      value.extra = true;
+    }
+  });
+  assert.throws(
+    () => serializeCanonicalJsonBytes({ count: 1 }, scalarMutation),
+    /canonical_json_contract_mutation/
+  );
+  assert.throws(
+    () => serializeCanonicalJsonBytes({ count: 1 }, fieldMutation),
+    /canonical_json_contract_mutation/
+  );
+});
+
+test("instance method shadowing cannot bypass byte or array validation", () => {
+  const canonical = serializeCanonicalJsonBytes(validValue(), CONTRACT);
+  const noncanonical = Buffer.from(
+    canonical.toString("utf8").replace(
+      '{"schemaVersion":"1","logicalId":"alpha"',
+      '{"logicalId":"alpha","schemaVersion":"1"'
+    ),
+    "utf8"
+  );
+  Object.defineProperty(noncanonical, "equals", {
+    value: () => true,
+    enumerable: false
+  });
+  assert.throws(
+    () => parseCanonicalJsonBytes(noncanonical, CONTRACT),
+    /canonical_json_bytes_mismatch/
+  );
+
+  const labels = ["stable"];
+  Object.defineProperty(labels, "map", {
+    value: () => [1.5],
+    enumerable: false
+  });
+  assert.throws(
+    () => serializeCanonicalJsonBytes({ ...validValue(), labels }, CONTRACT),
+    /foundation-fixture-v1_labels_array_invalid/
+  );
+
+  const checks = [null];
+  Object.defineProperty(checks, "map", {
+    value: () => [validValue().checks[0]],
+    enumerable: false
+  });
+  assert.throws(
+    () => serializeCanonicalJsonBytes({ ...validValue(), checks }, CONTRACT),
+    /foundation-fixture-v1_checks_array_invalid/
+  );
+
+  class SpeciesArray extends Array {
+    static get [Symbol.species]() {
+      return class PoisonedResult extends Array {
+        toJSON() { return [1.5]; }
+      };
+    }
+  }
+  const subclassLabels = new SpeciesArray("stable");
+  assert.throws(
+    () => serializeCanonicalJsonBytes({ ...validValue(), labels: subclassLabels }, CONTRACT),
+    /foundation-fixture-v1_labels_array_invalid/
+  );
 });

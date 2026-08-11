@@ -1,14 +1,70 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-import {
+const EXPECTED_CONTROLLER_SHA256 = "533e79ac416aad41d19cc6a7f501a6c79542257d56597508ddb79a94a30b75dd";
+const EXPECTED_CANONICAL_SHA256 = "a6183ec26b92debd486ee1ce43532f37f62acf77cef68a2917a5188635f0fb23";
+const EXPECTED_SCANNER_SHA256 = "c3ed625964b61ff43dc91ad688e04c4459220aa4094c2b6e3d76795decf9d010";
+const CONTROLLER_URL = new URL("../../scripts/control-plane-foundation-toolchain-inventory.mjs", import.meta.url);
+const CANONICAL_URL = new URL("../services/deployment/canonical-json.mjs", import.meta.url);
+const SCANNER_URL = new URL("../services/deployment/strict-json-scan.mjs", import.meta.url);
+
+function sha256Hex(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function assertClosedInventoryController(rawSource) {
+  const source = rawSource.replace(/\r\n/g, "\n");
+  assert.equal(sha256Hex(source), EXPECTED_CONTROLLER_SHA256);
+  assert.doesNotMatch(source, /node:(?:child_process|http|https|net|tls|dgram)/);
+  assert.doesNotMatch(source, /\b(?:spawn|spawnSync|exec|execFile|fork|fetch)\s*\(/);
+  assert.doesNotMatch(source, /(?:upload|publish|release|package|podman|\bdocker\s+)/i);
+  assert.doesNotMatch(source, /\b(?:eval|Function)\s*\(|globalThis\s*\[|process\s*\.\s*getBuiltinModule\b/);
+  assert.match(source, /process\.platform !== "linux" \|\| process\.arch !== "x64"/);
+  const fsImport = source.match(/import \{([\s\S]*?)\} from "node:fs";/);
+  assert.ok(fsImport);
+  assert.deepEqual(
+    fsImport[1].split(",").map((entry) => entry.trim()).filter(Boolean).sort(),
+    ["lstatSync", "readFileSync", "readdirSync", "realpathSync"]
+  );
+  assert.doesNotMatch(source, /node:fs\/promises|\bimport\s*\(/);
+  assert.doesNotMatch(source, /\b(?:appendFile|chmod|copyFile|mkdir|open|rename|rm|unlink|writeFile)\w*\s*\(/);
+  assert.deepEqual(
+    [...source.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((match) => match[1]).sort(),
+    [
+      "CONTROL_PLANE_FOUNDATION_CONTAINER_IMAGE",
+      "CONTROL_PLANE_INVENTORY_SOURCE_COMMIT"
+    ]
+  );
+}
+
+const [controllerSource, canonicalSource, scannerSource] = await Promise.all([
+  readFile(CONTROLLER_URL, "utf8"),
+  readFile(CANONICAL_URL, "utf8"),
+  readFile(SCANNER_URL, "utf8")
+]);
+assertClosedInventoryController(controllerSource);
+assert.equal(sha256Hex(canonicalSource.replace(/\r\n/g, "\n")), EXPECTED_CANONICAL_SHA256);
+assert.equal(sha256Hex(scannerSource.replace(/\r\n/g, "\n")), EXPECTED_SCANNER_SHA256);
+
+const controllerModule = await import(CONTROLLER_URL.href);
+assert.deepEqual(Object.keys(controllerModule), [
+  "FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE",
+  "FOUNDATION_TOOLCHAIN_PLATFORM",
+  "FOUNDATION_TOOL_ROLES",
+  "buildToolchainInventoryEvidence",
+  "collectFoundationToolchainInventory",
+  "parseToolchainInventoryBytes",
+  "serializeToolchainInventoryLine"
+]);
+const {
   buildToolchainInventoryEvidence,
   FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE,
   FOUNDATION_TOOLCHAIN_PLATFORM,
   FOUNDATION_TOOL_ROLES,
   serializeToolchainInventoryLine
-} from "../../scripts/control-plane-foundation-toolchain-inventory.mjs";
+} = controllerModule;
 
 function evidenceInput(overrides = {}) {
   return {
@@ -139,7 +195,34 @@ test("inventory controller has no execution, network, or publication primitive",
     new URL("../../scripts/control-plane-foundation-toolchain-inventory.mjs", import.meta.url),
     "utf8"
   );
-  assert.doesNotMatch(source, /node:(?:child_process|http|https|net|tls|dgram)/);
-  assert.doesNotMatch(source, /\b(?:spawn|spawnSync|exec|execFile|fork|fetch)\s*\(/);
-  assert.doesNotMatch(source, /(?:upload|publish|release|package|podman|\bdocker\s+)/i);
+  assertClosedInventoryController(source);
+
+  for (const fault of [
+    `${source}\nglobalThis["fetch"]("https://example.invalid");\n`,
+    `${source}\neval("process.exit(0)");\n`,
+    `${source}\nprocess["getBuiltinModule"]("node:child_process");\n`
+  ]) {
+    assert.throws(() => assertClosedInventoryController(fault));
+  }
+});
+
+test("inventory builder ignores shadowed array methods and binds the actual dense role rows", () => {
+  const input = evidenceInput();
+  const roles = input.toolRoles.map((entry) => ({ ...entry }));
+  Object.defineProperty(roles, "map", {
+    value: () => Array.prototype.map.call(
+      roles,
+      (entry) => ({ ...entry, sha256: "a".repeat(64) })
+    ),
+    enumerable: false
+  });
+  Object.defineProperty(roles, "some", {
+    value: () => false,
+    enumerable: false
+  });
+  const evidence = buildToolchainInventoryEvidence({ ...input, toolRoles: roles });
+  assert.deepEqual(
+    evidence.toolRoles,
+    input.toolRoles
+  );
 });

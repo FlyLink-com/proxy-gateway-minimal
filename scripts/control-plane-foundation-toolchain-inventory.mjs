@@ -56,6 +56,36 @@ function assertSha256(value, code) {
   if (typeof value !== "string" || !SHA256_PATTERN.test(value)) throw new Error(code);
 }
 
+function canonicalizeToolRoles(toolRoles) {
+  if (!Array.isArray(toolRoles) || toolRoles.length !== FOUNDATION_TOOL_ROLES.length) {
+    throw new Error("foundation_toolchain_inventory_role_order_invalid");
+  }
+  const canonical = [];
+  for (let index = 0; index < toolRoles.length; index += 1) {
+    if (!Object.hasOwn(toolRoles, index)) {
+      throw new Error("foundation_toolchain_inventory_role_order_invalid");
+    }
+    const entry = toolRoles[index];
+    if (entry === null
+        || typeof entry !== "object"
+        || Array.isArray(entry)
+        || Object.getPrototypeOf(entry) !== Object.prototype
+        || Object.keys(entry).length !== 2
+        || Object.keys(entry)[0] !== "role"
+        || Object.keys(entry)[1] !== "sha256"
+        || typeof entry.role !== "string"
+        || entry.role !== FOUNDATION_TOOL_ROLES[index]) {
+      throw new Error("foundation_toolchain_inventory_role_order_invalid");
+    }
+    assertSha256(entry.sha256, "foundation_toolchain_inventory_role_invalid");
+    canonical.push(Object.freeze({ role: entry.role, sha256: entry.sha256 }));
+  }
+  if (new Set(canonical.map(({ sha256 }) => sha256)).size !== canonical.length) {
+    throw new Error("foundation_toolchain_inventory_duplicate_tool_bytes");
+  }
+  return Object.freeze(canonical);
+}
+
 const TOOL_ROLE_CONTRACT = frozenContract(
   "control_plane_foundation_toolchain_inventory_role_v1",
   ["role", "sha256"],
@@ -191,21 +221,13 @@ export function buildToolchainInventoryEvidence({
   if (containerImage !== FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE) {
     throw new Error("foundation_toolchain_inventory_container_invalid");
   }
-  if (!Array.isArray(toolRoles)
-      || toolRoles.length !== FOUNDATION_TOOL_ROLES.length
-      || toolRoles.some(({ role }, index) => role !== FOUNDATION_TOOL_ROLES[index])) {
-    throw new Error("foundation_toolchain_inventory_role_order_invalid");
-  }
-  for (const { sha256 } of toolRoles) assertSha256(sha256, "foundation_toolchain_inventory_role_invalid");
-  if (new Set(toolRoles.map(({ sha256 }) => sha256)).size !== toolRoles.length) {
-    throw new Error("foundation_toolchain_inventory_duplicate_tool_bytes");
-  }
+  const canonicalToolRoles = canonicalizeToolRoles(toolRoles);
   assertSha256(headersTreeSha256, "foundation_toolchain_inventory_headers_digest_invalid");
   assertSha256(workflowSha256, "foundation_toolchain_inventory_workflow_digest_invalid");
   if (typeof sourceCommit !== "string" || !SOURCE_COMMIT_PATTERN.test(sourceCommit)) {
     throw new Error("foundation_toolchain_inventory_source_commit_invalid");
   }
-  const toolRolesSha256 = digestToolRoles(toolRoles);
+  const toolRolesSha256 = digestToolRoles(canonicalToolRoles);
   const candidateClosureSha256 = sha256Hex(Buffer.from([
     "control-plane-foundation-toolchain-closure-v2",
     FOUNDATION_TOOLCHAIN_CONTAINER_MANIFEST_SHA256,
@@ -231,7 +253,7 @@ export function buildToolchainInventoryEvidence({
     nodeVersion,
     nodeModuleAbi,
     nodeApiVersion,
-    toolRoles: Object.freeze(toolRoles.map((entry) => Object.freeze({ ...entry }))),
+    toolRoles: canonicalToolRoles,
     toolRolesSha256,
     headersTreeSha256,
     candidateClosureSha256
@@ -250,7 +272,9 @@ export function parseToolchainInventoryBytes(bytes) {
 }
 
 export function collectFoundationToolchainInventory({ sourceCommit }) {
-  if (process.platform !== "linux") throw new Error("foundation_toolchain_inventory_linux_required");
+  if (process.platform !== "linux" || process.arch !== "x64") {
+    throw new Error("foundation_toolchain_inventory_linux_x64_required");
+  }
   const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const workflowFile = join(repositoryRoot, WORKFLOW_PATH);
   assertRegularNoSymlink(workflowFile, "foundation_toolchain_inventory_workflow_invalid");
