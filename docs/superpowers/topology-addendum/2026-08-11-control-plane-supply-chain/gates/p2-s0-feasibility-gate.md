@@ -3,7 +3,7 @@
 ```yaml
 phase: P2-S0 preparation
 previous_phase: P2-D
-status: P2-S0 Gate published / Route A BLOCKED_INPUT / Route B design preparation current / P2-S not started
+status: P2-S0 Gate published / Route A BLOCKED_INPUT / Route B design Gate published / FX2-E Gate preparation current / P2-S not started
 risk_class: A
 risk_state: controlled
 record_state: repository_gate_definition
@@ -40,10 +40,12 @@ still filled only one of fourteen selectors and retained `BLOCKED_INPUT`; no
 raw byte was read and no workflow or GitHub write occurred. This closes the
 current Route A evidence snapshot without rewriting it as global absence.
 
-The current work item is a docs-only Route B generation-design Gate. It may
-describe a future producer, but it cannot create source, grant permissions,
-dispatch a workflow, generate a fixture, or fill this parent's target-fixture
-input.
+PR #609 published the docs-only Route B generation-design Gate at merge
+`a413f636267a3b0fcfc65f7b911fa50f6cd95ea4` without granting it. The
+current work item is the child FX2-E protected-Environment Settings Gate. It may
+define a future Settings mutation, but it cannot perform that mutation, create
+source, grant permissions, dispatch a workflow, generate a fixture, or fill this
+parent's target-fixture input.
 
 ## Milestone Record
 
@@ -54,8 +56,9 @@ input.
 | Existing target fixture manifest | Not established; current output `BLOCKED_INPUT` |
 | P2-S0-FX1 Route A Gate publication | Complete; PR #608 merged at `6d6a0a19`; Gate not granted |
 | Route A preflight | Terminal snapshot `BLOCKED_INPUT`; 1/14 selectors filled; no raw-byte read or write |
-| P2-S0-FX2 Route B design Gate | Docs-only preparation current; decision not granted |
-| Route B protected Environment Settings | Not started; separate approval/readback required before source merge |
+| P2-S0-FX2 Route B design Gate | Published through PR #609 at `a413f636`; decision not granted; current output `BLOCKED_INPUT` |
+| P2-S0-FX2-E protected Environment Settings Gate | Docs-only preparation current; Settings mutation not authorized |
+| Route B protected Environment Settings execution | Not started; separate exact Risk A approval/readback required before source merge |
 | Route B producer source | Not started; separate approval required |
 | Route B generation execution | Not started; separate one-shot approval required |
 | Route B workflow retirement | Not started; separate source PR and no-extra-run readback required before custody |
@@ -82,12 +85,12 @@ work.
 ## Current Authority
 
 The current authorization permits only preparation and review of the docs-only
-[Route B target-fixture-generation design Gate](p2-s0-target-fixture-generation-gate.md).
-It does not permit source or workflow creation, dependency/Action selection,
-permission change, fixture acquisition or generation, dispatch, custody
-handoff, or any activity in the future P2-S scope below. The unchanged runtime
-remains stopped at `full_sigstore_owner_topology_unapproved`, and Option 1
-remains active.
+[FX2-E protected-Environment Settings Gate](p2-s0-target-fixture-generation-environment-settings-gate.md).
+It does not permit the Settings mutation, source or workflow creation,
+dependency/Action selection, permission change, fixture acquisition or
+generation, dispatch, custody handoff, or any activity in the future P2-S scope
+below. The unchanged runtime remains stopped at
+`full_sigstore_owner_topology_unapproved`, and Option 1 remains active.
 
 ## Proposed P2-S Scope After A Separate Approval
 
@@ -256,12 +259,16 @@ Option 1 active, and the existing hard stop unchanged. Closeout must verify:
 
 PR #605 published this parent Gate without granting it. PR #608 published the
 Route A FX1 definition, and its completed preflight remains `BLOCKED_INPUT`.
-The next document is the
-[P2-S0-FX2 target-fixture-generation design Gate](p2-s0-target-fixture-generation-gate.md).
-It grants no source, permission, generation, dispatch, or handoff authority.
+PR #609 published the
+[P2-S0-FX2 target-fixture-generation design Gate](p2-s0-target-fixture-generation-gate.md)
+without granting it. The next document is the
+[P2-S0-FX2-E protected-Environment Settings Gate](p2-s0-target-fixture-generation-environment-settings-gate.md).
+It grants no Settings, source, permission, generation, dispatch, or handoff
+authority.
 
-Route B remains serial: publish the design Gate; separately create/read back a
-dedicated protected Environment; separately review and approve producer source;
+Route B remains serial: publish the design Gate; publish the FX2-E definition;
+separately create/read back the dedicated protected Environment; separately
+review and approve producer source;
 separately approve exactly one generation execution; merge a separately
 reviewed workflow-retirement PR and prove zero extra runs; and then separately
 approve a Route B-marked read-only custody handoff. Environment enforcement and

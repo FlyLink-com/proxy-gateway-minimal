@@ -1,10 +1,10 @@
 # Security Hardening Review: Control-Plane Supply-Chain Topology
 
 > Status:
-> - Type: Topology Addendum with Route A blocked and Route B design-only Gate preparation current
+> - Type: Topology Addendum with Route A blocked, Route B design Gate published, and FX2-E Settings Gate preparation current
 > - Risk: A
-> - Process: G0 selected; P2-D completed through PR #603; P2-S0 Gate published through PR #605; Route A Gate published through PR #608 and preflight retained BLOCKED_INPUT; Route B design-only Gate preparation current; P2-S not started
-> - Expected PR count: 1 docs-only PR for this Gate; Route B protected-Environment Settings, producer source, one-shot generation, source retirement, custody handoff, and P2-S require separate approvals
+> - Process: G0 selected; P2-D completed through PR #603; P2-S0 Gate published through PR #605; Route A Gate published through PR #608 and preflight retained BLOCKED_INPUT; Route B design Gate published through PR #609; FX2-E docs-only Settings Gate preparation current; P2-S not started
+> - Expected PR count: 1 docs-only PR for this Gate; Route B protected-Environment Settings execution, producer source, one-shot generation, source retirement, custody handoff, and P2-S require separate approvals
 > - Validation: Evidence hashes, document authority, project-state, JSON, diagrams, links, targeted documentation regression, and diff checks
 > - Production/AWS impact: None
 > - Production authority: False
@@ -35,15 +35,18 @@ evidence records no observed producer or target fixture and leaves external
 custody `not_established`. Separate evidence binds PR #608 to FX1 publication
 at `6d6a0a197e89706d4de591f0d8cbecaef18df2c1`; the later Route A preflight
 still filled only one of fourteen selectors and retained `BLOCKED_INPUT`.
-Current plan/repository readback satisfies the documented Enterprise plan
-prerequisite for private attestations, while open Draft PR #594 exposes a
-competing producer/Release design that blocks any positive Route B source
-readiness. None of these receipts rewrites the frozen design inputs or grants
-source, generation, custody, acquisition, or P2-S.
+Separate evidence binds PR #609 to FX2 design publication at
+`a413f636267a3b0fcfc65f7b911fa50f6cd95ea4`. The later FX2-E preflight found
+the dedicated Environment absent, current retention `90/90`, and zero target-
+Environment/OIDC/attestation references. Current plan/repository readback
+satisfies the documented Enterprise plan prerequisite, while open Draft PR #594
+exposes a competing producer/Release design that blocks any positive Route B
+source readiness. None of these receipts rewrites the frozen design inputs or
+grants Settings, source, generation, custody, acquisition, or P2-S.
 The machine-readable option and tradeoff map is [hardening.json](hardening.json).
 
-Six facts shape the next decision. PR #600 is merged but remains dormant and
-hard-stopped. PRs #605 and #608 published Gate definitions only. Route A still
+Seven facts shape the next decision. PR #600 is merged but remains dormant and
+hard-stopped. PRs #605, #608, and #609 published Gate definitions only. Route A still
 has no established fixture custody. The Enterprise plan prerequisite is
 currently satisfied, but no private attestation has been generated. Official
 guidance recommends `actions/attest`, whose successful run writes to the GitHub
@@ -59,9 +62,10 @@ Settings, and production decisions.
 ## Constraints
 
 - G0 selected only the topology direction, P2-D is complete, PR #605 published
-  the parent Gate, and PR #608 published the Route A child Gate without
-  granting either. Current authority permits only docs-only Route B generation-
-  design Gate preparation. It does not authorize source/workflow creation,
+  the parent Gate, PR #608 published the Route A child Gate, and PR #609
+  published the Route B design Gate without granting any of them. Current
+  authority permits only docs-only FX2-E Environment Settings Gate preparation.
+  It does not authorize a Settings mutation, source/workflow creation,
   Action or dependency selection, fixture acquisition/download/generation,
   custody handoff, P2-S, a profile decision, canonical reconciliation, owner
   implementation, P2-I/P3, Release, Settings, dispatch, staging, host access,
@@ -71,9 +75,22 @@ Settings, and production decisions.
   separate read-only custody handoff.
 - A merged manual workflow with `id-token: write` and `attestations: write` is
   a callable surface, not dormant. Before source readiness can pass, reviewers
-  must separately establish/read back the protected Environment; after the run,
-  a separate source-retirement merge and no-extra-run readback are mandatory
-  before custody. Neither control substitutes for the other.
+  must separately establish/read back the protected Environment under the FX2-E
+  Gate; after the run, a separate source-retirement merge and no-extra-run
+  readback are mandatory before custody. Neither control substitutes for the
+  other.
+- FX2-E requires custom exact `master/type=branch` policy, one exact User
+  reviewer controlled by a human independent from the future dispatch actor,
+  self-review prevention, `can_admins_bypass=false`, and zero Environment
+  secrets, variables, custom protection Apps, and Deployments. Automatic
+  Environment deletion is not an approved rollback.
+- The current workflow manifest has three fixed Environment bindings and zero
+  dynamic/caller-controlled selectors. FX2-E must freeze the complete binding
+  manifest, bind an after-reader distinct from the Settings operator, and obtain
+  an expected actor/target/window platform audit receipt before positive output.
+  `PARTIAL_ENVIRONMENT_INERT_REQUIRES_SEPARATE_SETTINGS_GATE` is valid only for
+  the exact readable custom-mode, zero-policy, zero-consumer/write subset; every
+  broader or ambiguous state is `NO_GO_OPTION1`.
 - `actions/attest` success, a GitHub API download, or online verification cannot
   replace the exact offline official-verifier oracle.
 - We prefer a minimal repository-owned boundary with no Redis, queue, cluster,
@@ -102,16 +119,17 @@ Settings, and production decisions.
 
 | Opportunity | Evidence | Options | Recommendation | Proposal |
 | --- | --- | --- | --- | --- |
-| Unify supply-chain authority before publication | Topology evidence `E01`–`E13` plus publication, Route A preflight, eligibility, and conflict receipts `E14`–`E19` | 1. Permanent No-Go; 2. In-repo trust kernel; 3. Hermetic owner appliance; 4. External verification broker | Keep the G0 Option 2 direction, keep P2-S0 at `BLOCKED_INPUT`, prepare the Route B design Gate, require separate source/generation/lifecycle/custody decisions, and retain Option 1 until P2-S and a later profile decision succeed | [Control-plane supply-chain authority](proposals/unify-supply-chain-authority.md) |
+| Unify supply-chain authority before publication | Topology evidence `E01`–`E13` plus publication, Route A preflight, eligibility, conflict, and FX2-E receipts `E14`–`E21` | 1. Permanent No-Go; 2. In-repo trust kernel; 3. Hermetic owner appliance; 4. External verification broker | Keep the G0 Option 2 direction, keep P2-S0 at `BLOCKED_INPUT`, prepare the FX2-E Settings Gate, require separate Settings/source/generation/lifecycle/custody decisions, and retain Option 1 until P2-S and a later profile decision succeed | [Control-plane supply-chain authority](proposals/unify-supply-chain-authority.md) |
 
 ## Recommendation Summary
 
 On 2026-08-11, the operator selected **Option 2 for the G0 topology direction
 only** and later completed the **P2-D docs-only governance loop through merged
-PR #603**. **PR #605 published the P2-S0 Gate and PR #608 published the Route A
-FX1 Gate without granting either; Route A preflight remains `BLOCKED_INPUT`,
-Route B design-only Gate preparation is current, P2-S has not started, and
-Option 1 remains active.** PR #600 remains the approved exact-11 dormant
+PR #603**. **PR #605 published the P2-S0 Gate, PR #608 published the Route A
+FX1 Gate, and PR #609 published the Route B FX2 design Gate without granting
+them; Route A preflight remains `BLOCKED_INPUT`, FX2-E Settings Gate preparation
+is current, P2-S has not started, and Option 1 remains active.** PR #600 remains
+the approved exact-11 dormant
 checkpoint. These records do not authorize producer source, Action selection,
 fixture acquisition or generation, lifecycle enforcement, custody handoff,
 P2-S, a private-profile decision, canonical reconciliation, owner source, P3,
@@ -155,13 +173,15 @@ Gate input or earned-value claim.
 5. `P2-S0-FX1` (published, not granted; Route A snapshot blocked): PR #608
    published [the Route A child Gate](gates/p2-s0-target-fixture-acquisition-gate.md),
    and the later preflight retained `BLOCKED_INPUT` with 1/14 selectors filled;
-6. `P2-S0-FX2` (current, docs-only preparation): define Route B producer,
+6. `P2-S0-FX2` (published, not granted): PR #609 published Route B producer,
    subject, permissions, custody, one-shot lifecycle, and failure semantics in
    [the generation-design Gate](gates/p2-s0-target-fixture-generation-gate.md);
-7. `P2-S0-FX2-E` (not authorized): separately create/read back the exact
-   dedicated protected Environment with reviewer, no-self-review, protected-
-   master, `can_admins_bypass=false`, no-secret/variable, no-custom-protection-
-   App, and Actions-retention evidence;
+7. `P2-S0-FX2-E` (current, docs-only preparation; Settings not authorized):
+   publish [the protected-Environment Settings Gate](gates/p2-s0-target-fixture-generation-environment-settings-gate.md),
+   then separately create/read back the exact dedicated Environment with one
+   independent-human User reviewer, no-self-review, custom exact `master`
+   branch policy, `can_admins_bypass=false`, zero secrets/variables/custom
+   protection Apps/Deployments, and unchanged Actions-retention evidence;
 8. `P2-S0-FX2-S` (not authorized): after PR #594 is closed without merge and
    fresh exact binding, separately review one producer workflow and one contract
    test bound to that Environment, then read back exact PR/merge automatic runs,
@@ -206,8 +226,9 @@ only profile proposal from silently becoming owner or publication authority.
 The G0 topology direction is selected, P2-D is complete, and the P2-S0 Gate is
 published but not granted. Route A is published and terminally
 `BLOCKED_INPUT` for its current snapshot; the Route B generation-design Gate is
-prepared locally for review, and P2-S remains not started. Reviewers still need
-to decide, but not implement or execute, the following:
+published but not granted, FX2-E is prepared locally for review, and P2-S
+remains not started. Reviewers still need to decide, but not implement or
+execute, the following:
 
 - Select no candidate-verifier package, version, trust snapshot, owner path, or
   implementation API until P2-S evidence is complete and a separate profile/
@@ -218,9 +239,19 @@ to decide, but not implement or execute, the following:
   anti-equivocation is acceptable for `github_private_rfc3161_v1`; current
   preparation does not accept that residual risk.
 - Review the
-  [Route B generation-design Gate](gates/p2-s0-target-fixture-generation-gate.md).
-  Publishing it still does not authorize source, Action selection, permissions,
-  generation, dispatch, custody, or P2-S.
+  [FX2-E protected-Environment Settings Gate](gates/p2-s0-target-fixture-generation-environment-settings-gate.md).
+  Publishing it still does not authorize the Settings mutation, source, Action
+  selection, permissions, generation, dispatch, custody, or P2-S.
+- Before any FX2-E write, bind exact redacted Settings-operator, future-dispatch-
+  actor, independent-human reviewer, request/UI/branch-policy, execution-window,
+  no-retry, and readback selectors. Use custom exact `master/type=branch`, not
+  `protected_branches=true`. Only the exact proven fail-closed partial subset is
+  inert; deletion is a separate destructive Gate.
+- Bind the reviewer as the independent after-reader, distinct from the Settings
+  operator and future dispatch actor. Recheck all three approved static
+  Environment bindings and zero dynamic selectors. Positive closeout also needs
+  an expected actor/target/window platform audit receipt; audit delay is pending,
+  not success.
 - Before any source readiness result, close competing Draft PR #594 without
   merge, read back its state/head, refresh exact master/workflow/package/lock/
   Gate bindings, freeze the two-path source scope, and review every Action by
@@ -262,9 +293,9 @@ to decide, but not implement or execute, the following:
 - Leave `vultr-japan-production` unchanged until main source reconciliation and
   disposable/compatibility staging are complete.
 
-Because P2-D completion, P2-S0/FX1 publication, Route A preflight, and Route B
-design preparation authorize no source or execution change, the unchanged
-merged implementation continues to emit legacy hard-stop code
+Because P2-D completion, P2-S0/FX1/FX2 publication, Route A preflight, and FX2-E
+Gate preparation authorize no Settings, source, or execution change, the
+unchanged merged implementation continues to emit legacy hard-stop code
 `full_sigstore_owner_topology_unapproved`. This docs-only turn performs zero
 external write. A future approved `actions/attest` generation run would instead
 have exact GitHub API/artifact writes and could not claim scratch-only cleanup.
