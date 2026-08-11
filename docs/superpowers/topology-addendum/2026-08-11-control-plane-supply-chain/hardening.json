@@ -12,7 +12,34 @@
   },
   "assessment": {
     "outcome": "opportunities_identified",
-    "summary": "G0 selects the single in-repository owner as the topology direction. P2-D now prepares a GitHub-private RFC3161 candidate profile and P2-S experiment design only; Option 1 remains active, and no experiment, profile, implementation, or external-Gate authority is granted."
+    "summary": "G0 selects the single in-repository owner as the topology direction. P2-D completed its docs-only governance loop at PR #603; P2-S0 Gate preparation is current and P2-S has not started. Option 1 remains active, and no experiment, profile, implementation, or external-Gate authority is granted."
+  },
+  "phaseRecord": {
+    "phase": "P2-S0 preparation",
+    "previousPhase": "P2-D",
+    "status": "P2-D completed / P2-S not started",
+    "risk": "controlled_docs_only_preparation",
+    "overallProgressEstimate": {
+      "lowerPercent": 50,
+      "upperPercent": 60,
+      "basis": "governance-weighted planning estimate after P2-D merge",
+      "gateEffect": "none"
+    }
+  },
+  "phaseCompletionEvidence": {
+    "phase": "P2-D",
+    "evidenceId": "E13",
+    "kind": "redacted_json_compact",
+    "sha256": "57f6fec97b80c8be221d3403d50e9831365f74a9cb681a1fc77e8de427b857e0",
+    "repositoryRevision": "d7e2ab8364bb51f6e6dd8e7d499eb4d61a83635f",
+    "baseRevision": "9ebc08492af170a470182ba827da052fa41b81b2",
+    "approvedHeadRevision": "16e0bd3095fd5d7a68410ef2fa5fd5877814e77a",
+    "mergeTree": "6182df7a32479924aaba49cecd9a5fb170cb3690",
+    "approvedHeadTree": "6182df7a32479924aaba49cecd9a5fb170cb3690",
+    "changedPathCount": 7,
+    "changedPathsSha256": "e78f34a7ad239c26912c5357d5d7523ae5050c895f54ee62099ecf62cd86ff64",
+    "unresolvedReviewThreadCount": 0,
+    "sourceEvidenceCollectionUnchanged": true
   },
   "decision": {
     "gateId": "G0",
@@ -42,15 +69,19 @@
   },
   "profileAmendment": {
     "amendmentId": "p2-d-github-private-rfc3161-v1",
-    "recordState": "prepared_for_review",
+    "recordState": "repository_profile_amendment_record",
+    "p2dStatus": "complete",
     "candidateProfileId": "github_private_rfc3161_v1",
+    "candidateProfileSelectionStatus": "unselected_pending_p2s_and_g0r",
     "applicability": "github_private_repository_attestations_only",
-    "operatorAuthorization": "docs_only_profile_preparation_and_experiment_design",
+    "operatorAuthorization": "docs_only_p2d_completion_and_p2s0_gate_preparation",
     "profileDecisionAuthorized": false,
     "canonicalReconciliationAuthorized": false,
     "experimentDesignAuthorized": true,
     "experimentExecutionAuthorized": false,
     "fixtureGenerationAuthorized": false,
+    "p2s0GatePreparationAuthorized": true,
+    "p2s0GateDecisionAuthorized": false,
     "dependencySelectionAuthorized": false,
     "implementationAuthorized": false,
     "executionAuthorized": false,
@@ -101,17 +132,67 @@
       "caller-selectable root, TSA, time, policy, profile, or threshold",
       "normal and inline runtime drift",
       "runtime filesystem, environment, package-discovery, or network dependency",
+      "official verifier oracle unavailable, failing, or inconsistent with the candidate mapping",
+      "raw private or scratch bytes remain after cleanup readback",
       "canonical-contract reconciliation not separately approved"
     ],
+    "p2s0Gate": {
+      "status": "draft_prepared_for_review",
+      "gateDecision": "not_granted",
+      "packagePath": "gates/p2-s0-feasibility-gate.md",
+      "currentAuthority": "docs_only_gate_preparation",
+      "requiredInputClassCount": 8,
+      "requiredInputClassIds": [
+        "source_manifest",
+        "target_private_fixture",
+        "timestamp_evidence",
+        "certificate_and_trust_evidence",
+        "expected_identity",
+        "candidate_verifier_closure",
+        "build_and_isolation_manifest",
+        "official_verifier_oracle"
+      ],
+      "officialVerifierOracleRequired": true,
+      "futureP2SScopeIfSeparatelyApproved": [
+        "read-only verifier evaluation",
+        "fixture validation",
+        "dependency inspection",
+        "local reproducibility testing in an isolated scratch environment"
+      ],
+      "notAuthorized": [
+        "fixture generation or acquisition",
+        "P2-S execution",
+        "source integration",
+        "runtime dependency or lockfile change",
+        "workflow or permission change",
+        "Settings or Release change",
+        "dispatch",
+        "staging, Environment, host, or production access"
+      ],
+      "readinessOutputs": [
+        "READY_FOR_SEPARATE_P2S_APPROVAL",
+        "BLOCKED_INPUT",
+        "REDESIGN_PROFILE",
+        "NO_GO_OPTION1"
+      ],
+      "forbiddenOutputs": [
+        "P2_GREEN",
+        "IMPLEMENTATION_AUTHORIZED",
+        "PUBLICATION_AUTHORIZED"
+      ]
+    },
     "p2sDesign": {
-      "status": "design_only_not_executed",
+      "status": "design_recorded_not_started",
       "inputStatus": "blocked_missing_target_workflow_private_fixture",
       "requiredInputClasses": [
         "exact commit/tree/path/blob and Node-image source manifest",
-        "raw GitHub-private trusted-root bytes and capture metadata",
-        "real target-repository target-workflow bundle, subject bytes, and expected identity",
+        "real target-repository target-workflow private bundle plus exact subject bytes, digests, and name",
+        "RFC3161 token bytes, digest, timestamped-byte derivation, message imprint, TSA chain, and time constraints",
+        "signing certificate chain plus raw GitHub-private trusted-root bytes, digest, counts, and capture metadata",
+        "exact issuer, repository, direct workflow, ref, source SHA, event, runner, predicate, and subject expectations",
+        "exact official verifier version, distribution digest, provenance, offline closure, invocation, and normalized oracle contract",
         "bounded candidate-verifier transitive closure, licenses, provenance, SBOM, and vulnerability snapshot",
-        "bounded offline build-candidate closure"
+        "bounded offline build and isolation manifest with clean roots, cache/temp, network denial, thresholds, and cleanup readback"
       ],
       "isolationRequirements": [
         "git archive exact commit into scratch outside every checkout",
@@ -119,7 +200,8 @@
         "task-local cache and temp only",
         "no credentials, ambient environment, runtime package discovery, network, image pull, or repository write",
         "three clean build paths and fresh-process normal-inline comparison",
-        "validated scratch-only cleanup with repository and global-cache no-drift receipt"
+        "candidate-official-oracle agreement on root, CA, TSA, bundle arm, timestamped bytes, subject, and identity",
+        "validated scratch-only cleanup with all raw/scratch bytes absent and repository/global-cache no-drift receipt"
       ],
       "proposedResourceThresholds": {
         "bundleBytesMax": 4194304,
@@ -154,7 +236,7 @@
       "separate_external_gates"
     ],
     "nonNegotiables": [
-      "This P2-D preparation and P2-S design have no experiment, implementation, or production authority.",
+      "P2-D completion and P2-S0 Gate preparation have no experiment, implementation, or production authority.",
       "Foundation and Artifact consume one owner with a module-private brand.",
       "The candidate private profile never claims Rekor, CT or SCT verification, public transparency, or global anti-equivocation.",
       "The active canonical full-Sigstore contract is not replaced until a separate profile decision and canonical reconciliation are approved.",
@@ -274,6 +356,14 @@
           "title": "GitHub private-attestation and trusted-root summary",
           "path": "context.md",
           "claim": "GitHub documents no transparency log for private attestations; the current root output has a no-tlog/no-ctlog line with six certificate authorities and six timestamp authorities, but no real target bundle proves the applicable RFC3161 binding."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E13",
+          "title": "Merged PR #603 P2-D closeout summary",
+          "path": "context.md",
+          "claim": "PR #603 completed the seven-file P2-D governance loop with verified merge provenance and successful post-merge validation, but produced no fixture, feasibility result, owner, or runtime authority."
         }
       ],
       "desiredInvariants": [
@@ -310,7 +400,8 @@
             { "evidenceId": "E09", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The live Settings gap remains but cannot affect a nonexistent formal deployment path." },
             { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Merged PR #600 remains an exact dormant checkpoint and supplies no owner or publication authority." },
             { "evidenceId": "E11", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The permanent hard stop prevents diagnostic promotion and a self-verifying bootstrap cycle." },
-            { "evidenceId": "E12", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The hard stop avoids claiming transparency or signed-time properties that have not been proven for the private profile." }
+            { "evidenceId": "E12", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The hard stop avoids claiming transparency or signed-time properties that have not been proven for the private profile." },
+            { "evidenceId": "E13", "effect": "addresses", "tacticalFixRequired": true, "rationale": "P2-D governance completion does not alter the active hard stop or create feasibility evidence." }
           ],
           "tradeoffs": [
             {
@@ -388,7 +479,8 @@
             { "evidenceId": "E09", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Production Settings are deferred to a distinct post-staging Gate with admin bypass disabled and read back." },
             { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 is already merged as the separately approved dormant checkpoint; no owner or publication authority was added." },
             { "evidenceId": "E11", "effect": "addresses", "tacticalFixRequired": true, "rationale": "One independently bootstrapped owner resolves duplicated authority while serial ordering breaks the cycle." },
-            { "evidenceId": "E12", "effect": "unknown", "tacticalFixRequired": true, "rationale": "The proposed private profile requires P2-S to prove a real RFC3161/Fulcio success path and quantify the missing public-transparency property before selection." }
+            { "evidenceId": "E12", "effect": "unknown", "tacticalFixRequired": true, "rationale": "The proposed private profile requires P2-S to prove a real RFC3161/Fulcio success path and quantify the missing public-transparency property before selection." },
+            { "evidenceId": "E13", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The completed P2-D record allows a bounded P2-S0 Gate package while leaving feasibility, profile selection, and implementation unapproved." }
           ],
           "tradeoffs": [
             {
@@ -469,7 +561,8 @@
             { "evidenceId": "E09", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Production Settings remain a post-staging readback Gate." },
             { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 stays dormant and separate from the appliance owner." },
             { "evidenceId": "E11", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "One appliance centralizes verification, but authority must stay in fixed consume operations rather than serialized receipts." },
-            { "evidenceId": "E12", "effect": "unknown", "tacticalFixRequired": true, "rationale": "Process isolation does not restore transparency; the same private-profile evidence and residual-risk decision remain necessary." }
+            { "evidenceId": "E12", "effect": "unknown", "tacticalFixRequired": true, "rationale": "Process isolation does not restore transparency; the same private-profile evidence and residual-risk decision remain necessary." },
+            { "evidenceId": "E13", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "P2-D completion records the candidate profile but does not select the appliance topology or authorize a spike." }
           ],
           "tradeoffs": [
             {
@@ -548,7 +641,8 @@
             { "evidenceId": "E09", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Production Settings remain a later post-staging readback Gate." },
             { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 remains a dormant checkpoint separate from broker-client activation." },
             { "evidenceId": "E11", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Central policy serves both consumers, but authority becomes a signed network capability under a new trust model." },
-            { "evidenceId": "E12", "effect": "unknown", "tacticalFixRequired": true, "rationale": "A broker could add a new transparency model only through a separately approved topology and privacy decision; it cannot inherit an unproven private profile." }
+            { "evidenceId": "E12", "effect": "unknown", "tacticalFixRequired": true, "rationale": "A broker could add a new transparency model only through a separately approved topology and privacy decision; it cannot inherit an unproven private profile." },
+            { "evidenceId": "E13", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "P2-D completion does not approve an external broker or any cross-network authority." }
           ],
           "tradeoffs": [
             {
@@ -608,7 +702,7 @@
         }
       ],
       "recommendedOptionId": "in-repo-unified-owner",
-      "recommendation": "G0 retains the in-repository owner as the topology direction. P2-D prepares github_private_rfc3161_v1 only as a candidate and P2-S only as an unexecuted experiment design. The permanent hard stop remains active until real private-bundle feasibility, an explicit security-profile decision, canonical reconciliation, and a separate owner implementation authorization all succeed."
+      "recommendation": "G0 retains the in-repository owner as the topology direction. P2-D is complete as a repository profile-amendment record; P2-S0 Gate preparation is current, the candidate github_private_rfc3161_v1 remains unselected, and P2-S has not started. The permanent hard stop remains active until real private-bundle feasibility, an explicit security-profile decision, canonical reconciliation, and a separate owner implementation authorization all succeed."
     }
   ],
   "openQuestions": [

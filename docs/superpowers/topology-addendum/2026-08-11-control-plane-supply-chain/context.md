@@ -1,23 +1,25 @@
 # Control-Plane Supply-Chain Topology Addendum: Evidence Context
 
 > Status:
-> - Type: Derived design-review evidence inventory with P2-D profile proposal prepared
+> - Type: Derived design-review evidence inventory with P2-D complete and P2-S0 Gate preparation current
 > - Risk: A
-> - Process: Read-only evidence -> G0 topology selection -> P2-D proposal -> separately authorized P2-S execution -> later explicit profile and implementation decisions
-> - Expected PR count: This docs-only P2-D preparation plus three future source PR checkpoints under the selected topology direction; P2-S is an isolated experiment, not a source PR
+> - Process: Read-only evidence -> G0 topology selection -> P2-D complete -> P2-S0 Gate preparation -> separately authorized P2-S execution -> later explicit profile and implementation decisions
+> - Expected PR count: This docs-only P2-S0 Gate package plus three future source PR checkpoints under the selected topology direction; P2-S is an isolated experiment, not a source PR
 > - Validation: Evidence hashes, document authority, project-state check, JSON parse, Mermaid source review, and diff check
 > - Production/AWS impact: None
 > - Production authority: False
 > - Execution authority: None
-> - Target revision: `9ebc08492af170a470182ba827da052fa41b81b2`
-> - Evidence collection SHA-256: `fc34014aff12217b2e0386346b2ed98bb767b5688be79917dd80d0a841aadeaa`
+> - Frozen P2-D design-evidence revision: `9ebc08492af170a470182ba827da052fa41b81b2`
+> - Frozen P2-D design-evidence collection SHA-256: `fc34014aff12217b2e0386346b2ed98bb767b5688be79917dd80d0a841aadeaa`
+> - P2-D completion revision: `d7e2ab8364bb51f6e6dd8e7d499eb4d61a83635f`
 
 This directory is a derived and revisable design product. It does not amend the
 canonical production-deploy design, approve a dependency or package, modify a
 GitHub setting, authorize P2-S execution or fixture generation, implement a
 verification owner, publish an artifact, dispatch a workflow, or authorize
-staging or production access. The P2-D material prepared here is a candidate
-profile amendment for review. Until a later explicit profile decision and
+staging or production access. PR #603 completed the P2-D governance loop and
+made this candidate amendment a repository record; it did not select the
+candidate profile or prove feasibility. Until a later explicit profile decision and
 canonical cross-document reconciliation, the existing full-Sigstore/Rekor/CT
 requirements and the current runtime hard stop remain authoritative.
 
@@ -25,11 +27,11 @@ requirements and the current runtime hard stop remain authoritative.
 
 - Active repository: `D:\Projects\proxy-gateway-minimal`
 - Isolated analysis worktree:
-  `D:\Projects\proxy-gateway-minimal\.worktrees\p2-private-attestation-profile`
-- Analysis branch: `docs/p2-private-attestation-profile`
+  `D:\Projects\proxy-gateway-minimal\.worktrees\p2-s0-gate-package`
+- Analysis branch: `docs/p2-s0-gate-package`
 - Source drift at capture: none between local `origin/master` and remote
   `refs/heads/master`
-- Capture time: `2026-08-11T12:38:13Z`
+- Capture time: `2026-08-11T14:49:53Z`
 - Source evidence mode: repository documents plus redacted, read-only GitHub
   configuration summaries
 
@@ -53,6 +55,7 @@ read from the isolated exact-master worktree.
 | `E10` | Merged PR #600 summary | Redacted compact JSON; `3ccaaf16a2f2a1086b3d4d328ab236912fbcdf54f74763b09b13436292fd26cb` | PR #600 merged as the exact 11-file dormant checkpoint at `9ebc0849`; its successful checks and merge do not supply the missing owner or authorize publication. |
 | `E11` | Cross-document authority-cycle diagnosis | Derived from `E01`–`E04`; no separate source artifact | Promoting diagnostics or placing the owner inside its own lock/closure would violate the single-owner and independent-bootstrap invariants. |
 | `E12` | GitHub private-attestation and trusted-root summary | Official GitHub documentation plus redacted compact readback; `fbcb88ffb797ff9a8e08d81c5235eafc31077d5a4d11c065cfa521fd102edd14` | The repository is private; GitHub documents no transparency log for its private Sigstore instance; the current root output contains one no-tlog/no-ctlog line with six certificate authorities and six timestamp authorities. The applicable root and real bundle shape remain P2-S questions. |
+| `E13` | Merged PR #603 P2-D closeout summary | Redacted compact JSON; `57f6fec97b80c8be221d3403d50e9831365f74a9cb681a1fc77e8de427b857e0` | PR #603 merged the exact seven-path P2-D record with verified base/head parents, identical approved/merged trees, zero unresolved threads, and successful checks. Exact head/merge attribution recorded zero workflow dispatch and deployment; the post-merge Release Artifact run created Actions artifacts but no GitHub Release. |
 
 ## Redacted Live Configuration Summary
 
@@ -113,12 +116,33 @@ prove which exact root, certificate authority, timestamp authority, bundle arm,
 and timestamped bytes apply. Until then, no RFC3161, Fulcio, CT/SCT, Rekor, or
 private-profile success claim is available.
 
+## P2-D Governance Closeout Summary
+
+PR #603 completed P2-D at merge
+`d7e2ab8364bb51f6e6dd8e7d499eb4d61a83635f`. Its parents are exact base
+`9ebc08492af170a470182ba827da052fa41b81b2` and approved head
+`16e0bd3095fd5d7a68410ef2fa5fd5877814e77a`; both the merge commit and
+approved head resolve to tree `6182df7a32479924aaba49cecd9a5fb170cb3690`.
+The exact seven-path docs-only scope, zero unresolved threads, checks, and
+post-merge workflows were independently read back. Three Actions artifacts
+were created by the existing Release Artifact workflow, but it created no
+GitHub Release; no deployment or workflow dispatch was attributable to the
+approved head or merge SHA.
+
+This is governance completion, not feasibility evidence. P2-S has not started,
+no target fixture is available, and the candidate profile remains unselected.
+The next phase is the docs-only
+[P2-S0 Gate package](gates/p2-s0-feasibility-gate.md).
+
 ## Evidence Hash Profile And Collection Manifest
 
-Repository text evidence `E01`–`E08` uses profile `repo_text_lf`: decode the
-tracked blob as UTF-8, normalize CRLF to LF, retain the final LF, then SHA-256
-the resulting bytes. Redacted live evidence `E09`, `E10`, and `E12` uses profile
-`redacted_json_compact`: SHA-256 the exact one-line UTF-8 JSON bytes below,
+The P2-D design-input collection remains frozen exactly as reviewed at
+`master@9ebc08492af170a470182ba827da052fa41b81b2`; P2-D completion does not
+rewrite that historical input. Repository text evidence `E01`–`E08` uses
+profile `repo_text_lf`: decode the tracked blob as UTF-8, normalize CRLF to LF,
+retain the final LF, then SHA-256 the resulting bytes. Redacted design-input
+evidence `E09`, `E10`, and `E12` uses profile `redacted_json_compact`: SHA-256
+the exact one-line UTF-8 JSON bytes below,
 without a trailing LF. Keys appear in the fixed order shown; no identity,
 credential, URL, run ID, or reviewer login is retained.
 
@@ -140,10 +164,18 @@ credential, URL, run ID, or reviewer login is retained.
 {"captured_at":"2026-08-11T12:38:13Z","gh_version":"2.92.0","private_repository":true,"private_sigstore_transparency_log_documented":false,"root_0":{"certificate_authority_count":2,"ctlog_count":2,"sha256":"844a1c6de3986c9f02070266b25e0d1a2fa99ceccc89f6b9ad90aae47b62a16e","timestamp_authority_count":1,"tlog_count":2},"root_1":{"certificate_authority_count":6,"ctlog_count":0,"sha256":"f7a479f2bd2cc8d0389c74e99319a68524f3019d283d1c93d6de24362717012c","timestamp_authority_count":6,"tlog_count":0},"trusted_root_line_count":2}
 ```
 
+`E13` is separate P2-D phase-completion evidence, not an entry in the frozen
+design-input collection. Its canonical redacted bytes are:
+
+```json
+{"approved_head_tree":"6182df7a32479924aaba49cecd9a5fb170cb3690","base_ref_oid":"9ebc08492af170a470182ba827da052fa41b81b2","changed_path_count":7,"changed_paths":["docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/context.md","docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/diagrams/unify-supply-chain-authority-before.mmd","docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/diagrams/unify-supply-chain-authority-in-repo-unified-owner-after.mmd","docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/diagrams/unify-supply-chain-authority-permanent-no-go-after.mmd","docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/hardening.json","docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/hardening.md","docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/proposals/unify-supply-chain-authority.md"],"changed_paths_sha256":"e78f34a7ad239c26912c5357d5d7523ae5050c895f54ee62099ecf62cd86ff64","check_other_terminal_count":0,"check_skipped_count":1,"check_success_count":6,"head_or_merge_sha_workflow_dispatch_count":0,"head_ref_oid":"16e0bd3095fd5d7a68410ef2fa5fd5877814e77a","is_draft":false,"merge_commit":"d7e2ab8364bb51f6e6dd8e7d499eb4d61a83635f","merge_sha_deployment_count":0,"merge_tree":"6182df7a32479924aaba49cecd9a5fb170cb3690","number":603,"postmerge_ci_success":true,"postmerge_codeql_success":true,"postmerge_release_artifact_actions_artifact_count":3,"postmerge_release_artifact_github_release_count":0,"postmerge_release_artifact_success":true,"review_decision":"","state":"MERGED","unresolved_review_thread_count":0}
+```
+
 The collection digest is SHA-256 of the exact one-line UTF-8 JSON array below,
 without a trailing LF. Entries are sorted by `evidenceId`; object key order is
 fixed as shown. `E11` is a derived inference and is deliberately not a source
-artifact in this eleven-item collection.
+artifact in this eleven-item collection. `E13` is also deliberately excluded
+because it records the later completion of P2-D rather than an input to it.
 
 ```json
 [{"evidenceId":"E01","hashProfile":"repo_text_lf","label":"docs/superpowers/specs/2026-08-08-github-control-plane-production-deploy-design.md","sha256":"77547423d469bc8777a0fa98188292bdd37454c13d454dc586149eb4325cc262"},{"evidenceId":"E02","hashProfile":"repo_text_lf","label":"docs/superpowers/plans/2026-08-08-github-control-plane-production-deploy-implementation-program.md","sha256":"a110ebbd5d0430d0f20fe789e95548426019e94dad69e01abf089fc36378a9a6"},{"evidenceId":"E03","hashProfile":"repo_text_lf","label":"docs/superpowers/plans/2026-08-08-github-control-plane-foundation-and-linux-feasibility.md","sha256":"1c3e5101776a7e91df548c0d38ca50d49adc536d4391fa2cd3b52a04ab89565d"},{"evidenceId":"E04","hashProfile":"repo_text_lf","label":"docs/superpowers/plans/2026-08-08-github-control-plane-artifact-and-workflow.md","sha256":"d2c7cc78b7c6cadd7d8221f417e0152111d4a18cabaf8f5d24d8ad3232b34286"},{"evidenceId":"E05","hashProfile":"repo_text_lf","label":".github/workflows/production-deploy-dry-run.yml","sha256":"51394f59f4ba9bba10815299a70874322fff59d30002769ce06662332ece0b9b"},{"evidenceId":"E06","hashProfile":"repo_text_lf","label":".github/workflows/release-artifact.yml","sha256":"5cc83158c486682b7c175c14efbab6b704d56db7fbbbf4b66995ad1b6f06a202"},{"evidenceId":"E07","hashProfile":"repo_text_lf","label":".github/workflows/japan-runtime-config-additive-repair.yml","sha256":"42b01083e5eab95f8797e6c2cce04bc61714a5fbad76b6cab21f7d27819a6ff7"},{"evidenceId":"E08","hashProfile":"repo_text_lf","label":"AGENTS.md","sha256":"430ddf51a3cf61d1e0123938231f24b1f42f17c0284406a187b8a4c869f0b56e"},{"evidenceId":"E09","hashProfile":"redacted_json_compact","label":"live-environment-ruleset-summary","sha256":"ec0982fe564eadeddc6f7367d76fe2621f11dd004f4b5bbdccf20b9c45cfd432"},{"evidenceId":"E10","hashProfile":"redacted_json_compact","label":"live-pr-600-merged-summary","sha256":"3ccaaf16a2f2a1086b3d4d328ab236912fbcdf54f74763b09b13436292fd26cb"},{"evidenceId":"E12","hashProfile":"redacted_json_compact","label":"github-private-attestation-root-summary","sha256":"fbcb88ffb797ff9a8e08d81c5235eafc31077d5a4d11c065cfa521fd102edd14"}]
@@ -152,8 +184,8 @@ artifact in this eleven-item collection.
 ## Evidence Limitations
 
 - No external Sigstore dependency, package version, executable digest, trust
-  root set, CA/TSA/log key set, API, or repository path is approved by this
-  P2-D preparation.
+  root set, CA/TSA/log key set, API, or repository path is approved by P2-D
+  completion or this P2-S0 preparation.
 - `github_private_rfc3161_v1` is a candidate profile name, not a selected or
   implemented success profile. The observed root counts do not prove that a
   target-workflow bundle contains or correctly binds an RFC3161 timestamp.
