@@ -1,0 +1,15 @@
+flowchart LR
+  A["Dormant exact-11 bootstrap"] --> B["Pinned appliance source PR"]
+  B --> C["Reproducible owner appliance\nfixed executable or OCI digest"]
+  C --> D["Isolated bundle parsing and verification"]
+  D --> E["Fixed lock-consume operation"]
+  D --> F["Fixed artifact-consume operation"]
+  D --> K["Separate activation source PR"]
+  K --> L["Artifact-publication Settings Gate\npolicy readback before Release writes"]
+  L --> E
+  E --> G["Offline npm closure Gate"]
+  G --> H["Readback + clean-runner proof\nempty cache and network denied"]
+  F --> M
+  H --> M["New explicit Risk A resume approval"]
+  M --> I["Future main source-only Draft"]
+  J["Appliance build, registry, provenance, and rollback lifecycle"] -. "new operational boundary" .-> C
