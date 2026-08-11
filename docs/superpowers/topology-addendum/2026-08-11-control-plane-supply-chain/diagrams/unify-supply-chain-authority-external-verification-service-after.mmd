@@ -3,15 +3,14 @@ flowchart LR
   B --> C["Pinned client and receipt verifier"]
   D["Independent Sigstore verification broker"] --> E["Signed bounded verification admission"]
   E --> C
-  B --> L["Separate activation source PR"]
+  C --> L["Separate activation source PR"]
   L --> M["Artifact-publication Settings Gate\npolicy readback before Release writes"]
   M --> F["Immutable lock postverify"]
   C --> F
   C --> G["Artifact consumer cross-contract capability\nfuture assets still postverify separately"]
-  M --> H["Offline npm closure Gate"]
+  F --> H["Offline npm closure Gate"]
   H --> I["Readback + clean-runner proof\nempty cache and network denied"]
-  F --> N["New explicit Risk A resume approval"]
   G --> N
-  I --> N
+  I --> N["New explicit Risk A resume approval"]
   N --> J["Future main source-only Draft"]
   K["Service availability and signing-key operations"] -. "new trust boundary" .-> D

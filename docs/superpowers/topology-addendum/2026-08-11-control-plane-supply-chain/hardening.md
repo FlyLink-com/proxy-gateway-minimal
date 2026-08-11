@@ -82,9 +82,12 @@ The proposed future order is deliberately serial:
 2. refresh and separately approve PR #600 for a dormant hard-stopped merge;
 3. land an owner-only predecessor PR;
 4. land a supply-chain activation source PR;
-5. separately publish/postverify the immutable lock and publish/read back the
-   offline closure;
-6. grant a new Risk A source-resumption approval before a future main Draft.
+5. apply and read back the artifact-publication Settings Gate before any
+   Release write;
+6. publish and full-owner postverify the immutable lock;
+7. only after the lock Gate is GREEN, publish/read back the offline closure and
+   prove clean-runner consumption with an empty cache and network denied;
+8. grant a new Risk A source-resumption approval before a future main Draft.
 
 This ordering breaks the bootstrap cycle without placing the owner in a twelfth
 #600 file or dispatching a PR-branch publisher.

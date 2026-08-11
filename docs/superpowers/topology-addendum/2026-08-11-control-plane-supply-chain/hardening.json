@@ -461,10 +461,12 @@
     }
   ],
   "openQuestions": [
-    "Which mature Sigstore implementation, exact version, dependency closure, path, API, and trust snapshot should be pinned?",
-    "Can one source generate normal and inline runtimes without copied trust or policy?",
-    "How will trust-root and log-key validity, provenance, rotation, and rollback be governed?",
-    "What byte, latency, memory, disk, and closure-size limits are acceptable?",
-    "What immutable retention and independent readback guarantees are required for lock and closure assets?"
+    "Which mature implementation, exact version, transitive dependency set, executable or package digest, license, and security-update policy should the owner pin?",
+    "Can one source deterministically produce both normal ESM and no-checkout inline runtimes without copied trust/policy or `Function.toString()`?",
+    "How are Fulcio, Rekor, and CT trust snapshots versioned, expired, updated, provenance-checked, and rolled back without caller selection?",
+    "What exact byte caps and canonical contracts apply to bundle, statement, trust snapshot, lock, closure manifest, and verification evidence?",
+    "What retention and availability objectives apply to immutable lock and npm closure assets, and what independent storage evidence is required?",
+    "Does the future source ruleset need a nonzero independent review requirement, or will the durable Gate ledger plus Environment approvals remain the sole production authorization boundary?",
+    "Which measured latency, memory, and closure-size thresholds would make the appliance option preferable to the in-process owner?"
   ]
 }

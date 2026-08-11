@@ -7,12 +7,11 @@ flowchart LR
   Q --> F["Manual immutable-lock publication Gate"]
   F --> G["Foundation lock full-owner postverify"]
   G --> H["Private-branded verified Foundation toolchain"]
-  Q --> I["Manual offline npm closure Gate"]
+  H --> I["Manual offline npm closure Gate"]
   I --> J["Content/digest readback + zero-network consumer proof"]
   D --> K["Artifact consumer cross-contract tests"]
   K --> L["Future per-asset full-owner postverify capability"]
-  H --> M["New explicit Risk A resume approval"]
-  J --> M
+  J --> M["New explicit Risk A resume approval"]
   L --> M
   M --> N["Future main source-only Draft"]
   N --> O["Disposable staging and failure matrix"]
