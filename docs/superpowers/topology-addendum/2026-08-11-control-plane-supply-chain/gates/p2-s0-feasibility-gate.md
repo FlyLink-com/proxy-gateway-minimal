@@ -3,7 +3,7 @@
 ```yaml
 phase: P2-S0 preparation
 previous_phase: P2-D
-status: P2-S0 Gate published / target input blocked / P2-S not started
+status: P2-S0 Gate published / Route A BLOCKED_INPUT / Route B design preparation current / P2-S not started
 risk_class: A
 risk_state: controlled
 record_state: repository_gate_definition
@@ -34,6 +34,17 @@ custody manifest is present. The current input status is therefore
 `BLOCKED_INPUT`. This does not claim that an external fixture is globally
 absent; external custody remains unestablished until exact evidence is supplied.
 
+PR #608 published the Route A P2-S0-FX1 Gate at merge
+`6d6a0a197e89706d4de591f0d8cbecaef18df2c1`. Its later read-only preflight
+still filled only one of fourteen selectors and retained `BLOCKED_INPUT`; no
+raw byte was read and no workflow or GitHub write occurred. This closes the
+current Route A evidence snapshot without rewriting it as global absence.
+
+The current work item is a docs-only Route B generation-design Gate. It may
+describe a future producer, but it cannot create source, grant permissions,
+dispatch a workflow, generate a fixture, or fill this parent's target-fixture
+input.
+
 ## Milestone Record
 
 | Milestone | State |
@@ -41,7 +52,14 @@ absent; external custody remains unestablished until exact evidence is supplied.
 | P2-D profile amendment | Complete |
 | P2-S0 Gate package publication | Complete; PR #605 merged at `04695240` |
 | Existing target fixture manifest | Not established; current output `BLOCKED_INPUT` |
-| Target-fixture-acquisition Gate | Docs-only preparation current; decision not granted |
+| P2-S0-FX1 Route A Gate publication | Complete; PR #608 merged at `6d6a0a19`; Gate not granted |
+| Route A preflight | Terminal snapshot `BLOCKED_INPUT`; 1/14 selectors filled; no raw-byte read or write |
+| P2-S0-FX2 Route B design Gate | Docs-only preparation current; decision not granted |
+| Route B protected Environment Settings | Not started; separate approval/readback required before source merge |
+| Route B producer source | Not started; separate approval required |
+| Route B generation execution | Not started; separate one-shot approval required |
+| Route B workflow retirement | Not started; separate source PR and no-extra-run readback required before custody |
+| Route B custody handoff | Not started; generated evidence cannot be relabeled as Route A |
 | Docs-only scope control | Passed |
 | Merge provenance | Verified |
 | Exact base/head relationship | Verified |
@@ -64,10 +82,12 @@ work.
 ## Current Authority
 
 The current authorization permits only preparation and review of the docs-only
-[target-fixture-acquisition child Gate](p2-s0-target-fixture-acquisition-gate.md).
-It does not permit fixture acquisition, fixture generation, or any activity in
-the future P2-S scope below. The unchanged runtime remains stopped at
-`full_sigstore_owner_topology_unapproved`, and Option 1 remains active.
+[Route B target-fixture-generation design Gate](p2-s0-target-fixture-generation-gate.md).
+It does not permit source or workflow creation, dependency/Action selection,
+permission change, fixture acquisition or generation, dispatch, custody
+handoff, or any activity in the future P2-S scope below. The unchanged runtime
+remains stopped at `full_sigstore_owner_topology_unapproved`, and Option 1
+remains active.
 
 ## Proposed P2-S Scope After A Separate Approval
 
@@ -89,8 +109,8 @@ Even after P2-S authorization, the spike may not:
 - modify a package file, lockfile, repository ref, checkout, workflow, Actions
   permission, Settings, Release, Environment, staging target, host, or
   production resource;
-- generate or dispatch a fixture unless a separate fixture-acquisition Gate
-  explicitly authorizes that exact workflow and run;
+- generate or dispatch a fixture; those operations remain outside P2-S and
+  require their own separately approved Route B generation Gate;
 - use ambient credentials, environment discovery, global caches, network
   fallback, package fallback, or a newly pulled container image; or
 - emit an implementation, publication, source-resumption, staging, deployment,
@@ -196,7 +216,7 @@ not independently hashable. It returns exactly one of:
 | Output | Meaning | Next state |
 | --- | --- | --- |
 | `READY_FOR_SEPARATE_P2S_APPROVAL` | Readiness package is complete | Request a separate Risk A P2-S execution approval |
-| `BLOCKED_INPUT` | Required target input is absent or unavailable | Keep Option 1; resolve inputs or propose a separate fixture-acquisition Gate |
+| `BLOCKED_INPUT` | Required target input is absent or unavailable | Keep Option 1; resolve inputs, reopen Route A only with new custody evidence, or use separately gated Route B design/Environment/source/generation/retirement/custody stages |
 | `REDESIGN_PROFILE` | The proposed profile or acceptance contract is internally incompatible | Return to docs-only profile design and review |
 | `NO_GO_OPTION1` | Residual risk or engineering constraints are unacceptable | Keep Option 1 as the terminal hard stop |
 
@@ -234,10 +254,18 @@ Option 1 active, and the existing hard stop unchanged. Closeout must verify:
 
 ## Next Approval Boundary
 
-PR #605 published this parent Gate without granting it. The current missing
-fixture input keeps P2-S0 at `BLOCKED_INPUT`. The next document is the
-[P2-S0-FX1 target-fixture-acquisition Gate](p2-s0-target-fixture-acquisition-gate.md),
-which defines a future exact, read-only custody handoff but grants no
-acquisition. Only a later separately approved execution Gate may acquire one
-existing manifest-bound fixture. A fixture-ready receipt must return here for
-all-eight-input reevaluation; it cannot authorize P2-S directly.
+PR #605 published this parent Gate without granting it. PR #608 published the
+Route A FX1 definition, and its completed preflight remains `BLOCKED_INPUT`.
+The next document is the
+[P2-S0-FX2 target-fixture-generation design Gate](p2-s0-target-fixture-generation-gate.md).
+It grants no source, permission, generation, dispatch, or handoff authority.
+
+Route B remains serial: publish the design Gate; separately create/read back a
+dedicated protected Environment; separately review and approve producer source;
+separately approve exactly one generation execution; merge a separately
+reviewed workflow-retirement PR and prove zero extra runs; and then separately
+approve a Route B-marked read-only custody handoff. Environment enforcement and
+source retirement are both mandatory. Only the final content-addressed custody
+receipt may return here as the target-fixture input. The other seven inputs,
+including the exact offline official-verifier oracle, remain mandatory, and
+all-eight-input reevaluation cannot authorize P2-S directly.
