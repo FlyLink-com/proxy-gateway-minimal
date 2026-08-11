@@ -1,0 +1,66 @@
+name: Control Plane Foundation Toolchain Publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact PR-head commit from the reviewed v2 inventory run.
+        required: true
+        type: string
+      inventory_run_id:
+        description: Exact successful v2 inventory workflow run ID.
+        required: true
+        type: string
+      candidate_closure_sha256:
+        description: Exact reviewed v2 complete-closure digest.
+        required: true
+        type: string
+      confirmation:
+        description: Type publish Foundation toolchain lock
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: control-plane-foundation-toolchain-publication
+  cancel-in-progress: false
+
+jobs:
+  topology-preflight:
+    name: Stop until the full-Sigstore owner topology is approved
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    permissions: {}
+    steps:
+      - name: Stop before any authority
+        shell: bash
+        run: |
+          printf '%s\n' 'full_sigstore_owner_topology_unapproved' >&2
+          exit 2
+
+  publish:
+    name: Future immutable toolchain-lock publisher
+    needs: topology-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Owner remains unavailable after topology review
+        shell: bash
+        run: |
+          printf '%s\n' 'full_sigstore_owner_unavailable' >&2
+          exit 2
+
+  verify-publication:
+    name: Future read-only full-owner postverification
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Full-owner postverification remains unavailable
+        shell: bash
+        run: |
+          printf '%s\n' 'full_sigstore_owner_unavailable' >&2
+          exit 2
