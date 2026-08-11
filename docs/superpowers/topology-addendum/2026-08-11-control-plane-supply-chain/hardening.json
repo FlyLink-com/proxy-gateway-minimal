@@ -5,14 +5,14 @@
   "sourceEvidence": {
     "kind": "mixed_document_and_configuration_collection",
     "label": "Control-plane production design, workflows, PR boundary, and redacted GitHub policy readback",
-    "collectionSha256": "7d04a3e95d8d745fed8f4c86cf5045d85ac6429aefcd129b7023fded743e8eb1",
-    "artifactCount": 10,
-    "targetRevision": "9033f67f76573f9c5bccd17c3762a1608f1c4b9c",
+    "collectionSha256": "fc34014aff12217b2e0386346b2ed98bb767b5688be79917dd80d0a841aadeaa",
+    "artifactCount": 11,
+    "targetRevision": "9ebc08492af170a470182ba827da052fa41b81b2",
     "sourceDrift": "none"
   },
   "assessment": {
     "outcome": "opportunities_identified",
-    "summary": "G0 selects the single in-repository owner as the topology direction only; Option 1 remains the current active hard-stop fallback, and this decision grants no implementation or external-Gate authority."
+    "summary": "G0 selects the single in-repository owner as the topology direction. P2-D now prepares a GitHub-private RFC3161 candidate profile and P2-S experiment design only; Option 1 remains active, and no experiment, profile, implementation, or external-Gate authority is granted."
   },
   "decision": {
     "gateId": "G0",
@@ -40,6 +40,112 @@
       "source_or_runtime_eligibility"
     ]
   },
+  "profileAmendment": {
+    "amendmentId": "p2-d-github-private-rfc3161-v1",
+    "recordState": "prepared_for_review",
+    "candidateProfileId": "github_private_rfc3161_v1",
+    "applicability": "github_private_repository_attestations_only",
+    "operatorAuthorization": "docs_only_profile_preparation_and_experiment_design",
+    "profileDecisionAuthorized": false,
+    "canonicalReconciliationAuthorized": false,
+    "experimentDesignAuthorized": true,
+    "experimentExecutionAuthorized": false,
+    "fixtureGenerationAuthorized": false,
+    "dependencySelectionAuthorized": false,
+    "implementationAuthorized": false,
+    "executionAuthorized": false,
+    "fallbackOptionId": "permanent-no-go",
+    "fallbackState": "active_hard_stop",
+    "currentRuntimeStopCode": "full_sigstore_owner_topology_unapproved",
+    "candidateTransparencyModel": {
+      "publicArtifactTransparency": "absent",
+      "rekorVerificationClaim": false,
+      "certificateTransparencyClaim": false,
+      "globalAntiEquivocationClaim": false,
+      "repositoryLocalNoReplace": "future_p3_gates_only"
+    },
+    "candidateTimestampModel": {
+      "kind": "rfc3161",
+      "minimumVerifiedTimestampCount": 1,
+      "exactVerifiedTimestampCount": null,
+      "countPolicyStatus": "unproven_must_be_observed_by_p2s_and_frozen_by_g0r",
+      "rootAndTsaCallerSelectable": false,
+      "timestampedBytesDerivation": "must_be_proven_by_real_official_private_bundle",
+      "status": "unproven"
+    },
+    "requiredCommonVerification": [
+      "strict bounded bundle parsing",
+      "DSSE signature and exact payload binding",
+      "GitHub-private Fulcio chain and validity",
+      "RFC3161 signature, TSA chain, message imprint, and time-window binding",
+      "exact GitHub issuer, repository, direct workflow, ref, source SHA, event, and runner",
+      "exact predicate type and bytes",
+      "exactly one expected subject name and SHA-256",
+      "module-private operation-domain authority brand"
+    ],
+    "excludedClaims": [
+      "full-Sigstore",
+      "Rekor complete",
+      "CT or SCT verified",
+      "public transparency",
+      "global anti-equivocation",
+      "P2 eligibility",
+      "source or runtime authority"
+    ],
+    "stopConditions": [
+      "no real target-workflow GitHub-private positive bundle",
+      "no verifiable RFC3161 timestamp",
+      "ambiguous timestamped-bytes derivation",
+      "trusted-root or bundle shape mismatch",
+      "unexpected or unverifiable tlog or SCT material",
+      "caller-selectable root, TSA, time, policy, profile, or threshold",
+      "normal and inline runtime drift",
+      "runtime filesystem, environment, package-discovery, or network dependency",
+      "canonical-contract reconciliation not separately approved"
+    ],
+    "p2sDesign": {
+      "status": "design_only_not_executed",
+      "inputStatus": "blocked_missing_target_workflow_private_fixture",
+      "requiredInputClasses": [
+        "exact commit/tree/path/blob and Node-image source manifest",
+        "raw GitHub-private trusted-root bytes and capture metadata",
+        "real target-repository target-workflow bundle, subject bytes, and expected identity",
+        "bounded candidate-verifier transitive closure, licenses, provenance, SBOM, and vulnerability snapshot",
+        "bounded offline build-candidate closure"
+      ],
+      "isolationRequirements": [
+        "git archive exact commit into scratch outside every checkout",
+        "read-only inputs and repository export",
+        "task-local cache and temp only",
+        "no credentials, ambient environment, runtime package discovery, network, image pull, or repository write",
+        "three clean build paths and fresh-process normal-inline comparison",
+        "validated scratch-only cleanup with repository and global-cache no-drift receipt"
+      ],
+      "proposedResourceThresholds": {
+        "bundleBytesMax": 4194304,
+        "statementBytesMax": 65536,
+        "jsonDepthMax": 32,
+        "runtimeBytesMax": 8388608,
+        "warmVerifyP95MillisecondsMax": 500,
+        "coldStartAndVerifyP95MillisecondsMax": 2000,
+        "peakRssBytesMax": 268435456,
+        "warmRunCount": 100,
+        "warmRunRssGrowthBytesMax": 33554432,
+        "status": "hypotheses_requiring_review_before_execution"
+      },
+      "allowedDecisionOutputs": [
+        "GO_FOR_SEPARATE_PROFILE_REVIEW",
+        "BLOCKED_INPUT",
+        "REDESIGN_PROFILE",
+        "NO_GO_OPTION1"
+      ],
+      "forbiddenDecisionOutputs": [
+        "P2_GREEN",
+        "IMPLEMENTATION_AUTHORIZED",
+        "PUBLICATION_AUTHORIZED"
+      ]
+    }
+  },
   "constraints": {
     "profile": "minimal_fail_closed",
     "changeHorizons": [
@@ -48,8 +154,10 @@
       "separate_external_gates"
     ],
     "nonNegotiables": [
-      "This Draft has no implementation or production authority.",
+      "This P2-D preparation and P2-S design have no experiment, implementation, or production authority.",
       "Foundation and Artifact consume one owner with a module-private brand.",
+      "The candidate private profile never claims Rekor, CT or SCT verification, public transparency, or global anti-equivocation.",
+      "The active canonical full-Sigstore contract is not replaced until a separate profile decision and canonical reconciliation are approved.",
       "The owner does not depend on the lock or offline closure it later authorizes.",
       "Foundation lock completion never substitutes for per-asset Artifact verification.",
       "Lock and offline npm closure use separate publication and readback Gates.",
@@ -59,15 +167,16 @@
     "assumptions": [
       "No performance or memory budget was supplied.",
       "No mature Sigstore implementation, package version, path, API, trust snapshot, or pin has been selected.",
-      "The current exact-11 bootstrap remains dormant and hard-stopped."
+      "The exact-11 bootstrap is merged on protected master but remains dormant and hard-stopped.",
+      "No target-workflow GitHub-private attestation fixture is currently available, so P2-S cannot produce a positive decision without a separate fixture Gate or operator-provided hashed fixture."
     ]
   },
   "opportunities": [
     {
       "opportunityId": "unify-supply-chain-authority",
       "title": "Unify supply-chain authority before publication",
-      "summary": "Place one complete Sigstore authority before lock publication without duplicating trust or creating a self-verifying bootstrap cycle.",
-      "diagnosis": "Foundation and Artifact have safe diagnostic-only paths, but the retained PR topology has no protected-master owner capable of issuing a private authoritative result before immutable-lock publication.",
+      "summary": "Place one selected-profile authority before lock publication without duplicating trust, overstating private-attestation transparency, or creating a self-verifying bootstrap cycle.",
+      "diagnosis": "Foundation and Artifact have safe diagnostic-only paths and the exact-11 checkpoint is merged, but no protected-master owner exists. The canonical success contract also requires Rekor and CT/SCT properties that GitHub's documented private instance and current root readback do not expose.",
       "evidence": [
         {
           "claimType": "observed",
@@ -145,9 +254,9 @@
           "claimType": "observed",
           "sourceKind": "document",
           "evidenceId": "E10",
-          "title": "Live PR #600 summary",
+          "title": "Merged PR #600 summary",
           "path": "context.md",
-          "claim": "PR #600 is open, Draft, behind current master, exact 11 files, and cannot supply the missing owner."
+          "claim": "PR #600 merged as the exact 11-file dormant checkpoint at 9ebc0849 and still cannot supply the missing owner."
         },
         {
           "claimType": "inferred",
@@ -157,11 +266,21 @@
           "path": "context.md",
           "derivedFromEvidenceIds": ["E01", "E02", "E03", "E04"],
           "claim": "Promoting either diagnostic path or placing the owner inside its own lock/closure would violate the trust-owner and bootstrap-order invariants."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E12",
+          "title": "GitHub private-attestation and trusted-root summary",
+          "path": "context.md",
+          "claim": "GitHub documents no transparency log for private attestations; the current root output has a no-tlog/no-ctlog line with six certificate authorities and six timestamp authorities, but no real target bundle proves the applicable RFC3161 binding."
         }
       ],
       "desiredInvariants": [
-        "One non-selectable production owner verifies both Foundation and Artifact evidence.",
-        "Trust roots, keys, policy, complete CT/SCT semantics, and result construction remain owner-private.",
+        "One non-selectable selected-profile owner verifies both Foundation and Artifact evidence.",
+        "Trust roots, keys, policy, profile semantics, thresholds, time, and result construction remain owner-private.",
+        "A profile may claim only properties it completely verifies; the candidate private profile cannot claim Rekor, CT/SCT, public transparency, or global anti-equivocation.",
+        "No candidate profile replaces the active canonical contract until real-vector feasibility, a separate profile decision, and canonical reconciliation are complete.",
         "The owner bootstrap is independently pinned and does not consume the lock or closure it authorizes.",
         "Lock postverification authorizes only that lock; each Artifact asset postverifies separately.",
         "Offline closure generation and clean-runner zero-network consumption are separate proofs.",
@@ -189,8 +308,9 @@
             { "evidenceId": "E07", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The restricted repair channel remains narrow and is not reused." },
             { "evidenceId": "E08", "effect": "addresses", "tacticalFixRequired": true, "rationale": "No Risk A external mutation is attempted." },
             { "evidenceId": "E09", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The live Settings gap remains but cannot affect a nonexistent formal deployment path." },
-            { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 remains Draft or an explicitly approved inert checkpoint." },
-            { "evidenceId": "E11", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The permanent hard stop prevents diagnostic promotion and a self-verifying bootstrap cycle." }
+            { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Merged PR #600 remains an exact dormant checkpoint and supplies no owner or publication authority." },
+            { "evidenceId": "E11", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The permanent hard stop prevents diagnostic promotion and a self-verifying bootstrap cycle." },
+            { "evidenceId": "E12", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The hard stop avoids claiming transparency or signed-time properties that have not been proven for the private profile." }
           ],
           "tradeoffs": [
             {
@@ -239,7 +359,7 @@
               "confidence": "high",
               "basis": "source-derived",
               "assessment": "The repository retains its current hard-stop state.",
-              "validationPlan": "Verify PR #600 and all later source remain dormant."
+              "validationPlan": "Verify PR #600 remains dormant and every future source path stays stopped until its own separate authorization."
             }
           ],
           "residualRisks": [
@@ -251,39 +371,40 @@
           "optionId": "in-repo-unified-owner",
           "title": "In-repository unified trust kernel",
           "kind": "structural",
-          "summary": "Place one pinned owner on protected master and keep lock and offline closure as separate publication/readback Gates.",
+          "summary": "After profile feasibility and a separate security decision, place one selected-profile owner on protected master and keep lock and offline closure as separate publication/readback Gates.",
           "diagramPaths": {
             "before": "diagrams/unify-supply-chain-authority-before.mmd",
             "after": "diagrams/unify-supply-chain-authority-in-repo-unified-owner-after.mmd"
           },
           "evidenceCoverage": [
-            { "evidenceId": "E01", "effect": "addresses", "tacticalFixRequired": true, "rationale": "One pinned private owner provides complete Foundation and Artifact verification." },
+            { "evidenceId": "E01", "effect": "addresses", "tacticalFixRequired": true, "rationale": "One pinned private owner provides complete selected-profile Foundation and Artifact verification without overstating public transparency." },
             { "evidenceId": "E02", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Serial owner, lock, closure, and resume Gates preserve conjunctive ordering." },
-            { "evidenceId": "E03", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The exact-11 bootstrap lands dormant before a separate owner and activation change." },
+            { "evidenceId": "E03", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The merged exact-11 bootstrap remains dormant before any separately authorized owner and activation change." },
             { "evidenceId": "E04", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Artifact consumes the same owner and still postverifies every asset separately." },
             { "evidenceId": "E05", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The current dry run remains a non-authoritative packet generator." },
             { "evidenceId": "E06", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "The owner verifies exact evidence before later consumption without treating packaging as deployment." },
             { "evidenceId": "E07", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The restricted repair workflow remains outside the formal deployment authority." },
             { "evidenceId": "E08", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Every source PR and external Gate retains separate Risk A approval and readback." },
             { "evidenceId": "E09", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Production Settings are deferred to a distinct post-staging Gate with admin bypass disabled and read back." },
-            { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 is refreshed and merged only as a separately approved dormant checkpoint." },
-            { "evidenceId": "E11", "effect": "addresses", "tacticalFixRequired": true, "rationale": "One independently bootstrapped owner resolves duplicated authority while serial ordering breaks the cycle." }
+            { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 is already merged as the separately approved dormant checkpoint; no owner or publication authority was added." },
+            { "evidenceId": "E11", "effect": "addresses", "tacticalFixRequired": true, "rationale": "One independently bootstrapped owner resolves duplicated authority while serial ordering breaks the cycle." },
+            { "evidenceId": "E12", "effect": "unknown", "tacticalFixRequired": true, "rationale": "The proposed private profile requires P2-S to prove a real RFC3161/Fulcio success path and quantify the missing public-transparency property before selection." }
           ],
           "tradeoffs": [
             {
               "dimension": "security",
-              "direction": "improves",
-              "confidence": "high",
+              "direction": "unknown",
+              "confidence": "medium",
               "basis": "source-derived",
-              "assessment": "One private owner removes copied trust and caller-constructible completion, while same-process parser risk remains.",
-              "validationPlan": "Run complete official/adversarial vectors, brand forgery tests, byte caps, and normal/inline differential tests."
+              "assessment": "One private owner can remove copied trust and caller-constructible completion, but the candidate private profile omits the public Rekor/CT/SCT and global anti-equivocation properties in the active contract.",
+              "validationPlan": "Run P2-S with a real target bundle, quantify the security delta, then require an explicit profile decision before official/adversarial vectors, brand forgery tests, byte caps, and normal/inline differential tests can support implementation."
             },
             {
               "dimension": "performance",
               "direction": "unknown",
               "confidence": "medium",
               "basis": "hypothetical",
-              "assessment": "In-process verification avoids IPC but adds complete chain, transparency, and statement validation.",
+              "assessment": "In-process verification avoids IPC but adds certificate, RFC3161, identity, predicate, and statement validation.",
               "validationPlan": "Measure wall time for representative and maximum bundles in both runtime forms against a recorded threshold."
             },
             {
@@ -315,14 +436,16 @@
               "direction": "regresses",
               "confidence": "high",
               "basis": "source-derived",
-              "assessment": "The design requires serial dormant-bootstrap, owner, activation, publication, closure, and resume checkpoints.",
-              "validationPlan": "Enforce the ordered PR/Gate matrix and reject any combined or reordered transition."
+              "assessment": "The design requires P2-D, isolated P2-S, a profile decision/canonical reconciliation, then serial owner, activation, publication, closure, and resume checkpoints.",
+              "validationPlan": "Enforce the ordered experiment/PR/Gate matrix and reject any combined or reordered transition."
             }
           ],
           "residualRisks": [
             "A vulnerability in the pinned Sigstore implementation can affect both consumers.",
             "Normal and inline runtime representations can drift.",
-            "Trust-root, CT-log, or Rekor-key rotation can stop publication until reviewed."
+            "GitHub-private trust-root or TSA rotation can stop publication until reviewed.",
+            "The candidate profile has no public artifact transparency or global anti-equivocation guarantee.",
+            "Repository-local no-replace/readback controls planned for P3 cannot recreate a public transparency log."
           ]
         },
         {
@@ -345,7 +468,8 @@
             { "evidenceId": "E08", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The added appliance lifecycle is introduced only through separate Risk A approvals." },
             { "evidenceId": "E09", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Production Settings remain a post-staging readback Gate." },
             { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 stays dormant and separate from the appliance owner." },
-            { "evidenceId": "E11", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "One appliance centralizes verification, but authority must stay in fixed consume operations rather than serialized receipts." }
+            { "evidenceId": "E11", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "One appliance centralizes verification, but authority must stay in fixed consume operations rather than serialized receipts." },
+            { "evidenceId": "E12", "effect": "unknown", "tacticalFixRequired": true, "rationale": "Process isolation does not restore transparency; the same private-profile evidence and residual-risk decision remain necessary." }
           ],
           "tradeoffs": [
             {
@@ -423,7 +547,8 @@
             { "evidenceId": "E08", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "A broker requires an expanded Risk A threat model, service Gate, and approval sequence." },
             { "evidenceId": "E09", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Production Settings remain a later post-staging readback Gate." },
             { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 remains a dormant checkpoint separate from broker-client activation." },
-            { "evidenceId": "E11", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Central policy serves both consumers, but authority becomes a signed network capability under a new trust model." }
+            { "evidenceId": "E11", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Central policy serves both consumers, but authority becomes a signed network capability under a new trust model." },
+            { "evidenceId": "E12", "effect": "unknown", "tacticalFixRequired": true, "rationale": "A broker could add a new transparency model only through a separately approved topology and privacy decision; it cannot inherit an unproven private profile." }
           ],
           "tradeoffs": [
             {
@@ -483,16 +608,19 @@
         }
       ],
       "recommendedOptionId": "in-repo-unified-owner",
-      "recommendation": "G0 selects the in-repository owner as the topology direction only. The permanent hard stop remains active, and any future owner implementation still requires an exact mature implementation and trust snapshot to pass complete CT/SCT and normal/inline parity review under a separate authorization."
+      "recommendation": "G0 retains the in-repository owner as the topology direction. P2-D prepares github_private_rfc3161_v1 only as a candidate and P2-S only as an unexecuted experiment design. The permanent hard stop remains active until real private-bundle feasibility, an explicit security-profile decision, canonical reconciliation, and a separate owner implementation authorization all succeed."
     }
   ],
   "openQuestions": [
-    "Which mature implementation, exact version, transitive dependency set, executable or package digest, license, and security-update policy should the owner pin?",
+    "Can an operator supply an already-existing target-repository, target-workflow private bundle and exact subject bytes, or does fixture generation require a separate workflow/dispatch Gate?",
+    "Does the real target bundle contain an RFC3161 token whose signed-byte derivation and `messageImprint` can be verified against the exact applicable GitHub-private root and TSA?",
+    "Is the explicit absence of Rekor, CT/SCT, public transparency, and global anti-equivocation acceptable, or must Option 1 remain active while a separate public-Rekor lane is reviewed for privacy and topology impact?",
+    "Which mature implementation, exact version, transitive dependency set, executable or package digest, license, provenance, and security-update policy should a future isolated spike evaluate without selecting it for production?",
     "Can one source deterministically produce both normal ESM and no-checkout inline runtimes without copied trust/policy or `Function.toString()`?",
-    "How are Fulcio, Rekor, and CT trust snapshots versioned, expired, updated, provenance-checked, and rolled back without caller selection?",
+    "How are GitHub-private Fulcio and TSA trust snapshots versioned, expired, updated, provenance-checked, and rolled back without caller selection?",
     "What exact byte caps and canonical contracts apply to bundle, statement, trust snapshot, lock, closure manifest, and verification evidence?",
     "What retention and availability objectives apply to immutable lock and npm closure assets, and what independent storage evidence is required?",
     "Does the future source ruleset need a nonzero independent review requirement, or will the durable Gate ledger plus Environment approvals remain the sole production authorization boundary?",
-    "Which measured latency, memory, and closure-size thresholds would make the appliance option preferable to the in-process owner?"
+    "Which measured latency, memory, runtime-size, and closure-size thresholds would make the appliance option preferable to the in-process owner?"
   ]
 }
