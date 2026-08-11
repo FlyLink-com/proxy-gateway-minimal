@@ -1,17 +1,18 @@
 # Security Hardening Proposal: Unify Supply-Chain Authority Before Publication
 
 > Status:
-> - Type: Derived Topology Addendum proposal
+> - Type: Derived Topology Addendum proposal with G0 selection recorded
 > - Risk: A
 > - Production authority: False
 > - Execution authority: None
 
 ## Decision
 
-Choose whether and how we place one complete Sigstore authority before
-Foundation lock publication without allowing that owner to bootstrap itself,
-duplicating trust in Artifact, or converting diagnostic observations into
-publication authority.
+At G0, we select Option 2 as the topology direction only: one complete Sigstore
+authority would sit before Foundation lock publication without bootstrapping
+itself, duplicating trust in Artifact, or converting diagnostic observations
+into publication authority. Option 1 remains the active hard-stop fallback.
+This selection grants no implementation or execution authority.
 
 The four options are:
 
@@ -24,8 +25,12 @@ The four options are:
 4. **External verification broker** — replace the private in-process authority
    with a network service that issues signed, content-bound admissions.
 
-This Draft recommends Option 2 conditionally. It approves none of the options
-and does not select a package, version, path, API, trust snapshot, or pin.
+This Draft records the explicit G0 topology selection of Option 2. Advancement
+under that direction remains conditional. The selection does not choose a
+package, version, path, API, trust snapshot, or pin, and it does not authorize
+an implementation plan, any PR #600 refresh/mutation/Ready/merge action, P2/P3,
+Settings, Release, workflow dispatch, staging, host access, production,
+external write, or source/runtime eligibility.
 
 ## Executive Recommendation
 
@@ -43,8 +48,9 @@ process isolation, but preserving an unforgeable result forces the appliance to
 own more of the final consume operation. Option 4 centralizes updates across
 repositories, but adds a standing network and signing-key authority.
 
-I recommend Option 2 if, and only if, a separately reviewed mature
-implementation can satisfy the complete CT/SCT and normal-versus-inline parity
+The G0 choice is Option 2. Advancement under it follows my recommendation only
+if a separately reviewed mature implementation can satisfy the complete CT/SCT
+and normal-versus-inline parity
 criteria below. If it cannot, Option 1 remains preferable. Option 3 should win
 only if process isolation becomes a hard requirement and the project accepts a
 larger appliance lifecycle. Option 4 becomes reasonable only in a future
@@ -324,8 +330,9 @@ could compete on operability.
 
 ## Recommendation
 
-I recommend Option 2 under the current constraints. It preserves the strongest
-existing invariant—the authority result never becomes a caller-constructible
+The explicit G0 decision selects Option 2. I recommend that direction under the
+current constraints because it preserves the strongest existing invariant—the
+authority result never becomes a caller-constructible
 message—while adding the fewest new operational components. It also lets us
 keep lock publication and offline dependency closure as independent failure
 domains, which is important because a valid lock says nothing about whether a
@@ -365,27 +372,27 @@ zero-output failure paths.
 
 ## Migration And Rollout
 
-The recommended option uses the following serial schedule. Every item is a
+The selected G0 direction uses the following serial schedule. Every item is a
 separate review or execution decision; later rows cannot authorize earlier
 missing evidence.
 
 | Order | PR or Gate | Acceptance and stop boundary |
 | --- | --- | --- |
 | `D0` | This Topology Addendum Draft | Docs/diagrams/JSON only; exact evidence identity; all checks pass; production authority remains false. |
-| `G0` | Addendum decision Gate | Independent security review and explicit option selection. Document approval is not owner implementation approval. |
-| `P1` | Refresh and close PR #600 | Exact 11 files, three-export canonical baseline, topology preflight fixed failure, downstream jobs skipped, zero write, exact-head checks/review GREEN; separate Ready/merge approval. |
-| `P2` | Unified-owner predecessor PR | Owner only; exact package/version/pin/path/API/trust snapshot; complete vectors and normal/inline parity; no Settings or asset publication. |
-| `P3` | Supply-chain activation source PR | Only after P2 is on protected master; same owner wired into Foundation and Artifact consumer contracts; lock and closure publisher source remains manual and dormant. |
-| `G1` | Artifact-publication Settings Gate | Fresh before snapshot; user reviewer, no self-review, protected master, admin bypass false; independent after readback; no production SSH/host secrets. |
-| `G2` | Immutable Foundation lock Gate | Manual exact input, no PR-head publication, one immutable asset and one subject, full-owner refetch/postverify, completion digest only after readback. |
-| `G3` | Offline npm closure Gate | Exact merged lockfile; complete tarball/integrity/content manifest; independent readback; clean runner, empty ambient cache, disabled network, exact offline install, zero network attempts. |
-| `G4` | Source-resumption Gate | One immutable packet binds owner commit/vector report, lock postverify receipt, closure receipt and zero-network report; explicit operator approval. |
-| `P4` | Future main source-only Draft | Manual trigger design, closed Gate input, root permissions empty, no production execution; same owner at Foundation/Artifact checkpoints. |
-| `G5` | Disposable target-matched staging | Synthetic data only; success, rollback, two-DB partial commit, crash/restart, connection, backup, and cleanup matrices all pass. |
-| `G6` | Main Ready/merge | Exact-head tests/CodeQL/security review and thread resolution; separate approval; merge still does not deploy. |
-| `P5` | C-tier source identity reconciliation | Record exact merge/head/ancestry and `not_deployed`; no runtime claim. |
-| `G7` | Compatibility staging | Fresh read-only inventory, static bundle, temporary compatibility Environment, activation tests, and complete credential cleanup/readback. |
-| `G8` | Production Settings Gate | Only after P5/G5/G7; exact user reviewers, no self-review, protected branch, `can_admins_bypass=false`, before/after readback before any production secret. |
+| `G0` | Addendum decision Gate | **RECORDED — SELECTED_DIRECTION_ONLY.** Option 2 is the topology direction; Option 1 remains the active hard-stop fallback. This is not implementation approval. |
+| `P1` | Refresh and close PR #600 | **NOT AUTHORIZED.** Exact 11 files, three-export canonical baseline, topology preflight fixed failure, downstream jobs skipped, zero write, exact-head checks/review GREEN; separate refresh and Ready/merge approvals. |
+| `P2` | Unified-owner predecessor PR | **NOT AUTHORIZED.** Owner only; exact package/version/pin/path/API/trust snapshot; complete vectors and normal/inline parity; no Settings or asset publication. |
+| `P3` | Supply-chain activation source PR | **NOT AUTHORIZED.** Only after P2 is on protected master; same owner wired into Foundation and Artifact consumer contracts; lock and closure publisher source remains manual and dormant. |
+| `G1` | Artifact-publication Settings Gate | **NOT AUTHORIZED.** Fresh before snapshot; user reviewer, no self-review, protected master, admin bypass false; independent after readback; no production SSH/host secrets. |
+| `G2` | Immutable Foundation lock Gate | **NOT AUTHORIZED.** Manual exact input, no PR-head publication, one immutable asset and one subject, full-owner refetch/postverify, completion digest only after readback. |
+| `G3` | Offline npm closure Gate | **NOT AUTHORIZED.** Exact merged lockfile; complete tarball/integrity/content manifest; independent readback; clean runner, empty ambient cache, disabled network, exact offline install, zero network attempts. |
+| `G4` | Source-resumption Gate | **NOT AUTHORIZED.** One immutable packet binds owner commit/vector report, lock postverify receipt, closure receipt and zero-network report; explicit operator approval. |
+| `P4` | Future main source-only Draft | **NOT AUTHORIZED.** Manual trigger design, closed Gate input, root permissions empty, no production execution; same owner at Foundation/Artifact checkpoints. |
+| `G5` | Disposable target-matched staging | **NOT AUTHORIZED.** Synthetic data only; success, rollback, two-DB partial commit, crash/restart, connection, backup, and cleanup matrices all pass. |
+| `G6` | Main Ready/merge | **NOT AUTHORIZED.** Exact-head tests/CodeQL/security review and thread resolution; separate approval; merge still does not deploy. |
+| `P5` | C-tier source identity reconciliation | **NOT AUTHORIZED.** Record exact merge/head/ancestry and `not_deployed`; no runtime claim. |
+| `G7` | Compatibility staging | **NOT AUTHORIZED.** Fresh read-only inventory, static bundle, temporary compatibility Environment, activation tests, and complete credential cleanup/readback. |
+| `G8` | Production Settings Gate | **NOT AUTHORIZED.** Only after P5/G5/G7; exact user reviewers, no self-review, protected branch, `can_admins_bypass=false`, before/after readback before any production secret. |
 
 At any source checkpoint, a failed test, unresolved Important/Critical review,
 or head drift keeps the PR Draft. At any publication checkpoint, partial,
@@ -395,14 +402,15 @@ Settings checkpoint, readback mismatch stops with no credential materialization.
 
 ## Validation Plan
 
-The selected owner must run a frozen positive and adversarial matrix in every
-supported runtime form. The positive case proves the complete chain and returns
-only a private-branded value to the intended consume operation. Every owner or
-other pre-write negative case must prove zero brand, zero completion, zero
-Release write, and zero downstream eligibility. A closure readback or
-clean-runner failure discovered after immutable publication instead preserves
-those bytes as ineligible history and proves zero completion and zero downstream
-eligibility; it never overwrites, repairs, or promotes the published object.
+Any future Option 2 owner candidate must run a frozen positive and adversarial
+matrix in every supported runtime form. The positive case proves the complete
+chain and returns only a private-branded value to the intended consume
+operation. Every owner or other pre-write negative case must prove zero brand,
+zero completion, zero Release write, and zero downstream eligibility. A closure
+readback or clean-runner failure discovered after immutable publication instead
+preserves those bytes as ineligible history and proves zero completion and zero
+downstream eligibility; it never overwrites, repairs, or promotes the published
+object.
 
 Required negative families include:
 
@@ -438,8 +446,9 @@ internal consistency, not the proposed security properties.
 
 ## Implementation Work Packages
 
-No implementation package is authorized yet. If Option 2 is selected, the
-future handoff should contain these bounded packages:
+G0 selection does not authorize an implementation plan or any implementation
+package. Only after a separate planning and P2/P3 implementation authorization
+may a future handoff contain these bounded packages:
 
 - owner dependency/trust snapshot selection and independent provenance review;
 - closed owner API, private brand, normal/inline generation, and vector corpus;

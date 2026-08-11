@@ -12,7 +12,33 @@
   },
   "assessment": {
     "outcome": "opportunities_identified",
-    "summary": "One missing pre-publication authority owner creates a topology hold; the recommended design is a single in-repository owner with lock and offline closure kept as independent Gates."
+    "summary": "G0 selects the single in-repository owner as the topology direction only; Option 1 remains the current active hard-stop fallback, and this decision grants no implementation or external-Gate authority."
+  },
+  "decision": {
+    "gateId": "G0",
+    "status": "selected_topology_direction_only",
+    "recordState": "draft_pr",
+    "selectedOptionId": "in-repo-unified-owner",
+    "fallbackOptionId": "permanent-no-go",
+    "fallbackState": "active_hard_stop",
+    "scope": "topology_direction_only",
+    "recordedOn": "2026-08-11",
+    "implementationAuthorized": false,
+    "executionAuthorized": false,
+    "notAuthorizedByThisDecision": [
+      "pr_600_refresh_ready_or_merge",
+      "implementation_plan_creation",
+      "p2_owner_implementation",
+      "p3_supply_chain_activation",
+      "github_settings",
+      "release",
+      "workflow_dispatch",
+      "staging",
+      "host_access",
+      "production",
+      "external_write",
+      "source_or_runtime_eligibility"
+    ]
   },
   "constraints": {
     "profile": "minimal_fail_closed",
@@ -457,7 +483,7 @@
         }
       ],
       "recommendedOptionId": "in-repo-unified-owner",
-      "recommendation": "Choose the in-repository owner only after an exact mature implementation and trust snapshot pass complete CT/SCT and normal/inline parity review; otherwise retain the permanent hard stop."
+      "recommendation": "G0 selects the in-repository owner as the topology direction only. The permanent hard stop remains active, and any future owner implementation still requires an exact mature implementation and trust snapshot to pass complete CT/SCT and normal/inline parity review under a separate authorization."
     }
   ],
   "openQuestions": [

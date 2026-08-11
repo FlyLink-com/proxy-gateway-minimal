@@ -1,10 +1,10 @@
 # Security Hardening Review: Control-Plane Supply-Chain Topology
 
 > Status:
-> - Type: Topology Addendum Draft for decision review
+> - Type: Topology Addendum Draft with G0 selection recorded
 > - Risk: A
-> - Process: Evidence review and option selection only
-> - Expected PR count: This docs-only Draft plus four future source PR checkpoints under the recommended option (refresh existing #600, owner, activation, and future main); every source PR and external Gate requires separate approval
+> - Process: G0 topology direction selected; no implementation or external Gate authority
+> - Expected PR count: This docs-only Draft plus four future source PR checkpoints under the selected G0 direction (refresh existing #600, owner, activation, and future main); every source PR and external Gate requires separate approval
 > - Validation: Document authority, project-state, JSON, diagrams, links, and diff checks
 > - Production/AWS impact: None
 > - Production authority: False
@@ -33,9 +33,11 @@ production execution must remain separate decisions.
 
 ## Constraints
 
-- Current authorization covers this derived Draft only. It does not approve an
-  external dependency, an owner implementation, PR #600 Ready/merge, a Release
-  asset, GitHub Settings, workflow dispatch, staging, host access, or production.
+- Current authorization records the G0 topology direction in this derived Draft
+  only. It does not approve an external dependency, an implementation plan, an
+  owner implementation, any PR #600 refresh/mutation/Ready/merge action, P2/P3,
+  a Release asset, GitHub Settings, workflow dispatch, staging, host access,
+  production, an external write, or source/runtime eligibility.
 - We prefer a minimal repository-owned boundary with no Redis, queue, cluster,
   microservice, standing credential, or ambient network fallback.
 - One owner must serve Foundation and Artifact. Trust roots, policy, complete
@@ -56,9 +58,16 @@ production execution must remain separate decisions.
 
 | Opportunity | Evidence | Options | Recommendation | Proposal |
 | --- | --- | --- | --- | --- |
-| Unify supply-chain authority before publication | Canonical topology hold, split diagnostic owners, missing offline closure, live policy gap, and cross-document cycle diagnosis (`E01`–`E11`) | 1. Permanent No-Go; 2. In-repo trust kernel; 3. Hermetic owner appliance; 4. External verification broker | Select Option 2 if one reviewed implementation can provide identical normal and inline semantics; otherwise retain Option 1 and reopen the decision | [Control-plane supply-chain authority](proposals/unify-supply-chain-authority.md) |
+| Unify supply-chain authority before publication | Canonical topology hold, split diagnostic owners, missing offline closure, live policy gap, and cross-document cycle diagnosis (`E01`–`E11`) | 1. Permanent No-Go; 2. In-repo trust kernel; 3. Hermetic owner appliance; 4. External verification broker | G0 selects Option 2; advancement under it remains conditional, Option 1 remains the active hard-stop fallback, and implementation remains unapproved | [Control-plane supply-chain authority](proposals/unify-supply-chain-authority.md) |
 
 ## Recommendation Summary
+
+On 2026-08-11, the operator explicitly selected **Option 2 for the G0 topology
+direction only**. **Option 1 remains the active hard-stop fallback.** This
+decision does not authorize PR #600 Ready/merge, P2/P3, Settings, Release,
+workflow dispatch, staging, production, any implementation plan or owner
+implementation, any PR #600 mutation, host access, external write, or
+source/runtime eligibility.
 
 I recommend **Option 2, an in-repository unified trust kernel**, under the
 current minimal-dependency and private-brand constraints. Its attractive
@@ -68,8 +77,10 @@ closure remain separately published and separately read back. This removes the
 current ownership gap without adding a long-lived service or serializing
 authority across a process boundary.
 
-The recommendation is conditional. The future owner selection must pin an
-exact mature implementation and prove complete embedded SCT/CT, Rekor, Fulcio,
+The G0 topology direction is explicitly selected and recorded in this Draft,
+but advancement under it remains conditional. Any future owner selection must
+pin an exact mature implementation and prove complete embedded SCT/CT, Rekor,
+Fulcio,
 DSSE, GitHub OIDC, predicate, and exactly-one-subject semantics with official
 positive and adversarial vectors. It must also produce the no-checkout runtime
 form from one source without copied trust or policy. If that cannot be shown,
@@ -78,26 +89,32 @@ wrapping the existing diagnostics is not a fallback.
 
 The proposed future order is deliberately serial:
 
-1. approve this Addendum decision;
-2. refresh and separately approve PR #600 for a dormant hard-stopped merge;
-3. land an owner-only predecessor PR;
-4. land a supply-chain activation source PR;
-5. apply and read back the artifact-publication Settings Gate before any
+1. `G0` (recorded): select Option 2 for the topology direction while retaining
+   Option 1 as the active hard-stop fallback;
+2. `P1` (not authorized): refresh and separately approve PR #600 for a dormant
+   hard-stopped merge;
+3. `P2` (not authorized): land an owner-only predecessor PR;
+4. `P3` (not authorized): land a supply-chain activation source PR;
+5. `G1` (not authorized): apply and read back the artifact-publication Settings
+   Gate before any
    Release write;
-6. publish and full-owner postverify the immutable lock;
-7. only after the lock Gate is GREEN, publish/read back the offline closure and
-   prove clean-runner consumption with an empty cache and network denied;
-8. grant a new Risk A source-resumption approval before a future main Draft.
+6. `G2` (not authorized): publish and full-owner postverify the immutable lock;
+7. `G3` (not authorized): only after the lock Gate is GREEN, publish/read back
+   the offline closure and prove clean-runner consumption with an empty cache
+   and network denied;
+8. `G4` (not authorized): grant a new Risk A source-resumption approval before
+   a future main Draft.
 
 This ordering breaks the bootstrap cycle without placing the owner in a twelfth
 #600 file or dispatching a PR-branch publisher.
 
 ## Next Decisions
 
-Reviewers need to decide, but not implement, the following:
+The G0 topology direction is selected and recorded in this Draft. Reviewers
+still need to decide, but not implement, the following:
 
-- Select Option 1, 2, 3, or 4. Selection of Option 2 does not yet select a
-  package, version, trust snapshot, repository path, or API pin.
+- Select no package, version, trust snapshot, repository path, or API pin until
+  a separate P2 implementation authorization is granted.
 - Confirm that PR #600 may only be refreshed and merged as an inert checkpoint
   after a later explicit approval, before the owner and activation PRs.
 - Decide the evidence required to approve one mature Sigstore implementation,
@@ -108,5 +125,7 @@ Reviewers need to decide, but not implement, the following:
 - Leave `vultr-japan-production` unchanged until main source reconciliation and
   disposable/compatibility staging are complete.
 
-Until these decisions are explicitly approved, the correct operational result
-remains `full_sigstore_owner_topology_unapproved` with zero external write.
+Because this G0 record authorizes no source change, the unchanged implementation
+continues to emit `full_sigstore_owner_topology_unapproved` with zero external
+write. That diagnostic names the unchanged source guard; it is not the status of
+the G0 decision recorded in this Draft.
