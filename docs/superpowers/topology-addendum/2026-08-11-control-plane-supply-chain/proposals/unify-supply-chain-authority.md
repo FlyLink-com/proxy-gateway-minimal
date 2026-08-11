@@ -1,7 +1,7 @@
 # Security Hardening Proposal: Unify Supply-Chain Authority Before Publication
 
 > Status:
-> - Type: Derived Topology Addendum proposal with P2-S0 published and target-fixture Gate preparation current
+> - Type: Derived Topology Addendum proposal with Route A blocked and Route B design-only Gate preparation current
 > - Risk: A
 > - Production authority: False
 > - Execution authority: None
@@ -13,10 +13,11 @@ sit before Foundation lock publication without bootstrapping itself, duplicating
 trust in Artifact, or converting diagnostic observations into authority. PR
 #600 has since merged as the exact-11 dormant checkpoint. PR #603 completed the
 P2-D docs-only governance loop. PR #605 published the P2-S0 Gate definition
-without granting it. Existing target-fixture input is not established, the
-target-fixture child Gate is in docs-only preparation, P2-S has not started,
-and the candidate GitHub-private profile remains unselected. Option 1 remains
-active.
+without granting it. PR #608 published the Route A child Gate; its later
+preflight retained `BLOCKED_INPUT` with only one of fourteen selectors filled.
+The Route B generation-design Gate is now in docs-only preparation, P2-S has
+not started, and the candidate GitHub-private profile remains unselected.
+Option 1 remains active.
 
 The four options are:
 
@@ -29,13 +30,15 @@ The four options are:
 4. **External verification broker** — replace the private in-process authority
    with a network service that issues signed, content-bound admissions.
 
-This proposal records the G0 selection, completed P2-D record, P2-S0 Gate
-publication, and permission to prepare only the docs-only target-fixture child
-Gate. It chooses no package, version, path, API, trust snapshot, or pin. It
-authorizes no fixture acquisition/download/generation, workflow change or
-dispatch, P2-S, profile decision, canonical reconciliation, owner
-implementation, P3, Settings, Release, staging, host access, production,
-external write, or source/runtime eligibility.
+This proposal records the G0 selection, completed P2-D record, P2-S0/FX1 Gate
+publication, Route A blocked preflight, and permission to prepare only the
+docs-only Route B generation-design Gate. It chooses no candidate-verifier
+package, Action version/full-SHA pin, owner path/API, trust snapshot, or
+implementation pin. It authorizes no producer source, fixture acquisition/
+download/generation, custody handoff, workflow permission change or dispatch,
+P2-S, profile decision, canonical reconciliation, owner implementation, P3,
+Settings, Release, staging, host access, production, external write, or source/
+runtime eligibility.
 
 ## Executive Recommendation
 
@@ -68,11 +71,16 @@ Option 1 wins. Options 3 and 4 remain alternatives under separate decisions.
 I inspected the frozen P2-D design inputs at exact
 `master@9ebc08492af170a470182ba827da052fa41b81b2`, the separate P2-D completion
 evidence at `master@d7e2ab8364bb51f6e6dd8e7d499eb4d61a83635f`, the P2-S0 Gate
-publication at `master@046952402c5ded1412e58fe860c6eb9ad426ced5`, and exact-current-
-source workflow/artifact metadata. The most influential facts are the canonical
-corrected-ordering hold, the merged dormant bootstrap, the absent current-source
-producer/fixture evidence, and the mismatch between the canonical Rekor/CT/SCT
-contract and GitHub's documented private-instance transparency model.
+publication at `master@046952402c5ded1412e58fe860c6eb9ad426ced5`, FX1
+publication and Route A preflight at
+`master@6d6a0a197e89706d4de591f0d8cbecaef18df2c1`, current plan/repository
+eligibility, official Action behavior, and open producer conflicts. The most
+influential facts are the canonical corrected-ordering hold, the merged dormant
+bootstrap, the absent current-source producer/fixture evidence, the currently
+satisfied Enterprise plan prerequisite, the real external-write semantics of
+generation, Draft PR #594's competing publisher, and the mismatch between the
+canonical Rekor/CT/SCT contract and GitHub's documented private-instance
+transparency model.
 
 | Evidence | Finding or document | What it establishes |
 | --- | --- | --- |
@@ -91,6 +99,10 @@ contract and GitHub's documented private-instance transparency model.
 | `E13` | [Merged PR #603 P2-D closeout summary](../context.md#p2-d-governance-closeout-summary) | P2-D completed with verified merge provenance and post-merge checks, but produced no fixture, feasibility result, owner, or runtime authority. |
 | `E14` | [Merged PR #605 P2-S0 Gate publication summary](../context.md#p2-s0-gate-publication-summary) | The parent Gate became a repository definition with verified merge provenance and post-merge checks, but was not granted and supplied no fixture or execution authority. |
 | `E15` | [Exact-master target-fixture gap summary](../context.md#p2-s0-target-fixture-gap-summary) | Current source has no observed attestation producer or target fixture; ordinary artifact metadata does not establish opaque or external fixture availability. |
+| `E16` | [Merged PR #608 P2-S0-FX1 publication summary](../context.md#p2-s0-fx1-publication-and-route-a-preflight) | The Route A Gate was published with verified merge provenance and no acquisition, generation, dispatch, or P2-S authority. |
+| `E17` | [Route A terminal preflight snapshot](../context.md#p2-s0-fx1-publication-and-route-a-preflight) | The current Route A attempt remains `BLOCKED_INPUT`; only 1/14 selectors is filled and no raw byte, download, dispatch, or write occurred. |
+| `E18` | [Private-attestation eligibility and official Action/Environment contract](../context.md#route-b-eligibility-and-conflict-summary) | The Enterprise plan prerequisite is satisfied at capture; official guidance recommends `actions/attest`, documents GitHub API/bundle writes, and preserves required reviewers without Deployment objects under `deployment: false`; no dependency, Settings change, or successful fixture is established. |
+| `E19` | [Open producer-conflict snapshot](../context.md#route-b-eligibility-and-conflict-summary) | Draft PR #594 is a competing attestation/Release publisher and blocks positive Route B source readiness until closed without merge; Draft PR #606 requires rebind if merged. |
 
 ## Current Design And Failure Mode
 
@@ -181,8 +193,9 @@ Release write, build, Settings mutation, or deployment source work.
 - The canonical E01-E04 full-Sigstore/Rekor/CT/SCT requirements remain active.
   P2-D is a completed proposal record, but its candidate remains unselected
   until a later explicit profile decision and canonical reconciliation. P2-S0
-  Gate publication and target-fixture Gate preparation are not acquisition or
-  experiment execution authority.
+  and P2-S0-FX1 publication, the Route A blocked preflight, and preparation of
+  the Route B generation-design Gate are not producer-source, fixture-
+  generation, custody-handoff, or experiment-execution authority.
 
 ## Before Architecture
 
@@ -260,7 +273,7 @@ The precise package, version, path, API, byte caps, and trust snapshot remain
 unselected. One source must deterministically produce the normal and no-checkout
 runtime forms; copying trust/policy or using `Function.toString()` is forbidden.
 
-#### P2-S0 feasibility Gate package
+#### P2-S0 feasibility and fixture-routing Gates
 
 PR #605 published the
 [P2-S0 Gate package](../gates/p2-s0-feasibility-gate.md) as a repository
@@ -269,14 +282,45 @@ acceptance and failure criteria, and the exact readiness outputs. The Gate is
 not granted; missing existing-fixture evidence keeps current output at
 `BLOCKED_INPUT`.
 
+PR #608 then published the
+[P2-S0-FX1 Route A child Gate](../gates/p2-s0-target-fixture-acquisition-gate.md).
+Its read-only preflight found no repository/GitHub-visible custody manifest or
+named fixture and left only the target repository selector closed. Route A
+therefore remains `BLOCKED_INPUT` at one of fourteen selectors. This is a
+bounded snapshot, not proof that no opaque artifact or external custodian can
+ever exist; any later historical-fixture claim requires a superseding Route A
+Gate.
+
 The current docs-only work item is the
-[P2-S0-FX1 target-fixture child Gate](../gates/p2-s0-target-fixture-acquisition-gate.md).
-It defines one future exact read-only custody handoff for an already-existing
-target fixture. It does not download or generate a fixture, select a dependency,
-modify source or workflow permissions, dispatch anything, or run the
-experiment. If an existing fixture cannot be supplied without a workflow/source
-change, the child Gate remains blocked or requires redesign under separate
-source and execution approvals.
+[P2-S0-FX2 Route B generation-design Gate](../gates/p2-s0-target-fixture-generation-gate.md).
+It bounds a future target-repository producer, exactly-one deterministic
+subject, GitHub Attestations API write, Actions-artifact custody, redacted
+generation manifest, and mandatory Environment-plus-retirement lifecycle. It
+does not select an Action full-SHA pin, create or merge workflow source, change
+permissions or Settings, dispatch or rerun a workflow, download evidence,
+generate or hand off a fixture, or run P2-S. Draft PR #594 must be closed without
+merge before any positive source-readiness result; any salvage must be
+independently rebuilt from fresh master. PR #606 and any other master drift
+require exact rebind.
+
+The future lifecycle requires both a separately approved/read-back dedicated
+protected Environment before source merge and a separately reviewed workflow-
+retirement merge plus no-extra-run readback after generation. The attestation
+job uses `deployment: false`, retaining required review while creating no
+Deployment/status objects. The run, three jobs, checks, logs, annotations,
+audit/Environment-review records, artifact, and attestation are all persistent-
+object inventory; any later failure marks every created object as ineligible
+history rather than claiming cleanup erased it.
+
+The Route B design Gate may return only
+`READY_FOR_SEPARATE_ROUTE_B_SOURCE_REVIEW`, `BLOCKED_INPUT`,
+`REDESIGN_PRODUCER`, or `NO_GO_OPTION1`. A future source merge may return only
+`SOURCE_PRESENT_FOR_SEPARATE_GENERATION_GATE`; a successful run records only
+`GENERATED_FIXTURE_PENDING_MANDATORY_SOURCE_RETIREMENT`. The final
+`GENERATED_FIXTURE_READY_FOR_SEPARATE_CUSTODY_HANDOFF` output is unavailable
+until retirement and all-object readback close. None of those outputs authorizes
+the next step. Generated evidence must retain `origin_route: route_b_generated`
+and can never be relabeled as Route A existing/historical custody.
 
 Only a later explicit `READY_FOR_SEPARATE_P2S_APPROVAL` finding may support a
 new request to execute P2-S. It does not authorize that execution. Missing
@@ -395,7 +439,7 @@ objects remain ineligible history and are never overwritten or relabeled.
 | Change | Before | After | Security consequence | Cost |
 | --- | --- | --- | --- | --- |
 | Verification owner | Two diagnostic paths | Candidate selected-profile owner, two closed consume operations | Prevents diagnostic promotion and false transparency claims | Adds one security-critical dependency boundary and residual-risk decision |
-| Bootstrap order | Merged dormant #600 blocks at topology guard | P2-D complete, P2-S0 published, target-fixture Gate, P2-S, profile decision, owner PR, then activation PR | Breaks the cycle without implementing an unproven profile | Adds custody, experiment, and canonical-reconciliation checkpoints |
+| Bootstrap order | Merged dormant #600 blocks at topology guard | P2-D complete, P2-S0/FX1 published, Route A blocked, Route B design/Environment/source/generation/retirement/custody Gates, parent reevaluation, P2-S, profile decision, owner PR, then activation PR | Breaks the cycle without implementing an unproven profile | Adds producer-lifecycle, custody, experiment, and canonical-reconciliation checkpoints |
 | Lock | Not publishable | Separately published and selected-profile-owner postverified | Exact lock authority is content-bound to the selected profile | Adds Release retention/readback operations |
 | Offline closure | Missing | Separate content-addressed Gate and clean-runner proof | Removes ambient cache/network authority | Adds storage and closure-maintenance burden |
 | Artifact | Diagnostic-only | Same owner API is available, but each asset still postverifies independently | Lock completion cannot be reused as Artifact completion | Adds per-asset verification cost |
@@ -479,7 +523,7 @@ previously pending work.
 | Memory | No new runtime allocation | Verifier and bounded buffers in existing process | Separate process/container RSS and buffers | Repository client is small; service retains shared state |
 | Reliability | Intentionally unavailable | Fewest new components; lock and closure fail independently | Appliance/image/registry failures add stop modes | Broker, network, key, and ledger failures add stop modes |
 | Operability | Lowest new burden | Dependency/trust/vector updates plus two publication Gates | Adds appliance builds, provenance, registry, monitoring | Adds 24x7 service, keys, OIDC, audit, rotation, tenancy |
-| Migration | Stop is already present | Serial P2-D complete -> P2-S0 published -> fixture Gate -> P2-S -> profile decision -> owner -> activation -> Gates | Requires redesign of final consume boundary | Requires a new cross-network authority model and threat model |
+| Migration | Stop is already present | Serial P2-D complete -> P2-S0/FX1 published -> Route A blocked -> Route B design/Environment/source/generation/retirement/custody -> parent reevaluation -> P2-S -> profile decision -> owner -> activation -> Gates | Requires redesign of final consume boundary | Requires a new cross-network authority model and threat model |
 | Reversibility | Immediate | Restore guard; old immutable assets remain ineligible | Pin old reviewed appliance or restore guard | Revoke client/key and restore guard |
 
 These are source-derived directions, not measurements. Option 2 validation
@@ -498,12 +542,13 @@ metadata to a public log or adding a service. I would not be comfortable
 selecting it until P2-S proves the exact signed-time path and reviewers
 explicitly accept the missing public-transparency/anti-equivocation properties.
 
-We should choose Option 1 if no target fixture exists, RFC3161 is absent or
-ambiguous, normal/inline forms drift, the runtime needs ambient authority, or
-the residual transparency risk is unacceptable. Option 3 becomes preferable if
-process isolation is non-negotiable after feasibility. A public-Rekor lane or
-Option 4 would require separate privacy/topology decisions and is not implicit
-in this proposal.
+We should choose Option 1 if no governed target fixture can be acquired or
+generated, one-shot producer lifecycle and custody cannot be bounded, RFC3161
+is absent or ambiguous, normal/inline forms drift, the runtime needs ambient
+authority, or the residual transparency risk is unacceptable. Option 3 becomes
+preferable if process isolation is non-negotiable after feasibility. A public-
+Rekor lane or Option 4 would require separate privacy/topology decisions and is
+not implicit in this proposal.
 
 ## Evidence Coverage And Residual Risk
 
@@ -545,7 +590,14 @@ missing evidence.
 | `P1` | Refresh and close PR #600 | **COMPLETE.** Merged as exact 11 files at `9ebc0849`; topology preflight remains fixed failure, downstream jobs skip, and no owner/publication authority exists. |
 | `P2-D` | Private-profile amendment record | **COMPLETE.** PR #603 merged at `d7e2ab83` with verified base/head and identical approved/merged trees. Candidate `github_private_rfc3161_v1` remains unselected; active canonical contract unchanged; no feasibility or implementation authority. |
 | `P2-S0` | Feasibility Gate package | **PUBLISHED — NOT GRANTED.** PR #605 published the Gate definition at `04695240`; missing existing-fixture evidence keeps current output `BLOCKED_INPUT`. No acquisition, fixture, or experiment authority. |
-| `P2-S0-FX1` | Target-fixture-acquisition Gate | **CURRENT — DOCS-ONLY PREPARATION.** Define one future exact read-only custody handoff for an already-existing target fixture. Gate decision not granted; download, generation, workflow/source change, dispatch, and P2-S remain unauthorized. |
+| `P2-S0-FX1` | Route A target-fixture-acquisition Gate | **PUBLISHED — ROUTE A BLOCKED_INPUT.** PR #608 published the Gate at `6d6a0a19`; its read-only preflight closed one of fourteen selectors and established no repo-visible or external custody source. This is not a global nonexistence claim. |
+| `P2-S0-FX2` | Route B target-fixture-generation design Gate | **CURRENT — DOCS-ONLY PREPARATION.** Bound a future producer, exactly-one subject, persistent external writes, custody, and lifecycle model. Current output remains `BLOCKED_INPUT`; no source, Action pin, workflow, permission, Settings, generation, or dispatch authority. |
+| `P2-S0-FX2-E` | Route B protected-Environment Settings Gate | **NOT AUTHORIZED.** Before source merge, separately create/read back the dedicated Environment with an exact user reviewer, self-review prevention, protected master, `can_admins_bypass=false`, no secrets/variables, no custom protection App, and current Actions log-retention evidence. |
+| `P2-S0-FX2-S` | Route B producer source review/merge | **NOT AUTHORIZED.** Close PR #594 without merge, rebind exact master/open conflicts/Environment receipt, select independently reviewed immutable Action pins, add only bounded workflow/test source, and read back expected PR/merge automatic runs plus ordinary artifacts before stopping at `SOURCE_PRESENT_FOR_SEPARATE_GENERATION_GATE`. |
+| `P2-S0-FX2-G` | Route B one-shot generation execution | **NOT AUTHORIZED.** Separate exact-SHA approval, `deployment: false`, one dispatch/attempt/subject/attestation, bounded run/job/check/log/audit/Environment-review/API/artifact objects, zero Deployment/status objects, monitoring, and all-object readback. Success remains `GENERATED_FIXTURE_PENDING_MANDATORY_SOURCE_RETIREMENT`. |
+| `P2-S0-FX2-X` | Route B workflow retirement | **NOT AUTHORIZED.** After every consumed run regardless of outcome, merge a separately reviewed source-retirement PR, read back its expected automatic runs/ordinary artifacts, prove zero extra Route B runs/attempts, and record every persistent object as eligible or ineligible history. Only successful generation plus this closeout may yield `GENERATED_FIXTURE_READY_FOR_SEPARATE_CUSTODY_HANDOFF`. API disable or deletion is a different external-write/destructive Gate. |
+| `P2-S0-FX2-C` | Route B read-only custody handoff | **NOT AUTHORIZED.** Separately retrieve exact subject, bundle, trust/timestamp material and generation manifest by digest; preserve `origin_route: route_b_generated`; no generation, rerun, deletion, or P2-S authority. |
+| `P2-S0-R` | Parent P2-S0 reevaluation | **NOT AUTHORIZED.** Close all eight frozen input classes, including the exact offline official-verifier oracle, and independently review the resulting decision. Online generation/verification success cannot substitute for that oracle. |
 | `P2-S` | Isolated feasibility experiment | **NOT STARTED — EXECUTION NOT AUTHORIZED.** Exact Gate-frozen revision, real private fixture, official-oracle agreement, root/TSA/RFC3161 proof, dependency review, normal/inline determinism, offline/resource matrix, and complete cleanup. Fixture generation/dispatch is a separate Gate. |
 | `G0R` | Profile decision and canonical reconciliation | **NOT AUTHORIZED.** Only after P2-S returns `GO_FOR_SEPARATE_PROFILE_REVIEW`; explicitly accept or reject the security delta and reconcile E01-E04. |
 | `P2-I` | Unified-owner predecessor PR | **NOT AUTHORIZED.** Owner only; exact package/version/pin/path/API/trust snapshot; complete selected-profile vectors and normal/inline parity; no Settings or asset publication. |
@@ -610,21 +662,37 @@ Resource validation must record workload and threshold before measurement:
   size, and peak disk;
 - deterministic error behavior and cleanup after every injected failure.
 
-This target-fixture Gate package itself must pass JSON parsing, metadata
-authority, project-state, Mermaid source presence/link checks, Markdown link
-checks, and working-tree `git diff --check`; after a future commit it must also pass
-`git diff --check origin/master...HEAD`. Those checks validate the documentation
-package's internal consistency, not the proposed security properties.
+This Route B generation-design Gate package itself must pass JSON parsing,
+metadata authority, project-state, Mermaid source presence/link checks,
+Markdown link checks, evidence recomputation, the targeted documentation
+regression tests, and working-tree `git diff --check`; after a future commit it
+must also pass `git diff --check origin/master...HEAD`. Those checks validate
+the documentation package's internal consistency, not the proposed producer,
+fixture, or verifier security properties.
 
 ## Implementation Work Packages
 
-This turn records P2-D complete and P2-S0 published, and authorizes only
-preparation of the docs-only target-fixture child Gate above. It does not
-authorize acquiring/downloading/generating a fixture, changing or dispatching a
-workflow, running P2-S, creating an implementation plan, selecting a dependency,
-or changing source. PR #600 is already merged and remains an exact dormant
-checkpoint; it must not be refreshed or expanded to absorb profile or owner
-work.
+This turn records P2-D complete, P2-S0/FX1 published, and Route A blocked, and
+authorizes only preparation of the docs-only Route B generation-design Gate
+above. It does not authorize a producer implementation plan, an Action pin,
+workflow/test source, permissions, Settings, acquisition/download/generation or
+custody handoff, dispatch/rerun, P2-S, another dependency, Release, deployment,
+or production. PR #600 is already merged and remains an exact dormant
+checkpoint; it must not be refreshed or expanded to absorb fixture, profile, or
+owner work.
+
+Before a Route B source Gate can return positively, PR #594 must be closed
+without merge; a separate Settings Gate must establish/read back the dedicated
+protected Environment; a post-run source-retirement PR must be preplanned; and
+all source/action pins, predicate, retention, custody, redaction, and failure
+contracts must be exact. Merging source still does not authorize generation.
+A source or retirement merge also triggers expected repository automation and
+ordinary Actions artifacts; each Gate must bind and read those objects back and
+prove zero unexpected GitHub Release, Deployment, fixture attestation, or run.
+A future generated attestation is a persistent GitHub object: a failed later
+step records it and every created run/job/check/log/audit/Environment-review/
+artifact object as ineligible history. API disable or deletion is a separate external-
+write/destructive Gate rather than an implied rollback.
 
 Only after a separate P2-S execution approval may an isolated scratch run
 produce a redacted feasibility packet. A successful packet may request, but
@@ -648,9 +716,21 @@ owner boundary, or current PR topology has materially changed.
 
 ## Open Questions
 
-- Can an operator supply an already-existing target-repository, target-workflow
-  private bundle and exact subject bytes, or does fixture generation require a
-  separate workflow/dispatch Gate?
+- Can a future custodian establish a historical Route A fixture under a
+  superseding exact Gate, or is Route B the only viable evidence source?
+- What exact reviewer, self-review, protected-master,
+  `can_admins_bypass=false`, no-secret/variable, no-custom-protection-App, and
+  Actions-retention settings must the mandatory dedicated Environment enforce,
+  and what independent before/after readback closes its Settings Gate?
+- What exact source-retirement scope and no-extra-run readback closes the
+  callable workflow before custody, while leaving Environment mutation or
+  deletion to a separate Settings Gate?
+- Which exact immutable full-SHA pins and provenance satisfy the producer's
+  minimal Action set without expanding permissions or introducing package/lock
+  dependencies?
+- What exact Actions-artifact retention, custodian, redacted manifest, bundle
+  retrieval, and persistent-attestation ineligible-history contracts are
+  acceptable before generation?
 - Does the real target bundle contain an RFC3161 token whose signed-byte
   derivation and `messageImprint` can be verified against the exact applicable
   GitHub-private root and TSA?
