@@ -1,0 +1,7 @@
+flowchart LR
+  A["PR #600 remains Draft"] --> B["Diagnostic-only Foundation path"]
+  A --> C["Diagnostic-only Artifact path"]
+  B --> D["Permanent hard stop"]
+  C --> D
+  D --> E["No lock publication"]
+  D --> F["No formal deployment capability"]

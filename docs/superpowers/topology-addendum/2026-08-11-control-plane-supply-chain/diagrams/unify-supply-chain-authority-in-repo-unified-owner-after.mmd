@@ -1,0 +1,21 @@
+flowchart LR
+  A["Approved topology addendum"] --> B["Refreshed exact-11 bootstrap\nmerged dormant and hard-stopped"]
+  B --> C["Separate owner predecessor PR"]
+  C --> D["Pinned full-Sigstore owner\non protected master"]
+  D --> E["Supply-chain activation source PR"]
+  E --> Q["Artifact-publication Settings Gate\npolicy readback before Release writes"]
+  Q --> F["Manual immutable-lock publication Gate"]
+  F --> G["Foundation lock full-owner postverify"]
+  G --> H["Private-branded verified Foundation toolchain"]
+  Q --> I["Manual offline npm closure Gate"]
+  I --> J["Content/digest readback + zero-network consumer proof"]
+  D --> K["Artifact consumer cross-contract tests"]
+  K --> L["Future per-asset full-owner postverify capability"]
+  H --> M["New explicit Risk A resume approval"]
+  J --> M
+  L --> M
+  M --> N["Future main source-only Draft"]
+  N --> O["Disposable staging and failure matrix"]
+  O --> R["Main Ready/merge + source reconciliation"]
+  R --> S["Compatibility staging + credential cleanup"]
+  S --> P["Production Settings Gate\nadmin bypass becomes false"]

@@ -1,0 +1,470 @@
+{
+  "documentType": "codex-security.hardening-analysis",
+  "schemaVersion": "1.0",
+  "analysisId": "control_plane_supply_chain_topology_20260811",
+  "sourceEvidence": {
+    "kind": "mixed_document_and_configuration_collection",
+    "label": "Control-plane production design, workflows, PR boundary, and redacted GitHub policy readback",
+    "collectionSha256": "7d04a3e95d8d745fed8f4c86cf5045d85ac6429aefcd129b7023fded743e8eb1",
+    "artifactCount": 10,
+    "targetRevision": "9033f67f76573f9c5bccd17c3762a1608f1c4b9c",
+    "sourceDrift": "none"
+  },
+  "assessment": {
+    "outcome": "opportunities_identified",
+    "summary": "One missing pre-publication authority owner creates a topology hold; the recommended design is a single in-repository owner with lock and offline closure kept as independent Gates."
+  },
+  "constraints": {
+    "profile": "minimal_fail_closed",
+    "changeHorizons": [
+      "design_decision",
+      "serial_source_prs",
+      "separate_external_gates"
+    ],
+    "nonNegotiables": [
+      "This Draft has no implementation or production authority.",
+      "Foundation and Artifact consume one owner with a module-private brand.",
+      "The owner does not depend on the lock or offline closure it later authorizes.",
+      "Foundation lock completion never substitutes for per-asset Artifact verification.",
+      "Lock and offline npm closure use separate publication and readback Gates.",
+      "Every pre-write validation mismatch fails before output, external write, or build.",
+      "Every post-write readback or postverification mismatch leaves immutable bytes as ineligible history and emits no completion, eligibility, build, credential, host, or deployment claim."
+    ],
+    "assumptions": [
+      "No performance or memory budget was supplied.",
+      "No mature Sigstore implementation, package version, path, API, trust snapshot, or pin has been selected.",
+      "The current exact-11 bootstrap remains dormant and hard-stopped."
+    ]
+  },
+  "opportunities": [
+    {
+      "opportunityId": "unify-supply-chain-authority",
+      "title": "Unify supply-chain authority before publication",
+      "summary": "Place one complete Sigstore authority before lock publication without duplicating trust or creating a self-verifying bootstrap cycle.",
+      "diagnosis": "Foundation and Artifact have safe diagnostic-only paths, but the retained PR topology has no protected-master owner capable of issuing a private authoritative result before immutable-lock publication.",
+      "evidence": [
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E01",
+          "title": "Canonical production-deploy design",
+          "path": "docs/superpowers/specs/2026-08-08-github-control-plane-production-deploy-design.md",
+          "claim": "The canonical design requires one mature full-Sigstore owner shared by Foundation and Artifact before lock publication."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E02",
+          "title": "Implementation program",
+          "path": "docs/superpowers/plans/2026-08-08-github-control-plane-production-deploy-implementation-program.md",
+          "claim": "Owner, immutable-lock postverification, offline closure, and a new Risk A resume approval are conjunctive prerequisites."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E03",
+          "title": "Foundation and Linux feasibility plan",
+          "path": "docs/superpowers/plans/2026-08-08-github-control-plane-foundation-and-linux-feasibility.md",
+          "claim": "The exact-11 bootstrap may land only as an inert publisher checkpoint; an owner and activation change follow separately."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E04",
+          "title": "Artifact and workflow plan",
+          "path": "docs/superpowers/plans/2026-08-08-github-control-plane-artifact-and-workflow.md",
+          "claim": "Artifact must consume the same owner and may not mint or wrap a second authority."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E05",
+          "title": "Existing production dry run",
+          "path": ".github/workflows/production-deploy-dry-run.yml",
+          "claim": "The existing dry run creates a review packet without production host mutation and is not a formal executor."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E06",
+          "title": "Existing release-artifact workflow",
+          "path": ".github/workflows/release-artifact.yml",
+          "claim": "Artifact packaging success is neither deployment authority nor cryptographic completion."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "source",
+          "evidenceId": "E07",
+          "title": "Restricted Japan config repair workflow",
+          "path": ".github/workflows/japan-runtime-config-additive-repair.yml",
+          "claim": "The existing repair channel is narrowly scoped and cannot be reused as general deployment authority."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E08",
+          "title": "Repository Risk A operating rules",
+          "path": "AGENTS.md",
+          "claim": "Production and provider work requires read-only inventory, exact approval, validation, rollback, and closeout."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E09",
+          "title": "Live Environment and ruleset summary",
+          "path": "context.md",
+          "claim": "The redacted live Environment readback reports administrator bypass enabled, so production Settings remain a later separate Gate."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E10",
+          "title": "Live PR #600 summary",
+          "path": "context.md",
+          "claim": "PR #600 is open, Draft, behind current master, exact 11 files, and cannot supply the missing owner."
+        },
+        {
+          "claimType": "inferred",
+          "sourceKind": "document",
+          "evidenceId": "E11",
+          "title": "Cross-document authority-cycle diagnosis",
+          "path": "context.md",
+          "derivedFromEvidenceIds": ["E01", "E02", "E03", "E04"],
+          "claim": "Promoting either diagnostic path or placing the owner inside its own lock/closure would violate the trust-owner and bootstrap-order invariants."
+        }
+      ],
+      "desiredInvariants": [
+        "One non-selectable production owner verifies both Foundation and Artifact evidence.",
+        "Trust roots, keys, policy, complete CT/SCT semantics, and result construction remain owner-private.",
+        "The owner bootstrap is independently pinned and does not consume the lock or closure it authorizes.",
+        "Lock postverification authorizes only that lock; each Artifact asset postverifies separately.",
+        "Offline closure generation and clean-runner zero-network consumption are separate proofs.",
+        "Any pre-write mismatch restores the hard stop before output, publication, build, credential, host, or deployment effects.",
+        "Any post-write readback or postverification mismatch preserves immutable bytes as ineligible history and emits no completion, eligibility, build, credential, host, or deployment claim."
+      ],
+      "proposalPath": "proposals/unify-supply-chain-authority.md",
+      "options": [
+        {
+          "optionId": "permanent-no-go",
+          "title": "Permanent No-Go",
+          "kind": "baseline",
+          "summary": "Retain diagnostic-only verification and never enable formal automated publication or deployment.",
+          "diagramPaths": {
+            "before": "diagrams/unify-supply-chain-authority-before.mmd",
+            "after": "diagrams/unify-supply-chain-authority-permanent-no-go-after.mmd"
+          },
+          "evidenceCoverage": [
+            { "evidenceId": "E01", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Permanent No-Go keeps the canonical topology hold and creates no incomplete owner." },
+            { "evidenceId": "E02", "effect": "addresses", "tacticalFixRequired": true, "rationale": "No source resumption occurs while any conjunctive prerequisite is absent." },
+            { "evidenceId": "E03", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The exact-11 bootstrap remains dormant and zero-write." },
+            { "evidenceId": "E04", "effect": "addresses", "tacticalFixRequired": true, "rationale": "No Foundation or Artifact authority is minted or reused." },
+            { "evidenceId": "E05", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The existing dry run remains non-executing packet generation." },
+            { "evidenceId": "E06", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "Packaging remains distinct from deployment and cryptographic completion." },
+            { "evidenceId": "E07", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The restricted repair channel remains narrow and is not reused." },
+            { "evidenceId": "E08", "effect": "addresses", "tacticalFixRequired": true, "rationale": "No Risk A external mutation is attempted." },
+            { "evidenceId": "E09", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The live Settings gap remains but cannot affect a nonexistent formal deployment path." },
+            { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 remains Draft or an explicitly approved inert checkpoint." },
+            { "evidenceId": "E11", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The permanent hard stop prevents diagnostic promotion and a self-verifying bootstrap cycle." }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "No new cryptographic publication authority or deployment path is introduced.",
+              "validationPlan": "Keep static and runtime tests proving every protected path stops before effects."
+            },
+            {
+              "dimension": "performance",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "No new automated verification path executes.",
+              "validationPlan": "No benchmark is needed unless the decision is reopened."
+            },
+            {
+              "dimension": "memory",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "No verifier or service allocation is added.",
+              "validationPlan": "No resource measurement is needed unless the decision is reopened."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "Formal publication and deployment remain intentionally unavailable.",
+              "validationPlan": "Confirm manual operational requirements remain acceptable."
+            },
+            {
+              "dimension": "operability",
+              "direction": "neutral",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "No new service exists, but existing manual release burden remains.",
+              "validationPlan": "Review manual release incident and evidence consistency over the next operating period."
+            },
+            {
+              "dimension": "migration",
+              "direction": "neutral",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "The repository retains its current hard-stop state.",
+              "validationPlan": "Verify PR #600 and all later source remain dormant."
+            }
+          ],
+          "residualRisks": [
+            "Manual deployment processes retain human-error and evidence-consistency risk.",
+            "Future maintainers could weaken the hard stop without reopening the design."
+          ]
+        },
+        {
+          "optionId": "in-repo-unified-owner",
+          "title": "In-repository unified trust kernel",
+          "kind": "structural",
+          "summary": "Place one pinned owner on protected master and keep lock and offline closure as separate publication/readback Gates.",
+          "diagramPaths": {
+            "before": "diagrams/unify-supply-chain-authority-before.mmd",
+            "after": "diagrams/unify-supply-chain-authority-in-repo-unified-owner-after.mmd"
+          },
+          "evidenceCoverage": [
+            { "evidenceId": "E01", "effect": "addresses", "tacticalFixRequired": true, "rationale": "One pinned private owner provides complete Foundation and Artifact verification." },
+            { "evidenceId": "E02", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Serial owner, lock, closure, and resume Gates preserve conjunctive ordering." },
+            { "evidenceId": "E03", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The exact-11 bootstrap lands dormant before a separate owner and activation change." },
+            { "evidenceId": "E04", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Artifact consumes the same owner and still postverifies every asset separately." },
+            { "evidenceId": "E05", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The current dry run remains a non-authoritative packet generator." },
+            { "evidenceId": "E06", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "The owner verifies exact evidence before later consumption without treating packaging as deployment." },
+            { "evidenceId": "E07", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The restricted repair workflow remains outside the formal deployment authority." },
+            { "evidenceId": "E08", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Every source PR and external Gate retains separate Risk A approval and readback." },
+            { "evidenceId": "E09", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Production Settings are deferred to a distinct post-staging Gate with admin bypass disabled and read back." },
+            { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 is refreshed and merged only as a separately approved dormant checkpoint." },
+            { "evidenceId": "E11", "effect": "addresses", "tacticalFixRequired": true, "rationale": "One independently bootstrapped owner resolves duplicated authority while serial ordering breaks the cycle." }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "improves",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "One private owner removes copied trust and caller-constructible completion, while same-process parser risk remains.",
+              "validationPlan": "Run complete official/adversarial vectors, brand forgery tests, byte caps, and normal/inline differential tests."
+            },
+            {
+              "dimension": "performance",
+              "direction": "unknown",
+              "confidence": "medium",
+              "basis": "hypothetical",
+              "assessment": "In-process verification avoids IPC but adds complete chain, transparency, and statement validation.",
+              "validationPlan": "Measure wall time for representative and maximum bundles in both runtime forms against a recorded threshold."
+            },
+            {
+              "dimension": "memory",
+              "direction": "unknown",
+              "confidence": "medium",
+              "basis": "hypothetical",
+              "assessment": "Verifier code and bounded bundle copies share the caller process.",
+              "validationPlan": "Measure peak RSS and retained buffers for successful and adversarial maximum-size bundles."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "improves",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Few new components are introduced and lock/closure failures remain independent, but a library regression stops both consumers.",
+              "validationPlan": "Inject owner, lock, closure, trust-expiry, and cleanup failures and verify deterministic hard-stop behavior."
+            },
+            {
+              "dimension": "operability",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "The project must maintain one security-critical dependency, trust snapshot, vector corpus, and two publication Gates.",
+              "validationPlan": "Dry-run version and trust rotation, incident rollback, immutable asset retention, and readback procedures."
+            },
+            {
+              "dimension": "migration",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "The design requires serial dormant-bootstrap, owner, activation, publication, closure, and resume checkpoints.",
+              "validationPlan": "Enforce the ordered PR/Gate matrix and reject any combined or reordered transition."
+            }
+          ],
+          "residualRisks": [
+            "A vulnerability in the pinned Sigstore implementation can affect both consumers.",
+            "Normal and inline runtime representations can drift.",
+            "Trust-root, CT-log, or Rekor-key rotation can stop publication until reviewed."
+          ]
+        },
+        {
+          "optionId": "hermetic-owner-appliance",
+          "title": "Hermetic owner appliance",
+          "kind": "isolation",
+          "summary": "Run one reproducibly built verifier appliance that owns fixed final consume operations.",
+          "diagramPaths": {
+            "before": "diagrams/unify-supply-chain-authority-before.mmd",
+            "after": "diagrams/unify-supply-chain-authority-hermetic-owner-appliance-after.mmd"
+          },
+          "evidenceCoverage": [
+            { "evidenceId": "E01", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "A pinned appliance can provide complete verification through fixed consume operations." },
+            { "evidenceId": "E02", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Appliance, lock, closure, and resume remain serial independent Gates." },
+            { "evidenceId": "E03", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The exact-11 bootstrap remains dormant before appliance and activation changes." },
+            { "evidenceId": "E04", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Fixed final consume operations avoid trusting a plain serialized Artifact result." },
+            { "evidenceId": "E05", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The existing dry run remains non-authoritative." },
+            { "evidenceId": "E06", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Appliance verification remains distinct from packaging and deployment completion." },
+            { "evidenceId": "E07", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The restricted repair workflow is not reused." },
+            { "evidenceId": "E08", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The added appliance lifecycle is introduced only through separate Risk A approvals." },
+            { "evidenceId": "E09", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Production Settings remain a post-staging readback Gate." },
+            { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 stays dormant and separate from the appliance owner." },
+            { "evidenceId": "E11", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "One appliance centralizes verification, but authority must stay in fixed consume operations rather than serialized receipts." }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "improves",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Process isolation narrows parser fault impact, but expands the appliance TCB and authority surface.",
+              "validationPlan": "Fuzz and crash the appliance, verify caller containment, and prove no plain JSON result is authoritative."
+            },
+            {
+              "dimension": "performance",
+              "direction": "regresses",
+              "confidence": "low",
+              "basis": "hypothetical",
+              "assessment": "Fresh process/container startup and IPC add latency.",
+              "validationPlan": "Measure cold/warm startup, IPC bytes, verification time, and throughput."
+            },
+            {
+              "dimension": "memory",
+              "direction": "regresses",
+              "confidence": "low",
+              "basis": "hypothetical",
+              "assessment": "A separate runtime duplicates code, trust, and buffers but enables explicit limits.",
+              "validationPlan": "Measure aggregate caller plus appliance RSS and enforce memory limits under adversarial input."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "unknown",
+              "confidence": "medium",
+              "basis": "analogous",
+              "assessment": "Crashes are isolated, while image, registry, startup, and IPC failures add stop modes.",
+              "validationPlan": "Exercise unavailable image, crash, timeout, corrupt IPC, registry outage, and rollback digest cases."
+            },
+            {
+              "dimension": "operability",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "Reproducible build, artifact registry, provenance, alerting, and digest rollback become mandatory.",
+              "validationPlan": "Run an appliance update and rollback rehearsal with independent provenance/readback."
+            },
+            {
+              "dimension": "migration",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "The canonical private-brand design must be reshaped around appliance-owned final operations.",
+              "validationPlan": "Complete a new threat-model review and prove every consume path is appliance-owned."
+            }
+          ],
+          "residualRisks": [
+            "The appliance can become a broader privileged choke point.",
+            "A signed cross-process receipt adds another key and replay boundary.",
+            "Registry or artifact unavailability blocks publication."
+          ]
+        },
+        {
+          "optionId": "external-verification-broker",
+          "title": "External verification broker",
+          "kind": "foundational",
+          "summary": "Centralize trust and verification in a network service that returns signed, content-bound, replay-resistant admissions.",
+          "diagramPaths": {
+            "before": "diagrams/unify-supply-chain-authority-before.mmd",
+            "after": "diagrams/unify-supply-chain-authority-external-verification-service-after.mmd"
+          },
+          "evidenceCoverage": [
+            { "evidenceId": "E01", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "A broker can centralize complete verification but changes the repository trust model." },
+            { "evidenceId": "E02", "effect": "addresses", "tacticalFixRequired": true, "rationale": "Broker client, lock, closure, and resume remain serial independent Gates." },
+            { "evidenceId": "E03", "effect": "addresses", "tacticalFixRequired": true, "rationale": "The exact-11 bootstrap remains dormant before broker-client activation." },
+            { "evidenceId": "E04", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Signed content-bound admissions can serve both consumers but replace the private brand." },
+            { "evidenceId": "E05", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The current dry run remains non-authoritative." },
+            { "evidenceId": "E06", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Broker admission remains distinct from packaging and deployment completion." },
+            { "evidenceId": "E07", "effect": "unaffected", "tacticalFixRequired": true, "rationale": "The restricted repair workflow is not reused." },
+            { "evidenceId": "E08", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "A broker requires an expanded Risk A threat model, service Gate, and approval sequence." },
+            { "evidenceId": "E09", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Production Settings remain a later post-staging readback Gate." },
+            { "evidenceId": "E10", "effect": "addresses", "tacticalFixRequired": true, "rationale": "PR #600 remains a dormant checkpoint separate from broker-client activation." },
+            { "evidenceId": "E11", "effect": "mitigates", "tacticalFixRequired": true, "rationale": "Central policy serves both consumers, but authority becomes a signed network capability under a new trust model." }
+          ],
+          "tradeoffs": [
+            {
+              "dimension": "security",
+              "direction": "unknown",
+              "confidence": "medium",
+              "basis": "source-derived",
+              "assessment": "Central updates reduce repository drift, but service or signing-key compromise affects every consumer.",
+              "validationPlan": "Threat-model OIDC, TLS, signing keys, replay, tenant isolation, compromise, and emergency revocation."
+            },
+            {
+              "dimension": "performance",
+              "direction": "regresses",
+              "confidence": "low",
+              "basis": "hypothetical",
+              "assessment": "Network and service queue latency enter the publication path.",
+              "validationPlan": "Measure end-to-end p50/p95/p99 under expected concurrency and outage conditions."
+            },
+            {
+              "dimension": "memory",
+              "direction": "unknown",
+              "confidence": "low",
+              "basis": "hypothetical",
+              "assessment": "Repository clients shrink while shared service caches, ledgers, and audit state grow.",
+              "validationPlan": "Measure per-request memory, retained ledger growth, and tenant isolation limits."
+            },
+            {
+              "dimension": "reliability",
+              "direction": "regresses",
+              "confidence": "medium",
+              "basis": "analogous",
+              "assessment": "Network, service, key, and ledger failures become release-availability dependencies.",
+              "validationPlan": "Test outage, partition, retry, duplicate, stale admission, key rotation, and disaster recovery."
+            },
+            {
+              "dimension": "operability",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "A 24x7 service, secrets, rotation, tenancy, audit, alerting, and incident response are required.",
+              "validationPlan": "Complete service ownership, on-call, SLO, key-ceremony, and incident-response rehearsals."
+            },
+            {
+              "dimension": "migration",
+              "direction": "regresses",
+              "confidence": "high",
+              "basis": "source-derived",
+              "assessment": "The repository must adopt a new signed-admission protocol and replace the private-brand invariant.",
+              "validationPlan": "Approve a new threat model and dual-run only diagnostic comparisons before any authority use."
+            }
+          ],
+          "residualRisks": [
+            "A broker signing-key compromise can authorize both Foundation and Artifact across repositories.",
+            "Service availability becomes publication availability.",
+            "Cross-tenant policy or replay defects can broaden blast radius."
+          ]
+        }
+      ],
+      "recommendedOptionId": "in-repo-unified-owner",
+      "recommendation": "Choose the in-repository owner only after an exact mature implementation and trust snapshot pass complete CT/SCT and normal/inline parity review; otherwise retain the permanent hard stop."
+    }
+  ],
+  "openQuestions": [
+    "Which mature Sigstore implementation, exact version, dependency closure, path, API, and trust snapshot should be pinned?",
+    "Can one source generate normal and inline runtimes without copied trust or policy?",
+    "How will trust-root and log-key validity, provenance, rotation, and rollback be governed?",
+    "What byte, latency, memory, disk, and closure-size limits are acceptable?",
+    "What immutable retention and independent readback guarantees are required for lock and closure assets?"
+  ]
+}

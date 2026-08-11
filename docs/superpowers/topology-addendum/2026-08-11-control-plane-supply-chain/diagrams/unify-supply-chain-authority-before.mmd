@@ -1,0 +1,14 @@
+flowchart LR
+  A["Exact 11-file PR #600 Draft"] --> B["Foundation diagnostic verifier"]
+  A --> C["Artifact diagnostic verifier"]
+  B --> D["full_sigstore_owner_topology_unapproved"]
+  C --> D
+  D --> E["No artifact-publication Settings Gate\nor immutable lock write"]
+  D --> F["No offline closure\nor clean-runner proof"]
+  D --> G["No authoritative Artifact capability"]
+  E --> H["No Risk A resume approval"]
+  F --> H
+  G --> H
+  H --> I["No main Draft, merge, reconciliation,\nor compatibility staging"]
+  J["Ambient npm/network dependency path"] -. "not approved" .-> F
+  K["vultr-japan-production\ncan_admins_bypass=true"] -. "not acceptable authority" .-> I
