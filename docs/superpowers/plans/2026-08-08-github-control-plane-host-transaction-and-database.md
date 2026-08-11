@@ -1,8 +1,8 @@
 # GitHub Control-Plane Host Transaction And Database Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For future agentic workers only after the four-prerequisite Host-resumption gate below and its resulting authoritative Foundation checkpoint are GREEN:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. This line grants no current implementation authority. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement the source-only host transaction, closed two-database contract, writer fencing, coherent backup, additive migration evidence, persisted-data rollback proof, and deterministic recovery required by the approved GitHub control-plane production deployment design.
+**Goal:** Define the future-conditional source-only host transaction, closed two-database contract, writer fencing, coherent backup, additive migration evidence, persisted-data rollback proof, and deterministic recovery required by the approved GitHub control-plane production deployment design. This document does not currently authorize implementation or execution of any Host task.
 
 **Architecture:** A root-owned host transaction consumes the already-reviewed deployment plan and the Foundation layer's durable/native primitives. It resolves exactly two logical SQLite databases, holds one global database-identity OFD lease plus the business-mutation lease, transfers only authenticated file capabilities, quiesces the complete writer set, publishes a coherent two-database backup pair, applies at most the reviewed additive migrations in fixed order, and classifies recovery from the in-database ledger rather than an external journal hint. Candidate and rollback releases share one canonical writer-registry and persisted-data pair contract; code rollback is automatic, database restore is never automatic.
 
@@ -11,13 +11,13 @@
 ## Global Constraints
 
 - Risk: A.
-- Process: source-only TDD implementation, clean Linux integration, exact-head CI/CodeQL, independent review, then a separate compatibility/bootstrap/inventory/Artifact Gate/Production Gate sequence. This plan never performs those later gates.
+- Process: current execution is a hard STOP with `full_sigstore_owner_topology_unapproved`; Task 0 and every later Host task are unreachable and must not be implemented, run, committed, or used to advance the Draft PR. Only after the four-prerequisite Host-resumption gate below and its resulting authoritative Foundation checkpoint are GREEN may the conditional source-only TDD implementation, clean Linux integration, exact-head CI/CodeQL, independent review, then separate compatibility/bootstrap/inventory/Artifact Gate/Production Gate sequence begin. This plan never performs those later gates.
 - Expected PR count: one source-only Draft PR slice. Keep the tasks as reviewable commits in that PR; do not split design, code, tests, and runbook evidence across separate PRs.
 - Validation: focused RED/GREEN tests per task, the complete database/host integration matrix, `npm test`, `npm pack --dry-run`, `git diff --check origin/master...HEAD`, exact-head CI, CodeQL, and clean target-matching Linux validation.
 - Production/AWS impact: none. Do not access Vultr, AWS, GitHub Environments, production SSH, production SQLite, protected configuration, production credentials, or production systemd in this plan.
-- Precondition: the earlier Foundation checkpoint on this same source-only Draft branch must pass and expose `probeLinuxCapabilities`, `createSealedMemfd`, `createBoundedCapture`, `spawnWithExactFileDescriptors`, `durableReadLogical`, `durablePublishNoReplace`, `durableCompareAndSwap`, `durableUnlinkVerified`, `createDatabaseIdentityLease`, `sendDatabaseCapability`, `receiveDatabaseCapability`, `inspectSqliteMainHandle`, `durableWriteFile`, `durableSwapSymlink`, and `durableUnlink` from `ops/control-plane-deploy/native/index.mjs`, plus `createDurableStore({ contracts, fsOps, native })` from `server/services/deployment/durable-store.mjs`. Its aggregate receipt must contain exactly the 14 reviewed feature keys in Task 0, every value `true`, and `eligible: true`. No merge is required between slices. If any exact export, atomic durable-store behavior, receipt feature, or target-matching Linux proof is absent at the recorded checkpoint, stop before Task 1; do not recreate or weaken native feasibility here.
-- Import only `parseCanonicalJsonBytes(bytes, contract)`, `serializeCanonicalJsonBytes(value, contract)`, and `sha256Hex(bytes)` from `server/services/deployment/canonical-json.mjs`. Canonical contracts use exactly `{ schemaId, maxBytes, fieldOrder, nested, arrays, validate }`. This plan owns the database constants, `canonicalizeDatabaseContracts`, and validator that adjacent plans import; it must not define a competing canonicalizer or receipt schema.
-- Cross-plan execution is one exact source-only DAG on the same Draft branch: Foundation; Host Tasks 0-1; Integration Task 2; Artifact Tasks 1-2; Bootstrap Tasks 1-8; Host Tasks 2-10; Receipt Tasks 1-3; Artifact Tasks 3-8; the Task 11A closed-broker plus branded host-inventory-reader provider checkpoint; Bootstrap Tasks 9-10; Receipt Task 4; Artifact Tasks 9-10; the rest of Host Task 11 plus Host Tasks 12-13; Receipt Tasks 5-8; Artifact Tasks 11-13; Bootstrap Task 11; Integration Tasks 1 and 3; Host Task 14A source-only G1a installer contract, then Host Task 14B; then Integration Tasks 4-9. Receipt work is deliberately split at Tasks 1-3 and Task 4: both Host providers become independently GREEN and committed before Bootstrap 9-10 or Receipt 4 consumers exist, while the consumer-dependent remainder of Task 11 waits for the later checkpoints. Task 14A waits for Integration Task 1's final staged-manifest validator and Bootstrap's final host-layout bytes, but performs no host staging.
+- Precondition: no Host task, including Task 0, may start while the current topology stop is `full_sigstore_owner_topology_unapproved`. Resumption requires all four separately evidenced conjunctive prerequisites: (1) a separately approved future Risk A unified full-Sigstore owner/provider topology, with one pinned mature owner installed and GREEN on protected `master` for both Foundation and Artifact; (2) immutable Foundation-lock publication plus full-owner postverification GREEN; (3) a separately approved complete content-addressed offline npm cache/vendor closure published and hash/inventory-read-back GREEN; and (4) a separate new explicit Risk-A Host-resumption approval recorded after prerequisites (1)-(3) are independently GREEN. Approval of prerequisite (1), including the provider/topology addendum, cannot satisfy prerequisite (4). These four prerequisites are the **four-prerequisite Host-resumption gate** used throughout this document. Only after that gate is complete may an authoritative, target-matching Foundation checkpoint on this same source-only Draft branch expose `probeLinuxCapabilities`, `createSealedMemfd`, `createBoundedCapture`, `spawnWithExactFileDescriptors`, `durableReadLogical`, `durablePublishNoReplace`, `durableCompareAndSwap`, `durableUnlinkVerified`, `createDatabaseIdentityLease`, `sendDatabaseCapability`, `receiveDatabaseCapability`, `inspectSqliteMainHandle`, `durableWriteFile`, `durableSwapSymlink`, and `durableUnlink` from `ops/control-plane-deploy/native/index.mjs`, plus `createDurableStore({ contracts, fsOps, native })` from `server/services/deployment/durable-store.mjs`. That checkpoint must be the exact successful protected run of Foundation's zero-argument owner CLI, `node scripts/control-plane-linux-capability-probe.mjs`: the CLI alone reads the fixed build manifest and root-owned host-probe result, validates and privately brands the authoritative observation, calls its own `buildCapabilityReceipt`, and emits its one owner-canonical aggregate receipt only after the required independent readbacks. Host Task 0 remains unreachable until that resulting checkpoint is recorded and GREEN; it consumes the recorded exact-head run/check and the Foundation-owned CLI/probe/integration tests as one authority chain and imports the owner lists only for consumer interface conformance. It must not import or call `buildCapabilityReceipt`, invoke `probeLinuxCapabilities` to mint a receipt, define or parse a second receipt contract, rebuild a feature Boolean map, or accept a local, synthetic, callback-produced, or test-generated receipt. Foundation's `REQUIRED_LINUX_FEATURES` plus its owner CLI/probe/integration tests alone validate the exact 14-feature map, `eligible: true`, canonical output, required readbacks, and private real-probe brand. No merge is required between slices. If any of the four authority prerequisites, any exact export, atomic durable-store behavior, owner CLI/readback/brand check, receipt feature, or target-matching Linux proof is absent at the recorded checkpoint, remain stopped before Task 0; do not recreate or weaken native feasibility here.
+- Import only `parseCanonicalJsonBytes(bytes, contract)`, `serializeCanonicalJsonBytes(value, contract)`, and `sha256Hex(bytes)` from `server/services/deployment/canonical-json.mjs`. Canonical contracts use exactly `{ schemaId, maxBytes, fieldOrder, nested, arrays, validate }`. This plan owns the database constants, `canonicalizeDatabaseContracts`, the sole frozen `DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT`, and validators that adjacent plans import; it must not define a competing canonicalizer or receipt schema. The embedding contract is the only public recursive descriptor for a database-contract array element and consumers may only install the object unchanged in their parent contract's `nested` map.
+- Future-conditional cross-plan schedule: only after the four-prerequisite Host-resumption gate and the resulting authoritative Foundation precondition above are GREEN, the exact source-only DAG on the same Draft branch is Foundation; Host Tasks 0-1; Integration Task 2; Artifact Tasks 1-2; Bootstrap Tasks 1-8; Host Tasks 2-10; Receipt Tasks 1-3; Artifact Tasks 3-8; the Task 11A closed-broker plus branded host-inventory-reader provider checkpoint; Bootstrap Tasks 9-10; Receipt Task 4; Artifact Tasks 9-10; the rest of Host Task 11 plus Host Tasks 12-13; Receipt Tasks 5-8; Artifact Tasks 11-13; Bootstrap Task 11; Integration Tasks 1 and 3; Host Task 14A source-only G1a installer contract, then Host Task 14B; then Integration Tasks 4-9. This is a dormant conditional schedule, not current execution authority. Receipt work is deliberately split at Tasks 1-3 and Task 4: both Host providers become independently GREEN and committed before Bootstrap 9-10 or Receipt 4 consumers exist, while the consumer-dependent remainder of Task 11 waits for the later checkpoints. Task 14A waits for Integration Task 1's final staged-manifest validator and Bootstrap's final host-layout bytes, but performs no host staging.
 - Production resolves exactly `subscription-runtime` from `SUBSCRIPTION_DB_PATH` and `subscription-control` from `SUBSCRIPTION_CONTROL_DB_PATH`. Both values must resolve internally to explicit absolute existing persistent files outside every release, and their host-keyed physical identities must differ. No fallback, `CONTROL_DB_PATH`, shared file, release-local file, or implicit creation is accepted.
 - `candidate-start.mjs` is the sole production-capable application entrypoint and fixes `schemaStartupMode: "existing_schema_only"` internally. `server/index.mjs`, `daemon.mjs`, `gccgw server start`, package aliases, copied scripts, and direct Node calls must fail before a production database opens unless they are classified as local/synthetic-only.
 - Every production database open uses an authenticated capability, an actual-main-handle proof, a shared global database-identity lease for the full handle lifetime, and a before/after `critical_identity_fence` check. No production API accepts a database path.
@@ -35,7 +35,7 @@
 
 ## Foundation Contract Consumed By This Plan
 
-The Foundation implementation owns the C/N-API feasibility. Before this slice advances past Task 0 on the same source-only branch, its reviewed checkpoint must implement semantics equivalent to the following excerpt and prove them against the exact Linux architecture, libc, kernel, filesystem, Node ABI, `better-sqlite3`, WAL, and SHM combination. This excerpt is an audit criterion only; this plan does not edit the native source.
+The Foundation implementation owns the C/N-API feasibility. Current Host execution stops before Task 0 with `full_sigstore_owner_topology_unapproved`. Only after the four-prerequisite Host-resumption gate is complete may the authoritative Foundation checkpoint implement semantics equivalent to the following excerpt and prove them against the exact Linux architecture, libc, kernel, filesystem, Node ABI, `better-sqlite3`, WAL, and SHM combination; Host remains stopped until that resulting checkpoint is recorded and GREEN. This excerpt is an audit criterion only; this plan does not edit the native source.
 
 ```c
 struct msghdr message = {0};
@@ -73,7 +73,7 @@ For each logical database, `descriptors` is exactly `[databaseFd, identityLeaseF
 | `schemas/control-plane-host-transaction-journal-v1.schema.json` | Bounded canonical accepted/stage/migration-hint/nonterminal journal grammar. |
 | `ops/control-plane-deploy/writer-registry.sources.json` | Reviewed nine-record writer declaration independent of static discovery. |
 | `ops/control-plane-deploy/persisted-data-registry.json` | Closed mutable-table/domain/scenario registry. |
-| `server/services/deployment/database-contract.mjs` | Constants, strict normalization, owner-private canonical contract-set bytes/digest, migration/recovery classification, and terminal-vector validation shared with receipt/recovery. |
+| `server/services/deployment/database-contract.mjs` | Constants, strict normalization, owner-private canonical contract-set bytes/digest, the sole frozen cross-owner entry embedding descriptor, migration/recovery classification, and terminal-vector validation shared with receipt/recovery. |
 | `server/services/deployment/subscription-runtime-schema.mjs` | Explicit runtime schema bootstrap for synthetic/local use and exact existing-schema validation. |
 | `server/services/deployment/subscription-control-schema.mjs` | Explicit base control schema bootstrap for synthetic/local use and exact existing-schema validation. |
 | `server/services/deployment/sqlite-schema-identity.mjs` | Aggregate-only canonical SQLite schema identity and exact identity assertion. |
@@ -224,13 +224,15 @@ These files remain library-only or synthetic-only unless static discovery finds 
 
 ---
 
-### Task 0: Verify The Foundation Stop/Go Contract
+### Task 0: Future-Conditionally Verify The Foundation Stop/Go Contract
+
+> **Current status: STOP.** Do not create, run, or commit this task while the fixed stop is `full_sigstore_owner_topology_unapproved`. The task becomes reachable only after all four conjunctive prerequisites in the Global Constraints four-prerequisite Host-resumption gate and the resulting authoritative Foundation checkpoint are GREEN; a Host-side probe call, receipt object, parser, Boolean mapper, fixture, or test double cannot make it reachable.
 
 **Files:**
 - Create: `server/tests/control-plane-database-foundation-contract.test.mjs`
 
 **Interfaces:**
-- Consumes the 15 exact Foundation native exports, `createDurableStore({ contracts, fsOps, native })`, its four-method atomic API, and the exact 14-feature feasibility receipt listed below.
+- Future-only consumes `FOUNDATION_NATIVE_EXPORTS` and `REQUIRED_LINUX_FEATURES` unchanged from `server/services/deployment/foundation-contract.mjs`, the 15 exact Foundation native exports, `createDurableStore({ contracts, fsOps, native })`, its four-method atomic API, and the recorded exact-head success of Foundation's zero-argument owner CLI plus owner probe/integration tests. The owner CLI's canonical receipt, independent build/host-result readbacks, and module-private real-probe brand remain Foundation-owned evidence; Host neither reconstructs nor revalidates them through a second contract.
 - Produces no implementation module and no commit when the Foundation contract is absent.
 
 - [ ] **Step 1: Add the exact export/behavior contract test**
@@ -241,44 +243,12 @@ import test from "node:test";
 import * as native from "../../ops/control-plane-deploy/native/index.mjs";
 import { sha256Hex } from "../services/deployment/canonical-json.mjs";
 import { createDurableStore } from "../services/deployment/durable-store.mjs";
-import { buildCapabilityReceipt } from "../../scripts/control-plane-linux-capability-probe.mjs";
+import {
+  FOUNDATION_NATIVE_EXPORTS,
+  REQUIRED_LINUX_FEATURES,
+} from "../services/deployment/foundation-contract.mjs";
 
-const REQUIRED_NATIVE_EXPORTS = Object.freeze([
-  "probeLinuxCapabilities",
-  "createSealedMemfd",
-  "createBoundedCapture",
-  "spawnWithExactFileDescriptors",
-  "durableReadLogical",
-  "durablePublishNoReplace",
-  "durableCompareAndSwap",
-  "durableUnlinkVerified",
-  "createDatabaseIdentityLease",
-  "sendDatabaseCapability",
-  "receiveDatabaseCapability",
-  "inspectSqliteMainHandle",
-  "durableWriteFile",
-  "durableSwapSymlink",
-  "durableUnlink"
-]);
-
-const REQUIRED_FOUNDATION_FEATURES = Object.freeze([
-  "memfdOwnerMode0600",
-  "memfdFullSeals",
-  "sealedOpenSshDescriptorHandoff",
-  "exactDescriptorInheritance",
-  "atomicLogicalStateTransitions",
-  "openat2BeneathNoFollow",
-  "ofdIdentityLease",
-  "reviewedSpawnProfileRegistry",
-  "scmRightsPeerBound",
-  "sqliteActualMainHandle",
-  "directoryFsyncDurability",
-  "systemdTemplateIsolation",
-  "systemdPersistentTimer",
-  "cgroupKillReadback"
-]);
-
-function createAtomicDurableNativeFixture(calls) {
+function createDurableStoreConsumerConformanceFixture(calls) {
   let current = null;
   return Object.freeze({
     async durablePublishNoReplace({ bytes }) {
@@ -307,14 +277,15 @@ function createAtomicDurableNativeFixture(calls) {
 }
 
 test("database plan consumes the complete reviewed Foundation contract", async () => {
-  for (const name of REQUIRED_NATIVE_EXPORTS) {
-    assert.equal(typeof native[name], "function", name);
-  }
+  assert.deepEqual(Object.keys(native).sort(), FOUNDATION_NATIVE_EXPORTS);
+  assert.equal(Object.isFrozen(FOUNDATION_NATIVE_EXPORTS), true);
+  assert.equal(Object.isFrozen(REQUIRED_LINUX_FEATURES), true);
+  assert.equal(REQUIRED_LINUX_FEATURES.length, 14);
   const calls = [];
   const store = createDurableStore({
     contracts: new Map([["host-database-foundation-probe-v1", { maxBytes: 4096 }]]),
     fsOps: { rootFd: 41 },
-    native: createAtomicDurableNativeFixture(calls),
+    native: createDurableStoreConsumerConformanceFixture(calls),
   });
   assert.deepEqual(Object.keys(store), [
     "publishImmutable", "casCanonical", "unlinkVerified", "readbackExact",
@@ -325,29 +296,25 @@ test("database plan consumes the complete reviewed Foundation contract", async (
   );
   await store.readbackExact("host-database-foundation-probe-v1", created.sha256);
   assert.deepEqual(calls, ["durablePublishNoReplace", "durableReadLogical"]);
-
-  const receipt = buildCapabilityReceipt(native.probeLinuxCapabilities);
-  assert.equal(receipt.eligible, true);
-  assert.deepEqual(Object.keys(receipt.features), REQUIRED_FOUNDATION_FEATURES);
-  assert.equal(Object.values(receipt.features).every((value) => value === true), true);
 });
 ```
 
-The test-only exact native double records only operation names, returns the SHA-256 of supplied bytes, and never performs a JavaScript read-then-write CAS. The Foundation-owned durable-store suite remains authoritative for `created`/`already_equal`, `replaced`/`already_equal`, verified-unlink replay, predecessor mismatch, fsync, and power-loss behavior; this downstream test prevents constructor, method, export, or 14-feature drift.
+The test-only exact native double records only durable-store consumer operation names, returns the SHA-256 of bytes already supplied by that consumer, and never constructs a capability receipt, calls the native probe, or performs a JavaScript read-then-write CAS. The Foundation-owned durable-store suite remains authoritative for `created`/`already_equal`, `replaced`/`already_equal`, verified-unlink replay, predecessor mismatch, fsync, and power-loss behavior. The imported frozen owner arrays prevent downstream namespace/count drift without copying either list. Foundation's owner CLI and its probe/integration tests remain the sole validators of canonical receipt bytes, the exact feature/value map, independent build/host-result readbacks, `eligible: true`, and the private real-probe brand; this Host test has no receipt fixture, callback, parser, serializer, Boolean mapper, or authority output.
 
 - [ ] **Step 2: Run the Foundation contract and target Linux capability suite**
 
 Run:
 
 ```bash
-node --test server/tests/control-plane-database-foundation-contract.test.mjs server/tests/control-plane-native-contract.test.mjs server/tests/control-plane-linux-capability-probe.test.mjs server/tests/control-plane-durable-store.test.mjs integration/control-plane-deploy/foundation-linux.test.mjs
+node --test server/tests/control-plane-database-foundation-contract.test.mjs server/tests/control-plane-native-contract.test.mjs server/tests/control-plane-linux-capability-probe.test.mjs server/tests/control-plane-durable-store.test.mjs server/tests/control-plane-foundation-linux-workflow.test.mjs
+npm run control-plane:foundation:linux
 ```
 
-Expected: all pass on the target-matching clean Linux builder. If the native suite skips the actual-handle/WAL/OFD/SCM_RIGHTS assertions, fails, or does not exist, stop this slice and return to the earlier Foundation checkpoint on the same Draft branch.
+Future expected result, only after the four-prerequisite Host-resumption gate and resulting authoritative Foundation precondition are GREEN: all pass on the target-matching clean Linux builder, and the second command runs Foundation's real zero-argument owner CLI only through the owner integration harness after its fixed build/host-result readbacks and private brand are valid. Task 0 does not invoke that CLI with a double or interpret its stdout through Host code. Current expected result is no invocation and the fixed `full_sigstore_owner_topology_unapproved` STOP. If the future owner CLI/probe/workflow/integration suite skips canonical-output, receipt readback/brand, actual-handle/WAL/OFD/SCM_RIGHTS assertions, fails, or does not exist, stop this slice and return to the authoritative Foundation checkpoint on the same Draft branch.
 
 - [ ] **Step 3: Record the same-branch Foundation checkpoint and commit the downstream contract test**
 
-Record only the exact same-branch Foundation checkpoint commit and passing test names in the Draft PR body. Do not claim a merge prerequisite and do not copy host identities or runtime values. Commit the test that prevents later interface drift:
+Only after the four-prerequisite Host-resumption gate and resulting authoritative Foundation precondition are GREEN, record the exact same-branch authoritative Foundation checkpoint commit, exact-head protected run/check identity, and passing owner command/test names in the Draft PR body. The recorded check must be the one whose Foundation owner CLI produced and validated its canonical receipt after the required readbacks/private brand; Host does not record or copy the receipt body, paths, host identities, or runtime values. Until then do not create or commit this test. Do not claim a merge prerequisite. The future commit that prevents later consumer-interface drift is:
 
 ```bash
 git add server/tests/control-plane-database-foundation-contract.test.mjs
@@ -368,10 +335,10 @@ git commit -m "test: bind database plan to foundation contract"
 - Export `DATABASE_TERMINAL_RESULTS` as exactly `unchanged_none`, `additive_not_committed_pre`, `additive_already_committed_expected_post`, then `additive_committed_expected_post_this_transaction`.
 - Export `DATABASE_LEDGER_RESULTS` as exactly `not_applicable`, `absent_expected`, then `exact_present`, and `DATABASE_COMMIT_ORIGINS` as exactly `none`, `preexisting`, then `this_transaction`.
 - Export the sole executable Host terminal-state enum `HOST_FINAL_STATES` as exactly `deployed_validated`, `stopped_pre_switch`, `schema_committed_previous_release_validated`, `rolled_back`, then `critical_manual_intervention_required`; also export `isHostFinalState(value)` and `isCriticalHostFinalState(value)` as predicates over that same frozen array. No Host, Bootstrap, Receipt, Artifact, or Integration module may define a second final-state array or substitute generic `success`/`failure`/`terminal`/`critical` aliases.
-- Export `normalizeDatabaseContracts(value)`, `canonicalizeDatabaseContracts(value) -> { databaseContracts, bytes, sha256 }`, `classifyDatabaseRecoveryVector({ contracts, ledgerObservations })`, and `validateDatabaseTerminalVector({ contracts, results, deploymentState })`.
+- Export `normalizeDatabaseContracts(value)`, `canonicalizeDatabaseContracts(value) -> { databaseContracts, bytes, sha256 }`, `DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT`, `classifyDatabaseRecoveryVector({ contracts, ledgerObservations })`, and `validateDatabaseTerminalVector({ contracts, results, deploymentState })`.
 - The schema requires exactly two ordered entries and no additional properties. JSON Schema validates field grammar; `normalizeDatabaseContracts` additionally enforces cross-field equality, ordered logical roles, distinct physical HMACs, and schema-mode conditionals.
-- `canonicalizeDatabaseContracts` first calls `normalizeDatabaseContracts(value)`, then serializes `{ schemaVersion: "1", databaseContracts }` with an owner-private canonical contract and returns exactly the frozen normalized pair, bytes, and `sha256Hex(bytes)`. The private contract is not exported; only this database owner contains the 14-entry field order.
-- Artifact release declaration, immutable deployment plan, artifact assembly, and source integration must call `canonicalizeDatabaseContracts(...)` separately for inventory, release, and plan inputs, require exact byte equality, and bind/verify one `databaseContractsSha256` equal to the helper's `sha256`. They must also preserve `databaseContracts` from the helper return without reshaping it. A length-two array with merely unique arbitrary IDs is invalid. Consumers may not redeclare the two logical IDs, import/copy the owner-private canonical contract, copy the 14-field order, or implement count-only/`JSON.stringify` equality.
+- `canonicalizeDatabaseContracts` first calls `normalizeDatabaseContracts(value)`, then serializes `{ schemaVersion: "1", databaseContracts }` with an owner-private root canonical contract and returns exactly the frozen normalized pair, bytes, and `sha256Hex(bytes)`. `DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT` is the same exact frozen entry descriptor used by that private root; it is the only exported contract handle and exposes no root/set serializer. Its `validate` callback delegates to the owner entry validator. Consumers must install that same object under their parent contract's fixed `nested["database-contract-entry-v1"]` and set `arrays.databaseContracts` to that exact key; they may not inspect, spread, clone, extend, or recreate its field order.
+- Artifact release declaration, immutable deployment plan, artifact assembly, and source integration must call `canonicalizeDatabaseContracts(...)` separately for inventory, release, and plan inputs, require exact byte equality, and bind/verify one `databaseContractsSha256` equal to the helper's `sha256`. They must also preserve `databaseContracts` from the helper return without reshaping it and embed it only through `DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT`. A length-two array with merely unique arbitrary IDs is invalid. Consumers may not redeclare the two logical IDs, import/copy the owner-private root canonical contract, read/copy the 14-field order, or implement count-only/`JSON.stringify` equality.
 
 Artifact and source-integration RED tests freeze this only permitted consumer pattern before their implementations:
 
@@ -394,7 +361,7 @@ Those downstream tests also source-scan their Artifact/Integration modules and f
 The normalized entry shape is exact:
 
 ```js
-{
+Object.freeze({
   logicalId,
   configuredSource,
   configuredSourceGenerationHmacSha256,
@@ -409,13 +376,13 @@ The normalized entry shape is exact:
   schemaContract,
   migrationEntryPointContract,
   migrationEntryPointSha256
-}
+});
 ```
 
 `validateDatabaseTerminalVector` returns one exact aggregate-safe object. Receipt/recovery consumes these bytes and must not reshape or reclassify them:
 
 ```js
-{
+Object.freeze({
   logicalDatabaseCount: 2,
   uniquePhysicalDatabaseCount: 2,
   physicalDatabaseIdentitiesDistinct: true,
@@ -435,7 +402,7 @@ The normalized entry shape is exact:
     terminalResult,
     actualOpenedHandleBindingVerified
   }]
-}
+});
 ```
 
 For every non-critical terminal state, `databaseTerminalVectorComplete` is `true` and `entries` has exactly the two logical IDs in contract order. For `critical_manual_intervention_required` only, it may be `false`; then `entries` is the ordered safely classified subset and contains fewer than two entries. Counts and distinctness remain the already plan-bound exact-two physical database contract, not a claim that an unclassified database was opened. Every present entry still requires actual-opened-handle proof and the exact four-value terminal grammar.
@@ -462,7 +429,7 @@ Cover these assertions before implementation:
 14. Every present result exactly echoes its contract HMAC/schema/transition/start fields and requires `actualOpenedHandleBindingVerified: true`; extra result/envelope keys reject.
 15. Non-critical states require the complete ordered two-entry vector. Critical may carry only an ordered safely classified subset with `databaseTerminalVectorComplete: false`; no fifth result label or unproved entry is accepted.
 16. Input result IDs are validated before normalization: one known plus one unknown, one missing, duplicate, swapped, or an unknown critical-subset ID rejects. A critical incomplete subset may be empty, runtime-only, or control-only, but its input order must equal the corresponding subsequence of the contract order; `complete: true` always means both exact IDs.
-17. `canonicalizeDatabaseContracts` returns only `databaseContracts`, `bytes`, and `sha256`; cloned inventory/release/plan values produce identical bytes/digest, a valid field drift changes the digest, invalid order/shape rejects through normalization, and the private canonical contract is absent from module exports.
+17. `canonicalizeDatabaseContracts` returns only `databaseContracts`, `bytes`, and `sha256`; cloned inventory/release/plan values produce identical bytes/digest, a valid field drift changes the digest, and invalid order/shape rejects through normalization. The private root/set canonical contract and the entry field-order constant are absent from module exports; the sole `DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT` export is frozen, has the exact Foundation six-key shape, is the identical object used by the private root, and rejects mutation, clone substitution, wrong nested key, and any parent that omits the matching array descriptor.
 18. `HOST_FINAL_STATES` has the one exact five-value order, both exported predicates derive from that array, `critical_finalize_pending` and every generic alias reject, and a source scan across Host/Bootstrap/Receipt/Artifact/Integration rejects any second executable final-state array.
 
 Add this table-driven boundary test before implementation:
@@ -510,6 +477,11 @@ test("database contract canonical bytes have one private owner", () => {
   assert.equal(plan.sha256, inventory.sha256);
   assert.equal("DATABASE_CONTRACTS_CANONICAL_CONTRACT" in databaseContractModule, false);
   assert.equal("DATABASE_CONTRACT_ENTRY_CANONICAL_CONTRACT" in databaseContractModule, false);
+  assert.deepEqual(
+    Object.keys(databaseContractModule.DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT),
+    ["schemaId", "maxBytes", "fieldOrder", "nested", "arrays", "validate"],
+  );
+  assert.equal(Object.isFrozen(databaseContractModule.DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT), true);
 
   const drifted = structuredClone(input);
   drifted[0].physicalDatabaseIdentityHmacSha256 = ["f", "e", "d"]
@@ -609,7 +581,7 @@ function validateCanonicalDatabaseContractEntry(value) {
   assertExactKeys(value, DATABASE_CONTRACT_FIELD_ORDER);
 }
 
-const DATABASE_CONTRACT_ENTRY_CANONICAL_CONTRACT = Object.freeze({
+export const DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT = Object.freeze({
   schemaId: "control-plane-database-contract-entry-v1",
   maxBytes: 16 * 1024,
   fieldOrder: DATABASE_CONTRACT_FIELD_ORDER,
@@ -623,7 +595,7 @@ const DATABASE_CONTRACTS_CANONICAL_CONTRACT = Object.freeze({
   maxBytes: 32 * 1024,
   fieldOrder: Object.freeze(["schemaVersion", "databaseContracts"]),
   nested: Object.freeze({
-    "database-contract-entry-v1": DATABASE_CONTRACT_ENTRY_CANONICAL_CONTRACT,
+    "database-contract-entry-v1": DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT,
   }),
   arrays: Object.freeze({
     databaseContracts: "database-contract-entry-v1",
@@ -796,7 +768,7 @@ For a critical receipt, do not invent a fifth database terminal value. The share
 
 Run: `node --test server/tests/control-plane-database-contract.test.mjs`
 
-Expected: pass; normalized inventory/release/plan clones have identical owner-generated bytes and `databaseContractsSha256`, drift/order cases reject or change the digest as specified, and neither private canonical contract is exported.
+Expected: pass; normalized inventory/release/plan clones have identical owner-generated bytes and `databaseContractsSha256`, drift/order cases reject or change the digest as specified, the private root contract remains unexported, and the sole frozen entry embedding descriptor is reused unchanged by every consumer parent contract without copying its field order.
 
 - [ ] **Step 5: Commit the database contract**
 
@@ -1486,7 +1458,7 @@ git commit -m "feat: gate the complete production writer set"
 - Return exactly:
 
 ```js
-{
+Object.freeze({
   schemaVersion: "1",
   logicalDatabaseCount: 2,
   uniquePhysicalDatabaseCount: 2,
@@ -1508,7 +1480,7 @@ git commit -m "feat: gate the complete production writer set"
   ],
   pairManifestSha256,
   rollbackReady: true
-}
+});
 ```
 
 - [ ] **Step 1: Write failing lock/coherence tests**
@@ -2682,6 +2654,7 @@ export async function runRecoveryPhase({ dependencies, transactionId, phase }) {
 Fence/reconcile asks only the broker's fixed stop/readback operations, drains holders, and selects the exact release but never starts it. Application start occurs in a distinct later unit through `recovery_start_application`. Validation occurs after that start job and starts only the fixed validation unit through `recovery_start_validation`. Auxiliary restore occurs only after validation through `recovery_restore_auxiliary`. Finalization occurs only after restore/readback. Every non-critical terminal path first calls `validateDatabaseTerminalVector(...)`, then calls the Receipt-owned publisher exactly as follows:
 
 ```js
+export async function publishAndBindTerminal(dependencies, context) {
 const terminal = await dependencies.terminalPublisher.publishTerminal({
   plan: context.plan,
   finalState: context.selectedTerminalState,
@@ -2703,6 +2676,7 @@ await dependencies.journalStore.removeNonterminalAfterTerminalBind({
   closeoutIndexSha256: terminal.closeoutIndexSha256,
 });
 return terminal;
+}
 ```
 
 The external critical finalizer uses the same publish-then-owner-bind sequence. Bootstrap's `bindTerminal` records the critical label but preserves it from ordinary compaction; any crash before the bind leaves the accepted/nonterminal/critical evidence protected, and restart performs exact readback/reuse. Host never calls Bootstrap's `compactEligible`, never supplies retention time, and never converts a nonterminal or critical record into an ordinary eligible entry.
@@ -2808,7 +2782,7 @@ git commit -m "feat: converge host transactions through durable recovery"
 **Interfaces:**
 - Export `CONTROL_PLANE_HOST_INTEGRATION_SCENARIOS` in this exact order: `successful_promotion`, `health_rejection_code_rollback`, `first_database_commit_second_database_failure`, `sqlite_commit_before_external_observation_crash`, `auxiliary_writer_attempt_during_backup`, `controller_connection_interruption`, `forced_process_and_boot_recovery`.
 - Export `CONTROL_PLANE_HOST_INTEGRATION_DEFINITIONS`, `createCleanHostIntegrationHarness({ scenarioId, definition })`, `runControlPlaneHostIntegrationScenario({ scenarioId, createHarness })`, and `runAllControlPlaneHostIntegrationScenarios({ createHarness })`.
-- Consume only database owner `canonicalizeDatabaseContracts(value)` for the synthetic inventory, release declaration, and immutable plan database arrays. The harness requires all three returned `bytes` values and all three `sha256` values to be equal, requires each carried `databaseContractsSha256` to equal that helper digest, and passes forward only the helper-returned normalized `databaseContracts`; it contains no 14-field order or second database canonical contract.
+- Consume exactly database owner `canonicalizeDatabaseContracts(value)` plus the same-reference `DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT` for the synthetic inventory, release declaration, and immutable plan database arrays. The harness requires all three returned `bytes` values and all three `sha256` values to be equal, requires each carried `databaseContractsSha256` to equal that helper digest, passes forward only the helper-returned normalized `databaseContracts`, and installs the descriptor unchanged in each parent; it contains no 14-field order or second database canonical contract.
 - `createHarness({ scenarioId, definition })` returns exactly `{ execute(), close() }`. `execute()` returns the aggregate-only observation consumed below; `close()` removes the scenario's unique temporary root and returns `{ tempRootAbsent: true }`. Neither method accepts a path, unit, database, endpoint, command, credential, or production selector.
 - CLI accepts zero arguments, creates and removes its own temp root, and writes one aggregate line: `{ schemaVersion: "1", scenarioCount: 7, passedCount: 7, failedCount: 0, accepted: true, contractSha256 }`. Any argv exits `2` before fixture creation.
 - `package.json` exports `control-plane:host:integration` as exactly `node scripts/control-plane-host-integration.mjs`.
@@ -3011,7 +2985,7 @@ export async function runAllControlPlaneHostIntegrationScenarios({ createHarness
 }
 ```
 
-`createDisposableControlPlaneFixture(...)` is implemented in the same script and composes the actual modules completed in Tasks 0-12. Its accepted enum values are exactly those shown above. For every scenario it creates a fresh `mkdtemp` root, calls the Bootstrap consumer rather than opening an artifact path, instantiates the Foundation store with `createDurableStore({ contracts, fsOps, native })`, canonicalizes the inventory/release/plan database arrays only through `canonicalizeDatabaseContracts`, gives terminal reads/writes only to Receipt's transaction-bound wrapper and unique publisher, invokes the host transaction/recovery entrypoints through the fixed broker, and removes/readbacks the root in `disposeAndReadBackAbsent()`. The observation is exact-key, aggregate-only, and contains no path or nested evidence.
+`createDisposableControlPlaneFixture(...)` is implemented in the same script and composes the actual modules completed in Tasks 0-12. Its accepted enum values are exactly those shown above. For every scenario it creates a fresh `mkdtemp` root, calls the Bootstrap consumer rather than opening an artifact path, instantiates the Foundation store with `createDurableStore({ contracts, fsOps, native })`, canonicalizes the inventory/release/plan database arrays only through `canonicalizeDatabaseContracts` and installs the owner's unchanged `DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT` in each executable parent, gives terminal reads/writes only to Receipt's transaction-bound wrapper and unique publisher, invokes the host transaction/recovery entrypoints through the fixed broker, and removes/readbacks the root in `disposeAndReadBackAbsent()`. The observation is exact-key, aggregate-only, and contains no path or nested evidence.
 
 - [ ] **Step 4: Re-run the complete test and verify GREEN**
 
@@ -3097,7 +3071,7 @@ Stop after the local source checkpoint. The later G1a operator Gate is not a tas
 #### Task 14B: Align Runbooks And Complete Source-Only Validation
 
 **Interfaces:**
-- Consumes from `server/services/deployment/database-contract.mjs` exactly `CONTROL_PLANE_DATABASE_LOGICAL_IDS`, `DATABASE_TERMINAL_RESULTS`, `HOST_FINAL_STATES`, `isHostFinalState`, `isCriticalHostFinalState`, `canonicalizeDatabaseContracts`, and `validateDatabaseTerminalVector`; from `server/services/deployment/writer-registry.mjs` exactly `WRITER_REGISTRY_CONTRACT`, `discoverProductionWriters`, `canonicalizeWriterRegistry`, and `verifyWriterRegistry`; and from `server/services/deployment/persisted-data-compatibility.mjs` exactly `canonicalizePersistedDataRegistry` and `verifyPersistedDataBackwardPair`. Documentation copies no enum, validator, database 14-field order, or canonical contract into executable source. `normalizeDatabaseContracts` remains database-owner/Receipt-internal; Artifact and Integration executable modules import only `canonicalizeDatabaseContracts` for inventory/release/plan equality and digest binding.
+- Consumes from `server/services/deployment/database-contract.mjs` exactly `CONTROL_PLANE_DATABASE_LOGICAL_IDS`, `DATABASE_TERMINAL_RESULTS`, `HOST_FINAL_STATES`, `isHostFinalState`, `isCriticalHostFinalState`, `canonicalizeDatabaseContracts`, `DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT`, and `validateDatabaseTerminalVector`; from `server/services/deployment/writer-registry.mjs` exactly `WRITER_REGISTRY_CONTRACT`, `discoverProductionWriters`, `canonicalizeWriterRegistry`, and `verifyWriterRegistry`; and from `server/services/deployment/persisted-data-compatibility.mjs` exactly `canonicalizePersistedDataRegistry` and `verifyPersistedDataBackwardPair`. Documentation copies no enum, validator, database 14-field order, or canonical contract into executable source. `normalizeDatabaseContracts` remains database-owner/Receipt-internal; Artifact and Integration executable modules import exactly the canonicalizer for inventory/release/plan equality/digest binding plus the unchanged embedding descriptor for parent serialization, and no other database contract surface.
 - Consumes `HOST_TRANSACTION_STAGES` from `server/services/deployment/control-plane-host-transaction.mjs`; `FIXED_SYSTEMD_OPERATIONS`, `createAcceptedTransactionBrokerClient`, `ACCEPTED_START_EVIDENCE_FIELDS`, `ACCEPTED_START_EVIDENCE_CONTRACT`, `canonicalizeAcceptedStartEvidence`, `createAcceptedStartEvidenceReader`, and `assertAcceptedStartEvidenceCapability` from `server/services/deployment/fixed-systemd-broker.mjs`; `createControlPlaneHostInventoryReaders` and `assertControlPlaneHostInventoryReaders` from `server/services/deployment/control-plane-host-inventory-readers.mjs`; `HOST_RECOVERY_PHASES`, `createCriticalPostPublicationProofReader`, and `assertCriticalPostPublicationProof` from `server/services/deployment/host-recovery.mjs`; `createControlPlaneHostBundleInstaller` from `server/services/deployment/control-plane-host-bundle-installer.mjs`; and `CONTROL_PLANE_HOST_INTEGRATION_SCENARIOS` plus `runAllControlPlaneHostIntegrationScenarios` from `scripts/control-plane-host-integration.mjs`.
 - Consumes the Receipt Task 2 checkpoint that imports Host Task 1's exact Host-state predicates/`validateDatabaseTerminalVector`, plus `createTransactionBoundTerminalCloseoutStore({ transactionId, durableStore })` from `server/services/deployment/control-plane-terminal-closeout-store.mjs` and `createHostTerminalPublisher` from `server/services/deployment/control-plane-host-terminal-publisher.mjs`; Bootstrap's accepted-plan/admission publication, `createAcceptedArtifactConsumer` from `server/services/deployment/control-plane-accepted-artifact-handoff.mjs`, `createControllerCloseoutStore(...).registerPendingLease(...)` from `server/services/deployment/control-plane-controller-closeout-store.mjs`, `createBootstrapMaintenanceCoordinator(...)`, owner replay-ledger `bindTerminal`/protected-nonterminal listing, and ordinary-status consumption of Host's branded critical post-publication proof; and Foundation's `createDurableStore({ contracts, fsOps, native })` from `server/services/deployment/durable-store.mjs`. Receipt alone performs the independent fixed-object read and digest validation; Bootstrap alone owns replay quota/retention/compaction and the controller-facing ordinary-status brand; Task 14 documents no alternate Host reader, installer, or compactor.
 - Produces in `docs/SUBSCRIPTION_CONTROL_DATABASE.md`: the fixed ordered database pair, owner-only `canonicalizeDatabaseContracts` byte/digest authority, inventory/release/plan byte equality and `databaseContractsSha256` binding, explicit existing-schema startup, actual-handle identity/custody, coherent pair backup, four terminal results, additive ledger authority, and separately gated database-restore semantics.
@@ -3149,7 +3123,7 @@ Use the exact Node ABI, architecture, libc, kernel features, filesystem, and off
 
 - [ ] **Step 6: Run exact-head CI, CodeQL, and independent review**
 
-Keep the PR Draft until exact-head CI, CodeQL, offline native/package verification, semantic review, and security review pass. The PR body must state `identity_impact: false`, `dataCompatibilityImpact: false`, `release_unit: control-plane-app`, source-only scope, no production access, and the remaining compatibility/bootstrap/inventory/Artifact/Production Gates.
+Current acceptance is STOP with `full_sigstore_owner_topology_unapproved`: no Host task or validation command in this plan may run, and no Host-side probe invocation, receipt object/parser/Boolean mapper, fixture/double, Host GREEN suite, PR check, or review may claim Host eligibility or Ready. Future acceptance begins only after all four conjunctive prerequisites in the four-prerequisite Host-resumption gate and the resulting recorded exact-head Foundation owner CLI/probe/integration authority chain are GREEN; Host may verify that checkpoint and its owner-list consumer interfaces but may not mint or reinterpret its receipt. The PR remains Draft until exact-head CI, CodeQL, offline native/package verification, semantic review, and security review pass. The PR body must state `identity_impact: false`, `dataCompatibilityImpact: false`, `release_unit: control-plane-app`, source-only scope, no production access, and the remaining compatibility/bootstrap/inventory/Artifact/Production Gates.
 
 - [ ] **Step 7: Commit runbook alignment**
 
@@ -3158,9 +3132,11 @@ git add docs/SUBSCRIPTION_CONTROL_DATABASE.md docs/OPERATOR_CLI_PLATFORM_BOUNDAR
 git commit -m "docs: align control plane transaction runbooks"
 ```
 
-## Dependency Order And PR Boundary
+## Future-Conditional Dependency Order And PR Boundary
 
-1. Foundation completes its native, canonical JSON, and durable-store checkpoint on this same source-only Draft branch. A missing export or failed actual-handle/WAL/OFD/SCM_RIGHTS target-Linux proof stops the DAG; no inter-slice merge is required.
+The numbered sequence below is dormant while `full_sigstore_owner_topology_unapproved` is the current stop. It creates no authority to start Task 0 or any Host task. It may be followed only after the four-prerequisite Host-resumption gate defined above—including the separate new explicit Risk-A Host-resumption approval recorded after the topology/owner, immutable-lock postverification, and complete offline-closure prerequisites are independently GREEN—and the resulting authoritative target-matching Foundation checkpoint are all GREEN.
+
+1. Foundation records the authoritative native, canonical JSON, durable-store, and real-probe checkpoint on this same source-only Draft branch only after every authority prerequisite above is GREEN. The exact-head protected run must execute Foundation's zero-argument owner CLI after its fixed readbacks/private brand, and Foundation's own tests must validate its owner-canonical exact 14-feature receipt with `eligible: true`; Host does not construct, parse, remap, or independently brand that receipt. A Host-side probe call, fixture, callback, or all-true object cannot substitute. A missing prerequisite/export, owner CLI/readback/brand check, or actual-handle/WAL/OFD/SCM_RIGHTS target-Linux proof stops the DAG before Host Task 0; no inter-slice merge is required.
 2. Host Tasks 0-1 complete and export the database contract owner plus `canonicalizeDatabaseContracts(value) -> { databaseContracts, bytes, sha256 }`.
 3. Integration Task 2 consumes that helper for its contract checkpoint.
 4. Artifact Tasks 1-2 consume that helper for inventory/release/plan canonical-byte equality and `databaseContractsSha256`; they do not import `normalizeDatabaseContracts` or copy the private 14-field order.
@@ -3180,9 +3156,9 @@ git commit -m "docs: align control plane transaction runbooks"
 18. Host Task 14A implements/tests the sole source-only G1a installer against Integration's final manifest/content and Bootstrap's host layout without invoking it; Task 14B provides database/host terminal semantics and the rollout handoff without editing the rollout owner's deployment runbook.
 19. Integration Tasks 4-9 complete the source-only Draft PR, including the full cross-plan harness and review gates.
 
-The sequence above is the only execution order: Receipt work is split at Tasks 1-3 and Task 4, and no combined Receipt prerequisite may delay the independently GREEN Task 11A broker/inventory provider checkpoint. Host Task 14A waits for Integration Task 1 and cannot become an early or alternate manifest owner. Artifact/workflow integration consumes the database-owned canonical `writer-registry.json`; it must not create the writer-registry module, CLI, schema, or test. For database contracts, Artifact and Integration import only `canonicalizeDatabaseContracts`, apply it independently to inventory/release/plan values, require exact helper-byte equality, carry only the helper-returned normalized pair, and bind one identical `databaseContractsSha256`; they must not copy the private contract or 14-field order. A count-only, arbitrary-two-ID, local field-order, or `JSON.stringify` check is insufficient and must fail its checkpoint.
+After the global authority precondition is satisfied, the sequence above is the only future execution order: Receipt work is split at Tasks 1-3 and Task 4, and no combined Receipt prerequisite may delay the independently GREEN Task 11A broker/inventory provider checkpoint. Before that precondition it is schedule documentation only. Host Task 14A waits for Integration Task 1 and cannot become an early or alternate manifest owner. Artifact/workflow integration consumes the database-owned canonical `writer-registry.json`; it must not create the writer-registry module, CLI, schema, or test. For database contracts, Artifact and Integration import exactly `canonicalizeDatabaseContracts` and the same-reference `DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT`: they apply the helper independently to inventory/release/plan values, require exact helper-byte equality, carry only the helper-returned normalized pair, bind one identical `databaseContractsSha256`, and install the descriptor unchanged in each parent. They must not copy the private root contract, inspect/copy the descriptor, or restate the 14-field order. A count-only, arbitrary-two-ID, local field-order, clone/substitution descriptor, or `JSON.stringify` check is insufficient and must fail its checkpoint.
 
-The implementation release cannot serve as its own first automatic rollback baseline. If the installed previous release lacks the canonical writer/lease/guard/persisted-data contract, a separate approved compatibility artifact/manual deployment Gate must establish and validate that baseline before automatic deployment is eligible. Host installation/activation, credential setup, fresh inventory, durable Artifact Gate publication, manual Deploy click, Environment approval, production execution, and Deploy Note are later Risk A operations outside this PR.
+The implementation release cannot serve as its own first automatic rollback baseline. If the installed previous release lacks the canonical writer/lease/guard/persisted-data contract, a separate approved compatibility artifact/manual deployment Gate must establish and validate that baseline before automatic deployment is eligible. Current topology remains stopped before Host Task 0; future Host installation/activation, credential setup, fresh inventory, durable Artifact Gate publication, manual Deploy click, Environment approval, production execution, and Deploy Note are later Risk A operations outside this PR.
 
 ## Design Blockers And High-Risk Assumptions
 

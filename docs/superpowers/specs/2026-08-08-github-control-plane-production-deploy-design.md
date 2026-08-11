@@ -6,23 +6,59 @@ document_metadata:
   lifecycle: active
   authority_scope: source_design
   superseded_by: null
-  last_verified_at: 2026-08-09
+  last_verified_at: 2026-08-10
   production_authority: false
 ```
 
 > Status:
-> - Type: Approved written design; implementation planning authorized; pre-
->   implementation security corrections incorporated
+> - Type: Retained written design and future implementation plan. Current post-
+>   #593 implementation authority is limited to the exact-11-file authority-
+>   bootstrap source-only Draft handoff described below.
+> - Unified trust status: within that retained future design, both the planned
+>   predecessor Foundation-lock verifier and the future Artifact Task 6 inline
+>   cryptography are non-authoritative diagnostics
+>   only. Neither completely validates embedded CT/SCT evidence or may mint a
+>   private authority brand. Foundation compatibility `verify` ends in
+>   `full_sigstore_owner_unavailable`; Artifact compatibility/inline `verify`
+>   ends in `github_full_sigstore_owner_unavailable`. Lock publication
+>   postverification, resolver/exporter/build eligibility, Artifact Gate
+>   completion, Gate-last, `eligible:true`, and production publication/
+>   authorization are unreachable.
 > - Source baseline: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
 > - Risk: C for this design-only commit; the deployment capability, credential
 >   bootstrap, host access, and every production run remain Risk A
-> - Process: design review -> one source-only Draft PR -> clean validation ->
->   independent review -> merge -> staged host-content and artifact-publication
+> - Process (current): only the exact-11-file authority-bootstrap's owning
+>   predecessor plan may prepare, test, push, open, and review one narrow source-
+>   only Draft PR. It must remain Draft and may not be marked Ready or merged.
+>   Stop there with `full_sigstore_owner_topology_unapproved`.
+> - Process (future only): a separately approved Risk A topology addendum must
+>   place one pinned mature full-Sigstore owner serving
+>   Foundation and Artifact on protected `master` before lock publication and
+>   pass official positive/adversarial CT/SCT vectors. A possible extra
+>   predecessor is proposed only: it is not approved and must not be created or
+>   merged now. Only after that owner, separately approved lock publication/
+>   postverification, and a separately approved complete content-addressed
+>   offline npm cache/vendor closure are GREEN, and a separate explicit Risk A
+>   resumption approval is recorded, may Foundation Tasks 1+, the main source
+>   implementation, and Artifact source/test work leave dormancy. The future one
+>   main source-only Draft PR may then run Foundation, reach Artifact Task 6,
+>   complete the remaining work, clean
+>   validation, independent review, Ready, and merge -> mandatory C-tier main-
+>   source-identity reconciliation and protected-
+>   master readback -> staged host-content and artifact-publication
 >   Gates -> compatibility artifact/manual activation Gate -> credential/runner
 >   bootstrap Gate -> fresh inventory -> manual Artifact Gate -> durable exact
 >   Production Gate receipt -> manual dispatch -> protected approval -> automated
 >   deployment/validation/rollback -> closeout
-> - Expected PR count: one source implementation PR after written design review
+> - Current implementation authority is exactly one narrow exact-11-file
+>   authority-bootstrap source-only Draft handoff, not approval for Ready, merge,
+>   or a second/main implementation PR. No Foundation Task 1+, main implementation
+>   source, or Artifact source/test work is currently authorized. Any future
+>   Ready/merge of that Draft, proposed extra predecessor, or additional
+>   implementation PR requires separate explicit approval; the extra predecessor
+>   also requires a new Risk A topology addendum. The
+>   mandatory post-main-merge C-tier reconciliation PR and any truthful
+>   post-production closeout PR are state-record phases, not implementation PRs.
 > - Release unit: `control-plane-app`
 > - Production state: `not_deployed`
 > - Production impact: None. This document creates no workflow, credential,
@@ -55,7 +91,7 @@ The 2026-08-08 read-only GitHub inventory established these current facts:
 
 - organization `gccwebos-com` is on the Enterprise plan;
 - repository Actions are enabled;
-- `vultr-japan-production` requires one reviewer, prevents self-review, and
+- `vultr-japan-production` requires one user reviewer, prevents self-review, and
   allows protected branches only;
 - `Production Deploy Dry Run` is manual and explicitly performs no SSH,
   pointer switch, restart, or production mutation;
@@ -168,12 +204,15 @@ The design fixes the following decisions:
     repository, protected ref, reviewed workflow path and SHA, source commit,
     predicate type, subject name/digest, and certificate or bundle identity.
 22. The artifact publisher proves the live `artifact-publication` policy and a
-    fresh approval by an authorized reviewer distinct from the dispatcher for
+    fresh approval by an authorized user reviewer distinct from the dispatcher for
     the exact run, attempt, source, and publication envelope before any Release
     or attestation write. The canonical policy includes the complete immutable
-    reviewer identity set, self-review rule, deployment-branch rule, and
-    own boolean `can_admins_bypass: false`. Policy shape alone is not approval
-    evidence.
+    user-reviewer identity set, self-review rule, deployment-branch rule, and
+    own boolean `can_admins_bypass: false`. Every reviewer entry must have type
+    canonical `type:"user"`, a stable decimal user ID, and a normalized login;
+    Team or unknown
+    reviewer entries fail closed. Policy shape alone is not approval evidence,
+    and no organization-membership credential or API is part of this design.
 23. Production credentials are available only through the Foundation-owned
     lazy sealed-material interface and fixed credential identifiers after the
     relevant capability and authorization checks. Secret memory FDs are created
@@ -194,7 +233,12 @@ The design fixes the following decisions:
     before controller publication. A Deploy Note is written only after a
     separate final read-only validation binds the same run and terminal result.
     It uses result-specific wording; diagnostic/no-claim or nonterminal evidence
-    produces no Deploy Note, and only a validated deployed result uses
+    produces no Deploy Note. Only a `validated_deployment` note contains
+    `deployed_at`, and its value must byte-equal the Receipt-owner-validated
+    `finalStatus.terminalPublishedAt`. The later `finalStatus.observedAt` is a
+    read-only validation time and cannot substitute for deployment publication;
+    the writer also cannot reconstruct a timestamp from its clock. The stopped-
+    pre-switch, schema-only, rolled-back, and critical-failure notes omit
     `deployed_at`.
 27. Compatibility discovery uses a separately typed, domain-separated receipt
     that proves only the staged content, exact rollback/runtime/writer/database
@@ -219,6 +263,28 @@ The design fixes the following decisions:
     Bootstrap transport alone owns the 900,000-ms operation, 910,000-ms
     authenticated, and 925,000-ms request limits; the protocol service uses
     `RuntimeMaxSec=930s`.
+    G2 may never borrow `vultr-japan-production`. A future separately approved
+    Gate must create the distinct master-only
+    `vultr-japan-compatibility-inventory` Environment with one required
+    user reviewer identified by stable decimal user ID and normalized login,
+    self-review denied, Team reviewers rejected, and
+    `can_admins_bypass:false`; its only secrets are
+    `JAPAN_CONTROL_COMPATIBILITY_INVENTORY_HOST`,
+    `JAPAN_CONTROL_COMPATIBILITY_INVENTORY_PORT`,
+    `JAPAN_CONTROL_COMPATIBILITY_INVENTORY_USER`,
+    `JAPAN_CONTROL_COMPATIBILITY_INVENTORY_PRIVATE_KEY`, and
+    `JAPAN_CONTROL_COMPATIBILITY_INVENTORY_KNOWN_HOSTS`; its only variables are
+    `JAPAN_CONTROL_COMPATIBILITY_INVENTORY_AUTHORIZATION_GENERATION`,
+    `JAPAN_CONTROL_COMPATIBILITY_INVENTORY_BOOTSTRAP_RECEIPT_SHA256`,
+    `JAPAN_CONTROL_COMPATIBILITY_INVENTORY_EXPIRES_AT`,
+    `JAPAN_CONTROL_COMPATIBILITY_INVENTORY_ACTIVATION_ID`, and
+    `JAPAN_CONTROL_COMPATIBILITY_INVENTORY_HOST_BUNDLE_CONTENT_RECEIPT_SHA256`.
+    Those exact bytes
+    are usable by one approved run for at most fifteen minutes and only for the
+    fixed read-only compatibility request. The external Gate must then delete
+    all ten names, read back their absence, and prove the staged host key unusable.
+    The source implementation and documentation authorize neither Environment
+    creation nor credential staging, use, or deletion.
 30. Bootstrap maintenance is part of production composition, not a library-only
     test seam: admission runs before accepted-plan publication, and every normal,
     recovery, or critical terminal path runs terminal/closeout maintenance
@@ -230,9 +296,12 @@ The design fixes the following decisions:
     inside the same authenticated task.
 32. Every protected executable preflight anchors checkout and readback to the
     literal `${{ github.sha }}`. Approval binds the full live Environment
-    policy, including the immutable identity of every required reviewer and the
-    explicit `can_admins_bypass: false` setting; a display name, missing bypass
-    bit, or partial policy is not authority.
+    policy, including the immutable stable ID and normalized login of every
+    required user reviewer and the explicit `can_admins_bypass: false`
+    setting; a Team/unknown reviewer, display name, missing bypass bit, or
+    partial policy is not authority. Approval verification uses the repository
+    Environment/read-history data and exact user lookup only; it never calls an
+    organization Team-membership endpoint.
 33. Each durable Release asset owns one and only one attestation statement whose
     sole subject is that exact asset name and digest. A shared, reused, zero-
     subject, or multi-subject statement fails closed.
@@ -245,24 +314,152 @@ The design fixes the following decisions:
     value. Version 1 defines no such producer, so that branch is unreachable;
     a caller-built object or bare rejection boolean fails closed to controller
     no-claim.
-35. Artifact Tasks 11-12 solely own production controller/workflow wiring and
-    the final bounded Deploy Note sink; Integration Task 6 performs no-change
+35. Artifact Task 11 solely owns production controller composition, Task 12
+    owns production-workflow wiring, and Task 13 owns the final isolated bounded
+    Deploy Note sink; Integration Task 6 performs no-change
     conformance. Source documentation, including `RELEASE_MANIFEST.md`, may
     record only source capability and `not_deployed`; a real G9 closeout appends
-    at most one Deploy Note comment to the merged source PR after final read-only
-    validation.
-36. Foundation toolchain bootstrap is two separately approved stages. The
+    at most one Deploy Note comment to the merged main source PR after final read-only
+    validation. Before any OIDC request or secret materialization, the clean-runner
+    controller obtains its sole native runtime by extracting only the reviewed
+    wrapper and `control_plane_native.node` from the already Production-Gate-
+    validated exact `control-plane-app.zip` and manifest into one private
+    lifecycle root, then verifies file set, digests, ABI, and wrapper/addon binding
+    before dynamic import. Checkout builds, ambient addons, and alternate bytes
+    are forbidden; registered cleanup deletes the root and reads back absence.
+    This reuses the existing artifact and adds no asset, authority, or Master-DAG
+    node.
+36. Foundation toolchain bootstrap currently authorizes only its source-inventory stage; every authority/publication/build stage is future and separately gated. The
     source-only Draft PR may run one `pull_request`-only, no-secret,
     `contents: read` inventory job on GitHub-hosted `ubuntu-24.04`. That job
     invokes no compiler or project build, uploads no artifact or cache, writes
     no Release/package/container, and emits only a canonical safe manifest plus
     aggregate digests for the exact observed Node headers and native-tool roles.
     Its output is inventory evidence, never an eligibility receipt or build
-    input. After human review, publishing an immutable Foundation toolchain
-    asset requires a new explicit approval and an independently protected Gate.
-    The final Foundation build accepts only the published asset identity and
-    digest recorded by that later Gate; it never falls back to ambient runner
-    tools, WSL, a mutable tag, or inventory output from another run.
+    input. Current authority stops at review of the source-only bootstrap Draft
+    with `full_sigstore_owner_topology_unapproved`; it cannot mark that Draft
+    Ready, merge it, change Settings, dispatch the publisher, or create an
+    immutable Foundation toolchain asset.
+    A future Risk A addendum must first place one pinned mature full-Sigstore
+    owner, shared by Foundation and Artifact and proven by official positive/
+    adversarial CT/SCT vectors, on the protected publication path. Only that
+    owner may privately brand attestation evidence. After it is GREEN, a later
+    separately approved publication Gate may create and full-owner-postverify
+    one lock. A future Foundation-owned published-lock resolver may then be the
+    sole build authority: it verifies the canonical lock bytes, immutable
+    Release/asset digest and branded attestation, exact OCI platform manifest,
+    Node/header identity, complete executable closure, materialized role-file
+    bytes, and the separately approved complete content-addressed offline npm
+    cache/vendor closure. Both the Foundation native builder and Artifact
+    dependency/native builder accept only that future owner return.
+    Independent expected-digest environment tuples, caller-built custody
+    objects, tracked builder image/header/toolchain identities, and alternate
+    OCI digests are rejected rather than treated as a second trust root. The
+    build never falls back to ambient runner tools, WSL, a mutable tag, or
+    inventory output from another run. Until the unified owner, subsequent lock
+    publication/readback, and offline npm closure Gate are GREEN, resolver,
+    exporter, `npm ci`, native build, and eligibility are unreachable. The future
+    main implementation PR's authoritative eligibility workflow has exactly the ordered root keys
+    `name,on,permissions,jobs`, the exact root permission order
+    `contents: read` then `attestations: read`, and no root `concurrency`
+    because this PR-only evidence job grants no production serialization
+    authority. Its sole ordered job key is `foundation-linux`; that host block
+    has exactly `runs-on,timeout-minutes,permissions,steps` in order, literal
+    `ubuntu-24.04`, literal `timeout-minutes: 30`, the same exact read
+    permissions, no job-level container, and the already frozen complete step
+    and sudo lifecycle. Independent raw and parsed tests reject root
+    `defaults`, `env`, `run-name`, extra/case/duplicate/anchor/alias/merge
+    keys, reusable triggers, a second job, and job `env`, `defaults`,
+    `container`, `services`, reusable `uses`, alternate/local runner, or
+    any unlisted runtime authority before trusting the step block. The job runs
+    on a GitHub-hosted `ubuntu-24.04` VM and uses fixed bounded
+    `docker run --rm` phases at that same digest-pinned image for lock export,
+    dependency/native build, and final aggregation. Pinned checkout explicitly
+    maps `token: ${{ github.token }}` with `persist-credentials: false`; the
+    fixed no-selector exporter explicitly maps
+    `GITHUB_TOKEN: ${{ github.token }}`. Those are the exact two token consumers.
+    Raw and parsed tests reject an implicit checkout default, persisted
+    credentials, a job token, a missing/reordered mapping, a third consumer, or
+    token in any later container/host/aggregate/cleanup step. Their closed
+    expression/context allowlist also rejects bracket/case/whitespace aliases,
+    `toJSON`/`fromJSON`/`format`, secrets, env/output aliases, argv/stdin/run or
+    unapproved with/env placement, and YAML alias/merge/duplicate evasion; the
+    exporter receives the token only as its exact env scalar and may not echo,
+    interpolate, or forward it. No host compiler,
+    package manager, or candidate project command is permitted. The container
+    build receives the hash-verified content-addressed offline npm closure,
+    disables networking, runs exactly `npm ci --offline --ignore-scripts`, and
+    proves zero network attempts plus exact cache inventory/tarball/lockfile
+    hashes before compilation. A clean runner without that closure stops; it is
+    not treated as hermetic. The build then emits a canonical digest-bound manifest
+    and reviewed standalone host-probe wrapper under the fixed runner-owned
+    `/home/runner/work/_temp/control-plane-foundation-host-probe` source root.
+    Before privilege, the unprivileged zero-argument direct main opens the exact
+    `control-plane-foundation-host-root` with
+    `O_RDONLY|O_NOFOLLOW|O_CLOEXEC`, requires current-runner ownership, regular
+    type, one link, mode `0555`, and manifest-bound digest, and holds that inode.
+    It also no-follow opens the standard, pre-existing `/usr/local/bin` directory,
+    proves it is root-owned and non-runner-writable, and proves the fixed
+    destination is absent, so a missing/drifted parent or pre-existing target
+    stops with no replacement and no sudo. No workflow step creates or repairs
+    the parent.
+
+    Promotion is the first of exactly three successful-lifecycle sudo calls. The
+    validator verifies a rewind to offset zero, duplicates only its held wrapper
+    FD onto stdin, bounds/discards raw child output, and exact-spawns
+    `/usr/bin/sudo -n -- /usr/bin/install -T -o root -g root -m 0555
+    /proc/self/fd/0 /usr/local/bin/control-plane-foundation-host-probe-root`.
+    It preserves no FD at 3 or above and accepts no selector, environment input,
+    shell, alternate install option/source/destination, or caller byte. A source-
+    path swap after open therefore cannot alter installed bytes. Only after an
+    independent no-follow readback proves the destination is regular, single-
+    link, `root:root 0555`, and exact-digest may the same root-owned path receive
+    the remaining two sudo calls: `run` and promotion-gated final `cleanup`, both
+    with `/dev/null` stdin and no environment mapping. A runner write/rename/
+    unlink/swap of the promoted target must fail with `EACCES`.
+
+    At the installed root basename, the real direct `main` accepts only those two
+    verbs; its two root-installed fixed worker basenames accept zero arguments
+    only and require the exact systemd parent/cgroup and installed digest. Every
+    root mode requires root, hashes `/proc/self/exe`, and exact-spawns only
+    compiled `/usr/bin/systemctl` argv vectors, emits no stdout, bounds safe
+    errors, and uses exit `0` for completed proof/cleanup, `1` for a real
+    capability failure, and `2` for invocation or integrity failure.
+
+    Root ownership is limited to
+    `/usr/local/bin/control-plane-foundation-host-probe-root`,
+    `/run/control-plane-foundation-eligibility-v1`,
+    the exact root-installed template/timer worker copies, the exact
+    `/run/systemd/system/control-plane-foundation-eligibility-v1@.service`,
+    `control-plane-foundation-eligibility-v1-tick.service`, and
+    `control-plane-foundation-eligibility-v1-tick.timer` files, the fixed
+    `@alpha`/`@beta` instances and their exact `/sys/fs/cgroup/system.slice/`
+    cgroups, and the fixed
+    `/run/control-plane-foundation-eligibility-v1/control-plane-foundation-host-result.json`.
+    Root creates each entry no-replace
+    and no-follow, fsyncs, and independently validates regular type, owner, mode,
+    link count, bytes/digest, and unchanged inode immediately before use. Worker
+    modes are selected only by their fixed root-owned basenames and accept zero
+    arguments. The wrapper proves real template isolation, persistent timer
+    behavior across the fixed manager lifecycle, and cgroup kill plus empty-and-
+    absent readback. The final container re-resolves the lock/evidence, compiled
+    manifest, executed-wrapper/unit digests, and host result and alone may mint
+    the private real-probe brand consumed by the aggregate receipt.
+
+    The `cleanup` call is the last workflow step, uses exact
+    `always() && steps.promote.outcome == 'success'`, cannot continue on error,
+    and targets only that independently read-back root-owned executable. It stops
+    only the fixed units, proves both cgroups empty/absent, removes the exact unit,
+    worker, marker, runtime-root, and result entries, fsyncs parents, daemon-
+    reloads, and proves units inactive/not-found plus fixed runtime/result paths
+    absent. Only then it unlinks its own fixed executable as the final mutation,
+    fsyncs `/usr/local/bin`, and reads the target path absent before returning
+    zero. A failed/skipped/nonzero promotion permits neither root verb; an install
+    or readback mismatch never executes the untrusted target. Unknown or drifted root-owned content,
+    foreign descendants, a TOCTOU/path swap, incomplete cleanup, missing
+    evidence, subject/Release/output drift, container mismatch, synthetic
+    all-true input, or absent/fake systemd/cgroup evidence stops eligibility;
+    cleanup failure invalidates an earlier successful aggregate.
 37. The approved v2 correction defines the complete Foundation toolchain
     closure as one exact `linux/amd64` OCI platform manifest, not a collection
     of copied ambient runner executables. The fixed image is
@@ -276,24 +473,181 @@ The design fixes the following decisions:
     no mutable tag or host file may supplement it. The inventory remains
     `inventory_only`, `eligible:false`, performs no compiler/build/network/write
     operation, and emits no asset.
-38. The separately approved Foundation publication Gate is manual-only on
-    protected `master`, uses the existing `artifact-publication` Environment,
-    accepts only the exact source commit, inventory run ID, v2 closure digest,
-    and fixed confirmation phrase, and publishes one canonical content-addressed
-    toolchain-lock JSON asset. It first proves the inventory run succeeded for
-    the exact PR head/workflow and that the canonical receipt matches every
-    operator input. The release tag and asset name are pure functions of the v2
-    closure digest. The publisher has no checkout, setup-node, build, package
-    manager, host/provider route, production credential, or deployment authority.
-    It creates a draft release, uploads and attests the single lock asset, then
-    publishes and requires GitHub readback `immutable:true` plus the exact asset
-    SHA-256. The release target is the exact revalidated inventory
-    `sourceCommit`, never the later dispatch SHA or a mutable ref. Repository
-    immutable releases must already be enabled by a separate
-    settings Gate; this workflow cannot enable, disable, or bypass that setting.
-    Any existing conflicting tag/release/asset, mutable-release setting, wrong
-    run/head/workflow/digest, extra asset, or partial state fails closed. The
-    lock is supply-chain input only and never authorizes production deployment.
+38. The Foundation publication workflow is future manual-only source on
+    protected `master`; the exact 11-file bootstrap may include it only in the
+    source-only Draft opened by its owning predecessor plan. That Draft must
+    remain Draft and may not be marked Ready or merged. Its source may not be
+    used to dispatch the workflow, change immutable-release Settings, or write a
+    Release. At the
+    current boundary its workflow-level permissions are `{}` and the exact job
+    chain is `topology-preflight -> publish -> verify-publication`. The absolute
+    first fixed workflow-owned `topology-preflight` has job `permissions: {}`,
+    no token, Environment, checkout, repository/downloaded code, output, or API
+    call, and exits nonzero with exact
+    `full_sigstore_owner_topology_unapproved`. `publish` has exact default-success
+    `needs: topology-preflight` and no `if`, `always()`, failure/cancellation
+    predicate, or `continue-on-error`; `verify-publication` similarly has exact
+    default-success `needs: publish`. Both downstream jobs are therefore skipped.
+    Raw/parsed topology tests plus a runtime dispatch harness instrument every
+    Release and attestation sink and require preflight `failure`, both consumers
+    `skipped`, and zero writes; a later postverify failure is not the current
+    safety boundary. Only a future separately approved Risk A change after owner
+    placement may replace this fixed guard. After a future separately authorized
+    merge of the exact 11-file predecessor, its Foundation-lock runner remains
+    explicitly diagnostic only: it may
+    report DSSE signature, Fulcio chain, Rekor signed-entry/inclusion/time,
+    GitHub OIDC repository/direct-workflow/ref/SHA, predicate, and exact subject
+    observations, but it does not completely validate embedded CT/SCT evidence,
+    mints no brand, and compatibility `verify` always throws fixed
+    `full_sigstore_owner_unavailable`. The currently defined read-only
+    `verify-publication` job is skipped by the failed dependency and is not a
+    reachable fallback. Its verifier contract also cannot emit a completion
+    digest, authorize the resolver, or make a lock complete/eligible; REST
+    metadata and write-job digest readback remain insufficient.
+
+    Only after a future separately approved unified full-Sigstore owner is on the
+    protected publication path may a new explicit Risk A Gate use the existing
+    `artifact-publication` Environment and the fixed source-commit/run-ID/v2-
+    closure/confirmation inputs. The future publisher may then create, attest,
+    publish, and read back one immutable content-addressed lock asset, and the
+    separate read-only job must invoke that unified owner and reproduce complete
+    signature/Fulcio/Rekor/CT/SCT/OIDC/predicate/exact-one-subject closure before
+    completion. The release target remains the exact revalidated inventory
+    `sourceCommit`; conflicting or partial state fails closed. A second future
+    Gate must publish and hash-read-back the complete content-addressed offline
+    npm cache/vendor closure. Only those two post-owner assets may supply the
+    exact image/platform, Node/ABI/N-API, header tree, role/executable closure,
+    candidate closure, lockfile, dependency inventory, and package bytes used by
+    either build; a clean runner with no cache cannot run `npm ci` hermetically.
+39. The prior topology addendum no longer resolves the bootstrap cycle. The
+    exact 11-file authority-bootstrap's owning predecessor plan is the only plan
+    that may prepare, test, push, open, and review its source-only Draft. The
+    Draft must remain Draft and may not be marked Ready or merged. Its canonical
+    module exports exactly and only
+    `parseCanonicalJsonBytes`, `serializeCanonicalJsonBytes`, and `sha256Hex`;
+    the runtime hash/factory, unified full-Sigstore owner, final resolver/pin,
+    offline npm closure, native build, and every production capability remain
+    outside it. Its partial Foundation verifier is diagnostic and cannot
+    authorize publication.
+
+    Current authority stops after review of that exact Draft. Foundation Tasks
+    1+, the main implementation, and every Artifact source/test task remain
+    dormant until a separately approved unified full-Sigstore owner is GREEN,
+    immutable lock publication/postverification succeeds through that owner, a
+    complete content-addressed offline npm cache/vendor closure is published and
+    hash-read-back, and a separate explicit Risk A resumption is approved.
+
+    The required unified owner must exist on protected `master` before lock
+    publication, but the retained one-bootstrap-plus-one-main-PR future topology
+    has no approved place to land it. That is a real unresolved cycle,
+    not permission to absorb the owner into the 11 files or main Draft. After the
+    exact 11-file predecessor is merged under a future separate explicit
+    authorization, Settings, Release publication, resolver/build, main Ready,
+    and main merge will still stop with exact
+    `full_sigstore_owner_topology_unapproved`. A
+    possible extra predecessor is only a future proposal, excluded from the
+    retained future implementation-PR count, and must not be created or
+    merged until a separate Risk A topology addendum and explicit approval name
+    its scope. No synthetic lock/cache, PR-branch publisher, inventory receipt,
+    copied digest tuple, partial-verifier wrapper, extra bootstrap file, network
+    fallback, or post-merge waiver may break this ordering.
+40. Deploy Note ownership is independent from the deployed `sourceCommit`.
+    After the main source PR merges, and before any G1-G9 operation, the
+    mandatory C-tier source-state reconciliation PR writes the sole canonical
+    `project-state/control-plane-main-source-identity.json` instance. Its exact
+    fields are `schemaVersion`, `repository`, `mainSourcePrNumber`,
+    `mainSourceHeadSha`, and `mainSourceMergeCommitSha`; it contains no current
+    master SHA and therefore has no self-reference. The owner validator requires
+    exact merged-PR API readback and requires the recorded merge commit to be
+    identical to or an ancestor of the later deployment `sourceCommit`.
+    The reconciliation helper is create-missing-only: a byte-identical existing
+    record is an idempotent no-op, while any different existing PR/head/merge or
+    byte sequence fails closed without replacement. A future change of main
+    source origin requires a versioned contract/path and a fresh design and Gate;
+    ordinary reconciliation can never retarget the existing identity. Before
+    the instance exists, the main source PR must land a dedicated base-owned
+    `pull_request_target` history checker. It permits only absent/absent, one
+    canonical regular-blob first add, or an exact unchanged existing v1 blob;
+    it also proves its own workflow/checker bytes are unchanged in the candidate.
+    The reconciliation and every later PR require that exact check to succeed.
+    Deletion, symlink/mode drift, or a different but canonical identity blocks
+    merge; a later version leaves the v1 path and blob immutable.
+    The shipped reconciliation CLI has the sole closed form
+    `record --pull-request <positive-integer>`. Its only GitHub credential is
+    `env.GITHUB_TOKEN`, used solely as a read-only API credential for the fixed
+    `api.github.com` merged-PR GET; it is not a production credential and is
+    never accepted as argv, written, logged, serialized, or forwarded. The CLI
+    owns a real direct-main boundary, fixed repository/path/fetch/filesystem
+    ports, create-missing-only plus independent readback, bounded safe errors,
+    and closed exit codes. It performs no GitHub write, workflow dispatch,
+    Release operation, host access, or production mutation.
+    Release declaration, Production Gate receipt, deployment plan, controller
+    closeout, and final status bind those three identity fields plus the
+    canonical record SHA-256. The isolated Deploy Note writer reads the exact PR
+    number, byte-compares its head/merge identity, repeats the ancestry check,
+    and comments only that PR. It never discovers a comment target from
+    `sourceCommit`; missing, replaced, divergent, or ambiguous identity performs
+    zero writes and requires a new source-state reconciliation and Production
+     Gate.
+41. After a future separately authorized exact-11-file predecessor merge and all
+    Decision 39 provider/resumption Gates, Foundation main Task 1 is the sole
+    canonical executable-runtime owner. It consumes the authority-bootstrap
+    module's unchanged three-function behavior,
+    then modifies that existing `canonical-json.mjs` and its existing test in the
+    one main Draft PR; `strict-json-scan.mjs` remains byte-identical. After that
+    GREEN commit the module exports exactly, in module-namespace order,
+    `CANONICAL_JSON_INLINE_RUNTIME_SHA256`, arity-zero
+    `createCanonicalJsonInlineRuntimeFixture`, `parseCanonicalJsonBytes`,
+    `serializeCanonicalJsonBytes`, and `sha256Hex`. The factory rejects every
+    argument and returns frozen exact ordered `{bytes,sha256}`; every call owns a
+    fresh Buffer containing byte-identical LF-only source with exactly one final
+    LF, length `1..65_536`, and SHA-256 equal to both the wrapper and committed
+    lowercase-hex constant. The body is a reviewed strict CommonJS literal
+    executed only with a fresh `node:vm.Script` context whose string/Wasm code
+    generation is disabled, makes exactly one static literal
+    `require("node:crypto")`, and internally
+    defines the complete duplicate scanner, lexical canonical parse/serialize/
+    hash functions, and frozen exact ordered `CANONICAL_JSON_INLINE_RUNTIME`.
+    It has no application/caller free binding, environment, filesystem,
+    network, dynamic-code, path, token, secret, renderer, dependency, contract,
+    or selector used to construct or choose the source; after VM load the
+    lexical parse/serialize functions accept only their ordinary explicit frozen
+    contract argument. It is never built from `Function.prototype.toString`, a
+    contract method's `toString`, or executable fragments. The fixture owns only
+    canonical JSON execution; it owns no DSSE, Fulcio, Rekor, SCT, OIDC,
+    Sigstore, attestation, publication, or deployment authority. Artifact Task 6
+    imports only the fixture factory and hash constant, re-hashes and embeds the
+    exact bytes unchanged, and never copies/reconstructs the scanner or
+    serializer or trusts any function stringification.
+    Tests build the complete frozen contract, nested/array descriptors, values,
+    and fault variants inside each fresh VM rather than passing host-realm plain
+    records across the realm boundary. Host-realm records explicitly reject;
+    realm-local success models Artifact's inline runtime usage.
+42. Both diagnostic cryptographic implementations retained in this future design
+    are non-authoritative
+    diagnostics over DSSE signature, Fulcio chain, Rekor signed-entry/inclusion,
+    OIDC, predicate, and subject evidence only. Neither completely validates
+    embedded CT/SCT evidence; Foundation compatibility `verify` always throws
+    `full_sigstore_owner_unavailable`, while Artifact compatibility/inline
+    `verify` always throws `github_full_sigstore_owner_unavailable`. Neither may
+    mint or preserve a verification brand, complete Foundation publication
+    postverification, authorize a resolver/build, satisfy Artifact Gate-last,
+    produce `eligible:true`, label a pair cryptographically complete, or
+    authorize publication/deployment. Missing, unsupported, or unowned CT/SCT
+    validation is an unconditional hard stop; `insecure-ignore-sct`, wrappers,
+    copied diagnostics, and forged brands are forbidden.
+
+    One future separately approved pinned mature full-Sigstore implementation
+    must be the sole owner for **both** Foundation lock and Artifact verification,
+    with module-private trust/brand, complete CT/SCT semantics, official positive
+    and adversarial vectors, and provider-before-consumer readback. It must exist
+    on protected `master` before Foundation lock publication and later serve
+    Artifact Tasks 7-8 unchanged. The retained future PR topology cannot land
+    it there; `full_sigstore_owner_topology_unapproved` therefore stops every
+    post-bootstrap Settings/publication/main-Ready path. This design approves no
+    package, version, path, API, pin, extra predecessor PR, or production use for
+    that future owner, and a partial verifier may never be described or wrapped
+    as complete.
 
 ## Non-Goals
 
@@ -354,7 +708,43 @@ select a different target; its only GitHub network trust is fixed-issuer OIDC
 discovery/JWKS verification during admission. The receipt validator cannot
 perform a host mutation.
 
-The source ownership graph is provider-before-consumer. Host Task 11A owns
+The source ownership graph is provider-before-consumer. Current authority stops
+at review of the exact authority-bootstrap 11-file source-only Draft. After a
+future separate explicit authorization permits that predecessor to be marked
+Ready and merged, its contract provides the exact three-export normal codec, its
+baseline test, and inert publication/diagnostic source. It grants no attestation
+or publication authority. The graph then stops at
+`full_sigstore_owner_topology_unapproved`: a future separately approved topology
+must land the one unified full-Sigstore owner before lock publication, followed
+by full-owner postverification and the separately approved content-addressed
+offline npm closure. A proposed extra predecessor is not currently approved and
+is excluded from the approved PR count. Only after those provider edges and a
+separate explicit Risk A resumption may Foundation main Task 1 leave
+`strict-json-scan.mjs` unchanged and modify the existing `canonical-json.mjs`
+plus its existing test to add the
+hash-frozen inline-runtime ABI. Only after that main-PR commit may Artifact Task
+6 import the owner factory/constant, independently hash the fresh bytes, and
+embed them unchanged; it cannot copy source, reconstruct functions, or add a
+second canonical owner. Artifact Task 6 still proves that its legacy path remains
+diagnostic only; no downstream Artifact Gate-last, authorization, workflow, or
+eligibility consumer is reachable unless the same unified owner is integrated
+and GREEN under Decision 42. In that same Task 6 checkpoint,
+`scripts/control-plane-github-evidence.mjs` is the base recovery-ABI owner and
+exports `RECOVERY_WORKFLOW_AUTHORITY_INLINE_CONTROL_CONTRACT` plus
+the distinct token/fetch live-refresh
+`parseValidateAndRefreshArtifactPublicationApprovalProof(input) -> {value,bytes,sha256}`.
+Receipt repository code consumes only the contract for local canonical data
+validation and never calls that live-refresh parser.
+Artifact Task 7 Step 6a is the sole later extension of that same module and adds
+exactly `RECOVERY_WORKFLOW_AUTHORITY_INLINE_CONTROL_SHA256` plus zero-argument
+`createRecoveryWorkflowAuthorityInlineFixture()`. Its frozen return has the exact
+ordered keys `contract`, `authorityControlBytes`, `authorityControlSha256`,
+`publisherPrepareBytes`, `publisherPrepareSha256`,
+`publisherPostverifyBytes`, `publisherPostverifySha256`,
+`recoverAuthorityStepBytes`, `recoverAuthorityStepSha256`,
+`publishAuthorityStepBytes`, `publishAuthorityStepSha256`; every Buffer is fresh
+and non-aliased, and the exported SHA is exactly the digest of
+`authorityControlBytes`, not a fixture or wrapper digest. Receipt consumes only after Task 6 then Task 7. Its repository recovery controller uniquely static-imports only the Task 6 contract and never the live-refresh parser; its YAML inline wrappers embed the returned Task 7 bytes without runtime source imports, a copied contract, or a reversed provider edge. Host Task 11A owns
 `control-plane-host-inventory-readers.mjs` and exports only
 `createControlPlaneHostInventoryReaders(deps)` plus
 `assertControlPlaneHostInventoryReaders(value)`. The factory returns one
@@ -376,9 +766,19 @@ external workflows that consume its contract.
 
 Integration Task 2 separately owns
 `control-plane-required-check-registry.mjs`. Its only export is
-`resolveControlPlaneRequiredCheckContracts({sourceCommit,rulesetRequirements,checkRuns})`,
-which resolves a private fixed semantic/workflow registry against live
-`integrationId`/`appSlug` evidence and returns the exact
+`resolveControlPlaneRequiredCheckContracts({sourceCommit,rulesetRequirements,checkRuns,workflowRuns})`,
+which resolves a private fixed semantic/context policy against live
+`integrationId`/`appSlug` evidence and the actual producing Actions workflow
+run joined by exact `checkRun.checkSuiteId == workflowRun.checkSuiteId`. For a
+workflow-backed check, `workflowPath` is copied from that uniquely joined
+exact-head run's raw observed `path`, `workflowRef` is derived only from its
+separately observed safe `head_branch`, and `workflowSha` is copied from its
+observed `head_sha`, after the raw path matches policy. REST is not assumed to
+return a combined `path@ref` or separate workflow-SHA field. Protected-master
+consumers additionally require branch/ref `master` and SHA equality with the
+source commit; premerge branch evidence is not master Gate evidence. No
+workflow identity is filled from the private policy or inferred from context
+plus App identity. The resolver returns the exact
 `canonicalizeRequiredCheckContracts(...)` result
 `{requiredCheckContracts,bytes,sha256}`. Artifact and workflow consumers import
 that result; YAML, the design, and later Integration tasks do not recreate the
@@ -682,8 +1082,9 @@ must prove all of the following:
 - live `vultr-japan-production` readback canonicalizes the complete protection
   tuple with exact ordered fields `environment`, `preventSelfReview`,
   `protectedBranches`, `customBranchPolicies`, `adminBypassAllowed`, and
-  `reviewers`: every reviewer binds type, stable decimal ID, and normalized user
-  login or team slug; `prevent_self_review` is true, deployment is
+  `reviewers`: every reviewer has exact canonical `type:"user"` and binds a stable decimal
+  user ID plus normalized login; Team or unknown reviewer entries fail closed;
+  `prevent_self_review` is true, deployment is
   protected-branches-only, and the API response has an own boolean
   `can_admins_bypass: false` from which `adminBypassAllowed: false` is derived;
   any omitted, unknown, or changed field fails closed;
@@ -767,11 +1168,13 @@ Environment read follows GitHub's official
 contract](https://docs.github.com/en/rest/deployments/environments?apiVersion=2022-11-28),
 which requires repository `Actions: read`; no invented `Environments: read`
 permission is added to this job. It requires the exact canonical Environment
-tuple captured by preflight, including the complete immutable required-reviewer
-identity set, `prevent_self_review: true`, protected-branches-only deployment,
-and exact `can_admins_bypass: false`. The approved review must bind this
-run and Environment, and its immutable actor ID must be a member of that
-authorized set and distinct from both `github.actor` and
+tuple captured by preflight, including the complete immutable required
+user-reviewer identity set, `prevent_self_review: true`, protected-branches-only
+deployment, and exact `can_admins_bypass: false`. Every configured reviewer and
+the approving actor must resolve through exact user ID/login readback; Team
+reviewers and organization-membership lookups are forbidden. The approved
+review must bind this run and Environment, and its immutable actor ID must be a
+member of that authorized set and distinct from both `github.actor` and
 `github.triggering_actor`; a matching display name is insufficient. Missing,
 administratively bypassed, stale, self, or policy-drifted approval stops before
 any deployment secret is materialized into a file.
@@ -787,14 +1190,17 @@ connection.
 
 The deployment workflow declares `permissions: {}` at workflow scope. The
 no-secret preflight opts in only to `actions: read`, `checks: read`,
-`contents: read`, `statuses: read`, and `attestations: read`. The protected
-deployment job receives the same reads plus `id-token: write` solely to mint the
+`contents: read`, `pull-requests: read`, `statuses: read`, and
+`attestations: read`. The protected deployment job receives the same reads plus
+`id-token: write` solely to mint the
 one-time admission assertion after live approval validation. GitHub's current
 REST contract requires `Actions: read`, not repository Administration or an
 invented Environment-read scope, for both the Environment GET and workflow-run
 approval-history GET endpoints;
-attestation verification is separately explicit. Neither job receives package,
-pull-request, issue, deployment, administration, or contents write authority,
+attestation verification is separately explicit. The read-only pull-request
+scope is used only by the fixed main-source identity owner for one exact PR GET
+and ancestry comparison; neither job receives package, pull-request write,
+issue, deployment, administration, or contents write authority,
 and no GitHub App/PAT with source, Actions, deployment, write, OIDC, or host
 authority is available to either deployment job. The sole exception is the
 postapproval metadata-scope App above; its token is permission-checked, used only
@@ -802,56 +1208,135 @@ for exact secret/variable scope-name readback, and destroyed before SSH. The
 separately approved bootstrap provider identity is never persisted or inherited
 here. Every referenced action is pinned to a reviewed full commit digest.
 
-Artifact source preparation, dependency build, and publication are separate
-jobs. Source preparation has only `contents: read`, checks out with
+Artifact source code, diagnostic tests, toolchain preparation, dependency/native
+build, and publication are Future only; none may currently be prepared, added,
+or run. They remain dormant until the separately approved unified full-Sigstore
+owner is GREEN, immutable lock publication/postverification succeeds through
+that owner, the complete content-addressed offline npm closure is published and
+hash-read-back, and a separate explicit Risk A resumption is approved. The
+topology stop currently precedes Foundation lock publication and the offline npm
+closure does not yet exist. After those Gates, future source preparation has
+only `contents: read`, checks out with
 `persist-credentials: false`, creates the canonical exact-tree input by fixed
 workflow-owned Git/hash/size operations, and executes no setup-node, package,
-repository, lifecycle, native, or candidate command. The disposable dependency
-builder declares `permissions: {}`, has no checkout or setup-node, does not pass
+repository, lifecycle, native, or candidate command. A separate trusted
+`toolchain-prepare` job receives only `contents: read` and
+`attestations: read`, checks out the same exact source SHA with explicit
+`token: ${{ github.token }}` and `persist-credentials: false`, then passes
+`GITHUB_TOKEN: ${{ github.token }}` only to Foundation's fixed no-selector
+exporter. Those are exactly two token consumers; raw and parsed tests reject an
+implicit checkout default, persistence, job token, third consumer, or downstream
+token. Their recursive expression/context allowlist accepts only checkout
+`with.token` and exporter `env.GITHUB_TOKEN`, and rejects `github['token']`,
+case/whitespace drift, `toJSON`/`fromJSON`/`format`, every `secrets` reference,
+env/output aliases, argv/stdin/run or unapproved with/env placement, YAML alias/
+merge/duplicate evasion, and every later token; subsequent steps are tokenless
+and secretless. The exporter may receive the token only as its exact env scalar
+and cannot echo/interpolate/forward it. Before topology approval the exporter stops with
+`full_sigstore_owner_topology_unapproved`; after topology approval but before
+owner availability it stops with `full_sigstore_owner_unavailable`, always with
+zero output. Only after full-owner lock postverification may it emit exactly two
+canonical data files. It runs
+no candidate build or package command and has no Release write scope. The
+disposable dependency builder declares `permissions: {}`, has no checkout or setup-node, does not pass
 `GITHUB_TOKEN` into steps, and gives its automatically issued token no
 repository permission. It receives only the immutable job input through
 GitHub's job-scoped artifact transport; before any lifecycle/native subprocess,
 the wrapper removes every GitHub, Actions, OIDC, artifact-service, proxy, and
-credential environment value. The durable publisher is a distinct
+credential environment value. It also receives only the separately published,
+content-addressed offline npm cache/vendor closure, verifies its complete
+inventory/lockfile/tarball hashes, disables networking, and runs
+`npm ci --offline --ignore-scripts`; an empty clean-runner cache or any network
+attempt hard-stops. Before candidate extraction or execution, a
+workflow-owned fixed verifier checks the source transfer, exact two toolchain
+files, immutable publication evidence, and running-container identity. A
+    separate trusted verify job receives exactly `attestations: read`,
+`contents: read`, and `pull-requests: read`; its token is mapped only into the
+fixed main-source identity owner for exact PR/ancestry readback and the fixed
+typed inventory owner for immutable Release/attestation resolution. It treats
+builder output as opaque, has no write scope, and cannot pass the token to the
+tokenless builder or candidate code.
+Only after that separately approved owner checkpoint, the future durable
+publisher is a distinct
 write-capability job: it receives `actions: read`, `contents: write`,
-`id-token: write`, and `attestations: write` only. It has no checkout or
+`pull-requests: read`, `id-token: write`, and `attestations: write` only. The
+read-only pull-request scope is limited to the same fixed main-source identity
+readback before publication. It has no checkout or
 setup-node, cannot invoke a package manager, candidate byte, builder output, or
 repository script, and executes only pinned GitHub operations plus one fixed
 bounded publication control over opaque verified envelope assets. That control
 recursively canonical-validates every nested contract, rejects unknown fields
 at every depth, and independently re-hashes each asset before either write.
 
-Artifact owns the only tracked-attestation trust closure. Its public trust
-surface is `createTrackedGithubAttestationVerifier({ clock }) -> { verify }`
-plus `validateExactPublicationPredicateBindings({ predicateType,
-predicateBindings })`; the factory reads the tracked trust bundle and its
-digest itself and keeps Fulcio roots and Rekor keys private. Preflight and the
-immutable publisher construct that closure directly and may pass only its
-`verify` method or the owner-returned canonical predicate value/bytes/digest.
-No workflow, publisher, fixture, or caller may inject roots, keys, trust bytes,
-verification time, predicate field order, or a second verifier. The recursive
-publication envelope binds the complete source tree, builder image, Node
-headers, compiler/toolchain custody, executed-tool digest set, outputs, and
-predicate bytes; a self-carried verifier or checksum is never authority.
-Publication applies that trust closure independently per asset. For each asset,
-the accepted statement has exactly one subject and that subject is the asset's
-exact canonical name/SHA-256 pair. An attestation cannot cover, authorize, or be
-resumed for a second asset, and a multi-subject statement is always conflict.
+Artifact does not yet own a complete tracked-attestation trust closure. After
+the future Artifact source is separately resumed, its inline cryptography may
+emit only a non-authoritative diagnostic report
+covering DSSE signature, Fulcio chain, Rekor signed-entry/inclusion, OIDC,
+predicate, and exact single-subject observations. The exact current public
+surface retains `GITHUB_ATTESTATION_POLICY`,
+`RECOVERED_CLOSEOUT_ATTESTATION_PREDICATE_CONTRACT`,
+`canonicalizeGitHubAttestationBundleTransport`, and
+`validateExactPublicationPredicateBindings`, and adds
+`createTrackedGithubAttestationDiagnosticRunner({clock}) -> {diagnose(...)}`.
+The diagnostic return begins with exact
+`{diagnosticOnly:true,authoritative:false,diagnosticCode,...hashes}` and carries
+no private brand. Compatibility
+`createTrackedGithubAttestationVerifier({clock}) -> {verify(...)}` first runs
+those diagnostics and then always throws
+`github_full_sigstore_owner_unavailable`; it never returns success.
+`createTrackedGithubAttestationVerifierInlineBytes()` uses the Foundation-owned
+canonical runtime but its sole call has the same unconditional hard stop. No
+caller may wrap, rename, combine, or interpret any of these diagnostics as
+cryptographic completion. Foundation's canonical runtime fixture supplies only
+exact parser/serializer/hash code; it adds no Sigstore or SCT authority. Because
+the embedded SCT is not completely validated by an approved sole owner,
+preflight and post-publish verification must hard-stop before Artifact Gate-
+last, `complete`, `eligible:true`, production authorization, or any publication/
+deployment success path. After and only after the future owner checkpoint, the
+no-checkout publisher may perform bounded immutable pair writes/readback; it
+still cannot claim cryptographic completion itself.
 
-Those write scopes exist only on the protected `artifact-publication` job and
-are used only to publish and attest the canonical asset set; the deployment
-workflow itself has none of them. The publisher has no production Environment
-or deployment credential. No `pull_request_target`, repository-dispatch,
-reusable caller input, or fork-controlled code path can reach either write or
-production authority.
+One future separately approved Risk A topology addendum must place and pin a
+mature full-Sigstore implementation on protected `master` before Foundation lock
+publication, make it the sole owner for both Foundation and Artifact, freeze its module-private trust/private brand and
+complete embedded-SCT/CT validation, and pass official positive plus adversarial
+vectors before any downstream consumer is enabled. Until then, no workflow,
+publisher, fixture, diagnostic, or caller may inject or reconstruct roots, keys,
+trust bytes, verification time, SCT policy, predicate order, a second verifier,
+or an insecure ignore-SCT option. The recursive publication envelope still
+binds the complete source tree, builder image, Node headers, compiler/toolchain
+custody, executed-tool digest set, outputs, and predicate bytes, and each asset
+still requires its own exact one-subject name/SHA-256 statement; those structural
+facts are necessary diagnostics, not sufficient cryptographic authority. A
+self-carried verifier/checksum, multi-subject statement, or partial verifier is
+always conflict and cannot be resumed or packaged as complete. This document
+does not approve the future owner's package, version, source path, API, pin, or
+extra predecessor PR. Until that topology is approved, the earlier fixed stop is
+`full_sigstore_owner_topology_unapproved` and no Settings or Release write may
+begin.
+
+After the full-Sigstore owner checkpoint, those future write scopes exist only
+on the protected `artifact-publication` job and are used only to publish and
+attest the canonical asset set; before it, that job and every write path are
+unreachable. The deployment workflow itself has none of them. The publisher has
+no production Environment or deployment credential. No `pull_request_target`,
+repository-dispatch, reusable caller input, or fork-controlled code path can
+reach either write or production authority.
 
 Deploy Note recording uses a second isolated job after controller closeout. It
 does not reference `vultr-japan-production`, inherit deployment secrets, mint an
 OIDC token, open SSH, or run host code. It receives only `actions: read`,
-`contents: read`, and `pull-requests: write`; downloads the exact aggregate
-closeout artifact for the same run/attempt, revalidates its digest and bindings,
-and may append one bounded comment to the single associated merged PR. An
-ambiguous/missing PR or invalid closeout fails without writing. No job ever
+`contents: read`, and `pull-requests: write`; downloads only the exact aggregate
+final-status artifact for the same run/attempt and has no route to the original
+controller-closeout artifact. It first applies Receipt's non-authoritative
+run/branch inspector so every no-claim result returns with zero GitHub PR read or
+write, then for a terminal result revalidates the full final-status digest and
+bindings and resolves the exact merged main source PR named by
+`mainSourcePrNumber`; it byte-compares the recorded head/merge identity
+and requires the merge commit to be identical to or an ancestor of the deployed
+`sourceCommit` before appending one bounded comment. It never discovers a PR by
+`sourceCommit`. A missing, mismatched, unmerged, behind/diverged, or ambiguous
+identity fails without writing. No job ever
 combines production secrets with repository or pull-request write authority.
 
 ### One-Time Approval Assertion
@@ -923,10 +1408,32 @@ runtime-contract ID, and canonical inventory-receipt SHA-256. The receipt omits
 that external identifier, is published immutably as
 `inventory-receipt-{receiptSha256}.json` in Release
 `control-plane-inventory-{sourceCommit}-{runtimeContractId}`, and expires
-exactly two hours after `createdAt`. The protected inventory job has no
-repository write permission; a later isolated publisher with no production
-Environment, SSH material, or host route may publish only the already validated
-aggregate receipt and its attestation. Retrieval reserializes the ID and receipt
+exactly two hours after `createdAt`. Both manual typed inventory workflows set
+workflow-level `permissions: {}` and use the exact three-job order
+`preflight -> inventory -> publish`. Their job permission maps are byte-for-byte
+`{ actions: read, checks: read, contents: read }`,
+`{ actions: read, contents: read }`, and
+`{ actions: read, attestations: write, contents: write, id-token: write }`,
+respectively. `GITHUB_TOKEN` is mapped into exactly one fixed preflight API
+step, the protected inventory job's absolute first workflow-owned inline
+policy/approval recheck step, and exactly four fixed publisher token consumers
+in the order authorize, publish, pinned-attest, and verify-complete. No checkout,
+download, setup, local/repository action, secret/variable reference, or
+materializer step may precede that inventory recheck, and the token is absent
+from the later inventory/materializer step. The publisher consumes only opaque
+canonical `needs` data and performs no checkout/setup/download or
+repository-code execution. The pinned attestation operation is exactly
+`actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6` and explicitly maps
+`github-token: ${{ github.token }}`, `push-to-registry: false`, and
+`create-storage-record: false` rather than relying on action defaults. It alone
+consumes the publisher's OIDC capability between publish and verify-complete,
+and the job receives no `artifact-metadata` permission.
+Tests compare complete job blocks and reject extra, aliased, duplicated,
+case-variant, hidden, or misplaced scopes/tokens. Thus the protected inventory
+job has no repository write permission, while the isolated publisher has no
+production Environment, SSH material, host route, or production secret and may
+publish only the already validated aggregate receipt and its attestation.
+Retrieval reserializes the ID and receipt
 canonically, derives the Release and asset names from those bytes, and rejects
 aliases, replacement, outer/inner mismatch, expiry, or missing provenance.
 
@@ -941,7 +1448,14 @@ application/recovery activation and emits a content-addressed
 receipt plus fresh runtime inventory, uses the same tokenless builder,
 registry/provenance checks, and durable assets, but fixes
 `deploymentMode: compatibility_bootstrap` and
-`automatedDeploymentEligible: false`. The production deployment workflow
+`automatedDeploymentEligible: false`. Its immutable namespace is
+`control-plane-compatibility-{sourceCommit}-{runtimeContractId}` and its final
+typed asset is `compatibility-publication-{receiptSha256}.json`; its predicate,
+tag, receipt, and last asset are disjoint from normal `control-plane-app-*`,
+`pg1`, and `production-gate-*`. It never creates or attests a normal Production
+Gate receipt, and compatibility-first publication cannot occupy or conflict
+with the later normal Artifact Gate namespace for the same source/runtime. The
+production deployment workflow
 rejects those assets. Only the separately approved existing manual deployment
 runbook may install that exact bundle and atomically activate/read back the same
 host bytes. Successful activation emits only an intermediate
@@ -977,31 +1491,39 @@ The bundle's durable release identity is
 the separately reviewed `release-declaration.json`. The new workflow's sole
 publisher job is the only job with `contents: write`, is bound to
 `artifact-publication`, and fails unless live readback confirms the expected
-required reviewer, self-review prevention, and protected-branches-only policy
+required user reviewer, self-review prevention, and protected-branches-only policy
 before publication. Its pre-publication summary exposes only safe source,
 inventory, runtime, bootstrap, builder, and output digests; approval is not a
 production deployment approval. The publication workflow:
 
-The source-preparation job creates the canonical Git input and reviewed
-declaration template; the tokenless builder alone performs package fetch and
+The future source-preparation job creates the canonical Git input and reviewed
+declaration template; the tokenless builder consumes the separately published
+complete content-addressed offline npm cache/vendor closure and performs only
 offline native assembly; a no-write verifier validates its complete output; and
 the protected publisher only re-hashes the opaque files, attests, and uploads.
 Across those separated jobs, the workflow:
 
 - pins an exact Node version allowed by the root engine contract;
-- pins the disposable builder image, complete compiler/toolchain tree, and local
-  Node headers tree by reviewed digest in the release declaration. The builder
-  verifies the six closed custody inputs for the two trees, derives the sole
-  narrow `PATH` and fixed `CC`, `CXX`, `AR`, `LD`, `PYTHON`, and `MAKE` paths
-  from the verified toolchain, pins the lockfile `node-gyp` entrypoint, and binds
-  every actually executed tool digest into the build receipt;
-- in a first network-enabled fetch phase, retrieves only package tarballs whose
-  integrity matches the exact lockfile while lifecycle scripts are disabled,
-  then freezes the verified package cache;
-- in a second network-disabled build phase, runs the exact equivalent of
-  `npm ci --omit=dev --ignore-scripts --offline` from that cache and requires a
-  closed tracked inventory plus exact script-text digest for every package with
-  lifecycle metadata;
+- only after the unified full-Sigstore owner, resolves the one published v2 Foundation lock and verifies its immutable
+  Release/asset/attestation evidence before any build. The release declaration
+  and both build receipts bind the exact lock-asset SHA-256 and candidate
+  closure digest. The builder container is the lock's exact
+  `node:22.23.1-bookworm` platform-manifest digest, and the owner resolver alone
+  derives the Node headers plus complete toolchain closure, narrow `PATH`, and
+  fixed `CC`, `CXX`, `AR`, `LD`, `PYTHON`, and `MAKE` paths. A tracked builder
+  contract cannot restate or override the image/header/toolchain identity; the
+  builder pins the lockfile `node-gyp` entrypoint and binds every actually
+  executed tool digest into the build receipt;
+- requires the separate offline-closure Gate to have already published and
+  independently read back a complete cache/vendor inventory whose content
+  addresses, tarball integrities, lockfile digest, and every byte match. The
+  current source PR neither creates nor fetches that closure, and the 11-file
+  bootstrap is not expanded for it;
+- with networking disabled from process start, runs exactly
+  `npm ci --offline --omit=dev --ignore-scripts` from that closure and requires
+  zero network attempts, a closed tracked inventory, and exact script-text
+  digest for every package with lifecycle metadata. Missing/extra/drifted cache
+  content or a clean runner without the closure stops before package extraction;
 - never invokes a package lifecycle command containing `prebuild-install`.
   For the exact reviewed `better-sqlite3` package, it verifies the expected
   `prebuild-install || node-gyp rebuild --release` metadata but bypasses that
@@ -2259,6 +2781,19 @@ ordinary-status codecs are never reused as an inventory alias.
 Compatibility inventory is one exact 10,000-ms single-response operation and
 rejects `bootstrap_activation_ready_v1`; only G3 activation may emit that
 internal phase frame or reach the fixed root launcher.
+Its future workflow is protected only by
+`vultr-japan-compatibility-inventory`, never `vultr-japan-production`. That
+Environment is direct-`master` only, requires the separately approved user reviewer,
+denies self-review and administrator bypass, exposes exactly the five
+`JAPAN_CONTROL_COMPATIBILITY_INVENTORY_{HOST,PORT,USER,PRIVATE_KEY,KNOWN_HOSTS}`
+secrets and five
+`JAPAN_CONTROL_COMPATIBILITY_INVENTORY_{AUTHORIZATION_GENERATION,BOOTSTRAP_RECEIPT_SHA256,EXPIRES_AT,ACTIVATION_ID,HOST_BUNDLE_CONTENT_RECEIPT_SHA256}`
+variables to one run for no more than fifteen minutes, and has no production
+credential aliases. A separate external Gate creates/stages it and, after that
+one read-only run, deletes all ten values, reads back absence at every scope, and
+proves the staged host key can no longer authenticate. This source program only
+defines/tests that future contract and does not create or populate the
+Environment.
 Bootstrap's fixed deploy and bootstrap routers may construct their respective
 normal and compatibility handlers only from Host's asserted private-branded
 frozen `createControlPlaneHostInventoryReaders(deps)` result.
@@ -2558,6 +3093,19 @@ Version 1 therefore requires exactly two `databaseContracts` entries:
 | --- | --- | --- |
 | `subscription-runtime` | `SUBSCRIPTION_DB_PATH` | runtime subscription schema |
 | `subscription-control` | `SUBSCRIPTION_CONTROL_DB_PATH` | platform control schema plus every enabled nested schema validator |
+
+Host is the sole canonical owner of this array. Its
+`canonicalizeDatabaseContracts(value)` returns the normalized pair, canonical
+root bytes, and SHA-256; inventory, release declaration, and deployment plan
+independently call it and require byte/digest equality. Because the Foundation
+serializer rejects every structured field without an executable child
+descriptor, Host also exports exactly one frozen
+`DATABASE_CONTRACT_ENTRY_EMBEDDING_CONTRACT`: it is the same entry descriptor
+used by Host's private root contract. Consumer parent contracts install that
+exact object unchanged under `nested["database-contract-entry-v1"]` and map
+`arrays.databaseContracts` to that key. They may not inspect, spread, clone,
+extend, or copy its fourteen-field order, and Host's root/set contract remains
+private.
 
 The fresh read-only inventory resolves both configured sources internally using
 one root-owned stable database-binding key that never leaves the host. For each
@@ -3092,9 +3640,11 @@ that request and only successful response bytes plus the owner expected tuple
 may enter `validateStatusResponseFrame`. The transport retains exactly
 `{execute,request,requestStatusBundle,requestBootstrap,close}`. Recovery uses a
 variable bounded sequence on that one instance: one challenge request, one
-selector request, then one through seven ordinary requests with fresh
-correlation IDs at fixed five-second intervals under one non-refreshing absolute
-30-second deadline. Every operation receives one fresh non-aliased protected-
+selector request, then at most six actual ordinary requests with fresh
+correlation IDs at scheduled offsets 0, 5, 10, 15, 20, and 25 seconds under one
+non-refreshing absolute 30-second deadline. The seventh scheduled point at
+30 seconds is a mandatory deadline check and performs no request. Every
+operation receives one fresh non-aliased protected-
 material clone, and the outer controller calls exactly one idempotent `close()`.
 A critical `terminal_quiescence_pending` or
 `terminal_quiescence_rejected` response is bounded-polled and never locally
@@ -3148,10 +3698,20 @@ terminal record.
 
 The validated recovered result is one-time and durable without combining repository write
 authority with production access. A final isolated publisher job has no
-Environment, SSH/OIDC-production credential, or host route; after revalidating
-the same-run recovered artifact it receives only `actions: read`,
-`contents: write`, `id-token: write`, and `attestations: write`. Under the shared
-concurrency key it first fixes and re-hashes the canonical bytes, digest, tag
+production Environment, SSH/OIDC-production credential, or host route. It is
+bound only to the `artifact-publication` Environment: its absolute first
+workflow-owned inline step validates the exact user-only policy and same-run
+approval, and its fixed prepare control independently validates the canonical
+proof and freshly reauthorizes immediately before the first Release inspection
+or write. After revalidating the same-run recovered artifact it receives only
+`actions: read`, `contents: write`, `id-token: write`, and
+`attestations: write`; its four explicit token consumers are authorize,
+prepare, pinned-attest, and postverify. The attestation step uses the exact
+`actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6` contract with explicit
+`github-token`, `push-to-registry: false`, and
+`create-storage-record: false`; it receives no `artifact-metadata` permission.
+Under the shared concurrency key it first fixes and re-hashes the canonical
+bytes, digest, tag
 `control-plane-recovered-closeout-{controllerRecoveryId}`, and digest-derived
 filename, then queries both the exact Release asset and attestation subject. The
 two external writes form a resumable monotonic pair: neither present creates the
@@ -3372,23 +3932,29 @@ loss.
 
 GitHub publishes only the validated aggregate admission response or host
 receipt plus controller closeout as run evidence. Raw remote stdout/stderr is
-never uploaded. Artifact Tasks 11-12 own the sole controller/workflow sink;
-Integration Task 6 may only validate it without editing owner files. After the
-final read-only validation, the isolated no-secret writer may append exactly one
-bounded comment to the merged source PR. That comment is a concise successful Deploy Note only
+never uploaded. Artifact Tasks 11-12 own the sole controller/workflow sink, and
+Artifact Task 13 owns the separate Deploy Note sink; Integration Task 6 may only
+validate them without editing owner files. After the final read-only validation,
+the isolated no-secret writer may append exactly one
+bounded comment to the merged main source PR. That comment is a concise successful Deploy Note only
 when the host state is `deployed_validated`, controller result is
 `validated_deployment`, and runner cleanup has passed. It includes
 `deployed_at`, `release_unit`, `source_commit`, durable artifact identity,
-logical target, backup identity, and validation summary.
+logical target, backup identity, and validation summary. `deployed_at` is the
+unchanged Receipt-owner-validated `finalStatus.terminalPublishedAt`; the writer
+rejects `finalStatus.observedAt`, its own clock, a caller timestamp, or any
+derived substitute.
 
 A validated schema-only, rolled-back, or stopped attempt receives an equally
-bounded failed-attempt Deploy Note. In particular,
+bounded failed-attempt Deploy Note, and the validated critical-failure state uses
+the same failed-attempt family. All four omit `deployed_at`; none may imply a
+candidate activation time. In particular,
 `validated_schema_only_change` records that the additive schema committed while
 the previous source release remained active. Admission rejection,
 invalid-receipt, or incomplete-controller results record no unverified host
 claim and require the prescribed read-only closeout. None of these states
 changes `production_state` to the candidate deployment.
-The source PR body instead says only `Production status: not_deployed`; neither
+The main source PR body instead says only `Production status: not_deployed`; neither
 it nor `RELEASE_MANIFEST.md` pre-creates a Deploy Note or implies first-use
 execution.
 
@@ -3396,8 +3962,42 @@ execution.
 
 ### TDD Contract Tests
 
-Implementation begins with failing tests for:
+Future implementation, only after the Decision 39 provider Gates and separate
+explicit Risk A resumption, begins with failing tests for:
 
+- after a future separately authorized exact-11-file predecessor merge,
+  Foundation main Task 1 preserves the bootstrap baseline's exact three-function
+  behavior while adding only the final five-export namespace and zero-argument
+  fixture; frozen ordered wrapper keys; fresh owned Buffer per call; exact
+  literal/wrapper/recomputed hash; LF-only single-final-LF and 65,536-byte cap;
+  strict fresh-VM lexical runtime keys; explicit host-realm record rejection;
+  realm-local contracts/values/faults built inside the VM and paired by case ID
+  with semantically equivalent host fixtures for normal/runtime differential
+  parity over canonical success plus duplicate/noncanonical/contract/nested/array failures;
+  and re-hashed mutation rejection for added free globals, import/require drift,
+  environment/filesystem/network/path/token access, dynamic code, runtime-key
+  drift, and caller selectors. The reviewed literal must prove no function or
+  contract `toString` composition;
+- Artifact's exact diagnostic-only public surface returns only
+  `diagnosticOnly:true`, `authoritative:false`, diagnostic code, and hashes for
+  DSSE/Fulcio/Rekor/OIDC structural observations; both compatibility `verify`
+  and its canonical-runtime-backed inline call always throw
+  `github_full_sigstore_owner_unavailable`. Missing/invalid/unowned embedded SCT,
+  `insecure-ignore-sct`, a partial-verifier wrapper, private-brand fabrication,
+  or any attempted Gate-last/complete/eligible/authorization transition must
+  hard-stop. A future owner remains RED until one separately approved pinned
+  full-Sigstore implementation passes official positive/adversarial SCT/CT
+  vectors and provider-before-consumer private-brand tests;
+- Foundation publisher raw/parsed/runtime tests freeze the current exact
+  `topology-preflight -> publish -> verify-publication` chain, fixed no-token
+  `permissions: {}` first-job failure, default-success `needs`, no bypass
+  condition, and zero Release/attestation writes on dispatch;
+- Artifact Task 6 owns the recovery authority contract/parser base exports;
+  Task 7 alone adds the SHA/factory and exact ordered 11-key fresh-Buffer fixture;
+  Receipt imports only after that Task 6 -> Task 7 provider order: the repository
+  recovery controller uniquely static-imports the Task 6 contract, while YAML
+  inline wrappers embed the returned Task 7 bodies without re-rendering or
+  runtime source imports;
 - `workflow_dispatch` as the sole production-deploy trigger and the sole trigger
   for each durable Artifact Gate;
 - the dispatcher accepts only one closed, content-addressed
@@ -3436,11 +4036,15 @@ Implementation begins with failing tests for:
   absolute 300-second deadline in the same authenticated task; fixed-lock
   identity, busy rejection, held-through-cleanup, and crash-release behavior are
   proven for each compiled principal;
-- the required-check semantic/workflow registry has one Integration-owned
-  resolver, keeps its fixed registry private, injects live integration/app
-  identity evidence, and returns only canonical eight-field contract bytes;
+- the required-check semantic/context policy has one Integration-owned resolver,
+  keeps policy private, injects live integration/app identity evidence, joins
+  every workflow-backed check through its exact check-suite ID to one Actions
+  workflow run, takes raw path and head SHA from that producer and derives ref
+  only from its observed safe head branch,
+  and returns only canonical eight-field contract bytes; a same-context check
+  from the same App but another workflow/run is rejected;
 - protected preflight checks out literal `${{ github.sha }}`, binds every
-  required reviewer immutable identity and own boolean
+  required user-reviewer immutable identity and own boolean
   `can_admins_bypass: false`,
   and rejects a display-name-only approval; each asset cross-rejects zero-,
   multi-, shared-, reused-, or mismatched-subject attestations;
@@ -3576,9 +4180,11 @@ Implementation begins with failing tests for:
   shared concurrency, an old attempt not completed or outside the closed failure/
   cancelled/timed-out/stale/startup-failure set, and an attempt-specific
   `updated_at` outside the 24-hour window.
-  One five-method transport performs challenge, selector, one through seven
-  fresh-ID ordinary requests under one absolute deadline, then exactly one
-  terminal-only bundle stream and one outer-finally close. Tests prove both
+  One five-method transport performs challenge, selector, at most six actual
+  fresh-ID ordinary requests at the 0/5/10/15/20/25-second schedule under one
+  absolute deadline, then exactly one terminal-only bundle stream and one outer-
+  finally close. The seventh 30-second scheduled point is a mandatory no-request
+  deadline boundary. Tests prove both
   quiescence observations remain transaction-bound, exact critical proof plus
   bundle maps to recovered critical failure, deadline maps to not-terminal,
   and no path aliases either result to no-transaction admission rejection.
@@ -3590,9 +4196,12 @@ Implementation begins with failing tests for:
   its native conclusion and the exact independently proven present/absent/
   ambiguous artifact state, which the new `recovered_closeout` record binds
   without rewriting. Publisher crash tests cover neither half, exact asset only,
-  exact attestation only, and the exact completed pair; either matching partial
-  state resumes only its missing write, while a conflicting/multiple half rejects
-  a second result. Nonterminal/invalid no-claim diagnostics remain attempt-scoped
+  exact attestation only, and the exact structurally present pair; its publisher
+  inventory label `complete` means only both immutable halves exist and match
+  names/digests. It is not cryptographic completion and cannot reach Gate-last
+  while Decision 42 is unresolved. Either matching partial state resumes only
+  its missing write, while a conflicting/multiple half rejects a second result.
+  Nonterminal/invalid no-claim diagnostics remain attempt-scoped
   and never create or reserve the canonical validated tag, so a later converged
   terminal result remains publishable;
 - execution/recovery/custody/database-helper generations are immutable; changing
@@ -3612,6 +4221,20 @@ Implementation begins with failing tests for:
   anonymous FDs before spawn; the no-shell spawn inherits exactly the fixed
   sealed child slots and rejects a caller-selected FD number, unrelated inherited
   FD, close-on-exec mistake, or local-grandchild path;
+- the Foundation host lifecycle has exactly three sudo calls: held-FD-on-stdin
+  fixed `install`, then only independently read-back root-owned `run` and
+  promotion-gated final `always()` `cleanup`. Tests reject a runner-writable
+  target, FD>=3 preservation, parent creation/`mkdir`, alternate install/sudo/
+  shell/selector, or env/stdin on either root verb. Real-process rows cover direct-main `0/1/2`, bounded safe
+  errors, source swap after held open, install stdin truncation/failure, missing/
+  symlink/non-root-owned/writable `/usr/local/bin` parent, target preexist/no-
+  replace, target readback mode/owner/link/digest mismatch, post-
+  promotion swap `EACCES`, worker/unit/result integrity, every partial manager/
+  timer/cgroup/result failure, cleanup ordering, and final self-unlink parent-
+  fsync/absence readback. The real hosted-runner row must prove alpha/beta template
+  isolation, the fixed persistent timer, cgroup kill/empty/absence, root-owned
+  canonical result readback, and final zero-residue cleanup; a failed cleanup
+  makes the job ineligible even after an earlier all-true aggregate;
 - rollout ordering proves staged host content plus `artifact-publication`
   protection exist before compatibility publication, while production
   credential/Environment activation occurs only after manual compatibility
@@ -3630,10 +4253,15 @@ Implementation begins with failing tests for:
   source/artifact/tree/runtime/dependency/lease-contract drift rejection;
 - durable artifact manifest, checksum, Git-tree, provenance-attestation, and
   runtime-contract validation before and after approval;
-- lock-integrity-only fetch with lifecycle scripts disabled followed by a
-  network-disabled, source-only native build using digest-pinned image,
-  toolchain, and headers; any secondary download, unknown install script, or
-  egress attempt fails;
+- a separately approved/published complete content-addressed offline npm cache/
+  vendor closure followed by a network-disabled source-only native build using
+  the unified-owner-verified v2 Foundation lock. `npm ci --offline` and zero-
+  network instrumentation are mandatory; a clean empty cache, missing/extra/
+  drifted inventory or package byte, secondary download, or egress attempt
+  fails before extraction. Both Foundation and Artifact receipts bind the same
+  lock asset/candidate closure and dependency-closure digest; a second builder-
+  contract image, header/toolchain digest tuple, alternate OCI digest, or
+  unknown install script fails;
 - exact `better-sqlite3` lifecycle metadata is validated but never invoked;
   only the reviewed direct pinned-`node-gyp` adapter can create its native
   binary offline;
@@ -3686,6 +4314,19 @@ Implementation begins with failing tests for:
   repository/organization fallback, duplicating any reserved name at a wider
   scope, falling back the metadata App inputs themselves, or drifting its
   read-only permissions/installation must fail before host secrets or SSH;
+- the G2 workflow names only `vultr-japan-compatibility-inventory`, requires
+  direct protected `master`, one non-self user reviewer identified by stable
+  decimal ID and normalized login, rejects Team/unknown reviewers, permits no
+  administrator bypass, and exposes exactly the five compatibility-prefixed
+  secrets and five compatibility-
+  prefixed variables, one run, and an expiry no more than fifteen minutes away;
+  tests reject `vultr-japan-production`, aliases/fallbacks, extra/missing names,
+  a second run, stale expiry, retained values, absent deletion readback, or a host
+  key still usable after the separately approved external cleanup Gate;
+- only `validated_deployment` renders `deployed_at`, byte-equal to
+  `finalStatus.terminalPublishedAt`; tests reject `finalStatus.observedAt`, a
+  writer/caller clock, or reconstructed timestamp, while stopped-pre-switch,
+  schema-only, rolled-back, and critical-failure notes omit the field;
 - source checkout with read-only non-persisted credentials, tokenless builder,
   and a publisher that has the exact write scopes but cannot checkout, extract,
   import, or execute candidate/builder content;
@@ -3869,9 +4510,11 @@ restoration, and
 proves no secret-like material enters receipts, temporary evidence, or Actions
 logs.
 
-### Source PR Validation
+### Main Source PR Validation
 
-The single source implementation PR must pass:
+After the future topology/owner/publication/offline-closure prerequisites, the
+single main source implementation PR must pass. Under the current approved
+topology it cannot begin authoritative validation or become Ready:
 
 - an Integration-owned import/readback of Foundation's complete executable
   contract: all four atomic logical-record exports, all fifteen native-wrapper
@@ -3879,6 +4522,27 @@ The single source implementation PR must pass:
   feasibility vector. Every production entrypoint must require the whole vector
   before protected reads or mutations; a partial local capability subset or
   copied feature list fails;
+- Foundation-lock diagnostics expose no brand and never return authoritative,
+  verified, complete, eligible, or publication-safe; compatibility `verify`
+  always throws `full_sigstore_owner_unavailable`. With current topology, every
+  Settings/publisher/postverify/resolver/exporter/build/main-Ready entrypoint
+  instead stops first at `full_sigstore_owner_topology_unapproved` with zero
+  fetch, output, Release write, container, npm, compiler, receipt, or completion
+  digest. The current manual publisher proves this at its absolute-first fixed
+  no-token `permissions: {}` preflight; default-success dependencies skip both
+  downstream jobs and a dispatch harness observes zero Release/attestation
+  writes. Tests also prove no wrapper, job-condition bypass, or SCT bypass changes either outcome;
+- workflow raw and parsed tests require exactly two explicit token consumers:
+  pinned checkout's `token` with `persist-credentials: false`, then the fixed
+  exporter. Their recursive expression/context allowlist rejects bracket/case/
+  whitespace aliases, `toJSON`/`fromJSON`/`format`, secrets, env/output aliases,
+  argv/stdin/run/unapproved with/env placement, YAML alias/duplicate evasion,
+  and every implicit/default/persisted/job/third/downstream token; all later
+  steps are tokenless and secretless;
+- offline dependency tests require the separately published content-addressed
+  closure, exact inventory/lockfile/tarball/content hashes,
+  `npm ci --offline --ignore-scripts`, disabled networking, and zero network
+  attempts; a clean empty cache or one-byte drift stops before extraction;
 - targeted workflow, artifact, plan, host-runner, health, receipt, schema, and
   cleanup tests;
 - full `npm test`;
@@ -3895,13 +4559,61 @@ does not run implementation tests.
 
 ## Rollout Sequence
 
-The implementation and first use remain separate:
+The authority bootstrap, main implementation, and first use remain separate:
 
-1. Include this reviewed design, workflow, runners, validators, tests, and
-   runbook updates in one source-only Draft PR.
-2. Complete clean validation, exact-head checks, independent review, Ready,
-   and merge. No production credential or deployment is created by the PR.
-3. Through a separate Risk A inventory and approval, invoke only Host's G1a
+1. Complete only the separately operator-approved #593 design-only merge after
+   clean exact-head checks and independent review. This instruction applies
+   only to #593; once that merge completes, this row is historical and grants
+   no authority to merge any later addendum, exact-11 Draft, or implementation
+   PR. It creates no workflow authority or production state.
+2. Only through the exact authority-bootstrap's owning predecessor plan,
+   prepare, test, push, open, and review the narrow source-only Draft PR defined
+   by Decision 39. Complete clean validation, exact-head checks, and independent
+   review, but keep it Draft; do not mark it Ready or merge it. Its exact 11-file
+   contract leaves the canonical module at
+   exactly three exports and contains no runtime hash/factory. It creates
+   repository source only and performs no
+   Settings, Environment, Release, credential, host, or deployment mutation.
+3. Stop after Draft review. Current authority ends here: the Draft must remain
+   Draft, and Foundation Tasks 1+, the main implementation, and all Artifact
+   source/test work remain dormant. The retained bootstrap-plus-main future
+   topology cannot place the required unified full-Sigstore owner on protected
+   `master`
+   before lock publication. Every Settings, Release, publication,
+   resolver/build, and main-Ready path returns
+   `full_sigstore_owner_topology_unapproved`. The 11-file Draft may not be
+   expanded to absorb an owner or other future work.
+4. Only a future separate explicit approval may authorize the exact 11-file Draft
+   to be marked Ready and merged. Even after that future separately authorized
+   predecessor merge, a separate Risk A topology addendum must define and
+   explicitly approve provider placement; a possible extra predecessor remains
+   proposed only and excluded from the approved PR count. Only after that future
+   topology is approved and its source is independently reviewed may the one
+   pinned mature full-Sigstore owner be GREEN on protected `master`, serving
+   Foundation and Artifact with private brand and official
+   positive/adversarial CT/SCT vectors. Then, through separate explicit Risk A
+   Gates, establish/read back publication policy, publish and full-owner-
+   postverify exactly one immutable toolchain lock, and publish/read back one
+   complete content-addressed offline npm cache/vendor closure. Until both assets
+   and the owner are GREEN, exporter, `npm ci`, native build, receipt, and
+   `eligible:true` remain unreachable. This document does not authorize those
+   future Gates.
+5. Only after Step 4 and a separate explicit Risk A resumption approval, create
+   or rebase the one main source-only implementation Draft PR,
+   add the final published-lock resolver/pin, execute Foundation Task 1's exact
+   two-file runtime extension, and proceed in DAG order through Artifact Task 6.
+   Stop again at that checkpoint: prove both legacy verifiers remain diagnostic,
+   the unified owner is the sole Foundation/Artifact authority, the offline npm
+   closure passes zero-network/hash tests, and both fixed hard-stop regressions
+   pass. Only after those checks are GREEN may the remaining reviewed source,
+   workflow, runners, validators, tests, runbook updates, clean validation,
+   exact-head review, Ready, and merge proceed. Then complete the mandatory
+   C-tier source-state reconciliation PR and read back the exact canonical main
+   source identity record from protected `master`. No G1-G9 step may begin
+   before that record exists and its PR/head/merge/ancestry observations pass.
+   Current main Ready is unreachable; neither PR creates a production credential
+   or deployment.
+6. Through a separate Risk A inventory and approval, invoke only Host's G1a
    `installAndReadBack({stagedManifestBytes,contentReceiptBytes,approvalBinding})`
    to stage and independently read back the exact root-owned host execution
    bundle. The installer uses its compiled source/root/layout allowlists and
@@ -3920,17 +4632,24 @@ The implementation and first use remain separate:
    the compatibility publisher. Do not create a production GitHub credential,
    configure `vultr-japan-production` secrets, enable the deployment lane, or
    activate application/recovery bindings yet.
-4. G2 uses a fresh provider-approved compatibility-inventory evidence binding
-   only to perform the separately typed inventory through Host's asserted
-   compatibility reader. Its canonical `activationId` remains read-only
+7. G2 uses a fresh provider-approved compatibility-inventory evidence binding
+    only to perform the separately typed inventory through Host's asserted
+    compatibility reader. Its canonical `activationId` remains read-only
    evidence and never invokes activation. The codec and handler are strictly
    read-only: they perform no CAS, execute,
-   install, root-launcher, or activation operation. If that evidence proves the
-   installed previous release lacks either the no-bypass business-mutation
-   lease/guard contract or its canonical registry and independent durable proof
-   chain, run the distinct compatibility Artifact Gate against the staged
-   receipt; publication still performs no SSH.
-5. G3 requires a different fresh activation plus a separate approved
+    install, root-launcher, or activation operation. If that evidence proves the
+    installed previous release lacks either the no-bypass business-mutation
+    lease/guard contract or its canonical registry and independent durable proof
+    chain, run the distinct compatibility Artifact Gate against the staged
+    receipt; publication still performs no SSH. Before this one run, a separate
+    approved external Gate creates the master-only, user-reviewer-protected, no-bypass
+    `vultr-japan-compatibility-inventory` Environment and stages only the exact
+    five compatibility SSH secrets and five authorization/evidence variables
+    frozen above, all expiring within fifteen minutes. It may not use or alias
+    `vultr-japan-production`. Immediately after the run, the same Gate deletes
+    all ten values, reads back absence, and proves the temporary host key
+    unusable. Landing this source design does not authorize any of those actions.
+8. G3 requires a different fresh activation plus a separate approved
    backup/manual Gate. It sends only
    `encodeBootstrapActivationRequestFrame(...)`, accepts only
    `validateBootstrapActivationResponseFrame(...)`, and reaches only the fixed
@@ -3944,7 +4663,7 @@ The implementation and first use remain separate:
    is not valid for a normal Artifact Gate or deployment admission. The
    implementation release cannot be introduced as its own first automatic
    rollback baseline.
-6. Establish a separate Risk A credential/authorization Gate, including
+9. Establish a separate Risk A credential/authorization Gate, including
     a provider-console-approved, maximum-15-minute bootstrap activation for the
     locked `github-control-bootstrap` principal and its exact staging lease plus
     ephemeral key/activation/sudoers triple, forced entry shim/root launcher,
@@ -3994,7 +4713,7 @@ The implementation and first use remain separate:
     does not recreate the earlier
     `artifact-publication` policy. Any partial transition remains fail-closed and
     requires the exact resume/abort Gate above.
-7. Execute a protected read-only GitHub transport and inventory proof. Stop on
+10. Execute a protected read-only GitHub transport and inventory proof. Stop on
    any target, release, service, systemd recovery/guard feature, session-limit
    broker/principal/start-limit state, maintenance-capability/readback state, architecture,
    libc, Node ABI, database binding/config generation/schema identity,
@@ -4004,9 +4723,10 @@ The implementation and first use remain separate:
    independent source/artifact/provenance proof, bidirectional join,
    migration-admission adapter, lease/guard contract, config, or health
    ambiguity.
-8. For that exact fresh runtime contract and merged `master` commit, run the
-   separate manual-only Artifact Gate. Its tokenless builder performs the
-   offline source-native dependency build; after no-write verification, the
+11. For that exact fresh runtime contract and merged `master` commit, run the
+   separate manual-only Artifact Gate. Its tokenless builder consumes the exact
+   approved content-addressed offline npm closure and performs the zero-network
+   source-native dependency build; after no-write verification, the
    isolated publisher reads back `artifact-publication`, waits for independent
    approval, re-hashes opaque outputs, and uses only the minimum
    publication/attestation writes to attest and upload the durable target-matched
@@ -4016,23 +4736,23 @@ The implementation and first use remain separate:
    and retrievability, then publishes last the immutable, attested, unexpired
    Production Gate receipt derived from that inventory, final bootstrap receipt,
    artifact, and canonical plan template. It publishes no production deployment.
-9. The operator reviews that exact durable Production Gate receipt and safe
+12. The operator reviews that exact durable Production Gate receipt and safe
    summary, then manually dispatches the workflow with only its closed
    content-addressed ID and the confirmation phrase. The no-secret preflight
    materializes it into the new run-bound plan; it does not create, select, or
    consume a Gate. The host consumes the receipt digest only after approval and
    successful OIDC admission.
-10. After `${{ github.sha }}` exact-head readback and canonical comparison of
-   the full Environment reviewer-identity/admin-bypass tuple, an independent
+13. After `${{ github.sha }}` exact-head readback and canonical comparison of
+   the full user-only Environment reviewer-identity/admin-bypass tuple,
    including own boolean `can_admins_bypass: false`, an independent authorized
-   reviewer approves the exact pending Environment deployment and
+   user reviewer approves the exact pending Environment deployment and
    its run-bound plan derived from that pre-dispatch Gate.
-11. GitHub first runs the capability-gated admission maintenance preflight,
+14. GitHub first runs the capability-gated admission maintenance preflight,
    then completes deployment, validation, automatic code rollback when
    required, the terminal/closeout maintenance preflight, cleanup, and receipt
    validation. Either quota/retention/CAS preflight failure stops before its
    corresponding irreversible publication.
-12. Perform final read-only validation. Only then may the Artifact-owned
+15. Perform final read-only validation. Only then may the Artifact-owned
    isolated writer append exactly one bounded Deploy Note comment, or record the
    failed/rolled-back attempt accurately without a deployment-success claim.
 
@@ -4048,15 +4768,71 @@ The design is implemented only when all of these are true:
   ID and confirmation; canonical outer/inner identity is unique, the run
   reproduces its stable plan body, effective expiry never exceeds a parent, and
   host admission consumes the receipt digest at most once;
-- a distinct reviewer must approve the exact protected job;
+- a distinct authorized user reviewer must approve the exact protected job;
 - protected preflight checks out only `ref: ${{ github.sha }}`, reads that exact
-  head back, and binds the full Environment reviewer immutable-identity set plus
+  head back, rejects every Team/unknown reviewer, and binds the full Environment
+  user-reviewer immutable-identity set plus
   own boolean `can_admins_bypass: false` before accepting the approval;
 - approval releases only the dedicated forced-command deployment identity;
 - host admission also requires a fresh Environment-bound GitHub OIDC assertion
   for the exact plan/run and consumes it once;
 - the deployer cannot select a different target, service, path, command, or
   source commit;
+- the authority-bootstrap 11-file contract retains exactly the three canonical
+  exports and no runtime fixture; its Foundation-lock diagnostics mint no brand,
+  compatibility `verify` always throws `full_sigstore_owner_unavailable`, and
+  neither read-only postverification nor any write/resolver/build completion is
+  reachable. Its current publisher has workflow/job `permissions: {}` at the
+  absolute-first fixed no-token `topology-preflight`, which fails exact
+  `full_sigstore_owner_topology_unapproved`; exact default-success
+  `topology-preflight -> publish -> verify-publication` dependencies skip both
+  downstream jobs, and raw/parsed/runtime tests observe zero Release/attestation
+  writes. Only its owning predecessor plan may currently prepare, test, push,
+  open, and review the exact 11-file source-only Draft; it must remain Draft and
+  may not be marked Ready or merged, and its source may not change Settings or
+  publish;
+- only after a future separate explicit authorization permits that exact Draft to
+  be marked Ready and merged does the predecessor become a dependency. After
+  that future separately authorized merge, every Settings/Release/publication
+  and main-Ready path still stops
+  with `full_sigstore_owner_topology_unapproved`. The retained future PR topology
+  is unchanged and insufficient; no additional current PR is authorized, and a
+  proposed extra predecessor is excluded,
+  unapproved, and must not be created or merged. A future Risk A topology
+  addendum must place one pinned mature full-Sigstore owner on protected `master`
+  before lock publication, serve Foundation and Artifact unchanged, keep its
+  brand private, and pass official positive/adversarial CT/SCT vectors;
+- only after that future separately authorized predecessor merge, the unified
+  owner, full-owner-verified lock publication, a
+  separately approved complete content-addressed offline npm cache/vendor
+  publication/readback, and a separate explicit Risk A resumption may Foundation
+  main Task 1 modify only the
+  existing canonical module/test, leave the scanner unchanged, and expose the
+  five-symbol namespace plus hash-frozen zero-argument fixture in Decision 41;
+  every fixture owns a fresh
+  bounded LF Buffer whose exact digest is rechecked, fresh strict-VM execution
+  rejects host-realm records while realm-local frozen contracts/values/faults
+  match equivalent host fixtures across the complete success/fault corpus, and
+  Artifact Task 6 only hash-verifies and embeds those exact bytes without
+  copying/reconstructing code or using function/contract stringification;
+- the Foundation eligibility workflow passes independent raw and parsed closure
+  tests for exact root keys `name,on,permissions,jobs`, sole job
+  `foundation-linux`, exact host-job keys
+  `runs-on,timeout-minutes,permissions,steps`, `ubuntu-24.04`, 30 minutes,
+  the exact read-permission order, and the frozen steps/sudo lifecycle; root
+  defaults/environment/run-name/reusable authority, a second job, job
+  env/defaults/container/services/reusable `uses`, or any unlisted runtime key
+  keeps Foundation ineligible. Pinned checkout explicitly receives
+  `token: ${{ github.token }}` with `persist-credentials: false`, the exporter
+  explicitly receives `GITHUB_TOKEN: ${{ github.token }}`, and those are exactly
+  the two token consumers. A recursive raw+parsed expression/context allowlist
+  rejects bracket/case/whitespace aliases, `toJSON`/`fromJSON`/`format`, secrets,
+  env/output aliases, argv/stdin/run/unapproved with/env placement, YAML alias/
+  duplicate evasion, implicit checkout default, persistence, job token, third
+  consumer, or downstream token; every later step is tokenless. The build runs only
+  `npm ci --offline --ignore-scripts` from the hash-closed published dependency
+  closure with networking disabled and zero attempts; absent/drifted cache,
+  inventory, lockfile, or tarball bytes stop before extraction or compilation;
 - the SSH principal cannot write its authorization, launcher, release root,
   backup root, service definition, protected config, or transaction records,
   and has no privilege outside the exact no-argument native relay into the
@@ -4157,6 +4933,24 @@ The design is implemented only when all of these are true:
   key, known-hosts, and raw transport output never persist at a linked path;
 - the exact artifact is durable, retrievable, checksum-, Git-tree-, runtime-,
   offline-native-build-, and build-provenance-bound;
+- Artifact's present DSSE/Fulcio/Rekor/OIDC implementation is reported only as
+  non-authoritative diagnostics, every compatibility/inline verifier call ends
+  in `github_full_sigstore_owner_unavailable`, and no Gate-last, `complete`,
+  `eligible:true`, publication, production authorization, Ready/Merge, or G1a
+  path is reachable. Before those paths can become acceptance-eligible, the same
+  unified owner already required before Foundation lock publication must be
+  integrated and GREEN for Artifact; no ignore-SCT option, partial-verifier
+  wrapper, alternate owner, or forged brand is accepted;
+- Artifact Task 6's base `control-plane-github-evidence.mjs` exports
+  `RECOVERY_WORKFLOW_AUTHORITY_INLINE_CONTROL_CONTRACT` and the distinct
+  token/fetch live-refresh `parseValidateAndRefreshArtifactPublicationApprovalProof`;
+  Receipt repository code consumes only the contract and never calls that
+  live-refresh parser. Task 7 Step 6a alone
+  adds `RECOVERY_WORKFLOW_AUTHORITY_INLINE_CONTROL_SHA256` and
+  `createRecoveryWorkflowAuthorityInlineFixture()`. Its frozen fresh-Buffer return
+  has exactly the ordered 11 keys specified in the source ownership graph, and
+  Receipt consumes it only after Task 6 -> Task 7 without copying or reversing
+  the provider edge;
 - candidate and rollback writer registries are independently canonical and
   digest-bound to their exact source, durable companion/bundle/declaration/
   provenance, artifact, and tree through separate fresh verification receipts;
