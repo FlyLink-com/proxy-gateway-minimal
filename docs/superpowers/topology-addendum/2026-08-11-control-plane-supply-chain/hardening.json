@@ -17,7 +17,7 @@
   "decision": {
     "gateId": "G0",
     "status": "selected_topology_direction_only",
-    "recordState": "draft_pr",
+    "recordState": "repository_decision_record",
     "selectedOptionId": "in-repo-unified-owner",
     "fallbackOptionId": "permanent-no-go",
     "fallbackState": "active_hard_stop",
