@@ -1,7 +1,7 @@
 # Security Hardening Proposal: Unify Supply-Chain Authority Before Publication
 
 > Status:
-> - Type: Derived Topology Addendum proposal with G0 recorded and P2-D prepared
+> - Type: Derived Topology Addendum proposal with G0 recorded, P2-D complete, and P2-S0 preparation current
 > - Risk: A
 > - Production authority: False
 > - Execution authority: None
@@ -11,9 +11,10 @@
 At G0, we selected Option 2 as the topology direction only: one authority would
 sit before Foundation lock publication without bootstrapping itself, duplicating
 trust in Artifact, or converting diagnostic observations into authority. PR
-#600 has since merged as the exact-11 dormant checkpoint. P2-D now prepares a
-candidate GitHub-private profile and P2-S experiment design; neither is an
-approved success profile or execution grant. Option 1 remains active.
+#600 has since merged as the exact-11 dormant checkpoint. PR #603 completed the
+P2-D docs-only governance loop. P2-S0 Gate preparation is current, P2-S has not
+started, and the candidate GitHub-private profile remains unselected. Option 1
+remains active.
 
 The four options are:
 
@@ -26,9 +27,9 @@ The four options are:
 4. **External verification broker** — replace the private in-process authority
    with a network service that issues signed, content-bound admissions.
 
-This proposal records the G0 selection and the later permission to prepare only
-P2-D/P2-S design material. It chooses no package, version, path, API, trust
-snapshot, or pin. It authorizes no P2-S execution or fixture generation, profile
+This proposal records the G0 selection, completed P2-D record, and permission
+to prepare only the docs-only P2-S0 Gate package. It chooses no package,
+version, path, API, trust snapshot, or pin. It authorizes no P2-S execution or fixture generation, profile
 decision, canonical reconciliation, owner implementation, P3, Settings,
 Release, workflow dispatch, staging, host access, production, external write,
 or source/runtime eligibility.
@@ -61,8 +62,9 @@ Option 1 wins. Options 3 and 4 remain alternatives under separate decisions.
 
 ## Evidence
 
-I inspected the evidence at exact
-`master@9ebc08492af170a470182ba827da052fa41b81b2`. The most influential facts
+I inspected the frozen P2-D design inputs at exact
+`master@9ebc08492af170a470182ba827da052fa41b81b2` and the separate P2-D
+completion evidence at `master@d7e2ab8364bb51f6e6dd8e7d499eb4d61a83635f`. The most influential facts
 are the canonical corrected-ordering hold, the merged dormant bootstrap, and
 the mismatch between the canonical Rekor/CT/SCT contract and GitHub's documented
 private-instance transparency model.
@@ -81,6 +83,7 @@ private-instance transparency model.
 | `E10` | [Merged PR #600 summary](../context.md#evidence-hash-profile-and-collection-manifest) | PR #600 merged as the exact-11 dormant checkpoint; it contains no owner and grants no publication authority. |
 | `E11` | [Cross-document authority-cycle diagnosis](../context.md#evidence-inventory) | Promoting diagnostics or placing the owner inside its own lock/closure would violate the single-owner and independent-bootstrap invariants. |
 | `E12` | [GitHub private-attestation and trusted-root summary](../context.md#p2-d-private-attestation-evidence-summary) | GitHub documents no private transparency log; the current roots include a no-tlog/no-ctlog line with CA/TSA material, but no target bundle yet proves RFC3161 applicability. |
+| `E13` | [Merged PR #603 P2-D closeout summary](../context.md#p2-d-governance-closeout-summary) | P2-D completed with verified merge provenance and post-merge checks, but produced no fixture, feasibility result, owner, or runtime authority. |
 
 ## Current Design And Failure Mode
 
@@ -165,8 +168,9 @@ Release write, build, Settings mutation, or deployment source work.
 - Performance and memory effects are unmeasured. Validation plans below are
   required before an option can be called implementation-ready.
 - The canonical E01-E04 full-Sigstore/Rekor/CT/SCT requirements remain active.
-  P2-D is proposal-only until a later explicit profile decision and canonical
-  reconciliation; P2-S design is not experiment execution authority.
+  P2-D is a completed proposal record, but its candidate remains unselected
+  until a later explicit profile decision and canonical reconciliation; P2-S0
+  Gate preparation is not experiment execution authority.
 
 ## Before Architecture
 
@@ -215,7 +219,7 @@ The private GitHub evidence instead points to Fulcio plus timestamp authorities
 without public transparency. Lowering log thresholds inside an implementation
 while continuing to call it full-Sigstore would be a policy bypass.
 
-P2-D therefore prepares, but does not select, the versioned candidate
+P2-D therefore records, but does not select, the versioned candidate
 `github_private_rfc3161_v1`. Its successful operation would require all of the
 following from one fixed owner:
 
@@ -244,10 +248,25 @@ The precise package, version, path, API, byte caps, and trust snapshot remain
 unselected. One source must deterministically produce the normal and no-checkout
 runtime forms; copying trust/policy or using `Function.toString()` is forbidden.
 
+#### P2-S0 feasibility Gate package
+
+P2-S0 is the current docs-only preparation stage. Its
+[Gate package](../gates/p2-s0-feasibility-gate.md) freezes proposed future
+scope, required hashed/redacted inputs, acceptance and failure criteria, and
+the exact readiness outputs. The Gate decision is not granted. P2-S0 does not
+generate or acquire a fixture, select a dependency, modify source or workflow
+permissions, dispatch anything, or run the experiment.
+
+Only a later explicit `READY_FOR_SEPARATE_P2S_APPROVAL` finding may support a
+new request to execute P2-S. It does not authorize that execution. Missing
+inputs return `BLOCKED_INPUT`; infeasible profile semantics return
+`REDESIGN_PROFILE` or `NO_GO_OPTION1`.
+
 #### P2-S isolated feasibility experiment design
 
-P2-S is an experiment design, not an execution authorization. It must export
-the exact `master@9ebc0849` tree with `git archive` into a task-specific scratch
+P2-S is an experiment design, not an execution authorization. If separately
+approved, it must export the exact revision frozen by the approved P2-S0 Gate
+with `git archive` into a task-specific scratch
 directory outside every checkout; it must never read the unrelated dirty
 working tree or write a repository ref, worktree, package file, lockfile,
 `node_modules`, global cache, workflow, or GitHub object. Package and build
@@ -269,6 +288,9 @@ Required, independently hashed inputs are:
 - the raw GitHub-private trusted-root bytes, SHA-256, capture command and `gh`
   version, with CA/TSA/tlog/ctlog entry counts;
 - the real target bundle, exact subject bytes, and exact expected identity;
+- an exact official verifier version, distribution digest, provenance,
+  licenses, complete offline closure, trusted-root/invocation arguments, and
+  bounded normalized oracle contract;
 - a bounded candidate-verifier closure with tarball/integrity for every
   transitive dependency, engines, licenses, provenance, SBOM and vulnerability
   snapshot; and
@@ -284,9 +306,13 @@ or fixture. If no existing fixture can be supplied, P2-S returns
 bundle from another private repository may test parser, Fulcio, TSA, and library
 feasibility but cannot prove the target identity policy.
 
-The experiment first records the exact private root bytes and root/TSA/log
-counts, then determines the real bundle arm, signature count, certificate
-chain, RFC3161 count, tlog count, SCT presence, and timestamped-byte derivation.
+The experiment first runs the exact official verifier oracle offline against
+the real positive, fixed root, and fixed expected identity. It then records the
+exact private root bytes and root/TSA/log counts and determines the real bundle
+arm, signature count, certificate chain, RFC3161 count, tlog count, SCT
+presence, and timestamped-byte derivation. The candidate must agree with the
+oracle on the applicable root, CA, TSA, bundle arm, timestamped bytes, subject,
+and identity; oracle failure or disagreement is non-GO.
 The candidate minimum is one verified token; P2-S must observe the real positive
 and propose an exact count for later G0R review. It may not select one token from
 an ambiguous set or silently ignore any unverified token.
@@ -320,12 +346,14 @@ dependency/license/provenance results, vector parity, resource measurements,
 cleanup receipt, and no raw bundle identity. `GO_FOR_SEPARATE_PROFILE_REVIEW`
 still requires explicit residual-risk acceptance and canonical reconciliation.
 
-The cleanup receipt must prove every experiment process stopped; raw private
+The cleanup receipt must prove every experiment process stopped; all raw private
 bundle copies, build directories, temp data and task-local caches were removed;
 the retained packet is redacted and content-addressed; and repository status,
 refs, worktree list, `origin/master`, package files and global cache are byte-
 for-byte unchanged from the before snapshot. Cleanup may only target the
-validated scratch root and may never traverse a reparse point.
+validated scratch root and may never traverse a reparse point. Any cleanup
+failure forces `NO_GO_OPTION1` for that run and a separate recovery closeout;
+it can never coexist with `GO_FOR_SEPARATE_PROFILE_REVIEW`.
 
 Only after that future profile decision may a separately authorized owner PR
 fix one mature implementation, trust snapshot, policy, and vector corpus on
@@ -346,7 +374,7 @@ objects remain ineligible history and are never overwritten or relabeled.
 | Change | Before | After | Security consequence | Cost |
 | --- | --- | --- | --- | --- |
 | Verification owner | Two diagnostic paths | Candidate selected-profile owner, two closed consume operations | Prevents diagnostic promotion and false transparency claims | Adds one security-critical dependency boundary and residual-risk decision |
-| Bootstrap order | Merged dormant #600 blocks at topology guard | P2-D, P2-S, profile decision, owner PR, then activation PR | Breaks the cycle without implementing an unproven profile | Adds experiment and canonical-reconciliation checkpoints |
+| Bootstrap order | Merged dormant #600 blocks at topology guard | P2-D complete, P2-S0 Gate, P2-S, profile decision, owner PR, then activation PR | Breaks the cycle without implementing an unproven profile | Adds experiment and canonical-reconciliation checkpoints |
 | Lock | Not publishable | Separately published and selected-profile-owner postverified | Exact lock authority is content-bound to the selected profile | Adds Release retention/readback operations |
 | Offline closure | Missing | Separate content-addressed Gate and clean-runner proof | Removes ambient cache/network authority | Adds storage and closure-maintenance burden |
 | Artifact | Diagnostic-only | Same owner API is available, but each asset still postverifies independently | Lock completion cannot be reused as Artifact completion | Adds per-asset verification cost |
@@ -430,7 +458,7 @@ previously pending work.
 | Memory | No new runtime allocation | Verifier and bounded buffers in existing process | Separate process/container RSS and buffers | Repository client is small; service retains shared state |
 | Reliability | Intentionally unavailable | Fewest new components; lock and closure fail independently | Appliance/image/registry failures add stop modes | Broker, network, key, and ledger failures add stop modes |
 | Operability | Lowest new burden | Dependency/trust/vector updates plus two publication Gates | Adds appliance builds, provenance, registry, monitoring | Adds 24x7 service, keys, OIDC, audit, rotation, tenancy |
-| Migration | Stop is already present | Serial P2-D -> P2-S -> profile decision -> owner -> activation -> Gates | Requires redesign of final consume boundary | Requires a new cross-network authority model and threat model |
+| Migration | Stop is already present | Serial P2-D complete -> P2-S0 -> P2-S -> profile decision -> owner -> activation -> Gates | Requires redesign of final consume boundary | Requires a new cross-network authority model and threat model |
 | Reversibility | Immediate | Restore guard; old immutable assets remain ineligible | Pin old reviewed appliance or restore guard | Revoke client/key and restore guard |
 
 These are source-derived directions, not measurements. Option 2 validation
@@ -494,8 +522,9 @@ missing evidence.
 | `D0` | Topology Addendum decision record | **COMPLETE.** Docs/diagrams/JSON only; G0 records topology direction, not implementation. |
 | `G0` | Addendum decision Gate | **RECORDED — SELECTED_DIRECTION_ONLY.** Option 2 is the topology direction; Option 1 remains the active hard-stop fallback. This is not implementation approval. |
 | `P1` | Refresh and close PR #600 | **COMPLETE.** Merged as exact 11 files at `9ebc0849`; topology preflight remains fixed failure, downstream jobs skip, and no owner/publication authority exists. |
-| `P2-D` | Private-profile amendment preparation | **PREPARED FOR REVIEW — DOCS ONLY.** Candidate `github_private_rfc3161_v1`; active canonical contract unchanged; no residual-risk acceptance or implementation authority. |
-| `P2-S` | Isolated feasibility experiment | **DESIGN ONLY — EXECUTION NOT AUTHORIZED.** Exact-master export, real private fixture, root/TSA/RFC3161 proof, dependency review, normal/inline determinism, offline/resource matrix, and cleanup. Fixture generation/dispatch is a separate Gate. |
+| `P2-D` | Private-profile amendment record | **COMPLETE.** PR #603 merged at `d7e2ab83` with verified base/head and identical approved/merged trees. Candidate `github_private_rfc3161_v1` remains unselected; active canonical contract unchanged; no feasibility or implementation authority. |
+| `P2-S0` | Feasibility Gate package | **CURRENT — PREPARATION ONLY.** Define proposed future scope, required inputs, acceptance/failure criteria, readiness outputs, and explicit negatives. Gate decision not granted; no fixture or experiment. |
+| `P2-S` | Isolated feasibility experiment | **NOT STARTED — EXECUTION NOT AUTHORIZED.** Exact Gate-frozen revision, real private fixture, official-oracle agreement, root/TSA/RFC3161 proof, dependency review, normal/inline determinism, offline/resource matrix, and complete cleanup. Fixture generation/dispatch is a separate Gate. |
 | `G0R` | Profile decision and canonical reconciliation | **NOT AUTHORIZED.** Only after P2-S returns `GO_FOR_SEPARATE_PROFILE_REVIEW`; explicitly accept or reject the security delta and reconcile E01-E04. |
 | `P2-I` | Unified-owner predecessor PR | **NOT AUTHORIZED.** Owner only; exact package/version/pin/path/API/trust snapshot; complete selected-profile vectors and normal/inline parity; no Settings or asset publication. |
 | `P3` | Supply-chain activation source PR | **NOT AUTHORIZED.** Only after P2-I is on protected master; same owner wired into Foundation and Artifact consumer contracts; lock and closure publisher source remains manual and dormant. |
@@ -559,7 +588,7 @@ Resource validation must record workload and threshold before measurement:
   size, and peak disk;
 - deterministic error behavior and cleanup after every injected failure.
 
-This P2-D preparation itself must pass JSON parsing, metadata authority,
+This P2-S0 Gate package itself must pass JSON parsing, metadata authority,
 project-state, Mermaid source presence/link checks, Markdown link checks, and
 working-tree `git diff --check`; after a future commit it must also pass
 `git diff --check origin/master...HEAD`. Those checks validate the documentation
@@ -567,8 +596,8 @@ package's internal consistency, not the proposed security properties.
 
 ## Implementation Work Packages
 
-This turn authorizes only the P2-D documentation candidate and the P2-S
-experiment design above. It does not authorize running P2-S, acquiring a
+This turn records P2-D complete and authorizes only preparation of the docs-only
+P2-S0 Gate package above. It does not authorize running P2-S, acquiring a
 fixture, creating an implementation plan, selecting a dependency, or changing
 source. PR #600 is already merged and remains an exact dormant checkpoint; it
 must not be refreshed or expanded to absorb profile or owner work.

@@ -1,7 +1,8 @@
 flowchart LR
   A["G0 Option 2 direction selected\nno implementation authority"] --> B["P1 complete on master@9ebc0849\nPR #600 exact-11 dormant and hard-stopped"]
-  B --> C["P2-D candidate prepared\ngithub_private_rfc3161_v1\nno profile decision"]
-  C --> D["P2-S design only\nexecution and fixture generation not authorized"]
+  B --> C["P2-D complete on master@d7e2ab83\nPR #603 repository profile-amendment record\ncandidate profile still unselected"]
+  C --> C0["P2-S0 Gate package preparation\ndocs only; Gate decision not granted"]
+  C0 --> D["P2-S not started\nexecution and fixture generation not authorized"]
   D --> E{"Future separately approved P2-S\nreal target fixture and offline feasibility"}
   E -->|"missing or failed evidence"| Z["Option 1 active hard-stop fallback"]
   E -->|"GO_FOR_SEPARATE_PROFILE_REVIEW only"| Q["Future G0R with separate approval\naccept residual risk and reconcile E01-E04"]
