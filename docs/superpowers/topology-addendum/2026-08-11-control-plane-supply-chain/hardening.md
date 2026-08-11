@@ -1,10 +1,10 @@
 # Security Hardening Review: Control-Plane Supply-Chain Topology
 
 > Status:
-> - Type: Topology Addendum Draft with G0 selection recorded
+> - Type: Topology Addendum with G0 recorded and P2-D profile proposal prepared
 > - Risk: A
-> - Process: G0 topology direction selected; no implementation or external Gate authority
-> - Expected PR count: This docs-only Draft plus four future source PR checkpoints under the selected G0 direction (refresh existing #600, owner, activation, and future main); every source PR and external Gate requires separate approval
+> - Process: G0 topology direction selected; P2-D proposal and P2-S experiment design only; no experiment, implementation, or external Gate authority
+> - Expected PR count: This docs-only P2-D preparation plus three future source PR checkpoints (owner, activation, and future main); every source PR and external Gate requires separate approval
 > - Validation: Document authority, project-state, JSON, diagrams, links, and diff checks
 > - Production/AWS impact: None
 > - Production authority: False
@@ -12,42 +12,54 @@
 
 ## Evidence Basis
 
-We are resolving one structural ordering problem: the current exact-11
-bootstrap can carry an inert publisher and diagnostic verifiers, but it cannot
-carry the mature full-Sigstore owner required before immutable-lock
-publication. The canonical plans also prohibit treating diagnostic output,
-REST metadata, or a caller-built object as authority.
+We are resolving one structural ordering problem and one newly evidenced trust-
+profile mismatch. The exact-11 bootstrap is now merged on protected `master`
+as an inert publisher and diagnostic verifier checkpoint, but it does not carry
+the mature full-Sigstore owner required by the canonical plans. GitHub also
+documents that private repositories use a private Sigstore instance without a
+transparency log. We therefore cannot honestly treat the current Rekor/CT/SCT
+success contract as already feasible for this private repository.
 
-I inspected the exact-master design and implementation plans, the existing dry
-run and publication-adjacent workflows, and a redacted live GitHub policy
-summary. The evidence is bound in [context.md](context.md) to
-`master@9033f67f76573f9c5bccd17c3762a1608f1c4b9c` and collection SHA-256
-`7d04a3e95d8d745fed8f4c86cf5045d85ac6429aefcd129b7023fded743e8eb1`.
+I inspected the exact-master design and implementation plans, the merged
+bootstrap, the existing publication-adjacent workflows, official GitHub
+attestation guidance, and redacted live GitHub policy/trusted-root summaries.
+The evidence is bound in [context.md](context.md) to
+`master@9ebc08492af170a470182ba827da052fa41b81b2` and collection SHA-256
+`fc34014aff12217b2e0386346b2ed98bb767b5688be79917dd80d0a841aadeaa`.
 The machine-readable option and tradeoff map is [hardening.json](hardening.json).
 
-Two facts shape the decision. First, PR #600 is a safe but incomplete bootstrap:
-it remains Draft and hard-stopped. Second, the production Environment currently
-allows administrator bypass. Neither fact is a vulnerability claim; together
-they show why source topology, artifact authority, Settings activation, and
-production execution must remain separate decisions.
+Three facts shape the next decision. PR #600 is merged but remains dormant and
+hard-stopped. The private trusted-root readback has a no-tlog/no-ctlog line with
+timestamp authorities, but no real target-workflow bundle proves how those
+authorities bind an RFC3161 timestamp. The production Environment still allows
+administrator bypass. None is a vulnerability claim; together they require us
+to separate profile design, feasibility evidence, source implementation,
+Settings activation, and production execution.
 
 ## Constraints
 
-- Current authorization records the G0 topology direction in this derived Draft
-  only. It does not approve an external dependency, an implementation plan, an
-  owner implementation, any PR #600 refresh/mutation/Ready/merge action, P2/P3,
-  a Release asset, GitHub Settings, workflow dispatch, staging, host access,
-  production, an external write, or source/runtime eligibility.
+- G0 selected only the topology direction. A later authorization now permits us
+  to prepare this P2-D docs-only candidate profile and the P2-S experiment
+  design. It does not authorize P2-S execution, fixture generation, dependency
+  acquisition, a profile decision, canonical-contract reconciliation, owner
+  implementation, P2-I/P3, Release, Settings, dispatch, staging, host access,
+  production, external write, or source/runtime eligibility.
 - We prefer a minimal repository-owned boundary with no Redis, queue, cluster,
   microservice, standing credential, or ambient network fallback.
-- One owner must serve Foundation and Artifact. Trust roots, policy, complete
-  CT/SCT verification, and the result brand cannot be copied into consumers.
+- One owner must serve Foundation and Artifact. Trust roots, policy, selected-
+  profile semantics, and the result brand cannot be copied into consumers.
+- The canonical full-Sigstore/Rekor/CT/SCT success contract remains active.
+  `github_private_rfc3161_v1` is only a candidate replacement profile. It may
+  not claim public transparency, Rekor, CT/SCT, or global anti-equivocation.
+- The candidate profile requires a real target-workflow private bundle to prove
+  an exact GitHub-private Fulcio chain and at least one RFC3161 timestamp bound
+  to the exact signed bytes. Missing or ambiguous timestamp evidence is No-Go.
 - The owner must not depend on the Foundation lock or offline builder that it
   will later authorize. Its bootstrap source, dependency pin, tests, and trust
   snapshot require an independent review path.
 - Foundation lock postverification authorizes only that lock. It cannot be
   reused as authority for a later Artifact asset; every Artifact asset still
-  needs its own exactly-one-subject full-owner verification.
+  needs its own exactly-one-subject verification by the selected profile owner.
 - Offline-closure generation and clean-runner offline-consumption proof are
   separate. An ambient npm cache or network fallback is not acceptable.
 - `artifact-publication` Settings precede lock/closure publication. Production
@@ -58,74 +70,94 @@ production execution must remain separate decisions.
 
 | Opportunity | Evidence | Options | Recommendation | Proposal |
 | --- | --- | --- | --- | --- |
-| Unify supply-chain authority before publication | Canonical topology hold, split diagnostic owners, missing offline closure, live policy gap, and cross-document cycle diagnosis (`E01`–`E11`) | 1. Permanent No-Go; 2. In-repo trust kernel; 3. Hermetic owner appliance; 4. External verification broker | G0 selects Option 2; advancement under it remains conditional, Option 1 remains the active hard-stop fallback, and implementation remains unapproved | [Control-plane supply-chain authority](proposals/unify-supply-chain-authority.md) |
+| Unify supply-chain authority before publication | Canonical topology hold, merged dormant bootstrap, private-attestation trust mismatch, missing offline closure, live policy gap, and authority-cycle diagnosis (`E01`–`E12`) | 1. Permanent No-Go; 2. In-repo trust kernel; 3. Hermetic owner appliance; 4. External verification broker | Keep the G0 Option 2 direction, prepare `github_private_rfc3161_v1` only as a review candidate, and retain Option 1 until P2-S and a later profile decision succeed | [Control-plane supply-chain authority](proposals/unify-supply-chain-authority.md) |
 
 ## Recommendation Summary
 
-On 2026-08-11, the operator explicitly selected **Option 2 for the G0 topology
-direction only**. **Option 1 remains the active hard-stop fallback.** This
-decision does not authorize PR #600 Ready/merge, P2/P3, Settings, Release,
-workflow dispatch, staging, production, any implementation plan or owner
-implementation, any PR #600 mutation, host access, external write, or
-source/runtime eligibility.
+On 2026-08-11, the operator selected **Option 2 for the G0 topology direction
+only** and later authorized preparation of this **P2-D docs-only candidate
+profile plus the P2-S experiment design**. **Option 1 remains the active hard-
+stop fallback.** PR #600 has since merged as the approved exact-11 dormant
+checkpoint. Neither event authorizes P2-S execution, fixture generation, a
+private-profile decision, canonical-contract reconciliation, owner source,
+P3, Settings, Release, dispatch, staging, host access, production, external
+write, or source/runtime eligibility.
 
-I recommend **Option 2, an in-repository unified trust kernel**, under the
-current minimal-dependency and private-brand constraints. Its attractive
-property is not merely fewer components: Foundation and Artifact ask the same
-module to make the final cryptographic decision, while immutable lock and npm
-closure remain separately published and separately read back. This removes the
-current ownership gap without adding a long-lived service or serializing
-authority across a process boundary.
+I still recommend **Option 2, an in-repository unified trust kernel**, as the
+topology direction. Its attractive property is not merely fewer components:
+Foundation and Artifact ask the same module to make the final decision, while
+immutable lock and npm closure remain separately published and read back. What
+gives me pause is the success profile. GitHub private attestations do not supply
+the public transparency properties assumed by the canonical design.
 
-The G0 topology direction is explicitly selected and recorded in this Draft,
-but advancement under it remains conditional. Any future owner selection must
-pin an exact mature implementation and prove complete embedded SCT/CT, Rekor,
-Fulcio,
-DSSE, GitHub OIDC, predicate, and exactly-one-subject semantics with official
-positive and adversarial vectors. It must also produce the no-checkout runtime
-form from one source without copied trust or policy. If that cannot be shown,
-we should keep the current hard stop and reconsider the hermetic appliance;
-wrapping the existing diagnostics is not a fallback.
+P2-D therefore prepares `github_private_rfc3161_v1` only as a candidate. It
+would require strict bundle/DSSE verification, a fixed GitHub-private Fulcio
+chain, at least one verified GitHub-private TSA/RFC3161 timestamp, exact GitHub
+OIDC/predicate/one-subject binding, and a private non-serializable authority
+brand. It would explicitly claim no Rekor, CT/SCT, public transparency, or
+global anti-equivocation. This is a material security-semantics change, not an
+`ignore-SCT` switch. P2-S must establish the real bundle/root/timestamp shape,
+candidate dependency closure, and one-source normal/inline parity before a
+separate profile decision can even be requested. Any missing real positive,
+ambiguous timestamp binding, runtime network dependency, or parity failure
+returns to Option 1.
 
 The proposed future order is deliberately serial:
 
-1. `G0` (recorded): select Option 2 for the topology direction while retaining
-   Option 1 as the active hard-stop fallback;
-2. `P1` (not authorized): refresh and separately approve PR #600 for a dormant
-   hard-stopped merge;
-3. `P2` (not authorized): land an owner-only predecessor PR;
-4. `P3` (not authorized): land a supply-chain activation source PR;
-5. `G1` (not authorized): apply and read back the artifact-publication Settings
+1. `G0` (recorded): Option 2 is the topology direction and Option 1 is the
+   active hard-stop fallback;
+2. `P1` (complete): PR #600 merged at `9ebc0849` as an exact-11 dormant,
+   zero-publication checkpoint;
+3. `P2-D` (prepared for review): this docs-only candidate profile; it does not
+   amend the canonical full-Sigstore contract;
+4. `P2-S` (design prepared, execution not authorized): isolated feasibility,
+   including a separately approved fixture-acquisition Gate if no existing
+   target-workflow private bundle is available;
+5. `G0R` (not authorized): accept or reject the profile security delta and
+   reconcile the canonical plans only after P2-S returns
+   `GO_FOR_SEPARATE_PROFILE_REVIEW`;
+6. `P2-I` (not authorized): land an owner-only predecessor PR;
+7. `P3` (not authorized): land a supply-chain activation source PR;
+8. `G1` (not authorized): apply and read back the artifact-publication Settings
    Gate before any
    Release write;
-6. `G2` (not authorized): publish and full-owner postverify the immutable lock;
-7. `G3` (not authorized): only after the lock Gate is GREEN, publish/read back
+9. `G2` (not authorized): publish and selected-profile-owner postverify the
+   immutable lock;
+10. `G3` (not authorized): only after the lock Gate is GREEN, publish/read back
    the offline closure and prove clean-runner consumption with an empty cache
    and network denied;
-8. `G4` (not authorized): grant a new Risk A source-resumption approval before
+11. `G4` (not authorized): grant a new Risk A source-resumption approval before
    a future main Draft.
 
-This ordering breaks the bootstrap cycle without placing the owner in a twelfth
-#600 file or dispatching a PR-branch publisher.
+This ordering preserves the merged bootstrap while preventing a documentation-
+only profile proposal from silently becoming owner or publication authority.
 
 ## Next Decisions
 
-The G0 topology direction is selected and recorded in this Draft. Reviewers
-still need to decide, but not implement, the following:
+The G0 topology direction is selected and the P2-D/P2-S design package is
+prepared. Reviewers still need to decide, but not implement or execute, the
+following:
 
 - Select no package, version, trust snapshot, repository path, or API pin until
-  a separate P2 implementation authorization is granted.
-- Confirm that PR #600 may only be refreshed and merged as an inert checkpoint
-  after a later explicit approval, before the owner and activation PRs.
-- Decide the evidence required to approve one mature Sigstore implementation,
-  including license, release provenance, vulnerability response, pinned bytes,
-  normal/inline parity, and trust-root update policy.
+  P2-S evidence is complete and a separate profile/implementation decision is
+  granted.
+- Decide whether the absence of public transparency, Rekor, CT/SCT, and global
+  anti-equivocation is acceptable for `github_private_rfc3161_v1`; current
+  preparation does not accept that residual risk.
+- Approve P2-S execution separately, including any required target-workflow
+  fixture acquisition. A dispatch cannot be inferred from this design.
+- Require a real target bundle, exact root and TSA bytes, RFC3161 binding,
+  license/provenance/vulnerability review, deterministic normal/inline runtime,
+  resource thresholds, and zero-network evidence before profile review.
+- If P2-S returns `GO_FOR_SEPARATE_PROFILE_REVIEW`, separately reconcile the
+  canonical E01-E04 contracts before any owner implementation; every other
+  outcome retains Option 1 or requires profile redesign.
 - Confirm separate immutable-lock and offline-closure Gates and separate
   artifact-publication versus production-Environment Settings Gates.
 - Leave `vultr-japan-production` unchanged until main source reconciliation and
   disposable/compatibility staging are complete.
 
-Because this G0 record authorizes no source change, the unchanged implementation
-continues to emit `full_sigstore_owner_topology_unapproved` with zero external
-write. That diagnostic names the unchanged source guard; it is not the status of
-the G0 decision recorded in this Draft.
+Because this P2-D preparation authorizes no source change, the unchanged merged
+implementation continues to emit legacy hard-stop code
+`full_sigstore_owner_topology_unapproved` with zero external write. That code
+does not mean the candidate private profile is selected, implemented, or GREEN.

@@ -1,18 +1,19 @@
 # Security Hardening Proposal: Unify Supply-Chain Authority Before Publication
 
 > Status:
-> - Type: Derived Topology Addendum proposal with G0 selection recorded
+> - Type: Derived Topology Addendum proposal with G0 recorded and P2-D prepared
 > - Risk: A
 > - Production authority: False
 > - Execution authority: None
 
 ## Decision
 
-At G0, we select Option 2 as the topology direction only: one complete Sigstore
-authority would sit before Foundation lock publication without bootstrapping
-itself, duplicating trust in Artifact, or converting diagnostic observations
-into publication authority. Option 1 remains the active hard-stop fallback.
-This selection grants no implementation or execution authority.
+At G0, we selected Option 2 as the topology direction only: one authority would
+sit before Foundation lock publication without bootstrapping itself, duplicating
+trust in Artifact, or converting diagnostic observations into authority. PR
+#600 has since merged as the exact-11 dormant checkpoint. P2-D now prepares a
+candidate GitHub-private profile and P2-S experiment design; neither is an
+approved success profile or execution grant. Option 1 remains active.
 
 The four options are:
 
@@ -25,19 +26,20 @@ The four options are:
 4. **External verification broker** — replace the private in-process authority
    with a network service that issues signed, content-bound admissions.
 
-This Draft records the explicit G0 topology selection of Option 2. Advancement
-under that direction remains conditional. The selection does not choose a
-package, version, path, API, trust snapshot, or pin, and it does not authorize
-an implementation plan, any PR #600 refresh/mutation/Ready/merge action, P2/P3,
-Settings, Release, workflow dispatch, staging, host access, production,
-external write, or source/runtime eligibility.
+This proposal records the G0 selection and the later permission to prepare only
+P2-D/P2-S design material. It chooses no package, version, path, API, trust
+snapshot, or pin. It authorizes no P2-S execution or fixture generation, profile
+decision, canonical reconciliation, owner implementation, P3, Settings,
+Release, workflow dispatch, staging, host access, production, external write,
+or source/runtime eligibility.
 
 ## Executive Recommendation
 
-The current split diagnostics are doing the right thing by stopping, but they
-leave us without a component that can safely say “this exact lock” or “this
-exact Artifact asset” passed complete Sigstore verification. The structural
-question is where that final decision lives.
+The merged diagnostics are doing the right thing by stopping, but they leave us
+without a component that can safely say “this exact lock” or “this exact
+Artifact asset” passed a selected verification profile. The structural question
+is where that decision lives; the new profile question is what it may honestly
+claim for a private repository.
 
 Option 1 makes the strongest safety claim because no publication capability is
 created. It is the correct choice if automated control-plane deployment is not
@@ -48,21 +50,22 @@ process isolation, but preserving an unforgeable result forces the appliance to
 own more of the final consume operation. Option 4 centralizes updates across
 repositories, but adds a standing network and signing-key authority.
 
-The G0 choice is Option 2. Advancement under it follows my recommendation only
-if a separately reviewed mature implementation can satisfy the complete CT/SCT
-and normal-versus-inline parity
-criteria below. If it cannot, Option 1 remains preferable. Option 3 should win
-only if process isolation becomes a hard requirement and the project accepts a
-larger appliance lifecycle. Option 4 becomes reasonable only in a future
-multi-repository organization that already operates an independently secured
-verification service.
+The G0 choice remains Option 2. I recommend preparing
+`github_private_rfc3161_v1` as a candidate only because GitHub documents that
+its private Sigstore instance has no transparency log and the current no-log
+root includes timestamp authorities. P2-S must still prove a real RFC3161-
+bound target bundle and deterministic normal/inline execution. The candidate
+would intentionally claim no Rekor, CT/SCT, public transparency, or global
+anti-equivocation. If that residual risk is unacceptable or the evidence fails,
+Option 1 wins. Options 3 and 4 remain alternatives under separate decisions.
 
 ## Evidence
 
 I inspected the evidence at exact
-`master@9033f67f76573f9c5bccd17c3762a1608f1c4b9c`. The most influential facts
-are the canonical corrected-ordering hold and the current inability of either
-diagnostic verifier to mint authority.
+`master@9ebc08492af170a470182ba827da052fa41b81b2`. The most influential facts
+are the canonical corrected-ordering hold, the merged dormant bootstrap, and
+the mismatch between the canonical Rekor/CT/SCT contract and GitHub's documented
+private-instance transparency model.
 
 | Evidence | Finding or document | What it establishes |
 | --- | --- | --- |
@@ -75,24 +78,28 @@ diagnostic verifier to mint authority.
 | `E07` | [Restricted Japan config repair workflow](../../../../../.github/workflows/japan-runtime-config-additive-repair.yml) | Existing protected repair authority is narrow and cannot be repurposed as general deployment authority. |
 | `E08` | [Repository Risk A operating rules](../../../../../AGENTS.md) | Provider, production, credential, schema, and deployment work requires exact approval, validation, rollback, and closeout. |
 | `E09` | [Live Environment and ruleset summary](../context.md#redacted-live-configuration-summary) | Production currently permits administrator bypass; source merge rules require no independent approval beyond `Validate`. |
-| `E10` | [Live PR #600 summary](../context.md#evidence-hash-profile-and-collection-manifest) | PR #600 is Draft and behind; it does not contain or authorize the missing owner. |
+| `E10` | [Merged PR #600 summary](../context.md#evidence-hash-profile-and-collection-manifest) | PR #600 merged as the exact-11 dormant checkpoint; it contains no owner and grants no publication authority. |
 | `E11` | [Cross-document authority-cycle diagnosis](../context.md#evidence-inventory) | Promoting diagnostics or placing the owner inside its own lock/closure would violate the single-owner and independent-bootstrap invariants. |
+| `E12` | [GitHub private-attestation and trusted-root summary](../context.md#p2-d-private-attestation-evidence-summary) | GitHub documents no private transparency log; the current roots include a no-tlog/no-ctlog line with CA/TSA material, but no target bundle yet proves RFC3161 applicability. |
 
 ## Current Design And Failure Mode
 
 Observed: Foundation and Artifact each have bounded diagnostic paths, and their
-compatibility verifiers fail with owner-unavailable errors. The exact-11
+compatibility verifiers fail with owner-unavailable errors. The merged exact-11
 publisher stops even earlier at `full_sigstore_owner_topology_unapproved`.
-Those controls prevent a partial verifier from being mistaken for production
-authority.
+GitHub documents that private attestations use an instance with no transparency
+log, while the current trusted-root output contains a no-tlog/no-ctlog line with
+timestamp authorities. Those controls and facts prevent us from mistaking
+partial diagnostics or a no-log profile for the canonical full-Sigstore owner.
 
 Inferred: the structural gap is not a missing boolean or workflow condition.
-The retained bootstrap-plus-main ordering has no protected-master component
-that can own complete trust, issue an unforgeable in-process result, and be
-present before the first immutable lock is published. If we simply wrap either
-diagnostic path, callers can mistake structural observations for cryptographic
-completion. If we put the owner inside the lock or closure it authorizes, we
-create a self-verifying bootstrap cycle.
+The merged bootstrap has no protected-master component that can own selected-
+profile trust and issue an unforgeable result. The security gap is also not
+fixed by setting transparency thresholds to zero while retaining a full-
+Sigstore label. If we wrap diagnostics, callers can mistake observations for
+completion. If we place the owner inside what it authorizes, we create a self-
+verifying cycle. If we adopt a private profile, we must explicitly accept its
+weaker transparency model after evidence, not through implementation drift.
 
 The current boundary is shown in
 [the before diagram](../diagrams/unify-supply-chain-authority-before.mmd).
@@ -101,16 +108,19 @@ Release write, build, Settings mutation, or deployment source work.
 
 ## Desired Invariants
 
-1. Exactly one production authority implementation verifies both Foundation
-   lock evidence and Artifact evidence. Consumers cannot directly import its
-   underlying Sigstore package, roots, keys, policy, or result constructor.
-2. Production trust inputs are fixed by the owner. Callers cannot inject or
-   select Fulcio roots, Rekor keys, CT log keys, time, issuer, repository,
-   workflow, ref, SHA, predicate, subject policy, or an SCT bypass.
-3. Successful verification covers DSSE signature, Fulcio chain and validity,
-   Rekor SET/inclusion/integrated time, embedded SCT/CT log identity and time,
-   GitHub OIDC direct-workflow identity, predicate, and exactly one expected
-   subject name/digest.
+1. Exactly one selected-profile authority implementation verifies both
+   Foundation lock evidence and Artifact evidence. Consumers cannot import its
+   underlying package, trust material, policy, thresholds, or constructor.
+2. Production trust inputs are fixed by the owner. Callers cannot select roots,
+   CA/TSA/log keys, time, profile, threshold, issuer, repository, workflow, ref,
+   SHA, predicate, subject policy, or any verification bypass.
+3. Each named profile claims only properties it fully proves. The active
+   canonical profile still requires DSSE, Fulcio, Rekor, CT/SCT, GitHub OIDC,
+   predicate, and exactly one subject. The candidate
+   `github_private_rfc3161_v1` instead requires DSSE, GitHub-private Fulcio,
+   verified RFC3161 signed time, GitHub OIDC, predicate, and one subject, while
+   explicitly claiming no Rekor, CT/SCT, public transparency, or global anti-
+   equivocation.
 4. The authoritative result is module-private, unforgeable, non-clonable, and
    non-serializable. No `verified:true`, diagnostic report, REST metadata, or
    caller-built object can substitute for it.
@@ -120,7 +130,8 @@ Release write, build, Settings mutation, or deployment source work.
    and reviewed.
 6. Foundation lock postverification authorizes only the exact lock asset.
    Artifact capability is proven by cross-contract tests, while each future
-   Artifact asset receives its own exactly-one-subject full-owner verification.
+   Artifact asset receives its own exactly-one-subject verification by the
+   selected profile owner; Foundation-lock success is never reusable authority.
 7. Immutable-lock publication and offline-closure publication use distinct
    manual Gates, namespaces, receipts, and failure states. Neither success
    implies the other.
@@ -134,14 +145,16 @@ Release write, build, Settings mutation, or deployment source work.
    postverification mismatch preserves the immutable bytes only as ineligible
    history and emits no completion, eligibility, build, credential, host, or
    deployment claim.
+10. A candidate profile cannot become active from this derived proposal. Real-
+    vector feasibility, explicit residual-risk acceptance, canonical contract
+    reconciliation, and a separate implementation authorization are mandatory.
 
 ## Constraints And Non-Goals
 
-- This proposal does not implement the owner, select a dependency, resolve a
-  vulnerability, or approve a workflow dispatch.
-- It does not add the owner to PR #600. That PR remains exactly 11 files and
-  can only be refreshed and separately approved as a dormant hard-stopped
-  checkpoint.
+- This proposal does not execute P2-S, generate a fixture, implement the owner,
+  select a dependency, resolve a vulnerability, or approve a dispatch.
+- PR #600 is already merged as exactly 11 dormant files. This proposal neither
+  modifies those files nor treats the merge as owner or publication authority.
 - It does not merge the owner and activation changes. The owner must be present
   on protected master before an activation PR can remove the topology guard.
 - It does not reuse the Japan config-repair workflow, existing deployment
@@ -151,6 +164,9 @@ Release write, build, Settings mutation, or deployment source work.
   and disposable/compatibility staging.
 - Performance and memory effects are unmeasured. Validation plans below are
   required before an option can be called implementation-ready.
+- The canonical E01-E04 full-Sigstore/Rekor/CT/SCT requirements remain active.
+  P2-D is proposal-only until a later explicit profile decision and canonical
+  reconciliation; P2-S design is not experiment execution authority.
 
 ## Before Architecture
 
@@ -166,10 +182,9 @@ shortcut for future Artifact assets.
 
 ### Option 1: Permanent No-Go
 
-We can preserve the current structure permanently: leave PR #600 in Draft or
-merge it only as a dormant review checkpoint under a later approval, retain
-both diagnostic-only paths, and never authorize immutable lock publication or
-formal automated deployment.
+We can preserve the current structure permanently: keep the merged exact-11
+checkpoint dormant, retain both diagnostic-only paths and the topology stop,
+and never authorize immutable lock publication or formal automated deployment.
 
 The strongest case is proportionality. A new cryptographic owner, trust update
 policy, offline dependency publisher, and production control plane are a large
@@ -193,49 +208,146 @@ is immediate because there is nothing to roll out; we retain the hard stop.
 
 ### Option 2: In-Repository Unified Trust Kernel
 
-We add one owner-only predecessor PR after the dormant #600 checkpoint. The
-owner fixes one mature Sigstore implementation, trust snapshot, policy, and
-complete vector corpus on protected master. Foundation and Artifact call the
-owner through distinct closed operations, but they receive results carrying
-the same private, module-owned provenance. Production callers cannot pass roots,
-keys, time, expected workflow policy, or a compatibility mode.
+The topology still calls for one owner-only predecessor PR after the dormant
+#600 checkpoint. Before we can design that source PR, however, we need to know
+which success profile is real. The canonical profile requires Rekor and CT/SCT.
+The private GitHub evidence instead points to Fulcio plus timestamp authorities
+without public transparency. Lowering log thresholds inside an implementation
+while continuing to call it full-Sigstore would be a policy bypass.
 
-A proposed production surface is a no-selector owner factory with two bounded
-operations: one for an exact Foundation lock and one for an exact Artifact
-asset. The precise package, path, export names, and byte caps remain an open
-decision. The normal ESM runtime and the no-checkout inline runtime must be
-derived from one owner source and run the same official/adversarial corpus in
-fresh isolated runtimes. Copying trust bytes or reconstructing the verifier
-from `Function.toString()` is not acceptable.
+P2-D therefore prepares, but does not select, the versioned candidate
+`github_private_rfc3161_v1`. Its successful operation would require all of the
+following from one fixed owner:
 
-After the owner is merged, a separate activation source PR wires the dormant
-publisher to it and adds the offline-closure provider/consumer contracts. That
-PR remains source-only and manual-only. A later Lock Gate publishes one exact
-asset and attestation, then a read-only owner path re-fetches and postverifies
-the bytes. A distinct Closure Gate publishes a content-addressed manifest and
-all package tarballs, reads them back, then proves clean-runner offline install
-with networking denied. Only a new Risk A resume approval can consume the
-combined evidence.
+- strict bounded, duplicate-free bundle parsing;
+- DSSE signature and exact payload binding;
+- a fixed GitHub-private Fulcio chain and validity window;
+- at least one fixed GitHub-private TSA/RFC3161 token whose signature,
+  `messageImprint`, time, algorithms, and signed-byte derivation all verify;
+- exact GitHub issuer, repository, direct workflow, ref, source SHA, event, and
+  runner identity;
+- exact predicate type/bytes and exactly one subject name/SHA-256; and
+- a module-private, operation-domain brand that cannot be serialized, cloned,
+  replayed across owners, or reused from Foundation as Artifact authority.
 
-The appealing part is control ownership: the private brand does not cross a
-process or network boundary, and no standing service or credential is added.
-The primary residual risk is same-process exposure to a complex parsing library
-and drift between normal and inline representations. We contain that risk with
-byte caps, fresh runtimes, identical vector suites, dependency pinning, and
-fail-closed isolation of every publish/write path.
+The profile would explicitly report that Rekor, CT/SCT, public artifact
+transparency, and global anti-equivocation are not provided. That statement is
+not an `ignore-SCT` mode: the active canonical profile remains unchanged until
+a later decision accepts the security delta and reconciles the canonical plans.
+Unexpected or unverifiable tlog/SCT material, an unrecognized root shape, or an
+ambiguous timestamp binding stops rather than widening the profile.
 
-Rollback means restoring the topology guard. Immutable assets remain historical
-objects but lose eligibility; they are never overwritten or relabeled. A fixed
-owner regression requires a new version/pin, complete vector rerun, protected-
-master readback, and new publication Gate rather than silent downgrade.
+The owner surface remains a no-selector factory with separate Foundation-lock
+and Artifact-asset operations. Callers cannot provide roots, TSA material,
+time, profile, thresholds, expected workflow policy, or compatibility mode.
+The precise package, version, path, API, byte caps, and trust snapshot remain
+unselected. One source must deterministically produce the normal and no-checkout
+runtime forms; copying trust/policy or using `Function.toString()` is forbidden.
+
+#### P2-S isolated feasibility experiment design
+
+P2-S is an experiment design, not an execution authorization. It must export
+the exact `master@9ebc0849` tree with `git archive` into a task-specific scratch
+directory outside every checkout; it must never read the unrelated dirty
+working tree or write a repository ref, worktree, package file, lockfile,
+`node_modules`, global cache, workflow, or GitHub object. Package and build
+candidate bytes, if later authorized, live only in the scratch directory.
+
+The scratch root is a newly resolved absolute path outside every repository and
+worktree. It contains separate read-only input and exact-commit export trees,
+three clean build directories, task-local npm cache and temp directories, a
+private raw-output area, and a redacted review packet. The future executor must
+reject symlinks/reparse points and paths outside that root, use a read-only root
+filesystem where supported, mount no token or credential, and use the already-
+present `node:22.23.1-bookworm` image at the exact digest frozen by the merged
+inventory workflow; pulling or substituting an image is a failed precondition.
+
+Required, independently hashed inputs are:
+
+- a source manifest containing the exact commit/tree, exact-11 path/blob set,
+  package/lockfile blobs, and Node image digest;
+- the raw GitHub-private trusted-root bytes, SHA-256, capture command and `gh`
+  version, with CA/TSA/tlog/ctlog entry counts;
+- the real target bundle, exact subject bytes, and exact expected identity;
+- a bounded candidate-verifier closure with tarball/integrity for every
+  transitive dependency, engines, licenses, provenance, SBOM and vulnerability
+  snapshot; and
+- one bounded build candidate closure. A native or install-script dependency
+  that cannot be prepared and consumed offline with scripts disabled is No-Go,
+  not permission to add an ambient builder.
+
+The required positive input is a real target-repository, target-workflow GitHub-
+private bundle plus exact subject bytes and expected identity, all supplied by
+digest without credentials. The current repository has no attestation workflow
+or fixture. If no existing fixture can be supplied, P2-S returns
+`BLOCKED_INPUT`; generating one requires a separate workflow/fixture Gate. A
+bundle from another private repository may test parser, Fulcio, TSA, and library
+feasibility but cannot prove the target identity policy.
+
+The experiment first records the exact private root bytes and root/TSA/log
+counts, then determines the real bundle arm, signature count, certificate
+chain, RFC3161 count, tlog count, SCT presence, and timestamped-byte derivation.
+The candidate minimum is one verified token; P2-S must observe the real positive
+and propose an exact count for later G0R review. It may not select one token from
+an ambiguous set or silently ignore any unverified token.
+It evaluates a bounded set of mature verifier/build candidates without choosing
+one in this proposal, reviews exact transitive bytes, engines, licenses,
+provenance, vulnerabilities, native/Wasm/dynamic-import behavior, and performs
+all verification offline with no ambient environment, filesystem discovery,
+network, or package fallback.
+
+Three clean builds in distinct absolute scratch paths must produce identical
+runtime bytes. The normal and inline loaders must execute those same bytes in
+fresh processes and return identical normalized success/error evidence for the
+same case IDs. Positive and negative vectors cover DSSE/Fulcio/RFC3161,
+identity, predicate, subject, profile/root injection, private-brand forgery,
+JSON bounds/depth/duplicates, ambient authority, and cleanup. Synthetic CA/TSA
+vectors test the harness but never substitute for the real positive.
+
+Proposed measurement thresholds must be reviewed before execution rather than
+retrofit to results. The initial design uses bundle <= 4 MiB, statement <= 64
+KiB, JSON depth <= 32, self-contained runtime <= 8 MiB, warm verification p95
+<= 500 ms, cold start plus verify p95 <= 2 s, peak RSS <= 256 MiB, and no more
+than 32 MiB RSS growth across 100 warm runs. These values are hypotheses, not
+measurements. A reviewer may tighten them before P2-S; passing them does not
+authorize P2-I.
+
+P2-S may return only `GO_FOR_SEPARATE_PROFILE_REVIEW`, `BLOCKED_INPUT`,
+`REDESIGN_PROFILE`, or `NO_GO_OPTION1`. Every negative case proves zero brand,
+zero completion, zero external write, and zero downstream eligibility. The
+redacted packet contains source/tree/input digests, root/bundle shape counts,
+dependency/license/provenance results, vector parity, resource measurements,
+cleanup receipt, and no raw bundle identity. `GO_FOR_SEPARATE_PROFILE_REVIEW`
+still requires explicit residual-risk acceptance and canonical reconciliation.
+
+The cleanup receipt must prove every experiment process stopped; raw private
+bundle copies, build directories, temp data and task-local caches were removed;
+the retained packet is redacted and content-addressed; and repository status,
+refs, worktree list, `origin/master`, package files and global cache are byte-
+for-byte unchanged from the before snapshot. Cleanup may only target the
+validated scratch root and may never traverse a reparse point.
+
+Only after that future profile decision may a separately authorized owner PR
+fix one mature implementation, trust snapshot, policy, and vector corpus on
+protected master. A later activation PR may then wire the dormant publisher.
+Lock and Closure Gates remain separate, with exact readback and zero-network
+offline consumption. Repository-local no-replace/readback controls can narrow
+replay and replacement but cannot recreate public transparency.
+
+The attractive part remains control ownership: the private brand stays inside
+one process and no standing service appears. The concerns are the same-process
+parser TCB, normal/inline drift, trust rotation, and the explicit loss of public
+anti-equivocation. Rollback at every pre-implementation stage is simply Option
+1. After future implementation, rollback restores the topology guard; immutable
+objects remain ineligible history and are never overwritten or relabeled.
 
 [Option 2 after: in-repository unified owner](../diagrams/unify-supply-chain-authority-in-repo-unified-owner-after.mmd)
 
 | Change | Before | After | Security consequence | Cost |
 | --- | --- | --- | --- | --- |
-| Verification owner | Two diagnostic paths | One private owner, two closed consume operations | Removes duplicated trust and prevents diagnostic promotion | Adds one security-critical dependency boundary |
-| Bootstrap order | Missing owner blocks all work | Dormant #600, owner PR, then activation PR | Breaks the self-verification cycle | Requires serial review and at least two new source PRs |
-| Lock | Not publishable | Separately published and full-owner postverified | Exact lock authority is content-bound | Adds Release retention/readback operations |
+| Verification owner | Two diagnostic paths | Candidate selected-profile owner, two closed consume operations | Prevents diagnostic promotion and false transparency claims | Adds one security-critical dependency boundary and residual-risk decision |
+| Bootstrap order | Merged dormant #600 blocks at topology guard | P2-D, P2-S, profile decision, owner PR, then activation PR | Breaks the cycle without implementing an unproven profile | Adds experiment and canonical-reconciliation checkpoints |
+| Lock | Not publishable | Separately published and selected-profile-owner postverified | Exact lock authority is content-bound to the selected profile | Adds Release retention/readback operations |
 | Offline closure | Missing | Separate content-addressed Gate and clean-runner proof | Removes ambient cache/network authority | Adds storage and closure-maintenance burden |
 | Artifact | Diagnostic-only | Same owner API is available, but each asset still postverifies independently | Lock completion cannot be reused as Artifact completion | Adds per-asset verification cost |
 
@@ -313,12 +425,12 @@ previously pending work.
 
 | Dimension | Option 1: Permanent No-Go | Option 2: In-repo trust kernel | Option 3: Appliance | Option 4: Broker |
 | --- | --- | --- | --- | --- |
-| Security | No new publication attack surface; manual-process risk remains | Strong single owner and private brand; same-process parser risk remains | Better parser isolation; larger privileged appliance TCB | Central policy; highest shared-service blast radius |
+| Security | No new publication attack surface; manual-process risk remains | Single owner/private brand is attractive, but candidate private profile lacks public transparency and remains unproven | Better parser isolation; same profile decision plus larger appliance TCB | Central policy; highest shared-service blast radius |
 | Performance | No automated path to measure | Expected bounded in-process overhead; must benchmark normal/inline parity | Startup/IPC overhead; isolation can improve resource containment | Network latency and service queueing; availability-sensitive |
 | Memory | No new runtime allocation | Verifier and bounded buffers in existing process | Separate process/container RSS and buffers | Repository client is small; service retains shared state |
 | Reliability | Intentionally unavailable | Fewest new components; lock and closure fail independently | Appliance/image/registry failures add stop modes | Broker, network, key, and ledger failures add stop modes |
 | Operability | Lowest new burden | Dependency/trust/vector updates plus two publication Gates | Adds appliance builds, provenance, registry, monitoring | Adds 24x7 service, keys, OIDC, audit, rotation, tenancy |
-| Migration | Stop is already present | Serial #600 -> owner -> activation -> Gates | Requires redesign of final consume boundary | Requires a new cross-network authority model and threat model |
+| Migration | Stop is already present | Serial P2-D -> P2-S -> profile decision -> owner -> activation -> Gates | Requires redesign of final consume boundary | Requires a new cross-network authority model and threat model |
 | Reversibility | Immediate | Restore guard; old immutable assets remain ineligible | Pin old reviewed appliance or restore guard | Revoke client/key and restore guard |
 
 These are source-derived directions, not measurements. Option 2 validation
@@ -330,45 +442,46 @@ could compete on operability.
 
 ## Recommendation
 
-The explicit G0 decision selects Option 2. I recommend that direction under the
-current constraints because it preserves the strongest existing invariant—the
-authority result never becomes a caller-constructible
-message—while adding the fewest new operational components. It also lets us
-keep lock publication and offline dependency closure as independent failure
-domains, which is important because a valid lock says nothing about whether a
-clean runner can install the exact dependency graph without network access.
+The G0 decision selects Option 2's topology, not its success profile. I
+recommend preparing the private RFC3161 candidate because it may preserve the
+single-owner/private-brand boundary without exposing private repository
+metadata to a public log or adding a service. I would not be comfortable
+selecting it until P2-S proves the exact signed-time path and reviewers
+explicitly accept the missing public-transparency/anti-equivocation properties.
 
-We should choose Option 1 instead if the candidate implementation lacks complete
-embedded SCT/CT support, cannot pass the same corpus in normal and inline
-runtimes, or cannot be bootstrapped without depending on the lock/closure it
-will authorize. Option 3 becomes preferable if process isolation is made
-non-negotiable. Option 4 needs a separate organizational decision and is not
-proportionate for this repository today.
+We should choose Option 1 if no target fixture exists, RFC3161 is absent or
+ambiguous, normal/inline forms drift, the runtime needs ambient authority, or
+the residual transparency risk is unacceptable. Option 3 becomes preferable if
+process isolation is non-negotiable after feasibility. A public-Rekor lane or
+Option 4 would require separate privacy/topology decisions and is not implicit
+in this proposal.
 
 ## Evidence Coverage And Residual Risk
 
 | Evidence | Option 1 | Option 2 | Option 3 | Option 4 | Tactical protection retained |
 | --- | --- | --- | --- | --- | --- |
-| `E01` — canonical topology hold | Addresses by permanent stop | Addresses through one pre-publication owner | Addresses with isolated owner | Mitigates via broker/client redesign | Keep topology guard until every Gate is GREEN |
+| `E01` — canonical topology hold | Addresses by permanent stop | Addresses through one pre-publication owner | Addresses with isolated owner | Mitigates via broker/client redesign | Keep every publication effect disabled until all prerequisites for that exact path are GREEN |
 | `E02` — conjunctive provider order | Addresses by no resumption | Addresses with serial owner/lock/closure evidence | Addresses with appliance/lock/closure evidence | Addresses with broker/lock/closure evidence | No synthetic eligibility or partial completion |
-| `E03` — dormant Foundation bootstrap | Preserves | Preserves before owner and activation | Preserves before appliance | Preserves before broker client | #600 remains exact, dormant, and zero-write |
+| `E03` — dormant Foundation bootstrap | Preserves | Preserves before owner and activation | Preserves before appliance | Preserves before broker client | Merged #600 remains exact, dormant, and zero-write |
 | `E04` — single Artifact owner | Preserves no authority | Addresses with same owner and per-asset postverify | Addresses if appliance owns final consume | Mitigates via signed admissions | Artifact cannot reuse Foundation lock completion |
 | `E05` — dry-run boundary | Unaffected | Unaffected | Unaffected | Unaffected | Do not promote dry run into executor |
 | `E06` — package versus deploy distinction | Unaffected | Addresses authority before later consumption | Addresses authority before later consumption | Addresses authority before later consumption | Release Artifact success is never deployment proof |
 | `E07` — restricted repair channel | Unaffected | Unaffected | Unaffected | Unaffected | Never reuse repair identity/workflow |
 | `E08` — Risk A process | Addresses by no action | Addresses through serial approval Gates | Addresses through serial approval Gates | Addresses only with expanded service Gate | Explicit approval before every external mutation |
 | `E09` — live Settings gap | Unaffected | Deferred to post-staging Settings Gate | Deferred to post-staging Settings Gate | Deferred to post-staging Settings Gate | No production secret while bypass remains true |
-| `E10` — #600 Draft/behind | Preserves Draft | Requires refresh and separate inert-merge approval | Same | Same | Any failed HEAD stays Draft |
+| `E10` — #600 merged dormant | Preserves hard stop | Uses the merged checkpoint without treating it as owner authority | Same | Same | Never modify exact-11 to absorb owner/profile work |
 | `E11` — authority-cycle diagnosis | Addresses through permanent stop | Addresses through independent owner bootstrap | Mitigates through an independently built appliance | Mitigates through a separately trusted broker | Never promote diagnostics or let an owner depend on the lock/closure it authorizes |
+| `E12` — private attestation/root model | Addresses by making no claim | Unknown until real RFC3161 feasibility and residual-risk decision | Same profile evidence required despite isolation | Requires a new transparency/privacy model | No profile claim without exact root, real bundle, and separately approved semantics |
 
-Residual risk remains under every active option. Trust roots and log keys expire
-or rotate; a mature library can have parsing defects; GitHub's bundle and OIDC
+Residual risk remains under every active option. Trust roots, CAs, TSAs, and
+log keys expire or rotate; a mature library can have parsing defects; GitHub's bundle and OIDC
 formats can evolve; immutable storage can become unavailable; npm metadata can
 drift; and reviewers can approve the wrong source identity. The tactical guards
 therefore remain necessary after migration: byte bounds, duplicate-key
 rejection, exact subject/predicate/workflow binding, fresh policy/readback,
 content-addressed assets, no-replace publication, offline installation, and
-zero-output failure paths.
+zero-output failure paths. For the candidate private profile, repository-local
+no-replace/readback cannot be represented as global transparency.
 
 ## Migration And Rollout
 
@@ -378,13 +491,16 @@ missing evidence.
 
 | Order | PR or Gate | Acceptance and stop boundary |
 | --- | --- | --- |
-| `D0` | This Topology Addendum Draft | Docs/diagrams/JSON only; exact evidence identity; all checks pass; production authority remains false. |
+| `D0` | Topology Addendum decision record | **COMPLETE.** Docs/diagrams/JSON only; G0 records topology direction, not implementation. |
 | `G0` | Addendum decision Gate | **RECORDED — SELECTED_DIRECTION_ONLY.** Option 2 is the topology direction; Option 1 remains the active hard-stop fallback. This is not implementation approval. |
-| `P1` | Refresh and close PR #600 | **NOT AUTHORIZED.** Exact 11 files, three-export canonical baseline, topology preflight fixed failure, downstream jobs skipped, zero write, exact-head checks/review GREEN; separate refresh and Ready/merge approvals. |
-| `P2` | Unified-owner predecessor PR | **NOT AUTHORIZED.** Owner only; exact package/version/pin/path/API/trust snapshot; complete vectors and normal/inline parity; no Settings or asset publication. |
-| `P3` | Supply-chain activation source PR | **NOT AUTHORIZED.** Only after P2 is on protected master; same owner wired into Foundation and Artifact consumer contracts; lock and closure publisher source remains manual and dormant. |
+| `P1` | Refresh and close PR #600 | **COMPLETE.** Merged as exact 11 files at `9ebc0849`; topology preflight remains fixed failure, downstream jobs skip, and no owner/publication authority exists. |
+| `P2-D` | Private-profile amendment preparation | **PREPARED FOR REVIEW — DOCS ONLY.** Candidate `github_private_rfc3161_v1`; active canonical contract unchanged; no residual-risk acceptance or implementation authority. |
+| `P2-S` | Isolated feasibility experiment | **DESIGN ONLY — EXECUTION NOT AUTHORIZED.** Exact-master export, real private fixture, root/TSA/RFC3161 proof, dependency review, normal/inline determinism, offline/resource matrix, and cleanup. Fixture generation/dispatch is a separate Gate. |
+| `G0R` | Profile decision and canonical reconciliation | **NOT AUTHORIZED.** Only after P2-S returns `GO_FOR_SEPARATE_PROFILE_REVIEW`; explicitly accept or reject the security delta and reconcile E01-E04. |
+| `P2-I` | Unified-owner predecessor PR | **NOT AUTHORIZED.** Owner only; exact package/version/pin/path/API/trust snapshot; complete selected-profile vectors and normal/inline parity; no Settings or asset publication. |
+| `P3` | Supply-chain activation source PR | **NOT AUTHORIZED.** Only after P2-I is on protected master; same owner wired into Foundation and Artifact consumer contracts; lock and closure publisher source remains manual and dormant. |
 | `G1` | Artifact-publication Settings Gate | **NOT AUTHORIZED.** Fresh before snapshot; user reviewer, no self-review, protected master, admin bypass false; independent after readback; no production SSH/host secrets. |
-| `G2` | Immutable Foundation lock Gate | **NOT AUTHORIZED.** Manual exact input, no PR-head publication, one immutable asset and one subject, full-owner refetch/postverify, completion digest only after readback. |
+| `G2` | Immutable Foundation lock Gate | **NOT AUTHORIZED.** Manual exact input, no PR-head publication, one immutable asset and one subject, selected-profile-owner refetch/postverify, completion digest only after readback. |
 | `G3` | Offline npm closure Gate | **NOT AUTHORIZED.** Exact merged lockfile; complete tarball/integrity/content manifest; independent readback; clean runner, empty ambient cache, disabled network, exact offline install, zero network attempts. |
 | `G4` | Source-resumption Gate | **NOT AUTHORIZED.** One immutable packet binds owner commit/vector report, lock postverify receipt, closure receipt and zero-network report; explicit operator approval. |
 | `P4` | Future main source-only Draft | **NOT AUTHORIZED.** Manual trigger design, closed Gate input, root permissions empty, no production execution; same owner at Foundation/Artifact checkpoints. |
@@ -402,77 +518,99 @@ Settings checkpoint, readback mismatch stops with no credential materialization.
 
 ## Validation Plan
 
-Any future Option 2 owner candidate must run a frozen positive and adversarial
-matrix in every supported runtime form. The positive case proves the complete
-chain and returns only a private-branded value to the intended consume
-operation. Every owner or other pre-write negative case must prove zero brand,
-zero completion, zero Release write, and zero downstream eligibility. A closure
-readback or clean-runner failure discovered after immutable publication instead
-preserves those bytes as ineligible history and proves zero completion and zero
-downstream eligibility; it never overwrites, repairs, or promotes the published
-object.
+P2-S first determines whether the candidate private profile has any real success
+path. It runs a frozen positive/adversarial matrix in normal and inline fresh
+processes, but it produces only redacted experiment evidence. It cannot mint a
+production brand or write a Release. Every negative case proves zero brand,
+zero completion, zero external write, and zero downstream eligibility. Future
+post-publication closure failures remain a later concern: they preserve bytes as
+ineligible history and never overwrite, repair, or promote the object.
 
 Required negative families include:
 
 - invalid DSSE signature or payload binding;
 - untrusted, expired, or not-yet-valid Fulcio certificate;
-- missing, malformed, wrong-log, wrong-signature, or wrong-time embedded SCT;
-- wrong Rekor key window, SET, inclusion proof, entry body, or integrated time;
+- missing, malformed, wrong-signature, wrong-imprint, wrong-time, wrong-policy,
+  wrong-algorithm, or wrong-TSA RFC3161 evidence;
+- zero, unverified, swapped, ambiguously bound, or count-drifted timestamp
+  tokens relative to the exact count later frozen by G0R;
+- unexpected tlog/SCT material, public-good-root substitution, root-shape drift,
+  or any private-profile claim of Rekor/CT/SCT/public transparency;
 - wrong GitHub issuer, repository, direct workflow, workflow ref/SHA, event,
   runner environment, predicate, or source commit;
 - zero, multiple, wrong-name, or wrong-digest subjects;
 - duplicate, extra, accessor, symbol, non-data, or noncanonical fields;
-- caller-supplied roots, keys, time, policy, compatibility mode, or any
-  `insecure-ignore-sct` equivalent;
+- caller-supplied roots, CA/TSA keys, time, profile, threshold, policy,
+  compatibility mode, or any verification-bypass equivalent;
 - forged, cloned, serialized, substituted, replayed, or cross-owner brand;
 - normal/inline output, error, or trust-policy drift;
 - empty, missing, extra, corrupted, wrong-integrity, wrong-lockfile, or
-  wrong-owner offline closure content;
+  wrong-owner experiment dependency-closure content (this does not substitute
+  for the future G3 production npm-closure Gate);
 - any observed DNS, TCP, HTTP, registry, or package-network attempt during the
-  clean-runner offline proof.
+  offline verification phase.
 
 Resource validation must record workload and threshold before measurement:
 
 - representative and maximum allowed bundle sizes;
 - verification wall time and peak RSS for normal and inline forms;
 - fresh-runtime startup cost and repeated-run stability;
-- offline-closure size, extraction time, install time, and peak disk usage;
+- candidate dependency/runtime size, clean-build determinism, inline-wrapper
+  size, and peak disk;
 - deterministic error behavior and cleanup after every injected failure.
 
-This Draft itself must pass JSON parsing, metadata authority, project-state,
-Mermaid source presence/link checks, Markdown link checks, and
-`git diff --check origin/master...HEAD`. Those checks validate the Draft's
-internal consistency, not the proposed security properties.
+This P2-D preparation itself must pass JSON parsing, metadata authority,
+project-state, Mermaid source presence/link checks, Markdown link checks, and
+working-tree `git diff --check`; after a future commit it must also pass
+`git diff --check origin/master...HEAD`. Those checks validate the documentation
+package's internal consistency, not the proposed security properties.
 
 ## Implementation Work Packages
 
-G0 selection does not authorize an implementation plan or any implementation
-package. Only after a separate planning and P2/P3 implementation authorization
-may a future handoff contain these bounded packages:
+This turn authorizes only the P2-D documentation candidate and the P2-S
+experiment design above. It does not authorize running P2-S, acquiring a
+fixture, creating an implementation plan, selecting a dependency, or changing
+source. PR #600 is already merged and remains an exact dormant checkpoint; it
+must not be refreshed or expanded to absorb profile or owner work.
+
+Only after a separate P2-S execution approval may an isolated scratch run
+produce a redacted feasibility packet. A successful packet may request, but
+does not grant, a separate `G0R` profile decision and canonical reconciliation.
+Only after `G0R` is explicitly approved and complete may a future planning
+authorization define bounded source packages such as:
 
 - owner dependency/trust snapshot selection and independent provenance review;
-- closed owner API, private brand, normal/inline generation, and vector corpus;
-- #600 refresh with exact dormant topology retained;
-- Foundation lock activation and full-owner postverify contract;
+- a closed selected-profile API, private brand, normal/inline generation, and
+  complete vector corpus;
+- Foundation lock activation and selected-profile-owner postverify contract;
 - Artifact same-owner cross-contract adapter without asset-authority reuse;
 - offline closure producer, immutable manifest, readback, and clean-runner
   zero-network consumer proof;
-- artifact-publication Settings before/after readback tooling;
-- combined provider evidence packet and explicit Risk A resume Gate.
+- artifact-publication Settings before/after readback tooling; and
+- a combined provider evidence packet plus explicit Risk A resume Gate.
 
-The implementation plan must refresh source identity and return to design review
-if the selected dependency, GitHub bundle format, canonical owner boundary, or
-current PR topology has materially changed.
+Any future plan must refresh exact source identity and return to design review
+if the selected dependency, GitHub bundle format, trusted root, TSA binding,
+owner boundary, or current PR topology has materially changed.
 
 ## Open Questions
 
+- Can an operator supply an already-existing target-repository, target-workflow
+  private bundle and exact subject bytes, or does fixture generation require a
+  separate workflow/dispatch Gate?
+- Does the real target bundle contain an RFC3161 token whose signed-byte
+  derivation and `messageImprint` can be verified against the exact applicable
+  GitHub-private root and TSA?
+- Is the explicit absence of Rekor, CT/SCT, public transparency, and global
+  anti-equivocation acceptable, or must Option 1 remain active while a separate
+  public-Rekor lane is reviewed for privacy and topology impact?
 - Which mature implementation, exact version, transitive dependency set,
-  executable or package digest, license, and security-update policy should the
-  owner pin?
+  executable or package digest, license, provenance, and security-update policy
+  should a future isolated spike evaluate without selecting it for production?
 - Can one source deterministically produce both normal ESM and no-checkout
   inline runtimes without copied trust/policy or `Function.toString()`?
-- How are Fulcio, Rekor, and CT trust snapshots versioned, expired, updated,
-  provenance-checked, and rolled back without caller selection?
+- How are GitHub-private Fulcio and TSA trust snapshots versioned, expired,
+  updated, provenance-checked, and rolled back without caller selection?
 - What exact byte caps and canonical contracts apply to bundle, statement,
   trust snapshot, lock, closure manifest, and verification evidence?
 - What retention and availability objectives apply to immutable lock and npm
@@ -480,5 +618,5 @@ current PR topology has materially changed.
 - Does the future source ruleset need a nonzero independent review requirement,
   or will the durable Gate ledger plus Environment approvals remain the sole
   production authorization boundary?
-- Which measured latency, memory, and closure-size thresholds would make the
-  appliance option preferable to the in-process owner?
+- Which measured latency, memory, runtime-size, and closure-size thresholds
+  would make the appliance option preferable to the in-process owner?
