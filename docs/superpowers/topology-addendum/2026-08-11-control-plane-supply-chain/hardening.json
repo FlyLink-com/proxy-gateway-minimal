@@ -12,17 +12,17 @@
   },
   "assessment": {
     "outcome": "opportunities_identified",
-    "summary": "G0 selects the single in-repository owner as the topology direction. P2-D completed its docs-only governance loop at PR #603; P2-S0 Gate preparation is current and P2-S has not started. Option 1 remains active, and no experiment, profile, implementation, or external-Gate authority is granted."
+    "summary": "G0 selects the single in-repository owner as the topology direction. P2-D completed at PR #603 and PR #605 published the P2-S0 Gate definition. Existing target-fixture input is not established, the target-fixture-acquisition Gate is in docs-only preparation, and P2-S has not started. Option 1 remains active, and no acquisition, experiment, profile, implementation, or external-Gate authority is granted."
   },
   "phaseRecord": {
-    "phase": "P2-S0 preparation",
-    "previousPhase": "P2-D",
-    "status": "P2-D completed / P2-S not started",
+    "phase": "P2-S0 target-fixture-acquisition Gate preparation",
+    "previousPhase": "P2-S0 Gate publication",
+    "status": "P2-S0 Gate published / current input BLOCKED_INPUT / P2-S not started",
     "risk": "controlled_docs_only_preparation",
     "overallProgressEstimate": {
       "lowerPercent": 50,
       "upperPercent": 60,
-      "basis": "governance-weighted planning estimate after P2-D merge",
+      "basis": "governance-weighted planning estimate after P2-S0 Gate publication; no fixture or feasibility credit",
       "gateEffect": "none"
     }
   },
@@ -39,6 +39,40 @@
     "changedPathCount": 7,
     "changedPathsSha256": "e78f34a7ad239c26912c5357d5d7523ae5050c895f54ee62099ecf62cd86ff64",
     "unresolvedReviewThreadCount": 0,
+    "sourceEvidenceCollectionUnchanged": true
+  },
+  "gatePublicationEvidence": {
+    "phase": "P2-S0 Gate publication",
+    "evidenceId": "E14",
+    "kind": "redacted_json_compact",
+    "sha256": "2dbdc737703ced6ad7f82ec4b80dc2658d77c951d0cc840b2bb045e52fbd81ee",
+    "repositoryRevision": "046952402c5ded1412e58fe860c6eb9ad426ced5",
+    "baseRevision": "d7e2ab8364bb51f6e6dd8e7d499eb4d61a83635f",
+    "approvedHeadRevision": "efbc8915be48b3d9cb6e442ad6fd55c7f7464baa",
+    "mergeTree": "7c171b70026181cf543d62c805712a5966a7947f",
+    "approvedHeadTree": "7c171b70026181cf543d62c805712a5966a7947f",
+    "changedPathCount": 6,
+    "changedPathsSha256": "9d843b9e03117639eb22e46b4787cb8799e84903f254f136aa5e919f24315b11",
+    "unresolvedReviewThreadCount": 0,
+    "sourceEvidenceCollectionUnchanged": true,
+    "gateGranted": false
+  },
+  "fixtureAcquisitionInventoryEvidence": {
+    "phase": "P2-S0 target-fixture-acquisition Gate preparation",
+    "evidenceId": "E15",
+    "kind": "redacted_json_compact",
+    "sha256": "97d0571e4f60d2ad11e3a370de3d93ec15e6c0855d8dce236281767b54ace4d7",
+    "capturedAt": "2026-08-11T16:34:24Z",
+    "repositoryRevision": "046952402c5ded1412e58fe860c6eb9ad426ced5",
+    "repositoryTree": "7c171b70026181cf543d62c805712a5966a7947f",
+    "trackedWorkflowCount": 9,
+    "trackedAttestationProducer": "not_observed",
+    "trackedTargetPrivateFixture": "not_observed",
+    "externalExistingFixture": "not_established",
+    "actionsArtifactMetadataTotalCount": 468,
+    "actionsArtifactNameMatchCount": 0,
+    "artifactDownloadPerformed": false,
+    "workflowDispatchPerformed": false,
     "sourceEvidenceCollectionUnchanged": true
   },
   "decision": {
@@ -74,14 +108,16 @@
     "candidateProfileId": "github_private_rfc3161_v1",
     "candidateProfileSelectionStatus": "unselected_pending_p2s_and_g0r",
     "applicability": "github_private_repository_attestations_only",
-    "operatorAuthorization": "docs_only_p2d_completion_and_p2s0_gate_preparation",
+    "operatorAuthorization": "docs_only_target_fixture_acquisition_gate_preparation",
     "profileDecisionAuthorized": false,
     "canonicalReconciliationAuthorized": false,
     "experimentDesignAuthorized": true,
     "experimentExecutionAuthorized": false,
     "fixtureGenerationAuthorized": false,
+    "fixtureAcquisitionAuthorized": false,
     "p2s0GatePreparationAuthorized": true,
     "p2s0GateDecisionAuthorized": false,
+    "targetFixtureAcquisitionGatePreparationAuthorized": true,
     "dependencySelectionAuthorized": false,
     "implementationAuthorized": false,
     "executionAuthorized": false,
@@ -137,10 +173,12 @@
       "canonical-contract reconciliation not separately approved"
     ],
     "p2s0Gate": {
-      "status": "draft_prepared_for_review",
+      "status": "repository_gate_definition",
       "gateDecision": "not_granted",
+      "currentOutput": "BLOCKED_INPUT",
       "packagePath": "gates/p2-s0-feasibility-gate.md",
-      "currentAuthority": "docs_only_gate_preparation",
+      "publicationRevision": "046952402c5ded1412e58fe860c6eb9ad426ced5",
+      "currentAuthority": "docs_only_target_fixture_gate_preparation",
       "requiredInputClassCount": 8,
       "requiredInputClassIds": [
         "source_manifest",
@@ -180,6 +218,74 @@
         "IMPLEMENTATION_AUTHORIZED",
         "PUBLICATION_AUTHORIZED"
       ]
+    },
+    "targetFixtureAcquisitionGate": {
+      "gateId": "P2-S0-FX1",
+      "parentGateId": "P2-S0",
+      "status": "draft_prepared_for_review",
+      "gateDecision": "not_granted",
+      "currentAuthority": "docs_only_gate_preparation",
+      "inputStatus": "blocked_missing_existing_target_workflow_private_fixture",
+      "currentOutput": "BLOCKED_INPUT",
+      "packagePath": "gates/p2-s0-target-fixture-acquisition-gate.md",
+      "sourceBinding": {
+        "revision": "046952402c5ded1412e58fe860c6eb9ad426ced5",
+        "tree": "7c171b70026181cf543d62c805712a5966a7947f",
+        "parentGatePath": "gates/p2-s0-feasibility-gate.md",
+        "parentGateBlob": "7f65883883db38e59f3504910722b140eafe9c06"
+      },
+      "observations": {
+        "trackedWorkflowCount": 9,
+        "trackedAttestationProducer": "not_observed",
+        "trackedTargetFixture": "not_observed",
+        "externalExistingFixture": "not_established",
+        "actionsArtifactMetadataTotalCount": 468,
+        "actionsArtifactNameMatchCount": 0,
+        "artifactDownloadPerformed": false,
+        "workflowDispatchPerformed": false
+      },
+      "requiredExistingFixtureManifest": [
+        "custody source and read-only availability",
+        "exact target repository and direct workflow path/blob/ref/source/event/run identity",
+        "bundle SHA-256, size, format, arm, and signature count",
+        "subject bytes SHA-256, size, expected name, and exactly-one-subject expectation",
+        "RFC3161 token digest, timestamped-byte derivation, message imprint, TSA chain, and time constraints",
+        "signing-chain and applicable trusted-root component digests plus CA/TSA capture metadata",
+        "exact acquisition executable, digest, arguments, limits, and redaction rule",
+        "absolute scratch containment, cleanup, recovery, and repository/GitHub no-drift plan"
+      ],
+      "futureScopeIfSeparatelyApproved": [
+        "one exact read-only custody handoff of an already-existing target fixture",
+        "scratch-only digest, size, and bounded metadata capture",
+        "redacted content-addressed manifest creation",
+        "complete cleanup and no-drift readback"
+      ],
+      "notAuthorized": [
+        "fixture acquisition or download",
+        "fixture generation",
+        "workflow creation, modification, rerun, or dispatch",
+        "id-token or attestations permission change",
+        "candidate verifier or official oracle execution",
+        "dependency selection, installation, package, or lockfile change",
+        "P2-S execution",
+        "source integration",
+        "Settings, Release, Deployment, or Environment change",
+        "staging, host, or production access"
+      ],
+      "allowedOutputs": [
+        "FIXTURE_INPUT_READY_FOR_P2S0_REEVALUATION",
+        "BLOCKED_INPUT",
+        "REDESIGN_ACQUISITION",
+        "NO_GO_OPTION1"
+      ],
+      "forbiddenOutputs": [
+        "READY_FOR_SEPARATE_P2S_APPROVAL",
+        "GO_FOR_SEPARATE_PROFILE_REVIEW",
+        "P2_GREEN",
+        "IMPLEMENTATION_AUTHORIZED",
+        "PUBLICATION_AUTHORIZED"
+      ],
+      "cleanupFailureOutput": "NO_GO_OPTION1"
     },
     "p2sDesign": {
       "status": "design_recorded_not_started",
@@ -236,7 +342,7 @@
       "separate_external_gates"
     ],
     "nonNegotiables": [
-      "P2-D completion and P2-S0 Gate preparation have no experiment, implementation, or production authority.",
+      "P2-D completion, P2-S0 Gate publication, and target-fixture Gate preparation have no acquisition, experiment, implementation, or production authority.",
       "Foundation and Artifact consume one owner with a module-private brand.",
       "The candidate private profile never claims Rekor, CT or SCT verification, public transparency, or global anti-equivocation.",
       "The active canonical full-Sigstore contract is not replaced until a separate profile decision and canonical reconciliation are approved.",
@@ -250,7 +356,7 @@
       "No performance or memory budget was supplied.",
       "No mature Sigstore implementation, package version, path, API, trust snapshot, or pin has been selected.",
       "The exact-11 bootstrap is merged on protected master but remains dormant and hard-stopped.",
-      "No target-workflow GitHub-private attestation fixture is currently available, so P2-S cannot produce a positive decision without a separate fixture Gate or operator-provided hashed fixture."
+      "No target-workflow GitHub-private attestation fixture was observed in exact current source or supplied by an external custodian; opaque or external availability remains unestablished, so P2-S cannot produce a positive decision without a separate fixture Gate or an operator-provided hashed fixture."
     ]
   },
   "opportunities": [
@@ -702,7 +808,7 @@
         }
       ],
       "recommendedOptionId": "in-repo-unified-owner",
-      "recommendation": "G0 retains the in-repository owner as the topology direction. P2-D is complete as a repository profile-amendment record; P2-S0 Gate preparation is current, the candidate github_private_rfc3161_v1 remains unselected, and P2-S has not started. The permanent hard stop remains active until real private-bundle feasibility, an explicit security-profile decision, canonical reconciliation, and a separate owner implementation authorization all succeed."
+      "recommendation": "G0 retains the in-repository owner as the topology direction. P2-D is complete and PR #605 published the P2-S0 Gate definition without granting it. Existing target-fixture input remains BLOCKED_INPUT, the target-fixture-acquisition Gate is in docs-only preparation, the candidate github_private_rfc3161_v1 remains unselected, and P2-S has not started. The permanent hard stop remains active until real private-bundle feasibility, an explicit security-profile decision, canonical reconciliation, and a separate owner implementation authorization all succeed."
     }
   ],
   "openQuestions": [

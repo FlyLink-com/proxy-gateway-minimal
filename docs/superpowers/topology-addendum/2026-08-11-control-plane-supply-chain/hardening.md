@@ -1,10 +1,10 @@
 # Security Hardening Review: Control-Plane Supply-Chain Topology
 
 > Status:
-> - Type: Topology Addendum with G0 recorded, P2-D complete, and P2-S0 Gate preparation current
+> - Type: Topology Addendum with P2-S0 published and target-fixture Gate preparation current
 > - Risk: A
-> - Process: G0 topology direction selected; P2-D completed through PR #603; P2-S0 Gate package preparation only; P2-S not started
-> - Expected PR count: This docs-only P2-S0 Gate package plus three future source PR checkpoints (owner, activation, and future main); P2-S is an isolated experiment and every execution/source/external Gate requires separate approval
+> - Process: G0 selected; P2-D completed through PR #603; P2-S0 Gate published through PR #605; target-fixture Gate preparation only; P2-S not started
+> - Expected PR count: 1 docs-only PR for this Gate; any Route B source PR and later execution Gates require separate approval, while three later topology source checkpoints remain prospective
 > - Validation: Document authority, project-state, JSON, diagrams, links, and diff checks
 > - Production/AWS impact: None
 > - Production authority: False
@@ -29,24 +29,33 @@ The P2-D design-input evidence remains bound in [context.md](context.md) to
 Separate completion evidence binds PR #603 to merge
 `d7e2ab8364bb51f6e6dd8e7d499eb4d61a83635f`; it does not rewrite the frozen
 design-input collection.
+Separate Gate-publication evidence binds PR #605 to merge
+`046952402c5ded1412e58fe860c6eb9ad426ced5`, while exact-current-source input
+evidence records no observed producer or target fixture and leaves external
+custody `not_established`. Neither receipt rewrites the frozen design inputs or
+grants acquisition or P2-S.
 The machine-readable option and tradeoff map is [hardening.json](hardening.json).
 
-Three facts shape the next decision. PR #600 is merged but remains dormant and
-hard-stopped. The private trusted-root readback has a no-tlog/no-ctlog line with
-timestamp authorities, but no real target-workflow bundle proves how those
-authorities bind an RFC3161 timestamp. The production Environment still allows
-administrator bypass. None is a vulnerability claim; together they require us
-to separate profile design, feasibility evidence, source implementation,
-Settings activation, and production execution.
+Four facts shape the next decision. PR #600 is merged but remains dormant and
+hard-stopped. PR #605 published only the P2-S0 Gate definition. Exact current
+source has no observed attestation producer or target fixture, and no external
+custody manifest was supplied. The private trusted-root readback has a no-tlog/
+no-ctlog line with timestamp authorities, but no real target-workflow bundle
+proves how those authorities bind an RFC3161 timestamp. The production
+Environment still allows administrator bypass. None is a vulnerability claim;
+together they require us to separate fixture custody, profile design,
+feasibility evidence, source implementation, Settings activation, and
+production execution.
 
 ## Constraints
 
-- G0 selected only the topology direction, and P2-D is now complete as a
-  repository profile-amendment record. Current authority permits only P2-S0
-  Gate-package preparation. It does not authorize P2-S execution, fixture generation, dependency
-  acquisition, a profile decision, canonical-contract reconciliation, owner
-  implementation, P2-I/P3, Release, Settings, dispatch, staging, host access,
-  production, external write, or source/runtime eligibility.
+- G0 selected only the topology direction, P2-D is complete, and PR #605
+  published the P2-S0 Gate definition without granting it. Current authority
+  permits only docs-only target-fixture Gate preparation. It does not authorize
+  fixture acquisition/download/generation, P2-S, dependency acquisition, a
+  profile decision, canonical-contract reconciliation, owner implementation,
+  P2-I/P3, Release, Settings, dispatch, staging, host access, production,
+  external write, or source/runtime eligibility.
 - We prefer a minimal repository-owned boundary with no Redis, queue, cluster,
   microservice, standing credential, or ambient network fallback.
 - One owner must serve Foundation and Artifact. Trust roots, policy, selected-
@@ -73,18 +82,19 @@ Settings activation, and production execution.
 
 | Opportunity | Evidence | Options | Recommendation | Proposal |
 | --- | --- | --- | --- | --- |
-| Unify supply-chain authority before publication | Canonical topology hold, merged dormant bootstrap, private-attestation trust mismatch, missing offline closure, live policy gap, authority-cycle diagnosis, and P2-D closeout (`E01`–`E13`) | 1. Permanent No-Go; 2. In-repo trust kernel; 3. Hermetic owner appliance; 4. External verification broker | Keep the G0 Option 2 direction, record P2-D complete, prepare the P2-S0 Gate package, and retain Option 1 until P2-S and a later profile decision succeed | [Control-plane supply-chain authority](proposals/unify-supply-chain-authority.md) |
+| Unify supply-chain authority before publication | Topology evidence `E01`–`E13` plus P2-S0 publication/input-gap receipts `E14`–`E15` | 1. Permanent No-Go; 2. In-repo trust kernel; 3. Hermetic owner appliance; 4. External verification broker | Keep the G0 Option 2 direction, keep P2-S0 at `BLOCKED_INPUT`, prepare the target-fixture child Gate, and retain Option 1 until P2-S and a later profile decision succeed | [Control-plane supply-chain authority](proposals/unify-supply-chain-authority.md) |
 
 ## Recommendation Summary
 
 On 2026-08-11, the operator selected **Option 2 for the G0 topology direction
 only** and later completed the **P2-D docs-only governance loop through merged
-PR #603**. **P2-S0 Gate preparation is current; P2-S has not started; Option 1
-remains the active hard-stop fallback.** PR #600 remains the approved exact-11
-dormant checkpoint. These records do not authorize P2-S execution, fixture generation, a
-private-profile decision, canonical-contract reconciliation, owner source,
-P3, Settings, Release, dispatch, staging, host access, production, external
-write, or source/runtime eligibility.
+PR #603**. **PR #605 published the P2-S0 Gate without granting it; current input
+status is `BLOCKED_INPUT`, target-fixture Gate preparation is current, P2-S has
+not started, and Option 1 remains active.** PR #600 remains the approved exact-
+11 dormant checkpoint. These records do not authorize fixture acquisition or
+generation, P2-S, a private-profile decision, canonical reconciliation, owner
+source, P3, Settings, Release, dispatch, staging, host access, production,
+external write, or source/runtime eligibility.
 
 I still recommend **Option 2, an in-repository unified trust kernel**, as the
 topology direction. Its attractive property is not merely fewer components:
@@ -117,26 +127,30 @@ Gate input or earned-value claim.
    zero-publication checkpoint;
 3. `P2-D` (complete): PR #603 merged the docs-only candidate profile record; it
    does not amend the canonical full-Sigstore contract or select the candidate;
-4. `P2-S0` (current, Gate package preparation only): define inputs, future
-   allowed scope, readiness criteria, failure outputs, and explicit negatives
-   in [the Gate package](gates/p2-s0-feasibility-gate.md); Gate decision not granted;
-5. `P2-S` (not started, execution not authorized): isolated feasibility,
-   including a separately approved fixture-acquisition Gate if no existing
-   target-workflow private bundle is available;
-6. `G0R` (not authorized): accept or reject the profile security delta and
+4. `P2-S0` (published, not granted): PR #605 published
+   [the parent Gate](gates/p2-s0-feasibility-gate.md); missing existing-fixture
+   evidence keeps its current output at `BLOCKED_INPUT`;
+5. `P2-S0-FX1` (current, docs-only preparation): define one future exact
+   read-only existing-fixture custody handoff in
+   [the child Gate](gates/p2-s0-target-fixture-acquisition-gate.md); acquisition,
+   generation, workflow change, and dispatch remain unauthorized;
+6. `P2-S` (not started, execution not authorized): isolated feasibility only
+   after the child Gate succeeds, all eight parent inputs are complete, and a
+   separate execution approval is granted;
+7. `G0R` (not authorized): accept or reject the profile security delta and
    reconcile the canonical plans only after P2-S returns
    `GO_FOR_SEPARATE_PROFILE_REVIEW`;
-7. `P2-I` (not authorized): land an owner-only predecessor PR;
-8. `P3` (not authorized): land a supply-chain activation source PR;
-9. `G1` (not authorized): apply and read back the artifact-publication Settings
+8. `P2-I` (not authorized): land an owner-only predecessor PR;
+9. `P3` (not authorized): land a supply-chain activation source PR;
+10. `G1` (not authorized): apply and read back the artifact-publication Settings
    Gate before any
    Release write;
-10. `G2` (not authorized): publish and selected-profile-owner postverify the
+11. `G2` (not authorized): publish and selected-profile-owner postverify the
    immutable lock;
-11. `G3` (not authorized): only after the lock Gate is GREEN, publish/read back
+12. `G3` (not authorized): only after the lock Gate is GREEN, publish/read back
    the offline closure and prove clean-runner consumption with an empty cache
    and network denied;
-12. `G4` (not authorized): grant a new Risk A source-resumption approval before
+13. `G4` (not authorized): grant a new Risk A source-resumption approval before
    a future main Draft.
 
 This ordering preserves the merged bootstrap while preventing a documentation-
@@ -144,9 +158,11 @@ only profile proposal from silently becoming owner or publication authority.
 
 ## Next Decisions
 
-The G0 topology direction is selected, P2-D is complete, and the P2-S0 Gate
-package is prepared for review. P2-S remains not started. Reviewers still need
-to decide, but not implement or execute, the following:
+The G0 topology direction is selected, P2-D is complete, and the P2-S0 Gate is
+published but not granted. Current input status is `BLOCKED_INPUT`; the
+target-fixture child Gate is prepared locally for review, and P2-S remains not
+started. Reviewers still need to decide, but not implement or execute, the
+following:
 
 - Select no package, version, trust snapshot, repository path, or API pin until
   P2-S evidence is complete and a separate profile/implementation decision is
@@ -154,11 +170,17 @@ to decide, but not implement or execute, the following:
 - Decide whether the absence of public transparency, Rekor, CT/SCT, and global
   anti-equivocation is acceptable for `github_private_rfc3161_v1`; current
   preparation does not accept that residual risk.
-- Review the [P2-S0 Gate package](gates/p2-s0-feasibility-gate.md). Only an
-  explicit later `READY_FOR_SEPARATE_P2S_APPROVAL` outcome may support a new
-  request for P2-S execution; it does not itself authorize that execution.
-- Approve fixture acquisition and P2-S execution separately. A dispatch cannot
-  be inferred from this package or design.
+- Review the
+  [target-fixture child Gate](gates/p2-s0-target-fixture-acquisition-gate.md).
+  Publishing it still does not authorize acquisition; every selector must be
+  filled in a later exact Risk A execution request.
+- Keep Route B fixture generation outside this Gate. Any workflow/source change,
+  `id-token`/attestations permission, dispatch, rerun, or result download needs
+  separately reviewed source and execution approvals.
+- Return any successful existing-fixture custody receipt to the
+  [parent P2-S0 Gate](gates/p2-s0-feasibility-gate.md). Only a later all-eight-
+  input `READY_FOR_SEPARATE_P2S_APPROVAL` outcome may support a separate P2-S
+  request; it still does not authorize execution.
 - Require a real target bundle, exact root and TSA bytes, RFC3161 binding,
   license/provenance/vulnerability review, deterministic normal/inline runtime,
   resource thresholds, and zero-network evidence before profile review.
@@ -170,7 +192,8 @@ to decide, but not implement or execute, the following:
 - Leave `vultr-japan-production` unchanged until main source reconciliation and
   disposable/compatibility staging are complete.
 
-Because P2-D completion and P2-S0 preparation authorize no source change, the unchanged merged
-implementation continues to emit legacy hard-stop code
+Because P2-D completion, P2-S0 publication, and target-fixture Gate preparation
+authorize no source change, the unchanged merged implementation continues to
+emit legacy hard-stop code
 `full_sigstore_owner_topology_unapproved` with zero external write. That code
 does not mean the candidate private profile is selected, implemented, or GREEN.

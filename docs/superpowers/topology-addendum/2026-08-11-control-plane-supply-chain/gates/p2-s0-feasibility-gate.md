@@ -3,11 +3,13 @@
 ```yaml
 phase: P2-S0 preparation
 previous_phase: P2-D
-status: P2-D completed / P2-S not started
+status: P2-S0 Gate published / target input blocked / P2-S not started
 risk_class: A
 risk_state: controlled
-record_state: draft_prepared_for_review
+record_state: repository_gate_definition
 gate_decision: not_granted
+current_output: BLOCKED_INPUT
+publication_revision: 046952402c5ded1412e58fe860c6eb9ad426ced5
 production_authority: false
 execution_authority: false
 ```
@@ -20,15 +22,26 @@ reviewed candidate profile and experiment contract; it does not select
 `github_private_rfc3161_v1`, prove feasibility, or authorize P2-S.
 
 P2-S0 is the readiness Gate that determines whether a later operator may be
-asked to authorize the isolated feasibility spike. This package is the Gate
-definition only. It creates no fixture, verifier, dependency, workflow,
-permission, Release, deployment, or runtime eligibility.
+asked to authorize the isolated feasibility spike. PR #605 published this Gate
+definition at merge
+`046952402c5ded1412e58fe860c6eb9ad426ced5`; publication did not grant the
+Gate. It creates no fixture, verifier, dependency, workflow, permission,
+Release, deployment, or runtime eligibility.
+
+Current exact-master and Actions-metadata inventory did not establish an
+existing target-repository, direct-workflow fixture, and no operator-supplied
+custody manifest is present. The current input status is therefore
+`BLOCKED_INPUT`. This does not claim that an external fixture is globally
+absent; external custody remains unestablished until exact evidence is supplied.
 
 ## Milestone Record
 
 | Milestone | State |
 | --- | --- |
 | P2-D profile amendment | Complete |
+| P2-S0 Gate package publication | Complete; PR #605 merged at `04695240` |
+| Existing target fixture manifest | Not established; current output `BLOCKED_INPUT` |
+| Target-fixture-acquisition Gate | Docs-only preparation current; decision not granted |
 | Docs-only scope control | Passed |
 | Merge provenance | Verified |
 | Exact base/head relationship | Verified |
@@ -50,9 +63,10 @@ work.
 
 ## Current Authority
 
-The current authorization permits only preparation and review of this docs-only
-Gate package. It does not permit any activity in the future P2-S scope below.
-The unchanged runtime remains stopped at
+The current authorization permits only preparation and review of the docs-only
+[target-fixture-acquisition child Gate](p2-s0-target-fixture-acquisition-gate.md).
+It does not permit fixture acquisition, fixture generation, or any activity in
+the future P2-S scope below. The unchanged runtime remains stopped at
 `full_sigstore_owner_topology_unapproved`, and Option 1 remains active.
 
 ## Proposed P2-S Scope After A Separate Approval
@@ -220,7 +234,10 @@ Option 1 active, and the existing hard stop unchanged. Closeout must verify:
 
 ## Next Approval Boundary
 
-After this package is independently reviewed, the operator may either keep
-P2-S0 blocked, separately authorize a target fixture-acquisition Gate, or
-separately authorize P2-S against a complete existing input manifest. Approval
-of this document alone authorizes none of those actions.
+PR #605 published this parent Gate without granting it. The current missing
+fixture input keeps P2-S0 at `BLOCKED_INPUT`. The next document is the
+[P2-S0-FX1 target-fixture-acquisition Gate](p2-s0-target-fixture-acquisition-gate.md),
+which defines a future exact, read-only custody handoff but grants no
+acquisition. Only a later separately approved execution Gate may acquire one
+existing manifest-bound fixture. A fixture-ready receipt must return here for
+all-eight-input reevaluation; it cannot authorize P2-S directly.
