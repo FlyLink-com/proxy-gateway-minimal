@@ -1,0 +1,16 @@
+flowchart LR
+  A["Dormant exact-11 bootstrap"] --> B["Protected-master verifier client PR"]
+  B --> C["Pinned client and receipt verifier"]
+  D["Independent Sigstore verification broker"] --> E["Signed bounded verification admission"]
+  E --> C
+  C --> L["Separate activation source PR"]
+  L --> M["Artifact-publication Settings Gate\npolicy readback before Release writes"]
+  M --> F["Immutable lock postverify"]
+  C --> F
+  C --> G["Artifact consumer cross-contract capability\nfuture assets still postverify separately"]
+  F --> H["Offline npm closure Gate"]
+  H --> I["Readback + clean-runner proof\nempty cache and network denied"]
+  G --> N
+  I --> N["New explicit Risk A resume approval"]
+  N --> J["Future main source-only Draft"]
+  K["Service availability and signing-key operations"] -. "new trust boundary" .-> D
