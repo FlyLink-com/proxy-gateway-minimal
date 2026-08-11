@@ -38,9 +38,8 @@ function splitNamedBlocks(source, headerPattern) {
   }));
 }
 
-function assertClosedInventoryWorkflow(rawWorkflow, { onAccepted = () => {} } = {}) {
+function assertInventoryWorkflowSemantics(rawWorkflow, { onAccepted = () => {} } = {}) {
   const workflow = rawWorkflow.replace(/\r\n/g, "\n");
-  assert.equal(sha256Hex(workflow), EXPECTED_WORKFLOW_SHA256);
   assert.doesNotMatch(
     workflow,
     /(?:^|\n)\s*(?:[^#\n]+:\s*[&*][A-Za-z0-9_-]+|-\s*\*[A-Za-z0-9_-]+|<<\s*:)/
@@ -53,6 +52,17 @@ function assertClosedInventoryWorkflow(rawWorkflow, { onAccepted = () => {} } = 
     "permissions",
     "concurrency"
   ]);
+  const onOffset = workflow.indexOf("\non:\n");
+  const permissionsOffset = workflow.indexOf("\npermissions:\n");
+  const concurrencyOffset = workflow.indexOf("\nconcurrency:\n");
+  assert.notEqual(onOffset, -1);
+  assert.notEqual(permissionsOffset, -1);
+  assert.notEqual(concurrencyOffset, -1);
+  const onBlock = workflow.slice(onOffset + 1, permissionsOffset);
+  const permissionsBlock = workflow.slice(permissionsOffset + 1, concurrencyOffset);
+  assert.deepEqual(directKeys(onBlock, 2), ["pull_request"]);
+  assert.deepEqual(directKeys(onBlock, 4), ["branches"]);
+  assert.deepEqual(directKeys(permissionsBlock, 2), ["contents"]);
   assert.match(workflow, /^name: Control Plane Foundation Toolchain Inventory$/m);
   assert.match(workflow, /^on:\n  pull_request:\n    branches:\n      - master$/m);
   assert.doesNotMatch(
@@ -79,9 +89,16 @@ function assertClosedInventoryWorkflow(rawWorkflow, { onAccepted = () => {} } = 
     job,
     new RegExp(`^      image: ${FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m")
   );
+  const containerOffset = job.indexOf("\n    container:\n");
+  const stepsOffset = job.indexOf("\n    steps:\n");
+  assert.notEqual(containerOffset, -1);
+  assert.notEqual(stepsOffset, -1);
+  const containerBlock = job.slice(containerOffset + 1, stepsOffset);
+  assert.deepEqual(directKeys(containerBlock, 6), ["image"]);
   assert.doesNotMatch(job, /^    (?:permissions|environment|env|services|defaults|uses|if|continue-on-error):/m);
 
   const steps = splitNamedBlocks(job, /^      - name: ([^\r\n]+)$/gm);
+  assert.equal((job.match(/^      - /gm) ?? []).length, 3);
   assert.deepEqual(steps.map(({ name }) => name), [
     "Checkout pull-request head",
     "Validate inventory-only contract",
@@ -92,6 +109,12 @@ function assertClosedInventoryWorkflow(rawWorkflow, { onAccepted = () => {} } = 
   assert.match(steps[0].source, /^          ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}$/m);
   assert.match(steps[0].source, /^          persist-credentials: false$/m);
   assert.doesNotMatch(steps[0].source, /^          token:/m);
+  const checkoutWithOffset = steps[0].source.indexOf("\n        with:\n");
+  assert.notEqual(checkoutWithOffset, -1);
+  assert.deepEqual(directKeys(steps[0].source.slice(checkoutWithOffset + 1), 10), [
+    "ref",
+    "persist-credentials"
+  ]);
 
   assert.deepEqual(directKeys(steps[1].source, 8), ["run"]);
   assert.match(
@@ -109,6 +132,17 @@ function assertClosedInventoryWorkflow(rawWorkflow, { onAccepted = () => {} } = 
     new RegExp(`^          CONTROL_PLANE_FOUNDATION_CONTAINER_IMAGE: ${FOUNDATION_TOOLCHAIN_CONTAINER_IMAGE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m")
   );
   assert.match(steps[2].source, /^        run: node scripts\/control-plane-foundation-toolchain-inventory\.mjs$/m);
+  const inventoryEnvOffset = steps[2].source.indexOf("\n        env:\n");
+  const inventoryRunOffset = steps[2].source.indexOf("\n        run:");
+  assert.notEqual(inventoryEnvOffset, -1);
+  assert.notEqual(inventoryRunOffset, -1);
+  assert.deepEqual(
+    directKeys(steps[2].source.slice(inventoryEnvOffset + 1, inventoryRunOffset), 10),
+    [
+      "CONTROL_PLANE_INVENTORY_SOURCE_COMMIT",
+      "CONTROL_PLANE_FOUNDATION_CONTAINER_IMAGE"
+    ]
+  );
 
   const actionRows = [...workflow.matchAll(/^\s+uses: ([^\s#]+)(?:\s+#.*)?$/gm)].map((match) => match[1]);
   assert.deepEqual(actionRows, [`actions/checkout@${CHECKOUT_PIN}`]);
@@ -118,6 +152,12 @@ function assertClosedInventoryWorkflow(rawWorkflow, { onAccepted = () => {} } = 
   assert.doesNotMatch(workflow, /(?:npm |node-gyp|\bgcc\b|\bclang\b|\bmake\b|\bpython\b|curl|wget|gh\s|docker |podman)/i);
   assert.doesNotMatch(workflow, /(?:ssh|scp|rsync|systemctl|provider|deploy|release|package|production)/i);
   onAccepted();
+}
+
+function assertClosedInventoryWorkflow(rawWorkflow, options = {}) {
+  const workflow = rawWorkflow.replace(/\r\n/g, "\n");
+  assert.equal(sha256Hex(workflow), EXPECTED_WORKFLOW_SHA256);
+  return assertInventoryWorkflowSemantics(workflow, options);
 }
 
 test("v2 closure inventory has one exact PR-head, read-only job", () => {
@@ -165,7 +205,7 @@ test("inventory topology faults fail before eligibility", () => {
   ];
   for (const [index, fault] of faults.entries()) {
     let accepted = 0;
-    assert.throws(() => assertClosedInventoryWorkflow(fault, {
+    assert.throws(() => assertInventoryWorkflowSemantics(fault, {
       onAccepted() { accepted += 1; }
     }), undefined, `fault ${index} must be rejected`);
     assert.equal(accepted, 0);

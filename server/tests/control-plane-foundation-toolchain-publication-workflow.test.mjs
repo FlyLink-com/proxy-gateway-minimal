@@ -17,7 +17,7 @@ function sha256Hex(value) {
 function directKeys(block, indentation) {
   const prefix = " ".repeat(indentation);
   return block.split(/\r?\n/).flatMap((line) => {
-    const match = line.match(new RegExp(`^${prefix}([a-z][a-z0-9-]*):(?:\\s.*)?$`));
+    const match = line.match(new RegExp(`^${prefix}([^\\s:][^:]*):(?:\\s.*)?$`));
     return match ? [match[1]] : [];
   });
 }
@@ -43,14 +43,39 @@ function splitJobs(workflow) {
   }));
 }
 
-function assertClosedPublicationWorkflow(workflow, { onAccepted = () => {} } = {}) {
+function splitNamedSteps(job) {
+  const headers = [...job.matchAll(/^      - name: ([^\r\n]+)$/gm)];
+  assert.equal((job.match(/^      - /gm) ?? []).length, headers.length);
+  return headers.map((match, index) => ({
+    name: match[1],
+    source: job.slice(
+      match.index,
+      index + 1 < headers.length ? headers[index + 1].index : job.length
+    )
+  }));
+}
+
+function assertPublicationWorkflowSemantics(workflow, { onAccepted = () => {} } = {}) {
   workflow = workflow.replace(/\r\n/g, "\n");
-  assert.equal(sha256Hex(workflow), EXPECTED_WORKFLOW_SHA256);
-  assert.deepEqual(directKeys(workflow.slice(0, workflow.indexOf("\njobs:\n")), 0), [
+  const jobsOffset = workflow.indexOf("\njobs:\n");
+  const onOffset = workflow.indexOf("\non:\n");
+  const permissionsOffset = workflow.indexOf("\npermissions: {}\n");
+  assert.notEqual(jobsOffset, -1);
+  assert.notEqual(onOffset, -1);
+  assert.notEqual(permissionsOffset, -1);
+  assert.deepEqual(directKeys(workflow.slice(0, jobsOffset), 0), [
     "name",
     "on",
     "permissions",
     "concurrency"
+  ]);
+  const onBlock = workflow.slice(onOffset + 1, permissionsOffset);
+  assert.deepEqual(directKeys(onBlock, 2), ["workflow_dispatch"]);
+  assert.deepEqual(directKeys(onBlock, 6), [
+    "source_commit",
+    "inventory_run_id",
+    "candidate_closure_sha256",
+    "confirmation"
   ]);
   assert.match(workflow, /^name: Control Plane Foundation Toolchain Publication$/m);
   assert.match(workflow, /^on:\r?\n  workflow_dispatch:/m);
@@ -88,6 +113,18 @@ function assertClosedPublicationWorkflow(workflow, { onAccepted = () => {} } = {
     "steps"
   ]);
 
+  const expectedStepNames = new Map([
+    ["topology-preflight", "Stop before any authority"],
+    ["publish", "Owner remains unavailable after topology review"],
+    ["verify-publication", "Full-owner postverification remains unavailable"]
+  ]);
+  for (const [jobName, expectedStepName] of expectedStepNames) {
+    const steps = splitNamedSteps(jobs[jobName]);
+    assert.deepEqual(steps.map(({ name }) => name), [expectedStepName]);
+    assert.deepEqual(directKeys(steps[0].source, 8), ["shell", "run"]);
+    assert.match(steps[0].source, /^        shell: bash$/m);
+  }
+
   assert.match(jobs["topology-preflight"], /^    runs-on: ubuntu-24\.04$/m);
   assert.match(jobs["topology-preflight"], /^    timeout-minutes: 1$/m);
   assert.match(jobs["topology-preflight"], /^    permissions: \{\}$/m);
@@ -120,6 +157,12 @@ function assertClosedPublicationWorkflow(workflow, { onAccepted = () => {} } = {
   assert.doesNotMatch(workflow, /(?:ssh|scp|rsync|systemctl|provider|vultr|deploy)/i);
   onAccepted();
   return jobs;
+}
+
+function assertClosedPublicationWorkflow(workflow, options = {}) {
+  workflow = workflow.replace(/\r\n/g, "\n");
+  assert.equal(sha256Hex(workflow), EXPECTED_WORKFLOW_SHA256);
+  return assertPublicationWorkflowSemantics(workflow, options);
 }
 
 function simulateDispatch(workflow) {
@@ -202,11 +245,23 @@ test("raw topology faults fail before publication eligibility", () => {
       "      - name: Stop before any authority",
       "      - name: Hidden command before stop\n        run: node hidden-command.mjs\n\n      - name: Stop before any authority"
     ),
+    workflow.replace(
+      "      - name: Stop before any authority\n        shell: bash",
+      "      - name: Stop before any authority\n        shell: bash -c \"exit 0\" {0}"
+    ),
+    workflow.replace(
+      "      - name: Owner remains unavailable after topology review\n        shell: bash",
+      "      - name: Owner remains unavailable after topology review\n        shell: bash -c \"exit 0\" {0}"
+    ),
+    workflow.replace(
+      "      - name: Full-owner postverification remains unavailable\n        shell: bash",
+      "      - name: Full-owner postverification remains unavailable\n        shell: bash -c \"exit 0\" {0}"
+    ),
     workflow.replace(STOP, "owner_available")
   ];
   for (const [index, fault] of faults.entries()) {
     let accepted = 0;
-    assert.throws(() => assertClosedPublicationWorkflow(fault, {
+    assert.throws(() => assertPublicationWorkflowSemantics(fault, {
       onAccepted() { accepted += 1; }
     }), undefined, `fault ${index} must be rejected`);
     assert.equal(accepted, 0);
