@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const WORKFLOW = resolve(ROOT, ".github/workflows/control-plane-foundation-toolchain-publish.yml");
 const STOP = "full_sigstore_owner_topology_unapproved";
-const EXPECTED_WORKFLOW_SHA256 = "9dbafe300ab5d932bc37b761091b3c1edbbe91d0efe968dcd2a3c20df2d148a8";
+const EXPECTED_WORKFLOW_SHA256 = "509dcc2defb83a961a79f689aced7de52e5bd3a6973978b740f0c676fb0e7d8a";
 
 function sha256Hex(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -53,12 +53,15 @@ function assertClosedPublicationWorkflow(workflow, { onAccepted = () => {} } = {
     "concurrency"
   ]);
   assert.match(workflow, /^name: Control Plane Foundation Toolchain Publication$/m);
-  assert.match(workflow, /^on: \[\]$/m);
+  assert.match(workflow, /^on:\r?\n  workflow_dispatch:/m);
   assert.doesNotMatch(
     workflow,
     /^\s*(?:"(?:push|pull_request|pull_request_target|schedule|repository_dispatch|workflow_call)"|'(?:push|pull_request|pull_request_target|schedule|repository_dispatch|workflow_call)'|push|pull_request|pull_request_target|schedule|repository_dispatch|workflow_call):/m
   );
   assert.equal((workflow.match(/^permissions: \{\}$/gm) ?? []).length, 1);
+  for (const input of ["source_commit", "inventory_run_id", "candidate_closure_sha256", "confirmation"]) {
+    assert.equal((workflow.match(new RegExp(`^      ${input}:$`, "gm")) ?? []).length, 1);
+  }
 
   const jobs = splitJobs(workflow);
   assert.deepEqual(directKeys(jobs["topology-preflight"], 4), [
@@ -161,7 +164,7 @@ function simulateDispatch(workflow) {
   });
 }
 
-test("Foundation publication is untriggered with one absolute-first no-token STOP and two default-success skips", () => {
+test("Foundation publication is manual-only with one absolute-first no-token STOP and two default-success skips", () => {
   const workflow = readFileSync(WORKFLOW, "utf8").replace(/\r\n/g, "\n");
   const result = simulateDispatch(workflow);
   assert.deepEqual(result.jobs, {
@@ -183,8 +186,8 @@ test("raw topology faults fail before publication eligibility", () => {
   const workflow = readFileSync(WORKFLOW, "utf8").replace(/\r\n/g, "\n");
   const faults = [
     workflow.replace("on:", "\"on\":"),
-    workflow.replace("on: []", "on:\n  workflow_dispatch:"),
-    workflow.replace("on: []", "on:\n  \"push\":"),
+    workflow.replace("  workflow_dispatch:", "  \"push\":\n  workflow_dispatch:"),
+    workflow.replace("  workflow_dispatch:", "  repository_dispatch:\n  workflow_dispatch:"),
     workflow.replace("jobs:\n  topology-preflight:", "jobs:\n  _unlisted:\n    runs-on: ubuntu-24.04\n  topology-preflight:"),
     workflow.replace("  topology-preflight:", "  topology-preflight: &guard"),
     workflow.replace("  publish:", "  publish:\n    <<: *guard"),

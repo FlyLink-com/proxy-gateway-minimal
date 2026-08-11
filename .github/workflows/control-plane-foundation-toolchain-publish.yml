@@ -1,6 +1,24 @@
 name: Control Plane Foundation Toolchain Publication
 
-on: []
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact PR-head commit from the reviewed v2 inventory run.
+        required: true
+        type: string
+      inventory_run_id:
+        description: Exact successful v2 inventory workflow run ID.
+        required: true
+        type: string
+      candidate_closure_sha256:
+        description: Exact reviewed v2 complete-closure digest.
+        required: true
+        type: string
+      confirmation:
+        description: Type publish Foundation toolchain lock
+        required: true
+        type: string
 
 permissions: {}
 
