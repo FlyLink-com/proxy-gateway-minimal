@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-07-31, Asia/Tokyo.
+Last updated: 2026-08-09, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,13 +8,14 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-07-26
+  last_verified_at: 2026-08-09
   production_authority: false
 ```
 
-Use this file as the first navigation point for project documentation. It
-classifies current source-of-truth docs, active runbooks, execution records,
-and compact archive pointers. It does not authorize production, AWS, DNS, Nginx,
+Use this file as the navigation index after completing the canonical entry
+sequence in `AGENTS.md`. It classifies current source-of-truth docs, active
+runbooks, execution records, and compact archive pointers. It does not authorize
+production, AWS, DNS, Nginx,
 HTTPS, deploy, secret, token, subscription URL, SQLite, or customer-data actions
 by itself.
 
@@ -75,51 +76,38 @@ release, deployment, runtime, or production authority.
 
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
-| `docs/OPERATIONS_PLANE_SOURCE_REALITY.md` | Exact source/test capability matrix for Operations, Admin, Wallet, Commerce, traffic projections, RBAC gaps, metrics, and audit. | Active source-only reconciliation for #561; no production authority. | Read before planning or implementing #557–#560 so existing source is not rebuilt. |
+| `docs/OPERATIONS_PLANE_SOURCE_REALITY.md` | Exact source/test capability and gap matrix for Operations, Admin, Wallet, Recharge/Payment, Commerce, Account Resource Authority, traffic projections, RBAC, metrics, and audit. | Active source-only reconciliation for #561 at the documented exact cutoff; no production authority. | Read before planning or implementing #557–#560 so existing source is extended instead of rebuilt. |
 | `docs/CURRENT_RELEASE_STATE.md` | Compact documented snapshot of each release unit, unresolved production lineage, and master-only capabilities after Version Management Baseline v1. | Active release-state entrypoint; dated repository evidence only, not live inventory or execution authority. | Read first when resuming the project, then verify live before any Risk A action. |
 | `docs/PROJECT_CONTEXT.md` | Compact current handoff, active blockers, documented production snapshot, validation baseline, and latest durable next-step context. | Active current-state handoff; not the full docs index or execution-history archive. | Read first when resuming the repo or before changing project direction, then use this index for detailed docs navigation and execution records. |
 | `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` | Current docs/status baseline for the Vultr Japan control plane and Vultr Japan/Singapore data-plane direction, with explicit no-mutation boundaries. | Active docs/status baseline; no execution authority and not a replacement for live inventory or execution records. | Read before aligning current project direction, preparing a new Risk A gate, or replacing stale Aliyun-current wording. |
 | `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md` | Current checkout, historical local paths, generated-runtime folders, README update rule, and re-import guardrails for keeping outdated material out of the active project. | Active repository hygiene boundary; no production, cloud, deploy, secret, runtime, or file-move authority by itself. | Read before using old checkouts, `docs/archive/`, `.worktrees/`, generated outputs, release packages, or previous execution artifacts as source material. |
 | `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md` | Current Git/docs closeout index after the July 8/9 focused PRs, local worktree cleanup, stale branch deletion, and remote head cleanup. | Active repo-hygiene index; no production, runtime, deploy, provider, credential, payment, or file-move authority by itself. | Read before deciding whether old carrier branches, local worktrees, or July 8 closeout notes still represent current Git state. |
 | `docs/FOUNDATION_FREEZE_2026_07_09.md` | Phase foundation freeze before the operating-lifecycle and AppsFlyer/attribution scale-up lanes. | Active phase-freeze boundary; no production, runtime, deploy, provider, credential, payment, AppsFlyer live, or file-move authority by itself. | Read before starting next-phase lifecycle, attribution, release/versioning, Admin/User Portal, or extension/plugin-boundary work. |
-| `RELEASE_MANIFEST.md` | Lightweight source, artifact, release-unit, deployment, and runtime-state model plus the current 10-PR release mapping. | Active traceability baseline; no deployment or runtime authority. | Read before assigning a release, building an artifact, promoting any unit, or inferring production state from `master`. |
-| `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md` | Dated map from the 10 latest merged PRs to capability labels, producers/consumers, prospective release units, `master` commits, and production evidence. | Active Phase 2 sequencing evidence; no deployment or runtime authority, and capability labels are not formal SemVer. | Read before opening the collector-error-provenance slice or claiming that a merged PR, artifact, deployment, and runtime state are equivalent. |
+| `RELEASE_MANIFEST.md` | Stable source, artifact, release-unit, deployment, and runtime-state model, with a dated source-governance boundary. | Active traceability baseline; no deployment or runtime authority. | Read before assigning a release, building an artifact, promoting any unit, or inferring production state from `master`. |
+| `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md` | Frozen 2026-07-09 map of the then-latest merged PRs to capability labels, producers/consumers, prospective release units, commits, and production evidence. | Historical sequencing snapshot; no current queue, deployment, or runtime authority, and capability labels are not formal SemVer. | Read only for July capability archaeology or when tracing why source, artifact, deployment, and runtime state were separated. |
 | `docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md` | Source-versus-production reconciliation for the July 8 frontend recovery, traffic-usage closeout carrier, stale PR closures, and archive queue. | Historical C-tier reconciliation evidence superseded as the current Git queue by `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`. | Read for the original July 8 carrier analysis and production/source mismatch background, not as the current PR queue. |
 | `docs/PR_CLOSEOUT_QUEUE_2026_07_08.md` | July 8 PR closeout queue after #394-#397 merged and #364/#381 were closed as superseded carrier branches. | Historical repo-only PR sequencing record superseded by `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`; no production, runtime, deploy, provider, credential, payment, or file-move authority by itself. | Read when tracing why #364/#381 were closed, not before starting new work from current `master`. |
 | `docs/RUNTIME_LANE_AUTHORITY.md` | Current versus staging versus historical runtime-lane authority boundary for Vultr Japan, Vultr Singapore, AWS staging, Aliyun records, canary records, retired nodes, and generated runtime packages. | Active runtime-lane authority index; no production, provider, runtime, deploy, secret, channel, or subscription authority by itself. | Read before importing old runtime notes, comparing node records, drafting a node/channel approval packet, or deciding whether a runtime lane is current authority. |
 
 ### Current Governance Cutoff
 
-The 2026-07-15 source snapshot is
-`master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`, after PRs #486-#492 and #494
-merged. It has 16 observed remote branches, two open Draft PRs (#476/#479), no
-open non-Draft PRs, and five open Issues (#437/#438/#439/#440/#475).
+The canonical exact source cutoff observed on 2026-08-09 is
+`master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`. The same inventory observed
+three open Draft PRs (#592-#594), no open non-Draft PR, and fifteen open Issues.
+These mutable counts are included only to explain the cutoff; refresh live
+GitHub state instead of treating this index as queue authority.
 
-Issue #437 was reopened by Risk C receipt `issuecomment-4976074286` because PR
-#482 had been recorded as its closer despite explicitly denying resolution.
-Draft PR #479 remains at `58ccdccc6af5ed120541f03d2713857e4a9a8a65`,
-behind `master`, with zero unresolved non-outdated review threads. Gate
-`pr479-forward-pending-rollback-obligation-remediation-20260715-003` was
-approved by `issuecomment-4979572712` and terminated blocked at `fresh_binding`
-by `issuecomment-4979585832`; that approval is consumed and nonreusable, no
-later durable Gate exists, and PR #479 is not deployed. Successful checks on
-that head are not current-`master` integration evidence.
+Release Artifact run `31267179669` successfully built the source,
+Portal, and Admin jobs at that exact commit. Its source artifact is
+`proxy-gateway-02fc63a3f949` and was observed to expire on 2026-08-22. This is
+short-lived build evidence only. Open Draft PRs are excluded from the baseline.
 
-PR #483 added docs-only/code routing and always-run diff checking while keeping
-one stable required `Validate` context. Exact-`master` runs are CI
-`29418796398`, Release Artifact `29418796724`, and CodeQL
-`29418794902`/`29418794903`, all successful; Cloudflare workflow `29391680029`
-completed build and verification for `329eb282ef88e7ab41bee1252f22fe3570f7d3c8`
-with deploy skipped. Ruleset `18935716` strictly
-requires `Validate`, zero approvals, and no review-thread resolution. Six
-environments exist; only `artifact-publication` has a branch policy, and none
-has reviewer enforcement. The source-security snapshot is 0 open code-scanning
-alerts, 0 open Dependabot alerts, and 0 open secret-scanning alerts; successful
-CodeQL execution remains source-analysis evidence rather than production proof.
-
-This source-only reconciliation performs no production change or fresh live
-production inventory. The production/runtime evidence cutoff remains dated at
-`2026-07-11T13:03:40Z`.
+For current capability/gap language, read
+`docs/OPERATIONS_PLANE_SOURCE_REALITY.md`; for release and production
+boundaries, read `docs/CURRENT_RELEASE_STATE.md` and `RELEASE_MANIFEST.md`.
+This Risk C reconciliation did not refresh live production, provider settings,
+repository rulesets, environment protections, or security-alert counts and
+makes no current claim about them.
 
 ## Goal Documents
 
@@ -170,11 +158,12 @@ production inventory. The production/runtime evidence cutoff remains dated at
 | `docs/USER_PORTAL_HUMAN_CHALLENGE_DESIGN.md` | Backend human-verification design for customer portal challenge issuance, verification, expiry, one-time use, and future CAPTCHA provider upgrade. | Active design contract; no provider secret, production DB migration, public portal exposure, or subscription issuance authority. | Read before moving anti-bot checks from frontend preview logic into backend `/api/portal/*` routes or adding Turnstile/hCaptcha/reCAPTCHA. |
 | `docs/USER_PORTAL_FLOW.md` | Customer portal page outline and lifecycle baseline for monthly/yearly package application, authorization-contact collection, active subscription refresh, support handoff, and profile facts. | Active frontend/product-flow review baseline; no production deployment, payment, DB migration, or subscription issuance authority. | Read before changing user portal copy, navigation, lifecycle labels, package behavior, contact modal behavior, support handoff, or profile/history display. |
 | `docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md` | Account resource delivery lifecycle that separates account/entitlement/order authority from delivery generations and rendered subscription output, and deprecates the old link-centric model. | Active architecture boundary; repo code is B, production runtime activation and legacy-token retirement remain A. | Read before changing portal refresh/reissue behavior, delivery-generation summaries, artifact rotation, runtime material rotation, or legacy query-token retirement planning. |
+| `docs/ACCOUNT_RESOURCE_AUTHORITY_LIFECYCLE.md` | Exact Account Resource Authority lifecycle binding request, entitlement, issued link/version, and immutable Checkout Quote provenance without collapsing them into the current active lifecycle row. | Active source/migration/default-off architecture contract; no production schema apply, assignment, Commerce activation, subscription issuance, or customer-data authority. | Read before changing Commerce-to-resource binding, authority selection, Quote provenance, reissue/version semantics, or production assignment planning. |
 | `docs/COMMERCIAL_MODEL_V1.md` | Commercial Model v1 for primary entitlement packages plus the separate target closed-loop Coins layer and its recharge, product-order, wallet, and fulfillment boundaries. | Active commercial-model baseline; target Coins wording is not current backend or production availability and grants no pricing, provider, runtime, schema, credential, or refund authority. | Read before changing packages, entitlement semantics, Coins domains, quota behavior, renewal, cancellation, recharge, product-order, or fulfillment wording. |
-| `docs/BILLING_RECHARGE_CONTRACT.md` | Legacy provider-neutral traffic-topup helper boundary, separated from the target durable recharge-to-`paid_coins` and product hold/capture flows. | Active repo-only compatibility contract; not the Provider Core Registry, Coins wallet, verified provider integration, production DB migration, or fulfillment authority. | Read before using the legacy traffic-credit helper or planning separate durable payment, wallet, product-order, reversal, or fulfillment work. |
+| `docs/BILLING_RECHARGE_CONTRACT.md` | Boundary between the legacy traffic-topup compatibility helper and the durable provider-neutral Recharge/Payment store, coordinator, Portal routes, `paid_coins` settlement, and separate product hold/capture flow now present in source. | Active source/test/migration contract; no production DB apply, provider activation, refund/reconciliation execution, Wallet runtime, or fulfillment authority. | Read before changing either legacy top-up behavior or durable Recharge/Payment, Wallet settlement, product-order, reversal, or fulfillment flows. |
 | `docs/PARTNER_ATTRIBUTION_SETTLEMENT_ARCHITECTURE.md` | Provider-agnostic partner attribution and settlement architecture covering partner/campaign source evidence, attribution touch ledger, backend-confirmed settlement candidates, disabled/dry-run provider adapters such as AppsFlyer, Admin reporting, privacy rules, and A-tier activation gates. | Active architecture and task-line baseline; no AppsFlyer credentials, provider postbacks, live Web/S2S events, production schema migration, public campaign launch, partner payout, settlement execution, secret, subscription URL, credential, or customer-data authority. | Read before adding attribution capture, partner/campaign models, AppsFlyer or UTM adapters, settlement candidate logic, partner reporting, fraud/reconciliation guardrails, or production partner-link activation. |
-| `docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md` | Repo-only plan for per-order traffic usage samples, rollups, quota decisions, controlled disable/revoke, and subscription header backfill. | Active implementation plan; no production, AWS, Vultr, Aliyun, runtime, payment, DB migration, or subscription issuance authority by itself. | Read before implementing usage ledgers, Mihomo usage collectors, quota enforcement, abuse controls, or traffic-aware subscription headers. |
-| `docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md` | Canonical source-only payment Adapter template plus an independent safe environment-summary compatibility helper. | Unregistered, `unverified`, and fully disabled; no real protocol, provider capability, callback, refund, reconciliation, Store/schema, wallet, runtime, or production authority. | Read before verifying a provider contract, enabling Adapter capabilities, adding payment credentials, or planning callback, refund, reconciliation, or durable payment storage work. |
+| `docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md` | Repo-only plan for per-order traffic usage samples, rollups, quota decisions, controlled disable/revoke, and subscription header backfill; traffic evidence is not the immutable financial Coin Ledger. | Active implementation plan; no production, AWS, Vultr, Aliyun, runtime, payment, DB migration, or subscription issuance authority by itself. | Read before implementing usage collectors, traffic rollups, quota enforcement, abuse controls, or traffic-aware subscription headers. |
+| `docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md` | Canonical source-only Provider Core/Adapter contract covering the disabled template, PayPal sandbox, and XSD/ChaoJiPay source runtimes with single-active/default-off composition. | Source/test evidence only; no live credential, callback, provider activation, refund/reconciliation execution, production Store/schema, Wallet runtime, or production authority. | Read before changing provider composition, verifying a provider contract, enabling an Adapter, adding payment credentials, or planning callbacks, refunds, reconciliation, or production storage. |
 | `docs/superpowers/specs/2026-07-24-payment-provider-adapter-v1-design.md` | Provider Core V1 design for the canonical contract, three disabled named Adapter identities, and synthetic PayPal/XSD evidence boundaries. | Source-only design with no execution or production authority; Risk A Payment Store/schema, provider credentials/calls, callback registration, wallet settlement, Portal/Admin UI, runtime activation, and deployment remain deferred. | Read before changing Provider Core, validating a provider, or proposing a separately gated payment vertical slice. |
 | `docs/superpowers/plans/2026-07-24-payment-provider-adapter-v1-phase1.md` | Provider Core V1 Phase 1 source/test implementation plan. | Source-only plan with no execution or production authority; Risk A Payment Store/schema, provider credentials/calls, callback registration, wallet settlement, Portal/Admin UI, runtime activation, and deployment remain deferred. | Read before reviewing Phase 1 source boundaries or planning a separately approved follow-on. |
 | `docs/ADMIN_UI_LEGACY_ARCHIVE.md` | Legacy Admin UI archive decision: the existing `admin/` app remains a local protected reference/testing surface, but is no longer the future user/operator/product UI baseline. | Active archive boundary; docs-only and no execution authority. | Read before polishing, extending, deleting, replacing, or publicly exposing the old Admin UI. |

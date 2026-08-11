@@ -1,6 +1,6 @@
 # Admin Console Rebuild Baseline
 
-Last updated: 2026-06-16, America/Los_Angeles.
+Last updated: 2026-08-09, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-42, GCC-45, GCC-48, GCC-50
@@ -10,7 +10,9 @@ Last updated: 2026-06-16, America/Los_Angeles.
 >   Nginx, systemd, DB, runtime, auth model, schema/migration, token,
 >   credential, subscription URL, or customer-data actions
 
-## Source-Reality Addendum (2026-07-30)
+## Source-Reality Addendum (2026-08-09)
+
+Source evidence cutoff: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`.
 
 This file remains the visual and product-direction baseline; it is not the
 current implementation inventory. Since this baseline was written, the
@@ -21,9 +23,13 @@ traffic projection have advanced in source.
 Read `docs/OPERATIONS_PLANE_SOURCE_REALITY.md` before using any
 `Needs ... review`, `planned`, or `future` label below as an implementation
 claim. Current work must reconcile existing source and extend only proven gaps.
-The full RBAC/capability boundary, backend-owned commercial metrics, and general
-Admin action audit remain incomplete; source existence still does not prove
-deployment or current-live state.
+Backend read roles/capabilities and bounded Overview enforcement now exist
+behind a default-off flag; full route coverage, mutation authority,
+backend-owned commercial metrics, and general Admin action audit remain
+incomplete. The Admin frontend does not yet integrate the backend auth route
+family, and `Usage & Channels` does not yet consume the protected collector
+projection. Source existence still does not prove deployment or current-live
+state.
 
 This document records the first New Admin Console rebuild baseline. The
 existing `admin/` app is implementation material and a protected local testing
@@ -165,7 +171,7 @@ The first implementation slice therefore uses:
 - a selectable `监管案件` queue;
 - next-action routing to `Accounts & Resources`, `Usage & Channels`, and future
   `Audit & Cases`;
-- detailed user/resource tables, traffic/channel ledgers, and object history
+- detailed user/resource tables, traffic usage/channel evidence, and object history
   stay on their owner pages instead of the Overview page;
 - locked navigation slots for audit/work orders, platform development, and
   system settings.
@@ -372,7 +378,7 @@ This slice is complete only when:
 - planned navigation slots are visibly gated and non-clickable;
 - the first screen shows health metrics, selectable cases, and routing to
   user/resource supervision, traffic/channel supervision, and future audit
-  history without duplicating their detailed ledgers;
+  history without duplicating their detailed traffic/account evidence views;
 - risk filters, freshness labels, anomaly status, receipt status, and usage
   meters are driven by existing safe Admin API summaries;
 - tests assert the new shell semantics and no destructive Admin action button
