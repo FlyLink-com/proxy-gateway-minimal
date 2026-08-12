@@ -3,7 +3,7 @@
 ```yaml
 phase: P2-S0 preparation
 previous_phase: P2-D
-status: P2-S0 Gate published / Route A BLOCKED_INPUT / Route B design Gate published / FX2-E Gate preparation current / P2-S not started
+status: P2-S0 Gate published / Route A BLOCKED_INPUT / Route B design and FX2-E Gates published not granted / FX2-E execution-request packet not prepared / P2-S not started
 risk_class: A
 risk_state: controlled
 record_state: repository_gate_definition
@@ -41,11 +41,16 @@ raw byte was read and no workflow or GitHub write occurred. This closes the
 current Route A evidence snapshot without rewriting it as global absence.
 
 PR #609 published the docs-only Route B generation-design Gate at merge
-`a413f636267a3b0fcfc65f7b911fa50f6cd95ea4` without granting it. The
-current work item is the child FX2-E protected-Environment Settings Gate. It may
-define a future Settings mutation, but it cannot perform that mutation, create
-source, grant permissions, dispatch a workflow, generate a fixture, or fill this
-parent's target-fixture input.
+`a413f636267a3b0fcfc65f7b911fa50f6cd95ea4` without granting it. PR #610 then
+published the child FX2-E protected-Environment Settings Gate at merge
+`015ad0b74851b54ebdfbef9a882471fb048b1f8f`, also without granting it. The
+current docs-only amendment removes circular preapproval requirements, records
+redacted role declarations, and keeps the HMAC, receipt, audit deadline/polling,
+identity-safe Environment snapshot, and durable single-consumer contracts
+explicitly unbound. It also cannot bind its own future merge/latest Gate blob.
+No executable request packet exists. It cannot perform a Settings
+mutation, create source, grant permissions, dispatch a workflow, generate a
+fixture, or fill this parent's target-fixture input.
 
 ## Milestone Record
 
@@ -57,7 +62,8 @@ parent's target-fixture input.
 | P2-S0-FX1 Route A Gate publication | Complete; PR #608 merged at `6d6a0a19`; Gate not granted |
 | Route A preflight | Terminal snapshot `BLOCKED_INPUT`; 1/14 selectors filled; no raw-byte read or write |
 | P2-S0-FX2 Route B design Gate | Published through PR #609 at `a413f636`; decision not granted; current output `BLOCKED_INPUT` |
-| P2-S0-FX2-E protected Environment Settings Gate | Docs-only preparation current; Settings mutation not authorized |
+| P2-S0-FX2-E protected Environment Settings Gate | Published through PR #610 at `015ad0b7`; not granted; Settings mutation not authorized |
+| FX2-E execution-request packet | Not prepared/requestable; post-amendment merge/Gate rebind and independent-reader session receipt still required |
 | Route B protected Environment Settings execution | Not started; separate exact Risk A approval/readback required before source merge |
 | Route B producer source | Not started; separate approval required |
 | Route B generation execution | Not started; separate one-shot approval required |
@@ -84,7 +90,8 @@ work.
 
 ## Current Authority
 
-The current authorization permits only preparation and review of the docs-only
+The current authorization permits only publication and review of this docs-only
+execution-request amendment to the already published
 [FX2-E protected-Environment Settings Gate](p2-s0-target-fixture-generation-environment-settings-gate.md).
 It does not permit the Settings mutation, source or workflow creation,
 dependency/Action selection, permission change, fixture acquisition or
@@ -261,13 +268,17 @@ PR #605 published this parent Gate without granting it. PR #608 published the
 Route A FX1 definition, and its completed preflight remains `BLOCKED_INPUT`.
 PR #609 published the
 [P2-S0-FX2 target-fixture-generation design Gate](p2-s0-target-fixture-generation-gate.md)
-without granting it. The next document is the
+without granting it. PR #610 published the
 [P2-S0-FX2-E protected-Environment Settings Gate](p2-s0-target-fixture-generation-environment-settings-gate.md).
-It grants no Settings, source, permission, generation, dispatch, or handoff
-authority.
+It remains not granted. This amendment only closes publication status and
+execution-request schema; after it merges, an exact rebind and independent
+review must first establish an immutable request packet. Only then may a
+separate exact Risk A Settings approval be requested. No current document
+grants Settings, source, permission, generation, dispatch, or handoff authority.
 
 Route B remains serial: publish the design Gate; publish the FX2-E definition;
-separately create/read back the dedicated protected Environment; separately
+publish this docs-only amendment; freeze/review a post-merge request packet;
+separately approve and create/read back the dedicated protected Environment; separately
 review and approve producer source;
 separately approve exactly one generation execution; merge a separately
 reviewed workflow-retirement PR and prove zero extra runs; and then separately

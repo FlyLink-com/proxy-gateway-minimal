@@ -1,7 +1,7 @@
 # Security Hardening Proposal: Unify Supply-Chain Authority Before Publication
 
 > Status:
-> - Type: Derived Topology Addendum proposal with Route A blocked, Route B design Gate published, and FX2-E Settings Gate preparation current
+> - Type: Derived Topology Addendum proposal with Route A blocked, Route B and FX2-E Gates published not granted, and FX2-E execution-request packet not prepared
 > - Risk: A
 > - Production authority: False
 > - Execution authority: None
@@ -15,10 +15,11 @@ trust in Artifact, or converting diagnostic observations into authority. PR
 P2-D docs-only governance loop. PR #605 published the P2-S0 Gate definition
 without granting it. PR #608 published the Route A child Gate; its later
 preflight retained `BLOCKED_INPUT` with only one of fourteen selectors filled.
-PR #609 published the Route B generation-design Gate without granting it. The
-FX2-E protected-Environment Settings Gate is now in docs-only preparation,
-P2-S has not started, and the candidate GitHub-private profile remains
-unselected. Option 1 remains active.
+  PR #609 published the Route B generation-design Gate without granting it. PR
+  #610 published the FX2-E protected-Environment Settings Gate, also without
+  granting it. Its docs-only execution-request amendment is current, its packet
+  is not yet prepared/requestable, P2-S has not started, and the candidate
+  GitHub-private profile remains unselected. Option 1 remains active.
 
 The four options are:
 
@@ -31,9 +32,9 @@ The four options are:
 4. **External verification broker** — replace the private in-process authority
    with a network service that issues signed, content-bound admissions.
 
-This proposal records the G0 selection, completed P2-D record, P2-S0/FX1/FX2
-Gate publication, Route A blocked preflight, and permission to prepare only the
-docs-only FX2-E Environment Settings Gate. It chooses no candidate-verifier
+This proposal records the G0 selection, completed P2-D record,
+P2-S0/FX1/FX2/FX2-E Gate publication, Route A blocked preflight, and permission
+to publish only the docs-only FX2-E execution-request amendment. It chooses no candidate-verifier
 package, Action version/full-SHA pin, owner path/API, trust snapshot, or
 implementation pin. It authorizes no producer source, fixture acquisition/
 download/generation, custody handoff, workflow permission change or dispatch,
@@ -75,8 +76,9 @@ evidence at `master@d7e2ab8364bb51f6e6dd8e7d499eb4d61a83635f`, the P2-S0 Gate
 publication at `master@046952402c5ded1412e58fe860c6eb9ad426ced5`, FX1
 publication and Route A preflight at
 `master@6d6a0a197e89706d4de591f0d8cbecaef18df2c1`, FX2 publication at
-`master@a413f636267a3b0fcfc65f7b911fa50f6cd95ea4`, the later FX2-E read-only
-preflight, current plan/repository eligibility, official Action/Environment
+`master@a413f636267a3b0fcfc65f7b911fa50f6cd95ea4`, FX2-E publication at
+`master@015ad0b74851b54ebdfbef9a882471fb048b1f8f`, the historical and fresh
+FX2-E read-only preflights, current plan/repository eligibility, official Action/Environment
 behavior, and open producer conflicts. The most
 influential facts are the canonical corrected-ordering hold, the merged dormant
 bootstrap, the absent current-source producer/fixture evidence, the currently
@@ -108,6 +110,8 @@ transparency model.
 | `E19` | [Open producer-conflict snapshot](../context.md#route-b-eligibility-and-conflict-summary) | Draft PR #594 is a competing attestation/Release publisher and blocks positive Route B source readiness until closed without merge; Draft PR #606 requires rebind if merged. |
 | `E20` | [Merged PR #609 P2-S0-FX2 publication summary](../context.md#route-b-design-gate-publication-summary) | The Route B design Gate was published with verified provenance and successful checks, but granted no Settings, source, generation, custody, or P2-S authority. |
 | `E21` | [FX2-E protected-Environment preflight](../context.md#fx2-e-environment-settings-gate-summary) | The dedicated Environment is absent, producer references are zero, Actions retention is `90/90`, and exact identity/independent-human and Settings execution receipts remain unfilled. |
+| `E22` | [Merged PR #610 FX2-E Gate publication](../context.md#evidence-inventory) | The six-path FX2-E Gate was published with successful checks/post-merge runs and no dispatch, Deployment, GitHub Release, or Settings authority. |
+| `E23` | [FX2-E post-publication live rebind](../context.md#current-fx2-e-execution-request-context) | Exact master now contains the published Gate; the target Environment remains absent and workflow, Environment-name-set, ruleset, and retention baselines are rebound without a write. The identity-safe Environment-configuration collection and amendment post-merge rebind remain unbound. |
 
 ## Current Design And Failure Mode
 
@@ -303,14 +307,21 @@ subject, GitHub Attestations API write, Actions-artifact custody, redacted
 generation manifest, and mandatory Environment-plus-retirement lifecycle. Its
 Gate decision remains not granted.
 
-The current docs-only work item is the
+PR #610 published the
 [P2-S0-FX2-E protected-Environment Settings Gate](../gates/p2-s0-target-fixture-generation-environment-settings-gate.md).
-It freezes a future exact custom `master/type=branch` Environment, one
+It remains not granted. The current docs-only amendment records its publication,
+removes circular preapproval requirements, and binds redacted role and
+independent-human declarations while leaving the identity-safe Environment
+snapshot, HMAC/key lifecycle, receipt schemas, durable single-consumer surface,
+and audit deadline/polling contract explicitly unbound. It freezes a future exact custom
+`master/type=branch` Environment, one
 independent-human User reviewer, self-review prevention,
 `can_admins_bypass=false`, zero secrets/variables/custom protection Apps/
 Deployments, unchanged repository Actions retention, the current three static
 Environment bindings with zero dynamic selectors, an independent after-reader,
-and an expected actor/target/window platform audit receipt. It does not perform a
+  and an expected actor/target/window platform audit receipt. The amendment
+  cannot bind its own future merge/latest Gate blob, so the executable request
+  packet remains unprepared and current output remains `BLOCKED_INPUT`. It does not perform a
 Settings change, select an Action full-SHA pin, create or merge workflow source,
 change permissions, dispatch or rerun a workflow, download evidence, generate
 or hand off a fixture, or run P2-S. Draft PR #594 must be closed without merge
@@ -336,7 +347,8 @@ requires a separate Settings Gate. A future source merge may return only
 `SOURCE_PRESENT_FOR_SEPARATE_GENERATION_GATE`; a successful run records only
 `GENERATED_FIXTURE_PENDING_MANDATORY_SOURCE_RETIREMENT`. The final
 `GENERATED_FIXTURE_READY_FOR_SEPARATE_CUSTODY_HANDOFF` output is unavailable
-until retirement and all-object readback close. None of those outputs authorizes
+until retirement and object-specific readback/classification close; no
+repository-wide status or attestation enumeration is assumed. None of those outputs authorizes
 the next step. Generated evidence must retain `origin_route: route_b_generated`
 and can never be relabeled as Route A existing/historical custody.
 
@@ -610,9 +622,9 @@ missing evidence.
 | `P2-S0` | Feasibility Gate package | **PUBLISHED — NOT GRANTED.** PR #605 published the Gate definition at `04695240`; missing existing-fixture evidence keeps current output `BLOCKED_INPUT`. No acquisition, fixture, or experiment authority. |
 | `P2-S0-FX1` | Route A target-fixture-acquisition Gate | **PUBLISHED — ROUTE A BLOCKED_INPUT.** PR #608 published the Gate at `6d6a0a19`; its read-only preflight closed one of fourteen selectors and established no repo-visible or external custody source. This is not a global nonexistence claim. |
 | `P2-S0-FX2` | Route B target-fixture-generation design Gate | **PUBLISHED — NOT GRANTED.** PR #609 published the future producer, exactly-one subject, persistent external writes, custody, and lifecycle model at `a413f636`; current output remains `BLOCKED_INPUT`. |
-| `P2-S0-FX2-E` | Route B protected-Environment Settings Gate | **CURRENT — DOCS-ONLY PREPARATION; SETTINGS NOT AUTHORIZED.** Publish an exact fail-closed contract for a dedicated Environment with one independent-human User reviewer, self-review prevention, custom exact `master/type=branch`, `can_admins_bypass=false`, zero secrets/variables/custom protection Apps/Deployments, unchanged Actions retention, and independent after-readback. A later Settings mutation needs separate Risk A approval. |
+| `P2-S0-FX2-E` | Route B protected-Environment Settings Gate | **PUBLISHED — NOT GRANTED; EXECUTION-REQUEST PACKET NOT PREPARED.** PR #610 published the fail-closed contract at `015ad0b7`. This docs-only amendment records publication, removes circular preapproval requirements, and binds only redacted role declarations. After its merge, an exact master/tree/latest-Gate rebind plus identity-safe snapshot, HMAC/key, receipt, durable-consumption, audit-window/polling, and independent-reader inputs must close an immutable packet before a separate Risk A Settings approval may be requested. |
 | `P2-S0-FX2-S` | Route B producer source review/merge | **NOT AUTHORIZED.** Close PR #594 without merge, rebind exact master/open conflicts/Environment receipt, select independently reviewed immutable Action pins, add only bounded workflow/test source, and read back expected PR/merge automatic runs plus ordinary artifacts before stopping at `SOURCE_PRESENT_FOR_SEPARATE_GENERATION_GATE`. |
-| `P2-S0-FX2-G` | Route B one-shot generation execution | **NOT AUTHORIZED.** Separate exact-SHA approval, `deployment: false`, one dispatch/attempt/subject/attestation, bounded run/job/check/log/audit/Environment-review/API/artifact objects, zero Deployment/status objects, monitoring, and all-object readback. Success remains `GENERATED_FIXTURE_PENDING_MANDATORY_SOURCE_RETIREMENT`. |
+| `P2-S0-FX2-G` | Route B one-shot generation execution | **NOT AUTHORIZED.** Separate exact-SHA approval, `deployment: false`, one dispatch/attempt/subject/attestation, bounded run/job/check/log/audit/Environment-review/API/artifact objects, direct `deployments=[]` readback with zero target-associated status children inferred from the absent parent, and object-specific readback. No repository-wide DeploymentStatus or attestation enumeration is claimed. Success remains `GENERATED_FIXTURE_PENDING_MANDATORY_SOURCE_RETIREMENT`. |
 | `P2-S0-FX2-X` | Route B workflow retirement | **NOT AUTHORIZED.** After every consumed run regardless of outcome, merge a separately reviewed source-retirement PR, read back its expected automatic runs/ordinary artifacts, prove zero extra Route B runs/attempts, and record every persistent object as eligible or ineligible history. Only successful generation plus this closeout may yield `GENERATED_FIXTURE_READY_FOR_SEPARATE_CUSTODY_HANDOFF`. API disable or deletion is a different external-write/destructive Gate. |
 | `P2-S0-FX2-C` | Route B read-only custody handoff | **NOT AUTHORIZED.** Separately retrieve exact subject, bundle, trust/timestamp material and generation manifest by digest; preserve `origin_route: route_b_generated`; no generation, rerun, deletion, or P2-S authority. |
 | `P2-S0-R` | Parent P2-S0 reevaluation | **NOT AUTHORIZED.** Close all eight frozen input classes, including the exact offline official-verifier oracle, and independently review the resulting decision. Online generation/verification success cannot substitute for that oracle. |
@@ -690,8 +702,8 @@ fixture, or verifier security properties.
 
 ## Implementation Work Packages
 
-This turn records P2-D complete, P2-S0/FX1/FX2 published, and Route A blocked,
-and authorizes only preparation of the docs-only FX2-E Environment Settings Gate
+This turn records P2-D complete, P2-S0/FX1/FX2/FX2-E published, and Route A
+blocked, and authorizes only the docs-only FX2-E execution-request amendment
 above. It does not authorize an Environment mutation, a producer implementation
 plan, an Action pin, workflow/test source, permissions, acquisition/download/generation or
 custody handoff, dispatch/rerun, P2-S, another dependency, Release, deployment,
@@ -710,10 +722,14 @@ A partially created Environment is
 readback proves custom mode with zero branch policies and zero consumers,
 secrets, variables, Apps, Deployments, runs, or unexpected writes. Every broader
 or ambiguous state is `NO_GO_OPTION1`; audit delay is pending rather than
-positive closeout.
+positive closeout, and positive output waits for the bound post-deadline full
+audit sweep.
 A source or retirement merge also triggers expected repository automation and
 ordinary Actions artifacts; each Gate must bind and read those objects back and
-prove zero unexpected GitHub Release, Deployment, fixture attestation, or run.
+directly observe zero unexpected GitHub Release, target Deployment, or producer
+run; only the exact source/retirement activity's no-fixture-attestation result
+may be inferred from zero producer run/subject plus the frozen automatic-trigger
+and allowed-write/readback surface, never from a repository-wide enumeration.
 A future generated attestation is a persistent GitHub object: a failed later
 step records it and every created run/job/check/log/audit/Environment-review/
 artifact object as ineligible history. API disable or deletion is a separate external-
@@ -743,9 +759,13 @@ owner boundary, or current PR topology has materially changed.
 
 - Can a future custodian establish a historical Route A fixture under a
   superseding exact Gate, or is Route B the only viable evidence source?
-- Which exact Settings operator, future dispatch actor, independent-human User
-  reviewer, identity-record digests, execution window, and approval receipt may
-  consume the frozen FX2-E Environment contract?
+- After this amendment merges, what exact merge/tree/latest-Gate binding,
+  independent-reader session receipt, UTC execution window, immutable request-
+  envelope digest, and separate approval receipt may consume the frozen FX2-E
+  Environment contract? Only the redacted role relationship and human-
+  independence declaration are bound; all identity and PUT-body HMAC
+  commitments remain `null` until fresh capability and controlled-packet
+  revalidation.
 - What exact source-retirement scope and no-extra-run readback closes the
   callable workflow before custody, while leaving Environment mutation or
   deletion to a separate Settings Gate?

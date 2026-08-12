@@ -12,17 +12,17 @@
   },
   "assessment": {
     "outcome": "opportunities_identified",
-    "summary": "G0 selects the single in-repository owner as the topology direction. P2-D completed at PR #603, PR #605 published the parent P2-S0 Gate, PR #608 published the Route A acquisition Gate, and PR #609 published the Route B generation-design Gate without granting any of them. Route A preflight remains BLOCKED_INPUT, FX2-E Environment Settings Gate preparation is current, and P2-S has not started. Option 1 remains active, and no Settings mutation, source, generation, custody, experiment, profile, implementation, or external-Gate authority is granted."
+    "summary": "G0 selects the single in-repository owner as the topology direction. P2-D completed at PR #603; PR #605 published the parent P2-S0 Gate; PR #608 published the Route A acquisition Gate; PR #609 published the Route B generation-design Gate; and PR #610 published the FX2-E protected-Environment Gate without granting any of them. Route A preflight remains BLOCKED_INPUT, the FX2-E execution-request packet is not prepared or requestable, and P2-S has not started. Option 1 remains active, and no Settings mutation, source, generation, custody, experiment, profile, implementation, or external-Gate authority is granted."
   },
   "phaseRecord": {
-    "phase": "P2-S0-FX2-E protected-Environment Settings Gate preparation",
-    "previousPhase": "P2-S0-FX2 Route B generation-design Gate publication",
-    "status": "P2-S0 Gate published / Route A BLOCKED_INPUT / Route B design Gate published / FX2-E Gate preparation current / P2-S not started",
-    "risk": "controlled_docs_only_preparation",
+    "phase": "P2-S0-FX2-E execution-request amendment",
+    "previousPhase": "P2-S0-FX2-E protected-Environment Gate publication through PR #610",
+    "status": "P2-S0 Gate published / Route A BLOCKED_INPUT / Route B design and FX2-E Gates published not granted / FX2-E execution-request packet not prepared / P2-S not started",
+    "risk": "controlled_docs_only_amendment",
     "overallProgressEstimate": {
       "lowerPercent": 50,
       "upperPercent": 60,
-      "basis": "governance-weighted planning estimate after FX2 design publication and FX2-E Gate preparation; no Settings execution, fixture, source, generation, custody, or feasibility credit",
+      "basis": "governance-weighted planning estimate after FX2 and FX2-E Gate publication plus docs-only request-schema closeout; no Settings execution, fixture, source, generation, custody, or feasibility credit",
       "gateEffect": "none"
     }
   },
@@ -209,6 +209,57 @@
     "githubWritePerformed": false,
     "sourceEvidenceCollectionUnchanged": true
   },
+  "routeBEnvironmentSettingsGatePublicationEvidence": {
+    "phase": "P2-S0-FX2-E protected-Environment Gate publication",
+    "evidenceId": "E22",
+    "kind": "redacted_json_compact",
+    "sha256": "d8568910422b2cece8caf1c60faf69efbd32ac3a0ef093fe9200beb770481924",
+    "repositoryRevision": "015ad0b74851b54ebdfbef9a882471fb048b1f8f",
+    "baseRevision": "a413f636267a3b0fcfc65f7b911fa50f6cd95ea4",
+    "approvedHeadRevision": "d27be502560c9992170e12393d1decf1013d9882",
+    "mergeTree": "09b28a5eb3422c88ceaf466554139a34a7b5199e",
+    "approvedHeadTree": "09b28a5eb3422c88ceaf466554139a34a7b5199e",
+    "changedPathCount": 6,
+    "changedPathsSha256": "264cdc7dbfa275721c3bac721e18b0f2109de07f3700d9599f5e95848f3af3cd",
+    "unresolvedReviewThreadCount": 0,
+    "sourceEvidenceCollectionUnchanged": true,
+    "gateGranted": false,
+    "settingsExecutionAuthorized": false
+  },
+  "routeBEnvironmentSettingsLiveRebindEvidence": {
+    "phase": "P2-S0-FX2-E post-publication read-only rebind",
+    "evidenceId": "E23",
+    "kind": "redacted_json_compact",
+    "sha256": "87f2cd8a8d78abd9774fb8cc098293ef614ef2ef8a34f1cf357e956796cf6484",
+    "capturedAt": "2026-08-12T02:40:22Z",
+    "repositoryRevision": "015ad0b74851b54ebdfbef9a882471fb048b1f8f",
+    "repositoryTree": "09b28a5eb3422c88ceaf466554139a34a7b5199e",
+    "publishedGateBlob": "2003f51b925a78ab942fe6f1ef8dd8df61cdc7ad",
+    "publishedGateBytesSha256": "232deac71a99ba9e56402604445b3bc680718221914cbb32b3b36a4bb51097b0",
+    "workflowTree": "1a95a55d23f6e7b2d5e60556b9934027b0974b09",
+    "workflowManifestSha256": "f7ad1217b14bd4488cdba16f8afde7c4377768e7d7a518ce8a832d4b0fe7d994",
+    "trackedWorkflowCount": 9,
+    "currentWorkflowEnvironmentBindingCount": 3,
+    "currentWorkflowDynamicEnvironmentSelectorCount": 0,
+    "targetEnvironmentWorkflowReferenceCount": 0,
+    "idTokenWriteReferenceCount": 0,
+    "attestationsWriteReferenceCount": 0,
+    "actionsAttestReferenceCount": 0,
+    "dedicatedEnvironmentState": "absent_http_404",
+    "dedicatedEnvironmentSubordinateState": "not_enumerable_parent_absent_http_404",
+    "dedicatedEnvironmentDeploymentCount": 0,
+    "existingEnvironmentCount": 6,
+    "environmentNameSetSha256": "fabc78eebd9c9a12ad067f5b37b25227245a86b6ae5d2e17999d4901accdf179",
+    "environmentConfigCollectionSha256": null,
+    "environmentConfigCollectionStatus": "unbound_identity_safe_profile_required",
+    "rulesetSummarySha256": "3041ba53741bdcaf1359ce2bc1f0bd271475f14db4a29b908c0560385ec0ebf9",
+    "repositoryArtifactAndLogRetentionDays": 90,
+    "repositoryArtifactAndLogRetentionMaximumAllowedDays": 90,
+    "openPrCount": 4,
+    "githubWritePerformed": false,
+    "sourceEvidenceCollectionUnchanged": true,
+    "executableRequestPacketEstablished": false
+  },
   "decision": {
     "gateId": "G0",
     "status": "selected_topology_direction_only",
@@ -242,7 +293,7 @@
     "candidateProfileId": "github_private_rfc3161_v1",
     "candidateProfileSelectionStatus": "unselected_pending_p2s_and_g0r",
     "applicability": "github_private_repository_attestations_only",
-    "operatorAuthorization": "docs_only_route_b_environment_settings_gate_preparation",
+    "operatorAuthorization": "docs_only_fx2e_execution_request_amendment",
     "profileDecisionAuthorized": false,
     "canonicalReconciliationAuthorized": false,
     "experimentDesignAuthorized": true,
@@ -255,6 +306,10 @@
     "targetFixtureGenerationDesignGatePreparationAuthorized": true,
     "targetFixtureGenerationDesignGatePublished": true,
     "targetFixtureEnvironmentSettingsGatePreparationAuthorized": true,
+    "targetFixtureEnvironmentSettingsGatePublished": true,
+    "targetFixtureEnvironmentSettingsExecutionRequestAmendmentAuthorized": true,
+    "targetFixtureEnvironmentSettingsExecutionRequestAmendmentRecorded": true,
+    "targetFixtureEnvironmentSettingsExecutionRequestPacketPrepared": false,
     "targetFixtureEnvironmentSettingsExecutionAuthorized": false,
     "targetFixtureProducerSourceAuthorized": false,
     "targetFixtureGenerationExecutionAuthorized": false,
@@ -319,7 +374,7 @@
       "currentOutput": "BLOCKED_INPUT",
       "packagePath": "gates/p2-s0-feasibility-gate.md",
       "publicationRevision": "046952402c5ded1412e58fe860c6eb9ad426ced5",
-      "currentAuthority": "docs_only_route_b_environment_settings_gate_preparation",
+      "currentAuthority": "docs_only_fx2e_execution_request_amendment",
       "requiredInputClassCount": 8,
       "requiredInputClassIds": [
         "source_manifest",
@@ -559,7 +614,7 @@
         "exact full-SHA Action pins and independent dependency review",
         "exact predicate type and shape",
         "mandatory deployment:false Environment binding and post-run source-retirement plan",
-        "exact expected PR-head and post-merge automatic workflow/check/artifact inventory for both source and retirement changes, with zero unexpected Release, Deployment, fixture attestation, or run",
+        "exact expected PR-head and post-merge automatic workflow/check/artifact inventory for both source and retirement changes, with directly observed zero unexpected Release, target Deployment, or producer run and a bounded conclusion that only the exact source/retirement activity produced no fixture attestation, inferred from zero producer run/subject plus the frozen automatic-trigger and allowed-write/readback surface rather than repository-wide enumeration",
         "bounded custody artifact name, retention, and readback contract"
       ],
       "mandatoryLifecycleSequence": [
@@ -570,7 +625,7 @@
         "zero-extra-run and all-persistent-object readback before positive custody handoff"
       ],
       "retryRule": "fresh execution Gate and fresh producer-source reintroduction after mandatory retirement; never reuse a consumed Gate or standing workflow",
-      "futureEnvironmentSettingsGateStatus": "docs_only_gate_preparation_execution_not_authorized",
+      "futureEnvironmentSettingsGateStatus": "published_not_granted_execution_request_packet_not_prepared",
       "futureSourceAndRetirementAutomationBoundary": {
         "refreshBeforeEachPr": true,
         "currentReviewSurfaces": [
@@ -599,7 +654,7 @@
       "generationAllowedPersistentObjects": [
         "one workflow run and first attempt",
         "three jobs with bounded check, log, annotation, and audit metadata",
-        "bounded protected-Environment reviewer approval and control metadata with deployment:false and zero Deployment or deployment-status objects",
+        "bounded protected-Environment reviewer approval and control metadata with deployment:false, direct deployments=[] readback, and zero target-associated DeploymentStatus children inferred from the absent parent",
         "one private GitHub Attestations API record",
         "one bounded Actions artifact containing subject bytes and redacted generation manifest"
       ],
@@ -640,20 +695,29 @@
     "targetFixtureEnvironmentSettingsGate": {
       "gateId": "P2-S0-FX2-E",
       "parentGateId": "P2-S0-FX2",
-      "status": "draft_prepared_for_review",
+      "status": "published_not_granted_execution_request_packet_not_prepared",
       "gateDecision": "not_granted",
-      "currentAuthority": "docs_only_gate_preparation",
+      "currentAuthority": "docs_only_fx2e_execution_request_amendment",
       "currentOutput": "BLOCKED_INPUT",
       "packagePath": "gates/p2-s0-target-fixture-generation-environment-settings-gate.md",
       "designPublicationEvidenceId": "E20",
       "preflightEvidenceId": "E21",
-      "sourceBinding": {
+      "publicationEvidenceId": "E22",
+      "liveRebindEvidenceId": "E23",
+      "initialPublicationBinding": {
+        "revision": "015ad0b74851b54ebdfbef9a882471fb048b1f8f",
+        "tree": "09b28a5eb3422c88ceaf466554139a34a7b5199e",
+        "approvedHeadRevision": "d27be502560c9992170e12393d1decf1013d9882",
+        "gateBlob": "2003f51b925a78ab942fe6f1ef8dd8df61cdc7ad",
+        "gateBytesSha256": "232deac71a99ba9e56402604445b3bc680718221914cbb32b3b36a4bb51097b0"
+      },
+      "historicalPreparationBinding": {
         "revision": "a413f636267a3b0fcfc65f7b911fa50f6cd95ea4",
         "tree": "488dfff3ee29e5e70b9b23c1cf226119d06f063f",
         "workflowTree": "1a95a55d23f6e7b2d5e60556b9934027b0974b09",
         "trackedWorkflowCount": 9
       },
-      "preflight": {
+      "historicalPreflight": {
         "capturedAt": "2026-08-11T20:03:23Z",
         "targetEnvironment": "p2-s0-route-b-fixture-generation",
         "targetEnvironmentState": "absent_http_404",
@@ -674,18 +738,154 @@
         "distinctHumanOperatorStatus": "not_established",
         "githubWritePerformed": false
       },
+      "postPublicationLiveRebind": {
+        "capturedAt": "2026-08-12T02:40:22Z",
+        "revision": "015ad0b74851b54ebdfbef9a882471fb048b1f8f",
+        "tree": "09b28a5eb3422c88ceaf466554139a34a7b5199e",
+        "workflowTree": "1a95a55d23f6e7b2d5e60556b9934027b0974b09",
+        "workflowManifestSha256": "f7ad1217b14bd4488cdba16f8afde7c4377768e7d7a518ce8a832d4b0fe7d994",
+        "trackedWorkflowCount": 9,
+        "targetEnvironmentState": "absent_http_404",
+        "targetSubordinateState": "not_enumerable_parent_absent_http_404",
+        "targetEnvironmentNormalizedMatchCount": 0,
+        "existingEnvironmentCount": 6,
+        "environmentNameSetSha256": "fabc78eebd9c9a12ad067f5b37b25227245a86b6ae5d2e17999d4901accdf179",
+        "environmentConfigCollectionSha256": null,
+        "environmentConfigCollectionStatus": "unbound_identity_safe_profile_required",
+        "rulesetSummarySha256": "3041ba53741bdcaf1359ce2bc1f0bd271475f14db4a29b908c0560385ec0ebf9",
+        "targetEnvironmentWorkflowReferenceCount": 0,
+        "currentWorkflowEnvironmentBindingCount": 3,
+        "currentWorkflowDynamicEnvironmentSelectorCount": 0,
+        "repositoryArtifactAndLogRetentionDays": 90,
+        "repositoryArtifactAndLogRetentionMaximumAllowedDays": 90,
+        "githubWritePerformed": false
+      },
       "identitySelectors": {
-        "settingsOperatorCanonicalIdentitySha256": null,
-        "futureDispatchActorCanonicalIdentitySha256": null,
-        "requiredReviewerCanonicalIdentitySha256": null,
-        "afterReadbackReviewerCanonicalIdentitySha256": null,
+        "commitmentProfile": "unbound_future_typed_domain_separated_hmac_sha256_protocol",
+        "plainIdentityOrRequestBodySha256Forbidden": true,
+        "requiredProtocolFields": [
+          "separate domain labels for each role identity and Environment PUT body",
+          "typed canonical preimages including numeric ID encoding and login Unicode/case normalization",
+          "packet and key identifiers",
+          "fresh random 256-bit key generation and authenticated short-lived delivery",
+          "key retention, destruction and independent recomputation/readback rules"
+        ],
+        "settingsOperatorIdentityCommitmentHmacSha256": null,
+        "futureDispatchActorIdentityCommitmentHmacSha256": null,
+        "requiredReviewerIdentityCommitmentHmacSha256": null,
+        "afterReadbackReviewerIdentityCommitmentHmacSha256": null,
         "requiredReviewerType": "User",
         "accountDistinctRequired": true,
+        "settingsOperatorEqualsFutureDispatchActor": true,
         "reviewerAndAfterReadbackActorSameExactUserRequired": true,
         "reviewerDistinctFromSettingsOperatorRequired": true,
         "reviewerDistinctFromFutureDispatchActorRequired": true,
-        "independentHumanDeclarationSha256": null,
-        "selectionStatus": "unfilled_pending_separate_execution_packet"
+        "independentHumanRelationDeclaredByUser": true,
+        "reviewerUsesSeparateAuthenticatedSessionDeclared": true,
+        "reviewerPerformsSettingsMutation": false,
+        "independentReadbackSessionCapability": "not_proven",
+        "reviewerActiveOrganizationOwnerStatus": "needs_fresh_read",
+        "reviewerOrganizationAuditLogReadCapability": "not_proven",
+        "rawToCommitmentMappingRevalidationRequired": true,
+        "selectionStatus": "role_relationship_declared_identity_commitments_and_independent_audit_session_unbound"
+      },
+      "executionRequestPacket": {
+        "status": "not_prepared_for_approval",
+        "currentOutput": "BLOCKED_INPUT",
+        "selectorCount": 12,
+        "closedSelectorCountInImmutableRequestEnvelope": 0,
+        "requestable": false,
+        "executionAuthorized": false,
+        "publicationDoesNotCloseSelectors": true,
+        "requiredFreshBindingAfterAnyMasterMove": true,
+        "amendmentCannotBindItsOwnMergeOrLatestGateBlob": true,
+        "requestEnvelopeSha256": null,
+        "proposedExecutionWindow": {
+          "startsAt": null,
+          "latestFirstWriteAt": null,
+          "endsAt": null,
+          "sha256": null,
+          "approvalMustRatifyUnchanged": true
+        },
+        "approvalState": "not_granted",
+        "approvalReceiptSha256": null,
+        "approvalConsumed": false,
+        "consumptionReceiptSha256": null,
+        "firstLogicalMutationAttemptedAt": null,
+        "preapprovalRequiresConsumedReceipt": false,
+        "actualConsumptionReceiptPhase": "after_separate_approval_and_fresh_revalidation_immediately_before_any_possible_network_transmission",
+        "consumptionPersistenceSurface": null,
+        "consumptionPersistenceState": "unbound_requires_durable_single_writer_compare_and_set_and_recovery_contract",
+        "consumptionPersistenceAmbiguityRule": "zero_network_transmission_and_block_approval_locator_until_explicit_reconciliation_unless_authoritative_consumed_marker_exists",
+        "selectorStatuses": {
+          "selector1": "pending_amendment_merge_tree_and_latest_gate_blob_rebind",
+          "selector2": "needs_fresh_post_merge_workflow_manifest_read",
+          "selector3": "needs_fresh_target_absence_and_collision_read",
+          "selector4": "role_declared_identity_hmac_commitment_membership_and_permission_unbound",
+          "selector5": "role_declared_identity_hmac_commitment_membership_and_permission_unbound",
+          "selector6": "human_independence_declared_identity_commitment_org_owner_and_independent_audit_session_unbound",
+          "selector7": "non_sensitive_ui_branch_and_mutation_list_bound_hmac_protocol_body_commitment_utc_window_and_request_envelope_unbound",
+          "selector8": "identity_safe_environment_collection_profile_unbound_then_needs_fresh_before_digest",
+          "selector9": "needs_fresh_retention_read",
+          "selector10": "endpoint_requirements_enumerated_exact_per_endpoint_pagination_query_set_absolute_deadline_poll_contract_live_event_matcher_and_independent_reader_receipt_unbound",
+          "selector11": "receipt_schemas_and_authoritative_durable_single_consumer_surface_unbound_request_approval_and_consumption_receipts_absent",
+          "selector12": "partial_state_plan_defined_must_be_rebound_unchanged"
+        },
+        "canonicalDigests": {
+          "environmentPutBodyCommitmentHmacSha256": null,
+          "settingsUiInstructionSha256": "fa9dff17aa75787421a40d303511f375dc1ef8cd7fc0fa675b631ed19fcc326c",
+          "branchPolicyPostBodySha256": "0f1f348cfab1b3afa2fa41a961a9ed44407b2b077a9746680d1a021c90e39ba6",
+          "allowedLogicalMutationsSha256": "df5d2f6b5da3a979d70722a39ac9966a9a583229625680c86351cafd53da9bdc",
+          "approvalReceiptSchemaSha256": null,
+          "consumptionReceiptSchemaSha256": null,
+          "timeoutPolicySha256": null
+        },
+        "settingsUiInstruction": "Repository Settings > Environments > p2-s0-route-b-fixture-generation > Deployment protection rules > clear \"Allow administrators to bypass configured protection rules\" > \"Save protection rules\"",
+        "branchPolicyPostBody": {"name": "master", "type": "branch"},
+        "allowedLogicalMutations": [
+          {"body_binding": "hmac_sha256_under_controlled_packet_key", "method": "PUT", "ordinal": 1, "target": "/repos/gccwebos-com/proxy-gateway-minimal/environments/p2-s0-route-b-fixture-generation"},
+          {"control": "Allow administrators to bypass configured protection rules", "kind": "github_settings_ui_mutation_intent_save", "ordinal": 2, "target_environment": "p2-s0-route-b-fixture-generation"},
+          {"body": {"name": "master", "type": "branch"}, "method": "POST", "ordinal": 3, "target": "/repos/gccwebos-com/proxy-gateway-minimal/environments/p2-s0-route-b-fixture-generation/deployment-branch-policies"}
+        ],
+        "receiptSchemaState": {
+          "status": "unbound",
+          "requirements": [
+            "machine-checkable field types and enums with additionalProperties=false",
+            "RFC3339 UTC formats and temporal ordering constraints",
+            "exact Unicode, JSON number and escaping canonicalization",
+            "out-of-band digest over canonical receipt bytes with the digest field omitted",
+            "typed consumption and transport-outcome state transitions"
+          ]
+        },
+        "timeoutPolicy": {
+          "status": "unbound",
+          "classification": "project_fail_closed_threshold_not_github_sla",
+          "absoluteAuditEvidenceDeadlineAt": null,
+          "windowMustRemainWithinOneUtcDate": true,
+          "pollCycleMustRestartFromBaseQuery": true,
+          "finalDeadlineSweepRequired": true,
+          "finalSweepStartNotBeforeAbsoluteDeadline": true,
+          "finalSweepReadTimeoutSeconds": null,
+          "positiveOutputRequiresCompletedFinalSweep": true,
+          "priorCursorAsIncrementalWatermarkForbidden": true,
+          "writeRetryAllowed": false
+        },
+        "afterQuerySet": {
+          "status": "unbound",
+          "sha256": null,
+          "auditEndpoint": "/orgs/gccwebos-com/audit-log",
+          "auditPhraseTemplate": "action:environment.update_protection_rule repo:gccwebos-com/proxy-gateway-minimal created:{UTC_DATE}",
+          "auditParameters": {"include": "web", "order": "asc", "per_page": 100},
+          "auditPhraseEncoding": "percent_encode_utf8_as_query_value",
+          "auditPagination": "each_poll_cycle_restarts_base_then_rfc8288_link_next_no_numeric_page",
+          "auditDeduplication": "unbound_requires_frozen_document_id_contract_same_id_identical_canonical_event_is_dedup_same_id_different_content_is_hard_conflict_missing_id_fails",
+          "repositoryPagination": "unbound_per_endpoint_documented_maximum_environment_variables_requires_per_page_30",
+          "windowMustRemainWithinOneUtcDate": true,
+          "absoluteAuditEvidenceDeadlineAt": null,
+          "auditEventMatcher": "unbound_requires_preapproved_live_observed_extension_shape_proving_boolean_false_or_exact_observed_true_to_false",
+          "exactUtcWindow": null,
+          "independentReaderReceiptSha256": null
+        }
       },
       "desiredEnvironmentState": {
         "name": "p2-s0-route-b-fixture-generation",
@@ -713,38 +913,53 @@
         "apiVersion": "2026-03-10",
         "canAdminsBypassRequestFieldDocumented": false,
         "canAdminsBypassWriteSurface": "github_settings_ui",
+        "canAdminsBypassGetFieldClassification": "live_observed_extension_not_documented_rest_openapi_or_graphql",
         "canAdminsBypassGetReadbackRequired": true,
         "positiveActorTargetWindowAuditReceiptRequired": true,
-        "positiveAuditReceiptMustCarryAdminBypassTransitionField": true,
+        "positiveAuditReceiptMatcherStatus": "unbound_pending_fresh_live_observed_event_shape",
+        "positiveAuditReceiptMatcherRequirement": "exact boolean can_admins_bypass=false or exact observed old_boolean_true_to_new_boolean_false; non_null_alone_forbidden",
+        "organizationAuditEndpoint": "/orgs/gccwebos-com/audit-log",
+        "independentReaderMustBeActiveOrganizationOwner": true,
+        "independentReaderAuditCapabilityReceiptRequired": true,
+        "auditEventArrivalSlaDocumented": false,
+        "auditDeadlineClassification": "project_fail_closed_threshold_not_github_sla",
+        "auditPagination": "cursor",
         "exactMasterRequiresCustomBranchPolicy": true,
+        "branchPolicyTypeFieldDocumentedButNotRequired": true,
+        "missingBranchPolicyTypeFailureClassification": "project_fail_closed_nonclosure_not_github_contract_violation",
         "protectedBranchesModeForbidden": true,
         "futureWorkflowDeploymentFalseRequired": true,
         "futureWorkflowDeploymentFalseCreatesDeploymentObject": false,
         "futureWorkflowDeploymentFalseCustomProtectionAppCompatible": false,
         "refreshBeforeExecution": true
       },
-      "futureAllowedExternalWritesIfSeparatelyApproved": [
+      "futureAllowedLogicalMutationStepsIfSeparatelyApproved": [
         "one complete Environment PUT for the exact target",
-        "one exact GitHub Settings UI admin-bypass disable operation",
+        "one exact GitHub Settings UI admin-bypass disable mutation intent/save action; network request count is not asserted",
         "one exact custom branch-policy POST for master/type=branch"
       ],
-      "approvalConsumptionPoint": "first_external_write_even_if_timeout_response_loss_or_ambiguous_error",
+      "approvalConsumptionPoint": "unbound_requires_authoritative_durable_single_writer_compare_and_set_before_any_possible_network_transmission",
+      "approvalReceiptPhase": "after_immutable_request_packet_and_separate_exact_risk_a_approval",
+      "consumptionReceiptPhase": "after_approval_and_fresh_revalidation_immediately_before_first_mutation_transport",
+      "consumptionPersistenceFailureRule": "zero_network_transmission_and_block_approval_locator_until_explicit_reconciliation_unless_authoritative_consumed_marker_exists",
       "blindRetryForbidden": true,
       "dynamicOrCallerControlledEnvironmentSelectorForbidden": true,
       "repositoryRetentionMutationAuthorized": false,
       "environmentDeletionAuthorized": false,
       "independentAfterReadback": [
         "exact Environment ID, name, timestamps, required-reviewer and branch-policy rule set",
-        "exact redacted reviewer identity digest and prevent_self_review=true",
+        "exact controlled reviewer identity commitment and prevent_self_review=true",
         "can_admins_bypass=false from Environment GET",
         "exactly one custom branch policy master/type=branch",
-        "zero target secrets, variables, enabled custom Apps, Deployments and deployment-status objects",
+        "zero target secrets, variables, enabled custom Apps and Deployments; deployments=[] directly supports the bounded inference that no target-associated DeploymentStatus child exists",
         "repository artifact/log retention unchanged from the freshly approved baseline",
         "active exact master ruleset unchanged",
         "all three approved static Environment bindings unchanged with zero dynamic/caller-controlled selectors or target references",
-        "zero target workflow runs, checks, artifacts, attestations, Releases or Deployments",
-        "all six pre-existing Environment normalized digests unchanged",
-        "at least one expected actor/target/window platform audit receipt exists and no contradictory event is present"
+        "zero target workflow runs, checks, artifacts, Releases or Deployments; target-attestation absence is a bounded inference from allowed writes, zero target workflow runs/references and no subject digest, not a repository-wide attestation-list query",
+        "all six pre-existing Environment final-packet identity-safe normalized configuration digests unchanged under the later bound non-enumerable profile",
+        "the reviewer uses an independently authenticated session for the complete read set",
+        "reviewer active organization-owner state and organization audit-log read capability are proven in that independent session",
+        "at least one expected actor/target/window receipt matches the preapproved live-observed administrator-bypass event shape proving Boolean false or exact observed true-to-false; non-null alone is insufficient; no contradictory event is present"
       ],
       "partialFailureRule": "PARTIAL_ENVIRONMENT_INERT_REQUIRES_SEPARATE_SETTINGS_GATE requires custom policy mode with zero branch policies, exact reviewer/self-review rule, complete readable state, and zero target/dynamic consumers, secrets, variables, custom Apps, Deployments, runs or unexpected writes; otherwise NO_GO_OPTION1. Keep all source/dispatch authority false and require a new exact Settings or destructive-remediation Gate.",
       "openPrClassification": {
@@ -772,7 +987,7 @@
       ],
       "futureExecutionPositiveOutput": "ENVIRONMENT_READY_FOR_SEPARATE_ROUTE_B_SOURCE_GATE",
       "futurePendingAuditOutput": "ENVIRONMENT_PENDING_AUDIT_RECEIPT",
-      "futurePendingAuditOutputRule": "allowed only before the exact approved audit timeout with desired state read back and no downstream authority; timeout expiry without receipt is NO_GO_OPTION1",
+      "futurePendingAuditOutputRule": "allowed only before the exact approved audit deadline with desired state read back and no downstream authority; positive output waits for a full base-query final sweep started no earlier than the deadline and completed within its separately bound read-only timeout; missing receipt is NO_GO_OPTION1",
       "futurePartialOutput": "PARTIAL_ENVIRONMENT_INERT_REQUIRES_SEPARATE_SETTINGS_GATE",
       "futurePartialOutputPrecondition": "complete readable fail-closed subset exactly matches partialFailureRule",
       "forbiddenOutputs": [
@@ -843,12 +1058,12 @@
       "separate_external_gates"
     ],
     "nonNegotiables": [
-      "P2-D completion, P2-S0/FX1/FX2 Gate publication, Route A BLOCKED_INPUT, and FX2-E Gate preparation have no Settings, source, generation, custody, experiment, implementation, or production authority.",
+      "P2-D completion, P2-S0/FX1/FX2/FX2-E Gate publication, Route A BLOCKED_INPUT, and the FX2-E docs-only execution-request amendment have no Settings, source, generation, custody, experiment, implementation, or production authority.",
       "Route B generated evidence is permanently labeled route_b_generated and never rewrites Route A existing-fixture evidence.",
       "A manual workflow carrying OIDC and attestation write permission is a callable surface after merge, not a dormant hard stop; a separately approved exact FX2-E Environment Settings execution before source merge and a separately reviewed source-retirement merge after the run are both mandatory.",
       "FX2-E uses custom exact master/type=branch policy, prevents self-review, requires one exact User reviewer under independent-human control, disables administrator bypass, and permits zero Environment secrets, variables, custom protection Apps, or Deployments.",
       "Environment deletion is not an automatic rollback; partial Settings state remains inert and blocks FX2-S until a new exact remediation or destructive Gate succeeds.",
-      "The attestation job must use deployment:false so required Environment review remains active while zero Deployment/deployment-status objects are created.",
+      "The attestation job must use deployment:false so required Environment review remains active; direct deployments=[] proves no target Deployment parent and zero target-associated DeploymentStatus children are inferred from that absence.",
       "Workflow run/job/check/log/audit/Environment-review metadata, the GitHub Attestations API record, and the bounded subject artifact must be exact-approved and cannot be described as scratch-only or zero external write.",
       "Official Action success and online verification never substitute for the exact offline official-verifier oracle.",
       "Foundation and Artifact consume one owner with a module-private brand.",
@@ -866,7 +1081,9 @@
       "The exact-11 bootstrap is merged on protected master but remains dormant and hard-stopped.",
       "No target-workflow GitHub-private attestation fixture was observed in exact current source or supplied by an external custodian; opaque or external availability remains unestablished, so P2-S cannot produce a positive decision without a separately gated custody receipt.",
       "The organization plan read back as enterprise at E18 and E21 capture times, satisfying only the documented private-attestation plan prerequisite.",
-      "At E21 capture the dedicated Environment was absent, repository Actions artifact/log retention was 90/90, and an account-distinct pair existed without establishing independent-human control.",
+      "E21 remains immutable historical preflight: the dedicated Environment was absent, repository Actions artifact/log retention was 90/90, and an account-distinct pair existed without then establishing independent-human control.",
+      "E22 records PR #610 publication without granting Settings authority; E23 rebinds exact published master/workflow/Environment/ruleset/retention state without a GitHub write.",
+      "A later user declaration establishes the human-distinct role relation for request preparation only; privacy-preserving HMAC identity commitments, the independent after-reader session, and fresh capability readback remain unproven.",
       "Open Draft PR #594 is a competing producer/publication design and blocks any positive Route B source readiness until it is closed without merge and its exact state/head are read back."
     ]
   },
@@ -1029,6 +1246,38 @@
           "title": "Open producer-conflict snapshot",
           "path": "context.md",
           "claim": "Draft PR #594 contains a competing attestation and Release publisher and blocks positive Route B source readiness until closed without merge; PR #606 requires rebind if merged."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E20",
+          "title": "Merged PR #609 P2-S0-FX2 publication summary",
+          "path": "context.md",
+          "claim": "PR #609 published the Route B generation-design Gate with successful checks but granted no Settings, source, generation, custody, or P2-S authority."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "configuration",
+          "evidenceId": "E21",
+          "title": "FX2-E historical read-only preflight",
+          "path": "context.md",
+          "claim": "The target Environment was absent, current workflows exposed no target/OIDC/attestation references, retention was 90/90, and independent-human control had not yet been established at capture."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "document",
+          "evidenceId": "E22",
+          "title": "Merged PR #610 FX2-E Gate publication summary",
+          "path": "context.md",
+          "claim": "PR #610 published the exact six-path FX2-E Gate with successful checks and post-merge runs but granted no Settings execution or downstream authority."
+        },
+        {
+          "claimType": "observed",
+          "sourceKind": "configuration",
+          "evidenceId": "E23",
+          "title": "FX2-E post-publication live rebind",
+          "path": "context.md",
+          "claim": "Exact published master still has no target Environment or producer reference; workflow, Environment-name-set, ruleset and retention baselines were rebound without a GitHub write. The identity-safe Environment-configuration collection, amendment merge and independent-reader receipt remain unbound."
         }
       ],
       "desiredInvariants": [
@@ -1039,7 +1288,7 @@
         "Route A BLOCKED_INPUT remains immutable history; every newly generated fixture is labeled route_b_generated and uses a separate custody handoff.",
         "The Route B producer has direct manual trigger only, root permissions empty, exactly one canonical subject, exactly one attestation, and no Release, registry, package, deployment, or production authority.",
         "A callable producer requires a separately approved protected Environment before source merge and a separately approved source-retirement merge plus zero-extra-run readback before positive custody handoff.",
-        "The attestation job uses deployment:false and must produce zero Deployment/deployment-status objects while preserving required reviewer enforcement.",
+        "The attestation job uses deployment:false and preserves required reviewer enforcement; direct deployments=[] proves no target Deployment parent and zero target-associated DeploymentStatus children are inferred from that absence.",
         "Attestation generation success and online GitHub verification never substitute for the exact offline official-verifier oracle.",
         "The owner bootstrap is independently pinned and does not consume the lock or closure it authorizes.",
         "Lock postverification authorizes only that lock; each Artifact asset postverifies separately.",
@@ -1372,13 +1621,13 @@
         }
       ],
       "recommendedOptionId": "in-repo-unified-owner",
-      "recommendation": "G0 retains the in-repository owner as the topology direction. P2-D is complete; PR #605 published the parent Gate, PR #608 published the Route A Gate, and PR #609 published the Route B design Gate without granting them. Route A remains BLOCKED_INPUT and FX2-E Environment Settings Gate preparation is current. Any Settings execution, producer source, one-shot generation, source retirement, Route B custody handoff, P2-S, profile decision, and implementation remain separate approvals. The candidate github_private_rfc3161_v1 remains unselected and the permanent hard stop remains active until real private-bundle feasibility, an explicit security-profile decision, canonical reconciliation, and a separate owner implementation authorization all succeed."
+      "recommendation": "G0 retains the in-repository owner as the topology direction. P2-D is complete; PR #605 published the parent Gate, PR #608 published the Route A Gate, PR #609 published the Route B design Gate, and PR #610 published the FX2-E protected-Environment Gate without granting them. Route A remains BLOCKED_INPUT and the FX2-E execution-request packet is not prepared or requestable. Any Settings execution, producer source, one-shot generation, source retirement, Route B custody handoff, P2-S, profile decision, and implementation remain separate approvals. The candidate github_private_rfc3161_v1 remains unselected and the permanent hard stop remains active until real private-bundle feasibility, an explicit security-profile decision, canonical reconciliation, and a separate owner implementation authorization all succeed."
     }
   ],
   "openQuestions": [
     "Will a future named custodian provide new evidence for a superseding Route A Gate, or should the current terminal BLOCKED_INPUT snapshot remain the only Route A record?",
-    "Which exact Settings operator, future dispatch actor, independent-human User reviewer, identity-record digests, execution window, and approval receipt may consume the frozen FX2-E Environment contract?",
-    "What exact source-retirement scope and zero-extra-run/all-object readback close the callable workflow after generation and before custody?",
+    "After this amendment merges, which exact merge/tree/latest-Gate binding, independently authenticated after-reader receipt, UTC window, immutable request-envelope digest, and separate approval receipt may consume the FX2-E contract after fresh raw-to-HMAC-commitment identity and capability revalidation?",
+    "What exact source-retirement scope and zero-extra-run/object-specific readback close the callable workflow after generation and before custody without assuming repository-wide status or attestation enumeration?",
     "Which exact full-commit pins, action manifests, bundled dependencies, licenses, provenance, vulnerabilities, and runner support are acceptable for actions/attest and the subject-custody upload Action?",
     "What exact subject-artifact retention and Route B custody command can preserve the one generated fixture without leaking raw private bytes or implying scratch-only cleanup?",
     "Does the real target bundle contain an RFC3161 token whose signed-byte derivation and `messageImprint` can be verified against the exact applicable GitHub-private root and TSA?",
