@@ -1,19 +1,19 @@
 # P2-S0-FX2 Gate Package: Target Private Fixture Generation Design
 
 ```yaml
-phase: P2-S0 preparation
-work_item: target-fixture-generation_design_gate_preparation
+phase: P2-S0-FX2 published design Gate
+work_item: target-fixture-generation_design_gate
 parent_gate: P2-S0
 predecessor_gate: P2-S0-FX1
 predecessor_route: Route A
 predecessor_output: BLOCKED_INPUT
-status: docs-only Route B Gate prepared / producer not implemented / fixture not generated / P2-S not started
+status: Route B design Gate published not granted / producer not implemented / fixture not generated / P2-S not started
 risk_class: A
 risk_state: controlled
-record_state: draft_prepared_for_review
+record_state: published_not_granted
 gate_decision: not_granted
 current_output: BLOCKED_INPUT
-current_authority: docs_only_gate_preparation
+current_authority: none
 route_b_source_authority: false
 workflow_change_authority: false
 fixture_generation_authority: false
@@ -41,8 +41,10 @@ approval sequence. It does not add a workflow, select an Action dependency,
 grant a permission, dispatch a run, generate or download a fixture, execute an
 official verifier, or start P2-S.
 
-Current output is `BLOCKED_INPUT`. The design can be reviewed and published,
-but a separate producer-source review cannot become actionable until the open
+PR #609 published this design Gate at merge
+`a413f636267a3b0fcfc65f7b911fa50f6cd95ea4` without granting it. Current output
+remains `BLOCKED_INPUT`. A separate producer-source review cannot become
+actionable until the open
 competing Draft PR #594 is closed without merge, the source baseline is
 refreshed, a dedicated protected Environment is separately approved and read
 back, and exact Action pins and lifecycle controls are independently reviewed.
@@ -192,8 +194,10 @@ creates GitHub-side evidence:
 - exactly one workflow run and first attempt, with the three bounded jobs and
   their check, log, annotation, and audit metadata;
 - bounded dedicated-Environment reviewer-approval/control/audit metadata for
-  the attestation job, with zero Deployment and deployment-status objects
-  because the source freezes `deployment: false`;
+  the attestation job; `deployment: false` plus direct target-filtered
+  `deployments=[]` readback proves no target Deployment parent, while zero
+  target-associated deployment-status children is inferred from that absent
+  parent rather than from a repository-wide status enumeration;
 - exactly one private attestation in the GitHub Attestations API; and
 - exactly one bounded Actions artifact containing the canonical subject bytes
   and a redacted generation manifest, with an exact name and retention period
@@ -265,8 +269,11 @@ A separate producer-source request must bind all of the following:
 - exact PR-head and post-merge automatic-workflow inventory, including current
   PR validation/advisory/default-CodeQL surfaces and current master CI, Release
   Artifact, and default-CodeQL surfaces; freeze expected ordinary Actions
-  artifacts and prove zero GitHub Release, Deployment, fixture attestation, or
-  unexpected workflow run;
+  artifacts; directly observe zero unexpected GitHub Release, target
+  Deployment, or producer run; and infer only that the exact source/retirement
+  activity produced no fixture attestation from zero producer run/subject plus
+  the frozen automatic-trigger and allowed-write/readback surface, never from a
+  repository-wide attestation enumeration;
 - exact Action repositories, full commit pins, action manifests, bundled
   dependency provenance, licenses, vulnerability snapshot, runner support, and
   update policy;
@@ -284,8 +291,9 @@ Source merge may emit only
 `SOURCE_PRESENT_FOR_SEPARATE_GENERATION_GATE`. It does not authorize dispatch
 or prove that an attestation can be generated or verified. The output is not
 available until exact head/merge provenance, required checks, automatic runs,
-ordinary-artifact metadata, and zero unexpected Release/Deployment/attestation
-writes are independently read back.
+ordinary-artifact metadata, direct zero unexpected Release/target-Deployment/
+producer-run readback, and the bounded no-fixture-attestation inference above
+are independently reviewed.
 
 ## Future Generation Execution Gate
 
@@ -306,8 +314,10 @@ Risk A execution Gate must bind:
   attestation/bundle size limits, per-job timeout/log bounds, and zero-secret
   contract;
 - the only allowed persistent objects listed above plus immediate run/job/check/
-  log/annotation/audit/Environment-review/API/artifact readback plus proof that
-  zero Deployment/deployment-status objects were created; and
+  log/annotation/audit/Environment-review/API/artifact object-specific
+  readback, direct target-filtered `deployments=[]` evidence, and the resulting
+  absent-parent inference for target-associated deployment-status children; no
+  repository-wide DeploymentStatus enumeration is claimed; and
 - failure monitoring, the separately reviewed source-retirement merge,
   no-extra-run readback, and all-object ineligible-history handling.
 
@@ -320,7 +330,8 @@ consumed Gate or standing producer source.
 A successful run first records only
 `GENERATED_FIXTURE_PENDING_MANDATORY_SOURCE_RETIREMENT`. That provisional status
 authorizes no handoff. Only after the separately approved retirement merge,
-expected automatic-run readback, zero-extra-run proof, and all-object
+expected automatic-run readback, zero-extra-run proof, object-specific
+readback, bounded no-extra-attestation inference, and persistent-object
 classification may the generation closeout emit
 `GENERATED_FIXTURE_READY_FOR_SEPARATE_CUSTODY_HANDOFF`. Neither output authorizes
 a download, official oracle, candidate verifier, parent readiness finding, or
