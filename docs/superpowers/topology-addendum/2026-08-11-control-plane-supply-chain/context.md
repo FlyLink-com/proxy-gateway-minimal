@@ -1,10 +1,10 @@
 # Control-Plane Supply-Chain Topology Addendum: Evidence Context
 
 > Status:
-> - Type: Derived design-review evidence inventory with Route A blocked and Route B design-only Gate preparation current
+> - Type: Derived design-review evidence inventory with Route A blocked, Route B design Gate published, and FX2-E Settings Gate preparation current
 > - Risk: A
-> - Process: Read-only evidence -> G0 topology selection -> P2-D complete -> P2-S0 Gate publication -> Route A Gate publication and blocked preflight -> Route B design-only Gate preparation -> separately authorized protected Environment, source, generation, retirement, custody, and P2-S decisions -> later explicit profile and implementation decisions
-> - Expected PR count: 1 docs-only PR for this Gate; any Route B Settings enforcement, producer source, generation execution, workflow retirement, custody handoff, and P2-S action require separate approval
+> - Process: Read-only evidence -> G0 topology selection -> P2-D complete -> P2-S0 Gate publication -> Route A Gate publication and blocked preflight -> Route B design Gate publication -> FX2-E docs-only Settings Gate preparation -> separately authorized protected Environment, source, generation, retirement, custody, and P2-S decisions -> later explicit profile and implementation decisions
+> - Expected PR count: 1 docs-only PR for this Gate; any Route B Settings mutation, producer source, generation execution, workflow retirement, custody handoff, and P2-S action require separate approval
 > - Validation: Evidence hashes, document authority, project-state check, JSON parse, Mermaid/link review, targeted document-authority regression, and diff check
 > - Production/AWS impact: None
 > - Production authority: False
@@ -14,20 +14,22 @@
 > - P2-D completion revision: `d7e2ab8364bb51f6e6dd8e7d499eb4d61a83635f`
 > - P2-S0 Gate publication revision: `046952402c5ded1412e58fe860c6eb9ad426ced5`
 > - P2-S0-FX1 Gate publication revision: `6d6a0a197e89706d4de591f0d8cbecaef18df2c1`
+> - P2-S0-FX2 Gate publication revision: `a413f636267a3b0fcfc65f7b911fa50f6cd95ea4`
 
 This directory is a derived and revisable design product. It does not amend the
 canonical production-deploy design, approve a dependency or package, modify a
 GitHub setting, authorize P2-S execution or fixture acquisition/generation,
 implement a verification owner, publish an artifact, dispatch a workflow, or
 authorize staging or production access. PR #603 completed the P2-D governance
-loop, and PR #605 published the P2-S0 Gate definition. PR #608 later published
-the Route A fixture-acquisition Gate, but the completed preflight still had
-only one of fourteen selectors filled and returned `BLOCKED_INPUT`. None
-selected the candidate profile or proved feasibility. Current work is limited
-to a Route B fixture-generation design Gate. Until a later explicit profile
-decision and canonical cross-document reconciliation, the existing full-
-Sigstore/Rekor/CT requirements and current runtime hard stop remain
-authoritative.
+loop, PR #605 published the P2-S0 Gate definition, and PR #608 published the
+Route A fixture-acquisition Gate. Its completed preflight still had only one of
+fourteen selectors filled and returned `BLOCKED_INPUT`. PR #609 then published
+the Route B generation-design Gate without granting source, Settings, or
+generation authority. None selected the candidate profile or proved
+feasibility. Current work is limited to the docs-only FX2-E protected-
+Environment Settings Gate. Until a later explicit profile decision and
+canonical cross-document reconciliation, the existing full-Sigstore/Rekor/CT
+requirements and current runtime hard stop remain authoritative.
 
 ## Initial Route A Analysis Context
 
@@ -63,6 +65,23 @@ reads and writes only the isolated exact-master worktree. No workflow, package,
 lockfile, Settings, Release, Environment, fixture, dispatch, host, or
 production state was modified.
 
+## Current FX2-E Gate Context
+
+- Isolated Gate worktree:
+  `D:\Projects\proxy-gateway-minimal\.worktrees\p2-s0-route-b-environment-gate`
+- Gate branch: `docs/p2-s0-route-b-environment-gate`
+- Exact remote-master binding:
+  `a413f636267a3b0fcfc65f7b911fa50f6cd95ea4`
+- Exact master tree: `488dfff3ee29e5e70b9b23c1cf226119d06f063f`
+- Read-only Environment inventory completion time: `2026-08-11T20:03:23Z`
+- Source evidence mode: repository bytes, redacted read-only GitHub metadata,
+  and current official GitHub Environment documentation
+
+The dedicated `p2-s0-route-b-fixture-generation` Environment is absent. This
+turn prepares only its future Settings Gate. It has not created, changed, or
+deleted any Environment, ruleset, secret, variable, workflow, Release,
+Deployment, fixture, artifact, host, or production state.
+
 ## Evidence Inventory
 
 | Evidence | Reader-facing title | Source and SHA-256 | What it establishes |
@@ -86,6 +105,8 @@ production state was modified.
 | `E17` | Route A terminal preflight snapshot | Redacted compact JSON; `2a1a1e693792dfdd06caef1978d05390060fc3533f6bc3b1ba7a233b27b65529` | At current master, repository-visible workflow and artifact metadata still expose no target fixture or producer, external custody remains `not_established`, and only one of fourteen Route A selectors is filled. Route A remains `BLOCKED_INPUT`; no raw byte was read and no write or dispatch occurred. |
 | `E18` | Private-attestation eligibility and official Action/Environment contract | Official GitHub documentation plus redacted plan/repository readback; `426a244e0b10d374b8671fbdc8fa7d95d10b1d0edfbf624448d822e4af4d67e1` | The repository is private and organization-owned; the organization plan currently reads `enterprise`, satisfying the documented plan prerequisite for private attestations. Current official guidance recommends `actions/attest`, documents the API write and bundle output, and says `deployment: false` preserves required Environment reviewers while creating no Deployment object. No dependency or Settings change is selected. |
 | `E19` | Open producer-conflict snapshot | Redacted compact JSON; `054d94f998bb17dc9673a225b56e52b3419595b1fb8443169aaeb9b6936abaa7` | Draft PR #594 contains a conflicting attestation/Release publisher and is a hard blocker before any Route B source Gate can pass. Draft PR #606 may delete workflows and requires exact rebind if merged. Neither Draft is current capability. |
+| `E20` | Merged PR #609 P2-S0-FX2 Gate publication summary | Redacted compact JSON; `2d167c785d9e5c2a8ddbb359cdae13a8e520f8eb3fe23e3e24e7b89a2bb24814` | PR #609 merged the exact six-path Route B design package with identical approved/merged trees, successful checks, zero dispatches/deployments, and successful post-merge runs. Publication granted no Settings, source, generation, custody, or P2-S authority. |
+| `E21` | FX2-E protected-Environment read-only preflight | Official GitHub documentation plus redacted compact JSON; `277e23f299ef5fd346a5ef86463c442f6f38752ea6353e9a871c89753f8a8cfe` | The target Environment is absent, nine workflows expose only three known static Environment bindings and zero dynamic/target/OIDC/attestation references, repository retention is `90/90`, and an account-distinct reviewer pair is available without proving independent-human control. Exact Settings mutation remains unapproved. |
 
 ## Redacted Live Configuration Summary
 
@@ -267,15 +288,16 @@ workflows; if it or any other PR moves master first, all Route B source bindings
 must be refreshed. Issue #598 is a coordination index, not immutable authority,
 and its description is already stale about merged PR #593.
 
-## Route B Design-Only Gate Summary
+## Route B Design Gate Publication Summary
 
-The current work item is the docs-only
-[P2-S0-FX2 target-fixture-generation design Gate](gates/p2-s0-target-fixture-generation-gate.md).
-It defines a proposed new direct manual workflow, exactly-one canonical non-
-production subject, minimum job permissions, exact Action-pin requirements,
-GitHub Attestations API and subject-artifact custody, one-shot limitations,
-ineligible-history handling, and the serial Environment/source/generation/
-retirement/custody approval sequence.
+PR #609 published the docs-only
+[P2-S0-FX2 target-fixture-generation design Gate](gates/p2-s0-target-fixture-generation-gate.md)
+at `a413f636267a3b0fcfc65f7b911fa50f6cd95ea4`. It defines a proposed new
+direct manual workflow, exactly-one canonical non-production subject, minimum
+job permissions, exact Action-pin requirements, GitHub Attestations API and
+subject-artifact custody, one-shot limitations, ineligible-history handling,
+and the serial Environment/source/generation/retirement/custody approval
+sequence. Publication did not grant the Gate or any downstream authority.
 
 The design explicitly recognizes that a merged `workflow_dispatch` workflow
 with OIDC and attestation write permission is a real callable surface, not a
@@ -309,6 +331,42 @@ must be followed by retirement, and only a successful retired run may request a
 separate Route B custody handoff. That handoff may only return one input to the
 parent P2-S0 reevaluation. The official offline verifier oracle and the other
 seven input classes remain independent prerequisites.
+
+## FX2-E Environment Settings Gate Summary
+
+The current work item is the docs-only
+[P2-S0-FX2-E protected-Environment Settings Gate](gates/p2-s0-target-fixture-generation-environment-settings-gate.md).
+Read-only inventory found six existing Environments and no exact or normalized
+match for `p2-s0-route-b-fixture-generation`; direct GET returned `404`. The
+nine tracked workflows have three known static Environment bindings, zero
+dynamic/caller-controlled selectors, zero references to that Environment, and
+zero `id-token: write`, `attestations: write`, or `actions/attest` references.
+
+Official request semantics require a custom deployment-branch policy for exact
+`master`. `protected_branches=true` is rejected because it can expand to every
+protected branch. The desired state instead uses
+`protected_branches=false`, `custom_branch_policies=true`, and exactly one
+`type=branch,name=master` policy. The public Environment REST request does not
+document a `can_admins_bypass` write field, so the future operation must use the
+documented GitHub Settings UI control and independently read back
+`can_admins_bypass=false`.
+
+The current repository artifact/log-retention readback is `90/90`; FX2-E only
+freezes and later rechecks that value. It does not change retention. Two
+account-distinct repository-admin Users are available, but the independent-
+human relationship is `not_established`; a future execution packet must bind
+exact redacted Settings-operator/future-dispatch and Environment-reviewer/after-
+reader identity digests plus an independence declaration before any write. A
+positive closeout also requires an expected actor/target/window platform audit
+receipt; delayed audit evidence remains pending.
+
+If a future separately approved Settings execution fails after its first write,
+the safe default is to stop. Only an exact readable custom-mode state with zero
+branch policies and zero consumers, secrets, variables, Apps, Deployments, runs,
+or unexpected writes may be labeled inert partial state. Every broader or
+ambiguous state is `NO_GO_OPTION1`. Automatic deletion is not authorized;
+remediation or deletion needs a new exact Settings/destructive Gate. No positive
+FX2-E receipt can authorize or substitute for FX2-S.
 
 ## Evidence Hash Profile And Collection Manifest
 
@@ -392,13 +450,34 @@ are:
 {"capture_at":"2026-08-11T18:06:06Z","current_master":"6d6a0a197e89706d4de591f0d8cbecaef18df2c1","github_write_performed":false,"open_pr_594":{"base_ref_oid":"02fc63a3f949b748dcccf26ba7d310be82f4b6df","head_publisher_blob":"cbe9ba8f949d3c6519a0a6b889177bb8d3c50d4f","head_ref_oid":"a3f2817d696ee9bb66f1e849e0b35e77105fde8e","head_tree":"60e705b6865bf75e5ccb021174914a1c94fee323","merge_state":"CONFLICTING","number":594,"observed_write_capabilities":["attestations: write","contents: write","id-token: write","release create/upload/publish"],"state":"OPEN_DRAFT","source_gate_blocker":true},"open_pr_606":{"base_ref_oid":"d7e2ab8364bb51f6e6dd8e7d499eb4d61a83635f","head_ref_oid":"e174ea257d102f5a820b11bf88f7fd0016e07fb4","merge_state":"BEHIND","number":606,"proposed_workflow_deletion_count":2,"source_rebind_if_merged":true,"state":"OPEN_DRAFT"}}
 ```
 
+`E20` is separate FX2 Gate-publication evidence. It does not grant FX2 or
+rewrite `E18`/`E19`. Its canonical redacted bytes are:
+
+```json
+{"approved_head_tree":"488dfff3ee29e5e70b9b23c1cf226119d06f063f","base_ref_oid":"6d6a0a197e89706d4de591f0d8cbecaef18df2c1","changed_path_count":6,"changed_paths":["docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/context.md","docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/gates/p2-s0-feasibility-gate.md","docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/gates/p2-s0-target-fixture-generation-gate.md","docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/hardening.json","docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/hardening.md","docs/superpowers/topology-addendum/2026-08-11-control-plane-supply-chain/proposals/unify-supply-chain-authority.md"],"changed_paths_sha256":"cb3208bc7a54b28635d0a1c26ea17921266006aa8033af27d1d578a7b64f6d5d","check_other_terminal_count":0,"check_skipped_count":1,"check_success_count":6,"head_or_merge_sha_workflow_dispatch_count":0,"head_ref_oid":"4f150126f796aea8df5cb96755efa1142d2d4a5f","is_draft":false,"merge_commit":"a413f636267a3b0fcfc65f7b911fa50f6cd95ea4","merge_sha_deployment_count":0,"merge_tree":"488dfff3ee29e5e70b9b23c1cf226119d06f063f","number":609,"postmerge_ci_success":true,"postmerge_codeql_success":true,"postmerge_release_artifact_actions_artifact_count":3,"postmerge_release_artifact_github_release_count":0,"postmerge_release_artifact_success":true,"review_decision":"","state":"MERGED","unresolved_review_thread_count":0}
+```
+
+`E21` is the later FX2-E read-only preflight and official Settings-contract
+receipt. It records no reviewer identity and no GitHub write. Its canonical
+redacted bytes are:
+
+```json
+{"actions_artifact_and_log_retention_days":90,"actions_artifact_and_log_retention_maximum_allowed_days":90,"actions_attest_reference_count":0,"attestations_write_reference_count":0,"can_admins_bypass_false_documented_write_surface":"github_settings_ui","can_admins_bypass_get_field_observed":true,"capture_at":"2026-08-11T20:03:23Z","current_master":"a413f636267a3b0fcfc65f7b911fa50f6cd95ea4","current_master_tree":"488dfff3ee29e5e70b9b23c1cf226119d06f063f","current_workflow_dynamic_environment_selector_count":0,"current_workflow_environment_binding_count":3,"current_workflow_tree":"1a95a55d23f6e7b2d5e60556b9934027b0974b09","dedicated_environment":"p2-s0-route-b-fixture-generation","dedicated_environment_get_status":404,"dedicated_environment_match_count":0,"distinct_account_pair_available":true,"distinct_human_operator_status":"not_established","environment_name_set_sha256":"fabc78eebd9c9a12ad067f5b37b25227245a86b6ae5d2e17999d4901accdf179","existing_environment_count":6,"github_write_performed":false,"id_token_write_reference_count":0,"organization_plan_class":"enterprise","private_repository":true,"repository_actions_retention_mutation_authorized":false,"repository_owner_type":"Organization","target_environment_workflow_reference_count":0,"tracked_workflow_count":9}
+```
+
+The embedded Environment-name-set digest normalizes API-returned names to NFC,
+preserves case, sorts by ordinal Unicode scalar order, and hashes the UTF-8
+compact JSON array without BOM or trailing LF. The captured names are ASCII, so
+scalar/code-unit order is identical. Target collision checks separately use
+NFKC plus invariant case-folding.
+
 The collection digest is SHA-256 of the exact one-line UTF-8 JSON array below,
 without a trailing LF. Entries are sorted by `evidenceId`; object key order is
 fixed as shown. `E11` is a derived inference and is deliberately not a source
-artifact in this eleven-item collection. `E13` through `E19` are also
+artifact in this eleven-item collection. `E13` through `E21` are also
 deliberately excluded because they record later phase completion, Gate
-publication, input-gap/preflight, eligibility, and conflict evidence rather
-than P2-D design inputs.
+publication, input-gap/preflight, eligibility, conflict, and Settings-contract
+evidence rather than P2-D design inputs.
 
 ```json
 [{"evidenceId":"E01","hashProfile":"repo_text_lf","label":"docs/superpowers/specs/2026-08-08-github-control-plane-production-deploy-design.md","sha256":"77547423d469bc8777a0fa98188292bdd37454c13d454dc586149eb4325cc262"},{"evidenceId":"E02","hashProfile":"repo_text_lf","label":"docs/superpowers/plans/2026-08-08-github-control-plane-production-deploy-implementation-program.md","sha256":"a110ebbd5d0430d0f20fe789e95548426019e94dad69e01abf089fc36378a9a6"},{"evidenceId":"E03","hashProfile":"repo_text_lf","label":"docs/superpowers/plans/2026-08-08-github-control-plane-foundation-and-linux-feasibility.md","sha256":"1c3e5101776a7e91df548c0d38ca50d49adc536d4391fa2cd3b52a04ab89565d"},{"evidenceId":"E04","hashProfile":"repo_text_lf","label":"docs/superpowers/plans/2026-08-08-github-control-plane-artifact-and-workflow.md","sha256":"d2c7cc78b7c6cadd7d8221f417e0152111d4a18cabaf8f5d24d8ad3232b34286"},{"evidenceId":"E05","hashProfile":"repo_text_lf","label":".github/workflows/production-deploy-dry-run.yml","sha256":"51394f59f4ba9bba10815299a70874322fff59d30002769ce06662332ece0b9b"},{"evidenceId":"E06","hashProfile":"repo_text_lf","label":".github/workflows/release-artifact.yml","sha256":"5cc83158c486682b7c175c14efbab6b704d56db7fbbbf4b66995ad1b6f06a202"},{"evidenceId":"E07","hashProfile":"repo_text_lf","label":".github/workflows/japan-runtime-config-additive-repair.yml","sha256":"42b01083e5eab95f8797e6c2cce04bc61714a5fbad76b6cab21f7d27819a6ff7"},{"evidenceId":"E08","hashProfile":"repo_text_lf","label":"AGENTS.md","sha256":"430ddf51a3cf61d1e0123938231f24b1f42f17c0284406a187b8a4c869f0b56e"},{"evidenceId":"E09","hashProfile":"redacted_json_compact","label":"live-environment-ruleset-summary","sha256":"ec0982fe564eadeddc6f7367d76fe2621f11dd004f4b5bbdccf20b9c45cfd432"},{"evidenceId":"E10","hashProfile":"redacted_json_compact","label":"live-pr-600-merged-summary","sha256":"3ccaaf16a2f2a1086b3d4d328ab236912fbcdf54f74763b09b13436292fd26cb"},{"evidenceId":"E12","hashProfile":"redacted_json_compact","label":"github-private-attestation-root-summary","sha256":"fbcb88ffb797ff9a8e08d81c5235eafc31077d5a4d11c065cfa521fd102edd14"}]
@@ -407,8 +486,8 @@ than P2-D design inputs.
 ## Evidence Limitations
 
 - No external Sigstore dependency, Action version/full-SHA pin, executable
-  digest, trust root set, CA/TSA/log key set, API contract, or source path is
-  approved by P2-D, P2-S0 publication, FX1 publication, or this Route B Gate
+  digest, trust root set, CA/TSA/log key set, producer API contract, or source
+  path is approved by P2-D, P2-S0/FX1/FX2 publication, or this FX2-E Gate
   preparation. The proposed workflow/test paths are design boundaries only.
 - `github_private_rfc3161_v1` is a candidate profile name, not a selected or
   implemented success profile. The observed root counts do not prove that a
@@ -428,19 +507,21 @@ than P2-D design inputs.
   generation, bundle shape, RFC3161 binding, or offline oracle behavior.
 - A future manual workflow carrying OIDC and attestation write permission is a
   real callable surface after merge. Process guards are not machine-enforced
-  one-shot approval; a separately approved protected Environment before source
-  merge and a reviewed source-retirement merge after the run are both required.
+  one-shot approval; a separately approved exact FX2-E Settings execution before
+  source merge and a reviewed source-retirement merge after the run are both
+  required.
 - `actions/attest` writes to the GitHub Attestations API. A future generation
   execution therefore cannot claim scratch-only or zero-external-write
   behavior. This docs-only turn performed none of those writes.
 - No artifact was downloaded and no workflow was dispatched. No source
   implementation, dependency change, Release asset, lock, npm closure,
-  Environment, secret, host, database, or production state was created or
-  modified.
+  Environment, secret, variable, ruleset, host, database, or production state
+  was created or modified.
 - The existing diagnostic verifiers are deliberately non-authoritative. Their
   current fixed failure is evidence of a safe stop, not evidence that complete
   Sigstore verification works.
-- Live GitHub configuration can drift. Reviewers must refresh `E09` before any
-  future Settings, publication, staging, or production decision, refresh `E12`
-  before any profile or trust-rotation decision, and refresh `E17` through
-  `E19` before any Route B source or generation decision.
+- Live GitHub configuration can drift. Reviewers must refresh `E21` and the
+  official request contract before any FX2-E Settings approval, refresh `E09`
+  before later publication/staging/production decisions, refresh `E12` before
+  any profile or trust-rotation decision, and refresh `E17` through `E21`
+  before any Route B source or generation decision.
