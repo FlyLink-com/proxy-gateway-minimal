@@ -21,16 +21,48 @@ const CASE_REFS = Object.freeze({
   inflight: "f".repeat(64)
 });
 
-function caseRecord(caseRef, overrides = {}) {
+function remoteHandoffPreflight(overrides = {}) {
   return {
+    scopeKind: "remote_handoff",
+    scopeDigest: "1".repeat(64),
+    desiredState: "current",
+    notification: "current_applied",
+    lease: "active_current",
+    receipt: "current_applied_listener_ready",
+    ...overrides
+  };
+}
+
+function noRuntimePreflight() {
+  return {
+    scopeKind: "not_applicable",
+    scopeDigest: null,
+    desiredState: "not_applicable",
+    notification: "not_applicable",
+    lease: "not_applicable",
+    receipt: "not_applicable"
+  };
+}
+
+function caseRecord(caseRef, overrides = {}) {
+  const base = {
     caseRef,
+    sourceBindingDigest: "0".repeat(64),
     accountState: "active",
     serviceChainState: "unique_current_exact",
     authorityState: "none",
     commerceState: "clear",
     runtimeState: "verified",
-    identityState: "unique",
-    ...overrides
+    runtimePreflight: remoteHandoffPreflight(),
+    identityState: "unique"
+  };
+  return {
+    ...base,
+    ...overrides,
+    runtimePreflight: {
+      ...base.runtimePreflight,
+      ...(overrides.runtimePreflight ?? {})
+    }
   };
 }
 
@@ -71,7 +103,8 @@ test("aggregate reasons retain overlapping blockers even though a primary classi
   const overlapping = caseRecord(CASE_REFS.multiple, {
     serviceChainState: "multiple_current_exact",
     authorityState: "drift",
-    runtimeState: "unverified_or_drift"
+    runtimeState: "unverified_or_drift",
+    runtimePreflight: { receipt: "not_current_applied_listener_ready" }
   });
   assert.equal(classifyLegacyEntitlementNormalizationCase(overlapping), "blocked_runtime_or_identity_unverified");
   assert.deepEqual(listLegacyEntitlementNormalizationCaseReasons(overlapping), [
@@ -91,7 +124,8 @@ test("zero-service accounts remain no-op and do not bootstrap an entitlement or 
   const classification = classifyLegacyEntitlementNormalizationCase(caseRecord(CASE_REFS.noService, {
     serviceChainState: "none",
     authorityState: "not_applicable",
-    runtimeState: "not_applicable"
+    runtimeState: "not_applicable",
+    runtimePreflight: noRuntimePreflight()
   }));
   assert.equal(classification, "no_service_noop");
 });
@@ -101,7 +135,8 @@ test("inventory is aggregate-only and produces no selectable target", () => {
     caseRecord(CASE_REFS.noService, {
       serviceChainState: "none",
       authorityState: "not_applicable",
-      runtimeState: "not_applicable"
+      runtimeState: "not_applicable",
+      runtimePreflight: noRuntimePreflight()
     }),
     caseRecord(CASE_REFS.uniqueNoAuthority),
     caseRecord(CASE_REFS.uniqueAuthority, { authorityState: "exact" }),
@@ -180,6 +215,55 @@ test("snapshot contract rejects identifiers, duplicate cases, and inconsistent z
   }), /legacy_entitlement_normalization_duplicate_case_ref/);
   assert.throws(() => serializeLegacyEntitlementNormalizationSnapshot(snapshot([
     caseRecord(CASE_REFS.noService, { serviceChainState: "none", authorityState: "none", runtimeState: "not_applicable" })
+  ])), /legacy_entitlement_normalization_case_inconsistent/);
+});
+
+test("runtime preflight requires the exact remote-handoff evidence quartet before a case is verified", () => {
+  const valid = caseRecord(CASE_REFS.uniqueNoAuthority);
+  for (const field of ["desiredState", "notification", "lease", "receipt"]) {
+    const runtimePreflight = { ...valid.runtimePreflight, [field]: field === "desiredState" ? "not_current" : `not_${field}` };
+    if (field === "notification") runtimePreflight.notification = "not_current_applied";
+    if (field === "lease") runtimePreflight.lease = "not_active_current";
+    if (field === "receipt") runtimePreflight.receipt = "not_current_applied_listener_ready";
+    assert.throws(() => serializeLegacyEntitlementNormalizationSnapshot(snapshot([
+      { ...valid, runtimePreflight }
+    ])), /legacy_entitlement_normalization_case_inconsistent/);
+  }
+});
+
+test("runtime scope evidence and stable case ordering bind snapshot and plan identity", () => {
+  const first = snapshot([caseRecord(CASE_REFS.uniqueNoAuthority)]);
+  const changedScope = snapshot([caseRecord(CASE_REFS.uniqueNoAuthority, {
+    runtimePreflight: { ...caseRecord(CASE_REFS.uniqueNoAuthority).runtimePreflight, scopeDigest: "2".repeat(64) }
+  })]);
+  const firstPlan = buildLegacyEntitlementNormalizationPlan(first);
+  const changedPlan = buildLegacyEntitlementNormalizationPlan(changedScope);
+  assert.notEqual(firstPlan.snapshotDigest, changedPlan.snapshotDigest);
+  assert.notEqual(firstPlan.planDigest, changedPlan.planDigest);
+  assert.throws(() => serializeLegacyEntitlementNormalizationSnapshot(snapshot([
+    caseRecord(CASE_REFS.uniqueNoAuthority, { caseRef: "f".repeat(64) }),
+    caseRecord(CASE_REFS.uniqueNoAuthority, { caseRef: "e".repeat(64) })
+  ])), /legacy_entitlement_normalization_cases_not_sorted/);
+});
+
+test("runtime outside the remote-handoff scope remains fail-closed instead of becoming verified", () => {
+  const outsideScope = caseRecord(CASE_REFS.uniqueNoAuthority, {
+    runtimeState: "unverified_or_drift",
+    runtimePreflight: {
+      scopeKind: "outside_remote_handoff_scope",
+      scopeDigest: null,
+      desiredState: "not_applicable",
+      notification: "not_applicable",
+      lease: "not_applicable",
+      receipt: "not_applicable"
+    }
+  });
+  assert.deepEqual(listLegacyEntitlementNormalizationCaseReasons(outsideScope), [
+    "blocked_runtime_or_identity_unverified",
+    "requires_explicit_authority_assignment"
+  ]);
+  assert.throws(() => serializeLegacyEntitlementNormalizationSnapshot(snapshot([
+    { ...outsideScope, runtimeState: "verified" }
   ])), /legacy_entitlement_normalization_case_inconsistent/);
 });
 

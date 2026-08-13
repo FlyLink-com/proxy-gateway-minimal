@@ -40,6 +40,31 @@ const AUTHORITY_STATES = new Set([
 ]);
 const COMMERCE_STATES = new Set(["clear", "inflight_or_reconciliation"]);
 const RUNTIME_STATES = new Set(["not_applicable", "verified", "unverified_or_drift"]);
+const RUNTIME_SCOPE_KINDS = new Set([
+  "not_applicable",
+  "remote_handoff",
+  "outside_remote_handoff_scope"
+]);
+const RUNTIME_DESIRED_STATES = new Set([
+  "not_applicable",
+  "current",
+  "not_current"
+]);
+const RUNTIME_NOTIFICATION_STATES = new Set([
+  "not_applicable",
+  "current_applied",
+  "not_current_applied"
+]);
+const RUNTIME_LEASE_STATES = new Set([
+  "not_applicable",
+  "active_current",
+  "not_active_current"
+]);
+const RUNTIME_RECEIPT_STATES = new Set([
+  "not_applicable",
+  "current_applied_listener_ready",
+  "not_current_applied_listener_ready"
+]);
 const IDENTITY_STATES = new Set(["unique", "duplicate_or_ambiguous"]);
 
 export const NORMALIZATION_CLASSIFICATIONS = Object.freeze([
@@ -111,14 +136,102 @@ function assertSha256(value, code) {
   if (typeof value !== "string" || !SHA256_PATTERN.test(value)) throw new Error(code);
 }
 
+function runtimePreflightIsVerified(value) {
+  return value.scopeKind === "remote_handoff"
+    && value.desiredState === "current"
+    && value.notification === "current_applied"
+    && value.lease === "active_current"
+    && value.receipt === "current_applied_listener_ready";
+}
+
+function assertRuntimePreflight(value) {
+  assertExactEnum(
+    value.scopeKind,
+    RUNTIME_SCOPE_KINDS,
+    "legacy_entitlement_normalization_runtime_preflight_invalid"
+  );
+  assertExactEnum(
+    value.desiredState,
+    RUNTIME_DESIRED_STATES,
+    "legacy_entitlement_normalization_runtime_preflight_invalid"
+  );
+  assertExactEnum(
+    value.notification,
+    RUNTIME_NOTIFICATION_STATES,
+    "legacy_entitlement_normalization_runtime_preflight_invalid"
+  );
+  assertExactEnum(
+    value.lease,
+    RUNTIME_LEASE_STATES,
+    "legacy_entitlement_normalization_runtime_preflight_invalid"
+  );
+  assertExactEnum(
+    value.receipt,
+    RUNTIME_RECEIPT_STATES,
+    "legacy_entitlement_normalization_runtime_preflight_invalid"
+  );
+
+  if (value.scopeKind === "remote_handoff") {
+    assertSha256(
+      value.scopeDigest,
+      "legacy_entitlement_normalization_runtime_preflight_invalid"
+    );
+    if (
+      value.desiredState === "not_applicable"
+      || value.notification === "not_applicable"
+      || value.lease === "not_applicable"
+      || value.receipt === "not_applicable"
+    ) {
+      throw new Error("legacy_entitlement_normalization_runtime_preflight_invalid");
+    }
+    return;
+  }
+
+  if (
+    value.scopeDigest !== null
+    || value.desiredState !== "not_applicable"
+    || value.notification !== "not_applicable"
+    || value.lease !== "not_applicable"
+    || value.receipt !== "not_applicable"
+  ) {
+    throw new Error("legacy_entitlement_normalization_runtime_preflight_invalid");
+  }
+}
+
+const RUNTIME_PREFLIGHT_CONTRACT = frozenContract(
+  "legacy_entitlement_normalization_runtime_preflight_v1",
+  ["scopeKind", "scopeDigest", "desiredState", "notification", "lease", "receipt"],
+  { validate: assertRuntimePreflight }
+);
+
 function assertCaseRecordConsistency(value) {
   if (value.serviceChainState === "none") {
-    if (value.authorityState !== "not_applicable" || value.runtimeState !== "not_applicable") {
+    if (
+      value.authorityState !== "not_applicable"
+      || value.runtimeState !== "not_applicable"
+      || value.runtimePreflight.scopeKind !== "not_applicable"
+    ) {
       throw new Error("legacy_entitlement_normalization_case_inconsistent");
     }
     return;
   }
-  if (value.authorityState === "not_applicable" || value.runtimeState === "not_applicable") {
+  if (
+    value.authorityState === "not_applicable"
+    || value.runtimeState === "not_applicable"
+    || value.runtimePreflight.scopeKind === "not_applicable"
+  ) {
+    throw new Error("legacy_entitlement_normalization_case_inconsistent");
+  }
+  if (
+    (value.runtimePreflight.scopeKind === "outside_remote_handoff_scope"
+      && value.runtimeState !== "unverified_or_drift")
+    || (value.runtimePreflight.scopeKind === "remote_handoff"
+      && value.runtimeState === "verified"
+      && !runtimePreflightIsVerified(value.runtimePreflight))
+    || (value.runtimePreflight.scopeKind === "remote_handoff"
+      && value.runtimeState === "unverified_or_drift"
+      && runtimePreflightIsVerified(value.runtimePreflight))
+  ) {
     throw new Error("legacy_entitlement_normalization_case_inconsistent");
   }
 }
@@ -127,18 +240,22 @@ const CASE_CONTRACT = frozenContract(
   "legacy_entitlement_normalization_case_v1",
   [
     "caseRef",
+    "sourceBindingDigest",
     "accountState",
     "serviceChainState",
     "authorityState",
     "commerceState",
     "runtimeState",
+    "runtimePreflight",
     "identityState"
   ],
   {
+    nested: { runtimePreflight: RUNTIME_PREFLIGHT_CONTRACT },
     validate(value) {
       if (typeof value.caseRef !== "string" || !SHA256_PATTERN.test(value.caseRef)) {
         throw new Error("legacy_entitlement_normalization_case_ref_invalid");
       }
+      assertSha256(value.sourceBindingDigest, "legacy_entitlement_normalization_case_invalid");
       assertExactEnum(value.accountState, ACCOUNT_STATES, "legacy_entitlement_normalization_case_invalid");
       assertExactEnum(value.serviceChainState, SERVICE_CHAIN_STATES, "legacy_entitlement_normalization_case_invalid");
       assertExactEnum(value.authorityState, AUTHORITY_STATES, "legacy_entitlement_normalization_case_invalid");
@@ -164,12 +281,15 @@ const SNAPSHOT_CONTRACT = frozenContract(
       if (typeof value.sourceCommit !== "string" || !SOURCE_COMMIT_PATTERN.test(value.sourceCommit)) {
         throw new Error("legacy_entitlement_normalization_snapshot_invalid");
       }
-      const refs = new Set();
+      let previousCaseRef = null;
       for (const entry of value.cases) {
-        if (refs.has(entry.caseRef)) {
+        if (previousCaseRef !== null && entry.caseRef === previousCaseRef) {
           throw new Error("legacy_entitlement_normalization_duplicate_case_ref");
         }
-        refs.add(entry.caseRef);
+        if (previousCaseRef !== null && entry.caseRef < previousCaseRef) {
+          throw new Error("legacy_entitlement_normalization_cases_not_sorted");
+        }
+        previousCaseRef = entry.caseRef;
       }
     }
   }
@@ -328,6 +448,51 @@ export function parseLegacyEntitlementNormalizationSnapshot(bytes) {
 
 export function serializeLegacyEntitlementNormalizationSnapshot(snapshot) {
   return serializeCanonicalJsonBytes(snapshot, SNAPSHOT_CONTRACT);
+}
+
+export function digestLegacyEntitlementNormalizationCase(caseRecord) {
+  const value = normalizeSnapshot({
+    schemaVersion: "1",
+    snapshotType: "aggregate_case_snapshot",
+    observedAt: "2026-01-01T00:00:00.000Z",
+    sourceCommit: "0000000000000000000000000000000000000000",
+    cases: [caseRecord]
+  }).cases[0];
+  return sha256Hex(serializeCanonicalJsonBytes(value, CASE_CONTRACT));
+}
+
+const REMOTE_HANDOFF_SCOPE_DIGEST_CONTRACT = frozenContract(
+  "legacy_entitlement_normalization_remote_handoff_scope_digest_v1",
+  ["schemaVersion", "scopeType", "scopeDigests"],
+  {
+    arrays: { scopeDigests: Object.freeze({ elementType: "string" }) },
+    validate(value) {
+      if (value.schemaVersion !== "1" || value.scopeType !== "remote_handoff") {
+        throw new Error("legacy_entitlement_normalization_runtime_scope_invalid");
+      }
+      let previousScopeDigest = null;
+      for (const scopeDigest of value.scopeDigests) {
+        assertSha256(scopeDigest, "legacy_entitlement_normalization_runtime_scope_invalid");
+        if (previousScopeDigest !== null && scopeDigest <= previousScopeDigest) {
+          throw new Error("legacy_entitlement_normalization_runtime_scope_invalid");
+        }
+        previousScopeDigest = scopeDigest;
+      }
+    }
+  }
+);
+
+export function deriveLegacyEntitlementNormalizationRemoteHandoffScopeDigest(snapshot) {
+  const value = normalizeSnapshot(snapshot);
+  const scopeDigests = [...new Set(value.cases
+    .filter((caseRecord) => caseRecord.runtimePreflight.scopeKind === "remote_handoff")
+    .map((caseRecord) => caseRecord.runtimePreflight.scopeDigest))].sort();
+  if (scopeDigests.length === 0) return null;
+  return sha256Hex(serializeCanonicalJsonBytes({
+    schemaVersion: "1",
+    scopeType: "remote_handoff",
+    scopeDigests
+  }, REMOTE_HANDOFF_SCOPE_DIGEST_CONTRACT));
 }
 
 export function classifyLegacyEntitlementNormalizationCase(caseRecord) {

@@ -18,6 +18,7 @@ It does **not** implement that migration. It cannot read a production database,
 select a resource, assign Authority, alter an entitlement, issue or revoke a
 subscription, change a tenant/artifact, touch a wallet, create a Quote or
 Order, capture Coins, invoke a payment provider, or dispatch a runtime action.
+It is a planning contract, not the future write operator.
 
 The target product is fixed in source as:
 
@@ -82,6 +83,65 @@ blocked. Multi-current chains require an explicitly reviewed canonical triad;
 the tool never chooses a keeper from timestamps, use, runtime presence, or
 validity dates.
 
+For a case in the **remote-handoff** runtime scope, `runtimeState=verified`
+is accepted only when the private snapshot carries one opaque scope digest and
+all four exact, current facts: desired state, applied notification, active
+matching lease, and applied receipt with config test, service, and listener
+ready. A scope outside remote-handoff has no such claim and remains blocked
+for a future independent Runtime Gate. This is a canonical input contract, not
+a live readback: it must be sampled again inside the later maintenance window.
+Case references must be strictly sorted opaque 64-hex values, so the same
+private case set has one snapshot and plan digest rather than a caller-chosen
+ordering.
+
+`legacy-entitlement-normalization-execution-state.mjs` adds a second, still
+source-only **execution-preflight contract**. It has no CLI and no database,
+filesystem, network, runtime, Commerce, Wallet, or Authority adapter. Given a
+private snapshot and private digest-only attestations, it verifies only that
+the following declarations bind together:
+
+- exact source commit, policy, snapshot and plan digests, bounded expiry, and
+  batch limit;
+- a held write barrier with zero aggregate Wallet/Commerce/Payment/Fulfillment
+  writers;
+- distinct paired control/runtime backup and restore-proof digests;
+- the exact affected remote-handoff scope and its desired/notification/lease/
+  listener-ready receipt digest set; and
+- one matching opaque case digest and review binding for every frozen case.
+
+Its receipt is deliberately `attestationClaimsOnly: true`,
+`executionAllowed: false`, and has all effects fixed to zero. Even when every
+input declaration matches, the strongest state is
+`candidate_for_separate_risk_a`; it is not an authenticated readback, approval,
+operator receipt, or permission to switch a user model. Hard blockers cannot
+be cleared by a review digest, and multi-current chains remain
+`review_required` until a separate private canonical-chain decision exists.
+
+The same module can canonicalize a **private execution-intent manifest** for
+future review. It binds only pre-approved, unique-current, non-blocked cases to
+opaque private triad references, Authority CAS expectations, a deterministic
+operation digest, a source-binding digest supplied by a future private
+inventory, and a fixed 365-day/200-GiB/yearly transition shape whose cycle
+anchor equals its start. Its public summary exposes only manifest/snapshot/plan
+digests and a count. Raw manifest parse/serialize helpers remain internal to
+this source module: there is no CLI, HTTP route, log surface, or runtime import
+for them. The manifest is not an operator, does not provide idempotent writes,
+and is never printed by the CLI or a receipt. Multi-current, lapsed,
+zero-service, Authority-conflicted, runtime-drifted, or otherwise blocked cases
+cannot enter it. The preflight accepts such a manifest only as an in-memory
+private object and recomputes its source/snapshot/plan/case bindings; a digest
+string alone is not accepted as evidence.
+
+The canonical preflight also applies a short, ordered declaration window:
+frozen snapshot → intent → held barrier → paired backup/restore declaration →
+runtime declaration → review → evaluation. The barrier's generation digest is
+derived from its complete aggregate declaration, rather than accepted as an
+unrelated hash. These are still **claims-only integrity bindings**, not a
+production lock, authenticated provider readback, or evidence that every
+control-plane writer is paused. A later Risk A operator must obtain a real
+maintenance/read-only generation covering entitlement, Portal, Authority and
+runtime writers, then independently read it back in the same window.
+
 ## Required gates before any later apply
 
 The one-time production cohort query attempted for this work did not yield a
@@ -93,8 +153,10 @@ sequence must include:
    exact runtime resources that a transition could affect.
 2. Take one fresh read-only, aggregate-safe cohort inventory and bind a
    private frozen manifest to exact source, database, and paired backup
-   identities. Stop on ambiguity, partial chains, in-flight Commerce, or
-   runtime drift.
+   identities. The source-only execution-preflight contract may validate the
+   resulting digest relationships, but the later Risk A operator must perform
+   its own authenticated live readback. Stop on ambiguity, partial chains,
+   in-flight Commerce, or runtime drift.
 3. Review an explicit product-transition contract and private canonical triad
    manifest. No automatic backfill or keeper selection is permitted.
 4. Implement and validate a separate idempotent normalization operator on
@@ -115,3 +177,29 @@ does not make an arbitrary local JSON file safe to disclose, so input files
 remain private and are never echoed in output.
 
 No production action is approved or performed by this runbook.
+
+## Future operator contract (not implemented by this PR)
+
+The future Risk A operator must be a separate executable surface. It may not
+turn this read-only CLI's `apply` mode on or treat the source-only
+execution-preflight receipt as proof of the live system. Its private immutable
+manifest must bind an exact source/artifact identity, snapshot and plan digest,
+bounded expiry, write-barrier generation, paired control/runtime backup and
+restore proof digests, exact schema checksums, runtime/identity preflight
+digests, and one explicitly approved canonical chain and transition rule for
+every case.
+It must treat each case as the following forward-only state machine:
+
+```text
+planned -> control_committed -> runtime_pending -> runtime_applied -> reconciled
+                                      |                    |
+                                      +---- stopped / reconciliation_required
+```
+
+No component may infer a keeper, create a second service resource, fabricate
+a payment/Coins/Commerce effect, or delete historical records. The operator
+must stop the whole bounded batch on any case drift, in-flight write, failed
+runtime readback, or unknown outcome. A later case cannot begin after a prior
+case becomes `runtime_pending`, `stopped`, or `reconciliation_required`.
+Control-DB restoration alone is not a rollback after a runtime change; recovery
+is forward reconciliation under a separate exact approval.

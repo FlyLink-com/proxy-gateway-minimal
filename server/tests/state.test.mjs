@@ -4994,7 +4994,9 @@ test("createRuntimeState refreshes remote credentials through pending notificati
   const controlDbPath = join(dir, "control.sqlite");
   const channelRef = "channel-sgp-a-hy2";
   const nodeRef = "vultr-sgp-a";
-  let now = new Date("2026-07-13T12:00:00.000Z");
+  // Keep the synthetic entitlement current for both the injected subscription
+  // clock and the control-store's real-time expiry filter.
+  let now = new Date();
   let state;
 
   try {
@@ -5087,7 +5089,7 @@ test("createRuntimeState refreshes remote credentials through pending notificati
     assert.equal(initiallyRendered.ok, true);
     assert.deepEqual(initiallyRendered.proxyConfig.servers.map((server) => server.name), [channelRef]);
 
-    now = new Date("2026-07-13T12:01:00.000Z");
+    now = new Date(now.getTime() + 60_000);
     const refreshed = state.platform.portalAccessRequests.refreshSubscription({
       portalUserRef: "portal_user_remote_refresh_001",
       requestRef: request.id,

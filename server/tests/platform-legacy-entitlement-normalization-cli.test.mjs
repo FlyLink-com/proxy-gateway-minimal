@@ -27,11 +27,20 @@ function snapshot() {
     sourceCommit: "2492515eadf254bd0d20001e3d03219edec16c57",
     cases: [{
       caseRef: CASE_REF,
+      sourceBindingDigest: "0".repeat(64),
       accountState: "active",
       serviceChainState: "unique_current_exact",
       authorityState: "none",
       commerceState: "clear",
       runtimeState: "verified",
+      runtimePreflight: {
+        scopeKind: "remote_handoff",
+        scopeDigest: "1".repeat(64),
+        desiredState: "current",
+        notification: "current_applied",
+        lease: "active_current",
+        receipt: "current_applied_listener_ready"
+      },
       identityState: "unique"
     }]
   };
@@ -164,8 +173,8 @@ test("CLI rejects unknown, duplicate, missing, relative, and database-path argum
     [["--mode", "plan"], "input_path_required"],
     [["--mode", "plan", "--input-path", "relative.json"], "input_path_must_be_absolute"],
     [["--mode", "plan", "--input-path", "\\\\server\\share\\private.json"], "input_path_network_forbidden"],
-    [["--mode", "plan", "--input-path", "C:\\private\\production.sqlite"], "input_path_database_forbidden"],
-    [["--mode", "plan", "--input-path", "C:\\private\\snapshot.txt"], "input_path_extension_invalid"],
+    [["--mode", "plan", "--input-path", join(tmpdir(), "private-production.sqlite")], "input_path_database_forbidden"],
+    [["--mode", "plan", "--input-path", join(tmpdir(), "private-snapshot.txt")], "input_path_extension_invalid"],
     [["--mode", "plan", "--db-path", "C:\\private\\db.sqlite"], "unknown_argument"],
     [["--mode", "plan", "--mode", "dry-run", "--input-path", "C:\\private\\snapshot.json"], "duplicate_argument"]
   ];
