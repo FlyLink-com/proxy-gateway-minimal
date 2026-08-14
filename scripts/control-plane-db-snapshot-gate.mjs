@@ -32,6 +32,13 @@ const MODES = new Set(["guard", "snapshot", "verify", "restore"]);
 const SERVICE_STATES = new Set(["active", "inactive"]);
 const RUNTIME_START_GUARD_DIRECTORY = "/run/control-plane-db-snapshot-gates";
 const RUNTIME_START_GUARD_DROPIN_FILE = "zzzzzz-control-plane-db-snapshot-start-guard.conf";
+const SYSTEMD_UNIT_SHOW_PROPERTIES = new Set([
+  "ActiveState",
+  "UnitFileState",
+  "LoadState",
+  "NeedDaemonReload",
+  "DropInPaths"
+]);
 const SAFE_CONDITIONS = new Set([
   "apply_confirmation_required",
   "database_boundary_invalid",
@@ -488,6 +495,34 @@ function withoutOutput(command, args) {
   }
 }
 
+export function parseSystemdUnitShowProperties(stdout) {
+  const values = new Map();
+  for (const line of String(stdout ?? "").trim().split(/\r?\n/)) {
+    const separator = line.indexOf("=");
+    if (separator <= 0) fail("service_state_unavailable");
+    const key = line.slice(0, separator);
+    const value = line.slice(separator + 1);
+    if (
+      !SYSTEMD_UNIT_SHOW_PROPERTIES.has(key)
+      || values.has(key)
+      || (key !== "DropInPaths" && !/^[a-z-]+$/.test(value))
+    ) {
+      fail("service_state_unavailable");
+    }
+    values.set(key, value);
+  }
+  if (values.size !== SYSTEMD_UNIT_SHOW_PROPERTIES.size) fail("service_state_unavailable");
+  const dropInPathsValue = values.get("DropInPaths");
+  if (typeof dropInPathsValue !== "string") fail("service_state_unavailable");
+  return Object.freeze({
+    activeState: values.get("ActiveState"),
+    unitFileState: values.get("UnitFileState"),
+    loadState: values.get("LoadState"),
+    needDaemonReload: values.get("NeedDaemonReload"),
+    dropInPaths: Object.freeze(dropInPathsValue.trim().split(/\s+/).filter(Boolean))
+  });
+}
+
 export function readSystemdUnitState({ serviceUnit } = {}) {
   const unit = safeServiceUnit(serviceUnit);
   if (process.platform !== "linux") fail("service_state_unavailable");
@@ -502,27 +537,19 @@ export function readSystemdUnitState({ serviceUnit } = {}) {
     unit
   ]);
   if (!result || result.error || result.status !== 0) fail("service_state_unavailable");
-  const values = new Map();
-  for (const line of String(result.stdout || "").trim().split(/\r?\n/)) {
-    const match = /^(ActiveState|UnitFileState|LoadState|NeedDaemonReload)=([a-z-]+)$/.exec(line)
-      ?? /^DropInPaths=(.*)$/.exec(line);
-    if (!match || values.has(match[1])) fail("service_state_unavailable");
-    values.set(match[1], match[2]);
-  }
-  if (values.size !== 5) fail("service_state_unavailable");
-  const dropInPaths = values.get("DropInPaths").trim().split(/\s+/).filter(Boolean);
-  const runtimeConditionStartGuardIdentity = values.get("LoadState") === "loaded"
-    && values.get("NeedDaemonReload") === "no"
+  const reported = parseSystemdUnitShowProperties(result.stdout);
+  const runtimeConditionStartGuardIdentity = reported.loadState === "loaded"
+    && reported.needDaemonReload === "no"
     && hasRuntimeConditionStartGuard({
       serviceUnit: unit,
-      dropInPaths
+      dropInPaths: reported.dropInPaths
     })
       || null;
   return Object.freeze({
-    activeState: values.get("ActiveState"),
-    unitFileState: values.get("UnitFileState"),
-    loadState: values.get("LoadState"),
-    needDaemonReload: values.get("NeedDaemonReload"),
+    activeState: reported.activeState,
+    unitFileState: reported.unitFileState,
+    loadState: reported.loadState,
+    needDaemonReload: reported.needDaemonReload,
     runtimeConditionStartGuard: runtimeConditionStartGuardIdentity !== null,
     runtimeConditionStartGuardIdentity
   });
