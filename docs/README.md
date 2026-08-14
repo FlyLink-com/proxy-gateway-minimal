@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-08-11
+  last_verified_at: 2026-08-14
   production_authority: false
 ```
 
@@ -274,6 +274,7 @@ Check structured state with `npm run project-state:check`.
 | --- | --- | --- | --- |
 | `docs/DEPLOYMENT_FLOW.md` | Historical AWS development, staging, promotion, and rollback evidence. | Historical AWS evidence (superseded); no current production-target authority. | Read only for AWS archaeology; use `docs/RUNTIME_LANE_AUTHORITY.md` for current target selection. Any provider action requires fresh live read-only inventory and a new exact Risk A gate. |
 | `docs/GITHUB_DEPLOYMENT_RUNBOOK.md` | GitHub-owned release artifact, Cloudflare static-site deploy, and production deploy dry-run boundaries. | Active CI/CD runbook; production host mutation remains separately gated. | Read before adding GitHub Actions deployment, Cloudflare publish, or production deploy dry-run/promotion workflows. |
+| `docs/CONTROL_PLANE_DB_SNAPSHOT_RESTORE_CONTRACT.md` | Manual control-plane shared SQLite snapshot, verification, and restore precondition contract. | Active operational Risk A runbook; it does not authorize host access, service mutation, release switching, schema apply, or automatic database rollback. | Read before preparing or executing a manual control-plane release whose startup may change the shared control database. |
 | `docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md` | Provider-neutral no-secret machine image / snapshot / AMI runbook plus repo-only readiness summary and first-boot packet helpers for preparing repeatable data-plane nodes that activate through first-boot registration and receipt-gated rendering. | Active Risk A runbook with C-tier gate-preview helpers; no image creation, provider mutation, protected material injection, or traffic activation authority by itself. | Read before building reusable production node images, cloning data-plane software baselines, or creating a new image-based Vultr/AWS/Aliyun node. |
 | `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md` | AWS staging execution record for validating the no-secret node-image readiness and first-boot packet helper path with synthetic safe input. | Execution record; staging proof only, not production activation and not control-plane registration completion. | Read before claiming node-image readiness, preparing the control-plane node-registration closeout gate, or cloning a production-capable data-plane image. |
 | `docs/production-replacement-records/2026-06-14-production-node-image-factory-closeout.md` | Repo-only closeout record for the production-node image factory lane: runbook, no-secret helper CLIs, first-boot packet, safe node registration ingestion, protected material preflight, and AWS staging evidence. | Closeout record; no provider image, production node registration, protected material injection, traffic activation, or live order authority. | Read before handing image-factory work to the next control-plane node-registration gate or before creating a new image-based node approval packet. |

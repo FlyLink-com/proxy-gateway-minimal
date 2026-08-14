@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { readlinkSync, realpathSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { lstatSync, readlinkSync, realpathSync } from "node:fs";
+import { posix, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
@@ -72,6 +72,20 @@ function requiredText(argv, name) {
   return value;
 }
 
+function requiredLinuxAbsolutePath(argv, name) {
+  const value = requiredText(argv, name);
+  if (
+    value.includes("\0")
+    || value === "/"
+    || !value.startsWith("/")
+    || value.endsWith("/")
+    || posix.normalize(value) !== value
+  ) {
+    throw inputError();
+  }
+  return value;
+}
+
 function integerArg(argv, name, fallback, { min, max }) {
   const raw = argValue(argv, name);
   if (raw === "") return fallback;
@@ -109,6 +123,14 @@ function healthUrl(raw, kind) {
 export function parsePromotionHealthGateArgs(argv = []) {
   const expectedRelease = requiredText(argv, "--expected-release");
   if (!RELEASE_PATTERN.test(expectedRelease)) throw inputError();
+  const expectedReleasePath = requiredLinuxAbsolutePath(argv, "--expected-release-path");
+  const currentLinkPath = requiredLinuxAbsolutePath(argv, "--current-link");
+  if (
+    posix.basename(expectedReleasePath) !== expectedRelease
+    || posix.basename(currentLinkPath) !== "current"
+  ) {
+    throw inputError();
+  }
   const restartBaseline = integerArg(argv, "--restart-baseline", null, {
     min: 0,
     max: Number.MAX_SAFE_INTEGER
@@ -130,6 +152,8 @@ export function parsePromotionHealthGateArgs(argv = []) {
 
   return {
     expectedRelease,
+    expectedReleasePath,
+    currentLinkPath,
     restartBaseline,
     localHealthUrl: healthUrl(requiredText(argv, "--local-health-url"), "local"),
     publicHealthUrl: healthUrl(requiredText(argv, "--public-health-url"), "public"),
@@ -210,7 +234,9 @@ function resultShape({
 }
 
 function timeoutCondition(runtime, local, requiredLocalSuccesses) {
-  if (!runtime.activeSeen || !runtime.expectedProcessSeen) return "runtime_not_ready";
+  if (!runtime.activeSeen) return "runtime_not_ready";
+  if (!runtime.currentPointerMatchesExpected) return "current_pointer_not_ready";
+  if (!runtime.processCwdMatchesExpected) return "process_cwd_not_ready";
   if (local.consecutiveSuccesses < requiredLocalSuccesses) return "local_health_not_ready";
   return "public_health_not_ready";
 }
@@ -251,7 +277,8 @@ export async function runPromotionHealthGate({
   const startedAt = now();
   const runtimeEvidence = {
     activeSeen: false,
-    expectedProcessSeen: false,
+    currentPointerMatchesExpected: false,
+    processCwdMatchesExpected: false,
     restartCountDelta: 0
   };
   const localEvidence = emptyProbeEvidence();
@@ -290,7 +317,8 @@ export async function runPromotionHealthGate({
     const restartCountDelta = restartCount === null ? 0 : restartCount - restartBaseline;
     runtimeEvidence.restartCountDelta = restartCountDelta;
     runtimeEvidence.activeSeen ||= runtimeState?.active === true;
-    runtimeEvidence.expectedProcessSeen ||= runtimeState?.processRelease === expectedRelease;
+    runtimeEvidence.currentPointerMatchesExpected = runtimeState?.currentPointerMatchesExpected === true;
+    runtimeEvidence.processCwdMatchesExpected = runtimeState?.processCwdMatchesExpected === true;
 
     if (restartCount !== null && restartCountDelta !== 0) {
       return resultShape({
@@ -321,7 +349,8 @@ export async function runPromotionHealthGate({
 
     const runtimeReady = runtimeState?.active === true
       && runtimeState?.substate === "running"
-      && runtimeState?.processRelease === expectedRelease
+      && runtimeState?.currentPointerMatchesExpected === true
+      && runtimeState?.processCwdMatchesExpected === true
       && restartCount === restartBaseline;
 
     if (runtimeReady) {
@@ -445,9 +474,45 @@ function parseSystemdProperties(output) {
   );
 }
 
+function resolveReleaseIdentity({
+  expectedRelease,
+  expectedReleasePath,
+  currentLinkPath,
+  lstatPath,
+  realpathPath
+}) {
+  try {
+    const expectedCandidateMetadata = lstatPath(expectedReleasePath);
+    if (
+      expectedCandidateMetadata.isSymbolicLink()
+      || !expectedCandidateMetadata.isDirectory()
+    ) {
+      return { expectedCandidatePath: "", currentPointerMatchesExpected: false };
+    }
+    const expectedCandidatePath = realpathPath(expectedReleasePath);
+    if (
+      expectedCandidatePath !== expectedReleasePath
+      || posix.basename(expectedCandidatePath) !== expectedRelease
+    ) {
+      return { expectedCandidatePath: "", currentPointerMatchesExpected: false };
+    }
+    const currentLinkMetadata = lstatPath(currentLinkPath);
+    const currentPointerMatchesExpected = currentLinkMetadata.isSymbolicLink()
+      && realpathPath(currentLinkPath) === expectedCandidatePath;
+    return { expectedCandidatePath, currentPointerMatchesExpected };
+  } catch {
+    return { expectedCandidatePath: "", currentPointerMatchesExpected: false };
+  }
+}
+
 export async function readControlPlaneRuntimeState({
+  expectedRelease,
+  expectedReleasePath,
+  currentLinkPath,
   commandRunner = runCommand,
   readProcessCwd = (pid) => readlinkSync(`/proc/${pid}/cwd`),
+  lstatPath = lstatSync,
+  realpathPath = realpathSync,
   timeoutMs = PROMOTION_HEALTH_GATE_DEFAULTS.probeTimeoutMs
 } = {}) {
   const result = await commandRunner("systemctl", [
@@ -462,23 +527,38 @@ export async function readControlPlaneRuntimeState({
     maxOutput: 4_096
   });
   if (!result.ok) {
-    return { active: false, substate: "unknown", processRelease: "", restartCount: null };
+    return {
+      active: false,
+      substate: "unknown",
+      currentPointerMatchesExpected: false,
+      processCwdMatchesExpected: false,
+      restartCount: null
+    };
   }
   const properties = parseSystemdProperties(result.stdout);
+  const releaseIdentity = resolveReleaseIdentity({
+    expectedRelease,
+    expectedReleasePath,
+    currentLinkPath,
+    lstatPath,
+    realpathPath
+  });
   const pid = Number(properties.MainPID);
-  let processRelease = "";
-  if (Number.isInteger(pid) && pid > 0) {
+  let processCwdMatchesExpected = false;
+  if (Number.isInteger(pid) && pid > 0 && releaseIdentity.expectedCandidatePath) {
     try {
-      processRelease = basename(readProcessCwd(pid));
+      processCwdMatchesExpected = realpathPath(readProcessCwd(pid))
+        === releaseIdentity.expectedCandidatePath;
     } catch {
-      processRelease = "";
+      processCwdMatchesExpected = false;
     }
   }
   const restartCount = Number(properties.NRestarts);
   return {
     active: properties.ActiveState === "active",
     substate: properties.SubState || "unknown",
-    processRelease,
+    currentPointerMatchesExpected: releaseIdentity.currentPointerMatchesExpected,
+    processCwdMatchesExpected,
     restartCount: Number.isInteger(restartCount) && restartCount >= 0 ? restartCount : null
   };
 }
@@ -525,7 +605,12 @@ export async function runPromotionHealthGateCli({
     const result = await runPromotionHealthGate({
       ...options,
       readRuntimeState: dependencies.readRuntimeState
-        ?? (({ timeoutMs }) => readControlPlaneRuntimeState({ timeoutMs })),
+        ?? (({ timeoutMs }) => readControlPlaneRuntimeState({
+          expectedRelease: options.expectedRelease,
+          expectedReleasePath: options.expectedReleasePath,
+          currentLinkPath: options.currentLinkPath,
+          timeoutMs
+        })),
       probeLocalHealth: dependencies.probeLocalHealth
         ?? (({ timeoutMs }) => probeHealth(options.localHealthUrl, {
           fetchImpl: dependencies.fetchImpl,

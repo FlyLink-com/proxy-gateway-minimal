@@ -28,6 +28,19 @@ const FORBIDDEN_SUFFIX_RULES = [
   { pattern: /\.(?:log|trace)$/i, reason: "runtime log file must not be packaged" }
 ];
 
+function protectedEnvironmentReason(fileName) {
+  if (
+    fileName === ".env.example"
+    || (fileName.startsWith(".env.") && fileName.endsWith(".example"))
+  ) {
+    return null;
+  }
+  if (fileName === ".env" || fileName.startsWith(".env.")) {
+    return "protected environment file must not be packaged";
+  }
+  return null;
+}
+
 function normalizePath(input) {
   return String(input || "")
     .replace(/\\/g, "/")
@@ -65,7 +78,10 @@ function classifyPath(path) {
     }
   }
 
-  const exactReason = FORBIDDEN_EXACT_RULES.get(normalized);
+  const fileName = segments[segments.length - 1];
+  const exactReason = FORBIDDEN_EXACT_RULES.get(normalized)
+    || FORBIDDEN_EXACT_RULES.get(fileName)
+    || protectedEnvironmentReason(fileName);
   if (exactReason) {
     return {
       path: normalized,
@@ -150,5 +166,7 @@ export const productionArtifactBoundaryRules = Object.freeze({
   forbiddenPrefixes: FORBIDDEN_PREFIX_RULES.map((rule) => rule.prefix),
   forbiddenSegments: FORBIDDEN_SEGMENT_RULES.map((rule) => rule.segment),
   forbiddenExactPaths: Array.from(FORBIDDEN_EXACT_RULES.keys()),
+  forbiddenEnvironmentBasenames: [".env", ".env.<non-example>"],
+  allowedEnvironmentTemplates: [".env.example", ".env.<name>.example"],
   protectedConfigPaths: Array.from(PROTECTED_CONFIG_PATHS)
 });

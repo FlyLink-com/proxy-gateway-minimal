@@ -196,6 +196,21 @@ test("ZIP workflows generate artifact.json before upload", () => {
     assert.match(workflow, /--artifact "\$artifact"/);
     assert.match(workflow, /--output \.release-artifacts\/artifact\.json/);
     assert.ok(workflow.includes(workflowCase.uploadPath));
+
+    const buildStep = workflow.slice(buildIndex, manifestIndex);
+    const archiveIndex = buildStep.indexOf(
+      "git -c core.autocrlf=false archive --format=zip --output \"$artifact\" HEAD -- . ':(exclude)config/proxy-servers.json' ':(exclude).env'"
+    );
+    const treeVerifierIndex = buildStep.indexOf("node scripts/artifact-git-tree-verifier.mjs");
+    assert.ok(archiveIndex >= 0, `${workflowCase.path} must exclude protected node config from source ZIP`);
+    assert.ok(treeVerifierIndex > archiveIndex, `${workflowCase.path} must verify the exact allowed source-only ZIP gap`);
+    assert.match(buildStep, /--repository \.\s+\\/);
+    assert.match(buildStep, /--commit "\$GITHUB_SHA"\s+\\/);
+    assert.match(buildStep, /--artifact "\$artifact"\s+\\/);
+    assert.match(buildStep, /--exclude-path config\/proxy-servers\.json/);
+    assert.match(buildStep, /--source-only-boundary/);
+    assert.doesNotMatch(buildStep, /--exclude-path \.env/);
+    assert.doesNotMatch(buildStep, /exclude(?:-path)? .*\.env\.example/);
   }
 });
 

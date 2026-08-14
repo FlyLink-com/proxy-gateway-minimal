@@ -5,6 +5,7 @@ import { readFileSync, realpathSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateRawSync } from "node:zlib";
+import { inspectProductionArtifactBoundary } from "../server/services/platform/production-artifact-boundary.mjs";
 
 const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
 const MAX_ENTRIES = 10_000;
@@ -15,21 +16,30 @@ const LOCAL_SIGNATURE = 0x04034b50;
 const ZIP64_UINT16 = 0xffff;
 const ZIP64_UINT32 = 0xffffffff;
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
+const ALLOWED_EXCLUDED_PATHS = new Set([
+  "config/proxy-servers.json"
+]);
 
 export class ArtifactGitTreeError extends Error {
-  constructor() {
+  constructor(stage = "artifact_source_tree_mismatch") {
     super("artifact_source_tree_mismatch");
     this.name = "ArtifactGitTreeError";
     this.code = "artifact_source_tree_mismatch";
+    Object.defineProperty(this, "stage", { value: stage, enumerable: false });
   }
 }
 
-function mismatch() {
-  return new ArtifactGitTreeError();
+function mismatch(stage) {
+  return new ArtifactGitTreeError(stage);
 }
 
 function assertCondition(condition) {
   if (!condition) throw mismatch();
+}
+
+function assertProductionArtifactBoundary(paths, stage) {
+  const report = inspectProductionArtifactBoundary({ paths });
+  if (!report.ok) throw mismatch(stage);
 }
 
 function crc32(buffer) {
@@ -259,6 +269,18 @@ function expectedDirectories(paths) {
   return directories;
 }
 
+function normalizedExcludedPaths(value) {
+  if (value === undefined) return new Set();
+  assertCondition(Array.isArray(value));
+  const excludedPaths = new Set();
+  for (const path of value) {
+    assertCondition(typeof path === "string" && ALLOWED_EXCLUDED_PATHS.has(path));
+    assertCondition(!excludedPaths.has(path));
+    excludedPaths.add(path);
+  }
+  return excludedPaths;
+}
+
 function blobOid(data, objectFormat) {
   return createHash(objectFormat)
     .update(Buffer.from(`blob ${data.length}\0`))
@@ -266,12 +288,26 @@ function blobOid(data, objectFormat) {
     .digest("hex");
 }
 
-export function verifyArtifactGitTree({ artifactPath, repositoryPath, expectedCommit } = {}) {
+export function verifyArtifactGitTree({
+  artifactPath,
+  repositoryPath,
+  expectedCommit,
+  excludedPaths,
+  sourceOnlyBoundary = false
+} = {}) {
+  assertCondition(typeof sourceOnlyBoundary === "boolean");
   const trusted = readTrustedTree(repositoryPath, expectedCommit);
+  if (sourceOnlyBoundary) {
+    assertProductionArtifactBoundary(trusted.entries.keys(), "trusted_git_tree_boundary");
+  }
+  const excluded = normalizedExcludedPaths(excludedPaths);
   const archive = readZipEntries(artifactPath);
   assertCondition(archive.sourceCommitComment === expectedCommit);
   const archiveEntries = archive.entries;
-  const directories = expectedDirectories(trusted.entries.keys());
+  const expectedEntries = new Map(
+    [...trusted.entries].filter(([path]) => !excluded.has(path))
+  );
+  const directories = expectedDirectories(expectedEntries.keys());
   const archiveFiles = new Map();
 
   for (const entry of archiveEntries) {
@@ -285,8 +321,12 @@ export function verifyArtifactGitTree({ artifactPath, repositoryPath, expectedCo
     archiveFiles.set(entry.path, entry);
   }
 
-  assertCondition(archiveFiles.size === trusted.entries.size);
-  for (const [path, expected] of trusted.entries) {
+  if (sourceOnlyBoundary) {
+    assertProductionArtifactBoundary(archiveFiles.keys(), "zip_file_boundary");
+  }
+  for (const excludedPath of excluded) assertCondition(!archiveFiles.has(excludedPath));
+  assertCondition(archiveFiles.size === expectedEntries.size);
+  for (const [path, expected] of expectedEntries) {
     const actual = archiveFiles.get(path);
     assertCondition(actual);
     if (actual.host === 0) assertCondition(expected.mode === 0o100644);
@@ -302,16 +342,29 @@ export function verifyArtifactGitTree({ artifactPath, repositoryPath, expectedCo
 }
 
 function parseArguments(argv) {
-  assertCondition(Array.isArray(argv) && argv.length === 6);
-  const parsed = {};
-  for (let index = 0; index < argv.length; index += 2) {
+  assertCondition(Array.isArray(argv) && argv.length >= 6);
+  const parsed = { "--exclude-path": [], "--source-only-boundary": false };
+  for (let index = 0; index < argv.length;) {
     const flag = argv[index];
+    if (flag === "--source-only-boundary") {
+      assertCondition(parsed[flag] === false);
+      parsed[flag] = true;
+      index += 1;
+      continue;
+    }
     const value = argv[index + 1];
-    assertCondition(["--repository", "--commit", "--artifact"].includes(flag));
-    assertCondition(typeof value === "string" && value.length > 0 && parsed[flag] === undefined);
+    assertCondition(["--repository", "--commit", "--artifact", "--exclude-path"].includes(flag));
+    assertCondition(typeof value === "string" && value.length > 0);
+    if (flag === "--exclude-path") {
+      parsed[flag].push(value);
+      index += 2;
+      continue;
+    }
+    assertCondition(parsed[flag] === undefined);
     parsed[flag] = value;
+    index += 2;
   }
-  assertCondition(Object.keys(parsed).length === 3);
+  assertCondition(parsed["--repository"] && parsed["--commit"] && parsed["--artifact"]);
   return parsed;
 }
 
@@ -325,7 +378,9 @@ export function runArtifactGitTreeVerifierCli({
     const result = verifyArtifactGitTree({
       artifactPath: parsed["--artifact"],
       repositoryPath: parsed["--repository"],
-      expectedCommit: parsed["--commit"]
+      expectedCommit: parsed["--commit"],
+      excludedPaths: parsed["--exclude-path"],
+      sourceOnlyBoundary: parsed["--source-only-boundary"]
     });
     stdout.write(`${JSON.stringify(result)}\n`);
     return 0;

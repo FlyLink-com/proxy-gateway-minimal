@@ -61,6 +61,34 @@ test("production artifact boundary blocks development residue and sensitive runt
   assert.doesNotMatch(JSON.stringify(report), /secret|token-value|subscriptionUrl/i);
 });
 
+test("production artifact boundary blocks runtime environment variants but preserves explicit templates", () => {
+  const report = inspectProductionArtifactBoundary({
+    paths: [
+      ".env.example",
+      ".env.payment.example",
+      "nested/.env.example",
+      "nested/.env.payment.example",
+      ".env",
+      ".env.local",
+      ".env.payment",
+      ".env.hp-private",
+      ".env.aliyun-prod",
+      "nested/.env.payment"
+    ]
+  });
+
+  assert.equal(report.ok, false);
+  assert.deepEqual(report.blockers.map((item) => item.path), [
+    ".env",
+    ".env.local",
+    ".env.payment",
+    ".env.hp-private",
+    ".env.aliyun-prod",
+    "nested/.env.payment"
+  ]);
+  assert.deepEqual(report.reviewRequired, []);
+});
+
 test("production artifact boundary ignores harmless slash and line-ending noise", () => {
   const report = inspectProductionArtifactBoundary({
     paths: [
