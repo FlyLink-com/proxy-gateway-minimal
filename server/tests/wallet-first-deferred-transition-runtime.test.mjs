@@ -266,7 +266,16 @@ test("concrete wallet-first runtime recovers an expired scheduled-switch lease t
     });
   assert.equal(initialTransition.state, "reserved");
   const initialResult = await fixture.runtime.deferredTransitionCoordinator.runOnce();
-  assert.equal(initialResult.effectApplied, 1);
+  const initialTransitionOutcome = fixture.controlDatabase.prepare(`
+    select state, safe_code, lease_generation
+      from platform_deferred_resource_transitions
+     where transition_ref = ?
+  `).get(initialTransition.transitionRef);
+  assert.equal(
+    initialResult.effectApplied,
+    1,
+    JSON.stringify({ initialResult, initialTransitionOutcome })
+  );
   assert.equal(initialResult.settled, 1);
   assert.equal(initialResult.reconciliationRequired, 0);
   assert.equal(
