@@ -217,13 +217,14 @@ function createFixture() {
     idFactory: () => `tenant_runtime_e2e_${++tenantCount}`,
     artifactIdFactory: () => `artifact_runtime_e2e_${++artifactCount}`
   });
-  const runtime = createWalletFirstDeferredTransitionRuntime({
+  const createRuntime = () => createWalletFirstDeferredTransitionRuntime({
     dbPath: controlDbPath,
     controlStore,
     subscriptionCore,
     nodeId: NODE_ID,
     nowFn
   });
+  let runtime = createRuntime();
   return {
     controlDatabase,
     controlStore,
@@ -231,10 +232,17 @@ function createFixture() {
     runtimeDatabase,
     subscriptionStore,
     subscriptionCore,
-    runtime,
+    get runtime() {
+      return runtime;
+    },
     clock,
     setNow(value) {
       clock.value = value;
+    },
+    restartRuntime() {
+      runtime.close();
+      runtime = createRuntime();
+      return runtime;
     },
     close() {
       runtime.close();
@@ -246,7 +254,7 @@ function createFixture() {
   };
 }
 
-test("concrete wallet-first runtime settles a canonical initial offer, then retries a leased scheduled switch at generation two", async (t) => {
+test("concrete wallet-first runtime restarts and recovers a scheduled switch after natural expiry", async (t) => {
   const fixture = createFixture();
   t.after(() => fixture.close());
 
@@ -256,6 +264,8 @@ test("concrete wallet-first runtime settles a canonical initial offer, then retr
       offerRef: MONTHLY_OFFER.offerRef
     });
   assert.equal(initialQuote.offer.version, 1);
+  // The fixture deliberately uses the default Wallet ref factory, whose
+  // UUID-backed lot references contain hyphens.
   const initialTransition = fixture.runtime.walletFirstCommerceService
     .reserveDeferredTransition({
       accountId: ACCOUNT_ID,
@@ -299,60 +309,31 @@ test("concrete wallet-first runtime settles a canonical initial offer, then retr
   assert.equal(scheduledTransition.state, "reserved");
 
   fixture.setNow(initialChain.validUntil);
-  const prepared = fixture.controlStore
-    .prepareWalletFirstScheduledSwitchForDeferredTransition({
-      transitionRef: scheduledTransition.transitionRef,
-      accountId: ACCOUNT_ID,
-      offer: {
-        offerVersionRef: ANNUAL_OFFER.offerVersionRef,
-        durationDays: ANNUAL_OFFER.delivery.durationDays,
-        monthlyTrafficGb: ANNUAL_OFFER.delivery.monthlyTrafficGb
-      },
-      scheduledFor: initialChain.validUntil,
-      activationAt: initialChain.validUntil,
-      expectedChain: {
-        entitlementId: initialChain.entitlementId,
-        requestId: initialChain.requestId,
-        issuedLinkId: initialChain.issuedLinkId,
-        validUntil: initialChain.validUntil
-      },
-      nodeId: NODE_ID,
-      now: initialChain.validUntil
-    });
-  const innerLease = fixture.controlStore
-    .claimWalletFirstRuntimeEffectForDeferredTransition({
-      transitionRef: scheduledTransition.transitionRef,
-      flowKind: "scheduled_switch",
-      successor: prepared.successor,
-      nodeId: NODE_ID,
-      now: initialChain.validUntil,
-      leaseMs: 60_000
-    });
-  assert.equal(innerLease.status, "claimed");
-  assert.equal(innerLease.leaseGeneration, 1);
-
-  const retryable = await fixture.runtime.deferredTransitionCoordinator.runOnce();
-  assert.equal(retryable.effectApplied, 0);
-  assert.equal(retryable.settled, 0);
-  assert.equal(retryable.reconciliationRequired, 0);
-  assert.equal(
-    fixture.controlDatabase.prepare(`
-      select state from platform_deferred_resource_transitions where transition_ref = ?
-    `).pluck().get(scheduledTransition.transitionRef),
-    "processing"
-  );
+  const crashedClaim = fixture.runtime.deferredTransitionStore
+    .claimNextDueTransition({ leaseMs: 60_000 });
+  assert.equal(crashedClaim.transitionRef, scheduledTransition.transitionRef);
+  assert.equal(crashedClaim.leaseGeneration, 1);
   assert.equal(fixture.subscriptionCore.listTenants().length, 1);
 
+  // Simulate a process death after the durable outer claim but before any
+  // runtime preparation, inner lease, Core mutation, or Coins capture.
+  fixture.restartRuntime();
   fixture.setNow(plusMilliseconds(initialChain.validUntil, 61_000));
+  assert.ok(
+    Date.parse(fixture.clock.value) > Date.parse(initialChain.validUntil),
+    "recovery runs after natural predecessor expiry"
+  );
   const recovered = await fixture.runtime.deferredTransitionCoordinator.runOnce();
   assert.equal(recovered.effectApplied, 1);
   assert.equal(recovered.settled, 1);
   assert.equal(recovered.reconciliationRequired, 0);
-  assert.equal(
+  assert.deepEqual(
     fixture.controlDatabase.prepare(`
-      select state from platform_deferred_resource_transitions where transition_ref = ?
-    `).pluck().get(scheduledTransition.transitionRef),
-    "settled"
+      select state, lease_generation
+        from platform_deferred_resource_transitions
+       where transition_ref = ?
+    `).get(scheduledTransition.transitionRef),
+    { state: "settled", lease_generation: 2 }
   );
   assert.deepEqual(
     fixture.controlDatabase.prepare(`
@@ -360,7 +341,7 @@ test("concrete wallet-first runtime settles a canonical initial offer, then retr
         from platform_wallet_first_resource_effect_runtime_claims
        where transition_ref = ?
     `).get(scheduledTransition.transitionRef),
-    { status: "recorded", lease_generation: 2 }
+    { status: "recorded", lease_generation: 1 }
   );
 
   const finalChain = fixture.runtime.resourceEffectHandler
@@ -369,7 +350,7 @@ test("concrete wallet-first runtime settles a canonical initial offer, then retr
   assert.equal(finalChain.entitlementId, initialChain.entitlementId);
   assert.equal(finalChain.requestId, initialChain.requestId);
   assert.equal(finalChain.issuedLinkId, initialChain.issuedLinkId);
-  assert.equal(finalChain.validUntil, prepared.successor.validUntil);
+  assert.equal(finalChain.validUntil, plusMilliseconds(fixture.clock.value, 365 * 86_400_000));
   assert.equal(fixture.subscriptionCore.listTenants().length, 1);
   assert.equal(
     fixture.subscriptionCore.listSubscriptionArtifacts(initialTenant.id).length,
@@ -396,5 +377,16 @@ test("concrete wallet-first runtime settles a canonical initial offer, then retr
       "select count(*) from platform_coin_holds"
     ).pluck().get(),
     0
+  );
+
+  fixture.restartRuntime();
+  const afterRestart = await fixture.runtime.deferredTransitionCoordinator.runOnce();
+  assert.equal(afterRestart.effectApplied, 0);
+  assert.equal(afterRestart.settled, 0);
+  assert.equal(afterRestart.reconciliationRequired, 0);
+  assert.equal(fixture.subscriptionCore.listTenants().length, 1);
+  assert.equal(
+    fixture.subscriptionCore.listSubscriptionArtifacts(initialTenant.id).length,
+    1
   );
 });

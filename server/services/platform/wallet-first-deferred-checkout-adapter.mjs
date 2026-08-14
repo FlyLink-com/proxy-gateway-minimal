@@ -248,8 +248,7 @@ export function createWalletFirstDeferredCheckoutAdapter(options = {}) {
       owned = true;
     }
     if (
-      !database
-      || typeof database.prepare !== "function"
+      typeof database.prepare !== "function"
       || typeof database.transaction !== "function"
       || typeof database.pragma !== "function"
     ) {

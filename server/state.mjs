@@ -2349,16 +2349,6 @@ export function createRuntimeState(options = {}) {
         }
       }
     } catch (error) {
-      if (
-        ownsWalletFirstDeferredTransitionRuntime
-        && walletFirstDeferredTransitionRuntime
-      ) {
-        try {
-          walletFirstDeferredTransitionRuntime.close();
-        } catch {
-          // Preserve the final Commerce acquisition failure.
-        }
-      }
       if (ownsCoinCommerceStore && coinCommerceStore) {
         try {
           coinCommerceStore.close();

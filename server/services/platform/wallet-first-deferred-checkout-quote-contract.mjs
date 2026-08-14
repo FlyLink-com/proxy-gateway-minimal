@@ -98,13 +98,6 @@ function positiveUnits(value, code = "deferred_checkout_invalid") {
   return value;
 }
 
-function nonNegativeUnits(value, code = "deferred_checkout_invalid") {
-  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_UNITS) {
-    throw quoteError(code);
-  }
-  return value;
-}
-
 function canonicalJson(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;

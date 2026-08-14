@@ -197,6 +197,13 @@ function normalizeText(value, code = "deferred_transition_invalid_input") {
   return value;
 }
 
+// Wallet lots remain wallet-owned identifiers. Their default UUID-backed
+// references contain hyphens, while deferred account/order/quote references
+// deliberately retain the stricter local grammar.
+function normalizeWalletLotReference(value, code = "deferred_transition_invalid_input") {
+  return normalizeText(value, code);
+}
+
 function normalizeSafeCode(value) {
   if (typeof value !== "string" || !SAFE_CODE.test(value)) {
     throw storeError("deferred_transition_invalid_input");
@@ -290,7 +297,7 @@ function normalizeAllocationSnapshot(input, amountUnits) {
     const value = assertExactFields(item, [
       "lotRef", "allocationSequence", "coinType", "allocatedUnits", "expiresAt"
     ]);
-    const lotRef = normalizeReference(value.lotRef);
+    const lotRef = normalizeWalletLotReference(value.lotRef);
     const allocationSequence = normalizePositiveInteger(value.allocationSequence);
     const allocatedUnits = normalizePositiveUnits(value.allocatedUnits);
     if (allocationSequence !== index + 1 || seenLots.has(lotRef)) {
@@ -1268,7 +1275,12 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
     `).all(accountId);
   }
 
-  function rowIsExactCurrentResourceChain(row, accountId, occurredAt) {
+  function rowIsExactCurrentResourceChain(
+    row,
+    accountId,
+    occurredAt,
+    { allowExpiredScheduledBoundary = false } = {}
+  ) {
     try {
       const validFrom = normalizeTimestamp(
         row.entitlement_valid_from,
@@ -1295,7 +1307,10 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
         && bindingRef("tenant", row.portal_tenant_id) === row.link_tenant_ref
         && bindingRef("artifact", row.portal_artifact_id) === row.link_artifact_ref
         && validFrom <= occurredAt
-        && validUntil >= occurredAt
+        && (
+          validUntil >= occurredAt
+          || allowExpiredScheduledBoundary
+        )
       );
     } catch {
       return false;
@@ -1309,6 +1324,7 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
     issuedLinkId,
     validUntil,
     occurredAt,
+    allowExpiredScheduledBoundary = false,
     code = "deferred_transition_expected_chain_invalid"
   }) {
     const account = db.prepare(`
@@ -1323,7 +1339,12 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
     );
     if (
       activeCandidates.length !== 1
-      || !rowIsExactCurrentResourceChain(activeCandidates[0], accountId, occurredAt)
+      || !rowIsExactCurrentResourceChain(
+        activeCandidates[0],
+        accountId,
+        occurredAt,
+        { allowExpiredScheduledBoundary }
+      )
       || activeCandidates[0].entitlement_id !== entitlementId
       || activeCandidates[0].request_id !== requestId
       || activeCandidates[0].issued_link_id !== issuedLinkId
@@ -2221,27 +2242,6 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
     if (!transitionLeaseMatches(row, request, occurredAt, "processing")) {
       throw storeError("deferred_transition_lease_lost");
     }
-    if (row.flow_kind === "scheduled_switch") {
-      try {
-        assertExpectedChain({
-          flowKind: row.flow_kind,
-          accountId: row.account_id,
-          expectedEntitlementId: row.expected_entitlement_id,
-          expectedRequestId: row.expected_request_id,
-          expectedIssuedLinkId: row.expected_issued_link_id,
-          expectedValidUntil: row.expected_valid_until
-        }, occurredAt);
-      } catch (error) {
-        if (isStoreError(error) && error.code === "deferred_transition_expected_chain_invalid") {
-          return Object.freeze({
-            ok: false,
-            reservationRef: row.reservation_ref,
-            safeResultCode: error.code
-          });
-        }
-        throw error;
-      }
-    }
     const binding = transitionReservation(row);
     if (!binding.valid) {
       return Object.freeze({
@@ -2267,6 +2267,31 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
         reservationRef: row.reservation_ref,
         safeResultCode: assessment.reasonCode
       });
+    }
+    if (row.flow_kind === "scheduled_switch") {
+      try {
+        assertExpectedChain({
+          flowKind: row.flow_kind,
+          accountId: row.account_id,
+          expectedEntitlementId: row.expected_entitlement_id,
+          expectedRequestId: row.expected_request_id,
+          expectedIssuedLinkId: row.expected_issued_link_id,
+          expectedValidUntil: row.expected_valid_until
+        }, occurredAt, {
+          // Only this already-leased, still-reservable verification may cross
+          // the predecessor's natural expiry.
+          allowExpiredScheduledBoundary: true
+        });
+      } catch (error) {
+        if (isStoreError(error) && error.code === "deferred_transition_expected_chain_invalid") {
+          return Object.freeze({
+            ok: false,
+            reservationRef: row.reservation_ref,
+            safeResultCode: error.code
+          });
+        }
+        throw error;
+      }
     }
     return Object.freeze({
       ok: true,

@@ -32,8 +32,6 @@ const OPERATION_TYPE_CAPTURE_DEFERRED_RESERVATION =
   "capture_deferred_resource_transition_reservation";
 const OPERATION_TYPE_RELEASE_DEFERRED_RESERVATION =
   "release_deferred_resource_transition_reservation";
-const OPERATION_TYPE_PREFLIGHT_REBASE_DEFERRED_RESERVATION =
-  "preflight_rebase_deferred_resource_transition_reservation";
 const OPERATION_TYPE_REBASE_DEFERRED_RESERVATION =
   "rebase_deferred_resource_transition_reservation";
 const SAFE_RESULT_CREDITED = "credited";
@@ -163,11 +161,6 @@ const DEFERRED_RESERVATION_STATES = new Set([
   "processing",
   "captured",
   "released",
-  "reconciliation_required"
-]);
-const DEFERRED_RESERVATION_ACTIVE_STATES = new Set([
-  "reserved",
-  "processing",
   "reconciliation_required"
 ]);
 const DEFERRED_RESERVATION_SOURCE_TYPE =

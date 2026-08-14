@@ -1766,3 +1766,74 @@ test("future-only account and exact-chain guards reject legacy, residual, and am
     database.close();
   }
 });
+
+
+test("scheduled switch recovery crosses natural predecessor expiry only inside its reservation window", () => {
+  const database = createFoundation();
+  let store;
+  try {
+    const accountId = "account_scheduled_expiry_recovery";
+    const validUntil = "2030-10-01T00:00:00.000Z";
+    const recoveryNow = "2030-10-01T00:01:01.000Z";
+    const recoveryEndsAt = "2030-10-02T00:00:00.000Z";
+    const clock = { value: validUntil };
+    seedOffer(database, MONTHLY_50);
+    seedAccount(database, accountId);
+    seedResourceChain(database, {
+      accountId,
+      entitlementId: "entitlement_scheduled_expiry",
+      requestId: "request_scheduled_expiry",
+      issuedLinkId: "link_scheduled_expiry",
+      validUntil
+    });
+    const reservationParticipant = createTestReservationParticipant(database);
+    reservationParticipant.seedFunding({
+      accountId,
+      orderRef: "deferred_order_scheduled_expiry",
+      amountUnits: MONTHLY_50.baseCoinUnits
+    });
+    store = createDeferredStore(database, clock, reservationParticipant);
+    const transition = store.reserveTransition(reserveInput({
+      accountId,
+      orderRef: "deferred_order_scheduled_expiry",
+      plan: MONTHLY_50,
+      scheduledFor: validUntil,
+      operationKey: "reserve_scheduled_expiry",
+      flowKind: "scheduled_switch",
+      expectedEntitlementId: "entitlement_scheduled_expiry",
+      expectedRequestId: "request_scheduled_expiry",
+      expectedIssuedLinkId: "link_scheduled_expiry",
+      expectedValidUntil: validUntil
+    }));
+    const firstClaim = store.claimNextDueTransition({ leaseMs: 60_000 });
+    assert.equal(firstClaim.leaseGeneration, 1);
+
+    clock.value = recoveryNow;
+    const recoveredClaim = store.claimNextDueTransition({ leaseMs: 60_000 });
+    assert.equal(recoveredClaim.transitionRef, transition.transitionRef);
+    assert.equal(recoveredClaim.leaseGeneration, 2);
+    const verified = store.verifyClaimedTransitionReservation({
+      transitionRef: recoveredClaim.transitionRef,
+      leaseGeneration: recoveredClaim.leaseGeneration,
+      leaseToken: recoveredClaim.leaseToken
+    });
+    assert.equal(verified.ok, true);
+    assert.equal(verified.reservationRef, transition.reservationRef);
+    assert.equal(verified.expiresAt, recoveryEndsAt);
+
+    // At the inclusive recovery deadline the store releases the reservation
+    // and requires a fresh quote before a coordinator can reach runtime work.
+    clock.value = recoveryEndsAt;
+    assert.equal(store.claimNextDueTransition({ leaseMs: 60_000 }), null);
+    const [afterExpiry] = store.listTransitions({ accountId });
+    assert.equal(afterExpiry.state, "requote_required");
+    assert.equal(afterExpiry.safeCode, "deferred_reservation_expired_before_capture");
+    assert.equal(
+      reservationParticipant.readReservation(transition.reservationRef).state,
+      "released"
+    );
+  } finally {
+    store?.close();
+    database.close();
+  }
+});

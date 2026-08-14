@@ -142,26 +142,6 @@ function nullableTimestamp(value, code) {
   return value === null ? null : timestamp(value, code);
 }
 
-function ownCallable(value, field, code) {
-  try {
-    if (
-      !value
-      || (typeof value !== "object" && typeof value !== "function")
-      || utilTypes.isProxy(value)
-    ) {
-      throw effectError(code);
-    }
-    const descriptor = Object.getOwnPropertyDescriptor(value, field);
-    if (!descriptor || !("value" in descriptor) || typeof descriptor.value !== "function") {
-      throw effectError(code);
-    }
-    return descriptor.value;
-  } catch (error) {
-    if (error?.code === code) throw error;
-    throw effectError(code);
-  }
-}
-
 function normalizeOffer(value) {
   const code = "wallet_first_resource_effect_invalid";
   let offer;

@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: future_account_wallet_first_model
   superseded_by: null
-  last_verified_at: 2026-08-13
+  last_verified_at: 2026-08-14
   production_authority: false
 ```
 
@@ -89,6 +89,15 @@ the reservation is released and the transition becomes `requote_required`; it
 must not silently consume expired bonus Coins. An effect that is recorded but
 cannot safely capture Coins is
 `reconciliation_required`, never an automatic second fulfillment.
+
+Natural predecessor expiry has one narrow recovery exception: only an already
+leased `scheduled_switch` may revalidate its unchanged, exact predecessor
+after `valid_until`, and only while its reservation remains within the
+24-hour recovery window. The account and predecessor state must still be
+active and every immutable ID/binding must still match; reserve, rebase,
+successor, and drifted/disabled-resource paths retain the normal current-time
+predicate. At `expires_at` or later, the reservation is released and the
+transition is `requote_required` before any runtime effect or Coins capture.
 
 When capture and settlement succeed, the same control-store transaction writes
 a durable rebase outbox keyed by the settled transition and carrying the exact

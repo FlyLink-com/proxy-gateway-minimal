@@ -2393,31 +2393,6 @@ export function createSqliteSubscriptionControlStore({
     });
   }
 
-  function walletFirstResourceEffectSamePreparation(left, right) {
-    return (
-      left.transitionRef === right.transitionRef
-      && left.accountId === right.accountId
-      && left.flowKind === right.flowKind
-      && left.offer.offerVersionRef === right.offer.offerVersionRef
-      && left.offer.durationDays === right.offer.durationDays
-      && left.offer.monthlyTrafficGb === right.offer.monthlyTrafficGb
-      && left.scheduledFor === right.scheduledFor
-      && left.activationAt === right.activationAt
-      && left.validUntil === right.validUntil
-      && left.effectRef === right.effectRef
-      && left.successor.entitlementId === right.successor.entitlementId
-      && left.successor.requestId === right.successor.requestId
-      && left.successor.issuedLinkId === right.successor.issuedLinkId
-      && left.successor.validUntil === right.successor.validUntil
-      && left.nodeId === right.nodeId
-      && left.accountDigest === right.accountDigest
-      && left.expectedChain?.entitlementId === right.expectedChain?.entitlementId
-      && left.expectedChain?.requestId === right.expectedChain?.requestId
-      && left.expectedChain?.issuedLinkId === right.expectedChain?.issuedLinkId
-      && left.expectedChain?.validUntil === right.expectedChain?.validUntil
-    );
-  }
-
   // The exact runtime chain is captured only when a scheduled transition is
   // first prepared.  A retry reconstructs the immutable caller intent, not
   // that captured runtime binding: after a crash following Core renewal the
