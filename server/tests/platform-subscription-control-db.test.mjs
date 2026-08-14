@@ -29,6 +29,112 @@ function withStore(fn) {
   }
 }
 
+function withWelcomeCoinGrantStore(fn) {
+  const database = new Database(":memory:");
+  let store;
+  try {
+    store = createSqliteSubscriptionControlStore({ database });
+    database.exec(`
+      create table platform_portal_registration_welcome_coin_grants (
+        grant_ref text primary key,
+        account_id text not null unique references platform_accounts(id) on delete cascade,
+        commercial_model text not null check (commercial_model = 'wallet_first_unique_v1'),
+        coin_type text not null check (coin_type = 'bonus_coins'),
+        amount_units integer not null check (typeof(amount_units) = 'integer' and amount_units = 10),
+        source_type text not null,
+        source_ref text not null unique,
+        source_digest text not null,
+        actor_scope text not null,
+        idempotency_key text not null,
+        expires_at text not null,
+        status text not null check (status in (
+          'pending', 'processing', 'credited', 'expired', 'reconciliation_required'
+        )),
+        next_attempt_at text not null,
+        attempt_count integer not null default 0 check (typeof(attempt_count) = 'integer' and attempt_count >= 0),
+        lease_generation integer not null default 0 check (typeof(lease_generation) = 'integer' and lease_generation >= 0),
+        lease_token text,
+        lease_until text,
+        last_safe_code text,
+        credited_lot_ref text,
+        created_at text not null,
+        updated_at text not null,
+        credited_at text,
+        unique (actor_scope, idempotency_key),
+        check (
+          (
+            status = 'pending'
+            and lease_token is null
+            and lease_until is null
+            and credited_lot_ref is null
+            and credited_at is null
+          )
+          or
+          (
+            status = 'processing'
+            and lease_token is not null
+            and lease_until is not null
+            and credited_lot_ref is null
+            and credited_at is null
+          )
+          or
+          (
+            status = 'credited'
+            and lease_token is null
+            and lease_until is null
+            and credited_lot_ref is not null
+            and credited_at is not null
+          )
+          or
+          (
+            status in ('expired', 'reconciliation_required')
+            and lease_token is null
+            and lease_until is null
+            and credited_lot_ref is null
+            and credited_at is null
+          )
+        )
+      );
+      create index platform_portal_registration_welcome_coin_grants_claim_idx
+        on platform_portal_registration_welcome_coin_grants(
+          status, next_attempt_at, lease_until, expires_at, grant_ref
+        );
+    `);
+    return fn(store, database);
+  } finally {
+    store?.close();
+    database.close();
+  }
+}
+
+function welcomeCoinGrant(overrides = {}) {
+  return {
+    grantRef: "welcome_grant_acct_welcome_1",
+    accountId: "acct_welcome_1",
+    commercialModel: "wallet_first_unique_v1",
+    coinType: "bonus_coins",
+    amountUnits: 10,
+    expiresAt: "2026-08-20T00:00:00.000Z",
+    sourceType: "portal_registration",
+    sourceRef: "portal_registration_acct_welcome_1",
+    sourceDigest: "a".repeat(64),
+    actorScope: "portal_registration",
+    idempotencyKey: "welcome_bonus_acct_welcome_1",
+    now: "2026-08-13T00:00:00.000Z",
+    ...overrides
+  };
+}
+
+function createWelcomeCoinAccount(store, accountId, now = "2026-08-13T00:00:00.000Z") {
+  return store.createAccount({
+    id: accountId,
+    ownerRef: `portal_user_${accountId}`,
+    status: "active",
+    createdAt: now,
+    updatedAt: now
+  });
+}
+
 function durableLead(overrides = {}) {
   return {
     id: "lead_durable_1",
@@ -1508,4 +1614,209 @@ test("subscription control store non-initializing maintenance mode refuses a mis
     store?.close();
     rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
+});
+
+test("subscription control store makes a registration welcome grant durable, idempotent, and claim-safe", () => {
+  withWelcomeCoinGrantStore((store) => {
+    const input = welcomeCoinGrant();
+    const pending = store.runInTransaction(() => {
+      createWelcomeCoinAccount(store, input.accountId, input.now);
+      return store.enqueuePortalRegistrationWelcomeCoinGrant(input);
+    });
+
+    assert.equal(pending.status, "pending");
+    assert.equal(pending.attemptCount, 0);
+    assert.equal(pending.leaseToken, undefined);
+    assert.equal(store.nextPortalRegistrationWelcomeCoinGrantWakeAt(), input.now);
+    assert.deepEqual(
+      store.getPortalRegistrationWelcomeCoinGrant({ accountId: input.accountId }),
+      pending
+    );
+
+    const replay = store.enqueuePortalRegistrationWelcomeCoinGrant({
+      ...input,
+      now: "2026-08-13T01:00:00.000Z"
+    });
+    assert.deepEqual(replay, pending);
+    assert.throws(
+      () => store.enqueuePortalRegistrationWelcomeCoinGrant({
+        ...input,
+        sourceDigest: "b".repeat(64)
+      }),
+      (error) => error.code === "idempotency_conflict"
+    );
+    assert.throws(
+      () => store.enqueuePortalRegistrationWelcomeCoinGrant({
+        ...input,
+        grantRef: "welcome_grant_idempotency_drift",
+        accountId: "acct_idempotency_drift",
+        sourceRef: "portal_registration_acct_idempotency_drift"
+      }),
+      (error) => error.code === "idempotency_conflict"
+    );
+
+    const claimed = store.claimNextPortalRegistrationWelcomeCoinGrant({
+      now: input.now,
+      leaseMs: 60_000
+    });
+    assert.deepEqual(Object.keys(claimed), [
+      "grantRef",
+      "accountId",
+      "commercialModel",
+      "coinType",
+      "amountUnits",
+      "sourceType",
+      "sourceRef",
+      "sourceDigest",
+      "actorScope",
+      "idempotencyKey",
+      "expiresAt",
+      "leaseGeneration",
+      "leaseToken"
+    ]);
+    assert.equal(claimed.grantRef, input.grantRef);
+    assert.equal(claimed.leaseGeneration, 1);
+    assert.match(claimed.leaseToken, /^[a-f0-9]{64}$/);
+    assert.equal(
+      store.getPortalRegistrationWelcomeCoinGrant({ grantRef: input.grantRef }).leaseToken,
+      undefined
+    );
+    assert.equal(store.claimNextPortalRegistrationWelcomeCoinGrant({
+      now: "2026-08-13T00:00:01.000Z",
+      leaseMs: 60_000
+    }), null);
+  });
+});
+
+test("subscription control store defers, reclaims, and completes a welcome grant with lease CAS", () => {
+  withWelcomeCoinGrantStore((store) => {
+    const input = welcomeCoinGrant();
+    createWelcomeCoinAccount(store, input.accountId, input.now);
+    store.enqueuePortalRegistrationWelcomeCoinGrant(input);
+    const firstClaim = store.claimNextPortalRegistrationWelcomeCoinGrant({
+      now: input.now,
+      leaseMs: 60_000
+    });
+    const retryAt = "2026-08-13T00:05:00.000Z";
+    const deferred = store.deferPortalRegistrationWelcomeCoinGrant({
+      grantRef: firstClaim.grantRef,
+      leaseGeneration: firstClaim.leaseGeneration,
+      leaseToken: firstClaim.leaseToken,
+      safeCode: "wallet_transient_unavailable",
+      nextAttemptAt: retryAt,
+      updatedAt: "2026-08-13T00:00:05.000Z"
+    });
+    assert.equal(deferred.status, "pending");
+    assert.equal(deferred.lastSafeCode, "wallet_transient_unavailable");
+    assert.equal(store.nextPortalRegistrationWelcomeCoinGrantWakeAt(), retryAt);
+    assert.equal(store.claimNextPortalRegistrationWelcomeCoinGrant({
+      now: "2026-08-13T00:04:59.999Z",
+      leaseMs: 60_000
+    }), null);
+
+    const secondClaim = store.claimNextPortalRegistrationWelcomeCoinGrant({
+      now: retryAt,
+      leaseMs: 60_000
+    });
+    assert.equal(secondClaim.leaseGeneration, 2);
+    assert.throws(
+      () => store.completePortalRegistrationWelcomeCoinGrant({
+        grantRef: firstClaim.grantRef,
+        leaseGeneration: firstClaim.leaseGeneration,
+        leaseToken: firstClaim.leaseToken,
+        lotRef: "lot_welcome_1",
+        completedAt: "2026-08-13T00:05:01.000Z"
+      }),
+      (error) => error.code === "claim_lost"
+    );
+
+    const completed = store.completePortalRegistrationWelcomeCoinGrant({
+      grantRef: secondClaim.grantRef,
+      leaseGeneration: secondClaim.leaseGeneration,
+      leaseToken: secondClaim.leaseToken,
+      lotRef: "lot_welcome_1",
+      completedAt: "2026-08-13T00:05:01.000Z"
+    });
+    assert.equal(completed.status, "credited");
+    assert.equal(completed.creditedLotRef, "lot_welcome_1");
+    assert.equal(completed.creditedAt, "2026-08-13T00:05:01.000Z");
+    assert.equal(store.nextPortalRegistrationWelcomeCoinGrantWakeAt(), null);
+    assert.equal(store.claimNextPortalRegistrationWelcomeCoinGrant({
+      now: "2026-08-13T00:06:00.000Z",
+      leaseMs: 60_000
+    }), null);
+  });
+});
+
+test("subscription control store terminalizes due welcome grants without taking an active processing lease", () => {
+  withWelcomeCoinGrantStore((store, database) => {
+    const pending = welcomeCoinGrant({
+      grantRef: "welcome_grant_expired_pending",
+      accountId: "acct_expired_pending",
+      sourceRef: "portal_registration_acct_expired_pending",
+      sourceDigest: "b".repeat(64),
+      idempotencyKey: "welcome_bonus_acct_expired_pending",
+      expiresAt: "2026-08-14T00:00:00.000Z",
+      now: "2026-08-13T12:00:00.000Z"
+    });
+    const processing = welcomeCoinGrant({
+      grantRef: "welcome_grant_expired_processing",
+      accountId: "acct_expired_processing",
+      sourceRef: "portal_registration_acct_expired_processing",
+      sourceDigest: "c".repeat(64),
+      idempotencyKey: "welcome_bonus_acct_expired_processing",
+      expiresAt: "2026-08-14T00:00:00.000Z"
+    });
+    createWelcomeCoinAccount(store, pending.accountId, pending.now);
+    createWelcomeCoinAccount(store, processing.accountId, processing.now);
+    store.enqueuePortalRegistrationWelcomeCoinGrant(pending);
+    store.enqueuePortalRegistrationWelcomeCoinGrant(processing);
+    const processingClaim = store.claimNextPortalRegistrationWelcomeCoinGrant({
+      now: processing.now,
+      leaseMs: 60_000
+    });
+    assert.equal(processingClaim.grantRef, processing.grantRef);
+
+    database.prepare(`
+      update platform_portal_registration_welcome_coin_grants
+      set lease_until = ?
+      where grant_ref = ?
+    `).run("2026-08-15T00:00:00.000Z", processing.grantRef);
+
+    assert.equal(store.expireDuePortalRegistrationWelcomeCoinGrants({
+      now: "2026-08-14T00:00:00.000Z"
+    }), 1);
+    assert.equal(
+      store.getPortalRegistrationWelcomeCoinGrant({ grantRef: pending.grantRef }).status,
+      "expired"
+    );
+    assert.equal(
+      store.getPortalRegistrationWelcomeCoinGrant({ grantRef: processing.grantRef }).status,
+      "processing"
+    );
+    assert.throws(
+      () => store.completePortalRegistrationWelcomeCoinGrant({
+        grantRef: processingClaim.grantRef,
+        leaseGeneration: processingClaim.leaseGeneration,
+        leaseToken: processingClaim.leaseToken,
+        lotRef: "lot_expired_processing",
+        completedAt: "2026-08-14T00:00:00.000Z"
+      }),
+      (error) => error.code === "claim_lost"
+    );
+    assert.equal(store.nextPortalRegistrationWelcomeCoinGrantWakeAt(), "2026-08-15T00:00:00.000Z");
+
+    assert.equal(store.expireDuePortalRegistrationWelcomeCoinGrants({
+      now: "2026-08-15T00:00:00.000Z"
+    }), 1);
+    const reconciled = store.getPortalRegistrationWelcomeCoinGrant({
+      grantRef: processing.grantRef
+    });
+    assert.equal(reconciled.status, "reconciliation_required");
+    assert.equal(reconciled.lastSafeCode, "welcome_coin_grant_expired_while_processing");
+    assert.equal(store.claimNextPortalRegistrationWelcomeCoinGrant({
+      now: "2026-08-15T00:00:00.000Z",
+      leaseMs: 60_000
+    }), null);
+  });
 });

@@ -5,6 +5,12 @@ import {
   applyCoinDiscount,
   normalizeCoinCommerceOffer
 } from "../services/platform/coin-commerce-domain.mjs";
+import {
+  PORTAL_COMMERCE_MODE_LEGACY,
+  PORTAL_COMMERCE_MODE_WALLET_FIRST,
+  resolveWalletFirstCommerceMode,
+  snapshotWalletFirstCommerceService
+} from "../services/platform/wallet-first-commerce-service.mjs";
 
 const COMMERCE_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
 const SESSION_REFERENCE = /^[A-Za-z0-9._:-]{1,256}$/;
@@ -51,6 +57,20 @@ const FULFILLMENT_SAFE_CODES = new Set([
   "fulfillment_handler_unavailable",
   "fulfillment_attempt_limit"
 ]);
+const DEFERRED_TRANSITION_STATES = new Set([
+  "reserved",
+  "processing",
+  "effect_applied",
+  "settled",
+  "requote_required",
+  "cancelled",
+  "reconciliation_required"
+]);
+const DEFERRED_FLOW_KINDS = new Set([
+  "initial_activation",
+  "scheduled_switch"
+]);
+const DEFERRED_SAFE_CODE = /^[a-z][a-z0-9_]{2,95}$/;
 const STORE_ERROR_RESPONSES = new Map([
   ["commerce_not_found", [404, "commerce_not_found"]],
   ["idempotency_key_required", [400, "idempotency_key_required"]],
@@ -116,6 +136,62 @@ function sendStoreError(res, error, { offerLookup = false } = {}) {
     sendCommerceError(res, mapped[0], mapped[1]);
     return;
   }
+  sendCommerceError(res, 503, "commerce_unavailable");
+}
+
+function sendDeferredStoreError(res, error, { offerLookup = false } = {}) {
+  const code = ownErrorCode(error);
+  if (
+    offerLookup
+    && (code === "offer_unavailable" || code === "unsupported_deferred_transition_offer")
+  ) {
+    sendCommerceError(res, 404, "commerce_not_found");
+    return;
+  }
+  if (code === "deferred_transition_not_found") {
+    sendCommerceError(res, 404, "commerce_not_found");
+    return;
+  }
+  if (code === "deferred_transition_idempotency_conflict") {
+    sendCommerceError(res, 409, "idempotency_key_reused");
+    return;
+  }
+  if (code === "quote_expired" || code === "quote_stale") {
+    // A deferred quote is immutable. The caller must refresh it rather than
+    // retrying against a stale wallet version or expiry window.
+    sendCommerceError(res, 409, code);
+    return;
+  }
+  if (code === "unsupported_deferred_transition_offer" || code === "offer_unavailable") {
+    sendCommerceError(res, 409, "offer_unavailable");
+    return;
+  }
+  if (
+    code === "deferred_transition_state_conflict"
+    || code === "deferred_transition_account_conflict"
+    || code === "deferred_transition_queue_full"
+    || code === "deferred_transition_expected_chain_invalid"
+  ) {
+    sendCommerceError(res, 409, "deferred_transition_conflict");
+    return;
+  }
+  if (
+    code === "deferred_reservation_invalid"
+    || code === "deferred_reservation_capture_invalid"
+    || code === "reconciliation_required"
+  ) {
+    sendCommerceError(res, 423, "reconciliation_required");
+    return;
+  }
+  if (code === "insufficient_coins" || code === "wallet_not_active") {
+    sendStoreError(res, error);
+    return;
+  }
+  if (code === "deferred_transition_invalid_input") {
+    sendCommerceError(res, 400, "commerce_request_invalid");
+    return;
+  }
+  // All unrecognized deferred/runtime failures are deliberately collapsed.
   sendCommerceError(res, 503, "commerce_unavailable");
 }
 
@@ -514,6 +590,106 @@ function projectQuote(input) {
   };
 }
 
+function projectDeferredCheckout(input) {
+  const value = snapshotExactObject(input, [
+    "quoteRef",
+    "offer",
+    "amountUnits",
+    "appliedDiscountBasisPoints",
+    "purchaseAvailability",
+    "shortfallUnits",
+    "allocation",
+    "balances",
+    "expiresAt",
+    "transition"
+  ]);
+  const quote = projectQuote({
+    quoteRef: value.quoteRef,
+    offer: value.offer,
+    amountUnits: value.amountUnits,
+    appliedDiscountBasisPoints: value.appliedDiscountBasisPoints,
+    purchaseAvailability: value.purchaseAvailability,
+    shortfallUnits: value.shortfallUnits,
+    allocation: value.allocation,
+    balances: value.balances,
+    expiresAt: value.expiresAt
+  });
+  const transition = snapshotExactObject(value.transition, [
+    "flowKind",
+    "scheduledFor"
+  ]);
+  if (!DEFERRED_FLOW_KINDS.has(transition.flowKind)) {
+    throw projectionInvalid();
+  }
+  return {
+    ...quote,
+    transition: {
+      flowKind: transition.flowKind,
+      scheduledFor: requireUtcTimestamp(transition.scheduledFor)
+    }
+  };
+}
+
+function projectDeferredTransition(input) {
+  const value = snapshotExactObject(input, [
+    "transitionRef",
+    "offer",
+    "amountUnits",
+    "flowKind",
+    "scheduledFor",
+    "state",
+    "safeCode",
+    "reservedAt",
+    "settledAt",
+    "createdAt",
+    "updatedAt"
+  ]);
+  if (
+    typeof value.transitionRef !== "string"
+    || !COMMERCE_REFERENCE.test(value.transitionRef)
+    || !DEFERRED_FLOW_KINDS.has(value.flowKind)
+    || !DEFERRED_TRANSITION_STATES.has(value.state)
+    || (
+      value.safeCode !== null
+      && (typeof value.safeCode !== "string" || !DEFERRED_SAFE_CODE.test(value.safeCode))
+    )
+  ) {
+    throw projectionInvalid();
+  }
+  const scheduledFor = requireUtcTimestamp(value.scheduledFor);
+  const reservedAt = requireUtcTimestamp(value.reservedAt);
+  const settledAt = value.settledAt === null
+    ? null
+    : requireUtcTimestamp(value.settledAt);
+  const createdAt = requireUtcTimestamp(value.createdAt);
+  const updatedAt = requireUtcTimestamp(value.updatedAt);
+  if (
+    Date.parse(reservedAt) < Date.parse(createdAt)
+    || Date.parse(updatedAt) < Date.parse(createdAt)
+    || (settledAt !== null && Date.parse(settledAt) < Date.parse(reservedAt))
+  ) {
+    throw projectionInvalid();
+  }
+  return {
+    transitionRef: value.transitionRef,
+    offer: projectOffer(value.offer),
+    amountUnits: requirePositiveSafeInteger(value.amountUnits),
+    flowKind: value.flowKind,
+    scheduledFor,
+    state: value.state,
+    safeCode: value.safeCode,
+    reservedAt,
+    settledAt,
+    createdAt,
+    updatedAt
+  };
+}
+
+function projectDeferredTransitionList(input) {
+  const transitions = snapshotPlainArray(input);
+  return transitions.map(projectDeferredTransition);
+}
+
 function projectOrder(input) {
   const value = snapshotExactObject(input, [
     "orderRef",
@@ -784,6 +960,116 @@ function createSessionMiddleware(state) {
   };
 }
 
+function ownDataValue(value, field) {
+  try {
+    if (
+      !value
+      || (typeof value !== "object" && typeof value !== "function")
+      || utilTypes.isProxy(value)
+    ) {
+      return undefined;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, field);
+    if (!descriptor || !("value" in descriptor)) return undefined;
+    return descriptor.value;
+  } catch {
+    return undefined;
+  }
+}
+
+function ownBooleanFeatureFlag(value, field) {
+  try {
+    if (
+      !value
+      || (typeof value !== "object" && typeof value !== "function")
+      || utilTypes.isProxy(value)
+    ) {
+      return null;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, field);
+    if (!descriptor) return false;
+    if (!("value" in descriptor) || typeof descriptor.value !== "boolean") {
+      return null;
+    }
+    return descriptor.value;
+  } catch {
+    return null;
+  }
+}
+
+function createCommerceModelMiddleware(state) {
+  const platform = ownDataValue(state, "platform");
+  const walletFirstRoutingEnabled = ownBooleanFeatureFlag(
+    platform,
+    "walletFirstRegistrationEnabled"
+  );
+  const controlStore = ownDataValue(platform, "controlStore");
+
+  return function resolveCommerceModel(_req, res, next) {
+    // A real control store always wins over a mutable registration flag. Once
+    // an account carries an explicit future-model marker, disabling new
+    // registration must never silently route it back to ordinary Commerce.
+    if (controlStore !== undefined) {
+      try {
+        const mode = resolveWalletFirstCommerceMode({
+          controlStore,
+          accountId: res.locals.portalCommerceSession.accountId
+        });
+        res.locals.portalCommerceMode = mode;
+        next();
+      } catch {
+        sendCommerceError(res, 503, "commerce_unavailable");
+      }
+      return;
+    }
+    if (walletFirstRoutingEnabled === false) {
+      res.locals.portalCommerceMode = PORTAL_COMMERCE_MODE_LEGACY;
+      next();
+      return;
+    }
+    if (walletFirstRoutingEnabled !== true) {
+      sendCommerceError(res, 503, "commerce_unavailable");
+      return;
+    }
+    // An enabled model without a server-side account source cannot safely
+    // fall back to ordinary Commerce.
+    sendCommerceError(res, 503, "commerce_unavailable");
+  };
+}
+
+function requireLegacyCommerceModel(_req, res, next) {
+  if (res.locals.portalCommerceMode === PORTAL_COMMERCE_MODE_LEGACY) {
+    next();
+    return;
+  }
+  if (res.locals.portalCommerceMode === PORTAL_COMMERCE_MODE_WALLET_FIRST) {
+    sendCommerceError(res, 409, "wallet_first_deferred_required");
+    return;
+  }
+  sendCommerceError(res, 503, "commerce_unavailable");
+}
+
+function createWalletFirstServiceMiddleware(state) {
+  const platform = ownDataValue(state, "platform");
+  const configuredService = ownDataValue(platform, "walletFirstCommerceService");
+
+  return function requireWalletFirstService(_req, res, next) {
+    if (res.locals.portalCommerceMode !== PORTAL_COMMERCE_MODE_WALLET_FIRST) {
+      // The surface is intentionally not a second path for legacy accounts.
+      sendCommerceError(res, 404, "commerce_not_found");
+      return;
+    }
+    try {
+      res.locals.walletFirstCommerceService =
+        snapshotWalletFirstCommerceService(configuredService);
+      next();
+    } catch {
+      // No adapter/coordinator means no reservation, never a legacy fallback.
+      sendCommerceError(res, 503, "commerce_unavailable");
+    }
+  };
+}
+
 function requireJsonContentType(req, res, next) {
   const header = readRawHeader(req, "content-type");
   if (
@@ -941,8 +1227,15 @@ function isSelectedCommerceRoute(method, pathname) {
       pathname === "/api/portal/catalog/offers"
       || /^\/api\/portal\/catalog\/offers\/[a-z][a-z0-9_]{2,95}$/
         .test(pathname)
+      || pathname === "/api/portal/commerce/model"
       || pathname === "/api/portal/commerce/orders"
       || /^\/api\/portal\/commerce\/orders\/[a-z][a-z0-9_]{2,95}$/
+        .test(pathname)
+      || pathname === "/api/portal/commerce/deferred/offers"
+      || /^\/api\/portal\/commerce\/deferred\/offers\/[a-z][a-z0-9_]{2,95}$/
+        .test(pathname)
+      || pathname === "/api/portal/commerce/deferred/transitions"
+      || /^\/api\/portal\/commerce\/deferred\/transitions\/[a-z][a-z0-9_]{2,95}$/
         .test(pathname)
     );
   }
@@ -951,6 +1244,10 @@ function isSelectedCommerceRoute(method, pathname) {
       pathname === "/api/portal/commerce/checkout-preview"
       || pathname === "/api/portal/commerce/orders"
       || /^\/api\/portal\/commerce\/orders\/[a-z][a-z0-9_]{2,95}\/cancel$/
+        .test(pathname)
+      || pathname === "/api/portal/commerce/deferred/checkout-preview"
+      || pathname === "/api/portal/commerce/deferred/transitions"
+      || /^\/api\/portal\/commerce\/deferred\/transitions\/[a-z][a-z0-9_]{2,95}\/cancel$/
         .test(pathname)
     );
   }
@@ -961,6 +1258,8 @@ export function portalCoinCommerceRoutes(state, options = {}) {
   const router = Router({ caseSensitive: true, strict: true });
   const store = state.platform?.coinCommerceStore;
   const requireSession = createSessionMiddleware(state);
+  const resolveCommerceModel = createCommerceModelMiddleware(state);
+  const requireWalletFirstService = createWalletFirstServiceMiddleware(state);
   const previewRateLimit = createPreviewRateLimiter(
     options.nowFn || Date.now
   );
@@ -1006,6 +1305,8 @@ export function portalCoinCommerceRoutes(state, options = {}) {
     "/api/portal/commerce/checkout-preview",
     requireNoQuery,
     requireSession,
+    resolveCommerceModel,
+    requireLegacyCommerceModel,
     requireJsonContentType,
     parseStrictJson,
     exactBody(["offerRef"]),
@@ -1037,6 +1338,8 @@ export function portalCoinCommerceRoutes(state, options = {}) {
     "/api/portal/commerce/orders",
     parseOrderListQuery,
     requireSession,
+    resolveCommerceModel,
+    requireLegacyCommerceModel,
     (_req, res) => {
       try {
         const page = projectOrderPage(
@@ -1056,6 +1359,8 @@ export function portalCoinCommerceRoutes(state, options = {}) {
     "/api/portal/commerce/orders",
     requireNoQuery,
     requireSession,
+    resolveCommerceModel,
+    requireLegacyCommerceModel,
     requireJsonContentType,
     requireIdempotencyKey,
     parseStrictJson,
@@ -1088,6 +1393,8 @@ export function portalCoinCommerceRoutes(state, options = {}) {
     "/api/portal/commerce/orders/:orderRef/cancel",
     requireNoQuery,
     requireSession,
+    resolveCommerceModel,
+    requireLegacyCommerceModel,
     requireJsonContentType,
     requireIdempotencyKey,
     parseStrictJson,
@@ -1112,6 +1419,8 @@ export function portalCoinCommerceRoutes(state, options = {}) {
     "/api/portal/commerce/orders/:orderRef",
     requireNoQuery,
     requireSession,
+    resolveCommerceModel,
+    requireLegacyCommerceModel,
     (req, res) => {
       try {
         const order = projectOrder(
@@ -1123,6 +1432,197 @@ export function portalCoinCommerceRoutes(state, options = {}) {
         res.json({ order });
       } catch (error) {
         sendStoreError(res, error);
+      }
+    }
+  );
+
+  router.get(
+    "/api/portal/commerce/model",
+    requireNoQuery,
+    requireSession,
+    resolveCommerceModel,
+    (_req, res) => {
+      res.json({ commerceModel: res.locals.portalCommerceMode });
+    }
+  );
+
+  router.get(
+    "/api/portal/commerce/deferred/offers",
+    requireNoQuery,
+    requireSession,
+    resolveCommerceModel,
+    requireWalletFirstService,
+    (_req, res) => {
+      try {
+        const offers = projectOfferList(
+          res.locals.walletFirstCommerceService.listOffers({
+            accountId: res.locals.portalCommerceSession.accountId
+          })
+        );
+        res.json({ offers });
+      } catch (error) {
+        sendDeferredStoreError(res, error);
+      }
+    }
+  );
+
+  router.get(
+    "/api/portal/commerce/deferred/offers/:offerRef",
+    requireNoQuery,
+    requireSession,
+    resolveCommerceModel,
+    requireWalletFirstService,
+    (req, res) => {
+      if (!COMMERCE_REFERENCE.test(req.params.offerRef)) {
+        sendCommerceError(res, 400, "commerce_request_invalid");
+        return;
+      }
+      try {
+        const offer = projectOffer(
+          res.locals.walletFirstCommerceService.getOffer({
+            accountId: res.locals.portalCommerceSession.accountId,
+            offerRef: req.params.offerRef
+          })
+        );
+        res.json({ offer });
+      } catch (error) {
+        sendDeferredStoreError(res, error, { offerLookup: true });
+      }
+    }
+  );
+
+  router.post(
+    "/api/portal/commerce/deferred/checkout-preview",
+    requireNoQuery,
+    requireSession,
+    resolveCommerceModel,
+    requireWalletFirstService,
+    requireJsonContentType,
+    parseStrictJson,
+    exactBody(["offerRef"]),
+    previewRateLimit,
+    (_req, res) => {
+      const { offerRef } = res.locals.portalCommerceBody;
+      if (typeof offerRef !== "string" || !COMMERCE_REFERENCE.test(offerRef)) {
+        sendCommerceError(res, 400, "commerce_request_invalid");
+        return;
+      }
+      try {
+        const quote = projectDeferredCheckout(
+          res.locals.walletFirstCommerceService.previewDeferredCheckout({
+            accountId: res.locals.portalCommerceSession.accountId,
+            offerRef
+          })
+        );
+        res.json({ quote });
+      } catch (error) {
+        sendDeferredStoreError(res, error);
+      }
+    }
+  );
+
+  router.get(
+    "/api/portal/commerce/deferred/transitions",
+    requireNoQuery,
+    requireSession,
+    resolveCommerceModel,
+    requireWalletFirstService,
+    (_req, res) => {
+      try {
+        const transitions = projectDeferredTransitionList(
+          res.locals.walletFirstCommerceService.listDeferredTransitions({
+            accountId: res.locals.portalCommerceSession.accountId
+          })
+        );
+        res.json({ transitions });
+      } catch (error) {
+        sendDeferredStoreError(res, error);
+      }
+    }
+  );
+
+  router.post(
+    "/api/portal/commerce/deferred/transitions",
+    requireNoQuery,
+    requireSession,
+    resolveCommerceModel,
+    requireWalletFirstService,
+    requireJsonContentType,
+    requireIdempotencyKey,
+    parseStrictJson,
+    exactBody(["quoteRef"]),
+    (_req, res) => {
+      const { quoteRef } = res.locals.portalCommerceBody;
+      if (typeof quoteRef !== "string" || !COMMERCE_REFERENCE.test(quoteRef)) {
+        sendCommerceError(res, 400, "commerce_request_invalid");
+        return;
+      }
+      try {
+        const transition = projectDeferredTransition(
+          res.locals.walletFirstCommerceService.reserveDeferredTransition({
+            accountId: res.locals.portalCommerceSession.accountId,
+            quoteRef,
+            operation: mutationOperation(res)
+          })
+        );
+        res.status(201).json({ transition });
+      } catch (error) {
+        sendDeferredStoreError(res, error);
+      }
+    }
+  );
+
+  router.get(
+    "/api/portal/commerce/deferred/transitions/:transitionRef",
+    requireNoQuery,
+    requireSession,
+    resolveCommerceModel,
+    requireWalletFirstService,
+    (req, res) => {
+      if (!COMMERCE_REFERENCE.test(req.params.transitionRef)) {
+        sendCommerceError(res, 400, "commerce_request_invalid");
+        return;
+      }
+      try {
+        const transition = projectDeferredTransition(
+          res.locals.walletFirstCommerceService.getDeferredTransition({
+            accountId: res.locals.portalCommerceSession.accountId,
+            transitionRef: req.params.transitionRef
+          })
+        );
+        res.json({ transition });
+      } catch (error) {
+        sendDeferredStoreError(res, error);
+      }
+    }
+  );
+
+  router.post(
+    "/api/portal/commerce/deferred/transitions/:transitionRef/cancel",
+    requireNoQuery,
+    requireSession,
+    resolveCommerceModel,
+    requireWalletFirstService,
+    requireJsonContentType,
+    requireIdempotencyKey,
+    parseStrictJson,
+    exactBody([]),
+    (req, res) => {
+      if (!COMMERCE_REFERENCE.test(req.params.transitionRef)) {
+        sendCommerceError(res, 400, "commerce_request_invalid");
+        return;
+      }
+      try {
+        const transition = projectDeferredTransition(
+          res.locals.walletFirstCommerceService.cancelDeferredTransition({
+            accountId: res.locals.portalCommerceSession.accountId,
+            transitionRef: req.params.transitionRef,
+            operation: mutationOperation(res)
+          })
+        );
+        res.json({ transition });
+      } catch (error) {
+        sendDeferredStoreError(res, error);
       }
     }
   );

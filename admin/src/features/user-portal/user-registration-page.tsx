@@ -2,6 +2,7 @@ import { Check, Mail, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { errorMessage } from "../../lib/errors";
 import {
+  isPortalWalletFirstRegistration,
   PORTAL_REGISTRATION_SESSION_STORAGE_KEY,
   type PortalRegistrationEmailVerificationChallenge,
   type PortalRegistrationResult,
@@ -13,7 +14,7 @@ type UserRegistrationPageProps = {
   portalClient: UserPortalClient;
 };
 
-type RegistrationStep = "account" | "plan" | "verify" | "complete";
+type RegistrationStep = "account" | "verify" | "complete";
 
 const PORTAL_REGISTRATION_LEGAL_AGREEMENT = {
   termsAccepted: true,
@@ -29,23 +30,28 @@ const registrationCopy = {
     pageAria: "User registration",
     brand: "GCC WebOS",
     support: "Need help? support@gccwebos.com",
-    progressTitle: "Start your free trial",
-    steps: ["Create account", "Choose plan", "Verify email", "Ready"],
-    stepLabel: (current: number) => `Step ${current} of 4`,
+    progressTitle: "Create your account",
+    steps: ["Create account", "Verify email", "Ready"],
+    stepLabel: (current: number) => `Step ${current} of 3`,
     accountTitle: "Create your account",
-    accountDescription: "No credit card required. Start with a free 7-day trial.",
-    planTitle: "Choose your trial plan",
-    planDescription: "Start with the Starter Trial. Paid plans and renewals stay in the user center.",
+    accountDescription: "No credit card required. Manage Coins and packages from your account center.",
     verifyTitle: "Check your inbox",
     verifyDescription: (email: string) => `We sent a 6-digit code to ${email || "your email"}`,
     verifyHelp: "Check your spam folder if you do not see the email.",
     codeTimer: (remaining: string) => `The code expires in ${remaining}.`,
     resultTitle: "You're ready to connect.",
-    resultDescription: "Your GCC WebOS account is active. You are on the Starter Trial plan.",
+    resultDescription: "Your GCC WebOS account is active.",
+    legacyTrialDescription: "Your GCC WebOS account is active. You are on the Starter Trial plan.",
     loginLink: "Open dashboard",
     downloadLink: "Download app",
     trialHint: "Your free trial ends in 7 days. Upgrade anytime from your dashboard.",
     remainingDays: "7 days remaining",
+    welcomeBonusDescription: (amount: number) => `Your new account receives ${amount} Bonus Coins for eligible packages.`,
+    welcomeBonusPending: "Your welcome Coins are being added to the Wallet. The Wallet will show the available balance once crediting completes.",
+    welcomeBonusAvailable: "Your welcome Coins are available in the Wallet and are used before purchased Coins when a package accepts them.",
+    welcomeBonusExpires: "Bonus Coins expire",
+    welcomeBonusBadge: "Welcome bonus",
+    welcomeBonusName: (amount: number) => `${amount} Bonus Coins`,
     fields: {
       email: "Email address",
       password: "Password",
@@ -66,7 +72,6 @@ const registrationCopy = {
     legalJoin: "and",
     privacy: "Privacy Policy",
     accountSubmit: "Create account",
-    planSubmit: "Continue to email verification",
     verifySubmit: "Verify code",
     back: "Back",
     resendVerification: "Resend code",
@@ -82,11 +87,7 @@ const registrationCopy = {
     existingAccountPrefix: "Already have an account?",
     existingAccountAction: "Sign in",
     planBadge: "Starter Trial",
-    planName: "7-day trial",
-    planPrice: "Free",
-    planDetails: "Email verified account, one starter subscription request, upgrade later.",
-    monthlyHint: "Monthly plans from RMB 20/30 after trial.",
-    yearlyHint: "Annual plan around RMB 200/year."
+    planName: "7-day trial"
   },
   zh: {
     documentTitle: "GCC WebOS - 用户注册",
@@ -94,23 +95,28 @@ const registrationCopy = {
     pageAria: "用户注册",
     brand: "GCC WebOS",
     support: "需要帮助？support@gccwebos.com",
-    progressTitle: "开始 7 天试用",
-    steps: ["创建账户", "选择方案", "验证邮箱", "完成"],
-    stepLabel: (current: number) => `第 ${current} 步，共 4 步`,
+    progressTitle: "创建你的账户",
+    steps: ["创建账户", "验证邮箱", "完成"],
+    stepLabel: (current: number) => `第 ${current} 步，共 3 步`,
     accountTitle: "创建你的账户",
-    accountDescription: "无需信用卡。先领取 7 天免费试用。",
-    planTitle: "选择试用方案",
-    planDescription: "先开通 Starter Trial。付费套餐和续费后续在用户面板内完成。",
+    accountDescription: "无需信用卡。完成注册后，可在用户中心管理 Coins 和套餐。",
     verifyTitle: "检查你的邮箱",
     verifyDescription: (email: string) => `我们已向 ${email || "你的邮箱"} 发送 6 位验证码`,
     verifyHelp: "如果没有看到邮件，请检查垃圾邮件文件夹。",
     codeTimer: (remaining: string) => `验证码将在 ${remaining} 后过期。`,
     resultTitle: "账户已准备好。",
-    resultDescription: "你的 GCC WebOS 账户已激活，当前为 Starter Trial 方案。",
+    resultDescription: "你的 GCC WebOS 账户已激活。",
+    legacyTrialDescription: "你的 GCC WebOS 账户已激活，当前为 Starter Trial 方案。",
     loginLink: "打开用户面板",
     downloadLink: "下载应用",
     trialHint: "免费试用将在 7 天后结束，可随时在用户面板内升级。",
     remainingDays: "7 天剩余",
+    welcomeBonusDescription: (amount: number) => `新账户可获得 ${amount} 个赠送 Coins，用于支持赠送 Coins 的套餐。`,
+    welcomeBonusPending: "欢迎赠送正在写入 Coins 钱包；入账完成后，可在钱包内查看可用余额。",
+    welcomeBonusAvailable: "欢迎赠送已在 Coins 钱包可用；套餐允许时会优先使用赠送 Coins，再使用已购 Coins。",
+    welcomeBonusExpires: "赠送 Coins 到期时间",
+    welcomeBonusBadge: "欢迎赠送",
+    welcomeBonusName: (amount: number) => `${amount} 个赠送 Coins`,
     fields: {
       email: "电子邮箱",
       password: "密码",
@@ -131,7 +137,6 @@ const registrationCopy = {
     legalJoin: "和",
     privacy: "隐私政策",
     accountSubmit: "创建账户",
-    planSubmit: "继续邮箱验证",
     verifySubmit: "验证并开通",
     back: "返回",
     resendVerification: "重新发送",
@@ -147,11 +152,7 @@ const registrationCopy = {
     existingAccountPrefix: "已有账户？",
     existingAccountAction: "登录",
     planBadge: "Starter Trial",
-    planName: "7 天试用",
-    planPrice: "免费",
-    planDetails: "邮箱验证账户、一个初始订阅申请，后续可升级。",
-    monthlyHint: "试用后月付套餐约人民币 20/30 元。",
-    yearlyHint: "年付套餐约人民币 200 元/年。"
+    planName: "7 天试用"
   }
 } as const;
 
@@ -194,6 +195,13 @@ function splitOtpDigits(value: string) {
   return Array.from({ length: 6 }, (_, index) => value[index] ?? "");
 }
 
+function formatWelcomeBonusExpiry(value: string, locale: "zh" | "en") {
+  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(value));
+}
+
 export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps) {
   const { locale, setLocale } = usePublicLocalePreference();
   const copy = registrationCopy[locale];
@@ -213,7 +221,7 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
   const [result, setResult] = useState<PortalRegistrationResult | null>(null);
   const rules = useMemo(() => passwordState(password), [password]);
   const passwordReady = isPasswordReady(rules);
-  const activeStep = step === "account" ? 1 : step === "plan" ? 2 : step === "verify" ? 3 : 4;
+  const activeStep = step === "account" ? 1 : step === "verify" ? 2 : 3;
   const otpDigits = useMemo(() => splitOtpDigits(emailVerificationCode), [emailVerificationCode]);
   const activeOtpIndex = Math.min(emailVerificationCode.length, 5);
   const countdownLabel = formatCountdown(remainingSeconds);
@@ -246,7 +254,7 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
       setEmailVerification(nextVerification);
       setVerificationExpiresAtMs(Date.now() + nextVerification.expiresInSeconds * 1000);
       setEmailVerificationCode("");
-      setStep("plan");
+      setStep("verify");
     } catch (caughtError) {
       setError(errorMessage(caughtError, copy.verificationSendError));
     } finally {
@@ -269,15 +277,6 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
       return;
     }
     await requestEmailVerification();
-  }
-
-  function continueFromPlan() {
-    if (!emailVerification) {
-      setError(copy.verificationRequired);
-      return;
-    }
-    setError(null);
-    setStep("verify");
   }
 
   async function submitRegistration(event: FormEvent<HTMLFormElement>) {
@@ -348,14 +347,19 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
   }
 
   if (result) {
+    const welcomeBonus = isPortalWalletFirstRegistration(result)
+      ? result.welcomeBonus
+      : null;
     return renderStepShell(
       <div className="portal-registration-success">
         <div className="portal-registration-success-logo" aria-hidden="true">
           <span>✓</span>
         </div>
-        <p className="portal-registration-step-label">{copy.stepLabel(4)}</p>
+        <p className="portal-registration-step-label">{copy.stepLabel(3)}</p>
         <h1>{copy.resultTitle}</h1>
-        <p>{copy.resultDescription}</p>
+        <p>{welcomeBonus
+          ? copy.welcomeBonusDescription(welcomeBonus.amountUnits)
+          : copy.legacyTrialDescription}</p>
         <div className="portal-registration-success-actions">
           <a className="portal-auth-submit portal-registration-login-link" href="/portal/">
             {copy.loginLink}
@@ -364,46 +368,38 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
             {copy.downloadLink}
           </a>
         </div>
-        <p className="portal-registration-trial-hint">{copy.trialHint}</p>
+        <p className="portal-registration-trial-hint">
+          {welcomeBonus
+            ? welcomeBonus.status === "pending"
+              ? copy.welcomeBonusPending
+              : copy.welcomeBonusAvailable
+            : copy.trialHint}
+        </p>
         <div className="portal-registration-success-pills" aria-label={copy.resultTitle}>
-          <span>{copy.planBadge}</span>
-          <span>{copy.planName}</span>
-          <span>{copy.remainingDays}</span>
+          {welcomeBonus ? (
+            <>
+              <span>{copy.welcomeBonusBadge}</span>
+              <span>{copy.welcomeBonusName(welcomeBonus.amountUnits)}</span>
+              <span>{welcomeBonus.status === "pending"
+                ? locale === "zh" ? "入账中" : "Pending"
+                : locale === "zh" ? "可用" : "Available"}</span>
+            </>
+          ) : (
+            <>
+              <span>{copy.planBadge}</span>
+              <span>{copy.planName}</span>
+              <span>{copy.remainingDays}</span>
+            </>
+          )}
         </div>
-      </div>
-    );
-  }
-
-  if (step === "plan") {
-    return renderStepShell(
-      <div className="portal-registration-content portal-registration-plan-step">
-        <p className="portal-registration-step-label">{copy.stepLabel(2)}</p>
-        <h1>{copy.planTitle}</h1>
-        <p className="portal-registration-copy">{copy.planDescription}</p>
-        <div className="portal-registration-plan-card" aria-label={copy.planName}>
-          <div>
-            <span>{copy.planBadge}</span>
-            <h2>{copy.planName}</h2>
-            <p>{copy.planDetails}</p>
-          </div>
-          <strong>{copy.planPrice}</strong>
-        </div>
-        <div className="portal-registration-plan-notes">
-          <span>{copy.monthlyHint}</span>
-          <span>{copy.yearlyHint}</span>
-        </div>
-        {emailVerification ? (
-          <p className="portal-inline-success">{copy.verificationSent}</p>
+        {welcomeBonus ? (
+          <p className="portal-registration-trial-hint">
+            {copy.welcomeBonusExpires}{" "}
+            <time dateTime={welcomeBonus.expiresAt}>
+              {formatWelcomeBonusExpiry(welcomeBonus.expiresAt, locale)}
+            </time>
+          </p>
         ) : null}
-        {error ? <p className="portal-inline-error" role="alert">{error}</p> : null}
-        <div className="portal-registration-actions">
-          <button className="portal-registration-back-button" type="button" onClick={() => setStep("account")}>
-            {copy.back}
-          </button>
-          <button className="portal-auth-submit" type="button" onClick={continueFromPlan}>
-            {copy.planSubmit}
-          </button>
-        </div>
       </div>
     );
   }
@@ -414,7 +410,7 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
         <div className="portal-registration-mail-icon" aria-hidden="true">
           <Mail size={16} strokeWidth={2.4} />
         </div>
-        <p className="portal-registration-step-label">{copy.stepLabel(3)}</p>
+        <p className="portal-registration-step-label">{copy.stepLabel(2)}</p>
         <h1>{copy.verifyTitle}</h1>
         <p className="portal-registration-copy">{copy.verifyDescription(email)}</p>
         <p className="portal-registration-timer">{copy.codeTimer(countdownLabel)}</p>

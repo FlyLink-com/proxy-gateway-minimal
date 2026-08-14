@@ -4,12 +4,17 @@ import type {
   PortalCoinCommerceClient,
   PortalCoinCommerceClientErrorCode,
   PortalCoinCommerceErrorCode,
+  PortalCommerceModel,
+  PortalCommerceModelClient,
+  PortalDeferredCheckoutQuote,
+  PortalDeferredTransition,
   PortalCoinFulfillment,
   PortalCoinOffer,
   PortalCoinOrder,
   PortalCoinOrderPage,
   PortalCoinQuote,
-  PortalCoinType
+  PortalCoinType,
+  PortalWalletFirstCommerceClient
 } from "./api-contract";
 
 const COMMERCE_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
@@ -56,6 +61,19 @@ const FULFILLMENT_SAFE_CODES = new Set([
   "fulfillment_handler_unavailable",
   "fulfillment_attempt_limit"
 ]);
+const DEFERRED_TRANSITION_STATES = new Set([
+  "reserved",
+  "processing",
+  "effect_applied",
+  "settled",
+  "requote_required",
+  "cancelled",
+  "reconciliation_required"
+]);
+const DEFERRED_FLOW_KINDS = new Set([
+  "initial_activation",
+  "scheduled_switch"
+]);
 const COMMERCE_ERROR_CODES = new Set<PortalCoinCommerceErrorCode>([
   "cancel_window_closed",
   "capture_in_progress",
@@ -71,6 +89,8 @@ const COMMERCE_ERROR_CODES = new Set<PortalCoinCommerceErrorCode>([
   "quote_expired",
   "quote_stale",
   "reconciliation_required",
+  "deferred_transition_conflict",
+  "wallet_first_deferred_required",
   "wallet_not_active"
 ]);
 const RETRYABLE_COMMERCE_ERROR_CODES = new Set<PortalCoinCommerceErrorCode>([
@@ -635,6 +655,125 @@ function orderWrapper(input: unknown) {
   return orderProjection(exactObject(input, ["order"]).order);
 }
 
+function commerceModelWrapper(input: unknown): PortalCommerceModel {
+  const value = exactObject(input, ["commerceModel"]);
+  if (
+    value.commerceModel !== "legacy"
+    && value.commerceModel !== "wallet_first_unique_v1"
+  ) {
+    return invalidProjection();
+  }
+  return value.commerceModel;
+}
+
+function deferredCheckoutWrapper(input: unknown): PortalDeferredCheckoutQuote {
+  const value = exactObject(input, ["quote"]);
+  const quote = exactObject(value.quote, [
+    "quoteRef",
+    "offer",
+    "amountUnits",
+    "appliedDiscountBasisPoints",
+    "purchaseAvailability",
+    "shortfallUnits",
+    "allocation",
+    "balances",
+    "expiresAt",
+    "transition"
+  ]);
+  const projectedQuote = quoteProjection({
+    quoteRef: quote.quoteRef,
+    offer: quote.offer,
+    amountUnits: quote.amountUnits,
+    appliedDiscountBasisPoints: quote.appliedDiscountBasisPoints,
+    purchaseAvailability: quote.purchaseAvailability,
+    shortfallUnits: quote.shortfallUnits,
+    allocation: quote.allocation,
+    balances: quote.balances,
+    expiresAt: quote.expiresAt
+  });
+  const transition = exactObject(quote.transition, [
+    "flowKind",
+    "scheduledFor"
+  ]);
+  if (!DEFERRED_FLOW_KINDS.has(transition.flowKind as string)) {
+    return invalidProjection();
+  }
+  return {
+    ...projectedQuote,
+    transition: {
+      flowKind: transition.flowKind as PortalDeferredCheckoutQuote["transition"]["flowKind"],
+      scheduledFor: utcTimestamp(transition.scheduledFor)
+    }
+  };
+}
+
+function deferredTransitionProjection(input: unknown): PortalDeferredTransition {
+  const value = exactObject(input, [
+    "transitionRef",
+    "offer",
+    "amountUnits",
+    "flowKind",
+    "scheduledFor",
+    "state",
+    "safeCode",
+    "reservedAt",
+    "settledAt",
+    "createdAt",
+    "updatedAt"
+  ]);
+  if (
+    !DEFERRED_FLOW_KINDS.has(value.flowKind as string)
+    || !DEFERRED_TRANSITION_STATES.has(value.state as string)
+    || (
+      value.safeCode !== null
+      && (typeof value.safeCode !== "string" || !COMMERCE_REFERENCE.test(value.safeCode))
+    )
+  ) {
+    return invalidProjection();
+  }
+  const offer = offerProjection(value.offer);
+  const amountUnits = positiveSafeInteger(value.amountUnits);
+  if (amountUnits > offer.baseCoinUnits) return invalidProjection();
+  const createdAt = utcTimestamp(value.createdAt);
+  const reservedAt = utcTimestamp(value.reservedAt);
+  const scheduledFor = utcTimestamp(value.scheduledFor);
+  const settledAt = value.settledAt === null
+    ? null
+    : utcTimestamp(value.settledAt);
+  const updatedAt = utcTimestamp(value.updatedAt);
+  if (
+    Date.parse(reservedAt) < Date.parse(createdAt)
+    || Date.parse(updatedAt) < Date.parse(createdAt)
+    || (settledAt !== null && Date.parse(settledAt) < Date.parse(reservedAt))
+  ) {
+    return invalidProjection();
+  }
+  return {
+    transitionRef: commerceReference(value.transitionRef),
+    offer,
+    amountUnits,
+    flowKind: value.flowKind as PortalDeferredTransition["flowKind"],
+    scheduledFor,
+    state: value.state as PortalDeferredTransition["state"],
+    safeCode: value.safeCode,
+    reservedAt,
+    settledAt,
+    createdAt,
+    updatedAt
+  };
+}
+
+function deferredTransitionWrapper(input: unknown) {
+  return deferredTransitionProjection(
+    exactObject(input, ["transition"]).transition
+  );
+}
+
+function deferredTransitionListWrapper(input: unknown) {
+  const value = exactObject(input, ["transitions"]);
+  return exactArray(value.transitions).map(deferredTransitionProjection);
+}
+
 type OrderCursor = {
   afterCreatedAt: string;
   afterOrderRef: string;
@@ -1018,6 +1157,170 @@ export function createPortalCoinCommerceClient(
           if (order.orderRef !== orderRef) return invalidProjection();
           return order;
         }
+      );
+    }
+  };
+}
+
+/**
+ * Reads the authenticated account's model projection.  There is intentionally
+ * no setter or caller-supplied model input: the server alone selects whether
+ * the legacy or deferred route family is legal for the session.
+ */
+export function createPortalCommerceModelClient(
+  options: { fetchFn?: typeof fetch } = {}
+): PortalCommerceModelClient {
+  const fetchFn = options.fetchFn ?? fetch;
+  return {
+    async getCommerceModel(input) {
+      const value = exactInput(input, ["sessionRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      return request(
+        fetchFn,
+        "/api/portal/commerce/model",
+        getInit(sessionRef),
+        200,
+        commerceModelWrapper,
+        { legacyUnauthorizedUnavailable: true }
+      );
+    }
+  };
+}
+
+/**
+ * Dedicated wallet-first browser surface.  This client has no ordinary Order
+ * methods, and every mutation sends only a server-issued quote/transition
+ * reference plus an idempotency key.  Flow, schedule, chain, allocation and
+ * priority remain exclusively server-derived.
+ */
+export function createPortalWalletFirstCommerceClient(
+  options: { fetchFn?: typeof fetch } = {}
+): PortalWalletFirstCommerceClient {
+  const fetchFn = options.fetchFn ?? fetch;
+  return {
+    async listOffers(input) {
+      const value = exactInput(input, ["sessionRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      return request(
+        fetchFn,
+        "/api/portal/commerce/deferred/offers",
+        getInit(sessionRef),
+        200,
+        offerListWrapper,
+        { legacyUnauthorizedUnavailable: true }
+      );
+    },
+
+    async getOffer(input) {
+      const value = exactInput(input, ["sessionRef", "offerRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const offerRef = callerCommerceReference(value.offerRef);
+      return request(
+        fetchFn,
+        `/api/portal/commerce/deferred/offers/${offerRef}`,
+        getInit(sessionRef),
+        200,
+        (body) => {
+          const offer = offerWrapper(body);
+          if (offer.offerRef !== offerRef) return invalidProjection();
+          return offer;
+        },
+        { legacyUnauthorizedUnavailable: true }
+      );
+    },
+
+    async previewDeferredCheckout(input) {
+      const value = exactInput(input, ["sessionRef", "offerRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const offerRef = callerCommerceReference(value.offerRef);
+      return request(
+        fetchFn,
+        "/api/portal/commerce/deferred/checkout-preview",
+        postInit(sessionRef, JSON.stringify({ offerRef })),
+        200,
+        (body) => {
+          const quote = deferredCheckoutWrapper(body);
+          if (quote.offer.offerRef !== offerRef) return invalidProjection();
+          return quote;
+        },
+        { legacyUnauthorizedUnavailable: true }
+      );
+    },
+
+    async listDeferredTransitions(input) {
+      const value = exactInput(input, ["sessionRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      return request(
+        fetchFn,
+        "/api/portal/commerce/deferred/transitions",
+        getInit(sessionRef),
+        200,
+        deferredTransitionListWrapper,
+        { legacyUnauthorizedUnavailable: true }
+      );
+    },
+
+    async getDeferredTransition(input) {
+      const value = exactInput(input, ["sessionRef", "transitionRef"]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const transitionRef = callerCommerceReference(value.transitionRef);
+      return request(
+        fetchFn,
+        `/api/portal/commerce/deferred/transitions/${transitionRef}`,
+        getInit(sessionRef),
+        200,
+        (body) => {
+          const transition = deferredTransitionWrapper(body);
+          if (transition.transitionRef !== transitionRef) return invalidProjection();
+          return transition;
+        },
+        { legacyUnauthorizedUnavailable: true }
+      );
+    },
+
+    async reserveDeferredTransition(input) {
+      const value = exactInput(input, [
+        "sessionRef",
+        "quoteRef",
+        "idempotencyKey"
+      ]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const quoteRef = callerCommerceReference(value.quoteRef);
+      const idempotencyKey = callerIdempotencyKey(value.idempotencyKey);
+      return request(
+        fetchFn,
+        "/api/portal/commerce/deferred/transitions",
+        postInit(
+          sessionRef,
+          JSON.stringify({ quoteRef }),
+          idempotencyKey
+        ),
+        201,
+        deferredTransitionWrapper,
+        { legacyUnauthorizedUnavailable: true }
+      );
+    },
+
+    async cancelDeferredTransition(input) {
+      const value = exactInput(input, [
+        "sessionRef",
+        "transitionRef",
+        "idempotencyKey"
+      ]);
+      const sessionRef = sessionReference(value.sessionRef);
+      const transitionRef = callerCommerceReference(value.transitionRef);
+      const idempotencyKey = callerIdempotencyKey(value.idempotencyKey);
+      return request(
+        fetchFn,
+        `/api/portal/commerce/deferred/transitions/${transitionRef}/cancel`,
+        postInit(sessionRef, "{}", idempotencyKey),
+        200,
+        (body) => {
+          const transition = deferredTransitionWrapper(body);
+          if (transition.transitionRef !== transitionRef) return invalidProjection();
+          return transition;
+        },
+        { legacyUnauthorizedUnavailable: true }
       );
     }
   };

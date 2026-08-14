@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import Database from "better-sqlite3";
 
@@ -13,6 +13,9 @@ import {
 import {
   validateCoinWalletSchema
 } from "./coin-wallet-migrations.mjs";
+import {
+  validateDeferredResourceTransitionSchema
+} from "./deferred-resource-transition-migrations.mjs";
 
 const BUSY_TIMEOUT_MS = 2000;
 const MAX_LEDGER_PAGE_SIZE = 500;
@@ -23,6 +26,16 @@ const OPERATION_TYPE_CAPTURE_HOLD = "capture_coin_hold";
 const OPERATION_TYPE_RELEASE_HOLD = "release_coin_hold";
 const OPERATION_TYPE_EXPIRE_HOLD = "expire_coin_hold";
 const OPERATION_TYPE_EXPIRE_LOT = "expire_coin_lot";
+const OPERATION_TYPE_CREATE_DEFERRED_RESERVATION =
+  "create_deferred_resource_transition_reservation";
+const OPERATION_TYPE_CAPTURE_DEFERRED_RESERVATION =
+  "capture_deferred_resource_transition_reservation";
+const OPERATION_TYPE_RELEASE_DEFERRED_RESERVATION =
+  "release_deferred_resource_transition_reservation";
+const OPERATION_TYPE_PREFLIGHT_REBASE_DEFERRED_RESERVATION =
+  "preflight_rebase_deferred_resource_transition_reservation";
+const OPERATION_TYPE_REBASE_DEFERRED_RESERVATION =
+  "rebase_deferred_resource_transition_reservation";
 const SAFE_RESULT_CREDITED = "credited";
 const SAFE_RESULT_CONFIRMED = "confirmed";
 const SAFE_RESULT_HELD = "held";
@@ -32,6 +45,16 @@ const SAFE_RESULT_RELEASED = "released";
 const SAFE_RESULT_EXPIRED = "expired";
 const SAFE_RESULT_EXPIRY_PROCESSED = "expiry_processed";
 const SAFE_RESULT_HOLD_EXPIRED = "hold_expired";
+const SAFE_RESULT_DEFERRED_RESERVED = "reserved";
+const SAFE_RESULT_DEFERRED_CAPTURED = "captured";
+const SAFE_RESULT_DEFERRED_RELEASED = "released";
+const SAFE_RESULT_DEFERRED_REBASED = "rebased";
+const SAFE_RESULT_DEFERRED_NOT_CAPTURABLE = "not_capturable";
+const SAFE_RESULT_DEFERRED_NOT_RELEASABLE = "not_releasable";
+const SAFE_RESULT_DEFERRED_BONUS_EXPIRES_BEFORE_ACTIVATION =
+  "bonus_expires_before_activation";
+const SAFE_RESULT_DEFERRED_REBASE_UNAVAILABLE =
+  "deferred_reservation_rebase_unavailable";
 const EXPIRY_ACTOR_SCOPE = "system:coin-wallet-expiry";
 const EXPIRY_ACTOR_TYPE = "system";
 const EXPIRY_ACTOR_REF = "coin_wallet_expiry_worker";
@@ -80,9 +103,48 @@ const PARTICIPANT_FACTORY_FIELDS = new Set([
   "nowFn",
   "refFactory"
 ]);
+const DEFERRED_RESERVATION_PARTICIPANT_FACTORY_FIELDS = new Set([
+  "database",
+  "nowFn",
+  "refFactory"
+]);
 const HOLD_LIFECYCLE_FIELDS = new Set(["holdRef", "operation"]);
+const DEFERRED_RESERVATION_CREATE_FIELDS = new Set([
+  "accountId",
+  "orderRef",
+  "transitionRef",
+  "reservationRef",
+  "amountUnits",
+  "acceptedCoinTypes",
+  "scheduledFor",
+  "operation"
+]);
+const DEFERRED_RESERVATION_VERIFY_FIELDS = new Set([
+  "accountId",
+  "orderRef",
+  "reservationRef",
+  "amountUnits",
+  "allocationSnapshot"
+]);
+const DEFERRED_RESERVATION_LIFECYCLE_FIELDS = new Set([
+  "reservationRef",
+  "operation"
+]);
+const DEFERRED_RESERVATION_REBASE_FIELDS = new Set([
+  "reservationRef",
+  "activationAt",
+  "operation"
+]);
+const DEFERRED_RESERVATION_ALLOCATION_FIELDS = new Set([
+  "lotRef",
+  "allocationSequence",
+  "coinType",
+  "allocatedUnits",
+  "expiresAt"
+]);
 const EXPIRE_HOLD_FIELDS = new Set(["holdRef"]);
 const EXPIRE_LOT_FIELDS = new Set(["lotRef"]);
+const EXPIRE_DUE_PORTAL_REGISTRATION_WELCOME_BONUS_COIN_LOTS_FIELDS = new Set(["limit"]);
 const HOLD_ALLOCATION_FIELDS = new Set([
   "lotRef",
   "coinType",
@@ -96,6 +158,26 @@ const HOLD_STATUSES = new Set([
   "expired",
   "invalidated"
 ]);
+const DEFERRED_RESERVATION_STATES = new Set([
+  "reserved",
+  "processing",
+  "captured",
+  "released",
+  "reconciliation_required"
+]);
+const DEFERRED_RESERVATION_ACTIVE_STATES = new Set([
+  "reserved",
+  "processing",
+  "reconciliation_required"
+]);
+const DEFERRED_RESERVATION_SOURCE_TYPE =
+  "deferred_resource_transition";
+const DEFERRED_RESERVATION_RECOVERY_GRACE_MS = 86_400_000;
+const DEFERRED_RESERVATIONS_TABLE =
+  "platform_deferred_resource_transition_reservations";
+const DEFERRED_RESERVATION_ALLOCATIONS_TABLE =
+  "platform_deferred_resource_transition_reservation_allocations";
+const DEFERRED_TRANSITIONS_TABLE = "platform_deferred_resource_transitions";
 const KNOWN_STORE_CODES = new Set([
   "account_not_found",
   "coin_units_overflow",
@@ -104,6 +186,11 @@ const KNOWN_STORE_CODES = new Set([
   "coin_hold_not_active",
   "coin_lot_not_expirable",
   "credit_origin_conflict",
+  "deferred_reservation_conflict",
+  "deferred_reservation_not_capturable",
+  "deferred_reservation_not_found",
+  "deferred_reservation_not_releasable",
+  "deferred_reservation_schema_not_ready",
   "duplicate_coin_type",
   "idempotency_conflict",
   "idempotency_unavailable",
@@ -481,6 +568,19 @@ function normalizeExpirySubjectRequest(input, fields, subjectField) {
   return assertNormalizedString(request[subjectField]);
 }
 
+function normalizeExpireDuePortalRegistrationWelcomeBonusCoinLotsRequest(input) {
+  const request = assertPlainObject(input);
+  assertExactDataFields(
+    request,
+    EXPIRE_DUE_PORTAL_REGISTRATION_WELCOME_BONUS_COIN_LOTS_FIELDS
+  );
+  assertRequiredOwnDataFields(
+    request,
+    EXPIRE_DUE_PORTAL_REGISTRATION_WELCOME_BONUS_COIN_LOTS_FIELDS
+  );
+  return normalizeListLimit(request.limit);
+}
+
 function prepareHoldAllocations({
   allocations,
   lots,
@@ -716,6 +816,35 @@ function normalizeProjectionLookup(input) {
   return hasWalletRef
     ? { walletRef: assertNormalizedString(value.walletRef), accountId: null }
     : { walletRef: null, accountId: assertNormalizedString(value.accountId) };
+}
+
+function deferredReservationSchemaIsReady(database) {
+  const tableNames = database.prepare(`
+    select name
+      from sqlite_master
+     where type = 'table'
+       and name in (?, ?)
+     order by name
+  `).all(
+    DEFERRED_RESERVATIONS_TABLE,
+    DEFERRED_RESERVATION_ALLOCATIONS_TABLE
+  ).map(({ name }) => name);
+  if (tableNames.length === 0) return false;
+  if (
+    tableNames.length !== 2
+    || tableNames[0] !== DEFERRED_RESERVATION_ALLOCATIONS_TABLE
+    || tableNames[1] !== DEFERRED_RESERVATIONS_TABLE
+  ) {
+    throw storeError("wallet_infrastructure_error");
+  }
+  let validation;
+  try {
+    validation = validateDeferredResourceTransitionSchema({ database });
+  } catch {
+    throw storeError("wallet_infrastructure_error");
+  }
+  if (!validation?.ok) throw storeError("wallet_infrastructure_error");
+  return true;
 }
 
 export function createSqliteCoinWalletStore(options = {}) {
@@ -2528,6 +2657,32 @@ export function createSqliteCoinWalletStore(options = {}) {
     });
   });
 
+  const runFindDuePortalRegistrationWelcomeBonusCoinLotsTransaction = db.transaction((limit) => {
+    const occurredAt = readLockedDatabaseUtc();
+    const rows = db.prepare(`
+      select lot_ref
+        from platform_coin_lots
+       where coin_type = 'bonus_coins'
+         and source_type = 'portal_registration_welcome_bonus'
+         and available_units > 0
+         and expires_at is not null
+         and expires_at <= ?
+       order by expires_at asc, lot_ref asc
+       limit ?
+    `).all(occurredAt, limit);
+    return rows.map((row) => {
+      if (
+        !row
+        || typeof row.lot_ref !== "string"
+        || row.lot_ref.length === 0
+        || row.lot_ref.trim() !== row.lot_ref
+      ) {
+        throw storeError("wallet_infrastructure_error");
+      }
+      return row.lot_ref;
+    });
+  });
+
   function getWallet(walletRef) {
     return read(() => findWalletByRef(assertNormalizedString(walletRef)));
   }
@@ -2536,7 +2691,7 @@ export function createSqliteCoinWalletStore(options = {}) {
     return read(() => findWalletByAccountId(assertNormalizedString(accountId)));
   }
 
-  function getWalletProjection(input) {
+  function getWalletProjection(input, projectionAt = undefined) {
     return read(() => {
       const lookup = normalizeProjectionLookup(input);
       const wallet = lookup.walletRef
@@ -2549,17 +2704,26 @@ export function createSqliteCoinWalletStore(options = {}) {
           activeAllocations: []
         });
       }
+      const occurredAt = projectionAt === undefined
+        ? readLockedDatabaseUtc()
+        : normalizeTimestamp(projectionAt);
       const aggregates = db.prepare(`
         select coin_type,
                count(*) as lot_count,
-               coalesce(sum(available_units), 0) as available_units,
+               coalesce(sum(case
+                 when coin_type = 'bonus_coins'
+                   and expires_at is not null
+                   and expires_at <= ?
+                 then 0
+                 else available_units
+               end), 0) as available_units,
                coalesce(sum(pending_units), 0) as pending_units,
                coalesce(sum(held_units), 0) as held_units
           from platform_coin_lots
          where wallet_ref = ?
          group by coin_type
          order by coin_type
-      `).all(wallet.walletRef);
+      `).all(occurredAt, wallet.walletRef);
       if (aggregates.length > 3) {
         throw storeError("wallet_infrastructure_error");
       }
@@ -2586,6 +2750,22 @@ export function createSqliteCoinWalletStore(options = {}) {
         }
         seenCoinTypes.add(coinType);
       }
+      const hasDeferredReservations = deferredReservationSchemaIsReady(db);
+      const deferredAllocationUnion = hasDeferredReservations
+        ? `
+          union all
+          select a.lot_ref,
+                 r.wallet_ref as hold_wallet_ref,
+                 l.wallet_ref as lot_wallet_ref,
+                 a.amount_units as allocated_units
+            from ${DEFERRED_RESERVATION_ALLOCATIONS_TABLE} a
+            join ${DEFERRED_RESERVATIONS_TABLE} r
+              on r.reservation_ref = a.reservation_ref
+            join platform_coin_lots l
+              on l.lot_ref = a.lot_ref
+           where r.state in ('reserved', 'processing', 'reconciliation_required')
+        `
+        : "";
       const integrity = db.prepare(`
         with active_rows as (
           select a.lot_ref,
@@ -2598,6 +2778,7 @@ export function createSqliteCoinWalletStore(options = {}) {
             join platform_coin_lots l
               on l.lot_ref = a.lot_ref
            where h.status = 'active'
+          ${deferredAllocationUnion}
         ),
         active_totals as (
           select lot_ref,
@@ -2861,11 +3042,10 @@ export function createSqliteCoinWalletStore(options = {}) {
       if (wallet.status !== "active") {
         throw storeError("wallet_not_active");
       }
+      const occurredAt = readLockedDatabaseUtc();
       const walletProjection = getWalletProjection({
         accountId: request.accountId
-      });
-
-      const occurredAt = readLockedDatabaseUtc();
+      }, occurredAt);
       const placeholders = request.acceptedCoinTypes.map(() => "?").join(", ");
       const lots = db.prepare(`
         select *
@@ -3105,6 +3285,32 @@ export function createSqliteCoinWalletStore(options = {}) {
     }
   }
 
+  function expireDuePortalRegistrationWelcomeBonusCoinLots(input) {
+    assertOpen();
+    try {
+      const limit = normalizeExpireDuePortalRegistrationWelcomeBonusCoinLotsRequest(input);
+      const dueLotRefs = runFindDuePortalRegistrationWelcomeBonusCoinLotsTransaction.immediate(limit);
+      let expiredLots = 0;
+      for (const lotRef of dueLotRefs) {
+        const result = expireCoinLot({ lotRef });
+        if (result.safeResultCode === SAFE_RESULT_EXPIRED) {
+          expiredLots += 1;
+        } else if (result.safeResultCode !== SAFE_RESULT_EXPIRY_PROCESSED) {
+          throw storeError("wallet_infrastructure_error");
+        }
+      }
+      return expiredLots;
+    } catch (error) {
+      if (
+        error?.code === "invalid_reference"
+        || error?.code === "coin_units_overflow"
+      ) {
+        throw storeError("wallet_infrastructure_error");
+      }
+      throw normalizeStoreError(error);
+    }
+  }
+
   function close() {
     if (closed) return;
     closed = true;
@@ -3124,6 +3330,7 @@ export function createSqliteCoinWalletStore(options = {}) {
     creditCoins,
     expireCoinHold,
     expireCoinLot,
+    expireDuePortalRegistrationWelcomeBonusCoinLots,
     getHold,
     getLot,
     getOperationReceipt,
@@ -3176,4 +3383,1553 @@ export function createCoinWalletTransactionParticipant(options = {}) {
     throw storeError("wallet_infrastructure_error");
   }
   return participant;
+}
+
+/**
+ * Creates the wallet-side participant for a deferred resource transition.
+ *
+ * This is intentionally separate from ordinary Coin holds. The caller owns
+ * the surrounding BEGIN IMMEDIATE transaction and must use this exact SQLite
+ * handle; no participant method starts a nested transaction.
+ */
+export function createDeferredResourceTransitionReservationParticipant(options = {}) {
+  if (
+    !options
+    || typeof options !== "object"
+    || Array.isArray(options)
+    || Object.getPrototypeOf(options) !== Object.prototype
+  ) {
+    throw storeError("invalid_store_contract");
+  }
+  for (const key of Reflect.ownKeys(options)) {
+    const descriptor = Object.getOwnPropertyDescriptor(options, key);
+    if (
+      typeof key !== "string"
+      || !DEFERRED_RESERVATION_PARTICIPANT_FACTORY_FIELDS.has(key)
+      || !descriptor
+      || !descriptor.enumerable
+      || !("value" in descriptor)
+    ) {
+      throw storeError("invalid_store_contract");
+    }
+  }
+  if (!Object.prototype.hasOwnProperty.call(options, "database")) {
+    throw storeError("invalid_store_contract");
+  }
+
+  const db = options.database;
+  const nowFn = options.nowFn ?? (() => new Date());
+  const makeRef = options.refFactory ?? ((kind) => `${kind}_${randomUUID()}`);
+  if (
+    !db
+    || typeof db.prepare !== "function"
+    || typeof db.pragma !== "function"
+    || typeof nowFn !== "function"
+    || typeof makeRef !== "function"
+  ) {
+    throw storeError("invalid_store_contract");
+  }
+  try {
+    const walletSchema = validateCoinWalletSchema({ database: db });
+    const deferredSchema = validateDeferredResourceTransitionSchema({ database: db });
+    if (!walletSchema?.ok) throw storeError("coin_wallet_schema_not_ready");
+    if (!deferredSchema?.ok) {
+      throw storeError("deferred_reservation_schema_not_ready");
+    }
+  } catch (error) {
+    if (isStoreError(error)) throw error;
+    if (
+      typeof error?.code === "string"
+      && (error.code.startsWith("SQLITE_BUSY") || error.code.startsWith("SQLITE_LOCKED"))
+    ) {
+      throw storeError("wallet_busy");
+    }
+    throw storeError("deferred_reservation_schema_not_ready");
+  }
+
+  function assertCallerTransaction() {
+    let inTransaction;
+    try {
+      inTransaction = db.inTransaction;
+    } catch {
+      throw storeError("wallet_transaction_required");
+    }
+    if (inTransaction !== true) throw storeError("wallet_transaction_required");
+  }
+
+  function nextRef(kind) {
+    let value;
+    try {
+      value = makeRef(kind);
+    } catch {
+      throw storeError("invalid_reference");
+    }
+    try {
+      return assertNormalizedString(value);
+    } catch {
+      throw storeError("invalid_reference");
+    }
+  }
+
+  function canonicalJson(value) {
+    if (value === null || typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+    return `{${Object.keys(value).sort().map(
+      (key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`
+    ).join(",")}}`;
+  }
+
+  function requestDigest(operationType, input) {
+    return createHash("sha256")
+      .update(
+        `GCCWEBOS:DEFERRED_RESOURCE_TRANSITION_RESERVATION:v1\0${operationType}\0${canonicalJson(input)}`,
+        "utf8"
+      )
+      .digest("hex");
+  }
+
+  function addRecoveryGrace(activationAt) {
+    const timestamp = Date.parse(activationAt);
+    const deadline = timestamp + DEFERRED_RESERVATION_RECOVERY_GRACE_MS;
+    if (!Number.isSafeInteger(deadline)) {
+      throw storeError("invalid_wallet_timestamp");
+    }
+    const date = new Date(deadline);
+    if (Number.isNaN(date.getTime())) throw storeError("invalid_wallet_timestamp");
+    const expiresAt = date.toISOString();
+    if (expiresAt <= activationAt) throw storeError("invalid_wallet_timestamp");
+    return expiresAt;
+  }
+
+  function normalizeAcceptedTypes(value) {
+    try {
+      return normalizeAcceptedCoinTypes(value);
+    } catch (error) {
+      if (
+        error?.code === "invalid_accepted_coin_types"
+        || error?.code === "duplicate_coin_type"
+        || error?.code === "invalid_coin_type"
+      ) {
+        throw storeError(error.code);
+      }
+      throw storeError("invalid_coin_type");
+    }
+  }
+
+  function normalizeAllocationSnapshot(value, amountUnits) {
+    if (
+      !Array.isArray(value)
+      || Object.getPrototypeOf(value) !== Array.prototype
+      || Reflect.ownKeys(value).length !== value.length + 1
+      || value.length === 0
+    ) {
+      throw storeError("invalid_wallet_request");
+    }
+    const seenLots = new Set();
+    let total = 0;
+    const normalized = value.map((item, index) => {
+      const allocation = assertPlainObject(item);
+      assertExactDataFields(allocation, DEFERRED_RESERVATION_ALLOCATION_FIELDS);
+      assertRequiredOwnDataFields(allocation, DEFERRED_RESERVATION_ALLOCATION_FIELDS);
+      const lotRef = assertNormalizedString(allocation.lotRef);
+      let coinType;
+      try {
+        coinType = normalizeCoinType(allocation.coinType);
+      } catch {
+        throw storeError("invalid_coin_type");
+      }
+      const allocationSequence = normalizePositiveUnits(
+        allocation.allocationSequence,
+        "invalid_wallet_request"
+      );
+      const allocatedUnits = normalizePositiveUnits(allocation.allocatedUnits);
+      const expiresAt = normalizeTimestamp(allocation.expiresAt, { nullable: true });
+      if (
+        allocationSequence !== index + 1
+        || seenLots.has(lotRef)
+        || (coinType !== "bonus_coins" && expiresAt !== null)
+      ) {
+        throw storeError("invalid_wallet_request");
+      }
+      seenLots.add(lotRef);
+      total = safeAddUnits(total, allocatedUnits);
+      return Object.freeze({
+        lotRef,
+        allocationSequence,
+        coinType,
+        allocatedUnits,
+        expiresAt
+      });
+    });
+    if (total !== amountUnits) throw storeError("invalid_wallet_request");
+    return Object.freeze(normalized);
+  }
+
+  function normalizeCreateRequest(input) {
+    const request = assertPlainObject(input);
+    assertExactDataFields(request, DEFERRED_RESERVATION_CREATE_FIELDS);
+    assertRequiredOwnDataFields(request, DEFERRED_RESERVATION_CREATE_FIELDS);
+    const accountId = assertNormalizedString(request.accountId);
+    const orderRef = assertNormalizedString(request.orderRef);
+    const transitionRef = assertNormalizedString(request.transitionRef);
+    const reservationRef = assertNormalizedString(request.reservationRef);
+    const amountUnits = normalizePositiveUnits(request.amountUnits);
+    const acceptedCoinTypes = normalizeAcceptedTypes(request.acceptedCoinTypes);
+    const activationAt = normalizeTimestamp(request.scheduledFor);
+    const expiresAt = addRecoveryGrace(activationAt);
+    const operation = normalizeLifecycleOperation(request.operation);
+    return Object.freeze({
+      accountId,
+      orderRef,
+      transitionRef,
+      reservationRef,
+      amountUnits,
+      acceptedCoinTypes,
+      activationAt,
+      expiresAt,
+      operation,
+      requestDigest: requestDigest(OPERATION_TYPE_CREATE_DEFERRED_RESERVATION, {
+        accountId,
+        orderRef,
+        transitionRef,
+        reservationRef,
+        amountUnits,
+        acceptedCoinTypes,
+        activationAt,
+        expiresAt
+      })
+    });
+  }
+
+  function normalizeVerifyRequest(input) {
+    const request = assertPlainObject(input);
+    assertExactDataFields(request, DEFERRED_RESERVATION_VERIFY_FIELDS);
+    assertRequiredOwnDataFields(request, DEFERRED_RESERVATION_VERIFY_FIELDS);
+    const amountUnits = normalizePositiveUnits(request.amountUnits);
+    return Object.freeze({
+      accountId: assertNormalizedString(request.accountId),
+      orderRef: assertNormalizedString(request.orderRef),
+      reservationRef: assertNormalizedString(request.reservationRef),
+      amountUnits,
+      allocationSnapshot: normalizeAllocationSnapshot(
+        request.allocationSnapshot,
+        amountUnits
+      )
+    });
+  }
+
+  function normalizeLifecycleRequest(input, operationType) {
+    const request = assertPlainObject(input);
+    assertExactDataFields(request, DEFERRED_RESERVATION_LIFECYCLE_FIELDS);
+    assertRequiredOwnDataFields(request, DEFERRED_RESERVATION_LIFECYCLE_FIELDS);
+    const reservationRef = assertNormalizedString(request.reservationRef);
+    const operation = normalizeLifecycleOperation(request.operation);
+    return Object.freeze({
+      reservationRef,
+      operation,
+      requestDigest: requestDigest(operationType, { reservationRef })
+    });
+  }
+
+  function normalizePreflightRebaseRequest(input) {
+    const request = assertPlainObject(input);
+    const fields = new Set(["reservationRef", "activationAt"]);
+    assertExactDataFields(request, fields);
+    assertRequiredOwnDataFields(request, fields);
+    const reservationRef = assertNormalizedString(request.reservationRef);
+    const activationAt = normalizeTimestamp(request.activationAt);
+    return Object.freeze({
+      reservationRef,
+      activationAt,
+      expiresAt: addRecoveryGrace(activationAt)
+    });
+  }
+
+  function normalizeRebaseRequest(input) {
+    const request = assertPlainObject(input);
+    assertExactDataFields(request, DEFERRED_RESERVATION_REBASE_FIELDS);
+    assertRequiredOwnDataFields(request, DEFERRED_RESERVATION_REBASE_FIELDS);
+    const reservationRef = assertNormalizedString(request.reservationRef);
+    const activationAt = normalizeTimestamp(request.activationAt);
+    const expiresAt = addRecoveryGrace(activationAt);
+    const operation = normalizeLifecycleOperation(request.operation);
+    return Object.freeze({
+      reservationRef,
+      activationAt,
+      expiresAt,
+      operation,
+      requestDigest: requestDigest(OPERATION_TYPE_REBASE_DEFERRED_RESERVATION, {
+        reservationRef,
+        activationAt,
+        expiresAt
+      })
+    });
+  }
+
+  function assertWallet(row) {
+    const wallet = mapWallet(row);
+    if (
+      !wallet
+      || !["active", "frozen", "closed"].includes(wallet.status)
+      || !Number.isSafeInteger(wallet.version)
+      || wallet.version < 0
+    ) {
+      throw storeError("wallet_infrastructure_error");
+    }
+    return wallet;
+  }
+
+  function findWalletByAccountId(accountId) {
+    const row = db.prepare(`
+      select wallet_ref, account_id, status, version, created_at, updated_at
+        from platform_coin_wallets
+       where account_id = ?
+    `).get(accountId);
+    if (!row) throw storeError("wallet_not_found");
+    return assertWallet(row);
+  }
+
+  function findWalletByRef(walletRef) {
+    const row = db.prepare(`
+      select wallet_ref, account_id, status, version, created_at, updated_at
+        from platform_coin_wallets
+       where wallet_ref = ?
+    `).get(walletRef);
+    if (!row) throw storeError("wallet_not_found");
+    return assertWallet(row);
+  }
+
+  function normalizeReservation(row) {
+    if (!row) return null;
+    const reservationRef = assertNormalizedString(row.reservation_ref);
+    const accountId = assertNormalizedString(row.account_id);
+    const walletRef = assertNormalizedString(row.wallet_ref);
+    const sourceType = assertNormalizedString(row.source_type);
+    const sourceRef = assertNormalizedString(row.source_ref);
+    const amountUnits = normalizePositiveUnits(row.amount_units);
+    const activationAt = normalizeTimestamp(row.activation_at);
+    const expiresAt = normalizeTimestamp(row.expires_at);
+    if (expiresAt <= activationAt) throw storeError("wallet_infrastructure_error");
+    if (
+      !Number.isSafeInteger(row.rebase_generation)
+      || row.rebase_generation < 0
+      || !DEFERRED_RESERVATION_STATES.has(row.state)
+    ) {
+      throw storeError("wallet_infrastructure_error");
+    }
+    const leaseGeneration = row.lease_generation;
+    if (!Number.isSafeInteger(leaseGeneration) || leaseGeneration < 0) {
+      throw storeError("wallet_infrastructure_error");
+    }
+    const leaseToken = row.lease_token;
+    const leaseUntil = row.lease_until;
+    const leaseIsSet = typeof leaseToken === "string" && leaseToken.length > 0
+      && leaseToken.trim() === leaseToken && typeof leaseUntil === "string";
+    if (leaseIsSet) normalizeTimestamp(leaseUntil);
+    if (
+      (row.state === "processing" && !leaseIsSet)
+      || (row.state !== "processing" && (leaseToken !== null || leaseUntil !== null))
+    ) {
+      throw storeError("wallet_infrastructure_error");
+    }
+    normalizeTimestamp(row.created_at);
+    normalizeTimestamp(row.updated_at);
+    return Object.freeze({
+      reservationRef,
+      accountId,
+      walletRef,
+      sourceType,
+      sourceRef,
+      amountUnits,
+      activationAt,
+      expiresAt,
+      rebaseGeneration: row.rebase_generation,
+      state: row.state,
+      leaseGeneration,
+      leaseToken,
+      leaseUntil
+    });
+  }
+
+  function findReservation(reservationRef) {
+    return normalizeReservation(db.prepare(`
+      select reservation_ref, account_id, wallet_ref, source_type, source_ref,
+             amount_units, activation_at, expires_at, rebase_generation,
+             state, lease_generation, lease_token, lease_until, created_at, updated_at
+        from ${DEFERRED_RESERVATIONS_TABLE}
+       where reservation_ref = ?
+    `).get(reservationRef));
+  }
+
+  function normalizeLot(row) {
+    const lot = mapLot(row);
+    if (
+      !lot
+      || typeof lot.lotRef !== "string"
+      || lot.lotRef.length === 0
+      || lot.lotRef.trim() !== lot.lotRef
+      || typeof lot.walletRef !== "string"
+      || lot.walletRef.length === 0
+      || lot.walletRef.trim() !== lot.walletRef
+      || typeof lot.sourceType !== "string"
+      || lot.sourceType.length === 0
+      || lot.sourceType.trim() !== lot.sourceType
+      || typeof lot.sourceRef !== "string"
+      || lot.sourceRef.length === 0
+      || lot.sourceRef.trim() !== lot.sourceRef
+    ) {
+      throw storeError("wallet_infrastructure_error");
+    }
+    const buckets = [
+      lot.issuedUnits,
+      lot.pendingUnits,
+      lot.availableUnits,
+      lot.heldUnits,
+      lot.consumedUnits,
+      lot.reversedUnits,
+      lot.expiredUnits
+    ];
+    if (buckets.some((value) => !Number.isSafeInteger(value) || value < 0)) {
+      throw storeError("wallet_infrastructure_error");
+    }
+    let projected = 0;
+    for (const bucket of buckets.slice(1)) projected = safeAddUnits(projected, bucket);
+    if (projected !== lot.issuedUnits) throw storeError("wallet_infrastructure_error");
+    if (lot.expiresAt !== null) normalizeTimestamp(lot.expiresAt);
+    if (lot.coinType !== "bonus_coins" && lot.expiresAt !== null) {
+      throw storeError("wallet_infrastructure_error");
+    }
+    return lot;
+  }
+
+  function findLot(lotRef) {
+    return normalizeLot(db.prepare(`
+      select * from platform_coin_lots where lot_ref = ?
+    `).get(lotRef));
+  }
+
+  function loadAllocations(reservation) {
+    const rows = db.prepare(`
+      select allocation_ref, reservation_ref, lot_ref, coin_type_snapshot,
+             allocation_sequence, amount_units, lot_expires_at_snapshot, created_at
+        from ${DEFERRED_RESERVATION_ALLOCATIONS_TABLE}
+       where reservation_ref = ?
+       order by allocation_sequence asc
+    `).all(reservation.reservationRef);
+    if (rows.length === 0) throw storeError("wallet_infrastructure_error");
+    const seenLots = new Set();
+    let total = 0;
+    const allocations = rows.map((row, index) => {
+      const allocationRef = assertNormalizedString(row.allocation_ref);
+      const lotRef = assertNormalizedString(row.lot_ref);
+      let coinType;
+      try {
+        coinType = normalizeCoinType(row.coin_type_snapshot);
+      } catch {
+        throw storeError("wallet_infrastructure_error");
+      }
+      const allocationSequence = normalizePositiveUnits(
+        row.allocation_sequence,
+        "wallet_infrastructure_error"
+      );
+      const allocatedUnits = normalizePositiveUnits(
+        row.amount_units,
+        "wallet_infrastructure_error"
+      );
+      const expiresAt = normalizeTimestamp(row.lot_expires_at_snapshot, {
+        nullable: true
+      });
+      if (
+        row.reservation_ref !== reservation.reservationRef
+        || allocationSequence !== index + 1
+        || seenLots.has(lotRef)
+        || (coinType !== "bonus_coins" && expiresAt !== null)
+      ) {
+        throw storeError("wallet_infrastructure_error");
+      }
+      normalizeTimestamp(row.created_at);
+      seenLots.add(lotRef);
+      total = safeAddUnits(total, allocatedUnits);
+      return Object.freeze({
+        allocationRef,
+        lotRef,
+        coinType,
+        allocationSequence,
+        allocatedUnits,
+        expiresAt
+      });
+    });
+    if (total !== reservation.amountUnits) {
+      throw storeError("wallet_infrastructure_error");
+    }
+    return Object.freeze(allocations);
+  }
+
+  function snapshotAllocations(allocations) {
+    return Object.freeze(allocations.map((allocation) => Object.freeze({
+      lotRef: allocation.lotRef,
+      allocationSequence: allocation.allocationSequence,
+      coinType: allocation.coinType,
+      allocatedUnits: allocation.allocatedUnits,
+      expiresAt: allocation.expiresAt
+    })));
+  }
+
+  function equalSnapshots(left, right) {
+    return canonicalJson(left) === canonicalJson(right);
+  }
+
+  function isLiveLotBinding(reservation, allocation, lot, coverageAt) {
+    if (
+      !lot
+      || lot.walletRef !== reservation.walletRef
+      || lot.coinType !== allocation.coinType
+      || lot.expiresAt !== allocation.expiresAt
+      || lot.heldUnits < allocation.allocatedUnits
+    ) {
+      return false;
+    }
+    return (
+      allocation.coinType !== "bonus_coins"
+      || allocation.expiresAt === null
+      || allocation.expiresAt > coverageAt
+    );
+  }
+
+  function loadLiveAllocations(reservation, allocations, coverageAt) {
+    return allocations.map((allocation) => {
+      const lot = findLot(allocation.lotRef);
+      if (!isLiveLotBinding(reservation, allocation, lot, coverageAt)) {
+        return null;
+      }
+      return Object.freeze({ allocation, lot });
+    });
+  }
+
+  function rebaseLiveAllocationFailureCode(reservation, allocations, coverageAt) {
+    for (const allocation of allocations) {
+      const lot = findLot(allocation.lotRef);
+      if (
+        !lot
+        || lot.walletRef !== reservation.walletRef
+        || lot.coinType !== allocation.coinType
+        || lot.expiresAt !== allocation.expiresAt
+        || lot.heldUnits < allocation.allocatedUnits
+      ) {
+        return SAFE_RESULT_DEFERRED_REBASE_UNAVAILABLE;
+      }
+      if (
+        allocation.coinType === "bonus_coins"
+        && allocation.expiresAt !== null
+        && allocation.expiresAt <= coverageAt
+      ) {
+        return SAFE_RESULT_DEFERRED_BONUS_EXPIRES_BEFORE_ACTIVATION;
+      }
+    }
+    return null;
+  }
+
+  function findWalletReceipt({ actorScope, operationType, idempotencyKey }) {
+    return db.prepare(`
+      select operation_ref, wallet_ref, actor_scope, operation_type,
+             idempotency_key, request_digest, status, previous_wallet_version,
+             resulting_wallet_version, resulting_wallet_status, result_ref,
+             safe_result_code, created_at, completed_at
+        from platform_coin_operation_receipts
+       where actor_scope = ? and operation_type = ? and idempotency_key = ?
+    `).get(actorScope, operationType, idempotencyKey) ?? null;
+  }
+
+  function assertReplayReceipt(receipt, requestDigestValue, reservationRef, safeCode) {
+    if (!receipt) return null;
+    if (receipt.request_digest !== requestDigestValue) {
+      throw storeError("idempotency_conflict");
+    }
+    if (
+      receipt.status !== "succeeded"
+      || receipt.result_ref !== reservationRef
+      || receipt.safe_result_code !== safeCode
+      || !Number.isSafeInteger(receipt.previous_wallet_version)
+      || !Number.isSafeInteger(receipt.resulting_wallet_version)
+      || receipt.resulting_wallet_version < receipt.previous_wallet_version
+      || !["active", "frozen", "closed"].includes(receipt.resulting_wallet_status)
+      || typeof receipt.completed_at !== "string"
+    ) {
+      throw storeError("idempotency_unavailable");
+    }
+    normalizeTimestamp(receipt.completed_at);
+    return receipt;
+  }
+
+  function insertStartedReceipt({
+    operationRef,
+    wallet,
+    operation,
+    operationType,
+    requestDigestValue,
+    occurredAt
+  }) {
+    const inserted = db.prepare(`
+      insert into platform_coin_operation_receipts (
+        operation_ref, wallet_ref, actor_scope, operation_type,
+        idempotency_key, request_digest, status, result_ref,
+        safe_result_code, created_at, completed_at
+      ) values (?, ?, ?, ?, ?, ?, 'started', null, null, ?, null)
+    `).run(
+      operationRef,
+      wallet.walletRef,
+      operation.actorScope,
+      operationType,
+      operation.idempotencyKey,
+      requestDigestValue,
+      occurredAt
+    );
+    if (inserted.changes !== 1) throw storeError("wallet_infrastructure_error");
+  }
+
+  function completeReceipt({
+    operationRef,
+    status,
+    wallet,
+    previousWalletVersion,
+    resultingWalletVersion,
+    resultRef,
+    safeResultCode,
+    occurredAt
+  }) {
+    const completed = db.prepare(`
+      update platform_coin_operation_receipts
+         set status = ?, previous_wallet_version = ?, resulting_wallet_version = ?,
+             resulting_wallet_status = ?, result_ref = ?, safe_result_code = ?,
+             completed_at = ?
+       where operation_ref = ? and status = 'started'
+    `).run(
+      status,
+      previousWalletVersion,
+      resultingWalletVersion,
+      wallet.status,
+      resultRef,
+      safeResultCode,
+      occurredAt,
+      operationRef
+    );
+    if (completed.changes !== 1) throw storeError("wallet_infrastructure_error");
+  }
+
+  function updateWalletVersion(wallet, resultingWalletVersion, occurredAt) {
+    const updated = db.prepare(`
+      update platform_coin_wallets
+         set version = ?, updated_at = ?
+       where wallet_ref = ? and status = ? and version = ?
+    `).run(
+      resultingWalletVersion,
+      occurredAt,
+      wallet.walletRef,
+      wallet.status,
+      wallet.version
+    );
+    if (updated.changes !== 1) throw storeError("wallet_infrastructure_error");
+  }
+
+  function updateLot({ lot, availableUnits, heldUnits, consumedUnits, expiredUnits, occurredAt }) {
+    const buckets = [
+      availableUnits,
+      heldUnits,
+      consumedUnits,
+      expiredUnits
+    ];
+    if (buckets.some((value) => !Number.isSafeInteger(value) || value < 0)) {
+      throw storeError("coin_units_overflow");
+    }
+    const updated = db.prepare(`
+      update platform_coin_lots
+         set available_units = ?, held_units = ?, consumed_units = ?,
+             expired_units = ?, updated_at = ?
+       where lot_ref = ? and wallet_ref = ?
+         and pending_units = ? and available_units = ? and held_units = ?
+         and consumed_units = ? and reversed_units = ? and expired_units = ?
+         and expires_at is ?
+    `).run(
+      availableUnits,
+      heldUnits,
+      consumedUnits,
+      expiredUnits,
+      occurredAt,
+      lot.lotRef,
+      lot.walletRef,
+      lot.pendingUnits,
+      lot.availableUnits,
+      lot.heldUnits,
+      lot.consumedUnits,
+      lot.reversedUnits,
+      lot.expiredUnits,
+      lot.expiresAt
+    );
+    if (updated.changes !== 1) throw storeError("wallet_infrastructure_error");
+  }
+
+  function insertLedger({
+    entryRef,
+    operationRef,
+    wallet,
+    lot,
+    operation,
+    amountUnits,
+    actorType,
+    actorRef,
+    previousWalletVersion,
+    resultingWalletVersion,
+    occurredAt
+  }) {
+    const inserted = db.prepare(`
+      insert into platform_coin_ledger_entries (
+        entry_ref, operation_ref, wallet_ref, lot_ref, operation,
+        amount_units, hold_ref, order_ref, source_type, source_ref,
+        actor_type, actor_ref, previous_wallet_version,
+        resulting_wallet_version, resulting_wallet_status, occurred_at
+      ) values (?, ?, ?, ?, ?, ?, null, null, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      entryRef,
+      operationRef,
+      wallet.walletRef,
+      lot.lotRef,
+      operation,
+      amountUnits,
+      lot.sourceType,
+      lot.sourceRef,
+      actorType,
+      actorRef,
+      previousWalletVersion,
+      resultingWalletVersion,
+      wallet.status,
+      occurredAt
+    );
+    if (inserted.changes !== 1) throw storeError("wallet_infrastructure_error");
+  }
+
+  function reservationBindingResult(reservation, allocations) {
+    return Object.freeze({
+      ok: true,
+      reservationRef: reservation.reservationRef,
+      state: reservation.state,
+      activationAt: reservation.activationAt,
+      expiresAt: reservation.expiresAt,
+      allocationSnapshot: snapshotAllocations(allocations)
+    });
+  }
+
+  function unavailableBindingResult({ reservationRef, activationAt, expiresAt }) {
+    return Object.freeze({
+      ok: false,
+      reservationRef,
+      state: "reserved",
+      activationAt,
+      expiresAt,
+      allocationSnapshot: Object.freeze([])
+    });
+  }
+
+  function findBoundTransition(reservation, { accountId, orderRef } = {}) {
+    const row = db.prepare(`
+      select transition_ref, reservation_ref, account_id, order_ref, state,
+             scheduled_for, rebase_generation
+        from ${DEFERRED_TRANSITIONS_TABLE}
+       where transition_ref = ? and reservation_ref = ?
+    `).get(reservation.sourceRef, reservation.reservationRef);
+    if (!row) return null;
+    if (
+      typeof row.transition_ref !== "string"
+      || row.transition_ref !== reservation.sourceRef
+      || row.reservation_ref !== reservation.reservationRef
+      || row.account_id !== reservation.accountId
+      || (accountId !== undefined && row.account_id !== accountId)
+      || (orderRef !== undefined && row.order_ref !== orderRef)
+      || !Number.isSafeInteger(row.rebase_generation)
+      || row.rebase_generation < 0
+      || typeof row.state !== "string"
+    ) {
+      return null;
+    }
+    try {
+      normalizeTimestamp(row.scheduled_for);
+    } catch {
+      return null;
+    }
+    return row;
+  }
+
+  function releaseToReconciliation(reservation, occurredAt) {
+    const updated = db.prepare(`
+      update ${DEFERRED_RESERVATIONS_TABLE}
+         set state = 'reconciliation_required', lease_token = null,
+             lease_until = null, updated_at = ?
+       where reservation_ref = ? and state = 'reserved'
+         and lease_generation = ? and lease_token is null and lease_until is null
+    `).run(
+      occurredAt,
+      reservation.reservationRef,
+      reservation.leaseGeneration
+    );
+    if (updated.changes !== 1) throw storeError("wallet_infrastructure_error");
+  }
+
+  function closeFailedLifecycleReceipt({
+    reservation,
+    wallet,
+    request,
+    operationType,
+    safeResultCode,
+    occurredAt
+  }) {
+    const operationRef = nextRef("deferred_reservation_operation");
+    insertStartedReceipt({
+      operationRef,
+      wallet,
+      operation: request.operation,
+      operationType,
+      requestDigestValue: request.requestDigest,
+      occurredAt
+    });
+    completeReceipt({
+      operationRef,
+      status: "failed",
+      wallet,
+      previousWalletVersion: wallet.version,
+      resultingWalletVersion: wallet.version,
+      resultRef: null,
+      safeResultCode,
+      occurredAt
+    });
+    return Object.freeze({
+      ok: false,
+      reservationRef: reservation.reservationRef,
+      safeResultCode
+    });
+  }
+
+  function readLifecycleReplay(request, operationType, safeResultCode) {
+    const receipt = findWalletReceipt({
+      actorScope: request.operation.actorScope,
+      operationType,
+      idempotencyKey: request.operation.idempotencyKey
+    });
+    if (!receipt) return null;
+    if (receipt.request_digest !== request.requestDigest) {
+      throw storeError("idempotency_conflict");
+    }
+    if (receipt.status === "failed") {
+      return Object.freeze({
+        ok: false,
+        reservationRef: request.reservationRef,
+        safeResultCode: receipt.safe_result_code
+      });
+    }
+    assertReplayReceipt(
+      receipt,
+      request.requestDigest,
+      request.reservationRef,
+      safeResultCode
+    );
+    return Object.freeze({
+      ok: true,
+      reservationRef: request.reservationRef,
+      safeResultCode
+    });
+  }
+
+  function createReservationInTransaction(input) {
+    assertCallerTransaction();
+    const request = normalizeCreateRequest(input);
+    const replay = findWalletReceipt({
+      actorScope: request.operation.actorScope,
+      operationType: OPERATION_TYPE_CREATE_DEFERRED_RESERVATION,
+      idempotencyKey: request.operation.idempotencyKey
+    });
+    if (replay) {
+      assertReplayReceipt(
+        replay,
+        request.requestDigest,
+        request.reservationRef,
+        SAFE_RESULT_DEFERRED_RESERVED
+      );
+      const reservation = findReservation(request.reservationRef);
+      if (!reservation || reservation.state !== "reserved") {
+        throw storeError("idempotency_unavailable");
+      }
+      return reservationBindingResult(reservation, loadAllocations(reservation));
+    }
+
+    const collision = db.prepare(`
+      select reservation_ref
+        from ${DEFERRED_RESERVATIONS_TABLE}
+       where reservation_ref = ?
+          or (source_type = ? and source_ref = ?)
+       limit 1
+    `).get(
+      request.reservationRef,
+      DEFERRED_RESERVATION_SOURCE_TYPE,
+      request.transitionRef
+    );
+    if (collision) throw storeError("deferred_reservation_conflict");
+
+    const wallet = findWalletByAccountId(request.accountId);
+    if (wallet.status !== "active") {
+      return unavailableBindingResult(request);
+    }
+    const lots = db.prepare(`
+      select *
+        from platform_coin_lots
+       where wallet_ref = ? and available_units > 0
+         and coin_type in (${request.acceptedCoinTypes.map(() => "?").join(", ")})
+         and (
+           coin_type <> 'bonus_coins'
+           or expires_at is null
+           or expires_at > ?
+         )
+    `).all(
+      wallet.walletRef,
+      ...request.acceptedCoinTypes,
+      request.expiresAt
+    ).map(normalizeLot);
+    let allocations;
+    try {
+      allocations = allocateCoinLots({
+        lots,
+        amountUnits: request.amountUnits,
+        acceptedCoinTypes: request.acceptedCoinTypes,
+        now: request.expiresAt
+      });
+    } catch {
+      throw storeError("wallet_infrastructure_error");
+    }
+    if (!Array.isArray(allocations) || allocations.length === 0) {
+      return unavailableBindingResult(request);
+    }
+    const allocationRows = allocations.map((allocation) => {
+      const lot = lots.find((candidate) => candidate.lotRef === allocation.lotRef);
+      if (
+        !lot
+        || allocation.coinType !== lot.coinType
+        || allocation.allocatedUnits <= 0
+        || allocation.allocatedUnits > lot.availableUnits
+        || (
+          lot.coinType === "bonus_coins"
+          && lot.expiresAt !== null
+          && lot.expiresAt <= request.expiresAt
+        )
+      ) {
+        throw storeError("wallet_infrastructure_error");
+      }
+      return Object.freeze({
+        allocationRef: nextRef("deferred_reservation_allocation"),
+        ledgerEntryRef: nextRef("deferred_reservation_ledger_entry"),
+        lot,
+        lotRef: lot.lotRef,
+        coinType: lot.coinType,
+        allocationSequence: allocation.allocationSequence,
+        allocatedUnits: allocation.allocatedUnits,
+        expiresAt: lot.expiresAt,
+        resultingAvailableUnits: lot.availableUnits - allocation.allocatedUnits,
+        resultingHeldUnits: safeAddUnits(lot.heldUnits, allocation.allocatedUnits)
+      });
+    });
+    let total = 0;
+    for (const allocation of allocationRows) {
+      total = safeAddUnits(total, allocation.allocatedUnits);
+    }
+    if (total !== request.amountUnits) throw storeError("wallet_infrastructure_error");
+
+    const occurredAt = normalizeNow(nowFn);
+    const operationRef = nextRef("deferred_reservation_operation");
+    insertStartedReceipt({
+      operationRef,
+      wallet,
+      operation: request.operation,
+      operationType: OPERATION_TYPE_CREATE_DEFERRED_RESERVATION,
+      requestDigestValue: request.requestDigest,
+      occurredAt
+    });
+    for (const allocation of allocationRows) {
+      updateLot({
+        lot: allocation.lot,
+        availableUnits: allocation.resultingAvailableUnits,
+        heldUnits: allocation.resultingHeldUnits,
+        consumedUnits: allocation.lot.consumedUnits,
+        expiredUnits: allocation.lot.expiredUnits,
+        occurredAt
+      });
+    }
+    const insertedReservation = db.prepare(`
+      insert into ${DEFERRED_RESERVATIONS_TABLE} (
+        reservation_ref, account_id, wallet_ref, source_type, source_ref,
+        amount_units, activation_at, expires_at, rebase_generation,
+        state, lease_generation, lease_token, lease_until, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, 0, 'reserved', 0, null, null, ?, ?)
+    `).run(
+      request.reservationRef,
+      request.accountId,
+      wallet.walletRef,
+      DEFERRED_RESERVATION_SOURCE_TYPE,
+      request.transitionRef,
+      request.amountUnits,
+      request.activationAt,
+      request.expiresAt,
+      occurredAt,
+      occurredAt
+    );
+    if (insertedReservation.changes !== 1) throw storeError("wallet_infrastructure_error");
+    const insertAllocation = db.prepare(`
+      insert into ${DEFERRED_RESERVATION_ALLOCATIONS_TABLE} (
+        allocation_ref, reservation_ref, lot_ref, coin_type_snapshot,
+        allocation_sequence, amount_units, lot_expires_at_snapshot, created_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const allocation of allocationRows) {
+      const inserted = insertAllocation.run(
+        allocation.allocationRef,
+        request.reservationRef,
+        allocation.lotRef,
+        allocation.coinType,
+        allocation.allocationSequence,
+        allocation.allocatedUnits,
+        allocation.expiresAt,
+        occurredAt
+      );
+      if (inserted.changes !== 1) throw storeError("wallet_infrastructure_error");
+    }
+    const resultingWalletVersion = safeAddUnits(wallet.version, 1);
+    updateWalletVersion(wallet, resultingWalletVersion, occurredAt);
+    for (const allocation of allocationRows) {
+      insertLedger({
+        entryRef: allocation.ledgerEntryRef,
+        operationRef,
+        wallet,
+        lot: allocation.lot,
+        operation: "available_to_held",
+        amountUnits: allocation.allocatedUnits,
+        actorType: request.operation.actorType,
+        actorRef: request.operation.actorRef,
+        previousWalletVersion: wallet.version,
+        resultingWalletVersion,
+        occurredAt
+      });
+    }
+    completeReceipt({
+      operationRef,
+      status: "succeeded",
+      wallet,
+      previousWalletVersion: wallet.version,
+      resultingWalletVersion,
+      resultRef: request.reservationRef,
+      safeResultCode: SAFE_RESULT_DEFERRED_RESERVED,
+      occurredAt
+    });
+    const reservation = findReservation(request.reservationRef);
+    return reservationBindingResult(reservation, loadAllocations(reservation));
+  }
+
+  function verifyReservationInTransaction(input) {
+    assertCallerTransaction();
+    const request = normalizeVerifyRequest(input);
+    const reservation = findReservation(request.reservationRef);
+    if (
+      !reservation
+      || reservation.accountId !== request.accountId
+      || reservation.amountUnits !== request.amountUnits
+      || reservation.sourceType !== DEFERRED_RESERVATION_SOURCE_TYPE
+    ) {
+      return unavailableBindingResult({
+        reservationRef: request.reservationRef,
+        activationAt: "1970-01-01T00:00:00.000Z",
+        expiresAt: "1970-01-02T00:00:00.000Z"
+      });
+    }
+    const allocations = loadAllocations(reservation);
+    const snapshot = snapshotAllocations(allocations);
+    if (
+      !equalSnapshots(snapshot, request.allocationSnapshot)
+      || !findBoundTransition(reservation, request)
+      || loadLiveAllocations(reservation, allocations, reservation.expiresAt).some(
+        (item) => item === null
+      )
+    ) {
+      return unavailableBindingResult(reservation);
+    }
+    return reservationBindingResult(reservation, allocations);
+  }
+
+  function captureReservationInTransaction(input) {
+    assertCallerTransaction();
+    const request = normalizeLifecycleRequest(
+      input,
+      OPERATION_TYPE_CAPTURE_DEFERRED_RESERVATION
+    );
+    const replay = readLifecycleReplay(
+      request,
+      OPERATION_TYPE_CAPTURE_DEFERRED_RESERVATION,
+      SAFE_RESULT_DEFERRED_CAPTURED
+    );
+    if (replay) return replay;
+    const reservation = findReservation(request.reservationRef);
+    if (!reservation) {
+      return Object.freeze({
+        ok: false,
+        reservationRef: request.reservationRef,
+        safeResultCode: SAFE_RESULT_DEFERRED_NOT_CAPTURABLE
+      });
+    }
+    const wallet = findWalletByRef(reservation.walletRef);
+    if (reservation.state === "captured") {
+      const occurredAt = normalizeNow(nowFn);
+      const operationRef = nextRef("deferred_reservation_operation");
+      insertStartedReceipt({
+        operationRef,
+        wallet,
+        operation: request.operation,
+        operationType: OPERATION_TYPE_CAPTURE_DEFERRED_RESERVATION,
+        requestDigestValue: request.requestDigest,
+        occurredAt
+      });
+      completeReceipt({
+        operationRef,
+        status: "succeeded",
+        wallet,
+        previousWalletVersion: wallet.version,
+        resultingWalletVersion: wallet.version,
+        resultRef: reservation.reservationRef,
+        safeResultCode: SAFE_RESULT_DEFERRED_CAPTURED,
+        occurredAt
+      });
+      return Object.freeze({
+        ok: true,
+        reservationRef: reservation.reservationRef,
+        safeResultCode: SAFE_RESULT_DEFERRED_CAPTURED
+      });
+    }
+    if (reservation.state !== "reserved" || wallet.status !== "active") {
+      return closeFailedLifecycleReceipt({
+        reservation,
+        wallet,
+        request,
+        operationType: OPERATION_TYPE_CAPTURE_DEFERRED_RESERVATION,
+        safeResultCode: SAFE_RESULT_DEFERRED_NOT_CAPTURABLE,
+        occurredAt: normalizeNow(nowFn)
+      });
+    }
+    const allocations = loadAllocations(reservation);
+    const occurredAt = normalizeNow(nowFn);
+    const liveAllocations = loadLiveAllocations(reservation, allocations, occurredAt);
+    if (!findBoundTransition(reservation) || liveAllocations.some((item) => item === null)) {
+      releaseToReconciliation(reservation, occurredAt);
+      return closeFailedLifecycleReceipt({
+        reservation,
+        wallet,
+        request,
+        operationType: OPERATION_TYPE_CAPTURE_DEFERRED_RESERVATION,
+        safeResultCode: SAFE_RESULT_DEFERRED_NOT_CAPTURABLE,
+        occurredAt
+      });
+    }
+    const leaseToken = nextRef("deferred_reservation_lease");
+    const leaseUntil = new Date(Date.parse(occurredAt) + 60_000).toISOString();
+    const claimed = db.prepare(`
+      update ${DEFERRED_RESERVATIONS_TABLE}
+         set state = 'processing', lease_generation = lease_generation + 1,
+             lease_token = ?, lease_until = ?, updated_at = ?
+       where reservation_ref = ? and state = 'reserved'
+         and lease_generation = ? and lease_token is null and lease_until is null
+    `).run(
+      leaseToken,
+      leaseUntil,
+      occurredAt,
+      reservation.reservationRef,
+      reservation.leaseGeneration
+    );
+    if (claimed.changes !== 1) throw storeError("wallet_infrastructure_error");
+    const operationRef = nextRef("deferred_reservation_operation");
+    insertStartedReceipt({
+      operationRef,
+      wallet,
+      operation: request.operation,
+      operationType: OPERATION_TYPE_CAPTURE_DEFERRED_RESERVATION,
+      requestDigestValue: request.requestDigest,
+      occurredAt
+    });
+    const resultingWalletVersion = safeAddUnits(wallet.version, 1);
+    for (const live of liveAllocations) {
+      updateLot({
+        lot: live.lot,
+        availableUnits: live.lot.availableUnits,
+        heldUnits: live.lot.heldUnits - live.allocation.allocatedUnits,
+        consumedUnits: safeAddUnits(
+          live.lot.consumedUnits,
+          live.allocation.allocatedUnits
+        ),
+        expiredUnits: live.lot.expiredUnits,
+        occurredAt
+      });
+    }
+    updateWalletVersion(wallet, resultingWalletVersion, occurredAt);
+    for (const live of liveAllocations) {
+      insertLedger({
+        entryRef: nextRef("deferred_reservation_ledger_entry"),
+        operationRef,
+        wallet,
+        lot: live.lot,
+        operation: "held_to_consumed",
+        amountUnits: live.allocation.allocatedUnits,
+        actorType: request.operation.actorType,
+        actorRef: request.operation.actorRef,
+        previousWalletVersion: wallet.version,
+        resultingWalletVersion,
+        occurredAt
+      });
+    }
+    const captured = db.prepare(`
+      update ${DEFERRED_RESERVATIONS_TABLE}
+         set state = 'captured', lease_token = null, lease_until = ?, updated_at = ?
+       where reservation_ref = ? and state = 'processing'
+         and lease_generation = ? and lease_token = ?
+    `).run(
+      null,
+      occurredAt,
+      reservation.reservationRef,
+      reservation.leaseGeneration + 1,
+      leaseToken
+    );
+    if (captured.changes !== 1) throw storeError("wallet_infrastructure_error");
+    completeReceipt({
+      operationRef,
+      status: "succeeded",
+      wallet,
+      previousWalletVersion: wallet.version,
+      resultingWalletVersion,
+      resultRef: reservation.reservationRef,
+      safeResultCode: SAFE_RESULT_DEFERRED_CAPTURED,
+      occurredAt
+    });
+    return Object.freeze({
+      ok: true,
+      reservationRef: reservation.reservationRef,
+      safeResultCode: SAFE_RESULT_DEFERRED_CAPTURED
+    });
+  }
+
+  function releaseReservationInTransaction(input) {
+    assertCallerTransaction();
+    const request = normalizeLifecycleRequest(
+      input,
+      OPERATION_TYPE_RELEASE_DEFERRED_RESERVATION
+    );
+    const replay = readLifecycleReplay(
+      request,
+      OPERATION_TYPE_RELEASE_DEFERRED_RESERVATION,
+      SAFE_RESULT_DEFERRED_RELEASED
+    );
+    if (replay) return replay;
+    const reservation = findReservation(request.reservationRef);
+    if (!reservation) {
+      return Object.freeze({
+        ok: false,
+        reservationRef: request.reservationRef,
+        safeResultCode: SAFE_RESULT_DEFERRED_NOT_RELEASABLE
+      });
+    }
+    const wallet = findWalletByRef(reservation.walletRef);
+    if (reservation.state === "released") {
+      const occurredAt = normalizeNow(nowFn);
+      const operationRef = nextRef("deferred_reservation_operation");
+      insertStartedReceipt({
+        operationRef,
+        wallet,
+        operation: request.operation,
+        operationType: OPERATION_TYPE_RELEASE_DEFERRED_RESERVATION,
+        requestDigestValue: request.requestDigest,
+        occurredAt
+      });
+      completeReceipt({
+        operationRef,
+        status: "succeeded",
+        wallet,
+        previousWalletVersion: wallet.version,
+        resultingWalletVersion: wallet.version,
+        resultRef: reservation.reservationRef,
+        safeResultCode: SAFE_RESULT_DEFERRED_RELEASED,
+        occurredAt
+      });
+      return Object.freeze({
+        ok: true,
+        reservationRef: reservation.reservationRef,
+        safeResultCode: SAFE_RESULT_DEFERRED_RELEASED
+      });
+    }
+    if (reservation.state !== "reserved") {
+      return closeFailedLifecycleReceipt({
+        reservation,
+        wallet,
+        request,
+        operationType: OPERATION_TYPE_RELEASE_DEFERRED_RESERVATION,
+        safeResultCode: SAFE_RESULT_DEFERRED_NOT_RELEASABLE,
+        occurredAt: normalizeNow(nowFn)
+      });
+    }
+    const allocations = loadAllocations(reservation);
+    const occurredAt = normalizeNow(nowFn);
+    const liveAllocations = loadLiveAllocations(reservation, allocations, reservation.expiresAt);
+    if (liveAllocations.some((item) => item === null)) {
+      releaseToReconciliation(reservation, occurredAt);
+      return closeFailedLifecycleReceipt({
+        reservation,
+        wallet,
+        request,
+        operationType: OPERATION_TYPE_RELEASE_DEFERRED_RESERVATION,
+        safeResultCode: SAFE_RESULT_DEFERRED_NOT_RELEASABLE,
+        occurredAt
+      });
+    }
+    const operationRef = nextRef("deferred_reservation_operation");
+    insertStartedReceipt({
+      operationRef,
+      wallet,
+      operation: request.operation,
+      operationType: OPERATION_TYPE_RELEASE_DEFERRED_RESERVATION,
+      requestDigestValue: request.requestDigest,
+      occurredAt
+    });
+    const resultingWalletVersion = safeAddUnits(wallet.version, 1);
+    for (const live of liveAllocations) {
+      const expiresNow = (
+        live.allocation.coinType === "bonus_coins"
+        && live.allocation.expiresAt !== null
+        && live.allocation.expiresAt <= occurredAt
+      );
+      updateLot({
+        lot: live.lot,
+        availableUnits: expiresNow
+          ? live.lot.availableUnits
+          : safeAddUnits(live.lot.availableUnits, live.allocation.allocatedUnits),
+        heldUnits: live.lot.heldUnits - live.allocation.allocatedUnits,
+        consumedUnits: live.lot.consumedUnits,
+        expiredUnits: expiresNow
+          ? safeAddUnits(live.lot.expiredUnits, live.allocation.allocatedUnits)
+          : live.lot.expiredUnits,
+        occurredAt
+      });
+    }
+    updateWalletVersion(wallet, resultingWalletVersion, occurredAt);
+    for (const live of liveAllocations) {
+      const expiresNow = (
+        live.allocation.coinType === "bonus_coins"
+        && live.allocation.expiresAt !== null
+        && live.allocation.expiresAt <= occurredAt
+      );
+      insertLedger({
+        entryRef: nextRef("deferred_reservation_ledger_entry"),
+        operationRef,
+        wallet,
+        lot: live.lot,
+        operation: expiresNow ? "held_to_expired" : "held_to_available",
+        amountUnits: live.allocation.allocatedUnits,
+        actorType: request.operation.actorType,
+        actorRef: request.operation.actorRef,
+        previousWalletVersion: wallet.version,
+        resultingWalletVersion,
+        occurredAt
+      });
+    }
+    const released = db.prepare(`
+      update ${DEFERRED_RESERVATIONS_TABLE}
+         set state = 'released', updated_at = ?
+       where reservation_ref = ? and state = 'reserved'
+         and lease_generation = ? and lease_token is null and lease_until is null
+    `).run(
+      occurredAt,
+      reservation.reservationRef,
+      reservation.leaseGeneration
+    );
+    if (released.changes !== 1) throw storeError("wallet_infrastructure_error");
+    completeReceipt({
+      operationRef,
+      status: "succeeded",
+      wallet,
+      previousWalletVersion: wallet.version,
+      resultingWalletVersion,
+      resultRef: reservation.reservationRef,
+      safeResultCode: SAFE_RESULT_DEFERRED_RELEASED,
+      occurredAt
+    });
+    return Object.freeze({
+      ok: true,
+      reservationRef: reservation.reservationRef,
+      safeResultCode: SAFE_RESULT_DEFERRED_RELEASED
+    });
+  }
+
+  function preflightRebaseReservationInTransaction(input) {
+    assertCallerTransaction();
+    const request = normalizePreflightRebaseRequest(input);
+    const reservation = findReservation(request.reservationRef);
+    if (!reservation || reservation.state !== "reserved") {
+      return Object.freeze({
+        ok: false,
+        reservationRef: request.reservationRef,
+        safeResultCode: SAFE_RESULT_DEFERRED_REBASE_UNAVAILABLE
+      });
+    }
+    const allocations = loadAllocations(reservation);
+    const failureCode = rebaseLiveAllocationFailureCode(
+      reservation,
+      allocations,
+      request.expiresAt
+    );
+    if (failureCode !== null) {
+      return Object.freeze({
+        ok: false,
+        reservationRef: reservation.reservationRef,
+        safeResultCode: failureCode
+      });
+    }
+    return Object.freeze({
+      ok: true,
+      reservationRef: reservation.reservationRef,
+      state: "reserved",
+      activationAt: request.activationAt,
+      expiresAt: request.expiresAt,
+      allocationSnapshot: snapshotAllocations(allocations)
+    });
+  }
+
+  function rebaseReservationInTransaction(input) {
+    assertCallerTransaction();
+    const request = normalizeRebaseRequest(input);
+    const replay = findWalletReceipt({
+      actorScope: request.operation.actorScope,
+      operationType: OPERATION_TYPE_REBASE_DEFERRED_RESERVATION,
+      idempotencyKey: request.operation.idempotencyKey
+    });
+    if (replay) {
+      assertReplayReceipt(
+        replay,
+        request.requestDigest,
+        request.reservationRef,
+        SAFE_RESULT_DEFERRED_REBASED
+      );
+      const reservation = findReservation(request.reservationRef);
+      if (
+        !reservation
+        || reservation.state !== "reserved"
+        || reservation.activationAt !== request.activationAt
+        || reservation.expiresAt !== request.expiresAt
+      ) {
+        throw storeError("idempotency_unavailable");
+      }
+      return reservationBindingResult(reservation, loadAllocations(reservation));
+    }
+    const reservation = findReservation(request.reservationRef);
+    if (!reservation || reservation.state !== "reserved") {
+      return Object.freeze({
+        ok: false,
+        reservationRef: request.reservationRef,
+        safeResultCode: SAFE_RESULT_DEFERRED_REBASE_UNAVAILABLE
+      });
+    }
+    const transition = findBoundTransition(reservation);
+    if (
+      !transition
+      || transition.state !== "reserved"
+      || transition.scheduled_for !== request.activationAt
+      || transition.rebase_generation !== reservation.rebaseGeneration + 1
+    ) {
+      throw storeError("deferred_reservation_conflict");
+    }
+    const allocations = loadAllocations(reservation);
+    const failureCode = rebaseLiveAllocationFailureCode(
+      reservation,
+      allocations,
+      request.expiresAt
+    );
+    if (failureCode !== null) {
+      return Object.freeze({
+        ok: false,
+        reservationRef: reservation.reservationRef,
+        safeResultCode: failureCode
+      });
+    }
+    const wallet = findWalletByRef(reservation.walletRef);
+    const occurredAt = normalizeNow(nowFn);
+    const operationRef = nextRef("deferred_reservation_operation");
+    insertStartedReceipt({
+      operationRef,
+      wallet,
+      operation: request.operation,
+      operationType: OPERATION_TYPE_REBASE_DEFERRED_RESERVATION,
+      requestDigestValue: request.requestDigest,
+      occurredAt
+    });
+    const updated = db.prepare(`
+      update ${DEFERRED_RESERVATIONS_TABLE}
+         set activation_at = ?, expires_at = ?,
+             rebase_generation = ?, updated_at = ?
+       where reservation_ref = ? and state = 'reserved'
+         and activation_at = ? and expires_at = ?
+         and rebase_generation = ?
+    `).run(
+      request.activationAt,
+      request.expiresAt,
+      transition.rebase_generation,
+      occurredAt,
+      reservation.reservationRef,
+      reservation.activationAt,
+      reservation.expiresAt,
+      reservation.rebaseGeneration
+    );
+    if (updated.changes !== 1) throw storeError("wallet_infrastructure_error");
+    completeReceipt({
+      operationRef,
+      status: "succeeded",
+      wallet,
+      previousWalletVersion: wallet.version,
+      resultingWalletVersion: wallet.version,
+      resultRef: reservation.reservationRef,
+      safeResultCode: SAFE_RESULT_DEFERRED_REBASED,
+      occurredAt
+    });
+    const updatedReservation = findReservation(reservation.reservationRef);
+    return reservationBindingResult(updatedReservation, loadAllocations(updatedReservation));
+  }
+
+  function runParticipant(method) {
+    try {
+      return method();
+    } catch (error) {
+      if (
+        error?.code === "invalid_reference"
+        || error?.code === "coin_units_overflow"
+      ) {
+        throw storeError("wallet_infrastructure_error");
+      }
+      throw normalizeStoreError(error);
+    }
+  }
+
+  return Object.freeze({
+    createReservationInTransaction(input) {
+      return runParticipant(() => createReservationInTransaction(input));
+    },
+    verifyReservationInTransaction(input) {
+      return runParticipant(() => verifyReservationInTransaction(input));
+    },
+    captureReservationInTransaction(input) {
+      return runParticipant(() => captureReservationInTransaction(input));
+    },
+    releaseReservationInTransaction(input) {
+      return runParticipant(() => releaseReservationInTransaction(input));
+    },
+    preflightRebaseReservationInTransaction(input) {
+      return runParticipant(() => preflightRebaseReservationInTransaction(input));
+    },
+    rebaseReservationInTransaction(input) {
+      return runParticipant(() => rebaseReservationInTransaction(input));
+    }
+  });
 }

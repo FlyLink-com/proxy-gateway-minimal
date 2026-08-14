@@ -287,7 +287,7 @@ const portalAuthEntryCopy = {
     rememberMe: "Remember me",
     forgotPassword: "Forgot password?",
     noAccount: "Don't have an account?",
-    registerTrial: "Start your 7-day free trial"
+    registerAccount: "Create your account"
   },
   zh: {
     documentTitle: "GCC WebOS - 账号登录",
@@ -325,7 +325,7 @@ const portalAuthEntryCopy = {
     rememberMe: "记住我",
     forgotPassword: "忘记密码？",
     noAccount: "还没有账号？",
-    registerTrial: "注册领取 7 天试用"
+    registerAccount: "注册创建账户"
   }
 } as const;
 
@@ -1999,7 +1999,7 @@ export function UserPortalPage({
               </button>
               <p className="portal-login-register">
                 <span>{authCopy.noAccount}</span>
-                <a href="/portal/register/">{authCopy.registerTrial}</a>
+                <a href="/portal/register/">{authCopy.registerAccount}</a>
               </p>
             </form>
           </div>
@@ -2209,11 +2209,13 @@ export function UserPortalPage({
           {activeView === "marketplace" ? (
             <MarketplacePanel
               commerceClient={portalClient.commerce ?? null}
+              commerceModelClient={portalClient.commerceModel ?? null}
               locale={locale}
               onWalletMutation={walletModel.refreshWallet}
               sessionGeneration={sessionGeneration}
               sessionRef={portalSession.sessionRef ?? null}
               theme={theme}
+              walletFirstCommerceClient={portalClient.walletFirstCommerce ?? null}
             />
           ) : null}
           {activeView === "wallet" ? (
