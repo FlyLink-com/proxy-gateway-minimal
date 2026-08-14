@@ -127,6 +127,16 @@ function normalizeReference(value, code) {
   return value;
 }
 
+// The store returns Wallet-owned lot IDs in an immutable reservation snapshot.
+// Wallet permits normalized UUID-backed IDs (including hyphens); keep the
+// stricter local reference grammar for all coordinator-owned identifiers.
+function normalizeWalletLotReference(value, code) {
+  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
+    throw coordinatorError(code);
+  }
+  return value;
+}
+
 function normalizeSafeCode(value, code) {
   if (typeof value !== "string" || !SAFE_CODE.test(value)) {
     throw coordinatorError(code);
@@ -233,7 +243,7 @@ function normalizeAllocation(input, amountUnits, code) {
     const value = exactValues(item, [
       "lotRef", "allocationSequence", "coinType", "allocatedUnits", "expiresAt"
     ], code);
-    const lotRef = normalizeReference(value.lotRef, code);
+    const lotRef = normalizeWalletLotReference(value.lotRef, code);
     const allocationSequence = normalizePositiveInteger(
       value.allocationSequence,
       1,
