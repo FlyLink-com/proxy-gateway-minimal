@@ -28,9 +28,10 @@ const TYPE = "control_plane_db_snapshot_gate";
 const SNAPSHOT_TYPE = "control_plane_db_snapshot";
 const SERVICE_UNIT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}\.service$/;
 const SNAPSHOT_FILE_PATTERN = /^control-plane-db-[a-f0-9-]{36}\.sqlite$/;
-const MODES = new Set(["snapshot", "verify", "restore"]);
+const MODES = new Set(["guard", "snapshot", "verify", "restore"]);
 const SERVICE_STATES = new Set(["active", "inactive"]);
-const RUNTIME_MASKED_UNIT_FILE_STATE = "masked-runtime";
+const RUNTIME_START_GUARD_DIRECTORY = "/run/control-plane-db-snapshot-gates";
+const RUNTIME_START_GUARD_DROPIN_FILE = "zzzzzz-control-plane-db-snapshot-start-guard.conf";
 const SAFE_CONDITIONS = new Set([
   "apply_confirmation_required",
   "database_boundary_invalid",
@@ -133,6 +134,124 @@ function safeServiceUnit(value) {
     fail("service_unit_invalid");
   }
   return value;
+}
+
+export function runtimeConditionStartGuardPaths({ serviceUnit } = {}) {
+  const unit = safeServiceUnit(serviceUnit);
+  const dropInDirectory = `/run/systemd/system/${unit}.d`;
+  return Object.freeze({
+    blockDirectory: RUNTIME_START_GUARD_DIRECTORY,
+    blockPath: `${RUNTIME_START_GUARD_DIRECTORY}/${unit}.block`,
+    dropInDirectory,
+    dropInPath: `${dropInDirectory}/${RUNTIME_START_GUARD_DROPIN_FILE}`
+  });
+}
+
+function expectedRuntimeConditionStartGuardText(blockPath) {
+  return `[Unit]\nConditionPathExists=!${blockPath}\n`;
+}
+
+function protectedRootOwnedPath(value, { kind, condition, ownerOnly = false }) {
+  const path = existingPath(value, { kind, condition });
+  if (process.platform !== "linux") return path;
+  const metadata = statSync(path);
+  if (
+    metadata.uid !== 0
+    || (metadata.mode & (ownerOnly ? 0o077 : 0o022)) !== 0
+  ) {
+    fail(condition);
+  }
+  return path;
+}
+
+function guardFileIdentity(metadata) {
+  if (
+    !metadata
+    || !Number.isInteger(metadata.dev)
+    || !Number.isInteger(metadata.ino)
+    || metadata.dev < 0
+    || metadata.ino < 0
+  ) {
+    return null;
+  }
+  return `${metadata.dev}:${metadata.ino}`;
+}
+
+function systemdUnitObjectPath(unit) {
+  const escaped = [...unit].map((character) => (
+    /[A-Za-z0-9]/.test(character)
+      ? character
+      : `_${character.codePointAt(0).toString(16).padStart(2, "0")}`
+  )).join("");
+  return `/org/freedesktop/systemd1/unit/${escaped}`;
+}
+
+function readSystemdConditions({ serviceUnit }) {
+  const result = withoutOutput("busctl", [
+    "--json=short",
+    "get-property",
+    "org.freedesktop.systemd1",
+    systemdUnitObjectPath(serviceUnit),
+    "org.freedesktop.systemd1.Unit",
+    "Conditions"
+  ]);
+  if (!result || result.error || result.status !== 0) return null;
+  try {
+    const parsed = JSON.parse(String(result.stdout || ""));
+    return Array.isArray(parsed?.data) ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasRuntimeConditionStartGuard({ serviceUnit, dropInPaths }) {
+  const paths = runtimeConditionStartGuardPaths({ serviceUnit });
+  if (!dropInPaths.includes(paths.dropInPath)) return null;
+  try {
+    protectedRootOwnedPath(paths.dropInDirectory, {
+      kind: "directory",
+      condition: "service_start_guard_missing"
+    });
+    protectedRootOwnedPath(paths.blockDirectory, {
+      kind: "directory",
+      condition: "service_start_guard_missing"
+    });
+    const dropInPath = protectedRootOwnedPath(paths.dropInPath, {
+      kind: "file",
+      condition: "service_start_guard_missing"
+    });
+    const blockPath = protectedRootOwnedPath(paths.blockPath, {
+      kind: "file",
+      condition: "service_start_guard_missing",
+      ownerOnly: true
+    });
+    const dropInMetadata = statSync(dropInPath);
+    const blockMetadata = statSync(blockPath);
+    if (blockMetadata.size !== 0) return null;
+    if (readFileSync(dropInPath, "utf8") !== expectedRuntimeConditionStartGuardText(paths.blockPath)) {
+      return null;
+    }
+    const conditions = readSystemdConditions({ serviceUnit });
+    if (!Array.isArray(conditions) || !conditions.some((condition) => (
+      Array.isArray(condition)
+      && condition.length === 5
+      && condition[0] === "ConditionPathExists"
+      && condition[1] === false
+      && condition[2] === true
+      && condition[3] === paths.blockPath
+      && Number.isInteger(condition[4])
+      && condition[4] <= 0
+    ))) {
+      return null;
+    }
+    const dropInIdentity = guardFileIdentity(dropInMetadata);
+    const blockIdentity = guardFileIdentity(blockMetadata);
+    return dropInIdentity && blockIdentity
+      ? `runtime-condition-v1:${dropInIdentity}:${blockIdentity}`
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function safeExpectedServiceState(value) {
@@ -376,20 +495,36 @@ export function readSystemdUnitState({ serviceUnit } = {}) {
     "show",
     "--property=ActiveState",
     "--property=UnitFileState",
+    "--property=LoadState",
+    "--property=NeedDaemonReload",
+    "--property=DropInPaths",
     "--",
     unit
   ]);
   if (!result || result.error || result.status !== 0) fail("service_state_unavailable");
   const values = new Map();
   for (const line of String(result.stdout || "").trim().split(/\r?\n/)) {
-    const match = /^(ActiveState|UnitFileState)=([a-z-]+)$/.exec(line);
+    const match = /^(ActiveState|UnitFileState|LoadState|NeedDaemonReload)=([a-z-]+)$/.exec(line)
+      ?? /^DropInPaths=(.*)$/.exec(line);
     if (!match || values.has(match[1])) fail("service_state_unavailable");
     values.set(match[1], match[2]);
   }
-  if (values.size !== 2) fail("service_state_unavailable");
+  if (values.size !== 5) fail("service_state_unavailable");
+  const dropInPaths = values.get("DropInPaths").trim().split(/\s+/).filter(Boolean);
+  const runtimeConditionStartGuardIdentity = values.get("LoadState") === "loaded"
+    && values.get("NeedDaemonReload") === "no"
+    && hasRuntimeConditionStartGuard({
+      serviceUnit: unit,
+      dropInPaths
+    })
+      || null;
   return Object.freeze({
     activeState: values.get("ActiveState"),
-    unitFileState: values.get("UnitFileState")
+    unitFileState: values.get("UnitFileState"),
+    loadState: values.get("LoadState"),
+    needDaemonReload: values.get("NeedDaemonReload"),
+    runtimeConditionStartGuard: runtimeConditionStartGuardIdentity !== null,
+    runtimeConditionStartGuardIdentity
   });
 }
 
@@ -414,9 +549,21 @@ function readUnitState({ serviceUnit, unitStateReader }) {
   ) {
     fail("service_state_unavailable");
   }
+  if (
+    typeof reported.runtimeConditionStartGuard !== "boolean"
+    || (
+      reported.runtimeConditionStartGuard === true
+      && (typeof reported.runtimeConditionStartGuardIdentity !== "string"
+        || reported.runtimeConditionStartGuardIdentity.length === 0)
+    )
+  ) {
+    fail("service_state_unavailable");
+  }
   return Object.freeze({
     activeState: reported.activeState,
-    unitFileState: reported.unitFileState
+    unitFileState: reported.unitFileState,
+    runtimeConditionStartGuard: reported.runtimeConditionStartGuard,
+    runtimeConditionStartGuardIdentity: reported.runtimeConditionStartGuardIdentity ?? null
   });
 }
 
@@ -424,7 +571,8 @@ function assertServiceStartGuard({
   serviceUnit,
   expectedServiceState,
   unitStateReader,
-  phase
+  phase,
+  expectedRuntimeConditionStartGuardIdentity = null
 }) {
   const expected = safeExpectedServiceState(expectedServiceState);
   const actual = readUnitState({ serviceUnit, unitStateReader });
@@ -433,8 +581,14 @@ function assertServiceStartGuard({
     if (phase === "entry") fail("service_state_mismatch");
     fail("service_start_guard_changed");
   }
-  if (actual.unitFileState !== RUNTIME_MASKED_UNIT_FILE_STATE) {
+  if (actual.runtimeConditionStartGuard !== true) {
     if (phase === "entry") fail("service_start_guard_missing");
+    fail("service_start_guard_changed");
+  }
+  if (
+    expectedRuntimeConditionStartGuardIdentity !== null
+    && actual.runtimeConditionStartGuardIdentity !== expectedRuntimeConditionStartGuardIdentity
+  ) {
     fail("service_start_guard_changed");
   }
   return actual;
@@ -658,17 +812,20 @@ export async function snapshotControlPlaneDatabase({
   unitStateReader
 } = {}) {
   if (expectedServiceState !== "inactive") fail("service_state_mismatch");
-  const serviceState = assertServiceStartGuard({
+  const entryGuard = assertServiceStartGuard({
     serviceUnit,
     expectedServiceState,
     unitStateReader,
     phase: "entry"
-  }).activeState;
+  });
+  const serviceState = entryGuard.activeState;
+  const runtimeConditionStartGuardIdentity = entryGuard.runtimeConditionStartGuardIdentity;
   const assertStartGuard = () => assertServiceStartGuard({
     serviceUnit,
     expectedServiceState,
     unitStateReader,
-    phase: "boundary"
+    phase: "boundary",
+    expectedRuntimeConditionStartGuardIdentity: runtimeConditionStartGuardIdentity
   });
   const artifact = await createSnapshotArtifact({
     dbPath,
@@ -709,6 +866,24 @@ function verifiedSnapshot({ snapshotPath, manifestPath }) {
 export function verifyControlPlaneDatabaseSnapshot({ snapshotPath, manifestPath } = {}) {
   const verified = verifiedSnapshot({ snapshotPath, manifestPath });
   return safeReport({ mode: "verify", state: "verified", snapshot: verified.identity });
+}
+
+export function verifyControlPlaneDatabaseStartGuard({
+  serviceUnit,
+  expectedServiceState,
+  unitStateReader
+} = {}) {
+  const state = assertServiceStartGuard({
+    serviceUnit,
+    expectedServiceState,
+    unitStateReader,
+    phase: "entry"
+  });
+  return safeReport({
+    mode: "guard",
+    state: "guarded",
+    serviceState: state.activeState
+  });
 }
 
 function inspectCompanions(dbPath) {
@@ -818,17 +993,20 @@ export async function restoreControlPlaneDatabase({
   unitStateReader
 } = {}) {
   if (expectedServiceState !== "inactive") fail("service_state_mismatch");
-  const serviceState = assertServiceStartGuard({
+  const entryGuard = assertServiceStartGuard({
     serviceUnit,
     expectedServiceState,
     unitStateReader,
     phase: "entry"
-  }).activeState;
+  });
+  const serviceState = entryGuard.activeState;
+  const runtimeConditionStartGuardIdentity = entryGuard.runtimeConditionStartGuardIdentity;
   const assertStartGuard = () => assertServiceStartGuard({
     serviceUnit,
     expectedServiceState,
     unitStateReader,
-    phase: "boundary"
+    phase: "boundary",
+    expectedRuntimeConditionStartGuardIdentity: runtimeConditionStartGuardIdentity
   });
   const targetPath = existingPath(dbPath, { kind: "file", condition: "database_boundary_invalid" });
   const rollbackDirectoryPath = protectedDirectory(rollbackDirectory, "rollback_directory_invalid");
@@ -916,7 +1094,9 @@ function parseCliArguments(argv) {
   }
   const mode = values.get("--mode");
   if (!MODES.has(mode)) fail("mode_invalid");
-  const required = mode === "snapshot"
+  const required = mode === "guard"
+    ? ["--service-unit", "--expected-service-state"]
+    : mode === "snapshot"
     ? ["--db-path", "--snapshot-dir", "--service-unit", "--expected-service-state"]
     : mode === "verify"
       ? ["--snapshot-path", "--manifest-path"]
@@ -925,7 +1105,7 @@ function parseCliArguments(argv) {
   const allowed = new Set(["--mode", ...required]);
   if ([...values.keys()].some((flag) => !allowed.has(flag))) fail("invalid_input");
   if ((mode === "snapshot" || mode === "restore") !== apply) fail("apply_confirmation_required");
-  if (mode === "verify" && apply) fail("invalid_input");
+  if ((mode === "verify" || mode === "guard") && apply) fail("invalid_input");
   if (
     (mode === "snapshot" || mode === "restore")
     && values.get("--expected-service-state") !== "inactive"
@@ -954,7 +1134,9 @@ export async function runControlPlaneDatabaseSnapshotGateCli({
   try {
     const options = parseCliArguments(argv);
     mode = options.mode;
-    const result = options.mode === "snapshot"
+    const result = options.mode === "guard"
+      ? verifyControlPlaneDatabaseStartGuard(options)
+      : options.mode === "snapshot"
       ? await snapshotControlPlaneDatabase(options)
       : options.mode === "verify"
         ? verifyControlPlaneDatabaseSnapshot(options)
