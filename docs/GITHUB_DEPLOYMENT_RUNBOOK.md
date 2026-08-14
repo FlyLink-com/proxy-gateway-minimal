@@ -268,25 +268,38 @@ Minimum future steps:
 7. Restart only the approved service.
 8. Validate health, public boundaries, internal route rejection, no-session API
    rejection, and data-plane listener/readiness checks.
-9. Roll back automatically if validation fails.
+9. Stop if validation fails; require an explicit approved rollback decision and
+   the relevant rollback-runbook execution. Any control or subscription DB
+   restore is a separate explicit decision and must never be automatic.
 
-### Protected Release Config Identity Gate
+### Protected Release Overlay Identity Gate
 
-The GitHub artifact remains source-only. Production config must not be packaged in the GitHub source artifact
-or its public `artifact.json`. During an approved
-Risk A release preparation, the protected active config is overlaid onto the
-inactive candidate on the target host.
+The GitHub artifact remains source-only. Both `.env` and
+`config/proxy-servers.json` are explicit source-ZIP exclusions and must not be
+packaged in the GitHub source artifact or its public `artifact.json`.
+The static `.env` exclusion is a containment defense, not a verifier waiver:
+the source-only verifier blocks a tracked `.env`, `.env.<non-example>`,
+database, key, log, or backup path in either the trusted Git tree or ZIP. Only
+`config/proxy-servers.json` remains review-only and is the explicit verifier
+omission. `.env.example` remains a tracked safe template and is not excluded.
+During an approved Risk A release preparation, the candidate must be a real
+directory reached through no symbolic-link or junction component and must be
+missing both `.env` and `config/proxy-servers.json`. The gate copies the
+protected active overlays into that source-only candidate on the target host.
 
 The gate has three explicit steps:
 
-1. Run a read-only prepare dry-run to detect whether the inactive candidate
-   already matches the active protected config.
-2. Run prepare with `--apply` to atomically copy the protected config into the
-   inactive candidate and write a mode-0600 `release-assembly.json`. The
-   manifest contains only release names, relative path, SHA256, size, mode, and
-   creation time; it contains no config content or absolute path.
-3. Run read-only verify before the `current` pointer switch. A mismatch or
-   invalid manifest stops the promotion before any pointer or service mutation.
+1. Run a read-only prepare dry-run to prove that both candidate overlay paths
+   are absent and that the active protected files have safe regular-file and
+   parent-directory boundaries.
+2. Run prepare with `--apply` to atomically create the protected `.env` and
+   `config/proxy-servers.json` files in the inactive candidate, then write a
+   mode-0600 `release-assembly.json`. The manifest contains only release
+   names, relative paths, SHA256 values, sizes, modes, and creation time; it
+   contains no protected content or absolute path.
+3. Run read-only verify before the `current` pointer switch. A missing,
+   pre-existing, symlinked, mismatched, or invalid overlay/manifest stops the
+   promotion before any pointer or service mutation.
 
 Example inside an approved production release preparation:
 
@@ -294,26 +307,25 @@ Example inside an approved production release preparation:
 npm run release:config:prepare -- \
   --active-release "$ACTIVE_RELEASE_PATH" \
   --candidate-release "$CANDIDATE_RELEASE_PATH" \
-  --relative-config config/proxy-servers.json \
   --manifest "$PROTECTED_ASSEMBLY_MANIFEST"
 
 npm run release:config:prepare -- \
   --active-release "$ACTIVE_RELEASE_PATH" \
   --candidate-release "$CANDIDATE_RELEASE_PATH" \
-  --relative-config config/proxy-servers.json \
   --manifest "$PROTECTED_ASSEMBLY_MANIFEST" \
   --apply
 
 npm run release:config:verify -- \
   --active-release "$ACTIVE_RELEASE_PATH" \
   --candidate-release "$CANDIDATE_RELEASE_PATH" \
-  --relative-config config/proxy-servers.json \
   --manifest "$PROTECTED_ASSEMBLY_MANIFEST"
 ```
 
 This identity gate proves release assembly only. After the pointer switch, the
 separate promotion health gate remains responsible for bounded runtime and
-public-edge acceptance. Neither gate authorizes deployment by itself.
+public-edge acceptance. Neither gate authorizes deployment or automatic
+rollback by itself; any application-pointer rollback requires a separate
+approved decision, and any database restore remains independently approved.
 
 ### Condition-Driven Promotion Health Window
 
@@ -330,8 +342,10 @@ from the resulting `master` commit.
 
 The gate replaces a one-shot public health request with these conditions:
 
-1. `proxy-gateway-candidate.service` is active/running and its process working
-   directory resolves to the expected immutable release.
+1. `proxy-gateway-candidate.service` is active/running; the `current` symlink
+   and the service process working directory each resolve to the same expected
+   immutable candidate's **full resolved path**. A matching release-directory
+   basename alone is not release identity evidence.
 2. `NRestarts` remains equal to the pre-switch baseline; any change rejects the
    promotion attempt immediately.
 3. Loopback `/api/health` returns 200 for three consecutive probes.
@@ -349,16 +363,25 @@ Example invocation inside an already approved production attempt:
 ```bash
 npm run promotion:health-gate -- \
   --expected-release "$EXPECTED_RELEASE" \
+  --expected-release-path "$EXPECTED_RELEASE_PATH" \
+  --current-link "$CURRENT_RELEASE_LINK" \
   --restart-baseline "$PRE_SWITCH_NRESTARTS" \
   --local-health-url "$PROTECTED_LOOPBACK_HEALTH_URL" \
   --public-health-url https://portal.gccwebos.com/api/health
 ```
 
+`EXPECTED_RELEASE_PATH` must name the candidate directory itself, not a
+symlink, and must exactly equal its full resolved path (so no ancestor may be
+a symlink). Its resolved basename must exactly equal `EXPECTED_RELEASE`.
+`CURRENT_RELEASE_LINK` must name the `current` symlink that points to that
+candidate.
+
 The JSON result contains only release identity, elapsed time, probe counts,
-HTTP status codes, readiness booleans, and restart-count delta. It never emits
-the supplied URLs, response bodies, command stderr, environment values, or
-raw service logs. A successful gate is acceptance evidence only; it does not
-itself declare or perform production promotion.
+HTTP status codes, redacted pointer/CWD-match booleans, and restart-count delta.
+It never emits the supplied URLs, absolute release or pointer paths, response
+bodies, command stderr, environment values, or raw service logs. A successful
+gate is acceptance evidence only; it does not itself declare or perform
+production promotion.
 
 ## Secret Boundary
 

@@ -43,8 +43,12 @@ function createRepository(t) {
   git(directory, ["init", "-q"]);
   git(directory, ["config", "user.email", "tests@example.invalid"]);
   git(directory, ["config", "user.name", "Artifact Tree Tests"]);
+  git(directory, ["config", "core.autocrlf", "false"]);
   mkdirSync(join(directory, "nested"));
+  mkdirSync(join(directory, "config"));
   writeFileSync(join(directory, "alpha.txt"), "alpha\n");
+  writeFileSync(join(directory, ".env.example"), "safe-example-environment\n");
+  writeFileSync(join(directory, "config", "proxy-servers.json"), "protected-config\n");
   writeFileSync(join(directory, "nested", "script.sh"), "#!/bin/sh\necho safe\n");
   chmodSync(join(directory, "nested", "script.sh"), 0o755);
   git(directory, ["add", "."]);
@@ -54,10 +58,20 @@ function createRepository(t) {
   const artifactPath = join(directory, "approved.zip");
   writeFileSync(artifactPath, storedZip([
     { name: "alpha.txt", data: "alpha\n", mode: 0o100644 },
+    { name: ".env.example", data: "safe-example-environment\n", mode: 0o100644 },
+    { name: "config/", mode: 0o040755 },
+    { name: "config/proxy-servers.json", data: "protected-config\n", mode: 0o100644 },
     { name: "nested/", mode: 0o040755 },
     { name: "nested/script.sh", data: "#!/bin/sh\necho safe\n", mode: 0o100755 }
   ], commit));
   return { artifactPath, commit, directory };
+}
+
+function writeTrackedFile(directory, path, data = "synthetic\n") {
+  const target = join(directory, ...path.split("/"));
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, data);
+  git(directory, ["add", "--", path]);
 }
 
 function crc32(buffer) {
@@ -125,8 +139,240 @@ test("verifies archive paths, modes, and blob bytes against the trusted Git tree
   }), {
     ok: true,
     type: "artifact_git_tree_identity",
-    fileCount: 2
+    fileCount: 4
   });
+});
+
+test("permits only the explicit review-only proxy config omission for a source-only artifact", (t) => {
+  const fixture = createRepository(t);
+  const sourceOnlyArtifact = join(fixture.directory, "source-only.zip");
+  const baseVerification = {
+    artifactPath: sourceOnlyArtifact,
+    repositoryPath: fixture.directory,
+    expectedCommit: fixture.commit,
+    sourceOnlyBoundary: true
+  };
+
+  execFileSync("git", [
+    "-c",
+    "core.autocrlf=false",
+    "archive",
+    "--format=zip",
+    `--output=${sourceOnlyArtifact}`,
+    fixture.commit,
+    "--",
+    ".",
+    ":(exclude)config/proxy-servers.json",
+    ":(exclude).env"
+  ], { cwd: fixture.directory });
+
+  assert.throws(
+    () => treeVerifier.verifyArtifactGitTree(baseVerification),
+    (error) => error.code === "artifact_source_tree_mismatch"
+  );
+  assert.deepEqual(treeVerifier.verifyArtifactGitTree({
+    ...baseVerification,
+    excludedPaths: ["config/proxy-servers.json"]
+  }), {
+    ok: true,
+    type: "artifact_git_tree_identity",
+    fileCount: 3
+  });
+  assert.throws(
+    () => treeVerifier.verifyArtifactGitTree({
+      ...baseVerification,
+      excludedPaths: ["config/proxy-servers.json", ".env"]
+    }),
+    (error) => error.code === "artifact_source_tree_mismatch"
+  );
+  assert.throws(
+    () => treeVerifier.verifyArtifactGitTree({
+      ...baseVerification,
+      excludedPaths: ["alpha.txt"]
+    }),
+    (error) => error.code === "artifact_source_tree_mismatch"
+  );
+
+  let stdout = "";
+  let stderr = "";
+  const exitCode = treeVerifier.runArtifactGitTreeVerifierCli({
+    argv: [
+      "--repository", fixture.directory,
+      "--commit", fixture.commit,
+      "--artifact", sourceOnlyArtifact,
+      "--exclude-path", "config/proxy-servers.json",
+      "--source-only-boundary"
+    ],
+    stdout: { write: (value) => { stdout += value; } },
+    stderr: { write: (value) => { stderr += value; } }
+  });
+  assert.equal(exitCode, 0);
+  assert.equal(stderr, "");
+  assert.deepEqual(JSON.parse(stdout), {
+    ok: true,
+    type: "artifact_git_tree_identity",
+    fileCount: 3
+  });
+});
+
+test("keeps exact tree verification when the review-only proxy omission is absent", (t) => {
+  const fixture = createRepository(t);
+  const sourceOnlyArtifact = join(fixture.directory, "source-only-no-proxy-config.zip");
+  unlinkSync(join(fixture.directory, "config", "proxy-servers.json"));
+  git(fixture.directory, ["add", "-u", "--", "config/proxy-servers.json"]);
+  git(fixture.directory, ["commit", "-qm", "remove protected proxy config"]);
+  const commit = git(fixture.directory, ["rev-parse", "HEAD"]);
+
+  execFileSync("git", [
+    "-c",
+    "core.autocrlf=false",
+    "archive",
+    "--format=zip",
+    `--output=${sourceOnlyArtifact}`,
+    commit,
+    "--",
+    ".",
+    ":(exclude)config/proxy-servers.json",
+    ":(exclude).env"
+  ], { cwd: fixture.directory });
+
+  assert.deepEqual(treeVerifier.verifyArtifactGitTree({
+    artifactPath: sourceOnlyArtifact,
+    repositoryPath: fixture.directory,
+    expectedCommit: commit,
+    excludedPaths: ["config/proxy-servers.json"],
+    sourceOnlyBoundary: true
+  }), {
+    ok: true,
+    type: "artifact_git_tree_identity",
+    fileCount: 3
+  });
+});
+
+test("blocks sensitive files in the trusted Git tree before source-only omissions", (t) => {
+  const fixture = createRepository(t);
+  for (const path of [
+    ".env",
+    ".env.local",
+    "nested/.env.payment",
+    "nested/.env.hp-private",
+    "nested/.env.aliyun-prod",
+    "control.sqlite",
+    "protected/operator.key",
+    "logs/proxy.log",
+    "server/app.mjs.bak-20260716"
+  ]) {
+    writeTrackedFile(fixture.directory, path);
+  }
+  git(fixture.directory, ["commit", "-qm", "add blocked artifact paths"]);
+  const commit = git(fixture.directory, ["rev-parse", "HEAD"]);
+  const sourceOnlyArtifact = join(fixture.directory, "blocked-trusted-tree.zip");
+
+  execFileSync("git", [
+    "-c",
+    "core.autocrlf=false",
+    "archive",
+    "--format=zip",
+    `--output=${sourceOnlyArtifact}`,
+    commit,
+    "--",
+    ".",
+    ":(exclude)config/proxy-servers.json",
+    ":(exclude).env"
+  ], { cwd: fixture.directory });
+
+  assert.throws(
+    () => treeVerifier.verifyArtifactGitTree({
+      artifactPath: sourceOnlyArtifact,
+      repositoryPath: fixture.directory,
+      expectedCommit: commit,
+      excludedPaths: ["config/proxy-servers.json"],
+      sourceOnlyBoundary: true
+    }),
+    (error) => error.code === "artifact_source_tree_mismatch"
+      && error.stage === "trusted_git_tree_boundary"
+  );
+});
+
+test("blocks sensitive files injected into a ZIP when the trusted Git tree is clean", (t) => {
+  const fixture = createRepository(t);
+  const artifactPath = join(fixture.directory, "blocked-zip-paths.zip");
+  writeFileSync(artifactPath, storedZip([
+    { name: "alpha.txt", data: "alpha\n", mode: 0o100644 },
+    { name: ".env.example", data: "safe-example-environment\n", mode: 0o100644 },
+    { name: "nested/", mode: 0o040755 },
+    { name: "nested/script.sh", data: "#!/bin/sh\necho safe\n", mode: 0o100755 },
+    { name: ".env.local", data: "synthetic\n", mode: 0o100644 },
+    { name: "control.sqlite", data: "synthetic\n", mode: 0o100644 },
+    { name: "protected/operator.key", data: "synthetic\n", mode: 0o100644 }
+  ], fixture.commit));
+
+  assert.throws(
+    () => treeVerifier.verifyArtifactGitTree({
+      artifactPath,
+      repositoryPath: fixture.directory,
+      expectedCommit: fixture.commit,
+      excludedPaths: ["config/proxy-servers.json"],
+      sourceOnlyBoundary: true
+    }),
+    (error) => error.code === "artifact_source_tree_mismatch"
+      && error.stage === "zip_file_boundary"
+  );
+});
+
+test("source-only CLI blocks boundary paths, preserves legacy mode, and rejects malformed flags without leaks", (t) => {
+  const fixture = createRepository(t);
+  writeTrackedFile(fixture.directory, ".env.local");
+  git(fixture.directory, ["commit", "-qm", "add protected environment"]);
+  const commit = git(fixture.directory, ["rev-parse", "HEAD"]);
+  const artifactPath = join(fixture.directory, "boundary-path.zip");
+  git(fixture.directory, ["archive", "--format=zip", `--output=${artifactPath}`, commit]);
+
+  assert.deepEqual(treeVerifier.verifyArtifactGitTree({
+    artifactPath,
+    repositoryPath: fixture.directory,
+    expectedCommit: commit
+  }), {
+    ok: true,
+    type: "artifact_git_tree_identity",
+    fileCount: 5
+  });
+
+  let stdout = "";
+  let stderr = "";
+  const boundaryExitCode = treeVerifier.runArtifactGitTreeVerifierCli({
+    argv: [
+      "--repository", fixture.directory,
+      "--commit", commit,
+      "--artifact", artifactPath,
+      "--source-only-boundary"
+    ],
+    stdout: { write: (value) => { stdout += value; } },
+    stderr: { write: (value) => { stderr += value; } }
+  });
+  assert.equal(boundaryExitCode, 1);
+  assert.equal(stdout, "");
+  assert.equal(JSON.parse(stderr).error, "artifact_source_tree_mismatch");
+  assert.equal(stderr.includes(fixture.directory), false);
+  assert.equal(stderr.includes(".env.local"), false);
+
+  stdout = "";
+  stderr = "";
+  const malformedExitCode = treeVerifier.runArtifactGitTreeVerifierCli({
+    argv: [
+      "--repository", fixture.directory,
+      "--commit", commit,
+      "--artifact", artifactPath,
+      "--source-only-boundary=invalid"
+    ],
+    stdout: { write: (value) => { stdout += value; } },
+    stderr: { write: (value) => { stderr += value; } }
+  });
+  assert.equal(malformedExitCode, 1);
+  assert.equal(stdout, "");
+  assert.equal(JSON.parse(stderr).error, "artifact_source_tree_mismatch");
+  assert.equal(stderr.includes(fixture.directory), false);
+  assert.equal(stderr.includes(".env.local"), false);
 });
 
 test("rejects content, file-set, mode, link, duplicate, and traversal drift", (t) => {
@@ -212,4 +458,38 @@ test("CLI failure is fixed and does not echo repository or archive paths", (t) =
   assert.equal(stderr.includes(fixture.directory), false);
   assert.equal(stderr.includes(fixture.artifactPath), false);
   assert.equal(readFileSync(fixture.artifactPath).length > 0, true);
+});
+
+test("verifies the current HEAD source ZIP with only the explicit proxy omission", (t) => {
+  const artifactDirectory = mkdtempSync(join(tmpdir(), "gccgw-current-head-artifact-"));
+  t.after(() => rmSync(artifactDirectory, { recursive: true, force: true }));
+  const artifactPath = join(artifactDirectory, "source-only.zip");
+  const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: REPOSITORY_ROOT,
+    encoding: "utf8"
+  }).trim();
+
+  execFileSync("git", [
+    "-c",
+    "core.autocrlf=false",
+    "archive",
+    "--format=zip",
+    `--output=${artifactPath}`,
+    "HEAD",
+    "--",
+    ".",
+    ":(exclude)config/proxy-servers.json",
+    ":(exclude).env"
+  ], { cwd: REPOSITORY_ROOT });
+
+  const report = treeVerifier.verifyArtifactGitTree({
+    artifactPath,
+    repositoryPath: REPOSITORY_ROOT,
+    expectedCommit: commit,
+    excludedPaths: ["config/proxy-servers.json"],
+    sourceOnlyBoundary: true
+  });
+  assert.equal(report.ok, true);
+  assert.equal(report.type, "artifact_git_tree_identity");
+  assert.ok(report.fileCount > 0);
 });

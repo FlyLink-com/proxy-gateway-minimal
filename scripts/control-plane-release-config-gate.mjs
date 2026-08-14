@@ -6,14 +6,15 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync
 } from "node:fs";
 import { basename, dirname, isAbsolute, posix, relative, resolve } from "node:path";
@@ -22,6 +23,10 @@ import { fileURLToPath } from "node:url";
 const RELEASE_UNIT = "control-plane-app";
 const RELEASE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 const DEFAULT_RELATIVE_CONFIG = "config/proxy-servers.json";
+const PROTECTED_RELATIVE_PATHS = Object.freeze([
+  DEFAULT_RELATIVE_CONFIG,
+  ".env"
+]);
 const SAFE_CONDITIONS = new Set([
   "invalid_input",
   "release_boundary_invalid",
@@ -30,6 +35,7 @@ const SAFE_CONDITIONS = new Set([
   "manifest_boundary_invalid",
   "manifest_invalid",
   "config_identity_mismatch",
+  "candidate_protected_file_present",
   "release_config_prepare_failed"
 ]);
 
@@ -54,23 +60,32 @@ function isWithin(root, target) {
   return child !== "" && !child.startsWith("..") && !isAbsolute(child);
 }
 
+function isWithinOrSame(root, target) {
+  return comparablePath(root) === comparablePath(target) || isWithin(root, target);
+}
+
 function releaseDirectory(value, { allowSymlink = false } = {}) {
   if (typeof value !== "string" || !isAbsolute(value)) {
     fail("release_boundary_invalid");
   }
 
+  const lexicalPath = resolve(value);
   let lexicalMetadata;
   let realPath;
   try {
-    lexicalMetadata = lstatSync(value);
-    realPath = realpathSync(value);
+    lexicalMetadata = lstatSync(lexicalPath);
+    realPath = realpathSync(lexicalPath);
   } catch {
     fail("release_boundary_invalid");
   }
 
   if (
-    (!allowSymlink && lexicalMetadata.isSymbolicLink())
-    || (!lexicalMetadata.isDirectory() && !lexicalMetadata.isSymbolicLink())
+    (!allowSymlink && (
+      lexicalMetadata.isSymbolicLink()
+      || !lexicalMetadata.isDirectory()
+      || comparablePath(lexicalPath) !== comparablePath(realPath)
+    ))
+    || (allowSymlink && !lexicalMetadata.isDirectory() && !lexicalMetadata.isSymbolicLink())
     || !statSync(realPath).isDirectory()
     || !RELEASE_PATTERN.test(basename(realPath))
   ) {
@@ -97,29 +112,42 @@ function normalizedRelativeConfig(value) {
   return raw;
 }
 
-function configFile(releaseRoot, relativeConfig) {
-  const path = resolve(releaseRoot.path, ...relativeConfig.split("/"));
+function protectedFile(releaseRoot, relativePath, { allowMissing = false } = {}) {
+  const path = resolve(releaseRoot.path, ...relativePath.split("/"));
   if (!isWithin(releaseRoot.path, path)) fail("config_boundary_invalid");
 
-  let metadata;
+  const parentPath = dirname(path);
+  let parentMetadata;
   let parentRealPath;
   try {
-    metadata = lstatSync(path);
-    parentRealPath = realpathSync(dirname(path));
+    parentMetadata = lstatSync(parentPath);
+    parentRealPath = realpathSync(parentPath);
   } catch {
     fail("config_boundary_invalid");
   }
 
   if (
-    metadata.isSymbolicLink()
-    || !metadata.isFile()
-    || comparablePath(parentRealPath) !== comparablePath(dirname(path))
-    || !isWithin(releaseRoot.path, parentRealPath)
+    parentMetadata.isSymbolicLink()
+    || !parentMetadata.isDirectory()
+    || comparablePath(parentRealPath) !== comparablePath(parentPath)
+    || !isWithinOrSame(releaseRoot.path, parentRealPath)
   ) {
     fail("config_boundary_invalid");
   }
 
-  return path;
+  let metadata;
+  try {
+    metadata = lstatSync(path);
+  } catch (error) {
+    if (allowMissing && error?.code === "ENOENT") return { path, exists: false };
+    fail("config_boundary_invalid");
+  }
+
+  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+    fail("config_boundary_invalid");
+  }
+
+  return { path, exists: true };
 }
 
 function manifestPath(value, { mustExist = false, mustBeAbsent = false } = {}) {
@@ -128,6 +156,24 @@ function manifestPath(value, { mustExist = false, mustBeAbsent = false } = {}) {
   }
 
   const path = resolve(value);
+  const parentPath = dirname(path);
+  if (existsSync(parentPath)) {
+    let parentMetadata;
+    let parentRealPath;
+    try {
+      parentMetadata = lstatSync(parentPath);
+      parentRealPath = realpathSync(parentPath);
+    } catch {
+      fail("manifest_boundary_invalid");
+    }
+    if (
+      parentMetadata.isSymbolicLink()
+      || !parentMetadata.isDirectory()
+      || comparablePath(parentRealPath) !== comparablePath(parentPath)
+    ) {
+      fail("manifest_boundary_invalid");
+    }
+  }
   if (existsSync(path)) {
     const metadata = lstatSync(path);
     if (metadata.isSymbolicLink() || !metadata.isFile() || mustBeAbsent) {
@@ -181,7 +227,8 @@ function releaseContext({
   relativeConfigPath,
   outputManifestPath,
   manifestMustExist = false,
-  manifestMustBeAbsent = false
+  manifestMustBeAbsent = false,
+  candidateFilesMayBeMissing = false
 }) {
   const activeRoot = releaseDirectory(activeReleasePath, { allowSymlink: true });
   const candidateRoot = releaseDirectory(candidateReleasePath);
@@ -192,20 +239,29 @@ function releaseContext({
   const relativeConfig = normalizedRelativeConfig(
     relativeConfigPath || DEFAULT_RELATIVE_CONFIG
   );
-  const activeConfig = configFile(activeRoot, relativeConfig);
-  const candidateConfig = configFile(candidateRoot, relativeConfig);
+  if (relativeConfig !== DEFAULT_RELATIVE_CONFIG) fail("relative_config_invalid");
+  const protectedFiles = PROTECTED_RELATIVE_PATHS.map((relativePath) => ({
+    relativePath,
+    active: protectedFile(activeRoot, relativePath),
+    candidate: protectedFile(candidateRoot, relativePath, {
+      allowMissing: candidateFilesMayBeMissing
+    })
+  }));
   const assemblyManifest = manifestPath(outputManifestPath, {
     mustExist: manifestMustExist,
     mustBeAbsent: manifestMustBeAbsent
   });
 
-  if (
-    comparablePath(assemblyManifest) === comparablePath(activeConfig)
-    || comparablePath(assemblyManifest) === comparablePath(candidateConfig)
-    || isWithin(activeRoot.path, assemblyManifest)
-    || isWithin(candidateRoot.path, assemblyManifest)
-  ) {
+  if (isWithin(activeRoot.path, assemblyManifest) || isWithin(candidateRoot.path, assemblyManifest)) {
     fail("manifest_boundary_invalid");
+  }
+  for (const protectedFilePath of protectedFiles) {
+    if (
+      comparablePath(assemblyManifest) === comparablePath(protectedFilePath.active.path)
+      || comparablePath(assemblyManifest) === comparablePath(protectedFilePath.candidate.path)
+    ) {
+      fail("manifest_boundary_invalid");
+    }
   }
 
   return {
@@ -214,13 +270,12 @@ function releaseContext({
     activeRelease: activeRoot.release,
     candidateRelease: candidateRoot.release,
     relativeConfig,
-    activeConfig,
-    candidateConfig,
+    protectedFiles,
     manifestPath: assemblyManifest
   };
 }
 
-function manifestShape(context, identity, createdAt) {
+function manifestShape(context, protectedIdentities, createdAt) {
   return {
     schemaVersion: "1",
     type: "control_plane_release_assembly",
@@ -228,12 +283,12 @@ function manifestShape(context, identity, createdAt) {
     activeRelease: context.activeRelease,
     candidateRelease: context.candidateRelease,
     createdAt,
-    protectedOverlays: [{
-      relativePath: context.relativeConfig,
-      sha256: identity.sha256,
-      sizeBytes: identity.sizeBytes,
-      mode: identity.mode
-    }]
+    protectedOverlays: protectedIdentities.map(({ relativePath, activeIdentity }) => ({
+      relativePath,
+      sha256: activeIdentity.sha256,
+      sizeBytes: activeIdentity.sizeBytes,
+      mode: activeIdentity.mode
+    }))
   };
 }
 
@@ -247,7 +302,9 @@ function safeReport(context, { state, applied, candidateMatches }) {
     activeRelease: context.activeRelease,
     candidateRelease: context.candidateRelease,
     relativeConfig: context.relativeConfig,
-    candidateMatches
+    protectedRelativePaths: context.protectedFiles.map(({ relativePath }) => relativePath),
+    candidateMatches,
+    candidateFilesPresent: context.protectedFiles.every(({ candidate }) => candidate.exists)
   };
 }
 
@@ -268,6 +325,21 @@ function writeProtectedFile(path, bytes, { mode, uid, gid }) {
   chmodSync(path, mode);
 }
 
+function publishNewFile(temporary, destination, existsCondition) {
+  let linked = false;
+  try {
+    linkSync(temporary, destination);
+    linked = true;
+    unlinkSync(temporary);
+  } catch (error) {
+    if (error?.code === "EEXIST") fail(existsCondition);
+    if (linked && !attemptCleanup(() => rmSync(destination, { force: true }))) {
+      fail("release_config_prepare_failed");
+    }
+    throw error;
+  }
+}
+
 function attemptCleanup(operation) {
   try {
     operation();
@@ -278,9 +350,9 @@ function attemptCleanup(operation) {
 }
 
 function validateManifestShape(manifest, context) {
-  const overlay = Array.isArray(manifest?.protectedOverlays)
-    && manifest.protectedOverlays.length === 1
-    ? manifest.protectedOverlays[0]
+  const overlays = Array.isArray(manifest?.protectedOverlays)
+    && manifest.protectedOverlays.length === context.protectedFiles.length
+    ? manifest.protectedOverlays
     : null;
   const createdAt = typeof manifest?.createdAt === "string"
     ? new Date(manifest.createdAt)
@@ -295,15 +367,18 @@ function validateManifestShape(manifest, context) {
     || !createdAt
     || Number.isNaN(createdAt.getTime())
     || createdAt.toISOString() !== manifest.createdAt
-    || overlay?.relativePath !== context.relativeConfig
-    || !/^[a-f0-9]{64}$/.test(String(overlay?.sha256 ?? ""))
-    || !Number.isSafeInteger(overlay?.sizeBytes)
-    || overlay.sizeBytes < 0
-    || !/^0[0-7]{3}$/.test(String(overlay?.mode ?? ""))
+    || !overlays
+    || !overlays.every((overlay, index) => (
+      overlay?.relativePath === context.protectedFiles[index].relativePath
+      && /^[a-f0-9]{64}$/.test(String(overlay?.sha256 ?? ""))
+      && Number.isSafeInteger(overlay?.sizeBytes)
+      && overlay.sizeBytes >= 0
+      && /^0[0-7]{3}$/.test(String(overlay?.mode ?? ""))
+    ))
   ) {
     fail("manifest_invalid");
   }
-  return overlay;
+  return overlays;
 }
 
 function readAssemblyManifest(path) {
@@ -332,80 +407,105 @@ export function prepareReleaseConfigOverlay({
     candidateReleasePath,
     relativeConfigPath,
     outputManifestPath,
-    manifestMustBeAbsent: apply
+    manifestMustBeAbsent: apply,
+    candidateFilesMayBeMissing: true
   });
-  const activeIdentity = fileIdentity(context.activeConfig, { includeBytes: true });
-  const candidateIdentity = fileIdentity(context.candidateConfig);
+  if (context.protectedFiles.some(({ candidate }) => candidate.exists)) {
+    fail("candidate_protected_file_present");
+  }
+  const protectedIdentities = context.protectedFiles.map(({ relativePath, active }) => ({
+    relativePath,
+    activeIdentity: fileIdentity(active.path, { includeBytes: apply })
+  }));
 
   if (!apply) {
     return safeReport(context, {
       state: "ready",
       applied: false,
-      candidateMatches: configIdentitiesMatch(activeIdentity, candidateIdentity)
+      candidateMatches: false
     });
   }
 
-  const manifest = manifestShape(context, activeIdentity, createdAtValue(createdAt));
+  const manifest = manifestShape(context, protectedIdentities, createdAtValue(createdAt));
   const manifestParent = dirname(context.manifestPath);
-  const candidateTemp = temporaryPath(context.candidateConfig, "overlay");
-  const candidateBackup = temporaryPath(context.candidateConfig, "original");
   const manifestTemp = temporaryPath(context.manifestPath, "manifest");
-  let originalMoved = false;
-  let overlayPublished = false;
+  const overlayOperations = context.protectedFiles.map((protectedFilePath, index) => ({
+    ...protectedFilePath,
+    activeIdentity: protectedIdentities[index].activeIdentity,
+    temporary: temporaryPath(protectedFilePath.candidate.path, "overlay"),
+    published: false
+  }));
   let manifestPublished = false;
 
   mkdirSync(manifestParent, { recursive: true, mode: 0o700 });
-  if (comparablePath(realpathSync(manifestParent)) !== comparablePath(manifestParent)) {
+  let manifestParentMetadata;
+  let manifestParentRealPath;
+  try {
+    manifestParentMetadata = lstatSync(manifestParent);
+    manifestParentRealPath = realpathSync(manifestParent);
+  } catch {
+    fail("manifest_boundary_invalid");
+  }
+  if (
+    manifestParentMetadata.isSymbolicLink()
+    || !manifestParentMetadata.isDirectory()
+    || comparablePath(manifestParentRealPath) !== comparablePath(manifestParent)
+  ) {
     fail("manifest_boundary_invalid");
   }
 
   try {
-    writeProtectedFile(candidateTemp, activeIdentity.bytes, {
-      mode: Number.parseInt(activeIdentity.mode, 8),
-      uid: activeIdentity.uid,
-      gid: activeIdentity.gid
-    });
+    for (const operation of overlayOperations) {
+      writeProtectedFile(operation.temporary, operation.activeIdentity.bytes, {
+        mode: Number.parseInt(operation.activeIdentity.mode, 8),
+        uid: operation.activeIdentity.uid,
+        gid: operation.activeIdentity.gid
+      });
+    }
     writeProtectedFile(
       manifestTemp,
       Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`),
-      { mode: 0o600, uid: activeIdentity.uid, gid: activeIdentity.gid }
+      {
+        mode: 0o600,
+        uid: protectedIdentities[0].activeIdentity.uid,
+        gid: protectedIdentities[0].activeIdentity.gid
+      }
     );
 
-    renameSync(context.candidateConfig, candidateBackup);
-    originalMoved = true;
-    renameSync(candidateTemp, context.candidateConfig);
-    overlayPublished = true;
-    renameSync(manifestTemp, context.manifestPath);
+    for (const operation of overlayOperations) {
+      publishNewFile(operation.temporary, operation.candidate.path, "candidate_protected_file_present");
+      operation.published = true;
+      operation.candidate.exists = true;
+    }
+    publishNewFile(manifestTemp, context.manifestPath, "manifest_boundary_invalid");
     manifestPublished = true;
 
-    const preparedIdentity = fileIdentity(context.candidateConfig);
-    if (!configIdentitiesMatch(activeIdentity, preparedIdentity)) {
-      fail("config_identity_mismatch");
+    for (const operation of overlayOperations) {
+      const preparedIdentity = fileIdentity(operation.candidate.path);
+      if (!configIdentitiesMatch(operation.activeIdentity, preparedIdentity)) {
+        fail("config_identity_mismatch");
+      }
     }
-
-    rmSync(candidateBackup, { force: true });
   } catch (error) {
     let rollbackComplete = true;
-    if (overlayPublished && existsSync(context.candidateConfig)) {
-      rollbackComplete = attemptCleanup(() => {
-        rmSync(context.candidateConfig, { force: true });
-      }) && rollbackComplete;
-    }
-    if (originalMoved) {
-      rollbackComplete = existsSync(candidateBackup)
-        && attemptCleanup(() => {
-          renameSync(candidateBackup, context.candidateConfig);
-        })
-        && rollbackComplete;
+    for (const operation of [...overlayOperations].reverse()) {
+      if (operation.published && existsSync(operation.candidate.path)) {
+        rollbackComplete = attemptCleanup(() => {
+          rmSync(operation.candidate.path, { force: true });
+        }) && rollbackComplete;
+      }
+      operation.candidate.exists = false;
     }
     if (manifestPublished) {
       rollbackComplete = attemptCleanup(() => {
         rmSync(context.manifestPath, { force: true });
       }) && rollbackComplete;
     }
-    rollbackComplete = attemptCleanup(() => {
-      rmSync(candidateTemp, { force: true });
-    }) && rollbackComplete;
+    for (const operation of overlayOperations) {
+      rollbackComplete = attemptCleanup(() => {
+        rmSync(operation.temporary, { force: true });
+      }) && rollbackComplete;
+    }
     rollbackComplete = attemptCleanup(() => {
       rmSync(manifestTemp, { force: true });
     }) && rollbackComplete;
@@ -432,18 +532,21 @@ export function verifyReleaseConfigOverlay({
     candidateReleasePath,
     relativeConfigPath,
     outputManifestPath,
-    manifestMustExist: true
+    manifestMustExist: true,
+    candidateFilesMayBeMissing: false
   });
   const manifest = readAssemblyManifest(context.manifestPath);
-  const overlay = validateManifestShape(manifest, context);
-  const activeIdentity = fileIdentity(context.activeConfig);
-  const candidateIdentity = fileIdentity(context.candidateConfig);
+  const overlays = validateManifestShape(manifest, context);
 
-  if (
-    !configIdentitiesMatch(activeIdentity, candidateIdentity)
-    || !manifestIdentityMatches(activeIdentity, overlay)
-  ) {
-    fail("config_identity_mismatch");
+  for (const [index, protectedFilePath] of context.protectedFiles.entries()) {
+    const activeIdentity = fileIdentity(protectedFilePath.active.path);
+    const candidateIdentity = fileIdentity(protectedFilePath.candidate.path);
+    if (
+      !configIdentitiesMatch(activeIdentity, candidateIdentity)
+      || !manifestIdentityMatches(activeIdentity, overlays[index])
+    ) {
+      fail("config_identity_mismatch");
+    }
   }
 
   return safeReport(context, {

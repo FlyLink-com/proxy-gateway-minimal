@@ -88,7 +88,13 @@ jobs:
           set -euo pipefail
           mkdir -p .release-artifacts
           artifact=".release-artifacts/proxy-gateway-${{ steps.release.outputs.release }}.zip"
-          git archive --format=zip --output "$artifact" HEAD
+          git -c core.autocrlf=false archive --format=zip --output "$artifact" HEAD -- . ':(exclude)config/proxy-servers.json' ':(exclude).env'
+          node scripts/artifact-git-tree-verifier.mjs \
+            --repository . \
+            --commit "$GITHUB_SHA" \
+            --artifact "$artifact" \
+            --exclude-path config/proxy-servers.json \
+            --source-only-boundary >/dev/null
           sha256sum "$artifact" | tee "$artifact.sha256"
           {
             echo "This workflow is a production deploy dry run only."

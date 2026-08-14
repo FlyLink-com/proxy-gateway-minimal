@@ -156,6 +156,7 @@ test("secretless preflight independently binds the artifact to the declared Git 
   assert.match(preflight, /persist-credentials: false/);
   assert.match(preflight, /node scripts\/artifact-git-tree-verifier\.mjs/);
   assert.match(preflight, /--commit 70880d83761b165e91e9c521ec480fcc840375fb/);
+  assert.doesNotMatch(preflight, /--source-only-boundary/);
   const treeCheckout = preflight.indexOf("- name: Checkout frozen artifact source");
   const treeVerification = preflight.indexOf("node scripts/artifact-git-tree-verifier.mjs");
   const ready = preflight.indexOf("- name: Mark secretless preflight ready");
