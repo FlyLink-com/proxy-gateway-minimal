@@ -180,8 +180,19 @@ function runtimeBindingRef(prefix, runtimeValue) {
     .slice(0, 16)}`;
 }
 
-function runtimeMarker(transitionRef) {
-  return `${RUNTIME_MARKER_PREFIX}${reference(transitionRef)}`;
+export function walletFirstResourceEffectRuntimeMarker(transitionRef) {
+  const normalized = reference(transitionRef);
+  // Notes are operator-visible and reject long opaque-looking material. Keep
+  // the marker deterministic for recovery while never persisting the raw
+  // deferred transition reference in Core.
+  const markerDigest = createHash("sha256")
+    .update(
+      `GCCWEBOS:WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_MARKER:v1\0${normalized}`,
+      "utf8"
+    )
+    .digest("hex")
+    .slice(0, 24);
+  return `${RUNTIME_MARKER_PREFIX}wfxm_${markerDigest}`;
 }
 
 function normalizeOffer(value) {
@@ -513,7 +524,7 @@ function assertRuntimeReceiptMatchesInput(receipt, input, configuredNodeId) {
 
 function assertTenantForInitial(tenant, input) {
   if (
-    tenant.note !== runtimeMarker(input.transitionRef)
+    tenant.note !== walletFirstResourceEffectRuntimeMarker(input.transitionRef)
     || tenant.nodeName !== input.runtimeRequest.nodeId
     || tenant.expiresAt !== input.successor.validUntil
     || tenant.status === "disabled"
@@ -524,7 +535,7 @@ function assertTenantForInitial(tenant, input) {
 
 function assertTenantForScheduled(tenant, input) {
   if (
-    tenant.note !== runtimeMarker(input.runtimeRequest.initialTransitionRef)
+    tenant.note !== walletFirstResourceEffectRuntimeMarker(input.runtimeRequest.initialTransitionRef)
     || tenant.nodeName !== input.runtimeRequest.nodeId
     || tenant.status === "disabled"
   ) {
@@ -574,7 +585,7 @@ async function assertRecordedRuntimeReceiptHealthy(
     validUntil: receipt.successor.validUntil
   });
   if (
-    tenant.note !== runtimeMarker(expectedRuntime.initialTransitionRef)
+    tenant.note !== walletFirstResourceEffectRuntimeMarker(expectedRuntime.initialTransitionRef)
     || tenant.nodeName !== expectedRuntime.nodeId
     || tenant.expiresAt !== expectedRuntime.validUntil
     || tenant.status === "disabled"
@@ -598,7 +609,7 @@ async function inspectClaimedRuntime(runtimeCore, input) {
   if (input.flowKind === "initial_activation") {
     const tenants = normalizeTenantList(await runtimeCore.listTenants());
     const matching = tenants.filter(
-      (candidate) => candidate.note === runtimeMarker(input.transitionRef)
+      (candidate) => candidate.note === walletFirstResourceEffectRuntimeMarker(input.transitionRef)
     );
     if (matching.length === 0) {
       return Object.freeze({ tenant: null, artifact: null, state: "missing" });
@@ -1024,7 +1035,7 @@ export function createWalletFirstResourceEffectAdapters(options = {}) {
               "runtime_initial_takeover_unresolved"
             );
           }
-          const marker = runtimeMarker(input.transitionRef);
+          const marker = walletFirstResourceEffectRuntimeMarker(input.transitionRef);
           const tenants = normalizeTenantList(await runtimeCore.listTenants());
           const matching = tenants.filter((candidate) => candidate.note === marker);
           if (matching.length !== 0) {

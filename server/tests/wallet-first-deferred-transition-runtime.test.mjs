@@ -266,33 +266,7 @@ test("concrete wallet-first runtime recovers an expired scheduled-switch lease t
     });
   assert.equal(initialTransition.state, "reserved");
   const initialResult = await fixture.runtime.deferredTransitionCoordinator.runOnce();
-  const initialTransitionOutcome = fixture.controlDatabase.prepare(`
-    select state, safe_code, lease_generation
-      from platform_deferred_resource_transitions
-     where transition_ref = ?
-  `).get(initialTransition.transitionRef);
-  const initialRuntimeClaimOutcome = fixture.controlDatabase.prepare(`
-    select status, safe_code, lease_generation
-      from platform_wallet_first_resource_effect_runtime_claims
-     where transition_ref = ?
-  `).get(initialTransition.transitionRef);
-  const initialRuntimeTenantCount = fixture.subscriptionCore.listTenants().length;
-  const initialRuntimeArtifactCount = initialRuntimeTenantCount === 1
-    ? fixture.subscriptionCore.listSubscriptionArtifacts(
-      fixture.subscriptionCore.listTenants()[0].id
-    ).length
-    : null;
-  assert.equal(
-    initialResult.effectApplied,
-    1,
-    JSON.stringify({
-      initialResult,
-      initialTransitionOutcome,
-      initialRuntimeClaimOutcome,
-      initialRuntimeTenantCount,
-      initialRuntimeArtifactCount
-    })
-  );
+  assert.equal(initialResult.effectApplied, 1);
   assert.equal(initialResult.settled, 1);
   assert.equal(initialResult.reconciliationRequired, 0);
   assert.equal(
@@ -306,6 +280,8 @@ test("concrete wallet-first runtime recovers an expired scheduled-switch lease t
   assert.equal(initialChain.state, "current");
   const initialTenant = fixture.subscriptionCore.listTenants()[0];
   assert.ok(initialTenant);
+  assert.match(initialTenant.note, /^wallet_first_resource_effect_v1:wfxm_[a-f0-9]{24}$/);
+  assert.equal(initialTenant.note.includes(initialTransition.transitionRef), false);
   const initialArtifacts = fixture.subscriptionCore
     .listSubscriptionArtifacts(initialTenant.id);
   assert.equal(initialArtifacts.length, 1);

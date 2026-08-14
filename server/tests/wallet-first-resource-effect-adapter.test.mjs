@@ -36,6 +36,7 @@ import {
 } from "../services/platform/wallet-first-resource-effect-handler.mjs";
 import {
   createWalletFirstResourceEffectAdapters,
+  walletFirstResourceEffectRuntimeMarker,
   WALLET_FIRST_RESOURCE_EFFECT_CONTROL_ADAPTER_CONTRACT,
   WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_ADAPTER_CONTRACT
 } from "../services/platform/wallet-first-resource-effect-adapter.mjs";
@@ -492,7 +493,7 @@ test("initial takeover with no marker stays manual even if a stale worker later 
     displayName: "Synthetic stale worker",
     nodeId: "node_alpha",
     expiresAt: preparation.successor.validUntil,
-    note: "wallet_first_resource_effect_v1:transition_wallet_004"
+    note: walletFirstResourceEffectRuntimeMarker("transition_wallet_004")
   }).tenant;
   const staleArtifact = fixture.subscriptionCore.createSubscriptionArtifact(staleTenant.id).artifact;
   assert.throws(() => fixture.controlStore.recordWalletFirstRuntimeReceiptForDeferredTransition({
@@ -655,7 +656,7 @@ test("active inner lease is retryable without probing, then its exact target is 
     displayName: "Synthetic stale worker",
     nodeId: "node_alpha",
     expiresAt: preparation.successor.validUntil,
-    note: "wallet_first_resource_effect_v1:transition_wallet_007"
+    note: walletFirstResourceEffectRuntimeMarker("transition_wallet_007")
   }).tenant;
   const artifact = fixture.subscriptionCore.createSubscriptionArtifact(tenant.id).artifact;
   await assert.rejects(
