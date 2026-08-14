@@ -17,6 +17,7 @@ import test from "node:test";
 import Database from "better-sqlite3";
 
 import {
+  parseSystemdUnitShowProperties,
   runControlPlaneDatabaseSnapshotGateCli,
   runtimeConditionStartGuardPaths,
   snapshotControlPlaneDatabase,
@@ -134,6 +135,61 @@ async function makeSnapshot({ dbPath, snapshotDirectory, unitStateReader: readUn
     unitStateReader: readUnitState
   });
 }
+
+test("systemd show parser preserves a real DropInPaths value", () => {
+  const guardDropIn = "/run/systemd/system/proxy-gateway-candidate.service.d/zzzzzz-control-plane-db-snapshot-start-guard.conf";
+  const parsed = parseSystemdUnitShowProperties([
+    "ActiveState=active",
+    "UnitFileState=enabled",
+    "LoadState=loaded",
+    "NeedDaemonReload=no",
+    `DropInPaths=${guardDropIn}`
+  ].join("\n"));
+
+  assert.deepEqual(parsed, {
+    activeState: "active",
+    unitFileState: "enabled",
+    loadState: "loaded",
+    needDaemonReload: "no",
+    dropInPaths: [guardDropIn]
+  });
+});
+
+test("systemd show parser fails closed for malformed property sets", () => {
+  const validProperties = [
+    "ActiveState=active",
+    "UnitFileState=enabled",
+    "LoadState=loaded",
+    "NeedDaemonReload=no",
+    "DropInPaths=/run/systemd/system/proxy-gateway-candidate.service.d/zzzzzz-control-plane-db-snapshot-start-guard.conf"
+  ];
+  const cases = [
+    {
+      name: "malformed",
+      lines: [...validProperties.slice(0, -1), "DropInPaths"]
+    },
+    {
+      name: "duplicate",
+      lines: [...validProperties, "ActiveState=inactive"]
+    },
+    {
+      name: "unknown",
+      lines: [...validProperties.slice(0, -1), "UnexpectedState=active"]
+    },
+    {
+      name: "missing",
+      lines: validProperties.slice(0, -1)
+    }
+  ];
+
+  for (const { name, lines } of cases) {
+    assert.throws(
+      () => parseSystemdUnitShowProperties(lines.join("\n")),
+      (error) => error?.condition === "service_state_unavailable",
+      name
+    );
+  }
+});
 
 test("snapshot and restore runbook requires the external runtime condition start guard", () => {
   const contract = readFileSync(CONTROL_PLANE_SNAPSHOT_CONTRACT, "utf8");
