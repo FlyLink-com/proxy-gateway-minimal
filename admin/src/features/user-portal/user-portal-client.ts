@@ -248,12 +248,12 @@ export type PortalRegistrationWelcomeBonus = {
 };
 
 export type PortalLegacyTrialRegistrationResult = PortalRegistrationResultBase & {
+  commercialModel: "legacy";
   trial: {
     durationDays: number;
     validUntil: string;
     accessRequestStatus: string;
   };
-  commercialModel?: never;
   welcomeBonus?: never;
 };
 
@@ -498,6 +498,7 @@ export type UserPortalClient = {
   authenticate(input: PortalAuthInput): Promise<PortalAuthResult>;
   completeSecondFactor(input: PortalCompleteSecondFactorInput): Promise<PortalSession>;
   fetchCurrentState(input: { userRef: string; sessionRef?: string }): Promise<PortalUserState>;
+  fetchSecurityState?(input: { sessionRef: string }): Promise<PortalUserSecurityState>;
   fetchPaymentOrders(input: PortalPaymentOrdersInput): Promise<PortalPaymentOrder[]>;
   createPaymentCheckout(input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult>;
   startAuthenticatorEnrollment(input: { userRef: string; sessionRef?: string }): Promise<PortalAuthenticatorEnrollment>;
@@ -660,6 +661,29 @@ function mapBackendHumanChallenge(raw: Record<string, unknown>, now: () => Date)
   };
 }
 
+function completeLegacyTrial(registration: Record<string, unknown>) {
+  const trial = registration.trial;
+  if (!trial || typeof trial !== "object" || Array.isArray(trial)) {
+    throw portalError("试用权益无效。");
+  }
+  const value = trial as Record<string, unknown>;
+  const durationDays = Number(value.durationDays);
+  if (durationDays !== 7 && durationDays !== 30 && durationDays !== 365) {
+    throw portalError("试用时长无效。");
+  }
+  return {
+    durationDays,
+    validUntil: requiredText(
+      typeof value.validUntil === "string" ? value.validUntil : undefined,
+      "试用有效期无效。"
+    ),
+    accessRequestStatus: requiredText(
+      typeof value.accessRequestStatus === "string" ? value.accessRequestStatus : undefined,
+      "试用申请状态无效。"
+    )
+  };
+}
+
 function mapRegistrationResult(body: Record<string, unknown>): PortalRegistrationResult {
   const registration = (body.registration ?? {}) as Record<string, unknown>;
   const session = (body.session ?? {}) as Record<string, unknown>;
@@ -695,6 +719,9 @@ function mapRegistrationResult(body: Record<string, unknown>): PortalRegistratio
   };
 
   if (registration.commercialModel === "wallet_first_unique_v1") {
+    if (Object.hasOwn(registration, "trial")) {
+      throw portalError("注册账户模型无效。");
+    }
     const welcomeBonus = (registration.welcomeBonus ?? {}) as Record<string, unknown>;
     const status = welcomeBonus.status;
     if (status !== "pending" && status !== "available") {
@@ -721,18 +748,23 @@ function mapRegistrationResult(body: Record<string, unknown>): PortalRegistratio
     };
   }
 
-  if (registration.commercialModel !== undefined) {
+  if (
+    Object.hasOwn(registration, "welcomeBonus")
+    || (
+      Object.hasOwn(registration, "commercialModel")
+      && registration.commercialModel !== "legacy"
+    )
+  ) {
     throw portalError("注册账户模型无效。");
   }
 
-  const trial = (registration.trial ?? {}) as Record<string, unknown>;
+  // Older control-plane releases returned the same complete legacy trial
+  // result without a discriminator. Keep only that narrow compatibility
+  // fallback while Portal and control-plane releases can roll independently.
   return {
     ...common,
-    trial: {
-      durationDays: normalizeOrderDurationDays(Number(trial.durationDays ?? 7), 7),
-      validUntil: requiredText(trial.validUntil as string | undefined, "试用有效期无效。"),
-      accessRequestStatus: String(trial.accessRequestStatus ?? "pending_admin_review")
-    }
+    commercialModel: "legacy",
+    trial: completeLegacyTrial(registration)
   };
 }
 
@@ -1367,6 +1399,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       return {
         status: "registered",
         userRef: email,
+        commercialModel: "legacy",
         session: sessionSummary(email, "password", issuedAt.toISOString(), email, stableRef("portal_session", email)),
         trial: {
           durationDays: 7,
@@ -2141,6 +2174,15 @@ export function createHttpUserPortalClient(
           noPublicAdmin: true
         }
       };
+    },
+
+    async fetchSecurityState(input) {
+      const sessionRef = requiredText(input.sessionRef, "用户会话无效。");
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/security/current"), {
+        method: "GET",
+        headers: portalSessionHeaders(sessionRef)
+      });
+      return mapSecurityState(body.security);
     },
 
     async fetchPaymentOrders(input) {

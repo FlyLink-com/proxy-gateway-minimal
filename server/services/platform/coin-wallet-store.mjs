@@ -4125,7 +4125,7 @@ export function createDeferredResourceTransitionReservationParticipant(options =
   function findBoundTransition(reservation, { accountId, orderRef } = {}) {
     const row = db.prepare(`
       select transition_ref, reservation_ref, account_id, order_ref, state,
-             scheduled_for, rebase_generation
+             scheduled_for, rebase_generation, lease_token, lease_until
         from ${DEFERRED_TRANSITIONS_TABLE}
        where transition_ref = ? and reservation_ref = ?
     `).get(reservation.sourceRef, reservation.reservationRef);
@@ -4511,8 +4511,27 @@ export function createDeferredResourceTransitionReservationParticipant(options =
     }
     const allocations = loadAllocations(reservation);
     const occurredAt = normalizeNow(nowFn);
+    const transition = findBoundTransition(reservation);
+    if (
+      !transition
+      || transition.state !== "effect_applied"
+      || transition.scheduled_for > occurredAt
+      || typeof transition.lease_token !== "string"
+      || transition.lease_token.length === 0
+      || typeof transition.lease_until !== "string"
+      || transition.lease_until <= occurredAt
+    ) {
+      return closeFailedLifecycleReceipt({
+        reservation,
+        wallet,
+        request,
+        operationType: OPERATION_TYPE_CAPTURE_DEFERRED_RESERVATION,
+        safeResultCode: SAFE_RESULT_DEFERRED_NOT_CAPTURABLE,
+        occurredAt
+      });
+    }
     const liveAllocations = loadLiveAllocations(reservation, allocations, occurredAt);
-    if (!findBoundTransition(reservation) || liveAllocations.some((item) => item === null)) {
+    if (liveAllocations.some((item) => item === null)) {
       releaseToReconciliation(reservation, occurredAt);
       return closeFailedLifecycleReceipt({
         reservation,
@@ -4657,6 +4676,17 @@ export function createDeferredResourceTransitionReservationParticipant(options =
       });
     }
     if (reservation.state !== "reserved") {
+      return closeFailedLifecycleReceipt({
+        reservation,
+        wallet,
+        request,
+        operationType: OPERATION_TYPE_RELEASE_DEFERRED_RESERVATION,
+        safeResultCode: SAFE_RESULT_DEFERRED_NOT_RELEASABLE,
+        occurredAt: normalizeNow(nowFn)
+      });
+    }
+    const transition = findBoundTransition(reservation);
+    if (!transition || !["reserved", "processing"].includes(transition.state)) {
       return closeFailedLifecycleReceipt({
         reservation,
         wallet,

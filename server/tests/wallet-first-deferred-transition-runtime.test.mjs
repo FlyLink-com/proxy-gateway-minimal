@@ -20,7 +20,7 @@ import {
   applyCoinWalletMigrations
 } from "../services/platform/coin-wallet-migrations.mjs";
 import {
-  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
   applyDeferredResourceTransitionMigrations
 } from "../services/platform/deferred-resource-transition-migrations.mjs";
@@ -126,7 +126,7 @@ function applyWalletFirstMigrations(database, nowFn) {
   applyDeferredResourceTransitionMigrations({
     database,
     expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-    expectedDdlChecksum: DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum,
+    expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
     nowFn
   });
   applyWalletFirstDeferredCheckoutMigrations({
@@ -241,6 +241,8 @@ function createFixture() {
       commerceStore.close();
       controlStore.close();
       subscriptionStore.close();
+      controlDatabase.close();
+      runtimeDatabase.close();
       rmSync(directory, { recursive: true, force: true });
     }
   };

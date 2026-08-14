@@ -3,7 +3,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   rmSync
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,8 +26,12 @@ import {
   inspectCoinWalletSchema
 } from "./coin-wallet-migrations.mjs";
 
-export const REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID =
+export const LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID =
   "20260813_002_deferred_resource_transitions";
+export const DEFERRED_RESOURCE_TRANSITION_RISK_A_GATES_MIGRATION_ID =
+  "20260814_003_deferred_resource_transition_risk_a_gates";
+export const REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID =
+  DEFERRED_RESOURCE_TRANSITION_RISK_A_GATES_MIGRATION_ID;
 
 const TRANSITIONS_TABLE = "platform_deferred_resource_transitions";
 const RESERVATIONS_TABLE =
@@ -1082,6 +1085,58 @@ const MIGRATION_STATEMENTS = Object.freeze([
   `
 ]);
 
+// This additive migration deliberately leaves the published v1 DDL and
+// checksum untouched. Existing databases must ledger-match v1 before these
+// additional guards are installed.
+const RISK_A_GATES_MIGRATION_STATEMENTS = Object.freeze([
+  `
+    create trigger deferred_resource_transition_reservations_wallet_account_binding_insert
+    before insert on ${RESERVATIONS_TABLE}
+    when not exists (
+      select 1 from platform_coin_wallets
+       where wallet_ref = new.wallet_ref
+         and account_id = new.account_id
+    )
+    begin
+      select raise(abort, 'deferred_resource_transition_reservation_wallet_account_binding');
+    end
+  `,
+  `
+    create trigger deferred_resource_transition_reservations_initial_state_reserved
+    before insert on ${RESERVATIONS_TABLE}
+    when not (
+      new.state = 'reserved'
+      and new.lease_generation = 0
+      and new.lease_token is null
+      and new.lease_until is null
+    )
+    begin
+      select raise(abort, 'deferred_resource_transition_reservation_initial_state_reserved');
+    end
+  `,
+  `
+    create trigger deferred_resource_transitions_initial_state_reserved
+    before insert on ${TRANSITIONS_TABLE}
+    when not (
+      new.state = 'reserved'
+      and new.rebase_generation = 0
+      and new.lease_generation = 0
+      and new.lease_token is null
+      and new.lease_until is null
+      and new.effect_ref is null
+      and new.effect_entitlement_id is null
+      and new.effect_request_id is null
+      and new.effect_issued_link_id is null
+      and new.effect_valid_until is null
+      and new.safe_code is null
+      and new.settled_at is null
+    )
+    begin
+      select raise(abort, 'deferred_resource_transition_initial_state_reserved');
+    end
+  `
+]);
+
 function normalizeSql(sql) {
   const source = String(sql);
   const literals = [];
@@ -1158,10 +1213,28 @@ const OWNED_OBJECTS = Object.freeze([
   ["trigger", "deferred_resource_transition_operation_receipts_terminal_immutable_update"]
 ]);
 
+const RISK_A_GATES_OWNED_OBJECTS = Object.freeze([
+  ["trigger", "deferred_resource_transition_reservations_wallet_account_binding_insert"],
+  ["trigger", "deferred_resource_transition_reservations_initial_state_reserved"],
+  ["trigger", "deferred_resource_transitions_initial_state_reserved"]
+]);
+
+const ALL_OWNED_OBJECTS = Object.freeze([
+  ...OWNED_OBJECTS,
+  ...RISK_A_GATES_OWNED_OBJECTS
+]);
+
 const EXPECTED_OBJECT_SQL = new Map(
   OWNED_OBJECTS.map(([type, name], index) => [
     `${type}:${name}`,
     normalizeSql(MIGRATION_STATEMENTS[index])
+  ])
+);
+
+const EXPECTED_RISK_A_GATES_OBJECT_SQL = new Map(
+  RISK_A_GATES_OWNED_OBJECTS.map(([type, name], index) => [
+    `${type}:${name}`,
+    normalizeSql(RISK_A_GATES_MIGRATION_STATEMENTS[index])
   ])
 );
 
@@ -1354,10 +1427,26 @@ const DDL_CHECKSUM = createHash("sha256")
   )
   .digest("hex");
 
+const RISK_A_GATES_DDL_CHECKSUM = createHash("sha256")
+  .update(
+    `GCCWEBOS:DEFERRED_RESOURCE_TRANSITION_DDL:v2\0${
+      RISK_A_GATES_MIGRATION_STATEMENTS.map(normalizeSql).join("\0")
+    }`,
+    "utf8"
+  )
+  .digest("hex");
+
+export const REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM =
+  RISK_A_GATES_DDL_CHECKSUM;
+
 export const DEFERRED_RESOURCE_TRANSITION_MIGRATIONS = Object.freeze([
   Object.freeze({
-    id: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
+    id: LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
     ddlChecksum: DDL_CHECKSUM
+  }),
+  Object.freeze({
+    id: DEFERRED_RESOURCE_TRANSITION_RISK_A_GATES_MIGRATION_ID,
+    ddlChecksum: RISK_A_GATES_DDL_CHECKSUM
   })
 ]);
 
@@ -1570,6 +1659,102 @@ function commerceFoundationDependencyIsExact(database) {
   }
 }
 
+const RESOURCE_CHAIN_PARENT_COLUMNS = Object.freeze({
+  platform_entitlements: Object.freeze(["id", "account_id", "status", "valid_until"]),
+  platform_issuance_requests: Object.freeze(["id", "account_id", "entitlement_id"]),
+  platform_issued_subscription_links: Object.freeze(["id", "request_id"])
+});
+
+const RESOURCE_CHAIN_PARENT_FOREIGN_KEYS = Object.freeze({
+  platform_entitlements: Object.freeze([
+    ["account_id", "platform_accounts", "id"]
+  ]),
+  platform_issuance_requests: Object.freeze([
+    ["account_id", "platform_accounts", "id"],
+    ["entitlement_id", "platform_entitlements", "id"]
+  ]),
+  platform_issued_subscription_links: Object.freeze([
+    ["request_id", "platform_issuance_requests", "id"]
+  ])
+});
+
+function tableHasColumns(database, table, expectedColumns) {
+  const row = objectRow(database, "table", table);
+  if (!row) return false;
+  const columns = database.pragma(`table_info(${table})`);
+  return expectedColumns.every((column) => columns.some(({ name }) => name === column))
+    && columns.some(({ name, pk }) => name === "id" && pk === 1);
+}
+
+function tableHasForeignKeys(database, table, expectedForeignKeys) {
+  const actual = database.pragma(`foreign_key_list(${table})`).map(
+    ({ from, table: parentTable, to }) => [from, parentTable, to].join("->")
+  );
+  return expectedForeignKeys.every((entry) => actual.includes(entry.join("->")));
+}
+
+function resourceChainParentDependencyIsExact(database) {
+  try {
+    return Object.entries(RESOURCE_CHAIN_PARENT_COLUMNS).every(([table, columns]) => (
+      tableHasColumns(database, table, columns)
+      && tableHasForeignKeys(
+        database,
+        table,
+        RESOURCE_CHAIN_PARENT_FOREIGN_KEYS[table]
+      )
+    ));
+  } catch {
+    return false;
+  }
+}
+
+function reservationWalletBindingsAreExact(database) {
+  try {
+    return !database.prepare(`
+      select 1
+        from ${RESERVATIONS_TABLE} as reservation
+        left join platform_coin_wallets as wallet
+          on wallet.wallet_ref = reservation.wallet_ref
+       where wallet.account_id is null
+          or wallet.account_id <> reservation.account_id
+       limit 1
+    `).get();
+  } catch {
+    return false;
+  }
+}
+
+function settledTransitionsHaveCaptureAndOutbox(database) {
+  try {
+    return !database.prepare(`
+      select 1
+        from ${TRANSITIONS_TABLE} as transition
+       where transition.state = 'settled'
+         and (
+           not exists (
+             select 1 from ${RESERVATIONS_TABLE} as reservation
+              where reservation.reservation_ref = transition.reservation_ref
+                and reservation.account_id = transition.account_id
+                and reservation.state = 'captured'
+           )
+           or not exists (
+             select 1 from ${REBASES_TABLE} as rebase
+              where rebase.settled_transition_ref = transition.transition_ref
+                and rebase.account_id = transition.account_id
+                and rebase.effect_ref = transition.effect_ref
+                and rebase.effect_entitlement_id = transition.effect_entitlement_id
+                and rebase.effect_request_id = transition.effect_request_id
+                and rebase.effect_issued_link_id = transition.effect_issued_link_id
+                and rebase.effect_valid_until = transition.effect_valid_until
+           )
+         )
+       limit 1
+    `).get();
+  } catch {
+    return false;
+  }
+}
+
 function foreignKeysAreExact(database, table) {
   const actual = database.pragma(`foreign_key_list(${table})`)
     .map((entry) => [entry.from, entry.table, entry.to].join("->"))
@@ -1613,12 +1798,12 @@ function ownedIndexIsExact(database, name) {
     && JSON.stringify(columns) === JSON.stringify(expected.columns);
 }
 
-function ownedTriggerIsExact(database, name) {
+function ownedTriggerIsExact(database, name, expectedSql = EXPECTED_OBJECT_SQL) {
   const row = objectRow(database, "trigger", name);
   return Boolean(
     row
     && row.name === name
-    && normalizeSql(row.sql) === EXPECTED_OBJECT_SQL.get(`trigger:${name}`)
+    && normalizeSql(row.sql) === expectedSql.get(`trigger:${name}`)
   );
 }
 
@@ -1632,6 +1817,13 @@ function ownedObjectsAreExact(database) {
   return OWNED_OBJECTS.every(([type, name]) =>
     ownedObjectIsExact(database, type, name)
   );
+}
+
+function riskAGatesOwnedObjectsAreExact(database) {
+  return RISK_A_GATES_OWNED_OBJECTS.every(([type, name]) => (
+    type === "trigger"
+      && ownedTriggerIsExact(database, name, EXPECTED_RISK_A_GATES_OBJECT_SQL)
+  ));
 }
 
 function integrityChecks(database) {
@@ -1661,55 +1853,94 @@ function closedInspection(database) {
     && walletFoundationDependencyIsExact(database);
   const commerceFoundationDependency = ledgerState === "compatible"
     && commerceFoundationDependencyIsExact(database);
+  const resourceChainParentDependency = ledgerState === "compatible"
+    && resourceChainParentDependencyIsExact(database);
   const foundationDependency = walletFoundationDependency
-    && commerceFoundationDependency;
+    && commerceFoundationDependency
+    && resourceChainParentDependency;
   let migrationRows = 0;
-  let successorRow = null;
+  let baseRow = null;
+  let riskAGatesRow = null;
   if (ledgerState === "compatible") {
     migrationRows = database.prepare(
       "select count(*) from platform_schema_migrations"
     ).pluck().get();
-    successorRow = migrationRow(
+    baseRow = migrationRow(
       database,
-      REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
+      LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
+    );
+    riskAGatesRow = migrationRow(
+      database,
+      DEFERRED_RESOURCE_TRANSITION_RISK_A_GATES_MIGRATION_ID
     );
   } else if (ledgerState === "incompatible") {
     reasons.push("migration_ledger_incompatible");
   }
 
-  const presentTargetNames = OWNED_OBJECTS
+  const presentBaseTargetNames = OWNED_OBJECTS
     .filter(([, name]) => namedObjectRow(database, name));
+  const presentRiskAGatesTargetNames = RISK_A_GATES_OWNED_OBJECTS
+    .filter(([, name]) => namedObjectRow(database, name));
+  const presentTargetNames = [
+    ...presentBaseTargetNames,
+    ...presentRiskAGatesTargetNames
+  ];
   const presentCounts = {
-    tables: OWNED_OBJECTS.filter(([type, name]) =>
+    tables: ALL_OWNED_OBJECTS.filter(([type, name]) =>
       type === "table" && objectRow(database, type, name)
     ).length,
-    indexes: OWNED_OBJECTS.filter(([type, name]) =>
+    indexes: ALL_OWNED_OBJECTS.filter(([type, name]) =>
       type === "index" && objectRow(database, type, name)
     ).length,
-    triggers: OWNED_OBJECTS.filter(([type, name]) =>
+    triggers: ALL_OWNED_OBJECTS.filter(([type, name]) =>
       type === "trigger" && objectRow(database, type, name)
     ).length
   };
+  let pendingMigrationIds = [];
 
   if (!foundationDependency && ledgerState !== "incompatible") {
     reasons.push("migration_dependency_missing");
   }
-  if (
-    foundationDependency
-    && !successorRow
-    && presentTargetNames.length === 0
-  ) {
-    reasons.push("required_migration_missing");
-  } else if (foundationDependency && !successorRow) {
-    reasons.push("owned_object_without_migration");
-  } else if (
-    foundationDependency
-    && successorRow.ddl_checksum !== DDL_CHECKSUM
-  ) {
-    reasons.push("migration_checksum_mismatch");
-  } else if (foundationDependency && !ownedObjectsAreExact(database)) {
-    const missing = OWNED_OBJECTS.some(([type, name]) => !objectRow(database, type, name));
-    reasons.push(missing ? "owned_object_missing" : "owned_object_incompatible");
+  if (foundationDependency) {
+    if (!baseRow) {
+      if (presentTargetNames.length === 0) {
+        reasons.push("required_migration_missing");
+        pendingMigrationIds = [
+          LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
+          DEFERRED_RESOURCE_TRANSITION_RISK_A_GATES_MIGRATION_ID
+        ];
+      } else {
+        reasons.push("owned_object_without_migration");
+      }
+    } else if (baseRow.ddl_checksum !== DDL_CHECKSUM) {
+      reasons.push("migration_checksum_mismatch");
+    } else if (!ownedObjectsAreExact(database)) {
+      const missing = OWNED_OBJECTS.some(([type, name]) => !objectRow(database, type, name));
+      reasons.push(missing ? "owned_object_missing" : "owned_object_incompatible");
+    } else if (!riskAGatesRow) {
+      if (presentRiskAGatesTargetNames.length > 0) {
+        reasons.push("owned_object_without_migration");
+      } else {
+        reasons.push("required_migration_missing");
+        pendingMigrationIds = [
+          DEFERRED_RESOURCE_TRANSITION_RISK_A_GATES_MIGRATION_ID
+        ];
+      }
+    } else if (riskAGatesRow.ddl_checksum !== RISK_A_GATES_DDL_CHECKSUM) {
+      reasons.push("migration_checksum_mismatch");
+    } else if (!riskAGatesOwnedObjectsAreExact(database)) {
+      const missing = RISK_A_GATES_OWNED_OBJECTS.some(
+        ([type, name]) => !objectRow(database, type, name)
+      );
+      reasons.push(missing ? "owned_object_missing" : "owned_object_incompatible");
+    } else {
+      if (!reservationWalletBindingsAreExact(database)) {
+        reasons.push("owned_object_incompatible");
+      }
+      if (!settledTransitionsHaveCaptureAndOutbox(database)) {
+        reasons.push("owned_object_incompatible");
+      }
+    }
   }
 
   const integrity = integrityChecks(database);
@@ -1721,11 +1952,18 @@ function closedInspection(database) {
   }
 
   const reasonCodes = [...new Set(reasons)].sort();
-  const schemaExact = successorRow?.ddl_checksum === DDL_CHECKSUM
-    && ownedObjectsAreExact(database);
+  const schemaExact = baseRow?.ddl_checksum === DDL_CHECKSUM
+    && ownedObjectsAreExact(database)
+    && riskAGatesRow?.ddl_checksum === RISK_A_GATES_DDL_CHECKSUM
+    && riskAGatesOwnedObjectsAreExact(database);
   const checks = {
     walletFoundationDependency,
     commerceFoundationDependency,
+    resourceChainParentDependency,
+    reservationWalletBindings: schemaExact
+      && reservationWalletBindingsAreExact(database),
+    settledTransitionsHaveCaptureAndOutbox: schemaExact
+      && settledTransitionsHaveCaptureAndOutbox(database),
     schemaExact,
     quickCheck: integrity.quickCheck && !integrity.integrityError,
     foreignKeys:
@@ -1736,12 +1974,14 @@ function closedInspection(database) {
     migrationRows,
     foreignKeyViolations: integrity.foreignKeyViolations
   };
-  const pending = foundationDependency
+  const pending = pendingMigrationIds.length > 0
     && reasonCodes.length === 1
     && reasonCodes[0] === "required_migration_missing";
   const ok = foundationDependency
     && reasonCodes.length === 0
     && checks.schemaExact
+    && checks.reservationWalletBindings
+    && checks.settledTransitionsHaveCaptureAndOutbox
     && checks.quickCheck
     && checks.foreignKeys;
 
@@ -1752,9 +1992,7 @@ function closedInspection(database) {
     counts,
     checks,
     reasonCodes,
-    pendingMigrationIds: pending
-      ? [REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID]
-      : []
+    pendingMigrationIds: pending ? pendingMigrationIds : []
   };
 }
 
@@ -1784,6 +2022,9 @@ function closedValidationFailure(reasonCode) {
     checks: {
       walletFoundationDependency: false,
       commerceFoundationDependency: false,
+      resourceChainParentDependency: false,
+      reservationWalletBindings: false,
+      settledTransitionsHaveCaptureAndOutbox: false,
       schemaExact: false,
       quickCheck: false,
       foreignKeys: false
@@ -1848,6 +2089,7 @@ function assertFoundationDependency(database, invocationToken) {
       (inspectionDatabase) => (
         walletFoundationDependencyIsExact(inspectionDatabase)
         && commerceFoundationDependencyIsExact(inspectionDatabase)
+        && resourceChainParentDependencyIsExact(inspectionDatabase)
       ),
       invocationToken
     )
@@ -1857,7 +2099,13 @@ function assertFoundationDependency(database, invocationToken) {
 }
 
 function assertOwnedObjectsAreAbsent(database, invocationToken) {
-  if (OWNED_OBJECTS.some(([, name]) => namedObjectRow(database, name))) {
+  if (ALL_OWNED_OBJECTS.some(([, name]) => namedObjectRow(database, name))) {
+    throw migrationError("owned_object_without_migration", invocationToken);
+  }
+}
+
+function assertRiskAGatesOwnedObjectsAreAbsent(database, invocationToken) {
+  if (RISK_A_GATES_OWNED_OBJECTS.some(([, name]) => namedObjectRow(database, name))) {
     throw migrationError("owned_object_without_migration", invocationToken);
   }
 }
@@ -1874,51 +2122,88 @@ function applyWithDatabase(database, nowFn, invocationToken) {
   database.pragma("foreign_keys = ON");
   const migrate = database.transaction(() => {
     assertFoundationDependency(database, invocationToken);
-    const applied = migrationRow(
+    const appliedMigrationIds = [];
+    let appliedAt = null;
+    const insertLedgerRow = (migrationId, ddlChecksum) => {
+      appliedAt ??= normalizeAppliedAt(nowFn, invocationToken);
+      database.prepare(`
+        insert into platform_schema_migrations
+          (migration_id, ddl_checksum, applied_at)
+        values (?, ?, ?)
+      `).run(migrationId, ddlChecksum, appliedAt);
+    };
+
+    const baseApplied = migrationRow(
       database,
-      REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
+      LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
     );
-    if (applied) {
-      if (applied.ddl_checksum !== DDL_CHECKSUM) {
+    if (baseApplied) {
+      if (baseApplied.ddl_checksum !== DDL_CHECKSUM) {
         throw migrationError("migration_checksum_mismatch", invocationToken);
       }
-      if (
-        !inspectForApply(
-          database,
-          (inspectionDatabase) => inspectDeferredResourceTransitionSchema({
-            database: inspectionDatabase
-          }),
-          invocationToken
-        ).ok
-      ) {
+      if (!inspectForApply(
+        database,
+        (inspectionDatabase) => ownedObjectsAreExact(inspectionDatabase),
+        invocationToken
+      )) {
         throw migrationError("applied_schema_incompatible", invocationToken);
       }
-      return [];
+    } else {
+      assertOwnedObjectsAreAbsent(database, invocationToken);
+      for (const statement of MIGRATION_STATEMENTS) database.exec(statement);
+      insertLedgerRow(LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID, DDL_CHECKSUM);
+      if (!inspectForApply(
+        database,
+        (inspectionDatabase) => ownedObjectsAreExact(inspectionDatabase),
+        invocationToken
+      )) {
+        throw migrationError("applied_schema_incompatible", invocationToken);
+      }
+      appliedMigrationIds.push(LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID);
     }
 
-    assertOwnedObjectsAreAbsent(database, invocationToken);
-    for (const statement of MIGRATION_STATEMENTS) database.exec(statement);
-    database.prepare(`
-      insert into platform_schema_migrations
-        (migration_id, ddl_checksum, applied_at)
-      values (?, ?, ?)
-    `).run(
-      REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-      DDL_CHECKSUM,
-      normalizeAppliedAt(nowFn, invocationToken)
+    const riskAGatesApplied = migrationRow(
+      database,
+      DEFERRED_RESOURCE_TRANSITION_RISK_A_GATES_MIGRATION_ID
     );
-    if (
-      !inspectForApply(
+    if (riskAGatesApplied) {
+      if (riskAGatesApplied.ddl_checksum !== RISK_A_GATES_DDL_CHECKSUM) {
+        throw migrationError("migration_checksum_mismatch", invocationToken);
+      }
+      if (!inspectForApply(
         database,
-        (inspectionDatabase) => inspectDeferredResourceTransitionSchema({
-          database: inspectionDatabase
-        }),
+        (inspectionDatabase) => riskAGatesOwnedObjectsAreExact(inspectionDatabase),
         invocationToken
-      ).ok
-    ) {
+      )) {
+        throw migrationError("applied_schema_incompatible", invocationToken);
+      }
+    } else {
+      assertRiskAGatesOwnedObjectsAreAbsent(database, invocationToken);
+      for (const statement of RISK_A_GATES_MIGRATION_STATEMENTS) database.exec(statement);
+      insertLedgerRow(
+        DEFERRED_RESOURCE_TRANSITION_RISK_A_GATES_MIGRATION_ID,
+        RISK_A_GATES_DDL_CHECKSUM
+      );
+      if (!inspectForApply(
+        database,
+        (inspectionDatabase) => riskAGatesOwnedObjectsAreExact(inspectionDatabase),
+        invocationToken
+      )) {
+        throw migrationError("applied_schema_incompatible", invocationToken);
+      }
+      appliedMigrationIds.push(DEFERRED_RESOURCE_TRANSITION_RISK_A_GATES_MIGRATION_ID);
+    }
+
+    if (!inspectForApply(
+      database,
+      (inspectionDatabase) => inspectDeferredResourceTransitionSchema({
+        database: inspectionDatabase
+      }),
+      invocationToken
+    ).ok) {
       throw migrationError("applied_schema_incompatible", invocationToken);
     }
-    return [REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID];
+    return appliedMigrationIds;
   });
   return migrate.immediate();
 }
@@ -1933,7 +2218,7 @@ export function applyDeferredResourceTransitionMigrations({
   if (expectedMigrationId !== REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID) {
     throw safeMigrationError("migration_id_mismatch");
   }
-  if (expectedDdlChecksum !== DDL_CHECKSUM) {
+  if (expectedDdlChecksum !== RISK_A_GATES_DDL_CHECKSUM) {
     throw safeMigrationError("migration_checksum_mismatch");
   }
   if (typeof nowFn !== "function" || (!database && dbPath === undefined)) {
@@ -1965,7 +2250,7 @@ export function applyDeferredResourceTransitionMigrations({
     return {
       ...inspection,
       mode: "apply",
-      sourceChanged: appliedMigrationIds.length === 1,
+      sourceChanged: appliedMigrationIds.length > 0,
       appliedMigrationIds
     };
   } catch (error) {
@@ -1985,10 +2270,6 @@ function assertAbsoluteTempRoot(root, invocationToken) {
   if (typeof root !== "string" || !isAbsolute(root)) {
     throw migrationError("invalid_temp_root", invocationToken);
   }
-}
-
-function sha256File(filePath) {
-  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 
 function sourceInspectionState(database) {
@@ -2040,18 +2321,16 @@ export async function dryRunDeferredResourceTransitionMigrations({
       join(root, "deferred-resource-transition-dry-run-")
     );
     const snapshotPath = join(workDirectory, "snapshot.sqlite");
-    const sourceHashBefore = sha256File(dbPath);
     source = new Database(dbPath, { readonly: true, fileMustExist: true });
     assertFoundationDependency(source, invocationToken);
     const sourceInspectionBefore =
       inspectDeferredResourceTransitionSchema({ database: source });
     const sourceStateBefore = sourceInspectionState(source);
-    const wasApplied = sourceInspectionBefore.ok;
     await source.backup(snapshotPath);
     const applied = applyDeferredResourceTransitionMigrations({
       dbPath: snapshotPath,
       expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-      expectedDdlChecksum: DDL_CHECKSUM
+      expectedDdlChecksum: RISK_A_GATES_DDL_CHECKSUM
     });
     const validated = validateDeferredResourceTransitionSchema({
       dbPath: snapshotPath
@@ -2059,22 +2338,17 @@ export async function dryRunDeferredResourceTransitionMigrations({
     if (!validated.ok) {
       throw migrationError("applied_schema_incompatible", invocationToken);
     }
-    if (
-      sha256File(dbPath) !== sourceHashBefore
-      || !sourceInspectionStateIsUnchanged(
-        sourceStateBefore,
-        sourceInspectionState(source)
-      )
-    ) {
+    if (!sourceInspectionStateIsUnchanged(
+      sourceStateBefore,
+      sourceInspectionState(source)
+    )) {
       throw migrationError("source_changed_during_dry_run", invocationToken);
     }
     return {
       ...validated,
       mode: "dry-run",
       sourceChanged: false,
-      pendingMigrationIds: wasApplied
-        ? []
-        : [REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID],
+      pendingMigrationIds: sourceInspectionBefore.pendingMigrationIds,
       appliedMigrationIds: applied.appliedMigrationIds
     };
   } catch (error) {

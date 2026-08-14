@@ -178,6 +178,7 @@ function sendDeferredStoreError(res, error, { offerLookup = false } = {}) {
   if (
     code === "deferred_reservation_invalid"
     || code === "deferred_reservation_capture_invalid"
+    || code === "deferred_transition_account_not_eligible"
     || code === "reconciliation_required"
   ) {
     sendCommerceError(res, 423, "reconciliation_required");
@@ -1268,6 +1269,8 @@ export function portalCoinCommerceRoutes(state, options = {}) {
     "/api/portal/catalog/offers",
     requireNoQuery,
     requireSession,
+    resolveCommerceModel,
+    requireLegacyCommerceModel,
     (_req, res) => {
       try {
         const offers = projectOfferList(
@@ -1286,6 +1289,8 @@ export function portalCoinCommerceRoutes(state, options = {}) {
     "/api/portal/catalog/offers/:offerRef",
     requireNoQuery,
     requireSession,
+    resolveCommerceModel,
+    requireLegacyCommerceModel,
     (req, res) => {
       try {
         const offer = projectOffer(

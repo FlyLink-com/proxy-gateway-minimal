@@ -15,7 +15,7 @@ import {
   createDeferredResourceTransitionCoordinator
 } from "../services/platform/deferred-resource-transition-coordinator.mjs";
 import {
-  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
   applyDeferredResourceTransitionMigrations
 } from "../services/platform/deferred-resource-transition-migrations.mjs";
@@ -124,7 +124,7 @@ function createFoundation({ databasePath = ":memory:" } = {}) {
   applyDeferredResourceTransitionMigrations({
     database,
     expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-    expectedDdlChecksum: DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum,
+    expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
     nowFn: () => new Date(NOW)
   });
   return database;
@@ -299,8 +299,6 @@ function reserveScheduledSwitch(store, {
     orderRef,
     offerVersionRef: PLAN.offerVersionRef,
     flowKind: "scheduled_switch",
-    amountUnits: PLAN.baseCoinUnits,
-    offerSnapshot: offerSnapshot(),
     scheduledFor: chain.validUntil,
     expectedEntitlementId: chain.entitlementId,
     expectedRequestId: chain.requestId,
@@ -339,8 +337,6 @@ test("coordinator composes with the concrete wallet reservation participant insi
       orderRef: "order_coordinator_integration",
       offerVersionRef: PLAN.offerVersionRef,
       flowKind: "initial_activation",
-      amountUnits: PLAN.baseCoinUnits,
-      offerSnapshot: offerSnapshot(),
       scheduledFor: NOW,
       expectedEntitlementId: null,
       expectedRequestId: null,
@@ -474,8 +470,6 @@ test("a restart after durable effect recording captures from the store receipt w
       orderRef: "order_coordinator_effect_recovery",
       offerVersionRef: PLAN.offerVersionRef,
       flowKind: "initial_activation",
-      amountUnits: PLAN.baseCoinUnits,
-      offerSnapshot: offerSnapshot(),
       scheduledFor: NOW,
       expectedEntitlementId: null,
       expectedRequestId: null,

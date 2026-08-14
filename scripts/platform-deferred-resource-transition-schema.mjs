@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
   applyDeferredResourceTransitionMigrations,
   dryRunDeferredResourceTransitionMigrations,
@@ -13,7 +14,10 @@ const EXIT_SUCCESS = 0;
 const EXIT_CONTRACT_REJECTED = 2;
 const EXIT_SCHEMA_REJECTED = 3;
 const EXIT_INFRASTRUCTURE_FAILURE = 4;
-const DDL_CHECKSUM = DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum;
+const DDL_CHECKSUM = REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM;
+const MIGRATION_IDS = Object.freeze(
+  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS.map(({ id }) => id)
+);
 const FLAGS = new Set([
   "--mode",
   "--db-path",
@@ -25,6 +29,9 @@ const MODES = new Set(["validate", "dry-run", "apply"]);
 const CHECK_KEYS = Object.freeze([
   "walletFoundationDependency",
   "commerceFoundationDependency",
+  "resourceChainParentDependency",
+  "reservationWalletBindings",
+  "settledTransitionsHaveCaptureAndOutbox",
   "schemaExact",
   "quickCheck",
   "foreignKeys"
@@ -212,6 +219,22 @@ function safeCheck(checks, key) {
   }
 }
 
+function knownMigrationIds(value) {
+  return safeArray(value, (id) => MIGRATION_IDS.includes(id));
+}
+
+function isOrderedMigrationSuffix(ids) {
+  return ids.length > 0
+    && ids.length <= MIGRATION_IDS.length
+    && ids.every((id, index) => (
+      id === MIGRATION_IDS[MIGRATION_IDS.length - ids.length + index]
+    ));
+}
+
+function isExpectedAppliedMigrationIds(ids) {
+  return ids.length === 0 || isOrderedMigrationSuffix(ids);
+}
+
 function closedOutput({
   ok = false,
   mode = null,
@@ -232,14 +255,8 @@ function closedOutput({
     sourceChanged: sourceChanged === true,
     checks: Object.fromEntries(CHECK_KEYS.map((key) => [key, safeCheck(checks, key)])),
     reasonCodes: safeArray(reasonCodes, (code) => SAFE_REASON_CODES.has(code)),
-    appliedMigrationIds: safeArray(
-      appliedMigrationIds,
-      (id) => id === REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
-    ),
-    pendingMigrationIds: safeArray(
-      pendingMigrationIds,
-      (id) => id === REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
-    )
+    appliedMigrationIds: knownMigrationIds(appliedMigrationIds),
+    pendingMigrationIds: knownMigrationIds(pendingMigrationIds)
   };
 }
 
@@ -314,16 +331,24 @@ function readResult(result, { target = false } = {}) {
   if (!reasonCodes.every((code) => OPERATION_REASON_CODES.has(code))) {
     throw new Error("invalid schema result");
   }
+  const appliedMigrationIds = readArray(result, "appliedMigrationIds", {
+    optional: !target
+  });
+  const pendingMigrationIds = readArray(result, "pendingMigrationIds");
+  if (
+    !appliedMigrationIds.every((id) => MIGRATION_IDS.includes(id))
+    || !pendingMigrationIds.every((id) => MIGRATION_IDS.includes(id))
+  ) {
+    throw new Error("invalid schema result");
+  }
   return {
     ok: result.ok,
     schemaState: result.schemaState,
     sourceChanged: result.sourceChanged === true,
     checks: readChecks(result),
     reasonCodes,
-    appliedMigrationIds: readArray(result, "appliedMigrationIds", {
-      optional: !target
-    }),
-    pendingMigrationIds: readArray(result, "pendingMigrationIds")
+    appliedMigrationIds,
+    pendingMigrationIds
   };
 }
 
@@ -340,14 +365,15 @@ function exactPending(result) {
     && result.schemaState === "pending"
     && result.checks.walletFoundationDependency
     && result.checks.commerceFoundationDependency
+    && result.checks.resourceChainParentDependency
+    && result.checks.reservationWalletBindings === false
+    && result.checks.settledTransitionsHaveCaptureAndOutbox === false
     && !result.checks.schemaExact
     && result.checks.quickCheck
     && result.checks.foreignKeys
     && result.reasonCodes.length === 1
     && result.reasonCodes[0] === "required_migration_missing"
-    && result.pendingMigrationIds.length === 1
-    && result.pendingMigrationIds[0]
-      === REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID;
+    && isOrderedMigrationSuffix(result.pendingMigrationIds);
 }
 
 function validationOutcome(result, mode) {
@@ -393,13 +419,10 @@ function targetOutcome(result, mode) {
     && checksAreReady(result.checks)
     && result.reasonCodes.length === 0
   ) {
-    const idsAreExact = (ids) => ids.length === 0 || (
-      ids.length === 1
-      && ids[0] === REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
-    );
+    const idsAreExact = isExpectedAppliedMigrationIds;
     const sourceStateExact = mode === "dry-run"
       ? result.sourceChanged === false
-      : result.sourceChanged === (result.appliedMigrationIds.length === 1);
+      : result.sourceChanged === (result.appliedMigrationIds.length > 0);
     const dryRunListsAgree = mode !== "dry-run" || (
       result.appliedMigrationIds.length === result.pendingMigrationIds.length
       && result.appliedMigrationIds.every(

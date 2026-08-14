@@ -137,7 +137,12 @@ function migrationRow(database) {
 
 function exactDependency(database) {
   try {
-    const expected = WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATIONS[0];
+    const expected = WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATIONS.find(
+      ({ migrationId }) => (
+        migrationId === REQUIRED_WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATION_ID
+      )
+    );
+    if (!expected) return false;
     const row = database.prepare(`
       select ddl_checksum from platform_schema_migrations where migration_id = ?
     `).get(REQUIRED_WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATION_ID);
@@ -329,6 +334,25 @@ function sha256File(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function sourceInspectionState(database, inspection = null) {
+  return {
+    dataVersion: database.pragma("data_version", { simple: true }),
+    schemaVersion: database.pragma("schema_version", { simple: true }),
+    inspection: inspection ?? inspectWalletFirstResourceEffectRuntimeClaimsSchema({ database })
+  };
+}
+
+function sourceInspectionStateIsUnchanged(before, after) {
+  return before.dataVersion === after.dataVersion
+    && before.schemaVersion === after.schemaVersion
+    && JSON.stringify(before.inspection) === JSON.stringify(after.inspection);
+}
+
+function sourceLogicalStateIsUnchanged(before, after) {
+  return before.schemaVersion === after.schemaVersion
+    && JSON.stringify(before.inspection) === JSON.stringify(after.inspection);
+}
+
 function removeOwnedDirectory(directory, root) {
   const child = relative(resolve(root), resolve(directory));
   if (child.length === 0 || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child)) {
@@ -346,21 +370,50 @@ export async function dryRunWalletFirstResourceEffectRuntimeClaimsMigrations({
   if (typeof root !== "string" || !isAbsolute(root)) throw migrationError("invalid_temp_root");
   let directory;
   let source;
+  let sourceReadTransaction = false;
   try {
     mkdirSync(root, { recursive: true });
     directory = mkdtempSync(join(root, "wallet-first-runtime-claims-dry-run-"));
     const snapshot = join(directory, "snapshot.sqlite");
-    const sourceHash = sha256File(dbPath);
+    const verificationSnapshot = join(directory, "verification.sqlite");
     source = new Database(dbPath, { readonly: true, fileMustExist: true });
+    source.exec("begin");
+    sourceReadTransaction = true;
     const before = inspectWalletFirstResourceEffectRuntimeClaimsSchema({ database: source });
+    const sourceStateBefore = sourceInspectionState(source, before);
     await source.backup(snapshot);
+    const sourceSnapshotHash = sha256File(snapshot);
+    const sourceStateAfter = sourceInspectionState(source);
+    source.exec("rollback");
+    sourceReadTransaction = false;
     const applied = applyWalletFirstResourceEffectRuntimeClaimsMigrations({
       dbPath: snapshot,
       expectedMigrationId: REQUIRED_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATION_ID,
       expectedDdlChecksum: DDL_CHECKSUM
     });
     const validated = validateWalletFirstResourceEffectRuntimeClaimsSchema({ dbPath: snapshot });
-    if (!validated.ok || sha256File(dbPath) !== sourceHash) {
+    const verification = new Database(dbPath, { readonly: true, fileMustExist: true });
+    let verificationState;
+    let sourceSnapshotUnchanged;
+    try {
+      verificationState = sourceInspectionState(verification);
+      await verification.backup(verificationSnapshot);
+      sourceSnapshotUnchanged = sha256File(verificationSnapshot) === sourceSnapshotHash;
+    } finally {
+      verification.close();
+    }
+    if (
+      !validated.ok
+      || !sourceInspectionStateIsUnchanged(
+        sourceStateBefore,
+        sourceStateAfter
+      )
+      || !sourceLogicalStateIsUnchanged(
+        sourceStateBefore,
+        verificationState
+      )
+      || !sourceSnapshotUnchanged
+    ) {
       throw migrationError("source_changed_during_dry_run");
     }
     return {
@@ -373,6 +426,13 @@ export async function dryRunWalletFirstResourceEffectRuntimeClaimsMigrations({
       appliedMigrationIds: applied.appliedMigrationIds
     };
   } finally {
+    if (sourceReadTransaction) {
+      try {
+        source?.exec("rollback");
+      } catch {
+        // Preserve the primary closed operation error while releasing a read-only snapshot.
+      }
+    }
     source?.close();
     if (directory) removeOwnedDirectory(directory, root);
   }

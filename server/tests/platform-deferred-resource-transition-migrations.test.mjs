@@ -23,7 +23,8 @@ import {
 import {
   DEFERRED_RESOURCE_TRANSITION_REBASE_OUTBOX_SCHEMA,
   DEFERRED_RESOURCE_TRANSITION_RESERVATION_SCHEMA,
-  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
   applyDeferredResourceTransitionMigrations,
   dryRunDeferredResourceTransitionMigrations,
@@ -84,7 +85,32 @@ function createWalletFoundation(dbPath) {
   });
 }
 
-function createCommerceFoundation(dbPath) {
+function createResourceChainParentFoundation(dbPath) {
+  const database = new Database(dbPath);
+  try {
+    database.exec(`
+      create table platform_entitlements (
+        id text primary key,
+        account_id text not null references platform_accounts(id),
+        status text not null,
+        valid_until text not null
+      );
+      create table platform_issuance_requests (
+        id text primary key,
+        account_id text not null references platform_accounts(id),
+        entitlement_id text not null references platform_entitlements(id)
+      );
+      create table platform_issued_subscription_links (
+        id text primary key,
+        request_id text not null references platform_issuance_requests(id)
+      );
+    `);
+  } finally {
+    database.close();
+  }
+}
+
+function createCommerceFoundation(dbPath, { withResourceChainParents = true } = {}) {
   createWalletFoundation(dbPath);
   applyCoinCommerceMigrations({
     dbPath,
@@ -92,16 +118,29 @@ function createCommerceFoundation(dbPath) {
     expectedDdlChecksum: COIN_COMMERCE_MIGRATIONS[0].ddlChecksum,
     nowFn: () => new Date(APPLIED_AT)
   });
+  if (withResourceChainParents) createResourceChainParentFoundation(dbPath);
 }
 
 function applyDeferredMigration(dbPath) {
   return applyDeferredResourceTransitionMigrations({
     dbPath,
     expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-    expectedDdlChecksum:
-      DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum,
+    expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
     nowFn: () => new Date(APPLIED_AT)
   });
+}
+
+function ensureSyntheticWallet(database) {
+  database.prepare(`
+    insert or ignore into platform_accounts (
+      id, owner_ref, status, created_at, updated_at, metadata_json
+    ) values ('account_synthetic', 'owner_synthetic', 'active', ?, ?, '{}')
+  `).run(APPLIED_AT, APPLIED_AT);
+  database.prepare(`
+    insert or ignore into platform_coin_wallets (
+      wallet_ref, account_id, status, version, created_at, updated_at
+    ) values ('wallet_synthetic', 'account_synthetic', 'active', 0, ?, ?)
+  `).run(APPLIED_AT, APPLIED_AT);
 }
 
 function insertSyntheticReservation(database, {
@@ -113,7 +152,7 @@ function insertSyntheticReservation(database, {
   rebaseGeneration = 0,
   state = "reserved"
 }) {
-  const processing = state === "processing";
+  ensureSyntheticWallet(database);
   database.prepare(`
     insert into ${RESERVATIONS_TABLE} (
       reservation_ref, account_id, wallet_ref, source_type, source_ref,
@@ -130,10 +169,10 @@ function insertSyntheticReservation(database, {
     activationAt,
     expiresAt,
     rebaseGeneration,
-    state,
-    processing ? 1 : 0,
-    processing ? "b".repeat(64) : null,
-    processing ? "2026-08-13T00:01:00.000Z" : null,
+    "reserved",
+    0,
+    null,
+    null,
     APPLIED_AT,
     APPLIED_AT
   );
@@ -201,8 +240,9 @@ function insertSyntheticTransition(database, {
   reservationRef = `reservation_${transitionRef}`,
   state
 }) {
-  const processing = state === "processing";
-  database.prepare(`
+  ensureSyntheticWallet(database);
+  const insert = database.transaction(() => {
+    database.prepare(`
     insert into ${TRANSITIONS_TABLE} (
       transition_ref, account_id, order_ref, reservation_ref, offer_version_ref,
       commercial_model, flow_kind, plan_rank, amount_units,
@@ -228,13 +268,29 @@ function insertSyntheticTransition(database, {
     APPLIED_AT,
     APPLIED_AT,
     0,
-    state,
-    processing ? 1 : 0,
-    processing ? "a".repeat(64) : null,
-    processing ? "2026-08-13T00:01:00.000Z" : null,
+    "reserved",
+    0,
+    null,
+    null,
     APPLIED_AT,
     APPLIED_AT
   );
+    if (state === "processing") {
+      database.prepare(`
+        update ${TRANSITIONS_TABLE}
+           set state = 'processing', lease_generation = 1,
+               lease_token = ?, lease_until = ?, updated_at = ?
+         where transition_ref = ? and state = 'reserved'
+      `).run("a".repeat(64), "2026-08-13T00:01:00.000Z", APPLIED_AT, transitionRef);
+      database.prepare(`
+        update ${RESERVATIONS_TABLE}
+           set state = 'processing', lease_generation = 1,
+               lease_token = ?, lease_until = ?, updated_at = ?
+         where reservation_ref = ? and state = 'reserved'
+      `).run("b".repeat(64), "2026-08-13T00:01:00.000Z", APPLIED_AT, reservationRef);
+    }
+  });
+  insert.immediate();
 }
 
 function insertSyntheticRebase(database, {
@@ -292,9 +348,164 @@ test("deferred-transition successor reports Commerce foundation state as pending
     assert.equal(inspected.schemaState, "pending");
     assert.deepEqual(inspected.reasonCodes, ["required_migration_missing"]);
     assert.deepEqual(inspected.pendingMigrationIds, [
+      LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
       REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
     ]);
     assert.equal(fileSha256(dbPath), before);
+  });
+});
+
+test("deferred-transition successor requires resource-chain parent tables before apply", async () => {
+  await withOwnedDatabase(async ({ dbPath }) => {
+    createCommerceFoundation(dbPath, { withResourceChainParents: false });
+
+    const inspected = validateDeferredResourceTransitionSchema({ dbPath });
+
+    assert.equal(inspected.ok, false);
+    assert.equal(inspected.schemaState, "blocked");
+    assert.deepEqual(inspected.reasonCodes, ["migration_dependency_missing"]);
+    assert.throws(
+      () => applyDeferredMigration(dbPath),
+      (error) => error?.code === "migration_dependency_missing"
+    );
+  });
+});
+
+test("deferred-transition successor rejects resource parents without resolvable keys and lineage FKs", async () => {
+  await withOwnedDatabase(async ({ dbPath }) => {
+    createCommerceFoundation(dbPath, { withResourceChainParents: false });
+    const database = new Database(dbPath);
+    try {
+      database.exec(`
+        create table platform_entitlements (
+          id text not null,
+          account_id text not null,
+          status text not null,
+          valid_until text not null
+        );
+        create table platform_issuance_requests (
+          id text primary key,
+          account_id text not null,
+          entitlement_id text not null
+        );
+        create table platform_issued_subscription_links (
+          id text primary key,
+          request_id text not null
+        );
+      `);
+    } finally {
+      database.close();
+    }
+
+    const inspected = validateDeferredResourceTransitionSchema({ dbPath });
+
+    assert.equal(inspected.ok, false);
+    assert.equal(inspected.schemaState, "blocked");
+    assert.equal(inspected.checks.resourceChainParentDependency, false);
+    assert.deepEqual(inspected.reasonCodes, ["migration_dependency_missing"]);
+    assert.throws(
+      () => applyDeferredMigration(dbPath),
+      (error) => error?.code === "migration_dependency_missing"
+    );
+  });
+});
+
+test("deferred-transition schema rejects cross-account reservations and initial settled transitions", async () => {
+  await withOwnedDatabase(async ({ dbPath }) => {
+    createCommerceFoundation(dbPath);
+    applyDeferredMigration(dbPath);
+    const database = new Database(dbPath);
+    try {
+      const insertAccount = database.prepare(`
+        insert into platform_accounts (
+          id, owner_ref, status, created_at, updated_at, metadata_json
+        ) values (?, ?, 'active', ?, ?, '{}')
+      `);
+      const insertWallet = database.prepare(`
+        insert into platform_coin_wallets (
+          wallet_ref, account_id, status, version, created_at, updated_at
+        ) values (?, ?, 'active', 0, ?, ?)
+      `);
+      insertAccount.run("account_reservation_owner", "owner_reservation_owner", APPLIED_AT, APPLIED_AT);
+      insertAccount.run("account_other_wallet", "owner_other_wallet", APPLIED_AT, APPLIED_AT);
+      insertWallet.run("wallet_reservation_owner", "account_reservation_owner", APPLIED_AT, APPLIED_AT);
+      insertWallet.run("wallet_other_owner", "account_other_wallet", APPLIED_AT, APPLIED_AT);
+
+      assert.throws(
+        () => database.prepare(`
+          insert into ${RESERVATIONS_TABLE} (
+            reservation_ref, account_id, wallet_ref, source_type, source_ref,
+            amount_units, activation_at, expires_at, rebase_generation,
+            state, lease_generation, lease_token, lease_until, created_at, updated_at
+          ) values (?, ?, ?, 'deferred_resource_transition', ?, 10, ?, ?, 0,
+            'reserved', 0, null, null, ?, ?)
+        `).run(
+          "reservation_cross_account_wallet",
+          "account_reservation_owner",
+          "wallet_other_owner",
+          "transition_cross_account_wallet",
+          APPLIED_AT,
+          "2026-08-14T00:00:00.000Z",
+          APPLIED_AT,
+          APPLIED_AT
+        ),
+        /deferred_resource_transition_reservation_wallet_account_binding/u
+      );
+
+      database.prepare(`
+        insert into ${RESERVATIONS_TABLE} (
+          reservation_ref, account_id, wallet_ref, source_type, source_ref,
+          amount_units, activation_at, expires_at, rebase_generation,
+          state, lease_generation, lease_token, lease_until, created_at, updated_at
+        ) values (?, ?, ?, 'deferred_resource_transition', ?, 10, ?, ?, 0,
+          'reserved', 0, null, null, ?, ?)
+      `).run(
+        "reservation_initial_settled",
+        "account_reservation_owner",
+        "wallet_reservation_owner",
+        "transition_initial_settled",
+        APPLIED_AT,
+        "2026-08-14T00:00:00.000Z",
+        APPLIED_AT,
+        APPLIED_AT
+      );
+      database.pragma("foreign_keys = OFF");
+      assert.throws(
+        () => database.prepare(`
+          insert into ${TRANSITIONS_TABLE} (
+            transition_ref, account_id, order_ref, reservation_ref, offer_version_ref,
+            commercial_model, flow_kind, plan_rank, amount_units,
+            offer_snapshot_json, allocation_snapshot_json, reserved_at, scheduled_for,
+            expected_entitlement_id, expected_request_id, expected_issued_link_id,
+            expected_valid_until, rebase_generation, state, lease_generation,
+            lease_token, lease_until, effect_ref, effect_entitlement_id,
+            effect_request_id, effect_issued_link_id, effect_valid_until,
+            safe_code, settled_at, created_at, updated_at
+          ) values (?, ?, ?, ?, ?, 'wallet_first_unique_v1', 'initial_activation', 1, 10,
+            '{}', '[]', ?, ?, null, null, null, null, 0, 'settled', 0,
+            null, null, ?, ?, ?, ?, ?, null, ?, ?, ?)
+        `).run(
+          "transition_initial_settled",
+          "account_reservation_owner",
+          "order_initial_settled",
+          "reservation_initial_settled",
+          "offer_initial_settled",
+          APPLIED_AT,
+          APPLIED_AT,
+          "effect_initial_settled",
+          "entitlement_initial_settled",
+          "request_initial_settled",
+          "link_initial_settled",
+          "2026-09-13T00:00:00.000Z",
+          APPLIED_AT,
+          APPLIED_AT,
+          APPLIED_AT
+        ),
+        /deferred_resource_transition_initial_state_reserved/u
+      );
+    } finally {
+      database.close();
+    }
   });
 });
 
@@ -306,6 +517,7 @@ test("deferred-transition successor applies exact schema idempotently", async ()
     assert.equal(first.ok, true);
     assert.equal(first.sourceChanged, true);
     assert.deepEqual(first.appliedMigrationIds, [
+      LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
       REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
     ]);
     const second = applyDeferredMigration(dbPath);
@@ -386,6 +598,222 @@ test("deferred-transition successor applies exact schema idempotently", async ()
       );
     } finally {
       database.close();
+    }
+  });
+});
+
+test("an exact legacy deferred schema upgrades only the Risk A successor and replays safely", async () => {
+  await withOwnedDatabase(async ({ dbPath }) => {
+    createCommerceFoundation(dbPath);
+    applyDeferredMigration(dbPath);
+    const database = new Database(dbPath);
+    let legacyChecksum;
+    try {
+      database.exec(`
+        drop trigger deferred_resource_transition_reservations_wallet_account_binding_insert;
+        drop trigger deferred_resource_transition_reservations_initial_state_reserved;
+        drop trigger deferred_resource_transitions_initial_state_reserved;
+      `);
+      database.prepare(`
+        delete from platform_schema_migrations where migration_id = ?
+      `).run(REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID);
+      legacyChecksum = database.prepare(`
+        select ddl_checksum from platform_schema_migrations where migration_id = ?
+      `).pluck().get(LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID);
+    } finally {
+      database.close();
+    }
+
+    const pending = validateDeferredResourceTransitionSchema({ dbPath });
+    assert.equal(pending.ok, false);
+    assert.equal(pending.schemaState, "pending");
+    assert.deepEqual(pending.pendingMigrationIds, [
+      REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
+    ]);
+
+    const upgraded = applyDeferredMigration(dbPath);
+    assert.equal(upgraded.ok, true);
+    assert.deepEqual(upgraded.appliedMigrationIds, [
+      REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
+    ]);
+    const replay = applyDeferredMigration(dbPath);
+    assert.equal(replay.ok, true);
+    assert.equal(replay.sourceChanged, false);
+    assert.deepEqual(replay.appliedMigrationIds, []);
+
+    const verified = new Database(dbPath, { readonly: true, fileMustExist: true });
+    try {
+      assert.equal(
+        verified.prepare(`
+          select ddl_checksum from platform_schema_migrations where migration_id = ?
+        `).pluck().get(LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID),
+        legacyChecksum
+      );
+      assert.equal(
+        verified.prepare(`
+          select ddl_checksum from platform_schema_migrations where migration_id = ?
+        `).pluck().get(REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID),
+        REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM
+      );
+    } finally {
+      verified.close();
+    }
+  });
+});
+
+test("a legacy migration checksum mismatch fails closed before the Risk A successor is installed", async () => {
+  await withOwnedDatabase(async ({ dbPath }) => {
+    createCommerceFoundation(dbPath);
+    applyDeferredMigration(dbPath);
+    const database = new Database(dbPath);
+    try {
+      database.exec(`
+        drop trigger deferred_resource_transition_reservations_wallet_account_binding_insert;
+        drop trigger deferred_resource_transition_reservations_initial_state_reserved;
+        drop trigger deferred_resource_transitions_initial_state_reserved;
+      `);
+      database.prepare(`
+        delete from platform_schema_migrations where migration_id = ?
+      `).run(REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID);
+      database.prepare(`
+        update platform_schema_migrations
+           set ddl_checksum = 'mismatched_legacy_checksum'
+         where migration_id = ?
+      `).run(LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID);
+    } finally {
+      database.close();
+    }
+
+    const inspected = validateDeferredResourceTransitionSchema({ dbPath });
+    assert.equal(inspected.ok, false);
+    assert.equal(inspected.schemaState, "blocked");
+    assert.deepEqual(inspected.reasonCodes, ["migration_checksum_mismatch"]);
+    assert.throws(
+      () => applyDeferredMigration(dbPath),
+      (error) => error?.code === "migration_checksum_mismatch"
+    );
+
+    const verified = new Database(dbPath, { readonly: true, fileMustExist: true });
+    try {
+      assert.equal(
+        verified.prepare(`
+          select count(*) from platform_schema_migrations where migration_id = ?
+        `).pluck().get(REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID),
+        0
+      );
+      assert.equal(
+        verified.prepare(`
+          select count(*) from sqlite_master
+           where type = 'trigger' and name = ?
+        `).pluck().get("deferred_resource_transitions_initial_state_reserved"),
+        0
+      );
+    } finally {
+      verified.close();
+    }
+  });
+});
+
+test("an unsafe legacy initial settlement blocks the Risk A upgrade instead of bypassing capture and outbox", async () => {
+  await withOwnedDatabase(async ({ dbPath }) => {
+    createCommerceFoundation(dbPath);
+    applyDeferredMigration(dbPath);
+    const database = new Database(dbPath);
+    try {
+      database.exec(`
+        drop trigger deferred_resource_transition_reservations_wallet_account_binding_insert;
+        drop trigger deferred_resource_transition_reservations_initial_state_reserved;
+        drop trigger deferred_resource_transitions_initial_state_reserved;
+      `);
+      database.prepare(`
+        delete from platform_schema_migrations where migration_id = ?
+      `).run(REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID);
+      ensureSyntheticWallet(database);
+      database.prepare(`
+        insert into platform_coin_commerce_offer_versions (
+          offer_version_ref, offer_ref, version, status, category,
+          title_zh, title_en, summary_zh, summary_en,
+          important_notices_zh_json, important_notices_en_json,
+          base_coin_units, reference_currency, reference_amount_minor,
+          accepted_coin_types_json, delivery_kind, duration_days,
+          monthly_traffic_gb, traffic_gb, never_expires,
+          discount_basis_points, created_at, published_at, retired_at
+        ) values (
+          'offer_legacy_direct_settled', 'offer_legacy_direct_settled', 1, 'published', 'plan',
+          '测试', 'Test', '测试', 'Test', '["说明"]', '["Notice"]', 10, 'CNY', 1000,
+          '["paid_coins"]', 'subscription_plan', 30, 50, null, 0, 0, ?, ?, null
+        )
+      `).run(APPLIED_AT, APPLIED_AT);
+      database.prepare(`
+        insert into platform_entitlements (id, account_id, status, valid_until)
+        values ('entitlement_legacy_direct_settled', 'account_synthetic', 'active', ?)
+      `).run("2026-09-13T00:00:00.000Z");
+      database.prepare(`
+        insert into platform_issuance_requests (id, account_id, entitlement_id)
+        values ('request_legacy_direct_settled', 'account_synthetic', 'entitlement_legacy_direct_settled')
+      `).run();
+      database.prepare(`
+        insert into platform_issued_subscription_links (id, request_id)
+        values ('link_legacy_direct_settled', 'request_legacy_direct_settled')
+      `).run();
+      insertSyntheticReservation(database, {
+        reservationRef: "reservation_legacy_direct_settled",
+        sourceRef: "transition_legacy_direct_settled"
+      });
+      database.prepare(`
+        insert into ${TRANSITIONS_TABLE} (
+          transition_ref, account_id, order_ref, reservation_ref, offer_version_ref,
+          commercial_model, flow_kind, plan_rank, amount_units,
+          offer_snapshot_json, allocation_snapshot_json, reserved_at, scheduled_for,
+          expected_entitlement_id, expected_request_id, expected_issued_link_id,
+          expected_valid_until, rebase_generation, state, lease_generation,
+          lease_token, lease_until, effect_ref, effect_entitlement_id,
+          effect_request_id, effect_issued_link_id, effect_valid_until,
+          safe_code, settled_at, created_at, updated_at
+        ) values (?, 'account_synthetic', ?, ?, 'offer_legacy_direct_settled',
+          'wallet_first_unique_v1', 'initial_activation', 1, 10,
+          '{}', '[]', ?, ?, null, null, null, null, 0, 'settled', 0,
+          null, null, ?, ?, ?, ?, ?, null, ?, ?, ?)
+      `).run(
+        "transition_legacy_direct_settled",
+        "order_legacy_direct_settled",
+        "reservation_legacy_direct_settled",
+        APPLIED_AT,
+        APPLIED_AT,
+        "effect_legacy_direct_settled",
+        "entitlement_legacy_direct_settled",
+        "request_legacy_direct_settled",
+        "link_legacy_direct_settled",
+        "2026-09-13T00:00:00.000Z",
+        APPLIED_AT,
+        APPLIED_AT,
+        APPLIED_AT
+      );
+    } finally {
+      database.close();
+    }
+
+    assert.throws(
+      () => applyDeferredMigration(dbPath),
+      (error) => error?.code === "applied_schema_incompatible"
+    );
+    const verified = new Database(dbPath, { readonly: true, fileMustExist: true });
+    try {
+      assert.equal(
+        verified.prepare(`
+          select count(*) from platform_schema_migrations where migration_id = ?
+        `).pluck().get(REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID),
+        0
+      );
+      assert.equal(
+        verified.prepare(`
+          select count(*) from sqlite_master
+           where type = 'trigger' and name = ?
+        `).pluck().get("deferred_resource_transitions_initial_state_reserved"),
+        0
+      );
+    } finally {
+      verified.close();
     }
   });
 });
@@ -1132,9 +1560,11 @@ test("deferred-transition successor dry-run applies only a temporary snapshot", 
     assert.equal(result.mode, "dry-run");
     assert.equal(result.sourceChanged, false);
     assert.deepEqual(result.pendingMigrationIds, [
+      LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
       REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
     ]);
     assert.deepEqual(result.appliedMigrationIds, [
+      LEGACY_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
       REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
     ]);
     assert.equal(fileSha256(dbPath), before);

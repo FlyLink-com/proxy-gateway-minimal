@@ -11,6 +11,7 @@ const DEFAULT_REGISTRATION_RISK_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_REGISTRATIONS_PER_SOURCE_IP = 3;
 const DEFAULT_LEGAL_VERSION = "2026-07-02";
 export const WALLET_FIRST_COMMERCIAL_MODEL = "wallet_first_unique_v1";
+export const LEGACY_TRIAL_COMMERCIAL_MODEL = "legacy";
 export const WELCOME_BONUS_COIN_UNITS = 10;
 export const WELCOME_BONUS_DURATION_DAYS = 7;
 
@@ -145,9 +146,21 @@ function safeRegistrationSummary({
       validUntil
     };
   }
-  if (commercialModel !== null && welcomeBonus !== null) {
+  if (
+    commercialModel === LEGACY_TRIAL_COMMERCIAL_MODEL
+    && accessRequest !== null
+    && welcomeBonus === null
+  ) {
+    summary.commercialModel = LEGACY_TRIAL_COMMERCIAL_MODEL;
+  } else if (
+    commercialModel === WALLET_FIRST_COMMERCIAL_MODEL
+    && accessRequest === null
+    && welcomeBonus !== null
+  ) {
     summary.commercialModel = commercialModel;
     summary.welcomeBonus = welcomeBonus;
+  } else {
+    throw registrationError("validation_error", "registration commercial model is invalid");
   }
   return summary;
 }
@@ -380,9 +393,11 @@ export function createPortalRegistrationService(options = {}) {
           planIntent,
           validFrom: now,
           validUntil,
+          commercialModel: walletFirstRegistrationEnabled
+            ? WALLET_FIRST_COMMERCIAL_MODEL
+            : LEGACY_TRIAL_COMMERCIAL_MODEL,
           ...(walletFirstRegistrationEnabled
             ? {
-              commercialModel: WALLET_FIRST_COMMERCIAL_MODEL,
               welcomeBonus: {
                 status: "pending",
                 coinType: "bonus_coins",

@@ -10,6 +10,9 @@ import {
   usageCycleForBinding,
   usageCycleFiltersForBinding
 } from "./usage-billing-cycle.mjs";
+import {
+  WALLET_FIRST_COMMERCIAL_MODEL
+} from "./coin-commerce-deferred-transition-policy.mjs";
 
 const PLANS = {
   trial: { durationDays: TRIAL_DURATION_DAYS, label: "7-day trial" },
@@ -28,6 +31,7 @@ const SAFE_SUMMARY_EVENT_TYPES = new Set([
 const SAFE_REASON_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:-]{0,79}$/;
 const UNSAFE_REASON_CODE_PATTERN = /https?:|token|secret|credential|password|private|customer|@|\//i;
 const SAFE_LIFECYCLE_REVISION_REF_PATTERN = /^lifecycle_ref_[a-f0-9]{32}$/;
+const LEGACY_COMMERCIAL_MODEL = "legacy";
 
 function platformError(code, message) {
   const error = new Error(message);
@@ -592,6 +596,7 @@ export function createPortalAccessRequestService(options = {}) {
   const requestIdFactory = options.requestIdFactory;
   const runtimeCore = options.runtimeCore;
   const controlStore = options.controlStore;
+  const walletFirstRegistrationEnabled = options.walletFirstRegistrationEnabled === true;
   const requestStore = portalAccessRequestStoreFrom(options, controlStore);
   const edgeLifecycleService = options.edgeLifecycleService;
   const edgeCredentialIssuer = options.edgeCredentialIssuer;
@@ -1188,6 +1193,7 @@ export function createPortalAccessRequestService(options = {}) {
     if (request.portalUserRef !== portalUserRef) {
       throw platformError("not_found", "portal access request not found");
     }
+    assertLegacyAccessRequestModel(portalUserRef);
     if (!["delivered", "issued"].includes(request.status)) {
       throw platformError("validation_error", "subscription order is not active");
     }
@@ -1221,6 +1227,7 @@ export function createPortalAccessRequestService(options = {}) {
       if (request.portalUserRef !== portalUserRef) {
         throw platformError("not_found", "portal access request not found");
       }
+      assertLegacyAccessRequestModel(portalUserRef);
       if (
         !["delivered", "issued"].includes(request.status)
         && !isQuotaSuspended
@@ -1715,6 +1722,63 @@ export function createPortalAccessRequestService(options = {}) {
     return listRecords({ portalUserRef, plan: "trial" }).length > 0;
   }
 
+  function assertLegacyAccessRequestModel(accountId) {
+    if (!controlStore || typeof controlStore.getAccount !== "function") {
+      if (!walletFirstRegistrationEnabled) return;
+      throw platformError(
+        "wallet_first_access_request_unavailable",
+        "wallet-first access-request model source is not configured"
+      );
+    }
+    let account;
+    try {
+      account = controlStore.getAccount(accountId);
+    } catch {
+      // Before wallet-first registration is enabled, historical Portal records
+      // can outlive their platform-account lookup. They retain the legacy path;
+      // a resolved explicit model below always takes precedence.
+      if (!walletFirstRegistrationEnabled) return;
+      throw platformError(
+        "wallet_first_access_request_unavailable",
+        "wallet-first access-request model source is unavailable"
+      );
+    }
+    if (!account || account.id !== accountId) {
+      // This is a narrow compatibility fallback for pre-wallet-first records.
+      // New registrations write their commercial marker atomically, and an
+      // existing wallet-first marker is never allowed to fall through here.
+      if (!walletFirstRegistrationEnabled) return;
+      throw platformError(
+        "wallet_first_access_request_unavailable",
+        "wallet-first access-request account is unavailable"
+      );
+    }
+    const metadata = account.metadata;
+    if (metadata === undefined || metadata === null) return;
+    if (
+      typeof metadata !== "object"
+      || Array.isArray(metadata)
+      || Object.getPrototypeOf(metadata) !== Object.prototype
+    ) {
+      throw platformError(
+        "wallet_first_access_request_unavailable",
+        "wallet-first access-request account metadata is unavailable"
+      );
+    }
+    if (!Object.hasOwn(metadata, "commercialModel")) return;
+    if (metadata.commercialModel === LEGACY_COMMERCIAL_MODEL) return;
+    if (metadata.commercialModel === WALLET_FIRST_COMMERCIAL_MODEL) {
+      throw platformError(
+        "wallet_first_deferred_required",
+        "wallet-first accounts require the deferred Commerce path"
+      );
+    }
+    throw platformError(
+      "wallet_first_access_request_unavailable",
+      "wallet-first access-request commercial model is unavailable"
+    );
+  }
+
   function assertAutoIssuanceReady() {
     if (!runtimeCore) {
       throw platformError("validation_error", "portal auto issuance runtime is not configured");
@@ -1892,6 +1956,7 @@ export function createPortalAccessRequestService(options = {}) {
         throw commerceProductFulfillmentError("commerce product fulfillment is not configured");
       }
       const product = normalizeCommerceProductInput(input);
+      assertLegacyAccessRequestModel(product.accountId);
       const replay = commerceProductReplay(product);
       if (replay) return replay;
 
@@ -1980,6 +2045,7 @@ export function createPortalAccessRequestService(options = {}) {
       const now = isoNow(nowFn);
       const plan = normalizePlan(input.plan);
       const portalUserRef = text(input.portalUserRef, "portalUserRef");
+      assertLegacyAccessRequestModel(portalUserRef);
       if (plan === "trial" && hasPriorTrial(portalUserRef)) {
         throw platformError("validation_error", "trial request already exists for this account");
       }
@@ -2019,6 +2085,9 @@ export function createPortalAccessRequestService(options = {}) {
     listRequests(filters = {}) {
       const status = String(filters.status || "").trim();
       const portalUserRef = String(filters.portalUserRef || "").trim();
+      if (portalUserRef) {
+        assertLegacyAccessRequestModel(portalUserRef);
+      }
       return listRecords({ ...filters, status, portalUserRef })
         .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
         .map(summarize);
@@ -2463,6 +2532,7 @@ export function createPortalAccessRequestService(options = {}) {
       if (request.portalUserRef !== portalUserRef) {
         throw platformError("not_found", "portal access request not found");
       }
+      assertLegacyAccessRequestModel(portalUserRef);
       if (
         ["delivered", "issued"].includes(request.status)
         && request.event?.type === "traffic_supply_resumed"

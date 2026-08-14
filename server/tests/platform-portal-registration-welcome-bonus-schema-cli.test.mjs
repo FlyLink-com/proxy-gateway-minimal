@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 
 import {
+  LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
   PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS,
   REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
 } from "../services/platform/portal-registration-welcome-bonus-migrations.mjs";
@@ -33,7 +34,8 @@ const CLI_PATH = join(
 );
 const PACKAGE_PATH = join(REPOSITORY_ROOT, "package.json");
 const MIGRATION_ID = REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID;
-const DDL_CHECKSUM = PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS[0].ddlChecksum;
+const MIGRATION_IDS = PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.map(({ id }) => id);
+const DDL_CHECKSUM = PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.at(-1).ddlChecksum;
 const OUTPUT_KEYS = Object.freeze([
   "appliedMigrationIds",
   "checks",
@@ -86,6 +88,23 @@ function createWalletFoundation(dbPath) {
     expectedMigrationId: REQUIRED_COIN_WALLET_MIGRATION_ID,
     expectedDdlChecksum: COIN_WALLET_MIGRATIONS[0].ddlChecksum
   });
+}
+
+function applyLegacyWelcomeMigration(dbPath) {
+  const [legacy] = PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS;
+  const database = new Database(dbPath);
+  try {
+    database.pragma("foreign_keys = ON");
+    database.transaction(() => {
+      for (const statement of legacy.statements) database.exec(statement);
+      database.prepare(`
+        insert into platform_schema_migrations (migration_id, ddl_checksum, applied_at)
+        values (?, ?, ?)
+      `).run(legacy.id, legacy.ddlChecksum, "2026-08-13T00:00:00.000Z");
+    }).immediate();
+  } finally {
+    database.close();
+  }
 }
 
 function runCli(args) {
@@ -189,7 +208,7 @@ test("validate, dry-run, apply, and replay keep the source database and output c
     const pendingOutput = parseOutput(pending, [dbPath]);
     assert.equal(pendingOutput.schemaState, "pending");
     assert.equal(pendingOutput.sourceChanged, false);
-    assert.deepEqual(pendingOutput.pendingMigrationIds, [MIGRATION_ID]);
+    assert.deepEqual(pendingOutput.pendingMigrationIds, MIGRATION_IDS);
     assert.equal(fileSha256(dbPath), sourceHash);
 
     const dryRun = runCli([
@@ -199,8 +218,8 @@ test("validate, dry-run, apply, and replay keep the source database and output c
     const dryRunOutput = parseOutput(dryRun, [dbPath, directory]);
     assert.equal(dryRunOutput.schemaState, "ready");
     assert.equal(dryRunOutput.sourceChanged, false);
-    assert.deepEqual(dryRunOutput.appliedMigrationIds, [MIGRATION_ID]);
-    assert.deepEqual(dryRunOutput.pendingMigrationIds, [MIGRATION_ID]);
+    assert.deepEqual(dryRunOutput.appliedMigrationIds, MIGRATION_IDS);
+    assert.deepEqual(dryRunOutput.pendingMigrationIds, MIGRATION_IDS);
     assert.equal(fileSha256(dbPath), sourceHash);
 
     const applied = runCli(exactApplyArguments(dbPath));
@@ -208,7 +227,7 @@ test("validate, dry-run, apply, and replay keep the source database and output c
     const appliedOutput = parseOutput(applied, [dbPath]);
     assert.equal(appliedOutput.schemaState, "ready");
     assert.equal(appliedOutput.sourceChanged, true);
-    assert.deepEqual(appliedOutput.appliedMigrationIds, [MIGRATION_ID]);
+    assert.deepEqual(appliedOutput.appliedMigrationIds, MIGRATION_IDS);
     assert.deepEqual(appliedOutput.pendingMigrationIds, []);
 
     const replay = runCli(exactApplyArguments(dbPath));
@@ -216,6 +235,45 @@ test("validate, dry-run, apply, and replay keep the source database and output c
     const replayOutput = parseOutput(replay, [dbPath]);
     assert.equal(replayOutput.sourceChanged, false);
     assert.deepEqual(replayOutput.appliedMigrationIds, []);
+  });
+});
+
+test("v1-only welcome ledger dry-runs and applies only the contract successor", () => {
+  withTempDirectory((directory) => {
+    const dbPath = join(directory, "legacy.sqlite");
+    createWalletFoundation(dbPath);
+    applyLegacyWelcomeMigration(dbPath);
+    const sourceHash = fileSha256(dbPath);
+
+    const pending = runCli(["--mode", "validate", "--db-path", dbPath]);
+    assert.equal(pending.status, 3);
+    assert.deepEqual(
+      parseOutput(pending, [dbPath]).pendingMigrationIds,
+      [MIGRATION_ID]
+    );
+
+    const dryRun = runCli([
+      "--mode", "dry-run", "--db-path", dbPath, "--temp-root", directory
+    ]);
+    assert.equal(dryRun.status, 0);
+    const dryRunOutput = parseOutput(dryRun, [dbPath, directory]);
+    assert.deepEqual(dryRunOutput.appliedMigrationIds, [MIGRATION_ID]);
+    assert.deepEqual(dryRunOutput.pendingMigrationIds, [MIGRATION_ID]);
+    assert.equal(fileSha256(dbPath), sourceHash);
+
+    const applied = runCli(exactApplyArguments(dbPath));
+    assert.equal(applied.status, 0);
+    assert.deepEqual(parseOutput(applied, [dbPath]).appliedMigrationIds, [MIGRATION_ID]);
+
+    const legacy = new Database(dbPath, { readonly: true, fileMustExist: true });
+    try {
+      const row = legacy.prepare(`
+        select ddl_checksum from platform_schema_migrations where migration_id = ?
+      `).get(LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID);
+      assert.equal(row.ddl_checksum, PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS[0].ddlChecksum);
+    } finally {
+      legacy.close();
+    }
   });
 });
 

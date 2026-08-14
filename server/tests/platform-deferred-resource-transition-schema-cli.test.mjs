@@ -14,6 +14,7 @@ import Database from "better-sqlite3";
 
 import {
   DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
 } from "../services/platform/deferred-resource-transition-migrations.mjs";
 import {
@@ -37,7 +38,10 @@ const CLI_PATH = join(
   "platform-deferred-resource-transition-schema.mjs"
 );
 const MIGRATION_ID = REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID;
-const DDL_CHECKSUM = DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum;
+const MIGRATION_IDS = Object.freeze(
+  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS.map(({ id }) => id)
+);
+const DDL_CHECKSUM = REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM;
 const OUTPUT_KEYS = Object.freeze([
   "appliedMigrationIds",
   "checks",
@@ -53,7 +57,10 @@ const CHECK_KEYS = Object.freeze([
   "commerceFoundationDependency",
   "foreignKeys",
   "quickCheck",
+  "reservationWalletBindings",
+  "resourceChainParentDependency",
   "schemaExact",
+  "settledTransitionsHaveCaptureAndOutbox",
   "walletFoundationDependency"
 ]);
 
@@ -81,6 +88,21 @@ function createCommerceFoundation(dbPath) {
         created_at text not null,
         updated_at text not null,
         metadata_json text not null default '{}'
+      );
+      create table platform_entitlements (
+        id text primary key,
+        account_id text not null references platform_accounts(id),
+        status text not null,
+        valid_until text not null
+      );
+      create table platform_issuance_requests (
+        id text primary key,
+        account_id text not null references platform_accounts(id),
+        entitlement_id text not null references platform_entitlements(id)
+      );
+      create table platform_issued_subscription_links (
+        id text primary key,
+        request_id text not null references platform_issuance_requests(id)
       );
     `);
   } finally {
@@ -148,12 +170,15 @@ function pendingValidation() {
     checks: {
       walletFoundationDependency: true,
       commerceFoundationDependency: true,
+      resourceChainParentDependency: true,
+      reservationWalletBindings: false,
+      settledTransitionsHaveCaptureAndOutbox: false,
       schemaExact: false,
       quickCheck: true,
       foreignKeys: true
     },
     reasonCodes: ["required_migration_missing"],
-    pendingMigrationIds: [MIGRATION_ID]
+    pendingMigrationIds: MIGRATION_IDS
   };
 }
 
@@ -165,6 +190,9 @@ function readyResult(mode, overrides = {}) {
     checks: {
       walletFoundationDependency: true,
       commerceFoundationDependency: true,
+      resourceChainParentDependency: true,
+      reservationWalletBindings: true,
+      settledTransitionsHaveCaptureAndOutbox: true,
       schemaExact: true,
       quickCheck: true,
       foreignKeys: true
@@ -189,7 +217,7 @@ test("validate, dry-run, apply, and replay preserve the source database and reda
     const pendingOutput = parseOutput(pending, [dbPath]);
     assert.equal(pendingOutput.schemaState, "pending");
     assert.equal(pendingOutput.sourceChanged, false);
-    assert.deepEqual(pendingOutput.pendingMigrationIds, [MIGRATION_ID]);
+    assert.deepEqual(pendingOutput.pendingMigrationIds, MIGRATION_IDS);
     assert.equal(fileSha256(dbPath), sourceHash);
 
     const dryRun = runCli([
@@ -199,8 +227,8 @@ test("validate, dry-run, apply, and replay preserve the source database and reda
     const dryRunOutput = parseOutput(dryRun, [dbPath, directory]);
     assert.equal(dryRunOutput.schemaState, "ready");
     assert.equal(dryRunOutput.sourceChanged, false);
-    assert.deepEqual(dryRunOutput.appliedMigrationIds, [MIGRATION_ID]);
-    assert.deepEqual(dryRunOutput.pendingMigrationIds, [MIGRATION_ID]);
+    assert.deepEqual(dryRunOutput.appliedMigrationIds, MIGRATION_IDS);
+    assert.deepEqual(dryRunOutput.pendingMigrationIds, MIGRATION_IDS);
     assert.equal(fileSha256(dbPath), sourceHash);
 
     const applied = runCli(exactApplyArguments(dbPath));
@@ -208,7 +236,7 @@ test("validate, dry-run, apply, and replay preserve the source database and reda
     const appliedOutput = parseOutput(applied, [dbPath]);
     assert.equal(appliedOutput.schemaState, "ready");
     assert.equal(appliedOutput.sourceChanged, true);
-    assert.deepEqual(appliedOutput.appliedMigrationIds, [MIGRATION_ID]);
+    assert.deepEqual(appliedOutput.appliedMigrationIds, MIGRATION_IDS);
     assert.deepEqual(appliedOutput.pendingMigrationIds, []);
 
     const replay = runCli(exactApplyArguments(dbPath));
@@ -248,6 +276,9 @@ test("a blocked validation cannot dispatch a mutation and malformed results fail
           checks: {
             walletFoundationDependency: false,
             commerceFoundationDependency: false,
+            resourceChainParentDependency: false,
+            reservationWalletBindings: false,
+            settledTransitionsHaveCaptureAndOutbox: false,
             schemaExact: false,
             quickCheck: false,
             foreignKeys: false

@@ -2,7 +2,10 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import Database from "better-sqlite3";
 
-import { normalizeCoinCommerceOffer } from "./coin-commerce-domain.mjs";
+import {
+  applyCoinDiscount,
+  normalizeCoinCommerceOffer
+} from "./coin-commerce-domain.mjs";
 import {
   assessReservationAtActivation,
   planRank,
@@ -354,25 +357,10 @@ function normalizeOfferSnapshot(value, offerVersionRef) {
   return Object.freeze({ offer, rank });
 }
 
-function normalizeReserveRequest(input) {
-  const value = assertExactFields(input, [
-    "accountId",
-    "orderRef",
-    "offerVersionRef",
-    "flowKind",
-    "amountUnits",
-    "offerSnapshot",
-    "scheduledFor",
-    "expectedEntitlementId",
-    "expectedRequestId",
-    "expectedIssuedLinkId",
-    "expectedValidUntil",
-    "operation"
-  ]);
+function normalizeReserveContext(value) {
   const accountId = normalizeReference(value.accountId);
   const orderRef = normalizeReference(value.orderRef);
   const offerVersionRef = normalizeReference(value.offerVersionRef);
-  const amountUnits = normalizePositiveUnits(value.amountUnits);
   const scheduledFor = normalizeTimestamp(value.scheduledFor);
   if (!["initial_activation", "scheduled_switch"].includes(value.flowKind)) {
     throw storeError("deferred_transition_invalid_input");
@@ -396,36 +384,79 @@ function normalizeReserveRequest(input) {
   if (value.flowKind === "scheduled_switch" && scheduledFor !== expectedValidUntil) {
     throw storeError("deferred_transition_expected_chain_invalid");
   }
-  const { offer, rank } = normalizeOfferSnapshot(value.offerSnapshot, offerVersionRef);
-  const operation = normalizeOperation(value.operation);
   return Object.freeze({
     accountId,
     orderRef,
     offerVersionRef,
     flowKind: value.flowKind,
-    amountUnits,
-    offerSnapshot: offer,
     scheduledFor,
     expectedEntitlementId,
     expectedRequestId,
     expectedIssuedLinkId,
     expectedValidUntil,
+    operation: normalizeOperation(value.operation)
+  });
+}
+
+function finalizeReserveRequest(context, { amountUnits, offerSnapshot }) {
+  const normalizedAmountUnits = normalizePositiveUnits(amountUnits);
+  const { offer, rank } = normalizeOfferSnapshot(offerSnapshot, context.offerVersionRef);
+  return Object.freeze({
+    ...context,
+    amountUnits: normalizedAmountUnits,
+    offerSnapshot: offer,
     planRank: rank,
-    operation,
     requestDigest: requestDigest("reserve_transition", {
-      accountId,
-      orderRef,
-      offerVersionRef,
-      flowKind: value.flowKind,
-      amountUnits,
+      accountId: context.accountId,
+      orderRef: context.orderRef,
+      offerVersionRef: context.offerVersionRef,
+      flowKind: context.flowKind,
+      amountUnits: normalizedAmountUnits,
       offerSnapshot: offer,
-      scheduledFor,
-      expectedEntitlementId,
-      expectedRequestId,
-      expectedIssuedLinkId,
-      expectedValidUntil
+      scheduledFor: context.scheduledFor,
+      expectedEntitlementId: context.expectedEntitlementId,
+      expectedRequestId: context.expectedRequestId,
+      expectedIssuedLinkId: context.expectedIssuedLinkId,
+      expectedValidUntil: context.expectedValidUntil
     })
   });
+}
+
+function normalizeTrustedReserveRequest(input) {
+  const value = assertExactFields(input, [
+    "accountId",
+    "orderRef",
+    "offerVersionRef",
+    "flowKind",
+    "amountUnits",
+    "offerSnapshot",
+    "scheduledFor",
+    "expectedEntitlementId",
+    "expectedRequestId",
+    "expectedIssuedLinkId",
+    "expectedValidUntil",
+    "operation"
+  ]);
+  return finalizeReserveRequest(normalizeReserveContext(value), {
+    amountUnits: value.amountUnits,
+    offerSnapshot: value.offerSnapshot
+  });
+}
+
+function normalizeDirectReserveRequest(input) {
+  const value = assertExactFields(input, [
+    "accountId",
+    "orderRef",
+    "offerVersionRef",
+    "flowKind",
+    "scheduledFor",
+    "expectedEntitlementId",
+    "expectedRequestId",
+    "expectedIssuedLinkId",
+    "expectedValidUntil",
+    "operation"
+  ]);
+  return normalizeReserveContext(value);
 }
 
 function normalizeCheckoutQuoteReserveRequest(input) {
@@ -799,6 +830,59 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
     } catch {
       throw storeError("deferred_transition_infrastructure_error");
     }
+  }
+
+  function liveOfferFromRow(row) {
+    try {
+      return normalizeCoinCommerceOffer({
+        offerRef: row.offer_ref,
+        offerVersionRef: row.offer_version_ref,
+        version: row.version,
+        category: row.category,
+        title: { zh: row.title_zh, en: row.title_en },
+        summary: { zh: row.summary_zh, en: row.summary_en },
+        importantNotices: {
+          zh: parseStoredJson(row.important_notices_zh_json),
+          en: parseStoredJson(row.important_notices_en_json)
+        },
+        baseCoinUnits: row.base_coin_units,
+        referencePrice: {
+          currency: row.reference_currency,
+          amountMinor: row.reference_amount_minor
+        },
+        acceptedCoinTypes: parseStoredJson(row.accepted_coin_types_json),
+        delivery: {
+          kind: row.delivery_kind,
+          durationDays: row.duration_days,
+          monthlyTrafficGb: row.monthly_traffic_gb,
+          trafficGb: row.traffic_gb,
+          neverExpires: row.never_expires === 1,
+          discountBasisPoints: row.discount_basis_points
+        }
+      });
+    } catch {
+      throw storeError("deferred_transition_infrastructure_error");
+    }
+  }
+
+  function resolveDirectReserveRequest(context) {
+    const row = db.prepare(`
+      select * from platform_coin_commerce_offer_versions
+       where offer_version_ref = ? and status = 'published'
+       limit 1
+    `).get(context.offerVersionRef);
+    if (!row) throw storeError("unsupported_deferred_transition_offer");
+    const offer = liveOfferFromRow(row);
+    let amountUnits;
+    try {
+      amountUnits = applyCoinDiscount({
+        baseCoinUnits: offer.baseCoinUnits,
+        discountBasisPoints: offer.delivery.discountBasisPoints
+      });
+    } catch {
+      throw storeError("deferred_transition_infrastructure_error");
+    }
+    return finalizeReserveRequest(context, { amountUnits, offerSnapshot: offer });
   }
 
   function projectAllocation(value, amountUnits) {
@@ -1996,8 +2080,8 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
     return publicProjection(findTransition(transitionRef));
   }
 
-  const reserveTransaction = db.transaction((request) => (
-    reserveTransitionBody(request, normalizeNow(nowFn))
+  const directReserveTransaction = db.transaction((context) => (
+    reserveTransitionBody(resolveDirectReserveRequest(context), normalizeNow(nowFn))
   ));
 
   const reserveCheckoutQuoteTransaction = db.transaction((request) => {
@@ -2021,7 +2105,7 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
       throw storeError("deferred_transition_infrastructure_error");
     }
     const transition = reserveTransitionBody(
-      normalizeReserveRequest(prepared.reserveRequest),
+      normalizeTrustedReserveRequest(prepared.reserveRequest),
       occurredAt
     );
     markWalletFirstDeferredCheckoutQuoteReservedInTransaction({
@@ -3285,7 +3369,7 @@ export function createSqliteDeferredResourceTransitionStore(options = {}) {
   function reserveTransition(input) {
     assertOpen();
     try {
-      return reserveTransaction.immediate(normalizeReserveRequest(input));
+      return directReserveTransaction.immediate(normalizeDirectReserveRequest(input));
     } catch (error) {
       throw normalizeStoreError(error);
     }

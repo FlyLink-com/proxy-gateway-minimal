@@ -8,7 +8,7 @@ import {
   applyCoinCommerceMigrations
 } from "../services/platform/coin-commerce-migrations.mjs";
 import {
-  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
   applyDeferredResourceTransitionMigrations
 } from "../services/platform/deferred-resource-transition-migrations.mjs";
@@ -113,7 +113,7 @@ function foundation() {
   applyDeferredResourceTransitionMigrations({
     database,
     expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-    expectedDdlChecksum: DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum,
+    expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
     nowFn: () => new Date(NOW)
   });
   applyWalletFirstDeferredCheckoutMigrations({
@@ -330,6 +330,56 @@ test("exact deferred lookup never scans the bounded transition list", () => {
       accountId: "acct_direct_lookup",
       transitionRef: expected.transitionRef
     }]);
+  } finally {
+    adapter.close();
+    database.close();
+  }
+});
+
+test("adapter preserves route-safe deferred reservation errors", () => {
+  const database = foundation();
+  const codes = [
+    "deferred_transition_queue_full",
+    "deferred_transition_state_conflict",
+    "deferred_transition_account_not_eligible",
+    "deferred_reservation_capture_invalid",
+    "reconciliation_required"
+  ];
+  let code = codes[0];
+  const deferredTransitionStore = Object.freeze({
+    reserveTransitionFromCheckoutQuote() {
+      const error = new Error("synthetic safe deferred failure");
+      error.code = code;
+      throw error;
+    },
+    listTransitions() {
+      return [];
+    },
+    getTransition() {
+      return null;
+    },
+    cancelTransition() {
+      return null;
+    }
+  });
+  const adapter = createWalletFirstDeferredCheckoutAdapter({
+    database,
+    deferredTransitionStore,
+    nowFn: () => new Date(NOW),
+    refFactory: references("safe_error")
+  });
+  try {
+    for (const expectedCode of codes) {
+      code = expectedCode;
+      assert.throws(
+        () => adapter.reserveDeferredTransition({
+          accountId: "acct_safe_error",
+          quoteRef: "quote_safe_error",
+          operation: operation("acct_safe_error", `reserve_${expectedCode}`)
+        }),
+        (error) => error?.code === expectedCode
+      );
+    }
   } finally {
     adapter.close();
     database.close();

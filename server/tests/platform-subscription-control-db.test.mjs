@@ -46,7 +46,20 @@ function withWelcomeCoinGrantStore(fn) {
         source_digest text not null,
         actor_scope text not null,
         idempotency_key text not null,
-        expires_at text not null,
+        expires_at text not null check (
+          typeof(expires_at) = 'text'
+          and typeof(created_at) = 'text'
+          and length(expires_at) = 24
+          and length(created_at) = 24
+          and expires_at glob '????-??-??T??:??:??.???Z'
+          and created_at glob '????-??-??T??:??:??.???Z'
+          and strftime('%Y-%m-%dT%H:%M:%fZ', expires_at) = expires_at
+          and strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at
+          and strftime(
+            '%Y-%m-%dT%H:%M:%fZ',
+            julianday(created_at) + 7
+          ) = expires_at
+        ),
         status text not null check (status in (
           'pending', 'processing', 'credited', 'expired', 'reconciliation_required'
         )),
@@ -1688,6 +1701,25 @@ test("subscription control store makes a registration welcome grant durable, ide
   });
 });
 
+test("subscription control store rejects a welcome grant outside the fixed 10-Coin seven-day contract", () => {
+  withWelcomeCoinGrantStore((store, database) => {
+    const input = welcomeCoinGrant();
+    createWelcomeCoinAccount(store, input.accountId, input.now);
+
+    assert.throws(
+      () => store.enqueuePortalRegistrationWelcomeCoinGrant({
+        ...input,
+        expiresAt: "2026-08-21T00:00:00.000Z"
+      }),
+      (error) => error.code === "validation_error"
+    );
+    assert.equal(database.prepare(`
+      select count(*) as count
+        from platform_portal_registration_welcome_coin_grants
+    `).get().count, 0);
+  });
+});
+
 test("subscription control store defers, reclaims, and completes a welcome grant with lease CAS", () => {
   withWelcomeCoinGrantStore((store) => {
     const input = welcomeCoinGrant();
@@ -1757,7 +1789,7 @@ test("subscription control store terminalizes due welcome grants without taking 
       sourceDigest: "b".repeat(64),
       idempotencyKey: "welcome_bonus_acct_expired_pending",
       expiresAt: "2026-08-14T00:00:00.000Z",
-      now: "2026-08-13T12:00:00.000Z"
+      now: "2026-08-07T00:00:00.000Z"
     });
     const processing = welcomeCoinGrant({
       grantRef: "welcome_grant_expired_processing",
@@ -1765,7 +1797,8 @@ test("subscription control store terminalizes due welcome grants without taking 
       sourceRef: "portal_registration_acct_expired_processing",
       sourceDigest: "c".repeat(64),
       idempotencyKey: "welcome_bonus_acct_expired_processing",
-      expiresAt: "2026-08-14T00:00:00.000Z"
+      expiresAt: "2026-08-13T23:59:59.999Z",
+      now: "2026-08-06T23:59:59.999Z"
     });
     createWelcomeCoinAccount(store, pending.accountId, pending.now);
     createWelcomeCoinAccount(store, processing.accountId, processing.now);

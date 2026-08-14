@@ -13,7 +13,10 @@ const EXIT_SUCCESS = 0;
 const EXIT_CONTRACT_REJECTED = 2;
 const EXIT_SCHEMA_REJECTED = 3;
 const EXIT_INFRASTRUCTURE_FAILURE = 4;
-const DDL_CHECKSUM = PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS[0].ddlChecksum;
+const DDL_CHECKSUM = PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.at(-1).ddlChecksum;
+const MIGRATION_IDS = Object.freeze(
+  PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.map(({ id }) => id)
+);
 const FLAGS = new Set([
   "--mode",
   "--db-path",
@@ -211,6 +214,19 @@ function safeCheck(checks, key) {
   }
 }
 
+function isMigrationSuffix(ids) {
+  return Array.isArray(ids)
+    && (ids.length === 0 || (
+      ids.length <= MIGRATION_IDS.length
+      && ids.every((id, index) => id === MIGRATION_IDS[MIGRATION_IDS.length - ids.length + index])
+    ));
+}
+
+function migrationIdsAreExact(actual, expected) {
+  return actual.length === expected.length
+    && actual.every((id, index) => id === expected[index]);
+}
+
 function closedOutput({
   ok = false,
   mode = null,
@@ -233,11 +249,11 @@ function closedOutput({
     reasonCodes: safeArray(reasonCodes, (code) => SAFE_REASON_CODES.has(code)),
     appliedMigrationIds: safeArray(
       appliedMigrationIds,
-      (id) => id === REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
+      (id) => MIGRATION_IDS.includes(id)
     ),
     pendingMigrationIds: safeArray(
       pendingMigrationIds,
-      (id) => id === REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
+      (id) => MIGRATION_IDS.includes(id)
     )
   };
 }
@@ -316,16 +332,24 @@ function readResult(result, { target = false } = {}) {
   if (!reasonCodes.every((code) => OPERATION_REASON_CODES.has(code))) {
     throw new Error("invalid schema result");
   }
+  const appliedMigrationIds = readArray(result, "appliedMigrationIds", {
+    optional: !target
+  });
+  if (!target && appliedMigrationIds.length !== 0) {
+    throw new Error("invalid schema result");
+  }
+  const pendingMigrationIds = readArray(result, "pendingMigrationIds");
+  if (!isMigrationSuffix(appliedMigrationIds) || !isMigrationSuffix(pendingMigrationIds)) {
+    throw new Error("invalid schema result");
+  }
   return {
     ok: result.ok,
     schemaState: result.schemaState,
     sourceChanged: result.sourceChanged === true,
     checks: readChecks(result),
     reasonCodes,
-    appliedMigrationIds: readArray(result, "appliedMigrationIds", {
-      optional: !target
-    }),
-    pendingMigrationIds: readArray(result, "pendingMigrationIds")
+    appliedMigrationIds,
+    pendingMigrationIds
   };
 }
 
@@ -346,9 +370,8 @@ function exactPending(result) {
     && result.checks.foreignKeys
     && result.reasonCodes.length === 1
     && result.reasonCodes[0] === "required_migration_missing"
-    && result.pendingMigrationIds.length === 1
-    && result.pendingMigrationIds[0]
-      === REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID;
+    && result.pendingMigrationIds.length > 0
+    && isMigrationSuffix(result.pendingMigrationIds);
 }
 
 function validationOutcome(result, mode) {
@@ -367,7 +390,8 @@ function validationOutcome(result, mode) {
         sourceChanged: false,
         appliedMigrationIds: []
       }),
-      mayContinue: true
+      mayContinue: true,
+      pendingMigrationIds: pending ? result.pendingMigrationIds : []
     };
   }
   if (result.schemaState === "blocked" && result.reasonCodes.length > 0) {
@@ -387,33 +411,21 @@ function validationOutcome(result, mode) {
   return unexpectedExecutionOutcome(mode);
 }
 
-function targetOutcome(result, mode) {
+function targetOutcome(result, mode, expectedPendingMigrationIds) {
   if (
     result.ok
     && result.schemaState === "ready"
     && checksAreReady(result.checks)
     && result.reasonCodes.length === 0
   ) {
-    const idsAreExact = (ids) => ids.length === 0 || (
-      ids.length === 1
-      && ids[0] === REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
-    );
-    const sourceStateExact = mode === "dry-run"
+    const exactTarget = mode === "dry-run"
       ? result.sourceChanged === false
-      : result.sourceChanged === (result.appliedMigrationIds.length === 1);
-    const dryRunListsAgree = mode !== "dry-run" || (
-      result.appliedMigrationIds.length === result.pendingMigrationIds.length
-      && result.appliedMigrationIds.every(
-        (id, index) => id === result.pendingMigrationIds[index]
-      )
-    );
-    if (
-      idsAreExact(result.appliedMigrationIds)
-      && idsAreExact(result.pendingMigrationIds)
-      && sourceStateExact
-      && dryRunListsAgree
-      && (mode !== "apply" || result.pendingMigrationIds.length === 0)
-    ) {
+        && migrationIdsAreExact(result.appliedMigrationIds, expectedPendingMigrationIds)
+        && migrationIdsAreExact(result.pendingMigrationIds, expectedPendingMigrationIds)
+      : result.sourceChanged === (expectedPendingMigrationIds.length > 0)
+        && migrationIdsAreExact(result.appliedMigrationIds, expectedPendingMigrationIds)
+        && result.pendingMigrationIds.length === 0;
+    if (exactTarget) {
       return {
         exitCode: EXIT_SUCCESS,
         output: closedOutput({ ...result, mode })
@@ -493,7 +505,11 @@ async function execute(parsed, operations) {
         expectedMigrationId: parsed.expectedMigrationId,
         expectedDdlChecksum: parsed.expectedDdlChecksum
       }));
-    return targetOutcome(readResult(result, { target: true }), parsed.mode);
+    return targetOutcome(
+      readResult(result, { target: true }),
+      parsed.mode,
+      preflight.pendingMigrationIds
+    );
   } catch (error) {
     return operationErrorOutcome(error, parsed.mode);
   }

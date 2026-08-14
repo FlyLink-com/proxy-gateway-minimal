@@ -14,7 +14,7 @@ import {
   applyCoinCommerceMigrations
 } from "../services/platform/coin-commerce-migrations.mjs";
 import {
-  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
   applyDeferredResourceTransitionMigrations
 } from "../services/platform/deferred-resource-transition-migrations.mjs";
@@ -109,6 +109,106 @@ function exactApplyArguments(dbPath) {
   ];
 }
 
+function cliValidation({
+  ok,
+  schemaState,
+  checks,
+  reasonCodes,
+  pendingMigrationIds = []
+}) {
+  return {
+    ok,
+    schemaState,
+    requiredMigrationId: REQUIRED_WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATION_ID,
+    checks,
+    reasonCodes,
+    pendingMigrationIds
+  };
+}
+
+const CLI_READY_CHECKS = Object.freeze({
+  deferredTransitionDependency: true,
+  schemaExact: true,
+  quickCheck: true,
+  foreignKeys: true
+});
+const CLI_PENDING_CHECKS = Object.freeze({
+  deferredTransitionDependency: true,
+  schemaExact: false,
+  quickCheck: true,
+  foreignKeys: true
+});
+
+function cliReadyTarget({
+  appliedMigrationIds = [],
+  pendingMigrationIds = [],
+  sourceChanged = false
+} = {}) {
+  return {
+    ...cliValidation({
+      ok: true,
+      schemaState: "ready",
+      checks: CLI_READY_CHECKS,
+      reasonCodes: [],
+      pendingMigrationIds
+    }),
+    sourceChanged,
+    appliedMigrationIds
+  };
+}
+
+function withBackupHook(action, operation) {
+  const originalBackup = Database.prototype.backup;
+  let invoked = false;
+  Database.prototype.backup = function patchedBackup(...args) {
+    const result = originalBackup.apply(this, args);
+    if (invoked) return result;
+    invoked = true;
+    return Promise.resolve(result).then((value) => {
+      action();
+      return value;
+    });
+  };
+  return Promise.resolve()
+    .then(operation)
+    .finally(() => {
+      Database.prototype.backup = originalBackup;
+      assert.equal(invoked, true);
+    });
+}
+
+function withPreBackupHook(action, operation) {
+  const originalBackup = Database.prototype.backup;
+  let invoked = false;
+  Database.prototype.backup = function patchedBackup(...args) {
+    if (!invoked) {
+      invoked = true;
+      action();
+    }
+    return originalBackup.apply(this, args);
+  };
+  return Promise.resolve()
+    .then(operation)
+    .finally(() => {
+      Database.prototype.backup = originalBackup;
+      assert.equal(invoked, true);
+    });
+}
+
+function openWalWriter(dbPath) {
+  const writer = new Database(dbPath);
+  assert.equal(String(writer.pragma("journal_mode = WAL", { simple: true })).toLowerCase(), "wal");
+  return writer;
+}
+
+function insertWalOnlyAccount(writer, id) {
+  writer.prepare(`
+    insert into platform_accounts (
+      id, owner_ref, status, created_at, updated_at, metadata_json
+    ) values (?, ?, 'active', ?, ?, '{}')
+  `).run(id, `owner_${id}`, NOW, NOW);
+}
+
 function foundation(dbPath) {
   const database = new Database(dbPath);
   try {
@@ -174,7 +274,7 @@ function deferred(dbPath) {
   return applyDeferredResourceTransitionMigrations({
     dbPath,
     expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-    expectedDdlChecksum: DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum,
+    expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
     nowFn: () => new Date(NOW)
   });
 }
@@ -289,3 +389,179 @@ test("checkout schema CLI process applies only after exact confirmation and reda
   assert.equal(replayOutput.sourceChanged, false);
   assert.deepEqual(replayOutput.appliedMigrationIds, []);
 }));
+
+test("checkout dry-run accepts a preexisting WAL and a checkpoint without a source mutation", async () => withDatabase(async ({ directory, dbPath }) => {
+  foundation(dbPath);
+  deferred(dbPath);
+  const writer = openWalWriter(dbPath);
+  try {
+    insertWalOnlyAccount(writer, "acct_checkout_preexisting_wal");
+    const preexisting = await dryRunWalletFirstDeferredCheckoutMigrations({
+      dbPath,
+      tempRoot: directory
+    });
+    assert.equal(preexisting.ok, true);
+
+    let checkpointRows;
+    const checkpoint = await withBackupHook(
+      () => {
+        checkpointRows = writer.pragma("wal_checkpoint(PASSIVE)");
+      },
+      () => dryRunWalletFirstDeferredCheckoutMigrations({ dbPath, tempRoot: directory })
+    );
+    assert.equal(checkpoint.ok, true);
+    assert.equal(checkpointRows[0].busy, 0);
+    assert.equal(checkpointRows[0].checkpointed > 0, true);
+  } finally {
+    writer.close();
+  }
+}));
+
+test("checkout dry-run rejects a concurrent WAL-only source commit", async () => withDatabase(async ({ directory, dbPath }) => {
+  foundation(dbPath);
+  deferred(dbPath);
+  const writer = openWalWriter(dbPath);
+  try {
+    await assert.rejects(
+      () => withBackupHook(
+        () => insertWalOnlyAccount(writer, "acct_checkout_concurrent_wal"),
+        () => dryRunWalletFirstDeferredCheckoutMigrations({ dbPath, tempRoot: directory })
+      ),
+      (error) => error?.code === "source_changed_during_dry_run"
+    );
+  } finally {
+    writer.close();
+  }
+}));
+
+test("checkout dry-run rejects a WAL-only source commit after inspection and before backup", async () => withDatabase(async ({ directory, dbPath }) => {
+  foundation(dbPath);
+  deferred(dbPath);
+  const writer = openWalWriter(dbPath);
+  try {
+    await assert.rejects(
+      () => withPreBackupHook(
+        () => insertWalOnlyAccount(writer, "acct_checkout_prebackup_wal"),
+        () => dryRunWalletFirstDeferredCheckoutMigrations({ dbPath, tempRoot: directory })
+      ),
+      (error) => error?.code === "source_changed_during_dry_run"
+    );
+  } finally {
+    writer.close();
+  }
+}));
+
+test("checkout schema CLI rejects malformed preflight states and contract paths before dispatch", async () => {
+  const dbPath = resolve(tmpdir(), "wallet-first-checkout-cli-contract.sqlite");
+  const calls = [];
+  const operations = {
+    validateWalletFirstDeferredCheckoutSchema() {
+      calls.push("validate");
+      return cliValidation({
+        ok: false,
+        schemaState: "blocked",
+        checks: CLI_PENDING_CHECKS,
+        reasonCodes: ["required_migration_missing"],
+        pendingMigrationIds: []
+      });
+    },
+    dryRunWalletFirstDeferredCheckoutMigrations() {
+      calls.push("dry-run");
+      throw new Error("must not dispatch");
+    },
+    applyWalletFirstDeferredCheckoutMigrations() {
+      calls.push("apply");
+      throw new Error("must not dispatch");
+    }
+  };
+
+  const invalidMode = await runWalletFirstDeferredCheckoutSchemaCli({
+    argv: ["--mode", "rollback", "--db-path", dbPath],
+    operations
+  });
+  assert.equal(invalidMode.exitCode, 2);
+  assert.deepEqual(invalidMode.output.reasonCodes, ["invalid_mode"]);
+
+  const rootRelative = await runWalletFirstDeferredCheckoutSchemaCli({
+    argv: ["--mode", "validate", "--db-path", "\\root-relative.sqlite"],
+    operations
+  });
+  assert.equal(rootRelative.exitCode, 2);
+  assert.deepEqual(rootRelative.output.reasonCodes, ["database_path_must_be_absolute"]);
+
+  const blocked = await runWalletFirstDeferredCheckoutSchemaCli({
+    argv: ["--mode", "dry-run", "--db-path", dbPath],
+    operations
+  });
+  assert.equal(blocked.exitCode, 3);
+  assert.deepEqual(blocked.output.reasonCodes, ["required_migration_missing"]);
+  assert.deepEqual(calls, ["validate"]);
+
+  operations.validateWalletFirstDeferredCheckoutSchema = () => {
+    calls.push("pending-extra");
+    return cliValidation({
+      ok: false,
+      schemaState: "pending",
+      checks: { ...CLI_PENDING_CHECKS, quickCheck: false },
+      reasonCodes: ["quick_check_failed", "required_migration_missing"],
+      pendingMigrationIds: [REQUIRED_WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATION_ID]
+    });
+  };
+  const pendingExtra = await runWalletFirstDeferredCheckoutSchemaCli({
+    argv: ["--mode", "dry-run", "--db-path", dbPath],
+    operations
+  });
+  assert.equal(pendingExtra.exitCode, 4);
+  assert.deepEqual(pendingExtra.output.reasonCodes, ["unexpected_execution_failure"]);
+  assert.deepEqual(calls, ["validate", "pending-extra"]);
+
+  operations.validateWalletFirstDeferredCheckoutSchema = () => {
+    calls.push("unknown-state");
+    return cliValidation({
+      ok: false,
+      schemaState: "unknown",
+      checks: CLI_PENDING_CHECKS,
+      reasonCodes: ["required_migration_missing"],
+      pendingMigrationIds: [REQUIRED_WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATION_ID]
+    });
+  };
+  const unknown = await runWalletFirstDeferredCheckoutSchemaCli({
+    argv: ["--mode", "dry-run", "--db-path", dbPath],
+    operations
+  });
+  assert.equal(unknown.exitCode, 4);
+  assert.deepEqual(unknown.output.reasonCodes, ["unexpected_execution_failure"]);
+  assert.deepEqual(calls, ["validate", "pending-extra", "unknown-state"]);
+});
+
+test("checkout schema CLI requires target migration lists to match its exact pending preflight", async () => {
+  const dbPath = resolve(tmpdir(), "wallet-first-checkout-cli-target.sqlite");
+  const calls = [];
+  const operations = {
+    validateWalletFirstDeferredCheckoutSchema() {
+      calls.push("validate");
+      return cliValidation({
+        ok: false,
+        schemaState: "pending",
+        checks: CLI_PENDING_CHECKS,
+        reasonCodes: ["required_migration_missing"],
+        pendingMigrationIds: [REQUIRED_WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATION_ID]
+      });
+    },
+    dryRunWalletFirstDeferredCheckoutMigrations() {
+      calls.push("dry-run");
+      return cliReadyTarget();
+    },
+    applyWalletFirstDeferredCheckoutMigrations() {
+      calls.push("apply");
+      return cliReadyTarget();
+    }
+  };
+  const outcome = await runWalletFirstDeferredCheckoutSchemaCli({
+    argv: ["--mode", "dry-run", "--db-path", dbPath],
+    operations
+  });
+  assert.equal(outcome.exitCode, 4);
+  assert.deepEqual(outcome.output.reasonCodes, ["unexpected_execution_failure"]);
+  assert.deepEqual(calls, ["validate", "dry-run"]);
+});

@@ -23,7 +23,7 @@ import {
   applyCoinCommerceMigrations
 } from "../services/platform/coin-commerce-migrations.mjs";
 import {
-  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
   applyDeferredResourceTransitionMigrations
 } from "../services/platform/deferred-resource-transition-migrations.mjs";
@@ -83,6 +83,58 @@ function digest(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function withBackupHook(action, operation) {
+  const originalBackup = Database.prototype.backup;
+  let invoked = false;
+  Database.prototype.backup = function patchedBackup(...args) {
+    const result = originalBackup.apply(this, args);
+    if (invoked) return result;
+    invoked = true;
+    return Promise.resolve(result).then((value) => {
+      action();
+      return value;
+    });
+  };
+  return Promise.resolve()
+    .then(operation)
+    .finally(() => {
+      Database.prototype.backup = originalBackup;
+      assert.equal(invoked, true);
+    });
+}
+
+function withPreBackupHook(action, operation) {
+  const originalBackup = Database.prototype.backup;
+  let invoked = false;
+  Database.prototype.backup = function patchedBackup(...args) {
+    if (!invoked) {
+      invoked = true;
+      action();
+    }
+    return originalBackup.apply(this, args);
+  };
+  return Promise.resolve()
+    .then(operation)
+    .finally(() => {
+      Database.prototype.backup = originalBackup;
+      assert.equal(invoked, true);
+    });
+}
+
+function openWalWriter(dbPath) {
+  const writer = new Database(dbPath);
+  assert.equal(String(writer.pragma("journal_mode = WAL", { simple: true })).toLowerCase(), "wal");
+  return writer;
+}
+
+function insertWalOnlyAccount(writer, id) {
+  writer.prepare(`
+    insert into platform_accounts (
+      id, owner_ref, status, created_at, updated_at, metadata_json
+    ) values (?, ?, 'active', ?, ?, '{}')
+  `).run(id, `owner_${id}`, NOW, NOW);
+}
+
 function bootstrapCheckout(dbPath) {
   const control = createSqliteSubscriptionControlStore({ dbPath });
   control.close();
@@ -102,7 +154,7 @@ function bootstrapCheckout(dbPath) {
   applyDeferredResourceTransitionMigrations({
     dbPath,
     expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-    expectedDdlChecksum: DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum,
+    expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
     nowFn
   });
   applyWalletFirstDeferredCheckoutMigrations({
@@ -144,6 +196,44 @@ function parseOutput(result) {
     assert.equal(serialized.includes(forbidden), false);
   }
   return output;
+}
+
+function pendingValidation(overrides = {}) {
+  return {
+    ok: false,
+    schemaState: "pending",
+    requiredMigrationId: REQUIRED_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATION_ID,
+    checks: {
+      deferredCheckoutDependency: true,
+      schemaExact: false,
+      quickCheck: true,
+      foreignKeys: true
+    },
+    reasonCodes: ["required_migration_missing"],
+    pendingMigrationIds: [
+      REQUIRED_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATION_ID
+    ],
+    ...overrides
+  };
+}
+
+function readyResult(overrides = {}) {
+  return {
+    ok: true,
+    schemaState: "ready",
+    requiredMigrationId: REQUIRED_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATION_ID,
+    checks: {
+      deferredCheckoutDependency: true,
+      schemaExact: true,
+      quickCheck: true,
+      foreignKeys: true
+    },
+    reasonCodes: [],
+    pendingMigrationIds: [],
+    appliedMigrationIds: [],
+    sourceChanged: false,
+    ...overrides
+  };
 }
 
 test("runtime-claim successor refuses a checkout dependency that is not ready", () => withDatabase(({ dbPath }) => {
@@ -212,6 +302,73 @@ test("runtime-claim CLI dry-runs a pending successor and applies only with exact
   ]);
 }));
 
+test("runtime-claim dry-run accepts a preexisting WAL and a checkpoint without a source mutation", async () => withDatabase(async ({ directory, dbPath }) => {
+  bootstrapCheckout(dbPath);
+  const writer = openWalWriter(dbPath);
+  try {
+    insertWalOnlyAccount(writer, "acct_runtime_claims_preexisting_wal");
+    const preexisting = await dryRunWalletFirstResourceEffectRuntimeClaimsMigrations({
+      dbPath,
+      tempRoot: directory
+    });
+    assert.equal(preexisting.ok, true);
+
+    let checkpointRows;
+    const checkpoint = await withBackupHook(
+      () => {
+        checkpointRows = writer.pragma("wal_checkpoint(PASSIVE)");
+      },
+      () => dryRunWalletFirstResourceEffectRuntimeClaimsMigrations({
+        dbPath,
+        tempRoot: directory
+      })
+    );
+    assert.equal(checkpoint.ok, true);
+    assert.equal(checkpointRows[0].busy, 0);
+    assert.equal(checkpointRows[0].checkpointed > 0, true);
+  } finally {
+    writer.close();
+  }
+}));
+
+test("runtime-claim dry-run rejects a concurrent WAL-only source commit", async () => withDatabase(async ({ directory, dbPath }) => {
+  bootstrapCheckout(dbPath);
+  const writer = openWalWriter(dbPath);
+  try {
+    await assert.rejects(
+      () => withBackupHook(
+        () => insertWalOnlyAccount(writer, "acct_runtime_claims_concurrent_wal"),
+        () => dryRunWalletFirstResourceEffectRuntimeClaimsMigrations({
+          dbPath,
+          tempRoot: directory
+        })
+      ),
+      (error) => error?.code === "source_changed_during_dry_run"
+    );
+  } finally {
+    writer.close();
+  }
+}));
+
+test("runtime-claim dry-run rejects a WAL-only source commit after inspection and before backup", async () => withDatabase(async ({ directory, dbPath }) => {
+  bootstrapCheckout(dbPath);
+  const writer = openWalWriter(dbPath);
+  try {
+    await assert.rejects(
+      () => withPreBackupHook(
+        () => insertWalOnlyAccount(writer, "acct_runtime_claims_prebackup_wal"),
+        () => dryRunWalletFirstResourceEffectRuntimeClaimsMigrations({
+          dbPath,
+          tempRoot: directory
+        })
+      ),
+      (error) => error?.code === "source_changed_during_dry_run"
+    );
+  } finally {
+    writer.close();
+  }
+}));
+
 test("runtime-claim validator closes on an owned-object mutation", () => withDatabase(({ dbPath }) => {
   bootstrapCheckout(dbPath);
   applyClaims(dbPath);
@@ -226,3 +383,117 @@ test("runtime-claim validator closes on an owned-object mutation", () => withDat
   assert.equal(inspection.schemaState, "blocked");
   assert.equal(inspection.reasonCodes.includes("owned_object_missing"), true);
 }));
+
+test("runtime-claim CLI rejects invalid modes and non-fully-qualified paths before dispatch", async () => {
+  const dbPath = resolve("runtime-claims-cli-contract.sqlite");
+  const cases = [
+    [
+      ["--mode", "rollback", "--db-path", dbPath],
+      "invalid_mode"
+    ],
+    [
+      ["--mode", "validate", "--db-path", "relative.sqlite"],
+      "database_path_must_be_absolute"
+    ],
+    [
+      ["--mode", "validate", "--db-path", String.raw`\root-relative.sqlite`],
+      "database_path_must_be_absolute"
+    ]
+  ];
+  for (const [argv, reasonCode] of cases) {
+    const calls = [];
+    const outcome = await runWalletFirstResourceEffectRuntimeClaimsSchemaCli({
+      argv,
+      operations: {
+        validateWalletFirstResourceEffectRuntimeClaimsSchema() {
+          calls.push("validate");
+          return pendingValidation();
+        },
+        dryRunWalletFirstResourceEffectRuntimeClaimsMigrations() {
+          calls.push("dry-run");
+          return readyResult();
+        },
+        applyWalletFirstResourceEffectRuntimeClaimsMigrations() {
+          calls.push("apply");
+          return readyResult();
+        }
+      }
+    });
+    assert.equal(outcome.exitCode, 2);
+    assert.deepEqual(outcome.output.reasonCodes, [reasonCode]);
+    assert.deepEqual(calls, []);
+  }
+});
+
+test("runtime-claim CLI blocks contradictory and unknown preflight states without dispatch", async () => {
+  const dbPath = resolve("runtime-claims-cli-preflight.sqlite");
+  const cases = [
+    {
+      name: "blocked required migration",
+      validation: pendingValidation({ schemaState: "blocked" }),
+      exitCode: 3,
+      reasonCodes: ["required_migration_missing"]
+    },
+    {
+      name: "pending with extra reason",
+      validation: pendingValidation({
+        reasonCodes: ["required_migration_missing", "owned_object_missing"]
+      }),
+      exitCode: 4,
+      reasonCodes: ["unexpected_execution_failure"]
+    },
+    {
+      name: "unknown state",
+      validation: pendingValidation({ schemaState: "unknown" }),
+      exitCode: 4,
+      reasonCodes: ["unexpected_execution_failure"]
+    }
+  ];
+  for (const item of cases) {
+    const calls = [];
+    const outcome = await runWalletFirstResourceEffectRuntimeClaimsSchemaCli({
+      argv: ["--mode", "dry-run", "--db-path", dbPath],
+      operations: {
+        validateWalletFirstResourceEffectRuntimeClaimsSchema() {
+          calls.push("validate");
+          return item.validation;
+        },
+        dryRunWalletFirstResourceEffectRuntimeClaimsMigrations() {
+          calls.push("dry-run");
+          return readyResult();
+        },
+        applyWalletFirstResourceEffectRuntimeClaimsMigrations() {
+          calls.push("apply");
+          return readyResult();
+        }
+      }
+    });
+    assert.equal(outcome.exitCode, item.exitCode, item.name);
+    assert.deepEqual(outcome.output.reasonCodes, item.reasonCodes, item.name);
+    assert.deepEqual(calls, ["validate"], item.name);
+  }
+});
+
+test("runtime-claim CLI rejects a target result that disagrees with pending preflight", async () => {
+  const calls = [];
+  const outcome = await runWalletFirstResourceEffectRuntimeClaimsSchemaCli({
+    argv: ["--mode", "dry-run", "--db-path", resolve("runtime-claims-cli-target.sqlite")],
+    operations: {
+      validateWalletFirstResourceEffectRuntimeClaimsSchema() {
+        calls.push("validate");
+        return pendingValidation();
+      },
+      dryRunWalletFirstResourceEffectRuntimeClaimsMigrations() {
+        calls.push("dry-run");
+        return readyResult();
+      },
+      applyWalletFirstResourceEffectRuntimeClaimsMigrations() {
+        calls.push("apply");
+        return readyResult();
+      }
+    }
+  });
+  assert.equal(outcome.exitCode, 4);
+  assert.deepEqual(outcome.output.reasonCodes, ["unexpected_execution_failure"]);
+  assert.deepEqual(calls, ["validate", "dry-run"]);
+});

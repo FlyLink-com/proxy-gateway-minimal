@@ -47,7 +47,10 @@ import {
   MarketplacePanel,
   ReferralRewardsPanel
 } from "./portal-commerce-panels";
-import { PORTAL_COIN_ORDER_STORAGE_KEY } from "./commerce";
+import {
+  PORTAL_COIN_ORDER_STORAGE_KEY,
+  type PortalCommerceModel
+} from "./commerce";
 import { PortalOrdersPanel } from "./orders/portal-orders-panel";
 import type { PortalServiceOrder } from "./orders/portal-order-center-model";
 import { PortalPersonalCenterPanel } from "./profile/portal-personal-center-panel";
@@ -80,6 +83,8 @@ import type {
   PortalSecondFactorChallenge,
   PortalSession,
   PortalSubscriptionRequest,
+  PortalUserSecurityState,
+  PortalUserState,
   UserPortalClient
 } from "./user-portal-client";
 
@@ -1012,6 +1017,69 @@ function createPendingHumanVerificationChallenge(prompt = "正在加载校验...
   };
 }
 
+/**
+ * A wallet-first account deliberately does not project the legacy
+ * access-request/payment state. The wallet and deferred-commerce panels load
+ * their own server-owned projections after the authenticated shell commits.
+ */
+function walletFirstNeutralPortalState(
+  session: PortalSession,
+  security: PortalUserSecurityState
+): PortalUserState {
+  return {
+    userRef: session.userRef,
+    subscriptionRequest: null,
+    subscriptionRequests: [],
+    accountEntitlements: [],
+    paymentOrders: [],
+    historySummary: [],
+    security,
+    updatedAt: new Date().toISOString(),
+    safety: {
+      noAdminApi: true,
+      noPaymentActivation: true,
+      noPublicAdmin: true
+    }
+  };
+}
+
+function WalletFirstOrdersNotice({
+  locale,
+  onOpenMarketplace
+}: {
+  locale: PortalAuthLocale;
+  onOpenMarketplace: () => void;
+}) {
+  return (
+    <section
+      aria-labelledby="portal-wallet-first-orders-heading"
+      className="portal-use-card portal-v2-orders-panel"
+      data-commerce-model="wallet_first_unique_v1"
+    >
+      <div className="portal-section-heading">
+        <ReceiptText aria-hidden="true" />
+        <div>
+          <span className="portal-card-label">{uiText(locale, "订单", "Orders")}</span>
+          <h2 id="portal-wallet-first-orders-heading">
+            {uiText(locale, "Coins 服务状态", "Coins service status")}
+          </h2>
+          <p>
+            {uiText(
+              locale,
+              "此账户使用 Coins 服务资源模型。服务切换和交付状态请在商城中查看。",
+              "This account uses the Coins service-resource model. View service transitions and delivery in Marketplace."
+            )}
+          </p>
+        </div>
+      </div>
+      <button className="portal-primary-button compact" type="button" onClick={onOpenMarketplace}>
+        <ShoppingBag aria-hidden="true" />
+        {uiText(locale, "前往商城", "Go to Marketplace")}
+      </button>
+    </section>
+  );
+}
+
 function buildHumanVerification(
   challenge: PortalHumanVerificationChallenge,
   challengeAnswer: string,
@@ -1067,6 +1135,7 @@ export function UserPortalPage({
   const { theme, setTheme } = usePublicThemePreference();
   const authCopy = portalAuthEntryCopy[locale];
   const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
+  const [commerceModel, setCommerceModel] = useState<PortalCommerceModel | null>(null);
   const sessionGenerationRef = useRef(0);
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const [accountId, setAccountId] = useState("");
@@ -1245,10 +1314,38 @@ export function UserPortalPage({
     const hydrateGeneration = advanceSessionGeneration();
     const isCurrent = () => hydrateGeneration === sessionGenerationRef.current;
     const promise = (async () => {
-      const portalState = await portalClient.fetchCurrentState({
-        userRef: session.userRef,
-        sessionRef: session.sessionRef
-      });
+      let resolvedCommerceModel: PortalCommerceModel = "legacy";
+      if (portalClient.commerceModel) {
+        if (!session.sessionRef?.trim()) {
+          throw new Error("用户会话无效。");
+        }
+        resolvedCommerceModel = await portalClient.commerceModel.getCommerceModel({
+          sessionRef: session.sessionRef
+        });
+        if (
+          resolvedCommerceModel !== "legacy"
+          && resolvedCommerceModel !== "wallet_first_unique_v1"
+        ) {
+          throw new Error("账户资源模型无效。");
+        }
+      }
+      if (!isCurrent()) return;
+      const walletFirst = resolvedCommerceModel === "wallet_first_unique_v1";
+      let portalState: PortalUserState;
+      if (walletFirst) {
+        if (!portalClient.fetchSecurityState) {
+          throw new Error("账户安全状态不可用。");
+        }
+        portalState = walletFirstNeutralPortalState(
+          session,
+          await portalClient.fetchSecurityState({ sessionRef: session.sessionRef! })
+        );
+      } else {
+        portalState = await portalClient.fetchCurrentState({
+          userRef: session.userRef,
+          sessionRef: session.sessionRef
+        });
+      }
       if (!isCurrent()) return;
       const accountEntitlementRows = portalState.accountEntitlements ?? [];
       const entitlementPlan = [...accountEntitlementRows]
@@ -1262,7 +1359,7 @@ export function UserPortalPage({
           ? [portalState.subscriptionRequest]
           : [];
       let hydratedPaymentOrders = portalState.paymentOrders ?? [];
-      if (!hydratedPaymentOrders.length) {
+      if (!walletFirst && !hydratedPaymentOrders.length) {
         try {
           hydratedPaymentOrders = await portalClient.fetchPaymentOrders({
             userRef: session.userRef,
@@ -1275,6 +1372,7 @@ export function UserPortalPage({
       }
       if (!isCurrent()) return;
       setPortalSession(session);
+      setCommerceModel(resolvedCommerceModel);
       setSecondFactorChallenge(null);
       setSecondFactorCode("");
       setPasskeyProof("");
@@ -1463,6 +1561,15 @@ export function UserPortalPage({
   ): Promise<boolean> {
     setActionError("");
     setCopiedOrderRef(null);
+    if (commerceModel === "wallet_first_unique_v1") {
+      setActionError(uiText(
+        locale,
+        "此账户仅支持 Coins 商城结算。",
+        "This account supports Coins Marketplace settlement only."
+      ));
+      setActiveView("marketplace");
+      return false;
+    }
     const planId: Exclude<PortalPlanId, "trial"> = planIdOverride
       ?? (selectedPlanId === "trial" ? "monthly_basic" : selectedPlanId as Exclude<PortalPlanId, "trial">);
 
@@ -1502,6 +1609,15 @@ export function UserPortalPage({
     clientTargetOverride: PortalClientId,
     options: { refreshExisting?: boolean } = {}
   ): Promise<string | null> => {
+    if (commerceModel === "wallet_first_unique_v1") {
+      setActionError(uiText(
+        locale,
+        "此账户的服务资源由 Coins 商城管理。",
+        "This account's service resources are managed in Coins Marketplace."
+      ));
+      setActiveView("marketplace");
+      return null;
+    }
     if (!portalSession) return null;
     setActionError("");
     setCopiedOrderRef(null);
@@ -1573,7 +1689,7 @@ export function UserPortalPage({
     } finally {
       setPending(false);
     }
-  }, [currentEntitlement, historySummary, locale, portalClient, portalSession, selectedOrder, selectedPlanId]);
+  }, [commerceModel, currentEntitlement, historySummary, locale, portalClient, portalSession, selectedOrder, selectedPlanId]);
 
   function viewOrder(order: PortalOrderRow) {
     setActivePaymentOrderRef(null);
@@ -1737,6 +1853,7 @@ export function UserPortalPage({
       // Commerce recovery storage is optional; logout must still complete.
     }
     setPortalSession(null);
+    setCommerceModel(null);
     setAccountId("");
     setPassword("");
     setRobotAnswer("");
@@ -2258,8 +2375,13 @@ export function UserPortalPage({
               locale={locale}
             />
           ) : null}
-          {activeView === "orders" && paymentFlowActive ? renderLegacyPaymentFlow() : null}
-          {activeView === "orders" && !paymentFlowActive ? (
+          {activeView === "orders" && commerceModel === "wallet_first_unique_v1" ? (
+            <WalletFirstOrdersNotice
+              locale={locale}
+              onOpenMarketplace={openMarketplace}
+            />
+          ) : activeView === "orders" && paymentFlowActive ? renderLegacyPaymentFlow() : null}
+          {activeView === "orders" && commerceModel !== "wallet_first_unique_v1" && !paymentFlowActive ? (
             <PortalOrdersPanel
               commerceClient={portalClient.commerce ?? null}
               rechargeClient={portalClient.recharge ?? null}

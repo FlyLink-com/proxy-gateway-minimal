@@ -34,7 +34,7 @@ import {
 } from "../services/platform/portal-registration-welcome-bonus-migrations.mjs";
 import {
   applyDeferredResourceTransitionMigrations,
-  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
 } from "../services/platform/deferred-resource-transition-migrations.mjs";
 import {
@@ -215,13 +215,13 @@ function prepareWalletFirstControlDatabaseBeforeRuntimeClaims(directory) {
     expectedMigrationId:
       REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
     expectedDdlChecksum:
-      PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS[0].ddlChecksum,
+      PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.at(-1).ddlChecksum,
     nowFn: () => new Date("2026-08-13T00:00:00.000Z")
   });
   applyDeferredResourceTransitionMigrations({
     dbPath: controlDbPath,
     expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-    expectedDdlChecksum: DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum,
+    expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
     nowFn: () => new Date("2026-08-13T00:00:00.000Z")
   });
   applyWalletFirstDeferredCheckoutMigrations({

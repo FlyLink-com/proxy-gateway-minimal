@@ -1948,6 +1948,7 @@ export function createRuntimeState(options = {}) {
     runtimeCore: subscriptionCore,
     controlStore: platformControlStore,
     nowFn: options.userPortalNowFn,
+    walletFirstRegistrationEnabled,
     edgeCredentialIssuer,
     edgeLifecycleService,
     edgeDesiredStateNotifier,

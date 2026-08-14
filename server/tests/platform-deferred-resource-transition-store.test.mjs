@@ -9,7 +9,7 @@ import {
   applyCoinCommerceMigrations
 } from "../services/platform/coin-commerce-migrations.mjs";
 import {
-  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
   applyDeferredResourceTransitionMigrations
 } from "../services/platform/deferred-resource-transition-migrations.mjs";
@@ -140,7 +140,7 @@ function createFoundation() {
   applyDeferredResourceTransitionMigrations({
     database,
     expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-    expectedDdlChecksum: DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum,
+    expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
     nowFn: () => new Date(APPLIED_AT)
   });
   return database;
@@ -589,8 +589,6 @@ function reserveInput({
     orderRef,
     offerVersionRef: plan.offerVersionRef,
     flowKind,
-    amountUnits: plan.baseCoinUnits,
-    offerSnapshot: offerSnapshot(plan),
     scheduledFor,
     expectedEntitlementId,
     expectedRequestId,
@@ -626,6 +624,55 @@ test("store constructs its dedicated reservation participant on the exact databa
       (error) => error?.code === "wallet_deferred_hold_adapter_required"
     );
   } finally {
+    database.close();
+  }
+});
+
+test("direct reserve rejects caller-supplied price and offer snapshots", () => {
+  const database = createFoundation();
+  let store;
+  try {
+    const accountId = "account_direct_reserve_authority";
+    const clock = { value: "2030-01-01T00:00:00.000Z" };
+    seedOffer(database, MONTHLY_50);
+    seedAccount(database, accountId);
+    const reservationParticipant = createTestReservationParticipant(database);
+    reservationParticipant.seedFunding({
+      accountId,
+      orderRef: "deferred_order_direct_reserve_authority",
+      amountUnits: 1
+    });
+    store = createDeferredStore(database, clock, reservationParticipant);
+
+    const forgedOffer = {
+      ...offerSnapshot(MONTHLY_50),
+      baseCoinUnits: 1,
+      referencePrice: { currency: "CNY", amountMinor: 100 }
+    };
+    assert.throws(
+      () => store.reserveTransition({
+        accountId,
+        orderRef: "deferred_order_direct_reserve_authority",
+        offerVersionRef: MONTHLY_50.offerVersionRef,
+        flowKind: "initial_activation",
+        amountUnits: 1,
+        offerSnapshot: forgedOffer,
+        scheduledFor: clock.value,
+        expectedEntitlementId: null,
+        expectedRequestId: null,
+        expectedIssuedLinkId: null,
+        expectedValidUntil: null,
+        operation: operation(accountId, "reserve_direct_reserve_authority")
+      }),
+      (error) => error?.code === "deferred_transition_invalid_input"
+    );
+    assert.equal(
+      database.prepare("select count(*) from platform_deferred_resource_transitions")
+        .pluck().get(),
+      0
+    );
+  } finally {
+    store?.close();
     database.close();
   }
 });

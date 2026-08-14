@@ -32,6 +32,7 @@ const TRAFFIC_LIFECYCLE_PENDING_ACTIONS = new Set([
 const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_MODEL = "wallet_first_unique_v1";
 const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_TYPE = "bonus_coins";
 const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_AMOUNT_UNITS = 10;
+const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_LEASE_TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 const MAX_PORTAL_REGISTRATION_WELCOME_COIN_GRANT_LEASE_MS = 24 * 60 * 60 * 1000;
 const WALLET_FIRST_RESOURCE_EFFECT_COMMERCIAL_MODEL = "wallet_first_unique_v1";
@@ -198,6 +199,15 @@ function walletFirstResourceEffectTargetValidUntil(activationAt, durationDays) {
     throw platformError("validation_error", "wallet-first resource-effect target is outside the safe Date range");
   }
   return new Date(targetMs).toISOString();
+}
+
+function portalRegistrationWelcomeCoinGrantExpiresAt(issuedAt) {
+  const issuedAtMs = Date.parse(isoText(issuedAt, "now"));
+  const expiresAtMs = issuedAtMs + PORTAL_REGISTRATION_WELCOME_COIN_GRANT_DURATION_MS;
+  if (!Number.isSafeInteger(expiresAtMs) || Math.abs(expiresAtMs) > 8.64e15) {
+    throw platformError("validation_error", "welcome coin grant expiry is outside the safe Date range");
+  }
+  return new Date(expiresAtMs).toISOString();
 }
 
 function optionalIsoText(value, field) {
@@ -1556,8 +1566,8 @@ export function createSqliteSubscriptionControlStore({
       }
       return existing[0];
     }
-    if (record.expiresAt <= record.now) {
-      throw platformError("validation_error", "expiresAt must be after now");
+    if (record.expiresAt !== portalRegistrationWelcomeCoinGrantExpiresAt(record.now)) {
+      throw platformError("validation_error", "expiresAt must be exactly seven days after now");
     }
     sqliteRun(db.prepare(`
       insert into platform_portal_registration_welcome_coin_grants (

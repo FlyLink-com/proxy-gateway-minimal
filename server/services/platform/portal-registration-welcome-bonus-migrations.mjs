@@ -22,12 +22,18 @@ import {
   inspectCoinWalletSchema
 } from "./coin-wallet-migrations.mjs";
 
-export const REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID =
+export const LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID =
   "20260813_001_portal_registration_welcome_bonus";
+export const REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID =
+  "20260814_001_portal_registration_welcome_bonus_contract";
 
 const WELCOME_GRANTS_TABLE = "platform_portal_registration_welcome_coin_grants";
 const WELCOME_GRANTS_CLAIM_INDEX =
   "platform_portal_registration_welcome_coin_grants_claim_idx";
+const WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER =
+  "platform_portal_registration_welcome_coin_grants_timestamps_immutable";
+const WELCOME_GRANTS_CONTRACT_REBUILD_TABLE =
+  "platform_portal_registration_welcome_coin_grants_contract_rebuild";
 
 const MIGRATION_STATEMENTS = Object.freeze([
   `
@@ -142,19 +148,39 @@ function normalizeSql(sql) {
     .replace(/\0(\d+)\0/g, (_match, index) => literals[Number(index)]);
 }
 
-const OWNED_OBJECTS = Object.freeze([
-  ["table", WELCOME_GRANTS_TABLE],
-  ["index", WELCOME_GRANTS_CLAIM_INDEX]
-]);
-
-const EXPECTED_OBJECT_SQL = new Map(
-  OWNED_OBJECTS.map(([type, name], index) => [
-    `${type}:${name}`,
-    normalizeSql(MIGRATION_STATEMENTS[index])
-  ])
+const CONTRACT_TABLE_STATEMENT = MIGRATION_STATEMENTS[0].replace(
+  "expires_at text not null,",
+  `expires_at text not null check (
+    typeof(expires_at) = 'text'
+    and typeof(created_at) = 'text'
+    and length(expires_at) = 24
+    and length(created_at) = 24
+    and expires_at glob '????-??-??T??:??:??.???Z'
+    and created_at glob '????-??-??T??:??:??.???Z'
+    and strftime('%Y-%m-%dT%H:%M:%fZ', expires_at) = expires_at
+    and strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at
+    and strftime(
+      '%Y-%m-%dT%H:%M:%fZ',
+      julianday(created_at) + 7
+    ) = expires_at
+  ),`
+);
+const CONTRACT_FINAL_TABLE_EXPECTED_STATEMENT = CONTRACT_TABLE_STATEMENT.replace(
+  `create table ${WELCOME_GRANTS_TABLE}`,
+  `create table "${WELCOME_GRANTS_TABLE}"`
 );
 
-const EXPECTED_TABLE_COLUMNS = Object.freeze([
+const CONTRACT_TIMESTAMP_IMMUTABLE_TRIGGER_STATEMENT = `
+  create trigger ${WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER}
+  before update of created_at, expires_at on ${WELCOME_GRANTS_TABLE}
+  when new.created_at is not old.created_at
+    or new.expires_at is not old.expires_at
+  begin
+    select raise(abort, 'welcome_coin_grant_timestamps_immutable');
+  end
+`;
+
+const WELCOME_GRANT_COLUMNS = Object.freeze([
   "grant_ref",
   "account_id",
   "commercial_model",
@@ -178,6 +204,57 @@ const EXPECTED_TABLE_COLUMNS = Object.freeze([
   "updated_at",
   "credited_at"
 ]);
+
+const CONTRACT_MIGRATION_STATEMENTS = Object.freeze([
+  CONTRACT_TABLE_STATEMENT.replace(
+    WELCOME_GRANTS_TABLE,
+    WELCOME_GRANTS_CONTRACT_REBUILD_TABLE
+  ),
+  `
+    insert into ${WELCOME_GRANTS_CONTRACT_REBUILD_TABLE} (
+      ${WELCOME_GRANT_COLUMNS.join(", ")}
+    ) select ${WELCOME_GRANT_COLUMNS.join(", ")}
+      from ${WELCOME_GRANTS_TABLE}
+  `,
+  `drop index ${WELCOME_GRANTS_CLAIM_INDEX}`,
+  `drop table ${WELCOME_GRANTS_TABLE}`,
+  `alter table ${WELCOME_GRANTS_CONTRACT_REBUILD_TABLE}
+    rename to ${WELCOME_GRANTS_TABLE}`,
+  MIGRATION_STATEMENTS[1],
+  CONTRACT_TIMESTAMP_IMMUTABLE_TRIGGER_STATEMENT
+]);
+
+const LEGACY_OWNED_OBJECTS = Object.freeze([
+  ["table", WELCOME_GRANTS_TABLE],
+  ["index", WELCOME_GRANTS_CLAIM_INDEX]
+]);
+const OWNED_OBJECTS = Object.freeze([
+  ...LEGACY_OWNED_OBJECTS,
+  ["trigger", WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER]
+]);
+
+const EXPECTED_OBJECT_SQL = new Map(
+  [
+    ["table", WELCOME_GRANTS_TABLE, CONTRACT_FINAL_TABLE_EXPECTED_STATEMENT],
+    ["index", WELCOME_GRANTS_CLAIM_INDEX, MIGRATION_STATEMENTS[1]],
+    [
+      "trigger",
+      WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER,
+      CONTRACT_TIMESTAMP_IMMUTABLE_TRIGGER_STATEMENT
+    ]
+  ].map(([type, name, statement]) => [
+    `${type}:${name}`,
+    normalizeSql(statement)
+  ])
+);
+const LEGACY_EXPECTED_OBJECT_SQL = new Map(
+  LEGACY_OWNED_OBJECTS.map(([type, name], index) => [
+    `${type}:${name}`,
+    normalizeSql(MIGRATION_STATEMENTS[index])
+  ])
+);
+
+const EXPECTED_TABLE_COLUMNS = WELCOME_GRANT_COLUMNS;
 
 const EXPECTED_FOREIGN_KEYS = Object.freeze([
   "account_id->platform_accounts.id"
@@ -204,7 +281,7 @@ const EXPECTED_LEDGER_SQL = normalizeSql(`
   )
 `);
 
-const DDL_CHECKSUM = createHash("sha256")
+const LEGACY_DDL_CHECKSUM = createHash("sha256")
   .update(
     `GCCWEBOS:PORTAL_REGISTRATION_WELCOME_BONUS_DDL:v1\0${
       MIGRATION_STATEMENTS.map(normalizeSql).join("\0")
@@ -212,11 +289,25 @@ const DDL_CHECKSUM = createHash("sha256")
     "utf8"
   )
   .digest("hex");
+const DDL_CHECKSUM = createHash("sha256")
+  .update(
+    `GCCWEBOS:PORTAL_REGISTRATION_WELCOME_BONUS_DDL:v2\0${
+      CONTRACT_MIGRATION_STATEMENTS.map(normalizeSql).join("\0")
+    }`,
+    "utf8"
+  )
+  .digest("hex");
 
 export const PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS = Object.freeze([
   Object.freeze({
+    id: LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
+    ddlChecksum: LEGACY_DDL_CHECKSUM,
+    statements: MIGRATION_STATEMENTS
+  }),
+  Object.freeze({
     id: REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
-    ddlChecksum: DDL_CHECKSUM
+    ddlChecksum: DDL_CHECKSUM,
+    statements: CONTRACT_MIGRATION_STATEMENTS
   })
 ]);
 
@@ -423,12 +514,12 @@ function foundationDependencyIsExact(database) {
   }
 }
 
-function ownedTableIsExact(database) {
+function tableIsExact(database, expectedSql) {
   const row = objectRow(database, "table", WELCOME_GRANTS_TABLE);
   if (
     !row
     || row.name !== WELCOME_GRANTS_TABLE
-    || normalizeSql(row.sql) !== EXPECTED_OBJECT_SQL.get(`table:${WELCOME_GRANTS_TABLE}`)
+    || normalizeSql(row.sql) !== expectedSql
   ) {
     return false;
   }
@@ -444,14 +535,13 @@ function ownedTableIsExact(database) {
     === JSON.stringify([...EXPECTED_FOREIGN_KEYS].sort());
 }
 
-function ownedIndexIsExact(database) {
+function indexIsExact(database, expectedSql) {
   const row = objectRow(database, "index", WELCOME_GRANTS_CLAIM_INDEX);
   if (
     !row
     || row.name !== WELCOME_GRANTS_CLAIM_INDEX
     || row.tbl_name !== EXPECTED_INDEX.table
-    || normalizeSql(row.sql)
-      !== EXPECTED_OBJECT_SQL.get(`index:${WELCOME_GRANTS_CLAIM_INDEX}`)
+    || normalizeSql(row.sql) !== expectedSql
   ) {
     return false;
   }
@@ -464,8 +554,49 @@ function ownedIndexIsExact(database) {
     && JSON.stringify(columns) === JSON.stringify(EXPECTED_INDEX.columns);
 }
 
+function ownedTimestampImmutableTriggerIsExact(database) {
+  const row = objectRow(
+    database,
+    "trigger",
+    WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER
+  );
+  return row?.name === WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER
+    && row.tbl_name === WELCOME_GRANTS_TABLE
+    && normalizeSql(row.sql) === EXPECTED_OBJECT_SQL.get(
+      `trigger:${WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER}`
+    );
+}
+
+function ownedTableIsExact(database) {
+  return tableIsExact(
+    database,
+    EXPECTED_OBJECT_SQL.get(`table:${WELCOME_GRANTS_TABLE}`)
+  );
+}
+
+function ownedIndexIsExact(database) {
+  return indexIsExact(
+    database,
+    EXPECTED_OBJECT_SQL.get(`index:${WELCOME_GRANTS_CLAIM_INDEX}`)
+  );
+}
+
 function ownedObjectsAreExact(database) {
-  return ownedTableIsExact(database) && ownedIndexIsExact(database);
+  return ownedTableIsExact(database)
+    && ownedIndexIsExact(database)
+    && ownedTimestampImmutableTriggerIsExact(database);
+}
+
+function legacyOwnedObjectsAreExact(database) {
+  return tableIsExact(
+    database,
+    LEGACY_EXPECTED_OBJECT_SQL.get(`table:${WELCOME_GRANTS_TABLE}`)
+  )
+    && indexIsExact(
+      database,
+      LEGACY_EXPECTED_OBJECT_SQL.get(`index:${WELCOME_GRANTS_CLAIM_INDEX}`)
+    )
+    && !namedObjectRow(database, WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER);
 }
 
 function integrityChecks(database) {
@@ -494,11 +625,16 @@ function closedInspection(database) {
   const foundationDependency = ledgerState === "compatible"
     && foundationDependencyIsExact(database);
   let migrationRows = 0;
+  let legacyRow = null;
   let successorRow = null;
   if (ledgerState === "compatible") {
     migrationRows = database.prepare(
       "select count(*) from platform_schema_migrations"
     ).pluck().get();
+    legacyRow = migrationRow(
+      database,
+      LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
+    );
     successorRow = migrationRow(
       database,
       REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
@@ -517,22 +653,32 @@ function closedInspection(database) {
   if (!foundationDependency && ledgerState !== "incompatible") {
     reasons.push("migration_dependency_missing");
   }
-  if (
-    foundationDependency
-    && !successorRow
-    && presentTargetNames.length === 0
-  ) {
-    reasons.push("required_migration_missing");
-  } else if (foundationDependency && !successorRow) {
-    reasons.push("owned_object_without_migration");
+  if (foundationDependency && !legacyRow) {
+    if (presentTargetNames.length === 0) {
+      reasons.push("required_migration_missing");
+    } else {
+      reasons.push("owned_object_without_migration");
+    }
   } else if (
     foundationDependency
-    && successorRow.ddl_checksum !== DDL_CHECKSUM
+    && legacyRow.ddl_checksum !== LEGACY_DDL_CHECKSUM
   ) {
     reasons.push("migration_checksum_mismatch");
+  } else if (foundationDependency && !successorRow) {
+    if (legacyOwnedObjectsAreExact(database)) {
+      reasons.push("required_migration_missing");
+    } else if (
+      !objectRow(database, "table", WELCOME_GRANTS_TABLE)
+      || !objectRow(database, "index", WELCOME_GRANTS_CLAIM_INDEX)
+    ) {
+      reasons.push("owned_object_missing");
+    } else {
+      reasons.push("owned_object_incompatible");
+    }
+  } else if (foundationDependency && successorRow.ddl_checksum !== DDL_CHECKSUM) {
+    reasons.push("migration_checksum_mismatch");
   } else if (foundationDependency && !ownedObjectsAreExact(database)) {
-    if (!objectRow(database, "table", WELCOME_GRANTS_TABLE)
-      || !objectRow(database, "index", WELCOME_GRANTS_CLAIM_INDEX)) {
+    if (OWNED_OBJECTS.some(([type, name]) => !objectRow(database, type, name))) {
       reasons.push("owned_object_missing");
     } else {
       reasons.push("owned_object_incompatible");
@@ -566,6 +712,14 @@ function closedInspection(database) {
   const pending = foundationDependency
     && reasonCodes.length === 1
     && reasonCodes[0] === "required_migration_missing";
+  const pendingMigrationIds = pending
+    ? legacyRow
+      ? [REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID]
+      : [
+        LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
+        REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
+      ]
+    : [];
   const ok = foundationDependency
     && reasonCodes.length === 0
     && checks.schemaExact
@@ -580,9 +734,7 @@ function closedInspection(database) {
     counts,
     checks,
     reasonCodes,
-    pendingMigrationIds: pending
-      ? [REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID]
-      : []
+    pendingMigrationIds
   };
 }
 
@@ -697,16 +849,24 @@ function normalizeAppliedAt(nowFn, invocationToken) {
   return value.toISOString();
 }
 
+function insertMigrationLedgerRow(database, migrationId, ddlChecksum, appliedAt) {
+  database.prepare(`
+    insert into platform_schema_migrations
+      (migration_id, ddl_checksum, applied_at)
+    values (?, ?, ?)
+  `).run(migrationId, ddlChecksum, appliedAt);
+}
+
 function applyWithDatabase(database, nowFn, invocationToken) {
   database.pragma("foreign_keys = ON");
   const migrate = database.transaction(() => {
     assertFoundationDependency(database, invocationToken);
-    const applied = migrationRow(
+    const successor = migrationRow(
       database,
       REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
     );
-    if (applied) {
-      if (applied.ddl_checksum !== DDL_CHECKSUM) {
+    if (successor) {
+      if (successor.ddl_checksum !== DDL_CHECKSUM) {
         throw migrationError("migration_checksum_mismatch", invocationToken);
       }
       if (
@@ -724,17 +884,39 @@ function applyWithDatabase(database, nowFn, invocationToken) {
       return [];
     }
 
-    assertOwnedObjectsAreAbsent(database, invocationToken);
-    for (const statement of MIGRATION_STATEMENTS) database.exec(statement);
-    database.prepare(`
-      insert into platform_schema_migrations
-        (migration_id, ddl_checksum, applied_at)
-      values (?, ?, ?)
-    `).run(
+    const appliedMigrationIds = [];
+    const legacy = migrationRow(
+      database,
+      LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
+    );
+    const appliedAt = normalizeAppliedAt(nowFn, invocationToken);
+    if (!legacy) {
+      assertOwnedObjectsAreAbsent(database, invocationToken);
+      for (const statement of MIGRATION_STATEMENTS) database.exec(statement);
+      insertMigrationLedgerRow(
+        database,
+        LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
+        LEGACY_DDL_CHECKSUM,
+        appliedAt
+      );
+      appliedMigrationIds.push(LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID);
+    } else {
+      if (legacy.ddl_checksum !== LEGACY_DDL_CHECKSUM) {
+        throw migrationError("migration_checksum_mismatch", invocationToken);
+      }
+      if (!legacyOwnedObjectsAreExact(database)) {
+        throw migrationError("applied_schema_incompatible", invocationToken);
+      }
+    }
+
+    for (const statement of CONTRACT_MIGRATION_STATEMENTS) database.exec(statement);
+    insertMigrationLedgerRow(
+      database,
       REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
       DDL_CHECKSUM,
-      normalizeAppliedAt(nowFn, invocationToken)
+      appliedAt
     );
+    appliedMigrationIds.push(REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID);
     if (
       !inspectForApply(
         database,
@@ -747,7 +929,7 @@ function applyWithDatabase(database, nowFn, invocationToken) {
     ) {
       throw migrationError("applied_schema_incompatible", invocationToken);
     }
-    return [REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID];
+    return appliedMigrationIds;
   });
   return migrate.immediate();
 }
@@ -797,7 +979,7 @@ export function applyPortalRegistrationWelcomeBonusMigrations({
     return {
       ...inspection,
       mode: "apply",
-      sourceChanged: appliedMigrationIds.length === 1,
+      sourceChanged: appliedMigrationIds.length > 0,
       appliedMigrationIds
     };
   } catch (error) {
@@ -837,6 +1019,11 @@ function sourceInspectionStateIsUnchanged(before, after) {
     && JSON.stringify(before.inspection) === JSON.stringify(after.inspection);
 }
 
+function sourceLogicalStateIsUnchanged(before, after) {
+  return before.schemaVersion === after.schemaVersion
+    && JSON.stringify(before.inspection) === JSON.stringify(after.inspection);
+}
+
 function safeRemoveOwnedDirectory(directory, root, invocationToken) {
   const resolvedDirectory = resolve(directory);
   const resolvedRoot = resolve(root);
@@ -865,6 +1052,7 @@ export async function dryRunPortalRegistrationWelcomeBonusMigrations({
   const root = tempRoot ?? tmpdir();
   let workDirectory;
   let source;
+  let sourceReadTransaction = false;
   try {
     assertAbsoluteTempRoot(root, invocationToken);
     mkdirSync(root, { recursive: true });
@@ -872,14 +1060,20 @@ export async function dryRunPortalRegistrationWelcomeBonusMigrations({
       join(root, "portal-registration-welcome-bonus-dry-run-")
     );
     const snapshotPath = join(workDirectory, "snapshot.sqlite");
-    const sourceHashBefore = sha256File(dbPath);
+    const verificationSnapshotPath = join(workDirectory, "verification.sqlite");
     source = new Database(dbPath, { readonly: true, fileMustExist: true });
+    source.exec("begin");
+    sourceReadTransaction = true;
     assertFoundationDependency(source, invocationToken);
     const sourceInspectionBefore =
       inspectPortalRegistrationWelcomeBonusSchema({ database: source });
     const sourceStateBefore = sourceInspectionState(source);
     const wasApplied = sourceInspectionBefore.ok;
     await source.backup(snapshotPath);
+    const sourceSnapshotHash = sha256File(snapshotPath);
+    const sourceStateAfter = sourceInspectionState(source);
+    source.exec("rollback");
+    sourceReadTransaction = false;
     const applied = applyPortalRegistrationWelcomeBonusMigrations({
       dbPath: snapshotPath,
       expectedMigrationId:
@@ -892,12 +1086,27 @@ export async function dryRunPortalRegistrationWelcomeBonusMigrations({
     if (!validated.ok) {
       throw migrationError("applied_schema_incompatible", invocationToken);
     }
+    const verification = new Database(dbPath, { readonly: true, fileMustExist: true });
+    let verificationState;
+    let sourceSnapshotUnchanged;
+    try {
+      verificationState = sourceInspectionState(verification);
+      await verification.backup(verificationSnapshotPath);
+      sourceSnapshotUnchanged = sha256File(verificationSnapshotPath)
+        === sourceSnapshotHash;
+    } finally {
+      verification.close();
+    }
     if (
-      sha256File(dbPath) !== sourceHashBefore
-      || !sourceInspectionStateIsUnchanged(
+      !sourceInspectionStateIsUnchanged(
         sourceStateBefore,
-        sourceInspectionState(source)
+        sourceStateAfter
       )
+      || !sourceLogicalStateIsUnchanged(
+        sourceStateBefore,
+        verificationState
+      )
+      || !sourceSnapshotUnchanged
     ) {
       throw migrationError("source_changed_during_dry_run", invocationToken);
     }
@@ -907,13 +1116,20 @@ export async function dryRunPortalRegistrationWelcomeBonusMigrations({
       sourceChanged: false,
       pendingMigrationIds: wasApplied
         ? []
-        : [REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID],
+        : sourceInspectionBefore.pendingMigrationIds,
       appliedMigrationIds: applied.appliedMigrationIds
     };
   } catch (error) {
     throw closedOperationError(error, invocationToken);
   } finally {
     let cleanupError = null;
+    if (sourceReadTransaction) {
+      try {
+        source?.exec("rollback");
+      } catch {
+        // Preserve the primary closed operation error while releasing a read-only snapshot.
+      }
+    }
     try {
       source?.close();
     } catch {

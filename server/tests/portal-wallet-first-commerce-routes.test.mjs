@@ -9,7 +9,7 @@ import {
   applyCoinCommerceMigrations
 } from "../services/platform/coin-commerce-migrations.mjs";
 import {
-  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
   applyDeferredResourceTransitionMigrations
 } from "../services/platform/deferred-resource-transition-migrations.mjs";
@@ -185,7 +185,7 @@ function createRealWalletFirstCommerceDatabase() {
   applyDeferredResourceTransitionMigrations({
     database,
     expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-    expectedDdlChecksum: DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum,
+    expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
     nowFn: () => new Date(REAL_E2E_NOW)
   });
   applyWalletFirstDeferredCheckoutMigrations({
@@ -500,6 +500,15 @@ test("wallet-first model is server-selected while legacy Commerce calls stay byt
   const { server, baseUrl } = await listen(createApp(state));
   t.after(() => closeServer(server));
 
+  const legacyCatalog = await fetch(`${baseUrl}/api/portal/catalog/offers`, {
+    headers: sessionHeaders("session_beta")
+  });
+  assert.equal(legacyCatalog.status, 200);
+  assert.equal((await legacyCatalog.json()).offers.length, 1);
+  assert.deepEqual(legacyCalls, [["listPublishedOffers", {
+    accountId: "acct_beta"
+  }]]);
+
   const legacyPreview = await fetch(`${baseUrl}/api/portal/commerce/checkout-preview`, {
     method: "POST",
     headers: sessionHeaders("session_beta", { "content-type": "application/json" }),
@@ -511,10 +520,13 @@ test("wallet-first model is server-selected while legacy Commerce calls stay byt
     quote: legacyPortalQuote()
   });
   // JSON.stringify omits the intentionally absent transition key.
-  assert.deepEqual(legacyCalls, [["createCheckoutQuote", {
-    accountId: "acct_beta",
-    offerRef: FULL_OFFER.offerRef
-  }]]);
+  assert.deepEqual(legacyCalls, [
+    ["listPublishedOffers", { accountId: "acct_beta" }],
+    ["createCheckoutQuote", {
+      accountId: "acct_beta",
+      offerRef: FULL_OFFER.offerRef
+    }]
+  ]);
   assert.deepEqual(deferredCalls, []);
 
   const mode = await fetch(`${baseUrl}/api/portal/commerce/model`, {
@@ -523,6 +535,23 @@ test("wallet-first model is server-selected while legacy Commerce calls stay byt
   assert.deepEqual(await mode.json(), {
     commerceModel: "wallet_first_unique_v1"
   });
+
+  for (const path of [
+    "/api/portal/catalog/offers",
+    `/api/portal/catalog/offers/${FULL_OFFER.offerRef}`
+  ]) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      headers: sessionHeaders("session_alpha")
+    });
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), {
+      error: { code: "wallet_first_deferred_required", retryable: false }
+    });
+  }
+  assert.equal(
+    legacyCalls.some(([, input]) => input?.accountId === "acct_alpha"),
+    false
+  );
 
   const blockedLegacyConfirm = await fetch(`${baseUrl}/api/portal/commerce/orders`, {
     method: "POST",
@@ -865,39 +894,49 @@ test("wallet-first HTTP requires a new Quote after expiry or wallet-version drif
   }
 });
 
-test("wallet-first HTTP exposes a full deferred queue as a non-retryable conflict", async (t) => {
-  const calls = [];
-  const state = createState({
-    controlStore: createControlStore({ acct_alpha: "wallet_first_unique_v1" }),
-    deferredService: createDeferredService(calls, {
-      reserveDeferredTransition(input) {
-        calls.push(["reserveDeferredTransition", clone(input)]);
-        const error = new Error("synthetic deferred queue cap");
-        error.code = "deferred_transition_queue_full";
-        throw error;
+test("wallet-first HTTP maps safe deferred reservation failures without exposing store details", async (t) => {
+  for (const [storeCode, status, responseCode] of [
+    ["deferred_transition_queue_full", 409, "deferred_transition_conflict"],
+    ["deferred_transition_state_conflict", 409, "deferred_transition_conflict"],
+    ["deferred_transition_account_not_eligible", 423, "reconciliation_required"]
+  ]) {
+    await t.test(storeCode, async () => {
+      const calls = [];
+      const state = createState({
+        controlStore: createControlStore({ acct_alpha: "wallet_first_unique_v1" }),
+        deferredService: createDeferredService(calls, {
+          reserveDeferredTransition(input) {
+            calls.push(["reserveDeferredTransition", clone(input)]);
+            const error = new Error("synthetic deferred transition failure");
+            error.code = storeCode;
+            throw error;
+          }
+        }),
+        legacyCalls: []
+      });
+      const { server, baseUrl } = await listen(createApp(state));
+      try {
+        const response = await fetch(
+          `${baseUrl}/api/portal/commerce/deferred/transitions`,
+          {
+            method: "POST",
+            headers: sessionHeaders("session_alpha", {
+              "content-type": "application/json",
+              "idempotency-key": `reserve_${storeCode}`
+            }),
+            body: JSON.stringify({ quoteRef: "quote_annual_premium_1" })
+          }
+        );
+        assert.equal(response.status, status);
+        assert.deepEqual(await response.json(), {
+          error: { code: responseCode, retryable: false }
+        });
+        assert.equal(calls.some(([method]) => method === "reserveDeferredTransition"), true);
+      } finally {
+        await closeServer(server);
       }
-    }),
-    legacyCalls: []
-  });
-  const { server, baseUrl } = await listen(createApp(state));
-  t.after(() => closeServer(server));
-
-  const response = await fetch(
-    `${baseUrl}/api/portal/commerce/deferred/transitions`,
-    {
-      method: "POST",
-      headers: sessionHeaders("session_alpha", {
-        "content-type": "application/json",
-        "idempotency-key": "reserve_queue_full"
-      }),
-      body: JSON.stringify({ quoteRef: "quote_annual_premium_1" })
-    }
-  );
-  assert.equal(response.status, 409);
-  assert.deepEqual(await response.json(), {
-    error: { code: "deferred_transition_conflict", retryable: false }
-  });
-  assert.equal(calls.some(([method]) => method === "reserveDeferredTransition"), true);
+    });
+  }
 });
 
 test("wallet-first preview and reserve preserve the reconciliation-required safety gate", async (t) => {
@@ -1085,6 +1124,13 @@ test("an existing wallet-first marker never falls back when new registration is 
   });
   assert.equal(response.status, 409);
   assert.deepEqual(await response.json(), {
+    error: { code: "wallet_first_deferred_required", retryable: false }
+  });
+  const catalog = await fetch(`${baseUrl}/api/portal/catalog/offers`, {
+    headers: sessionHeaders("session_alpha")
+  });
+  assert.equal(catalog.status, 409);
+  assert.deepEqual(await catalog.json(), {
     error: { code: "wallet_first_deferred_required", retryable: false }
   });
   assert.deepEqual(legacyCalls, []);

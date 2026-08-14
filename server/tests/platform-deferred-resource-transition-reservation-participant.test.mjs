@@ -8,7 +8,7 @@ import {
   applyCoinCommerceMigrations
 } from "../services/platform/coin-commerce-migrations.mjs";
 import {
-  DEFERRED_RESOURCE_TRANSITION_MIGRATIONS,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
   REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
   applyDeferredResourceTransitionMigrations
 } from "../services/platform/deferred-resource-transition-migrations.mjs";
@@ -92,8 +92,7 @@ function createFoundation({ withDeferred = true } = {}) {
     applyDeferredResourceTransitionMigrations({
       database,
       expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-      expectedDdlChecksum:
-        DEFERRED_RESOURCE_TRANSITION_MIGRATIONS[0].ddlChecksum,
+      expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
       nowFn: () => new Date(NOW)
     });
   }
@@ -160,11 +159,11 @@ function credit(database, accountId, {
   }
 }
 
-function createParticipant(database) {
+function createParticipant(database, now = NOW, refPrefix = "deferred") {
   return createDeferredResourceTransitionReservationParticipant({
     database,
-    nowFn: () => new Date(NOW),
-    refFactory: makeRefFactory("deferred")
+    nowFn: () => new Date(now),
+    refFactory: makeRefFactory(refPrefix)
   });
 }
 
@@ -230,6 +229,49 @@ function insertTransition(database, {
   );
 }
 
+function markTransitionEffectApplied(database, {
+  accountId,
+  transitionRef
+}) {
+  const entitlementId = `effect_entitlement_${transitionRef}`;
+  const requestId = `effect_request_${transitionRef}`;
+  const issuedLinkId = `effect_link_${transitionRef}`;
+  const validUntil = "2030-02-01T00:00:00.000Z";
+  database.prepare(`
+    insert into platform_entitlements (id, account_id, status, valid_until)
+    values (?, ?, 'active', ?)
+  `).run(entitlementId, accountId, validUntil);
+  database.prepare(`
+    insert into platform_issuance_requests (id, account_id, entitlement_id)
+    values (?, ?, ?)
+  `).run(requestId, accountId, entitlementId);
+  database.prepare(`
+    insert into platform_issued_subscription_links (id, request_id)
+    values (?, ?)
+  `).run(issuedLinkId, requestId);
+  database.prepare(`
+    update ${TRANSITIONS_TABLE}
+       set state = 'processing', lease_generation = 1,
+           lease_token = ?, lease_until = ?, updated_at = ?
+     where transition_ref = ? and state = 'reserved'
+  `).run("a".repeat(64), "2030-01-03T00:00:00.000Z", NOW, transitionRef);
+  database.prepare(`
+    update ${TRANSITIONS_TABLE}
+       set state = 'effect_applied', effect_ref = ?,
+           effect_entitlement_id = ?, effect_request_id = ?,
+           effect_issued_link_id = ?, effect_valid_until = ?, updated_at = ?
+     where transition_ref = ? and state = 'processing'
+  `).run(
+    `effect_${transitionRef}`,
+    entitlementId,
+    requestId,
+    issuedLinkId,
+    validUntil,
+    NOW,
+    transitionRef
+  );
+}
+
 function getLot(database) {
   return database.prepare(`
     select available_units, held_units, consumed_units, expired_units
@@ -281,15 +323,16 @@ test("deferred reservation moves lots atomically without ordinary holds and repl
       accountId,
       orderRef: "deferred_order_capture",
       transitionRef: "deferred_transition_capture",
-      reservationRef: "deferred_reservation_capture"
+      reservationRef: "deferred_reservation_capture",
+      scheduledFor: NOW
     });
     const created = immediate(database, () => participant.createReservationInTransaction(input));
     assert.deepEqual(created, {
       ok: true,
       reservationRef: input.reservationRef,
       state: "reserved",
-      activationAt: SCHEDULED_FOR,
-      expiresAt: "2030-01-03T00:00:00.000Z",
+      activationAt: NOW,
+      expiresAt: "2030-01-02T00:00:00.000Z",
       allocationSnapshot: [{
         lotRef: "wallet_lot_1",
         allocationSequence: 1,
@@ -316,8 +359,8 @@ test("deferred reservation moves lots atomically without ordinary holds and repl
     assert.deepEqual(reservation, {
       source_type: "deferred_resource_transition",
       source_ref: input.transitionRef,
-      activation_at: SCHEDULED_FOR,
-      expires_at: "2030-01-03T00:00:00.000Z",
+      activation_at: NOW,
+      expires_at: "2030-01-02T00:00:00.000Z",
       rebase_generation: 0
     });
     assert.equal(
@@ -326,6 +369,10 @@ test("deferred reservation moves lots atomically without ordinary holds and repl
     );
 
     immediate(database, () => insertTransition(database, input));
+    markTransitionEffectApplied(database, {
+      accountId,
+      transitionRef: input.transitionRef
+    });
     const verified = immediate(database, () => participant.verifyReservationInTransaction({
       accountId,
       orderRef: input.orderRef,
@@ -391,6 +438,93 @@ test("deferred reservation moves lots atomically without ordinary holds and repl
     } finally {
       projectionStore.close();
     }
+  } finally {
+    database.close();
+  }
+});
+
+test("deferred reservation participant cannot capture or release before its due effect boundary", () => {
+  const database = createFoundation();
+  try {
+    const accountId = "account_lifecycle_boundary";
+    seedAccount(database, accountId);
+    seedOffer(database);
+    credit(database, accountId);
+    const participant = createParticipant(database);
+    const input = createInput({
+      accountId,
+      orderRef: "deferred_order_lifecycle_boundary",
+      transitionRef: "deferred_transition_lifecycle_boundary",
+      reservationRef: "deferred_reservation_lifecycle_boundary"
+    });
+    immediate(database, () => participant.createReservationInTransaction(input));
+    immediate(database, () => insertTransition(database, input));
+
+    const beforeEffect = immediate(database, () => participant.captureReservationInTransaction({
+      reservationRef: input.reservationRef,
+      operation: operation(accountId, "capture_before_effect")
+    }));
+    assert.deepEqual(beforeEffect, {
+      ok: false,
+      reservationRef: input.reservationRef,
+      safeResultCode: "not_capturable"
+    });
+    assert.deepEqual(getLot(database), {
+      available_units: 0,
+      held_units: 20,
+      consumed_units: 0,
+      expired_units: 0
+    });
+    assert.equal(
+      database.prepare(`select state from ${RESERVATIONS_TABLE} where reservation_ref = ?`)
+        .pluck().get(input.reservationRef),
+      "reserved"
+    );
+
+    markTransitionEffectApplied(database, {
+      accountId,
+      transitionRef: input.transitionRef
+    });
+    const beforeScheduledFor = immediate(database, () => participant.captureReservationInTransaction({
+      reservationRef: input.reservationRef,
+      operation: operation(accountId, "capture_before_scheduled_for")
+    }));
+    assert.deepEqual(beforeScheduledFor, {
+      ok: false,
+      reservationRef: input.reservationRef,
+      safeResultCode: "not_capturable"
+    });
+    const releaseAfterEffect = immediate(database, () => participant.releaseReservationInTransaction({
+      reservationRef: input.reservationRef,
+      operation: operation(accountId, "release_after_effect")
+    }));
+    assert.deepEqual(releaseAfterEffect, {
+      ok: false,
+      reservationRef: input.reservationRef,
+      safeResultCode: "not_releasable"
+    });
+    assert.equal(
+      database.prepare(`select state from ${RESERVATIONS_TABLE} where reservation_ref = ?`)
+        .pluck().get(input.reservationRef),
+      "reserved"
+    );
+
+    const dueParticipant = createParticipant(database, SCHEDULED_FOR, "deferred_due");
+    const captured = immediate(database, () => dueParticipant.captureReservationInTransaction({
+      reservationRef: input.reservationRef,
+      operation: operation(accountId, "capture_after_due_effect")
+    }));
+    assert.deepEqual(captured, {
+      ok: true,
+      reservationRef: input.reservationRef,
+      safeResultCode: "captured"
+    });
+    assert.deepEqual(getLot(database), {
+      available_units: 0,
+      held_units: 0,
+      consumed_units: 20,
+      expired_units: 0
+    });
   } finally {
     database.close();
   }

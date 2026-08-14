@@ -120,7 +120,7 @@ function withRegistrationState(fn, options = {}) {
     applyPortalRegistrationWelcomeBonusMigrations({
       dbPath: controlDbPath,
       expectedMigrationId: REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
-      expectedDdlChecksum: PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS[0].ddlChecksum,
+    expectedDdlChecksum: PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.at(-1).ddlChecksum,
       nowFn: () => new Date(NOW)
     });
   }
@@ -240,6 +240,7 @@ test("portal registration creates an email-login account, seven-day trial, and p
       assert.equal(registrationBody.registration.accountId, undefined);
       assert.equal(registrationBody.registration.userRef, "local-user@example.test");
       assert.equal(registrationBody.registration.status, "registered");
+      assert.equal(registrationBody.registration.commercialModel, "legacy");
       assert.equal(registrationBody.registration.trial.durationDays, 7);
       assert.equal(registrationBody.registration.trial.validUntil, TRIAL_UNTIL);
       assert.equal(registrationBody.session.sessionRef, "portal_session_registration_1");
