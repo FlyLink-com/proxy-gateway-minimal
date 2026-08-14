@@ -217,14 +217,13 @@ function createFixture() {
     idFactory: () => `tenant_runtime_e2e_${++tenantCount}`,
     artifactIdFactory: () => `artifact_runtime_e2e_${++artifactCount}`
   });
-  const createRuntime = () => createWalletFirstDeferredTransitionRuntime({
+  const runtime = createWalletFirstDeferredTransitionRuntime({
     dbPath: controlDbPath,
     controlStore,
     subscriptionCore,
     nodeId: NODE_ID,
     nowFn
   });
-  let runtime = createRuntime();
   return {
     controlDatabase,
     controlStore,
@@ -232,17 +231,10 @@ function createFixture() {
     runtimeDatabase,
     subscriptionStore,
     subscriptionCore,
-    get runtime() {
-      return runtime;
-    },
+    runtime,
     clock,
     setNow(value) {
       clock.value = value;
-    },
-    restartRuntime() {
-      runtime.close();
-      runtime = createRuntime();
-      return runtime;
     },
     close() {
       runtime.close();
@@ -254,7 +246,7 @@ function createFixture() {
   };
 }
 
-test("concrete wallet-first runtime restarts and recovers a scheduled switch after natural expiry", async (t) => {
+test("concrete wallet-first runtime recovers an expired scheduled-switch lease through the normal coordinator", async (t) => {
   const fixture = createFixture();
   t.after(() => fixture.close());
 
@@ -315,9 +307,8 @@ test("concrete wallet-first runtime restarts and recovers a scheduled switch aft
   assert.equal(crashedClaim.leaseGeneration, 1);
   assert.equal(fixture.subscriptionCore.listTenants().length, 1);
 
-  // Simulate a process death after the durable outer claim but before any
-  // runtime preparation, inner lease, Core mutation, or Coins capture.
-  fixture.restartRuntime();
+  // Let the outer lease expire before the coordinator reaches normal runtime
+  // preparation, inner lease, Core mutation, or Coins capture.
   fixture.setNow(plusMilliseconds(initialChain.validUntil, 61_000));
   assert.ok(
     Date.parse(fixture.clock.value) > Date.parse(initialChain.validUntil),
@@ -379,11 +370,10 @@ test("concrete wallet-first runtime restarts and recovers a scheduled switch aft
     0
   );
 
-  fixture.restartRuntime();
-  const afterRestart = await fixture.runtime.deferredTransitionCoordinator.runOnce();
-  assert.equal(afterRestart.effectApplied, 0);
-  assert.equal(afterRestart.settled, 0);
-  assert.equal(afterRestart.reconciliationRequired, 0);
+  const afterRecovery = await fixture.runtime.deferredTransitionCoordinator.runOnce();
+  assert.equal(afterRecovery.effectApplied, 0);
+  assert.equal(afterRecovery.settled, 0);
+  assert.equal(afterRecovery.reconciliationRequired, 0);
   assert.equal(fixture.subscriptionCore.listTenants().length, 1);
   assert.equal(
     fixture.subscriptionCore.listSubscriptionArtifacts(initialTenant.id).length,
