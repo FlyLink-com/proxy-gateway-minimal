@@ -35,6 +35,12 @@ import { createPortalPasswordCredentialService } from "./services/platform/porta
 import { createPortalRegistrationEmailVerificationService } from "./services/platform/portal-registration-email-verification.mjs";
 import { createResendRegistrationEmailSender } from "./services/platform/resend-registration-email-sender.mjs";
 import { createPortalRegistrationService } from "./services/platform/portal-registration.mjs";
+import { createPortalRegistrationWelcomeBonusCoordinator } from "./services/platform/portal-registration-welcome-bonus-coordinator.mjs";
+import { validatePortalRegistrationWelcomeBonusSchema } from "./services/platform/portal-registration-welcome-bonus-migrations.mjs";
+import { validateDeferredResourceTransitionSchema } from "./services/platform/deferred-resource-transition-migrations.mjs";
+import { validateWalletFirstDeferredCheckoutSchema } from "./services/platform/wallet-first-deferred-checkout-migrations.mjs";
+import { validateWalletFirstResourceEffectRuntimeClaimsSchema } from "./services/platform/wallet-first-resource-effect-runtime-claims-migrations.mjs";
+import { createWalletFirstDeferredTransitionRuntime } from "./services/platform/wallet-first-deferred-transition-runtime.mjs";
 import { createPortalTotpSecretProtector, createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
 import { createPortalAccountAdminAuthService } from "./services/platform/admin-auth.mjs";
@@ -194,6 +200,30 @@ function coinCommercePrerequisiteError() {
 function coinRechargePrerequisiteError() {
   const error = new Error("Coin recharge runtime prerequisites are not satisfied");
   error.code = "coin_recharge_prerequisite_missing";
+  return error;
+}
+
+function walletFirstRegistrationPrerequisiteError() {
+  const error = new Error(
+    "Wallet-first Portal registration prerequisites are not satisfied"
+  );
+  error.code = "wallet_first_registration_prerequisite_missing";
+  return error;
+}
+
+function walletFirstRegistrationSchemaError() {
+  const error = new Error(
+    "Wallet-first Portal registration schema is not ready"
+  );
+  error.code = "wallet_first_registration_schema_not_ready";
+  return error;
+}
+
+function walletFirstDeferredTransitionRuntimeError() {
+  const error = new Error(
+    "Wallet-first deferred transition runtime coordinator is not ready"
+  );
+  error.code = "wallet_first_deferred_transition_runtime_missing";
   return error;
 }
 
@@ -1348,6 +1378,30 @@ export function createRuntimeState(options = {}) {
   const coinsCommerceAuthorityEnabled = envFlag(
     env.COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED
   );
+  const walletFirstRegistrationEnabled = envFlag(
+    env.USER_PORTAL_WALLET_FIRST_MODEL_ENABLED
+  );
+  const deferredTransitionRuntimeEnabled = walletFirstRegistrationEnabled
+    ? envFlag(env.COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED)
+    : false;
+  const walletFirstDeferredTransitionNodeId = walletFirstRegistrationEnabled
+    ? optionalEnvText(env.COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID)
+    : "";
+  if (
+    walletFirstRegistrationEnabled
+    && (
+      !userPortalRoutesEnabled
+      || !coinsWalletEnabled
+      || !coinsCommerceEnabled
+      || coinsCommerceAuthorityEnabled
+      || !deferredTransitionRuntimeEnabled
+    )
+  ) {
+    throw walletFirstRegistrationPrerequisiteError();
+  }
+  if (walletFirstRegistrationEnabled && !walletFirstDeferredTransitionNodeId) {
+    throw walletFirstDeferredTransitionRuntimeError();
+  }
   if (coinsCommerceAuthorityEnabled && !coinsCommerceEnabled) {
     throw coinCommercePrerequisiteError();
   }
@@ -1525,6 +1579,50 @@ export function createRuntimeState(options = {}) {
   );
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
+  if (walletFirstRegistrationEnabled) {
+    let welcomeBonusSchemaReady = false;
+    let deferredTransitionSchemaReady = false;
+    let deferredCheckoutSchemaReady = false;
+    let runtimeClaimsSchemaReady = false;
+    try {
+      welcomeBonusSchemaReady = validatePortalRegistrationWelcomeBonusSchema({
+        dbPath: controlDbPath
+      }).ok === true;
+      deferredTransitionSchemaReady = validateDeferredResourceTransitionSchema({
+        dbPath: controlDbPath
+      }).ok === true;
+      deferredCheckoutSchemaReady = validateWalletFirstDeferredCheckoutSchema({
+        dbPath: controlDbPath
+      }).ok === true;
+      runtimeClaimsSchemaReady = validateWalletFirstResourceEffectRuntimeClaimsSchema({
+        dbPath: controlDbPath
+      }).ok === true;
+    } catch {
+      welcomeBonusSchemaReady = false;
+      deferredTransitionSchemaReady = false;
+      deferredCheckoutSchemaReady = false;
+      runtimeClaimsSchemaReady = false;
+    }
+    if (
+      !welcomeBonusSchemaReady
+      || !deferredTransitionSchemaReady
+      || !deferredCheckoutSchemaReady
+      || !runtimeClaimsSchemaReady
+    ) {
+      for (const [owned, store] of [
+        [ownsControlStore, platformControlStore],
+        [ownsSubscriptionStore, subscriptionStore]
+      ]) {
+        if (!owned) continue;
+        try {
+          store.close();
+        } catch {
+          // Preserve the fail-closed wallet-first schema validation error.
+        }
+      }
+      throw walletFirstRegistrationSchemaError();
+    }
+  }
   const standaloneCoinsWalletEnabled = coinsWalletEnabled && !coinsCommerceEnabled;
   const ownsCoinsWalletStore = standaloneCoinsWalletEnabled && !options.coinsWalletStore;
   let coinsWalletStore = null;
@@ -1850,6 +1948,7 @@ export function createRuntimeState(options = {}) {
     runtimeCore: subscriptionCore,
     controlStore: platformControlStore,
     nowFn: options.userPortalNowFn,
+    walletFirstRegistrationEnabled,
     edgeCredentialIssuer,
     edgeLifecycleService,
     edgeDesiredStateNotifier,
@@ -1954,7 +2053,8 @@ export function createRuntimeState(options = {}) {
       userPortalAuth: platformUserPortalAuth,
       passwordCredentialService: platformPortalPasswordCredentialService,
       portalAccessRequests: platformPortalAccessRequests,
-      nowFn: options.userPortalNowFn
+      nowFn: options.userPortalNowFn,
+      walletFirstRegistrationEnabled
     }) : null
   );
   const platformTrafficAccounting = options.platformTrafficAccounting || createTrafficAccountingService({
@@ -2038,10 +2138,17 @@ export function createRuntimeState(options = {}) {
   );
   let coinCommerceStore = null;
   let coinCommerceCoordinator = null;
+  let portalRegistrationWelcomeBonusCoordinator = null;
+  let walletFirstDeferredTransitionRuntime = null;
+  let deferredTransitionStore = null;
+  let deferredTransitionCoordinator = null;
+  let walletFirstResourceEffectHandler = null;
+  let walletFirstCommerceService = null;
   let paymentStore = null;
   let paymentRechargeCoordinator = null;
   let ownsPaymentStore = false;
   let ownsCoinCommerceStore = false;
+  let ownsWalletFirstDeferredTransitionRuntime = false;
   let closed = false;
   let closePromise = null;
 
@@ -2213,6 +2320,35 @@ export function createRuntimeState(options = {}) {
         store: coinCommerceStore,
         fulfillmentHandler: configuredCoinCommerceFulfillmentHandler
       });
+      if (walletFirstRegistrationEnabled) {
+        try {
+          portalRegistrationWelcomeBonusCoordinator =
+            createPortalRegistrationWelcomeBonusCoordinator({
+              controlStore: platformControlStore,
+              walletStore: coinsWalletStore,
+              nowFn: options.userPortalNowFn
+            });
+        } catch {
+          throw walletFirstRegistrationPrerequisiteError();
+        }
+        try {
+          const runtime = createWalletFirstDeferredTransitionRuntime({
+            dbPath: controlDbPath,
+            controlStore: platformControlStore,
+            subscriptionCore,
+            nodeId: walletFirstDeferredTransitionNodeId,
+            nowFn: options.userPortalNowFn || (() => new Date())
+          });
+          walletFirstDeferredTransitionRuntime = runtime;
+          deferredTransitionStore = runtime.deferredTransitionStore;
+          deferredTransitionCoordinator = runtime.deferredTransitionCoordinator;
+          walletFirstResourceEffectHandler = runtime.resourceEffectHandler;
+          walletFirstCommerceService = runtime.walletFirstCommerceService;
+          ownsWalletFirstDeferredTransitionRuntime = true;
+        } catch {
+          throw walletFirstDeferredTransitionRuntimeError();
+        }
+      }
     } catch (error) {
       if (ownsCoinCommerceStore && coinCommerceStore) {
         try {
@@ -2371,6 +2507,33 @@ export function createRuntimeState(options = {}) {
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch (error) { firstError ||= error; }
       }
+      let deferredCoordinatorStopped = false;
+      if (deferredTransitionCoordinator) {
+        try {
+          await deferredTransitionCoordinator.stop();
+          deferredCoordinatorStopped = true;
+        } catch (error) {
+          firstError ||= error;
+        }
+      }
+      if (
+        deferredCoordinatorStopped
+        && ownsWalletFirstDeferredTransitionRuntime
+        && walletFirstDeferredTransitionRuntime
+      ) {
+        try {
+          await walletFirstDeferredTransitionRuntime.close();
+        } catch (error) {
+          firstError ||= error;
+        }
+      }
+      if (portalRegistrationWelcomeBonusCoordinator) {
+        try {
+          await portalRegistrationWelcomeBonusCoordinator.stop();
+        } catch (error) {
+          firstError ||= error;
+        }
+      }
       let coordinatorStopped = false;
       try {
         await coinCommerceCoordinator.stop();
@@ -2432,8 +2595,14 @@ export function createRuntimeState(options = {}) {
       coinsWalletStore,
       coinsCommerceEnabled,
       coinsCommerceAuthorityEnabled,
+      walletFirstRegistrationEnabled,
       coinCommerceStore,
       coinCommerceCoordinator,
+      portalRegistrationWelcomeBonusCoordinator,
+      deferredTransitionStore,
+      deferredTransitionCoordinator,
+      walletFirstResourceEffectHandler,
+      walletFirstCommerceService,
       coinRechargeEnabled,
       paymentRechargeProvider,
       paymentStore,

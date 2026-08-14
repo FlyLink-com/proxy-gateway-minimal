@@ -14,9 +14,13 @@ import {
   useCoinsPurchaseFlow,
   type PortalCoinCommerceClientErrorCode,
   type PortalCoinCommerceClient,
+  type PortalCommerceModel,
+  type PortalCommerceModelClient,
   type PortalCoinOffer
 } from "./commerce";
+import type { PortalWalletFirstCommerceClient } from "./commerce";
 import { portalCoinTypeListLabel } from "./portal-commerce-presentation";
+import { WalletFirstMarketplacePanel } from "./wallet-first-marketplace-panel";
 
 export type PortalCommerceLocale = "zh" | "en";
 
@@ -30,11 +34,18 @@ function isChinese(locale: PortalCommerceLocale) {
 
 type MarketplacePanelProps = PanelProps & {
   commerceClient: PortalCoinCommerceClient | null;
+  commerceModelClient?: PortalCommerceModelClient | null;
   onWalletMutation?: () => void;
   sessionGeneration?: number;
   sessionRef: string | null;
   theme: "light" | "dark";
+  walletFirstCommerceClient?: PortalWalletFirstCommerceClient | null;
 };
+
+type LegacyMarketplacePanelProps = Omit<
+  MarketplacePanelProps,
+  "commerceModelClient" | "walletFirstCommerceClient"
+>;
 
 type MarketplaceCatalogState =
   | { status: "loading"; offers: PortalCoinOffer[] }
@@ -214,14 +225,14 @@ function MarketplaceOfferCard({
   );
 }
 
-export function MarketplacePanel({
+function LegacyMarketplacePanel({
   commerceClient,
   locale,
   onWalletMutation,
   sessionGeneration = 0,
   sessionRef,
   theme
-}: MarketplacePanelProps) {
+}: LegacyMarketplacePanelProps) {
   const zh = isChinese(locale);
   const generationRef = useRef(0);
   const [refreshRevision, setRefreshRevision] = useState(0);
@@ -613,6 +624,132 @@ export function MarketplacePanel({
         </div>
       ) : null}
     </section>
+  );
+}
+
+type MarketplaceModelState =
+  | { status: "loading" }
+  | { status: "ready"; model: PortalCommerceModel }
+  | {
+      status: "error";
+      errorCode: PortalCoinCommerceClientErrorCode;
+      retryable: boolean;
+    };
+
+function WalletFirstMarketplaceModelGate({
+  commerceModelClient,
+  walletFirstCommerceClient,
+  ...legacyProps
+}: LegacyMarketplacePanelProps & {
+  commerceModelClient: PortalCommerceModelClient;
+  walletFirstCommerceClient: PortalWalletFirstCommerceClient | null;
+}) {
+  const { locale, sessionGeneration = 0, sessionRef } = legacyProps;
+  const zh = isChinese(locale);
+  const generationRef = useRef(0);
+  const [revision, setRevision] = useState(0);
+  const [model, setModel] = useState<MarketplaceModelState>(() => (
+    sessionRef ? { status: "loading" } : {
+      status: "error",
+      errorCode: "commerce_unavailable",
+      retryable: true
+    }
+  ));
+
+  useEffect(() => {
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    if (!sessionRef) {
+      setModel({
+        status: "error",
+        errorCode: "commerce_unavailable",
+        retryable: true
+      });
+      return () => {
+        generationRef.current += 1;
+      };
+    }
+    setModel({ status: "loading" });
+    void commerceModelClient.getCommerceModel({ sessionRef }).then((nextModel) => {
+      if (generation !== generationRef.current) return;
+      setModel({ status: "ready", model: nextModel });
+    }).catch((error: unknown) => {
+      if (generation !== generationRef.current) return;
+      setModel({ status: "error", ...safeCommerceFailure(error) });
+    });
+    return () => {
+      generationRef.current += 1;
+    };
+  }, [commerceModelClient, revision, sessionGeneration, sessionRef]);
+
+  if (model.status === "ready" && model.model === "legacy") {
+    return <LegacyMarketplacePanel {...legacyProps} />;
+  }
+  if (model.status === "ready" && model.model === "wallet_first_unique_v1") {
+    return (
+      <WalletFirstMarketplacePanel
+        commerceClient={walletFirstCommerceClient}
+        locale={locale}
+        onWalletMutation={legacyProps.onWalletMutation}
+        sessionGeneration={sessionGeneration}
+        sessionRef={sessionRef}
+        theme={legacyProps.theme}
+      />
+    );
+  }
+  return (
+    <section
+      aria-busy={model.status === "loading" || undefined}
+      aria-label={zh ? "商城目录" : "Marketplace catalog"}
+      className="portal-commerce-layout portal-commerce-layout--marketplace"
+      data-commerce-model="pending"
+    >
+      <div
+        aria-live={model.status === "loading" ? "polite" : "assertive"}
+        className="portal-marketplace-state"
+        data-state={model.status}
+        role={model.status === "loading" ? "status" : "alert"}
+      >
+        <MarketplaceNoticeIndicator
+          state={model.status === "loading" ? "loading" : "error"}
+        />
+        <p>
+          {model.status === "loading"
+            ? (zh ? "正在确认账户的服务结算方式…" : "Confirming the account service-settlement model…")
+            : model.status === "error"
+              ? safeCommerceErrorText(model.errorCode, locale)
+              : (zh ? "商城结算方式不可用。" : "The Marketplace settlement model is unavailable.")}
+        </p>
+        {model.status === "error" && model.retryable ? (
+          <button type="button" onClick={() => setRevision((current) => current + 1)}>
+            {zh ? "重试" : "Retry"}
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The model is never a browser input.  The HTTP Portal client projects it
+ * from the authenticated server session, then this gate mounts one isolated
+ * route family.  Existing callers without a model capability retain the old
+ * local/test-only legacy surface unchanged.
+ */
+export function MarketplacePanel({
+  commerceModelClient = null,
+  walletFirstCommerceClient = null,
+  ...legacyProps
+}: MarketplacePanelProps) {
+  if (!commerceModelClient) {
+    return <LegacyMarketplacePanel {...legacyProps} />;
+  }
+  return (
+    <WalletFirstMarketplaceModelGate
+      {...legacyProps}
+      commerceModelClient={commerceModelClient}
+      walletFirstCommerceClient={walletFirstCommerceClient}
+    />
   );
 }
 

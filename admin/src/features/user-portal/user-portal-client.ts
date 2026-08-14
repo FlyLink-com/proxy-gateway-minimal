@@ -5,8 +5,12 @@ import {
   verifyTotpCode
 } from "./totp-preview";
 import {
+  createPortalCommerceModelClient,
   createPortalCoinCommerceClient,
-  type PortalCoinCommerceClient
+  createPortalWalletFirstCommerceClient,
+  type PortalCoinCommerceClient,
+  type PortalCommerceModelClient,
+  type PortalWalletFirstCommerceClient
 } from "./commerce";
 import {
   createPortalWalletClient,
@@ -223,15 +227,10 @@ export type PortalRegistrationEmailVerificationChallenge = {
   };
 };
 
-export type PortalRegistrationResult = {
+type PortalRegistrationResultBase = {
   status: "registered";
   userRef: string;
   session: PortalSession;
-  trial: {
-    durationDays: number;
-    validUntil: string;
-    accessRequestStatus: string;
-  };
   safety: {
     noAdminApi: true;
     noPaymentActivation: true;
@@ -240,6 +239,39 @@ export type PortalRegistrationResult = {
     rawPasswordReturned: false;
   };
 };
+
+export type PortalRegistrationWelcomeBonus = {
+  status: "pending" | "available";
+  coinType: "bonus_coins";
+  amountUnits: 10;
+  expiresAt: string;
+};
+
+export type PortalLegacyTrialRegistrationResult = PortalRegistrationResultBase & {
+  commercialModel: "legacy";
+  trial: {
+    durationDays: number;
+    validUntil: string;
+    accessRequestStatus: string;
+  };
+  welcomeBonus?: never;
+};
+
+export type PortalWalletFirstRegistrationResult = PortalRegistrationResultBase & {
+  commercialModel: "wallet_first_unique_v1";
+  welcomeBonus: PortalRegistrationWelcomeBonus;
+  trial?: never;
+};
+
+export type PortalRegistrationResult =
+  | PortalLegacyTrialRegistrationResult
+  | PortalWalletFirstRegistrationResult;
+
+export function isPortalWalletFirstRegistration(
+  result: PortalRegistrationResult
+): result is PortalWalletFirstRegistrationResult {
+  return result.commercialModel === "wallet_first_unique_v1";
+}
 
 export type PortalEmailCodeChallenge = {
   status: "simulated" | "requested";
@@ -453,6 +485,8 @@ export type PortalPasskeyExport = {
 
 export type UserPortalClient = {
   commerce?: PortalCoinCommerceClient;
+  commerceModel?: PortalCommerceModelClient;
+  walletFirstCommerce?: PortalWalletFirstCommerceClient;
   wallet?: PortalWalletClient;
   recharge?: PortalRechargeClient;
   issueHumanChallenge(input?: PortalHumanChallengeRequestInput): Promise<PortalHumanVerificationChallenge>;
@@ -464,6 +498,7 @@ export type UserPortalClient = {
   authenticate(input: PortalAuthInput): Promise<PortalAuthResult>;
   completeSecondFactor(input: PortalCompleteSecondFactorInput): Promise<PortalSession>;
   fetchCurrentState(input: { userRef: string; sessionRef?: string }): Promise<PortalUserState>;
+  fetchSecurityState?(input: { sessionRef: string }): Promise<PortalUserSecurityState>;
   fetchPaymentOrders(input: PortalPaymentOrdersInput): Promise<PortalPaymentOrder[]>;
   createPaymentCheckout(input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult>;
   startAuthenticatorEnrollment(input: { userRef: string; sessionRef?: string }): Promise<PortalAuthenticatorEnrollment>;
@@ -527,6 +562,21 @@ function rechargeTrustedActionOrigins(
 function requiredText(value: string | undefined, message: string) {
   const normalized = String(value ?? "").trim();
   if (!normalized) {
+    throw portalError(message);
+  }
+  return normalized;
+}
+
+function requiredIsoTimestamp(value: unknown, message: string) {
+  const normalized = requiredText(
+    typeof value === "string" ? value : undefined,
+    message
+  );
+  const parsed = new Date(normalized);
+  if (
+    Number.isNaN(parsed.getTime())
+    || parsed.toISOString() !== normalized
+  ) {
     throw portalError(message);
   }
   return normalized;
@@ -611,9 +661,31 @@ function mapBackendHumanChallenge(raw: Record<string, unknown>, now: () => Date)
   };
 }
 
+function completeLegacyTrial(registration: Record<string, unknown>) {
+  const trial = registration.trial;
+  if (!trial || typeof trial !== "object" || Array.isArray(trial)) {
+    throw portalError("试用权益无效。");
+  }
+  const value = trial as Record<string, unknown>;
+  const durationDays = Number(value.durationDays);
+  if (durationDays !== 7 && durationDays !== 30 && durationDays !== 365) {
+    throw portalError("试用时长无效。");
+  }
+  return {
+    durationDays,
+    validUntil: requiredText(
+      typeof value.validUntil === "string" ? value.validUntil : undefined,
+      "试用有效期无效。"
+    ),
+    accessRequestStatus: requiredText(
+      typeof value.accessRequestStatus === "string" ? value.accessRequestStatus : undefined,
+      "试用申请状态无效。"
+    )
+  };
+}
+
 function mapRegistrationResult(body: Record<string, unknown>): PortalRegistrationResult {
   const registration = (body.registration ?? {}) as Record<string, unknown>;
-  const trial = (registration.trial ?? {}) as Record<string, unknown>;
   const session = (body.session ?? {}) as Record<string, unknown>;
   const userRef = requiredText(
     (
@@ -624,7 +696,7 @@ function mapRegistrationResult(body: Record<string, unknown>): PortalRegistratio
     ) as string | undefined,
     "注册结果无效。"
   );
-  return {
+  const common: PortalRegistrationResultBase = {
     status: "registered",
     userRef,
     session: sessionSummary(
@@ -637,11 +709,6 @@ function mapRegistrationResult(body: Record<string, unknown>): PortalRegistratio
       String(session.displayName ?? session.userRef ?? session.loginRef ?? userRef),
       typeof session.sessionRef === "string" ? session.sessionRef : undefined
     ),
-    trial: {
-      durationDays: normalizeOrderDurationDays(Number(trial.durationDays ?? 7), 7),
-      validUntil: requiredText(trial.validUntil as string | undefined, "试用有效期无效。"),
-      accessRequestStatus: String(trial.accessRequestStatus ?? "pending_admin_review")
-    },
     safety: {
       noAdminApi: true,
       noPaymentActivation: true,
@@ -649,6 +716,55 @@ function mapRegistrationResult(body: Record<string, unknown>): PortalRegistratio
       noRawCustomerDataReturned: true,
       rawPasswordReturned: false
     }
+  };
+
+  if (registration.commercialModel === "wallet_first_unique_v1") {
+    if (Object.hasOwn(registration, "trial")) {
+      throw portalError("注册账户模型无效。");
+    }
+    const welcomeBonus = (registration.welcomeBonus ?? {}) as Record<string, unknown>;
+    const status = welcomeBonus.status;
+    if (status !== "pending" && status !== "available") {
+      throw portalError("欢迎 Coins 状态无效。");
+    }
+    if (welcomeBonus.coinType !== "bonus_coins") {
+      throw portalError("欢迎 Coins 类型无效。");
+    }
+    if (welcomeBonus.amountUnits !== 10) {
+      throw portalError("欢迎 Coins 数量无效。");
+    }
+    return {
+      ...common,
+      commercialModel: "wallet_first_unique_v1",
+      welcomeBonus: {
+        status,
+        coinType: "bonus_coins",
+        amountUnits: 10,
+        expiresAt: requiredIsoTimestamp(
+          welcomeBonus.expiresAt,
+          "欢迎 Coins 有效期无效。"
+        )
+      }
+    };
+  }
+
+  if (
+    Object.hasOwn(registration, "welcomeBonus")
+    || (
+      Object.hasOwn(registration, "commercialModel")
+      && registration.commercialModel !== "legacy"
+    )
+  ) {
+    throw portalError("注册账户模型无效。");
+  }
+
+  // Older control-plane releases returned the same complete legacy trial
+  // result without a discriminator. Keep only that narrow compatibility
+  // fallback while Portal and control-plane releases can roll independently.
+  return {
+    ...common,
+    commercialModel: "legacy",
+    trial: completeLegacyTrial(registration)
   };
 }
 
@@ -1283,6 +1399,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       return {
         status: "registered",
         userRef: email,
+        commercialModel: "legacy",
         session: sessionSummary(email, "password", issuedAt.toISOString(), email, stableRef("portal_session", email)),
         trial: {
           durationDays: 7,
@@ -1849,6 +1966,8 @@ export function createHttpUserPortalClient(
   options: HttpUserPortalClientOptions = {}
 ): UserPortalClient & {
   commerce: PortalCoinCommerceClient;
+  commerceModel: PortalCommerceModelClient;
+  walletFirstCommerce: PortalWalletFirstCommerceClient;
   wallet: PortalWalletClient;
   recharge: PortalRechargeClient;
 } {
@@ -1879,6 +1998,8 @@ export function createHttpUserPortalClient(
 
   return {
     commerce: createPortalCoinCommerceClient({ fetchFn }),
+    commerceModel: createPortalCommerceModelClient({ fetchFn }),
+    walletFirstCommerce: createPortalWalletFirstCommerceClient({ fetchFn }),
     wallet: createPortalWalletClient({ fetchFn }),
     recharge: createPortalRechargeClient({
       baseUrl,
@@ -2053,6 +2174,15 @@ export function createHttpUserPortalClient(
           noPublicAdmin: true
         }
       };
+    },
+
+    async fetchSecurityState(input) {
+      const sessionRef = requiredText(input.sessionRef, "用户会话无效。");
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/security/current"), {
+        method: "GET",
+        headers: portalSessionHeaders(sessionRef)
+      });
+      return mapSecurityState(body.security);
     },
 
     async fetchPaymentOrders(input) {

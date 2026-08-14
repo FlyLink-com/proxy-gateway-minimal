@@ -230,6 +230,10 @@ test("package test-runner contract requires Node concurrency support", () => {
     packageJson.scripts["test:server"],
     "node --test --test-concurrency=4 server/tests/*.test.mjs"
   );
+  assert.equal(
+    packageJson.scripts["platform:wallet-first-resource-effect-runtime-claims:schema"],
+    "node scripts/platform-wallet-first-resource-effect-runtime-claims-schema.mjs"
+  );
 });
 
 test("candidate release startup shim is versioned and packageable", () => {
@@ -456,6 +460,130 @@ test("startProxyGateway does not inspect a Commerce coordinator while the gate i
   await handle.stop();
 
   assert.equal(state.closeCount, 1);
+});
+
+test("startProxyGateway does not inspect a welcome-bonus coordinator while the wallet-first gate is off", async () => {
+  const platform = {
+    coinsCommerceEnabled: false,
+    walletFirstRegistrationEnabled: false
+  };
+  Object.defineProperty(platform, "portalRegistrationWelcomeBonusCoordinator", {
+    enumerable: true,
+    get() {
+      throw new Error("disabled welcome-bonus coordinator getter must stay untouched");
+    }
+  });
+  Object.defineProperty(platform, "deferredTransitionCoordinator", {
+    enumerable: true,
+    get() {
+      throw new Error("disabled deferred coordinator getter must stay untouched");
+    }
+  });
+  const state = fakeState({ platform });
+  const handle = await startProxyGateway({ state, logger: false });
+
+  await handle.stop();
+
+  assert.equal(state.closeCount, 1);
+});
+
+test("startProxyGateway starts wallet-first lifecycle after Commerce and stops deferred work first", async () => {
+  const events = [];
+  const commerceCoordinator = {
+    async start() {
+      events.push("commerce-start");
+    },
+    async stop() {
+      events.push("commerce-stop");
+    }
+  };
+  const welcomeBonusCoordinator = {
+    async start() {
+      events.push("welcome-bonus-start");
+    },
+    async stop() {
+      events.push("welcome-bonus-stop");
+    }
+  };
+  const deferredTransitionCoordinator = {
+    async start() {
+      events.push("deferred-transition-start");
+    },
+    async stop() {
+      events.push("deferred-transition-stop");
+    }
+  };
+  const state = fakeState({
+    platform: {
+      coinsCommerceEnabled: true,
+      coinCommerceCoordinator: commerceCoordinator,
+      walletFirstRegistrationEnabled: true,
+      portalRegistrationWelcomeBonusCoordinator: welcomeBonusCoordinator,
+      deferredTransitionCoordinator
+    },
+    services: {
+      ssLocal: {
+        async stop() {
+          events.push("ss-local-stop");
+        }
+      },
+      httpProxy: {
+        async start() {},
+        async stop() {
+          events.push("http-proxy-stop");
+        }
+      }
+    },
+    close() {
+      events.push("state-close");
+    }
+  });
+  const lifecycle = fakeLifecycleApp({ events });
+  const handle = await startProxyGateway({
+    state,
+    app: lifecycle.app,
+    logger: false
+  });
+
+  assert.equal(events.indexOf("commerce-start") < events.indexOf("welcome-bonus-start"), true);
+  assert.equal(events.indexOf("welcome-bonus-start") < events.indexOf("deferred-transition-start"), true);
+
+  events.length = 0;
+  await handle.stop();
+
+  assert.equal(events.indexOf("deferred-transition-stop") < events.indexOf("welcome-bonus-stop"), true);
+  assert.equal(events.indexOf("welcome-bonus-stop") < events.indexOf("commerce-stop"), true);
+  assert.equal(events.indexOf("commerce-stop") < events.indexOf("ss-local-stop"), true);
+  assert.equal(events.indexOf("ss-local-stop") < events.indexOf("http-proxy-stop"), true);
+  assert.equal(events.indexOf("http-proxy-stop") < events.indexOf("state-close"), true);
+});
+
+test("startProxyGateway rejects a malformed enabled welcome-bonus coordinator before listening", async () => {
+  const events = [];
+  const state = fakeState({
+    platform: {
+      coinsCommerceEnabled: false,
+      walletFirstRegistrationEnabled: true,
+      portalRegistrationWelcomeBonusCoordinator: {
+        async start() {}
+      }
+    },
+    close() {
+      events.push("state-close");
+    }
+  });
+  const lifecycle = fakeLifecycleApp({ events });
+
+  await assert.rejects(
+    startProxyGateway({
+      state,
+      app: lifecycle.app,
+      logger: false
+    }),
+    /welcome-bonus coordinator/i
+  );
+
+  assert.deepEqual(events, ["state-close"]);
 });
 
 test("startProxyGateway rejects a malformed enabled coordinator before listening and closes state", async () => {

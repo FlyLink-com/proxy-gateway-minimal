@@ -47,11 +47,27 @@ function selfService() {
   };
 }
 
-function requestService() {
+function requestService(options = {}) {
   return createPortalAccessRequestService({
     nowFn: () => "2026-06-04T00:00:00.000Z",
-    requestIdFactory: () => "pareq_order_route_1"
+    requestIdFactory: () => "pareq_order_route_1",
+    ...options
   });
+}
+
+function controlStoreForCommercialModel(commercialModel) {
+  return {
+    getAccount(accountId) {
+      return {
+        id: accountId,
+        ownerRef: `owner_${accountId}`,
+        status: "active",
+        createdAt: "2026-06-04T00:00:00.000Z",
+        updatedAt: "2026-06-04T00:00:00.000Z",
+        metadata: commercialModel === undefined ? {} : { commercialModel }
+      };
+    }
+  };
 }
 
 function portalSessionHeaders() {
@@ -142,6 +158,89 @@ test("portal route ignores legacy self-service injection and creates an order re
     });
     assert.equal(deleted.status, 401);
     assert.deepEqual(service.calls, []);
+  } finally {
+    server.close();
+  }
+});
+
+test("wallet-first Portal sessions cannot create legacy trial or monthly access requests", async () => {
+  for (const walletFirstRegistrationEnabled of [true, false]) {
+    const portalAccessRequests = requestService({
+      walletFirstRegistrationEnabled,
+      controlStore: controlStoreForCommercialModel("wallet_first_unique_v1")
+    });
+    const { server, baseUrl } = await listen(createApp(fakeState({
+      userPortalRoutesEnabled: true,
+      userPortalAuth: portalAuth(),
+      portalAccessRequests
+    })));
+    try {
+      for (const plan of ["trial", "monthly"]) {
+        const response = await fetch(`${baseUrl}/api/portal/access-requests`, {
+          method: "POST",
+          headers: portalSessionHeaders(),
+          body: JSON.stringify({ plan, clientTarget: "clash" })
+        });
+        assert.equal(response.status, 409);
+        assert.deepEqual(await response.json(), {
+          error: "wallet_first_deferred_required"
+        });
+      }
+      const current = await fetch(`${baseUrl}/api/portal/access-requests/current`, {
+        headers: { "X-Portal-Session": "portal_session_safe" }
+      });
+      assert.equal(current.status, 409);
+      assert.deepEqual(await current.json(), {
+        error: "wallet_first_deferred_required"
+      });
+    } finally {
+      server.close();
+    }
+  }
+});
+
+test("legacy Portal accounts retain access-request compatibility when the wallet-first gate is enabled", async () => {
+  const portalAccessRequests = requestService({
+    walletFirstRegistrationEnabled: true,
+    controlStore: controlStoreForCommercialModel("legacy")
+  });
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    userPortalRoutesEnabled: true,
+    userPortalAuth: portalAuth(),
+    portalAccessRequests
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/portal/access-requests`, {
+      method: "POST",
+      headers: portalSessionHeaders(),
+      body: JSON.stringify({ plan: "monthly", clientTarget: "clash" })
+    });
+    assert.equal(response.status, 201);
+    assert.equal((await response.json()).request.plan, "monthly");
+  } finally {
+    server.close();
+  }
+});
+
+test("wallet-first Portal fails closed when the commercial-model source is unavailable", async () => {
+  const portalAccessRequests = requestService({
+    walletFirstRegistrationEnabled: true
+  });
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    userPortalRoutesEnabled: true,
+    userPortalAuth: portalAuth(),
+    portalAccessRequests
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/portal/access-requests`, {
+      method: "POST",
+      headers: portalSessionHeaders(),
+      body: JSON.stringify({ plan: "monthly", clientTarget: "clash" })
+    });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      error: "wallet_first_access_request_unavailable"
+    });
   } finally {
     server.close();
   }

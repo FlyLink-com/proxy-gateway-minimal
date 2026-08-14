@@ -155,6 +155,8 @@ export type PortalCoinCommerceErrorCode =
   | "quote_expired"
   | "quote_stale"
   | "reconciliation_required"
+  | "deferred_transition_conflict"
+  | "wallet_first_deferred_required"
   | "wallet_not_active";
 
 export type PortalCoinCommerceClientErrorCode =
@@ -188,4 +190,90 @@ export type PortalCoinCommerceClient = {
     orderRef: string;
     idempotencyKey: string;
   }): Promise<PortalCoinOrder>;
+};
+
+/**
+ * This value is projected only from the authenticated server session.  It is
+ * deliberately separate from checkout inputs so a browser cannot select the
+ * commercial model that processes its Coins.
+ */
+export type PortalCommerceModel = "legacy" | "wallet_first_unique_v1";
+
+export type PortalCommerceModelClient = {
+  getCommerceModel(input: {
+    sessionRef: string;
+  }): Promise<PortalCommerceModel>;
+};
+
+export type PortalDeferredTransitionFlowKind =
+  | "initial_activation"
+  | "scheduled_switch";
+
+export type PortalDeferredTransitionState =
+  | "reserved"
+  | "processing"
+  | "effect_applied"
+  | "settled"
+  | "requote_required"
+  | "cancelled"
+  | "reconciliation_required";
+
+/**
+ * Public projection of a wallet-first transition.  Reservation, resource
+ * chain, priority and effect details never leave the server.
+ */
+export type PortalDeferredTransition = {
+  transitionRef: string;
+  offer: PortalCoinOffer;
+  amountUnits: number;
+  flowKind: PortalDeferredTransitionFlowKind;
+  scheduledFor: string;
+  state: PortalDeferredTransitionState;
+  safeCode: string | null;
+  reservedAt: string;
+  settledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PortalDeferredCheckoutQuote = PortalCoinQuote & {
+  transition: {
+    flowKind: PortalDeferredTransitionFlowKind;
+    scheduledFor: string;
+  };
+};
+
+/**
+ * Dedicated surface for accounts whose server-side commercial model is
+ * wallet_first_unique_v1.  It intentionally has no ordinary Order method.
+ */
+export type PortalWalletFirstCommerceClient = {
+  listOffers(input: {
+    sessionRef: string;
+  }): Promise<PortalCoinOffer[]>;
+  getOffer(input: {
+    sessionRef: string;
+    offerRef: string;
+  }): Promise<PortalCoinOffer>;
+  previewDeferredCheckout(input: {
+    sessionRef: string;
+    offerRef: string;
+  }): Promise<PortalDeferredCheckoutQuote>;
+  listDeferredTransitions(input: {
+    sessionRef: string;
+  }): Promise<PortalDeferredTransition[]>;
+  getDeferredTransition(input: {
+    sessionRef: string;
+    transitionRef: string;
+  }): Promise<PortalDeferredTransition>;
+  reserveDeferredTransition(input: {
+    sessionRef: string;
+    quoteRef: string;
+    idempotencyKey: string;
+  }): Promise<PortalDeferredTransition>;
+  cancelDeferredTransition(input: {
+    sessionRef: string;
+    transitionRef: string;
+    idempotencyKey: string;
+  }): Promise<PortalDeferredTransition>;
 };

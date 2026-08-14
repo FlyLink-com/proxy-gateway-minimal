@@ -10,6 +10,16 @@ import { createPortalHumanChallengeService } from "../services/platform/portal-h
 import { createPortalPasswordCredentialService } from "../services/platform/portal-password-credentials.mjs";
 import { createPortalRegistrationEmailVerificationService } from "../services/platform/portal-registration-email-verification.mjs";
 import { createPortalRegistrationService } from "../services/platform/portal-registration.mjs";
+import {
+  applyCoinWalletMigrations,
+  COIN_WALLET_MIGRATIONS,
+  REQUIRED_COIN_WALLET_MIGRATION_ID
+} from "../services/platform/coin-wallet-migrations.mjs";
+import {
+  applyPortalRegistrationWelcomeBonusMigrations,
+  PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS,
+  REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
+} from "../services/platform/portal-registration-welcome-bonus-migrations.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { createUserPortalAuthService } from "../services/platform/user-portal-auth.mjs";
 import { listen } from "./helpers/listen.mjs";
@@ -96,9 +106,24 @@ async function issueRegistrationEmailVerification(baseUrl, email) {
 
 function withRegistrationState(fn, options = {}) {
   const tempDir = mkdtempSync(join(tmpdir(), "portal-registration-routes-"));
+  const controlDbPath = join(tempDir, "control.sqlite");
   const store = createSqliteSubscriptionControlStore({
-    dbPath: join(tempDir, "control.sqlite")
+    dbPath: controlDbPath
   });
+  if (options.walletFirstRegistrationEnabled === true) {
+    applyCoinWalletMigrations({
+      dbPath: controlDbPath,
+      expectedMigrationId: REQUIRED_COIN_WALLET_MIGRATION_ID,
+      expectedDdlChecksum: COIN_WALLET_MIGRATIONS[0].ddlChecksum,
+      nowFn: () => new Date(NOW)
+    });
+    applyPortalRegistrationWelcomeBonusMigrations({
+      dbPath: controlDbPath,
+      expectedMigrationId: REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
+    expectedDdlChecksum: PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.at(-1).ddlChecksum,
+      nowFn: () => new Date(NOW)
+    });
+  }
   const humanChallenges = createHumanChallengeService();
   const sentEmails = [];
   const registrationEmailVerifications = createRegistrationEmailVerificationService(sentEmails);
@@ -138,6 +163,9 @@ function withRegistrationState(fn, options = {}) {
     accountIdFactory: () => options.accountIdFactory?.() || `acct_registration_${++accountIndex}`,
     entitlementIdFactory: () => options.entitlementIdFactory?.() || `ent_registration_trial_${++entitlementIndex}`,
     approvalRefFactory: () => options.approvalRefFactory?.() || `approval_registration_${++approvalIndex}`,
+    welcomeCoinGrantRefFactory: () => options.welcomeCoinGrantRefFactory?.()
+      || `welcome_grant_registration_${accountIndex || 1}`,
+    walletFirstRegistrationEnabled: options.walletFirstRegistrationEnabled,
     entryExpiresAtFactory: () => ENTRY_EXPIRES,
     maxRegistrationsPerSourceIp: options.maxRegistrationsPerSourceIp,
     registrationRiskWindowMs: options.registrationRiskWindowMs
@@ -212,6 +240,7 @@ test("portal registration creates an email-login account, seven-day trial, and p
       assert.equal(registrationBody.registration.accountId, undefined);
       assert.equal(registrationBody.registration.userRef, "local-user@example.test");
       assert.equal(registrationBody.registration.status, "registered");
+      assert.equal(registrationBody.registration.commercialModel, "legacy");
       assert.equal(registrationBody.registration.trial.durationDays, 7);
       assert.equal(registrationBody.registration.trial.validUntil, TRIAL_UNTIL);
       assert.equal(registrationBody.session.sessionRef, "portal_session_registration_1");
@@ -285,6 +314,93 @@ test("portal registration creates an email-login account, seven-day trial, and p
       server.close();
     }
   });
+});
+
+test("wallet-first registration creates no trial resource and records one pending 10-Coin welcome grant", async () => {
+  await withRegistrationState(async ({
+    store,
+    auth,
+    accessRequests,
+    registrations,
+    humanChallenges,
+    registrationEmailVerifications
+  }) => {
+    const { server, baseUrl } = await listen(createApp(baseState({
+      userPortalAuth: auth,
+      portalAccessRequests: accessRequests,
+      portalRegistrations: registrations,
+      portalRegistrationEmailVerifications: registrationEmailVerifications,
+      portalHumanChallenges: humanChallenges,
+      userPortalRoutesEnabled: true
+    })));
+    try {
+      const emailVerification = await issueRegistrationEmailVerification(
+        baseUrl,
+        "wallet-first@example.test"
+      );
+      const registrationResponse = await fetch(`${baseUrl}/api/portal/registration`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "wallet-first@example.test",
+          password: REGISTRATION_PASSWORD,
+          legalAgreement: LEGAL_AGREEMENT,
+          emailVerification: {
+            verificationRef: emailVerification.verification.verificationRef,
+            code: REGISTRATION_EMAIL_CODE
+          }
+        })
+      });
+      assert.equal(registrationResponse.status, 201);
+      const body = await registrationResponse.json();
+      assert.equal(body.registration.trial, undefined);
+      assert.equal(body.registration.commercialModel, "wallet_first_unique_v1");
+      assert.deepEqual(body.registration.welcomeBonus, {
+        status: "pending",
+        coinType: "bonus_coins",
+        amountUnits: 10,
+        expiresAt: "2026-07-07T09:00:00.000Z"
+      });
+      assert.equal(JSON.stringify(body).includes("acct_registration_1"), false);
+
+      const account = store.getAccount("acct_registration_1");
+      assert.equal(account.metadata.commercialModel, "wallet_first_unique_v1");
+      assert.equal(store.getEntitlement("ent_registration_trial_1"), null);
+      assert.equal(store.getPortalAccessRequest("pareq_registration_1"), null);
+      assert.deepEqual(
+        store.getPortalRegistrationWelcomeCoinGrant({
+          accountId: "acct_registration_1"
+        }),
+        {
+          grantRef: "welcome_grant_registration_1",
+          accountId: "acct_registration_1",
+          commercialModel: "wallet_first_unique_v1",
+          coinType: "bonus_coins",
+          amountUnits: 10,
+          sourceType: "portal_registration_welcome_bonus",
+          sourceRef: "portal_registration_welcome_acct_registration_1",
+          sourceDigest: store.getPortalRegistrationWelcomeCoinGrant({
+            accountId: "acct_registration_1"
+          }).sourceDigest,
+          actorScope: "portal_registration_welcome_bonus",
+          idempotencyKey: "portal_registration_welcome_acct_registration_1",
+          expiresAt: "2026-07-07T09:00:00.000Z",
+          status: "pending",
+          nextAttemptAt: NOW,
+          attemptCount: 0,
+          leaseGeneration: 0,
+          leaseUntil: null,
+          lastSafeCode: null,
+          creditedLotRef: null,
+          createdAt: NOW,
+          updatedAt: NOW,
+          creditedAt: null
+        }
+      );
+    } finally {
+      await new Promise((resolvePromise) => server.close(resolvePromise));
+    }
+  }, { walletFirstRegistrationEnabled: true });
 });
 
 test("portal registration requires verified email before creating account records", async () => {

@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import {
@@ -29,6 +29,39 @@ const TRAFFIC_LIFECYCLE_PENDING_ACTIONS = new Set([
   "traffic_supply_resume_pending",
   "traffic_supply_resume_rollback_pending"
 ]);
+const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_MODEL = "wallet_first_unique_v1";
+const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_TYPE = "bonus_coins";
+const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_AMOUNT_UNITS = 10;
+const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_LEASE_TOKEN_PATTERN = /^[a-f0-9]{64}$/;
+const MAX_PORTAL_REGISTRATION_WELCOME_COIN_GRANT_LEASE_MS = 24 * 60 * 60 * 1000;
+const WALLET_FIRST_RESOURCE_EFFECT_COMMERCIAL_MODEL = "wallet_first_unique_v1";
+const WALLET_FIRST_RESOURCE_CHAIN_MODEL = "wallet_first_resource_chain_v1";
+const WALLET_FIRST_RESOURCE_EFFECT_AUDIT_ENTITY_TYPE =
+  "wallet_first_deferred_resource_transition";
+const WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF = "wallet_first_deferred_effect";
+const WALLET_FIRST_RESOURCE_EFFECT_VERSION = 1;
+const WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_TABLE =
+  "platform_wallet_first_resource_effect_runtime_claims";
+const WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_LEASE_TOKEN_PATTERN = /^[a-f0-9]{64}$/;
+const MAX_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_LEASE_MS = 10 * 60 * 1000;
+const WALLET_FIRST_RESOURCE_EFFECT_SUPPORTED_OFFERS = Object.freeze({
+  offerv_plan_30d_50gb_monthly_v1: Object.freeze({
+    durationDays: 30,
+    monthlyTrafficGb: 50,
+    portalPlan: "monthly"
+  }),
+  offerv_plan_30d_100gb_monthly_v1: Object.freeze({
+    durationDays: 30,
+    monthlyTrafficGb: 100,
+    portalPlan: "monthly"
+  }),
+  offerv_plan_365d_200gb_monthly_v1: Object.freeze({
+    durationDays: 365,
+    monthlyTrafficGb: 200,
+    portalPlan: "yearly"
+  })
+});
 
 function platformError(code, message) {
   const error = new Error(message);
@@ -99,6 +132,28 @@ function optionalText(value) {
   return normalized || null;
 }
 
+function exactObject(input, { allowed, required = allowed, name = "input" } = {}) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw platformError("validation_error", `${name} must be an object`);
+  }
+  const prototype = Object.getPrototypeOf(input);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw platformError("validation_error", `${name} must be a plain object`);
+  }
+  const allowedFields = new Set(allowed);
+  for (const field of Object.keys(input)) {
+    if (!allowedFields.has(field)) {
+      throw platformError("validation_error", `${name}.${field} is not allowed`);
+    }
+  }
+  for (const field of required) {
+    if (!Object.prototype.hasOwnProperty.call(input, field)) {
+      throw platformError("validation_error", `${name}.${field} is required`);
+    }
+  }
+  return input;
+}
+
 function integer(value, field, { min = 0 } = {}) {
   const normalized = Number(value);
   if (!Number.isInteger(normalized) || normalized < min) {
@@ -116,12 +171,60 @@ function isoText(value, field) {
   return date.toISOString();
 }
 
+function walletFirstResourceEffectRef(prefix, transitionRef) {
+  const normalized = safeControlRef(transitionRef, "transitionRef");
+  return `${prefix}_${createHash("sha256")
+    .update(`gccwebos:wallet-first-resource-effect:v1:${normalized}`)
+    .digest("hex")}`;
+}
+
+function walletFirstResourceEffectBindingRef(prefix, value) {
+  const normalized = safeControlRef(value, "runtimeBinding");
+  return `${prefix}ref_${createHash("sha256")
+    .update(normalized)
+    .digest("hex")
+    .slice(0, 16)}`;
+}
+
+function walletFirstResourceEffectAccountDigest(accountId) {
+  return createHash("sha256")
+    .update(`gccwebos:wallet-first-account:v1:${safeControlRef(accountId, "accountId")}`)
+    .digest("hex");
+}
+
+function walletFirstResourceEffectTargetValidUntil(activationAt, durationDays) {
+  const startMs = Date.parse(isoText(activationAt, "activationAt"));
+  const targetMs = startMs + durationDays * 24 * 60 * 60 * 1000;
+  if (!Number.isSafeInteger(targetMs) || Math.abs(targetMs) > 8.64e15) {
+    throw platformError("validation_error", "wallet-first resource-effect target is outside the safe Date range");
+  }
+  return new Date(targetMs).toISOString();
+}
+
+function portalRegistrationWelcomeCoinGrantExpiresAt(issuedAt) {
+  const issuedAtMs = Date.parse(isoText(issuedAt, "now"));
+  const expiresAtMs = issuedAtMs + PORTAL_REGISTRATION_WELCOME_COIN_GRANT_DURATION_MS;
+  if (!Number.isSafeInteger(expiresAtMs) || Math.abs(expiresAtMs) > 8.64e15) {
+    throw platformError("validation_error", "welcome coin grant expiry is outside the safe Date range");
+  }
+  return new Date(expiresAtMs).toISOString();
+}
+
 function optionalIsoText(value, field) {
   const raw = optionalText(value);
   if (!raw) {
     return null;
   }
   return isoText(raw, field);
+}
+
+function addMillisecondsToIso(iso, milliseconds, field) {
+  const startedAt = Date.parse(iso);
+  const target = startedAt + milliseconds;
+  if (!Number.isSafeInteger(target) || Math.abs(target) > 8.64e15) {
+    throw platformError("validation_error", `${field} is outside the safe Date range`);
+  }
+  return new Date(target).toISOString();
 }
 
 function assertNoUnsafeFields(value, path = []) {
@@ -279,6 +382,53 @@ function mapAccount(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     metadata: parseJsonObject(row.metadata_json)
+  };
+}
+
+function mapPortalRegistrationWelcomeCoinGrant(row) {
+  if (!row) return null;
+  const grant = {
+    grantRef: row.grant_ref,
+    accountId: row.account_id,
+    commercialModel: row.commercial_model,
+    coinType: row.coin_type,
+    amountUnits: row.amount_units,
+    sourceType: row.source_type,
+    sourceRef: row.source_ref,
+    sourceDigest: row.source_digest,
+    actorScope: row.actor_scope,
+    idempotencyKey: row.idempotency_key,
+    expiresAt: row.expires_at,
+    status: row.status,
+    nextAttemptAt: row.next_attempt_at,
+    attemptCount: row.attempt_count,
+    leaseGeneration: row.lease_generation,
+    leaseUntil: row.lease_until,
+    lastSafeCode: row.last_safe_code,
+    creditedLotRef: row.credited_lot_ref,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    creditedAt: row.credited_at
+  };
+  return grant;
+}
+
+function mapPortalRegistrationWelcomeCoinGrantClaim(row) {
+  if (!row) return null;
+  return {
+    grantRef: row.grant_ref,
+    accountId: row.account_id,
+    commercialModel: row.commercial_model,
+    coinType: row.coin_type,
+    amountUnits: row.amount_units,
+    sourceType: row.source_type,
+    sourceRef: row.source_ref,
+    sourceDigest: row.source_digest,
+    actorScope: row.actor_scope,
+    idempotencyKey: row.idempotency_key,
+    expiresAt: row.expires_at,
+    leaseGeneration: row.lease_generation,
+    leaseToken: row.lease_token
   };
 }
 
@@ -1306,6 +1456,381 @@ export function createSqliteSubscriptionControlStore({
     return rows.map(mapAccount);
   }
 
+  function normalizePortalRegistrationWelcomeCoinGrantEnqueue(input) {
+    exactObject(input, {
+      allowed: [
+        "grantRef",
+        "accountId",
+        "commercialModel",
+        "coinType",
+        "amountUnits",
+        "expiresAt",
+        "sourceType",
+        "sourceRef",
+        "sourceDigest",
+        "actorScope",
+        "idempotencyKey",
+        "now"
+      ],
+      name: "welcomeCoinGrant"
+    });
+    const record = {
+      grantRef: safeControlRef(input.grantRef, "grantRef"),
+      accountId: safeControlRef(input.accountId, "accountId"),
+      commercialModel: requiredText(input.commercialModel, "commercialModel"),
+      coinType: requiredText(input.coinType, "coinType"),
+      amountUnits: integer(input.amountUnits, "amountUnits", { min: 1 }),
+      expiresAt: isoText(input.expiresAt, "expiresAt"),
+      sourceType: safeControlRef(input.sourceType, "sourceType"),
+      sourceRef: safeControlRef(input.sourceRef, "sourceRef"),
+      sourceDigest: safeControlRef(input.sourceDigest, "sourceDigest"),
+      actorScope: safeControlRef(input.actorScope, "actorScope"),
+      idempotencyKey: safeAuthorityRef(input.idempotencyKey, "idempotencyKey"),
+      now: isoText(input.now, "now")
+    };
+    if (record.commercialModel !== PORTAL_REGISTRATION_WELCOME_COIN_GRANT_MODEL) {
+      throw platformError("validation_error", "commercialModel is not supported");
+    }
+    if (record.coinType !== PORTAL_REGISTRATION_WELCOME_COIN_GRANT_TYPE) {
+      throw platformError("validation_error", "coinType is not supported");
+    }
+    if (record.amountUnits !== PORTAL_REGISTRATION_WELCOME_COIN_GRANT_AMOUNT_UNITS) {
+      throw platformError("validation_error", "amountUnits is not supported");
+    }
+    return record;
+  }
+
+  function getPortalRegistrationWelcomeCoinGrant(input) {
+    exactObject(input, {
+      allowed: ["accountId", "grantRef"],
+      required: [],
+      name: "welcomeCoinGrantLookup"
+    });
+    const hasAccountId = Object.prototype.hasOwnProperty.call(input, "accountId");
+    const hasGrantRef = Object.prototype.hasOwnProperty.call(input, "grantRef");
+    if (hasAccountId === hasGrantRef) {
+      throw platformError(
+        "validation_error",
+        "welcomeCoinGrantLookup must contain exactly one lookup key"
+      );
+    }
+    const row = hasAccountId
+      ? db.prepare(`
+          select * from platform_portal_registration_welcome_coin_grants
+          where account_id = ?
+        `).get(safeControlRef(input.accountId, "accountId"))
+      : db.prepare(`
+          select * from platform_portal_registration_welcome_coin_grants
+          where grant_ref = ?
+        `).get(safeControlRef(input.grantRef, "grantRef"));
+    return mapPortalRegistrationWelcomeCoinGrant(row);
+  }
+
+  function samePortalRegistrationWelcomeCoinGrantImmutableFields(existing, record) {
+    return (
+      existing.grantRef === record.grantRef
+      && existing.accountId === record.accountId
+      && existing.commercialModel === record.commercialModel
+      && existing.coinType === record.coinType
+      && existing.amountUnits === record.amountUnits
+      && existing.expiresAt === record.expiresAt
+      && existing.sourceType === record.sourceType
+      && existing.sourceRef === record.sourceRef
+      && existing.sourceDigest === record.sourceDigest
+      && existing.actorScope === record.actorScope
+      && existing.idempotencyKey === record.idempotencyKey
+    );
+  }
+
+  function findPortalRegistrationWelcomeCoinGrantsByImmutableUniqueFields(record) {
+    return db.prepare(`
+      select *
+      from platform_portal_registration_welcome_coin_grants
+      where grant_ref = @grantRef
+        or account_id = @accountId
+        or source_ref = @sourceRef
+        or (actor_scope = @actorScope and idempotency_key = @idempotencyKey)
+      order by grant_ref asc
+    `).all(record).map(mapPortalRegistrationWelcomeCoinGrant);
+  }
+
+  function enqueuePortalRegistrationWelcomeCoinGrant(input) {
+    const record = normalizePortalRegistrationWelcomeCoinGrantEnqueue(input);
+    const existing = findPortalRegistrationWelcomeCoinGrantsByImmutableUniqueFields(record);
+    if (existing.length > 0) {
+      if (
+        existing.length !== 1
+        || !samePortalRegistrationWelcomeCoinGrantImmutableFields(existing[0], record)
+      ) {
+        throw platformError("idempotency_conflict", "welcome coin grant immutable fields conflict");
+      }
+      return existing[0];
+    }
+    if (record.expiresAt !== portalRegistrationWelcomeCoinGrantExpiresAt(record.now)) {
+      throw platformError("validation_error", "expiresAt must be exactly seven days after now");
+    }
+    sqliteRun(db.prepare(`
+      insert into platform_portal_registration_welcome_coin_grants (
+        grant_ref, account_id, commercial_model, coin_type, amount_units,
+        source_type, source_ref, source_digest, actor_scope, idempotency_key,
+        expires_at, status, next_attempt_at, attempt_count, lease_generation,
+        lease_token, lease_until, last_safe_code, credited_lot_ref,
+        created_at, updated_at, credited_at
+      ) values (
+        @grantRef, @accountId, @commercialModel, @coinType, @amountUnits,
+        @sourceType, @sourceRef, @sourceDigest, @actorScope, @idempotencyKey,
+        @expiresAt, 'pending', @now, 0, 0,
+        null, null, null, null,
+        @now, @now, null
+      )
+      on conflict do nothing
+    `), record);
+    const created = findPortalRegistrationWelcomeCoinGrantsByImmutableUniqueFields(record);
+    if (created.length !== 1) {
+      throw platformError("state_conflict", "welcome coin grant was not created safely");
+    }
+    if (!samePortalRegistrationWelcomeCoinGrantImmutableFields(created[0], record)) {
+      throw platformError("idempotency_conflict", "welcome coin grant immutable fields conflict");
+    }
+    return created[0];
+  }
+
+  function expireDuePortalRegistrationWelcomeCoinGrantsAt(now) {
+    const expiredPending = db.prepare(`
+      update platform_portal_registration_welcome_coin_grants
+      set status = 'expired',
+          lease_token = null,
+          lease_until = null,
+          last_safe_code = 'welcome_coin_grant_expired',
+          updated_at = ?
+      where status = 'pending' and expires_at <= ?
+    `).run(now, now).changes;
+    const reconciliationsRequired = db.prepare(`
+      update platform_portal_registration_welcome_coin_grants
+      set status = 'reconciliation_required',
+          lease_token = null,
+          lease_until = null,
+          last_safe_code = 'welcome_coin_grant_expired_while_processing',
+          updated_at = ?
+      where status = 'processing'
+        and expires_at <= ?
+        and lease_until <= ?
+    `).run(now, now, now).changes;
+    return expiredPending + reconciliationsRequired;
+  }
+
+  function expireDuePortalRegistrationWelcomeCoinGrants(input) {
+    exactObject(input, {
+      allowed: ["now"],
+      name: "welcomeCoinGrantExpiry"
+    });
+    const now = isoText(input.now, "now");
+    return db.transaction(() => expireDuePortalRegistrationWelcomeCoinGrantsAt(now))
+      .immediate();
+  }
+
+  function claimNextPortalRegistrationWelcomeCoinGrant(input) {
+    exactObject(input, {
+      allowed: ["now", "leaseMs"],
+      name: "welcomeCoinGrantClaim"
+    });
+    const now = isoText(input.now, "now");
+    const leaseMs = integer(input.leaseMs, "leaseMs", { min: 1 });
+    if (leaseMs > MAX_PORTAL_REGISTRATION_WELCOME_COIN_GRANT_LEASE_MS) {
+      throw platformError("validation_error", "leaseMs exceeds the maximum welcome coin grant lease");
+    }
+    const requestedLeaseUntil = addMillisecondsToIso(now, leaseMs, "leaseMs");
+    const claim = db.transaction(() => {
+      expireDuePortalRegistrationWelcomeCoinGrantsAt(now);
+      const candidate = db.prepare(`
+        select *
+        from platform_portal_registration_welcome_coin_grants
+        where expires_at > ? and (
+          (status = 'pending' and next_attempt_at <= ?)
+          or (status = 'processing' and lease_until <= ?)
+        )
+        order by
+          case status
+            when 'pending' then next_attempt_at
+            else lease_until
+          end asc,
+          expires_at asc,
+          grant_ref asc
+        limit 1
+      `).get(now, now, now);
+      if (!candidate) return null;
+      const leaseUntil = requestedLeaseUntil < candidate.expires_at
+        ? requestedLeaseUntil
+        : candidate.expires_at;
+      const leaseToken = randomBytes(32).toString("hex");
+      const claimed = db.prepare(`
+        update platform_portal_registration_welcome_coin_grants
+        set status = 'processing',
+            attempt_count = attempt_count + 1,
+            lease_generation = lease_generation + 1,
+            lease_token = ?,
+            lease_until = ?,
+            updated_at = ?
+        where grant_ref = ?
+          and expires_at > ?
+          and (
+            (status = 'pending' and next_attempt_at <= ?)
+            or (status = 'processing' and lease_until <= ?)
+          )
+      `).run(leaseToken, leaseUntil, now, candidate.grant_ref, now, now, now);
+      if (claimed.changes !== 1) {
+        throw platformError("claim_lost", "welcome coin grant claim is no longer current");
+      }
+      return mapPortalRegistrationWelcomeCoinGrantClaim(
+        db.prepare(`
+          select * from platform_portal_registration_welcome_coin_grants
+          where grant_ref = ?
+        `).get(candidate.grant_ref)
+      );
+    });
+    return claim.immediate();
+  }
+
+  function normalizePortalRegistrationWelcomeCoinGrantLease(input, name, fields) {
+    exactObject(input, { allowed: fields, name });
+    const record = {
+      grantRef: safeControlRef(input.grantRef, "grantRef"),
+      leaseGeneration: integer(input.leaseGeneration, "leaseGeneration", { min: 1 }),
+      leaseToken: requiredText(input.leaseToken, "leaseToken")
+    };
+    if (!PORTAL_REGISTRATION_WELCOME_COIN_GRANT_LEASE_TOKEN_PATTERN.test(record.leaseToken)) {
+      throw platformError("validation_error", "leaseToken is invalid");
+    }
+    return record;
+  }
+
+  function updateClaimedPortalRegistrationWelcomeCoinGrant({
+    record,
+    setSql,
+    values,
+    guardSql = "",
+    guardValues = [],
+    notCurrentMessage
+  }) {
+    const updated = db.prepare(`
+      update platform_portal_registration_welcome_coin_grants
+      set ${setSql}
+      where grant_ref = ?
+        and status = 'processing'
+        and lease_generation = ?
+        and lease_token = ?
+        ${guardSql}
+    `).run(
+      ...values,
+      record.grantRef,
+      record.leaseGeneration,
+      record.leaseToken,
+      ...guardValues
+    );
+    if (updated.changes !== 1) {
+      throw platformError("claim_lost", notCurrentMessage);
+    }
+    return getPortalRegistrationWelcomeCoinGrant({ grantRef: record.grantRef });
+  }
+
+  function completePortalRegistrationWelcomeCoinGrant(input) {
+    const lease = normalizePortalRegistrationWelcomeCoinGrantLease(
+      input,
+      "welcomeCoinGrantCompletion",
+      ["grantRef", "leaseGeneration", "leaseToken", "lotRef", "completedAt"]
+    );
+    const lotRef = safeControlRef(input.lotRef, "lotRef");
+    const completedAt = isoText(input.completedAt, "completedAt");
+    return updateClaimedPortalRegistrationWelcomeCoinGrant({
+      record: lease,
+      setSql: `
+        status = 'credited',
+        lease_token = null,
+        lease_until = null,
+        last_safe_code = null,
+        credited_lot_ref = ?,
+        credited_at = ?,
+        updated_at = ?
+      `,
+      values: [lotRef, completedAt, completedAt],
+      guardSql: "and expires_at > ? and lease_until >= ?",
+      guardValues: [completedAt, completedAt],
+      notCurrentMessage: "welcome coin grant completion is no longer current"
+    });
+  }
+
+  function deferPortalRegistrationWelcomeCoinGrant(input) {
+    const lease = normalizePortalRegistrationWelcomeCoinGrantLease(
+      input,
+      "welcomeCoinGrantDeferral",
+      [
+        "grantRef",
+        "leaseGeneration",
+        "leaseToken",
+        "safeCode",
+        "nextAttemptAt",
+        "updatedAt"
+      ]
+    );
+    const safeCode = safeControlRef(input.safeCode, "safeCode");
+    const nextAttemptAt = isoText(input.nextAttemptAt, "nextAttemptAt");
+    const updatedAt = isoText(input.updatedAt, "updatedAt");
+    return updateClaimedPortalRegistrationWelcomeCoinGrant({
+      record: lease,
+      setSql: `
+        status = 'pending',
+        lease_token = null,
+        lease_until = null,
+        last_safe_code = ?,
+        next_attempt_at = ?,
+        updated_at = ?
+      `,
+      values: [safeCode, nextAttemptAt, updatedAt],
+      notCurrentMessage: "welcome coin grant deferral is no longer current"
+    });
+  }
+
+  function markPortalRegistrationWelcomeCoinGrantReconciliationRequired(input) {
+    const lease = normalizePortalRegistrationWelcomeCoinGrantLease(
+      input,
+      "welcomeCoinGrantReconciliation",
+      ["grantRef", "leaseGeneration", "leaseToken", "safeCode", "updatedAt"]
+    );
+    const safeCode = safeControlRef(input.safeCode, "safeCode");
+    const updatedAt = isoText(input.updatedAt, "updatedAt");
+    return updateClaimedPortalRegistrationWelcomeCoinGrant({
+      record: lease,
+      setSql: `
+        status = 'reconciliation_required',
+        lease_token = null,
+        lease_until = null,
+        last_safe_code = ?,
+        updated_at = ?
+      `,
+      values: [safeCode, updatedAt],
+      notCurrentMessage: "welcome coin grant reconciliation is no longer current"
+    });
+  }
+
+  function nextPortalRegistrationWelcomeCoinGrantWakeAt() {
+    const row = db.prepare(`
+      select min(wake_at) as wake_at
+      from (
+        select case
+          when next_attempt_at < expires_at then next_attempt_at
+          else expires_at
+        end as wake_at
+        from platform_portal_registration_welcome_coin_grants
+        where status = 'pending'
+        union all
+        select lease_until as wake_at
+        from platform_portal_registration_welcome_coin_grants
+        where status = 'processing'
+      )
+    `).get();
+    return row?.wake_at ? isoText(row.wake_at, "wakeAt") : null;
+  }
+
   function resolvePortalLoginAccount(loginRef) {
     const normalizedInput = requiredText(loginRef, "loginRef");
     const exact = getAccount(normalizedInput);
@@ -1347,6 +1872,1707 @@ export function createSqliteSubscriptionControlStore({
       status: "not_found",
       account: null
     };
+  }
+
+  // Wallet-first deferred resource effects are deliberately kept outside the
+  // ordinary Commerce fulfillment and Account Resource Authority paths.  The
+  // transition reference is the only idempotency key and the audit rows below
+  // are durable, namespaced receipts; they do not represent Commerce orders.
+  function walletFirstResourceEffectPreparationRef(transitionRef) {
+    return walletFirstResourceEffectRef("wfprep", transitionRef);
+  }
+
+  function walletFirstResourceEffectRuntimeReceiptRef(transitionRef) {
+    return walletFirstResourceEffectRef("wfruntime", transitionRef);
+  }
+
+  function walletFirstResourceEffectReceiptRef(transitionRef) {
+    return walletFirstResourceEffectRef("wfeffect", transitionRef);
+  }
+
+  function walletFirstResourceEffectSuccessorRef(prefix, transitionRef) {
+    return walletFirstResourceEffectRef(prefix, transitionRef);
+  }
+
+  function walletFirstResourceEffectExactKeys(value, keys) {
+    return (
+      value
+      && typeof value === "object"
+      && !Array.isArray(value)
+      && Object.keys(value).length === keys.length
+      && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
+    );
+  }
+
+  function walletFirstResourceEffectSafeRuntimeId(value, field) {
+    const normalized = requiredText(value, field);
+    if (!/^[A-Za-z0-9_-]{3,128}$/.test(normalized)) {
+      throw platformError("validation_error", `${field} must be a safe runtime identifier`);
+    }
+    return normalized;
+  }
+
+  function walletFirstResourceEffectOffer(value) {
+    exactObject(value, {
+      allowed: ["offerVersionRef", "durationDays", "monthlyTrafficGb"],
+      name: "walletFirstResourceEffectOffer"
+    });
+    const offerVersionRef = safeControlRef(value.offerVersionRef, "offerVersionRef");
+    const supported = WALLET_FIRST_RESOURCE_EFFECT_SUPPORTED_OFFERS[offerVersionRef];
+    if (
+      !supported
+      || integer(value.durationDays, "durationDays", { min: 1 }) !== supported.durationDays
+      || integer(value.monthlyTrafficGb, "monthlyTrafficGb", { min: 1 })
+        !== supported.monthlyTrafficGb
+    ) {
+      throw platformError("validation_error", "wallet-first resource-effect offer is not supported");
+    }
+    return Object.freeze({
+      offerVersionRef,
+      durationDays: supported.durationDays,
+      monthlyTrafficGb: supported.monthlyTrafficGb,
+      portalPlan: supported.portalPlan
+    });
+  }
+
+  function walletFirstResourceEffectExpectedChain(value) {
+    exactObject(value, {
+      allowed: ["entitlementId", "requestId", "issuedLinkId", "validUntil"],
+      name: "walletFirstResourceEffectExpectedChain"
+    });
+    return Object.freeze({
+      entitlementId: safeControlRef(value.entitlementId, "expectedEntitlementId"),
+      requestId: safeControlRef(value.requestId, "expectedRequestId"),
+      issuedLinkId: safeControlRef(value.issuedLinkId, "expectedIssuedLinkId"),
+      validUntil: isoText(value.validUntil, "expectedValidUntil")
+    });
+  }
+
+  function walletFirstResourceEffectAccountRecord(accountId) {
+    const normalizedAccountId = safeControlRef(accountId, "accountId");
+    const account = getAccount(normalizedAccountId);
+    if (!account) {
+      throw platformError("not_found", "wallet-first account was not found");
+    }
+    if (
+      account.status !== "active"
+      || !account.metadata
+      || typeof account.metadata !== "object"
+      || Array.isArray(account.metadata)
+      || account.metadata.commercialModel !== WALLET_FIRST_RESOURCE_EFFECT_COMMERCIAL_MODEL
+    ) {
+      throw platformError("validation_error", "account is not a wallet-first account");
+    }
+    return account;
+  }
+
+  function walletFirstResourceEffectRows(accountId) {
+    return db.prepare(`
+      select
+        e.id as entitlement_id,
+        e.account_id as entitlement_account_id,
+        e.plan as entitlement_plan,
+        e.status as entitlement_status,
+        e.valid_from as entitlement_valid_from,
+        e.valid_until as entitlement_valid_until,
+        e.max_artifacts as entitlement_max_artifacts,
+        e.max_devices as entitlement_max_devices,
+        e.traffic_limit_bytes as entitlement_traffic_limit_bytes,
+        r.id as request_id,
+        r.account_id as request_account_id,
+        r.entitlement_id as request_entitlement_id,
+        r.status as request_status,
+        r.node_id as request_node_id,
+        r.metadata_json as request_metadata_json,
+        l.id as issued_link_id,
+        l.request_id as issued_link_request_id,
+        l.tenant_ref as link_tenant_ref,
+        l.artifact_ref as link_artifact_ref,
+        l.status as link_status,
+        p.id as portal_id,
+        p.portal_user_ref,
+        p.plan as portal_plan,
+        p.duration_days as portal_duration_days,
+        p.status as portal_status,
+        p.expires_at as portal_expires_at,
+        p.valid_until as portal_valid_until,
+        p.entitlement_ref as portal_entitlement_ref,
+        p.access_grant_ref as portal_access_grant_ref,
+        p.tenant_id as portal_tenant_id,
+        p.artifact_id as portal_artifact_id,
+        p.subscription_url as portal_subscription_url,
+        p.edge_channel_ref as portal_edge_channel_ref,
+        p.edge_credential_ref as portal_edge_credential_ref,
+        p.edge_material_digest as portal_edge_material_digest,
+        p.edge_lifecycle_mutation as portal_edge_lifecycle_mutation,
+        (
+          select count(*)
+          from platform_portal_edge_credentials pec
+          where pec.request_id = r.id
+        ) as portal_edge_credential_count
+      from platform_entitlements e
+      left join platform_issuance_requests r
+        on r.account_id = e.account_id and r.entitlement_id = e.id
+      left join platform_issued_subscription_links l on l.request_id = r.id
+      left join platform_portal_access_requests p on p.id = r.id
+      where e.account_id = ?
+      order by e.id asc, r.id asc, l.id asc
+    `).all(accountId);
+  }
+
+  function walletFirstResourceEffectResourceRowCounts(accountId) {
+    return db.prepare(`
+      select
+        (select count(*) from platform_entitlements where account_id = @accountId) as entitlement_count,
+        (select count(*) from platform_issuance_requests where account_id = @accountId) as request_count,
+        (
+          select count(*)
+          from platform_issued_subscription_links l
+          join platform_issuance_requests r on r.id = l.request_id
+          where r.account_id = @accountId
+        ) as issued_link_count,
+        (
+          select count(*)
+          from platform_portal_access_requests
+          where portal_user_ref = @accountId
+        ) as portal_request_count
+    `).get({ accountId });
+  }
+
+  function walletFirstResourceEffectChainMetadata(value) {
+    const metadata = parseJsonObject(value);
+    if (
+      !walletFirstResourceEffectExactKeys(metadata, [
+        "commercialModel",
+        "resourceModel",
+        "resourceModelVersion",
+        "initialTransitionRef",
+        "lastTransitionRef"
+      ])
+      || metadata.commercialModel !== WALLET_FIRST_RESOURCE_EFFECT_COMMERCIAL_MODEL
+      || metadata.resourceModel !== WALLET_FIRST_RESOURCE_CHAIN_MODEL
+      || metadata.resourceModelVersion !== WALLET_FIRST_RESOURCE_EFFECT_VERSION
+      || !safeControlRef(metadata.initialTransitionRef, "initialTransitionRef")
+      || !safeControlRef(metadata.lastTransitionRef, "lastTransitionRef")
+    ) {
+      throw platformError("validation_error", "wallet-first resource chain marker is invalid");
+    }
+    return Object.freeze({
+      commercialModel: metadata.commercialModel,
+      resourceModel: metadata.resourceModel,
+      resourceModelVersion: metadata.resourceModelVersion,
+      initialTransitionRef: metadata.initialTransitionRef,
+      lastTransitionRef: metadata.lastTransitionRef
+    });
+  }
+
+  function walletFirstResourceEffectExactChain(accountId) {
+    const counts = walletFirstResourceEffectResourceRowCounts(accountId);
+    const countValues = [
+      counts.entitlement_count,
+      counts.request_count,
+      counts.issued_link_count,
+      counts.portal_request_count
+    ].map((value) => Number(value));
+    if (countValues.every((value) => value === 0)) return null;
+    if (countValues.some((value) => value !== 1)) {
+      throw platformError("validation_error", "wallet-first resource chain is ambiguous");
+    }
+    const rows = walletFirstResourceEffectRows(accountId);
+    if (rows.length !== 1) {
+      throw platformError("validation_error", "wallet-first resource chain is ambiguous");
+    }
+    const row = rows[0];
+    const validFrom = isoText(row.entitlement_valid_from, "entitlementValidFrom");
+    const validUntil = isoText(row.entitlement_valid_until, "entitlementValidUntil");
+    const offer = walletFirstResourceEffectOffer({
+      offerVersionRef: row.entitlement_plan,
+      durationDays: row.portal_duration_days,
+      monthlyTrafficGb: Number(row.entitlement_traffic_limit_bytes) / (1024 ** 3)
+    });
+    if (
+      row.entitlement_account_id !== accountId
+      || row.request_account_id !== accountId
+      || row.entitlement_status !== "active"
+      || row.request_status !== "issued"
+      || row.link_status !== "active"
+      || row.request_entitlement_id !== row.entitlement_id
+      || row.issued_link_request_id !== row.request_id
+      || row.portal_id !== row.request_id
+      || row.portal_user_ref !== accountId
+      || row.portal_entitlement_ref !== row.entitlement_id
+      || !["issued", "delivered"].includes(row.portal_status)
+      || row.portal_expires_at !== validUntil
+      || row.portal_valid_until !== validUntil
+      || validFrom >= validUntil
+      || row.entitlement_max_artifacts !== 1
+      || row.entitlement_max_devices !== 1
+      || Number(row.entitlement_traffic_limit_bytes) !== offer.monthlyTrafficGb * (1024 ** 3)
+      || row.portal_plan !== offer.portalPlan
+      || walletFirstResourceEffectBindingRef("tenant", row.portal_tenant_id) !== row.link_tenant_ref
+      || walletFirstResourceEffectBindingRef("artifact", row.portal_artifact_id) !== row.link_artifact_ref
+      || row.portal_subscription_url !== null
+      || row.portal_edge_channel_ref !== null
+      || row.portal_edge_credential_ref !== null
+      || row.portal_edge_material_digest !== null
+      || row.portal_edge_lifecycle_mutation !== 0
+      || Number(row.portal_edge_credential_count) !== 0
+    ) {
+      throw platformError("validation_error", "wallet-first resource chain is not exact");
+    }
+    const metadata = walletFirstResourceEffectChainMetadata(row.request_metadata_json);
+    return Object.freeze({
+      entitlementId: safeControlRef(row.entitlement_id, "entitlementId"),
+      requestId: safeControlRef(row.request_id, "requestId"),
+      issuedLinkId: safeControlRef(row.issued_link_id, "issuedLinkId"),
+      validFrom,
+      validUntil,
+      offerVersionRef: offer.offerVersionRef,
+      monthlyTrafficGb: offer.monthlyTrafficGb,
+      portalPlan: offer.portalPlan,
+      portalStatus: requiredText(row.portal_status, "portalStatus"),
+      durationDays: offer.durationDays,
+      tenantId: walletFirstResourceEffectSafeRuntimeId(row.portal_tenant_id, "tenantId"),
+      artifactId: walletFirstResourceEffectSafeRuntimeId(row.portal_artifact_id, "artifactId"),
+      tenantRef: safeControlRef(row.link_tenant_ref, "tenantRef"),
+      artifactRef: safeControlRef(row.link_artifact_ref, "artifactRef"),
+      nodeId: safeControlRef(row.request_node_id, "nodeId"),
+      accessGrantRef: safeControlRef(row.portal_access_grant_ref, "accessGrantRef"),
+      metadata: Object.freeze({
+        commercialModel: metadata.commercialModel,
+        resourceModel: metadata.resourceModel,
+        resourceModelVersion: metadata.resourceModelVersion,
+        initialTransitionRef: metadata.initialTransitionRef,
+        lastTransitionRef: metadata.lastTransitionRef
+      })
+    });
+  }
+
+  function walletFirstResourceEffectPreparedMetadata(input) {
+    return Object.freeze({
+      version: WALLET_FIRST_RESOURCE_EFFECT_VERSION,
+      transitionRef: input.transitionRef,
+      accountId: input.accountId,
+      flowKind: input.flowKind,
+      offerVersionRef: input.offer.offerVersionRef,
+      durationDays: input.offer.durationDays,
+      monthlyTrafficGb: input.offer.monthlyTrafficGb,
+      portalPlan: input.offer.portalPlan,
+      scheduledFor: input.scheduledFor,
+      activationAt: input.activationAt,
+      validUntil: input.validUntil,
+      effectRef: input.effectRef,
+      entitlementId: input.successor.entitlementId,
+      requestId: input.successor.requestId,
+      issuedLinkId: input.successor.issuedLinkId,
+      nodeId: input.nodeId,
+      accountDigest: input.accountDigest,
+      expectedEntitlementId: input.expectedChain?.entitlementId ?? null,
+      expectedRequestId: input.expectedChain?.requestId ?? null,
+      expectedIssuedLinkId: input.expectedChain?.issuedLinkId ?? null,
+      expectedValidUntil: input.expectedChain?.validUntil ?? null,
+      currentTenantRef: input.currentChain?.tenantRef ?? null,
+      currentArtifactRef: input.currentChain?.artifactRef ?? null,
+      currentInitialTransitionRef: input.currentChain?.initialTransitionRef ?? null
+    });
+  }
+
+  const walletFirstResourceEffectPreparedMetadataKeys = Object.freeze([
+    "version", "transitionRef", "accountId", "flowKind", "offerVersionRef",
+    "durationDays", "monthlyTrafficGb", "portalPlan", "scheduledFor", "activationAt",
+    "validUntil", "effectRef", "entitlementId", "requestId", "issuedLinkId",
+    "nodeId", "accountDigest", "expectedEntitlementId", "expectedRequestId",
+    "expectedIssuedLinkId", "expectedValidUntil", "currentTenantRef", "currentArtifactRef",
+    "currentInitialTransitionRef"
+  ]);
+
+  const walletFirstResourceEffectRuntimeMetadataKeys = Object.freeze([
+    "version", "transitionRef", "effectRef", "flowKind", "entitlementId", "requestId",
+    "issuedLinkId", "validUntil", "tenantId", "artifactId", "tenantRef", "artifactRef",
+    "nodeId", "initialTransitionRef", "runtimeReceiptRef"
+  ]);
+
+  const walletFirstResourceEffectReceiptMetadataKeys = Object.freeze([
+    "version", "transitionRef", "effectRef", "flowKind", "accountId", "entitlementId",
+    "requestId", "issuedLinkId", "validUntil", "runtimeReceiptRef"
+  ]);
+
+  function walletFirstResourceEffectPreparedFromAudit(audit) {
+    const metadata = audit?.metadata;
+    if (
+      !audit
+      || audit.entityType !== WALLET_FIRST_RESOURCE_EFFECT_AUDIT_ENTITY_TYPE
+      || audit.action !== "resource_effect_prepared"
+      || audit.actorRef !== WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF
+      || !walletFirstResourceEffectExactKeys(metadata, walletFirstResourceEffectPreparedMetadataKeys)
+      || metadata.version !== WALLET_FIRST_RESOURCE_EFFECT_VERSION
+      || !["initial_activation", "scheduled_switch"].includes(metadata.flowKind)
+    ) {
+      throw platformError("validation_error", "wallet-first resource-effect preparation is invalid");
+    }
+    const offer = walletFirstResourceEffectOffer({
+      offerVersionRef: metadata.offerVersionRef,
+      durationDays: metadata.durationDays,
+      monthlyTrafficGb: metadata.monthlyTrafficGb
+    });
+    if (metadata.portalPlan !== offer.portalPlan) {
+      throw platformError("validation_error", "wallet-first resource-effect preparation offer is invalid");
+    }
+    const result = {
+      transitionRef: safeControlRef(metadata.transitionRef, "transitionRef"),
+      accountId: safeControlRef(metadata.accountId, "accountId"),
+      flowKind: metadata.flowKind,
+      offer,
+      scheduledFor: isoText(metadata.scheduledFor, "scheduledFor"),
+      activationAt: isoText(metadata.activationAt, "activationAt"),
+      validUntil: isoText(metadata.validUntil, "validUntil"),
+      effectRef: safeControlRef(metadata.effectRef, "effectRef"),
+      successor: Object.freeze({
+        entitlementId: safeControlRef(metadata.entitlementId, "entitlementId"),
+        requestId: safeControlRef(metadata.requestId, "requestId"),
+        issuedLinkId: safeControlRef(metadata.issuedLinkId, "issuedLinkId"),
+        validUntil: isoText(metadata.validUntil, "validUntil")
+      }),
+      nodeId: safeControlRef(metadata.nodeId, "nodeId"),
+      accountDigest: requiredText(metadata.accountDigest, "accountDigest"),
+      expectedChain: null,
+      currentChain: null
+    };
+    if (!/^[a-f0-9]{64}$/.test(result.accountDigest)) {
+      throw platformError("validation_error", "wallet-first resource-effect account digest is invalid");
+    }
+    if (
+      result.accountDigest !== walletFirstResourceEffectAccountDigest(result.accountId)
+      || result.effectRef !== walletFirstResourceEffectReceiptRef(result.transitionRef)
+    ) {
+      throw platformError("validation_error", "wallet-first resource-effect preparation binding is invalid");
+    }
+    if (result.flowKind === "initial_activation") {
+      if (
+        result.scheduledFor > result.activationAt
+        || [
+          metadata.expectedEntitlementId,
+          metadata.expectedRequestId,
+          metadata.expectedIssuedLinkId,
+          metadata.expectedValidUntil,
+          metadata.currentTenantRef,
+          metadata.currentArtifactRef,
+          metadata.currentInitialTransitionRef
+        ].some((value) => value !== null)
+      ) {
+        throw platformError("validation_error", "wallet-first initial preparation is invalid");
+      }
+      if (
+        result.successor.entitlementId
+          !== walletFirstResourceEffectSuccessorRef("wfxent", result.transitionRef)
+        || result.successor.requestId
+          !== walletFirstResourceEffectSuccessorRef("wfxreq", result.transitionRef)
+        || result.successor.issuedLinkId
+          !== walletFirstResourceEffectSuccessorRef("wfxlink", result.transitionRef)
+      ) {
+        throw platformError("validation_error", "wallet-first initial successor is invalid");
+      }
+    } else {
+      result.expectedChain = walletFirstResourceEffectExpectedChain({
+        entitlementId: metadata.expectedEntitlementId,
+        requestId: metadata.expectedRequestId,
+        issuedLinkId: metadata.expectedIssuedLinkId,
+        validUntil: metadata.expectedValidUntil
+      });
+      if (result.scheduledFor !== result.expectedChain.validUntil) {
+        throw platformError("validation_error", "wallet-first scheduled preparation is invalid");
+      }
+      result.currentChain = Object.freeze({
+        tenantRef: safeControlRef(metadata.currentTenantRef, "currentTenantRef"),
+        artifactRef: safeControlRef(metadata.currentArtifactRef, "currentArtifactRef"),
+        initialTransitionRef: safeControlRef(
+          metadata.currentInitialTransitionRef,
+          "currentInitialTransitionRef"
+        )
+      });
+      if (
+        result.successor.entitlementId !== result.expectedChain.entitlementId
+        || result.successor.requestId !== result.expectedChain.requestId
+        || result.successor.issuedLinkId !== result.expectedChain.issuedLinkId
+      ) {
+        throw platformError("validation_error", "wallet-first scheduled successor is invalid");
+      }
+    }
+    if (
+      result.validUntil
+        !== walletFirstResourceEffectTargetValidUntil(result.activationAt, result.offer.durationDays)
+      || result.validUntil <= result.activationAt
+    ) {
+      throw platformError("validation_error", "wallet-first resource-effect target is invalid");
+    }
+    return Object.freeze(result);
+  }
+
+  function walletFirstResourceEffectRuntimeReceiptFromAudit(audit) {
+    const metadata = audit?.metadata;
+    if (
+      !audit
+      || audit.entityType !== WALLET_FIRST_RESOURCE_EFFECT_AUDIT_ENTITY_TYPE
+      || audit.action !== "resource_runtime_applied"
+      || audit.actorRef !== WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF
+      || !walletFirstResourceEffectExactKeys(metadata, walletFirstResourceEffectRuntimeMetadataKeys)
+      || metadata.version !== WALLET_FIRST_RESOURCE_EFFECT_VERSION
+      || !["initial_activation", "scheduled_switch"].includes(metadata.flowKind)
+    ) {
+      throw platformError("validation_error", "wallet-first runtime receipt is invalid");
+    }
+    const transitionRef = safeControlRef(metadata.transitionRef, "transitionRef");
+    const runtimeReceiptRef = safeControlRef(metadata.runtimeReceiptRef, "runtimeReceiptRef");
+    if (runtimeReceiptRef !== walletFirstResourceEffectRuntimeReceiptRef(transitionRef)) {
+      throw platformError("validation_error", "wallet-first runtime receipt reference is invalid");
+    }
+    return Object.freeze({
+      transitionRef,
+      effectRef: safeControlRef(metadata.effectRef, "effectRef"),
+      flowKind: metadata.flowKind,
+      successor: Object.freeze({
+        entitlementId: safeControlRef(metadata.entitlementId, "entitlementId"),
+        requestId: safeControlRef(metadata.requestId, "requestId"),
+        issuedLinkId: safeControlRef(metadata.issuedLinkId, "issuedLinkId"),
+        validUntil: isoText(metadata.validUntil, "validUntil")
+      }),
+      tenantId: walletFirstResourceEffectSafeRuntimeId(metadata.tenantId, "tenantId"),
+      artifactId: walletFirstResourceEffectSafeRuntimeId(metadata.artifactId, "artifactId"),
+      tenantRef: safeControlRef(metadata.tenantRef, "tenantRef"),
+      artifactRef: safeControlRef(metadata.artifactRef, "artifactRef"),
+      nodeId: safeControlRef(metadata.nodeId, "nodeId"),
+      initialTransitionRef: safeControlRef(
+        metadata.initialTransitionRef,
+        "initialTransitionRef"
+      ),
+      runtimeReceiptRef
+    });
+  }
+
+  function walletFirstResourceEffectReceiptFromAudit(audit) {
+    const metadata = audit?.metadata;
+    if (
+      !audit
+      || audit.entityType !== WALLET_FIRST_RESOURCE_EFFECT_AUDIT_ENTITY_TYPE
+      || audit.action !== "resource_effect_applied"
+      || audit.actorRef !== WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF
+      || !walletFirstResourceEffectExactKeys(metadata, walletFirstResourceEffectReceiptMetadataKeys)
+      || metadata.version !== WALLET_FIRST_RESOURCE_EFFECT_VERSION
+      || !["initial_activation", "scheduled_switch"].includes(metadata.flowKind)
+    ) {
+      throw platformError("validation_error", "wallet-first effect receipt is invalid");
+    }
+    const transitionRef = safeControlRef(metadata.transitionRef, "transitionRef");
+    const effectRef = safeControlRef(metadata.effectRef, "effectRef");
+    if (effectRef !== walletFirstResourceEffectReceiptRef(transitionRef)) {
+      throw platformError("validation_error", "wallet-first effect receipt reference is invalid");
+    }
+    return Object.freeze({
+      transitionRef,
+      accountId: safeControlRef(metadata.accountId, "accountId"),
+      flowKind: metadata.flowKind,
+      effectRef,
+      successor: Object.freeze({
+        entitlementId: safeControlRef(metadata.entitlementId, "entitlementId"),
+        requestId: safeControlRef(metadata.requestId, "requestId"),
+        issuedLinkId: safeControlRef(metadata.issuedLinkId, "issuedLinkId"),
+        validUntil: isoText(metadata.validUntil, "validUntil")
+      }),
+      runtimeReceiptRef: safeControlRef(metadata.runtimeReceiptRef, "runtimeReceiptRef")
+    });
+  }
+
+  function walletFirstResourceEffectPreparedOutput(prepared) {
+    return Object.freeze({
+      transitionRef: prepared.transitionRef,
+      effectRef: prepared.effectRef,
+      successor: prepared.successor,
+      runtimeRequest: Object.freeze({
+        kind: "wallet_first_resource_effect_v1",
+        accountDigest: prepared.accountDigest,
+        nodeId: prepared.nodeId,
+        scheduledFor: prepared.scheduledFor,
+        activationAt: prepared.activationAt,
+        validUntil: prepared.validUntil,
+        ...(prepared.flowKind === "scheduled_switch" ? {
+          tenantRef: prepared.currentChain.tenantRef,
+          artifactRef: prepared.currentChain.artifactRef,
+          initialTransitionRef: prepared.currentChain.initialTransitionRef
+        } : {})
+      })
+    });
+  }
+
+  // The exact runtime chain is captured only when a scheduled transition is
+  // first prepared.  A retry reconstructs the immutable caller intent, not
+  // that captured runtime binding: after a crash following Core renewal the
+  // control chain deliberately still has the old valid-until until completion.
+  // Comparing a retry's absent `currentChain` to the persisted one therefore
+  // turned a safe recovery into an idempotency conflict.  The persisted
+  // preparation remains the authority for the runtime binding; this helper
+  // compares only the externally supplied immutable transition intent.
+  function walletFirstResourceEffectSamePreparationIntent(left, right) {
+    return (
+      left.transitionRef === right.transitionRef
+      && left.accountId === right.accountId
+      && left.flowKind === right.flowKind
+      && left.offer.offerVersionRef === right.offer.offerVersionRef
+      && left.offer.durationDays === right.offer.durationDays
+      && left.offer.monthlyTrafficGb === right.offer.monthlyTrafficGb
+      && left.scheduledFor === right.scheduledFor
+      && left.effectRef === right.effectRef
+      && left.nodeId === right.nodeId
+      && left.accountDigest === right.accountDigest
+      && left.expectedChain?.entitlementId === right.expectedChain?.entitlementId
+      && left.expectedChain?.requestId === right.expectedChain?.requestId
+      && left.expectedChain?.issuedLinkId === right.expectedChain?.issuedLinkId
+      && left.expectedChain?.validUntil === right.expectedChain?.validUntil
+    );
+  }
+
+  function walletFirstResourceEffectSameRuntimeReceipt(left, right) {
+    return (
+      left.transitionRef === right.transitionRef
+      && left.effectRef === right.effectRef
+      && left.flowKind === right.flowKind
+      && left.successor.entitlementId === right.successor.entitlementId
+      && left.successor.requestId === right.successor.requestId
+      && left.successor.issuedLinkId === right.successor.issuedLinkId
+      && left.successor.validUntil === right.successor.validUntil
+      && left.tenantId === right.tenantId
+      && left.artifactId === right.artifactId
+      && left.tenantRef === right.tenantRef
+      && left.artifactRef === right.artifactRef
+      && left.nodeId === right.nodeId
+      && left.initialTransitionRef === right.initialTransitionRef
+      && left.runtimeReceiptRef === right.runtimeReceiptRef
+    );
+  }
+
+  function walletFirstResourceEffectSameReceipt(left, right) {
+    return (
+      left.transitionRef === right.transitionRef
+      && left.accountId === right.accountId
+      && left.flowKind === right.flowKind
+      && left.effectRef === right.effectRef
+      && left.successor.entitlementId === right.successor.entitlementId
+      && left.successor.requestId === right.successor.requestId
+      && left.successor.issuedLinkId === right.successor.issuedLinkId
+      && left.successor.validUntil === right.successor.validUntil
+      && left.runtimeReceiptRef === right.runtimeReceiptRef
+    );
+  }
+
+  function getWalletFirstAccountForDeferredTransition(input) {
+    exactObject(input, {
+      allowed: ["accountId"],
+      name: "walletFirstAccountLookup"
+    });
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const account = getAccount(accountId);
+    if (!account) {
+      return Object.freeze({
+        accountId,
+        status: "missing",
+        commercialModel: "missing"
+      });
+    }
+    return Object.freeze({
+      accountId,
+      status: account.status,
+      commercialModel: account.metadata?.commercialModel || "missing"
+    });
+  }
+
+  function resolveExactWalletFirstResourceChainForDeferredTransition(input) {
+    exactObject(input, {
+      allowed: ["accountId"],
+      name: "walletFirstResourceChainLookup"
+    });
+    const account = walletFirstResourceEffectAccountRecord(input.accountId);
+    const chain = walletFirstResourceEffectExactChain(account.id);
+    if (!chain) {
+      return Object.freeze({ state: "none", activeChainCount: 0 });
+    }
+    return Object.freeze({
+      state: "current",
+      activeChainCount: 1,
+      entitlementId: chain.entitlementId,
+      requestId: chain.requestId,
+      issuedLinkId: chain.issuedLinkId,
+      validUntil: chain.validUntil
+    });
+  }
+
+  function getWalletFirstTransitionEffectForDeferredTransition(input) {
+    exactObject(input, {
+      allowed: ["transitionRef"],
+      name: "walletFirstTransitionEffectLookup"
+    });
+    const transitionRef = safeControlRef(input.transitionRef, "transitionRef");
+    const audit = getAuditEvent(walletFirstResourceEffectReceiptRef(transitionRef));
+    if (!audit) return null;
+    const receipt = walletFirstResourceEffectReceiptFromAudit(audit);
+    const prepared = walletFirstResourceEffectExistingPreparation(transitionRef);
+    const runtimeReceipt = getWalletFirstRuntimeReceiptForDeferredTransition({ transitionRef });
+    if (!prepared || !runtimeReceipt || receipt.transitionRef !== transitionRef) {
+      throw platformError("validation_error", "wallet-first effect receipt transition mismatch");
+    }
+    walletFirstResourceEffectAssertReceiptMatchesPreparation(prepared, runtimeReceipt, receipt);
+    walletFirstResourceEffectCurrentPreparedTransition(prepared.accountId);
+    return walletFirstResourceEffectOutput(receipt);
+  }
+
+  function walletFirstResourceEffectPreparationInput(input, flowKind) {
+    const fields = flowKind === "initial_activation"
+      ? ["transitionRef", "accountId", "offer", "scheduledFor", "activationAt", "nodeId", "now"]
+      : ["transitionRef", "accountId", "offer", "scheduledFor", "activationAt", "expectedChain", "nodeId", "now"];
+    exactObject(input, {
+      allowed: fields,
+      name: "walletFirstResourceEffectPreparation"
+    });
+    const transitionRef = safeControlRef(input.transitionRef, "transitionRef");
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const offer = walletFirstResourceEffectOffer(input.offer);
+    const scheduledFor = isoText(input.scheduledFor, "scheduledFor");
+    const activationAt = isoText(input.activationAt, "activationAt");
+    const expectedChain = flowKind === "scheduled_switch"
+      ? walletFirstResourceEffectExpectedChain(input.expectedChain)
+      : null;
+    if (
+      (flowKind === "initial_activation" && scheduledFor > activationAt)
+      || (flowKind === "scheduled_switch" && scheduledFor !== expectedChain.validUntil)
+    ) {
+      throw platformError("validation_error", "wallet-first resource-effect schedule is invalid");
+    }
+    const successor = flowKind === "initial_activation"
+      ? Object.freeze({
+        entitlementId: walletFirstResourceEffectSuccessorRef("wfxent", transitionRef),
+        requestId: walletFirstResourceEffectSuccessorRef("wfxreq", transitionRef),
+        issuedLinkId: walletFirstResourceEffectSuccessorRef("wfxlink", transitionRef),
+        validUntil: walletFirstResourceEffectTargetValidUntil(activationAt, offer.durationDays)
+      })
+      : Object.freeze({
+        entitlementId: expectedChain.entitlementId,
+        requestId: expectedChain.requestId,
+        issuedLinkId: expectedChain.issuedLinkId,
+        validUntil: walletFirstResourceEffectTargetValidUntil(activationAt, offer.durationDays)
+      });
+    return Object.freeze({
+      transitionRef,
+      accountId,
+      flowKind,
+      offer,
+      scheduledFor,
+      activationAt,
+      validUntil: walletFirstResourceEffectTargetValidUntil(activationAt, offer.durationDays),
+      effectRef: walletFirstResourceEffectReceiptRef(transitionRef),
+      successor,
+      nodeId: safeControlRef(input.nodeId, "nodeId"),
+      accountDigest: walletFirstResourceEffectAccountDigest(accountId),
+      expectedChain,
+      currentChain: null,
+      now: isoText(input.now, "now")
+    });
+  }
+
+  function walletFirstResourceEffectExistingPreparation(transitionRef) {
+    const audit = getAuditEvent(walletFirstResourceEffectPreparationRef(transitionRef));
+    if (!audit) return null;
+    const prepared = walletFirstResourceEffectPreparedFromAudit(audit);
+    if (prepared.transitionRef !== transitionRef) {
+      throw platformError("validation_error", "wallet-first preparation transition mismatch");
+    }
+    return prepared;
+  }
+
+  function persistWalletFirstResourceEffectPreparation(input) {
+    const existing = walletFirstResourceEffectExistingPreparation(input.transitionRef);
+    if (existing) {
+      if (!walletFirstResourceEffectSamePreparationIntent(existing, input)) {
+        throw platformError("validation_error", "wallet-first preparation idempotency conflict");
+      }
+      return walletFirstResourceEffectPreparedOutput(existing);
+    }
+    const account = walletFirstResourceEffectAccountRecord(input.accountId);
+    const currentChain = walletFirstResourceEffectExactChain(account.id);
+    if (
+      (input.flowKind === "initial_activation" && currentChain !== null)
+      || (
+        input.flowKind === "scheduled_switch"
+        && (
+          !currentChain
+          || currentChain.entitlementId !== input.expectedChain.entitlementId
+          || currentChain.requestId !== input.expectedChain.requestId
+          || currentChain.issuedLinkId !== input.expectedChain.issuedLinkId
+          || currentChain.validUntil !== input.expectedChain.validUntil
+          || currentChain.nodeId !== input.nodeId
+        )
+      )
+    ) {
+      throw platformError("validation_error", "wallet-first resource chain changed before preparation");
+    }
+    const prepared = Object.freeze({
+      ...input,
+      currentChain: input.flowKind === "scheduled_switch"
+        ? Object.freeze({
+          tenantRef: currentChain.tenantRef,
+          artifactRef: currentChain.artifactRef,
+          initialTransitionRef: currentChain.metadata.initialTransitionRef
+        })
+        : null
+    });
+    const metadata = walletFirstResourceEffectPreparedMetadata(prepared);
+    try {
+      recordAuditEvent({
+        id: walletFirstResourceEffectPreparationRef(prepared.transitionRef),
+        entityType: WALLET_FIRST_RESOURCE_EFFECT_AUDIT_ENTITY_TYPE,
+        entityRef: prepared.transitionRef,
+        action: "resource_effect_prepared",
+        actorRef: WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF,
+        createdAt: prepared.now,
+        metadata
+      });
+    } catch (error) {
+      const raced = walletFirstResourceEffectExistingPreparation(prepared.transitionRef);
+      if (!raced || !walletFirstResourceEffectSamePreparationIntent(raced, prepared)) {
+        throw error;
+      }
+      return walletFirstResourceEffectPreparedOutput(raced);
+    }
+    return walletFirstResourceEffectPreparedOutput(prepared);
+  }
+
+  function prepareWalletFirstInitialActivationForDeferredTransition(input) {
+    return persistWalletFirstResourceEffectPreparation(
+      walletFirstResourceEffectPreparationInput(input, "initial_activation")
+    );
+  }
+
+  function prepareWalletFirstScheduledSwitchForDeferredTransition(input) {
+    return persistWalletFirstResourceEffectPreparation(
+      walletFirstResourceEffectPreparationInput(input, "scheduled_switch")
+    );
+  }
+
+  function walletFirstResourceEffectRuntimeMetadata(input) {
+    return Object.freeze({
+      version: WALLET_FIRST_RESOURCE_EFFECT_VERSION,
+      transitionRef: input.transitionRef,
+      effectRef: input.effectRef,
+      flowKind: input.flowKind,
+      entitlementId: input.successor.entitlementId,
+      requestId: input.successor.requestId,
+      issuedLinkId: input.successor.issuedLinkId,
+      validUntil: input.successor.validUntil,
+      tenantId: input.tenantId,
+      artifactId: input.artifactId,
+      tenantRef: input.tenantRef,
+      artifactRef: input.artifactRef,
+      nodeId: input.nodeId,
+      initialTransitionRef: input.initialTransitionRef,
+      runtimeReceiptRef: input.runtimeReceiptRef
+    });
+  }
+
+  function walletFirstResourceEffectReceiptMetadata(input) {
+    return Object.freeze({
+      version: WALLET_FIRST_RESOURCE_EFFECT_VERSION,
+      transitionRef: input.transitionRef,
+      effectRef: input.effectRef,
+      flowKind: input.flowKind,
+      accountId: input.accountId,
+      entitlementId: input.successor.entitlementId,
+      requestId: input.successor.requestId,
+      issuedLinkId: input.successor.issuedLinkId,
+      validUntil: input.successor.validUntil,
+      runtimeReceiptRef: input.runtimeReceiptRef
+    });
+  }
+
+  function walletFirstResourceEffectRuntimeReceiptOutput(receipt) {
+    return Object.freeze({
+      transitionRef: receipt.transitionRef,
+      runtimeReceiptRef: receipt.runtimeReceiptRef
+    });
+  }
+
+  function walletFirstResourceEffectOutput(receipt) {
+    return Object.freeze({
+      status: "applied",
+      effectRef: receipt.effectRef,
+      nextEntitlementId: receipt.successor.entitlementId,
+      nextRequestId: receipt.successor.requestId,
+      nextIssuedLinkId: receipt.successor.issuedLinkId,
+      nextValidUntil: receipt.successor.validUntil
+    });
+  }
+
+  function walletFirstResourceEffectAssertRuntimeReceiptMatchesPreparation(prepared, receipt) {
+    if (
+      receipt.transitionRef !== prepared.transitionRef
+      || receipt.effectRef !== prepared.effectRef
+      || receipt.flowKind !== prepared.flowKind
+      || receipt.successor.entitlementId !== prepared.successor.entitlementId
+      || receipt.successor.requestId !== prepared.successor.requestId
+      || receipt.successor.issuedLinkId !== prepared.successor.issuedLinkId
+      || receipt.successor.validUntil !== prepared.successor.validUntil
+      || receipt.nodeId !== prepared.nodeId
+      || receipt.initialTransitionRef !== (
+        prepared.flowKind === "initial_activation"
+          ? prepared.transitionRef
+          : prepared.currentChain.initialTransitionRef
+      )
+      || receipt.runtimeReceiptRef !== walletFirstResourceEffectRuntimeReceiptRef(prepared.transitionRef)
+      || receipt.tenantRef !== walletFirstResourceEffectBindingRef("tenant", receipt.tenantId)
+      || receipt.artifactRef !== walletFirstResourceEffectBindingRef("artifact", receipt.artifactId)
+    ) {
+      throw platformError("validation_error", "wallet-first runtime receipt does not match preparation");
+    }
+  }
+
+  function walletFirstResourceEffectAssertReceiptMatchesPreparation(prepared, runtimeReceipt, receipt) {
+    if (
+      receipt.transitionRef !== prepared.transitionRef
+      || receipt.accountId !== prepared.accountId
+      || receipt.flowKind !== prepared.flowKind
+      || receipt.effectRef !== prepared.effectRef
+      || receipt.successor.entitlementId !== prepared.successor.entitlementId
+      || receipt.successor.requestId !== prepared.successor.requestId
+      || receipt.successor.issuedLinkId !== prepared.successor.issuedLinkId
+      || receipt.successor.validUntil !== prepared.successor.validUntil
+      || receipt.runtimeReceiptRef !== runtimeReceipt.runtimeReceiptRef
+    ) {
+      throw platformError("validation_error", "wallet-first effect receipt does not match preparation");
+    }
+    walletFirstResourceEffectAssertRuntimeReceiptMatchesPreparation(prepared, runtimeReceipt);
+  }
+
+  function walletFirstResourceEffectChainMatchesPreparation(chain, prepared, runtimeReceipt) {
+    return Boolean(
+      chain
+      && chain.entitlementId === prepared.successor.entitlementId
+      && chain.requestId === prepared.successor.requestId
+      && chain.issuedLinkId === prepared.successor.issuedLinkId
+      && chain.validFrom === prepared.activationAt
+      && chain.validUntil === prepared.successor.validUntil
+      && chain.offerVersionRef === prepared.offer.offerVersionRef
+      && chain.monthlyTrafficGb === prepared.offer.monthlyTrafficGb
+      && chain.portalPlan === prepared.offer.portalPlan
+      && chain.durationDays === prepared.offer.durationDays
+      && chain.nodeId === prepared.nodeId
+      && chain.tenantId === runtimeReceipt.tenantId
+      && chain.artifactId === runtimeReceipt.artifactId
+      && chain.tenantRef === runtimeReceipt.tenantRef
+      && chain.artifactRef === runtimeReceipt.artifactRef
+      && chain.accessGrantRef === prepared.effectRef
+      && chain.metadata.lastTransitionRef === prepared.transitionRef
+      && (
+        prepared.flowKind !== "initial_activation"
+        || chain.metadata.initialTransitionRef === prepared.transitionRef
+      )
+    );
+  }
+
+  function walletFirstResourceEffectCurrentPreparedTransition(accountId) {
+    const account = walletFirstResourceEffectAccountRecord(accountId);
+    const chain = walletFirstResourceEffectExactChain(account.id);
+    if (!chain) {
+      throw platformError("validation_error", "wallet-first current resource chain is missing");
+    }
+    const prepared = walletFirstResourceEffectExistingPreparation(
+      chain.metadata.lastTransitionRef
+    );
+    const runtimeAudit = getAuditEvent(
+      walletFirstResourceEffectRuntimeReceiptRef(chain.metadata.lastTransitionRef)
+    );
+    const effectAudit = getAuditEvent(
+      walletFirstResourceEffectReceiptRef(chain.metadata.lastTransitionRef)
+    );
+    if (!prepared || !runtimeAudit || !effectAudit) {
+      throw platformError("validation_error", "wallet-first current resource chain receipt is missing");
+    }
+    const runtimeReceipt = walletFirstResourceEffectRuntimeReceiptFromAudit(runtimeAudit);
+    const effectReceipt = walletFirstResourceEffectReceiptFromAudit(effectAudit);
+    walletFirstResourceEffectAssertRuntimeReceiptMatchesPreparation(prepared, runtimeReceipt);
+    walletFirstResourceEffectAssertReceiptMatchesPreparation(
+      prepared,
+      runtimeReceipt,
+      effectReceipt
+    );
+    if (!walletFirstResourceEffectChainMatchesPreparation(chain, prepared, runtimeReceipt)) {
+      throw platformError("validation_error", "wallet-first current resource chain drifted");
+    }
+    return Object.freeze({ chain, prepared, runtimeReceipt, effectReceipt });
+  }
+
+  function getWalletFirstRuntimeReceiptForDeferredTransition(input) {
+    exactObject(input, {
+      allowed: ["transitionRef"],
+      name: "walletFirstRuntimeReceiptLookup"
+    });
+    const transitionRef = safeControlRef(input.transitionRef, "transitionRef");
+    const audit = getAuditEvent(walletFirstResourceEffectRuntimeReceiptRef(transitionRef));
+    if (!audit) return null;
+    const receipt = walletFirstResourceEffectRuntimeReceiptFromAudit(audit);
+    const prepared = walletFirstResourceEffectExistingPreparation(transitionRef);
+    if (!prepared || receipt.transitionRef !== transitionRef) {
+      throw platformError("validation_error", "wallet-first runtime receipt transition mismatch");
+    }
+    walletFirstResourceEffectAssertRuntimeReceiptMatchesPreparation(prepared, receipt);
+    return receipt;
+  }
+
+  // A historical transition receipt may remain valid after a later, in-place
+  // scheduled renewal.  This is intentionally not a loose "expiry is later"
+  // check: the current exact control chain must still be a descendant of the
+  // same initial marker and must bind the very same runtime tenant/artifact.
+  // The runtime adapter consumes this narrow proof before accepting a replay.
+  function verifyWalletFirstRuntimeTransitionForDeferredTransition(input) {
+    exactObject(input, {
+      allowed: ["transitionRef", "effectRef", "successor"],
+      name: "walletFirstRuntimeVerification"
+    });
+    const transitionRef = safeControlRef(input.transitionRef, "transitionRef");
+    const effectRef = safeControlRef(input.effectRef, "effectRef");
+    const successor = walletFirstResourceEffectExpectedChain(input.successor);
+    const prepared = walletFirstResourceEffectExistingPreparation(transitionRef);
+    const runtimeReceipt = getWalletFirstRuntimeReceiptForDeferredTransition({ transitionRef });
+    const effectAudit = getAuditEvent(walletFirstResourceEffectReceiptRef(transitionRef));
+    if (!prepared || !runtimeReceipt || !effectAudit) {
+      throw platformError("validation_error", "wallet-first runtime verification dependencies are missing");
+    }
+    const effectReceipt = walletFirstResourceEffectReceiptFromAudit(effectAudit);
+    walletFirstResourceEffectAssertReceiptMatchesPreparation(
+      prepared,
+      runtimeReceipt,
+      effectReceipt
+    );
+    if (
+      effectRef !== effectReceipt.effectRef
+      || successor.entitlementId !== effectReceipt.successor.entitlementId
+      || successor.requestId !== effectReceipt.successor.requestId
+      || successor.issuedLinkId !== effectReceipt.successor.issuedLinkId
+      || successor.validUntil !== effectReceipt.successor.validUntil
+    ) {
+      throw platformError("validation_error", "wallet-first runtime verification receipt mismatch");
+    }
+    const current = walletFirstResourceEffectCurrentPreparedTransition(prepared.accountId);
+    if (
+      current.chain.metadata.initialTransitionRef !== runtimeReceipt.initialTransitionRef
+      || current.runtimeReceipt.tenantRef !== runtimeReceipt.tenantRef
+      || current.runtimeReceipt.artifactRef !== runtimeReceipt.artifactRef
+      || current.runtimeReceipt.nodeId !== runtimeReceipt.nodeId
+      || current.runtimeReceipt.initialTransitionRef !== runtimeReceipt.initialTransitionRef
+    ) {
+      throw platformError("validation_error", "wallet-first runtime verification chain drifted");
+    }
+    return Object.freeze({
+      transitionRef,
+      effectRef,
+      tenantRef: runtimeReceipt.tenantRef,
+      artifactRef: runtimeReceipt.artifactRef,
+      nodeId: runtimeReceipt.nodeId,
+      initialTransitionRef: runtimeReceipt.initialTransitionRef,
+      validUntil: current.chain.validUntil
+    });
+  }
+
+  function walletFirstResourceEffectRequireRuntimeClaimSchema() {
+    const table = db.prepare(`
+      select name from sqlite_master
+       where type = 'table' and name = ?
+    `).get(WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_TABLE);
+    if (!table) {
+      throw platformError(
+        "validation_error",
+        "wallet-first runtime claim schema is not ready"
+      );
+    }
+  }
+
+  function walletFirstResourceEffectClaimRow(row) {
+    if (!row) return null;
+    const status = requiredText(row.status, "runtimeClaim.status");
+    if (!["claimed", "recorded", "reconciliation_required"].includes(status)) {
+      throw platformError("validation_error", "wallet-first runtime claim status is invalid");
+    }
+    const claim = {
+      transitionRef: safeControlRef(row.transition_ref, "runtimeClaim.transitionRef"),
+      effectRef: safeControlRef(row.effect_ref, "runtimeClaim.effectRef"),
+      flowKind: requiredText(row.flow_kind, "runtimeClaim.flowKind"),
+      successor: Object.freeze({
+        entitlementId: safeControlRef(row.entitlement_id, "runtimeClaim.entitlementId"),
+        requestId: safeControlRef(row.request_id, "runtimeClaim.requestId"),
+        issuedLinkId: safeControlRef(row.issued_link_id, "runtimeClaim.issuedLinkId"),
+        validUntil: isoText(row.valid_until, "runtimeClaim.validUntil")
+      }),
+      nodeId: safeControlRef(row.node_id, "runtimeClaim.nodeId"),
+      status,
+      leaseGeneration: integer(row.lease_generation, "runtimeClaim.leaseGeneration", { min: 0 }),
+      leaseToken: row.lease_token === null ? null : requiredText(row.lease_token, "runtimeClaim.leaseToken"),
+      leaseUntil: row.lease_until === null ? null : isoText(row.lease_until, "runtimeClaim.leaseUntil"),
+      safeCode: row.safe_code === null ? null : safeControlRef(row.safe_code, "runtimeClaim.safeCode"),
+      recordedAt: row.recorded_at === null ? null : isoText(row.recorded_at, "runtimeClaim.recordedAt")
+    };
+    if (
+      !["initial_activation", "scheduled_switch"].includes(claim.flowKind)
+      || (claim.status === "claimed" && (
+        claim.leaseGeneration < 1
+        || !WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_LEASE_TOKEN_PATTERN.test(claim.leaseToken || "")
+        || claim.leaseUntil === null
+        || claim.safeCode !== null
+        || claim.recordedAt !== null
+      ))
+      || (claim.status === "recorded" && (
+        claim.leaseToken !== null || claim.leaseUntil !== null
+        || claim.safeCode !== null || claim.recordedAt === null
+      ))
+      || (claim.status === "reconciliation_required" && (
+        claim.leaseToken !== null || claim.leaseUntil !== null
+        || claim.safeCode === null || claim.recordedAt !== null
+      ))
+    ) {
+      throw platformError("validation_error", "wallet-first runtime claim row is invalid");
+    }
+    return Object.freeze(claim);
+  }
+
+  function walletFirstResourceEffectClaimMatchesPreparation(prepared, claim) {
+    return (
+      claim.transitionRef === prepared.transitionRef
+      && claim.effectRef === prepared.effectRef
+      && claim.flowKind === prepared.flowKind
+      && claim.successor.entitlementId === prepared.successor.entitlementId
+      && claim.successor.requestId === prepared.successor.requestId
+      && claim.successor.issuedLinkId === prepared.successor.issuedLinkId
+      && claim.successor.validUntil === prepared.successor.validUntil
+      && claim.nodeId === prepared.nodeId
+    );
+  }
+
+  function walletFirstResourceEffectClaimInput(input, { leaseRequired = false } = {}) {
+    const fields = leaseRequired
+      ? [
+        "transitionRef", "flowKind", "successor", "nodeId", "now", "leaseGeneration",
+        "leaseToken"
+      ]
+      : ["transitionRef", "flowKind", "successor", "nodeId", "now", "leaseMs"];
+    exactObject(input, { allowed: fields, name: "walletFirstRuntimeClaim" });
+    const transitionRef = safeControlRef(input.transitionRef, "transitionRef");
+    const prepared = walletFirstResourceEffectExistingPreparation(transitionRef);
+    if (!prepared) {
+      throw platformError("validation_error", "wallet-first runtime claim preparation is missing");
+    }
+    const claim = {
+      transitionRef,
+      effectRef: prepared.effectRef,
+      flowKind: requiredText(input.flowKind, "flowKind"),
+      successor: walletFirstResourceEffectExpectedChain(input.successor),
+      nodeId: safeControlRef(input.nodeId, "nodeId"),
+      now: isoText(input.now, "now")
+    };
+    if (!["initial_activation", "scheduled_switch"].includes(claim.flowKind)
+      || !walletFirstResourceEffectClaimMatchesPreparation(prepared, claim)) {
+      throw platformError("validation_error", "wallet-first runtime claim does not match preparation");
+    }
+    if (leaseRequired) {
+      claim.leaseGeneration = integer(input.leaseGeneration, "leaseGeneration", { min: 1 });
+      claim.leaseToken = requiredText(input.leaseToken, "leaseToken");
+      if (!WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_LEASE_TOKEN_PATTERN.test(claim.leaseToken)) {
+        throw platformError("validation_error", "wallet-first runtime lease token is invalid");
+      }
+    } else {
+      claim.leaseMs = integer(input.leaseMs, "leaseMs", { min: 1 });
+      if (claim.leaseMs > MAX_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_LEASE_MS) {
+        throw platformError("validation_error", "wallet-first runtime lease is too long");
+      }
+    }
+    return Object.freeze({ ...claim, prepared });
+  }
+
+  function walletFirstResourceEffectClaimLeaseOutput(claim) {
+    return Object.freeze({
+      status: "claimed",
+      leaseGeneration: claim.leaseGeneration,
+      leaseToken: claim.leaseToken
+    });
+  }
+
+  function walletFirstResourceEffectSelectRuntimeClaim(transitionRef) {
+    return walletFirstResourceEffectClaimRow(db.prepare(`
+      select * from ${WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_TABLE}
+       where transition_ref = ?
+    `).get(transitionRef));
+  }
+
+  function claimWalletFirstRuntimeEffectForDeferredTransition(input) {
+    const requested = walletFirstResourceEffectClaimInput(input);
+    return db.transaction(() => {
+      walletFirstResourceEffectRequireRuntimeClaimSchema();
+      const completed = getWalletFirstRuntimeReceiptForDeferredTransition({
+        transitionRef: requested.transitionRef
+      });
+      const existing = walletFirstResourceEffectSelectRuntimeClaim(requested.transitionRef);
+      if (existing && !walletFirstResourceEffectClaimMatchesPreparation(requested.prepared, existing)) {
+        throw platformError("validation_error", "wallet-first runtime claim binding drifted");
+      }
+      if (completed) {
+        if (!existing || existing.status !== "recorded") {
+          throw platformError("validation_error", "wallet-first runtime receipt claim state is missing");
+        }
+        return Object.freeze({ status: "completed" });
+      }
+      if (!existing) {
+        const leaseToken = randomBytes(32).toString("hex");
+        const leaseUntil = addMillisecondsToIso(requested.now, requested.leaseMs, "leaseMs");
+        sqliteRun(db.prepare(`
+          insert into ${WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_TABLE} (
+            transition_ref, effect_ref, flow_kind, entitlement_id, request_id,
+            issued_link_id, valid_until, node_id, status, lease_generation,
+            lease_token, lease_until, safe_code, created_at, updated_at, recorded_at
+          ) values (
+            @transitionRef, @effectRef, @flowKind, @entitlementId, @requestId,
+            @issuedLinkId, @validUntil, @nodeId, 'claimed', 1,
+            @leaseToken, @leaseUntil, null, @now, @now, null
+          )
+        `), {
+          transitionRef: requested.transitionRef,
+          effectRef: requested.effectRef,
+          flowKind: requested.flowKind,
+          entitlementId: requested.successor.entitlementId,
+          requestId: requested.successor.requestId,
+          issuedLinkId: requested.successor.issuedLinkId,
+          validUntil: requested.successor.validUntil,
+          nodeId: requested.nodeId,
+          leaseToken,
+          leaseUntil,
+          now: requested.now
+        });
+        return walletFirstResourceEffectClaimLeaseOutput(
+          walletFirstResourceEffectSelectRuntimeClaim(requested.transitionRef)
+        );
+      }
+      if (existing.status === "recorded") {
+        throw platformError("validation_error", "wallet-first recorded claim has no runtime receipt");
+      }
+      if (existing.status === "reconciliation_required") {
+        return Object.freeze({ status: "reconciliation_required" });
+      }
+      if (existing.leaseUntil > requested.now) {
+        return Object.freeze({ status: "blocked" });
+      }
+      const nextToken = randomBytes(32).toString("hex");
+      const nextUntil = addMillisecondsToIso(requested.now, requested.leaseMs, "leaseMs");
+      const taken = db.prepare(`
+        update ${WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_TABLE}
+           set lease_generation = lease_generation + 1,
+               lease_token = ?,
+               lease_until = ?,
+               updated_at = ?
+         where transition_ref = ?
+           and status = 'claimed'
+           and lease_generation = ?
+           and lease_token = ?
+           and lease_until = ?
+           and lease_until <= ?
+      `).run(
+        nextToken,
+        nextUntil,
+        requested.now,
+        requested.transitionRef,
+        existing.leaseGeneration,
+        existing.leaseToken,
+        existing.leaseUntil,
+        requested.now
+      );
+      if (taken.changes !== 1) {
+        throw platformError("claim_lost", "wallet-first runtime claim is no longer current");
+      }
+      return walletFirstResourceEffectClaimLeaseOutput(
+        walletFirstResourceEffectSelectRuntimeClaim(requested.transitionRef)
+      );
+    }).immediate();
+  }
+
+  function walletFirstResourceEffectMarkRuntimeClaimReconciliation(input) {
+    const requested = walletFirstResourceEffectClaimInput({
+      transitionRef: input.transitionRef,
+      flowKind: input.flowKind,
+      successor: input.successor,
+      nodeId: input.nodeId,
+      now: input.now,
+      leaseGeneration: input.leaseGeneration,
+      leaseToken: input.leaseToken
+    }, { leaseRequired: true });
+    const safeCode = safeControlRef(input.safeCode, "safeCode");
+    const updated = db.prepare(`
+      update ${WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_TABLE}
+         set status = 'reconciliation_required',
+             lease_token = null,
+             lease_until = null,
+             safe_code = ?,
+             updated_at = ?
+       where transition_ref = ?
+         and status = 'claimed'
+         and lease_generation = ?
+         and lease_token = ?
+         and lease_until >= ?
+    `).run(
+      safeCode,
+      requested.now,
+      requested.transitionRef,
+      requested.leaseGeneration,
+      requested.leaseToken,
+      requested.now
+    );
+    if (updated.changes !== 1) {
+      throw platformError("claim_lost", "wallet-first runtime reconciliation claim is no longer current");
+    }
+    return Object.freeze({ status: "reconciliation_required" });
+  }
+
+  function markWalletFirstRuntimeEffectReconciliationRequiredForDeferredTransition(input) {
+    exactObject(input, {
+      allowed: [
+        "transitionRef", "flowKind", "successor", "nodeId", "now", "leaseGeneration",
+        "leaseToken", "safeCode"
+      ],
+      name: "walletFirstRuntimeReconciliation"
+    });
+    return db.transaction(() => {
+      walletFirstResourceEffectRequireRuntimeClaimSchema();
+      return walletFirstResourceEffectMarkRuntimeClaimReconciliation(input);
+    }).immediate();
+  }
+
+  function recordWalletFirstRuntimeReceiptForDeferredTransition(input) {
+    exactObject(input, {
+      allowed: [
+        "transitionRef", "flowKind", "successor", "tenantId", "artifactId", "nodeId", "now",
+        "leaseGeneration", "leaseToken"
+      ],
+      name: "walletFirstRuntimeReceipt"
+    });
+    const requested = walletFirstResourceEffectClaimInput({
+      transitionRef: input.transitionRef,
+      flowKind: input.flowKind,
+      successor: input.successor,
+      nodeId: input.nodeId,
+      now: input.now,
+      leaseGeneration: input.leaseGeneration,
+      leaseToken: input.leaseToken
+    }, { leaseRequired: true });
+    const record = Object.freeze({
+      transitionRef: requested.transitionRef,
+      effectRef: requested.effectRef,
+      flowKind: requested.flowKind,
+      successor: requested.successor,
+      tenantId: walletFirstResourceEffectSafeRuntimeId(input.tenantId, "tenantId"),
+      artifactId: walletFirstResourceEffectSafeRuntimeId(input.artifactId, "artifactId"),
+      tenantRef: walletFirstResourceEffectBindingRef("tenant", input.tenantId),
+      artifactRef: walletFirstResourceEffectBindingRef("artifact", input.artifactId),
+      nodeId: requested.nodeId,
+      initialTransitionRef: requested.prepared.flowKind === "initial_activation"
+        ? requested.prepared.transitionRef
+        : requested.prepared.currentChain.initialTransitionRef,
+      runtimeReceiptRef: walletFirstResourceEffectRuntimeReceiptRef(requested.transitionRef),
+      now: requested.now
+    });
+    walletFirstResourceEffectAssertRuntimeReceiptMatchesPreparation(requested.prepared, record);
+    return db.transaction(() => {
+      walletFirstResourceEffectRequireRuntimeClaimSchema();
+      const existingClaim = walletFirstResourceEffectSelectRuntimeClaim(record.transitionRef);
+      if (!existingClaim || !walletFirstResourceEffectClaimMatchesPreparation(requested.prepared, existingClaim)) {
+        throw platformError("validation_error", "wallet-first runtime receipt claim binding is missing");
+      }
+      const existing = getWalletFirstRuntimeReceiptForDeferredTransition({
+        transitionRef: record.transitionRef
+      });
+      if (existing) {
+        if (
+          existingClaim.status !== "recorded"
+          || !walletFirstResourceEffectSameRuntimeReceipt(existing, record)
+        ) {
+          throw platformError("validation_error", "wallet-first runtime receipt idempotency conflict");
+        }
+        return walletFirstResourceEffectRuntimeReceiptOutput(existing);
+      }
+      if (
+        existingClaim.status !== "claimed"
+        || existingClaim.leaseGeneration !== requested.leaseGeneration
+        || existingClaim.leaseToken !== requested.leaseToken
+        || existingClaim.leaseUntil < requested.now
+      ) {
+        throw platformError("claim_lost", "wallet-first runtime receipt lease is no longer current");
+      }
+      recordAuditEvent({
+        id: record.runtimeReceiptRef,
+        entityType: WALLET_FIRST_RESOURCE_EFFECT_AUDIT_ENTITY_TYPE,
+        entityRef: record.transitionRef,
+        action: "resource_runtime_applied",
+        actorRef: WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF,
+        createdAt: record.now,
+        metadata: walletFirstResourceEffectRuntimeMetadata(record)
+      });
+      const recorded = db.prepare(`
+        update ${WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_TABLE}
+           set status = 'recorded',
+               lease_token = null,
+               lease_until = null,
+               safe_code = null,
+               recorded_at = ?,
+               updated_at = ?
+         where transition_ref = ?
+           and status = 'claimed'
+           and lease_generation = ?
+           and lease_token = ?
+           and lease_until >= ?
+      `).run(
+        record.now,
+        record.now,
+        record.transitionRef,
+        requested.leaseGeneration,
+        requested.leaseToken,
+        record.now
+      );
+      if (recorded.changes !== 1) {
+        throw platformError("claim_lost", "wallet-first runtime receipt completion lost its lease");
+      }
+      return walletFirstResourceEffectRuntimeReceiptOutput(record);
+    }).immediate();
+  }
+
+  function walletFirstResourceEffectInsertInitialChain(prepared, runtimeReceipt, now) {
+    const requestMetadata = Object.freeze({
+      commercialModel: WALLET_FIRST_RESOURCE_EFFECT_COMMERCIAL_MODEL,
+      resourceModel: WALLET_FIRST_RESOURCE_CHAIN_MODEL,
+      resourceModelVersion: WALLET_FIRST_RESOURCE_EFFECT_VERSION,
+      initialTransitionRef: prepared.transitionRef,
+      lastTransitionRef: prepared.transitionRef
+    });
+    const trafficLimitBytes = prepared.offer.monthlyTrafficGb * (1024 ** 3);
+    sqliteRun(db.prepare(`
+      insert into platform_entitlements (
+        id, account_id, plan, status, valid_from, valid_until,
+        max_artifacts, max_devices, traffic_limit_bytes, created_at, updated_at
+      ) values (
+        @id, @accountId, @plan, 'active', @validFrom, @validUntil,
+        1, 1, @trafficLimitBytes, @now, @now
+      )
+    `), {
+      id: prepared.successor.entitlementId,
+      accountId: prepared.accountId,
+      plan: prepared.offer.offerVersionRef,
+      validFrom: prepared.activationAt,
+      validUntil: prepared.successor.validUntil,
+      trafficLimitBytes,
+      now
+    });
+    sqliteRun(db.prepare(`
+      insert into platform_issuance_requests (
+        id, account_id, entitlement_id, approval_ref, status, quantity, node_id,
+        purpose, requested_by_ref, created_at, updated_at, metadata_json
+      ) values (
+        @id, @accountId, @entitlementId, @approvalRef, 'issued', 1, @nodeId,
+        'wallet_first_deferred_transition', @requestedByRef, @now, @now, @metadataJson
+      )
+    `), {
+      id: prepared.successor.requestId,
+      accountId: prepared.accountId,
+      entitlementId: prepared.successor.entitlementId,
+      approvalRef: walletFirstResourceEffectSuccessorRef("wfxapproval", prepared.transitionRef),
+      nodeId: prepared.nodeId,
+      requestedByRef: WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF,
+      now,
+      metadataJson: jsonObject(requestMetadata, "walletFirstResourceChainMetadata")
+    });
+    sqliteRun(db.prepare(`
+      insert into platform_issued_subscription_links (
+        id, request_id, tenant_ref, artifact_ref, status, created_at, updated_at
+      ) values (
+        @id, @requestId, @tenantRef, @artifactRef, 'active', @now, @now
+      )
+    `), {
+      id: prepared.successor.issuedLinkId,
+      requestId: prepared.successor.requestId,
+      tenantRef: runtimeReceipt.tenantRef,
+      artifactRef: runtimeReceipt.artifactRef,
+      now
+    });
+    sqliteRun(db.prepare(`
+      insert into platform_portal_access_requests (
+        id, portal_user_ref, plan, client_target, duration_days, quantity,
+        status, next_action, note_provided, prior_trial_state, submitted_at,
+        updated_at, reviewed_at, reviewed_by_ref, safe_reason_code, expires_at,
+        valid_until, entitlement_ref, access_grant_ref, tenant_id, artifact_id,
+        subscription_url, edge_channel_ref, edge_credential_ref,
+        edge_material_digest, edge_lifecycle_mutation, event_json
+      ) values (
+        @id, @portalUserRef, @plan, 'clash', @durationDays, 1,
+        'issued', 'subscription_active', 0, 'wallet_first_no_trial', @submittedAt,
+        @now, @now, @reviewedByRef, 'wallet_first_deferred_transition', @validUntil,
+        @validUntil, @entitlementRef, @accessGrantRef, @tenantId, @artifactId,
+        null, null, null, null, 0, @eventJson
+      )
+    `), {
+      id: prepared.successor.requestId,
+      portalUserRef: prepared.accountId,
+      plan: prepared.offer.portalPlan,
+      durationDays: prepared.offer.durationDays,
+      submittedAt: prepared.activationAt,
+      now,
+      reviewedByRef: WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF,
+      validUntil: prepared.successor.validUntil,
+      entitlementRef: prepared.successor.entitlementId,
+      accessGrantRef: prepared.effectRef,
+      tenantId: runtimeReceipt.tenantId,
+      artifactId: runtimeReceipt.artifactId,
+      eventJson: jsonObject({
+        type: "wallet_first_resource_effect_applied",
+        transitionRef: prepared.transitionRef,
+        effectRef: prepared.effectRef,
+        occurredAt: now
+      }, "walletFirstResourceEffectEvent")
+    });
+  }
+
+  function walletFirstResourceEffectSwitchCurrentChain(prepared, runtimeReceipt, now) {
+    const current = walletFirstResourceEffectExactChain(prepared.accountId);
+    if (
+      !current
+      || prepared.flowKind !== "scheduled_switch"
+      || !prepared.expectedChain
+      || current.entitlementId !== prepared.expectedChain.entitlementId
+      || current.requestId !== prepared.expectedChain.requestId
+      || current.issuedLinkId !== prepared.expectedChain.issuedLinkId
+      || current.validUntil !== prepared.expectedChain.validUntil
+      || current.nodeId !== prepared.nodeId
+      || current.tenantId !== runtimeReceipt.tenantId
+      || current.artifactId !== runtimeReceipt.artifactId
+      || current.tenantRef !== runtimeReceipt.tenantRef
+      || current.artifactRef !== runtimeReceipt.artifactRef
+    ) {
+      throw platformError("validation_error", "wallet-first resource chain changed before switch");
+    }
+    const trafficLimitBytes = prepared.offer.monthlyTrafficGb * (1024 ** 3);
+    const entitlementUpdate = db.prepare(`
+      update platform_entitlements
+      set plan = @plan,
+          valid_from = @validFrom,
+          valid_until = @validUntil,
+          max_artifacts = 1,
+          max_devices = 1,
+          traffic_limit_bytes = @trafficLimitBytes,
+          updated_at = @now
+      where id = @id
+        and account_id = @accountId
+        and status = 'active'
+        and valid_from = @previousValidFrom
+        and valid_until = @previousValidUntil
+        and plan = @previousPlan
+        and max_artifacts = 1
+        and max_devices = 1
+        and traffic_limit_bytes = @previousTrafficLimitBytes
+    `).run({
+      id: current.entitlementId,
+      accountId: prepared.accountId,
+      plan: prepared.offer.offerVersionRef,
+      validFrom: prepared.activationAt,
+      validUntil: prepared.successor.validUntil,
+      trafficLimitBytes,
+      now,
+      previousValidFrom: current.validFrom,
+      previousValidUntil: current.validUntil,
+      previousPlan: current.offerVersionRef,
+      previousTrafficLimitBytes: current.monthlyTrafficGb * (1024 ** 3)
+    });
+    if (entitlementUpdate.changes !== 1) {
+      throw platformError("validation_error", "wallet-first entitlement switch drifted");
+    }
+    const previousMetadata = Object.freeze({
+      commercialModel: current.metadata.commercialModel,
+      resourceModel: current.metadata.resourceModel,
+      resourceModelVersion: current.metadata.resourceModelVersion,
+      initialTransitionRef: current.metadata.initialTransitionRef,
+      lastTransitionRef: current.metadata.lastTransitionRef
+    });
+    const nextMetadata = Object.freeze({
+      ...previousMetadata,
+      lastTransitionRef: prepared.transitionRef
+    });
+    const requestUpdate = db.prepare(`
+      update platform_issuance_requests
+      set metadata_json = @metadataJson,
+          updated_at = @now
+      where id = @id
+        and account_id = @accountId
+        and entitlement_id = @entitlementId
+        and status = 'issued'
+        and node_id = @nodeId
+        and metadata_json = @previousMetadataJson
+    `).run({
+      id: current.requestId,
+      accountId: prepared.accountId,
+      entitlementId: current.entitlementId,
+      nodeId: prepared.nodeId,
+      metadataJson: jsonObject(nextMetadata, "walletFirstResourceChainMetadata"),
+      previousMetadataJson: jsonObject(previousMetadata, "walletFirstResourceChainMetadata"),
+      now
+    });
+    if (requestUpdate.changes !== 1) {
+      throw platformError("validation_error", "wallet-first request switch drifted");
+    }
+    const portalUpdate = db.prepare(`
+      update platform_portal_access_requests
+      set plan = @plan,
+          duration_days = @durationDays,
+          updated_at = @now,
+          reviewed_at = @now,
+          reviewed_by_ref = @reviewedByRef,
+          safe_reason_code = 'wallet_first_deferred_transition',
+          expires_at = @validUntil,
+          valid_until = @validUntil,
+          access_grant_ref = @accessGrantRef,
+          event_json = @eventJson
+      where id = @id
+        and portal_user_ref = @portalUserRef
+        and entitlement_ref = @entitlementRef
+        and status = @previousStatus
+        and plan = @previousPlan
+        and duration_days = @previousDurationDays
+        and expires_at = @previousValidUntil
+        and valid_until = @previousValidUntil
+        and access_grant_ref = @previousAccessGrantRef
+        and tenant_id = @tenantId
+        and artifact_id = @artifactId
+        and subscription_url is null
+        and edge_channel_ref is null
+        and edge_credential_ref is null
+        and edge_material_digest is null
+        and edge_lifecycle_mutation = 0
+    `).run({
+      id: current.requestId,
+      portalUserRef: prepared.accountId,
+      entitlementRef: current.entitlementId,
+      plan: prepared.offer.portalPlan,
+      durationDays: prepared.offer.durationDays,
+      now,
+      reviewedByRef: WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF,
+      validUntil: prepared.successor.validUntil,
+      accessGrantRef: prepared.effectRef,
+      eventJson: jsonObject({
+        type: "wallet_first_resource_effect_applied",
+        transitionRef: prepared.transitionRef,
+        effectRef: prepared.effectRef,
+        occurredAt: now
+      }, "walletFirstResourceEffectEvent"),
+      previousStatus: current.portalStatus,
+      previousPlan: current.portalPlan,
+      previousDurationDays: current.durationDays,
+      previousValidUntil: current.validUntil,
+      previousAccessGrantRef: current.accessGrantRef,
+      tenantId: runtimeReceipt.tenantId,
+      artifactId: runtimeReceipt.artifactId
+    });
+    if (portalUpdate.changes !== 1) {
+      throw platformError("validation_error", "wallet-first portal switch drifted");
+    }
+  }
+
+  function completeWalletFirstTransitionEffectForDeferredTransition(input) {
+    exactObject(input, {
+      allowed: ["transitionRef", "effectRef", "successor", "runtimeReceiptRef", "now"],
+      name: "walletFirstTransitionEffectCompletion"
+    });
+    const transitionRef = safeControlRef(input.transitionRef, "transitionRef");
+    const completion = Object.freeze({
+      transitionRef,
+      effectRef: safeControlRef(input.effectRef, "effectRef"),
+      successor: walletFirstResourceEffectExpectedChain(input.successor),
+      runtimeReceiptRef: safeControlRef(input.runtimeReceiptRef, "runtimeReceiptRef"),
+      now: isoText(input.now, "now")
+    });
+    if (completion.effectRef !== walletFirstResourceEffectReceiptRef(transitionRef)) {
+      throw platformError("validation_error", "wallet-first completion effect reference is invalid");
+    }
+    if (
+      completion.runtimeReceiptRef
+      !== walletFirstResourceEffectRuntimeReceiptRef(transitionRef)
+    ) {
+      throw platformError("validation_error", "wallet-first completion runtime receipt is invalid");
+    }
+    const complete = db.transaction(() => {
+      const existingAudit = getAuditEvent(walletFirstResourceEffectReceiptRef(transitionRef));
+      if (existingAudit) {
+        const existing = walletFirstResourceEffectReceiptFromAudit(existingAudit);
+        const prepared = walletFirstResourceEffectExistingPreparation(transitionRef);
+        const runtimeReceipt = getWalletFirstRuntimeReceiptForDeferredTransition({ transitionRef });
+        if (!prepared || !runtimeReceipt) {
+          throw platformError("validation_error", "wallet-first effect receipt dependencies are missing");
+        }
+        walletFirstResourceEffectAssertReceiptMatchesPreparation(prepared, runtimeReceipt, existing);
+        if (
+          !walletFirstResourceEffectSameReceipt(existing, {
+            ...completion,
+            accountId: prepared.accountId,
+            flowKind: prepared.flowKind
+          })
+        ) {
+          throw platformError("validation_error", "wallet-first effect receipt idempotency conflict");
+        }
+        walletFirstResourceEffectCurrentPreparedTransition(prepared.accountId);
+        return walletFirstResourceEffectOutput(existing);
+      }
+
+      const prepared = walletFirstResourceEffectExistingPreparation(transitionRef);
+      const runtimeReceipt = getWalletFirstRuntimeReceiptForDeferredTransition({ transitionRef });
+      if (!prepared || !runtimeReceipt) {
+        throw platformError("validation_error", "wallet-first effect completion dependencies are missing");
+      }
+      walletFirstResourceEffectAssertRuntimeReceiptMatchesPreparation(prepared, runtimeReceipt);
+      if (
+        completion.effectRef !== prepared.effectRef
+        || completion.successor.entitlementId !== prepared.successor.entitlementId
+        || completion.successor.requestId !== prepared.successor.requestId
+        || completion.successor.issuedLinkId !== prepared.successor.issuedLinkId
+        || completion.successor.validUntil !== prepared.successor.validUntil
+      ) {
+        throw platformError("validation_error", "wallet-first effect completion does not match preparation");
+      }
+      walletFirstResourceEffectAccountRecord(prepared.accountId);
+      if (prepared.flowKind === "initial_activation") {
+        if (walletFirstResourceEffectExactChain(prepared.accountId) !== null) {
+          throw platformError("validation_error", "wallet-first initial resource chain changed before completion");
+        }
+        walletFirstResourceEffectInsertInitialChain(prepared, runtimeReceipt, completion.now);
+      } else {
+        walletFirstResourceEffectSwitchCurrentChain(prepared, runtimeReceipt, completion.now);
+      }
+      const chain = walletFirstResourceEffectExactChain(prepared.accountId);
+      if (!walletFirstResourceEffectChainMatchesPreparation(chain, prepared, runtimeReceipt)) {
+        throw platformError("validation_error", "wallet-first effect completion did not converge");
+      }
+      const receipt = Object.freeze({
+        transitionRef,
+        accountId: prepared.accountId,
+        flowKind: prepared.flowKind,
+        effectRef: prepared.effectRef,
+        successor: prepared.successor,
+        runtimeReceiptRef: runtimeReceipt.runtimeReceiptRef
+      });
+      recordAuditEvent({
+        id: walletFirstResourceEffectReceiptRef(transitionRef),
+        entityType: WALLET_FIRST_RESOURCE_EFFECT_AUDIT_ENTITY_TYPE,
+        entityRef: transitionRef,
+        action: "resource_effect_applied",
+        actorRef: WALLET_FIRST_RESOURCE_EFFECT_ACTOR_REF,
+        createdAt: completion.now,
+        metadata: walletFirstResourceEffectReceiptMetadata(receipt)
+      });
+      return walletFirstResourceEffectOutput(receipt);
+    });
+    return complete.immediate();
   }
 
   function createEntitlement(input) {
@@ -3777,7 +6003,26 @@ export function createSqliteSubscriptionControlStore({
     createAccount,
     getAccount,
     listAccounts,
+    getPortalRegistrationWelcomeCoinGrant,
+    enqueuePortalRegistrationWelcomeCoinGrant,
+    claimNextPortalRegistrationWelcomeCoinGrant,
+    completePortalRegistrationWelcomeCoinGrant,
+    deferPortalRegistrationWelcomeCoinGrant,
+    markPortalRegistrationWelcomeCoinGrantReconciliationRequired,
+    expireDuePortalRegistrationWelcomeCoinGrants,
+    nextPortalRegistrationWelcomeCoinGrantWakeAt,
     resolvePortalLoginAccount,
+    getWalletFirstAccountForDeferredTransition,
+    resolveExactWalletFirstResourceChainForDeferredTransition,
+    getWalletFirstTransitionEffectForDeferredTransition,
+    prepareWalletFirstInitialActivationForDeferredTransition,
+    prepareWalletFirstScheduledSwitchForDeferredTransition,
+    getWalletFirstRuntimeReceiptForDeferredTransition,
+    verifyWalletFirstRuntimeTransitionForDeferredTransition,
+    claimWalletFirstRuntimeEffectForDeferredTransition,
+    markWalletFirstRuntimeEffectReconciliationRequiredForDeferredTransition,
+    recordWalletFirstRuntimeReceiptForDeferredTransition,
+    completeWalletFirstTransitionEffectForDeferredTransition,
     createEntitlement,
     getEntitlement,
     resolveCommerceAuthority,

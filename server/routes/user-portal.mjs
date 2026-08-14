@@ -37,6 +37,14 @@ function sendPortalError(res, error) {
     res.status(409).json({ error: "account_already_exists" });
     return;
   }
+  if (error.code === "wallet_first_deferred_required") {
+    res.status(409).json({ error: "wallet_first_deferred_required" });
+    return;
+  }
+  if (error.code === "wallet_first_access_request_unavailable") {
+    res.status(503).json({ error: "wallet_first_access_request_unavailable" });
+    return;
+  }
   if (error.code === "invalid_session") {
     res.status(401).json({ error: "invalid_session" });
     return;

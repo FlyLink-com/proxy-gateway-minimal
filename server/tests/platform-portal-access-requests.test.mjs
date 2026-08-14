@@ -910,6 +910,246 @@ test("portal access request service accepts monthly and yearly with fixed durati
   assert.equal(yearly.durationDays, 365);
 });
 
+test("wallet-first accounts cannot create legacy access requests while legacy accounts remain supported", () => {
+  const walletFirstControl = controlStore();
+  walletFirstControl.createAccount({
+    id: "acct_wallet_first_access_request",
+    ownerRef: "owner_wallet_first_access_request",
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+    metadata: { commercialModel: "wallet_first_unique_v1" }
+  });
+  const walletFirstRequests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_wallet_first_blocked",
+    controlStore: walletFirstControl,
+    walletFirstRegistrationEnabled: true
+  });
+  for (const plan of ["trial", "monthly", "yearly"]) {
+    assert.throws(
+      () => walletFirstRequests.submitRequest(validTrialInput({
+        portalUserRef: "acct_wallet_first_access_request",
+        plan
+      })),
+      (error) => error?.code === "wallet_first_deferred_required"
+    );
+  }
+  assert.throws(
+    () => walletFirstRequests.listRequests({
+      portalUserRef: "acct_wallet_first_access_request"
+    }),
+    (error) => error?.code === "wallet_first_deferred_required"
+  );
+  const walletFirstRequestsWithFlagOff = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    controlStore: walletFirstControl,
+    walletFirstRegistrationEnabled: false
+  });
+  assert.throws(
+    () => walletFirstRequestsWithFlagOff.listRequests({
+      portalUserRef: "acct_wallet_first_access_request"
+    }),
+    (error) => error?.code === "wallet_first_deferred_required"
+  );
+
+  const legacyControl = controlStore();
+  for (const [accountId, metadata] of [
+    ["acct_explicit_legacy_access_request", { commercialModel: "legacy" }],
+    ["acct_missing_legacy_access_request", {}]
+  ]) {
+    legacyControl.createAccount({
+      id: accountId,
+      ownerRef: `owner_${accountId}`,
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+      metadata
+    });
+  }
+  let legacyRequestSequence = 0;
+  const legacyRequests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => `pareq_legacy_supported_${++legacyRequestSequence}`,
+    controlStore: legacyControl,
+    walletFirstRegistrationEnabled: true
+  });
+  assert.equal(legacyRequests.submitRequest(validTrialInput({
+    portalUserRef: "acct_explicit_legacy_access_request",
+    plan: "monthly"
+  })).plan, "monthly");
+  assert.equal(legacyRequests.submitRequest(validTrialInput({
+    portalUserRef: "acct_missing_legacy_access_request",
+    plan: "yearly"
+  })).plan, "yearly");
+
+  const noModelSource = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    walletFirstRegistrationEnabled: true
+  });
+  assert.throws(
+    () => noModelSource.submitRequest(validTrialInput()),
+    (error) => error?.code === "wallet_first_access_request_unavailable"
+  );
+
+  const unknownModelControl = controlStore();
+  unknownModelControl.createAccount({
+    id: "acct_unknown_access_request_model",
+    ownerRef: "owner_unknown_access_request_model",
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+    metadata: { commercialModel: "future_commercial_model" }
+  });
+  const unknownModelRequests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    controlStore: unknownModelControl,
+    walletFirstRegistrationEnabled: false
+  });
+  assert.throws(
+    () => unknownModelRequests.submitRequest(validTrialInput({
+      portalUserRef: "acct_unknown_access_request_model"
+    })),
+    (error) => error?.code === "wallet_first_access_request_unavailable"
+  );
+
+  const unresolvedAccountSource = {
+    getAccount() {
+      return null;
+    }
+  };
+  const requiredModelRequests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    controlStore: unresolvedAccountSource,
+    walletFirstRegistrationEnabled: true
+  });
+  assert.throws(
+    () => requiredModelRequests.submitRequest(validTrialInput()),
+    (error) => error?.code === "wallet_first_access_request_unavailable"
+  );
+});
+
+test("wallet-first account markers block legacy access-request lifecycle operations", () => {
+  const accountId = "acct_wallet_first_historical_request";
+  const walletFirstControl = controlStore();
+  walletFirstControl.createAccount({
+    id: accountId,
+    ownerRef: "owner_wallet_first_historical_request",
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+    metadata: { commercialModel: "wallet_first_unique_v1" }
+  });
+  const requestStore = portalRequestStoreWith([
+    materialBearingPortalRequest({
+      id: "pareq_wallet_first_historical_delivered",
+      portalUserRef: accountId
+    }),
+    materialBearingPortalRequest({
+      id: "pareq_wallet_first_historical_quota_suspended",
+      portalUserRef: accountId,
+      status: "disabled",
+      nextAction: "traffic_supply_suspended_quota",
+      event: {
+        type: "traffic_supply_suspended",
+        occurredAt: NOW,
+        previousStatus: "delivered"
+      }
+    })
+  ]);
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    controlStore: walletFirstControl,
+    portalAccessRequestStore: requestStore,
+    // An existing wallet-first marker remains authoritative after this flag is off.
+    walletFirstRegistrationEnabled: false
+  });
+  const deferredRequired = (operation) => assert.throws(
+    operation,
+    (error) => error?.code === "wallet_first_deferred_required"
+  );
+
+  deferredRequired(() => requests.revealSubscription({
+    portalUserRef: accountId,
+    requestRef: "pareq_wallet_first_historical_delivered"
+  }));
+  deferredRequired(() => requests.refreshSubscription({
+    portalUserRef: accountId,
+    requestRef: "pareq_wallet_first_historical_delivered",
+    clientTarget: "clash"
+  }));
+  deferredRequired(() => requests.suspendTrafficSupply({
+    portalUserRef: accountId,
+    requestRef: "pareq_wallet_first_historical_delivered"
+  }));
+  deferredRequired(() => requests.disableSubscription({
+    portalUserRef: accountId,
+    requestRef: "pareq_wallet_first_historical_delivered"
+  }));
+  deferredRequired(() => requests.resumeTrafficSupply({
+    portalUserRef: accountId,
+    requestRef: "pareq_wallet_first_historical_quota_suspended"
+  }));
+  deferredRequired(() => requests.disableSubscription({
+    portalUserRef: accountId,
+    requestRef: "pareq_wallet_first_historical_quota_suspended"
+  }));
+
+  assert.equal(
+    requestStore.getPortalAccessRequest("pareq_wallet_first_historical_delivered").status,
+    "delivered"
+  );
+  assert.equal(
+    requestStore.getPortalAccessRequest("pareq_wallet_first_historical_quota_suspended").status,
+    "disabled"
+  );
+
+  const legacyControl = controlStore();
+  legacyControl.createAccount({
+    id: "acct_explicit_legacy_historical_request",
+    ownerRef: "owner_explicit_legacy_historical_request",
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+    metadata: { commercialModel: "legacy" }
+  });
+  const legacyRequests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    controlStore: legacyControl,
+    portalAccessRequestStore: portalRequestStoreWith([
+      materialBearingPortalRequest({
+        id: "pareq_explicit_legacy_historical_delivered",
+        portalUserRef: "acct_explicit_legacy_historical_request"
+      })
+    ]),
+    walletFirstRegistrationEnabled: true
+  });
+  assert.equal(legacyRequests.revealSubscription({
+    portalUserRef: "acct_explicit_legacy_historical_request",
+    requestRef: "pareq_explicit_legacy_historical_delivered"
+  }).status, "delivered");
+
+  const unresolvedHistoricalRequests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    controlStore: {
+      getAccount() {
+        return null;
+      }
+    },
+    portalAccessRequestStore: portalRequestStoreWith([
+      materialBearingPortalRequest({
+        id: "pareq_unresolved_legacy_historical_delivered",
+        portalUserRef: "portal_user_legacy_historical_request"
+      })
+    ]),
+    walletFirstRegistrationEnabled: false
+  });
+  assert.equal(unresolvedHistoricalRequests.revealSubscription({
+    portalUserRef: "portal_user_legacy_historical_request",
+    requestRef: "pareq_unresolved_legacy_historical_delivered"
+  }).status, "delivered");
+});
+
 test("portal access request service auto-delivers 7-day orders when auto issuance is enabled", () => {
   const runtimeCore = lifecycleRuntimeCore();
   const control = controlStore();
@@ -982,8 +1222,31 @@ test("commerce product fulfillment creates one stable account resource and repla
       createdAt: NOW,
       updatedAt: NOW
     });
+    store.createAccount({
+      id: "acct_wallet_first_commerce_fulfillment",
+      ownerRef: "acct_wallet_first_commerce_fulfillment",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+      metadata: { commercialModel: "wallet_first_unique_v1" }
+    });
 
     assert.equal(requests.isCommerceProductFulfillmentReady(), true);
+    assert.throws(
+      () => requests.fulfillCommerceProduct({
+        ...input,
+        commandRef: "coincmd_wallet_first_legacy_fulfillment_blocked",
+        orderRef: "coinord_wallet_first_legacy_fulfillment_blocked",
+        accountId: "acct_wallet_first_commerce_fulfillment"
+      }),
+      (error) => error?.code === "wallet_first_deferred_required"
+    );
+    assert.equal(
+      store.listPortalAccessRequests({
+        portalUserRef: "acct_wallet_first_commerce_fulfillment"
+      }).length,
+      0
+    );
     const first = requests.fulfillCommerceProduct(input);
     assert.equal(first.status, "delivered");
     assert.equal(first.redacted, true);

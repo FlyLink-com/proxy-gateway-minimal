@@ -31,6 +31,7 @@ const STORE_METHODS = [
   "creditCoins",
   "expireCoinHold",
   "expireCoinLot",
+  "expireDuePortalRegistrationWelcomeBonusCoinLots",
   "getHold",
   "getLot",
   "getOperationReceipt",
@@ -500,7 +501,7 @@ test("factory validates exact schema, exposes only bounded methods, and owns clo
   });
 });
 
-test("core-only Store surface and source contain no deferred recovery APIs or SQL", () => {
+test("core-only Store surface and source contain no generic recovery tables or APIs", () => {
   const database = createSyntheticDatabase();
   let store;
   try {
@@ -519,7 +520,7 @@ test("core-only Store surface and source contain no deferred recovery APIs or SQ
     );
     assert.doesNotMatch(
       source,
-      /platform_coin_(?:recovery|reversal|restriction)|Recovery|RECOVERY/
+      /platform_coin_(?:recovery|reversal|restriction)\b/
     );
   } finally {
     store?.close();
@@ -2958,7 +2959,8 @@ function createLifecycleFixture({
   holdExpiresAt = "2026-07-24T12:34:56.000Z",
   accountId = "account_1",
   purpose = "product_purchase",
-  purposeRef = "order_1"
+  purposeRef = "order_1",
+  sourceType = null
 } = {}) {
   const database = createSyntheticDatabase();
   let store;
@@ -2974,9 +2976,9 @@ function createLifecycleFixture({
       accountId,
       coinType,
       amountUnits,
-      sourceType: coinType === "bonus_coins"
+      sourceType: sourceType ?? (coinType === "bonus_coins"
         ? "approved_bonus"
-        : "verified_recharge",
+        : "verified_recharge"),
       sourceRef: `${coinType}_source`,
       expiresAt: lotExpiresAt,
       operation: {
@@ -3084,7 +3086,7 @@ function lifecycleLedger(database, operationRef) {
   `).all(operationRef);
 }
 
-test("lifecycle Store exposes only the four frozen terminal methods in addition to the existing surface", () => {
+test("lifecycle Store exposes the bounded due-bonus expiry method with its terminal lifecycle methods", () => {
   const database = createSyntheticDatabase();
   let store;
   try {
@@ -3094,7 +3096,8 @@ test("lifecycle Store exposes only the four frozen terminal methods in addition 
       "captureCoinHold",
       "releaseCoinHold",
       "expireCoinHold",
-      "expireCoinLot"
+      "expireCoinLot",
+      "expireDuePortalRegistrationWelcomeBonusCoinLots"
     ]) {
       assert.equal(typeof store[method], "function");
     }
@@ -3270,6 +3273,107 @@ test("expiry accepts only an exact subject ref and rejects caller operation evid
         "non_normalized_wallet_request"
       );
     }
+  } finally {
+    store?.close();
+    database.close();
+  }
+});
+
+test("wallet projection excludes due available bonus before the expiry worker writes cleanup", () => {
+  const database = createSyntheticDatabase();
+  let clock;
+  let store;
+  try {
+    insertAccount(database, "account_1");
+    clock = createMutableDatabaseTimeConnection(database);
+    store = createSqliteCoinWalletStore({
+      database: clock.connection,
+      nowFn: () => new Date(NOW),
+      refFactory: makeRefFactory()
+    });
+    const bonus = store.creditCoins(validCredit({
+      coinType: "bonus_coins",
+      amountUnits: 5,
+      sourceType: "approved_bonus",
+      sourceRef: "projection_due_bonus",
+      sourceDigest: "b".repeat(64),
+      expiresAt: "2026-07-24T00:00:00.000Z",
+      operation: { idempotencyKey: "projection_due_bonus" }
+    }));
+    const paid = store.creditCoins(validCredit({
+      amountUnits: 7,
+      sourceRef: "projection_paid",
+      sourceDigest: "c".repeat(64),
+      operation: { idempotencyKey: "projection_paid" }
+    }));
+    const before = holdFinancialSnapshot(database);
+    clock.setTimestamp("2026-07-24T00:00:00.000Z");
+
+    assert.deepEqual(store.getWalletProjection({
+      walletRef: paid.walletRef
+    }), {
+      exists: true,
+      walletRef: paid.walletRef,
+      status: "active",
+      version: 2,
+      totals: {
+        paid_coins: 7,
+        bonus_coins: 0,
+        reward_coins: 0
+      },
+      spendableUnits: 7,
+      heldUnits: 0,
+      pendingUnits: 0
+    });
+    assert.equal(clock.reads(), 1);
+    assert.deepEqual([
+      store.getLot(bonus.resultRef).availableUnits,
+      store.getLot(bonus.resultRef).expiredUnits
+    ], [5, 0]);
+    assert.deepEqual(holdFinancialSnapshot(database), before);
+  } finally {
+    store?.close();
+    database.close();
+  }
+});
+
+test("portal registration welcome bonus expiry batch accepts only an exact bounded limit", () => {
+  const database = createSyntheticDatabase();
+  let store;
+  try {
+    store = createStore(database);
+    const before = holdFinancialSnapshot(database);
+    const symbolRequest = { limit: 1 };
+    symbolRequest[Symbol("extra")] = true;
+    const hiddenRequest = { limit: 1 };
+    Object.defineProperty(hiddenRequest, "hidden", { value: true });
+    const accessorRequest = {};
+    Object.defineProperty(accessorRequest, "limit", {
+      enumerable: true,
+      get: () => 1
+    });
+    for (const input of [
+      null,
+      {},
+      { limit: 1, extra: true },
+      symbolRequest,
+      hiddenRequest,
+      accessorRequest
+    ]) {
+      assertLifecycleErrorWithoutReceipt(
+        database,
+        () => store.expireDuePortalRegistrationWelcomeBonusCoinLots(input),
+        "invalid_wallet_request"
+      );
+    }
+    for (const input of [{ limit: 0 }, { limit: 501 }, { limit: 1.5 }]) {
+      assertLifecycleErrorWithoutReceipt(
+        database,
+        () => store.expireDuePortalRegistrationWelcomeBonusCoinLots(input),
+        "invalid_pagination"
+      );
+    }
+    assert.deepEqual(holdFinancialSnapshot(database), before);
   } finally {
     store?.close();
     database.close();
@@ -4037,6 +4141,118 @@ test("due finite bonus lot expiry moves all available units once with exact syst
     assert.equal(clock.reads(), readsBefore + 1);
   } finally {
     store?.close();
+    database.close();
+  }
+});
+
+test("bounded portal registration welcome bonus expiry processes only welcome lots in deadline order", () => {
+  const database = createSyntheticDatabase();
+  let clock;
+  let store;
+  try {
+    insertAccount(database, "account_1");
+    clock = createMutableDatabaseTimeConnection(database);
+    store = createSqliteCoinWalletStore({
+      database: clock.connection,
+      nowFn: () => new Date(NOW),
+      refFactory: makeRefFactory()
+    });
+    const existing = store.creditCoins(validCredit({
+      coinType: "bonus_coins",
+      amountUnits: 1,
+      sourceType: "approved_bonus",
+      sourceRef: "existing_due_bonus",
+      sourceDigest: "a".repeat(64),
+      expiresAt: "2026-07-23T00:00:00.000Z",
+      operation: { idempotencyKey: "existing_due_bonus" }
+    }));
+    const first = store.creditCoins(validCredit({
+      coinType: "bonus_coins",
+      amountUnits: 2,
+      sourceType: "portal_registration_welcome_bonus",
+      sourceRef: "batch_due_first",
+      sourceDigest: "b".repeat(64),
+      expiresAt: "2026-07-24T00:00:00.000Z",
+      operation: { idempotencyKey: "batch_due_first" }
+    }));
+    const second = store.creditCoins(validCredit({
+      coinType: "bonus_coins",
+      amountUnits: 3,
+      sourceType: "portal_registration_welcome_bonus",
+      sourceRef: "batch_due_second",
+      sourceDigest: "c".repeat(64),
+      expiresAt: "2026-07-25T00:00:00.000Z",
+      operation: { idempotencyKey: "batch_due_second" }
+    }));
+    const future = store.creditCoins(validCredit({
+      coinType: "bonus_coins",
+      amountUnits: 4,
+      sourceType: "portal_registration_welcome_bonus",
+      sourceRef: "batch_future",
+      sourceDigest: "d".repeat(64),
+      expiresAt: "2026-07-27T00:00:00.000Z",
+      operation: { idempotencyKey: "batch_future" }
+    }));
+    clock.setTimestamp("2026-07-26T00:00:00.000Z");
+
+    assert.equal(
+      store.expireDuePortalRegistrationWelcomeBonusCoinLots({ limit: 1 }),
+      1
+    );
+    assert.deepEqual([
+      store.getLot(existing.resultRef).availableUnits,
+      store.getLot(existing.resultRef).expiredUnits,
+      store.getLot(first.resultRef).availableUnits,
+      store.getLot(first.resultRef).expiredUnits,
+      store.getLot(second.resultRef).availableUnits,
+      store.getLot(second.resultRef).expiredUnits
+    ], [1, 0, 0, 2, 3, 0]);
+    assert.equal(
+      store.expireDuePortalRegistrationWelcomeBonusCoinLots({ limit: 500 }),
+      1
+    );
+    assert.deepEqual([
+      store.getLot(second.resultRef).availableUnits,
+      store.getLot(second.resultRef).expiredUnits,
+      store.getLot(future.resultRef).availableUnits,
+      store.getLot(future.resultRef).expiredUnits
+    ], [0, 3, 4, 0]);
+    assert.equal(store.getWallet(first.walletRef).version, 6);
+    assert.equal(lifecycleReceiptCount(database), 2);
+    assert.equal(
+      store.expireDuePortalRegistrationWelcomeBonusCoinLots({ limit: 500 }),
+      0
+    );
+    assert.equal(lifecycleReceiptCount(database), 2);
+  } finally {
+    store?.close();
+    database.close();
+  }
+});
+
+test("portal registration welcome bonus expiry leaves protected active hold units to the hold lifecycle", () => {
+  const fixture = createLifecycleFixture({
+    coinType: "bonus_coins",
+    lotExpiresAt: "2026-07-24T00:00:00.000Z",
+    sourceType: "portal_registration_welcome_bonus"
+  });
+  const { clock, database, store, credit, hold } = fixture;
+  try {
+    clock.setTimestamp("2026-07-24T00:00:00.000Z");
+    const before = holdFinancialSnapshot(database);
+    assert.equal(
+      store.expireDuePortalRegistrationWelcomeBonusCoinLots({ limit: 10 }),
+      0
+    );
+    assert.deepEqual(holdFinancialSnapshot(database), before);
+    assert.equal(store.getHold(hold.resultRef).status, "active");
+    assert.deepEqual([
+      store.getLot(credit.resultRef).availableUnits,
+      store.getLot(credit.resultRef).heldUnits,
+      store.getLot(credit.resultRef).expiredUnits
+    ], [0, 10, 0]);
+  } finally {
+    store.close();
     database.close();
   }
 });

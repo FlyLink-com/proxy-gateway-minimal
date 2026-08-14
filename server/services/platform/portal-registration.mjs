@@ -10,6 +10,10 @@ const DEFAULT_DEVICE_COUNT = 1;
 const DEFAULT_REGISTRATION_RISK_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_REGISTRATIONS_PER_SOURCE_IP = 3;
 const DEFAULT_LEGAL_VERSION = "2026-07-02";
+export const WALLET_FIRST_COMMERCIAL_MODEL = "wallet_first_unique_v1";
+export const LEGACY_TRIAL_COMMERCIAL_MODEL = "legacy";
+export const WELCOME_BONUS_COIN_UNITS = 10;
+export const WELCOME_BONUS_DURATION_DAYS = 7;
 
 function registrationError(code, message) {
   const error = new Error(message);
@@ -108,25 +112,18 @@ function normalizeLegalAgreement(value) {
 
 function safeRegistrationSummary({
   userRef,
-  accessRequest,
+  accessRequest = null,
   planIntent,
-  validFrom,
-  validUntil
+  validFrom = null,
+  validUntil = null,
+  commercialModel = null,
+  welcomeBonus = null
 }) {
-  return {
+  const summary = {
     action: "portal_registration_created",
     userRef,
     status: "registered",
     planIntent,
-    trial: {
-      plan: "trial",
-      durationDays: TRIAL_DURATION_DAYS,
-      entitlementRef: "recorded",
-      accessRequestRef: accessRequest.id,
-      accessRequestStatus: accessRequest.status,
-      validFrom,
-      validUntil
-    },
     nextAction: "enter_user_panel",
     safety: {
       noSubscriptionUrl: true,
@@ -138,6 +135,34 @@ function safeRegistrationSummary({
       noProductionMutation: true
     }
   };
+  if (accessRequest !== null) {
+    summary.trial = {
+      plan: "trial",
+      durationDays: TRIAL_DURATION_DAYS,
+      entitlementRef: "recorded",
+      accessRequestRef: accessRequest.id,
+      accessRequestStatus: accessRequest.status,
+      validFrom,
+      validUntil
+    };
+  }
+  if (
+    commercialModel === LEGACY_TRIAL_COMMERCIAL_MODEL
+    && accessRequest !== null
+    && welcomeBonus === null
+  ) {
+    summary.commercialModel = LEGACY_TRIAL_COMMERCIAL_MODEL;
+  } else if (
+    commercialModel === WALLET_FIRST_COMMERCIAL_MODEL
+    && accessRequest === null
+    && welcomeBonus !== null
+  ) {
+    summary.commercialModel = commercialModel;
+    summary.welcomeBonus = welcomeBonus;
+  } else {
+    throw registrationError("validation_error", "registration commercial model is invalid");
+  }
+  return summary;
 }
 
 export function createPortalRegistrationService(options = {}) {
@@ -149,6 +174,9 @@ export function createPortalRegistrationService(options = {}) {
   const accountIdFactory = options.accountIdFactory || (() => defaultRef("acct"));
   const entitlementIdFactory = options.entitlementIdFactory || (() => defaultRef("ent_trial"));
   const approvalRefFactory = options.approvalRefFactory || (() => defaultRef("approval_registration"));
+  const welcomeCoinGrantRefFactory = options.welcomeCoinGrantRefFactory
+    || (() => defaultRef("welcome_grant"));
+  const walletFirstRegistrationEnabled = options.walletFirstRegistrationEnabled === true;
   const registrationRiskWindowMs = options.registrationRiskWindowMs ?? DEFAULT_REGISTRATION_RISK_WINDOW_MS;
   const maxRegistrationsPerSourceIp = options.maxRegistrationsPerSourceIp ?? DEFAULT_MAX_REGISTRATIONS_PER_SOURCE_IP;
 
@@ -163,6 +191,20 @@ export function createPortalRegistrationService(options = {}) {
   }
   if (!portalAccessRequests || typeof portalAccessRequests.submitRequest !== "function") {
     throw new Error("portalAccessRequests with submitRequest is required");
+  }
+  if (
+    options.walletFirstRegistrationEnabled !== undefined
+    && typeof options.walletFirstRegistrationEnabled !== "boolean"
+  ) {
+    throw new Error("walletFirstRegistrationEnabled must be a boolean when provided");
+  }
+  if (walletFirstRegistrationEnabled) {
+    if (typeof controlStore.enqueuePortalRegistrationWelcomeCoinGrant !== "function") {
+      throw new Error("controlStore with enqueuePortalRegistrationWelcomeCoinGrant is required");
+    }
+    if (typeof welcomeCoinGrantRefFactory !== "function") {
+      throw new Error("welcomeCoinGrantRefFactory must be a function");
+    }
   }
 
   function sourceDigests(requestContext = {}) {
@@ -233,12 +275,19 @@ export function createPortalRegistrationService(options = {}) {
     const primaryRegion = safeEnumLikeText(input.primaryRegion || input.region || DEFAULT_PRIMARY_REGION, "primaryRegion");
     const useCase = optionalText(input.useCase);
     const validUntil = addDays(now, TRIAL_DURATION_DAYS);
+    const welcomeBonusExpiresAt = addDays(now, WELCOME_BONUS_DURATION_DAYS);
     const accountId = requiredText(input.accountId || accountIdFactory({ email, now }), "accountId");
-    const entitlementId = requiredText(
+    const entitlementId = walletFirstRegistrationEnabled ? null : requiredText(
       input.entitlementId || entitlementIdFactory({ accountId, now }),
       "entitlementId"
     );
     const approvalRef = requiredText(input.approvalRef || approvalRefFactory({ accountId, now }), "approvalRef");
+    const welcomeCoinGrantRef = walletFirstRegistrationEnabled
+      ? requiredText(
+        welcomeCoinGrantRefFactory({ accountId, now }),
+        "welcomeCoinGrantRef"
+      )
+      : null;
 
     const createWithCredential = () => {
       controlStore.createAccount({
@@ -253,6 +302,9 @@ export function createPortalRegistrationService(options = {}) {
           registrationSource: "self_service_portal",
           singleSubscriptionOnly: true,
           subscriptionLimit: 1,
+          ...(walletFirstRegistrationEnabled
+            ? { commercialModel: WALLET_FIRST_COMMERCIAL_MODEL }
+            : {}),
           loginRef: email,
           displayRef: email,
           contactDigest: emailDigest,
@@ -273,26 +325,53 @@ export function createPortalRegistrationService(options = {}) {
         }
       });
 
-      controlStore.createEntitlement({
-        id: entitlementId,
-        accountId,
-        plan: "trial",
-        status: "active",
-        validFrom: now,
-        validUntil,
-        maxArtifacts: 1,
-        maxDevices: deviceCount,
-        trafficLimitBytes: TRIAL_TRAFFIC_LIMIT_BYTES,
-        createdAt: now,
-        updatedAt: now
-      });
+      if (walletFirstRegistrationEnabled) {
+        const sourceRef = `portal_registration_welcome_${accountId}`;
+        controlStore.enqueuePortalRegistrationWelcomeCoinGrant({
+          grantRef: welcomeCoinGrantRef,
+          accountId,
+          commercialModel: WALLET_FIRST_COMMERCIAL_MODEL,
+          coinType: "bonus_coins",
+          amountUnits: WELCOME_BONUS_COIN_UNITS,
+          expiresAt: welcomeBonusExpiresAt,
+          sourceType: "portal_registration_welcome_bonus",
+          sourceRef,
+          sourceDigest: digest(JSON.stringify({
+            accountId,
+            commercialModel: WALLET_FIRST_COMMERCIAL_MODEL,
+            coinType: "bonus_coins",
+            amountUnits: WELCOME_BONUS_COIN_UNITS,
+            expiresAt: welcomeBonusExpiresAt
+          })),
+          actorScope: "portal_registration_welcome_bonus",
+          idempotencyKey: sourceRef,
+          now
+        });
+      }
 
-      const accessRequest = portalAccessRequests.submitRequest({
-        portalUserRef: accountId,
-        plan: "trial",
-        clientTarget: input.clientTarget || "clash",
-        quantity: 1
-      });
+      let accessRequest = null;
+      if (!walletFirstRegistrationEnabled) {
+        controlStore.createEntitlement({
+          id: entitlementId,
+          accountId,
+          plan: "trial",
+          status: "active",
+          validFrom: now,
+          validUntil,
+          maxArtifacts: 1,
+          maxDevices: deviceCount,
+          trafficLimitBytes: TRIAL_TRAFFIC_LIMIT_BYTES,
+          createdAt: now,
+          updatedAt: now
+        });
+
+        accessRequest = portalAccessRequests.submitRequest({
+          portalUserRef: accountId,
+          plan: "trial",
+          clientTarget: input.clientTarget || "clash",
+          quantity: 1
+        });
+      }
 
       passwordCredentialService.issueInitialPasswordCredential({
         accountId,
@@ -313,7 +392,20 @@ export function createPortalRegistrationService(options = {}) {
           accessRequest,
           planIntent,
           validFrom: now,
-          validUntil
+          validUntil,
+          commercialModel: walletFirstRegistrationEnabled
+            ? WALLET_FIRST_COMMERCIAL_MODEL
+            : LEGACY_TRIAL_COMMERCIAL_MODEL,
+          ...(walletFirstRegistrationEnabled
+            ? {
+              welcomeBonus: {
+                status: "pending",
+                coinType: "bonus_coins",
+                amountUnits: WELCOME_BONUS_COIN_UNITS,
+                expiresAt: welcomeBonusExpiresAt
+              }
+            }
+            : {})
         }),
         session: session.session
       };

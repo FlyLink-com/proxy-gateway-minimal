@@ -71,6 +71,7 @@ function safeErrorText(
     commerce_request_invalid: ["商城请求无效，请重新开始。", "The Commerce request is invalid. Start again."],
     commerce_session_invalid: ["会话已失效，请重新登录。", "The session is no longer valid. Sign in again."],
     commerce_unavailable: ["商城暂时不可用，请稍后重试。", "Commerce is temporarily unavailable. Try again later."],
+    deferred_transition_conflict: ["存在待处理的服务切换，请先刷新商城。", "A service transition is already pending. Refresh the Marketplace."],
     idempotency_key_required: ["操作标识无效，请重新开始。", "The operation identifier is invalid. Start again."],
     idempotency_key_reused: ["操作状态冲突，请刷新订单。", "The operation state conflicts. Refresh the Order."],
     insufficient_coins: ["Coins 余额不足。", "The Coins balance is insufficient."],
@@ -78,6 +79,7 @@ function safeErrorText(
     quote_expired: ["报价已过期，请重新预览。", "The Quote expired. Preview again."],
     quote_stale: ["报价已更新，请重新预览。", "The Quote changed. Preview again."],
     reconciliation_required: ["订单需要人工核对，尚未完成。", "The Order needs support review and is not complete."],
+    wallet_first_deferred_required: ["该账户需要使用新的服务切换流程。", "This account requires the new service-transition flow."],
     wallet_not_active: ["Coins 钱包尚未启用。", "The Coins wallet is not active."]
   };
   return localized(locale, labels[code][0], labels[code][1]);

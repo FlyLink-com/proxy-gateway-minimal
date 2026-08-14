@@ -123,6 +123,7 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
       return {
         status: "registered",
         userRef,
+        commercialModel: "legacy",
         session: {
           status: "authenticated_preview",
           sessionRef: "portal_session_registration_preview",
@@ -992,7 +993,7 @@ describe("user portal product surface", () => {
     expect(document.documentElement.lang).toBe("en");
     expect(document.title).toBe("GCC WebOS - Registration");
     expect(screen.getByRole("heading", { name: "Create your account" })).not.toBeNull();
-    expect(screen.getByText("Start your free trial")).not.toBeNull();
+    expect(screen.getByText("No credit card required. Manage Coins and packages from your account center.")).not.toBeNull();
     expect(screen.getByLabelText("Email address")).not.toBeNull();
     expect(screen.getByLabelText("Password")).not.toBeNull();
     expect(screen.getByLabelText("Confirm password")).not.toBeNull();
@@ -1055,7 +1056,7 @@ describe("user portal product surface", () => {
   test("links account login to self-service registration in the same portal", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
-    const registrationLink = screen.getByRole("link", { name: "注册领取 7 天试用" });
+    const registrationLink = screen.getByRole("link", { name: "注册创建账户" });
     expect(registrationLink.getAttribute("href")).toBe("/portal/register/");
   });
 
@@ -1357,7 +1358,7 @@ describe("user portal product surface", () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
-  test("http portal client submits registration without echoing collected form fields", async () => {
+  test("http portal client retains the legacy trial registration fallback without echoing collected form fields", async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input) === "/api/portal/registration/email-verification") {
         expect(JSON.parse(String(init?.body))).toEqual({
@@ -1394,6 +1395,7 @@ describe("user portal product surface", () => {
         registration: {
           userRef: "local-user@example.test",
           status: "registered",
+          commercialModel: "legacy",
           trial: {
             durationDays: 7,
             validUntil: "2026-07-07T09:00:00.000Z",
@@ -1442,6 +1444,9 @@ describe("user portal product surface", () => {
     expect(result.session.userRef).toBe("local-user@example.test");
     expect(result.session.displayName).toBe("local-user@example.test");
     expect(result.session.authMode).toBe("password");
+    expect(result.commercialModel).toBe("legacy");
+    expect("trial" in result).toBe(true);
+    if (!result.trial) throw new Error("expected legacy trial result");
     expect(result.trial.durationDays).toBe(7);
     expect(JSON.stringify(result)).not.toContain("acct_registration_1");
     expect(JSON.stringify(result)).toContain("local-user@example.test");
@@ -1449,7 +1454,207 @@ describe("user portal product surface", () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
-  test("registration page creates a trial account and stores the portal session", async () => {
+  test("http portal client accepts a complete undiscriminated legacy trial during a mixed release", async () => {
+    const fetchFn = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      registration: {
+        userRef: "local-user@example.test",
+        status: "registered",
+        trial: {
+          durationDays: 7,
+          validUntil: "2026-07-07T09:00:00.000Z",
+          accessRequestStatus: "pending_admin_review"
+        },
+        safety: {
+          emailReturnedToAccountOwner: true,
+          noInternalAccountIdReturned: true,
+          noSubscriptionUrl: true,
+          rawPasswordReturned: false
+        }
+      },
+      session: {
+        sessionRef: "portal_session_registration_legacy_rollout",
+        userRef: "local-user@example.test",
+        displayName: "local-user@example.test",
+        authMethod: "password",
+        issuedAt: "2026-07-01T09:00:00.000Z"
+      }
+    }), { status: 201, headers: { "Content-Type": "application/json" } }));
+    const client = createHttpUserPortalClient({ fetchFn });
+
+    const result = await client.registerTrialAccount({
+      email: "local-user@example.test",
+      password: "register-passphrase-1",
+      legalAgreement: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        termsVersion: "2026-07-02",
+        privacyVersion: "2026-07-02"
+      },
+      emailVerification: {
+        verificationRef: "reg_email_legacy_rollout",
+        code: "246810"
+      }
+    });
+
+    expect(result.commercialModel).toBe("legacy");
+    if (result.commercialModel !== "legacy") {
+      throw new Error("expected legacy registration result");
+    }
+    expect(result.trial.durationDays).toBe(7);
+  });
+
+  test("http portal client rejects unknown, partial, or mixed registration models", async () => {
+    const baseRegistration: Record<string, unknown> = {
+      userRef: "local-user@example.test",
+      status: "registered",
+      trial: {
+        durationDays: 7,
+        validUntil: "2026-07-07T09:00:00.000Z",
+        accessRequestStatus: "pending_admin_review"
+      },
+      safety: {
+        emailReturnedToAccountOwner: true,
+        noInternalAccountIdReturned: true,
+        noSubscriptionUrl: true,
+        rawPasswordReturned: false
+      }
+    };
+    const invalidRegistrations: Record<string, unknown>[] = [
+      { ...baseRegistration, commercialModel: "unrecognized_future_model" },
+      {
+        ...baseRegistration,
+        trial: {
+          durationDays: 7,
+          validUntil: "2026-07-07T09:00:00.000Z"
+        }
+      },
+      {
+        ...baseRegistration,
+        welcomeBonus: {
+          status: "pending",
+          coinType: "bonus_coins",
+          amountUnits: 10,
+          expiresAt: "2026-07-08T09:00:00.000Z"
+        }
+      },
+      {
+        ...baseRegistration,
+        commercialModel: "wallet_first_unique_v1",
+        welcomeBonus: {
+          status: "pending",
+          coinType: "bonus_coins",
+          amountUnits: 10,
+          expiresAt: "2026-07-08T09:00:00.000Z"
+        }
+      }
+    ];
+    for (const registration of invalidRegistrations) {
+      const fetchFn = vi.fn<typeof fetch>(async () => {
+        return new Response(JSON.stringify({
+          registration,
+          session: {
+            sessionRef: "portal_session_registration_invalid_model",
+            userRef: "local-user@example.test",
+            displayName: "local-user@example.test",
+            authMethod: "password",
+            issuedAt: "2026-07-01T09:00:00.000Z"
+          }
+        }), { status: 201, headers: { "Content-Type": "application/json" } });
+      });
+      const client = createHttpUserPortalClient({ fetchFn });
+
+      await expect(client.registerTrialAccount({
+        email: "local-user@example.test",
+        password: "register-passphrase-1",
+        legalAgreement: {
+          termsAccepted: true,
+          privacyAccepted: true,
+          termsVersion: "2026-07-02",
+          privacyVersion: "2026-07-02"
+        },
+        emailVerification: {
+          verificationRef: "reg_email_invalid_model",
+          code: "246810"
+        }
+      })).rejects.toThrow();
+    }
+  });
+
+  test("http portal client maps the wallet-first welcome Coins registration contract", async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("/api/portal/registration");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        email: "wallet-first@example.test",
+        password: "register-passphrase-1",
+        legalAgreement: {
+          termsAccepted: true,
+          privacyAccepted: true,
+          termsVersion: "2026-07-02",
+          privacyVersion: "2026-07-02"
+        },
+        emailVerification: {
+          verificationRef: "reg_email_wallet_first",
+          code: "246810"
+        }
+      });
+      return new Response(JSON.stringify({
+        registration: {
+          userRef: "wallet-first@example.test",
+          status: "registered",
+          commercialModel: "wallet_first_unique_v1",
+          welcomeBonus: {
+            status: "pending",
+            coinType: "bonus_coins",
+            amountUnits: 10,
+            expiresAt: "2026-07-08T09:00:00.000Z"
+          },
+          safety: {
+            emailReturnedToAccountOwner: true,
+            noInternalAccountIdReturned: true,
+            noSubscriptionUrl: true,
+            rawPasswordReturned: false
+          }
+        },
+        session: {
+          sessionRef: "portal_session_wallet_first_1",
+          userRef: "wallet-first@example.test",
+          displayName: "wallet-first@example.test",
+          authMethod: "password",
+          issuedAt: "2026-07-01T09:00:00.000Z"
+        }
+      }), { status: 201, headers: { "Content-Type": "application/json" } });
+    });
+    const client = createHttpUserPortalClient({ fetchFn });
+
+    const result = await client.registerTrialAccount({
+      email: "wallet-first@example.test",
+      password: "register-passphrase-1",
+      legalAgreement: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        termsVersion: "2026-07-02",
+        privacyVersion: "2026-07-02"
+      },
+      emailVerification: {
+        verificationRef: "reg_email_wallet_first",
+        code: "246810"
+      }
+    });
+
+    expect(result.commercialModel).toBe("wallet_first_unique_v1");
+    if (result.commercialModel !== "wallet_first_unique_v1") {
+      throw new Error("expected wallet-first registration result");
+    }
+    expect(result.welcomeBonus).toEqual({
+      status: "pending",
+      coinType: "bonus_coins",
+      amountUnits: 10,
+      expiresAt: "2026-07-08T09:00:00.000Z"
+    });
+    expect("trial" in result).toBe(false);
+  });
+
+  test("registration page keeps rendering a legacy trial result and stores the portal session", async () => {
     const requestRegistrationEmailVerification = vi.fn(async (): Promise<PortalRegistrationEmailVerificationChallenge> => ({
       status: "requested",
       verificationRef: "reg_email_1",
@@ -1467,6 +1672,7 @@ describe("user portal product surface", () => {
       return {
         status: "registered",
         userRef,
+        commercialModel: "legacy",
         session: {
           status: "authenticated_preview",
           sessionRef: "portal_session_registration_1",
@@ -1511,12 +1717,9 @@ describe("user portal product surface", () => {
         email: "local-user@example.test"
       });
     });
-    expect(screen.getByRole("heading", { name: "选择试用方案" })).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "继续邮箱验证" }));
-
     expect(screen.getByRole("button", { name: "重新发送" })).not.toBeNull();
     expect(document.querySelector(".portal-registration-sidebar")).not.toBeNull();
-    expect(screen.getByText("开始 7 天试用")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "检查你的邮箱" })).not.toBeNull();
     expect(screen.getByText("验证邮箱")).not.toBeNull();
     expect(document.querySelectorAll(".portal-registration-otp-slots span")).toHaveLength(6);
     fireEvent.change(await screen.findByLabelText("邮箱验证码"), { target: { value: "246810" } });
@@ -1549,6 +1752,65 @@ describe("user portal product surface", () => {
     expect(persisted ?? "").toContain("local-user@example.test");
     expect(persisted ?? "").not.toContain("Register-passphrase-1!");
     expect(screen.getByRole("link", { name: "打开用户面板" }).getAttribute("href")).toBe("/portal/");
+  });
+
+  test("registration page displays an available wallet-first welcome bonus without a trial claim", async () => {
+    const registerTrialAccount = vi.fn(async (input: PortalRegistrationInput): Promise<PortalRegistrationResult> => {
+      const userRef = input.email.trim().toLowerCase();
+      return {
+        status: "registered",
+        userRef,
+        commercialModel: "wallet_first_unique_v1",
+        welcomeBonus: {
+          status: "available",
+          coinType: "bonus_coins",
+          amountUnits: 10,
+          expiresAt: "2026-07-08T09:00:00.000Z"
+        },
+        session: {
+          status: "authenticated_preview",
+          sessionRef: "portal_session_wallet_first_1",
+          userRef,
+          displayName: userRef,
+          authMode: "password",
+          registeredAt: "2026-07-01T09:00:00.000Z",
+          safety: {
+            noAdminApi: true,
+            noPublicAuthActivated: true,
+            noRawPasswordReturned: true
+          }
+        },
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true,
+          noRawCustomerDataReturned: true,
+          rawPasswordReturned: false
+        }
+      };
+    });
+    render(createElement(UserRegistrationPage, {
+      portalClient: portalClient({ registerTrialAccount })
+    }));
+
+    fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: "wallet-first@example.test" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Register-passphrase-1!" } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "Register-passphrase-1!" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建账户" }));
+
+    fireEvent.change(await screen.findByLabelText("邮箱验证码"), { target: { value: "246810" } });
+    fireEvent.click(screen.getByRole("button", { name: "验证并开通" }));
+
+    await waitFor(() => {
+      expect(registerTrialAccount).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByText("欢迎赠送")).not.toBeNull();
+    expect(screen.getByText("10 个赠送 Coins")).not.toBeNull();
+    expect(screen.getByText("可用")).not.toBeNull();
+    expect(screen.getByText("欢迎赠送已在 Coins 钱包可用；套餐允许时会优先使用赠送 Coins，再使用已购 Coins。")).not.toBeNull();
+    expect(screen.getByText("赠送 Coins 到期时间")).not.toBeNull();
+    expect(document.querySelector('time[datetime="2026-07-08T09:00:00.000Z"]')).not.toBeNull();
+    expect(screen.queryByText("Starter Trial")).toBeNull();
   });
 
   test("http portal client posts password login to backend and maps TOTP challenges", async () => {
@@ -2598,6 +2860,200 @@ describe("user portal product surface", () => {
     await waitFor(() => expect(rejected.getSummary).toHaveBeenCalled());
     const rejectedBalance = screen.getByText("Coins · --");
     expect(rejectedBalance.closest("button")).toHaveAttribute("aria-label", "Coins 钱包");
+  });
+
+  test("HTTP wallet-first login hydrates without legacy state, payment, or order requests", async () => {
+    const requestUrls: string[] = [];
+    const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" }
+    });
+    const fetchFn = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestUrls.push(url);
+      if (url === "/api/portal/human-challenges") {
+        return response({
+          challenge: {
+            challengeRef: "portal_hydration_wallet_challenge",
+            prompt: "4 + 6 = ?",
+            issuedAt: "2026-08-14T00:00:00.000Z",
+            expiresInSeconds: 120
+          }
+        });
+      }
+      if (url === "/api/portal/password/session") {
+        return response({
+          session: {
+            sessionRef: "portal_hydration_wallet_001",
+            userRef: "wallet-hydration@example.test",
+            displayName: "wallet-hydration@example.test",
+            authMethod: "password",
+            issuedAt: "2026-08-14T00:00:00.000Z"
+          }
+        });
+      }
+      if (url === "/api/portal/commerce/model") {
+        return response({ commerceModel: "wallet_first_unique_v1" });
+      }
+      if (url === "/api/portal/security/current") {
+        return response({
+          security: {
+            authenticatorBound: true,
+            initialAccount: false,
+            passkeyEnabled: true,
+            passkeyExported: true,
+            setupRequired: false
+          }
+        });
+      }
+      return response({ error: "unexpected_url" }, 404);
+    });
+    const httpClient = createHttpUserPortalClient({ fetchFn });
+    const client: UserPortalClient = {
+      ...httpClient,
+      commerce: undefined,
+      recharge: undefined,
+      wallet: undefined,
+      walletFirstCommerce: undefined
+    };
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await submitPortalLogin("wallet-hydration@example.test", "wallet-hydration-password");
+
+    expect(await screen.findByRole("navigation", { name: "用户中心导航" })).toBeInTheDocument();
+    expect(requestUrls).toContain("/api/portal/commerce/model");
+    expect(requestUrls).toContain("/api/portal/security/current");
+    expect(requestUrls.some((url) => url.startsWith("/api/portal/access-requests/current"))).toBe(false);
+    expect(requestUrls.some((url) => url.startsWith("/api/portal/payments/current"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: /^(开始配置|前往商城)$/ }));
+    await waitFor(() => {
+      expect(requestUrls.filter((url) => url === "/api/portal/commerce/model")).toHaveLength(2);
+    });
+    expect(requestUrls.some((url) => url.startsWith("/api/portal/access-requests"))).toBe(false);
+
+    openPortalOrders();
+
+    expect(await screen.findByRole("heading", { name: "Coins 服务状态" })).toBeInTheDocument();
+    expect(requestUrls.some((url) => url.startsWith("/api/portal/commerce/orders"))).toBe(false);
+  });
+
+  test("HTTP legacy login retains the legacy state hydration route", async () => {
+    const requestUrls: string[] = [];
+    const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" }
+    });
+    const fetchFn = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestUrls.push(url);
+      if (url === "/api/portal/human-challenges") {
+        return response({
+          challenge: {
+            challengeRef: "portal_hydration_legacy_challenge",
+            prompt: "4 + 6 = ?",
+            issuedAt: "2026-08-14T00:00:00.000Z",
+            expiresInSeconds: 120
+          }
+        });
+      }
+      if (url === "/api/portal/password/session") {
+        return response({
+          session: {
+            sessionRef: "portal_hydration_legacy_001",
+            userRef: "legacy-hydration@example.test",
+            displayName: "legacy-hydration@example.test",
+            authMethod: "password",
+            issuedAt: "2026-08-14T00:00:00.000Z"
+          }
+        });
+      }
+      if (url === "/api/portal/commerce/model") {
+        return response({ commerceModel: "legacy" });
+      }
+      if (url.startsWith("/api/portal/access-requests/current")) {
+        return response({ items: [], accountEntitlements: [] });
+      }
+      if (url === "/api/portal/security/current") {
+        return response({ security: {} });
+      }
+      if (url === "/api/portal/payments/current") {
+        return response({ payments: { orders: [] } });
+      }
+      return response({ error: "unexpected_url" }, 404);
+    });
+    const httpClient = createHttpUserPortalClient({ fetchFn });
+    const client: UserPortalClient = {
+      ...httpClient,
+      commerce: undefined,
+      recharge: undefined,
+      wallet: undefined,
+      walletFirstCommerce: undefined
+    };
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await submitPortalLogin("legacy-hydration@example.test", "legacy-hydration-password");
+
+    expect(await screen.findByRole("navigation", { name: "用户中心导航" })).toBeInTheDocument();
+    expect(requestUrls.some((url) => url.startsWith("/api/portal/access-requests/current"))).toBe(true);
+    expect(requestUrls).toContain("/api/portal/security/current");
+    expect(requestUrls).toContain("/api/portal/payments/current");
+
+    openPortalOrders();
+    expect(await screen.findByRole("region", { name: "订单记录" })).toBeInTheDocument();
+  });
+
+  test("HTTP login fails closed before legacy hydration when the server model is unknown", async () => {
+    const requestUrls: string[] = [];
+    const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" }
+    });
+    const fetchFn = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestUrls.push(url);
+      if (url === "/api/portal/human-challenges") {
+        return response({
+          challenge: {
+            challengeRef: "portal_hydration_unknown_challenge",
+            prompt: "4 + 6 = ?",
+            issuedAt: "2026-08-14T00:00:00.000Z",
+            expiresInSeconds: 120
+          }
+        });
+      }
+      if (url === "/api/portal/password/session") {
+        return response({
+          session: {
+            sessionRef: "portal_hydration_unknown_001",
+            userRef: "unknown-hydration@example.test",
+            displayName: "unknown-hydration@example.test",
+            authMethod: "password",
+            issuedAt: "2026-08-14T00:00:00.000Z"
+          }
+        });
+      }
+      if (url === "/api/portal/commerce/model") {
+        return response({ commerceModel: "unknown_future_model" });
+      }
+      return response({ error: "unexpected_url" }, 404);
+    });
+    const httpClient = createHttpUserPortalClient({ fetchFn });
+    const client: UserPortalClient = {
+      ...httpClient,
+      commerce: undefined,
+      recharge: undefined,
+      wallet: undefined,
+      walletFirstCommerce: undefined
+    };
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await submitPortalLogin("unknown-hydration@example.test", "unknown-hydration-password");
+
+    expect(await screen.findByText("Portal Commerce request failed.")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "用户中心导航" })).toBeNull();
+    expect(requestUrls.some((url) => url.startsWith("/api/portal/access-requests/current"))).toBe(false);
+    expect(requestUrls).not.toContain("/api/portal/security/current");
   });
 
   test("Wallet hydrate generation ignores a late older session completion", async () => {

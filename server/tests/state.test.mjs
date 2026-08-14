@@ -28,6 +28,26 @@ import {
   REQUIRED_COIN_WALLET_MIGRATION_ID
 } from "../services/platform/coin-wallet-migrations.mjs";
 import {
+  applyPortalRegistrationWelcomeBonusMigrations,
+  PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS,
+  REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
+} from "../services/platform/portal-registration-welcome-bonus-migrations.mjs";
+import {
+  applyDeferredResourceTransitionMigrations,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
+  REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
+} from "../services/platform/deferred-resource-transition-migrations.mjs";
+import {
+  applyWalletFirstDeferredCheckoutMigrations,
+  WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATIONS,
+  REQUIRED_WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATION_ID
+} from "../services/platform/wallet-first-deferred-checkout-migrations.mjs";
+import {
+  applyWalletFirstResourceEffectRuntimeClaimsMigrations,
+  WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATIONS,
+  REQUIRED_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATION_ID
+} from "../services/platform/wallet-first-resource-effect-runtime-claims-migrations.mjs";
+import {
   COIN_COMMERCE_PRODUCTION_OFFERS
 } from "../services/platform/coin-commerce-production-catalog.mjs";
 import { createSqliteCoinCommerceStore } from "../services/platform/coin-commerce-store.mjs";
@@ -184,6 +204,44 @@ function prepareMigratedCoinCommerceControlDatabase(directory) {
     expectedMigrationId: REQUIRED_COIN_COMMERCE_MIGRATION_ID,
     expectedDdlChecksum: COIN_COMMERCE_MIGRATIONS[0].ddlChecksum,
     nowFn: () => new Date("2026-07-27T00:00:00.000Z")
+  });
+  return controlDbPath;
+}
+
+function prepareWalletFirstControlDatabaseBeforeRuntimeClaims(directory) {
+  const controlDbPath = prepareMigratedCoinCommerceControlDatabase(directory);
+  applyPortalRegistrationWelcomeBonusMigrations({
+    dbPath: controlDbPath,
+    expectedMigrationId:
+      REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
+    expectedDdlChecksum:
+      PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.at(-1).ddlChecksum,
+    nowFn: () => new Date("2026-08-13T00:00:00.000Z")
+  });
+  applyDeferredResourceTransitionMigrations({
+    dbPath: controlDbPath,
+    expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
+    expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
+    nowFn: () => new Date("2026-08-13T00:00:00.000Z")
+  });
+  applyWalletFirstDeferredCheckoutMigrations({
+    dbPath: controlDbPath,
+    expectedMigrationId: REQUIRED_WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATION_ID,
+    expectedDdlChecksum: WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATIONS[0].ddlChecksum,
+    nowFn: () => new Date("2026-08-13T00:00:00.000Z")
+  });
+  return controlDbPath;
+}
+
+function prepareMigratedWalletFirstControlDatabase(directory) {
+  const controlDbPath = prepareWalletFirstControlDatabaseBeforeRuntimeClaims(directory);
+  applyWalletFirstResourceEffectRuntimeClaimsMigrations({
+    dbPath: controlDbPath,
+    expectedMigrationId:
+      REQUIRED_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATION_ID,
+    expectedDdlChecksum:
+      WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATIONS[0].ddlChecksum,
+    nowFn: () => new Date("2026-08-13T00:00:00.000Z")
   });
   return controlDbPath;
 }
@@ -1173,6 +1231,332 @@ for (const [label, configuredValue] of [
     }
   });
 }
+
+test("createRuntimeState keeps wallet-first registration default-off without applying its schema", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-default-off-"));
+  const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
+  const env = runtimeEnv({
+    CONSOLE_TOKEN: "secret",
+    USER_PORTAL_ROUTES_ENABLED: "true",
+    COINS_WALLET_ENABLED: "true",
+    COINS_COMMERCE_ENABLED: "true"
+  });
+  let deferredRuntimeGetterCalls = 0;
+  Object.defineProperty(env, "COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED", {
+    enumerable: true,
+    get() {
+      deferredRuntimeGetterCalls += 1;
+      throw new Error("default-off deferred transition runtime flag must stay untouched");
+    }
+  });
+  let deferredNodeGetterCalls = 0;
+  Object.defineProperty(env, "COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID", {
+    enumerable: true,
+    get() {
+      deferredNodeGetterCalls += 1;
+      throw new Error("default-off deferred transition node must stay untouched");
+    }
+  });
+  let state;
+
+  try {
+    const stateOptions = {
+      rootDir: new URL("../../", import.meta.url),
+      env,
+      controlDbPath,
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+      autoStartHttpProxy: false
+    };
+    state = createRuntimeState(stateOptions);
+
+    assert.equal(state.platform.walletFirstRegistrationEnabled, false);
+    assert.equal(state.platform.portalRegistrationWelcomeBonusCoordinator, null);
+    assert.equal(deferredRuntimeGetterCalls, 0);
+    assert.equal(deferredNodeGetterCalls, 0);
+    await state.close();
+    state = null;
+
+    const database = new Database(controlDbPath, {
+      readonly: true,
+      fileMustExist: true
+    });
+    try {
+      const welcomeBonusObjects = database.prepare(`
+        select name
+          from sqlite_master
+         where name glob 'platform_portal_registration_welcome_coin_*'
+            or name = 'platform_wallet_first_deferred_checkout_quotes'
+         order by name
+      `).all();
+      assert.deepEqual(welcomeBonusObjects, []);
+    } finally {
+      database.close();
+    }
+  } finally {
+    await Promise.resolve(state?.close());
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState rejects wallet-first registration prerequisites before database access", () => {
+  const cases = [
+    {
+      label: "Portal routes disabled",
+      env: {
+        USER_PORTAL_ROUTES_ENABLED: "false",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "true"
+      }
+    },
+    {
+      label: "wallet disabled",
+      env: {
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "false",
+        COINS_COMMERCE_ENABLED: "true"
+      }
+    },
+    {
+      label: "Commerce disabled",
+      env: {
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "false"
+      }
+    },
+    {
+      label: "global Authority enabled",
+      env: {
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "true",
+        COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED: "true"
+      }
+    },
+    {
+      label: "deferred transition runtime disabled",
+      env: {
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "true"
+      }
+    }
+  ];
+
+  for (const entry of cases) {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-prerequisite-"));
+    let unexpectedState;
+    try {
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState({
+            rootDir: new URL("../../", import.meta.url),
+            env: runtimeEnv({
+              CONSOLE_TOKEN: "secret",
+              USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+              ...entry.env
+            }),
+            controlDbPath: join(dir, "control.sqlite"),
+            subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+            autoStartHttpProxy: false
+          });
+        },
+        (error) => error?.code === "wallet_first_registration_prerequisite_missing",
+        entry.label
+      );
+      assert.equal(existsSync(join(dir, "control.sqlite")), false, entry.label);
+      assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false, entry.label);
+    } finally {
+      unexpectedState?.close();
+      removeTempDir(dir);
+    }
+  }
+});
+
+test("createRuntimeState validates the wallet-first welcome-bonus schema without applying it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-schema-no-apply-"));
+  const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
+  let unexpectedState;
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+            COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
+            COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
+              "channel-vultr-a-vless-reality-tcp"
+          }),
+          controlDbPath,
+          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "wallet_first_registration_schema_not_ready"
+    );
+
+    const database = new Database(controlDbPath, {
+      readonly: true,
+      fileMustExist: true
+    });
+    try {
+      const welcomeBonusObjects = database.prepare(`
+        select name
+          from sqlite_master
+         where name glob 'platform_portal_registration_welcome_coin_*'
+            or name = 'platform_wallet_first_deferred_checkout_quotes'
+         order by name
+      `).all();
+      assert.deepEqual(welcomeBonusObjects, []);
+    } finally {
+      database.close();
+    }
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState rejects an enabled wallet-first runtime without durable runtime claims", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-runtime-claims-no-apply-"));
+  const controlDbPath = prepareWalletFirstControlDatabaseBeforeRuntimeClaims(dir);
+  let unexpectedState;
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+            COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
+            COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
+              "channel-vultr-a-vless-reality-tcp"
+          }),
+          controlDbPath,
+          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "wallet_first_registration_schema_not_ready"
+    );
+
+    const database = new Database(controlDbPath, {
+      readonly: true,
+      fileMustExist: true
+    });
+    try {
+      assert.equal(database.prepare(`
+        select count(*) from sqlite_master
+         where type = 'table'
+           and name = 'platform_wallet_first_resource_effect_runtime_claims'
+      `).pluck().get(), 0);
+    } finally {
+      database.close();
+    }
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState requires a dedicated wallet-first transition node before composition", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-enabled-"));
+  const controlDbPath = prepareMigratedWalletFirstControlDatabase(dir);
+  let unexpectedState;
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+            COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true"
+          }),
+          controlDbPath,
+          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "wallet_first_deferred_transition_runtime_missing"
+    );
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState composes the concrete wallet-first deferred runtime without a caller binding", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-runtime-concrete-"));
+  const controlDbPath = prepareMigratedWalletFirstControlDatabase(dir);
+  let state;
+
+  try {
+    const stateOptions = {
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "true",
+        USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+        COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
+        COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
+          "channel-vultr-a-vless-reality-tcp"
+      }),
+      controlDbPath,
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+      userPortalNowFn: () => new Date("2026-08-13T00:00:00.000Z"),
+      autoStartHttpProxy: false
+    };
+    Object.defineProperty(
+      stateOptions,
+      "walletFirstDeferredTransitionRuntimeBindingFactory",
+      {
+        get() {
+          throw new Error("concrete wallet-first runtime must not inspect a caller binding");
+        }
+      }
+    );
+    state = createRuntimeState(stateOptions);
+
+    assert.equal(state.platform.walletFirstRegistrationEnabled, true);
+    assert.notEqual(state.platform.deferredTransitionStore, null);
+    assert.equal(typeof state.platform.deferredTransitionCoordinator.start, "function");
+    assert.equal(typeof state.platform.deferredTransitionCoordinator.stop, "function");
+    assert.equal(typeof state.platform.walletFirstResourceEffectHandler.resolveCurrentResourceChain, "function");
+    assert.equal(typeof state.platform.walletFirstCommerceService.previewDeferredCheckout, "function");
+
+    await state.platform.deferredTransitionCoordinator.start();
+    await state.platform.deferredTransitionCoordinator.stop();
+
+    await state.close();
+    state = null;
+  } finally {
+    await state?.close();
+    removeTempDir(dir);
+  }
+});
 
 test("createRuntimeState fails enabled Commerce prerequisites with one fixed generic error", () => {
   const cases = [
@@ -4994,7 +5378,10 @@ test("createRuntimeState refreshes remote credentials through pending notificati
   const controlDbPath = join(dir, "control.sqlite");
   const channelRef = "channel-sgp-a-hy2";
   const nodeRef = "vultr-sgp-a";
-  let now = new Date("2026-07-13T12:00:00.000Z");
+  // The control-store desired-state reader uses the database clock. Keep this
+  // fixture relative to that clock so its synthetic 30-day credential remains
+  // current instead of becoming a date-triggered failure after the fixed date.
+  let now = new Date();
   let state;
 
   try {
@@ -5087,7 +5474,7 @@ test("createRuntimeState refreshes remote credentials through pending notificati
     assert.equal(initiallyRendered.ok, true);
     assert.deepEqual(initiallyRendered.proxyConfig.servers.map((server) => server.name), [channelRef]);
 
-    now = new Date("2026-07-13T12:01:00.000Z");
+    now = new Date(now.getTime() + 60_000);
     const refreshed = state.platform.portalAccessRequests.refreshSubscription({
       portalUserRef: "portal_user_remote_refresh_001",
       requestRef: request.id,

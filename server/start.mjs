@@ -20,23 +20,43 @@ function coordinatorContractError() {
   return error;
 }
 
-function snapshotCommerceCoordinator(state) {
-  const platform = state?.platform;
-  if (platform?.coinsCommerceEnabled !== true) {
+function welcomeBonusCoordinatorContractError() {
+  const error = new Error(
+    "Portal registration welcome-bonus coordinator prerequisite is missing"
+  );
+  error.code = "welcome_bonus_coordinator_prerequisite_missing";
+  return error;
+}
+
+function deferredTransitionCoordinatorContractError() {
+  const error = new Error(
+    "Wallet-first deferred transition coordinator prerequisite is missing"
+  );
+  error.code = "wallet_first_deferred_transition_runtime_missing";
+  return error;
+}
+
+function snapshotCoordinator(platform, {
+  enabled,
+  field,
+  errorFactory
+}) {
+  if (enabled !== true) {
     return null;
   }
 
+  const expectedErrorCode = errorFactory().code;
   let coordinator;
   let startDescriptor;
   let stopDescriptor;
   try {
-    coordinator = platform.coinCommerceCoordinator;
+    coordinator = platform[field];
     if (
       !coordinator
       || (typeof coordinator !== "object" && typeof coordinator !== "function")
       || Array.isArray(coordinator)
     ) {
-      throw coordinatorContractError();
+      throw errorFactory();
     }
     startDescriptor = Object.getOwnPropertyDescriptor(coordinator, "start");
     stopDescriptor = Object.getOwnPropertyDescriptor(coordinator, "stop");
@@ -48,19 +68,54 @@ function snapshotCommerceCoordinator(state) {
       || !("value" in stopDescriptor)
       || typeof stopDescriptor.value !== "function"
     ) {
-      throw coordinatorContractError();
+      throw errorFactory();
     }
   } catch (error) {
-    if (error?.code === "coin_commerce_prerequisite_missing") {
+    if (error?.code === expectedErrorCode) {
       throw error;
     }
-    throw coordinatorContractError();
+    throw errorFactory();
   }
 
   return Object.freeze({
     start: () => startDescriptor.value.call(coordinator),
     stop: () => stopDescriptor.value.call(coordinator)
   });
+}
+
+function snapshotCommerceCoordinator(state) {
+  const platform = state?.platform;
+  return snapshotCoordinator(platform, {
+    enabled: platform?.coinsCommerceEnabled,
+    field: "coinCommerceCoordinator",
+    errorFactory: coordinatorContractError
+  });
+}
+
+function snapshotWelcomeBonusCoordinator(state) {
+  const platform = state?.platform;
+  return snapshotCoordinator(platform, {
+    enabled: platform?.walletFirstRegistrationEnabled,
+    field: "portalRegistrationWelcomeBonusCoordinator",
+    errorFactory: welcomeBonusCoordinatorContractError
+  });
+}
+
+function snapshotDeferredTransitionCoordinator(state) {
+  const platform = state?.platform;
+  return snapshotCoordinator(platform, {
+    enabled: platform?.walletFirstRegistrationEnabled,
+    field: "deferredTransitionCoordinator",
+    errorFactory: deferredTransitionCoordinatorContractError
+  });
+}
+
+function snapshotRuntimeCoordinators(state) {
+  return [
+    snapshotCommerceCoordinator(state),
+    snapshotWelcomeBonusCoordinator(state),
+    snapshotDeferredTransitionCoordinator(state)
+  ].filter(Boolean);
 }
 
 function waitForListening(server) {
@@ -310,12 +365,11 @@ async function cleanupFailedStartup({
   state,
   server,
   closeTracker,
-  coordinator,
-  coordinatorStartAttempted,
+  startedCoordinators,
   httpProxyStartAttempted
 }) {
   const listenerClose = initiateServerClose(server, closeTracker);
-  if (coordinatorStartAttempted) {
+  for (const coordinator of [...startedCoordinators].reverse()) {
     await captureFailure(null, () => coordinator.stop());
   }
   if (httpProxyStartAttempted) {
@@ -330,14 +384,14 @@ export async function startProxyGateway(options = {}) {
   let state = null;
   let app = null;
   let server = null;
-  let coordinator = null;
+  let coordinators = [];
   let startupErrorMonitor = null;
   let closeTracker = null;
-  let coordinatorStartAttempted = false;
+  const startedCoordinators = [];
   let httpProxyStartAttempted = false;
   try {
     state = options.state ?? createRuntimeState(options.runtimeOptions ?? options);
-    coordinator = snapshotCommerceCoordinator(state);
+    coordinators = snapshotRuntimeCoordinators(state);
     app = options.app ?? createApp(state);
     server = app.listen(state.ports.console, state.host);
     closeTracker = createServerCloseTracker(server);
@@ -349,9 +403,9 @@ export async function startProxyGateway(options = {}) {
       httpProxyStartAttempted = true;
       await startupErrorMonitor.race(() => state.services.httpProxy.start());
     }
-    if (coordinator) {
+    for (const coordinator of coordinators) {
       startupErrorMonitor.throwIfFailed();
-      coordinatorStartAttempted = true;
+      startedCoordinators.push(coordinator);
       await startupErrorMonitor.race(() => coordinator.start());
     }
 
@@ -364,8 +418,7 @@ export async function startProxyGateway(options = {}) {
         state,
         server,
         closeTracker,
-        coordinator,
-        coordinatorStartAttempted,
+        startedCoordinators,
         httpProxyStartAttempted
       });
     } finally {
@@ -379,7 +432,7 @@ export async function startProxyGateway(options = {}) {
   async function runStop() {
     const listenerClose = initiateServerClose(server, closeTracker);
     let firstError = listenerClose.initiationError;
-    if (coordinator) {
+    for (const coordinator of [...coordinators].reverse()) {
       firstError = await captureFailure(firstError, () => coordinator.stop());
     }
     firstError = await captureFailure(firstError, () => state.services.ssLocal.stop());
