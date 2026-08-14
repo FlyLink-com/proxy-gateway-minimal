@@ -271,10 +271,27 @@ test("concrete wallet-first runtime recovers an expired scheduled-switch lease t
       from platform_deferred_resource_transitions
      where transition_ref = ?
   `).get(initialTransition.transitionRef);
+  const initialRuntimeClaimOutcome = fixture.controlDatabase.prepare(`
+    select status, safe_code, lease_generation
+      from platform_wallet_first_resource_effect_runtime_claims
+     where transition_ref = ?
+  `).get(initialTransition.transitionRef);
+  const initialRuntimeTenantCount = fixture.subscriptionCore.listTenants().length;
+  const initialRuntimeArtifactCount = initialRuntimeTenantCount === 1
+    ? fixture.subscriptionCore.listSubscriptionArtifacts(
+      fixture.subscriptionCore.listTenants()[0].id
+    ).length
+    : null;
   assert.equal(
     initialResult.effectApplied,
     1,
-    JSON.stringify({ initialResult, initialTransitionOutcome })
+    JSON.stringify({
+      initialResult,
+      initialTransitionOutcome,
+      initialRuntimeClaimOutcome,
+      initialRuntimeTenantCount,
+      initialRuntimeArtifactCount
+    })
   );
   assert.equal(initialResult.settled, 1);
   assert.equal(initialResult.reconciliationRequired, 0);
