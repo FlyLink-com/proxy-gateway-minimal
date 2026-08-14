@@ -26,6 +26,7 @@ type CommerceLocale = "zh" | "en";
 export type WalletFirstMarketplacePanelProps = {
   commerceClient: PortalWalletFirstCommerceClient | null;
   locale: CommerceLocale;
+  onOpenWallet?: () => void;
   onWalletMutation?: () => void;
   sessionGeneration?: number;
   sessionRef: string | null;
@@ -243,69 +244,141 @@ function WalletFirstOfferCard({
   );
 }
 
-function DeferredQueue({
+function isActiveTransition(transition: PortalDeferredTransition) {
+  return transition.state !== "settled" && transition.state !== "cancelled";
+}
+
+function DeferredTransitionList({
   cancellingTransitionRef,
+  emptyText,
   locale,
   onCancel,
   transitions
 }: {
   cancellingTransitionRef: string | null;
+  emptyText: string;
   locale: CommerceLocale;
   onCancel: (transition: PortalDeferredTransition) => void;
   transitions: PortalDeferredTransition[];
 }) {
   const zh = isChinese(locale);
+  if (transitions.length === 0) {
+    return <p role="status">{emptyText}</p>;
+  }
+  return (
+    <ul className="portal-marketplace-grid">
+      {transitions.map((transition) => (
+        <li className="portal-marketplace-card" key={transition.transitionRef}>
+          <article>
+            <h4>{offerTitle(transition.offer, locale)}</h4>
+            <p>{transitionStateText(transition.state, locale)}</p>
+            <dl className="portal-marketplace-card__facts">
+              <div>
+                <dt>{zh ? "执行方式" : "Execution"}</dt>
+                <dd>{transitionFlowText(transition.flowKind, locale)}</dd>
+              </div>
+              <div>
+                <dt>{zh ? "计划时间" : "Scheduled for"}</dt>
+                <dd>{formatPortalDateTime(transition.scheduledFor, locale)}</dd>
+              </div>
+              <div>
+                <dt>{zh ? "Coins" : "Coins"}</dt>
+                <dd>{transition.amountUnits} Coins</dd>
+              </div>
+            </dl>
+            {transition.state === "reserved" ? (
+              <div className="portal-marketplace-card__actions">
+                <button
+                  disabled={cancellingTransitionRef === transition.transitionRef}
+                  type="button"
+                  onClick={() => onCancel(transition)}
+                >
+                  {cancellingTransitionRef === transition.transitionRef
+                    ? (zh ? "正在取消…" : "Cancelling…")
+                    : (zh ? "取消预留" : "Cancel reservation")}
+                </button>
+              </div>
+            ) : null}
+          </article>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DeferredQueue({
+  cancellingTransitionRef,
+  locale,
+  onCancel,
+  onRefresh,
+  refreshError,
+  refreshing,
+  transitions
+}: {
+  cancellingTransitionRef: string | null;
+  locale: CommerceLocale;
+  onCancel: (transition: PortalDeferredTransition) => void;
+  onRefresh: () => void;
+  refreshError: { errorCode: PortalCoinCommerceClientErrorCode; retryable: boolean } | null;
+  refreshing: boolean;
+  transitions: PortalDeferredTransition[];
+}) {
+  const zh = isChinese(locale);
+  const activeTransitions = transitions.filter(isActiveTransition);
+  const recentTransitions = transitions.filter((transition) => !isActiveTransition(transition));
   return (
     <section
       aria-labelledby="portal-wallet-first-transition-heading"
       className="portal-marketplace-group portal-wallet-first-transition-queue"
     >
-      <h2 id="portal-wallet-first-transition-heading">
-        {zh ? "待处理的服务切换" : "Queued service transitions"}
-      </h2>
-      {transitions.length === 0 ? (
-        <p role="status">
-          {zh ? "当前没有待处理的服务切换。" : "There are no queued service transitions."}
-        </p>
-      ) : (
-        <ul className="portal-marketplace-grid">
-          {transitions.map((transition) => (
-            <li className="portal-marketplace-card" key={transition.transitionRef}>
-              <article>
-                <h3>{offerTitle(transition.offer, locale)}</h3>
-                <p>{transitionStateText(transition.state, locale)}</p>
-                <dl className="portal-marketplace-card__facts">
-                  <div>
-                    <dt>{zh ? "执行方式" : "Execution"}</dt>
-                    <dd>{transitionFlowText(transition.flowKind, locale)}</dd>
-                  </div>
-                  <div>
-                    <dt>{zh ? "计划时间" : "Scheduled for"}</dt>
-                    <dd>{formatPortalDateTime(transition.scheduledFor, locale)}</dd>
-                  </div>
-                  <div>
-                    <dt>{zh ? "Coins" : "Coins"}</dt>
-                    <dd>{transition.amountUnits} Coins</dd>
-                  </div>
-                </dl>
-                {transition.state === "reserved" ? (
-                  <div className="portal-marketplace-card__actions">
-                    <button
-                      disabled={cancellingTransitionRef === transition.transitionRef}
-                      type="button"
-                      onClick={() => onCancel(transition)}
-                    >
-                      {cancellingTransitionRef === transition.transitionRef
-                        ? (zh ? "正在取消…" : "Cancelling…")
-                        : (zh ? "取消预留" : "Cancel reservation")}
-                    </button>
-                  </div>
-                ) : null}
-              </article>
-            </li>
-          ))}
-        </ul>
-      )}
+      <header className="portal-marketplace-group__header">
+        <h2 id="portal-wallet-first-transition-heading">
+          {zh ? "服务切换" : "Service transitions"}
+        </h2>
+        <button
+          aria-busy={refreshing || undefined}
+          disabled={refreshing}
+          type="button"
+          onClick={onRefresh}
+        >
+          {refreshing
+            ? (zh ? "正在刷新…" : "Refreshing…")
+            : (zh ? "刷新切换" : "Refresh transitions")}
+        </button>
+      </header>
+      {refreshError ? (
+        <div aria-live="assertive" className="portal-marketplace-state" data-state="error" role="alert">
+          <MarketplaceNotice state="error" />
+          <p>{errorText(refreshError.errorCode, locale)}</p>
+          {refreshError.retryable ? (
+            <button type="button" onClick={onRefresh}>{zh ? "重试" : "Retry"}</button>
+          ) : null}
+        </div>
+      ) : null}
+      <section aria-labelledby="portal-wallet-first-active-transition-heading">
+        <h3 id="portal-wallet-first-active-transition-heading">
+          {zh ? "正在进行的切换" : "Active transitions"}
+        </h3>
+        <DeferredTransitionList
+          cancellingTransitionRef={cancellingTransitionRef}
+          emptyText={zh ? "当前没有正在进行的服务切换。" : "There are no active service transitions."}
+          locale={locale}
+          onCancel={onCancel}
+          transitions={activeTransitions}
+        />
+      </section>
+      <section aria-labelledby="portal-wallet-first-recent-transition-heading">
+        <h3 id="portal-wallet-first-recent-transition-heading">
+          {zh ? "近期切换" : "Recent transitions"}
+        </h3>
+        <DeferredTransitionList
+          cancellingTransitionRef={cancellingTransitionRef}
+          emptyText={zh ? "当前没有近期服务切换。" : "There are no recent service transitions."}
+          locale={locale}
+          onCancel={onCancel}
+          transitions={recentTransitions}
+        />
+      </section>
     </section>
   );
 }
@@ -318,6 +391,7 @@ function DeferredQueue({
 export function WalletFirstMarketplacePanel({
   commerceClient,
   locale,
+  onOpenWallet,
   onWalletMutation,
   sessionGeneration = 0,
   sessionRef,
@@ -325,6 +399,7 @@ export function WalletFirstMarketplacePanel({
 }: WalletFirstMarketplacePanelProps) {
   const zh = isChinese(locale);
   const generationRef = useRef(0);
+  const transitionRefreshSequenceRef = useRef(0);
   const reserveIntentRef = useRef<{
     pending: boolean;
     quoteRef: string;
@@ -339,21 +414,32 @@ export function WalletFirstMarketplacePanel({
   const [flow, setFlow] = useState<FlowState>(EMPTY_FLOW);
   const [detailOffer, setDetailOffer] = useState<PortalCoinOffer | null>(null);
   const [cancellingTransitionRef, setCancellingTransitionRef] = useState<string | null>(null);
+  const [refreshingTransitions, setRefreshingTransitions] = useState(false);
+  const [transitionRefreshError, setTransitionRefreshError] = useState<{
+    errorCode: PortalCoinCommerceClientErrorCode;
+    retryable: boolean;
+  } | null>(null);
 
   useEffect(() => {
     const generation = generationRef.current + 1;
     generationRef.current = generation;
+    const initialTransitionRequestId = transitionRefreshSequenceRef.current + 1;
+    transitionRefreshSequenceRef.current = initialTransitionRequestId;
     reserveIntentRef.current = null;
     setDetailOffer(null);
     setFlow(EMPTY_FLOW);
     if (!commerceClient || !sessionRef) {
       setOffers([]);
       setTransitions([]);
+      setRefreshingTransitions(false);
+      setTransitionRefreshError(null);
       setLoad({ status: "unavailable" });
       return () => {
         generationRef.current += 1;
       };
     }
+    setRefreshingTransitions(false);
+    setTransitionRefreshError(null);
     setLoad({ status: "loading" });
     void Promise.all([
       commerceClient.listOffers({ sessionRef }),
@@ -361,13 +447,17 @@ export function WalletFirstMarketplacePanel({
     ]).then(([nextOffers, nextTransitions]) => {
       if (generation !== generationRef.current) return;
       setOffers(nextOffers);
-      setTransitions(nextTransitions);
+      if (initialTransitionRequestId === transitionRefreshSequenceRef.current) {
+        setTransitions(nextTransitions);
+      }
       setLoad({ status: "ready" });
     }).catch((error: unknown) => {
       if (generation !== generationRef.current) return;
       const failure = commerceFailure(error);
       setOffers([]);
-      setTransitions([]);
+      if (initialTransitionRequestId === transitionRefreshSequenceRef.current) {
+        setTransitions([]);
+      }
       setLoad({ status: "error", ...failure });
     });
     return () => {
@@ -378,6 +468,41 @@ export function WalletFirstMarketplacePanel({
   const retryLoad = useCallback(() => {
     setRevision((current) => current + 1);
   }, []);
+
+  const refreshTransitions = useCallback(async () => {
+    if (!commerceClient || !sessionRef) return;
+    const generation = generationRef.current;
+    const requestId = transitionRefreshSequenceRef.current + 1;
+    transitionRefreshSequenceRef.current = requestId;
+    setRefreshingTransitions(true);
+    setTransitionRefreshError(null);
+    try {
+      const nextTransitions = await commerceClient.listDeferredTransitions({ sessionRef });
+      if (
+        generation !== generationRef.current
+        || requestId !== transitionRefreshSequenceRef.current
+      ) {
+        return;
+      }
+      setTransitions(nextTransitions);
+      onWalletMutation?.();
+    } catch (error) {
+      if (
+        generation !== generationRef.current
+        || requestId !== transitionRefreshSequenceRef.current
+      ) {
+        return;
+      }
+      setTransitionRefreshError(commerceFailure(error));
+    } finally {
+      if (
+        generation === generationRef.current
+        && requestId === transitionRefreshSequenceRef.current
+      ) {
+        setRefreshingTransitions(false);
+      }
+    }
+  }, [commerceClient, onWalletMutation, sessionRef]);
 
   const previewOffer = useCallback(async (offer: PortalCoinOffer) => {
     if (!commerceClient || !sessionRef) return;
@@ -529,6 +654,9 @@ export function WalletFirstMarketplacePanel({
             cancellingTransitionRef={cancellingTransitionRef}
             locale={locale}
             onCancel={(transition) => { void cancelTransition(transition); }}
+            onRefresh={() => { void refreshTransitions(); }}
+            refreshError={transitionRefreshError}
+            refreshing={refreshingTransitions}
             transitions={transitions}
           />
           {offers.length === 0 ? (
@@ -637,6 +765,18 @@ export function WalletFirstMarketplacePanel({
                 <dd>{formatPortalDateTime(flow.quote.transition.scheduledFor, locale)}</dd>
               </div>
             </dl>
+            {flow.quote.purchaseAvailability === "insufficient_balance" ? (
+              <button
+                className="portal-coins-dialog__secondary"
+                type="button"
+                onClick={() => {
+                  closeFlow();
+                  onOpenWallet?.();
+                }}
+              >
+                {zh ? "前往钱包" : "Go to Wallet"}
+              </button>
+            ) : null}
           </CoinsDialogFrame>
         ) : null}
       </div>

@@ -2328,6 +2328,7 @@ export function UserPortalPage({
               commerceClient={portalClient.commerce ?? null}
               commerceModelClient={portalClient.commerceModel ?? null}
               locale={locale}
+              onOpenWallet={() => setActiveView("wallet")}
               onWalletMutation={walletModel.refreshWallet}
               sessionGeneration={sessionGeneration}
               sessionRef={portalSession.sessionRef ?? null}

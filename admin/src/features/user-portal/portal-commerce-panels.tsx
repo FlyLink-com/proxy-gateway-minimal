@@ -35,6 +35,7 @@ function isChinese(locale: PortalCommerceLocale) {
 type MarketplacePanelProps = PanelProps & {
   commerceClient: PortalCoinCommerceClient | null;
   commerceModelClient?: PortalCommerceModelClient | null;
+  onOpenWallet?: () => void;
   onWalletMutation?: () => void;
   sessionGeneration?: number;
   sessionRef: string | null;
@@ -690,6 +691,7 @@ function WalletFirstMarketplaceModelGate({
       <WalletFirstMarketplacePanel
         commerceClient={walletFirstCommerceClient}
         locale={locale}
+        onOpenWallet={legacyProps.onOpenWallet}
         onWalletMutation={legacyProps.onWalletMutation}
         sessionGeneration={sessionGeneration}
         sessionRef={sessionRef}

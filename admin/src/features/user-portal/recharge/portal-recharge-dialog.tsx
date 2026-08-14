@@ -3,7 +3,10 @@ import { AlertTriangle, CheckCircle2, Clock3, Circle, LoaderCircle } from "lucid
 import { ModalFrame } from "../../../components/modal-frame";
 
 import { formatPortalRechargeAmount } from "./portal-recharge-presentation";
-import type { PortalRechargeModel } from "./use-portal-recharge";
+import type {
+  PortalRechargeModel,
+  PortalRechargeOffersState
+} from "./use-portal-recharge";
 import type { PortalRechargePaymentMethod } from "./portal-recharge-client";
 
 type RechargeStatusTone = "neutral" | "pending" | "success" | "attention";
@@ -87,6 +90,61 @@ function paymentMethodLabel(paymentMethod: PortalRechargePaymentMethod, zh: bool
   return "PayPal";
 }
 
+function RechargeOffersState({
+  locale,
+  state,
+  onRetry
+}: {
+  locale: "zh" | "en";
+  state: PortalRechargeOffersState;
+  onRetry: () => void;
+}) {
+  const zh = locale === "zh";
+  if (state.status === "loading") {
+    return (
+      <div
+        aria-live="polite"
+        className="portal-recharge-state"
+        data-state="loading"
+        role="status"
+      >
+        <LoaderCircle aria-hidden="true" className="portal-recharge-status-card__spinner" />
+        <p>{zh ? "正在加载充值档位…" : "Loading recharge options…"}</p>
+      </div>
+    );
+  }
+  if (state.status === "empty") {
+    return (
+      <div className="portal-recharge-state" data-state="empty" role="status">
+        <p>{zh ? "当前没有可用的充值档位。" : "No recharge options are currently available."}</p>
+      </div>
+    );
+  }
+  if (state.status === "unavailable" || state.status === "error") {
+    const unavailable = state.status === "unavailable";
+    return (
+      <div
+        aria-live={unavailable ? "polite" : "assertive"}
+        className="portal-recharge-state"
+        data-state={state.status}
+        role={unavailable ? "status" : "alert"}
+      >
+        <p>
+          {unavailable
+            ? zh ? "Coins 充值暂不可用。" : "Coins recharge is unavailable."
+            : zh ? "充值档位加载失败。" : "Recharge options could not be loaded."}
+        </p>
+        {state.retryable ? (
+          <button type="button" onClick={onRetry}>
+            {zh ? "重试" : "Retry"}
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+  return null;
+}
+
 export function PortalRechargeDialog({
   locale,
   model,
@@ -148,7 +206,7 @@ export function PortalRechargeDialog({
             <div><dt>{zh ? "订单号" : "Order"}</dt><dd>{order.orderRef}</dd></div>
           </dl>
         </section>
-      ) : (
+      ) : model.offersState.status === "ready" ? (
         <ul className="portal-recharge-offers" aria-label={zh ? "Coins 充值档位" : "Coins recharge denominations"}>
           {model.offers.map((offer, index) => {
             const amount = formatPortalRechargeAmount(offer);
@@ -184,6 +242,12 @@ export function PortalRechargeDialog({
             );
           })}
         </ul>
+      ) : (
+        <RechargeOffersState
+          locale={locale}
+          onRetry={model.retryOffers}
+          state={model.offersState}
+        />
       )}
     </ModalFrame>
   );

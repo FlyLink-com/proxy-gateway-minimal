@@ -277,6 +277,15 @@ describe("PortalWalletPanel", () => {
       .toBeInTheDocument();
   });
 
+  test("offers a manual Wallet summary refresh from the balance section", () => {
+    const refreshWallet = vi.fn();
+    renderPanel(walletModel({ refreshWallet }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh Wallet" }));
+
+    expect(refreshWallet).toHaveBeenCalledTimes(1);
+  });
+
   test("shows signed Wallet changes in recent activity", () => {
     renderPanel(walletModel({
       ledger: {
@@ -725,11 +734,13 @@ describe("PortalWalletPanel", () => {
       available: true,
       dialogOpen: false,
       offers: [],
+      offersState: { status: "ready" },
       activeOrder: null,
       busy: false,
       error: null,
       openDialog,
       closeDialog: vi.fn(),
+      retryOffers: vi.fn(),
       createOrder: vi.fn(async () => undefined),
       continueOrderPayment: vi.fn(() => "not_applicable" as const),
     };

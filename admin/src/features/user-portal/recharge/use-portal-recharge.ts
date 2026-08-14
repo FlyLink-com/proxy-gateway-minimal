@@ -19,15 +19,24 @@ import {
 const SETTLEMENT_POLL_INTERVAL_MS = 2_000;
 const SETTLEMENT_POLL_WINDOW_MS = 120_000;
 
+export type PortalRechargeOffersState =
+  | { status: "loading" }
+  | { status: "ready" }
+  | { status: "empty" }
+  | { status: "unavailable"; retryable: boolean }
+  | { status: "error"; retryable: boolean };
+
 export type PortalRechargeModel = {
   available: boolean;
   dialogOpen: boolean;
   offers: PortalRechargeOffer[];
+  offersState: PortalRechargeOffersState;
   activeOrder: PortalRechargeOrder | null;
   busy: boolean;
   error: "unavailable" | "failed" | "delayed" | null;
   openDialog: () => void;
   closeDialog: () => void;
+  retryOffers: () => void;
   createOrder: (offerRef: string) => Promise<void>;
   continueOrderPayment: (order: PortalRechargeOrder) => PortalRechargePaymentRedirectResult;
 };
@@ -117,6 +126,12 @@ export function usePortalRecharge({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<PortalRechargeModel["error"]>(null);
+  const [offersState, setOffersState] = useState<PortalRechargeOffersState>(() => (
+    enabled && client && sessionRef
+      ? { status: "loading" }
+      : { status: "unavailable", retryable: false }
+  ));
+  const [offersRevision, setOffersRevision] = useState(0);
   const requestRef = useRef(0);
   const operationRef = useRef(0);
   const creditedRefsRef = useRef(new Set<string>());
@@ -128,6 +143,7 @@ export function usePortalRecharge({
   const trackedSettlementOrderRefsRef = useRef(new Set<string>());
   const readbackOnlyOrderRefsRef = useRef(new Set<string>());
   const identityRef = useRef({ client, sessionRef, sessionGeneration });
+  const offerIdentityRef = useRef({ client, enabled, sessionRef, sessionGeneration });
   identityRef.current = { client, sessionRef, sessionGeneration };
   const callbacksRef = useRef({ onSessionInvalid, onWalletMutation, paymentRedirect });
   callbacksRef.current = { onSessionInvalid, onWalletMutation, paymentRedirect };
@@ -191,26 +207,41 @@ export function usePortalRecharge({
   }, []);
 
   useEffect(() => {
+    const previousOfferIdentity = offerIdentityRef.current;
+    const offerIdentityChanged = previousOfferIdentity.client !== client
+      || previousOfferIdentity.enabled !== enabled
+      || previousOfferIdentity.sessionRef !== sessionRef
+      || previousOfferIdentity.sessionGeneration !== sessionGeneration;
+    offerIdentityRef.current = { client, enabled, sessionRef, sessionGeneration };
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
     setOffers([]);
-    setActiveOrder(null);
-    setDialogOpen(false);
-    setError(null);
+    if (offerIdentityChanged) {
+      setActiveOrder(null);
+      setDialogOpen(false);
+      setError(null);
+    }
     operationRef.current += 1;
     creditedRefsRef.current.clear();
     settlementPollStartedAtRef.current.clear();
     trackedSettlementOrderRefsRef.current.clear();
     readbackOnlyOrderRefsRef.current.clear();
-    if (!enabled || !client || !sessionRef) return;
+    if (!enabled || !client || !sessionRef) {
+      setOffersState({ status: "unavailable", retryable: false });
+      return;
+    }
+    setOffersState({ status: "loading" });
     setBusy(true);
     const returnIntent = readPortalRechargeReturn();
+    let initialReadComplete = false;
     void Promise.all([
       client.listOffers({ sessionRef }),
       client.listOrders({ sessionRef }),
     ]).then(async ([nextOffers, orders]) => {
       if (requestRef.current !== requestId) return;
       setOffers(nextOffers);
+      setOffersState(nextOffers.length > 0 ? { status: "ready" } : { status: "empty" });
+      initialReadComplete = true;
       const returnedOrder = returnIntent
         ? orders.find((order) => order.orderRef === returnIntent.orderRef) ?? null
         : null;
@@ -285,7 +316,29 @@ export function usePortalRecharge({
       if (returnResolved(capturedOrder)) clearPortalRechargeReturn();
     }).catch((caught: unknown) => {
       if (requestRef.current !== requestId) return;
-      applyFailure(caught);
+      if (initialReadComplete) {
+        applyFailure(caught);
+        return;
+      }
+      if (
+        caught instanceof PortalRechargeClientError
+        && caught.code === "payment_recharge_session_invalid"
+      ) {
+        callbacksRef.current.onSessionInvalid();
+        setOffersState({ status: "unavailable", retryable: false });
+        return;
+      }
+      if (
+        caught instanceof PortalRechargeClientError
+        && caught.code === "payment_recharge_unavailable"
+      ) {
+        setOffersState({ status: "unavailable", retryable: caught.retryable });
+        return;
+      }
+      setOffersState({
+        status: "error",
+        retryable: retryableRechargeFailure(caught)
+      });
     }).finally(() => {
       if (requestRef.current === requestId) setBusy(false);
     });
@@ -295,6 +348,7 @@ export function usePortalRecharge({
     captureOrderOnce,
     client,
     enabled,
+    offersRevision,
     notifyWalletIfCredited,
     sessionGeneration,
     sessionRef,
@@ -470,9 +524,10 @@ export function usePortalRecharge({
   }, [applyFailure, client, operationIsCurrent, redirectOrderToPayment, sessionGeneration, sessionRef]);
 
   return {
-    available: offers.length > 0,
+    available: Boolean(enabled && client && sessionRef),
     dialogOpen,
     offers,
+    offersState,
     activeOrder,
     busy,
     error,
@@ -500,6 +555,9 @@ export function usePortalRecharge({
         setError(null);
         setDialogOpen(false);
       }
+    },
+    retryOffers: () => {
+      setOffersRevision((revision) => revision + 1);
     },
     createOrder,
     continueOrderPayment: redirectOrderToPayment,
