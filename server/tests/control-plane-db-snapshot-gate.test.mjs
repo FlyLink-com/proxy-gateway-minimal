@@ -18,7 +18,9 @@ import Database from "better-sqlite3";
 
 import {
   runControlPlaneDatabaseSnapshotGateCli,
+  runtimeConditionStartGuardPaths,
   snapshotControlPlaneDatabase,
+  verifyControlPlaneDatabaseStartGuard,
   verifyControlPlaneDatabaseSnapshot,
   restoreControlPlaneDatabase
 } from "../../scripts/control-plane-db-snapshot-gate.mjs";
@@ -66,20 +68,34 @@ function snapshotPair(directory) {
 
 function unitStateReader({
   activeState = "inactive",
-  unitFileState = "masked-runtime"
+  unitFileState = "enabled",
+  runtimeConditionStartGuard = true,
+  runtimeConditionStartGuardIdentity = "runtime-condition-v1:test-guard"
 } = {}) {
-  return () => ({ activeState, unitFileState });
+  return () => ({
+    activeState,
+    unitFileState,
+    runtimeConditionStartGuard,
+    runtimeConditionStartGuardIdentity
+  });
 }
 
 function countedUnitStateReader({
   activeState = "inactive",
-  unitFileState = "masked-runtime"
+  unitFileState = "enabled",
+  runtimeConditionStartGuard = true,
+  runtimeConditionStartGuardIdentity = "runtime-condition-v1:test-guard"
 } = {}) {
   let calls = 0;
   return {
     read: () => {
       calls += 1;
-      return { activeState, unitFileState };
+      return {
+        activeState,
+        unitFileState,
+        runtimeConditionStartGuard,
+        runtimeConditionStartGuardIdentity
+      };
     },
     calls: () => calls
   };
@@ -91,7 +107,13 @@ function sequenceUnitStateReader(...states) {
     read: () => {
       const state = states[Math.min(calls, states.length - 1)];
       calls += 1;
-      return state;
+      return {
+        activeState: "inactive",
+        unitFileState: "enabled",
+        runtimeConditionStartGuard: true,
+        runtimeConditionStartGuardIdentity: "runtime-condition-v1:test-guard",
+        ...state
+      };
     },
     calls: () => calls
   };
@@ -113,15 +135,71 @@ async function makeSnapshot({ dbPath, snapshotDirectory, unitStateReader: readUn
   });
 }
 
-test("snapshot and restore runbook requires the external runtime-masked start guard", () => {
+test("snapshot and restore runbook requires the external runtime condition start guard", () => {
   const contract = readFileSync(CONTROL_PLANE_SNAPSHOT_CONTRACT, "utf8");
 
-  assert.match(contract, /systemctl mask --runtime --now -- "\$SERVICE_UNIT"/);
-  assert.match(contract, /UnitFileState=masked-runtime/);
-  assert.match(contract, /never stops, starts, masks, or unmasks a unit/);
+  assert.match(contract, /runtime-only systemd\s+condition start guard/);
+  assert.match(contract, /ConditionPathExists=!/);
+  assert.match(contract, /systemctl daemon-reload/);
+  assert.match(contract, /not stop or start systemd/);
   assert.match(contract, /pre-publication change fails closed before the restore rename sequence/);
   assert.match(contract, /post-publication change returns `attention_required`/);
-  assert.match(contract, /do not unmask, start the service/);
+  assert.match(contract, /do not remove the runtime block\/drop-in/);
+  assert.match(contract, /reblock_on_start_failure/);
+  assert.match(
+    contract,
+    /rm -- "\$BLOCK_FILE"\s+systemctl start -- "\$SERVICE_UNIT"\s+install -o root -g root -m 0600 \/dev\/null "\$BLOCK_FILE"\s+systemctl is-active --quiet -- "\$SERVICE_UNIT"/
+  );
+  assert.match(
+    contract,
+    /rm -- "\$DROPIN_FILE"\s+systemctl daemon-reload\s+rm -- "\$BLOCK_FILE"/
+  );
+});
+
+test("runtime condition guard paths are derived only from the validated service unit", () => {
+  assert.deepEqual(
+    runtimeConditionStartGuardPaths({ serviceUnit: "proxy-gateway-candidate.service" }),
+    {
+      blockDirectory: "/run/control-plane-db-snapshot-gates",
+      blockPath: "/run/control-plane-db-snapshot-gates/proxy-gateway-candidate.service.block",
+      dropInDirectory: "/run/systemd/system/proxy-gateway-candidate.service.d",
+      dropInPath: "/run/systemd/system/proxy-gateway-candidate.service.d/zzzzzz-control-plane-db-snapshot-start-guard.conf"
+    }
+  );
+  assert.throws(
+    () => runtimeConditionStartGuardPaths({ serviceUnit: "../unsafe.service" }),
+    (error) => error?.condition === "service_unit_invalid"
+  );
+});
+
+test("start-guard verification uses the same exact guard check before a service is stopped", () => {
+  const guarded = verifyControlPlaneDatabaseStartGuard({
+    serviceUnit: "proxy-gateway-candidate.service",
+    expectedServiceState: "active",
+    unitStateReader: unitStateReader({ activeState: "active" })
+  });
+  assert.deepEqual(guarded, {
+    schemaVersion: "1",
+    type: "control_plane_db_snapshot_gate",
+    mode: "guard",
+    state: "guarded",
+    serviceState: "active",
+    databaseQuiesced: false,
+    snapshot: null,
+    preRestoreSnapshot: null
+  });
+
+  assert.throws(
+    () => verifyControlPlaneDatabaseStartGuard({
+      serviceUnit: "proxy-gateway-candidate.service",
+      expectedServiceState: "active",
+      unitStateReader: unitStateReader({
+        activeState: "active",
+        runtimeConditionStartGuard: false
+      })
+    }),
+    (error) => error?.condition === "service_start_guard_missing"
+  );
 });
 
 test("snapshot quiesces a stopped WAL source without leaving sidecars or emitting a source path", async (t) => {
@@ -153,7 +231,7 @@ test("snapshot quiesces a stopped WAL source without leaving sidecars or emittin
   assertNoSqliteSidecars(snapshotPath);
 });
 
-test("snapshot requires an externally established runtime-masked start guard before database touch", async (t) => {
+test("snapshot requires an externally established runtime condition start guard before database touch", async (t) => {
   const state = fixture(t);
   const source = createDatabase(state.dbPath, ["guard-missing"]);
   source.close();
@@ -161,7 +239,44 @@ test("snapshot requires an externally established runtime-masked start guard bef
   await assert.rejects(
     makeSnapshot({
       ...state,
-      unitStateReader: unitStateReader({ unitFileState: "disabled" })
+      unitStateReader: unitStateReader({ runtimeConditionStartGuard: false })
+    }),
+    (error) => error?.condition === "service_start_guard_missing"
+  );
+
+  assert.equal(readdirSync(state.snapshotDirectory).length, 0);
+  assertNoSqliteSidecars(state.dbPath);
+});
+
+test("snapshot accepts an externally established runtime condition start guard", async (t) => {
+  const state = fixture(t);
+  const source = createDatabase(state.dbPath, ["runtime-condition-guard"]);
+  source.close();
+
+  const result = await makeSnapshot({
+    ...state,
+    unitStateReader: unitStateReader({
+      unitFileState: "enabled",
+      runtimeConditionStartGuard: true
+    })
+  });
+
+  assert.equal(result.state, "snapshotted");
+  assertNoSqliteSidecars(state.dbPath);
+});
+
+test("snapshot rejects a condition guard that is absent before database touch", async (t) => {
+  const state = fixture(t);
+  const source = createDatabase(state.dbPath, ["runtime-condition-missing"]);
+  source.close();
+
+  await assert.rejects(
+    makeSnapshot({
+      ...state,
+      unitStateReader: unitStateReader({
+        unitFileState: "enabled",
+        runtimeConditionStartGuard: false
+      })
     }),
     (error) => error?.condition === "service_start_guard_missing"
   );
@@ -175,9 +290,29 @@ test("snapshot fails closed and removes its unpublished artifact when the start 
   const source = createDatabase(state.dbPath, ["guard-changed-before-snapshot-publish"]);
   source.close();
   const stateReader = sequenceUnitStateReader(
-    { activeState: "inactive", unitFileState: "masked-runtime" },
-    { activeState: "inactive", unitFileState: "masked-runtime" },
-    { activeState: "inactive", unitFileState: "enabled" }
+    { runtimeConditionStartGuard: true },
+    { runtimeConditionStartGuard: true },
+    { runtimeConditionStartGuard: false }
+  );
+
+  await assert.rejects(
+    makeSnapshot({ ...state, unitStateReader: stateReader.read }),
+    (error) => error?.condition === "service_start_guard_changed"
+  );
+
+  assert.equal(stateReader.calls(), 3);
+  assert.equal(readdirSync(state.snapshotDirectory).length, 0);
+  assertNoSqliteSidecars(state.dbPath);
+});
+
+test("snapshot fails closed when the runtime condition guard identity changes", async (t) => {
+  const state = fixture(t);
+  const source = createDatabase(state.dbPath, ["guard-identity-changed-before-snapshot-publish"]);
+  source.close();
+  const stateReader = sequenceUnitStateReader(
+    { runtimeConditionStartGuardIdentity: "runtime-condition-v1:entry" },
+    { runtimeConditionStartGuardIdentity: "runtime-condition-v1:entry" },
+    { runtimeConditionStartGuardIdentity: "runtime-condition-v1:replacement" }
   );
 
   await assert.rejects(
@@ -286,8 +421,8 @@ test("restore fails before any target rename when the external start guard chang
   changed.close();
   const targetBytesBefore = readFileSync(state.dbPath);
   const stateReader = sequenceUnitStateReader(
-    ...Array.from({ length: 5 }, () => ({ activeState: "inactive", unitFileState: "masked-runtime" })),
-    { activeState: "inactive", unitFileState: "enabled" }
+    ...Array.from({ length: 5 }, () => ({ runtimeConditionStartGuard: true })),
+    { runtimeConditionStartGuard: false }
   );
 
   await assert.rejects(
@@ -367,8 +502,8 @@ test("restore returns attention required when the start guard changes after publ
   const changed = createDatabase(state.dbPath, ["after"]);
   changed.close();
   const stateReader = sequenceUnitStateReader(
-    ...Array.from({ length: 6 }, () => ({ activeState: "inactive", unitFileState: "masked-runtime" })),
-    { activeState: "inactive", unitFileState: "enabled" }
+    ...Array.from({ length: 6 }, () => ({ runtimeConditionStartGuard: true })),
+    { runtimeConditionStartGuard: false }
   );
 
   const result = await restoreControlPlaneDatabase({

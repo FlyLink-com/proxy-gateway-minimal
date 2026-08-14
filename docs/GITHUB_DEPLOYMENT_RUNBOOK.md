@@ -261,8 +261,11 @@ Minimum future steps:
 1. Read-only inventory of the target host and current release.
 2. Stop if `expected_current_release` does not match live current.
 3. Upload the reviewed artifact and verify remote SHA256.
-4. Back up current symlink, protected env, proxy config, control DB,
-   subscription DB, and systemd metadata as applicable.
+4. Back up current symlink, protected env, proxy config, subscription DB, and
+   systemd metadata as applicable. For the shared control DB, follow the
+   separate [control-plane snapshot and restore contract](CONTROL_PLANE_DB_SNAPSHOT_RESTORE_CONTRACT.md)
+   exactly: it requires a stopped, runtime condition start-blocked service and
+   does not permit an automatic database restore.
 5. Run `npm ci`.
 6. Switch current release.
 7. Restart only the approved service.
