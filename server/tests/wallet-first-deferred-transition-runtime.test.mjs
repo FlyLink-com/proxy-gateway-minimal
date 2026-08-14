@@ -286,6 +286,14 @@ test("concrete wallet-first runtime recovers an expired scheduled-switch lease t
     .listSubscriptionArtifacts(initialTenant.id);
   assert.equal(initialArtifacts.length, 1);
 
+  // Initial settlement enqueues its durable rebase outbox. Drain it through
+  // the same coordinator before creating a later same-account transition.
+  const initialRebase = await fixture.runtime.deferredTransitionCoordinator.runOnce();
+  assert.equal(initialRebase.effectApplied, 0);
+  assert.equal(initialRebase.settled, 0);
+  assert.equal(initialRebase.rebased, 1);
+  assert.equal(initialRebase.reconciliationRequired, 0);
+
   fixture.setNow(plusMilliseconds(INITIAL_NOW, 1_000));
   const scheduledQuote = fixture.runtime.walletFirstCommerceService
     .previewDeferredCheckout({
