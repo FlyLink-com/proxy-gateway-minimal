@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-08-09, America/Los_Angeles.
+Last updated: 2026-08-14, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,18 +8,21 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-08-09
+  last_verified_at: 2026-08-14
   production_authority: false
 ```
 
 > Status:
 > - Type: Active current-state handoff
 > - Risk: C
-> - Exact source cutoff:
+> - Detailed source-capability cutoff:
 >   `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
-> - Source inventory observed: 2026-08-09, America/Los_Angeles
+> - Latest deployed control-plane source:
+>   `c06f749f245247eea7e94c68f4249a0017e8e884` (2026-08-14)
+> - The detailed source inventory was observed 2026-08-09; mutable repository
+>   counts were not refreshed by the deployment record
 > - Production state: Refer to `docs/CURRENT_RELEASE_STATE.md`; this handoff
->   does not duplicate or refresh live identity
+>   records the release identity but does not duplicate its runtime evidence
 > - Production impact: None; this Risk C handoff changes no release, runtime,
 >   provider, schema, credential, or customer data
 > - Source of truth for: Compact current project handoff, source capability
@@ -89,14 +92,15 @@ Keep these distinctions explicit:
   lifecycle row.
 - Backend capabilities such as `operations.read` are not the same vocabulary
   as the Admin frontend manifest's `view`/`inspect` permissions.
-- `master`, a migration, a default-off adapter, and a successful artifact run
-  are source/build evidence, not deployed runtime state.
+- Except where an exact Deploy Note records the control-plane release, `master`,
+  a migration, a default-off adapter, and a successful artifact run are
+  source/build evidence, not deployed runtime state.
 
 ## Repository Snapshot
 
 Repository: `gccwebos-com/proxy-gateway-minimal`
 
-The read-only GitHub inventory observed on 2026-08-09 recorded:
+The read-only GitHub source inventory observed on 2026-08-09 recorded:
 
 - exact `master`: `02fc63a3f949b748dcccf26ba7d310be82f4b6df`
 - current head: merged PR #590
@@ -112,23 +116,34 @@ These are dated mutable facts, not permanent documentation authority. Refresh
 GitHub inventory before making a later current claim. Open Draft PRs are
 excluded from the exact-`master` capability baseline.
 
+A separate approved deployment on 2026-08-14 used
+`master@c06f749f245247eea7e94c68f4249a0017e8e884` and Release Artifact run
+`31816741441` for `proxy-gateway-c06f749f2452`. It refreshed the
+`control-plane-app` deployment record only; it did not refresh the mutable
+PR/Issue counts above or prove a Portal/Admin static deployment.
+
 ## Current Source Capability Boundary
 
 The detailed source/test matrix is
-`docs/OPERATIONS_PLANE_SOURCE_REALITY.md`. At the exact cutoff, the principal
+`docs/OPERATIONS_PLANE_SOURCE_REALITY.md`. At the dated 2026-08-09 cutoff, the principal
 boundaries are:
 
 | Domain | Established in source | Still not established by this evidence |
 | --- | --- | --- |
 | Admin / Operations | Admin auth/session foundations, backend read-capability registry, partial protected read routes, safe projections | Full route-wide RBAC, Admin frontend `/api/admin-auth` login integration, production enablement |
-| Wallet / Coin Ledger | Durable Wallet/Ledger model and additive reverse-reference migration | Production schema apply, production Wallet writes or activation |
-| Recharge / Payment | Provider-neutral durable store/coordinator and Portal routes; PayPal sandbox plus XSD/ChaoJiPay source adapters | Live provider credentials/activation, refund and reconciliation operations, production migration |
-| Commerce | Offer, Checkout Quote, Commerce Order, Fulfillment Command | Production schema/runtime activation and live fulfillment |
-| Account Resource Authority | Exact authority/provenance source, migration, and default-off Commerce binding | Production assignment, schema apply, or runtime activation |
+| Wallet-first / Coin Ledger extension | Wallet-first model and additive reverse-reference migration | Application of the four wallet-first schemas, wallet-first writes, or wallet-first activation |
+| Wallet-first Recharge / Payment extension | Provider-neutral durable store/coordinator and Portal routes; PayPal sandbox plus XSD/ChaoJiPay source adapters | New wallet-first provider activation, refund/reconciliation operations, or wallet-first production migration |
+| Wallet-first Commerce extension | Offer, Checkout Quote, Commerce Order, Fulfillment Command | Wallet-first/deferred schema or runtime activation and new live fulfillment |
+| Account Resource Authority | Exact Authority/provenance source, migration, and default-off Commerce binding | Authority production assignment, schema apply, or runtime activation |
 | Traffic / trust | Protected usage projection and fail-closed trusted-proxy/XFF handling | Admin `Usage & Channels` consumption, production proxy-topology validation |
 
-All entries above are source/test/migration/default-off evidence. They do not
-prove a release was promoted or a provider/runtime path is live.
+The 2026-08-14 control-plane release makes the exact application source
+available on that host, but it did not apply the four wallet-first schemas or
+enable the wallet-first/deferred/Authority lane. Fresh aggregate readback
+reported that legacy Portal routes, Coins Wallet, Coins Commerce (audience
+`all_active`), and XSD recharge were already enabled; their state was retained,
+not newly enabled or revalidated by c06. The entries above therefore remain
+non-activation evidence for the new lane.
 
 ## Workflow Boundary
 
@@ -194,11 +209,13 @@ Source -> Artifact -> Release -> Deployment -> Runtime State
 `master` is reviewed source, not a production-version claim. Artifact Manifest
 v1 covers `control-plane-app`, `portal-static`, and `admin-static`.
 
-Release Artifact run `31267179669` successfully built all three units for exact
-source `02fc63a3f949b748dcccf26ba7d310be82f4b6df`. The source artifact
-`proxy-gateway-02fc63a3f949` was observed with an expiry of 2026-08-22. This is
-short-lived build evidence only; it neither satisfies durable release
-retention nor updates deployment/runtime identity.
+Release Artifact run `31816741441` produced the control-plane source artifact
+`proxy-gateway-c06f749f2452` for exact source
+`c06f749f245247eea7e94c68f4249a0017e8e884`. Its checksum was verified in the
+approved 2026-08-14 control-plane deployment; the production receipt is in
+`docs/CURRENT_RELEASE_STATE.md` and [PR #616](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/616#issuecomment-5295613931).
+This does not establish a Portal or Admin static deployment, and GitHub build
+evidence alone is not durable release retention.
 
 See `RELEASE_MANIFEST.md` for the stable contract.
 
@@ -207,12 +224,15 @@ See `RELEASE_MANIFEST.md` for the stable contract.
 The only compact production snapshot is
 `docs/CURRENT_RELEASE_STATE.md`. It distinguishes:
 
-- the latest recorded deployment event on 2026-07-20 at source
-  `9982d378f93dd506c24c137197293f6942dc45ee`;
-- the last fully reconciled prior production snapshot at source
-  `9bc03b413e58198a08617f2e587e0120eb4d6cb2`; and
-- the current live identity, which was not freshly inventoried by this Risk C
-  reconciliation.
+- the 2026-08-14 `control-plane-app` deployment at source
+  `c06f749f245247eea7e94c68f4249a0017e8e884`, whose service, release pointer,
+  process working directory, and local/public health were validated at
+  execution time;
+- the separately unreconciled Portal, Admin, company-site, rendering, and
+  runtime-config identities; and
+- the unenabled state of the four wallet-first schemas, wallet-first/deferred
+  runtime, and Authority functionality. This does not describe the existing
+  legacy Portal, Coins Wallet, Coins Commerce, or XSD recharge state.
 
 Do not copy the dated deployment table into this handoff or infer current live
 state from source/artifact evidence. Provider settings, domains, deployments,
@@ -229,16 +249,19 @@ must not be repeated as current claims.
 
 ## Active Gaps
 
-1. Current production identity and the source-to-runtime delta require a fresh
-   Risk A read-only inventory before any production action.
+1. The control-plane identity was freshly verified on 2026-08-14; Portal,
+   Admin, company-site, rendering, and runtime-config identities still require
+   their own task-specific read-only inventory before production action.
 2. Admin backend read capabilities are only partially enforced; frontend
    Admin login integration and the traffic projection consumer remain pending.
-3. Wallet, Commerce, Payment, Account Resource Authority, and provider-specific
-   migrations/adapters are not proven applied or enabled in production.
-4. Provider refund/reconciliation paths and live credential/callback setup are
-   not established.
-5. Artifact run `31267179669` is short-lived build evidence, not a durable
-   Artifact Gate or deployment record.
+3. The four wallet-first schemas, wallet-first/deferred runtime, and Account
+   Resource Authority are not proven applied or enabled in production. This is
+   separate from the retained legacy Wallet, Commerce, and XSD recharge state.
+4. Wallet-first provider refund/reconciliation paths and new live
+   credential/callback setup are not established.
+5. The c06 control-plane artifact was verified for the recorded deployment, but
+   build evidence alone does not establish durable Portal/Admin artifacts or a
+   production activation record.
 6. Mutable GitHub counts and governance/security settings require a fresh
    readback when they matter to a decision.
 

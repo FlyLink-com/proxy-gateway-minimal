@@ -6,29 +6,36 @@ document_metadata:
   lifecycle: active
   authority_scope: release_state
   superseded_by: null
-  last_verified_at: 2026-08-09
+  last_verified_at: 2026-08-14
   production_authority: false
 ```
 
 > Status:
 > - Type: Current documented release snapshot
 > - Version management baseline: `v3` artifact and runtime-identity foundation
-> - Source evidence baseline: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
-> - Source evidence observed: 2026-08-09, America/Los_Angeles
-> - Latest successful build evidence: Release Artifact run `31267179669`
-> - Latest recorded production deployment event: 2026-07-20,
->   `control-plane-app` source `9982d378f93dd506c24c137197293f6942dc45ee`
-> - Last fully reconciled prior production snapshot: source
->   `9bc03b413e58198a08617f2e587e0120eb4d6cb2`
-> - Current live identity: Not freshly inventoried by this Risk C reconciliation
+> - Detailed source-capability inventory: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
+>   observed 2026-08-09, America/Los_Angeles
+> - Latest release source and production deployment event: 2026-08-14,
+>   `control-plane-app` source `c06f749f245247eea7e94c68f4249a0017e8e884`
+> - Latest build evidence used for that release: Release Artifact run `31816741441`,
+>   artifact `proxy-gateway-c06f749f2452`
+> - Current control-plane identity: fresh Risk A deployment readback passed at
+>   execution time; other release units retain their separately documented state
 > - Execution authority: None
 
-## Current Source-Only Reconciliation (2026-08-09)
+## Dated Source-Capability Reconciliation (2026-08-09)
 
-The exact reviewed source cutoff is
-`master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`. This cutoff supersedes older
-repository-source snapshots in this document, but it does not rewrite the dated
-deployment evidence retained below.
+The detailed reviewed source cutoff is
+`master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`. It remains the dated
+capability inventory below; the later control-plane deployment record does not
+turn this inventory into evidence of feature activation.
+
+Fresh aggregate production readback on 2026-08-14 distinguishes the unchanged
+legacy surfaces from the new activation lane: legacy Portal routes, Coins
+Wallet, Coins Commerce (audience `all_active`), and XSD recharge were already
+enabled. The c06 deployment did not enable or revalidate those legacy surfaces.
+The still-unenabled scope is limited to wallet-first, the deferred runtime,
+Account Resource Authority, and the four wallet-first schema gates.
 
 At this cutoff, source, tests, migrations, and default-off composition establish
 the following implementation language:
@@ -38,7 +45,8 @@ the following implementation language:
   the Admin frontend still has no `/api/admin-auth` login consumer.
 - Coin Wallet is a balance projection and Coin Ledger is the immutable financial
   fact stream. Additive Wallet reference indexes exist as source/migration
-  evidence; no production schema apply is established here.
+  evidence; this dated inventory does not establish application of the four
+  wallet-first schemas.
 - Coins Commerce follows `Offer -> Checkout Quote -> Commerce Order ->
   Fulfillment Command`. Commerce Orders purchase products with Coins and are not
   Recharge/Payment Orders.
@@ -47,8 +55,8 @@ the following implementation language:
   establish production assignment or activation.
 - Durable provider-neutral Recharge/Payment storage and coordination plus Portal
   routes exist in source. PayPal sandbox and the XSD/ChaoJiPay source runtimes
-  remain single-active/default-off evidence; no live provider activation,
-  refund, or reconciliation is established.
+  remain source evidence here; this dated section does not state the current
+  legacy XSD recharge runtime or enable a new wallet-first payment path.
 - Traffic collection exposes protected usage samples and rollups. The Admin
   `Usage & Channels` surface does not yet consume that projection, and traffic
   accounting evidence is not the Coin Ledger.
@@ -64,9 +72,9 @@ Issues—are a dated inventory only and must be refreshed before a later current
 claim.
 
 Source availability, clean validation, migrations, feature flags, and build
-artifacts do not establish deployment, provider enablement, production schema
-state, or current runtime identity. A Risk A action still requires fresh
-read-only inventory and an exact approval gate.
+artifacts do not establish activation of the wallet-first/deferred/Authority
+lane, application of its schemas, or current runtime identity. A Risk A action
+still requires fresh read-only inventory and an exact approval gate.
 
 ## State Labels
 
@@ -91,13 +99,13 @@ Artifact Manifest v1 has build-time coverage for three release units:
 | `portal-static` | Tracked | The Portal job builds and verifies `admin/dist-portal`, then emits a ZIP, checksum, and `artifact.json`. |
 | `admin-static` | Tracked | The Admin job builds and verifies `admin/dist`, then emits a ZIP, checksum, and `artifact.json`. |
 
-The latest successful exact-`master` build proof is Release Artifact run
-`31267179669` for source
-`02fc63a3f949b748dcccf26ba7d310be82f4b6df`. Its source artifact is
-`proxy-gateway-02fc63a3f949`, and the control-plane, Portal, and Admin jobs all
-completed successfully. The observed artifact expires on 2026-08-22. This is
-short-lived build evidence only; it does not satisfy durable release retention
-or establish approval, deployment, or production reconciliation.
+The latest exact-source build evidence used by the recorded deployment is
+Release Artifact run `31816741441` for
+`c06f749f245247eea7e94c68f4249a0017e8e884`. Its control-plane source artifact
+is `proxy-gateway-c06f749f2452`; the exact artifact checksum was verified during
+the approved deployment. The GitHub artifact remains build evidence, while the
+separate Deploy Note below records the production promotion. No Portal or Admin
+static artifact was deployed by that event.
 
 Runtime Config Identity v1 remains an offline deterministic observation
 contract for `japan-runtime-config` and `sgp-runtime-config`. A generated
@@ -106,10 +114,43 @@ either live host.
 
 ## Latest Recorded Production Deployment
 
-### Deploy Note: Japan Control Plane Upgrade (2026-07-20)
+### Deploy Note: Japan Control Plane Upgrade (2026-08-14)
 
-This is the latest deployment event recorded in the repository. It is retained
-as dated evidence and is not a fresh claim about the current live pointer.
+The authoritative execution receipt is the existing
+[PR #616 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/616#issuecomment-5295613931).
+
+**Deployment Metadata:**
+
+- **deployed_at**: 2026-08-14T16:19:18Z
+- **release_unit**: control-plane-app
+- **source_commit**: c06f749f245247eea7e94c68f4249a0017e8e884
+- **artifact_or_release**: `proxy-gateway-c06f749f2452` /
+  `control-plane-c06f749f-20260814`
+- **target**: vultr-japan-control
+- **backup**: shared control-plane snapshot created and verified before the
+  pointer switch; no restore performed
+
+**Validation Results recorded at execution time:**
+
+- Service active; the release pointer and service process working directory
+  matched the new immutable release.
+- Local and public health checks returned 200.
+- The temporary runtime start guard was removed only after successful health
+  validation.
+- No Portal/static deployment, wallet-first schema enablement, wallet-first or
+  deferred-runtime activation, Account Resource Authority activation, or
+  runtime-identity change was performed.
+- The existing legacy Portal routes, Coins Wallet, Coins Commerce (audience
+  `all_active`), and XSD recharge retained their prior enabled state; they were
+  not enabled or revalidated by this deployment.
+
+**Risk Classification:** A-tier
+**Rollback Boundary:** pointer rollback and database restore remain separate
+operator decisions; no database restore was performed.
+
+### Prior Deploy Note: Japan Control Plane Upgrade (2026-07-20)
+
+This prior deployment event is retained as dated historical evidence.
 
 **Deployment Metadata:**
 
@@ -155,13 +196,13 @@ as dated evidence and is not a fresh claim about the current live pointer.
 
 ## Documented Production Snapshot
 
-No fresh Risk A production inventory was performed on 2026-08-09. The table
-therefore separates the latest recorded event from the last fully reconciled
-prior snapshot instead of guessing which identity currently serves.
+The 2026-08-14 Risk A deployment performed fresh readback for
+`control-plane-app`. Other release units below retain their separate documented
+state and were not reclassified by this control-plane release.
 
-| Release unit | Dated documented identity | State | Evidence and boundary |
+| Release unit | Documented identity | State | Evidence and boundary |
 | --- | --- | --- | --- |
-| `control-plane-app` | Latest recorded event: `master-upgrade-20260720-9982d378`, source `9982d378f93dd506c24c137197293f6942dc45ee`. Last fully reconciled prior snapshot: `phase2-control-plane-artifact-alignment-20260710-001`, source `9bc03b413e58198a08617f2e587e0120eb4d6cb2`, artifact `proxy-gateway-9bc03b413e58.zip`, SHA-256 `6ECFD142F387996411FC5435F9F313F6C5E6740005C11DE25E60C499D5E40278`. | `active_documented` | The 2026-07-20 event was validated at execution time and no later tracked replacement was found, but this reconciliation did not freshly read the live pointer, service, artifact, or runtime identity. |
+| `control-plane-app` | `control-plane-c06f749f-20260814`; source `c06f749f245247eea7e94c68f4249a0017e8e884`; artifact `proxy-gateway-c06f749f2452`. | `active_documented` | Fresh deployment readback verified the pointer, process working directory, active service, and local/public health at execution time. A shared control-plane snapshot was verified before switching; no restore or runtime-identity change occurred. |
 | `company-site-static` | Dated July evidence records Vercel deployment `5389897330`, source `7e9a8667657e5323e09ff7c262da85d26729e69b`, plus Cloudflare Worker deployment `540da82f-b04d-4d67-9c8d-c5542d55e8a5`. | `deployed_unreconciled` | Portable artifact lineage and current serving identity were not freshly reconciled. |
 | `portal-static` | Last tracked restore artifact `globalcircle-portal-ca9f5702-20260708.tar`; SHA-256 `DD6CB14E2F519078917760E9ADE4033732D68960C17ABDAC67A471797DF9EEFC`. | `deployed_unreconciled` | No current immutable Portal artifact or live pointer was freshly reconciled. |
 | `admin-static` | Current immutable production artifact identity not recorded. | `unknown` | Build evidence exists, but no production Admin promotion is proven here. |
@@ -197,31 +238,36 @@ action remains behind its separate exact Risk A gate and current evidence.
 
 ## Source And Production Drift
 
-Current source is
-`master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`. The latest recorded
-control-plane deployment event used `9982d378f93dd506c24c137197293f6942dc45ee`,
-while the last fully reconciled prior production snapshot used
-`9bc03b413e58198a08617f2e587e0120eb4d6cb2`. The current live identity was not
-freshly inventoried, so the exact runtime delta is unknown.
+The latest deployed control-plane source is
+`c06f749f245247eea7e94c68f4249a0017e8e884`. The detailed 2026-08-09 source
+capability inventory is an ancestor of that source, but deployment of the
+control-plane application does not prove that the wallet-first, deferred
+runtime, Authority, or four wallet-first schema gates are enabled. It was not a
+new activation or revalidation of the already enabled legacy Portal routes,
+Coins Wallet, Coins Commerce (audience `all_active`), or XSD recharge.
 
-All capabilities added after the latest recorded deployment event remain
-`not_deployed` unless a separate Deploy Note and fresh target validation say
-otherwise. In particular, Admin read authorization, Wallet reference indexes,
-durable Recharge/Payment, XSD/ChaoJiPay adapters, Coins Commerce, Account
-Resource Authority, traffic projection/UI integration, and forwarded-client
-trust changes are source/test/migration/default-off evidence at this cutoff.
+The 2026-08-14 Deploy Note expressly records no Portal/static deployment,
+wallet-first schema enablement, wallet-first/deferred runtime activation,
+Authority activation, or runtime-identity change. Portal production identity remains
+`deployed_unreconciled`: before any Portal integration or activation, its exact
+deployment/artifact, source commit, HTML entry, bootstrap, stylesheet, and
+output directory must be bound and then validated in a separate approved gate.
 
-Open Draft PRs #592-#594 are not part of `master`, artifacts for this cutoff,
-or production evidence. A successful source check or artifact workflow does
-not move a production pointer.
+The next frontend remediation PR may address that boundary and the user-facing
+flow, but its merge or preview validation does not authorize application of the
+four wallet-first schemas or activation of the wallet-first/deferred/Authority
+lane. Those remain separate Risk A actions.
 
 ## Evidence
 
 - `RELEASE_MANIFEST.md`
 - `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`
-- Exact source cutoff
+- Detailed source-capability cutoff
   `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
-- GitHub Release Artifact run `31267179669`
-- Source artifact `proxy-gateway-02fc63a3f949` (observed expiry 2026-08-22)
+- Deployed control-plane source
+  `c06f749f245247eea7e94c68f4249a0017e8e884`
+- GitHub Release Artifact run `31816741441`
+- Source artifact `proxy-gateway-c06f749f2452`
+- [PR #616 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/616#issuecomment-5295613931)
 - The dated deployment and production-replacement records indexed under
   `docs/production-replacement-records/`
