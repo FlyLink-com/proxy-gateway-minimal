@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -36,6 +37,12 @@ const LEGAL_AGREEMENT = {
   termsVersion: "2026-07-02",
   privacyVersion: "2026-07-02"
 };
+
+function registrationEmailHash(email) {
+  return createHash("sha256")
+    .update(String(email).trim().toLowerCase())
+    .digest("hex");
+}
 
 function baseState(platform = {}) {
   return {
@@ -166,6 +173,15 @@ function withRegistrationState(fn, options = {}) {
     welcomeCoinGrantRefFactory: () => options.welcomeCoinGrantRefFactory?.()
       || `welcome_grant_registration_${accountIndex || 1}`,
     walletFirstRegistrationEnabled: options.walletFirstRegistrationEnabled,
+    ...(options.walletFirstRegistrationEnabled === true
+      ? {
+        walletFirstRegistrationCanaryEmailEligibilityReader:
+          options.walletFirstRegistrationCanaryEmailEligibilityReader
+          || (({ emailDigest }) => (
+            emailDigest === registrationEmailHash("wallet-first@example.test")
+          ))
+      }
+      : {}),
     entryExpiresAtFactory: () => ENTRY_EXPIRES,
     maxRegistrationsPerSourceIp: options.maxRegistrationsPerSourceIp,
     registrationRiskWindowMs: options.registrationRiskWindowMs
@@ -336,7 +352,7 @@ test("wallet-first registration creates no trial resource and records one pendin
     try {
       const emailVerification = await issueRegistrationEmailVerification(
         baseUrl,
-        "wallet-first@example.test"
+        "  WALLET-FIRST@EXAMPLE.TEST  "
       );
       const registrationResponse = await fetch(`${baseUrl}/api/portal/registration`, {
         method: "POST",
@@ -401,6 +417,94 @@ test("wallet-first registration creates no trial resource and records one pendin
       await new Promise((resolvePromise) => server.close(resolvePromise));
     }
   }, { walletFirstRegistrationEnabled: true });
+});
+
+test("wallet-first registration canary retains non-matching verified registrations on the legacy trial path", async () => {
+  await withRegistrationState(async ({
+    store,
+    auth,
+    accessRequests,
+    registrations,
+    humanChallenges,
+    registrationEmailVerifications
+  }) => {
+    const { server, baseUrl } = await listen(createApp(baseState({
+      userPortalAuth: auth,
+      portalAccessRequests: accessRequests,
+      portalRegistrations: registrations,
+      portalRegistrationEmailVerifications: registrationEmailVerifications,
+      portalHumanChallenges: humanChallenges,
+      userPortalRoutesEnabled: true
+    })));
+    try {
+      const emailVerification = await issueRegistrationEmailVerification(
+        baseUrl,
+        "legacy-canary-miss@example.test"
+      );
+      const registrationResponse = await fetch(`${baseUrl}/api/portal/registration`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "legacy-canary-miss@example.test",
+          password: REGISTRATION_PASSWORD,
+          legalAgreement: LEGAL_AGREEMENT,
+          emailVerification: {
+            verificationRef: emailVerification.verification.verificationRef,
+            code: REGISTRATION_EMAIL_CODE
+          }
+        })
+      });
+      assert.equal(registrationResponse.status, 201);
+      const body = await registrationResponse.json();
+      assert.equal(body.registration.commercialModel, "legacy");
+      assert.equal(body.registration.welcomeBonus, undefined);
+      assert.equal(body.registration.trial.durationDays, 7);
+
+      const account = store.getAccount("acct_registration_1");
+      assert.equal(account.metadata.commercialModel, undefined);
+      assert.notEqual(store.getEntitlement("ent_registration_trial_1"), null);
+      assert.notEqual(store.getPortalAccessRequest("pareq_registration_1"), null);
+      assert.equal(
+        store.getPortalRegistrationWelcomeCoinGrant({
+          accountId: "acct_registration_1"
+        }),
+        null
+      );
+    } finally {
+      await new Promise((resolvePromise) => server.close(resolvePromise));
+    }
+  }, { walletFirstRegistrationEnabled: true });
+});
+
+test("wallet-first registration canary rejects a non-boolean eligibility result before any registration write", () => {
+  for (const eligibility of [undefined, "true"]) {
+    withRegistrationState(({
+      store,
+      registrations
+    }) => {
+      assert.throws(
+        () => registrations.submitRegistration({
+          email: "canary-contract-error@example.test",
+          password: REGISTRATION_PASSWORD,
+          legalAgreement: LEGAL_AGREEMENT
+        }),
+        (error) => error?.code === "wallet_first_registration_prerequisite_missing"
+      );
+
+      assert.equal(store.getAccount("acct_registration_1"), null);
+      assert.equal(store.getEntitlement("ent_registration_trial_1"), null);
+      assert.equal(store.getPortalAccessRequest("pareq_registration_1"), null);
+      assert.equal(
+        store.getPortalRegistrationWelcomeCoinGrant({
+          accountId: "acct_registration_1"
+        }),
+        null
+      );
+    }, {
+      walletFirstRegistrationEnabled: true,
+      walletFirstRegistrationCanaryEmailEligibilityReader: () => eligibility
+    });
+  }
 });
 
 test("portal registration requires verified email before creating account records", async () => {

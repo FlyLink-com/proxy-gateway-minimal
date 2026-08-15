@@ -579,6 +579,18 @@ function coinCommerceAccountActivationReader({
   return coinCommerceCanaryAccountActivationReader(canaryAccountHashes);
 }
 
+function createWalletFirstRegistrationCanaryEmailEligibilityReader(value) {
+  const emailHashPattern = /^[0-9a-f]{64}$/;
+  if (typeof value !== "string" || !emailHashPattern.test(value)) {
+    throw walletFirstRegistrationPrerequisiteError();
+  }
+  return ({ emailDigest } = {}) => (
+    typeof emailDigest === "string"
+    && emailHashPattern.test(emailDigest)
+    && emailDigest === value
+  );
+}
+
 function createOptionalPortalTotpSecretProtector(value) {
   const key = optionalEnvText(value);
   if (!key) {
@@ -1437,6 +1449,12 @@ export function createRuntimeState(options = {}) {
   if (walletFirstRegistrationEnabled && !walletFirstDeferredTransitionNodeId) {
     throw walletFirstDeferredTransitionRuntimeError();
   }
+  const walletFirstRegistrationCanaryEmailEligibilityReader =
+    walletFirstRegistrationEnabled
+      ? createWalletFirstRegistrationCanaryEmailEligibilityReader(
+        env.USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES
+      )
+      : null;
   if (
     walletFirstSetupDeliveryEnabled
     && (
@@ -2110,7 +2128,10 @@ export function createRuntimeState(options = {}) {
       passwordCredentialService: platformPortalPasswordCredentialService,
       portalAccessRequests: platformPortalAccessRequests,
       nowFn: options.userPortalNowFn,
-      walletFirstRegistrationEnabled
+      walletFirstRegistrationEnabled,
+      ...(walletFirstRegistrationEnabled
+        ? { walletFirstRegistrationCanaryEmailEligibilityReader }
+        : {})
     }) : null
   );
   const platformTrafficAccounting = options.platformTrafficAccounting || createTrafficAccountingService({

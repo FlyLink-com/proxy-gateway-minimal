@@ -185,6 +185,12 @@ function accountHash(accountId) {
   return createHash("sha256").update(accountId).digest("hex");
 }
 
+function registrationEmailHash(email) {
+  return createHash("sha256")
+    .update(String(email).trim().toLowerCase())
+    .digest("hex");
+}
+
 function prepareMigratedCoinWalletControlDatabase(directory) {
   const controlDbPath = join(directory, "control.sqlite");
   const seed = createRuntimeState({
@@ -1292,6 +1298,18 @@ test("createRuntimeState keeps wallet-first registration default-off without app
       }
     });
   }
+  let registrationCanaryGetterCalls = 0;
+  Object.defineProperty(
+    env,
+    "USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES",
+    {
+      enumerable: true,
+      get() {
+        registrationCanaryGetterCalls += 1;
+        throw new Error("default-off registration canary must stay untouched");
+      }
+    }
+  );
   let state;
 
   try {
@@ -1312,6 +1330,7 @@ test("createRuntimeState keeps wallet-first registration default-off without app
     assert.equal(deferredRuntimeGetterCalls, 0);
     assert.equal(deferredNodeGetterCalls, 0);
     assert.equal(setupDeliveryGetterCalls, 0);
+    assert.equal(registrationCanaryGetterCalls, 0);
     await state.close();
     state = null;
 
@@ -1334,6 +1353,56 @@ test("createRuntimeState keeps wallet-first registration default-off without app
   } finally {
     await Promise.resolve(state?.close());
     removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState requires one canonical wallet-first registration canary hash before database access", () => {
+  const cases = [
+    ["missing hash", undefined],
+    ["empty hash", ""],
+    ["all-active sentinel", "all_active"],
+    ["raw email", "canary@example.test"],
+    ["duplicate hashes", `${registrationEmailHash("canary@example.test")},${registrationEmailHash("canary@example.test")}`],
+    ["uppercase hash", registrationEmailHash("canary@example.test").toUpperCase()],
+    ["short hash", "a".repeat(63)]
+  ];
+  for (const [label, canaryEmailHashes] of cases) {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-registration-canary-"));
+    let unexpectedState;
+    try {
+      const env = runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "true",
+        USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+        COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
+        COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
+          "channel-vultr-a-vless-reality-tcp"
+      });
+      if (canaryEmailHashes !== undefined) {
+        env.USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES =
+          canaryEmailHashes;
+      }
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState({
+            rootDir: new URL("../../", import.meta.url),
+            env,
+            controlDbPath: join(dir, "control.sqlite"),
+            subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+            autoStartHttpProxy: false
+          });
+        },
+        (error) => error?.code === "wallet_first_registration_prerequisite_missing",
+        label
+      );
+      assert.equal(existsSync(join(dir, "control.sqlite")), false, label);
+      assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false, label);
+    } finally {
+      unexpectedState?.close();
+      removeTempDir(dir);
+    }
   }
 });
 
@@ -1393,6 +1462,8 @@ test("createRuntimeState rejects wallet-first registration prerequisites before 
             env: runtimeEnv({
               CONSOLE_TOKEN: "secret",
               USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+              USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES:
+                registrationEmailHash("wallet-first-canary@example.test"),
               ...entry.env
             }),
             controlDbPath: join(dir, "control.sqlite"),
@@ -1428,6 +1499,8 @@ test("createRuntimeState validates the wallet-first welcome-bonus schema without
             COINS_WALLET_ENABLED: "true",
             COINS_COMMERCE_ENABLED: "true",
             USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES:
+              registrationEmailHash("wallet-first-canary@example.test"),
             COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
             COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
               "channel-vultr-a-vless-reality-tcp"
@@ -1479,6 +1552,8 @@ test("createRuntimeState rejects an enabled wallet-first runtime without durable
             COINS_WALLET_ENABLED: "true",
             COINS_COMMERCE_ENABLED: "true",
             USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES:
+              registrationEmailHash("wallet-first-canary@example.test"),
             COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
             COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
               "channel-vultr-a-vless-reality-tcp"
@@ -1527,6 +1602,8 @@ test("createRuntimeState requires the setup-delivery handoff schema without appl
             COINS_WALLET_ENABLED: "true",
             COINS_COMMERCE_ENABLED: "true",
             USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES:
+              registrationEmailHash("wallet-first-canary@example.test"),
             COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
             COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
               "channel-vultr-a-vless-reality-tcp",
@@ -1580,6 +1657,8 @@ test("createRuntimeState requires a dedicated wallet-first transition node befor
             COINS_WALLET_ENABLED: "true",
             COINS_COMMERCE_ENABLED: "true",
             USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES:
+              registrationEmailHash("wallet-first-canary@example.test"),
             COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true"
           }),
           controlDbPath,
@@ -1624,6 +1703,8 @@ test("createRuntimeState rejects setup delivery without a strict key and absolut
               COINS_WALLET_ENABLED: "true",
               COINS_COMMERCE_ENABLED: "true",
               USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+              USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES:
+                registrationEmailHash("wallet-first-canary@example.test"),
               COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
               COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
                 "channel-vultr-a-vless-reality-tcp",
@@ -1666,6 +1747,8 @@ test("createRuntimeState maps a malformed setup-delivery key to its fail-closed 
             COINS_WALLET_ENABLED: "true",
             COINS_COMMERCE_ENABLED: "true",
             USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES:
+              registrationEmailHash("wallet-first-canary@example.test"),
             COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
             COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
               "channel-vultr-a-vless-reality-tcp",
@@ -1702,6 +1785,8 @@ test("createRuntimeState composes the concrete wallet-first deferred runtime wit
         COINS_WALLET_ENABLED: "true",
         COINS_COMMERCE_ENABLED: "true",
         USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+        USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES:
+          registrationEmailHash("wallet-first-canary@example.test"),
         COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
         COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
           "channel-vultr-a-vless-reality-tcp"
@@ -1744,6 +1829,31 @@ test("createRuntimeState composes the concrete wallet-first deferred runtime wit
     assert.equal(typeof state.platform.walletFirstCurrentResourceProjection.getCurrentResource, "function");
     assert.equal(state.platform.walletFirstCurrentResourceSetupDelivery, null);
 
+    const canaryRegistration = state.platform.portalRegistrations.submitRegistration({
+      email: "  WALLET-FIRST-CANARY@EXAMPLE.TEST  ",
+      password: "wallet-first-registration-password",
+      legalAgreement: {
+        termsAccepted: true,
+        privacyAccepted: true
+      }
+    });
+    assert.equal(
+      canaryRegistration.registration.commercialModel,
+      "wallet_first_unique_v1"
+    );
+    assert.equal(canaryRegistration.registration.trial, undefined);
+
+    const legacyRegistration = state.platform.portalRegistrations.submitRegistration({
+      email: "legacy-registration@example.test",
+      password: "legacy-registration-password",
+      legalAgreement: {
+        termsAccepted: true,
+        privacyAccepted: true
+      }
+    });
+    assert.equal(legacyRegistration.registration.commercialModel, "legacy");
+    assert.equal(legacyRegistration.registration.trial.durationDays, 7);
+
     await state.platform.deferredTransitionCoordinator.start();
     await state.platform.deferredTransitionCoordinator.stop();
 
@@ -1771,6 +1881,8 @@ test("createRuntimeState composes setup delivery only behind its gate and releas
         COINS_WALLET_ENABLED: "true",
         COINS_COMMERCE_ENABLED: "true",
         USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+        USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES:
+          registrationEmailHash("wallet-first-canary@example.test"),
         COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
         COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
           "channel-vultr-a-vless-reality-tcp",

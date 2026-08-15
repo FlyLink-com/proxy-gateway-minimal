@@ -177,6 +177,8 @@ export function createPortalRegistrationService(options = {}) {
   const welcomeCoinGrantRefFactory = options.welcomeCoinGrantRefFactory
     || (() => defaultRef("welcome_grant"));
   const walletFirstRegistrationEnabled = options.walletFirstRegistrationEnabled === true;
+  const walletFirstRegistrationCanaryEmailEligibilityReader =
+    options.walletFirstRegistrationCanaryEmailEligibilityReader;
   const registrationRiskWindowMs = options.registrationRiskWindowMs ?? DEFAULT_REGISTRATION_RISK_WINDOW_MS;
   const maxRegistrationsPerSourceIp = options.maxRegistrationsPerSourceIp ?? DEFAULT_MAX_REGISTRATIONS_PER_SOURCE_IP;
 
@@ -204,6 +206,9 @@ export function createPortalRegistrationService(options = {}) {
     }
     if (typeof welcomeCoinGrantRefFactory !== "function") {
       throw new Error("welcomeCoinGrantRefFactory must be a function");
+    }
+    if (typeof walletFirstRegistrationCanaryEmailEligibilityReader !== "function") {
+      throw new Error("walletFirstRegistrationCanaryEmailEligibilityReader must be a function when wallet-first registration is enabled");
     }
   }
 
@@ -261,12 +266,27 @@ export function createPortalRegistrationService(options = {}) {
     }
   }
 
+  function resolveWalletFirstRegistrationEligibility({ emailDigest }) {
+    if (!walletFirstRegistrationEnabled) {
+      return false;
+    }
+    const eligible = walletFirstRegistrationCanaryEmailEligibilityReader({ emailDigest });
+    if (typeof eligible !== "boolean") {
+      throw registrationError(
+        "wallet_first_registration_prerequisite_missing",
+        "wallet-first registration canary eligibility is unavailable"
+      );
+    }
+    return eligible;
+  }
+
   function submitRegistration(input = {}) {
     const now = isoNow(nowFn);
     const email = normalizeEmail(input.email);
     const password = normalizePassword(input.password);
     const legalAgreement = normalizeLegalAgreement(input.legalAgreement);
     const emailDigest = ensureEmailNotRegistered(email);
+    const walletFirstRegistration = resolveWalletFirstRegistrationEligibility({ emailDigest });
     const { sourceIpDigest, requestKeyDigest } = sourceDigests(input.requestContext);
     enforceRegistrationRisk({ sourceIpDigest, now });
     const displayName = email;
@@ -277,12 +297,12 @@ export function createPortalRegistrationService(options = {}) {
     const validUntil = addDays(now, TRIAL_DURATION_DAYS);
     const welcomeBonusExpiresAt = addDays(now, WELCOME_BONUS_DURATION_DAYS);
     const accountId = requiredText(input.accountId || accountIdFactory({ email, now }), "accountId");
-    const entitlementId = walletFirstRegistrationEnabled ? null : requiredText(
+    const entitlementId = walletFirstRegistration ? null : requiredText(
       input.entitlementId || entitlementIdFactory({ accountId, now }),
       "entitlementId"
     );
     const approvalRef = requiredText(input.approvalRef || approvalRefFactory({ accountId, now }), "approvalRef");
-    const welcomeCoinGrantRef = walletFirstRegistrationEnabled
+    const welcomeCoinGrantRef = walletFirstRegistration
       ? requiredText(
         welcomeCoinGrantRefFactory({ accountId, now }),
         "welcomeCoinGrantRef"
@@ -302,7 +322,7 @@ export function createPortalRegistrationService(options = {}) {
           registrationSource: "self_service_portal",
           singleSubscriptionOnly: true,
           subscriptionLimit: 1,
-          ...(walletFirstRegistrationEnabled
+          ...(walletFirstRegistration
             ? { commercialModel: WALLET_FIRST_COMMERCIAL_MODEL }
             : {}),
           loginRef: email,
@@ -325,7 +345,7 @@ export function createPortalRegistrationService(options = {}) {
         }
       });
 
-      if (walletFirstRegistrationEnabled) {
+      if (walletFirstRegistration) {
         const sourceRef = `portal_registration_welcome_${accountId}`;
         controlStore.enqueuePortalRegistrationWelcomeCoinGrant({
           grantRef: welcomeCoinGrantRef,
@@ -350,7 +370,7 @@ export function createPortalRegistrationService(options = {}) {
       }
 
       let accessRequest = null;
-      if (!walletFirstRegistrationEnabled) {
+      if (!walletFirstRegistration) {
         controlStore.createEntitlement({
           id: entitlementId,
           accountId,
@@ -393,10 +413,10 @@ export function createPortalRegistrationService(options = {}) {
           planIntent,
           validFrom: now,
           validUntil,
-          commercialModel: walletFirstRegistrationEnabled
+          commercialModel: walletFirstRegistration
             ? WALLET_FIRST_COMMERCIAL_MODEL
             : LEGACY_TRIAL_COMMERCIAL_MODEL,
-          ...(walletFirstRegistrationEnabled
+          ...(walletFirstRegistration
             ? {
               welcomeBonus: {
                 status: "pending",
