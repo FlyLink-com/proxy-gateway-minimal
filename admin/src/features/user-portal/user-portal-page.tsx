@@ -72,6 +72,7 @@ import type {
   PortalAccountEntitlement,
   PortalAuthenticatorEnrollment,
   PortalClientId,
+  PortalCurrentResource,
   PortalHistoryRecord,
   PortalHumanVerificationChallenge,
   PortalPaymentOrder,
@@ -1080,6 +1081,123 @@ function WalletFirstOrdersNotice({
   );
 }
 
+function WalletFirstCurrentResourceStatus({
+  resource,
+  locale,
+  onOpenMarketplace
+}: {
+  resource: PortalCurrentResource;
+  locale: PortalAuthLocale;
+  onOpenMarketplace: () => void;
+}) {
+  if (resource.state === "none") {
+    return (
+      <section
+        aria-labelledby="portal-wallet-first-resource-heading"
+        className="portal-use-card portal-v2-orders-panel"
+        data-resource-state="none"
+      >
+        <div className="portal-section-heading">
+          <Wifi aria-hidden="true" />
+          <div>
+            <span className="portal-card-label">{uiText(locale, "账户资源", "Account resource")}</span>
+            <h2 id="portal-wallet-first-resource-heading">
+              {uiText(locale, "尚未获得可用服务资源", "No service resource yet")}
+            </h2>
+            <p>
+              {uiText(
+                locale,
+                "完成 Coins 服务购买并交付后，当前资源会显示在这里。",
+                "After a Coins service purchase is delivered, the current resource appears here."
+              )}
+            </p>
+          </div>
+        </div>
+        <button className="portal-primary-button compact" type="button" onClick={onOpenMarketplace}>
+          <ShoppingBag aria-hidden="true" />
+          {uiText(locale, "前往商城", "Go to Marketplace")}
+        </button>
+      </section>
+    );
+  }
+
+  if (resource.state === "reconciliation_required") {
+    return (
+      <section
+        aria-labelledby="portal-wallet-first-resource-heading"
+        className="portal-use-card portal-v2-orders-panel"
+        data-resource-state="reconciliation_required"
+      >
+        <div className="portal-section-heading">
+          <AlertTriangle aria-hidden="true" />
+          <div>
+            <span className="portal-card-label">{uiText(locale, "账户资源", "Account resource")}</span>
+            <h2 id="portal-wallet-first-resource-heading">
+              {uiText(locale, "服务资源正在核对", "Service resource is being reconciled")}
+            </h2>
+            <p>
+              {uiText(
+                locale,
+                "为避免展示不准确的配置，本页暂不显示订阅链接或连接材料。请稍后重新登录后再查看。",
+                "To avoid showing an inaccurate configuration, this page does not show a subscription link or connection material yet. Please sign in again later to check the status."
+              )}
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      aria-labelledby="portal-wallet-first-resource-heading"
+      className="portal-use-card portal-v2-orders-panel"
+      data-resource-state="available"
+    >
+      <div className="portal-section-heading">
+        <CheckCircle2 aria-hidden="true" />
+        <div>
+          <span className="portal-card-label">{uiText(locale, "账户资源", "Account resource")}</span>
+          <h2 id="portal-wallet-first-resource-heading">
+            {uiText(locale, "服务资源已可用", "Service resource is available")}
+          </h2>
+          <p>
+            {resource.setupAvailable
+              ? uiText(
+                locale,
+                "资源已准备就绪。配置需要通过独立、受保护的操作显示；本页不会自动生成或展示订阅链接。",
+                "The resource is ready. Configuration is shown through a separate protected action; this page never generates or reveals a subscription link automatically."
+              )
+              : uiText(
+                locale,
+                "资源已准备就绪，连接配置仍在准备中。本页不会自动生成或展示订阅链接。",
+                "The resource is ready and connection configuration is still being prepared. This page never generates or reveals a subscription link automatically."
+              )}
+          </p>
+        </div>
+      </div>
+      <dl className="portal-v2-definition-list">
+        <div>
+          <dt>{uiText(locale, "套餐", "Plan")}</dt>
+          <dd>{resource.plan.id}</dd>
+        </div>
+        <div>
+          <dt>{uiText(locale, "资源期限", "Resource term")}</dt>
+          <dd>{uiText(locale, `${resource.plan.durationDays} 天`, `${resource.plan.durationDays} days`)}</dd>
+        </div>
+        <div>
+          <dt>{uiText(locale, "月流量", "Monthly traffic")}</dt>
+          <dd>{`${resource.plan.monthlyTrafficGb} GB`}</dd>
+        </div>
+        <div>
+          <dt>{uiText(locale, "可用至", "Available until")}</dt>
+          <dd>{formatUtcDate(resource.validUntil, locale)}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 function buildHumanVerification(
   challenge: PortalHumanVerificationChallenge,
   challengeAnswer: string,
@@ -1154,6 +1272,7 @@ export function UserPortalPage({
   const [paymentChannel, setPaymentChannel] = useState<PortalPaymentChannel>(() => defaultPaymentChannelForCurrentBrowser());
   const [orderRows, setOrderRows] = useState<PortalOrderRow[]>([]);
   const [accountEntitlements, setAccountEntitlements] = useState<PortalAccountEntitlement[]>([]);
+  const [walletFirstResource, setWalletFirstResource] = useState<PortalCurrentResource | null>(null);
   const [paymentOrders, setPaymentOrders] = useState<PortalPaymentOrder[]>([]);
   const [lastPaymentOrderRef, setLastPaymentOrderRef] = useState<string | null>(null);
   const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatusFilter>("all");
@@ -1221,6 +1340,9 @@ export function UserPortalPage({
   const paymentFlowActive = activeView === "orders" && Boolean(activePaymentOrder);
   const created = useMemo(() => createdSubscriptionFromOrder(selectedOrder), [selectedOrder]);
   const lifecycle = resolveLifecycle(created);
+  const walletFirstCurrentResource = commerceModel === "wallet_first_unique_v1"
+    ? walletFirstResource
+    : null;
   const shellNavItems = useMemo(() => localizedNavItems(locale), [locale]);
   const shellNavGroups = useMemo(() => localizedNavGroups(locale).map((group) => ({
     ...group,
@@ -1312,6 +1434,7 @@ export function UserPortalPage({
     destination: PortalView = readPortalRechargeReturn() ? "wallet" : "start"
   ) {
     const hydrateGeneration = advanceSessionGeneration();
+    setWalletFirstResource(null);
     const isCurrent = () => hydrateGeneration === sessionGenerationRef.current;
     const promise = (async () => {
       let resolvedCommerceModel: PortalCommerceModel = "legacy";
@@ -1332,14 +1455,20 @@ export function UserPortalPage({
       if (!isCurrent()) return;
       const walletFirst = resolvedCommerceModel === "wallet_first_unique_v1";
       let portalState: PortalUserState;
+      let hydratedWalletFirstResource: PortalCurrentResource | null = null;
       if (walletFirst) {
-        if (!portalClient.fetchSecurityState) {
-          throw new Error("账户安全状态不可用。");
+        if (!portalClient.fetchSecurityState || !portalClient.fetchCurrentResource) {
+          throw new Error("账户资源状态不可用。");
         }
+        const [security, currentResource] = await Promise.all([
+          portalClient.fetchSecurityState({ sessionRef: session.sessionRef! }),
+          portalClient.fetchCurrentResource({ sessionRef: session.sessionRef! })
+        ]);
         portalState = walletFirstNeutralPortalState(
           session,
-          await portalClient.fetchSecurityState({ sessionRef: session.sessionRef! })
+          security
         );
+        hydratedWalletFirstResource = currentResource;
       } else {
         portalState = await portalClient.fetchCurrentState({
           userRef: session.userRef,
@@ -1373,6 +1502,7 @@ export function UserPortalPage({
       if (!isCurrent()) return;
       setPortalSession(session);
       setCommerceModel(resolvedCommerceModel);
+      setWalletFirstResource(hydratedWalletFirstResource);
       setSecondFactorChallenge(null);
       setSecondFactorCode("");
       setPasskeyProof("");
@@ -1564,10 +1694,10 @@ export function UserPortalPage({
     if (commerceModel === "wallet_first_unique_v1") {
       setActionError(uiText(
         locale,
-        "此账户仅支持 Coins 商城结算。",
-        "This account supports Coins Marketplace settlement only."
+        "此账户使用 Coins 服务资源模型；请先查看当前资源状态。",
+        "This account uses the Coins service-resource model; check the current resource status first."
       ));
-      setActiveView("marketplace");
+      setActiveView("start");
       return false;
     }
     const planId: Exclude<PortalPlanId, "trial"> = planIdOverride
@@ -1612,10 +1742,10 @@ export function UserPortalPage({
     if (commerceModel === "wallet_first_unique_v1") {
       setActionError(uiText(
         locale,
-        "此账户的服务资源由 Coins 商城管理。",
-        "This account's service resources are managed in Coins Marketplace."
+        "此账户的服务资源状态仅可通过当前资源读取确认。",
+        "This account's service-resource status can only be confirmed through the current-resource read."
       ));
-      setActiveView("marketplace");
+      setActiveView("start");
       return null;
     }
     if (!portalSession) return null;
@@ -1868,6 +1998,7 @@ export function UserPortalPage({
     setClientTarget("clash");
     setOrderRows([]);
     setAccountEntitlements([]);
+    setWalletFirstResource(null);
     setPaymentOrders([]);
     setLastPaymentOrderRef(null);
     setOrderStatusFilter("all");
@@ -2300,28 +2431,44 @@ export function UserPortalPage({
           ) : null}
 
           {activeView === "dashboard" ? (
-            <DashboardPanel
-              created={created}
-              lifecycle={lifecycle}
-              orderRows={orderRows}
-              currentEntitlement={currentEntitlement}
-              selectedOrder={selectedOrder}
-              setActiveView={setActiveView}
-              trafficPercent={trafficPercent}
-              trafficSummary={trafficSummary}
-              locale={locale}
-            />
+            walletFirstCurrentResource ? (
+              <WalletFirstCurrentResourceStatus
+                resource={walletFirstCurrentResource}
+                locale={locale}
+                onOpenMarketplace={openMarketplace}
+              />
+            ) : (
+              <DashboardPanel
+                created={created}
+                lifecycle={lifecycle}
+                orderRows={orderRows}
+                currentEntitlement={currentEntitlement}
+                selectedOrder={selectedOrder}
+                setActiveView={setActiveView}
+                trafficPercent={trafficPercent}
+                trafficSummary={trafficSummary}
+                locale={locale}
+              />
+            )
           ) : null}
           {activeView === "usage" ? (
-            <UsagePanel
-              orderRows={orderRows}
-              currentEntitlement={currentEntitlement}
-              setActiveView={setActiveView}
-              openMarketplace={openMarketplace}
-              trafficPercent={trafficPercent}
-              trafficSummary={trafficSummary}
-              locale={locale}
-            />
+            walletFirstCurrentResource ? (
+              <WalletFirstCurrentResourceStatus
+                resource={walletFirstCurrentResource}
+                locale={locale}
+                onOpenMarketplace={openMarketplace}
+              />
+            ) : (
+              <UsagePanel
+                orderRows={orderRows}
+                currentEntitlement={currentEntitlement}
+                setActiveView={setActiveView}
+                openMarketplace={openMarketplace}
+                trafficPercent={trafficPercent}
+                trafficSummary={trafficSummary}
+                locale={locale}
+              />
+            )
           ) : null}
           {activeView === "marketplace" ? (
             <MarketplacePanel
@@ -2353,6 +2500,7 @@ export function UserPortalPage({
               pending={pending}
               selectedOrder={selectedOrder}
               hasSetupAccess={hasSetupAccess}
+              walletFirstResource={walletFirstResource}
               setActiveView={setActiveView}
               openMarketplace={openMarketplace}
               revealOrCreateSubscriptionLink={revealOrCreateSubscriptionLink}
@@ -2377,10 +2525,18 @@ export function UserPortalPage({
             />
           ) : null}
           {activeView === "orders" && commerceModel === "wallet_first_unique_v1" ? (
-            <WalletFirstOrdersNotice
-              locale={locale}
-              onOpenMarketplace={openMarketplace}
-            />
+            walletFirstCurrentResource ? (
+              <WalletFirstCurrentResourceStatus
+                resource={walletFirstCurrentResource}
+                locale={locale}
+                onOpenMarketplace={openMarketplace}
+              />
+            ) : (
+              <WalletFirstOrdersNotice
+                locale={locale}
+                onOpenMarketplace={openMarketplace}
+              />
+            )
           ) : activeView === "orders" && paymentFlowActive ? renderLegacyPaymentFlow() : null}
           {activeView === "orders" && commerceModel !== "wallet_first_unique_v1" && !paymentFlowActive ? (
             <PortalOrdersPanel
@@ -3744,6 +3900,7 @@ function UseGuide({
   pending,
   selectedOrder,
   hasSetupAccess,
+  walletFirstResource,
   setActiveView,
   openMarketplace,
   revealOrCreateSubscriptionLink
@@ -3755,6 +3912,7 @@ function UseGuide({
   pending: boolean;
   selectedOrder: PortalOrderRow | null;
   hasSetupAccess: boolean;
+  walletFirstResource: PortalCurrentResource | null;
   setActiveView: (value: PortalView) => void;
   openMarketplace: () => void;
   revealOrCreateSubscriptionLink: (
@@ -3956,6 +4114,8 @@ function UseGuide({
   }, [activeGuideStep?.action, selectedOrder?.requestRef, selectedOrder?.subscriptionUrl, visibleSubscriptionUrl]);
   useEffect(() => {
     if (
+      walletFirstResource
+      ||
       activeGuideStep?.action !== "copy"
       || visibleSubscriptionUrl
       || pending
@@ -3981,7 +4141,8 @@ function UseGuide({
     selectedGuideClientTarget,
     selectedOrder?.status,
     selectedOrder?.requestRef,
-    visibleSubscriptionUrl
+    visibleSubscriptionUrl,
+    walletFirstResource
   ]);
 
   type ImportTutorial = {
@@ -4249,6 +4410,7 @@ function UseGuide({
     setLocalLinkCopied(false);
   };
   const startSetup = () => {
+    if (walletFirstResource) return;
     if (!hasSetupAccess) {
       openMarketplace();
       return;
@@ -4280,6 +4442,16 @@ function UseGuide({
   const ActiveGuideStepIcon = activeGuideStep ? guideStepIcon(activeGuideStep.action) : CheckCircle2;
   const SelectedGuideClientIcon = selectedGuide?.icon ?? AppWindow;
   const needsPlanDesktop = desktopViewport && !hasSetupAccess;
+
+  if (walletFirstResource) {
+    return (
+      <WalletFirstCurrentResourceStatus
+        resource={walletFirstResource}
+        locale={locale}
+        onOpenMarketplace={openMarketplace}
+      />
+    );
+  }
 
   return (
     <section

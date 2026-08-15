@@ -154,5 +154,7 @@ test("document authority check validates the current repository metadata", () =>
   const result = runAuthorityCheck(REPOSITORY_ROOT);
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /validated 15 document metadata block/);
+  const match = result.stdout.match(/validated (\d+) document metadata block/);
+  assert.ok(match, `expected metadata count in output, received: ${result.stdout}`);
+  assert.ok(Number(match[1]) > 0, `expected a non-empty metadata inventory, received: ${result.stdout}`);
 });

@@ -1,4 +1,7 @@
 import { Router } from "express";
+import {
+  snapshotWalletFirstCurrentResourceProjection
+} from "../services/platform/wallet-first-current-resource-projection.mjs";
 
 function sendPortalError(res, error) {
   if (error.code === "human_verification_failed") {
@@ -45,6 +48,10 @@ function sendPortalError(res, error) {
     res.status(503).json({ error: "wallet_first_access_request_unavailable" });
     return;
   }
+  if (error.code === "wallet_first_current_resource_unavailable") {
+    res.status(503).json({ error: "wallet_first_current_resource_unavailable" });
+    return;
+  }
   if (error.code === "invalid_session") {
     res.status(401).json({ error: "invalid_session" });
     return;
@@ -73,6 +80,8 @@ export function userPortalRoutes(state, options = {}) {
     || state.platform?.portalRegistrationEmailVerifications;
   const supportRequests = options.portalSupportRequests || state.platform?.portalSupportRequests;
   const humanChallenges = options.portalHumanChallenges || state.platform?.portalHumanChallenges;
+  const currentResourceProjection = options.walletFirstCurrentResourceProjection
+    || state.platform?.walletFirstCurrentResourceProjection;
 
   function requestContext(req) {
     return {
@@ -119,6 +128,25 @@ export function userPortalRoutes(state, options = {}) {
       throw error;
     }
     return auth.requireSession({ sessionRef: portalSessionRef(req) });
+  }
+
+  function requirePortalHeaderSession(req) {
+    requireAuthService();
+    if (typeof auth.requireSession !== "function") {
+      const error = new Error("portal session service is not configured");
+      error.code = "validation_error";
+      throw error;
+    }
+    return auth.requireSession({ sessionRef: req.get("x-portal-session") });
+  }
+
+  function requireNoQuery(req) {
+    const requestUrl = String(req.originalUrl || req.url || "");
+    if (requestUrl.includes("?")) {
+      const error = new Error("current resource route does not accept query parameters");
+      error.code = "validation_error";
+      throw error;
+    }
   }
 
   function sessionScopedBody(req) {
@@ -328,6 +356,21 @@ export function userPortalRoutes(state, options = {}) {
         || String(a.id || "").localeCompare(String(b.id || ""))
       );
       res.json({ items });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.get("/api/portal/resources/current", (req, res) => {
+    try {
+      requireNoQuery(req);
+      const session = requirePortalHeaderSession(req);
+      const projection = snapshotWalletFirstCurrentResourceProjection(
+        currentResourceProjection
+      );
+      const resource = projection.getCurrentResource({ accountId: session.accountId });
+      res.set("Cache-Control", "no-store");
+      res.json({ resource });
     } catch (error) {
       sendPortalError(res, error);
     }

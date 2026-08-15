@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-08-11, America/Los_Angeles.
+Last updated: 2026-08-14, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -274,6 +274,7 @@ Check structured state with `npm run project-state:check`.
 | --- | --- | --- | --- |
 | `docs/DEPLOYMENT_FLOW.md` | Historical AWS development, staging, promotion, and rollback evidence. | Historical AWS evidence (superseded); no current production-target authority. | Read only for AWS archaeology; use `docs/RUNTIME_LANE_AUTHORITY.md` for current target selection. Any provider action requires fresh live read-only inventory and a new exact Risk A gate. |
 | `docs/GITHUB_DEPLOYMENT_RUNBOOK.md` | GitHub-owned release artifact, Cloudflare static-site deploy, and production deploy dry-run boundaries. | Active CI/CD runbook; production host mutation remains separately gated. | Read before adding GitHub Actions deployment, Cloudflare publish, or production deploy dry-run/promotion workflows. |
+| `docs/PORTAL_STATIC_PRODUCTION_RELEASE_RUNBOOK.md` | Exact Risk A gate for releasing a verified `portal-static` artifact through the Vercel DNS/CNAME, Vultr Nginx, and existing Portal static-root chain. | Active static-only production runbook; it neither authorizes deployment nor activates wallet-first, schemas, credentials, or commercial runtime behavior. | Read before preparing a Portal static inventory, approval packet, pointer switch, validation, or rollback. |
 | `docs/CONTROL_PLANE_DB_SNAPSHOT_RESTORE_CONTRACT.md` | Manual control-plane shared SQLite snapshot, verification, and restore precondition contract. | Active operational Risk A runbook; it does not authorize host access, service mutation, release switching, schema apply, or automatic database rollback. | Read before preparing or executing a manual control-plane release whose startup may change the shared control database. |
 | `docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md` | Provider-neutral no-secret machine image / snapshot / AMI runbook plus repo-only readiness summary and first-boot packet helpers for preparing repeatable data-plane nodes that activate through first-boot registration and receipt-gated rendering. | Active Risk A runbook with C-tier gate-preview helpers; no image creation, provider mutation, protected material injection, or traffic activation authority by itself. | Read before building reusable production node images, cloning data-plane software baselines, or creating a new image-based Vultr/AWS/Aliyun node. |
 | `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md` | AWS staging execution record for validating the no-secret node-image readiness and first-boot packet helper path with synthetic safe input. | Execution record; staging proof only, not production activation and not control-plane registration completion. | Read before claiming node-image readiness, preparing the control-plane node-registration closeout gate, or cloning a production-capable data-plane image. |

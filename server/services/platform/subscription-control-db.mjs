@@ -62,6 +62,11 @@ const WALLET_FIRST_RESOURCE_EFFECT_SUPPORTED_OFFERS = Object.freeze({
     portalPlan: "yearly"
   })
 });
+const WALLET_FIRST_RESOURCE_EFFECT_PUBLIC_PLAN_IDS = Object.freeze({
+  offerv_plan_30d_50gb_monthly_v1: "monthly_30d_50gb",
+  offerv_plan_30d_100gb_monthly_v1: "monthly_30d_100gb",
+  offerv_plan_365d_200gb_monthly_v1: "yearly_365d_200gb"
+});
 
 function platformError(code, message) {
   const error = new Error(message);
@@ -2502,6 +2507,56 @@ export function createSqliteSubscriptionControlStore({
       issuedLinkId: chain.issuedLinkId,
       validUntil: chain.validUntil
     });
+  }
+
+  // This is deliberately a narrower, separate read boundary than the
+  // checkout resolver above. It never returns entitlement, request, issued
+  // link, runtime, transition, access-grant, or subscription material.
+  function readWalletFirstCurrentResourceProjection(input) {
+    exactObject(input, {
+      allowed: ["accountId"],
+      name: "walletFirstCurrentResourceProjection"
+    });
+    const accountId = safeControlRef(input.accountId, "accountId");
+    // Classify the account model before entering the resource-chain recovery
+    // boundary. A legacy or malformed account must not be mislabeled as a
+    // wallet-first reconciliation state merely because it has no matching
+    // chain; callers will fail closed instead.
+    const account = walletFirstResourceEffectAccountRecord(accountId);
+    try {
+      const chain = walletFirstResourceEffectExactChain(account.id);
+      if (!chain) {
+        return Object.freeze({ state: "none" });
+      }
+      // The shape-only chain is not enough for a Portal claim. Re-read it
+      // through the durable prepared/runtime/effect receipt proof so a
+      // partial, stale, or divergent chain becomes reconciliation-required.
+      const verified = walletFirstResourceEffectCurrentPreparedTransition(account.id);
+      const verifiedChain = verified.chain;
+      const planId = WALLET_FIRST_RESOURCE_EFFECT_PUBLIC_PLAN_IDS[
+        verifiedChain.offerVersionRef
+      ];
+      if (!planId) {
+        throw platformError("validation_error", "wallet-first public plan is invalid");
+      }
+      return Object.freeze({
+        state: "available",
+        plan: Object.freeze({
+          id: planId,
+          durationDays: verifiedChain.durationDays,
+          monthlyTrafficGb: verifiedChain.monthlyTrafficGb
+        }),
+        validUntil: verifiedChain.validUntil,
+        // There is intentionally no setup/reveal endpoint in this source
+        // slice. The read projection must not advertise hidden delivery.
+        setupAvailable: false
+      });
+    } catch (error) {
+      if (error?.code === "validation_error" || error?.code === "not_found") {
+        return Object.freeze({ state: "reconciliation_required" });
+      }
+      throw error;
+    }
   }
 
   function getWalletFirstTransitionEffectForDeferredTransition(input) {
@@ -6014,6 +6069,7 @@ export function createSqliteSubscriptionControlStore({
     resolvePortalLoginAccount,
     getWalletFirstAccountForDeferredTransition,
     resolveExactWalletFirstResourceChainForDeferredTransition,
+    readWalletFirstCurrentResourceProjection,
     getWalletFirstTransitionEffectForDeferredTransition,
     prepareWalletFirstInitialActivationForDeferredTransition,
     prepareWalletFirstScheduledSwitchForDeferredTransition,

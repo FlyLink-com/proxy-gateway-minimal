@@ -1272,6 +1272,7 @@ test("createRuntimeState keeps wallet-first registration default-off without app
 
     assert.equal(state.platform.walletFirstRegistrationEnabled, false);
     assert.equal(state.platform.portalRegistrationWelcomeBonusCoordinator, null);
+    assert.equal(state.platform.walletFirstCurrentResourceProjection, null);
     assert.equal(deferredRuntimeGetterCalls, 0);
     assert.equal(deferredNodeGetterCalls, 0);
     await state.close();
@@ -1546,6 +1547,7 @@ test("createRuntimeState composes the concrete wallet-first deferred runtime wit
     assert.equal(typeof state.platform.deferredTransitionCoordinator.stop, "function");
     assert.equal(typeof state.platform.walletFirstResourceEffectHandler.resolveCurrentResourceChain, "function");
     assert.equal(typeof state.platform.walletFirstCommerceService.previewDeferredCheckout, "function");
+    assert.equal(typeof state.platform.walletFirstCurrentResourceProjection.getCurrentResource, "function");
 
     await state.platform.deferredTransitionCoordinator.start();
     await state.platform.deferredTransitionCoordinator.stop();

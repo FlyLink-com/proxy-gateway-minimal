@@ -41,6 +41,9 @@ import { validateDeferredResourceTransitionSchema } from "./services/platform/de
 import { validateWalletFirstDeferredCheckoutSchema } from "./services/platform/wallet-first-deferred-checkout-migrations.mjs";
 import { validateWalletFirstResourceEffectRuntimeClaimsSchema } from "./services/platform/wallet-first-resource-effect-runtime-claims-migrations.mjs";
 import { createWalletFirstDeferredTransitionRuntime } from "./services/platform/wallet-first-deferred-transition-runtime.mjs";
+import {
+  createWalletFirstCurrentResourceProjection
+} from "./services/platform/wallet-first-current-resource-projection.mjs";
 import { createPortalTotpSecretProtector, createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
 import { createPortalAccountAdminAuthService } from "./services/platform/admin-auth.mjs";
@@ -2144,6 +2147,7 @@ export function createRuntimeState(options = {}) {
   let deferredTransitionCoordinator = null;
   let walletFirstResourceEffectHandler = null;
   let walletFirstCommerceService = null;
+  let walletFirstCurrentResourceProjection = null;
   let paymentStore = null;
   let paymentRechargeCoordinator = null;
   let ownsPaymentStore = false;
@@ -2344,6 +2348,9 @@ export function createRuntimeState(options = {}) {
           deferredTransitionCoordinator = runtime.deferredTransitionCoordinator;
           walletFirstResourceEffectHandler = runtime.resourceEffectHandler;
           walletFirstCommerceService = runtime.walletFirstCommerceService;
+          walletFirstCurrentResourceProjection = createWalletFirstCurrentResourceProjection({
+            controlStore: platformControlStore
+          });
           ownsWalletFirstDeferredTransitionRuntime = true;
         } catch {
           throw walletFirstDeferredTransitionRuntimeError();
@@ -2603,6 +2610,7 @@ export function createRuntimeState(options = {}) {
       deferredTransitionCoordinator,
       walletFirstResourceEffectHandler,
       walletFirstCommerceService,
+      walletFirstCurrentResourceProjection,
       coinRechargeEnabled,
       paymentRechargeProvider,
       paymentStore,

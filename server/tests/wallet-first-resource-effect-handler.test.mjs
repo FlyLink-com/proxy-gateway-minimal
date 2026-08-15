@@ -339,6 +339,66 @@ test("handler requires the exact server-side wallet-first marker", (t) => {
   );
 });
 
+test("control-store current-resource reader emits only a verified safe Portal projection", async (t) => {
+  const fixture = createFixture();
+  t.after(() => fixture.close());
+
+  const applied = await fixture.handler.applyDeferredResourceTransition(initialInput());
+  const resource = fixture.controlStore.readWalletFirstCurrentResourceProjection({
+    accountId: "acct_handler"
+  });
+
+  assert.deepEqual(resource, {
+    state: "available",
+    plan: {
+      id: "monthly_30d_50gb",
+      durationDays: 30,
+      monthlyTrafficGb: 50
+    },
+    validUntil: applied.nextValidUntil,
+    setupAvailable: false
+  });
+  assert.doesNotMatch(
+    JSON.stringify(resource),
+    /account|entitlement|request|issued|link|tenant|artifact|node|transition|url|material/i
+  );
+});
+
+test("control-store current-resource reader returns none only for a verified wallet-first account with no chain", (t) => {
+  const fixture = createFixture();
+  t.after(() => fixture.close());
+
+  assert.deepEqual(
+    fixture.controlStore.readWalletFirstCurrentResourceProjection({
+      accountId: "acct_handler"
+    }),
+    { state: "none" }
+  );
+});
+
+test("control-store current-resource reader rejects a model mismatch and requires reconciliation for a missing receipt", async (t) => {
+  const legacyFixture = createFixture({ commercialModel: "legacy" });
+  const receiptFixture = createFixture();
+  t.after(() => legacyFixture.close());
+  t.after(() => receiptFixture.close());
+
+  assert.throws(
+    () => legacyFixture.controlStore.readWalletFirstCurrentResourceProjection({
+      accountId: "acct_handler"
+    }),
+    (error) => error?.code === "validation_error"
+  );
+
+  await receiptFixture.handler.applyDeferredResourceTransition(initialInput());
+  receiptFixture.controlDatabase.prepare("delete from platform_audit_events").run();
+  assert.deepEqual(
+    receiptFixture.controlStore.readWalletFirstCurrentResourceProjection({
+      accountId: "acct_handler"
+    }),
+    { state: "reconciliation_required" }
+  );
+});
+
 test("handler rejects a forged control/runtime pair even with matching public strings", () => {
   const fakeControl = Object.freeze({
     contract: WALLET_FIRST_RESOURCE_EFFECT_CONTROL_ADAPTER_CONTRACT,
