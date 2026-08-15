@@ -50,6 +50,7 @@ const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/session",
   "/api/portal/access-requests",
   "/api/portal/access-requests/current",
+  "/api/portal/resources/current",
   "/api/portal/access-requests/reveal",
   "/api/portal/access-requests/refresh",
   "/api/portal/access-requests/disable",

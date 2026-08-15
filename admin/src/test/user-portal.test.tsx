@@ -21,6 +21,7 @@ import {
   type PortalAuthenticatorEnrollment,
   type PortalApplySubscriptionInput,
   type PortalCompleteSecondFactorInput,
+  type PortalCurrentResource,
   type PortalEmailCodeChallenge,
   type PortalHumanVerificationChallenge,
   type PortalPaymentCheckoutInput,
@@ -2868,7 +2869,7 @@ describe("user portal product surface", () => {
       status,
       headers: { "Content-Type": "application/json" }
     });
-    const fetchFn = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
+    const fetchFn = vi.fn<typeof fetch>(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       requestUrls.push(url);
       if (url === "/api/portal/human-challenges") {
@@ -2906,6 +2907,26 @@ describe("user portal product surface", () => {
           }
         });
       }
+      if (url === "/api/portal/resources/current") {
+        expect(init).toMatchObject({
+          method: "GET",
+          headers: {
+            "X-Portal-Session": "portal_hydration_wallet_001"
+          }
+        });
+        return response({
+          resource: {
+            state: "available",
+            plan: {
+              id: "monthly_basic",
+              durationDays: 30,
+              monthlyTrafficGb: 50
+            },
+            validUntil: "2026-09-14T00:00:00.000Z",
+            setupAvailable: false
+          }
+        });
+      }
       return response({ error: "unexpected_url" }, 404);
     });
     const httpClient = createHttpUserPortalClient({ fetchFn });
@@ -2923,19 +2944,109 @@ describe("user portal product surface", () => {
     expect(await screen.findByRole("navigation", { name: "用户中心导航" })).toBeInTheDocument();
     expect(requestUrls).toContain("/api/portal/commerce/model");
     expect(requestUrls).toContain("/api/portal/security/current");
+    expect(requestUrls).toContain("/api/portal/resources/current");
     expect(requestUrls.some((url) => url.startsWith("/api/portal/access-requests/current"))).toBe(false);
     expect(requestUrls.some((url) => url.startsWith("/api/portal/payments/current"))).toBe(false);
-
-    fireEvent.click(screen.getByRole("button", { name: /^(开始配置|前往商城)$/ }));
-    await waitFor(() => {
-      expect(requestUrls.filter((url) => url === "/api/portal/commerce/model")).toHaveLength(2);
-    });
+    expect(await screen.findByRole("heading", { name: "服务资源已可用" })).toBeInTheDocument();
+    expect(screen.getByText("monthly_basic")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "开始配置" })).toBeNull();
+    expect(screen.queryByLabelText("订阅链接")).toBeNull();
     expect(requestUrls.some((url) => url.startsWith("/api/portal/access-requests"))).toBe(false);
 
     openPortalOrders();
 
-    expect(await screen.findByRole("heading", { name: "Coins 服务状态" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "服务资源已可用" })).toBeInTheDocument();
     expect(requestUrls.some((url) => url.startsWith("/api/portal/commerce/orders"))).toBe(false);
+  });
+
+  test.each([
+    {
+      resource: { state: "none" } as PortalCurrentResource,
+      heading: "尚未获得可用服务资源",
+      hasMarketplaceAction: true
+    },
+    {
+      resource: {
+        state: "available",
+        plan: {
+          id: "monthly_basic",
+          durationDays: 30,
+          monthlyTrafficGb: 50
+        },
+        validUntil: "2026-09-14T00:00:00.000Z",
+        setupAvailable: false
+      } as PortalCurrentResource,
+      heading: "服务资源已可用",
+      hasMarketplaceAction: false
+    },
+    {
+      resource: {
+        state: "available",
+        plan: {
+          id: "monthly_plus",
+          durationDays: 30,
+          monthlyTrafficGb: 100
+        },
+        validUntil: "2026-09-14T00:00:00.000Z",
+        setupAvailable: true
+      } as PortalCurrentResource,
+      heading: "服务资源已可用",
+      hasMarketplaceAction: false
+    },
+    {
+      resource: { state: "reconciliation_required" } as PortalCurrentResource,
+      heading: "服务资源正在核对",
+      hasMarketplaceAction: false
+    }
+  ])("wallet-first start status presents $resource.state without legacy setup or reveal", async ({
+    resource,
+    heading,
+    hasMarketplaceAction
+  }) => {
+    const getCommerceModel = vi.fn(async () => "wallet_first_unique_v1" as const);
+    const getCurrentResource = vi.fn(async () => resource);
+    const client = portalClient({
+      commerceModel: { getCommerceModel },
+      fetchSecurityState: vi.fn(async () => ({
+        authenticatorBound: false,
+        initialAccount: false,
+        passkeyEnabled: false,
+        passkeyExported: false,
+        setupRequired: false
+      })),
+      fetchCurrentResource: getCurrentResource
+    });
+    render(createElement(UserPortalPage, {
+      initialSession: portalWalletSession("portal_resource_ui_session_001", "resource-ui@example.test"),
+      portalClient: client
+    }));
+
+    expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(getCommerceModel).toHaveBeenCalledWith({ sessionRef: "portal_resource_ui_session_001" });
+    expect(getCurrentResource).toHaveBeenCalledWith({ sessionRef: "portal_resource_ui_session_001" });
+    expect(client.fetchCurrentState).not.toHaveBeenCalled();
+    expect(client.fetchPaymentOrders).not.toHaveBeenCalled();
+    expect(client.revealSubscription).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
+    expect(client.refreshSubscription).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("订阅链接")).toBeNull();
+    expect(screen.queryByRole("button", { name: "开始配置" })).toBeNull();
+    for (const viewName of ["概览", "用量", "订单"]) {
+      fireEvent.click(screen.getByRole("button", { name: viewName }));
+      expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
+      if (resource.state !== "none") {
+        expect(screen.queryByText("账户尚未开通服务")).toBeNull();
+        expect(screen.queryByRole("button", { name: "前往商城" })).toBeNull();
+      }
+    }
+    expect(client.fetchCurrentState).not.toHaveBeenCalled();
+    expect(client.fetchPaymentOrders).not.toHaveBeenCalled();
+    expect(client.revealSubscription).not.toHaveBeenCalled();
+    if (hasMarketplaceAction) {
+      expect(screen.getByRole("button", { name: "前往商城" })).toBeInTheDocument();
+    } else {
+      expect(screen.queryByRole("button", { name: "前往商城" })).toBeNull();
+    }
   });
 
   test("HTTP legacy login retains the legacy state hydration route", async () => {

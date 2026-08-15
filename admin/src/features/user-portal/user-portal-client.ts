@@ -401,6 +401,31 @@ export type PortalAccountEntitlement = {
   };
 };
 
+/**
+ * Safe, session-owned read projection for a wallet-first account resource.
+ * It deliberately carries no subscription URL, configuration material,
+ * resource reference, node identity, or other delivery internals.
+ */
+export type PortalCurrentResourcePlan = {
+  id: string;
+  durationDays: number;
+  monthlyTrafficGb: number;
+};
+
+export type PortalCurrentResource =
+  | {
+    state: "none";
+  }
+  | {
+    state: "reconciliation_required";
+  }
+  | {
+    state: "available";
+    plan: PortalCurrentResourcePlan;
+    validUntil: string;
+    setupAvailable: boolean;
+  };
+
 export type PortalUserState = {
   userRef: string;
   subscriptionRequest: PortalSubscriptionRequest | null;
@@ -498,6 +523,7 @@ export type UserPortalClient = {
   authenticate(input: PortalAuthInput): Promise<PortalAuthResult>;
   completeSecondFactor(input: PortalCompleteSecondFactorInput): Promise<PortalSession>;
   fetchCurrentState(input: { userRef: string; sessionRef?: string }): Promise<PortalUserState>;
+  fetchCurrentResource?(input: { sessionRef: string }): Promise<PortalCurrentResource>;
   fetchSecurityState?(input: { sessionRef: string }): Promise<PortalUserSecurityState>;
   fetchPaymentOrders(input: PortalPaymentOrdersInput): Promise<PortalPaymentOrder[]>;
   createPaymentCheckout(input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult>;
@@ -580,6 +606,65 @@ function requiredIsoTimestamp(value: unknown, message: string) {
     throw portalError(message);
   }
   return normalized;
+}
+
+function strictRecord(
+  value: unknown,
+  allowedKeys: readonly string[],
+  message: string
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw portalError(message);
+  }
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).some((key) => !allowedKeys.includes(key))) {
+    throw portalError(message);
+  }
+  return record;
+}
+
+function requiredPositiveInteger(value: unknown, message: string) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    throw portalError(message);
+  }
+  return value;
+}
+
+function parsePortalCurrentResource(value: unknown): PortalCurrentResource {
+  const envelope = strictRecord(value, ["resource"], "当前资源状态无效。");
+  const resource = strictRecord(
+    envelope.resource,
+    ["state", "plan", "validUntil", "setupAvailable"],
+    "当前资源状态无效。"
+  );
+  const state = resource.state;
+  if (state === "none" || state === "reconciliation_required") {
+    if (Object.keys(resource).length !== 1) {
+      throw portalError("当前资源状态无效。");
+    }
+    return { state };
+  }
+  if (state !== "available") {
+    throw portalError("当前资源状态无效。");
+  }
+  const plan = strictRecord(
+    resource.plan,
+    ["id", "durationDays", "monthlyTrafficGb"],
+    "当前资源状态无效。"
+  );
+  if (typeof resource.setupAvailable !== "boolean") {
+    throw portalError("当前资源状态无效。");
+  }
+  return {
+    state,
+    plan: {
+      id: requiredText(typeof plan.id === "string" ? plan.id : undefined, "当前资源状态无效。"),
+      durationDays: requiredPositiveInteger(plan.durationDays, "当前资源状态无效。"),
+      monthlyTrafficGb: requiredPositiveInteger(plan.monthlyTrafficGb, "当前资源状态无效。")
+    },
+    validUntil: requiredIsoTimestamp(resource.validUntil, "当前资源状态无效。"),
+    setupAvailable: resource.setupAvailable
+  };
 }
 
 function requiredEmail(value: string | undefined) {
@@ -1967,6 +2052,7 @@ export function createHttpUserPortalClient(
 ): UserPortalClient & {
   commerce: PortalCoinCommerceClient;
   commerceModel: PortalCommerceModelClient;
+  fetchCurrentResource: (input: { sessionRef: string }) => Promise<PortalCurrentResource>;
   walletFirstCommerce: PortalWalletFirstCommerceClient;
   wallet: PortalWalletClient;
   recharge: PortalRechargeClient;
@@ -2174,6 +2260,14 @@ export function createHttpUserPortalClient(
           noPublicAdmin: true
         }
       };
+    },
+
+    async fetchCurrentResource(input) {
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/resources/current"), {
+        method: "GET",
+        headers: portalSessionHeaders(input.sessionRef)
+      });
+      return parsePortalCurrentResource(body);
     },
 
     async fetchSecurityState(input) {
