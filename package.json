@@ -109,6 +109,7 @@
     "release:config:prepare": "node scripts/control-plane-release-config-gate.mjs --mode prepare",
     "release:config:verify": "node scripts/control-plane-release-config-gate.mjs --mode verify",
     "promotion:health-gate": "node scripts/control-plane-promotion-health-gate.mjs",
+    "promotion:transition-evidence": "node scripts/control-plane-transition-evidence.mjs",
     "agent:brief": "node scripts/agent-brief.mjs",
     "precommit:check": "node scripts/precommit-check.mjs",
     "env:check": "node bin/gccgw.mjs env check",

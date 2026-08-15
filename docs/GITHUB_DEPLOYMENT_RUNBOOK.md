@@ -386,6 +386,144 @@ bodies, command stderr, environment values, or raw service logs. A successful
 gate is acceptance evidence only; it does not itself declare or perform
 production promotion.
 
+### Immutable Transition Evidence Before an A5D Retry
+
+`npm run promotion:transition-evidence -- ...` is a local, built-in-only
+receipt utility for the next approved control-plane retry. It serializes only
+already-observed, aggregate evidence; it never invokes `systemctl`, starts or
+stops a service, changes a release pointer, reads or writes a database,
+assembles protected configuration, contacts a provider, or changes a feature
+flag.
+
+This receipt is neither a deployment mechanism nor a health program. The
+existing release-overlay gate still binds the protected assembly before a
+switch. For A5D specifically, do **not** reuse
+`npm run promotion:health-gate` as an acceptance gate: its public
+`/api/health` requirement belongs to the earlier contract and is not an A5D
+health boundary. An A5D retry requires a separately approved, local-root-only
+health program. It must be named in that exact Risk A gate, run after the
+approved candidate start, and remain outside this receipt utility; absent that
+separate program, the retry stops before a pointer/service mutation. A valid
+evidence chain only preserves the allowed aggregate observations and decision
+outcome from that separately approved program.
+
+Before a future A5D retry, create an empty owner-only evidence directory. Feed
+each already-redacted JSON record through stdin to the `write` mode, then run
+`verify` only after a terminal record:
+
+```bash
+# The input is an operator-produced, already-redacted JSON record. The utility
+# rejects paths, URLs, raw PIDs, logs, configuration/database values, secrets,
+# unrecognized fields, and non-canonical records.
+npm run promotion:transition-evidence -- \
+  --mode write \
+  --directory "$TRANSITION_EVIDENCE_DIR" \
+  < "$REDACTED_RECORD_FILE"
+
+npm run promotion:transition-evidence -- \
+  --mode verify \
+  --directory "$TRANSITION_EVIDENCE_DIR"
+```
+
+Each record has a fixed allowlist: an opaque source-commit digest, candidate
+and rollback release labels, artifact/assembly/snapshot SHA-256 bindings, a
+safe transition identifier, and aggregate runtime evidence only. The aggregate
+runtime evidence is limited to active/substate/result enums, the
+main-PID-to-exec-PID relation enum (never a PID), a path-free `cwdBinding`
+enum,
+restart baseline/observed/delta, local-root HTTP counts/consecutive-success
+count/statuses/timeouts and elapsed time, plus pointer/rollback booleans. It
+contains no host path, URL,
+process identifier, response body, service output, protected configuration, or
+database value.
+
+`cwdBinding` is deliberately only one of `candidate`, `rollback`, `mismatch`,
+or `unknown`; it never includes a CWD or release path. `mismatch` means the
+approved collector observed a CWD that does not bind to the expected release,
+including a third-party release. It cannot stand in for `rollback`. `unknown`
+means that collector cannot prove the binding.
+
+Release/snapshot labels and the transition identifier use a restricted opaque
+label grammar. In addition to rejecting paths and URLs, the utility rejects
+recognizable secret or access-token markers; raw configuration/database values
+cannot fit the record schema.
+
+Records are canonical JSON with mode `0600`, published through an exclusive
+temporary file, file fsync, atomic no-replace link, and parent-directory fsync.
+The dedicated directory must be owner-only. The record filename is derived
+from its sequence and stage; the record itself chains a stable
+`transitionId`, contiguous `sequence`, and the previous record's SHA-256.
+Changing an earlier record, changing the immutable release bindings, skipping
+a sequence, adding an extra record, or taking an invalid stage transition makes
+verification fail closed. The chain is continuity evidence inside the
+owner-only record set; it is not a signature, approval, deployment credential,
+or a substitute for the separately retained artifact and snapshot evidence.
+
+On POSIX, the utility also refuses an evidence directory that is itself
+group/world accessible, a symlink, or owned by another account. Each ancestor
+must be a real directory owned by the operator or root and must not be
+group/world writable, except for a sticky directory such as the standard
+root-owned `/tmp`. This keeps a normal owner-only evidence subdirectory below
+`/tmp` usable while rejecting a non-sticky shared parent.
+
+The only legal lifecycle is:
+
+```text
+pre_switch
+  -> candidate_started
+  -> candidate_health_terminal
+  -> validated_terminal | rollback_terminal
+```
+
+Record `pre_switch` only after the separate snapshot and protected-assembly
+gates have passed, immediately adjacent to the approved stop/switch. It must
+show the rollback release as active/running/success with a matching
+main-to-exec PID relation, `cwdBinding: rollback`, and a three-or-more,
+all-200, no-timeout local-root success window at that same observation point.
+Its `restartObserved` must equal `restartBaseline` and its delta must be zero.
+After recording `pre_switch`, perform no unapproved action before the approved
+stop/switch; if that boundary is broken, discard the record and collect a new
+pre-switch window. That first baseline is immutable across the whole chain:
+every later record must carry the same `restartBaseline`, so a later record
+cannot reset it to hide a candidate restart. Record `candidate_started` after
+the approved pointer/service action; it may retain only `candidate`,
+`mismatch`, or `unknown` while a startup failure is being observed. Record
+`candidate_health_terminal` from the separately approved A5D local-root health
+program, retaining only its allowed aggregate local-root facts. A `healthy`
+candidate-health record and every `validated_terminal` record require
+`cwdBinding: candidate` and `restartDelta: 0` against that fixed pre-switch
+baseline. A failed candidate-health record may retain `mismatch` only with
+`cwd_binding_failed`, or `unknown` only with `observation_unavailable`; neither
+exception can validate the candidate.
+
+Candidate-health terminal conditions are derived, not chosen freely. The
+utility uses this fixed priority: `observation_unavailable`,
+`runtime_inactive`, `runtime_substate_unexpected`,
+`service_result_unexpected`, `main_exec_pid_relation_unexpected`,
+`cwd_binding_failed`, `restart_count_changed`,
+`local_root_probe_timeout`, `local_root_probe_failed`, then `healthy`.
+`observation_unavailable` is permitted only when an essential service/CWD/PID
+relation is explicitly `unknown` or the PID relation is `missing`, or when the
+local-root program produced zero attempts. It cannot relabel a known failed
+observation or an all-healthy observation. A `healthy` or `validated` record
+requires at least three local-root attempts with all attempts counted as exact
+200 successes, the same full-length consecutive-success count, first/final
+status 200, and no timeout; an early or middle failure cannot be represented as
+a healthy window. Write `validated_terminal` only after that local-root program
+accepts the candidate.
+
+Otherwise write `rollback_terminal` only after the independently approved
+pointer rollback and post-service readback. A rollback terminal must show the
+restored service as active/running/success with a matching main-to-exec PID
+relation, `cwdBinding: rollback`, and the same three-or-more all-200,
+no-timeout local-root success window. A `candidate`, `mismatch`, or `unknown`
+CWD binding cannot claim rollback recovery. Its restart baseline/observed/delta
+is a post-rollback observation relative to that same immutable pre-switch
+baseline: zero or a positive delta is accepted, but it is not a claim that no
+restart occurred; negative delta is rejected. The evidence utility performs
+none of those actions and does not authorize a retry, rollback, schema action,
+or feature activation.
+
 ## Secret Boundary
 
 GitHub may store only minimal deployment credentials:
