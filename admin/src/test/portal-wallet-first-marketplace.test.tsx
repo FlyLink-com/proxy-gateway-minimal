@@ -12,7 +12,8 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor
+  waitFor,
+  within
 } from "@testing-library/react";
 
 import type {
@@ -22,6 +23,7 @@ import type {
   PortalDeferredTransition,
   PortalWalletFirstCommerceClient
 } from "../features/user-portal/commerce";
+import { PortalCoinCommerceClientError } from "../features/user-portal/commerce";
 import { MarketplacePanel } from "../features/user-portal/portal-commerce-panels";
 
 const OFFER: PortalCoinOffer = {
@@ -76,6 +78,27 @@ const QUOTE: PortalDeferredCheckoutQuote = {
   }
 };
 
+const INSUFFICIENT_QUOTE: PortalDeferredCheckoutQuote = {
+  ...QUOTE,
+  purchaseAvailability: "insufficient_balance",
+  shortfallUnits: 5,
+  allocation: [],
+  balances: {
+    before: {
+      bonusCoins: 195,
+      paidCoins: 0,
+      rewardCoins: 0,
+      heldCoins: 0
+    },
+    after: {
+      bonusCoins: 195,
+      paidCoins: 0,
+      rewardCoins: 0,
+      heldCoins: 0
+    }
+  }
+};
+
 const QUEUED_TRANSITION: PortalDeferredTransition = {
   transitionRef: "transition_existing_1",
   offer: OFFER,
@@ -95,6 +118,14 @@ const RESERVED_TRANSITION: PortalDeferredTransition = {
   transitionRef: "transition_new_1",
   flowKind: "initial_activation",
   scheduledFor: "2026-08-13T00:00:00.000Z"
+};
+
+const SETTLED_TRANSITION: PortalDeferredTransition = {
+  ...QUEUED_TRANSITION,
+  transitionRef: "transition_settled_1",
+  state: "settled",
+  settledAt: "2026-08-13T00:10:00.000Z",
+  updatedAt: "2026-08-13T00:10:00.000Z"
 };
 
 function legacyClient(): PortalCoinCommerceClient {
@@ -127,6 +158,8 @@ function walletFirstClient(): PortalWalletFirstCommerceClient {
 function renderMarketplace(input: {
   legacy: PortalCoinCommerceClient;
   model: "legacy" | "wallet_first_unique_v1";
+  onOpenWallet?: () => void;
+  onWalletMutation?: () => void;
   walletFirst: PortalWalletFirstCommerceClient;
 }) {
   return render(createElement(MarketplacePanel, {
@@ -135,6 +168,8 @@ function renderMarketplace(input: {
       getCommerceModel: vi.fn().mockResolvedValue(input.model)
     },
     locale: "zh",
+    onOpenWallet: input.onOpenWallet,
+    onWalletMutation: input.onWalletMutation,
     sessionRef: "portal_session_wallet_first",
     sessionGeneration: 1,
     theme: "dark",
@@ -177,7 +212,8 @@ describe("Portal wallet-first Marketplace model gate", () => {
     });
     expect(legacy.listOffers).not.toHaveBeenCalled();
     expect(legacy.createOrder).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "待处理的服务切换" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "服务切换" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "正在进行的切换" })).toBeInTheDocument();
     expect(screen.getByText("到期后切换")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", {
@@ -217,6 +253,110 @@ describe("Portal wallet-first Marketplace model gate", () => {
     });
     expect(walletFirst.listOffers).not.toHaveBeenCalled();
     expect(walletFirst.listDeferredTransitions).not.toHaveBeenCalled();
-    expect(screen.queryByRole("heading", { name: "待处理的服务切换" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "服务切换" })).not.toBeInTheDocument();
+  });
+
+  test("groups active and recent transitions and refreshes only the deferred transition read", async () => {
+    const legacy = legacyClient();
+    const walletFirst = walletFirstClient();
+    const onWalletMutation = vi.fn();
+    vi.mocked(walletFirst.listDeferredTransitions)
+      .mockResolvedValueOnce([QUEUED_TRANSITION, SETTLED_TRANSITION])
+      .mockResolvedValueOnce([{
+        ...QUEUED_TRANSITION,
+        state: "processing",
+        updatedAt: "2026-08-13T00:02:00.000Z"
+      }]);
+    renderMarketplace({
+      legacy,
+      model: "wallet_first_unique_v1",
+      onWalletMutation,
+      walletFirst
+    });
+
+    const activeHeading = await screen.findByRole("heading", { name: "正在进行的切换" });
+    const recentHeading = screen.getByRole("heading", { name: "近期切换" });
+    const activeSection = activeHeading.closest("section");
+    const recentSection = recentHeading.closest("section");
+    expect(activeSection).toHaveTextContent("已预留，等待执行");
+    expect(recentSection).toHaveTextContent("已完成");
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新切换" }));
+
+    await waitFor(() => {
+      expect(walletFirst.listDeferredTransitions).toHaveBeenCalledTimes(2);
+      expect(activeSection).toHaveTextContent("正在执行");
+    });
+    expect(walletFirst.listOffers).toHaveBeenCalledTimes(1);
+    expect(walletFirst.reserveDeferredTransition).not.toHaveBeenCalled();
+    expect(legacy.createOrder).not.toHaveBeenCalled();
+    expect(onWalletMutation).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps transitions visible when a manual refresh fails and retries only that read", async () => {
+    const legacy = legacyClient();
+    const walletFirst = walletFirstClient();
+    const onWalletMutation = vi.fn();
+    vi.mocked(walletFirst.listDeferredTransitions)
+      .mockResolvedValueOnce([QUEUED_TRANSITION])
+      .mockRejectedValueOnce(new PortalCoinCommerceClientError(
+        "commerce_request_failed",
+        true
+      ))
+      .mockResolvedValueOnce([{
+        ...QUEUED_TRANSITION,
+        state: "processing",
+        updatedAt: "2026-08-13T00:02:00.000Z"
+      }]);
+    renderMarketplace({
+      legacy,
+      model: "wallet_first_unique_v1",
+      onWalletMutation,
+      walletFirst
+    });
+
+    const activeHeading = await screen.findByRole("heading", { name: "正在进行的切换" });
+    const activeSection = activeHeading.closest("section");
+    fireEvent.click(screen.getByRole("button", { name: "刷新切换" }));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(activeSection).toHaveTextContent("已预留，等待执行");
+    expect(onWalletMutation).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => {
+      expect(walletFirst.listDeferredTransitions).toHaveBeenCalledTimes(3);
+      expect(activeSection).toHaveTextContent("正在执行");
+    });
+    expect(walletFirst.listOffers).toHaveBeenCalledTimes(1);
+    expect(walletFirst.reserveDeferredTransition).not.toHaveBeenCalled();
+    expect(legacy.createOrder).not.toHaveBeenCalled();
+    expect(onWalletMutation).toHaveBeenCalledTimes(1);
+  });
+
+  test("routes an insufficient wallet-first Quote to the existing Wallet without creating a payment or order", async () => {
+    const legacy = legacyClient();
+    const walletFirst = walletFirstClient();
+    const onOpenWallet = vi.fn();
+    vi.mocked(walletFirst.previewDeferredCheckout).mockResolvedValue(INSUFFICIENT_QUOTE);
+    renderMarketplace({
+      legacy,
+      model: "wallet_first_unique_v1",
+      onOpenWallet,
+      walletFirst
+    });
+
+    await screen.findByRole("button", { name: "使用 Coins 预约：年度套餐" });
+    fireEvent.click(screen.getByRole("button", { name: "使用 Coins 预约：年度套餐" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "确认 Coins 服务切换" });
+    expect(dialog).toHaveTextContent("仍缺少 5 Coins");
+    expect(within(dialog).getByRole("button", { name: "确认预留 Coins" })).toBeDisabled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "前往钱包" }));
+
+    expect(onOpenWallet).toHaveBeenCalledTimes(1);
+    expect(walletFirst.reserveDeferredTransition).not.toHaveBeenCalled();
+    expect(legacy.createOrder).not.toHaveBeenCalled();
   });
 });

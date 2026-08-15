@@ -462,7 +462,20 @@ export function PortalWalletPanel({
               className="portal-commerce-layout__section"
               aria-labelledby="portal-wallet-balance-heading"
             >
-              <h3 id="portal-wallet-balance-heading">{zh ? "余额" : "Balance"}</h3>
+              <div className="portal-wallet-section-heading">
+                <h3 id="portal-wallet-balance-heading">{zh ? "余额" : "Balance"}</h3>
+                <button
+                  aria-busy={model.summary.phase === "loading" || undefined}
+                  className="portal-wallet-view-all"
+                  disabled={model.summary.phase === "loading"}
+                  type="button"
+                  onClick={model.refreshWallet}
+                >
+                  {model.summary.phase === "loading"
+                    ? zh ? "正在刷新…" : "Refreshing…"
+                    : zh ? "刷新钱包" : "Refresh Wallet"}
+                </button>
+              </div>
               <SummaryState locale={locale} model={model} />
             </section>
             <section

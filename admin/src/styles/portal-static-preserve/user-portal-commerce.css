@@ -934,12 +934,32 @@
   min-width: 0;
 }
 
-.portal-v2-shell .portal-marketplace-group > h2 {
+.portal-v2-shell .portal-marketplace-group > h2,
+.portal-v2-shell .portal-marketplace-group__header > h2 {
   margin: 0;
   color: var(--portal-commerce-text);
   font-family: var(--portal-font-display);
   font-size: 20px;
   line-height: 1.25;
+}
+
+.portal-v2-shell .portal-marketplace-group__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.portal-v2-shell .portal-wallet-first-transition-queue > section {
+  display: grid;
+  gap: 10px;
+}
+
+.portal-v2-shell .portal-wallet-first-transition-queue > section > h3 {
+  margin: 0;
+  color: var(--portal-commerce-muted);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .portal-v2-shell .portal-marketplace-grid {
@@ -970,11 +990,13 @@
 }
 
 .portal-v2-shell .portal-marketplace-card h3,
+.portal-v2-shell .portal-marketplace-card h4,
 .portal-v2-shell .portal-marketplace-card p {
   margin: 0;
 }
 
-.portal-v2-shell .portal-marketplace-card h3 {
+.portal-v2-shell .portal-marketplace-card h3,
+.portal-v2-shell .portal-marketplace-card h4 {
   color: var(--portal-commerce-text);
   font-size: 17px;
   line-height: 1.35;

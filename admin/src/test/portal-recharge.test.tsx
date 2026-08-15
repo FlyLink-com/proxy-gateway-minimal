@@ -505,11 +505,13 @@ function rechargeDialogModel(order: PortalRechargeOrder): PortalRechargeModel {
     available: true,
     dialogOpen: true,
     offers: [OFFER],
+    offersState: { status: "ready" },
     activeOrder: order,
     busy: false,
     error: null,
     openDialog: vi.fn(),
     closeDialog: vi.fn(),
+    retryOffers: vi.fn(),
     createOrder: vi.fn(async () => undefined),
     continueOrderPayment: vi.fn(() => "not_applicable" as const),
   };
@@ -575,6 +577,103 @@ describe("Portal recharge interaction", () => {
       name: "Create order and pay for 10 Coins, CNY 10.00, option 1",
     }));
     expect(model.createOrder).toHaveBeenCalledWith("coins_10");
+  });
+
+  test.each([
+    {
+      state: { status: "loading" } as const,
+      message: "Loading recharge options…",
+      role: "status" as const,
+      retry: false,
+    },
+    {
+      state: { status: "empty" } as const,
+      message: "No recharge options are currently available.",
+      role: "status" as const,
+      retry: false,
+    },
+    {
+      state: { status: "unavailable", retryable: true } as const,
+      message: "Coins recharge is unavailable.",
+      role: "status" as const,
+      retry: true,
+    },
+    {
+      state: { status: "error", retryable: true } as const,
+      message: "Recharge options could not be loaded.",
+      role: "alert" as const,
+      retry: true,
+    },
+    {
+      state: { status: "unavailable", retryable: false } as const,
+      message: "Coins recharge is unavailable.",
+      role: "status" as const,
+      retry: false,
+    },
+  ])("renders the recharge offer $state.status state without a payment action", ({
+    state,
+    message,
+    role,
+    retry,
+  }) => {
+    const retryOffers = vi.fn();
+    const model: PortalRechargeModel = {
+      ...rechargeOfferDialogModel(OFFER),
+      offers: [],
+      offersState: state,
+      retryOffers,
+    };
+    render(createElement(PortalRechargeDialog, { locale: "en", model }));
+
+    const dialog = screen.getByRole("dialog", { name: "Recharge Coins" });
+    expect(within(dialog).getByRole(role)).toHaveTextContent(message);
+    expect(within(dialog).queryByRole("button", {
+      name: /Create order and pay/,
+    })).toBeNull();
+    const retryButton = within(dialog).queryByRole("button", { name: "Retry" });
+    if (retry) {
+      expect(retryButton).toBeInTheDocument();
+      fireEvent.click(retryButton as HTMLButtonElement);
+      expect(retryOffers).toHaveBeenCalledTimes(1);
+    } else {
+      expect(retryButton).toBeNull();
+    }
+  });
+
+  test("retries a failed recharge offer read in place without creating an order", async () => {
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn()
+        .mockRejectedValueOnce(new PortalRechargeClientError(
+          "payment_recharge_request_failed",
+          true,
+        ))
+        .mockResolvedValueOnce([OFFER]),
+      listOrders: vi.fn().mockResolvedValue([]),
+      createOrder: vi.fn(),
+      getOrder: vi.fn(),
+      captureOrder: vi.fn(),
+    };
+    render(createElement(RechargeHarness, {
+      client,
+      paymentRedirect: vi.fn(),
+      refreshWallet: vi.fn(),
+    }));
+
+    const open = await screen.findByRole("button", { name: "Recharge Coins" });
+    await waitFor(() => expect(client.listOffers).toHaveBeenCalledTimes(1));
+    fireEvent.click(open);
+    const dialog = await screen.findByRole("dialog", { name: "Recharge Coins" });
+    await within(dialog).findByRole("alert");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      expect(client.listOffers).toHaveBeenCalledTimes(2);
+      expect(within(dialog).getByRole("list", {
+        name: "Coins recharge denominations",
+      })).toBeInTheDocument();
+    });
+    expect(client.createOrder).not.toHaveBeenCalled();
   });
 
   test("presents server pricing and payment entry without provider-specific copy", () => {
@@ -1004,6 +1103,42 @@ describe("Portal recharge interaction", () => {
     expect(client.captureOrder).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("Payment confirmation pending")).toBeInTheDocument();
     expect(refreshWallet).not.toHaveBeenCalled();
+  });
+
+  test("keeps a non-retryable staged PayPal capture failure in the payment error channel", async () => {
+    window.sessionStorage.setItem(
+      "gccwebos-portal-recharge-return-v1",
+      JSON.stringify({
+        version: 1,
+        orderRef: "payment_order_1",
+        captureIdempotencyKey: "portal_capture_nonretryable_1",
+      }),
+    );
+    const client: PortalRechargeClient = {
+      listOffers: vi.fn(async () => [OFFER]),
+      listOrders: vi.fn(async () => [rechargeOrder("entry_ready")]),
+      createOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+      getOrder: vi.fn(async () => rechargeOrder("entry_ready")),
+      captureOrder: vi.fn(async () => {
+        throw new PortalRechargeClientError(
+          "payment_recharge_request_invalid",
+          false,
+        );
+      }),
+    };
+
+    render(createElement(RechargeHarness, {
+      client,
+      paymentRedirect: vi.fn(),
+      refreshWallet: vi.fn(),
+    }));
+
+    await screen.findByRole("dialog", { name: "Recharge Coins" });
+    await waitFor(() => expect(client.captureOrder).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Recharge request failed. Retry safely.",
+    );
+    expect(screen.queryByText("Recharge options could not be loaded.")).toBeNull();
   });
 
   test("fails closed when the return intent cannot be staged before provider handoff", async () => {
