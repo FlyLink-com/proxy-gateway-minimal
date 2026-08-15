@@ -13,7 +13,6 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 
 import {
-  LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
   PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS,
   REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
 } from "../services/platform/portal-registration-welcome-bonus-migrations.mjs";
@@ -238,7 +237,7 @@ test("validate, dry-run, apply, and replay keep the source database and output c
   });
 });
 
-test("v1-only welcome ledger dry-runs and applies only the contract successor", () => {
+test("v1-only welcome ledger dry-runs and applies both contract successors", () => {
   withTempDirectory((directory) => {
     const dbPath = join(directory, "legacy.sqlite");
     createWalletFoundation(dbPath);
@@ -249,7 +248,7 @@ test("v1-only welcome ledger dry-runs and applies only the contract successor", 
     assert.equal(pending.status, 3);
     assert.deepEqual(
       parseOutput(pending, [dbPath]).pendingMigrationIds,
-      [MIGRATION_ID]
+      MIGRATION_IDS.slice(1)
     );
 
     const dryRun = runCli([
@@ -257,20 +256,31 @@ test("v1-only welcome ledger dry-runs and applies only the contract successor", 
     ]);
     assert.equal(dryRun.status, 0);
     const dryRunOutput = parseOutput(dryRun, [dbPath, directory]);
-    assert.deepEqual(dryRunOutput.appliedMigrationIds, [MIGRATION_ID]);
-    assert.deepEqual(dryRunOutput.pendingMigrationIds, [MIGRATION_ID]);
+    assert.deepEqual(dryRunOutput.appliedMigrationIds, MIGRATION_IDS.slice(1));
+    assert.deepEqual(dryRunOutput.pendingMigrationIds, MIGRATION_IDS.slice(1));
     assert.equal(fileSha256(dbPath), sourceHash);
 
     const applied = runCli(exactApplyArguments(dbPath));
     assert.equal(applied.status, 0);
-    assert.deepEqual(parseOutput(applied, [dbPath]).appliedMigrationIds, [MIGRATION_ID]);
+    assert.deepEqual(
+      parseOutput(applied, [dbPath]).appliedMigrationIds,
+      MIGRATION_IDS.slice(1)
+    );
 
     const legacy = new Database(dbPath, { readonly: true, fileMustExist: true });
     try {
-      const row = legacy.prepare(`
-        select ddl_checksum from platform_schema_migrations where migration_id = ?
-      `).get(LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID);
-      assert.equal(row.ddl_checksum, PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS[0].ddlChecksum);
+      const rows = legacy.prepare(`
+        select migration_id, ddl_checksum
+          from platform_schema_migrations
+         where migration_id in (?, ?)
+         order by migration_id asc
+      `).all(...MIGRATION_IDS.slice(0, 2));
+      assert.deepEqual(rows, PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS
+        .slice(0, 2)
+        .map(({ id, ddlChecksum }) => ({
+          migration_id: id,
+          ddl_checksum: ddlChecksum
+        })));
     } finally {
       legacy.close();
     }

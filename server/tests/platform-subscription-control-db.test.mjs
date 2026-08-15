@@ -38,7 +38,6 @@ function withWelcomeCoinGrantStore(fn) {
       create table platform_portal_registration_welcome_coin_grants (
         grant_ref text primary key,
         account_id text not null unique references platform_accounts(id) on delete cascade,
-        commercial_model text not null check (commercial_model = 'wallet_first_unique_v1'),
         coin_type text not null check (coin_type = 'bonus_coins'),
         amount_units integer not null check (typeof(amount_units) = 'integer' and amount_units = 10),
         source_type text not null,
@@ -124,7 +123,6 @@ function welcomeCoinGrant(overrides = {}) {
   return {
     grantRef: "welcome_grant_acct_welcome_1",
     accountId: "acct_welcome_1",
-    commercialModel: "wallet_first_unique_v1",
     coinType: "bonus_coins",
     amountUnits: 10,
     expiresAt: "2026-08-20T00:00:00.000Z",
@@ -1661,6 +1659,13 @@ test("subscription control store makes a registration welcome grant durable, ide
     assert.throws(
       () => store.enqueuePortalRegistrationWelcomeCoinGrant({
         ...input,
+        commercialModel: "wallet_first_unique_v1"
+      }),
+      (error) => error.code === "validation_error"
+    );
+    assert.throws(
+      () => store.enqueuePortalRegistrationWelcomeCoinGrant({
+        ...input,
         grantRef: "welcome_grant_idempotency_drift",
         accountId: "acct_idempotency_drift",
         sourceRef: "portal_registration_acct_idempotency_drift"
@@ -1675,7 +1680,6 @@ test("subscription control store makes a registration welcome grant durable, ide
     assert.deepEqual(Object.keys(claimed), [
       "grantRef",
       "accountId",
-      "commercialModel",
       "coinType",
       "amountUnits",
       "sourceType",

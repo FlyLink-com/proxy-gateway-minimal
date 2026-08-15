@@ -33,33 +33,12 @@ import {
   REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
 } from "../services/platform/portal-registration-welcome-bonus-migrations.mjs";
 import {
-  applyDeferredResourceTransitionMigrations,
-  REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
-  REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID
-} from "../services/platform/deferred-resource-transition-migrations.mjs";
-import {
-  applyWalletFirstDeferredCheckoutMigrations,
-  WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATIONS,
-  REQUIRED_WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATION_ID
-} from "../services/platform/wallet-first-deferred-checkout-migrations.mjs";
-import {
-  applyWalletFirstResourceEffectRuntimeClaimsMigrations,
-  WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATIONS,
-  REQUIRED_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATION_ID
-} from "../services/platform/wallet-first-resource-effect-runtime-claims-migrations.mjs";
-import {
-  applyWalletFirstSetupDeliveryHandoffsMigrations,
-  WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATIONS,
-  REQUIRED_WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATION_ID
-} from "../services/platform/wallet-first-setup-delivery-handoffs-migrations.mjs";
-import {
   COIN_COMMERCE_PRODUCTION_OFFERS
 } from "../services/platform/coin-commerce-production-catalog.mjs";
 import { createSqliteCoinCommerceStore } from "../services/platform/coin-commerce-store.mjs";
 import { applyPaymentStoreMigrations } from "../services/platform/payment-store-migrations.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 import { createPortalTotpSecretProtector } from "../services/platform/portal-totp-verifier.mjs";
-import { createWalletFirstSetupDeliveryEscrow } from "../services/platform/wallet-first-setup-delivery-escrow.mjs";
 
 function fakeSubscriptionStore(overrides = {}) {
   return {
@@ -108,8 +87,6 @@ const VULTR_MULTICHANNEL_ENV = {
 };
 const PORTAL_TOTP_PROTECTOR_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 const PORTAL_TOTP_PROTECTOR_IV = Buffer.from("000102030405060708090a0b", "hex");
-const WALLET_FIRST_SETUP_DELIVERY_ESCROW_KEY =
-  "11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff";
 
 const EDGE_LIFECYCLE_TEST_NOW = "2026-06-10T00:00:00.000Z";
 
@@ -185,6 +162,12 @@ function accountHash(accountId) {
   return createHash("sha256").update(accountId).digest("hex");
 }
 
+function registrationEmailHash(email) {
+  return createHash("sha256")
+    .update(String(email).trim().toLowerCase())
+    .digest("hex");
+}
+
 function prepareMigratedCoinWalletControlDatabase(directory) {
   const controlDbPath = join(directory, "control.sqlite");
   const seed = createRuntimeState({
@@ -216,7 +199,7 @@ function prepareMigratedCoinCommerceControlDatabase(directory) {
   return controlDbPath;
 }
 
-function prepareWalletFirstControlDatabaseBeforeRuntimeClaims(directory) {
+function prepareMigratedRegistrationWelcomeCoinsControlDatabase(directory) {
   const controlDbPath = prepareMigratedCoinCommerceControlDatabase(directory);
   applyPortalRegistrationWelcomeBonusMigrations({
     dbPath: controlDbPath,
@@ -224,45 +207,7 @@ function prepareWalletFirstControlDatabaseBeforeRuntimeClaims(directory) {
       REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
     expectedDdlChecksum:
       PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.at(-1).ddlChecksum,
-    nowFn: () => new Date("2026-08-13T00:00:00.000Z")
-  });
-  applyDeferredResourceTransitionMigrations({
-    dbPath: controlDbPath,
-    expectedMigrationId: REQUIRED_DEFERRED_RESOURCE_TRANSITION_MIGRATION_ID,
-    expectedDdlChecksum: REQUIRED_DEFERRED_RESOURCE_TRANSITION_DDL_CHECKSUM,
-    nowFn: () => new Date("2026-08-13T00:00:00.000Z")
-  });
-  applyWalletFirstDeferredCheckoutMigrations({
-    dbPath: controlDbPath,
-    expectedMigrationId: REQUIRED_WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATION_ID,
-    expectedDdlChecksum: WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATIONS[0].ddlChecksum,
-    nowFn: () => new Date("2026-08-13T00:00:00.000Z")
-  });
-  return controlDbPath;
-}
-
-function prepareMigratedWalletFirstControlDatabase(directory) {
-  const controlDbPath = prepareWalletFirstControlDatabaseBeforeRuntimeClaims(directory);
-  applyWalletFirstResourceEffectRuntimeClaimsMigrations({
-    dbPath: controlDbPath,
-    expectedMigrationId:
-      REQUIRED_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATION_ID,
-    expectedDdlChecksum:
-      WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATIONS[0].ddlChecksum,
-    nowFn: () => new Date("2026-08-13T00:00:00.000Z")
-  });
-  return controlDbPath;
-}
-
-function prepareMigratedWalletFirstSetupDeliveryControlDatabase(directory) {
-  const controlDbPath = prepareMigratedWalletFirstControlDatabase(directory);
-  applyWalletFirstSetupDeliveryHandoffsMigrations({
-    dbPath: controlDbPath,
-    expectedMigrationId:
-      REQUIRED_WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATION_ID,
-    expectedDdlChecksum:
-      WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATIONS[0].ddlChecksum,
-    nowFn: () => new Date("2026-08-14T00:00:00.000Z")
+    nowFn: () => new Date("2026-08-15T00:00:00.000Z")
   });
   return controlDbPath;
 }
@@ -1253,22 +1198,14 @@ for (const [label, configuredValue] of [
   });
 }
 
-test("createRuntimeState keeps wallet-first registration default-off without applying its schema", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-default-off-"));
+test("createRuntimeState keeps registration welcome Coins default-off without applying its schema", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-registration-welcome-coins-default-off-"));
   const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
   const env = runtimeEnv({
     CONSOLE_TOKEN: "secret",
     USER_PORTAL_ROUTES_ENABLED: "true",
     COINS_WALLET_ENABLED: "true",
     COINS_COMMERCE_ENABLED: "true"
-  });
-  let deferredRuntimeGetterCalls = 0;
-  Object.defineProperty(env, "COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED", {
-    enumerable: true,
-    get() {
-      deferredRuntimeGetterCalls += 1;
-      throw new Error("default-off deferred transition runtime flag must stay untouched");
-    }
   });
   let deferredNodeGetterCalls = 0;
   Object.defineProperty(env, "COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID", {
@@ -1292,6 +1229,18 @@ test("createRuntimeState keeps wallet-first registration default-off without app
       }
     });
   }
+  let registrationCanaryGetterCalls = 0;
+  Object.defineProperty(
+    env,
+    "USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES",
+    {
+      enumerable: true,
+      get() {
+        registrationCanaryGetterCalls += 1;
+        throw new Error("default-off registration welcome Coins canary must stay untouched");
+      }
+    }
+  );
   let state;
 
   try {
@@ -1305,13 +1254,16 @@ test("createRuntimeState keeps wallet-first registration default-off without app
     };
     state = createRuntimeState(stateOptions);
 
+    assert.equal(state.platform.registrationWelcomeCoinsEnabled, false);
+    assert.equal(state.platform.registrationWelcomeCoinsWorkerEnabled, false);
     assert.equal(state.platform.walletFirstRegistrationEnabled, false);
+    assert.equal(state.platform.walletFirstDeferredRuntimeEnabled, false);
     assert.equal(state.platform.walletFirstSetupDeliveryEnabled, false);
     assert.equal(state.platform.portalRegistrationWelcomeBonusCoordinator, null);
     assert.equal(state.platform.walletFirstCurrentResourceProjection, null);
-    assert.equal(deferredRuntimeGetterCalls, 0);
     assert.equal(deferredNodeGetterCalls, 0);
     assert.equal(setupDeliveryGetterCalls, 0);
+    assert.equal(registrationCanaryGetterCalls, 0);
     await state.close();
     state = null;
 
@@ -1337,7 +1289,82 @@ test("createRuntimeState keeps wallet-first registration default-off without app
   }
 });
 
-test("createRuntimeState rejects wallet-first registration prerequisites before database access", () => {
+test("createRuntimeState rejects the deprecated wallet-first total flag before database access", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-total-flag-deprecated-"));
+  let unexpectedState;
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true"
+          }),
+          controlDbPath: join(dir, "control.sqlite"),
+          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "wallet_first_model_deprecated"
+    );
+    assert.equal(existsSync(join(dir, "control.sqlite")), false);
+    assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false);
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState requires one canonical registration welcome Coins canary hash before database access", () => {
+  const cases = [
+    ["missing hash", undefined],
+    ["empty hash", ""],
+    ["all-active sentinel", "all_active"],
+    ["raw email", "canary@example.test"],
+    ["duplicate hashes", `${registrationEmailHash("canary@example.test")},${registrationEmailHash("canary@example.test")}`],
+    ["uppercase hash", registrationEmailHash("canary@example.test").toUpperCase()],
+    ["short hash", "a".repeat(63)]
+  ];
+  for (const [label, canaryEmailHashes] of cases) {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-registration-welcome-coins-canary-"));
+    let unexpectedState;
+    try {
+      const env = runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "true",
+        USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "true"
+      });
+      if (canaryEmailHashes !== undefined) {
+        env.USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES =
+          canaryEmailHashes;
+      }
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState({
+            rootDir: new URL("../../", import.meta.url),
+            env,
+            controlDbPath: join(dir, "control.sqlite"),
+            subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+            autoStartHttpProxy: false
+          });
+        },
+        (error) => error?.code === "registration_welcome_coins_prerequisite_missing",
+        label
+      );
+      assert.equal(existsSync(join(dir, "control.sqlite")), false, label);
+      assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false, label);
+    } finally {
+      unexpectedState?.close();
+      removeTempDir(dir);
+    }
+  }
+});
+
+test("createRuntimeState rejects registration welcome Coins prerequisites before database access", () => {
   const cases = [
     {
       label: "Portal routes disabled",
@@ -1362,28 +1389,11 @@ test("createRuntimeState rejects wallet-first registration prerequisites before 
         COINS_WALLET_ENABLED: "true",
         COINS_COMMERCE_ENABLED: "false"
       }
-    },
-    {
-      label: "global Authority enabled",
-      env: {
-        USER_PORTAL_ROUTES_ENABLED: "true",
-        COINS_WALLET_ENABLED: "true",
-        COINS_COMMERCE_ENABLED: "true",
-        COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED: "true"
-      }
-    },
-    {
-      label: "deferred transition runtime disabled",
-      env: {
-        USER_PORTAL_ROUTES_ENABLED: "true",
-        COINS_WALLET_ENABLED: "true",
-        COINS_COMMERCE_ENABLED: "true"
-      }
     }
   ];
 
   for (const entry of cases) {
-    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-prerequisite-"));
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-registration-welcome-coins-prerequisite-"));
     let unexpectedState;
     try {
       assert.throws(
@@ -1392,7 +1402,9 @@ test("createRuntimeState rejects wallet-first registration prerequisites before 
             rootDir: new URL("../../", import.meta.url),
             env: runtimeEnv({
               CONSOLE_TOKEN: "secret",
-              USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+              USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "true",
+              USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES:
+                registrationEmailHash("registration-welcome-coins@example.test"),
               ...entry.env
             }),
             controlDbPath: join(dir, "control.sqlite"),
@@ -1400,7 +1412,7 @@ test("createRuntimeState rejects wallet-first registration prerequisites before 
             autoStartHttpProxy: false
           });
         },
-        (error) => error?.code === "wallet_first_registration_prerequisite_missing",
+        (error) => error?.code === "registration_welcome_coins_prerequisite_missing",
         entry.label
       );
       assert.equal(existsSync(join(dir, "control.sqlite")), false, entry.label);
@@ -1412,8 +1424,8 @@ test("createRuntimeState rejects wallet-first registration prerequisites before 
   }
 });
 
-test("createRuntimeState validates the wallet-first welcome-bonus schema without applying it", () => {
-  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-schema-no-apply-"));
+test("createRuntimeState validates the registration welcome Coins schema without applying it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-registration-welcome-coins-schema-no-apply-"));
   const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
   let unexpectedState;
 
@@ -1427,10 +1439,9 @@ test("createRuntimeState validates the wallet-first welcome-bonus schema without
             USER_PORTAL_ROUTES_ENABLED: "true",
             COINS_WALLET_ENABLED: "true",
             COINS_COMMERCE_ENABLED: "true",
-            USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
-            COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
-            COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
-              "channel-vultr-a-vless-reality-tcp"
+            USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "true",
+            USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES:
+              registrationEmailHash("registration-welcome-coins@example.test")
           }),
           controlDbPath,
           subscriptionDbPath: join(dir, "subscriptions.sqlite"),
@@ -1438,7 +1449,7 @@ test("createRuntimeState validates the wallet-first welcome-bonus schema without
           autoStartHttpProxy: false
         });
       },
-      (error) => error?.code === "wallet_first_registration_schema_not_ready"
+      (error) => error?.code === "registration_welcome_coins_schema_not_ready"
     );
 
     const database = new Database(controlDbPath, {
@@ -1463,356 +1474,240 @@ test("createRuntimeState validates the wallet-first welcome-bonus schema without
   }
 });
 
-test("createRuntimeState rejects an enabled wallet-first runtime without durable runtime claims", () => {
-  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-runtime-claims-no-apply-"));
-  const controlDbPath = prepareWalletFirstControlDatabaseBeforeRuntimeClaims(dir);
-  let unexpectedState;
+test("createRuntimeState drains a durable welcome-Coin grant after admission is turned off", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-registration-welcome-coins-drain-"));
+  const controlDbPath = prepareMigratedRegistrationWelcomeCoinsControlDatabase(dir);
+  const accountEmail = "drain-after-admission@example.test";
+  let admissionState;
+  let drainState;
 
   try {
-    assert.throws(
-      () => {
-        unexpectedState = createRuntimeState({
-          rootDir: new URL("../../", import.meta.url),
-          env: runtimeEnv({
-            CONSOLE_TOKEN: "secret",
-            USER_PORTAL_ROUTES_ENABLED: "true",
-            COINS_WALLET_ENABLED: "true",
-            COINS_COMMERCE_ENABLED: "true",
-            USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
-            COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
-            COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
-              "channel-vultr-a-vless-reality-tcp"
-          }),
-          controlDbPath,
-          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
-          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
-          autoStartHttpProxy: false
-        });
-      },
-      (error) => error?.code === "wallet_first_registration_schema_not_ready"
-    );
-
-    const database = new Database(controlDbPath, {
-      readonly: true,
-      fileMustExist: true
-    });
-    try {
-      assert.equal(database.prepare(`
-        select count(*) from sqlite_master
-         where type = 'table'
-           and name = 'platform_wallet_first_resource_effect_runtime_claims'
-      `).pluck().get(), 0);
-    } finally {
-      database.close();
-    }
-  } finally {
-    unexpectedState?.close();
-    removeTempDir(dir);
-  }
-});
-
-test("createRuntimeState requires the setup-delivery handoff schema without applying it", () => {
-  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-setup-delivery-schema-no-apply-"));
-  const controlDbPath = prepareMigratedWalletFirstControlDatabase(dir);
-  let unexpectedState;
-
-  try {
-    assert.throws(
-      () => {
-        unexpectedState = createRuntimeState({
-          rootDir: new URL("../../", import.meta.url),
-          env: runtimeEnv({
-            CONSOLE_TOKEN: "secret",
-            USER_PORTAL_ROUTES_ENABLED: "true",
-            COINS_WALLET_ENABLED: "true",
-            COINS_COMMERCE_ENABLED: "true",
-            USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
-            COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
-            COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
-              "channel-vultr-a-vless-reality-tcp",
-            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED: "true",
-            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY:
-              WALLET_FIRST_SETUP_DELIVERY_ESCROW_KEY,
-            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH:
-              join(dir, "setup-delivery.escrow")
-          }),
-          controlDbPath,
-          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
-          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
-          autoStartHttpProxy: false
-        });
-      },
-      (error) => error?.code === "wallet_first_setup_delivery_schema_not_ready"
-    );
-
-    const database = new Database(controlDbPath, {
-      readonly: true,
-      fileMustExist: true
-    });
-    try {
-      assert.equal(database.prepare(`
-        select count(*) from sqlite_master
-         where type = 'table'
-           and name = 'platform_wallet_first_setup_delivery_handoffs'
-      `).pluck().get(), 0);
-    } finally {
-      database.close();
-    }
-  } finally {
-    unexpectedState?.close();
-    removeTempDir(dir);
-  }
-});
-
-test("createRuntimeState requires a dedicated wallet-first transition node before composition", () => {
-  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-enabled-"));
-  const controlDbPath = prepareMigratedWalletFirstControlDatabase(dir);
-  let unexpectedState;
-
-  try {
-    assert.throws(
-      () => {
-        unexpectedState = createRuntimeState({
-          rootDir: new URL("../../", import.meta.url),
-          env: runtimeEnv({
-            CONSOLE_TOKEN: "secret",
-            USER_PORTAL_ROUTES_ENABLED: "true",
-            COINS_WALLET_ENABLED: "true",
-            COINS_COMMERCE_ENABLED: "true",
-            USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
-            COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true"
-          }),
-          controlDbPath,
-          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
-          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
-          autoStartHttpProxy: false
-        });
-      },
-      (error) => error?.code === "wallet_first_deferred_transition_runtime_missing"
-    );
-  } finally {
-    unexpectedState?.close();
-    removeTempDir(dir);
-  }
-});
-
-test("createRuntimeState rejects setup delivery without a strict key and absolute escrow path before database access", () => {
-  const cases = [
-    {
-      label: "missing key",
-      key: "",
-      escrowPath: "C:\\setup-delivery.escrow"
-    },
-    {
-      label: "relative escrow path",
-      key: WALLET_FIRST_SETUP_DELIVERY_ESCROW_KEY,
-      escrowPath: "setup-delivery.escrow"
-    }
-  ];
-
-  for (const entry of cases) {
-    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-setup-delivery-prerequisite-"));
-    let unexpectedState;
-    try {
-      assert.throws(
-        () => {
-          unexpectedState = createRuntimeState({
-            rootDir: new URL("../../", import.meta.url),
-            env: runtimeEnv({
-              CONSOLE_TOKEN: "secret",
-              USER_PORTAL_ROUTES_ENABLED: "true",
-              COINS_WALLET_ENABLED: "true",
-              COINS_COMMERCE_ENABLED: "true",
-              USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
-              COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
-              COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
-                "channel-vultr-a-vless-reality-tcp",
-              USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED: "true",
-              USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY: entry.key,
-              USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH:
-                entry.escrowPath
-            }),
-            controlDbPath: join(dir, "control.sqlite"),
-            subscriptionDbPath: join(dir, "subscriptions.sqlite"),
-            autoStartHttpProxy: false
-          });
-        },
-        (error) => error?.code === "wallet_first_setup_delivery_prerequisite_missing",
-        entry.label
-      );
-      assert.equal(existsSync(join(dir, "control.sqlite")), false, entry.label);
-      assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false, entry.label);
-    } finally {
-      unexpectedState?.close();
-      removeTempDir(dir);
-    }
-  }
-});
-
-test("createRuntimeState maps a malformed setup-delivery key to its fail-closed prerequisite gate", () => {
-  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-setup-delivery-key-"));
-  const controlDbPath = prepareMigratedWalletFirstSetupDeliveryControlDatabase(dir);
-  const escrowPath = join(dir, "setup-delivery.escrow");
-  let unexpectedState;
-
-  try {
-    assert.throws(
-      () => {
-        unexpectedState = createRuntimeState({
-          rootDir: new URL("../../", import.meta.url),
-          env: runtimeEnv({
-            CONSOLE_TOKEN: "secret",
-            USER_PORTAL_ROUTES_ENABLED: "true",
-            COINS_WALLET_ENABLED: "true",
-            COINS_COMMERCE_ENABLED: "true",
-            USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
-            COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
-            COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
-              "channel-vultr-a-vless-reality-tcp",
-            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED: "true",
-            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY: "not-a-32-byte-key",
-            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH: escrowPath
-          }),
-          controlDbPath,
-          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
-          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
-          autoStartHttpProxy: false
-        });
-      },
-      (error) => error?.code === "wallet_first_setup_delivery_prerequisite_missing"
-    );
-    assert.equal(existsSync(escrowPath), false);
-  } finally {
-    unexpectedState?.close();
-    removeTempDir(dir);
-  }
-});
-
-test("createRuntimeState composes the concrete wallet-first deferred runtime without a caller binding", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-runtime-concrete-"));
-  const controlDbPath = prepareMigratedWalletFirstControlDatabase(dir);
-  let state;
-
-  try {
-    const stateOptions = {
+    admissionState = createRuntimeState({
       rootDir: new URL("../../", import.meta.url),
       env: runtimeEnv({
         CONSOLE_TOKEN: "secret",
         USER_PORTAL_ROUTES_ENABLED: "true",
         COINS_WALLET_ENABLED: "true",
         COINS_COMMERCE_ENABLED: "true",
-        USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
-        COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
-        COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
-          "channel-vultr-a-vless-reality-tcp"
+        USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "true",
+        USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES:
+          registrationEmailHash(accountEmail)
       }),
       controlDbPath,
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
-      userPortalNowFn: () => new Date("2026-08-13T00:00:00.000Z"),
+      userPortalNowFn: () => new Date("2026-08-15T00:00:00.000Z"),
       autoStartHttpProxy: false
-    };
+    });
+
+    const registration = admissionState.platform.portalRegistrations.submitRegistration({
+      email: accountEmail,
+      password: "synthetic-registration-password",
+      legalAgreement: {
+        termsAccepted: true,
+        privacyAccepted: true
+      }
+    });
+    assert.equal(registration.registration.trial, undefined);
+    assert.equal(registration.registration.welcomeBonus.amountUnits, 10);
+
+    const account = admissionState.platform.controlStore.listAccounts().find(
+      (candidate) => candidate.metadata?.loginRef === accountEmail
+    );
+    assert.ok(account);
+    const pendingGrant = admissionState.platform.controlStore
+      .getPortalRegistrationWelcomeCoinGrant({ accountId: account.id });
+    assert.equal(pendingGrant.status, "pending");
+    assert.equal(pendingGrant.amountUnits, 10);
+
+    await admissionState.close();
+    admissionState = null;
+
+    const drainEnv = runtimeEnv({
+      CONSOLE_TOKEN: "secret",
+      USER_PORTAL_ROUTES_ENABLED: "true",
+      COINS_WALLET_ENABLED: "true",
+      COINS_COMMERCE_ENABLED: "true"
+    });
     Object.defineProperty(
-      stateOptions,
-      "walletFirstDeferredTransitionRuntimeBindingFactory",
+      drainEnv,
+      "USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES",
       {
+        enumerable: true,
         get() {
-          throw new Error("concrete wallet-first runtime must not inspect a caller binding");
+          throw new Error("drain-only process must not inspect the admission canary");
         }
       }
     );
-    for (const field of [
-      "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY",
-      "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH"
-    ]) {
-      Object.defineProperty(stateOptions.env, field, {
-        enumerable: true,
-        get() {
-          throw new Error(`disabled setup delivery must not inspect ${field}`);
-        }
-      });
-    }
-    state = createRuntimeState(stateOptions);
+    drainState = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: drainEnv,
+      controlDbPath,
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+      userPortalNowFn: () => new Date("2026-08-15T00:00:00.000Z"),
+      autoStartHttpProxy: false
+    });
 
-    assert.equal(state.platform.walletFirstRegistrationEnabled, true);
-    assert.equal(state.platform.walletFirstSetupDeliveryEnabled, false);
-    assert.notEqual(state.platform.deferredTransitionStore, null);
-    assert.equal(typeof state.platform.deferredTransitionCoordinator.start, "function");
-    assert.equal(typeof state.platform.deferredTransitionCoordinator.stop, "function");
-    assert.equal(typeof state.platform.walletFirstResourceEffectHandler.resolveCurrentResourceChain, "function");
-    assert.equal(typeof state.platform.walletFirstCommerceService.previewDeferredCheckout, "function");
-    assert.equal(typeof state.platform.walletFirstCurrentResourceProjection.getCurrentResource, "function");
-    assert.equal(state.platform.walletFirstCurrentResourceSetupDelivery, null);
+    assert.equal(drainState.platform.registrationWelcomeCoinsEnabled, false);
+    assert.equal(drainState.platform.registrationWelcomeCoinsWorkerEnabled, true);
+    assert.equal(drainState.platform.deferredTransitionCoordinator, null);
 
-    await state.platform.deferredTransitionCoordinator.start();
-    await state.platform.deferredTransitionCoordinator.stop();
+    assert.deepEqual(
+      await drainState.platform.portalRegistrationWelcomeBonusCoordinator.runOnce(),
+      {
+        expired: 0,
+        expiredLots: 0,
+        claimed: 1,
+        credited: 1,
+        deferred: 0,
+        reconciliationRequired: 0
+      }
+    );
+    const creditedGrant = drainState.platform.controlStore
+      .getPortalRegistrationWelcomeCoinGrant({ accountId: account.id });
+    assert.equal(creditedGrant.status, "credited");
+    assert.notEqual(creditedGrant.creditedLotRef, null);
+    assert.equal(
+      drainState.platform.coinsWalletStore
+        .getWalletProjection({ accountId: account.id }, "2026-08-15T00:00:00.000Z")
+        .totals.bonus_coins,
+      10
+    );
 
-    await state.close();
-    state = null;
+    await drainState.close();
+    drainState = null;
+
   } finally {
-    await state?.close();
+    await admissionState?.close();
+    await drainState?.close();
     removeTempDir(dir);
   }
 });
 
-test("createRuntimeState composes setup delivery only behind its gate and releases the escrow writer lock on close", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-setup-delivery-runtime-"));
-  const controlDbPath = prepareMigratedWalletFirstSetupDeliveryControlDatabase(dir);
-  const escrowPath = join(dir, "setup-delivery.escrow");
+
+test("createRuntimeState admits welcome Coins without deferred runtime or node configuration", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-registration-welcome-coins-admission-"));
+  const controlDbPath = prepareMigratedRegistrationWelcomeCoinsControlDatabase(dir);
+  const env = runtimeEnv({
+    CONSOLE_TOKEN: "secret",
+    USER_PORTAL_ROUTES_ENABLED: "true",
+    COINS_WALLET_ENABLED: "true",
+    COINS_COMMERCE_ENABLED: "true",
+    USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED: "true",
+    USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES:
+      registrationEmailHash("welcome-coins-admission@example.test")
+  });
+  for (const field of [
+    "COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED",
+    "COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID",
+    "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED",
+    "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY",
+    "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH"
+  ]) {
+    Object.defineProperty(env, field, {
+      enumerable: true,
+      get() {
+        throw new Error(`welcome-Coins admission must not inspect ${field}`);
+      }
+    });
+  }
   let state;
-  let reopenedEscrow;
 
   try {
     state = createRuntimeState({
       rootDir: new URL("../../", import.meta.url),
-      env: runtimeEnv({
-        CONSOLE_TOKEN: "secret",
-        USER_PORTAL_ROUTES_ENABLED: "true",
-        COINS_WALLET_ENABLED: "true",
-        COINS_COMMERCE_ENABLED: "true",
-        USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
-        COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
-        COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
-          "channel-vultr-a-vless-reality-tcp",
-        USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED: "true",
-        USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY:
-          WALLET_FIRST_SETUP_DELIVERY_ESCROW_KEY,
-        USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH: escrowPath
-      }),
+      env,
       controlDbPath,
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
-      userPortalNowFn: () => new Date("2026-08-14T00:00:00.000Z"),
+      userPortalNowFn: () => new Date("2026-08-15T00:00:00.000Z"),
       autoStartHttpProxy: false
     });
 
-    assert.equal(state.platform.walletFirstSetupDeliveryEnabled, true);
-    assert.equal(
-      typeof state.platform.walletFirstCurrentResourceSetupDelivery.deliverSetup,
-      "function"
-    );
-    assert.equal(
-      typeof state.platform.walletFirstCurrentResourceSetupDelivery.acknowledgeSetup,
-      "function"
-    );
-    assert.equal(
-      typeof state.platform.walletFirstCurrentResourceProjection.getCurrentResource,
-      "function"
-    );
+    assert.equal(state.platform.registrationWelcomeCoinsEnabled, true);
+    assert.equal(state.platform.registrationWelcomeCoinsWorkerEnabled, true);
+    assert.equal(state.platform.walletFirstDeferredRuntimeEnabled, false);
+    assert.equal(state.platform.deferredTransitionCoordinator, null);
+    assert.equal(state.platform.walletFirstCurrentResourceProjection, null);
+
+    const registration = state.platform.portalRegistrations.submitRegistration({
+      email: "  WELCOME-COINS-ADMISSION@EXAMPLE.TEST ",
+      password: "synthetic-registration-password",
+      legalAgreement: {
+        termsAccepted: true,
+        privacyAccepted: true
+      }
+    });
+    assert.equal(registration.registration.commercialModel, "legacy");
+    assert.equal(registration.registration.trial, undefined);
+    assert.deepEqual(registration.registration.welcomeBonus, {
+      status: "pending",
+      coinType: "bonus_coins",
+      amountUnits: 10,
+      expiresAt: "2026-08-22T00:00:00.000Z"
+    });
 
     await state.close();
     state = null;
-
-    reopenedEscrow = createWalletFirstSetupDeliveryEscrow({
-      key: WALLET_FIRST_SETUP_DELIVERY_ESCROW_KEY,
-      filePath: escrowPath
-    });
   } finally {
-    reopenedEscrow?.close();
     await state?.close();
     removeTempDir(dir);
   }
 });
+
+test("createRuntimeState keeps deferred runtime configuration dormant in the registration-promotion release", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-deferred-runtime-dormant-"));
+  const controlDbPath = prepareMigratedCoinCommerceControlDatabase(dir);
+  const env = runtimeEnv({
+    CONSOLE_TOKEN: "secret",
+    USER_PORTAL_ROUTES_ENABLED: "true",
+    COINS_WALLET_ENABLED: "true",
+    COINS_COMMERCE_ENABLED: "true",
+    COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true"
+  });
+  for (const field of [
+    "COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID",
+    "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED",
+    "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY",
+    "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH"
+  ]) {
+    Object.defineProperty(env, field, {
+      enumerable: true,
+      get() {
+        throw new Error(`registration-promotion release must not inspect ${field}`);
+      }
+    });
+  }
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env,
+      controlDbPath,
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(state.platform.walletFirstDeferredRuntimeEnabled, false);
+    assert.equal(state.platform.walletFirstSetupDeliveryEnabled, false);
+    assert.equal(state.platform.deferredTransitionStore, null);
+    assert.equal(state.platform.deferredTransitionCoordinator, null);
+    assert.equal(state.platform.walletFirstResourceEffectHandler, null);
+    assert.equal(state.platform.walletFirstCommerceService, null);
+    assert.equal(state.platform.walletFirstCurrentResourceProjection, null);
+    assert.equal(state.platform.walletFirstCurrentResourceSetupDelivery, null);
+
+    await state.close();
+    state = null;
+  } finally {
+    await state?.close();
+    removeTempDir(dir);
+  }
+});
+
 
 test("createRuntimeState fails enabled Commerce prerequisites with one fixed generic error", () => {
   const cases = [

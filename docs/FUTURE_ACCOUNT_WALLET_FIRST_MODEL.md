@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: future_account_wallet_first_model
   superseded_by: null
-  last_verified_at: 2026-08-14
+  last_verified_at: 2026-08-15
   production_authority: false
 ```
 
@@ -25,6 +25,18 @@ natural person, email address, or external identity can own only one account.
 
 The default state is disabled. A source artifact that contains these modules is
 not evidence that the model is enabled or deployed.
+
+## Separate Registration Welcome-Coins Promotion
+
+`docs/PORTAL_REGISTRATION_WELCOME_COINS.md` defines a narrow, independent
+new-registration promotion. It replaces the legacy trial only for one approved
+new registration with a one-time welcome-Coins grant. It does **not** create or
+persist `wallet_first_unique_v1`, use this future model's deferred transitions,
+or enable a shared node, Authority, escrow, payment path, or runtime effect.
+
+`USER_PORTAL_WALLET_FIRST_MODEL_ENABLED` is deprecated. It must remain false;
+setting it true fails closed and cannot activate either this future model or the
+separate registration promotion.
 
 ## New-account Contract
 

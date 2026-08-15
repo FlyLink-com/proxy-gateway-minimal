@@ -24,8 +24,10 @@ import {
 
 export const LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID =
   "20260813_001_portal_registration_welcome_bonus";
-export const REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID =
+export const PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID =
   "20260814_001_portal_registration_welcome_bonus_contract";
+export const REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID =
+  "20260815_001_portal_registration_welcome_coins_promotion_contract";
 
 const WELCOME_GRANTS_TABLE = "platform_portal_registration_welcome_coin_grants";
 const WELCOME_GRANTS_CLAIM_INDEX =
@@ -34,6 +36,8 @@ const WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER =
   "platform_portal_registration_welcome_coin_grants_timestamps_immutable";
 const WELCOME_GRANTS_CONTRACT_REBUILD_TABLE =
   "platform_portal_registration_welcome_coin_grants_contract_rebuild";
+const WELCOME_GRANTS_PROMOTION_REBUILD_TABLE =
+  "platform_portal_registration_welcome_coin_grants_promotion_rebuild";
 
 const MIGRATION_STATEMENTS = Object.freeze([
   `
@@ -169,6 +173,16 @@ const CONTRACT_FINAL_TABLE_EXPECTED_STATEMENT = CONTRACT_TABLE_STATEMENT.replace
   `create table ${WELCOME_GRANTS_TABLE}`,
   `create table "${WELCOME_GRANTS_TABLE}"`
 );
+const PROMOTION_TABLE_STATEMENT = CONTRACT_TABLE_STATEMENT.replace(
+  `commercial_model text not null
+        check (commercial_model = 'wallet_first_unique_v1'),
+      `,
+  ""
+);
+const PROMOTION_FINAL_TABLE_EXPECTED_STATEMENT = PROMOTION_TABLE_STATEMENT.replace(
+  `create table ${WELCOME_GRANTS_TABLE}`,
+  `create table "${WELCOME_GRANTS_TABLE}"`
+);
 
 const CONTRACT_TIMESTAMP_IMMUTABLE_TRIGGER_STATEMENT = `
   create trigger ${WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER}
@@ -204,6 +218,9 @@ const WELCOME_GRANT_COLUMNS = Object.freeze([
   "updated_at",
   "credited_at"
 ]);
+const PROMOTION_WELCOME_GRANT_COLUMNS = Object.freeze(
+  WELCOME_GRANT_COLUMNS.filter((column) => column !== "commercial_model")
+);
 
 const CONTRACT_MIGRATION_STATEMENTS = Object.freeze([
   CONTRACT_TABLE_STATEMENT.replace(
@@ -223,6 +240,24 @@ const CONTRACT_MIGRATION_STATEMENTS = Object.freeze([
   MIGRATION_STATEMENTS[1],
   CONTRACT_TIMESTAMP_IMMUTABLE_TRIGGER_STATEMENT
 ]);
+const PROMOTION_MIGRATION_STATEMENTS = Object.freeze([
+  PROMOTION_TABLE_STATEMENT.replace(
+    WELCOME_GRANTS_TABLE,
+    WELCOME_GRANTS_PROMOTION_REBUILD_TABLE
+  ),
+  `
+    insert into ${WELCOME_GRANTS_PROMOTION_REBUILD_TABLE} (
+      ${PROMOTION_WELCOME_GRANT_COLUMNS.join(", ")}
+    ) select ${PROMOTION_WELCOME_GRANT_COLUMNS.join(", ")}
+      from ${WELCOME_GRANTS_TABLE}
+  `,
+  `drop index ${WELCOME_GRANTS_CLAIM_INDEX}`,
+  `drop table ${WELCOME_GRANTS_TABLE}`,
+  `alter table ${WELCOME_GRANTS_PROMOTION_REBUILD_TABLE}
+    rename to ${WELCOME_GRANTS_TABLE}`,
+  MIGRATION_STATEMENTS[1],
+  CONTRACT_TIMESTAMP_IMMUTABLE_TRIGGER_STATEMENT
+]);
 
 const LEGACY_OWNED_OBJECTS = Object.freeze([
   ["table", WELCOME_GRANTS_TABLE],
@@ -233,9 +268,23 @@ const OWNED_OBJECTS = Object.freeze([
   ["trigger", WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER]
 ]);
 
-const EXPECTED_OBJECT_SQL = new Map(
+const CONTRACT_EXPECTED_OBJECT_SQL = new Map(
   [
     ["table", WELCOME_GRANTS_TABLE, CONTRACT_FINAL_TABLE_EXPECTED_STATEMENT],
+    ["index", WELCOME_GRANTS_CLAIM_INDEX, MIGRATION_STATEMENTS[1]],
+    [
+      "trigger",
+      WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER,
+      CONTRACT_TIMESTAMP_IMMUTABLE_TRIGGER_STATEMENT
+    ]
+  ].map(([type, name, statement]) => [
+    `${type}:${name}`,
+    normalizeSql(statement)
+  ])
+);
+const EXPECTED_OBJECT_SQL = new Map(
+  [
+    ["table", WELCOME_GRANTS_TABLE, PROMOTION_FINAL_TABLE_EXPECTED_STATEMENT],
     ["index", WELCOME_GRANTS_CLAIM_INDEX, MIGRATION_STATEMENTS[1]],
     [
       "trigger",
@@ -254,7 +303,7 @@ const LEGACY_EXPECTED_OBJECT_SQL = new Map(
   ])
 );
 
-const EXPECTED_TABLE_COLUMNS = WELCOME_GRANT_COLUMNS;
+const EXPECTED_TABLE_COLUMNS = PROMOTION_WELCOME_GRANT_COLUMNS;
 
 const EXPECTED_FOREIGN_KEYS = Object.freeze([
   "account_id->platform_accounts.id"
@@ -289,10 +338,18 @@ const LEGACY_DDL_CHECKSUM = createHash("sha256")
     "utf8"
   )
   .digest("hex");
-const DDL_CHECKSUM = createHash("sha256")
+const CONTRACT_DDL_CHECKSUM = createHash("sha256")
   .update(
     `GCCWEBOS:PORTAL_REGISTRATION_WELCOME_BONUS_DDL:v2\0${
       CONTRACT_MIGRATION_STATEMENTS.map(normalizeSql).join("\0")
+    }`,
+    "utf8"
+  )
+  .digest("hex");
+const DDL_CHECKSUM = createHash("sha256")
+  .update(
+    `GCCWEBOS:PORTAL_REGISTRATION_WELCOME_COINS_PROMOTION_DDL:v3\0${
+      PROMOTION_MIGRATION_STATEMENTS.map(normalizeSql).join("\0")
     }`,
     "utf8"
   )
@@ -305,9 +362,14 @@ export const PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS = Object.freeze([
     statements: MIGRATION_STATEMENTS
   }),
   Object.freeze({
+    id: PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID,
+    ddlChecksum: CONTRACT_DDL_CHECKSUM,
+    statements: CONTRACT_MIGRATION_STATEMENTS
+  }),
+  Object.freeze({
     id: REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
     ddlChecksum: DDL_CHECKSUM,
-    statements: CONTRACT_MIGRATION_STATEMENTS
+    statements: PROMOTION_MIGRATION_STATEMENTS
   })
 ]);
 
@@ -514,7 +576,7 @@ function foundationDependencyIsExact(database) {
   }
 }
 
-function tableIsExact(database, expectedSql) {
+function tableIsExact(database, expectedSql, expectedColumns = EXPECTED_TABLE_COLUMNS) {
   const row = objectRow(database, "table", WELCOME_GRANTS_TABLE);
   if (
     !row
@@ -525,7 +587,7 @@ function tableIsExact(database, expectedSql) {
   }
   const columns = database.pragma(`table_info(${WELCOME_GRANTS_TABLE})`)
     .map(({ name }) => name);
-  if (JSON.stringify(columns) !== JSON.stringify(EXPECTED_TABLE_COLUMNS)) {
+  if (JSON.stringify(columns) !== JSON.stringify(expectedColumns)) {
     return false;
   }
   const foreignKeys = database.pragma(`foreign_key_list(${WELCOME_GRANTS_TABLE})`)
@@ -554,6 +616,31 @@ function indexIsExact(database, expectedSql) {
     && JSON.stringify(columns) === JSON.stringify(EXPECTED_INDEX.columns);
 }
 
+function explicitAttachedObjectsAreExact(database, expectedObjects) {
+  const attachedObjects = database.prepare(`
+    select type, name
+      from sqlite_master
+     where tbl_name = ? collate nocase
+       and type in ('index', 'trigger')
+       and sql is not null
+     order by type asc, name asc
+  `).all(WELCOME_GRANTS_TABLE).map(({ type, name }) => `${type}:${name}`);
+  const expected = expectedObjects
+    .map(([type, name]) => `${type}:${name}`)
+    .sort();
+  return JSON.stringify(attachedObjects) === JSON.stringify(expected);
+}
+
+function dependentViewsAreAbsent(database) {
+  return database.prepare(`
+    select count(*)
+      from sqlite_master
+     where type = 'view'
+       and sql is not null
+       and instr(lower(sql), lower(?)) > 0
+  `).pluck().get(WELCOME_GRANTS_TABLE) === 0;
+}
+
 function ownedTimestampImmutableTriggerIsExact(database) {
   const row = objectRow(
     database,
@@ -563,6 +650,19 @@ function ownedTimestampImmutableTriggerIsExact(database) {
   return row?.name === WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER
     && row.tbl_name === WELCOME_GRANTS_TABLE
     && normalizeSql(row.sql) === EXPECTED_OBJECT_SQL.get(
+      `trigger:${WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER}`
+    );
+}
+
+function contractTimestampImmutableTriggerIsExact(database) {
+  const row = objectRow(
+    database,
+    "trigger",
+    WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER
+  );
+  return row?.name === WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER
+    && row.tbl_name === WELCOME_GRANTS_TABLE
+    && normalizeSql(row.sql) === CONTRACT_EXPECTED_OBJECT_SQL.get(
       `trigger:${WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER}`
     );
 }
@@ -584,19 +684,47 @@ function ownedIndexIsExact(database) {
 function ownedObjectsAreExact(database) {
   return ownedTableIsExact(database)
     && ownedIndexIsExact(database)
-    && ownedTimestampImmutableTriggerIsExact(database);
+    && ownedTimestampImmutableTriggerIsExact(database)
+    && explicitAttachedObjectsAreExact(database, [
+      ["index", WELCOME_GRANTS_CLAIM_INDEX],
+      ["trigger", WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER]
+    ])
+    && dependentViewsAreAbsent(database);
 }
 
 function legacyOwnedObjectsAreExact(database) {
   return tableIsExact(
     database,
-    LEGACY_EXPECTED_OBJECT_SQL.get(`table:${WELCOME_GRANTS_TABLE}`)
+    LEGACY_EXPECTED_OBJECT_SQL.get(`table:${WELCOME_GRANTS_TABLE}`),
+    WELCOME_GRANT_COLUMNS
   )
     && indexIsExact(
       database,
       LEGACY_EXPECTED_OBJECT_SQL.get(`index:${WELCOME_GRANTS_CLAIM_INDEX}`)
     )
-    && !namedObjectRow(database, WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER);
+    && !namedObjectRow(database, WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER)
+    && explicitAttachedObjectsAreExact(database, [
+      ["index", WELCOME_GRANTS_CLAIM_INDEX]
+    ])
+    && dependentViewsAreAbsent(database);
+}
+
+function contractOwnedObjectsAreExact(database) {
+  return tableIsExact(
+    database,
+    CONTRACT_EXPECTED_OBJECT_SQL.get(`table:${WELCOME_GRANTS_TABLE}`),
+    WELCOME_GRANT_COLUMNS
+  )
+    && indexIsExact(
+      database,
+      CONTRACT_EXPECTED_OBJECT_SQL.get(`index:${WELCOME_GRANTS_CLAIM_INDEX}`)
+    )
+    && contractTimestampImmutableTriggerIsExact(database)
+    && explicitAttachedObjectsAreExact(database, [
+      ["index", WELCOME_GRANTS_CLAIM_INDEX],
+      ["trigger", WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER]
+    ])
+    && dependentViewsAreAbsent(database);
 }
 
 function integrityChecks(database) {
@@ -626,6 +754,7 @@ function closedInspection(database) {
     && foundationDependencyIsExact(database);
   let migrationRows = 0;
   let legacyRow = null;
+  let contractRow = null;
   let successorRow = null;
   if (ledgerState === "compatible") {
     migrationRows = database.prepare(
@@ -634,6 +763,10 @@ function closedInspection(database) {
     legacyRow = migrationRow(
       database,
       LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
+    );
+    contractRow = migrationRow(
+      database,
+      PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID
     );
     successorRow = migrationRow(
       database,
@@ -664,12 +797,29 @@ function closedInspection(database) {
     && legacyRow.ddl_checksum !== LEGACY_DDL_CHECKSUM
   ) {
     reasons.push("migration_checksum_mismatch");
-  } else if (foundationDependency && !successorRow) {
+  } else if (foundationDependency && !contractRow) {
     if (legacyOwnedObjectsAreExact(database)) {
       reasons.push("required_migration_missing");
     } else if (
       !objectRow(database, "table", WELCOME_GRANTS_TABLE)
       || !objectRow(database, "index", WELCOME_GRANTS_CLAIM_INDEX)
+    ) {
+      reasons.push("owned_object_missing");
+    } else {
+      reasons.push("owned_object_incompatible");
+    }
+  } else if (
+    foundationDependency
+    && contractRow.ddl_checksum !== CONTRACT_DDL_CHECKSUM
+  ) {
+    reasons.push("migration_checksum_mismatch");
+  } else if (foundationDependency && !successorRow) {
+    if (contractOwnedObjectsAreExact(database)) {
+      reasons.push("required_migration_missing");
+    } else if (
+      !objectRow(database, "table", WELCOME_GRANTS_TABLE)
+      || !objectRow(database, "index", WELCOME_GRANTS_CLAIM_INDEX)
+      || !objectRow(database, "trigger", WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER)
     ) {
       reasons.push("owned_object_missing");
     } else {
@@ -714,9 +864,15 @@ function closedInspection(database) {
     && reasonCodes[0] === "required_migration_missing";
   const pendingMigrationIds = pending
     ? legacyRow
-      ? [REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID]
+      ? contractRow
+        ? [REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID]
+        : [
+          PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID,
+          REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
+        ]
       : [
         LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
+        PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID,
         REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
       ]
     : [];
@@ -889,6 +1045,10 @@ function applyWithDatabase(database, nowFn, invocationToken) {
       database,
       LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
     );
+    const contract = migrationRow(
+      database,
+      PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID
+    );
     const appliedAt = normalizeAppliedAt(nowFn, invocationToken);
     if (!legacy) {
       assertOwnedObjectsAreAbsent(database, invocationToken);
@@ -904,12 +1064,30 @@ function applyWithDatabase(database, nowFn, invocationToken) {
       if (legacy.ddl_checksum !== LEGACY_DDL_CHECKSUM) {
         throw migrationError("migration_checksum_mismatch", invocationToken);
       }
-      if (!legacyOwnedObjectsAreExact(database)) {
+      if (!contract && !legacyOwnedObjectsAreExact(database)) {
         throw migrationError("applied_schema_incompatible", invocationToken);
       }
     }
 
-    for (const statement of CONTRACT_MIGRATION_STATEMENTS) database.exec(statement);
+    if (!contract) {
+      for (const statement of CONTRACT_MIGRATION_STATEMENTS) database.exec(statement);
+      insertMigrationLedgerRow(
+        database,
+        PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID,
+        CONTRACT_DDL_CHECKSUM,
+        appliedAt
+      );
+      appliedMigrationIds.push(PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID);
+    } else {
+      if (contract.ddl_checksum !== CONTRACT_DDL_CHECKSUM) {
+        throw migrationError("migration_checksum_mismatch", invocationToken);
+      }
+      if (!contractOwnedObjectsAreExact(database)) {
+        throw migrationError("applied_schema_incompatible", invocationToken);
+      }
+    }
+
+    for (const statement of PROMOTION_MIGRATION_STATEMENTS) database.exec(statement);
     insertMigrationLedgerRow(
       database,
       REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
