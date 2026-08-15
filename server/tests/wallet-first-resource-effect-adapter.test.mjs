@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import Database from "better-sqlite3";
@@ -32,6 +35,11 @@ import {
   applyWalletFirstResourceEffectRuntimeClaimsMigrations
 } from "../services/platform/wallet-first-resource-effect-runtime-claims-migrations.mjs";
 import {
+  REQUIRED_WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATION_ID,
+  WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATIONS,
+  applyWalletFirstSetupDeliveryHandoffsMigrations
+} from "../services/platform/wallet-first-setup-delivery-handoffs-migrations.mjs";
+import {
   createWalletFirstResourceEffectHandler
 } from "../services/platform/wallet-first-resource-effect-handler.mjs";
 import {
@@ -40,6 +48,9 @@ import {
   WALLET_FIRST_RESOURCE_EFFECT_CONTROL_ADAPTER_CONTRACT,
   WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_ADAPTER_CONTRACT
 } from "../services/platform/wallet-first-resource-effect-adapter.mjs";
+import {
+  createWalletFirstSetupDeliveryEscrow
+} from "../services/platform/wallet-first-setup-delivery-escrow.mjs";
 import {
   createSubscriptionCore
 } from "../services/subscriptions/core.mjs";
@@ -59,7 +70,8 @@ const CONTROL_METHODS = Object.freeze([
   "claimWalletFirstRuntimeEffectForDeferredTransition",
   "markWalletFirstRuntimeEffectReconciliationRequiredForDeferredTransition",
   "recordWalletFirstRuntimeReceiptForDeferredTransition",
-  "completeWalletFirstTransitionEffectForDeferredTransition"
+  "completeWalletFirstTransitionEffectForDeferredTransition",
+  "assertWalletFirstSetupDeliveryHandoffForDeferredTransition"
 ]);
 const RUNTIME_METHODS = Object.freeze([
   "listTenants",
@@ -135,7 +147,7 @@ function scheduledInput(chain, now) {
   };
 }
 
-function createFixture() {
+function createFixture({ setupDeliveryRuntimeEscrow = null } = {}) {
   let now = INITIAL_NOW;
   const controlDatabase = new Database(":memory:");
   const runtimeDatabase = new Database(":memory:");
@@ -171,6 +183,14 @@ function createFixture() {
     expectedDdlChecksum: WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATIONS[0].ddlChecksum,
     nowFn: migrationNow
   });
+  if (setupDeliveryRuntimeEscrow) {
+    applyWalletFirstSetupDeliveryHandoffsMigrations({
+      database: controlDatabase,
+      expectedMigrationId: REQUIRED_WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATION_ID,
+      expectedDdlChecksum: WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATIONS[0].ddlChecksum,
+      nowFn: migrationNow
+    });
+  }
   const runtimeStore = createSqliteSubscriptionStore({ database: runtimeDatabase });
   const subscriptionCore = createSubscriptionCore({
     store: runtimeStore,
@@ -207,7 +227,8 @@ function createFixture() {
     controlStore,
     subscriptionCore,
     nodeId: "node_alpha",
-    nowFn: () => new Date(now)
+    nowFn: () => new Date(now),
+    ...(setupDeliveryRuntimeEscrow ? { setupDeliveryRuntimeEscrow } : {})
   });
   const handler = createWalletFirstResourceEffectHandler(adapters);
   return {
@@ -239,12 +260,26 @@ function wrapMethods(source, methods, overrides = {}) {
 function createEffectInput(preparation) {
   return Object.freeze({
     transitionRef: preparation.transitionRef,
+    effectRef: preparation.effectRef,
     flowKind: preparation.runtimeRequest.initialTransitionRef
       ? "scheduled_switch"
       : "initial_activation",
     successor: preparation.successor,
     runtimeRequest: preparation.runtimeRequest
   });
+}
+
+function createSetupDeliveryEscrow(t, name, { ivFactory } = {}) {
+  const directory = mkdtempSync(join(tmpdir(), `${name}-`));
+  const filePath = join(directory, "setup-delivery-escrow.json");
+  const escrow = createWalletFirstSetupDeliveryEscrow({
+    key: Buffer.from("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff", "hex"),
+    filePath,
+    ...(ivFactory ? { ivFactory } : {})
+  });
+  t.after(() => escrow.close());
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  return { escrow, filePath };
 }
 
 function runtimeClaim(fixture, preparation, now = INITIAL_NOW) {
@@ -293,6 +328,121 @@ test("wallet-first concrete adapters activate one marked chain and replay its du
 
   const replay = await fixture.handler.applyDeferredResourceTransition(initialInput());
   assert.deepEqual(replay, first);
+  assert.equal(fixture.subscriptionCore.listTenants().length, 1);
+});
+
+test("runtime adapter captures the first artifact into encrypted escrow and refuses a replay with a missing exact escrow record", async (t) => {
+  const setup = createSetupDeliveryEscrow(t, "wallet-first-runtime-escrow");
+  const fixture = createFixture({
+    setupDeliveryRuntimeEscrow: setup.escrow.runtimeEscrow
+  });
+  t.after(() => fixture.close());
+
+  const first = await fixture.handler.applyDeferredResourceTransition(initialInput());
+  const tenant = fixture.subscriptionCore.listTenants()[0];
+  const artifact = fixture.subscriptionCore.listSubscriptionArtifacts(tenant.id)[0];
+  const summary = setup.escrow.deliveryEscrow.getSetupDeliverySummary({
+    transitionRef: "transition_wallet_001",
+    effectRef: first.effectRef,
+    tenantId: tenant.id,
+    artifactId: artifact.id
+  });
+  assert.equal(summary.state, "available");
+  assert.equal(first.setupDeliveryHandoffRef, summary.handoffRef);
+  assert.equal(readFileSync(setup.filePath, "utf8").includes("gateway.example.test"), false);
+  assert.equal(fixture.subscriptionCore.listTenants().length, 1);
+
+  const replay = await fixture.handler.applyDeferredResourceTransition(initialInput());
+  assert.deepEqual(replay, first);
+  assert.equal(fixture.subscriptionCore.listTenants().length, 1);
+
+  const initialChain = fixture.handler.resolveCurrentResourceChain({
+    accountId: "acct_wallet_001"
+  });
+  fixture.setNow(initialChain.validUntil);
+  const scheduled = await fixture.handler.applyDeferredResourceTransition(
+    scheduledInput(initialChain, initialChain.validUntil)
+  );
+  assert.equal(Object.hasOwn(scheduled, "setupDeliveryHandoffRef"), false);
+  assert.equal(
+    setup.escrow.deliveryEscrow.getSetupDeliverySummary({
+      transitionRef: "transition_wallet_001",
+      effectRef: first.effectRef,
+      tenantId: tenant.id,
+      artifactId: artifact.id
+    }).state,
+    "available"
+  );
+
+  const missing = createSetupDeliveryEscrow(t, "wallet-first-runtime-escrow-missing");
+  const restarted = createWalletFirstResourceEffectAdapters({
+    controlStore: fixture.controlStore,
+    subscriptionCore: fixture.subscriptionCore,
+    nodeId: "node_alpha",
+    nowFn: () => new Date(INITIAL_NOW),
+    setupDeliveryRuntimeEscrow: missing.escrow.runtimeEscrow
+  });
+  const preparation = fixture.adapters.controlAdapter.prepareWalletFirstInitialActivation({
+    transitionRef: "transition_wallet_001",
+    accountId: "acct_wallet_001",
+    offer: {
+      offerVersionRef: "offerv_plan_30d_50gb_monthly_v1",
+      durationDays: 30,
+      monthlyTrafficGb: 50
+    },
+    scheduledFor: INITIAL_NOW,
+    activationAt: INITIAL_NOW
+  });
+  await assert.rejects(
+    restarted.runtimeAdapter.applyWalletFirstTransition(createEffectInput(preparation)),
+    (error) => error?.code === "wallet_first_resource_effect_reconciliation_required"
+  );
+  assert.equal(fixture.subscriptionCore.listTenants().length, 1);
+  assert.equal(
+    fixture.subscriptionCore.listSubscriptionArtifacts(tenant.id).length,
+    1
+  );
+});
+
+test("initial escrow capture failure never records or completes an effect", async (t) => {
+  const setup = createSetupDeliveryEscrow(t, "wallet-first-runtime-escrow-capture-failure", {
+    ivFactory() {
+      throw new Error("synthetic capture failure");
+    }
+  });
+  const fixture = createFixture({
+    setupDeliveryRuntimeEscrow: setup.escrow.runtimeEscrow
+  });
+  t.after(() => fixture.close());
+
+  await assert.rejects(
+    fixture.handler.applyDeferredResourceTransition(initialInput()),
+    (error) => error?.code === "wallet_first_resource_effect_unavailable"
+  );
+  assert.equal(
+    fixture.controlStore.getWalletFirstRuntimeReceiptForDeferredTransition({
+      transitionRef: "transition_wallet_001"
+    }),
+    null
+  );
+  assert.equal(
+    fixture.controlStore.getWalletFirstTransitionEffectForDeferredTransition({
+      transitionRef: "transition_wallet_001"
+    }),
+    null
+  );
+  assert.equal(fixture.subscriptionCore.listTenants().length, 1);
+  assert.equal(
+    fixture.subscriptionCore.listSubscriptionArtifacts(
+      fixture.subscriptionCore.listTenants()[0].id
+    ).length,
+    1
+  );
+
+  await assert.rejects(
+    fixture.handler.applyDeferredResourceTransition(initialInput()),
+    (error) => error?.code === "wallet_first_resource_effect_unavailable"
+  );
   assert.equal(fixture.subscriptionCore.listTenants().length, 1);
 });
 

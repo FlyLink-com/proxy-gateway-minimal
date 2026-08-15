@@ -426,6 +426,17 @@ export type PortalCurrentResource =
     setupAvailable: boolean;
   };
 
+/**
+ * Ephemeral, explicitly requested setup delivery for a wallet-first resource.
+ * The handoff reference is only used for the immediately following explicit
+ * acknowledgement; callers must not persist either field.
+ */
+export type PortalCurrentResourceSetupDelivery = {
+  handoffRef: string;
+  kind: "subscription_url";
+  subscriptionUrl: string;
+};
+
 export type PortalUserState = {
   userRef: string;
   subscriptionRequest: PortalSubscriptionRequest | null;
@@ -524,6 +535,14 @@ export type UserPortalClient = {
   completeSecondFactor(input: PortalCompleteSecondFactorInput): Promise<PortalSession>;
   fetchCurrentState(input: { userRef: string; sessionRef?: string }): Promise<PortalUserState>;
   fetchCurrentResource?(input: { sessionRef: string }): Promise<PortalCurrentResource>;
+  createCurrentResourceSetup?(input: {
+    sessionRef: string;
+    idempotencyKey: string;
+  }): Promise<PortalCurrentResourceSetupDelivery>;
+  acknowledgeCurrentResourceSetup?(input: {
+    sessionRef: string;
+    handoffRef: string;
+  }): Promise<void>;
   fetchSecurityState?(input: { sessionRef: string }): Promise<PortalUserSecurityState>;
   fetchPaymentOrders(input: PortalPaymentOrdersInput): Promise<PortalPaymentOrder[]>;
   createPaymentCheckout(input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult>;
@@ -664,6 +683,45 @@ function parsePortalCurrentResource(value: unknown): PortalCurrentResource {
     },
     validUntil: requiredIsoTimestamp(resource.validUntil, "当前资源状态无效。"),
     setupAvailable: resource.setupAvailable
+  };
+}
+
+function requiredSubscriptionUrl(value: unknown, message: string) {
+  const normalized = requiredText(typeof value === "string" ? value : undefined, message);
+  try {
+    const parsed = new URL(normalized);
+    if (
+      parsed.protocol !== "https:"
+      || !parsed.hostname
+      || parsed.username
+      || parsed.password
+      || parsed.hash
+    ) {
+      throw portalError(message);
+    }
+  } catch {
+    throw portalError(message);
+  }
+  return normalized;
+}
+
+function parsePortalCurrentResourceSetupDelivery(value: unknown): PortalCurrentResourceSetupDelivery {
+  const envelope = strictRecord(value, ["delivery"], "配置交付结果无效。");
+  const delivery = strictRecord(
+    envelope.delivery,
+    ["handoffRef", "kind", "subscriptionUrl"],
+    "配置交付结果无效。"
+  );
+  if (delivery.kind !== "subscription_url") {
+    throw portalError("配置交付结果无效。");
+  }
+  return {
+    handoffRef: requiredText(
+      typeof delivery.handoffRef === "string" ? delivery.handoffRef : undefined,
+      "配置交付结果无效。"
+    ),
+    kind: "subscription_url",
+    subscriptionUrl: requiredSubscriptionUrl(delivery.subscriptionUrl, "配置交付结果无效。")
   };
 }
 
@@ -2021,6 +2079,28 @@ async function jsonRequest(fetchFn: typeof fetch, url: string, init: RequestInit
   return body;
 }
 
+async function noContentRequest(
+  fetchFn: typeof fetch,
+  url: string,
+  init: RequestInit = {},
+  successMessage: string
+) {
+  const response = await fetchFn(url, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init.headers ?? {})
+    }
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw portalError(typeof body?.error === "string" ? body.error : "portal request failed");
+  }
+  if (response.status !== 204 || (await response.text()).trim()) {
+    throw portalError(successMessage);
+  }
+}
+
 function portalSessionHeaders(sessionRef: string | undefined) {
   return {
     "X-Portal-Session": requiredText(sessionRef, "用户会话无效。")
@@ -2053,6 +2133,14 @@ export function createHttpUserPortalClient(
   commerce: PortalCoinCommerceClient;
   commerceModel: PortalCommerceModelClient;
   fetchCurrentResource: (input: { sessionRef: string }) => Promise<PortalCurrentResource>;
+  createCurrentResourceSetup: (input: {
+    sessionRef: string;
+    idempotencyKey: string;
+  }) => Promise<PortalCurrentResourceSetupDelivery>;
+  acknowledgeCurrentResourceSetup: (input: {
+    sessionRef: string;
+    handoffRef: string;
+  }) => Promise<void>;
   walletFirstCommerce: PortalWalletFirstCommerceClient;
   wallet: PortalWalletClient;
   recharge: PortalRechargeClient;
@@ -2268,6 +2356,25 @@ export function createHttpUserPortalClient(
         headers: portalSessionHeaders(input.sessionRef)
       });
       return parsePortalCurrentResource(body);
+    },
+
+    async createCurrentResourceSetup(input) {
+      const idempotencyKey = requiredText(input.idempotencyKey, "配置请求无效。");
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/resources/current/setup"), {
+        method: "POST",
+        headers: portalSessionHeaders(input.sessionRef),
+        body: JSON.stringify({ idempotencyKey })
+      });
+      return parsePortalCurrentResourceSetupDelivery(body);
+    },
+
+    async acknowledgeCurrentResourceSetup(input) {
+      const handoffRef = requiredText(input.handoffRef, "配置确认无效。");
+      await noContentRequest(fetchFn, endpoint(baseUrl, "/api/portal/resources/current/setup/ack"), {
+        method: "POST",
+        headers: portalSessionHeaders(input.sessionRef),
+        body: JSON.stringify({ handoffRef })
+      }, "配置确认结果无效。");
     },
 
     async fetchSecurityState(input) {

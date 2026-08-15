@@ -51,6 +51,8 @@ const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/access-requests",
   "/api/portal/access-requests/current",
   "/api/portal/resources/current",
+  "/api/portal/resources/current/setup",
+  "/api/portal/resources/current/setup/ack",
   "/api/portal/access-requests/reveal",
   "/api/portal/access-requests/refresh",
   "/api/portal/access-requests/disable",

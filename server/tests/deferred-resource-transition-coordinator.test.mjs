@@ -299,6 +299,51 @@ test("deferred transition coordinator applies exactly one effect, captures after
   });
 });
 
+test("coordinator settles an initial effect with a setup handoff but never persists that optional result field", async () => {
+  const initial = claim({
+    flowKind: "initial_activation",
+    expectedEntitlementId: null,
+    expectedRequestId: null,
+    expectedIssuedLinkId: null,
+    expectedValidUntil: null
+  });
+  const { calls, coordinator } = createHarness({
+    claims: [initial],
+    apply: appliedEffect({
+      setupDeliveryHandoffRef: `wfxsetup_${"a".repeat(48)}`
+    })
+  });
+
+  const result = await coordinator.runOnce();
+
+  assert.equal(result.effectApplied, 1);
+  assert.equal(result.settled, 1);
+  assert.equal(result.reconciliationRequired, 0);
+  const record = calls.find(([name]) => name === "record")[1];
+  assert.equal(Object.hasOwn(record, "setupDeliveryHandoffRef"), false);
+});
+
+test("coordinator rejects a setup handoff from a scheduled effect before record or settlement", async () => {
+  const { calls, coordinator } = createHarness({
+    claims: [claim()],
+    apply: appliedEffect({
+      setupDeliveryHandoffRef: `wfxsetup_${"b".repeat(48)}`
+    })
+  });
+
+  const result = await coordinator.runOnce();
+
+  assert.equal(result.effectApplied, 0);
+  assert.equal(result.settled, 0);
+  assert.equal(result.reconciliationRequired, 1);
+  assert.equal(calls.some(([name]) => name === "record"), false);
+  assert.equal(calls.some(([name]) => name === "settle"), false);
+  assert.equal(
+    calls.find(([name]) => name === "reconcile")[1].safeCode,
+    "deferred_effect_outcome_unknown"
+  );
+});
+
 test("an expiring bonus allocation becomes requote_required before any resource effect", async () => {
   const expiring = claim({
     allocationSnapshot: [{

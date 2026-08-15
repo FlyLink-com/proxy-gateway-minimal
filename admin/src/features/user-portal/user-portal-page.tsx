@@ -73,6 +73,7 @@ import type {
   PortalAuthenticatorEnrollment,
   PortalClientId,
   PortalCurrentResource,
+  PortalCurrentResourceSetupDelivery,
   PortalHistoryRecord,
   PortalHumanVerificationChallenge,
   PortalPaymentOrder,
@@ -339,6 +340,13 @@ type PortalAuthLocale = keyof typeof portalAuthEntryCopy;
 
 function uiText(locale: PortalAuthLocale, zh: string, en: string) {
   return locale === "en" ? en : zh;
+}
+
+function nextPortalSetupIdempotencyKey() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `portal-setup-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 const defaultPaymentRedirect = (url: string) => {
@@ -1198,6 +1206,236 @@ function WalletFirstCurrentResourceStatus({
   );
 }
 
+function WalletFirstSetupDeliveryPanel({
+  clearIdempotencyKey,
+  locale,
+  nextIdempotencyKey,
+  portalClient,
+  resource,
+  sessionRef
+}: {
+  clearIdempotencyKey: () => void;
+  locale: PortalAuthLocale;
+  nextIdempotencyKey: () => string;
+  portalClient: UserPortalClient;
+  resource: PortalCurrentResource;
+  sessionRef: string | undefined;
+}) {
+  const [delivery, setDelivery] = useState<PortalCurrentResourceSetupDelivery | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [acknowledging, setAcknowledging] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [acknowledgedResourceIdentity, setAcknowledgedResourceIdentity] = useState<string | null>(null);
+  const [setupError, setSetupError] = useState("");
+  const observedSessionRef = useRef(sessionRef);
+  const resourceIdentity = resource.state === "available"
+    ? [
+      resource.plan.id,
+      resource.plan.durationDays,
+      resource.plan.monthlyTrafficGb,
+      resource.validUntil
+    ].join("|")
+    : "";
+  const acknowledged = acknowledgedResourceIdentity === resourceIdentity;
+  const canRequestSetup = Boolean(
+    sessionRef?.trim()
+    && portalClient.createCurrentResourceSetup
+    && portalClient.acknowledgeCurrentResourceSetup
+  );
+
+  useEffect(() => {
+    if (observedSessionRef.current === sessionRef) return;
+    // A session change must never carry a prior session's delivery or retry key.
+    observedSessionRef.current = sessionRef;
+    clearIdempotencyKey();
+    setDelivery(null);
+    setGenerating(false);
+    setAcknowledging(false);
+    setCopied(false);
+    setAcknowledgedResourceIdentity(null);
+    setSetupError("");
+  }, [clearIdempotencyKey, sessionRef]);
+
+  useEffect(() => () => {
+    // Leaving Start must clear the retry key alongside the ephemeral delivery.
+    clearIdempotencyKey();
+  }, [clearIdempotencyKey]);
+
+  if (resource.state !== "available" || !resource.setupAvailable) {
+    return null;
+  }
+
+  const clearDelivery = () => {
+    clearIdempotencyKey();
+    setDelivery(null);
+    setCopied(false);
+    setAcknowledgedResourceIdentity(null);
+    setSetupError("");
+  };
+
+  const requestSetup = async () => {
+    const createCurrentResourceSetup = portalClient.createCurrentResourceSetup;
+    if (!sessionRef?.trim() || !createCurrentResourceSetup || !portalClient.acknowledgeCurrentResourceSetup) {
+      setDelivery(null);
+      setCopied(false);
+      setSetupError(uiText(locale, "配置交付当前不可用，请稍后重试。", "Setup delivery is unavailable. Try again later."));
+      return;
+    }
+    setDelivery(null);
+    setCopied(false);
+    setAcknowledgedResourceIdentity(null);
+    setSetupError("");
+    setGenerating(true);
+    try {
+      const nextDelivery = await createCurrentResourceSetup({
+        sessionRef,
+        idempotencyKey: nextIdempotencyKey()
+      });
+      setDelivery(nextDelivery);
+    } catch {
+      setDelivery(null);
+      setCopied(false);
+      setSetupError(uiText(locale, "配置链接生成失败，请稍后重试。", "Could not generate the configuration link. Try again later."));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const copyDelivery = async () => {
+    if (!delivery) return;
+    setSetupError("");
+    try {
+      const copiedToClipboard = await copyText(delivery.subscriptionUrl);
+      if (!copiedToClipboard) {
+        throw new Error("clipboard_unavailable");
+      }
+      setCopied(true);
+    } catch {
+      // Do not leave material on screen after a failed explicit copy. A later
+      // explicit request reuses the in-memory idempotency key for recovery.
+      setDelivery(null);
+      setCopied(false);
+      setSetupError(uiText(locale, "复制失败，请重试后再确认完成。", "Copying failed. Retry before confirming completion."));
+    }
+  };
+
+  const acknowledgeDelivery = async () => {
+    const acknowledgeCurrentResourceSetup = portalClient.acknowledgeCurrentResourceSetup;
+    if (!delivery || !copied || !sessionRef?.trim() || !acknowledgeCurrentResourceSetup) return;
+    setSetupError("");
+    setAcknowledging(true);
+    try {
+      await acknowledgeCurrentResourceSetup({
+        sessionRef,
+        handoffRef: delivery.handoffRef
+      });
+      clearIdempotencyKey();
+      setDelivery(null);
+      setCopied(false);
+      setAcknowledgedResourceIdentity(resourceIdentity);
+    } catch {
+      // Preserve the in-memory delivery so the user can explicitly retry the acknowledgement.
+      setSetupError(uiText(locale, "确认未完成，请重试。", "Acknowledgement did not complete. Try again."));
+    } finally {
+      setAcknowledging(false);
+    }
+  };
+
+  return (
+    <section
+      aria-labelledby="portal-wallet-first-setup-heading"
+      className="portal-use-card portal-v2-orders-panel"
+      data-wallet-first-setup="explicit"
+    >
+      <div className="portal-section-heading">
+        <Wifi aria-hidden="true" />
+        <div>
+          <span className="portal-card-label">{uiText(locale, "配置交付", "Setup delivery")}</span>
+          <h3 id="portal-wallet-first-setup-heading">
+            {acknowledged
+              ? uiText(locale, "配置已确认", "Setup confirmed")
+              : uiText(locale, "生成配置链接", "Generate configuration link")}
+          </h3>
+          <p>
+            {acknowledged
+              ? uiText(
+                locale,
+                "本次配置交付已结束；资源更新后会重新提供新的显式操作。",
+                "This setup delivery is complete. A new explicit action becomes available when the resource changes."
+              )
+              : uiText(
+                locale,
+                "仅在你点击生成后，本页才会临时显示链接；离开本页、关闭或退出登录会清除它。",
+                "The link appears here only after you request it. Leaving this view, closing it, or signing out clears it."
+              )}
+          </p>
+        </div>
+      </div>
+      {setupError ? <p className="portal-error" role="alert">{setupError}</p> : null}
+      {acknowledged ? (
+        <p className="portal-success" role="status">
+          {uiText(
+            locale,
+            "配置交付已确认。如仍无法连接，请在支持页面提交问题。",
+            "Setup delivery acknowledged. If you still cannot connect, submit a request on the Support page."
+          )}
+        </p>
+      ) : null}
+      {delivery ? (
+        <div className="portal-form-stack">
+          <label className="portal-field">
+            <span>{uiText(locale, "订阅链接", "Subscription link")}</span>
+            <input
+              aria-label={uiText(locale, "订阅链接", "Subscription link")}
+              autoComplete="off"
+              readOnly
+              type="text"
+              value={delivery.subscriptionUrl}
+            />
+          </label>
+          <p className="portal-field-hint">
+            {uiText(
+              locale,
+              "请先明确复制链接，再在客户端中导入；复制成功前不能确认完成。",
+              "Copy the link explicitly before importing it into your client; completion stays disabled until copying succeeds."
+            )}
+          </p>
+          <div className="portal-action-row">
+            <button className="portal-secondary-button compact" type="button" onClick={() => void copyDelivery()}>
+              <Copy aria-hidden="true" />
+              {copied ? uiText(locale, "已复制", "Copied") : uiText(locale, "复制链接", "Copy link")}
+            </button>
+            <button
+              className="portal-primary-button compact"
+              type="button"
+              disabled={!copied || acknowledging}
+              onClick={() => void acknowledgeDelivery()}
+            >
+              {acknowledging
+                ? uiText(locale, "正在确认…", "Acknowledging…")
+                : uiText(locale, "我已完成配置", "I completed setup")}
+            </button>
+            <button className="portal-link-button" type="button" onClick={clearDelivery}>
+              {uiText(locale, "关闭配置链接", "Close configuration link")}
+            </button>
+          </div>
+        </div>
+      ) : !acknowledged ? (
+        <button
+          className="portal-primary-button compact"
+          type="button"
+          disabled={generating || !canRequestSetup}
+          onClick={() => void requestSetup()}
+        >
+          {generating
+            ? uiText(locale, "正在生成…", "Generating…")
+            : uiText(locale, "生成配置链接", "Generate configuration link")}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
 function buildHumanVerification(
   challenge: PortalHumanVerificationChallenge,
   challengeAnswer: string,
@@ -1255,6 +1493,7 @@ export function UserPortalPage({
   const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
   const [commerceModel, setCommerceModel] = useState<PortalCommerceModel | null>(null);
   const sessionGenerationRef = useRef(0);
+  const walletFirstSetupIdempotencyKeyRef = useRef<string | null>(null);
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const [accountId, setAccountId] = useState("");
   const [password, setPassword] = useState("");
@@ -1306,6 +1545,16 @@ export function UserPortalPage({
   const [supportPending, setSupportPending] = useState(false);
   const [supportError, setSupportError] = useState("");
   const [supportResult, setSupportResult] = useState<PortalSupportRequest | null>(null);
+  const nextWalletFirstSetupIdempotencyKey = useCallback(() => {
+    const existing = walletFirstSetupIdempotencyKeyRef.current;
+    if (existing) return existing;
+    const next = nextPortalSetupIdempotencyKey();
+    walletFirstSetupIdempotencyKeyRef.current = next;
+    return next;
+  }, []);
+  const clearWalletFirstSetupIdempotencyKey = useCallback(() => {
+    walletFirstSetupIdempotencyKeyRef.current = null;
+  }, []);
 
   const advanceSessionGeneration = useCallback(() => {
     const nextGeneration = sessionGenerationRef.current + 1;
@@ -1434,6 +1683,7 @@ export function UserPortalPage({
     destination: PortalView = readPortalRechargeReturn() ? "wallet" : "start"
   ) {
     const hydrateGeneration = advanceSessionGeneration();
+    clearWalletFirstSetupIdempotencyKey();
     setWalletFirstResource(null);
     const isCurrent = () => hydrateGeneration === sessionGenerationRef.current;
     const promise = (async () => {
@@ -1975,6 +2225,7 @@ export function UserPortalPage({
 
   function logout() {
     advanceSessionGeneration();
+    clearWalletFirstSetupIdempotencyKey();
     try {
       window.sessionStorage.removeItem(PORTAL_COIN_ORDER_STORAGE_KEY);
       window.sessionStorage.removeItem(PORTAL_PAYMENT_RETURN_SESSION_STORAGE_KEY);
@@ -2493,6 +2744,7 @@ export function UserPortalPage({
           {activeView === "referrals" ? <ReferralRewardsPanel locale={locale} /> : null}
           {activeView === "start" ? (
             <UseGuide
+              key={portalSession.sessionRef ?? "portal-session-none"}
               actionError={actionError}
               copiedOrderRef={copiedOrderRef}
               created={created}
@@ -2501,6 +2753,10 @@ export function UserPortalPage({
               selectedOrder={selectedOrder}
               hasSetupAccess={hasSetupAccess}
               walletFirstResource={walletFirstResource}
+              nextWalletFirstSetupIdempotencyKey={nextWalletFirstSetupIdempotencyKey}
+              clearWalletFirstSetupIdempotencyKey={clearWalletFirstSetupIdempotencyKey}
+              portalClient={portalClient}
+              sessionRef={portalSession.sessionRef}
               setActiveView={setActiveView}
               openMarketplace={openMarketplace}
               revealOrCreateSubscriptionLink={revealOrCreateSubscriptionLink}
@@ -3901,6 +4157,10 @@ function UseGuide({
   selectedOrder,
   hasSetupAccess,
   walletFirstResource,
+  nextWalletFirstSetupIdempotencyKey,
+  clearWalletFirstSetupIdempotencyKey,
+  portalClient,
+  sessionRef,
   setActiveView,
   openMarketplace,
   revealOrCreateSubscriptionLink
@@ -3913,6 +4173,10 @@ function UseGuide({
   selectedOrder: PortalOrderRow | null;
   hasSetupAccess: boolean;
   walletFirstResource: PortalCurrentResource | null;
+  nextWalletFirstSetupIdempotencyKey: () => string;
+  clearWalletFirstSetupIdempotencyKey: () => void;
+  portalClient: UserPortalClient;
+  sessionRef: string | undefined;
   setActiveView: (value: PortalView) => void;
   openMarketplace: () => void;
   revealOrCreateSubscriptionLink: (
@@ -4445,11 +4709,21 @@ function UseGuide({
 
   if (walletFirstResource) {
     return (
-      <WalletFirstCurrentResourceStatus
-        resource={walletFirstResource}
-        locale={locale}
-        onOpenMarketplace={openMarketplace}
-      />
+      <>
+        <WalletFirstCurrentResourceStatus
+          resource={walletFirstResource}
+          locale={locale}
+          onOpenMarketplace={openMarketplace}
+        />
+        <WalletFirstSetupDeliveryPanel
+          clearIdempotencyKey={clearWalletFirstSetupIdempotencyKey}
+          locale={locale}
+          nextIdempotencyKey={nextWalletFirstSetupIdempotencyKey}
+          portalClient={portalClient}
+          resource={walletFirstResource}
+          sessionRef={sessionRef}
+        />
+      </>
     );
   }
 

@@ -48,12 +48,18 @@ import {
   REQUIRED_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATION_ID
 } from "../services/platform/wallet-first-resource-effect-runtime-claims-migrations.mjs";
 import {
+  applyWalletFirstSetupDeliveryHandoffsMigrations,
+  WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATIONS,
+  REQUIRED_WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATION_ID
+} from "../services/platform/wallet-first-setup-delivery-handoffs-migrations.mjs";
+import {
   COIN_COMMERCE_PRODUCTION_OFFERS
 } from "../services/platform/coin-commerce-production-catalog.mjs";
 import { createSqliteCoinCommerceStore } from "../services/platform/coin-commerce-store.mjs";
 import { applyPaymentStoreMigrations } from "../services/platform/payment-store-migrations.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 import { createPortalTotpSecretProtector } from "../services/platform/portal-totp-verifier.mjs";
+import { createWalletFirstSetupDeliveryEscrow } from "../services/platform/wallet-first-setup-delivery-escrow.mjs";
 
 function fakeSubscriptionStore(overrides = {}) {
   return {
@@ -102,6 +108,8 @@ const VULTR_MULTICHANNEL_ENV = {
 };
 const PORTAL_TOTP_PROTECTOR_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 const PORTAL_TOTP_PROTECTOR_IV = Buffer.from("000102030405060708090a0b", "hex");
+const WALLET_FIRST_SETUP_DELIVERY_ESCROW_KEY =
+  "11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff";
 
 const EDGE_LIFECYCLE_TEST_NOW = "2026-06-10T00:00:00.000Z";
 
@@ -242,6 +250,19 @@ function prepareMigratedWalletFirstControlDatabase(directory) {
     expectedDdlChecksum:
       WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATIONS[0].ddlChecksum,
     nowFn: () => new Date("2026-08-13T00:00:00.000Z")
+  });
+  return controlDbPath;
+}
+
+function prepareMigratedWalletFirstSetupDeliveryControlDatabase(directory) {
+  const controlDbPath = prepareMigratedWalletFirstControlDatabase(directory);
+  applyWalletFirstSetupDeliveryHandoffsMigrations({
+    dbPath: controlDbPath,
+    expectedMigrationId:
+      REQUIRED_WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATION_ID,
+    expectedDdlChecksum:
+      WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATIONS[0].ddlChecksum,
+    nowFn: () => new Date("2026-08-14T00:00:00.000Z")
   });
   return controlDbPath;
 }
@@ -1257,6 +1278,20 @@ test("createRuntimeState keeps wallet-first registration default-off without app
       throw new Error("default-off deferred transition node must stay untouched");
     }
   });
+  let setupDeliveryGetterCalls = 0;
+  for (const field of [
+    "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED",
+    "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY",
+    "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH"
+  ]) {
+    Object.defineProperty(env, field, {
+      enumerable: true,
+      get() {
+        setupDeliveryGetterCalls += 1;
+        throw new Error(`default-off setup delivery ${field} must stay untouched`);
+      }
+    });
+  }
   let state;
 
   try {
@@ -1271,10 +1306,12 @@ test("createRuntimeState keeps wallet-first registration default-off without app
     state = createRuntimeState(stateOptions);
 
     assert.equal(state.platform.walletFirstRegistrationEnabled, false);
+    assert.equal(state.platform.walletFirstSetupDeliveryEnabled, false);
     assert.equal(state.platform.portalRegistrationWelcomeBonusCoordinator, null);
     assert.equal(state.platform.walletFirstCurrentResourceProjection, null);
     assert.equal(deferredRuntimeGetterCalls, 0);
     assert.equal(deferredNodeGetterCalls, 0);
+    assert.equal(setupDeliveryGetterCalls, 0);
     await state.close();
     state = null;
 
@@ -1474,6 +1511,59 @@ test("createRuntimeState rejects an enabled wallet-first runtime without durable
   }
 });
 
+test("createRuntimeState requires the setup-delivery handoff schema without applying it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-setup-delivery-schema-no-apply-"));
+  const controlDbPath = prepareMigratedWalletFirstControlDatabase(dir);
+  let unexpectedState;
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+            COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
+            COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
+              "channel-vultr-a-vless-reality-tcp",
+            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY:
+              WALLET_FIRST_SETUP_DELIVERY_ESCROW_KEY,
+            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH:
+              join(dir, "setup-delivery.escrow")
+          }),
+          controlDbPath,
+          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "wallet_first_setup_delivery_schema_not_ready"
+    );
+
+    const database = new Database(controlDbPath, {
+      readonly: true,
+      fileMustExist: true
+    });
+    try {
+      assert.equal(database.prepare(`
+        select count(*) from sqlite_master
+         where type = 'table'
+           and name = 'platform_wallet_first_setup_delivery_handoffs'
+      `).pluck().get(), 0);
+    } finally {
+      database.close();
+    }
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState requires a dedicated wallet-first transition node before composition", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-enabled-"));
   const controlDbPath = prepareMigratedWalletFirstControlDatabase(dir);
@@ -1500,6 +1590,98 @@ test("createRuntimeState requires a dedicated wallet-first transition node befor
       },
       (error) => error?.code === "wallet_first_deferred_transition_runtime_missing"
     );
+  } finally {
+    unexpectedState?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState rejects setup delivery without a strict key and absolute escrow path before database access", () => {
+  const cases = [
+    {
+      label: "missing key",
+      key: "",
+      escrowPath: "C:\\setup-delivery.escrow"
+    },
+    {
+      label: "relative escrow path",
+      key: WALLET_FIRST_SETUP_DELIVERY_ESCROW_KEY,
+      escrowPath: "setup-delivery.escrow"
+    }
+  ];
+
+  for (const entry of cases) {
+    const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-setup-delivery-prerequisite-"));
+    let unexpectedState;
+    try {
+      assert.throws(
+        () => {
+          unexpectedState = createRuntimeState({
+            rootDir: new URL("../../", import.meta.url),
+            env: runtimeEnv({
+              CONSOLE_TOKEN: "secret",
+              USER_PORTAL_ROUTES_ENABLED: "true",
+              COINS_WALLET_ENABLED: "true",
+              COINS_COMMERCE_ENABLED: "true",
+              USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+              COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
+              COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
+                "channel-vultr-a-vless-reality-tcp",
+              USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED: "true",
+              USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY: entry.key,
+              USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH:
+                entry.escrowPath
+            }),
+            controlDbPath: join(dir, "control.sqlite"),
+            subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+            autoStartHttpProxy: false
+          });
+        },
+        (error) => error?.code === "wallet_first_setup_delivery_prerequisite_missing",
+        entry.label
+      );
+      assert.equal(existsSync(join(dir, "control.sqlite")), false, entry.label);
+      assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false, entry.label);
+    } finally {
+      unexpectedState?.close();
+      removeTempDir(dir);
+    }
+  }
+});
+
+test("createRuntimeState maps a malformed setup-delivery key to its fail-closed prerequisite gate", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-setup-delivery-key-"));
+  const controlDbPath = prepareMigratedWalletFirstSetupDeliveryControlDatabase(dir);
+  const escrowPath = join(dir, "setup-delivery.escrow");
+  let unexpectedState;
+
+  try {
+    assert.throws(
+      () => {
+        unexpectedState = createRuntimeState({
+          rootDir: new URL("../../", import.meta.url),
+          env: runtimeEnv({
+            CONSOLE_TOKEN: "secret",
+            USER_PORTAL_ROUTES_ENABLED: "true",
+            COINS_WALLET_ENABLED: "true",
+            COINS_COMMERCE_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+            COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
+            COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
+              "channel-vultr-a-vless-reality-tcp",
+            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED: "true",
+            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY: "not-a-32-byte-key",
+            USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH: escrowPath
+          }),
+          controlDbPath,
+          subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+          coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+          autoStartHttpProxy: false
+        });
+      },
+      (error) => error?.code === "wallet_first_setup_delivery_prerequisite_missing"
+    );
+    assert.equal(existsSync(escrowPath), false);
   } finally {
     unexpectedState?.close();
     removeTempDir(dir);
@@ -1539,15 +1721,28 @@ test("createRuntimeState composes the concrete wallet-first deferred runtime wit
         }
       }
     );
+    for (const field of [
+      "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY",
+      "USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH"
+    ]) {
+      Object.defineProperty(stateOptions.env, field, {
+        enumerable: true,
+        get() {
+          throw new Error(`disabled setup delivery must not inspect ${field}`);
+        }
+      });
+    }
     state = createRuntimeState(stateOptions);
 
     assert.equal(state.platform.walletFirstRegistrationEnabled, true);
+    assert.equal(state.platform.walletFirstSetupDeliveryEnabled, false);
     assert.notEqual(state.platform.deferredTransitionStore, null);
     assert.equal(typeof state.platform.deferredTransitionCoordinator.start, "function");
     assert.equal(typeof state.platform.deferredTransitionCoordinator.stop, "function");
     assert.equal(typeof state.platform.walletFirstResourceEffectHandler.resolveCurrentResourceChain, "function");
     assert.equal(typeof state.platform.walletFirstCommerceService.previewDeferredCheckout, "function");
     assert.equal(typeof state.platform.walletFirstCurrentResourceProjection.getCurrentResource, "function");
+    assert.equal(state.platform.walletFirstCurrentResourceSetupDelivery, null);
 
     await state.platform.deferredTransitionCoordinator.start();
     await state.platform.deferredTransitionCoordinator.stop();
@@ -1555,6 +1750,65 @@ test("createRuntimeState composes the concrete wallet-first deferred runtime wit
     await state.close();
     state = null;
   } finally {
+    await state?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState composes setup delivery only behind its gate and releases the escrow writer lock on close", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-wallet-first-setup-delivery-runtime-"));
+  const controlDbPath = prepareMigratedWalletFirstSetupDeliveryControlDatabase(dir);
+  const escrowPath = join(dir, "setup-delivery.escrow");
+  let state;
+  let reopenedEscrow;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        COINS_WALLET_ENABLED: "true",
+        COINS_COMMERCE_ENABLED: "true",
+        USER_PORTAL_WALLET_FIRST_MODEL_ENABLED: "true",
+        COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED: "true",
+        COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID:
+          "channel-vultr-a-vless-reality-tcp",
+        USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED: "true",
+        USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY:
+          WALLET_FIRST_SETUP_DELIVERY_ESCROW_KEY,
+        USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH: escrowPath
+      }),
+      controlDbPath,
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      coinCommerceFulfillmentHandler: coinCommerceFulfillmentHandler(),
+      userPortalNowFn: () => new Date("2026-08-14T00:00:00.000Z"),
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(state.platform.walletFirstSetupDeliveryEnabled, true);
+    assert.equal(
+      typeof state.platform.walletFirstCurrentResourceSetupDelivery.deliverSetup,
+      "function"
+    );
+    assert.equal(
+      typeof state.platform.walletFirstCurrentResourceSetupDelivery.acknowledgeSetup,
+      "function"
+    );
+    assert.equal(
+      typeof state.platform.walletFirstCurrentResourceProjection.getCurrentResource,
+      "function"
+    );
+
+    await state.close();
+    state = null;
+
+    reopenedEscrow = createWalletFirstSetupDeliveryEscrow({
+      key: WALLET_FIRST_SETUP_DELIVERY_ESCROW_KEY,
+      filePath: escrowPath
+    });
+  } finally {
+    reopenedEscrow?.close();
     await state?.close();
     removeTempDir(dir);
   }

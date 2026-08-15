@@ -31,6 +31,9 @@ import {
   createWalletFirstDeferredTransitionRuntime
 } from "../services/platform/wallet-first-deferred-transition-runtime.mjs";
 import {
+  createWalletFirstSetupDeliveryEscrow
+} from "../services/platform/wallet-first-setup-delivery-escrow.mjs";
+import {
   REQUIRED_WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATION_ID,
   WALLET_FIRST_DEFERRED_CHECKOUT_MIGRATIONS,
   applyWalletFirstDeferredCheckoutMigrations
@@ -40,6 +43,12 @@ import {
   WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATIONS,
   applyWalletFirstResourceEffectRuntimeClaimsMigrations
 } from "../services/platform/wallet-first-resource-effect-runtime-claims-migrations.mjs";
+import {
+  REQUIRED_WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATION_ID,
+  WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATIONS,
+  WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE,
+  applyWalletFirstSetupDeliveryHandoffsMigrations
+} from "../services/platform/wallet-first-setup-delivery-handoffs-migrations.mjs";
 import {
   createSubscriptionCore
 } from "../services/subscriptions/core.mjs";
@@ -110,7 +119,7 @@ function operation(idempotencyKey) {
   };
 }
 
-function applyWalletFirstMigrations(database, nowFn) {
+function applyWalletFirstMigrations(database, nowFn, { setupDeliveryEnabled = false } = {}) {
   applyCoinWalletMigrations({
     database,
     expectedMigrationId: REQUIRED_COIN_WALLET_MIGRATION_ID,
@@ -143,9 +152,17 @@ function applyWalletFirstMigrations(database, nowFn) {
       WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_MIGRATIONS[0].ddlChecksum,
     nowFn
   });
+  if (setupDeliveryEnabled) {
+    applyWalletFirstSetupDeliveryHandoffsMigrations({
+      database,
+      expectedMigrationId: REQUIRED_WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATION_ID,
+      expectedDdlChecksum: WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_MIGRATIONS[0].ddlChecksum,
+      nowFn
+    });
+  }
 }
 
-function createFixture() {
+function createFixture({ setupDeliveryRuntimeEscrow = null } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "wallet-first-runtime-e2e-"));
   const controlDbPath = join(directory, "control.sqlite");
   const runtimeDbPath = join(directory, "runtime.sqlite");
@@ -156,7 +173,9 @@ function createFixture() {
   const controlStore = createSqliteSubscriptionControlStore({
     database: controlDatabase
   });
-  applyWalletFirstMigrations(controlDatabase, nowFn);
+  applyWalletFirstMigrations(controlDatabase, nowFn, {
+    setupDeliveryEnabled: setupDeliveryRuntimeEscrow !== null
+  });
   const commerceStore = createSqliteCoinCommerceStore({
     database: controlDatabase
   });
@@ -222,7 +241,8 @@ function createFixture() {
     controlStore,
     subscriptionCore,
     nodeId: NODE_ID,
-    nowFn
+    nowFn,
+    ...(setupDeliveryRuntimeEscrow ? { setupDeliveryRuntimeEscrow } : {})
   });
   return {
     controlDatabase,
@@ -247,6 +267,170 @@ function createFixture() {
     }
   };
 }
+
+test("runtime forwards but never closes the factory-owned setup delivery escrow", () => {
+  const escrowDirectory = mkdtempSync(join(tmpdir(), "wallet-first-runtime-owned-escrow-"));
+  const setup = createWalletFirstSetupDeliveryEscrow({
+    key: Buffer.from("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff", "hex"),
+    filePath: join(escrowDirectory, "setup-delivery-escrow.json")
+  });
+  const fixture = createFixture({
+    setupDeliveryRuntimeEscrow: setup.runtimeEscrow
+  });
+  try {
+    fixture.runtime.close();
+    assert.doesNotThrow(() => setup.runtimeEscrow.captureInitialSetupDelivery({
+      transitionRef: "transition_runtime_escrow_001",
+      effectRef: "effect_runtime_escrow_001",
+      tenantId: "tenant_runtime_escrow_001",
+      artifactId: "artifact_runtime_escrow_001",
+      subscriptionUrl: "https://gateway.example.test/sub/runtime-escrow?token=synthetic"
+    }));
+  } finally {
+    fixture.close();
+    setup.close();
+    rmSync(escrowDirectory, { recursive: true, force: true });
+  }
+});
+
+test("escrow-enabled runtime settles one initial handoff and keeps scheduled effects handoff-free", async (t) => {
+  const escrowDirectory = mkdtempSync(join(tmpdir(), "wallet-first-runtime-coordinator-escrow-"));
+  const setup = createWalletFirstSetupDeliveryEscrow({
+    key: Buffer.from("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff", "hex"),
+    filePath: join(escrowDirectory, "setup-delivery-escrow.json")
+  });
+  const fixture = createFixture({ setupDeliveryRuntimeEscrow: setup.runtimeEscrow });
+  t.after(() => {
+    fixture.close();
+    setup.close();
+    rmSync(escrowDirectory, { recursive: true, force: true });
+  });
+
+  const initialQuote = fixture.runtime.walletFirstCommerceService.previewDeferredCheckout({
+    accountId: ACCOUNT_ID,
+    offerRef: MONTHLY_OFFER.offerRef
+  });
+  const initialTransition = fixture.runtime.walletFirstCommerceService.reserveDeferredTransition({
+    accountId: ACCOUNT_ID,
+    quoteRef: initialQuote.quoteRef,
+    operation: operation("runtime_escrow_initial_reserve")
+  });
+  const initialResult = await fixture.runtime.deferredTransitionCoordinator.runOnce();
+  assert.equal(initialResult.effectApplied, 1);
+  assert.equal(initialResult.settled, 1);
+  assert.equal(initialResult.reconciliationRequired, 0);
+
+  const initialEffect = await fixture.runtime.resourceEffectHandler
+    .resolveDeferredResourceTransitionEffect({ transitionRef: initialTransition.transitionRef });
+  assert.match(initialEffect.setupDeliveryHandoffRef, /^wfxsetup_[a-f0-9]{48}$/);
+  const handoff = fixture.controlDatabase.prepare(`
+    select handoff_ref, initial_transition_ref, effect_ref, status
+      from ${WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE}
+  `).get();
+  assert.deepEqual(handoff, {
+    handoff_ref: initialEffect.setupDeliveryHandoffRef,
+    initial_transition_ref: initialTransition.transitionRef,
+    effect_ref: initialEffect.effectRef,
+    status: "pending"
+  });
+  const initialReceipt = fixture.controlStore
+    .getWalletFirstRuntimeReceiptForDeferredTransition({
+      transitionRef: initialTransition.transitionRef
+    });
+  assert.equal(
+    setup.deliveryEscrow.getSetupDeliverySummary({
+      transitionRef: initialTransition.transitionRef,
+      effectRef: initialEffect.effectRef,
+      tenantId: initialReceipt.tenantId,
+      artifactId: initialReceipt.artifactId
+    }).handoffRef,
+    initialEffect.setupDeliveryHandoffRef
+  );
+
+  const initialChain = fixture.runtime.resourceEffectHandler
+    .resolveCurrentResourceChain({ accountId: ACCOUNT_ID });
+  await fixture.runtime.deferredTransitionCoordinator.runOnce();
+  fixture.setNow(plusMilliseconds(INITIAL_NOW, 1_000));
+  const scheduledQuote = fixture.runtime.walletFirstCommerceService.previewDeferredCheckout({
+    accountId: ACCOUNT_ID,
+    offerRef: ANNUAL_OFFER.offerRef
+  });
+  const scheduledTransition = fixture.runtime.walletFirstCommerceService.reserveDeferredTransition({
+    accountId: ACCOUNT_ID,
+    quoteRef: scheduledQuote.quoteRef,
+    operation: operation("runtime_escrow_scheduled_reserve")
+  });
+  fixture.setNow(initialChain.validUntil);
+  const scheduledResult = await fixture.runtime.deferredTransitionCoordinator.runOnce();
+  assert.equal(scheduledResult.effectApplied, 1);
+  assert.equal(scheduledResult.settled, 1);
+  assert.equal(scheduledResult.reconciliationRequired, 0);
+  const scheduledEffect = await fixture.runtime.resourceEffectHandler
+    .resolveDeferredResourceTransitionEffect({ transitionRef: scheduledTransition.transitionRef });
+  assert.equal(Object.hasOwn(scheduledEffect, "setupDeliveryHandoffRef"), false);
+  assert.equal(
+    fixture.controlDatabase.prepare(`
+      select count(*) from ${WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE}
+    `).pluck().get(),
+    1
+  );
+});
+
+test("a deleted initial handoff makes coordinator recovery reconcile instead of settle", async (t) => {
+  const escrowDirectory = mkdtempSync(join(tmpdir(), "wallet-first-runtime-deleted-handoff-"));
+  const setup = createWalletFirstSetupDeliveryEscrow({
+    key: Buffer.from("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff", "hex"),
+    filePath: join(escrowDirectory, "setup-delivery-escrow.json")
+  });
+  const fixture = createFixture({ setupDeliveryRuntimeEscrow: setup.runtimeEscrow });
+  t.after(() => {
+    fixture.close();
+    setup.close();
+    rmSync(escrowDirectory, { recursive: true, force: true });
+  });
+
+  const quote = fixture.runtime.walletFirstCommerceService.previewDeferredCheckout({
+    accountId: ACCOUNT_ID,
+    offerRef: MONTHLY_OFFER.offerRef
+  });
+  const transition = fixture.runtime.walletFirstCommerceService.reserveDeferredTransition({
+    accountId: ACCOUNT_ID,
+    quoteRef: quote.quoteRef,
+    operation: operation("runtime_deleted_handoff_reserve")
+  });
+  const claimed = fixture.runtime.deferredTransitionStore.claimNextDueTransition({ leaseMs: 60_000 });
+  assert.equal(claimed.transitionRef, transition.transitionRef);
+  const applied = await fixture.runtime.resourceEffectHandler.applyDeferredResourceTransition({
+    transitionRef: claimed.transitionRef,
+    accountId: claimed.accountId,
+    orderRef: claimed.orderRef,
+    flowKind: claimed.flowKind,
+    offer: claimed.offer,
+    scheduledFor: claimed.scheduledFor,
+    expectedEntitlementId: claimed.expectedEntitlementId,
+    expectedRequestId: claimed.expectedRequestId,
+    expectedIssuedLinkId: claimed.expectedIssuedLinkId,
+    expectedValidUntil: claimed.expectedValidUntil,
+    activationAt: INITIAL_NOW
+  });
+  assert.match(applied.setupDeliveryHandoffRef, /^wfxsetup_[a-f0-9]{48}$/);
+  fixture.controlDatabase.prepare(`
+    delete from ${WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE} where handoff_ref = ?
+  `).run(applied.setupDeliveryHandoffRef);
+
+  fixture.setNow(plusMilliseconds(INITIAL_NOW, 61_000));
+  const recovered = await fixture.runtime.deferredTransitionCoordinator.runOnce();
+  assert.equal(recovered.effectApplied, 0);
+  assert.equal(recovered.settled, 0);
+  assert.equal(recovered.reconciliationRequired, 1);
+  assert.equal(
+    fixture.controlDatabase.prepare(`
+      select state from platform_deferred_resource_transitions where transition_ref = ?
+    `).pluck().get(transition.transitionRef),
+    "reconciliation_required"
+  );
+  assert.equal(fixture.subscriptionCore.listTenants().length, 1);
+});
 
 test("concrete wallet-first runtime recovers an expired scheduled-switch lease through the normal coordinator", async (t) => {
   const fixture = createFixture();

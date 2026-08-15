@@ -1,4 +1,7 @@
 import { types as utilTypes } from "node:util";
+import {
+  snapshotWalletFirstCurrentResourceSetupDelivery
+} from "./wallet-first-current-resource-setup-delivery.mjs";
 
 const ACCOUNT_REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
 const ISO_UTC_MILLIS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -158,6 +161,44 @@ function snapshotControlStore(value) {
   });
 }
 
+function snapshotAllowedObject(value, fields, code) {
+  try {
+    if (!isPlainObject(value)) throw serviceError(code);
+    const allowed = new Set(fields);
+    const snapshot = {};
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string" || !allowed.has(key)) {
+        throw serviceError(code);
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+        throw serviceError(code);
+      }
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch (error) {
+    if (error?.code === code) throw error;
+    throw serviceError(code);
+  }
+}
+
+function snapshotProjectionOptions(value) {
+  const code = "wallet_first_current_resource_unavailable";
+  const options = snapshotAllowedObject(value, ["controlStore", "setupDelivery"], code);
+  if (!Object.hasOwn(options, "controlStore")) throw serviceError(code);
+  try {
+    return Object.freeze({
+      controlStore: options.controlStore,
+      setupDelivery: Object.hasOwn(options, "setupDelivery")
+        ? snapshotWalletFirstCurrentResourceSetupDelivery(options.setupDelivery)
+        : null
+    });
+  } catch {
+    throw serviceError(code);
+  }
+}
+
 export function snapshotWalletFirstCurrentResourceProjection(value) {
   const code = "wallet_first_current_resource_unavailable";
   if (!SERVICE_INSTANCES.has(value)) throw serviceError(code);
@@ -174,7 +215,7 @@ export function snapshotWalletFirstCurrentResourceProjection(value) {
  */
 export function createWalletFirstCurrentResourceProjection(options = {}) {
   const code = "wallet_first_current_resource_unavailable";
-  const values = snapshotExactObject(options, ["controlStore"], code);
+  const values = snapshotProjectionOptions(options);
   const controlStore = snapshotControlStore(values.controlStore);
 
   const service = Object.freeze({
@@ -187,7 +228,19 @@ export function createWalletFirstCurrentResourceProjection(options = {}) {
       } catch {
         throw serviceError(code);
       }
-      return normalizeResource(raw);
+      const resource = normalizeResource(raw);
+      if (resource.state !== "available" || !values.setupDelivery) return resource;
+      let setupAvailable;
+      try {
+        setupAvailable = values.setupDelivery.getSetupAvailability({ accountId });
+      } catch {
+        throw serviceError(code);
+      }
+      if (typeof setupAvailable !== "boolean") throw serviceError(code);
+      return Object.freeze({
+        ...resource,
+        setupAvailable
+      });
     }
   });
   SERVICE_INSTANCES.add(service);

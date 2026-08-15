@@ -43,6 +43,7 @@ export const DEFERRED_RESOURCE_TRANSITION_EFFECT_HANDLER_METHODS = Object.freeze
 ]);
 
 const REFERENCE = /^[a-z][a-z0-9_]{2,95}$/;
+const SETUP_DELIVERY_HANDOFF_REF = /^wfxsetup_[a-f0-9]{48}$/;
 const SAFE_CODE = /^[a-z][a-z0-9_]{2,95}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
 const ISO_UTC_MILLIS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -487,31 +488,47 @@ function normalizeRevalidation(input) {
   throw coordinatorError("deferred_transition_coordinator_effect_invalid");
 }
 
-function normalizeEffectResult(input) {
-  const value = exactValues(input, [
+function normalizeEffectResult(input, flowKind) {
+  const code = "deferred_transition_coordinator_effect_invalid";
+  if (!["initial_activation", "scheduled_switch"].includes(flowKind)) {
+    throw coordinatorError(code);
+  }
+  const value = allowedValues(input, [
     "status",
     "effectRef",
     "nextEntitlementId",
     "nextRequestId",
     "nextIssuedLinkId",
     "nextValidUntil"
-  ], "deferred_transition_coordinator_effect_invalid");
+  ], ["setupDeliveryHandoffRef"], code);
   if (value.status !== "applied") {
-    throw coordinatorError("deferred_transition_coordinator_effect_invalid");
+    throw coordinatorError(code);
+  }
+  if (Object.hasOwn(value, "setupDeliveryHandoffRef")) {
+    if (
+      flowKind !== "initial_activation"
+      || typeof value.setupDeliveryHandoffRef !== "string"
+      || !SETUP_DELIVERY_HANDOFF_REF.test(value.setupDeliveryHandoffRef)
+    ) {
+      throw coordinatorError(code);
+    }
+    // This reference is already bound to the control completion transaction.
+    // The deferred store has no setup-delivery material authority, so it must
+    // validate but deliberately discard the optional safe result field.
   }
   return Object.freeze({
-    effectRef: normalizeReference(value.effectRef, "deferred_transition_coordinator_effect_invalid"),
+    effectRef: normalizeReference(value.effectRef, code),
     successor: Object.freeze({
       entitlementId: normalizeReference(
         value.nextEntitlementId,
-        "deferred_transition_coordinator_effect_invalid"
+        code
       ),
-      requestId: normalizeReference(value.nextRequestId, "deferred_transition_coordinator_effect_invalid"),
+      requestId: normalizeReference(value.nextRequestId, code),
       issuedLinkId: normalizeReference(
         value.nextIssuedLinkId,
-        "deferred_transition_coordinator_effect_invalid"
+        code
       ),
-      validUntil: normalizeTimestamp(value.nextValidUntil, "deferred_transition_coordinator_effect_invalid")
+      validUntil: normalizeTimestamp(value.nextValidUntil, code)
     })
   });
 }
@@ -627,9 +644,9 @@ function normalizeRebaseCompletion(input, rebase) {
   throw coordinatorError("deferred_transition_coordinator_rebase_result_invalid");
 }
 
-function normalizeResolvedEffect(input) {
+function normalizeResolvedEffect(input, flowKind) {
   if (input === null) return null;
-  return normalizeEffectResult(input);
+  return normalizeEffectResult(input, flowKind);
 }
 
 function expectTransitionState(input, expected) {
@@ -1047,7 +1064,8 @@ export function createDeferredResourceTransitionCoordinator(options = {}) {
     let recoveredEffect;
     try {
       recoveredEffect = normalizeResolvedEffect(
-        await resourceEffectHandler.resolveDeferredResourceTransitionEffect(effectLookupInput(claim))
+        await resourceEffectHandler.resolveDeferredResourceTransitionEffect(effectLookupInput(claim)),
+        claim.flowKind
       );
     } catch {
       await reconcile(claim, "deferred_effect_lookup_unknown", result);
@@ -1122,7 +1140,8 @@ export function createDeferredResourceTransitionCoordinator(options = {}) {
     let effect;
     try {
       effect = normalizeEffectResult(
-        await resourceEffectHandler.applyDeferredResourceTransition(effectInput)
+        await resourceEffectHandler.applyDeferredResourceTransition(effectInput),
+        claim.flowKind
       );
     } catch (error) {
       if (error?.code === "wallet_first_resource_effect_retryable") {

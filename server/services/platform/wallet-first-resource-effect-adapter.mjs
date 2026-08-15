@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { types as utilTypes } from "node:util";
 
+import {
+  snapshotWalletFirstSetupDeliveryRuntimeEscrow
+} from "./wallet-first-setup-delivery-escrow.mjs";
+
 export const WALLET_FIRST_RESOURCE_EFFECT_ADAPTER_IDEMPOTENCY_CONTRACT =
   "deduplicate_by_transition_ref";
 export const WALLET_FIRST_RESOURCE_EFFECT_CONTROL_ADAPTER_CONTRACT =
@@ -14,6 +18,9 @@ const FACTORY_FIELDS = Object.freeze([
   "nodeId",
   "nowFn"
 ]);
+const OPTIONAL_FACTORY_FIELDS = Object.freeze([
+  "setupDeliveryRuntimeEscrow"
+]);
 const CONTROL_STORE_METHODS = Object.freeze([
   "getWalletFirstAccountForDeferredTransition",
   "resolveExactWalletFirstResourceChainForDeferredTransition",
@@ -25,7 +32,8 @@ const CONTROL_STORE_METHODS = Object.freeze([
   "claimWalletFirstRuntimeEffectForDeferredTransition",
   "markWalletFirstRuntimeEffectReconciliationRequiredForDeferredTransition",
   "recordWalletFirstRuntimeReceiptForDeferredTransition",
-  "completeWalletFirstTransitionEffectForDeferredTransition"
+  "completeWalletFirstTransitionEffectForDeferredTransition",
+  "assertWalletFirstSetupDeliveryHandoffForDeferredTransition"
 ]);
 const SUBSCRIPTION_CORE_METHODS = Object.freeze([
   "listTenants",
@@ -40,7 +48,8 @@ const CONTROL_ADAPTER_METHODS = Object.freeze([
   "getWalletFirstTransitionEffect",
   "prepareWalletFirstInitialActivation",
   "prepareWalletFirstScheduledSwitch",
-  "completeWalletFirstTransitionEffect"
+  "completeWalletFirstTransitionEffect",
+  "assertWalletFirstSetupDeliveryHandoff"
 ]);
 const RUNTIME_ADAPTER_METHODS = Object.freeze([
   "verifyWalletFirstTransition",
@@ -120,14 +129,51 @@ function snapshotDependency(value, methods, code) {
 }
 
 function exactFactoryOptions(options) {
-  const values = exactData(options, FACTORY_FIELDS);
+  let values;
+  try {
+    if (!isPlainObject(options)) {
+      throw adapterError("wallet_first_resource_effect_invalid");
+    }
+    const fields = [...FACTORY_FIELDS, ...OPTIONAL_FACTORY_FIELDS];
+    const keys = Reflect.ownKeys(options);
+    if (
+      keys.length < FACTORY_FIELDS.length
+      || keys.length > fields.length
+      || !keys.every((key) => typeof key === "string" && fields.includes(key))
+      || !FACTORY_FIELDS.every((field) => Object.hasOwn(options, field))
+    ) {
+      throw adapterError("wallet_first_resource_effect_invalid");
+    }
+    values = {};
+    for (const field of fields) {
+      if (!Object.hasOwn(options, field)) continue;
+      const descriptor = Object.getOwnPropertyDescriptor(options, field);
+      if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+        throw adapterError("wallet_first_resource_effect_invalid");
+      }
+      values[field] = descriptor.value;
+    }
+  } catch (error) {
+    if (error?.code === "wallet_first_resource_effect_invalid") throw error;
+    throw adapterError("wallet_first_resource_effect_invalid");
+  }
   if (typeof values.nowFn !== "function") {
     throw adapterError("wallet_first_resource_effect_invalid");
   }
   if (typeof values.nodeId !== "string" || !NODE_ID.test(values.nodeId)) {
     throw adapterError("wallet_first_resource_effect_invalid");
   }
-  return values;
+  let setupDeliveryRuntimeEscrow = null;
+  if (Object.hasOwn(values, "setupDeliveryRuntimeEscrow")) {
+    try {
+      setupDeliveryRuntimeEscrow = snapshotWalletFirstSetupDeliveryRuntimeEscrow(
+        values.setupDeliveryRuntimeEscrow
+      );
+    } catch {
+      throw adapterError("wallet_first_resource_effect_invalid");
+    }
+  }
+  return Object.freeze({ ...values, setupDeliveryRuntimeEscrow });
 }
 
 function reference(value, code = "wallet_first_resource_effect_invalid") {
@@ -250,14 +296,25 @@ function normalizePreparationInput(value, { scheduled }) {
 }
 
 function normalizeCompletionInput(value) {
-  const input = exactData(value, [
+  let hasSetupDeliveryHandoffRef;
+  try {
+    hasSetupDeliveryHandoffRef = Object.hasOwn(value, "setupDeliveryHandoffRef");
+  } catch {
+    throw adapterError("wallet_first_resource_effect_invalid");
+  }
+  const input = exactData(value, hasSetupDeliveryHandoffRef ? [
+    "transitionRef", "effectRef", "successor", "runtimeReceiptRef", "setupDeliveryHandoffRef"
+  ] : [
     "transitionRef", "effectRef", "successor", "runtimeReceiptRef"
   ]);
   return Object.freeze({
     transitionRef: reference(input.transitionRef),
     effectRef: reference(input.effectRef),
     successor: normalizeSuccessor(input.successor),
-    runtimeReceiptRef: reference(input.runtimeReceiptRef)
+    runtimeReceiptRef: reference(input.runtimeReceiptRef),
+    setupDeliveryHandoffRef: hasSetupDeliveryHandoffRef
+      ? reference(input.setupDeliveryHandoffRef)
+      : null
   });
 }
 
@@ -304,7 +361,7 @@ function normalizeRuntimeRequest(value, flowKind, configuredNodeId) {
 
 function normalizeRuntimeInput(value, configuredNodeId) {
   const input = exactData(value, [
-    "transitionRef", "flowKind", "successor", "runtimeRequest"
+    "transitionRef", "effectRef", "flowKind", "successor", "runtimeRequest"
   ]);
   if (!["initial_activation", "scheduled_switch"].includes(input.flowKind)) {
     throw adapterError("wallet_first_resource_effect_invalid");
@@ -321,6 +378,7 @@ function normalizeRuntimeInput(value, configuredNodeId) {
   }
   return Object.freeze({
     transitionRef,
+    effectRef: reference(input.effectRef),
     flowKind: input.flowKind,
     successor,
     runtimeRequest
@@ -464,7 +522,95 @@ function normalizeCreatedTenant(value) {
 function normalizeCreatedArtifact(value) {
   const input = exactData(value, ["artifact", "subscriptionUrl"], "wallet_first_resource_effect_unavailable");
   if (typeof input.subscriptionUrl !== "string") throw adapterError();
-  return normalizeArtifact(input.artifact);
+  return Object.freeze({
+    artifact: normalizeArtifact(input.artifact),
+    subscriptionUrl: input.subscriptionUrl
+  });
+}
+
+function normalizeSetupDeliveryEscrowSummary(value) {
+  const code = "wallet_first_resource_effect_reconciliation_required";
+  const summary = exactData(value, [
+    "version", "state", "handoffRef", "bindingDigest", "resourceDigest"
+  ], code);
+  if (
+    summary.version !== "wallet_first_setup_delivery_escrow_v1"
+    || !["available", "acknowledged"].includes(summary.state)
+    || !DIGEST.test(summary.bindingDigest)
+    || !DIGEST.test(summary.resourceDigest)
+  ) {
+    throw adapterError(code);
+  }
+  return Object.freeze({
+    handoffRef: reference(summary.handoffRef, code),
+    state: summary.state
+  });
+}
+
+function initialSetupDeliveryBinding(input, tenant, artifact) {
+  return Object.freeze({
+    transitionRef: input.transitionRef,
+    effectRef: input.effectRef,
+    tenantId: tenant.id,
+    artifactId: artifact.id
+  });
+}
+
+function verifyInitialSetupDeliveryEscrow(escrow, receipt) {
+  if (!escrow || receipt.flowKind !== "initial_activation") return null;
+  try {
+    return normalizeSetupDeliveryEscrowSummary(
+      escrow.verifyInitialSetupDelivery(Object.freeze({
+        transitionRef: receipt.transitionRef,
+        effectRef: receipt.effectRef,
+        tenantId: receipt.tenantId,
+        artifactId: receipt.artifactId
+      }))
+    );
+  } catch {
+    throw adapterError("wallet_first_resource_effect_reconciliation_required");
+  }
+}
+
+async function assertInitialSetupDeliveryHandoff(control, receipt, summary) {
+  if (summary === null) return;
+  try {
+    const asserted = await control.assertWalletFirstSetupDeliveryHandoff(Object.freeze({
+      transitionRef: receipt.transitionRef,
+      effectRef: receipt.effectRef,
+      handoffRef: summary.handoffRef
+    }));
+    exactData(asserted, [], "wallet_first_resource_effect_reconciliation_required");
+  } catch (error) {
+    if (error?.code === "wallet_first_resource_effect_reconciliation_required") {
+      throw error;
+    }
+    throw adapterError("wallet_first_resource_effect_reconciliation_required");
+  }
+}
+
+function captureInitialSetupDeliveryEscrow(escrow, input, tenant, artifact, subscriptionUrl) {
+  if (!escrow) return null;
+  try {
+    return normalizeSetupDeliveryEscrowSummary(
+      escrow.captureInitialSetupDelivery(Object.freeze({
+        ...initialSetupDeliveryBinding(input, tenant, artifact),
+        subscriptionUrl
+      }))
+    );
+  } catch {
+    throw adapterError("wallet_first_resource_effect_reconciliation_required");
+  }
+}
+
+function runtimeReceiptOutput(receipt, setupDeliverySummary = null) {
+  return Object.freeze({
+    transitionRef: receipt.transitionRef,
+    runtimeReceiptRef: receipt.runtimeReceiptRef,
+    ...(setupDeliverySummary ? {
+      setupDeliveryHandoffRef: setupDeliverySummary.handoffRef
+    } : {})
+  });
 }
 
 function normalizeTenantList(value) {
@@ -506,6 +652,7 @@ function normalizeArtifactList(value) {
 function assertRuntimeReceiptMatchesInput(receipt, input, configuredNodeId) {
   if (
     receipt.transitionRef !== input.transitionRef
+    || receipt.effectRef !== input.effectRef
     || receipt.flowKind !== input.flowKind
     || receipt.successor.entitlementId !== input.successor.entitlementId
     || receipt.successor.requestId !== input.successor.requestId
@@ -681,7 +828,16 @@ function normalizeClaimStatus(value) {
   return claim.status;
 }
 
-async function recordRuntimeReceipt(control, input, lease, tenant, artifact, nodeId, nowFn) {
+async function recordRuntimeReceipt(
+  control,
+  input,
+  lease,
+  tenant,
+  artifact,
+  nodeId,
+  nowFn,
+  setupDeliverySummary = null
+) {
   let recorded;
   try {
     recorded = await control.recordWalletFirstRuntimeReceiptForDeferredTransition({
@@ -711,7 +867,10 @@ async function recordRuntimeReceipt(control, input, lease, tenant, artifact, nod
   }
   return Object.freeze({
     transitionRef: input.transitionRef,
-    runtimeReceiptRef: runtimeReceipt.runtimeReceiptRef
+    runtimeReceiptRef: runtimeReceipt.runtimeReceiptRef,
+    ...(setupDeliverySummary ? {
+      setupDeliveryHandoffRef: setupDeliverySummary.handoffRef
+    } : {})
   });
 }
 
@@ -870,8 +1029,22 @@ export function createWalletFirstResourceEffectAdapters(options = {}) {
     completeWalletFirstTransitionEffect(input) {
       const request = normalizeCompletionInput(input);
       return control.completeWalletFirstTransitionEffectForDeferredTransition({
-        ...request,
+        transitionRef: request.transitionRef,
+        effectRef: request.effectRef,
+        successor: request.successor,
+        runtimeReceiptRef: request.runtimeReceiptRef,
+        ...(request.setupDeliveryHandoffRef === null ? {} : {
+          setupDeliveryHandoffRef: request.setupDeliveryHandoffRef
+        }),
         now: currentNow(values.nowFn)
+      });
+    },
+    assertWalletFirstSetupDeliveryHandoff(input) {
+      const request = exactData(input, ["transitionRef", "effectRef", "handoffRef"]);
+      return control.assertWalletFirstSetupDeliveryHandoffForDeferredTransition({
+        transitionRef: reference(request.transitionRef),
+        effectRef: reference(request.effectRef),
+        handoffRef: reference(request.handoffRef)
       });
     }
   });
@@ -908,6 +1081,18 @@ export function createWalletFirstResourceEffectAdapters(options = {}) {
           verification,
           currentRuntime
         );
+        const setupDeliverySummary = verifyInitialSetupDeliveryEscrow(
+          values.setupDeliveryRuntimeEscrow,
+          receipt
+        );
+        await assertInitialSetupDeliveryHandoff(
+          controlAdapter,
+          receipt,
+          setupDeliverySummary
+        );
+        return Object.freeze(setupDeliverySummary === null
+          ? {}
+          : { setupDeliveryHandoffRef: setupDeliverySummary.handoffRef });
       } catch (error) {
         if (error?.code === "wallet_first_resource_effect_reconciliation_required") {
           throw error;
@@ -933,10 +1118,10 @@ export function createWalletFirstResourceEffectAdapters(options = {}) {
           effectRef: receipt.effectRef,
           successor: input.successor
         });
-        return Object.freeze({
-          transitionRef: input.transitionRef,
-          runtimeReceiptRef: receipt.runtimeReceiptRef
-        });
+        return runtimeReceiptOutput(
+          receipt,
+          verifyInitialSetupDeliveryEscrow(values.setupDeliveryRuntimeEscrow, receipt)
+        );
       }
 
       let claim;
@@ -981,10 +1166,10 @@ export function createWalletFirstResourceEffectAdapters(options = {}) {
             effectRef: receipt.effectRef,
             successor: input.successor
           });
-          return Object.freeze({
-            transitionRef: input.transitionRef,
-            runtimeReceiptRef: receipt.runtimeReceiptRef
-          });
+          return runtimeReceiptOutput(
+            receipt,
+            verifyInitialSetupDeliveryEscrow(values.setupDeliveryRuntimeEscrow, receipt)
+          );
         }
         throw adapterError("wallet_first_resource_effect_reconciliation_required");
       }
@@ -1008,6 +1193,7 @@ export function createWalletFirstResourceEffectAdapters(options = {}) {
 
       let tenant = observed.tenant;
       let artifact = observed.artifact;
+      let setupDeliverySummary = null;
       try {
         if (input.flowKind === "initial_activation") {
           if (observed.state === "target") {
@@ -1018,7 +1204,14 @@ export function createWalletFirstResourceEffectAdapters(options = {}) {
               tenant,
               artifact,
               values.nodeId,
-              values.nowFn
+              values.nowFn,
+              verifyInitialSetupDeliveryEscrow(values.setupDeliveryRuntimeEscrow, Object.freeze({
+                transitionRef: input.transitionRef,
+                effectRef: input.effectRef,
+                flowKind: input.flowKind,
+                tenantId: tenant.id,
+                artifactId: artifact.id
+              }))
             );
           }
           if (lease.leaseGeneration > 1) {
@@ -1054,8 +1247,22 @@ export function createWalletFirstResourceEffectAdapters(options = {}) {
           if (existingArtifacts.length !== 0) {
             throw adapterError("wallet_first_resource_effect_reconciliation_required");
           }
-          artifact = normalizeCreatedArtifact(await runtimeCore.createSubscriptionArtifact(tenant.id));
+          const createdArtifact = normalizeCreatedArtifact(
+            await runtimeCore.createSubscriptionArtifact(tenant.id)
+          );
+          artifact = createdArtifact.artifact;
           assertArtifactForTenant(artifact, tenant);
+          // Capture immediately after Core creates the initial artifact. If this
+          // fails, the catch below marks reconciliation before any receipt can
+          // make the effect appear settled, and a replay only verifies this
+          // exact deterministic binding rather than creating a second artifact.
+          setupDeliverySummary = captureInitialSetupDeliveryEscrow(
+            values.setupDeliveryRuntimeEscrow,
+            input,
+            tenant,
+            artifact,
+            createdArtifact.subscriptionUrl
+          );
           const convergedArtifacts = normalizeArtifactList(
             await runtimeCore.listSubscriptionArtifacts(tenant.id)
           );
@@ -1100,7 +1307,8 @@ export function createWalletFirstResourceEffectAdapters(options = {}) {
         tenant,
         artifact,
         values.nodeId,
-        values.nowFn
+        values.nowFn,
+        setupDeliverySummary
       );
     }
   });
