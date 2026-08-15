@@ -27,6 +27,9 @@ const OPTION_FIELDS = Object.freeze([
   "nodeId",
   "nowFn"
 ]);
+const OPTIONAL_OPTION_FIELDS = Object.freeze([
+  "setupDeliveryRuntimeEscrow"
+]);
 
 function runtimeError(code) {
   const error = new Error("Wallet-first deferred transition runtime is unavailable");
@@ -69,6 +72,36 @@ function exactObject(value, fields, code) {
   }
 }
 
+function runtimeFactoryOptions(value) {
+  const code = "wallet_first_deferred_runtime_invalid";
+  try {
+    if (!isPlainObject(value)) throw runtimeError(code);
+    const fields = [...OPTION_FIELDS, ...OPTIONAL_OPTION_FIELDS];
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length < OPTION_FIELDS.length
+      || keys.length > fields.length
+      || !keys.every((key) => typeof key === "string" && fields.includes(key))
+      || !OPTION_FIELDS.every((field) => Object.hasOwn(value, field))
+    ) {
+      throw runtimeError(code);
+    }
+    const output = {};
+    for (const field of fields) {
+      if (!Object.hasOwn(value, field)) continue;
+      const descriptor = Object.getOwnPropertyDescriptor(value, field);
+      if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+        throw runtimeError(code);
+      }
+      output[field] = descriptor.value;
+    }
+    return Object.freeze(output);
+  } catch (error) {
+    if (error?.code === code) throw error;
+    throw runtimeError(code);
+  }
+}
+
 function closeQuietly(value) {
   try {
     value?.close();
@@ -87,11 +120,7 @@ function closeQuietly(value) {
  * adapters before it can use them.
  */
 export function createWalletFirstDeferredTransitionRuntime(options = {}) {
-  const values = exactObject(
-    options,
-    OPTION_FIELDS,
-    "wallet_first_deferred_runtime_invalid"
-  );
+  const values = runtimeFactoryOptions(options);
   if (
     typeof values.dbPath !== "string"
     || values.dbPath.trim() !== values.dbPath
@@ -128,7 +157,10 @@ export function createWalletFirstDeferredTransitionRuntime(options = {}) {
       controlStore: values.controlStore,
       subscriptionCore: values.subscriptionCore,
       nodeId: values.nodeId,
-      nowFn: values.nowFn
+      nowFn: values.nowFn,
+      ...(Object.hasOwn(values, "setupDeliveryRuntimeEscrow") ? {
+        setupDeliveryRuntimeEscrow: values.setupDeliveryRuntimeEscrow
+      } : {})
     });
     const resourceEffectHandler = createWalletFirstResourceEffectHandler({
       controlAdapter: resourceAdapters.controlAdapter,

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { resolve, join } from "node:path";
+import { resolve, join, isAbsolute } from "node:path";
 import { types as utilTypes } from "node:util";
 import { createSsLocalService } from "./services/ss-local.mjs";
 import { createHttpProxyService } from "./services/http-proxy.mjs";
@@ -40,10 +40,17 @@ import { validatePortalRegistrationWelcomeBonusSchema } from "./services/platfor
 import { validateDeferredResourceTransitionSchema } from "./services/platform/deferred-resource-transition-migrations.mjs";
 import { validateWalletFirstDeferredCheckoutSchema } from "./services/platform/wallet-first-deferred-checkout-migrations.mjs";
 import { validateWalletFirstResourceEffectRuntimeClaimsSchema } from "./services/platform/wallet-first-resource-effect-runtime-claims-migrations.mjs";
+import { validateWalletFirstSetupDeliveryHandoffsSchema } from "./services/platform/wallet-first-setup-delivery-handoffs-migrations.mjs";
 import { createWalletFirstDeferredTransitionRuntime } from "./services/platform/wallet-first-deferred-transition-runtime.mjs";
 import {
   createWalletFirstCurrentResourceProjection
 } from "./services/platform/wallet-first-current-resource-projection.mjs";
+import {
+  createWalletFirstCurrentResourceSetupDelivery
+} from "./services/platform/wallet-first-current-resource-setup-delivery.mjs";
+import {
+  createWalletFirstSetupDeliveryEscrow
+} from "./services/platform/wallet-first-setup-delivery-escrow.mjs";
 import { createPortalTotpSecretProtector, createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
 import { createPortalAccountAdminAuthService } from "./services/platform/admin-auth.mjs";
@@ -227,6 +234,22 @@ function walletFirstDeferredTransitionRuntimeError() {
     "Wallet-first deferred transition runtime coordinator is not ready"
   );
   error.code = "wallet_first_deferred_transition_runtime_missing";
+  return error;
+}
+
+function walletFirstSetupDeliveryPrerequisiteError() {
+  const error = new Error(
+    "Wallet-first setup delivery prerequisites are not satisfied"
+  );
+  error.code = "wallet_first_setup_delivery_prerequisite_missing";
+  return error;
+}
+
+function walletFirstSetupDeliverySchemaError() {
+  const error = new Error(
+    "Wallet-first setup delivery handoff schema is not ready"
+  );
+  error.code = "wallet_first_setup_delivery_schema_not_ready";
   return error;
 }
 
@@ -1384,6 +1407,15 @@ export function createRuntimeState(options = {}) {
   const walletFirstRegistrationEnabled = envFlag(
     env.USER_PORTAL_WALLET_FIRST_MODEL_ENABLED
   );
+  const walletFirstSetupDeliveryEnabled = walletFirstRegistrationEnabled
+    ? envFlag(env.USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED)
+    : false;
+  const walletFirstSetupDeliveryKey = walletFirstSetupDeliveryEnabled
+    ? optionalEnvText(env.USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_KEY)
+    : "";
+  const walletFirstSetupDeliveryEscrowPath = walletFirstSetupDeliveryEnabled
+    ? optionalEnvText(env.USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH)
+    : "";
   const deferredTransitionRuntimeEnabled = walletFirstRegistrationEnabled
     ? envFlag(env.COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED)
     : false;
@@ -1404,6 +1436,16 @@ export function createRuntimeState(options = {}) {
   }
   if (walletFirstRegistrationEnabled && !walletFirstDeferredTransitionNodeId) {
     throw walletFirstDeferredTransitionRuntimeError();
+  }
+  if (
+    walletFirstSetupDeliveryEnabled
+    && (
+      !walletFirstSetupDeliveryKey
+      || !walletFirstSetupDeliveryEscrowPath
+      || !isAbsolute(walletFirstSetupDeliveryEscrowPath)
+    )
+  ) {
+    throw walletFirstSetupDeliveryPrerequisiteError();
   }
   if (coinsCommerceAuthorityEnabled && !coinsCommerceEnabled) {
     throw coinCommercePrerequisiteError();
@@ -1587,6 +1629,7 @@ export function createRuntimeState(options = {}) {
     let deferredTransitionSchemaReady = false;
     let deferredCheckoutSchemaReady = false;
     let runtimeClaimsSchemaReady = false;
+    let setupDeliveryHandoffsSchemaReady = !walletFirstSetupDeliveryEnabled;
     try {
       welcomeBonusSchemaReady = validatePortalRegistrationWelcomeBonusSchema({
         dbPath: controlDbPath
@@ -1600,18 +1643,26 @@ export function createRuntimeState(options = {}) {
       runtimeClaimsSchemaReady = validateWalletFirstResourceEffectRuntimeClaimsSchema({
         dbPath: controlDbPath
       }).ok === true;
+      if (walletFirstSetupDeliveryEnabled) {
+        setupDeliveryHandoffsSchemaReady =
+          validateWalletFirstSetupDeliveryHandoffsSchema({
+            dbPath: controlDbPath
+          }).ok === true;
+      }
     } catch {
       welcomeBonusSchemaReady = false;
       deferredTransitionSchemaReady = false;
       deferredCheckoutSchemaReady = false;
       runtimeClaimsSchemaReady = false;
+      setupDeliveryHandoffsSchemaReady = false;
     }
-    if (
+    const registrationSchemaMissing = (
       !welcomeBonusSchemaReady
       || !deferredTransitionSchemaReady
       || !deferredCheckoutSchemaReady
       || !runtimeClaimsSchemaReady
-    ) {
+    );
+    if (registrationSchemaMissing || !setupDeliveryHandoffsSchemaReady) {
       for (const [owned, store] of [
         [ownsControlStore, platformControlStore],
         [ownsSubscriptionStore, subscriptionStore]
@@ -1623,7 +1674,9 @@ export function createRuntimeState(options = {}) {
           // Preserve the fail-closed wallet-first schema validation error.
         }
       }
-      throw walletFirstRegistrationSchemaError();
+      throw registrationSchemaMissing
+        ? walletFirstRegistrationSchemaError()
+        : walletFirstSetupDeliverySchemaError();
     }
   }
   const standaloneCoinsWalletEnabled = coinsWalletEnabled && !coinsCommerceEnabled;
@@ -2148,6 +2201,8 @@ export function createRuntimeState(options = {}) {
   let walletFirstResourceEffectHandler = null;
   let walletFirstCommerceService = null;
   let walletFirstCurrentResourceProjection = null;
+  let walletFirstSetupDeliveryEscrow = null;
+  let walletFirstCurrentResourceSetupDelivery = null;
   let paymentStore = null;
   let paymentRechargeCoordinator = null;
   let ownsPaymentStore = false;
@@ -2335,24 +2390,84 @@ export function createRuntimeState(options = {}) {
         } catch {
           throw walletFirstRegistrationPrerequisiteError();
         }
+        if (walletFirstSetupDeliveryEnabled) {
+          try {
+            walletFirstSetupDeliveryEscrow =
+              createWalletFirstSetupDeliveryEscrow({
+                key: walletFirstSetupDeliveryKey,
+                filePath: walletFirstSetupDeliveryEscrowPath
+              });
+          } catch {
+            throw walletFirstSetupDeliveryPrerequisiteError();
+          }
+        }
         try {
           const runtime = createWalletFirstDeferredTransitionRuntime({
             dbPath: controlDbPath,
             controlStore: platformControlStore,
             subscriptionCore,
             nodeId: walletFirstDeferredTransitionNodeId,
-            nowFn: options.userPortalNowFn || (() => new Date())
+            nowFn: options.userPortalNowFn || (() => new Date()),
+            ...(walletFirstSetupDeliveryEscrow
+              ? {
+                setupDeliveryRuntimeEscrow:
+                  walletFirstSetupDeliveryEscrow.runtimeEscrow
+              }
+              : {})
           });
           walletFirstDeferredTransitionRuntime = runtime;
           deferredTransitionStore = runtime.deferredTransitionStore;
           deferredTransitionCoordinator = runtime.deferredTransitionCoordinator;
           walletFirstResourceEffectHandler = runtime.resourceEffectHandler;
           walletFirstCommerceService = runtime.walletFirstCommerceService;
+          if (walletFirstSetupDeliveryEscrow) {
+            try {
+              walletFirstCurrentResourceSetupDelivery =
+                createWalletFirstCurrentResourceSetupDelivery({
+                  controlStore: platformControlStore,
+                  deliveryEscrow:
+                    walletFirstSetupDeliveryEscrow.deliveryEscrow,
+                  nowFn: options.userPortalNowFn || (() => new Date())
+                });
+            } catch {
+              throw walletFirstSetupDeliveryPrerequisiteError();
+            }
+          }
           walletFirstCurrentResourceProjection = createWalletFirstCurrentResourceProjection({
-            controlStore: platformControlStore
+            controlStore: platformControlStore,
+            ...(walletFirstCurrentResourceSetupDelivery
+              ? {
+                setupDelivery: walletFirstCurrentResourceSetupDelivery
+              }
+              : {})
           });
           ownsWalletFirstDeferredTransitionRuntime = true;
-        } catch {
+        } catch (error) {
+          if (walletFirstDeferredTransitionRuntime) {
+            try {
+              walletFirstDeferredTransitionRuntime.close();
+            } catch {
+              // Preserve the original state-composition failure.
+            }
+          }
+          walletFirstDeferredTransitionRuntime = null;
+          deferredTransitionStore = null;
+          deferredTransitionCoordinator = null;
+          walletFirstResourceEffectHandler = null;
+          walletFirstCommerceService = null;
+          walletFirstCurrentResourceProjection = null;
+          walletFirstCurrentResourceSetupDelivery = null;
+          if (walletFirstSetupDeliveryEscrow) {
+            try {
+              walletFirstSetupDeliveryEscrow.close();
+            } catch {
+              // Preserve the original state-composition failure.
+            }
+            walletFirstSetupDeliveryEscrow = null;
+          }
+          if (error?.code === "wallet_first_setup_delivery_prerequisite_missing") {
+            throw error;
+          }
           throw walletFirstDeferredTransitionRuntimeError();
         }
       }
@@ -2465,6 +2580,13 @@ export function createRuntimeState(options = {}) {
           || ((kind) => `${kind}_${randomUUID()}`)
       });
     } catch (error) {
+      if (walletFirstSetupDeliveryEscrow) {
+        try {
+          walletFirstSetupDeliveryEscrow.close();
+        } catch {
+          // Preserve the final recharge state-composition failure.
+        }
+      }
       if (ownsPaymentStore && paymentStore) {
         try { paymentStore.close(); } catch { /* preserve prerequisite failure */ }
       }
@@ -2530,6 +2652,16 @@ export function createRuntimeState(options = {}) {
       ) {
         try {
           await walletFirstDeferredTransitionRuntime.close();
+        } catch (error) {
+          firstError ||= error;
+        }
+      }
+      if (
+        walletFirstSetupDeliveryEscrow
+        && (!deferredTransitionCoordinator || deferredCoordinatorStopped)
+      ) {
+        try {
+          walletFirstSetupDeliveryEscrow.close();
         } catch (error) {
           firstError ||= error;
         }
@@ -2603,6 +2735,7 @@ export function createRuntimeState(options = {}) {
       coinsCommerceEnabled,
       coinsCommerceAuthorityEnabled,
       walletFirstRegistrationEnabled,
+      walletFirstSetupDeliveryEnabled,
       coinCommerceStore,
       coinCommerceCoordinator,
       portalRegistrationWelcomeBonusCoordinator,
@@ -2611,6 +2744,7 @@ export function createRuntimeState(options = {}) {
       walletFirstResourceEffectHandler,
       walletFirstCommerceService,
       walletFirstCurrentResourceProjection,
+      walletFirstCurrentResourceSetupDelivery,
       coinRechargeEnabled,
       paymentRechargeProvider,
       paymentStore,

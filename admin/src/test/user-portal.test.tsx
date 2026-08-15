@@ -199,6 +199,12 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
         noPublicAdmin: true
       }
     })),
+    createCurrentResourceSetup: vi.fn(async () => ({
+      handoffRef: "portal_setup_handoff_preview",
+      kind: "subscription_url" as const,
+      subscriptionUrl: "https://portal.example.test/subscriptions/setup-preview"
+    })),
+    acknowledgeCurrentResourceSetup: vi.fn(async () => undefined),
     fetchPaymentOrders: vi.fn(async (): Promise<PortalPaymentOrder[]> => []),
     createPaymentCheckout: vi.fn(async (input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult> => ({
       provider: "niuniu-pay",
@@ -2963,7 +2969,8 @@ describe("user portal product surface", () => {
     {
       resource: { state: "none" } as PortalCurrentResource,
       heading: "尚未获得可用服务资源",
-      hasMarketplaceAction: true
+      hasMarketplaceAction: true,
+      hasSetupAction: false
     },
     {
       resource: {
@@ -2977,7 +2984,8 @@ describe("user portal product surface", () => {
         setupAvailable: false
       } as PortalCurrentResource,
       heading: "服务资源已可用",
-      hasMarketplaceAction: false
+      hasMarketplaceAction: false,
+      hasSetupAction: false
     },
     {
       resource: {
@@ -2991,17 +2999,20 @@ describe("user portal product surface", () => {
         setupAvailable: true
       } as PortalCurrentResource,
       heading: "服务资源已可用",
-      hasMarketplaceAction: false
+      hasMarketplaceAction: false,
+      hasSetupAction: true
     },
     {
       resource: { state: "reconciliation_required" } as PortalCurrentResource,
       heading: "服务资源正在核对",
-      hasMarketplaceAction: false
+      hasMarketplaceAction: false,
+      hasSetupAction: false
     }
   ])("wallet-first start status presents $resource.state without legacy setup or reveal", async ({
     resource,
     heading,
-    hasMarketplaceAction
+    hasMarketplaceAction,
+    hasSetupAction
   }) => {
     const getCommerceModel = vi.fn(async () => "wallet_first_unique_v1" as const);
     const getCurrentResource = vi.fn(async () => resource);
@@ -3031,6 +3042,13 @@ describe("user portal product surface", () => {
     expect(client.refreshSubscription).not.toHaveBeenCalled();
     expect(screen.queryByLabelText("订阅链接")).toBeNull();
     expect(screen.queryByRole("button", { name: "开始配置" })).toBeNull();
+    if (hasSetupAction) {
+      expect(screen.getByRole("button", { name: "生成配置链接" })).toBeInTheDocument();
+    } else {
+      expect(screen.queryByRole("button", { name: "生成配置链接" })).toBeNull();
+    }
+    expect(client.createCurrentResourceSetup).not.toHaveBeenCalled();
+    expect(client.acknowledgeCurrentResourceSetup).not.toHaveBeenCalled();
     for (const viewName of ["概览", "用量", "订单"]) {
       fireEvent.click(screen.getByRole("button", { name: viewName }));
       expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
@@ -3047,6 +3065,249 @@ describe("user portal product surface", () => {
     } else {
       expect(screen.queryByRole("button", { name: "前往商城" })).toBeNull();
     }
+  });
+
+  test("wallet-first setup is generated, copied, and acknowledged only through explicit user actions", async () => {
+    const createCurrentResourceSetup = vi.fn(async () => ({
+      handoffRef: "portal_setup_handoff_explicit_001",
+      kind: "subscription_url" as const,
+      subscriptionUrl: "https://portal.example.test/subscriptions/explicit-delivery"
+    }));
+    const acknowledgeCurrentResourceSetup = vi.fn(async () => undefined);
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const client = portalClient({
+      commerceModel: {
+        getCommerceModel: vi.fn(async () => "wallet_first_unique_v1" as const)
+      },
+      fetchSecurityState: vi.fn(async () => ({
+        authenticatorBound: false,
+        initialAccount: false,
+        passkeyEnabled: false,
+        passkeyExported: false,
+        setupRequired: false
+      })),
+      fetchCurrentResource: vi.fn(async () => ({
+        state: "available" as const,
+        plan: {
+          id: "monthly_basic",
+          durationDays: 30,
+          monthlyTrafficGb: 50
+        },
+        validUntil: "2026-09-14T00:00:00.000Z",
+        setupAvailable: true
+      })),
+      createCurrentResourceSetup,
+      acknowledgeCurrentResourceSetup
+    });
+    render(createElement(UserPortalPage, {
+      initialSession: portalWalletSession("portal_setup_ui_session_001", "setup-ui@example.test"),
+      portalClient: client
+    }));
+
+    expect(await screen.findByRole("button", { name: "生成配置链接" })).toBeInTheDocument();
+    expect(createCurrentResourceSetup).not.toHaveBeenCalled();
+    expect(acknowledgeCurrentResourceSetup).not.toHaveBeenCalled();
+    expect(writeText).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("订阅链接")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "生成配置链接" }));
+
+    await waitFor(() => {
+      expect(createCurrentResourceSetup).toHaveBeenCalledWith({
+        sessionRef: "portal_setup_ui_session_001",
+        idempotencyKey: expect.any(String)
+      });
+    });
+    const deliveredLink = await screen.findByLabelText("订阅链接");
+    expect(deliveredLink).toHaveValue("https://portal.example.test/subscriptions/explicit-delivery");
+    expect(deliveredLink).toHaveAttribute("readonly");
+    expect(writeText).not.toHaveBeenCalled();
+    expect(acknowledgeCurrentResourceSetup).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "我已完成配置" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "复制链接" }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("https://portal.example.test/subscriptions/explicit-delivery");
+    });
+    expect(acknowledgeCurrentResourceSetup).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "我已完成配置" })).not.toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "我已完成配置" }));
+
+    await waitFor(() => {
+      expect(acknowledgeCurrentResourceSetup).toHaveBeenCalledWith({
+        sessionRef: "portal_setup_ui_session_001",
+        handoffRef: "portal_setup_handoff_explicit_001"
+      });
+    });
+    await waitFor(() => expect(screen.queryByLabelText("订阅链接")).toBeNull());
+    expect(screen.getByRole("status")).toHaveTextContent("配置交付已确认。");
+    expect(screen.queryByRole("button", { name: "生成配置链接" })).toBeNull();
+    expect(client.fetchCurrentState).not.toHaveBeenCalled();
+    expect(client.fetchPaymentOrders).not.toHaveBeenCalled();
+    expect(client.revealSubscription).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
+    expect(client.refreshSubscription).not.toHaveBeenCalled();
+  });
+
+  test("wallet-first delivery clears on close and view changes, rejects failed copies, and reuses its retry key without legacy calls", async () => {
+    const createCurrentResourceSetup = vi.fn()
+      .mockResolvedValueOnce({
+        handoffRef: "portal_setup_handoff_close_001",
+        kind: "subscription_url" as const,
+        subscriptionUrl: "https://portal.example.test/subscriptions/close-delivery"
+      })
+      .mockResolvedValueOnce({
+        handoffRef: "portal_setup_handoff_explicit_close_001",
+        kind: "subscription_url" as const,
+        subscriptionUrl: "https://portal.example.test/subscriptions/explicit-close-delivery"
+      })
+      .mockRejectedValueOnce(new Error("temporary_setup_failure"));
+    const client = portalClient({
+      commerceModel: {
+        getCommerceModel: vi.fn(async () => "wallet_first_unique_v1" as const)
+      },
+      fetchSecurityState: vi.fn(async () => ({
+        authenticatorBound: false,
+        initialAccount: false,
+        passkeyEnabled: false,
+        passkeyExported: false,
+        setupRequired: false
+      })),
+      fetchCurrentResource: vi.fn(async () => ({
+        state: "available" as const,
+        plan: {
+          id: "monthly_basic",
+          durationDays: 30,
+          monthlyTrafficGb: 50
+        },
+        validUntil: "2026-09-14T00:00:00.000Z",
+        setupAvailable: true
+      })),
+      createCurrentResourceSetup
+    });
+    render(createElement(UserPortalPage, {
+      initialSession: portalWalletSession("portal_setup_ui_session_002", "setup-clear@example.test"),
+      portalClient: client
+    }));
+
+    expect(await screen.findByRole("button", { name: "生成配置链接" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "生成配置链接" }));
+    expect(await screen.findByLabelText("订阅链接")).toHaveValue("https://portal.example.test/subscriptions/close-delivery");
+
+    const writeText = vi.fn(async () => {
+      throw new Error("clipboard_unavailable");
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "复制链接" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("复制失败，请重试后再确认完成。");
+    expect(screen.queryByLabelText("订阅链接")).toBeNull();
+    expect(screen.queryByRole("button", { name: "我已完成配置" })).toBeNull();
+    expect(client.acknowledgeCurrentResourceSetup).not.toHaveBeenCalled();
+
+    const copyRetryIdempotencyKey = createCurrentResourceSetup.mock.calls[0]?.[0]?.idempotencyKey;
+    fireEvent.click(screen.getByRole("button", { name: "生成配置链接" }));
+    expect(await screen.findByLabelText("订阅链接")).toHaveValue("https://portal.example.test/subscriptions/explicit-close-delivery");
+    expect(createCurrentResourceSetup.mock.calls[1]?.[0]?.idempotencyKey).toBe(copyRetryIdempotencyKey);
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭配置链接" }));
+    await waitFor(() => expect(screen.queryByLabelText("订阅链接")).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "生成配置链接" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("配置链接生成失败，请稍后重试。");
+    expect(screen.queryByLabelText("订阅链接")).toBeNull();
+    const retryIdempotencyKey = createCurrentResourceSetup.mock.calls[2]?.[0]?.idempotencyKey;
+    expect(retryIdempotencyKey).toEqual(expect.any(String));
+
+    createCurrentResourceSetup.mockResolvedValueOnce({
+      handoffRef: "portal_setup_handoff_view_001",
+      kind: "subscription_url" as const,
+      subscriptionUrl: "https://portal.example.test/subscriptions/view-delivery"
+    });
+    fireEvent.click(screen.getByRole("button", { name: "生成配置链接" }));
+    expect(await screen.findByLabelText("订阅链接")).toHaveValue("https://portal.example.test/subscriptions/view-delivery");
+    expect(createCurrentResourceSetup.mock.calls[3]?.[0]?.idempotencyKey).toBe(retryIdempotencyKey);
+
+    fireEvent.click(screen.getByRole("button", { name: "概览" }));
+    await waitFor(() => expect(screen.queryByLabelText("订阅链接")).toBeNull());
+
+    openPortalStartGuide();
+    createCurrentResourceSetup.mockResolvedValueOnce({
+      handoffRef: "portal_setup_handoff_logout_001",
+      kind: "subscription_url" as const,
+      subscriptionUrl: "https://portal.example.test/subscriptions/logout-delivery"
+    });
+    fireEvent.click(screen.getByRole("button", { name: "生成配置链接" }));
+    expect(await screen.findByLabelText("订阅链接")).toHaveValue("https://portal.example.test/subscriptions/logout-delivery");
+    expect(createCurrentResourceSetup.mock.calls[4]?.[0]?.idempotencyKey).not.toBe(retryIdempotencyKey);
+    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    await waitFor(() => expect(screen.queryByLabelText("订阅链接")).toBeNull());
+    expect(client.fetchCurrentState).not.toHaveBeenCalled();
+    expect(client.fetchPaymentOrders).not.toHaveBeenCalled();
+    expect(client.revealSubscription).not.toHaveBeenCalled();
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
+  });
+
+  test("wallet-first delivery does not survive a replacement Portal session", async () => {
+    const firstSession = portalWalletSession("portal_setup_session_old", "setup-old@example.test");
+    const secondSession = portalWalletSession("portal_setup_session_new", "setup-new@example.test");
+    const fetchCurrentResource = vi.fn(async () => ({
+      state: "available" as const,
+      plan: {
+        id: "monthly_basic",
+        durationDays: 30,
+        monthlyTrafficGb: 50
+      },
+      validUntil: "2026-09-14T00:00:00.000Z",
+      setupAvailable: true
+    }));
+    const client = portalClient({
+      authenticate: vi.fn()
+        .mockResolvedValueOnce(firstSession)
+        .mockResolvedValueOnce(secondSession),
+      commerceModel: {
+        getCommerceModel: vi.fn(async () => "wallet_first_unique_v1" as const)
+      },
+      fetchSecurityState: vi.fn(async () => ({
+        authenticatorBound: false,
+        initialAccount: false,
+        passkeyEnabled: false,
+        passkeyExported: false,
+        setupRequired: false
+      })),
+      fetchCurrentResource,
+      createCurrentResourceSetup: vi.fn(async () => ({
+        handoffRef: "portal_setup_handoff_session_001",
+        kind: "subscription_url" as const,
+        subscriptionUrl: "https://portal.example.test/subscriptions/session-delivery"
+      }))
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await submitPortalLogin("setup-old@example.test", "setup-password");
+    expect(await screen.findByRole("button", { name: "生成配置链接" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "生成配置链接" }));
+    expect(await screen.findByLabelText("订阅链接")).toHaveValue("https://portal.example.test/subscriptions/session-delivery");
+
+    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    expect(await screen.findByRole("heading", { name: "账号登录" })).toBeInTheDocument();
+    await submitPortalLogin("setup-new@example.test", "setup-password");
+
+    expect(await screen.findByRole("button", { name: "生成配置链接" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("订阅链接")).toBeNull();
+    expect(fetchCurrentResource).toHaveBeenCalledWith({ sessionRef: "portal_setup_session_old" });
+    expect(fetchCurrentResource).toHaveBeenCalledWith({ sessionRef: "portal_setup_session_new" });
+    expect(client.fetchCurrentState).not.toHaveBeenCalled();
+    expect(client.fetchPaymentOrders).not.toHaveBeenCalled();
+    expect(client.revealSubscription).not.toHaveBeenCalled();
   });
 
   test("HTTP legacy login retains the legacy state hydration route", async () => {

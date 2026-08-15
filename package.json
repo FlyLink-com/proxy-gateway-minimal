@@ -95,6 +95,7 @@
     "platform:deferred-resource-transition:schema": "node scripts/platform-deferred-resource-transition-schema.mjs",
     "platform:wallet-first-deferred-checkout:schema": "node scripts/platform-wallet-first-deferred-checkout-schema.mjs",
     "platform:wallet-first-resource-effect-runtime-claims:schema": "node scripts/platform-wallet-first-resource-effect-runtime-claims-schema.mjs",
+    "platform:wallet-first-setup-delivery-handoffs:schema": "node scripts/platform-wallet-first-setup-delivery-handoffs-schema.mjs",
     "platform:coin-commerce:local-validation": "node scripts/start-local-coin-commerce-validation.mjs",
     "platform:coin-commerce:local-ui-validation": "node scripts/start-local-coin-commerce-ui-validation.mjs",
     "docs:authority:check": "node scripts/check-document-authority.mjs",

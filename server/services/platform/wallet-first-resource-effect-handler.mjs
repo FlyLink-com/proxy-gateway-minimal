@@ -357,14 +357,52 @@ function normalizePreparation(value, input) {
   });
 }
 
-function normalizeRuntimeReceipt(value, transitionRef) {
+function normalizeRuntimeReceipt(value, transitionRef, flowKind) {
   const code = "wallet_first_resource_effect_unavailable";
-  const receipt = exactObject(value, ["transitionRef", "runtimeReceiptRef"], code);
+  let hasSetupDeliveryHandoffRef;
+  try {
+    hasSetupDeliveryHandoffRef = Object.hasOwn(value, "setupDeliveryHandoffRef");
+  } catch {
+    throw effectError(code);
+  }
+  const receipt = exactObject(value, hasSetupDeliveryHandoffRef
+    ? ["transitionRef", "runtimeReceiptRef", "setupDeliveryHandoffRef"]
+    : ["transitionRef", "runtimeReceiptRef"], code);
   if (receipt.transitionRef !== transitionRef) throw effectError(code);
+  if (hasSetupDeliveryHandoffRef && flowKind !== "initial_activation") {
+    throw effectError(code);
+  }
   return Object.freeze({
     transitionRef,
-    runtimeReceiptRef: reference(receipt.runtimeReceiptRef, code)
+    runtimeReceiptRef: reference(receipt.runtimeReceiptRef, code),
+    setupDeliveryHandoffRef: hasSetupDeliveryHandoffRef
+      ? reference(receipt.setupDeliveryHandoffRef, code)
+      : null
   });
+}
+
+function normalizeRuntimeVerification(value) {
+  const code = "wallet_first_resource_effect_unavailable";
+  let hasSetupDeliveryHandoffRef;
+  try {
+    hasSetupDeliveryHandoffRef = Object.hasOwn(value, "setupDeliveryHandoffRef");
+  } catch {
+    throw effectError(code);
+  }
+  const verification = exactObject(value, hasSetupDeliveryHandoffRef
+    ? ["setupDeliveryHandoffRef"]
+    : [], code);
+  return Object.freeze({
+    setupDeliveryHandoffRef: hasSetupDeliveryHandoffRef
+      ? reference(verification.setupDeliveryHandoffRef, code)
+      : null
+  });
+}
+
+function withSetupDeliveryHandoffRef(effect, setupDeliveryHandoffRef) {
+  return setupDeliveryHandoffRef === null
+    ? effect
+    : Object.freeze({ ...effect, setupDeliveryHandoffRef });
 }
 
 function sameSuccessor(left, right) {
@@ -446,18 +484,20 @@ export function createWalletFirstResourceEffectHandler(options = {}) {
     if (raw === null) return null;
     const effect = normalizeEffect(raw);
     try {
-      await runtime.verifyWalletFirstTransition(Object.freeze({
-        transitionRef: input.transitionRef,
-        effectRef: effect.effectRef,
-        successor: successorFromEffect(effect)
-      }));
+      const runtimeVerification = normalizeRuntimeVerification(
+        await runtime.verifyWalletFirstTransition(Object.freeze({
+          transitionRef: input.transitionRef,
+          effectRef: effect.effectRef,
+          successor: successorFromEffect(effect)
+        }))
+      );
+      return withSetupDeliveryHandoffRef(effect, runtimeVerification.setupDeliveryHandoffRef);
     } catch {
       // A durable control receipt is not enough by itself. The concrete
       // runtime must still prove the marked tenant/artifact is healthy before
       // a restart may capture or expose that prior effect as settled.
       throw effectError("wallet_first_resource_effect_unavailable");
     }
-    return effect;
   }
 
   async function applyDeferredResourceTransition(value) {
@@ -498,6 +538,7 @@ export function createWalletFirstResourceEffectHandler(options = {}) {
     try {
       rawRuntimeReceipt = await runtime.applyWalletFirstTransition(Object.freeze({
         transitionRef: input.transitionRef,
+        effectRef: prepared.effectRef,
         flowKind: input.flowKind,
         successor: prepared.successor,
         runtimeRequest: prepared.runtimeRequest
@@ -513,7 +554,8 @@ export function createWalletFirstResourceEffectHandler(options = {}) {
     }
     const runtimeReceipt = normalizeRuntimeReceipt(
       rawRuntimeReceipt,
-      input.transitionRef
+      input.transitionRef,
+      input.flowKind
     );
     let rawEffect;
     try {
@@ -521,7 +563,10 @@ export function createWalletFirstResourceEffectHandler(options = {}) {
         transitionRef: input.transitionRef,
         effectRef: prepared.effectRef,
         successor: prepared.successor,
-        runtimeReceiptRef: runtimeReceipt.runtimeReceiptRef
+        runtimeReceiptRef: runtimeReceipt.runtimeReceiptRef,
+        ...(runtimeReceipt.setupDeliveryHandoffRef === null ? {} : {
+          setupDeliveryHandoffRef: runtimeReceipt.setupDeliveryHandoffRef
+        })
       }));
     } catch {
       throw effectError("wallet_first_resource_effect_unavailable");
@@ -533,7 +578,7 @@ export function createWalletFirstResourceEffectHandler(options = {}) {
     ) {
       throw effectError("wallet_first_resource_effect_unavailable");
     }
-    return effect;
+    return withSetupDeliveryHandoffRef(effect, runtimeReceipt.setupDeliveryHandoffRef);
   }
 
   return Object.freeze({

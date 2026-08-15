@@ -1,7 +1,11 @@
 import { Router } from "express";
+import { types as utilTypes } from "node:util";
 import {
   snapshotWalletFirstCurrentResourceProjection
 } from "../services/platform/wallet-first-current-resource-projection.mjs";
+import {
+  snapshotWalletFirstCurrentResourceSetupDelivery
+} from "../services/platform/wallet-first-current-resource-setup-delivery.mjs";
 
 function sendPortalError(res, error) {
   if (error.code === "human_verification_failed") {
@@ -52,6 +56,14 @@ function sendPortalError(res, error) {
     res.status(503).json({ error: "wallet_first_current_resource_unavailable" });
     return;
   }
+  if (error.code === "wallet_first_setup_delivery_unavailable") {
+    res.status(503).json({ error: "wallet_first_setup_delivery_unavailable" });
+    return;
+  }
+  if (error.code === "wallet_first_setup_delivery_reconciliation_required") {
+    res.status(409).json({ error: "wallet_first_setup_delivery_reconciliation_required" });
+    return;
+  }
   if (error.code === "invalid_session") {
     res.status(401).json({ error: "invalid_session" });
     return;
@@ -82,6 +94,8 @@ export function userPortalRoutes(state, options = {}) {
   const humanChallenges = options.portalHumanChallenges || state.platform?.portalHumanChallenges;
   const currentResourceProjection = options.walletFirstCurrentResourceProjection
     || state.platform?.walletFirstCurrentResourceProjection;
+  const currentResourceSetupDelivery = options.walletFirstCurrentResourceSetupDelivery
+    || state.platform?.walletFirstCurrentResourceSetupDelivery;
 
   function requestContext(req) {
     return {
@@ -147,6 +161,48 @@ export function userPortalRoutes(state, options = {}) {
       error.code = "validation_error";
       throw error;
     }
+  }
+
+  function requireExactBody(req, fields) {
+    try {
+      const body = req.body;
+      if (
+        !body
+        || typeof body !== "object"
+        || Array.isArray(body)
+        || utilTypes.isProxy(body)
+        || Object.getPrototypeOf(body) !== Object.prototype
+      ) {
+        throw new Error("invalid request body");
+      }
+      const expected = new Set(fields);
+      const keys = Reflect.ownKeys(body);
+      if (keys.length !== fields.length) throw new Error("invalid request body");
+      const snapshot = {};
+      for (const key of keys) {
+        if (typeof key !== "string" || !expected.has(key)) {
+          throw new Error("invalid request body");
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(body, key);
+        if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+          throw new Error("invalid request body");
+        }
+        snapshot[key] = descriptor.value;
+      }
+      for (const field of fields) {
+        if (!Object.hasOwn(snapshot, field)) throw new Error("invalid request body");
+      }
+      return snapshot;
+    } catch {
+      const error = new Error("setup delivery body must be exact");
+      error.code = "validation_error";
+      throw error;
+    }
+  }
+
+  function setSetupDeliveryResponseHeaders(res) {
+    res.set("Cache-Control", "no-store");
+    res.set("Referrer-Policy", "no-referrer");
   }
 
   function sessionScopedBody(req) {
@@ -371,6 +427,46 @@ export function userPortalRoutes(state, options = {}) {
       const resource = projection.getCurrentResource({ accountId: session.accountId });
       res.set("Cache-Control", "no-store");
       res.json({ resource });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.post("/api/portal/resources/current/setup", (req, res) => {
+    try {
+      setSetupDeliveryResponseHeaders(res);
+      requireNoQuery(req);
+      const session = requirePortalHeaderSession(req);
+      const body = requireExactBody(req, ["idempotencyKey"]);
+      const delivery = snapshotWalletFirstCurrentResourceSetupDelivery(
+        currentResourceSetupDelivery
+      );
+      const result = delivery.deliverSetup({
+        accountId: session.accountId,
+        sessionRef: session.sessionRef,
+        idempotencyKey: body.idempotencyKey
+      });
+      res.status(200).json(result);
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.post("/api/portal/resources/current/setup/ack", (req, res) => {
+    try {
+      setSetupDeliveryResponseHeaders(res);
+      requireNoQuery(req);
+      const session = requirePortalHeaderSession(req);
+      const body = requireExactBody(req, ["handoffRef"]);
+      const delivery = snapshotWalletFirstCurrentResourceSetupDelivery(
+        currentResourceSetupDelivery
+      );
+      delivery.acknowledgeSetup({
+        accountId: session.accountId,
+        sessionRef: session.sessionRef,
+        handoffRef: body.handoffRef
+      });
+      res.status(204).end();
     } catch (error) {
       sendPortalError(res, error);
     }

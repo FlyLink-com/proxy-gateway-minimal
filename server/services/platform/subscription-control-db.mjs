@@ -45,6 +45,11 @@ const WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_CLAIMS_TABLE =
   "platform_wallet_first_resource_effect_runtime_claims";
 const WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_LEASE_TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 const MAX_WALLET_FIRST_RESOURCE_EFFECT_RUNTIME_LEASE_MS = 10 * 60 * 1000;
+const WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE =
+  "platform_wallet_first_setup_delivery_handoffs";
+const WALLET_FIRST_SETUP_DELIVERY_HASH_PATTERN = /^[a-f0-9]{64}$/;
+const WALLET_FIRST_SETUP_DELIVERY_HANDOFF_REF_PATTERN = /^wfxsetup_[a-f0-9]{48}$/;
+const MAX_WALLET_FIRST_SETUP_DELIVERY_LEASE_MS = 10 * 60 * 1000;
 const WALLET_FIRST_RESOURCE_EFFECT_SUPPORTED_OFFERS = Object.freeze({
   offerv_plan_30d_50gb_monthly_v1: Object.freeze({
     durationDays: 30,
@@ -3537,7 +3542,11 @@ export function createSqliteSubscriptionControlStore({
 
   function completeWalletFirstTransitionEffectForDeferredTransition(input) {
     exactObject(input, {
-      allowed: ["transitionRef", "effectRef", "successor", "runtimeReceiptRef", "now"],
+      allowed: [
+        "transitionRef", "effectRef", "successor", "runtimeReceiptRef", "now",
+        "setupDeliveryHandoffRef"
+      ],
+      required: ["transitionRef", "effectRef", "successor", "runtimeReceiptRef", "now"],
       name: "walletFirstTransitionEffectCompletion"
     });
     const transitionRef = safeControlRef(input.transitionRef, "transitionRef");
@@ -3546,6 +3555,12 @@ export function createSqliteSubscriptionControlStore({
       effectRef: safeControlRef(input.effectRef, "effectRef"),
       successor: walletFirstResourceEffectExpectedChain(input.successor),
       runtimeReceiptRef: safeControlRef(input.runtimeReceiptRef, "runtimeReceiptRef"),
+      setupDeliveryHandoffRef: input.setupDeliveryHandoffRef === undefined
+        ? null
+        : walletFirstSetupDeliveryHandoffRef(
+          input.setupDeliveryHandoffRef,
+          "setupDeliveryHandoffRef"
+        ),
       now: isoText(input.now, "now")
     });
     if (completion.effectRef !== walletFirstResourceEffectReceiptRef(transitionRef)) {
@@ -3566,6 +3581,12 @@ export function createSqliteSubscriptionControlStore({
         if (!prepared || !runtimeReceipt) {
           throw platformError("validation_error", "wallet-first effect receipt dependencies are missing");
         }
+        if (
+          completion.setupDeliveryHandoffRef !== null
+          && prepared.flowKind !== "initial_activation"
+        ) {
+          throw platformError("validation_error", "wallet-first setup-delivery handoff is initial-only");
+        }
         walletFirstResourceEffectAssertReceiptMatchesPreparation(prepared, runtimeReceipt, existing);
         if (
           !walletFirstResourceEffectSameReceipt(existing, {
@@ -3577,6 +3598,14 @@ export function createSqliteSubscriptionControlStore({
           throw platformError("validation_error", "wallet-first effect receipt idempotency conflict");
         }
         walletFirstResourceEffectCurrentPreparedTransition(prepared.accountId);
+        if (completion.setupDeliveryHandoffRef !== null) {
+          // A replay must prove the original transaction atomically wrote the
+          // matching handoff. It must not silently heal a historical gap.
+          walletFirstSetupDeliveryAssertExistingHandoff({
+            accountId: prepared.accountId,
+            handoffRef: completion.setupDeliveryHandoffRef
+          });
+        }
         return walletFirstResourceEffectOutput(existing);
       }
 
@@ -3584,6 +3613,12 @@ export function createSqliteSubscriptionControlStore({
       const runtimeReceipt = getWalletFirstRuntimeReceiptForDeferredTransition({ transitionRef });
       if (!prepared || !runtimeReceipt) {
         throw platformError("validation_error", "wallet-first effect completion dependencies are missing");
+      }
+      if (
+        completion.setupDeliveryHandoffRef !== null
+        && prepared.flowKind !== "initial_activation"
+      ) {
+        throw platformError("validation_error", "wallet-first setup-delivery handoff is initial-only");
       }
       walletFirstResourceEffectAssertRuntimeReceiptMatchesPreparation(prepared, runtimeReceipt);
       if (
@@ -3625,9 +3660,681 @@ export function createSqliteSubscriptionControlStore({
         createdAt: completion.now,
         metadata: walletFirstResourceEffectReceiptMetadata(receipt)
       });
+      if (completion.setupDeliveryHandoffRef !== null) {
+        // The effect receipt and its delivery handoff share this immediate
+        // transaction. Any schema/binding failure rolls the resource-chain
+        // mutation and receipt back together, leaving no settled orphan.
+        walletFirstSetupDeliveryCreateInTransaction({
+          accountId: prepared.accountId,
+          handoffRef: completion.setupDeliveryHandoffRef,
+          now: completion.now
+        });
+      }
       return walletFirstResourceEffectOutput(receipt);
     });
     return complete.immediate();
+  }
+
+  // Setup delivery is intentionally separated from the resource projection.
+  // The handoff ledger persists only opaque references and one-way bindings;
+  // raw subscription material never traverses this control-store boundary.
+  function walletFirstSetupDeliveryRequireSchema() {
+    const table = db.prepare(`
+      select name from sqlite_master
+       where type = 'table' and name = ?
+    `).get(WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE);
+    if (!table) {
+      throw platformError(
+        "validation_error",
+        "wallet-first setup-delivery handoff schema is not ready"
+      );
+    }
+  }
+
+  function walletFirstSetupDeliveryHash(value, field) {
+    const normalized = requiredText(value, field);
+    if (!WALLET_FIRST_SETUP_DELIVERY_HASH_PATTERN.test(normalized)) {
+      throw platformError("validation_error", `${field} must be a SHA-256 hash`);
+    }
+    return normalized;
+  }
+
+  function walletFirstSetupDeliveryHandoffRef(value, field) {
+    const normalized = safeControlRef(value, field);
+    if (!WALLET_FIRST_SETUP_DELIVERY_HANDOFF_REF_PATTERN.test(normalized)) {
+      throw platformError("validation_error", `${field} must be a deterministic setup-delivery handoff reference`);
+    }
+    return normalized;
+  }
+
+  function walletFirstSetupDeliveryHandoffRow(row) {
+    if (!row) return null;
+    const status = requiredText(row.status, "setupDeliveryHandoff.status");
+    if (![
+      "pending",
+      "claimed",
+      "delivered",
+      "reconciliation_required"
+    ].includes(status)) {
+      throw platformError("validation_error", "wallet-first setup-delivery handoff status is invalid");
+    }
+    const handoff = {
+      handoffRef: walletFirstSetupDeliveryHandoffRef(
+        row.handoff_ref,
+        "setupDeliveryHandoff.handoffRef"
+      ),
+      accountId: safeControlRef(row.account_id, "setupDeliveryHandoff.accountId"),
+      initialTransitionRef: safeControlRef(
+        row.initial_transition_ref,
+        "setupDeliveryHandoff.initialTransitionRef"
+      ),
+      effectRef: safeControlRef(row.effect_ref, "setupDeliveryHandoff.effectRef"),
+      tenantRef: safeControlRef(row.tenant_ref, "setupDeliveryHandoff.tenantRef"),
+      artifactRef: safeControlRef(row.artifact_ref, "setupDeliveryHandoff.artifactRef"),
+      idempotencyKeyHash: row.idempotency_key_hash === null
+        ? null
+        : walletFirstSetupDeliveryHash(
+          row.idempotency_key_hash,
+          "setupDeliveryHandoff.idempotencyKeyHash"
+        ),
+      sessionBindingHash: row.session_binding_hash === null
+        ? null
+        : walletFirstSetupDeliveryHash(
+          row.session_binding_hash,
+          "setupDeliveryHandoff.sessionBindingHash"
+        ),
+      status,
+      claimGeneration: integer(
+        row.claim_generation,
+        "setupDeliveryHandoff.claimGeneration",
+        { min: 0 }
+      ),
+      leaseUntil: row.lease_until === null
+        ? null
+        : isoText(row.lease_until, "setupDeliveryHandoff.leaseUntil"),
+      claimedAt: row.claimed_at === null
+        ? null
+        : isoText(row.claimed_at, "setupDeliveryHandoff.claimedAt"),
+      deliveredAt: row.delivered_at === null
+        ? null
+        : isoText(row.delivered_at, "setupDeliveryHandoff.deliveredAt"),
+      safeCode: row.safe_code === null
+        ? null
+        : safeControlRef(row.safe_code, "setupDeliveryHandoff.safeCode")
+    };
+    const hashBound = handoff.idempotencyKeyHash !== null
+      && handoff.sessionBindingHash !== null;
+    if (
+      handoff.claimGeneration > 2147483647
+      || (handoff.status === "pending" && (
+        handoff.claimGeneration !== 0 || handoff.idempotencyKeyHash !== null
+        || handoff.sessionBindingHash !== null || handoff.leaseUntil !== null
+        || handoff.claimedAt !== null || handoff.deliveredAt !== null || handoff.safeCode !== null
+      ))
+      || (handoff.status === "claimed" && (
+        handoff.claimGeneration < 1 || !hashBound || handoff.leaseUntil === null
+        || handoff.claimedAt === null || handoff.deliveredAt !== null || handoff.safeCode !== null
+      ))
+      || (handoff.status === "delivered" && (
+        handoff.claimGeneration < 1 || !hashBound || handoff.leaseUntil !== null
+        || handoff.claimedAt === null || handoff.deliveredAt === null || handoff.safeCode !== null
+      ))
+      || (handoff.status === "reconciliation_required" && (
+        hashBound || handoff.idempotencyKeyHash !== null || handoff.sessionBindingHash !== null
+        || handoff.leaseUntil !== null || handoff.claimedAt !== null
+        || handoff.deliveredAt !== null || handoff.safeCode === null
+      ))
+    ) {
+      throw platformError("validation_error", "wallet-first setup-delivery handoff row is invalid");
+    }
+    return Object.freeze(handoff);
+  }
+
+  function walletFirstSetupDeliveryCurrentBinding(accountId) {
+    const account = walletFirstResourceEffectAccountRecord(accountId);
+    const chain = walletFirstResourceEffectExactChain(account.id);
+    if (!chain) return null;
+    walletFirstResourceEffectRequireRuntimeClaimSchema();
+    const current = walletFirstResourceEffectCurrentPreparedTransition(account.id);
+    const initialTransitionRef = chain.metadata.initialTransitionRef;
+    const initialPrepared = walletFirstResourceEffectExistingPreparation(initialTransitionRef);
+    const initialRuntimeReceipt = getWalletFirstRuntimeReceiptForDeferredTransition({
+      transitionRef: initialTransitionRef
+    });
+    const initialEffectAudit = getAuditEvent(
+      walletFirstResourceEffectReceiptRef(initialTransitionRef)
+    );
+    if (!initialPrepared || !initialRuntimeReceipt || !initialEffectAudit) {
+      throw platformError("validation_error", "wallet-first setup-delivery initial receipt is missing");
+    }
+    const initialEffectReceipt = walletFirstResourceEffectReceiptFromAudit(initialEffectAudit);
+    walletFirstResourceEffectAssertReceiptMatchesPreparation(
+      initialPrepared,
+      initialRuntimeReceipt,
+      initialEffectReceipt
+    );
+    const runtimeClaim = walletFirstResourceEffectSelectRuntimeClaim(
+      initialTransitionRef
+    );
+    if (
+      initialPrepared.flowKind !== "initial_activation"
+      || !runtimeClaim
+      || runtimeClaim.status !== "recorded"
+      || !walletFirstResourceEffectClaimMatchesPreparation(initialPrepared, runtimeClaim)
+      || initialRuntimeReceipt.initialTransitionRef !== initialTransitionRef
+      || initialEffectReceipt.effectRef !== initialPrepared.effectRef
+      || initialEffectReceipt.runtimeReceiptRef !== initialRuntimeReceipt.runtimeReceiptRef
+      || current.chain.metadata.initialTransitionRef !== initialTransitionRef
+      || current.chain.metadata.lastTransitionRef !== current.prepared.transitionRef
+      || current.prepared.effectRef !== current.effectReceipt.effectRef
+      || current.runtimeReceipt.tenantId !== initialRuntimeReceipt.tenantId
+      || current.runtimeReceipt.artifactId !== initialRuntimeReceipt.artifactId
+      || current.runtimeReceipt.tenantRef !== initialRuntimeReceipt.tenantRef
+      || current.runtimeReceipt.artifactRef !== initialRuntimeReceipt.artifactRef
+      || current.chain.tenantId !== initialRuntimeReceipt.tenantId
+      || current.chain.artifactId !== initialRuntimeReceipt.artifactId
+      || current.chain.tenantRef !== initialRuntimeReceipt.tenantRef
+      || current.chain.artifactRef !== initialRuntimeReceipt.artifactRef
+      || chain.tenantId !== initialRuntimeReceipt.tenantId
+      || chain.artifactId !== initialRuntimeReceipt.artifactId
+      || chain.tenantRef !== initialRuntimeReceipt.tenantRef
+      || chain.artifactRef !== initialRuntimeReceipt.artifactRef
+    ) {
+      throw platformError("validation_error", "wallet-first setup-delivery binding drifted");
+    }
+    return Object.freeze({
+      accountId: account.id,
+      initialTransitionRef,
+      transitionRef: initialPrepared.transitionRef,
+      effectRef: initialPrepared.effectRef,
+      tenantId: initialRuntimeReceipt.tenantId,
+      artifactId: initialRuntimeReceipt.artifactId,
+      tenantRef: initialRuntimeReceipt.tenantRef,
+      artifactRef: initialRuntimeReceipt.artifactRef
+    });
+  }
+
+  function walletFirstSetupDeliverySelectForBinding(binding) {
+    return walletFirstSetupDeliveryHandoffRow(db.prepare(`
+      select * from ${WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE}
+       where account_id = ? and effect_ref = ?
+    `).get(binding.accountId, binding.effectRef));
+  }
+
+  function walletFirstSetupDeliveryMatchesBinding(handoff, binding) {
+    return Boolean(
+      handoff
+      && handoff.accountId === binding.accountId
+      && handoff.initialTransitionRef === binding.initialTransitionRef
+      && handoff.effectRef === binding.effectRef
+      && handoff.tenantRef === binding.tenantRef
+      && handoff.artifactRef === binding.artifactRef
+    );
+  }
+
+  function walletFirstSetupDeliveryPrivateBinding(handoff, binding) {
+    return Object.freeze({
+      handoffRef: handoff.handoffRef,
+      initialTransitionRef: binding.initialTransitionRef,
+      transitionRef: binding.transitionRef,
+      effectRef: binding.effectRef,
+      tenantId: binding.tenantId,
+      artifactId: binding.artifactId,
+      tenantRef: binding.tenantRef,
+      artifactRef: binding.artifactRef
+    });
+  }
+
+  function walletFirstSetupDeliveryClaimOutput(handoff, binding) {
+    return Object.freeze({
+      state: "claimed",
+      handoffRef: handoff.handoffRef,
+      claimGeneration: handoff.claimGeneration,
+      binding: walletFirstSetupDeliveryPrivateBinding(handoff, binding)
+    });
+  }
+
+  function walletFirstSetupDeliveryReadAvailability(accountId, now) {
+    const binding = walletFirstSetupDeliveryCurrentBinding(accountId);
+    if (!binding) return Object.freeze({ state: "none" });
+    const handoff = walletFirstSetupDeliverySelectForBinding(binding);
+    if (!handoff || !walletFirstSetupDeliveryMatchesBinding(handoff, binding)) {
+      return Object.freeze({ state: "reconciliation_required" });
+    }
+    if (handoff.status === "pending") {
+      return Object.freeze({
+        state: "available",
+        handoffRef: handoff.handoffRef,
+        binding: walletFirstSetupDeliveryPrivateBinding(handoff, binding)
+      });
+    }
+    if (handoff.status === "claimed") {
+      return Object.freeze({
+        state: handoff.leaseUntil <= now ? "available" : "claimed",
+        handoffRef: handoff.handoffRef,
+        binding: walletFirstSetupDeliveryPrivateBinding(handoff, binding)
+      });
+    }
+    return Object.freeze({ state: handoff.status });
+  }
+
+  // This is a private server-side reader. The caller must never serialize its
+  // opaque binding into a Portal response; it only lets the escrow adapter
+  // prove release capability before any mutable claim is attempted.
+  function readWalletFirstSetupDeliveryAvailabilityBinding(input) {
+    exactObject(input, {
+      allowed: ["accountId", "now"],
+      name: "walletFirstSetupDeliveryAvailability"
+    });
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const now = isoText(input.now, "now");
+    try {
+      walletFirstSetupDeliveryRequireSchema();
+      return walletFirstSetupDeliveryReadAvailability(accountId, now);
+    } catch (error) {
+      if (error?.code === "validation_error" || error?.code === "not_found") {
+        return Object.freeze({ state: "reconciliation_required" });
+      }
+      throw error;
+    }
+  }
+
+  // Status-only facade for the Portal projection. It intentionally strips
+  // all opaque runtime and handoff references from the result.
+  function readWalletFirstSetupDeliveryHandoff(input) {
+    const availability = readWalletFirstSetupDeliveryAvailabilityBinding(input);
+    return Object.freeze({ state: availability.state });
+  }
+
+  function walletFirstSetupDeliveryCreateInTransaction({ accountId, handoffRef, now }) {
+    walletFirstSetupDeliveryRequireSchema();
+    const normalizedHandoffRef = walletFirstSetupDeliveryHandoffRef(handoffRef, "handoffRef");
+    const binding = walletFirstSetupDeliveryCurrentBinding(accountId);
+    if (!binding) {
+      throw platformError("validation_error", "wallet-first setup-delivery resource is missing");
+    }
+    const existing = walletFirstSetupDeliverySelectForBinding(binding);
+    if (existing) {
+      if (
+        !walletFirstSetupDeliveryMatchesBinding(existing, binding)
+        || existing.handoffRef !== normalizedHandoffRef
+      ) {
+        throw platformError("validation_error", "wallet-first setup-delivery handoff binding drifted");
+      }
+      return Object.freeze({ state: existing.status });
+    }
+    sqliteRun(db.prepare(`
+      insert into ${WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE} (
+        handoff_ref, account_id, initial_transition_ref, effect_ref,
+        tenant_ref, artifact_ref, idempotency_key_hash, session_binding_hash,
+        status, claim_generation, lease_until, created_at, updated_at,
+        claimed_at, delivered_at, safe_code
+      ) values (
+        @handoffRef, @accountId, @initialTransitionRef, @effectRef,
+        @tenantRef, @artifactRef, null, null,
+        'pending', 0, null, @now, @now,
+        null, null, null
+      )
+    `), { ...binding, handoffRef: normalizedHandoffRef, now });
+    return Object.freeze({ state: "pending" });
+  }
+
+  function walletFirstSetupDeliveryAssertExistingHandoff({ accountId, handoffRef }) {
+    walletFirstSetupDeliveryRequireSchema();
+    const normalizedHandoffRef = walletFirstSetupDeliveryHandoffRef(handoffRef, "handoffRef");
+    const binding = walletFirstSetupDeliveryCurrentBinding(accountId);
+    if (!binding) {
+      throw platformError("validation_error", "wallet-first setup-delivery resource is missing");
+    }
+    const existing = walletFirstSetupDeliverySelectForBinding(binding);
+    if (
+      !existing
+      || !walletFirstSetupDeliveryMatchesBinding(existing, binding)
+      || existing.handoffRef !== normalizedHandoffRef
+    ) {
+      throw platformError("validation_error", "wallet-first setup-delivery receipt handoff is missing");
+    }
+    return existing;
+  }
+
+  // Internal effect-adapter proof only: a durable runtime/escrow receipt is
+  // insufficient on its own.  A resolved initial effect may be treated as
+  // settled only when the exact control-database handoff row that was written
+  // with its original completion still exists and binds the current chain.
+  // It deliberately returns no binding or material.
+  function assertWalletFirstSetupDeliveryHandoffForDeferredTransition(input) {
+    exactObject(input, {
+      allowed: ["transitionRef", "effectRef", "handoffRef"],
+      name: "walletFirstSetupDeliveryEffectHandoffAssertion"
+    });
+    const transitionRef = safeControlRef(input.transitionRef, "transitionRef");
+    const effectRef = safeControlRef(input.effectRef, "effectRef");
+    const handoffRef = walletFirstSetupDeliveryHandoffRef(input.handoffRef, "handoffRef");
+    const prepared = walletFirstResourceEffectExistingPreparation(transitionRef);
+    if (
+      !prepared
+      || prepared.flowKind !== "initial_activation"
+      || prepared.effectRef !== effectRef
+    ) {
+      throw platformError("validation_error", "wallet-first setup-delivery assertion is initial-only");
+    }
+    const existing = walletFirstSetupDeliveryAssertExistingHandoff({
+      accountId: prepared.accountId,
+      handoffRef
+    });
+    if (existing.initialTransitionRef !== transitionRef) {
+      throw platformError("validation_error", "wallet-first setup-delivery assertion transition drifted");
+    }
+    return Object.freeze({});
+  }
+
+  // Recovery-only entrypoint for an explicitly audited legacy effect. The
+  // normal runtime path invokes the same helper from effect completion's
+  // immediate transaction, so it cannot create a post-settlement gap.
+  function createWalletFirstSetupDeliveryHandoff(input) {
+    exactObject(input, {
+      allowed: ["accountId", "handoffRef", "now"],
+      name: "walletFirstSetupDeliveryCreate"
+    });
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const handoffRef = walletFirstSetupDeliveryHandoffRef(input.handoffRef, "handoffRef");
+    const now = isoText(input.now, "now");
+    return db.transaction(() => (
+      walletFirstSetupDeliveryCreateInTransaction({ accountId, handoffRef, now })
+    )).immediate();
+  }
+
+  function walletFirstSetupDeliveryClaimInput(input) {
+    exactObject(input, {
+      allowed: ["accountId", "idempotencyKeyHash", "sessionBindingHash", "now", "leaseMs"],
+      name: "walletFirstSetupDeliveryClaim"
+    });
+    const leaseMs = integer(input.leaseMs, "leaseMs", { min: 1 });
+    if (leaseMs > MAX_WALLET_FIRST_SETUP_DELIVERY_LEASE_MS) {
+      throw platformError("validation_error", "wallet-first setup-delivery lease is too long");
+    }
+    return Object.freeze({
+      accountId: safeControlRef(input.accountId, "accountId"),
+      idempotencyKeyHash: walletFirstSetupDeliveryHash(
+        input.idempotencyKeyHash,
+        "idempotencyKeyHash"
+      ),
+      sessionBindingHash: walletFirstSetupDeliveryHash(
+        input.sessionBindingHash,
+        "sessionBindingHash"
+      ),
+      now: isoText(input.now, "now"),
+      leaseMs
+    });
+  }
+
+  function claimWalletFirstSetupDeliveryHandoff(input) {
+    const requested = walletFirstSetupDeliveryClaimInput(input);
+    return db.transaction(() => {
+      walletFirstSetupDeliveryRequireSchema();
+      const binding = walletFirstSetupDeliveryCurrentBinding(requested.accountId);
+      if (!binding) return Object.freeze({ state: "reconciliation_required" });
+      const existing = walletFirstSetupDeliverySelectForBinding(binding);
+      if (!existing || !walletFirstSetupDeliveryMatchesBinding(existing, binding)) {
+        return Object.freeze({ state: "reconciliation_required" });
+      }
+      if (existing.status === "reconciliation_required") {
+        return Object.freeze({ state: "reconciliation_required" });
+      }
+      const sameClaim = existing.idempotencyKeyHash === requested.idempotencyKeyHash
+        && existing.sessionBindingHash === requested.sessionBindingHash;
+      if (existing.status === "delivered") {
+        if (sameClaim) return Object.freeze({ state: "delivered" });
+        throw platformError("claim_lost", "wallet-first setup-delivery handoff is already delivered");
+      }
+      if (existing.status === "claimed" && sameClaim && existing.leaseUntil > requested.now) {
+        return walletFirstSetupDeliveryClaimOutput(existing, binding);
+      }
+      if (existing.status === "claimed" && existing.leaseUntil > requested.now) {
+        throw platformError("claim_lost", "wallet-first setup-delivery handoff is claimed by another session");
+      }
+      const nextGeneration = existing.claimGeneration + 1;
+      const leaseUntil = addMillisecondsToIso(requested.now, requested.leaseMs, "leaseMs");
+      const updated = existing.status === "pending"
+        ? db.prepare(`
+            update ${WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE}
+               set idempotency_key_hash = ?,
+                   session_binding_hash = ?,
+                   status = 'claimed',
+                   claim_generation = 1,
+                   lease_until = ?,
+                   claimed_at = ?,
+                   updated_at = ?
+             where account_id = ? and effect_ref = ?
+               and status = 'pending' and claim_generation = 0
+          `).run(
+          requested.idempotencyKeyHash,
+          requested.sessionBindingHash,
+          leaseUntil,
+          requested.now,
+          requested.now,
+          binding.accountId,
+          binding.effectRef
+        )
+        : db.prepare(`
+            update ${WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE}
+               set idempotency_key_hash = ?,
+                   session_binding_hash = ?,
+                   claim_generation = ?,
+                   lease_until = ?,
+                   claimed_at = ?,
+                   updated_at = ?
+             where account_id = ? and effect_ref = ?
+               and status = 'claimed'
+               and claim_generation = ?
+               and idempotency_key_hash = ?
+               and session_binding_hash = ?
+               and lease_until <= ?
+          `).run(
+          requested.idempotencyKeyHash,
+          requested.sessionBindingHash,
+          nextGeneration,
+          leaseUntil,
+          requested.now,
+          requested.now,
+          binding.accountId,
+          binding.effectRef,
+          existing.claimGeneration,
+          existing.idempotencyKeyHash,
+          existing.sessionBindingHash,
+          requested.now
+        );
+      if (updated.changes !== 1) {
+        throw platformError("claim_lost", "wallet-first setup-delivery handoff is no longer current");
+      }
+      const claimed = walletFirstSetupDeliverySelectForBinding(binding);
+      if (!claimed || !walletFirstSetupDeliveryMatchesBinding(claimed, binding)) {
+        throw platformError("claim_lost", "wallet-first setup-delivery handoff disappeared");
+      }
+      return walletFirstSetupDeliveryClaimOutput(claimed, binding);
+    }).immediate();
+  }
+
+  function readWalletFirstSetupDeliveryBinding(input) {
+    exactObject(input, {
+      allowed: ["accountId", "handoffRef", "sessionBindingHash", "now"],
+      name: "walletFirstSetupDeliveryBinding"
+    });
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const handoffRef = walletFirstSetupDeliveryHandoffRef(input.handoffRef, "handoffRef");
+    const sessionBindingHash = walletFirstSetupDeliveryHash(
+      input.sessionBindingHash,
+      "sessionBindingHash"
+    );
+    const now = isoText(input.now, "now");
+    walletFirstSetupDeliveryRequireSchema();
+    const binding = walletFirstSetupDeliveryCurrentBinding(accountId);
+    if (!binding) return Object.freeze({ state: "reconciliation_required" });
+    const handoff = walletFirstSetupDeliverySelectForBinding(binding);
+    if (
+      !handoff
+      || !walletFirstSetupDeliveryMatchesBinding(handoff, binding)
+      || handoff.handoffRef !== handoffRef
+    ) {
+      return Object.freeze({ state: "reconciliation_required" });
+    }
+    if (
+      handoff.status !== "claimed"
+      || handoff.sessionBindingHash !== sessionBindingHash
+      || handoff.leaseUntil <= now
+    ) {
+      throw platformError("claim_lost", "wallet-first setup-delivery handoff claim is not current");
+    }
+    return walletFirstSetupDeliveryClaimOutput(handoff, binding);
+  }
+
+  // This narrower reader is for acknowledgement/escrow cleanup only. Unlike
+  // the release reader above it permits an expired claim from the same session
+  // only while the durable claim generation has not been replaced. Callers
+  // must never use it to release configuration material.
+  function readWalletFirstSetupDeliveryAcknowledgementBinding(input) {
+    exactObject(input, {
+      allowed: ["accountId", "handoffRef", "sessionBindingHash", "now"],
+      name: "walletFirstSetupDeliveryAcknowledgementBinding"
+    });
+    const accountId = safeControlRef(input.accountId, "accountId");
+    const handoffRef = walletFirstSetupDeliveryHandoffRef(input.handoffRef, "handoffRef");
+    const sessionBindingHash = walletFirstSetupDeliveryHash(
+      input.sessionBindingHash,
+      "sessionBindingHash"
+    );
+    // Validate time at the boundary even though acknowledgement deliberately
+    // does not use it to invalidate an unreplaced same-session claim.
+    isoText(input.now, "now");
+    walletFirstSetupDeliveryRequireSchema();
+    const binding = walletFirstSetupDeliveryCurrentBinding(accountId);
+    if (!binding) throw platformError("claim_lost", "wallet-first setup-delivery resource is missing");
+    const handoff = walletFirstSetupDeliverySelectForBinding(binding);
+    if (
+      !handoff
+      || !walletFirstSetupDeliveryMatchesBinding(handoff, binding)
+      || handoff.handoffRef !== handoffRef
+      || handoff.sessionBindingHash !== sessionBindingHash
+    ) {
+      throw platformError("claim_lost", "wallet-first setup-delivery acknowledgement is not current");
+    }
+    if (handoff.status === "delivered") {
+      return Object.freeze({
+        state: "delivered",
+        handoffRef: handoff.handoffRef,
+        binding: walletFirstSetupDeliveryPrivateBinding(handoff, binding)
+      });
+    }
+    if (handoff.status !== "claimed") {
+      throw platformError("claim_lost", "wallet-first setup-delivery acknowledgement is unavailable");
+    }
+    return walletFirstSetupDeliveryClaimOutput(handoff, binding);
+  }
+
+  function acknowledgeWalletFirstSetupDeliveryHandoff(input) {
+    exactObject(input, {
+      allowed: ["accountId", "handoffRef", "sessionBindingHash", "now"],
+      name: "walletFirstSetupDeliveryAcknowledge"
+    });
+    const requested = Object.freeze({
+      accountId: safeControlRef(input.accountId, "accountId"),
+      handoffRef: walletFirstSetupDeliveryHandoffRef(input.handoffRef, "handoffRef"),
+      sessionBindingHash: walletFirstSetupDeliveryHash(
+        input.sessionBindingHash,
+        "sessionBindingHash"
+      ),
+      now: isoText(input.now, "now")
+    });
+    return db.transaction(() => {
+      walletFirstSetupDeliveryRequireSchema();
+      const binding = walletFirstSetupDeliveryCurrentBinding(requested.accountId);
+      if (!binding) throw platformError("claim_lost", "wallet-first setup-delivery resource is missing");
+      const handoff = walletFirstSetupDeliverySelectForBinding(binding);
+      if (
+        !handoff
+        || !walletFirstSetupDeliveryMatchesBinding(handoff, binding)
+        || handoff.handoffRef !== requested.handoffRef
+        || handoff.sessionBindingHash !== requested.sessionBindingHash
+      ) {
+        throw platformError("claim_lost", "wallet-first setup-delivery handoff is not owned by this session");
+      }
+      if (handoff.status === "delivered") return Object.freeze({ state: "delivered" });
+      if (handoff.status !== "claimed") {
+        throw platformError("claim_lost", "wallet-first setup-delivery handoff cannot be acknowledged");
+      }
+      const delivered = db.prepare(`
+        update ${WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE}
+           set status = 'delivered',
+               lease_until = null,
+               delivered_at = ?,
+               updated_at = ?
+         where account_id = ? and effect_ref = ?
+           and handoff_ref = ?
+           and status = 'claimed'
+           and claim_generation = ?
+           and session_binding_hash = ?
+      `).run(
+        requested.now,
+        requested.now,
+        binding.accountId,
+        binding.effectRef,
+        requested.handoffRef,
+        handoff.claimGeneration,
+        requested.sessionBindingHash
+      );
+      if (delivered.changes !== 1) {
+        throw platformError("claim_lost", "wallet-first setup-delivery acknowledgement lost its claim");
+      }
+      return Object.freeze({ state: "delivered" });
+    }).immediate();
+  }
+
+  function markWalletFirstSetupDeliveryHandoffReconciliationRequired(input) {
+    exactObject(input, {
+      allowed: ["accountId", "handoffRef", "sessionBindingHash", "safeCode", "now"],
+      name: "walletFirstSetupDeliveryReconciliation"
+    });
+    const requested = Object.freeze({
+      accountId: safeControlRef(input.accountId, "accountId"),
+      handoffRef: walletFirstSetupDeliveryHandoffRef(input.handoffRef, "handoffRef"),
+      sessionBindingHash: walletFirstSetupDeliveryHash(
+        input.sessionBindingHash,
+        "sessionBindingHash"
+      ),
+      safeCode: safeControlRef(input.safeCode, "safeCode"),
+      now: isoText(input.now, "now")
+    });
+    return db.transaction(() => {
+      walletFirstSetupDeliveryRequireSchema();
+      const binding = walletFirstSetupDeliveryCurrentBinding(requested.accountId);
+      if (!binding) throw platformError("claim_lost", "wallet-first setup-delivery resource is missing");
+      const updated = db.prepare(`
+        update ${WALLET_FIRST_SETUP_DELIVERY_HANDOFFS_TABLE}
+           set idempotency_key_hash = null,
+               session_binding_hash = null,
+               status = 'reconciliation_required',
+               lease_until = null,
+               claimed_at = null,
+               delivered_at = null,
+               safe_code = ?,
+               updated_at = ?
+         where account_id = ? and effect_ref = ?
+           and handoff_ref = ?
+           and status in ('claimed', 'delivered')
+           and session_binding_hash = ?
+      `).run(
+        requested.safeCode,
+        requested.now,
+        binding.accountId,
+        binding.effectRef,
+        requested.handoffRef,
+        requested.sessionBindingHash
+      );
+      if (updated.changes !== 1) {
+        throw platformError("claim_lost", "wallet-first setup-delivery reconciliation lost its claim");
+      }
+      return Object.freeze({ state: "reconciliation_required" });
+    }).immediate();
   }
 
   function createEntitlement(input) {
@@ -6070,6 +6777,15 @@ export function createSqliteSubscriptionControlStore({
     getWalletFirstAccountForDeferredTransition,
     resolveExactWalletFirstResourceChainForDeferredTransition,
     readWalletFirstCurrentResourceProjection,
+    readWalletFirstSetupDeliveryAvailabilityBinding,
+    readWalletFirstSetupDeliveryHandoff,
+    createWalletFirstSetupDeliveryHandoff,
+    assertWalletFirstSetupDeliveryHandoffForDeferredTransition,
+    claimWalletFirstSetupDeliveryHandoff,
+    readWalletFirstSetupDeliveryBinding,
+    readWalletFirstSetupDeliveryAcknowledgementBinding,
+    acknowledgeWalletFirstSetupDeliveryHandoff,
+    markWalletFirstSetupDeliveryHandoffReconciliationRequired,
     getWalletFirstTransitionEffectForDeferredTransition,
     prepareWalletFirstInitialActivationForDeferredTransition,
     prepareWalletFirstScheduledSwitchForDeferredTransition,
