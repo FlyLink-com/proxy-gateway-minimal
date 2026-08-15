@@ -26,38 +26,22 @@ natural person, email address, or external identity can own only one account.
 The default state is disabled. A source artifact that contains these modules is
 not evidence that the model is enabled or deployed.
 
-## Registration Canary Boundary
+## Separate Registration Welcome-Coins Promotion
 
-The initial production scope is exactly one pre-approved new registration, not
-an all-account rollout. The feature remains disabled unless
-`USER_PORTAL_WALLET_FIRST_MODEL_ENABLED=true`. When that main flag is enabled,
-`USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES` must contain exactly
-one canonical lowercase SHA-256 digest of the Portal registration email after
-trim and lowercase normalization. An empty value, raw email, duplicate list,
-non-canonical digest, or `all_active` value fails closed during runtime
-composition before database access.
+`docs/PORTAL_REGISTRATION_WELCOME_COINS.md` defines a narrow, independent
+new-registration promotion. It replaces the legacy trial only for one approved
+new registration with a one-time welcome-Coins grant. It does **not** create or
+persist `wallet_first_unique_v1`, use this future model's deferred transitions,
+or enable a shared node, Authority, escrow, payment path, or runtime effect.
 
-There is intentionally no wallet-first `all_active` configuration mode. The
-existing `COINS_COMMERCE_AUDIENCE` setting governs ordinary Commerce storefront
-eligibility for existing account IDs; it does not select a new registration and
-must not be used as a wallet-first rollout control. The configured digest is
-pseudonymous rather than anonymous: it must stay in protected host
-configuration, must not be committed, returned by the Portal, or printed in
-logs or deployment evidence.
-
-The allowlist is evaluated only after the registration email is normalized and
-verified, and before an account, entitlement, access request, or welcome grant
-is created. A matching new registration receives the wallet-first model. A
-non-matching verified registration retains the existing legacy trial flow.
-Existing accounts are selected only from their stored commercial-model marker;
-changing this new-registration canary never migrates a legacy account or routes
-an existing wallet-first account back to legacy Commerce.
+`USER_PORTAL_WALLET_FIRST_MODEL_ENABLED` is deprecated. It must remain false;
+setting it true fails closed and cannot activate either this future model or the
+separate registration promotion.
 
 ## New-account Contract
 
 When the future feature is explicitly enabled after its separate production
-gate, a successful self-service registration whose normalized email digest
-matches the one approved canary digest must:
+gate, a successful self-service registration must:
 
 1. create one Portal account with `commercialModel` set to
    `wallet_first_unique_v1`;
@@ -164,8 +148,6 @@ schemas exist. At minimum, a later exact Risk A Gate must prove all of the
 following in the same approved release:
 
 - Portal, Wallet, and Commerce prerequisites are enabled and healthy;
-- the main flag is enabled with exactly one approved normalized-email digest;
-  wallet-first all-active selection remains unsupported;
 - global Account Resource Authority remains disabled unless a separately
   approved per-account replacement is implemented;
 - welcome-grant, deferred-transition, deferred-reservation, deferred-checkout,
@@ -202,7 +184,7 @@ subscription URLs, raw database rows, or payment-provider secrets.
 
 ## Source Validation
 
-Run the focused migration, Wallet, registration-canary, deferred-policy,
+Run the focused migration, Wallet, registration, deferred-policy,
 deferred-store, runtime-effect crash/recovery, coordinator, state, Portal, and
 documentation checks on a clean candidate. Full validation and a later
 production gate must report their results separately. A passing source test

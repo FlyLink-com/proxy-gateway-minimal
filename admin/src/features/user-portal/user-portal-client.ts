@@ -257,6 +257,17 @@ export type PortalLegacyTrialRegistrationResult = PortalRegistrationResultBase &
   welcomeBonus?: never;
 };
 
+/**
+ * A registration-only promotion.  The account deliberately remains on the
+ * normal legacy Commerce model; the welcome Coins do not select the deferred
+ * wallet-first commerce path.
+ */
+export type PortalLegacyWelcomeCoinsRegistrationResult = PortalRegistrationResultBase & {
+  commercialModel: "legacy";
+  welcomeBonus: PortalRegistrationWelcomeBonus;
+  trial?: never;
+};
+
 export type PortalWalletFirstRegistrationResult = PortalRegistrationResultBase & {
   commercialModel: "wallet_first_unique_v1";
   welcomeBonus: PortalRegistrationWelcomeBonus;
@@ -265,7 +276,18 @@ export type PortalWalletFirstRegistrationResult = PortalRegistrationResultBase &
 
 export type PortalRegistrationResult =
   | PortalLegacyTrialRegistrationResult
+  | PortalLegacyWelcomeCoinsRegistrationResult
   | PortalWalletFirstRegistrationResult;
+
+export type PortalWelcomeCoinsRegistrationResult =
+  | PortalLegacyWelcomeCoinsRegistrationResult
+  | PortalWalletFirstRegistrationResult;
+
+export function isPortalWelcomeCoinsRegistration(
+  result: PortalRegistrationResult
+): result is PortalWelcomeCoinsRegistrationResult {
+  return Object.hasOwn(result, "welcomeBonus");
+}
 
 export function isPortalWalletFirstRegistration(
   result: PortalRegistrationResult
@@ -827,6 +849,33 @@ function completeLegacyTrial(registration: Record<string, unknown>) {
   };
 }
 
+function completeRegistrationWelcomeBonus(value: unknown): PortalRegistrationWelcomeBonus {
+  const welcomeBonus = strictRecord(
+    value,
+    ["status", "coinType", "amountUnits", "expiresAt"],
+    "欢迎 Coins 权益无效。"
+  );
+  const status = welcomeBonus.status;
+  if (status !== "pending" && status !== "available") {
+    throw portalError("欢迎 Coins 状态无效。");
+  }
+  if (welcomeBonus.coinType !== "bonus_coins") {
+    throw portalError("欢迎 Coins 类型无效。");
+  }
+  if (welcomeBonus.amountUnits !== 10) {
+    throw portalError("欢迎 Coins 数量无效。");
+  }
+  return {
+    status,
+    coinType: "bonus_coins",
+    amountUnits: 10,
+    expiresAt: requiredIsoTimestamp(
+      welcomeBonus.expiresAt,
+      "欢迎 Coins 有效期无效。"
+    )
+  };
+}
+
 function mapRegistrationResult(body: Record<string, unknown>): PortalRegistrationResult {
   const registration = (body.registration ?? {}) as Record<string, unknown>;
   const session = (body.session ?? {}) as Record<string, unknown>;
@@ -865,29 +914,24 @@ function mapRegistrationResult(body: Record<string, unknown>): PortalRegistratio
     if (Object.hasOwn(registration, "trial")) {
       throw portalError("注册账户模型无效。");
     }
-    const welcomeBonus = (registration.welcomeBonus ?? {}) as Record<string, unknown>;
-    const status = welcomeBonus.status;
-    if (status !== "pending" && status !== "available") {
-      throw portalError("欢迎 Coins 状态无效。");
-    }
-    if (welcomeBonus.coinType !== "bonus_coins") {
-      throw portalError("欢迎 Coins 类型无效。");
-    }
-    if (welcomeBonus.amountUnits !== 10) {
-      throw portalError("欢迎 Coins 数量无效。");
-    }
     return {
       ...common,
       commercialModel: "wallet_first_unique_v1",
-      welcomeBonus: {
-        status,
-        coinType: "bonus_coins",
-        amountUnits: 10,
-        expiresAt: requiredIsoTimestamp(
-          welcomeBonus.expiresAt,
-          "欢迎 Coins 有效期无效。"
-        )
-      }
+      welcomeBonus: completeRegistrationWelcomeBonus(registration.welcomeBonus)
+    };
+  }
+
+  if (
+    registration.commercialModel === "legacy"
+    && Object.hasOwn(registration, "welcomeBonus")
+  ) {
+    if (Object.hasOwn(registration, "trial")) {
+      throw portalError("注册账户模型无效。");
+    }
+    return {
+      ...common,
+      commercialModel: "legacy",
+      welcomeBonus: completeRegistrationWelcomeBonus(registration.welcomeBonus)
     };
   }
 

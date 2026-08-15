@@ -2,7 +2,7 @@ import { Check, Mail, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { errorMessage } from "../../lib/errors";
 import {
-  isPortalWalletFirstRegistration,
+  isPortalWelcomeCoinsRegistration,
   PORTAL_REGISTRATION_SESSION_STORAGE_KEY,
   type PortalRegistrationEmailVerificationChallenge,
   type PortalRegistrationResult,
@@ -347,7 +347,7 @@ export function UserRegistrationPage({ portalClient }: UserRegistrationPageProps
   }
 
   if (result) {
-    const welcomeBonus = isPortalWalletFirstRegistration(result)
+    const welcomeBonus = isPortalWelcomeCoinsRegistration(result)
       ? result.welcomeBonus
       : null;
     return renderStepShell(

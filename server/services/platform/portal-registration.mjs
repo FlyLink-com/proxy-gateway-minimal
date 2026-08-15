@@ -10,7 +10,6 @@ const DEFAULT_DEVICE_COUNT = 1;
 const DEFAULT_REGISTRATION_RISK_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_REGISTRATIONS_PER_SOURCE_IP = 3;
 const DEFAULT_LEGAL_VERSION = "2026-07-02";
-export const WALLET_FIRST_COMMERCIAL_MODEL = "wallet_first_unique_v1";
 export const LEGACY_TRIAL_COMMERCIAL_MODEL = "legacy";
 export const WELCOME_BONUS_COIN_UNITS = 10;
 export const WELCOME_BONUS_DURATION_DAYS = 7;
@@ -116,7 +115,6 @@ function safeRegistrationSummary({
   planIntent,
   validFrom = null,
   validUntil = null,
-  commercialModel = null,
   welcomeBonus = null
 }) {
   const summary = {
@@ -146,21 +144,15 @@ function safeRegistrationSummary({
       validUntil
     };
   }
-  if (
-    commercialModel === LEGACY_TRIAL_COMMERCIAL_MODEL
-    && accessRequest !== null
-    && welcomeBonus === null
-  ) {
+  if (accessRequest !== null && welcomeBonus === null) {
     summary.commercialModel = LEGACY_TRIAL_COMMERCIAL_MODEL;
-  } else if (
-    commercialModel === WALLET_FIRST_COMMERCIAL_MODEL
-    && accessRequest === null
-    && welcomeBonus !== null
-  ) {
-    summary.commercialModel = commercialModel;
+  } else if (accessRequest === null && welcomeBonus !== null) {
+    // This is a response-only compatibility label. The persisted account has
+    // no commercialModel marker, so normal Marketplace routing stays legacy.
+    summary.commercialModel = LEGACY_TRIAL_COMMERCIAL_MODEL;
     summary.welcomeBonus = welcomeBonus;
   } else {
-    throw registrationError("validation_error", "registration commercial model is invalid");
+    throw registrationError("validation_error", "registration promotion is invalid");
   }
   return summary;
 }
@@ -176,9 +168,9 @@ export function createPortalRegistrationService(options = {}) {
   const approvalRefFactory = options.approvalRefFactory || (() => defaultRef("approval_registration"));
   const welcomeCoinGrantRefFactory = options.welcomeCoinGrantRefFactory
     || (() => defaultRef("welcome_grant"));
-  const walletFirstRegistrationEnabled = options.walletFirstRegistrationEnabled === true;
-  const walletFirstRegistrationCanaryEmailEligibilityReader =
-    options.walletFirstRegistrationCanaryEmailEligibilityReader;
+  const registrationWelcomeCoinsEnabled = options.registrationWelcomeCoinsEnabled === true;
+  const registrationWelcomeCoinsCanaryEmailEligibilityReader =
+    options.registrationWelcomeCoinsCanaryEmailEligibilityReader;
   const registrationRiskWindowMs = options.registrationRiskWindowMs ?? DEFAULT_REGISTRATION_RISK_WINDOW_MS;
   const maxRegistrationsPerSourceIp = options.maxRegistrationsPerSourceIp ?? DEFAULT_MAX_REGISTRATIONS_PER_SOURCE_IP;
 
@@ -195,20 +187,20 @@ export function createPortalRegistrationService(options = {}) {
     throw new Error("portalAccessRequests with submitRequest is required");
   }
   if (
-    options.walletFirstRegistrationEnabled !== undefined
-    && typeof options.walletFirstRegistrationEnabled !== "boolean"
+    options.registrationWelcomeCoinsEnabled !== undefined
+    && typeof options.registrationWelcomeCoinsEnabled !== "boolean"
   ) {
-    throw new Error("walletFirstRegistrationEnabled must be a boolean when provided");
+    throw new Error("registrationWelcomeCoinsEnabled must be a boolean when provided");
   }
-  if (walletFirstRegistrationEnabled) {
+  if (registrationWelcomeCoinsEnabled) {
     if (typeof controlStore.enqueuePortalRegistrationWelcomeCoinGrant !== "function") {
       throw new Error("controlStore with enqueuePortalRegistrationWelcomeCoinGrant is required");
     }
     if (typeof welcomeCoinGrantRefFactory !== "function") {
       throw new Error("welcomeCoinGrantRefFactory must be a function");
     }
-    if (typeof walletFirstRegistrationCanaryEmailEligibilityReader !== "function") {
-      throw new Error("walletFirstRegistrationCanaryEmailEligibilityReader must be a function when wallet-first registration is enabled");
+    if (typeof registrationWelcomeCoinsCanaryEmailEligibilityReader !== "function") {
+      throw new Error("registrationWelcomeCoinsCanaryEmailEligibilityReader must be a function when registration welcome Coins is enabled");
     }
   }
 
@@ -266,15 +258,15 @@ export function createPortalRegistrationService(options = {}) {
     }
   }
 
-  function resolveWalletFirstRegistrationEligibility({ emailDigest }) {
-    if (!walletFirstRegistrationEnabled) {
+  function resolveRegistrationWelcomeCoinsEligibility({ emailDigest }) {
+    if (!registrationWelcomeCoinsEnabled) {
       return false;
     }
-    const eligible = walletFirstRegistrationCanaryEmailEligibilityReader({ emailDigest });
+    const eligible = registrationWelcomeCoinsCanaryEmailEligibilityReader({ emailDigest });
     if (typeof eligible !== "boolean") {
       throw registrationError(
-        "wallet_first_registration_prerequisite_missing",
-        "wallet-first registration canary eligibility is unavailable"
+        "registration_welcome_coins_prerequisite_missing",
+        "registration welcome Coins canary eligibility is unavailable"
       );
     }
     return eligible;
@@ -286,7 +278,7 @@ export function createPortalRegistrationService(options = {}) {
     const password = normalizePassword(input.password);
     const legalAgreement = normalizeLegalAgreement(input.legalAgreement);
     const emailDigest = ensureEmailNotRegistered(email);
-    const walletFirstRegistration = resolveWalletFirstRegistrationEligibility({ emailDigest });
+    const registrationWelcomeCoins = resolveRegistrationWelcomeCoinsEligibility({ emailDigest });
     const { sourceIpDigest, requestKeyDigest } = sourceDigests(input.requestContext);
     enforceRegistrationRisk({ sourceIpDigest, now });
     const displayName = email;
@@ -297,12 +289,12 @@ export function createPortalRegistrationService(options = {}) {
     const validUntil = addDays(now, TRIAL_DURATION_DAYS);
     const welcomeBonusExpiresAt = addDays(now, WELCOME_BONUS_DURATION_DAYS);
     const accountId = requiredText(input.accountId || accountIdFactory({ email, now }), "accountId");
-    const entitlementId = walletFirstRegistration ? null : requiredText(
+    const entitlementId = registrationWelcomeCoins ? null : requiredText(
       input.entitlementId || entitlementIdFactory({ accountId, now }),
       "entitlementId"
     );
     const approvalRef = requiredText(input.approvalRef || approvalRefFactory({ accountId, now }), "approvalRef");
-    const welcomeCoinGrantRef = walletFirstRegistration
+    const welcomeCoinGrantRef = registrationWelcomeCoins
       ? requiredText(
         welcomeCoinGrantRefFactory({ accountId, now }),
         "welcomeCoinGrantRef"
@@ -322,9 +314,6 @@ export function createPortalRegistrationService(options = {}) {
           registrationSource: "self_service_portal",
           singleSubscriptionOnly: true,
           subscriptionLimit: 1,
-          ...(walletFirstRegistration
-            ? { commercialModel: WALLET_FIRST_COMMERCIAL_MODEL }
-            : {}),
           loginRef: email,
           displayRef: email,
           contactDigest: emailDigest,
@@ -345,12 +334,11 @@ export function createPortalRegistrationService(options = {}) {
         }
       });
 
-      if (walletFirstRegistration) {
+      if (registrationWelcomeCoins) {
         const sourceRef = `portal_registration_welcome_${accountId}`;
         controlStore.enqueuePortalRegistrationWelcomeCoinGrant({
           grantRef: welcomeCoinGrantRef,
           accountId,
-          commercialModel: WALLET_FIRST_COMMERCIAL_MODEL,
           coinType: "bonus_coins",
           amountUnits: WELCOME_BONUS_COIN_UNITS,
           expiresAt: welcomeBonusExpiresAt,
@@ -358,7 +346,6 @@ export function createPortalRegistrationService(options = {}) {
           sourceRef,
           sourceDigest: digest(JSON.stringify({
             accountId,
-            commercialModel: WALLET_FIRST_COMMERCIAL_MODEL,
             coinType: "bonus_coins",
             amountUnits: WELCOME_BONUS_COIN_UNITS,
             expiresAt: welcomeBonusExpiresAt
@@ -370,7 +357,7 @@ export function createPortalRegistrationService(options = {}) {
       }
 
       let accessRequest = null;
-      if (!walletFirstRegistration) {
+      if (!registrationWelcomeCoins) {
         controlStore.createEntitlement({
           id: entitlementId,
           accountId,
@@ -413,10 +400,7 @@ export function createPortalRegistrationService(options = {}) {
           planIntent,
           validFrom: now,
           validUntil,
-          commercialModel: walletFirstRegistration
-            ? WALLET_FIRST_COMMERCIAL_MODEL
-            : LEGACY_TRIAL_COMMERCIAL_MODEL,
-          ...(walletFirstRegistration
+          ...(registrationWelcomeCoins
             ? {
               welcomeBonus: {
                 status: "pending",

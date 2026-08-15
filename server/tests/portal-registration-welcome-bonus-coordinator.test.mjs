@@ -14,7 +14,6 @@ function claim(overrides = {}) {
   return {
     grantRef: "grant_welcome_test",
     accountId: "acct_welcome_test",
-    commercialModel: "wallet_first_unique_v1",
     coinType: "bonus_coins",
     amountUnits: 10,
     sourceType: "portal_registration_welcome_bonus",
@@ -29,7 +28,12 @@ function claim(overrides = {}) {
   };
 }
 
-function createHarness({ claims = [], credit = null } = {}) {
+function createHarness({
+  claims = [],
+  credit = null,
+  expiredGrants = 0,
+  expiredLots = 0
+} = {}) {
   const queue = [...claims];
   const calls = {
     claim: [],
@@ -56,7 +60,7 @@ function createHarness({ claims = [], credit = null } = {}) {
     },
     expireDuePortalRegistrationWelcomeCoinGrants(input) {
       calls.expire.push(input);
-      return 0;
+      return expiredGrants;
     },
     nextPortalRegistrationWelcomeCoinGrantWakeAt() {
       return null;
@@ -75,7 +79,7 @@ function createHarness({ claims = [], credit = null } = {}) {
     },
     expireDuePortalRegistrationWelcomeBonusCoinLots(input) {
       calls.expireLots.push(input);
-      return 0;
+      return expiredLots;
     }
   };
   const coordinator = createPortalRegistrationWelcomeBonusCoordinator({
@@ -150,6 +154,24 @@ test("an expired claimed grant never calls the wallet and is returned to termina
     updatedAt: NOW
   }]);
   assert.equal(calls.expire.length, 2);
+});
+
+test("welcome-bonus coordinator expires due welcome Coin lots without admitting or claiming a new grant", async () => {
+  const { calls, coordinator } = createHarness({ expiredLots: 1 });
+
+  const result = await coordinator.runOnce();
+
+  assert.deepEqual(result, {
+    expired: 0,
+    expiredLots: 1,
+    claimed: 0,
+    credited: 0,
+    deferred: 0,
+    reconciliationRequired: 0
+  });
+  assert.deepEqual(calls.expireLots, [{ limit: 5 }]);
+  assert.equal(calls.credit.length, 0);
+  assert.equal(calls.claim.length, 1);
 });
 
 test("wallet identity conflicts become reconciliation rather than a duplicate or a blind retry", async () => {

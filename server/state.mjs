@@ -579,10 +579,34 @@ function coinCommerceAccountActivationReader({
   return coinCommerceCanaryAccountActivationReader(canaryAccountHashes);
 }
 
-function createWalletFirstRegistrationCanaryEmailEligibilityReader(value) {
+function registrationWelcomeCoinsPrerequisiteError() {
+  const error = new Error(
+    "Portal registration welcome Coins prerequisites are not satisfied"
+  );
+  error.code = "registration_welcome_coins_prerequisite_missing";
+  return error;
+}
+
+function registrationWelcomeCoinsSchemaError() {
+  const error = new Error(
+    "Portal registration welcome Coins schema is not ready"
+  );
+  error.code = "registration_welcome_coins_schema_not_ready";
+  return error;
+}
+
+function walletFirstModelDeprecatedError() {
+  const error = new Error(
+    "USER_PORTAL_WALLET_FIRST_MODEL_ENABLED is deprecated and must remain disabled"
+  );
+  error.code = "wallet_first_model_deprecated";
+  return error;
+}
+
+function createRegistrationWelcomeCoinsCanaryEmailEligibilityReader(value) {
   const emailHashPattern = /^[0-9a-f]{64}$/;
   if (typeof value !== "string" || !emailHashPattern.test(value)) {
-    throw walletFirstRegistrationPrerequisiteError();
+    throw registrationWelcomeCoinsPrerequisiteError();
   }
   return ({ emailDigest } = {}) => (
     typeof emailDigest === "string"
@@ -1416,10 +1440,33 @@ export function createRuntimeState(options = {}) {
   const coinsCommerceAuthorityEnabled = envFlag(
     env.COINS_COMMERCE_ACCOUNT_RESOURCE_AUTHORITY_ENABLED
   );
-  const walletFirstRegistrationEnabled = envFlag(
-    env.USER_PORTAL_WALLET_FIRST_MODEL_ENABLED
+  if (envFlag(env.USER_PORTAL_WALLET_FIRST_MODEL_ENABLED)) {
+    throw walletFirstModelDeprecatedError();
+  }
+  // The old total wallet-first flag must never activate a registration or
+  // deferred-runtime path. The separate registration promotion below is the
+  // only supported new-account switch.
+  const walletFirstRegistrationEnabled = false;
+  const registrationWelcomeCoinsEnabled = envFlag(
+    env.USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED
   );
-  const walletFirstSetupDeliveryEnabled = walletFirstRegistrationEnabled
+  if (
+    registrationWelcomeCoinsEnabled
+    && (!userPortalRoutesEnabled || !coinsWalletEnabled || !coinsCommerceEnabled)
+  ) {
+    throw registrationWelcomeCoinsPrerequisiteError();
+  }
+  const registrationWelcomeCoinsCanaryEmailEligibilityReader =
+    registrationWelcomeCoinsEnabled
+      ? createRegistrationWelcomeCoinsCanaryEmailEligibilityReader(
+        env.USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES
+      )
+      : null;
+  // This release deliberately leaves the disputed deferred-runtime lane
+  // dormant. Its former environment switch is not consulted here, so an
+  // upgrade cannot accidentally compose a node-backed runtime.
+  const walletFirstDeferredRuntimeEnabled = false;
+  const walletFirstSetupDeliveryEnabled = walletFirstDeferredRuntimeEnabled
     ? envFlag(env.USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ENABLED)
     : false;
   const walletFirstSetupDeliveryKey = walletFirstSetupDeliveryEnabled
@@ -1428,33 +1475,23 @@ export function createRuntimeState(options = {}) {
   const walletFirstSetupDeliveryEscrowPath = walletFirstSetupDeliveryEnabled
     ? optionalEnvText(env.USER_PORTAL_WALLET_FIRST_SETUP_DELIVERY_ESCROW_PATH)
     : "";
-  const deferredTransitionRuntimeEnabled = walletFirstRegistrationEnabled
-    ? envFlag(env.COINS_COMMERCE_DEFERRED_TRANSITION_RUNTIME_ENABLED)
-    : false;
-  const walletFirstDeferredTransitionNodeId = walletFirstRegistrationEnabled
+  const walletFirstDeferredTransitionNodeId = walletFirstDeferredRuntimeEnabled
     ? optionalEnvText(env.COINS_COMMERCE_DEFERRED_TRANSITION_NODE_ID)
     : "";
   if (
-    walletFirstRegistrationEnabled
+    walletFirstDeferredRuntimeEnabled
     && (
       !userPortalRoutesEnabled
       || !coinsWalletEnabled
       || !coinsCommerceEnabled
       || coinsCommerceAuthorityEnabled
-      || !deferredTransitionRuntimeEnabled
     )
   ) {
     throw walletFirstRegistrationPrerequisiteError();
   }
-  if (walletFirstRegistrationEnabled && !walletFirstDeferredTransitionNodeId) {
+  if (walletFirstDeferredRuntimeEnabled && !walletFirstDeferredTransitionNodeId) {
     throw walletFirstDeferredTransitionRuntimeError();
   }
-  const walletFirstRegistrationCanaryEmailEligibilityReader =
-    walletFirstRegistrationEnabled
-      ? createWalletFirstRegistrationCanaryEmailEligibilityReader(
-        env.USER_PORTAL_WALLET_FIRST_REGISTRATION_CANARY_EMAIL_HASHES
-      )
-      : null;
   if (
     walletFirstSetupDeliveryEnabled
     && (
@@ -1642,7 +1679,36 @@ export function createRuntimeState(options = {}) {
   );
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
-  if (walletFirstRegistrationEnabled) {
+  let registrationWelcomeCoinsWorkerEnabled = false;
+  let registrationWelcomeCoinsSchemaReady = false;
+  if (coinsWalletEnabled && coinsCommerceEnabled) {
+    try {
+      registrationWelcomeCoinsSchemaReady = validatePortalRegistrationWelcomeBonusSchema({
+        dbPath: controlDbPath
+      }).ok === true;
+    } catch {
+      registrationWelcomeCoinsSchemaReady = false;
+    }
+  }
+  if (registrationWelcomeCoinsEnabled && !registrationWelcomeCoinsSchemaReady) {
+    for (const [owned, store] of [
+      [ownsControlStore, platformControlStore],
+      [ownsSubscriptionStore, subscriptionStore]
+    ]) {
+      if (!owned) continue;
+      try {
+        store.close();
+      } catch {
+        // Preserve the fail-closed welcome-Coins schema validation error.
+      }
+    }
+    throw registrationWelcomeCoinsSchemaError();
+  }
+  // Durable grants can outlive admission. When the exact schema and normal
+  // Coins dependencies are available, keep the worker alive to finish or
+  // expire pending grants even after the admission canary is turned off.
+  registrationWelcomeCoinsWorkerEnabled = registrationWelcomeCoinsSchemaReady;
+  if (walletFirstDeferredRuntimeEnabled) {
     let welcomeBonusSchemaReady = false;
     let deferredTransitionSchemaReady = false;
     let deferredCheckoutSchemaReady = false;
@@ -2128,9 +2194,9 @@ export function createRuntimeState(options = {}) {
       passwordCredentialService: platformPortalPasswordCredentialService,
       portalAccessRequests: platformPortalAccessRequests,
       nowFn: options.userPortalNowFn,
-      walletFirstRegistrationEnabled,
-      ...(walletFirstRegistrationEnabled
-        ? { walletFirstRegistrationCanaryEmailEligibilityReader }
+      registrationWelcomeCoinsEnabled,
+      ...(registrationWelcomeCoinsEnabled
+        ? { registrationWelcomeCoinsCanaryEmailEligibilityReader }
         : {})
     }) : null
   );
@@ -2400,7 +2466,7 @@ export function createRuntimeState(options = {}) {
         store: coinCommerceStore,
         fulfillmentHandler: configuredCoinCommerceFulfillmentHandler
       });
-      if (walletFirstRegistrationEnabled) {
+      if (registrationWelcomeCoinsWorkerEnabled) {
         try {
           portalRegistrationWelcomeBonusCoordinator =
             createPortalRegistrationWelcomeBonusCoordinator({
@@ -2409,8 +2475,10 @@ export function createRuntimeState(options = {}) {
               nowFn: options.userPortalNowFn
             });
         } catch {
-          throw walletFirstRegistrationPrerequisiteError();
+          throw registrationWelcomeCoinsPrerequisiteError();
         }
+      }
+      if (walletFirstDeferredRuntimeEnabled) {
         if (walletFirstSetupDeliveryEnabled) {
           try {
             walletFirstSetupDeliveryEscrow =
@@ -2756,6 +2824,9 @@ export function createRuntimeState(options = {}) {
       coinsCommerceEnabled,
       coinsCommerceAuthorityEnabled,
       walletFirstRegistrationEnabled,
+      walletFirstDeferredRuntimeEnabled,
+      registrationWelcomeCoinsEnabled,
+      registrationWelcomeCoinsWorkerEnabled,
       walletFirstSetupDeliveryEnabled,
       coinCommerceStore,
       coinCommerceCoordinator,

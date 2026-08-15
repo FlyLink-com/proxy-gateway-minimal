@@ -128,7 +128,6 @@ function normalizeClaim(input) {
   const value = exactValues(input, [
     "grantRef",
     "accountId",
-    "commercialModel",
     "coinType",
     "amountUnits",
     "sourceType",
@@ -141,8 +140,7 @@ function normalizeClaim(input) {
     "leaseToken"
   ], "welcome_bonus_claim_invalid");
   if (
-    value.commercialModel !== "wallet_first_unique_v1"
-    || value.coinType !== "bonus_coins"
+    value.coinType !== "bonus_coins"
     || value.amountUnits !== 10
   ) {
     throw coordinatorError("welcome_bonus_claim_invalid");
@@ -150,7 +148,6 @@ function normalizeClaim(input) {
   return Object.freeze({
     grantRef: normalizeReference(value.grantRef, "welcome_bonus_claim_invalid"),
     accountId: normalizeReference(value.accountId, "welcome_bonus_claim_invalid"),
-    commercialModel: value.commercialModel,
     coinType: value.coinType,
     amountUnits: value.amountUnits,
     sourceType: normalizeReference(value.sourceType, "welcome_bonus_claim_invalid"),

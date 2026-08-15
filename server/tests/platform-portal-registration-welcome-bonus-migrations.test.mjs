@@ -17,6 +17,7 @@ import {
 } from "../services/platform/coin-wallet-migrations.mjs";
 import {
   LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
+  PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID,
   PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS,
   REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID,
   applyPortalRegistrationWelcomeBonusMigrations,
@@ -28,6 +29,8 @@ import {
 const WELCOME_GRANTS_TABLE = "platform_portal_registration_welcome_coin_grants";
 const WELCOME_GRANTS_CLAIM_INDEX =
   "platform_portal_registration_welcome_coin_grants_claim_idx";
+const WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER =
+  "platform_portal_registration_welcome_coin_grants_timestamps_immutable";
 const APPLIED_AT = "2026-08-13T00:00:00.000Z";
 const MIGRATION_IDS = PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.map(({ id }) => id);
 
@@ -149,6 +152,23 @@ function applyLegacyWelcomeMigration(dbPath) {
   }
 }
 
+function applyContractWelcomeMigration(dbPath) {
+  const contract = PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS[1];
+  const database = new Database(dbPath);
+  try {
+    database.pragma("foreign_keys = ON");
+    database.transaction(() => {
+      for (const statement of contract.statements) database.exec(statement);
+      database.prepare(`
+        insert into platform_schema_migrations (migration_id, ddl_checksum, applied_at)
+        values (?, ?, ?)
+      `).run(contract.id, contract.ddlChecksum, APPLIED_AT);
+    }).immediate();
+  } finally {
+    database.close();
+  }
+}
+
 test("welcome-bonus successor reports foundation-only state as pending without writing", async () => {
   await withOwnedDatabase(async ({ dbPath }) => {
     createFoundationDatabase(dbPath);
@@ -190,7 +210,7 @@ test("welcome-bonus successor applies exact owned table and claim index idempote
       const migrations = database.prepare(`
         select migration_id, ddl_checksum, applied_at
           from platform_schema_migrations
-         where migration_id in (?, ?)
+         where migration_id in (?, ?, ?)
          order by migration_id asc
       `).all(...MIGRATION_IDS);
       assert.deepEqual(migrations, PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS.map(
@@ -206,7 +226,6 @@ test("welcome-bonus successor applies exact owned table and claim index idempote
         [
           "grant_ref",
           "account_id",
-          "commercial_model",
           "coin_type",
           "amount_units",
           "source_type",
@@ -245,17 +264,19 @@ test("welcome-bonus successor applies exact owned table and claim index idempote
   });
 });
 
-test("welcome-bonus successor upgrades an exact v1 ledger entry without rewriting it", () => withOwnedDatabase(({ dbPath }) => {
+test("welcome-bonus successors preserve the exact v1 and v2 migration ledger entries", () => withOwnedDatabase(({ dbPath }) => {
   createFoundationDatabase(dbPath);
   applyLegacyWelcomeMigration(dbPath);
   const pending = validatePortalRegistrationWelcomeBonusSchema({ dbPath });
   assert.equal(pending.schemaState, "pending");
   assert.deepEqual(pending.pendingMigrationIds, [
+    PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID,
     REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
   ]);
 
   const upgraded = applyWelcomeMigration(dbPath);
   assert.deepEqual(upgraded.appliedMigrationIds, [
+    PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID,
     REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
   ]);
   const replay = applyWelcomeMigration(dbPath);
@@ -267,9 +288,257 @@ test("welcome-bonus successor upgrades an exact v1 ledger entry without rewritin
       select ddl_checksum from platform_schema_migrations where migration_id = ?
     `).get(LEGACY_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID);
     assert.equal(legacy.ddl_checksum, PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS[0].ddlChecksum);
+    const contract = database.prepare(`
+      select ddl_checksum from platform_schema_migrations where migration_id = ?
+    `).get(PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID);
+    assert.equal(contract.ddl_checksum, PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS[1].ddlChecksum);
     assert.equal(validatePortalRegistrationWelcomeBonusSchema({ database }).ok, true);
   } finally {
     database.close();
+  }
+}));
+
+test("welcome-Coins promotion successor removes the commercial-model column without losing a v2 grant", () => withOwnedDatabase(({ dbPath }) => {
+  createFoundationDatabase(dbPath);
+  applyLegacyWelcomeMigration(dbPath);
+  const database = new Database(dbPath);
+  try {
+    database.prepare(`
+      insert into platform_accounts (
+        id, owner_ref, status, created_at, updated_at, metadata_json
+      ) values (?, ?, 'active', ?, ?, '{}')
+    `).run(
+      "acct_welcome_v2",
+      "owner_welcome_v2",
+      APPLIED_AT,
+      APPLIED_AT
+    );
+    database.prepare(`
+      insert into ${WELCOME_GRANTS_TABLE} (
+        grant_ref, account_id, commercial_model, coin_type, amount_units,
+        source_type, source_ref, source_digest, actor_scope, idempotency_key,
+        expires_at, status, next_attempt_at, attempt_count, lease_generation,
+        lease_token, lease_until, last_safe_code, credited_lot_ref,
+        created_at, updated_at, credited_at
+      ) values (
+        ?, ?, 'wallet_first_unique_v1', 'bonus_coins', 10,
+        ?, ?, ?, ?, ?,
+        ?, 'pending', ?, 0, 0,
+        null, null, null, null,
+        ?, ?, null
+      )
+    `).run(
+      "welcome_grant_v2",
+      "acct_welcome_v2",
+      "portal_registration_welcome_bonus",
+      "portal_registration_v2",
+      "e".repeat(64),
+      "portal_registration_welcome_bonus",
+      "portal_registration_v2",
+      "2026-08-20T00:00:00.000Z",
+      APPLIED_AT,
+      APPLIED_AT,
+      APPLIED_AT
+    );
+  } finally {
+    database.close();
+  }
+
+  applyContractWelcomeMigration(dbPath);
+  assert.deepEqual(
+    validatePortalRegistrationWelcomeBonusSchema({ dbPath }).pendingMigrationIds,
+    [REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID]
+  );
+
+  const upgraded = applyWelcomeMigration(dbPath);
+  assert.deepEqual(upgraded.appliedMigrationIds, [
+    REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
+  ]);
+
+  const after = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    assert.equal(
+      after.pragma(`table_info(${WELCOME_GRANTS_TABLE})`)
+        .some(({ name }) => name === "commercial_model"),
+      false
+    );
+    assert.deepEqual(after.prepare(`
+      select grant_ref, account_id, coin_type, amount_units, source_type,
+        source_ref, source_digest, actor_scope, idempotency_key, expires_at,
+        status, next_attempt_at, attempt_count, lease_generation, created_at,
+        updated_at, credited_at
+      from ${WELCOME_GRANTS_TABLE}
+      where grant_ref = ?
+    `).get("welcome_grant_v2"), {
+      grant_ref: "welcome_grant_v2",
+      account_id: "acct_welcome_v2",
+      coin_type: "bonus_coins",
+      amount_units: 10,
+      source_type: "portal_registration_welcome_bonus",
+      source_ref: "portal_registration_v2",
+      source_digest: "e".repeat(64),
+      actor_scope: "portal_registration_welcome_bonus",
+      idempotency_key: "portal_registration_v2",
+      expires_at: "2026-08-20T00:00:00.000Z",
+      status: "pending",
+      next_attempt_at: APPLIED_AT,
+      attempt_count: 0,
+      lease_generation: 0,
+      created_at: APPLIED_AT,
+      updated_at: APPLIED_AT,
+      credited_at: null
+    });
+    assert.equal(validatePortalRegistrationWelcomeBonusSchema({ database: after }).ok, true);
+  } finally {
+    after.close();
+  }
+}));
+
+test("welcome-Coins promotion successor refuses a drifted v2 predecessor before copying grants", () => withOwnedDatabase(({ dbPath }) => {
+  createFoundationDatabase(dbPath);
+  applyLegacyWelcomeMigration(dbPath);
+  applyContractWelcomeMigration(dbPath);
+  const database = new Database(dbPath);
+  try {
+    database.exec(`drop trigger ${WELCOME_GRANTS_TIMESTAMP_IMMUTABLE_TRIGGER}`);
+  } finally {
+    database.close();
+  }
+
+  assert.throws(
+    () => applyWelcomeMigration(dbPath),
+    (error) => error?.code === "applied_schema_incompatible"
+  );
+
+  const after = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    assert.equal(
+      after.prepare(`
+        select count(*) from platform_schema_migrations where migration_id = ?
+      `).pluck().get(REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID),
+      0
+    );
+    assert.equal(
+      after.pragma(`table_info(${WELCOME_GRANTS_TABLE})`)
+        .some(({ name }) => name === "commercial_model"),
+      true
+    );
+  } finally {
+    after.close();
+  }
+}));
+
+for (const { type, name, statement } of [
+  {
+    type: "index",
+    name: "platform_portal_registration_welcome_coin_grants_unexpected_idx",
+    statement: `
+      create index platform_portal_registration_welcome_coin_grants_unexpected_idx
+        on ${WELCOME_GRANTS_TABLE}(updated_at)
+    `
+  },
+  {
+    type: "trigger",
+    name: "platform_portal_registration_welcome_coin_grants_unexpected_trigger",
+    statement: `
+      create trigger platform_portal_registration_welcome_coin_grants_unexpected_trigger
+      after update of updated_at on ${WELCOME_GRANTS_TABLE}
+      begin
+        select 1;
+      end
+    `
+  }
+]) {
+  test(`welcome-Coins promotion successor refuses an unknown explicit v2 ${type} without dropping it`, () => withOwnedDatabase(({ dbPath }) => {
+    createFoundationDatabase(dbPath);
+    applyLegacyWelcomeMigration(dbPath);
+    applyContractWelcomeMigration(dbPath);
+    const database = new Database(dbPath);
+    try {
+      database.exec(statement);
+    } finally {
+      database.close();
+    }
+
+    assert.throws(
+      () => applyWelcomeMigration(dbPath),
+      (error) => error?.code === "applied_schema_incompatible"
+    );
+
+    const after = new Database(dbPath, { readonly: true, fileMustExist: true });
+    try {
+      assert.equal(
+        after.prepare(`
+          select count(*) from platform_schema_migrations where migration_id = ?
+        `).pluck().get(REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID),
+        0
+      );
+      assert.equal(
+        after.pragma(`table_info(${WELCOME_GRANTS_TABLE})`)
+          .some(({ name: columnName }) => columnName === "commercial_model"),
+        true
+      );
+      assert.equal(
+        typeof after.prepare(`
+          select sql from sqlite_master where type = ? and name = ?
+        `).pluck().get(type, name),
+        "string"
+      );
+      assert.deepEqual(
+        validatePortalRegistrationWelcomeBonusSchema({ database: after }).reasonCodes,
+        ["owned_object_incompatible"]
+      );
+    } finally {
+      after.close();
+    }
+  }));
+}
+
+test("welcome-Coins promotion successor refuses a dependent v2 view without dropping it", () => withOwnedDatabase(({ dbPath }) => {
+  const dependentView = "account_summary";
+  createFoundationDatabase(dbPath);
+  applyLegacyWelcomeMigration(dbPath);
+  applyContractWelcomeMigration(dbPath);
+  const database = new Database(dbPath);
+  try {
+    database.exec(`
+      create view ${dependentView} as
+      select grant_ref, commercial_model from ${WELCOME_GRANTS_TABLE}
+    `);
+  } finally {
+    database.close();
+  }
+
+  assert.throws(
+    () => applyWelcomeMigration(dbPath),
+    (error) => error?.code === "applied_schema_incompatible"
+  );
+
+  const after = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    assert.equal(
+      after.prepare(`
+        select count(*) from platform_schema_migrations where migration_id = ?
+      `).pluck().get(REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID),
+      0
+    );
+    assert.equal(
+      after.pragma(`table_info(${WELCOME_GRANTS_TABLE})`)
+        .some(({ name }) => name === "commercial_model"),
+      true
+    );
+    assert.equal(
+      typeof after.prepare(`
+        select sql from sqlite_master where type = 'view' and name = ?
+      `).pluck().get(dependentView),
+      "string"
+    );
+    assert.deepEqual(
+      validatePortalRegistrationWelcomeBonusSchema({ database: after }).reasonCodes,
+      ["owned_object_incompatible"]
+    );
+  } finally {
+    after.close();
   }
 }));
 
@@ -340,7 +609,10 @@ test("welcome-bonus contract successor fails closed on a legacy grant outside th
     );
     assert.deepEqual(
       validatePortalRegistrationWelcomeBonusSchema({ database: after }).pendingMigrationIds,
-      [REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID]
+      [
+        PORTAL_REGISTRATION_WELCOME_BONUS_CONTRACT_MIGRATION_ID,
+        REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID
+      ]
     );
   } finally {
     after.close();
@@ -379,13 +651,13 @@ test("welcome-bonus successor persists an exact seven-day expiry and immutable i
       );
       const insert = database.prepare(`
         insert into ${WELCOME_GRANTS_TABLE} (
-          grant_ref, account_id, commercial_model, coin_type, amount_units,
+          grant_ref, account_id, coin_type, amount_units,
           source_type, source_ref, source_digest, actor_scope, idempotency_key,
           expires_at, status, next_attempt_at, attempt_count, lease_generation,
           lease_token, lease_until, last_safe_code, credited_lot_ref,
           created_at, updated_at, credited_at
         ) values (
-          ?, ?, 'wallet_first_unique_v1', 'bonus_coins', 10,
+          ?, ?, 'bonus_coins', 10,
           ?, ?, ?, ?, ?,
           ?, 'pending', ?, 0, 0,
           null, null, null, null,

@@ -95,7 +95,7 @@ function snapshotCommerceCoordinator(state) {
 function snapshotWelcomeBonusCoordinator(state) {
   const platform = state?.platform;
   return snapshotCoordinator(platform, {
-    enabled: platform?.walletFirstRegistrationEnabled,
+    enabled: platform?.registrationWelcomeCoinsWorkerEnabled,
     field: "portalRegistrationWelcomeBonusCoordinator",
     errorFactory: welcomeBonusCoordinatorContractError
   });
@@ -104,7 +104,7 @@ function snapshotWelcomeBonusCoordinator(state) {
 function snapshotDeferredTransitionCoordinator(state) {
   const platform = state?.platform;
   return snapshotCoordinator(platform, {
-    enabled: platform?.walletFirstRegistrationEnabled,
+    enabled: platform?.walletFirstDeferredRuntimeEnabled,
     field: "deferredTransitionCoordinator",
     errorFactory: deferredTransitionCoordinatorContractError
   });

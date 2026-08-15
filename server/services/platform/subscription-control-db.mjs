@@ -29,7 +29,6 @@ const TRAFFIC_LIFECYCLE_PENDING_ACTIONS = new Set([
   "traffic_supply_resume_pending",
   "traffic_supply_resume_rollback_pending"
 ]);
-const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_MODEL = "wallet_first_unique_v1";
 const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_TYPE = "bonus_coins";
 const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_AMOUNT_UNITS = 10;
 const PORTAL_REGISTRATION_WELCOME_COIN_GRANT_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -400,7 +399,6 @@ function mapPortalRegistrationWelcomeCoinGrant(row) {
   const grant = {
     grantRef: row.grant_ref,
     accountId: row.account_id,
-    commercialModel: row.commercial_model,
     coinType: row.coin_type,
     amountUnits: row.amount_units,
     sourceType: row.source_type,
@@ -428,7 +426,6 @@ function mapPortalRegistrationWelcomeCoinGrantClaim(row) {
   return {
     grantRef: row.grant_ref,
     accountId: row.account_id,
-    commercialModel: row.commercial_model,
     coinType: row.coin_type,
     amountUnits: row.amount_units,
     sourceType: row.source_type,
@@ -1471,7 +1468,6 @@ export function createSqliteSubscriptionControlStore({
       allowed: [
         "grantRef",
         "accountId",
-        "commercialModel",
         "coinType",
         "amountUnits",
         "expiresAt",
@@ -1487,7 +1483,6 @@ export function createSqliteSubscriptionControlStore({
     const record = {
       grantRef: safeControlRef(input.grantRef, "grantRef"),
       accountId: safeControlRef(input.accountId, "accountId"),
-      commercialModel: requiredText(input.commercialModel, "commercialModel"),
       coinType: requiredText(input.coinType, "coinType"),
       amountUnits: integer(input.amountUnits, "amountUnits", { min: 1 }),
       expiresAt: isoText(input.expiresAt, "expiresAt"),
@@ -1498,9 +1493,6 @@ export function createSqliteSubscriptionControlStore({
       idempotencyKey: safeAuthorityRef(input.idempotencyKey, "idempotencyKey"),
       now: isoText(input.now, "now")
     };
-    if (record.commercialModel !== PORTAL_REGISTRATION_WELCOME_COIN_GRANT_MODEL) {
-      throw platformError("validation_error", "commercialModel is not supported");
-    }
     if (record.coinType !== PORTAL_REGISTRATION_WELCOME_COIN_GRANT_TYPE) {
       throw platformError("validation_error", "coinType is not supported");
     }
@@ -1540,7 +1532,6 @@ export function createSqliteSubscriptionControlStore({
     return (
       existing.grantRef === record.grantRef
       && existing.accountId === record.accountId
-      && existing.commercialModel === record.commercialModel
       && existing.coinType === record.coinType
       && existing.amountUnits === record.amountUnits
       && existing.expiresAt === record.expiresAt
@@ -1581,13 +1572,13 @@ export function createSqliteSubscriptionControlStore({
     }
     sqliteRun(db.prepare(`
       insert into platform_portal_registration_welcome_coin_grants (
-        grant_ref, account_id, commercial_model, coin_type, amount_units,
+        grant_ref, account_id, coin_type, amount_units,
         source_type, source_ref, source_digest, actor_scope, idempotency_key,
         expires_at, status, next_attempt_at, attempt_count, lease_generation,
         lease_token, lease_until, last_safe_code, credited_lot_ref,
         created_at, updated_at, credited_at
       ) values (
-        @grantRef, @accountId, @commercialModel, @coinType, @amountUnits,
+        @grantRef, @accountId, @coinType, @amountUnits,
         @sourceType, @sourceRef, @sourceDigest, @actorScope, @idempotencyKey,
         @expiresAt, 'pending', @now, 0, 0,
         null, null, null, null,

@@ -462,10 +462,11 @@ test("startProxyGateway does not inspect a Commerce coordinator while the gate i
   assert.equal(state.closeCount, 1);
 });
 
-test("startProxyGateway does not inspect a welcome-bonus coordinator while the wallet-first gate is off", async () => {
+test("startProxyGateway does not inspect a welcome-bonus coordinator while its worker gate is off", async () => {
   const platform = {
     coinsCommerceEnabled: false,
-    walletFirstRegistrationEnabled: false
+    registrationWelcomeCoinsWorkerEnabled: false,
+    walletFirstDeferredRuntimeEnabled: false
   };
   Object.defineProperty(platform, "portalRegistrationWelcomeBonusCoordinator", {
     enumerable: true,
@@ -487,7 +488,7 @@ test("startProxyGateway does not inspect a welcome-bonus coordinator while the w
   assert.equal(state.closeCount, 1);
 });
 
-test("startProxyGateway starts wallet-first lifecycle after Commerce and stops deferred work first", async () => {
+test("startProxyGateway starts the welcome-Coins drain after Commerce even when admission is off", async () => {
   const events = [];
   const commerceCoordinator = {
     async start() {
@@ -505,22 +506,22 @@ test("startProxyGateway starts wallet-first lifecycle after Commerce and stops d
       events.push("welcome-bonus-stop");
     }
   };
-  const deferredTransitionCoordinator = {
-    async start() {
-      events.push("deferred-transition-start");
-    },
-    async stop() {
-      events.push("deferred-transition-stop");
-    }
+  const platform = {
+    coinsCommerceEnabled: true,
+    coinCommerceCoordinator: commerceCoordinator,
+    registrationWelcomeCoinsEnabled: false,
+    registrationWelcomeCoinsWorkerEnabled: true,
+    walletFirstDeferredRuntimeEnabled: false,
+    portalRegistrationWelcomeBonusCoordinator: welcomeBonusCoordinator
   };
+  Object.defineProperty(platform, "deferredTransitionCoordinator", {
+    enumerable: true,
+    get() {
+      throw new Error("welcome-Coins worker must not inspect the deferred coordinator");
+    }
+  });
   const state = fakeState({
-    platform: {
-      coinsCommerceEnabled: true,
-      coinCommerceCoordinator: commerceCoordinator,
-      walletFirstRegistrationEnabled: true,
-      portalRegistrationWelcomeBonusCoordinator: welcomeBonusCoordinator,
-      deferredTransitionCoordinator
-    },
+    platform,
     services: {
       ssLocal: {
         async stop() {
@@ -546,12 +547,11 @@ test("startProxyGateway starts wallet-first lifecycle after Commerce and stops d
   });
 
   assert.equal(events.indexOf("commerce-start") < events.indexOf("welcome-bonus-start"), true);
-  assert.equal(events.indexOf("welcome-bonus-start") < events.indexOf("deferred-transition-start"), true);
+  assert.equal(events.includes("deferred-transition-start"), false);
 
   events.length = 0;
   await handle.stop();
 
-  assert.equal(events.indexOf("deferred-transition-stop") < events.indexOf("welcome-bonus-stop"), true);
   assert.equal(events.indexOf("welcome-bonus-stop") < events.indexOf("commerce-stop"), true);
   assert.equal(events.indexOf("commerce-stop") < events.indexOf("ss-local-stop"), true);
   assert.equal(events.indexOf("ss-local-stop") < events.indexOf("http-proxy-stop"), true);
@@ -563,7 +563,7 @@ test("startProxyGateway rejects a malformed enabled welcome-bonus coordinator be
   const state = fakeState({
     platform: {
       coinsCommerceEnabled: false,
-      walletFirstRegistrationEnabled: true,
+      registrationWelcomeCoinsWorkerEnabled: true,
       portalRegistrationWelcomeBonusCoordinator: {
         async start() {}
       }

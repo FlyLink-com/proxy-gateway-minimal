@@ -15,6 +15,8 @@ import { createTotpCode } from "../features/user-portal/totp-preview";
 import {
   createHttpUserPortalClient,
   createLocalUserPortalClient,
+  isPortalWalletFirstRegistration,
+  isPortalWelcomeCoinsRegistration,
   PORTAL_REGISTRATION_SESSION_STORAGE_KEY,
   type PortalAuthInput,
   type PortalAuthenticatorBinding,
@@ -1507,6 +1509,9 @@ describe("user portal product surface", () => {
     if (result.commercialModel !== "legacy") {
       throw new Error("expected legacy registration result");
     }
+    if (!result.trial) {
+      throw new Error("expected legacy trial result");
+    }
     expect(result.trial.durationDays).toBe(7);
   });
 
@@ -1518,6 +1523,23 @@ describe("user portal product surface", () => {
         durationDays: 7,
         validUntil: "2026-07-07T09:00:00.000Z",
         accessRequestStatus: "pending_admin_review"
+      },
+      safety: {
+        emailReturnedToAccountOwner: true,
+        noInternalAccountIdReturned: true,
+        noSubscriptionUrl: true,
+        rawPasswordReturned: false
+      }
+    };
+    const normalCommerceWelcomeRegistration: Record<string, unknown> = {
+      userRef: "local-user@example.test",
+      status: "registered",
+      commercialModel: "legacy",
+      welcomeBonus: {
+        status: "pending",
+        coinType: "bonus_coins",
+        amountUnits: 10,
+        expiresAt: "2026-07-08T09:00:00.000Z"
       },
       safety: {
         emailReturnedToAccountOwner: true,
@@ -1553,6 +1575,17 @@ describe("user portal product surface", () => {
           amountUnits: 10,
           expiresAt: "2026-07-08T09:00:00.000Z"
         }
+      },
+      {
+        ...normalCommerceWelcomeRegistration,
+        trial: baseRegistration.trial
+      },
+      {
+        ...normalCommerceWelcomeRegistration,
+        welcomeBonus: {
+          ...(normalCommerceWelcomeRegistration.welcomeBonus as Record<string, unknown>),
+          unexpected: true
+        }
       }
     ];
     for (const registration of invalidRegistrations) {
@@ -1585,6 +1618,82 @@ describe("user portal product surface", () => {
         }
       })).rejects.toThrow();
     }
+  });
+
+  test("http portal client maps a normal Commerce welcome Coins registration without a trial", async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("/api/portal/registration");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        email: "normal-commerce@example.test",
+        password: "register-passphrase-1",
+        legalAgreement: {
+          termsAccepted: true,
+          privacyAccepted: true,
+          termsVersion: "2026-07-02",
+          privacyVersion: "2026-07-02"
+        },
+        emailVerification: {
+          verificationRef: "reg_email_normal_commerce",
+          code: "246810"
+        }
+      });
+      return new Response(JSON.stringify({
+        registration: {
+          userRef: "normal-commerce@example.test",
+          status: "registered",
+          commercialModel: "legacy",
+          welcomeBonus: {
+            status: "pending",
+            coinType: "bonus_coins",
+            amountUnits: 10,
+            expiresAt: "2026-07-08T09:00:00.000Z"
+          },
+          safety: {
+            emailReturnedToAccountOwner: true,
+            noInternalAccountIdReturned: true,
+            noSubscriptionUrl: true,
+            rawPasswordReturned: false
+          }
+        },
+        session: {
+          sessionRef: "portal_session_normal_commerce_1",
+          userRef: "normal-commerce@example.test",
+          displayName: "normal-commerce@example.test",
+          authMethod: "password",
+          issuedAt: "2026-07-01T09:00:00.000Z"
+        }
+      }), { status: 201, headers: { "Content-Type": "application/json" } });
+    });
+    const client = createHttpUserPortalClient({ fetchFn });
+
+    const result = await client.registerTrialAccount({
+      email: "normal-commerce@example.test",
+      password: "register-passphrase-1",
+      legalAgreement: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        termsVersion: "2026-07-02",
+        privacyVersion: "2026-07-02"
+      },
+      emailVerification: {
+        verificationRef: "reg_email_normal_commerce",
+        code: "246810"
+      }
+    });
+
+    expect(result.commercialModel).toBe("legacy");
+    expect(isPortalWalletFirstRegistration(result)).toBe(false);
+    expect(isPortalWelcomeCoinsRegistration(result)).toBe(true);
+    if (!isPortalWelcomeCoinsRegistration(result)) {
+      throw new Error("expected normal Commerce welcome Coins registration result");
+    }
+    expect(result.welcomeBonus).toEqual({
+      status: "pending",
+      coinType: "bonus_coins",
+      amountUnits: 10,
+      expiresAt: "2026-07-08T09:00:00.000Z"
+    });
+    expect("trial" in result).toBe(false);
   });
 
   test("http portal client maps the wallet-first welcome Coins registration contract", async () => {
@@ -1652,6 +1761,7 @@ describe("user portal product surface", () => {
     if (result.commercialModel !== "wallet_first_unique_v1") {
       throw new Error("expected wallet-first registration result");
     }
+    expect(isPortalWalletFirstRegistration(result)).toBe(true);
     expect(result.welcomeBonus).toEqual({
       status: "pending",
       coinType: "bonus_coins",
@@ -1761,13 +1871,13 @@ describe("user portal product surface", () => {
     expect(screen.getByRole("link", { name: "打开用户面板" }).getAttribute("href")).toBe("/portal/");
   });
 
-  test("registration page displays an available wallet-first welcome bonus without a trial claim", async () => {
+  test("registration page displays an available normal-Commerce welcome bonus without a trial claim", async () => {
     const registerTrialAccount = vi.fn(async (input: PortalRegistrationInput): Promise<PortalRegistrationResult> => {
       const userRef = input.email.trim().toLowerCase();
       return {
         status: "registered",
         userRef,
-        commercialModel: "wallet_first_unique_v1",
+        commercialModel: "legacy",
         welcomeBonus: {
           status: "available",
           coinType: "bonus_coins",
@@ -1776,7 +1886,7 @@ describe("user portal product surface", () => {
         },
         session: {
           status: "authenticated_preview",
-          sessionRef: "portal_session_wallet_first_1",
+          sessionRef: "portal_session_normal_commerce_1",
           userRef,
           displayName: userRef,
           authMode: "password",
@@ -1800,7 +1910,7 @@ describe("user portal product surface", () => {
       portalClient: portalClient({ registerTrialAccount })
     }));
 
-    fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: "wallet-first@example.test" } });
+    fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: "normal-commerce@example.test" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Register-passphrase-1!" } });
     fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "Register-passphrase-1!" } });
     fireEvent.click(screen.getByRole("button", { name: "创建账户" }));
