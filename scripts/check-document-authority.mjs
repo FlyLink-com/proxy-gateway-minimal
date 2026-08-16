@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -140,8 +140,15 @@ function checkSupersededBy(rootDir, path, fields, errors) {
   if (value === undefined) {
     return;
   }
-  if (fields.lifecycle === "deprecated" && value === "null") {
-    errors.push(`${path}: deprecated lifecycle requires superseded_by`);
+  if (fields.lifecycle === "deprecated") {
+    if (value === "null") {
+      errors.push(`${path}: deprecated lifecycle requires superseded_by`);
+      return;
+    }
+  } else if (value !== "null") {
+    errors.push(
+      `${path}: ${fields.lifecycle} lifecycle requires superseded_by null`
+    );
     return;
   }
   if (value === "null") {
@@ -157,8 +164,10 @@ function checkSupersededBy(rootDir, path, fields, errors) {
     errors.push(`${path}: superseded_by must stay inside the repository`);
     return;
   }
-  if (!existsSync(fullPath)) {
-    errors.push(`${path}: superseded_by path does not exist: ${value}`);
+  if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
+    errors.push(
+      `${path}: superseded_by path must resolve to an existing file: ${value}`
+    );
   }
 }
 
@@ -225,6 +234,9 @@ function checkDuplicateCanonicalScopes(records, errors) {
 
 export function checkDocumentAuthority(options = {}) {
   const rootDir = resolve(options.rootDir ?? DEFAULT_ROOT);
+  if (!existsSync(rootDir) || !statSync(rootDir).isDirectory()) {
+    throw new Error(`root directory does not exist: ${rootDir}`);
+  }
   const strictFiles = Boolean(options.strictFiles);
   const errors = [];
   const records = [];
@@ -251,7 +263,8 @@ export function checkDocumentAuthority(options = {}) {
     for (const path of ungovernedFiles) {
       errors.push(`file lacks document_metadata: ${path}`);
     }
-  } else if (records.length === 0) {
+  }
+  if (records.length === 0) {
     errors.push("no document_metadata blocks found");
   }
   checkDuplicateCanonicalScopes(records, errors);
@@ -278,10 +291,11 @@ function cliRoot(args) {
   if (rootIndex < 0) {
     return DEFAULT_ROOT;
   }
-  if (!args[rootIndex + 1]) {
+  const rootValue = args[rootIndex + 1];
+  if (!rootValue || rootValue.startsWith("--")) {
     throw new Error("--root requires a directory");
   }
-  return resolve(args[rootIndex + 1]);
+  return resolve(rootValue);
 }
 
 function cliStrictFiles(args) {

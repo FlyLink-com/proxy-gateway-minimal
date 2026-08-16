@@ -157,7 +157,7 @@ test("document authority check rejects missing superseded paths", () => {
   const result = runAuthorityCheck(rootDir);
 
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /superseded_by path does not exist: docs\/missing\.md/);
+  assert.match(result.stderr, /superseded_by path must resolve to an existing file: docs\/missing\.md/);
 });
 
 test("document authority check validates the current repository metadata", () => {
@@ -373,4 +373,118 @@ test("current repository has no active canonical with authority_scope release_st
       assert.fail(`${path}: release_state must not be an active canonical scope per CONVENTIONS.md`);
     }
   }
+});
+
+test("document authority check rejects active lifecycle with non-null superseded_by", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-active-superseded-"));
+  writeDoc(rootDir, "docs/new.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "new_scope",
+    supersededBy: "docs/old.md",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+  writeDoc(rootDir, "docs/old.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "old_scope",
+    supersededBy: "docs/new.md",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /active lifecycle requires superseded_by null/);
+  assert.match(result.stderr, /docs\/new\.md/);
+});
+
+test("document authority check rejects historical lifecycle with non-null superseded_by", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-historical-superseded-"));
+  writeDoc(rootDir, "docs/A.md", {
+    docType: "evidence",
+    lifecycle: "historical",
+    authorityScope: "historical_scope",
+    supersededBy: "docs/B.md",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+  writeDoc(rootDir, "docs/B.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "old_scope",
+    supersededBy: "docs/A.md",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /historical lifecycle requires superseded_by null/);
+  assert.match(result.stderr, /docs\/A\.md/);
+});
+
+test("document authority check rejects deprecated lifecycle pointing at a directory", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-deprecated-dir-"));
+  mkdirSync(join(rootDir, "docs/subdir"), { recursive: true });
+  writeDoc(rootDir, "docs/old.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "old_scope",
+    supersededBy: "docs/subdir",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /superseded_by path must resolve to an existing file: docs\/subdir/);
+});
+
+test("document authority strict mode fails when the root directory does not exist", () => {
+  const result = spawnSync(process.execPath, [
+    CHECKER,
+    "--root",
+    "/definitely-does-not-exist",
+    "--strict-files"
+  ], { cwd: REPOSITORY_ROOT, encoding: "utf8" });
+
+  assert.notEqual(result.status, 0, "strict mode must fail closed on missing root");
+  assert.match(result.stderr, /root directory does not exist/);
+});
+
+test("document authority strict mode fails when --root is followed by another flag", () => {
+  const result = spawnSync(process.execPath, [
+    CHECKER,
+    "--root",
+    "--strict-files"
+  ], { cwd: REPOSITORY_ROOT, encoding: "utf8" });
+
+  assert.notEqual(result.status, 0, "strict mode must fail closed on malformed --root");
+  assert.match(result.stderr, /--root requires a directory/);
+});
+
+test("document authority strict mode fails on empty in-scope inventory", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-empty-scope-"));
+  mkdirSync(join(rootDir, "docs"), { recursive: true });
+  mkdirSync(join(rootDir, "ops"), { recursive: true });
+  // No files at all in docs/ or ops/.
+
+  const result = runAuthorityCheck(rootDir, { strictFiles: true });
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /no document_metadata blocks found/);
+});
+
+test("current repository passes strict document authority", () => {
+  const result = runAuthorityCheck(REPOSITORY_ROOT, { strictFiles: true });
+
+  assert.equal(result.status, 0, result.stderr);
+  const match = result.stdout.match(/validated (\d+) document metadata block/);
+  assert.ok(match, `expected metadata count in output, received: ${result.stdout}`);
+  assert.ok(Number(match[1]) > 0, `expected a non-empty metadata inventory, received: ${result.stdout}`);
 });
