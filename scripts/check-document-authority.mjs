@@ -5,7 +5,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const DEFAULT_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SEARCH_DIRECTORIES = ["docs", "ops"];
-const EXCLUDED_DIRECTORIES = new Set([".git", ".worktrees", "node_modules"]);
+const EXCLUDED_DIRECTORIES = new Set([
+  ".git",
+  ".worktrees",
+  "node_modules",
+  "archive",
+  "superpowers"
+]);
 const REQUIRED_FIELDS = [
   "doc_type",
   "lifecycle",
@@ -24,12 +30,6 @@ function normalizedRepoPath(path) {
 
 function listMarkdownFiles(rootDir) {
   const paths = [];
-
-  for (const entry of readdirSync(rootDir, { withFileTypes: true })) {
-    if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
-      paths.push(entry.name);
-    }
-  }
 
   function walk(relativeDir) {
     const fullDir = join(rootDir, relativeDir);
@@ -68,12 +68,15 @@ function unquote(value) {
 
 function parseMetadata(text, path, errors) {
   const lines = text.split(/\r?\n/);
-  const markerIndex = lines
+  const markerCandidate = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => line.trim() !== "")
     .slice(0, 40)
-    .findIndex((line) => line.trim() === "document_metadata:");
-  if (markerIndex < 0) {
+    .find(({ line }) => line.trim() === "document_metadata:");
+  if (!markerCandidate) {
     return { fields: null, foundMarker: false };
   }
+  const markerIndex = markerCandidate.index;
 
   let fenceStart = markerIndex - 1;
   while (fenceStart >= 0 && lines[fenceStart].trim() === "") {
@@ -184,6 +187,15 @@ function validateMetadata(rootDir, path, fields, errors) {
     fields.production_authority !== "false"
   ) {
     errors.push(`${path}: production_authority must be true or false`);
+  }
+  if (
+    fields.authority_scope !== undefined &&
+    fields.authority_scope.startsWith("source_only_") &&
+    fields.production_authority !== "false"
+  ) {
+    errors.push(
+      `${path}: source_only_ authority scopes require production_authority false`
+    );
   }
   checkSupersededBy(rootDir, path, fields, errors);
 }
