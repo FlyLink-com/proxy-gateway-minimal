@@ -1,5 +1,17 @@
 # AWS Staging Node Image Readiness Validation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aws_staging_node_image_readiness_validation
+  superseded_by: null
+  last_verified_at: 2026-06-13
+  production_authority: false
+```
+
+
 Date: 2026-06-13, Asia/Shanghai.
 
 ## Status

@@ -1,5 +1,17 @@
 # Japan TUIC Additive Repair Production Execution Gate
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: japan_tuic_additive_repair_execution_gate
+  superseded_by: null
+  last_verified_at: 2026-07-24
+  production_authority: false
+```
+
+
 ```yaml
 record_type: production_execution_gate
 risk: A

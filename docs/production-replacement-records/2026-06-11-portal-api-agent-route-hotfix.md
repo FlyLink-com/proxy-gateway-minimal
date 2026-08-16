@@ -1,5 +1,17 @@
 # Portal API Agent Route Hotfix
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: portal_api_agent_route_hotfix
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-11, Asia/Shanghai.
 
 Risk tier: A production runtime hotfix.

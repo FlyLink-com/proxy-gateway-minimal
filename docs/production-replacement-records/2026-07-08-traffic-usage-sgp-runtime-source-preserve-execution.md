@@ -1,5 +1,17 @@
 # traffic-usage-sgp-runtime-source-preserve-20260708 execution
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_usage_sgp_runtime_source_preserve_execution
+  superseded_by: null
+  last_verified_at: 2026-07-08
+  production_authority: false
+```
+
+
 Date: 2026-07-08 UTC
 Risk: A
 

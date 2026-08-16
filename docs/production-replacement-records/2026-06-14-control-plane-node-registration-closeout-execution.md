@@ -1,5 +1,17 @@
 # Control Plane Node Registration Closeout Execution Snapshot
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: control_plane_node_registration_closeout_execution
+  superseded_by: null
+  last_verified_at: 2026-06-14
+  production_authority: false
+```
+
+
 Date: 2026-06-14, Asia/Shanghai.
 
 Risk: A for the original production gate; this document is a C-tier closeout

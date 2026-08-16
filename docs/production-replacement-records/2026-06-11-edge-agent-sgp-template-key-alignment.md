@@ -1,5 +1,17 @@
 # Edge-Agent SGP Template Key Alignment
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: edge_agent_sgp_template_key_alignment
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-11
 
 Risk: B repo-only fix following an A-tier production diagnostic

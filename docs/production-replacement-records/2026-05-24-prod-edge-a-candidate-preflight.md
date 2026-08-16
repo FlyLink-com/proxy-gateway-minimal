@@ -1,5 +1,17 @@
 # prod-edge-a Candidate Preflight
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: prod_edge_a_candidate_preflight
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24, Asia/Shanghai.
 
 > Status:

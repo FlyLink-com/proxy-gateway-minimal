@@ -1,5 +1,17 @@
 # JP TUIC/Hysteria2 Certificate Domain Alignment
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: jp_tuic_hy2_cert_domain_alignment
+  superseded_by: null
+  last_verified_at: 2026-07-06
+  production_authority: false
+```
+
+
 Date: 2026-07-06 UTC.
 
 > Status:

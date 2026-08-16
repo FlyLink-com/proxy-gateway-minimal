@@ -1,5 +1,17 @@
 # AppsFlyer Runtime Disabled Upgrade Execution
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: appsflyer_runtime_disabled_upgrade_execution
+  superseded_by: null
+  last_verified_at: 2026-07-08
+  production_authority: false
+```
+
+
 Date: 2026-07-08, UTC.
 
 ## Status

@@ -1,5 +1,17 @@
 # Japan TUIC Usage Credential Map Rebuild
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: japan_tuic_usage_credential_map_rebuild
+  superseded_by: null
+  last_verified_at: 2026-07-08
+  production_authority: false
+```
+
+
 Date: 2026-07-08 America/Los_Angeles
 
 Risk: A

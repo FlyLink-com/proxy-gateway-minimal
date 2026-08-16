@@ -1,5 +1,17 @@
 # Clean Edge Rebuild Execution Handoff
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: clean_edge_rebuild_execution_handoff
+  superseded_by: null
+  last_verified_at: 2026-05-27
+  production_authority: false
+```
+
+
 Date: 2026-05-27, Asia/Shanghai.
 
 ## Status

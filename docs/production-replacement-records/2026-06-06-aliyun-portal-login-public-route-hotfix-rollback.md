@@ -1,5 +1,17 @@
 # Aliyun Portal Login Public Route Hotfix Rollback
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_portal_login_public_route_hotfix_rollback
+  superseded_by: null
+  last_verified_at: 2026-06-06
+  production_authority: false
+```
+
+
 Date: 2026-06-06 Asia/Shanghai.
 
 Risk tier: A.

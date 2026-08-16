@@ -1,5 +1,17 @@
 # SGP Final Closeout Gate 1 Read-Only Inventory
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: sgp_final_closeout_gate1_readonly_inventory
+  superseded_by: null
+  last_verified_at: 2026-06-09
+  production_authority: false
+```
+
+
 Date: 2026-06-09, Asia/Shanghai.
 
 Risk tier: A read-only production inventory.

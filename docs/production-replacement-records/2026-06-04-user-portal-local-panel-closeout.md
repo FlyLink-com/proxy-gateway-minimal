@@ -1,5 +1,17 @@
 # User Portal Local Panel Closeout
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: user_portal_local_panel_closeout
+  superseded_by: null
+  last_verified_at: 2026-06-04
+  production_authority: false
+```
+
+
 Date: 2026-06-04, Asia/Shanghai.
 
 Risk: C documentation closeout for a completed B-tier local Admin/User Portal

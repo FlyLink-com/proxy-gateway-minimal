@@ -1,5 +1,17 @@
 # Traffic Usage Protocol Proof Backend Execution - 2026-07-07
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_usage_protocol_proof_backend_execution
+  superseded_by: null
+  last_verified_at: 2026-07-07
+  production_authority: false
+```
+
+
 ## Approval
 
 - Approval ref: `traffic-usage-protocol-proof-backend-20260707`

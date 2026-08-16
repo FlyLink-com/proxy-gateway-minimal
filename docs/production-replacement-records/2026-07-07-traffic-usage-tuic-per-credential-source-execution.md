@@ -1,5 +1,17 @@
 # Traffic Usage TUIC Per-Credential Source Execution
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_usage_tuic_per_credential_source_execution
+  superseded_by: null
+  last_verified_at: 2026-07-07
+  production_authority: false
+```
+
+
 - Date: 2026-07-07
 - Target: `vul1/gccgw-vultr-candidate`
 - Risk: A

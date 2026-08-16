@@ -1,5 +1,17 @@
 # HP Portal Validation Private Execution
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: hp_portal_validation_private_execution
+  superseded_by: null
+  last_verified_at: 2026-05-31
+  production_authority: false
+```
+
+
 Date: 2026-05-31, Asia/Shanghai.
 
 ## Scope

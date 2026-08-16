@@ -1,5 +1,17 @@
 # Traffic Quota Auto-Suspend Backend Deploy Execution - 2026-07-09 UTC
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_quota_auto_suspend_backend_deploy_execution
+  superseded_by: null
+  last_verified_at: 2026-07-09
+  production_authority: false
+```
+
+
 Risk: A
 
 ## Scope

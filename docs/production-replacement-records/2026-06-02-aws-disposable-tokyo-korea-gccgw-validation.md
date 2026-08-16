@@ -1,5 +1,17 @@
 # AWS Disposable Tokyo/Korea gccgw Validation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aws_disposable_tokyo_korea_gccgw_validation
+  superseded_by: null
+  last_verified_at: 2026-06-02
+  production_authority: false
+```
+
+
 Date: 2026-06-02, Asia/Shanghai.
 
 Risk: A / disposable cloud validation.

@@ -1,5 +1,17 @@
 # Aliyun User Portal Deployment Read-Only Preflight
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_user_portal_deployment_readonly_preflight
+  superseded_by: null
+  last_verified_at: 2026-06-04
+  production_authority: false
+```
+
+
 Date: 2026-06-04, Asia/Shanghai.
 
 Risk: A read-only preflight.

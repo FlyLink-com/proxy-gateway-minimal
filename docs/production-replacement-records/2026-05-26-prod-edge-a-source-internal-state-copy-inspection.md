@@ -1,5 +1,17 @@
 # Prod-Edge-A Source Internal State-Copy Inspection
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: prod_edge_a_source_internal_state_copy_inspection
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
+
 Date: 2026-05-26, Asia/Shanghai.
 
 Risk: A-adjacent read-only source inspection.

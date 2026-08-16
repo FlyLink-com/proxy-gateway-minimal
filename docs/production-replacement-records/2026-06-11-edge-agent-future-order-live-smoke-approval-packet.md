@@ -1,5 +1,17 @@
 # Edge-Agent Future-Order Live Smoke Approval Packet
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: edge_agent_future_order_live_smoke_approval_packet
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-11, Asia/Shanghai.
 
 Risk tier: A production live-order and data-plane apply validation.

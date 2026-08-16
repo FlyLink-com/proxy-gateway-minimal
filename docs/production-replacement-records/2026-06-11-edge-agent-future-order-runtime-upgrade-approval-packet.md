@@ -1,5 +1,17 @@
 # Edge-Agent Future-Order Runtime Upgrade Approval Packet
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: edge_agent_future_order_runtime_upgrade_approval_packet
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-11, Asia/Shanghai.
 
 Risk tier: A production runtime upgrade and schema migration.

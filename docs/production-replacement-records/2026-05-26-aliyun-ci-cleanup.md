@@ -1,5 +1,17 @@
 # Aliyun Manual CI Lane Cleanup
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_ci_cleanup
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
+
 Date: 2026-05-26, Asia/Shanghai.
 
 Branch: `codex/aliyun-platform-split-runbook`

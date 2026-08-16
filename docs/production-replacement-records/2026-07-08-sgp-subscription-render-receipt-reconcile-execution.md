@@ -1,5 +1,17 @@
 # sgp-subscription-render-receipt-reconcile execution
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: sgp_subscription_render_receipt_reconcile_execution
+  superseded_by: null
+  last_verified_at: 2026-07-08
+  production_authority: false
+```
+
+
 Date: 2026-07-08 UTC
 Risk: A
 

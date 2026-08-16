@@ -1,5 +1,17 @@
 # Stable TCP Capacity Read-Only Inventory - 2026-06-05
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: stable_tcp_capacity_readonly_inventory
+  superseded_by: null
+  last_verified_at: 2026-06-05
+  production_authority: false
+```
+
+
 ## Scope
 
 Risk tier: A.

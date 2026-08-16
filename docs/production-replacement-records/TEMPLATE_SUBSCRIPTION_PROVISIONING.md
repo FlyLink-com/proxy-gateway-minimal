@@ -1,5 +1,17 @@
 # Subscription Provisioning Record
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: template_subscription_provisioning
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 Date: 2026-05-xx, Asia/Shanghai
 Operator: [Operator Name]
 

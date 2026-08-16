@@ -1,5 +1,17 @@
 # Singapore Prod-Edge Stop With Accepted Outage
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: singapore_prod_edge_stop
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
+
 Date: 2026-05-26, Asia/Shanghai.
 
 Risk: A production node mutation with accepted service outage.

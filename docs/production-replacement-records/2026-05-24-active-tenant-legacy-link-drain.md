@@ -1,5 +1,17 @@
 # Production Replacement: Active Tenant Legacy Link Drain
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: active_tenant_legacy_link_drain
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24 23:15-23:24 +08:00
 
 Branch: `ops/legacy-query-token-retirement`

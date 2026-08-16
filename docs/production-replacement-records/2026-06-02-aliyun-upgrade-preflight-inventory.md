@@ -1,5 +1,17 @@
 # Aliyun Upgrade Preflight Inventory
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_upgrade_preflight_inventory
+  superseded_by: null
+  last_verified_at: 2026-06-02
+  production_authority: false
+```
+
+
 Date: 2026-06-02, Asia/Shanghai.
 
 ## Status

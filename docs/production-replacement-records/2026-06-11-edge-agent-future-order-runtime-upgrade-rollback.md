@@ -1,5 +1,17 @@
 # Edge-Agent Future-Order Runtime Upgrade Rollback
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: edge_agent_future_order_runtime_upgrade_rollback
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-11
 
 Risk: A
