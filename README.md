@@ -1,6 +1,20 @@
 # proxy-gateway-minimal / gccgw
 
+[![CI](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/workflows/ci.yml/badge.svg?branch=master&event=push)](https://github.com/gccwebos-com/proxy-gateway-minimal/actions/workflows/ci.yml?query=branch%3Amaster+event%3Apush)
+[![Docs](https://img.shields.io/badge/docs-docs%2FCONVENTIONS-blue)](docs/CONVENTIONS.md)
+
 [English](README_EN.md) | [文档索引](docs/README.md)
+
+> CI badge reflects the workflow that ran on the last push to `master`.
+> Markdown-only pushes are classified as the **docs-only lane** by
+> `scripts/ci-change-classifier.mjs` and skip dependency install,
+> server tests, admin tests, admin / public-site builds, and site
+> verify / dry-run; only `git diff --check`, `npm run docs:authority:strict`,
+> and the `Governance evidence` step run. The badge's "green" state in
+> that lane means the documentation and governance gates passed, not
+> that application tests or builds were executed. See
+> [`docs/VALIDATION_BASELINE.md`](docs/VALIDATION_BASELINE.md) for the
+> full lane contract.
 
 `proxy-gateway-minimal` 是一个订阅控制与交付项目。现在的主线不是
 “再写一个代理面板”，而是把订阅生产、发放、审计、撤回、安装配置和节点包

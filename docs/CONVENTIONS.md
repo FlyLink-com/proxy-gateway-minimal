@@ -6,7 +6,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_conventions
   superseded_by: null
-  last_verified_at: 2026-08-16
+  last_verified_at: 2026-08-17
   production_authority: false
 ```
 
@@ -156,3 +156,117 @@ signal**, not a content attestation:
 - Reserved prefixes and suffixes (`source_only_`, `_gate`) are part of
   the public contract. New reserved namespaces are added by updating this
   document and the validator together, never by one side alone.
+
+## Badge lifecycle
+
+README status badges are evidence-backed repository interfaces. They are
+not decorative, and they are not assertions about production health. They
+are a single, narrow promise: that a machine-verifiable or explicitly
+documented state exists at the linked source, that the badge reflects
+that state, and that the badge will be removed or downgraded when the
+source is no longer authoritative.
+
+A badge MUST:
+
+1. Represent a machine-verifiable state, an explicitly documented state,
+   or a navigation target that does not claim a pass/fail signal.
+2. Link to its evidence source: the workflow file, the gate ledger, the
+   documentation page, or the licence file the badge summarises.
+3. Pin the badge to its evidence source. The contract is split by badge
+   kind:
+   - **Dynamic workflow badge** (pass/fail, derives from a workflow
+     run): the image URL MUST include `branch=<default-branch>` and the
+     event that actually drives the source (e.g. `event=push`); the
+     click target MUST use the matching
+     `?query=branch%3A<default-branch>+event%3A<event>` filter so the
+     displayed state and the evidence list agree. Branch-specific
+     PR-summary widgets do not belong in `README.md`.
+   - **Static navigation or fact badge** (no workflow event; e.g. `Docs`
+     linking to a `CONVENTIONS.md` page, or a future `License` badge
+     linking to a `LICENSE` file): the badge link target MUST be the
+     specific document or path the badge summarises. There is no
+     workflow event to pin, so the dynamic-badge contract does not
+     apply.
+4. Not imply deployment, runtime, or production health unless an
+   evidence-backed workflow gates that claim. In particular, badges
+   labelled "Production Ready", "Stable", "LTS", "Healthy", "Deploy
+   Status", or "99.99%" are forbidden until the matching evidence exists.
+
+A pass/fail badge MUST be dynamically derived from its authoritative
+machine evidence and MUST update automatically when that evidence changes.
+Static `passing` / `failing` shields are forbidden: a hard-coded green
+shield that does not update on CI failure is not a badge, it is a
+lie. The underlying workflow or check MUST be executable on a clean
+GitHub-hosted runner without user-managed repository or environment
+secrets (the auto-provided `GITHUB_TOKEN` and its checkout credentials
+are out of scope), without proprietary dependencies, and without
+`continue-on-error: true` masking real failures. The CI badge in this
+repository points to `.github/workflows/ci.yml` because that workflow
+satisfies those rules.
+
+When the evidence model is partial — for example, a project whose
+Windows+DLL build cannot be reproduced on GitHub-hosted runners — the
+README MUST spell that out in plain prose immediately below the badge
+line. A perpetually red badge labelled "Build" is worse than no badge at
+all, because it trains reviewers to ignore real failures.
+
+When the workflow is classified as the **docs-only lane** by
+`scripts/ci-change-classifier.mjs` (e.g. a Markdown-only push to
+`master`), the workflow skips dependency install, server / admin
+tests, admin / public-site builds, and site verify / dry-run. The
+CI badge in that lane reflects only the diff, document-authority, and
+governance evidence steps. The README MUST state this fact in plain
+prose immediately below the badge line so readers do not read "green"
+as evidence that application tests or builds ran. This is the same
+partial-evidence rule as the previous paragraph; the docs-only lane
+is a specific instance of partial evidence.
+
+Three categories are recognised in this repository today:
+
+- `CI` — dynamic pass/fail badge, derives from `ci.yml` on
+  `master`/`push`. The image URL pins `branch=master&event=push`; the
+  click target is `ci.yml?query=branch%3Amaster+event%3Apush` so the
+  displayed state and the evidence list agree.
+- `Docs` — static navigation badge linking to `docs/CONVENTIONS.md`.
+  It does not claim a CI result.
+- `License` — static fact badge, intentionally absent today. When an
+  authoritative license source lands, the badge reappears at the same
+  commit (see the `License badge` subsection below).
+
+Adding a badge requires changing this section: state the evidence source,
+state the workflow or document it links to, state whether the badge is
+dynamic or static, and state what the badge will NOT claim. Removing a
+badge requires updating or removing the matching evidence statement in
+this section in the same change. Removing the underlying evidence source
+without updating both the README and this section is a governance
+defect.
+
+### License badge
+
+Authoritative evidence for a `License | <anything>` badge, in priority
+order:
+
+1. **Primary** — a license-declaration file at the repo root with one
+   of the conventional names: `LICENSE`, `LICENSE.md`, `LICENCE`,
+   `COPYING`. The badge text MUST carry the SPDX identifier, and the
+   badge link target MUST be this file.
+2. **Corroborating metadata only** — a `package.json` `license` field
+   with an SPDX identifier. On its own, this is NOT sufficient to
+   satisfy the badge rule: a `License | MIT` badge is forbidden until
+   the primary file exists. The `license` field is corroborating
+   metadata that becomes usable only when the primary file is also
+   present.
+
+The README MUST NOT display any `License | <anything>` badge
+(`proprietary`, `MIT`, `Apache-2.0`, `unknown`, `none`) until at least
+one of the two conditions above is met. Specifically, adding
+`"license": "MIT"` to `package.json` without a `LICENSE` file does
+NOT make a `License | MIT` badge legitimate.
+
+When the primary source lands (typically a `LICENSE` file at the repo
+root), this section is updated at the same commit: replace the License
+status note with a one-line statement of the form
+`License: <SPDX-ID>, evidence: <path-to-LICENSE-file>`, and add the
+corresponding `[![License](...)](<path>)` badge to both README files.
+Until then, the License slot in the README badge row remains absent
+on purpose.
