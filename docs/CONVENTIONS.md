@@ -104,25 +104,48 @@ the ambiguity:
   Risk A gate elsewhere in the repo (see `npm run governance:check`).
   Documents that merely describe a risk do not qualify.
 
-## Verification
+## `last_verified_at` semantics
 
-Three commands form the day-to-day verification surface:
+`last_verified_at` is the date the metadata block was last edited against the
+file as it stands in the repository. It is a **best-effort stewardship
+signal**, not a content attestation:
+
+- For files that already carry an explicit `Last updated:` line in their
+  body text, `last_verified_at` is taken from that line. The body line
+  itself is treated as the source of truth for that date.
+- For files without an explicit body date, the field records the date the
+  metadata block was added or last refreshed against the file in its
+  repository state. In the bulk governance sweep this was derived from
+  the file's last-modified date (or the filename date prefix for
+  `production-replacement-records/`), which is good enough to order docs
+  chronologically but **does not** prove the content has been re-read for
+  correctness.
+- A `last_verified_at` value MUST NOT be bumped without an actual content
+  check. Reviewers should treat the field as a hint, not a guarantee.
+- When the team needs a real content-attestation date, prefix the field
+  name with a verifier (`verified_by_alice: 2026-08-16`) rather than
+  reusing `last_verified_at`.
+
+## Verification commands
 
 - `npm run docs:authority:check` — the default invocation. Reports parse
   errors and metadata violations, but tolerates files without a metadata
   block (e.g. legacy files mid-migration).
-- `node scripts/check-document-authority.mjs --strict-files` — the
-  post-2026-08-16 fail-on-missing mode. Use this in CI to forbid any
-  in-scope file from omitting the metadata block.
+- `npm run docs:authority:strict` — the same check with `--strict-files`
+  enabled, equivalent to `node scripts/check-document-authority.mjs
+  --strict-files`. Fails closed if any in-scope file is missing a
+  metadata block, or if the root directory is missing or empty, or if
+  `--root` is followed by another flag. CI runs this command.
 - `npm run governance:check` — runs `gates.json` validation and the
-  repair-policy checks. Combine with `docs:authority:check` for a full
+  repair-policy checks. Combine with `docs:authority:strict` for a full
   pre-merge sweep.
 
 ## Maintenance rules
 
-- Update `last_verified_at` only when the document's content has been
-  re-verified against the live repo. A date bump without a real re-check
-  is a governance defect.
+- `last_verified_at` is a best-effort stewardship signal, not a content
+  attestation. See the "`last_verified_at` semantics" section above for
+  what the value actually represents. Only bump it when you have
+  actually re-read the file.
 - When adding a metadata block to a legacy file, do not change the body
   text in the same edit. Inject the YAML block at the top, run the
   validator, and only then make content changes in a separate commit.

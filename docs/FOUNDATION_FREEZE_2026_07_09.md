@@ -1,6 +1,5 @@
 # Foundation Freeze - 2026-07-09
 
-Last updated: 2026-07-09.
 
 ```yaml
 document_metadata:
