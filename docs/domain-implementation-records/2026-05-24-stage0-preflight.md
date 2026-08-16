@@ -2,6 +2,16 @@
 
 Date: 2026-05-24 02:20:09 +08:00
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: domain_implementation_records_2026_05_24_stage0_preflight
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
 Branch: `ops/domain-stage0-preflight`
 
 Base commit: `a75d2ad4540cef70f932e6deb3a3535dcdcf27c2`

@@ -2,6 +2,16 @@
 
 Date: 2026-05-24 03:17:44 +08:00
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: domain_implementation_records_2026_05_24_stage1_dns_records_to_blue
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
 Branch: `ops/domain-stage1-dns-records`
 
 Base commit: `0a02e1a73020bec4f49625839bcb9e56300c8b7a`

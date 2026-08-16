@@ -2,6 +2,16 @@
 
 Date: 2026-05-24, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: production_replacement_preflight_2026_05_24_blue_green_preflight
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
 This is a read-only production replacement preflight record. It does not
 authorize AWS mutation, green instance creation, production secret copying,
 SQLite copying, security group changes, service restarts, or cutover.

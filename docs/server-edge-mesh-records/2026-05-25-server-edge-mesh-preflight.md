@@ -2,6 +2,16 @@
 
 Date: 2026-05-25, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: server_edge_mesh_records_2026_05_25_server_edge_mesh_preflight
+  superseded_by: null
+  last_verified_at: 2026-05-25
+  production_authority: false
+```
+
 ## Scope
 
 Risk: A / read-only production network preflight.

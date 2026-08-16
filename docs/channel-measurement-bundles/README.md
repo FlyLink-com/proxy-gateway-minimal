@@ -1,5 +1,15 @@
 # Channel Measurement Bundles
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: channel_measurement_bundles_readme
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
 This directory stores redacted, repository-safe measurement bundle fixtures.
 
 Use these files to validate the channel measurement tooling against already
