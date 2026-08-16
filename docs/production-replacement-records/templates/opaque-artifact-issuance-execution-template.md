@@ -3,8 +3,8 @@
 
 ```yaml
 document_metadata:
-  doc_type: evidence
-  lifecycle: historical
+  doc_type: operational
+  lifecycle: active
   authority_scope: opaque_artifact_issuance_execution_template
   superseded_by: null
   last_verified_at: 2026-08-16

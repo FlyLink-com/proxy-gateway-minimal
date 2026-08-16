@@ -3,8 +3,8 @@
 
 ```yaml
 document_metadata:
-  doc_type: evidence
-  lifecycle: historical
+  doc_type: operational
+  lifecycle: active
   authority_scope: template_subscription_provisioning
   superseded_by: null
   last_verified_at: 2026-08-16
