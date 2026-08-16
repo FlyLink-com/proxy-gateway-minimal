@@ -72,7 +72,7 @@ function parseMetadata(text, path, errors) {
     .slice(0, 40)
     .findIndex((line) => line.trim() === "document_metadata:");
   if (markerIndex < 0) {
-    return null;
+    return { fields: null, foundMarker: false };
   }
 
   let fenceStart = markerIndex - 1;
@@ -81,7 +81,7 @@ function parseMetadata(text, path, errors) {
   }
   if (fenceStart < 0 || lines[fenceStart].trim() !== "```yaml") {
     errors.push(`${path}:${markerIndex + 1}: document_metadata must be in a top-level yaml fence`);
-    return null;
+    return { fields: null, foundMarker: true };
   }
 
   const fenceEnd = lines.findIndex(
@@ -89,7 +89,7 @@ function parseMetadata(text, path, errors) {
   );
   if (fenceEnd < 0) {
     errors.push(`${path}:${markerIndex + 1}: document_metadata yaml fence is not closed`);
-    return null;
+    return { fields: null, foundMarker: true };
   }
 
   const fields = {};
@@ -121,7 +121,7 @@ function parseMetadata(text, path, errors) {
       errors.push(`${path}: unsupported document_metadata field ${field}`);
     }
   }
-  return fields;
+  return { fields, foundMarker: true };
 }
 
 function isValidDate(value) {
@@ -213,11 +213,21 @@ function checkDuplicateCanonicalScopes(records, errors) {
 
 export function checkDocumentAuthority(options = {}) {
   const rootDir = resolve(options.rootDir ?? DEFAULT_ROOT);
+  const strictFiles = Boolean(options.strictFiles);
   const errors = [];
   const records = [];
+  const ungovernedFiles = [];
 
   for (const path of listMarkdownFiles(rootDir)) {
-    const fields = parseMetadata(readFileSync(join(rootDir, path), "utf8"), path, errors);
+    const { fields, foundMarker } = parseMetadata(
+      readFileSync(join(rootDir, path), "utf8"),
+      path,
+      errors
+    );
+    if (!foundMarker) {
+      ungovernedFiles.push(path);
+      continue;
+    }
     if (!fields) {
       continue;
     }
@@ -225,7 +235,11 @@ export function checkDocumentAuthority(options = {}) {
     records.push({ path, fields });
   }
 
-  if (records.length === 0) {
+  if (strictFiles) {
+    for (const path of ungovernedFiles) {
+      errors.push(`file lacks document_metadata: ${path}`);
+    }
+  } else if (records.length === 0) {
     errors.push("no document_metadata blocks found");
   }
   checkDuplicateCanonicalScopes(records, errors);
@@ -240,6 +254,7 @@ export function checkDocumentAuthority(options = {}) {
       lifecycle: record.fields.lifecycle,
       authorityScope: record.fields.authority_scope
     })),
+    ungovernedFiles,
     summary: ok
       ? `validated ${records.length} document metadata block(s) from ${relative(process.cwd(), rootDir) || "."}`
       : `document authority check failed with ${errors.length} error(s)`
@@ -257,9 +272,17 @@ function cliRoot(args) {
   return resolve(args[rootIndex + 1]);
 }
 
+function cliStrictFiles(args) {
+  return args.includes("--strict-files");
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const result = checkDocumentAuthority({ rootDir: cliRoot(process.argv.slice(2)) });
+    const argv = process.argv.slice(2);
+    const result = checkDocumentAuthority({
+      rootDir: cliRoot(argv),
+      strictFiles: cliStrictFiles(argv)
+    });
     if (result.ok) {
       console.log(result.summary);
     } else {
