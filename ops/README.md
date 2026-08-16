@@ -1,5 +1,15 @@
 # Operations Environment Foundation
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: ops_environment_foundation
+  superseded_by: null
+  last_verified_at: 2026-07-16
+  production_authority: false
+```
+
 Current-use guard: this README contains recovery foundations and older
 provider-specific examples. Treat provider names, public IPs, service names,
 and Shadowsocks examples here as historical or template context unless a

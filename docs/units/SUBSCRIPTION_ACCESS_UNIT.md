@@ -2,6 +2,16 @@
 
 Last updated: 2026-05-26, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: subscription_access_unit
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
 > Status:
 > - Type: Active unit design
 > - Risk: C for this document
