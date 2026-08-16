@@ -191,6 +191,20 @@ test("systemd show parser fails closed for malformed property sets", () => {
   }
 });
 
+test("snapshot gate resolves systemd inspection through fixed absolute binaries and a minimal environment", () => {
+  const source = readFileSync(
+    new URL("../../scripts/control-plane-db-snapshot-gate.mjs", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(source, /const SYSTEMCTL_PATH = "\/usr\/bin\/systemctl"/);
+  assert.match(source, /const BUSCTL_PATH = "\/usr\/bin\/busctl"/);
+  assert.match(source, /PATH: "\/usr\/bin:\/bin"/);
+  assert.match(source, /env: SYSTEMD_COMMAND_ENV/);
+  assert.match(source, /withoutOutput\(SYSTEMCTL_PATH,/);
+  assert.match(source, /withoutOutput\(BUSCTL_PATH,/);
+});
+
 test("snapshot and restore runbook requires the external runtime condition start guard", () => {
   const contract = readFileSync(CONTROL_PLANE_SNAPSHOT_CONTRACT, "utf8");
 

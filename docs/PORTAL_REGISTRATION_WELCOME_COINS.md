@@ -124,6 +124,23 @@ No production enablement is authorized by this document. Any future production
 change needs fresh inventory, an exact approval boundary, backup and rollback
 evidence, and post-change validation appropriate to its Risk A scope.
 
+## Admission-configuration Tool Boundary
+
+The repository-owned Welcome Coins activation gate is intentionally narrower
+than a generic runtime-configuration editor. It derives the current release's
+protected `.env` from the approved `current` pointer and permits a one-time
+atomic insertion of only the admission flag and a single normalized-email
+digest. The digest is stdin-only and is not returned in a receipt.
+
+The helper must run only after the independent snapshot guard has stopped the
+service and after the approved welcome schema migration is validated. It does
+not perform either operation, does not restart the service, and does not modify
+ordinary Commerce or any wallet-first/deferred/Authority setting. If the target
+keys conflict or any non-target safety prerequisite is unexpected, it fails
+closed rather than reconciling or overwriting the configuration. The sole
+retry exception is an exact identity-bound already-active state with the same
+stdin digest; it is a no-op confirmation, never a rewrite.
+
 ## Explicit Non-goals
 
 - wallet-first account selection or persistent commercial-model assignment;

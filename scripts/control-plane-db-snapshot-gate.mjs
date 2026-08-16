@@ -32,6 +32,13 @@ const MODES = new Set(["guard", "snapshot", "verify", "restore"]);
 const SERVICE_STATES = new Set(["active", "inactive"]);
 const RUNTIME_START_GUARD_DIRECTORY = "/run/control-plane-db-snapshot-gates";
 const RUNTIME_START_GUARD_DROPIN_FILE = "zzzzzz-control-plane-db-snapshot-start-guard.conf";
+const SYSTEMCTL_PATH = "/usr/bin/systemctl";
+const BUSCTL_PATH = "/usr/bin/busctl";
+const SYSTEMD_COMMAND_ENV = Object.freeze({
+  PATH: "/usr/bin:/bin",
+  LC_ALL: "C",
+  LANG: "C"
+});
 const SYSTEMD_UNIT_SHOW_PROPERTIES = new Set([
   "ActiveState",
   "UnitFileState",
@@ -194,7 +201,7 @@ function systemdUnitObjectPath(unit) {
 }
 
 function readSystemdConditions({ serviceUnit }) {
-  const result = withoutOutput("busctl", [
+  const result = withoutOutput(BUSCTL_PATH, [
     "--json=short",
     "get-property",
     "org.freedesktop.systemd1",
@@ -483,12 +490,14 @@ function writeManifest(manifestPath, manifest) {
 }
 
 function withoutOutput(command, args) {
+  if (command !== SYSTEMCTL_PATH && command !== BUSCTL_PATH) return null;
   try {
     return spawnSync(command, args, {
       encoding: "utf8",
       timeout: 5_000,
       windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore"]
+      stdio: ["ignore", "pipe", "ignore"],
+      env: SYSTEMD_COMMAND_ENV
     });
   } catch {
     return null;
@@ -526,7 +535,7 @@ export function parseSystemdUnitShowProperties(stdout) {
 export function readSystemdUnitState({ serviceUnit } = {}) {
   const unit = safeServiceUnit(serviceUnit);
   if (process.platform !== "linux") fail("service_state_unavailable");
-  const result = withoutOutput("systemctl", [
+  const result = withoutOutput(SYSTEMCTL_PATH, [
     "show",
     "--property=ActiveState",
     "--property=UnitFileState",

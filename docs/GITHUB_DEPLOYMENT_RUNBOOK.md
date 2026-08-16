@@ -1,6 +1,6 @@
 # GitHub Deployment Runbook
 
-Last updated: 2026-07-24, America/Los_Angeles.
+Last updated: 2026-08-15, America/Los_Angeles.
 
 This runbook defines the repository-owned GitHub deployment foundation for
 `proxy-gateway-minimal`. It is not a production approval. Production host,
@@ -329,6 +329,78 @@ separate promotion health gate remains responsible for bounded runtime and
 public-edge acceptance. Neither gate authorizes deployment or automatic
 rollback by itself; any application-pointer rollback requires a separate
 approved decision, and any database restore remains independently approved.
+
+### Control-Plane Database Snapshot Gate
+
+For an approved SQLite schema or protected runtime-config change, follow the
+separate [control-plane snapshot and restore contract](CONTROL_PLANE_DB_SNAPSHOT_RESTORE_CONTRACT.md).
+That gate owns the exact inactive-service runtime start guard, a fresh verified
+database snapshot, and the evidence required before a later restart. A source
+tool must not substitute a copied database, a release-pointer rollback, or an
+old snapshot for that gate.
+
+The snapshot boundary is intentionally separate from release assembly and
+feature admission. A caller must keep the exact start guard through any
+approved schema operation and until the next approved start. The snapshot
+contract, not an activation helper, controls service stop/start, snapshot
+publication, database restore, and rollback decisions.
+
+### Welcome Coins Admission Activation Gate
+
+`control-plane-welcome-coins-activation-gate.mjs` is the narrowly scoped
+editor for the first Welcome Coins admission canary. It is not a generic
+`.env` editor and it can change only these two runtime settings:
+
+- `USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED=true`
+- `USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES=<one SHA-256 digest>`
+
+The tool derives the protected `.env` only from the repository-defined
+production `current` symlink and an expected resolved release label. It accepts
+no deployment-root or current-pointer option: the resolved target must be the
+direct `releases/<label>` child of that fixed root. It rejects arbitrary file
+paths, unknown options, duplicate options, symbolic-link boundaries, non-root
+production ownership or permissions, unsafe parent directories, pre-existing
+or conflicting target keys, except an exact identity-bound retry of the same
+already-active digest, and any base prerequisite or unrelated
+wallet-first/deferred/setup/Authority flag that is not in its required state.
+It never accepts a key, value, email, digest, or a force/disable action as a
+command-line option.
+
+Only `activate --apply` consumes one 64-character lowercase SHA-256 digest
+from a non-interactive stdin-only stream. The digest, `.env` contents,
+absolute paths, raw errors, PID values, and database values never appear in
+the safe report. The returned environment SHA-256 is an identity binding for
+the immediately following step; it is not protected configuration content.
+
+Inside one separately approved Risk A change, use the sequence below:
+
+1. Run `welcome-coins:activation:preflight` while the current release is
+   healthy. It is read-only and returns a safe environment identity only when
+   both target settings are absent, base Portal/Wallet/ordinary-Commerce
+   prerequisites are true, and the four unrelated safety flags are false.
+2. Establish the snapshot contract's exact runtime start guard, stop the
+   approved service, create and verify a fresh control-database snapshot, then
+   apply and validate the separately approved Welcome Coins schema migrations.
+3. While the same guarded service remains inactive, pass the preflight
+   environment identity to `welcome-coins:activation:apply`; provide the
+   approved digest through stdin only. The helper writes a same-directory
+   owner-preserving temporary file, fsyncs it, atomically renames it over
+   `.env`, fsyncs the parent directory, and rereads the pointer, environment,
+   and start-guard identity.
+4. Run `welcome-coins:activation:verify` with the returned post-write identity
+   before the single approved service start. A pre-publication failure leaves
+   the old `.env` in place. A post-publication uncertainty is
+   `attention_required`: leave the start guard in place and do not
+   automatically rewrite the configuration, restore the database, or restart.
+5. Only after an independent runtime and database readback may the exact
+   approved start-guard cleanup occur. A separate operator-controlled new
+   registration is required to prove the canary; an existing account is never
+   retroactively selected.
+
+The helper does not create a snapshot, apply schema, start or stop a service,
+move a release pointer, create an account, credit Coins, or alter ordinary
+Commerce, wallet-first, deferred runtime, shared nodes, Authority, setup
+delivery, payment, or fulfillment.
 
 ### Condition-Driven Promotion Health Window
 
