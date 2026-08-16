@@ -1,5 +1,18 @@
 # Multi-Channel Node Guard Implementation Plan
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: multi_channel_node_implementation_plan
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add repository-level guards so one physical edge node can own multiple logical subscription channels while retired or deprecated node labels cannot re-enter automatic portal issuance.

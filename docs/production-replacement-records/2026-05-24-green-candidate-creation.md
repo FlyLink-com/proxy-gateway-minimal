@@ -1,5 +1,17 @@
 # Production Replacement: Green Candidate Creation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: green_candidate_creation
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24 03:48-04:00 +08:00
 
 Branch: `ops/green-production-candidate-creation`

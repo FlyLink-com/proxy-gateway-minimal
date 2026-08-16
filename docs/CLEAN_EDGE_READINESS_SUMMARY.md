@@ -2,6 +2,17 @@
 
 Date: 2026-05-27, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: clean_edge_readiness_summary
+  superseded_by: null
+  last_verified_at: 2026-05-27
+  production_authority: false
+```
+
+
 ## Purpose
 
 `platform:clean-edge-readiness-summary` converts operator-provided clean edge

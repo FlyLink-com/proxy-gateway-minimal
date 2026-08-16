@@ -1,5 +1,17 @@
 # Edge Agent Protected Material Sync Approval Packet
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: edge_agent_protected_material_sync_approval_packet
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-11
 
 Risk: A

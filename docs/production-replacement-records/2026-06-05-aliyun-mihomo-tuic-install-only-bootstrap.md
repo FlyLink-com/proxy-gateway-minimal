@@ -1,5 +1,17 @@
 # Aliyun Mihomo TUIC Install-Only Bootstrap - 2026-06-05
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_mihomo_tuic_install_only_bootstrap
+  superseded_by: null
+  last_verified_at: 2026-06-05
+  production_authority: false
+```
+
+
 ## Scope
 
 Risk tier: A.

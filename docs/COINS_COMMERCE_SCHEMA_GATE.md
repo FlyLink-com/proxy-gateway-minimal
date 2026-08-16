@@ -1,5 +1,18 @@
 # Coins Commerce Schema Gate
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: source_only_coins_commerce_schema_gate
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 This is a source-only Risk A runbook for the additive Coins Commerce schema.
 It is not production authority, does not record a current deployment, and
 contains no production database path. Every production use requires a new,

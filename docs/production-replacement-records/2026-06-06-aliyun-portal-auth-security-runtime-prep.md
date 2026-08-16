@@ -1,5 +1,17 @@
 # 2026-06-06 Aliyun Portal Auth Security Runtime Prep
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_portal_auth_security_runtime_prep
+  superseded_by: null
+  last_verified_at: 2026-06-06
+  production_authority: false
+```
+
+
 ## Scope
 
 - Risk: A

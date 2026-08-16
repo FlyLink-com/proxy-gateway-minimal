@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-24, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: subscription_opaque_access_model_gap
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active gap record
 > - Risk: C for this document; A for production activation or endpoint

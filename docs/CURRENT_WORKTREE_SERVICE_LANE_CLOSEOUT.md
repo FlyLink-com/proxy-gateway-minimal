@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-09, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: current_worktree_service_lane_closeout
+  superseded_by: null
+  last_verified_at: 2026-06-09
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active closeout plan
 > - Risk: C for this document; B/A for the future code, runtime, or production

@@ -1,5 +1,17 @@
 # Traffic Usage SGP VLESS/TUIC Source Enable Fail-Closed
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_usage_sgp_vless_tuic_source_enable_fail_closed
+  superseded_by: null
+  last_verified_at: 2026-07-07
+  production_authority: false
+```
+
+
 Date: 2026-07-08 UTC
 
 Risk: A

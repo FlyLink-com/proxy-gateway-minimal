@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-09.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: channel_protocol_tuning_plan
+  superseded_by: null
+  last_verified_at: 2026-06-09
+  production_authority: false
+```
+
+
 This document records the repo-side plan for protocol-level tuning of the
 current multi-channel subscription bundle. It is not a production approval and
 does not authorize DNS, firewall, Nginx, systemd, runtime config, customer data,

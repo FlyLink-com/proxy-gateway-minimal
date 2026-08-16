@@ -1,5 +1,17 @@
 # Production Node Image Factory Closeout
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: production_node_image_factory_closeout
+  superseded_by: null
+  last_verified_at: 2026-06-14
+  production_authority: false
+```
+
+
 Date: 2026-06-14, Asia/Shanghai.
 
 ## Status

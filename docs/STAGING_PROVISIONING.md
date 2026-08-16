@@ -2,6 +2,17 @@
 
 Last updated: 2026-07-14, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: staging_provisioning_runbook
+  superseded_by: null
+  last_verified_at: 2026-07-14
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active conditional runbook with historical AWS resource examples
 > - Risk: A

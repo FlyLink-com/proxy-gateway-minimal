@@ -1,5 +1,17 @@
 # AppsFlyer Production Activation Read-Only Inventory
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: appsflyer_production_activation_readonly_inventory
+  superseded_by: null
+  last_verified_at: 2026-07-08
+  production_authority: false
+```
+
+
 Date: 2026-07-08, Asia/Shanghai.
 
 ## Status

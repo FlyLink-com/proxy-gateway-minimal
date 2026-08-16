@@ -1,5 +1,17 @@
 # Control Plane Node Registration Exact Approval Readiness
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: control_plane_node_registration_exact_approval_readiness
+  superseded_by: null
+  last_verified_at: 2026-06-14
+  production_authority: false
+```
+
+
 Date: 2026-06-14, Asia/Shanghai.
 
 ## Status

@@ -2,6 +2,16 @@
 
 Last updated: 2026-06-08, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: edge_node_build_materials
+  superseded_by: null
+  last_verified_at: 2026-06-08
+  production_authority: false
+```
+
 > Status:
 > - Type: Repo-only build materials
 > - Risk: A

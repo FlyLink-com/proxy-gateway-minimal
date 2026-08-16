@@ -1,5 +1,18 @@
 # 2026-07-08 PR Closeout Queue
 
+Last updated: 2026-07-08.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: pr_closeout_queue_2026_07_08
+  superseded_by: null
+  last_verified_at: 2026-07-08
+  production_authority: false
+```
+
+
 > Status: Historical repo-only queue; superseded as the current Git/docs queue
 > by `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`
 > Risk: C

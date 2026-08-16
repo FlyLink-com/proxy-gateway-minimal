@@ -1,5 +1,17 @@
 # Traffic Usage Hysteria2 Mapping Reconcile Execution
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_usage_hy2_mapping_reconcile_execution
+  superseded_by: null
+  last_verified_at: 2026-07-07
+  production_authority: false
+```
+
+
 Date: 2026-07-07 UTC
 
 Risk: A

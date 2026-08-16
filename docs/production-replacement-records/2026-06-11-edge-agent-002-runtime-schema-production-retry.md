@@ -1,5 +1,17 @@
 # Edge-Agent 002 Runtime/Schema Production Retry
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: edge_agent_002_runtime_schema_production_retry
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-11, Asia/Shanghai.
 
 Risk: A production control-plane runtime/schema gate.

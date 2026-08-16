@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-02, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: project_package_boundary
+  superseded_by: null
+  last_verified_at: 2026-06-02
+  production_authority: false
+```
+
+
 This document defines the two package lanes used by this repository:
 
 ```text

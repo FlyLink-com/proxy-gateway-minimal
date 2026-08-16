@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-13, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: control_plane_node_registration_closeout
+  superseded_by: null
+  last_verified_at: 2026-06-13
+  production_authority: false
+```
+
+
 ## Status
 
 - Type: current closeout plan

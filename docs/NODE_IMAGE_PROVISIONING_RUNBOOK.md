@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-13, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: node_image_provisioning_runbook
+  superseded_by: null
+  last_verified_at: 2026-06-13
+  production_authority: false
+```
+
+
 This runbook defines how to use machine images, snapshots, or AMIs to prepare
 new production data-plane nodes for `proxy-gateway-minimal`. It is an
 operations plan only. It does not authorize host creation, provider mutation,

@@ -1,5 +1,15 @@
 # Aliyun Subscription Control Platform MVP Goal Plan
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: historical
+  authority_scope: goals_2026_05_26_aliyun_subscription_control_platform_mvp
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development or superpowers:executing-plans for
 > implementation PRs that execute tasks from this goal. Steps use checkbox

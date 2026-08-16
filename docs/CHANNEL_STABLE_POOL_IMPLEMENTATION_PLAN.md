@@ -1,5 +1,18 @@
 # Stable Pool Protocol Implementation Plan
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: stable_pool_protocol_implementation_plan
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Restore the default user subscription path to approved stable TCP capacity, now anchored on VLESS Reality/TCP or another explicitly approved TCP runtime. Keep TUIC, Hysteria2, HTTP/3, and VLESS/XUDP behind explicit canary, weak-network, or private assignment gates until they pass their runtime gates. Shadowsocks is legacy-only and must not be restored as the default production channel.

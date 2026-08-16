@@ -1,5 +1,17 @@
 # Aliyun Subscription-Control Candidate Preparation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_sub_control_candidate_preparation
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
+
 Date: 2026-05-26
 
 Risk: A

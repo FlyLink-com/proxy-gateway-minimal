@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-25, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: server_edge_mesh_design
+  superseded_by: null
+  last_verified_at: 2026-05-25
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active design proposal
 > - Risk: C for this document, A for any server mesh creation, WireGuard

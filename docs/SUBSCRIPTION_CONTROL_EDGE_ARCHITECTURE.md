@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-26, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: subscription_control_edge_split_architecture
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active architecture design
 > - Risk: C for this document; A for any production control-plane split,

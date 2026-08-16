@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-15, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_ui_design_audit
+  superseded_by: null
+  last_verified_at: 2026-06-15
+  production_authority: false
+```
+
+
 > Status:
 > - Linear: GCC-43 under GCC-42
 > - Risk: C for this audit document; follow-up UI/code work is B

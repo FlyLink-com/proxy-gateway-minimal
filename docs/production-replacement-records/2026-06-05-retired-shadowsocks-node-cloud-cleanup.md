@@ -1,5 +1,17 @@
 # Retired Shadowsocks Node Cloud Cleanup - 2026-06-05
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: retired_shadowsocks_node_cloud_cleanup
+  superseded_by: null
+  last_verified_at: 2026-06-05
+  production_authority: false
+```
+
+
 ## Scope
 
 Risk tier: A.

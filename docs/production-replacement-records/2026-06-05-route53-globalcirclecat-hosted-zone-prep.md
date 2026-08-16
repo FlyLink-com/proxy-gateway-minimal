@@ -1,5 +1,17 @@
 # 2026-06-05 Route 53 globalcirclecat.com Hosted Zone Preparation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: route53_globalcirclecat_hosted_zone_prep
+  superseded_by: null
+  last_verified_at: 2026-06-05
+  production_authority: false
+```
+
+
 ## Scope
 
 - Risk tier: A.

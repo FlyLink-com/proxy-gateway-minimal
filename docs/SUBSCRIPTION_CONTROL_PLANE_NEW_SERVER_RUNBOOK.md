@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-01, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: subscription_control_plane_new_server_runbook
+  superseded_by: null
+  last_verified_at: 2026-06-01
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active Risk A runbook
 > - Risk: A

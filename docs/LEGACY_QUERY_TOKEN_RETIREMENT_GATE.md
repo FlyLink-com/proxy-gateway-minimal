@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-15, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: legacy_query_token_retirement_gate
+  superseded_by: null
+  last_verified_at: 2026-06-15
+  production_authority: false
+```
+
+
 > Risk: B for this repository inventory, guard test, and runbook update.
 > Production retirement remains Risk A and requires a separate exact approval.
 > Production impact: none. This document does not authorize runtime, database,

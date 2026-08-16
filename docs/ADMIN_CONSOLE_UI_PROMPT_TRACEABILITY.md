@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-21, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_ui_prompt_traceability
+  superseded_by: null
+  last_verified_at: 2026-06-21
+  production_authority: false
+```
+
+
 > Status:
 > - Risk: C for this prompt traceability document; follow-up Admin UI code work
 >   is B unless it touches auth, schema, runtime, or production gates.

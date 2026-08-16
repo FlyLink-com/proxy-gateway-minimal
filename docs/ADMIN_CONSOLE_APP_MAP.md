@@ -2,6 +2,17 @@
 
 Last updated: 2026-08-09, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_app_map
+  superseded_by: null
+  last_verified_at: 2026-08-09
+  production_authority: false
+```
+
+
 > Status:
 > - Linear: GCC-74 under GCC-81 / GCC-42
 > - Type: Control-plane application map and System Search source

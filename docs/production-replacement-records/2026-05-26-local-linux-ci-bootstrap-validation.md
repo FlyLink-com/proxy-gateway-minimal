@@ -1,5 +1,17 @@
 # Local Linux Manual CI Bootstrap And Validation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: local_linux_ci_bootstrap_validation
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
+
 Date: 2026-05-26, Asia/Shanghai.
 
 > Status:

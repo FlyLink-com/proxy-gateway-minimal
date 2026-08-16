@@ -1,11 +1,17 @@
 #!/usr/bin/env node
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const DEFAULT_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SEARCH_DIRECTORIES = ["docs", "ops"];
-const EXCLUDED_DIRECTORIES = new Set([".git", ".worktrees", "node_modules"]);
+const EXCLUDED_DIRECTORIES = new Set([
+  ".git",
+  ".worktrees",
+  "node_modules",
+  "archive",
+  "superpowers"
+]);
 const REQUIRED_FIELDS = [
   "doc_type",
   "lifecycle",
@@ -24,12 +30,6 @@ function normalizedRepoPath(path) {
 
 function listMarkdownFiles(rootDir) {
   const paths = [];
-
-  for (const entry of readdirSync(rootDir, { withFileTypes: true })) {
-    if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
-      paths.push(entry.name);
-    }
-  }
 
   function walk(relativeDir) {
     const fullDir = join(rootDir, relativeDir);
@@ -68,12 +68,15 @@ function unquote(value) {
 
 function parseMetadata(text, path, errors) {
   const lines = text.split(/\r?\n/);
-  const markerIndex = lines
+  const markerCandidate = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => line.trim() !== "")
     .slice(0, 40)
-    .findIndex((line) => line.trim() === "document_metadata:");
-  if (markerIndex < 0) {
-    return null;
+    .find(({ line }) => line.trim() === "document_metadata:");
+  if (!markerCandidate) {
+    return { fields: null, foundMarker: false };
   }
+  const markerIndex = markerCandidate.index;
 
   let fenceStart = markerIndex - 1;
   while (fenceStart >= 0 && lines[fenceStart].trim() === "") {
@@ -81,7 +84,7 @@ function parseMetadata(text, path, errors) {
   }
   if (fenceStart < 0 || lines[fenceStart].trim() !== "```yaml") {
     errors.push(`${path}:${markerIndex + 1}: document_metadata must be in a top-level yaml fence`);
-    return null;
+    return { fields: null, foundMarker: true };
   }
 
   const fenceEnd = lines.findIndex(
@@ -89,7 +92,7 @@ function parseMetadata(text, path, errors) {
   );
   if (fenceEnd < 0) {
     errors.push(`${path}:${markerIndex + 1}: document_metadata yaml fence is not closed`);
-    return null;
+    return { fields: null, foundMarker: true };
   }
 
   const fields = {};
@@ -121,7 +124,7 @@ function parseMetadata(text, path, errors) {
       errors.push(`${path}: unsupported document_metadata field ${field}`);
     }
   }
-  return fields;
+  return { fields, foundMarker: true };
 }
 
 function isValidDate(value) {
@@ -137,8 +140,15 @@ function checkSupersededBy(rootDir, path, fields, errors) {
   if (value === undefined) {
     return;
   }
-  if (fields.lifecycle === "deprecated" && value === "null") {
-    errors.push(`${path}: deprecated lifecycle requires superseded_by`);
+  if (fields.lifecycle === "deprecated") {
+    if (value === "null") {
+      errors.push(`${path}: deprecated lifecycle requires superseded_by`);
+      return;
+    }
+  } else if (value !== "null") {
+    errors.push(
+      `${path}: ${fields.lifecycle} lifecycle requires superseded_by null`
+    );
     return;
   }
   if (value === "null") {
@@ -154,8 +164,10 @@ function checkSupersededBy(rootDir, path, fields, errors) {
     errors.push(`${path}: superseded_by must stay inside the repository`);
     return;
   }
-  if (!existsSync(fullPath)) {
-    errors.push(`${path}: superseded_by path does not exist: ${value}`);
+  if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
+    errors.push(
+      `${path}: superseded_by path must resolve to an existing file: ${value}`
+    );
   }
 }
 
@@ -185,6 +197,15 @@ function validateMetadata(rootDir, path, fields, errors) {
   ) {
     errors.push(`${path}: production_authority must be true or false`);
   }
+  if (
+    fields.authority_scope !== undefined &&
+    fields.authority_scope.startsWith("source_only_") &&
+    fields.production_authority !== "false"
+  ) {
+    errors.push(
+      `${path}: source_only_ authority scopes require production_authority false`
+    );
+  }
   checkSupersededBy(rootDir, path, fields, errors);
 }
 
@@ -213,11 +234,24 @@ function checkDuplicateCanonicalScopes(records, errors) {
 
 export function checkDocumentAuthority(options = {}) {
   const rootDir = resolve(options.rootDir ?? DEFAULT_ROOT);
+  if (!existsSync(rootDir) || !statSync(rootDir).isDirectory()) {
+    throw new Error(`root directory does not exist: ${rootDir}`);
+  }
+  const strictFiles = Boolean(options.strictFiles);
   const errors = [];
   const records = [];
+  const ungovernedFiles = [];
 
   for (const path of listMarkdownFiles(rootDir)) {
-    const fields = parseMetadata(readFileSync(join(rootDir, path), "utf8"), path, errors);
+    const { fields, foundMarker } = parseMetadata(
+      readFileSync(join(rootDir, path), "utf8"),
+      path,
+      errors
+    );
+    if (!foundMarker) {
+      ungovernedFiles.push(path);
+      continue;
+    }
     if (!fields) {
       continue;
     }
@@ -225,6 +259,11 @@ export function checkDocumentAuthority(options = {}) {
     records.push({ path, fields });
   }
 
+  if (strictFiles) {
+    for (const path of ungovernedFiles) {
+      errors.push(`file lacks document_metadata: ${path}`);
+    }
+  }
   if (records.length === 0) {
     errors.push("no document_metadata blocks found");
   }
@@ -240,6 +279,7 @@ export function checkDocumentAuthority(options = {}) {
       lifecycle: record.fields.lifecycle,
       authorityScope: record.fields.authority_scope
     })),
+    ungovernedFiles,
     summary: ok
       ? `validated ${records.length} document metadata block(s) from ${relative(process.cwd(), rootDir) || "."}`
       : `document authority check failed with ${errors.length} error(s)`
@@ -251,15 +291,24 @@ function cliRoot(args) {
   if (rootIndex < 0) {
     return DEFAULT_ROOT;
   }
-  if (!args[rootIndex + 1]) {
+  const rootValue = args[rootIndex + 1];
+  if (!rootValue || rootValue.startsWith("--")) {
     throw new Error("--root requires a directory");
   }
-  return resolve(args[rootIndex + 1]);
+  return resolve(rootValue);
+}
+
+function cliStrictFiles(args) {
+  return args.includes("--strict-files");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const result = checkDocumentAuthority({ rootDir: cliRoot(process.argv.slice(2)) });
+    const argv = process.argv.slice(2);
+    const result = checkDocumentAuthority({
+      rootDir: cliRoot(argv),
+      strictFiles: cliStrictFiles(argv)
+    });
     if (result.ok) {
       console.log(result.summary);
     } else {

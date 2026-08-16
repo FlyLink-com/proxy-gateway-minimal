@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-22, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_figma_mirror
+  superseded_by: null
+  last_verified_at: 2026-06-22
+  production_authority: false
+```
+
+
 > Status:
 > - Source Figma file:
 >   <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19>

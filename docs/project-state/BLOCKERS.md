@@ -2,6 +2,16 @@
 
 Last verified: 2026-07-15, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: blockers
+  superseded_by: null
+  last_verified_at: 2026-07-15
+  production_authority: false
+```
+
 > Status:
 > - Type: Blocker registry and template
 > - Risk: C

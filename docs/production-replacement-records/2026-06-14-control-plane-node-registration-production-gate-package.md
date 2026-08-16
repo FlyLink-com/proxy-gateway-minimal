@@ -1,5 +1,17 @@
 # Control Plane Node Registration Production Gate Package
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: control_plane_node_registration_production_gate_package
+  superseded_by: null
+  last_verified_at: 2026-06-14
+  production_authority: false
+```
+
+
 Date: 2026-06-14, Asia/Shanghai.
 
 ## Status

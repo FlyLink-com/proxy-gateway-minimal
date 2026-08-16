@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-22, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_visual_qa_ledger
+  superseded_by: null
+  last_verified_at: 2026-06-22
+  production_authority: false
+```
+
+
 > Status:
 > - Linear: GCC-68
 > - Type: Concept-to-implementation visual QA ledger

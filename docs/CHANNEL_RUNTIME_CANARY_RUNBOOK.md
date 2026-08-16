@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-01, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: channel_runtime_canary_runbook
+  superseded_by: null
+  last_verified_at: 2026-06-01
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active Risk A runbook and implementation gate
 > - Risk: A for runtime execution; C for this repository documentation change

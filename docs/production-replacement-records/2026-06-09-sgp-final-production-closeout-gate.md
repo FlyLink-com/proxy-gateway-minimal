@@ -1,5 +1,17 @@
 # SGP Final Production Closeout Gate
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: sgp_final_production_closeout_gate
+  superseded_by: null
+  last_verified_at: 2026-06-09
+  production_authority: false
+```
+
+
 Date: 2026-06-09, Asia/Shanghai.
 
 Risk tier: A for any server, runtime, DNS, Nginx, provider firewall, systemd,

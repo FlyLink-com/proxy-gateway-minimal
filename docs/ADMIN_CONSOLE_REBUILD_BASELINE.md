@@ -2,6 +2,17 @@
 
 Last updated: 2026-08-09, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_rebuild_baseline
+  superseded_by: null
+  last_verified_at: 2026-08-09
+  production_authority: false
+```
+
+
 > Status:
 > - Linear: GCC-42, GCC-45, GCC-48, GCC-50
 > - Risk: C for this design baseline; follow-up Admin UI code work is B

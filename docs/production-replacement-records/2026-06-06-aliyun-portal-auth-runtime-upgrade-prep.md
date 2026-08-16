@@ -1,5 +1,17 @@
 # Aliyun Portal Auth Runtime Upgrade Prep
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_portal_auth_runtime_upgrade_prep
+  superseded_by: null
+  last_verified_at: 2026-06-06
+  production_authority: false
+```
+
+
 Date: 2026-06-06 Asia/Shanghai.
 
 Risk tier: A.

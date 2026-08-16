@@ -2,6 +2,16 @@
 
 Date: 2026-05-24 03:32:32 +08:00
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: domain_implementation_records_2026_05_24_stage2_http_only_validation
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
 Branch: `ops/domain-stage2-http-validation`
 
 Base commit: `4ef5800f38a39c4cf46984594406ca829d65a7a1`

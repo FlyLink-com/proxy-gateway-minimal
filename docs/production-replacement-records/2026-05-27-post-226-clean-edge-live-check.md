@@ -1,5 +1,17 @@
 # Post-226 Clean Edge Live Check
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: post_226_clean_edge_live_check
+  superseded_by: null
+  last_verified_at: 2026-05-27
+  production_authority: false
+```
+
+
 Date: 2026-05-27, Asia/Shanghai.
 
 ## Status

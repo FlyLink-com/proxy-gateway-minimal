@@ -1,5 +1,17 @@
 # sub-control-a Candidate Read-Only Preflight
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: sub_control_a_candidate_readonly_preflight
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
+
 Date: 2026-05-26, Asia/Shanghai.
 
 ## Scope

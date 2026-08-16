@@ -1,5 +1,17 @@
 # Japan Traffic Usage Collector Admin Auth Env Sync
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: japan_traffic_usage_collector_admin_auth_env_sync
+  superseded_by: null
+  last_verified_at: 2026-07-08
+  production_authority: false
+```
+
+
 Date: 2026-07-08 America/Los_Angeles
 
 Risk: A

@@ -2,6 +2,17 @@
 
 Date: 2026-05-24, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: production_incident_records_2026_05_24_legacy_blue_connectivity_review
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Read-only production incident and lifecycle decision record
 > - Risk: A

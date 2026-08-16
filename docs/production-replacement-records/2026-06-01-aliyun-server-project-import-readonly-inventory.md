@@ -1,5 +1,17 @@
 # Aliyun Server Project Import Read-Only Inventory
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_server_project_import_readonly_inventory
+  superseded_by: null
+  last_verified_at: 2026-06-01
+  production_authority: false
+```
+
+
 Date: 2026-06-01, Asia/Shanghai.
 
 Risk:

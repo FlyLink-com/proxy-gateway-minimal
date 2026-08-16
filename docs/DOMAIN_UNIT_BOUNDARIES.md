@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-25, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: domain_unit_boundaries
+  superseded_by: null
+  last_verified_at: 2026-05-25
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active architecture boundary
 > - Risk: C for this document

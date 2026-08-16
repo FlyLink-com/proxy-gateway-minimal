@@ -1,5 +1,17 @@
 # Aliyun Local Edge Lifecycle Production Gate Draft
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_local_edge_lifecycle_production_gate_draft
+  superseded_by: null
+  last_verified_at: 2026-06-05
+  production_authority: false
+```
+
+
 Date: 2026-06-05, Asia/Shanghai
 
 Risk: A

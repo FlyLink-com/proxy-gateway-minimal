@@ -1,5 +1,17 @@
 # traffic-usage-sgp-tuic-per-credential readonly investigation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_usage_sgp_tuic_per_credential_readonly_investigation
+  superseded_by: null
+  last_verified_at: 2026-07-08
+  production_authority: false
+```
+
+
 Date: 2026-07-08 UTC
 Risk: A readonly investigation
 

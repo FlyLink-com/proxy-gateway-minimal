@@ -1,5 +1,17 @@
 # HP Portal Validation Read-Only Inventory
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: hp_portal_validation_readonly_inventory
+  superseded_by: null
+  last_verified_at: 2026-05-31
+  production_authority: false
+```
+
+
 Date: 2026-05-31, Asia/Shanghai.
 
 ## Scope

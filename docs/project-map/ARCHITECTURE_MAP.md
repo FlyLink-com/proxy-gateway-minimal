@@ -2,6 +2,16 @@
 
 Last verified: 2026-07-15, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: architecture_map
+  superseded_by: null
+  last_verified_at: 2026-07-15
+  production_authority: false
+```
+
 > Status:
 > - Type: Source-aligned logical architecture map
 > - Risk: C

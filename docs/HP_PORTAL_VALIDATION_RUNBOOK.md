@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-01, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: hp_portal_validation_runbook
+  superseded_by: null
+  last_verified_at: 2026-06-01
+  production_authority: false
+```
+
+
 > Status:
 > - Type: private validation runbook
 > - Risk: C for this document; A for any HP host mutation, deployment,

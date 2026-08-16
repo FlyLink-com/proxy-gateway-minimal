@@ -1,5 +1,18 @@
 # Source And Production Reconciliation - 2026-07-08
 
+Last updated: 2026-07-08.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: source_production_reconciliation_2026_07_08
+  superseded_by: null
+  last_verified_at: 2026-07-08
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Historical reconciliation and archive queue; superseded as the
 >   current Git/docs queue by

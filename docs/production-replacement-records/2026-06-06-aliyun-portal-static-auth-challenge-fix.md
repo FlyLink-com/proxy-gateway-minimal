@@ -1,5 +1,17 @@
 # 2026-06-06 Aliyun Portal Static Auth Challenge Fix
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_portal_static_auth_challenge_fix
+  superseded_by: null
+  last_verified_at: 2026-06-06
+  production_authority: false
+```
+
+
 ## Scope
 
 - Risk: A

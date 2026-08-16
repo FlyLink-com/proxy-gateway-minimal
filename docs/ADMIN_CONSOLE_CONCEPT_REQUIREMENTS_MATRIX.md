@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-15, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_concept_requirements_matrix
+  superseded_by: null
+  last_verified_at: 2026-06-15
+  production_authority: false
+```
+
+
 > Status:
 > - Source: `docs/assets/admin-console/new-admin-console-rebuild-concept.png`
 > - Risk: C for this requirements matrix; follow-up Admin UI code work is B

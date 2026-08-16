@@ -1,5 +1,17 @@
 # Legacy Blue Stop Record
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: legacy_blue_stop
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24 Asia/Shanghai
 
 ## Scope

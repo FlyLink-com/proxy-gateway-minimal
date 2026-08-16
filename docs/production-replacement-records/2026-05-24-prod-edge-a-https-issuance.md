@@ -1,5 +1,17 @@
 # Production Replacement: prod-edge-a HTTPS Issuance
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: prod_edge_a_https_issuance
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24 22:12-22:16 +08:00
 
 Branch: `ops/prod-edge-a-https-issuance`

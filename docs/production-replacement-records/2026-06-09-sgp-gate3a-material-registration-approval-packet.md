@@ -1,5 +1,17 @@
 # SGP Gate 3A Material Registration Approval Packet
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: sgp_gate3a_material_registration_approval_packet
+  superseded_by: null
+  last_verified_at: 2026-06-09
+  production_authority: false
+```
+
+
 Date: 2026-06-09, Asia/Shanghai.
 
 Risk tier: A production protected-material registration.

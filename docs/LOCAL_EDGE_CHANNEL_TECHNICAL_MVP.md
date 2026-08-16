@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-27, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: local_edge_channel_technical_mvp
+  superseded_by: null
+  last_verified_at: 2026-05-27
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active technical MVP design
 > - Risk: C for this document, B for repository-only prototypes, A for any

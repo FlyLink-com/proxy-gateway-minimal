@@ -1,5 +1,17 @@
 # CLI Preproduction Subscription Issuance
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: cli_preproduction_subscription_issuance
+  superseded_by: null
+  last_verified_at: 2026-05-28
+  production_authority: false
+```
+
+
 Date: 2026-05-28, Asia/Shanghai.
 
 ## Summary

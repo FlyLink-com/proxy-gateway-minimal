@@ -2,6 +2,17 @@
 
 Date: 2026-06-01, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: server_import_manifest_2026_06_01
+  superseded_by: null
+  last_verified_at: 2026-06-01
+  production_authority: false
+```
+
+
 Risk:
 
 ```text
