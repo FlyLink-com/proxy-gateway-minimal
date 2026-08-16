@@ -60,7 +60,7 @@ test("CI keeps one stable Validate job, always checks the exact diff, and skips 
     validate.indexOf("\n      - name:", authorityStepStart + 1)
   );
   assert.match(authorityStep, /^\s*if: always\(\)/m);
-  assert.match(authorityStep, /npm run docs:authority:check/);
+  assert.match(authorityStep, /npm run docs:authority:strict/);
   assert.match(workflow, /permissions:\r?\n  contents: read/);
 });
 
