@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-21, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_frontend_structure_blueprint
+  superseded_by: null
+  last_verified_at: 2026-06-21
+  production_authority: false
+```
+
+
 > Status:
 > - Linear: GCC-73 under GCC-42
 > - Risk: C for this Phase 1 structure blueprint; follow-up React implementation

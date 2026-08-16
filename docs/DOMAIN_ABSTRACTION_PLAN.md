@@ -1,5 +1,18 @@
 # DNS / Domain Abstraction Plan
 
+Last updated: 2026-05-24, Asia/Shanghai.
+
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: dns_domain_abstraction_plan
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active planning document
 > - Risk: A

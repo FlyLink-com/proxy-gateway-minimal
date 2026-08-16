@@ -2,6 +2,17 @@
 
 Last updated: 2026-07-24, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: commercial_model_v1
+  superseded_by: null
+  last_verified_at: 2026-07-24
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active commercial-model baseline
 > - Stage: Controlled Beta and Paid Pilot preparation

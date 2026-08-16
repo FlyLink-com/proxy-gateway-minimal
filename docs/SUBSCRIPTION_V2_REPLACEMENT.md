@@ -1,5 +1,18 @@
 # Subscription V2 Replacement Design
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: subscription_v2_replacement_design
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active production contract and closeout record
 > - Risk: C for this document, B for code implementation, A for production

@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-21, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_navigation_ia
+  superseded_by: null
+  last_verified_at: 2026-06-21
+  production_authority: false
+```
+
+
 > Status:
 > - Linear: GCC-57 under GCC-50
 > - Risk: C for this IA document; follow-up Admin UI code work is B

@@ -2,6 +2,17 @@
 
 Last updated: 2026-07-28.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: user_portal_flow
+  superseded_by: null
+  last_verified_at: 2026-07-28
+  production_authority: false
+```
+
+
 This document is the review baseline for the customer-facing portal flow. It
 exists to keep product outline, page copy, component behavior, tests, and future
 backend/API work aligned before additional UI changes are made.

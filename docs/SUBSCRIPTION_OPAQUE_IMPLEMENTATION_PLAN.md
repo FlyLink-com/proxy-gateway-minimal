@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-24, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: subscription_opaque_artifact_implementation_plan
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active implementation plan / implementation checklist
 > - Risk: B for repository implementation; A for production activation

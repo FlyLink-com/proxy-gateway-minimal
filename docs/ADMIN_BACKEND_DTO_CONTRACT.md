@@ -2,6 +2,17 @@
 
 Last updated: 2026-08-09, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_backend_dto_contract
+  superseded_by: null
+  last_verified_at: 2026-08-09
+  production_authority: false
+```
+
+
 > Status:
 > - Type: GCC-101 / GCC-112 backend contract design.
 > - Risk: C while this remains docs-only.

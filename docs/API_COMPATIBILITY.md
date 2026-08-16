@@ -1,5 +1,18 @@
 # API Compatibility
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: api_compatibility
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 Phase 1 keeps the existing `proxy-gateway-minimal` API surface stable.
 
 Core/public routes:

@@ -2,6 +2,17 @@
 
 Last updated: 2026-07-24, UTC.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: vultr_japan_control_data_plane_status
+  superseded_by: null
+  last_verified_at: 2026-07-24
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active docs/status baseline
 > - Risk: C for this document; A for any Vultr, DNS, Nginx, systemd, firewall,

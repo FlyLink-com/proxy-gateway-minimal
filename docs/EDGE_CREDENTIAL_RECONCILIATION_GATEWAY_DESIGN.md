@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-05, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: edge_credential_reconciliation_gateway_design
+  superseded_by: null
+  last_verified_at: 2026-06-05
+  production_authority: false
+```
+
+
 ## Purpose
 
 This document defines the repo-only design for an edge credential

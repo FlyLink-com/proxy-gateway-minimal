@@ -2,6 +2,17 @@
 
 Last updated: 2026-07-11, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: infrastructure_access_rule
+  superseded_by: null
+  last_verified_at: 2026-07-11
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active infrastructure-access governance rule
 > - Risk: C for this documentation baseline; every real provider access remains Risk A

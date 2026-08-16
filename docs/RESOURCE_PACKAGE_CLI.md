@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-28, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: resource_package_cli
+  superseded_by: null
+  last_verified_at: 2026-05-28
+  production_authority: false
+```
+
+
 This document defines the repository-local resource package CLI. A resource
 package is an operator-safe delivery summary for one customer/account access
 grant plus optional channel activation evidence. It is the preferred CLI-first

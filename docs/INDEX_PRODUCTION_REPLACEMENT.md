@@ -1,5 +1,18 @@
 # Production Replacement Index
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: production_replacement_index
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 ## Current Vultr Runtime Records
 
 | Document | Purpose | Status | When to read |

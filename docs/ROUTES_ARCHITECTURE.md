@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-24, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: routes_architecture_audit
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active architecture audit
 > - Risk: C

@@ -1,5 +1,18 @@
 # Domain Routing Matrix
 
+Last updated: 2026-06-17, America/Los_Angeles.
+
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: domain_routing_matrix
+  superseded_by: null
+  last_verified_at: 2026-06-17
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active planning document
 > - Risk: C for this document only; DNS/runtime execution remains Risk A

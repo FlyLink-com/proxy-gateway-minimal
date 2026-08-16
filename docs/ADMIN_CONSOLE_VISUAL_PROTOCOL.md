@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-18, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_visual_protocol
+  superseded_by: null
+  last_verified_at: 2026-06-18
+  production_authority: false
+```
+
+
 > Status:
 > - Linear: GCC-82 under GCC-81 / GCC-42
 > - Type: Phase 4 Gate 0 visual protocol and coordinate system

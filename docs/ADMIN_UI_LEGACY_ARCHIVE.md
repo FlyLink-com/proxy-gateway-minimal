@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-15, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: admin_ui_legacy_archive
+  superseded_by: null
+  last_verified_at: 2026-06-15
+  production_authority: false
+```
+
+
 This document archives the existing `admin/` application as a legacy local
 protected reference surface. The original 2026-06-08 archive decision did not
 move, delete, deploy, expose, or replace any code.

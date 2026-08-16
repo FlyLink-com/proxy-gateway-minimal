@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-02, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: production_input_package_format
+  superseded_by: null
+  last_verified_at: 2026-06-02
+  production_authority: false
+```
+
+
 This document defines the non-secret import format for deploying this project
 as a full subscription-control package plus optional edge-node package inputs.
 It is a template contract only. It does not authorize production deployment,

@@ -1,5 +1,18 @@
 # Channel Strategy Engine
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: channel_strategy_engine
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active repository contract
 > - Risk: B for repository code and tests; A for runtime activation

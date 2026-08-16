@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-18, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_ui_github_reference_study
+  superseded_by: null
+  last_verified_at: 2026-06-18
+  production_authority: false
+```
+
+
 > Status:
 > - Linear: GCC-49 under GCC-42
 > - Risk: C for this reference study; follow-up UI/code work is B

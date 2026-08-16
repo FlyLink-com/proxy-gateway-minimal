@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-26, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_control_local_ci_rebuild_plan
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Superseded historical planning document
 > - Risk: C for this document; A for any production, cloud, DNS, Nginx,

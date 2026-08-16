@@ -2,6 +2,17 @@
 
 Last updated: 2026-08-08.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: account_resource_authority_lifecycle
+  superseded_by: null
+  last_verified_at: 2026-08-08
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Source implementation and Risk A runbook
 > - Risk: A (schema, Commerce eligibility, and fulfillment-target lifecycle)

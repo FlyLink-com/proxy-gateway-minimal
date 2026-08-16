@@ -2,6 +2,17 @@
 
 Last updated: 2026-07-11, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: environment_topology
+  superseded_by: null
+  last_verified_at: 2026-07-11
+  production_authority: false
+```
+
+
 This document defines the operating map for the subscription management
 project. Use it to avoid mixing local Codex projects, historical repository
 copies, GitHub branches, Cloudflare public-site builds, Vultr production

@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-24, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: node_naming_policy
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active policy
 > - Risk: C for this document; A for runtime node identity migrations

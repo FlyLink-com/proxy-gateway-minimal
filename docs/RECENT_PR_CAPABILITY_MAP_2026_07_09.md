@@ -1,5 +1,18 @@
 # Recent PR Capability Map - 2026-07-09
 
+Last updated: 2026-07-09.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: recent_pr_capability_map_2026_07_09
+  superseded_by: null
+  last_verified_at: 2026-07-09
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Dated source/capability/release traceability snapshot
 > - Risk: C

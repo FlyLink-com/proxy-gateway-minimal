@@ -2,6 +2,17 @@
 
 Date: 2026-05-27
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: access_model_inventory_summary
+  superseded_by: null
+  last_verified_at: 2026-05-27
+  production_authority: false
+```
+
+
 ## Status
 
 ```text

@@ -1,5 +1,18 @@
 # Production Disaster Recovery Runbook
 
+Last updated: 2026-06-01, Asia/Shanghai.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: production_disaster_recovery_runbook
+  superseded_by: null
+  last_verified_at: 2026-06-01
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Historical AWS runbook (superseded)
 > - Risk: A for any future provider action

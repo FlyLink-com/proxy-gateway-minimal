@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-15, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: admin_case_workbench_backend_contract_audit
+  superseded_by: null
+  last_verified_at: 2026-06-15
+  production_authority: false
+```
+
+
 > Status:
 > - Linear: GCC-54
 > - Risk: C for this read-only audit

@@ -1,5 +1,18 @@
 # Migration Notes
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: migration_notes
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 Phase 1 modularizes the backend without changing the Windows proxy chain.
 
 Preserved runtime contract:

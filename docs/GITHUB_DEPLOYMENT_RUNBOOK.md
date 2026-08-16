@@ -2,6 +2,17 @@
 
 Last updated: 2026-08-15, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: github_deployment_runbook
+  superseded_by: null
+  last_verified_at: 2026-08-15
+  production_authority: false
+```
+
+
 This runbook defines the repository-owned GitHub deployment foundation for
 `proxy-gateway-minimal`. It is not a production approval. Production host,
 Nginx, systemd, firewall, data-plane runtime, DNS, schema, or protected material

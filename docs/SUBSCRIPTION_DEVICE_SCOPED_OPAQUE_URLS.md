@@ -1,5 +1,18 @@
 # Device-Scoped Opaque Subscription URLs
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: device_scoped_opaque_subscription_urls
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active design contract
 > - Risk: C for this document, B for code implementation, A for production

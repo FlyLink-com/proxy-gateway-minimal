@@ -1,5 +1,18 @@
 # Local Edge Agent Design
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: local_edge_agent_design
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active design proposal and repository prototype reference
 > - Risk: C for this document, B for repository prototypes, A for production

@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-08, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: multi_channel_node_design
+  superseded_by: null
+  last_verified_at: 2026-06-08
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active design contract
 > - Risk: C for this document, B for repository policy and renderer tests,
