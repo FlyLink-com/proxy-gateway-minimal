@@ -5,13 +5,13 @@
 
 [English](README_EN.md) | [文档索引](docs/README.md)
 
-> CI 徽章反映最近一次推送到 `master` 的 workflow 执行结果。仅改动 Markdown
-> 的推送会被 `scripts/ci-change-classifier.mjs` 归类为 **docs-only lane**,
+> CI 徽章反映最近一次推送到 `master` 的工作流执行结果。仅改动 Markdown
+> 的推送会被 `scripts/ci-change-classifier.mjs` 归类为 **docs-only 任务**,
 > 跳过依赖安装、服务端 / 管理端测试、管理端 / 公开站点构建,以及站点
-> 验证 / dry-run;该 lane 只运行 `git diff --check`、`npm run
-> docs:authority:strict`,以及 `Governance evidence` 步骤。docs-only
-> lane 下的"绿色"徽章只表示文档与治理门禁通过,并不代表应用测试或
-> 构建被执行。完整 lane 合同见
+> 验证 / dry-run 检查。该任务只运行 `git diff --check`、`npm run
+> docs:authority:strict`,以及 `Governance evidence` 检查。
+> docs-only 任务下的“绿色”徽章只表示文档与治理门禁通过,并不代表
+> 应用测试或构建被执行。完整任务合同见
 > [`docs/VALIDATION_BASELINE.md`](docs/VALIDATION_BASELINE.md)。
 
 `proxy-gateway-minimal` 是一个订阅控制与交付项目。现在的主线不是

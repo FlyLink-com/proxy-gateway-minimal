@@ -1,6 +1,6 @@
 # Validation Baseline
 
-Last updated: 2026-07-15, America/Los_Angeles.
+Last updated: 2026-08-17, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: validation_baseline
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-17
   production_authority: false
 ```
 
