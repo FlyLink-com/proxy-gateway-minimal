@@ -111,6 +111,7 @@ is required, a new approval.
 Run:
 
 ```powershell
+npm run docs:authority:check
 npm run docs:authority:strict
 git diff --check origin/master...HEAD
 ```
@@ -121,6 +122,10 @@ Use for:
 - Runbook text changes with no execution.
 - Current-state or handoff updates.
 - Architecture docs that do not change code or external state.
+
+`npm run docs:authority:check` is the readable metadata-block validation
+entrypoint; the fail-closed `npm run docs:authority:strict` variant adds the
+scope-wide strict-files check that the hosted CI docs-only lane runs.
 
 Do not run app tests by default for C-tier docs-only work unless the doc change
 updates command contracts, generated examples, or validation tooling.

@@ -475,7 +475,7 @@ test("document authority strict mode fails when --root is followed by another fl
   ], { cwd: REPOSITORY_ROOT, encoding: "utf8" });
 
   assert.notEqual(result.status, 0, "strict mode must fail closed on malformed --root");
-  assert.match(result.stderr, /--root requires a directory/);
+    assert.match(result.stderr, /--root requires a non-empty directory/);
 });
 
 test("document authority strict mode fails on empty in-scope inventory", () => {
@@ -604,12 +604,14 @@ test("successor must not escape scope via dot-segment path", () => {
   const result = runAuthorityCheck(rootDir);
 
   assert.equal(result.status, 1, result.stderr);
-  // The path is canonicalized by join + relative before lookup, so the archive
-  // path is correctly rejected.
+  // Phase 1 rejects the dot-segment lexically (no join+relative normalization
+  // at Phase 2; the value must already be a canonical repository-relative
+  // path).
   assert.match(
     result.stderr,
-    /superseded_by must reference an in-scope governed Markdown file under docs\/ or ops\/: docs\/\.\.\/docs\/archive\/replacement\.md/
+    /superseded_by must be a canonical repository-relative path/
   );
+  assert.match(result.stderr, /docs\/\.\.\/docs\/archive\/replacement\.md/);
 });
 
 test("successor must not point at ungoverned Markdown target", () => {
@@ -701,6 +703,9 @@ test("successor must not point at a self-reference", () => {
 });
 
 test("successor must not point at a historical target", () => {
+  // Round-7 fixture: target is Phase-1-valid (historical + superseded_by null)
+  // so the cross-record check is what surfaces the lifecycle mismatch, not the
+  // Phase-1 pass.
   const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-historical-"));
   writeDoc(rootDir, "docs/source.md", {
     docType: "operational",
@@ -714,7 +719,7 @@ test("successor must not point at a historical target", () => {
     docType: "canonical",
     lifecycle: "historical",
     authorityScope: "succ_hist_target",
-    supersededBy: "docs/now.md",
+    supersededBy: "null",
     lastVerifiedAt: "2026-08-17",
     productionAuthority: "false"
   });
@@ -832,4 +837,367 @@ test("CLI accepts --root before --strict-files", () => {
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /validated 1 document metadata block/);
+});
+
+// =====================================================================
+// Round-7 lexical grammar and fail-closed successor contract tests
+// =====================================================================
+
+function writeLines(rootDir, path, lines) {
+  const fullPath = join(rootDir, path);
+  mkdirSync(dirname(fullPath), { recursive: true });
+  writeFileSync(fullPath, lines.join("\n") + "\n");
+}
+
+function buildValidBlock(overrides = {}) {
+  return {
+    docType: overrides.docType ?? "canonical",
+    lifecycle: overrides.lifecycle ?? "active",
+    authorityScope: overrides.authorityScope ?? "valid_scope",
+    supersededBy: overrides.supersededBy ?? "null",
+    lastVerifiedAt: overrides.lastVerifiedAt ?? "2026-08-17",
+    productionAuthority: overrides.productionAuthority ?? "false"
+  };
+}
+
+function blockLines(metadata, { fenceOpen, marker, fieldIndent, fenceClose } = {}) {
+  const open = fenceOpen ?? "```yaml";
+  const close = fenceClose ?? "```";
+  const markerLine = marker ?? "document_metadata:";
+  const indent = fieldIndent ?? "  ";
+  return [
+    open,
+    markerLine,
+    `${indent}doc_type: ${metadata.docType}`,
+    `${indent}lifecycle: ${metadata.lifecycle}`,
+    `${indent}authority_scope: ${metadata.authorityScope}`,
+    `${indent}superseded_by: ${metadata.supersededBy}`,
+    `${indent}last_verified_at: ${metadata.lastVerifiedAt}`,
+    `${indent}production_authority: ${metadata.productionAuthority}`,
+    close
+  ];
+}
+
+// Marker layout: indented and trailing-whitespace markers must be rejected via
+// the misplaced-marker diagnostic. Strict mode must NOT also fire
+// "file lacks document_metadata" because the parser still recognises the
+// record as containing a metadata block (it is the block layout that is
+// wrong, not the absence of the block).
+const markerLayoutCases = [
+  {
+    name: "indented marker with leading spaces",
+    mutate: (lines) => {
+      const idx = lines.indexOf("document_metadata:");
+      lines[idx] = "  document_metadata:";
+      return lines;
+    },
+    primary: /misplaced document_metadata marker/,
+    notMatch: /file lacks document_metadata/
+  },
+  {
+    name: "indented marker with leading tabs",
+    mutate: (lines) => {
+      const idx = lines.indexOf("document_metadata:");
+      lines[idx] = "\tdocument_metadata:";
+      return lines;
+    },
+    primary: /misplaced document_metadata marker/,
+    notMatch: /file lacks document_metadata/
+  },
+  {
+    name: "marker with trailing whitespace",
+    mutate: (lines) => {
+      const idx = lines.indexOf("document_metadata:");
+      lines[idx] = "document_metadata: ";
+      return lines;
+    },
+    primary: /misplaced document_metadata marker/,
+    notMatch: /file lacks document_metadata/
+  },
+  {
+    name: "marker with trailing tab",
+    mutate: (lines) => {
+      const idx = lines.indexOf("document_metadata:");
+      lines[idx] = "document_metadata:\t";
+      return lines;
+    },
+    primary: /misplaced document_metadata marker/,
+    notMatch: /file lacks document_metadata/
+  }
+];
+
+for (const { name, mutate, primary, notMatch } of markerLayoutCases) {
+  test(`marker layout rejects ${name}`, () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "document-authority-marker-layout-"));
+    const metadata = buildValidBlock({ authorityScope: "marker_layout" });
+    writeLines(rootDir, "docs/layout.md", blockLines(metadata));
+
+    const lines = readFileSync(join(rootDir, "docs/layout.md"), "utf8").split("\n");
+    const mutated = mutate(lines);
+    writeFileSync(join(rootDir, "docs/layout.md"), mutated.join("\n"));
+
+    const result = runAuthorityCheck(rootDir, { strictFiles: true });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, primary);
+    if (notMatch) {
+      assert.doesNotMatch(result.stderr, notMatch);
+    }
+  });
+}
+
+// Fence layout: opening and closing fences must appear at column 1 with no
+// surrounding whitespace. Indented or whitespace-padded fences must be
+// rejected; the strict-mode file-lacks-metadata path must not silently fire.
+const fenceLayoutCases = [
+  {
+    name: "indented opening fence",
+    mutate: (lines) => {
+      const idx = lines.indexOf("```yaml");
+      lines[idx] = " ```yaml";
+      return lines;
+    },
+    primary: /must be in a top-level yaml fence/,
+    notMatch: /file lacks document_metadata/
+  },
+  {
+    name: "opening fence with trailing whitespace",
+    mutate: (lines) => {
+      const idx = lines.indexOf("```yaml");
+      lines[idx] = "```yaml ";
+      return lines;
+    },
+    primary: /must be in a top-level yaml fence/,
+    notMatch: /file lacks document_metadata/
+  },
+  {
+    name: "opening fence with trailing tab",
+    mutate: (lines) => {
+      const idx = lines.indexOf("```yaml");
+      lines[idx] = "```yaml\t";
+      return lines;
+    },
+    primary: /must be in a top-level yaml fence/,
+    notMatch: /file lacks document_metadata/
+  },
+  {
+    name: "indented closing fence",
+    mutate: (lines) => {
+      const idx = lines.lastIndexOf("```");
+      lines[idx] = " ```";
+      return lines;
+    },
+    primary: /yaml fence is not closed/,
+    notMatch: /file lacks document_metadata/
+  },
+  {
+    name: "closing fence with trailing whitespace",
+    mutate: (lines) => {
+      const idx = lines.lastIndexOf("```");
+      lines[idx] = "``` ";
+      return lines;
+    },
+    primary: /yaml fence is not closed/,
+    notMatch: /file lacks document_metadata/
+  }
+];
+
+for (const { name, mutate, primary, notMatch } of fenceLayoutCases) {
+  test(`fence layout rejects ${name}`, () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "document-authority-fence-layout-"));
+    const metadata = buildValidBlock({ authorityScope: "fence_layout" });
+    writeLines(rootDir, "docs/layout.md", blockLines(metadata));
+
+    const lines = readFileSync(join(rootDir, "docs/layout.md"), "utf8").split("\n");
+    const mutated = mutate(lines);
+    writeFileSync(join(rootDir, "docs/layout.md"), mutated.join("\n"));
+
+    const result = runAuthorityCheck(rootDir, { strictFiles: true });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, primary);
+    if (notMatch) {
+      assert.doesNotMatch(result.stderr, notMatch);
+    }
+  });
+}
+
+// Field whitespace boundary: Tab indentation and 1-space / 3-space indentation
+// must be rejected before the value can be parsed.
+const fieldWhitespaceCases = [
+  {
+    name: "field indented with tab",
+    primary: /must use two ASCII spaces for indentation; tab is not accepted/,
+    notMatch: /unsupported document_metadata syntax/
+  },
+  {
+    name: "field indented with single ASCII space",
+    primary: /unsupported document_metadata syntax/,
+    notMatch: null
+  },
+  {
+    name: "field indented with three ASCII spaces",
+    primary: /unsupported document_metadata syntax/,
+    notMatch: null
+  },
+  {
+    name: "field without trailing newline-before-colon space",
+    primary: /unsupported document_metadata syntax/,
+    notMatch: /must use two ASCII spaces/
+  }
+];
+
+for (const { name, primary, notMatch } of fieldWhitespaceCases) {
+  test(`field whitespace boundary rejects ${name}`, () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "document-authority-field-ws-"));
+    const metadata = buildValidBlock({ authorityScope: "field_ws" });
+    const baseLines = blockLines(metadata);
+    if (name === "field indented with tab") {
+      baseLines[2] = "\tdoc_type: " + metadata.docType;
+    } else if (name === "field indented with single ASCII space") {
+      baseLines[2] = " doc_type: " + metadata.docType;
+    } else if (name === "field indented with three ASCII spaces") {
+      baseLines[2] = "   doc_type: " + metadata.docType;
+    } else if (name === "field without trailing newline-before-colon space") {
+      baseLines[2] = "  doc_type:" + metadata.docType;
+    }
+    writeLines(rootDir, "docs/fields.md", baseLines);
+
+    const result = runAuthorityCheck(rootDir, { strictFiles: true });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, primary);
+    if (notMatch) {
+      assert.doesNotMatch(result.stderr, notMatch);
+    }
+  });
+}
+
+// Empty / whitespace-only / flag-shaped --root values must be rejected by the
+// CLI parser before resolve() can collapse them to process.cwd().
+test("CLI parser rejects empty --root value", () => {
+  const result = spawnSync(
+    process.execPath,
+    [CHECKER, "--root", ""],
+    { cwd: REPOSITORY_ROOT, encoding: "utf8" }
+  );
+  assert.notEqual(result.status, 0, "empty --root must be rejected");
+  assert.match(result.stderr, /--root requires a non-empty directory/);
+});
+
+test("CLI parser rejects whitespace-only --root value", () => {
+  const result = spawnSync(
+    process.execPath,
+    [CHECKER, "--root", "   "],
+    { cwd: REPOSITORY_ROOT, encoding: "utf8" }
+  );
+  assert.notEqual(result.status, 0, "blank --root must be rejected");
+  assert.match(result.stderr, /--root requires a non-empty directory/);
+});
+
+// Canonical successor path: lexically reject every shape that is not a
+// canonical repository-relative path. Each test uses a Phase-1-valid
+// canonical target so the only error surfaced is the successor-shape error.
+const canonicalPathCases = [
+  {
+    name: "backslash separator",
+    target: "docs\\replacement.md"
+  },
+  {
+    name: "absolute path",
+    target: "/etc/replacement.md"
+  },
+  {
+    name: "Windows drive path",
+    target: "C:/docs/replacement.md"
+  },
+  {
+    name: "leading slash path",
+    target: "/docs/replacement.md"
+  },
+  {
+    name: "empty segment",
+    target: "docs//replacement.md"
+  },
+  {
+    name: "current-directory segment",
+    target: "docs/./replacement.md"
+  },
+  {
+    name: "parent-directory segment",
+    target: "docs/../docs/replacement.md"
+  }
+];
+
+for (const { name, target } of canonicalPathCases) {
+  test(`canonical successor rejects ${name}`, () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "document-authority-canonical-path-"));
+    writeDoc(rootDir, "docs/source.md", {
+      docType: "operational",
+      lifecycle: "deprecated",
+      authorityScope: `canon_${name.replace(/[^a-z0-9]/gi, "_")}`,
+      supersededBy: target,
+      lastVerifiedAt: "2026-08-17",
+      productionAuthority: "false"
+    });
+    writeDoc(rootDir, "docs/replacement.md", {
+      docType: "canonical",
+      lifecycle: "active",
+      authorityScope: `canon_target_${name.replace(/[^a-z0-9]/gi, "_")}`,
+      supersededBy: "null",
+      lastVerifiedAt: "2026-08-17",
+      productionAuthority: "false"
+    });
+
+    const result = runAuthorityCheck(rootDir);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(
+      result.stderr,
+      /superseded_by must be a canonical repository-relative path/
+    );
+  });
+}
+
+// Isolated historical fixture: an evidence / historical record with
+// superseded_by null is Phase-1-valid and MUST NOT trip the cross-record
+// active-lifecycle check (because the checker must never iterate it as a
+// successor source).
+test("isolated historical record is Phase-1-valid and produces no successor errors", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-isolated-historical-"));
+  writeDoc(rootDir, "docs/historical.md", {
+    docType: "evidence",
+    lifecycle: "historical",
+    authorityScope: "isolated_hist",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /validated 1 document metadata block/);
+});
+
+// Direct valid successor: deprecated source → canonical relative path → a
+// Phase-1-valid active canonical target. The whole chain succeeds; this is the
+// baseline against which every malformed chain above is contrasted.
+test("direct valid successor chain (deprecated source → canonical relative path → active canonical target) succeeds", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-direct-valid-successor-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "direct_valid_source",
+    supersededBy: "docs/target.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeDoc(rootDir, "docs/target.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "direct_valid_target",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /validated 2 document metadata block/);
 });

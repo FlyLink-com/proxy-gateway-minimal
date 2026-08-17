@@ -40,9 +40,15 @@ document_metadata:
   an in-scope governed Markdown record whose own `lifecycle` is `active`.
   The successor must not be the source file itself, must not be a directory,
   and must not live under `archive/`, `superpowers/`, `.git`, `.worktrees`,
-  or `node_modules/`. Dot-segment escapes (e.g. `docs/../archive/foo.md`)
-  are rejected because the lookup is performed against the canonical
-  inventory, not the raw filesystem.
+  or `node_modules/`. The path MUST be **lexically canonical** (POSIX
+  separators, no leading `/`, no `..` or `.` segments, no Windows-drive
+  prefix, no backslashes) and the validator performs an exact-key lookup
+  against the in-memory record inventory after Phase 1 has produced a
+  parse-clean record; the filesystem is not consulted, so dot-segment
+  escapes (e.g. `docs/../archive/foo.md`) are rejected by the lexical
+  check before any path resolution runs. See the "Lexical grammar of the
+  metadata block" and "Successor lookup contract" sections for the
+  machine-executable rules.
 - A document is in-scope if and only if it lives under `docs/` or `ops/`.
   `archive/` and `superpowers/` are explicitly out of scope, and the scanner
   also skips `.git`, `.worktrees`, and `node_modules` regardless of location.
@@ -52,6 +58,61 @@ document_metadata:
   validator MUST fail-closed on `production_authority: "true"` so that a
   manual metadata edit cannot accidentally promote a document to production
   authority on its own. All current documents use `"false"`.
+
+## Lexical grammar of the metadata block
+
+The `document_metadata` block is parsed with **strict, column-exact** lexical
+rules. The validator never trims, folds, or normalises individual lines; a
+record that does not match the byte-for-byte grammar below is treated as a
+metadata block that is present but malformed, and emits a precise diagnostic
+rather than a generic "file lacks document_metadata" failure. This is the
+contract the parser implements today and the contract future edits MUST keep:
+
+| Token | Exact byte sequence | Notes |
+| --- | --- | --- |
+| Fence open | `` ```yaml `` | Column 1 of the line, no leading whitespace, no trailing whitespace before the newline. |
+| Marker | `document_metadata:` | Column 1 of the line, no leading whitespace, no trailing whitespace. A line whose `trim()` equals the marker but whose raw bytes differ (leading space, trailing tab, embedded space before the colon, or any Unicode whitespace) is **misplaced** — the validator reports the exact offset and continues parsing the rest of the block. |
+| Fence close | `` ``` `` | Column 1 of the line, no leading whitespace, no trailing whitespace. |
+| Field indent | Two ASCII spaces (`U+0020 U+0020`) | Tab (`U+0009`) is rejected before the field pattern runs; non-breaking space and other Unicode whitespace are not field indents. |
+| Field pattern | ``^ {2}([a-z_]+): (.+?) *$`` | Exactly one ASCII space after the colon; an empty value (`key:` with nothing after the space) is rejected. Trailing spaces are tolerated but reported. |
+| Field name | `[a-z_]+` | Lowercase snake_case; digits are allowed but the first character MUST be a letter or underscore. |
+| Field value | Everything from the first non‑space character after the colon up to the last non‑space character before the newline | The validator does **not** perform YAML parsing; a value containing `:`, `#`, leading `-`, or quoted strings is treated as an opaque string and validated by the per-field rules below. |
+
+These rules exist so that a malformed block (extra space, tab indent,
+Unicode indent, missing space after the colon, leading whitespace before the
+fence) is identified at the line it actually breaks on, instead of being
+collapsed to "file lacks document_metadata" and silently treated as an
+out-of-scope file. The strict variant (`--strict-files`) additionally fails
+closed on files that have no metadata block at all.
+
+## Successor lookup contract
+
+`superseded_by` is resolved by **exact-key lookup** against the validator's
+in-memory record inventory. The flow is:
+
+1. **Phase 1 (per record)** — Parse the candidate's marker, fences, and
+   six required fields using the lexical grammar above. A record that
+   fails Phase 1 carries its errors in a per-record error buffer and is
+   recorded as **invalid** for the rest of the run.
+2. **Phase 2 (cross record)** — Iterate over the **Phase-1-valid** records
+   only and, for each `deprecated` record, resolve `superseded_by` against
+   the same inventory by canonical repository-relative path. The
+   successor MUST be **lexically canonical** (POSIX `/` separators, no
+   leading `/`, no `..` or `.` segments, no Windows-drive prefix, no
+   backslashes) **and** Phase-1-valid **and** `lifecycle: active`.
+3. The filesystem is consulted only to *enumerate* files (find the candidate
+   inventory); it is **not** consulted to resolve successor paths.
+   Consequently, dot-segment escapes such as `docs/../archive/foo.md` are
+   rejected by the lexical check before any path resolution runs.
+4. A `superseded_by` that fails any of these checks produces a precise
+   diagnostic naming the source file, the offending value, and the rule
+   that failed. The validator never falls back to a "best effort"
+   resolution that hides the miss.
+
+The lexical helper that powers steps 1–3 is
+`isCanonicalRepoRelativePath(value)` in `scripts/check-document-authority.mjs`.
+Reviewers can use it as the reference implementation when in doubt about a
+specific path.
 
 ## Authority scope naming
 
@@ -157,6 +218,26 @@ signal**, not a content attestation:
 - `npm run governance:check` — runs `gates.json` validation and the
   repair-policy checks. Combine with `docs:authority:strict` for a full
   pre-merge sweep.
+
+### CLI flag contract (`--root`, `--strict-files`)
+
+The CLI surface is fail-closed:
+
+- `--root <path>` MUST be followed by a non-empty value. An empty value,
+  a whitespace-only value, or a value that begins with another `--` flag
+  is rejected with `error: --root requires a non-empty directory`. The
+  validator never falls back to the process working directory in that
+  case — an empty `--root` is a configuration error, not a request for
+  "whatever happens to be in scope".
+- If `--root` resolves to a path that does not exist, the validator
+  reports `error: root directory does not exist: <path>` and exits non-zero
+  without scanning anything.
+- If `--root` resolves to an existing path that is not a directory, the
+  validator reports `error: root path is not a directory: <path>` and exits
+  non-zero.
+- `--strict-files` is a boolean flag; combining it with `--root` is
+  supported but `--root <empty>` remains an error. CI always invokes the
+  strict variant via `docs:authority:strict`.
 
 ## Maintenance rules
 

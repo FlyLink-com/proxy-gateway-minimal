@@ -24,6 +24,43 @@ const VALID_DOC_TYPES = new Set(["canonical", "operational", "evidence"]);
 const VALID_LIFECYCLES = new Set(["active", "deprecated", "historical"]);
 const AUTHORITY_SCOPE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 
+// Lexical grammar constants. The marker, fences, and field indent are matched
+// exactly (no trim, no whitespace tolerance). The on-disk contract is
+// column-1 fences and marker with exactly two ASCII-space indentation for the
+// field block; anything else is a hard parse error.
+const METADATA_MARKER = "document_metadata:";
+const YAML_FENCE_OPEN = "```yaml";
+const YAML_FENCE_CLOSE = "```";
+const METADATA_FIELD_PATTERN = /^ {2}([a-z_]+): (.+?) *$/;
+// Canonical repository-relative path: forward slashes only, no leading slash,
+// no Windows drive prefix, no empty / dot / dotdot segments.
+const WINDOWS_DRIVE_PREFIX = /^[A-Za-z]:[\\/]/;
+
+function isCanonicalRepoRelativePath(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return false;
+  }
+  if (value.includes("\\")) {
+    return false;
+  }
+  if (isAbsolute(value)) {
+    return false;
+  }
+  if (WINDOWS_DRIVE_PREFIX.test(value)) {
+    return false;
+  }
+  if (value.startsWith("/")) {
+    return false;
+  }
+  const segments = value.split("/");
+  for (const segment of segments) {
+    if (segment === "" || segment === "." || segment === "..") {
+      return false;
+    }
+  }
+  return true;
+}
+
 function normalizedRepoPath(path) {
   return path.replaceAll("\\", "/");
 }
@@ -73,27 +110,58 @@ function unquote(value) {
 
 function parseMetadata(text, path, errors) {
   const lines = text.split(/\r?\n/);
+
+  // Marker scan: locate the first line in the first 40 non-empty lines that
+  // exactly equals METADATA_MARKER (column 1, no trim, no leading or trailing
+  // whitespace). Any whitespace deviation is a misplaced marker and is reported
+  // via the diagnostic path.
   const markerCandidate = lines
     .map((line, index) => ({ line, index }))
-    .filter(({ line }) => line.trim() !== "")
+    .filter(({ line }) => line.length > 0 && line.trim() !== "")
     .slice(0, 40)
-    .find(({ line }) => line.trim() === "document_metadata:");
-  if (!markerCandidate) {
-    return { fields: null, foundMarker: false };
-  }
-  const markerIndex = markerCandidate.index;
+    .find(({ line }) => line === METADATA_MARKER);
 
+  if (!markerCandidate) {
+    // Diagnostic only: scan the first 40 non-empty lines for any
+    // near-miss marker (trimmed equal). If exactly one such line is present,
+    // surface a misplaced-marker diagnostic so authors can locate the typo.
+      // The record is still recognised as "containing a metadata block" (so
+      // strict mode does not also fire "file lacks document_metadata") and
+      // fields stay null so the parser will not emit follow-on field errors.
+      const nearMisses = lines
+        .map((line, index) => ({ line, index }))
+        .filter(({ line }) => line.length > 0 && line.trim() !== "")
+        .slice(0, 40)
+        .filter(({ line }) => line.trim() === METADATA_MARKER);
+      if (nearMisses.length === 1) {
+        const { line, index } = nearMisses[0];
+        const trimmed = line.trim();
+        if (trimmed === METADATA_MARKER && line !== METADATA_MARKER) {
+          errors.push(
+            `${path}:${index + 1}: misplaced document_metadata marker (must appear at column 1 with no leading or trailing whitespace); got ${JSON.stringify(line)}`
+          );
+          return { fields: null, foundMarker: true };
+        }
+      }
+      return { fields: null, foundMarker: false };
+    }
+    const markerIndex = markerCandidate.index;
+
+  // Opening fence must be exactly ```yaml at column 1 of a line above the
+  // marker. We allow blank lines between the fence and the marker but the
+  // fence line itself must equal YAML_FENCE_OPEN exactly.
   let fenceStart = markerIndex - 1;
-  while (fenceStart >= 0 && lines[fenceStart].trim() === "") {
+  while (fenceStart >= 0 && lines[fenceStart] === "") {
     fenceStart -= 1;
   }
-  if (fenceStart < 0 || lines[fenceStart].trim() !== "```yaml") {
+  if (fenceStart < 0 || lines[fenceStart] !== YAML_FENCE_OPEN) {
     errors.push(`${path}:${markerIndex + 1}: document_metadata must be in a top-level yaml fence`);
     return { fields: null, foundMarker: true };
   }
 
+  // Closing fence must be exactly ``` (column 1, no trim).
   const fenceEnd = lines.findIndex(
-    (line, index) => index > markerIndex && line.trim() === "```"
+    (line, index) => index > markerIndex && line === YAML_FENCE_CLOSE
   );
   if (fenceEnd < 0) {
     errors.push(`${path}:${markerIndex + 1}: document_metadata yaml fence is not closed`);
@@ -103,12 +171,23 @@ function parseMetadata(text, path, errors) {
   const fields = {};
   for (let index = markerIndex + 1; index < fenceEnd; index += 1) {
     const line = lines[index];
-    if (line.trim() === "" || line.trimStart().startsWith("#")) {
+    // Tab is rejected anywhere in the metadata block before pattern matching.
+    // Unicode whitespace beyond ASCII is implicitly rejected by the strict
+    // field pattern (which requires two ASCII spaces, not \s).
+    if (line.includes("\t")) {
+      errors.push(
+        `${path}:${index + 1}: document_metadata field lines must use two ASCII spaces for indentation; tab is not accepted`
+      );
       continue;
     }
-    const match = line.match(/^\s{2}([a-z_]+):\s*(.*?)\s*$/);
+    if (line === "" || line.startsWith("#")) {
+      continue;
+    }
+    const match = line.match(METADATA_FIELD_PATTERN);
     if (!match) {
-      errors.push(`${path}:${index + 1}: unsupported document_metadata syntax`);
+      errors.push(
+        `${path}:${index + 1}: unsupported document_metadata syntax (expected two-space indent and one ASCII space around the colon)`
+      );
       continue;
     }
     const [, key, rawValue] = match;
@@ -199,13 +278,26 @@ function checkLifecycleAndSupersededBy(path, fields, errors) {
   if (value === "null") {
     return;
   }
-  if (isAbsolute(value) || value.includes("\\")) {
-    errors.push(`${path}: superseded_by must be a repository-relative path`);
+  // Reject any value that is not a lexically canonical repository-relative
+  // path: absolute paths, backslashes, Windows drive prefixes, leading
+  // slashes, empty segments, and dot / dotdot segments all fail closed here.
+  // The cross-record lookup later performs an exact-key match against the
+  // governed inventory and would silently miss otherwise.
+  if (!isCanonicalRepoRelativePath(value)) {
+    errors.push(
+      `${path}: superseded_by must be a canonical repository-relative path (forward slashes, no drive prefix, no dot-segments, no empty segments); got ${value}`
+    );
     return;
   }
 }
 
-function checkSupersededByAgainstRecords(sourcePath, fields, recordsByPath, errors) {
+function checkSupersededByAgainstRecords(
+  sourcePath,
+  fields,
+  parsedRecordsByPath,
+  validRecordsByPath,
+  errors
+) {
   const value = fields.superseded_by;
   if (value === undefined || value === "null") {
     return;
@@ -214,9 +306,11 @@ function checkSupersededByAgainstRecords(sourcePath, fields, recordsByPath, erro
     return;
   }
 
-  // Canonicalize via join + relative to defeat dot-segment escapes.
-  // The literal `value` has already been rejected when absolute or containing
-  // backslashes by checkLifecycleAndSupersededBy.
+  // Exact-key lookup: the parser already normalized the value to forward
+  // slashes; reject any path that did not lexically match an inventory key
+  // verbatim. Phase 1 rejects absolute paths, backslashes, Windows drive
+  // paths, dot-segments, and empty segments, so a lookup hit here is the
+  // exact repository-relative key the parser kept.
   const normalizedTarget = normalizedRepoPath(value);
   if (normalizedTarget === sourcePath) {
     errors.push(
@@ -224,16 +318,27 @@ function checkSupersededByAgainstRecords(sourcePath, fields, recordsByPath, erro
     );
     return;
   }
-  const target = recordsByPath.get(normalizedTarget);
-  if (!target) {
+  const parsedTarget = parsedRecordsByPath.get(normalizedTarget);
+  if (!parsedTarget) {
     errors.push(
       `${sourcePath}: superseded_by must reference an in-scope governed Markdown file under docs/ or ops/: ${value}`
     );
     return;
   }
-  if (target.fields.lifecycle !== "active") {
+  // parsedTarget exists in the inventory but may have failed Phase 1. Treat
+  // any non-Phase-1-valid target as a hard successor error rather than
+  // silently coercing it (e.g. reporting the wrong lifecycle). The exact
+  // Phase-1 error is already in the global errors list from the Phase-1
+  // pass; here we add a successor-specific pointer.
+  if (!validRecordsByPath.has(normalizedTarget)) {
     errors.push(
-      `${sourcePath}: superseded_by target must have lifecycle active (got ${target.fields.lifecycle}): ${value}`
+      `${sourcePath}: superseded_by target is not Phase-1-valid (fails its own document_metadata checks): ${value}`
+    );
+    return;
+  }
+  if (parsedTarget.fields.lifecycle !== "active") {
+    errors.push(
+      `${sourcePath}: superseded_by target must have lifecycle active (got ${parsedTarget.fields.lifecycle}): ${value}`
     );
   }
 }
@@ -274,12 +379,28 @@ function checkDuplicateCanonicalScopes(records, errors) {
 
 export function checkDocumentAuthority(options = {}) {
   const rootDir = resolve(options.rootDir ?? DEFAULT_ROOT);
-  if (!existsSync(rootDir) || !statSync(rootDir).isDirectory()) {
+  // Fail-closed: split the missing-vs-not-directory diagnoses so reviewers can
+  // tell whether they typed the wrong path or pointed at a regular file. The
+  // CLI layer above rejects empty / blank / flag-shaped values before reaching
+  // this stage, so any fall-through here is an honest rootDir candidate.
+  if (!existsSync(rootDir)) {
     throw new Error(`root directory does not exist: ${rootDir}`);
+  }
+  if (!statSync(rootDir).isDirectory()) {
+    throw new Error(`root path is not a directory: ${rootDir}`);
   }
   const strictFiles = Boolean(options.strictFiles);
   const errors = [];
-  const records = [];
+  // parsedRecordsByPath holds every parsed record (Phase 1 raw output); the
+  // Phase-2 successor lookup uses it for diagnostic context. validRecords
+  // (and its companion validRecordsByPath) holds records whose Phase-1
+  // per-record checks produced zero errors. Phase 2 only iterates the
+  // validRecords set so a malformed record never tries to resolve successors
+  // against itself or against other malformed records; if a successor lookup
+  // hits a parsed-but-invalid record, checkSupersededByAgainstRecords reports
+  // an explicit "not Phase-1-valid" diagnostic instead of silently accepting.
+  const parsedRecords = [];
+  const validRecords = [];
   const ungovernedFiles = [];
 
   for (const path of listMarkdownFiles(rootDir)) {
@@ -290,26 +411,46 @@ export function checkDocumentAuthority(options = {}) {
       continue;
     }
     if (!fields) {
+      // parseMetadata already pushed diagnostic(s) into errors.
       continue;
     }
     // Phase 1: per-record field validation. Pure; no cross-record resolution.
-    validateFields(path, fields, errors);
-    checkLifecycleAndSupersededBy(path, fields, errors);
-    checkProductionAuthorityAllowed(path, fields, errors);
-    records.push({ path, fields });
+    // Capture per-record errors into recordErrors so the record can carry a
+    // `valid` flag for Phase 2 to honour. The global errors list also gets a
+    // copy so reviewers still see them in the consolidated output.
+    const recordErrors = [];
+    validateFields(path, fields, recordErrors);
+    checkLifecycleAndSupersededBy(path, fields, recordErrors);
+    checkProductionAuthorityAllowed(path, fields, recordErrors);
+    const record = { path, fields, recordErrors };
+    parsedRecords.push(record);
+    if (recordErrors.length === 0) {
+      validRecords.push(record);
+    } else {
+      for (const recordError of recordErrors) {
+        errors.push(recordError);
+      }
+    }
   }
 
-  // Phase 2: cross-record successor resolution against the governed inventory
-  // only. Re-reading the target file from disk is forbidden at this stage to
-  // keep the success-or-fail decision deterministic and scope-aware.
-  const recordsByPath = new Map(
-    records.map((record) => [record.path, record])
+  const parsedRecordsByPath = new Map(
+    parsedRecords.map((record) => [record.path, record])
   );
-  for (const record of records) {
+  const validRecordsByPath = new Map(
+    validRecords.map((record) => [record.path, record])
+  );
+
+  // Phase 2: cross-record successor resolution against the governed inventory
+  // only. Iterate the Phase-1-valid records; look up successors via the full
+  // parsed map (so a malformed target still gets surfaced, not silently
+  // skipped) and reject any lookup miss or any target that is parsed but
+  // not Phase-1-valid.
+  for (const record of validRecords) {
     checkSupersededByAgainstRecords(
       record.path,
       record.fields,
-      recordsByPath,
+      parsedRecordsByPath,
+      validRecordsByPath,
       errors
     );
   }
@@ -319,16 +460,16 @@ export function checkDocumentAuthority(options = {}) {
       errors.push(`file lacks document_metadata: ${path}`);
     }
   }
-  if (records.length === 0) {
+  if (parsedRecords.length === 0) {
     errors.push("no document_metadata blocks found");
   }
-  checkDuplicateCanonicalScopes(records, errors);
+  checkDuplicateCanonicalScopes(validRecords, errors);
 
   const ok = errors.length === 0;
   return {
     ok,
     errors,
-    documents: records.map((record) => ({
+    documents: validRecords.map((record) => ({
       path: record.path,
       docType: record.fields.doc_type,
       lifecycle: record.fields.lifecycle,
@@ -336,7 +477,7 @@ export function checkDocumentAuthority(options = {}) {
     })),
     ungovernedFiles,
     summary: ok
-      ? `validated ${records.length} document metadata block(s) from ${relative(process.cwd(), rootDir) || "."}`
+      ? `validated ${validRecords.length} document metadata block(s) from ${relative(process.cwd(), rootDir) || "."}`
       : `document authority check failed with ${errors.length} error(s)`
   };
 }
@@ -354,12 +495,19 @@ function parseCliArgs(args) {
         throw new Error("--root may only be specified once");
       }
       const value = args[i + 1];
-      if (value === undefined || value.startsWith("--")) {
-        throw new Error("--root requires a directory");
-      }
-      out.rootDir = resolve(value);
-      i += 1;
-    } else if (token === "--strict-files") {
+        // Fail-closed: refuse undefined (no argument), empty / blank value, or a
+        // value that itself starts with "--" (looks like another flag). These
+        // checks stop resolve("") from silently collapsing to process.cwd().
+        if (
+          value === undefined ||
+          value.trim() === "" ||
+          value.startsWith("--")
+        ) {
+          throw new Error("--root requires a non-empty directory");
+        }
+        out.rootDir = resolve(value);
+        i += 1;
+      } else if (token === "--strict-files") {
       seenStrict.count += 1;
       if (seenStrict.count > 1) {
         throw new Error("--strict-files may only be specified once");
