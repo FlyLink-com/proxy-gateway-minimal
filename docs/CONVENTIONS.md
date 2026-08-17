@@ -249,19 +249,22 @@ order:
 1. **Primary** — a license-declaration file at the repo root with one
    of the conventional names: `LICENSE`, `LICENSE.md`, `LICENCE`,
    `COPYING`. The badge text MUST carry the SPDX identifier, and the
-   badge link target MUST be this file.
+   badge link target MUST be this file. **This is the only kind of
+   evidence that makes a `License | <anything>` badge legitimate.**
 2. **Corroborating metadata only** — a `package.json` `license` field
    with an SPDX identifier. On its own, this is NOT sufficient to
-   satisfy the badge rule: a `License | MIT` badge is forbidden until
-   the primary file exists. The `license` field is corroborating
-   metadata that becomes usable only when the primary file is also
-   present.
+   satisfy the badge rule. The `license` field is corroborating
+   metadata that becomes useful only when the primary file is also
+   present; it is not a substitute for the primary file.
 
 The README MUST NOT display any `License | <anything>` badge
-(`proprietary`, `MIT`, `Apache-2.0`, `unknown`, `none`) until at least
-one of the two conditions above is met. Specifically, adding
-`"license": "MIT"` to `package.json` without a `LICENSE` file does
-NOT make a `License | MIT` badge legitimate.
+(`proprietary`, `MIT`, `Apache-2.0`, `unknown`, `none`) until the
+primary evidence (a license-declaration file at the repo root) is
+present. Specifically, adding `"license": "MIT"` to `package.json`
+without a `LICENSE` file does NOT make a `License | MIT` badge
+legitimate: the primary file is the gate, and `package.json#license`
+is at most corroborating metadata. There is no "either of two" path;
+there is only the primary file.
 
 When the primary source lands (typically a `LICENSE` file at the repo
 root), this section is updated at the same commit: replace the License

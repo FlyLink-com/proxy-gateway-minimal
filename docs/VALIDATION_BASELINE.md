@@ -111,7 +111,7 @@ is required, a new approval.
 Run:
 
 ```powershell
-npm run docs:authority:check
+npm run docs:authority:strict
 git diff --check origin/master...HEAD
 ```
 
@@ -131,7 +131,7 @@ The stable `Validate` check uses the docs-only lane only when every changed
 path is a root `*.md`, `docs/**/*.md`, `ops/**/*.md`, or
 `.github/**/*.md` file. Its diff-check and document-authority steps use
 `always()` and run `git diff --check` plus
-`npm run docs:authority:check`; the docs-only lane then skips dependency
+`npm run docs:authority:strict`; the docs-only lane then skips dependency
 installation, tests, and builds. The authority check validates declared
 metadata fields and rejects duplicate active canonical `authority_scope`
 values without creating a new required context or approval gate.

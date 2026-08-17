@@ -5,16 +5,14 @@
 
 [English](README_EN.md) | [文档索引](docs/README.md)
 
-> CI badge reflects the workflow that ran on the last push to `master`.
-> Markdown-only pushes are classified as the **docs-only lane** by
-> `scripts/ci-change-classifier.mjs` and skip dependency install,
-> server tests, admin tests, admin / public-site builds, and site
-> verify / dry-run; only `git diff --check`, `npm run docs:authority:strict`,
-> and the `Governance evidence` step run. The badge's "green" state in
-> that lane means the documentation and governance gates passed, not
-> that application tests or builds were executed. See
-> [`docs/VALIDATION_BASELINE.md`](docs/VALIDATION_BASELINE.md) for the
-> full lane contract.
+> CI 徽章反映最近一次推送到 `master` 的 workflow 执行结果。仅改动 Markdown
+> 的推送会被 `scripts/ci-change-classifier.mjs` 归类为 **docs-only lane**,
+> 跳过依赖安装、服务端 / 管理端测试、管理端 / 公开站点构建,以及站点
+> 验证 / dry-run;该 lane 只运行 `git diff --check`、`npm run
+> docs:authority:strict`,以及 `Governance evidence` 步骤。docs-only
+> lane 下的"绿色"徽章只表示文档与治理门禁通过,并不代表应用测试或
+> 构建被执行。完整 lane 合同见
+> [`docs/VALIDATION_BASELINE.md`](docs/VALIDATION_BASELINE.md)。
 
 `proxy-gateway-minimal` 是一个订阅控制与交付项目。现在的主线不是
 “再写一个代理面板”，而是把订阅生产、发放、审计、撤回、安装配置和节点包
