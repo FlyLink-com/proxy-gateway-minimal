@@ -1,0 +1,73 @@
+{
+  "$schema": "gccgw.commercialPricing.template.v1",
+  "description": "TEMPLATE ONLY. Placeholder values. Live prices, currencies, taxes, discounts, and paid-package byte amounts are operator-approved business configuration and MUST NOT be invented in source. See docs/COMMERCIAL_LAUNCH_READINESS.md gap G2 and docs/COMMERCIAL_MODEL_V1.md V1 Package Model section.",
+  "version": "0.0.0-template",
+  "status": "template-not-live",
+  "issuedAt": null,
+  "currency": {
+    "code": null,
+    "symbol": null,
+    "decimals": 0
+  },
+  "tax": {
+    "mode": "exclusive",
+    "rateBps": 0,
+    "rules": []
+  },
+  "packages": {
+    "trial": {
+      "displayName": "Trial",
+      "validityDays": 7,
+      "trafficBytes": 5368709120,
+      "trafficBytesHumanReadable": "5 GiB",
+      "monthlyCycle": false,
+      "priceMinor": 0,
+      "currency": null,
+      "enabled": false,
+      "notes": "Fixed allowance per docs/COMMERCIAL_MODEL_V1.md V1 Package Model. Operator decides whether trial remains free of charge."
+    },
+    "monthly": {
+      "displayName": "Monthly",
+      "validityDays": 30,
+      "trafficBytes": 0,
+      "trafficBytesHumanReadable": null,
+      "monthlyCycle": true,
+      "priceMinor": 0,
+      "currency": null,
+      "enabled": false,
+      "notes": "Primary Controlled Beta package. TrafficBytes and priceMinor MUST come from an operator-approved pricing decision."
+    },
+    "yearly": {
+      "displayName": "Yearly",
+      "validityDays": 365,
+      "trafficBytes": 0,
+      "trafficBytesHumanReadable": null,
+      "monthlyCycle": true,
+      "priceMinor": 0,
+      "currency": null,
+      "enabled": false,
+      "notes": "Longer validity with recurring monthly allowance per docs/COMMERCIAL_MODEL_V1.md V1 Package Model."
+    }
+  },
+  "addOns": [],
+  "discounts": {
+    "enabled": false,
+    "rules": []
+  },
+  "refundPolicy": {
+    "windowDays": 0,
+    "method": "none",
+    "notes": "Refund window, method, and SLA numbers depend on counsel + ops and are deliberately unset in this template."
+  },
+  "sla": {
+    "uptimePercent": 0,
+    "creditPercent": 0,
+    "notes": "SLA percentages depend on infra capacity and are deliberately unset in this template."
+  },
+  "auditTrail": {
+    "templateOnly": true,
+    "approvedBy": null,
+    "approvedAt": null,
+    "changeNote": "Initial template. Replace zero/null placeholders only after an explicit operator-approved pricing decision; this file alone is NOT authority to render prices."
+  }
+}
