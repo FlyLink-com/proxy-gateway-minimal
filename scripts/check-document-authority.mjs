@@ -41,6 +41,11 @@ function listMarkdownFiles(rootDir) {
         continue;
       }
       const relativePath = join(relativeDir, entry.name);
+      if (entry.isSymbolicLink()) {
+        throw new Error(
+          `symlink encountered under in-scope directory; remove or replace with a regular file: ${relativePath}`
+        );
+      }
       if (entry.isDirectory()) {
         walk(relativePath);
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
@@ -72,7 +77,7 @@ function parseMetadata(text, path, errors) {
     .map((line, index) => ({ line, index }))
     .filter(({ line }) => line.trim() !== "")
     .slice(0, 40)
-    .find(({ line }) => line.trim() === "document_metadata:");
+    .find(({ line }) => line === "document_metadata:");
   if (!markerCandidate) {
     return { fields: null, foundMarker: false };
   }
@@ -82,13 +87,13 @@ function parseMetadata(text, path, errors) {
   while (fenceStart >= 0 && lines[fenceStart].trim() === "") {
     fenceStart -= 1;
   }
-  if (fenceStart < 0 || lines[fenceStart].trim() !== "```yaml") {
+  if (fenceStart < 0 || lines[fenceStart] !== "```yaml") {
     errors.push(`${path}:${markerIndex + 1}: document_metadata must be in a top-level yaml fence`);
     return { fields: null, foundMarker: true };
   }
 
   const fenceEnd = lines.findIndex(
-    (line, index) => index > markerIndex && line.trim() === "```"
+    (line, index) => index > markerIndex && line === "```"
   );
   if (fenceEnd < 0) {
     errors.push(`${path}:${markerIndex + 1}: document_metadata yaml fence is not closed`);
@@ -101,7 +106,7 @@ function parseMetadata(text, path, errors) {
     if (line.trim() === "" || line.trimStart().startsWith("#")) {
       continue;
     }
-    const match = line.match(/^\s{2}([a-z_]+):\s*(.*?)\s*$/);
+    const match = line.match(/^  ([a-z_]+): *(.*?)$/);
     if (!match) {
       errors.push(`${path}:${index + 1}: unsupported document_metadata syntax`);
       continue;
@@ -133,6 +138,28 @@ function isValidDate(value) {
   }
   const date = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+}
+
+// Cache target-file metadata parses during a single checkDocumentAuthority run
+// so that the transitive successor walk does not re-read the same file twice.
+// Cleared at the start of every checkDocumentAuthority invocation.
+const targetParseCache = new Map();
+
+function parseTargetMetadata(rootDir, normalizedPath) {
+  if (targetParseCache.has(normalizedPath)) {
+    return targetParseCache.get(normalizedPath);
+  }
+  const fullPath = resolve(rootDir, normalizedPath);
+  if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
+    const result = { foundMarker: false, fields: null };
+    targetParseCache.set(normalizedPath, result);
+    return result;
+  }
+  const text = readFileSync(fullPath, "utf8");
+  const nestedErrors = [];
+  const result = parseMetadata(text, normalizedPath, nestedErrors);
+  targetParseCache.set(normalizedPath, { foundMarker: result.foundMarker, fields: result.fields });
+  return targetParseCache.get(normalizedPath);
 }
 
 function checkSupersededBy(rootDir, path, fields, errors) {
@@ -168,6 +195,70 @@ function checkSupersededBy(rootDir, path, fields, errors) {
     errors.push(
       `${path}: superseded_by path must resolve to an existing file: ${value}`
     );
+    return;
+  }
+  const normalizedSource = normalizedRepoPath(path);
+  const normalizedTarget = normalizedRepoPath(value);
+  if (normalizedTarget === normalizedSource) {
+    errors.push(
+      `${path}: superseded_by must not point at the source file (self-reference): ${value}`
+    );
+    return;
+  }
+  if (
+    !normalizedTarget.startsWith("docs/") &&
+    !normalizedTarget.startsWith("ops/")
+  ) {
+    errors.push(
+      `${path}: superseded_by must target an in-scope file under docs/ or ops/: ${value}`
+    );
+    return;
+  }
+  const targetResult = parseTargetMetadata(rootDir, normalizedTarget);
+  if (!targetResult.foundMarker || !targetResult.fields) {
+    errors.push(
+      `${path}: superseded_by target must carry a document_metadata block: ${value}`
+    );
+    return;
+  }
+  if (targetResult.fields.lifecycle !== "active") {
+    errors.push(
+      `${path}: superseded_by target must have lifecycle active (got ${targetResult.fields.lifecycle}): ${value}`
+    );
+    return;
+  }
+  const visited = new Set([normalizedSource]);
+  let cursorPath = normalizedTarget;
+  let cursorFields = targetResult.fields;
+  let hops = 0;
+  while (
+    cursorFields &&
+    cursorFields.superseded_by &&
+    cursorFields.superseded_by !== "null" &&
+    hops < 64
+  ) {
+    const nextRaw = cursorFields.superseded_by;
+    const nextNormalized = normalizedRepoPath(nextRaw);
+    if (visited.has(nextNormalized)) {
+      errors.push(
+        `${path}: superseded_by cycle detected at ${cursorPath}`
+      );
+      return;
+    }
+    visited.add(nextNormalized);
+    const nextResult = parseTargetMetadata(rootDir, nextNormalized);
+    if (!nextResult.foundMarker || !nextResult.fields) {
+      break;
+    }
+    if (nextNormalized === normalizedSource) {
+      errors.push(
+        `${path}: superseded_by cycle detected back to source ${normalizedSource}`
+      );
+      return;
+    }
+    cursorPath = nextNormalized;
+    cursorFields = nextResult.fields;
+    hops += 1;
   }
 }
 
@@ -241,6 +332,7 @@ export function checkDocumentAuthority(options = {}) {
   const errors = [];
   const records = [];
   const ungovernedFiles = [];
+  targetParseCache.clear();
 
   for (const path of listMarkdownFiles(rootDir)) {
     const { fields, foundMarker } = parseMetadata(
@@ -286,29 +378,44 @@ export function checkDocumentAuthority(options = {}) {
   };
 }
 
-function cliRoot(args) {
-  const rootIndex = args.indexOf("--root");
-  if (rootIndex < 0) {
-    return DEFAULT_ROOT;
-  }
-  const rootValue = args[rootIndex + 1];
-  if (!rootValue || rootValue.startsWith("--")) {
-    throw new Error("--root requires a directory");
-  }
-  return resolve(rootValue);
-}
+function parseCliArgs(args) {
+  const out = { rootDir: DEFAULT_ROOT, strictFiles: false };
+  const seenRoot = { count: 0 };
+  const seenStrict = { count: 0 };
 
-function cliStrictFiles(args) {
-  return args.includes("--strict-files");
+  for (let i = 0; i < args.length; i += 1) {
+    const token = args[i];
+    if (token === "--root") {
+      seenRoot.count += 1;
+      if (seenRoot.count > 1) {
+        throw new Error("--root may only be specified once");
+      }
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error("--root requires a directory");
+      }
+      out.rootDir = resolve(value);
+      i += 1;
+    } else if (token === "--strict-files") {
+      seenStrict.count += 1;
+      if (seenStrict.count > 1) {
+        throw new Error("--strict-files may only be specified once");
+      }
+      out.strictFiles = true;
+    } else if (token.startsWith("--")) {
+      throw new Error(`unsupported flag: ${token}`);
+    } else {
+      throw new Error(`unexpected positional argument: ${token}`);
+    }
+  }
+  return out;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const argv = process.argv.slice(2);
-    const result = checkDocumentAuthority({
-      rootDir: cliRoot(argv),
-      strictFiles: cliStrictFiles(argv)
-    });
+    const { rootDir, strictFiles } = parseCliArgs(argv);
+    const result = checkDocumentAuthority({ rootDir, strictFiles });
     if (result.ok) {
       console.log(result.summary);
     } else {

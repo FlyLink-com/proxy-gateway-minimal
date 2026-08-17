@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -487,4 +487,299 @@ test("current repository passes strict document authority", () => {
   const match = result.stdout.match(/validated (\d+) document metadata block/);
   assert.ok(match, `expected metadata count in output, received: ${result.stdout}`);
   assert.ok(Number(match[1]) > 0, `expected a non-empty metadata inventory, received: ${result.stdout}`);
+});
+
+test("document authority check rejects deprecated doc with package.json successor", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-pkg-"));
+  mkdirSync(join(rootDir, "docs"), { recursive: true });
+  writeFileSync(join(rootDir, "package.json"), "{}\n");
+  writeDoc(rootDir, "docs/old.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "old_scope",
+    supersededBy: "package.json",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /superseded_by must target an in-scope file under docs\/ or ops\//);
+});
+
+test("document authority check rejects deprecated doc pointing at itself", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-self-"));
+  writeDoc(rootDir, "docs/old.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "old_scope",
+    supersededBy: "docs/old.md",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /superseded_by must not point at the source file \(self-reference\)/);
+});
+
+test("document authority check rejects deprecated doc pointing at historical target", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-historical-"));
+  writeDoc(rootDir, "docs/old.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "old_scope",
+    supersededBy: "docs/replacement.md",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+  writeDoc(rootDir, "docs/replacement.md", {
+    docType: "evidence",
+    lifecycle: "historical",
+    authorityScope: "historical_scope",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /superseded_by target must have lifecycle active/);
+});
+
+test("document authority check rejects deprecated doc pointing at deprecated target", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-deprecated-"));
+  writeDoc(rootDir, "docs/old.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "old_scope",
+    supersededBy: "docs/replacement.md",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+  writeDoc(rootDir, "docs/replacement.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "replacement_scope",
+    supersededBy: "docs/old.md",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /superseded_by target must have lifecycle active/);
+});
+
+test("document authority check accepts deprecated doc pointing at active governed target", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-ok-"));
+  writeDoc(rootDir, "docs/old.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "old_scope",
+    supersededBy: "docs/new.md",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+  writeDoc(rootDir, "docs/new.md", {
+    docType: "operational",
+    lifecycle: "active",
+    authorityScope: "new_scope",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("document authority check rejects tab-indented metadata field", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-tab-"));
+  writeRawDoc(rootDir, "docs/tab.md", [
+    "# Tab",
+    "",
+    "```yaml",
+    "document_metadata:",
+    "\tdoc_type: canonical",
+    "  lifecycle: active",
+    "  authority_scope: alpha",
+    "  superseded_by: null",
+    "  last_verified_at: 2026-07-15",
+    "  production_authority: false",
+    "```",
+    ""
+  ].join("\n"));
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /unsupported document_metadata syntax/);
+});
+
+test("document authority check rejects 1-space-indented metadata field", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-1space-"));
+  writeRawDoc(rootDir, "docs/onespace.md", [
+    "# OneSpace",
+    "",
+    "```yaml",
+    "document_metadata:",
+    " doc_type: canonical",
+    "  lifecycle: active",
+    "  authority_scope: alpha",
+    "  superseded_by: null",
+    "  last_verified_at: 2026-07-15",
+    "  production_authority: false",
+    "```",
+    ""
+  ].join("\n"));
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /unsupported document_metadata syntax/);
+});
+
+test("document authority check rejects 3-space-indented metadata field", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-3space-"));
+  writeRawDoc(rootDir, "docs/threespace.md", [
+    "# ThreeSpace",
+    "",
+    "```yaml",
+    "document_metadata:",
+    "   doc_type: canonical",
+    "  lifecycle: active",
+    "  authority_scope: alpha",
+    "  superseded_by: null",
+    "  last_verified_at: 2026-07-15",
+    "  production_authority: false",
+    "```",
+    ""
+  ].join("\n"));
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /unsupported document_metadata syntax/);
+});
+
+test("document authority check rejects 4-space-indented metadata field", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-4space-"));
+  writeRawDoc(rootDir, "docs/fourspace.md", [
+    "# FourSpace",
+    "",
+    "```yaml",
+    "document_metadata:",
+    "    doc_type: canonical",
+    "  lifecycle: active",
+    "  authority_scope: alpha",
+    "  superseded_by: null",
+    "  last_verified_at: 2026-07-15",
+    "  production_authority: false",
+    "```",
+    ""
+  ].join("\n"));
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /unsupported document_metadata syntax/);
+});
+
+test("document authority check rejects indented yaml fence marker", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-indented-fence-"));
+  writeRawDoc(rootDir, "docs/indented-fence.md", [
+    "# IndentedFence",
+    "",
+    "  ```yaml",
+    "document_metadata:",
+    "  doc_type: canonical",
+    "  lifecycle: active",
+    "  authority_scope: alpha",
+    "  superseded_by: null",
+    "  last_verified_at: 2026-07-15",
+    "  production_authority: false",
+    "```",
+    ""
+  ].join("\n"));
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /document_metadata must be in a top-level yaml fence/);
+});
+
+test("document authority strict mode rejects indented document_metadata marker (no fence)", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-indented-marker-"));
+  writeRawDoc(rootDir, "docs/indented-marker.md", [
+    "# IndentedMarker",
+    "",
+    "```yaml",
+    "  document_metadata:",
+    "    doc_type: canonical",
+    "  lifecycle: active",
+    "  authority_scope: alpha",
+    "  superseded_by: null",
+    "  last_verified_at: 2026-07-15",
+    "  production_authority: false",
+    "```",
+    ""
+  ].join("\n"));
+
+  const result = runAuthorityCheck(rootDir, { strictFiles: true });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /file lacks document_metadata: docs\/indented-marker\.md/);
+});
+
+test("document authority strict mode fails on typo --strict-file", () => {
+  const result = spawnSync(process.execPath, [
+    CHECKER,
+    "--strict-file",
+    "--root",
+    REPOSITORY_ROOT
+  ], { cwd: REPOSITORY_ROOT, encoding: "utf8" });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unsupported flag: --strict-file/);
+});
+
+test("document authority strict mode fails on --strict-files=false", () => {
+  const result = spawnSync(process.execPath, [
+    CHECKER,
+    "--strict-files=false",
+    "--root",
+    REPOSITORY_ROOT
+  ], { cwd: REPOSITORY_ROOT, encoding: "utf8" });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unsupported flag: --strict-files=false/);
+});
+
+test("document authority strict mode fails on unknown --unknown-option", () => {
+  const result = spawnSync(process.execPath, [
+    CHECKER,
+    "--unknown-option",
+    "--root",
+    REPOSITORY_ROOT
+  ], { cwd: REPOSITORY_ROOT, encoding: "utf8" });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unsupported flag: --unknown-option/);
+});
+
+test("document authority check fails on symlink under docs/", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-symlink-"));
+  writeDoc(rootDir, "docs/A.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "alpha",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+
+  try {
+    symlinkSync(join(rootDir, "docs", "A.md"), join(rootDir, "docs", "link.md"));
+  } catch (error) {
+    if (error.code === "EPERM" || error.code === "ENOTSUP") {
+      return;
+    }
+    throw error;
+  }
+
+  const result = runAuthorityCheck(rootDir);
+  assert.notEqual(result.status, 0, result.stderr);
+  assert.match(result.stderr, /symlink encountered under in-scope directory/);
 });
