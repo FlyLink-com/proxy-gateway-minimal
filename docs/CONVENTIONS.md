@@ -71,11 +71,11 @@ contract the parser implements today and the contract future edits MUST keep:
 | Token | Exact byte sequence | Notes |
 | --- | --- | --- |
 | Fence open | `` ```yaml `` | Column 1 of the line, no leading whitespace, no trailing whitespace before the newline. |
-| Marker | `document_metadata:` | Column 1 of the line, no leading whitespace, no trailing whitespace. A line whose `trim()` equals the marker but whose raw bytes differ (leading space, trailing tab, embedded space before the colon, or any Unicode whitespace) is **misplaced** — the validator reports the exact offset and continues parsing the rest of the block. |
+| Marker | `document_metadata:` | Column 1 of the line, no leading whitespace, no trailing whitespace. A line whose `trim()` equals the marker but whose raw bytes differ (leading space, trailing tab, embedded space before the colon, or any Unicode whitespace) is **malformed** — the validator reports the exact offset for every such line and stops parsing the rest of the block. |
 | Fence close | `` ``` `` | Column 1 of the line, no leading whitespace, no trailing whitespace. |
 | Field indent | Two ASCII spaces (`U+0020 U+0020`) | Tab (`U+0009`) is rejected before the field pattern runs; non-breaking space and other Unicode whitespace are not field indents. |
-| Field pattern | ``^ {2}([a-z_]+): (.+?) *$`` | Exactly one ASCII space after the colon; an empty value (`key:` with nothing after the space) is rejected. Trailing spaces are tolerated but reported. |
-| Field name | `[a-z_]+` | Lowercase snake_case; digits are allowed but the first character MUST be a letter or underscore. |
+| Field pattern | ``^ {2}([a-z_]+): (\S(?:.*\S)?)$`` | Exactly two ASCII spaces, exactly one ASCII space after the colon, value content must start and end with non-whitespace, and trailing whitespace on the field line is a parse error. |
+| Field name | `[a-z_]+` | Lowercase snake_case; no digits. The six required fields are `doc_type`, `lifecycle`, `authority_scope`, `superseded_by`, `last_verified_at`, `production_authority`. |
 | Field value | Everything from the first non‑space character after the colon up to the last non‑space character before the newline | The validator does **not** perform YAML parsing; a value containing `:`, `#`, leading `-`, or quoted strings is treated as an opaque string and validated by the per-field rules below. |
 
 These rules exist so that a malformed block (extra space, tab indent,

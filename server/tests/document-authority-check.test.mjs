@@ -642,11 +642,13 @@ test("successor target with valid Phase-1 metadata but historical lifecycle is r
   // dot-segment / ungoverned tests cover file-not-in-inventory cases; this
   // pins the inventory-but-not-active case at the Phase-2 layer.
   //
-  // Source is deprecated → target. Target is itself deprecated and points at a
-  // third active record. Phase 1 surfaces the deprecated-target error for
-  // the target record (it has non-null superseded_by), then Phase 2 surfaces
-  // the "lifecycle not active" error for the source record. Both must be
-  // present so the round-6 contract is fully observable.
+  // Source is deprecated → target. Target is itself deprecated and points at
+  // a third active record. The target's own `superseded_by: docs/now.md` is
+  // a valid canonical path, so the target record passes Phase 1 (no
+  // per-record errors). Phase 2 is the layer that surfaces the "lifecycle
+  // not active" error for the source record. This test pins the Phase-2
+  // rejection; the legacy comment that claimed Phase 1 surfaces a
+  // deprecated-target error was incorrect.
   const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-inactive-"));
   writeDoc(rootDir, "docs/source.md", {
     docType: "operational",
@@ -879,7 +881,7 @@ function blockLines(metadata, { fenceOpen, marker, fieldIndent, fenceClose } = {
 }
 
 // Marker layout: indented and trailing-whitespace markers must be rejected via
-// the misplaced-marker diagnostic. Strict mode must NOT also fire
+// the malformed-marker diagnostic. Strict mode must NOT also fire
 // "file lacks document_metadata" because the parser still recognises the
 // record as containing a metadata block (it is the block layout that is
 // wrong, not the absence of the block).
@@ -891,7 +893,7 @@ const markerLayoutCases = [
       lines[idx] = "  document_metadata:";
       return lines;
     },
-    primary: /misplaced document_metadata marker/,
+    primary: /malformed document_metadata marker/,
     notMatch: /file lacks document_metadata/
   },
   {
@@ -901,7 +903,7 @@ const markerLayoutCases = [
       lines[idx] = "\tdocument_metadata:";
       return lines;
     },
-    primary: /misplaced document_metadata marker/,
+    primary: /malformed document_metadata marker/,
     notMatch: /file lacks document_metadata/
   },
   {
@@ -911,7 +913,7 @@ const markerLayoutCases = [
       lines[idx] = "document_metadata: ";
       return lines;
     },
-    primary: /misplaced document_metadata marker/,
+    primary: /malformed document_metadata marker/,
     notMatch: /file lacks document_metadata/
   },
   {
@@ -921,7 +923,7 @@ const markerLayoutCases = [
       lines[idx] = "document_metadata:\t";
       return lines;
     },
-    primary: /misplaced document_metadata marker/,
+    primary: /malformed document_metadata marker/,
     notMatch: /file lacks document_metadata/
   }
 ];
@@ -1200,4 +1202,163 @@ test("direct valid successor chain (deprecated source → canonical relative pat
   const result = runAuthorityCheck(rootDir);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /validated 2 document metadata block/);
+});
+
+// P1 regression: two indented markers in default mode must not be silently
+// accepted. The byte-exact marker is absent; the diagnostic regex must fire
+// for every malformed marker line so the file fails closed.
+test("default mode rejects two indented document_metadata markers (no byte-exact marker)", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-duplicate-malformed-"));
+  writeDoc(rootDir, "docs/good.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "good_scope",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  // Two indented markers, no byte-exact marker anywhere.
+  writeRawDoc(rootDir, "docs/bad.md", [
+    "# bad",
+    "",
+    "  document_metadata:",
+    "  document_metadata:",
+    ""
+  ].join("\n"));
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /malformed document_metadata marker/);
+  // The bad file should surface two distinct malformed-marker errors.
+  const occurrences = (result.stderr.match(/malformed document_metadata marker/g) ?? []).length;
+  assert.equal(occurrences, 2);
+});
+
+// P1 regression: a marker with an embedded space before the colon is a
+// malformed marker that must be reported in default mode (not silently
+// degraded to "no marker").
+test("default mode rejects marker with embedded space before the colon", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-embedded-space-"));
+  writeDoc(rootDir, "docs/good.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "good_scope",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeRawDoc(rootDir, "docs/bad.md", [
+    "# bad",
+    "",
+    "```yaml",
+    "document_metadata :",
+    "  doc_type: canonical",
+    "  lifecycle: active",
+    "  authority_scope: bad_scope",
+    "  superseded_by: null",
+    "  last_verified_at: 2026-08-17",
+    "  production_authority: \"false\"",
+    "```",
+    ""
+  ].join("\n"));
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /malformed document_metadata marker/);
+  assert.doesNotMatch(result.stderr, /file lacks document_metadata/);
+});
+
+// P1 regression: parseMetadata-level errors (duplicate field, unsupported
+// field, missing required field) must flow into the per-record error
+// buffer so the record is excluded from validRecords. The successor lookup
+// must then report "superseded_by target is not Phase-1-valid" for any
+// source that points at the malformed target.
+test("parse-error target (unsupported field) is excluded from validRecords and surfaces successor diagnostic", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-parse-error-target-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "parse_error_source",
+    supersededBy: "docs/target.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeRawDoc(rootDir, "docs/target.md", [
+    "# target",
+    "",
+    "```yaml",
+    "document_metadata:",
+    "  doc_type: canonical",
+    "  lifecycle: active",
+    "  authority_scope: parse_error_target",
+    "  superseded_by: null",
+    "  last_verified_at: 2026-08-17",
+    "  production_authority: \"false\"",
+    "  unexpected_field: value",
+    "```",
+    ""
+  ].join("\n"));
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /unsupported document_metadata field unexpected_field/);
+  assert.match(result.stderr, /superseded_by target is not Phase-1-valid/);
+});
+
+// P1 regression: duplicate-field target excluded from validRecords.
+test("parse-error target (duplicate field) is excluded from validRecords and surfaces successor diagnostic", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-duplicate-field-target-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "duplicate_field_source",
+    supersededBy: "docs/target.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeRawDoc(rootDir, "docs/target.md", [
+    "# target",
+    "",
+    "```yaml",
+    "document_metadata:",
+    "  doc_type: canonical",
+    "  lifecycle: active",
+    "  authority_scope: duplicate_field_target",
+    "  superseded_by: null",
+    "  last_verified_at: 2026-08-17",
+    "  production_authority: \"false\"",
+    "  lifecycle: active",
+    "```",
+    ""
+  ].join("\n"));
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /duplicate document_metadata field lifecycle/);
+  assert.match(result.stderr, /superseded_by target is not Phase-1-valid/);
+});
+
+// P2 regression: trailing whitespace on a field line is a parse error, not
+// silently tolerated. The strict grammar rejects trailing whitespace before
+// the newline.
+test("strict grammar rejects trailing whitespace on a field line", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-field-trailing-"));
+  writeRawDoc(rootDir, "docs/layout.md", [
+    "# layout",
+    "",
+    "```yaml",
+    "document_metadata:",
+    "  doc_type: canonical",
+    "  lifecycle: active",
+    "  authority_scope: trailing_ws",
+    "  superseded_by: null",
+    "  last_verified_at: 2026-08-17",
+    "  production_authority: \"false\" ",
+    "```",
+    ""
+  ].join("\n"));
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /unsupported document_metadata syntax/);
 });

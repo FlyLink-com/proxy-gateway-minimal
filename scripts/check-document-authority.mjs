@@ -31,7 +31,16 @@ const AUTHORITY_SCOPE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const METADATA_MARKER = "document_metadata:";
 const YAML_FENCE_OPEN = "```yaml";
 const YAML_FENCE_CLOSE = "```";
-const METADATA_FIELD_PATTERN = /^ {2}([a-z_]+): (.+?) *$/;
+// Byte-exact field pattern: exactly two ASCII spaces, exactly one ASCII space
+// after the colon, value content must start and end with non-whitespace, and
+// trailing whitespace on the field line is a parse error. Unicode whitespace
+// anywhere in the line is rejected by the ASCII-space constraint.
+const METADATA_FIELD_PATTERN =
+  /^ {2}([a-z_]+): (\S(?:.*\S)?)$/;
+// Diagnostic-only marker pattern: matches any line whose trim() could be the
+// marker. Used exclusively to report malformed markers; it MUST NOT be used
+// to accept a metadata block.
+const MARKER_LIKE_PATTERN = /^\s*document_metadata\s*:\s*$/u;
 // Canonical repository-relative path: forward slashes only, no leading slash,
 // no Windows drive prefix, no empty / dot / dotdot segments.
 const WINDOWS_DRIVE_PREFIX = /^[A-Za-z]:[\\/]/;
@@ -113,39 +122,39 @@ function parseMetadata(text, path, errors) {
 
   // Marker scan: locate the first line in the first 40 non-empty lines that
   // exactly equals METADATA_MARKER (column 1, no trim, no leading or trailing
-  // whitespace). Any whitespace deviation is a misplaced marker and is reported
-  // via the diagnostic path.
-  const markerCandidate = lines
+  // whitespace). Any malformed marker (embedded space, trailing whitespace,
+  // leading whitespace, multiple occurrences) is reported via the diagnostic
+  // path. The diagnostic regex is intentionally permissive so every plausible
+  // typo surfaces; only the byte-exact marker is accepted downstream.
+  const markerWindow = lines
     .map((line, index) => ({ line, index }))
     .filter(({ line }) => line.length > 0 && line.trim() !== "")
-    .slice(0, 40)
-    .find(({ line }) => line === METADATA_MARKER);
+    .slice(0, 40);
+
+  const markerCandidate = markerWindow.find(
+    ({ line }) => line === METADATA_MARKER
+  );
 
   if (!markerCandidate) {
-    // Diagnostic only: scan the first 40 non-empty lines for any
-    // near-miss marker (trimmed equal). If exactly one such line is present,
-    // surface a misplaced-marker diagnostic so authors can locate the typo.
+    const malformedMarkers = markerWindow.filter(({ line }) =>
+      MARKER_LIKE_PATTERN.test(line)
+    );
+    if (malformedMarkers.length > 0) {
+      for (const { line, index } of malformedMarkers) {
+        errors.push(
+          `${path}:${index + 1}: malformed document_metadata marker; expected ${JSON.stringify(METADATA_MARKER)} at column 1, got ${JSON.stringify(line)}`
+        );
+      }
       // The record is still recognised as "containing a metadata block" (so
       // strict mode does not also fire "file lacks document_metadata") and
       // fields stay null so the parser will not emit follow-on field errors.
-      const nearMisses = lines
-        .map((line, index) => ({ line, index }))
-        .filter(({ line }) => line.length > 0 && line.trim() !== "")
-        .slice(0, 40)
-        .filter(({ line }) => line.trim() === METADATA_MARKER);
-      if (nearMisses.length === 1) {
-        const { line, index } = nearMisses[0];
-        const trimmed = line.trim();
-        if (trimmed === METADATA_MARKER && line !== METADATA_MARKER) {
-          errors.push(
-            `${path}:${index + 1}: misplaced document_metadata marker (must appear at column 1 with no leading or trailing whitespace); got ${JSON.stringify(line)}`
-          );
-          return { fields: null, foundMarker: true };
-        }
-      }
-      return { fields: null, foundMarker: false };
+      // The malformed-marker error is the authoritative parse error for this
+      // record.
+      return { fields: null, foundMarker: true };
     }
-    const markerIndex = markerCandidate.index;
+    return { fields: null, foundMarker: false };
+  }
+  const markerIndex = markerCandidate.index;
 
   // Opening fence must be exactly ```yaml at column 1 of a line above the
   // marker. We allow blank lines between the fence and the marker but the
@@ -186,7 +195,7 @@ function parseMetadata(text, path, errors) {
     const match = line.match(METADATA_FIELD_PATTERN);
     if (!match) {
       errors.push(
-        `${path}:${index + 1}: unsupported document_metadata syntax (expected two-space indent and one ASCII space around the colon)`
+        `${path}:${index + 1}: unsupported document_metadata syntax (expected two ASCII spaces, exactly one ASCII space after the colon, no trailing whitespace, value with non-whitespace at both ends)`
       );
       continue;
     }
@@ -404,32 +413,40 @@ export function checkDocumentAuthority(options = {}) {
   const ungovernedFiles = [];
 
   for (const path of listMarkdownFiles(rootDir)) {
+    const recordErrors = [];
     const text = readFileSync(join(rootDir, path), "utf8");
-    const { fields, foundMarker } = parseMetadata(text, path, errors);
+    const { fields, foundMarker } = parseMetadata(text, path, recordErrors);
     if (!foundMarker) {
       ungovernedFiles.push(path);
       continue;
     }
     if (!fields) {
-      // parseMetadata already pushed diagnostic(s) into errors.
+      // parseMetadata already pushed diagnostic(s) into recordErrors; copy
+      // them to the global errors list so reviewers still see them in the
+      // consolidated output, but do not push the record into either
+      // parsedRecords or validRecords because there are no fields to validate
+      // against Phase-1 contracts.
+      for (const recordError of recordErrors) {
+        errors.push(recordError);
+      }
       continue;
     }
     // Phase 1: per-record field validation. Pure; no cross-record resolution.
-    // Capture per-record errors into recordErrors so the record can carry a
-    // `valid` flag for Phase 2 to honour. The global errors list also gets a
-    // copy so reviewers still see them in the consolidated output.
-    const recordErrors = [];
+    // All per-record errors (lexical markers, missing fields, duplicate
+    // fields, unsupported fields, lifecycle contract, production-authority
+    // contract) flow into recordErrors so the record can carry a `valid`
+    // flag for Phase 2 to honour. The global errors list also gets a copy
+    // so reviewers still see them in the consolidated output.
     validateFields(path, fields, recordErrors);
     checkLifecycleAndSupersededBy(path, fields, recordErrors);
     checkProductionAuthorityAllowed(path, fields, recordErrors);
     const record = { path, fields, recordErrors };
     parsedRecords.push(record);
+    for (const recordError of recordErrors) {
+      errors.push(recordError);
+    }
     if (recordErrors.length === 0) {
       validRecords.push(record);
-    } else {
-      for (const recordError of recordErrors) {
-        errors.push(recordError);
-      }
     }
   }
 
