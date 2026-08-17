@@ -41,6 +41,11 @@ function listMarkdownFiles(rootDir) {
         continue;
       }
       const relativePath = join(relativeDir, entry.name);
+      if (entry.isSymbolicLink()) {
+        throw new Error(
+          `symlink encountered under in-scope directory; remove or replace with a regular file: ${relativePath}`
+        );
+      }
       if (entry.isDirectory()) {
         walk(relativePath);
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
@@ -135,43 +140,7 @@ function isValidDate(value) {
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 }
 
-function checkSupersededBy(rootDir, path, fields, errors) {
-  const value = fields.superseded_by;
-  if (value === undefined) {
-    return;
-  }
-  if (fields.lifecycle === "deprecated") {
-    if (value === "null") {
-      errors.push(`${path}: deprecated lifecycle requires superseded_by`);
-      return;
-    }
-  } else if (value !== "null") {
-    errors.push(
-      `${path}: ${fields.lifecycle} lifecycle requires superseded_by null`
-    );
-    return;
-  }
-  if (value === "null") {
-    return;
-  }
-  if (isAbsolute(value) || value.includes("\\")) {
-    errors.push(`${path}: superseded_by must be a repository-relative path`);
-    return;
-  }
-  const fullPath = resolve(rootDir, value);
-  const relativePath = relative(rootDir, fullPath);
-  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
-    errors.push(`${path}: superseded_by must stay inside the repository`);
-    return;
-  }
-  if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
-    errors.push(
-      `${path}: superseded_by path must resolve to an existing file: ${value}`
-    );
-  }
-}
-
-function validateMetadata(rootDir, path, fields, errors) {
+function validateFields(path, fields, errors) {
   if (fields.doc_type !== undefined && !VALID_DOC_TYPES.has(fields.doc_type)) {
     errors.push(`${path}: unsupported doc_type ${fields.doc_type}`);
   }
@@ -206,7 +175,78 @@ function validateMetadata(rootDir, path, fields, errors) {
       `${path}: source_only_ authority scopes require production_authority false`
     );
   }
-  checkSupersededBy(rootDir, path, fields, errors);
+}
+
+function checkLifecycleAndSupersededBy(path, fields, errors) {
+  // Enforce the lifecycle/superseded_by contract without touching the filesystem.
+  // Successor resolution against the governed inventory happens later in
+  // checkSupersededByAgainstRecords so that this stage stays pure.
+  const value = fields.superseded_by;
+  if (value === undefined) {
+    return;
+  }
+  if (fields.lifecycle === "deprecated") {
+    if (value === "null") {
+      errors.push(`${path}: deprecated lifecycle requires superseded_by`);
+      return;
+    }
+  } else if (value !== "null") {
+    errors.push(
+      `${path}: ${fields.lifecycle} lifecycle requires superseded_by null`
+    );
+    return;
+  }
+  if (value === "null") {
+    return;
+  }
+  if (isAbsolute(value) || value.includes("\\")) {
+    errors.push(`${path}: superseded_by must be a repository-relative path`);
+    return;
+  }
+}
+
+function checkSupersededByAgainstRecords(sourcePath, fields, recordsByPath, errors) {
+  const value = fields.superseded_by;
+  if (value === undefined || value === "null") {
+    return;
+  }
+  if (fields.lifecycle !== "deprecated") {
+    return;
+  }
+
+  // Canonicalize via join + relative to defeat dot-segment escapes.
+  // The literal `value` has already been rejected when absolute or containing
+  // backslashes by checkLifecycleAndSupersededBy.
+  const normalizedTarget = normalizedRepoPath(value);
+  if (normalizedTarget === sourcePath) {
+    errors.push(
+      `${sourcePath}: superseded_by must not point at the source file (self-reference): ${value}`
+    );
+    return;
+  }
+  const target = recordsByPath.get(normalizedTarget);
+  if (!target) {
+    errors.push(
+      `${sourcePath}: superseded_by must reference an in-scope governed Markdown file under docs/ or ops/: ${value}`
+    );
+    return;
+  }
+  if (target.fields.lifecycle !== "active") {
+    errors.push(
+      `${sourcePath}: superseded_by target must have lifecycle active (got ${target.fields.lifecycle}): ${value}`
+    );
+  }
+}
+
+function checkProductionAuthorityAllowed(path, fields, errors) {
+  // Fail-closed guard: until production_gate_id coupling is introduced,
+  // refuse production_authority: true so a manual review cannot accidentally
+  // promote a doc by editing metadata alone.
+  if (fields.production_authority === "true") {
+    errors.push(
+      `${path}: production_authority true is unsupported until gate coupling is introduced`
+    );
+  }
 }
 
 function checkDuplicateCanonicalScopes(records, errors) {
@@ -243,11 +283,8 @@ export function checkDocumentAuthority(options = {}) {
   const ungovernedFiles = [];
 
   for (const path of listMarkdownFiles(rootDir)) {
-    const { fields, foundMarker } = parseMetadata(
-      readFileSync(join(rootDir, path), "utf8"),
-      path,
-      errors
-    );
+    const text = readFileSync(join(rootDir, path), "utf8");
+    const { fields, foundMarker } = parseMetadata(text, path, errors);
     if (!foundMarker) {
       ungovernedFiles.push(path);
       continue;
@@ -255,8 +292,26 @@ export function checkDocumentAuthority(options = {}) {
     if (!fields) {
       continue;
     }
-    validateMetadata(rootDir, path, fields, errors);
+    // Phase 1: per-record field validation. Pure; no cross-record resolution.
+    validateFields(path, fields, errors);
+    checkLifecycleAndSupersededBy(path, fields, errors);
+    checkProductionAuthorityAllowed(path, fields, errors);
     records.push({ path, fields });
+  }
+
+  // Phase 2: cross-record successor resolution against the governed inventory
+  // only. Re-reading the target file from disk is forbidden at this stage to
+  // keep the success-or-fail decision deterministic and scope-aware.
+  const recordsByPath = new Map(
+    records.map((record) => [record.path, record])
+  );
+  for (const record of records) {
+    checkSupersededByAgainstRecords(
+      record.path,
+      record.fields,
+      recordsByPath,
+      errors
+    );
   }
 
   if (strictFiles) {
@@ -286,29 +341,44 @@ export function checkDocumentAuthority(options = {}) {
   };
 }
 
-function cliRoot(args) {
-  const rootIndex = args.indexOf("--root");
-  if (rootIndex < 0) {
-    return DEFAULT_ROOT;
-  }
-  const rootValue = args[rootIndex + 1];
-  if (!rootValue || rootValue.startsWith("--")) {
-    throw new Error("--root requires a directory");
-  }
-  return resolve(rootValue);
-}
+function parseCliArgs(args) {
+  const out = { rootDir: DEFAULT_ROOT, strictFiles: false };
+  const seenRoot = { count: 0 };
+  const seenStrict = { count: 0 };
 
-function cliStrictFiles(args) {
-  return args.includes("--strict-files");
+  for (let i = 0; i < args.length; i += 1) {
+    const token = args[i];
+    if (token === "--root") {
+      seenRoot.count += 1;
+      if (seenRoot.count > 1) {
+        throw new Error("--root may only be specified once");
+      }
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error("--root requires a directory");
+      }
+      out.rootDir = resolve(value);
+      i += 1;
+    } else if (token === "--strict-files") {
+      seenStrict.count += 1;
+      if (seenStrict.count > 1) {
+        throw new Error("--strict-files may only be specified once");
+      }
+      out.strictFiles = true;
+    } else if (token.startsWith("--")) {
+      throw new Error(`unsupported flag: ${token}`);
+    } else {
+      throw new Error(`unexpected positional argument: ${token}`);
+    }
+  }
+  return out;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const argv = process.argv.slice(2);
-    const result = checkDocumentAuthority({
-      rootDir: cliRoot(argv),
-      strictFiles: cliStrictFiles(argv)
-    });
+    const { rootDir, strictFiles } = parseCliArgs(argv);
+    const result = checkDocumentAuthority({ rootDir, strictFiles });
     if (result.ok) {
       console.log(result.summary);
     } else {

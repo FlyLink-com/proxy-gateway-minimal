@@ -157,7 +157,12 @@ test("document authority check rejects missing superseded paths", () => {
   const result = runAuthorityCheck(rootDir);
 
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /superseded_by path must resolve to an existing file: docs\/missing\.md/);
+  // The successor target must exist as an in-scope governed Markdown record,
+  // not merely as an existing file on disk.
+  assert.match(
+    result.stderr,
+    /superseded_by must reference an in-scope governed Markdown file under docs\/ or ops\/: docs\/missing\.md/
+  );
 });
 
 test("document authority check validates the current repository metadata", () => {
@@ -442,7 +447,12 @@ test("document authority check rejects deprecated lifecycle pointing at a direct
   const result = runAuthorityCheck(rootDir);
 
   assert.equal(result.status, 1, result.stderr);
-  assert.match(result.stderr, /superseded_by path must resolve to an existing file: docs\/subdir/);
+  // The successor target must be a governed Markdown record; a directory is
+  // neither, so the cross-record check rejects it.
+  assert.match(
+    result.stderr,
+    /superseded_by must reference an in-scope governed Markdown file under docs\/ or ops\/: docs\/subdir/
+  );
 });
 
 test("document authority strict mode fails when the root directory does not exist", () => {
@@ -487,4 +497,339 @@ test("current repository passes strict document authority", () => {
   const match = result.stdout.match(/validated (\d+) document metadata block/);
   assert.ok(match, `expected metadata count in output, received: ${result.stdout}`);
   assert.ok(Number(match[1]) > 0, `expected a non-empty metadata inventory, received: ${result.stdout}`);
+});
+
+function writeRawMetadata(rootDir, path, rawBody) {
+  const fullPath = join(rootDir, path);
+  mkdirSync(dirname(fullPath), { recursive: true });
+  writeFileSync(fullPath, rawBody);
+}
+
+test("successor must not point at a non-Markdown target", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-txt-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "succ_txt",
+    supersededBy: "docs/replacement.txt",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeRawMetadata(rootDir, "docs/replacement.txt", "not a markdown file\n");
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(
+    result.stderr,
+    /superseded_by must reference an in-scope governed Markdown file under docs\/ or ops\/: docs\/replacement\.txt/
+  );
+});
+
+test("successor must not point at an archive/ Markdown target", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-archive-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "succ_archive",
+    supersededBy: "docs/archive/replacement.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeDoc(rootDir, "docs/archive/replacement.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "succ_archive_target",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(
+    result.stderr,
+    /superseded_by must reference an in-scope governed Markdown file under docs\/ or ops\/: docs\/archive\/replacement\.md/
+  );
+});
+
+test("successor must not point at a superpowers/ Markdown target", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-superpowers-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "succ_super",
+    supersededBy: "docs/superpowers/spec.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeDoc(rootDir, "docs/superpowers/spec.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "succ_super_target",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(
+    result.stderr,
+    /superseded_by must reference an in-scope governed Markdown file under docs\/ or ops\/: docs\/superpowers\/spec\.md/
+  );
+});
+
+test("successor must not escape scope via dot-segment path", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-dot-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "succ_dot",
+    supersededBy: "docs/../docs/archive/replacement.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeDoc(rootDir, "docs/archive/replacement.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "succ_dot_target",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  // The path is canonicalized by join + relative before lookup, so the archive
+  // path is correctly rejected.
+  assert.match(
+    result.stderr,
+    /superseded_by must reference an in-scope governed Markdown file under docs\/ or ops\/: docs\/\.\.\/docs\/archive\/replacement\.md/
+  );
+});
+
+test("successor must not point at ungoverned Markdown target", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-ungoverned-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "succ_ungov",
+    supersededBy: "docs/target.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeRawMetadata(rootDir, "docs/target.md", "# target without metadata\n");
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(
+    result.stderr,
+    /superseded_by must reference an in-scope governed Markdown file under docs\/ or ops\/: docs\/target\.md/
+  );
+});
+
+test("successor target with valid Phase-1 metadata but historical lifecycle is rejected", () => {
+  // Cross-record contract: even when the target record is parseable and
+  // Phase 1-valid, a successor that resolves to a record whose lifecycle is
+  // not "active" must be rejected. The .txt / archive / superpowers /
+  // dot-segment / ungoverned tests cover file-not-in-inventory cases; this
+  // pins the inventory-but-not-active case at the Phase-2 layer.
+  //
+  // Source is deprecated → target. Target is itself deprecated and points at a
+  // third active record. Phase 1 surfaces the deprecated-target error for
+  // the target record (it has non-null superseded_by), then Phase 2 surfaces
+  // the "lifecycle not active" error for the source record. Both must be
+  // present so the round-6 contract is fully observable.
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-inactive-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "succ_inactive",
+    supersededBy: "docs/target.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeDoc(rootDir, "docs/target.md", {
+    docType: "canonical",
+    lifecycle: "deprecated",
+    authorityScope: "succ_inactive_target",
+    supersededBy: "docs/now.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeDoc(rootDir, "docs/now.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "succ_inactive_now",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(
+    result.stderr,
+    /superseded_by target must have lifecycle active \(got deprecated\): docs\/target\.md/
+  );
+});
+
+test("successor must not point at a self-reference", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-self-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "succ_self",
+    supersededBy: "docs/source.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(
+    result.stderr,
+    /superseded_by must not point at the source file \(self-reference\): docs\/source\.md/
+  );
+});
+
+test("successor must not point at a historical target", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-successor-historical-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "operational",
+    lifecycle: "deprecated",
+    authorityScope: "succ_hist",
+    supersededBy: "docs/target.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeDoc(rootDir, "docs/target.md", {
+    docType: "canonical",
+    lifecycle: "historical",
+    authorityScope: "succ_hist_target",
+    supersededBy: "docs/now.md",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+  writeDoc(rootDir, "docs/now.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "succ_hist_target_now",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(
+    result.stderr,
+    /superseded_by target must have lifecycle active \(got historical\): docs\/target\.md/
+  );
+});
+
+test("production_authority true is rejected by the fail-closed guard", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-production-authority-true-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "prod_true",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "true"
+  });
+
+  const result = runAuthorityCheck(rootDir);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(
+    result.stderr,
+    /production_authority true is unsupported until gate coupling is introduced/
+  );
+});
+
+test("duplicate --root is rejected by the CLI parser", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-cli-duplicate-root-"));
+  const result = spawnSync(
+    process.execPath,
+    [CHECKER, "--root", rootDir, "--root", rootDir],
+    { cwd: REPOSITORY_ROOT, encoding: "utf8" }
+  );
+
+  assert.notEqual(result.status, 0, "duplicate --root must be rejected");
+  assert.match(result.stderr, /--root may only be specified once/);
+});
+
+test("duplicate --strict-files is rejected by the CLI parser", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-cli-duplicate-strict-"));
+  const result = spawnSync(
+    process.execPath,
+    [CHECKER, "--root", rootDir, "--strict-files", "--strict-files"],
+    { cwd: REPOSITORY_ROOT, encoding: "utf8" }
+  );
+
+  assert.notEqual(result.status, 0, "duplicate --strict-files must be rejected");
+  assert.match(result.stderr, /--strict-files may only be specified once/);
+});
+
+test("positional argument is rejected by the CLI parser", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-cli-positional-"));
+  const result = spawnSync(
+    process.execPath,
+    [CHECKER, "--root", rootDir, "positional"],
+    { cwd: REPOSITORY_ROOT, encoding: "utf8" }
+  );
+
+  assert.notEqual(result.status, 0, "positional argument must be rejected");
+  assert.match(result.stderr, /unexpected positional argument: positional/);
+});
+
+test("CLI accepts --strict-files before --root", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-cli-order-1-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "cli_order_a",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+
+  const result = spawnSync(
+    process.execPath,
+    [CHECKER, "--strict-files", "--root", rootDir],
+    { cwd: REPOSITORY_ROOT, encoding: "utf8" }
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /validated 1 document metadata block/);
+});
+
+test("CLI accepts --root before --strict-files", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-cli-order-2-"));
+  writeDoc(rootDir, "docs/source.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "cli_order_b",
+    supersededBy: "null",
+    lastVerifiedAt: "2026-08-17",
+    productionAuthority: "false"
+  });
+
+  const result = spawnSync(
+    process.execPath,
+    [CHECKER, "--root", rootDir, "--strict-files"],
+    { cwd: REPOSITORY_ROOT, encoding: "utf8" }
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /validated 1 document metadata block/);
 });

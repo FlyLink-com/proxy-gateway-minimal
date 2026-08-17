@@ -17,8 +17,9 @@ part of the repository's governance pipeline.
 
 ## Metadata block (required for in-scope files)
 
-Every in-scope file MUST begin with a top-level YAML fence that contains a
-`document_metadata:` block. The exact template is:
+Every in-scope file MUST contain a top-level YAML fence that holds a
+`document_metadata:` block. The fence and its marker line MUST live in the
+first 40 non-empty lines of the file. The exact template is:
 
 ```yaml
 document_metadata:
@@ -35,11 +36,22 @@ document_metadata:
 - All six fields are required. The validator treats an empty value as missing.
 - `superseded_by` MUST be the literal string `null` while the document is
   current. It becomes a repository-relative path only when the lifecycle
-  transitions to `deprecated`.
+  transitions to `deprecated`. A non-`null` `superseded_by` MUST resolve to
+  an in-scope governed Markdown record whose own `lifecycle` is `active`.
+  The successor must not be the source file itself, must not be a directory,
+  and must not live under `archive/`, `superpowers/`, `.git`, `.worktrees`,
+  or `node_modules/`. Dot-segment escapes (e.g. `docs/../archive/foo.md`)
+  are rejected because the lookup is performed against the canonical
+  inventory, not the raw filesystem.
 - A document is in-scope if and only if it lives under `docs/` or `ops/`.
   `archive/` and `superpowers/` are explicitly out of scope, and the scanner
   also skips `.git`, `.worktrees`, and `node_modules` regardless of location.
 - `last_verified_at` must be a valid `YYYY-MM-DD` calendar date.
+- `production_authority: "true"` is reserved for documents that have an
+  active production gate coupling. Until that coupling is introduced the
+  validator MUST fail-closed on `production_authority: "true"` so that a
+  manual metadata edit cannot accidentally promote a document to production
+  authority on its own. All current documents use `"false"`.
 
 ## Authority scope naming
 
@@ -91,8 +103,9 @@ the ambiguity:
   evidence docs whose value is the artifact at a point in time).
   `superseded_by` stays `null`.
 - `deprecated` — replaced by a successor. `superseded_by` MUST be a
-  repository-relative path that resolves to an existing file. The validator
-  refuses to accept `superseded_by: null` for a `deprecated` document.
+  repository-relative path that resolves to an in-scope governed Markdown
+  record whose own `lifecycle` is `active`. The validator refuses to accept
+  `superseded_by: null` for a `deprecated` document.
 
 ## Production authority
 
@@ -103,6 +116,11 @@ the ambiguity:
 - Any document with `production_authority: "true"` MUST be paired with a
   Risk A gate elsewhere in the repo (see `npm run governance:check`).
   Documents that merely describe a risk do not qualify.
+- Until the gate-coupling lookup is implemented, the validator refuses to
+  load any document with `production_authority: "true"`. This is a
+  deliberate fail-closed stance: a manual metadata edit MUST NOT be
+  sufficient on its own to grant production authority. The corpus today is
+  entirely `production_authority: "false"`.
 
 ## `last_verified_at` semantics
 
