@@ -21,11 +21,6 @@ const FOLLOWUP_ENUM = new Set([
 const SKIPPED_RE_PATTERN = /^Skipped \(R-\d+ retracted\)$/;
 const RISK_ENUM = new Set(["C", "B", "A", "–"]);
 const PR_QUEUE_FOLLOWUPS = new Set(["Issue + planned PR"]);
-const ISSUE_QUEUE_FOLLOWUPS = new Set([
-  "Issue only",
-  "Issue + planned PR",
-  "Architectural — Issue only",
-]);
 const SKIPPED = new Set(["Skipped (informational)"]);
 const EMPTY_CELL = new Set(["–", ""]);
 
@@ -54,8 +49,6 @@ function findTable(startMarker) {
   }
   return { header: lines[headerIdx].split("|").slice(1, -1).map((c) => c.trim()), rows };
 }
-
-const issues = [];
 
 // 1. Canonical mapping table
 const canonicalHeader = "## F-XX canonical mapping (single source of truth)";
