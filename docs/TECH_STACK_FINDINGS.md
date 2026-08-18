@@ -406,10 +406,10 @@ This document does not:
 | ID | Surface | Severity | Risk tier | Status | Follow-up | Depends on |
 |---|---|---|---|---|---|---|
 | F-16 | spawnSync in edge adapters blocks event loop | medium | B | new | Issue + planned PR | – |
-| F-17 | SHA-256 of migration snapshot SQLite files uses readFileSync (Round 3 fact-corrected from "migration files") | low | A | new | Issue + planned PR | – |
+| F-17 | migration dry-run SQLite integrity hashing uses readFileSync (Round 3 review-corrected across 4 source-DB + 4 snapshot-pair contracts) | low | A | new | Issue + planned PR | – |
 | F-18 | express.json() default 100kb; few routes override | low | B | new | Issue + planned PR | – |
-| F-19 | Migration rollback support is partial (1 of 11 modules) | low | A (split: F-19a docs C; F-19b code A) | new | Issue + planned PR (×2 sub-deliverables; see canonical mapping) | – |
-| F-20 | Lock file read with readFileSync on hot path candidate | low | B | new | Issue only (gate: F-13 + profile evidence) | F-13 |
+| F-19 | Migration rollback support is partial (1 of 11 modules) | low | A | new | Issue + planned PR | – |
+| F-20 | Lock file read with readFileSync on hot path candidate | low | B | new | Issue only | F-13 |
 
 ## F-16 — spawnSync in edge adapters blocks event loop
 
@@ -438,69 +438,103 @@ wrapper, or isolate the call in `worker_threads`. Note: this changes the
 edge-adapter call contract; the surrounding factory / startup code paths
 must be re-reviewed for any implicit sync ordering they relied on.
 
-## F-17 — SHA-256 of migration snapshot SQLite files uses readFileSync
+## F-17 — migration dry-run SQLite integrity hashing uses readFileSync
 
-**Evidence** (8 of 11 migration modules; reviewed call sites in Round 3):
+**Evidence** (8 of 11 migration modules; call sites reviewed in Round 3
+and re-confirmed in Round 3 review). The 8 cited modules split into
+**two distinct contracts**:
+
+**Contract A — source SQLite DB file hash before / after dry-run (4 modules):**
 ```
-server/services/platform/account-resource-authority-migrations.mjs:801
-server/services/platform/coin-commerce-migrations.mjs:1327
-server/services/platform/coin-wallet-migrations.mjs:826
-server/services/platform/coin-wallet-reference-index-migrations.mjs:736
-server/services/platform/portal-registration-welcome-bonus-migrations.mjs:1183
-server/services/platform/wallet-first-deferred-checkout-migrations.mjs:409
-server/services/platform/wallet-first-setup-delivery-handoffs-migrations.mjs:372
-server/services/platform/wallet-first-resource-effect-runtime-claims-migrations.mjs:334
+server/services/platform/account-resource-authority-migrations.mjs:843, 865
+server/services/platform/coin-commerce-migrations.mjs:1368, 1386
+server/services/platform/coin-wallet-migrations.mjs:868, 882
+server/services/platform/coin-wallet-reference-index-migrations.mjs:788, 811
 ```
 
-Shape (helper):
+These modules check whether the source SQLite database file contents
+have changed during the dry-run window. Pattern:
+```js
+const sourceHash = sha256File(dbPath);
+await source.backup(snapshotPath);
+... // applies migrations to snapshotPath
+const after = sourceState(source);
+if (sha256File(dbPath) !== sourceHash) {
+  throw internalError("xxx_source_changed_during_dry_run", token);
+}
+```
+
+`snapshotPath` exists (used for backup) but is **not** hashed.
+
+**Contract B — backup snapshot vs verification snapshot hash (4 modules):**
+```
+server/services/platform/portal-registration-welcome-bonus-migrations.mjs:1251, 1273
+server/services/platform/wallet-first-deferred-checkout-migrations.mjs:457, 473
+server/services/platform/wallet-first-setup-delivery-handoffs-migrations.mjs:423, 439
+server/services/platform/wallet-first-resource-effect-runtime-claims-migrations.mjs:385, 401
+```
+
+These modules hash the `.sqlite` snapshot files produced by
+`source.backup(snapshot)` / `verification.backup(verificationSnapshot)`.
+Pattern:
+```js
+await source.backup(snapshotPath);
+const sourceSnapshotHash = sha256File(snapshotPath);
+await verification.backup(verificationSnapshotPath);
+sourceSnapshotUnchanged = sha256File(verificationSnapshotPath) === sourceSnapshotHash;
+```
+
+Shared helper (identical in all 8 modules):
 ```js
 function sha256File(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 ```
 
-**Round 3 fact-correction**: the hashed object is **not** the migration
-source file. In every cited module the call sites are of the form
-`sha256File(snapshotPath)` / `sha256File(verificationSnapshotPath)` where
-`snapshotPath = join(workDirectory, "snapshot.sqlite")` (or equivalently
-`join(directory, "snapshot.sqlite")`) and `verificationSnapshotPath =
-join(workDirectory, "verification.sqlite")`. The snapshots are produced by
-`source.backup(snapshot)` / `verification.backup(verificationSnapshot)`
-before and after the migration dry-run, and the hash comparison verifies
-that the source SQLite database snapshot is byte-identical across the
-validation window. This is a **dry-run source-integrity contract**, not a
-migration-source-file read.
+Both contracts are **migration dry-run SQLite integrity checks** under
+the same fail-closed gate family, but the hashes protect different
+files. A streaming-hash implementation must therefore cover **both**
+contracts, not just the snapshot pair.
 
 ```text
-Object:  SQLite .sqlite snapshot / verification files
-Use:     dry-run source integrity check
-Risk:    depends on snapshot size (grows with production DB)
+Object:  source SQLite DB file (contract A)
+       OR backup / verification .sqlite snapshots (contract B)
+Use:     migration dry-run integrity gate (fail-closed)
+Risk:    depends on file size (grows with production DB)
 ```
 
-**Impact**: With current production-size SQLite snapshots (kilobytes to a
-few MB), `readFileSync` is acceptable and not a hot path. The forward-
-looking concern is memory pressure if the SQLite snapshot grows large
-(tens of MB+): `readFileSync` materialises the whole file in memory and
-holds it for the hash computation.
+**Impact**: SQLite DB sizes today are not measured in this document.
+The forward-looking concern is memory pressure if the SQLite file
+grows large: `readFileSync` materialises the whole file in memory
+and holds it for the hash computation. The actual size of the source
+DB files and the snapshot files at production scale is **not yet
+quantified** by the evidence in this round.
 
 **Possible follow-up**: Risk tier: **A** (touches migration dry-run
-source-integrity contract, which `AGENTS.md` treats as A-tier SQLite
+integrity contract, which `AGENTS.md` treats as A-tier SQLite
 schema/migration gate territory). Switching to streaming hash is correct
 in principle, but the work must:
 
-1. Define a new migration dry-run contract that allows streaming or
-   memory-bounded hashing of the snapshot.
+1. Define a new migration dry-run contract that supports streaming or
+   memory-bounded hashing for **both** contracts.
 2. Keep byte-equality verification (not just file-size / first-byte
    checksums).
 3. Re-validate all eight call sites after the contract change; the
-   `sourceSnapshotUnchanged` semantics are used as a fail-closed gate.
+   `sourceHash !== sourceHash` and `sourceSnapshotUnchanged` gates are
+   both fail-closed.
 4. Add tests asserting the new contract on at least one large
-   representative snapshot.
+   representative SQLite file for each contract class.
+5. Distinguish tests by contract class — do not assume all 8 modules
+   share the same `sourceSnapshotUnchanged` semantics.
 
 Do **not** open a B-tier streaming-hash PR. The correct branch name
-(per the canonical mapping) is `feat/migration-snapshot-sha-streaming`
-and it is an A-tier change because it crosses the migration
-source-integrity gate boundary.
+(per the canonical mapping) is `feat/migration-integrity-sha-streaming`
+and it is an A-tier change because it crosses the migration integrity
+gate boundary. The Issue title should be:
+
+```text
+F-17: stream SHA-256 for migration dry-run SQLite integrity files
+```
 
 ## F-18 — express.json() default 100kb; few routes override
 
@@ -522,47 +556,76 @@ JSON bodies pass through silently. Defense-in-depth is uneven.
 **Possible follow-up**: Risk tier: **B**. Set explicit global limit in
 `server/app.mjs:332` (suggest `32kb`) and document per-route overrides.
 
-## F-19 — Migration rollback support is partial
+## F-19 — Migration rollback policy is undecided, and tooling is partial
 
 **Evidence**:
 - `server/services/platform/account-resource-authority-migrations.mjs:947`
-  exports `rollbackAccountResourceAuthorityMigration` (only migration with
-  an exported schema-revert function)
+  exports `rollbackAccountResourceAuthorityMigration` (the only module
+  with an exported schema-revert function).
 - 4 migration modules use `source.exec("rollback")` which is a
-  better-sqlite3 transaction rollback, not a schema down-migration
-- No migration module exports a `down()` or equivalent schema-revert function
-  for the other 10 modules
+  better-sqlite3 transaction rollback, not a schema down-migration.
+- No migration module exports a `down()` or equivalent schema-revert
+  function for the other 10 modules.
+- No project convention document explicitly states whether migrations
+  are forward-only or reversible.
 
-**Impact**: Once a forward migration is applied, schema errors can only be
-fixed by writing another forward migration. There is no test infrastructure
-to exercise schema rollback for the 10 non-account-authority migrations.
+**Impact**: Schema errors in production can only be fixed by writing
+another forward migration. There is no test infrastructure to exercise
+schema rollback for the 10 non-account-authority migrations. More
+fundamentally, the project has **not yet decided** whether `down()`
+exports are intended for production use, for staging / test fixtures
+only, or not at all. The "forward-only" assumption and the "we should
+add rollback exports" assumption are not made compatible by sequencing
+alone — they are two different policy choices.
 
-**Possible follow-up**: split into **two Issues** / **two PRs**, each
-tracked as its own row in the canonical mapping (`F-19a` / `F-19b`):
+**Possible follow-up**: the two PRs below are **mutually gated** on a
+policy decision, not just on schedule. The canonical mapping splits
+this into two tracking rows (`F-19a` / `F-19b`), but the dependency
+between them is a **policy decision**, not a delivery-order question.
+The canonical mapping captures this in the `Gate` column.
 
-1. **F-19a (C tier)**: record forward-only policy in
-   `docs/CONVENTIONS.md`. Branch `docs/migration-forward-only`,
-   ~half-day. Risk C; no schema change.
-2. **F-19b (A tier)**: add `down()` exports to all 11 migration
-   modules with rollback tests. Branch `feat/migration-rollback-exports`,
-   ~1 day. Full A-tier gate sequence:
-   spec / dry-run / read-only inventory / operator approval /
-   staging / rollback plan / production gate.
+1. **F-19a (C tier)**: decide and document the migration rollback
+   policy in `docs/CONVENTIONS.md`. Recommended wording: "Production
+   schema migrations are forward-only. `down()` exports are allowed
+   only as disposable reverse fixtures for staging / test validation."
+   Branch `docs/migration-forward-only`, ~half-day. Risk C; no schema
+   change.
+2. **F-19b (A tier)**: **only if F-19a policy requires schema
+   reverts in any environment**, add `down()` exports to the
+   migration modules covered by that policy, with rollback tests.
+   Branch `feat/migration-rollback-exports`, ~1 day. Full A-tier gate
+   sequence: spec / dry-run / read-only inventory / operator approval
+   / staging / rollback plan / production gate.
 
-F-19b depends on F-19a landing first so the forward-only policy is the
-governance basis for the rollback-exports work. Do **not** bundle both
-into one "1 day" C-tier PR.
+**Two-policy alternatives** (explicit, both currently valid):
+
+- **A**: Keep production forward-only. `F-19b` becomes `Issue only`
+  (kept as a research item); no `down()` work is queued.
+- **B**: Adopt a reversible migration contract. `F-19a` records the
+  policy decision and `F-19b` is unblocked with the chosen scope.
+
+Until the policy decision is made, do not create the F-19b Issue
+(planned A-tier PR). F-19a must land first as the governance basis;
+F-19b's Gate is "F-19a policy decision selects reversible / down
+migrations", not simply "F-19a lands".
 
 ## F-20 — Lock file read with readFileSync on hot path candidate
 
-**Evidence** (`server/services/platform/wallet-first-setup-delivery-escrow.mjs:575`):
+**Evidence** (`server/services/platform/wallet-first-setup-delivery-escrow.mjs`):
 ```js
+// readLockOwner (line ~575)
 return normalizeLockOwner(JSON.parse(readFileSync(lockPath, "utf8")));
+// releaseLock / recoverDeadWriterLock also call readLockOwner to compare
+// against the owner PID / nonce before unlinking or renaming the marker.
 ```
 
-**Impact**: Today the lock file is read rarely (escrow state read), so this
-is informational. If the lock becomes a per-checkout hot read, it adds to
-F-01 / F-16.
+**Impact**: The read is on the lock release path and on the stale-lock
+recovery path (`releaseLock`, `recoverDeadWriterLock`). It is **not**
+escrow state read; it is owner-marker read. Runtime frequency and
+event-loop impact have **not been measured**; the "rarely" wording
+from earlier rounds is not supported by code evidence and is removed.
+Whether the lock owner marker is on a hot path is a profiling
+question, not a code-reading conclusion.
 
 **Possible follow-up**: **Issue only** (canonical). The "conditional"
 qualifier is recorded in the `Gate / opening condition` column of the
@@ -749,10 +812,10 @@ tracked as its own row with its own Risk tier.
 | F-14 | A | Issue only | F-01, F-13 | F-14: consolidate 11 SQLite DBs into one logical schema | – | F-01 + F-13 must land |
 | F-15 | C | Issue + planned PR | – | F-15: split README into role-specific docs | `docs/readme-split` (C, ~1-2 days) | – |
 | F-16 | B | Issue + planned PR | – | F-16: replace spawnSync with async execFile in edge adapters | `refactor/edge-spawn-async` (B, ~2-3 days) | – |
-| F-17 | A | Issue + planned PR | – | F-17: stream SHA-256 of migration snapshot SQLite files | `feat/migration-snapshot-sha-streaming` (A, ~1 day) | – |
+| F-17 | A | Issue + planned PR | – | F-17: stream SHA-256 for migration dry-run SQLite integrity files | `feat/migration-integrity-sha-streaming` (A, ~1 day) | – |
 | F-18 | B | Issue + planned PR | – | F-18: explicit body limit on global json parser | `fix/express-json-limit` (B, ~half-day) | – |
 | F-19a | C | Issue + planned PR | – | F-19a: record migration forward-only policy in docs | `docs/migration-forward-only` (C, ~half-day) | – |
-| F-19b | A | Issue + planned PR | F-19a | F-19b: add per-migration `down()` exports and tests | `feat/migration-rollback-exports` (A, ~1 day) | F-19a must land so the forward-only policy is the governance basis |
+| F-19b | A | Issue + planned PR | F-19a | F-19b: add per-migration `down()` exports and tests | `feat/migration-rollback-exports` (A, ~1 day) | F-19a policy decision selects reversible / down migrations |
 | F-20 | B | Issue only | F-13 | F-20: lock file async read on hot path | – | F-13 design + profiling / event-loop evidence |
 
 ### F-19 sub-deliverable split (two tracking rows, two PRs)
@@ -824,27 +887,39 @@ Issue titles are stable across the next batch Issue creation step. They
 will be opened in a single batch with the body format documented below
 this table. Issues are not opened until the user explicitly confirms.
 
-| # | Issue title | Risk tier | Follow-up | Depends on (PR-side gate) |
-|---|---|---|---|---|
-| 1 | F-13: multi-process / horizontal scale design | A | Architectural — Issue only | – |
-| 2 | F-20: lock file async read on hot path | B | Issue only | F-13 + profile evidence |
-| 3 | F-01: evaluate async DB driver path | B | Issue only | – |
-| 4 | F-02: in-memory rate limiter cannot scale across processes | A | Issue only | F-13 |
-| 5 | F-12: async DB driver abstraction layer | B | Issue only | F-01 |
-| 6 | F-14: consolidate 11 SQLite DBs into one logical schema | A | Issue only | F-01, F-13 |
-| 7 | F-07: metrics endpoint (Prometheus / StatsD) | B | Issue only | – |
-| 8 | F-03: add HTTP server timeout / keep-alive tuning | B | Issue + planned PR | – |
-| 9 | F-04: add security headers middleware (re-scoped) | B | Issue + planned PR | – |
-| 10 | F-06: enrich /api/health to probe DB and edge | B | Issue + planned PR | – |
-| 11 | F-08: circuit breaker in payment provider adapters | B | Issue + planned PR | – |
-| 12 | F-09: daemon launcher PID file (with stale-PID contract) | B | Issue + planned PR | – |
-| 13 | F-10: structured logging | B | Issue + planned PR | – |
-| 14 | F-16: replace spawnSync with async execFile in edge adapters | B | Issue + planned PR | – |
-| 15 | F-17: stream SHA-256 of migration snapshot SQLite files | A | Issue + planned PR | – |
-| 16 | F-18: explicit body limit on global json parser | B | Issue + planned PR | – |
-| 17 | F-19a: record migration forward-only policy in docs | C | Issue + planned PR | – |
-| 18 | F-19b: add per-migration `down()` exports and tests | A | Issue + planned PR | F-19a |
-| 19 | F-15: split README into role-specific docs | C | Issue + planned PR | – |
+The columns below are byte-for-byte copies of the canonical mapping
+columns. `Depends on` and `Gate / opening condition` are kept
+distinct; one is the F-XX dependency identifier, the other is the
+opening condition for the next concrete PR.
+
+| # | Issue title | Risk tier | Follow-up | Depends on | Gate / opening condition |
+|---|---|---|---|---|---|
+| 1 | F-13: multi-process / horizontal scale design | A | Architectural — Issue only | – | Design must land before any code PR |
+| 2 | F-20: lock file async read on hot path | B | Issue only | F-13 | F-13 design + profiling / event-loop evidence |
+| 3 | F-01: evaluate async DB driver path | B | Issue only | – | Spike must choose B (WAL / busy_timeout) vs A (driver migration) path |
+| 4 | F-02: in-memory rate limiter cannot scale across processes | A | Issue only | F-13 | F-13 design + Redis decision |
+| 5 | F-12: async DB driver abstraction layer | B | Issue only | F-01 | F-01 spike result |
+| 6 | F-14: consolidate 11 SQLite DBs into one logical schema | A | Issue only | F-01, F-13 | F-01 + F-13 must land |
+| 7 | F-07: metrics endpoint (Prometheus / StatsD) | B | Issue only | – | Infra decision + B-tier PR scope |
+| 8 | F-03: add HTTP server timeout / keep-alive tuning | B | Issue + planned PR | – | – |
+| 9 | F-04: add security headers middleware (re-scoped) | B | Issue + planned PR | – | – |
+| 10 | F-06: enrich /api/health to probe DB and edge | B | Issue + planned PR | – | – |
+| 11 | F-08: circuit breaker in payment provider adapters | B | Issue + planned PR | – | – |
+| 12 | F-09: daemon launcher PID file (with stale-PID contract) | B | Issue + planned PR | – | – |
+| 13 | F-10: structured logging | B | Issue + planned PR | – | – |
+| 14 | F-16: replace spawnSync with async execFile in edge adapters | B | Issue + planned PR | – | – |
+| 15 | F-17: stream SHA-256 for migration dry-run SQLite integrity files | A | Issue + planned PR | – | – |
+| 16 | F-18: explicit body limit on global json parser | B | Issue + planned PR | – | – |
+| 17 | F-19a: decide and document migration rollback policy | C | Issue + planned PR | – | – |
+| 18 | F-19b: add per-migration `down()` exports and tests | A | Issue + planned PR | F-19a | F-19a policy decision selects reversible / down migrations |
+| 19 | F-15: split README into role-specific docs | C | Issue + planned PR | – | – |
+
+**F-19b special semantics**: per the F-19 section, the F-19b Issue
+body must record the policy decision outcome from F-19a. If F-19a
+chooses "production forward-only", the F-19b Issue body must convert
+F-19b to `Issue only` (research item) and **not** open an A-tier PR.
+If F-19a chooses a reversible migration contract, F-19b's planned A-tier
+PR is unblocked in the spec scope selected by F-19a.
 
 Issue batch is **not** opened until the user explicitly confirms this
 title list. Each Issue body uses the format:
@@ -897,7 +972,7 @@ whose `Follow-up = Issue + planned PR` in the canonical mapping.
 | 4 | `fix/http-server-timeouts` | F-03 | B | ~half-day | Server `start.mjs` only. |
 | 5 | `fix/health-probe-db-and-edge` | F-06 | B | ~1 day | `/api/health` enrichment. |
 | 6 | `fix/security-headers-reduced-scope` | F-04 | B | ~1 day | Express middleware; HSTS/CSP excluded as A. |
-| 7 | `feat/migration-snapshot-sha-streaming` | F-17 | A | ~1 day | Migration dry-run source-integrity contract. Full A-tier gate. |
+| 7 | `feat/migration-integrity-sha-streaming` | F-17 | A | ~1 day | Migration dry-run source-integrity contract. Full A-tier gate. |
 | 8 | `refactor/edge-spawn-async` | F-16 | B | ~2-3 days | execFile + Promise; call contract change. |
 | 9 | `feat/payment-circuit-breaker` | F-08 | B | ~2-3 days | Per-provider open/half-open. |
 | 10 | `feat/structured-logging` | F-10 | B | ~1 week | Pino + secret-redaction. |
