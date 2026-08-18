@@ -22,7 +22,7 @@ Every in-scope file MUST contain a top-level YAML fence that holds a
 first 40 non-empty lines of the file. The exact template is:
 
 ```yaml
-document_metadata:
+document_metadata_template:
   doc_type: <canonical|operational|evidence>
   lifecycle: <active|deprecated|historical>
   authority_scope: <snake_case_unique_for_active_canonical>

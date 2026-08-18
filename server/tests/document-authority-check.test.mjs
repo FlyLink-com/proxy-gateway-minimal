@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -797,6 +797,216 @@ test("positional argument is rejected by the CLI parser", () => {
 
   assert.notEqual(result.status, 0, "positional argument must be rejected");
   assert.match(result.stderr, /unexpected positional argument: positional/);
+});
+
+// === New Round-8 P1 regression tests ===
+
+test("multiple exact markers in a single file must fail", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-multiple-markers-exact-"));
+  // First metadata block
+  writeDoc(rootDir, "docs/A.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "alpha",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+  // Second metadata block (same file) — create raw body with two blocks
+  writeRawDoc(
+    rootDir,
+    "docs/A.md",
+    [
+      "# A",
+      "",
+      "```yaml",
+      "document_metadata:",
+      "  doc_type: canonical",
+      "  lifecycle: active",
+      "  authority_scope: alpha",
+      "  superseded_by: null",
+      "  last_verified_at: 2026-07-15",
+      "  production_authority: false",
+      "```",
+      "",
+      "Some text",
+      "",
+      "```yaml",
+      "document_metadata:",
+      "  doc_type: canonical",
+      "  lifecycle: active",
+      "  authority_scope: beta",
+      "  superseded_by: null",
+      "  last_verified_at: 2026-07-15",
+      "  production_authority: false",
+      "```",
+      ""
+    ].join("\n")
+  );
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /ambiguous or multiple document_metadata markers found/);
+});
+
+test("exact marker plus malformed marker must fail", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-marker-exact-plus-malformed-"));
+  writeRawDoc(
+    rootDir,
+    "docs/B.md",
+    [
+      "# B",
+      "",
+      "```yaml",
+      "document_metadata:",
+      "  doc_type: canonical",
+      "  lifecycle: active",
+      "  authority_scope: beta",
+      "  superseded_by: null",
+      "  last_verified_at: 2026-07-15",
+      "  production_authority: false",
+      "```",
+      "",
+      "Text",
+      "",
+      // malformed marker (embedded space before colon)
+      "```yaml",
+      " document_metadata :",
+      "  doc_type: canonical",
+      "  lifecycle: active",
+      "  authority_scope: gamma",
+      "  superseded_by: null",
+      "  last_verified_at: 2026-07-15",
+      "  production_authority: false",
+      "```",
+      ""
+    ].join("\n")
+  );
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /ambiguous or multiple document_metadata markers found/);
+});
+
+test("malformed marker plus exact marker must fail", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-marker-malformed-plus-exact-"));
+  writeRawDoc(
+    rootDir,
+    "docs/C.md",
+    [
+      "# C",
+      "",
+      "```yaml",
+      " document_metadata :",
+      "  doc_type: canonical",
+      "  lifecycle: active",
+      "  authority_scope: delta",
+      "  superseded_by: null",
+      "  last_verified_at: 2026-07-15",
+      "  production_authority: false",
+      "```",
+      "",
+      "Text",
+      "",
+      "```yaml",
+      "document_metadata:",
+      "  doc_type: canonical",
+      "  lifecycle: active",
+      "  authority_scope: epsilon",
+      "  superseded_by: null",
+      "  last_verified_at: 2026-07-15",
+      "  production_authority: false",
+      "```",
+      ""
+    ].join("\n")
+  );
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /ambiguous or multiple document_metadata markers found/);
+});
+
+// Symlink and POSIX-specific tests: skip on Windows because symlink creation
+// and literal-backslash filenames behave differently.
+
+const skipOnWindows = { skip: process.platform === "win32" };
+
+test("docs root is a symlink to external directory must fail", skipOnWindows, () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-docs-root-symlink-"));
+  const externalDir = mkdtempSync(join(tmpdir(), "external-docs-"));
+  writeDoc(externalDir, "X.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "external",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+  // create a symlink docs -> externalDir
+  symlinkSync(externalDir, join(rootDir, "docs"), "dir");
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /search root is a symbolic link: docs/);
+});
+
+test("broken docs root symlink must fail even if ops has a valid record", skipOnWindows, () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-docs-broken-symlink-"));
+  const opsDir = join(rootDir, "ops");
+  mkdirSync(opsDir, { recursive: true });
+  writeDoc(rootDir, "ops/OK.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "ops_ok",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+  // create broken symlink at docs
+  symlinkSync(join(rootDir, "does-not-exist"), join(rootDir, "docs"), "dir");
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /search root is a symbolic link: docs/);
+});
+
+test("nested child symlink under docs is rejected", skipOnWindows, () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-nested-symlink-"));
+  const docsDir = join(rootDir, "docs");
+  mkdirSync(docsDir, { recursive: true });
+  const target = mkdtempSync(join(tmpdir(), "external-file-"));
+  writeDoc(target, "Z.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "zscope",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+  // create a symlink inside docs to external file
+  symlinkSync(join(target, "Z.md"), join(docsDir, "linked.md"));
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /symlink encountered under in-scope directory/);
+});
+
+test("POSIX: filename with literal backslash alongside nested path must fail or be rejected", skipOnWindows, () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "document-authority-posix-backslash-"));
+  const docsDir = join(rootDir, "docs");
+  mkdirSync(join(docsDir, "a"), { recursive: true });
+  // Create nested file docs/a/b.md
+  writeDoc(rootDir, "docs/a/b.md", {
+    docType: "canonical",
+    lifecycle: "active",
+    authorityScope: "nested",
+    lastVerifiedAt: "2026-07-15",
+    productionAuthority: false
+  });
+  // Create a file whose filename includes a literal backslash (POSIX allow)
+  // This should be rejected by the inventory normalization check.
+  const literalName = "a\\b.md";
+  writeRawDoc(rootDir, `docs/${literalName}`, "# literal backslash file\n");
+
+  const result = runAuthorityCheck(rootDir);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /filename contains literal backslash on POSIX/);
 });
 
 test("CLI accepts --strict-files before --root", () => {

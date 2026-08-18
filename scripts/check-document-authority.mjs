@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, lstatSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -75,7 +75,10 @@ function normalizedRepoPath(path) {
 }
 
 function listMarkdownFiles(rootDir) {
-  const paths = [];
+  // Collect pairs of canonical repository-relative path => filesystem path.
+  // Do not collapse collisions silently; report them as hard errors so a
+  // malicious or confusing filename cannot be hidden by normalization.
+  const entries = [];
 
   function walk(relativeDir) {
     const fullDir = join(rootDir, relativeDir);
@@ -87,6 +90,14 @@ function listMarkdownFiles(rootDir) {
         continue;
       }
       const relativePath = join(relativeDir, entry.name);
+      // Reject any file or directory name that itself contains a literal
+      // backslash on POSIX systems; that character is only a path separator
+      // on Windows and would collide with canonicalization.
+      if (process.platform !== "win32" && entry.name.includes("\\")) {
+        throw new Error(
+          `filename contains literal backslash on POSIX and is ambiguous: ${relativePath}`
+        );
+      }
       if (entry.isSymbolicLink()) {
         throw new Error(
           `symlink encountered under in-scope directory; remove or replace with a regular file: ${relativePath}`
@@ -95,15 +106,62 @@ function listMarkdownFiles(rootDir) {
       if (entry.isDirectory()) {
         walk(relativePath);
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
-        paths.push(normalizedRepoPath(relativePath));
+        const canonical = normalizedRepoPath(relativePath);
+        const fsPath = join(rootDir, relativePath);
+        entries.push({ canonical, fsPath });
       }
     }
   }
 
+  // Pre-check each search root for symlinks (including broken symlinks) and
+  // treat a missing root as out-of-scope rather than an error.
   for (const directory of SEARCH_DIRECTORIES) {
+    const rootPath = join(rootDir, directory);
+    try {
+      const st = lstatSync(rootPath);
+      if (st.isSymbolicLink()) {
+        throw new Error(`search root is a symbolic link: ${directory}`);
+      }
+    } catch (err) {
+      if (err && err.code === "ENOENT") {
+        // absent root: skip
+        continue;
+      }
+      // rethrow other errors
+      throw err;
+    }
     walk(directory);
   }
-  return [...new Set(paths)].sort();
+
+  // Build a canonical->fsPath map and detect collisions.
+  const map = new Map();
+  for (const { canonical, fsPath } of entries) {
+    const existing = map.get(canonical) || [];
+    existing.push(fsPath);
+    map.set(canonical, existing);
+  }
+  const collisions = [];
+  for (const [canonical, fsPaths] of map) {
+    if (fsPaths.length > 1) {
+      collisions.push({ canonical, fsPaths });
+    }
+  }
+  if (collisions.length > 0) {
+    const lines = collisions
+      .map(
+        (c) =>
+          `canonical collision for ${c.canonical}: filesystem paths: ${c.fsPaths
+            .map((p) => relative(rootDir, p))
+            .join(", ")}`
+      )
+      .join("; ");
+    throw new Error(`canonical inventory collision: ${lines}`);
+  }
+
+  // Return an array of { canonical, fsPath } sorted by canonical key.
+  return Array.from(map.entries())
+    .map(([canonical, fsPaths]) => ({ canonical, fsPath: fsPaths[0] }))
+    .sort((a, b) => a.canonical.localeCompare(b.canonical));
 }
 
 function unquote(value) {
@@ -131,30 +189,106 @@ function parseMetadata(text, path, errors) {
     .filter(({ line }) => line.length > 0 && line.trim() !== "")
     .slice(0, 40);
 
-  const markerCandidate = markerWindow.find(
-    ({ line }) => line === METADATA_MARKER
-  );
+  // Find all exact and marker-like occurrences within the first 40 non-empty
+  // lines. Requirement: exactly one byte-exact marker and zero additional
+  // marker-like lines. Any ambiguity is a hard parse error (fail-closed).
+  const exactMarkers = markerWindow.filter(({ line }) => line === METADATA_MARKER);
+  const malformedMarkers = markerWindow.filter(({ line }) => MARKER_LIKE_PATTERN.test(line) && line !== METADATA_MARKER);
 
-  if (!markerCandidate) {
-    const malformedMarkers = markerWindow.filter(({ line }) =>
-      MARKER_LIKE_PATTERN.test(line)
-    );
-    if (malformedMarkers.length > 0) {
-      for (const { line, index } of malformedMarkers) {
-        errors.push(
-          `${path}:${index + 1}: malformed document_metadata marker; expected ${JSON.stringify(METADATA_MARKER)} at column 1, got ${JSON.stringify(line)}`
-        );
-      }
-      // The record is still recognised as "containing a metadata block" (so
-      // strict mode does not also fire "file lacks document_metadata") and
-      // fields stay null so the parser will not emit follow-on field errors.
-      // The malformed-marker error is the authoritative parse error for this
-      // record.
-      return { fields: null, foundMarker: true };
-    }
+  if (exactMarkers.length === 0 && malformedMarkers.length === 0) {
+    // No markers at all in the marker window.
     return { fields: null, foundMarker: false };
   }
-  const markerIndex = markerCandidate.index;
+
+  if (exactMarkers.length === 0 && malformedMarkers.length > 0) {
+    // No exact marker but malformed candidates present — report each and
+    // consider the file as containing a malformed marker (foundMarker true).
+    for (const { line, index } of malformedMarkers) {
+      errors.push(
+        `${path}:${index + 1}: malformed document_metadata marker; expected ${JSON.stringify(METADATA_MARKER)} at column 1, got ${JSON.stringify(line)}`
+      );
+    }
+    return { fields: null, foundMarker: true };
+  }
+
+  if (exactMarkers.length === 1 && malformedMarkers.length === 0) {
+    // Exactly one exact marker and no malformed candidates: use it.
+    const markerIndex = exactMarkers[0].index;
+
+    // Opening fence must be exactly ```yaml at column 1 of a line above the
+    // marker. We allow blank lines between the fence and the marker but the
+    // fence line itself must equal YAML_FENCE_OPEN exactly.
+    let fenceStart = markerIndex - 1;
+    while (fenceStart >= 0 && lines[fenceStart] === "") {
+      fenceStart -= 1;
+    }
+    if (fenceStart < 0 || lines[fenceStart] !== YAML_FENCE_OPEN) {
+      errors.push(`${path}:${markerIndex + 1}: document_metadata must be in a top-level yaml fence`);
+      return { fields: null, foundMarker: true };
+    }
+
+    // Closing fence must be exactly ``` (column 1, no trim).
+    const fenceEnd = lines.findIndex(
+      (line, index) => index > markerIndex && line === YAML_FENCE_CLOSE
+    );
+    if (fenceEnd < 0) {
+      errors.push(`${path}:${markerIndex + 1}: document_metadata yaml fence is not closed`);
+      return { fields: null, foundMarker: true };
+    }
+
+    const fields = {};
+    for (let index = markerIndex + 1; index < fenceEnd; index += 1) {
+      const line = lines[index];
+      // Tab is rejected anywhere in the metadata block before pattern matching.
+      // Unicode whitespace beyond ASCII is implicitly rejected by the strict
+      // field pattern (which requires two ASCII spaces, not \s).
+      if (line.includes("\t")) {
+        errors.push(
+          `${path}:${index + 1}: document_metadata field lines must use two ASCII spaces for indentation; tab is not accepted`
+        );
+        continue;
+      }
+      if (line === "" || line.startsWith("#")) {
+        continue;
+      }
+      const match = line.match(METADATA_FIELD_PATTERN);
+      if (!match) {
+        errors.push(
+          `${path}:${index + 1}: unsupported document_metadata syntax (expected two ASCII spaces, exactly one ASCII space after the colon, no trailing whitespace, value with non-whitespace at both ends)`
+        );
+        continue;
+      }
+      const [, key, rawValue] = match;
+      if (Object.hasOwn(fields, key)) {
+        errors.push(`${path}:${index + 1}: duplicate document_metadata field ${key}`);
+        continue;
+      }
+      fields[key] = unquote(rawValue);
+    }
+
+    for (const field of REQUIRED_FIELDS) {
+      if (!Object.hasOwn(fields, field) || fields[field] === "") {
+        errors.push(`${path}: missing document_metadata field ${field}`);
+      }
+    }
+    for (const field of Object.keys(fields)) {
+      if (!REQUIRED_FIELDS.includes(field)) {
+        errors.push(`${path}: unsupported document_metadata field ${field}`);
+      }
+    }
+    return { fields, foundMarker: true };
+  }
+
+  // Any other combination is ambiguous (e.g., multiple exact markers, a mix
+  // of exact and malformed markers, or multiple malformed markers). Report
+  // every marker-like line as an explicit error and fail-closed.
+  const allMarkerLike = markerWindow.filter(({ line }) => MARKER_LIKE_PATTERN.test(line) || line === METADATA_MARKER);
+  for (const { line, index } of allMarkerLike) {
+    errors.push(
+      `${path}:${index + 1}: ambiguous or multiple document_metadata markers found; expected exactly one byte-exact ${JSON.stringify(METADATA_MARKER)}, got ${JSON.stringify(line)}`
+    );
+  }
+  return { fields: null, foundMarker: true };
 
   // Opening fence must be exactly ```yaml at column 1 of a line above the
   // marker. We allow blank lines between the fence and the marker but the
@@ -412,9 +546,10 @@ export function checkDocumentAuthority(options = {}) {
   const validRecords = [];
   const ungovernedFiles = [];
 
-  for (const path of listMarkdownFiles(rootDir)) {
+  for (const entry of listMarkdownFiles(rootDir)) {
+    const { canonical: path, fsPath } = entry;
     const recordErrors = [];
-    const text = readFileSync(join(rootDir, path), "utf8");
+    const text = readFileSync(fsPath, "utf8");
     const { fields, foundMarker } = parseMetadata(text, path, recordErrors);
     if (!foundMarker) {
       ungovernedFiles.push(path);
