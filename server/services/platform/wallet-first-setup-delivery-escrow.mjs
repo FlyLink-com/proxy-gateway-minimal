@@ -38,6 +38,27 @@ const LOCK_NONCE = /^[a-f0-9]{32}$/;
 const RUNTIME_ESCROW_INSTANCES = new WeakSet();
 const DELIVERY_ESCROW_INSTANCES = new WeakSet();
 
+// F-20 intentional sync trio: these three helpers form a synchronous lock
+// protocol (create marker → read owner → check liveness). Reads are cold today
+// (escrow state read on startup / recovery only) and keeping the trio sync
+// preserves the create-then-immediately-read invariant used by `releaseLock`
+// (line ~628) and `recoverDeadWriterLock` (line ~649).
+//
+// Do NOT change one helper to async without redesigning the whole trio; an async
+// `readLockOwner` next to a sync `openExclusiveLock` would let another writer
+// race between create and read and silently break fail-closed recovery.
+//
+// Async redesign is tracked under F-13 (multi-process architecture) where the
+// lock ownership lifecycle can be re-evaluated together with async I/O ordering,
+// atomicity guarantees, and multi-process contention windows.
+const INTENTIONAL_SYNC_LOCK_HELPERS = Object.freeze([
+  "readLockOwner",
+  "isLiveLockOwner",
+  "openExclusiveLock"
+]);
+export const WALLET_FIRST_SETUP_DELIVERY_INTENTIONAL_SYNC_LOCK_HELPERS =
+  INTENTIONAL_SYNC_LOCK_HELPERS;
+
 function escrowError(code = "wallet_first_setup_delivery_reconciliation_required") {
   const error = new Error("Wallet-first setup delivery escrow is unavailable");
   error.code = code;

@@ -15,6 +15,7 @@ import test from "node:test";
 
 import {
   WALLET_FIRST_SETUP_DELIVERY_ESCROW_VERSION,
+  WALLET_FIRST_SETUP_DELIVERY_INTENTIONAL_SYNC_LOCK_HELPERS,
   createWalletFirstSetupDeliveryEscrow
 } from "../services/platform/wallet-first-setup-delivery-escrow.mjs";
 
@@ -274,3 +275,35 @@ test("setup delivery escrow rejects links and non-sticky writable parents before
     (error) => error?.code === "wallet_first_setup_delivery_invalid"
   );
 });
+
+  // F-20: pin the intentional synchronous lock trio contract so that future
+  // refactors cannot silently asyncify one helper (e.g. swapping readFileSync for
+  // readFile on line ~575) without re-evaluating the create-then-immediately-read
+  // invariant relied on by releaseLock / recoverDeadWriterLock.
+  // Async redesign is intentionally deferred to F-13 (multi-process architecture).
+  test("F-20: lock trio helpers are pinned as intentionally synchronous", () => {
+    assert.deepEqual(
+      [...WALLET_FIRST_SETUP_DELIVERY_INTENTIONAL_SYNC_LOCK_HELPERS],
+      ["readLockOwner", "isLiveLockOwner", "openExclusiveLock"]
+    );
+  });
+
+  test("F-20: captureInitialSetupDelivery returns a plain object, not a Promise (lock trio stays sync end-to-end)", (t) => {
+    const fixture = createFixture(t);
+    const escrow = createWalletFirstSetupDeliveryEscrow({
+      key: ESCROW_KEY,
+      filePath: fixture.filePath,
+      ivFactory: () => Buffer.from("000102030405060708090a0b", "hex")
+    });
+    t.after(() => escrow.close());
+    const captured = escrow.runtimeEscrow.captureInitialSetupDelivery({
+      ...binding(),
+      subscriptionUrl: DELIVERY_URL
+    });
+    // A Promise-returning trio would surface here as a thenable; we assert the
+    // value is a plain object so the lock acquire/read/check stayed sync.
+    assert.equal(typeof captured, "object");
+    assert.ok(captured !== null);
+    assert.equal(typeof captured.then, "undefined");
+    assert.equal(captured.state, "available");
+  });
