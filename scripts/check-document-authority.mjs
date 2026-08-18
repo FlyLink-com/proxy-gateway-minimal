@@ -194,20 +194,20 @@ function parseMetadata(text, path, errors) {
   const lines = text.split(/\r?\n/);
 
   // Marker scan: enumerate every candidate line in the first 40 non-empty
-    // lines of the file. Candidates that exactly equal METADATA_MARKER are
-    // tracked separately from candidates that match MARKER_LIKE_PATTERN but
-    // are not byte-exact (e.g. leading whitespace, embedded space before the
-    // colon, trailing whitespace, multiple occurrences). The diagnostic regex
-    // is intentionally permissive so every plausible typo surfaces; only the
-    // byte-exact marker is accepted downstream.
-    const markerWindow = lines
-      .map((line, index) => ({ line, index }))
-      .filter(({ line }) => line.length > 0 && line.trim() !== "")
-      .slice(0, 40);
+  // lines of the file. Candidates that exactly equal METADATA_MARKER are
+  // tracked separately from candidates that match MARKER_LIKE_PATTERN but
+  // are not byte-exact (e.g. leading whitespace, embedded space before the
+  // colon, trailing whitespace, multiple occurrences). The diagnostic regex
+  // is intentionally permissive so every plausible typo surfaces; only the
+  // byte-exact marker is accepted downstream.
+  const markerWindow = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => line.length > 0 && line.trim() !== "")
+    .slice(0, 40);
 
-    // Find all exact and marker-like occurrences within the first 40 non-empty
-    // lines. Requirement: exactly one byte-exact marker and zero additional
-    // marker-like lines. Any ambiguity is a hard parse error (fail-closed).
+  // Find all exact and marker-like occurrences within the first 40 non-empty
+  // lines. Requirement: exactly one byte-exact marker and zero additional
+  // marker-like lines. Any ambiguity is a hard parse error (fail-closed).
   const exactMarkers = markerWindow.filter(({ line }) => line === METADATA_MARKER);
   const malformedMarkers = markerWindow.filter(({ line }) => MARKER_LIKE_PATTERN.test(line) && line !== METADATA_MARKER);
 
