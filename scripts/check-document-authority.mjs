@@ -603,19 +603,19 @@ function parseCliArgs(args) {
         throw new Error("--root may only be specified once");
       }
       const value = args[i + 1];
-        // Fail-closed: refuse undefined (no argument), empty / blank value, or a
-        // value that itself starts with "--" (looks like another flag). These
-        // checks stop resolve("") from silently collapsing to process.cwd().
-        if (
-          value === undefined ||
-          value.trim() === "" ||
-          value.startsWith("--")
-        ) {
-          throw new Error("--root requires a non-empty directory");
-        }
-        out.rootDir = resolve(value);
-        i += 1;
-      } else if (token === "--strict-files") {
+      // Fail-closed: refuse undefined (no argument), empty / blank value, or a
+      // value that itself starts with "--" (looks like another flag). These
+      // checks stop resolve("") from silently collapsing to process.cwd().
+      if (
+        value === undefined ||
+        value.trim() === "" ||
+        value.startsWith("--")
+      ) {
+        throw new Error("--root requires a non-empty directory");
+      }
+      out.rootDir = resolve(value);
+      i += 1;
+    } else if (token === "--strict-files") {
       seenStrict.count += 1;
       if (seenStrict.count > 1) {
         throw new Error("--strict-files may only be specified once");
