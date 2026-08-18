@@ -27,7 +27,11 @@ const AUTHORITY_SCOPE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 // Lexical grammar constants. The marker, fences, and field indent are matched
 // exactly (no trim, no whitespace tolerance). The on-disk contract is
 // column-1 fences and marker with exactly two ASCII-space indentation for the
-// field block; anything else is a hard parse error.
+// field block; for an already-recognised metadata block, anything else is a
+// hard parse error. Lines outside the metadata grammar (for example
+// `document_metadata_template:`) are not parser candidates and are simply
+// ignored — they neither promote a file to governed status nor trigger a
+// parse error.
 const METADATA_MARKER = "document_metadata:";
 const YAML_FENCE_OPEN = "```yaml";
 const YAML_FENCE_CLOSE = "```";
@@ -39,12 +43,18 @@ const YAML_FENCE_CLOSE = "```";
 // validators below, not inside this regex.
 const METADATA_FIELD_PATTERN =
   /^ {2}([a-z_]+): (\S(?:.*\S)?)$/;
-// Diagnostic-only marker pattern: matches any line whose bytes, with leading
-// and trailing whitespace stripped, equal the marker. Note that `trim()` is
-// the wrong way to describe this — for a line such as `document_metadata :`
-// the trim result is `document_metadata :`, NOT equal to the byte-exact
-// marker, while `MARKER_LIKE_PATTERN` does still match. Used exclusively to
-// report malformed markers; it MUST NOT be used to accept a metadata block.
+// Diagnostic-only marker pattern. Grammar:
+//   /^\s*document_metadata\s*:\s*$/u
+// - `^\s*` — any leading whitespace (ASCII or Unicode).
+// - `document_metadata` — the byte-exact field name.
+// - `\s*:\s*` — the colon may be preceded by trailing whitespace on the field
+//   name and followed by trailing whitespace before the line end. This is the
+//   shape `trim()` cannot describe: `document_metadata :` matches because
+//   `\s*` between `document_metadata` and `:` consumes the embedded space,
+//   yet trimming the line does not equal the byte-exact marker.
+// - `\s*$` — any trailing whitespace before the line ends.
+// Used exclusively to report malformed markers; it MUST NOT be used to
+// accept a metadata block.
 const MARKER_LIKE_PATTERN = /^\s*document_metadata\s*:\s*$/u;
 // Canonical repository-relative path: forward slashes only, no leading slash,
 // no Windows drive prefix, no empty / dot / dotdot segments.
@@ -183,20 +193,21 @@ function unquote(value) {
 function parseMetadata(text, path, errors) {
   const lines = text.split(/\r?\n/);
 
-  // Marker scan: locate the first line in the first 40 non-empty lines that
-  // exactly equals METADATA_MARKER (column 1, no trim, no leading or trailing
-  // whitespace). Any malformed marker (embedded space, trailing whitespace,
-  // leading whitespace, multiple occurrences) is reported via the diagnostic
-  // path. The diagnostic regex is intentionally permissive so every plausible
-  // typo surfaces; only the byte-exact marker is accepted downstream.
-  const markerWindow = lines
-    .map((line, index) => ({ line, index }))
-    .filter(({ line }) => line.length > 0 && line.trim() !== "")
-    .slice(0, 40);
+  // Marker scan: enumerate every candidate line in the first 40 non-empty
+    // lines of the file. Candidates that exactly equal METADATA_MARKER are
+    // tracked separately from candidates that match MARKER_LIKE_PATTERN but
+    // are not byte-exact (e.g. leading whitespace, embedded space before the
+    // colon, trailing whitespace, multiple occurrences). The diagnostic regex
+    // is intentionally permissive so every plausible typo surfaces; only the
+    // byte-exact marker is accepted downstream.
+    const markerWindow = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => line.length > 0 && line.trim() !== "")
+      .slice(0, 40);
 
-  // Find all exact and marker-like occurrences within the first 40 non-empty
-  // lines. Requirement: exactly one byte-exact marker and zero additional
-  // marker-like lines. Any ambiguity is a hard parse error (fail-closed).
+    // Find all exact and marker-like occurrences within the first 40 non-empty
+    // lines. Requirement: exactly one byte-exact marker and zero additional
+    // marker-like lines. Any ambiguity is a hard parse error (fail-closed).
   const exactMarkers = markerWindow.filter(({ line }) => line === METADATA_MARKER);
   const malformedMarkers = markerWindow.filter(({ line }) => MARKER_LIKE_PATTERN.test(line) && line !== METADATA_MARKER);
 
@@ -245,11 +256,11 @@ function parseMetadata(text, path, errors) {
     for (let index = markerIndex + 1; index < fenceEnd; index += 1) {
       const line = lines[index];
       // Tab is rejected anywhere in the metadata block before pattern matching.
-            // Unicode whitespace beyond ASCII is NOT a hard parse error here — the
-            // strict field pattern only fixes the indent to two ASCII spaces and
-            // pins the value to non-whitespace at both ends. Any Unicode
-            // whitespace between those ends is allowed by this regex and is then
-            // adjudicated by the per-field validators below (e.g. date format).
+      // Unicode whitespace beyond ASCII is NOT a hard parse error here — the
+      // strict field pattern only fixes the indent to two ASCII spaces and
+      // pins the value to non-whitespace at both ends. Any Unicode
+      // whitespace between those ends is allowed by this regex and is then
+      // adjudicated by the per-field validators below (e.g. date format).
       if (line.includes("\t")) {
         errors.push(
           `${path}:${index + 1}: document_metadata field lines must use two ASCII spaces for indentation; tab is not accepted`
