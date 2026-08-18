@@ -41,26 +41,27 @@ because the codebase does not yet expose a metrics endpoint (see F-08).
 | Severity | observed impact on current production scale |
 | Tier-to-fix | suggested risk tier for a follow-up PR addressing this finding |
 | Status | new (this round) / known (already in existing docs) / unknown |
+| Follow-up | tracking channel: Issue only / Issue + small PR / Issue + planned PR / Skipped (retracted or informational) / Architectural — Issue only |
 
 ## Findings overview
 
-| ID | Surface | Severity | Tier-to-fix | Status |
-|---|---|---|---|---|
-| F-01 | SQLite sync driver blocks event loop | medium | B | known |
-| F-02 | In-memory rate limiter (single-process only) | low | C | known |
-| F-03 | No HTTP server timeout / keep-alive tuning | medium | C | new |
-| F-04 | No security headers middleware (helmet / CSP / X-Frame-Options) | medium | C | new |
-| F-05 | No CORS policy explicit at app layer | low | C | new |
-| F-06 | /api/health is shallow (does not probe DB / edge) | low | C | known |
-| F-07 | No metrics endpoint (Prometheus / StatsD) | medium | B | known |
-| F-08 | No circuit breaker in payment provider adapters | medium | B | new |
-| F-09 | Daemon launcher does not write PID file | low | C | new |
-| F-10 | Structured logging absent (console.* only) | low | C | new |
-| F-11 | Process-level uncaughtException only logs, does not exit | informational | – | known |
-| F-12 | No async DB driver option (no node:sqlite / libsql abstraction) | low | C | new |
-| F-13 | Single-process architecture: cannot horizontally scale | architectural | – | known |
-| F-14 | 11 separate SQLite DBs instead of one logical DB | low | C | known |
-| F-15 | Documentation load: README takes on multiple roles | low | C | new |
+| ID | Surface | Severity | Tier-to-fix | Status | Follow-up |
+|---|---|---|---|---|---|
+| F-01 | SQLite sync driver blocks event loop | medium | B | known | Issue only |
+| F-02 | In-memory rate limiter (single-process only) | low | C | known | Issue only |
+| F-03 | No HTTP server timeout / keep-alive tuning | medium | C | new | Issue + small PR |
+| F-04 | No security headers middleware (helmet / CSP / X-Frame-Options) | medium | C | new | Issue + small PR |
+| F-05 | No CORS policy explicit at app layer | low | C | new | Skipped (R-1 retracted) |
+| F-06 | /api/health is shallow (does not probe DB / edge) | low | C | known | Issue + small PR |
+| F-07 | No metrics endpoint (Prometheus / StatsD) | medium | B | known | Issue only |
+| F-08 | No circuit breaker in payment provider adapters | medium | B | new | Issue + planned PR |
+| F-09 | Daemon launcher does not write PID file | low | C | new | Issue + small PR |
+| F-10 | Structured logging absent (console.* only) | low | C | new | Issue + small PR |
+| F-11 | Process-level uncaughtException only logs, does not exit | informational | – | known | Skipped (informational) |
+| F-12 | No async DB driver option (no node:sqlite / libsql abstraction) | low | C | new | Issue only (depends on F-01) |
+| F-13 | Single-process architecture: cannot horizontally scale | architectural | – | known | Architectural — Issue only |
+| F-14 | 11 separate SQLite DBs instead of one logical DB | low | C | known | Issue only |
+| F-15 | Documentation load: README takes on multiple roles | low | C | new | Issue + small PR |
 
 ## F-01 — SQLite sync driver blocks event loop
 
@@ -366,13 +367,13 @@ This document does not:
 
 ## Round 2 new findings
 
-| ID | Surface | Severity | Tier-to-fix | Status |
-|---|---|---|---|---|
-| F-16 | spawnSync in edge adapters blocks event loop | medium | B | new |
-| F-17 | SHA-256 of migration files uses readFileSync | low | C | new |
-| F-18 | express.json() default 100kb; few routes override | low | C | new |
-| F-19 | Migration rollback support is partial (1 of 11 modules) | low | C | new |
-| F-20 | Lock file read with readFileSync on hot path candidate | low | C | new |
+| ID | Surface | Severity | Tier-to-fix | Status | Follow-up |
+|---|---|---|---|---|---|
+| F-16 | spawnSync in edge adapters blocks event loop | medium | B | new | Issue + planned PR |
+| F-17 | SHA-256 of migration files uses readFileSync | low | C | new | Issue + small PR |
+| F-18 | express.json() default 100kb; few routes override | low | C | new | Issue + small PR |
+| F-19 | Migration rollback support is partial (1 of 11 modules) | low | C | new | Issue + small PR |
+| F-20 | Lock file read with readFileSync on hot path candidate | low | C | new | Issue + small PR |
 
 ## F-16 — spawnSync in edge adapters blocks event loop
 
@@ -565,3 +566,134 @@ relative cost of `better-sqlite3` vs `spawnSync(xray)` and is not benchmarked.
 
 **Information gaps**: Unit test vs integration test ratio within the 279
 test files is not yet quantified (Round 3 candidate).
+
+---
+
+# Round 3 — 2026-08-18
+
+> Round 3 inspects 1 cross-cutting dimension introduced after Round 2:
+> how to convert the 20 findings above from a fact ledger into a tracking
+> ledger that downstream Issue / PR work can consume without re-reading this
+> document.
+>
+> All Round 3 observations are derived from the same source state
+> `master@1d6b60c` and the merged Round 2 commit `bf56272`. No code, schema,
+> runtime, or production change occurred between Round 2 and Round 3.
+
+## Round 3 scope
+
+This round does **not** introduce F-21+ findings. It only:
+
+1. Adds a `Follow-up` column to both overview tables (Round 1 + Round 2).
+2. Locks the column semantics so the rest of the project can rely on it.
+3. Provides a 1:1 mapping from F-XX to Issue / PR intent, without yet
+   opening the Issues or PRs themselves.
+
+F-21+ candidates (supply-chain / control-plane linkage, hardening.md
+cross-reference) are explicitly **deferred** to a separate docs-only PR
+because mixing Risk A cross-references into this Risk C aggregation would
+violate the tier separation.
+
+## Follow-up column semantics
+
+| Value | Meaning |
+|---|---|
+| `Issue only` | Tracking Issue, no immediate code change. Architectural / cross-cutting / blocked. |
+| `Issue + small PR` | Tracking Issue + an open-source PR (C tier) to land the change. Owner not yet assigned. |
+| `Issue + planned PR` | Tracking Issue + a B tier PR whose outline already exists. |
+| `Architectural — Issue only` | Same as `Issue only`, but explicitly requires design before any code. |
+| `Skipped (R-N retracted)` | Withdrawn by a Round 2 retraction (see R-1, R-2, R-3). |
+| `Skipped (informational)` | Documented for awareness only; no fix intended. |
+
+## F-XX → Follow-up mapping
+
+| ID | Follow-up | Intended Issue title | Intended PR scope |
+|---|---|---|---|
+| F-01 | Issue only | F-01: evaluate async DB driver path (better-sqlite3 vs node:sqlite vs libsql) | None yet — requires spike |
+| F-02 | Issue only | F-02: in-memory rate limiter cannot scale across processes | None yet — depends on F-13 |
+| F-03 | Issue + small PR | F-03: add HTTP server timeout / keep-alive tuning | `fix/http-server-timeouts` (C tier, ~half-day) |
+| F-04 | Issue + small PR | F-04: add security headers middleware (re-scoped) | `fix/security-headers-reduced-scope` (C tier, ~1 day) |
+| F-05 | Skipped (R-1 retracted) | — | — |
+| F-06 | Issue + small PR | F-06: enrich /api/health to probe DB and edge | `fix/health-probe-db-and-edge` (C tier, ~1 day) |
+| F-07 | Issue only | F-07: metrics endpoint (Prometheus / StatsD) | None yet — depends on infra |
+| F-08 | Issue + planned PR | F-08: circuit breaker in payment provider adapters | `feat/payment-circuit-breaker` (B tier, ~2-3 days) |
+| F-09 | Issue + small PR | F-09: daemon launcher PID file | `fix/daemon-pid-file` (C tier, ~1 hour) |
+| F-10 | Issue + small PR | F-10: structured logging | `feat/structured-logging` (C tier, ~1 week) |
+| F-11 | Skipped (informational) | — | — |
+| F-12 | Issue only (depends on F-01) | F-12: async DB driver abstraction layer | None yet — depends on F-01 spike |
+| F-13 | Architectural — Issue only | F-13: multi-process / horizontal scale design | None yet — requires design |
+| F-14 | Issue only | F-14: consolidate 11 SQLite DBs into one logical schema | None yet — large surface |
+| F-15 | Issue + small PR | F-15: split README into role-specific docs | `docs/readme-split` (C tier, ~1-2 days) |
+| F-16 | Issue + planned PR | F-16: replace spawnSync with async execFile in edge adapters | `refactor/edge-spawn-async` (B tier, ~2-3 days) |
+| F-17 | Issue + small PR | F-17: stream SHA-256 of migration files | `fix/migration-sha-streaming` (C tier, ~1 day) |
+| F-18 | Issue + small PR | F-18: explicit body limit on global json parser | `fix/express-json-limit` (C tier, ~half-day) |
+| F-19 | Issue + small PR | F-19: migration rollback policy decision + exports | `fix/migration-rollback-exports` (C tier, ~1 day) |
+| F-20 | Issue + small PR | F-20: lock file async read on hot path | `fix/lock-file-async-read` (C tier, ~1 hour) |
+
+## Issue / PR draft titles (review-ready)
+
+The titles above are stable across the next batch Issue creation step.
+They will be opened in a single batch with the body format:
+
+```
+## Source finding
+F-XX — <one-line from PR #629>
+
+## Evidence
+<file:line pointers from PR #629>
+
+## Proposed scope (PR only)
+<one-line from PR #629 "Possible follow-up">
+
+## Risk tier
+<from PR #629 "Tier-to-fix">
+
+## Out of scope
+- Risk A changes
+- Production / Nginx / systemd / credential
+- SQLite schema migration
+```
+
+No Issue / PR body will be opened until the user explicitly confirms
+the title list above. This round only adds the Follow-up column and
+locks its semantics.
+
+## Updated recommended ordering for follow-up PRs
+
+This ordering now also resolves to the `Follow-up` column above. Items
+without an `Intended PR scope` are `Issue only` and do not appear in
+the PR queue.
+
+| Priority | Finding | Tier | Effort | Follow-up |
+|---|---|---|---|---|
+| 1 | F-20 lock file async read (only if hot) | C | 1 hour | Issue + small PR |
+| 2 | F-09 PID file | C | 1 hour | Issue + small PR |
+| 3 | F-18 explicit body limit on global json parser | C | half-day | Issue + small PR |
+| 4 | F-03 HTTP server timeouts | C | half-day | Issue + small PR |
+| 5 | F-04 security headers (reduced scope) | C | 1 day | Issue + small PR |
+| 6 | F-17 streaming SHA-256 for migrations | C | 1 day | Issue + small PR |
+| 7 | F-19 migration rollback policy decision | C | 1 day | Issue + small PR |
+| 8 | F-06 enriched /api/health | C | 1 day | Issue + small PR |
+| 9 | F-15 README split | C | 1-2 days | Issue + small PR |
+| 10 | F-16 spawnSync → execFile wrapper | B | 2-3 days | Issue + planned PR |
+| 11 | F-08 payment provider circuit breaker | B | 2-3 days | Issue + planned PR |
+| 12 | F-10 structured logging | C | 1 week | Issue + small PR |
+| 13 | F-07 metrics endpoint | B | 1-2 weeks | Issue only |
+| 14 | F-01 DB driver re-evaluation | B | 1-4 weeks | Issue only |
+| 15 | F-13 multi-process redesign | A | requires design | Architectural — Issue only |
+
+F-02, F-12, F-14 are tracked via Issue but not queued for PR work
+(dependencies or large surface). F-05 and F-11 remain skipped.
+
+## Round 3 known facts vs reasonable speculation vs information gaps
+
+**Known facts**: All 20 findings already have Follow-up values assigned;
+no F-XX is left in an undefined state. Each Follow-up value is one of
+the six locked semantic values.
+
+**Reasonable speculation**: The "Intended PR scope" column names are
+working titles; the final branch name and PR title may differ when each
+PR is opened.
+
+**Information gaps**: Issue / PR opening batch (Round 4 candidate).
+F-21+ supply-chain cross-references (deferred, see Round 3 scope).
