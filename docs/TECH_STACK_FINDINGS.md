@@ -8,7 +8,7 @@ document_metadata:
   production_authority: false
 ```
 
-# Tech Stack Findings Rounds 1 + 2 + 3
+# Tech Stack Findings Rounds 1 + 2 + 3 (Round 2 amendment)
 
 > Status:
 > - Type: Tech-stack debt aggregation
@@ -100,10 +100,11 @@ and no local benchmark harness was run for this scan.
 - 11 separate SQLite files instead of one big DB reduces single-DB contention
 
 **Possible follow-up**:
-- Tier-to-fix: B
-- Effort: 1-2 days (WAL + busy_timeout + short transaction discipline)
-- Or: 2-3 weeks (migrate to `libsql` async, keep SQLite semantics)
-- Or: 3-4 weeks (Postgres + `pg`, requires schema rewrite)
+- Risk tier: **B** (WAL tuning) or **A** (driver migration)
+- Effort: 1-2 days (WAL + busy_timeout + short transaction discipline, B)
+- Or: 2-3 weeks (migrate to `libsql` async, keep SQLite semantics, A)
+- Or: 3-4 weeks (Postgres + `pg`, requires schema rewrite, A)
+- Depends on: –. Follow-up: `Issue only`.
 
 ## F-02 — In-memory rate limiter
 
@@ -141,9 +142,9 @@ apply: `timeout = 0` (no timeout), `keepAliveTimeout = 5000ms`,
   not handled; nginx in front provides some Slowloris mitigation but is
   not a substitute for explicit server-side timeout values
 
-**Possible follow-up**: Tier-to-fix: C. Effort: half-day to set explicit
+**Possible follow-up**: Risk tier: **B**. Effort: half-day to set explicit
 `server.timeout`, `keepAliveTimeout`, `headersTimeout` in `server/start.mjs`
-after `app.listen(...)`.
+after `app.listen(...)`. Depends on: –. Follow-up: `Issue + planned PR`.
 
 ## F-04 — No security headers middleware
 
@@ -181,8 +182,8 @@ allowed or denied.
   requests blocked. This is safe by default but undocumented.
 - Future portal / mobile clients using the API will hit opaque failures.
 
-**Possible follow-up**: Tier-to-fix: C. Effort: half-day to formalize an
-explicit CORS allowlist in `server/middleware/`.
+**Possible follow-up**: Risk tier: **–** (retracted in R-1, see R-1 below).
+Effort: n/a. Follow-up: `Skipped (R-1 retracted)`.
 
 ## F-06 — /api/health is shallow
 
@@ -197,9 +198,9 @@ app.get("/api/health", (_req, res) => {
 reachability, or coordinator state. Cannot be used for liveness/readiness
 probes that distinguish healthy from degraded.
 
-**Possible follow-up**: Tier-to-fix: C. Effort: 1 day. Probe
+**Possible follow-up**: Risk tier: **B**. Effort: 1 day. Probe
 `SELECT 1` against key DBs, edge-agent socket reachability, active coordinator
-count.
+count. Depends on: –. Follow-up: `Issue + planned PR`.
 
 ## F-07 — No metrics endpoint
 
@@ -210,8 +211,8 @@ No `/metrics` route, no Prometheus client library import.
 - Cannot observe live QPS, P50/P95/P99 latency, error rates, DB query duration
 - Cannot confirm or refute F-01's suspected ceiling
 
-**Possible follow-up**: Tier-to-fix: B. Effort: 1-2 weeks for `prom-client`
-+ middleware timing + DB timing histograms.
+**Possible follow-up**: Risk tier: **B**. Effort: 1-2 weeks for `prom-client`
++ middleware timing + DB timing histograms. Depends on: –. Follow-up: `Issue only`.
 
 ## F-08 — No circuit breaker in payment provider adapters
 
@@ -226,9 +227,9 @@ circuit-open behavior is not visible.
 will sequentially try it, fail, and only then move on — wasting latency budget
 on a known-bad provider.
 
-**Possible follow-up**: Tier-to-fix: B. Effort: 2-3 days. Add
+**Possible follow-up**: Risk tier: **B**. Effort: 2-3 days. Add
 provider-scoped failure counter + half-open / open / closed state per
-`payment-routing-policy`.
+`payment-routing-policy`. Depends on: –. Follow-up: `Issue + planned PR`.
 
 ## F-09 — Daemon launcher does not write PID file
 
@@ -252,7 +253,9 @@ target and a stale-PID contract.
 **Impact**: Low — only matters for non-systemd operators without persistent
 process discovery.
 
-**Possible follow-up**: Tier-to-fix: C. Effort: 1 hour.
+**Possible follow-up**: Risk tier: **B**. Effort: ~1 hour. Write a PID file
+in the daemon launcher; add a stale-PID contract for non-systemd operators.
+Depends on: –. Follow-up: `Issue + planned PR`.
 
 ## F-10 — Structured logging absent
 
@@ -264,9 +267,9 @@ directory (`server/start.mjs`, `server/services/ss-local.mjs`,
 **Impact**: All log output is unstructured. Cannot parse / index / alert on
 logs without regex extraction. Token-redaction in logs is ad-hoc.
 
-**Possible follow-up**: Tier-to-fix: C. Effort: 1 week. Introduce a thin
+**Possible follow-up**: Risk tier: **B**. Effort: ~1 week. Introduce a thin
 structured logger (`pino` recommended for Node 20+) with secret-redaction
-filter and a request-id middleware.
+filter and a request-id middleware. Depends on: –. Follow-up: `Issue + planned PR`.
 
 ## F-11 — Process-level uncaughtException only logs
 
@@ -293,8 +296,9 @@ processObject.on("unhandledRejection", (err) => {
 **Impact**: Cannot migrate one store to async without rewriting the store +
 tests. Migration is all-or-nothing per store.
 
-**Possible follow-up**: Tier-to-fix: C (only after F-01 is decided). Effort:
-2-3 weeks to migrate one store to `libsql` as a proof-of-concept.
+**Possible follow-up**: Risk tier: **B** (depends on F-01 spike first).
+Effort: 2-3 weeks to migrate one store to `libsql` as a proof-of-concept.
+Depends on: **F-01**. Follow-up: `Issue only`.
 
 ## F-13 — Single-process architecture
 
@@ -305,8 +309,9 @@ no PM2 / pm2-equivalent. All in-memory state (F-02) and uncaught handler
 **Impact**: Cannot horizontally scale by adding processes. Bottleneck is
 single-CPU-bound event loop + SQLite.
 
-**Possible follow-up**: This is architectural. Multi-process redesign is
-Tier A (requires schema, state, and auth contract review).
+**Possible follow-up**: Risk tier: **A** (architectural — multi-process
+redesign requires schema, state, and auth contract review).
+Depends on: –. Follow-up: `Architectural — Issue only`.
 
 ## F-14 — 11 separate SQLite databases
 
@@ -322,7 +327,9 @@ SUBSCRIPTION_CONTROL_DB_PATH
 - Con: cross-DB transactions impossible; data model has no referential
   integrity across DBs; more files to backup / monitor
 
-**Possible follow-up**: Tier-to-fix: C (only as part of F-01/F-13 redesign).
+**Possible follow-up**: Risk tier: **A** (SQLite schema consolidation is a
+schema migration, see `AGENTS.md` tier definitions). Depends on: **F-01, F-13**.
+Follow-up: `Issue only`.
 
 ## F-15 — README bears too much responsibility
 
@@ -337,22 +344,9 @@ and get partial context. Suggested split:
 - `docs/OPERATIONS.md` — runtime operations
 - `docs/TROUBLESHOOTING.md` — common failure modes
 
-**Possible follow-up**: Tier-to-fix: C. Effort: 1-2 days.
-
-## Recommended ordering for follow-up PRs
-
-| Priority | Finding | Tier | Effort |
-|---|---|---|---|
-| 1 | F-04 (security headers) | C | 1 day |
-| 2 | F-03 (server timeouts) | C | half-day |
-| 3 | F-06 (enriched /api/health) | C | 1 day |
-| 4 | F-09 (PID file) | C | 1 hour |
-| 5 | F-15 (README split) | C | 1-2 days |
-| 6 | F-10 (structured logging) | C | 1 week |
-| 7 | F-08 (circuit breaker) | B | 2-3 days |
-| 8 | F-07 (metrics endpoint) | B | 1-2 weeks |
-| 9 | F-01 (DB driver re-evaluation) | B | 1-4 weeks depending on path |
-| 10 | F-13 (multi-process) | A | requires design |
+**Possible follow-up**: Risk tier: **C**. Effort: 1-2 days. Split
+`README.md` into role-specific docs (`docs/INSTALL.md`, `docs/OPERATIONS.md`,
+`docs/TROUBLESHOOTING.md`). Depends on: –. Follow-up: `Issue + planned PR`.
 
 ## Known facts vs reasonable speculation vs information gaps
 
@@ -363,9 +357,10 @@ and get partial context. Suggested split:
 - F-03, F-04, F-05, F-08, F-09, F-10, F-15 are new observations
 
 **Reasonable speculation**:
-- F-01 RPS ceilings (200 / 800 / 1000+) are educated guesses, not benchmarked
 - F-08's "wasting latency" claim assumes the adapter registry tries the failing
   provider before moving on (consistent with code shape but not verified)
+- F-01 quantitative event-loop / P99 impact is unknown until benchmarked;
+  no specific RPS ceiling is asserted by this document
 
 **Information gaps**:
 - No live production metrics → cannot quantify F-01 / F-07 impact
@@ -545,9 +540,9 @@ must clear:
    (sync vs async — affects every caller)
 
 Until the gate is cleared, F-20 stays an **Issue only** with F-13 as
-its dependency. The companion intent-capture PR (separate branch
-`fix/lock-file-intentional-sync-trio`, PR #630) pins the current
-synchronous trio so the gate does not get silently bypassed.
+its dependency. A previously opened intent-capture draft PR was
+reviewed in Round 2 and closed / superseded; F-20 does not currently
+have an anchor PR.
 
 ## Round 2 positive observations (baseline evidence)
 
@@ -651,46 +646,138 @@ cross-reference) are explicitly **deferred** to a separate docs-only PR
 because mixing Risk A cross-references into this Risk C aggregation would
 violate the tier separation.
 
-## Follow-up column semantics
+## Follow-up column semantics (canonical, 5-value closed enum)
+
+This is the single source of truth for the `Follow-up` column. The
+deprecated `Issue + small PR` value present in earlier drafts is removed.
 
 | Value | Meaning |
 |---|---|
 | `Issue only` | Tracking Issue, no immediate code change. Architectural / cross-cutting / blocked. |
-| `Issue + small PR` | Tracking Issue + an open-source PR (C tier) to land the change. Owner not yet assigned. |
-| `Issue + planned PR` | Tracking Issue + a B tier PR whose outline already exists. |
+| `Issue + planned PR` | Tracking Issue + a planned PR whose scope already exists. The actual risk tier is in the separate Risk-tier column; PR may be C / B / or A. |
 | `Architectural — Issue only` | Same as `Issue only`, but explicitly requires design before any code. |
-| `Skipped (R-N retracted)` | Withdrawn by a Round 2 retraction (see R-1, R-2, R-3). |
+| `Skipped (R-N retracted)` | Withdrawn by a Round N retraction (see R-1, R-2, R-3). |
 | `Skipped (informational)` | Documented for awareness only; no fix intended. |
 
-## F-XX → Follow-up mapping
+The Risk-tier column is **orthogonal** to Follow-up. A `Issue only` entry
+can sit at any Risk tier (e.g. F-02 is Risk A; F-01 spike is Risk B/A).
+The two columns must agree with the canonical overview tables above and
+with the Issue creation order / PR execution order below.
 
-| ID | Follow-up | Intended Issue title | Intended PR scope |
-|---|---|---|---|
-| F-01 | Issue only | F-01: evaluate async DB driver path (better-sqlite3 vs node:sqlite vs libsql) | None yet — requires spike |
-| F-02 | Issue only | F-02: in-memory rate limiter cannot scale across processes | None yet — depends on F-13 |
-| F-03 | Issue + small PR | F-03: add HTTP server timeout / keep-alive tuning | `fix/http-server-timeouts` (C tier, ~half-day) |
-| F-04 | Issue + small PR | F-04: add security headers middleware (re-scoped) | `fix/security-headers-reduced-scope` (C tier, ~1 day) |
-| F-05 | Skipped (R-1 retracted) | — | — |
-| F-06 | Issue + small PR | F-06: enrich /api/health to probe DB and edge | `fix/health-probe-db-and-edge` (C tier, ~1 day) |
-| F-07 | Issue only | F-07: metrics endpoint (Prometheus / StatsD) | None yet — depends on infra |
-| F-08 | Issue + planned PR | F-08: circuit breaker in payment provider adapters | `feat/payment-circuit-breaker` (B tier, ~2-3 days) |
-| F-09 | Issue + small PR | F-09: daemon launcher PID file | `fix/daemon-pid-file` (C tier, ~1 hour) |
-| F-10 | Issue + small PR | F-10: structured logging | `feat/structured-logging` (C tier, ~1 week) |
-| F-11 | Skipped (informational) | — | — |
-| F-12 | Issue only (depends on F-01) | F-12: async DB driver abstraction layer | None yet — depends on F-01 spike |
-| F-13 | Architectural — Issue only | F-13: multi-process / horizontal scale design | None yet — requires design |
-| F-14 | Issue only | F-14: consolidate 11 SQLite DBs into one logical schema | None yet — large surface |
-| F-15 | Issue + small PR | F-15: split README into role-specific docs | `docs/readme-split` (C tier, ~1-2 days) |
-| F-16 | Issue + planned PR | F-16: replace spawnSync with async execFile in edge adapters | `refactor/edge-spawn-async` (B tier, ~2-3 days) |
-| F-17 | Issue + small PR | F-17: stream SHA-256 of migration files | `fix/migration-sha-streaming` (C tier, ~1 day) |
-| F-18 | Issue + small PR | F-18: explicit body limit on global json parser | `fix/express-json-limit` (C tier, ~half-day) |
-| F-19 | Issue + small PR | F-19: migration rollback policy decision + exports | `fix/migration-rollback-exports` (C tier, ~1 day) |
-| F-20 | Issue + small PR | F-20: lock file async read on hot path | `fix/lock-file-async-read` (C tier, ~1 hour) |
+## F-XX canonical mapping (single source of truth)
 
-## Issue / PR draft titles (review-ready)
+This table replaces both the Round 1 `Recommended ordering for follow-up
+PRs` table and the older Round 3 F-XX mapping. It is the only F-XX
+tracking ledger in this document.
 
-The titles above are stable across the next batch Issue creation step.
-They will be opened in a single batch with the body format:
+| ID | Risk tier | Follow-up | Depends on | Intended Issue title | Intended PR scope |
+|---|---|---|---|---|---|
+| F-01 | B / A | Issue only | – | F-01: evaluate async DB driver path (better-sqlite3 vs node:sqlite vs libsql) | None yet — requires spike. WAL/busy_timeout path is B; driver migration is A. |
+| F-02 | A | Issue only | F-13 | F-02: in-memory rate limiter cannot scale across processes | None yet — depends on F-13 design and Redis decision. |
+| F-03 | B | Issue + planned PR | – | F-03: add HTTP server timeout / keep-alive tuning | `fix/http-server-timeouts` (B, ~half-day) |
+| F-04 | B | Issue + planned PR | – | F-04: add security headers middleware (re-scoped; HSTS/CSP excluded as A) | `fix/security-headers-reduced-scope` (B, ~1 day) |
+| F-05 | – | Skipped (R-1 retracted) | – | — | — |
+| F-06 | B | Issue + planned PR | – | F-06: enrich /api/health to probe DB and edge | `fix/health-probe-db-and-edge` (B, ~1 day) |
+| F-07 | B | Issue only | – | F-07: metrics endpoint (Prometheus / StatsD) | None yet — depends on infra; needs B-tier PR with explicit contract. |
+| F-08 | B | Issue + planned PR | – | F-08: circuit breaker in payment provider adapters | `feat/payment-circuit-breaker` (B, ~2-3 days) |
+| F-09 | B | Issue + planned PR | – | F-09: daemon launcher PID file (B, with stale-PID contract) | `fix/daemon-pid-file` (B, ~1 hour) |
+| F-10 | B | Issue + planned PR | – | F-10: structured logging | `feat/structured-logging` (B, ~1 week) |
+| F-11 | – | Skipped (informational) | – | — | — |
+| F-12 | B | Issue only | F-01 | F-12: async DB driver abstraction layer | None yet — depends on F-01 spike. |
+| F-13 | A | Architectural — Issue only | – | F-13: multi-process / horizontal scale design | None yet — requires design. |
+| F-14 | A | Issue only | F-01, F-13 | F-14: consolidate 11 SQLite DBs into one logical schema | None yet — A-tier schema migration. |
+| F-15 | C | Issue + planned PR | – | F-15: split README into role-specific docs | `docs/readme-split` (C, ~1-2 days) |
+| F-16 | B | Issue + planned PR | – | F-16: replace spawnSync with async execFile in edge adapters | `refactor/edge-spawn-async` (B, ~2-3 days) |
+| F-17 | B | Issue + planned PR | – | F-17: stream SHA-256 of migration files (B; A if becomes a migration gate) | `fix/migration-sha-streaming` (B, ~1 day) |
+| F-18 | B | Issue + planned PR | – | F-18: explicit body limit on global json parser | `fix/express-json-limit` (B, ~half-day) |
+| F-19 | A (docs: C) | Issue + planned PR | – | F-19: migration forward-only policy + per-migration rollback exports | `docs/migration-forward-only` (C, ~half-day) + `feat/migration-rollback-exports` (A, ~1 day) |
+| F-20 | B (gated) | Conditional Issue only | F-13 | F-20: lock file async read on hot path | None yet — conditional on F-13 multi-process design and profiling/event-loop evidence. |
+
+### F-19 special case
+
+F-19 is split into two concrete deliverables, each with its own tier and
+its own scope confirmation:
+
+1. `docs/migration-forward-only` (C, ~half-day) — record the forward-only
+   policy in the docs / CONVENTIONS.
+2. `feat/migration-rollback-exports` (A, ~1 day) — add per-migration
+   `down` exports and tests, gated by `AGENTS.md` A-tier process.
+
+### F-20 conditional Issue only
+
+F-20 is **conditional Issue only**. No PR is queued until both gates are
+cleared:
+
+1. Profiling or event-loop evidence shows lock reads are on a hot path
+2. F-13 multi-process design lands (because asyncifying the lock
+   lifecycle is part of that larger redesign)
+
+When/if a B-tier implementation PR is opened, its scope must cover all
+of:
+
+- profiling / event-loop evidence
+- lock lifecycle scope (acquire / read / release / recover)
+- async propagation boundary
+- stale-owner semantics
+- concurrent-writer race analysis (the create-then-immediately-read
+  invariant in factory + capture path)
+- live-owner non-eviction
+- malformed / broken lock fail-closed
+- release must not delete foreign marker
+- factory / API sync-vs-async decision
+
+A PR titled "convert readFileSync to readFile in lock helpers" or any
+similar narrow asyncification is **not** acceptable as F-20 closure.
+
+## Tracking invariants (canonical, hand-checked)
+
+These invariants must hold for any reader of this document. They are
+checked by hand against the overview tables, the F-XX canonical mapping,
+the Issue creation order, and the PR execution order.
+
+1. **Closed enum**: every `Follow-up` value is exactly one of the 5
+   canonical values above. Parenthetical overrides (e.g. `Issue only
+   (depends on F-01)`) are not allowed.
+2. **PR scope coupling**: a row's `Follow-up` contains the substring
+   `PR` **iff** the `Intended PR scope` column is non-empty. Empty PR
+   scope ⇔ `Issue only` / `Architectural — Issue only` / `Skipped (R-N
+   retracted)` / `Skipped (informational)`.
+3. **Queue separation**: items with `Issue only` / `Architectural —
+   Issue only` / `Skipped (*)` are **excluded** from the PR execution
+   order. Only items with `Issue + planned PR` appear there.
+4. **Skipped closure**: any row with `Skipped (R-N retracted)` or
+   `Skipped (informational)` has both `Intended Issue title` and
+   `Intended PR scope` empty.
+
+## Issue creation order (canonical, 18 review-ready)
+
+Issue titles are stable across the next batch Issue creation step. They
+will be opened in a single batch with the body format documented below
+this table. Issues are not opened until the user explicitly confirms.
+
+| # | Issue title | Risk tier | Follow-up | Depends on (PR-side gate) |
+|---|---|---|---|---|
+| 1 | F-13: multi-process / horizontal scale design | A | Architectural — Issue only | – |
+| 2 | F-20: lock file async read on hot path (conditional) | B (gated) | Issue only | F-13 + profile evidence |
+| 3 | F-01: evaluate async DB driver path | B / A | Issue only | – |
+| 4 | F-02: in-memory rate limiter cannot scale across processes | A | Issue only | F-13 |
+| 5 | F-12: async DB driver abstraction layer | B | Issue only | F-01 |
+| 6 | F-14: consolidate 11 SQLite DBs into one logical schema | A | Issue only | F-01, F-13 |
+| 7 | F-07: metrics endpoint (Prometheus / StatsD) | B | Issue only | – |
+| 8 | F-03: add HTTP server timeout / keep-alive tuning | B | Issue + planned PR | – |
+| 9 | F-04: add security headers middleware (re-scoped) | B | Issue + planned PR | – |
+| 10 | F-06: enrich /api/health to probe DB and edge | B | Issue + planned PR | – |
+| 11 | F-08: circuit breaker in payment provider adapters | B | Issue + planned PR | – |
+| 12 | F-09: daemon launcher PID file (with stale-PID contract) | B | Issue + planned PR | – |
+| 13 | F-10: structured logging | B | Issue + planned PR | – |
+| 14 | F-16: replace spawnSync with async execFile in edge adapters | B | Issue + planned PR | – |
+| 15 | F-17: stream SHA-256 of migration files | B | Issue + planned PR | – |
+| 16 | F-18: explicit body limit on global json parser | B | Issue + planned PR | – |
+| 17 | F-19: migration forward-only policy + per-migration rollback exports | A (docs: C) | Issue + planned PR | – |
+| 18 | F-15: split README into role-specific docs | C | Issue + planned PR | – |
+
+Issue batch is **not** opened until the user explicitly confirms this
+title list. Each Issue body uses the format:
 
 ```
 ## Source finding
@@ -700,7 +787,13 @@ F-XX — <one-line from PR #629>
 <file:line pointers from PR #629>
 
 ## Risk tier
-<C / B / A — from PR #629 amended Follow-up table>
+<C / B / A — from PR #629 canonical mapping>
+
+## Follow-up
+<from PR #629 canonical mapping>
+
+## Depends on
+<from PR #629 canonical mapping>
 
 ## Proposed scope
 - If Follow-up = "Issue + planned PR": describe PR outline and branch name
@@ -715,11 +808,38 @@ F-XX — <one-line from PR #629>
   migration) unless this finding is itself A
 ```
 
-No Issue / PR body is opened until the user explicitly confirms the
-title list. The Issue batch and PR execution queue are tracked under
-"Issue creation order" and "PR execution order" in the Round 3
-amendment above. PRs are **not** part of the Issue batch; each PR
-requires its own scope confirmation and Risk-tier process gates.
+## PR execution order (canonical, only Issue + planned PR items)
+
+PRs are **not** opened in the Issue batch. Each PR requires its own
+scope confirmation and Risk-tier process gates (per `AGENTS.md`).
+Items in `Issue only`, `Architectural — Issue only`, and `Skipped (*)`
+do not appear here.
+
+| # | Branch | Finding | Risk tier | Effort | Notes |
+|---|---|---|---|---|---|
+| 1 | `docs/readme-split` | F-15 | C | 1-2 days | Doc-only gate. |
+| 2 | `fix/express-json-limit` | F-18 | B | ~half-day | Smallest B-tier server PR. |
+| 3 | `fix/daemon-pid-file` | F-09 | B | ~1 hour | Plus stale-PID contract. |
+| 4 | `fix/http-server-timeouts` | F-03 | B | ~half-day | Server `start.mjs` only. |
+| 5 | `fix/health-probe-db-and-edge` | F-06 | B | ~1 day | `/api/health` enrichment. |
+| 6 | `fix/security-headers-reduced-scope` | F-04 | B | ~1 day | Express middleware; HSTS/CSP excluded as A. |
+| 7 | `fix/migration-sha-streaming` | F-17 | B | ~1 day | Streaming hash; A if it becomes a migration gate. |
+| 8 | `refactor/edge-spawn-async` | F-16 | B | ~2-3 days | execFile + Promise; call contract change. |
+| 9 | `feat/payment-circuit-breaker` | F-08 | B | ~2-3 days | Per-provider open/half-open. |
+| 10 | `feat/structured-logging` | F-10 | B | ~1 week | Pino + secret-redaction. |
+| 11 | `docs/migration-forward-only` | F-19 (part 1) | C | ~half-day | Forward-only policy in docs. |
+| 12 | `feat/migration-rollback-exports` | F-19 (part 2) | A | ~1 day | Per-migration `down` exports + tests. Full A-tier gate. |
+| 13 | (deferred) | F-20 | B (gated) | TBD | Conditional on F-13 design + profile evidence. |
+| 14 | (deferred) | F-07 | B | 1-2 weeks | Metrics endpoint + middleware timing. |
+| 15 | (deferred) | F-12 | B | 2-3 weeks | Depends on F-01 spike. |
+| 16 | (deferred) | F-01 | B / A | 1 day / 2-3 weeks / 3-4 weeks | Spike first; then choose B or A path. |
+| 17 | (deferred) | F-02 | A | TBD | Depends on F-13 design + Redis decision. |
+| 18 | (deferred) | F-14 | A | TBD | Depends on F-01 + F-13. |
+| 19 | (deferred) | F-13 | A | TBD | Architecture design Issue; PRs come after design lands. |
+
+`F-05`, `F-11` do not appear (Skipped). `F-20` is conditional and has
+no PR scope filled in. Rows marked "(deferred)" wait for their
+dependencies before being opened.
 
 ## Round 3 amendment known facts vs reasonable speculation vs information gaps
 
