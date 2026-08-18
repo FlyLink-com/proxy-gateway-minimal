@@ -22,8 +22,10 @@ Every in-scope file MUST contain a top-level YAML fence that holds a
 first 40 non-empty lines of the file. The non-operative example below shows
 the exact field shape; when copying it into an in-scope document the marker
 line must be rewritten as `document_metadata:` (the `document_metadata_template:`
-form shown here is purely illustrative and would otherwise be flagged as a
-malformed or duplicate marker by the validator):
+form shown here is intentionally not a parser candidate — it matches neither
+the byte-exact marker nor the diagnostic `MARKER_LIKE_PATTERN`, so the
+validator ignores it. When copied unchanged, default mode treats the file
+as ungoverned and `--strict-files` reports `file lacks document_metadata`):
 
 ```yaml
 document_metadata_template:
@@ -66,11 +68,17 @@ document_metadata_template:
 ## Lexical grammar of the metadata block
 
 The `document_metadata` block is parsed with **strict, column-exact** lexical
-rules. The validator never trims, folds, or normalises individual lines; a
-record that does not match the byte-for-byte grammar below is treated as a
-metadata block that is present but malformed, and emits a precise diagnostic
-rather than a generic "file lacks document_metadata" failure. This is the
-contract the parser implements today and the contract future edits MUST keep:
+rules. The validator never trims, folds, or normalises individual lines.
+Marker-line candidates that do not match the byte-exact marker are
+classified by `MARKER_LIKE_PATTERN` (defined below); a candidate that
+matches the pattern but not the byte-exact marker is treated as a
+metadata block that is present but malformed, and emits a precise
+diagnostic rather than a generic "file lacks document_metadata"
+failure. A candidate that matches neither the byte-exact marker nor
+`MARKER_LIKE_PATTERN` (for example `document_metadata_template:`) is
+not a parser candidate at all and is silently ignored — the file is
+treated as having no `document_metadata:` block. This is the contract
+the parser implements today and the contract future edits MUST keep:
 
 | Token | Exact byte sequence | Notes |
 | --- | --- | --- |

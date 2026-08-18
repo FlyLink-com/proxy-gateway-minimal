@@ -34,12 +34,17 @@ const YAML_FENCE_CLOSE = "```";
 // Byte-exact field pattern: exactly two ASCII spaces, exactly one ASCII space
 // after the colon, value content must start and end with non-whitespace, and
 // trailing whitespace on the field line is a parse error. Unicode whitespace
-// anywhere in the line is rejected by the ASCII-space constraint.
+// can still appear inside the value (the `\S` anchors only check the ends);
+// any field-level rejection of Unicode whitespace happens via the per-field
+// validators below, not inside this regex.
 const METADATA_FIELD_PATTERN =
   /^ {2}([a-z_]+): (\S(?:.*\S)?)$/;
-// Diagnostic-only marker pattern: matches any line whose trim() could be the
-// marker. Used exclusively to report malformed markers; it MUST NOT be used
-// to accept a metadata block.
+// Diagnostic-only marker pattern: matches any line whose bytes, with leading
+// and trailing whitespace stripped, equal the marker. Note that `trim()` is
+// the wrong way to describe this — for a line such as `document_metadata :`
+// the trim result is `document_metadata :`, NOT equal to the byte-exact
+// marker, while `MARKER_LIKE_PATTERN` does still match. Used exclusively to
+// report malformed markers; it MUST NOT be used to accept a metadata block.
 const MARKER_LIKE_PATTERN = /^\s*document_metadata\s*:\s*$/u;
 // Canonical repository-relative path: forward slashes only, no leading slash,
 // no Windows drive prefix, no empty / dot / dotdot segments.
@@ -240,8 +245,11 @@ function parseMetadata(text, path, errors) {
     for (let index = markerIndex + 1; index < fenceEnd; index += 1) {
       const line = lines[index];
       // Tab is rejected anywhere in the metadata block before pattern matching.
-      // Unicode whitespace beyond ASCII is implicitly rejected by the strict
-      // field pattern (which requires two ASCII spaces, not \s).
+            // Unicode whitespace beyond ASCII is NOT a hard parse error here — the
+            // strict field pattern only fixes the indent to two ASCII spaces and
+            // pins the value to non-whitespace at both ends. Any Unicode
+            // whitespace between those ends is allowed by this regex and is then
+            // adjudicated by the per-field validators below (e.g. date format).
       if (line.includes("\t")) {
         errors.push(
           `${path}:${index + 1}: document_metadata field lines must use two ASCII spaces for indentation; tab is not accepted`
