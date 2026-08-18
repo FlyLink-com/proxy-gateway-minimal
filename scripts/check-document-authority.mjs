@@ -289,69 +289,6 @@ function parseMetadata(text, path, errors) {
     );
   }
   return { fields: null, foundMarker: true };
-
-  // Opening fence must be exactly ```yaml at column 1 of a line above the
-  // marker. We allow blank lines between the fence and the marker but the
-  // fence line itself must equal YAML_FENCE_OPEN exactly.
-  let fenceStart = markerIndex - 1;
-  while (fenceStart >= 0 && lines[fenceStart] === "") {
-    fenceStart -= 1;
-  }
-  if (fenceStart < 0 || lines[fenceStart] !== YAML_FENCE_OPEN) {
-    errors.push(`${path}:${markerIndex + 1}: document_metadata must be in a top-level yaml fence`);
-    return { fields: null, foundMarker: true };
-  }
-
-  // Closing fence must be exactly ``` (column 1, no trim).
-  const fenceEnd = lines.findIndex(
-    (line, index) => index > markerIndex && line === YAML_FENCE_CLOSE
-  );
-  if (fenceEnd < 0) {
-    errors.push(`${path}:${markerIndex + 1}: document_metadata yaml fence is not closed`);
-    return { fields: null, foundMarker: true };
-  }
-
-  const fields = {};
-  for (let index = markerIndex + 1; index < fenceEnd; index += 1) {
-    const line = lines[index];
-    // Tab is rejected anywhere in the metadata block before pattern matching.
-    // Unicode whitespace beyond ASCII is implicitly rejected by the strict
-    // field pattern (which requires two ASCII spaces, not \s).
-    if (line.includes("\t")) {
-      errors.push(
-        `${path}:${index + 1}: document_metadata field lines must use two ASCII spaces for indentation; tab is not accepted`
-      );
-      continue;
-    }
-    if (line === "" || line.startsWith("#")) {
-      continue;
-    }
-    const match = line.match(METADATA_FIELD_PATTERN);
-    if (!match) {
-      errors.push(
-        `${path}:${index + 1}: unsupported document_metadata syntax (expected two ASCII spaces, exactly one ASCII space after the colon, no trailing whitespace, value with non-whitespace at both ends)`
-      );
-      continue;
-    }
-    const [, key, rawValue] = match;
-    if (Object.hasOwn(fields, key)) {
-      errors.push(`${path}:${index + 1}: duplicate document_metadata field ${key}`);
-      continue;
-    }
-    fields[key] = unquote(rawValue);
-  }
-
-  for (const field of REQUIRED_FIELDS) {
-    if (!Object.hasOwn(fields, field) || fields[field] === "") {
-      errors.push(`${path}: missing document_metadata field ${field}`);
-    }
-  }
-  for (const field of Object.keys(fields)) {
-    if (!REQUIRED_FIELDS.includes(field)) {
-      errors.push(`${path}: unsupported document_metadata field ${field}`);
-    }
-  }
-  return { fields, foundMarker: true };
 }
 
 function isValidDate(value) {
