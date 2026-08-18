@@ -8,7 +8,7 @@ document_metadata:
   production_authority: false
 ```
 
-# Tech Stack Findings Rounds 1 + 2
+# Tech Stack Findings Rounds 1 + 2 + 3
 
 > Status:
 > - Type: Tech-stack debt aggregation
@@ -31,37 +31,55 @@ performed against `master@1d6b60c`:
 
 No finding in this document was generated from a live load test or production
 metrics endpoint; concrete throughput / latency numbers are not available
-because the codebase does not yet expose a metrics endpoint (see F-08).
+because the codebase does not yet expose a metrics endpoint (see F-07).
 
 ## Risk-tier definitions used here
 
-| Tier | Meaning |
+Two **orthogonal** axes. They were collapsed into a single `Follow-up`
+column in the original Round 3 (commit `22a603d`); Round 3 amendment
+restores the orthogonal split.
+
+| Axis | Meaning |
 |---|---|
 | F-XX | Finding identifier (do not reorder) |
 | Severity | observed impact on current production scale |
-| Tier-to-fix | suggested risk tier for a follow-up PR addressing this finding |
+| Risk tier | **process tier** for a follow-up PR — `C` (docs-only) / `B` (server small refactor, tests, small runtime behavior fixes) / `A` (Nginx / systemd / production / SQLite schema migration / deploy-rollback). Per `AGENTS.md`. |
 | Status | new (this round) / known (already in existing docs) / unknown |
-| Follow-up | tracking channel: Issue only / Issue + small PR / Issue + planned PR / Skipped (retracted or informational) / Architectural — Issue only |
+| Follow-up | **tracking channel only** — `Issue only` / `Issue + planned PR` / `Skipped (R-N retracted)` / `Skipped (informational)` / `Architectural — Issue only` |
+| Depends on | F-XX dependency identifiers; not encoded into Follow-up |
+
+The two are not the same concept. A finding may be `Issue only` (no
+code change) at any risk tier, or `Issue + planned PR` at risk tier B.
+`Follow-up` says *what work we will do*, `Risk tier` says *what process
+gates that work must clear*.
+
+### Repo risk-tier definitions (from `AGENTS.md`)
+
+| Tier | Process | Required gates |
+|---|---|---|
+| C | docs-only / README / runbook / status record | `git diff --check` |
+| B | server small refactor / tests / small runtime behavior fixes | `git diff --check` + `npm test` (targeted or full) |
+| A | Nginx / systemd / production / SQLite schema migration / deploy-rollback | spec + dry-run + read-only inventory + operator approval + staging / clean validation + rollback plan + production gate + closeout |
 
 ## Findings overview
 
-| ID | Surface | Severity | Tier-to-fix | Status | Follow-up |
-|---|---|---|---|---|---|
-| F-01 | SQLite sync driver blocks event loop | medium | B | known | Issue only |
-| F-02 | In-memory rate limiter (single-process only) | low | C | known | Issue only |
-| F-03 | No HTTP server timeout / keep-alive tuning | medium | C | new | Issue + small PR |
-| F-04 | No security headers middleware (helmet / CSP / X-Frame-Options) | medium | C | new | Issue + small PR |
-| F-05 | No CORS policy explicit at app layer | low | C | new | Skipped (R-1 retracted) |
-| F-06 | /api/health is shallow (does not probe DB / edge) | low | C | known | Issue + small PR |
-| F-07 | No metrics endpoint (Prometheus / StatsD) | medium | B | known | Issue only |
-| F-08 | No circuit breaker in payment provider adapters | medium | B | new | Issue + planned PR |
-| F-09 | Daemon launcher does not write PID file | low | C | new | Issue + small PR |
-| F-10 | Structured logging absent (console.* only) | low | C | new | Issue + small PR |
-| F-11 | Process-level uncaughtException only logs, does not exit | informational | – | known | Skipped (informational) |
-| F-12 | No async DB driver option (no node:sqlite / libsql abstraction) | low | C | new | Issue only (depends on F-01) |
-| F-13 | Single-process architecture: cannot horizontally scale | architectural | – | known | Architectural — Issue only |
-| F-14 | 11 separate SQLite DBs instead of one logical DB | low | C | known | Issue only |
-| F-15 | Documentation load: README takes on multiple roles | low | C | new | Issue + small PR |
+| ID | Surface | Severity | Risk tier | Status | Follow-up | Depends on |
+|---|---|---|---|---|---|---|
+| F-01 | SQLite sync driver blocks event loop | medium | B | known | Issue only | – |
+| F-02 | In-memory rate limiter (single-process only) | low | A | known | Issue only | F-13 |
+| F-03 | No HTTP server timeout / keep-alive tuning | medium | B | new | Issue + planned PR | – |
+| F-04 | No security headers middleware (helmet / CSP / X-Frame-Options) | medium | B | new | Issue + planned PR | – |
+| F-05 | No CORS policy explicit at app layer | low | – | new | Skipped (R-1 retracted) | – |
+| F-06 | /api/health is shallow (does not probe DB / edge) | low | B | known | Issue + planned PR | – |
+| F-07 | No metrics endpoint (Prometheus / StatsD) | medium | B | known | Issue only | – |
+| F-08 | No circuit breaker in payment provider adapters | medium | B | new | Issue + planned PR | – |
+| F-09 | Daemon launcher does not write PID file | low | B | new | Issue + planned PR | – |
+| F-10 | Structured logging absent (console.* only) | low | B | new | Issue + planned PR | – |
+| F-11 | Process-level uncaughtException only logs, does not exit | informational | – | known | Skipped (informational) | – |
+| F-12 | No async DB driver option (no node:sqlite / libsql abstraction) | low | B | new | Issue only | F-01 |
+| F-13 | Single-process architecture: cannot horizontally scale | architectural | A | known | Architectural — Issue only | – |
+| F-14 | 11 separate SQLite DBs instead of one logical DB | low | A | known | Issue only | – |
+| F-15 | Documentation load: README takes on multiple roles | low | C | new | Issue + planned PR | – |
 
 ## F-01 — SQLite sync driver blocks event loop
 
@@ -73,10 +91,9 @@ because the codebase does not yet expose a metrics endpoint (see F-08).
 better-sqlite3 is a synchronous driver. Every `db.prepare(...).get/all/run()`
 call blocks the V8 event loop until the SQL execution completes.
 
-**Impact** (推测 — not benchmarked):
-- < 200 RPS: imperceptible
-- 200–800 RPS: dominated by simple queries, controllable
-- > 1000 RPS with complex joins / scans: P99 latency degrades sharply
+**Impact**: Quantitative event-loop and P99 impact is unknown until
+benchmarked. The repo does not expose a metrics endpoint (see F-07)
+and no local benchmark harness was run for this scan.
 
 **Counter-measures already in place**:
 - WAL mode (configured per store, not validated in this scan)
@@ -103,7 +120,11 @@ Two rate-limiters wired in `server/app.mjs`:
 buckets; a client can flood during the first minute after restart. Single-process
 deployment makes this acceptable; multi-process would require Redis.
 
-**Possible follow-up**: Tier-to-fix: C. Effort: 1 week to introduce Redis.
+**Possible follow-up**: Risk tier: **A** (architectural — introducing Redis
+cross-cuts deployment topology and runtime). Tracking Issue only;
+implementation must wait for F-13 multi-process design and the spec / dry-run
+/ inventory / staging gate sequence. Not a C-tier "1 week" PR as the
+original Round 1 wording implied.
 
 ## F-03 — No HTTP server timeout / keep-alive tuning
 
@@ -112,10 +133,13 @@ returns zero matches in `server/app.mjs` and `server/start.mjs`. Node defaults
 apply: `timeout = 0` (no timeout), `keepAliveTimeout = 5000ms`,
 `headersTimeout = 60000ms`.
 
-**Impact** (推测):
-- Slowloris-style attacks have no server-side mitigation beyond reverse proxy
-  (nginx in front, per `ops/nginx/`)
-- Long-lived keep-alive sockets accumulate if downstream backpressure not handled
+**Impact** (推测 — not benchmarked):
+- Node already provides implicit defaults (`headersTimeout = 60000ms`,
+  `keepAliveTimeout = 5000ms`); the real gap is that the contract is
+  implicit and version-dependent, with no explicit boundary test
+- Long-lived keep-alive sockets accumulate if downstream backpressure is
+  not handled; nginx in front provides some Slowloris mitigation but is
+  not a substitute for explicit server-side timeout values
 
 **Possible follow-up**: Tier-to-fix: C. Effort: half-day to set explicit
 `server.timeout`, `keepAliveTimeout`, `headersTimeout` in `server/start.mjs`
@@ -134,8 +158,17 @@ middleware; no `helmet` / `hpp` / explicit CSP.
 - Admin pages have no clickjacking protection at the Express layer (relies
   entirely on Nginx / browser defaults)
 
-**Possible follow-up**: Tier-to-fix: C. Effort: 1 day. Add `helmet` middleware
-or handcrafted header middleware; review CSP for subscription rendering path.
+**Note on cookie attributes**: `HttpOnly; Secure; SameSite=Strict` cookie
+attributes (G-01) govern **cookie attachment behavior**. They do not replace
+browser enforcement response headers (`X-Frame-Options`, `frame-ancestors`,
+`X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`).
+These are separate browser surfaces and need explicit headers.
+
+**Possible follow-up**: Risk tier: **B**. Effort: 1-2 days. Add Express-level
+header middleware (e.g. `helmet`, scoped) for `X-Content-Type-Options`,
+`X-Frame-Options`, `Referrer-Policy`. **HSTS and CSP** involve Nginx / TLS
+configuration and are out of scope; they belong to a separate A-tier PR
+if attempted.
 
 ## F-05 — No explicit CORS policy
 
@@ -208,11 +241,16 @@ const child = spawnFn(nodePath, [serverEntry], {
 child.unref?.();
 ```
 
-No `fs.writeFileSync(${pidFile}, child.pid)`. systemd's `Type=simple` tracks
-the daemon via cgroup so this is fine under systemd, but standalone operators
-using `npm run daemon` have no PID to kill.
+No `fs.writeFileSync(${pidFile}, child.pid)`. The launcher does print and
+return the child PID via the existing `LaunchResult.pid` field, so the
+in-process caller can capture it. systemd's `Type=simple` tracks the
+daemon via cgroup so this is fine under systemd, but standalone
+operators using `npm run daemon` whose terminal output is lost, or
+whose parent process has exited, lack a persistent on-disk discovery
+target and a stale-PID contract.
 
-**Impact**: Low — only matters outside systemd.
+**Impact**: Low — only matters for non-systemd operators without persistent
+process discovery.
 
 **Possible follow-up**: Tier-to-fix: C. Effort: 1 hour.
 
@@ -367,13 +405,13 @@ This document does not:
 
 ## Round 2 new findings
 
-| ID | Surface | Severity | Tier-to-fix | Status | Follow-up |
-|---|---|---|---|---|---|
-| F-16 | spawnSync in edge adapters blocks event loop | medium | B | new | Issue + planned PR |
-| F-17 | SHA-256 of migration files uses readFileSync | low | C | new | Issue + small PR |
-| F-18 | express.json() default 100kb; few routes override | low | C | new | Issue + small PR |
-| F-19 | Migration rollback support is partial (1 of 11 modules) | low | C | new | Issue + small PR |
-| F-20 | Lock file read with readFileSync on hot path candidate | low | C | new | Issue + small PR |
+| ID | Surface | Severity | Risk tier | Status | Follow-up | Depends on |
+|---|---|---|---|---|---|---|
+| F-16 | spawnSync in edge adapters blocks event loop | medium | B | new | Issue + planned PR | – |
+| F-17 | SHA-256 of migration files uses readFileSync | low | B | new | Issue + planned PR | – |
+| F-18 | express.json() default 100kb; few routes override | low | B | new | Issue + planned PR | – |
+| F-19 | Migration rollback support is partial (1 of 11 modules) | low | A (docs policy: C) | new | Issue + planned PR | – |
+| F-20 | Lock file read with readFileSync on hot path candidate | low | B (gated by F-13) | new | Issue only | F-13 |
 
 ## F-16 — spawnSync in edge adapters blocks event loop
 
@@ -397,8 +435,10 @@ This stacks with F-01 (better-sqlite3 synchronous driver), producing a
 "double-block" pattern on any code path that touches both DB and a runtime
 binary in the same request.
 
-**Possible follow-up**: Tier-to-fix: B. Replace with `execFile` + Promise
-wrapper, or isolate the call in `worker_threads`.
+**Possible follow-up**: Risk tier: **B**. Replace with `execFile` + Promise
+wrapper, or isolate the call in `worker_threads`. Note: this changes the
+edge-adapter call contract; the surrounding factory / startup code paths
+must be re-reviewed for any implicit sync ordering they relied on.
 
 ## F-17 — SHA-256 of migration files uses readFileSync
 
@@ -423,9 +463,10 @@ return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 problem today. The concern is forward-looking: if migrations ever run in a
 hot path or grow large, this pattern adds another sync I/O on top of F-01.
 
-**Possible follow-up**: Tier-to-fix: C. Switch to streaming hash via
+**Possible follow-up**: Risk tier: **B**. Switch to streaming hash via
 `createReadStream` + `pipeline(createReadStream, hash)` once migration files
-exceed a few MB.
+exceed a few MB. Note: if the hash check becomes a migration gate, the
+implementation is **A** tier (it would touch schema/data migration flow).
 
 ## F-18 — express.json() default 100kb; few routes override
 
@@ -444,7 +485,7 @@ at `server/app.mjs:332` uses the default 100kb for every other write endpoint
 **Impact**: 100kb default is generous for an admin/subscription API. Larger
 JSON bodies pass through silently. Defense-in-depth is uneven.
 
-**Possible follow-up**: Tier-to-fix: C. Set explicit global limit in
+**Possible follow-up**: Risk tier: **B**. Set explicit global limit in
 `server/app.mjs:332` (suggest `32kb`) and document per-route overrides.
 
 ## F-19 — Migration rollback support is partial
@@ -462,9 +503,16 @@ JSON bodies pass through silently. Defense-in-depth is uneven.
 fixed by writing another forward migration. There is no test infrastructure
 to exercise schema rollback for the 10 non-account-authority migrations.
 
-**Possible follow-up**: Tier-to-fix: C. Either explicitly document the
-"forward-only" policy in `docs/CONVENTIONS.md`, or add `down()` exports to
-all 11 migration modules with rollback tests.
+**Possible follow-up**: Risk tier for **docs-only policy recording** is **C**;
+risk tier for **adding rollback / down-migration code** is **A** (SQLite
+schema migration). Split into two Issues / two PRs if both are pursued:
+
+1. **C tier PR**: record forward-only policy in `docs/CONVENTIONS.md`
+2. **A tier PR**: add `down()` exports to all 11 migration modules with
+   rollback tests (must clear the schema-migration gate sequence:
+   spec / dry-run / inventory / operator approval / staging / rollback plan)
+
+Do **not** bundle both into one C-tier "1 day" PR.
 
 ## F-20 — Lock file read with readFileSync on hot path candidate
 
@@ -477,8 +525,29 @@ return normalizeLockOwner(JSON.parse(readFileSync(lockPath, "utf8")));
 is informational. If the lock becomes a per-checkout hot read, it adds to
 F-01 / F-16.
 
-**Possible follow-up**: Tier-to-fix: C. Switch to `readFile` (async) if/when
-lock reads become hot.
+**Possible follow-up**: **Conditional Issue only**. Do not queue a PR.
+There is no measured hot-path or event-loop delay evidence today.
+"Switch to `readFile` (async) if/when lock reads become hot" is **not
+an implementation commitment** — it is a gate condition. Any future PR
+must clear:
+
+1. Profiling or event-loop delay evidence (benchmark or production trace)
+2. Full B-tier scope: lifecycle of `readLockOwner` / `openExclusiveLock` /
+   `releaseLock` / `recoverDeadWriterLock` / factory call chain
+3. Async-propagation boundary decision (per-helper or whole-trio)
+4. Stale-owner recovery semantics preserved under async
+5. Concurrent-writer race analysis (the create-then-immediately-read invariant
+   of `releaseLock` line ~628 and `recoverDeadWriterLock` line ~649)
+6. Live-owner non-eviction preserved under async
+7. Malformed / broken lock fail-closed behavior preserved
+8. `releaseLock` must not delete another process's marker
+9. `createWalletFirstSetupDeliveryEscrow` factory / API contract decision
+   (sync vs async — affects every caller)
+
+Until the gate is cleared, F-20 stays an **Issue only** with F-13 as
+its dependency. The companion intent-capture PR (separate branch
+`fix/lock-file-intentional-sync-trio`, PR #630) pins the current
+synchronous trio so the gate does not get silently bypassed.
 
 ## Round 2 positive observations (baseline evidence)
 
@@ -488,13 +557,13 @@ These are not findings — they record what is already correct at
 | ID | Dimension | Evidence | Verdict |
 |---|---|---|---|
 | G-01 | Admin cookie security | `server/services/platform/admin-auth.mjs:128` — `HttpOnly; Secure; SameSite=Strict; Max-Age=...` | strong |
-| G-02 | IP trust is allowlist-based | `server/app.mjs:78` + `server/tests/ip-address.test.mjs:40` — `resolveClientIp` ignores X-Forwarded-For unless direct peer is explicitly trusted | strong |
+| G-02 | IP trust is allowlist-based | `server/app.mjs:368` (resolver assembly) + `server/tests/ip-address.test.mjs:40` — `resolveClientIp` ignores X-Forwarded-For unless direct peer is explicitly trusted | strong |
 | G-03 | Admin allowlist IP | `server/tests/admin-allowlist.test.mjs:81` — "uses X-Forwarded-For only for configured trusted proxies" | strong |
 | G-04 | Dependency hygiene | `npm audit` — 119 deps total, 0 vulnerabilities | strong |
 | G-05 | Test-to-source ratio | 279 test files vs 216 source files = 1.29 | strong |
 | G-06 | Migration form | 11 `*-migrations.mjs` modules; no raw `.sql`; each migration has a dedicated `.test.mjs` | strong |
 | G-07 | Token storage | `pgsub_*` / `pgtmp_*` tokens — only URL path; storage uses `token_hash` (`token_prefix` retained for diagnostics) | strong |
-| G-08 | XSS surface | 0 matches for `res.render\|escapeHtml\|sanitizeHtml` in production server code; subscriptions return YAML / JSON only | strong |
+| G-08 | Server-side template rendering | 0 matches for `res.render\|escapeHtml\|sanitizeHtml` in production server code; subscriptions return YAML / JSON only | narrow positive (server-side only) — gap: `public/` and `admin/` frontend XSS surface not audited |
 
 ## Round 2 retracted or re-scoped judgments
 
@@ -518,15 +587,20 @@ before public API" item rather than as a current vulnerability.
 
 Round 1 said "no helmet / CSP / X-Frame-Options / Strict-Transport-Security".
 Round 2 evidence shows that the Admin API relies on `SameSite=Strict`
-cookies (G-01) plus same-origin consumption (G-02), which provides most of
-the cross-origin attack protection that helmet would add.
+cookies (G-01) plus same-origin consumption (G-02).
 
-Remaining gap: Subscriptions rendered as YAML/JSON do not need CSP, but the
-HTML pages that host subscription download buttons and admin login pages
-should still ship `X-Frame-Options`, `X-Content-Type-Options`,
-`Strict-Transport-Security`. F-04 stays as a finding but with **reduced
-severity (low → low)** and an updated tier-to-fix priority. The recommendation
-in Round 1's priority list is unchanged.
+Re-scope rationale (Round 3 review correction): `SameSite=Strict`
+addresses **cookie attachment behavior**. It does not replace the
+browser enforcement response headers (`X-Frame-Options`, `frame-ancestors`,
+`X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`).
+These are separate browser surfaces and remain a real gap for HTML
+pages hosting subscription download buttons and admin login.
+
+F-04 severity stays **medium** (was already medium in Round 1; the
+"low → low" wording in the prior Round 2 was an editing mistake and
+is corrected here). The Round 1 priority list is unchanged in intent;
+the priority table is regenerated against the orthogonal Risk-tier
+model (see Round 3 amendment).
 
 ### R-3 — F-13 "Single-process architecture" status
 
@@ -535,26 +609,9 @@ find new evidence. Status unchanged.
 
 ## Updated recommended ordering for follow-up PRs
 
-(Round 2 added F-16 and demoted F-04.)
-
-| Priority | Finding | Tier | Effort |
-|---|---|---|---|
-| 1 | F-04 security headers (reduced scope) | C | 1 day |
-| 2 | F-16 spawnSync → execFile wrapper | B | 2-3 days |
-| 3 | F-18 explicit body limit on global json parser | C | half-day |
-| 4 | F-19 migration rollback policy decision | C | 1 day |
-| 5 | F-17 streaming SHA-256 for migrations | C | 1 day |
-| 6 | F-20 lock file async read (only if hot) | C | 1 hour |
-| 7 | F-06 enriched /api/health | C | 1 day |
-| 8 | F-09 PID file | C | 1 hour |
-| 9 | F-15 README split | C | 1-2 days |
-| 10 | F-10 structured logging | C | 1 week |
-| 11 | F-08 payment provider circuit breaker | B | 2-3 days |
-| 12 | F-07 metrics endpoint | B | 1-2 weeks |
-| 13 | F-01 DB driver re-evaluation | B | 1-4 weeks |
-| 14 | F-13 multi-process redesign | A | requires design |
-
-F-05 (CORS) is removed from the list (retracted, see R-1).
+**This Round 2 ordering table is superseded by the Round 3 amendment
+ordering table**, which now reflects the orthogonal Risk-tier model
+and the F-20 conditional-Issue-only reclassification.
 
 ## Round 2 known facts vs reasonable speculation vs information gaps
 
@@ -642,58 +699,48 @@ F-XX — <one-line from PR #629>
 ## Evidence
 <file:line pointers from PR #629>
 
-## Proposed scope (PR only)
-<one-line from PR #629 "Possible follow-up">
-
 ## Risk tier
-<from PR #629 "Tier-to-fix">
+<C / B / A — from PR #629 amended Follow-up table>
+
+## Proposed scope
+- If Follow-up = "Issue + planned PR": describe PR outline and branch name
+- If Follow-up = "Issue only": describe the next concrete gate that must
+  be cleared before any PR can be opened
+- If Follow-up = "Architectural — Issue only": describe the design
+  questions that need answers before code
+- If Follow-up = "Skipped": N/A — Issue is informational only
 
 ## Out of scope
-- Risk A changes
-- Production / Nginx / systemd / credential
-- SQLite schema migration
+- Risk A changes (production / Nginx / systemd / credential / schema
+  migration) unless this finding is itself A
 ```
 
-No Issue / PR body will be opened until the user explicitly confirms
-the title list above. This round only adds the Follow-up column and
-locks its semantics.
+No Issue / PR body is opened until the user explicitly confirms the
+title list. The Issue batch and PR execution queue are tracked under
+"Issue creation order" and "PR execution order" in the Round 3
+amendment above. PRs are **not** part of the Issue batch; each PR
+requires its own scope confirmation and Risk-tier process gates.
 
-## Updated recommended ordering for follow-up PRs
+## Round 3 amendment known facts vs reasonable speculation vs information gaps
 
-This ordering now also resolves to the `Follow-up` column above. Items
-without an `Intended PR scope` are `Issue only` and do not appear in
-the PR queue.
+**Known facts**:
+- All 20 findings have Follow-up, Risk tier, and Depends on values
+- Follow-up is now a closed 5-value enum; dependencies are in their own
+  column, not parenthetical in the Follow-up value
+- F-20 is conditional Issue only (no PR queued) until profiling /
+  event-loop evidence exists and F-13 multi-process design lands
+- Issue creation order and PR execution order are separate lists
+- Issue batch and PR execution are separate batches; PRs are not opened
+  in the Issue batch
 
-| Priority | Finding | Tier | Effort | Follow-up |
-|---|---|---|---|---|
-| 1 | F-20 lock file async read (only if hot) | C | 1 hour | Issue + small PR |
-| 2 | F-09 PID file | C | 1 hour | Issue + small PR |
-| 3 | F-18 explicit body limit on global json parser | C | half-day | Issue + small PR |
-| 4 | F-03 HTTP server timeouts | C | half-day | Issue + small PR |
-| 5 | F-04 security headers (reduced scope) | C | 1 day | Issue + small PR |
-| 6 | F-17 streaming SHA-256 for migrations | C | 1 day | Issue + small PR |
-| 7 | F-19 migration rollback policy decision | C | 1 day | Issue + small PR |
-| 8 | F-06 enriched /api/health | C | 1 day | Issue + small PR |
-| 9 | F-15 README split | C | 1-2 days | Issue + small PR |
-| 10 | F-16 spawnSync → execFile wrapper | B | 2-3 days | Issue + planned PR |
-| 11 | F-08 payment provider circuit breaker | B | 2-3 days | Issue + planned PR |
-| 12 | F-10 structured logging | C | 1 week | Issue + small PR |
-| 13 | F-07 metrics endpoint | B | 1-2 weeks | Issue only |
-| 14 | F-01 DB driver re-evaluation | B | 1-4 weeks | Issue only |
-| 15 | F-13 multi-process redesign | A | requires design | Architectural — Issue only |
+**Reasonable speculation**:
+- "Intended PR scope" branch names are working titles
+- Effort estimates are working estimates
+- The PR execution order above is a working priority; each PR still
+  needs its own scope confirmation
 
-F-02, F-12, F-14 are tracked via Issue but not queued for PR work
-(dependencies or large surface). F-05 and F-11 remain skipped.
-
-## Round 3 known facts vs reasonable speculation vs information gaps
-
-**Known facts**: All 20 findings already have Follow-up values assigned;
-no F-XX is left in an undefined state. Each Follow-up value is one of
-the six locked semantic values.
-
-**Reasonable speculation**: The "Intended PR scope" column names are
-working titles; the final branch name and PR title may differ when each
-PR is opened.
-
-**Information gaps**: Issue / PR opening batch (Round 4 candidate).
-F-21+ supply-chain cross-references (deferred, see Round 3 scope).
+**Information gaps**:
+- Unit test vs integration test ratio within the 279 test files is not
+  yet quantified
+- F-21+ supply-chain cross-references (deferred, see Round 3 scope)
+- Benchmark / profiling evidence for F-20 (gating the eventual B-tier PR)
