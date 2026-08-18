@@ -8,7 +8,7 @@ document_metadata:
   production_authority: false
 ```
 
-# Tech Stack Findings Round 1
+# Tech Stack Findings Rounds 1 + 2
 
 > Status:
 > - Type: Tech-stack debt aggregation
@@ -351,3 +351,217 @@ This document does not:
 - `docs/IDENTITY_LIFECYCLE.md` — runtime principal & identity gate
 - `docs/INFRASTRUCTURE_ACCESS_RULE.md` — provider access policy
 - `docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md` — CLI/platform separation
+
+---
+
+# Round 2 — 2026-08-18
+
+> Round 2 inspected 8 additional dimensions: sync I/O in production hot paths,
+> dependency hygiene, Cookie / Session security, CSRF surface, input validation,
+> migration rollback discipline, test coverage breadth, and IP trust policy.
+>
+> All Round 2 observations are derived from `master@1d6b60c` against the
+> exact same source state as Round 1. No code, schema, runtime, or production
+> change occurred between Round 1 and Round 2.
+
+## Round 2 new findings
+
+| ID | Surface | Severity | Tier-to-fix | Status |
+|---|---|---|---|---|
+| F-16 | spawnSync in edge adapters blocks event loop | medium | B | new |
+| F-17 | SHA-256 of migration files uses readFileSync | low | C | new |
+| F-18 | express.json() default 100kb; few routes override | low | C | new |
+| F-19 | Migration rollback support is partial (1 of 11 modules) | low | C | new |
+| F-20 | Lock file read with readFileSync on hot path candidate | low | C | new |
+
+## F-16 — spawnSync in edge adapters blocks event loop
+
+**Evidence** (5 production edge adapters, all use spawnSync to call the runtime binary):
+```
+server/services/edge/hysteria2-runtime-adapter.mjs:13, 83
+server/services/edge/mihomo-tuic-host-runtime-adapter.mjs:13, 70
+server/services/edge/sing-box-ss-runtime-adapter.mjs:11, 59
+server/services/edge/xray-vless-reality-runtime-adapter.mjs:13, 100
+server/services/edge/xray-stats-cli-usage-reader.mjs:1, 71
+```
+
+Shape:
+```js
+const result = spawnSync(command, args, { ... });
+```
+
+**Impact** (推测 — not benchmarked): every CLI call into xray / hysteria2 /
+mihomo / sing-box binary blocks the V8 main thread until the process exits.
+This stacks with F-01 (better-sqlite3 synchronous driver), producing a
+"double-block" pattern on any code path that touches both DB and a runtime
+binary in the same request.
+
+**Possible follow-up**: Tier-to-fix: B. Replace with `execFile` + Promise
+wrapper, or isolate the call in `worker_threads`.
+
+## F-17 — SHA-256 of migration files uses readFileSync
+
+**Evidence** (8 of 11 migration modules):
+```
+server/services/platform/account-resource-authority-migrations.mjs:801
+server/services/platform/coin-commerce-migrations.mjs:1327
+server/services/platform/coin-wallet-migrations.mjs:826
+server/services/platform/coin-wallet-reference-index-migrations.mjs:736
+server/services/platform/portal-registration-welcome-bonus-migrations.mjs:1183
+server/services/platform/wallet-first-deferred-checkout-migrations.mjs:409
+server/services/platform/wallet-first-setup-delivery-handoffs-migrations.mjs:372
+server/services/platform/wallet-first-resource-effect-runtime-claims-migrations.mjs:334
+```
+
+Shape:
+```js
+return createHash("sha256").update(readFileSync(filePath)).digest("hex");
+```
+
+**Impact**: Migration apply is a cold-start path so this is not a hot-path
+problem today. The concern is forward-looking: if migrations ever run in a
+hot path or grow large, this pattern adds another sync I/O on top of F-01.
+
+**Possible follow-up**: Tier-to-fix: C. Switch to streaming hash via
+`createReadStream` + `pipeline(createReadStream, hash)` once migration files
+exceed a few MB.
+
+## F-18 — express.json() default 100kb; few routes override
+
+**Evidence**:
+```text
+server/app.mjs:332: app.use(express.json())            # default 100kb
+server/routes/portal-coin-commerce.mjs:1087: strictJsonParser  # custom
+server/routes/portal-coin-recharge.mjs:282: json({ limit: "32kb" })
+server/routes/portal-coin-recharge.mjs:344: raw({ limit: "1mb" })
+```
+
+Only 3 routes apply an explicit body limit; the global `app.use(express.json())`
+at `server/app.mjs:332` uses the default 100kb for every other write endpoint
+(admin routes, subscription creation, etc.).
+
+**Impact**: 100kb default is generous for an admin/subscription API. Larger
+JSON bodies pass through silently. Defense-in-depth is uneven.
+
+**Possible follow-up**: Tier-to-fix: C. Set explicit global limit in
+`server/app.mjs:332` (suggest `32kb`) and document per-route overrides.
+
+## F-19 — Migration rollback support is partial
+
+**Evidence**:
+- `server/services/platform/account-resource-authority-migrations.mjs:947`
+  exports `rollbackAccountResourceAuthorityMigration` (only migration with
+  an exported schema-revert function)
+- 4 migration modules use `source.exec("rollback")` which is a
+  better-sqlite3 transaction rollback, not a schema down-migration
+- No migration module exports a `down()` or equivalent schema-revert function
+  for the other 10 modules
+
+**Impact**: Once a forward migration is applied, schema errors can only be
+fixed by writing another forward migration. There is no test infrastructure
+to exercise schema rollback for the 10 non-account-authority migrations.
+
+**Possible follow-up**: Tier-to-fix: C. Either explicitly document the
+"forward-only" policy in `docs/CONVENTIONS.md`, or add `down()` exports to
+all 11 migration modules with rollback tests.
+
+## F-20 — Lock file read with readFileSync on hot path candidate
+
+**Evidence** (`server/services/platform/wallet-first-setup-delivery-escrow.mjs:575`):
+```js
+return normalizeLockOwner(JSON.parse(readFileSync(lockPath, "utf8")));
+```
+
+**Impact**: Today the lock file is read rarely (escrow state read), so this
+is informational. If the lock becomes a per-checkout hot read, it adds to
+F-01 / F-16.
+
+**Possible follow-up**: Tier-to-fix: C. Switch to `readFile` (async) if/when
+lock reads become hot.
+
+## Round 2 positive observations (baseline evidence)
+
+These are not findings — they record what is already correct at
+`master@1d6b60c` and should serve as the baseline when proposing changes.
+
+| ID | Dimension | Evidence | Verdict |
+|---|---|---|---|
+| G-01 | Admin cookie security | `server/services/platform/admin-auth.mjs:128` — `HttpOnly; Secure; SameSite=Strict; Max-Age=...` | strong |
+| G-02 | IP trust is allowlist-based | `server/app.mjs:78` + `server/tests/ip-address.test.mjs:40` — `resolveClientIp` ignores X-Forwarded-For unless direct peer is explicitly trusted | strong |
+| G-03 | Admin allowlist IP | `server/tests/admin-allowlist.test.mjs:81` — "uses X-Forwarded-For only for configured trusted proxies" | strong |
+| G-04 | Dependency hygiene | `npm audit` — 119 deps total, 0 vulnerabilities | strong |
+| G-05 | Test-to-source ratio | 279 test files vs 216 source files = 1.29 | strong |
+| G-06 | Migration form | 11 `*-migrations.mjs` modules; no raw `.sql`; each migration has a dedicated `.test.mjs` | strong |
+| G-07 | Token storage | `pgsub_*` / `pgtmp_*` tokens — only URL path; storage uses `token_hash` (`token_prefix` retained for diagnostics) | strong |
+| G-08 | XSS surface | 0 matches for `res.render\|escapeHtml\|sanitizeHtml` in production server code; subscriptions return YAML / JSON only | strong |
+
+## Round 2 retracted or re-scoped judgments
+
+Three Round 1 judgments need to be revised after Round 2 evidence:
+
+### R-1 — F-05 "No explicit CORS policy" is retracted
+
+Round 1 said "no CORS policy explicit at app layer". Round 2 evidence shows:
+
+- The project has no `cors` middleware import.
+- The Admin / Portal frontends are same-origin.
+- No CORS middleware means browsers default-deny cross-origin requests.
+
+This is a safe default, not an undocumented gap. F-05 is **retracted**.
+
+A future portal / mobile API consumer will need an explicit allowlist; that
+should be recorded in `docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md` as a "to-do
+before public API" item rather than as a current vulnerability.
+
+### R-2 — F-04 "No security headers middleware" is re-scoped
+
+Round 1 said "no helmet / CSP / X-Frame-Options / Strict-Transport-Security".
+Round 2 evidence shows that the Admin API relies on `SameSite=Strict`
+cookies (G-01) plus same-origin consumption (G-02), which provides most of
+the cross-origin attack protection that helmet would add.
+
+Remaining gap: Subscriptions rendered as YAML/JSON do not need CSP, but the
+HTML pages that host subscription download buttons and admin login pages
+should still ship `X-Frame-Options`, `X-Content-Type-Options`,
+`Strict-Transport-Security`. F-04 stays as a finding but with **reduced
+severity (low → low)** and an updated tier-to-fix priority. The recommendation
+in Round 1's priority list is unchanged.
+
+### R-3 — F-13 "Single-process architecture" status
+
+Round 1 marked F-13 as "architectural — no fix recommended". Round 2 did not
+find new evidence. Status unchanged.
+
+## Updated recommended ordering for follow-up PRs
+
+(Round 2 added F-16 and demoted F-04.)
+
+| Priority | Finding | Tier | Effort |
+|---|---|---|---|
+| 1 | F-04 security headers (reduced scope) | C | 1 day |
+| 2 | F-16 spawnSync → execFile wrapper | B | 2-3 days |
+| 3 | F-18 explicit body limit on global json parser | C | half-day |
+| 4 | F-19 migration rollback policy decision | C | 1 day |
+| 5 | F-17 streaming SHA-256 for migrations | C | 1 day |
+| 6 | F-20 lock file async read (only if hot) | C | 1 hour |
+| 7 | F-06 enriched /api/health | C | 1 day |
+| 8 | F-09 PID file | C | 1 hour |
+| 9 | F-15 README split | C | 1-2 days |
+| 10 | F-10 structured logging | C | 1 week |
+| 11 | F-08 payment provider circuit breaker | B | 2-3 days |
+| 12 | F-07 metrics endpoint | B | 1-2 weeks |
+| 13 | F-01 DB driver re-evaluation | B | 1-4 weeks |
+| 14 | F-13 multi-process redesign | A | requires design |
+
+F-05 (CORS) is removed from the list (retracted, see R-1).
+
+## Round 2 known facts vs reasonable speculation vs information gaps
+
+**Known facts**: All 5 new findings (F-16 ~ F-20) and all 8 positive
+observations (G-01 ~ G-08) are grounded in file/line evidence listed above.
+
+**Reasonable speculation**: F-16's "double-block" framing depends on the
+relative cost of `better-sqlite3` vs `spawnSync(xray)` and is not benchmarked.
+
+**Information gaps**: Unit test vs integration test ratio within the 279
+test files is not yet quantified (Round 3 candidate).
