@@ -1,0 +1,163 @@
+name: Control Plane Dependency Artifact
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Dependency artifact release label
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-dependency-artifact-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and verify Linux dependency artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Setup exact Node runtime
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install locked production dependencies
+        run: npm ci --omit=dev --no-audit --no-fund
+
+      - name: Run native dependency smoke
+        run: >-
+          node scripts/control-plane-dependency-artifact.mjs
+          --mode smoke
+          --root .
+          --snapshot scripts/control-plane-db-snapshot-gate.mjs
+
+      - name: Read runtime identity for artifact binding
+        run: >-
+          node --input-type=module --eval
+          'import { detectDependencyRuntime } from "./scripts/control-plane-dependency-artifact.mjs";
+          console.log(JSON.stringify(detectDependencyRuntime({ root: "." })))'
+
+      - name: Build twice and create deterministic dependency archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .dependency-artifacts
+          tar \
+            --create \
+            --file .dependency-artifacts/node-modules-a.tar \
+            --format=posix \
+            --sort=name \
+            --mtime='UTC 1970-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            --hard-dereference \
+            --pax-option=delete=atime,delete=ctime,delete=SCHILY.dev,delete=SCHILY.ino,delete=SCHILY.nlink \
+            -- node_modules
+          npm ci --omit=dev --no-audit --no-fund
+          node scripts/control-plane-dependency-artifact.mjs \
+            --mode smoke \
+            --root . \
+            --snapshot scripts/control-plane-db-snapshot-gate.mjs
+          tar \
+            --create \
+            --file .dependency-artifacts/node-modules-b.tar \
+            --format=posix \
+            --sort=name \
+            --mtime='UTC 1970-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            --hard-dereference \
+            --pax-option=delete=atime,delete=ctime,delete=SCHILY.dev,delete=SCHILY.ino,delete=SCHILY.nlink \
+            -- node_modules
+          test "$(sha256sum .dependency-artifacts/node-modules-a.tar | cut -d' ' -f1)" = "$(sha256sum .dependency-artifacts/node-modules-b.tar | cut -d' ' -f1)"
+          cmp --silent .dependency-artifacts/node-modules-a.tar .dependency-artifacts/node-modules-b.tar
+          mv .dependency-artifacts/node-modules-b.tar .dependency-artifacts/node-modules.tar
+          rm .dependency-artifacts/node-modules-a.tar
+
+      - name: Write dependency artifact manifest
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          RELEASE_INPUT: ${{ inputs.release || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit="$(git rev-parse HEAD)"
+          test "$source_commit" = "$EXPECTED_SOURCE_COMMIT"
+          release="$RELEASE_INPUT"
+          if [ -z "$release" ]; then
+            release="$(git rev-parse --short=12 HEAD)"
+          fi
+          case "$release" in
+            *[!A-Za-z0-9._-]*|'')
+              echo 'invalid_release_label' >&2
+              exit 1
+              ;;
+          esac
+          node scripts/control-plane-dependency-artifact.mjs \
+            --mode build \
+            --root . \
+            --archive .dependency-artifacts/node-modules.tar \
+            --source-commit "$source_commit" \
+            --release "$release" \
+            --snapshot scripts/control-plane-db-snapshot-gate.mjs \
+            --output .dependency-artifacts/dependency-artifact.json
+          printf '%s\n' "$release" > .dependency-artifacts/release-label.txt
+
+      - name: Read manifest tree evidence before consumer replay
+        run: >-
+          node --input-type=module --eval
+          'import { readFileSync } from "node:fs";
+          const value = JSON.parse(readFileSync(".dependency-artifacts/dependency-artifact.json", "utf8"));
+          console.log(JSON.stringify({ tree: value.tree, runtime: value.runtime, archive: value.archive }));'
+
+      - name: Re-verify dependency artifact and native tree
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit="$(git rev-parse HEAD)"
+          test "$source_commit" = "$EXPECTED_SOURCE_COMMIT"
+          release="$(cat .dependency-artifacts/release-label.txt)"
+          node scripts/control-plane-dependency-artifact.mjs \
+            --mode verify \
+            --root . \
+            --archive .dependency-artifacts/node-modules.tar \
+            --manifest .dependency-artifacts/dependency-artifact.json \
+            --source-commit "$source_commit" \
+            --release "$release" \
+            --snapshot scripts/control-plane-db-snapshot-gate.mjs
+
+      - name: Upload dependency artifact on non-PR refs
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: control-plane-dependency-${{ github.sha }}
+          path: |
+            .dependency-artifacts/node-modules.tar
+            .dependency-artifacts/dependency-artifact.json
+            .dependency-artifacts/release-label.txt
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

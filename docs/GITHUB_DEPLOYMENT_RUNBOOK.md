@@ -23,6 +23,10 @@ changes still require a separate Risk A gate.
 - `.github/workflows/ci.yml` validates pushes and pull requests to `master`.
 - `release-artifact.yml` packages the current commit as a source artifact and
   records its SHA256.
+- `control-plane-dependency-artifact.yml` builds a Linux/Node 22 dependency
+  layer in CI, runs the `better-sqlite3` memory-database and snapshot-import
+  smoke, and publishes a lock/source/runtime-bound manifest with the archive
+  and fixed GitHub Actions provenance.
 - `deploy-cloudflare-site.yml` builds and verifies the public static site. It
   only deploys when the protected `cloudflare-production` environment allows
   it and either manual confirmation is provided or
@@ -32,6 +36,43 @@ changes still require a separate Risk A gate.
   validation without contacting or mutating production hosts.
 
 ## Deployment Lanes
+
+### Control-Plane Dependency Artifact (Phase A1)
+
+This lane is the CI dependency-artifact consumer boundary. It is not a
+production promotion and it does not run `npm ci` on a production host.
+
+The workflow performs the following bounded sequence on Ubuntu 24.04 with the
+exact Node `22.23.1` runtime:
+
+1. install from the committed `package-lock.json` with `npm ci --omit=dev`;
+2. load `better-sqlite3`, execute a `:memory:` query, and import the snapshot
+   gate module;
+3. create two independently written, normalized `node-modules.tar` archives and
+   require byte-for-byte and SHA-256 equality before selecting the published
+   archive;
+4. extract that archive into a fresh isolated directory with fail-closed member
+   type, link-target, traversal, duplicate, and size checks;
+5. audit the extracted tree (not an adjacent live `node_modules`) for
+   ownership/mode, special files, symlink escape, hardlinks, ACLs, and
+   capabilities, then run the native smoke against that extracted tree; and
+6. emit `dependency-artifact.json`, binding the archive and package metadata to
+   the exact source commit, lockfile hashes, Linux architecture/libc, Node ABI,
+   npm version, and native smoke result.
+
+The workflow checks out the requested source SHA explicitly, derives the
+manifest commit from `git rev-parse HEAD`, and asserts the two identities are
+equal. Verify mode requires both the expected source commit and release label;
+missing or mismatched identity fails closed. The consumer
+(`scripts/control-plane-dependency-artifact.mjs`) recomputes all of those hashes
+and runtime fields from the freshly extracted archive tree before accepting an
+artifact. Missing, tampered, wrong-commit, wrong-release, wrong-lock, wrong-ABI,
+non-Linux, unsafe-tree, or failed-native-smoke inputs fail closed. The old
+host-side dependency builder
+remains disabled until a separate Risk A deployment gate proves artifact
+staging, extraction, snapshot validation, atomic switch, health window, and
+rollback; this phase does not change `current`, systemd, SQLite, feature flags,
+or Welcome Coins.
 
 ### Cloudflare Static Site
 
