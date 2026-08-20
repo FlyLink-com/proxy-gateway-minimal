@@ -12,6 +12,10 @@ changes still require a separate Risk A gate.
 - `.github/workflows/ci.yml` validates pushes and pull requests to `master`.
 - `release-artifact.yml` packages the current commit as a source artifact and
   records its SHA256.
+- `control-plane-dependency-artifact.yml` builds a Linux/Node 22 dependency
+  layer in CI, runs the `better-sqlite3` memory-database and snapshot-import
+  smoke, and publishes a lock/source/runtime-bound manifest with the archive
+  and fixed GitHub Actions provenance.
 - `deploy-cloudflare-site.yml` builds and verifies the public static site. It
   only deploys when the protected `cloudflare-production` environment allows
   it and either manual confirmation is provided or
@@ -21,6 +25,33 @@ changes still require a separate Risk A gate.
   validation without contacting or mutating production hosts.
 
 ## Deployment Lanes
+
+### Control-Plane Dependency Artifact (Phase A1)
+
+This lane is the CI dependency-artifact consumer boundary. It is not a
+production promotion and it does not run `npm ci` on a production host.
+
+The workflow performs the following bounded sequence on Ubuntu 24.04 with the
+exact Node `22.23.1` runtime:
+
+1. install from the committed `package-lock.json` with `npm ci --omit=dev`;
+2. load `better-sqlite3`, execute a `:memory:` query, and import the snapshot
+   gate module;
+3. audit the resulting `node_modules` tree for ownership/mode, special files,
+   symlink escape, hardlinks, ACLs, and capabilities;
+4. create a deterministic `node-modules.tar`; and
+5. emit `dependency-artifact.json`, binding the archive and package metadata to
+   the exact source commit, lockfile hashes, Linux architecture/libc, Node ABI,
+   npm version, and native smoke result.
+
+The consumer (`scripts/control-plane-dependency-artifact.mjs`) recomputes all
+of those hashes and runtime fields before accepting an artifact. Missing,
+tampered, wrong-commit, wrong-lock, wrong-ABI, non-Linux, unsafe-tree, or
+failed-native-smoke inputs fail closed. The old host-side dependency builder
+remains disabled until a separate Risk A deployment gate proves artifact
+staging, extraction, snapshot validation, atomic switch, health window, and
+rollback; this phase does not change `current`, systemd, SQLite, feature flags,
+or Welcome Coins.
 
 ### Cloudflare Static Site
 
