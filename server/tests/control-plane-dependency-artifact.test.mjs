@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { linkSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -14,6 +14,7 @@ import {
   extractDependencyArchive,
   parseDependencyArtifactManifest,
   runDependencyArtifactCli,
+  runNativeBetterSqliteSmoke,
   validateDependencyArchiveEntries,
   verifyDependencyArtifact
 } from "../../scripts/control-plane-dependency-artifact.mjs";
@@ -36,6 +37,8 @@ function fixture(name = "happy") {
   const packageLock = Buffer.from('{"name":"fixture","lockfileVersion":3,"packages":{}}\n');
   writeFileSync(join(root, "package.json"), packageJson);
   writeFileSync(join(root, "package-lock.json"), packageLock);
+  mkdirSync(join(root, "scripts"), { recursive: true });
+  writeFileSync(join(root, "scripts", "control-plane-db-snapshot-gate.mjs"), "export default true;\n");
   writeFileSync(join(nodeModules, "better-sqlite3", "index.js"), "module.exports = {};\n");
   writeFileSync(join(nodeModules, "better-sqlite3", "package.json"), '{"version":"12.10.0"}\n');
   const archiveBytes = Buffer.from("archive-fixture\n");
@@ -88,6 +91,41 @@ test("consumer verifies package-lock, runtime, archive, tree and native smoke to
     assert.equal(result.state, "verified");
     assert.equal(result.tree.entryCount, value.tree.entryCount);
     assert.equal(result.smoke.betterSqlite3Memory, true);
+  } finally { cleanup(value.root); }
+});
+
+test("consumer rejects an archive manifest size-field drift", () => {
+  const value = fixture("archive-size-drift");
+  try {
+    const manifest = { ...value.manifest, archive: { ...value.manifest.archive, sizeBytes: value.archiveBytes.length + 1 } };
+    assert.throws(() => verifyDependencyArtifact({
+      manifestBytes: Buffer.from(JSON.stringify(manifest)), archivePath: value.archivePath,
+      packageJsonBytes: value.packageJson, packageLockBytes: value.packageLock,
+      expectedSourceCommit: manifest.sourceCommit, expectedArtifactRelease: manifest.artifactRelease,
+      projectRoot: value.root, nodeModulesRoot: value.nodeModules,
+      runtime: { enforceOwnership: false, detect: () => runtime, listArchive: () => Buffer.from("node_modules\0"), extractArchive: () => ({ root: value.root, nodeModulesRoot: value.nodeModules, cleanup: () => {} }), checkAclCapabilities: () => true, nativeSmoke: () => true }
+    }), condition("dependency_archive_mismatch"));
+  } finally { cleanup(value.root); }
+});
+
+test("native smoke rejects snapshot paths outside the fixed repository path before execution", () => {
+  const value = fixture("snapshot-boundary"); let calls = 0;
+  try {
+    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, snapshotModule: "../escape.mjs", runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_invalid"));
+    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, snapshotModule: join(value.root, "outside.mjs"), runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_invalid"));
+    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, snapshotModule: "scripts/other.mjs", runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_invalid"));
+    assert.equal(calls, 0);
+  } finally { cleanup(value.root); }
+});
+
+test("native smoke rejects a fixed snapshot path implemented as an escaping symlink", { skip: process.platform !== "linux" }, () => {
+  const value = fixture("snapshot-symlink"); let calls = 0;
+  try {
+    writeFileSync(join(value.root, "outside.mjs"), "export default false;\n");
+    unlinkSync(join(value.root, "scripts", "control-plane-db-snapshot-gate.mjs"));
+    symlinkSync(join(value.root, "outside.mjs"), join(value.root, "scripts", "control-plane-db-snapshot-gate.mjs"));
+    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_invalid"));
+    assert.equal(calls, 0);
   } finally { cleanup(value.root); }
 });
 
@@ -184,6 +222,9 @@ test("Ubuntu workflow is a CI artifact producer, not a production builder", () =
   assert.match(workflow, /--mode build/);
   assert.match(workflow, /--mode verify/);
   assert.match(workflow, /--hard-dereference/);
+  assert.match(workflow, /node-modules-a\.tar/);
+  assert.match(workflow, /node-modules-b\.tar/);
+  assert.match(workflow, /cmp --silent/);
   assert.match(workflow, /actions\/upload-artifact@v7/);
   assert.doesNotMatch(workflow, /\b(?:ssh|scp|rsync|systemctl|systemd-run)\b/i);
   assert.doesNotMatch(workflow, /\.env|CONSOLE_TOKEN|SS_PASSWORD|subscription/i);

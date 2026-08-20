@@ -37,7 +37,9 @@ exact Node `22.23.1` runtime:
 1. install from the committed `package-lock.json` with `npm ci --omit=dev`;
 2. load `better-sqlite3`, execute a `:memory:` query, and import the snapshot
    gate module;
-3. create a deterministic `node-modules.tar`;
+3. create two independently written, normalized `node-modules.tar` archives and
+   require byte-for-byte and SHA-256 equality before selecting the published
+   archive;
 4. extract that archive into a fresh isolated directory with fail-closed member
    type, link-target, traversal, duplicate, and size checks;
 5. audit the extracted tree (not an adjacent live `node_modules`) for

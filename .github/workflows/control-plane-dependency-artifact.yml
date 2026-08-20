@@ -63,7 +63,7 @@ jobs:
           mkdir -p .dependency-artifacts
           tar \
             --create \
-            --file .dependency-artifacts/node-modules.tar \
+            --file .dependency-artifacts/node-modules-a.tar \
             --format=posix \
             --sort=name \
             --mtime='UTC 1970-01-01' \
@@ -72,6 +72,21 @@ jobs:
             --numeric-owner \
             --hard-dereference \
             -- node_modules
+          tar \
+            --create \
+            --file .dependency-artifacts/node-modules-b.tar \
+            --format=posix \
+            --sort=name \
+            --mtime='UTC 1970-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            --hard-dereference \
+            -- node_modules
+          test "$(sha256sum .dependency-artifacts/node-modules-a.tar | cut -d' ' -f1)" = "$(sha256sum .dependency-artifacts/node-modules-b.tar | cut -d' ' -f1)"
+          cmp --silent .dependency-artifacts/node-modules-a.tar .dependency-artifacts/node-modules-b.tar
+          mv .dependency-artifacts/node-modules-a.tar .dependency-artifacts/node-modules.tar
+          rm .dependency-artifacts/node-modules-b.tar
 
       - name: Write dependency artifact manifest
         env:

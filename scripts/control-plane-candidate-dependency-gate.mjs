@@ -11,7 +11,7 @@ import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path
 import { fileURLToPath } from "node:url";
 
 import { verifyReleaseConfigOverlay } from "./control-plane-release-config-gate.mjs";
-import { verifyDependencyArtifact } from "./control-plane-dependency-artifact.mjs";
+import { dependencyArtifactPaths, verifyDependencyArtifact } from "./control-plane-dependency-artifact.mjs";
 
 export const CANDIDATE_DEPENDENCY_GATE_SCHEMA_VERSION = "1";
 export const CANDIDATE_DEPENDENCY_GATE_TYPE = "control_plane_candidate_dependency_gate";
@@ -1292,7 +1292,24 @@ export function preflightCandidateDependencies({ candidateRelease, expectedCurre
 // Phase A1 consumer boundary. Production callers must pass a fixed, trusted
 // artifact path and `enforceOwnership: true`; this wrapper intentionally does
 // not revive the disabled host-side npm builder or extraction path.
-export function verifyCandidateDependencyArtifact(options = {}) { return verifyDependencyArtifact(options); }
+export function verifyCandidateDependencyArtifact(options = {}) {
+  const expected = ["deploymentRoot", "candidateRelease", "expectedSourceCommit", "expectedArtifactRelease", "runtime"];
+  if (!options || !keys(options, expected) || options.deploymentRoot !== DEFAULT_CONTROL_PLANE_DEPLOYMENT_ROOT
+    || !LABEL.test(options.candidateRelease || "") || !COMMIT.test(options.expectedSourceCommit || "")
+    || !ARTIFACT_RELEASE.test(options.expectedArtifactRelease || "") || !options.runtime
+    || options.runtime.requireRoot !== true || options.runtime.enforceOwnership !== true) fail("dependency_consumer_contract_invalid");
+  const paths = dependencyArtifactPaths({ deploymentRoot: options.deploymentRoot, candidateRelease: options.candidateRelease });
+  const projectRoot = dirname(paths.nodeModulesRoot);
+  const packageJsonBytes = readFileSync(resolve(projectRoot, "package.json"));
+  const packageLockBytes = readFileSync(resolve(projectRoot, "package-lock.json"));
+  return verifyDependencyArtifact({
+    manifestBytes: readFileSync(paths.manifestPath), archivePath: paths.archivePath,
+    packageJsonBytes, packageLockBytes, expectedSourceCommit: options.expectedSourceCommit,
+    expectedArtifactRelease: options.expectedArtifactRelease, projectRoot,
+    nodeModulesRoot: paths.nodeModulesRoot, snapshotModule: "scripts/control-plane-db-snapshot-gate.mjs",
+    runtime: { enforceOwnership: true }
+  });
+}
 export async function materializeCandidateDependencies({ candidateRelease, expectedCurrentRelease, apply = false, runtime: supplied = runtime() } = {}) {
   if (apply !== true) fail("apply_confirmation_required");
   fail("worker_execution_failed");

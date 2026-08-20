@@ -45,6 +45,7 @@ import {
   transientUnitReadback,
   terminalReadbackAfterLaunch,
   validateNodeModulesArchiveListing,
+  verifyCandidateDependencyArtifact,
   verifyCandidateDependencies,
   workerInputCustodyReadback
 } from "../../scripts/control-plane-candidate-dependency-gate.mjs";
@@ -219,6 +220,21 @@ function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm } = {}) {
 function condition(expected) {
   return (error) => error instanceof CandidateDependencyGateError && error.condition === expected;
 }
+
+test("candidate consumer wrapper requires fixed identities, layout, root mode, and ownership", () => {
+  const base = {
+    deploymentRoot: "/opt/proxy-gateway-minimal-candidate",
+    candidateRelease: "candidate-release",
+    expectedSourceCommit: SOURCE_COMMIT,
+    expectedArtifactRelease: ARTIFACT_RELEASE,
+    runtime: { requireRoot: true, enforceOwnership: true }
+  };
+  assert.throws(() => verifyCandidateDependencyArtifact({ ...base, expectedSourceCommit: undefined }), condition("dependency_consumer_contract_invalid"));
+  assert.throws(() => verifyCandidateDependencyArtifact({ ...base, expectedArtifactRelease: undefined }), condition("dependency_consumer_contract_invalid"));
+  assert.throws(() => verifyCandidateDependencyArtifact({ ...base, runtime: { requireRoot: true, enforceOwnership: false } }), condition("dependency_consumer_contract_invalid"));
+  assert.throws(() => verifyCandidateDependencyArtifact({ ...base, deploymentRoot: "/tmp/candidate" }), condition("dependency_consumer_contract_invalid"));
+  assert.throws(() => verifyCandidateDependencyArtifact({ ...base, archivePath: "/tmp/override.tar" }), condition("dependency_consumer_contract_invalid"));
+});
 
 function parseArtifactReceipt({ value, candidate, packageBytes, lockBytes, bytes = null, artifactManifestBytes: manifestBytes }) {
   return parseArtifactStageReceipt({

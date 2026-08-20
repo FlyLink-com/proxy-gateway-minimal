@@ -25,6 +25,7 @@ const MAX_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_TREE_ENTRIES = 250000;
 const MAX_TREE_BYTES = 2 * 1024 * 1024 * 1024;
 const CHUNK = 64 * 1024;
+const SNAPSHOT_MODULE = "scripts/control-plane-db-snapshot-gate.mjs";
 const CLEAN_ENV = Object.freeze({ PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" });
 const ARCHIVE_LIST = String.raw`import os,sys,tarfile
 with tarfile.open(sys.argv[1],"r:*") as archive:
@@ -373,19 +374,35 @@ export function validateDependencyArchiveEntries(bytes) {
   return Object.freeze(names);
 }
 
+function safeSnapshotPath(root, snapshotModule) {
+  if (typeof root !== "string" || typeof snapshotModule !== "string" || !snapshotModule) fail("dependency_smoke_invalid");
+  const rootPath = resolve(root);
+  let rootMetadata; try { rootMetadata = lstatSync(rootPath); } catch { fail("dependency_smoke_invalid"); }
+  if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) fail("dependency_smoke_invalid");
+  const requested = isAbsolute(snapshotModule) ? resolve(snapshotModule) : resolve(rootPath, snapshotModule);
+  if (!within(rootPath, requested)) fail("dependency_smoke_invalid");
+  const relativePath = relative(rootPath, requested);
+  const normalized = relativePath.split(/[\\/]+/).filter(Boolean).join("/");
+  if (normalized !== SNAPSHOT_MODULE) fail("dependency_smoke_invalid");
+  let current = rootPath;
+  const parts = normalized.split("/");
+  for (let index = 0; index < parts.length; index += 1) {
+    current = join(current, parts[index]);
+    let metadata; try { metadata = lstatSync(current); } catch { fail("dependency_smoke_invalid"); }
+    if (metadata.isSymbolicLink() || (index < parts.length - 1 ? !metadata.isDirectory() : (!metadata.isFile() || metadata.nlink !== 1))) fail("dependency_smoke_invalid");
+  }
+  return current;
+}
+
 function extractedSnapshotModule({ sourceRoot, extractedRoot, snapshotModule } = {}) {
-  if (typeof sourceRoot !== "string" || typeof extractedRoot !== "string" || typeof snapshotModule !== "string" || !snapshotModule) fail("dependency_smoke_invalid");
-  const source = isAbsolute(snapshotModule) ? resolve(snapshotModule) : resolve(sourceRoot, snapshotModule);
-  let relativeSource = isAbsolute(snapshotModule) && within(resolve(sourceRoot), source) ? relative(resolve(sourceRoot), source) : join("scripts", basename(source));
-  if (!relativeSource || relativeSource.startsWith("..") || isAbsolute(relativeSource)) fail("dependency_smoke_invalid");
-  const target = resolve(extractedRoot, relativeSource);
-  if (!within(resolve(extractedRoot), target)) fail("dependency_smoke_invalid");
-  let metadata; try { metadata = lstatSync(source); } catch { fail("dependency_smoke_invalid"); }
-  if (!metadata.isFile() || metadata.isSymbolicLink()) fail("dependency_smoke_invalid");
+  const source = safeSnapshotPath(sourceRoot, snapshotModule);
+  let extractedMetadata; try { extractedMetadata = lstatSync(resolve(extractedRoot)); } catch { fail("dependency_smoke_invalid"); }
+  if (!extractedMetadata.isDirectory() || extractedMetadata.isSymbolicLink()) fail("dependency_smoke_invalid");
+  const target = resolve(extractedRoot, SNAPSHOT_MODULE);
   mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
   copyFileSync(source, target);
   chmodSync(target, 0o400);
-  return target;
+  return safeSnapshotPath(extractedRoot, target);
 }
 
 export function extractDependencyArchive(archivePath, runtime = {}) {
@@ -421,7 +438,7 @@ function archiveMetadata(path, manifest, supplied) {
   if (metadata.isSymbolicLink() || !metadata.isFile() || metadata.nlink !== 1 || metadata.size > MAX_ARCHIVE_BYTES) fail("dependency_archive_invalid");
   if (supplied.enforceOwnership && (metadata.uid !== 0 || metadata.gid !== 0 || (mode(metadata) & 0o022) !== 0)) fail("dependency_archive_invalid");
   const digest = sha256File(path, MAX_ARCHIVE_BYTES);
-  if (digest.sha256 !== manifest.value.archive.sha256 || digest.sizeBytes !== metadata.size) fail("dependency_archive_mismatch");
+  if (digest.sha256 !== manifest.value.archive.sha256 || digest.sizeBytes !== manifest.value.archive.sizeBytes || digest.sizeBytes !== metadata.size) fail("dependency_archive_mismatch");
   const listing = typeof supplied.listArchive === "function" ? supplied.listArchive(path) : (() => {
     const result = spawnSync(supplied.pythonPath || "/usr/bin/python3", ["-I", "-S", "-c", ARCHIVE_LIST, path], { env: CLEAN_ENV, encoding: null, maxBuffer: 32 * 1024 * 1024 });
     if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) fail("dependency_archive_invalid");
@@ -433,8 +450,9 @@ function archiveMetadata(path, manifest, supplied) {
 
 const NATIVE_SMOKE = `import Database from "better-sqlite3"; const d=new Database(":memory:"); d.exec("CREATE TABLE t(v INTEGER)"); d.prepare("INSERT INTO t VALUES(?)").run(7); if(d.prepare("SELECT v FROM t").get().v!==7) process.exit(42); d.close(); await import(new URL(process.argv[1], "file:"));`;
 export function runNativeBetterSqliteSmoke({ root, snapshotModule = "scripts/control-plane-db-snapshot-gate.mjs", runtime = {} } = {}) {
-  if (typeof runtime.nativeSmoke === "function") { if (runtime.nativeSmoke({ root, snapshotModule }) !== true) fail("native_module_validation_failed"); return Object.freeze({ betterSqlite3Memory: true, snapshotImport: true }); }
-  const entry = isAbsolute(snapshotModule) ? resolve(snapshotModule) : resolve(root, snapshotModule); const result = spawnSync(runtime.nodePath || process.execPath, ["--input-type=module", "--eval", NATIVE_SMOKE, pathToFileURL(entry).href], { cwd: root, env: CLEAN_ENV, encoding: "utf8", timeout: 15000, maxBuffer: 64 * 1024, windowsHide: true });
+  const entry = safeSnapshotPath(root, snapshotModule);
+  if (typeof runtime.nativeSmoke === "function") { if (runtime.nativeSmoke({ root, snapshotModule: entry }) !== true) fail("native_module_validation_failed"); return Object.freeze({ betterSqlite3Memory: true, snapshotImport: true }); }
+  const result = spawnSync(runtime.nodePath || process.execPath, ["--input-type=module", "--eval", NATIVE_SMOKE, pathToFileURL(entry).href], { cwd: root, env: CLEAN_ENV, encoding: "utf8", timeout: 15000, maxBuffer: 64 * 1024, windowsHide: true });
   if (result.error || result.status !== 0 || String(result.stderr || "").trim()) fail("native_module_validation_failed");
   return Object.freeze({ betterSqlite3Memory: true, snapshotImport: true });
 }
