@@ -998,7 +998,8 @@ test("Linux physical evidence rejects symlink, type, and hardlink substitutions 
   const reset = () => {
     rmSync(base, { recursive: true, force: true });
     mkdirSync(host, { recursive: true }); chmodSync(stateRoot, 0o700);
-    mkdirSync(inputDirectory, { recursive: true }); write(buildInput[0], "{}\n", 0o444); write(buildInput[1], "{}\n", 0o444);
+    mkdirSync(inputDirectory, { recursive: true }); chmodSync(inputRoot, 0o700);
+    write(buildInput[0], "{}\n", 0o444); write(buildInput[1], "{}\n", 0o444);
     symlinkSync(host, publicPath, "dir");
   };
   const call = () => invokeCandidateDependencyTransientUnit({ kind: "build", unit, input: buildInput, runtime: { ...runtime, launchTransientUnit: () => ({ status: 0 }), readTransientUnit: terminal } });
@@ -1056,7 +1057,7 @@ test("preflight rejects stale current, service CWD mismatch, and protected symli
   write(external, "outside\n");
   rmSync(join(escaped.candidateRoot, ".env"));
   symlinkSync(external, join(escaped.candidateRoot, ".env"));
-  assert.throws(() => preflightCandidateDependencies({ candidateRelease: escaped.candidate, expectedCurrentRelease: escaped.active, runtime: escaped.runtime }), condition("postpublish_validation_failed"));
+  assert.throws(() => preflightCandidateDependencies({ candidateRelease: escaped.candidate, expectedCurrentRelease: escaped.active, runtime: escaped.runtime }), condition("assembly_manifest_invalid"));
 });
 
 test("archive listing accepts only NUL-safe node_modules components", () => {
