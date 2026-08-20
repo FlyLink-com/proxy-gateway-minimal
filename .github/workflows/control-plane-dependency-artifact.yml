@@ -30,6 +30,7 @@ jobs:
       - name: Checkout reviewed source
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Setup exact Node runtime
@@ -74,11 +75,13 @@ jobs:
 
       - name: Write dependency artifact manifest
         env:
-          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
           RELEASE_INPUT: ${{ inputs.release || '' }}
         shell: bash
         run: |
           set -euo pipefail
+          source_commit="$(git rev-parse HEAD)"
+          test "$source_commit" = "$EXPECTED_SOURCE_COMMIT"
           release="$RELEASE_INPUT"
           if [ -z "$release" ]; then
             release="$(git rev-parse --short=12 HEAD)"
@@ -93,17 +96,11 @@ jobs:
             --mode build \
             --root . \
             --archive .dependency-artifacts/node-modules.tar \
-            --source-commit "$SOURCE_COMMIT" \
+            --source-commit "$source_commit" \
             --release "$release" \
             --snapshot scripts/control-plane-db-snapshot-gate.mjs \
             --output .dependency-artifacts/dependency-artifact.json
-
-      - name: Read dependency tree evidence before consumer replay
-        run: >-
-          node --input-type=module --eval
-          'import { auditDependencyTree } from "./scripts/control-plane-dependency-artifact.mjs";
-          try { const value = auditDependencyTree("node_modules"); console.log(JSON.stringify({ ok: true, entryCount: value.entryCount, totalBytes: value.totalBytes, treeSha256: value.sha256 })); }
-          catch (error) { console.log(JSON.stringify({ ok: false, condition: error?.condition || "unknown" })); process.exitCode = 1; }'
+          printf '%s\n' "$release" > .dependency-artifacts/release-label.txt
 
       - name: Read manifest tree evidence before consumer replay
         run: >-
@@ -113,13 +110,22 @@ jobs:
           console.log(JSON.stringify({ tree: value.tree, runtime: value.runtime, archive: value.archive }));'
 
       - name: Re-verify dependency artifact and native tree
-        run: >-
-          node scripts/control-plane-dependency-artifact.mjs
-          --mode verify
-          --root .
-          --archive .dependency-artifacts/node-modules.tar
-          --manifest .dependency-artifacts/dependency-artifact.json
-          --snapshot scripts/control-plane-db-snapshot-gate.mjs
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit="$(git rev-parse HEAD)"
+          test "$source_commit" = "$EXPECTED_SOURCE_COMMIT"
+          release="$(cat .dependency-artifacts/release-label.txt)"
+          node scripts/control-plane-dependency-artifact.mjs \
+            --mode verify \
+            --root . \
+            --archive .dependency-artifacts/node-modules.tar \
+            --manifest .dependency-artifacts/dependency-artifact.json \
+            --source-commit "$source_commit" \
+            --release "$release" \
+            --snapshot scripts/control-plane-db-snapshot-gate.mjs
 
       - name: Upload dependency artifact on non-PR refs
         if: github.event_name != 'pull_request'

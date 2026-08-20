@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { chmodSync, linkSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { linkSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +11,9 @@ import {
   DependencyArtifactError,
   auditDependencyTree,
   dependencyArtifactPaths,
+  extractDependencyArchive,
   parseDependencyArtifactManifest,
+  runDependencyArtifactCli,
   validateDependencyArchiveEntries,
   verifyDependencyArtifact
 } from "../../scripts/control-plane-dependency-artifact.mjs";
@@ -80,7 +83,7 @@ test("consumer verifies package-lock, runtime, archive, tree and native smoke to
       manifestBytes: Buffer.from(`${JSON.stringify(value.manifest, null, 2)}\n`), archivePath: value.archivePath,
       packageJsonBytes: value.packageJson, packageLockBytes: value.packageLock, expectedSourceCommit: "a".repeat(40),
       nodeModulesRoot: value.nodeModules,
-      runtime: { enforceOwnership: false, detect: () => runtime, listArchive: () => Buffer.from("node_modules\0node_modules/better-sqlite3/\0node_modules/better-sqlite3/index.js\0node_modules/better-sqlite3/package.json\0"), checkAclCapabilities: () => true, nativeSmoke: () => true }
+      runtime: { enforceOwnership: false, detect: () => runtime, listArchive: () => Buffer.from("node_modules\0node_modules/better-sqlite3/\0node_modules/better-sqlite3/index.js\0node_modules/better-sqlite3/package.json\0"), extractArchive: () => ({ root: value.root, nodeModulesRoot: value.nodeModules, cleanup: () => {} }), checkAclCapabilities: () => true, nativeSmoke: () => true }
     });
     assert.equal(result.state, "verified");
     assert.equal(result.tree.entryCount, value.tree.entryCount);
@@ -88,11 +91,31 @@ test("consumer verifies package-lock, runtime, archive, tree and native smoke to
   } finally { cleanup(value.root); }
 });
 
+test("verify CLI requires and enforces source commit and release identity", async () => {
+  const value = fixture("cli-identity");
+  const manifestPath = join(value.root, "dependency-artifact.json");
+  writeFileSync(manifestPath, `${JSON.stringify(value.manifest)}\n`);
+  const runtimeFixture = { detect: () => runtime, listArchive: () => Buffer.from("node_modules\0"), checkAclCapabilities: () => true, extractArchive: () => ({ root: value.root, nodeModulesRoot: value.nodeModules, cleanup: () => {} }), nativeSmoke: () => true };
+  const invoke = async (args) => {
+    const output = []; const errors = [];
+    const code = await runDependencyArtifactCli({ argv: args, stdout: { write: (chunk) => output.push(String(chunk)) }, stderr: { write: (chunk) => errors.push(String(chunk)) }, runtime: runtimeFixture });
+    return { code, stdout: output.join(""), stderr: errors.join("") };
+  };
+  try {
+    const base = ["--mode", "verify", "--root", value.root, "--archive", value.archivePath, "--manifest", manifestPath];
+    assert.equal((await invoke(base)).stderr.includes("dependency_cli_invalid"), true);
+    const wrongSource = await invoke([...base, "--source-commit", "b".repeat(40), "--release", value.manifest.artifactRelease]);
+    assert.equal(wrongSource.code, 1); assert.match(wrongSource.stderr, /dependency_source_mismatch/);
+    const wrongRelease = await invoke([...base, "--source-commit", value.manifest.sourceCommit, "--release", "wrong-release"]);
+    assert.equal(wrongRelease.code, 1); assert.match(wrongRelease.stderr, /dependency_release_mismatch/);
+  } finally { cleanup(value.root); }
+});
+
 test("consumer rejects lock drift and runtime ABI drift", () => {
   const value = fixture("mismatch");
   const args = {
     manifestBytes: Buffer.from(JSON.stringify(value.manifest)), archivePath: value.archivePath, packageJsonBytes: value.packageJson, packageLockBytes: value.packageLock,
-    runtime: { enforceOwnership: false, detect: () => runtime, listArchive: () => Buffer.from("node_modules\0"), checkAclCapabilities: () => true }
+    runtime: { enforceOwnership: false, detect: () => runtime, listArchive: () => Buffer.from("node_modules\0"), extractArchive: () => ({ root: value.root, nodeModulesRoot: value.nodeModules, cleanup: () => {} }), checkAclCapabilities: () => true }
   };
   try {
     assert.throws(() => verifyDependencyArtifact({ ...args, expectedSourceCommit: "b".repeat(40) }), condition("dependency_source_mismatch"));
@@ -122,13 +145,29 @@ test("consumer rejects hardlinks and ACL/capability failures before native smoke
   } finally { cleanup(value.root); }
 });
 
+test("Linux consumer extracts the archive before auditing the dependency tree", { skip: process.platform !== "linux" }, () => {
+  const value = fixture("archive-authoritative");
+  const realArchive = join(value.root, "real-node-modules.tar");
+  try {
+    const tar = spawnSync("tar", ["--create", "--file", realArchive, "--format=posix", "--sort=name", "--mtime=UTC 1970-01-01", "--owner=0", "--group=0", "--numeric-owner", "--hard-dereference", "--", "node_modules"], { cwd: value.root, encoding: "utf8" });
+    assert.equal(tar.status, 0, String(tar.stderr || ""));
+    const extracted = extractDependencyArchive(realArchive);
+    try {
+      const extractedTree = auditDependencyTree(extracted.nodeModulesRoot, { enforceOwnership: false, checkAclCapabilities: () => true });
+      assert.equal(extractedTree.entryCount, value.tree.entryCount);
+      assert.equal(readFileSync(join(extracted.nodeModulesRoot, "better-sqlite3", "package.json"), "utf8"), '{"version":"12.10.0"}\n');
+      assert.notEqual(statSync(join(extracted.nodeModulesRoot, "better-sqlite3", "package.json")).ino, statSync(join(value.nodeModules, "better-sqlite3", "package.json")).ino);
+    } finally { extracted.cleanup(); }
+  } finally { cleanup(value.root); }
+});
+
 test("consumer fails closed when the native smoke runner fails", () => {
   const value = fixture("smoke-failure");
   try {
     assert.throws(() => verifyDependencyArtifact({
       manifestBytes: Buffer.from(JSON.stringify(value.manifest)), archivePath: value.archivePath,
       packageJsonBytes: value.packageJson, packageLockBytes: value.packageLock, nodeModulesRoot: value.nodeModules,
-      runtime: { enforceOwnership: false, detect: () => runtime, listArchive: () => Buffer.from("node_modules\0node_modules/better-sqlite3/\0node_modules/better-sqlite3/index.js\0node_modules/better-sqlite3/package.json\0"), checkAclCapabilities: () => true, nativeSmoke: () => false }
+      runtime: { enforceOwnership: false, detect: () => runtime, listArchive: () => Buffer.from("node_modules\0node_modules/better-sqlite3/\0node_modules/better-sqlite3/index.js\0node_modules/better-sqlite3/package.json\0"), extractArchive: () => ({ root: value.root, nodeModulesRoot: value.nodeModules, cleanup: () => {} }), checkAclCapabilities: () => true, nativeSmoke: () => false }
     }), condition("native_module_validation_failed"));
   } finally { cleanup(value.root); }
 });
@@ -137,6 +176,9 @@ test("Ubuntu workflow is a CI artifact producer, not a production builder", () =
   const workflow = readFileSync(resolve(".github/workflows/control-plane-dependency-artifact.yml"), "utf8");
   assert.match(workflow, /runs-on: ubuntu-24\.04/);
   assert.match(workflow, /node-version: 22\.23\.1/);
+  assert.match(workflow, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
+  assert.match(workflow, /source_commit="\$\(git rev-parse HEAD\)"/);
+  assert.match(workflow, /test "\$source_commit" = "\$EXPECTED_SOURCE_COMMIT"/);
   assert.match(workflow, /npm ci --omit=dev --no-audit --no-fund/);
   assert.match(workflow, /--mode smoke/);
   assert.match(workflow, /--mode build/);

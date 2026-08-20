@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readFileSync, readlinkSync, readSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { chmodSync, closeSync, constants as fsConstants, copyFileSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readlinkSync, readSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const DEPENDENCY_ARTIFACT_SCHEMA_VERSION = "1";
@@ -29,6 +30,97 @@ const ARCHIVE_LIST = String.raw`import os,sys,tarfile
 with tarfile.open(sys.argv[1],"r:*") as archive:
   for member in archive.getmembers():
     sys.stdout.buffer.write(os.fsencode(member.name)+b"\0")`;
+const ARCHIVE_EXTRACT = String.raw`import os,posixpath,sys,tarfile
+MAX_ENTRIES=250000
+MAX_BYTES=2*1024*1024*1024
+def reject():
+  raise SystemExit(2)
+def clean_name(value):
+  if not isinstance(value,str) or not value or value.startswith('/') or '\\' in value or '\x00' in value:
+    reject()
+  value=value.rstrip('/')
+  parts=value.split('/')
+  if not value or parts[0] != 'node_modules' or any((not part or part in ('.','..')) for part in parts):
+    reject()
+  return '/'.join(parts)
+def safe_target(name,target):
+  if not isinstance(target,str) or not target or target.startswith('/') or '\\' in target or '\x00' in target:
+    reject()
+  resolved=posixpath.normpath(posixpath.join(posixpath.dirname(name),target))
+  if resolved != 'node_modules' and not resolved.startswith('node_modules/'):
+    reject()
+  return target
+archive_path=sys.argv[1]
+destination=os.path.abspath(sys.argv[2])
+with tarfile.open(archive_path,'r:*') as archive:
+  members=archive.getmembers()
+  records={}
+  total=0
+  if len(members)>MAX_ENTRIES:
+    reject()
+  for member in members:
+    name=clean_name(member.name)
+    if name in records:
+      reject()
+    if member.isdir():
+      records[name]=('d',member,None)
+    elif member.isreg():
+      total+=member.size
+      if member.size<0 or total>MAX_BYTES:
+        reject()
+      records[name]=('f',member,None)
+    elif member.issym():
+      records[name]=('l',member,safe_target(name,member.linkname))
+    else:
+      reject()
+  if records.get('node_modules',(None,None,None))[0] != 'd':
+    reject()
+  os.mkdir(destination,0o700)
+  tree=os.path.join(destination,'node_modules')
+  dirs=sorted((name for name,(kind,_,_) in records.items() if kind=='d'),key=lambda value:(value.count('/'),value))
+  for name in dirs:
+    path=os.path.join(destination,*name.split('/'))
+    if name=='node_modules':
+      continue
+    parent='/'.join(name.split('/')[:-1])
+    if parent not in records or records[parent][0] != 'd':
+      reject()
+    os.mkdir(path,0o700)
+  files=sorted((name for name,(kind,_,_) in records.items() if kind=='f') )
+  for name in files:
+    parent='/'.join(name.split('/')[:-1])
+    if parent not in records or records[parent][0] != 'd':
+      reject()
+    member=records[name][1]
+    source=archive.extractfile(member)
+    if source is None:
+      reject()
+    path=os.path.join(destination,*name.split('/'))
+    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    written=0
+    try:
+      while True:
+        chunk=source.read(65536)
+        if not chunk:
+          break
+        written+=len(chunk)
+        if written>member.size or written>MAX_BYTES:
+          reject()
+        offset=0
+        while offset<len(chunk):
+          offset+=os.write(fd,chunk[offset:])
+      if written!=member.size:
+        reject()
+      os.fsync(fd)
+    finally:
+      os.close(fd)
+  for name in sorted((name for name,(kind,_,_) in records.items() if kind=='l')):
+    parent='/'.join(name.split('/')[:-1])
+    if parent not in records or records[parent][0] != 'd':
+      reject()
+    path=os.path.join(destination,*name.split('/'))
+    os.symlink(records[name][2],path)
+print('{"entryCount":%d}' % len(records))`;
 
 export class DependencyArtifactError extends Error {
   constructor(condition, attentionRequired = false) {
@@ -276,6 +368,42 @@ export function validateDependencyArchiveEntries(bytes) {
   return Object.freeze(names);
 }
 
+function extractedSnapshotModule({ sourceRoot, extractedRoot, snapshotModule } = {}) {
+  if (typeof sourceRoot !== "string" || typeof extractedRoot !== "string" || typeof snapshotModule !== "string" || !snapshotModule) fail("dependency_smoke_invalid");
+  const source = isAbsolute(snapshotModule) ? resolve(snapshotModule) : resolve(sourceRoot, snapshotModule);
+  let relativeSource = isAbsolute(snapshotModule) && within(resolve(sourceRoot), source) ? relative(resolve(sourceRoot), source) : join("scripts", basename(source));
+  if (!relativeSource || relativeSource.startsWith("..") || isAbsolute(relativeSource)) fail("dependency_smoke_invalid");
+  const target = resolve(extractedRoot, relativeSource);
+  if (!within(resolve(extractedRoot), target)) fail("dependency_smoke_invalid");
+  let metadata; try { metadata = lstatSync(source); } catch { fail("dependency_smoke_invalid"); }
+  if (!metadata.isFile() || metadata.isSymbolicLink()) fail("dependency_smoke_invalid");
+  mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+  copyFileSync(source, target);
+  chmodSync(target, 0o400);
+  return target;
+}
+
+export function extractDependencyArchive(archivePath, runtime = {}) {
+  if (typeof runtime.extractArchive === "function") {
+    const value = runtime.extractArchive(archivePath);
+    if (!value || typeof value.root !== "string" || typeof value.nodeModulesRoot !== "string" || typeof value.cleanup !== "function") fail("dependency_archive_invalid");
+    return value;
+  }
+  const parent = mkdtempSync(join(tmpdir(), "control-plane-dependency-artifact-"));
+  const root = join(parent, "project");
+  try {
+    const result = spawnSync(runtime.pythonPath || "/usr/bin/python3", ["-I", "-S", "-c", ARCHIVE_EXTRACT, archivePath, root], {
+      cwd: "/", env: CLEAN_ENV, encoding: "utf8", timeout: 30000, maxBuffer: 64 * 1024, windowsHide: true
+    });
+    if (result.error || result.status !== 0 || String(result.stderr || "").trim() || !/^\{"entryCount":[0-9]+\}\r?\n?$/.test(String(result.stdout || ""))) fail("dependency_archive_invalid");
+    return Object.freeze({ root, nodeModulesRoot: join(root, "node_modules"), cleanup: () => { try { rmSync(parent, { recursive: true, force: true }); } catch { fail("dependency_archive_cleanup_failed", true); } } });
+  } catch (error) {
+    try { rmSync(parent, { recursive: true, force: true }); } catch { throw new DependencyArtifactError("dependency_archive_cleanup_failed", true); }
+    if (error instanceof DependencyArtifactError) throw error;
+    fail("dependency_archive_invalid");
+  }
+}
+
 function archiveMetadata(path, manifest, supplied) {
   let metadata; try { metadata = lstatSync(path); } catch { fail("dependency_archive_missing"); }
   if (metadata.isSymbolicLink() || !metadata.isFile() || metadata.nlink !== 1 || metadata.size > MAX_ARCHIVE_BYTES) fail("dependency_archive_invalid");
@@ -294,7 +422,7 @@ function archiveMetadata(path, manifest, supplied) {
 const NATIVE_SMOKE = `import Database from "better-sqlite3"; const d=new Database(":memory:"); d.exec("CREATE TABLE t(v INTEGER)"); d.prepare("INSERT INTO t VALUES(?)").run(7); if(d.prepare("SELECT v FROM t").get().v!==7) process.exit(42); d.close(); await import(new URL(process.argv[1], "file:"));`;
 export function runNativeBetterSqliteSmoke({ root, snapshotModule = "scripts/control-plane-db-snapshot-gate.mjs", runtime = {} } = {}) {
   if (typeof runtime.nativeSmoke === "function") { if (runtime.nativeSmoke({ root, snapshotModule }) !== true) fail("native_module_validation_failed"); return Object.freeze({ betterSqlite3Memory: true, snapshotImport: true }); }
-  const entry = resolve(root, snapshotModule); const result = spawnSync(runtime.nodePath || process.execPath, ["--input-type=module", "--eval", NATIVE_SMOKE, pathToFileURL(entry).href], { cwd: root, env: CLEAN_ENV, encoding: "utf8", timeout: 15000, maxBuffer: 64 * 1024, windowsHide: true });
+  const entry = isAbsolute(snapshotModule) ? resolve(snapshotModule) : resolve(root, snapshotModule); const result = spawnSync(runtime.nodePath || process.execPath, ["--input-type=module", "--eval", NATIVE_SMOKE, pathToFileURL(entry).href], { cwd: root, env: CLEAN_ENV, encoding: "utf8", timeout: 15000, maxBuffer: 64 * 1024, windowsHide: true });
   if (result.error || result.status !== 0 || String(result.stderr || "").trim()) fail("native_module_validation_failed");
   return Object.freeze({ betterSqlite3Memory: true, snapshotImport: true });
 }
@@ -305,21 +433,26 @@ function compareInputDigest(value, bytes, condition) {
   return digest;
 }
 
-export function verifyDependencyArtifact({ manifestBytes, archivePath, packageJsonBytes, packageLockBytes, expectedSourceCommit, expectedArtifactRelease, nodeModulesRoot, snapshotModule = "scripts/control-plane-db-snapshot-gate.mjs", runtime = {} } = {}) {
+export function verifyDependencyArtifact({ manifestBytes, archivePath, packageJsonBytes, packageLockBytes, expectedSourceCommit, expectedArtifactRelease, projectRoot, nodeModulesRoot, snapshotModule = "scripts/control-plane-db-snapshot-gate.mjs", runtime = {} } = {}) {
   const manifest = parseDependencyArtifactManifest({ bytes: manifestBytes });
   if (expectedSourceCommit && manifest.value.sourceCommit !== expectedSourceCommit) fail("dependency_source_mismatch");
   if (expectedArtifactRelease && manifest.value.artifactRelease !== expectedArtifactRelease) fail("dependency_release_mismatch");
   compareInputDigest(manifest.value.package, packageJsonBytes, "dependency_package_mismatch");
   compareInputDigest(manifest.value.packageLock, packageLockBytes, "dependency_lock_mismatch");
-  const actualRuntime = runtime.detect ? runtime.detect() : detectDependencyRuntime({ root: nodeModulesRoot ? dirname(nodeModulesRoot) : process.cwd(), npmVersion: runtime.npmVersion });
+  const sourceRoot = resolve(projectRoot || (nodeModulesRoot ? dirname(nodeModulesRoot) : process.cwd()));
+  const actualRuntime = runtime.detect ? runtime.detect() : detectDependencyRuntime({ root: sourceRoot, npmVersion: runtime.npmVersion });
   compareRuntime(manifest.value.runtime, actualRuntime);
   if (!archivePath || basename(archivePath) !== manifest.value.archive.fileName) fail("dependency_archive_invalid");
   const archive = archiveMetadata(archivePath, manifest, { ...runtime, enforceOwnership: runtime.enforceOwnership ?? false });
-  let tree = null; let smoke = manifest.value.smoke;
-  if (nodeModulesRoot) {
-    tree = auditDependencyTree(nodeModulesRoot, runtime);
+  const extracted = extractDependencyArchive(archivePath, runtime);
+  let tree; let smoke;
+  try {
+    const extractedSnapshot = typeof runtime.nativeSmoke === "function" ? snapshotModule : extractedSnapshotModule({ sourceRoot, extractedRoot: extracted.root, snapshotModule });
+    tree = auditDependencyTree(extracted.nodeModulesRoot, runtime);
     if (tree.sha256 !== manifest.value.tree.sha256 || tree.entryCount !== manifest.value.tree.entryCount || tree.hardlinksBroken !== manifest.value.tree.hardlinksBroken || tree.symlinksInternal !== manifest.value.tree.symlinksInternal) fail("dependency_tree_mismatch");
-    smoke = runNativeBetterSqliteSmoke({ root: dirname(nodeModulesRoot), snapshotModule, runtime });
+    smoke = runNativeBetterSqliteSmoke({ root: extracted.root, snapshotModule: extractedSnapshot, runtime });
+  } finally {
+    extracted.cleanup();
   }
   return Object.freeze({ schemaVersion: DEPENDENCY_ARTIFACT_SCHEMA_VERSION, type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: DEPENDENCY_ARTIFACT_RELEASE_UNIT, sourceCommit: manifest.value.sourceCommit, artifactRelease: manifest.value.artifactRelease, manifestSha256: manifest.sha256, manifestSizeBytes: manifest.sizeBytes, archive, tree, smoke });
 }
@@ -330,11 +463,18 @@ export function buildDependencyArtifactManifest({ sourceCommit, artifactRelease,
   const packageDigest = { sha256: hashBytes(packageJsonBytes), sizeBytes: packageJsonBytes?.length };
   const lockDigest = { sha256: hashBytes(packageLockBytes), sizeBytes: packageLockBytes?.length };
   if (!safeInteger(packageDigest.sizeBytes, 1) || !safeInteger(lockDigest.sizeBytes, 1)) fail("dependency_artifact_invalid");
-  const archive = archiveMetadata(archivePath, { value: { archive: { fileName: basename(archivePath), sha256: hashBytes(readFileSync(archivePath)), sizeBytes: statSync(archivePath).size } } }, { ...runtime, enforceOwnership: false });
+  const archiveDigest = sha256File(archivePath, MAX_ARCHIVE_BYTES);
+  const archive = archiveMetadata(archivePath, { value: { archive: { fileName: basename(archivePath), sha256: archiveDigest.sha256, sizeBytes: archiveDigest.sizeBytes } } }, { ...runtime, enforceOwnership: false });
   const projectRoot = resolve(root);
-  const nodeModulesRoot = resolve(projectRoot, "node_modules");
-  const tree = auditDependencyTree(nodeModulesRoot, runtime);
-  const smoke = runNativeBetterSqliteSmoke({ root: projectRoot, snapshotModule, runtime });
+  const extracted = extractDependencyArchive(archivePath, runtime);
+  let tree; let smoke;
+  try {
+    const extractedSnapshot = typeof runtime.nativeSmoke === "function" ? snapshotModule : extractedSnapshotModule({ sourceRoot: projectRoot, extractedRoot: extracted.root, snapshotModule });
+    tree = auditDependencyTree(extracted.nodeModulesRoot, runtime);
+    smoke = runNativeBetterSqliteSmoke({ root: extracted.root, snapshotModule: extractedSnapshot, runtime });
+  } finally {
+    extracted.cleanup();
+  }
   const value = { schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: DEPENDENCY_ARTIFACT_RELEASE_UNIT, sourceCommit, artifactRelease, package: packageDigest, packageLock: lockDigest, archive: { fileName: basename(archive.path), sha256: archive.sha256, sizeBytes: archive.sizeBytes }, runtime: runtime.detect ? runtime.detect() : detectDependencyRuntime({ root: projectRoot, npmVersion: runtime.npmVersion }), smoke, tree: { sha256: tree.sha256, entryCount: tree.entryCount, hardlinksBroken: tree.hardlinksBroken, symlinksInternal: tree.symlinksInternal }, provenance: PROVENANCE };
   checkRuntime(value.runtime); const bytes = Buffer.from(`${JSON.stringify(value, null, 2)}\n`); return Object.freeze({ value, bytes, sha256: hashBytes(bytes), sizeBytes: bytes.length });
 }
@@ -349,14 +489,13 @@ function parseArgs(argv) {
   const mode = map.get("--mode"); if (!["build", "verify", "smoke"].includes(mode)) fail("dependency_cli_invalid"); return { mode, root: map.get("--root") || process.cwd(), archive: map.get("--archive"), manifest: map.get("--manifest"), output: map.get("--output"), sourceCommit: map.get("--source-commit"), release: map.get("--release"), snapshot: map.get("--snapshot") };
 }
 
-export async function runDependencyArtifactCli({ argv = process.argv.slice(2), stdout = process.stdout, stderr = process.stderr } = {}) {
+export async function runDependencyArtifactCli({ argv = process.argv.slice(2), stdout = process.stdout, stderr = process.stderr, runtime = {} } = {}) {
   let mode = null;
   try {
     const value = parseArgs(argv); mode = value.mode; const root = resolve(value.root); const packageJsonBytes = readFileSync(resolve(root, "package.json")); const packageLockBytes = readFileSync(resolve(root, "package-lock.json"));
     if (mode === "smoke") { const smoke = runNativeBetterSqliteSmoke({ root, snapshotModule: value.snapshot || "scripts/control-plane-db-snapshot-gate.mjs" }); stdout.write(`${JSON.stringify({ schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, mode, state: "verified", smoke })}\n`); return 0; }
     if (!value.archive) fail("dependency_cli_invalid");
-    if (mode === "build") { if (!value.output || !value.sourceCommit || !value.release) fail("dependency_cli_invalid"); const result = buildDependencyArtifactManifest({ sourceCommit: value.sourceCommit, artifactRelease: value.release, packageJsonBytes, packageLockBytes, archivePath: resolve(value.archive), root: resolve(root), snapshotModule: value.snapshot }); writeFileSync(resolve(value.output), result.bytes, { mode: 0o600, flag: "wx" }); stdout.write(`${JSON.stringify({ schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, mode, state: "verified", manifestSha256: result.sha256, manifestSizeBytes: result.sizeBytes })}\n`); return 0; }
-    if (!value.manifest) fail("dependency_cli_invalid"); const result = verifyDependencyArtifact({ manifestBytes: readFileSync(resolve(value.manifest)), archivePath: resolve(value.archive), packageJsonBytes, packageLockBytes, nodeModulesRoot: resolve(root, "node_modules"), snapshotModule: value.snapshot }); stdout.write(`${JSON.stringify({ schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, mode, state: "verified", manifestSha256: result.manifestSha256, archive: result.archive, tree: result.tree, smoke: result.smoke })}\n`); return 0;
+    if (!value.manifest || !value.sourceCommit || !value.release) fail("dependency_cli_invalid"); const result = verifyDependencyArtifact({ manifestBytes: readFileSync(resolve(value.manifest)), archivePath: resolve(value.archive), packageJsonBytes, packageLockBytes, expectedSourceCommit: value.sourceCommit, expectedArtifactRelease: value.release, projectRoot: root, snapshotModule: value.snapshot, runtime }); stdout.write(`${JSON.stringify({ schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, mode, state: "verified", manifestSha256: result.manifestSha256, archive: result.archive, tree: result.tree, smoke: result.smoke })}\n`); return 0;
   } catch (error) { const condition = error instanceof DependencyArtifactError ? error.condition : "dependency_artifact_invalid"; stderr.write(`${JSON.stringify({ schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, mode, state: error?.attentionRequired ? "attention_required" : "blocked", condition })}\n`); return 1; }
 }
 

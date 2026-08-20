@@ -1081,7 +1081,7 @@ test("materialize and verify fail closed until the DynamicUser pipeline is compl
     runSmoke() { legacyCalls += 1; return { status: 0 }; }
   });
   await assert.rejects(materializeCandidateDependencies({ candidateRelease: "candidate-release", expectedCurrentRelease: "active-release", apply: true, runtime }), condition("worker_execution_failed"));
-  await assert.rejects(verifyCandidateDependencies({ candidateRelease: "candidate-release", expectedCurrentRelease: "active-release", runtime }), condition("worker_execution_failed"));
+  await assert.rejects(verifyCandidateDependencies(), condition("worker_execution_failed"));
   assert.equal(legacyCalls, 0);
 });
 
@@ -1123,7 +1123,7 @@ test("materialize keeps npm isolated, breaks verified internal hardlinks, publis
   assert.equal(dependencyReceipt.artifactManifestSha256, hash(value.artifactManifestBytes));
   assert.equal(dependencyReceipt.artifactManifestSizeBytes, value.artifactManifestBytes.length);
   assert.equal(dependencyReceipt.artifactStageReceiptSizeBytes, value.artifactStageBytes.length);
-  const verified = await verifyCandidateDependencies({ candidateRelease: value.candidate, expectedCurrentRelease: value.active, runtime: value.runtime });
+  const verified = await verifyCandidateDependencies();
   assert.equal(verified.state, "verified");
   assert.equal(verified.binding.artifactManifestSizeBytes, value.artifactManifestBytes.length);
   assert.equal(verified.binding.artifactStageReceiptSizeBytes, value.artifactStageBytes.length);

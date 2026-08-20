@@ -37,17 +37,25 @@ exact Node `22.23.1` runtime:
 1. install from the committed `package-lock.json` with `npm ci --omit=dev`;
 2. load `better-sqlite3`, execute a `:memory:` query, and import the snapshot
    gate module;
-3. audit the resulting `node_modules` tree for ownership/mode, special files,
-   symlink escape, hardlinks, ACLs, and capabilities;
-4. create a deterministic `node-modules.tar`; and
-5. emit `dependency-artifact.json`, binding the archive and package metadata to
+3. create a deterministic `node-modules.tar`;
+4. extract that archive into a fresh isolated directory with fail-closed member
+   type, link-target, traversal, duplicate, and size checks;
+5. audit the extracted tree (not an adjacent live `node_modules`) for
+   ownership/mode, special files, symlink escape, hardlinks, ACLs, and
+   capabilities, then run the native smoke against that extracted tree; and
+6. emit `dependency-artifact.json`, binding the archive and package metadata to
    the exact source commit, lockfile hashes, Linux architecture/libc, Node ABI,
    npm version, and native smoke result.
 
-The consumer (`scripts/control-plane-dependency-artifact.mjs`) recomputes all
-of those hashes and runtime fields before accepting an artifact. Missing,
-tampered, wrong-commit, wrong-lock, wrong-ABI, non-Linux, unsafe-tree, or
-failed-native-smoke inputs fail closed. The old host-side dependency builder
+The workflow checks out the requested source SHA explicitly, derives the
+manifest commit from `git rev-parse HEAD`, and asserts the two identities are
+equal. Verify mode requires both the expected source commit and release label;
+missing or mismatched identity fails closed. The consumer
+(`scripts/control-plane-dependency-artifact.mjs`) recomputes all of those hashes
+and runtime fields from the freshly extracted archive tree before accepting an
+artifact. Missing, tampered, wrong-commit, wrong-release, wrong-lock, wrong-ABI,
+non-Linux, unsafe-tree, or failed-native-smoke inputs fail closed. The old
+host-side dependency builder
 remains disabled until a separate Risk A deployment gate proves artifact
 staging, extraction, snapshot validation, atomic switch, health window, and
 rollback; this phase does not change `current`, systemd, SQLite, feature flags,
