@@ -49,6 +49,12 @@ jobs:
           --root .
           --snapshot scripts/control-plane-db-snapshot-gate.mjs
 
+      - name: Read runtime identity for artifact binding
+        run: >-
+          node --input-type=module --eval
+          'import { detectDependencyRuntime } from "./scripts/control-plane-dependency-artifact.mjs";
+          console.log(JSON.stringify(detectDependencyRuntime({ root: "." })))'
+
       - name: Audit and create deterministic dependency archive
         shell: bash
         run: |
