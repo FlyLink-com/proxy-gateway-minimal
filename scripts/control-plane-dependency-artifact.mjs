@@ -33,7 +33,11 @@ with tarfile.open(sys.argv[1],"r:*") as archive:
 const ARCHIVE_EXTRACT = String.raw`import os,posixpath,sys,tarfile
 MAX_ENTRIES=250000
 MAX_BYTES=2*1024*1024*1024
+def unexpected(exc_type,exc,tb):
+  print('{"error":"archive_extract_failed"}')
+sys.excepthook=unexpected
 def reject():
+  print('{"error":"archive_member_rejected"}')
   raise SystemExit(2)
 def clean_name(value):
   if not isinstance(value,str) or not value or value.startswith('/') or '\\' in value or '\x00' in value:
@@ -395,7 +399,14 @@ export function extractDependencyArchive(archivePath, runtime = {}) {
     const result = spawnSync(runtime.pythonPath || "/usr/bin/python3", ["-I", "-S", "-c", ARCHIVE_EXTRACT, archivePath, root], {
       cwd: "/", env: CLEAN_ENV, encoding: "utf8", timeout: 30000, maxBuffer: 64 * 1024, windowsHide: true
     });
-    if (result.error || result.status !== 0 || String(result.stderr || "").trim() || !/^\{"entryCount":[0-9]+\}\r?\n?$/.test(String(result.stdout || ""))) fail("dependency_archive_invalid");
+    const output = String(result.stdout || "").trim();
+    if (result.error || String(result.stderr || "").trim()) fail("dependency_archive_invalid");
+    if (result.status !== 0) {
+      if (output === '{"error":"archive_member_rejected"}') fail("dependency_archive_member_invalid");
+      if (output === '{"error":"archive_extract_failed"}') fail("dependency_archive_extract_failed");
+      fail("dependency_archive_invalid");
+    }
+    if (!/^\{"entryCount":[0-9]+\}$/.test(output)) fail("dependency_archive_invalid");
     return Object.freeze({ root, nodeModulesRoot: join(root, "node_modules"), cleanup: () => { try { rmSync(parent, { recursive: true, force: true }); } catch { fail("dependency_archive_cleanup_failed", true); } } });
   } catch (error) {
     try { rmSync(parent, { recursive: true, force: true }); } catch { throw new DependencyArtifactError("dependency_archive_cleanup_failed", true); }
