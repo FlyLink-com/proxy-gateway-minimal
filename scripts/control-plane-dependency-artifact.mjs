@@ -199,7 +199,7 @@ function readPackageVersion(root) {
 
 export function detectDependencyRuntime({ root = process.cwd(), npmVersion = null } = {}) {
   if (process.platform !== "linux") fail("unsupported_platform");
-  const npm = String(npmVersion || String(spawnSync("/usr/bin/npm", ["--version"], { env: { ...CLEAN_ENV, HOME: "/tmp" }, encoding: "utf8", maxBuffer: 64 * 1024 }).stdout || "").trim());
+  const npm = String(npmVersion || String(spawnSync("npm", ["--version"], { env: { ...CLEAN_ENV, PATH: process.env.PATH || CLEAN_ENV.PATH, HOME: "/tmp" }, encoding: "utf8", maxBuffer: 64 * 1024 }).stdout || "").trim());
   const npmSemver = npm.startsWith("v") ? npm : `v${npm}`;
   if (!SEMVER.test(npmSemver)) fail("dependency_runtime_invalid");
   return Object.freeze({
