@@ -470,8 +470,6 @@ export function verifyDependencyArtifact({ manifestBytes, archivePath, packageJs
   compareInputDigest(manifest.value.package, packageJsonBytes, "dependency_package_mismatch");
   compareInputDigest(manifest.value.packageLock, packageLockBytes, "dependency_lock_mismatch");
   const sourceRoot = resolve(projectRoot || (nodeModulesRoot ? dirname(nodeModulesRoot) : process.cwd()));
-  const actualRuntime = runtime.detect ? runtime.detect() : detectDependencyRuntime({ root: sourceRoot, npmVersion: runtime.npmVersion });
-  compareRuntime(manifest.value.runtime, actualRuntime);
   if (!archivePath || basename(archivePath) !== manifest.value.archive.fileName) fail("dependency_archive_invalid");
   const archive = archiveMetadata(archivePath, manifest, { ...runtime, enforceOwnership: runtime.enforceOwnership ?? false });
   const extracted = extractDependencyArchive(archivePath, runtime);
@@ -480,6 +478,8 @@ export function verifyDependencyArtifact({ manifestBytes, archivePath, packageJs
     const extractedSnapshot = typeof runtime.nativeSmoke === "function" ? snapshotModule : extractedSnapshotModule({ sourceRoot, extractedRoot: extracted.root, snapshotModule });
     tree = auditDependencyTree(extracted.nodeModulesRoot, runtime);
     if (tree.sha256 !== manifest.value.tree.sha256 || tree.entryCount !== manifest.value.tree.entryCount || tree.hardlinksBroken !== manifest.value.tree.hardlinksBroken || tree.symlinksInternal !== manifest.value.tree.symlinksInternal) fail("dependency_tree_mismatch");
+    const actualRuntime = runtime.detect ? runtime.detect({ root: extracted.root }) : detectDependencyRuntime({ root: extracted.root, npmVersion: runtime.npmVersion });
+    compareRuntime(manifest.value.runtime, actualRuntime);
     smoke = runNativeBetterSqliteSmoke({ root: extracted.root, snapshotModule: extractedSnapshot, runtime });
   } finally {
     extracted.cleanup();
@@ -505,7 +505,7 @@ export function buildDependencyArtifactManifest({ sourceCommit, artifactRelease,
   } finally {
     extracted.cleanup();
   }
-  const value = { schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: DEPENDENCY_ARTIFACT_RELEASE_UNIT, sourceCommit, artifactRelease, package: packageDigest, packageLock: lockDigest, archive: { fileName: basename(archive.path), sha256: archive.sha256, sizeBytes: archive.sizeBytes }, runtime: runtime.detect ? runtime.detect() : detectDependencyRuntime({ root: projectRoot, npmVersion: runtime.npmVersion }), smoke, tree: { sha256: tree.sha256, entryCount: tree.entryCount, hardlinksBroken: tree.hardlinksBroken, symlinksInternal: tree.symlinksInternal }, provenance: PROVENANCE };
+  const value = { schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: DEPENDENCY_ARTIFACT_RELEASE_UNIT, sourceCommit, artifactRelease, package: packageDigest, packageLock: lockDigest, archive: { fileName: basename(archive.path), sha256: archive.sha256, sizeBytes: archive.sizeBytes }, runtime: runtime.detect ? runtime.detect({ root: projectRoot }) : detectDependencyRuntime({ root: projectRoot, npmVersion: runtime.npmVersion }), smoke, tree: { sha256: tree.sha256, entryCount: tree.entryCount, hardlinksBroken: tree.hardlinksBroken, symlinksInternal: tree.symlinksInternal }, provenance: PROVENANCE };
   checkRuntime(value.runtime); const bytes = Buffer.from(`${JSON.stringify(value, null, 2)}\n`); return Object.freeze({ value, bytes, sha256: hashBytes(bytes), sizeBytes: bytes.length });
 }
 

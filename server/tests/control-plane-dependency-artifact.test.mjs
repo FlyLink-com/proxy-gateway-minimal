@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { linkSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -92,6 +92,55 @@ test("consumer verifies package-lock, runtime, archive, tree and native smoke to
     assert.equal(result.tree.entryCount, value.tree.entryCount);
     assert.equal(result.smoke.betterSqlite3Memory, true);
   } finally { cleanup(value.root); }
+});
+
+test("clean consumer derives dependency runtime from the extracted artifact tree", () => {
+  const value = fixture("clean-consumer-artifact");
+  const sourceRoot = makeRoot("clean-consumer-source");
+  writeFileSync(join(sourceRoot, "package.json"), value.packageJson);
+  writeFileSync(join(sourceRoot, "package-lock.json"), value.packageLock);
+  let detectedRoot = null;
+  const trace = [];
+  try {
+    assert.equal(existsSync(join(sourceRoot, "node_modules")), false);
+    const result = verifyDependencyArtifact({
+      manifestBytes: Buffer.from(`${JSON.stringify(value.manifest, null, 2)}\n`), archivePath: value.archivePath,
+      packageJsonBytes: value.packageJson, packageLockBytes: value.packageLock,
+      expectedSourceCommit: value.manifest.sourceCommit, expectedArtifactRelease: value.manifest.artifactRelease,
+      projectRoot: sourceRoot,
+      runtime: {
+        enforceOwnership: false,
+        detect: ({ root }) => { trace.push("detect"); detectedRoot = root; return runtime; },
+        listArchive: () => { trace.push("list"); return Buffer.from("node_modules\0node_modules/better-sqlite3/\0node_modules/better-sqlite3/index.js\0node_modules/better-sqlite3/package.json\0"); },
+        extractArchive: () => { trace.push("extract"); return { root: value.root, nodeModulesRoot: value.nodeModules, cleanup: () => trace.push("cleanup") }; },
+        checkAclCapabilities: () => { trace.push("audit"); return true; },
+        nativeSmoke: () => { trace.push("smoke"); return true; }
+      }
+    });
+    assert.equal(result.state, "verified");
+    assert.equal(detectedRoot, value.root);
+    assert.deepEqual(trace, ["list", "extract", "audit", "detect", "smoke", "cleanup"]);
+
+    const mismatchTrace = [];
+    assert.throws(() => verifyDependencyArtifact({
+      manifestBytes: Buffer.from(`${JSON.stringify(value.manifest, null, 2)}\n`), archivePath: value.archivePath,
+      packageJsonBytes: value.packageJson, packageLockBytes: value.packageLock,
+      expectedSourceCommit: value.manifest.sourceCommit, expectedArtifactRelease: value.manifest.artifactRelease,
+      projectRoot: sourceRoot,
+      runtime: {
+        enforceOwnership: false,
+        detect: () => { mismatchTrace.push("detect"); return { ...runtime, nodeAbi: "999" }; },
+        listArchive: () => { mismatchTrace.push("list"); return Buffer.from("node_modules\0node_modules/better-sqlite3/\0node_modules/better-sqlite3/index.js\0node_modules/better-sqlite3/package.json\0"); },
+        extractArchive: () => { mismatchTrace.push("extract"); return { root: value.root, nodeModulesRoot: value.nodeModules, cleanup: () => mismatchTrace.push("cleanup") }; },
+        checkAclCapabilities: () => { mismatchTrace.push("audit"); return true; },
+        nativeSmoke: () => { mismatchTrace.push("smoke"); return true; }
+      }
+    }), condition("dependency_runtime_mismatch"));
+    assert.deepEqual(mismatchTrace, ["list", "extract", "audit", "detect", "cleanup"]);
+  } finally {
+    cleanup(sourceRoot);
+    cleanup(value.root);
+  }
 });
 
 test("consumer rejects an archive manifest size-field drift", () => {
