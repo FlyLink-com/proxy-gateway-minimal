@@ -1,6 +1,17 @@
 # Phase A2 Dependency Artifact Consumer Replay Receipt
 
 ```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: phase_a2_dependency_artifact_consumer_replay_2026_08_20
+  superseded_by: null
+  last_verified_at: 2026-08-20
+  production_authority: false
+
+```
+
+```yaml
 receipt_schema: "phase-a2-consumer-replay/v1"
 receipt_state: verified
 verified_at: "2026-08-20"
