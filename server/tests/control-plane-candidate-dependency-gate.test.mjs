@@ -998,7 +998,7 @@ test("Linux physical evidence rejects symlink, type, and hardlink substitutions 
   const reset = () => {
     rmSync(base, { recursive: true, force: true });
     mkdirSync(host, { recursive: true }); chmodSync(stateRoot, 0o700);
-    mkdirSync(inputDirectory, { recursive: true }); chmodSync(inputRoot, 0o700);
+    mkdirSync(inputDirectory, { recursive: true }); chmodSync(inputRoot, 0o700); chmodSync(inputDirectory, 0o711);
     write(buildInput[0], "{}\n", 0o444); write(buildInput[1], "{}\n", 0o444);
     symlinkSync(host, publicPath, "dir");
   };
