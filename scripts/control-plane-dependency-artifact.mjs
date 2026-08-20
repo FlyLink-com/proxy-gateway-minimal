@@ -33,9 +33,8 @@ with tarfile.open(sys.argv[1],"r:*") as archive:
 const ARCHIVE_EXTRACT = String.raw`import os,posixpath,sys,tarfile
 MAX_ENTRIES=250000
 MAX_BYTES=2*1024*1024*1024
-phase='init'
 def unexpected(exc_type,exc,tb):
-  print('{"error":"archive_extract_failed","kind":"%s","phase":"%s"}' % (exc_type.__name__,phase))
+  print('{"error":"archive_extract_failed"}')
 sys.excepthook=unexpected
 def reject():
   print('{"error":"archive_member_rejected"}')
@@ -57,7 +56,6 @@ def safe_target(name,target):
   return target
 archive_path=sys.argv[1]
 destination=os.path.abspath(sys.argv[2])
-phase='members'
 with tarfile.open(archive_path,'r:*') as archive:
   members=archive.getmembers()
   records={}
@@ -84,7 +82,6 @@ with tarfile.open(archive_path,'r:*') as archive:
   os.mkdir(destination,0o700)
   tree=os.path.join(destination,'node_modules')
   os.mkdir(tree,0o700)
-  phase='directories'
   dirs=sorted((name for name,(kind,_,_) in records.items() if kind=='d'),key=lambda value:(value.count('/'),value))
   for name in dirs:
     path=os.path.join(destination,*name.split('/'))
@@ -95,7 +92,6 @@ with tarfile.open(archive_path,'r:*') as archive:
       reject()
     os.mkdir(path,0o700)
   files=sorted((name for name,(kind,_,_) in records.items() if kind=='f') )
-  phase='files'
   for name in files:
     parent='/'.join(name.split('/')[:-1])
     if parent not in records or records[parent][0] != 'd':
@@ -123,7 +119,6 @@ with tarfile.open(archive_path,'r:*') as archive:
       os.fsync(fd)
     finally:
       os.close(fd)
-  phase='symlinks'
   for name in sorted((name for name,(kind,_,_) in records.items() if kind=='l')):
     parent='/'.join(name.split('/')[:-1])
     if parent not in records or records[parent][0] != 'd':
@@ -409,7 +404,7 @@ export function extractDependencyArchive(archivePath, runtime = {}) {
     if (result.error || String(result.stderr || "").trim()) fail("dependency_archive_invalid");
     if (result.status !== 0) {
       if (output === '{"error":"archive_member_rejected"}') fail("dependency_archive_member_invalid");
-      if (/^\{"error":"archive_extract_failed","kind":"[A-Za-z]+","phase":"[A-Za-z]+"\}$/.test(output)) { const detail = JSON.parse(output); fail(`dependency_archive_extract_failed_${detail.kind}_${detail.phase}`); }
+      if (output === '{"error":"archive_extract_failed"}') fail("dependency_archive_extract_failed");
       fail("dependency_archive_invalid");
     }
     if (!/^\{"entryCount":[0-9]+\}$/.test(output)) fail("dependency_archive_invalid");
