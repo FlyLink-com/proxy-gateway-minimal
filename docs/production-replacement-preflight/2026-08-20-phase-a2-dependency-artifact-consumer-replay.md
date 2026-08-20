@@ -13,7 +13,7 @@ document_metadata:
 
 ```yaml
 receipt_schema: "phase-a2-consumer-replay/v1"
-receipt_state: verified
+receipt_state: replay_evidence_verified_audit_closeout_blocked
 verified_at: "2026-08-20"
 issue: 632
 risk: A
@@ -23,16 +23,28 @@ production_authority: false
 gate:
   issue: 632
   phase: A2
-  result: completed
+  result: replay_passed
+  formal_closeout: blocked
   execution_request_ref: issue-632-phase-a2-replay
-  operator_approval_ref: controlled-task-authorization-a2-2026-08-20
-  approval_channel: controlled-operator-session
-  approval_public_review_ref: not-applicable
+  operator_approval_ref: not-independently-resolvable
+  approval_channel: controlled-operator-session-record-not-reconstructed
+  approval_public_review_ref: not-independently-resolvable
   inventory_verified_at: "2026-08-20T12:01:34Z"
   replay_started_at: "2026-08-20T12:01:34Z"
   replay_completed_at: "2026-08-20T12:27:37Z"
   cleanup_verified_at: "2026-08-20T12:29:58Z"
   receipt_recorded_at: "2026-08-20T12:29:58Z"
+
+audit_status:
+  provider_access_authorization:
+    status: incomplete
+    reason: approval_reference_not_independently_resolvable
+  credential_provenance:
+    status: incomplete
+    reason: existing_cli_configuration_source_not_reconstructed
+  formal_closeout:
+    status: blocked
+    reason: provider_access_audit_evidence_incomplete
 
 provider:
   name: aliyun-swas
@@ -71,14 +83,29 @@ provider_mutation:
   - temporary cloud key pair detached and deleted with absent readback
   - temporary acl package installed and purged
 
-credential_local_before: process-only temporary key; no persisted copy
-credential_local_after: absent
+credential_local_before:
+  temporary_ssh_key: absent
+  configured_api_credential: uninspected
+credential_local_after:
+  temporary_ssh_key: absent
+  configured_api_credential: uninspected
 provider_credential_status:
   temporary_ssh_key: revoked
   configured_api_credential: unverified_assume_valid
 production_mutation: none
-conclusion: verify-only replay completed; no production promotion
-next_gate: separate Phase A3 Risk A production-promotion gate
+a2_replay:
+  status: PASS
+  scope: verify-only-non-production
+a2_evidence:
+  status: PASS
+  scope: replay-and-cleanup-evidence-recorded
+a2_closeout:
+  status: BLOCKED
+  reason: provider-access-audit-incomplete
+production_promotion:
+  status: NOT_AUTHORIZED
+conclusion: replay and cleanup passed; formal A2 audit closeout is blocked
+next_gate: reconcile provider-access authorization and credential provenance before A2 closeout; production remains a separate Phase A3 Risk A gate
 
 source:
   master_sha: f2e4095661b8e5b1a15e5be5326cc67c2c3abfff
@@ -141,6 +168,9 @@ non_goals:
   - no production promotion approval
 ```
 
-This receipt records a single verify-only consumer replay. It does not authorize
+This receipt records a single verify-only consumer replay and its cleanup
+evidence. It explicitly records that provider-access authorization and
+credential provenance are not independently auditable from the retained
+receipt, so formal A2 closeout remains blocked. It does not authorize
 production deployment or replace the separate Phase A3 Risk A inventory,
 rollback, operator-approval, staging, atomic-switch, and health-window gates.
