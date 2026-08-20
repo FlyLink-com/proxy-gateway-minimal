@@ -105,6 +105,13 @@ jobs:
           try { const value = auditDependencyTree("node_modules"); console.log(JSON.stringify({ ok: true, entryCount: value.entryCount, totalBytes: value.totalBytes, treeSha256: value.sha256 })); }
           catch (error) { console.log(JSON.stringify({ ok: false, condition: error?.condition || "unknown" })); process.exitCode = 1; }'
 
+      - name: Read manifest tree evidence before consumer replay
+        run: >-
+          node --input-type=module --eval
+          'import { readFileSync } from "node:fs";
+          const value = JSON.parse(readFileSync(".dependency-artifacts/dependency-artifact.json", "utf8"));
+          console.log(JSON.stringify({ tree: value.tree, runtime: value.runtime, archive: value.archive }));'
+
       - name: Re-verify dependency artifact and native tree
         run: >-
           node scripts/control-plane-dependency-artifact.mjs
