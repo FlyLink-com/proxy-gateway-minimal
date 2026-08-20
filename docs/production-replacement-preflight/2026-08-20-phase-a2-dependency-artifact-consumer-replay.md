@@ -102,10 +102,13 @@ a2_evidence:
 a2_closeout:
   status: BLOCKED
   reason: provider-access-audit-incomplete
+  reconciliation_gate:
+    tracking_issue: 634
+    contract_path: docs/production-replacement-preflight/2026-08-20-phase-a2-provider-access-reconciliation-gate.md
 production_promotion:
   status: NOT_AUTHORIZED
 conclusion: replay and cleanup passed; formal A2 audit closeout is blocked
-next_gate: reconcile provider-access authorization and credential provenance before A2 closeout; production remains a separate Phase A3 Risk A gate
+next_gate: Issue #634 provider-access audit reconciliation; production remains a separate Phase A3 Risk A gate
 
 source:
   master_sha: f2e4095661b8e5b1a15e5be5326cc67c2c3abfff
