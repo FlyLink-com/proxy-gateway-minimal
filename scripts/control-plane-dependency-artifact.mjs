@@ -34,7 +34,7 @@ const ARCHIVE_EXTRACT = String.raw`import os,posixpath,sys,tarfile
 MAX_ENTRIES=250000
 MAX_BYTES=2*1024*1024*1024
 def unexpected(exc_type,exc,tb):
-  print('{"error":"archive_extract_failed"}')
+  print('{"error":"archive_extract_failed","kind":"%s"}' % exc_type.__name__)
 sys.excepthook=unexpected
 def reject():
   print('{"error":"archive_member_rejected"}')
@@ -403,7 +403,7 @@ export function extractDependencyArchive(archivePath, runtime = {}) {
     if (result.error || String(result.stderr || "").trim()) fail("dependency_archive_invalid");
     if (result.status !== 0) {
       if (output === '{"error":"archive_member_rejected"}') fail("dependency_archive_member_invalid");
-      if (output === '{"error":"archive_extract_failed"}') fail("dependency_archive_extract_failed");
+      if (/^\{"error":"archive_extract_failed","kind":"[A-Za-z]+"\}$/.test(output)) fail(`dependency_archive_extract_failed_${JSON.parse(output).kind}`);
       fail("dependency_archive_invalid");
     }
     if (!/^\{"entryCount":[0-9]+\}$/.test(output)) fail("dependency_archive_invalid");
