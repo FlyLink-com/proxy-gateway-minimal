@@ -335,7 +335,7 @@ export function buildDependencyArtifactManifest({ sourceCommit, artifactRelease,
   const nodeModulesRoot = resolve(projectRoot, "node_modules");
   const tree = auditDependencyTree(nodeModulesRoot, runtime);
   const smoke = runNativeBetterSqliteSmoke({ root: projectRoot, snapshotModule, runtime });
-  const value = { schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: DEPENDENCY_ARTIFACT_RELEASE_UNIT, sourceCommit, artifactRelease, package: packageDigest, packageLock: lockDigest, archive: { fileName: basename(archive.path), sha256: archive.sha256, sizeBytes: archive.sizeBytes }, runtime: runtime.detect ? runtime.detect() : detectDependencyRuntime({ root: projectRoot, npmVersion: runtime.npmVersion }), smoke, tree, provenance: PROVENANCE };
+  const value = { schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: DEPENDENCY_ARTIFACT_RELEASE_UNIT, sourceCommit, artifactRelease, package: packageDigest, packageLock: lockDigest, archive: { fileName: basename(archive.path), sha256: archive.sha256, sizeBytes: archive.sizeBytes }, runtime: runtime.detect ? runtime.detect() : detectDependencyRuntime({ root: projectRoot, npmVersion: runtime.npmVersion }), smoke, tree: { sha256: tree.sha256, entryCount: tree.entryCount, hardlinksBroken: tree.hardlinksBroken, symlinksInternal: tree.symlinksInternal }, provenance: PROVENANCE };
   checkRuntime(value.runtime); const bytes = Buffer.from(`${JSON.stringify(value, null, 2)}\n`); return Object.freeze({ value, bytes, sha256: hashBytes(bytes), sizeBytes: bytes.length });
 }
 
