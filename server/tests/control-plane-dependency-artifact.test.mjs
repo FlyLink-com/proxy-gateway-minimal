@@ -212,12 +212,20 @@ test("consumer fails closed when the native smoke runner fails", () => {
 
 test("Ubuntu workflow is a CI artifact producer, not a production builder", () => {
   const workflow = readFileSync(resolve(".github/workflows/control-plane-dependency-artifact.yml"), "utf8");
+  const uploadIndex = workflow.indexOf("- name: Upload dependency artifact on non-PR refs");
+  const uploadStep = workflow.slice(uploadIndex);
+  const installCommands = workflow.match(/npm ci --omit=dev --no-audit --no-fund/g) ?? [];
+  const firstArchiveIndex = workflow.indexOf("--file .dependency-artifacts/node-modules-a.tar");
+  const secondInstallIndex = workflow.indexOf("npm ci --omit=dev --no-audit --no-fund", firstArchiveIndex);
+  const secondArchiveIndex = workflow.indexOf("--file .dependency-artifacts/node-modules-b.tar");
+
+  assert.ok(uploadIndex >= 0, "workflow must define the dependency artifact upload step");
   assert.match(workflow, /runs-on: ubuntu-24\.04/);
   assert.match(workflow, /node-version: 22\.23\.1/);
   assert.match(workflow, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
   assert.match(workflow, /source_commit="\$\(git rev-parse HEAD\)"/);
   assert.match(workflow, /test "\$source_commit" = "\$EXPECTED_SOURCE_COMMIT"/);
-  assert.match(workflow, /npm ci --omit=dev --no-audit --no-fund/);
+  assert.equal(installCommands.length, 2, "workflow must create two independent lockfile installs");
   assert.match(workflow, /--mode smoke/);
   assert.match(workflow, /--mode build/);
   assert.match(workflow, /--mode verify/);
@@ -225,8 +233,16 @@ test("Ubuntu workflow is a CI artifact producer, not a production builder", () =
   assert.match(workflow, /--pax-option=delete=atime,delete=ctime,delete=SCHILY\.dev,delete=SCHILY\.ino,delete=SCHILY\.nlink/);
   assert.match(workflow, /node-modules-a\.tar/);
   assert.match(workflow, /node-modules-b\.tar/);
+  assert.ok(firstArchiveIndex >= 0 && secondInstallIndex > firstArchiveIndex && secondArchiveIndex > secondInstallIndex,
+    "the second archive must be created from a fresh second npm ci");
   assert.match(workflow, /cmp --silent/);
+  assert.match(workflow, /mv \.dependency-artifacts\/node-modules-b\.tar \.dependency-artifacts\/node-modules\.tar/);
   assert.match(workflow, /actions\/upload-artifact@v7/);
+  assert.match(uploadStep, /\.dependency-artifacts\/node-modules\.tar/);
+  assert.match(uploadStep, /\.dependency-artifacts\/dependency-artifact\.json/);
+  assert.match(uploadStep, /\.dependency-artifacts\/release-label\.txt/);
+  assert.match(uploadStep, /include-hidden-files:\s*true/);
+  assert.doesNotMatch(uploadStep, /path:\s*\.dependency-artifacts\s*(?:\r?\n|$)/);
   assert.doesNotMatch(workflow, /\b(?:ssh|scp|rsync|systemctl|systemd-run)\b/i);
   assert.doesNotMatch(workflow, /\.env|CONSOLE_TOKEN|SS_PASSWORD|subscription/i);
 });

@@ -56,7 +56,7 @@ jobs:
           'import { detectDependencyRuntime } from "./scripts/control-plane-dependency-artifact.mjs";
           console.log(JSON.stringify(detectDependencyRuntime({ root: "." })))'
 
-      - name: Audit and create deterministic dependency archive
+      - name: Build twice and create deterministic dependency archive
         shell: bash
         run: |
           set -euo pipefail
@@ -73,6 +73,11 @@ jobs:
             --hard-dereference \
             --pax-option=delete=atime,delete=ctime,delete=SCHILY.dev,delete=SCHILY.ino,delete=SCHILY.nlink \
             -- node_modules
+          npm ci --omit=dev --no-audit --no-fund
+          node scripts/control-plane-dependency-artifact.mjs \
+            --mode smoke \
+            --root . \
+            --snapshot scripts/control-plane-db-snapshot-gate.mjs
           tar \
             --create \
             --file .dependency-artifacts/node-modules-b.tar \
@@ -87,8 +92,8 @@ jobs:
             -- node_modules
           test "$(sha256sum .dependency-artifacts/node-modules-a.tar | cut -d' ' -f1)" = "$(sha256sum .dependency-artifacts/node-modules-b.tar | cut -d' ' -f1)"
           cmp --silent .dependency-artifacts/node-modules-a.tar .dependency-artifacts/node-modules-b.tar
-          mv .dependency-artifacts/node-modules-a.tar .dependency-artifacts/node-modules.tar
-          rm .dependency-artifacts/node-modules-b.tar
+          mv .dependency-artifacts/node-modules-b.tar .dependency-artifacts/node-modules.tar
+          rm .dependency-artifacts/node-modules-a.tar
 
       - name: Write dependency artifact manifest
         env:
@@ -149,6 +154,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: control-plane-dependency-${{ github.sha }}
-          path: .dependency-artifacts
+          path: |
+            .dependency-artifacts/node-modules.tar
+            .dependency-artifacts/dependency-artifact.json
+            .dependency-artifacts/release-label.txt
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
