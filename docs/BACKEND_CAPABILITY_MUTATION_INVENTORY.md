@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-19, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: backend_capability_mutation_inventory
+  superseded_by: null
+  last_verified_at: 2026-06-19
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Repository inventory
 > - Risk: C

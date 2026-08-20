@@ -2,6 +2,16 @@
 
 Last verified: 2026-07-14, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: source_map
+  superseded_by: null
+  last_verified_at: 2026-07-14
+  production_authority: false
+```
+
 > Status:
 > - Type: Source responsibility and dependency map
 > - Risk: C

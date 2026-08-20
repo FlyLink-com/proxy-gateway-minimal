@@ -1,5 +1,17 @@
 # AWS Staging Gate 7 Runtime Usage Collector Proof
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aws_staging_gate7_runtime_usage_proof
+  superseded_by: null
+  last_verified_at: 2026-06-06
+  production_authority: false
+```
+
+
 Date: 2026-06-06
 
 Risk tier: A

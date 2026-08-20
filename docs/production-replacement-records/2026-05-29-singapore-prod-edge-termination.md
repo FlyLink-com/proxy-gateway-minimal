@@ -1,5 +1,17 @@
 # Singapore Stopped Node Termination and Security Group Deletion Record
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: singapore_prod_edge_termination
+  superseded_by: null
+  last_verified_at: 2026-05-29
+  production_authority: false
+```
+
+
 Date: 2026-05-29, Asia/Shanghai.
 
 Risk: A production cloud and node mutation.

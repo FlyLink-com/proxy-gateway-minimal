@@ -1,5 +1,17 @@
 # SGP Japan-To-SGP Apply Identity Fix
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: sgp_japan_to_sgp_apply_identity_fix
+  superseded_by: null
+  last_verified_at: 2026-06-09
+  production_authority: false
+```
+
+
 Date: 2026-06-09, Asia/Shanghai.
 
 Risk tier: A targeted production access-path fix.

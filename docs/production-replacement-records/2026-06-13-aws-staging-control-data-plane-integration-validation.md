@@ -1,5 +1,17 @@
 # AWS Staging Control/Data-Plane Integration Validation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aws_staging_control_data_plane_integration_validation
+  superseded_by: null
+  last_verified_at: 2026-06-13
+  production_authority: false
+```
+
+
 Date: 2026-06-13, Asia/Shanghai.
 
 ## Status

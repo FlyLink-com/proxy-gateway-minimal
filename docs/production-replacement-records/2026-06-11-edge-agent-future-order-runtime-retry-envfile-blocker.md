@@ -1,5 +1,17 @@
 # Edge-Agent Future-Order Runtime Retry EnvironmentFile Blocker
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: edge_agent_future_order_runtime_retry_envfile_blocker
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-11
 
 Risk: A

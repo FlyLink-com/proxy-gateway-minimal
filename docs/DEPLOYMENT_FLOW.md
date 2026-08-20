@@ -1,5 +1,18 @@
 # Deployment Flow
 
+Last updated: 2026-05-23, Asia/Shanghai.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: deployment_flow
+  superseded_by: null
+  last_verified_at: 2026-05-23
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Historical AWS deployment flow (superseded)
 > - Risk: A for any future provider action

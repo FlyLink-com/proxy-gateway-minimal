@@ -1,5 +1,17 @@
 # Production Replacement: Green Cutover Preflight
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: green_cutover_preflight
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24 05:40-05:45 +08:00
 
 Branch: `ops/green-cutover-preflight`

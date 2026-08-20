@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-09.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: cloudflare_public_site_ci
+  superseded_by: null
+  last_verified_at: 2026-06-09
+  production_authority: false
+```
+
+
 This document defines the repository-only CI boundary for the public static
 site that can be built for Cloudflare. It does not approve Cloudflare account,
 DNS, production, Worker route, secret, API, subscription, payment, or runtime

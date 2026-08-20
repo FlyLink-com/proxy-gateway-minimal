@@ -1,5 +1,17 @@
 # Japan TUIC Bootstrap Probe Gate
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: japan_tuic_bootstrap_probe_gate
+  superseded_by: null
+  last_verified_at: 2026-07-24
+  production_authority: false
+```
+
+
 > Status: source-only Gate record. It creates no credential, secret, host
 > authorization, deployment, map mutation, service operation, or production
 > result by itself.

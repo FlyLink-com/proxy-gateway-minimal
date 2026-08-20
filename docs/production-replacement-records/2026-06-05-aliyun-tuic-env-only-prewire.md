@@ -1,5 +1,17 @@
 # Aliyun TUIC Env-Only Non-Activating Prewire - 2026-06-05
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_tuic_env_only_prewire
+  superseded_by: null
+  last_verified_at: 2026-06-05
+  production_authority: false
+```
+
+
 ## Scope
 
 Risk tier: A.

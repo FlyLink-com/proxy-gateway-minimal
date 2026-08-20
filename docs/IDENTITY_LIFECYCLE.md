@@ -1,5 +1,18 @@
 # Runtime Identity Binding Lifecycle
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: identity_lifecycle
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active release-governance contract
 > - Risk: C

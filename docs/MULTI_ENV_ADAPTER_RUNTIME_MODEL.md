@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-01, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: multi_env_adapter_runtime_model
+  superseded_by: null
+  last_verified_at: 2026-06-01
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active architecture boundary
 > - Risk: C

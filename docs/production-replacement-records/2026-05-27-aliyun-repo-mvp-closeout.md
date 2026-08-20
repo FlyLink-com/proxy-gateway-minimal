@@ -1,5 +1,17 @@
 # Aliyun Subscription Control Platform Repo MVP Closeout
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_repo_mvp_closeout
+  superseded_by: null
+  last_verified_at: 2026-05-27
+  production_authority: false
+```
+
+
 Date: 2026-05-27, Asia/Shanghai.
 
 Risk: C documentation closeout.

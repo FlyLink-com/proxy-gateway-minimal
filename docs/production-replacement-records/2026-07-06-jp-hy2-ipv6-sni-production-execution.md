@@ -1,5 +1,17 @@
 # 2026-07-06 JP Hy2 IPv6/SNI Production Execution
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: jp_hy2_ipv6_sni_production_execution
+  superseded_by: null
+  last_verified_at: 2026-07-06
+  production_authority: false
+```
+
+
 ## Scope
 
 - Risk: A

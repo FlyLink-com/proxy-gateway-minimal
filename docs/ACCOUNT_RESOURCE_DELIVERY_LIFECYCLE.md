@@ -2,6 +2,17 @@
 
 Last updated: 2026-07-09.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: account_resource_delivery_lifecycle
+  superseded_by: null
+  last_verified_at: 2026-07-09
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active architecture boundary
 > - Risk: C for this document, B for repository code changes, A for production

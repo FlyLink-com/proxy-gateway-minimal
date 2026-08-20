@@ -1,5 +1,17 @@
 # Traffic Usage Collector Timer Activation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_usage_collector_timer_activation
+  superseded_by: null
+  last_verified_at: 2026-07-07
+  production_authority: false
+```
+
+
 Date: 2026-07-06 America/Los_Angeles / 2026-07-07 UTC.
 
 Risk: A.

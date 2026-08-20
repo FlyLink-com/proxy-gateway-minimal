@@ -1,5 +1,17 @@
 # Control Plane Node Registration Closeout Approval Packet
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: control_plane_node_registration_closeout_approval_packet
+  superseded_by: null
+  last_verified_at: 2026-06-13
+  production_authority: false
+```
+
+
 Date: 2026-06-13, Asia/Shanghai.
 
 Risk: A for any production/runtime execution.

@@ -1,5 +1,18 @@
 # User Portal Production Auth Implementation Plan
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: user_portal_production_auth_implementation_plan
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development or superpowers:executing-plans to
 > implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for

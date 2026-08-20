@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-31, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: cli_production_provisioning_sop
+  superseded_by: null
+  last_verified_at: 2026-05-31
+  production_authority: false
+```
+
+
 This document serves as the Standard Operating Procedure (SOP) for issuing and revoking user subscriptions via the platform CLI. It guarantees that all subscription handling remains operator-controlled, auditable, and secure.
 
 This SOP is for operators only. It is not the customer portal flow, and the

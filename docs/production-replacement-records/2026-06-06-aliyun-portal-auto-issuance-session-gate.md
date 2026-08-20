@@ -1,5 +1,17 @@
 # 2026-06-06 Aliyun Portal Auto Issuance Session Gate
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_portal_auto_issuance_session_gate
+  superseded_by: null
+  last_verified_at: 2026-06-06
+  production_authority: false
+```
+
+
 ## Scope
 
 - Risk: A

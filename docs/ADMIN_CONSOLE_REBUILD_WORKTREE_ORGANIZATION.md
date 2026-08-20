@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-16, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: admin_console_rebuild_worktree_organization
+  superseded_by: null
+  last_verified_at: 2026-06-16
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Local worktree organization record
 > - Risk: C for this record; referenced Admin UI implementation remains B

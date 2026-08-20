@@ -1,5 +1,17 @@
 # Aliyun TUIC Listener Material Wiring - 2026-06-05
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_tuic_listener_material_wiring
+  superseded_by: null
+  last_verified_at: 2026-06-05
+  production_authority: false
+```
+
+
 ## Scope
 
 Risk tier: A.

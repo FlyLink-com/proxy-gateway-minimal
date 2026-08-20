@@ -1,5 +1,17 @@
 # Protocol Runtime Stable Upgrade
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: protocol_runtime_stable_upgrade
+  superseded_by: null
+  last_verified_at: 2026-07-06
+  production_authority: false
+```
+
+
 Date: 2026-07-06.
 
 Risk tier: A production runtime upgrade.

@@ -1,5 +1,17 @@
 # SGP Receipt-Required Config Hardening
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: sgp_receipt_required_config_hardening
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-12 UTC.
 
 Risk: A.

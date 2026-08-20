@@ -1,5 +1,17 @@
 # Aliyun Clean-Start Control Plane Plan
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_clean_start_control_plane_plan
+  superseded_by: null
+  last_verified_at: 2026-05-27
+  production_authority: false
+```
+
+
 Date: 2026-05-27, Asia/Shanghai.
 
 Risk: C for this repository planning record; A for any future Aliyun, AWS, HP,

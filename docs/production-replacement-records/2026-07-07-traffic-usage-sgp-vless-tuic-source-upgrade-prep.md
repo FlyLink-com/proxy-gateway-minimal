@@ -1,5 +1,17 @@
 # Traffic Usage SGP VLESS/TUIC Source Upgrade Prep
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_usage_sgp_vless_tuic_source_upgrade_prep
+  superseded_by: null
+  last_verified_at: 2026-07-07
+  production_authority: false
+```
+
+
 Date: 2026-07-07 UTC
 
 Risk: A

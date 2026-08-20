@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-18, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_app_manifest_authoring_standard
+  superseded_by: null
+  last_verified_at: 2026-06-18
+  production_authority: false
+```
+
+
 > Status:
 > - Linear: GCC-75 under GCC-81 / GCC-42
 > - Type: Control-plane app authoring standard

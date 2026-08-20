@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-31, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: operator_cli_platform_boundary
+  superseded_by: null
+  last_verified_at: 2026-05-31
+  production_authority: false
+```
+
+
 This document defines the current product boundary for platform operations:
 the production platform exposes only explicitly approved public/customer
 interfaces, while administrative and operator work is performed through

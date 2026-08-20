@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-05, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: tuic_comparison_canary_plan
+  superseded_by: null
+  last_verified_at: 2026-06-05
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active channel comparison planning record
 > - Risk: C for this document; A for any TUIC server, runtime, firewall,

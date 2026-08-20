@@ -2,6 +2,17 @@
 
 Last updated: 2026-08-09, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: network_forwarding_architecture
+  superseded_by: null
+  last_verified_at: 2026-08-09
+  production_authority: false
+```
+
+
 > Source evidence cutoff:
 > `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`.
 > Production/live network identity was not refreshed. Host, DNS, IP, service,

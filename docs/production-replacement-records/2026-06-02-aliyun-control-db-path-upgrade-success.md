@@ -1,5 +1,17 @@
 # Aliyun Control DB Path Patch And Runtime Upgrade Success
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_control_db_path_upgrade_success
+  superseded_by: null
+  last_verified_at: 2026-06-02
+  production_authority: false
+```
+
+
 Date: 2026-06-02, Asia/Shanghai.
 
 ## Status

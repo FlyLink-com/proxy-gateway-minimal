@@ -1,5 +1,17 @@
 # Aliyun Gate A Live Inventory Refresh
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_gate_a_live_inventory
+  superseded_by: null
+  last_verified_at: 2026-05-27
+  production_authority: false
+```
+
+
 Date: 2026-05-27, Asia/Shanghai.
 
 Risk: A-adjacent read-only inventory.

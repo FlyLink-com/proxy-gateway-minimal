@@ -1,5 +1,17 @@
 # AppsFlyer Credentials Disabled Mode Approval Packet
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: appsflyer_credentials_disabled_mode_approval_packet
+  superseded_by: null
+  last_verified_at: 2026-07-08
+  production_authority: false
+```
+
+
 Date: 2026-07-08, UTC.
 
 ## Status

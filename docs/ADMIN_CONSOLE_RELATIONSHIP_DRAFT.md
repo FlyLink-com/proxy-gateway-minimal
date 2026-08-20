@@ -1,6 +1,17 @@
 # Admin Console Relationship Draft
 
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_relationship_draft
+  superseded_by: null
+  last_verified_at: 2026-08-09
+  production_authority: false
+```
+
+
 ## Source-Reality Addendum (2026-08-09)
 
 Source evidence cutoff: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`.

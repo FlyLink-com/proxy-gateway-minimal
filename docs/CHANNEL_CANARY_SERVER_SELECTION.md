@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-26, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: channel_canary_server_selection
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active Risk A selection gate
 > - Risk: A for any server creation, cloud mutation, DNS mutation, firewall

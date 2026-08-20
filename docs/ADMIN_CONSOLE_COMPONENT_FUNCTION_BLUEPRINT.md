@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-21, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_component_function_blueprint
+  superseded_by: null
+  last_verified_at: 2026-06-21
+  production_authority: false
+```
+
+
 > Status:
 > - Product Design brief: locked from the current concept image, existing
 >   React/Vite Admin app, Horizon/NobleUI-style dashboard direction, and the

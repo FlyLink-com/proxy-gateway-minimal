@@ -1,5 +1,17 @@
 # Edge Agent Scoped Receipt Render Gate Approval Packet
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: edge_agent_scoped_receipt_render_gate_approval_packet
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-11
 
 Risk: A

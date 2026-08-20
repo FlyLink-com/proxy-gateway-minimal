@@ -1,5 +1,17 @@
 # GCC-9 Usage Accounting Failure Isolation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: gcc_9_usage_accounting_failure_isolation
+  superseded_by: null
+  last_verified_at: 2026-06-15
+  production_authority: false
+```
+
+
 Date: 2026-06-15, America/Los_Angeles.
 
 ## Status

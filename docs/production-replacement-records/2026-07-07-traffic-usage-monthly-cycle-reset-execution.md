@@ -1,5 +1,17 @@
 # Traffic Usage Monthly Cycle Reset Execution
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_usage_monthly_cycle_reset_execution
+  superseded_by: null
+  last_verified_at: 2026-07-07
+  production_authority: false
+```
+
+
 - Date: 2026-07-07
 - Target: `vul1/gccgw-vultr-candidate`
 - Risk: A

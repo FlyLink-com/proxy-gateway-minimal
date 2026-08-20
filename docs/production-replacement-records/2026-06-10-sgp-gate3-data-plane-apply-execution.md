@@ -1,5 +1,17 @@
 # SGP Gate 3 Data-Plane Apply Execution
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: sgp_gate3_data_plane_apply_execution
+  superseded_by: null
+  last_verified_at: 2026-06-10
+  production_authority: false
+```
+
+
 Date: 2026-06-10, Asia/Shanghai.
 
 Risk tier: A production data-plane runtime apply.

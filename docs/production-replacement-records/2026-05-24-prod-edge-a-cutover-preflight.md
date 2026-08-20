@@ -1,5 +1,17 @@
 # Production Replacement: prod-edge-a Cutover Preflight
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: prod_edge_a_cutover_preflight
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24 16:20-16:31 +08:00
 
 Branch: `ops/prod-edge-a-cutover-preflight`

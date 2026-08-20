@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-03, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_user_subscription_distribution_runbook
+  superseded_by: null
+  last_verified_at: 2026-06-03
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Superseded historical Risk A runbook
 > - Risk: C for this document; A for any Aliyun, HP, AWS, DNS, Nginx,

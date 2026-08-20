@@ -2,6 +2,16 @@
 
 Last updated: 2026-07-11, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: commercial_entitlement_unit
+  superseded_by: null
+  last_verified_at: 2026-07-11
+  production_authority: false
+```
+
 > Status:
 > - Type: Active unit design
 > - Risk: C for this document

@@ -4,7 +4,7 @@
 document_metadata:
   doc_type: canonical
   lifecycle: active
-  authority_scope: release_state
+  authority_scope: current_release_state
   superseded_by: null
   last_verified_at: 2026-08-14
   production_authority: false

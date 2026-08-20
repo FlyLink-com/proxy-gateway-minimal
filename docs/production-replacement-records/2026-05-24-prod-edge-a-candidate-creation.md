@@ -1,5 +1,17 @@
 # Production Replacement: prod-edge-a Candidate Creation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: prod_edge_a_candidate_creation
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24 15:39-16:02 +08:00
 
 Branch: `ops/prod-edge-a-candidate-creation`

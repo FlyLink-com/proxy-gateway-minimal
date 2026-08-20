@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-29, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: operator_provisioning_form_contract
+  superseded_by: null
+  last_verified_at: 2026-05-29
+  production_authority: false
+```
+
+
 This document defines the repository-only contract for turning operator form
 facts into a safe CLI issuance input preview. It does not create subscriptions,
 write SQLite rows, generate handoff material, expose public Admin, deploy to

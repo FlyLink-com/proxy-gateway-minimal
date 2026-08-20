@@ -1,5 +1,18 @@
 # Production Cutover Strategy Decision
 
+Last updated: 2026-05-24, Asia/Shanghai.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: production_cutover_strategy
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Historical AWS decision record (superseded)
 > - Risk: A for any future provider action

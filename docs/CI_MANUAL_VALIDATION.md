@@ -1,5 +1,18 @@
 # Manual CI Validation Runbook
 
+Last updated: 2026-06-11, America/Los_Angeles.
+
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: ci_manual_validation_runbook
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active runbook
 > - Risk: C/B validation support; not a production gate

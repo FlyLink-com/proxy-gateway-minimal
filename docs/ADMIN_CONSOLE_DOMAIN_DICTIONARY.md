@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-16, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: admin_console_domain_dictionary
+  superseded_by: null
+  last_verified_at: 2026-06-16
+  production_authority: false
+```
+
+
 > Status:
 > - Linear: Supports GCC-42 / GCC-48 / GCC-69
 > - Risk: C for this dictionary

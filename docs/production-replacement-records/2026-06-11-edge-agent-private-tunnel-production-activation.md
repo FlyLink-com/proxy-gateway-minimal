@@ -1,5 +1,17 @@
 # Edge-Agent Private Tunnel Production Activation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: edge_agent_private_tunnel_production_activation
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-11, Asia/Shanghai.
 
 Risk tier: A production control-plane/data-plane activation.

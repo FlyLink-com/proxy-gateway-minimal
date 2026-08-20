@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-14, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: single_control_plane_multi_data_plane_plan
+  superseded_by: null
+  last_verified_at: 2026-06-14
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active architecture and implementation plan
 > - Risk: C for this document, B for repository tests and adapter wiring,

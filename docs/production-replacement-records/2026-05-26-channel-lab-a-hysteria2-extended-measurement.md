@@ -1,5 +1,17 @@
 # channel-lab-a Hysteria2 Extended Measurement Record
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: channel_lab_a_hysteria2_extended_measurement
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
+
 Date: 2026-05-26, Asia/Shanghai.
 
 Risk:

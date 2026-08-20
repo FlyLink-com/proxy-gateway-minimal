@@ -1,6 +1,6 @@
 # Validation Baseline
 
-Last updated: 2026-07-15, America/Los_Angeles.
+Last updated: 2026-08-17, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: validation_baseline
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-17
   production_authority: false
 ```
 
@@ -112,6 +112,7 @@ Run:
 
 ```powershell
 npm run docs:authority:check
+npm run docs:authority:strict
 git diff --check origin/master...HEAD
 ```
 
@@ -122,6 +123,10 @@ Use for:
 - Current-state or handoff updates.
 - Architecture docs that do not change code or external state.
 
+`npm run docs:authority:check` is the readable metadata-block validation
+entrypoint; the fail-closed `npm run docs:authority:strict` variant adds the
+scope-wide strict-files check that the hosted CI docs-only lane runs.
+
 Do not run app tests by default for C-tier docs-only work unless the doc change
 updates command contracts, generated examples, or validation tooling.
 
@@ -131,7 +136,7 @@ The stable `Validate` check uses the docs-only lane only when every changed
 path is a root `*.md`, `docs/**/*.md`, `ops/**/*.md`, or
 `.github/**/*.md` file. Its diff-check and document-authority steps use
 `always()` and run `git diff --check` plus
-`npm run docs:authority:check`; the docs-only lane then skips dependency
+`npm run docs:authority:strict`; the docs-only lane then skips dependency
 installation, tests, and builds. The authority check validates declared
 metadata fields and rejects duplicate active canonical `authority_scope`
 values without creating a new required context or approval gate.

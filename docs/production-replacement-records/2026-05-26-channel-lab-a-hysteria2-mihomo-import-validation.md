@@ -1,5 +1,17 @@
 # channel-lab-a Hysteria2 Mihomo Import Validation Record
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: channel_lab_a_hysteria2_mihomo_import_validation
+  superseded_by: null
+  last_verified_at: 2026-05-26
+  production_authority: false
+```
+
+
 Date: 2026-05-26, Asia/Shanghai.
 
 Risk:

@@ -1,5 +1,17 @@
 # Aliyun HP Management Source Firewall Execution Record
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_hp_management_source_firewall_execution
+  superseded_by: null
+  last_verified_at: 2026-05-27
+  production_authority: false
+```
+
+
 Date: 2026-05-27, Asia/Shanghai.
 
 ## Status

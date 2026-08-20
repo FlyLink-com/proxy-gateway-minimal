@@ -1,5 +1,17 @@
 # Production Replacement: Legacy Blue Fresh Backup And prod-edge-a Restore
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: legacy_blue_fresh_backup_restore
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24 16:52-17:09 +08:00
 
 Branch: `ops/legacy-blue-fresh-backup-restore`

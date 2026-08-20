@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-03, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: user_portal_human_challenge_design
+  superseded_by: null
+  last_verified_at: 2026-06-03
+  production_authority: false
+```
+
+
 This document defines the backend human-verification design for the customer
 portal. It is a design contract only. It does not expose a public portal, enable
 production password login, activate email-code login, add a CAPTCHA provider

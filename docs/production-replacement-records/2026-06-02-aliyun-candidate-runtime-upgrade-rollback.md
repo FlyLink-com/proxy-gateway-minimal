@@ -1,5 +1,17 @@
 # Aliyun Candidate Runtime Upgrade Rollback
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_candidate_runtime_upgrade_rollback
+  superseded_by: null
+  last_verified_at: 2026-06-02
+  production_authority: false
+```
+
+
 Date: 2026-06-02, Asia/Shanghai.
 
 ## Status

@@ -2,6 +2,17 @@
 
 Last updated: 2026-07-07, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: partner_attribution_settlement_architecture
+  superseded_by: null
+  last_verified_at: 2026-07-07
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active architecture and task-line baseline
 > - Risk: C for this document

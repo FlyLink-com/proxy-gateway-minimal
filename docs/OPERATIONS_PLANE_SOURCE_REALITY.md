@@ -1,5 +1,18 @@
 # Operations Plane Source Reality
 
+Last updated: 2026-08-09.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: operations_plane_source_reality
+  superseded_by: null
+  last_verified_at: 2026-08-09
+  production_authority: false
+```
+
+
 > Status:
 > - GitHub: #561 under #557
 > - Source evidence cutoff: `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`

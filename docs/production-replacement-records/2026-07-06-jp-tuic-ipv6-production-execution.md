@@ -1,5 +1,17 @@
 # 2026-07-06 JP TUIC IPv6 Production Execution
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: jp_tuic_ipv6_production_execution
+  superseded_by: null
+  last_verified_at: 2026-07-06
+  production_authority: false
+```
+
+
 ## Scope
 
 - Risk: A

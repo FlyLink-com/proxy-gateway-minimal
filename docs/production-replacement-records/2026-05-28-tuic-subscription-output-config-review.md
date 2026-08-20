@@ -1,5 +1,17 @@
 # TUIC Subscription Output Config Review
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: tuic_subscription_output_config_review
+  superseded_by: null
+  last_verified_at: 2026-05-28
+  production_authority: false
+```
+
+
 Date: 2026-05-28, Asia/Shanghai.
 
 Risk:

@@ -1,5 +1,18 @@
 # Domain Implementation Index
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: active
+  authority_scope: domain_implementation_index
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
 | `docs/domain-implementation-records/2026-05-24-stage0-preflight.md` | Read-only DNS/domain Stage 0 preflight facts. | Execution record; historical facts for the named date. | Read before requesting Gate 1 DNS/domain implementation approval. |

@@ -1,5 +1,17 @@
 # Aliyun Promotion Runbook Readiness
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_promotion_runbook_readiness
+  superseded_by: null
+  last_verified_at: 2026-05-27
+  production_authority: false
+```
+
+
 Date: 2026-05-27, Asia/Shanghai.
 
 Risk: C docs-only runbook readiness record.

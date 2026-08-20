@@ -1,5 +1,17 @@
 # Traffic Usage VLESS Xray Stats Runtime Execution - 2026-07-07
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_usage_vless_xray_stats_runtime_execution
+  superseded_by: null
+  last_verified_at: 2026-07-07
+  production_authority: false
+```
+
+
 ## Approval
 
 - Approval ref: `traffic-usage-vless-xray-stats-runtime-20260707`

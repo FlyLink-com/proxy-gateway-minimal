@@ -1,5 +1,17 @@
 # Opaque Artifact Issuance Execution Record
 
+
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: opaque_artifact_issuance_execution_template
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 Date: YYYY-MM-DD
 Timezone: Asia/Shanghai
 

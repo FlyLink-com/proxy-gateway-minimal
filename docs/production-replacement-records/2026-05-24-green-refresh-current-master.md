@@ -1,5 +1,17 @@
 # Production Replacement: Green Refresh To Current Master
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: green_refresh_current_master
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24 05:20-05:32 +08:00
 
 Branch: `ops/green-refresh-current-master`

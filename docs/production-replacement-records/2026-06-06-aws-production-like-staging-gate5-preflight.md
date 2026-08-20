@@ -1,5 +1,17 @@
 # AWS Production-Like Staging Gate 5 Preflight
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aws_production_like_staging_gate5_preflight
+  superseded_by: null
+  last_verified_at: 2026-06-06
+  production_authority: false
+```
+
+
 Date: 2026-06-06, Asia/Shanghai.
 
 Risk: A.

@@ -1,5 +1,17 @@
 # Traffic Usage Other Protocols Read-Only Inventory
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: traffic_usage_other_protocols_readonly_inventory
+  superseded_by: null
+  last_verified_at: 2026-07-07
+  production_authority: false
+```
+
+
 Date: 2026-07-07 UTC
 
 Risk: A

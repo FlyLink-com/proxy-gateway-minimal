@@ -2,6 +2,17 @@
 
 Last updated: 2026-07-07, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: production_edge_fleet_plan
+  superseded_by: null
+  last_verified_at: 2026-07-07
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active planning document
 > - Risk: A

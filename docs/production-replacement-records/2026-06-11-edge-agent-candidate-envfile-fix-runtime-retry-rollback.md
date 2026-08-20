@@ -1,5 +1,17 @@
 # Edge-Agent Candidate Envfile Fix Runtime Retry Rollback
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: edge_agent_candidate_envfile_fix_runtime_retry_rollback
+  superseded_by: null
+  last_verified_at: 2026-06-11
+  production_authority: false
+```
+
+
 Date: 2026-06-11
 
 Risk: A

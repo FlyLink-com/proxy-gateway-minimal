@@ -2,6 +2,16 @@
 
 Date: 2026-05-25, Asia/Shanghai
 
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: production_incident_records_2026_05_25_prod_edge_a_timeout_packetloss_preflight
+  superseded_by: null
+  last_verified_at: 2026-05-25
+  production_authority: false
+```
+
 Branch: `ops/prod-edge-a-timeout-packetloss-preflight`
 
 Approval:

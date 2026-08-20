@@ -1,5 +1,17 @@
 # Aliyun Clean-Start Private Validation Runbook
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_clean_start_private_validation_runbook
+  superseded_by: null
+  last_verified_at: 2026-05-27
+  production_authority: false
+```
+
+
 Date: 2026-05-27, Asia/Shanghai.
 
 ## Status

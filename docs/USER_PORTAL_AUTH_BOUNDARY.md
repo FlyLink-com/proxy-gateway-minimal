@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-03, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: user_portal_auth_boundary
+  superseded_by: null
+  last_verified_at: 2026-06-03
+  production_authority: false
+```
+
+
 This document defines the customer-portal authentication boundary for the
 provider-neutral subscription-control platform, currently documented toward the Vultr Japan control-plane direction. It is a repository design contract
 only. It does not deploy a portal, expose a public login endpoint, create DNS or

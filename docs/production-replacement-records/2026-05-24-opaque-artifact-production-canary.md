@@ -1,5 +1,17 @@
 # Production Replacement: Opaque Artifact Production Canary
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: opaque_artifact_production_canary
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24 22:30-22:48 +08:00
 
 Branch: `ops/opaque-artifact-production-canary`

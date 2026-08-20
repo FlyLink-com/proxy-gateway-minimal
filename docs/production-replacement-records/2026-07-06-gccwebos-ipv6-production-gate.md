@@ -1,5 +1,17 @@
 # gccwebos IPv6 Production Gate
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: gccwebos_ipv6_production_gate
+  superseded_by: null
+  last_verified_at: 2026-07-06
+  production_authority: false
+```
+
+
 Date: 2026-07-06.
 
 Risk tier: A production DNS/Nginx network change.

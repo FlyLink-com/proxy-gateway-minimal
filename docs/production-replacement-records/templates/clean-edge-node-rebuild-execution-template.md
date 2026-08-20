@@ -1,5 +1,17 @@
 # Clean Edge Node Rebuild Execution Record
 
+
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: clean_edge_node_rebuild_execution_template
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 Date: YYYY-MM-DD, Asia/Shanghai.
 
 ## Status

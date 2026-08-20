@@ -1,5 +1,17 @@
 # Aliyun Non-Website Service Cleanup Record
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: aliyun_non_website_cleanup
+  superseded_by: null
+  last_verified_at: 2026-06-06
+  production_authority: false
+```
+
+
 Date: 2026-06-06, Asia/Shanghai.
 
 This record captures the approved Aliyun cleanup that leaves only the public

@@ -1,5 +1,17 @@
 # Production Replacement: prod-edge-a Production MVP Activation
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: prod_edge_a_production_activation
+  superseded_by: null
+  last_verified_at: 2026-05-24
+  production_authority: false
+```
+
+
 Date: 2026-05-24 17:30-17:44 +08:00
 
 Branch: `ops/prod-edge-a-production-activation`

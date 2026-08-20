@@ -1,5 +1,17 @@
 # Vultr Independent Candidate Deployment Record
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: vultr_independent_candidate_deployment
+  superseded_by: null
+  last_verified_at: 2026-06-06
+  production_authority: false
+```
+
+
 Date: 2026-06-06
 
 ## Scope

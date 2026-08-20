@@ -2,6 +2,17 @@
 
 Last updated: 2026-05-31, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: project_operating_model
+  superseded_by: null
+  last_verified_at: 2026-05-31
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active operating model
 > - Risk: C

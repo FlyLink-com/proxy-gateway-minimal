@@ -2,6 +2,17 @@
 
 Last updated: 2026-06-15, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: branch_and_service_operating_model
+  superseded_by: null
+  last_verified_at: 2026-06-15
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active operating model
 > - Risk: C

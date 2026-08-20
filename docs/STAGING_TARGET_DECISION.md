@@ -2,6 +2,17 @@
 
 Last updated: 2026-07-14, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: staging_target_decision
+  superseded_by: null
+  last_verified_at: 2026-07-14
+  production_authority: false
+```
+
+
 > Status:
 > - Type: Active conditional guard with historical AWS inventory
 > - Risk: A for any future provider action

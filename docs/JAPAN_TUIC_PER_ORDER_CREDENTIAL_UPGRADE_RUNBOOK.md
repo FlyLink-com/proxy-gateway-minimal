@@ -1,5 +1,18 @@
 # Japan TUIC Per-Order Credential Upgrade Implementation Plan
 
+Last updated: 2026-08-16.
+
+```yaml
+document_metadata:
+  doc_type: operational
+  lifecycle: active
+  authority_scope: japan_tuic_per_order_credential_upgrade
+  superseded_by: null
+  last_verified_at: 2026-08-16
+  production_authority: false
+```
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use

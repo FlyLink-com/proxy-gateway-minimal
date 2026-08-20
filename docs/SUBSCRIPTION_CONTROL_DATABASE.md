@@ -2,6 +2,17 @@
 
 Last updated: 2026-07-31, Asia/Shanghai.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: subscription_control_database
+  superseded_by: null
+  last_verified_at: 2026-07-31
+  production_authority: false
+```
+
+
 This document defines the repository-local business-control database layer for
 subscription operations. It is separate from the existing technical
 subscription runtime store that holds tenant and opaque artifact state.

@@ -1,5 +1,17 @@
 # 2026-07-06 Globalcirclecat Full Retirement Task
 
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: globalcirclecat_full_retirement_task
+  superseded_by: null
+  last_verified_at: 2026-07-06
+  production_authority: false
+```
+
+
 ## Status
 
 - Risk: A
