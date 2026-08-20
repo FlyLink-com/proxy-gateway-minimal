@@ -487,7 +487,7 @@ export function verifyDependencyArtifact({ manifestBytes, archivePath, packageJs
   return Object.freeze({ schemaVersion: DEPENDENCY_ARTIFACT_SCHEMA_VERSION, type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: DEPENDENCY_ARTIFACT_RELEASE_UNIT, sourceCommit: manifest.value.sourceCommit, artifactRelease: manifest.value.artifactRelease, manifestSha256: manifest.sha256, manifestSizeBytes: manifest.sizeBytes, archive, tree, smoke });
 }
 
-export function buildDependencyArtifactManifest({ sourceCommit, artifactRelease, packageJsonBytes, packageLockBytes, archivePath, root, snapshotModule = "scripts/control-plane-db-snapshot-gate.mjs", runtime = {}, createdAt = new Date().toISOString() } = {}) {
+export function buildDependencyArtifactManifest({ sourceCommit, artifactRelease, packageJsonBytes, packageLockBytes, archivePath, root, snapshotModule = "scripts/control-plane-db-snapshot-gate.mjs", runtime = {} } = {}) {
   if (process.platform !== "linux") fail("unsupported_platform");
   if (!COMMIT.test(sourceCommit || "") || !RELEASE.test(artifactRelease || "")) fail("dependency_artifact_invalid");
   const packageDigest = { sha256: hashBytes(packageJsonBytes), sizeBytes: packageJsonBytes?.length };
