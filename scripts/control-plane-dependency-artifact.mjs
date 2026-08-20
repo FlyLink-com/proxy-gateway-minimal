@@ -25,6 +25,10 @@ const MAX_TREE_ENTRIES = 250000;
 const MAX_TREE_BYTES = 2 * 1024 * 1024 * 1024;
 const CHUNK = 64 * 1024;
 const CLEAN_ENV = Object.freeze({ PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" });
+const ARCHIVE_LIST = String.raw`import os,sys,tarfile
+with tarfile.open(sys.argv[1],"r:*") as archive:
+  for member in archive.getmembers():
+    sys.stdout.buffer.write(os.fsencode(member.name)+b"\0")`;
 
 export class DependencyArtifactError extends Error {
   constructor(condition, attentionRequired = false) {
@@ -279,7 +283,7 @@ function archiveMetadata(path, manifest, supplied) {
   const digest = sha256File(path, MAX_ARCHIVE_BYTES);
   if (digest.sha256 !== manifest.value.archive.sha256 || digest.sizeBytes !== metadata.size) fail("dependency_archive_mismatch");
   const listing = typeof supplied.listArchive === "function" ? supplied.listArchive(path) : (() => {
-    const result = spawnSync(supplied.tarPath || "/usr/bin/tar", ["--list", "--file", path, "--null"], { env: CLEAN_ENV, encoding: null, maxBuffer: 32 * 1024 * 1024 });
+    const result = spawnSync(supplied.pythonPath || "/usr/bin/python3", ["-I", "-S", "-c", ARCHIVE_LIST, path], { env: CLEAN_ENV, encoding: null, maxBuffer: 32 * 1024 * 1024 });
     if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) fail("dependency_archive_invalid");
     return result.stdout;
   })();
