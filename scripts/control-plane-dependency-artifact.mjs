@@ -83,6 +83,7 @@ with tarfile.open(archive_path,'r:*') as archive:
     reject()
   os.mkdir(destination,0o700)
   tree=os.path.join(destination,'node_modules')
+  os.mkdir(tree,0o700)
   phase='directories'
   dirs=sorted((name for name,(kind,_,_) in records.items() if kind=='d'),key=lambda value:(value.count('/'),value))
   for name in dirs:
