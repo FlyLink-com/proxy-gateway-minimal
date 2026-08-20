@@ -71,6 +71,7 @@ jobs:
             --group=0 \
             --numeric-owner \
             --hard-dereference \
+            --pax-option=delete=atime,delete=ctime,delete=SCHILY.dev,delete=SCHILY.ino,delete=SCHILY.nlink \
             -- node_modules
           tar \
             --create \
@@ -82,6 +83,7 @@ jobs:
             --group=0 \
             --numeric-owner \
             --hard-dereference \
+            --pax-option=delete=atime,delete=ctime,delete=SCHILY.dev,delete=SCHILY.ino,delete=SCHILY.nlink \
             -- node_modules
           test "$(sha256sum .dependency-artifacts/node-modules-a.tar | cut -d' ' -f1)" = "$(sha256sum .dependency-artifacts/node-modules-b.tar | cut -d' ' -f1)"
           cmp --silent .dependency-artifacts/node-modules-a.tar .dependency-artifacts/node-modules-b.tar

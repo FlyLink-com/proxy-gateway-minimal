@@ -222,6 +222,7 @@ test("Ubuntu workflow is a CI artifact producer, not a production builder", () =
   assert.match(workflow, /--mode build/);
   assert.match(workflow, /--mode verify/);
   assert.match(workflow, /--hard-dereference/);
+  assert.match(workflow, /--pax-option=delete=atime,delete=ctime,delete=SCHILY\.dev,delete=SCHILY\.ino,delete=SCHILY\.nlink/);
   assert.match(workflow, /node-modules-a\.tar/);
   assert.match(workflow, /node-modules-b\.tar/);
   assert.match(workflow, /cmp --silent/);
