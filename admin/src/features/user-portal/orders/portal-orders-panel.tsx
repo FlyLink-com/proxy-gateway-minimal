@@ -359,6 +359,7 @@ function allocationLabel(
     .join(" + ");
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- identity comparison helper exported alongside components for tree-shake-friendly use by other panels and tests
 export function portalOrdersIdentityMatches(
   left: PortalOrdersIdentity,
   right: PortalOrdersIdentity

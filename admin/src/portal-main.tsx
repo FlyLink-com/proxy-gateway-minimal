@@ -36,6 +36,7 @@ const {
   (import.meta as PortalImportMeta).env.VITE_PORTAL_RECHARGE_CONFIG_BINDING,
 );
 
+// eslint-disable-next-line react-refresh/only-export-components -- portal entry-point bootstrap; component is mounted once and not a Fast Refresh target
 function PortalOnlyApp() {
   const portalClient = useMemo(() => createHttpUserPortalClient({
     rechargeTrustedActionOriginsJson,

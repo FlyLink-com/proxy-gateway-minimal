@@ -33,6 +33,7 @@ export function DashboardPage({
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- blueprint factory imported by ~8 test files and the search-results page; extraction would churn test imports
 export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPage {
   return {
     page: "dashboard",
