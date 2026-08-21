@@ -29,7 +29,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createDiagnosticsObserver } from "../../scripts/control-plane-materializer-a3-physical-validation-diagnostics.mjs";
-import { runA3PhysicalValidationCli } from "../../scripts/control-plane-materializer-a3-physical-validation.mjs";
+import {
+  runA3PhysicalValidationCli,
+  runA3PhysicalValidationCore
+} from "../../scripts/control-plane-materializer-a3-physical-validation.mjs";
 import { runCandidateDependencyA3PhysicalValidation } from "../../scripts/control-plane-candidate-dependency-gate.mjs";
 
 function withDiagnosticsDir(callback) {
@@ -478,7 +481,7 @@ test("runA3PhysicalValidationCli preserves the original stdout/stderr JSON schem
   });
 });
 
-test("runA3PhysicalValidationCli ignores an unobtainable diagnostics file path", async () => {
+test("runA3PhysicalValidationCli refuses before collector when diagnostics file path is unobtainable", async () => {
   await withDiagnosticsDir(async (directory) => {
     const sinkDir = join(directory, "sink");
     mkdirSync(sinkDir);
@@ -490,8 +493,18 @@ test("runA3PhysicalValidationCli ignores an unobtainable diagnostics file path",
     const result = captureCli({ env });
     assert.equal(result.code, 1);
     assert.equal(result.stdout, "");
+    // Iteration 7: pre-collector sink bind runs BEFORE the collector.
+    // When the diagnostics FILE's parent directory is missing, the CLI
+    // must refuse the entire run (collector never executes) and emit
+    // a diagnostics_gate condition describing the bind failure.
     const firstLine = result.stderr.trim().split(/\r?\n/)[0];
-    assert.equal(JSON.parse(firstLine).condition, "invalid_input");
+    const gate = JSON.parse(firstLine);
+    assert.equal(gate.type, "control_plane_materializer_a3_physical_validation_diagnostics_gate");
+    assert.equal(gate.state, "diagnostics_unpublished");
+    assert.equal(typeof gate.condition, "string");
+    assert.notEqual(gate.condition, "invalid_input");
+    assert.ok(/diagnostics_(parent_dir_missing|sink_root_invalid|parent_path_not_in_sink_root|file_path_invalid|file_outside_sink_root)/.test(gate.condition),
+      `unexpected condition: ${gate.condition}`);
   });
 });
 
@@ -917,5 +930,250 @@ test("[iteration 6] observer refuses publish when an ancestor above sinkRoot is 
     assert.equal(status.observerError.includes("diagnostics_ancestor_chain_unsafe"), true,
       `expected ancestor-chain refusal, got: ${status.observerError}`);
     assert.equal(exists(filePath), false);
+  });
+});
+
+// ----------------------------------------------------------------------------
+// Iteration 7 tests
+//
+// P1a: diagnostics sink binding MUST happen BEFORE the collector runs.
+// P1b: Linux path MUST require UID + ENFORCE_OWNED_ROOT.
+// P2:  real public-CLI E2E drives `runA3PhysicalValidationCore` with a
+//      stubbed `runCollector`, not a direct observer call.
+// ----------------------------------------------------------------------------
+
+test("[iteration 7] core refuses BEFORE collector runs when diagnostics sink bind fails", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: join(directory, "does-not-exist", "diagnostics.jsonl"),
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
+    };
+    let collectorInvoked = false;
+    const result = runA3PhysicalValidationCore({
+      argv: ["--mode", "quota", "--run-label", "probe-1", "--project-id", "4242"],
+      stdout: { write() {} },
+      stderr: { write() {} },
+      env,
+      platform: process.platform,
+      runCollector: () => { collectorInvoked = true; return {}; }
+    });
+    assert.equal(collectorInvoked, false,
+      "collector must NOT run when pre-collector sink bind fails");
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.diagnosticsPublished, false);
+  });
+});
+
+test("[iteration 7] Linux platform without UID is fail-closed", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: join(sinkDir, "diagnostics.jsonl"),
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir,
+      A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT: "1"
+      // intentionally no UID
+    };
+    let stderrText = "";
+    const result = runA3PhysicalValidationCore({
+      argv: ["--mode", "quota", "--run-label", "probe-1", "--project-id", "4242"],
+      stdout: { write() {} },
+      stderr: { write(value) { stderrText += value; } },
+      env,
+      platform: "linux",
+      runCollector: () => { throw new Error("collector must NOT be reached"); }
+    });
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.diagnosticsPublished, false);
+    const lines = stderrText.trim().split(/\r?\n/);
+    const gate = JSON.parse(lines[0]);
+    assert.equal(gate.type, "control_plane_materializer_a3_physical_validation_diagnostics_gate");
+    assert.equal(gate.state, "diagnostics_unpublished");
+    assert.equal(gate.condition, "diagnostics_linux_uid_required");
+  });
+});
+
+test("[iteration 7] Linux platform refuses when ENFORCE_OWNED_ROOT is unset", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: join(sinkDir, "diagnostics.jsonl"),
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir,
+      A3_PHYSICAL_DIAGNOSTICS_UID: "0"
+      // ENFORCE_OWNED_ROOT intentionally unset -> Linux platform
+      // must force ENFORCE_OWNED_ROOT=true; this gate runs before UID
+      // so the visible condition is diagnostics_linux_custody_required.
+    };
+    let stderrText = "";
+    const result = runA3PhysicalValidationCore({
+      argv: ["--mode", "quota", "--run-label", "probe-1", "--project-id", "4242"],
+      stdout: { write() {} },
+      stderr: { write(value) { stderrText += value; } },
+      env,
+      platform: "linux",
+      runCollector: () => { throw new Error("collector must NOT be reached"); }
+    });
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.diagnosticsPublished, false);
+    const gate = JSON.parse(stderrText.trim().split(/\r?\n/)[0]);
+    assert.equal(gate.condition, "diagnostics_linux_custody_required");
+  });
+});
+
+test("[iteration 7] Linux platform forces ENFORCE_OWNED_ROOT even when caller sets it false", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: join(sinkDir, "diagnostics.jsonl"),
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir,
+      A3_PHYSICAL_DIAGNOSTICS_UID: "0",
+      A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT: "0"
+    };
+    // Even with ENFORCE_OWNED_ROOT=0 in env, Linux platform MUST force
+    // ENFORCE_OWNED_ROOT=true (only the failing-Linux-uid path is
+    // exercised here; on a real Linux host the fd-based sink root check
+    // would also run).
+    let stderrText = "";
+    const result = runA3PhysicalValidationCore({
+      argv: ["--mode", "quota", "--run-label", "probe-1", "--project-id", "4242"],
+      stdout: { write() {} },
+      stderr: { write(value) { stderrText += value; } },
+      env,
+      platform: "linux",
+      runCollector: () => ({ condition: "should_not_run" })
+    });
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.diagnosticsPublished, false);
+  });
+});
+
+test("[iteration 7] core refuses BEFORE collector runs when diagnostics sink file already exists", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const filePath = join(sinkDir, "diagnostics.jsonl");
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
+    };
+    // Pre-create the diagnostics file. prepareDiagnosticsSink uses
+    // O_EXCL and will refuse — collector MUST NOT run.
+    writeFileSync(filePath, "PRE-EXISTING");
+    let collectorInvoked = false;
+    let stderrText = "";
+    const result = runA3PhysicalValidationCore({
+      argv: ["--mode", "quota", "--run-label", "probe-1", "--project-id", "4242"],
+      stdout: { write() {} },
+      stderr: { write(value) { stderrText += value; } },
+      env,
+      platform: process.platform,
+      runCollector: () => { collectorInvoked = true; return { condition: "should_not_run" }; }
+    });
+    assert.equal(collectorInvoked, false,
+      "collector must NOT run when pre-collector sink bind refuses");
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.diagnosticsPublished, false);
+    const gate = JSON.parse(stderrText.trim().split(/\r?\n/)[0]);
+    assert.equal(gate.type, "control_plane_materializer_a3_physical_validation_diagnostics_gate");
+    assert.equal(gate.state, "diagnostics_unpublished");
+    assert.equal(typeof gate.condition, "string");
+  });
+});
+
+test("[iteration 7] real public-CLI E2E drives the full quota argv through runA3PhysicalValidationCore", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const filePath = join(sinkDir, "diagnostics.jsonl");
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
+    };
+    // Inject a fake collector that exercises the real
+    // `observePhysicalCommand` hook the core forwards. We do NOT call
+    // createDiagnosticsObserver directly; the core creates it.
+    let hookReceived = false;
+    const fakeCollector = (request) => {
+      const observer = request.overrides?.observePhysicalCommand;
+      if (typeof observer === "function") {
+        observer({
+          command: "/usr/sbin/xfs_quota",
+          args: ["-x", "-c", "report -p", "/var/sandbox"],
+          status: 0,
+          stdout: "Project ID   Used   Soft   Hard Warn/Grace\n4242 0 1024 1024 00 [--------]\n",
+          stderr: "",
+          error: null,
+          condition: "ok",
+          elapsedMs: 11.7
+        });
+        hookReceived = true;
+      }
+      return { condition: "storage_quota_evidence_valid", projectId: 4242 };
+    };
+    let stdoutText = "", stderrText = "";
+    const result = runA3PhysicalValidationCore({
+      argv: ["--mode", "quota", "--run-label", "probe-cli-e2e", "--project-id", "4242"],
+      stdout: { write(value) { stdoutText += value; } },
+      stderr: { write(value) { stderrText += value; } },
+      env,
+      platform: process.platform,
+      runCollector: fakeCollector
+    });
+    assert.equal(hookReceived, true, "core must forward observePhysicalCommand to runCollector");
+    assert.equal(result.exitCode, 0, "happy-path run with successful diagnostics must exit 0");
+    assert.equal(result.diagnosticsPublished, true);
+    // Stdout: collector receipt
+    const receipt = JSON.parse(stdoutText.trim().split(/\r?\n/)[0]);
+    assert.equal(receipt.condition, "storage_quota_evidence_valid");
+    // Diagnostics file: real observer output + integrity footer
+    const body = readFileSync(filePath, "utf8").trim().split(/\r?\n/);
+    assert.equal(body.length, 2);
+    const record = JSON.parse(body[0]);
+    assert.equal(record.command, "/usr/sbin/xfs_quota");
+    // Math.round(11.7) === 12; the observer normalises sub-ms floats.
+    assert.equal(record.elapsedMs, 12);
+    const footer = JSON.parse(body[1]);
+    assert.equal(footer.type, "control_plane_materializer_a3_physical_validation_diagnostics_integrity");
+    assert.equal(footer.recordCount, 1);
+  });
+});
+
+test("[iteration 7] real public-CLI E2E refuses before collector when diagnostics sink file already exists", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const filePath = join(sinkDir, "diagnostics.jsonl");
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
+    };
+    writeFileSync(filePath, "PRE-EXISTING");
+    let collectorInvoked = false;
+    let stderrText = "";
+    const result = runA3PhysicalValidationCore({
+      argv: ["--mode", "quota", "--run-label", "probe-cli-fail", "--project-id", "4242"],
+      stdout: { write() {} },
+      stderr: { write(value) { stderrText += value; } },
+      env,
+      platform: process.platform,
+      runCollector: () => { collectorInvoked = true; return { condition: "should_not_run" }; }
+    });
+    assert.equal(collectorInvoked, false);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.diagnosticsPublished, false);
+    const gate = JSON.parse(stderrText.trim().split(/\r?\n/)[0]);
+    assert.equal(gate.type, "control_plane_materializer_a3_physical_validation_diagnostics_gate");
+    assert.equal(gate.state, "diagnostics_unpublished");
   });
 });

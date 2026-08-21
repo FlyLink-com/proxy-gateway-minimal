@@ -17,10 +17,23 @@
 //   A3_PHYSICAL_DIAGNOSTICS=1                              (REQUIRED: enable)
 //   A3_PHYSICAL_DIAGNOSTICS_FILE=/path/to/diagnostics.jsonl (REQUIRED: sink file path)
 //   A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT=/controlled/absolute/root   (REQUIRED when diagnostics is enabled)
-//   A3_PHYSICAL_DIAGNOSTICS_UID=<non-negative integer>      (recommended on hardened hosts)
-//   A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT=1            (opt-in to require uid + mode & 0022 == 0)
+//   A3_PHYSICAL_DIAGNOSTICS_UID=<non-negative integer>      (REQUIRED on Linux when diagnostics enabled)
+//   A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT=1            (FORCED ON Linux when diagnostics enabled)
 //   A3_PHYSICAL_DIAGNOSTICS_MAX_BYTES=65536    (optional, default 65536)
 //   A3_PHYSICAL_DIAGNOSTICS_PREVIEW_BYTES=256  (optional, default 256)
+//
+// Linux hardening (iteration 7): on the privileged Linux path, when
+// `A3_PHYSICAL_DIAGNOSTICS=1`, the runner enforces:
+//   - absolute FILE inside SINK_ROOT (parent must exist)
+//   - SINK_ROOT, UID, and ENFORCE_OWNED_ROOT must all be set
+//   - sink bind runs BEFORE the collector is invoked
+//   - on bind failure the runner exits 1 with a diagnostics_gate line
+//     and the collector NEVER runs
+//   - on flush failure (after collector) the runner ALSO exits 1;
+//     successful collector + failed diagnostics = failed run
+//   - the sink itself is verified via an O_DIRECTORY|O_NOFOLLOW fd
+//     (fstat on the fd), not via path re-stat, closing the
+//     `lstat -> open` TOCTOU window.
 //
 // The hardened parent-chain check is in TWO layers:
 //   1. verifyAncestorChain(rootAbs): walks the path components from
@@ -78,6 +91,7 @@
 import { createHash } from "node:crypto";
 import {
   closeSync,
+  existsSync,
   fstatSync,
   fsyncSync,
   lstatSync,
@@ -342,6 +356,168 @@ function verifyParentChain(rootAbs, targetParent, expectedUid, { enforceOwnedRoo
   }
 }
 
+// Verify the sink root itself by opening it with O_DIRECTORY | O_NOFOLLOW
+// and using fstat on the resulting fd. This defeats the
+// `lstat(path) -> open(path)` TOCTOU window on Linux where a junction
+// or bind mount could be swapped in between the path-based check and
+// the open syscall. The fd check is on the live inode, not a path.
+//
+// Throws DIAGNOSTICS_PARENT_CHAIN_UNSAFE on any failure.
+function verifySinkRootViaFd(sinkRoot, expectedUid, { enforceOwnedRoot = false } = {}) {
+  let fd = null;
+  try {
+    fd = openSync(
+      sinkRoot,
+      fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW
+    );
+  } catch (error) {
+    const wrapped = new Error(
+      `diagnostics_sink_root_open_failed: ${sinkRoot} (${error?.code ?? error?.message ?? error})`
+    );
+    wrapped.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+    wrapped.cause = error;
+    throw wrapped;
+  }
+  try {
+    const st = fstatSync(fd);
+    if (!st.isDirectory()) {
+      const wrapped = new Error(
+        `diagnostics_sink_root_open_failed: ${sinkRoot} is not a directory (mode=${st.mode.toString(8)})`
+      );
+      wrapped.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+      throw wrapped;
+    }
+    if (enforceOwnedRoot) {
+      if ((st.mode & 0o022) !== 0) {
+        const wrapped = new Error(
+          `diagnostics_sink_root_open_failed: ${sinkRoot} is group/other-writable (mode=${st.mode.toString(8)})`
+        );
+        wrapped.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+        throw wrapped;
+      }
+      if (typeof expectedUid !== "number" || expectedUid < 0 || st.uid !== expectedUid) {
+        const wrapped = new Error(
+          `diagnostics_sink_root_open_failed: ${sinkRoot} owned by uid=${st.uid}, expected ${expectedUid}`
+        );
+        wrapped.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+        throw wrapped;
+      }
+    } else if (typeof expectedUid === "number" && expectedUid >= 0 && st.uid !== expectedUid) {
+      const wrapped = new Error(
+        `diagnostics_sink_root_open_failed: ${sinkRoot} owned by uid=${st.uid}, expected ${expectedUid}`
+      );
+      wrapped.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+      throw wrapped;
+    }
+  } finally {
+    if (fd !== null) try { closeSync(fd); } catch { /* */ }
+  }
+}
+
+// Prepare the diagnostics sink BEFORE any collector work runs. This is
+// the iteration 7 pre-collector gate: when the runner enables
+// diagnostics, it must successfully bind the sink (open the final
+// file with O_EXCL | O_NOFOLLOW and verify the entire parent chain
+// including the sink root via an fd-based fstat) before the collector
+// is invoked. If any step fails, the runner refuses with a
+// `diagnostics_*` gate line on stderr and the collector NEVER runs.
+//
+// Returns a frozen handle that the observer's flush() will write
+// through. The fd is held open across the collector run so that a
+// racing attacker cannot swap the path between bind and publish.
+export function prepareDiagnosticsSink({
+  filePath,
+  sinkRoot,
+  uid = null,
+  enforceOwnedRoot = false
+} = {}) {
+  if (typeof filePath !== "string" || filePath.length === 0) {
+    const err = new Error("diagnostics_invalid_file_path");
+    err.code = "DIAGNOSTICS_INVALID_CONFIG";
+    throw err;
+  }
+  if (!isAbsolute(filePath)) {
+    const err = new Error("diagnostics_file_not_absolute");
+    err.code = "DIAGNOSTICS_INVALID_CONFIG";
+    throw err;
+  }
+  if (typeof sinkRoot !== "string" || sinkRoot.length === 0) {
+    const err = new Error("diagnostics_invalid_sink_root");
+    err.code = "DIAGNOSTICS_INVALID_CONFIG";
+    throw err;
+  }
+  if (!isAbsolute(sinkRoot)) {
+    const err = new Error("diagnostics_invalid_sink_root");
+    err.code = "DIAGNOSTICS_INVALID_CONFIG";
+    throw err;
+  }
+  const finalPath = resolvePath(filePath);
+  const resolvedRoot = resolvePath(sinkRoot);
+  const rootWithSep = resolvedRoot.endsWith(pathSep) ? resolvedRoot : resolvedRoot + pathSep;
+  if (finalPath !== resolvedRoot && !finalPath.startsWith(rootWithSep)) {
+    const err = new Error("diagnostics_file_outside_sink_root");
+    err.code = "DIAGNOSTICS_INVALID_CONFIG";
+    throw err;
+  }
+  const parentDir = dirname(finalPath);
+  // Pre-flight: parent directory must already exist as a real dir. We
+  // do not create it and we do not tolerate a symlink in its place.
+  let parentLstat;
+  try {
+    parentLstat = lstatSync(parentDir);
+  } catch (lstatErr) {
+    const err = new Error(
+      `diagnostics_parent_dir_missing: ${parentDir} (${lstatErr?.code ?? lstatErr?.message ?? "lstat_failed"})`
+    );
+    err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+    throw err;
+  }
+  if (!parentLstat.isDirectory() || parentLstat.isSymbolicLink()) {
+    const err = new Error(
+      `diagnostics_parent_dir_missing: ${parentDir} is not a directory`
+    );
+    err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+    throw err;
+  }
+  // Layer 1: verify the ANCESTOR chain above the sink root (every
+  // component from the trusted FS anchor down to sinkRoot is a real
+  // directory, no symlink/junction).
+  verifyAncestorChain(resolvedRoot, uid, { enforceOwnedRoot });
+  // Layer 2: verify the PARENT chain from sinkRoot down to the sink's
+  // immediate parent (every segment including sinkRoot itself is a
+  // real directory, optionally owned by expectedUid, optionally with
+  // group/other-write disabled).
+  verifyParentChain(resolvedRoot, parentDir, uid, { enforceOwnedRoot });
+  // Layer 3 (Linux hardening): fstat the sink root via an
+  // O_DIRECTORY|O_NOFOLLOW fd to defeat the lstat->open race.
+  if (enforceOwnedRoot) {
+    verifySinkRootViaFd(resolvedRoot, uid, { enforceOwnedRoot: true });
+  }
+  // Layer 4: open the final file with O_EXCL | O_NOFOLLOW | O_RDWR |
+  // O_CREAT. The fd is held open across the collector run.
+  const fd = openSync(
+    finalPath,
+    fsConstants.O_RDWR | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW,
+    0o600
+  );
+  const preWriteStat = fstatSync(fd);
+  return {
+    fd,
+    finalPath,
+    parentDir,
+    sinkRoot: resolvedRoot,
+    preWriteStat: {
+      dev: preWriteStat.dev,
+      ino: preWriteStat.ino,
+      mode: preWriteStat.mode,
+      uid: preWriteStat.uid,
+      size: preWriteStat.size
+    }
+    // Intentionally NOT frozen: createDiagnosticsObserver attaches an
+    // onFdReleased hook and publishOnce mutates state on this object.
+  };
+}
+
 // Publish the body to a brand-new file. No-replace, no pre-existing-
 // file mutation, no symlink substitution at the final path or any
 // parent directory segment (including the sink root itself).
@@ -382,7 +558,77 @@ function verifyParentChain(rootAbs, targetParent, expectedUid, { enforceOwnedRoo
 //     bytes that landed on disk do not match the bytes we wrote. The
 //     file is left in place so an operator can forensic-inspect it;
 //     no path-based cleanup runs.
-function publishOnce(filePath, body, { sinkRoot, uid, enforceOwnedRoot = false } = {}) {
+function publishOnce(filePath, body, { sinkRoot, uid, enforceOwnedRoot = false, preBoundSink = null } = {}) {
+  // Iteration 7: if a pre-bound sink is provided (from
+  // prepareDiagnosticsSink), write through its held fd and reuse its
+  // verified finalPath/parentDir. We MUST NOT call openSync again on
+  // the path because that would close the original fd and reopen —
+  // re-opening after pre-bind defeats the TOCTOU guard.
+  if (preBoundSink) {
+    const fd = preBoundSink.fd;
+    const preWriteStat = preBoundSink.preWriteStat;
+    let alreadyClosed = false;
+    const closeAndClear = () => {
+      if (alreadyClosed) return;
+      alreadyClosed = true;
+      try { closeSync(fd); } catch { /* */ }
+      if (typeof preBoundSink.onFdReleased === "function") {
+        try { preBoundSink.onFdReleased(); } catch { /* */ }
+      }
+    };
+    try {
+      writeSync(fd, body);
+      fsyncSync(fd);
+      // Custody readback on the SAME fd.
+      const expectedBytes = Buffer.byteLength(body, "utf8");
+      const buffer = Buffer.allocUnsafe(expectedBytes);
+      let totalRead = 0;
+      while (totalRead < expectedBytes) {
+        const read = readSync(fd, buffer, totalRead, expectedBytes - totalRead, totalRead);
+        if (read === 0) break;
+        totalRead += read;
+      }
+      const onDiskBytes = totalRead === expectedBytes ? buffer.subarray(0, expectedBytes) : buffer.subarray(0, totalRead);
+      const expectedSha = sha256Hex(Buffer.from(body, "utf8"));
+      const readbackSha = sha256Hex(onDiskBytes);
+      if (totalRead !== expectedBytes || readbackSha !== expectedSha) {
+        const err = new Error(
+          `diagnostics_publish_readback_mismatch: expected=${expectedSha} got=${readbackSha} bytes=${totalRead}/${expectedBytes}`
+        );
+        err.code = "DIAGNOSTICS_READBACK_MISMATCH";
+        throw err;
+      }
+      closeAndClear();
+      return {
+        path: preBoundSink.finalPath,
+        parentDir: preBoundSink.parentDir,
+        bodySha256: expectedSha,
+        byteCount: expectedBytes,
+        dev: preWriteStat?.dev ?? null,
+        ino: preWriteStat?.ino ?? null
+      };
+    } catch (error) {
+      const code = error?.code;
+      const isReadbackMismatch = code === "DIAGNOSTICS_READBACK_MISMATCH";
+      // READBACK_MISMATCH: file stays on disk as forensic evidence.
+      // We do NOT path-rm because that re-introduces the TOCTOU.
+      if (!isReadbackMismatch) {
+        // Pre-write / during-write failure on the pre-bound fd.
+        // The file was created by prepareDiagnosticsSink (O_EXCL),
+        // so it is OUR file in this process; close and remove.
+        closeAndClear();
+        try { rmSync(preBoundSink.finalPath, { force: true }); } catch { /* best effort */ }
+      } else {
+        closeAndClear();
+      }
+      const wrapped = new Error(`diagnostics_publish_failed: ${error?.message ?? error}`);
+      wrapped.code = code ?? "DIAGNOSTICS_PUBLISH_FAILED";
+      wrapped.cause = error;
+      wrapped.readbackMismatch = isReadbackMismatch;
+      throw wrapped;
+    }
+  }
+
   const finalPath = resolvePath(filePath);
   const parentDir = dirname(finalPath);
   const verifiedRoot = sinkRoot && isAbsolute(sinkRoot) ? resolvePath(sinkRoot) : parentDir;
@@ -472,7 +718,8 @@ export function createDiagnosticsObserver({
   previewBytes = 256,
   sinkRoot = null,
   uid = null,
-  enforceOwnedRoot = false
+  enforceOwnedRoot = false,
+  preBoundSink = null
 } = {}) {
   if (typeof filePath !== "string" || filePath.length === 0) throw new Error("diagnostics_invalid_file_path");
   if (!Number.isInteger(maxBytes) || maxBytes <= 0) throw new Error("diagnostics_invalid_max_bytes");
@@ -486,6 +733,9 @@ export function createDiagnosticsObserver({
   }
   if (enforceOwnedRoot && !Number.isInteger(uid)) {
     throw new Error("diagnostics_enforce_owned_root_requires_uid");
+  }
+  if (preBoundSink !== null && (typeof preBoundSink !== "object" || typeof preBoundSink.fd !== "number")) {
+    throw new Error("diagnostics_invalid_pre_bound_sink");
   }
 
   const records = [];
@@ -593,7 +843,7 @@ export function createDiagnosticsObserver({
     });
     const fullBody = `${body}${footer}\n`;
     try {
-      const result = publishOnce(filePath, fullBody, { sinkRoot, uid, enforceOwnedRoot });
+      const result = publishOnce(filePath, fullBody, { sinkRoot, uid, enforceOwnedRoot, preBoundSink });
       lastFlushStatus = Object.freeze({
         published: true,
         mainPath: result.path,
@@ -609,8 +859,12 @@ export function createDiagnosticsObserver({
       return lastFlushStatus;
     } catch (error) {
       observerError = error;
-      // Try to write a fallback footer-only file via a sibling path so
-      // the operator can see WHY the main publish failed.
+      // Fallback: try to write a footer-only file via a sibling path
+      // so the operator can see WHY the main publish failed. With a
+      // pre-bound sink, the main path already opened the file via
+      // O_EXCL; if the main write/readback fails, the same fd path
+      // cannot be retried — fall back to a fresh publishOnce on a
+      // sibling path (which has its own fd lifecycle).
       const fallbackPath = `${filePath}.integrity-fallback`;
       const fallbackBody = JSON.stringify({
         schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
@@ -623,7 +877,7 @@ export function createDiagnosticsObserver({
       });
       let fallbackPublished = false;
       try {
-        publishOnce(fallbackPath, `${fallbackBody}\n`, { sinkRoot, uid, enforceOwnedRoot });
+        publishOnce(fallbackPath, `${fallbackBody}\n`, { sinkRoot, uid, enforceOwnedRoot, preBoundSink: null });
         fallbackPublished = true;
       } catch {
         // Both main and fallback failed. Status reflects this honestly.
@@ -657,5 +911,27 @@ export function createDiagnosticsObserver({
     });
   }
 
-  return Object.freeze({ record, flush, snapshot });
+  // closePreBoundSink releases the fd held by prepareDiagnosticsSink
+  // (if any). Must be called by the runner after flush() returns.
+  // Idempotent: safe to call multiple times. No-op when no pre-bound
+  // sink was supplied OR when the fd was already released by
+  // publishOnce (which calls onFdReleased).
+  function closePreBoundSink() {
+    if (!preBoundSink) return false;
+    const fd = preBoundSink.fd;
+    preBoundSink = null;
+    if (typeof fd !== "number") return false;
+    try { closeSync(fd); return true; } catch { return false; }
+  }
+
+  // Wire an onFdReleased hook into the pre-bound sink so publishOnce
+  // can signal the observer that the fd is no longer its
+  // responsibility. Without this, a double-close could occur if the
+  // observer flush errors out (which closes inside publishOnce) and
+  // then closePreBoundSink runs from the outer finally.
+  if (preBoundSink && typeof preBoundSink.fd === "number") {
+    preBoundSink.onFdReleased = () => { preBoundSink = null; };
+  }
+
+  return Object.freeze({ record, flush, snapshot, closePreBoundSink });
 }
