@@ -142,16 +142,34 @@ export function parseA3PhysicalValidationArgs(argv = []) {
 // flush fails, the CLI must exit 1 — successful collector + failed
 // diagnostics = failed run (the iteration 7 reviewer flagged this:
 // collector success could mask missing diagnostic evidence).
+//
+// Iteration 8 design: NO `return` inside the main try block. Every
+// step mutates a local `result` object, then flush() and fd cleanup
+// run, then the function falls through to ONE final `return`. This
+// fixes the iteration 7 bug where `return result` at the end of try
+// captured the success object before finally could observe a flush
+// failure. Now finally is no longer needed at all — flush() and
+// closePreBoundSink() live inside try, after the collector line, and
+// any failure path simply updates `result` and continues to the
+// single return.
 export function runA3PhysicalValidationCore({
   argv = [],
   stdout = process.stdout,
   stderr = process.stderr,
   env = process.env,
   platform = process.platform,
-  runCollector = runCandidateDependencyA3PhysicalValidation
+  runCollector = runCandidateDependencyA3PhysicalValidation,
+  // Test seam: tests inject a fake observer factory to control
+  // flush() behavior (e.g. force flush to return unpublished, or
+  // force flush to throw). Production callers leave this unset and
+  // the real createDiagnosticsObserver is used.
+  makeObserver = createDiagnosticsObserver
 } = {}) {
   let mode = null;
   let diagnostics = null;
+  // `result` starts at { exitCode: 1, diagnosticsPublished: null }
+  // because the default for any uncaught failure is exit 1 and we
+  // have not yet observed diagnostics success/failure.
   let result = { exitCode: 1, diagnosticsPublished: null };
   try {
     const request = parseA3PhysicalValidationArgs(argv);
@@ -167,7 +185,7 @@ export function runA3PhysicalValidationCore({
         condition: configErr.message
       })}\n`);
       result = { exitCode: 1, diagnosticsPublished: false };
-      return result;
+      // diagnosticsConfig stays null; the next block is skipped.
     }
     if (diagnosticsConfig) {
       // Step 3: pre-collector sink bind. prepareDiagnosticsSink opens
@@ -185,21 +203,30 @@ export function runA3PhysicalValidationCore({
           condition: bindErr.message
         })}\n`);
         result = { exitCode: 1, diagnosticsPublished: false };
-        return result;
+        // diagnostics stays null; collector guard below skips it.
       }
-      diagnostics = createDiagnosticsObserver({ ...diagnosticsConfig, preBoundSink });
+      if (preBoundSink !== null) {
+        diagnostics = makeObserver({ ...diagnosticsConfig, preBoundSink });
+      }
     }
-    const overrides = diagnostics ? { observePhysicalCommand: diagnostics.record } : {};
-    const collectorResult = runCollector({ ...request, overrides });
-    stdout.write(`${JSON.stringify({ schemaVersion: SCHEMA_VERSION, type: TYPE, state: "verified", ...collectorResult })}\n`);
-    result = { exitCode: 0, diagnosticsPublished: null };
-    return result;
-  } catch (error) {
-    const condition = error instanceof CandidateDependencyGateError ? error.condition : "invalid_input";
-    stderr.write(`${JSON.stringify({ schemaVersion: SCHEMA_VERSION, type: TYPE, mode, state: error?.attentionRequired === true ? "attention_required" : "blocked", condition })}\n`);
-    result = { exitCode: 1, diagnosticsPublished: null };
-    return result;
-  } finally {
+    // Run the collector only when diagnostics binding has NOT failed.
+    // Bind failure sets `result.diagnosticsPublished === false` and
+    // `result.exitCode === 1`; we skip the collector and fall
+    // through to flush (which is a no-op when diagnostics is null).
+    const collectorAlreadyBlocked = result.exitCode === 1 && result.diagnosticsPublished === false;
+    if (!collectorAlreadyBlocked) {
+      const overrides = diagnostics ? { observePhysicalCommand: diagnostics.record } : {};
+      const collectorResult = runCollector({ ...request, overrides });
+      stdout.write(`${JSON.stringify({ schemaVersion: SCHEMA_VERSION, type: TYPE, state: "verified", ...collectorResult })}\n`);
+      // Tentative success: collector wrote a receipt. Diagnostics
+      // may still fail to publish; flush below escalates if so.
+      result = { exitCode: 0, diagnosticsPublished: null };
+    }
+    // Step 5: flush diagnostics. Failures here escalate exit code to
+    // 1 even if the collector succeeded. Runs INSIDE the try so the
+    // catch below can also see this exception and update `result`
+    // before the single final return. The collector receipt on stdout
+    // is preserved verbatim so the operator sees both lines.
     if (diagnostics) {
       try {
         const status = diagnostics.flush();
@@ -215,9 +242,6 @@ export function runA3PhysicalValidationCore({
             byteCount: status.byteCount
           });
           stderr.write(`${gateLine}\n`);
-          // Step 5: diagnostics failure forces exit code 1 even if
-          // the collector succeeded. The collector receipt on stdout
-          // is preserved verbatim (operator sees both lines).
           if (result.exitCode === 0) {
             result = { exitCode: 1, diagnosticsPublished: false };
           } else {
@@ -226,13 +250,54 @@ export function runA3PhysicalValidationCore({
         } else {
           result.diagnosticsPublished = true;
         }
-      } catch {
-        if (result.exitCode === 0) result = { exitCode: 1, diagnosticsPublished: false };
+      } catch (flushErr) {
+        // flush() itself threw. Treat as unpublished + escalate.
+        const gateLine = JSON.stringify({
+          schemaVersion: "1",
+          type: "control_plane_materializer_a3_physical_validation_diagnostics_gate",
+          state: "diagnostics_unpublished",
+          observerError: String(flushErr?.message ?? flushErr)
+        });
+        stderr.write(`${gateLine}\n`);
+        if (result.exitCode === 0) {
+          result = { exitCode: 1, diagnosticsPublished: false };
+        } else {
+          result.diagnosticsPublished = false;
+        }
       } finally {
-        diagnostics.closePreBoundSink();
+        try { diagnostics.closePreBoundSink(); } catch { /* best effort */ }
       }
     }
+  } catch (error) {
+    // Uncaught failure during parse / config / pre-bind / collector /
+    // flush. Convert to exit 1, but preserve the collector-mode info
+    // for the stderr line when available.
+    const condition = error instanceof CandidateDependencyGateError ? error.condition : "invalid_input";
+    stderr.write(`${JSON.stringify({ schemaVersion: SCHEMA_VERSION, type: TYPE, mode, state: error?.attentionRequired === true ? "attention_required" : "blocked", condition })}\n`);
+    result = { exitCode: 1, diagnosticsPublished: result.diagnosticsPublished };
+    // If we created a diagnostics observer before the error, try a
+    // best-effort flush + fd cleanup. The flush failure cannot
+    // unblock an exit-1 outcome but it should not throw further.
+    if (diagnostics) {
+      try {
+        const status = diagnostics.flush();
+        if (!status.published) {
+          const gateLine = JSON.stringify({
+            schemaVersion: "1",
+            type: "control_plane_materializer_a3_physical_validation_diagnostics_gate",
+            state: "diagnostics_unpublished",
+            observerError: status.observerError
+          });
+          stderr.write(`${gateLine}\n`);
+          result.diagnosticsPublished = false;
+        } else if (result.diagnosticsPublished === null) {
+          result.diagnosticsPublished = true;
+        }
+      } catch { /* best effort */ }
+      try { diagnostics.closePreBoundSink(); } catch { /* best effort */ }
+    }
   }
+  return result;
 }
 
 export function runA3PhysicalValidationCli({

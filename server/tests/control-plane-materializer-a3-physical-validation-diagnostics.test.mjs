@@ -1177,3 +1177,164 @@ test("[iteration 7] real public-CLI E2E refuses before collector when diagnostic
     assert.equal(gate.state, "diagnostics_unpublished");
   });
 });
+
+// Iteration 8 — exit-code escalation regression tests.
+//
+// The iteration 7 reviewer's P1 was that `return result` inside the
+// main try block captured the success object before a finally could
+// observe a flush failure. Iteration 8 restructured the core so flush
+// runs inside the same try block and the result object is mutated
+// before a single final return. These two tests pin that contract:
+//
+//   A. Collector succeeds, flush() returns published:false → exit 1.
+//   B. Collector succeeds, flush() throws → exit 1.
+//
+// Both tests inject a fake `makeObserver` (the test-only seam added
+// in iteration 8) so they can control flush() behaviour without
+// weakening the production observer.
+
+test("[iteration 8] real CLI escalates exit code when collector succeeds but flush() returns published:false", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const filePath = join(sinkDir, "diagnostics.jsonl");
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
+    };
+    // Fake observer: pre-bind succeeded, collector hook fires, but
+    // flush() returns published:false. The runner must escalate.
+    let hookReceived = false;
+    const fakeObserver = {
+      record(payload) {
+        hookReceived = true;
+        // Accept the payload; we trigger the unpublished status by
+        // setting observerError via a record that JSON.stringify
+        // cannot encode. Simplest: pass through normally; the fake
+        // flush() below will return unpublished regardless.
+        void payload;
+      },
+      flush() {
+        return Object.freeze({
+          published: false,
+          mainPath: filePath,
+          parentDir: sinkDir,
+          bodySha256: null,
+          recordCount: 1,
+          byteCount: 0,
+          truncated: false,
+          observerError: "simulated flush unpublished",
+          fallbackPath: null,
+          flushedAt: new Date().toISOString()
+        });
+      },
+      snapshot() { return { recordCount: 1, byteCount: 0, truncated: false }; }
+    };
+    const fakeCollector = (request) => {
+      const observer = request.overrides?.observePhysicalCommand;
+      if (typeof observer === "function") {
+        observer({
+          command: "/usr/sbin/xfs_quota",
+          args: ["-x", "-c", "report -p", "/var/sandbox"],
+          status: 0,
+          stdout: "Project ID   Used   Soft   Hard Warn/Grace\n4242 0 1024 1024 00 [--------]\n",
+          stderr: "",
+          error: null,
+          condition: "ok",
+          elapsedMs: 8
+        });
+      }
+      return { condition: "storage_quota_evidence_valid", projectId: 4242 };
+    };
+    let stdoutText = "", stderrText = "";
+    const result = runA3PhysicalValidationCore({
+      argv: ["--mode", "quota", "--run-label", "iter8-flush-unpub", "--project-id", "4242"],
+      stdout: { write(value) { stdoutText += value; } },
+      stderr: { write(value) { stderrText += value; } },
+      env,
+      platform: process.platform,
+      runCollector: fakeCollector,
+      makeObserver: () => fakeObserver
+    });
+    assert.equal(hookReceived, true, "core must forward the observer hook to runCollector");
+    // The collector receipt line is still on stdout.
+    const receipt = JSON.parse(stdoutText.trim().split(/\r?\n/)[0]);
+    assert.equal(receipt.condition, "storage_quota_evidence_valid");
+    // BUT the run as a whole must fail because diagnostics could not
+    // publish. This is the iteration 7 bug fix: previously the core
+    // returned the collector's success object verbatim and exited 0.
+    assert.equal(result.exitCode, 1, "successful collector + unpublished diagnostics must exit 1");
+    assert.equal(result.diagnosticsPublished, false);
+    // The diagnostics_gate line on stderr explains why.
+    const lines = stderrText.trim().split(/\r?\n/);
+    const gateLine = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .find((j) => j && j.type === "control_plane_materializer_a3_physical_validation_diagnostics_gate");
+    assert.ok(gateLine, "must emit a diagnostics_gate line on stderr");
+    assert.equal(gateLine.state, "diagnostics_unpublished");
+  });
+});
+
+test("[iteration 8] real CLI escalates exit code when collector succeeds but flush() throws", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const filePath = join(sinkDir, "diagnostics.jsonl");
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
+    };
+    // Fake observer: flush() throws synchronously. The runner must
+    // catch the throw, emit diagnostics_gate, and exit 1.
+    let hookReceived = false;
+    const fakeObserver = {
+      record(payload) { hookReceived = true; void payload; },
+      flush() {
+        throw new Error("simulated flush throw");
+      },
+      snapshot() { return { recordCount: 0, byteCount: 0, truncated: false }; }
+    };
+    const fakeCollector = (request) => {
+      const observer = request.overrides?.observePhysicalCommand;
+      if (typeof observer === "function") {
+        observer({
+          command: "/usr/sbin/xfs_quota",
+          args: ["-x", "-c", "report -p", "/var/sandbox"],
+          status: 0,
+          stdout: "Project ID   Used   Soft   Hard Warn/Grace\n4242 0 1024 1024 00 [--------]\n",
+          stderr: "",
+          error: null,
+          condition: "ok",
+          elapsedMs: 5
+        });
+      }
+      return { condition: "storage_quota_evidence_valid", projectId: 4242 };
+    };
+    let stdoutText = "", stderrText = "";
+    const result = runA3PhysicalValidationCore({
+      argv: ["--mode", "quota", "--run-label", "iter8-flush-throw", "--project-id", "4242"],
+      stdout: { write(value) { stdoutText += value; } },
+      stderr: { write(value) { stderrText += value; } },
+      env,
+      platform: process.platform,
+      runCollector: fakeCollector,
+      makeObserver: () => fakeObserver
+    });
+    assert.equal(hookReceived, true);
+    // The collector receipt is still on stdout.
+    const receipt = JSON.parse(stdoutText.trim().split(/\r?\n/)[0]);
+    assert.equal(receipt.condition, "storage_quota_evidence_valid");
+    // Flush threw; core must catch it and exit 1.
+    assert.equal(result.exitCode, 1, "successful collector + flush throwing must exit 1");
+    assert.equal(result.diagnosticsPublished, false);
+    // The diagnostics_gate line explains why.
+    const lines = stderrText.trim().split(/\r?\n/);
+    const gateLine = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .find((j) => j && j.type === "control_plane_materializer_a3_physical_validation_diagnostics_gate");
+    assert.ok(gateLine, "must emit a diagnostics_gate line on stderr after flush throws");
+    assert.equal(gateLine.state, "diagnostics_unpublished");
+    // The throw message must be referenced in the gate observerError.
+    assert.match(String(gateLine.observerError ?? ""), /simulated flush throw/);
+  });
+});
