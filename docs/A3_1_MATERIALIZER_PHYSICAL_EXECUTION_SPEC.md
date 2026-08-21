@@ -1,10 +1,10 @@
 # A3-1 Materializer Physical Execution Spec
 
 > Status:
-> - Type: Active planning spec (pre-implementation)
-> - Risk: A (production-affecting in a future PR; **this PR is spec-only**)
-> - Execution authority: None. This spec authorizes no production mutation, no node access, no provider interaction, no probe execution, no A3-1 implementation start.
-> - Production impact: None unless a separate A3-1 implementation PR is opened, reviewed, merged, and an approved Risk A gate executes the corresponding physical runbook.
+> - Type: Active implementation spec (source implementation in progress; physical execution pending)
+> - Risk: A (physical validation and any future production use require separate approval; the current implementation PR is production-inert)
+> - Execution authority: Source/test changes only. This spec authorizes no production mutation, no node access, no provider interaction, and no probe execution until the implementation exact head/artifact is bound by the Issue #636 pre-execution approval.
+> - Production impact: None. The implementation keeps every production `worker_storage_limit_unavailable` guard in place; a later guard-lift PR remains separate.
 > - Source of truth for: the seven physical execution paths that issue #636 Gate A3-1 requires before the production `worker_storage_limit_unavailable` guard may be reconsidered.
 > - Bound identities: see §0.5.
 
@@ -19,7 +19,7 @@ document_metadata:
 ```
 
 > Supersedes: nothing.
-> Refs: PR #646 (A3-0 contract skeleton, merged `10b98227` on `master`); issue #636 (Gate A3-0 closed, Gate A3-1 next).
+> Refs: PR #646 (A3-0 contract skeleton); PR #648 (this spec, merged `b0cbbabc`); issue #636 (Gate A3-0 closed, Gate A3-1 implementation in progress).
 
 ## 0.5 Source-of-truth binding (exact identities)
 
@@ -29,6 +29,21 @@ does not rewrite this historical baseline. The A3-1 implementation PR must
 separately bind the then-current `master` SHA and a newly issued dependency
 artifact. It must never reuse the artifact below as execution input after
 `master` advances.
+
+The current implementation branch is based on the exact spec merge and its
+fresh dependency artifact. These values bind source development only; they do
+not authorize provider access or physical execution.
+
+| Implementation base field | Value |
+|---|---|
+| `implementation_base_master_sha` | `b0cbbabcc79096be7ac112c36153ac2c3d2c6e76` |
+| `spec_pr` | `648` (merged) |
+| `spec_pr_merged_at` | `2026-08-21T11:14:45Z` |
+| `implementation_base_dependency_workflow_run_id` | `32476323908` |
+| `implementation_base_dependency_artifact_id` | `9444414232` |
+| `implementation_base_dependency_artifact_name` | `control-plane-dependency-b0cbbabcc79096be7ac112c36153ac2c3d2c6e76` |
+| `implementation_base_dependency_artifact_digest` | `sha256:bfd92b66a688ca242fad61fa8a8dbc3701cb43fc94eb4c20b1784755a2785ebb` |
+| `implementation_base_dependency_artifact_size_bytes` | `6460704` |
 
 | Field | Value |
 |---|---|
@@ -91,7 +106,7 @@ disposable_target_provider:
 > execution, no production guard lift.
 
 > Supersedes: nothing.
-> Refs: PR #646 (A3-0 contract skeleton, merged `10b98227` on `master`); issue #636 (Gate A3-0 closed, Gate A3-1 next).
+> Refs: PR #646 (A3-0 contract skeleton); PR #648 (spec merge); issue #636 (A3-1 implementation source phase; execution approval pending).
 
 ## 0. Why this spec exists
 

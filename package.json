@@ -110,6 +110,7 @@
     "release:config:prepare": "node scripts/control-plane-release-config-gate.mjs --mode prepare",
     "release:config:verify": "node scripts/control-plane-release-config-gate.mjs --mode verify",
     "control-plane:dependency-artifact": "node scripts/control-plane-dependency-artifact.mjs",
+    "control-plane:materializer:a3-physical-validation": "node scripts/control-plane-materializer-a3-physical-validation.mjs",
     "welcome-coins:activation:preflight": "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode preflight",
     "welcome-coins:activation:apply": "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode activate --apply",
     "welcome-coins:activation:verify": "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode verify",
