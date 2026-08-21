@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync, chownSync, closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, fsyncSync,
@@ -11,7 +11,13 @@ import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path
 import { fileURLToPath } from "node:url";
 
 import { verifyReleaseConfigOverlay } from "./control-plane-release-config-gate.mjs";
-import { dependencyArtifactPaths, verifyDependencyArtifact } from "./control-plane-dependency-artifact.mjs";
+import {
+  auditDependencyTree,
+  dependencyArtifactPaths,
+  prepareDependencyArtifactTree,
+  readDependencyArtifactManifest,
+  runNativeBetterSqliteSmoke
+} from "./control-plane-dependency-artifact.mjs";
 
 export const CANDIDATE_DEPENDENCY_GATE_SCHEMA_VERSION = "1";
 export const CANDIDATE_DEPENDENCY_GATE_TYPE = "control_plane_candidate_dependency_gate";
@@ -56,6 +62,12 @@ const SAFE = new Set([
   "candidate_node_modules_present", "candidate_path_invalid", "candidate_tree_invalid",
   "child_cleanup_failed", "dependency_receipt_invalid", "dependency_receipt_missing",
   "dependency_receipt_mismatch", "dependency_receipt_present", "dependency_receipt_publish_failed",
+  "dependency_acl_or_capability_invalid", "dependency_archive_cleanup_failed", "dependency_archive_extract_failed",
+  "dependency_archive_invalid", "dependency_archive_member_invalid", "dependency_archive_mismatch", "dependency_archive_missing",
+  "dependency_artifact_invalid", "dependency_consumer_contract_invalid", "dependency_file_changed", "dependency_file_unreadable",
+  "dependency_lock_mismatch", "dependency_package_mismatch", "dependency_release_mismatch", "dependency_runtime_invalid",
+  "dependency_runtime_mismatch", "dependency_smoke_invalid", "dependency_source_mismatch", "dependency_tree_invalid",
+  "dependency_storage_budget_unavailable", "dependency_tree_mismatch", "dependency_tree_too_large",
   "device_boundary_invalid", "hardlink_provenance_invalid", "invalid_input", "lock_cleanup_failed",
   "lock_unavailable", "mount_boundary_invalid", "native_module_validation_failed",
   "node_modules_publish_failed", "postpublish_cleanup_failed", "postpublish_validation_failed",
@@ -67,10 +79,6 @@ const SAFE = new Set([
   "worker_storage_limit_unavailable"
 ]);
 const CMD_ENV = Object.freeze({ PATH: "/usr/bin:/bin", LC_ALL: "C", LANG: "C" });
-const NPM_ENV = Object.freeze({
-  ...CMD_ENV, HOME: "", npm_config_cache: "", npm_config_prefix: "", npm_config_globalconfig: "/dev/null"
-});
-const NODE_ENV = Object.freeze({ ...CMD_ENV, HOME: "" });
 const TRANSIENT_PROPERTIES = Object.freeze([
   "DynamicUser=yes", "KillMode=control-group", "SendSIGKILL=yes", "TimeoutStartSec=300", "TimeoutStopSec=15",
   "TasksMax=128", "MemoryMax=1G", "NoNewPrivileges=yes", "CapabilityBoundingSet=", "ProtectSystem=strict",
@@ -88,14 +96,6 @@ z=r(-100,os.fsencode(sys.argv[1]),-100,os.fsencode(sys.argv[2]),1)
 if z==0:sys.exit(0)
 e=ctypes.get_errno();sys.exit(70 if e in (errno.ENOSYS,errno.EINVAL) else 17 if e==errno.EEXIST else 71)`;
 const RENAME_PROBE = "import ctypes,sys\ntry:getattr(ctypes.CDLL(None),'renameat2')\nexcept (AttributeError,OSError):sys.exit(70)";
-const SMOKE = String.raw`import Database from "better-sqlite3";
-import {pathToFileURL} from "node:url";
-const d=new Database(":memory:");d.exec("CREATE TABLE t(v INTEGER)");d.prepare("INSERT INTO t VALUES(?)").run(1);
-if(d.prepare("SELECT v FROM t").get().v!==1)process.exit(42);d.close();await import(pathToFileURL(process.argv[2]).href);`;
-const ARCHIVE_LIST = String.raw`import os,sys,tarfile
-with tarfile.open(sys.argv[1],"r:*") as archive:
-  for member in archive.getmembers():
-    sys.stdout.buffer.write(os.fsencode(member.name)+b"\0")`;
 const SEALED_SMOKE_TREE_AUDIT = String.raw`import hashlib,json,os,stat,sys
 def bad(): raise RuntimeError()
 def checked(value,typ):
@@ -802,6 +802,7 @@ function collectWorkerInputCustodyReadback(kind, unit, supplied) {
   return Object.freeze({ root: physicalObservation(roots.workerInputRoot, "worker_input_custody_invalid"), directory: physicalObservation(workerInputDirectory, "worker_input_custody_invalid"), files: Object.freeze(entries.map((entry) => physicalObservation(entry.path, "worker_input_custody_invalid"))), ...(sealedTreeEvidence ? { sealedTreeEvidence } : {}) });
 }
 export function invokeCandidateDependencyTransientUnit({ kind, unit, input, runtime: supplied = runtime() } = {}) {
+  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
   const invocation = buildTransientUnitInvocation({ kind, unit, input, runtime: supplied });
   const testing = supplied.requireRoot === false;
   if (!testing) requireRoot(supplied);
@@ -890,7 +891,7 @@ function context(candidate, current, runtime) {
 function inputs(context, runtime, absent = true) {
   const packageFile = fileIn(context.candidateRoot, "package.json", runtime, "candidate_path_invalid");
   const lockFile = fileIn(context.candidateRoot, "package-lock.json", runtime, "candidate_path_invalid");
-  const nodeModules = resolve(context.candidateRoot, "node_modules"); if (absent && existsSync(nodeModules)) fail("candidate_node_modules_present");
+  const nodeModules = resolve(context.candidateRoot, "node_modules"); if (absent) requireAbsent(nodeModules, "candidate_node_modules_present");
   const packageBytes = readFileSync(packageFile.path), lockBytes = readFileSync(lockFile.path);
   checkAssembly(json(context.assembly, "assembly_manifest_invalid"), context.candidate);
   const artifactStage = parseArtifactStageReceipt({
@@ -979,6 +980,7 @@ function sealedBuildInputFile(directoryValue, name, bytes, digest, owner, suppli
 }
 
 export function stageBuildWorkerInputs({ candidateRelease, expectedCurrentRelease, unit, runtime: supplied = runtime() } = {}) {
+  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
   requireRoot(supplied); if (unitKind(unit) !== "build") fail("invalid_input");
   const value = state(candidateRelease, expectedCurrentRelease, supplied), owner = rootWorkerOwner(supplied), roots = transientRoots(supplied);
   if (supplied.requireRoot) trustedAclAncestorChain(dirname(roots.workerInputRoot), supplied, "worker_input_custody_invalid");
@@ -1025,6 +1027,7 @@ function seizeTerminalAndTopology(kind, unit, terminal, supplied) {
 }
 
 export function seizeWorkerStateTopLevel({ kind, unit, terminal, runtime: supplied = runtime(), operations } = {}) {
+  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
   try {
     requireRoot(supplied); if (supplied.requireRoot && operations !== undefined) fail("worker_cleanup_uncertain", true);
     const activeOperations = operations ?? localSeizeOperations();
@@ -1200,42 +1203,219 @@ export function sealBuildWorkerArchive({ candidateRelease, expectedCurrentReleas
 
 function eraseDirectory(value) { if (!value) return true; try { const metadata = stat(value.path, "builder_cleanup_failed"); if (metadata.isSymbolicLink() || !metadata.isDirectory() || inode(metadata) !== value.identity) return false; rmSync(value.path, { recursive: true, force: false, maxRetries: 0 }); fsync(value.parent, "builder_cleanup_failed"); return !existsSync(value.path); } catch { return false; } }
 function eraseFile(value) { if (!value) return true; try { const metadata = stat(value.path, "postpublish_cleanup_failed"); if (metadata.isSymbolicLink() || !metadata.isFile() || inode(metadata) !== value.identity) return false; unlinkSync(value.path); fsync(dirname(value.path), "postpublish_cleanup_failed"); return !existsSync(value.path); } catch { return false; } }
-function builder(context, input, principal, runtime) {
-  const parent = base(context.builder, runtime, "builder_files_invalid"), output = make(resolve(parent, `${context.candidate}.${process.pid}.${randomUUID()}`), parent, principal.uid, principal.gid, 0o700, "builder_files_invalid");
-  if (stat(output.path, "builder_files_invalid").dev !== stat(context.candidateRoot, "candidate_path_invalid").dev) { eraseDirectory(output); fail("device_boundary_invalid"); }
-  try { for (const [name, bytes, digest] of [["package.json", input.packageBytes, input.package], ["package-lock.json", input.lockBytes, input.lock]]) { const target = resolve(output.path, name); writeFileSync(target, bytes, { mode: 0o600, flag: "wx" }); if (process.platform !== "win32") chownSync(target, principal.uid, principal.gid); chmodSync(target, 0o600); fsync(target, "builder_files_invalid"); if (hashFile(target) !== digest) fail("builder_files_invalid"); } if (readdirSync(output.path).sort().join(",") !== "package-lock.json,package.json") fail("builder_files_invalid"); fsync(output.path, "builder_files_invalid"); } catch (error) { eraseDirectory(output); if (error instanceof CandidateDependencyGateError) throw error; fail("builder_files_invalid"); }
-  return output;
-}
-export function isolatedNpmEnvironment() { return NPM_ENV; }
-async function gone(pid) { if (!Number.isSafeInteger(pid) || pid <= 0) return false; const alive = () => { try { process.kill(-pid, 0); return true; } catch (error) { return error?.code !== "ESRCH"; } }; for (let i = 0; i < 3; i += 1) { if (!alive()) return true; await new Promise((done) => setTimeout(done, 20)); } for (const signal of ["SIGTERM", "SIGKILL"]) { try { process.kill(-pid, signal); } catch (error) { if (error?.code !== "ESRCH") return false; } for (let i = 0; i < 10; i += 1) { if (!alive()) return true; await new Promise((done) => setTimeout(done, 25)); } } return !alive(); }
-function detached(command, args, options) { return new Promise((done) => { let child; try { child = spawn(command, args, { ...options, detached: true, stdio: "ignore", windowsHide: true }); } catch { done({ error: true }); return; } let error = false; child.once("error", () => { error = true; }); child.once("close", (status) => done({ status, pid: child.pid, error })); }); }
-async function npm(builder, principal, runtime) {
-  const result = typeof runtime.runNpm === "function" ? await runtime.runNpm({ builder: builder.path, principal, env: NPM_ENV }) : await detached(tool(runtime.tools.npm, runtime), ["ci", "--omit=dev", "--audit=false", "--fund=false"], { cwd: builder.path, env: NPM_ENV, uid: principal.uid, gid: principal.gid });
-  if (!result || result.status !== 0 || result.error) fail("builder_environment_invalid"); if (result.pid && !(await gone(result.pid))) fail("child_cleanup_failed", true);
-  const target = resolve(builder.path, "node_modules"), metadata = stat(target, "builder_environment_invalid"); if (metadata.isSymbolicLink() || !metadata.isDirectory() || metadata.uid !== principal.uid || metadata.gid !== principal.gid) fail("builder_environment_invalid"); return target;
-}
-
 function mounts(roots, runtime) {
   let text; try { text = !runtime.requireRoot && typeof runtime.mountInfo === "function" ? runtime.mountInfo() : readFileSync("/proc/self/mountinfo", "utf8"); } catch { fail("mount_boundary_invalid"); }
   if (typeof text !== "string") fail("mount_boundary_invalid"); for (const line of text.split(/\r?\n/)) { if (!line) continue; const fields = line.split(" "); if (fields.length < 6) fail("mount_boundary_invalid"); const point = fields[4].replace(/\\([0-7]{3})/g, (_all, octal) => String.fromCharCode(Number.parseInt(octal, 8))); if (!isAbsolute(point) || roots.some((root) => same(root, point) || inside(root, point))) fail("mount_boundary_invalid"); }
 }
-function audit(root, principal, runtime, single = false, condition = "candidate_tree_invalid") {
-  const rootMetadata = stat(root, condition), real = physical(root, condition); if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory() || !same(root, real)) fail(condition); const device = rootMetadata.dev;
-  const check = (metadata) => { if (metadata.dev !== device) fail("device_boundary_invalid"); if (metadata.uid !== principal.uid || metadata.gid !== principal.gid || (mode(metadata) & 0o6022) !== 0 || (!metadata.isFile() && !metadata.isDirectory())) fail(condition); };
-  check(rootMetadata); mounts([real], runtime); const todo = [real], seen = new Set([inode(rootMetadata)]), links = new Map(), rows = []; let count = 0;
-  while (todo.length) { const dir = todo.pop(); let names; try { names = readdirSync(dir).sort(); } catch { fail(condition); } for (const name of names) { if (++count > 250000 || !name || name.includes("\0")) fail(condition); const path = resolve(dir, name), relativePath = relative(real, path).split(sep).join("/"); if (!inside(real, path) || !relativePath || relativePath.includes("\0")) fail(condition); const metadata = stat(path, condition); if (metadata.isSymbolicLink()) { if (metadata.uid !== principal.uid || metadata.gid !== principal.gid) fail(condition); let target; try { target = physical(path, condition); } catch { fail(condition); } if (!within(real, target)) fail(condition); const targetMetadata = stat(target, condition); if (targetMetadata.isSymbolicLink()) fail(condition); check(targetMetadata); let targetText; try { targetText = readlinkSync(path, "utf8"); } catch { fail(condition); } if (targetText.includes("\0")) fail(condition); rows.push(`l\0${relativePath}\0${hash(targetText)}\0${relative(real, target).split(sep).join("/")}\n`); continue; }
-      if (!same(path, physical(path, condition))) fail(condition); check(metadata); if (metadata.isDirectory()) { if (seen.has(inode(metadata))) fail(condition); seen.add(inode(metadata)); todo.push(path); rows.push(`d\0${relativePath}\0${mode(metadata)}\n`); } else { const item = links.get(inode(metadata)) || { nlink: metadata.nlink, count: 0 }; item.count += 1; links.set(inode(metadata), item); rows.push(`f\0${relativePath}\0${mode(metadata)}\0${metadata.size}\0${hashFile(path)}\n`); } } }
-  let broken = true; for (const item of links.values()) { if (item.nlink !== item.count) fail("hardlink_provenance_invalid"); if (item.nlink !== 1) broken = false; } if (single && !broken) fail("hardlink_provenance_invalid"); return { digest: hash(rows.sort().join("")), broken };
+export function validateNodeModulesArchiveListing(bytes) {
+  if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > 32 * 1024 * 1024 || bytes.at(-1) !== 0) fail("archive_path_invalid"); const names = [];
+  for (let start = 0, index = 0; index < bytes.length; index += 1) if (bytes[index] === 0) { const entry = bytes.subarray(start, index); start = index + 1; if (!entry.length || entry.length > 4096 || entry.includes(0)) fail("archive_path_invalid"); let name; try { name = new TextDecoder("utf-8", { fatal: true }).decode(entry); } catch { fail("archive_path_invalid"); } const clean = name.endsWith("/") ? name.slice(0, -1) : name; if (!clean || name.startsWith("/") || name.includes("\\") || !clean.split("/").every((part) => part && part !== "." && part !== ".." && !part.includes("\0") && Buffer.byteLength(part) <= 255) || clean.split("/")[0] !== "node_modules") fail("archive_path_invalid"); names.push(clean); }
+  if (!names.includes("node_modules")) fail("archive_path_invalid"); return Object.freeze(names);
 }
-function aclCapabilities(root, runtime) {
-  if (typeof runtime.checkAclCapabilities === "function") { if (runtime.checkAclCapabilities({ root }) !== true) fail("unsafe_acl_or_capability"); return; }
-  const acl = spawnSync(tool(runtime.tools.getfacl, runtime), ["--absolute-names", "--omit-header", "--recursive", "--", root], { env: CMD_ENV, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, windowsHide: true });
-  if (acl.error || acl.status !== 0 || !String(acl.stdout || "").split(/\r?\n/).every((line) => !line || /^(?:user::|group::|other::)[rwx-]{3}(?:\s+#effective:[rwx-]{3})?$/.test(line))) fail("unsafe_acl_or_capability");
-  const cap = spawnSync(tool(runtime.tools.getcap, runtime), ["-r", "--", root], { env: CMD_ENV, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, windowsHide: true }); if (cap.error || cap.status !== 0 || String(cap.stdout || "").trim()) fail("unsafe_acl_or_capability");
+
+function renameSupport(runtime) { if (typeof runtime.renameNoReplace === "function") return; const result = spawnSync(tool(runtime.tools.python, runtime), ["-c", RENAME_PROBE], { env: CMD_ENV, encoding: "utf8", windowsHide: true }); if (result.error || result.status !== 0) fail("rename_noreplace_unavailable"); }
+function rename(source, destination, runtime) { if (typeof runtime.renameNoReplace === "function") { const result = runtime.renameNoReplace({ source, destination }); if (!result?.published) fail(result?.unavailable ? "rename_noreplace_unavailable" : "node_modules_publish_failed"); return; } const result = spawnSync(tool(runtime.tools.python, runtime), ["-c", RENAME_SCRIPT, source, destination], { env: CMD_ENV, encoding: "utf8", windowsHide: true }); if (result.error || result.status === 70) fail("rename_noreplace_unavailable"); if (result.status !== 0) fail("node_modules_publish_failed"); }
+function lockParent(runtime) {
+  if (runtime.requireRoot) trustedAclAncestorChain(dirname(runtime.lockRoot), runtime, "lock_unavailable");
+  const owner = rootWorkerOwner(runtime);
+  const parent = directory(dirname(runtime.lockRoot), runtime, "lock_unavailable");
+  const root = rootControlledDirectory(runtime.lockRoot, parent, owner, 0o700, "lock_unavailable");
+  if (runtime.requireRoot) sealedAclCapabilities(root.path, runtime, false, "lock_unavailable");
+  return root.path;
 }
-function candidateOwner(principal, runtime) { return runtime.enforceOwnership ? { uid: 0, gid: 0 } : principal; }
-function rootify(root, principal, runtime) {
-  const owner = candidateOwner(principal, runtime), todo = [root];
+
+function lock(runtime) {
+  const parent = lockParent(runtime);
+  const path = resolve(parent, "node-modules-materialization.lock");
+  let descriptor;
+  let createdIdentity = null;
+  try {
+    descriptor = openSync(path, "wx", 0o600);
+    const created = fstatSync(descriptor);
+    if (!created.isFile() || created.nlink !== 1) fail("lock_unavailable");
+    createdIdentity = inode(created);
+    if (runtime.enforceOwnership) chownSync(path, 0, 0);
+    chmodSync(path, 0o600);
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    const metadata = stat(path, "lock_unavailable");
+    if (metadata.isSymbolicLink() || !metadata.isFile() || inode(metadata) !== createdIdentity || (mode(metadata) & 0o777) !== 0o600 || runtime.enforceOwnership && (metadata.uid !== 0 || metadata.gid !== 0)) fail("lock_unavailable");
+    fsync(parent, "lock_unavailable");
+    return { path, parent, identity: createdIdentity };
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    if (createdIdentity) {
+      try {
+        const metadata = lstatSync(path);
+        if (!metadata.isSymbolicLink() && metadata.isFile() && inode(metadata) === createdIdentity) unlinkSync(path);
+      } catch {}
+    }
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail("lock_unavailable");
+  }
+}
+function unlock(value) { return eraseFile(value); }
+function snapshotSource(context, runtime) { const source = fileIn(context.candidateRoot, "scripts/control-plane-db-snapshot-gate.mjs", runtime, "native_module_validation_failed"); return { path: source.path, digest: hashFile(source.path) }; }
+
+function receiptPayload(state, artifact, tree, runtime) { return { schemaVersion: "1", type: "control_plane_candidate_dependency_receipt", state: "materialized", releaseUnit: UNIT, currentRelease: state.c.current, candidateRelease: state.c.candidate, sourceCommit: state.input.source.sourceCommit, artifactSha256: state.input.source.artifact.sha256, artifactSizeBytes: state.input.source.artifact.sizeBytes, artifactManifestSha256: state.input.artifactManifest, artifactManifestSizeBytes: state.input.artifactManifestSizeBytes, artifactStageReceiptSha256: state.input.artifact, artifactStageReceiptSizeBytes: state.input.artifactStageReceiptSizeBytes, dependencyArtifactManifestSha256: artifact.manifestSha256, dependencyArtifactManifestSizeBytes: artifact.manifestSizeBytes, dependencyArchiveSha256: artifact.archive.sha256, dependencyArchiveSizeBytes: artifact.archive.sizeBytes, dependencyArtifactTreeSha256: artifact.artifactTree.sha256, dependencyArtifactTreeEntryCount: artifact.artifactTree.entryCount, dependencyArtifactTreeTotalBytes: artifact.artifactTree.totalBytes, assemblySha256: state.input.assembly, packageSha256: state.input.package, packageLockSha256: state.input.lock, nodeModulesTreeSha256: tree.sha256, nodeModulesTreeEntryCount: tree.entryCount, nodeModulesTreeTotalBytes: tree.totalBytes, serviceUid: state.service.uid, serviceGid: state.service.gid, createdAt: now(runtime) }; }
+function checkReceipt(value, state, artifact, tree = null) { const expected = ["schemaVersion", "type", "state", "releaseUnit", "currentRelease", "candidateRelease", "sourceCommit", "artifactSha256", "artifactSizeBytes", "artifactManifestSha256", "artifactManifestSizeBytes", "artifactStageReceiptSha256", "artifactStageReceiptSizeBytes", "dependencyArtifactManifestSha256", "dependencyArtifactManifestSizeBytes", "dependencyArchiveSha256", "dependencyArchiveSizeBytes", "dependencyArtifactTreeSha256", "dependencyArtifactTreeEntryCount", "dependencyArtifactTreeTotalBytes", "assemblySha256", "packageSha256", "packageLockSha256", "nodeModulesTreeSha256", "nodeModulesTreeEntryCount", "nodeModulesTreeTotalBytes", "serviceUid", "serviceGid", "createdAt"];
+  if (!keys(value, expected) || value.schemaVersion !== "1" || value.type !== "control_plane_candidate_dependency_receipt" || value.state !== "materialized" || value.releaseUnit !== UNIT || value.currentRelease !== state.c.current || value.candidateRelease !== state.c.candidate || value.sourceCommit !== state.input.source.sourceCommit || value.artifactSha256 !== state.input.source.artifact.sha256 || value.artifactSizeBytes !== state.input.source.artifact.sizeBytes || value.artifactManifestSha256 !== state.input.artifactManifest || value.artifactManifestSizeBytes !== state.input.artifactManifestSizeBytes || value.artifactStageReceiptSha256 !== state.input.artifact || value.artifactStageReceiptSizeBytes !== state.input.artifactStageReceiptSizeBytes || value.dependencyArtifactManifestSha256 !== artifact.manifestSha256 || value.dependencyArtifactManifestSizeBytes !== artifact.manifestSizeBytes || value.dependencyArchiveSha256 !== artifact.archive.sha256 || value.dependencyArchiveSizeBytes !== artifact.archive.sizeBytes || value.dependencyArtifactTreeSha256 !== artifact.artifactTree.sha256 || value.dependencyArtifactTreeEntryCount !== artifact.artifactTree.entryCount || value.dependencyArtifactTreeTotalBytes !== artifact.artifactTree.totalBytes || value.assemblySha256 !== state.input.assembly || value.packageSha256 !== state.input.package || value.packageLockSha256 !== state.input.lock || !HASH.test(value.nodeModulesTreeSha256 || "") || !Number.isSafeInteger(value.nodeModulesTreeEntryCount) || value.nodeModulesTreeEntryCount < 1 || !Number.isSafeInteger(value.nodeModulesTreeTotalBytes) || value.nodeModulesTreeTotalBytes < 0 || value.serviceUid !== state.service.uid || value.serviceGid !== state.service.gid || !iso(value.createdAt) || tree && (value.nodeModulesTreeSha256 !== tree.sha256 || value.nodeModulesTreeEntryCount !== tree.entryCount || value.nodeModulesTreeTotalBytes !== tree.totalBytes)) fail("dependency_receipt_mismatch"); }
+function receiptDirectory(context, runtime) { const parent = base(context.receipts, runtime, "dependency_receipt_publish_failed"), path = resolve(parent, context.candidate); if (!existsSync(path)) make(path, parent, runtime.enforceOwnership ? 0 : runtime.getuid(), runtime.enforceOwnership ? 0 : runtime.getgid(), 0o700, "dependency_receipt_publish_failed"); else if (readdirSync(directory(path, runtime, "dependency_receipt_publish_failed")).length) fail("dependency_receipt_present"); return directory(path, runtime, "dependency_receipt_publish_failed"); }
+function writeReceipt(state, payload, runtime) {
+  const parent = receiptDirectory(state.c, runtime), path = resolve(parent, "node-modules-materialization.json");
+  if (!same(path, state.c.receipt) || existsSync(path)) fail("dependency_receipt_present");
+  const temporary = resolve(parent, `.node-modules-materialization.${process.pid}.${randomUUID()}`), bytes = Buffer.from(`${JSON.stringify(payload, null, 2)}\n`);
+  let descriptor, temporaryIdentity = null, temporaryRemoved = false, final = null;
+  try {
+    writeFileSync(temporary, bytes, { mode: 0o600, flag: "wx" });
+    descriptor = openSync(temporary, fsConstants.O_RDONLY | (process.platform === "linux" ? fsConstants.O_NOFOLLOW : 0));
+    const createdMetadata = fstatSync(descriptor);
+    if (!createdMetadata.isFile() || createdMetadata.nlink !== 1) fail("dependency_receipt_publish_failed");
+    temporaryIdentity = inode(createdMetadata);
+    closeSync(descriptor);
+    descriptor = undefined;
+    const created = regular(temporary, runtime, "dependency_receipt_publish_failed", 0o600, true);
+    if (inode(created.metadata) !== temporaryIdentity) fail("dependency_receipt_publish_failed");
+    if (runtime.enforceOwnership) chownSync(temporary, 0, 0);
+    chmodSync(temporary, 0o600);
+    fsync(temporary, "dependency_receipt_publish_failed");
+    const source = regular(temporary, runtime, "dependency_receipt_publish_failed", 0o600, true);
+    if (inode(source.metadata) !== temporaryIdentity) fail("dependency_receipt_publish_failed");
+    linkSync(temporary, path);
+    final = { path, identity: temporaryIdentity };
+    const linked = stat(path, "dependency_receipt_publish_failed");
+    if (linked.isSymbolicLink() || !linked.isFile() || inode(linked) !== temporaryIdentity) fail("dependency_receipt_publish_failed");
+    unlinkSync(temporary);
+    temporaryRemoved = true;
+    fsync(parent, "dependency_receipt_publish_failed");
+    const published = regular(path, runtime, "dependency_receipt_publish_failed", 0o600, true);
+    if (inode(published.metadata) !== temporaryIdentity || hashFile(published.path) !== hash(bytes)) fail("dependency_receipt_publish_failed");
+    return { path: published.path, identity: temporaryIdentity, value: json(published.path, "dependency_receipt_publish_failed") };
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    if (temporaryIdentity === null) {
+      try {
+        const observed = lstatSync(temporary);
+        if (observed.isFile() && !observed.isSymbolicLink() && observed.nlink === 1) temporaryIdentity = inode(observed);
+      } catch { /* retain attention-required if the unique temp object cannot be rebound */ }
+    }
+    const temporaryClean = temporaryRemoved ? !existsSync(temporary) : temporaryIdentity === null ? !existsSync(temporary) : eraseFile({ path: temporary, identity: temporaryIdentity });
+    const finalClean = !final || eraseFile(final);
+    if (!temporaryClean || !finalClean) fail("dependency_receipt_publish_failed", true);
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail("dependency_receipt_publish_failed");
+  }
+}
+function readReceipt(context, runtime) { if (!existsSync(context.receipt)) fail("dependency_receipt_missing"); const file = regular(context.receipt, runtime, "dependency_receipt_invalid", 0o600, true); return { path: file.path, identity: inode(file.metadata), value: json(file.path, "dependency_receipt_invalid") }; }
+function report(mode, state, value, tree = null, applied = false, artifact = null) { return { schemaVersion: CANDIDATE_DEPENDENCY_GATE_SCHEMA_VERSION, type: CANDIDATE_DEPENDENCY_GATE_TYPE, mode, state, applied, releaseUnit: UNIT, currentRelease: value.c.current, candidateRelease: value.c.candidate, servicePrincipal: { uid: value.service.uid, gid: value.service.gid }, sourceBinding: { artifactManifestBound: true, artifactStageReceiptBound: true, assemblyManifestBound: true, packageLockBound: true, ...(artifact ? { dependencyArtifactBound: true } : {}) }, ...(tree ? { dependencyTree: { audited: true, nativeBetterSqlite3: true, snapshotImportSafe: true, hardlinksBroken: tree.hardlinksBroken ?? tree.broken } } : {}), ...(["preflight", "verify"].includes(mode) ? { binding: { packageSha256: value.input.package, packageLockSha256: value.input.lock, assemblySha256: value.input.assembly, artifactManifestSha256: value.input.artifactManifest, artifactManifestSizeBytes: value.input.artifactManifestSizeBytes, artifactStageReceiptSha256: value.input.artifact, artifactStageReceiptSizeBytes: value.input.artifactStageReceiptSizeBytes, ...(artifact ? { dependencyArtifactManifestSha256: artifact.manifestSha256, dependencyArchiveSha256: artifact.archive.sha256 } : {}) } } : {}) }; }
+
+export function preflightCandidateDependencies({ candidateRelease, expectedCurrentRelease, runtime: supplied = runtime() } = {}) {
+  // A topology-only result must not be reported as production-ready while the
+  // storage quota and sandboxed native-smoke gates remain unavailable.
+  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
+  const initial = state(candidateRelease, expectedCurrentRelease, supplied);
+  renameSupport(supplied);
+  return report("preflight", "ready", steady(initial, supplied));
+}
+
+function requestedMaterializationIdentity(expectedSourceCommit, expectedArtifactRelease, expectedDependencyManifestSha256, expectedDependencyArchiveSha256) {
+  if (!COMMIT.test(expectedSourceCommit || "") || !ARTIFACT_RELEASE.test(expectedArtifactRelease || "") || !HASH.test(expectedDependencyManifestSha256 || "") || !HASH.test(expectedDependencyArchiveSha256 || "")) fail("invalid_input");
+  return Object.freeze({ sourceCommit: expectedSourceCommit, artifactRelease: expectedArtifactRelease, manifestSha256: expectedDependencyManifestSha256, archiveSha256: expectedDependencyArchiveSha256 });
+}
+
+function materializationIdentity(value, expectedSourceCommit, expectedArtifactRelease, expectedDependencyManifestSha256, expectedDependencyArchiveSha256) {
+  const requested = requestedMaterializationIdentity(expectedSourceCommit, expectedArtifactRelease, expectedDependencyManifestSha256, expectedDependencyArchiveSha256);
+  if (value.input.source.sourceCommit !== requested.sourceCommit) fail("dependency_source_mismatch");
+  if (value.input.source.artifactRelease !== requested.artifactRelease) fail("dependency_release_mismatch");
+  return requested;
+}
+
+function rootOwnedRegular(path, supplied, condition, exactMode) {
+  const value = regular(path, supplied, condition, exactMode, true);
+  if (supplied.requireRoot && (value.metadata.uid !== 0 || value.metadata.gid !== 0)) fail(condition);
+  sealedAclCapabilities(value.path, supplied, false, condition);
+  return value;
+}
+
+function materializationArtifactInput(value, identity, supplied) {
+  const paths = dependencyArtifactPaths({ deploymentRoot: value.c.root, candidateRelease: value.c.candidate });
+  if (!same(paths.nodeModulesRoot, resolve(value.c.candidateRoot, "node_modules")) || !inside(resolve(value.c.root, "dependency-artifacts"), paths.artifactRoot)) fail("dependency_consumer_contract_invalid");
+  if (supplied.requireRoot) trustedAclAncestorChain(paths.artifactRoot, supplied, "dependency_consumer_contract_invalid");
+  const root = directory(paths.artifactRoot, supplied, "dependency_consumer_contract_invalid");
+  const metadata = stat(root, "dependency_consumer_contract_invalid");
+  if ((mode(metadata) & 0o777) !== 0o700 || supplied.requireRoot && (metadata.uid !== 0 || metadata.gid !== 0)) fail("dependency_consumer_contract_invalid");
+  if (readdirSync(root).sort().join(",") !== "dependency-artifact.json,node-modules.tar,release-label.txt") fail("dependency_consumer_contract_invalid");
+  sealedAclCapabilities(root, supplied, true, "dependency_consumer_contract_invalid");
+  const releaseLabel = rootOwnedRegular(paths.releaseLabelPath, supplied, "dependency_consumer_contract_invalid", 0o400);
+  let releaseBytes;
+  try { releaseBytes = readFileSync(releaseLabel.path); } catch { fail("dependency_consumer_contract_invalid"); }
+  if (!releaseBytes.equals(Buffer.from(`${identity.artifactRelease}\n`))) fail("dependency_consumer_contract_invalid");
+  return Object.freeze({
+    paths,
+    manifest: rootOwnedRegular(paths.manifestPath, supplied, "dependency_consumer_contract_invalid", 0o400),
+    archive: rootOwnedRegular(paths.archivePath, supplied, "dependency_consumer_contract_invalid", 0o400),
+    releaseLabel
+  });
+}
+
+function artifactToolRuntime(supplied, service = null) {
+  const identity = service ? { uid: service.uid, gid: service.gid } : {};
+  if (supplied.requireRoot) {
+    const tools = transientTools(supplied);
+    return Object.freeze({
+      enforceOwnership: true,
+      pythonPath: tool(tools.python, supplied),
+      getfaclPath: tool(tools.getfacl, supplied),
+      getcapPath: tool(tools.getcap, supplied),
+      nodePath: tool(tools.node, supplied),
+      npmPath: tool(tools.npm, supplied),
+      ...identity
+    });
+  }
+  return Object.freeze({
+    enforceOwnership: supplied.enforceOwnership,
+    pythonPath: supplied.tools?.python,
+    getfaclPath: supplied.tools?.getfacl,
+    getcapPath: supplied.tools?.getcap,
+    nodePath: supplied.tools?.node,
+    checkAclCapabilities: supplied.checkAclCapabilities,
+    listArchive: supplied.listArtifactArchive,
+    detect: supplied.detectArtifact,
+    nativeSmoke: supplied.nativeSmoke,
+    ...identity
+  });
+}
+
+function artifactEvidence(value, identity) {
+  const manifestSha256 = value?.manifestSha256 ?? value?.manifest?.sha256;
+  const manifestSizeBytes = value?.manifestSizeBytes ?? value?.manifest?.sizeBytes;
+  const archive = value?.archive;
+  const tree = value?.tree;
+  if (!value || value.state !== "verified" || value.sourceCommit !== identity.sourceCommit || value.artifactRelease !== identity.artifactRelease
+    || !HASH.test(manifestSha256 || "") || !Number.isSafeInteger(manifestSizeBytes) || manifestSizeBytes <= 0
+    || !archive || !HASH.test(archive.sha256 || "") || !Number.isSafeInteger(archive.sizeBytes) || archive.sizeBytes <= 0
+    || !tree || !HASH.test(tree.sha256 || "") || !Number.isSafeInteger(tree.entryCount) || tree.entryCount < 1 || !Number.isSafeInteger(tree.totalBytes) || tree.totalBytes < 0 || tree.hardlinksBroken !== true || typeof tree.symlinksInternal !== "boolean"
+    || manifestSha256 !== identity.manifestSha256 || archive.sha256 !== identity.archiveSha256) fail("dependency_artifact_invalid");
+  return Object.freeze({ manifestSha256, manifestSizeBytes, archive: Object.freeze({ sha256: archive.sha256, sizeBytes: archive.sizeBytes }), artifactTree: Object.freeze({ sha256: tree.sha256, entryCount: tree.entryCount, totalBytes: tree.totalBytes, hardlinksBroken: tree.hardlinksBroken, symlinksInternal: tree.symlinksInternal }) });
+}
+
+function artifactStaging(context, supplied) {
+  if (supplied.requireRoot) trustedAclAncestorChain(dirname(context.staging), supplied, "candidate_tree_invalid");
+  const owner = rootWorkerOwner(supplied), parent = directory(dirname(context.staging), supplied, "candidate_tree_invalid");
+  const root = rootControlledDirectory(context.staging, parent, owner, 0o711, "candidate_tree_invalid");
+  if (readdirSync(root.path).length) fail("candidate_tree_invalid");
+  if (supplied.requireRoot) sealedAclCapabilities(root.path, supplied, false, "candidate_tree_invalid");
+  const stage = make(resolve(root.path, `artifact-${context.candidate}-${process.pid}-${randomUUID()}`), root.path, owner.uid, owner.gid, 0o711, "candidate_tree_invalid");
+  if (stat(stage.path, "candidate_tree_invalid").dev !== stat(context.candidateRoot, "candidate_path_invalid").dev) {
+    eraseDirectory(stage);
+    fail("device_boundary_invalid");
+  }
+  return stage;
+}
+
+function normalizeArtifactTree(root, supplied) {
+  const owner = rootWorkerOwner(supplied), todo = [root];
   while (todo.length) {
     const path = todo.pop(), metadata = stat(path, "candidate_tree_invalid");
     try {
@@ -1243,89 +1423,302 @@ function rootify(root, principal, runtime) {
         if (process.platform !== "win32") lchownSync(path, owner.uid, owner.gid);
         continue;
       }
+      if (!metadata.isDirectory() && !metadata.isFile()) fail("candidate_tree_invalid");
       if (process.platform !== "win32") chownSync(path, owner.uid, owner.gid);
-      chmodSync(path, metadata.isDirectory() ? 0o755 : mode(metadata) & 0o111 ? 0o755 : 0o644);
+      chmodSync(path, metadata.isDirectory() || (mode(metadata) & 0o111) ? 0o755 : 0o644);
       if (metadata.isDirectory()) for (const child of readdirSync(path)) todo.push(resolve(path, child));
-    } catch { fail("candidate_tree_invalid"); }
+    } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail("candidate_tree_invalid"); }
   }
-  return owner;
-}
-function staging(context, principal, runtime) { const parent = base(context.staging, runtime, "builder_files_invalid"), output = make(resolve(parent, `${context.candidate}.${process.pid}.${randomUUID()}`), parent, principal.uid, principal.gid, 0o700, "builder_files_invalid"); if (stat(output.path, "builder_files_invalid").dev !== stat(context.candidateRoot, "candidate_path_invalid").dev) { eraseDirectory(output); fail("device_boundary_invalid"); } return output; }
-function tar(command, args, options, runtime) { const result = typeof runtime.runTar === "function" ? runtime.runTar({ command, args, ...options }) : spawnSync(tool(command, runtime), args, { ...options, env: CMD_ENV, maxBuffer: 32 * 1024 * 1024, windowsHide: true }); if (!result || result.error || result.status !== 0) fail("builder_environment_invalid"); return result; }
-function archiveList(path, runtime) {
-  if (typeof runtime.listArchive === "function") return runtime.listArchive({ path });
-  const result = spawnSync(tool(runtime.tools.python, runtime), ["-c", ARCHIVE_LIST, path], { env: CMD_ENV, encoding: null, maxBuffer: 32 * 1024 * 1024, windowsHide: true });
-  if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) fail("archive_path_invalid");
-  return result.stdout;
-}
-export function validateNodeModulesArchiveListing(bytes) {
-  if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > 32 * 1024 * 1024 || bytes.at(-1) !== 0) fail("archive_path_invalid"); const names = [];
-  for (let start = 0, index = 0; index < bytes.length; index += 1) if (bytes[index] === 0) { const entry = bytes.subarray(start, index); start = index + 1; if (!entry.length || entry.length > 4096 || entry.includes(0)) fail("archive_path_invalid"); let name; try { name = new TextDecoder("utf-8", { fatal: true }).decode(entry); } catch { fail("archive_path_invalid"); } const clean = name.endsWith("/") ? name.slice(0, -1) : name; if (!clean || name.startsWith("/") || name.includes("\\") || !clean.split("/").every((part) => part && part !== "." && part !== ".." && !part.includes("\0") && Buffer.byteLength(part) <= 255) || clean.split("/")[0] !== "node_modules") fail("archive_path_invalid"); names.push(clean); }
-  if (!names.includes("node_modules")) fail("archive_path_invalid"); return Object.freeze(names);
-}
-function tarMaterialize(builder, staging, principal, runtime) {
-  const archive = resolve(staging.path, "node-modules.tar"), extract = make(resolve(staging.path, "extract"), staging.path, principal.uid, principal.gid, 0o700, "builder_files_invalid");
-  tar(runtime.tools.tar, ["--create", "--file", archive, "--format=posix", "--hard-dereference", "--numeric-owner", "--", "node_modules"], { cwd: builder.path, uid: principal.uid, gid: principal.gid, encoding: "utf8" }, runtime);
-  const archiveMetadata = stat(archive, "archive_path_invalid"); if (archiveMetadata.isSymbolicLink() || !archiveMetadata.isFile() || archiveMetadata.uid !== principal.uid || archiveMetadata.gid !== principal.gid || (mode(archiveMetadata) & 0o022) || archiveMetadata.dev !== stat(builder.path, "archive_path_invalid").dev) fail("archive_path_invalid");
-  validateNodeModulesArchiveListing(archiveList(archive, runtime));
-  tar(runtime.tools.tar, ["--extract", "--file", archive, "--no-same-owner", "--no-same-permissions", "--delay-directory-restore", "--directory", extract.path], { cwd: staging.path, uid: principal.uid, gid: principal.gid, encoding: "utf8" }, runtime);
-  if (readdirSync(extract.path).sort().join(",") !== "node_modules") fail("archive_path_invalid"); const nodeModules = resolve(extract.path, "node_modules"); audit(nodeModules, principal, runtime, true); aclCapabilities(nodeModules, runtime); const owner = rootify(nodeModules, principal, runtime), tree = audit(nodeModules, owner, runtime, true); aclCapabilities(nodeModules, runtime); return { nodeModules, extract: extract.path, tree, owner };
 }
 
-function renameSupport(runtime) { if (typeof runtime.renameNoReplace === "function") return; const result = spawnSync(tool(runtime.tools.python, runtime), ["-c", RENAME_PROBE], { env: CMD_ENV, encoding: "utf8", windowsHide: true }); if (result.error || result.status !== 0) fail("rename_noreplace_unavailable"); }
-function rename(source, destination, runtime) { if (typeof runtime.renameNoReplace === "function") { const result = runtime.renameNoReplace({ source, destination }); if (!result?.published) fail(result?.unavailable ? "rename_noreplace_unavailable" : "node_modules_publish_failed"); return; } const result = spawnSync(tool(runtime.tools.python, runtime), ["-c", RENAME_SCRIPT, source, destination], { env: CMD_ENV, encoding: "utf8", windowsHide: true }); if (result.error || result.status === 70) fail("rename_noreplace_unavailable"); if (result.status !== 0) fail("node_modules_publish_failed"); }
-function lock(runtime) { const parent = base(runtime.lockRoot, runtime, "lock_unavailable"), path = resolve(parent, "node-modules-materialization.lock"); let descriptor; try { descriptor = openSync(path, "wx", 0o600); if (runtime.enforceOwnership) chownSync(path, 0, 0); chmodSync(path, 0o600); fsyncSync(descriptor); closeSync(descriptor); descriptor = undefined; const metadata = stat(path, "lock_unavailable"); if (metadata.isSymbolicLink() || !metadata.isFile() || (mode(metadata) & 0o777) !== 0o600 || runtime.enforceOwnership && (metadata.uid !== 0 || metadata.gid !== 0)) fail("lock_unavailable"); fsync(parent, "lock_unavailable"); return { path, parent, identity: inode(metadata) }; } catch (error) { if (descriptor !== undefined) closeSync(descriptor); attempt(() => unlinkSync(path)); if (error instanceof CandidateDependencyGateError) throw error; fail("lock_unavailable"); } }
-function unlock(value) { return eraseFile(value); }
-function snapshotSource(context, runtime) { const source = fileIn(context.candidateRoot, "scripts/control-plane-db-snapshot-gate.mjs", runtime, "native_module_validation_failed"); return { path: source.path, digest: hashFile(source.path) }; }
-async function smoke(cwd, source, principal, runtime) { const result = typeof runtime.runSmoke === "function" ? await runtime.runSmoke({ cwd, source, principal, env: NODE_ENV }) : await detached(tool(runtime.tools.node, runtime), ["--input-type=module", "--eval", SMOKE, "--", "candidate-dependency-gate-import-sentinel", source], { cwd, env: NODE_ENV, uid: principal.uid, gid: principal.gid }); if (!result || result.status !== 0 || result.error || result.sideEffectSafe === false) fail("native_module_validation_failed"); if (result.pid && !(await gone(result.pid))) fail("child_cleanup_failed", true); }
-function stageImport(staged, source, principal) { const parent = make(resolve(staged.extract, "scripts"), staged.extract, principal.uid, principal.gid, 0o700, "native_module_validation_failed"), target = resolve(parent.path, "control-plane-db-snapshot-gate.mjs"); try { copyFileSync(source.path, target); if (process.platform !== "win32") chownSync(target, principal.uid, principal.gid); chmodSync(target, 0o400); fsync(target, "native_module_validation_failed"); if (hashFile(target) !== source.digest) fail("native_module_validation_failed"); return target; } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail("native_module_validation_failed"); } }
+function stageSnapshotModule(extracted, context, supplied) {
+  const source = snapshotSource(context, supplied), scripts = resolve(extracted.root, "scripts"), target = resolve(scripts, "control-plane-db-snapshot-gate.mjs"), owner = rootWorkerOwner(supplied);
+  try {
+    if (!existsSync(scripts)) mkdirSync(scripts, { mode: 0o755 });
+    const directoryValue = directory(scripts, supplied, "native_module_validation_failed");
+    if (!same(directoryValue, scripts)) fail("native_module_validation_failed");
+    if (existsSync(target)) {
+      const existing = rootOwnedRegular(target, supplied, "native_module_validation_failed", null);
+      if (process.platform !== "win32") unlinkSync(existing.path); else unlinkSync(existing.path);
+    }
+    writeFileSync(target, readFileSync(source.path), { mode: 0o644, flag: "wx" });
+    if (process.platform !== "win32") chownSync(target, owner.uid, owner.gid);
+    chmodSync(target, 0o644);
+    fsync(target, "native_module_validation_failed");
+    if (hashFile(target) !== source.digest || hashFile(source.path) !== source.digest) fail("native_module_validation_failed");
+    return target;
+  } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail("native_module_validation_failed"); }
+}
 
-function receiptPayload(state, tree, runtime) { return { schemaVersion: "1", type: "control_plane_candidate_dependency_receipt", state: "materialized", releaseUnit: UNIT, currentRelease: state.c.current, candidateRelease: state.c.candidate, sourceCommit: state.input.source.sourceCommit, artifactSha256: state.input.source.artifact.sha256, artifactSizeBytes: state.input.source.artifact.sizeBytes, artifactManifestSha256: state.input.artifactManifest, artifactManifestSizeBytes: state.input.artifactManifestSizeBytes, artifactStageReceiptSha256: state.input.artifact, artifactStageReceiptSizeBytes: state.input.artifactStageReceiptSizeBytes, assemblySha256: state.input.assembly, packageSha256: state.input.package, packageLockSha256: state.input.lock, nodeModulesTreeSha256: tree.digest, serviceUid: state.service.uid, serviceGid: state.service.gid, createdAt: now(runtime) }; }
-function checkReceipt(value, state, tree = null) { const expected = ["schemaVersion", "type", "state", "releaseUnit", "currentRelease", "candidateRelease", "sourceCommit", "artifactSha256", "artifactSizeBytes", "artifactManifestSha256", "artifactManifestSizeBytes", "artifactStageReceiptSha256", "artifactStageReceiptSizeBytes", "assemblySha256", "packageSha256", "packageLockSha256", "nodeModulesTreeSha256", "serviceUid", "serviceGid", "createdAt"];
-  if (!keys(value, expected) || value.schemaVersion !== "1" || value.type !== "control_plane_candidate_dependency_receipt" || value.state !== "materialized" || value.releaseUnit !== UNIT || value.currentRelease !== state.c.current || value.candidateRelease !== state.c.candidate || value.sourceCommit !== state.input.source.sourceCommit || value.artifactSha256 !== state.input.source.artifact.sha256 || value.artifactSizeBytes !== state.input.source.artifact.sizeBytes || value.artifactManifestSha256 !== state.input.artifactManifest || value.artifactManifestSizeBytes !== state.input.artifactManifestSizeBytes || value.artifactStageReceiptSha256 !== state.input.artifact || value.artifactStageReceiptSizeBytes !== state.input.artifactStageReceiptSizeBytes || value.assemblySha256 !== state.input.assembly || value.packageSha256 !== state.input.package || value.packageLockSha256 !== state.input.lock || !HASH.test(value.nodeModulesTreeSha256 || "") || value.serviceUid !== state.service.uid || value.serviceGid !== state.service.gid || !iso(value.createdAt) || tree && value.nodeModulesTreeSha256 !== tree.digest) fail("dependency_receipt_mismatch"); }
-function receiptDirectory(context, runtime) { const parent = base(context.receipts, runtime, "dependency_receipt_publish_failed"), path = resolve(parent, context.candidate); if (!existsSync(path)) make(path, parent, runtime.enforceOwnership ? 0 : runtime.getuid(), runtime.enforceOwnership ? 0 : runtime.getgid(), 0o700, "dependency_receipt_publish_failed"); else if (readdirSync(directory(path, runtime, "dependency_receipt_publish_failed")).length) fail("dependency_receipt_present"); return directory(path, runtime, "dependency_receipt_publish_failed"); }
-function writeReceipt(state, payload, runtime) { const parent = receiptDirectory(state.c, runtime), path = resolve(parent, "node-modules-materialization.json"); if (!same(path, state.c.receipt) || existsSync(path)) fail("dependency_receipt_present"); const temporary = resolve(parent, `.node-modules-materialization.${process.pid}.${randomUUID()}`), bytes = Buffer.from(`${JSON.stringify(payload, null, 2)}\n`); try { writeFileSync(temporary, bytes, { mode: 0o600, flag: "wx" }); if (runtime.enforceOwnership) chownSync(temporary, 0, 0); chmodSync(temporary, 0o600); fsync(temporary, "dependency_receipt_publish_failed"); linkSync(temporary, path); unlinkSync(temporary); fsync(parent, "dependency_receipt_publish_failed"); const final = regular(path, runtime, "dependency_receipt_publish_failed", 0o600, true); if (hashFile(final.path) !== hash(bytes)) fail("dependency_receipt_publish_failed"); return { path: final.path, identity: inode(final.metadata), value: json(final.path, "dependency_receipt_publish_failed") }; } catch (error) { attempt(() => rmSync(temporary, { force: true })); if (error instanceof CandidateDependencyGateError) throw error; fail("dependency_receipt_publish_failed"); } }
-function readReceipt(context, runtime) { if (!existsSync(context.receipt)) fail("dependency_receipt_missing"); const file = regular(context.receipt, runtime, "dependency_receipt_invalid", 0o600, true); return { path: file.path, identity: inode(file.metadata), value: json(file.path, "dependency_receipt_invalid") }; }
-function report(mode, state, value, tree = null, applied = false) { return { schemaVersion: CANDIDATE_DEPENDENCY_GATE_SCHEMA_VERSION, type: CANDIDATE_DEPENDENCY_GATE_TYPE, mode, state, applied, releaseUnit: UNIT, currentRelease: value.c.current, candidateRelease: value.c.candidate, servicePrincipal: { uid: value.service.uid, gid: value.service.gid }, sourceBinding: { artifactManifestBound: true, artifactStageReceiptBound: true, assemblyManifestBound: true, packageLockBound: true }, ...(tree ? { dependencyTree: { audited: true, nativeBetterSqlite3: true, snapshotImportSafe: true, hardlinksBroken: tree.broken } } : {}), ...(["preflight", "verify"].includes(mode) ? { binding: { packageSha256: value.input.package, packageLockSha256: value.input.lock, assemblySha256: value.input.assembly, artifactManifestSha256: value.input.artifactManifest, artifactManifestSizeBytes: value.input.artifactManifestSizeBytes, artifactStageReceiptSha256: value.input.artifact, artifactStageReceiptSizeBytes: value.input.artifactStageReceiptSizeBytes } } : {}) }; }
+function serviceNativeSmoke(root, service, supplied) {
+  if (!service || service.uid <= 0 || service.gid <= 0) fail("service_identity_invalid");
+  return runNativeBetterSqliteSmoke({
+    root,
+    snapshotModule: "scripts/control-plane-db-snapshot-gate.mjs",
+    runtime: artifactToolRuntime(supplied, service)
+  });
+}
 
-export function preflightCandidateDependencies({ candidateRelease, expectedCurrentRelease, runtime: supplied = runtime() } = {}) { const initial = state(candidateRelease, expectedCurrentRelease, supplied); renameSupport(supplied); return report("preflight", "ready", steady(initial, supplied)); }
-// Phase A1 consumer boundary. Production callers must pass a fixed, trusted
-// artifact path and `enforceOwnership: true`; this wrapper intentionally does
-// not revive the disabled host-side npm builder or extraction path.
+function prepareArtifactForMaterialization(value, identity, stage, supplied) {
+  const input = materializationArtifactInput(value, identity, supplied);
+  if (!supplied.requireRoot && typeof supplied.verifyArtifact === "function") {
+    const verified = supplied.verifyArtifact({
+      candidateRelease: value.c.candidate,
+      expectedSourceCommit: identity.sourceCommit,
+      expectedArtifactRelease: identity.artifactRelease,
+      expectedDependencyManifestSha256: identity.manifestSha256,
+      expectedDependencyArchiveSha256: identity.archiveSha256
+    });
+    return Object.freeze({ evidence: artifactEvidence(verified, identity), extracted: null });
+  }
+  try {
+    const prepared = prepareDependencyArtifactTree({
+      manifestBytes: readDependencyArtifactManifest(input.manifest.path),
+      archivePath: input.archive.path,
+      packageJsonBytes: value.input.packageBytes,
+      packageLockBytes: value.input.lockBytes,
+      expectedSourceCommit: identity.sourceCommit,
+      expectedArtifactRelease: identity.artifactRelease,
+      expectedManifestSha256: identity.manifestSha256,
+      expectedArchiveSha256: identity.archiveSha256,
+      destinationRoot: resolve(stage.path, "project"),
+      runtime: artifactToolRuntime(supplied)
+    });
+    const verified = {
+      state: "verified",
+      sourceCommit: prepared.manifest.value.sourceCommit,
+      artifactRelease: prepared.manifest.value.artifactRelease,
+      manifestSha256: prepared.manifest.sha256,
+      manifestSizeBytes: prepared.manifest.sizeBytes,
+      archive: prepared.archive,
+      tree: prepared.tree
+    };
+    return Object.freeze({ evidence: artifactEvidence(verified, identity), extracted: prepared.extracted });
+  } catch (error) {
+    if (error?.condition && SAFE.has(error.condition)) fail(error.condition, error.attentionRequired === true);
+    fail("dependency_artifact_invalid", error?.attentionRequired === true);
+  }
+}
+
+function materializationExtraction(prepared, stage, supplied) {
+  const extracted = prepared.extracted || (!supplied.requireRoot && typeof supplied.extractArtifact === "function" ? supplied.extractArtifact({ destinationRoot: resolve(stage.path, "project") }) : null);
+  if (!extracted || typeof extracted.root !== "string" || typeof extracted.nodeModulesRoot !== "string" || typeof extracted.cleanup !== "function") fail("dependency_archive_invalid");
+  const expectedRoot = resolve(stage.path, "project"), expectedNodeModules = resolve(expectedRoot, "node_modules");
+  if (!same(extracted.root, expectedRoot) || !same(extracted.nodeModulesRoot, expectedNodeModules)) fail("dependency_archive_invalid");
+  return extracted;
+}
+
+function sameArtifactTree(tree, expected, condition) {
+  if (!tree || tree.sha256 !== expected.sha256 || tree.entryCount !== expected.entryCount || tree.totalBytes !== expected.totalBytes
+    || tree.hardlinksBroken !== expected.hardlinksBroken || tree.symlinksInternal !== expected.symlinksInternal) fail(condition);
+}
+
+function auditedPublishedTree(root, supplied, condition) {
+  mounts([root], supplied);
+  let tree;
+  try {
+    tree = auditDependencyTree(root, artifactToolRuntime(supplied));
+  } catch (error) {
+    if (error?.condition && SAFE.has(error.condition)) fail(error.condition, error.attentionRequired === true);
+    fail(condition, error?.attentionRequired === true);
+  }
+  if (tree.hardlinksBroken !== true || tree.symlinksInternal !== true) fail(condition);
+  return tree;
+}
+
+function recheckMaterializationArtifactInput(value, identity, evidence, supplied) {
+  const input = materializationArtifactInput(value, identity, supplied);
+  if (!supplied.requireRoot && typeof supplied.verifyArtifact === "function") return input;
+  const manifestMetadata = stat(input.manifest.path, "dependency_file_changed");
+  const archiveMetadata = stat(input.archive.path, "dependency_file_changed");
+  if (manifestMetadata.size !== evidence.manifestSizeBytes || archiveMetadata.size !== evidence.archive.sizeBytes
+    || hashFile(input.manifest.path) !== identity.manifestSha256 || hashFile(input.archive.path) !== identity.archiveSha256) fail("dependency_file_changed");
+  return input;
+}
+
+function cleanupExtraction(extracted) {
+  if (!extracted) return true;
+  try { extracted.cleanup(); return true; } catch { return false; }
+}
+// Retired Phase A1 compatibility entrypoint. It previously invoked the generic
+// artifact verifier as root, which would load an untrusted native addon outside
+// the candidate service boundary. Production callers must use the materialize
+// or verify entrypoints below, which bind state, custody, and service identity.
 export function verifyCandidateDependencyArtifact(options = {}) {
   const expected = ["deploymentRoot", "candidateRelease", "expectedSourceCommit", "expectedArtifactRelease", "runtime"];
   if (!options || !keys(options, expected) || options.deploymentRoot !== DEFAULT_CONTROL_PLANE_DEPLOYMENT_ROOT
     || !LABEL.test(options.candidateRelease || "") || !COMMIT.test(options.expectedSourceCommit || "")
     || !ARTIFACT_RELEASE.test(options.expectedArtifactRelease || "") || !options.runtime
     || options.runtime.requireRoot !== true || options.runtime.enforceOwnership !== true) fail("dependency_consumer_contract_invalid");
-  const paths = dependencyArtifactPaths({ deploymentRoot: options.deploymentRoot, candidateRelease: options.candidateRelease });
-  const projectRoot = dirname(paths.nodeModulesRoot);
-  const packageJsonBytes = readFileSync(resolve(projectRoot, "package.json"));
-  const packageLockBytes = readFileSync(resolve(projectRoot, "package-lock.json"));
-  return verifyDependencyArtifact({
-    manifestBytes: readFileSync(paths.manifestPath), archivePath: paths.archivePath,
-    packageJsonBytes, packageLockBytes, expectedSourceCommit: options.expectedSourceCommit,
-    expectedArtifactRelease: options.expectedArtifactRelease, projectRoot,
-    nodeModulesRoot: paths.nodeModulesRoot, snapshotModule: "scripts/control-plane-db-snapshot-gate.mjs",
-    runtime: { enforceOwnership: true }
-  });
-}
-export async function materializeCandidateDependencies({ candidateRelease, expectedCurrentRelease, apply = false, runtime: supplied = runtime() } = {}) {
-  if (apply !== true) fail("apply_confirmation_required");
   fail("worker_execution_failed");
-  let key, build, stage, published, receipt, error;
-  try {
-    let value = state(candidateRelease, expectedCurrentRelease, supplied); if (existsSync(value.c.receipt)) fail("dependency_receipt_present"); key = lock(supplied); renameSupport(supplied); value = steady(value, supplied); const source = snapshotSource(value.c, supplied);
-    build = builder(value.c, value.input, value.service, supplied); value = steady(value, supplied); const built = await npm(build, value.service, supplied); audit(built, value.service, supplied); aclCapabilities(built, supplied); stage = staging(value.c, value.service, supplied); const staged = tarMaterialize(build, stage, value.service, supplied); const stagedScript = stageImport(staged, source, value.service); await smoke(staged.extract, stagedScript, value.service, supplied); if (hashFile(source.path) !== source.digest) fail("source_identity_mismatch");
-    value = steady(value, supplied); const target = resolve(value.c.candidateRoot, "node_modules"); if (existsSync(target)) fail("candidate_node_modules_present"); const sourceIdentity = inode(stat(staged.nodeModules, "candidate_tree_invalid")); rename(staged.nodeModules, target, supplied); fsync(value.c.candidateRoot, "node_modules_publish_failed"); const targetMetadata = stat(target, "node_modules_publish_failed"); if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory() || inode(targetMetadata) !== sourceIdentity) fail("node_modules_publish_failed", true); published = { path: target, parent: value.c.candidateRoot, identity: sourceIdentity };
-    const tree = audit(target, staged.owner, supplied, true, "postpublish_validation_failed"); aclCapabilities(target, supplied); if (tree.digest !== staged.tree.digest) fail("postpublish_validation_failed"); await smoke(value.c.candidateRoot, source.path, value.service, supplied); value = steady(value, supplied, false); receipt = writeReceipt(value, receiptPayload(value, tree, supplied), supplied); checkReceipt(receipt.value, value, tree); if (!eraseDirectory(stage) || !eraseDirectory(build)) fail("postpublish_cleanup_failed", true); stage = build = null; value = steady(value, supplied, false); checkReceipt(readReceipt(value.c, supplied).value, value, tree); return report("materialize", "materialized", value, tree, true);
-  } catch (caught) { error = caught instanceof CandidateDependencyGateError ? caught : new CandidateDependencyGateError("postpublish_validation_failed"); const clean = published ? eraseFile(receipt) && eraseDirectory(published) && eraseDirectory(stage) && eraseDirectory(build) : eraseDirectory(stage) && eraseDirectory(build); if (!clean) error = new CandidateDependencyGateError("postpublish_cleanup_failed", true); }
-  finally { if (key && !unlock(key)) error = new CandidateDependencyGateError("lock_cleanup_failed", true); }
-  throw error || new CandidateDependencyGateError("postpublish_validation_failed");
 }
-export async function verifyCandidateDependencies() { fail("worker_execution_failed"); }
+export async function materializeCandidateDependencies({
+  candidateRelease,
+  expectedCurrentRelease,
+  expectedSourceCommit,
+  expectedArtifactRelease,
+  expectedDependencyManifestSha256,
+  expectedDependencyArchiveSha256,
+  apply = false,
+  runtime: supplied = runtime()
+} = {}) {
+  if (apply !== true) fail("apply_confirmation_required");
+  const requested = requestedMaterializationIdentity(expectedSourceCommit, expectedArtifactRelease, expectedDependencyManifestSha256, expectedDependencyArchiveSha256);
+  // The CI artifact removes host-side npm lifecycle execution, but extraction
+  // still needs a hard aggregate storage budget and a sandboxed service smoke
+  // runner before it can write on a production filesystem. Keep the production
+  // route inert until those two independent boundaries are implemented.
+  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
+  let key, stage, extracted, published, receipt, evidence, result, error;
+  try {
+    let value = state(candidateRelease, expectedCurrentRelease, supplied);
+    const identity = materializationIdentity(value, requested.sourceCommit, requested.artifactRelease, requested.manifestSha256, requested.archiveSha256);
+    if (existsSync(value.c.receipt)) fail("dependency_receipt_present");
+    key = lock(supplied);
+    renameSupport(supplied);
+    value = steady(value, supplied);
+    materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
+    if (supplied.requireRoot) trustedAclAncestorChain(value.c.candidateRoot, supplied, "candidate_path_invalid");
+    requireAbsent(resolve(value.c.candidateRoot, "node_modules"), "candidate_node_modules_present");
+  } catch (caught) {
+    error = caught instanceof CandidateDependencyGateError ? caught : new CandidateDependencyGateError("postpublish_validation_failed");
+  }
 
-function args(argv) { const values = new Map(); let apply = false; for (let index = 0; index < argv.length; index += 1) { const item = argv[index]; if (item === "--apply") { if (apply) fail("invalid_input"); apply = true; continue; } const equals = typeof item === "string" ? item.indexOf("=") : -1, key = equals >= 0 ? item.slice(0, equals) : item; if (!["--mode", "--candidate-release", "--expected-current-release"].includes(key) || values.has(key)) fail("invalid_input"); const value = equals >= 0 ? item.slice(equals + 1) : argv[++index]; if (typeof value !== "string" || !value || value.startsWith("--")) fail("invalid_input"); values.set(key, value); } const mode = values.get("--mode"); if (!["preflight", "materialize", "verify"].includes(mode) || !values.has("--candidate-release") || !values.has("--expected-current-release") || (mode === "materialize") !== apply) fail(mode === "materialize" || apply ? "apply_confirmation_required" : "invalid_input"); return { mode, candidateRelease: values.get("--candidate-release"), expectedCurrentRelease: values.get("--expected-current-release"), apply }; }
+  try {
+    if (error) throw error;
+    let value = state(candidateRelease, expectedCurrentRelease, supplied);
+    const identity = materializationIdentity(value, requested.sourceCommit, requested.artifactRelease, requested.manifestSha256, requested.archiveSha256);
+    stage = artifactStaging(value.c, supplied);
+    const prepared = prepareArtifactForMaterialization(value, identity, stage, supplied);
+    evidence = prepared.evidence;
+    extracted = materializationExtraction(prepared, stage, supplied);
+    const rawTree = auditedPublishedTree(extracted.nodeModulesRoot, supplied, "dependency_tree_invalid");
+    sameArtifactTree(rawTree, evidence.artifactTree, "dependency_tree_mismatch");
+    normalizeArtifactTree(extracted.root, supplied);
+    stageSnapshotModule(extracted, value.c, supplied);
+    const normalizedTree = auditedPublishedTree(extracted.nodeModulesRoot, supplied, "candidate_tree_invalid");
+    serviceNativeSmoke(extracted.root, value.service, supplied);
+    value = steady(value, supplied);
+    materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
+    recheckMaterializationArtifactInput(value, identity, evidence, supplied);
+    const target = resolve(value.c.candidateRoot, "node_modules");
+    requireAbsent(target, "candidate_node_modules_present");
+    const sourceMetadata = stat(extracted.nodeModulesRoot, "candidate_tree_invalid");
+    if (sourceMetadata.isSymbolicLink() || !sourceMetadata.isDirectory() || sourceMetadata.dev !== stat(value.c.candidateRoot, "candidate_path_invalid").dev) fail("device_boundary_invalid");
+    rename(extracted.nodeModulesRoot, target, supplied);
+    published = { path: target, parent: value.c.candidateRoot, identity: inode(sourceMetadata) };
+    fsync(dirname(extracted.nodeModulesRoot), "node_modules_publish_failed");
+    fsync(value.c.candidateRoot, "node_modules_publish_failed");
+    const targetMetadata = stat(target, "node_modules_publish_failed");
+    if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory() || inode(targetMetadata) !== inode(sourceMetadata)) fail("node_modules_publish_failed", true);
+    const finalTree = auditedPublishedTree(target, supplied, "postpublish_validation_failed");
+    if (finalTree.sha256 !== normalizedTree.sha256 || finalTree.entryCount !== normalizedTree.entryCount || finalTree.totalBytes !== normalizedTree.totalBytes) fail("postpublish_validation_failed", true);
+    serviceNativeSmoke(value.c.candidateRoot, value.service, supplied);
+    value = steady(value, supplied, false);
+    materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
+    recheckMaterializationArtifactInput(value, identity, evidence, supplied);
+    receipt = writeReceipt(value, receiptPayload(value, evidence, finalTree, supplied), supplied);
+    checkReceipt(receipt.value, value, evidence, finalTree);
+    if (!cleanupExtraction(extracted)) fail("postpublish_cleanup_failed", true);
+    extracted = null;
+    if (!eraseDirectory(stage)) fail("postpublish_cleanup_failed", true);
+    stage = null;
+    value = steady(value, supplied, false);
+    materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
+    recheckMaterializationArtifactInput(value, identity, evidence, supplied);
+    checkReceipt(readReceipt(value.c, supplied).value, value, evidence, finalTree);
+    result = report("materialize", "materialized", value, finalTree, true, evidence);
+  } catch (caught) {
+    error = caught instanceof CandidateDependencyGateError ? caught : new CandidateDependencyGateError("postpublish_validation_failed");
+    const receiptClean = !published || eraseFile(receipt);
+    const publishedClean = !published || eraseDirectory(published);
+    const extractedClean = cleanupExtraction(extracted);
+    const stageClean = eraseDirectory(stage);
+    if (!receiptClean || !publishedClean || !extractedClean || !stageClean) error = new CandidateDependencyGateError("postpublish_cleanup_failed", true);
+  } finally {
+    if (key && !unlock(key)) error = new CandidateDependencyGateError("lock_cleanup_failed", true);
+  }
+  if (error) throw error;
+  return result;
+}
+
+export async function verifyCandidateDependencies({
+  candidateRelease,
+  expectedCurrentRelease,
+  expectedSourceCommit,
+  expectedArtifactRelease,
+  expectedDependencyManifestSha256,
+  expectedDependencyArchiveSha256,
+  runtime: supplied = runtime()
+} = {}) {
+  const requested = requestedMaterializationIdentity(expectedSourceCommit, expectedArtifactRelease, expectedDependencyManifestSha256, expectedDependencyArchiveSha256);
+  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
+  let key, stage, extracted, result, error;
+  try {
+    let value = state(candidateRelease, expectedCurrentRelease, supplied, false);
+    const identity = materializationIdentity(value, requested.sourceCommit, requested.artifactRelease, requested.manifestSha256, requested.archiveSha256);
+    const target = resolve(value.c.candidateRoot, "node_modules");
+    const targetMetadata = stat(target, "candidate_tree_invalid");
+    if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory()) fail("candidate_tree_invalid");
+    key = lock(supplied);
+    value = steady(value, supplied, false);
+    materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
+    if (supplied.requireRoot) trustedAclAncestorChain(value.c.candidateRoot, supplied, "candidate_path_invalid");
+    stage = artifactStaging(value.c, supplied);
+    const prepared = prepareArtifactForMaterialization(value, identity, stage, supplied);
+    const evidence = prepared.evidence;
+    extracted = materializationExtraction(prepared, stage, supplied);
+    const rawTree = auditedPublishedTree(extracted.nodeModulesRoot, supplied, "dependency_tree_invalid");
+    sameArtifactTree(rawTree, evidence.artifactTree, "dependency_tree_mismatch");
+    const finalTree = auditedPublishedTree(target, supplied, "postpublish_validation_failed");
+    const receipt = readReceipt(value.c, supplied);
+    checkReceipt(receipt.value, value, evidence, finalTree);
+    serviceNativeSmoke(value.c.candidateRoot, value.service, supplied);
+    value = steady(value, supplied, false);
+    materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
+    recheckMaterializationArtifactInput(value, identity, evidence, supplied);
+    checkReceipt(readReceipt(value.c, supplied).value, value, evidence, finalTree);
+    const extractedClean = cleanupExtraction(extracted);
+    const stageClean = eraseDirectory(stage);
+    if (!extractedClean || !stageClean) fail("postpublish_cleanup_failed", true);
+    extracted = stage = null;
+    result = report("verify", "verified", value, finalTree, false, evidence);
+  } catch (caught) {
+    error = caught instanceof CandidateDependencyGateError ? caught : new CandidateDependencyGateError("postpublish_validation_failed");
+    const extractedClean = cleanupExtraction(extracted);
+    const stageClean = eraseDirectory(stage);
+    if (!extractedClean || !stageClean) error = new CandidateDependencyGateError("postpublish_cleanup_failed", true);
+  } finally {
+    if (key && !unlock(key)) error = new CandidateDependencyGateError("lock_cleanup_failed", true);
+  }
+  if (error) throw error;
+  return result;
+}
+
+function args(argv) {
+  const values = new Map(); let apply = false;
+  const allowed = new Set(["--mode", "--candidate-release", "--expected-current-release", "--expected-source-commit", "--expected-artifact-release", "--expected-dependency-manifest-sha256", "--expected-dependency-archive-sha256"]);
+  for (let index = 0; index < argv.length; index += 1) {
+    const item = argv[index];
+    if (item === "--apply") { if (apply) fail("invalid_input"); apply = true; continue; }
+    const equals = typeof item === "string" ? item.indexOf("=") : -1, key = equals >= 0 ? item.slice(0, equals) : item;
+    if (!allowed.has(key) || values.has(key)) fail("invalid_input");
+    const value = equals >= 0 ? item.slice(equals + 1) : argv[++index];
+    if (typeof value !== "string" || !value || value.startsWith("--")) fail("invalid_input");
+    values.set(key, value);
+  }
+  const mode = values.get("--mode");
+  if (!["preflight", "materialize", "verify"].includes(mode) || !values.has("--candidate-release") || !values.has("--expected-current-release") || (mode === "materialize") !== apply) fail(mode === "materialize" || apply ? "apply_confirmation_required" : "invalid_input");
+  const result = { mode, candidateRelease: values.get("--candidate-release"), expectedCurrentRelease: values.get("--expected-current-release"), apply };
+  if (mode !== "preflight") {
+    for (const key of ["--expected-source-commit", "--expected-artifact-release", "--expected-dependency-manifest-sha256", "--expected-dependency-archive-sha256"]) if (!values.has(key)) fail("invalid_input");
+    result.expectedSourceCommit = values.get("--expected-source-commit");
+    result.expectedArtifactRelease = values.get("--expected-artifact-release");
+    result.expectedDependencyManifestSha256 = values.get("--expected-dependency-manifest-sha256");
+    result.expectedDependencyArchiveSha256 = values.get("--expected-dependency-archive-sha256");
+  } else if (["--expected-source-commit", "--expected-artifact-release", "--expected-dependency-manifest-sha256", "--expected-dependency-archive-sha256"].some((key) => values.has(key))) fail("invalid_input");
+  return result;
+}
 export async function runCandidateDependencyGateCli({ argv = process.argv.slice(2), stdout = process.stdout, stderr = process.stderr } = {}) { let mode = null; try { const value = args(argv); mode = value.mode; const result = mode === "preflight" ? preflightCandidateDependencies(value) : mode === "materialize" ? await materializeCandidateDependencies(value) : await verifyCandidateDependencies(value); stdout.write(`${JSON.stringify(result)}\n`); return 0; } catch (error) { const gate = error instanceof CandidateDependencyGateError ? error : null; stderr.write(`${JSON.stringify({ schemaVersion: CANDIDATE_DEPENDENCY_GATE_SCHEMA_VERSION, type: CANDIDATE_DEPENDENCY_GATE_TYPE, mode, state: gate?.attentionRequired ? "attention_required" : "blocked", condition: gate && SAFE.has(gate.condition) ? gate.condition : "postpublish_validation_failed" })}\n`); return 1; } }
 if (process.argv[1] && (() => { try { return same(physical(process.argv[1], "invalid_input"), physical(fileURLToPath(import.meta.url), "invalid_input")); } catch { return false; } })()) {
   if (process.argv[2] === "--worker") {

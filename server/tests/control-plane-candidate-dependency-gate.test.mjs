@@ -9,8 +9,10 @@ import {
   fsyncSync,
   linkSync,
   lstatSync,
+  mkdtempSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -28,7 +30,6 @@ import {
   CandidateDependencyGateError,
   buildTransientUnitInvocation,
   createCandidateDependencyGateTestRuntime,
-  isolatedNpmEnvironment,
   materializeCandidateDependencies,
   invokeCandidateDependencyTransientUnit,
   parseProductionTransientReadback,
@@ -50,6 +51,7 @@ import {
   workerInputCustodyReadback
 } from "../../scripts/control-plane-candidate-dependency-gate.mjs";
 import { createArtifactManifest } from "../../scripts/create-artifact-manifest.mjs";
+import { auditDependencyTree, buildDependencyArtifactManifest, extractDependencyArchive } from "../../scripts/control-plane-dependency-artifact.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const isWindows = process.platform === "win32";
@@ -136,8 +138,8 @@ function assembly({ active, candidate, envBytes, proxyBytes }) {
   };
 }
 
-function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm } = {}) {
-  const root = resolve(tmpdir(), `gccgw-dependency-gate-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm, root: fixtureRoot } = {}) {
+  const root = fixtureRoot ? resolve(fixtureRoot) : resolve(tmpdir(), `gccgw-dependency-gate-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const active = "active-release";
   const candidate = "candidate-release";
   const activeRoot = join(root, "releases", active);
@@ -163,6 +165,12 @@ function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm } = {}) {
   const staged = stageReceipt({ candidate, packageBytes, lockBytes, manifest, manifestBytes, mutate: artifactMutate });
   const artifactStageBytes = Buffer.from(`${JSON.stringify(staged.value, null, 2)}\r\n`);
   write(join(assemblyRoot, "artifact-stage-receipt.json"), artifactStageBytes);
+  const dependencyArtifactRoot = join(root, "dependency-artifacts", candidate);
+  mkdirSync(dependencyArtifactRoot, { recursive: true, mode: 0o700 });
+  chmodSync(dependencyArtifactRoot, 0o700);
+  write(join(dependencyArtifactRoot, "dependency-artifact.json"), "{}\n", 0o400);
+  write(join(dependencyArtifactRoot, "node-modules.tar"), "test artifact\n", 0o400);
+  write(join(dependencyArtifactRoot, "release-label.txt"), `${ARTIFACT_RELEASE}\n`, 0o400);
   if (!isWindows) symlinkSync(activeRoot, join(root, "current"), "dir");
   const uid = statSync(root).uid;
   const gid = statSync(root).gid;
@@ -234,6 +242,7 @@ test("candidate consumer wrapper requires fixed identities, layout, root mode, a
   assert.throws(() => verifyCandidateDependencyArtifact({ ...base, runtime: { requireRoot: true, enforceOwnership: false } }), condition("dependency_consumer_contract_invalid"));
   assert.throws(() => verifyCandidateDependencyArtifact({ ...base, deploymentRoot: "/tmp/candidate" }), condition("dependency_consumer_contract_invalid"));
   assert.throws(() => verifyCandidateDependencyArtifact({ ...base, archivePath: "/tmp/override.tar" }), condition("dependency_consumer_contract_invalid"));
+  assert.throws(() => verifyCandidateDependencyArtifact(base), condition("worker_execution_failed"));
 });
 
 function parseArtifactReceipt({ value, candidate, packageBytes, lockBytes, bytes = null, artifactManifestBytes: manifestBytes }) {
@@ -696,7 +705,7 @@ test("top-level StateDirectory seize requires completed cgroup cleanup and never
   const productionLike = dynamicRuntime({ requireRoot: true, getuid: () => 0 });
   assert.throws(
     () => seizeWorkerStateTopLevel({ kind: "build", unit, terminal: { succeeded: true, cleanupAllowed: true }, runtime: productionLike, operations: { lstat() { injectedOperationCalls += 1; }, chown() { injectedOperationCalls += 1; }, chmod() { injectedOperationCalls += 1; } } }),
-    (error) => error instanceof CandidateDependencyGateError && error.condition === "worker_cleanup_uncertain" && error.attentionRequired === true
+    condition("worker_storage_limit_unavailable")
   );
   assert.equal(injectedOperationCalls, 0);
 });
@@ -955,7 +964,7 @@ test("production adapter ignores caller launch/read callbacks and internal termi
     readTransientUnit() { callbackCalls += 1; return { serviceUnit: `${unit}.service`, activeState: "inactive", subState: "dead", result: "success", execMainStatus: 0, controlGroup: `/system.slice/${unit}.service`, cgroupEventsPopulated: 0, cgroupProcs: [] }; }
   });
   const input = [resolve(production.workerInputRoot, unit, "package.json"), resolve(production.workerInputRoot, unit, "package-lock.json")];
-  assert.throws(() => invokeCandidateDependencyTransientUnit({ kind: "build", unit, input, runtime: production }), condition("worker_input_custody_invalid"));
+  assert.throws(() => invokeCandidateDependencyTransientUnit({ kind: "build", unit, input, runtime: production }), condition("worker_storage_limit_unavailable"));
   assert.equal(callbackCalls, 0);
 
   const systemctlOutput = [
@@ -1089,19 +1098,19 @@ test("archive listing accepts only NUL-safe node_modules components", () => {
   }
 });
 
-test("materialize and verify fail closed until the DynamicUser pipeline is complete", async () => {
+test("materialize never falls back to the legacy host-side npm pipeline", async () => {
   let legacyCalls = 0;
   const runtime = createCandidateDependencyGateTestRuntime({
     runNpm() { legacyCalls += 1; return { status: 0 }; },
     runTar() { legacyCalls += 1; return { status: 0 }; },
     runSmoke() { legacyCalls += 1; return { status: 0 }; }
   });
-  await assert.rejects(materializeCandidateDependencies({ candidateRelease: "candidate-release", expectedCurrentRelease: "active-release", apply: true, runtime }), condition("worker_execution_failed"));
-  await assert.rejects(verifyCandidateDependencies(), condition("worker_execution_failed"));
+  await assert.rejects(materializeCandidateDependencies({ candidateRelease: "candidate-release", expectedCurrentRelease: "active-release", apply: true, runtime }), condition("invalid_input"));
+  await assert.rejects(verifyCandidateDependencies({ runtime }), condition("invalid_input"));
   assert.equal(legacyCalls, 0);
 });
 
-test("materialize CLI fails closed before any legacy dependency operation", async () => {
+test("materialize CLI requires the CI artifact identity before any dependency operation", async () => {
   let stdout = "", stderr = "";
   const code = await runCandidateDependencyGateCli({
     argv: ["--mode", "materialize", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--apply"],
@@ -1111,66 +1120,319 @@ test("materialize CLI fails closed before any legacy dependency operation", asyn
   assert.equal(code, 1);
   assert.equal(stdout, "");
   assert.deepEqual(JSON.parse(stderr), {
-    schemaVersion: "1", type: CANDIDATE_DEPENDENCY_GATE_TYPE, mode: "materialize", state: "blocked", condition: "worker_execution_failed"
+    schemaVersion: "1", type: CANDIDATE_DEPENDENCY_GATE_TYPE, mode: null, state: "blocked", condition: "invalid_input"
   });
 });
 
-test("materialize keeps npm isolated, breaks verified internal hardlinks, publishes atomically, and verifies", { skip: "legacy direct materialization is disabled pending DynamicUser pipeline" }, async (t) => {
-  const value = fixture(t, {
-    setupNpm: ({ builder }) => {
-      const first = join(builder, "node_modules", "pkg", "a.js");
-      write(first, "same\n", 0o644);
-      linkSync(first, join(builder, "node_modules", "pkg", "b.js"));
-      write(join(builder, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node"), "native\n", 0o700);
-      return { status: 0 };
-    }
+test("production artifact materialization and verification remain inert pending storage and smoke isolation", async () => {
+  let calls = 0;
+  const productionLike = createCandidateDependencyGateTestRuntime({
+    requireRoot: true,
+    enforceOwnership: true,
+    getuid: () => 0,
+    verifyArtifact() { calls += 1; return null; },
+    extractArtifact() { calls += 1; return null; },
+    nativeSmoke() { calls += 1; return true; }
   });
-  const result = await materializeCandidateDependencies({ candidateRelease: value.candidate, expectedCurrentRelease: value.active, apply: true, runtime: value.runtime });
-  assert.equal(result.state, "materialized");
-  assert.equal(result.dependencyTree.hardlinksBroken, true);
-  assert.equal(lstatSync(join(value.candidateRoot, "node_modules", "pkg", "a.js")).nlink, 1);
-  assert.equal(lstatSync(join(value.candidateRoot, "node_modules", "pkg", "b.js")).nlink, 1);
-  assert.equal(existsSync(join(value.root, "dependency-builders", value.candidate)), false);
-  assert.equal(existsSync(join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json")), true);
-  assert.deepEqual(Object.keys(value.getNpmEnv()).sort(), Object.keys(isolatedNpmEnvironment()).sort());
-  assert.equal(value.getNpmEnv().NODE_OPTIONS, undefined);
-  assert.equal(value.getNpmEnv().npm_config_globalconfig, "/dev/null");
-  const dependencyReceipt = JSON.parse(readFileSync(join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json"), "utf8"));
-  assert.equal(dependencyReceipt.artifactManifestSha256, hash(value.artifactManifestBytes));
-  assert.equal(dependencyReceipt.artifactManifestSizeBytes, value.artifactManifestBytes.length);
-  assert.equal(dependencyReceipt.artifactStageReceiptSizeBytes, value.artifactStageBytes.length);
-  const verified = await verifyCandidateDependencies();
-  assert.equal(verified.state, "verified");
-  assert.equal(verified.binding.artifactManifestSizeBytes, value.artifactManifestBytes.length);
-  assert.equal(verified.binding.artifactStageReceiptSizeBytes, value.artifactStageBytes.length);
+  const request = {
+    candidateRelease: "candidate-release",
+    expectedCurrentRelease: "active-release",
+    expectedSourceCommit: SOURCE_COMMIT,
+    expectedArtifactRelease: ARTIFACT_RELEASE,
+    expectedDependencyManifestSha256: "c".repeat(64),
+    expectedDependencyArchiveSha256: "d".repeat(64),
+    runtime: productionLike
+  };
+  assert.throws(() => preflightCandidateDependencies({ candidateRelease: request.candidateRelease, expectedCurrentRelease: request.expectedCurrentRelease, runtime: productionLike }), condition("worker_storage_limit_unavailable"));
+  assert.throws(() => stageBuildWorkerInputs({ candidateRelease: request.candidateRelease, expectedCurrentRelease: request.expectedCurrentRelease, unit: "control-plane-candidate-dependency-build-test", runtime: productionLike }), condition("worker_storage_limit_unavailable"));
+  assert.throws(() => invokeCandidateDependencyTransientUnit({ kind: "build", unit: "control-plane-candidate-dependency-build-test", input: [], runtime: productionLike }), condition("worker_storage_limit_unavailable"));
+  assert.throws(() => seizeWorkerStateTopLevel({ kind: "build", unit: "control-plane-candidate-dependency-build-test", terminal: { succeeded: true, cleanupAllowed: true }, runtime: productionLike }), condition("worker_storage_limit_unavailable"));
+  await assert.rejects(materializeCandidateDependencies({ ...request, apply: true }), condition("worker_storage_limit_unavailable"));
+  await assert.rejects(verifyCandidateDependencies(request), condition("worker_storage_limit_unavailable"));
+  assert.equal(calls, 0);
 });
 
-test("materialize rejects an external hardlink and leaves the non-current candidate unpublished", { skip: "legacy direct materialization is disabled pending DynamicUser pipeline" }, async (t) => {
-  const value = fixture(t, {
-    setupNpm: ({ builder, root }) => {
-      const external = join(root, "external-inode");
-      write(external, "outside\n", 0o644);
-      linkSync(external, join(builder, "node_modules", "pkg", "inside.js"));
-      write(join(builder, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node"), "native\n", 0o700);
-      return { status: 0 };
-    }
-  });
-  await assert.rejects(materializeCandidateDependencies({ candidateRelease: value.candidate, expectedCurrentRelease: value.active, apply: true, runtime: value.runtime }), condition("hardlink_provenance_invalid"));
-  assert.equal(existsSync(join(value.candidateRoot, "node_modules")), false);
-  assert.equal(readFileSync(join(value.root, "external-inode"), "utf8"), "outside\n");
-});
-
-test("postpublish cleanup uncertainty is attention-required and never removes a foreign target", { skip: "legacy direct materialization is disabled pending DynamicUser pipeline" }, async (t) => {
-  let smokeCount = 0;
+test("CI artifact materialization never removes a pre-existing lock", { skip: isWindows }, async (t) => {
   const value = fixture(t);
-  value.runtime.runSmoke = async () => {
-    smokeCount += 1;
-    if (smokeCount === 2) chmodSync(join(value.root, "dependency-staging"), 0o500);
-    return { status: 0, sideEffectSafe: true };
+  const lockPath = join(value.runtime.lockRoot, "node-modules-materialization.lock");
+  const original = Buffer.from("foreign lock\n");
+  mkdirSync(value.runtime.lockRoot, { recursive: true });
+  writeFileSync(lockPath, original, { mode: 0o600 });
+
+  await assert.rejects(
+    materializeCandidateDependencies({
+      candidateRelease: value.candidate,
+      expectedCurrentRelease: value.active,
+      expectedSourceCommit: SOURCE_COMMIT,
+      expectedArtifactRelease: ARTIFACT_RELEASE,
+      expectedDependencyManifestSha256: "c".repeat(64),
+      expectedDependencyArchiveSha256: "d".repeat(64),
+      apply: true,
+      runtime: value.runtime
+    }),
+    condition("lock_unavailable")
+  );
+  assert.deepEqual(readFileSync(lockPath), original);
+});
+
+test("CI artifact materialization binds the uploaded release label before verifier execution", { skip: isWindows }, async (t) => {
+  const value = fixture(t);
+  const labelPath = join(value.root, "dependency-artifacts", value.candidate, "release-label.txt");
+  chmodSync(labelPath, 0o600);
+  write(labelPath, "wrong-release\n", 0o400);
+  let verifierCalls = 0;
+  value.runtime.verifyArtifact = () => { verifierCalls += 1; return null; };
+
+  await assert.rejects(
+    materializeCandidateDependencies({
+      candidateRelease: value.candidate,
+      expectedCurrentRelease: value.active,
+      expectedSourceCommit: SOURCE_COMMIT,
+      expectedArtifactRelease: ARTIFACT_RELEASE,
+      expectedDependencyManifestSha256: "c".repeat(64),
+      expectedDependencyArchiveSha256: "d".repeat(64),
+      apply: true,
+      runtime: value.runtime
+    }),
+    condition("dependency_consumer_contract_invalid")
+  );
+  assert.equal(verifierCalls, 0);
+});
+
+test("CI artifact materialization uses only the verified artifact extraction and atomically publishes it", { skip: isWindows }, async (t) => {
+  const value = fixture(t);
+  const extractedSource = join(value.root, "ci-artifact-source");
+  const extractedModules = join(extractedSource, "node_modules");
+  mkdirSync(join(extractedModules, "better-sqlite3", "build", "Release"), { recursive: true, mode: 0o700 });
+  write(join(extractedModules, "better-sqlite3", "index.js"), "module.exports = {};\n", 0o600);
+  write(join(extractedModules, "better-sqlite3", "package.json"), '{"version":"12.10.0"}\n', 0o600);
+  write(join(extractedModules, "better-sqlite3", "build", "Release", "better_sqlite3.node"), "native\n", 0o600);
+  write(join(extractedSource, "scripts", "control-plane-db-snapshot-gate.mjs"), "export const safeImport = true;\n", 0o600);
+  const artifactTree = auditDependencyTree(extractedModules, { checkAclCapabilities: () => true });
+
+  let verifyCalls = 0;
+  let extractCalls = 0;
+  let renameCalls = 0;
+  let legacyCalls = 0;
+  let cleanupCalls = 0;
+  let stagedRoot = null;
+  const smokePrincipals = [];
+  const service = { ...value.runtime.readService({ context: null }), uid: 4242, gid: 4243 };
+  const originalRename = value.runtime.renameNoReplace;
+  Object.assign(value.runtime, {
+    runNpm() { legacyCalls += 1; return { status: 0 }; },
+    runTar() { legacyCalls += 1; return { status: 0 }; },
+    nativeSmoke({ root, uid, gid }) {
+      smokePrincipals.push({ root, uid, gid });
+      return true;
+    },
+    readService: () => service,
+    verifyArtifact({ expectedSourceCommit, expectedArtifactRelease }) {
+      verifyCalls += 1;
+      assert.equal(expectedSourceCommit, SOURCE_COMMIT);
+      assert.equal(expectedArtifactRelease, ARTIFACT_RELEASE);
+      return {
+        state: "verified",
+        sourceCommit: SOURCE_COMMIT,
+        artifactRelease: ARTIFACT_RELEASE,
+        manifestSha256: "c".repeat(64),
+        manifestSizeBytes: 123,
+        archive: { sha256: "d".repeat(64), sizeBytes: 456 },
+        tree: artifactTree,
+        smoke: { betterSqlite3Memory: true, snapshotImport: true }
+      };
+    },
+    extractArtifact({ destinationRoot }) {
+      extractCalls += 1;
+      stagedRoot = destinationRoot;
+      cpSync(extractedSource, destinationRoot, { recursive: true, dereference: false });
+      return {
+        root: destinationRoot,
+        nodeModulesRoot: join(destinationRoot, "node_modules"),
+        cleanup() {
+          cleanupCalls += 1;
+          rmSync(destinationRoot, { recursive: true, force: true });
+        }
+      };
+    },
+    renameNoReplace(request) {
+      renameCalls += 1;
+      return originalRename(request);
+    }
+  });
+
+  const result = await materializeCandidateDependencies({
+    candidateRelease: value.candidate,
+    expectedCurrentRelease: value.active,
+    expectedSourceCommit: SOURCE_COMMIT,
+    expectedArtifactRelease: ARTIFACT_RELEASE,
+    expectedDependencyManifestSha256: "c".repeat(64),
+    expectedDependencyArchiveSha256: "d".repeat(64),
+    apply: true,
+    runtime: value.runtime
+  });
+
+  assert.equal(result.state, "materialized");
+  assert.equal(verifyCalls, 1);
+  assert.equal(extractCalls, 1);
+  assert.equal(renameCalls, 1);
+  assert.equal(legacyCalls, 0);
+  assert.equal(cleanupCalls, 1);
+  assert.deepEqual(smokePrincipals, [
+    { root: stagedRoot, uid: service.uid, gid: service.gid },
+    { root: value.candidateRoot, uid: service.uid, gid: service.gid }
+  ]);
+  assert.equal(existsSync(join(value.candidateRoot, "node_modules", "better-sqlite3", "index.js")), true);
+  assert.equal(existsSync(join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json")), true);
+
+  value.runtime.extractArtifact = ({ destinationRoot }) => {
+    cpSync(extractedSource, destinationRoot, { recursive: true, dereference: false });
+    return {
+      root: destinationRoot,
+      nodeModulesRoot: join(destinationRoot, "node_modules"),
+      cleanup() { throw new Error("forced extraction cleanup failure"); }
+    };
   };
   await assert.rejects(
-    materializeCandidateDependencies({ candidateRelease: value.candidate, expectedCurrentRelease: value.active, apply: true, runtime: value.runtime }),
-    (error) => error instanceof CandidateDependencyGateError && error.condition === "postpublish_cleanup_failed" && error.attentionRequired === true
+    verifyCandidateDependencies({
+      candidateRelease: value.candidate,
+      expectedCurrentRelease: value.active,
+      expectedSourceCommit: SOURCE_COMMIT,
+      expectedArtifactRelease: ARTIFACT_RELEASE,
+      expectedDependencyManifestSha256: "c".repeat(64),
+      expectedDependencyArchiveSha256: "d".repeat(64),
+      runtime: value.runtime
+    }),
+    condition("postpublish_cleanup_failed")
   );
-  assert.equal(existsSync(join(value.candidateRoot, "node_modules")), false);
+  assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);
+});
+
+test("CI artifact materialization rejects an existing candidate tree before artifact or legacy work", { skip: isWindows }, async (t) => {
+  const value = fixture(t);
+  const target = join(value.candidateRoot, "node_modules");
+  write(join(target, "foreign.js"), "foreign\n", 0o600);
+  let artifactCalls = 0;
+  let legacyCalls = 0;
+  Object.assign(value.runtime, {
+    verifyArtifact() { artifactCalls += 1; return null; },
+    extractArtifact() { artifactCalls += 1; return null; },
+    runNpm() { legacyCalls += 1; return { status: 0 }; },
+    runTar() { legacyCalls += 1; return { status: 0 }; }
+  });
+
+  await assert.rejects(
+    materializeCandidateDependencies({
+      candidateRelease: value.candidate,
+      expectedCurrentRelease: value.active,
+      expectedSourceCommit: SOURCE_COMMIT,
+      expectedArtifactRelease: ARTIFACT_RELEASE,
+      expectedDependencyManifestSha256: "c".repeat(64),
+      expectedDependencyArchiveSha256: "d".repeat(64),
+      apply: true,
+      runtime: value.runtime
+    }),
+    condition("candidate_node_modules_present")
+  );
+  assert.equal(artifactCalls, 0);
+  assert.equal(legacyCalls, 0);
+  assert.equal(readFileSync(join(target, "foreign.js"), "utf8"), "foreign\n");
+});
+
+test("CI artifact materialization rejects a dangling candidate node_modules link before artifact work", { skip: isWindows }, async (t) => {
+  const value = fixture(t);
+  const target = join(value.candidateRoot, "node_modules");
+  symlinkSync("missing-node-modules", target, "dir");
+  let artifactCalls = 0;
+  Object.assign(value.runtime, {
+    verifyArtifact() { artifactCalls += 1; return null; },
+    extractArtifact() { artifactCalls += 1; return null; }
+  });
+
+  await assert.rejects(
+    materializeCandidateDependencies({
+      candidateRelease: value.candidate,
+      expectedCurrentRelease: value.active,
+      expectedSourceCommit: SOURCE_COMMIT,
+      expectedArtifactRelease: ARTIFACT_RELEASE,
+      expectedDependencyManifestSha256: "c".repeat(64),
+      expectedDependencyArchiveSha256: "d".repeat(64),
+      apply: true,
+      runtime: value.runtime
+    }),
+    condition("candidate_node_modules_present")
+  );
+  assert.equal(artifactCalls, 0);
+  assert.equal(lstatSync(target).isSymbolicLink(), true);
+});
+
+test("Linux materialization consumes a real three-file CI artifact and cleans its staging tree", { skip: process.platform !== "linux" }, async (t) => {
+  const controlledRoot = mkdtempSync(join(process.cwd(), ".control-plane-materializer-e2e-"));
+  const value = fixture(t, { root: controlledRoot });
+  const artifactRoot = join(value.root, "dependency-artifacts", value.candidate);
+  const sourceRoot = join(value.root, "real-artifact-source");
+  const sourceModules = join(sourceRoot, "node_modules");
+  const archivePath = join(artifactRoot, "node-modules.tar");
+  const runtimeTuple = {
+    platform: "linux", arch: "x64", libc: "glibc-2.39", nodeVersion: "v22.23.1", nodeAbi: "127", npmVersion: "v10.9.8", betterSqlite3Version: "12.10.0"
+  };
+  write(join(sourceModules, "better-sqlite3", "index.js"), "module.exports = {};\n", 0o644);
+  write(join(sourceModules, "better-sqlite3", "package.json"), '{"version":"12.10.0"}\n', 0o644);
+  write(join(sourceModules, "better-sqlite3", "build", "Release", "better_sqlite3.node"), "fixture native\n", 0o644);
+  chmodSync(archivePath, 0o600);
+  const tar = spawnSync("/usr/bin/tar", ["--create", "--file", archivePath, "--format=posix", "--sort=name", "--mtime=UTC 1970-01-01", "--owner=0", "--group=0", "--numeric-owner", "--hard-dereference", "--", "node_modules"], { cwd: sourceRoot, encoding: "utf8" });
+  assert.equal(tar.status, 0, String(tar.stderr || ""));
+  chmodSync(archivePath, 0o400);
+  const producerExtractionRoot = join(value.root, "producer-extracted");
+  const snapshotSource = join(value.candidateRoot, "scripts", "control-plane-db-snapshot-gate.mjs");
+  const manifest = buildDependencyArtifactManifest({
+    sourceCommit: SOURCE_COMMIT,
+    artifactRelease: ARTIFACT_RELEASE,
+    packageJsonBytes: value.packageBytes,
+    packageLockBytes: value.lockBytes,
+    archivePath,
+    root: value.candidateRoot,
+    runtime: {
+      enforceOwnership: false,
+      checkAclCapabilities: () => true,
+      detect: () => runtimeTuple,
+      extractArchive(archive) {
+        const extracted = extractDependencyArchive(archive, { destinationRoot: producerExtractionRoot });
+        const target = join(extracted.root, "scripts", "control-plane-db-snapshot-gate.mjs");
+        mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+        writeFileSync(target, readFileSync(snapshotSource), { mode: 0o400 });
+        chmodSync(target, 0o400);
+        return extracted;
+      },
+      nativeSmoke: () => true
+    }
+  });
+  chmodSync(join(artifactRoot, "dependency-artifact.json"), 0o600);
+  chmodSync(join(artifactRoot, "release-label.txt"), 0o600);
+  write(join(artifactRoot, "dependency-artifact.json"), manifest.bytes, 0o400);
+  write(join(artifactRoot, "release-label.txt"), `${ARTIFACT_RELEASE}\n`, 0o400);
+  const smokeRoots = [];
+  Object.assign(value.runtime, {
+    detectArtifact: () => runtimeTuple,
+    nativeSmoke({ root, uid, gid }) { smokeRoots.push({ root, uid, gid }); return true; }
+  });
+
+  const result = await materializeCandidateDependencies({
+    candidateRelease: value.candidate,
+    expectedCurrentRelease: value.active,
+    expectedSourceCommit: SOURCE_COMMIT,
+    expectedArtifactRelease: ARTIFACT_RELEASE,
+    expectedDependencyManifestSha256: manifest.sha256,
+    expectedDependencyArchiveSha256: manifest.value.archive.sha256,
+    apply: true,
+    runtime: value.runtime
+  });
+
+  assert.equal(result.state, "materialized");
+  assert.equal(existsSync(join(value.candidateRoot, "node_modules", "better-sqlite3", "index.js")), true);
+  assert.equal(existsSync(join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json")), true);
+  assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);
+  assert.equal(smokeRoots.length, 2);
+  assert.notEqual(smokeRoots[0].root, value.candidateRoot);
+  assert.equal(smokeRoots[1].root, value.candidateRoot);
 });
