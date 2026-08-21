@@ -543,22 +543,27 @@ function executeA3Physical(command, args, supplied, condition, attentionRequired
           return { status: result.status, stdout: result.stdout, stderr: result.stderr, error: result.error };
         };
     const frozenArgs = Object.freeze([...args]);
-    const result = execute(command, frozenArgs);
-    if (observer) {
-      try {
-        observer({
-          command,
-          args: frozenArgs,
-          status: result && typeof result.status === "number" ? result.status : null,
-          stdout: result && typeof result.stdout === "string" ? result.stdout : "",
-          stderr: result && typeof result.stderr === "string" ? result.stderr : "",
-          error: result && result.error ? result.error : null,
-          condition
-        });
-      } catch {
-        // observer is read-only; exceptions must not influence collector semantics
-      }
-    }
+        const startNs = observer ? process.hrtime.bigint() : null;
+        const result = execute(command, frozenArgs);
+        if (observer) {
+          const elapsedMs = startNs !== null
+            ? Number((process.hrtime.bigint() - startNs) / 1_000_000n)
+            : null;
+          try {
+            observer({
+              command,
+              args: frozenArgs,
+              status: result && typeof result.status === "number" ? result.status : null,
+              stdout: result && typeof result.stdout === "string" ? result.stdout : "",
+              stderr: result && typeof result.stderr === "string" ? result.stderr : "",
+              error: result && result.error ? result.error : null,
+              condition,
+              elapsedMs
+            });
+          } catch {
+            // observer is read-only; exceptions must not influence collector semantics
+          }
+        }
     if (!result || result.error || result.status !== 0 || typeof result.stdout !== "string" || typeof result.stderr !== "string"
       || Buffer.byteLength(result.stdout) > 64 * 1024 || Buffer.byteLength(result.stderr) > 64 * 1024) fail(condition, attentionRequired);
     return result.stdout;

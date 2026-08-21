@@ -26,23 +26,47 @@
 // before redaction and preview slicing.
 
 import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import {
+  openSync,
+  closeSync,
+  writeSync,
+  renameSync,
+  lstatSync,
+  chmodSync,
+  constants as fsConstants
+} from "node:fs";
+import { dirname, basename, resolve as resolvePath } from "node:path";
 
 export const DIAGNOSTICS_SCHEMA_VERSION = "diagnostics-1";
 export const DIAGNOSTICS_TYPE = "control_plane_materializer_a3_physical_validation_diagnostics";
+export const DIAGNOSTICS_INTEGRITY_TYPE = "control_plane_materializer_a3_physical_validation_diagnostics_integrity";
 
 const REDACT_PATTERNS = [
-  /\b\d{1,3}(?:\.\d{1,3}){3}\b/g,
-  /\b(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}\b/gi,
-  /\b(?:[A-Za-z0-9_.\-]+@)?(?:[A-Za-z0-9_.\-]+):\d{1,5}\b/g,
+  // IPv4 (with optional /mask)
+  /\b\d{1,3}(?:\.\d{1,3}){3}(?:\/\d{1,2})?\b/g,
+  // IPv6: full form, compressed form, IPv4-mapped, link-local zone IDs
+  /\b(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?:%[A-Za-z0-9_.\-]+)?\b/gi,
+  // IPv6 in URL bracket form: http://[2001:db8::1]:443/
+  /\[(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?:%[A-Za-z0-9_.\-]+)?\]/gi,
+  // user@host:port (SSH, SCP, rsync, etc.)
+  /\b[A-Za-z0-9_.\-]+@[A-Za-z0-9_.\-]+(?::\d{1,5})?\b/g,
+  // host:port (no user) - tightened so it does NOT consume IPv6
+  /(?<![\w@:\[])[A-Za-z0-9_.\-]+:\d{1,5}\b/g,
+  // secret-bearing key=value pairs
   /(?:secret|token|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|ssh[_-]?key)\s*=\s*[^\s,;"']+/gi,
+  // Authorization: Bearer ...
+  /Authorization\s*:\s*Bearer\s+[A-Za-z0-9._\-]+/gi,
+  // Bare Bearer
   /Bearer\s+[A-Za-z0-9._\-]+/gi
 ];
 
 function redact(input) {
   if (typeof input !== "string" || input.length === 0) return "";
   let value = input.replace(/\0/g, "");
-  value = value.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD");
+  value = value.replace(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+    "\uFFFD"
+  );
   for (const pattern of REDACT_PATTERNS) value = value.replace(pattern, "<redacted>");
   return value;
 }
@@ -57,14 +81,54 @@ function safePreview(input, maxBytes) {
   return preview.length > maxBytes ? `${preview.slice(0, maxBytes)}\u2026` : preview;
 }
 
-// Build a read-only observer suitable for the executeA3Physical observer
-// hook. The observer records every invocation to an in-memory bounded
-// buffer (maxBytes / previewBytes). The optional `flush()` writes a
-// JSONL file at `sinkPath`.
-//
-// The observer is fail-closed: any exception thrown by the underlying
-// collector's `executeA3Physical` payload is captured into a sentinel
-// record and never propagates.
+function atomicWrite(filePath, body) {
+  const finalPath = resolvePath(filePath);
+  const dir = dirname(finalPath);
+  const base = basename(finalPath);
+  const tmpPath = resolvePath(dir, `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+
+  // Pre-check: refuse to overwrite existing files. lstatSync (NOT statSync)
+  // so we never follow symlinks.
+  try {
+    const existing = lstatSync(finalPath);
+    if (existing.isSymbolicLink() || !existing.isFile()) {
+      const error = new Error("diagnostics_refused_non_regular_sink");
+      error.code = "DIAGNOSTICS_REFUSED";
+      throw error;
+    }
+    try { chmodSync(finalPath, 0o600); } catch { /* best effort */ }
+    const error = new Error("diagnostics_refused_existing_sink");
+    error.code = "DIAGNOSTICS_REFUSED";
+    throw error;
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      // expected
+    } else {
+      throw error;
+    }
+  }
+
+  try {
+    const existingTmp = lstatSync(tmpPath);
+    if (existingTmp.isSymbolicLink() || existingTmp.isFile()) {
+      const error = new Error("diagnostics_tmp_path_collision");
+      error.code = "DIAGNOSTICS_TMP_COLLISION";
+      throw error;
+    }
+  } catch (error) {
+    if (!error || error.code !== "ENOENT") throw error;
+  }
+
+  const fd = openSync(tmpPath, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 0o600);
+  try {
+    writeSync(fd, body);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(tmpPath, finalPath);
+  try { chmodSync(finalPath, 0o600); } catch { /* best effort */ }
+}
+
 export function createDiagnosticsObserver({
   filePath,
   maxBytes = 65536,
@@ -80,7 +144,7 @@ export function createDiagnosticsObserver({
   let totalBytes = 0;
   let truncated = false;
   let observerError = null;
-  let seenSignatures = new Set();
+  const seenSignatures = new Set();
 
   function push(record) {
     if (observerError) return;
@@ -98,7 +162,7 @@ export function createDiagnosticsObserver({
     }
   }
 
-  function record({ command, args, status, stdout, stderr, error, condition }) {
+  function record({ command, args, status, stdout, stderr, error, condition, elapsedMs }) {
     if (observerError) return;
     if (typeof command !== "string" || !Array.isArray(args)) {
       push({
@@ -108,6 +172,7 @@ export function createDiagnosticsObserver({
         argv: Array.isArray(args) ? args.slice() : [],
         exitStatus: null,
         exitError: "diagnostics_invalid_invocation",
+        elapsedMs: typeof elapsedMs === "number" && Number.isFinite(elapsedMs) ? Math.round(elapsedMs) : null,
         stdoutBytes: 0,
         stderrBytes: 0,
         stdoutSha256: sha256Hex(Buffer.alloc(0)),
@@ -132,6 +197,7 @@ export function createDiagnosticsObserver({
       argv: args.slice(),
       exitStatus: typeof status === "number" ? status : null,
       exitError: error ? redact(String(error?.message ?? error)) : null,
+      elapsedMs: typeof elapsedMs === "number" && Number.isFinite(elapsedMs) ? Math.round(elapsedMs) : null,
       stdoutBytes: Buffer.byteLength(stdoutText, "utf8"),
       stderrBytes: Buffer.byteLength(stderrText, "utf8"),
       stdoutSha256: sha256Hex(Buffer.from(stdoutText, "utf8")),
@@ -145,12 +211,49 @@ export function createDiagnosticsObserver({
   }
 
   function flush() {
-    if (observerError) return;
+    if (observerError) {
+      try {
+        const errorBody = JSON.stringify({
+          schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
+          type: DIAGNOSTICS_INTEGRITY_TYPE,
+          recordCount: records.length,
+          byteCount: totalBytes,
+          truncated,
+          observerError: String(observerError?.message ?? observerError),
+          flushedAt: new Date().toISOString()
+        });
+        atomicWrite(filePath, `${errorBody}\n`);
+      } catch { /* swallow */ }
+      return;
+    }
     const body = records.length === 0 ? "" : records.join("\n") + "\n";
+    const bodySha = sha256Hex(Buffer.from(body, "utf8"));
+    const footer = JSON.stringify({
+      schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
+      type: DIAGNOSTICS_INTEGRITY_TYPE,
+      bodySha256: bodySha,
+      recordCount: records.length,
+      byteCount: totalBytes,
+      truncated,
+      observerError: null,
+      flushedAt: new Date().toISOString()
+    });
     try {
-      writeFileSync(filePath, body, { encoding: "utf8", mode: 0o600 });
+      atomicWrite(filePath, `${body}${footer}\n`);
     } catch (error) {
       observerError = error;
+      try {
+        const fallbackBody = JSON.stringify({
+          schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
+          type: DIAGNOSTICS_INTEGRITY_TYPE,
+          recordCount: records.length,
+          byteCount: totalBytes,
+          truncated,
+          observerError: String(error?.message ?? error),
+          flushedAt: new Date().toISOString()
+        });
+        atomicWrite(`${filePath}.integrity-fallback`, `${fallbackBody}\n`);
+      } catch { /* give up */ }
     }
   }
 
