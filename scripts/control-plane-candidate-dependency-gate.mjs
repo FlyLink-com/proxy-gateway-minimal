@@ -499,12 +499,6 @@ export function parseServiceSmokeReadback(value) {
     snapshotImport: true
   });
 }
-function collectStorageQuotaEvidence({ root, unit, runtime: supplied }) {
-  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
-  if (supplied.allowTestWorkerStorage !== true || typeof supplied.collectStorageQuotaEvidence !== "function") fail("storage_quota_evidence_invalid");
-  const raw = supplied.collectStorageQuotaEvidence({ root, unit });
-  return parseStorageQuotaEvidence(raw);
-}
 function runServiceNativeSmoke({ root, service, snapshotModule, runtime: supplied }) {
   if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
   if (supplied.allowTestWorkerStorage !== true || typeof supplied.runServiceNativeSmoke !== "function") fail("service_smoke_runner_unavailable");
