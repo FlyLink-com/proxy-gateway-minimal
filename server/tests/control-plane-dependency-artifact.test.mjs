@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -335,8 +335,8 @@ test("Linux runtime detection rejects a relative npm executable before invocatio
 test("Linux runtime detection records the selected node binary runtime", { skip: process.platform !== "linux" }, () => {
   const value = fixture("runtime-probe");
   try {
-    const selectedNode = spawnSync("/usr/bin/node", ["--version"], { encoding: "utf8" }).stdout.trim();
-    const detected = detectDependencyRuntime({ root: value.root, nodePath: "/usr/bin/node", npmPath: "/usr/bin/npm", npmVersion: runtime.npmVersion });
+    const selectedNode = spawnSync(process.execPath, ["--version"], { encoding: "utf8" }).stdout.trim();
+    const detected = detectDependencyRuntime({ root: value.root, nodePath: process.execPath, npmPath: resolve(dirname(process.execPath), "npm"), npmVersion: runtime.npmVersion });
     assert.equal(detected.nodeVersion, selectedNode);
     assert.match(detected.nodeAbi, /^[0-9]+$/);
     assert.match(detected.arch, /^[a-z0-9._-]+$/);
