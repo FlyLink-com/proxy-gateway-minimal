@@ -443,7 +443,7 @@ export function createHttpUserPortalClient(
         safety: {
           noAdminApi: true,
           noPublicAuthActivated: true,
-          noProductionCredentialMutation: false
+          noProductionCredentialMutation: true
         }
       };
     },
