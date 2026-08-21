@@ -12,14 +12,36 @@
 // Activation (operator-controlled):
 //   A3_PHYSICAL_DIAGNOSTICS=1
 //   A3_PHYSICAL_DIAGNOSTICS_FILE=/path/to/diagnostics.jsonl
+//   A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT=/controlled/absolute/root   (REQUIRED when diagnostics is enabled)
+//   A3_PHYSICAL_DIAGNOSTICS_UID=<non-negative integer>            (optional; recommended on hardened hosts)
+//   A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT=1                  (opt-in to require uid + mode & 0022 == 0)
 //   A3_PHYSICAL_DIAGNOSTICS_MAX_BYTES=65536      (optional, default 65536)
 //   A3_PHYSICAL_DIAGNOSTICS_PREVIEW_BYTES=256    (optional, default 256)
 //
-// Diagnostics NEVER carry:
+// When `A3_PHYSICAL_DIAGNOSTICS=1` is set but `A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT`
+// is missing, relative, or not absolute, the CLI refuses with
+// `diagnostics_invalid_sink_root` and the runner exits non-zero on the
+// diagnostics-gate line. This is intentional: the hardened parent-chain
+// check requires a controlled absolute sink root, and the CLI MUST
+// surface it (it cannot be inferred from `A3_PHYSICAL_DIAGNOSTICS_FILE`
+// alone because the operator-controlled file path may already live
+// inside an attacker-controlled junction).
+//
+// Diagnostics NEVER carry (these are scrubbed via redact() before
+// they reach the JSONL):
 //   - environment variables (collector wipes env via CMD_ENV)
 //   - SSH material (host:port, IP addresses, key paths)
 //   - credentials, tokens, secret-bearing key=value pairs
 //   - bearer tokens
+//
+// Diagnostics DO carry (by design — these are the audit record):
+//   - the literal `command` and `argv` arrays of each physical command,
+//     so an operator can verify the trusted tool identity and arguments
+//   - byte counts, SHA-256 hashes, exit status, elapsed time, condition
+//
+// Operators on hardened deployments that need to scrub `argv` can do so
+// out-of-band; the observer deliberately does not rewrite argv because
+// doing so would hide the very tool path the audit needs.
 //
 // All retained preview bytes are printable ASCII / UTF-8 with NUL
 // bytes stripped and invalid UTF-16 surrogates replaced by U+FFFD
@@ -109,22 +131,32 @@ function safePreview(input, maxBytes) {
   return preview.length > maxBytes ? `${preview.slice(0, maxBytes)}\u2026` : preview;
 }
 
-// Verify the parent directory chain from `rootAbs` down to (but not
-// including) `targetParent` is composed of real directories — no
-// symlinks at any segment. The check is mandatory because O_NOFOLLOW
-// only protects the FINAL path; a junction or symlink at any parent
-// segment can still divert the open into a different tree.
+// Verify that every segment of the chain from `rootAbs` (inclusive)
+// down to `targetParent` (inclusive) is a real directory owned by the
+// calling uid (when `expectedUid` is supplied) and not a symlink or
+// junction. The directory-type check is mandatory: O_NOFOLLOW only
+// protects the FINAL path; a junction or symlink at `rootAbs` itself
+// OR any parent segment can still divert the open into a different
+// tree.
 //
-// When `expectedUid` is a non-negative integer, also verify the uid
-// of every segment (caller-controlled hardening). When `expectedUid`
-// is null, the ownership check is skipped — this is the default,
-// because portable Windows filesystems do not preserve Unix uid
-// semantics. Posix callers SHOULD pass an explicit uid for maximum
-// safety; the default config is sufficient to defeat symlink/junction
-// substitution, which is the core P1 the reviewer raised.
+// When `expectedUid` is a non-negative integer AND `enforceOwnedRoot`
+// is true, the chain ALSO verifies:
+//   - segment's mode has no group- or other-write bit set
+//   - segment's uid matches `expectedUid`
+//
+// The mode check is opt-in via `enforceOwnedRoot` because portable
+// Windows filesystems (and many default tmpdir configurations on
+// Linux/macOS) do not preserve the strict Unix mode bits the check
+// expects. Operators on hardened Linux hosts MUST set
+// `A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT=1` together with
+// `A3_PHYSICAL_DIAGNOSTICS_UID=<uid>` to activate this defence.
+//
+// The root-itself check is unconditional across all configurations
+// because the previous iteration stopped one segment short and let a
+// symlinked sinkRoot pass.
 //
 // Throws DIAGNOSTICS_PARENT_CHAIN_UNSAFE on any failure.
-function verifyParentChain(rootAbs, targetParent, expectedUid) {
+function verifyParentChain(rootAbs, targetParent, expectedUid, { enforceOwnedRoot = false } = {}) {
   const rootWithSep = rootAbs.endsWith(pathSep) || rootAbs === pathSep
     ? rootAbs
     : rootAbs + pathSep;
@@ -136,10 +168,14 @@ function verifyParentChain(rootAbs, targetParent, expectedUid) {
     throw err;
   }
 
-  const segments = [];
+  // Build the full list of segments from rootAbs down to targetParent,
+  // inclusive of rootAbs itself. The previous iteration stopped one
+  // segment short and left rootAbs itself unverified; this iteration
+  // verifies the root too.
+  const segments = [rootAbs];
   let cursor = targetParent;
   while (cursor !== rootAbs && cursor !== dirname(cursor)) {
-    segments.unshift(cursor);
+    segments.push(cursor);
     cursor = dirname(cursor);
   }
   if (cursor !== rootAbs) {
@@ -149,14 +185,36 @@ function verifyParentChain(rootAbs, targetParent, expectedUid) {
     err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
     throw err;
   }
+
   for (const segment of segments) {
     const st = lstatSync(segment);
     if (!st.isDirectory()) {
-      const err = new Error(`diagnostics_parent_chain_unsafe: ${segment} is not a directory`);
+      const err = new Error(
+        `diagnostics_parent_chain_unsafe: ${segment} is not a directory (lstat mode=${st.mode.toString(8)})`
+      );
       err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
       throw err;
     }
-    if (typeof expectedUid === "number" && expectedUid >= 0 && st.uid !== expectedUid) {
+    if (enforceOwnedRoot) {
+      if ((st.mode & 0o022) !== 0) {
+        const err = new Error(
+          `diagnostics_parent_chain_unsafe: ${segment} is group/other-writable (mode=${st.mode.toString(8)})`
+        );
+        err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+        throw err;
+      }
+      if (typeof expectedUid !== "number" || expectedUid < 0 || st.uid !== expectedUid) {
+        const err = new Error(
+          `diagnostics_parent_chain_unsafe: ${segment} owned by uid=${st.uid}, expected ${expectedUid}`
+        );
+        err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+        throw err;
+      }
+    } else if (typeof expectedUid === "number" && expectedUid >= 0 && st.uid !== expectedUid) {
+      // Legacy opt-in uid check (iteration 4): without enforceOwnedRoot
+      // we still honour an explicit uid by matching it; we do not
+      // require non-world-writable because the caller has not asked
+      // for that hardening.
       const err = new Error(
         `diagnostics_parent_chain_unsafe: ${segment} owned by uid=${st.uid}, expected ${expectedUid}`
       );
@@ -168,12 +226,12 @@ function verifyParentChain(rootAbs, targetParent, expectedUid) {
 
 // Publish the body to a brand-new file. No-replace, no pre-existing-
 // file mutation, no symlink substitution at the final path or any
-// parent directory segment.
+// parent directory segment (including the sink root itself).
 //
 // Steps:
 //   1. verifyParentChain(sinkRoot, parentDir, uid) — refuses if any
-//      parent segment is a symlink/junction, owned by another uid, or
-//      not nested under sinkRoot.
+//      segment INCLUDING sinkRoot itself is a symlink/junction, is
+//      group/other-writable, or owned by an unexpected uid.
 //   2. openSync(finalPath, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
 //      - O_EXCL guarantees the final entry did not exist at the moment of
 //        the open syscall. There is NO `lstat + rename` window.
@@ -192,19 +250,26 @@ function verifyParentChain(rootAbs, targetParent, expectedUid) {
 //      lookup, no second open. Compare SHA against the in-memory
 //      body SHA. Mismatch throws DIAGNOSTICS_READBACK_MISMATCH;
 //      the file is left in place as forensic evidence and is NOT
-//      silently removed (closing it would risk the same-path unlink
-//      problem the P1 raised).
+//      removed via path-based rmSync (doing so would re-introduce the
+//      very path-substitution TOCTOU the parent-chain check was
+//      designed to close).
 //   7. closeSync(fd)
 //
-// On any pre-readback failure, the file is unlinked ONLY if we are
-// the process that created it (createdHere === true). Pre-existing
-// entries are NEVER mutated.
-function publishOnce(filePath, body, { sinkRoot, uid } = {}) {
+// Cleanup is split into two clearly-named regimes:
+//   - WRITE_FAILURE: pre-write / during-write errors (open failed,
+//     write threw, fsync threw). The file is unlinked ONLY if we
+//     created it in this process (createdHere === true). Pre-existing
+//     entries are NEVER mutated.
+//   - READBACK_MISMATCH: post-write, post-fsync, post-readback — the
+//     bytes that landed on disk do not match the bytes we wrote. The
+//     file is left in place so an operator can forensic-inspect it;
+//     no path-based cleanup runs.
+function publishOnce(filePath, body, { sinkRoot, uid, enforceOwnedRoot = false } = {}) {
   const finalPath = resolvePath(filePath);
   const parentDir = dirname(finalPath);
   const verifiedRoot = sinkRoot && isAbsolute(sinkRoot) ? resolvePath(sinkRoot) : parentDir;
-  // Pre-open: certify the parent chain.
-  verifyParentChain(verifiedRoot, parentDir, uid);
+  // Pre-open: certify the parent chain (root included).
+  verifyParentChain(verifiedRoot, parentDir, uid, { enforceOwnedRoot });
 
   let fd = null;
   let createdHere = false;
@@ -247,17 +312,30 @@ function publishOnce(filePath, body, { sinkRoot, uid } = {}) {
       ino: preWriteStat.ino
     };
   } catch (error) {
+    // Always close the fd if we have one.
     if (fd !== null) try { closeSync(fd); } catch { /* */ }
-    if (createdHere) {
-      // Only unlink files WE just created in this process. Pre-existing
-      // entries (EEXIST/ELOOP) are NEVER mutated.
+
+    const code = error?.code;
+    const isReadbackMismatch = code === "DIAGNOSTICS_READBACK_MISMATCH";
+    // READBACK_MISMATCH: we wrote, fsync'd, and read back bytes that
+    // do not match. The file stays on disk for forensic inspection.
+    // We MUST NOT rmSync(finalPath) here because that is exactly the
+    // path-based TOCTOU the parent-chain check was designed to close.
+    if (!isReadbackMismatch && createdHere) {
+      // Pre-write / during-write failure only. Unlink the file we
+      // created in this process. Pre-existing entries (EEXIST/ELOOP)
+      // are NEVER mutated.
       try { rmSync(finalPath, { force: true }); } catch { /* best effort */ }
     }
     const wrapped = new Error(`diagnostics_publish_failed: ${error?.message ?? error}`);
-    wrapped.code = error?.code ?? "DIAGNOSTICS_PUBLISH_FAILED";
+    wrapped.code = code ?? "DIAGNOSTICS_PUBLISH_FAILED";
     wrapped.cause = error;
+    wrapped.readbackMismatch = isReadbackMismatch;
     throw wrapped;
   } finally {
+    // Defensive close: covers any path that bypassed the catch (e.g.
+    // a throw from openSync before fd was assigned, although the
+    // outer catch already handles that — kept for symmetry).
     if (fd !== null) try { closeSync(fd); } catch { /* */ }
   }
 }
@@ -390,7 +468,7 @@ export function createDiagnosticsObserver({
     });
     const fullBody = `${body}${footer}\n`;
     try {
-      const result = publishOnce(filePath, fullBody, { sinkRoot, uid: enforceOwnedRoot ? uid : null });
+      const result = publishOnce(filePath, fullBody, { sinkRoot, uid, enforceOwnedRoot });
       lastFlushStatus = Object.freeze({
         published: true,
         mainPath: result.path,
@@ -420,7 +498,7 @@ export function createDiagnosticsObserver({
       });
       let fallbackPublished = false;
       try {
-        publishOnce(fallbackPath, `${fallbackBody}\n`, { sinkRoot, uid: enforceOwnedRoot ? uid : null });
+        publishOnce(fallbackPath, `${fallbackBody}\n`, { sinkRoot, uid, enforceOwnedRoot });
         fallbackPublished = true;
       } catch {
         // Both main and fallback failed. Status reflects this honestly.

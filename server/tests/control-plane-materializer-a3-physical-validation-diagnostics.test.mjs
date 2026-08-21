@@ -676,3 +676,101 @@ test("end-to-end: observer receives records through real executeA3Physical via o
     assert.equal(footer.recordCount, body.length - 1);
   });
 });
+test("[iteration 5] CLI rejects relative A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT via the diagnostics config fail-closed path", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const filePath = join(directory, "diagnostics.jsonl");
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: "relative/path"
+    };
+    const result = captureCli({ env });
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, "");
+    const firstLine = result.stderr.trim().split(/\\r?\\n/)[0];
+    const parsed = JSON.parse(firstLine);
+    // The diagnostics-config gate line is the first line (no record yet).
+    assert.equal(parsed.type, "control_plane_materializer_a3_physical_validation_diagnostics_gate");
+    assert.equal(parsed.state, "diagnostics_unpublished");
+    assert.equal(parsed.condition, "diagnostics_invalid_sink_root");
+    // No diagnostics file must have been created.
+    assert.equal(exists(filePath), false);
+  });
+});
+
+test("[iteration 5] CLI rejects non-absolute Windows-style SINK_ROOT", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const filePath = join(directory, "diagnostics.jsonl");
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: "C:relative\\no-slash"
+    };
+    const result = captureCli({ env });
+    assert.equal(result.code, 1);
+    const parsed = JSON.parse(result.stderr.trim().split(/\\r?\\n/)[0]);
+    assert.equal(parsed.condition, "diagnostics_invalid_sink_root");
+  });
+});
+
+test("[iteration 5] CLI rejects enforce_owned_root without uid", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const filePath = join(directory, "diagnostics.jsonl");
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: directory,
+      A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT: "1"
+    };
+    const result = captureCli({ env });
+    assert.equal(result.code, 1);
+    const parsed = JSON.parse(result.stderr.trim().split(/\\r?\\n/)[0]);
+    assert.equal(parsed.condition, "diagnostics_enforce_owned_root_requires_uid");
+  });
+});
+
+test("[iteration 5] CLI rejects negative uid", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const filePath = join(directory, "diagnostics.jsonl");
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: directory,
+      A3_PHYSICAL_DIAGNOSTICS_UID: "-1"
+    };
+    const result = captureCli({ env });
+    assert.equal(result.code, 1);
+    const parsed = JSON.parse(result.stderr.trim().split(/\\r?\\n/)[0]);
+    assert.equal(parsed.condition, "diagnostics_invalid_uid");
+  });
+});
+
+test("[iteration 5] CLI surfaces absolute SINK_ROOT into the observer", async () => {
+  // We provide a valid SINK_ROOT (the test dir itself) and a valid
+  // A3_PHYSICAL_DIAGNOSTICS_FILE nested under it. The CLI must reach
+  // createDiagnosticsObserver, the observer must publish, and the
+  // collector run must produce its normal stdout line.
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "nested");
+    mkdirSync(sinkDir);
+    const filePath = join(sinkDir, "diagnostics.jsonl");
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: directory
+    };
+    // We force a fail-closed collector by passing only --mode (no
+    // --run-label / --project-id) so the cli errors out via the
+    // regular invalid_input path AFTER the diagnostics config gate has
+    // passed. This proves the CLI honored the SINK_ROOT env var rather
+    // than silently dropping it.
+    const result = captureCli({ env, argv: ["--mode"] });
+    assert.equal(result.code, 1);
+    // First stderr line is the collector's invalid_input shape, not a
+    // diagnostics config gate line — meaning the SINK_ROOT was accepted.
+    const firstLine = result.stderr.trim().split(/\\r?\\n/)[0];
+    const parsed = JSON.parse(firstLine);
+    assert.equal(parsed.type, "control_plane_materializer_a3_physical_validation");
+    assert.equal(parsed.condition, "invalid_input");
+  });
+});

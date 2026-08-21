@@ -20,9 +20,41 @@ function readDiagnosticsConfig(env = process.env) {
   const filePath = env.A3_PHYSICAL_DIAGNOSTICS_FILE;
   if (typeof filePath !== "string" || filePath.length === 0) return null;
   const maxBytes = Number(env.A3_PHYSICAL_DIAGNOSTICS_MAX_BYTES);
-  const config = { filePath, maxBytes: Number.isInteger(maxBytes) && maxBytes > 0 ? maxBytes : 65536 };
   const preview = Number(env.A3_PHYSICAL_DIAGNOSTICS_PREVIEW_BYTES);
+  // sinkRoot is OPT-IN hardening. When supplied, it MUST be absolute
+  // (POSIX `/...` or Windows `<drive>:\...` / `<drive>:/...`); when
+  // missing or relative, the observer falls back to using the parent
+  // directory of filePath as the chain root. The chain walk still
+  // verifies rootAbs + every segment as a directory (no symlinks), so
+  // the substitution P1 is closed for both hardened and default
+  // invocations — only the group/other-writable + uid match check
+  // requires the explicit `enforceOwnedRoot + uid` pair.
+  const sinkRootRaw = env.A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT;
+  let sinkRoot = null;
+  if (typeof sinkRootRaw === "string" && sinkRootRaw.length > 0) {
+    if (!/^[a-zA-Z]:[\\/]|^[\\/]/.test(sinkRootRaw)) {
+      throw new Error("diagnostics_invalid_sink_root");
+    }
+    sinkRoot = sinkRootRaw;
+  }
+  const config = {
+    filePath,
+    sinkRoot,
+    maxBytes: Number.isInteger(maxBytes) && maxBytes > 0 ? maxBytes : 65536
+  };
   if (Number.isInteger(preview) && preview > 0) config.previewBytes = preview;
+  const uidRaw = env.A3_PHYSICAL_DIAGNOSTICS_UID;
+  if (uidRaw !== undefined) {
+    const uid = Number(uidRaw);
+    if (!Number.isInteger(uid) || uid < 0) throw new Error("diagnostics_invalid_uid");
+    config.uid = uid;
+  }
+  if (isBooleanFlag(env.A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT)) {
+    config.enforceOwnedRoot = true;
+    if (!Number.isInteger(config.uid)) {
+      throw new Error("diagnostics_enforce_owned_root_requires_uid");
+    }
+  }
   return config;
 }
 
@@ -56,7 +88,24 @@ export function runA3PhysicalValidationCli({
   try {
     const request = parseA3PhysicalValidationArgs(argv);
     mode = request.mode;
-    const diagnosticsConfig = readDiagnosticsConfig(env);
+    // readDiagnosticsConfig may throw when the operator-provided env
+    // is unparsable (relative sink root, negative uid, etc.). We
+    // surface that as a dedicated diagnostics-config gate line on
+    // stderr — distinct from the collector's invalid_input shape — so
+    // the operator can tell why the run was rejected before the
+    // collector was invoked.
+    let diagnosticsConfig = null;
+    try {
+      diagnosticsConfig = readDiagnosticsConfig(env);
+    } catch (configErr) {
+      stderr.write(`${JSON.stringify({
+        schemaVersion: "1",
+        type: "control_plane_materializer_a3_physical_validation_diagnostics_gate",
+        state: "diagnostics_unpublished",
+        condition: configErr.message
+      })}\n`);
+      return 1;
+    }
     if (diagnosticsConfig) {
       diagnostics = createDiagnosticsObserver(diagnosticsConfig);
     }
