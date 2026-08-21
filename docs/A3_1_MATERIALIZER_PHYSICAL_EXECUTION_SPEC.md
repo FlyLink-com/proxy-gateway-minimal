@@ -178,6 +178,13 @@ laptop, on production, on the CI runner, or on a stopped production node.
   and enforcement enabled. `<probe-root>` is fixed from the approved run label
   as `/var/lib/control-plane-a3-1/<run-label>/probe`; `xfs_info` alone is not a
   mount-option proof.
+- The loopback image size is fixed at `536870912` bytes (512 MiB). Create it
+  with block allocation (`fallocate`), never `truncate` or a sparse-copy path,
+  and require `st_blocks * 512 >= image_size_bytes`. Before image creation,
+  `free_bytes_before` must be at least `image_size_bytes +
+  minimum_reserve_bytes`, where `minimum_reserve_bytes` is fixed at
+  `2147483648` bytes (2 GiB). If any value is missing, smaller, or changes
+  before `losetup`, stop before loop-device allocation or formatting.
 - `xfs_quota` (xfsprogs) ≥ 5.x.
 - systemd ≥ 250 with transient service units, fixed numeric `User=`/`Group=`,
   `systemd-run --unit`, and exact terminal/cgroup readback available. The worker
@@ -192,12 +199,13 @@ laptop, on production, on the CI runner, or on a stopped production node.
 | Step | Command (illustrative) | Verification |
 |---|---|---|
 | Bind target | exact Aliyun SWAS region and instance ID from the approved Issue #636 record | fresh read-only provider and host inventory uniquely matches and proves non-production role |
-| Create sandbox | allocate one bounded per-run loopback image under a root-owned `0700` run directory; never use an existing image or mount | image path absent before creation; declared maximum bytes fit the fresh free-space reserve |
+| Create sandbox | allocate exactly `536870912` bytes with `fallocate` under a root-owned `0700` per-run directory; never use an existing/sparse image or mount | image absent before creation; `free_bytes_before >= 2684354560`; allocated blocks cover the full image; re-read reserve before `losetup` |
 | Mount XFS sandbox | format only the new loopback image and mount it at the fixed per-run probe root with `pquota` or `prjquota` | exact mountinfo/findmnt record shows XFS + project-quota option and the loop device belongs to this run |
 | Verify project quota tool | `xfs_quota -x -c state <probe-root>` | shows project accounting and enforcement enabled |
+| Bind worker input | systemd manager bind-mounts the root-owned source into the unit namespace with exact `BindReadOnlyPaths=<source>:<fixed-target>`; worker argv references only `<fixed-target>` | worker cannot traverse the host `0700` run parent and sees the target read-only in its namespace |
 | Verify fixed-principal transient service | Run `/bin/true` in a transient unit with the validated non-root numeric `User=`/`Group=` and the §6.3 sandbox properties | exit 0, exact terminal result, then empty cgroup readback |
 | Verify cgroup v2 | `stat -c %T -f /sys/fs/cgroup` | `cgroup2fs` |
-| **Destroy sandbox** | stop the exact transient units, prove their cgroups empty, unmount the exact run mount, detach the exact loop device, remove only the inode-bound run directory and image | mount/loop/unit/run-directory readback all absent; host remains running and unchanged outside the approved run boundary |
+| **Destroy sandbox and access** | stop the exact transient units, prove their cgroups empty, unmount the exact run mount, detach the exact loop device, remove only the inode-bound run directory/image, revoke the exact temporary SSH access, restore newly installed packages, and remove exact run-created caches/local key material | unit/mount/loop/run-directory/key occurrences and run-created package/cache deltas all read back absent; host remains running and unchanged outside the approved run boundary |
 
 The sandbox is single-use. The SWAS host may be reused only as the named
 non-production validation host after a fresh approval and a fresh empty-state
@@ -231,6 +239,17 @@ ephemeral inside the disposable sandbox and must not be pasted into GitHub.
   boolean, and required-tool presence booleans.
 - Operator effective UID class (`root`/`non_root`) and only the capability
   booleans required by this gate; no full capability dump.
+- `image_size_bytes`, `free_bytes_before`, `minimum_reserve_bytes`, allocated
+  image bytes, and `free_bytes_after_cleanup`; the receipt rejects any value
+  outside the fixed §4.1 bounds.
+- Aggregate-only access lifecycle: temporary provider credential logical ID
+  and expiry state, exact temporary SSH key occurrence count before/after,
+  local key/known-hosts presence booleans before/after, and provider key
+  detach/delete readback. Never publish key bytes or host-key material.
+- Exact package names absent before the run but installed for it, plus
+  post-cleanup absence. Do not use `autoremove` or broad cache cleanup; remove
+  only packages and cache files whose pre-run absence and run-created identity
+  were recorded.
 - SHA-256 of the complete local inventory receipt plus its byte size. Do not
   publish hostnames, IPs, unit inventory, filesystem paths outside the fixed
   probe root, environment values, credentials, or package-mirror tokens.
@@ -242,14 +261,18 @@ outbound package-mirror path, stop rather than broadening network access.
 
 ## 6. Dry-run checklist (per item)
 
-Each item below has a dry-run phase that produces no evidence (probes do not
-fire, sandbox does not spawn, materialize does not call anything new) and a
-real-run phase that produces the readback. Dry-run must pass before real-run.
+Each item below has a dry-run phase that creates no sandbox and produces no
+physical quota/smoke evidence (probes do not fire, sandbox does not spawn,
+materialize does not call anything new) and a real-run physical preflight plus
+execution phase that produces the readback. Dry-run must pass before real-run.
 
 ### 6.1 Item 1 — Trusted XFS project-quota physical probe (dry-run)
 
-- Confirm `xfs_quota` exists and project accounting/enforcement are enabled on
-  the exact per-run `<probe-root>`.
+- Confirm the host kernel/tool capability plan, fixed image/reserve constants,
+  intended `<probe-root>`, and exact read-only inventory commands without
+  creating the run directory, image, loop device, filesystem, or mount.
+- Plan the real-run physical preflight that, only after the approved sandbox is
+  mounted, requires project accounting/enforcement on the exact `<probe-root>`.
 - Pick a candidate `projectId` (e.g. `4242`).
 - Plan a write that would exceed quota. Do not execute.
 - Confirm probe code path will collect: `filesystem`, `projectId`,
@@ -276,6 +299,11 @@ real-run phase that produces the readback. Dry-run must pass before real-run.
   `PrivateDevices=yes`, `NoNewPrivileges=yes`,
   `CapabilityBoundingSet=`, `RestrictAddressFamilies=AF_UNIX`,
   `RestrictNamespaces=yes`, `SystemCallFilter=@system-service`.
+- Plan exact `BindReadOnlyPaths=<root-owned-source>:<fixed-target>` creation by
+  the root systemd manager. The source remains below the host `0700` run
+  directory; the worker never receives or traverses that host path and its
+  fixed argv reads only `<fixed-target>` inside the unit namespace. No ACL is
+  added to the host run tree.
 - Plan `systemd-run --unit=a3-smoke --wait --service-type=oneshot` with the
   fixed verified Node binary and fixed smoke entrypoint; no shell and no
   caller-controlled argv/environment.
@@ -361,6 +389,9 @@ Required packet fields:
 - `target`: exact Aliyun SWAS region + instance ID (no public IP)
 - `sandbox_identity`: per-run non-secret run label + loopback image/mount identity hash
 - `sandbox_cleanup_by`: ≤ 24h after approval
+- `image_size_bytes`: exactly `536870912`
+- `minimum_reserve_bytes`: at least `2147483648`
+- `free_bytes_before`, `allocated_image_bytes`, and `free_bytes_after_cleanup`
 - `target_os`: kernel + distro
 - `inventory_receipt_sha256` and `inventory_receipt_size_bytes` from §5
 - `quota_evidence_capture_sha256`: hash of captured evidence JSON
@@ -368,6 +399,11 @@ Required packet fields:
 - `contract_match`: bool from `parseStorageQuotaEvidence(raw)` and
   `parseServiceSmokeReadback(raw)` both succeeding on the captured JSON
 - `worker_storage_limit_unavailable_status_after_run`: PRESERVED
+- `temporary_access_cleanup`: provider credential expiry/clear status, exact
+  temporary SSH key detached/deleted, remote authorized-key occurrence `0`,
+  and local key/known-hosts presence `false`
+- `package_restore`: exact run-installed package/cache delta restored to the
+  pre-run state; no `autoremove` or unrelated cache deletion
 - `approver`: name + role + GitHub login (must be a resolvable production
   owner; Agent / Bot / spec authors are not eligible)
 - `approver_github_login_verified_by`: name of the user confirming the
@@ -396,9 +432,13 @@ approval). If any post-merge signal indicates regression:
 
 If the disposable sandbox still exists, stop only the exact transient units,
 prove their cgroups empty, unmount the exact run mount, detach the exact loop
-device, and remove only the inode-bound run directory/image. Do not power off,
-reboot, reset, reformat, or repurpose the SWAS host. Do not copy sandbox state
-elsewhere.
+device, and remove only the inode-bound run directory/image. Then remove the
+exact temporary authorized-key line through the approved out-of-band path,
+read back occurrence `0`, detach/delete the exact provider key pair, clear the
+process-only provider credential and local key/known-hosts material, and restore
+only the exact packages/cache files whose pre-run absence was recorded. Any
+cleanup/readback failure is attention-required. Do not power off, reboot,
+reset, reformat, or repurpose the SWAS host. Do not copy sandbox state elsewhere.
 
 ## 9. PR body checklist (must appear in the A3-1 implementation Draft PR)
 
