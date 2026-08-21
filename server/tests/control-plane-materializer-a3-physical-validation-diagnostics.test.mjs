@@ -50,7 +50,11 @@ function captureCli({ env, argv = ["--mode", "quota", "--run-label", "probe-1", 
     argv,
     stdout: { write(value) { stdout += value; } },
     stderr: { write(value) { stderr += value; } },
-    env
+    env,
+    // These helpers test portable CLI parsing/publication semantics. The
+    // dedicated iteration-7 cases below pass platform:"linux" explicitly
+    // and pin the mandatory Linux UID + owned-root custody gate.
+    platform: "win32"
   });
   return { code, stdout, stderr };
 }
@@ -957,7 +961,7 @@ test("[iteration 7] core refuses BEFORE collector runs when diagnostics sink bin
       stdout: { write() {} },
       stderr: { write() {} },
       env,
-      platform: process.platform,
+      platform: "win32",
       runCollector: () => { collectorInvoked = true; return {}; }
     });
     assert.equal(collectorInvoked, false,
@@ -1075,7 +1079,7 @@ test("[iteration 7] core refuses BEFORE collector runs when diagnostics sink fil
       stdout: { write() {} },
       stderr: { write(value) { stderrText += value; } },
       env,
-      platform: process.platform,
+      platform: "win32",
       runCollector: () => { collectorInvoked = true; return { condition: "should_not_run" }; }
     });
     assert.equal(collectorInvoked, false,
@@ -1126,7 +1130,7 @@ test("[iteration 7] real public-CLI E2E drives the full quota argv through runA3
       stdout: { write(value) { stdoutText += value; } },
       stderr: { write(value) { stderrText += value; } },
       env,
-      platform: process.platform,
+      platform: "win32",
       runCollector: fakeCollector
     });
     assert.equal(hookReceived, true, "core must forward observePhysicalCommand to runCollector");
@@ -1166,7 +1170,7 @@ test("[iteration 7] real public-CLI E2E refuses before collector when diagnostic
       stdout: { write() {} },
       stderr: { write(value) { stderrText += value; } },
       env,
-      platform: process.platform,
+      platform: "win32",
       runCollector: () => { collectorInvoked = true; return { condition: "should_not_run" }; }
     });
     assert.equal(collectorInvoked, false);
@@ -1253,7 +1257,7 @@ test("[iteration 8] real CLI escalates exit code when collector succeeds but flu
       stdout: { write(value) { stdoutText += value; } },
       stderr: { write(value) { stderrText += value; } },
       env,
-      platform: process.platform,
+      platform: "win32",
       runCollector: fakeCollector,
       makeObserver: () => fakeObserver
     });
@@ -1317,7 +1321,7 @@ test("[iteration 8] real CLI escalates exit code when collector succeeds but flu
       stdout: { write(value) { stdoutText += value; } },
       stderr: { write(value) { stderrText += value; } },
       env,
-      platform: process.platform,
+      platform: "win32",
       runCollector: fakeCollector,
       makeObserver: () => fakeObserver
     });
