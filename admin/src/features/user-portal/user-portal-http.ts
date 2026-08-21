@@ -77,7 +77,7 @@ async function noContentRequest(
   fetchFn: typeof fetch,
   url: string,
   init: RequestInit = {},
-  successMessage: string
+  unexpectedNoContentResponseError: string
 ) {
   const response = await fetchFn(url, {
     ...init,
@@ -90,8 +90,11 @@ async function noContentRequest(
     const body = await response.json().catch(() => ({}));
     throw portalError(typeof body?.error === "string" ? body.error : "portal request failed");
   }
-  if (response.status !== 204 || (await response.text()).trim()) {
-    throw portalError(successMessage);
+  if (response.status !== 204) {
+    throw portalError(unexpectedNoContentResponseError);
+  }
+  if ((await response.text()).trim()) {
+    throw portalError(unexpectedNoContentResponseError);
   }
 }
 
