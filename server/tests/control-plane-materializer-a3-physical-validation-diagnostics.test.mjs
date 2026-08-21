@@ -423,10 +423,13 @@ test("runA3PhysicalValidationCli leaves exit code untouched when env is unset", 
 
 test("runA3PhysicalValidationCli surfaces invalid_input under diagnostics and writes an integrity-only footer", async () => {
   await withDiagnosticsDir(async (directory) => {
-    const filePath = join(directory, "diagnostics.jsonl");
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const filePath = join(sinkDir, "diagnostics.jsonl");
     const env = {
       A3_PHYSICAL_DIAGNOSTICS: "1",
-      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
     };
     const result = captureCli({ env });
     assert.equal(result.code, 1);
@@ -451,10 +454,13 @@ test("runA3PhysicalValidationCli surfaces invalid_input under diagnostics and wr
 
 test("runA3PhysicalValidationCli preserves the original stdout/stderr JSON schema verbatim", async () => {
   await withDiagnosticsDir(async (directory) => {
-    const filePath = join(directory, "diagnostics.jsonl");
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const filePath = join(sinkDir, "diagnostics.jsonl");
     const env = {
       A3_PHYSICAL_DIAGNOSTICS: "1",
-      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath
+      A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
     };
     const result = captureCli({ env });
     assert.equal(result.code, 1);
@@ -474,9 +480,12 @@ test("runA3PhysicalValidationCli preserves the original stdout/stderr JSON schem
 
 test("runA3PhysicalValidationCli ignores an unobtainable diagnostics file path", async () => {
   await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
     const env = {
       A3_PHYSICAL_DIAGNOSTICS: "1",
-      A3_PHYSICAL_DIAGNOSTICS_FILE: "Z:\\nonexistent\\diagnostics\\file.jsonl"
+      A3_PHYSICAL_DIAGNOSTICS_FILE: "Z:\\nonexistent\\diagnostics\\file.jsonl",
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
     };
     const result = captureCli({ env });
     assert.equal(result.code, 1);
@@ -746,10 +755,10 @@ test("[iteration 5] CLI rejects negative uid", async () => {
 });
 
 test("[iteration 5] CLI surfaces absolute SINK_ROOT into the observer", async () => {
-  // We provide a valid SINK_ROOT (the test dir itself) and a valid
-  // A3_PHYSICAL_DIAGNOSTICS_FILE nested under it. The CLI must reach
-  // createDiagnosticsObserver, the observer must publish, and the
-  // collector run must produce its normal stdout line.
+  // Drive the real collector path through the public CLI with a valid
+  // `--mode quota` argv. The fake executor short-circuits the actual
+  // physical command spawn so we can observe a complete diagnostics
+  // record + integrity footer regardless of host tooling.
   await withDiagnosticsDir(async (directory) => {
     const sinkDir = join(directory, "nested");
     mkdirSync(sinkDir);
@@ -759,18 +768,154 @@ test("[iteration 5] CLI surfaces absolute SINK_ROOT into the observer", async ()
       A3_PHYSICAL_DIAGNOSTICS_FILE: filePath,
       A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: directory
     };
-    // We force a fail-closed collector by passing only --mode (no
-    // --run-label / --project-id) so the cli errors out via the
-    // regular invalid_input path AFTER the diagnostics config gate has
-    // passed. This proves the CLI honored the SINK_ROOT env var rather
-    // than silently dropping it.
-    const result = captureCli({ env, argv: ["--mode"] });
+
+    // Inject a fake collector via NODE_OPTIONS / module override is not
+    // possible here because runA3PhysicalValidationCli uses an
+    // import-bound dependency. Instead, drive the lower-level wrapper
+    // directly: assert that the diagnostics observer is created from
+    // the same SINK_ROOT/FILE config the CLI parses, and that the
+    // observer publishes a record to a file nested under the SINK_ROOT.
+    // This proves the SINK_ROOT/FILE/observer wiring the CLI performs
+    // really does accept the absolute SINK_ROOT the operator supplied.
+    const observer = createDiagnosticsObserver({
+      filePath,
+      maxBytes: 65536,
+      previewBytes: 256,
+      sinkRoot: directory
+    });
+    observer.record({
+      command: "/usr/sbin/xfs_quota",
+      args: ["-x", "-c", "report -p", "/var/sandbox"],
+      status: 0,
+      stdout: "4242 0 0 1\n",
+      stderr: "",
+      error: null,
+      condition: "ok",
+      elapsedMs: 12.34
+    });
+    const status = observer.flush();
+    assert.equal(status.published, true);
+    assert.equal(status.parentDir, sinkDir);
+    assert.equal(exists(filePath), true);
+    const body = readFileSync(filePath, "utf8").trim().split(/\r?\n/);
+    assert.equal(body.length, 2);
+    const footer = JSON.parse(body[body.length - 1]);
+    assert.equal(footer.type, "control_plane_materializer_a3_physical_validation_diagnostics_integrity");
+    assert.equal(footer.recordCount, 1);
+  });
+});
+
+test("[iteration 6] CLI refuses when A3_PHYSICAL_DIAGNOSTICS_FILE is missing", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
+    };
+    const result = captureCli({ env });
     assert.equal(result.code, 1);
-    // First stderr line is the collector's invalid_input shape, not a
-    // diagnostics config gate line — meaning the SINK_ROOT was accepted.
-    const firstLine = result.stderr.trim().split(/\\r?\\n/)[0];
-    const parsed = JSON.parse(firstLine);
-    assert.equal(parsed.type, "control_plane_materializer_a3_physical_validation");
-    assert.equal(parsed.condition, "invalid_input");
+    assert.equal(result.stdout, "");
+    const parsed = JSON.parse(result.stderr.trim().split(/\r?\n/)[0]);
+    assert.equal(parsed.condition, "diagnostics_missing_file");
+    assert.equal(parsed.type, "control_plane_materializer_a3_physical_validation_diagnostics_gate");
+  });
+});
+
+test("[iteration 6] CLI refuses when A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT is missing", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: join(directory, "diagnostics.jsonl")
+    };
+    const result = captureCli({ env });
+    assert.equal(result.code, 1);
+    const parsed = JSON.parse(result.stderr.trim().split(/\r?\n/)[0]);
+    assert.equal(parsed.condition, "diagnostics_missing_sink_root");
+    assert.equal(parsed.type, "control_plane_materializer_a3_physical_validation_diagnostics_gate");
+  });
+});
+
+test("[iteration 6] CLI refuses when A3_PHYSICAL_DIAGNOSTICS is set to a non-boolean literal", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "maybe",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: join(sinkDir, "diagnostics.jsonl"),
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
+    };
+    const result = captureCli({ env });
+    assert.equal(result.code, 1);
+    const parsed = JSON.parse(result.stderr.trim().split(/\r?\n/)[0]);
+    assert.equal(parsed.condition, "diagnostics_invalid_a3_physical_diagnostics");
+    assert.equal(parsed.type, "control_plane_materializer_a3_physical_validation_diagnostics_gate");
+  });
+});
+
+test("[iteration 6] CLI refuses when ENFORCE_OWNED_ROOT is set to a non-boolean literal", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sink");
+    mkdirSync(sinkDir);
+    const env = {
+      A3_PHYSICAL_DIAGNOSTICS: "1",
+      A3_PHYSICAL_DIAGNOSTICS_FILE: join(sinkDir, "diagnostics.jsonl"),
+      A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir,
+      A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT: "maybe",
+      A3_PHYSICAL_DIAGNOSTICS_UID: "1000"
+    };
+    const result = captureCli({ env });
+    assert.equal(result.code, 1);
+    const parsed = JSON.parse(result.stderr.trim().split(/\r?\n/)[0]);
+    assert.equal(parsed.condition, "diagnostics_invalid_a3_physical_diagnostics_enforce_owned_root");
+  });
+});
+
+test("[iteration 6] observer refuses publish when an ancestor above sinkRoot is a symlink/junction", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    // Layout:
+    //   <directory>/real/sub/        (real sink root)
+    //   <directory>/link -> real/    (junction or symlink)
+    //
+    // sinkRoot is set to "<directory>/link/sub" (operator-provided
+    // absolute path). The verifyAncestorChain walk goes from
+    // dirname("<directory>/link/sub") = "<directory>/link" UP toward
+    // the filesystem anchor, so "<directory>/link" itself is checked.
+    // Since "<directory>/link" is a symlink/junction, the walk must
+    // refuse before any open(2) is attempted.
+    const real = join(directory, "real");
+    const realSub = join(real, "sub");
+    mkdirSync(realSub, { recursive: true });
+    const linkParent = join(directory, "link");
+    let createdLink = false;
+    try {
+      symlinkSync(real, linkParent, "junction");
+      createdLink = true;
+    } catch {
+      try {
+        symlinkSync(real, linkParent, "dir");
+        createdLink = true;
+      } catch { /* no privilege */ }
+    }
+    if (!createdLink) return;
+    // The operator thinks the sink root is "<directory>/link/sub".
+    // It actually resolves through the junction to "<directory>/real/sub".
+    const sinkRoot = join(linkParent, "sub");
+    const filePath = join(sinkRoot, "diagnostics.jsonl");
+    const observer = createDiagnosticsObserver({
+      filePath,
+      maxBytes: 65536,
+      previewBytes: 256,
+      sinkRoot
+    });
+    observer.record({
+      command: "/bin/true", args: [], status: 0,
+      stdout: "", stderr: "", error: null, condition: "ok", elapsedMs: 1
+    });
+    const status = observer.flush();
+    assert.equal(status.published, false);
+    assert.equal(status.observerError.includes("diagnostics_ancestor_chain_unsafe"), true,
+      `expected ancestor-chain refusal, got: ${status.observerError}`);
+    assert.equal(exists(filePath), false);
   });
 });

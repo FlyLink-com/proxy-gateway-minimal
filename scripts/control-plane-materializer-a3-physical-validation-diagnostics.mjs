@@ -2,7 +2,11 @@
 //
 // Read-only observation layer for the A3-1 physical-validation runner.
 // Activated ONLY when the runner is invoked with
-// `A3_PHYSICAL_DIAGNOSTICS=1` and `A3_PHYSICAL_DIAGNOSTICS_FILE=<path>`.
+// `A3_PHYSICAL_DIAGNOSTICS=1` plus all of `A3_PHYSICAL_DIAGNOSTICS_FILE`,
+// `A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT` (absolute, controlled). When the
+// flag is on but any required custody parameter is missing, the runner
+// fails CLOSED — no collector work happens and the diagnostics gate
+// line on stderr tells the operator exactly which parameter is wrong.
 // Default behaviour with no environment set is byte-for-byte compatible
 // with the un-diagnosed invocation. The observer never changes the
 // commands, the parser, the readback logic, the success conditions, or
@@ -10,22 +14,32 @@
 // entirely additive.
 //
 // Activation (operator-controlled):
-//   A3_PHYSICAL_DIAGNOSTICS=1
-//   A3_PHYSICAL_DIAGNOSTICS_FILE=/path/to/diagnostics.jsonl
+//   A3_PHYSICAL_DIAGNOSTICS=1                              (REQUIRED: enable)
+//   A3_PHYSICAL_DIAGNOSTICS_FILE=/path/to/diagnostics.jsonl (REQUIRED: sink file path)
 //   A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT=/controlled/absolute/root   (REQUIRED when diagnostics is enabled)
-//   A3_PHYSICAL_DIAGNOSTICS_UID=<non-negative integer>            (optional; recommended on hardened hosts)
-//   A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT=1                  (opt-in to require uid + mode & 0022 == 0)
-//   A3_PHYSICAL_DIAGNOSTICS_MAX_BYTES=65536      (optional, default 65536)
-//   A3_PHYSICAL_DIAGNOSTICS_PREVIEW_BYTES=256    (optional, default 256)
+//   A3_PHYSICAL_DIAGNOSTICS_UID=<non-negative integer>      (recommended on hardened hosts)
+//   A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT=1            (opt-in to require uid + mode & 0022 == 0)
+//   A3_PHYSICAL_DIAGNOSTICS_MAX_BYTES=65536    (optional, default 65536)
+//   A3_PHYSICAL_DIAGNOSTICS_PREVIEW_BYTES=256  (optional, default 256)
 //
-// When `A3_PHYSICAL_DIAGNOSTICS=1` is set but `A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT`
-// is missing, relative, or not absolute, the CLI refuses with
-// `diagnostics_invalid_sink_root` and the runner exits non-zero on the
-// diagnostics-gate line. This is intentional: the hardened parent-chain
-// check requires a controlled absolute sink root, and the CLI MUST
-// surface it (it cannot be inferred from `A3_PHYSICAL_DIAGNOSTICS_FILE`
-// alone because the operator-controlled file path may already live
-// inside an attacker-controlled junction).
+// The hardened parent-chain check is in TWO layers:
+//   1. verifyAncestorChain(rootAbs): walks the path components from
+//      a fixed filesystem anchor (Windows drive root like `C:\` or
+//      POSIX `/`) down to rootAbs. Every component is lstat'd and
+//      must be a real directory — no symlink/junction at any level
+//      above the operator-provided sink root. This closes the
+//      "rootAbs itself is inside an attacker-controlled junction"
+//      P1 (iteration 5 reviewer finding).
+//   2. verifyParentChain(rootAbs, targetParent, uid, opts): walks
+//      rootAbs and every segment from rootAbs down to targetParent.
+//      Refuses any segment that is a symlink/junction, is group/other-
+//      writable, or is owned by a uid other than `uid` (when uid +
+//      enforceOwnedRoot are supplied).
+//
+// Together these two layers guarantee that the sink file is published
+// inside a path tree that the operator fully controls — the entire
+// chain from the trusted filesystem anchor to the sink's immediate
+// parent directory is composed of real directories, no redirects.
 //
 // Diagnostics NEVER carry (these are scrubbed via redact() before
 // they reach the JSONL):
@@ -50,9 +64,8 @@
 // The sink is published via `O_EXCL | O_NOFOLLOW | O_CREAT` directly
 // on the final path. There is no `lstat + rename` step, so a racing
 // attacker cannot substitute the destination between checks. Before
-// the open syscall, every parent directory segment from the operator-
-// provided `sinkRoot` (or, when omitted, the parent directory of the
-// final path itself) down to the sink's immediate parent is verified
+// the open syscall, every parent directory segment from the trusted
+// filesystem anchor down to the sink's immediate parent is verified
 // to be a real directory, NOT a symlink, NOT world/group-writable, and
 // owned by the calling uid. The sink file is also `fsync`'d before
 // close and the custody readback is performed on the SAME fd via
@@ -74,7 +87,7 @@ import {
   writeSync,
   constants as fsConstants
 } from "node:fs";
-import { dirname, isAbsolute, resolve as resolvePath, sep as pathSep } from "node:path";
+import { dirname, isAbsolute, resolve as resolvePath, sep as pathSep, parse as parsePath } from "node:path";
 
 export const DIAGNOSTICS_SCHEMA_VERSION = "diagnostics-1";
 export const DIAGNOSTICS_TYPE = "control_plane_materializer_a3_physical_validation_diagnostics";
@@ -131,6 +144,112 @@ function safePreview(input, maxBytes) {
   return preview.length > maxBytes ? `${preview.slice(0, maxBytes)}\u2026` : preview;
 }
 
+// Compute the fixed filesystem anchor for an absolute path:
+//   POSIX      -> "/"
+//   Windows    -> "<drive>:\\"   (e.g. "C:\\")
+//
+// The anchor is the topmost directory on the same filesystem volume
+// that rootAbs lives on. We treat it as trusted because it is supplied
+// by the OS itself (drive root on Windows, `/` on POSIX) and cannot
+// itself be a symlink (POSIX `/` is always a directory; Windows drive
+// roots cannot be junctions either — junctions always live BELOW the
+// drive root). The walk from anchor down to rootAbs catches every
+// intermediate symlink/junction that could redirect the publish into
+// an attacker-controlled tree.
+function fsAnchorFor(rootAbs) {
+  if (typeof rootAbs !== "string" || rootAbs.length === 0) {
+    const err = new Error("diagnostics_invalid_sink_root: empty path");
+    err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+    throw err;
+  }
+  if (!isAbsolute(rootAbs)) {
+    const err = new Error(`diagnostics_invalid_sink_root: ${rootAbs} is not absolute`);
+    err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+    throw err;
+  }
+  // Windows-style absolute: <drive>:\... or <drive>:/...
+  const parsed = parsePath(rootAbs);
+  if (typeof parsed.root === "string" && parsed.root.length > 0 && /^[a-zA-Z]:[\\/]?$/.test(parsed.root)) {
+    // Normalise to <drive>:\ — the actual drive root.
+    return `${parsed.root.replace(/[\\/]$/, "")}\\`;
+  }
+  // POSIX absolute: /...
+  if (rootAbs.startsWith("/")) return "/";
+  const err = new Error(`diagnostics_invalid_sink_root: ${rootAbs} has no filesystem anchor`);
+  err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+  throw err;
+}
+
+// Verify every path component from the fixed filesystem anchor down
+// to (but NOT including) rootAbs is a real directory — no symlinks or
+// junctions. This catches the case where the operator's sinkRoot is
+// itself nested under an attacker-controlled ancestor (a junction at
+// `C:\Users\Public\link` for example).
+//
+// When the anchor equals rootAbs itself (i.e. rootAbs IS the drive
+// root or `/`), this walk is a no-op and we trust the anchor.
+//
+// When `expectedUid` is supplied AND `enforceOwnedRoot` is true, we
+// additionally require no group/other-write bit and an exact uid match
+// on every segment.
+//
+// Throws DIAGNOSTICS_PARENT_CHAIN_UNSAFE on any failure.
+function verifyAncestorChain(rootAbs, expectedUid, { enforceOwnedRoot = false } = {}) {
+  const anchor = fsAnchorFor(rootAbs);
+  if (anchor === rootAbs) return; // no ancestors to walk
+  const rootWithSep = rootAbs.endsWith(pathSep) || rootAbs === pathSep
+    ? rootAbs
+    : rootAbs + pathSep;
+  if (!rootAbs.startsWith(anchor.endsWith(pathSep) ? anchor : anchor + pathSep)
+    && rootAbs !== anchor) {
+    const err = new Error(
+      `diagnostics_ancestor_chain_unsafe: sink root ${rootAbs} does not descend from anchor ${anchor}`
+    );
+    err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+    throw err;
+  }
+  // Walk from rootAbs's parent UP to (but not including) anchor.
+  const segments = [];
+  let cursor = dirname(rootAbs);
+  while (cursor !== anchor && cursor !== dirname(cursor)) {
+    segments.push(cursor);
+    cursor = dirname(cursor);
+  }
+  if (cursor !== anchor) {
+    const err = new Error(
+      `diagnostics_ancestor_chain_unsafe: sink root ${rootAbs} does not descend from anchor ${anchor}`
+    );
+    err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+    throw err;
+  }
+  for (const segment of segments) {
+    const st = lstatSync(segment);
+    if (!st.isDirectory()) {
+      const err = new Error(
+        `diagnostics_ancestor_chain_unsafe: ${segment} is not a directory (lstat mode=${st.mode.toString(8)})`
+      );
+      err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+      throw err;
+    }
+    if (enforceOwnedRoot) {
+      if ((st.mode & 0o022) !== 0) {
+        const err = new Error(
+          `diagnostics_ancestor_chain_unsafe: ${segment} is group/other-writable (mode=${st.mode.toString(8)})`
+        );
+        err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+        throw err;
+      }
+      if (typeof expectedUid !== "number" || expectedUid < 0 || st.uid !== expectedUid) {
+        const err = new Error(
+          `diagnostics_ancestor_chain_unsafe: ${segment} owned by uid=${st.uid}, expected ${expectedUid}`
+        );
+        err.code = "DIAGNOSTICS_PARENT_CHAIN_UNSAFE";
+        throw err;
+      }
+    }
+  }
+}
+
 // Verify that every segment of the chain from `rootAbs` (inclusive)
 // down to `targetParent` (inclusive) is a real directory owned by the
 // calling uid (when `expectedUid` is supplied) and not a symlink or
@@ -152,8 +271,8 @@ function safePreview(input, maxBytes) {
 // `A3_PHYSICAL_DIAGNOSTICS_UID=<uid>` to activate this defence.
 //
 // The root-itself check is unconditional across all configurations
-// because the previous iteration stopped one segment short and let a
-// symlinked sinkRoot pass.
+// because iteration 4 stopped one segment short and let a symlinked
+// sinkRoot pass.
 //
 // Throws DIAGNOSTICS_PARENT_CHAIN_UNSAFE on any failure.
 function verifyParentChain(rootAbs, targetParent, expectedUid, { enforceOwnedRoot = false } = {}) {
@@ -169,9 +288,8 @@ function verifyParentChain(rootAbs, targetParent, expectedUid, { enforceOwnedRoo
   }
 
   // Build the full list of segments from rootAbs down to targetParent,
-  // inclusive of rootAbs itself. The previous iteration stopped one
-  // segment short and left rootAbs itself unverified; this iteration
-  // verifies the root too.
+  // inclusive of rootAbs itself. Iteration 4 stopped one segment short
+  // and left rootAbs itself unverified; iteration 5+ verify the root too.
   const segments = [rootAbs];
   let cursor = targetParent;
   while (cursor !== rootAbs && cursor !== dirname(cursor)) {
@@ -268,7 +386,14 @@ function publishOnce(filePath, body, { sinkRoot, uid, enforceOwnedRoot = false }
   const finalPath = resolvePath(filePath);
   const parentDir = dirname(finalPath);
   const verifiedRoot = sinkRoot && isAbsolute(sinkRoot) ? resolvePath(sinkRoot) : parentDir;
-  // Pre-open: certify the parent chain (root included).
+  // Pre-open: certify the ANCESTOR chain above the sink root (every
+  // path component from the trusted filesystem anchor down to sinkRoot
+  // is a real directory, no symlink/junction), THEN certify the
+  // parent chain from sinkRoot down to the sink's immediate parent.
+  // Together these two layers close both the "sinkRoot inside an
+  // attacker-controlled junction" P1 (iteration 6 reviewer finding)
+  // and the "sinkRoot is a symlink" P1 from iteration 4.
+  verifyAncestorChain(verifiedRoot, uid, { enforceOwnedRoot });
   verifyParentChain(verifiedRoot, parentDir, uid, { enforceOwnedRoot });
 
   let fd = null;

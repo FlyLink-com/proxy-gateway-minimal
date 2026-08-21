@@ -15,45 +15,80 @@ function isBooleanFlag(value) {
   return value === "1" || value === "true" || value === "yes";
 }
 
+// Strict boolean parsing: when the env var is set, ONLY accept exact
+// "1" / "true" / "yes". Anything else (including "0", "false", "no",
+// empty string, garbage) is an INVALID configuration. This closes
+// iteration 6 reviewer's P1: "non-boolean / unknown boolean values
+// were silently treated as 'not enabled'".
+function parseStrictBoolean(envName, value) {
+  if (value === undefined) return undefined;
+  if (value === "1" || value === "true" || value === "yes") return true;
+  if (value === "0" || value === "false" || value === "no") return false;
+  throw new Error(`diagnostics_invalid_${envName.toLowerCase()}`);
+}
+
 function readDiagnosticsConfig(env = process.env) {
-  if (!isBooleanFlag(env.A3_PHYSICAL_DIAGNOSTICS)) return null;
+  // Step 1: strict boolean parse. If A3_PHYSICAL_DIAGNOSTICS is set to
+  // anything other than a true/false literal, refuse — do NOT silently
+  // fall through to "not enabled". This closes iteration 6 P1 #1.
+  let diagnosticsEnabled;
+  try {
+    diagnosticsEnabled = parseStrictBoolean("A3_PHYSICAL_DIAGNOSTICS", env.A3_PHYSICAL_DIAGNOSTICS);
+  } catch (err) {
+    throw err;
+  }
+  if (!diagnosticsEnabled) return null;
+
+  // Step 2: FILE is REQUIRED when diagnostics is enabled. Missing or
+  // empty FILE now refuses instead of silently falling through to the
+  // un-diagnosed collector.
   const filePath = env.A3_PHYSICAL_DIAGNOSTICS_FILE;
-  if (typeof filePath !== "string" || filePath.length === 0) return null;
+  if (typeof filePath !== "string" || filePath.length === 0) {
+    throw new Error("diagnostics_missing_file");
+  }
   const maxBytes = Number(env.A3_PHYSICAL_DIAGNOSTICS_MAX_BYTES);
   const preview = Number(env.A3_PHYSICAL_DIAGNOSTICS_PREVIEW_BYTES);
-  // sinkRoot is OPT-IN hardening. When supplied, it MUST be absolute
-  // (POSIX `/...` or Windows `<drive>:\...` / `<drive>:/...`); when
-  // missing or relative, the observer falls back to using the parent
-  // directory of filePath as the chain root. The chain walk still
-  // verifies rootAbs + every segment as a directory (no symlinks), so
-  // the substitution P1 is closed for both hardened and default
-  // invocations — only the group/other-writable + uid match check
-  // requires the explicit `enforceOwnedRoot + uid` pair.
+
+  // Step 3: SINK_ROOT is REQUIRED when diagnostics is enabled. We
+  // can no longer infer it from FILE because that lets an attacker
+  // who controls FILE redirect the publish into an arbitrary tree.
+  // SINK_ROOT MUST be absolute (POSIX `/...` or Windows
+  // `<drive>:\...` / `<drive>:/...`).
   const sinkRootRaw = env.A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT;
-  let sinkRoot = null;
-  if (typeof sinkRootRaw === "string" && sinkRootRaw.length > 0) {
-    if (!/^[a-zA-Z]:[\\/]|^[\\/]/.test(sinkRootRaw)) {
-      throw new Error("diagnostics_invalid_sink_root");
-    }
-    sinkRoot = sinkRootRaw;
+  if (typeof sinkRootRaw !== "string" || sinkRootRaw.length === 0) {
+    throw new Error("diagnostics_missing_sink_root");
   }
+  if (!/^[a-zA-Z]:[\\/]|^[\\/]/.test(sinkRootRaw)) {
+    throw new Error("diagnostics_invalid_sink_root");
+  }
+
   const config = {
     filePath,
-    sinkRoot,
+    sinkRoot: sinkRootRaw,
     maxBytes: Number.isInteger(maxBytes) && maxBytes > 0 ? maxBytes : 65536
   };
   if (Number.isInteger(preview) && preview > 0) config.previewBytes = preview;
+
+  // Step 4: UID is optional but must be valid when supplied.
   const uidRaw = env.A3_PHYSICAL_DIAGNOSTICS_UID;
   if (uidRaw !== undefined) {
     const uid = Number(uidRaw);
     if (!Number.isInteger(uid) || uid < 0) throw new Error("diagnostics_invalid_uid");
     config.uid = uid;
   }
-  if (isBooleanFlag(env.A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT)) {
-    config.enforceOwnedRoot = true;
-    if (!Number.isInteger(config.uid)) {
-      throw new Error("diagnostics_enforce_owned_root_requires_uid");
+
+  // Step 5: ENFORCE_OWNED_ROOT is opt-in strict boolean. When on,
+  // uid must be supplied.
+  try {
+    const enforce = parseStrictBoolean("A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT", env.A3_PHYSICAL_DIAGNOSTICS_ENFORCE_OWNED_ROOT);
+    if (enforce === true) {
+      config.enforceOwnedRoot = true;
+      if (!Number.isInteger(config.uid)) {
+        throw new Error("diagnostics_enforce_owned_root_requires_uid");
+      }
     }
+  } catch (err) {
+    throw err;
   }
   return config;
 }
