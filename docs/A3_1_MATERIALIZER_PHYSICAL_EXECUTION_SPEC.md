@@ -23,11 +23,12 @@ document_metadata:
 
 ## 0.5 Source-of-truth binding (exact identities)
 
-The following exact identities are bound to this spec. They are valid **only
-while `master` HEAD remains `10b98227e8c7aca667422bb5edad875cac2e7984`**.
-If `master` advances, this spec must be rebased, the bound identities below
-refreshed, and the dependency artifact re-issued; the old artifact identity
-must not be reused.
+The following exact identities are the immutable A3-0 evidence baseline used
+to author this spec. Merging this docs-only spec will advance `master`; that
+does not rewrite this historical baseline. The A3-1 implementation PR must
+separately bind the then-current `master` SHA and a newly issued dependency
+artifact. It must never reuse the artifact below as execution input after
+`master` advances.
 
 | Field | Value |
 |---|---|
@@ -73,13 +74,14 @@ risk_a_independent_approval:
   status: not_yet_satisfied
 disposable_target_provider:
   status: pending
-  required_record: A3-1 implementation PR body must name provider before any probe runs
+  required_record: Issue #636 pre-execution approval must name provider/target; A3-1 implementation PR body must repeat it
 ```
 
 > **Recorded, not approved.** The pairing above is a candidate identity record
 > only. It does **not** constitute formal approval. Risk A's independent-approval
 > gate is satisfied only when `gccltd` posts the §7 comment on Issue #636 AND
-> the disposable target provider is named in the A3-1 implementation PR body.
+> the disposable target provider/target is named in the Issue #636
+> pre-execution approval and repeated in the A3-1 implementation PR body.
 > Until both conditions hold: no provider interaction, no node access, no probe
 > execution, no production guard lift.
 
@@ -96,9 +98,10 @@ production `worker_storage_limit_unavailable` guard still fires under
 merged on `master` at `10b98227`. The contract is frozen; this spec does **not**
 re-open contract shape decisions.
 
-PR #646 is spec-only on its own. It did not execute XFS project-quota probes,
-did not spawn systemd DynamicUser units, did not read cgroups, did not bind any
-project-ID to a release artifact, and did not lift the production guard.
+PR #646 is contract-skeleton code and tests only. It did not execute XFS
+project-quota probes, did not spawn a service-principal sandbox unit, did not
+read cgroups, did not bind any project-ID to a release artifact, and did not
+lift the production guard.
 
 Gate A3-1 (issue #636) requires the actual physical execution paths that produce
 readback evidence matching those contracts. Until those paths run on a real
@@ -116,7 +119,7 @@ splitting strategy.
 |---|---|---|---|
 | 1 | Trusted XFS project-quota physical probe | `parseStorageQuotaEvidence` | No (probe runs in disposable VM) |
 | 2 | Real EDQUOT overload probe (exhaustion → EDQUOT, headroom → 0) | `parseStorageQuotaEvidence.probe` | No |
-| 3 | systemd-restricted native-smoke worker (DynamicUser transient unit) | `parseServiceSmokeReadback` | No |
+| 3 | systemd-restricted native-smoke worker (validated service UID/GID transient unit) | `parseServiceSmokeReadback` | No |
 | 4 | Precise terminal / cgroup-empty readback | `parseServiceSmokeReadback.terminalActiveState / terminalSubState / cgroupEmpty` | No |
 | 5 | Wire physical evidence into `materialize` main flow | `materializeCandidateDependencies` boundary | Yes (gates production path) |
 | 6 | Pre/post release binding: project-ID + quota + receipt | `preflightCandidateDependencies` / `verifyCandidateDependencies` | Yes |
@@ -140,7 +143,10 @@ follow-up PR to consider relaxing the guard. A3-1 itself keeps the guard.
 
 - **One** new Draft PR for items 1-6 (the seven items 1-6 are inseparable: the gate flow only makes sense if all evidence can be produced end-to-end).
 - **Zero** code change in the A3-1 implementation PR that lifts the guard. Item 7 lives in a separate future PR and only opens if items 1-6 pass end-to-end on a clean Linux disposable target with operator approval.
-- Branch base: `master` @ `10b98227e8c7aca667422bb5edad875cac2e7984` (post-PR-#646 merge). If `master` advances again before the A3-1 implementation PR is opened, **do not reuse the old artifact identity** — rebase the spec onto the new master SHA, refresh the `baseline_master_sha` field in `document_metadata`, and re-issue the dependency artifact reference. The bound artifact identity below is only valid while master is `10b98227`.
+- Branch base: the exact `master` produced after this spec PR merges. Record
+  that SHA and its newly issued dependency artifact in the A3-1 implementation
+  PR body and Issue #636 approval. The §0.5 identities remain immutable A3-0
+  authoring evidence, not reusable A3-1 execution input.
 - Branch name: `codex/a3-materializer-physical-execution` (matches the repo's `codex/<topic>` convention).
 - Worktree: a fresh worktree, never reused from sibling worktrees.
 
@@ -153,10 +159,16 @@ production, on the CI runner, or on a stopped production node.
 ### 4.1 Required kernel/filesystem features
 
 - Linux kernel ≥ 5.10 with `CONFIG_XFS_QUOTA=y` and `CONFIG_XFS_PQUOTA=y`.
-- XFS filesystem mounted with `pquota` (project quota enabled). Verified by:
-  `xfs_info /path | grep -q pquota`.
+- XFS filesystem mounted with `pquota` or `prjquota` (project quota enabled).
+  Verify the filesystem type and mount option through the exact `/proc/self/mountinfo`
+  record (or `findmnt -no FSTYPE,OPTIONS -T /var/lib/probe`) and independently
+  require `xfs_quota -x -c state /var/lib/probe` to report project accounting
+  and enforcement enabled. `xfs_info` alone is not a mount-option proof.
 - `xfs_quota` (xfsprogs) ≥ 5.x.
-- systemd ≥ 250 with `DynamicUser=` support and `systemd-run --scope`/`--unit` available.
+- systemd ≥ 250 with transient service units, fixed numeric `User=`/`Group=`,
+  `systemd-run --unit`, and exact terminal/cgroup readback available. The worker
+  must use the already validated candidate service UID/GID; `DynamicUser=` is
+  forbidden because it would create a different runtime identity.
 - `cgroups v2` unified hierarchy mounted at `/sys/fs/cgroup`.
 - `setpriv`, `runuser`, `capsh` available.
 - A non-root operator account with passwordless `sudo` for `xfs_quota`, `systemctl`, `setpriv`.
@@ -166,9 +178,9 @@ production, on the CI runner, or on a stopped production node.
 | Step | Command (illustrative) | Verification |
 |---|---|---|
 | Provision | local KVM/QEMU or cloud VM instance, ephemeral | `cloud-init status --wait` |
-| Attach XFS data disk | `/dev/vdb` mounted at `/var/lib/probe` with `-o pquota` | `xfs_info /var/lib/probe` shows `pquota` |
+| Attach XFS data disk | dedicated disposable block device mounted at `/var/lib/probe` with `pquota` or `prjquota` | exact mountinfo/findmnt record shows XFS + project-quota option |
 | Verify project quota tool | `xfs_quota -x -c state /var/lib/probe` | shows `pquota enabled` |
-| Verify systemd DynamicUser | `systemd-run --unit=probe-smoke --wait --service-type=oneshot /bin/true` | exit 0, no unit leftovers |
+| Verify fixed-principal transient service | Run `/bin/true` in a transient unit with the validated non-root numeric `User=`/`Group=` and the §6.3 sandbox properties | exit 0, exact terminal result, then empty cgroup readback |
 | Verify cgroup v2 | `stat -c %T -f /sys/fs/cgroup` | `cgroup2fs` |
 | **Destroy** | `poweroff` after spec run; do not reuse the instance | n/a |
 
@@ -185,18 +197,19 @@ only persistent artifact.
 ## 5. Read-only inventory (must precede any probe)
 
 Before running any probe, capture the following on the disposable target. Do
-not capture on production. Store the inventory in the A3-1 implementation PR
-body under a foldable details section.
+not capture on production. Store only redacted, aggregate-safe fields and
+SHA-256 identities in the A3-1 implementation PR. Raw command output remains
+ephemeral on the disposable target and must not be pasted into GitHub.
 
-- `xfs_info /var/lib/probe` output (full)
-- `xfs_quota -x -c state /var/lib/probe` output (full)
-- `uname -a`
-- `systemctl --version`
-- `stat -c '%T' -f /sys/fs/cgroup`
-- `capsh --print` (for the operator user)
-- `getcap -r / 2>/dev/null | head -50`
-- `ls -la /etc/systemd/system/ | head -20`
-- `systemctl list-unit-files --state=enabled,static | head -40`
+- XFS filesystem UUID hash, mount ID, mount option presence (`pquota` or
+  `prjquota`), and `xfs_quota state` enabled booleans.
+- Kernel major/minor, distribution identifier, systemd version, cgroup v2
+  boolean, and required-tool presence booleans.
+- Operator effective UID class (`root`/`non_root`) and only the capability
+  booleans required by this gate; no full capability dump.
+- SHA-256 of the complete local inventory receipt plus its byte size. Do not
+  publish hostnames, IPs, unit inventory, filesystem paths outside the fixed
+  probe root, environment values, credentials, or package-mirror tokens.
 
 No state on production nodes may be read. If the disposable target needs
 network access to download packages, allow-list only the package mirror and
@@ -223,30 +236,36 @@ real-run phase that produces the readback. Dry-run must pass before real-run.
 ### 6.2 Item 2 — Real EDQUOT overload probe (dry-run)
 
 - Plan a sequence:
-  1. Set project quota to `8GiB` bytes / `65536` inodes.
-  2. Pre-allocate files until `byteCurrent ≈ 8GiB` / `inodeCurrent ≈ 65535`.
+  1. Set a deliberately small project quota (default `1MiB` bytes / `64`
+     inodes) on the disposable probe project.
+  2. Allocate only enough bounded test data/inodes to approach that limit.
   3. Attempt a final write that crosses the limit.
   4. Capture `errno = EDQUOT`, `headroomBytes = 0`, `headroomInodes = 0`.
 - Do not execute until items 6.1 dry-run passes.
 
-### 6.3 Item 3 — systemd DynamicUser transient unit (dry-run)
+### 6.3 Item 3 — fixed service-principal transient unit (dry-run)
 
-- Draft a unit file (`a3-smoke.service`) with:
-  `DynamicUser=yes`, `ProtectSystem=strict`, `ProtectHome=yes`,
+- Draft the exact transient-unit invocation (`a3-smoke.service`) with the
+  validated candidate service numeric `User=` and `Group=`,
+  `DynamicUser=no`, `ProtectSystem=strict`, `ProtectHome=yes`,
   `PrivateDevices=yes`, `NoNewPrivileges=yes`,
   `CapabilityBoundingSet=`, `RestrictAddressFamilies=AF_UNIX`,
   `RestrictNamespaces=yes`, `SystemCallFilter=@system-service`.
-- Plan `systemd-run --unit=a3-smoke --wait --service-type=oneshot node /opt/probe/smoke.mjs`.
+- Plan `systemd-run --unit=a3-smoke --wait --service-type=oneshot` with the
+  fixed verified Node binary and fixed smoke entrypoint; no shell and no
+  caller-controlled argv/environment.
 - Do not start until 6.1/6.2 dry-run pass.
 
 ### 6.4 Item 4 — terminal / cgroup-empty readback (dry-run)
 
-- Plan what the probe code reads:
+- Plan what the probe code reads, in this exact order:
   `serviceUid`, `serviceGid` from `getuid()`/`getgid()` inside the unit;
-  `cgroupEmpty` from `cat /proc/self/cgroup` plus a check that the cgroup
-  contains no PIDs other than the worker;
-  `terminalActiveState`/`terminalSubState`/`terminalResult` from
-  `systemctl show a3-smoke`.
+  after the unit exits, exact `ActiveState=inactive`, `SubState=dead`,
+  `Result=success`, `ExecMainStatus=0`, and exact `ControlGroup` from
+  `systemctl show a3-smoke.service`; then `cgroup.events populated=0` and an
+  empty `cgroup.procs` from that exact cgroup path. A missing, malformed, or
+  unreadable terminal/cgroup field is an attention-required failure and must
+  never be treated as empty.
 - Do not execute until 6.3 dry-run passes.
 
 ### 6.5 Item 5 — wire physical evidence into `materialize` main flow (dry-run)
@@ -299,8 +318,15 @@ The fail-closed rule applies **before** `materialize` reaches the
 
 ## 7. Operator approval template
 
-Operator approval must be obtained **after** items 1-4 real-run evidence is
-captured and **before** item 5/6 code is merged. The approval packet goes in
+There are two distinct approval records. First, before any provider credential
+use, node access, package installation, filesystem/quota mutation, transient
+unit, or probe, `gccltd` must post the exact, unexpired §7 authorization comment
+on Issue #636. It must bind the disposable provider/target, source commit,
+allowed actions, forbidden actions, cleanup, and expiry. Without this record,
+items 1-4 may not run.
+
+Second, after items 1-4 evidence is captured and before item 5/6 code is merged,
+the evidence/merge approval packet goes in
 `docs/production-replacement-records/<YYYY-MM-DD>-a3-1-materializer-physical-approval-packet.md`
 following the project's existing template (see
 `docs/production-replacement-records/2026-06-11-edge-agent-scoped-receipt-render-gate-approval-packet.md`).
@@ -310,7 +336,7 @@ Required packet fields:
 - `target`: disposable Linux VM identifier (ephemeral, no PII)
 - `target_destroy_at`: ≤ 24h after approval
 - `target_os`: kernel + distro
-- `xfs_info`: full output captured in §5
+- `inventory_receipt_sha256` and `inventory_receipt_size_bytes` from §5
 - `quota_evidence_capture_sha256`: hash of captured evidence JSON
 - `smoke_readback_capture_sha256`: hash of captured readback JSON
 - `contract_match`: bool from `parseStorageQuotaEvidence(raw)` and
@@ -406,10 +432,11 @@ Receipt schema impact: version bump; old schemas fail-closed
 Each question has a default documented below; the user only needs to respond
 to override.
 
-1. **Base ref**: branch A3-1 implementation from current `master` (`10b98227`).
-   If `master` advances again, rebase onto the new master SHA and refresh
-   the `baseline_master_sha` field. **DECIDED**: merge #646 first, then
-   branch from latest master. (Default: branch from `master` @ `10b98227`.)
+1. **Base ref**: branch A3-1 implementation from the exact `master` produced
+   after this spec PR merges. Record that SHA and its newly issued dependency
+   artifact in the implementation PR and Issue #636 approval. **DECIDED**:
+   merge #646 and this spec first, then branch from the latest master; the
+   historical §0.5 artifact is not reused.
 2. **Disposable target provider**: preferred local KVM (independent XFS
    test disk, `pquota`/`prjquota`, root, systemd, cgroup v2); otherwise a
    one-shot cloud VM (Aliyun ECS preferred over any existing lightweight
