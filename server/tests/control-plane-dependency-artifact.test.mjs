@@ -1,18 +1,24 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  DEPENDENCY_ARTIFACT_SCHEMA_VERSION,
   DEPENDENCY_ARTIFACT_TYPE,
   DependencyArtifactError,
+  MAX_MANIFEST_BYTES,
   auditDependencyTree,
+  buildDependencyArtifactManifest,
+  detectDependencyRuntime,
   dependencyArtifactPaths,
   extractDependencyArchive,
   parseDependencyArtifactManifest,
+  prepareDependencyArtifactTree,
+  readDependencyArtifactManifest,
   runDependencyArtifactCli,
   runNativeBetterSqliteSmoke,
   validateDependencyArchiveEntries,
@@ -46,14 +52,14 @@ function fixture(name = "happy") {
   writeFileSync(archivePath, archiveBytes);
   const tree = auditDependencyTree(nodeModules, { enforceOwnership: false, checkAclCapabilities: () => true });
   const manifest = {
-    schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: "control-plane-app",
+    schemaVersion: "2", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: "control-plane-app",
     sourceCommit: "a".repeat(40), artifactRelease: "ci-20260819",
     package: { sha256: hash(packageJson), sizeBytes: packageJson.length },
     packageLock: { sha256: hash(packageLock), sizeBytes: packageLock.length },
     archive: { fileName: "node-modules.tar", sha256: hash(archiveBytes), sizeBytes: archiveBytes.length },
     runtime,
     smoke: { betterSqlite3Memory: true, snapshotImport: true },
-    tree: { sha256: tree.sha256, entryCount: tree.entryCount, hardlinksBroken: true, symlinksInternal: true },
+    tree: { sha256: tree.sha256, entryCount: tree.entryCount, totalBytes: tree.totalBytes, hardlinksBroken: true, symlinksInternal: true },
     provenance: { builder: "github-actions", workflow: "control-plane-dependency-artifact.yml" }
   };
   return { root, nodeModules, packageJson, packageLock, archivePath, archiveBytes, manifest, tree };
@@ -63,20 +69,72 @@ function cleanup(root) { try { rmSync(root, { recursive: true, force: true }); }
 
 test("dependency manifest accepts formatting but rejects duplicate keys", () => {
   const value = {
-    schemaVersion: "1", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: "control-plane-app", sourceCommit: "a".repeat(40), artifactRelease: "ci",
+    schemaVersion: "2", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: "control-plane-app", sourceCommit: "a".repeat(40), artifactRelease: "ci",
     package: { sha256: "b".repeat(64), sizeBytes: 1 }, packageLock: { sha256: "c".repeat(64), sizeBytes: 1 },
     archive: { fileName: "node-modules.tar", sha256: "d".repeat(64), sizeBytes: 1 }, runtime,
-    smoke: { betterSqlite3Memory: true, snapshotImport: true }, tree: { sha256: "e".repeat(64), entryCount: 1, hardlinksBroken: true, symlinksInternal: true }, provenance: { builder: "github-actions", workflow: "control-plane-dependency-artifact.yml" }
+    smoke: { betterSqlite3Memory: true, snapshotImport: true }, tree: { sha256: "e".repeat(64), entryCount: 1, totalBytes: 1, hardlinksBroken: true, symlinksInternal: true }, provenance: { builder: "github-actions", workflow: "control-plane-dependency-artifact.yml" }
   };
   const parsed = parseDependencyArtifactManifest({ bytes: Buffer.from(`${JSON.stringify(value, null, 2)}\r\n`) });
   assert.equal(parsed.value.type, DEPENDENCY_ARTIFACT_TYPE);
-  assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from('{"schemaVersion":"1","schemaVersion":"1"}') }), condition("dependency_artifact_invalid"));
+  assert.equal(parsed.value.schemaVersion, "2");
+  assert.equal(DEPENDENCY_ARTIFACT_SCHEMA_VERSION, "2");
+  assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from(JSON.stringify({ ...value, schemaVersion: "1" })) }), condition("dependency_artifact_invalid"));
+  const missingBudget = { ...value, tree: { ...value.tree } };
+  delete missingBudget.tree.totalBytes;
+  assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from(JSON.stringify(missingBudget)) }), condition("dependency_tree_invalid"));
+  assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from('{"schemaVersion":"2","schemaVersion":"2"}') }), condition("dependency_artifact_invalid"));
+});
+
+test("dependency manifest applies a bounded pre-parse size gate", () => {
+  assert.throws(
+    () => parseDependencyArtifactManifest({ bytes: Buffer.alloc(MAX_MANIFEST_BYTES + 1, 0x20) }),
+    condition("dependency_artifact_invalid")
+  );
+  const root = makeRoot("manifest-size");
+  const path = join(root, "dependency-artifact.json");
+  try {
+    writeFileSync(path, Buffer.alloc(MAX_MANIFEST_BYTES + 1, 0x20));
+    assert.throws(() => readDependencyArtifactManifest(path), condition("dependency_artifact_invalid"));
+  } finally { cleanup(root); }
 });
 
 test("production consumer paths are derived from the fixed deployment layout", () => {
   const paths = dependencyArtifactPaths({ deploymentRoot: "/opt/proxy-gateway-minimal-candidate", candidateRelease: "cca5332573d3" });
   assert.equal(paths.manifestPath, resolve("/opt/proxy-gateway-minimal-candidate", "dependency-artifacts", "cca5332573d3", "dependency-artifact.json"));
+  assert.equal(paths.releaseLabelPath, resolve("/opt/proxy-gateway-minimal-candidate", "dependency-artifacts", "cca5332573d3", "release-label.txt"));
   assert.throws(() => dependencyArtifactPaths({ deploymentRoot: "/opt/root", candidateRelease: "../escape" }), condition("dependency_path_invalid"));
+});
+
+test("producer emits a v2 manifest with bounded tree evidence", { skip: process.platform !== "linux" }, () => {
+  const value = fixture("schema-v2-producer-source");
+  const extracted = fixture("schema-v2-producer-extracted");
+  try {
+    symlinkSync("index.js", join(extracted.nodeModules, "better-sqlite3", "internal-bin"));
+    const expectedTree = auditDependencyTree(extracted.nodeModules, { enforceOwnership: false, checkAclCapabilities: () => true });
+    const result = buildDependencyArtifactManifest({
+      sourceCommit: value.manifest.sourceCommit,
+      artifactRelease: value.manifest.artifactRelease,
+      packageJsonBytes: value.packageJson,
+      packageLockBytes: value.packageLock,
+      archivePath: value.archivePath,
+      root: value.root,
+      runtime: {
+        enforceOwnership: false,
+        detect: ({ root }) => { assert.equal(root, extracted.root); return runtime; },
+        listArchive: () => Buffer.from("node_modules\0node_modules/better-sqlite3/\0node_modules/better-sqlite3/index.js\0node_modules/better-sqlite3/package.json\0"),
+        extractArchive: () => ({ root: extracted.root, nodeModulesRoot: extracted.nodeModules, cleanup: () => {} }),
+        checkAclCapabilities: () => true,
+        nativeSmoke: () => true
+      }
+    });
+    assert.equal(result.value.schemaVersion, DEPENDENCY_ARTIFACT_SCHEMA_VERSION);
+    assert.equal(result.value.tree.totalBytes, expectedTree.totalBytes);
+    assert.equal(result.value.tree.entryCount, expectedTree.entryCount);
+    assert.equal(parseDependencyArtifactManifest({ bytes: result.bytes }).value.schemaVersion, "2");
+  } finally {
+    cleanup(extracted.root);
+    cleanup(value.root);
+  }
 });
 
 test("consumer verifies package-lock, runtime, archive, tree and native smoke together", () => {
@@ -219,6 +277,69 @@ test("consumer rejects archive traversal and unsafe tree links", () => {
   try {
     symlinkSync("/tmp", join(value.nodeModules, "external-link"));
     assert.throws(() => auditDependencyTree(value.nodeModules, { enforceOwnership: false, checkAclCapabilities: () => true }), condition("dependency_tree_invalid"));
+  } finally { cleanup(value.root); }
+});
+
+test("consumer rejects a tree byte-budget drift before native smoke", () => {
+  const value = fixture("tree-byte-drift");
+  let smokeCalls = 0;
+  try {
+    const manifest = { ...value.manifest, tree: { ...value.manifest.tree, totalBytes: value.manifest.tree.totalBytes + 1 } };
+    assert.throws(() => verifyDependencyArtifact({
+      manifestBytes: Buffer.from(JSON.stringify(manifest)), archivePath: value.archivePath,
+      packageJsonBytes: value.packageJson, packageLockBytes: value.packageLock,
+      expectedSourceCommit: manifest.sourceCommit, expectedArtifactRelease: manifest.artifactRelease,
+      projectRoot: value.root, nodeModulesRoot: value.nodeModules,
+      runtime: {
+        enforceOwnership: false,
+        detect: () => runtime,
+        listArchive: () => Buffer.from("node_modules\0"),
+        extractArchive: () => ({ root: value.root, nodeModulesRoot: value.nodeModules, cleanup: () => {} }),
+        checkAclCapabilities: () => true,
+        nativeSmoke: () => { smokeCalls += 1; return true; }
+      }
+    }), condition("dependency_tree_mismatch"));
+    assert.equal(smokeCalls, 0);
+  } finally { cleanup(value.root); }
+});
+
+test("consumer rejects an expected artifact identity before extraction", () => {
+  const value = fixture("expected-identity");
+  let extractionCalls = 0;
+  try {
+    assert.throws(
+      () => prepareDependencyArtifactTree({
+        manifestBytes: Buffer.from(JSON.stringify(value.manifest)),
+        archivePath: value.archivePath,
+        packageJsonBytes: value.packageJson,
+        packageLockBytes: value.packageLock,
+        expectedManifestSha256: "f".repeat(64),
+        runtime: {
+          enforceOwnership: false,
+          extractArchive: () => { extractionCalls += 1; return { root: value.root, nodeModulesRoot: value.nodeModules, cleanup: () => {} }; }
+        }
+      }),
+      condition("dependency_file_changed")
+    );
+    assert.equal(extractionCalls, 0);
+  } finally { cleanup(value.root); }
+});
+
+test("Linux runtime detection rejects a relative npm executable before invocation", { skip: process.platform !== "linux" }, () => {
+  assert.throws(
+    () => detectDependencyRuntime({ root: "/", nodePath: "/usr/bin/node", npmPath: "npm" }),
+    condition("dependency_runtime_invalid")
+  );
+});
+
+test("Linux runtime detection records the selected node binary runtime", { skip: process.platform !== "linux" }, () => {
+  const value = fixture("runtime-probe");
+  try {
+    const selectedNode = spawnSync(process.execPath, ["--version"], { encoding: "utf8" }).stdout.trim();
+    const detected = detectDependencyRuntime({ root: value.root, nodePath: process.execPath, npmPath: resolve(dirname(process.execPath), "npm"), npmVersion: runtime.npmVersion });
+    assert.equal(detected.nodeVersion, selectedNode);
+    assert.match(detected.nodeAbi, /^[0-9]+$/);
+    assert.match(detected.arch, /^[a-z0-9._-]+$/);
   } finally { cleanup(value.root); }
 });
 
