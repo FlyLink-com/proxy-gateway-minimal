@@ -70,6 +70,13 @@ function write(path, value, mode = 0o600) {
   chmodSync(path, mode);
 }
 
+function mirrorFixtureModes(source, target) {
+  const metadata = lstatSync(source);
+  if (!metadata.isSymbolicLink()) chmodSync(target, metadata.mode & 0o7777);
+  if (!metadata.isDirectory()) return;
+  for (const child of readdirSync(source)) mirrorFixtureModes(join(source, child), join(target, child));
+}
+
 function artifactManifest({ sourceCommit = SOURCE_COMMIT, release = ARTIFACT_RELEASE, artifact = ARTIFACT, mutate = {} } = {}) {
   return {
     schemaVersion: "1",
@@ -1246,6 +1253,11 @@ test("CI artifact materialization uses only the verified artifact extraction and
       extractCalls += 1;
       stagedRoot = destinationRoot;
       cpSync(extractedSource, destinationRoot, { recursive: true, dereference: false });
+      mirrorFixtureModes(extractedSource, destinationRoot);
+      assert.deepEqual(
+        auditDependencyTree(join(destinationRoot, "node_modules"), { checkAclCapabilities: () => true }),
+        artifactTree
+      );
       return {
         root: destinationRoot,
         nodeModulesRoot: join(destinationRoot, "node_modules"),
@@ -1397,7 +1409,11 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
       checkAclCapabilities: () => true,
       detect: () => runtimeTuple,
       extractArchive(archive) {
-        const extracted = extractDependencyArchive(archive, { destinationRoot: producerExtractionRoot });
+        const extracted = extractDependencyArchive(archive, {
+          destinationRoot: producerExtractionRoot,
+          enforceOwnership: false,
+          checkAclCapabilities: () => true
+        });
         const target = join(extracted.root, "scripts", "control-plane-db-snapshot-gate.mjs");
         mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
         writeFileSync(target, readFileSync(snapshotSource), { mode: 0o400 });
