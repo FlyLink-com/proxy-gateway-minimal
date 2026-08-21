@@ -159,20 +159,20 @@ describe('Read-A3RunRc — marker parsing', describeOpts(), () => {
     assert.equal(out, 3);
   });
 
-    it('fails closed on empty string input', () => {
-      // PowerShell [Parameter(Mandatory)] does not block empty strings;
-      // the parser must still surface the documented marker-count code.
-      // Pass the empty string via base64 so the test harness never has
-      // to embed literal '' in the scriptlet.
-      const out = runScriptWithB64Raw(
-        'input',
-        '',
-        `Read-A3RunRc -Output $__b64_input`
-      );
-      assert.match(out, /^__THROW__:remote_run_marker_count_invalid$/);
-    });
+  it('fails closed on empty string input', () => {
+    // PowerShell [Parameter(Mandatory)] does not block empty strings;
+    // the parser must still surface the documented marker-count code.
+    // Pass the empty string via base64 so the test harness never has
+    // to embed literal '' in the scriptlet.
+    const out = runScriptWithB64Raw(
+      'input',
+      '',
+      `Read-A3RunRc -Output $__b64_input`
+    );
+    assert.match(out, /^__THROW__:remote_run_marker_count_invalid$/);
+  });
 
-    it('fails closed on missing marker', () => {
+  it('fails closed on missing marker', () => {
     const out = runScriptWithB64Raw(
       'input',
       'no marker here',
