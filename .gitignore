@@ -25,6 +25,7 @@ admin/dist-portal/
 /.codex-runtime/
 /.playwright-cli/
 /.tmp-node/
+/.release-artifacts/
 test-results/
 handoff/
 admin/dist-site/
