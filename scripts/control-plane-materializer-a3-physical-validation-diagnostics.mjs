@@ -24,40 +24,61 @@
 // All retained preview bytes are printable ASCII / UTF-8 with NUL
 // bytes stripped and invalid UTF-16 surrogates replaced by U+FFFD
 // before redaction and preview slicing.
+//
+// The sink is published via `O_EXCL | O_NOFOLLOW | O_CREAT` directly
+// on the final path. There is no `lstat + rename` step, so a racing
+// attacker cannot substitute the destination between checks. The
+// sink file is also `fsync`'d before close and read back to verify
+// the bytes-on-disk SHA matches the in-memory body SHA. The
+// directory the sink lives in MUST already exist and be writable by
+// the operator; the observer does NOT create parent directories and
+// does NOT mutate any pre-existing file. Mode 0600 is enforced at
+// open time only (no chmod).
 
 import { createHash } from "node:crypto";
 import {
-  openSync,
   closeSync,
+  fsyncSync,
+  openSync,
+  readFileSync,
+  rmSync,
   writeSync,
-  renameSync,
-  lstatSync,
-  chmodSync,
   constants as fsConstants
 } from "node:fs";
-import { dirname, basename, resolve as resolvePath } from "node:path";
+import { dirname, resolve as resolvePath } from "node:path";
 
 export const DIAGNOSTICS_SCHEMA_VERSION = "diagnostics-1";
 export const DIAGNOSTICS_TYPE = "control_plane_materializer_a3_physical_validation_diagnostics";
 export const DIAGNOSTICS_INTEGRITY_TYPE = "control_plane_materializer_a3_physical_validation_diagnostics_integrity";
 
+// IPv6 / IPv4 / secret redaction. The IPv6 patterns are deliberately
+// permissive and run BEFORE the IPv4 pattern so that IPv4-mapped IPv6
+// (`::ffff:1.2.3.4`) is consumed as IPv6 and the inner IPv4 literal
+// does not leak. The bare-compressed IPv6 patterns catch `::1`, `::`,
+// and other forms that start with a colon (no leading word boundary).
 const REDACT_PATTERNS = [
-  // IPv4 (with optional /mask)
+  // IPv4-mapped IPv6 (must run BEFORE the generic IPv6 / IPv4 rules).
+  // Matches `::ffff:1.2.3.4` end-to-end so the trailing IPv4 does not
+  // leak after the IPv6 prefix is scrubbed.
+  /(?<![\w\[\(\]])(?:[0-9a-f]{0,4}:){2,6}:ffff:\d{1,3}(?:\.\d{1,3}){3}(?:%[A-Za-z0-9_.\-]+)?(?![\w\]\)])/gi,
+  // Bracketed IPv6 in URL form: `[2001:db8::1]`. Allow `[]` to wrap
+  // any colon-delimited IPv6 token, including bare `::1` / `::`.
+  /(?<![\w\[\(\]])\[(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?:%[A-Za-z0-9_.\-]+)?\](?![\w\]\)])/gi,
+  // Bare compressed IPv6 (must run BEFORE IPv4): matches `::1`, `::`,
+  // `fe80::1%eth0`, `2001:db8::1`, `1:2:3:4:5:6:7:8`.
+  /(?<![\w\[\(\]])(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?:%[A-Za-z0-9_.\-]+)?(?![\w\]\)])/gi,
+  // IPv4 (with optional /mask) - matches only AFTER IPv6 is scrubbed.
   /\b\d{1,3}(?:\.\d{1,3}){3}(?:\/\d{1,2})?\b/g,
-  // IPv6: full form, compressed form, IPv4-mapped, link-local zone IDs
-  /\b(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?:%[A-Za-z0-9_.\-]+)?\b/gi,
-  // IPv6 in URL bracket form: http://[2001:db8::1]:443/
-  /\[(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?:%[A-Za-z0-9_.\-]+)?\]/gi,
   // user@host:port (SSH, SCP, rsync, etc.)
   /\b[A-Za-z0-9_.\-]+@[A-Za-z0-9_.\-]+(?::\d{1,5})?\b/g,
-  // host:port (no user) - tightened so it does NOT consume IPv6
+  // host:port (no user) - tightened so it does NOT consume IPv6.
   /(?<![\w@:\[])[A-Za-z0-9_.\-]+:\d{1,5}\b/g,
   // secret-bearing key=value pairs
   /(?:secret|token|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|ssh[_-]?key)\s*=\s*[^\s,;"']+/gi,
   // Authorization: Bearer ...
   /Authorization\s*:\s*Bearer\s+[A-Za-z0-9._\-]+/gi,
-  // Bare Bearer
-  /Bearer\s+[A-Za-z0-9._\-]+/gi
+  // Bare Bearer (preceded by start-of-string or whitespace)
+  /(?:^|\s)Bearer\s+[A-Za-z0-9._\-]+/gi
 ];
 
 function redact(input) {
@@ -81,52 +102,67 @@ function safePreview(input, maxBytes) {
   return preview.length > maxBytes ? `${preview.slice(0, maxBytes)}\u2026` : preview;
 }
 
-function atomicWrite(filePath, body) {
+// Publish the body to a brand-new file. Atomic, no-replace, no
+// pre-existing-file mutation, no symlink substitution.
+//
+// Steps:
+//   1. openSync(finalPath, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+//      - O_EXCL guarantees the final entry did not exist at the moment of
+//        the open syscall. There is NO `lstat + rename` window.
+//      - O_NOFOLLOW refuses symlinks at the final path.
+//      - mode 0600 set at create time only.
+//   2. writeSync(fd, body)
+//   3. fsyncSync(fd)
+//   4. closeSync(fd)
+//   5. Re-open for read and verify bytes-on-disk SHA matches the
+//      in-memory body SHA. Mismatch -> unlink and throw.
+//
+// On any failure, the partial tmp file is unlinked and the error
+// re-thrown. The caller is responsible for surfacing the error.
+function publishOnce(filePath, body) {
   const finalPath = resolvePath(filePath);
-  const dir = dirname(finalPath);
-  const base = basename(finalPath);
-  const tmpPath = resolvePath(dir, `.${base}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-
-  // Pre-check: refuse to overwrite existing files. lstatSync (NOT statSync)
-  // so we never follow symlinks.
+  const parentDir = dirname(finalPath);
+  let fd = null;
+  let createdHere = false;
   try {
-    const existing = lstatSync(finalPath);
-    if (existing.isSymbolicLink() || !existing.isFile()) {
-      const error = new Error("diagnostics_refused_non_regular_sink");
-      error.code = "DIAGNOSTICS_REFUSED";
-      throw error;
-    }
-    try { chmodSync(finalPath, 0o600); } catch { /* best effort */ }
-    const error = new Error("diagnostics_refused_existing_sink");
-    error.code = "DIAGNOSTICS_REFUSED";
-    throw error;
-  } catch (error) {
-    if (error && error.code === "ENOENT") {
-      // expected
-    } else {
-      throw error;
-    }
-  }
-
-  try {
-    const existingTmp = lstatSync(tmpPath);
-    if (existingTmp.isSymbolicLink() || existingTmp.isFile()) {
-      const error = new Error("diagnostics_tmp_path_collision");
-      error.code = "DIAGNOSTICS_TMP_COLLISION";
-      throw error;
-    }
-  } catch (error) {
-    if (!error || error.code !== "ENOENT") throw error;
-  }
-
-  const fd = openSync(tmpPath, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 0o600);
-  try {
+    fd = openSync(
+      finalPath,
+      fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW,
+      0o600
+    );
+    createdHere = true;
     writeSync(fd, body);
+    fsyncSync(fd);
+  } catch (error) {
+    if (fd !== null) try { closeSync(fd); } catch { /* */ }
+    // Only unlink the file WE just created. If `createdHere` is false,
+    // the open syscall failed (typically EEXIST or ELOOP) and the
+    // pre-existing entry belongs to the caller. We must NEVER mutate
+    // or delete caller-owned files.
+    if (createdHere) {
+      try { rmSync(finalPath, { force: true }); } catch { /* best effort */ }
+    }
+    const wrapped = new Error(`diagnostics_publish_failed: ${error?.message ?? error}`);
+    wrapped.code = error?.code ?? "DIAGNOSTICS_PUBLISH_FAILED";
+    wrapped.cause = error;
+    throw wrapped;
   } finally {
-    closeSync(fd);
+    if (fd !== null) try { closeSync(fd); } catch { /* */ }
   }
-  renameSync(tmpPath, finalPath);
-  try { chmodSync(finalPath, 0o600); } catch { /* best effort */ }
+
+  // Custody readback: re-open and verify on-disk SHA. Mismatch means the
+  // filesystem lied about durability or the path was swapped under us.
+  const expectedSha = sha256Hex(Buffer.from(body, "utf8"));
+  const readback = readFileSync(finalPath);
+  const readbackSha = sha256Hex(readback);
+  if (readbackSha !== expectedSha) {
+    // We created this file ourselves, so cleanup is safe and required.
+    try { rmSync(finalPath, { force: true }); } catch { /* best effort */ }
+    const wrapped = new Error(`diagnostics_publish_readback_mismatch: expected ${expectedSha} got ${readbackSha}`);
+    wrapped.code = "DIAGNOSTICS_READBACK_MISMATCH";
+    throw wrapped;
+  }
+  return { path: finalPath, parentDir, bodySha256: expectedSha, byteCount: Buffer.byteLength(body, "utf8") };
 }
 
 export function createDiagnosticsObserver({
@@ -144,6 +180,7 @@ export function createDiagnosticsObserver({
   let totalBytes = 0;
   let truncated = false;
   let observerError = null;
+  let lastFlushStatus = null;
   const seenSignatures = new Set();
 
   function push(record) {
@@ -210,22 +247,26 @@ export function createDiagnosticsObserver({
     });
   }
 
+  // Returns a structured status describing what flush() did. The
+  // runner MUST inspect this and surface a diagnostic gate failure
+  // when status.published is false AND the collector returned a
+  // non-trivial result. status.published === true means the on-disk
+  // SHA matched the in-memory body SHA (custody-verified).
   function flush() {
     if (observerError) {
-      try {
-        const errorBody = JSON.stringify({
-          schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
-          type: DIAGNOSTICS_INTEGRITY_TYPE,
-          recordCount: records.length,
-          byteCount: totalBytes,
-          truncated,
-          observerError: String(observerError?.message ?? observerError),
-          flushedAt: new Date().toISOString()
-        });
-        atomicWrite(filePath, `${errorBody}\n`);
-      } catch { /* swallow */ }
-      return;
+      lastFlushStatus = {
+        published: false,
+        mainPath: null,
+        bodySha256: null,
+        recordCount: records.length,
+        byteCount: totalBytes,
+        truncated,
+        observerError: String(observerError?.message ?? observerError),
+        flushedAt: new Date().toISOString()
+      };
+      return lastFlushStatus;
     }
+
     const body = records.length === 0 ? "" : records.join("\n") + "\n";
     const bodySha = sha256Hex(Buffer.from(body, "utf8"));
     const footer = JSON.stringify({
@@ -238,22 +279,56 @@ export function createDiagnosticsObserver({
       observerError: null,
       flushedAt: new Date().toISOString()
     });
+    const fullBody = `${body}${footer}\n`;
     try {
-      atomicWrite(filePath, `${body}${footer}\n`);
+      const result = publishOnce(filePath, fullBody);
+      lastFlushStatus = Object.freeze({
+        published: true,
+        mainPath: result.path,
+        parentDir: result.parentDir,
+        bodySha256: result.bodySha256,
+        recordCount: records.length,
+        byteCount: totalBytes,
+        truncated,
+        observerError: null,
+        fallbackPath: null,
+        flushedAt: new Date().toISOString()
+      });
+      return lastFlushStatus;
     } catch (error) {
       observerError = error;
+      // Try to write a fallback footer-only file via a sibling path so
+      // the operator can see WHY the main publish failed.
+      const fallbackPath = `${filePath}.integrity-fallback`;
+      const fallbackBody = JSON.stringify({
+        schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
+        type: DIAGNOSTICS_INTEGRITY_TYPE,
+        recordCount: records.length,
+        byteCount: totalBytes,
+        truncated,
+        observerError: String(error?.message ?? error),
+        flushedAt: new Date().toISOString()
+      });
+      let fallbackPublished = false;
       try {
-        const fallbackBody = JSON.stringify({
-          schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
-          type: DIAGNOSTICS_INTEGRITY_TYPE,
-          recordCount: records.length,
-          byteCount: totalBytes,
-          truncated,
-          observerError: String(error?.message ?? error),
-          flushedAt: new Date().toISOString()
-        });
-        atomicWrite(`${filePath}.integrity-fallback`, `${fallbackBody}\n`);
-      } catch { /* give up */ }
+        publishOnce(fallbackPath, `${fallbackBody}\n`);
+        fallbackPublished = true;
+      } catch {
+        // Both main and fallback failed. Status reflects this honestly.
+      }
+      lastFlushStatus = Object.freeze({
+        published: false,
+        mainPath: filePath,
+        parentDir: dirname(resolvePath(filePath)),
+        bodySha256: bodySha,
+        recordCount: records.length,
+        byteCount: totalBytes,
+        truncated,
+        observerError: String(error?.message ?? error),
+        fallbackPath: fallbackPublished ? fallbackPath : null,
+        flushedAt: new Date().toISOString()
+      });
+      return lastFlushStatus;
     }
   }
 
@@ -265,6 +340,7 @@ export function createDiagnosticsObserver({
       byteCount: totalBytes,
       truncated,
       observerError: observerError ? String(observerError?.message ?? observerError) : null,
+      lastFlushStatus,
       records: Object.freeze(records.slice())
     });
   }

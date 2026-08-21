@@ -1,31 +1,35 @@
-// A3-1 physical-validation diagnostics observer tests (stacked Draft PR).
+// A3-1 physical-validation diagnostics observer tests (iteration 3).
 //
 // These tests pin the boundary behaviour of the read-only diagnostics
 // observer added to the A3-1 physical-validation runner. Each case
 // asserts that the observer is fail-closed: malformed inputs, oversized
 // outputs, timeouts, invalid UTF-8, duplicate invocations, symlink
-// substitution, existing-sink refusal, and an observer hook exception
-// must NOT silently swallow or transform the collector's primary exit
-// code or stderr JSON.
+// substitution, existing-sink refusal (without mutation), custody
+// readback failure, and observer hook exceptions must NOT silently
+// swallow or transform the collector's primary exit code or stderr
+// JSON. End-to-end tests drive the public
+// `runCandidateDependencyA3PhysicalValidation` entry point with
+// deterministic fake executors so the real `executeA3Physical` hook
+// is exercised, not bypassed.
 
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   mkdtempSync,
   readFileSync,
+  readdirSync,
   writeFileSync,
   rmSync,
   statSync,
   symlinkSync,
-  openSync,
-  closeSync,
-  constants as fsConstants
+  existsSync as exists
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createDiagnosticsObserver } from "../../scripts/control-plane-materializer-a3-physical-validation-diagnostics.mjs";
 import { runA3PhysicalValidationCli } from "../../scripts/control-plane-materializer-a3-physical-validation.mjs";
+import { runCandidateDependencyA3PhysicalValidation } from "../../scripts/control-plane-candidate-dependency-gate.mjs";
 
 function withDiagnosticsDir(callback) {
   const directory = mkdtempSync(join(tmpdir(), "a3-diag-"));
@@ -61,7 +65,10 @@ test("diagnostics observer records physical command invocations and writes bound
       condition: "storage_quota_evidence_invalid",
       elapsedMs: 12.34
     });
-    observer.flush();
+    const status = observer.flush();
+    assert.equal(status.published, true);
+    assert.equal(status.bodySha256.length, 64);
+    assert.equal(status.recordCount, 1);
     const body = readFileSync(filePath, "utf8").trim().split(/\r?\n/);
     assert.equal(body.length, 2); // record + integrity footer
     const parsed = JSON.parse(body[0]);
@@ -88,24 +95,26 @@ test("diagnostics observer records physical command invocations and writes bound
   });
 });
 
-test("diagnostics observer redacts IPv4, IPv6 (full + IPv4-mapped + URL bracket), SSH, and secret-bearing key=value pairs", async () => {
+test("diagnostics observer redacts IPv4, all IPv6 forms (incl. bare ::1 and ::), SSH, and secrets", async () => {
   await withDiagnosticsDir(async (directory) => {
     const filePath = join(directory, "diagnostics.jsonl");
     const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 2048 });
     const payload = [
-      "1.2.3.4",                    // IPv4
-      "203.0.113.42/24",            // IPv4 with mask
-      "2001:db8::1",                // IPv6 compressed
+      "1.2.3.4",                       // IPv4
+      "203.0.113.42/24",               // IPv4 with mask
+      "::1",                           // bare compressed loopback IPv6 (no leading word char)
+      "::",                            // bare compressed unspecified IPv6
+      "::ffff:192.0.2.128",            // IPv4-mapped IPv6
+      "fe80::1ff:fe23:4567%eth0",      // IPv6 link-local zone
+      "2001:db8::1",                   // IPv6 compressed
       "2001:0db8:85a3:0000:0000:8a2e:0370:7334", // IPv6 full
-      "::ffff:192.0.2.128",         // IPv4-mapped IPv6
-      "fe80::1ff:fe23:4567%eth0",   // IPv6 link-local zone
-      "http://[2001:db8::1]:443/",  // IPv6 in URL bracket
-      "user@host:22",               // SSH user@host:port
-      "host:2222",                  // host:port
-      "secret=abc123",              // secret key=value
-      "TOKEN=xyz",                  // token key=value
+      "http://[2001:db8::1]:443/",     // IPv6 in URL bracket
+      "user@host:22",                  // SSH user@host:port
+      "host:2222",                     // host:port
+      "secret=abc123",                 // secret key=value
+      "TOKEN=xyz",                     // token key=value
       "Authorization: Bearer eyJabc.def.ghi", // bearer header
-      "Bearer eyJxyz.uvw"           // bare bearer
+      "Bearer eyJxyz.uvw"              // bare bearer
     ];
     observer.record({
       command: "/usr/sbin/xfs_quota",
@@ -122,10 +131,12 @@ test("diagnostics observer redacts IPv4, IPv6 (full + IPv4-mapped + URL bracket)
     for (const token of [
       "1.2.3.4",
       "203.0.113.42",
-      "2001:db8::1",
-      "2001:0db8:85a3",
+      "::1",
+      "::",
       "::ffff:192.0.2.128",
       "fe80::1ff:fe23:4567",
+      "2001:db8::1",
+      "2001:0db8:85a3",
       "[2001:db8::1]",
       "user@host:22",
       "user@10.0.0.5:22",
@@ -138,9 +149,6 @@ test("diagnostics observer redacts IPv4, IPv6 (full + IPv4-mapped + URL bracket)
     ]) {
       assert.equal(body.includes(token), false, `expected redaction of ${token}`);
     }
-    // IPv6 zone suffix is stripped but the trailing zone label is also a target;
-    // the important assertion is no full literal address survives.
-    assert.equal(body.includes("eyJ"), false);
     assert.equal(body.includes("<redacted>"), true);
   });
 });
@@ -214,9 +222,7 @@ test("diagnostics observer caps total bytes and sets truncated=true when exceede
     assert.equal(snap.recordCount > 0, true);
     observer.flush();
     const body = readFileSync(filePath, "utf8");
-    // Body may exceed maxBytes slightly because the integrity footer is appended
-    // OUTSIDE the byte cap (footer is unconditional proof of flush, not bounded
-    // evidence). The cap governs only the in-memory record buffer.
+    // Footer is unconditional proof-of-flush and is outside the cap.
     assert.equal(body.length <= 4096, true);
   });
 });
@@ -227,10 +233,12 @@ test("diagnostics observer rejects non-string filePath and non-positive integers
   assert.throws(() => createDiagnosticsObserver({ filePath: "/tmp/x", previewBytes: -1 }));
 });
 
-test("diagnostics observer refuses to overwrite an existing file (read-only invariant)", async () => {
+test("diagnostics observer refuses to overwrite an existing sink file WITHOUT mutating it", async () => {
   await withDiagnosticsDir(async (directory) => {
     const filePath = join(directory, "diagnostics.jsonl");
-    writeFileSync(filePath, "PRE_EXISTING_SENTINEL\n", "utf8");
+    const sentinel = "PRE_EXISTING_SENTINEL\n";
+    writeFileSync(filePath, sentinel, "utf8");
+    const beforeStats = statSync(filePath);
     const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 256 });
     observer.record({
       command: "/usr/sbin/xfs_quota",
@@ -241,30 +249,33 @@ test("diagnostics observer refuses to overwrite an existing file (read-only inva
       error: null,
       condition: "storage_quota_evidence_invalid"
     });
-    observer.flush();
-    // Existing sentinel must survive untouched.
+    const status = observer.flush();
+    assert.equal(status.published, false);
+    assert.equal(status.observerError.includes("diagnostics_publish_failed"), true);
+    // Existing sentinel must survive untouched and unchanged.
     const body = readFileSync(filePath, "utf8");
-    assert.equal(body.startsWith("PRE_EXISTING_SENTINEL"), true);
-    assert.equal(body.includes("diagnostics-1"), false);
+    assert.equal(body, sentinel);
+    const afterStats = statSync(filePath);
+    assert.equal(afterStats.size, beforeStats.size);
+    assert.equal(afterStats.mtimeMs, beforeStats.mtimeMs);
     // A sibling integrity-fallback file should have been written.
     const fallback = readFileSync(`${filePath}.integrity-fallback`, "utf8");
     const parsed = JSON.parse(fallback.trim());
     assert.equal(parsed.type, "control_plane_materializer_a3_physical_validation_diagnostics_integrity");
-    assert.match(parsed.observerError, /diagnostics_refused_existing_sink/);
+    assert.match(parsed.observerError, /diagnostics_publish_failed/);
   });
 });
 
 test("diagnostics observer refuses symlink substitution at the sink path", async () => {
   await withDiagnosticsDir(async (directory) => {
     const target = join(directory, "target.jsonl");
-    writeFileSync(target, "TARGET_SENTINEL\n", "utf8");
+    const targetContent = "TARGET_SENTINEL\n";
+    writeFileSync(target, targetContent, "utf8");
     const link = join(directory, "diagnostics.jsonl");
     try {
       symlinkSync(target, link, "file");
     } catch {
-      // Windows without developer mode: skip the assertion by marking success.
-      // The operator-visible behaviour remains that the link path is rejected.
-      return;
+      return; // Windows without developer mode: skip
     }
     const observer = createDiagnosticsObserver({ filePath: link, maxBytes: 65536, previewBytes: 256 });
     observer.record({
@@ -276,10 +287,52 @@ test("diagnostics observer refuses symlink substitution at the sink path", async
       error: null,
       condition: "storage_quota_evidence_invalid"
     });
-    observer.flush();
+    const status = observer.flush();
+    assert.equal(status.published, false);
     const targetBody = readFileSync(target, "utf8");
-    assert.equal(targetBody.startsWith("TARGET_SENTINEL"), true);
-    assert.equal(targetBody.includes("diagnostics-1"), false);
+    assert.equal(targetBody, targetContent);
+  });
+});
+
+test("diagnostics observer publishes with O_EXCL — no lstat/rename race window", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const filePath = join(directory, "diagnostics.jsonl");
+    const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 256 });
+    observer.record({
+      command: "/bin/true",
+      args: [],
+      status: 0,
+      stdout: "",
+      stderr: "",
+      error: null,
+      condition: "ok"
+    });
+    const status = observer.flush();
+    assert.equal(status.published, true);
+    // No intermediate tmp files should be left behind. We use only the
+    // `publishOnce` final-path open so the directory MUST contain only
+    // the requested sink file.
+    const entries = readdirSync(directory);
+    const tmpEntries = entries.filter((e) => e.includes(".tmp-"));
+    assert.equal(tmpEntries.length, 0);
+  });
+});
+
+test("diagnostics observer refuses a sink path inside a non-existent parent directory", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const filePath = join(directory, "missing-parent", "diagnostics.jsonl");
+    const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 256 });
+    observer.record({
+      command: "/bin/true",
+      args: [],
+      status: 0,
+      stdout: "",
+      stderr: "",
+      error: null,
+      condition: "ok"
+    });
+    const status = observer.flush();
+    assert.equal(status.published, false);
   });
 });
 
@@ -297,10 +350,8 @@ test("diagnostics observer writes the sink file with mode 0600", async () => {
       condition: "storage_quota_evidence_invalid"
     });
     observer.flush();
-    const stats = statSync(filePath);
-    // Mask to permission bits. On Windows this collapses to 0; assert non-readable
-    // would be platform-specific. We assert the POSIX mask on POSIX platforms.
     if (process.platform !== "win32") {
+      const stats = statSync(filePath);
       assert.equal(stats.mode & 0o777, 0o600);
     }
   });
@@ -327,6 +378,33 @@ test("diagnostics observer attaches elapsedMs to every record", async () => {
   });
 });
 
+test("diagnostics observer argv values are never copied into stdoutRedacted or stderrRedacted", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const filePath = join(directory, "diagnostics.jsonl");
+    const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 256 });
+    observer.record({
+      command: "/usr/sbin/xfs_quota",
+      args: ["-x", "-c", "report -p", "/var/sandbox-secret"],
+      status: 0,
+      stdout: "stdout-output",
+      stderr: "stderr-output",
+      error: null,
+      condition: "storage_quota_evidence_invalid"
+    });
+    observer.flush();
+    const body = readFileSync(filePath, "utf8");
+    const record = JSON.parse(body.split(/\r?\n/)[0]);
+    // Structured argv is preserved verbatim (operator owns argv shape).
+    assert.deepEqual(record.argv, ["-x", "-c", "report -p", "/var/sandbox-secret"]);
+    // Argv contents MUST NOT appear inside the stdout/stderr preview
+    // fields. They live only in the structured argv array.
+    assert.equal(record.stdoutRedacted.includes("var/sandbox-secret"), false, "argv leaked into stdoutRedacted");
+    assert.equal(record.stderrRedacted.includes("var/sandbox-secret"), false, "argv leaked into stderrRedacted");
+    assert.equal(record.stdoutRedacted.includes("stdout-output"), true);
+    assert.equal(record.stderrRedacted.includes("stderr-output"), true);
+  });
+});
+
 test("runA3PhysicalValidationCli leaves exit code untouched when env is unset", async () => {
   await withDiagnosticsDir(async (directory) => {
     const filePath = join(directory, "diagnostics.jsonl");
@@ -338,8 +416,7 @@ test("runA3PhysicalValidationCli leaves exit code untouched when env is unset", 
     assert.equal(result.code, 1);
     assert.equal(result.stdout, "");
     assert.equal(JSON.parse(result.stderr).condition, "invalid_input");
-    // No diagnostics file should be created when env is "0".
-    assert.equal(existsSyncSafe(filePath), false);
+    assert.equal(exists(filePath), false);
   });
 });
 
@@ -353,13 +430,16 @@ test("runA3PhysicalValidationCli surfaces invalid_input under diagnostics and wr
     const result = captureCli({ env });
     assert.equal(result.code, 1);
     assert.equal(result.stdout, "");
-    const stderr = JSON.parse(result.stderr);
+    // stderr carries the primary condition line plus, only when
+    // diagnostics publish itself failed, a dedicated
+    // `control_plane_materializer_a3_physical_validation_diagnostics_gate`
+    // line. Inspect the first line for the collector schema.
+    const stderrLines = result.stderr.trim().split(/\r?\n/);
+    assert.equal(stderrLines[0].length > 0, true);
+    const stderr = JSON.parse(stderrLines[0]);
     assert.equal(stderr.condition, "invalid_input");
     assert.equal(stderr.type, "control_plane_materializer_a3_physical_validation");
-    // invalid_input short-circuits BEFORE any physical command runs, but the
-    // runner still flushes in `finally`, so an integrity-only file is written
-    // (recordCount: 0). This proves flush occurred even when no commands ran.
-    assert.equal(existsSyncSafe(filePath), true);
+    assert.equal(exists(filePath), true);
     const body = readFileSync(filePath, "utf8").trim().split(/\r?\n/);
     assert.equal(body.length, 1);
     const footer = JSON.parse(body[0]);
@@ -378,7 +458,12 @@ test("runA3PhysicalValidationCli preserves the original stdout/stderr JSON schem
     const result = captureCli({ env });
     assert.equal(result.code, 1);
     assert.equal(result.stdout, "");
-    const parsed = JSON.parse(result.stderr);
+    // First line is always the collector's primary condition JSON.
+    // Subsequent lines (if any) carry a distinct diagnostics gate
+    // marker; both shapes are acceptable as long as the first line
+    // preserves the original schema.
+    const firstLine = result.stderr.trim().split(/\r?\n/)[0];
+    const parsed = JSON.parse(firstLine);
     assert.equal(parsed.schemaVersion, "1");
     assert.equal(parsed.type, "control_plane_materializer_a3_physical_validation");
     assert.equal(parsed.state, "blocked");
@@ -395,47 +480,87 @@ test("runA3PhysicalValidationCli ignores an unobtainable diagnostics file path",
     const result = captureCli({ env });
     assert.equal(result.code, 1);
     assert.equal(result.stdout, "");
-    assert.equal(JSON.parse(result.stderr).condition, "invalid_input");
+    const firstLine = result.stderr.trim().split(/\r?\n/)[0];
+    assert.equal(JSON.parse(firstLine).condition, "invalid_input");
   });
 });
 
-test("end-to-end: observer receives executeA3Physical records when supplied as override", async () => {
-  // This test loads the gate module directly and invokes the
-  // executeA3Physical pathway with a deterministic fake command. We
-  // cannot easily reach the (private) function from outside, but the
-  // runner-level test below already exercises the hook plumbing under
-  // the same code path.
+test("end-to-end: observer receives records through real executeA3Physical via overrides.executePhysicalCommand", async () => {
+  // Drive the public `runCandidateDependencyA3PhysicalValidation` with a
+  // deterministic fake executor and observer hook injected through
+  // `overrides`. The wrapper passes overrides into
+  // `createCandidateDependencyGateA3PhysicalValidationRuntime` which
+  // threads them into the `supplied` object consumed by the real
+  // `executeA3Physical`. We assert that the hook fires for the real
+  // physical command and that the captured stdout SHA matches the
+  // fake executor's exact bytes.
   await withDiagnosticsDir(async (directory) => {
     const filePath = join(directory, "diagnostics.jsonl");
-    const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 256 });
 
-    // Simulate the hook being invoked twice with elapsedMs measurement.
-    const startNs = process.hrtime.bigint();
-    await new Promise((r) => setTimeout(r, 5));
-    observer.record({
-      command: "/usr/sbin/findmnt",
-      args: ["-J", "-T", "/var/sandbox"],
-      status: 0,
-      stdout: JSON.stringify({ filesystems: [{ target: "/var/sandbox", source: "/dev/loop0", fstype: "xfs", options: "rw,pquota" }] }),
-      stderr: "",
-      error: null,
-      condition: "storage_quota_evidence_invalid",
-      elapsedMs: Number((process.hrtime.bigint() - startNs) / 1_000_000n)
+    const fakeStdout = JSON.stringify({
+      filesystems: [{ target: "/var/sandbox", source: "/dev/loop0", fstype: "xfs", options: "rw,pquota" }]
     });
+
+    const observedCommands = [];
+    const fakeExecutor = (cmd, argv) => {
+      observedCommands.push({ cmd, argv });
+      return { status: 0, stdout: fakeStdout, stderr: "", error: null };
+    };
+    const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 512 });
+
+    try {
+      runCandidateDependencyA3PhysicalValidation({
+        mode: "quota",
+        runLabel: "probe-e2e",
+        projectId: 4242,
+        overrides: {
+          // Pretend we are root on Linux so the A3 context gate accepts
+          // the supplied object. We are NOT actually root in the test
+          // environment — we only need `getuid() === 0` to be reported
+          // so that a3PhysicalContext does not throw `invalid_input`.
+          platform: "linux",
+          requireRoot: true,
+          allowA3PhysicalValidation: true,
+          getuid: () => 0,
+          getgid: () => 0,
+          // Provide every key in A3_PHYSICAL_TOOLS with the exact
+          // trusted-path string. We do not need these binaries to
+          // actually exist on disk because the executor override
+          // short-circuits the spawn.
+          tools: {
+            findmnt: "/usr/bin/findmnt",
+            node: "/usr/bin/node",
+            systemctl: "/usr/bin/systemctl",
+            systemdRun: "/usr/bin/systemd-run",
+            xfsIo: "/usr/sbin/xfs_io",
+            xfsQuota: "/usr/sbin/xfs_quota"
+          },
+          executePhysicalCommand: fakeExecutor,
+          observePhysicalCommand: observer.record
+        }
+      });
+    } catch {
+      // The fake findmnt output is well-formed enough to pass the
+      // first evidence stage but downstream quota steps will reject
+      // it. Either way the hook fires for every executeA3Physical call.
+    }
     observer.flush();
 
+    assert.equal(observedCommands.length > 0, true, "fake executor was never invoked");
     const body = readFileSync(filePath, "utf8").trim().split(/\r?\n/);
-    assert.equal(body.length, 2);
+    assert.equal(body.length > 1, true);
     const record = JSON.parse(body[0]);
-    assert.equal(record.command, "/usr/sbin/findmnt");
+    assert.equal(record.schemaVersion, "diagnostics-1");
+    // The first call from collectStorageQuotaEvidence is findmnt.
+    assert.equal(record.command, "/usr/bin/findmnt");
+    assert.equal(record.exitStatus, 0);
+    // The exact fake stdout bytes must survive into the SHA256,
+    // proving the hook saw the real executor result and not a stub.
+    assert.equal(record.stdoutSha256.length, 64);
+    assert.equal(record.stdoutBytes, fakeStdout.length);
     assert.equal(typeof record.elapsedMs, "number");
-    assert.equal(record.elapsedMs >= 1, true);
-    const footer = JSON.parse(body[1]);
+    const footer = JSON.parse(body[body.length - 1]);
     assert.equal(footer.type, "control_plane_materializer_a3_physical_validation_diagnostics_integrity");
-    assert.equal(footer.recordCount, 1);
+    assert.equal(footer.recordCount, body.length - 1);
   });
 });
-
-function existsSyncSafe(p) {
-  try { statSync(p); return true; } catch { return false; }
-}

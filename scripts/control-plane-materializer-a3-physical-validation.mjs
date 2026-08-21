@@ -70,8 +70,27 @@ export function runA3PhysicalValidationCli({
     return 1;
   } finally {
     if (diagnostics) {
+      // flush() returns a structured status. We surface a separate
+      // diagnostic gate line on stderr ONLY when the diagnostics
+      // publish itself failed; the collector's primary exit code and
+      // schema are preserved verbatim. The diagnostics line uses a
+      // dedicated type so it cannot be confused with the collector
+      // result.
       try {
-        diagnostics.flush();
+        const status = diagnostics.flush();
+        if (!status.published) {
+          const gateLine = JSON.stringify({
+            schemaVersion: "1",
+            type: "control_plane_materializer_a3_physical_validation_diagnostics_gate",
+            state: "diagnostics_unpublished",
+            observerError: status.observerError,
+            mainPath: status.mainPath,
+            fallbackPath: status.fallbackPath ?? null,
+            recordCount: status.recordCount,
+            byteCount: status.byteCount
+          });
+          stderr.write(`${gateLine}\n`);
+        }
       } catch {
         // diagnostics are best-effort; their failure must not flip the exit code
       }
