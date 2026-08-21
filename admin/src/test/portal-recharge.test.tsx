@@ -446,7 +446,7 @@ describe("Portal recharge client", () => {
   });
 
   test("submits only the server offer identity and client idempotency key", async () => {
-    const fetchFn = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => new Response(
+    const fetchFn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(
       JSON.stringify({ recharge: { order: rechargeOrder("entry_ready") } }),
       { status: 201, headers: { "Content-Type": "application/json" } },
     ));

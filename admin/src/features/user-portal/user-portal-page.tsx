@@ -718,7 +718,7 @@ function paymentChannelLabel(order: PortalPaymentOrder, locale: PortalAuthLocale
   }
 }
 
-function paymentDisplayMethodLabel(order: PortalPaymentOrder, locale: PortalAuthLocale, isMobilePayment: boolean) {
+function paymentDisplayMethodLabel(order: PortalPaymentOrder, locale: PortalAuthLocale, _isMobilePayment: boolean) {
   return paymentChannelLabel(order, locale);
 }
 

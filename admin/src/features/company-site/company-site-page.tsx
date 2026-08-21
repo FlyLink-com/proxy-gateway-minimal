@@ -27,7 +27,7 @@ const loginUrl = (siteEnv.VITE_PUBLIC_LOGIN_URL ?? "").trim() || portalPanelUrl;
 const registerUrl = (siteEnv.VITE_PUBLIC_REGISTER_URL ?? "").trim() || portalRegisterUrl;
 const localeStorageKey = "gccwebos-site-locale";
 
-const companySiteSectionIds = [
+const _companySiteSectionIds = [
   "top",
   "features",
   "pricing",
@@ -37,7 +37,7 @@ const companySiteSectionIds = [
   "faq"
 ] as const;
 
-type CompanySiteSectionId = (typeof companySiteSectionIds)[number];
+type CompanySiteSectionId = (typeof _companySiteSectionIds)[number];
 type Locale = "en" | "zh";
 type InfoPageSlug =
   | "features"
