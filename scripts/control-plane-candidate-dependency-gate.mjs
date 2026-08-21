@@ -305,7 +305,6 @@ const hash = (value) => createHash("sha256").update(value).digest("hex");
 const hashFile = (path) => hash(readFileSync(path));
 const iso = (value) => { const parsed = new Date(value); return typeof value === "string" && !Number.isNaN(parsed) && parsed.toISOString() === value; };
 const now = (runtime) => { const value = runtime.now(); if (!iso(value)) fail("invalid_input"); return value; };
-const attempt = (action) => { try { action(); return true; } catch { return false; } };
 
 function stat(path, condition) { try { return lstatSync(path); } catch { fail(condition); } }
 function physical(path, condition) { try { return realpathSync(path); } catch { fail(condition); } }
