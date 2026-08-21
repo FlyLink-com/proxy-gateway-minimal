@@ -192,6 +192,39 @@ function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm, root: fi
     readService: () => ({ main: 31, exec: 31, uid, gid, cwd: activeRoot, restarts: 7 }),
     mountInfo: () => "",
     checkAclCapabilities: () => true,
+    allowA3PhysicalValidation: true,
+    allowSyntheticA3Evidence: true,
+    allowTestWorkerStorage: true,
+    a3ProjectRoot: root,
+    a3ProjectId: 4242,
+    collectStorageQuotaEvidence: () => ({
+      filesystem: "/dev/test-quota",
+      projectId: 4242,
+      byteHardLimit: 8 * 1024 * 1024,
+      byteCurrent: 4096,
+      inodeHardLimit: 65536,
+      inodeCurrent: 12,
+      headroomBytes: 8 * 1024 * 1024 - 4096,
+      headroomInodes: 65536 - 12,
+      probe: { expectedErrorCode: "EDQUOT", observedErrorCode: "EDQUOT", exhausted: true }
+    }),
+    runServiceNativeSmoke: ({ service, fixedNodePath }) => ({
+      serviceUid: service.uid,
+      serviceGid: service.gid,
+      fixedNodePath,
+      noNetwork: true,
+      capabilityBoundingSet: "",
+      protectSystem: "strict",
+      protectHome: true,
+      privateDevices: true,
+      noNewPrivileges: true,
+      cgroupEmpty: true,
+      terminalActiveState: "inactive",
+      terminalSubState: "dead",
+      terminalResult: "success",
+      betterSqlite3Memory: true,
+      snapshotImport: true
+    }),
     renameNoReplace: ({ source, destination }) => {
       if (existsSync(destination)) return { published: false };
       renameSync(source, destination);
@@ -1229,9 +1262,15 @@ test("CI artifact materialization uses only the verified artifact extraction and
   Object.assign(value.runtime, {
     runNpm() { legacyCalls += 1; return { status: 0 }; },
     runTar() { legacyCalls += 1; return { status: 0 }; },
-    nativeSmoke({ root, uid, gid }) {
-      smokePrincipals.push({ root, uid, gid });
-      return true;
+    runServiceNativeSmoke({ root, service: smokeService, fixedNodePath }) {
+      smokePrincipals.push({ root, uid: smokeService.uid, gid: smokeService.gid });
+      return {
+        serviceUid: smokeService.uid, serviceGid: smokeService.gid, fixedNodePath,
+        noNetwork: true, capabilityBoundingSet: "", protectSystem: "strict", protectHome: true,
+        privateDevices: true, noNewPrivileges: true, cgroupEmpty: true,
+        terminalActiveState: "inactive", terminalSubState: "dead", terminalResult: "success",
+        betterSqlite3Memory: true, snapshotImport: true
+      };
     },
     readService: () => service,
     verifyArtifact({ expectedSourceCommit, expectedArtifactRelease }) {
@@ -1430,7 +1469,16 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   const smokeRoots = [];
   Object.assign(value.runtime, {
     detectArtifact: () => runtimeTuple,
-    nativeSmoke({ root, uid, gid }) { smokeRoots.push({ root, uid, gid }); return true; }
+    runServiceNativeSmoke({ root, service, fixedNodePath }) {
+      smokeRoots.push({ root, uid: service.uid, gid: service.gid });
+      return {
+        serviceUid: service.uid, serviceGid: service.gid, fixedNodePath,
+        noNetwork: true, capabilityBoundingSet: "", protectSystem: "strict", protectHome: true,
+        privateDevices: true, noNewPrivileges: true, cgroupEmpty: true,
+        terminalActiveState: "inactive", terminalSubState: "dead", terminalResult: "success",
+        betterSqlite3Memory: true, snapshotImport: true
+      };
+    }
   });
 
   const result = await materializeCandidateDependencies({
@@ -1446,9 +1494,29 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
 
   assert.equal(result.state, "materialized");
   assert.equal(existsSync(join(value.candidateRoot, "node_modules", "better-sqlite3", "index.js")), true);
-  assert.equal(existsSync(join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json")), true);
+  const receiptPath = join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json");
+  assert.equal(existsSync(receiptPath), true);
+  const materializationReceipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+  assert.equal(materializationReceipt.schemaVersion, "2");
+  assert.equal(materializationReceipt.materializerSchemaVersion, 2);
+  assert.equal(materializationReceipt.storageProjectId, 4242);
+  assert.match(materializationReceipt.storageQuotaEvidenceSha256, /^[a-f0-9]{64}$/);
+  assert.match(materializationReceipt.serviceSmokeEvidenceSha256, /^[a-f0-9]{64}$/);
+  assert.equal(materializationReceipt.safetyEvidenceCapturedAt, "2026-08-16T00:00:00.000Z");
   assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);
   assert.equal(smokeRoots.length, 2);
   assert.notEqual(smokeRoots[0].root, value.candidateRoot);
   assert.equal(smokeRoots[1].root, value.candidateRoot);
+
+  writeFileSync(receiptPath, `${JSON.stringify({ ...materializationReceipt, schemaVersion: "1" }, null, 2)}\n`);
+  await assert.rejects(verifyCandidateDependencies({
+    candidateRelease: value.candidate,
+    expectedCurrentRelease: value.active,
+    expectedSourceCommit: SOURCE_COMMIT,
+    expectedArtifactRelease: ARTIFACT_RELEASE,
+    expectedDependencyManifestSha256: manifest.sha256,
+    expectedDependencyArchiveSha256: manifest.value.archive.sha256,
+    runtime: value.runtime
+  }), condition("dependency_receipt_mismatch"));
+  assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);
 });
