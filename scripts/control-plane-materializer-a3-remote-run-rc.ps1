@@ -24,6 +24,10 @@ $ErrorActionPreference = 'Stop'
 
 .DESCRIPTION
   Read-A3RunRc is fail-closed:
+    - Output must be a non-empty string. $null and the empty string are
+      rejected with 'remote_run_marker_count_invalid' so callers always
+      receive a documented error code, never a PowerShell parameter
+      binding exception.
     - Output must be UTF-8 and at most 65536 bytes; otherwise throws
       'remote_output_too_large'.
     - Output must contain exactly one line matching ^A3_RUN_RC=[0-9]+$;
@@ -33,15 +37,20 @@ $ErrorActionPreference = 'Stop'
       'remote_run_exit_code_invalid'.
 
 .PARAMETER Output
-  Raw stdout captured from the controller process.
+  Raw stdout captured from the controller process. May be the empty
+  string or $null on a controller that produced no output; both are
+  rejected with 'remote_run_marker_count_invalid'.
 
 .OUTPUTS
   [int] Exit code in [0, 255].
 #>
 function Read-A3RunRc {
-    param([Parameter(Mandatory)][string]$Output)
+    param([string]$Output)
 
-    if ($null -eq $Output) {
+    # PowerShell's [Parameter(Mandatory)] does not block empty strings,
+    # so explicitly map $null and '' to the documented marker-count error
+    # so callers always see a contract error code on empty input.
+    if ($null -eq $Output -or $Output -eq '') {
         throw 'remote_run_marker_count_invalid'
     }
 

@@ -159,7 +159,20 @@ describe('Read-A3RunRc — marker parsing', describeOpts(), () => {
     assert.equal(out, 3);
   });
 
-  it('fails closed on missing marker', () => {
+    it('fails closed on empty string input', () => {
+      // PowerShell [Parameter(Mandatory)] does not block empty strings;
+      // the parser must still surface the documented marker-count code.
+      // Pass the empty string via base64 so the test harness never has
+      // to embed literal '' in the scriptlet.
+      const out = runScriptWithB64Raw(
+        'input',
+        '',
+        `Read-A3RunRc -Output $__b64_input`
+      );
+      assert.match(out, /^__THROW__:remote_run_marker_count_invalid$/);
+    });
+
+    it('fails closed on missing marker', () => {
     const out = runScriptWithB64Raw(
       'input',
       'no marker here',
@@ -220,6 +233,28 @@ describe('Read-A3RunRc — marker parsing', describeOpts(), () => {
 });
 
 describe('Invoke-A3RemoteRunSummary — evidence-before-cleanup', describeOpts(), () => {
+  it('fails closed on empty string input without dropping evidence fields', () => {
+    const summary = runScriptWithB64(
+      'output',
+      '',
+      `$__d = [pscustomobject]@{Present=$true; Sha256='emptyinput'; Size=0}; ` +
+      `$__r = [pscustomobject]@{Output=$__b64_output}; ` +
+      `$result = Invoke-A3RemoteRunSummary -RemoteRun $__r -Diagnostics $__d; ` +
+      `ConvertTo-Json -Depth 5 -Compress -InputObject $result`
+    );
+    assert.equal(summary.validation_condition, 'remote_run_marker_count_invalid');
+    assert.equal(summary.quota_validation_exit, null);
+    assert.equal(summary.marker_count, 0);
+    assert.equal(summary.remote_output_size, 0);
+    // sha256 of the empty string is the well-known constant.
+    assert.equal(
+      summary.remote_output_sha256,
+      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    );
+    assert.equal(summary.diagnostics_present, true);
+    assert.equal(summary.diagnostics_sha256, 'emptyinput');
+  });
+
   it('captures diagnostics hash/size/condition before parsing marker', () => {
     const crlf = String.fromCharCode(13, 10);
     const payload = 'header' + crlf + 'A3_RUN_RC=7' + crlf;
