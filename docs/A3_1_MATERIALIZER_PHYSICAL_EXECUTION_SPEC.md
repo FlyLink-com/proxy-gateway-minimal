@@ -48,10 +48,40 @@ must not be reused.
 | `release_artifact_proxy_gateway_digest` | `sha256:293acd9e79aa30509a7b40e628336a49bcb668aee645ea7730f48be4538b100d` |
 | `issue_refs` | `636` (Gate A3-0 closed by PR #646; Gate A3-1 next) |
 
-| Pending confirmation | Status |
+| Identity pairing (candidate, recorded; **not** approved) | Status |
 |---|---|
-| Disposable target provider (KVM vs. one-shot Aliyun ECS) | `pending` — must be named in the A3-1 implementation PR body before any probe runs |
-| Named operator approver (`gccltd` candidate) | `pending` — user must separately confirm the same `gccltd` is the §7 approver; an independent identity-verifier must also be named |
+| `identity_verifier` | `gccltdco-cmd` |
+| `approver_candidate` | `gccltd` |
+| `relationship` | `same_org_distinct_accounts` |
+| `relationship_evidence` | `user_attestation` (2026-08-21) |
+| `pairing_status` | `candidate_valid` |
+| `formal_approval.status` | `pending` |
+| `formal_approval.required_record` | Issue #636 §7 comment by `gccltd` |
+| `risk_a_independent_approval.status` | `not_yet_satisfied` |
+
+```yaml
+identity_pairing_candidate:
+  identity_verifier: gccltdco-cmd
+  approver_candidate: gccltd
+  relationship: same_org_distinct_accounts
+  relationship_evidence: user_attestation
+  pairing_status: candidate_valid
+formal_approval:
+  status: pending
+  required_record: Issue #636 §7 comment by gccltd
+risk_a_independent_approval:
+  status: not_yet_satisfied
+disposable_target_provider:
+  status: pending
+  required_record: A3-1 implementation PR body must name provider before any probe runs
+```
+
+> **Recorded, not approved.** The pairing above is a candidate identity record
+> only. It does **not** constitute formal approval. Risk A's independent-approval
+> gate is satisfied only when `gccltd` posts the §7 comment on Issue #636 AND
+> the disposable target provider is named in the A3-1 implementation PR body.
+> Until both conditions hold: no provider interaction, no node access, no probe
+> execution, no production guard lift.
 
 > Supersedes: nothing.
 > Refs: PR #646 (A3-0 contract skeleton, merged `10b98227` on `master`); issue #636 (Gate A3-0 closed, Gate A3-1 next).
@@ -398,6 +428,28 @@ to override.
    `pending_operator_confirmation: true` remains in the metadata header
    until the user confirms and the verification pair is recorded in the
    §7 packet. Agent / Bot / spec authors are not eligible.
+
+   **Candidate identity pair (recorded, not approved):**
+
+   ```yaml
+   identity_pairing_candidate:
+     identity_verifier: gccltdco-cmd
+     approver_candidate: gccltd
+     relationship: same_org_distinct_accounts
+     relationship_evidence: user_attestation
+     pairing_status: candidate_valid
+   formal_approval:
+     status: pending
+     required_record: Issue #636 §7 comment by gccltd
+   risk_a_independent_approval:
+     status: not_yet_satisfied
+   ```
+
+   The pairing is **candidate_valid** — two distinct GitHub identities under
+   the same organization, with verifier attested by user as independent of
+   the approver. Risk A's independent-approval requirement is **not yet
+   satisfied** because `gccltd` has not yet recorded the §7 comment on
+   issue #636, and the disposable target provider is not yet named.
 
 ---
 
