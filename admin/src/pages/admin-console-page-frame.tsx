@@ -25,14 +25,17 @@ import {
 } from "../app/plugin-workspace-engine";
 import {
   projectBlueprintPanelViewModels,
-  type BlueprintPage
+  type BlueprintPage,
+  type BlueprintSubPage
 } from "../app/admin-ui-projection";
 import {
   EmptyState,
   PanelFrame
 } from "../components/primitives";
 
-export type { BlueprintModule, BlueprintPage } from "../app/admin-ui-projection";
+export type { BlueprintModule, BlueprintPage, BlueprintSubPage } from "../app/admin-ui-projection";
+
+const EMPTY_BLUEPRINT_SUB_PAGES: BlueprintSubPage[] = [];
 
 type OpenModuleEventDetail = {
   navId?: string;
@@ -50,15 +53,20 @@ export function AdminConsolePageFrame({
   const subNavigation = pageSubNavigation[blueprint.page];
   const pageContract = getAdminPageContract(blueprint.page);
   const pageComposition = getAdminPageCompositionContract(blueprint.page);
-  const subPages = blueprint.subPages ?? [];
+  const subPages = useMemo(
+    () => blueprint.subPages ?? EMPTY_BLUEPRINT_SUB_PAGES,
+    [blueprint.subPages]
+  );
   const hasSubPages = subPages.length > 0;
   const moduleNavSignature = blueprint.modules.map((module) => module.navId).join("|");
   const defaultModuleLayout = useMemo(
     () => createDefaultModuleLayout(blueprint.page, blueprint.modules),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `moduleNavSignature` is a stable content hash of `blueprint.modules.map(m => m.navId)`; using `blueprint.modules` directly would re-run on every render because callers re-create the array even when navId membership is unchanged
     [blueprint.page, moduleNavSignature]
   );
   const initialWorkspaceLayout = useMemo(
     () => loadWorkspaceLayout(blueprint.page, blueprint.modules, defaultModuleLayout),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see `moduleNavSignature` justification above
     [blueprint.page, defaultModuleLayout, moduleNavSignature]
   );
   const [moduleLayout, setModuleLayout] = useState<ModuleLayoutMap>(() => initialWorkspaceLayout.moduleLayout);
@@ -67,6 +75,7 @@ export function AdminConsolePageFrame({
   useEffect(() => {
     const nextLayout = loadWorkspaceLayout(blueprint.page, blueprint.modules, defaultModuleLayout);
     setModuleLayout(nextLayout.moduleLayout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see `moduleNavSignature` justification above
   }, [blueprint.page, defaultModuleLayout, moduleNavSignature]);
 
   useEffect(() => {
@@ -87,6 +96,7 @@ export function AdminConsolePageFrame({
       return;
     }
     persistWorkspaceLayout(blueprint.page, snapshot);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see `moduleNavSignature` justification above
   }, [blueprint.page, moduleLayout, moduleNavSignature]);
 
   const hideModuleLayout = (navId: string) => {

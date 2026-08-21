@@ -369,6 +369,8 @@ export function portalOrdersIdentityMatches(
     && left.sessionGeneration === right.sessionGeneration;
 }
 
+const EMPTY_COIN_ORDERS: PortalCoinOrder[] = [];
+
 export function PortalOrdersPanel({
   locale,
   commerceClient,
@@ -459,6 +461,7 @@ export function PortalOrdersPanel({
       current.alive = false;
       listRequestRef.current += 1;
       detailRequestRef.current += 1;
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup intentionally clears the live loadingCursorsRef.current Map (not a mount-time snapshot); the Map may have been re-mutated before unmount, and snapshotting would let stale cursors outlive the effect
       loadingCursorsRef.current.clear();
     };
   }, [commerceClient, sessionGeneration, sessionRef]);
@@ -596,6 +599,7 @@ export function PortalOrdersPanel({
     void loadList(null, false);
     return () => {
       listRequestRef.current += 1;
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup intentionally clears the live loadingCursorsRef.current Map (see matching comment in the layout effect above); snapshotting would leak stale cursors into the next mount
       loadingCursorsRef.current.clear();
       visibleOrderRefsRef.current.clear();
     };
@@ -675,14 +679,23 @@ export function PortalOrdersPanel({
     void openDetail(orderRef);
   }, [invalidateCoinDetail, openDetail, selectedDetailRef]);
 
-  const renderedIdentity = { commerceClient, sessionRef, sessionGeneration };
-  const visibleListState = portalOrdersIdentityMatches(listIdentity, renderedIdentity)
-    ? listState
-    : { phase: "loading" as const };
+  const renderedIdentity = useMemo(
+    () => ({ commerceClient, sessionRef, sessionGeneration }),
+    [commerceClient, sessionRef, sessionGeneration]
+  );
+  const visibleListState = useMemo(
+    () => portalOrdersIdentityMatches(listIdentity, renderedIdentity)
+      ? listState
+      : { phase: "loading" as const },
+    [listIdentity, listState, renderedIdentity]
+  );
   const visibleDetailState = portalOrdersIdentityMatches(detailIdentity, renderedIdentity)
     ? detailState
     : { phase: "empty" as const, value: null as never };
-  const coinOrders = stateValue(visibleListState) ?? [];
+  const coinOrders = useMemo(
+    () => stateValue(visibleListState) ?? EMPTY_COIN_ORDERS,
+    [visibleListState]
+  );
   const allItems = useMemo(() => buildPortalOrderCenterItems({
     coinOrders,
     rechargeOrders,
