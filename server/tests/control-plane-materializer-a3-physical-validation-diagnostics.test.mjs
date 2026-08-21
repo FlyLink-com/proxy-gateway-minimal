@@ -491,7 +491,9 @@ test("runA3PhysicalValidationCli refuses before collector when diagnostics file 
     mkdirSync(sinkDir);
     const env = {
       A3_PHYSICAL_DIAGNOSTICS: "1",
-      A3_PHYSICAL_DIAGNOSTICS_FILE: "Z:\\nonexistent\\diagnostics\\file.jsonl",
+      // Use a native absolute path on every runner so this test reaches the
+      // intended missing-parent bind gate instead of the path-syntax gate.
+      A3_PHYSICAL_DIAGNOSTICS_FILE: join(sinkDir, "nonexistent", "file.jsonl"),
       A3_PHYSICAL_DIAGNOSTICS_SINK_ROOT: sinkDir
     };
     const result = captureCli({ env });
