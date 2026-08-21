@@ -410,6 +410,110 @@ function runtime(overrides = {}) {
     ...overrides
   };
 }
+// A3-0: storage-quota and service-smoke boundary contracts.
+// These hooks are runtime-injected ONLY. Production never receives them via
+// `runtime()`; the production materialize/verify/preflight entrypoints still
+// fail-closed with `worker_storage_limit_unavailable` until a privileged
+// disposable Linux run proves both boundaries and a separate PR removes the
+// guard. The collector/runner shapes below define the readback evidence each
+// boundary must publish; the production materializer never bypasses the guard
+// through test-only injection.
+const STORAGE_QUOTA_EVIDENCE_KEYS = Object.freeze([
+  "filesystem", "projectId", "byteHardLimit", "byteCurrent", "inodeHardLimit", "inodeCurrent",
+  "headroomBytes", "headroomInodes", "probe"
+]);
+const STORAGE_QUOTA_PROBE_KEYS = Object.freeze(["expectedErrorCode", "observedErrorCode", "exhausted"]);
+const SERVICE_SMOKE_READBACK_KEYS = Object.freeze([
+  "serviceUid", "serviceGid", "fixedNodePath", "noNetwork", "capabilityBoundingSet",
+  "protectSystem", "protectHome", "privateDevices", "noNewPrivileges",
+  "cgroupEmpty", "terminalActiveState", "terminalSubState", "terminalResult",
+  "betterSqlite3Memory", "snapshotImport"
+]);
+export function parseStorageQuotaEvidence(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail("storage_quota_evidence_invalid");
+  const actual = Object.keys(value).sort();
+  const wanted = [...STORAGE_QUOTA_EVIDENCE_KEYS].sort();
+  if (actual.length !== wanted.length || !actual.every((key, index) => key === wanted[index])) fail("storage_quota_evidence_invalid");
+  if (typeof value.filesystem !== "string" || !value.filesystem || value.filesystem.includes("\0")) fail("storage_quota_evidence_invalid");
+  if (!Number.isSafeInteger(value.projectId) || value.projectId <= 0) fail("storage_quota_evidence_invalid");
+  if (!Number.isSafeInteger(value.byteHardLimit) || value.byteHardLimit <= 0) fail("storage_quota_evidence_invalid");
+  if (!Number.isSafeInteger(value.byteCurrent) || value.byteCurrent < 0 || value.byteCurrent > value.byteHardLimit) fail("storage_quota_evidence_invalid");
+  if (!Number.isSafeInteger(value.inodeHardLimit) || value.inodeHardLimit <= 0) fail("storage_quota_evidence_invalid");
+  if (!Number.isSafeInteger(value.inodeCurrent) || value.inodeCurrent < 0 || value.inodeCurrent > value.inodeHardLimit) fail("storage_quota_evidence_invalid");
+  if (!Number.isSafeInteger(value.headroomBytes) || value.headroomBytes !== value.byteHardLimit - value.byteCurrent) fail("storage_quota_evidence_invalid");
+  if (!Number.isSafeInteger(value.headroomInodes) || value.headroomInodes !== value.inodeHardLimit - value.inodeCurrent) fail("storage_quota_evidence_invalid");
+  const probe = value.probe;
+  if (!probe || typeof probe !== "object" || Array.isArray(probe)) fail("storage_quota_evidence_invalid");
+  const probeActual = Object.keys(probe).sort();
+  const probeWanted = [...STORAGE_QUOTA_PROBE_KEYS].sort();
+  if (probeActual.length !== probeWanted.length || !probeActual.every((key, index) => key === probeWanted[index])) fail("storage_quota_evidence_invalid");
+  if (probe.expectedErrorCode !== "EDQUOT") fail("storage_quota_evidence_invalid");
+  if (typeof probe.observedErrorCode !== "string" || !probe.observedErrorCode) fail("storage_quota_evidence_invalid");
+  if (probe.exhausted !== true) fail("storage_quota_evidence_invalid");
+  return Object.freeze({
+    filesystem: value.filesystem,
+    projectId: value.projectId,
+    byteHardLimit: value.byteHardLimit,
+    byteCurrent: value.byteCurrent,
+    inodeHardLimit: value.inodeHardLimit,
+    inodeCurrent: value.inodeCurrent,
+    headroomBytes: value.headroomBytes,
+    headroomInodes: value.headroomInodes,
+    probe: Object.freeze({ expectedErrorCode: probe.expectedErrorCode, observedErrorCode: probe.observedErrorCode, exhausted: probe.exhausted === true })
+  });
+}
+export function parseServiceSmokeReadback(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail("service_smoke_readback_invalid");
+  const actual = Object.keys(value).sort();
+  const wanted = [...SERVICE_SMOKE_READBACK_KEYS].sort();
+  if (actual.length !== wanted.length || !actual.every((key, index) => key === wanted[index])) fail("service_smoke_readback_invalid");
+  if (!Number.isSafeInteger(value.serviceUid) || value.serviceUid <= 0) fail("service_smoke_readback_invalid");
+  if (!Number.isSafeInteger(value.serviceGid) || value.serviceGid <= 0) fail("service_smoke_readback_invalid");
+  if (typeof value.fixedNodePath !== "string" || !value.fixedNodePath || value.fixedNodePath.includes("\0")) fail("service_smoke_readback_invalid");
+  if (value.noNetwork !== true) fail("service_smoke_readback_invalid");
+  if (value.capabilityBoundingSet !== "") fail("service_smoke_readback_invalid");
+  if (value.protectSystem !== "strict") fail("service_smoke_readback_invalid");
+  if (value.protectHome !== true) fail("service_smoke_readback_invalid");
+  if (value.privateDevices !== true) fail("service_smoke_readback_invalid");
+  if (value.noNewPrivileges !== true) fail("service_smoke_readback_invalid");
+  if (value.cgroupEmpty !== true) fail("service_smoke_readback_invalid");
+  if (value.terminalActiveState !== "inactive") fail("service_smoke_readback_invalid");
+  if (value.terminalSubState !== "dead") fail("service_smoke_readback_invalid");
+  if (value.terminalResult !== "success") fail("service_smoke_readback_invalid");
+  if (value.betterSqlite3Memory !== true || value.snapshotImport !== true) fail("service_smoke_readback_invalid");
+  return Object.freeze({
+    serviceUid: value.serviceUid,
+    serviceGid: value.serviceGid,
+    fixedNodePath: value.fixedNodePath,
+    noNetwork: true,
+    capabilityBoundingSet: "",
+    protectSystem: "strict",
+    protectHome: true,
+    privateDevices: true,
+    noNewPrivileges: true,
+    cgroupEmpty: true,
+    terminalActiveState: value.terminalActiveState,
+    terminalSubState: value.terminalSubState,
+    terminalResult: value.terminalResult,
+    betterSqlite3Memory: true,
+    snapshotImport: true
+  });
+}
+function collectStorageQuotaEvidence({ root, unit, runtime: supplied }) {
+  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
+  if (supplied.allowTestWorkerStorage !== true || typeof supplied.collectStorageQuotaEvidence !== "function") fail("storage_quota_evidence_invalid");
+  const raw = supplied.collectStorageQuotaEvidence({ root, unit });
+  return parseStorageQuotaEvidence(raw);
+}
+function runServiceNativeSmoke({ root, service, snapshotModule, runtime: supplied }) {
+  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
+  if (supplied.allowTestWorkerStorage !== true || typeof supplied.runServiceNativeSmoke !== "function") fail("service_smoke_runner_unavailable");
+  const raw = supplied.runServiceNativeSmoke({ root, service, snapshotModule, fixedNodePath: supplied.tools.node });
+  const readback = parseServiceSmokeReadback(raw);
+  if (readback.serviceUid !== service.uid || readback.serviceGid !== service.gid) fail("service_smoke_readback_invalid");
+  if (readback.fixedNodePath !== supplied.tools.node) fail("service_smoke_readback_invalid");
+  return readback;
+}
 export function createCandidateDependencyGateTestRuntime(overrides = {}) { return runtime({ platform: "linux", requireRoot: false, enforceOwnership: false, ...overrides }); }
 function requireRoot(runtime) { if (runtime.platform !== "linux") fail("unsupported_platform"); if (runtime.requireRoot && runtime.getuid() !== 0) fail("privilege_invalid"); }
 function transientTools(supplied) {
@@ -1451,6 +1555,10 @@ function stageSnapshotModule(extracted, context, supplied) {
 
 function serviceNativeSmoke(root, service, supplied) {
   if (!service || service.uid <= 0 || service.gid <= 0) fail("service_identity_invalid");
+  if (supplied.requireRoot === true) fail("worker_storage_limit_unavailable");
+  if (supplied.allowTestWorkerStorage === true && typeof supplied.runServiceNativeSmoke === "function") {
+    return runServiceNativeSmoke({ root, service, snapshotModule: "scripts/control-plane-db-snapshot-gate.mjs", runtime: supplied });
+  }
   return runNativeBetterSqliteSmoke({
     root,
     snapshotModule: "scripts/control-plane-db-snapshot-gate.mjs",
