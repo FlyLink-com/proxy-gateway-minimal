@@ -408,7 +408,7 @@ describe("admin API client", () => {
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelRuntimeEvidenceBridgeInput());
-    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|"host"|"port"/i);
     expect(bridge.mode).toBe("channel-runtime-evidence-bridge");
     expect(bridge.channelSystem.flowStatus).toBe("approval_ready");
   });
@@ -430,7 +430,7 @@ describe("admin API client", () => {
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelLabTargetInventoryInput());
-    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|"host"|"port"/i);
     expect(decision.mode).toBe("channel-lab-target-decision");
     expect(decision.status).toBe("fresh_target_recommended");
   });
@@ -452,7 +452,7 @@ describe("admin API client", () => {
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(cleanEdgeReadinessInput());
-    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|"host"|"port"/i);
     expect(summary.mode).toBe("clean-edge-readiness-summary");
     expect(summary.readiness.preconditionsReady).toBe(true);
     expect(summary.readiness.executionAllowed).toBe(false);
@@ -477,7 +477,7 @@ describe("admin API client", () => {
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionOutputDraftInput());
-    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|"host"|"port"/i);
     expect(draft.mode).toBe("channel-subscription-output-draft");
     expect(draft.subscriptionOutputDraft.yamlGenerated).toBe(false);
     expect(draft.subscriptionOutputDraft.realSubscriptionOutputChanged).toBe(false);
@@ -504,7 +504,7 @@ describe("admin API client", () => {
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationReadinessInput());
-    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|"host"|"port"/i);
     expect(readiness.mode).toBe("channel-subscription-activation-readiness");
     expect(readiness.activationGate.executionAuthority).toBe("not_granted");
     expect(readiness.subscriptionOutputDraft.realSubscriptionOutputChanged).toBe(false);
@@ -531,7 +531,7 @@ describe("admin API client", () => {
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationHandoffInput());
-    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|"host"|"port"/i);
     expect(handoff.mode).toBe("channel-subscription-activation-handoff-packet");
     expect(handoff.handoff.executionAuthority).toBe("not_granted");
     expect(handoff.handoff.nextGate.subscriptionOutputExecutionRoute).toBeNull();
@@ -559,7 +559,7 @@ describe("admin API client", () => {
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationFlowInput());
-    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|"host"|"port"/i);
     expect(flow.mode).toBe("channel-subscription-activation-flow");
     expect(flow.flowStatus).toBe("ready_for_a_tier_subscription_output_activation_request");
     expect(flow.gate.executionAuthority).toBe("not_granted");
@@ -588,7 +588,7 @@ describe("admin API client", () => {
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationRecordTemplateInput());
-    expect(String(reviewCall[1].body)).not.toMatch(/secret\.example|token=|https?:\/\/|\"host\"|\"port\"/i);
+    expect(String(reviewCall[1].body)).not.toMatch(/secret\.example|token=|https?:\/\/|"host"|"port"/i);
     expect(template.mode).toBe("channel-subscription-activation-record-template");
     expect(template.record.suggestedPath).toMatch(/channel-subscription-output-activation/);
     expect(template.readiness.executionAuthority).toBe("not_granted");
@@ -617,7 +617,7 @@ describe("admin API client", () => {
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationPackageInput());
-    expect(String(reviewCall[1].body)).not.toMatch(/secret\.example|token=|https?:\/\/|\"host\"|\"port\"/i);
+    expect(String(reviewCall[1].body)).not.toMatch(/secret\.example|token=|https?:\/\/|"host"|"port"/i);
     expect(activationPackage.mode).toBe("channel-subscription-activation-package");
     expect(activationPackage.package.approvalRequestReady).toBe(true);
     expect(activationPackage.renderProof.yamlReturned).toBe(false);
