@@ -520,7 +520,7 @@ in principle, but the work must:
 2. Keep byte-equality verification (not just file-size / first-byte
    checksums).
 3. Re-validate all eight call sites after the contract change; the
-   `sourceHash !== sourceHash` and `sourceSnapshotUnchanged` gates are
+   `sha256File(dbPath) !== sourceHash` and `sourceSnapshotUnchanged` gates are
    both fail-closed.
 4. Add tests asserting the new contract on at least one large
    representative SQLite file for each contract class.
