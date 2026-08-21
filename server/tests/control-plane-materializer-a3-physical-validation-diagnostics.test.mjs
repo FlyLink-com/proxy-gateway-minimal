@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   mkdtempSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
   writeFileSync,
@@ -482,6 +483,117 @@ test("runA3PhysicalValidationCli ignores an unobtainable diagnostics file path",
     assert.equal(result.stdout, "");
     const firstLine = result.stderr.trim().split(/\r?\n/)[0];
     assert.equal(JSON.parse(firstLine).condition, "invalid_input");
+  });
+});
+
+test("diagnostics observer refuses to publish when an ancestor parent directory is a symlink", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    // Construct a layout:
+    //   <directory>/real/                   (real directory)
+    //   <directory>/link -> real/           (symlink / junction)
+    //   <directory>/link/diagnostics.jsonl  (target under the link)
+    // The observer MUST refuse because lstat(<link>) reports a
+    // symlink, not a directory, and a junction/symlink in any parent
+    // segment can divert the open into a different tree.
+    const real = join(directory, "real");
+    mkdirSync(real);
+    const linkParent = join(directory, "link");
+    let createdLink = false;
+    try {
+      symlinkSync(real, linkParent, "junction");
+      createdLink = true;
+    } catch {
+      try {
+        symlinkSync(real, linkParent, "dir");
+        createdLink = true;
+      } catch {
+        // No privilege to create junctions or symlinks on this host —
+        // skip rather than fail.
+      }
+    }
+    if (!createdLink) return;
+    const filePath = join(linkParent, "diagnostics.jsonl");
+    // Force the observer to walk the parent chain FROM <directory>.
+    // Without an explicit sinkRoot, verifyParentChain treats the
+    // immediate parent as root and skips the symlink segment.
+    const observer = createDiagnosticsObserver({
+      filePath,
+      maxBytes: 65536,
+      previewBytes: 256,
+      sinkRoot: directory
+    });
+    observer.record({
+      command: "/bin/true",
+      args: [],
+      status: 0,
+      stdout: "",
+      stderr: "",
+      error: null,
+      condition: "ok"
+    });
+    const status = observer.flush();
+    assert.equal(status.published, false);
+    assert.equal(status.observerError.includes("diagnostics_parent_chain_unsafe"), true);
+    // Nothing must have been written under the linked parent.
+    const entries = readdirSync(linkParent);
+    assert.equal(entries.length, 0, "observer must not write under a symlinked parent");
+  });
+});
+
+test("diagnostics observer publishes when target path is nested under sink root", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const sinkDir = join(directory, "sub", "deep");
+    mkdirSync(sinkDir, { recursive: true });
+    const filePath = join(sinkDir, "diagnostics.jsonl");
+    const observer = createDiagnosticsObserver({
+      filePath,
+      maxBytes: 65536,
+      previewBytes: 256,
+      sinkRoot: directory
+    });
+    observer.record({
+      command: "/bin/true",
+      args: [],
+      status: 0,
+      stdout: "",
+      stderr: "",
+      error: null,
+      condition: "ok"
+    });
+    const status = observer.flush();
+    // The sink IS nested under the sink root; publish must succeed.
+    assert.equal(status.published, true);
+    assert.equal(status.parentDir, sinkDir);
+  });
+});
+
+test("diagnostics observer refuses when target path is outside sink root", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    // sinkRoot is a child of the test directory. The sink is placed in
+    // a SIBLING child, which is NOT nested under sinkRoot.
+    const sinkRoot = join(directory, "root");
+    mkdirSync(sinkRoot);
+    const sibling = join(directory, "sibling");
+    mkdirSync(sibling);
+    const filePath = join(sibling, "diagnostics.jsonl");
+    const observer = createDiagnosticsObserver({
+      filePath,
+      maxBytes: 65536,
+      previewBytes: 256,
+      sinkRoot
+    });
+    observer.record({
+      command: "/bin/true",
+      args: [],
+      status: 0,
+      stdout: "",
+      stderr: "",
+      error: null,
+      condition: "ok"
+    });
+    const status = observer.flush();
+    assert.equal(status.published, false);
+    assert.equal(status.observerError.includes("diagnostics_parent_chain_unsafe"), true);
   });
 });
 
