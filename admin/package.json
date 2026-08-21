@@ -11,6 +11,7 @@
     "build:site": "tsc --noEmit && vite build --config vite.site.config.ts",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
+    "lint": "eslint src",
     "verify:admin-build": "node ../scripts/verify-admin-build.mjs dist",
     "verify:portal-build": "node ../scripts/verify-portal-build.mjs dist-portal",
     "verify:site-build": "node ../scripts/verify-public-site-build.mjs dist-site"
@@ -29,12 +30,18 @@
     "vite": "^8.0.16"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.0.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.5.4",
+    "globals": "^17.11.0",
     "jsdom": "^25.0.0",
+    "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.8"
   }
 }

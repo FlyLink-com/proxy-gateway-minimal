@@ -10,6 +10,7 @@ import {
 export type { AdminLocale, AdminShellCopy } from "../i18n/admin";
 
 export const ADMIN_LOCALE_STORAGE_KEY = "gccwebos-admin-locale";
+// eslint-disable-next-line react-refresh/only-export-components -- barrel re-export of locale shell copy; consumers import it directly via type-only path
 export const ADMIN_SHELL_COPY = Object.fromEntries(
   ADMIN_LANGUAGE_PACKS.map((pack) => [pack.id, pack.shell])
 ) as Record<AdminLocale, AdminShellCopy>;
@@ -50,6 +51,7 @@ export function AdminLocaleProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hooks share AdminLocaleContext defined in this file; extracting requires moving context out
 export function useAdminLocale() {
   const value = useContext(AdminLocaleContext);
   if (!value) {
@@ -58,6 +60,7 @@ export function useAdminLocale() {
   return value;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- paired hook for useAdminLocale; same context-bound reason
 export function useOptionalAdminLocale() {
   return useContext(AdminLocaleContext);
 }

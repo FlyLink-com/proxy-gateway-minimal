@@ -284,6 +284,7 @@ function LegacyMarketplacePanel({
     setProductIntent(null);
     setDialogVisible(false);
     purchaseFlow.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `purchaseFlow` is destructured into individual property deps above; adding the whole object would re-run on every render (its identity changes per render) without semantic change
   }, [
     commerceClient,
     dialogVisible,

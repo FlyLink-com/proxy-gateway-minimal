@@ -46,6 +46,7 @@ function savePublicTheme(theme: PublicTheme) {
   window.localStorage.setItem(PUBLIC_THEME_STORAGE_KEY, theme);
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- preference hook used by sibling pages and the switch component itself; extracting would require a sibling hooks file with its own barrel
 export function usePublicLocalePreference(defaultLocale: PublicLocale = "zh") {
   const [locale, setLocale] = useState<PublicLocale>(() => (
     detectPublicLocale({ defaultLocale, useBrowserLanguage: false })
@@ -63,6 +64,7 @@ export function usePublicLocalePreference(defaultLocale: PublicLocale = "zh") {
   return { locale, setLocale: changeLocale };
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- paired theme hook; same barrel-rename reason as usePublicLocalePreference
 export function usePublicThemePreference(defaultTheme: PublicTheme = "light") {
   const [theme, setTheme] = useState<PublicTheme>(() => detectPublicTheme(defaultTheme));
 

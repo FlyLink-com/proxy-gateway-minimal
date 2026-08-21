@@ -718,7 +718,7 @@ function paymentChannelLabel(order: PortalPaymentOrder, locale: PortalAuthLocale
   }
 }
 
-function paymentDisplayMethodLabel(order: PortalPaymentOrder, locale: PortalAuthLocale, isMobilePayment: boolean) {
+function paymentDisplayMethodLabel(order: PortalPaymentOrder, locale: PortalAuthLocale, _isMobilePayment: boolean) {
   return paymentChannelLabel(order, locale);
 }
 
@@ -1672,16 +1672,16 @@ export function UserPortalPage({
     } finally {
       setHumanChallengeLoading(false);
     }
-  }, [portalClient]);
+  }, [portalClient, locale]);
 
   useEffect(() => {
     void refreshHumanChallenge();
   }, [refreshHumanChallenge]);
 
-  function hydratePortalSession(
+  const hydratePortalSession = useCallback((
     session: PortalSession,
     destination: PortalView = readPortalRechargeReturn() ? "wallet" : "start"
-  ) {
+  ) => {
     const hydrateGeneration = advanceSessionGeneration();
     clearWalletFirstSetupIdempotencyKey();
     setWalletFirstResource(null);
@@ -1787,7 +1787,11 @@ export function UserPortalPage({
       setActiveView(destination);
     })();
     return { isCurrent, promise };
-  }
+  }, [
+    advanceSessionGeneration,
+    clearWalletFirstSetupIdempotencyKey,
+    portalClient
+  ]);
 
   useEffect(() => {
     if (!initialSession || portalSession) return;
@@ -1796,7 +1800,7 @@ export function UserPortalPage({
       if (!hydration.isCurrent()) return;
       setAuthError(portalUiErrorMessage(caughtError, "本地预览会话载入失败，请重新登录。", locale));
     });
-  }, [initialSession, portalSession]);
+  }, [initialSession, portalSession, hydratePortalSession, locale]);
 
   useEffect(() => {
     if (portalSession) return;
@@ -1832,7 +1836,7 @@ export function UserPortalPage({
     } catch {
       setAuthError(failureMessage);
     }
-  }, [portalSession]);
+  }, [portalSession, hydratePortalSession, locale]);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -3879,7 +3883,7 @@ function PortalPaymentFlow({
     }));
   const [paymentNowMs, setPaymentNowMs] = useState(() => Date.now());
   const [paymentQrDataUrl, setPaymentQrDataUrl] = useState("");
-  const paymentExpiresAt = useMemo(() => paymentCodeExpiresAt(order), [order.createdAt, order.orderRef, order.paymentExpiresAt]);
+  const paymentExpiresAt = useMemo(() => paymentCodeExpiresAt(order), [order]);
   const paymentRemainingMs = new Date(paymentExpiresAt).getTime() - paymentNowMs;
   const paymentCodeExpired = isCheckout && paymentRemainingMs <= 0;
   const paymentRemainingLabel = paymentCodeRemainingLabel(paymentRemainingMs, locale);

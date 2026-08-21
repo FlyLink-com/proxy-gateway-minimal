@@ -55,6 +55,7 @@ function readCurrentLocation(): PortalRouteLocation | null {
   return window.location;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- pure env + location predicate consumed by tests and the route component below
 export function isLocalPortalShellPreviewEnabled(
   env: PortalRouteEnv = viteEnv,
   location: PortalRouteLocation | null = readCurrentLocation()

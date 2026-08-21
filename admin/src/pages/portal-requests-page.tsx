@@ -11,6 +11,7 @@ import {
   StatusChip
 } from "../components/primitives";
 
+// eslint-disable-next-line react-refresh/only-export-components -- blueprint consumed by 7+ test files and the search-results page; extracting would churn those imports
 export const accountsResourcesBlueprint: BlueprintPage = {
   page: "portalRequests",
   ariaLabel: "Accounts & Resources page header",

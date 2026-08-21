@@ -175,8 +175,7 @@ export function usePortalRecharge({
   ) => {
     const existing = recoveredCaptureRequestsRef.current.get(captureIdempotencyKey);
     if (existing) return existing;
-    let request!: Promise<PortalRechargeOrder>;
-    request = Promise.resolve().then(() => capturedClient.captureOrder({
+    const request: Promise<PortalRechargeOrder> = Promise.resolve().then(() => capturedClient.captureOrder({
       sessionRef: capturedSessionRef,
       orderRef,
       idempotencyKey: captureIdempotencyKey,

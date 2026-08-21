@@ -46,9 +46,13 @@ export function ModalFrame({
   );
 
   useEffect(() => {
+    // Snapshot the previously-focused element so the cleanup can restore focus
+    // to the exact node captured at mount, even if `restoreFocusRef` has
+    // since been reassigned by another component instance.
+    const restoreFocusTo = restoreFocusRef.current;
     titleRef.current?.focus();
     return () => {
-      restoreFocusRef.current?.focus();
+      restoreFocusTo?.focus();
     };
   }, []);
 

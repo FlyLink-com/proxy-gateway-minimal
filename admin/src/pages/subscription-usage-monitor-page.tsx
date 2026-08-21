@@ -29,6 +29,7 @@ import type {
 
 const usageRuntimeViewModel = buildUsageRuntimeViewModel(usageRuntimeProjectionFixture);
 
+// eslint-disable-next-line react-refresh/only-export-components -- fixture const used only inside this page; extracting would require a new sibling file for a single use site
 export const partnerAttributionReportFixture: PartnerAttributionAdminReport = {
   type: "partner_attribution_admin_report",
   status: "ready",
@@ -143,6 +144,7 @@ export const partnerAttributionReportFixture: PartnerAttributionAdminReport = {
   }
 };
 
+// eslint-disable-next-line react-refresh/only-export-components -- blueprint consumed by 5+ test files and the search-results page; extracting would churn those imports
 export const usageChannelsBlueprint: BlueprintPage = {
   page: "usageMonitor",
   ariaLabel: "Usage & Channels page header",
