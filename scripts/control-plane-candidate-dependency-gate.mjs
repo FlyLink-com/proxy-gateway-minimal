@@ -529,8 +529,12 @@ function a3PhysicalContext(runLabel, supplied, smokePhase = "validation") {
 }
 
 function executeA3Physical(command, args, supplied, condition, attentionRequired = false) {
+  let observer = null;
   try {
     if (!Object.values(A3_PHYSICAL_TOOLS).includes(command) || !Array.isArray(args) || !args.every((value) => typeof value === "string" && !value.includes("\0"))) fail(condition, attentionRequired);
+    if (supplied && typeof supplied.observePhysicalCommand === "function") {
+      observer = supplied.observePhysicalCommand;
+    }
     const execute = typeof supplied.executePhysicalCommand === "function"
       ? supplied.executePhysicalCommand
       : (path, argv) => {
@@ -538,7 +542,23 @@ function executeA3Physical(command, args, supplied, condition, attentionRequired
           const result = spawnSync(trusted, argv, { env: CMD_ENV, encoding: "utf8", windowsHide: true, timeout: 15000, maxBuffer: 64 * 1024 });
           return { status: result.status, stdout: result.stdout, stderr: result.stderr, error: result.error };
         };
-    const result = execute(command, Object.freeze([...args]));
+    const frozenArgs = Object.freeze([...args]);
+    const result = execute(command, frozenArgs);
+    if (observer) {
+      try {
+        observer({
+          command,
+          args: frozenArgs,
+          status: result && typeof result.status === "number" ? result.status : null,
+          stdout: result && typeof result.stdout === "string" ? result.stdout : "",
+          stderr: result && typeof result.stderr === "string" ? result.stderr : "",
+          error: result && result.error ? result.error : null,
+          condition
+        });
+      } catch {
+        // observer is read-only; exceptions must not influence collector semantics
+      }
+    }
     if (!result || result.error || result.status !== 0 || typeof result.stdout !== "string" || typeof result.stderr !== "string"
       || Buffer.byteLength(result.stdout) > 64 * 1024 || Buffer.byteLength(result.stderr) > 64 * 1024) fail(condition, attentionRequired);
     return result.stdout;

@@ -6,9 +6,25 @@ import {
   CandidateDependencyGateError,
   runCandidateDependencyA3PhysicalValidation
 } from "./control-plane-candidate-dependency-gate.mjs";
+import { createDiagnosticsObserver } from "./control-plane-materializer-a3-physical-validation-diagnostics.mjs";
 
 const TYPE = "control_plane_materializer_a3_physical_validation";
 const SCHEMA_VERSION = "1";
+
+function isBooleanFlag(value) {
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function readDiagnosticsConfig(env = process.env) {
+  if (!isBooleanFlag(env.A3_PHYSICAL_DIAGNOSTICS)) return null;
+  const filePath = env.A3_PHYSICAL_DIAGNOSTICS_FILE;
+  if (typeof filePath !== "string" || filePath.length === 0) return null;
+  const maxBytes = Number(env.A3_PHYSICAL_DIAGNOSTICS_MAX_BYTES);
+  const config = { filePath, maxBytes: Number.isInteger(maxBytes) && maxBytes > 0 ? maxBytes : 65536 };
+  const preview = Number(env.A3_PHYSICAL_DIAGNOSTICS_PREVIEW_BYTES);
+  if (Number.isInteger(preview) && preview > 0) config.previewBytes = preview;
+  return config;
+}
 
 export function parseA3PhysicalValidationArgs(argv = []) {
   if (!Array.isArray(argv) || !argv.every((value) => typeof value === "string")) throw new Error("invalid_input");
@@ -29,18 +45,37 @@ export function parseA3PhysicalValidationArgs(argv = []) {
   return Object.freeze({ mode, runLabel, projectId, serviceUid, serviceGid });
 }
 
-export function runA3PhysicalValidationCli({ argv = process.argv.slice(2), stdout = process.stdout, stderr = process.stderr } = {}) {
+export function runA3PhysicalValidationCli({
+  argv = process.argv.slice(2),
+  stdout = process.stdout,
+  stderr = process.stderr,
+  env = process.env
+} = {}) {
   let mode = null;
+  let diagnostics = null;
   try {
     const request = parseA3PhysicalValidationArgs(argv);
     mode = request.mode;
-    const result = runCandidateDependencyA3PhysicalValidation(request);
+    const diagnosticsConfig = readDiagnosticsConfig(env);
+    if (diagnosticsConfig) {
+      diagnostics = createDiagnosticsObserver(diagnosticsConfig);
+    }
+    const overrides = diagnostics ? { observePhysicalCommand: diagnostics.record } : {};
+    const result = runCandidateDependencyA3PhysicalValidation({ ...request, overrides });
     stdout.write(`${JSON.stringify({ schemaVersion: SCHEMA_VERSION, type: TYPE, state: "verified", ...result })}\n`);
     return 0;
   } catch (error) {
     const condition = error instanceof CandidateDependencyGateError ? error.condition : "invalid_input";
     stderr.write(`${JSON.stringify({ schemaVersion: SCHEMA_VERSION, type: TYPE, mode, state: error?.attentionRequired === true ? "attention_required" : "blocked", condition })}\n`);
     return 1;
+  } finally {
+    if (diagnostics) {
+      try {
+        diagnostics.flush();
+      } catch {
+        // diagnostics are best-effort; their failure must not flip the exit code
+      }
+    }
   }
 }
 
