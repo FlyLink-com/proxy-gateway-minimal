@@ -208,30 +208,168 @@ function physicalRuntime(overrides = {}) {
 
 test("collectStorageQuotaEvidence binds XFS project quota state and an observed EDQUOT probe", () => {
   const calls = [];
+  let blockReportCount = 0;
+  let inodeReportCount = 0;
   const execute = (command, args) => {
     calls.push([command, args]);
     if (command === "/usr/bin/findmnt") return { status: 0, stdout: '{"filesystems":[{"target":"/var/lib/control-plane-a3-1/run-1/probe","source":"/dev/loop7","fstype":"xfs","options":"rw,relatime,prjquota"}]}\n', stderr: "" };
     if (command === "/usr/sbin/xfs_io") return { status: 0, stdout: "projid = 4242\n", stderr: "" };
     if (args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")) return { status: 0, stdout: "", stderr: "" };
     if (args.includes("state -p")) return { status: 0, stdout: "Project quota state on /dev/loop7 (/var/lib/control-plane-a3-1/run-1/probe)\n  Accounting: ON\n  Enforcement: ON\n", stderr: "" };
-    if (args.includes("report -p -b -n -N -L 4242 -U 4242")) return { status: 0, stdout: "4242 512 0 1024 00 [------]\n", stderr: "" };
-    if (args.includes("report -p -i -n -N -L 4242 -U 4242")) return { status: 0, stdout: "4242 12 0 64 00 [------]\n", stderr: "" };
+    if (args.includes("report -p -b -n -N -L 4242 -U 4242")) {
+      blockReportCount += 1;
+      return { status: 0, stdout: blockReportCount === 1 ? "4242 512 0 1024 00 [------]\n" : "4242 1024 0 1024 00 [------]\n", stderr: "" };
+    }
+    if (args.includes("report -p -i -n -N -L 4242 -U 4242")) {
+      inodeReportCount += 1;
+      return { status: 0, stdout: inodeReportCount === 1 ? "4242 12 0 64 00 [------]\n" : "4242 64 0 64 00 [------]\n", stderr: "" };
+    }
     return { status: 70, stdout: "", stderr: "unexpected command" };
+  };
+  const created = new Set();
+  let nextDescriptor = 10;
+  let createdCount = 0;
+  let overflowAttempts = 0;
+  let writeAttempts = 0;
+  const probeFilesystem = {
+    openSync(path) {
+      if (path.endsWith(".a3-edquot-probe-overflow")) {
+        overflowAttempts += 1;
+        throw Object.assign(new Error("inode quota exhausted"), { code: "EDQUOT" });
+      }
+      if (!created.has(path)) {
+        created.add(path);
+        createdCount += 1;
+      }
+      return nextDescriptor++;
+    },
+    closeSync() {},
+    writeSync() {
+      writeAttempts += 1;
+      throw Object.assign(new Error("byte quota exhausted"), { code: "EDQUOT" });
+    },
+    unlinkSync(path) {
+      if (!created.delete(path)) throw new Error("unexpected probe cleanup path");
+    }
   };
   const evidence = collectStorageQuotaEvidence({
     runLabel: "run-1",
     projectId: 4242,
     runtime: physicalRuntime({
       executePhysicalCommand: execute,
-      runEdquotProbe: () => ({ expectedErrorCode: "EDQUOT", observedErrorCode: "EDQUOT", exhausted: true })
+      probeFilesystem
     })
   });
   assert.equal(evidence.filesystem, "/dev/loop7");
-  assert.equal(evidence.byteCurrent, 512 * 1024);
+  assert.equal(evidence.byteCurrent, 1024 * 1024);
   assert.equal(evidence.byteHardLimit, 1024 * 1024);
-  assert.equal(evidence.inodeCurrent, 12);
+  assert.equal(evidence.inodeCurrent, 64);
   assert.equal(evidence.inodeHardLimit, 64);
-  assert.equal(calls.length, 6);
+  assert.equal(evidence.headroomBytes, 0);
+  assert.equal(evidence.headroomInodes, 0);
+  assert.equal(calls.length, 8);
+  assert.equal(createdCount, 52);
+  assert.equal(overflowAttempts, 1);
+  assert.equal(writeAttempts, 1);
+  assert.equal(created.size, 0);
+});
+
+test("collectStorageQuotaEvidence rejects EDQUOT claims without an at-exhaustion quota readback", () => {
+  const execute = (command, args) => ({
+    status: 0,
+    stdout: command.endsWith("findmnt")
+      ? '{"filesystems":[{"target":"/var/lib/control-plane-a3-1/run-1/probe","source":"/dev/loop7","fstype":"xfs","options":"rw,prjquota"}]}\n'
+      : command.endsWith("xfs_io")
+        ? "projid = 4242\n"
+        : args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")
+          ? ""
+          : args.includes("state -p")
+            ? "Project quota state\n  Accounting: ON\n  Enforcement: ON\n"
+            : args.includes("report -p -b -n -N -L 4242 -U 4242")
+              ? "4242 512 0 1024 00 [------]\n"
+              : "4242 12 0 64 00 [------]\n",
+    stderr: ""
+  });
+  assert.throws(() => collectStorageQuotaEvidence({
+    runLabel: "run-1",
+    projectId: 4242,
+    runtime: physicalRuntime({
+      executePhysicalCommand: execute,
+      runEdquotProbe: () => ({ expectedErrorCode: "EDQUOT", observedErrorCode: "EDQUOT", exhausted: true })
+    })
+  }), condition("storage_quota_evidence_invalid"));
+});
+
+test("collectStorageQuotaEvidence cleans every probe file when the exhausted quota readback fails", () => {
+  const execute = (command, args) => ({
+    status: 0,
+    stdout: command.endsWith("findmnt")
+      ? '{"filesystems":[{"target":"/var/lib/control-plane-a3-1/run-1/probe","source":"/dev/loop7","fstype":"xfs","options":"rw,prjquota"}]}\n'
+      : command.endsWith("xfs_io")
+        ? "projid = 4242\n"
+        : args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")
+          ? ""
+          : args.includes("state -p")
+            ? "Project quota state\n  Accounting: ON\n  Enforcement: ON\n"
+            : args.includes("report -p -b -n -N -L 4242 -U 4242")
+              ? "4242 512 0 1024 00 [------]\n"
+              : "4242 12 0 64 00 [------]\n",
+    stderr: ""
+  });
+  const created = new Set();
+  let nextDescriptor = 10;
+  const probeFilesystem = {
+    openSync(path) {
+      if (path.endsWith(".a3-edquot-probe-overflow")) throw Object.assign(new Error("inode quota exhausted"), { code: "EDQUOT" });
+      created.add(path);
+      return nextDescriptor++;
+    },
+    closeSync() {},
+    writeSync() { throw Object.assign(new Error("byte quota exhausted"), { code: "EDQUOT" }); },
+    unlinkSync(path) {
+      if (!created.delete(path)) throw new Error("unexpected probe cleanup path");
+    }
+  };
+  assert.throws(() => collectStorageQuotaEvidence({
+    runLabel: "run-1",
+    projectId: 4242,
+    runtime: physicalRuntime({ executePhysicalCommand: execute, probeFilesystem })
+  }), condition("storage_quota_evidence_invalid"));
+  assert.equal(created.size, 0);
+});
+
+test("collectStorageQuotaEvidence preserves attention-required when probe cleanup is uncertain", () => {
+  let blockReportCount = 0;
+  let inodeReportCount = 0;
+  const execute = (command, args) => ({
+    status: 0,
+    stdout: command.endsWith("findmnt")
+      ? '{"filesystems":[{"target":"/var/lib/control-plane-a3-1/run-1/probe","source":"/dev/loop7","fstype":"xfs","options":"rw,prjquota"}]}\n'
+      : command.endsWith("xfs_io")
+        ? "projid = 4242\n"
+        : args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")
+          ? ""
+          : args.includes("state -p")
+            ? "Project quota state\n  Accounting: ON\n  Enforcement: ON\n"
+            : args.includes("report -p -b -n -N -L 4242 -U 4242")
+              ? ++blockReportCount === 1 ? "4242 512 0 1024 00 [------]\n" : "4242 1024 0 1024 00 [------]\n"
+              : ++inodeReportCount === 1 ? "4242 12 0 64 00 [------]\n" : "4242 64 0 64 00 [------]\n",
+    stderr: ""
+  });
+  const probeFilesystem = {
+    openSync(path) {
+      if (path.endsWith(".a3-edquot-probe-overflow")) throw Object.assign(new Error("inode quota exhausted"), { code: "EDQUOT" });
+      return 10;
+    },
+    closeSync() {},
+    writeSync() { throw Object.assign(new Error("byte quota exhausted"), { code: "EDQUOT" }); },
+    unlinkSync() { throw new Error("cleanup uncertain"); }
+  };
+  assert.throws(() => collectStorageQuotaEvidence({
+    runLabel: "run-1",
+    projectId: 4242,
+    runtime: physicalRuntime({ executePhysicalCommand: execute, probeFilesystem })
+  }), (error) => condition("storage_quota_evidence_invalid")(error) && error.attentionRequired === true);
 });
 
 test("collectStorageQuotaEvidence rejects non-XFS and non-EDQUOT evidence", () => {
