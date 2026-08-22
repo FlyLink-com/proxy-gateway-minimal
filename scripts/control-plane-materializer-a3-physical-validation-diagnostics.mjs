@@ -62,13 +62,13 @@
 //   - bearer tokens
 //
 // Diagnostics DO carry (by design — these are the audit record):
-//   - the literal `command` and `argv` arrays of each physical command,
-//     so an operator can verify the trusted tool identity and arguments
+//   - the literal allowlisted `command` and a redacted `argv` array for each
+//     physical command, so an operator can verify tool identity and safe args
 //   - byte counts, SHA-256 hashes, exit status, elapsed time, condition
 //
-// Operators on hardened deployments that need to scrub `argv` can do so
-// out-of-band; the observer deliberately does not rewrite argv because
-// doing so would hide the very tool path the audit needs.
+// `argv` arrives as an already-structured array from executeA3Physical. The
+// observer therefore redacts option/value pairs without attempting to parse a
+// shell command string. Sensitive values never reach the serialized record.
 //
 // All retained preview bytes are printable ASCII / UTF-8 with NUL
 // bytes stripped and invalid UTF-16 surrogates replaced by U+FFFD
@@ -102,6 +102,7 @@ import {
   constants as fsConstants
 } from "node:fs";
 import { dirname, isAbsolute, resolve as resolvePath, sep as pathSep, parse as parsePath } from "node:path";
+import { TextDecoder } from "node:util";
 
 export const DIAGNOSTICS_SCHEMA_VERSION = "diagnostics-1";
 export const DIAGNOSTICS_TYPE = "control_plane_materializer_a3_physical_validation_diagnostics";
@@ -130,12 +131,17 @@ const REDACT_PATTERNS = [
   // host:port (no user) - tightened so it does NOT consume IPv6.
   /(?<![\w@:\[])[A-Za-z0-9_.\-]+:\d{1,5}\b/g,
   // secret-bearing key=value pairs
-  /(?:secret|token|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|ssh[_-]?key)\s*=\s*[^\s,;"']+/gi,
-  // Authorization: Bearer ...
-  /Authorization\s*:\s*Bearer\s+[A-Za-z0-9._\-]+/gi,
+  /(?:secret|token|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|ssh[_-]?key)\s*=\s*[^\s,;"'&]+/gi,
+  // Authorization / Proxy-Authorization headers. Redact the complete value
+  // rather than attempting to enumerate Basic, Bearer, Digest, or signature
+  // schemes; an argv element is the smallest retained diagnostics field.
+  /(?:Proxy-)?Authorization\s*:\s*[^\r\n]+/gi,
   // Bare Bearer (preceded by start-of-string or whitespace)
   /(?:^|\s)Bearer\s+[A-Za-z0-9._\-]+/gi
 ];
+
+const SENSITIVE_ARG_NAME = /^(?:--?)?(?:u|user|userpass|userpwd|proxy[_-]?user|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|password|passwd|passphrase|api[_-]?key|access[_-]?key|private[_-]?key|ssh[_-]?key|key|credential|credentials|authorization|proxy[_-]?authorization|bearer|oauth2[_-]?bearer|aws[_-]?(?:secret[_-]?access[_-]?key|session[_-]?token)|(?:(?:token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|password|passwd|passphrase|api[_-]?key|access[_-]?key|private[_-]?key|ssh[_-]?key|key|credential|credentials|identity|cert|certificate|aws[_-]?session[_-]?token)[_-]?file)|netrc[_-]?file)$/i;
+const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 
 function redact(input) {
   if (typeof input !== "string" || input.length === 0) return "";
@@ -148,6 +154,27 @@ function redact(input) {
   return value;
 }
 
+function redactArgv(args) {
+  let redactNext = false;
+  return args.map((arg) => {
+    if (redactNext) {
+      redactNext = false;
+      return "<redacted>";
+    }
+    if (SENSITIVE_ARG_NAME.test(arg)) {
+      redactNext = true;
+      return arg;
+    }
+    const separator = arg.indexOf("=");
+    if (separator > 0) {
+      const name = arg.slice(0, separator);
+      if (SENSITIVE_ARG_NAME.test(name)) return `${name}=<redacted>`;
+      return redact(arg);
+    }
+    return redact(arg);
+  });
+}
+
 function sha256Hex(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
 }
@@ -155,7 +182,18 @@ function sha256Hex(buffer) {
 function safePreview(input, maxBytes) {
   if (typeof input !== "string" || input.length === 0 || maxBytes <= 0) return "";
   const preview = redact(input);
-  return preview.length > maxBytes ? `${preview.slice(0, maxBytes)}\u2026` : preview;
+  const bytes = Buffer.from(preview, "utf8");
+  if (bytes.length <= maxBytes) return preview;
+  const marker = maxBytes >= 3 ? "\u2026" : ".".repeat(maxBytes);
+  let end = maxBytes - Buffer.byteLength(marker, "utf8");
+  while (end > 0) {
+    try {
+      return `${UTF8_DECODER.decode(bytes.subarray(0, end))}${marker}`;
+    } catch {
+      end -= 1;
+    }
+  }
+  return marker;
 }
 
 // Compute the fixed filesystem anchor for an absolute path:
@@ -768,7 +806,7 @@ export function createDiagnosticsObserver({
         schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
         type: DIAGNOSTICS_TYPE,
         command: typeof command === "string" ? command : "<invalid>",
-        argv: Array.isArray(args) ? args.slice() : [],
+        argv: Array.isArray(args) ? redactArgv(args) : [],
         exitStatus: null,
         exitError: "diagnostics_invalid_invocation",
         elapsedMs: typeof elapsedMs === "number" && Number.isFinite(elapsedMs) ? Math.round(elapsedMs) : null,
@@ -793,7 +831,7 @@ export function createDiagnosticsObserver({
       schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
       type: DIAGNOSTICS_TYPE,
       command,
-      argv: args.slice(),
+      argv: redactArgv(args),
       exitStatus: typeof status === "number" ? status : null,
       exitError: error ? redact(String(error?.message ?? error)) : null,
       elapsedMs: typeof elapsedMs === "number" && Number.isFinite(elapsedMs) ? Math.round(elapsedMs) : null,

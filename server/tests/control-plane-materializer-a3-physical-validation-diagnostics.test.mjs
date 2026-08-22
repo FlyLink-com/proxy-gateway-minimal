@@ -386,7 +386,7 @@ test("diagnostics observer attaches elapsedMs to every record", async () => {
   });
 });
 
-test("diagnostics observer argv values are never copied into stdoutRedacted or stderrRedacted", async () => {
+test("diagnostics observer preserves safe argv values without copying them into stream previews", async () => {
   await withDiagnosticsDir(async (directory) => {
     const filePath = join(directory, "diagnostics.jsonl");
     const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 256 });
@@ -402,7 +402,7 @@ test("diagnostics observer argv values are never copied into stdoutRedacted or s
     observer.flush();
     const body = readFileSync(filePath, "utf8");
     const record = JSON.parse(body.split(/\r?\n/)[0]);
-    // Structured argv is preserved verbatim (operator owns argv shape).
+    // Safe structured argv remains useful for operator diagnostics.
     assert.deepEqual(record.argv, ["-x", "-c", "report -p", "/var/sandbox-secret"]);
     // Argv contents MUST NOT appear inside the stdout/stderr preview
     // fields. They live only in the structured argv array.
@@ -410,6 +410,108 @@ test("diagnostics observer argv values are never copied into stdoutRedacted or s
     assert.equal(record.stderrRedacted.includes("var/sandbox-secret"), false, "argv leaked into stderrRedacted");
     assert.equal(record.stdoutRedacted.includes("stdout-output"), true);
     assert.equal(record.stderrRedacted.includes("stderr-output"), true);
+  });
+});
+
+test("diagnostics observer redacts sensitive structured argv forms", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const filePath = join(directory, "diagnostics.jsonl");
+    const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 256 });
+    observer.record({
+      command: "/usr/bin/curl",
+      args: [
+        "--password",
+        "hunter2",
+        "--peer=10.0.0.5",
+        "--token=secret-value",
+        "https://api.example.test/check?access_token=query-secret&mode=check"
+      ],
+      status: 1,
+      stdout: "",
+      stderr: "failed",
+      error: null,
+      condition: "storage_quota_evidence_invalid"
+    });
+    observer.flush();
+
+    const record = JSON.parse(readFileSync(filePath, "utf8").split(/\r?\n/)[0]);
+    assert.deepEqual(record.argv.slice(0, 4), [
+      "--password",
+      "<redacted>",
+      "--peer=<redacted>",
+      "--token=<redacted>"
+    ]);
+    const serialized = JSON.stringify(record.argv);
+    for (const secret of ["hunter2", "10.0.0.5", "secret-value", "query-secret"]) {
+      assert.equal(serialized.includes(secret), false, `argv leaked ${secret}`);
+    }
+    assert.equal(serialized.includes("mode=check"), true, "non-secret URL query remains observable");
+  });
+});
+
+test("diagnostics observer redacts user credentials, basic auth, and credential-file argv", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const filePath = join(directory, "diagnostics.jsonl");
+    const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 256 });
+    observer.record({
+      command: "/usr/bin/curl",
+      args: [
+        "--user",
+        "alice:correct-horse",
+        "-u",
+        "bob:short-secret",
+        "--password-file",
+        "/run/secrets/curl-password",
+        "--token-file=/run/secrets/api-token",
+        "-H",
+        "Authorization: Basic YWxpY2U6Y29ycmVjdC1ob3JzZQ==",
+        "Proxy-Authorization: Basic cHJveHk6c2hvcnQtc2VjcmV0",
+        "--mode",
+        "check"
+      ],
+      status: 1,
+      stdout: "",
+      stderr: "failed",
+      error: null,
+      condition: "storage_quota_evidence_invalid"
+    });
+    observer.flush();
+
+    const record = JSON.parse(readFileSync(filePath, "utf8").split(/\r?\n/)[0]);
+    const serialized = JSON.stringify(record.argv);
+    for (const secret of [
+      "alice:correct-horse",
+      "bob:short-secret",
+      "/run/secrets/curl-password",
+      "/run/secrets/api-token",
+      "YWxpY2U6Y29ycmVjdC1ob3JzZQ==",
+      "cHJveHk6c2hvcnQtc2VjcmV0"
+    ]) {
+      assert.equal(serialized.includes(secret), false, `argv leaked ${secret}`);
+    }
+    assert.deepEqual(record.argv.slice(-2), ["--mode", "check"], "safe argv remains observable");
+  });
+});
+
+test("diagnostics observer preview cap is measured in UTF-8 bytes", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const filePath = join(directory, "diagnostics.jsonl");
+    const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 10 });
+    observer.record({
+      command: "/bin/false",
+      args: [],
+      status: 1,
+      stdout: "汉字汉字汉字汉字",
+      stderr: "",
+      error: null,
+      condition: "storage_quota_evidence_invalid"
+    });
+    observer.flush();
+
+    const record = JSON.parse(readFileSync(filePath, "utf8").split(/\r?\n/)[0]);
+    assert.equal(Buffer.byteLength(record.stdoutRedacted, "utf8") <= 10, true);
+    assert.equal(record.stdoutRedacted.endsWith("…"), true);
+    assert.equal(record.stdoutRedacted.includes("\uFFFD"), false, "must not split a UTF-8 sequence");
   });
 });
 

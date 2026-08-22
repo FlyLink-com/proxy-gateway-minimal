@@ -63,7 +63,7 @@ function Read-A3RunRc {
     $lines = $Output -split "`r`n|`n|`r"
     $markers = @()
     foreach ($line in $lines) {
-        if ($line -like 'A3_RUN_RC=*') {
+        if ($line -clike 'A3_RUN_RC=*') {
             $markers += $line
         }
     }
@@ -73,7 +73,7 @@ function Read-A3RunRc {
     }
 
     $marker = $markers[0]
-    if ($marker -notmatch '^A3_RUN_RC=([0-9]+)$') {
+    if (-not ($marker -cmatch '^A3_RUN_RC=([0-9]+)$')) {
         throw 'remote_run_marker_invalid'
     }
 
@@ -130,17 +130,24 @@ function Invoke-A3RemoteRunSummary {
         [string]$FailClosedCondition = 'remote_run_marker_invalid'
     )
 
-    # 1. Capture raw evidence FIRST so it survives any later failure.
-    $outputBytes = [Text.Encoding]::UTF8.GetBytes($RemoteRun.Output)
+    # 1. Capture raw evidence FIRST so it survives any later failure. A null
+    # or absent Output is normalized to the empty byte string; marker parsing
+    # below then returns the documented fail-closed condition instead of a
+    # .NET argument exception before the summary exists.
+    $rawOutput = if (
+        $RemoteRun.PSObject.Properties.Name -contains 'Output' -and
+        $null -ne $RemoteRun.Output
+    ) { [string]$RemoteRun.Output } else { '' }
+    $outputBytes = [Text.Encoding]::UTF8.GetBytes($rawOutput)
     $remoteOutputSha256 = ([BitConverter]::ToString(
         [System.Security.Cryptography.SHA256]::Create().ComputeHash($outputBytes)
         ) -replace '-', '').ToLowerInvariant()
     $remoteOutputSize = $outputBytes.Length
 
     $markerCount = 0
-    if ($null -ne $RemoteRun.Output) {
-        foreach ($line in ($RemoteRun.Output -split "`r`n|`n|`r")) {
-            if ($line -like 'A3_RUN_RC=*') {
+    if ($rawOutput -ne '') {
+        foreach ($line in ($rawOutput -split "`r`n|`n|`r")) {
+            if ($line -clike 'A3_RUN_RC=*') {
                 $markerCount++
             }
         }
@@ -167,7 +174,7 @@ function Invoke-A3RemoteRunSummary {
     }
 
     try {
-        $exitCode = Read-A3RunRc -Output $RemoteRun.Output
+        $exitCode = Read-A3RunRc -Output $rawOutput
     }
     catch {
         $summary.validation_condition = if ($_.Exception.Message) {
