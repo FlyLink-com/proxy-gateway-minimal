@@ -503,3 +503,130 @@ test('Get-A3LowerHexSha256 returns lowercase 64-char hex', describeOpts(skipIfNo
   assert.ok(shaLine, 'lowercase 64-char hex emitted');
   assert.equal(shaLine[1].length, 64);
 });
+
+// --- CLI entry point (B-tier; out-of-process invocation) ---
+// The CLI form (`pwsh -File <ps1> -Action persist|summary`) lets the runner
+// invoke this module as a separate process. Records are passed via STDIN
+// (UTF-8 JSON) so argv tokens never touch the process command line.
+
+function runCli(action, args, { stdin = null, allowFail = false } = {}) {
+  const psArgs = [
+    '-NoLogo', '-NoProfile', '-NonInteractive',
+    '-File', MODULE_PATH,
+    '-Action', action,
+    ...args,
+  ];
+  const result = spawnSync('powershell', psArgs, {
+    encoding: 'utf8',
+    input: stdin ?? undefined,
+  });
+  if (!allowFail && result.status !== 0) {
+    throw new Error(
+      `cli ${action} exited ${result.status}: stderr=${result.stderr} stdout=${result.stdout}`
+    );
+  }
+  return result;
+}
+
+test('CLI persist action writes one JSONL command line via STDIN record', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-cli-1-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const record = {
+    command_index: 0,
+    command_label: 'cli-probe',
+    working_dir: '/tmp',
+    env_names: 'PATH,HOME',
+    argv: 'xfs_quota -x -c report /var/lib/control-plane-a3-1',
+    stdout: 'project quota on /var/lib/control-plane-a3-1',
+    stderr: '',
+    exit_code: 0,
+    started_at: '2026-08-22T00:00:00Z',
+    finished_at: '2026-08-22T00:00:01Z',
+  };
+  const result = runCli('persist', ['-DiagnosticsPath', path], {
+    stdin: JSON.stringify(record),
+  });
+  assert.equal(result.status, 0, 'cli persist exit 0');
+
+  const raw = readFileSync(path, 'utf8');
+  const lines = raw.split('\n').filter((l) => l.length > 0);
+  assert.equal(lines.length, 1, 'exactly one JSONL line');
+  const parsed = JSON.parse(lines[0]);
+  assert.equal(parsed.kind, 'command');
+  assert.equal(parsed.command_label, 'cli-probe');
+  assert.equal(parsed.argv_redacted, 'xfs_quota -x -c report /var/lib/control-plane-a3-1');
+});
+
+test('CLI summary action returns run summary + integrity footer', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-cli-2-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const records = [
+    { command_index: 0, command_label: 'one',   working_dir: '/tmp', env_names: 'PATH', argv: 'echo one', stdout: 'one', stderr: '', exit_code: 0, started_at: '2026-08-22T00:00:00Z', finished_at: '2026-08-22T00:00:01Z' },
+    { command_index: 1, command_label: 'two',   working_dir: '/tmp', env_names: 'PATH', argv: 'echo two', stdout: 'two', stderr: '', exit_code: 0, started_at: '2026-08-22T00:00:01Z', finished_at: '2026-08-22T00:00:02Z' },
+  ];
+  for (const record of records) {
+    const result = runCli('persist', ['-DiagnosticsPath', path], { stdin: JSON.stringify(record) });
+    assert.equal(result.status, 0, 'cli persist exit 0');
+  }
+  const summaryRun = runCli('summary', ['-DiagnosticsPath', path, '-RunLabel', 'cli-r']);
+  assert.equal(summaryRun.status, 0, 'cli summary exit 0');
+
+  const raw = readFileSync(path, 'utf8');
+  const lines = raw.split('\n').filter((l) => l.length > 0);
+  assert.equal(lines.length, 3, 'two command lines plus one integrity footer');
+  const footer = JSON.parse(lines[2]);
+  assert.equal(footer.kind, 'integrity_footer');
+  assert.equal(footer.command_count, 2);
+  assert.equal(footer.run_label, 'cli-r');
+  assert.equal(footer.jsonl_sha256.length, 64);
+});
+
+test('CLI persist rejects missing STDIN record', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-cli-3-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const result = runCli('persist', ['-DiagnosticsPath', path], { stdin: '', allowFail: true });
+  assert.notEqual(result.status, 0, 'empty STDIN must fail');
+  assert.match(result.stderr || result.stdout, /a3_diagnostics_cli_persist_stdin_empty/);
+});
+
+test('CLI persist rejects missing DiagnosticsPath', describeOpts(skipIfNoPwsh), () => {
+  const result = runCli('persist', [], {
+    stdin: JSON.stringify({ command_index: 0, command_label: 'x', working_dir: '/tmp', env_names: 'PATH', argv: 'noop', stdout: '', stderr: '', exit_code: 0, started_at: '2026-08-22T00:00:00Z', finished_at: '2026-08-22T00:00:01Z' }),
+    allowFail: true,
+  });
+  assert.notEqual(result.status, 0, 'missing -DiagnosticsPath must fail');
+  assert.match(result.stderr || result.stdout, /a3_diagnostics_cli_path_required/);
+});
+
+test('CLI summary rejects missing RunLabel', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-cli-4-');
+  const path = join(dir, 'diagnostics.jsonl');
+  // First write at least one command so the file exists.
+  runCli('persist', ['-DiagnosticsPath', path], {
+    stdin: JSON.stringify({ command_index: 0, command_label: 'seed', working_dir: '/tmp', env_names: 'PATH', argv: 'noop', stdout: '', stderr: '', exit_code: 0, started_at: '2026-08-22T00:00:00Z', finished_at: '2026-08-22T00:00:01Z' }),
+  });
+  const result = runCli('summary', ['-DiagnosticsPath', path], { allowFail: true });
+  assert.notEqual(result.status, 0, 'missing -RunLabel must fail');
+  assert.match(result.stderr || result.stdout, /a3_diagnostics_cli_summary_run_label_required/);
+});
+
+test('CLI rejects unknown action with explicit error code', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-cli-5-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const result = spawnSync('powershell', [
+    '-NoLogo', '-NoProfile', '-NonInteractive',
+    '-File', MODULE_PATH,
+    '-Action', 'garbage',
+    '-DiagnosticsPath', path,
+  ], { encoding: 'utf8' });
+  assert.notEqual(result.status, 0, 'unknown action must fail');
+  // Either ValidateSet's ParameterArgumentValidationError or our explicit
+  // a3_diagnostics_cli_unknown_action throw counts as fail-closed; both
+  // prevent the module from running with an invalid action.
+  const combined = (result.stderr || '') + (result.stdout || '');
+  assert.match(
+    combined,
+    /a3_diagnostics_cli_unknown_action|ParameterArgumentValidationError/,
+    'unknown action must fail closed via either ValidateSet or explicit throw'
+  );
+});

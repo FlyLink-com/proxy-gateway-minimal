@@ -1,11 +1,25 @@
 # control-plane-materializer-a3-diagnostics-retention.ps1
 #
 # Per-command evidence retention for the disposable Aliyun SWAS A3-1 quota-only
-# replay. Closes the diagnostic-retention gap recorded in
+# replay. Adds the per-command retention primitive referenced in
 # https://github.com/gccwebos-com/proxy-gateway-minimal/issues/636#issuecomment-5377452689
-# where the final receipt kept digest/count evidence but lost the per-command
-# argv preview and bounded stderr needed to distinguish "third command exited
-# non-zero" from "third command produced contract-violating stdout".
+# so a future runner-side wiring PR can call Persist-A3PerCommandEvidence from
+# the diagnostics observer and recover the argv preview + bounded stderr that
+# the final receipt alone cannot supply. (The runner-side wiring itself is
+# intentionally OUT OF SCOPE for this PR; this module is a tested standalone
+# primitive so the wiring PR can land independently once the diagnostics-1
+# observer confirms its argv-redaction policy alignment.)
+#
+# Two ways to invoke this module:
+#   1. Dot-source and call the functions directly (used by the existing
+#      unit tests and by future runner-side callers that load the module
+#      in-process).
+#   2. Invoke as a CLI (used by the test suite's spawnSync wrapper and by
+#      any external caller that prefers out-of-process isolation):
+#        pwsh -File control-plane-materializer-a3-diagnostics-retention.ps1 `
+#             -Action persist -DiagnosticsPath <abs.jsonl>  < record.json
+#        pwsh -File control-plane-materializer-a3-diagnostics-retention.ps1 `
+#             -Action summary -DiagnosticsPath <abs.jsonl> -RunLabel <label>
 #
 # Scope (B-tier; no remote access, no production impact):
 #   - Persist-A3PerCommandEvidence writes one JSONL line per command BEFORE
@@ -29,6 +43,18 @@
 #   - No file is written outside the diagnostics directory the caller
 #     passes; the path is validated as absolute and the parent directory
 #     must already exist.
+#   - No file is appended to when an existing file already carries an
+#     integrity_footer (re-summarization is refused to prevent silent
+#     receipt pollution).
+
+param(
+    [ValidateSet('persist', 'summary')]
+    [string]$Action,
+
+    [string]$DiagnosticsPath,
+
+    [string]$RunLabel
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -266,4 +292,38 @@ if ($MyInvocation.InvocationName -ne '.' -and $MyInvocation.MyCommand.ModuleName
         Get-A3LowerHexSha256, `
         ConvertTo-A3RedactedArgv, `
         Get-A3StreamSnapshot
+}
+
+# CLI dispatch: only runs when this script is invoked directly
+# (`pwsh -File ...`); dot-sourcing sets $MyInvocation.InvocationName to '.'
+# and skips this branch entirely. The dispatch reads the per-command record
+# from STDIN as a single UTF-8 JSON object so the caller does not need to
+# serialize argv via argv escaping (which would lose quoting and risk
+# argv-secret leakage through the process command line).
+if ($MyInvocation.InvocationName -ne '.') {
+    if (-not $DiagnosticsPath) {
+        throw 'a3_diagnostics_cli_path_required'
+    }
+    if (-not $Action) {
+        throw 'a3_diagnostics_cli_action_required'
+    }
+    switch ($Action) {
+        'persist' {
+            $stdinRaw = [Console]::In.ReadToEnd()
+            if ([string]::IsNullOrWhiteSpace($stdinRaw)) {
+                throw 'a3_diagnostics_cli_persist_stdin_empty'
+            }
+            $record = $stdinRaw | ConvertFrom-Json -ErrorAction Stop
+            Persist-A3PerCommandEvidence -DiagnosticsPath $DiagnosticsPath -Record $record
+        }
+        'summary' {
+            if (-not $RunLabel) {
+                throw 'a3_diagnostics_cli_summary_run_label_required'
+            }
+            New-A3DiagnosticsRunSummary -DiagnosticsPath $DiagnosticsPath -RunLabel $RunLabel
+        }
+        default {
+            throw ('a3_diagnostics_cli_unknown_action:' + $Action)
+        }
+    }
 }
