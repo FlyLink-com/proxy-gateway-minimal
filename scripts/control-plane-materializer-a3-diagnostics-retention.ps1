@@ -83,11 +83,43 @@ $A3_DIAG_ENV_NAMES_BYTE_CAP = 4096
 $script:A3RedactKeyValueRegex    = '(?i)^[-_]*(token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|bearer|aws_access_key_id|aws_secret_access_key)=(.+)$'
 $script:A3RedactLongBlobRegex    = '^(?=[A-Za-z0-9+/]*[0-9])(?=[A-Za-z0-9+/]*[A-Z])(?=[A-Za-z0-9+/]*[a-z])[A-Za-z0-9+/]{24,}={0,2}$'
 $script:A3RedactJwtRegex         = '^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$'
-$script:A3RedactIPv4Regex        = '^(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?$'
+$script:A3RedactIPv4Regex        = '^(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?(?:/[0-9]+)?$'
 $script:A3RedactIPv6Regex        = '^(?:[\[]?(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}\]?|(?:[0-9a-f]{0,4}:){2,7}:[0-9a-f]{0,4}|::1?|::)(?::[0-9]+)?(?:%[A-Za-z0-9_.\-]+)?$'
 $script:A3RedactUserHostRegex    = '^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$'
 $script:A3RedactKnownPrefixRegex = '^(sk-|pk-|ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9]{8,}$'
-$script:A3RedactUrlQueryRegex    = '(?i)([?&])(token|access_token|access_key|secret|password|api[_-]?key|sig|signature|x-api-key|x-amz-signature|x-amz-security-token)(=)([^&\s"]+)'
+$script:A3RedactUrlQueryRegex    = '(?i)([?&])(token|access_token|access_key|secret|password|passwd|api[_-]?key|sig|signature|x-api-key|x-amz-signature|x-amz-security-token|refresh_token|client_secret|client_id|aws_session_token|private[_-]?key|code)(=)([^&\s"]+)'
+# URL userinfo scrubber: matches `scheme://user:pass@` and replaces the
+# `user:pass` pair with `<redacted>` so e.g.
+# `https://svc:hunter2@example.com/x` becomes `https://<redacted>@example.com/x`.
+$script:A3RedactUrlUserInfoRegex = '^([a-z][a-z0-9+.\-]*://)([^:@/\s]+):([^@/\s]+)@'
+# URL IPv4-host scrubber: matches `scheme://10.0.0.5` or `scheme://10.0.0.5/...`
+# and replaces the IPv4 literal with `<redacted>`.
+$script:A3RedactUrlIPv4HostRegex = '^([a-z][a-z0-9+.\-]*://)([0-9]{1,3}(?:\.[0-9]{1,3}){3})(?=[:/]|$)'
+# URL IPv6-host scrubber: matches `scheme://[2001:db8::1]` (bracketed) and
+# replaces the bracketed literal with `<redacted>`.
+$script:A3RedactUrlIPv6HostRegex = '^([a-z][a-z0-9+.\-]*://)(\[[0-9a-fA-F:]+\])(?=[:/]|$)'
+# URL user@host scrubber: matches `scheme://user@host` and replaces
+# `user@host` with `<redacted>`. The `:` exclusion in the user slot
+# prevents the userinfo shape `user:pass@host` from being matched here
+# (the userinfo scrubber handles that case separately).
+$script:A3RedactUrlUserHostRegex = '^([a-z][a-z0-9+.\-]*://)([^:@/?#\s]+@[^:@/?#\s]+)(?=[:/]|$)'
+# URL JWT-in-path scrubber: matches a path-segment shaped like
+# `header.payload.signature` (each part [A-Za-z0-9_-]+, length >= 2)
+# preceded by a `/`, and replaces the whole segment with `<redacted>`.
+# The lookbehind `(?<=[^:/])` ensures the `/` is a real path separator
+# and not the second `/` of `scheme://`; without it `api.example.com`
+# would be matched as a JWT and the host would be dropped.
+$script:A3RedactUrlJwtPathRegex  = '(?<=[^:/])(/)([A-Za-z0-9_\-]{2,})\.([A-Za-z0-9_\-]{2,})\.([A-Za-z0-9_\-]{2,})(?=/|\?|\#|$)'
+
+# On Windows the filesystem is case-insensitive; the operator may pass a
+# DiagnosticsPath whose drive letter or segment casing differs from the
+# resolved SinkRoot. Use OrdinalIgnoreCase there so the boundary check
+# matches reality. On POSIX keep Ordinal so the check stays strict.
+$script:A3PathCompare = if ([System.IO.Path]::DirectorySeparatorChar -eq '\') {
+    [System.StringComparison]::OrdinalIgnoreCase
+} else {
+    [System.StringComparison]::Ordinal
+}
 
 <#
 .SYNOPSIS
@@ -165,15 +197,56 @@ function ConvertTo-A3RedactedArgv {
     $out = @()
     foreach ($t in $tokens) {
         # URL detection: contains '://' or starts with http(s):// etc.
-        # Inside such a token we scrub every credential-bearing query
-        # substring so e.g. `?access_key=ABC&token=DEF` becomes
-        # `?access_key=<redacted>&token=<redacted>` and the host/path
-        # survive.
+        # Inside such a token we apply a sequence of targeted credential
+        # scrubbers so e.g.
+        #   `?access_key=ABC&token=DEF`          -> `?access_key=<redacted>&token=<redacted>`
+        #   `https://user:pass@host/path`         -> `https://<redacted>@host/path`
+        #   `https://10.0.0.5/x`                  -> `https://<redacted>/x`
+        #   `https://[2001:db8::1]/x`             -> `https://<redacted>/x`
+        #   `https://admin@example.com/x`         -> `https://<redacted>/x`
+        #   `https://h/p/eyJ.x.y/call`            -> `https://h/p/<redacted>/call`
+        # After scrubbing we still `continue` so the per-token rule chain
+        # does not re-match already-redacted substrings.
         if ($t -match '://' -or $t -match '^https?=' -or $t -match '^[a-z][a-z0-9+.\-]*://') {
+            $scrubbed = $t
+            # Order matters: user@host must run BEFORE userinfo, otherwise
+            # the userinfo scrubber's `<redacted>@host` output would be
+            # re-matched by the user@host scrubber and the host would be
+            # dropped. user@host's regex `[^@/?#\s]+@[^@/?#\s]+` does not
+            # accept `:` in the user slot, so `user:pass@host` (the userinfo
+            # shape) does NOT match it and survives until the userinfo scrub.
             $scrubbed = [System.Text.RegularExpressions.Regex]::Replace(
-                $t,
+                $scrubbed,
+                $script:A3RedactUrlUserHostRegex,
+                { param($m) ($m.Groups[1].Value + '<redacted>') }
+            )
+            $scrubbed = [System.Text.RegularExpressions.Regex]::Replace(
+                $scrubbed,
+                $script:A3RedactUrlUserInfoRegex,
+                { param($m) ($m.Groups[1].Value + '<redacted>@') }
+            )
+            $scrubbed = [System.Text.RegularExpressions.Regex]::Replace(
+                $scrubbed,
                 $script:A3RedactUrlQueryRegex,
                 { param($m) ($m.Groups[1].Value + $m.Groups[2].Value + $m.Groups[3].Value + '<redacted>') }
+            )
+            $scrubbed = [System.Text.RegularExpressions.Regex]::Replace(
+                $scrubbed,
+                $script:A3RedactUrlIPv4HostRegex,
+                { param($m) ($m.Groups[1].Value + '<redacted>') }
+            )
+            $scrubbed = [System.Text.RegularExpressions.Regex]::Replace(
+                $scrubbed,
+                $script:A3RedactUrlIPv6HostRegex,
+                { param($m) ($m.Groups[1].Value + '<redacted>') }
+            )
+            # JWT-in-path: requires a `/` immediately before so a host like
+            # `api.example.com` at the start of the URL is NOT mistaken for
+            # a JWT (the path begins at the first `/` after the host).
+            $scrubbed = [System.Text.RegularExpressions.Regex]::Replace(
+                $scrubbed,
+                $script:A3RedactUrlJwtPathRegex,
+                { param($m) ($m.Groups[1].Value + '<redacted>') }
             )
             $out += $scrubbed
             continue
@@ -236,6 +309,88 @@ function Get-A3StreamSnapshot {
 
 <#
 .SYNOPSIS
+  Resolve an operator-supplied path to its canonical absolute form.
+
+.DESCRIPTION
+  GetFullPath collapses '.' and '..' segments so 'sink\..\outside\file'
+  cannot bypass a downstream prefix check by hiding the divergence in
+  an un-normalized segment. The function additionally rejects the
+  Windows drive-relative form 'C:file' where IsPathRooted returns true
+  but there is no separator between the drive letter and the rest;
+  such a path is ambiguous (relative to the current directory on that
+  drive) and must not be accepted for a sink-bound write.
+#>
+function Resolve-A3DiagnosticsPath {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][ValidateSet('diagnostics','sink_root')][string]$PathRole
+    )
+    if (-not [System.IO.Path]::IsPathRooted($Path)) {
+        if ($PathRole -eq 'sink_root') {
+            throw 'a3_diagnostics_sink_root_not_absolute'
+        }
+        throw 'a3_diagnostics_path_not_absolute'
+    }
+    # Windows drive-relative form (e.g. 'C:file') is rooted but lacks
+    # the explicit separator between the drive and the remainder, so
+    # GetFullPath interprets it as relative to the current directory on
+    # that drive. Reject explicitly.
+    if ($Path -match '^[A-Za-z]:[^/\\]') {
+        if ($PathRole -eq 'sink_root') {
+            throw 'a3_diagnostics_sink_root_drive_relative'
+        }
+        throw 'a3_diagnostics_path_drive_relative'
+    }
+    try {
+        return [System.IO.Path]::GetFullPath($Path)
+    } catch {
+        if ($PathRole -eq 'sink_root') {
+            throw 'a3_diagnostics_sink_root_invalid'
+        }
+        throw 'a3_diagnostics_path_invalid'
+    }
+}
+
+<#
+.SYNOPSIS
+  Walk the directory chain from RootAbs (inclusive) down to TargetParent
+  (inclusive) and confirm every segment is a real directory whose
+  FileAttributes.ReparsePoint bit is unset. Closes the 'a junction or
+  symlink inside the operator-controlled tree redirects the write'
+  gap that a single Test-Path + GetAttributes(parentDir) pair misses.
+#>
+function Test-A3AncestorChainNoReparse {
+    param(
+        [Parameter(Mandatory)][string]$RootAbs,
+        [Parameter(Mandatory)][string]$TargetParent
+    )
+    $sep = [System.IO.Path]::DirectorySeparatorChar
+        if ($RootAbs.EndsWith($sep)) {
+            $rootWithSep = $RootAbs
+        } else {
+            $rootWithSep = $RootAbs + $sep
+        }
+        if ($TargetParent -ne $RootAbs -and -not $TargetParent.StartsWith($rootWithSep, $script:A3PathCompare)) {
+            throw 'a3_diagnostics_sink_root_violation'
+        }
+    $cursor = $TargetParent
+    while ($true) {
+        if (-not (Test-Path -LiteralPath $cursor -PathType Container)) {
+            throw 'a3_diagnostics_ancestor_segment_missing'
+        }
+        $segAttrs = [System.IO.File]::GetAttributes($cursor)
+        if (($segAttrs -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'a3_diagnostics_ancestor_is_symlink'
+        }
+        if ($cursor -eq $RootAbs) { break }
+        $parent = Split-Path -Parent $cursor
+        if ($parent -eq $cursor) { break }
+        $cursor = $parent
+    }
+}
+
+<#
+.SYNOPSIS
   Validate and persist one per-command evidence record.
 
 .DESCRIPTION
@@ -247,11 +402,21 @@ function Get-A3StreamSnapshot {
   The optional -SinkRoot parameter, when supplied, MUST be the absolute
   parent directory the operator controls. The function then enforces:
 
-    - DiagnosticsPath is absolute (IsPathRooted)
-    - DiagnosticsPath is strictly nested under SinkRoot
-      (string prefix with directory separator, Ordinal compare)
-    - The parent directory is not a Reparse Point (symlink/junction)
-      on Windows
+    - DiagnosticsPath resolves to an absolute path through
+      [System.IO.Path]::GetFullPath (so 'sink\..\outside\file' cannot
+      bypass the sink boundary via raw prefix matching).
+    - DiagnosticsPath is NOT a Windows drive-relative form such as
+      'C:file' (where IsPathRooted returns true but there is no
+      separator between the drive and the rest).
+    - DiagnosticsPath is strictly nested under the resolved SinkRoot
+      using an Ordinal string-prefix compare with a trailing
+      directory separator on the sink side.
+    - Every directory segment from the resolved SinkRoot (inclusive)
+      down to DiagnosticsPath's parent (inclusive) is a real directory
+      (FileAttributes.ReparsePoint bit is unset). This closes the
+      'junctions or symlinks inside the trusted tree redirect the
+      write' gap that a single Test-Path + GetAttributes(parentDir)
+      pair misses.
     - If the file already exists and contains an integrity_footer
       line, the function refuses with
       'a3_diagnostics_footer_already_present' to prevent silent
@@ -264,23 +429,20 @@ function Persist-A3PerCommandEvidence {
         [string]$SinkRoot
     )
 
-    if (-not [System.IO.Path]::IsPathRooted($DiagnosticsPath)) {
-        throw 'a3_diagnostics_path_not_absolute'
-    }
+    $resolvedDiag = Resolve-A3DiagnosticsPath -Path $DiagnosticsPath -PathRole 'diagnostics'
 
     if ($SinkRoot) {
-        if (-not [System.IO.Path]::IsPathRooted($SinkRoot)) {
-            throw 'a3_diagnostics_sink_root_not_absolute'
-        }
+        $resolvedSink = Resolve-A3DiagnosticsPath -Path $SinkRoot -PathRole 'sink_root'
         $sep = [System.IO.Path]::DirectorySeparatorChar
-        $normalizedSink = $SinkRoot.TrimEnd($sep) + $sep
-        $normalizedDiag = $DiagnosticsPath.Replace([System.IO.Path]::AltDirectorySeparatorChar, $sep)
-        if (-not $normalizedDiag.StartsWith($normalizedSink, [System.StringComparison]::Ordinal)) {
+        $normalizedSink = $resolvedSink.TrimEnd($sep) + $sep
+        $normalizedDiag = $resolvedDiag.Replace([System.IO.Path]::AltDirectorySeparatorChar, $sep)
+        if (-not $normalizedDiag.StartsWith($normalizedSink, $script:A3PathCompare)) {
             throw 'a3_diagnostics_sink_root_violation'
         }
+        Test-A3AncestorChainNoReparse -RootAbs $resolvedSink -TargetParent (Split-Path -Parent $resolvedDiag)
     }
 
-    $parentDir = Split-Path -Parent $DiagnosticsPath
+    $parentDir = Split-Path -Parent $resolvedDiag
     if (-not (Test-Path -LiteralPath $parentDir -PathType Container)) {
         throw 'a3_diagnostics_parent_missing'
     }
@@ -292,8 +454,8 @@ function Persist-A3PerCommandEvidence {
     # Refuse to pollute an already-finalized receipt. If the file exists
     # AND its last non-empty line is an integrity_footer, the previous
     # replay already closed this sink.
-    if (Test-Path -LiteralPath $DiagnosticsPath) {
-        $existingRaw = Get-Content -LiteralPath $DiagnosticsPath -Encoding UTF8
+        if (Test-Path -LiteralPath $resolvedDiag) {
+            $existingRaw = Get-Content -LiteralPath $resolvedDiag -Encoding UTF8
         foreach ($existing in $existingRaw) {
             if ([string]::IsNullOrWhiteSpace($existing)) { continue }
             try {
@@ -334,49 +496,46 @@ function Persist-A3PerCommandEvidence {
     $json = ConvertTo-Json -Depth 6 -Compress -InputObject $line
         $jsonBytes = [Text.Encoding]::UTF8.GetBytes(($json + "`n"))
 
-        Write-A3FsyncedAppend -Path $DiagnosticsPath -Bytes $jsonBytes
+    Write-A3FsyncedAppend -Path $resolvedDiag -Bytes $jsonBytes
 
         return $line
     }
 
-<#
-.SYNOPSIS
-  Finalize a diagnostics file by appending the integrity footer and
-  returning the run-level summary.
-#>
-function New-A3DiagnosticsRunSummary {
-    param(
-        [Parameter(Mandatory)][string]$DiagnosticsPath,
-        [Parameter(Mandatory)][string]$RunLabel,
-        [string]$SinkRoot
-    )
+    <#
+    .SYNOPSIS
+      Finalize a diagnostics file by appending the integrity footer and
+      returning the run-level summary.
+    #>
+    function New-A3DiagnosticsRunSummary {
+        param(
+            [Parameter(Mandatory)][string]$DiagnosticsPath,
+            [Parameter(Mandatory)][string]$RunLabel,
+            [string]$SinkRoot
+        )
 
-    if (-not [System.IO.Path]::IsPathRooted($DiagnosticsPath)) {
-        throw 'a3_diagnostics_path_not_absolute'
-    }
-    if ($SinkRoot) {
-        if (-not [System.IO.Path]::IsPathRooted($SinkRoot)) {
-            throw 'a3_diagnostics_sink_root_not_absolute'
+        $resolvedDiag = Resolve-A3DiagnosticsPath -Path $DiagnosticsPath -PathRole 'diagnostics'
+        if ($SinkRoot) {
+            $resolvedSink = Resolve-A3DiagnosticsPath -Path $SinkRoot -PathRole 'sink_root'
+            $sep = [System.IO.Path]::DirectorySeparatorChar
+            $normalizedSink = $resolvedSink.TrimEnd($sep) + $sep
+            $normalizedDiag = $resolvedDiag.Replace([System.IO.Path]::AltDirectorySeparatorChar, $sep)
+            if (-not $normalizedDiag.StartsWith($normalizedSink, $script:A3PathCompare)) {
+                throw 'a3_diagnostics_sink_root_violation'
+            }
+            Test-A3AncestorChainNoReparse -RootAbs $resolvedSink -TargetParent (Split-Path -Parent $resolvedDiag)
         }
-        $sep = [System.IO.Path]::DirectorySeparatorChar
-        $normalizedSink = $SinkRoot.TrimEnd($sep) + $sep
-        $normalizedDiag = $DiagnosticsPath.Replace([System.IO.Path]::AltDirectorySeparatorChar, $sep)
-        if (-not $normalizedDiag.StartsWith($normalizedSink, [System.StringComparison]::Ordinal)) {
-            throw 'a3_diagnostics_sink_root_violation'
+        $parentDir = Split-Path -Parent $resolvedDiag
+        if (-not (Test-Path -LiteralPath $parentDir -PathType Container)) {
+            throw 'a3_diagnostics_parent_missing'
         }
-    }
-    $parentDir = Split-Path -Parent $DiagnosticsPath
-    if (-not (Test-Path -LiteralPath $parentDir -PathType Container)) {
-        throw 'a3_diagnostics_parent_missing'
-    }
-    $parentAttrs = [System.IO.File]::GetAttributes($parentDir)
-    if (($parentAttrs -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw 'a3_diagnostics_parent_is_symlink'
-    }
+        $parentAttrs = [System.IO.File]::GetAttributes($parentDir)
+        if (($parentAttrs -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'a3_diagnostics_parent_is_symlink'
+        }
 
-    if (-not (Test-Path -LiteralPath $DiagnosticsPath)) {
-        throw 'a3_diagnostics_file_missing'
-    }
+        if (-not (Test-Path -LiteralPath $resolvedDiag)) {
+            throw 'a3_diagnostics_file_missing'
+        }
 
         # First pass: strict JSON parse every line. Any line that does not parse
         # as a complete JSON object is treated as a partial/garbled write and
@@ -384,7 +543,7 @@ function New-A3DiagnosticsRunSummary {
         # previous implementation used a permissive regex match that silently
         # skipped malformed lines; that let a partial-write footer pass even
         # though the operator's evidence was incomplete.
-        $rawLines = Get-Content -LiteralPath $DiagnosticsPath -Encoding UTF8
+                $rawLines = Get-Content -LiteralPath $resolvedDiag -Encoding UTF8
         $parsedLines = @()
         $footerParsed = $null
         foreach ($line in $rawLines) {
@@ -431,7 +590,7 @@ function New-A3DiagnosticsRunSummary {
         $footerJson = ConvertTo-Json -Depth 6 -Compress -InputObject $footer
         $footerBytes = [Text.Encoding]::UTF8.GetBytes(($footerJson + "`n"))
 
-        Write-A3FsyncedAppend -Path $DiagnosticsPath -Bytes $footerBytes
+                Write-A3FsyncedAppend -Path $resolvedDiag -Bytes $footerBytes
 
         # Disk readback: re-open the file and re-parse every line. The
         # recomputed aggregate must match the footer.jsonl_sha256 byte for
@@ -439,7 +598,7 @@ function New-A3DiagnosticsRunSummary {
         # in-memory aggregation saw (truncated write, racing writer, etc.).
         # This is the only integrity check that proves the bytes the operator
         # will read back later actually correspond to the hash we claim.
-        $verifyRawLines = Get-Content -LiteralPath $DiagnosticsPath -Encoding UTF8
+                $verifyRawLines = Get-Content -LiteralPath $resolvedDiag -Encoding UTF8
         $verifyParsed = @()
         foreach ($line in $verifyRawLines) {
             if ([string]::IsNullOrWhiteSpace($line)) { continue }
@@ -470,7 +629,7 @@ function New-A3DiagnosticsRunSummary {
         $integrityVerified = ($verifyAggregateSha -eq $aggregateSha)
 
         return [pscustomobject]@{
-            diagnostics_path   = $DiagnosticsPath
+                    diagnostics_path   = $resolvedDiag
             run_label          = $RunLabel
             command_count      = $commandLines.Count
             jsonl_sha256       = $verifyAggregateSha
