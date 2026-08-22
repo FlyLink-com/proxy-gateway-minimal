@@ -200,6 +200,15 @@ describe('Read-A3RunRc — marker parsing', describeOpts(), () => {
     assert.match(out, /^__THROW__:remote_run_marker_invalid$/);
   });
 
+  it('rejects a lowercase marker instead of treating it as authoritative', () => {
+    const out = runScriptWithB64Raw(
+      'input',
+      'a3_run_rc=0',
+      `Read-A3RunRc -Output $__b64_input`
+    );
+    assert.match(out, /^__THROW__:remote_run_marker_count_invalid$/);
+  });
+
   it('fails closed on exit code > 255', () => {
     const out = runScriptWithB64Raw(
       'input',
@@ -233,6 +242,27 @@ describe('Read-A3RunRc — marker parsing', describeOpts(), () => {
 });
 
 describe('Invoke-A3RemoteRunSummary — evidence-before-cleanup', describeOpts(), () => {
+  it('returns a fail-closed evidence summary for null remote output', () => {
+    const summary = runScriptWithB64(
+      'output',
+      '',
+      `$__d = [pscustomobject]@{Present=$true; Sha256='null-output'; Size=0}; ` +
+      `$__r = [pscustomobject]@{Output=$null}; ` +
+      `$result = Invoke-A3RemoteRunSummary -RemoteRun $__r -Diagnostics $__d; ` +
+      `ConvertTo-Json -Depth 5 -Compress -InputObject $result`
+    );
+    assert.equal(summary.validation_condition, 'remote_run_marker_count_invalid');
+    assert.equal(summary.quota_validation_exit, null);
+    assert.equal(summary.marker_count, 0);
+    assert.equal(summary.remote_output_size, 0);
+    assert.equal(
+      summary.remote_output_sha256,
+      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    );
+    assert.equal(summary.diagnostics_present, true);
+    assert.equal(summary.diagnostics_sha256, 'null-output');
+  });
+
   it('fails closed on empty string input without dropping evidence fields', () => {
     const summary = runScriptWithB64(
       'output',
