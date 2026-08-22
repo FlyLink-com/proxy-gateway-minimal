@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2026-08-09.1",
-  "lastUpdated": "2026-08-09",
+  "schemaVersion": "2026-08-22.1",
+  "lastUpdated": "2026-08-22",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-current-queue",
   "purpose": "Current Phase 2 queue and recently completed gates needed for safe Agent continuation. Older completed work remains traceable in Git history and indexed records.",
@@ -21,19 +21,19 @@
     "docs/OPERATIONS_PLANE_SOURCE_REALITY.md"
   ],
   "historicalBoundary": {
-    "sourceSnapshotAtReconciliation": "02fc63a3f949b748dcccf26ba7d310be82f4b6df",
-    "productionRuntimeEvidenceCutoff": "2026-07-20T06:21:00Z",
+    "sourceSnapshotAtReconciliation": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b",
+    "productionRuntimeEvidenceCutoff": "2026-08-14T16:19:18Z",
     "requiresLiveVerification": true,
     "rule": "Use Git history and docs/archive indexes for completed or superseded tasks; do not re-add them to the current queue without a new Issue and fresh evidence."
   },
   "sourceReceipts": {
-    "inventoryDate": "2026-08-09",
-    "master": "02fc63a3f949b748dcccf26ba7d310be82f4b6df",
-    "remoteBranchCount": 70,
-    "openPrCount": 3,
-    "openDraftPrCount": 3,
+    "inventoryDate": "2026-08-22",
+    "master": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b",
+    "remoteBranchCount": 109,
+    "openPrCount": 0,
+    "openDraftPrCount": 0,
     "openNonDraftPrCount": 0,
-    "openIssueCount": 15,
+    "openIssueCount": 18,
     "openIssues": [
       437,
       438,
@@ -49,7 +49,10 @@
       558,
       559,
       560,
-      561
+      597,
+      598,
+      632,
+      636
     ],
     "merged": [
       {
@@ -261,44 +264,46 @@
         "lane": "code-boundary",
         "receipt": "fail-closed malformed forwarded-chain handling, stable server test concurrency, and exact-master artifact proof",
         "productionState": "not_deployed",
-        "artifactEvidence": "Release Artifact run 31267179669 success; three artifacts temporary through 2026-08-22"
-      }
-    ],
-    "openDrafts": [
-      {
-        "pr": 592,
-        "lane": "commercial-foundation",
-        "branch": "codex/authority-commerce-operators",
-        "head": "35a46387024c331f9bbf6454d70b8bf0531335e7",
-        "mergeState": "not_refreshed_at_inventory",
-        "sourceState": "source_only_operator_entrypoints",
-        "productionState": "not_deployed",
-        "identityImpact": false,
-        "authority": "none_for_production"
+        "artifactEvidence": "Historical Release Artifact run 31267179669 success; its temporary artifacts are superseded as current source evidence"
       },
       {
-        "pr": 593,
-        "lane": "version-management",
-        "branch": "docs/github-control-plane-deploy-design",
-        "head": "bc7b1d26cd4db66cbfe3fbd86e5255169e068974",
-        "mergeState": "not_refreshed_at_inventory",
-        "sourceState": "spec_and_plan_only",
-        "productionState": "not_deployed",
-        "identityImpact": false,
-        "authority": "none_for_deployment"
+        "pr": 646,
+        "sourceCommit": "10b98227e8c7aca667422bb5edad875cac2e7984",
+        "lane": "dependency-materialization",
+        "receipt": "A3 materializer safety boundary contracts",
+        "productionState": "not_deployed"
       },
       {
-        "pr": 594,
-        "lane": "version-management",
-        "branch": "codex/github-control-plane-production-deploy",
-        "head": "a3f2817d696ee9bb66f1e849e0b35e77105fde8e",
-        "mergeState": "not_refreshed_at_inventory",
-        "sourceState": "source_only_deployment_foundation_inventory",
+        "pr": 649,
+        "sourceCommit": "93ed26dda3e504ab9dc7381792a6f05f2a1959a6",
+        "lane": "dependency-materialization",
+        "receipt": "A3 physical quota and service-smoke collector implementation with production guards retained",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 652,
+        "sourceCommit": "c2d07739c714284cf32615b2aa028c7c6a7f47b6",
+        "lane": "dependency-materialization",
+        "receipt": "A3 physical diagnostics retention and integrity hardening",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 653,
+        "sourceCommit": "acf593720128a81cbe779063445395cb460f18f3",
+        "lane": "dependency-materialization",
+        "receipt": "A3 quota exhaustion proof contract before cleanup",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 654,
+        "sourceCommit": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b",
+        "lane": "dependency-materialization",
+        "receipt": "exact-head physical XFS project-quota proof and canonical project-check output alignment",
         "productionState": "not_deployed",
-        "identityImpact": false,
-        "authority": "none_for_production"
+        "artifactEvidence": "Release Artifact run 32579764918 and Dependency Artifact run 32579764926 succeeded; artifacts temporary through 2026-09-05"
       }
     ],
+    "openDrafts": [],
     "openNonDraftPrs": []
   },
   "issue437Reconciliation": {
@@ -308,30 +313,32 @@
     "reason": "PR #479 merged source-only, but Issue #437 remains open and no production or runtime completion is inferred."
   },
   "ciGovernance": {
-    "inventoryDate": "2026-08-09",
-    "master": "02fc63a3f949b748dcccf26ba7d310be82f4b6df",
-    "releaseArtifact": "31267179669 success for exact master; three artifacts temporary through 2026-08-22",
-    "ci": "not_refreshed_for_exact_master",
-    "codeql": "not_refreshed_for_exact_master",
+    "inventoryDate": "2026-08-22",
+    "master": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b",
+    "releaseArtifact": "32579764918 success for exact master; three artifacts temporary through 2026-09-05",
+    "dependencyArtifact": "32579764926 success for exact master; artifact 9477480212 temporary through 2026-09-05",
+    "ci": "32579764917 success for exact master",
+    "codeql": "32579764749 success for exact master",
     "cloudflareWorkflow": "not_refreshed_for_exact_master",
     "ruleset": "not_refreshed",
     "environments": "not_refreshed",
     "requiresLiveVerification": true
   },
   "sourceSecurity": {
-    "codeScanning": "not_refreshed",
-    "dependabot": "not_refreshed",
-    "secretScanning": "not_refreshed",
-    "codeQuality": "not_refreshed",
-    "recentRemediation": "PR #589 merged fixes for 11 Code Quality instances and three known ip-address advisories; current alert counts remain unclaimed.",
+    "codeScanning": "unavailable_code_security_not_enabled",
+    "dependabot": "0_open_alerts",
+    "secretScanning": "disabled",
+    "codeQuality": "exact-master CodeQL workflow success; alert inventory not claimed",
+    "workflowActionPins": "13 full-SHA pinned of 40 uses; 27 mutable-tag uses remain",
+    "recentRemediation": "PR #589 remains historical remediation evidence; current API/settings observations are recorded separately.",
     "requiresLiveVerification": true,
     "boundary": "Source remediation and successful workflows do not establish current default-branch alert counts or required security gates."
   },
   "nextActionQueue": [
-    "Complete active #561 source-language reconciliation before selecting the remaining #558-#560 Operations Plane gaps.",
-    "Review Draft #592 against current master while keeping schema apply, Authority assignment, artifact publication, deployment, runtime activation, and Commerce canaries outside its source-only authority.",
-    "Review Drafts #593 and #594 as design/foundation work only; neither is implemented production deployment authority.",
-    "Establish durable artifact and rollback identity before run 31267179669 artifacts expire on 2026-08-22.",
+    "Complete Issue #636 service-native smoke physical proof before any production materializer guard lift.",
+    "After A3-1 closes, run A3-2 production read-only inventory and dry-run under a separate exact Risk A gate.",
+    "Close Issue #597's durable artifact/rollback identity gap before exact-master artifacts expire on 2026-09-05.",
+    "Address Issue #598 through focused Action pinning, SBOM, provenance, and signing slices.",
     "Refresh GitHub rulesets, required checks, environments, alert counts, provider state, deployments, and production runtime evidence before relying on them."
   ],
   "tasks": [
@@ -587,6 +594,83 @@
       ]
     },
     {
+      "id": "A-a3-dependency-materialization-boundary",
+      "risk": "A",
+      "status": "blocked-pending-service-smoke-gate",
+      "lane": "dependency-materialization",
+      "title": "Complete A3 physical evidence before production materializer guard lift",
+      "goal": "Continue Issue #636 from exact-master XFS quota proof through service-native smoke, then keep production inventory, guard lift, materialization, promotion, and closeout as separately reviewable gates.",
+      "allowedFiles": [
+        "docs/A3_1_MATERIALIZER_PHYSICAL_EXECUTION_SPEC.md",
+        "scripts/control-plane-candidate-dependency-gate.mjs",
+        "scripts/control-plane-materializer-a3-physical-validation*.mjs",
+        "server/tests/control-plane-materializer-a3-*.test.mjs",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "treat quota-only physical proof as service-native smoke or production proof",
+        "lift worker_storage_limit_unavailable before exact physical evidence and a reviewed source change",
+        "run host-side npm ci",
+        "activate schemas, features, providers, or customer-facing runtime through the dependency lane"
+      ],
+      "validation": [
+        "PR #654 exact-head quota evidence remains linked and reproducible",
+        "service-native smoke runs under the fixed non-root principal and exact sandbox/readback contract",
+        "production requireRoot entrypoints remain fail-closed until a later reviewed guard-lift decision",
+        "npm test and git diff --check for any source change"
+      ]
+    },
+    {
+      "id": "C-release-maturity-evidence-loop",
+      "risk": "C",
+      "status": "active-issue-597",
+      "lane": "version-management",
+      "title": "Close the source-to-runtime evidence loop",
+      "goal": "Coordinate Issue #597 so exact source, durable artifact, deployment receipt, live runtime readback, and rollback identity can be compared without treating temporary Actions artifacts as a ready release.",
+      "allowedFiles": [
+        "RELEASE_MANIFEST.md",
+        "docs/CURRENT_RELEASE_STATE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "publish or promote a release without separate authority",
+        "infer runtime state from source, CI, or temporary artifact evidence",
+        "access provider or production credentials from a coordination task"
+      ],
+      "validation": [
+        "exact source and artifact identity are recorded",
+        "durable retrieval and rollback-window retention are proven before release readiness",
+        "deployment and runtime remain independently evidenced"
+      ]
+    },
+    {
+      "id": "B-supply-chain-closure",
+      "risk": "B",
+      "status": "active-issue-598",
+      "lane": "version-management",
+      "title": "Add full-SHA Action pinning, SBOM, provenance, and signing closure",
+      "goal": "Implement Issue #598 in focused slices while keeping current unsupported publication paths fail-closed.",
+      "allowedFiles": [
+        ".github/workflows/*.yml",
+        "scripts/",
+        "server/tests/",
+        "RELEASE_MANIFEST.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "enable an unreviewed signing or publication topology",
+        "treat a diagnostic attestation contract as deployed signing",
+        "change production or provider state"
+      ],
+      "validation": [
+        "replace the 27 mutable-tag Action uses with reviewed full SHAs",
+        "emit and verify an SBOM for each release unit",
+        "prove reviewed provenance/signing identity and failure semantics",
+        "run focused workflow tests, npm test, and git diff --check"
+      ]
+    },
+    {
       "id": "B-phase2-portal-lifecycle-contract",
       "risk": "B",
       "status": "active-source-foundation-issue-438",
@@ -671,10 +755,10 @@
     {
       "id": "C-operations-plane-source-reality",
       "risk": "C",
-      "status": "active-docs-reconciliation",
+      "status": "completed-in-issue-561",
       "lane": "operations-foundation",
       "title": "Reconcile Operations Plane planning with current source reality",
-      "goal": "Use active Issue #561 to classify existing Admin, Operations, traffic, Wallet/Ledger, Payment/Recharge, Coins Commerce, Account Resource Authority, metric, RBAC, and audit capabilities before selecting the remaining implementation gaps under #557-#560.",
+      "goal": "Retain the completed Issue #561 source-reality classification so remaining implementation gaps stay owned by #558-#560 without rebuilding existing capabilities.",
       "allowedFiles": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -697,7 +781,7 @@
         "change Admin, traffic, Wallet, Payment, Commerce, Account Resource Authority, or runtime behavior",
         "claim source as deployment or current-live evidence",
         "initialize schema or access provider credentials",
-        "close #437, #438, #439, #524, or #557-#561 from documentation alignment"
+        "close #437, #438, #439, #524, or #557-#560 from documentation alignment"
       ],
       "validation": [
         "every implemented claim names source and focused tests",
