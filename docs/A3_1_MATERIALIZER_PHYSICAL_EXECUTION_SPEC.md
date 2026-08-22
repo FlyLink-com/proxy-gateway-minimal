@@ -138,7 +138,7 @@ splitting strategy.
 | # | Item | Contract reference | Touches production? |
 |---|---|---|---|
 | 1 | Trusted XFS project-quota physical probe | `parseStorageQuotaEvidence` | No (probe runs in a disposable sandbox on the approved non-production validation host) |
-| 2 | Real EDQUOT overload probe (exhaustion → EDQUOT, headroom → 0) | `parseStorageQuotaEvidence.probe` | No |
+| 2 | Real XFS project-quota overload probe (exhaustion → ENOSPC, quota readback → hard limits) | `parseStorageQuotaEvidence.probe` | No |
 | 3 | systemd-restricted native-smoke worker (validated service UID/GID transient unit) | `parseServiceSmokeReadback` | No |
 | 4 | Precise terminal / cgroup-empty readback | `parseServiceSmokeReadback.terminalActiveState / terminalSubState / cgroupEmpty` | No |
 | 5 | Wire physical evidence into `materialize` main flow | `materializeCandidateDependencies` boundary | Yes (gates production path) |
@@ -288,6 +288,9 @@ execution phase that produces the readback. Dry-run must pass before real-run.
   creating the run directory, image, loop device, filesystem, or mount.
 - Plan the real-run physical preflight that, only after the approved sandbox is
   mounted, requires project accounting/enforcement on the exact `<probe-root>`.
+- Set up the project tree with `project -s`, then require `project -c` to return
+  its two canonical summary lines on stdout and no stderr diagnostics. A zero
+  exit status alone does not prove project ID and inheritance consistency.
 - Pick a candidate `projectId` (e.g. `4242`).
 - Plan a write that would exceed quota. Do not execute.
 - Confirm probe code path will collect: `filesystem`, `projectId`,
@@ -296,14 +299,18 @@ execution phase that produces the readback. Dry-run must pass before real-run.
 - Pre-print the expected JSON shape using the contract's `quotaEvidence()`
   fixture from `server/tests/control-plane-materializer-a3-safety.test.mjs`.
 
-### 6.2 Item 2 — Real EDQUOT overload probe (dry-run)
+### 6.2 Item 2 — Real XFS project-quota overload probe (dry-run)
 
 - Plan a sequence:
   1. Set a deliberately small project quota (default `1MiB` bytes / `64`
      inodes) on the disposable probe project.
   2. Allocate only enough bounded test data/inodes to approach that limit.
   3. Attempt a final write that crosses the limit.
-  4. Capture `errno = EDQUOT`, `headroomBytes = 0`, `headroomInodes = 0`.
+  4. Capture `errno = ENOSPC` for both inode and byte exhaustion, then read the
+     live XFS project report while the probe files still exist and require both
+     current values to equal their hard limits (`headroomBytes = 0`,
+     `headroomInodes = 0`). `ENOSPC` without that quota readback is only a
+     possible filesystem-full condition and must fail closed.
 - Do not execute until items 6.1 dry-run passes.
 
 ### 6.3 Item 3 — fixed service-principal transient unit (dry-run)
@@ -366,7 +373,7 @@ execution phase that produces the readback. Dry-run must pass before real-run.
 
 ### 6.7 Receipt schema policy (version bump, not additive-only)
 
-Quotas, project IDs, EDQUOT probes, and sandbox terminal/cgroup evidence
+Quotas, project IDs, XFS project-quota exhaustion probes, and sandbox terminal/cgroup evidence
 carry mandatory new safety semantics. An additive-only schema change would
 let older receipts appear compatible and risk silent acceptance of unsafe
 receipts. The A3-1 implementation PR **must** bump the receipt schema

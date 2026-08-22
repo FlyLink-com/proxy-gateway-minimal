@@ -46,8 +46,8 @@ function quotaEvidence(overrides = {}) {
     headroomBytes: 8 * 1024 * 1024 * 1024 - 4096,
     headroomInodes: 65536 - 12,
     probe: Object.freeze({
-      expectedErrorCode: "EDQUOT",
-      observedErrorCode: "EDQUOT",
+      expectedErrorCode: "ENOSPC",
+      observedErrorCode: "ENOSPC",
       exhausted: true
     }),
     ...overrides
@@ -81,35 +81,30 @@ test("parseStorageQuotaEvidence accepts the exact A3 boundary shape", () => {
   assert.equal(parsed.projectId, 4242);
   assert.equal(parsed.headroomBytes, 8 * 1024 * 1024 * 1024 - 4096);
   assert.equal(parsed.headroomInodes, 65536 - 12);
-  assert.deepEqual(parsed.probe, { expectedErrorCode: "EDQUOT", observedErrorCode: "EDQUOT", exhausted: true });
+  assert.deepEqual(parsed.probe, { expectedErrorCode: "ENOSPC", observedErrorCode: "ENOSPC", exhausted: true });
 });
 
-// Pinned contract: parseStorageQuotaEvidence rejects probes whose declared
-// expected error is not EDQUOT, and rejects non-exhausted probes. Note that
-// the current parser does NOT cross-check observedErrorCode against "EDQUOT";
-// tightening that into a hard assertion is deferred until A3-1 produces real
-// Linux probe evidence (see issue #636).
-test("parseStorageQuotaEvidence rejects probes whose declared expected code is not EDQUOT", () => {
+test("parseStorageQuotaEvidence rejects probes whose declared expected code is not ENOSPC", () => {
   assert.throws(
-    () => parseStorageQuotaEvidence(quotaEvidence({ probe: { expectedErrorCode: "ENOSPC", observedErrorCode: "ENOSPC", exhausted: true } })),
+    () => parseStorageQuotaEvidence(quotaEvidence({ probe: { expectedErrorCode: "EDQUOT", observedErrorCode: "EDQUOT", exhausted: true } })),
     condition("storage_quota_evidence_invalid")
   );
 });
 
-test("parseStorageQuotaEvidence rejects a non-EDQUOT observed result", () => {
+test("parseStorageQuotaEvidence rejects a non-ENOSPC observed result", () => {
   assert.throws(
-    () => parseStorageQuotaEvidence(quotaEvidence({ probe: { expectedErrorCode: "EDQUOT", observedErrorCode: "ENOSPC", exhausted: true } })),
+    () => parseStorageQuotaEvidence(quotaEvidence({ probe: { expectedErrorCode: "ENOSPC", observedErrorCode: "EDQUOT", exhausted: true } })),
     condition("storage_quota_evidence_invalid")
   );
 });
 
 test("parseStorageQuotaEvidence rejects non-exhausted probes and missing probe metadata", () => {
   assert.throws(
-    () => parseStorageQuotaEvidence(quotaEvidence({ probe: { expectedErrorCode: "EDQUOT", observedErrorCode: "EDQUOT", exhausted: false } })),
+    () => parseStorageQuotaEvidence(quotaEvidence({ probe: { expectedErrorCode: "ENOSPC", observedErrorCode: "ENOSPC", exhausted: false } })),
     condition("storage_quota_evidence_invalid")
   );
   assert.throws(
-    () => parseStorageQuotaEvidence(quotaEvidence({ probe: { expectedErrorCode: "EDQUOT", observedErrorCode: "EDQUOT" } })),
+    () => parseStorageQuotaEvidence(quotaEvidence({ probe: { expectedErrorCode: "ENOSPC", observedErrorCode: "ENOSPC" } })),
     condition("storage_quota_evidence_invalid")
   );
 });
@@ -216,7 +211,7 @@ function projectCheckOutput(runLabel = "run-1", projectId = 4242, diagnostics = 
   ].join("\n");
 }
 
-test("collectStorageQuotaEvidence binds XFS project quota state and an observed EDQUOT probe", () => {
+test("collectStorageQuotaEvidence binds XFS project quota state and an observed ENOSPC probe", () => {
   const calls = [];
   let blockReportCount = 0;
   let inodeReportCount = 0;
@@ -243,9 +238,9 @@ test("collectStorageQuotaEvidence binds XFS project quota state and an observed 
   let writeAttempts = 0;
   const probeFilesystem = {
     openSync(path) {
-      if (path.endsWith(".a3-edquot-probe-overflow")) {
+      if (path.endsWith(".a3-project-quota-probe-overflow")) {
         overflowAttempts += 1;
-        throw Object.assign(new Error("inode quota exhausted"), { code: "EDQUOT" });
+        throw Object.assign(new Error("inode quota exhausted"), { code: "ENOSPC" });
       }
       if (!created.has(path)) {
         created.add(path);
@@ -256,7 +251,7 @@ test("collectStorageQuotaEvidence binds XFS project quota state and an observed 
     closeSync() {},
     writeSync() {
       writeAttempts += 1;
-      throw Object.assign(new Error("byte quota exhausted"), { code: "EDQUOT" });
+      throw Object.assign(new Error("byte quota exhausted"), { code: "ENOSPC" });
     },
     unlinkSync(path) {
       if (!created.delete(path)) throw new Error("unexpected probe cleanup path");
@@ -314,7 +309,28 @@ test("collectStorageQuotaEvidence rejects project-check diagnostics and malforme
   }
 });
 
-test("collectStorageQuotaEvidence rejects EDQUOT claims without an at-exhaustion quota readback", () => {
+test("collectStorageQuotaEvidence rejects project-check stderr even with canonical stdout", () => {
+  const calls = [];
+  const execute = (command, args) => {
+    calls.push([command, args]);
+    if (command === "/usr/bin/findmnt") {
+      return { status: 0, stdout: '{"filesystems":[{"target":"/var/lib/control-plane-a3-1/run-1/probe","source":"/dev/loop7","fstype":"xfs","options":"rw,prjquota"}]}\n', stderr: "" };
+    }
+    if (command === "/usr/sbin/xfs_io") return { status: 0, stdout: "projid = 4242\n", stderr: "" };
+    if (args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")) {
+      return { status: 0, stdout: projectCheckOutput(), stderr: "unexpected project-check warning\n" };
+    }
+    return { status: 70, stdout: "", stderr: "unexpected command" };
+  };
+  assert.throws(() => collectStorageQuotaEvidence({
+    runLabel: "run-1",
+    projectId: 4242,
+    runtime: physicalRuntime({ executePhysicalCommand: execute })
+  }), condition("storage_quota_evidence_invalid"));
+  assert.equal(calls.length, 3);
+});
+
+test("collectStorageQuotaEvidence rejects ENOSPC claims without an at-exhaustion quota readback", () => {
   const execute = (command, args) => ({
     status: 0,
     stdout: command.endsWith("findmnt")
@@ -335,12 +351,12 @@ test("collectStorageQuotaEvidence rejects EDQUOT claims without an at-exhaustion
     projectId: 4242,
     runtime: physicalRuntime({
       executePhysicalCommand: execute,
-      runEdquotProbe: () => ({ expectedErrorCode: "EDQUOT", observedErrorCode: "EDQUOT", exhausted: true })
+      runQuotaExhaustionProbe: () => ({ expectedErrorCode: "ENOSPC", observedErrorCode: "ENOSPC", exhausted: true })
     })
   }), condition("storage_quota_evidence_invalid"));
 });
 
-test("collectStorageQuotaEvidence cleans every probe file when the exhausted quota readback fails", () => {
+test("collectStorageQuotaEvidence rejects plain filesystem ENOSPC when project quota is not exhausted", () => {
   const execute = (command, args) => ({
     status: 0,
     stdout: command.endsWith("findmnt")
@@ -360,12 +376,12 @@ test("collectStorageQuotaEvidence cleans every probe file when the exhausted quo
   let nextDescriptor = 10;
   const probeFilesystem = {
     openSync(path) {
-      if (path.endsWith(".a3-edquot-probe-overflow")) throw Object.assign(new Error("inode quota exhausted"), { code: "EDQUOT" });
+      if (path.endsWith(".a3-project-quota-probe-overflow")) throw Object.assign(new Error("inode quota exhausted"), { code: "ENOSPC" });
       created.add(path);
       return nextDescriptor++;
     },
     closeSync() {},
-    writeSync() { throw Object.assign(new Error("byte quota exhausted"), { code: "EDQUOT" }); },
+    writeSync() { throw Object.assign(new Error("byte quota exhausted"), { code: "ENOSPC" }); },
     unlinkSync(path) {
       if (!created.delete(path)) throw new Error("unexpected probe cleanup path");
     }
@@ -398,11 +414,11 @@ test("collectStorageQuotaEvidence preserves attention-required when probe cleanu
   });
   const probeFilesystem = {
     openSync(path) {
-      if (path.endsWith(".a3-edquot-probe-overflow")) throw Object.assign(new Error("inode quota exhausted"), { code: "EDQUOT" });
+      if (path.endsWith(".a3-project-quota-probe-overflow")) throw Object.assign(new Error("inode quota exhausted"), { code: "ENOSPC" });
       return 10;
     },
     closeSync() {},
-    writeSync() { throw Object.assign(new Error("byte quota exhausted"), { code: "EDQUOT" }); },
+    writeSync() { throw Object.assign(new Error("byte quota exhausted"), { code: "ENOSPC" }); },
     unlinkSync() { throw new Error("cleanup uncertain"); }
   };
   assert.throws(() => collectStorageQuotaEvidence({
@@ -412,7 +428,7 @@ test("collectStorageQuotaEvidence preserves attention-required when probe cleanu
   }), (error) => condition("storage_quota_evidence_invalid")(error) && error.attentionRequired === true);
 });
 
-test("collectStorageQuotaEvidence rejects non-XFS and non-EDQUOT evidence", () => {
+test("collectStorageQuotaEvidence rejects non-XFS and non-project-quota errno evidence", () => {
   const executeFor = (fstype) => (command, args) => ({
     status: 0,
     stdout: command.endsWith("findmnt")
@@ -433,7 +449,7 @@ test("collectStorageQuotaEvidence rejects non-XFS and non-EDQUOT evidence", () =
     projectId: 4242,
     runtime: physicalRuntime({
       executePhysicalCommand: executeFor("ext4"),
-      runEdquotProbe: () => ({ expectedErrorCode: "EDQUOT", observedErrorCode: "ENOSPC", exhausted: true })
+      runQuotaExhaustionProbe: () => ({ expectedErrorCode: "ENOSPC", observedErrorCode: "ENOSPC", exhausted: true })
     })
   }), condition("storage_quota_evidence_invalid"));
   assert.throws(() => collectStorageQuotaEvidence({
@@ -441,7 +457,7 @@ test("collectStorageQuotaEvidence rejects non-XFS and non-EDQUOT evidence", () =
     projectId: 4242,
     runtime: physicalRuntime({
       executePhysicalCommand: executeFor("xfs"),
-      runEdquotProbe: () => ({ expectedErrorCode: "EDQUOT", observedErrorCode: "ENOSPC", exhausted: true })
+      runQuotaExhaustionProbe: () => ({ expectedErrorCode: "ENOSPC", observedErrorCode: "EDQUOT", exhausted: true })
     })
   }), condition("storage_quota_evidence_invalid"));
 });
