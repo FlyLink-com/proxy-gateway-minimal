@@ -44,6 +44,7 @@ const A3_RUN_LABEL = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const A3_SMOKE_PHASES = new Set(["validation", "prepublish", "postpublish", "verify"]);
 const A3_PROBE_BYTE_HARD_LIMIT = 1024 * 1024;
 const A3_PROBE_INODE_HARD_LIMIT = 64;
+const A3_PROBE_WRITE_CHUNK_BYTES = 64 * 1024;
 const WORKER_NPM = "/usr/bin/npm";
 const WORKER_TAR = "/usr/bin/tar";
 const SEALED_TREE_LIMITS = Object.freeze({ maxDepth: 64, maxEntries: 250000, maxHashBytes: 2 * 1024 * 1024 * 1024 });
@@ -436,6 +437,7 @@ const STORAGE_QUOTA_EVIDENCE_KEYS = Object.freeze([
   "headroomBytes", "headroomInodes", "probe"
 ]);
 const STORAGE_QUOTA_PROBE_KEYS = Object.freeze(["expectedErrorCode", "observedErrorCode", "exhausted"]);
+const XFS_PROJECT_QUOTA_ERROR_CODE = "ENOSPC";
 const SERVICE_SMOKE_READBACK_KEYS = Object.freeze([
   "serviceUid", "serviceGid", "fixedNodePath", "noNetwork", "capabilityBoundingSet",
   "protectSystem", "protectHome", "privateDevices", "noNewPrivileges",
@@ -460,8 +462,8 @@ export function parseStorageQuotaEvidence(value) {
   const probeActual = Object.keys(probe).sort();
   const probeWanted = [...STORAGE_QUOTA_PROBE_KEYS].sort();
   if (probeActual.length !== probeWanted.length || !probeActual.every((key, index) => key === probeWanted[index])) fail("storage_quota_evidence_invalid");
-  if (probe.expectedErrorCode !== "EDQUOT") fail("storage_quota_evidence_invalid");
-  if (probe.observedErrorCode !== "EDQUOT") fail("storage_quota_evidence_invalid");
+  if (probe.expectedErrorCode !== XFS_PROJECT_QUOTA_ERROR_CODE) fail("storage_quota_evidence_invalid");
+  if (probe.observedErrorCode !== XFS_PROJECT_QUOTA_ERROR_CODE) fail("storage_quota_evidence_invalid");
   if (probe.exhausted !== true) fail("storage_quota_evidence_invalid");
   return Object.freeze({
     filesystem: value.filesystem,
@@ -528,7 +530,7 @@ function a3PhysicalContext(runLabel, supplied, smokePhase = "validation") {
   return Object.freeze({ tools, probeRoot, projectRoot, deploymentRoot, unit, visibleRoot });
 }
 
-function executeA3Physical(command, args, supplied, condition, attentionRequired = false) {
+function executeA3Physical(command, args, supplied, condition, { attentionRequired = false, requireEmptyStderr = false } = {}) {
   let observer = null;
   try {
     if (!Object.values(A3_PHYSICAL_TOOLS).includes(command) || !Array.isArray(args) || !args.every((value) => typeof value === "string" && !value.includes("\0"))) fail(condition, attentionRequired);
@@ -565,7 +567,8 @@ function executeA3Physical(command, args, supplied, condition, attentionRequired
           }
         }
     if (!result || result.error || result.status !== 0 || typeof result.stdout !== "string" || typeof result.stderr !== "string"
-      || Buffer.byteLength(result.stdout) > 64 * 1024 || Buffer.byteLength(result.stderr) > 64 * 1024) fail(condition, attentionRequired);
+      || Buffer.byteLength(result.stdout) > 64 * 1024 || Buffer.byteLength(result.stderr) > 64 * 1024
+      || requireEmptyStderr && result.stderr !== "") fail(condition, attentionRequired);
     return result.stdout;
   } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail(condition, attentionRequired); }
 }
@@ -592,7 +595,19 @@ function parseXfsQuotaReport(output, projectId, scale) {
   return Object.freeze({ current: current * scale, hard: hard * scale });
 }
 
-function localEdquotProbe(probeRoot, byteHeadroom, inodeHeadroom, observeExhaustedQuota, supplied) {
+function parseXfsProjectCheck(output, probeRoot, projectId) {
+  const lines = output.split(/\r?\n/);
+  if (lines.at(-1) === "") lines.pop();
+  const expected = [
+    `Checking project ${projectId} (path ${probeRoot})...`,
+    `Processed 1 (/etc/projects and cmdline) paths for project ${projectId} with recursion depth infinite (-1).`
+  ];
+  if (lines.length !== expected.length || !lines.every((line, index) => line === expected[index])) {
+    fail("storage_quota_evidence_invalid");
+  }
+}
+
+function localProjectQuotaProbe(probeRoot, byteHeadroom, inodeHeadroom, observeExhaustedQuota, supplied) {
   if (!Number.isSafeInteger(byteHeadroom) || byteHeadroom <= 0 || byteHeadroom > 2 * 1024 * 1024
     || !Number.isSafeInteger(inodeHeadroom) || inodeHeadroom <= 0 || inodeHeadroom > A3_PROBE_INODE_HARD_LIMIT
     || typeof observeExhaustedQuota !== "function") fail("storage_quota_evidence_invalid");
@@ -612,12 +627,12 @@ function localEdquotProbe(probeRoot, byteHeadroom, inodeHeadroom, observeExhaust
   try {
     const createFlags = fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW | fsConstants.O_CLOEXEC;
     for (let index = 0; index < inodeHeadroom; index += 1) {
-      const path = resolve(probeRoot, `.a3-edquot-probe-${index}`);
+      const path = resolve(probeRoot, `.a3-project-quota-probe-${index}`);
       descriptor = io.openSync(path, createFlags, 0o600);
       paths.push(path);
       close();
     }
-    const overflowPath = resolve(probeRoot, ".a3-edquot-probe-overflow");
+    const overflowPath = resolve(probeRoot, ".a3-project-quota-probe-overflow");
     try {
       descriptor = io.openSync(overflowPath, createFlags, 0o600);
       paths.push(overflowPath);
@@ -627,7 +642,7 @@ function localEdquotProbe(probeRoot, byteHeadroom, inodeHeadroom, observeExhaust
       close();
     }
     descriptor = io.openSync(paths[0], fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW | fsConstants.O_CLOEXEC);
-    const chunk = Buffer.alloc(64 * 1024);
+    const chunk = Buffer.alloc(A3_PROBE_WRITE_CHUNK_BYTES);
     let written = 0;
     try {
       while (written <= byteHeadroom + chunk.length) {
@@ -637,7 +652,9 @@ function localEdquotProbe(probeRoot, byteHeadroom, inodeHeadroom, observeExhaust
       }
     } catch (error) { byteErrorCode = error?.code || null; }
     close();
-    if (inodeErrorCode === "EDQUOT" && byteErrorCode === "EDQUOT") observeExhaustedQuota();
+    if (inodeErrorCode === XFS_PROJECT_QUOTA_ERROR_CODE && byteErrorCode === XFS_PROJECT_QUOTA_ERROR_CODE) {
+      observeExhaustedQuota({ attemptedWriteBytes: chunk.length });
+    }
   } catch (error) { primaryError = error; }
   finally {
     close();
@@ -646,9 +663,11 @@ function localEdquotProbe(probeRoot, byteHeadroom, inodeHeadroom, observeExhaust
   if (cleanupFailed) fail("storage_quota_evidence_invalid", true);
   if (primaryError) throw primaryError;
   return {
-    expectedErrorCode: "EDQUOT",
-    observedErrorCode: inodeErrorCode === "EDQUOT" && byteErrorCode === "EDQUOT" ? "EDQUOT" : byteErrorCode || inodeErrorCode,
-    exhausted: inodeErrorCode === "EDQUOT" && byteErrorCode === "EDQUOT"
+    expectedErrorCode: XFS_PROJECT_QUOTA_ERROR_CODE,
+    observedErrorCode: inodeErrorCode === XFS_PROJECT_QUOTA_ERROR_CODE && byteErrorCode === XFS_PROJECT_QUOTA_ERROR_CODE
+      ? XFS_PROJECT_QUOTA_ERROR_CODE
+      : byteErrorCode || inodeErrorCode,
+    exhausted: inodeErrorCode === XFS_PROJECT_QUOTA_ERROR_CODE && byteErrorCode === XFS_PROJECT_QUOTA_ERROR_CODE
   };
 }
 
@@ -659,8 +678,14 @@ export function collectStorageQuotaEvidence({ runLabel, projectId, runtime: supp
   const filesystem = parseFindmntEvidence(findmnt, context.probeRoot);
   const project = executeA3Physical(context.tools.xfsIo, ["-c", "lsproj", context.probeRoot], supplied, "storage_quota_evidence_invalid");
   if (project.trim() !== `projid = ${projectId}`) fail("storage_quota_evidence_invalid");
-  const projectCheck = executeA3Physical(context.tools.xfsQuota, ["-x", "-c", `project -c -p ${context.probeRoot} ${projectId}`, context.probeRoot], supplied, "storage_quota_evidence_invalid");
-  if (projectCheck.trim() !== "") fail("storage_quota_evidence_invalid");
+  const projectCheck = executeA3Physical(
+    context.tools.xfsQuota,
+    ["-x", "-c", `project -c -p ${context.probeRoot} ${projectId}`, context.probeRoot],
+    supplied,
+    "storage_quota_evidence_invalid",
+    { requireEmptyStderr: true }
+  );
+  parseXfsProjectCheck(projectCheck, context.probeRoot, projectId);
   const state = executeA3Physical(context.tools.xfsQuota, ["-x", "-c", "state -p", context.probeRoot], supplied, "storage_quota_evidence_invalid");
   if (!/^\s*Accounting:\s+ON\s*$/m.test(state) || !/^\s*Enforcement:\s+ON\s*$/m.test(state)) fail("storage_quota_evidence_invalid");
   const blockCommand = `report -p -b -n -N -L ${projectId} -U ${projectId}`;
@@ -673,27 +698,34 @@ export function collectStorageQuotaEvidence({ runLabel, projectId, runtime: supp
   if (before.blocks.hard !== A3_PROBE_BYTE_HARD_LIMIT || before.inodes.hard !== A3_PROBE_INODE_HARD_LIMIT
     || before.blocks.current >= before.blocks.hard || before.inodes.current >= before.inodes.hard) fail("storage_quota_evidence_invalid");
   let exhaustedQuota = null;
-  const observeExhaustedQuota = () => {
+  const observeExhaustedQuota = (attempt) => {
     if (exhaustedQuota !== null) fail("storage_quota_evidence_invalid");
+    if (!attempt || typeof attempt !== "object" || Array.isArray(attempt)
+      || Object.keys(attempt).length !== 1 || attempt.attemptedWriteBytes !== A3_PROBE_WRITE_CHUNK_BYTES) {
+      fail("storage_quota_evidence_invalid");
+    }
     const observed = readQuota();
+    const blockHeadroom = observed.blocks.hard - observed.blocks.current;
     if (observed.blocks.hard !== before.blocks.hard || observed.inodes.hard !== before.inodes.hard
-      || observed.blocks.current !== observed.blocks.hard || observed.inodes.current !== observed.inodes.hard) fail("storage_quota_evidence_invalid");
+      || observed.blocks.current <= before.blocks.current || blockHeadroom >= attempt.attemptedWriteBytes
+      || observed.inodes.current !== observed.inodes.hard) fail("storage_quota_evidence_invalid");
     exhaustedQuota = observed;
     return observed;
   };
   let probe;
   try {
-    probe = typeof supplied.runEdquotProbe === "function"
-      ? supplied.runEdquotProbe({
+    probe = typeof supplied.runQuotaExhaustionProbe === "function"
+      ? supplied.runQuotaExhaustionProbe({
           probeRoot: context.probeRoot,
           projectId,
           byteHardLimit: before.blocks.hard,
           inodeHardLimit: before.inodes.hard,
           byteHeadroom: before.blocks.hard - before.blocks.current,
           inodeHeadroom: before.inodes.hard - before.inodes.current,
+          attemptedWriteBytes: A3_PROBE_WRITE_CHUNK_BYTES,
           observeExhaustedQuota
         })
-      : localEdquotProbe(
+      : localProjectQuotaProbe(
           context.probeRoot,
           before.blocks.hard - before.blocks.current,
           before.inodes.hard - before.inodes.current,
@@ -754,7 +786,13 @@ export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "vali
   }
   const smoke = parseServiceSmokeProcessOutput(executeA3Physical(invocation.command, invocation.args, supplied, "service_smoke_readback_invalid"));
   const terminalProperties = ["ActiveState", "SubState", "Result", "ExecMainStatus", "ControlGroup", "User", "Group", "PrivateNetwork", "CapabilityBoundingSet", "ProtectSystem", "ProtectHome", "PrivateDevices", "NoNewPrivileges", "BindReadOnlyPaths"];
-  const terminal = executeA3Physical(context.tools.systemctl, ["show", `${context.unit}.service`, `--property=${terminalProperties.join(",")}`, "--no-page"], supplied, "worker_cleanup_uncertain", true);
+  const terminal = executeA3Physical(
+    context.tools.systemctl,
+    ["show", `${context.unit}.service`, `--property=${terminalProperties.join(",")}`, "--no-page"],
+    supplied,
+    "worker_cleanup_uncertain",
+    { attentionRequired: true }
+  );
   const values = {};
   for (const line of terminal.split(/\r?\n/).filter(Boolean)) {
     const index = line.indexOf("="); const name = index > 0 ? line.slice(0, index) : "";

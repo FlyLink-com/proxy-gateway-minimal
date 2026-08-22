@@ -206,7 +206,7 @@ function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm, root: fi
       inodeCurrent: 12,
       headroomBytes: 8 * 1024 * 1024 - 4096,
       headroomInodes: 65536 - 12,
-      probe: { expectedErrorCode: "EDQUOT", observedErrorCode: "EDQUOT", exhausted: true }
+      probe: { expectedErrorCode: "ENOSPC", observedErrorCode: "ENOSPC", exhausted: true }
     }),
     runServiceNativeSmoke: ({ service, fixedNodePath }) => ({
       serviceUid: service.uid,
