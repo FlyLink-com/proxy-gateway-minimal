@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-08-14, America/Los_Angeles.
+Last updated: 2026-08-22, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,19 +8,19 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-08-14
+  last_verified_at: 2026-08-22
   production_authority: false
 ```
 
 > Status:
 > - Type: Active current-state handoff
 > - Risk: C
-> - Detailed source-capability cutoff:
->   `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
+> - Current source cutoff:
+>   `master@20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`
 > - Latest deployed control-plane source:
 >   `c06f749f245247eea7e94c68f4249a0017e8e884` (2026-08-14)
-> - The detailed source inventory was observed 2026-08-09; mutable repository
->   counts were not refreshed by the deployment record
+> - The source, PR/Issue, CI, artifact, and partial security inventory was
+>   refreshed 2026-08-22; production/runtime state was not
 > - Production state: Refer to `docs/CURRENT_RELEASE_STATE.md`; this handoff
 >   records the release identity but does not duplicate its runtime evidence
 > - Production impact: None; this Risk C handoff changes no release, runtime,
@@ -100,21 +100,26 @@ Keep these distinctions explicit:
 
 Repository: `gccwebos-com/proxy-gateway-minimal`
 
-The read-only GitHub source inventory observed on 2026-08-09 recorded:
+The read-only GitHub source inventory observed on 2026-08-22 recorded:
 
-- exact `master`: `02fc63a3f949b748dcccf26ba7d310be82f4b6df`
-- current head: merged PR #590
-- open Draft PRs: #592, #593, and #594
-- open non-Draft PRs: none
-- open Issues (15): #437, #438, #439, #521, #522, #523, #524, #525,
-  #527, #551, #557, #558, #559, #560, and #561
-- latest successful exact-source Release Artifact run: `31267179669`
-- source artifact: `proxy-gateway-02fc63a3f949` (observed expiry
-  2026-08-22)
+- exact `master`: `20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`
+- current head: merged PR #654
+- open PRs: none
+- open Issues (18): #437, #438, #439, #521, #522, #523, #524, #525,
+  #527, #551, #557, #558, #559, #560, #597, #598, #632, and #636
+- PR #592 and #594: closed unmerged
+- PR #593: merged docs-only
+- Issue #561: closed after source-reality documentation reconciliation
+- latest successful exact-source Release Artifact run: `32579764918`
+- latest successful exact-source Dependency Artifact run: `32579764926`
+- control-plane artifact: `proxy-gateway-20dc7cfa5e74`
+- dependency artifact ID: `9477480212`
+- all four exact-master artifacts were observed to expire on 2026-09-05
 
 These are dated mutable facts, not permanent documentation authority. Refresh
-GitHub inventory before making a later current claim. Open Draft PRs are
-excluded from the exact-`master` capability baseline.
+GitHub inventory before making a later current claim. The artifact identities
+are temporary build evidence and do not establish deployment or rollback-window
+retention.
 
 A separate approved deployment on 2026-08-14 used
 `master@c06f749f245247eea7e94c68f4249a0017e8e884` and Release Artifact run
@@ -125,8 +130,9 @@ PR/Issue counts above or prove a Portal/Admin static deployment.
 ## Current Source Capability Boundary
 
 The detailed source/test matrix is
-`docs/OPERATIONS_PLANE_SOURCE_REALITY.md`. At the dated 2026-08-09 cutoff, the principal
-boundaries are:
+`docs/OPERATIONS_PLANE_SOURCE_REALITY.md`. Its Operations capability matrix is
+a dated source-reality inventory; the 2026-08-22 reconciliation adds the A3
+dependency-materialization boundary without reclassifying production state:
 
 | Domain | Established in source | Still not established by this evidence |
 | --- | --- | --- |
@@ -136,6 +142,7 @@ boundaries are:
 | Wallet-first Commerce extension | Offer, Checkout Quote, Commerce Order, Fulfillment Command | Wallet-first/deferred schema or runtime activation and new live fulfillment |
 | Account Resource Authority | Exact Authority/provenance source, migration, and default-off Commerce binding | Authority production assignment, schema apply, or runtime activation |
 | Traffic / trust | Protected usage projection and fail-closed trusted-proxy/XFF handling | Admin `Usage & Channels` consumption, production proxy-topology validation |
+| A3 dependency materialization | Source contracts, physical collector, diagnostics integrity, and exact-head disposable-XFS byte/inode quota proof through PR #654 | Restricted service-native smoke physical proof, production guard lift, A3-2 inventory/dry-run, durable materialization, promotion, and closeout |
 
 The 2026-08-14 control-plane release makes the exact application source
 available on that host, but it did not apply the four wallet-first schemas or
@@ -192,11 +199,13 @@ areas include:
 | #439, #524 | Commercial / Payment / Authority | Extend Wallet, Recharge/Payment, Commerce, and Account Resource Authority without rebuilding parallel order or ledger models. |
 | #557 | Operations Foundation | Reconcile the existing Operations/Admin source envelope before adding APIs or UI. |
 | #558-#560 | Operations/Admin follow-ons | Treat safe backend reads, UI consumers, capability enforcement, metrics, and audit as distinct slices. |
-| #561 | Documentation reconciliation | Keep canonical docs and project-state aligned to exact source evidence. |
+| #597, #598 | Release maturity / supply chain | Close durable artifact/runtime traceability and full-SHA/SBOM/provenance/signing gaps. |
+| #632, #636 | Dependency artifact replay / A3 promotion | Preserve the historical A2 audit boundary and complete A3 physical, guard, inventory, and promotion stages without inheriting old authorization. |
 
-The remaining open Issues stay independently scoped. PR #476 is closed
-unmerged, and PR #479 is merged source-only; both are historical lane evidence,
-not current open candidates or sequencing authority.
+Issue #561 is closed. The remaining open Issues stay independently scoped. PR
+#476, #592, and #594 are closed unmerged; PR #479 is merged source-only and PR
+#593 is merged docs-only. None is a current open candidate or production
+authority.
 
 ## Release And Artifact State
 
@@ -216,6 +225,11 @@ approved 2026-08-14 control-plane deployment; the production receipt is in
 `docs/CURRENT_RELEASE_STATE.md` and [PR #616](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/616#issuecomment-5295613931).
 This does not establish a Portal or Admin static deployment, and GitHub build
 evidence alone is not durable release retention.
+
+The current exact-master build evidence is Release Artifact run `32579764918`
+plus Dependency Artifact run `32579764926` for
+`20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`. Those artifacts are temporary
+through 2026-09-05 and were not used by the recorded production deployment.
 
 See `RELEASE_MANIFEST.md` for the stable contract.
 
@@ -240,12 +254,22 @@ runtime services, and production data require fresh task-specific inventory.
 
 ## Source Governance And Security Snapshot
 
-The 2026-08-09 inventory refreshed only the repository source head, open
-PR/Issue posture, and exact-source artifact evidence listed above. It did not
-refresh code-scanning alerts, Dependabot alerts, secret-scanning alerts,
-rulesets, environment protections, provider settings, or deployment settings.
-Older counts and settings observations remain dated historical evidence and
-must not be repeated as current claims.
+The 2026-08-22 inventory refreshed the repository source head, open PR/Issue
+posture, exact-source workflows/artifacts, selected GitHub security APIs, and
+workflow Action references:
+
+- exact-master CI, CodeQL, Release Artifact, and Dependency Artifact workflows
+  succeeded;
+- Dependabot reported zero open alerts;
+- secret scanning is disabled;
+- code-scanning alert inventory was unavailable because Code Security is not
+  enabled, so no zero-alert claim is made;
+- 13 of 40 workflow Action `uses:` references are full-SHA pinned; 27 mutable
+  tag references remain.
+
+Rulesets, environment protections, provider settings, deployment settings, and
+production runtime were not refreshed. Issues #597 and #598 retain those
+release-maturity and supply-chain gaps.
 
 ## Active Gaps
 
@@ -264,6 +288,12 @@ must not be repeated as current claims.
    production activation record.
 6. Mutable GitHub counts and governance/security settings require a fresh
    readback when they matter to a decision.
+7. A3 has exact-head physical XFS quota proof, but service-native smoke is not
+   physically proven and production materialize/verify remains fail-closed with
+   `worker_storage_limit_unavailable`.
+8. Exact-master artifacts are temporary through 2026-09-05; durable artifact,
+   rollback retention, SBOM, provenance/signing, and the remaining 27 mutable
+   Action references remain open under #597/#598.
 
 ## Validation Baseline
 

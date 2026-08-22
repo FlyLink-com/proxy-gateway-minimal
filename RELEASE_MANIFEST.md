@@ -6,18 +6,18 @@ document_metadata:
   lifecycle: active
   authority_scope: release_traceability
   superseded_by: null
-  last_verified_at: 2026-08-09
+  last_verified_at: 2026-08-22
   production_authority: false
 ```
 
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-08-09, America/Los_Angeles
+> - Last updated: 2026-08-22, America/Los_Angeles
 > - Source inventory baseline:
->   `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
-> - Latest recorded production deployment event: 2026-07-20, source
->   `9982d378f93dd506c24c137197293f6942dc45ee`; current live identity was not
+>   `master@20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`
+> - Latest recorded production deployment event: 2026-08-14, source
+>   `c06f749f245247eea7e94c68f4249a0017e8e884`; current live identity was not
 >   freshly inventoried
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
@@ -249,12 +249,35 @@ sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
 The latest verified exact-`master` proof at this inventory cutoff is Release
-Artifact run `31267179669` for source
-`02fc63a3f949b748dcccf26ba7d310be82f4b6df`. It completed the control-plane,
-Portal, and Admin artifact jobs. The source artifact is
-`proxy-gateway-02fc63a3f949` and was observed to expire on 2026-08-22. This is
+Artifact run `32579764918` for source
+`20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`. It completed the control-plane,
+Portal, and Admin artifact jobs. The artifacts are
+`proxy-gateway-20dc7cfa5e74`, `portal-static-20dc7cfa5e74`, and
+`admin-static-20dc7cfa5e74`; all were observed to expire on 2026-09-05. This is
 short-lived build evidence, not durable release retention or production
 promotion evidence.
+
+Control Plane Dependency Artifact run `32579764926` also succeeded for the
+same exact source. Artifact ID `9477480212`, named
+`control-plane-dependency-20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`, was
+observed to expire on 2026-09-05. It is dependency-consumption evidence only;
+it is not a deployed candidate or rollback identity.
+
+### A3 Dependency Materialization Boundary
+
+Issue #636 and PRs #646-#654 add the source contracts, physical collector,
+diagnostics integrity, and exact-head XFS project-quota proof needed by the A3
+dependency materializer. The quota segment passed on a disposable
+non-production XFS filesystem at PR #654's exact head, including project-tree
+inheritance, quota accounting/enforcement, bounded byte/inode exhaustion,
+diagnostics verification, and cleanup/readback.
+
+This proof does not complete the Artifact or Production Gate. Restricted
+service-native smoke remains physically unproven, and production
+`requireRoot:true` materialize/verify entrypoints remain fail-closed with
+`worker_storage_limit_unavailable`. No A3 production inventory, durable release
+declaration, materialization, deployment, pointer transition, or runtime health
+window is recorded.
 
 ## Runtime Config Identity v1
 
@@ -345,12 +368,12 @@ historical evidence only and must not be used to sequence current work.
 
 ## Current Source Governance Boundary
 
-The exact source cutoff observed on 2026-08-09 is
-`master@02fc63a3f949b748dcccf26ba7d310be82f4b6df` (merged PR #590). The same
-inventory observed three open Draft PRs (#592-#594), no open non-Draft PR, and
-fifteen open Issues. Those counts are mutable dated facts; current sequencing
-belongs to live Issues and `project-state/*.json`, not to this stable release
-contract. Open Draft PRs are excluded from the source baseline.
+The exact source cutoff observed on 2026-08-22 is
+`master@20dc7cfa5e744611567a9ea4d0a6a558b4803e4b` (merged PR #654). The same
+inventory observed no open PRs and eighteen open Issues. PR #592 and #594 are
+closed unmerged, PR #593 is merged docs-only, and Issue #561 is closed. Current
+sequencing belongs to live Issues and `project-state/*.json`, not to historical
+Draft descriptions.
 
 The current source language includes Admin/Operations read foundations, Wallet
 and immutable Coin Ledger, durable Recharge/Payment, Coins Commerce, Account
@@ -360,15 +383,18 @@ and gap boundaries are maintained in
 `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`; none is assigned to a deployed
 release by this manifest.
 
-Release Artifact run `31267179669` successfully built the control-plane,
-Portal, and Admin units at the exact source cutoff. The source artifact
-`proxy-gateway-02fc63a3f949` was observed to expire on 2026-08-22, so it is
-short-lived build evidence rather than durable Artifact Gate evidence.
+Release Artifact run `32579764918` successfully built the control-plane,
+Portal, and Admin units at the exact source cutoff. Dependency Artifact run
+`32579764926` produced the corresponding Linux dependency artifact. All four
+artifacts were observed to expire on 2026-09-05, so they remain short-lived
+build evidence rather than durable Artifact Gate evidence.
 
-This reconciliation did not refresh code-scanning, Dependabot,
-secret-scanning, ruleset, environment-protection, provider, or deployment
-settings. Older settings and alert counts remain dated evidence and are not
-current claims.
+The 2026-08-22 readback observed zero open Dependabot alerts, secret scanning
+disabled, and no available code-scanning alert inventory because Code Security
+is not enabled. The workflow inventory found 40 Action `uses:` references: 13
+full-SHA pinned and 27 using mutable tags. Rulesets, environment protection,
+provider settings, deployments, and production runtime were not refreshed.
+Issues #597 and #598 retain the durable release and supply-chain closure.
 
 No new release is declared `ready` or `deployed` by this manifest. A source-only
 PR may say that deployment is not applicable; that statement is not a Deploy
