@@ -270,55 +270,105 @@ function New-A3DiagnosticsRunSummary {
         throw 'a3_diagnostics_file_missing'
     }
 
-    $lines = Get-Content -LiteralPath $DiagnosticsPath -Encoding UTF8
-    $commandLines = @()
-    $footerLines = @()
-    foreach ($line in $lines) {
-        if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        if ($line -match '"kind"\s*:\s*"integrity_footer"') {
-            $footerLines += $line
-        } elseif ($line -match '"kind"\s*:\s*"command"') {
-            $commandLines += $line
+        # First pass: strict JSON parse every line. Any line that does not parse
+        # as a complete JSON object is treated as a partial/garbled write and
+        # the function throws 'a3_diagnostics_partial_line:<sha256-of-line>'. The
+        # previous implementation used a permissive regex match that silently
+        # skipped malformed lines; that let a partial-write footer pass even
+        # though the operator's evidence was incomplete.
+        $rawLines = Get-Content -LiteralPath $DiagnosticsPath -Encoding UTF8
+        $parsedLines = @()
+        $footerParsed = $null
+        foreach ($line in $rawLines) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            try {
+                $obj = $line | ConvertFrom-Json -ErrorAction Stop
+            } catch {
+                $lineSha = Get-A3LowerHexSha256 -Bytes ([Text.Encoding]::UTF8.GetBytes($line))
+                throw ('a3_diagnostics_partial_line:' + $lineSha)
+            }
+            $parsedLines += $obj
         }
-    }
 
-    if ($footerLines.Count -gt 0) {
-        throw 'a3_diagnostics_footer_already_present'
-    }
+        foreach ($obj in $parsedLines) {
+            if ($obj.kind -eq 'integrity_footer') {
+                if ($null -ne $footerParsed) {
+                    throw 'a3_diagnostics_footer_already_present'
+                }
+                $footerParsed = $obj
+            }
+        }
 
-    $aggregateBytes = [Text.Encoding]::UTF8.GetBytes(($commandLines -join "`n"))
-    $aggregateSha = Get-A3LowerHexSha256 -Bytes $aggregateBytes
+        if ($null -ne $footerParsed) {
+            throw 'a3_diagnostics_footer_already_present'
+        }
 
-    $footer = [pscustomobject]@{
-        kind              = 'integrity_footer'
-        run_label         = $RunLabel
-        command_count     = $commandLines.Count
-        jsonl_sha256      = $aggregateSha
-        footer_written_at = (Get-Date).ToUniversalTime().ToString('o')
-    }
-    $footerJson = ConvertTo-Json -Depth 6 -Compress -InputObject $footer
+        $commandLines = @()
+        foreach ($obj in $parsedLines) {
+            if ($obj.kind -eq 'command') {
+                $commandLines += ($obj | ConvertTo-Json -Depth 6 -Compress)
+            }
+        }
+
+        $aggregateBytes = [Text.Encoding]::UTF8.GetBytes(($commandLines -join "`n"))
+        $aggregateSha = Get-A3LowerHexSha256 -Bytes $aggregateBytes
+
+        $footer = [pscustomobject]@{
+            kind              = 'integrity_footer'
+            run_label         = $RunLabel
+            command_count     = $commandLines.Count
+            jsonl_sha256      = $aggregateSha
+            footer_written_at = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        $footerJson = ConvertTo-Json -Depth 6 -Compress -InputObject $footer
         $footerBytes = [Text.Encoding]::UTF8.GetBytes(($footerJson + "`n"))
 
         Write-A3FsyncedAppend -Path $DiagnosticsPath -Bytes $footerBytes
 
-    $perCommand = @()
-    foreach ($line in $commandLines) {
-        $perCommand += ($line | ConvertFrom-Json)
-    }
+        # Disk readback: re-open the file and re-parse every line. The
+        # recomputed aggregate must match the footer.jsonl_sha256 byte for
+        # byte; a mismatch means the on-disk content diverged from what the
+        # in-memory aggregation saw (truncated write, racing writer, etc.).
+        # This is the only integrity check that proves the bytes the operator
+        # will read back later actually correspond to the hash we claim.
+        $verifyRawLines = Get-Content -LiteralPath $DiagnosticsPath -Encoding UTF8
+        $verifyParsed = @()
+        foreach ($line in $verifyRawLines) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            try {
+                $verifyObj = $line | ConvertFrom-Json -ErrorAction Stop
+            } catch {
+                $lineSha = Get-A3LowerHexSha256 -Bytes ([Text.Encoding]::UTF8.GetBytes($line))
+                throw ('a3_diagnostics_partial_line:' + $lineSha)
+            }
+            $verifyParsed += $verifyObj
+        }
+        $verifyCommandLines = @()
+        foreach ($obj in $verifyParsed) {
+            if ($obj.kind -eq 'command') {
+                $verifyCommandLines += ($obj | ConvertTo-Json -Depth 6 -Compress)
+            }
+        }
+        $verifyAggregateBytes = [Text.Encoding]::UTF8.GetBytes(($verifyCommandLines -join "`n"))
+        $verifyAggregateSha = Get-A3LowerHexSha256 -Bytes $verifyAggregateBytes
 
-    $integrityVerified = $true
-    if ($footer.jsonl_sha256 -ne $aggregateSha) {
-        $integrityVerified = $false
-    }
+        $perCommand = @()
+        foreach ($obj in $verifyParsed) {
+            if ($obj.kind -eq 'command') {
+                $perCommand += $obj
+            }
+        }
 
-    return [pscustomobject]@{
-        diagnostics_path  = $DiagnosticsPath
-        run_label         = $RunLabel
-        command_count     = $commandLines.Count
-        jsonl_sha256      = $aggregateSha
-        integrity_verified = $integrityVerified
-        per_command       = $perCommand
-    }
+        $integrityVerified = ($verifyAggregateSha -eq $aggregateSha)
+
+        return [pscustomobject]@{
+            diagnostics_path   = $DiagnosticsPath
+            run_label          = $RunLabel
+            command_count      = $commandLines.Count
+            jsonl_sha256       = $verifyAggregateSha
+            integrity_verified = $integrityVerified
+            per_command        = $perCommand
+        }
 }
 
 if ($MyInvocation.InvocationName -ne '.' -and $MyInvocation.MyCommand.ModuleName) {
