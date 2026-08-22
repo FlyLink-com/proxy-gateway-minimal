@@ -592,25 +592,64 @@ function parseXfsQuotaReport(output, projectId, scale) {
   return Object.freeze({ current: current * scale, hard: hard * scale });
 }
 
-function localEdquotProbe(probeRoot, byteHardLimit) {
-  if (!Number.isSafeInteger(byteHardLimit) || byteHardLimit <= 0 || byteHardLimit > 2 * 1024 * 1024) fail("storage_quota_evidence_invalid");
-  const path = resolve(probeRoot, ".a3-edquot-probe");
+function localEdquotProbe(probeRoot, byteHeadroom, inodeHeadroom, observeExhaustedQuota, supplied) {
+  if (!Number.isSafeInteger(byteHeadroom) || byteHeadroom <= 0 || byteHeadroom > 2 * 1024 * 1024
+    || !Number.isSafeInteger(inodeHeadroom) || inodeHeadroom <= 0 || inodeHeadroom > A3_PROBE_INODE_HARD_LIMIT
+    || typeof observeExhaustedQuota !== "function") fail("storage_quota_evidence_invalid");
+  const io = supplied.probeFilesystem || { openSync, closeSync, writeSync, unlinkSync };
+  if (![io.openSync, io.closeSync, io.writeSync, io.unlinkSync].every((value) => typeof value === "function")) fail("storage_quota_evidence_invalid");
+  const paths = [];
   let descriptor;
-  let created = false;
-  let observedErrorCode = null;
+  let inodeErrorCode = null;
+  let byteErrorCode = null;
+  let primaryError = null;
   let cleanupFailed = false;
+  const close = () => {
+    if (descriptor === undefined) return;
+    try { io.closeSync(descriptor); } catch { cleanupFailed = true; }
+    descriptor = undefined;
+  };
   try {
-    descriptor = openSync(path, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW | fsConstants.O_CLOEXEC, 0o600);
-    created = true;
+    const createFlags = fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW | fsConstants.O_CLOEXEC;
+    for (let index = 0; index < inodeHeadroom; index += 1) {
+      const path = resolve(probeRoot, `.a3-edquot-probe-${index}`);
+      descriptor = io.openSync(path, createFlags, 0o600);
+      paths.push(path);
+      close();
+    }
+    const overflowPath = resolve(probeRoot, ".a3-edquot-probe-overflow");
+    try {
+      descriptor = io.openSync(overflowPath, createFlags, 0o600);
+      paths.push(overflowPath);
+      close();
+    } catch (error) {
+      inodeErrorCode = error?.code || null;
+      close();
+    }
+    descriptor = io.openSync(paths[0], fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW | fsConstants.O_CLOEXEC);
     const chunk = Buffer.alloc(64 * 1024);
-    for (let written = 0; written <= byteHardLimit + chunk.length; written += chunk.length) writeSync(descriptor, chunk);
-  } catch (error) { observedErrorCode = error?.code || null; }
+    let written = 0;
+    try {
+      while (written <= byteHeadroom + chunk.length) {
+        const count = io.writeSync(descriptor, chunk);
+        if (!Number.isSafeInteger(count) || count <= 0 || count > chunk.length) fail("storage_quota_evidence_invalid");
+        written += count;
+      }
+    } catch (error) { byteErrorCode = error?.code || null; }
+    close();
+    if (inodeErrorCode === "EDQUOT" && byteErrorCode === "EDQUOT") observeExhaustedQuota();
+  } catch (error) { primaryError = error; }
   finally {
-    if (descriptor !== undefined) try { closeSync(descriptor); } catch { cleanupFailed = true; }
-    if (created) try { unlinkSync(path); } catch { cleanupFailed = true; }
+    close();
+    for (const path of paths.reverse()) try { io.unlinkSync(path); } catch { cleanupFailed = true; }
   }
   if (cleanupFailed) fail("storage_quota_evidence_invalid", true);
-  return { expectedErrorCode: "EDQUOT", observedErrorCode, exhausted: observedErrorCode === "EDQUOT" };
+  if (primaryError) throw primaryError;
+  return {
+    expectedErrorCode: "EDQUOT",
+    observedErrorCode: inodeErrorCode === "EDQUOT" && byteErrorCode === "EDQUOT" ? "EDQUOT" : byteErrorCode || inodeErrorCode,
+    exhausted: inodeErrorCode === "EDQUOT" && byteErrorCode === "EDQUOT"
+  };
 }
 
 export function collectStorageQuotaEvidence({ runLabel, projectId, runtime: supplied = runtime() } = {}) {
@@ -626,19 +665,52 @@ export function collectStorageQuotaEvidence({ runLabel, projectId, runtime: supp
   if (!/^\s*Accounting:\s+ON\s*$/m.test(state) || !/^\s*Enforcement:\s+ON\s*$/m.test(state)) fail("storage_quota_evidence_invalid");
   const blockCommand = `report -p -b -n -N -L ${projectId} -U ${projectId}`;
   const inodeCommand = `report -p -i -n -N -L ${projectId} -U ${projectId}`;
-  const blocks = parseXfsQuotaReport(executeA3Physical(context.tools.xfsQuota, ["-x", "-c", blockCommand, context.probeRoot], supplied, "storage_quota_evidence_invalid"), projectId, 1024);
-  const inodes = parseXfsQuotaReport(executeA3Physical(context.tools.xfsQuota, ["-x", "-c", inodeCommand, context.probeRoot], supplied, "storage_quota_evidence_invalid"), projectId, 1);
-  if (blocks.hard !== A3_PROBE_BYTE_HARD_LIMIT || inodes.hard !== A3_PROBE_INODE_HARD_LIMIT) fail("storage_quota_evidence_invalid");
+  const readQuota = () => Object.freeze({
+    blocks: parseXfsQuotaReport(executeA3Physical(context.tools.xfsQuota, ["-x", "-c", blockCommand, context.probeRoot], supplied, "storage_quota_evidence_invalid"), projectId, 1024),
+    inodes: parseXfsQuotaReport(executeA3Physical(context.tools.xfsQuota, ["-x", "-c", inodeCommand, context.probeRoot], supplied, "storage_quota_evidence_invalid"), projectId, 1)
+  });
+  const before = readQuota();
+  if (before.blocks.hard !== A3_PROBE_BYTE_HARD_LIMIT || before.inodes.hard !== A3_PROBE_INODE_HARD_LIMIT
+    || before.blocks.current >= before.blocks.hard || before.inodes.current >= before.inodes.hard) fail("storage_quota_evidence_invalid");
+  let exhaustedQuota = null;
+  const observeExhaustedQuota = () => {
+    if (exhaustedQuota !== null) fail("storage_quota_evidence_invalid");
+    const observed = readQuota();
+    if (observed.blocks.hard !== before.blocks.hard || observed.inodes.hard !== before.inodes.hard
+      || observed.blocks.current !== observed.blocks.hard || observed.inodes.current !== observed.inodes.hard) fail("storage_quota_evidence_invalid");
+    exhaustedQuota = observed;
+    return observed;
+  };
   let probe;
   try {
     probe = typeof supplied.runEdquotProbe === "function"
-      ? supplied.runEdquotProbe({ probeRoot: context.probeRoot, projectId, byteHardLimit: blocks.hard, inodeHardLimit: inodes.hard })
-      : localEdquotProbe(context.probeRoot, blocks.hard);
-  } catch { fail("storage_quota_evidence_invalid"); }
+      ? supplied.runEdquotProbe({
+          probeRoot: context.probeRoot,
+          projectId,
+          byteHardLimit: before.blocks.hard,
+          inodeHardLimit: before.inodes.hard,
+          byteHeadroom: before.blocks.hard - before.blocks.current,
+          inodeHeadroom: before.inodes.hard - before.inodes.current,
+          observeExhaustedQuota
+        })
+      : localEdquotProbe(
+          context.probeRoot,
+          before.blocks.hard - before.blocks.current,
+          before.inodes.hard - before.inodes.current,
+          observeExhaustedQuota,
+          supplied
+        );
+  } catch (error) {
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail("storage_quota_evidence_invalid");
+  }
+  if (exhaustedQuota === null) fail("storage_quota_evidence_invalid");
   return parseStorageQuotaEvidence({
-    filesystem, projectId, byteHardLimit: blocks.hard, byteCurrent: blocks.current,
-    inodeHardLimit: inodes.hard, inodeCurrent: inodes.current,
-    headroomBytes: blocks.hard - blocks.current, headroomInodes: inodes.hard - inodes.current, probe
+    filesystem, projectId, byteHardLimit: exhaustedQuota.blocks.hard, byteCurrent: exhaustedQuota.blocks.current,
+    inodeHardLimit: exhaustedQuota.inodes.hard, inodeCurrent: exhaustedQuota.inodes.current,
+    headroomBytes: exhaustedQuota.blocks.hard - exhaustedQuota.blocks.current,
+    headroomInodes: exhaustedQuota.inodes.hard - exhaustedQuota.inodes.current,
+    probe
   });
 }
 
