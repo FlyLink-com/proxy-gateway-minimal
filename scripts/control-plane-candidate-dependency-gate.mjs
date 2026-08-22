@@ -14,6 +14,7 @@ import { verifyReleaseConfigOverlay } from "./control-plane-release-config-gate.
 import {
   auditDependencyTree,
   DEPENDENCY_ARTIFACT_SCHEMA_VERSION,
+  DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION,
   DEPENDENCY_ARTIFACT_TYPE,
   dependencyArtifactPaths,
   prepareDependencyArtifactTree,
@@ -573,6 +574,80 @@ function executeA3Physical(command, args, supplied, condition, { attentionRequir
   } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail(condition, attentionRequired); }
 }
 
+function a3PhysicalPathExists(path, supplied, condition = "worker_cleanup_uncertain") {
+  try {
+    const exists = typeof supplied.physicalPathExists === "function" ? supplied.physicalPathExists(path) : existsSync(path);
+    if (typeof exists !== "boolean") fail(condition, true);
+    return exists;
+  } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail(condition, true); }
+}
+
+function readA3PhysicalFile(path, supplied, condition, attentionRequired = false) {
+  try {
+    const read = typeof supplied.readPhysicalFile === "function" ? supplied.readPhysicalFile : (value) => readFileSync(value, "utf8");
+    const value = read(path);
+    if (typeof value !== "string" || Buffer.byteLength(value) > 4096) fail(condition, attentionRequired);
+    return value;
+  } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail(condition, attentionRequired); }
+}
+
+function validateA3ServiceSmokeCapture(path, supplied) {
+  if (!a3PhysicalPathExists(path, supplied, "service_smoke_readback_invalid")) fail("service_smoke_readback_invalid");
+  if (typeof supplied.executePhysicalCommand !== "function") {
+    const capture = rootOwnedRegular(path, supplied, "service_smoke_readback_invalid", 0o600);
+    if (capture.metadata.size > 4096) fail("service_smoke_readback_invalid");
+  }
+}
+
+function parseA3SystemctlProperties(output, expected, condition = "worker_cleanup_uncertain") {
+  const values = {};
+  for (const line of output.split(/\r?\n/).filter(Boolean)) {
+    const index = line.indexOf("="); const name = index > 0 ? line.slice(0, index) : "";
+    if (!expected.includes(name) || Object.hasOwn(values, name)) fail(condition, true);
+    values[name] = line.slice(index + 1);
+  }
+  if (!keys(values, expected)) fail(condition, true);
+  return values;
+}
+
+function removeA3ServiceSmokeCapture(path, supplied) {
+  if (!a3PhysicalPathExists(path, supplied)) return;
+  try {
+    if (typeof supplied.executePhysicalCommand !== "function") rootOwnedRegular(path, supplied, "worker_cleanup_uncertain", 0o600);
+    const remove = typeof supplied.removePhysicalFile === "function" ? supplied.removePhysicalFile : unlinkSync;
+    remove(path);
+  } catch { fail("worker_cleanup_uncertain", true); }
+  if (a3PhysicalPathExists(path, supplied)) fail("worker_cleanup_uncertain", true);
+}
+
+function cleanupA3ServiceSmoke(context, invocation, supplied) {
+  const serviceUnit = `${context.unit}.service`;
+  const cleanupProperties = ["LoadState", "ActiveState", "SubState"];
+  const before = parseA3SystemctlProperties(executeA3Physical(
+    context.tools.systemctl,
+    ["show", serviceUnit, `--property=${cleanupProperties.join(",")}`, "--no-page"],
+    supplied,
+    "worker_cleanup_uncertain",
+    { attentionRequired: true }
+  ), cleanupProperties);
+  if (before.LoadState !== "not-found") {
+    if (before.LoadState !== "loaded") fail("worker_cleanup_uncertain", true);
+    executeA3Physical(context.tools.systemctl, ["stop", serviceUnit], supplied, "worker_cleanup_uncertain", { attentionRequired: true, requireEmptyStderr: true });
+  }
+  const after = parseA3SystemctlProperties(executeA3Physical(
+    context.tools.systemctl,
+    ["show", serviceUnit, `--property=${cleanupProperties.join(",")}`, "--no-page"],
+    supplied,
+    "worker_cleanup_uncertain",
+    { attentionRequired: true }
+  ), cleanupProperties);
+  if (!new Set(["loaded", "not-found"]).has(after.LoadState) || after.ActiveState !== "inactive" || after.SubState !== "dead") fail("worker_cleanup_uncertain", true);
+  const cgroupRoot = `/sys/fs/cgroup/system.slice/${serviceUnit}`;
+  if (a3PhysicalPathExists(cgroupRoot, supplied)) fail("worker_cleanup_uncertain", true);
+  removeA3ServiceSmokeCapture(invocation.captureStdout, supplied);
+  removeA3ServiceSmokeCapture(invocation.captureStderr, supplied);
+}
+
 function parseFindmntEvidence(bytes, expectedTarget) {
   const value = strictJsonObject(Buffer.from(bytes, "utf8"), "storage_quota_evidence_invalid");
   if (!keys(value, ["filesystems"]) || !Array.isArray(value.filesystems) || value.filesystems.length !== 1) fail("storage_quota_evidence_invalid");
@@ -755,26 +830,42 @@ export function buildServiceNativeSmokeInvocation({ runLabel, smokePhase = "vali
   const worker = fileURLToPath(new URL("./control-plane-dependency-artifact.mjs", import.meta.url));
   const visibleWorker = `${A3_SERVICE_SMOKE_BIND_ROOT}/${context.unit}/control-plane-dependency-artifact.mjs`;
   const bindReadOnlyPaths = [`${root}:${context.visibleRoot}:norbind`, `${worker}:${visibleWorker}:norbind`];
+  const captureStdout = `${context.probeRoot}/service-smoke-${smokePhase}.stdout.json`;
+  const captureStderr = `${context.probeRoot}/service-smoke-${smokePhase}.stderr.txt`;
   const properties = [
-    `User=${service.uid}`, `Group=${service.gid}`, "PrivateNetwork=yes", "RestrictAddressFamilies=AF_UNIX",
+    `User=${service.uid}`, `Group=${service.gid}`, "DynamicUser=no", "PrivateNetwork=yes", "RestrictAddressFamilies=AF_UNIX",
     "CapabilityBoundingSet=", "NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes",
-    "PrivateDevices=yes", "PrivateTmp=yes", "ProtectControlGroups=yes", "Delegate=no", "Slice=system.slice",
+    "PrivateDevices=yes", "PrivateTmp=yes", "ProtectControlGroups=yes", "RestrictNamespaces=yes",
+    "SystemCallFilter=@system-service", "Delegate=no", "Slice=system.slice",
+    "UMask=0077", `StandardOutput=file:${captureStdout}`, `StandardError=file:${captureStderr}`,
     `BindReadOnlyPaths=${bindReadOnlyPaths.join(" ")}`, `WorkingDirectory=${context.visibleRoot}`
   ];
   return Object.freeze({
     command: context.tools.systemdRun,
-    args: Object.freeze([`--unit=${context.unit}`, "--wait", "--pipe", "--quiet", "--service-type=exec", ...properties.map((value) => `--property=${value}`), "--", context.tools.node, visibleWorker, "--mode", "smoke", "--root", context.visibleRoot, "--snapshot", "scripts/control-plane-db-snapshot-gate.mjs"]),
-    worker, visibleWorker, bindReadOnlyPaths: Object.freeze(bindReadOnlyPaths), unit: context.unit, visibleRoot: context.visibleRoot
+    args: Object.freeze([`--unit=${context.unit}`, "--remain-after-exit", "--collect", "--quiet", "--service-type=oneshot", ...properties.map((value) => `--property=${value}`), "--", context.tools.node, visibleWorker, "--mode", "smoke", "--root", context.visibleRoot, "--snapshot", "scripts/control-plane-db-snapshot-gate.mjs"]),
+    worker, visibleWorker, bindReadOnlyPaths: Object.freeze(bindReadOnlyPaths), captureStdout, captureStderr,
+    unit: context.unit, visibleRoot: context.visibleRoot
   });
 }
 
 function parseServiceSmokeProcessOutput(stdout) {
   if (Buffer.byteLength(stdout) > 4096) fail("service_smoke_readback_invalid");
   const value = strictJsonObject(Buffer.from(stdout, "utf8"), "service_smoke_readback_invalid");
-  if (!keys(value, ["schemaVersion", "type", "mode", "state", "smoke"]) || value.schemaVersion !== DEPENDENCY_ARTIFACT_SCHEMA_VERSION
-    || value.type !== DEPENDENCY_ARTIFACT_TYPE || value.mode !== "smoke" || value.state !== "verified" || !keys(value.smoke, ["betterSqlite3Memory", "snapshotImport"])
-    || value.smoke.betterSqlite3Memory !== true || value.smoke.snapshotImport !== true) fail("service_smoke_readback_invalid");
-  return value.smoke;
+  if (!keys(value, ["schemaVersion", "type", "mode", "state", "smoke", "processIdentity"])
+    || value.schemaVersion !== DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION
+    || value.type !== DEPENDENCY_ARTIFACT_TYPE
+    || value.mode !== "smoke"
+    || value.state !== "verified"
+    || !keys(value.smoke, ["betterSqlite3Memory", "snapshotImport"])
+    || value.smoke.betterSqlite3Memory !== true
+    || value.smoke.snapshotImport !== true
+    || !keys(value.processIdentity, ["uid", "gid"])
+    || !Number.isSafeInteger(value.processIdentity.uid) || value.processIdentity.uid <= 0
+    || !Number.isSafeInteger(value.processIdentity.gid) || value.processIdentity.gid <= 0) fail("service_smoke_readback_invalid");
+  return Object.freeze({
+    smoke: Object.freeze({ betterSqlite3Memory: true, snapshotImport: true }),
+    processIdentity: Object.freeze({ uid: value.processIdentity.uid, gid: value.processIdentity.gid })
+  });
 }
 
 export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "validation", root, service, runtime: supplied = runtime() } = {}) {
@@ -784,40 +875,54 @@ export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "vali
     trusted(dirname(invocation.worker), supplied, "service_smoke_readback_invalid");
     regular(invocation.worker, supplied, "service_smoke_readback_invalid", null, true);
   }
-  const smoke = parseServiceSmokeProcessOutput(executeA3Physical(invocation.command, invocation.args, supplied, "service_smoke_readback_invalid"));
-  const terminalProperties = ["ActiveState", "SubState", "Result", "ExecMainStatus", "ControlGroup", "User", "Group", "PrivateNetwork", "CapabilityBoundingSet", "ProtectSystem", "ProtectHome", "PrivateDevices", "NoNewPrivileges", "BindReadOnlyPaths"];
-  const terminal = executeA3Physical(
-    context.tools.systemctl,
-    ["show", `${context.unit}.service`, `--property=${terminalProperties.join(",")}`, "--no-page"],
-    supplied,
-    "worker_cleanup_uncertain",
-    { attentionRequired: true }
-  );
-  const values = {};
-  for (const line of terminal.split(/\r?\n/).filter(Boolean)) {
-    const index = line.indexOf("="); const name = index > 0 ? line.slice(0, index) : "";
-    if (!terminalProperties.includes(name) || Object.prototype.hasOwnProperty.call(values, name)) fail("worker_cleanup_uncertain", true);
-    values[name] = line.slice(index + 1);
+  if (a3PhysicalPathExists(invocation.captureStdout, supplied) || a3PhysicalPathExists(invocation.captureStderr, supplied)) {
+    cleanupA3ServiceSmoke(context, invocation, supplied);
   }
-  const serviceUnit = `${context.unit}.service`, controlGroup = `/system.slice/${serviceUnit}`;
-  const expectedBind = invocation.bindReadOnlyPaths.join(" ");
-  if (!keys(values, terminalProperties) || values.ActiveState !== "inactive" || values.SubState !== "dead" || values.Result !== "success"
-    || values.ExecMainStatus !== "0" || values.ControlGroup !== controlGroup || values.User !== String(service.uid) || values.Group !== String(service.gid)
-    || values.PrivateNetwork !== "yes" || values.CapabilityBoundingSet !== "" || values.ProtectSystem !== "strict" || values.ProtectHome !== "yes"
-    || values.PrivateDevices !== "yes" || values.NoNewPrivileges !== "yes" || values.BindReadOnlyPaths !== expectedBind) fail("worker_cleanup_uncertain", true);
-  const read = typeof supplied.readPhysicalFile === "function" ? supplied.readPhysicalFile : (path) => readFileSync(path, "utf8");
-  let events, procs;
+  let observed = null; let values = null; let primaryError = null;
   try {
+    executeA3Physical(invocation.command, invocation.args, supplied, "service_smoke_readback_invalid", { requireEmptyStderr: true });
+    validateA3ServiceSmokeCapture(invocation.captureStdout, supplied);
+    validateA3ServiceSmokeCapture(invocation.captureStderr, supplied);
+    const stderr = readA3PhysicalFile(invocation.captureStderr, supplied, "service_smoke_readback_invalid");
+    if (stderr !== "") fail("service_smoke_readback_invalid");
+    observed = parseServiceSmokeProcessOutput(readA3PhysicalFile(invocation.captureStdout, supplied, "service_smoke_readback_invalid"));
+    if (observed.processIdentity.uid !== service.uid || observed.processIdentity.gid !== service.gid) fail("service_smoke_readback_invalid");
+    const terminalProperties = ["ActiveState", "SubState", "Result", "ExecMainStatus", "ControlGroup", "User", "Group", "PrivateNetwork", "CapabilityBoundingSet", "ProtectSystem", "ProtectHome", "PrivateDevices", "NoNewPrivileges", "BindReadOnlyPaths", "Type", "RemainAfterExit", "CollectMode"];
+    values = parseA3SystemctlProperties(executeA3Physical(
+      context.tools.systemctl,
+      ["show", `${context.unit}.service`, `--property=${terminalProperties.join(",")}`, "--no-page"],
+      supplied,
+      "worker_cleanup_uncertain",
+      { attentionRequired: true }
+    ), terminalProperties);
+    const serviceUnit = `${context.unit}.service`, controlGroup = `/system.slice/${serviceUnit}`;
+    const expectedBind = invocation.bindReadOnlyPaths.join(" ");
+    if (values.ActiveState !== "active" || values.SubState !== "exited" || values.Result !== "success"
+      || values.ExecMainStatus !== "0" || values.ControlGroup !== controlGroup
+      || values.User !== String(observed.processIdentity.uid) || values.Group !== String(observed.processIdentity.gid)
+      || values.PrivateNetwork !== "yes" || values.CapabilityBoundingSet !== "" || values.ProtectSystem !== "strict" || values.ProtectHome !== "yes"
+      || values.PrivateDevices !== "yes" || values.NoNewPrivileges !== "yes" || values.BindReadOnlyPaths !== expectedBind
+      || values.Type !== "oneshot" || values.RemainAfterExit !== "yes" || values.CollectMode !== "inactive-or-failed") fail("worker_cleanup_uncertain", true);
     const cgroupRoot = `/sys/fs/cgroup/system.slice/${serviceUnit}`;
-    events = read(`${cgroupRoot}/cgroup.events`); procs = read(`${cgroupRoot}/cgroup.procs`);
-  } catch { fail("worker_cleanup_uncertain", true); }
-  if (typeof events !== "string" || typeof procs !== "string" || !/(?:^|\n)populated 0(?:\n|$)/.test(events) || procs.trim() !== "") fail("worker_cleanup_uncertain", true);
+    if (a3PhysicalPathExists(cgroupRoot, supplied)) {
+      const events = readA3PhysicalFile(`${cgroupRoot}/cgroup.events`, supplied, "worker_cleanup_uncertain", true);
+      const procs = readA3PhysicalFile(`${cgroupRoot}/cgroup.procs`, supplied, "worker_cleanup_uncertain", true);
+      if (!/(?:^|\n)populated 0(?:\n|$)/.test(events) || procs.trim() !== "") fail("worker_cleanup_uncertain", true);
+    }
+  } catch (error) {
+    primaryError = error instanceof CandidateDependencyGateError ? error : new CandidateDependencyGateError("service_smoke_readback_invalid");
+  }
+  try { cleanupA3ServiceSmoke(context, invocation, supplied); } catch (error) {
+    if (error instanceof CandidateDependencyGateError && error.attentionRequired) throw error;
+    fail("worker_cleanup_uncertain", true);
+  }
+  if (primaryError) throw primaryError;
   return parseServiceSmokeReadback({
-    serviceUid: service.uid, serviceGid: service.gid, fixedNodePath: context.tools.node,
+    serviceUid: observed.processIdentity.uid, serviceGid: observed.processIdentity.gid, fixedNodePath: context.tools.node,
     noNetwork: true, capabilityBoundingSet: "", protectSystem: "strict", protectHome: true,
     privateDevices: true, noNewPrivileges: true, cgroupEmpty: true,
-    terminalActiveState: values.ActiveState, terminalSubState: values.SubState, terminalResult: values.Result,
-    betterSqlite3Memory: smoke.betterSqlite3Memory, snapshotImport: smoke.snapshotImport
+    terminalActiveState: "inactive", terminalSubState: "dead", terminalResult: values.Result,
+    betterSqlite3Memory: observed.smoke.betterSqlite3Memory, snapshotImport: observed.smoke.snapshotImport
   });
 }
 

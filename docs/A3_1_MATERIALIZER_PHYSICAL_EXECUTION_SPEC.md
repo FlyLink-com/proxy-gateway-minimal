@@ -330,21 +330,29 @@ execution phase that produces the readback. Dry-run must pass before real-run.
   directory; the worker never receives or traverses that host path and its
   fixed argv reads only `<fixed-target>` inside the unit namespace. No ACL is
   added to the host run tree.
-- Plan `systemd-run --unit=a3-smoke --wait --service-type=oneshot` with the
-  fixed verified Node binary and fixed smoke entrypoint; no shell and no
-  caller-controlled argv/environment.
+- Plan the pinned invocation
+  `systemd-run --unit=a3-smoke --remain-after-exit --collect --quiet --service-type=oneshot`
+  with the fixed verified Node binary and fixed smoke entrypoint; no shell and
+  no caller-controlled argv/environment. Capture stdout/stderr through the
+  root systemd manager into fixed `0600` files using `UMask=0077`; do not use
+  `--wait` or `--pipe`, because a successful unpinned transient unit may be
+  unloaded before the required readback.
 - Do not start until 6.1/6.2 dry-run pass.
 
 ### 6.4 Item 4 — terminal / cgroup-empty readback (dry-run)
 
 - Plan what the probe code reads, in this exact order:
   `serviceUid`, `serviceGid` from `getuid()`/`getgid()` inside the unit;
-  after the unit exits, exact `ActiveState=inactive`, `SubState=dead`,
-  `Result=success`, `ExecMainStatus=0`, and exact `ControlGroup` from
-  `systemctl show a3-smoke.service`; then `cgroup.events populated=0` and an
-  empty `cgroup.procs` from that exact cgroup path. A missing, malformed, or
-  unreadable terminal/cgroup field is an attention-required failure and must
-  never be treated as empty.
+  while the completed oneshot remains pinned, exact `ActiveState=active`,
+  `SubState=exited`, `Result=success`, `ExecMainStatus=0`, `Type=oneshot`,
+  `RemainAfterExit=yes`, `CollectMode=inactive-or-failed`, and exact
+  `ControlGroup` from `systemctl show a3-smoke.service`; then, when the cgroup
+  path is still realized, `cgroup.events populated=0` and an empty
+  `cgroup.procs`. An already trimmed cgroup is also empty at this pinned point.
+  Finally stop the unit explicitly, require `inactive/dead` plus an absent
+  cgroup, and remove/read back both capture files. A missing or malformed
+  pinned-unit field, a populated cgroup, or uncertain stop/capture cleanup is
+  an attention-required failure.
 - Do not execute until 6.3 dry-run passes.
 
 ### 6.5 Item 5 — wire physical evidence into `materialize` main flow (dry-run)

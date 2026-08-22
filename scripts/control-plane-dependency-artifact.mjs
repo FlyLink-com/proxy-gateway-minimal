@@ -9,6 +9,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // v2 adds tree.totalBytes.  Keep this a distinct schema rather than silently
 // treating older manifests as if they carried a bounded extraction budget.
 export const DEPENDENCY_ARTIFACT_SCHEMA_VERSION = "2";
+// v3 applies only to the runDependencyArtifactCli --mode smoke envelope. The
+// published dependency-artifact manifest schema stays at v2; this version adds
+// the worker-observed process identity (process.getuid/getgid) for the
+// restricted service-native smoke boundary without leaking it into the
+// artifact-manifest smoke block.
+export const DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION = "3";
 export const DEPENDENCY_ARTIFACT_TYPE = "control_plane_dependency_artifact";
 export const DEPENDENCY_ARTIFACT_RELEASE_UNIT = "control-plane-app";
 export const DEPENDENCY_ARTIFACT_RUNTIME = Object.freeze({
@@ -541,6 +547,52 @@ function archiveMetadata(path, manifest, supplied) {
 }
 
 const NATIVE_SMOKE = `import Database from "better-sqlite3"; const d=new Database(":memory:"); d.exec("CREATE TABLE t(v INTEGER)"); d.prepare("INSERT INTO t VALUES(?)").run(7); if(d.prepare("SELECT v FROM t").get().v!==7) process.exit(42); d.close(); await import(new URL(process.argv[1], "file:"));`;
+
+// Read the worker process's effective identity for the --mode smoke envelope.
+//
+// The function distinguishes three cases using own-property checks via
+// Object.hasOwn so an explicit injection cannot be confused with prototype
+// inheritance or accidental fallback:
+//
+//   Case A — neither getuid nor getgid is supplied as an own property of
+//     runtime. Read the identity from the host process via process.getuid /
+//     process.getgid. If either host function is unavailable, throws, or
+//     returns an invalid / root value, fail with dependency_smoke_invalid.
+//
+//   Case B — both getuid and getgid are supplied as own properties. Both must
+//     be functions; both are called and their results validated as positive
+//     safe integers. Exceptions or invalid results fail with
+//     dependency_smoke_invalid.
+//
+//   Case C — only one of getuid / getgid is supplied as an own property.
+//     Fail with dependency_smoke_invalid. Never mix one injected getter with
+//     the host getter, and never silently fall back.
+//
+//   Case D — either supplied hook is not a function. Fail with
+//     dependency_smoke_invalid.
+export function readSmokeProcessIdentity(runtime = {}) {
+  const hasUidHook = Object.hasOwn(runtime, "getuid");
+  const hasGidHook = Object.hasOwn(runtime, "getgid");
+  let uid, gid;
+  try {
+    if (hasUidHook || hasGidHook) {
+      // Symmetric injection: if either hook is supplied, both must be supplied
+      // and both must be functions. Never mix with the host fallback.
+      if (hasUidHook !== hasGidHook) fail("dependency_smoke_invalid");
+      if (typeof runtime.getuid !== "function" || typeof runtime.getgid !== "function") fail("dependency_smoke_invalid");
+      uid = runtime.getuid();
+      gid = runtime.getgid();
+    } else {
+      // No injection: fall back to the host process identity.
+      if (typeof process.getuid !== "function" || typeof process.getgid !== "function") fail("dependency_smoke_invalid");
+      uid = process.getuid();
+      gid = process.getgid();
+    }
+  } catch { fail("dependency_smoke_invalid"); }
+  if (!Number.isSafeInteger(uid) || !Number.isSafeInteger(gid) || uid <= 0 || gid <= 0) fail("dependency_smoke_invalid");
+  return Object.freeze({ uid, gid });
+}
+
 export function runNativeBetterSqliteSmoke({ root, snapshotModule = "scripts/control-plane-db-snapshot-gate.mjs", runtime = {} } = {}) {
   const entry = safeSnapshotPath(root, snapshotModule);
   const identity = runtime.uid === undefined && runtime.gid === undefined ? {} : safeInteger(runtime.uid) && safeInteger(runtime.gid) ? { uid: runtime.uid, gid: runtime.gid } : fail("native_module_validation_failed");
@@ -634,11 +686,16 @@ export async function runDependencyArtifactCli({ argv = process.argv.slice(2), s
   let mode = null;
   try {
     const value = parseArgs(argv); mode = value.mode; const root = resolve(value.root); const packageJsonBytes = readFileSync(resolve(root, "package.json")); const packageLockBytes = readFileSync(resolve(root, "package-lock.json"));
-    if (mode === "smoke") { const smoke = runNativeBetterSqliteSmoke({ root, snapshotModule: value.snapshot || "scripts/control-plane-db-snapshot-gate.mjs" }); stdout.write(`${JSON.stringify({ schemaVersion: DEPENDENCY_ARTIFACT_SCHEMA_VERSION, type: DEPENDENCY_ARTIFACT_TYPE, mode, state: "verified", smoke })}\n`); return 0; }
+    if (mode === "smoke") {
+      const processIdentity = readSmokeProcessIdentity(runtime);
+      const smoke = runNativeBetterSqliteSmoke({ root, snapshotModule: value.snapshot || "scripts/control-plane-db-snapshot-gate.mjs", runtime });
+      stdout.write(`${JSON.stringify({ schemaVersion: DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION, type: DEPENDENCY_ARTIFACT_TYPE, mode, state: "verified", smoke, processIdentity })}\n`);
+      return 0;
+    }
     if (!value.archive) fail("dependency_cli_invalid");
     if (mode === "build") { if (!value.output || !value.sourceCommit || !value.release) fail("dependency_cli_invalid"); const result = buildDependencyArtifactManifest({ sourceCommit: value.sourceCommit, artifactRelease: value.release, packageJsonBytes, packageLockBytes, archivePath: resolve(value.archive), root, snapshotModule: value.snapshot, runtime }); writeFileSync(resolve(value.output), result.bytes, { mode: 0o600, flag: "wx" }); stdout.write(`${JSON.stringify({ schemaVersion: DEPENDENCY_ARTIFACT_SCHEMA_VERSION, type: DEPENDENCY_ARTIFACT_TYPE, mode, state: "verified", manifestSha256: result.sha256, manifestSizeBytes: result.sizeBytes })}\n`); return 0; }
     if (!value.manifest || !value.sourceCommit || !value.release) fail("dependency_cli_invalid"); const result = verifyDependencyArtifact({ manifestBytes: readDependencyArtifactManifest(resolve(value.manifest)), archivePath: resolve(value.archive), packageJsonBytes, packageLockBytes, expectedSourceCommit: value.sourceCommit, expectedArtifactRelease: value.release, projectRoot: root, snapshotModule: value.snapshot, runtime }); stdout.write(`${JSON.stringify({ schemaVersion: DEPENDENCY_ARTIFACT_SCHEMA_VERSION, type: DEPENDENCY_ARTIFACT_TYPE, mode, state: "verified", manifestSha256: result.manifestSha256, archive: result.archive, tree: result.tree, smoke: result.smoke })}\n`); return 0;
-  } catch (error) { const condition = error instanceof DependencyArtifactError ? error.condition : "dependency_artifact_invalid"; stderr.write(`${JSON.stringify({ schemaVersion: DEPENDENCY_ARTIFACT_SCHEMA_VERSION, type: DEPENDENCY_ARTIFACT_TYPE, mode, state: error?.attentionRequired ? "attention_required" : "blocked", condition })}\n`); return 1; }
+  } catch (error) { const condition = error instanceof DependencyArtifactError ? error.condition : "dependency_artifact_invalid"; stderr.write(`${JSON.stringify({ schemaVersion: mode === "smoke" ? DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION : DEPENDENCY_ARTIFACT_SCHEMA_VERSION, type: DEPENDENCY_ARTIFACT_TYPE, mode, state: error?.attentionRequired ? "attention_required" : "blocked", condition })}\n`); return 1; }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) process.exitCode = await runDependencyArtifactCli();
