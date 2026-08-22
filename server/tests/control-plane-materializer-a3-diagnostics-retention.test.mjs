@@ -1044,3 +1044,232 @@ test('argv redacts signature= query parameter (signing-style tokens)', describeO
   // variant) and the value `ABCDEFGHIJKLMNOPQRSTUV` is not present.
   assert.doesNotMatch(stdout, /ABCDEFGHIJKLMNOPQRSTUV/);
 });
+
+// --- Round-2 Bugbot P1: SinkRoot canonicalization + ancestor chain ---
+
+test('Persist-A3PerCommandEvidence rejects sink\..\outside\file via canonicalization', describeOpts(skipIfNoPwsh), () => {
+  const sink = makeTempDir('a3-diag-r2-1-sink-');
+  // Create the parent so the sinkRoot resolves; the escape path is
+  // sink ..\outside\file where `outside` is a sibling directory of `sink`.
+  const outside = makeTempDir('a3-diag-r2-1-out-');
+  const pathSep = process.platform === 'win32' ? '\\' : '/';
+  const escape = `${sink}${pathSep}..${pathSep}${outside.split(/[\\/]/).pop()}${pathSep}diagnostics.jsonl`;
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    try {
+      Persist-A3PerCommandEvidence -DiagnosticsPath '${escape.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -SinkRoot '${sink.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+        command_index = 0; command_label = 'escape'; working_dir = '/tmp'; env_names = 'PATH'; argv = 'noop'; stdout = ''; stderr = ''; exit_code = 0; started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+      }) | Out-Null
+      Write-Output '__OK__'
+    } catch {
+      Write-Output ('__THROW__:' + $_.Exception.Message)
+    }
+  `;
+  const out = runScriptWithB64Raw('r2-bnd-escape', body);
+  assert.match(out, /__THROW__:a3_diagnostics_sink_root_violation/,
+    'sink\\..\\outside must be caught by canonicalized prefix compare');
+});
+
+test('Persist-A3PerCommandEvidence rejects Windows drive-relative C:file', describeOpts(skipIfNoPwsh), () => {
+  // Build a path that is rooted-but-not-absolute: 'C:foo' on Windows.
+  // Skip the test on non-Windows because the shape is Windows-specific.
+  if (process.platform !== 'win32') {
+    return;
+  }
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    try {
+      Persist-A3PerCommandEvidence -DiagnosticsPath 'C:diagnostics.jsonl' -Record ([pscustomobject]@{
+        command_index = 0; command_label = 'drv'; working_dir = '/tmp'; env_names = 'PATH'; argv = 'noop'; stdout = ''; stderr = ''; exit_code = 0; started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+      }) | Out-Null
+      Write-Output '__OK__'
+    } catch {
+      Write-Output ('__THROW__:' + $_.Exception.Message)
+    }
+  `;
+  const out = runScriptWithB64Raw('r2-bnd-drive-rel', body);
+  assert.match(out, /__THROW__:a3_diagnostics_path_drive_relative/);
+});
+
+test('Persist-A3PerCommandEvidence rejects sink with reparse-point intermediate segment', describeOpts(skipIfNoPwsh), () => {
+  if (process.platform !== 'win32') {
+    // Symlink-based ancestor chain check; Linux test would need
+    // a different setup. Skip on non-Windows.
+    return;
+  }
+  const sink = makeTempDir('a3-diag-r2-3-sink-');
+  // Create a junction: <sink>\link -> outside
+  const outside = makeTempDir('a3-diag-r2-3-out-');
+  const linkPath = join(sink, 'link');
+  // Use cmd.exe to create a directory junction (no admin needed).
+  const mkRes = spawnSync('cmd.exe', ['/c', `mklink /J "${linkPath}" "${outside}"`], { encoding: 'utf8' });
+  if (mkRes.status !== 0) {
+    // If junction creation fails (e.g. unsupported FS), skip silently.
+    return;
+  }
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    try {
+      Persist-A3PerCommandEvidence -DiagnosticsPath '${linkPath.replace(/'/g, "''").replace(/\\/g, '\\\\')}' + [char]92 + 'diagnostics.jsonl' -SinkRoot '${sink.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+        command_index = 0; command_label = 'j'; working_dir = '/tmp'; env_names = 'PATH'; argv = 'noop'; stdout = ''; stderr = ''; exit_code = 0; started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+      }) | Out-Null
+      Write-Output '__OK__'
+    } catch {
+      Write-Output ('__THROW__:' + $_.Exception.Message)
+    }
+  `;
+  const out = runScriptWithB64Raw('r2-bnd-junction', body);
+  assert.match(out, /__THROW__:a3_diagnostics_ancestor_is_symlink/);
+});
+
+// --- Round-3 Bugbot P1: URL/IPv4 redaction composition + Windows path semantics ---
+//
+// Each test below documents a second-round finding. They MUST fail on the
+// pre-fix PS1 and PASS after the corresponding fix lands.
+
+test('argv redacts IPv4 literal embedded in URL host (URL rule must compose with IPv4 rule)', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-r3-1-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $r = Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'url-ipv4-host'; working_dir = '/tmp'; env_names = 'PATH'
+      argv          = 'curl https://10.0.0.5/internal-api/health'
+      stdout = ''; stderr = ''; exit_code = 0
+      started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    })
+    Write-Output ("argv=" + $r.argv_redacted)
+  `;
+  const stdout = runScriptWithB64('r3-url-ipv4-host', body);
+  assert.doesNotMatch(stdout, /10\.0\.0\.5/,
+    'IPv4 literal in URL host must be redacted even after URL scrubbing');
+  assert.match(stdout, /https:\/\/<redacted>\/internal-api\/health/);
+});
+
+test('argv redacts user@host when it appears in URL (URL rule must compose with user@host rule)', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-r3-2-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $r = Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'url-user-host'; working_dir = '/tmp'; env_names = 'PATH'
+      argv          = 'curl https://admin@api.example.org/v1/things'
+      stdout = ''; stderr = ''; exit_code = 0
+      started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    })
+    Write-Output ("argv=" + $r.argv_redacted)
+  `;
+  const stdout = runScriptWithB64('r3-url-userhost', body);
+  assert.doesNotMatch(stdout, /admin@api\.example\.org/,
+    'user@host in URL must be redacted even after URL scrubbing');
+  assert.match(stdout, /<redacted>/);
+});
+
+test('argv redacts JWT-shaped blob embedded in URL path (URL rule must compose with JWT rule)', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-r3-3-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $r = Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'url-jwt'; working_dir = '/tmp'; env_names = 'PATH'
+      argv          = 'fetch https://api.example.com/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature/call'
+      stdout = ''; stderr = ''; exit_code = 0
+      started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    })
+    Write-Output ("argv=" + $r.argv_redacted)
+  `;
+  const stdout = runScriptWithB64('r3-url-jwt', body);
+  assert.doesNotMatch(stdout, /eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.payload\.signature/,
+    'JWT in URL path must be redacted even after URL scrubbing');
+});
+
+test('argv redacts URL query credentials with extended name list (refresh_token, client_secret, code, aws_session_token, private_key)', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-r3-4-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $r = Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'ext-query'; working_dir = '/tmp'; env_names = 'PATH'
+      argv          = 'curl https://api.example.com/cb?refresh_token=ABCDEFGHIJKLMNOP&client_secret=QRSTUVWXYZ012345&code=alpha-bravo-charlie&aws_session_token=delta-echo-foxtrot&private_key=golf-hotel-india-juliet&format=json'
+      stdout = ''; stderr = ''; exit_code = 0
+      started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    })
+    Write-Output ("argv=" + $r.argv_redacted)
+  `;
+  const stdout = runScriptWithB64('r3-ext-query', body);
+  assert.doesNotMatch(stdout, /refresh_token=ABCDEFGHIJKLMNOP/);
+  assert.doesNotMatch(stdout, /client_secret=QRSTUVWXYZ012345/);
+  assert.doesNotMatch(stdout, /code=alpha-bravo-charlie/);
+  assert.doesNotMatch(stdout, /aws_session_token=delta-echo-foxtrot/);
+  assert.doesNotMatch(stdout, /private_key=golf-hotel-india-juliet/);
+  // Non-credential query param survives.
+  assert.match(stdout, /format=json/);
+  assert.match(stdout, /<redacted>/);
+});
+
+test('argv redacts URL userinfo (https://user:pass@host/path)', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-r3-5-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $r = Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'url-userinfo'; working_dir = '/tmp'; env_names = 'PATH'
+      argv          = 'curl https://svc_account:hunter2-very-secret@api.example.com/v1/things'
+      stdout = ''; stderr = ''; exit_code = 0
+      started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    })
+    Write-Output ("argv=" + $r.argv_redacted)
+  `;
+  const stdout = runScriptWithB64('r3-url-userinfo', body);
+  assert.doesNotMatch(stdout, /svc_account:hunter2-very-secret/,
+    'URL userinfo (user:pass@) must be redacted');
+  assert.match(stdout, /api\.example\.com/);
+  assert.match(stdout, /<redacted>/);
+});
+
+test('argv redacts IPv4 with CIDR suffix (10.0.0.0/24)', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-r3-6-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $r = Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'ipv4-cidr'; working_dir = '/tmp'; env_names = 'PATH'
+      argv          = 'iptables -A INPUT -s 10.0.0.0/24 -d 192.168.1.0/28 -j DROP'
+      stdout = ''; stderr = ''; exit_code = 0
+      started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    })
+    Write-Output ("argv=" + $r.argv_redacted)
+  `;
+  const stdout = runScriptWithB64('r3-ipv4-cidr', body);
+  assert.doesNotMatch(stdout, /10\.0\.0\.0\/24/,
+    'CIDR-suffixed IPv4 must be redacted');
+  assert.doesNotMatch(stdout, /192\.168\.1\.0\/28/,
+    'CIDR-suffixed IPv4 must be redacted');
+  assert.match(stdout, /<redacted>/);
+});
+
+test('Persist-A3PerCommandEvidence accepts lowercased Windows path under uppercase SinkRoot (case-insensitive boundary)', describeOpts(skipIfNoPwsh), () => {
+  // Windows path semantics are case-insensitive; the boundary compare MUST
+  // match even when the caller passes a drive-letter or segment in a
+  // different case than the resolved sink.
+  if (process.platform !== 'win32') {
+    return;
+  }
+  const sink = makeTempDir('a3-diag-r3-7-sink-'); // mkdtemp returns uppercase drive on win32
+  const lowerSink = sink.toLowerCase();
+  const lowerPath = join(lowerSink, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    try {
+      Persist-A3PerCommandEvidence -DiagnosticsPath '${lowerPath.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -SinkRoot '${sink.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+        command_index = 0; command_label = 'case'; working_dir = '/tmp'; env_names = 'PATH'; argv = 'noop'; stdout = ''; stderr = ''; exit_code = 0; started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+      }) | Out-Null
+      Write-Output '__OK__'
+    } catch {
+      Write-Output ('__THROW__:' + $_.Exception.Message)
+    }
+  `;
+  const out = runScriptWithB64Raw('r3-case-insensitive', body);
+  assert.match(out, /__OK__/,
+    'lowercase Windows path under uppercase SinkRoot must NOT trip boundary check');
+});
