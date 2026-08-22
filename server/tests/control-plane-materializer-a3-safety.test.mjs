@@ -206,6 +206,16 @@ function physicalRuntime(overrides = {}) {
   };
 }
 
+function projectCheckOutput(runLabel = "run-1", projectId = 4242, diagnostics = []) {
+  const probeRoot = `/var/lib/control-plane-a3-1/${runLabel}/probe`;
+  return [
+    `Checking project ${projectId} (path ${probeRoot})...`,
+    ...diagnostics,
+    `Processed 1 (/etc/projects and cmdline) paths for project ${projectId} with recursion depth infinite (-1).`,
+    ""
+  ].join("\n");
+}
+
 test("collectStorageQuotaEvidence binds XFS project quota state and an observed EDQUOT probe", () => {
   const calls = [];
   let blockReportCount = 0;
@@ -214,7 +224,7 @@ test("collectStorageQuotaEvidence binds XFS project quota state and an observed 
     calls.push([command, args]);
     if (command === "/usr/bin/findmnt") return { status: 0, stdout: '{"filesystems":[{"target":"/var/lib/control-plane-a3-1/run-1/probe","source":"/dev/loop7","fstype":"xfs","options":"rw,relatime,prjquota"}]}\n', stderr: "" };
     if (command === "/usr/sbin/xfs_io") return { status: 0, stdout: "projid = 4242\n", stderr: "" };
-    if (args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")) return { status: 0, stdout: "", stderr: "" };
+    if (args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")) return { status: 0, stdout: projectCheckOutput(), stderr: "" };
     if (args.includes("state -p")) return { status: 0, stdout: "Project quota state on /dev/loop7 (/var/lib/control-plane-a3-1/run-1/probe)\n  Accounting: ON\n  Enforcement: ON\n", stderr: "" };
     if (args.includes("report -p -b -n -N -L 4242 -U 4242")) {
       blockReportCount += 1;
@@ -274,6 +284,36 @@ test("collectStorageQuotaEvidence binds XFS project quota state and an observed 
   assert.equal(created.size, 0);
 });
 
+test("collectStorageQuotaEvidence rejects project-check diagnostics and malformed framing", () => {
+  const probeRoot = "/var/lib/control-plane-a3-1/run-1/probe";
+  const outputs = [
+    "",
+    projectCheckOutput("run-1", 4242, [`${probeRoot} - project identifier is not set (inode=0, tree=4242)`]),
+    projectCheckOutput("run-1", 4242, [`${probeRoot} - project inheritance flag is not set`]),
+    projectCheckOutput().replace("Processed 1", "Processed 2")
+  ];
+  for (const output of outputs) {
+    const calls = [];
+    const execute = (command, args) => {
+      calls.push([command, args]);
+      if (command === "/usr/bin/findmnt") {
+        return { status: 0, stdout: '{"filesystems":[{"target":"/var/lib/control-plane-a3-1/run-1/probe","source":"/dev/loop7","fstype":"xfs","options":"rw,prjquota"}]}\n', stderr: "" };
+      }
+      if (command === "/usr/sbin/xfs_io") return { status: 0, stdout: "projid = 4242\n", stderr: "" };
+      if (args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")) {
+        return { status: 0, stdout: output, stderr: "" };
+      }
+      return { status: 70, stdout: "", stderr: "unexpected command" };
+    };
+    assert.throws(() => collectStorageQuotaEvidence({
+      runLabel: "run-1",
+      projectId: 4242,
+      runtime: physicalRuntime({ executePhysicalCommand: execute })
+    }), condition("storage_quota_evidence_invalid"));
+    assert.equal(calls.length, 3);
+  }
+});
+
 test("collectStorageQuotaEvidence rejects EDQUOT claims without an at-exhaustion quota readback", () => {
   const execute = (command, args) => ({
     status: 0,
@@ -282,7 +322,7 @@ test("collectStorageQuotaEvidence rejects EDQUOT claims without an at-exhaustion
       : command.endsWith("xfs_io")
         ? "projid = 4242\n"
         : args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")
-          ? ""
+          ? projectCheckOutput()
           : args.includes("state -p")
             ? "Project quota state\n  Accounting: ON\n  Enforcement: ON\n"
             : args.includes("report -p -b -n -N -L 4242 -U 4242")
@@ -308,7 +348,7 @@ test("collectStorageQuotaEvidence cleans every probe file when the exhausted quo
       : command.endsWith("xfs_io")
         ? "projid = 4242\n"
         : args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")
-          ? ""
+          ? projectCheckOutput()
           : args.includes("state -p")
             ? "Project quota state\n  Accounting: ON\n  Enforcement: ON\n"
             : args.includes("report -p -b -n -N -L 4242 -U 4242")
@@ -348,7 +388,7 @@ test("collectStorageQuotaEvidence preserves attention-required when probe cleanu
       : command.endsWith("xfs_io")
         ? "projid = 4242\n"
         : args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")
-          ? ""
+          ? projectCheckOutput()
           : args.includes("state -p")
             ? "Project quota state\n  Accounting: ON\n  Enforcement: ON\n"
             : args.includes("report -p -b -n -N -L 4242 -U 4242")
@@ -380,7 +420,7 @@ test("collectStorageQuotaEvidence rejects non-XFS and non-EDQUOT evidence", () =
       : command.endsWith("xfs_io")
         ? "projid = 4242\n"
         : args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")
-          ? ""
+          ? projectCheckOutput()
         : args.includes("state -p")
           ? "Project quota state\n  Accounting: ON\n  Enforcement: ON\n"
           : args.includes("report -p -b -n -N -L 4242 -U 4242")

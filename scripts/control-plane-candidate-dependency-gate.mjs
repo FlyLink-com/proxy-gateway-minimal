@@ -592,6 +592,18 @@ function parseXfsQuotaReport(output, projectId, scale) {
   return Object.freeze({ current: current * scale, hard: hard * scale });
 }
 
+function parseXfsProjectCheck(output, probeRoot, projectId) {
+  const lines = output.split(/\r?\n/);
+  if (lines.at(-1) === "") lines.pop();
+  const expected = [
+    `Checking project ${projectId} (path ${probeRoot})...`,
+    `Processed 1 (/etc/projects and cmdline) paths for project ${projectId} with recursion depth infinite (-1).`
+  ];
+  if (lines.length !== expected.length || !lines.every((line, index) => line === expected[index])) {
+    fail("storage_quota_evidence_invalid");
+  }
+}
+
 function localEdquotProbe(probeRoot, byteHeadroom, inodeHeadroom, observeExhaustedQuota, supplied) {
   if (!Number.isSafeInteger(byteHeadroom) || byteHeadroom <= 0 || byteHeadroom > 2 * 1024 * 1024
     || !Number.isSafeInteger(inodeHeadroom) || inodeHeadroom <= 0 || inodeHeadroom > A3_PROBE_INODE_HARD_LIMIT
@@ -660,7 +672,7 @@ export function collectStorageQuotaEvidence({ runLabel, projectId, runtime: supp
   const project = executeA3Physical(context.tools.xfsIo, ["-c", "lsproj", context.probeRoot], supplied, "storage_quota_evidence_invalid");
   if (project.trim() !== `projid = ${projectId}`) fail("storage_quota_evidence_invalid");
   const projectCheck = executeA3Physical(context.tools.xfsQuota, ["-x", "-c", `project -c -p ${context.probeRoot} ${projectId}`, context.probeRoot], supplied, "storage_quota_evidence_invalid");
-  if (projectCheck.trim() !== "") fail("storage_quota_evidence_invalid");
+  parseXfsProjectCheck(projectCheck, context.probeRoot, projectId);
   const state = executeA3Physical(context.tools.xfsQuota, ["-x", "-c", "state -p", context.probeRoot], supplied, "storage_quota_evidence_invalid");
   if (!/^\s*Accounting:\s+ON\s*$/m.test(state) || !/^\s*Enforcement:\s+ON\s*$/m.test(state)) fail("storage_quota_evidence_invalid");
   const blockCommand = `report -p -b -n -N -L ${projectId} -U ${projectId}`;
