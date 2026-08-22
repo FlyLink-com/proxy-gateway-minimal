@@ -823,3 +823,122 @@ test('partial/garbled JSONL line throws a3_diagnostics_partial_line fail-closed'
   assert.match(out, /__THROW__:a3_diagnostics_partial_line:/,
     'partial line must trigger fail-closed throw, not silent skip');
 });
+
+// --- Sink boundary / absolute path / refuse-already-finalized ---
+
+function makeRecordPS(overrides = {}) {
+  const parts = [];
+  for (const [k, v] of Object.entries(overrides)) parts.push(`${k} = ${JSON.stringify(v)}`);
+  return parts.join('; ');
+}
+
+test('Persist-A3PerCommandEvidence rejects relative path even with SinkRoot supplied', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-bnd-1-');
+  const relPath = join(dir, 'sub', 'diagnostics.jsonl'); // absolute, but caller passes a relative form
+  // Use a true relative path string (no leading separator).
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    try {
+      Persist-A3PerCommandEvidence -DiagnosticsPath 'rel-diagnostics.jsonl' -SinkRoot '${dir.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+        command_index = 0; command_label = 'x'; working_dir = '/tmp'; env_names = 'PATH'; argv = 'noop'; stdout = ''; stderr = ''; exit_code = 0; started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+      }) | Out-Null
+      Write-Output '__OK__'
+    } catch {
+      Write-Output ('__THROW__:' + $_.Exception.Message)
+    }
+  `;
+  const out = runScriptWithB64Raw('bnd-relative', body);
+  assert.match(out, /__THROW__:a3_diagnostics_path_not_absolute/);
+});
+
+test('Persist-A3PerCommandEvidence rejects DiagnosticsPath outside SinkRoot', describeOpts(skipIfNoPwsh), () => {
+  const dirA = makeTempDir('a3-diag-bnd-2A-');
+  const dirB = makeTempDir('a3-diag-bnd-2B-');
+  const outPath = join(dirB, 'diagnostics.jsonl'); // outside dirA
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    try {
+      Persist-A3PerCommandEvidence -DiagnosticsPath '${outPath.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -SinkRoot '${dirA.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+        command_index = 0; command_label = 'x'; working_dir = '/tmp'; env_names = 'PATH'; argv = 'noop'; stdout = ''; stderr = ''; exit_code = 0; started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+      }) | Out-Null
+      Write-Output '__OK__'
+    } catch {
+      Write-Output ('__THROW__:' + $_.Exception.Message)
+    }
+  `;
+  const out = runScriptWithB64Raw('bnd-violation', body);
+  assert.match(out, /__THROW__:a3_diagnostics_sink_root_violation/);
+});
+
+test('Persist-A3PerCommandEvidence refuses to write to an already-finalized receipt', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-bnd-3-');
+  const path = join(dir, 'diagnostics.jsonl');
+  // Seed: 1 command + finalize so the file carries an integrity_footer.
+  const seedBody = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'seed'; working_dir = '/tmp'; env_names = 'PATH'; argv = 'echo seed'; stdout = ''; stderr = ''; exit_code = 0; started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    }) | Out-Null
+    New-A3DiagnosticsRunSummary -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -RunLabel 'r1' | Out-Null
+    Write-Output 'SEED_OK'
+  `;
+  const seedOut = runScriptWithB64('bnd-seed', seedBody);
+  assert.match(seedOut, /SEED_OK/);
+
+  // Second persist should refuse.
+  const reuseBody = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    try {
+      Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+        command_index = 1; command_label = 'after'; working_dir = '/tmp'; env_names = 'PATH'; argv = 'echo after'; stdout = ''; stderr = ''; exit_code = 0; started_at = '2026-08-22T00:00:02Z'; finished_at = '2026-08-22T00:00:03Z'
+      }) | Out-Null
+      Write-Output '__OK__'
+    } catch {
+      Write-Output ('__THROW__:' + $_.Exception.Message)
+    }
+  `;
+  const reuseOut = runScriptWithB64Raw('bnd-reuse', reuseBody);
+  assert.match(reuseOut, /__THROW__:a3_diagnostics_footer_already_present/);
+});
+
+test('New-A3DiagnosticsRunSummary refuses relative path with SinkRoot', describeOpts(skipIfNoPwsh), () => {
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    try {
+      New-A3DiagnosticsRunSummary -DiagnosticsPath 'rel-summary.jsonl' -RunLabel 'r' -SinkRoot 'C:\\Windows'
+      Write-Output '__OK__'
+    } catch {
+      Write-Output ('__THROW__:' + $_.Exception.Message)
+    }
+  `;
+  const out = runScriptWithB64Raw('bnd-summary-rel', body);
+  assert.match(out, /__THROW__:a3_diagnostics_path_not_absolute/);
+});
+
+test('CLI persist accepts -SinkRoot and rejects out-of-sink path', describeOpts(skipIfNoPwsh), () => {
+  const dirA = makeTempDir('a3-diag-bnd-cli-A-');
+  const dirB = makeTempDir('a3-diag-bnd-cli-B-');
+  const outPath = join(dirB, 'diagnostics.jsonl');
+  const record = {
+    command_index: 0,
+    command_label: 'cli-bnd',
+    working_dir: '/tmp',
+    env_names: 'PATH',
+    argv: 'noop',
+    stdout: '',
+    stderr: '',
+    exit_code: 0,
+    started_at: '2026-08-22T00:00:00Z',
+    finished_at: '2026-08-22T00:00:01Z',
+  };
+  const result = spawnSync('powershell', [
+    '-NoLogo', '-NoProfile', '-NonInteractive',
+    '-File', MODULE_PATH,
+    '-Action', 'persist',
+    '-DiagnosticsPath', outPath,
+    '-SinkRoot', dirA,
+  ], { encoding: 'utf8', input: JSON.stringify(record) });
+  assert.notEqual(result.status, 0, 'out-of-sink path must fail');
+  const combined = (result.stderr || '') + (result.stdout || '');
+  assert.match(combined, /a3_diagnostics_sink_root_violation/);
+});

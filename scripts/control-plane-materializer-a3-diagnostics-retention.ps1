@@ -53,7 +53,9 @@ param(
 
     [string]$DiagnosticsPath,
 
-    [string]$RunLabel
+    [string]$RunLabel,
+
+    [string]$SinkRoot
 )
 
 Set-StrictMode -Version Latest
@@ -213,15 +215,69 @@ function Get-A3StreamSnapshot {
   diagnostics path BEFORE returning. The line is fsynced; on failure the
   function throws 'a3_diagnostics_write_failed' so callers can abort the
   whole replay.
+
+  The optional -SinkRoot parameter, when supplied, MUST be the absolute
+  parent directory the operator controls. The function then enforces:
+
+    - DiagnosticsPath is absolute (IsPathRooted)
+    - DiagnosticsPath is strictly nested under SinkRoot
+      (string prefix with directory separator, Ordinal compare)
+    - The parent directory is not a Reparse Point (symlink/junction)
+      on Windows
+    - If the file already exists and contains an integrity_footer
+      line, the function refuses with
+      'a3_diagnostics_footer_already_present' to prevent silent
+      pollution of an already-finalized receipt.
 #>
 function Persist-A3PerCommandEvidence {
     param(
         [Parameter(Mandatory)][string]$DiagnosticsPath,
-        [Parameter(Mandatory)][pscustomobject]$Record
+        [Parameter(Mandatory)][pscustomobject]$Record,
+        [string]$SinkRoot
     )
 
-    if (-not (Test-Path -LiteralPath (Split-Path -Parent $DiagnosticsPath) -PathType Container)) {
+    if (-not [System.IO.Path]::IsPathRooted($DiagnosticsPath)) {
+        throw 'a3_diagnostics_path_not_absolute'
+    }
+
+    if ($SinkRoot) {
+        if (-not [System.IO.Path]::IsPathRooted($SinkRoot)) {
+            throw 'a3_diagnostics_sink_root_not_absolute'
+        }
+        $sep = [System.IO.Path]::DirectorySeparatorChar
+        $normalizedSink = $SinkRoot.TrimEnd($sep) + $sep
+        $normalizedDiag = $DiagnosticsPath.Replace([System.IO.Path]::AltDirectorySeparatorChar, $sep)
+        if (-not $normalizedDiag.StartsWith($normalizedSink, [System.StringComparison]::Ordinal)) {
+            throw 'a3_diagnostics_sink_root_violation'
+        }
+    }
+
+    $parentDir = Split-Path -Parent $DiagnosticsPath
+    if (-not (Test-Path -LiteralPath $parentDir -PathType Container)) {
         throw 'a3_diagnostics_parent_missing'
+    }
+    $parentAttrs = [System.IO.File]::GetAttributes($parentDir)
+    if (($parentAttrs -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'a3_diagnostics_parent_is_symlink'
+    }
+
+    # Refuse to pollute an already-finalized receipt. If the file exists
+    # AND its last non-empty line is an integrity_footer, the previous
+    # replay already closed this sink.
+    if (Test-Path -LiteralPath $DiagnosticsPath) {
+        $existingRaw = Get-Content -LiteralPath $DiagnosticsPath -Encoding UTF8
+        foreach ($existing in $existingRaw) {
+            if ([string]::IsNullOrWhiteSpace($existing)) { continue }
+            try {
+                $existingObj = $existing | ConvertFrom-Json -ErrorAction Stop
+            } catch {
+                $lineSha = Get-A3LowerHexSha256 -Bytes ([Text.Encoding]::UTF8.GetBytes($existing))
+                throw ('a3_diagnostics_partial_line:' + $lineSha)
+            }
+            if ($existingObj.kind -eq 'integrity_footer') {
+                throw 'a3_diagnostics_footer_already_present'
+            }
+        }
     }
 
     $argvRedacted = ConvertTo-A3RedactedArgv -Argv ([string]$Record.argv)
@@ -263,8 +319,32 @@ function Persist-A3PerCommandEvidence {
 function New-A3DiagnosticsRunSummary {
     param(
         [Parameter(Mandatory)][string]$DiagnosticsPath,
-        [Parameter(Mandatory)][string]$RunLabel
+        [Parameter(Mandatory)][string]$RunLabel,
+        [string]$SinkRoot
     )
+
+    if (-not [System.IO.Path]::IsPathRooted($DiagnosticsPath)) {
+        throw 'a3_diagnostics_path_not_absolute'
+    }
+    if ($SinkRoot) {
+        if (-not [System.IO.Path]::IsPathRooted($SinkRoot)) {
+            throw 'a3_diagnostics_sink_root_not_absolute'
+        }
+        $sep = [System.IO.Path]::DirectorySeparatorChar
+        $normalizedSink = $SinkRoot.TrimEnd($sep) + $sep
+        $normalizedDiag = $DiagnosticsPath.Replace([System.IO.Path]::AltDirectorySeparatorChar, $sep)
+        if (-not $normalizedDiag.StartsWith($normalizedSink, [System.StringComparison]::Ordinal)) {
+            throw 'a3_diagnostics_sink_root_violation'
+        }
+    }
+    $parentDir = Split-Path -Parent $DiagnosticsPath
+    if (-not (Test-Path -LiteralPath $parentDir -PathType Container)) {
+        throw 'a3_diagnostics_parent_missing'
+    }
+    $parentAttrs = [System.IO.File]::GetAttributes($parentDir)
+    if (($parentAttrs -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'a3_diagnostics_parent_is_symlink'
+    }
 
     if (-not (Test-Path -LiteralPath $DiagnosticsPath)) {
         throw 'a3_diagnostics_file_missing'
@@ -401,13 +481,23 @@ if ($MyInvocation.InvocationName -ne '.') {
                 throw 'a3_diagnostics_cli_persist_stdin_empty'
             }
             $record = $stdinRaw | ConvertFrom-Json -ErrorAction Stop
-            Persist-A3PerCommandEvidence -DiagnosticsPath $DiagnosticsPath -Record $record
+            $persistArgs = @{
+                DiagnosticsPath = $DiagnosticsPath
+                Record          = $record
+            }
+            if ($SinkRoot) { $persistArgs['SinkRoot'] = $SinkRoot }
+            Persist-A3PerCommandEvidence @persistArgs
         }
         'summary' {
             if (-not $RunLabel) {
                 throw 'a3_diagnostics_cli_summary_run_label_required'
             }
-            New-A3DiagnosticsRunSummary -DiagnosticsPath $DiagnosticsPath -RunLabel $RunLabel
+            $summaryArgs = @{
+                DiagnosticsPath = $DiagnosticsPath
+                RunLabel        = $RunLabel
+            }
+            if ($SinkRoot) { $summaryArgs['SinkRoot'] = $SinkRoot }
+            New-A3DiagnosticsRunSummary @summaryArgs
         }
         default {
             throw ('a3_diagnostics_cli_unknown_action:' + $Action)
