@@ -80,10 +80,14 @@ $A3_DIAG_ENV_NAMES_BYTE_CAP = 4096
 # OR a token that is a long mixed-case+digits blob (>=24 chars) OR an IPv4
 # literal. We redacted the long-blob rule so a plain stream of identical
 # ASCII letters (test payloads, English prose) is not over-redacted.
-$script:A3RedactKeyValueRegex = '(?i)^-+(token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|bearer|aws_access_key_id|aws_secret_access_key)=(.+)$'
-$script:A3RedactLongBlobRegex = '^(?=[A-Za-z0-9+/]*[0-9])(?=[A-Za-z0-9+/]*[A-Z])(?=[A-Za-z0-9+/]*[a-z])[A-Za-z0-9+/]{24,}={0,2}$'
-$script:A3RedactIPv4Regex = '^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$'
+$script:A3RedactKeyValueRegex    = '(?i)^[-_]*(token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|bearer|aws_access_key_id|aws_secret_access_key)=(.+)$'
+$script:A3RedactLongBlobRegex    = '^(?=[A-Za-z0-9+/]*[0-9])(?=[A-Za-z0-9+/]*[A-Z])(?=[A-Za-z0-9+/]*[a-z])[A-Za-z0-9+/]{24,}={0,2}$'
+$script:A3RedactJwtRegex         = '^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$'
+$script:A3RedactIPv4Regex        = '^(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?$'
+$script:A3RedactIPv6Regex        = '^(?:[\[]?(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}\]?|(?:[0-9a-f]{0,4}:){2,7}:[0-9a-f]{0,4}|::1?|::)(?::[0-9]+)?(?:%[A-Za-z0-9_.\-]+)?$'
+$script:A3RedactUserHostRegex    = '^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$'
 $script:A3RedactKnownPrefixRegex = '^(sk-|pk-|ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9]{8,}$'
+$script:A3RedactUrlQueryRegex    = '(?i)([?&])(token|access_token|access_key|secret|password|api[_-]?key|sig|signature|x-api-key|x-amz-signature|x-amz-security-token)(=)([^&\s"]+)'
 
 <#
 .SYNOPSIS
@@ -146,7 +150,11 @@ function Write-A3FsyncedAppend {
 .SYNOPSIS
   Redact an argv string token-by-token. Whitespace-delimited tokens that
   match a credential shape are replaced with '<redacted>'. Plain English
-  prose or test payloads are preserved verbatim.
+  prose or test payloads are preserved verbatim. Tokens that look like a
+  URL are scanned for query-string credential parameters, and each
+  `key=value` substring inside the URL is replaced with
+  `key=<redacted>` while the rest of the URL (scheme, host, path, other
+  query keys) is preserved.
 #>
 function ConvertTo-A3RedactedArgv {
     param([string]$Argv)
@@ -156,17 +164,37 @@ function ConvertTo-A3RedactedArgv {
     $tokens = $Argv -split '\s+'
     $out = @()
     foreach ($t in $tokens) {
+        # URL detection: contains '://' or starts with http(s):// etc.
+        # Inside such a token we scrub every credential-bearing query
+        # substring so e.g. `?access_key=ABC&token=DEF` becomes
+        # `?access_key=<redacted>&token=<redacted>` and the host/path
+        # survive.
+        if ($t -match '://' -or $t -match '^https?=' -or $t -match '^[a-z][a-z0-9+.\-]*://') {
+            $scrubbed = [System.Text.RegularExpressions.Regex]::Replace(
+                $t,
+                $script:A3RedactUrlQueryRegex,
+                { param($m) ($m.Groups[1].Value + $m.Groups[2].Value + $m.Groups[3].Value + '<redacted>') }
+            )
+            $out += $scrubbed
+            continue
+        }
         if ($t -match $script:A3RedactKeyValueRegex) {
             $out += ('<redacted>')
         } elseif ($t -match $script:A3RedactKnownPrefixRegex) {
             $out += ('<redacted>')
-        } elseif ($t -match $script:A3RedactLongBlobRegex) {
+                } elseif ($t -match $script:A3RedactJwtRegex) {
             $out += ('<redacted>')
-        } elseif ($t -match $script:A3RedactIPv4Regex) {
+                } elseif ($t -match $script:A3RedactLongBlobRegex) {
             $out += ('<redacted>')
-        } else {
-            $out += $t
-        }
+                } elseif ($t -match $script:A3RedactIPv4Regex) {
+            $out += ('<redacted>')
+                } elseif ($t -match $script:A3RedactIPv6Regex) {
+            $out += ('<redacted>')
+                } elseif ($t -match $script:A3RedactUserHostRegex) {
+                    $out += ('<redacted>')
+                } else {
+                    $out += $t
+                }
     }
     return ($out -join ' ')
 }

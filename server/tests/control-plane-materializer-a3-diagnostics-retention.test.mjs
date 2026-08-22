@@ -942,3 +942,105 @@ test('CLI persist accepts -SinkRoot and rejects out-of-sink path', describeOpts(
   const combined = (result.stderr || '') + (result.stdout || '');
   assert.match(combined, /a3_diagnostics_sink_root_violation/);
 });
+
+// --- Redaction gaps: bare-bearer, IPv6, user@host, URL query ---
+
+test('argv redacts bare-bearer without leading dashes', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-red-1-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $r = Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'bearer'; working_dir = '/tmp'; env_names = 'PATH'
+      argv          = 'curl -H bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature'
+      stdout = ''; stderr = ''; exit_code = 0
+      started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    })
+    Write-Output ("argv=" + $r.argv_redacted)
+  `;
+  const stdout = runScriptWithB64('red-bare-bearer', body);
+  assert.doesNotMatch(stdout, /eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9/,
+    'JWT payload must not appear in argv');
+  assert.match(stdout, /<redacted>/);
+});
+
+test('argv redacts IPv6 literals (bracketed and bare, including ::1)', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-red-2-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $r = Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'ipv6'; working_dir = '/tmp'; env_names = 'PATH'
+      argv          = 'bind [2001:db8::1]:1080 connect ::1:8443'
+      stdout = ''; stderr = ''; exit_code = 0
+      started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    })
+    Write-Output ("argv=" + $r.argv_redacted)
+  `;
+  const stdout = runScriptWithB64('red-ipv6', body);
+  assert.doesNotMatch(stdout, /2001:db8::1/);
+  assert.doesNotMatch(stdout, /::1:8443/);
+  assert.match(stdout, /<redacted>/);
+});
+
+test('argv redacts user@host email-like identifiers', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-red-3-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $r = Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'userhost'; working_dir = '/tmp'; env_names = 'PATH'
+      argv          = 'ssh admin@10.0.0.5.example.org backup'
+      stdout = ''; stderr = ''; exit_code = 0
+      started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    })
+    Write-Output ("argv=" + $r.argv_redacted)
+  `;
+  const stdout = runScriptWithB64('red-userhost', body);
+  assert.doesNotMatch(stdout, /admin@10\.0\.0\.5\.example\.org/);
+  assert.match(stdout, /<redacted>/);
+});
+
+test('argv redacts URL query parameters carrying credentials but preserves host/path', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-red-4-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $r = Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'url'; working_dir = '/tmp'; env_names = 'PATH'
+      argv          = 'curl https://api.example.com/v1/things?access_key=AKIAIOSFODNN7EXAMPLE&token=eyJhbGciOi.payload&format=json'
+      stdout = ''; stderr = ''; exit_code = 0
+      started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    })
+    Write-Output ("argv=" + $r.argv_redacted)
+  `;
+  const stdout = runScriptWithB64('red-url-query', body);
+  assert.doesNotMatch(stdout, /AKIAIOSFODNN7EXAMPLE/,
+    'AWS access_key value must be redacted inside URL query');
+  assert.doesNotMatch(stdout, /eyJhbGciOi\.payload/,
+    'token value must be redacted inside URL query');
+  // Host + path + non-credential query param survive.
+  assert.match(stdout, /api\.example\.com\/v1\/things/);
+  assert.match(stdout, /format=json/);
+  assert.match(stdout, /<redacted>/);
+});
+
+test('argv redacts signature= query parameter (signing-style tokens)', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-red-5-');
+  const path = join(dir, 'diagnostics.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $r = Persist-A3PerCommandEvidence -DiagnosticsPath '${path.replace(/'/g, "''").replace(/\\/g, '\\\\')}' -Record ([pscustomobject]@{
+      command_index = 0; command_label = 'sig'; working_dir = '/tmp'; env_names = 'PATH'
+      argv          = 'curl https://s3.example.com/x?X-Amz-Signature=ABCDEFGHIJKLMNOPQRSTUV&X-Amz-Date=20260822T000000Z'
+      stdout = ''; stderr = ''; exit_code = 0
+      started_at = '2026-08-22T00:00:00Z'; finished_at = '2026-08-22T00:00:01Z'
+    })
+    Write-Output ("argv=" + $r.argv_redacted)
+  `;
+  const stdout = runScriptWithB64('red-sig', body);
+  // X-Amz-Signature uses the literal token `Signature` not just `sig`, so
+  // confirm the URL substring is preserved (we don't claim to know every
+  // variant) and the value `ABCDEFGHIJKLMNOPQRSTUV` is not present.
+  assert.doesNotMatch(stdout, /ABCDEFGHIJKLMNOPQRSTUV/);
+});
