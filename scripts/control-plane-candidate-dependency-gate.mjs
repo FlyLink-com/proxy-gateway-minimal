@@ -44,6 +44,7 @@ const A3_RUN_LABEL = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const A3_SMOKE_PHASES = new Set(["validation", "prepublish", "postpublish", "verify"]);
 const A3_PROBE_BYTE_HARD_LIMIT = 1024 * 1024;
 const A3_PROBE_INODE_HARD_LIMIT = 64;
+const A3_PROBE_WRITE_CHUNK_BYTES = 64 * 1024;
 const WORKER_NPM = "/usr/bin/npm";
 const WORKER_TAR = "/usr/bin/tar";
 const SEALED_TREE_LIMITS = Object.freeze({ maxDepth: 64, maxEntries: 250000, maxHashBytes: 2 * 1024 * 1024 * 1024 });
@@ -641,7 +642,7 @@ function localProjectQuotaProbe(probeRoot, byteHeadroom, inodeHeadroom, observeE
       close();
     }
     descriptor = io.openSync(paths[0], fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW | fsConstants.O_CLOEXEC);
-    const chunk = Buffer.alloc(64 * 1024);
+    const chunk = Buffer.alloc(A3_PROBE_WRITE_CHUNK_BYTES);
     let written = 0;
     try {
       while (written <= byteHeadroom + chunk.length) {
@@ -651,7 +652,9 @@ function localProjectQuotaProbe(probeRoot, byteHeadroom, inodeHeadroom, observeE
       }
     } catch (error) { byteErrorCode = error?.code || null; }
     close();
-    if (inodeErrorCode === XFS_PROJECT_QUOTA_ERROR_CODE && byteErrorCode === XFS_PROJECT_QUOTA_ERROR_CODE) observeExhaustedQuota();
+    if (inodeErrorCode === XFS_PROJECT_QUOTA_ERROR_CODE && byteErrorCode === XFS_PROJECT_QUOTA_ERROR_CODE) {
+      observeExhaustedQuota({ attemptedWriteBytes: chunk.length });
+    }
   } catch (error) { primaryError = error; }
   finally {
     close();
@@ -695,11 +698,17 @@ export function collectStorageQuotaEvidence({ runLabel, projectId, runtime: supp
   if (before.blocks.hard !== A3_PROBE_BYTE_HARD_LIMIT || before.inodes.hard !== A3_PROBE_INODE_HARD_LIMIT
     || before.blocks.current >= before.blocks.hard || before.inodes.current >= before.inodes.hard) fail("storage_quota_evidence_invalid");
   let exhaustedQuota = null;
-  const observeExhaustedQuota = () => {
+  const observeExhaustedQuota = (attempt) => {
     if (exhaustedQuota !== null) fail("storage_quota_evidence_invalid");
+    if (!attempt || typeof attempt !== "object" || Array.isArray(attempt)
+      || Object.keys(attempt).length !== 1 || attempt.attemptedWriteBytes !== A3_PROBE_WRITE_CHUNK_BYTES) {
+      fail("storage_quota_evidence_invalid");
+    }
     const observed = readQuota();
+    const blockHeadroom = observed.blocks.hard - observed.blocks.current;
     if (observed.blocks.hard !== before.blocks.hard || observed.inodes.hard !== before.inodes.hard
-      || observed.blocks.current !== observed.blocks.hard || observed.inodes.current !== observed.inodes.hard) fail("storage_quota_evidence_invalid");
+      || observed.blocks.current <= before.blocks.current || blockHeadroom >= attempt.attemptedWriteBytes
+      || observed.inodes.current !== observed.inodes.hard) fail("storage_quota_evidence_invalid");
     exhaustedQuota = observed;
     return observed;
   };
@@ -713,6 +722,7 @@ export function collectStorageQuotaEvidence({ runLabel, projectId, runtime: supp
           inodeHardLimit: before.inodes.hard,
           byteHeadroom: before.blocks.hard - before.blocks.current,
           inodeHeadroom: before.inodes.hard - before.inodes.current,
+          attemptedWriteBytes: A3_PROBE_WRITE_CHUNK_BYTES,
           observeExhaustedQuota
         })
       : localProjectQuotaProbe(

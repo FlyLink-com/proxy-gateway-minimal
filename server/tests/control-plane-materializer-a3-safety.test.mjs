@@ -211,7 +211,7 @@ function projectCheckOutput(runLabel = "run-1", projectId = 4242, diagnostics = 
   ].join("\n");
 }
 
-test("collectStorageQuotaEvidence binds XFS project quota state and an observed ENOSPC probe", () => {
+test("collectStorageQuotaEvidence binds ENOSPC to XFS quota with less than one write chunk remaining", () => {
   const calls = [];
   let blockReportCount = 0;
   let inodeReportCount = 0;
@@ -223,7 +223,7 @@ test("collectStorageQuotaEvidence binds XFS project quota state and an observed 
     if (args.includes("state -p")) return { status: 0, stdout: "Project quota state on /dev/loop7 (/var/lib/control-plane-a3-1/run-1/probe)\n  Accounting: ON\n  Enforcement: ON\n", stderr: "" };
     if (args.includes("report -p -b -n -N -L 4242 -U 4242")) {
       blockReportCount += 1;
-      return { status: 0, stdout: blockReportCount === 1 ? "4242 512 0 1024 00 [------]\n" : "4242 1024 0 1024 00 [------]\n", stderr: "" };
+      return { status: 0, stdout: blockReportCount === 1 ? "4242 512 0 1024 00 [------]\n" : "4242 964 0 1024 00 [------]\n", stderr: "" };
     }
     if (args.includes("report -p -i -n -N -L 4242 -U 4242")) {
       inodeReportCount += 1;
@@ -266,11 +266,11 @@ test("collectStorageQuotaEvidence binds XFS project quota state and an observed 
     })
   });
   assert.equal(evidence.filesystem, "/dev/loop7");
-  assert.equal(evidence.byteCurrent, 1024 * 1024);
+  assert.equal(evidence.byteCurrent, 964 * 1024);
   assert.equal(evidence.byteHardLimit, 1024 * 1024);
   assert.equal(evidence.inodeCurrent, 64);
   assert.equal(evidence.inodeHardLimit, 64);
-  assert.equal(evidence.headroomBytes, 0);
+  assert.equal(evidence.headroomBytes, 60 * 1024);
   assert.equal(evidence.headroomInodes, 0);
   assert.equal(calls.length, 8);
   assert.equal(createdCount, 52);
@@ -392,6 +392,38 @@ test("collectStorageQuotaEvidence rejects plain filesystem ENOSPC when project q
     runtime: physicalRuntime({ executePhysicalCommand: execute, probeFilesystem })
   }), condition("storage_quota_evidence_invalid"));
   assert.equal(created.size, 0);
+});
+
+test("collectStorageQuotaEvidence rejects ENOSPC when one full write chunk still fits", () => {
+  let blockReportCount = 0;
+  let inodeReportCount = 0;
+  const execute = (command, args) => ({
+    status: 0,
+    stdout: command.endsWith("findmnt")
+      ? '{"filesystems":[{"target":"/var/lib/control-plane-a3-1/run-1/probe","source":"/dev/loop7","fstype":"xfs","options":"rw,prjquota"}]}\n'
+      : command.endsWith("xfs_io")
+        ? "projid = 4242\n"
+        : args.includes("project -c -p /var/lib/control-plane-a3-1/run-1/probe 4242")
+          ? projectCheckOutput()
+          : args.includes("state -p")
+            ? "Project quota state\n  Accounting: ON\n  Enforcement: ON\n"
+            : args.includes("report -p -b -n -N -L 4242 -U 4242")
+              ? ++blockReportCount === 1 ? "4242 512 0 1024 00 [------]\n" : "4242 960 0 1024 00 [------]\n"
+              : ++inodeReportCount === 1 ? "4242 12 0 64 00 [------]\n" : "4242 64 0 64 00 [------]\n",
+    stderr: ""
+  });
+  assert.throws(() => collectStorageQuotaEvidence({
+    runLabel: "run-1",
+    projectId: 4242,
+    runtime: physicalRuntime({
+      executePhysicalCommand: execute,
+      runQuotaExhaustionProbe: ({ attemptedWriteBytes, observeExhaustedQuota }) => {
+        assert.equal(attemptedWriteBytes, 64 * 1024);
+        observeExhaustedQuota({ attemptedWriteBytes });
+        return { expectedErrorCode: "ENOSPC", observedErrorCode: "ENOSPC", exhausted: true };
+      }
+    })
+  }), condition("storage_quota_evidence_invalid"));
 });
 
 test("collectStorageQuotaEvidence preserves attention-required when probe cleanup is uncertain", () => {

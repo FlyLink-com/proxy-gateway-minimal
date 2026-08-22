@@ -138,7 +138,7 @@ splitting strategy.
 | # | Item | Contract reference | Touches production? |
 |---|---|---|---|
 | 1 | Trusted XFS project-quota physical probe | `parseStorageQuotaEvidence` | No (probe runs in a disposable sandbox on the approved non-production validation host) |
-| 2 | Real XFS project-quota overload probe (exhaustion → ENOSPC, quota readback → hard limits) | `parseStorageQuotaEvidence.probe` | No |
+| 2 | Real XFS project-quota overload probe (exhaustion → ENOSPC, quota readback → bounded allocation headroom) | `parseStorageQuotaEvidence.probe` | No |
 | 3 | systemd-restricted native-smoke worker (validated service UID/GID transient unit) | `parseServiceSmokeReadback` | No |
 | 4 | Precise terminal / cgroup-empty readback | `parseServiceSmokeReadback.terminalActiveState / terminalSubState / cgroupEmpty` | No |
 | 5 | Wire physical evidence into `materialize` main flow | `materializeCandidateDependencies` boundary | Yes (gates production path) |
@@ -307,10 +307,14 @@ execution phase that produces the readback. Dry-run must pass before real-run.
   2. Allocate only enough bounded test data/inodes to approach that limit.
   3. Attempt a final write that crosses the limit.
   4. Capture `errno = ENOSPC` for both inode and byte exhaustion, then read the
-     live XFS project report while the probe files still exist and require both
-     current values to equal their hard limits (`headroomBytes = 0`,
-     `headroomInodes = 0`). `ENOSPC` without that quota readback is only a
-     possible filesystem-full condition and must fail closed.
+     live XFS project report while the probe files still exist. Inode usage must
+     equal its hard limit (`headroomInodes = 0`). Block usage must have advanced
+     from the pre-probe value, and its remaining headroom must be non-negative
+     and smaller than the rejected fixed `64KiB` write. XFS may reject that
+     allocation before `byteCurrent` equals `byteHardLimit`; requiring exact
+     equality would reject a valid project-quota result. `ENOSPC` without this
+     readback, without block progress, or with enough headroom for the rejected
+     write is only a possible filesystem-full condition and must fail closed.
 - Do not execute until items 6.1 dry-run passes.
 
 ### 6.3 Item 3 — fixed service-principal transient unit (dry-run)
