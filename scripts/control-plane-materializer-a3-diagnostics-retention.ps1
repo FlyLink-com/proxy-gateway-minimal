@@ -98,6 +98,50 @@ function Get-A3LowerHexSha256 {
 
 <#
 .SYNOPSIS
+  Append UTF-8 bytes to a file with a true fsync (FlushFileBuffers equivalent).
+
+.DESCRIPTION
+  System.IO.File.AppendAllText writes through the user-space buffer but does
+  NOT call FlushFileBuffers; on a crash the operator can observe a partial
+  JSONL line on disk even though the call returned success. This helper opens
+  the file with FileMode.Append + FileAccess.Write + FileShare.None, writes
+  the bytes, then calls Flush($true) which dispatches to FlushFileBuffers on
+  Windows and fsync(2) on POSIX. After Flush($true) returns, the bytes are
+  durable on stable storage; a crash either preserves them whole or yields
+  no visible change. The handle is closed in a finally block so an exception
+  during write or flush cannot leak the fd.
+
+  The function throws 'a3_diagnostics_write_failed' on any I/O failure so
+  callers abort the whole replay rather than silently lose evidence.
+#>
+function Write-A3FsyncedAppend {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][AllowEmptyCollection()][byte[]]$Bytes
+    )
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::Open(
+            $Path,
+            [System.IO.FileMode]::Append,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None
+        )
+        if ($Bytes.Length -gt 0) {
+            $stream.Write($Bytes, 0, $Bytes.Length)
+        }
+        $stream.Flush($true)
+    } catch {
+        throw 'a3_diagnostics_write_failed'
+    } finally {
+        if ($null -ne $stream) {
+            try { $stream.Close() } catch { }
+        }
+    }
+}
+
+<#
+.SYNOPSIS
   Redact an argv string token-by-token. Whitespace-delimited tokens that
   match a credential shape are replaced with '<redacted>'. Plain English
   prose or test payloads are preserved verbatim.
@@ -204,16 +248,12 @@ function Persist-A3PerCommandEvidence {
     }
 
     $json = ConvertTo-Json -Depth 6 -Compress -InputObject $line
-    $jsonBytes = [Text.Encoding]::UTF8.GetBytes(($json + "`n"))
+        $jsonBytes = [Text.Encoding]::UTF8.GetBytes(($json + "`n"))
 
-    try {
-        [System.IO.File]::AppendAllText($DiagnosticsPath, [Text.Encoding]::UTF8.GetString($jsonBytes), $script:A3Utf8NoBom)
-    } catch {
-        throw 'a3_diagnostics_write_failed'
+        Write-A3FsyncedAppend -Path $DiagnosticsPath -Bytes $jsonBytes
+
+        return $line
     }
-
-    return $line
-}
 
 <#
 .SYNOPSIS
@@ -257,13 +297,9 @@ function New-A3DiagnosticsRunSummary {
         footer_written_at = (Get-Date).ToUniversalTime().ToString('o')
     }
     $footerJson = ConvertTo-Json -Depth 6 -Compress -InputObject $footer
-    $footerBytes = [Text.Encoding]::UTF8.GetBytes(($footerJson + "`n"))
+        $footerBytes = [Text.Encoding]::UTF8.GetBytes(($footerJson + "`n"))
 
-    try {
-        [System.IO.File]::AppendAllText($DiagnosticsPath, [Text.Encoding]::UTF8.GetString($footerBytes), $script:A3Utf8NoBom)
-    } catch {
-        throw 'a3_diagnostics_write_failed'
-    }
+        Write-A3FsyncedAppend -Path $DiagnosticsPath -Bytes $footerBytes
 
     $perCommand = @()
     foreach ($line in $commandLines) {
@@ -289,6 +325,7 @@ if ($MyInvocation.InvocationName -ne '.' -and $MyInvocation.MyCommand.ModuleName
     Export-ModuleMember -Function `
         Persist-A3PerCommandEvidence, `
         New-A3DiagnosticsRunSummary, `
+        Write-A3FsyncedAppend, `
         Get-A3LowerHexSha256, `
         ConvertTo-A3RedactedArgv, `
         Get-A3StreamSnapshot

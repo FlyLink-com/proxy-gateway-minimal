@@ -630,3 +630,46 @@ test('CLI rejects unknown action with explicit error code', describeOpts(skipIfN
     'unknown action must fail closed via either ValidateSet or explicit throw'
   );
 });
+
+test('Write-A3FsyncedAppend writes UTF-8 bytes + dispatches FlushFileBuffers', describeOpts(skipIfNoPwsh), () => {
+  const dir = makeTempDir('a3-diag-fsync-1-');
+  const path = join(dir, 'fsync.jsonl');
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $bytes = [Text.Encoding]::UTF8.GetBytes("alpha" + [char]10 + "bravo" + [char]10 + "charlie" + [char]10)
+    Write-A3FsyncedAppend -Path '${path.replace(/'/g, "''")}' -Bytes $bytes
+    Write-Output 'OK'
+  `;
+  const stdout = runScriptWithB64('fsync-direct', body);
+  assert.match(stdout, /OK/);
+
+  const raw = readFileSync(path, 'utf8');
+  assert.equal(raw, 'alpha\nbravo\ncharlie\n', 'UTF-8 bytes preserved verbatim');
+  // File should be closed (no exclusive lock left behind) so a subsequent
+  // open with FileShare.None on the same fd should succeed.
+  const reopenBody = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    $bytes = [Text.Encoding]::UTF8.GetBytes("delta" + [char]10)
+    Write-A3FsyncedAppend -Path '${path.replace(/'/g, "''")}' -Bytes $bytes
+    Write-Output 'OK2'
+  `;
+  const stdout2 = runScriptWithB64('fsync-reopen', reopenBody);
+  assert.match(stdout2, /OK2/);
+  const raw2 = readFileSync(path, 'utf8');
+  assert.equal(raw2, 'alpha\nbravo\ncharlie\ndelta\n', 'second fsync-append extends, does not truncate');
+});
+
+test('Write-A3FsyncedAppend throws a3_diagnostics_write_failed on bad path', describeOpts(skipIfNoPwsh), () => {
+  const body = `
+    . '${MODULE_PATH.replace(/'/g, "''")}'
+    try {
+      $bytes = [Text.Encoding]::UTF8.GetBytes("x")
+      Write-A3FsyncedAppend -Path 'Z:\\this\\path\\does\\not\\exist\\nope.jsonl' -Bytes $bytes
+      Write-Output '__OK__'
+    } catch {
+      Write-Output ('__THROW__:' + $_.Exception.Message)
+    }
+  `;
+  const stdout = runScriptWithB64Raw('fsync-bad-path', body);
+  assert.match(stdout, /__THROW__:a3_diagnostics_write_failed/);
+});
