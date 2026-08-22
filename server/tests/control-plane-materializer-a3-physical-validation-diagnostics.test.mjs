@@ -449,6 +449,50 @@ test("diagnostics observer redacts sensitive structured argv forms", async () =>
   });
 });
 
+test("diagnostics observer redacts user credentials, basic auth, and credential-file argv", async () => {
+  await withDiagnosticsDir(async (directory) => {
+    const filePath = join(directory, "diagnostics.jsonl");
+    const observer = createDiagnosticsObserver({ filePath, maxBytes: 65536, previewBytes: 256 });
+    observer.record({
+      command: "/usr/bin/curl",
+      args: [
+        "--user",
+        "alice:correct-horse",
+        "-u",
+        "bob:short-secret",
+        "--password-file",
+        "/run/secrets/curl-password",
+        "--token-file=/run/secrets/api-token",
+        "-H",
+        "Authorization: Basic YWxpY2U6Y29ycmVjdC1ob3JzZQ==",
+        "Proxy-Authorization: Basic cHJveHk6c2hvcnQtc2VjcmV0",
+        "--mode",
+        "check"
+      ],
+      status: 1,
+      stdout: "",
+      stderr: "failed",
+      error: null,
+      condition: "storage_quota_evidence_invalid"
+    });
+    observer.flush();
+
+    const record = JSON.parse(readFileSync(filePath, "utf8").split(/\r?\n/)[0]);
+    const serialized = JSON.stringify(record.argv);
+    for (const secret of [
+      "alice:correct-horse",
+      "bob:short-secret",
+      "/run/secrets/curl-password",
+      "/run/secrets/api-token",
+      "YWxpY2U6Y29ycmVjdC1ob3JzZQ==",
+      "cHJveHk6c2hvcnQtc2VjcmV0"
+    ]) {
+      assert.equal(serialized.includes(secret), false, `argv leaked ${secret}`);
+    }
+    assert.deepEqual(record.argv.slice(-2), ["--mode", "check"], "safe argv remains observable");
+  });
+});
+
 test("diagnostics observer preview cap is measured in UTF-8 bytes", async () => {
   await withDiagnosticsDir(async (directory) => {
     const filePath = join(directory, "diagnostics.jsonl");

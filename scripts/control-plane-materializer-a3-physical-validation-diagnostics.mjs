@@ -132,13 +132,15 @@ const REDACT_PATTERNS = [
   /(?<![\w@:\[])[A-Za-z0-9_.\-]+:\d{1,5}\b/g,
   // secret-bearing key=value pairs
   /(?:secret|token|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|ssh[_-]?key)\s*=\s*[^\s,;"'&]+/gi,
-  // Authorization: Bearer ...
-  /Authorization\s*:\s*Bearer\s+[A-Za-z0-9._\-]+/gi,
+  // Authorization / Proxy-Authorization headers. Redact the complete value
+  // rather than attempting to enumerate Basic, Bearer, Digest, or signature
+  // schemes; an argv element is the smallest retained diagnostics field.
+  /(?:Proxy-)?Authorization\s*:\s*[^\r\n]+/gi,
   // Bare Bearer (preceded by start-of-string or whitespace)
   /(?:^|\s)Bearer\s+[A-Za-z0-9._\-]+/gi
 ];
 
-const SENSITIVE_ARG_NAME = /^(?:--?)?(?:token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|ssh[_-]?key|aws[_-]?(?:secret[_-]?access[_-]?key|session[_-]?token)|authorization|bearer)$/i;
+const SENSITIVE_ARG_NAME = /^(?:--?)?(?:u|user|userpass|userpwd|proxy[_-]?user|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|password|passwd|passphrase|api[_-]?key|access[_-]?key|private[_-]?key|ssh[_-]?key|key|credential|credentials|authorization|proxy[_-]?authorization|bearer|oauth2[_-]?bearer|aws[_-]?(?:secret[_-]?access[_-]?key|session[_-]?token)|(?:(?:token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|password|passwd|passphrase|api[_-]?key|access[_-]?key|private[_-]?key|ssh[_-]?key|key|credential|credentials|identity|cert|certificate|aws[_-]?session[_-]?token)[_-]?file)|netrc[_-]?file)$/i;
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 
 function redact(input) {
