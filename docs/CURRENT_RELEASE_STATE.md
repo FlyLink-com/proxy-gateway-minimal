@@ -71,8 +71,9 @@ explicit tuple `--enable-bounded-artifact-admission --bounded-run-label
 artifact budget and filesystem topology, retains the service-native smoke and
 fail-closed guards, and emits schema-4 receipts.
 
-Production dry-run `32628957935` then built and validated the exact-master
-packet without host access or mutation. The approved A3-2 read-only inventory
+Production dry-run `32628957935` then built and validated the then-current
+`master@b93577c99c1202d1f799e2da4e573c8ad7fcf13c` packet without host access
+or mutation. The approved A3-2 read-only inventory
 observed the live release recorded by PR #622, a healthy active/running service,
 matching current/service/process working-directory identity, a clean candidate
 namespace, cgroup v2, 140537528320 available bytes, and a read-only SQLite
