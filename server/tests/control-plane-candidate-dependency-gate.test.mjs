@@ -32,6 +32,7 @@ import {
   createCandidateDependencyGateTestRuntime,
   materializeCandidateDependencies,
   invokeCandidateDependencyTransientUnit,
+  parseMaterializerReceiptEnvelope,
   parseProductionTransientReadback,
   parseArtifactStageReceipt,
   parseSealedSmokeTreeAudit,
@@ -127,6 +128,48 @@ function stageReceipt({ candidate, packageBytes, lockBytes, manifest = artifactM
       artifactManifestSizeBytes: manifestBytes.length,
       mutate
     })
+  };
+}
+
+function materializerReceipt(overrides = {}) {
+  return {
+    schemaVersion: "3",
+    materializerSchemaVersion: 3,
+    type: "control_plane_candidate_dependency_receipt",
+    state: "materialized",
+    releaseUnit: "control-plane-app",
+    currentRelease: "active-release",
+    candidateRelease: "candidate-release",
+    sourceCommit: SOURCE_COMMIT,
+    artifactSha256: "b".repeat(64),
+    artifactSizeBytes: 1234,
+    artifactManifestSha256: "c".repeat(64),
+    artifactManifestSizeBytes: 2345,
+    artifactStageReceiptSha256: "d".repeat(64),
+    artifactStageReceiptSizeBytes: 3456,
+    dependencyArtifactManifestSha256: "e".repeat(64),
+    dependencyArtifactManifestSizeBytes: 4567,
+    dependencyArchiveSha256: "f".repeat(64),
+    dependencyArchiveSizeBytes: 5678,
+    dependencyArtifactTreeSha256: "1".repeat(64),
+    dependencyArtifactTreeEntryCount: 12,
+    dependencyArtifactTreeTotalBytes: 6789,
+    assemblySha256: "2".repeat(64),
+    packageSha256: "3".repeat(64),
+    packageLockSha256: "4".repeat(64),
+    nodeModulesTreeSha256: "5".repeat(64),
+    nodeModulesTreeEntryCount: 12,
+    nodeModulesTreeTotalBytes: 6789,
+    serviceUid: 4242,
+    serviceGid: 4243,
+    storageProjectId: 4242,
+    storageQuotaBoundarySha256: "6".repeat(64),
+    storageQuotaBeforeReadbackSha256: "7".repeat(64),
+    storageQuotaAfterReadbackSha256: "8".repeat(64),
+    serviceSmokeEvidenceSha256: "9".repeat(64),
+    safetyEvidenceCapturedAt: "2026-08-16T00:00:00.000Z",
+    createdAt: "2026-08-16T00:00:01.000Z",
+    ...overrides
   };
 }
 
@@ -1164,6 +1207,19 @@ test("materialize CLI requires the CI artifact identity before any dependency op
   });
 });
 
+test("schema 3 materializer receipt envelope rejects missing fields before dynamic verification", () => {
+  const valid = materializerReceipt();
+  assert.equal(parseMaterializerReceiptEnvelope(valid).sourceCommit, SOURCE_COMMIT);
+  const missing = { ...valid };
+  delete missing.dependencyArtifactTreeEntryCount;
+  assert.throws(() => parseMaterializerReceiptEnvelope(missing), condition("dependency_receipt_mismatch"));
+  for (const invalid of [
+    materializerReceipt({ dependencyArtifactManifestSizeBytes: 0 }),
+    materializerReceipt({ nodeModulesTreeEntryCount: 0 }),
+    materializerReceipt({ safetyEvidenceCapturedAt: "not-an-instant" })
+  ]) assert.throws(() => parseMaterializerReceiptEnvelope(invalid), condition("dependency_receipt_mismatch"));
+});
+
 test("production A3 CLI activation is explicit and requires one exact run/project identity pair", async () => {
   for (const argv of [
     ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--enable-a3-materializer"],
@@ -1532,17 +1588,33 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   assert.notEqual(smokeRoots[0].root, value.candidateRoot);
   assert.equal(smokeRoots[1].root, value.candidateRoot);
 
-  writeFileSync(receiptPath, `${JSON.stringify({ ...materializationReceipt, schemaVersion: "1" }, null, 2)}\n`);
-  value.runtime.collectStorageQuotaEvidence = () => { throw new Error("old receipt must fail before quota readback"); };
-  await assert.rejects(verifyCandidateDependencies({
-    candidateRelease: value.candidate,
-    expectedCurrentRelease: value.active,
-    expectedSourceCommit: SOURCE_COMMIT,
-    expectedArtifactRelease: ARTIFACT_RELEASE,
-    expectedDependencyManifestSha256: manifest.sha256,
-    expectedDependencyArchiveSha256: manifest.value.archive.sha256,
-    runtime: value.runtime
-  }), condition("dependency_receipt_mismatch"));
-  assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);
-  assert.equal(existsSync(join(value.runtime.lockRoot, "node-modules-materialization.lock")), false);
+  const missingField = { ...materializationReceipt };
+  delete missingField.dependencyArtifactTreeEntryCount;
+  const invalidReceipts = [
+    { ...materializationReceipt, schemaVersion: "1" },
+    missingField,
+    { ...materializationReceipt, sourceCommit: "e".repeat(40) },
+    { ...materializationReceipt, serviceUid: materializationReceipt.serviceUid + 1 }
+  ];
+  let quotaReadbacks = 0;
+  const originalQuotaReadback = value.runtime.collectStorageQuotaEvidence;
+  value.runtime.collectStorageQuotaEvidence = () => {
+    quotaReadbacks += 1;
+    return originalQuotaReadback();
+  };
+  for (const invalidReceipt of invalidReceipts) {
+    writeFileSync(receiptPath, `${JSON.stringify(invalidReceipt, null, 2)}\n`);
+    await assert.rejects(verifyCandidateDependencies({
+      candidateRelease: value.candidate,
+      expectedCurrentRelease: value.active,
+      expectedSourceCommit: SOURCE_COMMIT,
+      expectedArtifactRelease: ARTIFACT_RELEASE,
+      expectedDependencyManifestSha256: manifest.sha256,
+      expectedDependencyArchiveSha256: manifest.value.archive.sha256,
+      runtime: value.runtime
+    }), condition("dependency_receipt_mismatch"));
+    assert.equal(quotaReadbacks, 0);
+    assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);
+    assert.equal(existsSync(join(value.runtime.lockRoot, "node-modules-materialization.lock")), false);
+  }
 });

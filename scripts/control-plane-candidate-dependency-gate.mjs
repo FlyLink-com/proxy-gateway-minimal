@@ -323,7 +323,7 @@ const mode = (metadata) => metadata.mode & 0o7777;
 const inode = (metadata) => `${metadata.dev}:${metadata.ino}`;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const hashFile = (path) => hash(readFileSync(path));
-const iso = (value) => { const parsed = new Date(value); return typeof value === "string" && !Number.isNaN(parsed) && parsed.toISOString() === value; };
+const iso = (value) => { if (typeof value !== "string") return false; const parsed = new Date(value); return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value; };
 const now = (runtime) => { const value = runtime.now(); if (!iso(value)) fail("invalid_input"); return value; };
 
 function stat(path, condition) { try { return lstatSync(path); } catch { fail(condition); } }
@@ -2120,14 +2120,73 @@ function materializerSafetyEvidence(quota, smoke, supplied, capturedAt = now(sup
     capturedAt
   });
 }
+const MATERIALIZER_RECEIPT_KEYS = Object.freeze([
+  "schemaVersion", "materializerSchemaVersion", "type", "state", "releaseUnit", "currentRelease", "candidateRelease",
+  "sourceCommit", "artifactSha256", "artifactSizeBytes", "artifactManifestSha256", "artifactManifestSizeBytes",
+  "artifactStageReceiptSha256", "artifactStageReceiptSizeBytes", "dependencyArtifactManifestSha256",
+  "dependencyArtifactManifestSizeBytes", "dependencyArchiveSha256", "dependencyArchiveSizeBytes",
+  "dependencyArtifactTreeSha256", "dependencyArtifactTreeEntryCount", "dependencyArtifactTreeTotalBytes",
+  "assemblySha256", "packageSha256", "packageLockSha256", "nodeModulesTreeSha256", "nodeModulesTreeEntryCount",
+  "nodeModulesTreeTotalBytes", "serviceUid", "serviceGid", "storageProjectId", "storageQuotaBoundarySha256",
+  "storageQuotaBeforeReadbackSha256", "storageQuotaAfterReadbackSha256", "serviceSmokeEvidenceSha256",
+  "safetyEvidenceCapturedAt", "createdAt"
+]);
 function receiptPayload(state, artifact, tree, safety, runtime) { return { schemaVersion: "3", materializerSchemaVersion: 3, type: "control_plane_candidate_dependency_receipt", state: "materialized", releaseUnit: UNIT, currentRelease: state.c.current, candidateRelease: state.c.candidate, sourceCommit: state.input.source.sourceCommit, artifactSha256: state.input.source.artifact.sha256, artifactSizeBytes: state.input.source.artifact.sizeBytes, artifactManifestSha256: state.input.artifactManifest, artifactManifestSizeBytes: state.input.artifactManifestSizeBytes, artifactStageReceiptSha256: state.input.artifact, artifactStageReceiptSizeBytes: state.input.artifactStageReceiptSizeBytes, dependencyArtifactManifestSha256: artifact.manifestSha256, dependencyArtifactManifestSizeBytes: artifact.manifestSizeBytes, dependencyArchiveSha256: artifact.archive.sha256, dependencyArchiveSizeBytes: artifact.archive.sizeBytes, dependencyArtifactTreeSha256: artifact.artifactTree.sha256, dependencyArtifactTreeEntryCount: artifact.artifactTree.entryCount, dependencyArtifactTreeTotalBytes: artifact.artifactTree.totalBytes, assemblySha256: state.input.assembly, packageSha256: state.input.package, packageLockSha256: state.input.lock, nodeModulesTreeSha256: tree.sha256, nodeModulesTreeEntryCount: tree.entryCount, nodeModulesTreeTotalBytes: tree.totalBytes, serviceUid: state.service.uid, serviceGid: state.service.gid, storageProjectId: safety.projectId, storageQuotaBoundarySha256: safety.quotaBoundarySha256, storageQuotaBeforeReadbackSha256: safety.quotaBeforeReadbackSha256, storageQuotaAfterReadbackSha256: safety.quotaAfterReadbackSha256, serviceSmokeEvidenceSha256: safety.serviceSmokeEvidenceSha256, safetyEvidenceCapturedAt: safety.capturedAt, createdAt: now(runtime) }; }
-function requireCurrentReceiptSchema(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value) || value.schemaVersion !== "3" || value.materializerSchemaVersion !== 3
+export function parseMaterializerReceiptEnvelope(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !keys(value, MATERIALIZER_RECEIPT_KEYS)
+    || value.schemaVersion !== "3" || value.materializerSchemaVersion !== 3
+    || value.type !== "control_plane_candidate_dependency_receipt" || value.state !== "materialized" || value.releaseUnit !== UNIT
+    || !LABEL.test(value.currentRelease || "") || !LABEL.test(value.candidateRelease || "") || !COMMIT.test(value.sourceCommit || "")
+    || !HASH.test(value.artifactSha256 || "") || !Number.isSafeInteger(value.artifactSizeBytes) || value.artifactSizeBytes <= 0
+    || !HASH.test(value.artifactManifestSha256 || "") || !Number.isSafeInteger(value.artifactManifestSizeBytes) || value.artifactManifestSizeBytes <= 0
+    || !HASH.test(value.artifactStageReceiptSha256 || "") || !Number.isSafeInteger(value.artifactStageReceiptSizeBytes) || value.artifactStageReceiptSizeBytes <= 0
+    || !HASH.test(value.dependencyArtifactManifestSha256 || "") || !Number.isSafeInteger(value.dependencyArtifactManifestSizeBytes) || value.dependencyArtifactManifestSizeBytes <= 0
+    || !HASH.test(value.dependencyArchiveSha256 || "") || !Number.isSafeInteger(value.dependencyArchiveSizeBytes) || value.dependencyArchiveSizeBytes <= 0
+    || !HASH.test(value.dependencyArtifactTreeSha256 || "") || !Number.isSafeInteger(value.dependencyArtifactTreeEntryCount) || value.dependencyArtifactTreeEntryCount < 1
+    || !Number.isSafeInteger(value.dependencyArtifactTreeTotalBytes) || value.dependencyArtifactTreeTotalBytes < 0
+    || !HASH.test(value.assemblySha256 || "") || !HASH.test(value.packageSha256 || "") || !HASH.test(value.packageLockSha256 || "")
+    || !HASH.test(value.nodeModulesTreeSha256 || "") || !Number.isSafeInteger(value.nodeModulesTreeEntryCount) || value.nodeModulesTreeEntryCount < 1
+    || !Number.isSafeInteger(value.nodeModulesTreeTotalBytes) || value.nodeModulesTreeTotalBytes < 0
+    || !Number.isSafeInteger(value.serviceUid) || value.serviceUid <= 0 || !Number.isSafeInteger(value.serviceGid) || value.serviceGid <= 0
+    || !Number.isSafeInteger(value.storageProjectId) || value.storageProjectId <= 0
     || !HASH.test(value.storageQuotaBoundarySha256 || "") || !HASH.test(value.storageQuotaBeforeReadbackSha256 || "")
-    || !HASH.test(value.storageQuotaAfterReadbackSha256 || "") || !HASH.test(value.serviceSmokeEvidenceSha256 || "")) fail("dependency_receipt_mismatch");
+    || !HASH.test(value.storageQuotaAfterReadbackSha256 || "") || !HASH.test(value.serviceSmokeEvidenceSha256 || "")
+    || !iso(value.safetyEvidenceCapturedAt) || !iso(value.createdAt)) fail("dependency_receipt_mismatch");
+  return Object.freeze({ ...value });
 }
-function checkReceipt(value, state, artifact, tree = null, safety = null, exactSafetyReadbacks = true) { const expected = ["schemaVersion", "materializerSchemaVersion", "type", "state", "releaseUnit", "currentRelease", "candidateRelease", "sourceCommit", "artifactSha256", "artifactSizeBytes", "artifactManifestSha256", "artifactManifestSizeBytes", "artifactStageReceiptSha256", "artifactStageReceiptSizeBytes", "dependencyArtifactManifestSha256", "dependencyArtifactManifestSizeBytes", "dependencyArchiveSha256", "dependencyArchiveSizeBytes", "dependencyArtifactTreeSha256", "dependencyArtifactTreeEntryCount", "dependencyArtifactTreeTotalBytes", "assemblySha256", "packageSha256", "packageLockSha256", "nodeModulesTreeSha256", "nodeModulesTreeEntryCount", "nodeModulesTreeTotalBytes", "serviceUid", "serviceGid", "storageProjectId", "storageQuotaBoundarySha256", "storageQuotaBeforeReadbackSha256", "storageQuotaAfterReadbackSha256", "serviceSmokeEvidenceSha256", "safetyEvidenceCapturedAt", "createdAt"];
-  if (!keys(value, expected) || value.schemaVersion !== "3" || value.materializerSchemaVersion !== 3 || value.type !== "control_plane_candidate_dependency_receipt" || value.state !== "materialized" || value.releaseUnit !== UNIT || value.currentRelease !== state.c.current || value.candidateRelease !== state.c.candidate || value.sourceCommit !== state.input.source.sourceCommit || value.artifactSha256 !== state.input.source.artifact.sha256 || value.artifactSizeBytes !== state.input.source.artifact.sizeBytes || value.artifactManifestSha256 !== state.input.artifactManifest || value.artifactManifestSizeBytes !== state.input.artifactManifestSizeBytes || value.artifactStageReceiptSha256 !== state.input.artifact || value.artifactStageReceiptSizeBytes !== state.input.artifactStageReceiptSizeBytes || value.dependencyArtifactManifestSha256 !== artifact.manifestSha256 || value.dependencyArtifactManifestSizeBytes !== artifact.manifestSizeBytes || value.dependencyArchiveSha256 !== artifact.archive.sha256 || value.dependencyArchiveSizeBytes !== artifact.archive.sizeBytes || value.dependencyArtifactTreeSha256 !== artifact.artifactTree.sha256 || value.dependencyArtifactTreeEntryCount !== artifact.artifactTree.entryCount || value.dependencyArtifactTreeTotalBytes !== artifact.artifactTree.totalBytes || value.assemblySha256 !== state.input.assembly || value.packageSha256 !== state.input.package || value.packageLockSha256 !== state.input.lock || !HASH.test(value.nodeModulesTreeSha256 || "") || !Number.isSafeInteger(value.nodeModulesTreeEntryCount) || value.nodeModulesTreeEntryCount < 1 || !Number.isSafeInteger(value.nodeModulesTreeTotalBytes) || value.nodeModulesTreeTotalBytes < 0 || value.serviceUid !== state.service.uid || value.serviceGid !== state.service.gid || !Number.isSafeInteger(value.storageProjectId) || value.storageProjectId <= 0 || !HASH.test(value.storageQuotaBoundarySha256 || "") || !HASH.test(value.storageQuotaBeforeReadbackSha256 || "") || !HASH.test(value.storageQuotaAfterReadbackSha256 || "") || !HASH.test(value.serviceSmokeEvidenceSha256 || "") || !iso(value.safetyEvidenceCapturedAt) || !iso(value.createdAt) || tree && (value.nodeModulesTreeSha256 !== tree.sha256 || value.nodeModulesTreeEntryCount !== tree.entryCount || value.nodeModulesTreeTotalBytes !== tree.totalBytes) || safety && (value.storageProjectId !== safety.projectId || value.storageQuotaBoundarySha256 !== safety.quotaBoundarySha256 || value.serviceSmokeEvidenceSha256 !== safety.serviceSmokeEvidenceSha256 || value.safetyEvidenceCapturedAt !== safety.capturedAt || exactSafetyReadbacks && (value.storageQuotaBeforeReadbackSha256 !== safety.quotaBeforeReadbackSha256 || value.storageQuotaAfterReadbackSha256 !== safety.quotaAfterReadbackSha256))) fail("dependency_receipt_mismatch"); }
+function checkReceiptStateBindings(value, state) {
+  if (value.currentRelease !== state.c.current || value.candidateRelease !== state.c.candidate
+    || value.sourceCommit !== state.input.source.sourceCommit || value.artifactSha256 !== state.input.source.artifact.sha256
+    || value.artifactSizeBytes !== state.input.source.artifact.sizeBytes || value.artifactManifestSha256 !== state.input.artifactManifest
+    || value.artifactManifestSizeBytes !== state.input.artifactManifestSizeBytes || value.artifactStageReceiptSha256 !== state.input.artifact
+    || value.artifactStageReceiptSizeBytes !== state.input.artifactStageReceiptSizeBytes || value.assemblySha256 !== state.input.assembly
+    || value.packageSha256 !== state.input.package || value.packageLockSha256 !== state.input.lock
+    || value.serviceUid !== state.service.uid || value.serviceGid !== state.service.gid) fail("dependency_receipt_mismatch");
+}
+function requireCurrentReceiptSchema(value, state, identity, supplied) {
+  const receipt = parseMaterializerReceiptEnvelope(value);
+  checkReceiptStateBindings(receipt, state);
+  if (receipt.dependencyArtifactManifestSha256 !== identity.manifestSha256
+    || receipt.dependencyArchiveSha256 !== identity.archiveSha256
+    || receipt.storageProjectId !== supplied.a3ProjectId) fail("dependency_receipt_mismatch");
+  return receipt;
+}
+function checkReceipt(value, state, artifact, tree = null, safety = null, exactSafetyReadbacks = true) {
+  const receipt = parseMaterializerReceiptEnvelope(value);
+  checkReceiptStateBindings(receipt, state);
+  if (receipt.dependencyArtifactManifestSha256 !== artifact.manifestSha256
+    || receipt.dependencyArtifactManifestSizeBytes !== artifact.manifestSizeBytes
+    || receipt.dependencyArchiveSha256 !== artifact.archive.sha256 || receipt.dependencyArchiveSizeBytes !== artifact.archive.sizeBytes
+    || receipt.dependencyArtifactTreeSha256 !== artifact.artifactTree.sha256
+    || receipt.dependencyArtifactTreeEntryCount !== artifact.artifactTree.entryCount
+    || receipt.dependencyArtifactTreeTotalBytes !== artifact.artifactTree.totalBytes
+    || tree && (receipt.nodeModulesTreeSha256 !== tree.sha256 || receipt.nodeModulesTreeEntryCount !== tree.entryCount
+      || receipt.nodeModulesTreeTotalBytes !== tree.totalBytes)
+    || safety && (receipt.storageProjectId !== safety.projectId || receipt.storageQuotaBoundarySha256 !== safety.quotaBoundarySha256
+      || receipt.serviceSmokeEvidenceSha256 !== safety.serviceSmokeEvidenceSha256 || receipt.safetyEvidenceCapturedAt !== safety.capturedAt
+      || exactSafetyReadbacks && (receipt.storageQuotaBeforeReadbackSha256 !== safety.quotaBeforeReadbackSha256
+        || receipt.storageQuotaAfterReadbackSha256 !== safety.quotaAfterReadbackSha256))) fail("dependency_receipt_mismatch");
+}
 function receiptDirectory(context, runtime) { const parent = base(context.receipts, runtime, "dependency_receipt_publish_failed"), path = resolve(parent, context.candidate); if (!existsSync(path)) make(path, parent, runtime.enforceOwnership ? 0 : runtime.getuid(), runtime.enforceOwnership ? 0 : runtime.getgid(), 0o700, "dependency_receipt_publish_failed"); else if (readdirSync(directory(path, runtime, "dependency_receipt_publish_failed")).length) fail("dependency_receipt_present"); return directory(path, runtime, "dependency_receipt_publish_failed"); }
 function writeReceipt(state, payload, runtime) {
   const parent = receiptDirectory(state.c, runtime), path = resolve(parent, "node-modules-materialization.json");
@@ -2536,7 +2595,7 @@ export async function verifyCandidateDependencies({
     const targetMetadata = stat(target, "candidate_tree_invalid");
     if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory()) fail("candidate_tree_invalid");
     const receipt = readReceipt(value.c, supplied);
-    requireCurrentReceiptSchema(receipt.value);
+    requireCurrentReceiptSchema(receipt.value, value, identity, supplied);
     quotaEvidence = quotaEvidenceForMaterialization(supplied);
     key = lock(supplied);
     value = steady(value, supplied, false);
