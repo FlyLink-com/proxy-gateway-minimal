@@ -30,6 +30,10 @@ const PROTECTED_RELATIVE_PATHS = Object.freeze([
   DEFAULT_RELATIVE_CONFIG,
   ".env"
 ]);
+const PRODUCTION_PROTECTED_POLICIES = Object.freeze({
+  [DEFAULT_RELATIVE_CONFIG]: Object.freeze({ mode: 0o640, uid: 0 }),
+  ".env": Object.freeze({ mode: 0o600, uid: 0 })
+});
 const TEST_RUNTIME = Symbol("release-config-gate-test-runtime");
 const SAFE_CONDITIONS = new Set([
   "invalid_input",
@@ -464,6 +468,45 @@ function topologySymlink(path, runtimeValue, condition) {
   });
 }
 
+function topologyProtectedFile(
+  path,
+  relativePath,
+  runtimeValue,
+  { allowMissing = false, expectedGid } = {}
+) {
+  const policy = PRODUCTION_PROTECTED_POLICIES[relativePath];
+  if (!policy) fail("config_boundary_invalid");
+  let metadata;
+  try {
+    metadata = lstatSync(path);
+  } catch (error) {
+    if (allowMissing && error?.code === "ENOENT") return null;
+    fail("config_boundary_invalid");
+  }
+  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+    fail("config_boundary_invalid");
+  }
+  const mode = topologyMode(path, metadata, runtimeValue, "config_boundary_invalid");
+  const owner = topologyOwner(path, metadata, runtimeValue, "config_boundary_invalid");
+  if (
+    (runtimeValue.enforceModes && mode !== policy.mode)
+    || (runtimeValue.enforceOwnership && owner.uid !== policy.uid)
+    || (
+      expectedGid !== undefined
+      && runtimeValue.enforceOwnership
+      && owner.gid !== expectedGid
+    )
+  ) {
+    fail("config_boundary_invalid");
+  }
+  return Object.freeze({
+    path,
+    identity: nodeIdentity(metadata),
+    mode: policy.mode,
+    owner: Object.freeze({ uid: policy.uid, gid: owner.gid })
+  });
+}
+
 function directChild(parent, child) {
   return dirname(child) === parent && isWithin(parent, child);
 }
@@ -513,9 +556,27 @@ function validateProductionTopology({
     fail("release_boundary_invalid");
   }
   const candidate = topologyDirectory(candidateRoot.path, runtimeValue, "release_boundary_invalid");
+  const protectedTopology = [];
   for (const item of protectedFiles) {
     topologyDirectory(dirname(item.active.path), runtimeValue, "config_boundary_invalid");
     topologyDirectory(dirname(item.candidate.path), runtimeValue, "config_boundary_invalid");
+    const activeFile = topologyProtectedFile(
+      item.active.path,
+      item.relativePath,
+      runtimeValue
+    );
+    const candidateFile = topologyProtectedFile(
+      item.candidate.path,
+      item.relativePath,
+      runtimeValue,
+      { allowMissing: true, expectedGid: activeFile.owner.gid }
+    );
+    protectedTopology.push(Object.freeze({
+      relativePath: item.relativePath,
+      policy: PRODUCTION_PROTECTED_POLICIES[item.relativePath],
+      active: activeFile,
+      candidate: candidateFile
+    }));
   }
 
   const assemblyRoot = topologyDirectory(
@@ -536,7 +597,16 @@ function validateProductionTopology({
     fail("manifest_boundary_invalid");
   }
 
-  return Object.freeze({ root, releases, active, candidate, assemblyRoot, candidateAssembly, current });
+  return Object.freeze({
+    root,
+    releases,
+    active,
+    candidate,
+    assemblyRoot,
+    candidateAssembly,
+    current,
+    protectedFiles: Object.freeze(protectedTopology)
+  });
 }
 
 function assertCurrentStable(topology, runtimeValue) {
@@ -560,6 +630,23 @@ function assertCurrentStable(topology, runtimeValue) {
   ]) {
     const observedDirectory = topologyDirectory(item.path, runtimeValue, "release_boundary_invalid");
     if (!sameNode(item.identity, observedDirectory.identity)) fail("release_boundary_invalid");
+  }
+  for (const item of topology.protectedFiles) {
+    const active = topologyProtectedFile(
+      item.active.path,
+      item.relativePath,
+      runtimeValue
+    );
+    if (!sameNode(item.active.identity, active.identity)) fail("config_boundary_invalid");
+    const candidate = topologyProtectedFile(
+      resolve(topology.candidate.path, ...item.relativePath.split("/")),
+      item.relativePath,
+      runtimeValue,
+      { allowMissing: true, expectedGid: active.owner.gid }
+    );
+    if (item.candidate && (!candidate || !sameNode(item.candidate.identity, candidate.identity))) {
+      fail("config_boundary_invalid");
+    }
   }
 }
 
@@ -849,6 +936,7 @@ export function prepareReleaseConfigOverlay({
   const overlayOperations = context.protectedFiles.map((protectedFilePath, index) => ({
     ...protectedFilePath,
     activeIdentity: protectedIdentities[index].activeIdentity,
+    productionPolicy: context.productionTopology?.protectedFiles[index] ?? null,
     temporary: temporaryPath(protectedFilePath.candidate.path, "overlay"),
     temporaryIdentity: undefined,
     published: false
@@ -876,14 +964,21 @@ export function prepareReleaseConfigOverlay({
     }
 
     for (const operation of overlayOperations) {
+      const targetMetadata = operation.productionPolicy
+        ? {
+            mode: operation.productionPolicy.policy.mode,
+            uid: operation.productionPolicy.policy.uid,
+            gid: operation.productionPolicy.active.owner.gid
+          }
+        : {
+            mode: Number.parseInt(operation.activeIdentity.mode, 8),
+            uid: operation.activeIdentity.uid,
+            gid: operation.activeIdentity.gid
+          };
       operation.temporaryIdentity = writeProtectedFile(
         operation.temporary,
         operation.activeIdentity.bytes,
-        {
-          mode: Number.parseInt(operation.activeIdentity.mode, 8),
-          uid: operation.activeIdentity.uid,
-          gid: operation.activeIdentity.gid
-        },
+        targetMetadata,
         runtimeValue,
         operation
       );

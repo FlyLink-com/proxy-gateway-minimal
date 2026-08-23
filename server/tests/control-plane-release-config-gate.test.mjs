@@ -26,7 +26,8 @@ import { fileURLToPath } from "node:url";
 import {
   createReleaseConfigGateTestRuntime,
   prepareReleaseConfigOverlay,
-  runReleaseConfigGateCli
+  runReleaseConfigGateCli,
+  verifyReleaseConfigOverlay
 } from "../../scripts/control-plane-release-config-gate.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -193,6 +194,10 @@ function productionLikeRuntime(paths, {
     [resolve(paths.candidateRelease), 0o755],
     [resolve(dirname(paths.activeConfig)), 0o755],
     [resolve(dirname(paths.candidateConfig)), 0o755],
+    [resolve(paths.activeConfig), 0o640],
+    [resolve(paths.candidateConfig), 0o640],
+    [resolve(paths.activeEnv), 0o600],
+    [resolve(paths.candidateEnv), 0o600],
     [resolve(paths.assemblyRoot), 0o700],
     [resolve(paths.candidateAssembly), 0o700]
   ]);
@@ -233,6 +238,146 @@ test("production topology accepts the exact current pointer and fixed assembly r
   assert.equal(existsSync(paths.candidateConfig), false);
   assert.equal(existsSync(paths.candidateEnv), false);
   assert.equal(existsSync(paths.manifestPath), false);
+});
+
+test("production topology accepts the protected service group without forcing gid zero", (t) => {
+  const paths = productionFixture(t);
+  if (!paths) {
+    t.skip("directory symlink creation is unavailable");
+    return;
+  }
+  const ownerOverrides = new Map([
+    [resolve(paths.activeConfig), { uid: 0, gid: 988 }],
+    [resolve(paths.activeEnv), { uid: 0, gid: 988 }]
+  ]);
+
+  const result = prepareReleaseConfigOverlay({
+    activeReleasePath: paths.current,
+    candidateReleasePath: paths.candidateRelease,
+    manifestPath: paths.manifestPath,
+    runtime: productionLikeRuntime(paths, { ownerOverrides })
+  });
+
+  assert.equal(result.state, "ready");
+  assert.equal(existsSync(paths.candidateConfig), false);
+  assert.equal(existsSync(paths.candidateEnv), false);
+  assert.equal(existsSync(paths.manifestPath), false);
+});
+
+test("production topology rejects active protected-file policy drift before overlay writes", async (t) => {
+  for (const { name, modeOverrides = new Map(), ownerOverrides = new Map() } of [
+    {
+      name: "config mode is 0644",
+      modeOverrides: new Map([["activeConfig", 0o644]])
+    },
+    {
+      name: "environment mode is 0640",
+      modeOverrides: new Map([["activeEnv", 0o640]])
+    },
+    {
+      name: "config owner is not root",
+      ownerOverrides: new Map([["activeConfig", { uid: 1000, gid: 988 }]])
+    },
+    {
+      name: "environment owner is not root",
+      ownerOverrides: new Map([["activeEnv", { uid: 1000, gid: 988 }]])
+    }
+  ]) {
+    await t.test(name, (t) => {
+      const paths = productionFixture(t);
+      if (!paths) {
+        t.skip("directory symlink creation is unavailable");
+        return;
+      }
+      const resolvedModes = new Map(
+        [...modeOverrides].map(([key, value]) => [resolve(paths[key]), value])
+      );
+      const resolvedOwners = new Map(
+        [...ownerOverrides].map(([key, value]) => [resolve(paths[key]), value])
+      );
+
+      assert.throws(
+        () => prepareReleaseConfigOverlay({
+          activeReleasePath: paths.current,
+          candidateReleasePath: paths.candidateRelease,
+          manifestPath: paths.manifestPath,
+          apply: true,
+          createdAt: "2026-07-11T10:00:00Z",
+          runtime: productionLikeRuntime(paths, {
+            modeOverrides: resolvedModes,
+            ownerOverrides: resolvedOwners
+          })
+        }),
+        condition("config_boundary_invalid")
+      );
+      assert.equal(existsSync(paths.candidateConfig), false);
+      assert.equal(existsSync(paths.candidateEnv), false);
+      assert.equal(existsSync(paths.manifestPath), false);
+    });
+  }
+});
+
+test("production verify rejects candidate protected-file policy drift", async (t) => {
+  for (const { name, modeOverrides = new Map(), ownerOverrides = new Map() } of [
+    {
+      name: "config mode is 0644",
+      modeOverrides: new Map([["candidateConfig", 0o644]])
+    },
+    {
+      name: "environment mode is 0640",
+      modeOverrides: new Map([["candidateEnv", 0o640]])
+    },
+    {
+      name: "config owner is not root",
+      ownerOverrides: new Map([["candidateConfig", { uid: 1000, gid: 988 }]])
+    },
+    {
+      name: "environment owner is not root",
+      ownerOverrides: new Map([["candidateEnv", { uid: 1000, gid: 988 }]])
+    },
+    {
+      name: "config group differs from the active service group",
+      ownerOverrides: new Map([
+        ["activeConfig", { uid: 0, gid: 988 }],
+        ["candidateConfig", { uid: 0, gid: 989 }]
+      ])
+    }
+  ]) {
+    await t.test(name, (t) => {
+      const paths = productionFixture(t);
+      if (!paths) {
+        t.skip("directory symlink creation is unavailable");
+        return;
+      }
+      prepareReleaseConfigOverlay({
+        activeReleasePath: paths.current,
+        candidateReleasePath: paths.candidateRelease,
+        manifestPath: paths.manifestPath,
+        apply: true,
+        createdAt: "2026-07-11T10:00:00Z",
+        runtime: createReleaseConfigGateTestRuntime()
+      });
+      const resolvedModes = new Map(
+        [...modeOverrides].map(([key, value]) => [resolve(paths[key]), value])
+      );
+      const resolvedOwners = new Map(
+        [...ownerOverrides].map(([key, value]) => [resolve(paths[key]), value])
+      );
+
+      assert.throws(
+        () => verifyReleaseConfigOverlay({
+          activeReleasePath: paths.current,
+          candidateReleasePath: paths.candidateRelease,
+          manifestPath: paths.manifestPath,
+          runtime: productionLikeRuntime(paths, {
+            modeOverrides: resolvedModes,
+            ownerOverrides: resolvedOwners
+          })
+        }),
+        condition("config_boundary_invalid")
+      );
+    });
+  }
 });
 
 test("production topology fails closed when current changes after its initial CAS snapshot", (t) => {

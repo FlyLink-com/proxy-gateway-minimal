@@ -20,7 +20,7 @@ import {
   rmdirSync,
   writeFileSync
 } from "node:fs";
-import { basename, dirname, isAbsolute, posix, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateRawSync } from "node:zlib";
 
@@ -142,6 +142,15 @@ function samePath(left, right) {
 
 function directChild(parent, child) {
   return dirname(child) === parent && relative(parent, child) === basename(child);
+}
+
+function containsPath(parent, child) {
+  if (samePath(parent, child)) return true;
+  const value = relative(comparablePath(parent), comparablePath(child));
+  return value !== ""
+    && value !== ".."
+    && !value.startsWith(`..${sep}`)
+    && !isAbsolute(value);
 }
 
 function rootControlled(metadata, runtime) {
@@ -295,6 +304,7 @@ function runtime(value = {}) {
     probeRenameNoReplace: value.probeRenameNoReplace ?? productionRenameNoReplaceProbe,
     beforeFirstMutation: value.beforeFirstMutation ?? (() => {}),
     afterPublish: value.afterPublish ?? (() => {}),
+    afterDirectoryRegistered: value.afterDirectoryRegistered ?? (() => {}),
     syncPublishedPath: value.syncPublishedPath ?? ((path, condition) => fsyncPath(path, condition)),
     faultAt: value.faultAt ?? null,
     modeFor: value.modeFor,
@@ -672,45 +682,101 @@ function fsyncPath(path, condition) {
   }
 }
 
-function mkdirChecked(path, mode, parent, condition) {
+function registerCreatedDirectory({ path, parent, parentMetadata, runtimeValue, owned, condition, point, shallow = false }) {
+  fault(runtimeValue, `after_${point}_mkdir_before_identity`, condition, true);
+  let metadata;
+  try {
+    metadata = lstatSync(path);
+  } catch {
+    fail(condition, true);
+  }
+  if (metadata.isSymbolicLink() || !metadata.isDirectory() || !rootControlled(metadata, runtimeValue)
+    || String(metadata.dev) !== String(parentMetadata.dev)) fail(condition, true);
+  const record = { path, parent, identity: identity(metadata), shallow };
+  owned.push(record);
+  runtimeValue.afterDirectoryRegistered(point, path);
+  fault(runtimeValue, `after_${point}_registered`, condition);
+  return record;
+}
+
+function mkdirChecked(path, mode, parent, parentMetadata, condition, runtimeValue, owned) {
   try { mkdirSync(path, { mode }); } catch { fail(condition); }
+  const record = registerCreatedDirectory({
+    path,
+    parent,
+    parentMetadata,
+    runtimeValue,
+    owned,
+    condition,
+    point: "temporary_child"
+  });
   chmodSync(path, mode);
   fsyncPath(parent, condition);
   const metadata = lstatSync(path);
-  if (metadata.isSymbolicLink() || !metadata.isDirectory() || String(metadata.dev) !== String(lstatSync(parent).dev)) fail(condition);
-  return { path, parent, identity: identity(metadata) };
+  if (metadata.isSymbolicLink() || !metadata.isDirectory() || !sameNode(record.identity, identity(metadata))
+    || String(metadata.dev) !== String(parentMetadata.dev)) fail(condition);
+  return record;
 }
 
-function temporaryNamespace(parent, prefix, finalName, condition) {
+function temporaryNamespace(parentRecord, prefix, finalName, condition, runtimeValue, owned) {
   let attemptRoot;
   try {
-    attemptRoot = mkdtempSync(resolve(parent, prefix));
-    chmodSync(attemptRoot, 0o700);
+    attemptRoot = mkdtempSync(resolve(parentRecord.path, prefix));
   } catch {
     fail(condition);
   }
-  fsyncPath(parent, condition);
-  const attempt = Object.freeze({ path: attemptRoot, parent, identity: identity(lstatSync(attemptRoot)) });
-  const child = mkdirChecked(resolve(attemptRoot, finalName), 0o700, attemptRoot, condition);
+  const attempt = registerCreatedDirectory({
+    path: attemptRoot,
+    parent: parentRecord.path,
+    parentMetadata: parentRecord.metadata,
+    runtimeValue,
+    owned,
+    condition,
+    point: "temporary_namespace"
+  });
+  chmodSync(attemptRoot, 0o700);
+  fsyncPath(parentRecord.path, condition);
+  const attemptMetadata = lstatSync(attemptRoot);
+  if (attemptMetadata.isSymbolicLink() || !attemptMetadata.isDirectory()
+    || !sameNode(attempt.identity, identity(attemptMetadata))) fail(condition);
+  const child = mkdirChecked(
+    resolve(attemptRoot, finalName),
+    0o700,
+    attemptRoot,
+    attemptMetadata,
+    condition,
+    runtimeValue,
+    owned
+  );
   return { attempt, child };
 }
 
 function ensurePublicationRoot(value, deploymentRoot, runtimeValue, owned) {
-  if (!value.absent) return;
-  let metadata;
+  if (!value.absent) return value;
   try {
     mkdirSync(value.path, { mode: 0o700 });
-    chmodSync(value.path, 0o700);
-    fsyncPath(deploymentRoot.path, "stage_failed");
-    fsyncPath(value.path, "stage_failed");
-    metadata = lstatSync(value.path);
   } catch {
     fail("stage_failed");
   }
+  const record = registerCreatedDirectory({
+    path: value.path,
+    parent: deploymentRoot.path,
+    parentMetadata: deploymentRoot.metadata,
+    runtimeValue,
+    owned,
+    condition: "stage_failed",
+    point: "publication_root",
+    shallow: true
+  });
+  chmodSync(value.path, 0o700);
+  fsyncPath(deploymentRoot.path, "stage_failed");
+  fsyncPath(value.path, "stage_failed");
+  const metadata = lstatSync(value.path);
   if (metadata.isSymbolicLink() || !metadata.isDirectory() || !rootControlled(metadata, runtimeValue)
     || runtimeValue.enforceModes && modeOf(value.path, metadata, runtimeValue) !== 0o700
+    || !sameNode(record.identity, identity(metadata))
     || String(metadata.dev) !== String(deploymentRoot.metadata.dev)) fail("stage_failed");
-  owned.push({ path: value.path, parent: deploymentRoot.path, identity: identity(metadata), shallow: true });
+  return Object.freeze({ path: value.path, absent: false, metadata, identity: identity(metadata) });
 }
 
 function ensureDirectory(root, relativePath, directories) {
@@ -832,7 +898,18 @@ function removeOwned(record) {
 
 function cleanup(records) {
   let complete = true;
-  for (const record of [...records].reverse()) complete = removeOwned(record) && complete;
+  const untrustedPaths = [];
+  for (const record of [...records].reverse()) {
+    if (untrustedPaths.some((path) => containsPath(record.path, path))) {
+      complete = false;
+      untrustedPaths.push(record.path);
+      continue;
+    }
+    if (!removeOwned(record)) {
+      complete = false;
+      untrustedPaths.push(record.path);
+    }
+  }
   return complete;
 }
 
@@ -855,8 +932,8 @@ function stageReceipt(value) {
   });
 }
 
-function fault(runtimeValue, point) {
-  if (runtimeValue.faultAt === point) fail("stage_failed");
+function fault(runtimeValue, point, condition = "stage_failed", attentionRequired = false) {
+  if (runtimeValue.faultAt === point) fail(condition, attentionRequired);
 }
 
 function stagedFile(path, expectedBytes, expectedMode, value, condition) {
@@ -971,16 +1048,13 @@ export function stageProductionCandidate(options = {}) {
     for (const file of value.input.files.values()) assertStableFile(file, value.runtime);
     assertStableDirectory(value.input.inputDirectory);
 
-    ensurePublicationRoot(value.deployment.assemblyReceipts, value.deployment.root, value.runtime, owned);
-    ensurePublicationRoot(value.deployment.dependencyArtifacts, value.deployment.root, value.runtime, owned);
+    const assemblyReceipts = ensurePublicationRoot(value.deployment.assemblyReceipts, value.deployment.root, value.runtime, owned);
+    const dependencyArtifacts = ensurePublicationRoot(value.deployment.dependencyArtifacts, value.deployment.root, value.runtime, owned);
 
-    candidateNamespace = temporaryNamespace(value.deployment.releases.path, `.stage-${value.options.candidateRelease}-`, value.options.candidateRelease, "stage_failed");
-    owned.push(candidateNamespace.attempt, candidateNamespace.child);
+    candidateNamespace = temporaryNamespace(value.deployment.releases, `.stage-${value.options.candidateRelease}-`, value.options.candidateRelease, "stage_failed", value.runtime, owned);
     extractSourceArchive(value, candidateNamespace.child.path);
-    assemblyNamespace = temporaryNamespace(value.deployment.assemblyReceipts.path, `.stage-${value.options.candidateRelease}-`, value.options.candidateRelease, "receipt_publish_failed");
-    owned.push(assemblyNamespace.attempt, assemblyNamespace.child);
-    dependencyNamespace = temporaryNamespace(value.deployment.dependencyArtifacts.path, `.stage-${value.options.candidateRelease}-`, value.options.candidateRelease, "dependency_publish_failed");
-    owned.push(dependencyNamespace.attempt, dependencyNamespace.child);
+    assemblyNamespace = temporaryNamespace(assemblyReceipts, `.stage-${value.options.candidateRelease}-`, value.options.candidateRelease, "receipt_publish_failed", value.runtime, owned);
+    dependencyNamespace = temporaryNamespace(dependencyArtifacts, `.stage-${value.options.candidateRelease}-`, value.options.candidateRelease, "dependency_publish_failed", value.runtime, owned);
 
     writeExclusive(resolve(assemblyNamespace.child.path, "artifact-manifest.json"), value.input.files.get("artifact.json").bytes, 0o600, "receipt_publish_failed");
     const receiptBytes = Buffer.from(`${JSON.stringify(stageReceipt(value), null, 2)}\n`);

@@ -613,6 +613,119 @@ test("a post-publication failure cleans only attempt-owned staging paths", (t) =
   assert.equal(readFileSync(join(value.deploymentRoot, "subscription-control.sqlite"), "utf8"), "db-sentinel\n");
 });
 
+test("faults after directory identity registration leave no temporary namespace or bootstrap root", async (t) => {
+  for (const point of [
+    "after_publication_root_registered",
+    "after_temporary_namespace_registered",
+    "after_temporary_child_registered"
+  ]) {
+    await t.test(point, (t) => {
+      const value = fixture(t, {
+        publicationRoots: false,
+        runtimeOverrides: { faultAt: point }
+      });
+
+      assert.throws(
+        () => stageProductionCandidate({ ...value.options, apply: true }),
+        condition("stage_failed")
+      );
+      assert.equal(existsSync(join(value.deploymentRoot, "assembly-receipts")), false);
+      assert.equal(existsSync(join(value.deploymentRoot, "dependency-artifacts")), false);
+      assert.deepEqual(
+        readdirSync(join(value.deploymentRoot, "releases")).filter((name) => name.startsWith(".stage-")),
+        []
+      );
+      assert.equal(existsSync(join(value.deploymentRoot, "releases", CANDIDATE_RELEASE)), false);
+      assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
+    });
+  }
+});
+
+test("a created directory without a trustworthy identity is attention-required", async (t) => {
+  for (const point of [
+    "after_publication_root_mkdir_before_identity",
+    "after_temporary_namespace_mkdir_before_identity",
+    "after_temporary_child_mkdir_before_identity"
+  ]) {
+    await t.test(point, (t) => {
+      let observed;
+      const value = fixture(t, {
+        publicationRoots: false,
+        runtimeOverrides: { faultAt: point }
+      });
+
+      assert.throws(
+        () => stageProductionCandidate({ ...value.options, apply: true }),
+        (error) => {
+          observed = error;
+          return error instanceof ProductionStageControllerError && error.condition === "stage_failed";
+        }
+      );
+      assert.equal(observed.attentionRequired, true);
+      assert.equal(existsSync(join(value.deploymentRoot, "releases", CANDIDATE_RELEASE)), false);
+      assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
+    });
+  }
+});
+
+test("cleanup never removes a replacement at an attempt-owned path", (t) => {
+  let replacedPath;
+  const value = fixture(t, {
+    publicationRoots: false,
+    runtimeOverrides: {
+      afterDirectoryRegistered(point, path) {
+        if (point !== "temporary_namespace") return;
+        rmSync(path, { recursive: true, force: false });
+        mkdirSync(path, { mode: 0o700 });
+        write(join(path, "replacement-sentinel"), "preserve\n");
+        replacedPath = path;
+        throw new Error("injected replacement race");
+      }
+    }
+  });
+
+  let observed;
+  assert.throws(
+    () => stageProductionCandidate({ ...value.options, apply: true }),
+    (error) => {
+      observed = error;
+      return error instanceof ProductionStageControllerError && error.condition === "cleanup_failed";
+    }
+  );
+  assert.equal(observed.attentionRequired, true);
+  assert.equal(readFileSync(join(replacedPath, "replacement-sentinel"), "utf8"), "preserve\n");
+  assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
+});
+
+test("cleanup never removes a replacement below an attempt-owned path", (t) => {
+  let replacedPath;
+  const value = fixture(t, {
+    publicationRoots: false,
+    runtimeOverrides: {
+      afterDirectoryRegistered(point, path) {
+        if (point !== "temporary_child") return;
+        rmSync(path, { recursive: true, force: false });
+        mkdirSync(path, { mode: 0o700 });
+        write(join(path, "replacement-sentinel"), "preserve\n");
+        replacedPath = path;
+        throw new Error("injected child replacement race");
+      }
+    }
+  });
+
+  let observed;
+  assert.throws(
+    () => stageProductionCandidate({ ...value.options, apply: true }),
+    (error) => {
+      observed = error;
+      return error instanceof ProductionStageControllerError && error.condition === "cleanup_failed";
+    }
+  );
+  assert.equal(observed.attentionRequired, true);
+  assert.equal(readFileSync(join(replacedPath, "replacement-sentinel"), "utf8"), "preserve\n");
+  assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
+});
+
 test("CLI emits one safe JSON error envelope and cannot enable stage without apply", () => {
   let stdout = "";
   let stderr = "";

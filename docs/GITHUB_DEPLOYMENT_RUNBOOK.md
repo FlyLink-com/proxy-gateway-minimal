@@ -429,6 +429,17 @@ direct child of the same fixed `releases` directory. The manifest parent must
 already have been published by the staging controller as root-owned mode 0700;
 the overlay gate does not recursively create arbitrary production directories.
 
+The production overlay policy is path-specific and fail-closed. The active and
+candidate `config/proxy-servers.json` files must be owned by uid 0 with exact
+mode 0640, while `.env` must be owned by uid 0 with exact mode 0600. Before an
+approved apply, also verify that the config file group matches the service
+`Group` read back from systemd so the restricted service keeps read access.
+Special mode bits, a world-readable file, or a non-root owner block both
+prepare and verify. A legacy active config at mode 0644 is not normalized by
+the gate: changing it to root:`<service-group>` mode 0640 is a separate
+explicit production mutation within the approved staging Gate, with original
+metadata recorded for rollback and service-readability read back afterward.
+
 The gate has three explicit steps:
 
 1. Run a read-only prepare dry-run to prove that both candidate overlay paths
