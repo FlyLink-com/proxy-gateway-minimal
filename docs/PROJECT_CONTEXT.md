@@ -16,10 +16,10 @@ document_metadata:
 > - Type: Active current-state handoff
 > - Risk: C
 > - Current source cutoff:
->   `master@b93577c99c1202d1f799e2da4e573c8ad7fcf13c`
+>   `master@42d17885646d52387f9327f19e2a2e0d70b2b84e`
 > - Latest deployed control-plane source:
 >   `57d7ab751b9c3b9111bc7d7e799c28d165fdabdb` (2026-08-16)
-> - The source, PR/Issue, CI, artifact, and partial security inventory was
+> - The source, PR/Issue, remote-branch, CI, and artifact inventory was
 >   refreshed 2026-08-23; bounded A3-2 production inventory refreshed only the
 >   Japan control-plane release/service/storage boundary
 > - Production state: Refer to `docs/CURRENT_RELEASE_STATE.md`; this handoff
@@ -101,21 +101,24 @@ Keep these distinctions explicit:
 
 Repository: `gccwebos-com/proxy-gateway-minimal`
 
-The read-only GitHub source inventory observed on 2026-08-23 recorded:
+The source/artifact reconciliation observed on 2026-08-23 recorded:
 
-- exact `master`: `b93577c99c1202d1f799e2da4e573c8ad7fcf13c`
-- current head: merged PR #658
+- exact `master`: `42d17885646d52387f9327f19e2a2e0d70b2b84e`
+- current head: merged PR #662
 - open PRs: none
 - open Issues (18): #437, #438, #439, #521, #522, #523, #524, #525,
   #527, #551, #557, #558, #559, #560, #597, #598, #632, and #636
-- PR #592 and #594: closed unmerged
-- PR #593: merged docs-only
-- Issue #561: closed after source-reality documentation reconciliation
-- latest successful exact-source Release Artifact run: `32628598266`
-- latest successful exact-source Dependency Artifact run: `32628598229`
-- control-plane artifact: `proxy-gateway-b93577c99c12`
-- dependency artifact ID: `9490394884`
-- all four exact-master artifacts were observed to expire on 2026-09-06
+- remote branches: 117 (count-only observation)
+- successful exact-source CI run: `32645695594`
+- successful exact-source CodeQL run: `32645695630`
+- successful exact-source Release Artifact run: `32645695598`
+- successful exact-source Dependency Artifact run: `32645695541`
+- control-plane artifact: `proxy-gateway-42d17885646d` (ID `9494798503`)
+- Portal artifact: `portal-static-42d17885646d` (ID `9494802700`)
+- Admin artifact: `admin-static-42d17885646d` (ID `9494802010`)
+- dependency artifact ID: `9494801281`, name
+  `control-plane-dependency-42d17885646d52387f9327f19e2a2e0d70b2b84e`,
+  size `6460706` bytes, observed expiry `2026-09-06T14:32:03Z`
 
 These are dated mutable facts, not permanent documentation authority. Refresh
 GitHub inventory before making a later current claim. The artifact identities
@@ -143,7 +146,7 @@ dependency-materialization boundary without reclassifying production state:
 | Wallet-first Commerce extension | Offer, Checkout Quote, Commerce Order, Fulfillment Command | Wallet-first/deferred schema or runtime activation and new live fulfillment |
 | Account Resource Authority | Exact Authority/provenance source, migration, and default-off Commerce binding | Authority production assignment, schema apply, or runtime activation |
 | Traffic / trust | Protected usage projection and fail-closed trusted-proxy/XFF handling | Admin `Usage & Channels` consumption, production proxy-topology validation |
-| A3 dependency materialization | Source contracts, physical collector, diagnostics integrity, exact-head disposable-XFS byte/inode quota proof through PR #654, restricted service-native smoke proof through PR #656, and explicit default-off production runtime tuple through PR #658 | A3-2 inventory is complete but `NO-GO`: the production root is ext4 without XFS project quota; storage remediation, durable materialization, promotion, and closeout remain pending |
+| A3 dependency materialization | Source contracts, physical collector, diagnostics integrity, exact-head disposable-XFS byte/inode quota proof through PR #654, restricted service-native smoke proof through PR #656, explicit default-off XFS production runtime through PR #658, and PR #662's separate default-off bounded ext4 admission path with exact budget/topology checks and schema-4 receipts | The earlier XFS-only A3-2 inventory remains a historical `NO-GO`; fresh exact-master bounded production inventory/dry-run, materialization, promotion, and closeout remain pending |
 
 The 2026-08-16 control-plane release makes that exact application source
 available on that host, but it did not apply the four wallet-first schemas or
@@ -224,10 +227,10 @@ binds the latest recorded control-plane deployment to source
 2026-08-23 A3-2 inventory observed that same live release. This does not
 establish a Portal or Admin static deployment.
 
-The current exact-master build evidence is Release Artifact run `32628598266`
-plus Dependency Artifact run `32628598229` for
-`b93577c99c1202d1f799e2da4e573c8ad7fcf13c`. Those artifacts are temporary
-through 2026-09-06 and were not used by the recorded production deployment.
+The current exact-master build evidence is Release Artifact run `32645695598`
+plus Dependency Artifact run `32645695541` for
+`42d17885646d52387f9327f19e2a2e0d70b2b84e`. Those artifacts are temporary
+and were not used by the recorded production deployment.
 
 See `RELEASE_MANIFEST.md` for the stable contract.
 
@@ -241,8 +244,9 @@ The only compact production snapshot is
   process working directory, snapshot and loopback health were validated at
   execution time and whose live release/service/CWD identity was observed again
   by the 2026-08-23 A3-2 inventory;
-- the A3-2 `NO-GO`: the fixed production deployment root is `ext4` without the
-  XFS project-quota boundary required by exact master;
+- the historical XFS-only A3-2 `NO-GO`: the fixed production deployment root
+  was observed on `ext4` without the XFS project-quota boundary required by
+  `master@b93577c...`; this did not evaluate PR #662's bounded route;
 - the separately unreconciled Portal, Admin, company-site, rendering, and
   runtime-config identities; and
 - the unenabled state of the four wallet-first schemas, wallet-first/deferred
@@ -255,12 +259,13 @@ runtime services, and production data require fresh task-specific inventory.
 
 ## Source Governance And Security Snapshot
 
-The 2026-08-23 inventory refreshed the repository source head, open PR/Issue
-posture, and exact-source workflows/artifacts. The selected GitHub security APIs
-and workflow Action-reference counts remain the 2026-08-22 snapshot:
+The 2026-08-23 reconciliation refreshed the repository source head, open
+PR/Issue posture, remote-branch count, and exact-source workflows/artifacts.
+The selected GitHub security APIs and workflow Action-reference counts remain
+the 2026-08-22 snapshot:
 
-- exact-master CI, CodeQL, Release Artifact, and Dependency Artifact workflows
-  succeeded;
+- exact-master CI `32645695594`, CodeQL `32645695630`, Release Artifact
+  `32645695598`, and Dependency Artifact `32645695541` workflows succeeded;
 - Dependabot reported zero open alerts;
 - secret scanning is disabled;
 - code-scanning alert inventory was unavailable because Code Security is not
@@ -291,10 +296,11 @@ release-maturity and supply-chain gaps.
 6. Mutable GitHub counts and governance/security settings require a fresh
    readback when they matter to a decision.
 7. A3 has exact-head physical XFS quota and restricted service-native smoke
-   proof plus the explicit default-off production runtime tuple. A3-2 inventory
-   is `NO-GO` because the fixed production root is `ext4` without XFS project
-   quota; storage remediation, materialization and promotion are separate later
-   Risk A gates.
+   proof, the explicit default-off XFS production runtime, and PR #662's
+   separate default-off bounded path for the observed ext4 topology. The old
+   XFS-only A3-2 inventory remains a historical `NO-GO`; fresh exact-master
+   bounded inventory/dry-run, materialization, and promotion are separate later
+   Risk A gates and have not been performed.
 8. Exact-master artifacts are temporary through 2026-09-06; durable artifact,
    rollback retention, SBOM, provenance/signing, and the remaining 27 mutable
    Action references remain open under #597/#598.

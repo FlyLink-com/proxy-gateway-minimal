@@ -5,6 +5,7 @@
 > - State: proposed; implementation and execution are not authorized
 > - Design base: `master@e7bed98580e9e54dec316c211895f4f47927e448`
 > - A3 source-contract commit: `b93577c99c1202d1f799e2da4e573c8ad7fcf13c`
+> - Current bounded-path source: `master@42d17885646d52387f9327f19e2a2e0d70b2b84e`
 > - Target role: `vultr-japan-control`
 > - Production impact of this document: none
 > - Execution authority: none
@@ -19,8 +20,24 @@ document_metadata:
   production_authority: false
 ```
 
-Refs: issue #636; PRs #654, #656, #658, and #659; A3-2 terminal
+Refs: issue #636; PRs #654, #656, #658, #659, #660, and #662; A3-2 terminal
 inventory receipt `#issuecomment-5385197978`.
+
+## Current-status clarification (2026-08-23)
+
+This document preserves the dedicated-XFS remediation design produced after
+the `master@b93577c...` XFS-only inventory terminated `NO-GO`. Merged PR #662
+advanced source to
+`master@42d17885646d52387f9327f19e2a2e0d70b2b84e` and added a separate,
+default-off bounded artifact-admission path for the observed production ext4
+topology while retaining the XFS route. Consequently, the dedicated XFS design
+below is now an optional defense-in-depth path, not the mandatory next A3 path.
+
+The historical `NO-GO` and no-mutation receipt remain unchanged. PR #662's
+merge and successful exact-master CI/artifacts do not prove or authorize a new
+production inventory, dry-run, materialization, pointer/service action, or
+promotion. A fresh exact-master Risk A inventory/dry-run must decide whether
+the bounded path is admissible before any separately approved execution.
 
 ## 1. Decision
 

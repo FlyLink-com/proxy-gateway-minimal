@@ -1,13 +1,13 @@
 {
-  "schemaVersion": "2026-08-22.2",
-  "lastUpdated": "2026-08-22",
+  "schemaVersion": "2026-08-23.1",
+  "lastUpdated": "2026-08-23",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current lane index for Phase 2. Historical lanes remain in Git history and indexed execution records, not in the active Agent queue.",
   "sourceInventory": {
-    "snapshot": "236f81daf58612b83740262885d5d4e5ccb8dae2",
-    "date": "2026-08-22",
-    "remoteBranchCount": 111,
+    "snapshot": "42d17885646d52387f9327f19e2a2e0d70b2b84e",
+    "date": "2026-08-23",
+    "remoteBranchCount": 117,
     "openPrCount": 0,
     "openDraftPrCount": 0,
     "openNonDraftPrCount": 0,
@@ -24,7 +24,13 @@
       "653": "acf593720128a81cbe779063445395cb460f18f3",
       "654": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b",
       "655": "e15310d035024dcbfe1b46252af261bd2c542366",
-      "656": "236f81daf58612b83740262885d5d4e5ccb8dae2"
+      "656": "236f81daf58612b83740262885d5d4e5ccb8dae2",
+      "657": "8cbe8590998e2c9df465facbbde7fb93fac382ed",
+      "658": "b93577c99c1202d1f799e2da4e573c8ad7fcf13c",
+      "659": "e7bed98580e9e54dec316c211895f4f47927e448",
+      "660": "136e6cd3787e289e6bf025f973609ce22aebc41d",
+      "661": "7aa29563201765f3fd464f03efe76a95a9821474",
+      "662": "42d17885646d52387f9327f19e2a2e0d70b2b84e"
     },
     "openDraftPrs": [],
     "openNonDraftPrs": [],
@@ -50,19 +56,19 @@
     ]
   },
   "governanceBoundary": {
-    "releaseArtifact": "32621970036 success for exact master; three artifacts temporary through 2026-09-06",
-    "dependencyArtifact": "32621970075 success for exact master; artifact 9488609747 temporary through 2026-09-06",
-    "ci": "32621970051 success for exact master",
-    "codeql": "32621969594 success for exact master",
+    "releaseArtifact": "32645695598 success for exact master; three artifacts temporary through 2026-09-06",
+    "dependencyArtifact": "32645695541 success for exact master; artifact 9494801281 temporary through 2026-09-06",
+    "ci": "32645695594 success for exact master",
+    "codeql": "32645695630 success for exact master",
     "cloudflareWorkflow": "not_refreshed_for_exact_master",
-    "ruleset": "not_refreshed_at_2026-08-22_inventory",
-    "environments": "not_refreshed_at_2026-08-22_inventory",
+    "ruleset": "not_refreshed_at_2026-08-23_inventory",
+    "environments": "not_refreshed_at_2026-08-23_inventory",
     "sourceSecurity": "Dependabot open alerts 0; secret scanning disabled; code-scanning alert inventory unavailable because Code Security is not enabled; 13 of 40 workflow Action uses are full-SHA pinned",
     "requiresLiveVerification": true
   },
   "nextActionQueue": [
-    "Implement the focused Issue #636 production guard-lift and end-to-end materialization integration as a separate reviewed Risk B source PR.",
-    "After that source change is merged and exact-master artifacts are regenerated, run A3-2 production read-only inventory and dry-run under a separate exact Risk A gate.",
+    "Run a fresh A3-2 production read-only inventory and dry-run under a new exact Risk A gate bound to master 42d17885646d52387f9327f19e2a2e0d70b2b84e and dependency artifact 9494801281.",
+    "Only after that inventory passes, define a separate exact Risk A materialize/verify/promotion gate with rollback and health-window evidence.",
     "Create a durable artifact/rollback identity for Issue #597 before the exact-master artifacts expire on 2026-09-06.",
     "Address Issue #598 through focused full-SHA pinning, SBOM, provenance, and signing slices.",
     "Refresh GitHub rulesets, required checks, environments, alerts, provider state, deployment identity, and production runtime evidence before relying on any of them."
@@ -87,7 +93,7 @@
       "name": "Version And Deployment Governance",
       "status": "active-source-governance-hardening",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
-      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Current master is 236f81daf58612b83740262885d5d4e5ccb8dae2. Exact-master CI, CodeQL, Release Artifact, and Dependency Artifact runs succeeded, but the artifacts are temporary through 2026-09-06. There are no open PRs at the inventory cutoff; #592 and #594 are closed unmerged and #593 is merged docs-only. Issues #597 and #598 retain durable release and supply-chain closure.",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Current master is 42d17885646d52387f9327f19e2a2e0d70b2b84e. Exact-master CI, CodeQL, Release Artifact, and Dependency Artifact runs succeeded, but the artifacts are temporary through 2026-09-06. There are no open PRs at the inventory cutoff; #592 and #594 are closed unmerged and #593 is merged docs-only. Issues #597 and #598 retain durable release and supply-chain closure.",
       "primaryDocs": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -157,7 +163,7 @@
       "name": "Commercial Foundation",
       "status": "active-default-off-source-foundation",
       "riskBoundary": "B for provider-neutral contracts, event catalogs, disabled adapters, and tests; A for live payment, credentials, webhooks, settlement, or AppsFlyer dispatch",
-      "purpose": "Continue Issues #439 and #522-#524 from implemented source foundations for Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority. PRs #582-#586, #588, and #591 advance those foundations; current master remains not deployed, production paths remain default-off or separately gated, and Draft #592 adds no production authority.",
+      "purpose": "Continue Issues #439 and #522-#524 from implemented source foundations for Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority. PRs #582-#586, #588, and #591 advance those foundations; current master remains not deployed, production paths remain default-off or separately gated, and closed-unmerged PR #592 adds no production authority.",
       "primaryDocs": [
         "docs/BILLING_RECHARGE_CONTRACT.md",
         "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
@@ -231,9 +237,9 @@
     {
       "id": "dependency-materialization",
       "name": "A3 Dependency Artifact Materialization",
-      "status": "active-guard-lift-boundary",
+      "status": "active-production-inventory-boundary",
       "riskBoundary": "B for source contracts and tests; A for privileged physical validation, production inventory, materialization, promotion, or rollback",
-      "purpose": "Complete Issue #636 without conflating non-production physical proof with production promotion. PRs #646-#656 merged the A3 safety contracts, physical collector, diagnostics hardening, exact-head XFS project-quota proof, and exact-head restricted service-native smoke proof. Both physical evidence segments passed; production requireRoot materialize/verify entrypoints remain fail-closed with worker_storage_limit_unavailable pending a separate reviewed guard-lift and integration source change.",
+      "purpose": "Complete Issue #636 without conflating source or non-production physical proof with production promotion. PRs #646-#656 provide the safety contracts and completed XFS quota/service-native physical proofs; PR #658 added the explicit default-off XFS production route, and PR #662 added the explicit default-off bounded-artifact route for the reviewed ext4 boundary. The b93577c XFS-only A3-2 inventory remains historical NO-GO/no-mutation evidence. Next is a fresh exact-master production inventory/dry-run, followed only if successful by a separate materialize/verify/promotion gate.",
       "primaryDocs": [
         "docs/A3_1_MATERIALIZER_PHYSICAL_EXECUTION_SPEC.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -247,7 +253,7 @@
       ],
       "nonGoals": [
         "treating physical quota or service-native smoke proof as production proof",
-        "lifting production guards without a separate reviewed integration source change",
+        "treating the default-off source routes or historical b93577c NO-GO as current production authorization",
         "host-side npm ci",
         "feature or schema activation through the dependency-promotion lane"
       ]
@@ -257,7 +263,7 @@
       "name": "Production Operations",
       "status": "active-boundary",
       "riskBoundary": "A for every production, provider, DNS, Nginx, systemd, firewall, schema, deployment, promotion, rollback, or live customer-data action",
-      "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog. The latest retained control-plane production record is dated 2026-08-14T16:19:18Z at source c06f749f245247eea7e94c68f4249a0017e8e884; current master is newer and all production facts require live verification. This C-tier reconciliation performed no fresh production inventory or mutation.",
+      "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog. The latest recorded production release remains control-plane source 57d7ab751b9c3b9111bc7d7e799c28d165fdabdb, observed again by the 2026-08-23 b93577c A3-2 read-only inventory; that XFS-only attempt stopped NO-GO without mutation. Current master is newer and any new Risk A action requires fresh exact-master inventory. This C-tier reconciliation performed no production inventory or mutation.",
       "primaryDocs": [
         "docs/CURRENT_RELEASE_STATE.md",
         "docs/RUNTIME_LANE_AUTHORITY.md",

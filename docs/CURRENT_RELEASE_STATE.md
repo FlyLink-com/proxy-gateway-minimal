@@ -13,14 +13,14 @@ document_metadata:
 > Status:
 > - Type: Current documented release snapshot
 > - Version management baseline: `v3` artifact and runtime-identity foundation
-> - Current source inventory: `master@b93577c99c1202d1f799e2da4e573c8ad7fcf13c`
+> - Current source inventory: `master@42d17885646d52387f9327f19e2a2e0d70b2b84e`
 >   observed 2026-08-23, America/Los_Angeles
 > - Latest release source and production deployment event: 2026-08-16,
 >   `control-plane-app` source `57d7ab751b9c3b9111bc7d7e799c28d165fdabdb`
 > - Latest deployed release identity:
 >   `control-plane-57d7ab751b9c-a5b2-20260816T002126Z-1786839686627`
 > - Latest exact-master build evidence, not deployed: Release Artifact run
->   `32628598266` and Dependency Artifact run `32628598229`
+>   `32645695598` and Dependency Artifact run `32645695541`
 > - Current control-plane identity: fresh A3-2 read-only production inventory
 >   on 2026-08-23 matched the PR #622 Deploy Note and observed a healthy service;
 >   other release units retain their separately documented state
@@ -29,24 +29,26 @@ document_metadata:
 ## Current Source And A3 Reconciliation (2026-08-23)
 
 The current reviewed source is
-`master@b93577c99c1202d1f799e2da4e573c8ad7fcf13c`. The read-only GitHub
-inventory observed no open PRs and eighteen open Issues. Exact-master CI,
-CodeQL, Release Artifact, and Control Plane Dependency Artifact workflows all
-succeeded.
+`master@42d17885646d52387f9327f19e2a2e0d70b2b84e`, which includes merged PR
+#662. Exact-master CI run `32645695594`, CodeQL run `32645695630`, Release
+Artifact run `32645695598`, and Control Plane Dependency Artifact run
+`32645695541` all succeeded. The same read-only GitHub inventory observed zero
+open PRs, eighteen open Issues, and 117 remote branches.
 
-Release Artifact run `32628598266` produced three temporary build artifacts:
+Release Artifact run `32645695598` produced three temporary build artifacts:
 
-- `proxy-gateway-b93577c99c12`;
-- `portal-static-b93577c99c12`;
-- `admin-static-b93577c99c12`.
+- `proxy-gateway-42d17885646d` (Actions artifact ID `9494798503`);
+- `portal-static-42d17885646d` (Actions artifact ID `9494802700`);
+- `admin-static-42d17885646d` (Actions artifact ID `9494802010`).
 
-Dependency Artifact run `32628598229` produced
-`control-plane-dependency-b93577c99c1202d1f799e2da4e573c8ad7fcf13c`
-with Actions artifact ID `9490394884`. These artifacts were observed as
-available through 2026-09-06. They are temporary build evidence, not durable
-release retention, deployment, rollback identity, or current runtime proof.
+Dependency Artifact run `32645695541` produced
+`control-plane-dependency-42d17885646d52387f9327f19e2a2e0d70b2b84e`
+with Actions artifact ID `9494801281`, size `6460706` bytes, and observed
+expiry `2026-09-06T14:32:03Z`. These artifacts are temporary build evidence,
+not durable release retention, deployment, rollback identity, or current
+runtime proof.
 
-Issue #636 A3 source work is merged through PR #658. PR #654's exact head
+Issue #636 A3 source work is merged through PR #662. PR #654's exact head
 passed a disposable non-production XFS physical run that verified project-tree
 setup, project accounting/enforcement, fixed byte and inode limits, rejected
 byte and inode writes with Linux XFS `ENOSPC`, diagnostics integrity, and
@@ -56,11 +58,18 @@ PR #656's exact head separately passed the restricted service-native smoke on
 the non-production physical host. The fixed non-root principal, native module
 and snapshot-import workload, cgroup v2 boundary, terminal/unit readback,
 diagnostics integrity, and cleanup were verified. This closes both A3-1
-physical evidence segments. Merged PR #658 adds the production runtime source
-path, but only when the complete explicit tuple
+physical evidence segments. Merged PR #658 added the production XFS runtime
+source path, but only when the complete explicit tuple
 `--enable-a3-materializer --a3-run-label <label> --a3-project-id <id>` is
 supplied. Default and partial invocations remain fail-closed with
 `worker_storage_limit_unavailable`.
+
+Merged PR #662 adds a separate bounded artifact-admission path for the existing
+production ext4 topology. It is also default-off and requires the complete
+explicit tuple `--enable-bounded-artifact-admission --bounded-run-label
+<label>`. The XFS route remains available. The bounded route binds the exact
+artifact budget and filesystem topology, retains the service-native smoke and
+fail-closed guards, and emits schema-4 receipts.
 
 Production dry-run `32628957935` then built and validated the exact-master
 packet without host access or mutation. The approved A3-2 read-only inventory
@@ -69,9 +78,14 @@ matching current/service/process working-directory identity, a clean candidate
 namespace, cgroup v2, 140537528320 available bytes, and a read-only SQLite
 `quick_check` result of `ok`. The fixed deployment root is on `ext4`, however,
 with no project-quota mount option, accounting, enforcement, report, or project
-ID. Exact-master production quota readback therefore cannot pass. A3-2 is
-`NO-GO`; no artifact upload, materialization, pointer switch, service change,
-quota change, schema/feature activation, or promotion occurred.
+ID. The then-current XFS-only production quota readback therefore could not
+pass. That `master@b93577c...` A3-2 attempt remains a historical `NO-GO`; no
+artifact upload, materialization, pointer switch, service change, quota change,
+schema/feature activation, or promotion occurred. It does not evaluate the new
+bounded route. A fresh Risk A read-only inventory and dry-run bound to exact
+`master@42d17885646d52387f9327f19e2a2e0d70b2b84e` and artifact ID
+`9494801281` remain pending; production materialization and promotion have not
+been performed.
 
 ## Dated Source-Capability Reconciliation (2026-08-09)
 
@@ -164,8 +178,8 @@ contract for `japan-runtime-config` and `sgp-runtime-config`. A generated
 identity is not a deploy event, and this Risk C reconciliation did not observe
 either live host.
 
-The latest exact-master build proof is Release Artifact run `32628598266` for
-`b93577c99c1202d1f799e2da4e573c8ad7fcf13c`. It does not replace the build
+The latest exact-master build proof is Release Artifact run `32645695598` for
+`42d17885646d52387f9327f19e2a2e0d70b2b84e`. It does not replace the build
 identity used by the recorded 2026-08-16 deployment and does not change any
 release-unit state in the production snapshot below.
 
@@ -336,13 +350,15 @@ runtime, Authority, or four wallet-first schema gates are enabled. The PR #622
 Deploy Note records five new feature flags remaining off.
 
 Current source is now
-`b93577c99c1202d1f799e2da4e573c8ad7fcf13c`, 100 commits beyond the recorded
-production source. The newer source includes the A3 dependency-artifact
-materializer safety, physical quota proof, service-native smoke proof, and the
-explicit default-off production runtime tuple. Its successful CI and temporary
-artifacts do not establish deployment or activation. The A3-2 inventory proves
-that the current production filesystem cannot satisfy the required XFS project
-quota boundary, so materialization remains blocked.
+`42d17885646d52387f9327f19e2a2e0d70b2b84e`. It includes the A3
+dependency-artifact materializer safety, physical quota proof, service-native
+smoke proof, the explicit default-off XFS production runtime, and PR #662's
+separate default-off bounded path for the existing ext4 topology. Its
+successful CI and temporary artifacts do not establish deployment or
+activation. The earlier A3-2 inventory proves only that the then-current
+XFS-only route could not run on the observed ext4 production root; it does not
+validate the bounded route. Fresh exact-master production inventory and dry-run
+remain required before any separately approved materialization or promotion.
 
 The 2026-08-16 Deploy Note is scoped to `control-plane-app` and records five new
 feature flags remaining off. It does not establish Portal/static deployment,
@@ -365,12 +381,15 @@ lane. Those remain separate Risk A actions.
 - Detailed source-capability cutoff
   `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
 - Current source inventory
-  `master@b93577c99c1202d1f799e2da4e573c8ad7fcf13c`
-- GitHub Release Artifact run `32628598266`
-- GitHub Dependency Artifact run `32628598229`
+  `master@42d17885646d52387f9327f19e2a2e0d70b2b84e`
+- GitHub CI run `32645695594`
+- GitHub CodeQL run `32645695630`
+- GitHub Release Artifact run `32645695598`
+- GitHub Dependency Artifact run `32645695541`
 - [PR #654 A3 quota physical proof](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/654)
 - [PR #656 A3 service-native smoke proof](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/656)
 - [PR #658 A3 source integration](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/658)
+- [PR #662 bounded artifact admission](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/662)
 - [Issue #636 A3 promotion boundary](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/636)
 - [Issue #636 A3-2 inventory receipt](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/636#issuecomment-5385197978)
 - Deployed control-plane source
