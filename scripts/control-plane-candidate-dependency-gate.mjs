@@ -988,7 +988,7 @@ export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "vali
       || values.Type !== "oneshot" || values.RemainAfterExit !== "yes" || values.CollectMode !== "inactive-or-failed") fail("worker_cleanup_uncertain", true);
     const cgroupRoot = `/sys/fs/cgroup/system.slice/${serviceUnit}`;
     const cgroupPresent = a3PhysicalPathExists(cgroupRoot, supplied);
-    if (values.ControlGroup !== controlGroup && !(values.ControlGroup === "" && !cgroupPresent)) fail("worker_cleanup_uncertain", true);
+    if (values.ControlGroup !== controlGroup && values.ControlGroup !== "") fail("worker_cleanup_uncertain", true);
     if (cgroupPresent) {
       const events = readA3PhysicalFile(`${cgroupRoot}/cgroup.events`, supplied, "worker_cleanup_uncertain", true);
       const procs = readA3PhysicalFile(`${cgroupRoot}/cgroup.procs`, supplied, "worker_cleanup_uncertain", true);

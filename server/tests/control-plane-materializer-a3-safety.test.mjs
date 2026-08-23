@@ -659,6 +659,14 @@ test("collectServiceNativeSmokeEvidence accepts an empty ControlGroup after syst
   assert.equal(harness.captures.size, 0);
 });
 
+test("collectServiceNativeSmokeEvidence accepts an empty ControlGroup while the remaining cgroup is proven empty", () => {
+  const harness = serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "" }, cgroupPresent: true });
+  const evidence = collectServiceSmoke(harness.runtime);
+  assert.equal(evidence.cgroupEmpty, true);
+  assert.equal(harness.wasStopped(), true);
+  assert.equal(harness.captures.size, 0);
+});
+
 test("collectServiceNativeSmokeEvidence cleans interrupted-run captures before a bounded retry", () => {
   const harness = serviceSmokeHarness({ initialCaptures: true });
   const evidence = collectServiceSmoke(harness.runtime);
@@ -780,7 +788,6 @@ test("collectServiceNativeSmokeEvidence rejects invalid process identity values"
 test("collectServiceNativeSmokeEvidence marks pinned unit and cgroup uncertainty as attention-required", () => {
   for (const harness of [
     serviceSmokeHarness({ pinnedStatus: 1 }),
-    serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "" }, cgroupPresent: true }),
     serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "/system.slice/unexpected.service" }, cgroupPresent: false }),
     serviceSmokeHarness({ cgroupEvents: "populated 1\n", cgroupProcs: "991\n" })
   ]) {
