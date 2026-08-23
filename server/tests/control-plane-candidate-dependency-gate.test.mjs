@@ -218,6 +218,8 @@ function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm, root: fi
   const staged = stageReceipt({ candidate, packageBytes, lockBytes, manifest, manifestBytes, mutate: artifactMutate });
   const artifactStageBytes = Buffer.from(`${JSON.stringify(staged.value, null, 2)}\r\n`);
   write(join(assemblyRoot, "artifact-stage-receipt.json"), artifactStageBytes);
+  chmodSync(join(root, "assembly-receipts"), 0o700);
+  chmodSync(assemblyRoot, 0o700);
   const dependencyArtifactRoot = join(root, "dependency-artifacts", candidate);
   mkdirSync(dependencyArtifactRoot, { recursive: true, mode: 0o700 });
   chmodSync(dependencyArtifactRoot, 0o700);

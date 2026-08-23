@@ -10,7 +10,10 @@ import {
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { verifyReleaseConfigOverlay } from "./control-plane-release-config-gate.mjs";
+import {
+  createReleaseConfigGateTestRuntime,
+  verifyReleaseConfigOverlay
+} from "./control-plane-release-config-gate.mjs";
 import {
   auditDependencyTree,
   calculateDependencyStorageBudget,
@@ -111,6 +114,8 @@ const A3_PHYSICAL_TOOLS = Object.freeze({
 });
 const PRODUCTION_A3_RUNTIMES = new WeakSet();
 const PRODUCTION_BOUNDED_ARTIFACT_RUNTIMES = new WeakSet();
+const A3_PHYSICAL_VALIDATION_RUNTIMES = new WeakSet();
+const CANDIDATE_TEST_RUNTIMES = new WeakSet();
 const BOUNDED_STORAGE_READBACK = String.raw`import json,os,sys
 value=os.statvfs(sys.argv[1]); node=os.stat(sys.argv[1],follow_symlinks=False)
 print(json.dumps({"blockSize":value.f_frsize,"availableBytes":value.f_bavail*value.f_frsize,"availableInodes":value.f_favail,"deviceId":str(node.st_dev)},separators=(",",":")))`;
@@ -1258,7 +1263,11 @@ function runServiceNativeSmoke({ root, service, snapshotModule, runtime: supplie
   if (readback.fixedNodePath !== supplied.tools.node) fail("service_smoke_readback_invalid");
   return readback;
 }
-export function createCandidateDependencyGateTestRuntime(overrides = {}) { return runtime({ platform: "linux", requireRoot: false, enforceOwnership: false, ...overrides }); }
+export function createCandidateDependencyGateTestRuntime(overrides = {}) {
+  const supplied = runtime({ platform: "linux", requireRoot: false, enforceOwnership: false, ...overrides });
+  CANDIDATE_TEST_RUNTIMES.add(supplied);
+  return supplied;
+}
 function productionA3Runtime(supplied) {
   return Boolean(supplied && typeof supplied === "object" && PRODUCTION_A3_RUNTIMES.has(supplied)
     && supplied.platform === "linux" && supplied.requireRoot === true && supplied.enforceOwnership === true
@@ -1308,7 +1317,7 @@ export function createCandidateDependencyGateA3PhysicalValidationRuntime({ runLa
   const context = a3PhysicalContext(runLabel, physical);
   if (!Number.isSafeInteger(projectId) || projectId <= 0) fail("invalid_input");
   let publishedSmokeCount = 0;
-  return runtime({
+  const supplied = runtime({
     ...overrides,
     root: context.deploymentRoot,
     platform: "linux",
@@ -1326,6 +1335,8 @@ export function createCandidateDependencyGateA3PhysicalValidationRuntime({ runLa
       return collectServiceNativeSmokeEvidence({ runLabel, smokePhase, root, service, runtime: physical });
     }
   });
+  A3_PHYSICAL_VALIDATION_RUNTIMES.add(supplied);
+  return supplied;
 }
 export function runCandidateDependencyA3PhysicalValidation({ mode, runLabel, projectId, serviceUid, serviceGid, overrides = {} } = {}) {
   if (!new Set(["quota", "smoke"]).has(mode)) fail("invalid_input");
@@ -1816,6 +1827,18 @@ function context(candidate, current, runtime) {
   const artifact = regular(resolve(assemblyRoot, "artifact-stage-receipt.json"), runtime, "artifact_stage_receipt_missing", 0o600, true);
   return { root, releases, candidate, current, candidateRoot, currentRoot, assembly: assembly.path, artifactManifest: artifactManifest.path, artifact: artifact.path, builder: resolve(root, "dependency-builders"), staging: resolve(root, "dependency-staging"), receipts: resolve(root, "dependency-receipts"), receipt: resolve(root, "dependency-receipts", candidate, "node-modules-materialization.json") };
 }
+function releaseConfigRuntimeForCandidate(supplied) {
+  if (productionMaterializerRuntime(supplied)) return undefined;
+  if (!CANDIDATE_TEST_RUNTIMES.has(supplied) && !A3_PHYSICAL_VALIDATION_RUNTIMES.has(supplied)) {
+    fail("assembly_manifest_invalid");
+  }
+  return createReleaseConfigGateTestRuntime({
+    root: supplied.root,
+    enforceProductionTopology: true,
+    enforceOwnership: supplied.enforceOwnership === true,
+    enforceModes: true
+  });
+}
 function inputs(context, runtime, absent = true) {
   const packageFile = fileIn(context.candidateRoot, "package.json", runtime, "candidate_path_invalid");
   const lockFile = fileIn(context.candidateRoot, "package-lock.json", runtime, "candidate_path_invalid");
@@ -1827,7 +1850,14 @@ function inputs(context, runtime, absent = true) {
     packageJson: packageBytes, packageLock: lockBytes, artifactManifestBytes: readFileSync(context.artifactManifest)
   });
   const input = { package: hash(packageBytes), lock: hash(lockBytes), packageSize: packageBytes.length, lockSize: lockBytes.length, assembly: hashFile(context.assembly), artifact: artifactStage.sha256, artifactStageReceiptSizeBytes: artifactStage.sizeBytes, artifactManifest: artifactStage.artifactManifestSha256, artifactManifestSizeBytes: artifactStage.artifactManifestSizeBytes, packageBytes, lockBytes, source: artifactStage.value };
-  try { verifyReleaseConfigOverlay({ activeReleasePath: context.currentRoot, candidateReleasePath: context.candidateRoot, manifestPath: context.assembly }); } catch { fail("assembly_manifest_invalid"); }
+  try {
+    verifyReleaseConfigOverlay({
+      activeReleasePath: resolve(context.root, "current"),
+      candidateReleasePath: context.candidateRoot,
+      manifestPath: context.assembly,
+      runtime: releaseConfigRuntimeForCandidate(runtime)
+    });
+  } catch { fail("assembly_manifest_invalid"); }
   return input;
 }
 
