@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-08-22.1",
+  "schemaVersion": "2026-08-22.2",
   "lastUpdated": "2026-08-22",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-current-queue",
@@ -21,15 +21,15 @@
     "docs/OPERATIONS_PLANE_SOURCE_REALITY.md"
   ],
   "historicalBoundary": {
-    "sourceSnapshotAtReconciliation": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b",
+    "sourceSnapshotAtReconciliation": "236f81daf58612b83740262885d5d4e5ccb8dae2",
     "productionRuntimeEvidenceCutoff": "2026-08-14T16:19:18Z",
     "requiresLiveVerification": true,
     "rule": "Use Git history and docs/archive indexes for completed or superseded tasks; do not re-add them to the current queue without a new Issue and fresh evidence."
   },
   "sourceReceipts": {
     "inventoryDate": "2026-08-22",
-    "master": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b",
-    "remoteBranchCount": 109,
+    "master": "236f81daf58612b83740262885d5d4e5ccb8dae2",
+    "remoteBranchCount": 111,
     "openPrCount": 0,
     "openDraftPrCount": 0,
     "openNonDraftPrCount": 0,
@@ -301,6 +301,21 @@
         "receipt": "exact-head physical XFS project-quota proof and canonical project-check output alignment",
         "productionState": "not_deployed",
         "artifactEvidence": "Release Artifact run 32579764918 and Dependency Artifact run 32579764926 succeeded; artifacts temporary through 2026-09-05"
+      },
+      {
+        "pr": 655,
+        "sourceCommit": "e15310d035024dcbfe1b46252af261bd2c542366",
+        "lane": "version-management",
+        "receipt": "canonical and project-state reconciliation after the A3 quota proof",
+        "productionState": "not_applicable"
+      },
+      {
+        "pr": 656,
+        "sourceCommit": "236f81daf58612b83740262885d5d4e5ccb8dae2",
+        "lane": "dependency-materialization",
+        "receipt": "exact-head restricted service-native smoke identity, cgroup v2, terminal readback, and cleanup proof",
+        "productionState": "not_deployed",
+        "artifactEvidence": "Release Artifact run 32621970036 and Dependency Artifact run 32621970075 succeeded; artifacts temporary through 2026-09-06"
       }
     ],
     "openDrafts": [],
@@ -314,11 +329,11 @@
   },
   "ciGovernance": {
     "inventoryDate": "2026-08-22",
-    "master": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b",
-    "releaseArtifact": "32579764918 success for exact master; three artifacts temporary through 2026-09-05",
-    "dependencyArtifact": "32579764926 success for exact master; artifact 9477480212 temporary through 2026-09-05",
-    "ci": "32579764917 success for exact master",
-    "codeql": "32579764749 success for exact master",
+    "master": "236f81daf58612b83740262885d5d4e5ccb8dae2",
+    "releaseArtifact": "32621970036 success for exact master; three artifacts temporary through 2026-09-06",
+    "dependencyArtifact": "32621970075 success for exact master; artifact 9488609747 temporary through 2026-09-06",
+    "ci": "32621970051 success for exact master",
+    "codeql": "32621969594 success for exact master",
     "cloudflareWorkflow": "not_refreshed_for_exact_master",
     "ruleset": "not_refreshed",
     "environments": "not_refreshed",
@@ -335,9 +350,9 @@
     "boundary": "Source remediation and successful workflows do not establish current default-branch alert counts or required security gates."
   },
   "nextActionQueue": [
-    "Complete Issue #636 service-native smoke physical proof before any production materializer guard lift.",
-    "After A3-1 closes, run A3-2 production read-only inventory and dry-run under a separate exact Risk A gate.",
-    "Close Issue #597's durable artifact/rollback identity gap before exact-master artifacts expire on 2026-09-05.",
+    "Implement the focused Issue #636 production guard-lift and end-to-end materialization integration as a separate reviewed Risk B source PR.",
+    "After that source change is merged and exact-master artifacts are regenerated, run A3-2 production read-only inventory and dry-run under a separate exact Risk A gate.",
+    "Close Issue #597's durable artifact/rollback identity gap before exact-master artifacts expire on 2026-09-06.",
     "Address Issue #598 through focused Action pinning, SBOM, provenance, and signing slices.",
     "Refresh GitHub rulesets, required checks, environments, alert counts, provider state, deployments, and production runtime evidence before relying on them."
   ],
@@ -596,10 +611,10 @@
     {
       "id": "A-a3-dependency-materialization-boundary",
       "risk": "A",
-      "status": "blocked-pending-service-smoke-gate",
+      "status": "blocked-pending-reviewed-guard-lift-source",
       "lane": "dependency-materialization",
-      "title": "Complete A3 physical evidence before production materializer guard lift",
-      "goal": "Continue Issue #636 from exact-master XFS quota proof through service-native smoke, then keep production inventory, guard lift, materialization, promotion, and closeout as separately reviewable gates.",
+      "title": "Integrate completed A3 physical evidence before production materializer guard lift",
+      "goal": "Continue Issue #636 from completed exact-head XFS quota and restricted service-native smoke proofs through a separate reviewed guard-lift and end-to-end materialization source change, then keep production inventory, promotion, and closeout as separately reviewable gates.",
       "allowedFiles": [
         "docs/A3_1_MATERIALIZER_PHYSICAL_EXECUTION_SPEC.md",
         "scripts/control-plane-candidate-dependency-gate.mjs",
@@ -608,14 +623,14 @@
         "project-state/*.json"
       ],
       "forbiddenActions": [
-        "treat quota-only physical proof as service-native smoke or production proof",
-        "lift worker_storage_limit_unavailable before exact physical evidence and a reviewed source change",
+        "treat physical quota or service-native smoke proof as production proof",
+        "lift worker_storage_limit_unavailable without a separate reviewed integration source change",
         "run host-side npm ci",
         "activate schemas, features, providers, or customer-facing runtime through the dependency lane"
       ],
       "validation": [
         "PR #654 exact-head quota evidence remains linked and reproducible",
-        "service-native smoke runs under the fixed non-root principal and exact sandbox/readback contract",
+        "PR #656 exact-head service-native smoke evidence remains linked and reproducible",
         "production requireRoot entrypoints remain fail-closed until a later reviewed guard-lift decision",
         "npm test and git diff --check for any source change"
       ]
