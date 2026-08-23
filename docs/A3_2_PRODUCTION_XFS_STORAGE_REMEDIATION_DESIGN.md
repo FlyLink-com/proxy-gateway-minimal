@@ -171,22 +171,42 @@ changes before any production XFS mutation is proposed:
 2. Point production XFS/project/quota readback at the fixed A3 project tree.
 3. Put artifact extraction, normalization, recursive audit, and prepublish
    service-native smoke entirely inside that project tree.
-4. Admit an artifact only when fresh quota headroom is at least:
-   - manifest `tree.totalBytes` plus the 512 MiB extraction reserve; and
-   - manifest `tree.entryCount` plus the 4096-inode reserve.
+4. Admit an artifact only after deriving a conservative allocated-space upper
+   bound from the fresh target filesystem block size and the already validated
+   archive member sizes/types. Logical `tree.totalBytes` alone is forbidden as
+   a quota budget. The frozen source formula must, at minimum:
+   - round regular-file data to filesystem allocation blocks;
+   - charge every entry at least one additional block for directory, symlink,
+     per-file rounding, and metadata overhead;
+   - add a separately fixed metadata safety reserve and the existing 512 MiB
+     extraction reserve;
+   - require fresh quota byte headroom at least that allocated-space upper
+     bound and inode headroom at least manifest `tree.entryCount` plus the
+     4096-inode reserve.
 5. Replace the cross-device rename with a two-stage publication barrier:
    - before copying, require fresh target-ext4 available bytes and inodes to
-     cover the manifest tree plus the same explicit reserves and an operational
-     low-water margin;
+     cover an independently calculated allocated-space upper bound using the
+     ext4 block size, the inode reserve, and an operational low-water margin;
    - copy the normalized verified tree from XFS into a fresh root-owned
      temporary directory inside the candidate root;
    - enforce manifest byte/entry bounds while copying without following
      symlinks or accepting special files;
+   - re-read target-ext4 availability before each bounded copy batch and stop
+     before the next write if it would cross the fixed low-water threshold;
    - fsync files and directories;
    - recursively re-audit and require the exact normalized tree digest,
      entry count, and byte count;
    - atomically rename that same-device temporary directory to `node_modules`
-     with no replacement.
+     with no replacement;
+   - fsync the candidate parent after rename;
+   - require the final path to be a non-symlink directory whose inode is the
+     captured temporary-directory inode;
+   - recursively re-audit the final path and require the exact normalized tree
+     digest, entry count, and byte count;
+   - run the postpublish service-native smoke and re-read the unchanged quota
+     boundary;
+   - publish the materialization receipt only after all post-rename barriers
+     succeed.
 6. On failure, remove only inode-bound staging created by that attempt. Never
    remove an existing candidate tree, receipt, current pointer, shared DB, or
    unrelated workspace.
@@ -195,7 +215,12 @@ changes before any production XFS mutation is proposed:
 8. Add negative tests for missing mount, wrong filesystem, wrong project ID,
    missing inheritance, changed hard limits, insufficient quota headroom,
    cross-device source, copy truncation, symlink/special-file injection,
-   digest drift, fsync failure, rename collision, and cleanup uncertainty.
+   digest drift, pre/post-rename fsync failure, final-inode drift, final-tree
+   drift, postpublish-smoke failure, receipt-before-barrier ordering, rename
+   collision, low-water crossing, and cleanup uncertainty. Admission tests must
+   include a contract-limit synthetic 250000-entry member set dominated by
+   zero/one-byte files so tiny-file allocation overhead cannot collapse back to
+   logical bytes.
 
 The source PR requires focused tests, the full server test baseline,
 `git diff --check`, exact-head CI, and independent P0/P1 review. It authorizes
@@ -211,22 +236,30 @@ receipt validation, cleanup, and negative mount/project-tree cases.
 This design does not guess a provider volume size or hard limit before fresh
 inventory. The execution proposal must bind exact integers.
 
-Minimum logical admission follows the current artifact contract:
+Minimum inode admission follows the current artifact contract. Byte admission
+must use the allocated-space upper bound from section 6 rather than logical
+bytes:
 
 ```text
-required_byte_headroom  = artifact_tree_total_bytes + 536870912
+required_byte_headroom  = allocated_tree_upper_bound + 536870912
 required_inode_headroom = artifact_tree_entry_count + 4096
 ```
 
-The same artifact-derived admission check applies independently to the target
-ext4 filesystem before the trusted copy begins. Passing XFS quota admission
-does not prove that the candidate filesystem can safely receive the copy.
+`allocated_tree_upper_bound` is a reviewed deterministic calculation over the
+validated archive member sizes/types and the destination filesystem's fresh
+block size. At minimum it rounds regular-file data to allocation blocks,
+charges every entry one additional block, and includes a fixed metadata safety
+reserve. Calculate it independently for XFS quota admission and for the target
+ext4 filesystem before and during the trusted copy; the block sizes need not
+match. Passing XFS quota admission does not prove that the candidate filesystem
+can safely receive the copy.
 
-Upper-bound planning must accommodate at least 2147483648 tree bytes and
-250000 entries, so the project must have at least 2684354560 bytes and 254096
-inodes of headroom before a maximum-size artifact. XFS metadata, log space,
-future cleanup workspace, and operator reserve are additional; they are not
-included in those minima.
+Upper-bound planning must accommodate 2147483648 logical tree bytes and 250000
+entries. Therefore 2684354560 bytes is only the logical-data-plus-extraction
+floor and is explicitly insufficient as an approval value until per-entry
+allocation rounding and the fixed metadata safety reserve are added. The inode
+floor is 254096. XFS metadata, log space, future cleanup workspace, and operator
+reserve remain additional to the calculated project headroom.
 
 The project hard limit must be lower than physical filesystem capacity by an
 explicit emergency reserve. A quota limit equal to device capacity is not an
@@ -261,8 +294,9 @@ and target only `vultr-japan-control`.
 - `pvs`, `vgs`, and `lvs` aggregate capacity if LVM is present;
 - XFS kernel/tool availability and versions;
 - exact current deployment-root device and mount ID;
-- absence of the proposed mountpoint, project tree, project/projid mappings,
-  and selected project ID;
+- absence of the proposed mountpoint and project tree, plus absence of a chosen
+  project-ID collision on the new filesystem; existing `/etc/projects` and
+  `/etc/projid` identities are read back but not modified by this design;
 - filesystem byte/inode capacity;
 - unchanged current pointer, active service identity/restart count, candidate
   absence, protected-file metadata, and aggregate SQLite `quick_check`;
@@ -324,21 +358,34 @@ This section defines ordering, not executable approval.
 5. Mount first at a new temporary root-owned validation path with project quota
    enabled. Verify source device, filesystem, options, ownership, and absence
    of pre-existing content.
-6. Create the fixed A3 mountpoint and project tree with exact owner/mode.
-7. Back up the exact pre-change fstab/mount-unit identity. Add only the reviewed
-   mount entry, reload systemd, unmount the temporary path, and mount through
-   the persistent unit.
-8. Use `xfs_quota project -s` for the exact project ID/path so both project ID
-   and `PROJINHERIT` are established. Keep `/etc/projects` and `/etc/projid`
-   changes exact, backed up, and collision-checked.
-9. Require `xfs_quota project -c`, `xfs_io lsproj`, accounting/enforcement
-   state, and exact byte/inode hard-limit reports to agree.
-10. Perform only the approved non-exhausting write/fsync/read/delete probe, then
+6. While the device is mounted at that temporary path, create the `project/`
+   tree on XFS with the exact owner/mode and capture its filesystem UUID plus
+   `st_dev:st_ino` identity.
+7. On ext4 create only the empty final mountpoint, record its underlying
+   `st_dev:st_ino`, and prove it has no child entry. Do not create `project/`
+   below the unmounted final path.
+8. Back up the exact pre-change fstab/mount-unit identity. Add only the reviewed
+   mount entry, reload systemd, unmount the temporary path, and mount the same
+   XFS device through the persistent unit at the final mountpoint.
+9. Prove the same filesystem UUID is mounted and the captured XFS `project/`
+   inode is visible at the final path. Before first use, unmount once, prove the
+   underlying ext4 mountpoint retains its captured inode and remains empty,
+   remount, and repeat the device/tree identity readback. This prevents hidden
+   underlying entries.
+10. Use explicit numeric
+    `xfs_quota -x -c "project -s -p <project-path> <project-id>" <mount>` to set
+    the project ID and `PROJINHERIT`. The preferred path does not add or change
+    `/etc/projects` or `/etc/projid`; a future named-project consumer would need
+    a separate reviewed justification and Gate.
+11. Require the corresponding explicit numeric `project -c`, `xfs_io lsproj`,
+    accounting/enforcement state, and exact byte/inode hard-limit reports to
+    agree.
+12. Perform only the approved non-exhausting write/fsync/read/delete probe, then
     require the project tree empty and quota usage returned to its accepted
     metadata-only baseline.
-11. Reboot testing, if required, is a separate explicit operation. Without it,
+13. Reboot testing, if required, is a separate explicit operation. Without it,
     persistent-mount survival remains unverified and must be stated as such.
-12. Re-read the active service, current pointer, restart count, database check,
+14. Re-read the active service, current pointer, restart count, database check,
     protected-file metadata, and A3-disabled state. They must be unchanged.
 
 No existing deployment-root file is copied, moved, hidden by a mount, assigned
@@ -353,7 +400,8 @@ Rollback is phase-specific.
 - disable the new A3 source route if it was deployed;
 - require the project tree empty;
 - unmount only the exact A3 mount;
-- restore the exact backed-up fstab/mount-unit and project/projid mappings;
+- restore the exact backed-up fstab/mount-unit; this preferred path created no
+  `/etc/projects` or `/etc/projid` mapping to roll back;
 - detach/delete the volume only under a separate provider Gate and only after
   mount, holder, and filesystem-custody readback;
 - verify the previously active release and service were never changed.
