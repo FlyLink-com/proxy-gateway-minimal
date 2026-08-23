@@ -692,6 +692,14 @@ function parseA3SystemctlProperties(output, expected, condition = "worker_cleanu
   return values;
 }
 
+function serviceSmokeBindReadback(bindReadOnlyPaths) {
+  const suffix = ":norbind";
+  if (!Array.isArray(bindReadOnlyPaths) || bindReadOnlyPaths.length !== 2
+    || new Set(bindReadOnlyPaths).size !== bindReadOnlyPaths.length
+    || !bindReadOnlyPaths.every((value) => typeof value === "string" && value.endsWith(suffix))) fail("worker_cleanup_uncertain", true);
+  return bindReadOnlyPaths.map((value) => value.slice(0, -suffix.length)).join(" ");
+}
+
 function removeA3ServiceSmokeCapture(path, supplied) {
   const before = a3PhysicalLeafState(path, supplied);
   if (before === "absent") return;
@@ -994,7 +1002,7 @@ export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "vali
       { attentionRequired: true }
     ), terminalProperties);
     const serviceUnit = `${context.unit}.service`, controlGroup = `/system.slice/${serviceUnit}`;
-    const expectedBind = invocation.bindReadOnlyPaths.join(" ");
+    const expectedBind = serviceSmokeBindReadback(invocation.bindReadOnlyPaths);
     if (values.ActiveState !== "active" || values.SubState !== "exited" || values.Result !== "success"
       || values.ExecMainStatus !== "0"
       || values.User !== String(observed.processIdentity.uid) || values.Group !== String(observed.processIdentity.gid)

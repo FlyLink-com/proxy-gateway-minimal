@@ -542,6 +542,8 @@ function serviceSmokeHarness({
   gcLoadedPolls = 0,
   pinnedStatus = 0,
   pinnedOverrides = {},
+  normalizeBindReadOnlyPaths = true,
+  bindReadOnlyPathsReadback = null,
   cgroupPresent = true,
   cgroupDisappearOnRead = null,
   cgroupReadEnoentWhilePresent = null,
@@ -585,11 +587,12 @@ function serviceSmokeHarness({
     }
     const property = args.find((value) => value.startsWith("--property="));
     if (property.includes("Type,RemainAfterExit,CollectMode")) {
+      const normalizedBindReadback = normalizeBindReadOnlyPaths ? bindReadOnlyPaths.replaceAll(":norbind", "") : bindReadOnlyPaths;
       const values = {
         ActiveState: "active", SubState: "exited", Result: "success", ExecMainStatus: "0",
         ControlGroup: `/system.slice/${unit}`, User: "4711", Group: "4712", PrivateNetwork: "yes",
         CapabilityBoundingSet: "", ProtectSystem: "strict", ProtectHome: "yes", PrivateDevices: "yes",
-        NoNewPrivileges: "yes", BindReadOnlyPaths: bindReadOnlyPaths, Type: "oneshot",
+        NoNewPrivileges: "yes", BindReadOnlyPaths: typeof bindReadOnlyPathsReadback === "function" ? bindReadOnlyPathsReadback(normalizedBindReadback) : normalizedBindReadback, Type: "oneshot",
         RemainAfterExit: "yes", CollectMode: "inactive-or-failed", ...pinnedOverrides
       };
       return {
@@ -666,6 +669,35 @@ test("collectServiceNativeSmokeEvidence pins evidence, triangulates identity, th
   assert.deepEqual(harness.calls.map(([, args]) => args[0]), [
     "--unit=control-plane-a3-service-smoke-run-1-validation", "show", "show", "stop", "show"
   ]);
+});
+
+test("collectServiceNativeSmokeEvidence accepts systemd-normalized readonly bind readback", () => {
+  const harness = serviceSmokeHarness({ normalizeBindReadOnlyPaths: true });
+  const evidence = collectServiceSmoke(harness.runtime);
+  assert.equal(evidence.cgroupEmpty, true);
+  const launchBind = harness.calls[0][1].find((value) => value.startsWith("--property=BindReadOnlyPaths="));
+  assert.equal(launchBind.match(/:norbind/g)?.length, 2);
+  assert.equal(harness.wasStopped(), true);
+  assert.equal(harness.captures.size, 0);
+});
+
+test("collectServiceNativeSmokeEvidence rejects normalized readonly bind entry and path drift", () => {
+  const mutations = {
+    missing: (value) => value.slice(0, value.indexOf(" ")),
+    extra: (value) => `${value} /unexpected:/unexpected`,
+    source: (value) => value.replace("/var/lib/control-plane-a3-1/run-1/probe/project", "/var/lib/control-plane-a3-1/run-1/probe/project-drift"),
+    target: (value) => value.replace("/run/control-plane-a3-service-smoke/", "/run/control-plane-a3-service-smoke-drift/")
+  };
+  for (const [name, bindReadOnlyPathsReadback] of Object.entries(mutations)) {
+    const harness = serviceSmokeHarness({ bindReadOnlyPathsReadback });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true,
+      name
+    );
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
 });
 
 test("collectServiceNativeSmokeEvidence accepts an empty ControlGroup after systemd already removed the cgroup", () => {
