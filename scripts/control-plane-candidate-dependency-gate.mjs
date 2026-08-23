@@ -981,13 +981,15 @@ export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "vali
     const serviceUnit = `${context.unit}.service`, controlGroup = `/system.slice/${serviceUnit}`;
     const expectedBind = invocation.bindReadOnlyPaths.join(" ");
     if (values.ActiveState !== "active" || values.SubState !== "exited" || values.Result !== "success"
-      || values.ExecMainStatus !== "0" || values.ControlGroup !== controlGroup
+      || values.ExecMainStatus !== "0"
       || values.User !== String(observed.processIdentity.uid) || values.Group !== String(observed.processIdentity.gid)
       || values.PrivateNetwork !== "yes" || values.CapabilityBoundingSet !== "" || values.ProtectSystem !== "strict" || values.ProtectHome !== "yes"
       || values.PrivateDevices !== "yes" || values.NoNewPrivileges !== "yes" || values.BindReadOnlyPaths !== expectedBind
       || values.Type !== "oneshot" || values.RemainAfterExit !== "yes" || values.CollectMode !== "inactive-or-failed") fail("worker_cleanup_uncertain", true);
     const cgroupRoot = `/sys/fs/cgroup/system.slice/${serviceUnit}`;
-    if (a3PhysicalPathExists(cgroupRoot, supplied)) {
+    const cgroupPresent = a3PhysicalPathExists(cgroupRoot, supplied);
+    if (values.ControlGroup !== controlGroup && !(values.ControlGroup === "" && !cgroupPresent)) fail("worker_cleanup_uncertain", true);
+    if (cgroupPresent) {
       const events = readA3PhysicalFile(`${cgroupRoot}/cgroup.events`, supplied, "worker_cleanup_uncertain", true);
       const procs = readA3PhysicalFile(`${cgroupRoot}/cgroup.procs`, supplied, "worker_cleanup_uncertain", true);
       if (!/(?:^|\n)populated 0(?:\n|$)/.test(events) || procs.trim() !== "") fail("worker_cleanup_uncertain", true);
