@@ -49,6 +49,7 @@ import {
   validateNodeModulesArchiveListing,
   verifyCandidateDependencyArtifact,
   verifyCandidateDependencies,
+  verifyMaterializerReceiptStorageBoundary,
   workerInputCustodyReadback
 } from "../../scripts/control-plane-candidate-dependency-gate.mjs";
 import { createArtifactManifest } from "../../scripts/create-artifact-manifest.mjs";
@@ -1220,6 +1221,40 @@ test("schema 3 materializer receipt envelope rejects missing fields before dynam
   ]) assert.throws(() => parseMaterializerReceiptEnvelope(invalid), condition("dependency_receipt_mismatch"));
 });
 
+test("schema 3 materializer receipt binds the stable storage quota boundary", () => {
+  const quota = {
+    filesystem: "/dev/test-quota",
+    projectId: 4242,
+    byteHardLimit: 8 * 1024 * 1024,
+    byteCurrent: 4096,
+    inodeHardLimit: 65536,
+    inodeCurrent: 12,
+    headroomBytes: 8 * 1024 * 1024 - 4096,
+    headroomInodes: 65536 - 12,
+    probe: { expectedErrorCode: "ENOSPC", observedErrorCode: "ENOSPC", exhausted: true }
+  };
+  const boundary = {
+    filesystem: quota.filesystem,
+    mountpoint: null,
+    projectId: quota.projectId,
+    byteHardLimit: quota.byteHardLimit,
+    inodeHardLimit: quota.inodeHardLimit,
+    projectTreeVerified: true,
+    accounting: true,
+    enforcement: true
+  };
+  const receipt = materializerReceipt({
+    storageQuotaBoundarySha256: hash(Buffer.from(JSON.stringify(boundary)))
+  });
+
+  assert.equal(verifyMaterializerReceiptStorageBoundary(receipt, quota).storageProjectId, 4242);
+  assert.throws(() => verifyMaterializerReceiptStorageBoundary(receipt, {
+    ...quota,
+    byteHardLimit: quota.byteHardLimit + 4096,
+    headroomBytes: quota.headroomBytes + 4096
+  }), condition("dependency_receipt_mismatch"));
+});
+
 test("production A3 CLI activation is explicit and requires one exact run/project identity pair", async () => {
   for (const argv of [
     ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--enable-a3-materializer"],
@@ -1617,4 +1652,31 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
     assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);
     assert.equal(existsSync(join(value.runtime.lockRoot, "node-modules-materialization.lock")), false);
   }
+
+  writeFileSync(receiptPath, `${JSON.stringify(materializationReceipt, null, 2)}\n`);
+  rmSync(value.runtime.lockRoot, { recursive: true, force: true });
+  quotaReadbacks = 0;
+  const smokeCountBeforeQuotaDrift = smokeRoots.length;
+  value.runtime.collectStorageQuotaEvidence = () => {
+    quotaReadbacks += 1;
+    const evidence = originalQuotaReadback();
+    return {
+      ...evidence,
+      byteHardLimit: evidence.byteHardLimit + 4096,
+      headroomBytes: evidence.headroomBytes + 4096
+    };
+  };
+  await assert.rejects(verifyCandidateDependencies({
+    candidateRelease: value.candidate,
+    expectedCurrentRelease: value.active,
+    expectedSourceCommit: SOURCE_COMMIT,
+    expectedArtifactRelease: ARTIFACT_RELEASE,
+    expectedDependencyManifestSha256: manifest.sha256,
+    expectedDependencyArchiveSha256: manifest.value.archive.sha256,
+    runtime: value.runtime
+  }), condition("dependency_receipt_mismatch"));
+  assert.equal(quotaReadbacks, 1);
+  assert.equal(smokeRoots.length, smokeCountBeforeQuotaDrift);
+  assert.equal(existsSync(value.runtime.lockRoot), false);
+  assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);
 });

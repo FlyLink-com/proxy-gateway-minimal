@@ -2154,6 +2154,11 @@ export function parseMaterializerReceiptEnvelope(value) {
     || !iso(value.safetyEvidenceCapturedAt) || !iso(value.createdAt)) fail("dependency_receipt_mismatch");
   return Object.freeze({ ...value });
 }
+export function verifyMaterializerReceiptStorageBoundary(value, quota) {
+  const receipt = parseMaterializerReceiptEnvelope(value);
+  if (receipt.storageQuotaBoundarySha256 !== evidenceHash(storageQuotaBoundary(quota))) fail("dependency_receipt_mismatch");
+  return receipt;
+}
 function checkReceiptStateBindings(value, state) {
   if (value.currentRelease !== state.c.current || value.candidateRelease !== state.c.candidate
     || value.sourceCommit !== state.input.source.sourceCommit || value.artifactSha256 !== state.input.source.artifact.sha256
@@ -2595,8 +2600,9 @@ export async function verifyCandidateDependencies({
     const targetMetadata = stat(target, "candidate_tree_invalid");
     if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory()) fail("candidate_tree_invalid");
     const receipt = readReceipt(value.c, supplied);
-    requireCurrentReceiptSchema(receipt.value, value, identity, supplied);
+    const currentReceipt = requireCurrentReceiptSchema(receipt.value, value, identity, supplied);
     quotaEvidence = quotaEvidenceForMaterialization(supplied);
+    verifyMaterializerReceiptStorageBoundary(currentReceipt, quotaEvidence);
     key = lock(supplied);
     value = steady(value, supplied, false);
     materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
