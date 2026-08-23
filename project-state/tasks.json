@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2026-08-22.2",
-  "lastUpdated": "2026-08-22",
+  "schemaVersion": "2026-08-23.1",
+  "lastUpdated": "2026-08-23",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-current-queue",
   "purpose": "Current Phase 2 queue and recently completed gates needed for safe Agent continuation. Older completed work remains traceable in Git history and indexed records.",
@@ -21,15 +21,15 @@
     "docs/OPERATIONS_PLANE_SOURCE_REALITY.md"
   ],
   "historicalBoundary": {
-    "sourceSnapshotAtReconciliation": "236f81daf58612b83740262885d5d4e5ccb8dae2",
-    "productionRuntimeEvidenceCutoff": "2026-08-14T16:19:18Z",
+    "sourceSnapshotAtReconciliation": "42d17885646d52387f9327f19e2a2e0d70b2b84e",
+    "productionRuntimeEvidenceCutoff": "2026-08-23",
     "requiresLiveVerification": true,
     "rule": "Use Git history and docs/archive indexes for completed or superseded tasks; do not re-add them to the current queue without a new Issue and fresh evidence."
   },
   "sourceReceipts": {
-    "inventoryDate": "2026-08-22",
-    "master": "236f81daf58612b83740262885d5d4e5ccb8dae2",
-    "remoteBranchCount": 111,
+    "inventoryDate": "2026-08-23",
+    "master": "42d17885646d52387f9327f19e2a2e0d70b2b84e",
+    "remoteBranchCount": 117,
     "openPrCount": 0,
     "openDraftPrCount": 0,
     "openNonDraftPrCount": 0,
@@ -316,6 +316,49 @@
         "receipt": "exact-head restricted service-native smoke identity, cgroup v2, terminal readback, and cleanup proof",
         "productionState": "not_deployed",
         "artifactEvidence": "Release Artifact run 32621970036 and Dependency Artifact run 32621970075 succeeded; artifacts temporary through 2026-09-06"
+      },
+      {
+        "pr": 657,
+        "sourceCommit": "8cbe8590998e2c9df465facbbde7fb93fac382ed",
+        "lane": "version-management",
+        "receipt": "canonical reconciliation of the completed A3 service-native smoke proof",
+        "productionState": "not_applicable"
+      },
+      {
+        "pr": 658,
+        "sourceCommit": "b93577c99c1202d1f799e2da4e573c8ad7fcf13c",
+        "lane": "dependency-materialization",
+        "receipt": "explicit default-off XFS quota-bound production materializer source route",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 659,
+        "sourceCommit": "e7bed98580e9e54dec316c211895f4f47927e448",
+        "lane": "version-management",
+        "receipt": "A3-2 XFS-only production inventory reconciliation; NO-GO on ext4 with no production mutation",
+        "productionState": "not_applicable"
+      },
+      {
+        "pr": 660,
+        "sourceCommit": "136e6cd3787e289e6bf025f973609ce22aebc41d",
+        "lane": "version-management",
+        "receipt": "production XFS storage-remediation design without execution authority",
+        "productionState": "not_applicable"
+      },
+      {
+        "pr": 661,
+        "sourceCommit": "7aa29563201765f3fd464f03efe76a95a9821474",
+        "lane": "commercial-foundation",
+        "receipt": "test-only durable Wallet projection time pin on the exact-master lineage",
+        "productionState": "not_applicable"
+      },
+      {
+        "pr": 662,
+        "sourceCommit": "42d17885646d52387f9327f19e2a2e0d70b2b84e",
+        "lane": "dependency-materialization",
+        "receipt": "explicit default-off bounded-artifact admission for the reviewed ext4 production boundary while retaining the XFS route",
+        "productionState": "not_deployed",
+        "artifactEvidence": "CI run 32645695594, CodeQL run 32645695630, Dependency Artifact run 32645695541, and Release Artifact run 32645695598 succeeded; dependency artifact 9494801281 temporary through 2026-09-06"
       }
     ],
     "openDrafts": [],
@@ -328,12 +371,12 @@
     "reason": "PR #479 merged source-only, but Issue #437 remains open and no production or runtime completion is inferred."
   },
   "ciGovernance": {
-    "inventoryDate": "2026-08-22",
-    "master": "236f81daf58612b83740262885d5d4e5ccb8dae2",
-    "releaseArtifact": "32621970036 success for exact master; three artifacts temporary through 2026-09-06",
-    "dependencyArtifact": "32621970075 success for exact master; artifact 9488609747 temporary through 2026-09-06",
-    "ci": "32621970051 success for exact master",
-    "codeql": "32621969594 success for exact master",
+    "inventoryDate": "2026-08-23",
+    "master": "42d17885646d52387f9327f19e2a2e0d70b2b84e",
+    "releaseArtifact": "32645695598 success for exact master; three artifacts temporary through 2026-09-06",
+    "dependencyArtifact": "32645695541 success for exact master; artifact 9494801281 temporary through 2026-09-06",
+    "ci": "32645695594 success for exact master",
+    "codeql": "32645695630 success for exact master",
     "cloudflareWorkflow": "not_refreshed_for_exact_master",
     "ruleset": "not_refreshed",
     "environments": "not_refreshed",
@@ -350,8 +393,8 @@
     "boundary": "Source remediation and successful workflows do not establish current default-branch alert counts or required security gates."
   },
   "nextActionQueue": [
-    "Implement the focused Issue #636 production guard-lift and end-to-end materialization integration as a separate reviewed Risk B source PR.",
-    "After that source change is merged and exact-master artifacts are regenerated, run A3-2 production read-only inventory and dry-run under a separate exact Risk A gate.",
+    "Run a fresh A3-2 production read-only inventory and dry-run under a new exact Risk A gate bound to master 42d17885646d52387f9327f19e2a2e0d70b2b84e and dependency artifact 9494801281.",
+    "Only after that inventory passes, define a separate exact Risk A materialize/verify/promotion gate with rollback and health-window evidence.",
     "Close Issue #597's durable artifact/rollback identity gap before exact-master artifacts expire on 2026-09-06.",
     "Address Issue #598 through focused Action pinning, SBOM, provenance, and signing slices.",
     "Refresh GitHub rulesets, required checks, environments, alert counts, provider state, deployments, and production runtime evidence before relying on them."
@@ -611,10 +654,10 @@
     {
       "id": "A-a3-dependency-materialization-boundary",
       "risk": "A",
-      "status": "blocked-pending-reviewed-guard-lift-source",
+      "status": "blocked-pending-exact-master-production-inventory",
       "lane": "dependency-materialization",
-      "title": "Integrate completed A3 physical evidence before production materializer guard lift",
-      "goal": "Continue Issue #636 from completed exact-head XFS quota and restricted service-native smoke proofs through a separate reviewed guard-lift and end-to-end materialization source change, then keep production inventory, promotion, and closeout as separately reviewable gates.",
+      "title": "Validate the merged default-off A3 routes before production materialization",
+      "goal": "Continue Issue #636 from completed physical proofs and merged PR #662 by running a fresh exact-master production read-only inventory/dry-run, then keep materialize/verify/promotion and closeout as later separately approved gates.",
       "allowedFiles": [
         "docs/A3_1_MATERIALIZER_PHYSICAL_EXECUTION_SPEC.md",
         "scripts/control-plane-candidate-dependency-gate.mjs",
@@ -624,15 +667,18 @@
       ],
       "forbiddenActions": [
         "treat physical quota or service-native smoke proof as production proof",
-        "lift worker_storage_limit_unavailable without a separate reviewed integration source change",
+        "treat merged default-off source or the historical b93577c XFS-only NO-GO as production authorization",
+        "materialize, verify, promote, or change services without a later separate exact Risk A approval",
         "run host-side npm ci",
         "activate schemas, features, providers, or customer-facing runtime through the dependency lane"
       ],
       "validation": [
         "PR #654 exact-head quota evidence remains linked and reproducible",
         "PR #656 exact-head service-native smoke evidence remains linked and reproducible",
-        "production requireRoot entrypoints remain fail-closed until a later reviewed guard-lift decision",
-        "npm test and git diff --check for any source change"
+        "PR #662 is merged at exact master 42d17885646d52387f9327f19e2a2e0d70b2b84e with XFS and bounded-artifact routes explicit and default-off",
+        "the b93577c XFS-only production inventory remains historical NO-GO/no-mutation evidence",
+        "the next inventory/dry-run binds dependency artifact 9494801281 and creates no production mutation",
+        "materialize/verify/promotion requires a later independent approval, rollback plan, and health-window evidence"
       ]
     },
     {

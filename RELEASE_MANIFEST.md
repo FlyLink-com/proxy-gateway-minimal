@@ -15,7 +15,7 @@ document_metadata:
 > - Risk: C
 > - Last updated: 2026-08-23, America/Los_Angeles
 > - Source inventory baseline:
->   `master@b93577c99c1202d1f799e2da4e573c8ad7fcf13c`
+>   `master@42d17885646d52387f9327f19e2a2e0d70b2b84e`
 > - Latest recorded production deployment event: 2026-08-16, source
 >   `57d7ab751b9c3b9111bc7d7e799c28d165fdabdb`; A3-2 read-only inventory on
 >   2026-08-23 observed the same release identity and no production mutation
@@ -267,23 +267,24 @@ sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
 The latest verified exact-`master` proof at this inventory cutoff is Release
-Artifact run `32628598266` for source
-`b93577c99c1202d1f799e2da4e573c8ad7fcf13c`. It completed the control-plane,
+Artifact run `32645695598` for source
+`42d17885646d52387f9327f19e2a2e0d70b2b84e`. It completed the control-plane,
 Portal, and Admin artifact jobs. The artifacts are
-`proxy-gateway-b93577c99c12`, `portal-static-b93577c99c12`, and
-`admin-static-b93577c99c12`; all were observed to expire on 2026-09-06. This is
-short-lived build evidence, not durable release retention or production
-promotion evidence.
+`proxy-gateway-42d17885646d` (ID `9494798503`),
+`portal-static-42d17885646d` (ID `9494802700`), and
+`admin-static-42d17885646d` (ID `9494802010`). They are short-lived build
+evidence, not durable release retention or production promotion evidence.
 
-Control Plane Dependency Artifact run `32628598229` also succeeded for the
-same exact source. Artifact ID `9490394884`, named
-`control-plane-dependency-b93577c99c1202d1f799e2da4e573c8ad7fcf13c`, was
-observed to expire on 2026-09-06. It is dependency-consumption evidence only;
-it is not a deployed candidate or rollback identity.
+Control Plane Dependency Artifact run `32645695541` also succeeded for the
+same exact source. Artifact ID `9494801281`, named
+`control-plane-dependency-42d17885646d52387f9327f19e2a2e0d70b2b84e`, is
+`6460706` bytes and was observed to expire at `2026-09-06T14:32:03Z`. It is
+dependency-consumption evidence only; it is not a deployed candidate or
+rollback identity.
 
 ### A3 Dependency Materialization Boundary
 
-Issue #636 and PRs #646-#658 add the source contracts, physical collector,
+Issue #636 and PRs #646-#662 add the source contracts, physical collector,
 diagnostics integrity, exact-head XFS project-quota proof, and restricted
 service-native smoke proof needed by the A3 dependency materializer. The quota
 segment passed on a disposable non-production XFS filesystem at PR #654's exact
@@ -296,7 +297,7 @@ module and snapshot-import workload, cgroup v2 boundary, terminal/unit
 readback, diagnostics integrity, and cleanup. These proofs complete the A3-1
 physical evidence boundary, not the Artifact or Production Gate.
 
-Merged PR #658 adds an unforgeable fixed-root production runtime only for the
+Merged PR #658 adds an unforgeable fixed-root XFS production runtime only for the
 complete CLI tuple `--enable-a3-materializer --a3-run-label <label>
 --a3-project-id <id>`. Default and partial invocations remain fail-closed with
 `worker_storage_limit_unavailable`. Production dry-run `32628957935` validated
@@ -304,9 +305,23 @@ the exact-master packet without host access. The separately approved A3-2
 read-only inventory then observed the PR #622 live release, healthy service/CWD
 binding, clean candidate namespace, cgroup v2, capacity and SQLite integrity,
 but found the fixed deployment root on `ext4` with no XFS project-quota mount,
-accounting, enforcement, report, or project ID. A3-2 is `NO-GO`; no upload,
-quota change, materialization, deployment, pointer transition, service change,
-feature activation, or runtime health window occurred.
+accounting, enforcement, report, or project ID. That XFS-only attempt remains a
+historical A3-2 `NO-GO`; no upload, quota change, materialization, deployment,
+pointer transition, service change, feature activation, or runtime health
+window occurred.
+
+Merged PR #662 adds a separate bounded admission runtime for the observed ext4
+topology. It remains default-off and requires the complete tuple
+`--enable-bounded-artifact-admission --bounded-run-label <label>`. The XFS
+route remains available. The bounded path binds exact artifact budget and
+filesystem topology checks, retains the restricted service-native smoke and
+fail-closed boundaries, and writes schema-4 receipts. Exact-master CI run
+`32645695594`, CodeQL run `32645695630`, Dependency Artifact run `32645695541`,
+and Release Artifact run `32645695598` succeeded. This source and build evidence
+does not supersede the historical inventory receipt and does not authorize or
+prove a new production inventory, materialization, pointer transition, service
+change, promotion, or health window. Those stages remain pending and separately
+gated.
 
 ## Runtime Config Identity v1
 
@@ -398,11 +413,10 @@ historical evidence only and must not be used to sequence current work.
 ## Current Source Governance Boundary
 
 The exact source cutoff observed on 2026-08-23 is
-`master@b93577c99c1202d1f799e2da4e573c8ad7fcf13c` (merged PR #658). The same
-inventory observed no open PRs and eighteen open Issues. PR #592 and #594 are
-closed unmerged, PR #593 is merged docs-only, and Issue #561 is closed. Current
-sequencing belongs to live Issues and `project-state/*.json`, not to historical
-Draft descriptions.
+`master@42d17885646d52387f9327f19e2a2e0d70b2b84e` (merged PR #662). This
+source/artifact reconciliation observed zero open PRs, eighteen open Issues,
+and 117 remote branches. Current sequencing belongs to live Issues and
+`project-state/*.json`, not to historical Draft descriptions.
 
 The current source language includes Admin/Operations read foundations, Wallet
 and immutable Coin Ledger, durable Recharge/Payment, Coins Commerce, Account
@@ -412,11 +426,11 @@ and gap boundaries are maintained in
 `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`; none is assigned to a deployed
 release by this manifest.
 
-Release Artifact run `32628598266` successfully built the control-plane,
+Release Artifact run `32645695598` successfully built the control-plane,
 Portal, and Admin units at the exact source cutoff. Dependency Artifact run
-`32628598229` produced the corresponding Linux dependency artifact. All four
-artifacts were observed to expire on 2026-09-06, so they remain short-lived
-build evidence rather than durable Artifact Gate evidence.
+`32645695541` produced the corresponding Linux dependency artifact. These
+artifacts remain short-lived build evidence rather than durable Artifact Gate
+or production evidence.
 
 The 2026-08-22 readback observed zero open Dependabot alerts, secret scanning
 disabled, and no available code-scanning alert inventory because Code Security
