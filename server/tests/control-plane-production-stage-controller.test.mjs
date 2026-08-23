@@ -24,6 +24,7 @@ import test from "node:test";
 
 import {
   PRODUCTION_STAGE_CONTROLLER_TYPE,
+  PRODUCTION_STAGE_LOCK_NAME,
   ProductionStageControllerError,
   createProductionStageControllerTestRuntime,
   preflightProductionCandidateStage,
@@ -222,6 +223,7 @@ function fixture(t, { zipEntries = regularEntries(), zipOptions, inputMutation, 
     modeFor(path, metadata) {
       const absolute = resolve(path);
       if (FIXTURE_MODES.has(absolute)) return FIXTURE_MODES.get(absolute);
+      if (basename(absolute) === PRODUCTION_STAGE_LOCK_NAME) return 0o600;
       if (["assembly-receipts", "dependency-artifacts"].includes(basename(absolute))) return 0o700;
       if (absolute.includes(`${join("releases", CANDIDATE_RELEASE)}`)) return metadata.isDirectory() ? 0o755 : 0o644;
       if (absolute.includes(`${join("assembly-receipts", CANDIDATE_RELEASE)}`)) return metadata.isDirectory() ? 0o700 : 0o600;
@@ -270,6 +272,109 @@ test("stage is default-off and requires an explicit apply confirmation", (t) => 
   assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
 });
 
+test("an existing production-stage controller claim blocks before reserved namespace mutation", (t) => {
+  const value = fixture(t);
+  const lockPath = join(value.deploymentRoot, PRODUCTION_STAGE_LOCK_NAME);
+  const lockBytes = Buffer.from("operator-owned claim\n");
+  write(lockPath, lockBytes, 0o600);
+
+  let observed;
+  assert.throws(
+    () => stageProductionCandidate({ ...value.options, apply: true }),
+    (error) => {
+      observed = error;
+      return error instanceof ProductionStageControllerError && error.condition === "stage_lock_unavailable";
+    }
+  );
+  assert.equal(observed.attentionRequired, true);
+  assert.deepEqual(readFileSync(lockPath), lockBytes);
+  assert.equal(existsSync(join(value.deploymentRoot, "releases", CANDIDATE_RELEASE)), false);
+  assert.equal(existsSync(join(value.deploymentRoot, "assembly-receipts", CANDIDATE_RELEASE)), false);
+  assert.equal(existsSync(join(value.deploymentRoot, "dependency-artifacts", CANDIDATE_RELEASE)), false);
+  assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
+});
+
+test("the production-stage controller claim serializes cooperating stage attempts", (t) => {
+  let value;
+  let hookCalls = 0;
+  let nestedError;
+  value = fixture(t, {
+    runtimeOverrides: {
+      afterStageLockAcquired() {
+        hookCalls += 1;
+        try {
+          stageProductionCandidate({ ...value.options, apply: true });
+        } catch (error) {
+          nestedError = error;
+        }
+      }
+    }
+  });
+
+  const result = stageProductionCandidate({ ...value.options, apply: true });
+  assert.equal(result.state, "staged");
+  assert.equal(hookCalls, 1);
+  assert.equal(nestedError instanceof ProductionStageControllerError, true);
+  assert.equal(nestedError.condition, "stage_lock_unavailable");
+  assert.equal(nestedError.attentionRequired, true);
+  assert.equal(existsSync(join(value.deploymentRoot, PRODUCTION_STAGE_LOCK_NAME)), false);
+});
+
+test("the production-stage controller claim is released after a controlled failure", (t) => {
+  const value = fixture(t, { runtimeOverrides: { faultAt: "after_stage_lock_acquired" } });
+  assert.throws(
+    () => stageProductionCandidate({ ...value.options, apply: true }),
+    condition("stage_failed")
+  );
+  assert.equal(existsSync(join(value.deploymentRoot, PRODUCTION_STAGE_LOCK_NAME)), false);
+  assert.equal(existsSync(join(value.deploymentRoot, "releases", CANDIDATE_RELEASE)), false);
+  assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
+});
+
+test("the production-stage controller claim is released after a receipt-terminal failure", (t) => {
+  const value = fixture(t, { runtimeOverrides: { faultAt: "after_receipt_publish" } });
+  let observed;
+  assert.throws(
+    () => stageProductionCandidate({ ...value.options, apply: true }),
+    (error) => {
+      observed = error;
+      return error instanceof ProductionStageControllerError && error.condition === "stage_failed";
+    }
+  );
+  assert.equal(observed.attentionRequired, true);
+  assert.equal(existsSync(join(value.deploymentRoot, PRODUCTION_STAGE_LOCK_NAME)), false);
+  assert.equal(existsSync(join(value.deploymentRoot, "releases", CANDIDATE_RELEASE)), true);
+  assert.equal(existsSync(join(value.deploymentRoot, "assembly-receipts", CANDIDATE_RELEASE)), true);
+  assert.equal(existsSync(join(value.deploymentRoot, "dependency-artifacts", CANDIDATE_RELEASE)), true);
+  assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
+});
+
+test("Linux claim cleanup preserves an unknown replacement", { skip: process.platform !== "linux" }, (t) => {
+  const replacement = Buffer.from("replacement claim\n");
+  let replacedPath;
+  const value = fixture(t, {
+    runtimeOverrides: {
+      beforeStageLockRelease(path) {
+        unlinkSync(path);
+        write(path, replacement, 0o600);
+        replacedPath = path;
+      }
+    }
+  });
+
+  let observed;
+  assert.throws(
+    () => stageProductionCandidate({ ...value.options, apply: true }),
+    (error) => {
+      observed = error;
+      return error instanceof ProductionStageControllerError && error.condition === "cleanup_failed";
+    }
+  );
+  assert.equal(observed.attentionRequired, true);
+  assert.deepEqual(readFileSync(replacedPath), replacement);
+  assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
+});
+
 test("stage publishes a no-replace source candidate and bound receipts without protected overlays", (t) => {
   const value = fixture(t);
   const currentLink = readlinkSync(join(value.deploymentRoot, "current"));
@@ -308,6 +413,7 @@ test("stage publishes a no-replace source candidate and bound receipts without p
   assert.equal(verified.mode, "verify");
   assert.equal(verified.state, "verified");
   assert.equal(verified.applied, false);
+  assert.equal(existsSync(join(value.deploymentRoot, PRODUCTION_STAGE_LOCK_NAME)), false);
 });
 
 test("input custody rejects missing, extra, and hash-drifted artifacts before mutation", async (t) => {

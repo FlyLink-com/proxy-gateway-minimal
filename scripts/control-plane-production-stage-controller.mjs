@@ -6,6 +6,7 @@ import {
   closeSync,
   constants as fsConstants,
   existsSync,
+  fchmodSync,
   fstatSync,
   fsyncSync,
   lstatSync,
@@ -18,6 +19,7 @@ import {
   realpathSync,
   rmSync,
   rmdirSync,
+  unlinkSync,
   writeFileSync
 } from "node:fs";
 import { basename, dirname, isAbsolute, posix, relative, resolve, sep } from "node:path";
@@ -34,6 +36,7 @@ import { inspectProductionArtifactBoundary } from "../server/services/platform/p
 export const PRODUCTION_STAGE_CONTROLLER_SCHEMA_VERSION = "1";
 export const PRODUCTION_STAGE_CONTROLLER_TYPE = "control_plane_production_stage_controller";
 export const PRODUCTION_STAGE_ROOT = "/opt/proxy-gateway-minimal-candidate";
+export const PRODUCTION_STAGE_LOCK_NAME = ".production-stage-controller.lock";
 
 const RELEASE_UNIT = "control-plane-app";
 const LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/u;
@@ -80,6 +83,7 @@ const SAFE_CONDITIONS = new Set([
   "candidate_publish_failed",
   "receipt_publish_failed",
   "dependency_publish_failed",
+  "stage_lock_unavailable",
   "stage_failed",
   "cleanup_failed"
 ]);
@@ -303,6 +307,8 @@ function runtime(value = {}) {
     renameNoReplace: value.renameNoReplace ?? productionRenameNoReplace,
     probeRenameNoReplace: value.probeRenameNoReplace ?? productionRenameNoReplaceProbe,
     beforeFirstMutation: value.beforeFirstMutation ?? (() => {}),
+    afterStageLockAcquired: value.afterStageLockAcquired ?? (() => {}),
+    beforeStageLockRelease: value.beforeStageLockRelease ?? (() => {}),
     afterPublish: value.afterPublish ?? (() => {}),
     beforeDirectoryIdentityTrusted: value.beforeDirectoryIdentityTrusted ?? (() => {}),
     afterDirectoryRegistered: value.afterDirectoryRegistered ?? (() => {}),
@@ -681,6 +687,90 @@ function fsyncPath(path, condition) {
     fail(condition);
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function releaseStageLock(record, runtimeValue, { invokeHook = true } = {}) {
+  if (!record || record.descriptor === undefined) return false;
+  let complete = true;
+  if (invokeHook) {
+    try { runtimeValue.beforeStageLockRelease(record.path); } catch { complete = false; }
+  }
+  try {
+    const lexical = lstatSync(record.path);
+    const held = fstatSync(record.descriptor);
+    if (!record.identity
+      || lexical.isSymbolicLink()
+      || !lexical.isFile()
+      || !held.isFile()
+      || lexical.nlink !== 1
+      || held.nlink !== 1
+      || lexical.size !== 0
+      || held.size !== 0
+      || !sameIdentity(record.identity, identity(lexical))
+      || !sameIdentity(record.identity, identity(held))) {
+      complete = false;
+    } else {
+      unlinkSync(record.path);
+      fsyncPath(record.parent, "cleanup_failed");
+    }
+  } catch {
+    complete = false;
+  }
+  const descriptor = record.descriptor;
+  record.descriptor = undefined;
+  try { closeSync(descriptor); } catch { complete = false; }
+  return complete;
+}
+
+function acquireStageLock(deployment, runtimeValue) {
+  const parent = deployment.root.path;
+  const path = resolve(parent, PRODUCTION_STAGE_LOCK_NAME);
+  if (!directChild(parent, path)) fail("deployment_boundary_invalid");
+  let descriptor;
+  try {
+    descriptor = openSync(
+      path,
+      fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_RDWR | (fsConstants.O_NOFOLLOW ?? 0),
+      0o600
+    );
+  } catch {
+    fail("stage_lock_unavailable", true);
+  }
+  const record = { path, parent, descriptor, identity: null };
+  try {
+    if (process.platform !== "win32") fchmodSync(descriptor, 0o600);
+    fsyncSync(descriptor);
+    const held = fstatSync(descriptor);
+    record.identity = identity(held);
+    const lexical = lstatSync(path);
+    const currentParent = lstatSync(parent);
+    if (lexical.isSymbolicLink()
+      || !lexical.isFile()
+      || !held.isFile()
+      || lexical.nlink !== 1
+      || held.nlink !== 1
+      || lexical.size !== 0
+      || held.size !== 0
+      || !rootControlled(lexical, runtimeValue)
+      || !rootControlled(held, runtimeValue)
+      || runtimeValue.enforceModes && modeOf(path, held, runtimeValue) !== 0o600
+      || !sameNode(identity(lexical), identity(held))
+      || currentParent.isSymbolicLink()
+      || !currentParent.isDirectory()
+      || !sameNode(deployment.root.identity, identity(currentParent))
+      || String(held.dev) !== String(currentParent.dev)) fail("stage_lock_unavailable", true);
+    fsyncPath(parent, "stage_lock_unavailable");
+    const readback = lstatSync(path);
+    const heldReadback = fstatSync(descriptor);
+    if (!sameIdentity(record.identity, identity(readback))
+      || !sameIdentity(record.identity, identity(heldReadback))) fail("stage_lock_unavailable", true);
+    return record;
+  } catch (error) {
+    const released = releaseStageLock(record, runtimeValue, { invokeHook: false });
+    if (!released) fail("cleanup_failed", true);
+    if (error instanceof ProductionStageControllerError) throw error;
+    fail("stage_lock_unavailable", true);
   }
 }
 
@@ -1130,14 +1220,26 @@ export function verifyProductionCandidateStage(options = {}) {
 
 export function stageProductionCandidate(options = {}) {
   if (options?.apply !== true) fail("apply_confirmation_required");
-  const value = collect(options);
+  let value = collect(options);
   const owned = [];
   let candidateNamespace;
   let assemblyNamespace;
   let dependencyNamespace;
   let receiptPublished = false;
+  let stageLock;
   try {
     value.runtime.beforeFirstMutation();
+    assertCurrent(value.deployment);
+    for (const file of value.input.files.values()) assertStableFile(file, value.runtime);
+    assertStableDirectory(value.input.inputDirectory);
+    stageLock = acquireStageLock(value.deployment, value.runtime);
+    value.runtime.afterStageLockAcquired(stageLock.path);
+    fault(value.runtime, "after_stage_lock_acquired");
+    assertCurrent(value.deployment);
+    value = Object.freeze({
+      ...value,
+      deployment: deploymentContext(value.options, value.runtime)
+    });
     assertCurrent(value.deployment);
     for (const file of value.input.files.values()) assertStableFile(file, value.runtime);
     assertStableDirectory(value.input.inputDirectory);
@@ -1205,6 +1307,8 @@ export function stageProductionCandidate(options = {}) {
     if (!cleanup(owned)) fail("cleanup_failed", true);
     if (error instanceof ProductionStageControllerError) throw error;
     fail("stage_failed");
+  } finally {
+    if (stageLock && !releaseStageLock(stageLock, value.runtime)) fail("cleanup_failed", true);
   }
 }
 

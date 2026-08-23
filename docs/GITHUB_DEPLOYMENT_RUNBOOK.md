@@ -364,6 +364,38 @@ file sets, receipt, and current CAS without applying changes.
 Preflight also fails closed unless fixed `/usr/bin/python3` can resolve the
 Linux `renameat2` primitive required for no-replace publication.
 
+`stage` uses an exactly-one, cooperative writer contract. After its initial
+read-only current/input rechecks and before any controller-owned directory
+mutation, it atomically creates the fixed root-owned mode-0600
+`.production-stage-controller.lock` claim with create-exclusive/no-follow
+semantics and holds the returned file descriptor through publication,
+verification, cleanup, and claim release. It removes the claim only when the
+path still identifies that exact zero-byte single-link inode, then fsyncs the
+deployment root. Once `stage` reaches claim acquisition, an existing claim is
+`stage_lock_unavailable`/attention-required; an earlier read-only boundary
+failure retains its own condition. The controller does not infer whether a
+claim is active or stale and never deletes, steals, or reuses it. A stale claim
+requires separate read-only investigation and separately approved operator
+handling.
+
+For the approved session, the claim, all candidate-specific `.stage-*`
+children below `releases`, `assembly-receipts`, and `dependency-artifacts`,
+the exact final candidate child in each of those three roots, and either
+optional publication root while the controller creates it are reserved to the
+single staging controller. No second controller, manual command, or other
+automation may write those namespaces until the claim is released. `current`
+remains a read-only CAS boundary and is never controller-owned; this claim
+does not authorize pointer, service, database, or protected-configuration
+mutation.
+
+This cooperative lock serializes supported controllers and prevents operator
+or automation overlap. The security model trusts the kernel, mounts, and the
+root/operator boundary; it does not claim to defend against a concurrent
+hostile process with the same root privilege, which could remove the claim,
+ptrace the controller, or mutate directories between system calls. Suspected
+same-privilege compromise requires stopping the session and isolating the
+host, not relying on controller cleanup.
+
 All identity arguments below must come from the reviewed artifact and Gate;
 placeholders are not executable values:
 
