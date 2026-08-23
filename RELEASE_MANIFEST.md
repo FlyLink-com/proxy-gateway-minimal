@@ -6,19 +6,19 @@ document_metadata:
   lifecycle: active
   authority_scope: release_traceability
   superseded_by: null
-  last_verified_at: 2026-08-22
+  last_verified_at: 2026-08-23
   production_authority: false
 ```
 
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-08-22, America/Los_Angeles
+> - Last updated: 2026-08-23, America/Los_Angeles
 > - Source inventory baseline:
->   `master@236f81daf58612b83740262885d5d4e5ccb8dae2`
-> - Latest recorded production deployment event: 2026-08-14, source
->   `c06f749f245247eea7e94c68f4249a0017e8e884`; current live identity was not
->   freshly inventoried
+>   `master@b93577c99c1202d1f799e2da4e573c8ad7fcf13c`
+> - Latest recorded production deployment event: 2026-08-16, source
+>   `57d7ab751b9c3b9111bc7d7e799c28d165fdabdb`; A3-2 read-only inventory on
+>   2026-08-23 observed the same release identity and no production mutation
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -82,6 +82,24 @@ Issue comments and approval text are durable evidence, not platform
 enforcement. Branch/ruleset or deployment-environment protection may be
 claimed only after live readback. Any workflow capable of real production
 deployment must remain disabled or require independently enforced approval.
+
+## Current Recorded Control-Plane Deployment
+
+The latest durable `control-plane-app` deployment record is the
+[PR #622 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/622#issuecomment-5305417656):
+
+- deployed at `2026-08-16T02:46:11.800Z`;
+- source `57d7ab751b9c3b9111bc7d7e799c28d165fdabdb`;
+- release `control-plane-57d7ab751b9c-a5b2-20260816T002126Z-1786839686627`;
+- target `vultr-japan-control`.
+
+That Deploy Note records verified artifact/config assembly, SQLite snapshot
+integrity, atomic current switch, PID/CWD binding, loopback health, transition
+evidence and database checks. The 2026-08-23 A3-2 read-only inventory observed
+the same live release and healthy service/CWD identity. This reconciliation
+does not turn the newer exact-master artifacts into a deployed release and does
+not authorize a pointer change, service action, schema change, materialization,
+promotion, or rollback.
 
 ## Deployment Promotion Boundary
 
@@ -249,23 +267,23 @@ sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
 The latest verified exact-`master` proof at this inventory cutoff is Release
-Artifact run `32621970036` for source
-`236f81daf58612b83740262885d5d4e5ccb8dae2`. It completed the control-plane,
+Artifact run `32628598266` for source
+`b93577c99c1202d1f799e2da4e573c8ad7fcf13c`. It completed the control-plane,
 Portal, and Admin artifact jobs. The artifacts are
-`proxy-gateway-236f81daf586`, `portal-static-236f81daf586`, and
-`admin-static-236f81daf586`; all were observed to expire on 2026-09-06. This is
+`proxy-gateway-b93577c99c12`, `portal-static-b93577c99c12`, and
+`admin-static-b93577c99c12`; all were observed to expire on 2026-09-06. This is
 short-lived build evidence, not durable release retention or production
 promotion evidence.
 
-Control Plane Dependency Artifact run `32621970075` also succeeded for the
-same exact source. Artifact ID `9488609747`, named
-`control-plane-dependency-236f81daf58612b83740262885d5d4e5ccb8dae2`, was
+Control Plane Dependency Artifact run `32628598229` also succeeded for the
+same exact source. Artifact ID `9490394884`, named
+`control-plane-dependency-b93577c99c1202d1f799e2da4e573c8ad7fcf13c`, was
 observed to expire on 2026-09-06. It is dependency-consumption evidence only;
 it is not a deployed candidate or rollback identity.
 
 ### A3 Dependency Materialization Boundary
 
-Issue #636 and PRs #646-#656 add the source contracts, physical collector,
+Issue #636 and PRs #646-#658 add the source contracts, physical collector,
 diagnostics integrity, exact-head XFS project-quota proof, and restricted
 service-native smoke proof needed by the A3 dependency materializer. The quota
 segment passed on a disposable non-production XFS filesystem at PR #654's exact
@@ -276,11 +294,19 @@ The service-native segment separately passed on the non-production physical
 host at PR #656's exact head. It verified the fixed non-root principal, native
 module and snapshot-import workload, cgroup v2 boundary, terminal/unit
 readback, diagnostics integrity, and cleanup. These proofs complete the A3-1
-physical evidence boundary, not the Artifact or Production Gate. Production
-`requireRoot:true` materialize/verify entrypoints remain fail-closed with
-`worker_storage_limit_unavailable`. No A3 production inventory, durable release
-declaration, materialization, deployment, pointer transition, or runtime health
-window is recorded.
+physical evidence boundary, not the Artifact or Production Gate.
+
+Merged PR #658 adds an unforgeable fixed-root production runtime only for the
+complete CLI tuple `--enable-a3-materializer --a3-run-label <label>
+--a3-project-id <id>`. Default and partial invocations remain fail-closed with
+`worker_storage_limit_unavailable`. Production dry-run `32628957935` validated
+the exact-master packet without host access. The separately approved A3-2
+read-only inventory then observed the PR #622 live release, healthy service/CWD
+binding, clean candidate namespace, cgroup v2, capacity and SQLite integrity,
+but found the fixed deployment root on `ext4` with no XFS project-quota mount,
+accounting, enforcement, report, or project ID. A3-2 is `NO-GO`; no upload,
+quota change, materialization, deployment, pointer transition, service change,
+feature activation, or runtime health window occurred.
 
 ## Runtime Config Identity v1
 
@@ -371,8 +397,8 @@ historical evidence only and must not be used to sequence current work.
 
 ## Current Source Governance Boundary
 
-The exact source cutoff observed on 2026-08-22 is
-`master@236f81daf58612b83740262885d5d4e5ccb8dae2` (merged PR #656). The same
+The exact source cutoff observed on 2026-08-23 is
+`master@b93577c99c1202d1f799e2da4e573c8ad7fcf13c` (merged PR #658). The same
 inventory observed no open PRs and eighteen open Issues. PR #592 and #594 are
 closed unmerged, PR #593 is merged docs-only, and Issue #561 is closed. Current
 sequencing belongs to live Issues and `project-state/*.json`, not to historical
@@ -386,9 +412,9 @@ and gap boundaries are maintained in
 `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`; none is assigned to a deployed
 release by this manifest.
 
-Release Artifact run `32621970036` successfully built the control-plane,
+Release Artifact run `32628598266` successfully built the control-plane,
 Portal, and Admin units at the exact source cutoff. Dependency Artifact run
-`32621970075` produced the corresponding Linux dependency artifact. All four
+`32628598229` produced the corresponding Linux dependency artifact. All four
 artifacts were observed to expire on 2026-09-06, so they remain short-lived
 build evidence rather than durable Artifact Gate evidence.
 
@@ -396,8 +422,10 @@ The 2026-08-22 readback observed zero open Dependabot alerts, secret scanning
 disabled, and no available code-scanning alert inventory because Code Security
 is not enabled. The workflow inventory found 40 Action `uses:` references: 13
 full-SHA pinned and 27 using mutable tags. Rulesets, environment protection,
-provider settings, deployments, and production runtime were not refreshed.
-Issues #597 and #598 retain the durable release and supply-chain closure.
+and provider settings were not refreshed. The 2026-08-23 A3-2 inventory
+refreshed only the bounded Japan control-plane release, service, storage,
+protected-file metadata, aggregate database, and unchanged readbacks recorded
+above. Issues #597 and #598 retain the durable release and supply-chain closure.
 
 No new release is declared `ready` or `deployed` by this manifest. A source-only
 PR may say that deployment is not applicable; that statement is not a Deploy
