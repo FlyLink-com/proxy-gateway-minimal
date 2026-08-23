@@ -1,6 +1,6 @@
 # GitHub Deployment Runbook
 
-Last updated: 2026-08-15, America/Los_Angeles.
+Last updated: 2026-08-23, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -343,6 +343,110 @@ Minimum future steps:
    the relevant rollback-runbook execution. Any control or subscription DB
    restore is a separate explicit decision and must never be automatic.
 
+### Default-Off Candidate Staging Controller
+
+`npm run control-plane:production-stage` is a host-local, default-off staging
+boundary. It never changes `current`, systemd, a database, or protected release
+configuration. It accepts only a private root-owned mode-0700 input directory
+containing exactly six mode-0600, single-link regular files: `artifact.json`,
+the manifest-named source ZIP and its `.sha256` sidecar, plus
+`dependency-artifact.json`, `node-modules.tar`, and `release-label.txt`.
+The input directory must be path-disjoint from the complete fixed
+`/opt/proxy-gateway-minimal-candidate` deployment tree: it may not equal, contain,
+or be contained by that tree. All modes fail with `input_boundary_invalid` before
+any controller-owned mutation when this boundary is violated; an independent
+sibling directory remains valid.
+
+The `preflight` mode is read-only. `stage` requires `--apply`, rechecks the
+expected-current symlink CAS and all four approved SHA-256 identities, safely
+extracts the bounded source ZIP without protected overlays or `node_modules`,
+and publishes no-replace directories in this order: source candidate,
+dependency inputs, then assembly receipts last. The assembly receipt directory
+contains only the byte-identical `artifact-manifest.json` and schema-1
+`artifact-stage-receipt.json`; it deliberately does not contain
+`release-assembly.json`. `verify` re-reads the final trees, modes, hashes, exact
+file sets, receipt, and current CAS without applying changes.
+Preflight also fails closed unless fixed `/usr/bin/python3` can resolve the
+Linux `renameat2` primitive required for no-replace publication.
+
+`stage` uses an exactly-one, cooperative writer contract. After its initial
+read-only current/input rechecks and before any controller-owned directory
+mutation, it atomically creates the fixed root-owned mode-0600
+`.production-stage-controller.lock` claim with create-exclusive/no-follow
+semantics and holds the returned file descriptor through publication,
+verification, cleanup, and claim release. It removes the claim only when the
+path still identifies that exact zero-byte single-link inode, then fsyncs the
+deployment root. Once `stage` reaches claim acquisition, an existing claim is
+`stage_lock_unavailable`/attention-required; an earlier read-only boundary
+failure retains its own condition. The controller does not infer whether a
+claim is active or stale and never deletes, steals, or reuses it. A stale claim
+requires separate read-only investigation and separately approved operator
+handling.
+
+For the approved session, the claim, all candidate-specific `.stage-*`
+children below `releases`, `assembly-receipts`, and `dependency-artifacts`,
+the exact final candidate child in each of those three roots, and either
+optional publication root while the controller creates it are reserved to the
+single staging controller. No second controller, manual command, or other
+automation may write those namespaces until the claim is released. `current`
+remains a read-only CAS boundary and is never controller-owned; this claim
+does not authorize pointer, service, database, or protected-configuration
+mutation.
+
+This cooperative lock serializes supported controllers and prevents operator
+or automation overlap. The security model trusts the kernel, mounts, and the
+root/operator boundary; it does not claim to defend against a concurrent
+hostile process with the same root privilege, which could remove the claim,
+ptrace the controller, or mutate directories between system calls. Suspected
+same-privilege compromise requires stopping the session and isolating the
+host, not relying on controller cleanup.
+
+All identity arguments below must come from the reviewed artifact and Gate;
+placeholders are not executable values:
+
+```bash
+npm run control-plane:production-stage -- \
+  --mode preflight \
+  --input-directory "$PRIVATE_STAGE_INPUT" \
+  --candidate-release "$CANDIDATE_RELEASE" \
+  --expected-current-release "$EXPECTED_CURRENT_RELEASE" \
+  --expected-source-commit "$EXPECTED_SOURCE_COMMIT" \
+  --expected-artifact-release "$EXPECTED_ARTIFACT_RELEASE" \
+  --expected-artifact-manifest-sha256 "$EXPECTED_ARTIFACT_MANIFEST_SHA256" \
+  --expected-source-artifact-sha256 "$EXPECTED_SOURCE_ARTIFACT_SHA256" \
+  --expected-dependency-manifest-sha256 "$EXPECTED_DEPENDENCY_MANIFEST_SHA256" \
+  --expected-dependency-archive-sha256 "$EXPECTED_DEPENDENCY_ARCHIVE_SHA256"
+```
+
+Do not assume the currently deployed release already contains this script or
+package command. For the first run, and for every later exact-head Gate, stage
+a separately reviewed minimal controller closure in its own root-owned
+mode-0700 bootstrap directory. The closure consists only of:
+
+- `scripts/control-plane-production-stage-controller.mjs`;
+- `scripts/control-plane-candidate-dependency-gate.mjs`;
+- `scripts/control-plane-dependency-artifact.mjs`;
+- `scripts/control-plane-release-config-gate.mjs`; and
+- `server/services/platform/production-artifact-boundary.mjs`.
+
+Every closure file must be root-owned mode-0600 and individually match the
+per-file SHA-256 recorded for the approved exact source commit. The bootstrap
+directory and six-file input directory must both remain outside the fixed
+deployment tree and must be path-disjoint from each other. Invoke the pinned
+system runtime directly as
+`/usr/bin/node <bootstrap>/scripts/control-plane-production-stage-controller.mjs`;
+do not invoke a controller extracted from the unverified source ZIP. After the
+bounded session, remove only the Gate-owned bootstrap and input roots and read
+back their absence. Bootstrap transfer, cleanup, and their hashes remain part
+of the exact Risk A Gate; this runbook does not grant execution authority.
+
+An approved staging invocation repeats the same exact arguments with
+`--mode stage --apply`; the readback repeats them with `--mode verify` and no
+`--apply`. A successful stage is not runtime compatibility, materialization,
+promotion, deployment, or rollback authority. The separate protected-overlay
+gate below must run afterward and remains responsible for `.env`,
+`config/proxy-servers.json`, and `release-assembly.json`.
+
 ### Protected Release Overlay Identity Gate
 
 The GitHub artifact remains source-only. Both `.env` and
@@ -357,6 +461,22 @@ During an approved Risk A release preparation, the candidate must be a real
 directory reached through no symbolic-link or junction component and must be
 missing both `.env` and `config/proxy-servers.json`. The gate copies the
 protected active overlays into that source-only candidate on the target host.
+The active argument is not the resolved release directory: it must be the exact
+`/opt/proxy-gateway-minimal-candidate/current` symlink. The candidate must be a
+direct child of the same fixed `releases` directory. The manifest parent must
+already have been published by the staging controller as root-owned mode 0700;
+the overlay gate does not recursively create arbitrary production directories.
+
+The production overlay policy is path-specific and fail-closed. The active and
+candidate `config/proxy-servers.json` files must be owned by uid 0 with exact
+mode 0640, while `.env` must be owned by uid 0 with exact mode 0600. Before an
+approved apply, also verify that the config file group matches the service
+`Group` read back from systemd so the restricted service keeps read access.
+Special mode bits, a world-readable file, or a non-root owner block both
+prepare and verify. A legacy active config at mode 0644 is not normalized by
+the gate: changing it to root:`<service-group>` mode 0640 is a separate
+explicit production mutation within the approved staging Gate, with original
+metadata recorded for rollback and service-readability read back afterward.
 
 The gate has three explicit steps:
 
@@ -376,20 +496,20 @@ Example inside an approved production release preparation:
 
 ```bash
 npm run release:config:prepare -- \
-  --active-release "$ACTIVE_RELEASE_PATH" \
-  --candidate-release "$CANDIDATE_RELEASE_PATH" \
-  --manifest "$PROTECTED_ASSEMBLY_MANIFEST"
+  --active-release /opt/proxy-gateway-minimal-candidate/current \
+  --candidate-release "/opt/proxy-gateway-minimal-candidate/releases/$CANDIDATE_RELEASE" \
+  --manifest "/opt/proxy-gateway-minimal-candidate/assembly-receipts/$CANDIDATE_RELEASE/release-assembly.json"
 
 npm run release:config:prepare -- \
-  --active-release "$ACTIVE_RELEASE_PATH" \
-  --candidate-release "$CANDIDATE_RELEASE_PATH" \
-  --manifest "$PROTECTED_ASSEMBLY_MANIFEST" \
+  --active-release /opt/proxy-gateway-minimal-candidate/current \
+  --candidate-release "/opt/proxy-gateway-minimal-candidate/releases/$CANDIDATE_RELEASE" \
+  --manifest "/opt/proxy-gateway-minimal-candidate/assembly-receipts/$CANDIDATE_RELEASE/release-assembly.json" \
   --apply
 
 npm run release:config:verify -- \
-  --active-release "$ACTIVE_RELEASE_PATH" \
-  --candidate-release "$CANDIDATE_RELEASE_PATH" \
-  --manifest "$PROTECTED_ASSEMBLY_MANIFEST"
+  --active-release /opt/proxy-gateway-minimal-candidate/current \
+  --candidate-release "/opt/proxy-gateway-minimal-candidate/releases/$CANDIDATE_RELEASE" \
+  --manifest "/opt/proxy-gateway-minimal-candidate/assembly-receipts/$CANDIDATE_RELEASE/release-assembly.json"
 ```
 
 This identity gate proves release assembly only. After the pointer switch, the

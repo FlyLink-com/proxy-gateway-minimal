@@ -2,17 +2,19 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
-  chownSync,
   closeSync,
   existsSync,
+  fchmodSync,
+  fchownSync,
+  fstatSync,
   fsyncSync,
   linkSync,
   lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
-  rmSync,
   statSync,
   unlinkSync,
   writeFileSync
@@ -21,12 +23,18 @@ import { basename, dirname, isAbsolute, posix, relative, resolve } from "node:pa
 import { fileURLToPath } from "node:url";
 
 const RELEASE_UNIT = "control-plane-app";
+const PRODUCTION_ROOT = "/opt/proxy-gateway-minimal-candidate";
 const RELEASE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 const DEFAULT_RELATIVE_CONFIG = "config/proxy-servers.json";
 const PROTECTED_RELATIVE_PATHS = Object.freeze([
   DEFAULT_RELATIVE_CONFIG,
   ".env"
 ]);
+const PRODUCTION_PROTECTED_POLICIES = Object.freeze({
+  [DEFAULT_RELATIVE_CONFIG]: Object.freeze({ mode: 0o640, uid: 0 }),
+  ".env": Object.freeze({ mode: 0o600, uid: 0 })
+});
+const TEST_RUNTIME = Symbol("release-config-gate-test-runtime");
 const SAFE_CONDITIONS = new Set([
   "invalid_input",
   "release_boundary_invalid",
@@ -226,6 +234,7 @@ function releaseContext({
   candidateReleasePath,
   relativeConfigPath,
   outputManifestPath,
+  runtimeValue,
   manifestMustExist = false,
   manifestMustBeAbsent = false,
   candidateFilesMayBeMissing = false
@@ -264,6 +273,17 @@ function releaseContext({
     }
   }
 
+  const productionTopology = runtimeValue.enforceProductionTopology
+    ? validateProductionTopology({
+        activeReleasePath,
+        candidateReleasePath,
+        outputManifestPath,
+        activeRoot,
+        candidateRoot,
+        protectedFiles
+      }, runtimeValue)
+    : null;
+
   return {
     activeRoot,
     candidateRoot,
@@ -271,7 +291,8 @@ function releaseContext({
     candidateRelease: candidateRoot.release,
     relativeConfig,
     protectedFiles,
-    manifestPath: assemblyManifest
+    manifestPath: assemblyManifest,
+    productionTopology
   };
 }
 
@@ -312,40 +333,519 @@ function temporaryPath(path, label) {
   return resolve(dirname(path), `.${basename(path)}.${label}.${process.pid}.${randomUUID()}`);
 }
 
-function writeProtectedFile(path, bytes, { mode, uid, gid }) {
-  const descriptor = openSync(path, "wx", mode);
+function defaultDirectoryFsync(path) {
+  if (process.platform === "win32") return;
+  const descriptor = openSync(path, "r");
   try {
-    writeFileSync(descriptor, bytes);
     fsyncSync(descriptor);
   } finally {
     closeSync(descriptor);
   }
-
-  if (process.platform !== "win32") chownSync(path, uid, gid);
-  chmodSync(path, mode);
 }
 
-function publishNewFile(temporary, destination, existsCondition) {
+function runtime(value = {}) {
+  return Object.freeze({
+    root: value.root ?? PRODUCTION_ROOT,
+    enforceProductionTopology: value.enforceProductionTopology ?? true,
+    enforceOwnership: value.enforceOwnership ?? true,
+    enforceModes: value.enforceModes ?? true,
+    applyOwnership: value.applyOwnership ?? process.platform !== "win32",
+    chownFile: value.chownFile ?? fchownSync,
+    fsyncFile: value.fsyncFile ?? ((descriptor) => fsyncSync(descriptor)),
+    fsyncDirectory: value.fsyncDirectory ?? defaultDirectoryFsync,
+    modeFor: value.modeFor,
+    ownerFor: value.ownerFor,
+    observe: value.observe ?? (() => {}),
+    [TEST_RUNTIME]: value[TEST_RUNTIME] === true
+  });
+}
+
+export function createReleaseConfigGateTestRuntime(overrides = {}) {
+  return runtime({
+    enforceProductionTopology: false,
+    enforceOwnership: false,
+    enforceModes: false,
+    applyOwnership: false,
+    ...overrides,
+    [TEST_RUNTIME]: true
+  });
+}
+
+function selectedRuntime(supplied) {
+  if (supplied === undefined) {
+    if (process.platform !== "linux" || process.getuid?.() !== 0) {
+      fail("release_boundary_invalid");
+    }
+    return runtime();
+  }
+  if (!supplied?.[TEST_RUNTIME]) fail("invalid_input");
+  return supplied;
+}
+
+function topologyMode(path, metadata, runtimeValue, condition) {
+  let value;
+  try {
+    value = typeof runtimeValue.modeFor === "function"
+      ? runtimeValue.modeFor(path, metadata)
+      : metadata.mode & 0o7777;
+  } catch {
+    fail(condition);
+  }
+  if (!Number.isInteger(value) || value < 0 || value > 0o7777) fail(condition);
+  return value;
+}
+
+function topologyOwner(path, metadata, runtimeValue, condition) {
+  let value;
+  try {
+    value = typeof runtimeValue.ownerFor === "function"
+      ? runtimeValue.ownerFor(path, metadata)
+      : { uid: metadata.uid, gid: metadata.gid };
+  } catch {
+    fail(condition);
+  }
+  if (!value || !Number.isInteger(value.uid) || !Number.isInteger(value.gid)) fail(condition);
+  return value;
+}
+
+function topologyDirectory(path, runtimeValue, condition, { exactMode } = {}) {
+  const lexical = resolve(path);
+  let metadata;
+  let physical;
+  try {
+    metadata = lstatSync(lexical);
+    physical = realpathSync(lexical);
+  } catch {
+    fail(condition);
+  }
+  if (
+    metadata.isSymbolicLink()
+    || !metadata.isDirectory()
+    || comparablePath(lexical) !== comparablePath(physical)
+  ) {
+    fail(condition);
+  }
+  const mode = topologyMode(lexical, metadata, runtimeValue, condition);
+  const owner = topologyOwner(lexical, metadata, runtimeValue, condition);
+  if (
+    (runtimeValue.enforceOwnership && owner.uid !== 0)
+    || (runtimeValue.enforceModes && (mode & 0o022) !== 0)
+    || (exactMode !== undefined && runtimeValue.enforceModes && (mode & 0o777) !== exactMode)
+  ) {
+    fail(condition);
+  }
+  return Object.freeze({ path: physical, identity: nodeIdentity(metadata) });
+}
+
+function topologySymlink(path, runtimeValue, condition) {
+  const lexical = resolve(path);
+  let metadata;
+  let targetText;
+  let targetPath;
+  let targetMetadata;
+  try {
+    metadata = lstatSync(lexical);
+    targetText = readlinkSync(lexical);
+    targetPath = realpathSync(lexical);
+    targetMetadata = lstatSync(targetPath);
+  } catch {
+    fail(condition);
+  }
+  const owner = topologyOwner(lexical, metadata, runtimeValue, condition);
+  if (
+    !metadata.isSymbolicLink()
+    || !targetMetadata.isDirectory()
+    || (runtimeValue.enforceOwnership && owner.uid !== 0)
+  ) {
+    fail(condition);
+  }
+  return Object.freeze({
+    path: lexical,
+    identity: nodeIdentity(metadata),
+    targetText,
+    targetPath,
+    targetIdentity: nodeIdentity(targetMetadata)
+  });
+}
+
+function topologyProtectedFile(
+  path,
+  relativePath,
+  runtimeValue,
+  { allowMissing = false, expectedGid } = {}
+) {
+  const policy = PRODUCTION_PROTECTED_POLICIES[relativePath];
+  if (!policy) fail("config_boundary_invalid");
+  let metadata;
+  try {
+    metadata = lstatSync(path);
+  } catch (error) {
+    if (allowMissing && error?.code === "ENOENT") return null;
+    fail("config_boundary_invalid");
+  }
+  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+    fail("config_boundary_invalid");
+  }
+  const mode = topologyMode(path, metadata, runtimeValue, "config_boundary_invalid");
+  const owner = topologyOwner(path, metadata, runtimeValue, "config_boundary_invalid");
+  if (
+    (runtimeValue.enforceModes && mode !== policy.mode)
+    || (runtimeValue.enforceOwnership && owner.uid !== policy.uid)
+    || (
+      expectedGid !== undefined
+      && runtimeValue.enforceOwnership
+      && owner.gid !== expectedGid
+    )
+  ) {
+    fail("config_boundary_invalid");
+  }
+  return Object.freeze({
+    path,
+    identity: nodeIdentity(metadata),
+    mode: policy.mode,
+    owner: Object.freeze({ uid: policy.uid, gid: owner.gid })
+  });
+}
+
+function directChild(parent, child) {
+  return dirname(child) === parent && isWithin(parent, child);
+}
+
+function validateProductionTopology({
+  activeReleasePath,
+  candidateReleasePath,
+  outputManifestPath,
+  activeRoot,
+  candidateRoot,
+  protectedFiles
+}, runtimeValue) {
+  if (typeof runtimeValue.root !== "string" || !isAbsolute(runtimeValue.root)) {
+    fail("release_boundary_invalid");
+  }
+  const rootPath = resolve(runtimeValue.root);
+  const root = topologyDirectory(rootPath, runtimeValue, "release_boundary_invalid");
+  if (comparablePath(root.path) !== comparablePath(rootPath)) fail("release_boundary_invalid");
+
+  if (comparablePath(rootPath) === comparablePath(PRODUCTION_ROOT)) {
+    topologyDirectory(dirname(rootPath), runtimeValue, "release_boundary_invalid");
+  }
+
+  const releases = topologyDirectory(
+    resolve(rootPath, "releases"),
+    runtimeValue,
+    "release_boundary_invalid"
+  );
+  const currentPath = resolve(rootPath, "current");
+  if (comparablePath(resolve(activeReleasePath)) !== comparablePath(currentPath)) {
+    fail("release_boundary_invalid");
+  }
+  const current = topologySymlink(currentPath, runtimeValue, "release_boundary_invalid");
+  if (
+    !directChild(releases.path, current.targetPath)
+    || comparablePath(current.targetPath) !== comparablePath(activeRoot.path)
+  ) {
+    fail("release_boundary_invalid");
+  }
+  const active = topologyDirectory(activeRoot.path, runtimeValue, "release_boundary_invalid");
+  if (!sameNode(active.identity, current.targetIdentity)) fail("release_boundary_invalid");
+
+  if (
+    comparablePath(resolve(candidateReleasePath)) !== comparablePath(candidateRoot.path)
+    || !directChild(releases.path, candidateRoot.path)
+  ) {
+    fail("release_boundary_invalid");
+  }
+  const candidate = topologyDirectory(candidateRoot.path, runtimeValue, "release_boundary_invalid");
+  const protectedTopology = [];
+  for (const item of protectedFiles) {
+    topologyDirectory(dirname(item.active.path), runtimeValue, "config_boundary_invalid");
+    topologyDirectory(dirname(item.candidate.path), runtimeValue, "config_boundary_invalid");
+    const activeFile = topologyProtectedFile(
+      item.active.path,
+      item.relativePath,
+      runtimeValue
+    );
+    const candidateFile = topologyProtectedFile(
+      item.candidate.path,
+      item.relativePath,
+      runtimeValue,
+      { allowMissing: true, expectedGid: activeFile.owner.gid }
+    );
+    protectedTopology.push(Object.freeze({
+      relativePath: item.relativePath,
+      policy: PRODUCTION_PROTECTED_POLICIES[item.relativePath],
+      active: activeFile,
+      candidate: candidateFile
+    }));
+  }
+
+  const assemblyRoot = topologyDirectory(
+    resolve(rootPath, "assembly-receipts"),
+    runtimeValue,
+    "manifest_boundary_invalid",
+    { exactMode: 0o700 }
+  );
+  const candidateAssembly = topologyDirectory(
+    resolve(assemblyRoot.path, candidateRoot.release),
+    runtimeValue,
+    "manifest_boundary_invalid",
+    { exactMode: 0o700 }
+  );
+  if (!directChild(assemblyRoot.path, candidateAssembly.path)) fail("manifest_boundary_invalid");
+  const expectedManifest = resolve(candidateAssembly.path, "release-assembly.json");
+  if (comparablePath(resolve(outputManifestPath)) !== comparablePath(expectedManifest)) {
+    fail("manifest_boundary_invalid");
+  }
+
+  return Object.freeze({
+    root,
+    releases,
+    active,
+    candidate,
+    assemblyRoot,
+    candidateAssembly,
+    current,
+    protectedFiles: Object.freeze(protectedTopology)
+  });
+}
+
+function assertCurrentStable(topology, runtimeValue) {
+  if (!topology) return;
+  const observed = topologySymlink(topology.current.path, runtimeValue, "release_boundary_invalid");
+  if (
+    !sameNode(topology.current.identity, observed.identity)
+    || topology.current.targetText !== observed.targetText
+    || comparablePath(topology.current.targetPath) !== comparablePath(observed.targetPath)
+    || !sameNode(topology.current.targetIdentity, observed.targetIdentity)
+  ) {
+    fail("release_boundary_invalid");
+  }
+  for (const item of [
+    topology.root,
+    topology.releases,
+    topology.active,
+    topology.candidate,
+    topology.assemblyRoot,
+    topology.candidateAssembly
+  ]) {
+    const observedDirectory = topologyDirectory(item.path, runtimeValue, "release_boundary_invalid");
+    if (!sameNode(item.identity, observedDirectory.identity)) fail("release_boundary_invalid");
+  }
+  for (const item of topology.protectedFiles) {
+    const active = topologyProtectedFile(
+      item.active.path,
+      item.relativePath,
+      runtimeValue
+    );
+    if (!sameNode(item.active.identity, active.identity)) fail("config_boundary_invalid");
+    const candidate = topologyProtectedFile(
+      resolve(topology.candidate.path, ...item.relativePath.split("/")),
+      item.relativePath,
+      runtimeValue,
+      { allowMissing: true, expectedGid: active.owner.gid }
+    );
+    if (item.candidate && (!candidate || !sameNode(item.candidate.identity, candidate.identity))) {
+      fail("config_boundary_invalid");
+    }
+  }
+}
+
+function observe(runtimeValue, event) {
+  runtimeValue.observe(Object.freeze(event));
+}
+
+function nodeIdentity(metadata) {
+  return Object.freeze({ dev: String(metadata.dev), ino: String(metadata.ino) });
+}
+
+function sameNode(left, right) {
+  return left?.dev === right?.dev && left?.ino === right?.ino;
+}
+
+function stableDirectoryIdentity(path, condition) {
+  let metadata;
+  let physical;
+  try {
+    metadata = lstatSync(path);
+    physical = realpathSync(path);
+  } catch {
+    fail(condition);
+  }
+  if (
+    metadata.isSymbolicLink()
+    || !metadata.isDirectory()
+    || comparablePath(path) !== comparablePath(physical)
+  ) {
+    fail(condition);
+  }
+  return nodeIdentity(metadata);
+}
+
+function syncDirectory(path, runtimeValue, condition) {
+  const before = stableDirectoryIdentity(path, condition);
+  try {
+    runtimeValue.fsyncDirectory(path);
+  } catch {
+    fail("release_config_prepare_failed");
+  }
+  const after = stableDirectoryIdentity(path, condition);
+  if (!sameNode(before, after)) fail("release_config_prepare_failed");
+  observe(runtimeValue, { type: "directory_fsync", path });
+}
+
+function ensureDurableDirectory(path, runtimeValue, condition) {
+  const missing = [];
+  let cursor = path;
+  while (true) {
+    try {
+      stableDirectoryIdentity(cursor, condition);
+      break;
+    } catch (error) {
+      if (!(error instanceof ReleaseConfigGateError) || error.condition !== condition) throw error;
+      try {
+        lstatSync(cursor);
+        throw error;
+      } catch (metadataError) {
+        if (metadataError?.code !== "ENOENT") throw error;
+      }
+      missing.push(cursor);
+      const parent = dirname(cursor);
+      if (comparablePath(parent) === comparablePath(cursor)) fail(condition);
+      cursor = parent;
+    }
+  }
+
+  for (const directory of missing.reverse()) {
+    try {
+      mkdirSync(directory, { mode: 0o700 });
+      chmodSync(directory, 0o700);
+    } catch {
+      fail("release_config_prepare_failed");
+    }
+    observe(runtimeValue, { type: "mkdir", path: directory });
+    stableDirectoryIdentity(directory, condition);
+    syncDirectory(directory, runtimeValue, condition);
+    syncDirectory(dirname(directory), runtimeValue, condition);
+  }
+  syncDirectory(path, runtimeValue, condition);
+}
+
+function writeProtectedFile(path, bytes, { mode, uid, gid }, runtimeValue, ownershipRecord) {
+  let descriptor;
+  let identity;
+  try {
+    descriptor = openSync(path, "wx", mode);
+    const opened = fstatSync(descriptor);
+    identity = nodeIdentity(opened);
+    ownershipRecord.temporaryIdentity = identity;
+    writeFileSync(descriptor, bytes);
+    runtimeValue.fsyncFile(descriptor, { phase: "data", path });
+    observe(runtimeValue, { type: "file_data_fsync", path });
+
+    if (runtimeValue.applyOwnership) {
+      runtimeValue.chownFile(descriptor, uid, gid);
+      observe(runtimeValue, { type: "chown", path });
+    }
+    fchmodSync(descriptor, mode);
+    observe(runtimeValue, { type: "chmod", path });
+
+    const lexical = lstatSync(path);
+    const finalDescriptor = fstatSync(descriptor);
+    if (
+      lexical.isSymbolicLink()
+      || !lexical.isFile()
+      || lexical.nlink !== 1
+      || !sameNode(identity, nodeIdentity(lexical))
+      || !sameNode(identity, nodeIdentity(finalDescriptor))
+      || finalDescriptor.size !== bytes.length
+      || (process.platform !== "win32" && (
+        (finalDescriptor.mode & 0o777) !== mode
+        || finalDescriptor.uid !== uid
+        || finalDescriptor.gid !== gid
+      ))
+    ) {
+      fail("release_config_prepare_failed");
+    }
+    runtimeValue.fsyncFile(descriptor, { phase: "final", path });
+    observe(runtimeValue, { type: "file_final_fsync", path });
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+
+  return identity;
+}
+
+function removeFileDurably(path, parent, runtimeValue, expectedIdentity) {
+  let metadata;
+  try {
+    metadata = lstatSync(path);
+  } catch (error) {
+    return error?.code === "ENOENT";
+  }
+  if (!expectedIdentity) return false;
+  if (
+    metadata.isSymbolicLink()
+    || !metadata.isFile()
+    || !sameNode(expectedIdentity, nodeIdentity(metadata))
+  ) {
+    return false;
+  }
+  try {
+    unlinkSync(path);
+    observe(runtimeValue, { type: "cleanup_unlink", path });
+    syncDirectory(parent, runtimeValue, "release_config_prepare_failed");
+  } catch {
+    return false;
+  }
+  try {
+    lstatSync(path);
+    return false;
+  } catch (error) {
+    return error?.code === "ENOENT";
+  }
+}
+
+function publishNewFile(
+  temporary,
+  destination,
+  existsCondition,
+  runtimeValue,
+  expectedIdentity,
+  boundaryCondition
+) {
   let linked = false;
   try {
     linkSync(temporary, destination);
     linked = true;
+    observe(runtimeValue, { type: "link", path: temporary, destination });
+    const linkedMetadata = lstatSync(destination);
+    if (!linkedMetadata.isFile() || !sameNode(expectedIdentity, nodeIdentity(linkedMetadata))) {
+      fail("release_config_prepare_failed");
+    }
+    syncDirectory(dirname(destination), runtimeValue, boundaryCondition);
     unlinkSync(temporary);
+    observe(runtimeValue, { type: "unlink", path: temporary });
+    syncDirectory(dirname(temporary), runtimeValue, boundaryCondition);
+    const publishedMetadata = lstatSync(destination);
+    if (
+      publishedMetadata.isSymbolicLink()
+      || !publishedMetadata.isFile()
+      || publishedMetadata.nlink !== 1
+      || !sameNode(expectedIdentity, nodeIdentity(publishedMetadata))
+    ) {
+      fail("release_config_prepare_failed");
+    }
   } catch (error) {
     if (error?.code === "EEXIST") fail(existsCondition);
-    if (linked && !attemptCleanup(() => rmSync(destination, { force: true }))) {
+    if (linked && !removeFileDurably(
+      destination,
+      dirname(destination),
+      runtimeValue,
+      expectedIdentity
+    )) {
       fail("release_config_prepare_failed");
     }
     throw error;
-  }
-}
-
-function attemptCleanup(operation) {
-  try {
-    operation();
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -400,13 +900,16 @@ export function prepareReleaseConfigOverlay({
   relativeConfigPath = DEFAULT_RELATIVE_CONFIG,
   manifestPath: outputManifestPath,
   apply = false,
-  createdAt
+  createdAt,
+  runtime: suppliedRuntime
 } = {}) {
+  const runtimeValue = selectedRuntime(suppliedRuntime);
   const context = releaseContext({
     activeReleasePath,
     candidateReleasePath,
     relativeConfigPath,
     outputManifestPath,
+    runtimeValue,
     manifestMustBeAbsent: apply,
     candidateFilesMayBeMissing: true
   });
@@ -417,6 +920,7 @@ export function prepareReleaseConfigOverlay({
     relativePath,
     activeIdentity: fileIdentity(active.path, { includeBytes: apply })
   }));
+  assertCurrentStable(context.productionTopology, runtimeValue);
 
   if (!apply) {
     return safeReport(context, {
@@ -432,35 +936,52 @@ export function prepareReleaseConfigOverlay({
   const overlayOperations = context.protectedFiles.map((protectedFilePath, index) => ({
     ...protectedFilePath,
     activeIdentity: protectedIdentities[index].activeIdentity,
+    productionPolicy: context.productionTopology?.protectedFiles[index] ?? null,
     temporary: temporaryPath(protectedFilePath.candidate.path, "overlay"),
+    temporaryIdentity: undefined,
     published: false
   }));
+  const manifestOperation = {
+    temporary: manifestTemp,
+    temporaryIdentity: undefined
+  };
   let manifestPublished = false;
 
-  mkdirSync(manifestParent, { recursive: true, mode: 0o700 });
-  let manifestParentMetadata;
-  let manifestParentRealPath;
   try {
-    manifestParentMetadata = lstatSync(manifestParent);
-    manifestParentRealPath = realpathSync(manifestParent);
-  } catch {
-    fail("manifest_boundary_invalid");
-  }
-  if (
-    manifestParentMetadata.isSymbolicLink()
-    || !manifestParentMetadata.isDirectory()
-    || comparablePath(manifestParentRealPath) !== comparablePath(manifestParent)
-  ) {
-    fail("manifest_boundary_invalid");
-  }
+    if (context.productionTopology) {
+      syncDirectory(manifestParent, runtimeValue, "manifest_boundary_invalid");
+    } else {
+      ensureDurableDirectory(
+        manifestParent,
+        runtimeValue,
+        "manifest_boundary_invalid"
+      );
+    }
+    for (const parent of new Set(
+      overlayOperations.map((operation) => dirname(operation.candidate.path))
+    )) {
+      syncDirectory(parent, runtimeValue, "config_boundary_invalid");
+    }
 
-  try {
     for (const operation of overlayOperations) {
-      writeProtectedFile(operation.temporary, operation.activeIdentity.bytes, {
-        mode: Number.parseInt(operation.activeIdentity.mode, 8),
-        uid: operation.activeIdentity.uid,
-        gid: operation.activeIdentity.gid
-      });
+      const targetMetadata = operation.productionPolicy
+        ? {
+            mode: operation.productionPolicy.policy.mode,
+            uid: operation.productionPolicy.policy.uid,
+            gid: operation.productionPolicy.active.owner.gid
+          }
+        : {
+            mode: Number.parseInt(operation.activeIdentity.mode, 8),
+            uid: operation.activeIdentity.uid,
+            gid: operation.activeIdentity.gid
+          };
+      operation.temporaryIdentity = writeProtectedFile(
+        operation.temporary,
+        operation.activeIdentity.bytes,
+        targetMetadata,
+        runtimeValue,
+        operation
+      );
     }
     writeProtectedFile(
       manifestTemp,
@@ -469,15 +990,31 @@ export function prepareReleaseConfigOverlay({
         mode: 0o600,
         uid: protectedIdentities[0].activeIdentity.uid,
         gid: protectedIdentities[0].activeIdentity.gid
-      }
+      },
+      runtimeValue,
+      manifestOperation
     );
 
     for (const operation of overlayOperations) {
-      publishNewFile(operation.temporary, operation.candidate.path, "candidate_protected_file_present");
+      publishNewFile(
+        operation.temporary,
+        operation.candidate.path,
+        "candidate_protected_file_present",
+        runtimeValue,
+        operation.temporaryIdentity,
+        "config_boundary_invalid"
+      );
       operation.published = true;
       operation.candidate.exists = true;
     }
-    publishNewFile(manifestTemp, context.manifestPath, "manifest_boundary_invalid");
+    publishNewFile(
+      manifestTemp,
+      context.manifestPath,
+      "manifest_boundary_invalid",
+      runtimeValue,
+      manifestOperation.temporaryIdentity,
+      "manifest_boundary_invalid"
+    );
     manifestPublished = true;
 
     for (const operation of overlayOperations) {
@@ -486,29 +1023,42 @@ export function prepareReleaseConfigOverlay({
         fail("config_identity_mismatch");
       }
     }
+    assertCurrentStable(context.productionTopology, runtimeValue);
   } catch (error) {
     let rollbackComplete = true;
     for (const operation of [...overlayOperations].reverse()) {
-      if (operation.published && existsSync(operation.candidate.path)) {
-        rollbackComplete = attemptCleanup(() => {
-          rmSync(operation.candidate.path, { force: true });
-        }) && rollbackComplete;
+      if (operation.published) {
+        rollbackComplete = removeFileDurably(
+          operation.candidate.path,
+          dirname(operation.candidate.path),
+          runtimeValue,
+          operation.temporaryIdentity
+        ) && rollbackComplete;
       }
       operation.candidate.exists = false;
     }
     if (manifestPublished) {
-      rollbackComplete = attemptCleanup(() => {
-        rmSync(context.manifestPath, { force: true });
-      }) && rollbackComplete;
+      rollbackComplete = removeFileDurably(
+        context.manifestPath,
+        dirname(context.manifestPath),
+        runtimeValue,
+        manifestOperation.temporaryIdentity
+      ) && rollbackComplete;
     }
     for (const operation of overlayOperations) {
-      rollbackComplete = attemptCleanup(() => {
-        rmSync(operation.temporary, { force: true });
-      }) && rollbackComplete;
+      rollbackComplete = removeFileDurably(
+        operation.temporary,
+        dirname(operation.temporary),
+        runtimeValue,
+        operation.temporaryIdentity
+      ) && rollbackComplete;
     }
-    rollbackComplete = attemptCleanup(() => {
-      rmSync(manifestTemp, { force: true });
-    }) && rollbackComplete;
+    rollbackComplete = removeFileDurably(
+      manifestTemp,
+      dirname(manifestTemp),
+      runtimeValue,
+      manifestOperation.temporaryIdentity
+    ) && rollbackComplete;
     if (!rollbackComplete) fail("release_config_prepare_failed");
     if (error instanceof ReleaseConfigGateError) throw error;
     fail("release_config_prepare_failed");
@@ -525,16 +1075,20 @@ export function verifyReleaseConfigOverlay({
   activeReleasePath,
   candidateReleasePath,
   relativeConfigPath = DEFAULT_RELATIVE_CONFIG,
-  manifestPath: outputManifestPath
+  manifestPath: outputManifestPath,
+  runtime: suppliedRuntime
 } = {}) {
+  const runtimeValue = selectedRuntime(suppliedRuntime);
   const context = releaseContext({
     activeReleasePath,
     candidateReleasePath,
     relativeConfigPath,
     outputManifestPath,
+    runtimeValue,
     manifestMustExist: true,
     candidateFilesMayBeMissing: false
   });
+  assertCurrentStable(context.productionTopology, runtimeValue);
   const manifest = readAssemblyManifest(context.manifestPath);
   const overlays = validateManifestShape(manifest, context);
 
@@ -548,6 +1102,7 @@ export function verifyReleaseConfigOverlay({
       fail("config_identity_mismatch");
     }
   }
+  assertCurrentStable(context.productionTopology, runtimeValue);
 
   return safeReport(context, {
     state: "verified",
@@ -609,10 +1164,11 @@ function parseCliArgs(argv) {
 export function runReleaseConfigGateCli({
   argv = process.argv.slice(2),
   stdout = process.stdout,
-  stderr = process.stderr
+  stderr = process.stderr,
+  runtime: suppliedRuntime
 } = {}) {
   try {
-    const options = parseCliArgs(argv);
+    const options = { ...parseCliArgs(argv), runtime: suppliedRuntime };
     const report = options.mode === "prepare"
       ? prepareReleaseConfigOverlay(options)
       : verifyReleaseConfigOverlay(options);

@@ -3,11 +3,16 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  closeSync,
   existsSync,
+  fsyncSync,
   lstatSync,
   mkdtempSync,
   mkdirSync,
+  openSync,
+  readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -17,6 +22,13 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+
+import {
+  createReleaseConfigGateTestRuntime,
+  prepareReleaseConfigOverlay,
+  runReleaseConfigGateCli,
+  verifyReleaseConfigOverlay
+} from "../../scripts/control-plane-release-config-gate.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SCRIPT_PATH = resolve(REPOSITORY_ROOT, "scripts/control-plane-release-config-gate.mjs");
@@ -54,6 +66,18 @@ function fixture(t) {
 }
 
 function runCli(args) {
+  let stdout = "";
+  let stderr = "";
+  const status = runReleaseConfigGateCli({
+    argv: args,
+    runtime: createReleaseConfigGateTestRuntime(),
+    stdout: { write: (value) => { stdout += value; } },
+    stderr: { write: (value) => { stderr += value; } }
+  });
+  return { status, stdout, stderr };
+}
+
+function runProductionCli(args) {
   return spawnSync(process.execPath, [SCRIPT_PATH, ...args], {
     cwd: REPOSITORY_ROOT,
     encoding: "utf8"
@@ -77,6 +101,319 @@ function applyOverlay(paths) {
     "--created-at", "2026-07-11T10:00:00Z"
   ]);
 }
+
+function directApplyOptions(paths, runtime) {
+  return {
+    activeReleasePath: paths.activeRelease,
+    candidateReleasePath: paths.candidateRelease,
+    relativeConfigPath: RELATIVE_CONFIG,
+    manifestPath: paths.manifestPath,
+    apply: true,
+    createdAt: "2026-07-11T10:00:00Z",
+    runtime
+  };
+}
+
+function condition(expected) {
+  return (error) => error?.condition === expected;
+}
+
+function nativeDirectorySync(path) {
+  if (process.platform === "win32") return;
+  const descriptor = openSync(path, "r");
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function productionFixture(t) {
+  const temporary = mkdtempSync(join(tmpdir(), "gccgw-release-config-production-"));
+  t.after(() => rmSync(temporary, { recursive: true, force: true }));
+  const deploymentRoot = join(temporary, "deployment-root");
+  const releases = join(deploymentRoot, "releases");
+  const activeRelease = join(releases, "release-active");
+  const candidateRelease = join(releases, "release-candidate");
+  const current = join(deploymentRoot, "current");
+  const activeConfig = join(activeRelease, "config", "proxy-servers.json");
+  const candidateConfig = join(candidateRelease, "config", "proxy-servers.json");
+  const activeEnv = join(activeRelease, ".env");
+  const candidateEnv = join(candidateRelease, ".env");
+  const assemblyRoot = join(deploymentRoot, "assembly-receipts");
+  const candidateAssembly = join(assemblyRoot, "release-candidate");
+  const manifestPath = join(candidateAssembly, "release-assembly.json");
+  mkdirSync(dirname(activeConfig), { recursive: true, mode: 0o755 });
+  mkdirSync(dirname(candidateConfig), { recursive: true, mode: 0o755 });
+  mkdirSync(candidateAssembly, { recursive: true, mode: 0o700 });
+  for (const [path, mode] of [
+    [deploymentRoot, 0o755],
+    [releases, 0o755],
+    [activeRelease, 0o755],
+    [candidateRelease, 0o755],
+    [dirname(activeConfig), 0o755],
+    [dirname(candidateConfig), 0o755],
+    [assemblyRoot, 0o700],
+    [candidateAssembly, 0o700]
+  ]) chmodSync(path, mode);
+  writeFileSync(activeConfig, "protected-production-config\n", { mode: 0o640 });
+  writeFileSync(activeEnv, "protected-production-environment\n", { mode: 0o600 });
+  chmodSync(activeConfig, 0o640);
+  chmodSync(activeEnv, 0o600);
+  try {
+    symlinkSync(activeRelease, current, process.platform === "win32" ? "junction" : "dir");
+  } catch {
+    return null;
+  }
+  return {
+    temporary,
+    deploymentRoot,
+    releases,
+    activeRelease,
+    candidateRelease,
+    current,
+    activeConfig,
+    candidateConfig,
+    activeEnv,
+    candidateEnv,
+    assemblyRoot,
+    candidateAssembly,
+    manifestPath
+  };
+}
+
+function productionLikeRuntime(paths, {
+  modeOverrides = new Map(),
+  ownerOverrides = new Map(),
+  modeHook = () => {}
+} = {}) {
+  const expectedModes = new Map([
+    [resolve(paths.deploymentRoot), 0o755],
+    [resolve(paths.releases), 0o755],
+    [resolve(paths.activeRelease), 0o755],
+    [resolve(paths.candidateRelease), 0o755],
+    [resolve(dirname(paths.activeConfig)), 0o755],
+    [resolve(dirname(paths.candidateConfig)), 0o755],
+    [resolve(paths.activeConfig), 0o640],
+    [resolve(paths.candidateConfig), 0o640],
+    [resolve(paths.activeEnv), 0o600],
+    [resolve(paths.candidateEnv), 0o600],
+    [resolve(paths.assemblyRoot), 0o700],
+    [resolve(paths.candidateAssembly), 0o700]
+  ]);
+  return createReleaseConfigGateTestRuntime({
+    root: paths.deploymentRoot,
+    enforceProductionTopology: true,
+    enforceModes: true,
+    enforceOwnership: true,
+    modeFor(path, metadata) {
+      modeHook(resolve(path));
+      return modeOverrides.get(resolve(path))
+        ?? expectedModes.get(resolve(path))
+        ?? (metadata.mode & 0o7777);
+    },
+    ownerFor(path, metadata) {
+      return ownerOverrides.get(resolve(path)) ?? { uid: 0, gid: 0 };
+    }
+  });
+}
+
+test("production topology accepts the exact current pointer and fixed assembly receipt path", (t) => {
+  const paths = productionFixture(t);
+  if (!paths) {
+    t.skip("directory symlink creation is unavailable");
+    return;
+  }
+
+  const result = prepareReleaseConfigOverlay({
+    activeReleasePath: paths.current,
+    candidateReleasePath: paths.candidateRelease,
+    manifestPath: paths.manifestPath,
+    runtime: productionLikeRuntime(paths)
+  });
+
+  assert.equal(result.state, "ready");
+  assert.equal(result.activeRelease, "release-active");
+  assert.equal(result.candidateRelease, "release-candidate");
+  assert.equal(existsSync(paths.candidateConfig), false);
+  assert.equal(existsSync(paths.candidateEnv), false);
+  assert.equal(existsSync(paths.manifestPath), false);
+});
+
+test("production topology accepts the protected service group without forcing gid zero", (t) => {
+  const paths = productionFixture(t);
+  if (!paths) {
+    t.skip("directory symlink creation is unavailable");
+    return;
+  }
+  const ownerOverrides = new Map([
+    [resolve(paths.activeConfig), { uid: 0, gid: 988 }],
+    [resolve(paths.activeEnv), { uid: 0, gid: 988 }]
+  ]);
+
+  const result = prepareReleaseConfigOverlay({
+    activeReleasePath: paths.current,
+    candidateReleasePath: paths.candidateRelease,
+    manifestPath: paths.manifestPath,
+    runtime: productionLikeRuntime(paths, { ownerOverrides })
+  });
+
+  assert.equal(result.state, "ready");
+  assert.equal(existsSync(paths.candidateConfig), false);
+  assert.equal(existsSync(paths.candidateEnv), false);
+  assert.equal(existsSync(paths.manifestPath), false);
+});
+
+test("production topology rejects active protected-file policy drift before overlay writes", async (t) => {
+  for (const { name, modeOverrides = new Map(), ownerOverrides = new Map() } of [
+    {
+      name: "config mode is 0644",
+      modeOverrides: new Map([["activeConfig", 0o644]])
+    },
+    {
+      name: "environment mode is 0640",
+      modeOverrides: new Map([["activeEnv", 0o640]])
+    },
+    {
+      name: "config owner is not root",
+      ownerOverrides: new Map([["activeConfig", { uid: 1000, gid: 988 }]])
+    },
+    {
+      name: "environment owner is not root",
+      ownerOverrides: new Map([["activeEnv", { uid: 1000, gid: 988 }]])
+    }
+  ]) {
+    await t.test(name, (t) => {
+      const paths = productionFixture(t);
+      if (!paths) {
+        t.skip("directory symlink creation is unavailable");
+        return;
+      }
+      const resolvedModes = new Map(
+        [...modeOverrides].map(([key, value]) => [resolve(paths[key]), value])
+      );
+      const resolvedOwners = new Map(
+        [...ownerOverrides].map(([key, value]) => [resolve(paths[key]), value])
+      );
+
+      assert.throws(
+        () => prepareReleaseConfigOverlay({
+          activeReleasePath: paths.current,
+          candidateReleasePath: paths.candidateRelease,
+          manifestPath: paths.manifestPath,
+          apply: true,
+          createdAt: "2026-07-11T10:00:00Z",
+          runtime: productionLikeRuntime(paths, {
+            modeOverrides: resolvedModes,
+            ownerOverrides: resolvedOwners
+          })
+        }),
+        condition("config_boundary_invalid")
+      );
+      assert.equal(existsSync(paths.candidateConfig), false);
+      assert.equal(existsSync(paths.candidateEnv), false);
+      assert.equal(existsSync(paths.manifestPath), false);
+    });
+  }
+});
+
+test("production verify rejects candidate protected-file policy drift", async (t) => {
+  for (const { name, modeOverrides = new Map(), ownerOverrides = new Map() } of [
+    {
+      name: "config mode is 0644",
+      modeOverrides: new Map([["candidateConfig", 0o644]])
+    },
+    {
+      name: "environment mode is 0640",
+      modeOverrides: new Map([["candidateEnv", 0o640]])
+    },
+    {
+      name: "config owner is not root",
+      ownerOverrides: new Map([["candidateConfig", { uid: 1000, gid: 988 }]])
+    },
+    {
+      name: "environment owner is not root",
+      ownerOverrides: new Map([["candidateEnv", { uid: 1000, gid: 988 }]])
+    },
+    {
+      name: "config group differs from the active service group",
+      ownerOverrides: new Map([
+        ["activeConfig", { uid: 0, gid: 988 }],
+        ["candidateConfig", { uid: 0, gid: 989 }]
+      ])
+    }
+  ]) {
+    await t.test(name, (t) => {
+      const paths = productionFixture(t);
+      if (!paths) {
+        t.skip("directory symlink creation is unavailable");
+        return;
+      }
+      prepareReleaseConfigOverlay({
+        activeReleasePath: paths.current,
+        candidateReleasePath: paths.candidateRelease,
+        manifestPath: paths.manifestPath,
+        apply: true,
+        createdAt: "2026-07-11T10:00:00Z",
+        runtime: createReleaseConfigGateTestRuntime()
+      });
+      const resolvedModes = new Map(
+        [...modeOverrides].map(([key, value]) => [resolve(paths[key]), value])
+      );
+      const resolvedOwners = new Map(
+        [...ownerOverrides].map(([key, value]) => [resolve(paths[key]), value])
+      );
+
+      assert.throws(
+        () => verifyReleaseConfigOverlay({
+          activeReleasePath: paths.current,
+          candidateReleasePath: paths.candidateRelease,
+          manifestPath: paths.manifestPath,
+          runtime: productionLikeRuntime(paths, {
+            modeOverrides: resolvedModes,
+            ownerOverrides: resolvedOwners
+          })
+        }),
+        condition("config_boundary_invalid")
+      );
+    });
+  }
+});
+
+test("production topology fails closed when current changes after its initial CAS snapshot", (t) => {
+  const paths = productionFixture(t);
+  if (!paths) {
+    t.skip("directory symlink creation is unavailable");
+    return;
+  }
+  const replacement = join(paths.releases, "release-replacement");
+  mkdirSync(replacement, { mode: 0o755 });
+  chmodSync(replacement, 0o755);
+  let switched = false;
+  const runtime = productionLikeRuntime(paths, {
+    modeHook(path) {
+      if (!switched && path === resolve(paths.candidateAssembly)) {
+        switched = true;
+        rmSync(paths.current);
+        symlinkSync(replacement, paths.current, process.platform === "win32" ? "junction" : "dir");
+      }
+    }
+  });
+
+  assert.throws(
+    () => prepareReleaseConfigOverlay({
+      activeReleasePath: paths.current,
+      candidateReleasePath: paths.candidateRelease,
+      manifestPath: paths.manifestPath,
+      runtime
+    }),
+    condition("release_boundary_invalid")
+  );
+  assert.equal(switched, true);
+  assert.equal(existsSync(paths.candidateConfig), false);
+  assert.equal(existsSync(paths.candidateEnv), false);
+  assert.equal(existsSync(paths.manifestPath), false);
+});
 
 test("prepare dry-run accepts a source-only candidate without writing protected files or a manifest", (t) => {
   const paths = fixture(t);
@@ -168,6 +505,228 @@ test("prepare apply atomically creates both protected overlays and emits a porta
     assert.equal(statSync(paths.candidateEnv).mode & 0o777, 0o600);
     assert.equal(statSync(paths.manifestPath).mode & 0o777, 0o600);
   }
+});
+
+test("default CLI and production topology reject unbounded roots before protected overlay writes", async (t) => {
+  await t.test("default CLI rejects the arbitrary temporary fixture", (t) => {
+    const paths = fixture(t);
+    const result = runProductionCli(baseArgs(paths, "prepare"));
+    assert.equal(result.status, 1);
+    assert.equal(JSON.parse(result.stderr).condition, "release_boundary_invalid");
+    assert.equal(existsSync(paths.candidateConfig), false);
+    assert.equal(existsSync(paths.candidateEnv), false);
+    assert.equal(existsSync(paths.manifestPath), false);
+  });
+
+  for (const name of [
+    "active is not the current pointer",
+    "candidate has a different releases parent",
+    "manifest is not the fixed candidate assembly receipt",
+    "releases parent is world writable",
+    "candidate is not root controlled"
+  ]) {
+    await t.test(name, (t) => {
+      const paths = productionFixture(t);
+      if (!paths) {
+        t.skip("directory symlink creation is unavailable");
+        return;
+      }
+      const modeOverrides = new Map();
+      const ownerOverrides = new Map();
+      let activeReleasePath = paths.current;
+      let candidateReleasePath = paths.candidateRelease;
+      let outputManifestPath = paths.manifestPath;
+      let expected = "release_boundary_invalid";
+      if (name === "active is not the current pointer") activeReleasePath = paths.activeRelease;
+      if (name === "candidate has a different releases parent") {
+        candidateReleasePath = join(paths.temporary, "other", "release-candidate");
+        mkdirSync(join(candidateReleasePath, "config"), { recursive: true });
+      }
+      if (name === "manifest is not the fixed candidate assembly receipt") {
+        outputManifestPath = join(paths.deploymentRoot, "other", "release-assembly.json");
+        mkdirSync(dirname(outputManifestPath), { recursive: true });
+        expected = "manifest_boundary_invalid";
+      }
+      if (name === "releases parent is world writable") modeOverrides.set(resolve(paths.releases), 0o777);
+      if (name === "candidate is not root controlled") ownerOverrides.set(resolve(paths.candidateRelease), { uid: 1000, gid: 1000 });
+      const runtime = productionLikeRuntime(paths, { modeOverrides, ownerOverrides });
+
+      assert.throws(
+        () => prepareReleaseConfigOverlay({
+          activeReleasePath,
+          candidateReleasePath,
+          manifestPath: outputManifestPath,
+          runtime
+        }),
+        condition(expected)
+      );
+      assert.equal(existsSync(paths.candidateConfig), false);
+      assert.equal(existsSync(paths.candidateEnv), false);
+      assert.equal(existsSync(paths.manifestPath), false);
+    });
+  }
+});
+
+test("prepare apply fsyncs final file metadata and both link publication directory mutations", (t) => {
+  const paths = fixture(t);
+  const events = [];
+  const runtime = createReleaseConfigGateTestRuntime({
+    applyOwnership: true,
+    chownFile: () => {},
+    observe: (event) => events.push(event)
+  });
+
+  const result = prepareReleaseConfigOverlay(directApplyOptions(paths, runtime));
+
+  assert.equal(result.state, "prepared");
+  const configTemporary = events.find((event) => (
+    event.type === "file_data_fsync"
+    && event.path.includes(".proxy-servers.json.overlay.")
+  ))?.path;
+  assert.ok(configTemporary);
+  assert.deepEqual(
+    events
+      .filter((event) => event.path === configTemporary)
+      .map((event) => event.type),
+    ["file_data_fsync", "chown", "chmod", "file_final_fsync", "link", "unlink"]
+  );
+
+  const linkIndex = events.findIndex((event) => (
+    event.type === "link" && event.destination === paths.candidateConfig
+  ));
+  assert.ok(linkIndex >= 0);
+  assert.deepEqual(
+    events.slice(linkIndex, linkIndex + 4).map((event) => [event.type, event.path]),
+    [
+      ["link", configTemporary],
+      ["directory_fsync", dirname(paths.candidateConfig)],
+      ["unlink", configTemporary],
+      ["directory_fsync", dirname(configTemporary)]
+    ]
+  );
+
+  const manifestParent = dirname(paths.manifestPath);
+  const mkdirIndex = events.findIndex((event) => event.type === "mkdir" && event.path === manifestParent);
+  assert.ok(mkdirIndex >= 0);
+  assert.ok(events.slice(mkdirIndex + 1).some((event) => (
+    event.type === "directory_fsync" && event.path === manifestParent
+  )));
+  assert.ok(events.slice(mkdirIndex + 1).some((event) => (
+    event.type === "directory_fsync" && event.path === dirname(manifestParent)
+  )));
+});
+
+test("prepare apply fails closed and durably removes a temporary file when final inode fsync fails", (t) => {
+  const paths = fixture(t);
+  const events = [];
+  let failed = false;
+  const runtime = createReleaseConfigGateTestRuntime({
+    observe: (event) => events.push(event),
+    fsyncFile(descriptor, { phase, path }) {
+      if (!failed && phase === "final" && path.includes(".proxy-servers.json.overlay.")) {
+        failed = true;
+        throw new Error("injected final inode fsync failure");
+      }
+      fsyncSync(descriptor);
+    }
+  });
+
+  assert.throws(
+    () => prepareReleaseConfigOverlay(directApplyOptions(paths, runtime)),
+    condition("release_config_prepare_failed")
+  );
+  assert.equal(failed, true);
+  assert.equal(existsSync(paths.candidateConfig), false);
+  assert.equal(existsSync(paths.candidateEnv), false);
+  assert.equal(existsSync(paths.manifestPath), false);
+  assert.deepEqual(readdirSync(dirname(paths.candidateConfig)), []);
+  const cleanupIndex = events.findIndex((event) => (
+    event.type === "cleanup_unlink" && event.path.includes(".proxy-servers.json.overlay.")
+  ));
+  assert.ok(cleanupIndex >= 0);
+  assert.deepEqual(
+    events.slice(cleanupIndex, cleanupIndex + 2).map((event) => event.type),
+    ["cleanup_unlink", "directory_fsync"]
+  );
+});
+
+test("final fsync failure never removes a replacement that is not the opened attempt inode", (t) => {
+  const paths = fixture(t);
+  const replacement = Buffer.from("preserve-non-attempt-replacement\n");
+  let temporary;
+  let ownedOriginal;
+  const runtime = createReleaseConfigGateTestRuntime({
+    fsyncFile(descriptor, { phase, path }) {
+      if (!temporary && phase === "final" && path.includes(".proxy-servers.json.overlay.")) {
+        temporary = path;
+        ownedOriginal = `${path}.owned-original`;
+        renameSync(path, ownedOriginal);
+        writeFileSync(path, replacement);
+        throw new Error("injected replacement before final fsync failure");
+      }
+      fsyncSync(descriptor);
+    }
+  });
+
+  assert.throws(
+    () => prepareReleaseConfigOverlay(directApplyOptions(paths, runtime)),
+    condition("release_config_prepare_failed")
+  );
+  assert.ok(temporary);
+  assert.deepEqual(readFileSync(temporary), replacement);
+  assert.equal(existsSync(ownedOriginal), true);
+  assert.equal(existsSync(paths.candidateConfig), false);
+  assert.equal(existsSync(paths.candidateEnv), false);
+  assert.equal(existsSync(paths.manifestPath), false);
+});
+
+test("prepare apply rolls back and fsyncs both parents when publication directory fsync fails", (t) => {
+  const paths = fixture(t);
+  const events = [];
+  let configLinked = false;
+  let failed = false;
+  const runtime = createReleaseConfigGateTestRuntime({
+    observe(event) {
+      events.push(event);
+      if (event.type === "link" && event.destination === paths.candidateConfig) configLinked = true;
+    },
+    fsyncDirectory(path) {
+      if (configLinked && !failed && path === dirname(paths.candidateConfig)) {
+        failed = true;
+        throw new Error("injected publication directory fsync failure");
+      }
+      nativeDirectorySync(path);
+    }
+  });
+
+  assert.throws(
+    () => prepareReleaseConfigOverlay(directApplyOptions(paths, runtime)),
+    condition("release_config_prepare_failed")
+  );
+  assert.equal(failed, true);
+  assert.equal(existsSync(paths.candidateConfig), false);
+  assert.equal(existsSync(paths.candidateEnv), false);
+  assert.equal(existsSync(paths.manifestPath), false);
+  const cleanupIndex = events.findIndex((event) => (
+    event.type === "cleanup_unlink" && event.path === paths.candidateConfig
+  ));
+  assert.ok(cleanupIndex >= 0);
+  assert.deepEqual(
+    events.slice(cleanupIndex, cleanupIndex + 2).map((event) => event.type),
+    ["cleanup_unlink", "directory_fsync"]
+  );
+});
+
+test("prepare rejects an ordinary caller supplied runtime before creating overlays", (t) => {
+  const paths = fixture(t);
+
+  assert.throws(
+    () => prepareReleaseConfigOverlay(directApplyOptions(paths, {})),
+    condition("invalid_input")
+  );
+  assert.equal(existsSync(paths.candidateConfig), false);
+  assert.equal(existsSync(paths.candidateEnv), false);
+  assert.equal(existsSync(paths.manifestPath), false);
 });
 
 test("verify accepts the prepared assembly without writing files", (t) => {
