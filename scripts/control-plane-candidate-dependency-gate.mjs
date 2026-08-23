@@ -618,7 +618,24 @@ function validateA3ServiceSmokeCapture(path, supplied) {
   }
 }
 
-function validateA3ServiceSmokeSource(context, invocation, root, supplied) {
+function validateA3ServiceSmokeCaptureBoundary(context, invocation, supplied) {
+  try {
+    if (typeof supplied.executePhysicalCommand === "function") {
+      if (typeof supplied.validateA3ServiceSmokeCaptureBoundary !== "function"
+        || supplied.validateA3ServiceSmokeCaptureBoundary({
+          probeRoot: context.probeRoot,
+          captureStdout: invocation.captureStdout,
+          captureStderr: invocation.captureStderr
+        }) !== true) {
+        fail("service_smoke_readback_invalid", true);
+      }
+      return;
+    }
+    trustedAclAncestorChain(context.probeRoot, supplied, "service_smoke_readback_invalid");
+  } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail("service_smoke_readback_invalid", true); }
+}
+
+function validateA3ServiceSmokeSource(invocation, root, supplied) {
   try {
     if (typeof supplied.executePhysicalCommand === "function") {
       if (typeof supplied.validateA3ServiceSmokeSource !== "function"
@@ -627,7 +644,6 @@ function validateA3ServiceSmokeSource(context, invocation, root, supplied) {
       }
       return;
     }
-    trustedAclAncestorChain(context.probeRoot, supplied, "service_smoke_readback_invalid");
     trustedAclAncestorChain(root, supplied, "service_smoke_readback_invalid");
     trustedAclAncestorChain(dirname(invocation.worker), supplied, "service_smoke_readback_invalid");
     const requiredFiles = [
@@ -935,7 +951,7 @@ function parseServiceSmokeProcessOutput(stdout) {
 export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "validation", root, service, runtime: supplied = runtime() } = {}) {
   const context = a3PhysicalContext(runLabel, supplied, smokePhase);
   const invocation = buildServiceNativeSmokeInvocation({ runLabel, smokePhase, root, service, runtime: supplied });
-  validateA3ServiceSmokeSource(context, invocation, root, supplied);
+  validateA3ServiceSmokeCaptureBoundary(context, invocation, supplied);
   const stdoutState = a3PhysicalLeafState(invocation.captureStdout, supplied, "service_smoke_readback_invalid");
   const stderrState = a3PhysicalLeafState(invocation.captureStderr, supplied, "service_smoke_readback_invalid");
   if (![stdoutState, stderrState].every((state) => state === "absent" || state === "regular")) fail("service_smoke_readback_invalid", true);
@@ -944,6 +960,7 @@ export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "vali
   }
   if (a3PhysicalLeafState(invocation.captureStdout, supplied, "service_smoke_readback_invalid") !== "absent"
     || a3PhysicalLeafState(invocation.captureStderr, supplied, "service_smoke_readback_invalid") !== "absent") fail("service_smoke_readback_invalid", true);
+  validateA3ServiceSmokeSource(invocation, root, supplied);
   let observed = null; let values = null; let primaryError = null;
   try {
     executeA3Physical(invocation.command, invocation.args, supplied, "service_smoke_readback_invalid", { requireEmptyStderr: true });

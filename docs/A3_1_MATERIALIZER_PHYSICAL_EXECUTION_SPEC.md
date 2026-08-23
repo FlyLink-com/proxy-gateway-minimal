@@ -342,7 +342,11 @@ execution phase that produces the readback. Dry-run must pass before real-run.
   unloaded before the required readback. Before launch, validate the complete
   capture parent chain as root-owned, non-writable, ACL/capability-clean
   directories and use `lstat` to reject every existing non-regular capture
-  leaf, including dangling symlinks.
+  leaf, including dangling symlinks. If safe regular capture leaves identify
+  an interrupted scoped run, stop and collect that exact old unit, require its
+  cgroup absent, and remove/read back the captures before validating the new
+  source custody. An untrusted parent or non-regular leaf preserves the state
+  and fails attention-required.
 - Do not start until 6.1/6.2 dry-run pass.
 
 ### 6.4 Item 4 — terminal / cgroup-empty readback (dry-run)

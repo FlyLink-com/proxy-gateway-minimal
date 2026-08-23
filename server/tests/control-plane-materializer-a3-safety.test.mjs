@@ -537,6 +537,7 @@ function serviceSmokeHarness({
   processStderr = "",
   initialCaptures = false,
   initialCaptureKind = "regular",
+  captureBoundaryValid = true,
   sourceCustodyValid = true,
   gcLoadedPolls = 0,
   pinnedStatus = 0,
@@ -612,6 +613,7 @@ function serviceSmokeHarness({
     executePhysicalCommand,
     physicalPathExists: (path) => captures.get(path) === "regular" || path === cgroupRoot && cgroupPresent && !stopped,
     physicalLeafState: (path) => captures.get(path) || "absent",
+    validateA3ServiceSmokeCaptureBoundary: () => captureBoundaryValid,
     validateA3ServiceSmokeSource: () => sourceCustodyValid,
     readPhysicalFile: (path) => {
       if (path === captureStdout) return processStdout;
@@ -668,6 +670,14 @@ test("collectServiceNativeSmokeEvidence cleans interrupted-run captures before a
   ]);
 });
 
+test("collectServiceNativeSmokeEvidence cleans safe interrupted state before rejecting source custody", () => {
+  const harness = serviceSmokeHarness({ initialCaptures: true, sourceCustodyValid: false });
+  assert.throws(() => collectServiceSmoke(harness.runtime), condition("service_smoke_readback_invalid"));
+  assert.equal(harness.wasStopped(), true);
+  assert.equal(harness.captures.size, 0);
+  assert.deepEqual(harness.calls.map(([, args]) => args[0]), ["show", "stop", "show"]);
+});
+
 test("collectServiceNativeSmokeEvidence rejects dangling symlink and non-regular capture leaves before root systemd launch", () => {
   for (const initialCaptureKind of ["symbolicLink", "other"]) {
     const harness = serviceSmokeHarness({ initialCaptures: true, initialCaptureKind });
@@ -679,6 +689,17 @@ test("collectServiceNativeSmokeEvidence rejects dangling symlink and non-regular
     assert.equal(harness.calls.length, 0);
     assert.equal(harness.captures.size, 2);
   }
+});
+
+test("collectServiceNativeSmokeEvidence preserves stale state when the capture parent boundary is untrusted", () => {
+  const harness = serviceSmokeHarness({ initialCaptures: true, captureBoundaryValid: false });
+  assert.throws(
+    () => collectServiceSmoke(harness.runtime),
+    (error) => condition("service_smoke_readback_invalid")(error) && error.attentionRequired === true
+  );
+  assert.equal(harness.wasStopped(), false);
+  assert.equal(harness.calls.length, 0);
+  assert.equal(harness.captures.size, 2);
 });
 
 test("collectServiceNativeSmokeEvidence waits for transient unit GC before a same-name retry", () => {
