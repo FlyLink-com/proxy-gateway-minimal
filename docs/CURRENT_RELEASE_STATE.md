@@ -13,14 +13,14 @@ document_metadata:
 > Status:
 > - Type: Current documented release snapshot
 > - Version management baseline: `v3` artifact and runtime-identity foundation
-> - Current source inventory: `master@20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`
+> - Current source inventory: `master@236f81daf58612b83740262885d5d4e5ccb8dae2`
 >   observed 2026-08-22, America/Los_Angeles
 > - Latest release source and production deployment event: 2026-08-14,
 >   `control-plane-app` source `c06f749f245247eea7e94c68f4249a0017e8e884`
 > - Latest build evidence used for that release: Release Artifact run `31816741441`,
 >   artifact `proxy-gateway-c06f749f2452`
 > - Latest exact-master build evidence, not deployed: Release Artifact run
->   `32579764918` and Dependency Artifact run `32579764926`
+>   `32621970036` and Dependency Artifact run `32621970075`
 > - Current control-plane identity: fresh Risk A deployment readback passed at
 >   execution time; other release units retain their separately documented state
 > - Execution authority: None
@@ -28,35 +28,38 @@ document_metadata:
 ## Current Source And A3 Reconciliation (2026-08-22)
 
 The current reviewed source is
-`master@20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`. The read-only GitHub
+`master@236f81daf58612b83740262885d5d4e5ccb8dae2`. The read-only GitHub
 inventory observed no open PRs and eighteen open Issues. Exact-master CI,
 CodeQL, Release Artifact, and Control Plane Dependency Artifact workflows all
 succeeded.
 
-Release Artifact run `32579764918` produced three temporary build artifacts:
+Release Artifact run `32621970036` produced three temporary build artifacts:
 
-- `proxy-gateway-20dc7cfa5e74`;
-- `portal-static-20dc7cfa5e74`;
-- `admin-static-20dc7cfa5e74`.
+- `proxy-gateway-236f81daf586`;
+- `portal-static-236f81daf586`;
+- `admin-static-236f81daf586`.
 
-Dependency Artifact run `32579764926` produced
-`control-plane-dependency-20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`
-with Actions artifact ID `9477480212`. These artifacts were observed as
-available through 2026-09-05. They are temporary build evidence, not durable
+Dependency Artifact run `32621970075` produced
+`control-plane-dependency-236f81daf58612b83740262885d5d4e5ccb8dae2`
+with Actions artifact ID `9488609747`. These artifacts were observed as
+available through 2026-09-06. They are temporary build evidence, not durable
 release retention, deployment, rollback identity, or current runtime proof.
 
-Issue #636 A3 source work is merged through PR #654. The exact PR head passed a
-disposable non-production XFS physical run that verified project-tree setup,
-project accounting/enforcement, fixed byte and inode limits, rejected byte and
-inode writes with Linux XFS `ENOSPC`, diagnostics integrity, and complete
-cleanup/readback. This closes the physical quota segment only.
+Issue #636 A3 source work is merged through PR #656. PR #654's exact head
+passed a disposable non-production XFS physical run that verified project-tree
+setup, project accounting/enforcement, fixed byte and inode limits, rejected
+byte and inode writes with Linux XFS `ENOSPC`, diagnostics integrity, and
+complete cleanup/readback.
 
-The restricted service-native smoke segment has not been physically proven.
-Production `requireRoot:true` materialize/verify entrypoints remain fail-closed
-with `worker_storage_limit_unavailable`; no production inventory,
-materialization, pointer switch, service change, schema/feature activation, or
-promotion occurred. A later source change may reconsider that guard only after
-the missing physical evidence and review are complete.
+PR #656's exact head separately passed the restricted service-native smoke on
+the non-production physical host. The fixed non-root principal, native module
+and snapshot-import workload, cgroup v2 boundary, terminal/unit readback,
+diagnostics integrity, and cleanup were verified. This closes both A3-1
+physical evidence segments, but production `requireRoot:true`
+materialize/verify entrypoints remain fail-closed with
+`worker_storage_limit_unavailable`. No production inventory, materialization,
+pointer switch, service change, schema/feature activation, or promotion
+occurred. Guard lift remains a separate reviewed source change.
 
 ## Dated Source-Capability Reconciliation (2026-08-09)
 
@@ -148,8 +151,8 @@ contract for `japan-runtime-config` and `sgp-runtime-config`. A generated
 identity is not a deploy event, and this Risk C reconciliation did not observe
 either live host.
 
-The latest exact-master build proof is Release Artifact run `32579764918` for
-`20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`. It does not replace the build
+The latest exact-master build proof is Release Artifact run `32621970036` for
+`236f81daf58612b83740262885d5d4e5ccb8dae2`. It does not replace the build
 identity used by the recorded 2026-08-14 deployment and does not change any
 release-unit state in the production snapshot below.
 
@@ -288,12 +291,12 @@ new activation or revalidation of the already enabled legacy Portal routes,
 Coins Wallet, Coins Commerce (audience `all_active`), or XSD recharge.
 
 Current source is now
-`20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`, 107 commits beyond the recorded
+`236f81daf58612b83740262885d5d4e5ccb8dae2`, 109 commits beyond the recorded
 production source. The newer source includes the A3 dependency-artifact
-materializer safety and physical quota-validation work, but its successful CI,
-temporary artifacts, and quota-only physical proof do not establish service
-smoke, guard lift, deployment, current runtime identity, or production
-activation.
+materializer safety, physical quota proof, and service-native smoke proof, but
+its successful CI, temporary artifacts, and non-production physical evidence
+do not establish guard lift, deployment, current runtime identity, or
+production activation.
 
 The 2026-08-14 Deploy Note expressly records no Portal/static deployment,
 wallet-first schema enablement, wallet-first/deferred runtime activation,
@@ -314,10 +317,11 @@ lane. Those remain separate Risk A actions.
 - Detailed source-capability cutoff
   `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
 - Current source inventory
-  `master@20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`
-- GitHub Release Artifact run `32579764918`
-- GitHub Dependency Artifact run `32579764926`
+  `master@236f81daf58612b83740262885d5d4e5ccb8dae2`
+- GitHub Release Artifact run `32621970036`
+- GitHub Dependency Artifact run `32621970075`
 - [PR #654 A3 quota physical proof](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/654)
+- [PR #656 A3 service-native smoke proof](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/656)
 - [Issue #636 A3 promotion boundary](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/636)
 - Deployed control-plane source
   `c06f749f245247eea7e94c68f4249a0017e8e884`

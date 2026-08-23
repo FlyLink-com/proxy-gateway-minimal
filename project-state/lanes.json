@@ -1,13 +1,13 @@
 {
-  "schemaVersion": "2026-08-22.1",
+  "schemaVersion": "2026-08-22.2",
   "lastUpdated": "2026-08-22",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current lane index for Phase 2. Historical lanes remain in Git history and indexed execution records, not in the active Agent queue.",
   "sourceInventory": {
-    "snapshot": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b",
+    "snapshot": "236f81daf58612b83740262885d5d4e5ccb8dae2",
     "date": "2026-08-22",
-    "remoteBranchCount": 109,
+    "remoteBranchCount": 111,
     "openPrCount": 0,
     "openDraftPrCount": 0,
     "openNonDraftPrCount": 0,
@@ -22,7 +22,9 @@
       "651": "72cc8af183d7dedfb67ab4fbb6b1fdb6c2d06180",
       "652": "c2d07739c714284cf32615b2aa028c7c6a7f47b6",
       "653": "acf593720128a81cbe779063445395cb460f18f3",
-      "654": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b"
+      "654": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b",
+      "655": "e15310d035024dcbfe1b46252af261bd2c542366",
+      "656": "236f81daf58612b83740262885d5d4e5ccb8dae2"
     },
     "openDraftPrs": [],
     "openNonDraftPrs": [],
@@ -48,10 +50,10 @@
     ]
   },
   "governanceBoundary": {
-    "releaseArtifact": "32579764918 success for exact master; three artifacts temporary through 2026-09-05",
-    "dependencyArtifact": "32579764926 success for exact master; artifact 9477480212 temporary through 2026-09-05",
-    "ci": "32579764917 success for exact master",
-    "codeql": "32579764749 success for exact master",
+    "releaseArtifact": "32621970036 success for exact master; three artifacts temporary through 2026-09-06",
+    "dependencyArtifact": "32621970075 success for exact master; artifact 9488609747 temporary through 2026-09-06",
+    "ci": "32621970051 success for exact master",
+    "codeql": "32621969594 success for exact master",
     "cloudflareWorkflow": "not_refreshed_for_exact_master",
     "ruleset": "not_refreshed_at_2026-08-22_inventory",
     "environments": "not_refreshed_at_2026-08-22_inventory",
@@ -59,9 +61,9 @@
     "requiresLiveVerification": true
   },
   "nextActionQueue": [
-    "Complete Issue #636 service-native smoke physical proof before any production materializer guard-lift proposal.",
-    "After A3-1 closes, run A3-2 production read-only inventory and dry-run under a separate exact Risk A gate.",
-    "Create a durable artifact/rollback identity for Issue #597 before the exact-master artifacts expire on 2026-09-05.",
+    "Implement the focused Issue #636 production guard-lift and end-to-end materialization integration as a separate reviewed Risk B source PR.",
+    "After that source change is merged and exact-master artifacts are regenerated, run A3-2 production read-only inventory and dry-run under a separate exact Risk A gate.",
+    "Create a durable artifact/rollback identity for Issue #597 before the exact-master artifacts expire on 2026-09-06.",
     "Address Issue #598 through focused full-SHA pinning, SBOM, provenance, and signing slices.",
     "Refresh GitHub rulesets, required checks, environments, alerts, provider state, deployment identity, and production runtime evidence before relying on any of them."
   ],
@@ -85,7 +87,7 @@
       "name": "Version And Deployment Governance",
       "status": "active-source-governance-hardening",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
-      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Current master is 20dc7cfa5e744611567a9ea4d0a6a558b4803e4b. Exact-master CI, CodeQL, Release Artifact, and Dependency Artifact runs succeeded, but the artifacts are temporary through 2026-09-05. There are no open PRs; #592 and #594 are closed unmerged and #593 is merged docs-only. Issues #597 and #598 retain durable release and supply-chain closure.",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Current master is 236f81daf58612b83740262885d5d4e5ccb8dae2. Exact-master CI, CodeQL, Release Artifact, and Dependency Artifact runs succeeded, but the artifacts are temporary through 2026-09-06. There are no open PRs at the inventory cutoff; #592 and #594 are closed unmerged and #593 is merged docs-only. Issues #597 and #598 retain durable release and supply-chain closure.",
       "primaryDocs": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -229,9 +231,9 @@
     {
       "id": "dependency-materialization",
       "name": "A3 Dependency Artifact Materialization",
-      "status": "active-physical-boundary",
+      "status": "active-guard-lift-boundary",
       "riskBoundary": "B for source contracts and tests; A for privileged physical validation, production inventory, materialization, promotion, or rollback",
-      "purpose": "Complete Issue #636 without conflating validation-harness work with production promotion. PRs #646-#654 merged the A3 safety contracts, physical collector, diagnostics hardening, and exact-head XFS project-quota proof. The quota segment passed on a disposable non-production XFS filesystem; service-native smoke remains physically unproven and production requireRoot materialize/verify entrypoints remain fail-closed with worker_storage_limit_unavailable.",
+      "purpose": "Complete Issue #636 without conflating non-production physical proof with production promotion. PRs #646-#656 merged the A3 safety contracts, physical collector, diagnostics hardening, exact-head XFS project-quota proof, and exact-head restricted service-native smoke proof. Both physical evidence segments passed; production requireRoot materialize/verify entrypoints remain fail-closed with worker_storage_limit_unavailable pending a separate reviewed guard-lift and integration source change.",
       "primaryDocs": [
         "docs/A3_1_MATERIALIZER_PHYSICAL_EXECUTION_SPEC.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -244,8 +246,8 @@
         "server/tests/control-plane-materializer-a3-*.test.mjs"
       ],
       "nonGoals": [
-        "treating quota proof as service-native smoke or production proof",
-        "lifting production guards before exact physical evidence and review",
+        "treating physical quota or service-native smoke proof as production proof",
+        "lifting production guards without a separate reviewed integration source change",
         "host-side npm ci",
         "feature or schema activation through the dependency-promotion lane"
       ]

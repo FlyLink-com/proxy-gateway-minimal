@@ -16,7 +16,7 @@ document_metadata:
 > - Type: Active current-state handoff
 > - Risk: C
 > - Current source cutoff:
->   `master@20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`
+>   `master@236f81daf58612b83740262885d5d4e5ccb8dae2`
 > - Latest deployed control-plane source:
 >   `c06f749f245247eea7e94c68f4249a0017e8e884` (2026-08-14)
 > - The source, PR/Issue, CI, artifact, and partial security inventory was
@@ -102,19 +102,19 @@ Repository: `gccwebos-com/proxy-gateway-minimal`
 
 The read-only GitHub source inventory observed on 2026-08-22 recorded:
 
-- exact `master`: `20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`
-- current head: merged PR #654
+- exact `master`: `236f81daf58612b83740262885d5d4e5ccb8dae2`
+- current head: merged PR #656
 - open PRs: none
 - open Issues (18): #437, #438, #439, #521, #522, #523, #524, #525,
   #527, #551, #557, #558, #559, #560, #597, #598, #632, and #636
 - PR #592 and #594: closed unmerged
 - PR #593: merged docs-only
 - Issue #561: closed after source-reality documentation reconciliation
-- latest successful exact-source Release Artifact run: `32579764918`
-- latest successful exact-source Dependency Artifact run: `32579764926`
-- control-plane artifact: `proxy-gateway-20dc7cfa5e74`
-- dependency artifact ID: `9477480212`
-- all four exact-master artifacts were observed to expire on 2026-09-05
+- latest successful exact-source Release Artifact run: `32621970036`
+- latest successful exact-source Dependency Artifact run: `32621970075`
+- control-plane artifact: `proxy-gateway-236f81daf586`
+- dependency artifact ID: `9488609747`
+- all four exact-master artifacts were observed to expire on 2026-09-06
 
 These are dated mutable facts, not permanent documentation authority. Refresh
 GitHub inventory before making a later current claim. The artifact identities
@@ -142,7 +142,7 @@ dependency-materialization boundary without reclassifying production state:
 | Wallet-first Commerce extension | Offer, Checkout Quote, Commerce Order, Fulfillment Command | Wallet-first/deferred schema or runtime activation and new live fulfillment |
 | Account Resource Authority | Exact Authority/provenance source, migration, and default-off Commerce binding | Authority production assignment, schema apply, or runtime activation |
 | Traffic / trust | Protected usage projection and fail-closed trusted-proxy/XFF handling | Admin `Usage & Channels` consumption, production proxy-topology validation |
-| A3 dependency materialization | Source contracts, physical collector, diagnostics integrity, and exact-head disposable-XFS byte/inode quota proof through PR #654 | Restricted service-native smoke physical proof, production guard lift, A3-2 inventory/dry-run, durable materialization, promotion, and closeout |
+| A3 dependency materialization | Source contracts, physical collector, diagnostics integrity, exact-head disposable-XFS byte/inode quota proof through PR #654, and exact-head restricted service-native smoke proof through PR #656 | Production guard lift, A3-2 inventory/dry-run, durable materialization, promotion, and closeout |
 
 The 2026-08-14 control-plane release makes the exact application source
 available on that host, but it did not apply the four wallet-first schemas or
@@ -226,10 +226,10 @@ approved 2026-08-14 control-plane deployment; the production receipt is in
 This does not establish a Portal or Admin static deployment, and GitHub build
 evidence alone is not durable release retention.
 
-The current exact-master build evidence is Release Artifact run `32579764918`
-plus Dependency Artifact run `32579764926` for
-`20dc7cfa5e744611567a9ea4d0a6a558b4803e4b`. Those artifacts are temporary
-through 2026-09-05 and were not used by the recorded production deployment.
+The current exact-master build evidence is Release Artifact run `32621970036`
+plus Dependency Artifact run `32621970075` for
+`236f81daf58612b83740262885d5d4e5ccb8dae2`. Those artifacts are temporary
+through 2026-09-06 and were not used by the recorded production deployment.
 
 See `RELEASE_MANIFEST.md` for the stable contract.
 
@@ -288,10 +288,11 @@ release-maturity and supply-chain gaps.
    production activation record.
 6. Mutable GitHub counts and governance/security settings require a fresh
    readback when they matter to a decision.
-7. A3 has exact-head physical XFS quota proof, but service-native smoke is not
-   physically proven and production materialize/verify remains fail-closed with
-   `worker_storage_limit_unavailable`.
-8. Exact-master artifacts are temporary through 2026-09-05; durable artifact,
+7. A3 has exact-head physical XFS quota and restricted service-native smoke
+   proof, but production materialize/verify remains fail-closed with
+   `worker_storage_limit_unavailable`; guard lift and production execution are
+   separate later gates.
+8. Exact-master artifacts are temporary through 2026-09-06; durable artifact,
    rollback retention, SBOM, provenance/signing, and the remaining 27 mutable
    Action references remain open under #597/#598.
 
