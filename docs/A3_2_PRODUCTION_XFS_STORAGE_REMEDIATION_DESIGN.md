@@ -169,6 +169,15 @@ changes before any production XFS mutation is proposed:
 1. Introduce one fixed production A3 workspace root distinct from the fixed
    deployment root. Runtime injection cannot override either path.
 2. Point production XFS/project/quota readback at the fixed A3 project tree.
+   Every production `xfs_quota` setup, check, limit, state, and report command
+   must pass explicit `-D <empty-projects-file>` and
+   `-P <empty-projid-file>` global options. The runtime must create both as
+   zero-byte, root-owned, mode-0600, single-link regular files with exclusive
+   creation below an attempt-bound root-owned mode-0700 `/run` directory,
+   validate them immediately before every command, and remove/read back their
+   absence at terminal cleanup. Before the first command, bounded parsing of
+   the global files must also reject the selected project ID if it is already
+   mapped. Falling back to `/etc/projects` or `/etc/projid` is forbidden.
 3. Put artifact extraction, normalization, recursive audit, and prepublish
    service-native smoke entirely inside that project tree.
 4. Admit an artifact only after deriving a conservative allocated-space upper
@@ -211,17 +220,21 @@ changes before any production XFS mutation is proposed:
    - require candidate-local temporary import paths absent, sync the XFS
      filesystem, and re-read byte/inode usage back at the exact pre-attempt
      metadata-only baseline;
+   - after the final quota readback, remove the exact inode-bound empty `-D/-P`
+     mapping files and attempt `/run` directory, fsync their trusted parent,
+     and require all three absent;
    - publish the materialization receipt only after all post-rename and
      post-cleanup barriers succeed. The receipt schema must bind the
      pre-attempt, postpublish, and post-cleanup quota readback hashes.
-6. On failure, remove only staging or a published `node_modules` whose captured
-   inode proves it belongs to that attempt, fsync each affected parent, and
-   re-run the namespace/quota cleanup readback. Never remove an unrelated
-   candidate tree, receipt, current pointer, shared DB, or workspace. Cleanup
-   uncertainty remains terminal and cannot publish a receipt.
+6. On failure, remove only staging, mapping-isolation files, or a published
+   `node_modules` whose captured inode proves it belongs to that attempt, fsync
+   each affected parent, and re-run the namespace/quota cleanup readback. Never
+   remove an unrelated candidate tree, receipt, current pointer, shared DB, or
+   workspace. Cleanup uncertainty remains terminal and cannot publish a
+   receipt.
 7. Verification of a completed receipt must also require no attempt staging or
-   candidate-local import residue and must match a fresh metadata-only quota
-   baseline. A receipt cannot mask retained project usage.
+   candidate-local import or mapping-isolation residue and must match a fresh
+   metadata-only quota baseline. A receipt cannot mask retained project usage.
 8. Add negative tests for missing mount, wrong filesystem, wrong project ID,
    missing inheritance, missing/zero/rounded/mismatched hard limits,
    insufficient quota headroom,
@@ -236,7 +249,12 @@ changes before any production XFS mutation is proposed:
    collapse back to logical bytes. Limit-command tests must require an aligned
    base-10 byte integer with no suffix, reject `s`/`b`/`k`/`m`/`g` and other
    multiplier suffixes, and prove the collector's 1024-byte report
-   normalization returns the exact approved byte hard limit.
+   normalization returns the exact approved byte hard limit. Mapping-isolation
+   tests must place unrelated IDs/paths in synthetic default projects/projid
+   files and prove all generated commands use the trusted empty `-D/-P` files;
+   a selected-ID mapping must fail before command execution. Tests must also
+   reject absent, non-empty, symlinked, multi-link, wrong-owner, wrong-mode,
+   replaced, or uncleared isolation files.
 
 The source PR requires focused tests, the full server test baseline,
 `git diff --check`, exact-head CI, and independent P0/P1 review. It authorizes
@@ -312,8 +330,10 @@ and target only `vultr-japan-control`.
 - XFS kernel/tool availability and versions;
 - exact current deployment-root device and mount ID;
 - absence of the proposed mountpoint and project tree, plus absence of a chosen
-  project-ID collision on the new filesystem; existing `/etc/projects` and
-  `/etc/projid` identities are read back but not modified by this design;
+  project-ID collision on the new filesystem or in bounded parsing of existing
+  `/etc/projects` and `/etc/projid`; those global files' identities are read
+  back but not modified by this design, and malformed or duplicate selected-ID
+  records are terminal;
 - filesystem byte/inode capacity;
 - unchanged current pointer, active service identity/restart count, candidate
   absence, protected-file metadata, and aggregate SQLite `quick_check`;
@@ -389,28 +409,35 @@ This section defines ordering, not executable approval.
    underlying ext4 mountpoint retains its captured inode and remains empty,
    remount, and repeat the device/tree identity readback. This prevents hidden
    underlying entries.
-10. Use explicit numeric
-    `xfs_quota -x -c "project -s -p <project-path> <project-id>" <mount>` to set
-    the project ID and `PROJINHERIT`. The preferred path does not add or change
-    `/etc/projects` or `/etc/projid`; a future named-project consumer would need
-    a separate reviewed justification and Gate.
-11. Prove the new project has no pre-existing hard limit, then set both approved
-    hard limits with an explicit numeric command equivalent to
-    `xfs_quota -x -c "limit -p bhard=<exact-byte-hard-limit> ihard=<exact-inode-hard-limit> <project-id>" <mount>`.
+10. In an exact attempt-bound root-owned mode-0700 directory below `/run`,
+    exclusively create zero-byte root-owned mode-0600 single-link
+    `projects.empty` and `projid.empty` regular files. Revalidate both files,
+    then use explicit numeric
+    `xfs_quota -D <projects.empty> -P <projid.empty> -x -c "project -s -p <project-path> <project-id>" <mount>`
+    to set the project ID and `PROJINHERIT`. The preferred path does not add or
+    change `/etc/projects` or `/etc/projid`; a future named-project consumer
+    would need a separate reviewed justification and Gate.
+11. Using the same trusted `-D <projects.empty> -P <projid.empty>` global
+    options, prove the new project has no pre-existing hard limit, then set both
+    approved hard limits with an explicit numeric command equivalent to
+    `limit -p bhard=<exact-byte-hard-limit> ihard=<exact-inode-hard-limit> <project-id>`.
     `<exact-byte-hard-limit>` must expand to a base-10 byte integer with no unit
     suffix and must be aligned to the collector's 1024-byte report unit. In
     particular, appending `b` is forbidden because it means filesystem blocks,
     not bytes. The command may not rely on a soft limit or grace period.
-12. Require the corresponding explicit numeric `project -c`, `xfs_io lsproj`,
-    accounting/enforcement state, and quota reports to return the exact approved
-    project ID plus byte/inode hard limits. Missing, zero, rounded, inherited,
+12. Require the corresponding explicit numeric `project -c`, state, and quota
+    reports to use the same trusted `-D/-P` files; require `xfs_io lsproj` plus
+    those readbacks to return the exact approved project ID and byte/inode hard
+    limits. Missing isolation options, missing, zero, rounded, inherited,
     duplicate, or mismatched limits are terminal.
 13. Perform only the approved non-exhausting write/fsync/read/delete probe, then
     require the project tree empty and quota usage returned to its accepted
     metadata-only baseline.
 14. Reboot testing, if required, is a separate explicit operation. Without it,
     persistent-mount survival remains unverified and must be stated as such.
-15. Re-read the active service, current pointer, restart count, database check,
+15. Remove only the inode-bound empty mapping files and attempt `/run`
+    directory, fsync the trusted parent, and require all three absent.
+16. Re-read the active service, current pointer, restart count, database check,
     protected-file metadata, and A3-disabled state. They must be unchanged.
 
 No existing deployment-root file is copied, moved, hidden by a mount, assigned
@@ -427,6 +454,8 @@ Rollback is phase-specific.
 - unmount only the exact A3 mount;
 - restore the exact backed-up fstab/mount-unit; this preferred path created no
   `/etc/projects` or `/etc/projid` mapping to roll back;
+- remove and read back absence of only the exact attempt-bound empty `-D/-P`
+  mapping files and their `/run` directory;
 - detach/delete the volume only under a separate provider Gate and only after
   mount, holder, and filesystem-custody readback;
 - verify the previously active release and service were never changed.
@@ -502,6 +531,9 @@ Stop without mutation or retry when any of these is observed:
   mdraid, crypt, or persistent-config reference;
 - filesystem is not XFS or project quota/accounting/enforcement is incomplete;
 - project ID collides or `project -c` fails;
+- the selected project ID appears in a global mapping, a trusted empty `-D/-P`
+  file is not exact and empty, any `xfs_quota` command omits the isolation
+  options, or terminal cleanup cannot prove the isolation files absent;
 - byte/inode hard limits are missing, zero, rounded away from the approved
   integers, or do not meet the immutable artifact budget and headroom;
 - protected configuration review remains unresolved for the candidate input;
