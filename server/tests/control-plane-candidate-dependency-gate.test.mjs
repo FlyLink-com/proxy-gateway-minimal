@@ -1164,6 +1164,28 @@ test("materialize CLI requires the CI artifact identity before any dependency op
   });
 });
 
+test("production A3 CLI activation is explicit and requires one exact run/project identity pair", async () => {
+  for (const argv of [
+    ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--enable-a3-materializer"],
+    ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--a3-run-label", "a3-prod-1", "--a3-project-id", "4242"],
+    ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--enable-a3-materializer", "--a3-run-label", "../escape", "--a3-project-id", "4242"]
+  ]) {
+    let stderr = "";
+    const code = await runCandidateDependencyGateCli({ argv, stdout: { write() {} }, stderr: { write(value) { stderr += value; } } });
+    assert.equal(code, 1);
+    assert.equal(JSON.parse(stderr).condition, "invalid_input");
+  }
+
+  let stderr = "";
+  const code = await runCandidateDependencyGateCli({
+    argv: ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--enable-a3-materializer", "--a3-run-label", "a3-prod-1", "--a3-project-id", "4242"],
+    stdout: { write() {} },
+    stderr: { write(value) { stderr += value; } }
+  });
+  assert.equal(code, 1);
+  assert.notEqual(JSON.parse(stderr).condition, "worker_storage_limit_unavailable");
+});
+
 test("production artifact materialization and verification remain inert pending storage and smoke isolation", async () => {
   let calls = 0;
   const productionLike = createCandidateDependencyGateTestRuntime({
@@ -1497,10 +1519,12 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   const receiptPath = join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json");
   assert.equal(existsSync(receiptPath), true);
   const materializationReceipt = JSON.parse(readFileSync(receiptPath, "utf8"));
-  assert.equal(materializationReceipt.schemaVersion, "2");
-  assert.equal(materializationReceipt.materializerSchemaVersion, 2);
+  assert.equal(materializationReceipt.schemaVersion, "3");
+  assert.equal(materializationReceipt.materializerSchemaVersion, 3);
   assert.equal(materializationReceipt.storageProjectId, 4242);
-  assert.match(materializationReceipt.storageQuotaEvidenceSha256, /^[a-f0-9]{64}$/);
+  assert.match(materializationReceipt.storageQuotaBoundarySha256, /^[a-f0-9]{64}$/);
+  assert.match(materializationReceipt.storageQuotaBeforeReadbackSha256, /^[a-f0-9]{64}$/);
+  assert.match(materializationReceipt.storageQuotaAfterReadbackSha256, /^[a-f0-9]{64}$/);
   assert.match(materializationReceipt.serviceSmokeEvidenceSha256, /^[a-f0-9]{64}$/);
   assert.equal(materializationReceipt.safetyEvidenceCapturedAt, "2026-08-16T00:00:00.000Z");
   assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);
@@ -1509,6 +1533,7 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   assert.equal(smokeRoots[1].root, value.candidateRoot);
 
   writeFileSync(receiptPath, `${JSON.stringify({ ...materializationReceipt, schemaVersion: "1" }, null, 2)}\n`);
+  value.runtime.collectStorageQuotaEvidence = () => { throw new Error("old receipt must fail before quota readback"); };
   await assert.rejects(verifyCandidateDependencies({
     candidateRelease: value.candidate,
     expectedCurrentRelease: value.active,
@@ -1519,4 +1544,5 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
     runtime: value.runtime
   }), condition("dependency_receipt_mismatch"));
   assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);
+  assert.equal(existsSync(join(value.runtime.lockRoot, "node-modules-materialization.lock")), false);
 });

@@ -107,6 +107,7 @@ const A3_PHYSICAL_TOOLS = Object.freeze({
   findmnt: "/usr/bin/findmnt", node: "/usr/bin/node", systemctl: "/usr/bin/systemctl",
   systemdRun: "/usr/bin/systemd-run", xfsIo: "/usr/sbin/xfs_io", xfsQuota: "/usr/sbin/xfs_quota"
 });
+const PRODUCTION_A3_RUNTIMES = new WeakSet();
 const RENAME_SCRIPT = String.raw`import ctypes,errno,os,sys
 try:r=ctypes.CDLL(None,use_errno=True).renameat2
 except (AttributeError,OSError):sys.exit(70)
@@ -429,19 +430,19 @@ function runtime(overrides = {}) {
     ...overrides
   };
 }
-// A3-0: storage-quota and service-smoke boundary contracts.
-// These hooks are runtime-injected ONLY. Production never receives them via
-// `runtime()`; the production materialize/verify/preflight entrypoints still
-// fail-closed with `worker_storage_limit_unavailable` until a privileged
-// disposable Linux run proves both boundaries and a separate PR removes the
-// guard. The collector/runner shapes below define the readback evidence each
-// boundary must publish; the production materializer never bypasses the guard
-// through test-only injection.
+// A3 storage-quota and service-smoke boundary contracts. The default production
+// runtime and arbitrary test hooks remain fail-closed. Only the fixed-root
+// production runtime factory can opt an approved invocation into fresh XFS
+// project-tree/quota readback and the restricted service-principal smoke path.
 const STORAGE_QUOTA_EVIDENCE_KEYS = Object.freeze([
   "filesystem", "projectId", "byteHardLimit", "byteCurrent", "inodeHardLimit", "inodeCurrent",
   "headroomBytes", "headroomInodes", "probe"
 ]);
 const STORAGE_QUOTA_PROBE_KEYS = Object.freeze(["expectedErrorCode", "observedErrorCode", "exhausted"]);
+const PRODUCTION_STORAGE_QUOTA_READBACK_KEYS = Object.freeze([
+  "filesystem", "mountpoint", "projectId", "byteHardLimit", "byteCurrent", "inodeHardLimit", "inodeCurrent",
+  "headroomBytes", "headroomInodes", "projectTreeVerified", "accounting", "enforcement"
+]);
 const XFS_PROJECT_QUOTA_ERROR_CODE = "ENOSPC";
 const SERVICE_SMOKE_READBACK_KEYS = Object.freeze([
   "serviceUid", "serviceGid", "fixedNodePath", "noNetwork", "capabilityBoundingSet",
@@ -480,6 +481,31 @@ export function parseStorageQuotaEvidence(value) {
     headroomBytes: value.headroomBytes,
     headroomInodes: value.headroomInodes,
     probe: Object.freeze({ expectedErrorCode: probe.expectedErrorCode, observedErrorCode: probe.observedErrorCode, exhausted: probe.exhausted === true })
+  });
+}
+export function parseProductionStorageQuotaReadback(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail("storage_quota_evidence_invalid");
+  const actual = Object.keys(value).sort(), wanted = [...PRODUCTION_STORAGE_QUOTA_READBACK_KEYS].sort();
+  if (actual.length !== wanted.length || !actual.every((key, index) => key === wanted[index])) fail("storage_quota_evidence_invalid");
+  if (typeof value.filesystem !== "string" || !value.filesystem.startsWith("/dev/") || value.filesystem.includes("\0")
+    || value.filesystem.includes("/../") || value.filesystem.endsWith("/..")
+    || typeof value.mountpoint !== "string" || !value.mountpoint.startsWith("/") || value.mountpoint.includes("\0")
+    || value.mountpoint.includes("/../") || value.mountpoint.endsWith("/..")) fail("storage_quota_evidence_invalid");
+  if (!Number.isSafeInteger(value.projectId) || value.projectId <= 0
+    || !Number.isSafeInteger(value.byteHardLimit) || value.byteHardLimit <= 0
+    || !Number.isSafeInteger(value.byteCurrent) || value.byteCurrent < 0 || value.byteCurrent > value.byteHardLimit
+    || !Number.isSafeInteger(value.inodeHardLimit) || value.inodeHardLimit <= 0
+    || !Number.isSafeInteger(value.inodeCurrent) || value.inodeCurrent < 0 || value.inodeCurrent > value.inodeHardLimit
+    || value.headroomBytes !== value.byteHardLimit - value.byteCurrent
+    || value.headroomInodes !== value.inodeHardLimit - value.inodeCurrent
+    || value.headroomBytes <= 0 || value.headroomInodes <= 0
+    || value.projectTreeVerified !== true || value.accounting !== true || value.enforcement !== true) fail("storage_quota_evidence_invalid");
+  return Object.freeze({
+    filesystem: value.filesystem, mountpoint: value.mountpoint, projectId: value.projectId,
+    byteHardLimit: value.byteHardLimit, byteCurrent: value.byteCurrent,
+    inodeHardLimit: value.inodeHardLimit, inodeCurrent: value.inodeCurrent,
+    headroomBytes: value.headroomBytes, headroomInodes: value.headroomInodes,
+    projectTreeVerified: true, accounting: true, enforcement: true
   });
 }
 export function parseServiceSmokeReadback(value) {
@@ -532,7 +558,7 @@ function a3PhysicalContext(runLabel, supplied, smokePhase = "validation") {
   const deploymentRoot = `${projectRoot}/deployment`;
   const unit = `control-plane-a3-service-smoke-${runLabel}-${smokePhase}`;
   const visibleRoot = `${A3_SERVICE_SMOKE_BIND_ROOT}/${unit}/project`;
-  return Object.freeze({ tools, probeRoot, projectRoot, deploymentRoot, unit, visibleRoot });
+  return Object.freeze({ tools, probeRoot, projectRoot, deploymentRoot, unit, visibleRoot, smokePhase });
 }
 
 function executeA3Physical(command, args, supplied, condition, { attentionRequired = false, requireEmptyStderr = false } = {}) {
@@ -775,6 +801,20 @@ function parseFindmntEvidence(bytes, expectedTarget) {
     || !filesystem.options.split(",").some((option) => option === "pquota" || option === "prjquota")) fail("storage_quota_evidence_invalid");
   return filesystem.source;
 }
+function parseProductionFindmntEvidence(bytes, expectedTarget) {
+  const value = strictJsonObject(Buffer.from(bytes, "utf8"), "storage_quota_evidence_invalid");
+  if (!keys(value, ["filesystems"]) || !Array.isArray(value.filesystems) || value.filesystems.length !== 1) fail("storage_quota_evidence_invalid");
+  const filesystem = value.filesystems[0];
+  const target = filesystem.target;
+  const targetContainsProject = typeof target === "string" && target.startsWith("/") && !target.includes("\0")
+    && !target.includes("/../") && !target.endsWith("/..")
+    && (target === expectedTarget || target === "/" || expectedTarget.startsWith(`${target.replace(/\/$/, "")}/`));
+  if (!keys(filesystem, ["target", "source", "fstype", "options"]) || !targetContainsProject || filesystem.fstype !== "xfs"
+    || typeof filesystem.source !== "string" || !filesystem.source.startsWith("/dev/") || filesystem.source.includes("\0")
+    || filesystem.source.includes("/../") || filesystem.source.endsWith("/..") || typeof filesystem.options !== "string"
+    || !filesystem.options.split(",").some((option) => option === "pquota" || option === "prjquota")) fail("storage_quota_evidence_invalid");
+  return Object.freeze({ source: filesystem.source, mountpoint: target });
+}
 
 function parseXfsQuotaReport(output, projectId, scale) {
   const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -939,8 +979,70 @@ export function collectStorageQuotaEvidence({ runLabel, projectId, runtime: supp
   });
 }
 
-export function buildServiceNativeSmokeInvocation({ runLabel, smokePhase = "validation", root, service, runtime: supplied = runtime() } = {}) {
-  const context = a3PhysicalContext(runLabel, supplied, smokePhase);
+export function collectProductionStorageQuotaReadback({ root, projectId, runtime: supplied = runtime() } = {}) {
+  const production = productionA3Runtime(supplied);
+  const collectorTest = supplied?.allowA3PhysicalValidation === true
+    && root === DEFAULT_CONTROL_PLANE_DEPLOYMENT_ROOT && Number.isSafeInteger(projectId) && projectId > 0;
+  if (!production && !collectorTest) fail("worker_storage_limit_unavailable");
+  requireRoot(supplied);
+  const projectRoot = production ? supplied.root : root;
+  projectId = production ? supplied.a3ProjectId : projectId;
+  for (const [name, expected] of Object.entries(A3_PHYSICAL_TOOLS)) if (supplied.tools?.[name] !== expected) fail("untrusted_system_tool");
+  const findmnt = executeA3Physical(
+    supplied.tools.findmnt,
+    ["--json", "--target", projectRoot, "--output", "TARGET,SOURCE,FSTYPE,OPTIONS"],
+    supplied,
+    "storage_quota_evidence_invalid"
+  );
+  const mounted = parseProductionFindmntEvidence(findmnt, projectRoot);
+  const project = executeA3Physical(supplied.tools.xfsIo, ["-c", "lsproj", projectRoot], supplied, "storage_quota_evidence_invalid");
+  if (project.trim() !== `projid = ${projectId}`) fail("storage_quota_evidence_invalid");
+  const projectCheck = executeA3Physical(
+    supplied.tools.xfsQuota,
+    ["-x", "-c", `project -c -p ${projectRoot} ${projectId}`, projectRoot],
+    supplied,
+    "storage_quota_evidence_invalid",
+    { requireEmptyStderr: true }
+  );
+  parseXfsProjectCheck(projectCheck, projectRoot, projectId);
+  const state = executeA3Physical(supplied.tools.xfsQuota, ["-x", "-c", "state -p", projectRoot], supplied, "storage_quota_evidence_invalid");
+  const accounting = /^\s*Accounting:\s+ON\s*$/m.test(state), enforcement = /^\s*Enforcement:\s+ON\s*$/m.test(state);
+  if (!accounting || !enforcement) fail("storage_quota_evidence_invalid");
+  const blocks = parseXfsQuotaReport(executeA3Physical(
+    supplied.tools.xfsQuota,
+    ["-x", "-c", `report -p -b -n -N -L ${projectId} -U ${projectId}`, projectRoot],
+    supplied,
+    "storage_quota_evidence_invalid"
+  ), projectId, 1024);
+  const inodes = parseXfsQuotaReport(executeA3Physical(
+    supplied.tools.xfsQuota,
+    ["-x", "-c", `report -p -i -n -N -L ${projectId} -U ${projectId}`, projectRoot],
+    supplied,
+    "storage_quota_evidence_invalid"
+  ), projectId, 1);
+  return parseProductionStorageQuotaReadback({
+    filesystem: mounted.source, mountpoint: mounted.mountpoint, projectId, byteHardLimit: blocks.hard, byteCurrent: blocks.current,
+    inodeHardLimit: inodes.hard, inodeCurrent: inodes.current,
+    headroomBytes: blocks.hard - blocks.current, headroomInodes: inodes.hard - inodes.current,
+    projectTreeVerified: true, accounting, enforcement
+  });
+}
+
+function productionServiceNativeSmokeContext(supplied, smokePhase) {
+  if (!productionA3Runtime(supplied) || !A3_SMOKE_PHASES.has(smokePhase)) fail("worker_storage_limit_unavailable");
+  const unit = `control-plane-a3-service-smoke-${supplied.a3RunLabel}-${smokePhase}`;
+  return Object.freeze({
+    tools: supplied.tools,
+    probeRoot: supplied.lockRoot,
+    projectRoot: supplied.root,
+    deploymentRoot: supplied.root,
+    unit,
+    visibleRoot: `${A3_SERVICE_SMOKE_BIND_ROOT}/${unit}/project`,
+    smokePhase
+  });
+}
+
+function buildServiceNativeSmokeInvocationForContext({ context, root, service }) {
   const allowedRoot = root === context.projectRoot || typeof root === "string" && root.startsWith(`${context.deploymentRoot}/`)
     && !root.includes("//") && !root.includes("/../") && !root.includes("/./") && !root.endsWith("/..") && !root.endsWith("/.") && !root.includes(":") && !root.includes("\0");
   if (!allowedRoot || !service || !Number.isSafeInteger(service.uid) || service.uid <= 0
@@ -948,8 +1050,8 @@ export function buildServiceNativeSmokeInvocation({ runLabel, smokePhase = "vali
   const worker = fileURLToPath(new URL("./control-plane-dependency-artifact.mjs", import.meta.url));
   const visibleWorker = `${A3_SERVICE_SMOKE_BIND_ROOT}/${context.unit}/control-plane-dependency-artifact.mjs`;
   const bindReadOnlyPaths = [`${root}:${context.visibleRoot}:norbind`, `${worker}:${visibleWorker}:norbind`];
-  const captureStdout = `${context.probeRoot}/service-smoke-${smokePhase}.stdout.json`;
-  const captureStderr = `${context.probeRoot}/service-smoke-${smokePhase}.stderr.txt`;
+  const captureStdout = `${context.probeRoot}/service-smoke-${context.smokePhase}.stdout.json`;
+  const captureStderr = `${context.probeRoot}/service-smoke-${context.smokePhase}.stderr.txt`;
   const properties = [
     `User=${service.uid}`, `Group=${service.gid}`, "DynamicUser=no", "PrivateNetwork=yes", "RestrictAddressFamilies=AF_UNIX",
     "CapabilityBoundingSet=", "NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes",
@@ -964,6 +1066,12 @@ export function buildServiceNativeSmokeInvocation({ runLabel, smokePhase = "vali
     worker, visibleWorker, bindReadOnlyPaths: Object.freeze(bindReadOnlyPaths), captureStdout, captureStderr,
     unit: context.unit, visibleRoot: context.visibleRoot
   });
+}
+export function buildServiceNativeSmokeInvocation({ runLabel, smokePhase = "validation", root, service, runtime: supplied = runtime() } = {}) {
+  return buildServiceNativeSmokeInvocationForContext({ context: a3PhysicalContext(runLabel, supplied, smokePhase), root, service });
+}
+export function buildProductionServiceNativeSmokeInvocation({ smokePhase = "validation", root, service, runtime: supplied = runtime() } = {}) {
+  return buildServiceNativeSmokeInvocationForContext({ context: productionServiceNativeSmokeContext(supplied, smokePhase), root, service });
 }
 
 function parseServiceSmokeProcessOutput(stdout) {
@@ -986,9 +1094,8 @@ function parseServiceSmokeProcessOutput(stdout) {
   });
 }
 
-export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "validation", root, service, runtime: supplied = runtime() } = {}) {
-  const context = a3PhysicalContext(runLabel, supplied, smokePhase);
-  const invocation = buildServiceNativeSmokeInvocation({ runLabel, smokePhase, root, service, runtime: supplied });
+function collectServiceNativeSmokeEvidenceForContext({ context, root, service, runtime: supplied }) {
+  const invocation = buildServiceNativeSmokeInvocationForContext({ context, root, service });
   validateA3ServiceSmokeCaptureBoundary(context, invocation, supplied);
   validateA3CgroupV2Root(supplied);
   const stdoutState = a3PhysicalLeafState(invocation.captureStdout, supplied, "service_smoke_readback_invalid");
@@ -1047,6 +1154,12 @@ export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "vali
     betterSqlite3Memory: observed.smoke.betterSqlite3Memory, snapshotImport: observed.smoke.snapshotImport
   });
 }
+export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "validation", root, service, runtime: supplied = runtime() } = {}) {
+  return collectServiceNativeSmokeEvidenceForContext({ context: a3PhysicalContext(runLabel, supplied, smokePhase), root, service, runtime: supplied });
+}
+export function collectProductionServiceNativeSmokeEvidence({ smokePhase = "validation", root, service, runtime: supplied = runtime() } = {}) {
+  return collectServiceNativeSmokeEvidenceForContext({ context: productionServiceNativeSmokeContext(supplied, smokePhase), root, service, runtime: supplied });
+}
 
 function runServiceNativeSmoke({ root, service, snapshotModule, runtime: supplied }) {
   if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
@@ -1058,6 +1171,23 @@ function runServiceNativeSmoke({ root, service, snapshotModule, runtime: supplie
   return readback;
 }
 export function createCandidateDependencyGateTestRuntime(overrides = {}) { return runtime({ platform: "linux", requireRoot: false, enforceOwnership: false, ...overrides }); }
+function productionA3Runtime(supplied) {
+  return Boolean(supplied && typeof supplied === "object" && PRODUCTION_A3_RUNTIMES.has(supplied)
+    && supplied.platform === "linux" && supplied.requireRoot === true && supplied.enforceOwnership === true
+    && supplied.root === DEFAULT_CONTROL_PLANE_DEPLOYMENT_ROOT && A3_RUN_LABEL.test(supplied.a3RunLabel || "")
+    && Number.isSafeInteger(supplied.a3ProjectId) && supplied.a3ProjectId > 0);
+}
+export function createCandidateDependencyGateProductionRuntime(options = {}) {
+  if (!options || !keys(options, ["runLabel", "projectId"]) || !A3_RUN_LABEL.test(options.runLabel || "")
+    || !Number.isSafeInteger(options.projectId) || options.projectId <= 0) fail("invalid_input");
+  const supplied = Object.freeze(runtime({
+    platform: "linux", requireRoot: true, enforceOwnership: true,
+    a3RunLabel: options.runLabel, a3ProjectId: options.projectId,
+    tools: Object.freeze({ ...PRODUCTION_TRANSIENT_TOOLS, ...A3_PHYSICAL_TOOLS })
+  }));
+  PRODUCTION_A3_RUNTIMES.add(supplied);
+  return supplied;
+}
 export function createCandidateDependencyGateA3PhysicalValidationRuntime({ runLabel, projectId, overrides = {} } = {}) {
   if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) fail("invalid_input");
   const physical = runtime({
@@ -1951,6 +2081,7 @@ function snapshotSource(context, runtime) { const source = fileIn(context.candid
 
 function evidenceHash(value) { return hash(Buffer.from(JSON.stringify(value))); }
 function quotaEvidenceForMaterialization(supplied) {
+  if (productionA3Runtime(supplied)) return collectProductionStorageQuotaReadback({ runtime: supplied });
   if (supplied.allowA3PhysicalValidation !== true || typeof supplied.collectStorageQuotaEvidence !== "function"
     || typeof supplied.a3ProjectRoot !== "string" || !supplied.a3ProjectRoot
     || supplied.root !== `${supplied.a3ProjectRoot}/deployment` && supplied.allowSyntheticA3Evidence !== true
@@ -1959,18 +2090,44 @@ function quotaEvidenceForMaterialization(supplied) {
   if (evidence.projectId !== supplied.a3ProjectId) fail("storage_quota_evidence_invalid");
   return evidence;
 }
-function materializerSafetyEvidence(quota, smoke, supplied, capturedAt = now(supplied)) {
+function storageQuotaBoundary(quota) {
+  if (!quota || typeof quota !== "object" || typeof quota.filesystem !== "string" || !quota.filesystem
+    || !Number.isSafeInteger(quota.projectId) || quota.projectId <= 0
+    || !Number.isSafeInteger(quota.byteHardLimit) || quota.byteHardLimit <= 0
+    || !Number.isSafeInteger(quota.inodeHardLimit) || quota.inodeHardLimit <= 0) fail("storage_quota_evidence_invalid");
+  return Object.freeze({
+    filesystem: quota.filesystem,
+    mountpoint: quota.mountpoint ?? null,
+    projectId: quota.projectId,
+    byteHardLimit: quota.byteHardLimit,
+    inodeHardLimit: quota.inodeHardLimit,
+    projectTreeVerified: true,
+    accounting: true,
+    enforcement: true
+  });
+}
+function sameStorageQuotaBoundary(left, right) {
+  if (evidenceHash(storageQuotaBoundary(left)) !== evidenceHash(storageQuotaBoundary(right))) fail("storage_quota_evidence_invalid", true);
+}
+function materializerSafetyEvidence(quota, smoke, supplied, capturedAt = now(supplied), quotaBefore = quota) {
   const readback = parseServiceSmokeReadback(smoke);
   return Object.freeze({
     projectId: quota.projectId,
-    quotaEvidenceSha256: evidenceHash(quota),
+    quotaBoundarySha256: evidenceHash(storageQuotaBoundary(quota)),
+    quotaBeforeReadbackSha256: evidenceHash(quotaBefore),
+    quotaAfterReadbackSha256: evidenceHash(quota),
     serviceSmokeEvidenceSha256: evidenceHash(readback),
     capturedAt
   });
 }
-function receiptPayload(state, artifact, tree, safety, runtime) { return { schemaVersion: "2", materializerSchemaVersion: 2, type: "control_plane_candidate_dependency_receipt", state: "materialized", releaseUnit: UNIT, currentRelease: state.c.current, candidateRelease: state.c.candidate, sourceCommit: state.input.source.sourceCommit, artifactSha256: state.input.source.artifact.sha256, artifactSizeBytes: state.input.source.artifact.sizeBytes, artifactManifestSha256: state.input.artifactManifest, artifactManifestSizeBytes: state.input.artifactManifestSizeBytes, artifactStageReceiptSha256: state.input.artifact, artifactStageReceiptSizeBytes: state.input.artifactStageReceiptSizeBytes, dependencyArtifactManifestSha256: artifact.manifestSha256, dependencyArtifactManifestSizeBytes: artifact.manifestSizeBytes, dependencyArchiveSha256: artifact.archive.sha256, dependencyArchiveSizeBytes: artifact.archive.sizeBytes, dependencyArtifactTreeSha256: artifact.artifactTree.sha256, dependencyArtifactTreeEntryCount: artifact.artifactTree.entryCount, dependencyArtifactTreeTotalBytes: artifact.artifactTree.totalBytes, assemblySha256: state.input.assembly, packageSha256: state.input.package, packageLockSha256: state.input.lock, nodeModulesTreeSha256: tree.sha256, nodeModulesTreeEntryCount: tree.entryCount, nodeModulesTreeTotalBytes: tree.totalBytes, serviceUid: state.service.uid, serviceGid: state.service.gid, storageProjectId: safety.projectId, storageQuotaEvidenceSha256: safety.quotaEvidenceSha256, serviceSmokeEvidenceSha256: safety.serviceSmokeEvidenceSha256, safetyEvidenceCapturedAt: safety.capturedAt, createdAt: now(runtime) }; }
-function checkReceipt(value, state, artifact, tree = null, safety = null) { const expected = ["schemaVersion", "materializerSchemaVersion", "type", "state", "releaseUnit", "currentRelease", "candidateRelease", "sourceCommit", "artifactSha256", "artifactSizeBytes", "artifactManifestSha256", "artifactManifestSizeBytes", "artifactStageReceiptSha256", "artifactStageReceiptSizeBytes", "dependencyArtifactManifestSha256", "dependencyArtifactManifestSizeBytes", "dependencyArchiveSha256", "dependencyArchiveSizeBytes", "dependencyArtifactTreeSha256", "dependencyArtifactTreeEntryCount", "dependencyArtifactTreeTotalBytes", "assemblySha256", "packageSha256", "packageLockSha256", "nodeModulesTreeSha256", "nodeModulesTreeEntryCount", "nodeModulesTreeTotalBytes", "serviceUid", "serviceGid", "storageProjectId", "storageQuotaEvidenceSha256", "serviceSmokeEvidenceSha256", "safetyEvidenceCapturedAt", "createdAt"];
-  if (!keys(value, expected) || value.schemaVersion !== "2" || value.materializerSchemaVersion !== 2 || value.type !== "control_plane_candidate_dependency_receipt" || value.state !== "materialized" || value.releaseUnit !== UNIT || value.currentRelease !== state.c.current || value.candidateRelease !== state.c.candidate || value.sourceCommit !== state.input.source.sourceCommit || value.artifactSha256 !== state.input.source.artifact.sha256 || value.artifactSizeBytes !== state.input.source.artifact.sizeBytes || value.artifactManifestSha256 !== state.input.artifactManifest || value.artifactManifestSizeBytes !== state.input.artifactManifestSizeBytes || value.artifactStageReceiptSha256 !== state.input.artifact || value.artifactStageReceiptSizeBytes !== state.input.artifactStageReceiptSizeBytes || value.dependencyArtifactManifestSha256 !== artifact.manifestSha256 || value.dependencyArtifactManifestSizeBytes !== artifact.manifestSizeBytes || value.dependencyArchiveSha256 !== artifact.archive.sha256 || value.dependencyArchiveSizeBytes !== artifact.archive.sizeBytes || value.dependencyArtifactTreeSha256 !== artifact.artifactTree.sha256 || value.dependencyArtifactTreeEntryCount !== artifact.artifactTree.entryCount || value.dependencyArtifactTreeTotalBytes !== artifact.artifactTree.totalBytes || value.assemblySha256 !== state.input.assembly || value.packageSha256 !== state.input.package || value.packageLockSha256 !== state.input.lock || !HASH.test(value.nodeModulesTreeSha256 || "") || !Number.isSafeInteger(value.nodeModulesTreeEntryCount) || value.nodeModulesTreeEntryCount < 1 || !Number.isSafeInteger(value.nodeModulesTreeTotalBytes) || value.nodeModulesTreeTotalBytes < 0 || value.serviceUid !== state.service.uid || value.serviceGid !== state.service.gid || !Number.isSafeInteger(value.storageProjectId) || value.storageProjectId <= 0 || !HASH.test(value.storageQuotaEvidenceSha256 || "") || !HASH.test(value.serviceSmokeEvidenceSha256 || "") || !iso(value.safetyEvidenceCapturedAt) || !iso(value.createdAt) || tree && (value.nodeModulesTreeSha256 !== tree.sha256 || value.nodeModulesTreeEntryCount !== tree.entryCount || value.nodeModulesTreeTotalBytes !== tree.totalBytes) || safety && (value.storageProjectId !== safety.projectId || value.storageQuotaEvidenceSha256 !== safety.quotaEvidenceSha256 || value.serviceSmokeEvidenceSha256 !== safety.serviceSmokeEvidenceSha256 || value.safetyEvidenceCapturedAt !== safety.capturedAt)) fail("dependency_receipt_mismatch"); }
+function receiptPayload(state, artifact, tree, safety, runtime) { return { schemaVersion: "3", materializerSchemaVersion: 3, type: "control_plane_candidate_dependency_receipt", state: "materialized", releaseUnit: UNIT, currentRelease: state.c.current, candidateRelease: state.c.candidate, sourceCommit: state.input.source.sourceCommit, artifactSha256: state.input.source.artifact.sha256, artifactSizeBytes: state.input.source.artifact.sizeBytes, artifactManifestSha256: state.input.artifactManifest, artifactManifestSizeBytes: state.input.artifactManifestSizeBytes, artifactStageReceiptSha256: state.input.artifact, artifactStageReceiptSizeBytes: state.input.artifactStageReceiptSizeBytes, dependencyArtifactManifestSha256: artifact.manifestSha256, dependencyArtifactManifestSizeBytes: artifact.manifestSizeBytes, dependencyArchiveSha256: artifact.archive.sha256, dependencyArchiveSizeBytes: artifact.archive.sizeBytes, dependencyArtifactTreeSha256: artifact.artifactTree.sha256, dependencyArtifactTreeEntryCount: artifact.artifactTree.entryCount, dependencyArtifactTreeTotalBytes: artifact.artifactTree.totalBytes, assemblySha256: state.input.assembly, packageSha256: state.input.package, packageLockSha256: state.input.lock, nodeModulesTreeSha256: tree.sha256, nodeModulesTreeEntryCount: tree.entryCount, nodeModulesTreeTotalBytes: tree.totalBytes, serviceUid: state.service.uid, serviceGid: state.service.gid, storageProjectId: safety.projectId, storageQuotaBoundarySha256: safety.quotaBoundarySha256, storageQuotaBeforeReadbackSha256: safety.quotaBeforeReadbackSha256, storageQuotaAfterReadbackSha256: safety.quotaAfterReadbackSha256, serviceSmokeEvidenceSha256: safety.serviceSmokeEvidenceSha256, safetyEvidenceCapturedAt: safety.capturedAt, createdAt: now(runtime) }; }
+function requireCurrentReceiptSchema(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || value.schemaVersion !== "3" || value.materializerSchemaVersion !== 3
+    || !HASH.test(value.storageQuotaBoundarySha256 || "") || !HASH.test(value.storageQuotaBeforeReadbackSha256 || "")
+    || !HASH.test(value.storageQuotaAfterReadbackSha256 || "") || !HASH.test(value.serviceSmokeEvidenceSha256 || "")) fail("dependency_receipt_mismatch");
+}
+function checkReceipt(value, state, artifact, tree = null, safety = null, exactSafetyReadbacks = true) { const expected = ["schemaVersion", "materializerSchemaVersion", "type", "state", "releaseUnit", "currentRelease", "candidateRelease", "sourceCommit", "artifactSha256", "artifactSizeBytes", "artifactManifestSha256", "artifactManifestSizeBytes", "artifactStageReceiptSha256", "artifactStageReceiptSizeBytes", "dependencyArtifactManifestSha256", "dependencyArtifactManifestSizeBytes", "dependencyArchiveSha256", "dependencyArchiveSizeBytes", "dependencyArtifactTreeSha256", "dependencyArtifactTreeEntryCount", "dependencyArtifactTreeTotalBytes", "assemblySha256", "packageSha256", "packageLockSha256", "nodeModulesTreeSha256", "nodeModulesTreeEntryCount", "nodeModulesTreeTotalBytes", "serviceUid", "serviceGid", "storageProjectId", "storageQuotaBoundarySha256", "storageQuotaBeforeReadbackSha256", "storageQuotaAfterReadbackSha256", "serviceSmokeEvidenceSha256", "safetyEvidenceCapturedAt", "createdAt"];
+  if (!keys(value, expected) || value.schemaVersion !== "3" || value.materializerSchemaVersion !== 3 || value.type !== "control_plane_candidate_dependency_receipt" || value.state !== "materialized" || value.releaseUnit !== UNIT || value.currentRelease !== state.c.current || value.candidateRelease !== state.c.candidate || value.sourceCommit !== state.input.source.sourceCommit || value.artifactSha256 !== state.input.source.artifact.sha256 || value.artifactSizeBytes !== state.input.source.artifact.sizeBytes || value.artifactManifestSha256 !== state.input.artifactManifest || value.artifactManifestSizeBytes !== state.input.artifactManifestSizeBytes || value.artifactStageReceiptSha256 !== state.input.artifact || value.artifactStageReceiptSizeBytes !== state.input.artifactStageReceiptSizeBytes || value.dependencyArtifactManifestSha256 !== artifact.manifestSha256 || value.dependencyArtifactManifestSizeBytes !== artifact.manifestSizeBytes || value.dependencyArchiveSha256 !== artifact.archive.sha256 || value.dependencyArchiveSizeBytes !== artifact.archive.sizeBytes || value.dependencyArtifactTreeSha256 !== artifact.artifactTree.sha256 || value.dependencyArtifactTreeEntryCount !== artifact.artifactTree.entryCount || value.dependencyArtifactTreeTotalBytes !== artifact.artifactTree.totalBytes || value.assemblySha256 !== state.input.assembly || value.packageSha256 !== state.input.package || value.packageLockSha256 !== state.input.lock || !HASH.test(value.nodeModulesTreeSha256 || "") || !Number.isSafeInteger(value.nodeModulesTreeEntryCount) || value.nodeModulesTreeEntryCount < 1 || !Number.isSafeInteger(value.nodeModulesTreeTotalBytes) || value.nodeModulesTreeTotalBytes < 0 || value.serviceUid !== state.service.uid || value.serviceGid !== state.service.gid || !Number.isSafeInteger(value.storageProjectId) || value.storageProjectId <= 0 || !HASH.test(value.storageQuotaBoundarySha256 || "") || !HASH.test(value.storageQuotaBeforeReadbackSha256 || "") || !HASH.test(value.storageQuotaAfterReadbackSha256 || "") || !HASH.test(value.serviceSmokeEvidenceSha256 || "") || !iso(value.safetyEvidenceCapturedAt) || !iso(value.createdAt) || tree && (value.nodeModulesTreeSha256 !== tree.sha256 || value.nodeModulesTreeEntryCount !== tree.entryCount || value.nodeModulesTreeTotalBytes !== tree.totalBytes) || safety && (value.storageProjectId !== safety.projectId || value.storageQuotaBoundarySha256 !== safety.quotaBoundarySha256 || value.serviceSmokeEvidenceSha256 !== safety.serviceSmokeEvidenceSha256 || value.safetyEvidenceCapturedAt !== safety.capturedAt || exactSafetyReadbacks && (value.storageQuotaBeforeReadbackSha256 !== safety.quotaBeforeReadbackSha256 || value.storageQuotaAfterReadbackSha256 !== safety.quotaAfterReadbackSha256))) fail("dependency_receipt_mismatch"); }
 function receiptDirectory(context, runtime) { const parent = base(context.receipts, runtime, "dependency_receipt_publish_failed"), path = resolve(parent, context.candidate); if (!existsSync(path)) make(path, parent, runtime.enforceOwnership ? 0 : runtime.getuid(), runtime.enforceOwnership ? 0 : runtime.getgid(), 0o700, "dependency_receipt_publish_failed"); else if (readdirSync(directory(path, runtime, "dependency_receipt_publish_failed")).length) fail("dependency_receipt_present"); return directory(path, runtime, "dependency_receipt_publish_failed"); }
 function writeReceipt(state, payload, runtime) {
   const parent = receiptDirectory(state.c, runtime), path = resolve(parent, "node-modules-materialization.json");
@@ -2021,11 +2178,10 @@ function readReceipt(context, runtime) { if (!existsSync(context.receipt)) fail(
 function report(mode, state, value, tree = null, applied = false, artifact = null) { return { schemaVersion: CANDIDATE_DEPENDENCY_GATE_SCHEMA_VERSION, type: CANDIDATE_DEPENDENCY_GATE_TYPE, mode, state, applied, releaseUnit: UNIT, currentRelease: value.c.current, candidateRelease: value.c.candidate, servicePrincipal: { uid: value.service.uid, gid: value.service.gid }, sourceBinding: { artifactManifestBound: true, artifactStageReceiptBound: true, assemblyManifestBound: true, packageLockBound: true, ...(artifact ? { dependencyArtifactBound: true } : {}) }, ...(tree ? { dependencyTree: { audited: true, nativeBetterSqlite3: true, snapshotImportSafe: true, hardlinksBroken: tree.hardlinksBroken ?? tree.broken } } : {}), ...(["preflight", "verify"].includes(mode) ? { binding: { packageSha256: value.input.package, packageLockSha256: value.input.lock, assemblySha256: value.input.assembly, artifactManifestSha256: value.input.artifactManifest, artifactManifestSizeBytes: value.input.artifactManifestSizeBytes, artifactStageReceiptSha256: value.input.artifact, artifactStageReceiptSizeBytes: value.input.artifactStageReceiptSizeBytes, ...(artifact ? { dependencyArtifactManifestSha256: artifact.manifestSha256, dependencyArchiveSha256: artifact.archive.sha256 } : {}) } } : {}) }; }
 
 export function preflightCandidateDependencies({ candidateRelease, expectedCurrentRelease, runtime: supplied = runtime() } = {}) {
-  // A topology-only result must not be reported as production-ready while the
-  // storage quota and sandboxed native-smoke gates remain unavailable.
-  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
+  if (supplied.requireRoot && !productionA3Runtime(supplied)) fail("worker_storage_limit_unavailable");
   const initial = state(candidateRelease, expectedCurrentRelease, supplied);
   renameSupport(supplied);
+  if (productionA3Runtime(supplied)) quotaEvidenceForMaterialization(supplied);
   return report("preflight", "ready", steady(initial, supplied));
 }
 
@@ -2160,8 +2316,9 @@ function stageSnapshotModule(extracted, context, supplied) {
   } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail("native_module_validation_failed"); }
 }
 
-function serviceNativeSmoke(root, service, supplied) {
+function serviceNativeSmoke(root, service, supplied, smokePhase) {
   if (!service || service.uid <= 0 || service.gid <= 0) fail("service_identity_invalid");
+  if (productionA3Runtime(supplied)) return collectProductionServiceNativeSmokeEvidence({ smokePhase, root, service, runtime: supplied });
   if (supplied.requireRoot === true) fail("worker_storage_limit_unavailable");
   if (supplied.allowTestWorkerStorage === true && typeof supplied.runServiceNativeSmoke === "function") {
     return runServiceNativeSmoke({ root, service, snapshotModule: "scripts/control-plane-db-snapshot-gate.mjs", runtime: supplied });
@@ -2278,16 +2435,17 @@ export async function materializeCandidateDependencies({
 } = {}) {
   if (apply !== true) fail("apply_confirmation_required");
   const requested = requestedMaterializationIdentity(expectedSourceCommit, expectedArtifactRelease, expectedDependencyManifestSha256, expectedDependencyArchiveSha256);
-  // The CI artifact removes host-side npm lifecycle execution, but extraction
-  // still needs a hard aggregate storage budget and a sandboxed service smoke
-  // runner before it can write on a production filesystem. Keep the production
-  // route inert until those two independent boundaries are implemented.
-  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
+  // The default route remains inert. An explicitly configured production A3
+  // runtime proves the live project-quota boundary before extraction, executes
+  // both restricted service-native smokes, and re-reads the quota boundary
+  // after publish before a receipt can be committed.
+  if (supplied.requireRoot && !productionA3Runtime(supplied)) fail("worker_storage_limit_unavailable");
   let key, stage, extracted, published, receipt, evidence, quotaEvidence, safetyEvidence, result, error;
   try {
     let value = state(candidateRelease, expectedCurrentRelease, supplied);
     const identity = materializationIdentity(value, requested.sourceCommit, requested.artifactRelease, requested.manifestSha256, requested.archiveSha256);
     if (existsSync(value.c.receipt)) fail("dependency_receipt_present");
+    quotaEvidence = quotaEvidenceForMaterialization(supplied);
     key = lock(supplied);
     renameSupport(supplied);
     value = steady(value, supplied);
@@ -2302,7 +2460,6 @@ export async function materializeCandidateDependencies({
     if (error) throw error;
     let value = state(candidateRelease, expectedCurrentRelease, supplied);
     const identity = materializationIdentity(value, requested.sourceCommit, requested.artifactRelease, requested.manifestSha256, requested.archiveSha256);
-    quotaEvidence = quotaEvidenceForMaterialization(supplied);
     stage = artifactStaging(value.c, supplied);
     const prepared = prepareArtifactForMaterialization(value, identity, stage, supplied);
     evidence = prepared.evidence;
@@ -2312,7 +2469,7 @@ export async function materializeCandidateDependencies({
     normalizeArtifactTree(extracted.root, supplied);
     stageSnapshotModule(extracted, value.c, supplied);
     const normalizedTree = auditedPublishedTree(extracted.nodeModulesRoot, supplied, "candidate_tree_invalid");
-    serviceNativeSmoke(extracted.root, value.service, supplied);
+    serviceNativeSmoke(extracted.root, value.service, supplied, "prepublish");
     value = steady(value, supplied);
     materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
     recheckMaterializationArtifactInput(value, identity, evidence, supplied);
@@ -2328,8 +2485,10 @@ export async function materializeCandidateDependencies({
     if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory() || inode(targetMetadata) !== inode(sourceMetadata)) fail("node_modules_publish_failed", true);
     const finalTree = auditedPublishedTree(target, supplied, "postpublish_validation_failed");
     if (finalTree.sha256 !== normalizedTree.sha256 || finalTree.entryCount !== normalizedTree.entryCount || finalTree.totalBytes !== normalizedTree.totalBytes) fail("postpublish_validation_failed", true);
-    const publishedSmoke = serviceNativeSmoke(value.c.candidateRoot, value.service, supplied);
-    safetyEvidence = materializerSafetyEvidence(quotaEvidence, publishedSmoke, supplied);
+    const publishedSmoke = serviceNativeSmoke(value.c.candidateRoot, value.service, supplied, "postpublish");
+    const quotaAfterPublish = quotaEvidenceForMaterialization(supplied);
+    sameStorageQuotaBoundary(quotaEvidence, quotaAfterPublish);
+    safetyEvidence = materializerSafetyEvidence(quotaAfterPublish, publishedSmoke, supplied, undefined, quotaEvidence);
     value = steady(value, supplied, false);
     materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
     recheckMaterializationArtifactInput(value, identity, evidence, supplied);
@@ -2368,19 +2527,21 @@ export async function verifyCandidateDependencies({
   runtime: supplied = runtime()
 } = {}) {
   const requested = requestedMaterializationIdentity(expectedSourceCommit, expectedArtifactRelease, expectedDependencyManifestSha256, expectedDependencyArchiveSha256);
-  if (supplied.requireRoot) fail("worker_storage_limit_unavailable");
-  let key, stage, extracted, result, error;
+  if (supplied.requireRoot && !productionA3Runtime(supplied)) fail("worker_storage_limit_unavailable");
+  let key, stage, extracted, quotaEvidence, result, error;
   try {
     let value = state(candidateRelease, expectedCurrentRelease, supplied, false);
     const identity = materializationIdentity(value, requested.sourceCommit, requested.artifactRelease, requested.manifestSha256, requested.archiveSha256);
     const target = resolve(value.c.candidateRoot, "node_modules");
     const targetMetadata = stat(target, "candidate_tree_invalid");
     if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory()) fail("candidate_tree_invalid");
+    const receipt = readReceipt(value.c, supplied);
+    requireCurrentReceiptSchema(receipt.value);
+    quotaEvidence = quotaEvidenceForMaterialization(supplied);
     key = lock(supplied);
     value = steady(value, supplied, false);
     materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
     if (supplied.requireRoot) trustedAclAncestorChain(value.c.candidateRoot, supplied, "candidate_path_invalid");
-    const quotaEvidence = quotaEvidenceForMaterialization(supplied);
     stage = artifactStaging(value.c, supplied);
     const prepared = prepareArtifactForMaterialization(value, identity, stage, supplied);
     const evidence = prepared.evidence;
@@ -2388,15 +2549,14 @@ export async function verifyCandidateDependencies({
     const rawTree = auditedPublishedTree(extracted.nodeModulesRoot, supplied, "dependency_tree_invalid");
     sameArtifactTree(rawTree, evidence.artifactTree, "dependency_tree_mismatch");
     const finalTree = auditedPublishedTree(target, supplied, "postpublish_validation_failed");
-    const receipt = readReceipt(value.c, supplied);
     checkReceipt(receipt.value, value, evidence, finalTree);
-    const publishedSmoke = serviceNativeSmoke(value.c.candidateRoot, value.service, supplied);
+    const publishedSmoke = serviceNativeSmoke(value.c.candidateRoot, value.service, supplied, "verify");
     const safetyEvidence = materializerSafetyEvidence(quotaEvidence, publishedSmoke, supplied, receipt.value.safetyEvidenceCapturedAt);
-    checkReceipt(receipt.value, value, evidence, finalTree, safetyEvidence);
+    checkReceipt(receipt.value, value, evidence, finalTree, safetyEvidence, false);
     value = steady(value, supplied, false);
     materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
     recheckMaterializationArtifactInput(value, identity, evidence, supplied);
-    checkReceipt(readReceipt(value.c, supplied).value, value, evidence, finalTree, safetyEvidence);
+    checkReceipt(readReceipt(value.c, supplied).value, value, evidence, finalTree, safetyEvidence, false);
     const extractedClean = cleanupExtraction(extracted);
     const stageClean = eraseDirectory(stage);
     if (!extractedClean || !stageClean) fail("postpublish_cleanup_failed", true);
@@ -2415,11 +2575,12 @@ export async function verifyCandidateDependencies({
 }
 
 function args(argv) {
-  const values = new Map(); let apply = false;
-  const allowed = new Set(["--mode", "--candidate-release", "--expected-current-release", "--expected-source-commit", "--expected-artifact-release", "--expected-dependency-manifest-sha256", "--expected-dependency-archive-sha256"]);
+  const values = new Map(); let apply = false, enableA3Materializer = false;
+  const allowed = new Set(["--mode", "--candidate-release", "--expected-current-release", "--expected-source-commit", "--expected-artifact-release", "--expected-dependency-manifest-sha256", "--expected-dependency-archive-sha256", "--a3-run-label", "--a3-project-id"]);
   for (let index = 0; index < argv.length; index += 1) {
     const item = argv[index];
     if (item === "--apply") { if (apply) fail("invalid_input"); apply = true; continue; }
+    if (item === "--enable-a3-materializer") { if (enableA3Materializer) fail("invalid_input"); enableA3Materializer = true; continue; }
     const equals = typeof item === "string" ? item.indexOf("=") : -1, key = equals >= 0 ? item.slice(0, equals) : item;
     if (!allowed.has(key) || values.has(key)) fail("invalid_input");
     const value = equals >= 0 ? item.slice(equals + 1) : argv[++index];
@@ -2436,6 +2597,14 @@ function args(argv) {
     result.expectedDependencyManifestSha256 = values.get("--expected-dependency-manifest-sha256");
     result.expectedDependencyArchiveSha256 = values.get("--expected-dependency-archive-sha256");
   } else if (["--expected-source-commit", "--expected-artifact-release", "--expected-dependency-manifest-sha256", "--expected-dependency-archive-sha256"].some((key) => values.has(key))) fail("invalid_input");
+  const a3Configured = values.has("--a3-run-label") || values.has("--a3-project-id");
+  if (enableA3Materializer) {
+    const projectIdRaw = values.get("--a3-project-id");
+    if (!values.has("--a3-run-label") || !/^[1-9][0-9]*$/.test(projectIdRaw || "")) fail("invalid_input");
+    const projectId = Number(projectIdRaw);
+    if (!Number.isSafeInteger(projectId)) fail("invalid_input");
+    result.runtime = createCandidateDependencyGateProductionRuntime({ runLabel: values.get("--a3-run-label"), projectId });
+  } else if (a3Configured) fail("invalid_input");
   return result;
 }
 export async function runCandidateDependencyGateCli({ argv = process.argv.slice(2), stdout = process.stdout, stderr = process.stderr } = {}) { let mode = null; try { const value = args(argv); mode = value.mode; const result = mode === "preflight" ? preflightCandidateDependencies(value) : mode === "materialize" ? await materializeCandidateDependencies(value) : await verifyCandidateDependencies(value); stdout.write(`${JSON.stringify(result)}\n`); return 0; } catch (error) { const gate = error instanceof CandidateDependencyGateError ? error : null; stderr.write(`${JSON.stringify({ schemaVersion: CANDIDATE_DEPENDENCY_GATE_SCHEMA_VERSION, type: CANDIDATE_DEPENDENCY_GATE_TYPE, mode, state: gate?.attentionRequired ? "attention_required" : "blocked", condition: gate && SAFE.has(gate.condition) ? gate.condition : "postpublish_validation_failed" })}\n`); return 1; } }

@@ -1,10 +1,10 @@
 # A3-1 Materializer Physical Execution Spec
 
 > Status:
-> - Type: Active implementation spec (source implementation in progress; physical execution pending)
-> - Risk: A (physical validation and any future production use require separate approval; the current implementation PR is production-inert)
-> - Execution authority: Source/test changes only. This spec authorizes no production mutation, no node access, no provider interaction, and no probe execution until the implementation exact head/artifact is bound by the Issue #636 pre-execution approval.
-> - Production impact: None. The implementation keeps every production `worker_storage_limit_unavailable` guard in place; a later guard-lift PR remains separate.
+> - Type: A3-1 physical-proof record plus A3 production-integration contract
+> - Risk: B for the reviewed source integration; Risk A remains mandatory for any host inventory, quota setup, materialization, deployment, or production use
+> - Execution authority: Source/test changes only. This document authorizes no production mutation, node access, provider interaction, or credential use.
+> - Production impact: None. The production-capable branch is explicit and default-off; merging source does not activate it.
 > - Source of truth for: the seven physical execution paths that issue #636 Gate A3-1 requires before the production `worker_storage_limit_unavailable` guard may be reconsidered.
 > - Bound identities: see §0.5.
 
@@ -14,14 +14,50 @@ document_metadata:
   lifecycle: active
   authority_scope: a3_1_materializer_physical_execution_spec
   superseded_by: null
-  last_verified_at: 2026-08-21
+  last_verified_at: 2026-08-23
   production_authority: false
 ```
 
 > Supersedes: nothing.
-> Refs: PR #646 (A3-0 contract skeleton); PR #648 (this spec, merged `b0cbbabc`); issue #636 (Gate A3-0 closed, Gate A3-1 implementation in progress).
+> Refs: PR #646 (A3-0 contract skeleton); PR #648 (initial spec); PRs #654/#656 (completed physical proofs); issue #636 (A3 promotion boundary).
 
-## 0.5 Source-of-truth binding (exact identities)
+## Current integration delta (2026-08-23)
+
+The disposable XFS quota proof and restricted service-native smoke proof are
+complete through PRs #654 and #656. The separate production-integration source
+change therefore does not repeat an exhaustion probe on the production project.
+It adds an explicit CLI activation boundary:
+
+```text
+--enable-a3-materializer --a3-run-label <bounded-label> --a3-project-id <positive-id>
+```
+
+Without that complete identity tuple, production `requireRoot:true` entrypoints
+still return `worker_storage_limit_unavailable`. Arbitrary runtime hooks do not
+enable the route. With the explicit tuple, the fixed deployment root remains
+`/opt/proxy-gateway-minimal-candidate`; the materializer performs only fresh,
+read-only XFS mount/project-tree/accounting/enforcement/hard-limit readback,
+runs the already physically proven fixed-principal systemd smoke before and
+after publication, and verifies the same quota boundary after rename.
+
+Receipt schema 3 hashes the stable storage-boundary identity (filesystem,
+mountpoint, project ID, hard byte/inode limits, project-tree/accounting and
+enforcement state) rather than mutable current-usage counters. Current byte and
+inode usage remain mandatory fresh readback inputs and must retain positive
+headroom, but they are not treated as a long-lived identity. Schema 1/2 receipts
+fail closed.
+
+This source capability is not A3-2 inventory, quota initialization, production
+materialization, deployment, promotion, or feature activation. Those remain
+separate Risk A gates on the exact merged master artifact.
+
+Sections 0.5-10 below preserve the planning and execution controls used for the
+completed A3-1 physical proofs. Their pre-execution `pending` fields are
+historical records, not current authorization state and not reusable approval.
+For current source-integration acceptance, use section 11; for any future host
+or production action, create a new exact-head Risk A record.
+
+## 0.5 Historical physical-proof binding (exact identities)
 
 The following exact identities are the immutable A3-0 evidence baseline used
 to author this spec. Merging this docs-only spec will advance `master`; that
@@ -30,9 +66,9 @@ separately bind the then-current `master` SHA and a newly issued dependency
 artifact. It must never reuse the artifact below as execution input after
 `master` advances.
 
-The current implementation branch is based on the exact spec merge and its
-fresh dependency artifact. These values bind source development only; they do
-not authorize provider access or physical execution.
+The original A3-1 implementation branch was based on the exact spec merge and
+its fresh dependency artifact. These values are retained only as historical
+source-development bindings; they authorize no new provider or host action.
 
 | Implementation base field | Value |
 |---|---|
@@ -97,16 +133,13 @@ disposable_target_provider:
   required_record: Issue #636 pre-execution approval must bind the final implementation source/artifact and this exact target; A3-1 implementation PR body must repeat it
 ```
 
-> **Recorded, not approved.** The pairing above is a candidate identity record
-> only. It does **not** constitute formal approval. Risk A's independent-approval
-> gate is satisfied only when `gccltd` posts the §7 comment on Issue #636 AND
-> the final implementation source/artifact and selected provider/target are named in the Issue #636
-> pre-execution approval and repeated in the A3-1 implementation PR body.
-> Until both conditions hold: no provider interaction, no node access, no probe
-> execution, no production guard lift.
+> **Historical pre-execution record.** The pairing above did not itself
+> constitute approval and is not reusable. PRs #654/#656 contain the completed
+> physical-proof outcomes. Any new provider, node, or production action still
+> requires a fresh exact-head Risk A record.
 
 > Supersedes: nothing.
-> Refs: PR #646 (A3-0 contract skeleton); PR #648 (spec merge); issue #636 (A3-1 implementation source phase; execution approval pending).
+> Refs: PR #646 (A3-0 contract skeleton); PR #648 (spec merge); PRs #654/#656 (completed physical proofs); issue #636.
 
 ## 0. Why this spec exists
 
@@ -118,15 +151,15 @@ production `worker_storage_limit_unavailable` guard still fires under
 merged on `master` at `10b98227`. The contract is frozen; this spec does **not**
 re-open contract shape decisions.
 
-PR #646 is contract-skeleton code and tests only. It did not execute XFS
+PR #646 was contract-skeleton code and tests only. It did not execute XFS
 project-quota probes, did not spawn a service-principal sandbox unit, did not
 read cgroups, did not bind any project-ID to a release artifact, and did not
 lift the production guard.
 
-Gate A3-1 (issue #636) requires the actual physical execution paths that produce
-readback evidence matching those contracts. Until those paths run on a real
-disposable Linux target and the readback evidence matches, the production guard
-must remain in place.
+Gate A3-1 (issue #636) required actual physical execution paths that produced
+readback evidence matching those contracts. PRs #654 and #656 completed the
+disposable XFS and service-native proofs. That evidence permits this separate
+source-integration review; it does not authorize production execution.
 
 This spec defines those seven physical paths, the test environment that can
 host them, the read-only inventory that must precede them, the dry-run
@@ -143,14 +176,16 @@ splitting strategy.
 | 4 | Precise terminal / cgroup-empty readback | `parseServiceSmokeReadback.terminalActiveState / terminalSubState / cgroupEmpty` | No |
 | 5 | Wire physical evidence into `materialize` main flow | `materializeCandidateDependencies` boundary | Yes (gates production path) |
 | 6 | Pre/post release binding: project-ID + quota + receipt | `preflightCandidateDependencies` / `verifyCandidateDependencies` | Yes |
-| 7 | Re-evaluate `worker_storage_limit_unavailable` lift **only** after 1-6 met | All | Yes (guard lifted only by separate PR after items 1-6 verified) |
+| 7 | Re-evaluate `worker_storage_limit_unavailable` lift **only** after 1-6 met | All | Yes (implemented only by the separate default-off source integration after items 1-6 were verified) |
 
-Item 7 is not implementation; it is a decision gate that authorises a future
-follow-up PR to consider relaxing the guard. A3-1 itself keeps the guard.
+Item 7 was the decision gate for this separate source-integration PR. The
+default path and arbitrary runtime injection continue to keep the guard; only
+the complete explicit activation tuple may enter the reviewed branch.
 
 ## 2. Out of scope (explicit non-goals for the A3-1 implementation PR)
 
-- Lifting `worker_storage_limit_unavailable` in the A3-1 implementation PR. The guard stays.
+- Enabling the A3 production branch by default or accepting partial/forged
+  runtime activation. Those paths retain `worker_storage_limit_unavailable`.
 - Production candidate deployment. Production impact is `none` for the A3-1 implementation PR.
 - Replacing the contract skeleton landed by PR #646. The contract is frozen.
 - Touching any sibling / historical worktree under `C:/Users/g/copilot-worktrees/proxy-gateway-minimal-worktrees/` or `D:/Projects/proxy-gateway-minimal`. A3-1 lands in a fresh worktree branched from a clean baseline.
@@ -368,50 +403,41 @@ execution phase that produces the readback. Dry-run must pass before real-run.
 
 ### 6.5 Item 5 — wire physical evidence into `materialize` main flow (dry-run)
 
-- Plan the integration: `materializeCandidateDependencies` already throws
-  `worker_storage_limit_unavailable` under `requireRoot: true`. The
-  integration adds a new branch when `requireRoot: false` and
-  `allowPhysicalMaterializer: true` is set (new env / option, default off).
-- New branch must:
-  1. Run items 1-2 evidence collection.
-  2. Run item 3 sandbox + item 4 readback.
-  3. Pass results through `parseStorageQuotaEvidence` and `parseServiceSmokeReadback`.
-  4. Persist the parsed results into the candidate receipt.
-- The branch must be unreachable in production (`allowPhysicalMaterializer`
-  defaults to `false` everywhere outside the approved disposable sandbox).
-- No code written until items 1-4 dry-run pass.
+- Items 1-4 are complete physical capability evidence and are not repeated by
+  filling the production quota project.
+- The production integration remains `requireRoot:true` and is reachable only
+  with the complete explicit CLI identity tuple recorded above.
+- Before extraction it validates the fixed deployment root's XFS mount,
+  project ID/tree, quota accounting/enforcement, hard limits and positive
+  byte/inode headroom using read-only commands.
+- It executes the restricted fixed-principal smoke on the extracted tree and
+  published tree, then repeats quota readback after rename and rejects stable
+  boundary drift before writing the receipt.
+- Without the activation tuple, or with any missing/mismatched readback, the
+  existing fail-closed condition remains.
 
-### 6.6 Item 6 — pre/post release binding (dry-run)
+### 6.6 Item 6 — pre/post release binding
 
-- Plan receipt schema additions (under the **version bump** policy, see §3 and §6.7):
-  `materializerSchemaVersion`, `materializerProjectId`,
-  `materializerQuotaEvidenceHash`, `materializerSmokeReadbackHash`,
-  `materializerReadbackCapturedAt`.
-- The hash is `sha256(canonicalJson(readback))` where `canonicalJson` is the
-  repository's existing canonicaliser (do not invent a new one).
-- Plan a CLI subcommand `gccgw candidate bind-materializer-readback
-  --release <id>` that validates receipt hashes against the bound
-  artifact.
-- No code written until item 5 dry-run passes.
+- Receipt schema 3 records `storageProjectId`,
+  `storageQuotaBoundarySha256`, `storageQuotaBeforeReadbackSha256`,
+  `storageQuotaAfterReadbackSha256`, `serviceSmokeEvidenceSha256`, and
+  `safetyEvidenceCapturedAt`.
+- The quota hash covers the stable boundary identity. Mutable current usage is
+  freshly validated before/after but is intentionally excluded from the
+  long-lived identity hash.
+- `verify` recomputes the stable quota-boundary hash and restricted smoke hash;
+  schema 1/2 or any identity drift fails closed.
 
 ### 6.7 Receipt schema policy (version bump, not additive-only)
 
-Quotas, project IDs, XFS project-quota exhaustion probes, and sandbox terminal/cgroup evidence
-carry mandatory new safety semantics. An additive-only schema change would
-let older receipts appear compatible and risk silent acceptance of unsafe
-receipts. The A3-1 implementation PR **must** bump the receipt schema
-version (e.g. `materializerSchemaVersion: 2`) and the receipt loader
-**must** fail-closed for any receipt that:
+Quotas, project IDs, XFS project-tree state, and sandbox terminal/cgroup
+evidence carry mandatory safety semantics. Receipt schema 3 is therefore a
+version bump, not an additive relaxation. The loader fails closed for schema
+1/2, missing schema-3 fields, malformed hashes, or hashes that do not match the
+freshly recomputed stable quota boundary and service smoke readback.
 
-- does not carry `materializerSchemaVersion: 2`;
-- carries `materializerSchemaVersion: <2` but lacks any of
-  `materializerProjectId`, `materializerQuotaEvidenceHash`,
-  `materializerSmokeReadbackHash`, `materializerReadbackCapturedAt`;
-- carries `materializerSchemaVersion: 2` whose hashes do not match a
-  freshly recomputed `sha256(canonicalJson(readback))`.
-
-The fail-closed rule applies **before** `materialize` reaches the
-`requireRoot: true` branch and is independent of the
+The fail-closed receipt-version rule applies before `verify` acquires its lock
+or creates a staging tree and is independent of the default
 `worker_storage_limit_unavailable` guard.
 
 ## 7. Operator approval template
@@ -456,24 +482,22 @@ Required packet fields:
 - `rollback_owner`: same approver
 - `rollback_window_hours`: ≤ 24
 
-No approval packet ⇒ no code merge ⇒ no production change.
+No production approval packet ⇒ no production inventory or change.
 
 ## 8. Rollback plan
 
-A3-1 items 5-6 land behind two flag gates (`allowPhysicalMaterializer: false`
-by default everywhere; the new CLI subcommand ships disabled until operator
-approval). If any post-merge signal indicates regression:
+A3 integration is disabled unless every invocation supplies the explicit
+activation flag, run label, and project ID. If any post-merge signal indicates
+regression:
 
-1. Disable `allowPhysicalMaterializer` in the candidate runtime config
-   (single env flip; takes effect on next materialise attempt).
+1. Omit `--enable-a3-materializer` and its identity tuple from every invocation.
 2. The production path reverts to the existing `requireRoot: true` →
    `worker_storage_limit_unavailable` fail-closed branch.
-3. Disable the new CLI subcommand.
-4. Re-run targeted tests
+3. Re-run targeted tests
    (`node --test server/tests/control-plane-materializer-a3-safety.test.mjs`,
    `node --test server/tests/control-plane-candidate-dependency-gate.test.mjs`)
    to confirm no regression in the contract layer.
-5. Open a follow-up issue with the captured evidence and the rollback log.
+4. Open a follow-up issue with the captured evidence and the rollback log.
 
 If the disposable sandbox still exists, stop only the exact transient units,
 prove their cgroups empty, unmount the exact run mount, detach the exact loop
@@ -504,7 +528,9 @@ Receipt schema impact: version bump; old schemas fail-closed
 
 ## 10. Hard constraints (from the project's risk model)
 
-- Production `worker_storage_limit_unavailable` guard is **never** lifted by A3-1.
+- Default production invocations and arbitrary runtime injection continue to
+  fail closed with `worker_storage_limit_unavailable`; only the reviewed exact
+  activation tuple can enter the production integration branch.
 - No historical stopped node is treated as staging.
 - No production `.env`, token, SQLite, or `SS_PASSWORD` is copied anywhere.
 - No Admin UI is opened to the public network.
@@ -515,26 +541,28 @@ Receipt schema impact: version bump; old schemas fail-closed
 - A3-1 implementation PR does not authorise A3-2, production deploy, or
   feature flag flips.
 
-## 11. Definition of done (A3-1 implementation PR is mergeable when)
+## 11. Definition of done (production-integration source PR)
 
-- [ ] All six items 1-6 in §1 have a "done" checkbox ticked in the PR body.
-- [ ] All six dry-runs in §6 have been executed and recorded in the PR.
-- [ ] Read-only inventory from §5 is pasted into the PR.
-- [ ] Real-run evidence for items 1-4 is captured, hashed, and matches the
-      `parseStorageQuotaEvidence` / `parseServiceSmokeReadback` contracts
-      bit-for-bit.
-- [ ] Operator approval packet from §7 is filed under
-      `docs/production-replacement-records/`, with named approver (a
-      resolvable production owner) AND a separate identity-verifier.
-- [ ] Rollback/cleanup plan from §8 has been rehearsed in the disposable sandbox.
+- [ ] PR body links the completed physical evidence from PRs #654/#656 and
+      states that it is not reusable production authorization.
+- [ ] Explicit activation requires the complete flag/run-label/project-ID tuple;
+      default and forged runtimes fail closed before side effects.
+- [ ] Production quota collection is read-only and proves XFS mount,
+      project-tree, accounting, enforcement, hard limits, and positive headroom.
+- [ ] Production service smoke reuses the physically proven fixed-principal
+      oneshot contract and validates terminal/cgroup cleanup.
+- [ ] Receipt schema 3 binds stable quota and smoke evidence; schema 1/2 fails
+      closed before verify lock or staging creation.
 - [ ] `git diff --check origin/master...HEAD` is clean.
 - [ ] `npm test` is green.
 - [ ] `npm run docs:authority:strict` is green.
-- [ ] `worker_storage_limit_unavailable` guard is **still present** in all 11
-      sites that PR #646 preserved.
-- [ ] Receipt schema bumped per §6.7; old schemas fail-closed.
+- [ ] Default production and injected-hook runtimes still fail before side
+      effects with `worker_storage_limit_unavailable`.
+- [ ] The explicit fixed-root runtime performs fresh quota readback before and
+      after publish plus prepublish/postpublish/verify service-native smoke.
+- [ ] Receipt schema is 3 per §6.7; schema 1/2 fail closed.
 
-## 12. Definition of NOT done (do not mark A3-1 complete until §11 is fully met)
+## 12. Definition of NOT done (do not treat source merge as production readiness)
 
 - "Contract skeleton only" (this is A3-0, already merged in PR #646).
 - "Code written, tests skipped because environment not ready" — this fails
@@ -544,10 +572,11 @@ Receipt schema impact: version bump; old schemas fail-closed
   runs" — this fails §4.2 / §10.
 - "Additive-only receipt schema change" — this fails §6.7.
 
-## 13. Open questions to resolve before implementation
+## 13. Historical pre-execution decisions
 
-Each question has a default documented below; the user only needs to respond
-to override.
+The following entries preserve the original A3-1 planning record. They do not
+describe current pending work and must not be reused as approval for A3-2 or
+production.
 
 1. **Base ref**: branch A3-1 implementation from the exact `master` produced
    after this spec PR merges. Record that SHA and its newly issued dependency
@@ -566,13 +595,11 @@ to override.
    node access.
 3. **Receipt schema migration**: version bump with fail-closed for old
    schemas. **DECIDED**: version bump.
-4. **Operator role**: a resolvable production-owner GitHub identity. The
-   current candidate is `gccltd` (the user that merged PR #646). The user
-   must separately confirm that the same `gccltd` is the named approver in
-   the §7 packet; an independent identity-verifier must also be named.
-   `pending_operator_confirmation: true` remains in the metadata header
-   until the user confirms and the verification pair is recorded in the
-   §7 packet. Agent / Bot / spec authors are not eligible.
+4. **Operator role (historical planning state)**: the initial record named a
+   resolvable production-owner GitHub identity and a separate verifier. The
+   fields below preserve that pre-execution state; they do not describe a
+   current pending approval and cannot authorize another run. Agent / Bot /
+   spec authors were not eligible.
 
    **Candidate identity pair (recorded, not approved):**
 
@@ -590,11 +617,9 @@ to override.
      status: not_yet_satisfied
    ```
 
-   The pairing is **candidate_valid** — two distinct GitHub identities under
-   the same organization, with verifier attested by user as independent of
-   the approver. Risk A's independent-approval requirement is **not yet
-   satisfied** because `gccltd` has not yet recorded a §7 comment that binds
-   the final A3-1 implementation source/artifact to the selected SWAS target.
+   The pairing was recorded as **candidate_valid** during planning. Its
+   `pending` fields are retained for audit context only and have no current
+   authorization effect.
 
 ---
 

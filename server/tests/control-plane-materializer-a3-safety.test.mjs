@@ -7,20 +7,25 @@
 // and real systemd fixed-service-principal sandbox execution are validated by separate
 // privileged disposable Linux runs (see issue #636 Gate A3-1).
 //
-// Production materialize/verify/preflight must remain fail-closed with
-// `worker_storage_limit_unavailable`; this file does not relax that guard.
+// Production materialize/verify/preflight stay fail-closed by default. The
+// separately reviewed A3 integration path must be explicit, fixed-root, and
+// backed by fresh production quota readback plus service-native smoke.
 
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
   buildServiceNativeSmokeInvocation,
+  buildProductionServiceNativeSmokeInvocation,
   CandidateDependencyGateError,
+  collectProductionStorageQuotaReadback,
   collectServiceNativeSmokeEvidence,
   collectStorageQuotaEvidence,
   createCandidateDependencyGateA3PhysicalValidationRuntime,
+  createCandidateDependencyGateProductionRuntime,
   createCandidateDependencyGateTestRuntime,
   materializeCandidateDependencies,
+  parseProductionStorageQuotaReadback,
   parseServiceSmokeReadback,
   parseStorageQuotaEvidence,
   preflightCandidateDependencies,
@@ -145,6 +150,67 @@ test("parseStorageQuotaEvidence rejects byte/inode out-of-range and non-integer 
     () => parseStorageQuotaEvidence(quotaEvidence({ byteHardLimit: 1.5 })),
     condition("storage_quota_evidence_invalid")
   );
+});
+
+function productionQuotaReadback(overrides = {}) {
+  return Object.freeze({
+    filesystem: "/dev/mapper/control-plane",
+    mountpoint: "/",
+    projectId: 4242,
+    byteHardLimit: 8 * 1024 * 1024 * 1024,
+    byteCurrent: 4096,
+    inodeHardLimit: 65536,
+    inodeCurrent: 12,
+    headroomBytes: 8 * 1024 * 1024 * 1024 - 4096,
+    headroomInodes: 65536 - 12,
+    projectTreeVerified: true,
+    accounting: true,
+    enforcement: true,
+    ...overrides
+  });
+}
+
+test("parseProductionStorageQuotaReadback accepts only a live enforced project-tree boundary", () => {
+  const parsed = parseProductionStorageQuotaReadback(productionQuotaReadback());
+  assert.equal(parsed.projectId, 4242);
+  assert.equal(parsed.projectTreeVerified, true);
+  assert.equal(parsed.accounting, true);
+  assert.equal(parsed.enforcement, true);
+  for (const overrides of [
+    { projectTreeVerified: false },
+    { accounting: false },
+    { enforcement: false },
+    { headroomBytes: 1 },
+    { filesystem: "tmpfs" }
+  ]) assert.throws(
+    () => parseProductionStorageQuotaReadback(productionQuotaReadback(overrides)),
+    condition("storage_quota_evidence_invalid")
+  );
+});
+
+test("collectProductionStorageQuotaReadback performs read-only project-tree and quota readback without exhaustion", () => {
+  const root = "/opt/proxy-gateway-minimal-candidate", calls = [];
+  const executePhysicalCommand = (command, args) => {
+    calls.push([command, args]);
+    if (command === "/usr/bin/findmnt") return { status: 0, stdout: "{\"filesystems\":[{\"target\":\"/\",\"source\":\"/dev/mapper/control-plane\",\"fstype\":\"xfs\",\"options\":\"rw,prjquota\"}]}\n", stderr: "" };
+    if (command === "/usr/sbin/xfs_io") return { status: 0, stdout: "projid = 4242\n", stderr: "" };
+    const action = args[2];
+    if (action.startsWith("project -c")) return { status: 0, stdout: [`Checking project 4242 (path ${root})...`, "Processed 1 (/etc/projects and cmdline) paths for project 4242 with recursion depth infinite (-1).", ""].join("\n"), stderr: "" };
+    if (action === "state -p") return { status: 0, stdout: "Project quota state on /dev/mapper/control-plane\nAccounting: ON\nEnforcement: ON\n", stderr: "" };
+    if (action.includes(" -b ")) return { status: 0, stdout: "4242 4096 0 8388608 00 [------]\n", stderr: "" };
+    if (action.includes(" -i ")) return { status: 0, stdout: "4242 12 0 65536 00 [------]\n", stderr: "" };
+    return { status: 70, stdout: "", stderr: "unexpected" };
+  };
+  const value = collectProductionStorageQuotaReadback({
+    root, projectId: 4242,
+    runtime: physicalRuntime({ executePhysicalCommand })
+  });
+  assert.equal(value.filesystem, "/dev/mapper/control-plane");
+  assert.equal(value.mountpoint, "/");
+  assert.equal(value.byteHardLimit, 8 * 1024 * 1024 * 1024);
+  assert.equal(value.inodeHardLimit, 65536);
+  assert.equal(calls.length, 6);
+  assert.equal(calls.some(([, args]) => args.some((item) => String(item).includes("limit"))), false);
 });
 
 test("parseServiceSmokeReadback accepts the exact A3 boundary shape", () => {
@@ -987,6 +1053,59 @@ test("verifyCandidateDependencies stays fail-closed under requireRoot even with 
     }),
     condition("worker_storage_limit_unavailable")
   );
+});
+
+test("production A3 runtime is explicit, fixed-root, and advances past the legacy guard", async () => {
+  const integrated = createCandidateDependencyGateProductionRuntime({ runLabel: "a3-prod-1", projectId: 4242 });
+  assert.equal(integrated.root, "/opt/proxy-gateway-minimal-candidate");
+  assert.equal(integrated.requireRoot, true);
+  assert.equal(integrated.enforceOwnership, true);
+  assert.equal(integrated.a3ProjectId, 4242);
+  assert.equal(integrated.a3RunLabel, "a3-prod-1");
+  const smoke = buildProductionServiceNativeSmokeInvocation({
+    smokePhase: "postpublish",
+    root: "/opt/proxy-gateway-minimal-candidate/releases/candidate",
+    service: { uid: 4711, gid: 4712 },
+    runtime: integrated
+  });
+  assert.equal(smoke.command, "/usr/bin/systemd-run");
+  assert.ok(smoke.args.includes("--service-type=oneshot"));
+  assert.ok(smoke.bindReadOnlyPaths.includes("/opt/proxy-gateway-minimal-candidate/releases/candidate:/run/control-plane-a3-service-smoke/control-plane-a3-service-smoke-a3-prod-1-postpublish/project:norbind"));
+  assert.equal(smoke.captureStdout, "/run/control-plane-candidate-dependency-gates/service-smoke-postpublish.stdout.json");
+
+  assert.throws(
+    () => preflightCandidateDependencies({ candidateRelease: "candidate", expectedCurrentRelease: "active", runtime: integrated }),
+    (error) => error instanceof CandidateDependencyGateError && error.condition !== "worker_storage_limit_unavailable"
+  );
+  await assert.rejects(
+    materializeCandidateDependencies({
+      candidateRelease: "candidate", expectedCurrentRelease: "active",
+      expectedSourceCommit: "a".repeat(40), expectedArtifactRelease: "candidate",
+      expectedDependencyManifestSha256: "b".repeat(64), expectedDependencyArchiveSha256: "c".repeat(64),
+      apply: true, runtime: integrated
+    }),
+    (error) => error instanceof CandidateDependencyGateError && error.condition !== "worker_storage_limit_unavailable"
+  );
+  await assert.rejects(
+    verifyCandidateDependencies({
+      candidateRelease: "candidate", expectedCurrentRelease: "active",
+      expectedSourceCommit: "a".repeat(40), expectedArtifactRelease: "candidate",
+      expectedDependencyManifestSha256: "b".repeat(64), expectedDependencyArchiveSha256: "c".repeat(64),
+      runtime: integrated
+    }),
+    (error) => error instanceof CandidateDependencyGateError && error.condition !== "worker_storage_limit_unavailable"
+  );
+});
+
+test("production A3 runtime rejects partial or drifting activation identity", () => {
+  for (const options of [
+    {},
+    { runLabel: "a3-prod-1" },
+    { projectId: 4242 },
+    { runLabel: "../escape", projectId: 4242 },
+    { runLabel: "a3-prod-1", projectId: 0 },
+    { runLabel: "a3-prod-1", projectId: 4242, root: "/tmp" }
+  ]) assert.throws(() => createCandidateDependencyGateProductionRuntime(options), condition("invalid_input"));
 });
 
 test("createCandidateDependencyGateTestRuntime pins the test-side defaults", () => {
