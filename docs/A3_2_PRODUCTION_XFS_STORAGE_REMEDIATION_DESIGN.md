@@ -233,7 +233,10 @@ changes before any production XFS mutation is proposed:
    staging, rename collision, low-water crossing, and cleanup uncertainty.
    Admission tests must include a contract-limit synthetic 250000-entry member
    set dominated by zero/one-byte files so tiny-file allocation overhead cannot
-   collapse back to logical bytes.
+   collapse back to logical bytes. Limit-command tests must require an aligned
+   base-10 byte integer with no suffix, reject `s`/`b`/`k`/`m`/`g` and other
+   multiplier suffixes, and prove the collector's 1024-byte report
+   normalization returns the exact approved byte hard limit.
 
 The source PR requires focused tests, the full server test baseline,
 `git diff --check`, exact-head CI, and independent P0/P1 review. It authorizes
@@ -393,9 +396,11 @@ This section defines ordering, not executable approval.
     a separate reviewed justification and Gate.
 11. Prove the new project has no pre-existing hard limit, then set both approved
     hard limits with an explicit numeric command equivalent to
-    `xfs_quota -x -c "limit -p bhard=<exact-byte-hard-limit>b ihard=<exact-inode-hard-limit> <project-id>" <mount>`.
-    The byte value must be aligned to the collector's 1024-byte report unit;
-    the command may not rely on a soft limit or grace period.
+    `xfs_quota -x -c "limit -p bhard=<exact-byte-hard-limit> ihard=<exact-inode-hard-limit> <project-id>" <mount>`.
+    `<exact-byte-hard-limit>` must expand to a base-10 byte integer with no unit
+    suffix and must be aligned to the collector's 1024-byte report unit. In
+    particular, appending `b` is forbidden because it means filesystem blocks,
+    not bytes. The command may not rely on a soft limit or grace period.
 12. Require the corresponding explicit numeric `project -c`, `xfs_io lsproj`,
     accounting/enforcement state, and quota reports to return the exact approved
     project ID plus byte/inode hard limits. Missing, zero, rounded, inherited,
