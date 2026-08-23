@@ -351,6 +351,11 @@ configuration. It accepts only a private root-owned mode-0700 input directory
 containing exactly six mode-0600, single-link regular files: `artifact.json`,
 the manifest-named source ZIP and its `.sha256` sidecar, plus
 `dependency-artifact.json`, `node-modules.tar`, and `release-label.txt`.
+The input directory must be path-disjoint from the complete fixed
+`/opt/proxy-gateway-minimal-candidate` deployment tree: it may not equal, contain,
+or be contained by that tree. All modes fail with `input_boundary_invalid` before
+any controller-owned mutation when this boundary is violated; an independent
+sibling directory remains valid.
 
 The `preflight` mode is read-only. `stage` requires `--apply`, rechecks the
 expected-current symlink CAS and all four approved SHA-256 identities, safely
@@ -426,8 +431,9 @@ mode-0700 bootstrap directory. The closure consists only of:
 
 Every closure file must be root-owned mode-0600 and individually match the
 per-file SHA-256 recorded for the approved exact source commit. The bootstrap
-directory and six-file input directory must be different directories. Invoke
-the pinned system runtime directly as
+directory and six-file input directory must both remain outside the fixed
+deployment tree and must be path-disjoint from each other. Invoke the pinned
+system runtime directly as
 `/usr/bin/node <bootstrap>/scripts/control-plane-production-stage-controller.mjs`;
 do not invoke a controller extracted from the unverified source ZIP. After the
 bounded session, remove only the Gate-owned bootstrap and input roots and read

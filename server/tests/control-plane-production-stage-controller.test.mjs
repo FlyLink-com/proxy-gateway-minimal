@@ -253,6 +253,14 @@ function fixture(t, { zipEntries = regularEntries(), zipOptions, inputMutation, 
   return { root, deploymentRoot, inputDirectory, activeRoot, artifactName, artifactManifestBytes, dependencyManifestBytes, packageBytes, lockBytes, options };
 }
 
+function copyInputSet(source, destination) {
+  rmSync(destination, { recursive: true, force: true });
+  mkdirSync(destination, { recursive: true, mode: 0o700 });
+  chmodSync(destination, 0o700);
+  FIXTURE_MODES.set(resolve(destination), 0o700);
+  for (const name of readdirSync(source)) write(join(destination, name), readFileSync(join(source, name)), 0o600);
+}
+
 test("preflight is read-only and binds exactly six controlled inputs", (t) => {
   const value = fixture(t);
   const before = treeSnapshot(value.root);
@@ -263,6 +271,78 @@ test("preflight is read-only and binds exactly six controlled inputs", (t) => {
   assert.equal(result.applied, false);
   assert.deepEqual(treeSnapshot(value.root), before);
   assert.equal(JSON.stringify(result).includes(value.root), false);
+});
+
+test("the six-file input is path-disjoint from the complete deployment tree", async (t) => {
+  await t.test("deployment root", (t) => {
+    const value = fixture(t);
+    const before = treeSnapshot(value.root);
+    assert.throws(
+      () => preflightProductionCandidateStage({ ...value.options, inputDirectory: value.deploymentRoot }),
+      condition("input_boundary_invalid")
+    );
+    assert.deepEqual(treeSnapshot(value.root), before);
+  });
+
+  await t.test("deployment ancestor", (t) => {
+    const value = fixture(t);
+    const before = treeSnapshot(value.root);
+    assert.throws(
+      () => preflightProductionCandidateStage({ ...value.options, inputDirectory: value.root }),
+      condition("input_boundary_invalid")
+    );
+    assert.deepEqual(treeSnapshot(value.root), before);
+  });
+
+  for (const relativePath of [
+    ["assembly-receipts"],
+    ["dependency-artifacts"],
+    ["releases", CURRENT_RELEASE, "private-stage-input"]
+  ]) {
+    await t.test(relativePath.join("/"), (t) => {
+      const value = fixture(t);
+      const overlappingInput = join(value.deploymentRoot, ...relativePath);
+      copyInputSet(value.inputDirectory, overlappingInput);
+      const before = treeSnapshot(value.deploymentRoot);
+
+      assert.throws(
+        () => stageProductionCandidate({ ...value.options, inputDirectory: overlappingInput, apply: true }),
+        condition("input_boundary_invalid")
+      );
+      assert.deepEqual(treeSnapshot(value.deploymentRoot), before);
+      assert.equal(existsSync(join(value.deploymentRoot, PRODUCTION_STAGE_LOCK_NAME)), false);
+      assert.equal(existsSync(join(value.deploymentRoot, "releases", CANDIDATE_RELEASE)), false);
+      assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
+    });
+  }
+});
+
+test("a common-prefix sibling remains a valid private input root", (t) => {
+  const value = fixture(t);
+  const siblingInput = join(value.root, `${basename(value.deploymentRoot)}-input`);
+  copyInputSet(value.inputDirectory, siblingInput);
+  const before = treeSnapshot(value.deploymentRoot);
+
+  const result = preflightProductionCandidateStage({ ...value.options, inputDirectory: siblingInput });
+
+  assert.equal(result.state, "ready");
+  assert.deepEqual(treeSnapshot(value.deploymentRoot), before);
+});
+
+test("verify rejects an input moved below the published deployment tree", (t) => {
+  const value = fixture(t);
+  stageProductionCandidate({ ...value.options, apply: true });
+  const overlappingInput = join(value.deploymentRoot, "verify-input");
+  copyInputSet(value.inputDirectory, overlappingInput);
+  const before = treeSnapshot(value.deploymentRoot);
+
+  assert.throws(
+    () => verifyProductionCandidateStage({ ...value.options, inputDirectory: overlappingInput }),
+    condition("input_boundary_invalid")
+  );
+  assert.deepEqual(treeSnapshot(value.deploymentRoot), before);
+  assert.equal(existsSync(join(value.deploymentRoot, PRODUCTION_STAGE_LOCK_NAME)), false);
+  assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
 });
 
 test("stage is default-off and requires an explicit apply confirmation", (t) => {

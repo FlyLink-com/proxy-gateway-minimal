@@ -592,6 +592,7 @@ function deploymentContext(options, runtimeValue, published = false) {
     const opt = stableDirectory(dirname(root.path), runtimeValue, "deployment_boundary_invalid");
     if (!samePath(opt.path, "/opt")) fail("deployment_boundary_invalid");
   }
+  assertInputDeploymentDisjoint(options.inputDirectory, root.path);
   const releases = stableDirectory(resolve(root.path, "releases"), runtimeValue, "deployment_boundary_invalid");
   const assemblyReceipts = optionalPublicationRoot(resolve(root.path, "assembly-receipts"), root, runtimeValue);
   const dependencyArtifacts = optionalPublicationRoot(resolve(root.path, "dependency-artifacts"), root, runtimeValue);
@@ -616,6 +617,11 @@ function deploymentContext(options, runtimeValue, published = false) {
   if (!published && [candidatePath, assemblyPath, dependencyPath].some((path) => lexists(path))) fail("candidate_present");
   if (published && (assemblyReceipts.absent || dependencyArtifacts.absent || [candidatePath, assemblyPath, dependencyPath].some((path) => !lexists(path)))) fail("candidate_present");
   return Object.freeze({ root, releases, assemblyReceipts, dependencyArtifacts, currentPath, active, candidatePath, assemblyPath, dependencyPath, current: Object.freeze({ pointer: identity(pointer), target: active.identity, link }) });
+}
+
+function assertInputDeploymentDisjoint(inputDirectory, deploymentRoot) {
+  const inputPath = resolve(inputDirectory);
+  if (containsPath(inputPath, deploymentRoot) || containsPath(deploymentRoot, inputPath)) fail("input_boundary_invalid");
 }
 
 function assertCurrent(context) {
