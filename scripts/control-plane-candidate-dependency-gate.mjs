@@ -2792,10 +2792,17 @@ export async function verifyCandidateDependencies({
     const target = resolve(value.c.candidateRoot, "node_modules");
     const targetMetadata = stat(target, "candidate_tree_invalid");
     if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory()) fail("candidate_tree_invalid");
-    storageEvidence = storageEvidenceForMaterialization(supplied, null, value.c.candidateRoot);
-    assertBoundedMutationTopology(value.c, storageEvidence, supplied);
-    const receipt = readReceipt(value.c, supplied, storageEvidence);
-    const currentReceipt = requireCurrentReceiptSchema(receipt.value, value, identity, supplied);
+    let receipt, currentReceipt;
+    if (productionBoundedArtifactRuntime(supplied)) {
+      storageEvidence = storageEvidenceForMaterialization(supplied, null, value.c.candidateRoot);
+      assertBoundedMutationTopology(value.c, storageEvidence, supplied);
+      receipt = readReceipt(value.c, supplied, storageEvidence);
+      currentReceipt = requireCurrentReceiptSchema(receipt.value, value, identity, supplied);
+    } else {
+      receipt = readReceipt(value.c, supplied);
+      currentReceipt = requireCurrentReceiptSchema(receipt.value, value, identity, supplied);
+      storageEvidence = storageEvidenceForMaterialization(supplied, null, value.c.candidateRoot);
+    }
     verifyMaterializerReceiptStorageBoundary(currentReceipt, storageEvidence);
     key = lock(supplied);
     value = steady(value, supplied, false);

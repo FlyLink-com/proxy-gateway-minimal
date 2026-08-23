@@ -274,6 +274,24 @@ test("bounded materialization binds staging and receipt topology before mutation
   );
 });
 
+test("XFS verify rejects a statically invalid receipt before quota readback", () => {
+  const source = readFileSync(new URL("../../scripts/control-plane-candidate-dependency-gate.mjs", import.meta.url), "utf8");
+  const start = source.indexOf("export async function verifyCandidateDependencies(");
+  const end = source.indexOf("function args(", start);
+  assert.ok(start >= 0 && end > start, "missing verify source contract");
+  const verify = source.slice(start, end);
+
+  const receiptReadback = verify.indexOf("receipt = readReceipt(value.c, supplied);");
+  const receiptValidation = verify.indexOf("currentReceipt = requireCurrentReceiptSchema(receipt.value", receiptReadback);
+  const quotaReadback = verify.indexOf(
+    "storageEvidence = storageEvidenceForMaterialization(supplied, null, value.c.candidateRoot);",
+    receiptValidation
+  );
+  assert.ok(receiptReadback >= 0, "XFS verify must read the receipt before quota evidence");
+  assert.ok(receiptValidation > receiptReadback, "XFS verify must validate the receipt before quota evidence");
+  assert.ok(quotaReadback > receiptValidation, "XFS verify must reject a static receipt mismatch before quota readback");
+});
+
 test("collectProductionStorageQuotaReadback performs read-only project-tree and quota readback without exhaustion", () => {
   const root = "/opt/proxy-gateway-minimal-candidate", calls = [];
   const executePhysicalCommand = (command, args) => {
