@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync, chownSync, closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, fsyncSync,
   lchownSync, linkSync, lstatSync, mkdirSync, openSync, opendirSync, readFileSync, readSync, readdirSync,
-  writeSync,
+  statfsSync, writeSync,
   readlinkSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync
 } from "node:fs";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
@@ -46,6 +46,7 @@ const A3_SMOKE_PHASES = new Set(["validation", "prepublish", "postpublish", "ver
 const A3_SMOKE_SNAPSHOT_MODULE = "scripts/control-plane-db-snapshot-gate.mjs";
 const A3_UNIT_GC_POLL_ATTEMPTS = 20;
 const A3_UNIT_GC_POLL_INTERVAL_MS = 50;
+const CGROUP2_SUPER_MAGIC = 0x63677270;
 const A3_PROBE_BYTE_HARD_LIMIT = 1024 * 1024;
 const A3_PROBE_INODE_HARD_LIMIT = 64;
 const A3_PROBE_WRITE_CHUNK_BYTES = 64 * 1024;
@@ -610,6 +611,20 @@ function readA3PhysicalFile(path, supplied, condition, attentionRequired = false
   } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail(condition, attentionRequired); }
 }
 
+function validateA3CgroupV2Root(supplied) {
+  const root = "/sys/fs/cgroup";
+  try {
+    const type = typeof supplied.physicalFilesystemType === "function"
+      ? supplied.physicalFilesystemType(root)
+      : statfsSync(root).type;
+    if (type !== CGROUP2_SUPER_MAGIC) fail("worker_cleanup_uncertain", true);
+    readA3PhysicalFile(`${root}/cgroup.controllers`, supplied, "worker_cleanup_uncertain", true);
+  } catch (error) {
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail("worker_cleanup_uncertain", true);
+  }
+}
+
 function readA3PhysicalCgroupState(cgroupRoot, supplied) {
   try {
     const read = typeof supplied.readPhysicalFile === "function" ? supplied.readPhysicalFile : (value) => readFileSync(value, "utf8");
@@ -975,6 +990,7 @@ export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "vali
   const context = a3PhysicalContext(runLabel, supplied, smokePhase);
   const invocation = buildServiceNativeSmokeInvocation({ runLabel, smokePhase, root, service, runtime: supplied });
   validateA3ServiceSmokeCaptureBoundary(context, invocation, supplied);
+  validateA3CgroupV2Root(supplied);
   const stdoutState = a3PhysicalLeafState(invocation.captureStdout, supplied, "service_smoke_readback_invalid");
   const stderrState = a3PhysicalLeafState(invocation.captureStderr, supplied, "service_smoke_readback_invalid");
   if (![stdoutState, stderrState].every((state) => state === "absent" || state === "regular")) fail("service_smoke_readback_invalid", true);

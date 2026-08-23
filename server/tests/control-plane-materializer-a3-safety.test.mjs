@@ -544,6 +544,8 @@ function serviceSmokeHarness({
   pinnedOverrides = {},
   normalizeBindReadOnlyPaths = true,
   bindReadOnlyPathsReadback = null,
+  cgroupFilesystemType = 0x63677270,
+  cgroupControllersReadable = true,
   cgroupPresent = true,
   cgroupDisappearOnRead = null,
   cgroupReadEnoentWhilePresent = null,
@@ -617,11 +619,19 @@ function serviceSmokeHarness({
   };
   const runtime = physicalRuntime({
     executePhysicalCommand,
+    physicalFilesystemType: (path) => {
+      if (path !== "/sys/fs/cgroup") throw new Error("unexpected filesystem path");
+      return cgroupFilesystemType;
+    },
     physicalPathExists: (path) => captures.get(path) === "regular" || path === cgroupRoot && cgroupAvailable && !stopped,
     physicalLeafState: (path) => captures.get(path) || "absent",
     validateA3ServiceSmokeCaptureBoundary: () => captureBoundaryValid,
     validateA3ServiceSmokeSource: () => sourceCustodyValid,
     readPhysicalFile: (path) => {
+      if (path === "/sys/fs/cgroup/cgroup.controllers") {
+        if (!cgroupControllersReadable) throw Object.assign(new Error("cgroup controllers unavailable"), { code: "ENOENT" });
+        return "cpu memory pids\n";
+      }
       if (path === captureStdout) return processStdout;
       if (path === captureStderr) return processStderr;
       if (path === `${cgroupRoot}/cgroup.events`) {
@@ -706,6 +716,21 @@ test("collectServiceNativeSmokeEvidence accepts an empty ControlGroup after syst
   assert.equal(evidence.cgroupEmpty, true);
   assert.equal(harness.wasStopped(), true);
   assert.equal(harness.captures.size, 0);
+});
+
+test("collectServiceNativeSmokeEvidence requires a proven cgroup v2 root before accepting an absent unit cgroup", () => {
+  for (const options of [
+    { cgroupFilesystemType: 0x27e0eb },
+    { cgroupControllersReadable: false }
+  ]) {
+    const harness = serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "" }, cgroupPresent: false, ...options });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
+    );
+    assert.equal(harness.calls.length, 0);
+    assert.equal(harness.captures.size, 0);
+  }
 });
 
 test("collectServiceNativeSmokeEvidence accepts an empty ControlGroup while the remaining cgroup is proven empty", () => {
