@@ -1382,7 +1382,7 @@ test("read methods map durable rows and apply closed list filters", () => {
     );
     assert.deepEqual(store.getWalletProjection({
       walletRef: paid.walletRef
-    }), {
+    }, NOW), {
       exists: true,
       walletRef: paid.walletRef,
       status: "active",
