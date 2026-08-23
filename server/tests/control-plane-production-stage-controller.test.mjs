@@ -726,6 +726,48 @@ test("cleanup never removes a replacement below an attempt-owned path", (t) => {
   assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
 });
 
+test("Linux cleanup closes every held directory after a descendant replacement", async (t) => {
+  if (process.platform !== "linux") {
+    t.skip("directory custody descriptors are a Linux production boundary");
+    return;
+  }
+  for (const targetChild of [1, 2, 3]) {
+    await t.test(`temporary child ${targetChild}`, (t) => {
+      const registered = [];
+      const closed = [];
+      let childCount = 0;
+      let replacedPath;
+      const value = fixture(t, {
+        publicationRoots: false,
+        runtimeOverrides: {
+          afterDirectoryRegistered(point, path) {
+            registered.push(path);
+            if (point !== "temporary_child" || ++childCount !== targetChild) return;
+            rmSync(path, { recursive: true, force: false });
+            mkdirSync(path, { mode: 0o700 });
+            write(join(path, "replacement-sentinel"), "preserve\n");
+            replacedPath = path;
+            throw new Error("injected Linux inode-reuse race");
+          },
+          afterDirectoryCustodyClosed(_point, path) {
+            closed.push(path);
+          }
+        }
+      });
+
+      assert.throws(
+        () => stageProductionCandidate({ ...value.options, apply: true }),
+        (error) => error instanceof ProductionStageControllerError
+          && error.condition === "cleanup_failed"
+          && error.attentionRequired === true
+      );
+      assert.equal(readFileSync(join(replacedPath, "replacement-sentinel"), "utf8"), "preserve\n");
+      assert.deepEqual([...new Set(closed)].sort(), [...new Set(registered)].sort());
+      assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
+    });
+  }
+});
+
 test("CLI emits one safe JSON error envelope and cannot enable stage without apply", () => {
   let stdout = "";
   let stderr = "";

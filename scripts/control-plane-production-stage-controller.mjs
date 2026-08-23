@@ -305,6 +305,7 @@ function runtime(value = {}) {
     beforeFirstMutation: value.beforeFirstMutation ?? (() => {}),
     afterPublish: value.afterPublish ?? (() => {}),
     afterDirectoryRegistered: value.afterDirectoryRegistered ?? (() => {}),
+    afterDirectoryCustodyClosed: value.afterDirectoryCustodyClosed ?? (() => {}),
     syncPublishedPath: value.syncPublishedPath ?? ((path, condition) => fsyncPath(path, condition)),
     faultAt: value.faultAt ?? null,
     modeFor: value.modeFor,
@@ -682,6 +683,27 @@ function fsyncPath(path, condition) {
   }
 }
 
+function holdDirectoryCustody(path, metadata, condition) {
+  if (process.platform === "win32") return undefined;
+  let descriptor;
+  try {
+    descriptor = openSync(
+      path,
+      fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW
+    );
+    const opened = fstatSync(descriptor);
+    if (!opened.isDirectory() || !sameNode(identity(metadata), identity(opened))) {
+      throw new Error("directory identity changed");
+    }
+    return descriptor;
+  } catch {
+    if (descriptor !== undefined) {
+      try { closeSync(descriptor); } catch { /* attention-required below */ }
+    }
+    fail(condition, true);
+  }
+}
+
 function registerCreatedDirectory({ path, parent, parentMetadata, runtimeValue, owned, condition, point, shallow = false }) {
   fault(runtimeValue, `after_${point}_mkdir_before_identity`, condition, true);
   let metadata;
@@ -692,7 +714,15 @@ function registerCreatedDirectory({ path, parent, parentMetadata, runtimeValue, 
   }
   if (metadata.isSymbolicLink() || !metadata.isDirectory() || !rootControlled(metadata, runtimeValue)
     || String(metadata.dev) !== String(parentMetadata.dev)) fail(condition, true);
-  const record = { path, parent, identity: identity(metadata), shallow };
+  const record = {
+    path,
+    parent,
+    identity: identity(metadata),
+    descriptor: holdDirectoryCustody(path, metadata, condition),
+    custodyPoint: point,
+    afterDirectoryCustodyClosed: runtimeValue.afterDirectoryCustodyClosed,
+    shallow
+  };
   owned.push(record);
   runtimeValue.afterDirectoryRegistered(point, path);
   fault(runtimeValue, `after_${point}_registered`, condition);
@@ -884,16 +914,57 @@ function publish(record, destination, runtimeValue, condition) {
 function removeOwned(record) {
   if (!record) return true;
   let metadata;
-  try { metadata = lstatSync(record.path); } catch (error) { return error?.code === "ENOENT"; }
-  if (metadata.isSymbolicLink() || !metadata.isDirectory() || !sameNode(record.identity, identity(metadata))) return false;
+  let descriptorMetadata;
+  try {
+    metadata = lstatSync(record.path);
+    descriptorMetadata = record.descriptor === undefined ? null : fstatSync(record.descriptor);
+  } catch (error) {
+    const absent = error?.code === "ENOENT";
+    closeCustody(record);
+    return absent;
+  }
+  if (
+    metadata.isSymbolicLink()
+    || !metadata.isDirectory()
+    || !sameNode(record.identity, identity(metadata))
+    || descriptorMetadata && (
+      !descriptorMetadata.isDirectory()
+      || !sameNode(record.identity, identity(descriptorMetadata))
+      || !sameNode(identity(metadata), identity(descriptorMetadata))
+    )
+  ) {
+    closeCustody(record);
+    return false;
+  }
   try {
     if (record.shallow) rmdirSync(record.path);
     else rmSync(record.path, { recursive: true, force: false, maxRetries: 0 });
     fsyncPath(record.parent, "cleanup_failed");
-    return !lexists(record.path);
+    const removed = !lexists(record.path);
+    return closeCustody(record) && removed;
+  } catch {
+    closeCustody(record);
+    return false;
+  }
+}
+
+function closeCustody(record) {
+  if (!record || record.descriptor === undefined) return true;
+  const descriptor = record.descriptor;
+  record.descriptor = undefined;
+  try {
+    closeSync(descriptor);
+    record.afterDirectoryCustodyClosed(record.custodyPoint, record.path);
+    return true;
   } catch {
     return false;
   }
+}
+
+function releaseCustody(records) {
+  let complete = true;
+  for (const record of records) complete = closeCustody(record) && complete;
+  return complete;
 }
 
 function cleanup(records) {
@@ -902,6 +973,7 @@ function cleanup(records) {
   for (const record of [...records].reverse()) {
     if (untrustedPaths.some((path) => containsPath(record.path, path))) {
       complete = false;
+      closeCustody(record);
       untrustedPaths.push(record.path);
       continue;
     }
@@ -1099,10 +1171,12 @@ export function stageProductionCandidate(options = {}) {
     owned.splice(owned.indexOf(dependencyNamespace.attempt), 1);
     assertCurrent(value.deployment);
     verifyPublished(value);
+    if (!releaseCustody(owned)) fail("cleanup_failed", true);
     return safeReport("stage", "staged", value, true);
   } catch (error) {
     if (receiptPublished) {
       const condition = error instanceof ProductionStageControllerError && SAFE_CONDITIONS.has(error.condition) ? error.condition : "stage_failed";
+      releaseCustody(owned);
       if (!(error instanceof ProductionStageControllerError) && value.runtime[TEST_RUNTIME]) throw error;
       fail(condition, true);
     }
