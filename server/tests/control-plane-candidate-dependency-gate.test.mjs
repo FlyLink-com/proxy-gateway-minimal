@@ -29,6 +29,7 @@ import {
   CANDIDATE_DEPENDENCY_GATE_TYPE,
   CandidateDependencyGateError,
   buildTransientUnitInvocation,
+  createCandidateDependencyGateBoundedProductionRuntime,
   createCandidateDependencyGateTestRuntime,
   materializeCandidateDependencies,
   invokeCandidateDependencyTransientUnit,
@@ -134,8 +135,8 @@ function stageReceipt({ candidate, packageBytes, lockBytes, manifest = artifactM
 
 function materializerReceipt(overrides = {}) {
   return {
-    schemaVersion: "3",
-    materializerSchemaVersion: 3,
+    schemaVersion: "4",
+    materializerSchemaVersion: 4,
     type: "control_plane_candidate_dependency_receipt",
     state: "materialized",
     releaseUnit: "control-plane-app",
@@ -163,10 +164,11 @@ function materializerReceipt(overrides = {}) {
     nodeModulesTreeTotalBytes: 6789,
     serviceUid: 4242,
     serviceGid: 4243,
+    storageMode: "xfs-project-quota",
     storageProjectId: 4242,
-    storageQuotaBoundarySha256: "6".repeat(64),
-    storageQuotaBeforeReadbackSha256: "7".repeat(64),
-    storageQuotaAfterReadbackSha256: "8".repeat(64),
+    storageBoundarySha256: "6".repeat(64),
+    storageBeforeReadbackSha256: "7".repeat(64),
+    storageAfterReadbackSha256: "8".repeat(64),
     serviceSmokeEvidenceSha256: "9".repeat(64),
     safetyEvidenceCapturedAt: "2026-08-16T00:00:00.000Z",
     createdAt: "2026-08-16T00:00:01.000Z",
@@ -1208,7 +1210,7 @@ test("materialize CLI requires the CI artifact identity before any dependency op
   });
 });
 
-test("schema 3 materializer receipt envelope rejects missing fields before dynamic verification", () => {
+test("schema 4 materializer receipt envelope is storage-mode discriminated and rejects schema 3", () => {
   const valid = materializerReceipt();
   assert.equal(parseMaterializerReceiptEnvelope(valid).sourceCommit, SOURCE_COMMIT);
   const missing = { ...valid };
@@ -1217,11 +1219,17 @@ test("schema 3 materializer receipt envelope rejects missing fields before dynam
   for (const invalid of [
     materializerReceipt({ dependencyArtifactManifestSizeBytes: 0 }),
     materializerReceipt({ nodeModulesTreeEntryCount: 0 }),
-    materializerReceipt({ safetyEvidenceCapturedAt: "not-an-instant" })
+    materializerReceipt({ safetyEvidenceCapturedAt: "not-an-instant" }),
+    materializerReceipt({ schemaVersion: "3", materializerSchemaVersion: 3 }),
+    materializerReceipt({ storageMode: "bounded-artifact", storageProjectId: 4242 }),
+    materializerReceipt({ storageMode: "xfs-project-quota", storageProjectId: null })
   ]) assert.throws(() => parseMaterializerReceiptEnvelope(invalid), condition("dependency_receipt_mismatch"));
+
+  const bounded = materializerReceipt({ storageMode: "bounded-artifact", storageProjectId: null });
+  assert.equal(parseMaterializerReceiptEnvelope(bounded).storageMode, "bounded-artifact");
 });
 
-test("schema 3 materializer receipt binds the stable storage quota boundary", () => {
+test("schema 4 materializer receipt binds the stable storage boundary", () => {
   const quota = {
     filesystem: "/dev/test-quota",
     projectId: 4242,
@@ -1234,6 +1242,7 @@ test("schema 3 materializer receipt binds the stable storage quota boundary", ()
     probe: { expectedErrorCode: "ENOSPC", observedErrorCode: "ENOSPC", exhausted: true }
   };
   const boundary = {
+    storageMode: "xfs-project-quota",
     filesystem: quota.filesystem,
     mountpoint: null,
     projectId: quota.projectId,
@@ -1244,7 +1253,7 @@ test("schema 3 materializer receipt binds the stable storage quota boundary", ()
     enforcement: true
   };
   const receipt = materializerReceipt({
-    storageQuotaBoundarySha256: hash(Buffer.from(JSON.stringify(boundary)))
+    storageBoundarySha256: hash(Buffer.from(JSON.stringify(boundary)))
   });
 
   assert.equal(verifyMaterializerReceiptStorageBoundary(receipt, quota).storageProjectId, 4242);
@@ -1275,6 +1284,42 @@ test("production A3 CLI activation is explicit and requires one exact run/projec
   });
   assert.equal(code, 1);
   assert.notEqual(JSON.parse(stderr).condition, "worker_storage_limit_unavailable");
+});
+
+test("production bounded-artifact CLI activation is separately branded and exact", async () => {
+  for (const argv of [
+    ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--enable-bounded-artifact-admission"],
+    ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--bounded-run-label", "bounded-prod-1"],
+    ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--enable-bounded-artifact-admission", "--bounded-run-label", "../escape"],
+    ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--enable-bounded-artifact-admission", "--bounded-run-label", "bounded-prod-1", "--a3-project-id", "4242"],
+    ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--enable-bounded-artifact-admission", "--enable-a3-materializer", "--bounded-run-label", "bounded-prod-1", "--a3-run-label", "a3-prod-1", "--a3-project-id", "4242"]
+  ]) {
+    let stderr = "";
+    const code = await runCandidateDependencyGateCli({ argv, stdout: { write() {} }, stderr: { write(value) { stderr += value; } } });
+    assert.equal(code, 1);
+    assert.equal(JSON.parse(stderr).condition, "invalid_input");
+  }
+
+  let stderr = "";
+  const code = await runCandidateDependencyGateCli({
+    argv: ["--mode", "preflight", "--candidate-release", "candidate-release", "--expected-current-release", "active-release", "--enable-bounded-artifact-admission", "--bounded-run-label", "bounded-prod-1"],
+    stdout: { write() {} },
+    stderr: { write(value) { stderr += value; } }
+  });
+  assert.equal(code, 1);
+  assert.notEqual(JSON.parse(stderr).condition, "invalid_input");
+  assert.notEqual(JSON.parse(stderr).condition, "worker_storage_limit_unavailable");
+});
+
+test("bounded production runtime cannot be forged through the XFS factory", () => {
+  const bounded = createCandidateDependencyGateBoundedProductionRuntime({ runLabel: "bounded-prod-1" });
+  assert.equal(bounded.storageMode, "bounded-artifact");
+  assert.equal(bounded.a3ProjectId, undefined);
+  for (const options of [
+    {},
+    { runLabel: "../escape" },
+    { runLabel: "bounded-prod-1", projectId: 4242 }
+  ]) assert.throws(() => createCandidateDependencyGateBoundedProductionRuntime(options), condition("invalid_input"));
 });
 
 test("production artifact materialization and verification remain inert pending storage and smoke isolation", async () => {
@@ -1414,6 +1459,11 @@ test("CI artifact materialization uses only the verified artifact extraction and
         root: destinationRoot,
         nodeModulesRoot: join(destinationRoot, "node_modules"),
         cleanup() {
+          assert.equal(
+            existsSync(join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json")),
+            false,
+            "receipt must remain absent until extraction and staging cleanup complete"
+          );
           cleanupCalls += 1;
           rmSync(destinationRoot, { recursive: true, force: true });
         }
@@ -1424,6 +1474,31 @@ test("CI artifact materialization uses only the verified artifact extraction and
       return originalRename(request);
     }
   });
+
+  value.runtime.releaseMaterializationLock = ({ path }) => {
+    rmSync(path, { force: false });
+    return false;
+  };
+  await assert.rejects(materializeCandidateDependencies({
+    candidateRelease: value.candidate,
+    expectedCurrentRelease: value.active,
+    expectedSourceCommit: SOURCE_COMMIT,
+    expectedArtifactRelease: ARTIFACT_RELEASE,
+    expectedDependencyManifestSha256: "c".repeat(64),
+    expectedDependencyArchiveSha256: "d".repeat(64),
+    apply: true,
+    runtime: value.runtime
+  }), condition("lock_cleanup_failed"));
+  assert.equal(existsSync(join(value.candidateRoot, "node_modules")), false);
+  assert.equal(existsSync(join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json")), false);
+  delete value.runtime.releaseMaterializationLock;
+  verifyCalls = 0;
+  extractCalls = 0;
+  renameCalls = 0;
+  legacyCalls = 0;
+  cleanupCalls = 0;
+  stagedRoot = null;
+  smokePrincipals.length = 0;
 
   const result = await materializeCandidateDependencies({
     candidateRelease: value.candidate,
@@ -1610,12 +1685,13 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   const receiptPath = join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json");
   assert.equal(existsSync(receiptPath), true);
   const materializationReceipt = JSON.parse(readFileSync(receiptPath, "utf8"));
-  assert.equal(materializationReceipt.schemaVersion, "3");
-  assert.equal(materializationReceipt.materializerSchemaVersion, 3);
+  assert.equal(materializationReceipt.schemaVersion, "4");
+  assert.equal(materializationReceipt.materializerSchemaVersion, 4);
+  assert.equal(materializationReceipt.storageMode, "xfs-project-quota");
   assert.equal(materializationReceipt.storageProjectId, 4242);
-  assert.match(materializationReceipt.storageQuotaBoundarySha256, /^[a-f0-9]{64}$/);
-  assert.match(materializationReceipt.storageQuotaBeforeReadbackSha256, /^[a-f0-9]{64}$/);
-  assert.match(materializationReceipt.storageQuotaAfterReadbackSha256, /^[a-f0-9]{64}$/);
+  assert.match(materializationReceipt.storageBoundarySha256, /^[a-f0-9]{64}$/);
+  assert.match(materializationReceipt.storageBeforeReadbackSha256, /^[a-f0-9]{64}$/);
+  assert.match(materializationReceipt.storageAfterReadbackSha256, /^[a-f0-9]{64}$/);
   assert.match(materializationReceipt.serviceSmokeEvidenceSha256, /^[a-f0-9]{64}$/);
   assert.equal(materializationReceipt.safetyEvidenceCapturedAt, "2026-08-16T00:00:00.000Z");
   assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);

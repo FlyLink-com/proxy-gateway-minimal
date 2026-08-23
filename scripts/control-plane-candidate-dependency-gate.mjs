@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { verifyReleaseConfigOverlay } from "./control-plane-release-config-gate.mjs";
 import {
   auditDependencyTree,
+  calculateDependencyStorageBudget,
   DEPENDENCY_ARTIFACT_SCHEMA_VERSION,
   DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION,
   DEPENDENCY_ARTIFACT_TYPE,
@@ -47,6 +48,7 @@ const A3_SMOKE_SNAPSHOT_MODULE = "scripts/control-plane-db-snapshot-gate.mjs";
 const A3_UNIT_GC_POLL_ATTEMPTS = 20;
 const A3_UNIT_GC_POLL_INTERVAL_MS = 50;
 const CGROUP2_SUPER_MAGIC = 0x63677270;
+const EXT4_SUPER_MAGIC = 0xef53;
 const A3_PROBE_BYTE_HARD_LIMIT = 1024 * 1024;
 const A3_PROBE_INODE_HARD_LIMIT = 64;
 const A3_PROBE_WRITE_CHUNK_BYTES = 64 * 1024;
@@ -108,6 +110,10 @@ const A3_PHYSICAL_TOOLS = Object.freeze({
   systemdRun: "/usr/bin/systemd-run", xfsIo: "/usr/sbin/xfs_io", xfsQuota: "/usr/sbin/xfs_quota"
 });
 const PRODUCTION_A3_RUNTIMES = new WeakSet();
+const PRODUCTION_BOUNDED_ARTIFACT_RUNTIMES = new WeakSet();
+const BOUNDED_STORAGE_READBACK = String.raw`import json,os,sys
+value=os.statvfs(sys.argv[1]); node=os.stat(sys.argv[1],follow_symlinks=False)
+print(json.dumps({"blockSize":value.f_frsize,"availableBytes":value.f_bavail*value.f_frsize,"availableInodes":value.f_favail,"deviceId":str(node.st_dev)},separators=(",",":")))`;
 const RENAME_SCRIPT = String.raw`import ctypes,errno,os,sys
 try:r=ctypes.CDLL(None,use_errno=True).renameat2
 except (AttributeError,OSError):sys.exit(70)
@@ -507,6 +513,35 @@ export function parseProductionStorageQuotaReadback(value) {
     headroomBytes: value.headroomBytes, headroomInodes: value.headroomInodes,
     projectTreeVerified: true, accounting: true, enforcement: true
   });
+}
+const BOUNDED_STORAGE_READBACK_KEYS = Object.freeze([
+  "storageMode", "filesystem", "rootDeviceId", "deviceId", "blockSize", "logicalBytes", "entryCount",
+  "allocationUpperBoundBytes", "reserveBytes", "requiredBytes", "reserveInodes", "requiredInodes",
+  "availableBytes", "availableInodes"
+]);
+export function parseBoundedStorageReadback(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !keys(value, BOUNDED_STORAGE_READBACK_KEYS)
+    || value.storageMode !== "bounded-artifact" || value.filesystem !== "ext4"
+    || typeof value.rootDeviceId !== "string" || !/^[0-9]+$/.test(value.rootDeviceId)
+    || typeof value.deviceId !== "string" || !/^[0-9]+$/.test(value.deviceId)
+    || value.deviceId !== value.rootDeviceId
+    || !Number.isSafeInteger(value.availableBytes) || value.availableBytes < 0
+    || !Number.isSafeInteger(value.availableInodes) || value.availableInodes < 0) fail("dependency_storage_budget_unavailable");
+  let budget;
+  try {
+    budget = calculateDependencyStorageBudget({
+      totalBytes: value.logicalBytes,
+      entryCount: value.entryCount,
+      blockSize: value.blockSize
+    });
+  } catch {
+    fail("dependency_storage_budget_unavailable");
+  }
+  for (const key of ["blockSize", "logicalBytes", "entryCount", "allocationUpperBoundBytes", "reserveBytes", "requiredBytes", "reserveInodes", "requiredInodes"]) {
+    if (value[key] !== budget[key]) fail("dependency_storage_budget_unavailable");
+  }
+  if (value.availableBytes < value.requiredBytes || value.availableInodes < value.requiredInodes) fail("dependency_storage_budget_unavailable");
+  return Object.freeze({ ...value });
 }
 export function parseServiceSmokeReadback(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail("service_smoke_readback_invalid");
@@ -1028,9 +1063,62 @@ export function collectProductionStorageQuotaReadback({ root, projectId, runtime
   });
 }
 
+export function collectProductionBoundedStorageReadback({ root, tree = null, runtime: supplied = runtime() } = {}) {
+  if (!productionBoundedArtifactRuntime(supplied)) fail("worker_storage_limit_unavailable");
+  requireRoot(supplied);
+  const projectRoot = directory(supplied.root, supplied, "candidate_path_invalid");
+  const mutationRoot = root === undefined ? projectRoot : directory(root, supplied, "candidate_path_invalid");
+  if (!within(projectRoot, mutationRoot)) fail("invalid_input");
+  const expectedTree = tree === null ? { totalBytes: 0, entryCount: 0 } : tree;
+  if (!expectedTree || !Number.isSafeInteger(expectedTree.totalBytes) || expectedTree.totalBytes < 0
+    || !Number.isSafeInteger(expectedTree.entryCount)
+    || tree === null && (expectedTree.totalBytes !== 0 || expectedTree.entryCount !== 0)
+    || tree !== null && expectedTree.entryCount < 1) fail("dependency_storage_budget_unavailable");
+  let rootFilesystem, mutationFilesystem;
+  try {
+    rootFilesystem = statfsSync(projectRoot, { bigint: true });
+    mutationFilesystem = statfsSync(mutationRoot, { bigint: true });
+  } catch { fail("dependency_storage_budget_unavailable"); }
+  const rootDeviceId = String(stat(projectRoot, "candidate_path_invalid").dev);
+  const mutationDeviceId = String(stat(mutationRoot, "candidate_path_invalid").dev);
+  if (rootFilesystem.type !== BigInt(EXT4_SUPER_MAGIC) || mutationFilesystem.type !== BigInt(EXT4_SUPER_MAGIC)
+    || mutationDeviceId !== rootDeviceId) fail("dependency_storage_budget_unavailable");
+  const python = tool(transientTools(supplied).python, supplied);
+  const observed = spawnSync(python, ["-I", "-S", "-c", BOUNDED_STORAGE_READBACK, mutationRoot], {
+    cwd: "/", env: CMD_ENV, encoding: "utf8", timeout: 5000, maxBuffer: 4096, windowsHide: true
+  });
+  if (observed.error || observed.status !== 0 || String(observed.stderr || "").trim()) fail("dependency_storage_budget_unavailable");
+  let physicalReadback;
+  try { physicalReadback = strictJsonObject(Buffer.from(String(observed.stdout || ""), "utf8"), "dependency_storage_budget_unavailable"); }
+  catch { fail("dependency_storage_budget_unavailable"); }
+  if (!keys(physicalReadback, ["blockSize", "availableBytes", "availableInodes", "deviceId"])
+    || physicalReadback.deviceId !== mutationDeviceId) fail("dependency_storage_budget_unavailable");
+  let budget;
+  try {
+    budget = calculateDependencyStorageBudget({
+      totalBytes: expectedTree.totalBytes,
+      entryCount: expectedTree.entryCount,
+      blockSize: physicalReadback.blockSize
+    });
+  } catch {
+    fail("dependency_storage_budget_unavailable");
+  }
+  return parseBoundedStorageReadback({
+    storageMode: "bounded-artifact",
+    filesystem: "ext4",
+    rootDeviceId,
+    deviceId: physicalReadback.deviceId,
+    ...budget,
+    availableBytes: physicalReadback.availableBytes,
+    availableInodes: physicalReadback.availableInodes
+  });
+}
+
 function productionServiceNativeSmokeContext(supplied, smokePhase) {
-  if (!productionA3Runtime(supplied) || !A3_SMOKE_PHASES.has(smokePhase)) fail("worker_storage_limit_unavailable");
-  const unit = `control-plane-a3-service-smoke-${supplied.a3RunLabel}-${smokePhase}`;
+  if (!productionMaterializerRuntime(supplied) || !A3_SMOKE_PHASES.has(smokePhase)) fail("worker_storage_limit_unavailable");
+  const unit = productionA3Runtime(supplied)
+    ? `control-plane-a3-service-smoke-${supplied.a3RunLabel}-${smokePhase}`
+    : `control-plane-bounded-artifact-smoke-${supplied.boundedRunLabel}-${smokePhase}`;
   return Object.freeze({
     tools: supplied.tools,
     probeRoot: supplied.lockRoot,
@@ -1177,15 +1265,34 @@ function productionA3Runtime(supplied) {
     && supplied.root === DEFAULT_CONTROL_PLANE_DEPLOYMENT_ROOT && A3_RUN_LABEL.test(supplied.a3RunLabel || "")
     && Number.isSafeInteger(supplied.a3ProjectId) && supplied.a3ProjectId > 0);
 }
+function productionBoundedArtifactRuntime(supplied) {
+  return Boolean(supplied && typeof supplied === "object" && PRODUCTION_BOUNDED_ARTIFACT_RUNTIMES.has(supplied)
+    && supplied.platform === "linux" && supplied.requireRoot === true && supplied.enforceOwnership === true
+    && supplied.root === DEFAULT_CONTROL_PLANE_DEPLOYMENT_ROOT && supplied.storageMode === "bounded-artifact"
+    && A3_RUN_LABEL.test(supplied.boundedRunLabel || "") && supplied.a3ProjectId === undefined);
+}
+function productionMaterializerRuntime(supplied) {
+  return productionA3Runtime(supplied) || productionBoundedArtifactRuntime(supplied);
+}
 export function createCandidateDependencyGateProductionRuntime(options = {}) {
   if (!options || !keys(options, ["runLabel", "projectId"]) || !A3_RUN_LABEL.test(options.runLabel || "")
     || !Number.isSafeInteger(options.projectId) || options.projectId <= 0) fail("invalid_input");
   const supplied = Object.freeze(runtime({
     platform: "linux", requireRoot: true, enforceOwnership: true,
-    a3RunLabel: options.runLabel, a3ProjectId: options.projectId,
+    storageMode: "xfs-project-quota", a3RunLabel: options.runLabel, a3ProjectId: options.projectId,
     tools: Object.freeze({ ...PRODUCTION_TRANSIENT_TOOLS, ...A3_PHYSICAL_TOOLS })
   }));
   PRODUCTION_A3_RUNTIMES.add(supplied);
+  return supplied;
+}
+export function createCandidateDependencyGateBoundedProductionRuntime(options = {}) {
+  if (!options || !keys(options, ["runLabel"]) || !A3_RUN_LABEL.test(options.runLabel || "")) fail("invalid_input");
+  const supplied = Object.freeze(runtime({
+    platform: "linux", requireRoot: true, enforceOwnership: true,
+    storageMode: "bounded-artifact", boundedRunLabel: options.runLabel,
+    tools: Object.freeze({ ...PRODUCTION_TRANSIENT_TOOLS })
+  }));
+  PRODUCTION_BOUNDED_ARTIFACT_RUNTIMES.add(supplied);
   return supplied;
 }
 export function createCandidateDependencyGateA3PhysicalValidationRuntime({ runLabel, projectId, overrides = {} } = {}) {
@@ -2076,7 +2183,13 @@ function lock(runtime) {
     fail("lock_unavailable");
   }
 }
-function unlock(value) { return eraseFile(value); }
+function unlock(value, supplied = null) {
+  if (supplied?.allowTestWorkerStorage === true && Object.hasOwn(supplied, "releaseMaterializationLock")) {
+    if (typeof supplied.releaseMaterializationLock !== "function") return false;
+    try { return supplied.releaseMaterializationLock(value) === true; } catch { return false; }
+  }
+  return eraseFile(value);
+}
 function snapshotSource(context, runtime) { const source = fileIn(context.candidateRoot, "scripts/control-plane-db-snapshot-gate.mjs", runtime, "native_module_validation_failed"); return { path: source.path, digest: hashFile(source.path) }; }
 
 function evidenceHash(value) { return hash(Buffer.from(JSON.stringify(value))); }
@@ -2089,6 +2202,10 @@ function quotaEvidenceForMaterialization(supplied) {
   const evidence = parseStorageQuotaEvidence(supplied.collectStorageQuotaEvidence());
   if (evidence.projectId !== supplied.a3ProjectId) fail("storage_quota_evidence_invalid");
   return evidence;
+}
+function storageEvidenceForMaterialization(supplied, tree = null, root = undefined) {
+  if (productionBoundedArtifactRuntime(supplied)) return collectProductionBoundedStorageReadback({ root, tree, runtime: supplied });
+  return quotaEvidenceForMaterialization(supplied);
 }
 function storageQuotaBoundary(quota) {
   if (!quota || typeof quota !== "object" || typeof quota.filesystem !== "string" || !quota.filesystem
@@ -2106,16 +2223,37 @@ function storageQuotaBoundary(quota) {
     enforcement: true
   });
 }
-function sameStorageQuotaBoundary(left, right) {
-  if (evidenceHash(storageQuotaBoundary(left)) !== evidenceHash(storageQuotaBoundary(right))) fail("storage_quota_evidence_invalid", true);
+function storageBoundary(value) {
+  if (value?.storageMode === "bounded-artifact") {
+    const readback = parseBoundedStorageReadback(value);
+    return Object.freeze({
+      storageMode: "bounded-artifact",
+      filesystem: readback.filesystem,
+      rootDeviceId: readback.rootDeviceId,
+      deviceId: readback.deviceId,
+      blockSize: readback.blockSize,
+      reserveBytes: readback.reserveBytes,
+      reserveInodes: readback.reserveInodes,
+      budgetPolicy: "block-aware-v1"
+    });
+  }
+  return Object.freeze({ storageMode: "xfs-project-quota", ...storageQuotaBoundary(value) });
 }
-function materializerSafetyEvidence(quota, smoke, supplied, capturedAt = now(supplied), quotaBefore = quota) {
+function sameStorageBoundary(left, right) {
+  if (evidenceHash(storageBoundary(left)) !== evidenceHash(storageBoundary(right))) {
+    fail(left?.storageMode === "bounded-artifact" || right?.storageMode === "bounded-artifact"
+      ? "dependency_storage_budget_unavailable" : "storage_quota_evidence_invalid", true);
+  }
+}
+function materializerSafetyEvidence(storage, smoke, supplied, capturedAt = now(supplied), storageBefore = storage) {
   const readback = parseServiceSmokeReadback(smoke);
+  const boundary = storageBoundary(storage);
   return Object.freeze({
-    projectId: quota.projectId,
-    quotaBoundarySha256: evidenceHash(storageQuotaBoundary(quota)),
-    quotaBeforeReadbackSha256: evidenceHash(quotaBefore),
-    quotaAfterReadbackSha256: evidenceHash(quota),
+    storageMode: boundary.storageMode,
+    projectId: boundary.storageMode === "xfs-project-quota" ? storage.projectId : null,
+    boundarySha256: evidenceHash(boundary),
+    beforeReadbackSha256: evidenceHash(storageBefore),
+    afterReadbackSha256: evidenceHash(storage),
     serviceSmokeEvidenceSha256: evidenceHash(readback),
     capturedAt
   });
@@ -2127,14 +2265,14 @@ const MATERIALIZER_RECEIPT_KEYS = Object.freeze([
   "dependencyArtifactManifestSizeBytes", "dependencyArchiveSha256", "dependencyArchiveSizeBytes",
   "dependencyArtifactTreeSha256", "dependencyArtifactTreeEntryCount", "dependencyArtifactTreeTotalBytes",
   "assemblySha256", "packageSha256", "packageLockSha256", "nodeModulesTreeSha256", "nodeModulesTreeEntryCount",
-  "nodeModulesTreeTotalBytes", "serviceUid", "serviceGid", "storageProjectId", "storageQuotaBoundarySha256",
-  "storageQuotaBeforeReadbackSha256", "storageQuotaAfterReadbackSha256", "serviceSmokeEvidenceSha256",
+  "nodeModulesTreeTotalBytes", "serviceUid", "serviceGid", "storageMode", "storageProjectId", "storageBoundarySha256",
+  "storageBeforeReadbackSha256", "storageAfterReadbackSha256", "serviceSmokeEvidenceSha256",
   "safetyEvidenceCapturedAt", "createdAt"
 ]);
-function receiptPayload(state, artifact, tree, safety, runtime) { return { schemaVersion: "3", materializerSchemaVersion: 3, type: "control_plane_candidate_dependency_receipt", state: "materialized", releaseUnit: UNIT, currentRelease: state.c.current, candidateRelease: state.c.candidate, sourceCommit: state.input.source.sourceCommit, artifactSha256: state.input.source.artifact.sha256, artifactSizeBytes: state.input.source.artifact.sizeBytes, artifactManifestSha256: state.input.artifactManifest, artifactManifestSizeBytes: state.input.artifactManifestSizeBytes, artifactStageReceiptSha256: state.input.artifact, artifactStageReceiptSizeBytes: state.input.artifactStageReceiptSizeBytes, dependencyArtifactManifestSha256: artifact.manifestSha256, dependencyArtifactManifestSizeBytes: artifact.manifestSizeBytes, dependencyArchiveSha256: artifact.archive.sha256, dependencyArchiveSizeBytes: artifact.archive.sizeBytes, dependencyArtifactTreeSha256: artifact.artifactTree.sha256, dependencyArtifactTreeEntryCount: artifact.artifactTree.entryCount, dependencyArtifactTreeTotalBytes: artifact.artifactTree.totalBytes, assemblySha256: state.input.assembly, packageSha256: state.input.package, packageLockSha256: state.input.lock, nodeModulesTreeSha256: tree.sha256, nodeModulesTreeEntryCount: tree.entryCount, nodeModulesTreeTotalBytes: tree.totalBytes, serviceUid: state.service.uid, serviceGid: state.service.gid, storageProjectId: safety.projectId, storageQuotaBoundarySha256: safety.quotaBoundarySha256, storageQuotaBeforeReadbackSha256: safety.quotaBeforeReadbackSha256, storageQuotaAfterReadbackSha256: safety.quotaAfterReadbackSha256, serviceSmokeEvidenceSha256: safety.serviceSmokeEvidenceSha256, safetyEvidenceCapturedAt: safety.capturedAt, createdAt: now(runtime) }; }
+function receiptPayload(state, artifact, tree, safety, runtime) { return { schemaVersion: "4", materializerSchemaVersion: 4, type: "control_plane_candidate_dependency_receipt", state: "materialized", releaseUnit: UNIT, currentRelease: state.c.current, candidateRelease: state.c.candidate, sourceCommit: state.input.source.sourceCommit, artifactSha256: state.input.source.artifact.sha256, artifactSizeBytes: state.input.source.artifact.sizeBytes, artifactManifestSha256: state.input.artifactManifest, artifactManifestSizeBytes: state.input.artifactManifestSizeBytes, artifactStageReceiptSha256: state.input.artifact, artifactStageReceiptSizeBytes: state.input.artifactStageReceiptSizeBytes, dependencyArtifactManifestSha256: artifact.manifestSha256, dependencyArtifactManifestSizeBytes: artifact.manifestSizeBytes, dependencyArchiveSha256: artifact.archive.sha256, dependencyArchiveSizeBytes: artifact.archive.sizeBytes, dependencyArtifactTreeSha256: artifact.artifactTree.sha256, dependencyArtifactTreeEntryCount: artifact.artifactTree.entryCount, dependencyArtifactTreeTotalBytes: artifact.artifactTree.totalBytes, assemblySha256: state.input.assembly, packageSha256: state.input.package, packageLockSha256: state.input.lock, nodeModulesTreeSha256: tree.sha256, nodeModulesTreeEntryCount: tree.entryCount, nodeModulesTreeTotalBytes: tree.totalBytes, serviceUid: state.service.uid, serviceGid: state.service.gid, storageMode: safety.storageMode, storageProjectId: safety.projectId, storageBoundarySha256: safety.boundarySha256, storageBeforeReadbackSha256: safety.beforeReadbackSha256, storageAfterReadbackSha256: safety.afterReadbackSha256, serviceSmokeEvidenceSha256: safety.serviceSmokeEvidenceSha256, safetyEvidenceCapturedAt: safety.capturedAt, createdAt: now(runtime) }; }
 export function parseMaterializerReceiptEnvelope(value) {
   if (!value || typeof value !== "object" || Array.isArray(value) || !keys(value, MATERIALIZER_RECEIPT_KEYS)
-    || value.schemaVersion !== "3" || value.materializerSchemaVersion !== 3
+    || value.schemaVersion !== "4" || value.materializerSchemaVersion !== 4
     || value.type !== "control_plane_candidate_dependency_receipt" || value.state !== "materialized" || value.releaseUnit !== UNIT
     || !LABEL.test(value.currentRelease || "") || !LABEL.test(value.candidateRelease || "") || !COMMIT.test(value.sourceCommit || "")
     || !HASH.test(value.artifactSha256 || "") || !Number.isSafeInteger(value.artifactSizeBytes) || value.artifactSizeBytes <= 0
@@ -2148,15 +2286,17 @@ export function parseMaterializerReceiptEnvelope(value) {
     || !HASH.test(value.nodeModulesTreeSha256 || "") || !Number.isSafeInteger(value.nodeModulesTreeEntryCount) || value.nodeModulesTreeEntryCount < 1
     || !Number.isSafeInteger(value.nodeModulesTreeTotalBytes) || value.nodeModulesTreeTotalBytes < 0
     || !Number.isSafeInteger(value.serviceUid) || value.serviceUid <= 0 || !Number.isSafeInteger(value.serviceGid) || value.serviceGid <= 0
-    || !Number.isSafeInteger(value.storageProjectId) || value.storageProjectId <= 0
-    || !HASH.test(value.storageQuotaBoundarySha256 || "") || !HASH.test(value.storageQuotaBeforeReadbackSha256 || "")
-    || !HASH.test(value.storageQuotaAfterReadbackSha256 || "") || !HASH.test(value.serviceSmokeEvidenceSha256 || "")
+    || !["xfs-project-quota", "bounded-artifact"].includes(value.storageMode)
+    || value.storageMode === "xfs-project-quota" && (!Number.isSafeInteger(value.storageProjectId) || value.storageProjectId <= 0)
+    || value.storageMode === "bounded-artifact" && value.storageProjectId !== null
+    || !HASH.test(value.storageBoundarySha256 || "") || !HASH.test(value.storageBeforeReadbackSha256 || "")
+    || !HASH.test(value.storageAfterReadbackSha256 || "") || !HASH.test(value.serviceSmokeEvidenceSha256 || "")
     || !iso(value.safetyEvidenceCapturedAt) || !iso(value.createdAt)) fail("dependency_receipt_mismatch");
   return Object.freeze({ ...value });
 }
 export function verifyMaterializerReceiptStorageBoundary(value, quota) {
   const receipt = parseMaterializerReceiptEnvelope(value);
-  if (receipt.storageQuotaBoundarySha256 !== evidenceHash(storageQuotaBoundary(quota))) fail("dependency_receipt_mismatch");
+  if (receipt.storageBoundarySha256 !== evidenceHash(storageBoundary(quota))) fail("dependency_receipt_mismatch");
   return receipt;
 }
 function checkReceiptStateBindings(value, state) {
@@ -2173,7 +2313,8 @@ function requireCurrentReceiptSchema(value, state, identity, supplied) {
   checkReceiptStateBindings(receipt, state);
   if (receipt.dependencyArtifactManifestSha256 !== identity.manifestSha256
     || receipt.dependencyArchiveSha256 !== identity.archiveSha256
-    || receipt.storageProjectId !== supplied.a3ProjectId) fail("dependency_receipt_mismatch");
+    || receipt.storageMode !== (productionBoundedArtifactRuntime(supplied) ? "bounded-artifact" : "xfs-project-quota")
+    || receipt.storageMode === "xfs-project-quota" && receipt.storageProjectId !== supplied.a3ProjectId) fail("dependency_receipt_mismatch");
   return receipt;
 }
 function checkReceipt(value, state, artifact, tree = null, safety = null, exactSafetyReadbacks = true) {
@@ -2187,14 +2328,40 @@ function checkReceipt(value, state, artifact, tree = null, safety = null, exactS
     || receipt.dependencyArtifactTreeTotalBytes !== artifact.artifactTree.totalBytes
     || tree && (receipt.nodeModulesTreeSha256 !== tree.sha256 || receipt.nodeModulesTreeEntryCount !== tree.entryCount
       || receipt.nodeModulesTreeTotalBytes !== tree.totalBytes)
-    || safety && (receipt.storageProjectId !== safety.projectId || receipt.storageQuotaBoundarySha256 !== safety.quotaBoundarySha256
+    || safety && (receipt.storageMode !== safety.storageMode || receipt.storageProjectId !== safety.projectId || receipt.storageBoundarySha256 !== safety.boundarySha256
       || receipt.serviceSmokeEvidenceSha256 !== safety.serviceSmokeEvidenceSha256 || receipt.safetyEvidenceCapturedAt !== safety.capturedAt
-      || exactSafetyReadbacks && (receipt.storageQuotaBeforeReadbackSha256 !== safety.quotaBeforeReadbackSha256
-        || receipt.storageQuotaAfterReadbackSha256 !== safety.quotaAfterReadbackSha256))) fail("dependency_receipt_mismatch");
+      || exactSafetyReadbacks && (receipt.storageBeforeReadbackSha256 !== safety.beforeReadbackSha256
+        || receipt.storageAfterReadbackSha256 !== safety.afterReadbackSha256))) fail("dependency_receipt_mismatch");
 }
-function receiptDirectory(context, runtime) { const parent = base(context.receipts, runtime, "dependency_receipt_publish_failed"), path = resolve(parent, context.candidate); if (!existsSync(path)) make(path, parent, runtime.enforceOwnership ? 0 : runtime.getuid(), runtime.enforceOwnership ? 0 : runtime.getgid(), 0o700, "dependency_receipt_publish_failed"); else if (readdirSync(directory(path, runtime, "dependency_receipt_publish_failed")).length) fail("dependency_receipt_present"); return directory(path, runtime, "dependency_receipt_publish_failed"); }
-function writeReceipt(state, payload, runtime) {
-  const parent = receiptDirectory(state.c, runtime), path = resolve(parent, "node-modules-materialization.json");
+function boundedVolumeMatches(path, expectedDeviceId) {
+  try {
+    return String(stat(path, "dependency_storage_budget_unavailable").dev) === expectedDeviceId
+      && statfsSync(path, { bigint: true }).type === BigInt(EXT4_SUPER_MAGIC);
+  } catch { return false; }
+}
+function assertBoundedMutationTopology(context, storage, runtime) {
+  if (storage?.storageMode !== "bounded-artifact") return;
+  const expectedDeviceId = parseBoundedStorageReadback(storage).deviceId;
+  const paths = [context.root, context.candidateRoot, context.staging, context.receipts, resolve(context.receipts, context.candidate)];
+  for (const path of paths) {
+    if (!existsSync(path)) continue;
+    const observed = directory(path, runtime, "dependency_storage_budget_unavailable");
+    if (!boundedVolumeMatches(observed, expectedDeviceId)) fail("dependency_storage_budget_unavailable");
+  }
+}
+function receiptDirectory(context, runtime, storage = null) {
+  const expectedDeviceId = storage?.storageMode === "bounded-artifact" ? parseBoundedStorageReadback(storage).deviceId : null;
+  if (expectedDeviceId !== null && !boundedVolumeMatches(dirname(context.receipts), expectedDeviceId)) fail("dependency_storage_budget_unavailable");
+  const parent = base(context.receipts, runtime, "dependency_receipt_publish_failed"), path = resolve(parent, context.candidate);
+  if (expectedDeviceId !== null && !boundedVolumeMatches(parent, expectedDeviceId)) fail("dependency_storage_budget_unavailable");
+  if (!existsSync(path)) make(path, parent, runtime.enforceOwnership ? 0 : runtime.getuid(), runtime.enforceOwnership ? 0 : runtime.getgid(), 0o700, "dependency_receipt_publish_failed");
+  const candidateReceiptRoot = directory(path, runtime, "dependency_receipt_publish_failed");
+  if (expectedDeviceId !== null && !boundedVolumeMatches(candidateReceiptRoot, expectedDeviceId)) fail("dependency_storage_budget_unavailable");
+  if (readdirSync(candidateReceiptRoot).length) fail("dependency_receipt_present");
+  return candidateReceiptRoot;
+}
+function writeReceipt(state, payload, runtime, storage = null) {
+  const parent = receiptDirectory(state.c, runtime, storage), path = resolve(parent, "node-modules-materialization.json");
   if (!same(path, state.c.receipt) || existsSync(path)) fail("dependency_receipt_present");
   const temporary = resolve(parent, `.node-modules-materialization.${process.pid}.${randomUUID()}`), bytes = Buffer.from(`${JSON.stringify(payload, null, 2)}\n`);
   let descriptor, temporaryIdentity = null, temporaryRemoved = false, final = null;
@@ -2221,7 +2388,9 @@ function writeReceipt(state, payload, runtime) {
     temporaryRemoved = true;
     fsync(parent, "dependency_receipt_publish_failed");
     const published = regular(path, runtime, "dependency_receipt_publish_failed", 0o600, true);
+    const expectedDeviceId = storage?.storageMode === "bounded-artifact" ? parseBoundedStorageReadback(storage).deviceId : null;
     if (inode(published.metadata) !== temporaryIdentity || hashFile(published.path) !== hash(bytes)) fail("dependency_receipt_publish_failed");
+    if (expectedDeviceId !== null && !boundedVolumeMatches(published.path, expectedDeviceId)) fail("dependency_storage_budget_unavailable");
     return { path: published.path, identity: temporaryIdentity, value: json(published.path, "dependency_receipt_publish_failed") };
   } catch (error) {
     if (descriptor !== undefined) closeSync(descriptor);
@@ -2238,14 +2407,25 @@ function writeReceipt(state, payload, runtime) {
     fail("dependency_receipt_publish_failed");
   }
 }
-function readReceipt(context, runtime) { if (!existsSync(context.receipt)) fail("dependency_receipt_missing"); const file = regular(context.receipt, runtime, "dependency_receipt_invalid", 0o600, true); return { path: file.path, identity: inode(file.metadata), value: json(file.path, "dependency_receipt_invalid") }; }
+function readReceipt(context, runtime, storage = null) {
+  if (!existsSync(context.receipt)) fail("dependency_receipt_missing");
+  const expectedDeviceId = storage?.storageMode === "bounded-artifact" ? parseBoundedStorageReadback(storage).deviceId : null;
+  const parent = directory(dirname(context.receipt), runtime, "dependency_receipt_invalid");
+  if (expectedDeviceId !== null && !boundedVolumeMatches(parent, expectedDeviceId)) fail("dependency_storage_budget_unavailable");
+  const file = regular(context.receipt, runtime, "dependency_receipt_invalid", 0o600, true);
+  if (expectedDeviceId !== null && !boundedVolumeMatches(file.path, expectedDeviceId)) fail("dependency_storage_budget_unavailable");
+  return { path: file.path, identity: inode(file.metadata), value: json(file.path, "dependency_receipt_invalid") };
+}
 function report(mode, state, value, tree = null, applied = false, artifact = null) { return { schemaVersion: CANDIDATE_DEPENDENCY_GATE_SCHEMA_VERSION, type: CANDIDATE_DEPENDENCY_GATE_TYPE, mode, state, applied, releaseUnit: UNIT, currentRelease: value.c.current, candidateRelease: value.c.candidate, servicePrincipal: { uid: value.service.uid, gid: value.service.gid }, sourceBinding: { artifactManifestBound: true, artifactStageReceiptBound: true, assemblyManifestBound: true, packageLockBound: true, ...(artifact ? { dependencyArtifactBound: true } : {}) }, ...(tree ? { dependencyTree: { audited: true, nativeBetterSqlite3: true, snapshotImportSafe: true, hardlinksBroken: tree.hardlinksBroken ?? tree.broken } } : {}), ...(["preflight", "verify"].includes(mode) ? { binding: { packageSha256: value.input.package, packageLockSha256: value.input.lock, assemblySha256: value.input.assembly, artifactManifestSha256: value.input.artifactManifest, artifactManifestSizeBytes: value.input.artifactManifestSizeBytes, artifactStageReceiptSha256: value.input.artifact, artifactStageReceiptSizeBytes: value.input.artifactStageReceiptSizeBytes, ...(artifact ? { dependencyArtifactManifestSha256: artifact.manifestSha256, dependencyArchiveSha256: artifact.archive.sha256 } : {}) } } : {}) }; }
 
 export function preflightCandidateDependencies({ candidateRelease, expectedCurrentRelease, runtime: supplied = runtime() } = {}) {
-  if (supplied.requireRoot && !productionA3Runtime(supplied)) fail("worker_storage_limit_unavailable");
+  if (supplied.requireRoot && !productionMaterializerRuntime(supplied)) fail("worker_storage_limit_unavailable");
   const initial = state(candidateRelease, expectedCurrentRelease, supplied);
   renameSupport(supplied);
-  if (productionA3Runtime(supplied)) quotaEvidenceForMaterialization(supplied);
+  if (productionMaterializerRuntime(supplied)) {
+    const storage = storageEvidenceForMaterialization(supplied, null, initial.c.candidateRoot);
+    assertBoundedMutationTopology(initial.c, storage, supplied);
+  }
   return report("preflight", "ready", steady(initial, supplied));
 }
 
@@ -2330,16 +2510,21 @@ function artifactEvidence(value, identity) {
   return Object.freeze({ manifestSha256, manifestSizeBytes, archive: Object.freeze({ sha256: archive.sha256, sizeBytes: archive.sizeBytes }), artifactTree: Object.freeze({ sha256: tree.sha256, entryCount: tree.entryCount, totalBytes: tree.totalBytes, hardlinksBroken: tree.hardlinksBroken, symlinksInternal: tree.symlinksInternal }) });
 }
 
-function artifactStaging(context, supplied) {
+function artifactStaging(context, supplied, storage = null) {
   if (supplied.requireRoot) trustedAclAncestorChain(dirname(context.staging), supplied, "candidate_tree_invalid");
+  const expectedDeviceId = storage?.storageMode === "bounded-artifact" ? parseBoundedStorageReadback(storage).deviceId : null;
   const owner = rootWorkerOwner(supplied), parent = directory(dirname(context.staging), supplied, "candidate_tree_invalid");
+  if (expectedDeviceId !== null && (!boundedVolumeMatches(parent, expectedDeviceId)
+    || !boundedVolumeMatches(context.candidateRoot, expectedDeviceId))) fail("dependency_storage_budget_unavailable");
   const root = rootControlledDirectory(context.staging, parent, owner, 0o711, "candidate_tree_invalid");
+  if (expectedDeviceId !== null && !boundedVolumeMatches(root.path, expectedDeviceId)) fail("dependency_storage_budget_unavailable");
   if (readdirSync(root.path).length) fail("candidate_tree_invalid");
   if (supplied.requireRoot) sealedAclCapabilities(root.path, supplied, false, "candidate_tree_invalid");
   const stage = make(resolve(root.path, `artifact-${context.candidate}-${process.pid}-${randomUUID()}`), root.path, owner.uid, owner.gid, 0o711, "candidate_tree_invalid");
-  if (stat(stage.path, "candidate_tree_invalid").dev !== stat(context.candidateRoot, "candidate_path_invalid").dev) {
-    eraseDirectory(stage);
-    fail("device_boundary_invalid");
+  if (stat(stage.path, "candidate_tree_invalid").dev !== stat(context.candidateRoot, "candidate_path_invalid").dev
+    || expectedDeviceId !== null && !boundedVolumeMatches(stage.path, expectedDeviceId)) {
+    const cleaned = eraseDirectory(stage);
+    fail("device_boundary_invalid", !cleaned);
   }
   return stage;
 }
@@ -2382,7 +2567,7 @@ function stageSnapshotModule(extracted, context, supplied) {
 
 function serviceNativeSmoke(root, service, supplied, smokePhase) {
   if (!service || service.uid <= 0 || service.gid <= 0) fail("service_identity_invalid");
-  if (productionA3Runtime(supplied)) return collectProductionServiceNativeSmokeEvidence({ smokePhase, root, service, runtime: supplied });
+  if (productionMaterializerRuntime(supplied)) return collectProductionServiceNativeSmokeEvidence({ smokePhase, root, service, runtime: supplied });
   if (supplied.requireRoot === true) fail("worker_storage_limit_unavailable");
   if (supplied.allowTestWorkerStorage === true && typeof supplied.runServiceNativeSmoke === "function") {
     return runServiceNativeSmoke({ root, service, snapshotModule: "scripts/control-plane-db-snapshot-gate.mjs", runtime: supplied });
@@ -2499,17 +2684,17 @@ export async function materializeCandidateDependencies({
 } = {}) {
   if (apply !== true) fail("apply_confirmation_required");
   const requested = requestedMaterializationIdentity(expectedSourceCommit, expectedArtifactRelease, expectedDependencyManifestSha256, expectedDependencyArchiveSha256);
-  // The default route remains inert. An explicitly configured production A3
-  // runtime proves the live project-quota boundary before extraction, executes
-  // both restricted service-native smokes, and re-reads the quota boundary
-  // after publish before a receipt can be committed.
-  if (supplied.requireRoot && !productionA3Runtime(supplied)) fail("worker_storage_limit_unavailable");
-  let key, stage, extracted, published, receipt, evidence, quotaEvidence, safetyEvidence, result, error;
+  // The default route remains inert. Production admission is reachable only
+  // through one branded runtime: strict XFS project quota, or exact-artifact
+  // bounded admission on the reviewed filesystem allowlist.
+  if (supplied.requireRoot && !productionMaterializerRuntime(supplied)) fail("worker_storage_limit_unavailable");
+  let key, stage, extracted, published, receipt, evidence, storageInitial, storageBeforePublish, safetyEvidence, result, error;
   try {
     let value = state(candidateRelease, expectedCurrentRelease, supplied);
     const identity = materializationIdentity(value, requested.sourceCommit, requested.artifactRelease, requested.manifestSha256, requested.archiveSha256);
     if (existsSync(value.c.receipt)) fail("dependency_receipt_present");
-    quotaEvidence = quotaEvidenceForMaterialization(supplied);
+    storageInitial = storageEvidenceForMaterialization(supplied, null, value.c.candidateRoot);
+    assertBoundedMutationTopology(value.c, storageInitial, supplied);
     key = lock(supplied);
     renameSupport(supplied);
     value = steady(value, supplied);
@@ -2524,12 +2709,14 @@ export async function materializeCandidateDependencies({
     if (error) throw error;
     let value = state(candidateRelease, expectedCurrentRelease, supplied);
     const identity = materializationIdentity(value, requested.sourceCommit, requested.artifactRelease, requested.manifestSha256, requested.archiveSha256);
-    stage = artifactStaging(value.c, supplied);
+    stage = artifactStaging(value.c, supplied, storageInitial);
     const prepared = prepareArtifactForMaterialization(value, identity, stage, supplied);
     evidence = prepared.evidence;
     extracted = materializationExtraction(prepared, stage, supplied);
     const rawTree = auditedPublishedTree(extracted.nodeModulesRoot, supplied, "dependency_tree_invalid");
     sameArtifactTree(rawTree, evidence.artifactTree, "dependency_tree_mismatch");
+    storageBeforePublish = storageEvidenceForMaterialization(supplied, evidence.artifactTree, value.c.candidateRoot);
+    sameStorageBoundary(storageInitial, storageBeforePublish);
     normalizeArtifactTree(extracted.root, supplied);
     stageSnapshotModule(extracted, value.c, supplied);
     const normalizedTree = auditedPublishedTree(extracted.nodeModulesRoot, supplied, "candidate_tree_invalid");
@@ -2550,14 +2737,9 @@ export async function materializeCandidateDependencies({
     const finalTree = auditedPublishedTree(target, supplied, "postpublish_validation_failed");
     if (finalTree.sha256 !== normalizedTree.sha256 || finalTree.entryCount !== normalizedTree.entryCount || finalTree.totalBytes !== normalizedTree.totalBytes) fail("postpublish_validation_failed", true);
     const publishedSmoke = serviceNativeSmoke(value.c.candidateRoot, value.service, supplied, "postpublish");
-    const quotaAfterPublish = quotaEvidenceForMaterialization(supplied);
-    sameStorageQuotaBoundary(quotaEvidence, quotaAfterPublish);
-    safetyEvidence = materializerSafetyEvidence(quotaAfterPublish, publishedSmoke, supplied, undefined, quotaEvidence);
     value = steady(value, supplied, false);
     materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
     recheckMaterializationArtifactInput(value, identity, evidence, supplied);
-    receipt = writeReceipt(value, receiptPayload(value, evidence, finalTree, safetyEvidence, supplied), supplied);
-    checkReceipt(receipt.value, value, evidence, finalTree, safetyEvidence);
     if (!cleanupExtraction(extracted)) fail("postpublish_cleanup_failed", true);
     extracted = null;
     if (!eraseDirectory(stage)) fail("postpublish_cleanup_failed", true);
@@ -2565,7 +2747,12 @@ export async function materializeCandidateDependencies({
     value = steady(value, supplied, false);
     materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
     recheckMaterializationArtifactInput(value, identity, evidence, supplied);
-    checkReceipt(readReceipt(value.c, supplied).value, value, evidence, finalTree, safetyEvidence);
+    const storageAfterPublish = storageEvidenceForMaterialization(supplied, evidence.artifactTree, value.c.candidateRoot);
+    sameStorageBoundary(storageInitial, storageAfterPublish);
+    safetyEvidence = materializerSafetyEvidence(storageAfterPublish, publishedSmoke, supplied, undefined, storageBeforePublish);
+    receipt = writeReceipt(value, receiptPayload(value, evidence, finalTree, safetyEvidence, supplied), supplied, storageAfterPublish);
+    checkReceipt(receipt.value, value, evidence, finalTree, safetyEvidence);
+    checkReceipt(readReceipt(value.c, supplied, storageAfterPublish).value, value, evidence, finalTree, safetyEvidence);
     result = report("materialize", "materialized", value, finalTree, true, evidence);
   } catch (caught) {
     error = caught instanceof CandidateDependencyGateError ? caught : new CandidateDependencyGateError("postpublish_validation_failed");
@@ -2575,7 +2762,13 @@ export async function materializeCandidateDependencies({
     const stageClean = eraseDirectory(stage);
     if (!receiptClean || !publishedClean || !extractedClean || !stageClean) error = new CandidateDependencyGateError("postpublish_cleanup_failed", true);
   } finally {
-    if (key && !unlock(key)) error = new CandidateDependencyGateError("lock_cleanup_failed", true);
+    if (key && !unlock(key, supplied)) {
+      if (!error) {
+        const receiptClean = !receipt || eraseFile(receipt);
+        const publishedClean = !published || eraseDirectory(published);
+        error = new CandidateDependencyGateError(receiptClean && publishedClean ? "lock_cleanup_failed" : "postpublish_cleanup_failed", true);
+      } else if (error.attentionRequired !== true) error = new CandidateDependencyGateError("lock_cleanup_failed", true);
+    }
   }
   if (error) throw error;
   return result;
@@ -2591,37 +2784,41 @@ export async function verifyCandidateDependencies({
   runtime: supplied = runtime()
 } = {}) {
   const requested = requestedMaterializationIdentity(expectedSourceCommit, expectedArtifactRelease, expectedDependencyManifestSha256, expectedDependencyArchiveSha256);
-  if (supplied.requireRoot && !productionA3Runtime(supplied)) fail("worker_storage_limit_unavailable");
-  let key, stage, extracted, quotaEvidence, result, error;
+  if (supplied.requireRoot && !productionMaterializerRuntime(supplied)) fail("worker_storage_limit_unavailable");
+  let key, stage, extracted, storageEvidence, result, error;
   try {
     let value = state(candidateRelease, expectedCurrentRelease, supplied, false);
     const identity = materializationIdentity(value, requested.sourceCommit, requested.artifactRelease, requested.manifestSha256, requested.archiveSha256);
     const target = resolve(value.c.candidateRoot, "node_modules");
     const targetMetadata = stat(target, "candidate_tree_invalid");
     if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory()) fail("candidate_tree_invalid");
-    const receipt = readReceipt(value.c, supplied);
+    storageEvidence = storageEvidenceForMaterialization(supplied, null, value.c.candidateRoot);
+    assertBoundedMutationTopology(value.c, storageEvidence, supplied);
+    const receipt = readReceipt(value.c, supplied, storageEvidence);
     const currentReceipt = requireCurrentReceiptSchema(receipt.value, value, identity, supplied);
-    quotaEvidence = quotaEvidenceForMaterialization(supplied);
-    verifyMaterializerReceiptStorageBoundary(currentReceipt, quotaEvidence);
+    verifyMaterializerReceiptStorageBoundary(currentReceipt, storageEvidence);
     key = lock(supplied);
     value = steady(value, supplied, false);
     materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
     if (supplied.requireRoot) trustedAclAncestorChain(value.c.candidateRoot, supplied, "candidate_path_invalid");
-    stage = artifactStaging(value.c, supplied);
+    stage = artifactStaging(value.c, supplied, storageEvidence);
     const prepared = prepareArtifactForMaterialization(value, identity, stage, supplied);
     const evidence = prepared.evidence;
     extracted = materializationExtraction(prepared, stage, supplied);
     const rawTree = auditedPublishedTree(extracted.nodeModulesRoot, supplied, "dependency_tree_invalid");
     sameArtifactTree(rawTree, evidence.artifactTree, "dependency_tree_mismatch");
+    const exactStorageEvidence = storageEvidenceForMaterialization(supplied, evidence.artifactTree, value.c.candidateRoot);
+    sameStorageBoundary(storageEvidence, exactStorageEvidence);
+    verifyMaterializerReceiptStorageBoundary(currentReceipt, exactStorageEvidence);
     const finalTree = auditedPublishedTree(target, supplied, "postpublish_validation_failed");
     checkReceipt(receipt.value, value, evidence, finalTree);
     const publishedSmoke = serviceNativeSmoke(value.c.candidateRoot, value.service, supplied, "verify");
-    const safetyEvidence = materializerSafetyEvidence(quotaEvidence, publishedSmoke, supplied, receipt.value.safetyEvidenceCapturedAt);
+    const safetyEvidence = materializerSafetyEvidence(exactStorageEvidence, publishedSmoke, supplied, receipt.value.safetyEvidenceCapturedAt, exactStorageEvidence);
     checkReceipt(receipt.value, value, evidence, finalTree, safetyEvidence, false);
     value = steady(value, supplied, false);
     materializationIdentity(value, identity.sourceCommit, identity.artifactRelease, identity.manifestSha256, identity.archiveSha256);
     recheckMaterializationArtifactInput(value, identity, evidence, supplied);
-    checkReceipt(readReceipt(value.c, supplied).value, value, evidence, finalTree, safetyEvidence, false);
+    checkReceipt(readReceipt(value.c, supplied, exactStorageEvidence).value, value, evidence, finalTree, safetyEvidence, false);
     const extractedClean = cleanupExtraction(extracted);
     const stageClean = eraseDirectory(stage);
     if (!extractedClean || !stageClean) fail("postpublish_cleanup_failed", true);
@@ -2633,19 +2830,20 @@ export async function verifyCandidateDependencies({
     const stageClean = eraseDirectory(stage);
     if (!extractedClean || !stageClean) error = new CandidateDependencyGateError("postpublish_cleanup_failed", true);
   } finally {
-    if (key && !unlock(key)) error = new CandidateDependencyGateError("lock_cleanup_failed", true);
+    if (key && !unlock(key, supplied) && error?.attentionRequired !== true) error = new CandidateDependencyGateError("lock_cleanup_failed", true);
   }
   if (error) throw error;
   return result;
 }
 
 function args(argv) {
-  const values = new Map(); let apply = false, enableA3Materializer = false;
-  const allowed = new Set(["--mode", "--candidate-release", "--expected-current-release", "--expected-source-commit", "--expected-artifact-release", "--expected-dependency-manifest-sha256", "--expected-dependency-archive-sha256", "--a3-run-label", "--a3-project-id"]);
+  const values = new Map(); let apply = false, enableA3Materializer = false, enableBoundedArtifactAdmission = false;
+  const allowed = new Set(["--mode", "--candidate-release", "--expected-current-release", "--expected-source-commit", "--expected-artifact-release", "--expected-dependency-manifest-sha256", "--expected-dependency-archive-sha256", "--a3-run-label", "--a3-project-id", "--bounded-run-label"]);
   for (let index = 0; index < argv.length; index += 1) {
     const item = argv[index];
     if (item === "--apply") { if (apply) fail("invalid_input"); apply = true; continue; }
     if (item === "--enable-a3-materializer") { if (enableA3Materializer) fail("invalid_input"); enableA3Materializer = true; continue; }
+    if (item === "--enable-bounded-artifact-admission") { if (enableBoundedArtifactAdmission) fail("invalid_input"); enableBoundedArtifactAdmission = true; continue; }
     const equals = typeof item === "string" ? item.indexOf("=") : -1, key = equals >= 0 ? item.slice(0, equals) : item;
     if (!allowed.has(key) || values.has(key)) fail("invalid_input");
     const value = equals >= 0 ? item.slice(equals + 1) : argv[++index];
@@ -2663,13 +2861,19 @@ function args(argv) {
     result.expectedDependencyArchiveSha256 = values.get("--expected-dependency-archive-sha256");
   } else if (["--expected-source-commit", "--expected-artifact-release", "--expected-dependency-manifest-sha256", "--expected-dependency-archive-sha256"].some((key) => values.has(key))) fail("invalid_input");
   const a3Configured = values.has("--a3-run-label") || values.has("--a3-project-id");
+  const boundedConfigured = values.has("--bounded-run-label");
+  if (enableA3Materializer && enableBoundedArtifactAdmission) fail("invalid_input");
   if (enableA3Materializer) {
+    if (boundedConfigured) fail("invalid_input");
     const projectIdRaw = values.get("--a3-project-id");
     if (!values.has("--a3-run-label") || !/^[1-9][0-9]*$/.test(projectIdRaw || "")) fail("invalid_input");
     const projectId = Number(projectIdRaw);
     if (!Number.isSafeInteger(projectId)) fail("invalid_input");
     result.runtime = createCandidateDependencyGateProductionRuntime({ runLabel: values.get("--a3-run-label"), projectId });
-  } else if (a3Configured) fail("invalid_input");
+  } else if (enableBoundedArtifactAdmission) {
+    if (a3Configured || !boundedConfigured) fail("invalid_input");
+    result.runtime = createCandidateDependencyGateBoundedProductionRuntime({ runLabel: values.get("--bounded-run-label") });
+  } else if (a3Configured || boundedConfigured) fail("invalid_input");
   return result;
 }
 export async function runCandidateDependencyGateCli({ argv = process.argv.slice(2), stdout = process.stdout, stderr = process.stderr } = {}) { let mode = null; try { const value = args(argv); mode = value.mode; const result = mode === "preflight" ? preflightCandidateDependencies(value) : mode === "materialize" ? await materializeCandidateDependencies(value) : await verifyCandidateDependencies(value); stdout.write(`${JSON.stringify(result)}\n`); return 0; } catch (error) { const gate = error instanceof CandidateDependencyGateError ? error : null; stderr.write(`${JSON.stringify({ schemaVersion: CANDIDATE_DEPENDENCY_GATE_SCHEMA_VERSION, type: CANDIDATE_DEPENDENCY_GATE_TYPE, mode, state: gate?.attentionRequired ? "attention_required" : "blocked", condition: gate && SAFE.has(gate.condition) ? gate.condition : "postpublish_validation_failed" })}\n`); return 1; } }
