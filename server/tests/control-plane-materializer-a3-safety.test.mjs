@@ -543,6 +543,8 @@ function serviceSmokeHarness({
   pinnedStatus = 0,
   pinnedOverrides = {},
   cgroupPresent = true,
+  cgroupDisappearOnRead = null,
+  cgroupReadEnoentWhilePresent = null,
   cgroupEvents = "populated 0\n",
   cgroupProcs = "",
   stopStatus = 0
@@ -555,6 +557,7 @@ function serviceSmokeHarness({
   const calls = [];
   let stopped = false;
   let unitLoaded = initialCaptures;
+  let cgroupAvailable = cgroupPresent;
   let remainingGcPolls = 0;
   let startCollision = false;
   let bindReadOnlyPaths = "";
@@ -611,15 +614,29 @@ function serviceSmokeHarness({
   };
   const runtime = physicalRuntime({
     executePhysicalCommand,
-    physicalPathExists: (path) => captures.get(path) === "regular" || path === cgroupRoot && cgroupPresent && !stopped,
+    physicalPathExists: (path) => captures.get(path) === "regular" || path === cgroupRoot && cgroupAvailable && !stopped,
     physicalLeafState: (path) => captures.get(path) || "absent",
     validateA3ServiceSmokeCaptureBoundary: () => captureBoundaryValid,
     validateA3ServiceSmokeSource: () => sourceCustodyValid,
     readPhysicalFile: (path) => {
       if (path === captureStdout) return processStdout;
       if (path === captureStderr) return processStderr;
-      if (path === `${cgroupRoot}/cgroup.events`) return cgroupEvents;
-      if (path === `${cgroupRoot}/cgroup.procs`) return cgroupProcs;
+      if (path === `${cgroupRoot}/cgroup.events`) {
+        if (cgroupReadEnoentWhilePresent === "events") throw Object.assign(new Error("cgroup file unavailable"), { code: "ENOENT" });
+        if (!cgroupAvailable || cgroupDisappearOnRead === "events") {
+          cgroupAvailable = false;
+          throw Object.assign(new Error("cgroup disappeared"), { code: "ENOENT" });
+        }
+        return cgroupEvents;
+      }
+      if (path === `${cgroupRoot}/cgroup.procs`) {
+        if (cgroupReadEnoentWhilePresent === "procs") throw Object.assign(new Error("cgroup file unavailable"), { code: "ENOENT" });
+        if (!cgroupAvailable || cgroupDisappearOnRead === "procs") {
+          cgroupAvailable = false;
+          throw Object.assign(new Error("cgroup disappeared"), { code: "ENOENT" });
+        }
+        return cgroupProcs;
+      }
       throw new Error("unexpected read path");
     },
     removePhysicalFile: (path) => { captures.delete(path); }
@@ -665,6 +682,29 @@ test("collectServiceNativeSmokeEvidence accepts an empty ControlGroup while the 
   assert.equal(evidence.cgroupEmpty, true);
   assert.equal(harness.wasStopped(), true);
   assert.equal(harness.captures.size, 0);
+});
+
+test("collectServiceNativeSmokeEvidence accepts cgroup collection racing either empty-state read", () => {
+  for (const cgroupDisappearOnRead of ["events", "procs"]) {
+    const harness = serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "" }, cgroupDisappearOnRead });
+    const evidence = collectServiceSmoke(harness.runtime);
+    assert.equal(evidence.cgroupEmpty, true);
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence rejects missing cgroup files while the cgroup root remains", () => {
+  for (const cgroupReadEnoentWhilePresent of ["events", "procs"]) {
+    const harness = serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "" }, cgroupReadEnoentWhilePresent });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true,
+      cgroupReadEnoentWhilePresent
+    );
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
 });
 
 test("collectServiceNativeSmokeEvidence cleans interrupted-run captures before a bounded retry", () => {

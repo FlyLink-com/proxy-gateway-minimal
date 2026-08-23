@@ -610,6 +610,21 @@ function readA3PhysicalFile(path, supplied, condition, attentionRequired = false
   } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail(condition, attentionRequired); }
 }
 
+function readA3PhysicalCgroupState(cgroupRoot, supplied) {
+  try {
+    const read = typeof supplied.readPhysicalFile === "function" ? supplied.readPhysicalFile : (value) => readFileSync(value, "utf8");
+    const events = read(`${cgroupRoot}/cgroup.events`);
+    const procs = read(`${cgroupRoot}/cgroup.procs`);
+    if (typeof events !== "string" || typeof procs !== "string"
+      || Buffer.byteLength(events) > 4096 || Buffer.byteLength(procs) > 4096) fail("worker_cleanup_uncertain", true);
+    return Object.freeze({ events, procs });
+  } catch (error) {
+    if (error?.code === "ENOENT" && !a3PhysicalPathExists(cgroupRoot, supplied)) return null;
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail("worker_cleanup_uncertain", true);
+  }
+}
+
 function validateA3ServiceSmokeCapture(path, supplied) {
   if (a3PhysicalLeafState(path, supplied, "service_smoke_readback_invalid") !== "regular") fail("service_smoke_readback_invalid");
   if (typeof supplied.executePhysicalCommand !== "function") {
@@ -987,12 +1002,10 @@ export function collectServiceNativeSmokeEvidence({ runLabel, smokePhase = "vali
       || values.PrivateDevices !== "yes" || values.NoNewPrivileges !== "yes" || values.BindReadOnlyPaths !== expectedBind
       || values.Type !== "oneshot" || values.RemainAfterExit !== "yes" || values.CollectMode !== "inactive-or-failed") fail("worker_cleanup_uncertain", true);
     const cgroupRoot = `/sys/fs/cgroup/system.slice/${serviceUnit}`;
-    const cgroupPresent = a3PhysicalPathExists(cgroupRoot, supplied);
     if (values.ControlGroup !== controlGroup && values.ControlGroup !== "") fail("worker_cleanup_uncertain", true);
-    if (cgroupPresent) {
-      const events = readA3PhysicalFile(`${cgroupRoot}/cgroup.events`, supplied, "worker_cleanup_uncertain", true);
-      const procs = readA3PhysicalFile(`${cgroupRoot}/cgroup.procs`, supplied, "worker_cleanup_uncertain", true);
-      if (!/(?:^|\n)populated 0(?:\n|$)/.test(events) || procs.trim() !== "") fail("worker_cleanup_uncertain", true);
+    const cgroupState = readA3PhysicalCgroupState(cgroupRoot, supplied);
+    if (cgroupState) {
+      if (!/(?:^|\n)populated 0(?:\n|$)/.test(cgroupState.events) || cgroupState.procs.trim() !== "") fail("worker_cleanup_uncertain", true);
     }
   } catch (error) {
     primaryError = error instanceof CandidateDependencyGateError ? error : new CandidateDependencyGateError("service_smoke_readback_invalid");
