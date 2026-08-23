@@ -304,6 +304,7 @@ function runtime(value = {}) {
     probeRenameNoReplace: value.probeRenameNoReplace ?? productionRenameNoReplaceProbe,
     beforeFirstMutation: value.beforeFirstMutation ?? (() => {}),
     afterPublish: value.afterPublish ?? (() => {}),
+    beforeDirectoryIdentityTrusted: value.beforeDirectoryIdentityTrusted ?? (() => {}),
     afterDirectoryRegistered: value.afterDirectoryRegistered ?? (() => {}),
     afterDirectoryCustodyClosed: value.afterDirectoryCustodyClosed ?? (() => {}),
     syncPublishedPath: value.syncPublishedPath ?? ((path, condition) => fsyncPath(path, condition)),
@@ -705,25 +706,42 @@ function holdDirectoryCustody(path, metadata, condition) {
 }
 
 function registerCreatedDirectory({ path, parent, parentMetadata, runtimeValue, owned, condition, point, shallow = false }) {
-  fault(runtimeValue, `after_${point}_mkdir_before_identity`, condition, true);
+  const record = {
+    path,
+    parent,
+    identity: null,
+    descriptor: undefined,
+    custodyPoint: point,
+    afterDirectoryCustodyClosed: runtimeValue.afterDirectoryCustodyClosed,
+    trusted: false,
+    shallow
+  };
+  owned.push(record);
   let metadata;
   try {
     metadata = lstatSync(path);
   } catch {
     fail(condition, true);
   }
+  record.identity = identity(metadata);
   if (metadata.isSymbolicLink() || !metadata.isDirectory() || !rootControlled(metadata, runtimeValue)
     || String(metadata.dev) !== String(parentMetadata.dev)) fail(condition, true);
-  const record = {
-    path,
-    parent,
-    identity: identity(metadata),
-    descriptor: holdDirectoryCustody(path, metadata, condition),
-    custodyPoint: point,
-    afterDirectoryCustodyClosed: runtimeValue.afterDirectoryCustodyClosed,
-    shallow
-  };
-  owned.push(record);
+  fault(runtimeValue, `after_${point}_mkdir_before_identity`, condition, true);
+  record.descriptor = holdDirectoryCustody(path, metadata, condition);
+  runtimeValue.beforeDirectoryIdentityTrusted(point, path);
+  let current;
+  let held;
+  try {
+    current = lstatSync(path);
+    held = record.descriptor === undefined ? null : fstatSync(record.descriptor);
+  } catch {
+    fail(condition, true);
+  }
+  if (current.isSymbolicLink() || !current.isDirectory() || !rootControlled(current, runtimeValue)
+    || !sameNode(record.identity, identity(current))
+    || String(current.dev) !== String(parentMetadata.dev)
+    || held && (!held.isDirectory() || !sameNode(record.identity, identity(held)) || !sameNode(identity(current), identity(held)))) fail(condition, true);
+  record.trusted = true;
   runtimeValue.afterDirectoryRegistered(point, path);
   fault(runtimeValue, `after_${point}_registered`, condition);
   return record;
@@ -913,6 +931,10 @@ function publish(record, destination, runtimeValue, condition) {
 
 function removeOwned(record) {
   if (!record) return true;
+  if (record.trusted !== true || !record.identity) {
+    closeCustody(record);
+    return false;
+  }
   let metadata;
   let descriptorMetadata;
   try {

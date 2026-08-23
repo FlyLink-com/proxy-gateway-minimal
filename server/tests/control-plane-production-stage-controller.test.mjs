@@ -658,11 +658,45 @@ test("a created directory without a trustworthy identity is attention-required",
         () => stageProductionCandidate({ ...value.options, apply: true }),
         (error) => {
           observed = error;
-          return error instanceof ProductionStageControllerError && error.condition === "stage_failed";
+          return error instanceof ProductionStageControllerError && error.condition === "cleanup_failed";
         }
       );
       assert.equal(observed.attentionRequired, true);
       assert.equal(existsSync(join(value.deploymentRoot, "releases", CANDIDATE_RELEASE)), false);
+      assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
+    });
+  }
+});
+
+test("a pre-identity replacement is never adopted as attempt-owned", async (t) => {
+  for (const point of ["publication_root", "temporary_namespace", "temporary_child"]) {
+    await t.test(point, (t) => {
+      let replacedPath;
+      const value = fixture(t, {
+        publicationRoots: false,
+        runtimeOverrides: {
+          faultAt: `after_${point}_registered`,
+          beforeDirectoryIdentityTrusted(observedPoint, path) {
+            if (observedPoint !== point || replacedPath) return;
+            rmSync(path, { recursive: true, force: false });
+            mkdirSync(path, { mode: 0o700 });
+            write(join(path, "replacement-sentinel"), "preserve\n");
+            replacedPath = path;
+          }
+        }
+      });
+
+      let observed;
+      assert.throws(
+        () => stageProductionCandidate({ ...value.options, apply: true }),
+        (error) => {
+          observed = error;
+          return error instanceof ProductionStageControllerError && error.condition === "cleanup_failed";
+        }
+      );
+      assert.equal(observed.attentionRequired, true);
+      assert.equal(readFileSync(join(replacedPath, "replacement-sentinel"), "utf8"), "preserve\n");
+      if (point === "temporary_child") assert.equal(existsSync(dirname(replacedPath)), true);
       assert.equal(realpathSync(join(value.deploymentRoot, "current")), realpathSync(value.activeRoot));
     });
   }
