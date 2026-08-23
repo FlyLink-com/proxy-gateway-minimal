@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 
 import {
   DEPENDENCY_ARTIFACT_SCHEMA_VERSION,
+  DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION,
   DEPENDENCY_ARTIFACT_TYPE,
   DependencyArtifactError,
   MAX_MANIFEST_BYTES,
@@ -19,6 +20,7 @@ import {
   parseDependencyArtifactManifest,
   prepareDependencyArtifactTree,
   readDependencyArtifactManifest,
+  readSmokeProcessIdentity,
   runDependencyArtifactCli,
   runNativeBetterSqliteSmoke,
   validateDependencyArchiveEntries,
@@ -415,4 +417,439 @@ test("Ubuntu workflow is a CI artifact producer, not a production builder", () =
   assert.doesNotMatch(uploadStep, /path:\s*\.dependency-artifacts\s*(?:\r?\n|$)/);
   assert.doesNotMatch(workflow, /\b(?:ssh|scp|rsync|systemctl|systemd-run)\b/i);
   assert.doesNotMatch(workflow, /\.env|CONSOLE_TOKEN|SS_PASSWORD|subscription/i);
+});
+
+test("smoke CLI exports a dedicated smoke schema version that does not change the artifact manifest version", () => {
+  assert.equal(DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION, "3");
+  assert.equal(DEPENDENCY_ARTIFACT_SCHEMA_VERSION, "2");
+  assert.notEqual(DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION, DEPENDENCY_ARTIFACT_SCHEMA_VERSION);
+});
+
+test("smoke CLI emits the exact schema-version-3 envelope using injected getuid/getgid", async () => {
+  const value = fixture("smoke-cli-v3-envelope");
+  const invoke = async (runtime) => {
+    const output = []; const errors = [];
+    const code = await runDependencyArtifactCli({
+      argv: ["--mode", "smoke", "--root", value.root],
+      stdout: { write: (chunk) => output.push(String(chunk)) },
+      stderr: { write: (chunk) => errors.push(String(chunk)) },
+      runtime
+    });
+    return { code, stdout: output.join(""), stderr: errors.join("") };
+  };
+  try {
+    const { code, stdout, stderr } = await invoke({ nativeSmoke: () => true, getuid: () => 4711, getgid: () => 4712 });
+    assert.equal(code, 0, stderr);
+    assert.equal(stderr, "");
+    const parsed = JSON.parse(stdout);
+    assert.deepEqual(parsed, {
+      schemaVersion: DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION,
+      type: DEPENDENCY_ARTIFACT_TYPE,
+      mode: "smoke",
+      state: "verified",
+      smoke: { betterSqlite3Memory: true, snapshotImport: true },
+      processIdentity: { uid: 4711, gid: 4712 }
+    });
+    assert.deepEqual(Object.keys(parsed).sort(), ["mode", "processIdentity", "schemaVersion", "smoke", "state", "type"]);
+    assert.deepEqual(Object.keys(parsed.smoke).sort(), ["betterSqlite3Memory", "snapshotImport"]);
+    assert.deepEqual(Object.keys(parsed.processIdentity).sort(), ["gid", "uid"]);
+  } finally { cleanup(value.root); }
+});
+
+test("smoke CLI failure uses the dedicated schema-version-3 envelope", async () => {
+  const value = fixture("smoke-cli-v3-failure-envelope");
+  const output = []; const errors = [];
+  try {
+    const code = await runDependencyArtifactCli({
+      argv: ["--mode", "smoke", "--root", value.root],
+      stdout: { write: (chunk) => output.push(String(chunk)) },
+      stderr: { write: (chunk) => errors.push(String(chunk)) },
+      runtime: { nativeSmoke: () => true, getuid: () => 0, getgid: () => 4712 }
+    });
+    assert.equal(code, 1);
+    assert.deepEqual(output, []);
+    assert.deepEqual(JSON.parse(errors.join("")), {
+      schemaVersion: DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION,
+      type: DEPENDENCY_ARTIFACT_TYPE,
+      mode: "smoke",
+      state: "blocked",
+      condition: "dependency_smoke_invalid"
+    });
+  } finally { cleanup(value.root); }
+});
+
+test("native smoke result shape remains exactly two-key regardless of processIdentity", () => {
+  const value = fixture("smoke-shape-strict");
+  try {
+    const result = runNativeBetterSqliteSmoke({ root: value.root, runtime: { nativeSmoke: () => true, getuid: () => 4711, getgid: () => 4712 } });
+    assert.deepEqual(result, { betterSqlite3Memory: true, snapshotImport: true });
+    assert.deepEqual(Object.keys(result).sort(), ["betterSqlite3Memory", "snapshotImport"]);
+  } finally { cleanup(value.root); }
+});
+
+test("artifact manifest smoke block remains exactly two-key regardless of producer runtime", () => {
+  const value = fixture("manifest-smoke-strict");
+  try {
+    const result = verifyDependencyArtifact({
+      manifestBytes: Buffer.from(`${JSON.stringify(value.manifest, null, 2)}\n`),
+      archivePath: value.archivePath,
+      packageJsonBytes: value.packageJson,
+      packageLockBytes: value.packageLock,
+      expectedSourceCommit: value.manifest.sourceCommit,
+      expectedArtifactRelease: value.manifest.artifactRelease,
+      nodeModulesRoot: value.nodeModules,
+      runtime: { enforceOwnership: false, detect: () => runtime, listArchive: () => Buffer.from("node_modules\0"), extractArchive: () => ({ root: value.root, nodeModulesRoot: value.nodeModules, cleanup: () => {} }), checkAclCapabilities: () => true, nativeSmoke: () => true, getuid: () => 4711, getgid: () => 4712 }
+    });
+    assert.deepEqual(result.smoke, { betterSqlite3Memory: true, snapshotImport: true });
+  } finally { cleanup(value.root); }
+});
+
+test("smoke CLI rejects zero, negative, float, string, unsafe and null identities", async () => {
+  const value = fixture("smoke-cli-bad-id");
+  const cases = [
+    { getuid: () => 0, getgid: () => 4712, name: "uid=0" },
+    { getuid: () => 4711, getgid: () => 0, name: "gid=0" },
+    { getuid: () => -1, getgid: () => 4712, name: "uid=-1" },
+    { getuid: () => 4711, getgid: () => -2, name: "gid=-2" },
+    { getuid: () => 1.5, getgid: () => 4712, name: "uid=1.5" },
+    { getuid: () => 4711, getgid: () => 1.5, name: "gid=1.5" },
+    { getuid: () => "4711", getgid: () => 4712, name: "uid=string" },
+    { getuid: () => 4711, getgid: () => "4712", name: "gid=string" },
+    { getuid: () => Number.MAX_SAFE_INTEGER + 2, getgid: () => 4712, name: "uid=unsafe-integer" },
+    { getuid: () => null, getgid: () => 4712, name: "uid=null" },
+    { getuid: () => 4711, getgid: () => null, name: "gid=null" },
+    { getuid: () => undefined, getgid: () => 4712, name: "uid=undefined" }
+  ];
+  try {
+    for (const testCase of cases) {
+      const output = []; const errors = [];
+      const code = await runDependencyArtifactCli({
+        argv: ["--mode", "smoke", "--root", value.root],
+        stdout: { write: (chunk) => output.push(String(chunk)) },
+        stderr: { write: (chunk) => errors.push(String(chunk)) },
+        runtime: { nativeSmoke: () => true, getuid: testCase.getuid, getgid: testCase.getgid }
+      });
+      assert.equal(code, 1, testCase.name);
+      assert.equal(output.length, 0, testCase.name);
+      assert.match(errors.join(""), /dependency_smoke_invalid/, testCase.name);
+    }
+  } finally { cleanup(value.root); }
+});
+
+test("smoke CLI rejects partial or non-function identity hooks even when host process.getuid/getgid exist", async () => {
+  // Regression: previously the implementation silently fell back to the host
+  // process.getuid/getgid whenever a runtime hook was missing or not a
+  // function, so partial / non-function runtime inputs were accepted.
+  const value = fixture("smoke-cli-partial-id");
+  const originalGetuid = Object.getOwnPropertyDescriptor(process, "getuid");
+  const originalGetgid = Object.getOwnPropertyDescriptor(process, "getgid");
+  const installHostIdentity = () => {
+    Object.defineProperty(process, "getuid", { value: () => 4711, configurable: true, writable: true });
+    Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
+  };
+  const restoreHostIdentity = () => {
+    if (originalGetuid) Object.defineProperty(process, "getuid", originalGetuid);
+    else delete process.getuid;
+    if (originalGetgid) Object.defineProperty(process, "getgid", originalGetgid);
+    else delete process.getgid;
+  };
+  const cases = [
+    { name: "no getuid (only getgid as function)", runtime: { nativeSmoke: () => true, getgid: () => 4712 } },
+    { name: "no getgid (only getuid as function)", runtime: { nativeSmoke: () => true, getuid: () => 4711 } },
+    { name: "both hooks present as non-functions", runtime: { nativeSmoke: () => true, getuid: 4711, getgid: 4712 } },
+    { name: "getuid function + getgid non-function", runtime: { nativeSmoke: () => true, getuid: () => 4711, getgid: 4712 } },
+    { name: "getuid non-function + getgid function", runtime: { nativeSmoke: () => true, getuid: 4711, getgid: () => 4712 } },
+    { name: "both hooks present as null", runtime: { nativeSmoke: () => true, getuid: null, getgid: null } }
+  ];
+  try {
+    installHostIdentity();
+    for (const testCase of cases) {
+      const output = []; const errors = [];
+      const code = await runDependencyArtifactCli({
+        argv: ["--mode", "smoke", "--root", value.root],
+        stdout: { write: (chunk) => output.push(String(chunk)) },
+        stderr: { write: (chunk) => errors.push(String(chunk)) },
+        runtime: testCase.runtime
+      });
+      assert.equal(code, 1, testCase.name);
+      assert.equal(output.length, 0, testCase.name);
+      assert.match(errors.join(""), /dependency_smoke_invalid/, testCase.name);
+    }
+  } finally {
+    restoreHostIdentity();
+    cleanup(value.root);
+  }
+});
+
+test("readSmokeProcessIdentity rejects both-non-function runtime hooks even with valid host identity", () => {
+  // Direct regression on the exported function: both hooks as own properties
+  // but neither is a function. Current implementation silently falls back to
+  // the host process.getuid/getgid; the fixed implementation must fail.
+  const originalGetuid = Object.getOwnPropertyDescriptor(process, "getuid");
+  const originalGetgid = Object.getOwnPropertyDescriptor(process, "getgid");
+  try {
+    Object.defineProperty(process, "getuid", { value: () => 4711, configurable: true, writable: true });
+    Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
+    assert.throws(
+      () => readSmokeProcessIdentity({ getuid: 4711, getgid: 4712 }),
+      condition("dependency_smoke_invalid"),
+      "both non-functions"
+    );
+    assert.throws(
+      () => readSmokeProcessIdentity({ getuid: () => 4711, getgid: 4712 }),
+      condition("dependency_smoke_invalid"),
+      "function + non-function"
+    );
+    assert.throws(
+      () => readSmokeProcessIdentity({ getuid: 4711, getgid: () => 4712 }),
+      condition("dependency_smoke_invalid"),
+      "non-function + function"
+    );
+  } finally {
+    if (originalGetuid) Object.defineProperty(process, "getuid", originalGetuid);
+    else delete process.getuid;
+    if (originalGetgid) Object.defineProperty(process, "getgid", originalGetgid);
+    else delete process.getgid;
+  }
+});
+
+test("readSmokeProcessIdentity rejects single-hook runtime even with valid host identity", () => {
+  const originalGetuid = Object.getOwnPropertyDescriptor(process, "getuid");
+  const originalGetgid = Object.getOwnPropertyDescriptor(process, "getgid");
+  try {
+    Object.defineProperty(process, "getuid", { value: () => 4711, configurable: true, writable: true });
+    Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
+    assert.throws(
+      () => readSmokeProcessIdentity({ getuid: () => 4711 }),
+      condition("dependency_smoke_invalid"),
+      "only getuid"
+    );
+    assert.throws(
+      () => readSmokeProcessIdentity({ getgid: () => 4712 }),
+      condition("dependency_smoke_invalid"),
+      "only getgid"
+    );
+  } finally {
+    if (originalGetuid) Object.defineProperty(process, "getuid", originalGetuid);
+    else delete process.getuid;
+    if (originalGetgid) Object.defineProperty(process, "getgid", originalGetgid);
+    else delete process.getgid;
+  }
+});
+
+test("readSmokeProcessIdentity falls back to host process.getuid/getgid when neither hook is supplied", () => {
+  const originalGetuid = Object.getOwnPropertyDescriptor(process, "getuid");
+  const originalGetgid = Object.getOwnPropertyDescriptor(process, "getgid");
+  try {
+    Object.defineProperty(process, "getuid", { value: () => 4711, configurable: true, writable: true });
+    Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
+    // Neither hook supplied: identity read from host.
+    assert.deepEqual(readSmokeProcessIdentity({}), { uid: 4711, gid: 4712 });
+    // Same when no runtime argument is given at all (default = {}).
+    assert.deepEqual(readSmokeProcessIdentity(), { uid: 4711, gid: 4712 });
+    // Unrelated properties on the runtime object do not trigger fallback.
+    assert.deepEqual(readSmokeProcessIdentity({ nativeSmoke: () => true }), { uid: 4711, gid: 4712 });
+  } finally {
+    if (originalGetuid) Object.defineProperty(process, "getuid", originalGetuid);
+    else delete process.getuid;
+    if (originalGetgid) Object.defineProperty(process, "getgid", originalGetgid);
+    else delete process.getgid;
+  }
+});
+
+test("readSmokeProcessIdentity fails closed when host process.getuid/getgid are unavailable", () => {
+  const originalGetuid = Object.getOwnPropertyDescriptor(process, "getuid");
+  const originalGetgid = Object.getOwnPropertyDescriptor(process, "getgid");
+  try {
+    delete process.getuid;
+    delete process.getgid;
+    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_invalid"), "no hooks and no host");
+    assert.throws(() => readSmokeProcessIdentity({ nativeSmoke: () => true }), condition("dependency_smoke_invalid"), "no hooks and no host with nativeSmoke");
+  } finally {
+    if (originalGetuid) Object.defineProperty(process, "getuid", originalGetuid);
+    else delete process.getuid;
+    if (originalGetgid) Object.defineProperty(process, "getgid", originalGetgid);
+    else delete process.getgid;
+  }
+});
+
+test("readSmokeProcessIdentity fails closed when host identity returns root or invalid value", () => {
+  const originalGetuid = Object.getOwnPropertyDescriptor(process, "getuid");
+  const originalGetgid = Object.getOwnPropertyDescriptor(process, "getgid");
+  try {
+    // Root identity on host.
+    Object.defineProperty(process, "getuid", { value: () => 0, configurable: true, writable: true });
+    Object.defineProperty(process, "getgid", { value: () => 0, configurable: true, writable: true });
+    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_invalid"), "host root");
+    // Host functions throw.
+    Object.defineProperty(process, "getuid", { value: () => { throw new Error("host getuid failed"); }, configurable: true, writable: true });
+    Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
+    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_invalid"), "host throws");
+    // Host functions return invalid types.
+    Object.defineProperty(process, "getuid", { value: () => 1.5, configurable: true, writable: true });
+    Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
+    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_invalid"), "host float");
+  } finally {
+    if (originalGetuid) Object.defineProperty(process, "getuid", originalGetuid);
+    else delete process.getuid;
+    if (originalGetgid) Object.defineProperty(process, "getgid", originalGetgid);
+    else delete process.getgid;
+  }
+});
+
+test("readSmokeProcessIdentity ignores inherited runtime.getuid/getgid (Object.hasOwn check)", () => {
+  const originalGetuid = Object.getOwnPropertyDescriptor(process, "getuid");
+  const originalGetgid = Object.getOwnPropertyDescriptor(process, "getgid");
+  try {
+    Object.defineProperty(process, "getuid", { value: () => 4711, configurable: true, writable: true });
+    Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
+    // Inherited functions must NOT count as explicit injection.
+    const proto = { getuid: () => 9999, getgid: () => 8888 };
+    const runtime = Object.create(proto);
+    assert.deepEqual(readSmokeProcessIdentity(runtime), { uid: 4711, gid: 4712 });
+  } finally {
+    if (originalGetuid) Object.defineProperty(process, "getuid", originalGetuid);
+    else delete process.getuid;
+    if (originalGetgid) Object.defineProperty(process, "getgid", originalGetgid);
+    else delete process.getgid;
+  }
+});
+
+test("readSmokeProcessIdentity accepts both injected functions with valid positive UID/GID", () => {
+  const result = readSmokeProcessIdentity({ getuid: () => 4711, getgid: () => 4712 });
+  assert.deepEqual(result, { uid: 4711, gid: 4712 });
+});
+
+test("readSmokeProcessIdentity rejects injected getters that throw", () => {
+  assert.throws(
+    () => readSmokeProcessIdentity({ getuid: () => { throw new Error("boom"); }, getgid: () => 4712 }),
+    condition("dependency_smoke_invalid"),
+    "getuid throws"
+  );
+  assert.throws(
+    () => readSmokeProcessIdentity({ getuid: () => 4711, getgid: () => { throw new Error("boom"); } }),
+    condition("dependency_smoke_invalid"),
+    "getgid throws"
+  );
+});
+
+test("readSmokeProcessIdentity rejects injected getters returning zero, negative, float, string, null, undefined, or unsafe integer", () => {
+  const cases = [
+    { getuid: () => 0, getgid: () => 4712, name: "uid=0" },
+    { getuid: () => 4711, getgid: () => 0, name: "gid=0" },
+    { getuid: () => -1, getgid: () => 4712, name: "uid=-1" },
+    { getuid: () => 4711, getgid: () => -2, name: "gid=-2" },
+    { getuid: () => 1.5, getgid: () => 4712, name: "uid=float" },
+    { getuid: () => 4711, getgid: () => 1.5, name: "gid=float" },
+    { getuid: () => "4711", getgid: () => 4712, name: "uid=string" },
+    { getuid: () => 4711, getgid: () => "4712", name: "gid=string" },
+    { getuid: () => null, getgid: () => 4712, name: "uid=null" },
+    { getuid: () => 4711, getgid: () => null, name: "gid=null" },
+    { getuid: () => undefined, getgid: () => 4712, name: "uid=undefined" },
+    { getuid: () => Number.MAX_SAFE_INTEGER + 2, getgid: () => 4712, name: "uid=unsafe" }
+  ];
+  for (const testCase of cases) {
+    assert.throws(
+      () => readSmokeProcessIdentity({ getuid: testCase.getuid, getgid: testCase.getgid }),
+      condition("dependency_smoke_invalid"),
+      testCase.name
+    );
+  }
+});
+
+test("smoke CLI with no runtime identity injection succeeds on a non-root host and fails on a root or absent host", async () => {
+  const value = fixture("smoke-cli-host-identity");
+  const originalGetuid = Object.getOwnPropertyDescriptor(process, "getuid");
+  const originalGetgid = Object.getOwnPropertyDescriptor(process, "getgid");
+  try {
+    // Simulate a non-root host.
+    Object.defineProperty(process, "getuid", { value: () => 4711, configurable: true, writable: true });
+    Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
+    const successOutput = []; const successErrors = [];
+    const successCode = await runDependencyArtifactCli({
+      argv: ["--mode", "smoke", "--root", value.root],
+      stdout: { write: (chunk) => successOutput.push(String(chunk)) },
+      stderr: { write: (chunk) => successErrors.push(String(chunk)) },
+      runtime: { nativeSmoke: () => true }
+    });
+    assert.equal(successCode, 0, successErrors.join(""));
+    const parsed = JSON.parse(successOutput.join(""));
+    assert.equal(parsed.processIdentity.uid, 4711);
+    assert.equal(parsed.processIdentity.gid, 4712);
+
+    // Now simulate a root host and expect failure.
+    Object.defineProperty(process, "getuid", { value: () => 0, configurable: true, writable: true });
+    Object.defineProperty(process, "getgid", { value: () => 0, configurable: true, writable: true });
+    const rootOutput = []; const rootErrors = [];
+    const rootCode = await runDependencyArtifactCli({
+      argv: ["--mode", "smoke", "--root", value.root],
+      stdout: { write: (chunk) => rootOutput.push(String(chunk)) },
+      stderr: { write: (chunk) => rootErrors.push(String(chunk)) },
+      runtime: { nativeSmoke: () => true }
+    });
+    assert.equal(rootCode, 1);
+    assert.equal(rootOutput.length, 0);
+    assert.match(rootErrors.join(""), /dependency_smoke_invalid/);
+
+    // Now simulate an absent host and expect failure.
+    delete process.getuid;
+    delete process.getgid;
+    const absentOutput = []; const absentErrors = [];
+    const absentCode = await runDependencyArtifactCli({
+      argv: ["--mode", "smoke", "--root", value.root],
+      stdout: { write: (chunk) => absentOutput.push(String(chunk)) },
+      stderr: { write: (chunk) => absentErrors.push(String(chunk)) },
+      runtime: { nativeSmoke: () => true }
+    });
+    assert.equal(absentCode, 1);
+    assert.equal(absentOutput.length, 0);
+    assert.match(absentErrors.join(""), /dependency_smoke_invalid/);
+  } finally {
+    if (originalGetuid) Object.defineProperty(process, "getuid", originalGetuid);
+    else delete process.getuid;
+    if (originalGetgid) Object.defineProperty(process, "getgid", originalGetgid);
+    else delete process.getgid;
+    cleanup(value.root);
+  }
+});
+
+test("smoke CLI rejects identity getter exceptions", async () => {
+  const value = fixture("smoke-cli-throw-getter");
+  try {
+    const cases = [
+      { name: "getuid throws", runtime: { nativeSmoke: () => true, getuid: () => { throw new Error("getuid failed"); }, getgid: () => 4712 } },
+      { name: "getgid throws", runtime: { nativeSmoke: () => true, getuid: () => 4711, getgid: () => { throw new Error("getgid failed"); } } }
+    ];
+    for (const testCase of cases) {
+      const output = []; const errors = [];
+      const code = await runDependencyArtifactCli({
+        argv: ["--mode", "smoke", "--root", value.root],
+        stdout: { write: (chunk) => output.push(String(chunk)) },
+        stderr: { write: (chunk) => errors.push(String(chunk)) },
+        runtime: testCase.runtime
+      });
+      assert.equal(code, 1, testCase.name);
+      assert.equal(output.length, 0, testCase.name);
+      assert.match(errors.join(""), /dependency_smoke_invalid/, testCase.name);
+    }
+  } finally { cleanup(value.root); }
+});
+
+test("smoke CLI defaults to process.getuid/getgid when no runtime identity injection is provided", {
+  skip: process.platform !== "linux" || typeof process.getuid !== "function" || typeof process.getgid !== "function" || process.getuid() <= 0 || process.getgid() <= 0
+}, async () => {
+  const value = fixture("smoke-cli-default-identity");
+  try {
+    const output = []; const errors = [];
+    const code = await runDependencyArtifactCli({
+      argv: ["--mode", "smoke", "--root", value.root],
+      stdout: { write: (chunk) => output.push(String(chunk)) },
+      stderr: { write: (chunk) => errors.push(String(chunk)) },
+      runtime: { nativeSmoke: () => true }
+    });
+    assert.equal(code, 0, errors.join(""));
+    const parsed = JSON.parse(output.join(""));
+    assert.equal(parsed.processIdentity.uid, process.getuid());
+    assert.equal(parsed.processIdentity.gid, process.getgid());
+  } finally { cleanup(value.root); }
 });

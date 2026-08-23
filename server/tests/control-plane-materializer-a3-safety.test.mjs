@@ -503,10 +503,23 @@ test("buildServiceNativeSmokeInvocation pins principal, readonly bind, network i
   });
   assert.equal(invocation.command, "/usr/bin/systemd-run");
   assert.ok(invocation.args.includes("--unit=control-plane-a3-service-smoke-run-1-validation"));
+  assert.ok(invocation.args.includes("--service-type=oneshot"));
+  assert.ok(invocation.args.includes("--remain-after-exit"));
+  assert.ok(invocation.args.includes("--collect"));
+  assert.equal(invocation.args.includes("--wait"), false);
+  assert.equal(invocation.args.includes("--pipe"), false);
+  assert.ok(invocation.args.includes("--property=DynamicUser=no"));
+  assert.ok(invocation.args.includes("--property=RestrictNamespaces=yes"));
+  assert.ok(invocation.args.includes("--property=SystemCallFilter=@system-service"));
   assert.ok(invocation.args.includes("--property=User=4711"));
   assert.ok(invocation.args.includes("--property=Group=4712"));
   assert.ok(invocation.args.includes("--property=PrivateNetwork=yes"));
   assert.ok(invocation.args.includes("--property=CapabilityBoundingSet="));
+  assert.ok(invocation.args.includes("--property=UMask=0077"));
+  assert.ok(invocation.args.includes("--property=StandardOutput=file:/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stdout.json"));
+  assert.ok(invocation.args.includes("--property=StandardError=file:/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stderr.txt"));
+  assert.equal(invocation.captureStdout, "/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stdout.json");
+  assert.equal(invocation.captureStderr, "/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stderr.txt");
   assert.ok(invocation.args.includes(`--property=BindReadOnlyPaths=/var/lib/control-plane-a3-1/run-1/probe/project:/run/control-plane-a3-service-smoke/control-plane-a3-service-smoke-run-1-validation/project:norbind ${invocation.worker}:${invocation.visibleWorker}:norbind`));
   assert.deepEqual(invocation.args.slice(-8), [
     "/usr/bin/node",
@@ -517,44 +530,381 @@ test("buildServiceNativeSmokeInvocation pins principal, readonly bind, network i
   ]);
 });
 
-test("collectServiceNativeSmokeEvidence requires successful smoke then exact terminal and empty cgroup", () => {
+const VALID_SERVICE_SMOKE_STDOUT = '{"schemaVersion":"3","type":"control_plane_dependency_artifact","mode":"smoke","state":"verified","smoke":{"betterSqlite3Memory":true,"snapshotImport":true},"processIdentity":{"uid":4711,"gid":4712}}\n';
+
+function serviceSmokeHarness({
+  processStdout = VALID_SERVICE_SMOKE_STDOUT,
+  processStderr = "",
+  initialCaptures = false,
+  initialCaptureKind = "regular",
+  captureBoundaryValid = true,
+  sourceCustodyValid = true,
+  gcLoadedPolls = 0,
+  pinnedStatus = 0,
+  pinnedOverrides = {},
+  normalizeBindReadOnlyPaths = true,
+  bindReadOnlyPathsReadback = null,
+  cgroupFilesystemType = 0x63677270,
+  cgroupControllersReadable = true,
+  cgroupPresent = true,
+  cgroupDisappearOnRead = null,
+  cgroupReadEnoentWhilePresent = null,
+  cgroupEvents = "populated 0\n",
+  cgroupProcs = "",
+  stopStatus = 0
+} = {}) {
+  const unit = "control-plane-a3-service-smoke-run-1-validation.service";
+  const cgroupRoot = `/sys/fs/cgroup/system.slice/${unit}`;
+  const captureStdout = "/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stdout.json";
+  const captureStderr = "/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stderr.txt";
+  const captures = new Map(initialCaptures ? [[captureStdout, initialCaptureKind], [captureStderr, initialCaptureKind]] : []);
   const calls = [];
+  let stopped = false;
+  let unitLoaded = initialCaptures;
+  let cgroupAvailable = cgroupPresent;
+  let remainingGcPolls = 0;
+  let startCollision = false;
   let bindReadOnlyPaths = "";
-  const execute = (command, args) => {
+  const executePhysicalCommand = (command, args) => {
     calls.push([command, args]);
     if (command === "/usr/bin/systemd-run") {
+      if (unitLoaded) {
+        startCollision = true;
+        return { status: 1, stdout: "", stderr: "unit already exists" };
+      }
+      stopped = false;
+      unitLoaded = true;
       bindReadOnlyPaths = args.find((value) => value.startsWith("--property=BindReadOnlyPaths=")).slice("--property=BindReadOnlyPaths=".length);
-      return { status: 0, stdout: '{"schemaVersion":"2","type":"control_plane_dependency_artifact","mode":"smoke","state":"verified","smoke":{"betterSqlite3Memory":true,"snapshotImport":true}}\n', stderr: "" };
+      captures.set(captureStdout, "regular");
+      captures.set(captureStderr, "regular");
+      return { status: 0, stdout: "", stderr: "" };
     }
-    return { status: 0, stdout: `ActiveState=inactive\nSubState=dead\nResult=success\nExecMainStatus=0\nControlGroup=/system.slice/control-plane-a3-service-smoke-run-1-validation.service\nUser=4711\nGroup=4712\nPrivateNetwork=yes\nCapabilityBoundingSet=\nProtectSystem=strict\nProtectHome=yes\nPrivateDevices=yes\nNoNewPrivileges=yes\nBindReadOnlyPaths=${bindReadOnlyPaths}\n`, stderr: "" };
+    if (command !== "/usr/bin/systemctl") return { status: 70, stdout: "", stderr: "unexpected command" };
+    if (args[0] === "stop") {
+      if (stopStatus === 0) {
+        stopped = true;
+        remainingGcPolls = gcLoadedPolls;
+      }
+      return { status: stopStatus, stdout: "", stderr: stopStatus === 0 ? "" : "stop failed" };
+    }
+    const property = args.find((value) => value.startsWith("--property="));
+    if (property.includes("Type,RemainAfterExit,CollectMode")) {
+      const normalizedBindReadback = normalizeBindReadOnlyPaths ? bindReadOnlyPaths.replaceAll(":norbind", "") : bindReadOnlyPaths;
+      const values = {
+        ActiveState: "active", SubState: "exited", Result: "success", ExecMainStatus: "0",
+        ControlGroup: `/system.slice/${unit}`, User: "4711", Group: "4712", PrivateNetwork: "yes",
+        CapabilityBoundingSet: "", ProtectSystem: "strict", ProtectHome: "yes", PrivateDevices: "yes",
+        NoNewPrivileges: "yes", BindReadOnlyPaths: typeof bindReadOnlyPathsReadback === "function" ? bindReadOnlyPathsReadback(normalizedBindReadback) : normalizedBindReadback, Type: "oneshot",
+        RemainAfterExit: "yes", CollectMode: "inactive-or-failed", ...pinnedOverrides
+      };
+      return {
+        status: pinnedStatus,
+        stdout: pinnedStatus === 0 ? Object.entries(values).map(([name, value]) => `${name}=${value}\n`).join("") : "",
+        stderr: pinnedStatus === 0 ? "" : "unit unavailable"
+      };
+    }
+    if (!unitLoaded) return { status: 0, stdout: "LoadState=not-found\nActiveState=inactive\nSubState=dead\n", stderr: "" };
+    if (stopped && remainingGcPolls === 0) {
+      unitLoaded = false;
+      return { status: 0, stdout: "LoadState=not-found\nActiveState=inactive\nSubState=dead\n", stderr: "" };
+    }
+    if (stopped) remainingGcPolls -= 1;
+    return {
+      status: 0,
+      stdout: stopped
+        ? "LoadState=loaded\nActiveState=inactive\nSubState=dead\n"
+        : "LoadState=loaded\nActiveState=active\nSubState=exited\n",
+      stderr: ""
+    };
   };
-  const evidence = collectServiceNativeSmokeEvidence({
+  const runtime = physicalRuntime({
+    executePhysicalCommand,
+    physicalFilesystemType: (path) => {
+      if (path !== "/sys/fs/cgroup") throw new Error("unexpected filesystem path");
+      return cgroupFilesystemType;
+    },
+    physicalPathExists: (path) => captures.get(path) === "regular" || path === cgroupRoot && cgroupAvailable && !stopped,
+    physicalLeafState: (path) => captures.get(path) || "absent",
+    validateA3ServiceSmokeCaptureBoundary: () => captureBoundaryValid,
+    validateA3ServiceSmokeSource: () => sourceCustodyValid,
+    readPhysicalFile: (path) => {
+      if (path === "/sys/fs/cgroup/cgroup.controllers") {
+        if (!cgroupControllersReadable) throw Object.assign(new Error("cgroup controllers unavailable"), { code: "ENOENT" });
+        return "cpu memory pids\n";
+      }
+      if (path === captureStdout) return processStdout;
+      if (path === captureStderr) return processStderr;
+      if (path === `${cgroupRoot}/cgroup.events`) {
+        if (cgroupReadEnoentWhilePresent === "events") throw Object.assign(new Error("cgroup file unavailable"), { code: "ENOENT" });
+        if (!cgroupAvailable || cgroupDisappearOnRead === "events") {
+          cgroupAvailable = false;
+          throw Object.assign(new Error("cgroup disappeared"), { code: "ENOENT" });
+        }
+        return cgroupEvents;
+      }
+      if (path === `${cgroupRoot}/cgroup.procs`) {
+        if (cgroupReadEnoentWhilePresent === "procs") throw Object.assign(new Error("cgroup file unavailable"), { code: "ENOENT" });
+        if (!cgroupAvailable || cgroupDisappearOnRead === "procs") {
+          cgroupAvailable = false;
+          throw Object.assign(new Error("cgroup disappeared"), { code: "ENOENT" });
+        }
+        return cgroupProcs;
+      }
+      throw new Error("unexpected read path");
+    },
+    removePhysicalFile: (path) => { captures.delete(path); }
+  });
+  return { runtime, calls, captures, wasStopped: () => stopped, hadStartCollision: () => startCollision };
+}
+
+function collectServiceSmoke(runtime, service = { uid: 4711, gid: 4712 }) {
+  return collectServiceNativeSmokeEvidence({
     runLabel: "run-1",
     root: "/var/lib/control-plane-a3-1/run-1/probe/project",
-    service: { uid: 4711, gid: 4712 },
-    runtime: physicalRuntime({
-      executePhysicalCommand: execute,
-      readPhysicalFile: (path) => path.endsWith("cgroup.events") ? "populated 0\n" : ""
-    })
+    service,
+    runtime
   });
+}
+
+test("collectServiceNativeSmokeEvidence pins evidence, triangulates identity, then cleans the unit and captures", () => {
+  const harness = serviceSmokeHarness();
+  const evidence = collectServiceSmoke(harness.runtime);
   assert.equal(evidence.serviceUid, 4711);
   assert.equal(evidence.serviceGid, 4712);
   assert.equal(evidence.cgroupEmpty, true);
   assert.equal(evidence.betterSqlite3Memory, true);
-  assert.equal(calls.length, 2);
+  assert.equal(harness.wasStopped(), true);
+  assert.equal(harness.captures.size, 0);
+  assert.equal(harness.calls.length, 5);
+  assert.deepEqual(harness.calls.map(([, args]) => args[0]), [
+    "--unit=control-plane-a3-service-smoke-run-1-validation", "show", "show", "stop", "show"
+  ]);
 });
 
-test("collectServiceNativeSmokeEvidence marks terminal and cgroup uncertainty as attention-required", () => {
-  const runtime = physicalRuntime({
-    executePhysicalCommand: (command) => command === "/usr/bin/systemd-run"
-      ? { status: 0, stdout: '{"schemaVersion":"2","type":"control_plane_dependency_artifact","mode":"smoke","state":"verified","smoke":{"betterSqlite3Memory":true,"snapshotImport":true}}\n', stderr: "" }
-      : { status: 1, stdout: "", stderr: "unit unavailable" },
-    readPhysicalFile: () => ""
-  });
+test("collectServiceNativeSmokeEvidence accepts systemd-normalized readonly bind readback", () => {
+  const harness = serviceSmokeHarness({ normalizeBindReadOnlyPaths: true });
+  const evidence = collectServiceSmoke(harness.runtime);
+  assert.equal(evidence.cgroupEmpty, true);
+  const launchBind = harness.calls[0][1].find((value) => value.startsWith("--property=BindReadOnlyPaths="));
+  assert.equal(launchBind.match(/:norbind/g)?.length, 2);
+  assert.equal(harness.wasStopped(), true);
+  assert.equal(harness.captures.size, 0);
+});
+
+test("collectServiceNativeSmokeEvidence rejects normalized readonly bind entry and path drift", () => {
+  const mutations = {
+    missing: (value) => value.slice(0, value.indexOf(" ")),
+    extra: (value) => `${value} /unexpected:/unexpected`,
+    source: (value) => value.replace("/var/lib/control-plane-a3-1/run-1/probe/project", "/var/lib/control-plane-a3-1/run-1/probe/project-drift"),
+    target: (value) => value.replace("/run/control-plane-a3-service-smoke/", "/run/control-plane-a3-service-smoke-drift/")
+  };
+  for (const [name, bindReadOnlyPathsReadback] of Object.entries(mutations)) {
+    const harness = serviceSmokeHarness({ bindReadOnlyPathsReadback });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true,
+      name
+    );
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence accepts an empty ControlGroup after systemd already removed the cgroup", () => {
+  const harness = serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "" }, cgroupPresent: false });
+  const evidence = collectServiceSmoke(harness.runtime);
+  assert.equal(evidence.cgroupEmpty, true);
+  assert.equal(harness.wasStopped(), true);
+  assert.equal(harness.captures.size, 0);
+});
+
+test("collectServiceNativeSmokeEvidence requires a proven cgroup v2 root before accepting an absent unit cgroup", () => {
+  for (const options of [
+    { cgroupFilesystemType: 0x27e0eb },
+    { cgroupControllersReadable: false }
+  ]) {
+    const harness = serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "" }, cgroupPresent: false, ...options });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
+    );
+    assert.equal(harness.calls.length, 0);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence accepts an empty ControlGroup while the remaining cgroup is proven empty", () => {
+  const harness = serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "" }, cgroupPresent: true });
+  const evidence = collectServiceSmoke(harness.runtime);
+  assert.equal(evidence.cgroupEmpty, true);
+  assert.equal(harness.wasStopped(), true);
+  assert.equal(harness.captures.size, 0);
+});
+
+test("collectServiceNativeSmokeEvidence accepts cgroup collection racing either empty-state read", () => {
+  for (const cgroupDisappearOnRead of ["events", "procs"]) {
+    const harness = serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "" }, cgroupDisappearOnRead });
+    const evidence = collectServiceSmoke(harness.runtime);
+    assert.equal(evidence.cgroupEmpty, true);
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence rejects missing cgroup files while the cgroup root remains", () => {
+  for (const cgroupReadEnoentWhilePresent of ["events", "procs"]) {
+    const harness = serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "" }, cgroupReadEnoentWhilePresent });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true,
+      cgroupReadEnoentWhilePresent
+    );
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence cleans interrupted-run captures before a bounded retry", () => {
+  const harness = serviceSmokeHarness({ initialCaptures: true });
+  const evidence = collectServiceSmoke(harness.runtime);
+  assert.equal(evidence.cgroupEmpty, true);
+  assert.equal(harness.wasStopped(), true);
+  assert.equal(harness.captures.size, 0);
+  assert.deepEqual(harness.calls.map(([, args]) => args[0]), [
+    "show", "stop", "show", "--unit=control-plane-a3-service-smoke-run-1-validation", "show", "show", "stop", "show"
+  ]);
+});
+
+test("collectServiceNativeSmokeEvidence cleans safe interrupted state before rejecting source custody", () => {
+  const harness = serviceSmokeHarness({ initialCaptures: true, sourceCustodyValid: false });
+  assert.throws(() => collectServiceSmoke(harness.runtime), condition("service_smoke_readback_invalid"));
+  assert.equal(harness.wasStopped(), true);
+  assert.equal(harness.captures.size, 0);
+  assert.deepEqual(harness.calls.map(([, args]) => args[0]), ["show", "stop", "show"]);
+});
+
+test("collectServiceNativeSmokeEvidence rejects dangling symlink and non-regular capture leaves before root systemd launch", () => {
+  for (const initialCaptureKind of ["symbolicLink", "other"]) {
+    const harness = serviceSmokeHarness({ initialCaptures: true, initialCaptureKind });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("service_smoke_readback_invalid")(error) && error.attentionRequired === true,
+      initialCaptureKind
+    );
+    assert.equal(harness.calls.length, 0);
+    assert.equal(harness.captures.size, 2);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence preserves stale state when the capture parent boundary is untrusted", () => {
+  const harness = serviceSmokeHarness({ initialCaptures: true, captureBoundaryValid: false });
   assert.throws(
-    () => collectServiceNativeSmokeEvidence({ runLabel: "run-1", root: "/var/lib/control-plane-a3-1/run-1/probe/project", service: { uid: 4711, gid: 4712 }, runtime }),
+    () => collectServiceSmoke(harness.runtime),
+    (error) => condition("service_smoke_readback_invalid")(error) && error.attentionRequired === true
+  );
+  assert.equal(harness.wasStopped(), false);
+  assert.equal(harness.calls.length, 0);
+  assert.equal(harness.captures.size, 2);
+});
+
+test("collectServiceNativeSmokeEvidence waits for transient unit GC before a same-name retry", () => {
+  const harness = serviceSmokeHarness({ initialCaptures: true, gcLoadedPolls: 2 });
+  const evidence = collectServiceSmoke(harness.runtime);
+  assert.equal(evidence.cgroupEmpty, true);
+  assert.equal(harness.hadStartCollision(), false);
+  assert.equal(harness.captures.size, 0);
+});
+
+test("collectServiceNativeSmokeEvidence fails attention-required when transient unit GC exceeds the bound", () => {
+  const harness = serviceSmokeHarness({ initialCaptures: true, gcLoadedPolls: 50 });
+  assert.throws(
+    () => collectServiceSmoke(harness.runtime),
     (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
   );
+  assert.equal(harness.hadStartCollision(), false);
+  assert.equal(harness.captures.size, 2);
+});
+
+test("collectServiceNativeSmokeEvidence rejects false or throwing source custody proof before launch", () => {
+  for (const validateA3ServiceSmokeSource of [() => false, () => { throw new Error("unsafe source"); }]) {
+    const harness = serviceSmokeHarness();
+    harness.runtime.validateA3ServiceSmokeSource = validateA3ServiceSmokeSource;
+    assert.throws(() => collectServiceSmoke(harness.runtime), condition("service_smoke_readback_invalid"));
+    assert.equal(harness.calls.length, 0);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence rejects requested, observed and systemctl identity drift", () => {
+  const cases = [
+    [serviceSmokeHarness(), { uid: 9999, gid: 8888 }, "service_smoke_readback_invalid", false],
+    [serviceSmokeHarness({ pinnedOverrides: { User: "4712" } }), { uid: 4711, gid: 4712 }, "worker_cleanup_uncertain", true]
+  ];
+  for (const [harness, service, expected, attentionRequired] of cases) {
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime, service),
+      (error) => condition(expected)(error) && Boolean(error.attentionRequired) === attentionRequired
+    );
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence rejects malformed or wrong-version process envelopes", () => {
+  const cases = [
+    '{"schemaVersion":"3","type":"control_plane_dependency_artifact","mode":"smoke","state":"verified","smoke":{"betterSqlite3Memory":true,"snapshotImport":true}}\n',
+    '{"schemaVersion":"3","type":"control_plane_dependency_artifact","mode":"smoke","state":"verified","smoke":{"betterSqlite3Memory":true,"snapshotImport":true},"processIdentity":{"uid":4711,"gid":4712,"extra":1}}\n',
+    '{"schemaVersion":"2","type":"control_plane_dependency_artifact","mode":"smoke","state":"verified","smoke":{"betterSqlite3Memory":true,"snapshotImport":true}}\n',
+    '{"schemaVersion":"3","schemaVersion":"3","type":"control_plane_dependency_artifact","mode":"smoke","state":"verified","smoke":{"betterSqlite3Memory":true,"snapshotImport":true},"processIdentity":{"uid":4711,"gid":4712}}\n',
+    '{"schemaVersion":"3","type":"wrong_type","mode":"smoke","state":"verified","smoke":{"betterSqlite3Memory":true,"snapshotImport":true},"processIdentity":{"uid":4711,"gid":4712}}\n',
+    '{"schemaVersion":"3","type":"control_plane_dependency_artifact","mode":"build","state":"verified","smoke":{"betterSqlite3Memory":true,"snapshotImport":true},"processIdentity":{"uid":4711,"gid":4712}}\n',
+    '{"schemaVersion":"3","type":"control_plane_dependency_artifact","mode":"smoke","state":"failed","smoke":{"betterSqlite3Memory":true,"snapshotImport":true},"processIdentity":{"uid":4711,"gid":4712}}\n'
+  ];
+  for (const processStdout of cases) {
+    const harness = serviceSmokeHarness({ processStdout });
+    assert.throws(() => collectServiceSmoke(harness.runtime), condition("service_smoke_readback_invalid"), processStdout);
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence rejects invalid process identity values", () => {
+  const cases = [
+    { uid: null, gid: 4712 }, { uid: 4711, gid: null }, { uid: "4711", gid: 4712 },
+    { uid: 4711, gid: "4712" }, { uid: 1.5, gid: 4712 }, { uid: 4711, gid: 1.5 },
+    { uid: -1, gid: 4712 }, { uid: 4711, gid: -1 }, { uid: Number.MAX_SAFE_INTEGER + 2, gid: 4712 }
+  ];
+  for (const identity of cases) {
+    const processStdout = `{"schemaVersion":"3","type":"control_plane_dependency_artifact","mode":"smoke","state":"verified","smoke":{"betterSqlite3Memory":true,"snapshotImport":true},"processIdentity":${JSON.stringify(identity)}}\n`;
+    const harness = serviceSmokeHarness({ processStdout });
+    assert.throws(() => collectServiceSmoke(harness.runtime), condition("service_smoke_readback_invalid"), JSON.stringify(identity));
+    assert.equal(harness.wasStopped(), true);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence marks pinned unit and cgroup uncertainty as attention-required", () => {
+  for (const harness of [
+    serviceSmokeHarness({ pinnedStatus: 1 }),
+    serviceSmokeHarness({ pinnedOverrides: { ControlGroup: "/system.slice/unexpected.service" }, cgroupPresent: false }),
+    serviceSmokeHarness({ cgroupEvents: "populated 1\n", cgroupProcs: "991\n" })
+  ]) {
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
+    );
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence preserves cleanup uncertainty over otherwise valid evidence", () => {
+  const harness = serviceSmokeHarness({ stopStatus: 1 });
+  assert.throws(
+    () => collectServiceSmoke(harness.runtime),
+    (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
+  );
+  assert.equal(harness.wasStopped(), false);
+  assert.equal(harness.captures.size, 2);
 });
 
 // Production entrypoints must stay fail-closed: even when the test-only
