@@ -175,9 +175,44 @@ changes before any production XFS mutation is proposed:
    zero-byte, root-owned, mode-0600, single-link regular files with exclusive
    creation below an attempt-bound root-owned mode-0700 `/run` directory,
    validate them immediately before every command, and remove/read back their
-   absence at terminal cleanup. Before the first command, bounded parsing of
-   the global files must also reject the selected project ID if it is already
-   mapped. Falling back to `/etc/projects` or `/etc/projid` is forbidden.
+   absence at terminal cleanup. Before the first command, and again immediately
+   before project setup after the fixed project tree exists, bounded strict
+   parsing of the global files must reject the selected project ID if it is
+   already mapped. The `/etc/projects` snapshot must be inode-bound and
+   size-bounded; excluding empty and `#` comment records, every record must
+   parse without integer-prefix coercion as `<uint32>:<absolute-path>`, and its
+   identity and content digest must remain stable through the check. It must
+   reject any record whose path, regardless of project ID, is the fixed project
+   path after absolute lexical normalization, reaches that path by
+   canonicalizing the deepest existing ancestor and remaining suffix, or
+   resolves to the same `st_dev:st_ino` once both paths exist. A
+   dot-segment, duplicate-separator, trailing-slash, symlink-parent, or
+   same-inode spelling is a collision rather than a distinct path. Parse
+   ambiguity, path replacement during comparison, or inability to prove a
+   candidate alias distinct is terminal. `/etc/projid` remains an ID/name
+   collision input, not a path map. Falling back to `/etc/projects` or
+   `/etc/projid` is forbidden.
+
+   The project-check validator must be parameterized by the exact
+   inode-validated absolute projects-file path passed to `-D`; it cannot
+   hard-code `/etc/projects` or accept an implicit/default path. Under the fixed
+   C locale, `project -c` succeeds only when the process exits zero, stderr is
+   empty, and stdout contains exactly these two records, with at most one final
+   newline:
+
+   ```text
+   Checking project <project-id> (path <project-root>)...
+   Processed 1 (<exact-projects-file> and cmdline) paths for project <project-id> with recursion depth infinite (-1).
+   ```
+
+   The source contract should be equivalent to
+   `parseXfsProjectCheck(output, projectRoot, projectId, projectsFile)`, and the
+   caller must pass the same exact path used by that command's `-D` argument.
+   Exit status zero alone is never success: project-ID and `PROJINHERIT`
+   mismatches can be emitted as stdout diagnostics without a failing process.
+   Any diagnostic, prefix, suffix, duplicate or extra blank/nonblank record,
+   wrong project ID/root/projects-file, path count other than one, altered
+   recursion summary, or non-empty stderr is terminal.
 3. Put artifact extraction, normalization, recursive audit, and prepublish
    service-native smoke entirely inside that project tree.
 4. Admit an artifact only after deriving a conservative allocated-space upper
@@ -249,12 +284,24 @@ changes before any production XFS mutation is proposed:
    collapse back to logical bytes. Limit-command tests must require an aligned
    base-10 byte integer with no suffix, reject `s`/`b`/`k`/`m`/`g` and other
    multiplier suffixes, and prove the collector's 1024-byte report
-   normalization returns the exact approved byte hard limit. Mapping-isolation
-   tests must place unrelated IDs/paths in synthetic default projects/projid
-   files and prove all generated commands use the trusted empty `-D/-P` files;
-   a selected-ID mapping must fail before command execution. Tests must also
-   reject absent, non-empty, symlinked, multi-link, wrong-owner, wrong-mode,
-   replaced, or uncleared isolation files.
+   normalization returns the exact approved byte hard limit. Project-check
+   tests must parameterize the happy-path fixture with the exact isolation-file
+   path and prove every production `project -c` argv and parser use the same
+   `-D` path. Status-zero counterexamples must cover project-ID and
+   `PROJINHERIT` diagnostics, `/etc/projects` or another wrong projects-file in
+   the summary, path count zero or two, missing or duplicated `Checking`, wrong
+   root or ID, an altered recursion summary, extra leading/trailing/blank
+   output, and non-empty stderr; non-zero exit is also terminal and none may
+   advance to state/report collection. Mapping-isolation tests must place
+   unrelated IDs/paths in synthetic default projects/projid files and prove all
+   generated commands use the trusted empty `-D/-P` files. They must reject a
+   selected-ID mapping and the fixed project path under a different ID,
+   including dot-segment, duplicate-separator, trailing-slash, symlink-parent,
+   and bind/same-inode aliases, before the first `xfs_quota` mutation. Mapping
+   parser counterexamples must cover unsigned overflow, signed, whitespace, or
+   prefix-coerced IDs, relative paths, and snapshot identity/digest replacement.
+   Tests must also reject absent, non-empty, symlinked, multi-link,
+   wrong-owner, wrong-mode, replaced, or uncleared isolation files.
 
 The source PR requires focused tests, the full server test baseline,
 `git diff --check`, exact-head CI, and independent P0/P1 review. It authorizes
@@ -331,9 +378,14 @@ and target only `vultr-japan-control`.
 - exact current deployment-root device and mount ID;
 - absence of the proposed mountpoint and project tree, plus absence of a chosen
   project-ID collision on the new filesystem or in bounded parsing of existing
-  `/etc/projects` and `/etc/projid`; those global files' identities are read
-  back but not modified by this design, and malformed or duplicate selected-ID
-  records are terminal;
+  `/etc/projects` and `/etc/projid`;
+- absence in every bounded `/etc/projects` record of the normalized exact
+  proposed project path under any ID, including any resolvable ancestor,
+  realpath, or same-inode alias; this collision inventory is repeated after the
+  project tree exists and before project setup;
+- those global files' identities are read back but not modified by this design;
+  malformed, duplicate selected-ID, duplicate normalized-path, ambiguous-alias,
+  or replacement-during-read records are terminal;
 - filesystem byte/inode capacity;
 - unchanged current pointer, active service identity/restart count, candidate
   absence, protected-file metadata, and aggregate SQLite `quick_check`;
@@ -409,10 +461,11 @@ This section defines ordering, not executable approval.
    underlying ext4 mountpoint retains its captured inode and remains empty,
    remount, and repeat the device/tree identity readback. This prevents hidden
    underlying entries.
-10. In an exact attempt-bound root-owned mode-0700 directory below `/run`,
-    exclusively create zero-byte root-owned mode-0600 single-link
-    `projects.empty` and `projid.empty` regular files. Revalidate both files,
-    then use explicit numeric
+10. Repeat the bounded global ID/path collision inventory after the fixed
+    project tree exists. Then, in an exact attempt-bound root-owned mode-0700
+    directory below `/run`, exclusively create zero-byte root-owned mode-0600
+    single-link `projects.empty` and `projid.empty` regular files. Revalidate
+    both files, then use explicit numeric
     `xfs_quota -D <projects.empty> -P <projid.empty> -x -c "project -s -p <project-path> <project-id>" <mount>`
     to set the project ID and `PROJINHERIT`. The preferred path does not add or
     change `/etc/projects` or `/etc/projid`; a future named-project consumer
@@ -425,11 +478,16 @@ This section defines ordering, not executable approval.
     suffix and must be aligned to the collector's 1024-byte report unit. In
     particular, appending `b` is forbidden because it means filesystem blocks,
     not bytes. The command may not rely on a soft limit or grace period.
-12. Require the corresponding explicit numeric `project -c`, state, and quota
-    reports to use the same trusted `-D/-P` files; require `xfs_io lsproj` plus
-    those readbacks to return the exact approved project ID and byte/inode hard
-    limits. Missing isolation options, missing, zero, rounded, inherited,
-    duplicate, or mismatched limits are terminal.
+12. Revalidate both mapping-file inode identities, then require the
+    corresponding explicit numeric `project -c`, state, and quota reports to
+    use the same trusted `-D/-P` files under the fixed C locale. Parameterize
+    the `project -c` parser with the exact path passed to `-D` and accept only
+    the exact two-record stdout contract from section 6, empty stderr, and exit
+    status zero. A status-zero diagnostic or any framing/path/count mismatch is
+    terminal. Require `xfs_io lsproj` plus the subsequent readbacks to return
+    the exact approved project ID and byte/inode hard limits. Missing isolation
+    options, missing, zero, rounded, inherited, duplicate, or mismatched limits
+    are terminal.
 13. Perform only the approved non-exhausting write/fsync/read/delete probe, then
     require the project tree empty and quota usage returned to its accepted
     metadata-only baseline.
@@ -505,7 +563,8 @@ true:
 - a fresh production inventory identified an unambiguous safe backing device;
 - the dedicated mount survives the approved persistence validation;
 - XFS, project ID, inheritance, project tree, accounting, enforcement, hard
-  limits, and minimum headroom all pass fresh readback;
+  limits, and minimum headroom all pass fresh readback, including the strict
+  isolated two-record `project -c` transcript;
 - the project tree is empty before materialization;
 - any later successful materialization receipt is committed only after attempt
   staging/import paths are absent, their parents are fsynced, and project
@@ -530,10 +589,13 @@ Stop without mutation or retry when any of these is observed:
 - selected device has any signature, partition, holder, mount, swap, LVM,
   mdraid, crypt, or persistent-config reference;
 - filesystem is not XFS or project quota/accounting/enforcement is incomplete;
-- project ID collides or `project -c` fails;
-- the selected project ID appears in a global mapping, a trusted empty `-D/-P`
-  file is not exact and empty, any `xfs_quota` command omits the isolation
-  options, or terminal cleanup cannot prove the isolation files absent;
+- project ID collides, or `project -c` exits non-zero or returns anything other
+  than the exact isolated two-record stdout contract with empty stderr;
+- the selected project ID appears in a global mapping, or the fixed project
+  path appears under any ID or aliases a global `/etc/projects` path;
+- a trusted empty `-D/-P` file is not exact and empty, any `xfs_quota` command
+  omits the isolation options, or terminal cleanup cannot prove the isolation
+  files absent;
 - byte/inode hard limits are missing, zero, rounded away from the approved
   integers, or do not meet the immutable artifact budget and headroom;
 - protected configuration review remains unresolved for the candidate input;
