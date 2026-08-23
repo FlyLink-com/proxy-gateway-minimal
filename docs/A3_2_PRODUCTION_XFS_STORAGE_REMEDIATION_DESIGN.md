@@ -182,16 +182,23 @@ changes before any production XFS mutation is proposed:
    size-bounded; excluding empty and `#` comment records, every record must
    parse without integer-prefix coercion as `<uint32>:<absolute-path>`, and its
    identity and content digest must remain stable through the check. It must
-   reject any record whose path, regardless of project ID, is the fixed project
-   path after absolute lexical normalization, reaches that path by
-   canonicalizing the deepest existing ancestor and remaining suffix, or
-   resolves to the same `st_dev:st_ino` once both paths exist. A
-   dot-segment, duplicate-separator, trailing-slash, symlink-parent, or
-   same-inode spelling is a collision rather than a distinct path. Parse
-   ambiguity, path replacement during comparison, or inability to prove a
-   candidate alias distinct is terminal. `/etc/projid` remains an ID/name
-   collision input, not a path map. Falling back to `/etc/projects` or
-   `/etc/projid` is forbidden.
+   derive a canonical comparison path for every record, regardless of project
+   ID, by absolute lexical normalization followed by canonicalization of the
+   deepest existing ancestor and remaining suffix. After the fixed project tree
+   exists, the comparison must bind the exact mounted XFS by filesystem
+   UUID/source and `st_dev`, with mount/inode identity added for bind aliases.
+   Any record on that same mounted XFS whose component-boundary path is equal
+   to, an ancestor of, or a descendant of the fixed project root is an
+   overlapping custody collision. A record that resolves through a symlink or
+   bind mount to the project root or an existing in-tree inode is also a
+   collision. A plain textual prefix without a path-component boundary, such as
+   `<project-root>-backup`, is not a descendant. Dot-segment,
+   duplicate-separator, trailing-slash, symlink-parent, bind, or same-inode
+   spellings cannot bypass the overlap check. Parse ambiguity, path replacement
+   during comparison, or inability to prove a candidate alias or apparent
+   overlap distinct is terminal. `/etc/projid` remains an ID/name collision
+   input, not a path map. Falling back to `/etc/projects` or `/etc/projid` is
+   forbidden.
 
    The project-check validator must be parameterized by the exact
    inode-validated absolute projects-file path passed to `-D`; it cannot
@@ -295,13 +302,19 @@ changes before any production XFS mutation is proposed:
    advance to state/report collection. Mapping-isolation tests must place
    unrelated IDs/paths in synthetic default projects/projid files and prove all
    generated commands use the trusted empty `-D/-P` files. They must reject a
-   selected-ID mapping and the fixed project path under a different ID,
-   including dot-segment, duplicate-separator, trailing-slash, symlink-parent,
-   and bind/same-inode aliases, before the first `xfs_quota` mutation. Mapping
-   parser counterexamples must cover unsigned overflow, signed, whitespace, or
-   prefix-coerced IDs, relative paths, and snapshot identity/digest replacement.
-   Tests must also reject absent, non-empty, symlinked, multi-link,
-   wrong-owner, wrong-mode, replaced, or uncleared isolation files.
+   selected-ID mapping and every same-XFS tree overlap under a different ID
+   before the first `xfs_quota` mutation: the exact project root, an ancestor,
+   a direct or nested descendant, normalized dot-segment/duplicate-separator/
+   trailing-slash variants, symlink-parent, bind, or same-inode aliases, and an
+   unresolved suffix whose deepest existing ancestor is in-tree. Boundary tests
+   must accept an unrelated same-XFS sibling, a sibling that only shares the
+   textual prefix such as `<project-root>-backup` or `<project-root>2`, and a
+   textual ancestor on parent ext4 that is separated by the final XFS mount
+   boundary. Mapping parser counterexamples must cover unsigned overflow,
+   signed, whitespace, or prefix-coerced IDs, relative paths, and snapshot
+   identity/digest replacement. Tests must also reject absent, non-empty,
+   symlinked, multi-link, wrong-owner, wrong-mode, replaced, or uncleared
+   isolation files.
 
 The source PR requires focused tests, the full server test baseline,
 `git diff --check`, exact-head CI, and independent P0/P1 review. It authorizes
@@ -379,10 +392,13 @@ and target only `vultr-japan-control`.
 - absence of the proposed mountpoint and project tree, plus absence of a chosen
   project-ID collision on the new filesystem or in bounded parsing of existing
   `/etc/projects` and `/etc/projid`;
-- absence in every bounded `/etc/projects` record of the normalized exact
-  proposed project path under any ID, including any resolvable ancestor,
-  realpath, or same-inode alias; this collision inventory is repeated after the
-  project tree exists and before project setup;
+- absence in every bounded `/etc/projects` record of a custody overlap on the
+  exact filesystem UUID/source and `st_dev` under any ID: the normalized
+  proposed project root, any component-boundary ancestor or descendant, and any
+  resolvable symlink, bind, realpath, or same-inode alias into that tree;
+  textual-prefix siblings and ancestors outside the XFS mount boundary remain
+  distinct; this collision inventory is repeated after the project tree exists
+  and before project setup;
 - those global files' identities are read back but not modified by this design;
   malformed, duplicate selected-ID, duplicate normalized-path, ambiguous-alias,
   or replacement-during-read records are terminal;
@@ -462,10 +478,13 @@ This section defines ordering, not executable approval.
    remount, and repeat the device/tree identity readback. This prevents hidden
    underlying entries.
 10. Repeat the bounded global ID/path collision inventory after the fixed
-    project tree exists. Then, in an exact attempt-bound root-owned mode-0700
-    directory below `/run`, exclusively create zero-byte root-owned mode-0600
-    single-link `projects.empty` and `projid.empty` regular files. Revalidate
-    both files, then use explicit numeric
+    project tree exists, bind the comparison to the exact mounted XFS identity,
+    and require no same-XFS ancestor, exact-root, descendant, or
+    resolvable-alias overlap under any project ID. Then, in an exact
+    attempt-bound root-owned mode-0700 directory below `/run`, exclusively
+    create zero-byte root-owned mode-0600 single-link `projects.empty` and
+    `projid.empty` regular files. Revalidate both files, then use explicit
+    numeric
     `xfs_quota -D <projects.empty> -P <projid.empty> -x -c "project -s -p <project-path> <project-id>" <mount>`
     to set the project ID and `PROJINHERIT`. The preferred path does not add or
     change `/etc/projects` or `/etc/projid`; a future named-project consumer
@@ -562,6 +581,8 @@ true:
 - the revised exact head passed a clean physical XFS proof;
 - a fresh production inventory identified an unambiguous safe backing device;
 - the dedicated mount survives the approved persistence validation;
+- bounded global mapping inventory proves no selected-ID or same-XFS project
+  tree overlap under any ID;
 - XFS, project ID, inheritance, project tree, accounting, enforcement, hard
   limits, and minimum headroom all pass fresh readback, including the strict
   isolated two-record `project -c` transcript;
@@ -591,8 +612,9 @@ Stop without mutation or retry when any of these is observed:
 - filesystem is not XFS or project quota/accounting/enforcement is incomplete;
 - project ID collides, or `project -c` exits non-zero or returns anything other
   than the exact isolated two-record stdout contract with empty stderr;
-- the selected project ID appears in a global mapping, or the fixed project
-  path appears under any ID or aliases a global `/etc/projects` path;
+- the selected project ID appears in a global mapping, or any global
+  `/etc/projects` path under any ID overlaps the fixed project tree on the same
+  XFS as an ancestor, exact root, descendant, or resolvable alias;
 - a trusted empty `-D/-P` file is not exact and empty, any `xfs_quota` command
   omits the isolation options, or terminal cleanup cannot prove the isolation
   files absent;
