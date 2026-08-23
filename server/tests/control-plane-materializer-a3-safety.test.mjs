@@ -536,6 +536,9 @@ function serviceSmokeHarness({
   processStdout = VALID_SERVICE_SMOKE_STDOUT,
   processStderr = "",
   initialCaptures = false,
+  initialCaptureKind = "regular",
+  sourceCustodyValid = true,
+  gcLoadedPolls = 0,
   pinnedStatus = 0,
   pinnedOverrides = {},
   cgroupPresent = true,
@@ -547,22 +550,33 @@ function serviceSmokeHarness({
   const cgroupRoot = `/sys/fs/cgroup/system.slice/${unit}`;
   const captureStdout = "/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stdout.json";
   const captureStderr = "/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stderr.txt";
-  const captures = new Set(initialCaptures ? [captureStdout, captureStderr] : []);
+  const captures = new Map(initialCaptures ? [[captureStdout, initialCaptureKind], [captureStderr, initialCaptureKind]] : []);
   const calls = [];
   let stopped = false;
+  let unitLoaded = initialCaptures;
+  let remainingGcPolls = 0;
+  let startCollision = false;
   let bindReadOnlyPaths = "";
   const executePhysicalCommand = (command, args) => {
     calls.push([command, args]);
     if (command === "/usr/bin/systemd-run") {
+      if (unitLoaded) {
+        startCollision = true;
+        return { status: 1, stdout: "", stderr: "unit already exists" };
+      }
       stopped = false;
+      unitLoaded = true;
       bindReadOnlyPaths = args.find((value) => value.startsWith("--property=BindReadOnlyPaths=")).slice("--property=BindReadOnlyPaths=".length);
-      captures.add(captureStdout);
-      captures.add(captureStderr);
+      captures.set(captureStdout, "regular");
+      captures.set(captureStderr, "regular");
       return { status: 0, stdout: "", stderr: "" };
     }
     if (command !== "/usr/bin/systemctl") return { status: 70, stdout: "", stderr: "unexpected command" };
     if (args[0] === "stop") {
-      if (stopStatus === 0) stopped = true;
+      if (stopStatus === 0) {
+        stopped = true;
+        remainingGcPolls = gcLoadedPolls;
+      }
       return { status: stopStatus, stdout: "", stderr: stopStatus === 0 ? "" : "stop failed" };
     }
     const property = args.find((value) => value.startsWith("--property="));
@@ -580,17 +594,25 @@ function serviceSmokeHarness({
         stderr: pinnedStatus === 0 ? "" : "unit unavailable"
       };
     }
+    if (!unitLoaded) return { status: 0, stdout: "LoadState=not-found\nActiveState=inactive\nSubState=dead\n", stderr: "" };
+    if (stopped && remainingGcPolls === 0) {
+      unitLoaded = false;
+      return { status: 0, stdout: "LoadState=not-found\nActiveState=inactive\nSubState=dead\n", stderr: "" };
+    }
+    if (stopped) remainingGcPolls -= 1;
     return {
       status: 0,
       stdout: stopped
-        ? "LoadState=not-found\nActiveState=inactive\nSubState=dead\n"
+        ? "LoadState=loaded\nActiveState=inactive\nSubState=dead\n"
         : "LoadState=loaded\nActiveState=active\nSubState=exited\n",
       stderr: ""
     };
   };
   const runtime = physicalRuntime({
     executePhysicalCommand,
-    physicalPathExists: (path) => captures.has(path) || path === cgroupRoot && cgroupPresent && !stopped,
+    physicalPathExists: (path) => captures.get(path) === "regular" || path === cgroupRoot && cgroupPresent && !stopped,
+    physicalLeafState: (path) => captures.get(path) || "absent",
+    validateA3ServiceSmokeSource: () => sourceCustodyValid,
     readPhysicalFile: (path) => {
       if (path === captureStdout) return processStdout;
       if (path === captureStderr) return processStderr;
@@ -600,7 +622,7 @@ function serviceSmokeHarness({
     },
     removePhysicalFile: (path) => { captures.delete(path); }
   });
-  return { runtime, calls, captures, wasStopped: () => stopped };
+  return { runtime, calls, captures, wasStopped: () => stopped, hadStartCollision: () => startCollision };
 }
 
 function collectServiceSmoke(runtime, service = { uid: 4711, gid: 4712 }) {
@@ -644,6 +666,47 @@ test("collectServiceNativeSmokeEvidence cleans interrupted-run captures before a
   assert.deepEqual(harness.calls.map(([, args]) => args[0]), [
     "show", "stop", "show", "--unit=control-plane-a3-service-smoke-run-1-validation", "show", "show", "stop", "show"
   ]);
+});
+
+test("collectServiceNativeSmokeEvidence rejects dangling symlink and non-regular capture leaves before root systemd launch", () => {
+  for (const initialCaptureKind of ["symbolicLink", "other"]) {
+    const harness = serviceSmokeHarness({ initialCaptures: true, initialCaptureKind });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("service_smoke_readback_invalid")(error) && error.attentionRequired === true,
+      initialCaptureKind
+    );
+    assert.equal(harness.calls.length, 0);
+    assert.equal(harness.captures.size, 2);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence waits for transient unit GC before a same-name retry", () => {
+  const harness = serviceSmokeHarness({ initialCaptures: true, gcLoadedPolls: 2 });
+  const evidence = collectServiceSmoke(harness.runtime);
+  assert.equal(evidence.cgroupEmpty, true);
+  assert.equal(harness.hadStartCollision(), false);
+  assert.equal(harness.captures.size, 0);
+});
+
+test("collectServiceNativeSmokeEvidence fails attention-required when transient unit GC exceeds the bound", () => {
+  const harness = serviceSmokeHarness({ initialCaptures: true, gcLoadedPolls: 50 });
+  assert.throws(
+    () => collectServiceSmoke(harness.runtime),
+    (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
+  );
+  assert.equal(harness.hadStartCollision(), false);
+  assert.equal(harness.captures.size, 2);
+});
+
+test("collectServiceNativeSmokeEvidence rejects false or throwing source custody proof before launch", () => {
+  for (const validateA3ServiceSmokeSource of [() => false, () => { throw new Error("unsafe source"); }]) {
+    const harness = serviceSmokeHarness();
+    harness.runtime.validateA3ServiceSmokeSource = validateA3ServiceSmokeSource;
+    assert.throws(() => collectServiceSmoke(harness.runtime), condition("service_smoke_readback_invalid"));
+    assert.equal(harness.calls.length, 0);
+    assert.equal(harness.captures.size, 0);
+  }
 });
 
 test("collectServiceNativeSmokeEvidence rejects requested, observed and systemctl identity drift", () => {
