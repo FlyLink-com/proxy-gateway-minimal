@@ -205,22 +205,35 @@ changes before any production XFS mutation is proposed:
      digest, entry count, and byte count;
    - run the postpublish service-native smoke and re-read the unchanged quota
      boundary;
-   - publish the materialization receipt only after all post-rename barriers
-     succeed.
-6. On failure, remove only inode-bound staging created by that attempt. Never
-   remove an existing candidate tree, receipt, current pointer, shared DB, or
-   unrelated workspace.
-7. Keep quota evidence before extraction and after publication, but bind the
-   receipt to the dedicated project-tree identity.
+   - remove the exact inode-bound XFS attempt staging, fsync its parent, and
+     require the attempt namespace absent without deleting fixed project-root
+     structure or another attempt;
+   - require candidate-local temporary import paths absent, sync the XFS
+     filesystem, and re-read byte/inode usage back at the exact pre-attempt
+     metadata-only baseline;
+   - publish the materialization receipt only after all post-rename and
+     post-cleanup barriers succeed. The receipt schema must bind the
+     pre-attempt, postpublish, and post-cleanup quota readback hashes.
+6. On failure, remove only staging or a published `node_modules` whose captured
+   inode proves it belongs to that attempt, fsync each affected parent, and
+   re-run the namespace/quota cleanup readback. Never remove an unrelated
+   candidate tree, receipt, current pointer, shared DB, or workspace. Cleanup
+   uncertainty remains terminal and cannot publish a receipt.
+7. Verification of a completed receipt must also require no attempt staging or
+   candidate-local import residue and must match a fresh metadata-only quota
+   baseline. A receipt cannot mask retained project usage.
 8. Add negative tests for missing mount, wrong filesystem, wrong project ID,
-   missing inheritance, changed hard limits, insufficient quota headroom,
+   missing inheritance, missing/zero/rounded/mismatched hard limits,
+   insufficient quota headroom,
    cross-device source, copy truncation, symlink/special-file injection,
    digest drift, pre/post-rename fsync failure, final-inode drift, final-tree
-   drift, postpublish-smoke failure, receipt-before-barrier ordering, rename
-   collision, low-water crossing, and cleanup uncertainty. Admission tests must
-   include a contract-limit synthetic 250000-entry member set dominated by
-   zero/one-byte files so tiny-file allocation overhead cannot collapse back to
-   logical bytes.
+   drift, postpublish-smoke failure, receipt-before-cleanup ordering, staging
+   parent-fsync failure, attempt-namespace residue, post-cleanup quota drift,
+   crash after publish but before cleanup, receipt verification with retained
+   staging, rename collision, low-water crossing, and cleanup uncertainty.
+   Admission tests must include a contract-limit synthetic 250000-entry member
+   set dominated by zero/one-byte files so tiny-file allocation overhead cannot
+   collapse back to logical bytes.
 
 The source PR requires focused tests, the full server test baseline,
 `git diff --check`, exact-head CI, and independent P0/P1 review. It authorizes
@@ -229,7 +242,8 @@ no provider, SSH, block-device, mount, quota, deployment, or production action.
 After that source PR, the revised path must be physically tested in a clean
 non-production XFS environment. The test must cover real byte and inode
 `EDQUOT`, the new cross-filesystem copy barrier, pre/post service-native smoke,
-receipt validation, cleanup, and negative mount/project-tree cases.
+receipt-last validation, exact attempt cleanup plus quota-baseline recovery,
+and negative mount/project-tree cases.
 
 ## 7. Capacity and quota admission
 
@@ -377,15 +391,21 @@ This section defines ordering, not executable approval.
     the project ID and `PROJINHERIT`. The preferred path does not add or change
     `/etc/projects` or `/etc/projid`; a future named-project consumer would need
     a separate reviewed justification and Gate.
-11. Require the corresponding explicit numeric `project -c`, `xfs_io lsproj`,
-    accounting/enforcement state, and exact byte/inode hard-limit reports to
-    agree.
-12. Perform only the approved non-exhausting write/fsync/read/delete probe, then
+11. Prove the new project has no pre-existing hard limit, then set both approved
+    hard limits with an explicit numeric command equivalent to
+    `xfs_quota -x -c "limit -p bhard=<exact-byte-hard-limit>b ihard=<exact-inode-hard-limit> <project-id>" <mount>`.
+    The byte value must be aligned to the collector's 1024-byte report unit;
+    the command may not rely on a soft limit or grace period.
+12. Require the corresponding explicit numeric `project -c`, `xfs_io lsproj`,
+    accounting/enforcement state, and quota reports to return the exact approved
+    project ID plus byte/inode hard limits. Missing, zero, rounded, inherited,
+    duplicate, or mismatched limits are terminal.
+13. Perform only the approved non-exhausting write/fsync/read/delete probe, then
     require the project tree empty and quota usage returned to its accepted
     metadata-only baseline.
-13. Reboot testing, if required, is a separate explicit operation. Without it,
+14. Reboot testing, if required, is a separate explicit operation. Without it,
     persistent-mount survival remains unverified and must be stated as such.
-14. Re-read the active service, current pointer, restart count, database check,
+15. Re-read the active service, current pointer, restart count, database check,
     protected-file metadata, and A3-disabled state. They must be unchanged.
 
 No existing deployment-root file is copied, moved, hidden by a mount, assigned
@@ -411,9 +431,14 @@ Rollback is phase-specific.
 - keep `current` unchanged;
 - remove only the attempt-bound XFS staging and candidate-local import
   directory whose inode identities were recorded;
+- when publication occurred but no receipt was committed, remove only the
+  published `node_modules` whose inode matches the attempt, then fsync the
+  candidate parent;
 - retain or quarantine evidence when cleanup identity is uncertain;
-- re-read project usage, candidate `node_modules` absence, receipt absence,
-  service health, restart count, and database check;
+- fsync the XFS staging parent and require the attempt namespace absent plus
+  byte/inode usage equal to the captured pre-attempt metadata-only baseline;
+- re-read candidate `node_modules` absence, receipt absence, service health,
+  restart count, and database check;
 - do not retry under the consumed approval.
 
 ### Failure after publication but before pointer change
@@ -448,6 +473,9 @@ true:
 - XFS, project ID, inheritance, project tree, accounting, enforcement, hard
   limits, and minimum headroom all pass fresh readback;
 - the project tree is empty before materialization;
+- any later successful materialization receipt is committed only after attempt
+  staging/import paths are absent, their parents are fsynced, and project
+  byte/inode usage equals the captured pre-attempt metadata-only baseline;
 - current release, service, restart count, database check, and protected files
   remain unchanged;
 - no production EDQUOT exhaustion probe occurred;
@@ -469,7 +497,8 @@ Stop without mutation or retry when any of these is observed:
   mdraid, crypt, or persistent-config reference;
 - filesystem is not XFS or project quota/accounting/enforcement is incomplete;
 - project ID collides or `project -c` fails;
-- hard limits or headroom do not meet the immutable artifact budget;
+- byte/inode hard limits are missing, zero, rounded away from the approved
+  integers, or do not meet the immutable artifact budget and headroom;
 - protected configuration review remains unresolved for the candidate input;
 - source still binds quota to the complete deployment root;
 - cleanup/readback cannot prove the exact attempted scope returned to the
