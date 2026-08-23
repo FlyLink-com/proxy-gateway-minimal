@@ -5,7 +5,7 @@
 > - Risk: B for the reviewed source integration; Risk A remains mandatory for any host inventory, quota setup, materialization, deployment, or production use
 > - Execution authority: Source/test changes only. This document authorizes no production mutation, node access, provider interaction, or credential use.
 > - Production impact: None. The production-capable branch is explicit and default-off; merging source does not activate it.
-> - Source of truth for: the seven physical execution paths that issue #636 Gate A3-1 requires before the production `worker_storage_limit_unavailable` guard may be reconsidered.
+> - Source of truth for: the completed seven physical-proof paths and the current storage-mode-discriminated production-integration source contract.
 > - Bound identities: see §0.5.
 
 ```yaml
@@ -26,26 +26,39 @@ document_metadata:
 The disposable XFS quota proof and restricted service-native smoke proof are
 complete through PRs #654 and #656. The separate production-integration source
 change therefore does not repeat an exhaustion probe on the production project.
-It adds an explicit CLI activation boundary:
+It retains the original XFS activation boundary and adds a separate bounded
+artifact admission boundary:
 
 ```text
 --enable-a3-materializer --a3-run-label <bounded-label> --a3-project-id <positive-id>
+--enable-bounded-artifact-admission --bounded-run-label <bounded-label>
 ```
 
-Without that complete identity tuple, production `requireRoot:true` entrypoints
-still return `worker_storage_limit_unavailable`. Arbitrary runtime hooks do not
-enable the route. With the explicit tuple, the fixed deployment root remains
-`/opt/proxy-gateway-minimal-candidate`; the materializer performs only fresh,
-read-only XFS mount/project-tree/accounting/enforcement/hard-limit readback,
-runs the already physically proven fixed-principal systemd smoke before and
-after publication, and verifies the same quota boundary after rename.
+Without exactly one complete tuple, production `requireRoot:true` entrypoints
+still return `worker_storage_limit_unavailable`. The two flags are mutually
+exclusive and arbitrary runtime hooks do not enable either route. Both routes
+retain the fixed deployment root, exact source/manifest/archive/lock/runtime
+binding, same-device no-replace publish, pre/post service-native smoke, final
+tree audit, deterministic cleanup, and receipt-last publication.
 
-Receipt schema 3 hashes the stable storage-boundary identity (filesystem,
-mountpoint, project ID, hard byte/inode limits, project-tree/accounting and
-enforcement state) rather than mutable current-usage counters. Current byte and
-inode usage remain mandatory fresh readback inputs and must retain positive
-headroom, but they are not treated as a long-lived identity. Schema 1/2 receipts
-fail closed.
+The XFS route retains its project-tree/accounting/enforcement/hard-limit
+readback unchanged. The bounded route is deliberately narrower: it admits only
+the trusted deterministic CI dependency artifact, rejects compressed or
+oversized archives, limits the tree to 128 MiB and 10,000 entries, accepts only
+the reviewed ext4 production filesystem, proves the deployment root, candidate,
+existing staging/receipt roots, created stage, candidate-specific receipt
+directory, and receipt file remain on the same device, and enforces a
+conservative block/inode budget plus a 512 MiB / 4,096-inode emergency reserve
+throughout extraction. Known topology drift blocks before lock acquisition;
+the same checks are repeated next to directory creation, publication, receipt
+write, and verify readback. This is not kernel-quota equivalence and does not
+constrain an unrelated writer; XFS remains optional defense-in-depth where an
+approved project-quota filesystem already exists.
+
+Receipt schema 4 is storage-mode discriminated. It records either
+`xfs-project-quota` with a positive project ID or `bounded-artifact` with no
+project ID, and hashes the stable storage boundary plus pre/final readbacks and
+service-smoke evidence. Schema 1/2/3 receipts fail closed.
 
 This source capability is not A3-2 inventory, quota initialization, production
 materialization, deployment, promotion, or feature activation. Those remain
@@ -406,35 +419,43 @@ execution phase that produces the readback. Dry-run must pass before real-run.
 - Items 1-4 are complete physical capability evidence and are not repeated by
   filling the production quota project.
 - The production integration remains `requireRoot:true` and is reachable only
-  with the complete explicit CLI identity tuple recorded above.
-- Before extraction it validates the fixed deployment root's XFS mount,
-  project ID/tree, quota accounting/enforcement, hard limits and positive
-  byte/inode headroom using read-only commands.
+  with exactly one complete explicit CLI identity tuple recorded above.
+- XFS mode validates the fixed deployment root's mount, project ID/tree, quota
+  accounting/enforcement, hard limits, and positive byte/inode headroom.
+- Bounded mode validates exact artifact identity before mutation, pins the
+  archive inode through list/extract, rejects compressed tar, permits only
+  ext4, binds deployment/candidate/staging/receipt paths to one device before
+  mutation and again next to each write boundary, and retains the conservative
+  remaining-work budget and emergency reserve at preflight, during writes,
+  after fsync, and before success.
 - It executes the restricted fixed-principal smoke on the extracted tree and
-  published tree, then repeats quota readback after rename and rejects stable
-  boundary drift before writing the receipt.
+  published tree, repeats the selected storage readback after rename and
+  staging cleanup, and rejects stable boundary drift before writing the
+  receipt. If final lock cleanup cannot be proven, the receipt and published
+  tree are removed; cleanup uncertainty remains attention-required.
 - Without the activation tuple, or with any missing/mismatched readback, the
   existing fail-closed condition remains.
 
 ### 6.6 Item 6 — pre/post release binding
 
-- Receipt schema 3 records `storageProjectId`,
-  `storageQuotaBoundarySha256`, `storageQuotaBeforeReadbackSha256`,
-  `storageQuotaAfterReadbackSha256`, `serviceSmokeEvidenceSha256`, and
+- Receipt schema 4 records `storageMode`, nullable `storageProjectId`,
+  `storageBoundarySha256`, `storageBeforeReadbackSha256`,
+  `storageAfterReadbackSha256`, `serviceSmokeEvidenceSha256`, and
   `safetyEvidenceCapturedAt`.
-- The quota hash covers the stable boundary identity. Mutable current usage is
-  freshly validated before/after but is intentionally excluded from the
-  long-lived identity hash.
-- `verify` recomputes the stable quota-boundary hash and restricted smoke hash;
-  schema 1/2 or any identity drift fails closed.
+- The boundary hash covers stable XFS quota identity or stable bounded ext4
+  device/policy identity. Mutable usage is freshly validated but excluded from
+  the long-lived identity hash.
+- `verify` recomputes the selected storage-boundary hash and restricted smoke
+  hash; schema 1/2/3 or any identity drift fails closed.
 
 ### 6.7 Receipt schema policy (version bump, not additive-only)
 
-Quotas, project IDs, XFS project-tree state, and sandbox terminal/cgroup
-evidence carry mandatory safety semantics. Receipt schema 3 is therefore a
-version bump, not an additive relaxation. The loader fails closed for schema
-1/2, missing schema-3 fields, malformed hashes, or hashes that do not match the
-freshly recomputed stable quota boundary and service smoke readback.
+Storage mode, XFS project identity when selected, bounded-admission policy, and
+sandbox terminal/cgroup evidence carry mandatory safety semantics. Receipt
+schema 4 is therefore a version bump, not an additive relaxation. The loader
+fails closed for schema 1/2/3, missing schema-4 fields, invalid mode/project-ID
+combinations, malformed hashes, or hashes that do not match the freshly
+recomputed storage boundary and service smoke readback.
 
 The fail-closed receipt-version rule applies before `verify` acquires its lock
 or creates a staging tree and is independent of the default
@@ -486,11 +507,12 @@ No production approval packet ⇒ no production inventory or change.
 
 ## 8. Rollback plan
 
-A3 integration is disabled unless every invocation supplies the explicit
-activation flag, run label, and project ID. If any post-merge signal indicates
-regression:
+A3 integration is disabled unless every invocation supplies exactly one full
+activation tuple. If any post-merge signal indicates regression:
 
-1. Omit `--enable-a3-materializer` and its identity tuple from every invocation.
+1. Omit both `--enable-a3-materializer` and
+   `--enable-bounded-artifact-admission` plus their identity tuples from every
+   invocation.
 2. The production path reverts to the existing `requireRoot: true` →
    `worker_storage_limit_unavailable` fail-closed branch.
 3. Re-run targeted tests
@@ -545,22 +567,23 @@ Receipt schema impact: version bump; old schemas fail-closed
 
 - [ ] PR body links the completed physical evidence from PRs #654/#656 and
       states that it is not reusable production authorization.
-- [ ] Explicit activation requires the complete flag/run-label/project-ID tuple;
-      default and forged runtimes fail closed before side effects.
-- [ ] Production quota collection is read-only and proves XFS mount,
-      project-tree, accounting, enforcement, hard limits, and positive headroom.
+- [ ] Explicit activation requires exactly one complete XFS or bounded tuple;
+      partial, mixed, default, and forged runtimes fail closed before effects.
+- [ ] XFS mode retains read-only mount/project-tree/accounting/enforcement/hard
+      limit verification; bounded mode accepts only ext4 and the exact CI
+      artifact under fixed archive/tree/budget limits.
 - [ ] Production service smoke reuses the physically proven fixed-principal
       oneshot contract and validates terminal/cgroup cleanup.
-- [ ] Receipt schema 3 binds stable quota and smoke evidence; schema 1/2 fails
-      closed before verify lock or staging creation.
+- [ ] Receipt schema 4 binds the discriminated storage mode/boundary and smoke
+      evidence; schema 1/2/3 fails closed before verify lock or staging creation.
 - [ ] `git diff --check origin/master...HEAD` is clean.
 - [ ] `npm test` is green.
 - [ ] `npm run docs:authority:strict` is green.
 - [ ] Default production and injected-hook runtimes still fail before side
       effects with `worker_storage_limit_unavailable`.
-- [ ] The explicit fixed-root runtime performs fresh quota readback before and
-      after publish plus prepublish/postpublish/verify service-native smoke.
-- [ ] Receipt schema is 3 per §6.7; schema 1/2 fail closed.
+- [ ] The explicit fixed-root runtime performs fresh selected-storage readback
+      before/final plus prepublish/postpublish/verify service-native smoke.
+- [ ] Receipt schema is 4 per §6.7; schema 1/2/3 fail closed.
 
 ## 12. Definition of NOT done (do not treat source merge as production readiness)
 

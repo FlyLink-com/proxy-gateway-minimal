@@ -74,6 +74,19 @@ staging, extraction, snapshot validation, atomic switch, health window, and
 rollback; this phase does not change `current`, systemd, SQLite, feature flags,
 or Welcome Coins.
 
+The reviewed source also provides a separate, default-off bounded admission
+mode for this exact artifact. It is not a general archive installer and is not
+equivalent to kernel quota: it is limited to the deterministic uncompressed
+tar, 128 MiB / 10,000-entry payload caps, a fixed ext4 deployment root,
+conservative block/inode accounting, an emergency reserve, exact tree/runtime
+revalidation, same-device checks for candidate/staging/receipt paths before and
+next to mutations, restricted service-native smoke, no-replace publication,
+and a schema-4 receipt written only after staging cleanup. Lock-release failure
+invalidates the receipt and published tree; uncertain cleanup remains
+attention-required. The existing XFS project-quota mode remains an optional
+stronger containment route. Neither mode is production authority merely
+because its source is merged.
+
 ### Cloudflare Static Site
 
 Scope:
@@ -318,7 +331,10 @@ Minimum future steps:
    separate [control-plane snapshot and restore contract](CONTROL_PLANE_DB_SNAPSHOT_RESTORE_CONTRACT.md)
    exactly: it requires a stopped, runtime condition start-blocked service and
    does not permit an automatic database restore.
-5. Run `npm ci`.
+5. Use exactly the dependency method named by the approved release Gate:
+   retain the legacy `npm ci` step unless a separately reviewed exact artifact,
+   bounded-admission physical proof, and Risk A production approval explicitly
+   replace it. Never mix the two methods in one candidate.
 6. Switch current release.
 7. Restart only the approved service.
 8. Validate health, public boundaries, internal route rejection, no-session API

@@ -29,36 +29,62 @@ const RELEASE = /^[A-Za-z0-9._-]{1,160}$/;
 const CANDIDATE_LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 const SEMVER = /^v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/;
 const ABI = /^[0-9]+$/;
-const MAX_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024;
+const MAX_ARCHIVE_BYTES = 128 * 1024 * 1024;
 export const MAX_MANIFEST_BYTES = 1024 * 1024;
-const MAX_TREE_ENTRIES = 250000;
-const MAX_TREE_BYTES = 2 * 1024 * 1024 * 1024;
+const MAX_TREE_ENTRIES = 10000;
+const MAX_TREE_BYTES = 128 * 1024 * 1024;
 const CHUNK = 64 * 1024;
 const EXTRACTION_RESERVE_BYTES = 512 * 1024 * 1024;
 const EXTRACTION_RESERVE_INODES = 4096;
+const ARCHIVE_PIN_TOKEN = Symbol("archive-pin-token");
 const SNAPSHOT_MODULE = "scripts/control-plane-db-snapshot-gate.mjs";
 const CLEAN_ENV = Object.freeze({ PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" });
 const ARCHIVE_LIST = String.raw`import os,sys,tarfile
-with tarfile.open(sys.argv[1],"r:*") as archive:
-  for member in archive.getmembers():
-    sys.stdout.buffer.write(os.fsencode(member.name)+b"\0")`;
-const ARCHIVE_EXTRACT = String.raw`import os,posixpath,sys,tarfile
-MAX_ENTRIES=250000
-MAX_BYTES=2*1024*1024*1024
-RESERVE_BYTES=int(sys.argv[3])
-RESERVE_INODES=int(sys.argv[4])
+MAX_ENTRIES=int(sys.argv[1])
+def identity(value):
+  return (value.st_dev,value.st_ino,value.st_size,value.st_nlink,value.st_mode,value.st_mtime_ns,value.st_ctime_ns)
+archive_file=os.fdopen(os.dup(3),'rb',closefd=True)
+with archive_file:
+  before=identity(os.fstat(archive_file.fileno()))
+  with tarfile.open(fileobj=archive_file,mode='r:') as archive:
+    count=0
+    for member in archive:
+      count+=1
+      if count>MAX_ENTRIES:
+        raise RuntimeError('too_many_entries')
+      sys.stdout.buffer.write(os.fsencode(member.name)+b"\0")
+  if identity(os.fstat(archive_file.fileno())) != before:
+    raise RuntimeError('archive_changed')`;
+const ARCHIVE_EXTRACT = String.raw`import errno,os,posixpath,stat,sys,tarfile
+RESERVE_BYTES=int(sys.argv[1])
+RESERVE_INODES=int(sys.argv[2])
+MAX_ENTRIES=int(sys.argv[3])
+MAX_BYTES=int(sys.argv[4])
+BLOCK_MIN=512
+BLOCK_MAX=1024*1024
+CHUNK=64*1024
+STORAGE_ERRNOS=(errno.ENOSPC,getattr(errno,'EDQUOT',122))
+def emit(code,status):
+  print('{"error":"%s"}' % code)
+  raise SystemExit(status)
+def storage_fail():
+  emit('storage_budget_unavailable',3)
 def unexpected(exc_type,exc,tb):
-  print('{"error":"archive_extract_failed"}')
+  if isinstance(exc,OSError) and exc.errno in STORAGE_ERRNOS:
+    print('{"error":"storage_budget_unavailable"}')
+  else:
+    print('{"error":"archive_extract_failed"}')
 sys.excepthook=unexpected
 def reject():
-  print('{"error":"archive_member_rejected"}')
-  raise SystemExit(2)
+  emit('archive_member_rejected',2)
+def identity(value):
+  return (value.st_dev,value.st_ino,value.st_size,value.st_nlink,value.st_mode,value.st_mtime_ns,value.st_ctime_ns)
 def clean_name(value):
   if not isinstance(value,str) or not value or value.startswith('/') or '\\' in value or '\x00' in value:
     reject()
   value=value.rstrip('/')
   parts=value.split('/')
-  if not value or parts[0] != 'node_modules' or any((not part or part in ('.','..')) for part in parts):
+  if not value or parts[0] != 'node_modules' or any((not part or part in ('.','..') or len(os.fsencode(part))>255) for part in parts):
     reject()
   return '/'.join(parts)
 def safe_target(name,target):
@@ -68,87 +94,162 @@ def safe_target(name,target):
   if resolved != 'node_modules' and not resolved.startswith('node_modules/'):
     reject()
   return target
-archive_path=sys.argv[1]
-destination=os.path.abspath(sys.argv[2])
-with tarfile.open(archive_path,'r:*') as archive:
-  members=archive.getmembers()
-  records={}
-  total=0
-  if len(members)>MAX_ENTRIES:
-    reject()
-  for member in members:
-    name=clean_name(member.name)
-    if name in records:
-      reject()
-    if member.isdir():
-      records[name]=('d',member,None)
-    elif member.isreg():
-      total+=member.size
-      if member.size<0 or total>MAX_BYTES:
-        reject()
-      records[name]=('f',member,None)
-    elif member.issym():
-      records[name]=('l',member,safe_target(name,member.linkname))
-    else:
-      reject()
-  if records.get('node_modules',(None,None,None))[0] != 'd':
-    reject()
+def allocation_budget(logical_bytes,entry_count,block_size):
+  if logical_bytes<0 or entry_count<0 or block_size<BLOCK_MIN or block_size>BLOCK_MAX or block_size&(block_size-1):
+    storage_fail()
+  if logical_bytes==0 and entry_count==0:
+    return 0
+  if entry_count==0:
+    storage_fail()
+  return logical_bytes+entry_count*(block_size-1)+2*(entry_count+2)*block_size
+destination=os.path.abspath(sys.argv[5])
+parent=os.path.dirname(destination)
+try:
+  parent_metadata=os.stat(parent,follow_symlinks=False)
+except OSError as exc:
+  if exc.errno in STORAGE_ERRNOS:
+    storage_fail()
+  raise
+if not stat.S_ISDIR(parent_metadata.st_mode):
+  reject()
+device=parent_metadata.st_dev
+def capacity(path,remaining_bytes,remaining_entries):
   try:
-    volume=os.statvfs(os.path.dirname(destination))
-    available_bytes=volume.f_bavail*volume.f_frsize
-    available_inodes=volume.f_ffree
-  except OSError:
-    print('{"error":"storage_budget_unavailable"}')
-    raise SystemExit(3)
-  if available_bytes < total+RESERVE_BYTES or available_inodes < len(records)+RESERVE_INODES:
-    print('{"error":"storage_budget_unavailable"}')
-    raise SystemExit(3)
-  os.mkdir(destination,0o700)
-  tree=os.path.join(destination,'node_modules')
-  os.mkdir(tree,0o700)
-  dirs=sorted((name for name,(kind,_,_) in records.items() if kind=='d'),key=lambda value:(value.count('/'),value))
-  for name in dirs:
-    path=os.path.join(destination,*name.split('/'))
-    if name=='node_modules':
-      continue
-    parent='/'.join(name.split('/')[:-1])
-    if parent not in records or records[parent][0] != 'd':
+    metadata=os.stat(path,follow_symlinks=False)
+    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_dev!=device:
       reject()
-    os.mkdir(path,0o700)
-  files=sorted((name for name,(kind,_,_) in records.items() if kind=='f') )
-  for name in files:
-    parent='/'.join(name.split('/')[:-1])
-    if parent not in records or records[parent][0] != 'd':
+    volume=os.statvfs(path)
+    block_size=volume.f_frsize
+    available_bytes=volume.f_bavail*block_size
+    available_inodes=volume.f_favail
+    required_bytes=allocation_budget(remaining_bytes,remaining_entries,block_size)+RESERVE_BYTES
+    required_inodes=remaining_entries+(0 if remaining_bytes==0 and remaining_entries==0 else 2)+RESERVE_INODES
+  except OSError as exc:
+    if exc.errno in STORAGE_ERRNOS:
+      storage_fail()
+    raise
+  if available_bytes<required_bytes or available_inodes<required_inodes:
+    storage_fail()
+def same_device_path(path,kind):
+  metadata=os.lstat(path)
+  if metadata.st_dev!=device or (kind=='d' and not stat.S_ISDIR(metadata.st_mode)) or (kind=='f' and not stat.S_ISREG(metadata.st_mode)) or (kind=='l' and not stat.S_ISLNK(metadata.st_mode)):
+    reject()
+def fsync_dir(path):
+  descriptor=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+  try:
+    if os.fstat(descriptor).st_dev!=device:
       reject()
-    member=records[name][1]
-    source=archive.extractfile(member)
-    if source is None:
-      reject()
-    path=os.path.join(destination,*name.split('/'))
-    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
-    written=0
-    try:
-      while True:
-        chunk=source.read(65536)
-        if not chunk:
-          break
-        written+=len(chunk)
-        if written>member.size or written>MAX_BYTES:
-          reject()
-        offset=0
-        while offset<len(chunk):
-          offset+=os.write(fd,chunk[offset:])
-      if written!=member.size:
+    os.fsync(descriptor)
+  finally:
+    os.close(descriptor)
+archive_file=os.fdopen(os.dup(3),'rb',closefd=True)
+with archive_file:
+  archive_before=identity(os.fstat(archive_file.fileno()))
+  with tarfile.open(fileobj=archive_file,mode='r:') as archive:
+    members=[]
+    for member in archive:
+      members.append(member)
+      if len(members)>MAX_ENTRIES:
         reject()
-      os.fsync(fd)
-    finally:
-      os.close(fd)
-  for name in sorted((name for name,(kind,_,_) in records.items() if kind=='l')):
-    parent='/'.join(name.split('/')[:-1])
-    if parent not in records or records[parent][0] != 'd':
+    records={}
+    total=0
+    for member in members:
+      name=clean_name(member.name)
+      if name in records:
+        reject()
+      if member.isdir():
+        records[name]=('d',member,None)
+      elif member.isreg():
+        total+=member.size
+        if member.size<0 or total>MAX_BYTES:
+          reject()
+        records[name]=('f',member,None)
+      elif member.issym():
+        records[name]=('l',member,safe_target(name,member.linkname))
+      else:
+        reject()
+    if records.get('node_modules',(None,None,None))[0] != 'd':
       reject()
-    path=os.path.join(destination,*name.split('/'))
-    os.symlink(records[name][2],path)
+    remaining_bytes=total
+    remaining_entries=len(records)
+    capacity(parent,remaining_bytes,remaining_entries)
+    os.mkdir(destination,0o700)
+    same_device_path(destination,'d')
+    capacity(destination,remaining_bytes,remaining_entries)
+    tree=os.path.join(destination,'node_modules')
+    os.mkdir(tree,0o700)
+    same_device_path(tree,'d')
+    remaining_entries-=1
+    capacity(destination,remaining_bytes,remaining_entries)
+    dirs=sorted((name for name,(kind,_,_) in records.items() if kind=='d'),key=lambda value:(value.count('/'),value))
+    for name in dirs:
+      if name=='node_modules':
+        continue
+      parent_name='/'.join(name.split('/')[:-1])
+      if parent_name not in records or records[parent_name][0] != 'd':
+        reject()
+      capacity(destination,remaining_bytes,remaining_entries)
+      path=os.path.join(destination,*name.split('/'))
+      os.mkdir(path,0o700)
+      same_device_path(path,'d')
+      remaining_entries-=1
+      capacity(destination,remaining_bytes,remaining_entries)
+    files=sorted((name for name,(kind,_,_) in records.items() if kind=='f'))
+    for name in files:
+      parent_name='/'.join(name.split('/')[:-1])
+      if parent_name not in records or records[parent_name][0] != 'd':
+        reject()
+      member=records[name][1]
+      source=archive.extractfile(member)
+      if source is None:
+        reject()
+      path=os.path.join(destination,*name.split('/'))
+      capacity(destination,remaining_bytes,remaining_entries)
+      fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+      written=0
+      try:
+        if os.fstat(fd).st_dev!=device:
+          reject()
+        while True:
+          capacity(destination,remaining_bytes,remaining_entries)
+          chunk=source.read(CHUNK)
+          if not chunk:
+            break
+          written+=len(chunk)
+          if written>member.size or written>MAX_BYTES:
+            reject()
+          offset=0
+          while offset<len(chunk):
+            offset+=os.write(fd,chunk[offset:])
+          remaining_bytes-=len(chunk)
+        if written!=member.size:
+          reject()
+        os.fsync(fd)
+      finally:
+        source.close()
+        os.close(fd)
+      same_device_path(path,'f')
+      remaining_entries-=1
+      capacity(destination,remaining_bytes,remaining_entries)
+    for name in sorted((name for name,(kind,_,_) in records.items() if kind=='l')):
+      parent_name='/'.join(name.split('/')[:-1])
+      if parent_name not in records or records[parent_name][0] != 'd':
+        reject()
+      capacity(destination,remaining_bytes,remaining_entries)
+      path=os.path.join(destination,*name.split('/'))
+      os.symlink(records[name][2],path)
+      same_device_path(path,'l')
+      remaining_entries-=1
+      capacity(destination,remaining_bytes,remaining_entries)
+    if remaining_bytes!=0 or remaining_entries!=0:
+      reject()
+    for path in sorted((os.path.join(destination,*name.split('/')) for name,(kind,_,_) in records.items() if kind=='d'),key=lambda value:value.count(os.sep),reverse=True):
+      fsync_dir(path)
+    fsync_dir(destination)
+    fsync_dir(parent)
+    capacity(destination,0,0)
+  if identity(os.fstat(archive_file.fileno())) != archive_before:
+    raise RuntimeError('archive_changed')
 print('{"entryCount":%d,"totalBytes":%d}' % (len(records),total))`;
 
 export class DependencyArtifactError extends Error {
@@ -163,6 +264,37 @@ export class DependencyArtifactError extends Error {
 const fail = (condition, attentionRequired = false) => { throw new DependencyArtifactError(condition, attentionRequired); };
 const hashBytes = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const safeInteger = (value, minimum = 0) => Number.isSafeInteger(value) && value >= minimum;
+const BLOCK_SIZE_MIN = 512;
+const BLOCK_SIZE_MAX = 1024 * 1024;
+const safeStorageResult = (value) => value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : fail("dependency_storage_budget_unavailable");
+
+export function calculateDependencyStorageBudget({ totalBytes, entryCount, blockSize } = {}) {
+  if (!safeInteger(totalBytes) || !safeInteger(entryCount) || (entryCount === 0 && totalBytes !== 0) || !safeInteger(blockSize, BLOCK_SIZE_MIN)
+    || blockSize > BLOCK_SIZE_MAX || (blockSize & (blockSize - 1)) !== 0) fail("dependency_storage_budget_unavailable");
+  const logical = BigInt(totalBytes);
+  const entries = BigInt(entryCount);
+  const block = BigInt(blockSize);
+  // Each entry may consume a final partially filled data block.  The second
+  // term budgets two metadata/dirent blocks per tree entry plus the staging
+  // root and its node_modules root.  This is deliberately conservative: the
+  // extractor re-reads statvfs before every mutation and preserves the fixed
+  // emergency reserve throughout the run.
+  const empty = totalBytes === 0 && entryCount === 0;
+  const allocation = empty ? 0n : logical + entries * (block - 1n) + 2n * (entries + 2n) * block;
+  const required = allocation + BigInt(EXTRACTION_RESERVE_BYTES);
+  const requiredInodes = (empty ? 0n : entries + 2n) + BigInt(EXTRACTION_RESERVE_INODES);
+  return Object.freeze({
+    blockSize,
+    logicalBytes: totalBytes,
+    entryCount,
+    allocationUpperBoundBytes: safeStorageResult(allocation),
+    reserveBytes: EXTRACTION_RESERVE_BYTES,
+    requiredBytes: safeStorageResult(required),
+    reserveInodes: EXTRACTION_RESERVE_INODES,
+    requiredInodes: safeStorageResult(requiredInodes)
+  });
+}
+
 const keys = (value, expected) => {
   const actual = Object.keys(value || {}).sort();
   const wanted = [...expected].sort();
@@ -182,15 +314,31 @@ export function dependencyArtifactPaths({ deploymentRoot, candidateRelease } = {
   return Object.freeze({ artifactRoot, manifestPath: resolve(artifactRoot, "dependency-artifact.json"), archivePath: resolve(artifactRoot, "node-modules.tar"), releaseLabelPath: resolve(artifactRoot, "release-label.txt"), nodeModulesRoot: resolve(candidateRoot, "node_modules") });
 }
 const mode = (metadata) => metadata.mode & 0o7777;
+const fileIdentity = (metadata) => Object.freeze({
+  dev: String(metadata.dev),
+  ino: String(metadata.ino),
+  size: String(metadata.size),
+  nlink: String(metadata.nlink),
+  mode: String(metadata.mode),
+  mtimeNs: String(metadata.mtimeNs),
+  ctimeNs: String(metadata.ctimeNs)
+});
+const sameFileIdentity = (left, right) => left && right && ["dev", "ino", "size", "nlink", "mode", "mtimeNs", "ctimeNs"].every((key) => left[key] === right[key]);
+const pathIdentity = (path) => fileIdentity(lstatSync(path, { bigint: true }));
+const descriptorIdentity = (descriptor) => fileIdentity(fstatSync(descriptor, { bigint: true }));
+
 const sha256File = (path, maximum = MAX_TREE_BYTES) => {
   let descriptor;
   let total = 0;
   const digest = createHash("sha256");
   try {
     const before = lstatSync(path);
+    const beforeIdentity = pathIdentity(path);
     descriptor = openSync(path, fsConstants.O_RDONLY | (process.platform === "linux" ? fsConstants.O_NOFOLLOW : 0));
     const opened = fstatSync(descriptor);
-    if (!before.isFile() || opened.dev !== before.dev || opened.ino !== before.ino || opened.size !== before.size || opened.nlink !== before.nlink || mode(opened) !== mode(before)) fail("dependency_file_changed");
+    const openedIdentity = descriptorIdentity(descriptor);
+    if (!before.isFile() || !sameFileIdentity(beforeIdentity, openedIdentity)
+      || opened.dev !== before.dev || opened.ino !== before.ino || opened.size !== before.size || opened.nlink !== before.nlink || mode(opened) !== mode(before)) fail("dependency_file_changed");
     const buffer = Buffer.allocUnsafe(CHUNK);
     while (true) {
       const count = readSync(descriptor, buffer, 0, buffer.length, null);
@@ -200,8 +348,10 @@ const sha256File = (path, maximum = MAX_TREE_BYTES) => {
       digest.update(buffer.subarray(0, count));
     }
     const after = fstatSync(descriptor);
-    if (after.dev !== opened.dev || after.ino !== opened.ino || after.size !== opened.size || after.nlink !== opened.nlink || mode(after) !== mode(opened)) fail("dependency_file_changed");
-    return { sha256: digest.digest("hex"), sizeBytes: total };
+    const afterIdentity = descriptorIdentity(descriptor);
+    if (after.dev !== opened.dev || after.ino !== opened.ino || after.size !== opened.size || after.nlink !== opened.nlink || mode(after) !== mode(opened)
+      || !sameFileIdentity(openedIdentity, afterIdentity) || !sameFileIdentity(afterIdentity, pathIdentity(path))) fail("dependency_file_changed");
+    return Object.freeze({ sha256: digest.digest("hex"), sizeBytes: total, identity: openedIdentity });
   } catch (error) {
     if (error instanceof DependencyArtifactError) throw error;
     fail("dependency_file_unreadable");
@@ -209,6 +359,42 @@ const sha256File = (path, maximum = MAX_TREE_BYTES) => {
     if (descriptor !== undefined) closeSync(descriptor);
   }
 };
+
+function withPinnedArchiveDescriptor(path, expectedIdentity, operation) {
+  let descriptor;
+  let result;
+  let operationError;
+  try {
+    let openedIdentity;
+    try {
+      if (!sameFileIdentity(pathIdentity(path), expectedIdentity)) fail("dependency_file_changed");
+      descriptor = openSync(path, fsConstants.O_RDONLY | (process.platform === "linux" ? fsConstants.O_NOFOLLOW : 0));
+      openedIdentity = descriptorIdentity(descriptor);
+      if (!sameFileIdentity(openedIdentity, expectedIdentity) || !sameFileIdentity(pathIdentity(path), openedIdentity)) fail("dependency_file_changed");
+    } catch (error) {
+      if (error instanceof DependencyArtifactError) throw error;
+      fail("dependency_file_changed");
+    }
+    try { result = operation(descriptor); } catch (error) { operationError = error; }
+    try {
+      if (!sameFileIdentity(descriptorIdentity(descriptor), openedIdentity) || !sameFileIdentity(pathIdentity(path), openedIdentity)) fail("dependency_file_changed");
+    } catch (error) {
+      if (error instanceof DependencyArtifactError) throw error;
+      fail("dependency_file_changed");
+    }
+    if (operationError) throw operationError;
+    return result;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function runPinnedArchiveProcess({ path, identity, pythonPath, script, args = [], encoding, timeout, maxBuffer }) {
+  return withPinnedArchiveDescriptor(path, identity, (descriptor) => spawnSync(pythonPath || "/usr/bin/python3", ["-I", "-S", "-c", script, ...args], {
+    cwd: "/", env: CLEAN_ENV, encoding, timeout, maxBuffer, windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe", descriptor]
+  }));
+}
 
 function parseStrictJson(bytes, condition) {
   if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length > MAX_MANIFEST_BYTES) fail(condition);
@@ -476,7 +662,7 @@ function assertControlledDestinationParent(root, runtime) {
   }
 }
 
-export function extractDependencyArchive(archivePath, runtime = {}) {
+export function extractDependencyArchive(archivePath, runtime = {}, archivePin = null) {
   if (typeof runtime.extractArchive === "function") {
     const value = runtime.extractArchive(archivePath, { destinationRoot: runtime.destinationRoot });
     if (!value || typeof value.root !== "string" || typeof value.nodeModulesRoot !== "string" || typeof value.cleanup !== "function") fail("dependency_archive_invalid");
@@ -485,15 +671,27 @@ export function extractDependencyArchive(archivePath, runtime = {}) {
   const requestedRoot = runtime.destinationRoot;
   if (requestedRoot !== undefined && (typeof requestedRoot !== "string" || !isAbsolute(requestedRoot))) fail("dependency_archive_invalid");
   if (requestedRoot !== undefined) assertControlledDestinationParent(resolve(requestedRoot), runtime);
-  const parent = requestedRoot === undefined ? mkdtempSync(join(tmpdir(), "control-plane-dependency-artifact-")) : dirname(resolve(requestedRoot));
-  const root = requestedRoot === undefined ? join(parent, "project") : resolve(requestedRoot);
-  if (root === dirname(root) || existsSync(root)) fail("dependency_archive_invalid");
-  const cleanupRoot = requestedRoot === undefined ? parent : root;
+  const archiveIdentity = archivePin?.token === ARCHIVE_PIN_TOKEN && archivePin.identity
+    ? archivePin.identity
+    : sha256File(archivePath, MAX_ARCHIVE_BYTES).identity;
+  let parent;
+  let root;
+  let cleanupRoot;
   try {
-    const result = spawnSync(runtime.pythonPath || "/usr/bin/python3", ["-I", "-S", "-c", ARCHIVE_EXTRACT, archivePath, root, String(EXTRACTION_RESERVE_BYTES), String(EXTRACTION_RESERVE_INODES)], {
-      cwd: "/", env: CLEAN_ENV, encoding: "utf8", timeout: 30000, maxBuffer: 64 * 1024, windowsHide: true
+    if (typeof runtime.beforeArchiveMutation === "function") runtime.beforeArchiveMutation(Object.freeze({ archivePath, destinationRoot: requestedRoot }));
+    const result = withPinnedArchiveDescriptor(archivePath, archiveIdentity, (descriptor) => {
+      parent = requestedRoot === undefined ? mkdtempSync(join(tmpdir(), "control-plane-dependency-artifact-")) : dirname(resolve(requestedRoot));
+      root = requestedRoot === undefined ? join(parent, "project") : resolve(requestedRoot);
+      cleanupRoot = requestedRoot === undefined ? parent : root;
+      if (root === dirname(root) || existsSync(root)) fail("dependency_archive_invalid");
+      return spawnSync(runtime.pythonPath || "/usr/bin/python3", ["-I", "-S", "-c", ARCHIVE_EXTRACT,
+        String(EXTRACTION_RESERVE_BYTES), String(EXTRACTION_RESERVE_INODES), String(MAX_TREE_ENTRIES), String(MAX_TREE_BYTES), root], {
+        cwd: "/", env: CLEAN_ENV, encoding: "utf8", timeout: 120000, maxBuffer: 64 * 1024, windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe", descriptor]
+      });
     });
     const output = String(result.stdout || "").trim();
+    if (["ENOSPC", "EDQUOT"].includes(result.error?.code)) fail("dependency_storage_budget_unavailable");
     if (result.error || String(result.stderr || "").trim()) fail("dependency_archive_invalid");
     if (result.status !== 0) {
       if (output === '{"error":"archive_member_rejected"}') fail("dependency_archive_member_invalid");
@@ -525,8 +723,9 @@ export function extractDependencyArchive(archivePath, runtime = {}) {
       }
     });
   } catch (error) {
-    try { rmSync(cleanupRoot, { recursive: true, force: true }); } catch { throw new DependencyArtifactError("dependency_archive_cleanup_failed", true); }
+    try { if (cleanupRoot) rmSync(cleanupRoot, { recursive: true, force: true }); } catch { throw new DependencyArtifactError("dependency_archive_cleanup_failed", true); }
     if (error instanceof DependencyArtifactError) throw error;
+    if (["ENOSPC", "EDQUOT"].includes(error?.code)) fail("dependency_storage_budget_unavailable");
     fail("dependency_archive_invalid");
   }
 }
@@ -537,13 +736,18 @@ function archiveMetadata(path, manifest, supplied) {
   if (supplied.enforceOwnership && (metadata.uid !== 0 || metadata.gid !== 0 || (mode(metadata) & 0o022) !== 0)) fail("dependency_archive_invalid");
   const digest = sha256File(path, MAX_ARCHIVE_BYTES);
   if (digest.sha256 !== manifest.value.archive.sha256 || digest.sizeBytes !== manifest.value.archive.sizeBytes || digest.sizeBytes !== metadata.size) fail("dependency_archive_mismatch");
-  const listing = typeof supplied.listArchive === "function" ? supplied.listArchive(path) : (() => {
-    const result = spawnSync(supplied.pythonPath || "/usr/bin/python3", ["-I", "-S", "-c", ARCHIVE_LIST, path], { env: CLEAN_ENV, encoding: null, maxBuffer: 32 * 1024 * 1024 });
+  const listing = typeof supplied.listArchive === "function" ? withPinnedArchiveDescriptor(path, digest.identity, () => supplied.listArchive(path)) : (() => {
+    const result = runPinnedArchiveProcess({ path, identity: digest.identity, pythonPath: supplied.pythonPath, script: ARCHIVE_LIST,
+      args: [String(MAX_TREE_ENTRIES)],
+      encoding: null, timeout: 30000, maxBuffer: 32 * 1024 * 1024 });
     if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) fail("dependency_archive_invalid");
     return result.stdout;
   })();
   validateDependencyArchiveEntries(listing);
-  return Object.freeze({ path, sha256: digest.sha256, sizeBytes: digest.sizeBytes });
+  return Object.freeze({
+    value: Object.freeze({ path, sha256: digest.sha256, sizeBytes: digest.sizeBytes }),
+    identity: digest.identity
+  });
 }
 
 const NATIVE_SMOKE = `import Database from "better-sqlite3"; const d=new Database(":memory:"); d.exec("CREATE TABLE t(v INTEGER)"); d.prepare("INSERT INTO t VALUES(?)").run(7); if(d.prepare("SELECT v FROM t").get().v!==7) process.exit(42); d.close(); await import(new URL(process.argv[1], "file:"));`;
@@ -616,9 +820,10 @@ export function prepareDependencyArtifactTree({ manifestBytes, archivePath, pack
   compareInputDigest(manifest.value.package, packageJsonBytes, "dependency_package_mismatch");
   compareInputDigest(manifest.value.packageLock, packageLockBytes, "dependency_lock_mismatch");
   if (!archivePath || basename(archivePath) !== manifest.value.archive.fileName) fail("dependency_archive_invalid");
-  const archive = archiveMetadata(archivePath, manifest, { ...runtime, enforceOwnership: runtime.enforceOwnership ?? false });
+  const archiveRecord = archiveMetadata(archivePath, manifest, { ...runtime, enforceOwnership: runtime.enforceOwnership ?? false });
+  const archive = archiveRecord.value;
   if (expectedArchiveSha256 !== undefined && (!HASH.test(expectedArchiveSha256) || archive.sha256 !== expectedArchiveSha256)) fail("dependency_file_changed");
-  const extracted = extractDependencyArchive(archivePath, { ...runtime, ...(destinationRoot === undefined ? {} : { destinationRoot }) });
+  const extracted = extractDependencyArchive(archivePath, { ...runtime, ...(destinationRoot === undefined ? {} : { destinationRoot }) }, { token: ARCHIVE_PIN_TOKEN, identity: archiveRecord.identity });
   let tree; let actualRuntime;
   try {
     tree = auditDependencyTree(extracted.nodeModulesRoot, runtime);
@@ -656,9 +861,10 @@ export function buildDependencyArtifactManifest({ sourceCommit, artifactRelease,
   const lockDigest = { sha256: hashBytes(packageLockBytes), sizeBytes: packageLockBytes?.length };
   if (!safeInteger(packageDigest.sizeBytes, 1) || !safeInteger(lockDigest.sizeBytes, 1)) fail("dependency_artifact_invalid");
   const archiveDigest = sha256File(archivePath, MAX_ARCHIVE_BYTES);
-  const archive = archiveMetadata(archivePath, { value: { archive: { fileName: basename(archivePath), sha256: archiveDigest.sha256, sizeBytes: archiveDigest.sizeBytes } } }, { ...runtime, enforceOwnership: false });
+  const archiveRecord = archiveMetadata(archivePath, { value: { archive: { fileName: basename(archivePath), sha256: archiveDigest.sha256, sizeBytes: archiveDigest.sizeBytes } } }, { ...runtime, enforceOwnership: false });
+  const archive = archiveRecord.value;
   const projectRoot = resolve(root);
-  const extracted = extractDependencyArchive(archivePath, runtime);
+  const extracted = extractDependencyArchive(archivePath, runtime, { token: ARCHIVE_PIN_TOKEN, identity: archiveRecord.identity });
   let tree; let smoke; let actualRuntime;
   try {
     const extractedSnapshot = typeof runtime.nativeSmoke === "function" ? snapshotModule : extractedSnapshotModule({ sourceRoot: projectRoot, extractedRoot: extracted.root, snapshotModule });

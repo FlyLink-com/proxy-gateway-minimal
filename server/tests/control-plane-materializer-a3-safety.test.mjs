@@ -12,6 +12,7 @@
 // backed by fresh production quota readback plus service-native smoke.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -22,9 +23,11 @@ import {
   collectServiceNativeSmokeEvidence,
   collectStorageQuotaEvidence,
   createCandidateDependencyGateA3PhysicalValidationRuntime,
+  createCandidateDependencyGateBoundedProductionRuntime,
   createCandidateDependencyGateProductionRuntime,
   createCandidateDependencyGateTestRuntime,
   materializeCandidateDependencies,
+  parseBoundedStorageReadback,
   parseProductionStorageQuotaReadback,
   parseServiceSmokeReadback,
   parseStorageQuotaEvidence,
@@ -186,6 +189,107 @@ test("parseProductionStorageQuotaReadback accepts only a live enforced project-t
     () => parseProductionStorageQuotaReadback(productionQuotaReadback(overrides)),
     condition("storage_quota_evidence_invalid")
   );
+});
+
+test("bounded storage readback accepts only exact ext4 budget and low-water evidence", () => {
+  const logicalBytes = 4097;
+  const entryCount = 3;
+  const blockSize = 4096;
+  const allocationUpperBoundBytes = logicalBytes + entryCount * (blockSize - 1) + 2 * (entryCount + 2) * blockSize;
+  const reserveBytes = 512 * 1024 * 1024;
+  const reserveInodes = 4096;
+  const value = {
+    storageMode: "bounded-artifact",
+    filesystem: "ext4",
+    rootDeviceId: "2049",
+    deviceId: "2049",
+    blockSize,
+    logicalBytes,
+    entryCount,
+    allocationUpperBoundBytes,
+    reserveBytes,
+    requiredBytes: allocationUpperBoundBytes + reserveBytes,
+    reserveInodes,
+    requiredInodes: entryCount + 2 + reserveInodes,
+    availableBytes: allocationUpperBoundBytes + reserveBytes,
+    availableInodes: entryCount + 2 + reserveInodes
+  };
+  assert.equal(parseBoundedStorageReadback(value).storageMode, "bounded-artifact");
+  for (const drift of [
+    { availableBytes: value.requiredBytes - 1 },
+    { availableInodes: value.requiredInodes - 1 },
+    { filesystem: "xfs" },
+    { rootDeviceId: "2050" },
+    { allocationUpperBoundBytes: value.allocationUpperBoundBytes - 1 },
+    { deviceId: "not-a-device" }
+  ]) assert.throws(() => parseBoundedStorageReadback({ ...value, ...drift }), condition("dependency_storage_budget_unavailable"));
+});
+
+test("bounded materialization binds staging and receipt topology before mutation or readback", () => {
+  const source = readFileSync(new URL("../../scripts/control-plane-candidate-dependency-gate.mjs", import.meta.url), "utf8");
+  const body = (start, end) => {
+    const first = source.indexOf(start);
+    const last = source.indexOf(end, first);
+    assert.ok(first >= 0 && last > first, `missing source contract: ${start}`);
+    return source.slice(first, last);
+  };
+
+  const staging = body("function artifactStaging(", "function normalizeArtifactTree(");
+  assert.ok(
+    staging.indexOf("boundedVolumeMatches(parent, expectedDeviceId)") < staging.indexOf("rootControlledDirectory("),
+    "the existing staging parent must be volume-bound before the first staging mkdir"
+  );
+  assert.ok(
+    staging.indexOf("boundedVolumeMatches(context.candidateRoot, expectedDeviceId)") < staging.indexOf("rootControlledDirectory("),
+    "the candidate root must be volume-bound before the first staging mkdir"
+  );
+
+  const receiptDirectory = body("function receiptDirectory(", "function writeReceipt(");
+  assert.match(receiptDirectory, /const candidateReceiptRoot = directory\(path,/);
+  assert.match(receiptDirectory, /boundedVolumeMatches\(candidateReceiptRoot, expectedDeviceId\)/);
+
+  const readReceipt = body("function readReceipt(", "function report(");
+  assert.match(readReceipt, /storage = null/);
+  assert.match(readReceipt, /boundedVolumeMatches\(parent, expectedDeviceId\)/);
+  assert.match(readReceipt, /boundedVolumeMatches\(file\.path, expectedDeviceId\)/);
+
+  const verify = body("export async function verifyCandidateDependencies(", "function args(");
+  const firstStorageReadback = verify.indexOf("storageEvidence = storageEvidenceForMaterialization(");
+  const firstReceiptReadback = verify.indexOf("readReceipt(value.c, supplied, storageEvidence)");
+  assert.ok(firstStorageReadback >= 0 && firstStorageReadback < firstReceiptReadback,
+    "verify must bind the candidate device before reading the receipt");
+  assert.ok(verify.includes("readReceipt(value.c, supplied, exactStorageEvidence)"),
+    "verify must rebind the receipt to the exact post-extraction storage readback");
+
+  const materialize = body("export async function materializeCandidateDependencies(", "export async function verifyCandidateDependencies(");
+  const materializeTopology = materialize.indexOf("assertBoundedMutationTopology(value.c, storageInitial, supplied)");
+  assert.ok(
+    materializeTopology >= 0 && materializeTopology < materialize.indexOf("key = lock(supplied)"),
+    "known staging or receipt topology drift must block before the materialization lock mutation"
+  );
+  const verifyTopology = verify.indexOf("assertBoundedMutationTopology(value.c, storageEvidence, supplied)");
+  assert.ok(
+    verifyTopology >= 0 && verifyTopology < firstReceiptReadback,
+    "known receipt topology drift must block before verify reads the receipt"
+  );
+});
+
+test("XFS verify rejects a statically invalid receipt before quota readback", () => {
+  const source = readFileSync(new URL("../../scripts/control-plane-candidate-dependency-gate.mjs", import.meta.url), "utf8");
+  const start = source.indexOf("export async function verifyCandidateDependencies(");
+  const end = source.indexOf("function args(", start);
+  assert.ok(start >= 0 && end > start, "missing verify source contract");
+  const verify = source.slice(start, end);
+
+  const receiptReadback = verify.indexOf("receipt = readReceipt(value.c, supplied);");
+  const receiptValidation = verify.indexOf("currentReceipt = requireCurrentReceiptSchema(receipt.value", receiptReadback);
+  const quotaReadback = verify.indexOf(
+    "storageEvidence = storageEvidenceForMaterialization(supplied, null, value.c.candidateRoot);",
+    receiptValidation
+  );
+  assert.ok(receiptReadback >= 0, "XFS verify must read the receipt before quota evidence");
+  assert.ok(receiptValidation > receiptReadback, "XFS verify must validate the receipt before quota evidence");
+  assert.ok(quotaReadback > receiptValidation, "XFS verify must reject a static receipt mismatch before quota readback");
 });
 
 test("collectProductionStorageQuotaReadback performs read-only project-tree and quota readback without exhaustion", () => {
@@ -1095,6 +1199,27 @@ test("production A3 runtime is explicit, fixed-root, and advances past the legac
     }),
     (error) => error instanceof CandidateDependencyGateError && error.condition !== "worker_storage_limit_unavailable"
   );
+});
+
+test("production bounded-artifact runtime is explicit and does not require an XFS project identity", () => {
+  const bounded = createCandidateDependencyGateBoundedProductionRuntime({ runLabel: "bounded-prod-1" });
+  assert.equal(bounded.root, "/opt/proxy-gateway-minimal-candidate");
+  assert.equal(bounded.storageMode, "bounded-artifact");
+  assert.equal(bounded.a3ProjectId, undefined);
+
+  const smoke = buildProductionServiceNativeSmokeInvocation({
+    smokePhase: "postpublish",
+    root: "/opt/proxy-gateway-minimal-candidate/releases/candidate",
+    service: { uid: 4711, gid: 4712 },
+    runtime: bounded
+  });
+  assert.ok(smoke.bindReadOnlyPaths.includes("/opt/proxy-gateway-minimal-candidate/releases/candidate:/run/control-plane-a3-service-smoke/control-plane-bounded-artifact-smoke-bounded-prod-1-postpublish/project:norbind"));
+
+  for (const options of [
+    {},
+    { runLabel: "../escape" },
+    { runLabel: "bounded-prod-1", projectId: 4242 }
+  ]) assert.throws(() => createCandidateDependencyGateBoundedProductionRuntime(options), condition("invalid_input"));
 });
 
 test("production A3 runtime rejects partial or drifting activation identity", () => {

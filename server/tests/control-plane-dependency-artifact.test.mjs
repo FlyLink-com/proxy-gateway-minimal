@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -14,6 +14,7 @@ import {
   MAX_MANIFEST_BYTES,
   auditDependencyTree,
   buildDependencyArtifactManifest,
+  calculateDependencyStorageBudget,
   detectDependencyRuntime,
   dependencyArtifactPaths,
   extractDependencyArchive,
@@ -69,6 +70,44 @@ function fixture(name = "happy") {
 
 function cleanup(root) { try { rmSync(root, { recursive: true, force: true }); } catch {} }
 
+test("dependency storage budget is block-aware and preserves an emergency reserve", () => {
+  const allocationUpperBoundBytes = 4097 + 3 * (4096 - 1) + 2 * (3 + 2) * 4096;
+  assert.deepEqual(calculateDependencyStorageBudget({
+    totalBytes: 4097,
+    entryCount: 3,
+    blockSize: 4096
+  }), {
+    blockSize: 4096,
+    logicalBytes: 4097,
+    entryCount: 3,
+    allocationUpperBoundBytes,
+    reserveBytes: 512 * 1024 * 1024,
+    requiredBytes: allocationUpperBoundBytes + 512 * 1024 * 1024,
+    reserveInodes: 4096,
+    requiredInodes: 3 + 2 + 4096
+  });
+  assert.deepEqual(calculateDependencyStorageBudget({ totalBytes: 0, entryCount: 0, blockSize: 4096 }), {
+    blockSize: 4096,
+    logicalBytes: 0,
+    entryCount: 0,
+    allocationUpperBoundBytes: 0,
+    reserveBytes: 512 * 1024 * 1024,
+    requiredBytes: 512 * 1024 * 1024,
+    reserveInodes: 4096,
+    requiredInodes: 4096
+  });
+
+  for (const value of [
+    { totalBytes: -1, entryCount: 3, blockSize: 4096 },
+    { totalBytes: 1, entryCount: 0, blockSize: 4096 },
+    { totalBytes: 1, entryCount: 3, blockSize: 0 },
+    { totalBytes: 1, entryCount: 3, blockSize: 513 },
+    { totalBytes: 1, entryCount: 3, blockSize: 4095 },
+    { totalBytes: 1, entryCount: 3, blockSize: 2 * 1024 * 1024 },
+    { totalBytes: Number.MAX_SAFE_INTEGER, entryCount: 3, blockSize: 4096 }
+  ]) assert.throws(() => calculateDependencyStorageBudget(value), condition("dependency_storage_budget_unavailable"));
+});
+
 test("dependency manifest accepts formatting but rejects duplicate keys", () => {
   const value = {
     schemaVersion: "2", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: "control-plane-app", sourceCommit: "a".repeat(40), artifactRelease: "ci",
@@ -84,7 +123,53 @@ test("dependency manifest accepts formatting but rejects duplicate keys", () => 
   const missingBudget = { ...value, tree: { ...value.tree } };
   delete missingBudget.tree.totalBytes;
   assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from(JSON.stringify(missingBudget)) }), condition("dependency_tree_invalid"));
+  assert.doesNotThrow(() => parseDependencyArtifactManifest({ bytes: Buffer.from(JSON.stringify({ ...value, archive: { ...value.archive, sizeBytes: 128 * 1024 * 1024 }, tree: { ...value.tree, entryCount: 10000, totalBytes: 128 * 1024 * 1024 } })) }));
+  assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from(JSON.stringify({ ...value, archive: { ...value.archive, sizeBytes: 128 * 1024 * 1024 + 1 } })) }), condition("dependency_artifact_invalid"));
+  assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from(JSON.stringify({ ...value, tree: { ...value.tree, entryCount: 10001 } })) }), condition("dependency_tree_invalid"));
+  assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from(JSON.stringify({ ...value, tree: { ...value.tree, totalBytes: 128 * 1024 * 1024 + 1 } })) }), condition("dependency_tree_invalid"));
   assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from('{"schemaVersion":"2","schemaVersion":"2"}') }), condition("dependency_artifact_invalid"));
+});
+
+test("extractor rejects archive path replacement after hashing and before its first mutation", () => {
+  const value = fixture("archive-inode-replacement");
+  const replacementPath = join(value.root, "replacement.tar");
+  writeFileSync(replacementPath, "replacement archive inode with a different identity\n");
+  const trace = [];
+  let hookCalls = 0;
+  try {
+    assert.throws(() => prepareDependencyArtifactTree({
+      manifestBytes: Buffer.from(JSON.stringify(value.manifest)),
+      archivePath: value.archivePath,
+      packageJsonBytes: value.packageJson,
+      packageLockBytes: value.packageLock,
+      expectedSourceCommit: value.manifest.sourceCommit,
+      expectedArtifactRelease: value.manifest.artifactRelease,
+      runtime: {
+        listArchive: () => { trace.push("list"); return Buffer.from("node_modules\0"); },
+        beforeArchiveMutation() {
+          trace.push("before-mutation");
+          hookCalls += 1;
+          unlinkSync(value.archivePath);
+          renameSync(replacementPath, value.archivePath);
+        },
+        pythonPath: join(value.root, "python-must-not-run")
+      }
+    }), condition("dependency_file_changed"));
+    assert.equal(hookCalls, 1);
+    assert.deepEqual(trace, ["list", "before-mutation"]);
+  } finally { cleanup(value.root); }
+});
+
+test("extractor maps ENOSPC and EDQUOT from its mutation boundary to one stable condition", () => {
+  const value = fixture("archive-storage-exhaustion");
+  try {
+    for (const code of ["ENOSPC", "EDQUOT"]) {
+      assert.throws(() => extractDependencyArchive(value.archivePath, {
+        beforeArchiveMutation() { throw Object.assign(new Error(code), { code }); },
+        pythonPath: join(value.root, "python-must-not-run")
+      }), condition("dependency_storage_budget_unavailable"), code);
+    }
+  } finally { cleanup(value.root); }
 });
 
 test("dependency manifest applies a bounded pre-parse size gate", () => {
@@ -369,6 +454,25 @@ test("Linux consumer extracts the archive before auditing the dependency tree", 
       assert.notEqual(statSync(join(extracted.nodeModulesRoot, "better-sqlite3", "package.json")).ino, statSync(join(value.nodeModules, "better-sqlite3", "package.json")).ino);
     } finally { extracted.cleanup(); }
   } finally { cleanup(value.root); }
+});
+
+test("Linux extractor rejects compressed tar input before creating a destination tree", { skip: process.platform !== "linux" }, () => {
+  const value = fixture("compressed-archive-rejected");
+  const archivePath = join(value.root, "node-modules.tar.gz");
+  const destinationRoot = resolve(process.cwd(), `.dependency-compressed-destination-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  try {
+    const tar = spawnSync("/usr/bin/tar", ["--create", "--gzip", "--file", archivePath, "--", "node_modules"], { cwd: value.root, encoding: "utf8" });
+    assert.equal(tar.status, 0, String(tar.stderr || ""));
+    assert.throws(() => extractDependencyArchive(archivePath, {
+      destinationRoot,
+      enforceOwnership: false,
+      checkAclCapabilities: () => true
+    }), condition("dependency_archive_extract_failed"));
+    assert.equal(existsSync(destinationRoot), false);
+  } finally {
+    cleanup(destinationRoot);
+    cleanup(value.root);
+  }
 });
 
 test("consumer fails closed when the native smoke runner fails", () => {
