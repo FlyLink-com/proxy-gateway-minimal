@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
-  chmodSync, chownSync, closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, fsyncSync,
+  chmodSync, chownSync, closeSync, constants as fsConstants, copyFileSync, existsSync, fchmodSync, fstatSync, fsyncSync,
   lchownSync, linkSync, lstatSync, mkdirSync, openSync, opendirSync, readFileSync, readSync, readdirSync,
   statfsSync, writeSync,
   readlinkSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync
@@ -55,6 +55,7 @@ const EXT4_SUPER_MAGIC = 0xef53;
 const A3_PROBE_BYTE_HARD_LIMIT = 1024 * 1024;
 const A3_PROBE_INODE_HARD_LIMIT = 64;
 const A3_PROBE_WRITE_CHUNK_BYTES = 64 * 1024;
+const SERVICE_NATIVE_SMOKE_PROJECT_METADATA_MAX_BYTES = 8 * 1024 * 1024;
 const WORKER_NPM = "/usr/bin/npm";
 const WORKER_TAR = "/usr/bin/tar";
 const SEALED_TREE_LIMITS = Object.freeze({ maxDepth: 64, maxEntries: 250000, maxHashBytes: 2 * 1024 * 1024 * 1024 });
@@ -361,6 +362,34 @@ function fileIn(root, name, runtime, condition) {
   const path = abs(resolve(root, ...name.split("/"))); if (!inside(root, path)) fail(condition);
   const parent = directory(dirname(path), runtime, condition); if (!within(root, parent)) fail(condition);
   return regular(path, runtime, condition);
+}
+function boundedCandidateMetadataBytes(file, condition) {
+  let descriptor;
+  try {
+    if (process.platform === "linux" && (!Number.isSafeInteger(fsConstants.O_NOFOLLOW) || !Number.isSafeInteger(fsConstants.O_NONBLOCK))) fail(condition);
+    const linuxSafetyFlags = process.platform === "linux" ? fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK : 0;
+    descriptor = openSync(file.path, fsConstants.O_RDONLY | linuxSafetyFlags | (Number.isSafeInteger(fsConstants.O_CLOEXEC) ? fsConstants.O_CLOEXEC : 0));
+    const opened = fstatSync(descriptor);
+    if (!opened.isFile() || opened.nlink !== 1 || inode(opened) !== inode(file.metadata)
+      || !Number.isSafeInteger(opened.size) || opened.size < 1 || opened.size > SERVICE_NATIVE_SMOKE_PROJECT_METADATA_MAX_BYTES) fail(condition);
+    const chunks = [], buffer = Buffer.allocUnsafe(64 * 1024);
+    let total = 0;
+    for (;;) {
+      const count = readSync(descriptor, buffer, 0, Math.min(buffer.length, SERVICE_NATIVE_SMOKE_PROJECT_METADATA_MAX_BYTES + 1 - total), null);
+      if (!Number.isSafeInteger(count) || count < 0) fail(condition);
+      if (count === 0) break;
+      total += count;
+      if (total > SERVICE_NATIVE_SMOKE_PROJECT_METADATA_MAX_BYTES) fail(condition);
+      chunks.push(Buffer.from(buffer.subarray(0, count)));
+    }
+    const after = fstatSync(descriptor), linked = lstatSync(file.path);
+    if (!after.isFile() || after.nlink !== 1 || inode(after) !== inode(opened) || after.size !== opened.size || total !== opened.size
+      || linked.isSymbolicLink() || !linked.isFile() || linked.nlink !== 1 || inode(linked) !== inode(opened) || linked.size !== opened.size) fail(condition);
+    return Buffer.concat(chunks, total);
+  } catch (error) {
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail(condition);
+  } finally { if (descriptor !== undefined) try { closeSync(descriptor); } catch { fail(condition); } }
 }
 function json(path, condition, canonical = false) { try { const raw = readFileSync(path, "utf8"), value = JSON.parse(raw); if (!value || typeof value !== "object" || Array.isArray(value) || canonical && raw !== JSON.stringify(value)) fail(condition); return value; } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail(condition); } }
 function strictJsonObject(bytes, condition) {
@@ -1843,7 +1872,11 @@ function inputs(context, runtime, absent = true) {
   const packageFile = fileIn(context.candidateRoot, "package.json", runtime, "candidate_path_invalid");
   const lockFile = fileIn(context.candidateRoot, "package-lock.json", runtime, "candidate_path_invalid");
   const nodeModules = resolve(context.candidateRoot, "node_modules"); if (absent) requireAbsent(nodeModules, "candidate_node_modules_present");
-  const packageBytes = readFileSync(packageFile.path), lockBytes = readFileSync(lockFile.path);
+  for (const file of [packageFile, lockFile]) {
+    if (!Number.isSafeInteger(file.metadata.size) || file.metadata.size < 1 || file.metadata.size > SERVICE_NATIVE_SMOKE_PROJECT_METADATA_MAX_BYTES) fail("candidate_path_invalid");
+  }
+  const packageBytes = boundedCandidateMetadataBytes(packageFile, "candidate_path_invalid");
+  const lockBytes = boundedCandidateMetadataBytes(lockFile, "candidate_path_invalid");
   checkAssembly(json(context.assembly, "assembly_manifest_invalid"), context.candidate);
   const artifactStage = parseArtifactStageReceipt({
     bytes: readFileSync(context.artifact), candidateRelease: context.candidate,
@@ -2576,6 +2609,64 @@ function normalizeArtifactTree(root, supplied) {
   }
 }
 
+export function stageServiceNativeSmokeProjectMetadata({ root, packageJsonBytes, packageLockBytes, runtime: supplied = runtime() } = {}) {
+  const created = [];
+  let descriptor;
+  let projectRoot;
+  try {
+    if (!Buffer.isBuffer(packageJsonBytes) || !packageJsonBytes.length || packageJsonBytes.length > SERVICE_NATIVE_SMOKE_PROJECT_METADATA_MAX_BYTES
+      || !Buffer.isBuffer(packageLockBytes) || !packageLockBytes.length || packageLockBytes.length > SERVICE_NATIVE_SMOKE_PROJECT_METADATA_MAX_BYTES) fail("native_module_validation_failed");
+    projectRoot = directory(root, supplied, "native_module_validation_failed");
+    const staged = {};
+    for (const [key, name, bytes] of [
+      ["packageJson", "package.json", packageJsonBytes],
+      ["packageLock", "package-lock.json", packageLockBytes]
+    ]) {
+      const target = resolve(projectRoot, name);
+      if (!same(dirname(target), projectRoot) || existsSync(target)) fail("native_module_validation_failed");
+      descriptor = openSync(target, "wx", 0o644);
+      const createdFile = { path: target, identity: null };
+      created.push(createdFile);
+      const createdMetadata = fstatSync(descriptor);
+      if (!createdMetadata.isFile() || createdMetadata.nlink !== 1) fail("native_module_validation_failed");
+      createdFile.identity = inode(createdMetadata);
+      for (let offset = 0; offset < bytes.length;) {
+        const written = writeSync(descriptor, bytes, offset, bytes.length - offset, null);
+        if (!Number.isSafeInteger(written) || written <= 0) fail("native_module_validation_failed");
+        offset += written;
+      }
+      fchmodSync(descriptor, 0o644);
+      if (process.platform !== "win32") fsyncSync(descriptor);
+      closeSync(descriptor);
+      descriptor = undefined;
+      const observed = rootOwnedRegular(target, supplied, "native_module_validation_failed", process.platform === "win32" ? null : 0o644);
+      if (inode(observed.metadata) !== createdFile.identity || observed.metadata.size !== bytes.length || hashFile(observed.path) !== hash(bytes)) fail("native_module_validation_failed");
+      staged[key] = observed.path;
+    }
+    if (process.platform !== "win32") fsync(projectRoot, "native_module_validation_failed");
+    return Object.freeze(staged);
+  } catch (error) {
+    if (descriptor !== undefined) {
+      const pending = created.at(-1);
+      if (pending?.identity === null) try { pending.identity = inode(fstatSync(descriptor)); } catch { /* cleanup below remains fail-closed */ }
+      try { closeSync(descriptor); } catch { /* cleanup below remains fail-closed */ }
+      descriptor = undefined;
+    }
+    let cleanupFailed = false;
+    for (const value of [...created].reverse()) {
+      try {
+        const metadata = lstatSync(value.path);
+        if (value.identity === null || metadata.isSymbolicLink() || !metadata.isFile() || inode(metadata) !== value.identity) { cleanupFailed = true; continue; }
+        unlinkSync(value.path);
+      } catch (cleanupError) { if (cleanupError?.code !== "ENOENT") cleanupFailed = true; }
+    }
+    if (process.platform !== "win32" && created.length) try { fsync(projectRoot, "native_module_validation_failed"); } catch { cleanupFailed = true; }
+    if (cleanupFailed) fail("native_module_validation_failed", true);
+    if (error instanceof CandidateDependencyGateError) throw error;
+    fail("native_module_validation_failed");
+  }
+}
+
 function stageSnapshotModule(extracted, context, supplied) {
   const source = snapshotSource(context, supplied), scripts = resolve(extracted.root, "scripts"), target = resolve(scripts, "control-plane-db-snapshot-gate.mjs"), owner = rootWorkerOwner(supplied);
   try {
@@ -2748,6 +2839,12 @@ export async function materializeCandidateDependencies({
     storageBeforePublish = storageEvidenceForMaterialization(supplied, evidence.artifactTree, value.c.candidateRoot);
     sameStorageBoundary(storageInitial, storageBeforePublish);
     normalizeArtifactTree(extracted.root, supplied);
+    stageServiceNativeSmokeProjectMetadata({
+      root: extracted.root,
+      packageJsonBytes: value.input.packageBytes,
+      packageLockBytes: value.input.lockBytes,
+      runtime: supplied
+    });
     stageSnapshotModule(extracted, value.c, supplied);
     const normalizedTree = auditedPublishedTree(extracted.nodeModulesRoot, supplied, "candidate_tree_invalid");
     serviceNativeSmoke(extracted.root, value.service, supplied, "prepublish");

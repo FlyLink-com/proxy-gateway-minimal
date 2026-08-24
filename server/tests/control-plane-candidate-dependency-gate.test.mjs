@@ -43,6 +43,7 @@ import {
   runCandidateDependencyWorker,
   sealBuildWorkerArchive,
   seizeWorkerStateTopLevel,
+  stageServiceNativeSmokeProjectMetadata,
   stageBuildWorkerInputs,
   stateTopologyReadback,
   transientUnitReadback,
@@ -1155,6 +1156,14 @@ test("preflight blocks absent, malformed, and package-lock mismatched staged art
 
   const sourceCommitMismatch = fixture(t, { artifactMutate: { sourceCommit: "e".repeat(40) } });
   assert.throws(() => preflightCandidateDependencies({ candidateRelease: sourceCommitMismatch.candidate, expectedCurrentRelease: sourceCommitMismatch.active, runtime: sourceCommitMismatch.runtime }), condition("artifact_stage_receipt_invalid"));
+
+  const oversized = fixture(t);
+  writeFileSync(join(oversized.candidateRoot, "package-lock.json"), Buffer.alloc(8 * 1024 * 1024 + 1));
+  assert.throws(
+    () => preflightCandidateDependencies({ candidateRelease: oversized.candidate, expectedCurrentRelease: oversized.active, runtime: oversized.runtime }),
+    condition("candidate_path_invalid")
+  );
+  assert.equal(existsSync(join(oversized.root, "dependency-staging")), false);
 });
 
 test("preflight rejects stale current, service CWD mismatch, and protected symlink escape", { skip: isWindows }, (t) => {
@@ -1184,6 +1193,64 @@ test("archive listing accepts only NUL-safe node_modules components", () => {
   ]) {
     assert.throws(() => validateNodeModulesArchiveListing(bytes), condition("archive_path_invalid"));
   }
+});
+
+test("prepublish smoke stages the exact verified package metadata", (t) => {
+  const root = resolve(tmpdir(), `gccgw-prepublish-smoke-metadata-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const packageJsonBytes = Buffer.from('{"name":"candidate","version":"1.0.0"}\n');
+  const packageLockBytes = Buffer.from('{"name":"candidate","lockfileVersion":3,"packages":{}}\n');
+  mkdirSync(root, { recursive: true });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const runtime = createCandidateDependencyGateTestRuntime({ checkAclCapabilities: () => true });
+  const staged = stageServiceNativeSmokeProjectMetadata({ root, packageJsonBytes, packageLockBytes, runtime });
+
+  assert.deepEqual(readFileSync(join(root, "package.json")), packageJsonBytes);
+  assert.deepEqual(readFileSync(join(root, "package-lock.json")), packageLockBytes);
+  assert.deepEqual(staged, {
+    packageJson: join(root, "package.json"),
+    packageLock: join(root, "package-lock.json")
+  });
+  assert.throws(
+    () => stageServiceNativeSmokeProjectMetadata({ root, packageJsonBytes, packageLockBytes, runtime }),
+    condition("native_module_validation_failed")
+  );
+});
+
+test("prepublish smoke metadata staging removes only files created by a failed attempt", (t) => {
+  const root = resolve(tmpdir(), `gccgw-prepublish-smoke-metadata-cleanup-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const packageJsonBytes = Buffer.from('{"name":"candidate","version":"1.0.0"}\n');
+  const packageLockBytes = Buffer.from('{"name":"candidate","lockfileVersion":3,"packages":{}}\n');
+  const existingLockBytes = Buffer.from("pre-existing-lock\n");
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, "package-lock.json"), existingLockBytes);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const runtime = createCandidateDependencyGateTestRuntime({ checkAclCapabilities: () => true });
+  assert.throws(
+    () => stageServiceNativeSmokeProjectMetadata({ root, packageJsonBytes, packageLockBytes, runtime }),
+    condition("native_module_validation_failed")
+  );
+  assert.equal(existsSync(join(root, "package.json")), false);
+  assert.deepEqual(readFileSync(join(root, "package-lock.json")), existingLockBytes);
+});
+
+test("prepublish smoke metadata staging rejects oversized input before mutation", (t) => {
+  const root = resolve(tmpdir(), `gccgw-prepublish-smoke-metadata-limit-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  mkdirSync(root, { recursive: true });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const runtime = createCandidateDependencyGateTestRuntime({ checkAclCapabilities: () => true });
+  assert.throws(
+    () => stageServiceNativeSmokeProjectMetadata({
+      root,
+      packageJsonBytes: Buffer.alloc(8 * 1024 * 1024 + 1),
+      packageLockBytes: Buffer.from("{}\n"),
+      runtime
+    }),
+    condition("native_module_validation_failed")
+  );
+  assert.deepEqual(readdirSync(root), []);
 });
 
 test("materialize never falls back to the legacy host-side npm pipeline", async () => {
@@ -1417,6 +1484,7 @@ test("CI artifact materialization uses only the verified artifact extraction and
   let cleanupCalls = 0;
   let stagedRoot = null;
   const smokePrincipals = [];
+  const smokeProjectBindings = [];
   const service = { ...value.runtime.readService({ context: null }), uid: 4242, gid: 4243 };
   const originalRename = value.runtime.renameNoReplace;
   Object.assign(value.runtime, {
@@ -1424,6 +1492,12 @@ test("CI artifact materialization uses only the verified artifact extraction and
     runTar() { legacyCalls += 1; return { status: 0 }; },
     runServiceNativeSmoke({ root, service: smokeService, fixedNodePath }) {
       smokePrincipals.push({ root, uid: smokeService.uid, gid: smokeService.gid });
+      smokeProjectBindings.push({
+        packageJsonBound: existsSync(join(root, "package.json"))
+          && readFileSync(join(root, "package.json")).equals(value.packageBytes),
+        packageLockBound: existsSync(join(root, "package-lock.json"))
+          && readFileSync(join(root, "package-lock.json")).equals(value.lockBytes)
+      });
       return {
         serviceUid: smokeService.uid, serviceGid: smokeService.gid, fixedNodePath,
         noNetwork: true, capabilityBoundingSet: "", protectSystem: "strict", protectHome: true,
@@ -1501,6 +1575,7 @@ test("CI artifact materialization uses only the verified artifact extraction and
   cleanupCalls = 0;
   stagedRoot = null;
   smokePrincipals.length = 0;
+  smokeProjectBindings.length = 0;
 
   const result = await materializeCandidateDependencies({
     candidateRelease: value.candidate,
@@ -1522,6 +1597,10 @@ test("CI artifact materialization uses only the verified artifact extraction and
   assert.deepEqual(smokePrincipals, [
     { root: stagedRoot, uid: service.uid, gid: service.gid },
     { root: value.candidateRoot, uid: service.uid, gid: service.gid }
+  ]);
+  assert.deepEqual(smokeProjectBindings, [
+    { packageJsonBound: true, packageLockBound: true },
+    { packageJsonBound: true, packageLockBound: true }
   ]);
   assert.equal(existsSync(join(value.candidateRoot, "node_modules", "better-sqlite3", "index.js")), true);
   assert.equal(existsSync(join(value.root, "dependency-receipts", value.candidate, "node-modules-materialization.json")), true);
