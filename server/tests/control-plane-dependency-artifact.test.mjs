@@ -305,9 +305,9 @@ test("consumer rejects an archive manifest size-field drift", () => {
 test("native smoke rejects snapshot paths outside the fixed repository path before execution", () => {
   const value = fixture("snapshot-boundary"); let calls = 0;
   try {
-    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, snapshotModule: "../escape.mjs", runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_invalid"));
-    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, snapshotModule: join(value.root, "outside.mjs"), runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_invalid"));
-    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, snapshotModule: "scripts/other.mjs", runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_invalid"));
+    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, snapshotModule: "../escape.mjs", runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_snapshot_invalid"));
+    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, snapshotModule: join(value.root, "outside.mjs"), runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_snapshot_invalid"));
+    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, snapshotModule: "scripts/other.mjs", runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_snapshot_invalid"));
     assert.equal(calls, 0);
   } finally { cleanup(value.root); }
 });
@@ -318,7 +318,7 @@ test("native smoke rejects a fixed snapshot path implemented as an escaping syml
     writeFileSync(join(value.root, "outside.mjs"), "export default false;\n");
     unlinkSync(join(value.root, "scripts", "control-plane-db-snapshot-gate.mjs"));
     symlinkSync(join(value.root, "outside.mjs"), join(value.root, "scripts", "control-plane-db-snapshot-gate.mjs"));
-    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_invalid"));
+    assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_snapshot_invalid"));
     assert.equal(calls, 0);
   } finally { cleanup(value.root); }
 });
@@ -577,7 +577,29 @@ test("smoke CLI failure uses the dedicated schema-version-3 envelope", async () 
       type: DEPENDENCY_ARTIFACT_TYPE,
       mode: "smoke",
       state: "blocked",
-      condition: "dependency_smoke_invalid"
+      condition: "dependency_smoke_identity_invalid"
+    });
+  } finally { cleanup(value.root); }
+});
+
+test("smoke CLI exposes snapshot-path failures only through the bounded condition envelope", async () => {
+  const value = fixture("smoke-cli-snapshot-failure-envelope");
+  const output = []; const errors = [];
+  try {
+    const code = await runDependencyArtifactCli({
+      argv: ["--mode", "smoke", "--root", value.root, "--snapshot", "../escape.mjs"],
+      stdout: { write: (chunk) => output.push(String(chunk)) },
+      stderr: { write: (chunk) => errors.push(String(chunk)) },
+      runtime: { nativeSmoke: () => true, getuid: () => 4711, getgid: () => 4712 }
+    });
+    assert.equal(code, 1);
+    assert.deepEqual(output, []);
+    assert.deepEqual(JSON.parse(errors.join("")), {
+      schemaVersion: DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION,
+      type: DEPENDENCY_ARTIFACT_TYPE,
+      mode: "smoke",
+      state: "blocked",
+      condition: "dependency_smoke_snapshot_invalid"
     });
   } finally { cleanup(value.root); }
 });
@@ -635,7 +657,7 @@ test("smoke CLI rejects zero, negative, float, string, unsafe and null identitie
       });
       assert.equal(code, 1, testCase.name);
       assert.equal(output.length, 0, testCase.name);
-      assert.match(errors.join(""), /dependency_smoke_invalid/, testCase.name);
+      assert.match(errors.join(""), /dependency_smoke_identity_invalid/, testCase.name);
     }
   } finally { cleanup(value.root); }
 });
@@ -677,7 +699,7 @@ test("smoke CLI rejects partial or non-function identity hooks even when host pr
       });
       assert.equal(code, 1, testCase.name);
       assert.equal(output.length, 0, testCase.name);
-      assert.match(errors.join(""), /dependency_smoke_invalid/, testCase.name);
+      assert.match(errors.join(""), /dependency_smoke_identity_invalid/, testCase.name);
     }
   } finally {
     restoreHostIdentity();
@@ -696,17 +718,17 @@ test("readSmokeProcessIdentity rejects both-non-function runtime hooks even with
     Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
     assert.throws(
       () => readSmokeProcessIdentity({ getuid: 4711, getgid: 4712 }),
-      condition("dependency_smoke_invalid"),
+      condition("dependency_smoke_identity_invalid"),
       "both non-functions"
     );
     assert.throws(
       () => readSmokeProcessIdentity({ getuid: () => 4711, getgid: 4712 }),
-      condition("dependency_smoke_invalid"),
+      condition("dependency_smoke_identity_invalid"),
       "function + non-function"
     );
     assert.throws(
       () => readSmokeProcessIdentity({ getuid: 4711, getgid: () => 4712 }),
-      condition("dependency_smoke_invalid"),
+      condition("dependency_smoke_identity_invalid"),
       "non-function + function"
     );
   } finally {
@@ -725,12 +747,12 @@ test("readSmokeProcessIdentity rejects single-hook runtime even with valid host 
     Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
     assert.throws(
       () => readSmokeProcessIdentity({ getuid: () => 4711 }),
-      condition("dependency_smoke_invalid"),
+      condition("dependency_smoke_identity_invalid"),
       "only getuid"
     );
     assert.throws(
       () => readSmokeProcessIdentity({ getgid: () => 4712 }),
-      condition("dependency_smoke_invalid"),
+      condition("dependency_smoke_identity_invalid"),
       "only getgid"
     );
   } finally {
@@ -767,8 +789,8 @@ test("readSmokeProcessIdentity fails closed when host process.getuid/getgid are 
   try {
     delete process.getuid;
     delete process.getgid;
-    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_invalid"), "no hooks and no host");
-    assert.throws(() => readSmokeProcessIdentity({ nativeSmoke: () => true }), condition("dependency_smoke_invalid"), "no hooks and no host with nativeSmoke");
+    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_identity_invalid"), "no hooks and no host");
+    assert.throws(() => readSmokeProcessIdentity({ nativeSmoke: () => true }), condition("dependency_smoke_identity_invalid"), "no hooks and no host with nativeSmoke");
   } finally {
     if (originalGetuid) Object.defineProperty(process, "getuid", originalGetuid);
     else delete process.getuid;
@@ -784,15 +806,15 @@ test("readSmokeProcessIdentity fails closed when host identity returns root or i
     // Root identity on host.
     Object.defineProperty(process, "getuid", { value: () => 0, configurable: true, writable: true });
     Object.defineProperty(process, "getgid", { value: () => 0, configurable: true, writable: true });
-    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_invalid"), "host root");
+    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_identity_invalid"), "host root");
     // Host functions throw.
     Object.defineProperty(process, "getuid", { value: () => { throw new Error("host getuid failed"); }, configurable: true, writable: true });
     Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
-    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_invalid"), "host throws");
+    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_identity_invalid"), "host throws");
     // Host functions return invalid types.
     Object.defineProperty(process, "getuid", { value: () => 1.5, configurable: true, writable: true });
     Object.defineProperty(process, "getgid", { value: () => 4712, configurable: true, writable: true });
-    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_invalid"), "host float");
+    assert.throws(() => readSmokeProcessIdentity({}), condition("dependency_smoke_identity_invalid"), "host float");
   } finally {
     if (originalGetuid) Object.defineProperty(process, "getuid", originalGetuid);
     else delete process.getuid;
@@ -827,12 +849,12 @@ test("readSmokeProcessIdentity accepts both injected functions with valid positi
 test("readSmokeProcessIdentity rejects injected getters that throw", () => {
   assert.throws(
     () => readSmokeProcessIdentity({ getuid: () => { throw new Error("boom"); }, getgid: () => 4712 }),
-    condition("dependency_smoke_invalid"),
+    condition("dependency_smoke_identity_invalid"),
     "getuid throws"
   );
   assert.throws(
     () => readSmokeProcessIdentity({ getuid: () => 4711, getgid: () => { throw new Error("boom"); } }),
-    condition("dependency_smoke_invalid"),
+    condition("dependency_smoke_identity_invalid"),
     "getgid throws"
   );
 });
@@ -855,7 +877,7 @@ test("readSmokeProcessIdentity rejects injected getters returning zero, negative
   for (const testCase of cases) {
     assert.throws(
       () => readSmokeProcessIdentity({ getuid: testCase.getuid, getgid: testCase.getgid }),
-      condition("dependency_smoke_invalid"),
+      condition("dependency_smoke_identity_invalid"),
       testCase.name
     );
   }
@@ -893,7 +915,7 @@ test("smoke CLI with no runtime identity injection succeeds on a non-root host a
     });
     assert.equal(rootCode, 1);
     assert.equal(rootOutput.length, 0);
-    assert.match(rootErrors.join(""), /dependency_smoke_invalid/);
+    assert.match(rootErrors.join(""), /dependency_smoke_identity_invalid/);
 
     // Now simulate an absent host and expect failure.
     delete process.getuid;
@@ -907,7 +929,7 @@ test("smoke CLI with no runtime identity injection succeeds on a non-root host a
     });
     assert.equal(absentCode, 1);
     assert.equal(absentOutput.length, 0);
-    assert.match(absentErrors.join(""), /dependency_smoke_invalid/);
+    assert.match(absentErrors.join(""), /dependency_smoke_identity_invalid/);
   } finally {
     if (originalGetuid) Object.defineProperty(process, "getuid", originalGetuid);
     else delete process.getuid;
@@ -934,7 +956,7 @@ test("smoke CLI rejects identity getter exceptions", async () => {
       });
       assert.equal(code, 1, testCase.name);
       assert.equal(output.length, 0, testCase.name);
-      assert.match(errors.join(""), /dependency_smoke_invalid/, testCase.name);
+      assert.match(errors.join(""), /dependency_smoke_identity_invalid/, testCase.name);
     }
   } finally { cleanup(value.root); }
 });
