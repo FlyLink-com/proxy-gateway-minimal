@@ -1705,6 +1705,7 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   chmodSync(archivePath, 0o400);
   const producerExtractionRoot = join(value.root, "producer-extracted");
   const snapshotSource = join(value.candidateRoot, "scripts", "control-plane-db-snapshot-gate.mjs");
+  chmodSync(snapshotSource, 0o644);
   const manifest = buildDependencyArtifactManifest({
     sourceCommit: SOURCE_COMMIT,
     artifactRelease: ARTIFACT_RELEASE,
@@ -1736,10 +1737,18 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   write(join(artifactRoot, "dependency-artifact.json"), manifest.bytes, 0o400);
   write(join(artifactRoot, "release-label.txt"), `${ARTIFACT_RELEASE}\n`, 0o400);
   const smokeRoots = [];
+  const smokeSnapshotModes = [];
   Object.assign(value.runtime, {
     detectArtifact: () => runtimeTuple,
     runServiceNativeSmoke({ root, service, fixedNodePath }) {
       smokeRoots.push({ root, uid: service.uid, gid: service.gid });
+      const scriptsMetadata = lstatSync(join(root, "scripts"));
+      const snapshotMetadata = lstatSync(join(root, "scripts", "control-plane-db-snapshot-gate.mjs"));
+      smokeSnapshotModes.push({
+        scripts: scriptsMetadata.mode & 0o777,
+        snapshot: snapshotMetadata.mode & 0o777,
+        snapshotLinks: snapshotMetadata.nlink
+      });
       return {
         serviceUid: service.uid, serviceGid: service.gid, fixedNodePath,
         noNetwork: true, capabilityBoundingSet: "", protectSystem: "strict", protectHome: true,
@@ -1750,16 +1759,22 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
     }
   });
 
-  const result = await materializeCandidateDependencies({
-    candidateRelease: value.candidate,
-    expectedCurrentRelease: value.active,
-    expectedSourceCommit: SOURCE_COMMIT,
-    expectedArtifactRelease: ARTIFACT_RELEASE,
-    expectedDependencyManifestSha256: manifest.sha256,
-    expectedDependencyArchiveSha256: manifest.value.archive.sha256,
-    apply: true,
-    runtime: value.runtime
-  });
+  const previousUmask = process.umask(0o077);
+  let result;
+  try {
+    result = await materializeCandidateDependencies({
+      candidateRelease: value.candidate,
+      expectedCurrentRelease: value.active,
+      expectedSourceCommit: SOURCE_COMMIT,
+      expectedArtifactRelease: ARTIFACT_RELEASE,
+      expectedDependencyManifestSha256: manifest.sha256,
+      expectedDependencyArchiveSha256: manifest.value.archive.sha256,
+      apply: true,
+      runtime: value.runtime
+    });
+  } finally {
+    process.umask(previousUmask);
+  }
 
   assert.equal(result.state, "materialized");
   assert.equal(existsSync(join(value.candidateRoot, "node_modules", "better-sqlite3", "index.js")), true);
@@ -1779,6 +1794,10 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   assert.equal(smokeRoots.length, 2);
   assert.notEqual(smokeRoots[0].root, value.candidateRoot);
   assert.equal(smokeRoots[1].root, value.candidateRoot);
+  assert.deepEqual(smokeSnapshotModes, [
+    { scripts: 0o755, snapshot: 0o644, snapshotLinks: 1 },
+    { scripts: 0o755, snapshot: 0o644, snapshotLinks: 1 }
+  ]);
 
   const missingField = { ...materializationReceipt };
   delete missingField.dependencyArtifactTreeEntryCount;

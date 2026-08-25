@@ -50,6 +50,10 @@ const A3_SMOKE_PHASES = new Set(["validation", "prepublish", "postpublish", "ver
 const A3_SMOKE_SNAPSHOT_MODULE = "scripts/control-plane-db-snapshot-gate.mjs";
 const A3_UNIT_GC_POLL_ATTEMPTS = 20;
 const A3_UNIT_GC_POLL_INTERVAL_MS = 50;
+const A3_PHYSICAL_COMMAND_TIMEOUT_MS = 15_000;
+const A3_SERVICE_SMOKE_COMMAND_TIMEOUT_MS = 300_000;
+const A3_SERVICE_SMOKE_COMPLETION_POLL_ATTEMPTS = 3_000;
+const A3_SERVICE_SMOKE_COMPLETION_POLL_INTERVAL_MS = 100;
 const CGROUP2_SUPER_MAGIC = 0x63677270;
 const EXT4_SUPER_MAGIC = 0xef53;
 const A3_PROBE_BYTE_HARD_LIMIT = 1024 * 1024;
@@ -86,7 +90,8 @@ const SAFE = new Set([
   "dependency_archive_invalid", "dependency_archive_member_invalid", "dependency_archive_mismatch", "dependency_archive_missing",
   "dependency_artifact_invalid", "dependency_consumer_contract_invalid", "dependency_file_changed", "dependency_file_unreadable",
   "dependency_lock_mismatch", "dependency_package_mismatch", "dependency_release_mismatch", "dependency_runtime_invalid",
-  "dependency_runtime_mismatch", "dependency_smoke_invalid", "dependency_source_mismatch", "dependency_tree_invalid",
+  "dependency_runtime_mismatch", "dependency_smoke_identity_invalid", "dependency_smoke_invalid",
+  "dependency_smoke_snapshot_invalid", "dependency_source_mismatch", "dependency_tree_invalid",
   "dependency_storage_budget_unavailable", "dependency_tree_mismatch", "dependency_tree_too_large",
   "device_boundary_invalid", "hardlink_provenance_invalid", "invalid_input", "lock_cleanup_failed",
   "lock_unavailable", "mount_boundary_invalid", "native_module_validation_failed",
@@ -98,6 +103,10 @@ const SAFE = new Set([
   "worker_input_custody_invalid", "worker_input_invalid", "worker_private_directory_invalid", "worker_readback_invalid",
   "worker_storage_limit_unavailable", "storage_quota_evidence_invalid", "service_smoke_readback_invalid",
   "service_smoke_runner_unavailable"
+]);
+const SERVICE_SMOKE_FAILURE_CONDITIONS = new Set([
+  "dependency_artifact_invalid", "dependency_smoke_identity_invalid", "dependency_smoke_invalid",
+  "dependency_smoke_snapshot_invalid", "native_module_validation_failed"
 ]);
 const CMD_ENV = Object.freeze({ PATH: "/usr/bin:/bin", LC_ALL: "C", LANG: "C" });
 const TRANSIENT_PROPERTIES = Object.freeze([
@@ -630,47 +639,69 @@ function a3PhysicalContext(runLabel, supplied, smokePhase = "validation") {
   return Object.freeze({ tools, probeRoot, projectRoot, deploymentRoot, unit, visibleRoot, smokePhase });
 }
 
-function executeA3Physical(command, args, supplied, condition, { attentionRequired = false, requireEmptyStderr = false } = {}) {
+function runA3Physical(command, args, supplied, condition, {
+  attentionRequired = false,
+  timeoutMs = A3_PHYSICAL_COMMAND_TIMEOUT_MS
+} = {}) {
   let observer = null;
   try {
-    if (!Object.values(A3_PHYSICAL_TOOLS).includes(command) || !Array.isArray(args) || !args.every((value) => typeof value === "string" && !value.includes("\0"))) fail(condition, attentionRequired);
+    if (!Object.values(A3_PHYSICAL_TOOLS).includes(command) || !Array.isArray(args) || !args.every((value) => typeof value === "string" && !value.includes("\0"))
+      || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > A3_SERVICE_SMOKE_COMMAND_TIMEOUT_MS) fail(condition, attentionRequired);
     if (supplied && typeof supplied.observePhysicalCommand === "function") {
       observer = supplied.observePhysicalCommand;
     }
     const execute = typeof supplied.executePhysicalCommand === "function"
       ? supplied.executePhysicalCommand
-      : (path, argv) => {
+      : (path, argv, execution) => {
           const trusted = tool(path, supplied);
-          const result = spawnSync(trusted, argv, { env: CMD_ENV, encoding: "utf8", windowsHide: true, timeout: 15000, maxBuffer: 64 * 1024 });
+          const result = spawnSync(trusted, argv, { env: CMD_ENV, encoding: "utf8", windowsHide: true, timeout: execution.timeoutMs, maxBuffer: 64 * 1024 });
           return { status: result.status, stdout: result.stdout, stderr: result.stderr, error: result.error };
         };
     const frozenArgs = Object.freeze([...args]);
-        const startNs = observer ? process.hrtime.bigint() : null;
-        const result = execute(command, frozenArgs);
-        if (observer) {
-          const elapsedMs = startNs !== null
-            ? Number((process.hrtime.bigint() - startNs) / 1_000_000n)
-            : null;
-          try {
-            observer({
-              command,
-              args: frozenArgs,
-              status: result && typeof result.status === "number" ? result.status : null,
-              stdout: result && typeof result.stdout === "string" ? result.stdout : "",
-              stderr: result && typeof result.stderr === "string" ? result.stderr : "",
-              error: result && result.error ? result.error : null,
-              condition,
-              elapsedMs
-            });
-          } catch {
-            // observer is read-only; exceptions must not influence collector semantics
-          }
-        }
-    if (!result || result.error || result.status !== 0 || typeof result.stdout !== "string" || typeof result.stderr !== "string"
-      || Buffer.byteLength(result.stdout) > 64 * 1024 || Buffer.byteLength(result.stderr) > 64 * 1024
-      || requireEmptyStderr && result.stderr !== "") fail(condition, attentionRequired);
-    return result.stdout;
+    const execution = Object.freeze({ timeoutMs });
+    const startNs = observer ? process.hrtime.bigint() : null;
+    const result = execute(command, frozenArgs, execution);
+    if (observer) {
+      const elapsedMs = startNs !== null
+        ? Number((process.hrtime.bigint() - startNs) / 1_000_000n)
+        : null;
+      try {
+        observer({
+          command,
+          args: frozenArgs,
+          status: result && typeof result.status === "number" ? result.status : null,
+          stdout: result && typeof result.stdout === "string" ? result.stdout : "",
+          stderr: result && typeof result.stderr === "string" ? result.stderr : "",
+          error: result && result.error ? result.error : null,
+          condition,
+          elapsedMs
+        });
+      } catch {
+        // observer is read-only; exceptions must not influence collector semantics
+      }
+    }
+    if (!result || result.error || !Number.isInteger(result.status) || typeof result.stdout !== "string" || typeof result.stderr !== "string"
+      || Buffer.byteLength(result.stdout) > 64 * 1024 || Buffer.byteLength(result.stderr) > 64 * 1024) fail(condition, attentionRequired);
+    return Object.freeze({ status: result.status, stdout: result.stdout, stderr: result.stderr });
   } catch (error) { if (error instanceof CandidateDependencyGateError) throw error; fail(condition, attentionRequired); }
+}
+
+function executeA3Physical(command, args, supplied, condition, {
+  attentionRequired = false,
+  requireEmptyStderr = false,
+  timeoutMs = A3_PHYSICAL_COMMAND_TIMEOUT_MS
+} = {}) {
+  const result = runA3Physical(command, args, supplied, condition, { attentionRequired, timeoutMs });
+  if (result.status !== 0 || requireEmptyStderr && result.stderr !== "") fail(condition, attentionRequired);
+  return result.stdout;
+}
+
+function executeA3ServiceSmokeLaunch(invocation, supplied) {
+  const result = runA3Physical(invocation.command, invocation.args, supplied, "service_smoke_readback_invalid", {
+    timeoutMs: A3_SERVICE_SMOKE_COMMAND_TIMEOUT_MS
+  });
+  if (![0, 1].includes(result.status) || result.status === 0 && result.stderr !== "") fail("service_smoke_readback_invalid");
+  return result.status;
 }
 
 function a3PhysicalPathExists(path, supplied, condition = "worker_cleanup_uncertain") {
@@ -840,6 +871,52 @@ function waitForA3ServiceSmokeCollection(context, serviceUnit, cleanupProperties
   fail("worker_cleanup_uncertain", true);
 }
 
+function waitForA3ServiceSmokeCompletion(context, serviceUnit, supplied) {
+  const completionProperties = ["LoadState", "ActiveState", "SubState", "Result", "ExecMainStatus"];
+  const deadline = process.hrtime.bigint() + BigInt(A3_SERVICE_SMOKE_COMMAND_TIMEOUT_MS) * 1_000_000n;
+  for (let attempt = 0; attempt < A3_SERVICE_SMOKE_COMPLETION_POLL_ATTEMPTS; attempt += 1) {
+    const state = parseA3SystemctlProperties(executeA3Physical(
+      context.tools.systemctl,
+      ["show", serviceUnit, `--property=${completionProperties.join(",")}`, "--no-page"],
+      supplied,
+      "worker_cleanup_uncertain",
+      { attentionRequired: true }
+    ), completionProperties);
+    if (state.LoadState === "loaded" && state.ActiveState === "active" && state.SubState === "exited"
+      && state.Result === "success" && state.ExecMainStatus === "0") return state;
+    if (state.LoadState !== "loaded") fail("worker_cleanup_uncertain", true);
+    if (state.ActiveState === "failed" && state.SubState === "failed" && state.Result === "exit-code"
+      && state.ExecMainStatus === "1") return state;
+    const activating = state.ActiveState === "activating" && new Set(["start-pre", "start", "start-post"]).has(state.SubState);
+    if (activating) {
+      if (!new Set(["", "success"]).has(state.Result) || state.ExecMainStatus !== "0") fail("service_smoke_readback_invalid");
+      if (process.hrtime.bigint() >= deadline) fail("worker_cleanup_uncertain", true);
+      if (typeof supplied.executePhysicalCommand !== "function") {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, A3_SERVICE_SMOKE_COMPLETION_POLL_INTERVAL_MS);
+      }
+      continue;
+    }
+    if (state.ActiveState === "failed" || !new Set(["", "success"]).has(state.Result) || state.ExecMainStatus !== "0") {
+      fail("service_smoke_readback_invalid");
+    }
+    fail("worker_cleanup_uncertain", true);
+  }
+  fail("worker_cleanup_uncertain", true);
+}
+
+function validateA3ServiceSmokeFailedUnit(context, serviceUnit, supplied) {
+  const failedProperties = ["LoadState", "ActiveState", "SubState", "Result", "ExecMainStatus"];
+  const failedState = parseA3SystemctlProperties(executeA3Physical(
+    context.tools.systemctl,
+    ["show", serviceUnit, `--property=${failedProperties.join(",")}`, "--no-page"],
+    supplied,
+    "worker_cleanup_uncertain",
+    { attentionRequired: true }
+  ), failedProperties);
+  if (failedState.LoadState !== "loaded" || failedState.ActiveState !== "failed" || failedState.SubState !== "failed"
+    || failedState.Result !== "exit-code" || failedState.ExecMainStatus !== "1") fail("worker_cleanup_uncertain", true);
+}
+
 function cleanupA3ServiceSmoke(context, invocation, supplied) {
   const serviceUnit = `${context.unit}.service`;
   const cleanupProperties = ["LoadState", "ActiveState", "SubState"];
@@ -852,7 +929,24 @@ function cleanupA3ServiceSmoke(context, invocation, supplied) {
   ), cleanupProperties);
   if (before.LoadState !== "not-found") {
     if (before.LoadState !== "loaded") fail("worker_cleanup_uncertain", true);
+    if (before.ActiveState === "failed") {
+      validateA3ServiceSmokeFailedUnit(context, serviceUnit, supplied);
+    }
     executeA3Physical(context.tools.systemctl, ["stop", serviceUnit], supplied, "worker_cleanup_uncertain", { attentionRequired: true, requireEmptyStderr: true });
+    const afterStop = parseA3SystemctlProperties(executeA3Physical(
+      context.tools.systemctl,
+      ["show", serviceUnit, `--property=${cleanupProperties.join(",")}`, "--no-page"],
+      supplied,
+      "worker_cleanup_uncertain",
+      { attentionRequired: true }
+    ), cleanupProperties);
+    if (afterStop.LoadState === "loaded" && afterStop.ActiveState === "failed" && afterStop.SubState === "failed") {
+      validateA3ServiceSmokeFailedUnit(context, serviceUnit, supplied);
+      executeA3Physical(context.tools.systemctl, ["reset-failed", serviceUnit], supplied, "worker_cleanup_uncertain", { attentionRequired: true, requireEmptyStderr: true });
+    } else if (!(afterStop.LoadState === "not-found" && afterStop.ActiveState === "inactive" && afterStop.SubState === "dead")
+      && !(afterStop.LoadState === "loaded" && afterStop.ActiveState === "inactive" && afterStop.SubState === "dead")) {
+      fail("worker_cleanup_uncertain", true);
+    }
   }
   waitForA3ServiceSmokeCollection(context, serviceUnit, cleanupProperties, supplied);
   const cgroupRoot = `/sys/fs/cgroup/system.slice/${serviceUnit}`;
@@ -1179,12 +1273,13 @@ function buildServiceNativeSmokeInvocationForContext({ context, root, service })
     "CapabilityBoundingSet=", "NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes",
     "PrivateDevices=yes", "PrivateTmp=yes", "ProtectControlGroups=yes", "RestrictNamespaces=yes",
     "SystemCallFilter=@system-service", "Delegate=no", "Slice=system.slice",
+    "CollectMode=inactive",
     "UMask=0077", `StandardOutput=file:${captureStdout}`, `StandardError=file:${captureStderr}`,
     `BindReadOnlyPaths=${bindReadOnlyPaths.join(" ")}`, `WorkingDirectory=${context.visibleRoot}`
   ];
   return Object.freeze({
     command: context.tools.systemdRun,
-    args: Object.freeze([`--unit=${context.unit}`, "--remain-after-exit", "--collect", "--quiet", "--service-type=oneshot", ...properties.map((value) => `--property=${value}`), "--", context.tools.node, visibleWorker, "--mode", "smoke", "--root", context.visibleRoot, "--snapshot", A3_SMOKE_SNAPSHOT_MODULE]),
+    args: Object.freeze([`--unit=${context.unit}`, "--remain-after-exit", "--quiet", "--service-type=oneshot", ...properties.map((value) => `--property=${value}`), "--", context.tools.node, visibleWorker, "--mode", "smoke", "--root", context.visibleRoot, "--snapshot", A3_SMOKE_SNAPSHOT_MODULE]),
     worker, visibleWorker, bindReadOnlyPaths: Object.freeze(bindReadOnlyPaths), captureStdout, captureStderr,
     unit: context.unit, visibleRoot: context.visibleRoot
   });
@@ -1216,6 +1311,17 @@ function parseServiceSmokeProcessOutput(stdout) {
   });
 }
 
+function parseServiceSmokeFailureOutput(stderr) {
+  const value = strictJsonObject(Buffer.from(stderr, "utf8"), "service_smoke_readback_invalid");
+  if (!keys(value, ["schemaVersion", "type", "mode", "state", "condition"])
+    || value.schemaVersion !== DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION
+    || value.type !== DEPENDENCY_ARTIFACT_TYPE
+    || value.mode !== "smoke"
+    || !new Set(["blocked", "attention_required"]).has(value.state)
+    || !SERVICE_SMOKE_FAILURE_CONDITIONS.has(value.condition)) fail("service_smoke_readback_invalid");
+  return Object.freeze({ condition: value.condition, attentionRequired: value.state === "attention_required" });
+}
+
 function collectServiceNativeSmokeEvidenceForContext({ context, root, service, runtime: supplied }) {
   const invocation = buildServiceNativeSmokeInvocationForContext({ context, root, service });
   validateA3ServiceSmokeCaptureBoundary(context, invocation, supplied);
@@ -1223,20 +1329,26 @@ function collectServiceNativeSmokeEvidenceForContext({ context, root, service, r
   const stdoutState = a3PhysicalLeafState(invocation.captureStdout, supplied, "service_smoke_readback_invalid");
   const stderrState = a3PhysicalLeafState(invocation.captureStderr, supplied, "service_smoke_readback_invalid");
   if (![stdoutState, stderrState].every((state) => state === "absent" || state === "regular")) fail("service_smoke_readback_invalid", true);
-  if (stdoutState === "regular" || stderrState === "regular") {
-    cleanupA3ServiceSmoke(context, invocation, supplied);
-  }
+  cleanupA3ServiceSmoke(context, invocation, supplied);
   if (a3PhysicalLeafState(invocation.captureStdout, supplied, "service_smoke_readback_invalid") !== "absent"
     || a3PhysicalLeafState(invocation.captureStderr, supplied, "service_smoke_readback_invalid") !== "absent") fail("service_smoke_readback_invalid", true);
   validateA3ServiceSmokeSource(invocation, root, supplied);
   let observed = null; let values = null; let primaryError = null;
   try {
-    executeA3Physical(invocation.command, invocation.args, supplied, "service_smoke_readback_invalid", { requireEmptyStderr: true });
+    const launchStatus = executeA3ServiceSmokeLaunch(invocation, supplied);
+    const completion = waitForA3ServiceSmokeCompletion(context, `${context.unit}.service`, supplied);
     validateA3ServiceSmokeCapture(invocation.captureStdout, supplied);
     validateA3ServiceSmokeCapture(invocation.captureStderr, supplied);
+    const stdout = readA3PhysicalFile(invocation.captureStdout, supplied, "service_smoke_readback_invalid");
     const stderr = readA3PhysicalFile(invocation.captureStderr, supplied, "service_smoke_readback_invalid");
+    if (completion.ActiveState === "failed") {
+      if (stdout !== "") fail("service_smoke_readback_invalid");
+      const failure = parseServiceSmokeFailureOutput(stderr);
+      fail(failure.condition, failure.attentionRequired);
+    }
+    if (launchStatus !== 0) fail("service_smoke_readback_invalid");
     if (stderr !== "") fail("service_smoke_readback_invalid");
-    observed = parseServiceSmokeProcessOutput(readA3PhysicalFile(invocation.captureStdout, supplied, "service_smoke_readback_invalid"));
+    observed = parseServiceSmokeProcessOutput(stdout);
     if (observed.processIdentity.uid !== service.uid || observed.processIdentity.gid !== service.gid) fail("service_smoke_readback_invalid");
     const terminalProperties = ["ActiveState", "SubState", "Result", "ExecMainStatus", "ControlGroup", "User", "Group", "PrivateNetwork", "CapabilityBoundingSet", "ProtectSystem", "ProtectHome", "PrivateDevices", "NoNewPrivileges", "BindReadOnlyPaths", "Type", "RemainAfterExit", "CollectMode"];
     values = parseA3SystemctlProperties(executeA3Physical(
@@ -1253,7 +1365,7 @@ function collectServiceNativeSmokeEvidenceForContext({ context, root, service, r
       || values.User !== String(observed.processIdentity.uid) || values.Group !== String(observed.processIdentity.gid)
       || values.PrivateNetwork !== "yes" || values.CapabilityBoundingSet !== "" || values.ProtectSystem !== "strict" || values.ProtectHome !== "yes"
       || values.PrivateDevices !== "yes" || values.NoNewPrivileges !== "yes" || values.BindReadOnlyPaths !== expectedBind
-      || values.Type !== "oneshot" || values.RemainAfterExit !== "yes" || values.CollectMode !== "inactive-or-failed") fail("worker_cleanup_uncertain", true);
+      || values.Type !== "oneshot" || values.RemainAfterExit !== "yes" || values.CollectMode !== "inactive") fail("worker_cleanup_uncertain", true);
     const cgroupRoot = `/sys/fs/cgroup/system.slice/${serviceUnit}`;
     if (values.ControlGroup !== controlGroup && values.ControlGroup !== "") fail("worker_cleanup_uncertain", true);
     const cgroupState = readA3PhysicalCgroupState(cgroupRoot, supplied);
@@ -2668,11 +2780,13 @@ export function stageServiceNativeSmokeProjectMetadata({ root, packageJsonBytes,
 }
 
 function stageSnapshotModule(extracted, context, supplied) {
-  const source = snapshotSource(context, supplied), scripts = resolve(extracted.root, "scripts"), target = resolve(scripts, "control-plane-db-snapshot-gate.mjs"), owner = rootWorkerOwner(supplied);
+  const source = snapshotSource(context, supplied), owner = rootWorkerOwner(supplied);
   try {
-    if (!existsSync(scripts)) mkdirSync(scripts, { mode: 0o755 });
-    const directoryValue = directory(scripts, supplied, "native_module_validation_failed");
-    if (!same(directoryValue, scripts)) fail("native_module_validation_failed");
+    const extractedRoot = directory(extracted.root, supplied, "native_module_validation_failed");
+    const scripts = rootControlledDirectory(
+      resolve(extractedRoot, "scripts"), extractedRoot, owner, 0o755, "native_module_validation_failed"
+    ).path;
+    const target = resolve(scripts, "control-plane-db-snapshot-gate.mjs");
     if (existsSync(target)) {
       const existing = rootOwnedRegular(target, supplied, "native_module_validation_failed", null);
       if (process.platform !== "win32") unlinkSync(existing.path); else unlinkSync(existing.path);
