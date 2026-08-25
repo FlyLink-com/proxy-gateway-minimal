@@ -50,6 +50,8 @@ const A3_SMOKE_PHASES = new Set(["validation", "prepublish", "postpublish", "ver
 const A3_SMOKE_SNAPSHOT_MODULE = "scripts/control-plane-db-snapshot-gate.mjs";
 const A3_UNIT_GC_POLL_ATTEMPTS = 20;
 const A3_UNIT_GC_POLL_INTERVAL_MS = 50;
+const A3_PHYSICAL_COMMAND_TIMEOUT_MS = 15_000;
+const A3_SERVICE_SMOKE_COMMAND_TIMEOUT_MS = 300_000;
 const CGROUP2_SUPER_MAGIC = 0x63677270;
 const EXT4_SUPER_MAGIC = 0xef53;
 const A3_PROBE_BYTE_HARD_LIMIT = 1024 * 1024;
@@ -630,42 +632,48 @@ function a3PhysicalContext(runLabel, supplied, smokePhase = "validation") {
   return Object.freeze({ tools, probeRoot, projectRoot, deploymentRoot, unit, visibleRoot, smokePhase });
 }
 
-function executeA3Physical(command, args, supplied, condition, { attentionRequired = false, requireEmptyStderr = false } = {}) {
+function executeA3Physical(command, args, supplied, condition, {
+  attentionRequired = false,
+  requireEmptyStderr = false,
+  timeoutMs = A3_PHYSICAL_COMMAND_TIMEOUT_MS
+} = {}) {
   let observer = null;
   try {
-    if (!Object.values(A3_PHYSICAL_TOOLS).includes(command) || !Array.isArray(args) || !args.every((value) => typeof value === "string" && !value.includes("\0"))) fail(condition, attentionRequired);
+    if (!Object.values(A3_PHYSICAL_TOOLS).includes(command) || !Array.isArray(args) || !args.every((value) => typeof value === "string" && !value.includes("\0"))
+      || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > A3_SERVICE_SMOKE_COMMAND_TIMEOUT_MS) fail(condition, attentionRequired);
     if (supplied && typeof supplied.observePhysicalCommand === "function") {
       observer = supplied.observePhysicalCommand;
     }
     const execute = typeof supplied.executePhysicalCommand === "function"
       ? supplied.executePhysicalCommand
-      : (path, argv) => {
+      : (path, argv, execution) => {
           const trusted = tool(path, supplied);
-          const result = spawnSync(trusted, argv, { env: CMD_ENV, encoding: "utf8", windowsHide: true, timeout: 15000, maxBuffer: 64 * 1024 });
+          const result = spawnSync(trusted, argv, { env: CMD_ENV, encoding: "utf8", windowsHide: true, timeout: execution.timeoutMs, maxBuffer: 64 * 1024 });
           return { status: result.status, stdout: result.stdout, stderr: result.stderr, error: result.error };
         };
     const frozenArgs = Object.freeze([...args]);
-        const startNs = observer ? process.hrtime.bigint() : null;
-        const result = execute(command, frozenArgs);
-        if (observer) {
-          const elapsedMs = startNs !== null
-            ? Number((process.hrtime.bigint() - startNs) / 1_000_000n)
-            : null;
-          try {
-            observer({
-              command,
-              args: frozenArgs,
-              status: result && typeof result.status === "number" ? result.status : null,
-              stdout: result && typeof result.stdout === "string" ? result.stdout : "",
-              stderr: result && typeof result.stderr === "string" ? result.stderr : "",
-              error: result && result.error ? result.error : null,
-              condition,
-              elapsedMs
-            });
-          } catch {
-            // observer is read-only; exceptions must not influence collector semantics
-          }
-        }
+    const execution = Object.freeze({ timeoutMs });
+    const startNs = observer ? process.hrtime.bigint() : null;
+    const result = execute(command, frozenArgs, execution);
+    if (observer) {
+      const elapsedMs = startNs !== null
+        ? Number((process.hrtime.bigint() - startNs) / 1_000_000n)
+        : null;
+      try {
+        observer({
+          command,
+          args: frozenArgs,
+          status: result && typeof result.status === "number" ? result.status : null,
+          stdout: result && typeof result.stdout === "string" ? result.stdout : "",
+          stderr: result && typeof result.stderr === "string" ? result.stderr : "",
+          error: result && result.error ? result.error : null,
+          condition,
+          elapsedMs
+        });
+      } catch {
+        // observer is read-only; exceptions must not influence collector semantics
+      }
+    }
     if (!result || result.error || result.status !== 0 || typeof result.stdout !== "string" || typeof result.stderr !== "string"
       || Buffer.byteLength(result.stdout) > 64 * 1024 || Buffer.byteLength(result.stderr) > 64 * 1024
       || requireEmptyStderr && result.stderr !== "") fail(condition, attentionRequired);
@@ -1231,7 +1239,10 @@ function collectServiceNativeSmokeEvidenceForContext({ context, root, service, r
   validateA3ServiceSmokeSource(invocation, root, supplied);
   let observed = null; let values = null; let primaryError = null;
   try {
-    executeA3Physical(invocation.command, invocation.args, supplied, "service_smoke_readback_invalid", { requireEmptyStderr: true });
+    executeA3Physical(invocation.command, invocation.args, supplied, "service_smoke_readback_invalid", {
+      requireEmptyStderr: true,
+      timeoutMs: A3_SERVICE_SMOKE_COMMAND_TIMEOUT_MS
+    });
     validateA3ServiceSmokeCapture(invocation.captureStdout, supplied);
     validateA3ServiceSmokeCapture(invocation.captureStderr, supplied);
     const stderr = readA3PhysicalFile(invocation.captureStderr, supplied, "service_smoke_readback_invalid");

@@ -735,8 +735,8 @@ function serviceSmokeHarness({
   let remainingGcPolls = 0;
   let startCollision = false;
   let bindReadOnlyPaths = "";
-  const executePhysicalCommand = (command, args) => {
-    calls.push([command, args]);
+  const executePhysicalCommand = (command, args, execution) => {
+    calls.push([command, args, execution]);
     if (command === "/usr/bin/systemd-run") {
       if (unitLoaded) {
         startCollision = true;
@@ -849,6 +849,17 @@ test("collectServiceNativeSmokeEvidence pins evidence, triangulates identity, th
   assert.deepEqual(harness.calls.map(([, args]) => args[0]), [
     "--unit=control-plane-a3-service-smoke-run-1-validation", "show", "show", "stop", "show"
   ]);
+});
+
+test("collectServiceNativeSmokeEvidence gives only the native smoke launch a longer bounded command timeout", () => {
+  const harness = serviceSmokeHarness();
+  collectServiceSmoke(harness.runtime);
+  assert.deepEqual(harness.calls[0][2], { timeoutMs: 300_000 });
+  assert.equal(Object.isFrozen(harness.calls[0][2]), true);
+  for (const call of harness.calls.slice(1)) {
+    assert.deepEqual(call[2], { timeoutMs: 15_000 });
+    assert.equal(Object.isFrozen(call[2]), true);
+  }
 });
 
 test("collectServiceNativeSmokeEvidence accepts systemd-normalized readonly bind readback", () => {
