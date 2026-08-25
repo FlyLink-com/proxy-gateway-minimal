@@ -1705,6 +1705,7 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   chmodSync(archivePath, 0o400);
   const producerExtractionRoot = join(value.root, "producer-extracted");
   const snapshotSource = join(value.candidateRoot, "scripts", "control-plane-db-snapshot-gate.mjs");
+  chmodSync(snapshotSource, 0o644);
   const manifest = buildDependencyArtifactManifest({
     sourceCommit: SOURCE_COMMIT,
     artifactRelease: ARTIFACT_RELEASE,
