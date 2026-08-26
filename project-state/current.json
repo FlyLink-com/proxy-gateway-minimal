@@ -169,12 +169,12 @@
     "authoritative account, entitlement, delivery, usage, and quota lifecycle",
     "trustworthy traffic accounting and protected operator observability",
     "replaceable Japan/Singapore data-plane capacity behind stable delivery",
-    "provider-neutral commercial foundation with all live providers gated"
+    "provider-neutral commercial extension foundation with new providers gated"
   ],
   "activeDirections": [
     "Phase 2 is Operational Reliability, not broad feature expansion.",
     "Issue #437 remains open after PR #479 merged source-only; no production or runtime completion is inferred. Issues #438 and #439 now have substantial Portal and commercial source foundations rather than being greenfield queues.",
-    "Current master is deployed as the control-plane source, but Wallet/Ledger, Payment/Recharge, Coins Commerce, and Account Resource Authority schemas and features were not activated. Their providers, callbacks, settlement, authority assignment and Commerce rollout remain separately gated.",
+    "Current master is deployed as the control-plane source. Existing legacy Portal routes, Coins Wallet, Coins Commerce with audience all_active, and XSD recharge retained their prior enabled state; promotion-09 neither enabled nor revalidated them. The wallet-first/deferred/Account Resource Authority extensions, four wallet-first schema gates, new provider callbacks and settlement, authority assignment, and new fulfillment remain unactivated or separately gated.",
     "Issue #561 is closed after the Operations source-reality reconciliation; open Issues #557-#560 retain the remaining Admin authorization, metric, and audit gaps.",
     "Issues #521, #525, #527, and #551 track retirement or quarantine of legacy product identities and source surfaces; #522-#524 govern the Coins-first decision, Portal integration, and durable settlement/fulfillment lifecycle.",
     "There are no open PRs at the 2026-08-23 inventory. PR #592 and #594 are closed unmerged; PR #593 is merged docs-only. Historical PR state carries no production authority.",
@@ -182,7 +182,7 @@
     "Release Artifact run 32854893859, Dependency Artifact run 32854893837 and Production Deploy Dry Run 32856999391 succeeded for exact master b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; the GitHub artifacts are temporary through 2026-09-08 even though the exact packets were verified during deployment.",
     "Issues #597 and #598 retain the release-loop and supply-chain gaps: durable artifact/rollback identity, SBOM/signing/provenance, and remaining mutable-tag Action references.",
     "The 2026-08-22 API readback observed zero open Dependabot alerts, secret scanning disabled, and no available code-scanning alert inventory because Code Security is not enabled; rulesets and environments were not refreshed.",
-    "The production control-plane release is source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c. Promotion-09 changed only the control-plane release pointer and service process after verified materialization/snapshot gates; it performed no database restore, schema mutation, feature activation, old-release deletion, payment activation, Wallet credit, Commerce activation, Authority assignment or runtime-identity change."
+    "The production control-plane release is source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c. Promotion-09 changed only the control-plane release pointer and service process after verified materialization/snapshot gates; it performed no database restore, schema mutation, runtime-identity change or old-release deletion. It left the legacy Portal, Coins Wallet, Coins Commerce and XSD recharge state unchanged and did not activate the wallet-first/deferred/Authority extensions."
   ],
   "activeGoal": {
     "id": "phase-2-operational-reliability",
@@ -271,14 +271,20 @@
     ],
     "currentSourceActivationBoundary": {
       "sourceCommit": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
-      "productionState": "control_plane_deployed_features_default_off",
-      "defaultOffCapabilities": [
-        "Coins Wallet and durable Ledger",
-        "Payment and Recharge settlement",
-        "Coins Commerce runtime",
-        "Account Resource Authority and Commerce binding"
+      "productionState": "control_plane_deployed_legacy_enabled_new_extensions_unactivated",
+      "unactivatedExtensions": [
+        "wallet-first model and four wallet-first schema gates",
+        "wallet-first Recharge/Payment settlement and new provider paths",
+        "wallet-first/deferred Commerce runtime and new fulfillment",
+        "Account Resource Authority and default-off Commerce binding"
       ],
-      "boundary": "The control-plane source is deployed, but promotion-09 explicitly recorded no schema mutation or feature activation. Source presence does not prove activation, provider readiness, schema application or deployment of another release unit."
+      "legacyEnabledState": [
+        "legacy Portal routes",
+        "Coins Wallet",
+        "Coins Commerce audience all_active",
+        "XSD recharge"
+      ],
+      "boundary": "The listed legacy surfaces retained their prior enabled state and were not enabled or revalidated by promotion-09. The new extensions remain unactivated or separately gated. Source presence does not prove new activation, provider readiness, schema application or deployment of another release unit."
     },
     "companySitePromotionBoundary": {
       "requiresLiveVerification": true,
@@ -408,8 +414,8 @@
       "sourceDoc": "docs/CURRENT_RELEASE_STATE.md"
     },
     {
-      "id": "commercial-providers-disabled",
-      "summary": "Wallet/Ledger, Payment/Recharge, Coins Commerce, and Account Resource Authority have substantial source foundations in the deployed control-plane source, but promotion-09 applied no schema or feature activation and the relevant production paths remain default-off or separately gated.",
+      "id": "commercial-extension-providers-disabled",
+      "summary": "The deployed control-plane source contains wallet-first Ledger, new Recharge/Payment, wallet-first/deferred Coins Commerce and Account Resource Authority extension foundations. Legacy Coins Wallet, Coins Commerce with audience all_active and XSD recharge retain their prior enabled state; the four wallet-first schema gates, new providers and wallet-first/deferred/Authority paths remain unactivated or separately gated.",
       "sourceDoc": "docs/BILLING_RECHARGE_CONTRACT.md"
     },
     {

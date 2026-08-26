@@ -441,11 +441,14 @@ as current. Current sequencing belongs to live Issues and
 The current source language includes Admin/Operations read foundations, Wallet
 and immutable Coin Ledger, durable Recharge/Payment, Coins Commerce, Account
 Resource Authority, traffic usage projections, and trusted-proxy attribution.
-These are source/test/migration/default-off capabilities. Their exact consumer
-and gap boundaries are maintained in
+These span previously enabled legacy surfaces and newer
+source/test/migration/default-off extensions. Their exact consumer and gap
+boundaries are maintained in
 `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`. The exact source is present in the
-deployed control-plane release, but promotion-09 did not apply their schemas,
-activate their features, or prove their provider/runtime readiness.
+deployed control-plane release. Promotion-09 neither enabled nor revalidated
+the legacy surfaces, and it did not apply the wallet-first schemas, activate
+the wallet-first/deferred/Authority extensions, or prove new provider/runtime
+readiness.
 
 Release Artifact run `32854893859` successfully built the control-plane,
 Portal, and Admin units at the exact source cutoff. Dependency Artifact run

@@ -159,7 +159,7 @@
       "name": "Portal User And Resource Lifecycle",
       "status": "active-source-foundation",
       "riskBoundary": "B for lifecycle mapping, safe DTOs, tests, and focused UI consumption; A for auth activation, schema, or production static replacement",
-      "purpose": "Continue Issue #438 from the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders surfaces, Recharge entry boundary, and Account Resource Authority source. The current control-plane source is deployed, but the Portal and control-plane foundations remain separate from Payment facts; wallet-first/deferred/Authority schemas and features were not activated and commercial paths remain default-off or gated.",
+      "purpose": "Continue Issue #438 from the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders surfaces, Recharge entry boundary, and Account Resource Authority source. The current control-plane source is deployed, while the legacy Portal routes, Coins Wallet, Coins Commerce with audience all_active and XSD recharge retain their documented prior enabled state. Wallet-first/deferred/Authority extensions were not activated, and new commercial extension paths remain gated.",
       "primaryDocs": [
         "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
         "docs/USER_PORTAL_FLOW.md",
@@ -180,9 +180,9 @@
     {
       "id": "commercial-foundation",
       "name": "Commercial Foundation",
-      "status": "active-default-off-source-foundation",
+      "status": "active-default-off-extension-foundation",
       "riskBoundary": "B for provider-neutral contracts, event catalogs, disabled adapters, and tests; A for live payment, credentials, webhooks, settlement, or AppsFlyer dispatch",
-      "purpose": "Continue Issues #439 and #522-#524 from implemented source foundations for Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority. The current control-plane source is deployed, but promotion-09 applied no schema or feature activation; production paths remain default-off or separately gated, and closed-unmerged PR #592 adds no production authority.",
+      "purpose": "Continue Issues #439 and #522-#524 from implemented source foundations for Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority. The current control-plane source is deployed; legacy Coins Wallet, Coins Commerce with audience all_active and XSD recharge retain their prior enabled state. Promotion-09 did not apply the four wallet-first schemas or activate wallet-first/deferred/Authority extensions; new provider and extension paths remain default-off or separately gated, and closed-unmerged PR #592 adds no production authority.",
       "primaryDocs": [
         "docs/BILLING_RECHARGE_CONTRACT.md",
         "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
@@ -197,9 +197,9 @@
         "admin/src/"
       ],
       "nonGoals": [
-        "treating default-off source as live checkout",
+        "treating default-off extension source as live checkout",
         "provider credentials",
-        "schema apply, Wallet credit, Authority assignment, Commerce activation, or payment-driven subscription issuance without exact Risk A gates",
+        "wallet-first schema apply, new Wallet credit or Commerce fulfillment paths, Authority assignment, or payment-driven subscription issuance without exact Risk A gates",
         "live AppsFlyer activation"
       ]
     },

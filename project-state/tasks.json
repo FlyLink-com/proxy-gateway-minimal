@@ -766,7 +766,7 @@
       "status": "active-source-foundation-issue-438",
       "lane": "portal-lifecycle",
       "title": "Define the Portal user and resource lifecycle contract",
-      "goal": "Continue Issue #438 over the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders and Recharge surfaces, and Account Resource Authority source without conflating source with current production state.",
+      "goal": "Continue Issue #438 over the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders and Recharge surfaces, and Account Resource Authority source without conflating new wallet-first/deferred/Authority extensions with the documented enabled legacy Portal, Coins Wallet, Coins Commerce and XSD recharge state.",
       "allowedFiles": [
         "server/services/platform/**/*.mjs",
         "server/services/subscriptions/**/*.mjs",
@@ -779,7 +779,7 @@
       ],
       "forbiddenActions": [
         "treat payment as subscription state",
-        "apply schema, activate Payment, Wallet, Commerce, or Authority production paths without separate exact Risk A gates",
+        "apply wallet-first schemas or activate new Payment, Wallet, Commerce, or Authority production paths without separate exact Risk A gates",
         "retire legacy access or redesign the Portal broadly"
       ],
       "validation": [
@@ -792,10 +792,10 @@
     {
       "id": "B-phase2-commercial-foundation-contract",
       "risk": "B",
-      "status": "active-default-off-source-foundation",
+      "status": "active-default-off-extension-foundation",
       "lane": "commercial-foundation",
-      "title": "Harden provider-neutral commercial contracts with all live providers disabled",
-      "goal": "Continue Issues #439 and #522-#524 from the Wallet/Ledger, Payment/Recharge, provider Adapter, Coins Commerce, fulfillment, and Account Resource Authority source now present in the deployed control plane while keeping schemas, features, providers, and production paths default-off or separately gated.",
+      "title": "Harden new provider-neutral commercial extension contracts with new providers disabled",
+      "goal": "Continue Issues #439 and #522-#524 from the Wallet/Ledger, Payment/Recharge, provider Adapter, Coins Commerce, fulfillment, and Account Resource Authority source now present in the deployed control plane. Preserve the documented enabled legacy Coins Wallet, Coins Commerce with audience all_active and XSD recharge state while keeping the four wallet-first schemas, wallet-first/deferred/Authority extensions, new providers and new production paths default-off or separately gated.",
       "allowedFiles": [
         "server/services/platform/**/*.mjs",
         "server/tests/**/*.test.mjs",
@@ -807,8 +807,8 @@
         "docs/ACCOUNT_RESOURCE_AUTHORITY_LIFECYCLE.md"
       ],
       "forbiddenActions": [
-        "activate a payment provider or AppsFlyer",
-        "read provider credentials or perform live callbacks, settlement, Wallet credit, Authority assignment, Commerce activation, or payout without an exact Risk A gate",
+        "activate a new payment provider or AppsFlyer",
+        "read provider credentials or perform new live callbacks, settlement, wallet-first credit, Authority assignment, Commerce fulfillment activation, or payout without an exact Risk A gate",
         "let payment facts directly generate runtime or subscription material"
       ],
       "validation": [
