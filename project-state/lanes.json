@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2026-08-23.1",
-  "lastUpdated": "2026-08-23",
+  "schemaVersion": "2026-08-26.1",
+  "lastUpdated": "2026-08-26",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current lane index for Phase 2. Historical lanes remain in Git history and indexed execution records, not in the active Agent queue.",
@@ -55,11 +55,32 @@
       636
     ]
   },
+  "a3ProductionCloseout": {
+    "observedAt": "2026-08-26T13:57:52.8300715Z",
+    "sourceCommit": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
+    "mergedPrRange": "663-667",
+    "releaseArtifactRun": 32854893859,
+    "dependencyArtifactRun": 32854893837,
+    "productionDryRun": 32856999391,
+    "previousRelease": "control-plane-1829378c-a3-manual-20260824",
+    "release": "control-plane-b5ca23db-a3-sync-20260825",
+    "state": "promoted_verified",
+    "candidateStartAttempts": 1,
+    "rollbackStartAttempts": 0,
+    "candidatePreparationReceiptSha256": "d4cffcde93eb21e768fdbc0c898b93bbac384f1251a46408c04095b6f03845f5",
+    "localPromotionReceiptSha256": "bea6bfc13be7ad991503060a8a87c0fc6dd51ed08318e0f2e64c22d4cb7145ec",
+    "remotePromotionReceiptSha256": "2229bb531e68f6efabe473f3dd2f30735602ba24489cf1a1adabe3df204a24cf",
+    "publicHealthReceiptSha256": "f2f4fc414acc03145ed3e0767f8ba8497b37d98be6cdf6c1f063f61a787a483f",
+    "identityImpact": false,
+    "deployNote": "https://github.com/gccwebos-com/proxy-gateway-minimal/pull/667#issuecomment-5426440067",
+    "issueReceipt": "https://github.com/gccwebos-com/proxy-gateway-minimal/issues/636#issuecomment-5426441456",
+    "boundary": "This receipt updates only the A3 dependency-materialization and production-operations lanes; the sourceInventory counts remain dated 2026-08-23."
+  },
   "governanceBoundary": {
-    "releaseArtifact": "32645695598 success for exact master; three artifacts temporary through 2026-09-06",
-    "dependencyArtifact": "32645695541 success for exact master; artifact 9494801281 temporary through 2026-09-06",
-    "ci": "32645695594 success for exact master",
-    "codeql": "32645695630 success for exact master",
+    "releaseArtifact": "32854893859 success for exact master; control-plane artifact 9565756416 temporary through 2026-09-08",
+    "dependencyArtifact": "32854893837 success for exact master; artifact 9565754679 temporary through 2026-09-08",
+    "ci": "32854893874 success for exact master",
+    "codeql": "32854893258 success for exact master",
     "cloudflareWorkflow": "not_refreshed_for_exact_master",
     "ruleset": "not_refreshed_at_2026-08-23_inventory",
     "environments": "not_refreshed_at_2026-08-23_inventory",
@@ -67,9 +88,7 @@
     "requiresLiveVerification": true
   },
   "nextActionQueue": [
-    "Run a fresh A3-2 production read-only inventory and dry-run under a new exact Risk A gate bound to master 42d17885646d52387f9327f19e2a2e0d70b2b84e and dependency artifact 9494801281.",
-    "Only after that inventory passes, define a separate exact Risk A materialize/verify/promotion gate with rollback and health-window evidence.",
-    "Create a durable artifact/rollback identity for Issue #597 before the exact-master artifacts expire on 2026-09-06.",
+    "Create a durable artifact/rollback identity for Issue #597 before the exact-master GitHub artifacts expire on 2026-09-08.",
     "Address Issue #598 through focused full-SHA pinning, SBOM, provenance, and signing slices.",
     "Refresh GitHub rulesets, required checks, environments, alerts, provider state, deployment identity, and production runtime evidence before relying on any of them."
   ],
@@ -93,7 +112,7 @@
       "name": "Version And Deployment Governance",
       "status": "active-source-governance-hardening",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
-      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Current master is 42d17885646d52387f9327f19e2a2e0d70b2b84e. Exact-master CI, CodeQL, Release Artifact, and Dependency Artifact runs succeeded, but the artifacts are temporary through 2026-09-06. There are no open PRs at the inventory cutoff; #592 and #594 are closed unmerged and #593 is merged docs-only. Issues #597 and #598 retain durable release and supply-chain closure.",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Current master and the deployed control-plane source are b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c. Exact-master CI, CodeQL, Release Artifact, Dependency Artifact and production dry-run succeeded; promotion-09 ended promoted_verified. The GitHub artifacts are temporary through 2026-09-08, so Issues #597 and #598 retain durable release and supply-chain closure. The 2026-08-23 PR/Issue/branch counts remain a separately dated inventory.",
       "primaryDocs": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -140,7 +159,7 @@
       "name": "Portal User And Resource Lifecycle",
       "status": "active-source-foundation",
       "riskBoundary": "B for lifecycle mapping, safe DTOs, tests, and focused UI consumption; A for auth activation, schema, or production static replacement",
-      "purpose": "Continue Issue #438 from the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders surfaces, Recharge entry boundary, and Account Resource Authority source. The Portal and control-plane foundations must remain separate from Payment facts and from current production state; newer source is not deployed and commercial paths remain default-off or gated.",
+      "purpose": "Continue Issue #438 from the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders surfaces, Recharge entry boundary, and Account Resource Authority source. The current control-plane source is deployed, but the Portal and control-plane foundations remain separate from Payment facts; wallet-first/deferred/Authority schemas and features were not activated and commercial paths remain default-off or gated.",
       "primaryDocs": [
         "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
         "docs/USER_PORTAL_FLOW.md",
@@ -163,7 +182,7 @@
       "name": "Commercial Foundation",
       "status": "active-default-off-source-foundation",
       "riskBoundary": "B for provider-neutral contracts, event catalogs, disabled adapters, and tests; A for live payment, credentials, webhooks, settlement, or AppsFlyer dispatch",
-      "purpose": "Continue Issues #439 and #522-#524 from implemented source foundations for Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority. PRs #582-#586, #588, and #591 advance those foundations; current master remains not deployed, production paths remain default-off or separately gated, and closed-unmerged PR #592 adds no production authority.",
+      "purpose": "Continue Issues #439 and #522-#524 from implemented source foundations for Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority. The current control-plane source is deployed, but promotion-09 applied no schema or feature activation; production paths remain default-off or separately gated, and closed-unmerged PR #592 adds no production authority.",
       "primaryDocs": [
         "docs/BILLING_RECHARGE_CONTRACT.md",
         "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
@@ -237,9 +256,9 @@
     {
       "id": "dependency-materialization",
       "name": "A3 Dependency Artifact Materialization",
-      "status": "active-production-inventory-boundary",
+      "status": "completed-production-closeout",
       "riskBoundary": "B for source contracts and tests; A for privileged physical validation, production inventory, materialization, promotion, or rollback",
-      "purpose": "Complete Issue #636 without conflating source or non-production physical proof with production promotion. PRs #646-#656 provide the safety contracts and completed XFS quota/service-native physical proofs; PR #658 added the explicit default-off XFS production route, and PR #662 added the explicit default-off bounded-artifact route for the reviewed ext4 boundary. The b93577c XFS-only A3-2 inventory remains historical NO-GO/no-mutation evidence. Next is a fresh exact-master production inventory/dry-run, followed only if successful by a separate materialize/verify/promotion gate.",
+      "purpose": "Issue #636 is complete at the execution layer. PRs #646-#667 provide the safety contracts, physical XFS quota and service-native proofs, explicit XFS/bounded admission routes, hardened staging/controller flow and synchronized production repairs. Exact master b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c passed artifact and dry-run gates; candidate preparation and promotion-09 completed, ending promoted_verified on control-plane-b5ca23db-a3-sync-20260825. The b93577c XFS-only NO-GO remains historical evidence.",
       "primaryDocs": [
         "docs/A3_1_MATERIALIZER_PHYSICAL_EXECUTION_SPEC.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -253,7 +272,7 @@
       ],
       "nonGoals": [
         "treating physical quota or service-native smoke proof as production proof",
-        "treating the default-off source routes or historical b93577c NO-GO as current production authorization",
+        "treating the completed promotion receipt as authority for another deployment, schema change or feature activation",
         "host-side npm ci",
         "feature or schema activation through the dependency-promotion lane"
       ]
@@ -263,7 +282,7 @@
       "name": "Production Operations",
       "status": "active-boundary",
       "riskBoundary": "A for every production, provider, DNS, Nginx, systemd, firewall, schema, deployment, promotion, rollback, or live customer-data action",
-      "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog. The latest recorded production release remains control-plane source 57d7ab751b9c3b9111bc7d7e799c28d165fdabdb, observed again by the 2026-08-23 b93577c A3-2 read-only inventory; that XFS-only attempt stopped NO-GO without mutation. Current master is newer and any new Risk A action requires fresh exact-master inventory. This C-tier reconciliation performed no production inventory or mutation.",
+      "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog. The latest recorded control-plane release is control-plane-b5ca23db-a3-sync-20260825 from source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; promotion-09 ended promoted_verified with the previous immutable release retained. Any later Risk A action requires fresh inventory and new authority. This C-tier reconciliation performs no production access or mutation.",
       "primaryDocs": [
         "docs/CURRENT_RELEASE_STATE.md",
         "docs/RUNTIME_LANE_AUTHORITY.md",

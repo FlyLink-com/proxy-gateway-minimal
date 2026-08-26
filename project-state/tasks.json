@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2026-08-23.1",
-  "lastUpdated": "2026-08-23",
+  "schemaVersion": "2026-08-26.1",
+  "lastUpdated": "2026-08-26",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-current-queue",
   "purpose": "Current Phase 2 queue and recently completed gates needed for safe Agent continuation. Older completed work remains traceable in Git history and indexed records.",
@@ -21,8 +21,8 @@
     "docs/OPERATIONS_PLANE_SOURCE_REALITY.md"
   ],
   "historicalBoundary": {
-    "sourceSnapshotAtReconciliation": "42d17885646d52387f9327f19e2a2e0d70b2b84e",
-    "productionRuntimeEvidenceCutoff": "2026-08-23",
+    "sourceSnapshotAtReconciliation": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
+    "productionRuntimeEvidenceCutoff": "2026-08-26",
     "requiresLiveVerification": true,
     "rule": "Use Git history and docs/archive indexes for completed or superseded tasks; do not re-add them to the current queue without a new Issue and fresh evidence."
   },
@@ -364,6 +364,35 @@
     "openDrafts": [],
     "openNonDraftPrs": []
   },
+  "a3ProductionCloseout": {
+    "observedAt": "2026-08-26T13:57:52.8300715Z",
+    "sourceCommit": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
+    "mergedPrs": [
+      663,
+      664,
+      665,
+      666,
+      667
+    ],
+    "releaseArtifactRun": 32854893859,
+    "sourceArtifactId": 9565756416,
+    "dependencyArtifactRun": 32854893837,
+    "dependencyArtifactId": 9565754679,
+    "productionDryRun": 32856999391,
+    "previousRelease": "control-plane-1829378c-a3-manual-20260824",
+    "release": "control-plane-b5ca23db-a3-sync-20260825",
+    "state": "promoted_verified",
+    "candidateStartAttempts": 1,
+    "rollbackStartAttempts": 0,
+    "candidatePreparationReceiptSha256": "d4cffcde93eb21e768fdbc0c898b93bbac384f1251a46408c04095b6f03845f5",
+    "localPromotionReceiptSha256": "bea6bfc13be7ad991503060a8a87c0fc6dd51ed08318e0f2e64c22d4cb7145ec",
+    "remotePromotionReceiptSha256": "2229bb531e68f6efabe473f3dd2f30735602ba24489cf1a1adabe3df204a24cf",
+    "publicHealthReceiptSha256": "f2f4fc414acc03145ed3e0767f8ba8497b37d98be6cdf6c1f063f61a787a483f",
+    "identityImpact": false,
+    "deployNote": "https://github.com/gccwebos-com/proxy-gateway-minimal/pull/667#issuecomment-5426440067",
+    "issueReceipt": "https://github.com/gccwebos-com/proxy-gateway-minimal/issues/636#issuecomment-5426441456",
+    "boundary": "This receipt does not relabel the 2026-08-23 sourceReceipts counts as freshly observed and grants no authority for another production action."
+  },
   "issue437Reconciliation": {
     "state": "open",
     "pr479State": "merged_source_only",
@@ -371,12 +400,12 @@
     "reason": "PR #479 merged source-only, but Issue #437 remains open and no production or runtime completion is inferred."
   },
   "ciGovernance": {
-    "inventoryDate": "2026-08-23",
-    "master": "42d17885646d52387f9327f19e2a2e0d70b2b84e",
-    "releaseArtifact": "32645695598 success for exact master; three artifacts temporary through 2026-09-06",
-    "dependencyArtifact": "32645695541 success for exact master; artifact 9494801281 temporary through 2026-09-06",
-    "ci": "32645695594 success for exact master",
-    "codeql": "32645695630 success for exact master",
+    "inventoryDate": "2026-08-26",
+    "master": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
+    "releaseArtifact": "32854893859 success for exact master; control-plane artifact 9565756416 temporary through 2026-09-08",
+    "dependencyArtifact": "32854893837 success for exact master; artifact 9565754679 temporary through 2026-09-08",
+    "ci": "32854893874 success for exact master",
+    "codeql": "32854893258 success for exact master",
     "cloudflareWorkflow": "not_refreshed_for_exact_master",
     "ruleset": "not_refreshed",
     "environments": "not_refreshed",
@@ -393,9 +422,7 @@
     "boundary": "Source remediation and successful workflows do not establish current default-branch alert counts or required security gates."
   },
   "nextActionQueue": [
-    "Run a fresh A3-2 production read-only inventory and dry-run under a new exact Risk A gate bound to master 42d17885646d52387f9327f19e2a2e0d70b2b84e and dependency artifact 9494801281.",
-    "Only after that inventory passes, define a separate exact Risk A materialize/verify/promotion gate with rollback and health-window evidence.",
-    "Close Issue #597's durable artifact/rollback identity gap before exact-master artifacts expire on 2026-09-06.",
+    "Close Issue #597's durable artifact/rollback identity gap before exact-master GitHub artifacts expire on 2026-09-08.",
     "Address Issue #598 through focused Action pinning, SBOM, provenance, and signing slices.",
     "Refresh GitHub rulesets, required checks, environments, alert counts, provider state, deployments, and production runtime evidence before relying on them."
   ],
@@ -654,10 +681,10 @@
     {
       "id": "A-a3-dependency-materialization-boundary",
       "risk": "A",
-      "status": "blocked-pending-exact-master-production-inventory",
+      "status": "completed-promoted-verified",
       "lane": "dependency-materialization",
-      "title": "Validate the merged default-off A3 routes before production materialization",
-      "goal": "Continue Issue #636 from completed physical proofs and merged PR #662 by running a fresh exact-master production read-only inventory/dry-run, then keep materialize/verify/promotion and closeout as later separately approved gates.",
+      "title": "Close the A3 dependency materialization and production promotion outcome",
+      "goal": "Record the completed Issue #636 execution chain from physical proofs and bounded admission through exact artifact staging, candidate preparation, promotion-09 and terminal health evidence without extending authority to schema or feature activation.",
       "allowedFiles": [
         "docs/A3_1_MATERIALIZER_PHYSICAL_EXECUTION_SPEC.md",
         "scripts/control-plane-candidate-dependency-gate.mjs",
@@ -667,18 +694,20 @@
       ],
       "forbiddenActions": [
         "treat physical quota or service-native smoke proof as production proof",
-        "treat merged default-off source or the historical b93577c XFS-only NO-GO as production authorization",
-        "materialize, verify, promote, or change services without a later separate exact Risk A approval",
+        "reuse the consumed promotion-09 approval for another production action",
+        "treat the historical b93577c XFS-only NO-GO as the current A3 terminal state",
         "run host-side npm ci",
         "activate schemas, features, providers, or customer-facing runtime through the dependency lane"
       ],
       "validation": [
         "PR #654 exact-head quota evidence remains linked and reproducible",
         "PR #656 exact-head service-native smoke evidence remains linked and reproducible",
-        "PR #662 is merged at exact master 42d17885646d52387f9327f19e2a2e0d70b2b84e with XFS and bounded-artifact routes explicit and default-off",
+        "PR #667 is merged at exact master b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c with the production-validated smoke repairs synchronized",
         "the b93577c XFS-only production inventory remains historical NO-GO/no-mutation evidence",
-        "the next inventory/dry-run binds dependency artifact 9494801281 and creates no production mutation",
-        "materialize/verify/promotion requires a later independent approval, rollback plan, and health-window evidence"
+        "Release Artifact run 32854893859, Dependency Artifact run 32854893837 and Production Deploy Dry Run 32856999391 passed for exact source",
+        "candidate preparation verified the protected overlay, bounded materialization and restricted service-native smoke",
+        "promotion-09 ended promoted_verified on control-plane-b5ca23db-a3-sync-20260825 with one candidate start, zero rollback starts and delayed public health evidence",
+        "no database restore, schema mutation, feature activation, runtime-identity change or old-release deletion occurred"
       ]
     },
     {
@@ -766,7 +795,7 @@
       "status": "active-default-off-source-foundation",
       "lane": "commercial-foundation",
       "title": "Harden provider-neutral commercial contracts with all live providers disabled",
-      "goal": "Continue Issues #439 and #522-#524 from the existing Wallet/Ledger, Payment/Recharge, provider Adapter, Coins Commerce, fulfillment, and Account Resource Authority source while keeping current master not deployed and production paths default-off or separately gated.",
+      "goal": "Continue Issues #439 and #522-#524 from the Wallet/Ledger, Payment/Recharge, provider Adapter, Coins Commerce, fulfillment, and Account Resource Authority source now present in the deployed control plane while keeping schemas, features, providers, and production paths default-off or separately gated.",
       "allowedFiles": [
         "server/services/platform/**/*.mjs",
         "server/tests/**/*.test.mjs",
