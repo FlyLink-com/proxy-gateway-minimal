@@ -19,6 +19,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  assertScryptPhaseAccounting,
+  createScryptPhaseTracker,
   createRateSchedule,
   parseBenchmarkConfig,
   performRequest,
@@ -54,6 +56,39 @@ test("summarizeSamples does not publish unstable tail percentiles", () => {
   assert.equal(large.tailPercentilesValid, true);
   assert.equal(large.p95Ms, 95);
   assert.equal(large.p99Ms, 99);
+});
+
+test("scrypt measurements remain scoped to their declared phase", () => {
+  const tracker = createScryptPhaseTracker();
+  tracker.beginPhase();
+  tracker.record(4);
+  tracker.record(6);
+  assert.equal(tracker.summarize().count, 2);
+  tracker.beginPhase();
+  assert.equal(tracker.summarize().count, 0);
+
+  assert.doesNotThrow(() => assertScryptPhaseAccounting({
+    pressure: "none",
+    server: { scrypt: { count: 0 } }
+  }));
+  assert.doesNotThrow(() => assertScryptPhaseAccounting({
+    pressure: "scrypt_1hz",
+    server: { scrypt: { count: 3 } }
+  }));
+  assert.throws(
+    () => assertScryptPhaseAccounting({
+      pressure: "none",
+      server: { scrypt: { count: 1 } }
+    }),
+    /performance_scrypt_phase_accounting_invalid/
+  );
+  assert.throws(
+    () => assertScryptPhaseAccounting({
+      pressure: "unexpected",
+      server: { scrypt: { count: 0 } }
+    }),
+    /performance_scrypt_phase_accounting_invalid/
+  );
 });
 
 test("parseBenchmarkConfig accepts bounded explicit values", () => {
