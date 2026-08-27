@@ -537,7 +537,8 @@ publication, database restore, and rollback decisions.
 
 `control-plane-welcome-coins-activation-gate.mjs` is the narrowly scoped
 editor for the first Welcome Coins admission canary. It is not a generic
-`.env` editor and it can change only these two runtime settings:
+`.env` editor. Activation can append only these two runtime settings, and the
+bounded deactivation path can remove only that exact canonical suffix:
 
 - `USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED=true`
 - `USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES=<one SHA-256 digest>`
@@ -551,8 +552,8 @@ production ownership or permissions, unsafe parent directories, pre-existing
 or conflicting target keys, except an exact identity-bound retry of the same
 already-active digest, and any base prerequisite or unrelated
 wallet-first/deferred/setup/Authority flag that is not in its required state.
-It never accepts a key, value, email, digest, or a force/disable action as a
-command-line option.
+It never accepts a generic key, value, email, digest, force, or arbitrary
+disable action as a command-line option.
 
 Only `activate --apply` consumes one 64-character lowercase SHA-256 digest
 from a non-interactive stdin-only stream. The digest, `.env` contents,
@@ -584,6 +585,16 @@ Inside one separately approved Risk A change, use the sequence below:
    approved start-guard cleanup occur. A separate operator-controlled new
    registration is required to prove the canary; an existing account is never
    retroactively selected.
+
+The same approved canary session must retain the preflight environment SHA-256
+as its disabled-state identity. If admission must be closed, first establish
+and verify the same inactive runtime start guard, then run `deactivate --apply`
+with both the exact active environment identity and that retained disabled-state
+identity. The gate accepts only an exact canonical active suffix and reconstructs
+the unique byte-for-byte preflight environment matching the retained hash. Run
+`verify-disabled` before any approved restart. An exact already-disabled retry
+is a no-op; target-key drift, a stale identity, or post-publication uncertainty
+leaves the service guarded and requires operator attention.
 
 The helper does not create a snapshot, apply schema, start or stop a service,
 move a release pointer, create an account, credit Coins, or alter ordinary

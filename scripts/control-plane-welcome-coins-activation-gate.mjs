@@ -331,6 +331,11 @@ function activeTargetsMatch(boundary, digest) {
     && boundary.parsed.USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES === digest;
 }
 
+function bytesEndWith(bytes, suffix) {
+  return bytes.length >= suffix.length
+    && bytes.subarray(bytes.length - suffix.length).equals(suffix);
+}
+
 function buildActivatedEnvironment(before, digest) {
   const beforeParsed = parseEnvironment(before);
   const prefix = Buffer.from(before);
@@ -357,6 +362,45 @@ function buildActivatedEnvironment(before, digest) {
   return after;
 }
 
+function buildDeactivatedEnvironment(before, expectedDisabledEnvSha256) {
+  const beforeParsed = parseEnvironment(before);
+  const digest = String(
+    beforeParsed.USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES ?? ""
+  );
+  if (!SHA256_PATTERN.test(digest)) fail("target_key_conflict");
+
+  const lineEnding = before.includes(Buffer.from("\r\n", "ascii")) ? "\r\n" : "\n";
+  const suffix = Buffer.from(
+    TARGET_KEYS[0] + "=true" + lineEnding
+      + TARGET_KEYS[1] + "=" + digest + lineEnding,
+    "ascii"
+  );
+  if (!bytesEndWith(before, suffix)) fail("target_key_conflict");
+
+  const prefix = before.subarray(0, before.length - suffix.length);
+  const lineEndingBytes = Buffer.from(lineEnding, "ascii");
+  const candidates = [Buffer.from(prefix)];
+  if (bytesEndWith(prefix, lineEndingBytes)) {
+    candidates.push(Buffer.from(prefix.subarray(0, prefix.length - lineEndingBytes.length)));
+  }
+  const matches = candidates.filter((candidate, index) => (
+    candidates.findIndex((other) => other.equals(candidate)) === index
+    && createHash("sha256").update(candidate).digest("hex") === expectedDisabledEnvSha256
+  ));
+  if (matches.length !== 1) fail("env_identity_mismatch");
+
+  const after = matches[0];
+  const afterParsed = parseEnvironment(after);
+  const afterAssignments = declaredTargetAssignments(after);
+  if (
+    TARGET_KEYS.some((key) => afterAssignments.get(key) !== 0 || Object.hasOwn(afterParsed, key))
+    || !hasSameNonTargetEnvironment(beforeParsed, afterParsed)
+  ) {
+    fail("dotenv_semantics_invalid");
+  }
+  return after;
+}
+
 function temporaryPath(path) {
   return resolve(
     dirname(path),
@@ -377,7 +421,7 @@ function fsyncDirectory(path) {
   }
 }
 
-function publishActivatedEnvironment({ environment, bytes }) {
+function publishProtectedEnvironment({ environment, bytes }) {
   const temporary = temporaryPath(environment.path);
   let published = false;
   try {
@@ -555,7 +599,7 @@ export function activateWelcomeCoins({
       fail("env_identity_mismatch");
     }
     assertInactiveStartGuard({ guardReader, expectedIdentity: guardIdentity });
-    publishActivatedEnvironment({ environment: environmentBeforePublish, bytes: replacement });
+    publishProtectedEnvironment({ environment: environmentBeforePublish, bytes: replacement });
     published = true;
 
     const currentAfterPublish = currentRelease({
@@ -624,6 +668,138 @@ export function verifyWelcomeCoinsActivation({
   });
 }
 
+export function deactivateWelcomeCoins({
+  currentLink,
+  deploymentRoot,
+  expectedRelease,
+  expectedEnvSha256,
+  expectedDisabledEnvSha256,
+  apply = false,
+  enforceLinuxRoot = false,
+  guardReader
+} = {}) {
+  if (
+    !apply
+    || typeof expectedEnvSha256 !== "string"
+    || !SHA256_PATTERN.test(expectedEnvSha256)
+    || typeof expectedDisabledEnvSha256 !== "string"
+    || !SHA256_PATTERN.test(expectedDisabledEnvSha256)
+  ) {
+    fail("invalid_input");
+  }
+
+  const inspected = inspect({ currentLink, deploymentRoot, expectedRelease, enforceLinuxRoot });
+  if (inspected.environment.identity.sha256 !== expectedEnvSha256) fail("env_identity_mismatch");
+  const guardIdentity = assertInactiveStartGuard({ guardReader });
+  if (inspected.boundary.targetsAbsent) {
+    if (inspected.environment.identity.sha256 !== expectedDisabledEnvSha256) {
+      fail("env_identity_mismatch");
+    }
+    return safeReport({
+      mode: "deactivate",
+      state: "already_disabled",
+      release: inspected.context.release,
+      environment: inspected.environment,
+      applied: false,
+      canaryDigestAccepted: false,
+      startGuarded: true
+    });
+  }
+
+  const digest = String(
+    inspected.boundary.parsed.USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES ?? ""
+  );
+  if (!SHA256_PATTERN.test(digest) || !activeTargetsMatch(inspected.boundary, digest)) {
+    fail("target_key_conflict");
+  }
+  const replacement = buildDeactivatedEnvironment(
+    inspected.environment.bytes,
+    expectedDisabledEnvSha256
+  );
+  const beforeIdentity = inspected.environment.identity;
+  let published = false;
+  try {
+    const currentBeforePublish = currentRelease({
+      currentLink,
+      deploymentRoot,
+      expectedRelease,
+      enforceLinuxRoot
+    });
+    if (comparablePath(currentBeforePublish.releasePath) !== comparablePath(inspected.context.releasePath)) {
+      fail("current_release_mismatch");
+    }
+    const environmentBeforePublish = readProtectedEnvironment(currentBeforePublish, { enforceLinuxRoot });
+    if (!equalIdentity(beforeIdentity, environmentBeforePublish.identity)) {
+      fail("env_identity_mismatch");
+    }
+    assertInactiveStartGuard({ guardReader, expectedIdentity: guardIdentity });
+    publishProtectedEnvironment({ environment: environmentBeforePublish, bytes: replacement });
+    published = true;
+
+    const currentAfterPublish = currentRelease({
+      currentLink,
+      deploymentRoot,
+      expectedRelease,
+      enforceLinuxRoot
+    });
+    if (comparablePath(currentAfterPublish.releasePath) !== comparablePath(inspected.context.releasePath)) {
+      throw new WelcomeCoinsActivationAttentionError();
+    }
+    const disabledEnvironment = readProtectedEnvironment(currentAfterPublish, { enforceLinuxRoot });
+    const disabledBoundary = evaluateActivationBoundary(disabledEnvironment);
+    assertBaseBoundary(disabledBoundary);
+    if (
+      !disabledBoundary.targetsAbsent
+      || disabledEnvironment.identity.sha256 !== expectedDisabledEnvSha256
+    ) {
+      throw new WelcomeCoinsActivationAttentionError();
+    }
+    assertInactiveStartGuard({ guardReader, expectedIdentity: guardIdentity });
+    return safeReport({
+      mode: "deactivate",
+      state: "deactivated",
+      release: currentAfterPublish.release,
+      environment: disabledEnvironment,
+      applied: true,
+      canaryDigestAccepted: false,
+      startGuarded: true
+    });
+  } catch (error) {
+    if (published && !(error instanceof WelcomeCoinsActivationAttentionError)) {
+      throw new WelcomeCoinsActivationAttentionError();
+    }
+    throw error;
+  } finally {
+    replacement.fill(0);
+  }
+}
+
+export function verifyWelcomeCoinsDeactivation({
+  currentLink,
+  deploymentRoot,
+  expectedRelease,
+  expectedEnvSha256,
+  enforceLinuxRoot = false,
+  guardReader
+} = {}) {
+  if (typeof expectedEnvSha256 !== "string" || !SHA256_PATTERN.test(expectedEnvSha256)) {
+    fail("invalid_input");
+  }
+  const inspected = inspect({ currentLink, deploymentRoot, expectedRelease, enforceLinuxRoot });
+  if (!inspected.boundary.targetsAbsent) fail("target_key_conflict");
+  if (inspected.environment.identity.sha256 !== expectedEnvSha256) fail("env_identity_mismatch");
+  assertInactiveStartGuard({ guardReader });
+  return safeReport({
+    mode: "verify-disabled",
+    state: "disabled_verified",
+    release: inspected.context.release,
+    environment: inspected.environment,
+    applied: false,
+    canaryDigestAccepted: false,
+    startGuarded: true
+  });
+}
+
 function parseCliArgs(argv) {
   if (!Array.isArray(argv)) fail("invalid_input");
   const values = new Map();
@@ -631,7 +807,8 @@ function parseCliArgs(argv) {
   const allowed = new Set([
     "--mode",
     "--expected-release",
-    "--expected-env-sha256"
+    "--expected-env-sha256",
+    "--expected-disabled-env-sha256"
   ]);
   for (let index = 0; index < argv.length; index += 1) {
     const item = argv[index];
@@ -651,19 +828,23 @@ function parseCliArgs(argv) {
   }
 
   const mode = values.get("--mode");
-  if (!new Set(["preflight", "activate", "verify"]).has(mode)) fail("invalid_input");
+  if (!new Set(["preflight", "activate", "verify", "deactivate", "verify-disabled"]).has(mode)) {
+    fail("invalid_input");
+  }
   const required = ["--mode", "--expected-release"];
-  if (mode === "activate" || mode === "verify") required.push("--expected-env-sha256");
+  if (mode !== "preflight") required.push("--expected-env-sha256");
+  if (mode === "deactivate") required.push("--expected-disabled-env-sha256");
   if (required.some((flag) => !values.has(flag))) fail("invalid_input");
   if ([...values.keys()].some((flag) => !required.includes(flag))) fail("invalid_input");
-  if ((mode === "activate") !== apply) fail("invalid_input");
+  if (new Set(["activate", "deactivate"]).has(mode) !== apply) fail("invalid_input");
   return {
     mode,
     apply,
     currentLink: PRODUCTION_CURRENT_LINK,
     deploymentRoot: PRODUCTION_DEPLOYMENT_ROOT,
     expectedRelease: values.get("--expected-release"),
-    expectedEnvSha256: values.get("--expected-env-sha256")
+    expectedEnvSha256: values.get("--expected-env-sha256"),
+    expectedDisabledEnvSha256: values.get("--expected-disabled-env-sha256")
   };
 }
 
@@ -722,8 +903,12 @@ export function runWelcomeCoinsActivationGateCli({
         canaryDigest: digestBytes.toString("ascii"),
         enforceLinuxRoot: true
       });
-    } else {
+    } else if (options.mode === "verify") {
       result = verifyWelcomeCoinsActivation({ ...options, enforceLinuxRoot: true });
+    } else if (options.mode === "deactivate") {
+      result = deactivateWelcomeCoins({ ...options, enforceLinuxRoot: true });
+    } else {
+      result = verifyWelcomeCoinsDeactivation({ ...options, enforceLinuxRoot: true });
     }
     stdout.write(JSON.stringify(result) + "\n");
     return 0;
