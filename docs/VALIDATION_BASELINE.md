@@ -1,6 +1,6 @@
 # Validation Baseline
 
-Last updated: 2026-08-17, America/Los_Angeles.
+Last updated: 2026-08-27, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: validation_baseline
   superseded_by: null
-  last_verified_at: 2026-08-17
+  last_verified_at: 2026-08-27
   production_authority: false
 ```
 
@@ -269,6 +269,40 @@ adapter behavior.
 
 The Local Edge Agent remains loopback-only unless a separate gate approves
 otherwise.
+
+### B: Exact-Master Synthetic Performance Baseline
+
+Use `.github/workflows/synthetic-performance-baseline.yml` only after the
+performance harness Source and Merge Gates have passed and the exact `master`
+commit has a successful `Release Artifact` push run. The manual dispatch input
+is that exact run ID; the workflow rejects a different workflow, event, branch,
+commit, repository, or non-successful run before checkout or artifact download.
+
+The workflow is a repository-only validation job:
+
+- Ubuntu 24.04 and exact Node `22.23.1`;
+- full clean `npm ci`, a regular non-symlink `node_modules`, and a complete
+  `npm ls --all` tree;
+- the exact control-plane source ZIP and manifest from the selected
+  exact-master Release Artifact run;
+- three serial `all` runs in one clean ephemeral job, with account scales
+  `100,1000,5000,10000`, HTTP concurrency `1,8,32`, scheduled health rates
+  `10,100`, SQLite writer concurrency `1,2,4,8`, and scrypt pressure retained;
+- loopback HTTP, temporary SQLite, synthetic data, read-only GitHub permissions,
+  and no Environment or secrets;
+- three reports plus a terminal receipt uploaded for 14 days.
+
+This evidence can select the conservative starting rung for a separate staging
+load test. It does not establish a production user limit, data-plane bandwidth,
+production health, deployment authority, or cross-run fixed-hardware trend.
+GitHub-hosted results are comparable only within the three serial runs on that
+single ephemeral job. A fixed performance runner and predeclared SLO/resource
+policy remain required before treating later runs as a stable longitudinal
+capacity baseline.
+
+This document does not authorize dispatch. Record the exact commit, Release
+Artifact run, workflow run, report artifact, runtime qualification, hard-gate
+result, and absence of production access in the task or PR evidence.
 
 ### A: Production, Cloud, Node, Or Runtime Mutation
 

@@ -1,0 +1,202 @@
+name: Synthetic Performance Baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful exact-master Release Artifact workflow run ID
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: synthetic-performance-baseline-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  baseline:
+    name: Exact-master Node 22 synthetic baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Validate exact Release Artifact run
+        id: release
+        shell: bash
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          RUN_JSON: ${{ runner.temp }}/release-run.json
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REF" = "refs/heads/master"
+          [[ "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_RUN_ID" =~ ^[1-9][0-9]{0,18}$ ]]
+          gh api \
+            --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID" \
+            > "$RUN_JSON"
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+
+          const run = JSON.parse(readFileSync(process.env.RUN_JSON, "utf8"));
+          const expectedCommit = process.env.EXPECTED_SOURCE_COMMIT;
+          const expectedRunId = Number(process.env.RELEASE_RUN_ID);
+          const valid = Number.isSafeInteger(expectedRunId)
+            && run.id === expectedRunId
+            && run.name === "Release Artifact"
+            && run.path === ".github/workflows/release-artifact.yml"
+            && run.event === "push"
+            && run.head_branch === "master"
+            && run.head_sha === expectedCommit
+            && run.status === "completed"
+            && run.conclusion === "success"
+            && run.repository?.full_name === process.env.GITHUB_REPOSITORY;
+          if (!valid) throw new Error("performance_release_run_invalid");
+          appendFileSync(process.env.GITHUB_OUTPUT, `short_sha=${expectedCommit.slice(0, 12)}\n`);
+          NODE
+
+      - name: Checkout exact master source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup exact Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.1
+
+      - name: Download exact control-plane source artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: proxy-gateway-${{ steps.release.outputs.short_sha }}
+          path: ${{ runner.temp }}/performance-input
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.release_run_id }}
+
+      - name: Validate downloaded source inputs
+        id: inputs
+        shell: bash
+        env:
+          INPUT_DIR: ${{ runner.temp }}/performance-input
+          SHORT_SHA: ${{ steps.release.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+          archive="$INPUT_DIR/proxy-gateway-$SHORT_SHA.zip"
+          checksum="$archive.sha256"
+          manifest="$INPUT_DIR/artifact.json"
+          for input_path in "$archive" "$checksum" "$manifest"; do
+            test -f "$input_path"
+            test ! -L "$input_path"
+          done
+          test "$(wc -l < "$checksum")" -eq 1
+          expected_sha="$(awk 'NR == 1 { print $1 }' "$checksum")"
+          checksum_name="$(awk 'NR == 1 { print $2 }' "$checksum")"
+          [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]]
+          test "$(basename "$checksum_name")" = "$(basename "$archive")"
+          test "$(sha256sum "$archive" | awk '{ print $1 }')" = "$expected_sha"
+          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+          printf 'manifest=%s\n' "$manifest" >> "$GITHUB_OUTPUT"
+
+      - name: Install complete locked dependency tree
+        env:
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify clean runtime preflight
+        shell: bash
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v22.23.1"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_COMMIT"
+          git diff --quiet
+          git diff --cached --quiet
+          test -d node_modules
+          test ! -L node_modules
+          npm ls --all --json > "$RUNNER_TEMP/performance-npm-tree.json"
+
+      - name: Run three complete synthetic baselines
+        shell: bash
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+          PERF_ACCOUNT_SCALES: 100,1000,5000,10000
+          PERF_HTTP_ARTIFACTS_PER_TENANT: "1"
+          PERF_HTTP_CONCURRENCY: 1,8,32
+          PERF_HTTP_DRAIN_TIMEOUT_MS: "10000"
+          PERF_HTTP_FIXED_RATES: 10,100
+          PERF_HTTP_FIXED_RATE_DURATION_MS: "10000"
+          PERF_HTTP_MAX_IN_FLIGHT: "128"
+          PERF_HTTP_MEASURE_MS: "10000"
+          PERF_HTTP_REPEATS: "1"
+          PERF_HTTP_TENANTS: "1"
+          PERF_HTTP_WARMUP_MS: "400"
+          PERF_SQLITE_WRITE_CONCURRENCY: 1,2,4,8
+          PERF_SQLITE_WRITE_OPERATIONS: "8000"
+          TZ: UTC
+          LANG: C.UTF-8
+          LC_ALL: C.UTF-8
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          REPORT_DIR: ${{ runner.temp }}/performance-reports
+          SOURCE_ARCHIVE: ${{ steps.inputs.outputs.archive }}
+          SOURCE_MANIFEST: ${{ steps.inputs.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          test ! -e "$REPORT_DIR"
+          mkdir -m 700 "$REPORT_DIR"
+          for run_number in 1 2 3; do
+            seed=$((270826 + run_number))
+            output="$REPORT_DIR/baseline-run-0${run_number}.json"
+            test ! -e "$output"
+            PERF_SEED="$seed" node scripts/local-performance-baseline.mjs \
+              --confirm-local-synthetic \
+              --section all \
+              --expected-commit "$EXPECTED_SOURCE_COMMIT" \
+              --artifact "$SOURCE_ARCHIVE" \
+              --artifact-manifest "$SOURCE_MANIFEST" \
+              --output "$output"
+          done
+
+      - name: Validate report evidence and correctness
+        shell: bash
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          REPORT_DIR: ${{ runner.temp }}/performance-reports
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        run: |
+          set -euo pipefail
+          node scripts/local-performance-baseline-report-set.mjs \
+            --expected-commit "$EXPECTED_SOURCE_COMMIT" \
+            --release-run-id "$RELEASE_RUN_ID" \
+            --report "$REPORT_DIR/baseline-run-01.json" \
+            --report "$REPORT_DIR/baseline-run-02.json" \
+            --report "$REPORT_DIR/baseline-run-03.json" \
+            --output "$REPORT_DIR/baseline-receipt.json"
+
+      - name: Upload bounded baseline reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: synthetic-performance-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/performance-reports/baseline-run-01.json
+            ${{ runner.temp }}/performance-reports/baseline-run-02.json
+            ${{ runner.temp }}/performance-reports/baseline-run-03.json
+            ${{ runner.temp }}/performance-reports/baseline-receipt.json
+          if-no-files-found: warn
+          retention-days: 14

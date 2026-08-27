@@ -128,6 +128,38 @@ export function summarizeSamples(values, { tailMinimum = TAIL_PERCENTILE_MINIMUM
   };
 }
 
+export function assertScryptPhaseAccounting({ pressure, server } = {}) {
+  const count = server?.scrypt?.count;
+  if (!Number.isInteger(count) || count < 0) {
+    throw error("performance_scrypt_phase_accounting_invalid");
+  }
+  if (pressure === "none") {
+    if (count !== 0) throw error("performance_scrypt_phase_accounting_invalid");
+    return;
+  }
+  if (pressure !== "scrypt_1hz") {
+    throw error("performance_scrypt_phase_accounting_invalid");
+  }
+}
+
+export function createScryptPhaseTracker() {
+  let measurements = [];
+  return Object.freeze({
+    beginPhase() {
+      measurements = [];
+    },
+    record(value) {
+      if (!Number.isFinite(value) || value < 0) {
+        throw error("performance_scrypt_measurement_invalid");
+      }
+      measurements.push(value);
+    },
+    summarize() {
+      return summarizeSamples(measurements);
+    }
+  });
+}
+
 function median(values) {
   const sorted = values.filter(Number.isFinite).sort((left, right) => left - right);
   if (!sorted.length) return null;
@@ -1182,7 +1214,7 @@ async function runHttpServerChild() {
   let phase = null;
   let scryptTimer = null;
   let scryptInitialTimer = null;
-  let scryptMeasurements = [];
+  const scryptPhaseTracker = createScryptPhaseTracker();
   let closing = false;
 
   const server = app.listen(0, "127.0.0.1", () => {
@@ -1212,7 +1244,7 @@ async function runHttpServerChild() {
 
   function startScryptPressure(intervalMs = 1000) {
     stopScryptPressure();
-    scryptMeasurements = [];
+    scryptPhaseTracker.beginPhase();
     const runOne = () => {
       const started = performance.now();
       scryptSync(
@@ -1221,7 +1253,7 @@ async function runHttpServerChild() {
         64,
         { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }
       );
-      scryptMeasurements.push(performance.now() - started);
+      scryptPhaseTracker.record(performance.now() - started);
     };
     scryptInitialTimer = setTimeout(runOne, Math.min(500, Math.max(10, intervalMs / 2)));
     scryptInitialTimer.unref();
@@ -1250,6 +1282,7 @@ async function runHttpServerChild() {
   process.on("message", async (message) => {
     if (message?.type === "begin-phase") {
       histogram.reset();
+      scryptPhaseTracker.beginPhase();
       const rss = process.memoryUsage().rss;
       phase = {
         requestId: message.requestId,
@@ -1307,7 +1340,7 @@ async function runHttpServerChild() {
         sqliteWalBytesPeak: Math.max(phase.sqliteWalBytesPeak, sqliteWalBytesEnd),
         peakSockets: phase.peakSockets,
         eventLoopDelay: summarizeEventLoopHistogram(histogram),
-        scrypt: summarizeSamples(scryptMeasurements)
+        scrypt: scryptPhaseTracker.summarize()
       };
       phase = null;
       process.send?.({ type: "phase-result", requestId: message.requestId, result });
@@ -1856,6 +1889,8 @@ async function runHttpRepeat(config, repeat) {
         const server = (
           await childCommand(child, "end-phase", {}, 15_000, config.signal)
         ).result;
+        const pressure = benchmarkCase.pressure ? "scrypt_1hz" : "none";
+        assertScryptPhaseAccounting({ pressure, server });
         runs.push({
           repeat,
           order,
@@ -1863,7 +1898,7 @@ async function runHttpRepeat(config, repeat) {
           tenantCount: config.httpTenants,
           artifactCount: config.httpTenants * config.httpArtifactsPerTenant,
           scenario: benchmarkCase.scenario,
-          pressure: benchmarkCase.pressure ? "scrypt_1hz" : "none",
+          pressure,
           ...load,
           server
         });
