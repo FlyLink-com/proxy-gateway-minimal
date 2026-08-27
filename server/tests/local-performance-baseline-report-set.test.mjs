@@ -400,10 +400,6 @@ function validate(reports = [report(0), report(1), report(2)]) {
   });
 }
 
-function clone(value) {
-  return structuredClone(value);
-}
-
 test("strict report-set validator accepts the complete three-round matrix", () => {
   const reports = [report(0), report(1), report(2)];
   const reportInputs = inputs(reports);
