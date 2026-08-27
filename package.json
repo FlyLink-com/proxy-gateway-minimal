@@ -115,6 +115,8 @@
     "welcome-coins:activation:preflight": "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode preflight",
     "welcome-coins:activation:apply": "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode activate --apply",
     "welcome-coins:activation:verify": "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode verify",
+    "welcome-coins:activation:deactivate": "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode deactivate --apply",
+    "welcome-coins:activation:verify-disabled": "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode verify-disabled",
     "promotion:health-gate": "node scripts/control-plane-promotion-health-gate.mjs",
     "promotion:transition-evidence": "node scripts/control-plane-transition-evidence.mjs",
     "agent:brief": "node scripts/agent-brief.mjs",

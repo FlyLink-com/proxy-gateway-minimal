@@ -130,7 +130,10 @@ The repository-owned Welcome Coins activation gate is intentionally narrower
 than a generic runtime-configuration editor. It derives the current release's
 protected `.env` from the approved `current` pointer and permits a one-time
 atomic insertion of only the admission flag and a single normalized-email
-digest. The digest is stdin-only and is not returned in a receipt.
+digest. The digest is stdin-only and is not returned in a receipt. Its bounded
+deactivation mode accepts only the exact active environment identity plus the
+retained preflight identity, removes only the canonical two-key suffix, and
+must reproduce the preflight bytes and SHA-256 exactly.
 
 The helper must run only after the independent snapshot guard has stopped the
 service and after the approved welcome schema migration is validated. It does
@@ -139,7 +142,10 @@ ordinary Commerce or any wallet-first/deferred/Authority setting. If the target
 keys conflict or any non-target safety prerequisite is unexpected, it fails
 closed rather than reconciling or overwriting the configuration. The sole
 retry exception is an exact identity-bound already-active state with the same
-stdin digest; it is a no-op confirmation, never a rewrite.
+stdin digest; it is a no-op confirmation, never a rewrite. Deactivation and
+disabled verification retain the same inactive start-guard requirement. An
+already-disabled retry is accepted only when its environment identity equals
+the retained preflight identity; drift fails closed.
 
 ## Explicit Non-goals
 

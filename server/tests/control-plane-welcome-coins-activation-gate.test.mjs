@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
@@ -18,8 +19,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   activateWelcomeCoins,
+  deactivateWelcomeCoins,
   preflightWelcomeCoinsActivation,
-  verifyWelcomeCoinsActivation
+  verifyWelcomeCoinsActivation,
+  verifyWelcomeCoinsDeactivation
 } from "../../scripts/control-plane-welcome-coins-activation-gate.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -78,6 +81,10 @@ function runCli(args, input = "") {
     encoding: "utf8",
     input
   });
+}
+
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 test("preflight accepts an unconfigured current environment without exposing its content or path", (t) => {
@@ -218,6 +225,285 @@ test("activation preserves an existing CRLF environment prefix and its line-endi
       + "USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED=true\r\n"
       + "USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES=" + DIGEST + "\r\n"
   );
+});
+
+test("deactivation restores the exact preflight bytes for LF, CRLF, and no-final-newline environments", (t) => {
+  const originals = [
+    BASE_ENVIRONMENT,
+    BASE_ENVIRONMENT.replace(/\n/gu, "\r\n"),
+    BASE_ENVIRONMENT.slice(0, -1)
+  ];
+
+  for (const original of originals) {
+    const paths = fixture(t, original);
+    if (!paths) return;
+    const preflight = preflightWelcomeCoinsActivation(preflightArgs(paths));
+    const activated = activateWelcomeCoins({
+      ...preflightArgs(paths),
+      expectedEnvSha256: preflight.environment.sha256,
+      canaryDigest: DIGEST,
+      apply: true,
+      guardReader: () => guardedState()
+    });
+
+    const deactivated = deactivateWelcomeCoins({
+      ...preflightArgs(paths),
+      expectedEnvSha256: activated.environment.sha256,
+      expectedDisabledEnvSha256: preflight.environment.sha256,
+      apply: true,
+      guardReader: () => guardedState()
+    });
+
+    assert.equal(deactivated.mode, "deactivate");
+    assert.equal(deactivated.state, "deactivated");
+    assert.equal(deactivated.applied, true);
+    assert.equal(deactivated.canaryDigestAccepted, false);
+    assert.equal(deactivated.environment.sha256, preflight.environment.sha256);
+    assert.deepEqual(readFileSync(paths.environmentPath), Buffer.from(original));
+    assert.equal(JSON.stringify(deactivated).includes(DIGEST), false);
+
+    const verified = verifyWelcomeCoinsDeactivation({
+      ...preflightArgs(paths),
+      expectedEnvSha256: preflight.environment.sha256,
+      guardReader: () => guardedState()
+    });
+    assert.equal(verified.mode, "verify-disabled");
+    assert.equal(verified.state, "disabled_verified");
+    assert.equal(verified.applied, false);
+
+    const idempotent = deactivateWelcomeCoins({
+      ...preflightArgs(paths),
+      expectedEnvSha256: preflight.environment.sha256,
+      expectedDisabledEnvSha256: preflight.environment.sha256,
+      apply: true,
+      guardReader: () => guardedState()
+    });
+    assert.equal(idempotent.state, "already_disabled");
+    assert.equal(idempotent.applied, false);
+  }
+});
+
+test("deactivation rejects stale or noncanonical active state without rewriting it", (t) => {
+  const paths = fixture(t);
+  if (!paths) return;
+  const preflight = preflightWelcomeCoinsActivation(preflightArgs(paths));
+  const activated = activateWelcomeCoins({
+    ...preflightArgs(paths),
+    expectedEnvSha256: preflight.environment.sha256,
+    canaryDigest: DIGEST,
+    apply: true,
+    guardReader: () => guardedState()
+  });
+  const activeBytes = readFileSync(paths.environmentPath);
+
+  assert.throws(
+    () => deactivateWelcomeCoins({
+      ...preflightArgs(paths),
+      expectedEnvSha256: "b".repeat(64),
+      expectedDisabledEnvSha256: preflight.environment.sha256,
+      apply: true,
+      guardReader: () => guardedState()
+    }),
+    (error) => error?.condition === "env_identity_mismatch"
+  );
+  assert.deepEqual(readFileSync(paths.environmentPath), activeBytes);
+
+  assert.throws(
+    () => deactivateWelcomeCoins({
+      ...preflightArgs(paths),
+      expectedEnvSha256: activated.environment.sha256,
+      expectedDisabledEnvSha256: "c".repeat(64),
+      apply: true,
+      guardReader: () => guardedState()
+    }),
+    (error) => error?.condition === "env_identity_mismatch"
+  );
+  assert.deepEqual(readFileSync(paths.environmentPath), activeBytes);
+
+  const drifted = Buffer.concat([activeBytes, Buffer.from("# appended drift\n")]);
+  writeFileSync(paths.environmentPath, drifted);
+  chmodSync(paths.environmentPath, 0o600);
+  assert.throws(
+    () => deactivateWelcomeCoins({
+      ...preflightArgs(paths),
+      expectedEnvSha256: sha256(drifted),
+      expectedDisabledEnvSha256: preflight.environment.sha256,
+      apply: true,
+      guardReader: () => guardedState()
+    }),
+    (error) => error?.condition === "target_key_conflict"
+  );
+  assert.deepEqual(readFileSync(paths.environmentPath), drifted);
+  assert.notEqual(activated.environment.sha256, sha256(drifted));
+});
+
+test("deactivation rejects partial, duplicate, reordered, or truncated active suffixes", (t) => {
+  const activeFlag = "USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED=true\n";
+  const activeDigest = "USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES=" + DIGEST + "\n";
+  const cases = [
+    activeFlag,
+    activeDigest,
+    activeFlag + activeDigest + activeDigest,
+    activeDigest + activeFlag,
+    activeFlag + activeDigest.slice(0, -1),
+    activeFlag.replace("=true", "=false") + activeDigest
+  ];
+
+  for (const suffix of cases) {
+    const current = BASE_ENVIRONMENT + suffix;
+    const paths = fixture(t, current);
+    if (!paths) return;
+    const before = readFileSync(paths.environmentPath);
+    assert.throws(
+      () => deactivateWelcomeCoins({
+        ...preflightArgs(paths),
+        expectedEnvSha256: sha256(before),
+        expectedDisabledEnvSha256: sha256(Buffer.from(BASE_ENVIRONMENT)),
+        apply: true,
+        guardReader: () => guardedState()
+      }),
+      (error) => error?.condition === "target_key_conflict"
+    );
+    assert.deepEqual(readFileSync(paths.environmentPath), before);
+  }
+});
+
+test("deactivation refuses pre-publication environment or guard CAS drift without rewriting", (t) => {
+  const paths = fixture(t);
+  if (!paths) return;
+  const preflight = preflightWelcomeCoinsActivation(preflightArgs(paths));
+  const activated = activateWelcomeCoins({
+    ...preflightArgs(paths),
+    expectedEnvSha256: preflight.environment.sha256,
+    canaryDigest: DIGEST,
+    apply: true,
+    guardReader: () => guardedState()
+  });
+  const activeBytes = readFileSync(paths.environmentPath);
+  const drifted = Buffer.concat([activeBytes, Buffer.from("UNRELATED_CAS_DRIFT=true\n")]);
+  let envCalls = 0;
+
+  assert.throws(
+    () => deactivateWelcomeCoins({
+      ...preflightArgs(paths),
+      expectedEnvSha256: activated.environment.sha256,
+      expectedDisabledEnvSha256: preflight.environment.sha256,
+      apply: true,
+      guardReader: () => {
+        envCalls += 1;
+        if (envCalls === 1) {
+          writeFileSync(paths.environmentPath, drifted);
+          chmodSync(paths.environmentPath, 0o600);
+        }
+        return guardedState();
+      }
+    }),
+    (error) => error?.condition === "env_identity_mismatch"
+  );
+  assert.deepEqual(readFileSync(paths.environmentPath), drifted);
+
+  writeFileSync(paths.environmentPath, activeBytes);
+  chmodSync(paths.environmentPath, 0o600);
+  let guardCalls = 0;
+  assert.throws(
+    () => deactivateWelcomeCoins({
+      ...preflightArgs(paths),
+      expectedEnvSha256: activated.environment.sha256,
+      expectedDisabledEnvSha256: preflight.environment.sha256,
+      apply: true,
+      guardReader: () => {
+        guardCalls += 1;
+        return guardedState(guardCalls >= 2 ? "changed-guard" : "original-guard");
+      }
+    }),
+    (error) => error?.condition === "service_start_guard_changed"
+  );
+  assert.deepEqual(readFileSync(paths.environmentPath), activeBytes);
+});
+
+test("deactivation requires a stable inactive start guard and leaves a published disabled state for attention", (t) => {
+  const paths = fixture(t);
+  if (!paths) return;
+  const preflight = preflightWelcomeCoinsActivation(preflightArgs(paths));
+  const activated = activateWelcomeCoins({
+    ...preflightArgs(paths),
+    expectedEnvSha256: preflight.environment.sha256,
+    canaryDigest: DIGEST,
+    apply: true,
+    guardReader: () => guardedState()
+  });
+  const activeBytes = readFileSync(paths.environmentPath);
+
+  assert.throws(
+    () => deactivateWelcomeCoins({
+      ...preflightArgs(paths),
+      expectedEnvSha256: activated.environment.sha256,
+      expectedDisabledEnvSha256: preflight.environment.sha256,
+      apply: true,
+      guardReader: () => ({ ...guardedState(), activeState: "active" })
+    }),
+    (error) => error?.condition === "service_start_guard_invalid"
+  );
+  assert.deepEqual(readFileSync(paths.environmentPath), activeBytes);
+
+  let calls = 0;
+  assert.throws(
+    () => deactivateWelcomeCoins({
+      ...preflightArgs(paths),
+      expectedEnvSha256: activated.environment.sha256,
+      expectedDisabledEnvSha256: preflight.environment.sha256,
+      apply: true,
+      guardReader: () => {
+        calls += 1;
+        return guardedState(calls >= 3 ? "changed-guard" : "original-guard");
+      }
+    }),
+    (error) => error?.message === "attention_required"
+  );
+  assert.deepEqual(readFileSync(paths.environmentPath), Buffer.from(BASE_ENVIRONMENT));
+});
+
+test("disabled verification rejects active state, stale identity, and missing guard without writes", (t) => {
+  const paths = fixture(t);
+  if (!paths) return;
+  const preflight = preflightWelcomeCoinsActivation(preflightArgs(paths));
+  const original = readFileSync(paths.environmentPath);
+
+  assert.throws(
+    () => verifyWelcomeCoinsDeactivation({
+      ...preflightArgs(paths),
+      expectedEnvSha256: "d".repeat(64),
+      guardReader: () => guardedState()
+    }),
+    (error) => error?.condition === "env_identity_mismatch"
+  );
+  assert.throws(
+    () => verifyWelcomeCoinsDeactivation({
+      ...preflightArgs(paths),
+      expectedEnvSha256: preflight.environment.sha256,
+      guardReader: () => ({ ...guardedState(), runtimeConditionStartGuard: false })
+    }),
+    (error) => error?.condition === "service_start_guard_invalid"
+  );
+  assert.deepEqual(readFileSync(paths.environmentPath), original);
+
+  const activated = activateWelcomeCoins({
+    ...preflightArgs(paths),
+    expectedEnvSha256: preflight.environment.sha256,
+    canaryDigest: DIGEST,
+    apply: true,
+    guardReader: () => guardedState()
+  });
+  const activeBytes = readFileSync(paths.environmentPath);
+  assert.throws(
+    () => verifyWelcomeCoinsDeactivation({
+      ...preflightArgs(paths),
+      expectedEnvSha256: activated.environment.sha256,
+      guardReader: () => guardedState()
+    }),
+    (error) => error?.condition === "target_key_conflict"
+  );
+  assert.deepEqual(readFileSync(paths.environmentPath), activeBytes);
 });
 
 test("target-key drift, duplicate definitions, and noncanonical disabled values fail closed", (t) => {
@@ -422,6 +708,14 @@ test("package and runbook expose the narrow activation gate after snapshot and s
     packageJson.scripts["welcome-coins:activation:verify"],
     "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode verify"
   );
+  assert.equal(
+    packageJson.scripts["welcome-coins:activation:deactivate"],
+    "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode deactivate --apply"
+  );
+  assert.equal(
+    packageJson.scripts["welcome-coins:activation:verify-disabled"],
+    "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode verify-disabled"
+  );
   const activationIndex = runbook.indexOf("### Welcome Coins Admission Activation Gate");
   const snapshotIndex = runbook.indexOf("### Control-Plane Database Snapshot Gate");
   assert.ok(snapshotIndex >= 0);
@@ -429,4 +723,5 @@ test("package and runbook expose the narrow activation gate after snapshot and s
   assert.match(runbook, /stdin-only/i);
   assert.match(runbook, /does not.*wallet-first.*deferred.*Authority.*payment/is);
   assert.match(runbook, /does not.*create.*snapshot.*apply.*schema.*start.*service/is);
+  assert.match(runbook, /deactivate --apply.*verify-disabled/is);
 });
