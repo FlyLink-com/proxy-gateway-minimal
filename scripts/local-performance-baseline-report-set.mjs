@@ -491,6 +491,10 @@ function validateFilesystem(value) {
     && value.blocksAvailable <= value.blocks;
 }
 
+function validateOptionalCgroupLimit(value) {
+  return value === null || (typeof value === "string" && value.length > 0);
+}
+
 function validateEnvironment(environment) {
   requireCondition(
     isObject(environment)
@@ -512,10 +516,8 @@ function validateEnvironment(environment) {
       && typeof environment.timezone === "string"
       && environment.timezone.length > 0
       && isObject(environment.cgroup)
-      && typeof environment.cgroup.cpuMax === "string"
-      && environment.cgroup.cpuMax.length > 0
-      && typeof environment.cgroup.memoryMax === "string"
-      && environment.cgroup.memoryMax.length > 0
+      && validateOptionalCgroupLimit(environment.cgroup.cpuMax)
+      && validateOptionalCgroupLimit(environment.cgroup.memoryMax)
       && isObject(environment.filesystems)
       && validateFilesystem(environment.filesystems.source)
       && validateFilesystem(environment.filesystems.temporary),

@@ -419,6 +419,20 @@ test("strict report-set validator accepts the complete three-round matrix", () =
   })));
 });
 
+test("validator accepts stable independently unavailable cgroup v2 limits", () => {
+  for (const cgroup of [
+    { cpuMax: null, memoryMax: null },
+    { cpuMax: null, memoryMax: "17179869184" },
+    { cpuMax: "400000 100000", memoryMax: null }
+  ]) {
+    const reports = [report(0), report(1), report(2)];
+    for (const value of reports) value.environment.cgroup = { ...cgroup };
+
+    const receipt = validate(reports);
+    assert.equal(receipt.hardGatesPassed, true);
+  }
+});
+
 test("receipt digests cannot be detached from the validated report bytes", () => {
   const reports = [report(0), report(1), report(2)];
   const reportInputs = inputs(reports);
@@ -472,6 +486,18 @@ test("validator rejects provenance, environment, SQLite, and safety gaps", async
     const reports = [report(0), report(1), report(2)];
     reports[2].environment.cpuModel = "Different CPU";
     assert.throws(() => validate(reports), /performance_series_environment_identity_mismatch/);
+  });
+
+  await t.test("cgroup availability differs between rounds", () => {
+    const reports = [report(0), report(1), report(2)];
+    reports[2].environment.cgroup.cpuMax = null;
+    assert.throws(() => validate(reports), /performance_series_environment_identity_mismatch/);
+  });
+
+  await t.test("cgroup empty value is invalid", () => {
+    const reports = [report(0), report(1), report(2)];
+    reports[0].environment.cgroup.memoryMax = "";
+    assert.throws(() => validate(reports), /performance_series_environment_invalid/);
   });
 
   await t.test("SQLite unexpected error map is nonempty", () => {
