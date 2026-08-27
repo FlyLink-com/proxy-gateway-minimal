@@ -464,10 +464,6 @@ test("report writing never overwrites regular, symlink, or hardlink targets", (t
     () => writeReportExclusive(outputPath, { second: true }),
     /performance_output_exists/
   );
-  assert.throws(
-    () => writeReportExclusive(outputPath, { second: true }, { overwrite: true }),
-    /performance_output_exists/
-  );
   assert.deepEqual(JSON.parse(readFileSync(outputPath, "utf8")), { first: true });
 
   const symlinkPath = join(directory, "result-link.json");

@@ -1487,7 +1487,7 @@ export function performRequest({
       });
       response.on("end", () => {
         if (bodyTooLarge) return;
-        const body = bodyTooLarge ? Buffer.alloc(0) : Buffer.concat(chunks);
+        const body = Buffer.concat(chunks);
         const validation = validateScenarioResponse(scenario, {
           status: response.statusCode,
           headers: response.headers,
@@ -1498,7 +1498,7 @@ export function performRequest({
           ok: true,
           status: response.statusCode,
           bytes,
-          bodySha256: bodyTooLarge ? null : sha256Bytes(body),
+          bodySha256: sha256Bytes(body),
           validation
         });
       });
