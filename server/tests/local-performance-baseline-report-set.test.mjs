@@ -419,15 +419,18 @@ test("strict report-set validator accepts the complete three-round matrix", () =
   })));
 });
 
-test("validator accepts a stable unavailable cgroup v2 fingerprint", () => {
-  const reports = [report(0), report(1), report(2)];
-  for (const value of reports) {
-    value.environment.cgroup.cpuMax = null;
-    value.environment.cgroup.memoryMax = null;
-  }
+test("validator accepts stable independently unavailable cgroup v2 limits", () => {
+  for (const cgroup of [
+    { cpuMax: null, memoryMax: null },
+    { cpuMax: null, memoryMax: "17179869184" },
+    { cpuMax: "400000 100000", memoryMax: null }
+  ]) {
+    const reports = [report(0), report(1), report(2)];
+    for (const value of reports) value.environment.cgroup = { ...cgroup };
 
-  const receipt = validate(reports);
-  assert.equal(receipt.hardGatesPassed, true);
+    const receipt = validate(reports);
+    assert.equal(receipt.hardGatesPassed, true);
+  }
 });
 
 test("receipt digests cannot be detached from the validated report bytes", () => {
