@@ -290,13 +290,16 @@ Keep authority separated:
   boundaries. Dated state snapshots may preserve evidence, but they do not own
   current Issue, PR, Project, deployment, or runtime facts.
 
-The repository-wide authority transition is not complete. Active documentation
-and tooling still consume legacy sequencing or state rooted in
-`docs/PROJECT_CONTROL_PLANE.md` and `project-state/tasks.json`. Until those
-consumers are migrated, this section defines the target boundary rather than a
-completed cutover. Conflicts are
-transition blockers and must be resolved from the relevant domain owner, never
-by choosing whichever copied value appears newer.
+The repository-wide authority transition is not complete. Active compatibility
+surfaces still duplicate dated sequencing or state. They include
+`docs/README.md`, `docs/PROJECT_CONTROL_PLANE.md`,
+`docs/project-state/CURRENT_STATE.md`, `project-state/README.md`,
+`project-state/current.json`, `project-state/tasks.json`, and repository-local
+brief/check tooling; Issue #675 owns the complete inventory and separate B-tier
+migration. Until it lands, this section defines the target boundary rather
+than a completed cutover. Conflicts are transition blockers and must be
+resolved from the relevant domain owner, never by choosing whichever copied
+value appears newer.
 
 The native Project workflows verified on 2026-08-28 are:
 

@@ -63,6 +63,10 @@ state, and dated production receipts require fresh task-specific verification.
 `project-state/current.json` and `project-state/tasks.json` remain transitional
 compatibility snapshots until their active consumers are migrated; neither can
 override fresh GitHub, deployment, or runtime evidence or authorize mutation.
+Issue #675 owns that separate B-tier migration across the remaining active
+documentation/state views and repository-local brief/check tooling. Until it
+lands, resolve current sequencing from native Issue and PR records and use
+Project #1 only for navigation.
 
 **Authority transition:** The domain-scoped target model is defined, but the
 repository-wide cutover is not complete. Active documents and tools that still
@@ -318,6 +322,10 @@ production authority.
    requires fresh inventory. Longer recovery windows, rollback retention, SBOM,
    provenance/signing, and the remaining mutable Action references remain
    scoped under #597/#598.
+9. Legacy queue consumers still read dated compatibility state from active
+   documentation, `project-state/current.json`, and `project-state/tasks.json`.
+   Issue #675 owns their separate B-tier migration; until it lands, native
+   Issue and PR records own current status and sequencing.
 
 ## Validation Baseline
 
