@@ -1,6 +1,6 @@
 # GitHub Issue And PR Workflow
 
-Last updated: 2026-07-15, America/Los_Angeles.
+Last updated: 2026-08-28, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: github_issue_pr_workflow
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-28
   production_authority: false
 ```
 
@@ -272,21 +272,50 @@ count semantics, retention states, and the no-sensitive-output boundary.
 
 ## Project Board Use
 
-A GitHub Project board is useful after the issue count becomes large enough to
-need portfolio scanning, usually around 10 to 15 active index cards. Before
-that point, labels and issue lists are usually lighter.
+The organization-owned [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
+is the live portfolio index for this repository. It does not replace Git,
+Issues, PRs, deployment receipts, or production evidence.
 
-If a board is enabled, keep the fields small:
+Keep authority separated:
 
-- Lane
-- Risk
-- Status
-- Source/production state
-- Validation state
-- Production impact
+- An Issue owns the durable goal, scope, risk, done criteria, and Risk A gate.
+- A PR owns the concrete diff, tests, Deploy Note when applicable, and
+  remaining gates.
+- Project #1 projects live work through six narrow fields: `Status`, `Lane`,
+  `Risk`, `Source / Production State`, `Validation State`, and
+  `Production Impact`.
+- `project-state/*.json` owns reviewed lane semantics and dated evidence
+  boundaries. It must not become a hand-maintained copy of live Project counts.
 
-The board is an index, not approval. Risk A work still requires the exact
-runbook, read-only inventory, operator approval, backup, validation, and
+The native Project workflows verified on 2026-08-28 are:
+
+- Auto-add items from `gccwebos-com/proxy-gateway-minimal` matching
+  `is:issue,pr is:open`.
+- Item added -> `Todo`.
+- Item closed -> `Done`.
+- Pull request linked -> `In Progress`.
+- Pull request merged -> `Done`.
+- Item reopened -> `Todo`.
+
+Auto-close Issue and auto-add sub-issues remain disabled. No custom Action,
+PAT, GitHub App, or Milestone was added for this integration. Existing open
+items require an explicit one-time import because Auto-add does not backfill
+historical matches.
+
+The maintained views are `Portfolio Triage`, `Execution Board`,
+`Review Queue`, and `Risk A Gates`. Use native `Reviewers`,
+`Assignees`, `Linked pull requests`, `Labels`, `Milestone`, and
+`Repository` fields instead of duplicating them.
+
+Do not copy live Issue counts, PR counts, Project statuses, review queues,
+branch counts, or manual completion percentages into canonical docs or state
+JSON. Resolve them from GitHub when a current decision depends on them. A
+Project item reaching `Done` means only that its GitHub item closed or merged;
+it does not prove deployment, runtime validation, production completion, or
+Risk A authorization.
+
+The Project is an index, not approval. Risk A work still requires the exact
+runbook, fresh read-only inventory, operator approval, backup, validation, and
 rollback gates.
 
 ## Operating Rule

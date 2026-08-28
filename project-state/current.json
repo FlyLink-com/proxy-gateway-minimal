@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2026-08-26.1",
-  "lastUpdated": "2026-08-26",
+  "schemaVersion": "2026-08-28.1",
+  "lastUpdated": "2026-08-28",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current project state for Agent orientation. Verify drift-prone GitHub, deployment, and production facts live before any Risk A action.",
@@ -30,77 +30,26 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "sourceSnapshotAtInventory": "42d17885646d52387f9327f19e2a2e0d70b2b84e",
-    "sourceInventoryDate": "2026-08-23",
-    "observedOpenPrCount": 0,
-    "observedOpenDraftPrCount": 0,
-    "observedOpenNonDraftPrCount": 0,
-    "observedOpenIssueCount": 18,
-    "observedRemoteBranchCount": 117,
-    "activeIssues": [
-      437,
-      438,
-      439,
-      521,
-      522,
-      523,
-      524,
-      525,
-      527,
-      551,
-      557,
-      558,
-      559,
-      560,
-      597,
-      598,
-      632,
-      636
-    ],
-    "remoteBranchInventory": "Count-only observation; the 117 branch names are not reproduced in this compact state file.",
-    "openDraftHeadBranches": [],
-    "recentMergedPrs": [
-      645,
-      646,
-      647,
-      648,
-      649,
-      650,
-      651,
-      652,
-      653,
-      654,
-      655,
-      656,
-      657,
-      658,
-      659,
-      660,
-      661,
-      662
-    ],
-    "mergedPrs": {
-      "645": "5513aca4a6ddc94d904e5422b16893a2ea76fb81",
-      "646": "10b98227e8c7aca667422bb5edad875cac2e7984",
-      "647": "6a4bc4de99b1db3a6103e94cf8eb44968ddf438a",
-      "648": "b0cbbabcc79096be7ac112c36153ac2c3d2c6e76",
-      "649": "93ed26dda3e504ab9dc7381792a6f05f2a1959a6",
-      "650": "5e09f47a573a26efc5f95c6b541630b5731f83b4",
-      "651": "72cc8af183d7dedfb67ab4fbb6b1fdb6c2d06180",
-      "652": "c2d07739c714284cf32615b2aa028c7c6a7f47b6",
-      "653": "acf593720128a81cbe779063445395cb460f18f3",
-      "654": "20dc7cfa5e744611567a9ea4d0a6a558b4803e4b",
-      "655": "e15310d035024dcbfe1b46252af261bd2c542366",
-      "656": "236f81daf58612b83740262885d5d4e5ccb8dae2",
-      "657": "8cbe8590998e2c9df465facbbde7fb93fac382ed",
-      "658": "b93577c99c1202d1f799e2da4e573c8ad7fcf13c",
-      "659": "e7bed98580e9e54dec316c211895f4f47927e448",
-      "660": "136e6cd3787e289e6bf025f973609ce22aebc41d",
-      "661": "7aa29563201765f3fd464f03efe76a95a9821474",
-      "662": "42d17885646d52387f9327f19e2a2e0d70b2b84e"
+    "sourceReconciliation": {
+      "observedAt": "2026-08-28",
+      "preChangeHead": "2824d01f9523ff39805083744e7b0c4f30bfef50",
+      "boundary": "This is the source cutoff inspected before this docs-only reconciliation. Resolve the live master head for every later task; this value must not be presented as a permanent current-head claim."
     },
-    "openDraftPrs": [],
-    "openNonDraftPrs": [],
+    "deployedControlPlane": {
+      "observedAt": "2026-08-26",
+      "sourceCommit": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
+      "release": "control-plane-b5ca23db-a3-sync-20260825",
+      "state": "promoted_verified"
+    },
+    "sourceProductionState": "drift",
+    "githubProjectIndex": {
+      "name": "GCC WebOS — Delivery",
+      "number": 1,
+      "url": "https://github.com/orgs/gccwebos-com/projects/1",
+      "verifiedAt": "2026-08-28",
+      "repository": "gccwebos-com/proxy-gateway-minimal",
+      "authority": "Dynamic work index only; Issue and PR records own delivery evidence, and production receipts own deployed/runtime state."
+    },
     "mergePolicyObservation": {
       "inventoryDate": "2026-08-23",
       "rulesetState": "not_refreshed",
@@ -109,13 +58,7 @@
       "requiresLiveVerification": true,
       "boundary": "Refresh repository rulesets, required checks, review policy, environment protection, and alert gates before any merge or Risk A action."
     },
-    "issue437Reconciliation": {
-      "state": "open",
-      "pr479State": "merged_source_only",
-      "productionState": "not_deployed",
-      "reason": "PR #479 merged source-only, but Issue #437 remains open and no production or runtime completion is inferred."
-    },
-    "note": "This remains the dated 2026-08-23 source and GitHub inventory. The separate a3ProductionCloseout object records the later exact production outcome without relabeling these counts as freshly observed."
+    "boundary": "Do not copy live Issue, PR, Project-item, or branch counts into this file. Resolve mutable GitHub facts live when a decision depends on them."
   },
   "a3ProductionCloseout": {
     "observedAt": "2026-08-26T13:57:52.8300715Z",
@@ -174,12 +117,12 @@
   "activeDirections": [
     "Phase 2 is Operational Reliability, not broad feature expansion.",
     "Issue #437 remains open after PR #479 merged source-only; no production or runtime completion is inferred. Issues #438 and #439 now have substantial Portal and commercial source foundations rather than being greenfield queues.",
-    "Current master is deployed as the control-plane source. Existing legacy Portal routes, Coins Wallet, Coins Commerce with audience all_active, and XSD recharge retained their prior enabled state; promotion-09 neither enabled nor revalidated them. The wallet-first/deferred/Account Resource Authority extensions, four wallet-first schema gates, new provider callbacks and settlement, authority assignment, and new fulfillment remain unactivated or separately gated.",
+    "The source cutoff observed before this reconciliation is master@2824d01f9523ff39805083744e7b0c4f30bfef50; the verified deployed control-plane source remains b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c. Source and production are in drift. Existing legacy Portal routes, Coins Wallet, Coins Commerce with audience all_active, and XSD recharge retained their prior documented state; promotion-09 neither enabled nor revalidated them.",
     "Issue #561 is closed after the Operations source-reality reconciliation; open Issues #557-#560 retain the remaining Admin authorization, metric, and audit gaps.",
     "Issues #521, #525, #527, and #551 track retirement or quarantine of legacy product identities and source surfaces; #522-#524 govern the Coins-first decision, Portal integration, and durable settlement/fulfillment lifecycle.",
-    "There are no open PRs at the 2026-08-23 inventory. PR #592 and #594 are closed unmerged; PR #593 is merged docs-only. Historical PR state carries no production authority.",
+    "Use GCC WebOS — Delivery Project #1 and live GitHub queries for current Issue, PR, review, and workflow state. Do not copy live counts or per-item status into this state file; Project status carries no production authority.",
     "Issue #636 A3 source and production path is merged through PR #667. Exact-head XFS quota and service-native smoke proofs, bounded ext4 admission, hardened staging, candidate preparation and promotion-09 completed; the current release is control-plane-b5ca23db-a3-sync-20260825 with terminal state promoted_verified.",
-    "Release Artifact run 32854893859, Dependency Artifact run 32854893837 and Production Deploy Dry Run 32856999391 succeeded for exact master b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; the GitHub artifacts are temporary through 2026-09-08 even though the exact packets were verified during deployment.",
+    "Release Artifact run 32854893859, Dependency Artifact run 32854893837 and Production Deploy Dry Run 32856999391 succeeded for exact deployed source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; the GitHub artifacts are temporary through 2026-09-08 even though the exact packets were verified during deployment.",
     "Issues #597 and #598 retain the release-loop and supply-chain gaps: durable artifact/rollback identity, SBOM/signing/provenance, and remaining mutable-tag Action references.",
     "The 2026-08-22 API readback observed zero open Dependabot alerts, secret scanning disabled, and no available code-scanning alert inventory because Code Security is not enabled; rulesets and environments were not refreshed.",
     "The production control-plane release is source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c. Promotion-09 changed only the control-plane release pointer and service process after verified materialization/snapshot gates; it performed no database restore, schema mutation, runtime-identity change or old-release deletion. It left the legacy Portal, Coins Wallet, Coins Commerce and XSD recharge state unchanged and did not activate the wallet-first/deferred/Authority extensions."
@@ -365,18 +308,20 @@
     "internalRuntime": "metering and control endpoints remain loopback/private according to documented execution records and require live verification before mutation"
   },
   "validationSnapshot": {
-    "masterAtInventory": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
-    "inventoryDate": "2026-08-26",
-    "latestReleaseArtifactRun": "32854893859 success for exact master; control-plane artifact 9565756416 observed temporary through 2026-09-08",
+    "latestReleaseArtifactRun": "32854893859 success for exact deployed source; control-plane artifact 9565756416 observed temporary through 2026-09-08",
     "releaseArtifactCount": 3,
     "releaseArtifactAvailability": "temporary through 2026-09-08",
-    "latestDependencyArtifactRun": "32854893837 success; artifact 9565754679 temporary through 2026-09-08",
-    "latestCiRun": "32854893874 success for exact master",
-    "latestCodeqlRun": "32854893258 success for exact master",
-    "latestCloudflareWorkflowRun": "not_refreshed_for_exact_master",
+    "latestDependencyArtifactRun": "32854893837 success for exact deployed source; artifact 9565754679 temporary through 2026-09-08",
+    "latestCiRun": "32854893874 success for exact deployed source",
+    "latestCodeqlRun": "32854893258 success for exact deployed source",
+    "latestCloudflareWorkflowRun": "not_refreshed_for_current_source",
     "githubGateBoundary": "Rulesets, required checks, review requirements, environments, and alert gates require live verification.",
     "projectStateCheck": "required whenever project-state files change",
-    "cTierDiffCheck": "git diff --check origin/master...HEAD"
+    "cTierDiffCheck": "git diff --check origin/master...HEAD",
+    "releaseSourceCommit": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
+    "releaseEvidenceDate": "2026-08-26",
+    "sourceCutoffBoundary": "A3 release evidence validates b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; it does not validate the later master source cutoff 2824d01f9523ff39805083744e7b0c4f30bfef50.",
+    "githubProject": "GCC WebOS — Delivery Project #1 is the live work index; it is not production evidence."
   },
   "sourceSecuritySnapshot": {
     "inventoryDate": "2026-08-22",
@@ -395,7 +340,7 @@
   "activeBlockers": [
     {
       "id": "release-maturity-and-supply-chain",
-      "summary": "Issues #597 and #598 remain open: exact-master artifacts are temporary, 27 workflow Action references use mutable tags, and durable SBOM/signing/provenance closure is not established.",
+      "summary": "Issues #597 and #598 remain open: deployed-source GitHub artifacts are temporary, 27 workflow Action references use mutable tags, and durable SBOM/signing/provenance closure is not established.",
       "sourceDoc": "RELEASE_MANIFEST.md"
     },
     {
@@ -420,17 +365,17 @@
     },
     {
       "id": "temporary-master-artifacts",
-      "summary": "Release Artifact run 32854893859 and Dependency Artifact run 32854893837 succeeded for exact master and their exact packets were deployed, but the GitHub artifacts are temporary through 2026-09-08 and do not by themselves close durable deployment/rollback retention.",
+      "summary": "Release Artifact run 32854893859 and Dependency Artifact run 32854893837 succeeded for the exact deployed source and their packets were deployed. Their temporary GitHub retention does not invalidate the retained host release, but it prevents later download/promotion of the same packet after expiry.",
       "sourceDoc": "RELEASE_MANIFEST.md"
     },
     {
       "id": "github-live-gates-partially-refreshed",
-      "summary": "Exact-master CI and CodeQL workflows are green and Dependabot reports zero open alerts, but secret scanning is disabled, code-scanning alert inventory is unavailable, and rulesets/environment protection still require live readback.",
+      "summary": "CI and CodeQL were green for the exact deployed source and the dated inventory reported zero open Dependabot alerts, but secret scanning was disabled, code-scanning alert inventory was unavailable, and rulesets/environment protection still require live readback.",
       "sourceDoc": "docs/GITHUB_ISSUE_PR_WORKFLOW.md"
     }
   ],
   "nextRecommendedQueue": [
-    "Close Issue #597's durable artifact/rollback identity gap before the exact-master GitHub artifacts from runs 32854893859 and 32854893837 expire on 2026-09-08.",
+    "Use Issue #597 to decide and implement the required recovery window. Temporary artifact expiry does not invalidate the deployed host release, but any later promotion must consume an available, identity-verified packet and must not rebuild during promotion.",
     "Implement Issue #598 in focused source slices: pin remaining Action references, then add SBOM and reviewed provenance/signing closure.",
     "Continue #437, #438, #439, #522-#524, and the legacy-retirement issues through their existing source boundaries without parallel replacement subsystems.",
     "Run fresh ruleset, environment, alert, provider, deployment, and production read-only inventories before any merge gate that depends on them or any Risk A action."

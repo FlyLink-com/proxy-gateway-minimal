@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-08-26, America/Los_Angeles.
+Last updated: 2026-08-28, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,17 +8,22 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-08-26
+  last_verified_at: 2026-08-28
   production_authority: false
 ```
 
 > Status:
 > - Type: Active current-state handoff
 > - Risk: C
-> - Current source cutoff:
->   `master@b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`
+> - Source reconciliation cutoff:
+>   `master@2824d01f9523ff39805083744e7b0c4f30bfef50` (observed immediately before this
+>   docs-only change)
 > - Latest deployed control-plane source:
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (2026-08-26)
+> - Source/production state: Drift; the source cutoff is later than the
+>   deployed control-plane source
+> - Live delivery index:
+>   [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
 > - Source, artifact, production-promotion and delayed public-health evidence
 >   for A3 were reconciled on 2026-08-26; unrelated mutable GitHub, provider and
 >   production facts retain their separately dated evidence
@@ -43,14 +48,18 @@ Use this order before any work:
 1. `docs/CURRENT_RELEASE_STATE.md`
 2. `RELEASE_MANIFEST.md`
 3. `docs/PROJECT_CONTEXT.md`
-4. `git status --short --branch`
-5. `docs/README.md`
-6. The subsystem README relevant to the task
-7. Live GitHub, deployment, or production inventory required by the task risk
+4. [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) for live Issue/PR
+   coordination
+5. `git status --short --branch`
+6. `docs/README.md`
+7. The subsystem README relevant to the task
+8. Live GitHub, deployment, or production inventory required by the task risk
 
-`AGENTS.md` always applies. `project-state/*.json` is a compact coordination
-layer; it does not override canonical documents or live evidence and does not
-authorize external mutation.
+`AGENTS.md` always applies. Project #1 is the dynamic work index; it does not
+replace Issue/PR evidence or production receipts. `project-state/*.json` is a
+reviewed coordination and lane-semantics layer; it must not copy mutable GitHub
+counts, override canonical documents or live evidence, or authorize external
+mutation.
 
 ## Current Classification
 
@@ -97,41 +106,27 @@ Keep these distinctions explicit:
   a migration, a default-off adapter, and a successful artifact run are
   source/build evidence, not deployed runtime state.
 
-## Repository Snapshot
+## Repository And Delivery Index
 
 Repository: `gccwebos-com/proxy-gateway-minimal`
 
-The source/artifact reconciliation observed on 2026-08-23 recorded the dated
-counts below. They are retained as historical inventory rather than silently
-refreshed by this deployment closeout:
+The source cutoff inspected immediately before this docs-only reconciliation
+was `master@2824d01f9523ff39805083744e7b0c4f30bfef50`. It is a dated reconciliation boundary, not a
+permanent current-head claim. Resolve the live `master` SHA before every later
+source decision.
 
-- exact `master`: `42d17885646d52387f9327f19e2a2e0d70b2b84e`
-- current head: merged PR #662
-- open PRs: none
-- open Issues (18): #437, #438, #439, #521, #522, #523, #524, #525,
-  #527, #551, #557, #558, #559, #560, #597, #598, #632, and #636
-- remote branches: 117 (count-only observation)
-- successful exact-source CI run: `32645695594`
-- successful exact-source CodeQL run: `32645695630`
-- successful exact-source Release Artifact run: `32645695598`
-- successful exact-source Dependency Artifact run: `32645695541`
-- control-plane artifact: `proxy-gateway-42d17885646d` (ID `9494798503`)
-- Portal artifact: `portal-static-42d17885646d` (ID `9494802700`)
-- Admin artifact: `admin-static-42d17885646d` (ID `9494802010`)
-- dependency artifact ID: `9494801281`, name
-  `control-plane-dependency-42d17885646d52387f9327f19e2a2e0d70b2b84e`,
-  size `6460706` bytes, observed expiry `2026-09-06T14:32:03Z`
+The latest verified production control-plane source remains
+`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`, release
+`control-plane-b5ca23db-a3-sync-20260825`, with A3 terminal state
+`promoted_verified` on 2026-08-26. The source cutoff is later, so source and
+production are explicitly in drift. This does not establish a Portal/Admin
+static deployment.
 
-These are dated mutable facts, not permanent documentation authority. Refresh
-GitHub inventory before making a later current claim.
-
-Current exact source is
-`master@b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (merged PR #667). Release
-Artifact run `32854893859`, Dependency Artifact run `32854893837`, and
-Production Deploy Dry Run `32856999391` succeeded for that source. The approved
-2026-08-26 A3 promotion deployed release
-`control-plane-b5ca23db-a3-sync-20260825` and ended `promoted_verified`. This
-does not establish a Portal/Admin static deployment.
+Use [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) for live Issue, PR,
+status, lane, risk, validation, and production-impact coordination. Use live
+GitHub queries for current counts, review queues, branches, and Milestones.
+Canonical docs and `project-state/*.json` intentionally do not copy those
+mutable facts.
 
 ## Current Source Capability Boundary
 
@@ -192,26 +187,25 @@ exact Risk A gate.
 
 ## Active Work Lanes
 
-Do not infer a single fixed serial order from the July snapshots. Use the live
-Issue state and `project-state/*.json` for coordination. The current durable
-areas include:
+Project #1 owns current item membership and the six live coordination fields.
+`project-state/lanes.json` owns lane definitions and safety boundaries. Issue
+bodies remain authoritative for scope, risk, done criteria, and production
+gates.
 
-| Issues | Lane | Source posture |
-| --- | --- | --- |
-| #437 | Traffic Accounting | Usage evidence and identity/recovery work remain separately gated; do not conflate traffic rollups with Coin Ledger. |
-| #438 | Portal Lifecycle | Extend the existing account/resource delivery and Portal auth foundations. |
-| #439, #524 | Commercial / Payment / Authority | Extend Wallet, Recharge/Payment, Commerce, and Account Resource Authority without rebuilding parallel order or ledger models. |
-| #557 | Operations Foundation | Reconcile the existing Operations/Admin source envelope before adding APIs or UI. |
-| #558-#560 | Operations/Admin follow-ons | Treat safe backend reads, UI consumers, capability enforcement, metrics, and audit as distinct slices. |
-| #597, #598 | Release maturity / supply chain | Close durable artifact/runtime traceability and full-SHA/SBOM/provenance/signing gaps. |
-| #632 | Dependency artifact replay | Preserve the historical A2 audit boundary without inheriting old authorization. |
+The Project-facing lanes are:
 
-Issue #636's A3 production materialization/promotion outcome is complete and is
-closed by this canonical reconciliation. Issue #561 is also closed. The
-remaining open Issues stay independently scoped. PR
-#476, #592, and #594 are closed unmerged; PR #479 is merged source-only and PR
-#593 is merged docs-only. None is a current open candidate or production
-authority.
+- `traffic-accounting`
+- `portal-lifecycle`
+- `commercial-foundation`
+- `operations-foundation`
+- `version-management`
+- `dependency-materialization`
+- `legacy-retirement`
+
+Internal `code-boundary` and `production-operations` lanes remain in the
+machine-readable model because existing tasks reference them; they are not
+additional Project taxonomy. Read current Issue and PR state from Project #1
+and GitHub rather than maintaining a second status table here.
 
 ## Release And Artifact State
 
@@ -263,25 +257,26 @@ runtime services, and production data require fresh task-specific inventory.
 
 ## Source Governance And Security Snapshot
 
-The 2026-08-23 reconciliation refreshed the repository source head, open
-PR/Issue posture, remote-branch count, and then-current workflows/artifacts.
-Those counts remain dated. The selected GitHub security APIs and workflow
-Action-reference counts remain the 2026-08-22 snapshot:
+Project #1 is now the dynamic repository-work index. Its current item set,
+status distribution, review queue, and Lane/Risk values must be read live; this
+handoff no longer preserves copied Issue, PR, or branch counts.
 
-- exact-master CI `32645695594`, CodeQL `32645695630`, Release Artifact
-  `32645695598`, and Dependency Artifact `32645695541` workflows succeeded;
-- Dependabot reported zero open alerts;
-- secret scanning is disabled;
-- code-scanning alert inventory was unavailable because Code Security is not
-  enabled, so no zero-alert claim is made;
-- 13 of 40 workflow Action `uses:` references are full-SHA pinned; 27 mutable
-  tag references remain.
+The latest retained security/governance observations remain separately dated:
 
-Rulesets, environment protections, provider settings, and deployment settings
-were not refreshed. The 2026-08-26 closeout refreshed only exact source/artifact
-runs and the A3 `control-plane-app` execution boundaries described above:
-promotion-09 terminal identity plus a later public-only health window. Issues
-#597 and #598 retain the remaining release-maturity and supply-chain gaps.
+- the A3 release-source CI, CodeQL, Release Artifact, Dependency Artifact, and
+  production dry-run evidence applies to
+  `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`, not to the later source cutoff;
+- the 2026-08-22 API readback reported zero open Dependabot alerts, secret
+  scanning disabled, and unavailable code-scanning alert inventory because
+  Code Security was not enabled;
+- the same dated source inventory found 13 of 40 workflow Action `uses:`
+  references full-SHA pinned and 27 mutable tags;
+- rulesets, required reviews, Environment protection, provider settings, and
+  deployment settings require fresh live readback before relying on them.
+
+Issues #597 and #598 retain release-lifecycle and supply-chain work. Project
+status is navigation only and cannot upgrade these dated observations or create
+production authority.
 
 ## Active Gaps
 
@@ -304,9 +299,11 @@ promotion-09 terminal identity plus a later public-only health window. Issues
    exact source `b5ca23db...`; promotion-09 ended `promoted_verified`. The old
    XFS-only A3-2 inventory is historical, while schema/feature activation and
    other release units remain outside the completed A3 boundary.
-8. Exact-master artifacts are temporary through 2026-09-08; durable artifact,
-   rollback retention, SBOM, provenance/signing, and the remaining 27 mutable
-   Action references remain open under #597/#598.
+8. The deployed-source GitHub artifacts are temporary through 2026-09-08.
+   Their expiry does not invalidate the retained host release, but it prevents a
+   later promotion from downloading that same packet. Longer recovery windows,
+   rollback retention, SBOM, provenance/signing, and the remaining mutable
+   Action references remain scoped under #597/#598.
 
 ## Validation Baseline
 
@@ -336,7 +333,8 @@ Use these entrypoints:
 - `docs/ACCOUNT_RESOURCE_AUTHORITY_LIFECYCLE.md`: exact resource-authority and
   Quote-provenance lifecycle
 - `docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md`: traffic usage evidence plan
-- `docs/GITHUB_ISSUE_PR_WORKFLOW.md`: Issue and PR ownership
+- [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1): live work index
+- `docs/GITHUB_ISSUE_PR_WORKFLOW.md`: Issue, PR, and Project authority boundaries
 - `docs/production-replacement-records/`: dated production execution evidence
 - `docs/archive/`: superseded plans and historical context
 
