@@ -114,7 +114,7 @@ Branch and automatic custom production-domain assignment as disabled. Real
 merges through #468 created production-target candidates without moving the
 public custom aliases.
 
-The latest observed candidate is READY at
+Issue #457 recorded its latest observed candidate as READY at
 `proxy-gateway-minimal-l4wfa6q0h-gccltd.vercel.app`, GitHub deployment
 `5403913679`, for source
 `e1beacc15fdc35661077cd3387f3ba17a3966e1a`. It has

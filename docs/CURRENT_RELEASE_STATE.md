@@ -266,9 +266,9 @@ The authoritative execution record is the
   without redirects; response bodies were not retained.
 
 **Risk Classification:** A-tier
-**Rollback Boundary:** the prior immutable release remains retained; code
-pointer rollback and database restore remain separate operator decisions, and
-neither was performed.
+**Rollback Boundary:** the terminal receipt recorded the prior immutable
+release as retained; code-pointer rollback and database restore remain
+separate operator decisions, and neither was performed.
 
 ### Prior Deploy Note: Japan Control Plane Upgrade (2026-08-16)
 
@@ -425,7 +425,7 @@ access, authorize workflow dispatch, read connection material, apply a map,
 deploy a release, mutate runtime state, or prove production success. Each such
 action remains behind its separate exact Risk A gate and current evidence.
 
-## Source And Production Drift
+## Git Source And Recorded Deployment-Source Drift
 
 The Git source cutoff observed on 2026-08-28 is
 `master@2824d01f9523ff39805083744e7b0c4f30bfef50`. The latest recorded
