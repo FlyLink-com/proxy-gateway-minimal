@@ -286,6 +286,9 @@ Keep authority separated:
 - Project #1 projects live work through six narrow fields: `Status`, `Lane`,
   `Risk`, `Source / Production State`, `Validation State`, and
   `Production Impact`.
+- Within that projection, `Lane` is the mutable navigation classification for
+  current item membership. Native Issue/PR records still own item state, scope,
+  declared risk, done criteria, and links; Project fields grant no authority.
 - `project-state/lanes.json` owns reviewed lane definitions and safety
   boundaries. Dated state snapshots may preserve evidence, but they do not own
   current Issue, PR, Project, deployment, or runtime facts.
@@ -299,7 +302,9 @@ brief/check tooling; Issue #675 owns the complete inventory and separate B-tier
 migration. Until it lands, this section defines the target boundary rather
 than a completed cutover. Conflicts are transition blockers and must be
 resolved from the relevant domain owner, never by choosing whichever copied
-value appears newer.
+value appears newer. Repository-local brief consumers do not yet enforce that
+live read mechanically, so their queue-like output remains dated compatibility
+context until #675 completes the migration.
 
 The native Project workflows verified on 2026-08-28 are:
 

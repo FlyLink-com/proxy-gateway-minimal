@@ -94,8 +94,11 @@ Use it to answer:
 - what docs and code areas belong to each lane?
 - which non-goals and risk boundaries apply?
 
-Resolve a current item's lane membership and state from its native Issue or PR
-record; Project #1 is navigation only.
+Resolve a current item's state, scope, declared risk, and done criteria from its
+native Issue or PR record. Project #1's `Lane` field is the mutable navigation
+classification for current lane membership; validate its value against the
+reviewed definitions in this file. Neither the Project field nor this file
+grants execution authority.
 
 ### `project-state/current.json`
 
@@ -114,6 +117,11 @@ Use it only for historical task IDs and risk, file-scope, validation, and
 approval constraints after resolving current status from native Issues and
 PRs. It must not answer which task is next. Issue #675 owns the B-tier
 migration of its active consumers.
+
+The current repository-local brief consumers are not yet mechanically
+fail-closed: `agent:brief` and `project handoff-brief` can still surface dated
+snapshot hints. Until #675 lands, treat that output as compatibility context
+only and perform a fresh native Issue/PR read before current sequencing.
 
 ## Ownership
 
@@ -246,7 +254,7 @@ For a normal project task, continue with:
 
 ```text
 native live Issue and PR records when current status or sequencing matters
-Project #1 as navigation only
+Project #1, including `Lane`, as mutable navigation classification only
 relevant lane in project-state/lanes.json
 project-state/current.json and project-state/tasks.json only when dated
   compatibility context is needed

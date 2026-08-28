@@ -71,8 +71,9 @@ Project #1 only for navigation.
 **Authority transition:** The domain-scoped target model is defined, but the
 repository-wide cutover is not complete. Active documents and tools that still
 consume legacy state remain compatibility obligations. Any conflict is a
-transition blocker and must fail closed against a fresh read from the relevant
-domain owner.
+transition blocker. Operators and agents must fail closed against a fresh read
+from the relevant domain owner; repository-local brief consumers do not yet
+enforce that boundary mechanically and are owned by Issue #675.
 
 ## Current Classification
 
@@ -158,11 +159,12 @@ a dated source-reality inventory. The A3 row below additionally reflects the
 | Traffic / trust | Protected usage projection and fail-closed trusted-proxy/XFF handling | Admin `Usage & Channels` consumption, production proxy-topology validation |
 | A3 dependency materialization | Source contracts, physical collector, exact-head XFS quota and service-native smoke proofs, explicit XFS/bounded admission paths, hardened staging/controller flow, exact artifact materialization and production promotion through PRs #646-#667 | Promotion-09 ended `promoted_verified` for `control-plane-b5ca23db-a3-sync-20260825`; durable artifact retention remains Issue #597, and no schema or feature activation is inferred |
 
-The 2026-08-26 control-plane promotion makes exact source `b5ca23db...`
-available on that host, but it did not apply the four wallet-first schemas or
-enable the wallet-first/deferred/Authority lane. Promotion-09 explicitly
-recorded no schema mutation or feature activation. The entries above therefore
-remain non-activation evidence for those lanes.
+The 2026-08-26 terminal receipt recorded exact source `b5ca23db...` as
+available on that host at the promotion cutoff, but the event did not apply the
+four wallet-first schemas or enable the wallet-first/deferred/Authority lane.
+Promotion-09 explicitly recorded no schema mutation or feature activation.
+Current host and runtime availability require fresh inventory; the entries
+above therefore remain dated non-activation evidence for those lanes.
 
 ## Workflow Boundary
 
@@ -205,7 +207,9 @@ six live coordination fields. Native Issue and PR records, plus fresh
 reconciliation, determine repository work completeness and item state.
 `project-state/lanes.json` owns lane definitions and safety boundaries. Issue
 bodies remain authoritative for scope, declared risk, done criteria, and links
-to any required production gate.
+to any required production gate. For current lane membership, the Project
+`Lane` field is a mutable navigation classification whose values are checked
+against `lanes.json`; it is not execution or production authority.
 
 The Project-facing lanes are:
 
@@ -302,8 +306,9 @@ production authority.
 2. Admin backend read capabilities are only partially enforced; frontend
    Admin login integration and the traffic projection consumer remain pending.
 3. The four wallet-first schemas, wallet-first/deferred runtime, and Account
-   Resource Authority are not proven applied or enabled in production. This is
-   separate from the retained legacy Wallet, Commerce, and XSD recharge state.
+   Resource Authority are not proven applied or enabled in production. The
+   2026-08-26 terminal receipt preserved the prior documented legacy Wallet,
+   Commerce, and XSD recharge state without revalidating current runtime state.
 4. Wallet-first provider refund/reconciliation paths and new live
    credential/callback setup are not established.
 5. The 2026-08-26 control-plane release has a durable Deploy Note and dated

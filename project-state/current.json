@@ -1,9 +1,11 @@
 {
-  "schemaVersion": "2026-08-28.2",
+  "schemaVersion": "2026-08-28.3",
   "lastUpdated": "2026-08-28",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Dated, reviewed coordination snapshot for Agent orientation. It is not a live work index; verify GitHub, deployment, and production facts from their authoritative sources before relying on them, and before every Risk A action.",
+  "requiresLiveIssueRead": true,
+  "compatibilityBoundary": "Until Issue #675 migrates repository-local consumers, agent:brief and project handoff output can still include dated snapshot hints. Those outputs are not current sequencing evidence and require a fresh native Issue/PR read.",
   "sourceDocs": [
     "docs/CURRENT_RELEASE_STATE.md",
     "RELEASE_MANIFEST.md",
@@ -297,7 +299,7 @@
     },
     "notes": [
       "The b93577c A3-2 read-only inventory observed the former 57d7ab production release and an ext4 deployment root, then stopped NO-GO under the XFS-only source contract without mutation; it is historical evidence.",
-      "Promotion-09 deployed exact source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c as control-plane-b5ca23db-a3-sync-20260825 and ended promoted_verified; the prior immutable release remains retained.",
+      "The 2026-08-26 terminal receipt recorded exact source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c as control-plane-b5ca23db-a3-sync-20260825 with state promoted_verified and recorded the prior immutable release as retained at that cutoff; current release and rollback availability require fresh inventory.",
       "Offline Runtime Config Identity and active traffic Evidence Runtime are separate evidence domains.",
       "Do not infer production runtime identity from master, a GitHub artifact, a Vercel candidate, or a Cloudflare saved version.",
       "Do not output subscription material, credentials, raw config, raw logs, environment values, SQLite rows, or customer data."
@@ -307,7 +309,7 @@
     "companySite": "public static surface",
     "userPortal": "public customer adapter backed by authenticated account/resource services",
     "admin": "protected operator surface; public unauthenticated access must remain blocked",
-    "internalRuntime": "metering and control endpoints remain loopback/private according to documented execution records and require live verification before mutation"
+    "internalRuntime": "Dated execution records describe metering and control endpoints as loopback/private; current state requires live verification before mutation"
   },
   "validationSnapshot": {
     "latestReleaseArtifactRun": "32854893859 success for exact deployed source; control-plane artifact 9565756416 observed temporary through 2026-09-08",
@@ -362,7 +364,7 @@
     },
     {
       "id": "commercial-extension-providers-disabled",
-      "summary": "The deployed control-plane source contains wallet-first Ledger, new Recharge/Payment, wallet-first/deferred Coins Commerce and Account Resource Authority extension foundations. Legacy Coins Wallet, Coins Commerce with audience all_active and XSD recharge retain their prior enabled state; the four wallet-first schema gates, new providers and wallet-first/deferred/Authority paths remain unactivated or separately gated.",
+      "summary": "The source recorded by the 2026-08-26 deployment event contains wallet-first Ledger, new Recharge/Payment, wallet-first/deferred Coins Commerce and Account Resource Authority extension foundations. That terminal receipt preserved the prior documented enabled-state record for legacy Coins Wallet, Coins Commerce with audience all_active and XSD recharge without revalidating current runtime state; the four wallet-first schema gates, new providers and wallet-first/deferred/Authority paths were not activated by that event and remain separately gated.",
       "sourceDoc": "docs/BILLING_RECHARGE_CONTRACT.md"
     },
     {

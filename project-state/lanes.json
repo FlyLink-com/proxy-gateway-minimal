@@ -1,9 +1,9 @@
 {
-  "schemaVersion": "2026-08-28.2",
+  "schemaVersion": "2026-08-28.3",
   "lastUpdated": "2026-08-28",
   "timezone": "America/Los_Angeles",
-  "status": "phase-2-operational-reliability",
-  "purpose": "Versioned lane-definition and dated evidence index for Phase 2. It is not the live Agent queue; resolve current work membership and state from native Issue and PR records, using Project #1 only as a mutable projection.",
+  "status": "taxonomy-and-dated-evidence",
+  "purpose": "Versioned lane definitions, safety boundaries, and dated evidence pointers for Phase 2. It is not a live Agent queue. Project #1's Lane field is the mutable navigation classification for current items; native Issue and PR records own item state, scope, risk, and done criteria. Resolve current sequencing with fresh native reads.",
   "a3ProductionCloseout": {
     "observedAt": "2026-08-26T13:57:52.8300715Z",
     "sourceCommit": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
@@ -36,11 +36,6 @@
     "sourceSecurity": "Dependabot open alerts 0; secret scanning disabled; code-scanning alert inventory unavailable because Code Security is not enabled; 13 of 40 workflow Action uses are full-SHA pinned",
     "requiresLiveVerification": true
   },
-  "nextActionQueue": [
-    "Use Issue #597 to establish the required promotion/recovery window; temporary artifact expiry does not invalidate the recorded deployment evidence, but current host and rollback-release availability require fresh inventory, and an unavailable packet cannot be newly promoted.",
-    "Address Issue #598 through focused full-SHA pinning, SBOM, provenance, and signing slices.",
-    "Refresh GitHub rulesets, required checks, environments, alerts, provider state, deployment identity, and production runtime evidence before relying on any of them."
-  ],
   "sourceDocs": [
     "docs/CURRENT_RELEASE_STATE.md",
     "docs/FOUNDATION_FREEZE_2026_07_09.md",
@@ -59,7 +54,7 @@
     {
       "id": "version-management",
       "name": "Version And Deployment Governance",
-      "status": "active-source-governance-hardening",
+      "status": "definition-only",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
       "purpose": "Keep source, artifact, deployment, and runtime evidence separate. The Git source cutoff 2824d01f9523ff39805083744e7b0c4f30bfef50 is later than the source recorded by the 2026-08-26 control-plane deployment event, b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c. This is Git-source / recorded-deployment-source drift and does not establish current runtime alignment. A3 CI, CodeQL, Release Artifact, Dependency Artifact, and production dry-run evidence applies to that recorded deployment source, and promotion-09 ended promoted_verified. Project #1 is a mutable work projection; current Issue and PR state comes from native GitHub records, and this lane does not copy mutable counts.",
       "primaryDocs": [
@@ -83,7 +78,7 @@
     {
       "id": "traffic-accounting",
       "name": "Traffic Accounting",
-      "status": "active-controlled-remediation",
+      "status": "definition-only",
       "riskBoundary": "B for collector contracts, redacted provenance, tests, and protected read-only projection; A for runtime, service, config, quota, or traffic-supply mutation",
       "purpose": "Continue the scope of Issue #437, resolving its current state from the native Issue record. PR #479 is merged source-only and is no longer an open Draft. No production deployment, current runtime reconciliation, accounting completeness, or identity-health conclusion is inferred from that merge.",
       "primaryDocs": [
@@ -106,9 +101,9 @@
     {
       "id": "portal-lifecycle",
       "name": "Portal User And Resource Lifecycle",
-      "status": "active-source-foundation",
+      "status": "definition-only",
       "riskBoundary": "B for lifecycle mapping, safe DTOs, tests, and focused UI consumption; A for auth activation, schema, or production static replacement",
-      "purpose": "Continue Issue #438 from the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders surfaces, Recharge entry boundary, and Account Resource Authority source. The 2026-08-26 production receipt records source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c as deployed; it does not establish current runtime alignment or that the current master source is deployed. The legacy Portal routes, Coins Wallet, Coins Commerce with audience all_active, and XSD recharge retain their documented prior enabled state. Wallet-first/deferred/Authority extensions were not activated, and new commercial extension paths remain gated.",
+      "purpose": "Continue Issue #438 from the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders surfaces, Recharge entry boundary, and Account Resource Authority source. The 2026-08-26 production receipt records source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c as deployed; it does not establish current runtime alignment or that the current master source is deployed. That receipt preserved the prior documented enabled-state record for legacy Portal routes, Coins Wallet, Coins Commerce with audience all_active, and XSD recharge without revalidating current runtime state. Wallet-first/deferred/Authority extensions were not activated by that event, and new commercial extension paths remain gated.",
       "primaryDocs": [
         "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
         "docs/USER_PORTAL_FLOW.md",
@@ -129,9 +124,9 @@
     {
       "id": "commercial-foundation",
       "name": "Commercial Foundation",
-      "status": "active-default-off-extension-foundation",
+      "status": "definition-only",
       "riskBoundary": "B for provider-neutral contracts, event catalogs, disabled adapters, and tests; A for live payment, credentials, webhooks, settlement, or AppsFlyer dispatch",
-      "purpose": "Continue Issues #439 and #522-#524 from implemented source foundations for Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority. The 2026-08-26 production receipt records source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c as deployed; it does not establish current runtime alignment or that the current master source is deployed. Legacy Coins Wallet, Coins Commerce with audience all_active, and XSD recharge retain their prior enabled state. Promotion-09 did not apply the four wallet-first schemas or activate wallet-first/deferred/Authority extensions; new provider and extension paths remain default-off or separately gated, and closed-unmerged PR #592 adds no production authority.",
+      "purpose": "Continue Issues #439 and #522-#524 from implemented source foundations for Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority. The 2026-08-26 production receipt records source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c as deployed; it does not establish current runtime alignment or that the current master source is deployed. That receipt preserved the prior documented enabled-state record for legacy Coins Wallet, Coins Commerce with audience all_active, and XSD recharge without revalidating current runtime state. Promotion-09 did not apply the four wallet-first schemas or activate wallet-first/deferred/Authority extensions; new provider and extension paths remain default-off or separately gated, and closed-unmerged PR #592 adds no production authority.",
       "primaryDocs": [
         "docs/BILLING_RECHARGE_CONTRACT.md",
         "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
@@ -155,7 +150,7 @@
     {
       "id": "operations-foundation",
       "name": "Operations Plane Foundation",
-      "status": "active-source-reconciliation",
+      "status": "definition-only",
       "riskBoundary": "A for schema or migration source changes, provider access, deployment, or runtime mutation; C only for factual docs and index updates",
       "purpose": "Track #557 as the Operations Plane v1 parent after #561 closed its source/document reconciliation. Reuse existing Admin auth/safe-read, traffic, Wallet/Ledger, Payment/Recharge, Coins Commerce, Account Resource Authority, and Lead capabilities. #558-#560 may add only the remaining RBAC, metric, and audit gaps; closed-unmerged PR #476 and the historical #475 lane do not establish a generic Operations event or Admin audit store.",
       "primaryDocs": [
@@ -182,7 +177,7 @@
     {
       "id": "legacy-retirement",
       "name": "Legacy Retirement",
-      "status": "active-controlled-retirement",
+      "status": "definition-only",
       "riskBoundary": "C for factual inventory and governance records; B for scoped source-only retirement with regression tests; A for provider, domain, deployment, runtime, credential, customer-data, or destructive production action",
       "purpose": "Coordinate Issues #521, #525, #527, and #551 around legacy product identities, Admin/company-site surfaces, workflows, and replacement evidence. Project status is an index; it neither proves production retirement nor authorizes deletion.",
       "primaryDocs": [
@@ -207,7 +202,7 @@
     {
       "id": "code-boundary",
       "name": "Code Boundary Cleanup",
-      "status": "planned-guardrail",
+      "status": "definition-only",
       "riskBoundary": "B for one behavior-preserving extraction with contract tests; A if a refactor changes auth, schema, runtime, or public behavior",
       "purpose": "Keep behavior-preserving boundary cleanup as an opportunistic guardrail only when active work exposes a measured ownership or dependency problem; keep the modular monolith intact. Use Project #1 for navigation, then resolve current Issue linkage from the native Issue record rather than copying live state here.",
       "primaryDocs": [
@@ -230,7 +225,7 @@
     {
       "id": "dependency-materialization",
       "name": "A3 Dependency Artifact Materialization",
-      "status": "completed-production-closeout",
+      "status": "definition-only",
       "riskBoundary": "B for source contracts and tests; A for privileged physical validation, production inventory, materialization, promotion, or rollback",
       "purpose": "Issue #636 is complete at the execution layer. PRs #646-#667 provide the safety contracts, physical XFS quota and service-native proofs, explicit XFS/bounded admission routes, hardened staging/controller flow and synchronized production repairs. Exact deployed source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c passed artifact and dry-run gates; candidate preparation and promotion-09 completed, ending promoted_verified on control-plane-b5ca23db-a3-sync-20260825. The b93577c XFS-only NO-GO remains historical evidence.",
       "primaryDocs": [
@@ -254,9 +249,9 @@
     {
       "id": "production-operations",
       "name": "Production Operations",
-      "status": "active-boundary",
+      "status": "definition-only",
       "riskBoundary": "A for every production, provider, DNS, Nginx, systemd, firewall, schema, deployment, promotion, rollback, or live customer-data action",
-      "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog. The latest recorded control-plane release is control-plane-b5ca23db-a3-sync-20260825 from source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; promotion-09 ended promoted_verified with the previous immutable release retained. Any later Risk A action requires fresh inventory and new authority. This C-tier reconciliation performs no production access or mutation.",
+      "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog. The 2026-08-26 terminal receipt recorded control-plane-b5ca23db-a3-sync-20260825 from source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c as promoted_verified and recorded the previous immutable release as retained at that cutoff. Current release and rollback availability were not read and require fresh inventory. Any later Risk A action requires new authority. This C-tier reconciliation performs no production access or mutation.",
       "primaryDocs": [
         "docs/CURRENT_RELEASE_STATE.md",
         "docs/RUNTIME_LANE_AUTHORITY.md",
@@ -300,7 +295,7 @@
       "code-boundary",
       "production-operations"
     ],
-    "authority": "Project fields are a mutable projection and navigation index. Lane definitions and safety boundaries remain reviewed here; native Issue/PR records, exact receipts, and fresh production evidence remain authoritative in their own domains.",
+    "authority": "Project fields are a mutable projection and navigation index. The Project Lane field classifies current item membership for navigation; lane definitions and safety boundaries remain reviewed here. Native Issue/PR records, exact receipts, and fresh production evidence remain authoritative in their own domains.",
     "migrationBoundary": "This baseline configures Project fields, views, and native workflows; it does not migrate work, production, or approval authority into Project."
   }
 }
