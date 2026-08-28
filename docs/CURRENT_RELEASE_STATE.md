@@ -6,31 +6,36 @@ document_metadata:
   lifecycle: active
   authority_scope: current_release_state
   superseded_by: null
-  last_verified_at: 2026-08-26
+  last_verified_at: 2026-08-28
   production_authority: false
 ```
 
 > Status:
-> - Type: Current documented release snapshot
+> - Type: Dated documented release snapshot
 > - Version management baseline: `v3` artifact and runtime-identity foundation
-> - Current source inventory: `master@b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`
->   observed 2026-08-26, America/Los_Angeles
-> - Latest release source and production deployment event: 2026-08-26,
->   `control-plane-app` source `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`
-> - Latest deployed release identity:
+> - Git source reconciliation cutoff:
+>   `master@2824d01f9523ff39805083744e7b0c4f30bfef50`, observed 2026-08-28;
+>   this is not a permanent current-head claim
+> - Latest recorded control-plane deployment event: 2026-08-26, deployed source
+>   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`
+> - Recorded deployed release identity:
 >   `control-plane-b5ca23db-a3-sync-20260825`
 > - Exact deployed-source build evidence: Release Artifact run `32854893859`,
 >   Dependency Artifact run `32854893837`, and Production Deploy Dry Run
 >   `32856999391`
-> - Current control-plane identity: promotion-09 terminal readback on 2026-08-26
->   matched the release pointer, service and process working directory; a later
->   public-only health window returned three HTTP 200 responses
+> - Recorded control-plane terminal observation: promotion-09 readback on
+>   2026-08-26 matched the release pointer, service and process working
+>   directory; a later public-only health window returned three HTTP 200
+>   responses
+> - This C-tier reconciliation performed no fresh production or runtime readback
 > - Execution authority: None
 
 ## A3 Production Closeout (2026-08-26)
 
-Current `master@b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` is merged PR #667 and is
-the exact source of the latest `control-plane-app` deployment. Release Artifact
+At the 2026-08-26 deployment cutoff,
+`master@b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` resolved to merged PR #667
+and was the exact source of the latest recorded `control-plane-app`
+deployment. Release Artifact
 run `32854893859` produced `proxy-gateway-b5ca23db58c5` (Actions artifact ID
 `9565756416`), and Dependency Artifact run `32854893837` produced
 `control-plane-dependency-b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`
@@ -59,8 +64,8 @@ and the
 [Issue #636 closeout receipt](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/636#issuecomment-5426441456).
 A delayed public-only health window returned three HTTP 200 responses without
 redirects. No database restore, schema mutation, feature activation,
-runtime-identity change or old-release deletion occurred. The previous
-immutable release remains retained as the code-pointer rollback target.
+runtime-identity change or old-release deletion occurred. The terminal receipt
+recorded the previous immutable release as retained for code-pointer rollback.
 
 This closes the A3 dependency-materialization and production-promotion outcome
 for `control-plane-app`. It does not activate wallet-first, deferred-runtime or
@@ -69,7 +74,7 @@ the Portal, Admin, company-site or runtime-config release units.
 
 ## Dated Source And A3 Reconciliation (2026-08-23)
 
-The current reviewed source is
+The reviewed source observed at the 2026-08-23 reconciliation cutoff was
 `master@42d17885646d52387f9327f19e2a2e0d70b2b84e`, which includes merged PR
 #662. Exact-master CI run `32645695594`, CodeQL run `32645695630`, Release
 Artifact run `32645695598`, and Control Plane Dependency Artifact run
@@ -176,8 +181,10 @@ The detailed capability/gap matrix is
 2026-08-09—three open Draft PRs, no open non-Draft PR, and fifteen open
 Issues—are retained only as historical context. At the 2026-08-22 inventory,
 PR #592 and #594 are closed unmerged, PR #593 is merged docs-only, Issue #561
-is closed, and there are no open PRs. Current sequencing uses the eighteen live
-Issues recorded in `project-state/*.json`.
+is closed, and there are no open PRs. Those item counts and states are dated
+evidence only. Current sequencing must be resolved from native live Issues and
+PRs, using Project #1 only as navigation; `project-state/*.json` does not own
+the live queue.
 
 Source availability, clean validation, migrations, feature flags, and build
 artifacts do not establish activation of the wallet-first/deferred/Authority
@@ -207,8 +214,9 @@ Artifact Manifest v1 has build-time coverage for three release units:
 | `portal-static` | Tracked | The Portal job builds and verifies `admin/dist-portal`, then emits a ZIP, checksum, and `artifact.json`. |
 | `admin-static` | Tracked | The Admin job builds and verifies `admin/dist`, then emits a ZIP, checksum, and `artifact.json`. |
 
-The 2026-08-26 Deploy Note binds the current recorded deployment to exact source
-`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`, source artifact ID `9565756416`,
+The 2026-08-26 Deploy Note binds the deployment recorded at that cutoff to
+exact source `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`, source artifact ID
+`9565756416`,
 dependency artifact ID `9565754679`, Production Deploy Dry Run `32856999391`
 and release `control-plane-b5ca23db-a3-sync-20260825`. Earlier 2026-08-16 and
 2026-08-14 control-plane deployments remain historical evidence. None of these
@@ -219,9 +227,9 @@ contract for `japan-runtime-config` and `sgp-runtime-config`. A generated
 identity is not a deploy event, and this Risk C reconciliation did not observe
 either live host.
 
-The latest exact-master build proof used by the recorded deployment is Release
-Artifact run `32854893859` plus Dependency Artifact run `32854893837` for
-`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`.
+The exact-source build proof used by the recorded 2026-08-26 deployment is
+Release Artifact run `32854893859` plus Dependency Artifact run `32854893837`
+for `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`.
 
 ## Latest Recorded Production Deployment
 
@@ -419,12 +427,16 @@ action remains behind its separate exact Risk A gate and current evidence.
 
 ## Source And Production Drift
 
-The latest deployed control-plane source and current `master` are both
-`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`. The A3 bounded dependency
-materialization and promotion path is therefore deployed and verified for this
-`control-plane-app` release. The earlier XFS-only A3-2 `NO-GO` remains
-historical evidence explaining why the bounded ext4 route was added; it is no
-longer the current A3 terminal state.
+The Git source cutoff observed on 2026-08-28 is
+`master@2824d01f9523ff39805083744e7b0c4f30bfef50`. The latest recorded
+control-plane deployment event used source
+`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` on 2026-08-26. These identities
+are intentionally distinct. This docs-only reconciliation performed no fresh
+runtime readback and cannot state current runtime alignment. The A3 bounded
+dependency materialization and promotion path is recorded as deployed and
+verified for that `control-plane-app` release. The earlier XFS-only A3-2
+`NO-GO` remains historical evidence explaining why the bounded ext4 route was
+added; it is not the terminal A3 state recorded by the 2026-08-26 closeout.
 
 Source/deployment alignment does not prove activation of wallet-first,
 deferred runtime, Authority, or the four wallet-first schema gates. Promotion-09
@@ -450,8 +462,8 @@ lane. Those remain separate Risk A actions.
 - `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`
 - Detailed source-capability cutoff
   `master@02fc63a3f949b748dcccf26ba7d310be82f4b6df`
-- Current source inventory
-  `master@b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`
+- Git source reconciliation cutoff observed 2026-08-28
+  `master@2824d01f9523ff39805083744e7b0c4f30bfef50`
 - GitHub CI run `32854893874`
 - GitHub CodeQL run `32854893258`
 - GitHub Release Artifact run `32854893859`
@@ -465,9 +477,9 @@ lane. Those remain separate Risk A actions.
 - [Issue #636 A3-2 inventory receipt](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/636#issuecomment-5385197978)
 - [PR #667 final Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/667#issuecomment-5426440067)
 - [Issue #636 production closeout receipt](https://github.com/gccwebos-com/proxy-gateway-minimal/issues/636#issuecomment-5426441456)
-- Deployed control-plane source
+- Control-plane deployment-event source recorded 2026-08-26
   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`
-- Deployed release
+- Release identity recorded by that deployment event
   `control-plane-b5ca23db-a3-sync-20260825`
 - Prior release evidence:
   [PR #622 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/622#issuecomment-5305417656)

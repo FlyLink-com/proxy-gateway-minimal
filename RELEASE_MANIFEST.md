@@ -6,17 +6,17 @@ document_metadata:
   lifecycle: active
   authority_scope: release_traceability
   superseded_by: null
-  last_verified_at: 2026-08-26
+  last_verified_at: 2026-08-28
   production_authority: false
 ```
 
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-08-26, America/Los_Angeles
-> - Source inventory baseline:
->   `master@b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`
-> - Latest recorded production deployment event: 2026-08-26, source
+> - Last updated: 2026-08-28, America/Los_Angeles
+> - Source reconciliation cutoff observed on 2026-08-28:
+>   `master@2824d01f9523ff39805083744e7b0c4f30bfef50`
+> - Latest recorded production deployment event: 2026-08-26, deployed source
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`; promotion-09 ended
 >   `promoted_verified` on release `control-plane-b5ca23db-a3-sync-20260825`
 > - Production authority: None. This file does not deploy, promote, roll back,
@@ -83,9 +83,9 @@ enforcement. Branch/ruleset or deployment-environment protection may be
 claimed only after live readback. Any workflow capable of real production
 deployment must remain disabled or require independently enforced approval.
 
-## Current Recorded Control-Plane Deployment
+## Recorded Control-Plane Deployment (2026-08-26)
 
-The latest durable `control-plane-app` deployment record is the
+The deployment record reviewed at this document cutoff is the
 [PR #667 Deploy Note](https://github.com/gccwebos-com/proxy-gateway-minimal/pull/667#issuecomment-5426440067):
 
 - deployed at `2026-08-26T13:53:47.576Z`;
@@ -98,28 +98,34 @@ overlay, bounded materialization, restricted service-native smoke, SQLite
 snapshot/custody, atomic pointer exchange, one candidate start, PID/CWD binding,
 health validation and terminal readback. No database restore, schema mutation,
 feature activation, runtime-identity change or old-release deletion occurred.
-The prior immutable release remains retained for a separately authorized
-code-pointer rollback. This reconciliation grants no new production authority.
+The terminal receipt recorded the prior immutable release as retained for a
+separately authorized code-pointer rollback. This reconciliation grants no new
+production authority and performed no fresh runtime readback.
 
 ## Deployment Promotion Boundary
 
-Closed Issue #457 records the proven company-site promotion boundary. The
-linked Vercel project keeps `master` as its Production Branch and has automatic
-custom production-domain assignment disabled. Real merges through #468 created
-production-target candidates without moving the public custom aliases.
+These provider facts reproduce the last observations linked from Issues #457
+and #462; neither provider was re-read during the 2026-08-28 C-tier
+reconciliation.
+
+Closed Issue #457 records the proven company-site promotion boundary. At that
+receipt cutoff, the linked Vercel project recorded `master` as its Production
+Branch and automatic custom production-domain assignment as disabled. Real
+merges through #468 created production-target candidates without moving the
+public custom aliases.
 
 The latest observed candidate is READY at
 `proxy-gateway-minimal-l4wfa6q0h-gccltd.vercel.app`, GitHub deployment
 `5403913679`, for source
 `e1beacc15fdc35661077cd3387f3ba17a3966e1a`. It has
 `production_environment=false` and did not receive `gccwebos.com` or
-`www.gccwebos.com`. Both public aliases remain on deployment
+`www.gccwebos.com`. That receipt recorded both public aliases on deployment
 `proxy-gateway-minimal-hqdudl13g-gccltd.vercel.app`, GitHub deployment
 `5389897330`, sourced from `7e9a8667657e5323e09ff7c262da85d26729e69b`.
 Promotion or rollback remains a separate exact Risk A gate.
 
-The repository Cloudflare workflow keeps auto-deploy disabled and performs a
-Wrangler dry run. A separate native Workers Builds production trigger was found
+At the recorded cutoff, the repository Cloudflare workflow had auto-deploy
+disabled and performed a Wrangler dry run. A separate native Workers Builds production trigger was found
 to auto-promote every `master` commit. The #461 merge created active deployment
 `540da82f-b04d-4d67-9c8d-c5542d55e8a5`, version
 `e5a648c9-d3c4-47b7-afb9-4bbed8f1be70` at 100%, on a workers.dev-only surface
@@ -128,7 +134,7 @@ with no custom domains.
 The approved Issue #462 gate changed only that trigger's deploy command from
 `npx wrangler deploy` to `npx wrangler versions upload`. The setting change
 created no build, version, or deployment, and the #463 merge then proved that a
-reviewed `master` merge saves a version without promoting it. Issue #462 is
+reviewed `master` merge saved a version without promoting it. Issue #462 is
 closed. The #468 merge created saved candidate version
 `407eb863-0e82-4e73-af54-3a44722b07c9` in build
 `f186b7d5-533c-4f5b-b056-27777243d93f`; the active deployment identity was not
@@ -242,17 +248,17 @@ The manifest contains only the portable artifact identity:
 
 `scripts/create-artifact-manifest.mjs` recognizes the eight fixed release
 units, rejects non-portable source/release metadata, and records only the
-artifact base name rather than a local or host path. Automated artifact
-identity now covers `control-plane-app`, `portal-static`, and `admin-static`;
-the production dry-run workflow remains limited to `control-plane-app`. The
-static jobs build and verify `admin/dist-portal` or `admin/dist` before
-packaging them, but do not deploy or promote either artifact. Generating this
-file does not change runtime state.
+artifact base name rather than a local or host path. At the 2026-08-26 source
+cutoff, automated artifact identity covered
+`control-plane-app`, `portal-static`, and `admin-static`; the production
+dry-run workflow was limited to `control-plane-app`. The static jobs built and
+verified `admin/dist-portal` or `admin/dist` before packaging them, but did
+not deploy or promote either artifact. Generating this file does not change
+runtime state.
 
-`admin-static` identifies the default Admin entrypoint as it is built today; it
-does not assert physical source isolation. That entrypoint still bundles shared
-Portal and company-site routes until a separate boundary-cleanup task removes
-them.
+At that cutoff, `admin-static` identified the default Admin entrypoint without
+asserting physical source isolation. That entrypoint bundled shared Portal and
+company-site routes; any current source boundary must be read from Git.
 
 Short-lived GitHub Actions artifacts are build evidence only. They do not by
 themselves satisfy the Artifact Gate's deployment-and-rollback-window
@@ -266,8 +272,8 @@ for source `4fbe022264e30acd9e487dd880b7d4ed544be259`. Its uploaded ZIP, checksu
 sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size,
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
-The latest verified exact-`master` proof at this inventory cutoff is Release
-Artifact run `32854893859` for source
+The latest verified release-artifact proof recorded at the 2026-08-26
+inventory cutoff is Release Artifact run `32854893859` for source
 `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`. Its control-plane artifact is
 `proxy-gateway-b5ca23db58c5` (ID `9565756416`, observed expiry
 `2026-09-08T13:42:13Z`); the inner ZIP is 7,563,583 bytes with SHA-256
@@ -430,32 +436,40 @@ not current-`master` integration evidence.
 PRs #476 and #479 are no longer open. Their status and Gate narrative above are
 historical evidence only and must not be used to sequence current work.
 
-## Current Source Governance Boundary
+## Source Reconciliation Boundary (2026-08-28)
 
-The exact source cutoff observed on 2026-08-26 is
-`master@b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (merged PR #667). The
-2026-08-23 GitHub counts remain a dated inventory and are not silently treated
-as current. Current sequencing belongs to live Issues and
-`project-state/*.json`, not to historical Draft descriptions.
+The Git source cutoff observed on 2026-08-28 is
+`master@2824d01f9523ff39805083744e7b0c4f30bfef50`. The latest recorded
+control-plane deployment event used source
+`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` in the 2026-08-26 PR #667 Deploy
+Note. These identities are intentionally distinct, and this document performed
+no fresh runtime readback.
 
-The current source language includes Admin/Operations read foundations, Wallet
-and immutable Coin Ledger, durable Recharge/Payment, Coins Commerce, Account
-Resource Authority, traffic usage projections, and trusted-proxy attribution.
-These span previously enabled legacy surfaces and newer
-source/test/migration/default-off extensions. Their exact consumer and gap
-boundaries are maintained in
-`docs/OPERATIONS_PLANE_SOURCE_REALITY.md`. The exact source is present in the
-deployed control-plane release. Promotion-09 neither enabled nor revalidated
-the legacy surfaces, and it did not apply the wallet-first schemas, activate
-the wallet-first/deferred/Authority extensions, or prove new provider/runtime
+The 2026-08-23 GitHub counts remain a dated inventory and are not silently
+treated as current. Current sequencing must be resolved from native live Issues
+and PRs, using Project #1 only as navigation; dated `project-state/*.json`
+records do not replace that live read.
+
+The capability record for deployed source
+`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` includes Admin/Operations read
+foundations, Wallet and immutable Coin Ledger, durable Recharge/Payment, Coins
+Commerce, Account Resource Authority, traffic usage projections, and
+trusted-proxy attribution. These span previously enabled legacy surfaces and
+newer source/test/migration/default-off extensions. Their exact consumer and gap
+boundaries are maintained in `docs/OPERATIONS_PLANE_SOURCE_REALITY.md`. The
+recorded deployed control-plane release contains that deployed source.
+Promotion-09 neither enabled nor revalidated the legacy surfaces, and it did
+not apply the wallet-first schemas, activate the
+wallet-first/deferred/Authority extensions, or prove new provider/runtime
 readiness.
 
 Release Artifact run `32854893859` successfully built the control-plane,
-Portal, and Admin units at the exact source cutoff. Dependency Artifact run
-`32854893837` produced the corresponding Linux dependency artifact. The exact
-control-plane and dependency packets were used by the recorded A3 deployment;
-the GitHub copies remain short-lived and do not close Issue #597's durable
-retention requirement.
+Portal, and Admin units for deployed source
+`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`. Dependency Artifact run
+`32854893837` produced the corresponding Linux dependency artifact. Those
+exact control-plane and dependency packets were used by the recorded A3
+deployment; the GitHub copies remain short-lived and do not close Issue #597's
+durable retention requirement.
 
 The 2026-08-22 readback observed zero open Dependabot alerts, secret scanning
 disabled, and no available code-scanning alert inventory because Code Security
@@ -466,8 +480,9 @@ only the bounded Japan `control-plane-app` release, materialization, snapshot,
 service and health boundaries recorded above. Issues #597 and #598 retain the
 durable release and supply-chain closure.
 
-Only `control-plane-b5ca23db-a3-sync-20260825` is declared deployed by this
-manifest, based on the linked Deploy Note. A source-only PR may say that
+The only control-plane deployment recorded by this manifest is
+`control-plane-b5ca23db-a3-sync-20260825`, based on the linked Deploy Note. A
+source-only PR may say that
 deployment is not applicable; that statement is not a Deploy Note and must not
 be backfilled as production evidence.
 
