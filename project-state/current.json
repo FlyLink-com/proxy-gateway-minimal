@@ -1,9 +1,9 @@
 {
-  "schemaVersion": "2026-08-28.1",
+  "schemaVersion": "2026-08-28.2",
   "lastUpdated": "2026-08-28",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
-  "purpose": "Compact current project state for Agent orientation. Verify drift-prone GitHub, deployment, and production facts live before any Risk A action.",
+  "purpose": "Dated, reviewed coordination snapshot for Agent orientation. It is not a live work index; verify GitHub, deployment, and production facts from their authoritative sources before relying on them, and before every Risk A action.",
   "sourceDocs": [
     "docs/CURRENT_RELEASE_STATE.md",
     "RELEASE_MANIFEST.md",
@@ -48,7 +48,8 @@
       "url": "https://github.com/orgs/gccwebos-com/projects/1",
       "verifiedAt": "2026-08-28",
       "repository": "gccwebos-com/proxy-gateway-minimal",
-      "authority": "Dynamic work index only; Issue and PR records own delivery evidence, and production receipts own deployed/runtime state."
+      "authority": "Mutable work projection and navigation index only; current Issue and PR state comes from their native records, and deployed/runtime state requires dated receipts plus fresh task-specific verification.",
+      "migrationBoundary": "This baseline configures Project fields, views, and native workflows; it does not migrate work, production, or approval authority into Project."
     },
     "mergePolicyObservation": {
       "inventoryDate": "2026-08-23",
@@ -116,11 +117,11 @@
   ],
   "activeDirections": [
     "Phase 2 is Operational Reliability, not broad feature expansion.",
-    "Traffic Accounting, Portal lifecycle, and commercial foundation work have substantial merged source foundations; no production or runtime completion is inferred. Resolve current Issue status from Project #1.",
+    "Traffic Accounting, Portal lifecycle, and commercial foundation work have substantial merged source foundations; no production or runtime completion is inferred. Use Project #1 for navigation, then resolve current status from the native Issue and PR records.",
     "The source cutoff observed before this reconciliation is master@2824d01f9523ff39805083744e7b0c4f30bfef50; the verified deployed control-plane source remains b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c. Source and production are in drift. Existing legacy Portal routes, Coins Wallet, Coins Commerce with audience all_active, and XSD recharge retained their prior documented state; promotion-09 neither enabled nor revalidated them.",
-    "The Operations source-reality reconciliation is historical evidence. Resolve current Operations/Admin authorization, metric, audit, and item status from Project #1 rather than copying open/closed state here.",
+    "The Operations source-reality reconciliation is historical evidence. Use Project #1 for navigation, then resolve current Operations/Admin scope, authorization, metrics, audit evidence, and item state from the native Issue and PR records.",
     "Issues #521, #525, #527, and #551 track retirement or quarantine of legacy product identities and source surfaces; #522-#524 govern the Coins-first decision, Portal integration, and durable settlement/fulfillment lifecycle.",
-    "Use GCC WebOS — Delivery Project #1 and live GitHub queries for current Issue, PR, review, and workflow state. Do not copy live counts or per-item status into this state file; Project status carries no production authority.",
+    "Use GCC WebOS — Delivery Project #1 as a mutable navigation projection, and use fresh Issue, PR, review, check-run, and workflow reads for current state. Do not copy live counts or per-item status into this state file; Project status carries no production or approval authority.",
     "Issue #636 A3 source and production path is merged through PR #667. Exact-head XFS quota and service-native smoke proofs, bounded ext4 admission, hardened staging, candidate preparation and promotion-09 completed; the current release is control-plane-b5ca23db-a3-sync-20260825 with terminal state promoted_verified.",
     "Release Artifact run 32854893859, Dependency Artifact run 32854893837 and Production Deploy Dry Run 32856999391 succeeded for exact deployed source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; the GitHub artifacts are temporary through 2026-09-08 even though the exact packets were verified during deployment.",
     "Issues #597 and #598 retain the release-loop and supply-chain gaps: durable artifact/rollback identity, SBOM/signing/provenance, and remaining mutable-tag Action references.",
@@ -322,7 +323,7 @@
     "releaseSourceCommit": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
     "releaseEvidenceDate": "2026-08-26",
     "sourceCutoffBoundary": "A3 release evidence validates b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; it does not validate the later master source cutoff 2824d01f9523ff39805083744e7b0c4f30bfef50.",
-    "githubProject": "GCC WebOS — Delivery Project #1 is the live work index; it is not production evidence."
+    "githubProject": "GCC WebOS — Delivery Project #1 is a mutable work projection; it is not authoritative Issue/PR state, production evidence, or approval."
   },
   "sourceSecuritySnapshot": {
     "inventoryDate": "2026-08-22",
@@ -341,12 +342,12 @@
   "activeBlockers": [
     {
       "id": "release-maturity-and-supply-chain",
-      "summary": "Issue scopes #597 and #598 retain release-lifecycle and supply-chain gaps: deployed-source GitHub artifacts are temporary, 27 workflow Action references use mutable tags, and durable SBOM/signing/provenance closure is not established. Resolve their current item state from Project #1.",
+      "summary": "Issue scopes #597 and #598 retain release-lifecycle and supply-chain gaps: deployed-source GitHub artifacts are temporary, 27 workflow Action references use mutable tags, and durable SBOM/signing/provenance closure is not established. Resolve current Issue state from the native Issue records; Project #1 is navigation only.",
       "sourceDoc": "RELEASE_MANIFEST.md"
     },
     {
       "id": "japan-tuic-identity-sync",
-      "summary": "The dated 2026-07-11 Issue #437 evidence observed two missing and nineteen stale Japan TUIC map bindings. PR #479 later merged source-only; current production state still requires live verification, and current Issue status must be read from Project #1.",
+      "summary": "The dated 2026-07-11 Issue #437 evidence observed two missing and nineteen stale Japan TUIC map bindings. PR #479 later merged source-only; current production state still requires fresh verification, and current Issue status must be read from the native Issue record; Project #1 is navigation only.",
       "sourceDoc": "docs/CURRENT_RELEASE_STATE.md"
     },
     {

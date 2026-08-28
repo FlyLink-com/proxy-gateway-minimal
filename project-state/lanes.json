@@ -1,9 +1,9 @@
 {
-  "schemaVersion": "2026-08-28.1",
+  "schemaVersion": "2026-08-28.2",
   "lastUpdated": "2026-08-28",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
-  "purpose": "Compact current lane index for Phase 2. Historical lanes remain in Git history and indexed execution records, not in the active Agent queue.",
+  "purpose": "Versioned lane-definition and dated evidence index for Phase 2. It is not the live Agent queue; resolve current work membership and state from native Issue and PR records, using Project #1 only as a mutable projection.",
   "a3ProductionCloseout": {
     "observedAt": "2026-08-26T13:57:52.8300715Z",
     "sourceCommit": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
@@ -61,7 +61,7 @@
       "name": "Version And Deployment Governance",
       "status": "active-source-governance-hardening",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
-      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. The source cutoff 2824d01f9523ff39805083744e7b0c4f30bfef50 is later than the verified deployed control-plane source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; source and production are in drift. A3 CI, CodeQL, Release Artifact, Dependency Artifact and production dry-run evidence applies to the deployed source, and promotion-09 ended promoted_verified. Project #1 supplies live work state; this lane does not copy mutable Issue, PR, or branch counts.",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. The source cutoff 2824d01f9523ff39805083744e7b0c4f30bfef50 is later than the verified deployed control-plane source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; source and production are in drift. A3 CI, CodeQL, Release Artifact, Dependency Artifact, and production dry-run evidence applies to the deployed source, and promotion-09 ended promoted_verified. Project #1 is a mutable work projection; current Issue and PR state comes from native GitHub records, and this lane does not copy mutable counts.",
       "primaryDocs": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -108,7 +108,7 @@
       "name": "Portal User And Resource Lifecycle",
       "status": "active-source-foundation",
       "riskBoundary": "B for lifecycle mapping, safe DTOs, tests, and focused UI consumption; A for auth activation, schema, or production static replacement",
-      "purpose": "Continue Issue #438 from the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders surfaces, Recharge entry boundary, and Account Resource Authority source. The current control-plane source is deployed, while the legacy Portal routes, Coins Wallet, Coins Commerce with audience all_active and XSD recharge retain their documented prior enabled state. Wallet-first/deferred/Authority extensions were not activated, and new commercial extension paths remain gated.",
+      "purpose": "Continue Issue #438 from the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders surfaces, Recharge entry boundary, and Account Resource Authority source. The 2026-08-26 production receipt verifies deployed control-plane source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; it does not establish that the current master source is deployed. The legacy Portal routes, Coins Wallet, Coins Commerce with audience all_active, and XSD recharge retain their documented prior enabled state. Wallet-first/deferred/Authority extensions were not activated, and new commercial extension paths remain gated.",
       "primaryDocs": [
         "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
         "docs/USER_PORTAL_FLOW.md",
@@ -131,7 +131,7 @@
       "name": "Commercial Foundation",
       "status": "active-default-off-extension-foundation",
       "riskBoundary": "B for provider-neutral contracts, event catalogs, disabled adapters, and tests; A for live payment, credentials, webhooks, settlement, or AppsFlyer dispatch",
-      "purpose": "Continue Issues #439 and #522-#524 from implemented source foundations for Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority. The current control-plane source is deployed; legacy Coins Wallet, Coins Commerce with audience all_active and XSD recharge retain their prior enabled state. Promotion-09 did not apply the four wallet-first schemas or activate wallet-first/deferred/Authority extensions; new provider and extension paths remain default-off or separately gated, and closed-unmerged PR #592 adds no production authority.",
+      "purpose": "Continue Issues #439 and #522-#524 from implemented source foundations for Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority. The 2026-08-26 production receipt verifies deployed control-plane source b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c; it does not establish that the current master source is deployed. Legacy Coins Wallet, Coins Commerce with audience all_active, and XSD recharge retain their prior enabled state. Promotion-09 did not apply the four wallet-first schemas or activate wallet-first/deferred/Authority extensions; new provider and extension paths remain default-off or separately gated, and closed-unmerged PR #592 adds no production authority.",
       "primaryDocs": [
         "docs/BILLING_RECHARGE_CONTRACT.md",
         "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
@@ -209,7 +209,7 @@
       "name": "Code Boundary Cleanup",
       "status": "planned-guardrail",
       "riskBoundary": "B for one behavior-preserving extraction with contract tests; A if a refactor changes auth, schema, runtime, or public behavior",
-      "purpose": "Keep behavior-preserving boundary cleanup as an opportunistic guardrail only when active work exposes a measured ownership or dependency problem; keep the modular monolith intact. Resolve any current Issue linkage from GitHub Project #1 rather than copying live state here.",
+      "purpose": "Keep behavior-preserving boundary cleanup as an opportunistic guardrail only when active work exposes a measured ownership or dependency problem; keep the modular monolith intact. Use Project #1 for navigation, then resolve current Issue linkage from the native Issue record rather than copying live state here.",
       "primaryDocs": [
         "docs/PROJECT_SIMPLIFICATION_MAP.md",
         "docs/DOMAIN_UNIT_BOUNDARIES.md",
@@ -300,6 +300,7 @@
       "code-boundary",
       "production-operations"
     ],
-    "authority": "Project fields are a dynamic work index. Lane definitions and safety boundaries remain reviewed here; Issue/PR and production evidence remain authoritative in their own domains."
+    "authority": "Project fields are a mutable projection and navigation index. Lane definitions and safety boundaries remain reviewed here; native Issue/PR records, exact receipts, and fresh production evidence remain authoritative in their own domains.",
+    "migrationBoundary": "This baseline configures Project fields, views, and native workflows; it does not migrate work, production, or approval authority into Project."
   }
 }

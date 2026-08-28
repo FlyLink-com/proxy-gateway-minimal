@@ -43,23 +43,32 @@ credential, payment, subscription-material, or customer-data actions.
 
 ## Read First
 
-Use this order before any work:
+Use the repository entry order required by `AGENTS.md` and restated by
+`docs/README.md`:
 
-1. `docs/PROJECT_CONTEXT.md` for the current source-coordination boundary
-2. `docs/CURRENT_RELEASE_STATE.md` for dated deployed/runtime evidence
-3. `RELEASE_MANIFEST.md` for the release identity contract
-4. [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) for live Issue/PR
-   coordination
-5. `git status --short --branch`
-6. `docs/README.md`
-7. The subsystem README relevant to the task
+1. `docs/CURRENT_RELEASE_STATE.md` for dated deployed/runtime evidence
+2. `RELEASE_MANIFEST.md` for the release identity contract
+3. `docs/PROJECT_CONTEXT.md` for the current source-coordination boundary
+4. `git status --short --branch`
+5. `docs/README.md`
+6. The subsystem README relevant to the task
+7. [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) for live Issue/PR
+   coordination when relevant
 8. Live GitHub, deployment, or production inventory required by the task risk
 
-`AGENTS.md` always applies. Project #1 is the dynamic work index; it does not
-replace Issue/PR evidence or production receipts. `project-state/*.json` is a
-reviewed coordination and lane-semantics layer; it must not copy mutable GitHub
-counts, override canonical documents or live evidence, or authorize external
-mutation.
+`AGENTS.md` always applies. Project #1 is a mutable work index and navigation
+projection; native Issue and PR records remain authoritative for their own
+state, and dated production receipts require fresh task-specific verification.
+`project-state/lanes.json` owns reviewed lane definitions. Existing
+`project-state/current.json` and `project-state/tasks.json` remain transitional
+compatibility snapshots until their active consumers are migrated; neither can
+override fresh GitHub, deployment, or runtime evidence or authorize mutation.
+
+**Authority transition:** The domain-scoped target model is defined, but the
+repository-wide cutover is not complete. Active documents and tools that still
+consume legacy state remain compatibility obligations. Any conflict is a
+transition blocker and must fail closed against a fresh read from the relevant
+domain owner.
 
 `docs/CURRENT_RELEASE_STATE.md` and `RELEASE_MANIFEST.md` retain the 2026-08-26
 A3 release wording that labels `b5ca23db...` as current source/master. Until a
@@ -193,10 +202,12 @@ exact Risk A gate.
 
 ## Active Work Lanes
 
-Project #1 owns current item membership and the six live coordination fields.
+Project #1 projects the work items currently present in that Project and the
+six live coordination fields. Native Issue and PR records, plus fresh
+reconciliation, determine repository work completeness and item state.
 `project-state/lanes.json` owns lane definitions and safety boundaries. Issue
-bodies remain authoritative for scope, risk, done criteria, and production
-gates.
+bodies remain authoritative for scope, declared risk, done criteria, and links
+to any required production gate.
 
 The Project-facing lanes are:
 
@@ -358,5 +369,5 @@ Use these entrypoints:
   gate and operator approval.
 - Do not treat a merged PR, successful CI run, artifact, migration, feature
   flag, runbook, or dated execution record as current production proof.
-- Use current source and live Issue/project-state evidence for sequencing; do
-  not reactivate historical lanes from a frozen snapshot.
+- Use current source and live Issue/Project evidence for sequencing; do not
+  reactivate historical lanes from a frozen snapshot.

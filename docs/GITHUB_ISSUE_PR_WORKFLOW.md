@@ -278,14 +278,26 @@ Issues, PRs, deployment receipts, or production evidence.
 
 Keep authority separated:
 
-- An Issue owns the durable goal, scope, risk, done criteria, and Risk A gate.
+- An Issue owns the durable goal, scope, declared risk, done criteria, and links
+  to any required Risk A gate; an Issue field or status never grants mutation
+  authority.
 - A PR owns the concrete diff, tests, Deploy Note when applicable, and
   remaining gates.
 - Project #1 projects live work through six narrow fields: `Status`, `Lane`,
   `Risk`, `Source / Production State`, `Validation State`, and
   `Production Impact`.
-- `project-state/*.json` owns reviewed lane semantics and dated evidence
-  boundaries. It must not become a hand-maintained copy of live Project counts.
+- `project-state/lanes.json` owns reviewed lane definitions and safety
+  boundaries. Dated state snapshots may preserve evidence, but they do not own
+  current Issue, PR, Project, deployment, or runtime facts.
+
+The repository-wide authority transition is not complete. Active documentation
+and tooling still consume legacy sequencing or state from
+`docs/CURRENT_RELEASE_STATE.md`, `RELEASE_MANIFEST.md`,
+`docs/PROJECT_CONTROL_PLANE.md`, `project-state/current.json`, and
+`project-state/tasks.json`. Until those consumers are migrated, this section
+defines the target boundary rather than a completed cutover. Conflicts are
+transition blockers and must be resolved from the relevant domain owner, never
+by choosing whichever copied value appears newer.
 
 The native Project workflows verified on 2026-08-28 are:
 
