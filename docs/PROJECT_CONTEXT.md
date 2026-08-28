@@ -219,8 +219,9 @@ The Project-facing lanes are:
 
 Internal `code-boundary` and `production-operations` lanes remain in the
 machine-readable model because existing tasks reference them; they are not
-additional Project taxonomy. Read current Issue and PR state from Project #1
-and GitHub rather than maintaining a second status table here.
+additional Project taxonomy. Read current Issue and PR state from their native
+records, using Project #1 only for navigation rather than maintaining a second
+status table here.
 
 ## Release And Artifact State
 
@@ -371,5 +372,6 @@ Use these entrypoints:
   gate and operator approval.
 - Do not treat a merged PR, successful CI run, artifact, migration, feature
   flag, runbook, or dated execution record as current production proof.
-- Use current source and live Issue/Project evidence for sequencing; do not
-  reactivate historical lanes from a frozen snapshot.
+- Use current Git source and native live Issue/PR records for sequencing, with
+  Project #1 as navigation only; do not reactivate historical lanes from a
+  frozen snapshot.

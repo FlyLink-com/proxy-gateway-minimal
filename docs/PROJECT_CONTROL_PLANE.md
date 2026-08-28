@@ -86,15 +86,16 @@ explicit operator approval for mutation
 
 ### `project-state/lanes.json`
 
-Machine-readable active work lanes.
+Machine-readable reviewed lane definitions and safety boundaries.
 
 Use it to answer:
 
-- which lane does this task belong to?
-- what docs should an agent read first?
-- which code areas are in scope?
-- which non-goals prevent lane confusion?
-- what risk boundary applies?
+- which lanes are defined and what does each lane mean?
+- what docs and code areas belong to each lane?
+- which non-goals and risk boundaries apply?
+
+Resolve a current item's lane membership and state from its native Issue or PR
+record; Project #1 is navigation only.
 
 ### `project-state/current.json`
 
@@ -118,7 +119,7 @@ migration of its active consumers.
 
 ```text
 docs/PROJECT_CONTEXT.md:
-  current narrative handoff and operational facts
+  stable narrative context, authority boundaries, and dated evidence pointers
 
 docs/README.md:
   human documentation index
@@ -132,8 +133,11 @@ docs/PROJECT_SIMPLIFICATION_MAP.md:
 docs/MULTI_AGENT_OPERATING_MODEL.md:
   lead/subagent task packet and verification rules
 
-project-state/*.json:
-  compact machine-readable state and task references
+project-state/lanes.json:
+  reviewed lane definitions and safety boundaries
+
+project-state/current.json and project-state/tasks.json:
+  dated compatibility snapshots pending Issue #675; not live sequencing
 ```
 
 Do not duplicate full historical execution records in `project-state`. Keep
