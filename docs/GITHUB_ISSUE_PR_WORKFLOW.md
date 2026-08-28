@@ -291,11 +291,10 @@ Keep authority separated:
   current Issue, PR, Project, deployment, or runtime facts.
 
 The repository-wide authority transition is not complete. Active documentation
-and tooling still consume legacy sequencing or state from
-`docs/CURRENT_RELEASE_STATE.md`, `RELEASE_MANIFEST.md`,
-`docs/PROJECT_CONTROL_PLANE.md`, `project-state/current.json`, and
-`project-state/tasks.json`. Until those consumers are migrated, this section
-defines the target boundary rather than a completed cutover. Conflicts are
+and tooling still consume legacy sequencing or state rooted in
+`docs/PROJECT_CONTROL_PLANE.md` and `project-state/tasks.json`. Until those
+consumers are migrated, this section defines the target boundary rather than a
+completed cutover. Conflicts are
 transition blockers and must be resolved from the relevant domain owner, never
 by choosing whichever copied value appears newer.
 

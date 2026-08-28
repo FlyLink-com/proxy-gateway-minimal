@@ -18,10 +18,10 @@ document_metadata:
 > - Source reconciliation cutoff:
 >   `master@2824d01f9523ff39805083744e7b0c4f30bfef50` (observed immediately before this
 >   docs-only change)
-> - Latest deployed control-plane source:
+> - Latest recorded control-plane deployment-event source:
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (2026-08-26)
-> - Source/production state: Drift; the source cutoff is later than the
->   deployed control-plane source
+> - Git-source / recorded-deployment-source state: Drift at these dated
+>   cutoffs; current runtime alignment was not read
 > - Live delivery index:
 >   [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
 > - Source, artifact, production-promotion and delayed public-health evidence
@@ -69,12 +69,6 @@ repository-wide cutover is not complete. Active documents and tools that still
 consume legacy state remain compatibility obligations. Any conflict is a
 transition blocker and must fail closed against a fresh read from the relevant
 domain owner.
-
-`docs/CURRENT_RELEASE_STATE.md` and `RELEASE_MANIFEST.md` retain the 2026-08-26
-A3 release wording that labels `b5ca23db...` as current source/master. Until a
-separate docs-only authority reconciliation updates those canonical records,
-interpret that wording only as the exact deployed/release source observed on
-that date. It is not live `master` authority; live source must be read from Git.
 
 ## Current Classification
 
@@ -130,12 +124,12 @@ was `master@2824d01f9523ff39805083744e7b0c4f30bfef50`. It is a dated reconciliat
 permanent current-head claim. Resolve the live `master` SHA before every later
 source decision.
 
-The latest verified production control-plane source remains
-`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c`, release
+The latest recorded control-plane deployment event used source
+`b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` and recorded release
 `control-plane-b5ca23db-a3-sync-20260825`, with A3 terminal state
-`promoted_verified` on 2026-08-26. The source cutoff is later, so source and
-production are explicitly in drift. This does not establish a Portal/Admin
-static deployment.
+`promoted_verified` on 2026-08-26. The Git cutoff is later, so the Git source
+and recorded-deployment-source identities are explicitly distinct. This does
+not establish current runtime alignment or a Portal/Admin static deployment.
 
 Use [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) for live Issue, PR,
 status, lane, risk, validation, and production-impact coordination. Use live
@@ -307,9 +301,10 @@ production authority.
    separate from the retained legacy Wallet, Commerce, and XSD recharge state.
 4. Wallet-first provider refund/reconciliation paths and new live
    credential/callback setup are not established.
-5. The current control-plane release has a durable Deploy Note and fresh live
-   identity readback, but build evidence alone does not establish durable
-   Portal/Admin artifacts or their production activation records.
+5. The 2026-08-26 control-plane release has a durable Deploy Note and dated
+   terminal identity readback; current runtime identity still requires a fresh
+   read. Build evidence alone does not establish durable Portal/Admin artifacts
+   or their production activation records.
 6. Mutable GitHub counts and governance/security settings require a fresh
    readback when they matter to a decision.
 7. A3 dependency materialization and `control-plane-app` promotion completed at
@@ -317,13 +312,12 @@ production authority.
    XFS-only A3-2 inventory is historical, while schema/feature activation and
    other release units remain outside the completed A3 boundary.
 8. The deployed-source GitHub artifacts are temporary through 2026-09-08.
-   Their expiry does not invalidate the retained host release, but it prevents a
-   later promotion from downloading that same packet. Longer recovery windows,
-   rollback retention, SBOM, provenance/signing, and the remaining mutable
-   Action references remain scoped under #597/#598.
-9. `docs/CURRENT_RELEASE_STATE.md` and `RELEASE_MANIFEST.md` still use dated
-   `b5ca23db...` current-source wording. A separate C-tier docs reconciliation
-   must correct those two authorities before this Draft is considered Ready.
+   Their expiry does not invalidate the recorded deployment evidence, but it
+   prevents a later promotion from downloading that same packet. The terminal
+   receipt recorded a retained rollback release; its current availability
+   requires fresh inventory. Longer recovery windows, rollback retention, SBOM,
+   provenance/signing, and the remaining mutable Action references remain
+   scoped under #597/#598.
 
 ## Validation Baseline
 
