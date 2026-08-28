@@ -116,9 +116,9 @@
   ],
   "activeDirections": [
     "Phase 2 is Operational Reliability, not broad feature expansion.",
-    "Issue #437 remains open after PR #479 merged source-only; no production or runtime completion is inferred. Issues #438 and #439 now have substantial Portal and commercial source foundations rather than being greenfield queues.",
+    "Traffic Accounting, Portal lifecycle, and commercial foundation work have substantial merged source foundations; no production or runtime completion is inferred. Resolve current Issue status from Project #1.",
     "The source cutoff observed before this reconciliation is master@2824d01f9523ff39805083744e7b0c4f30bfef50; the verified deployed control-plane source remains b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c. Source and production are in drift. Existing legacy Portal routes, Coins Wallet, Coins Commerce with audience all_active, and XSD recharge retained their prior documented state; promotion-09 neither enabled nor revalidated them.",
-    "Issue #561 is closed after the Operations source-reality reconciliation; open Issues #557-#560 retain the remaining Admin authorization, metric, and audit gaps.",
+    "The Operations source-reality reconciliation is historical evidence. Resolve current Operations/Admin authorization, metric, audit, and item status from Project #1 rather than copying open/closed state here.",
     "Issues #521, #525, #527, and #551 track retirement or quarantine of legacy product identities and source surfaces; #522-#524 govern the Coins-first decision, Portal integration, and durable settlement/fulfillment lifecycle.",
     "Use GCC WebOS — Delivery Project #1 and live GitHub queries for current Issue, PR, review, and workflow state. Do not copy live counts or per-item status into this state file; Project status carries no production authority.",
     "Issue #636 A3 source and production path is merged through PR #667. Exact-head XFS quota and service-native smoke proofs, bounded ext4 admission, hardened staging, candidate preparation and promotion-09 completed; the current release is control-plane-b5ca23db-a3-sync-20260825 with terminal state promoted_verified.",
@@ -154,12 +154,13 @@
       597,
       598
     ],
-    "dependencyPromotionIssues": [
-      632
-    ],
     "leadAgent": "Codex",
     "operatorRole": "The operator approves or rejects exact Risk A gates after the reviewer defines scope, validation, rollback, and stop conditions.",
-    "riskBoundary": "Repository contracts and tests are B-tier; production, provider, auth, schema, deployment, promotion, rollback, and runtime mutation are separately approved A-tier work."
+    "riskBoundary": "Repository contracts and tests are B-tier; production, provider, auth, schema, deployment, promotion, rollback, and runtime mutation are separately approved A-tier work.",
+    "historicalDependencyPromotionIssues": [
+      632,
+      636
+    ]
   },
   "productionSnapshot": {
     "requiresLiveVerification": true,
@@ -340,12 +341,12 @@
   "activeBlockers": [
     {
       "id": "release-maturity-and-supply-chain",
-      "summary": "Issues #597 and #598 remain open: deployed-source GitHub artifacts are temporary, 27 workflow Action references use mutable tags, and durable SBOM/signing/provenance closure is not established.",
+      "summary": "Issue scopes #597 and #598 retain release-lifecycle and supply-chain gaps: deployed-source GitHub artifacts are temporary, 27 workflow Action references use mutable tags, and durable SBOM/signing/provenance closure is not established. Resolve their current item state from Project #1.",
       "sourceDoc": "RELEASE_MANIFEST.md"
     },
     {
       "id": "japan-tuic-identity-sync",
-      "summary": "The dated 2026-07-11 Issue #437 evidence observed two missing and nineteen stale Japan TUIC map bindings. PR #479 later merged source-only, but Issue #437 remains open and current production state requires live verification.",
+      "summary": "The dated 2026-07-11 Issue #437 evidence observed two missing and nineteen stale Japan TUIC map bindings. PR #479 later merged source-only; current production state still requires live verification, and current Issue status must be read from Project #1.",
       "sourceDoc": "docs/CURRENT_RELEASE_STATE.md"
     },
     {
@@ -372,6 +373,11 @@
       "id": "github-live-gates-partially-refreshed",
       "summary": "CI and CodeQL were green for the exact deployed source and the dated inventory reported zero open Dependabot alerts, but secret scanning was disabled, code-scanning alert inventory was unavailable, and rulesets/environment protection still require live readback.",
       "sourceDoc": "docs/GITHUB_ISSUE_PR_WORKFLOW.md"
+    },
+    {
+      "id": "canonical-source-authority-language",
+      "summary": "docs/CURRENT_RELEASE_STATE.md and RELEASE_MANIFEST.md retain dated wording that labels b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c as current master/source. Treat it as the exact 2026-08-26 deployed/release source only, and reconcile both canonical files in a separately authorized C-tier docs slice.",
+      "sourceDoc": "docs/PROJECT_CONTEXT.md"
     }
   ],
   "nextRecommendedQueue": [

@@ -298,9 +298,8 @@ The native Project workflows verified on 2026-08-28 are:
 - Item reopened -> `Todo`.
 
 Auto-close Issue and auto-add sub-issues remain disabled. No custom Action,
-PAT, GitHub App, or Milestone was added for this integration. Existing open
-items require an explicit one-time import because Auto-add does not backfill
-historical matches.
+PAT, GitHub App, or Milestone was added for this integration. The repository items open at the time were imported once on 2026-08-28;
+Auto-add does not backfill historical matches.
 
 The maintained views are `Portfolio Triage`, `Execution Board`,
 `Review Queue`, and `Risk A Gates`. Use native `Reviewers`,
@@ -309,10 +308,10 @@ The maintained views are `Portfolio Triage`, `Execution Board`,
 
 Do not copy live Issue counts, PR counts, Project statuses, review queues,
 branch counts, or manual completion percentages into canonical docs or state
-JSON. Resolve them from GitHub when a current decision depends on them. A
-Project item reaching `Done` means only that its GitHub item closed or merged;
-it does not prove deployment, runtime validation, production completion, or
-Risk A authorization.
+JSON. Resolve them from GitHub when a current decision depends on them. A workflow-driven automatic transition to `Done` records only item closure or
+PR merge. `Done` may also be set manually, so it is always an index field; it
+does not prove deployment, runtime validation, production completion, or Risk A
+authorization.
 
 The Project is an index, not approval. Risk A work still requires the exact
 runbook, fresh read-only inventory, operator approval, backup, validation, and

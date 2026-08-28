@@ -45,9 +45,9 @@ credential, payment, subscription-material, or customer-data actions.
 
 Use this order before any work:
 
-1. `docs/CURRENT_RELEASE_STATE.md`
-2. `RELEASE_MANIFEST.md`
-3. `docs/PROJECT_CONTEXT.md`
+1. `docs/PROJECT_CONTEXT.md` for the current source-coordination boundary
+2. `docs/CURRENT_RELEASE_STATE.md` for dated deployed/runtime evidence
+3. `RELEASE_MANIFEST.md` for the release identity contract
 4. [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) for live Issue/PR
    coordination
 5. `git status --short --branch`
@@ -60,6 +60,12 @@ replace Issue/PR evidence or production receipts. `project-state/*.json` is a
 reviewed coordination and lane-semantics layer; it must not copy mutable GitHub
 counts, override canonical documents or live evidence, or authorize external
 mutation.
+
+`docs/CURRENT_RELEASE_STATE.md` and `RELEASE_MANIFEST.md` retain the 2026-08-26
+A3 release wording that labels `b5ca23db...` as current source/master. Until a
+separate docs-only authority reconciliation updates those canonical records,
+interpret that wording only as the exact deployed/release source observed on
+that date. It is not live `master` authority; live source must be read from Git.
 
 ## Current Classification
 
@@ -304,6 +310,9 @@ production authority.
    later promotion from downloading that same packet. Longer recovery windows,
    rollback retention, SBOM, provenance/signing, and the remaining mutable
    Action references remain scoped under #597/#598.
+9. `docs/CURRENT_RELEASE_STATE.md` and `RELEASE_MANIFEST.md` still use dated
+   `b5ca23db...` current-source wording. A separate C-tier docs reconciliation
+   must correct those two authorities before this Draft is considered Ready.
 
 ## Validation Baseline
 
