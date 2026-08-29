@@ -45,7 +45,7 @@ test("tracked harness remains aggregate-only and has no transport or production 
   assert.doesNotMatch(source, /\bapt(?:-get)?\s+(?:install|remove|purge|upgrade|dist-upgrade)\b/i);
   assert.doesNotMatch(source, /systemctl["',\s]+(?:start|stop|restart|reload|enable|disable|mask|unmask|daemon-reload)\b/i);
   assert.doesNotMatch(source, /\/opt\/proxy-gateway-minimal-candidate|\/var\/lib\/proxy-gateway-minimal/);
-  assert.match(source, /\{"schemaVersion": SCHEMA_VERSION, "type": REPORT_TYPE, "state": "blocked", "condition": value\}/);
+  assert.match(source, /json\.dumps\(\s*\{\s*"schemaVersion"\s*:\s*SCHEMA_VERSION,\s*"type"\s*:\s*REPORT_TYPE,\s*"state"\s*:\s*"blocked",\s*"condition"\s*:\s*value\s*\}\s*\)/);
   assert.match(source, /FORBIDDEN_OUTPUT_KEYS = \{[^}]*"host"[^}]*"token"[^}]*"uri"[^}]*\}/s);
 });
 
