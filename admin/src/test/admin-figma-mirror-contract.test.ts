@@ -216,7 +216,22 @@ describe("admin Figma mirror contract", () => {
         entry.react.primarySurface,
         ...entry.react.supportingSurfaces
       ].forEach((surface) => {
-        expect(existsSync(resolve(surfacePath(surface))), surface).toBe(true);
+        const [surfaceFile, surfaceExport] = surface.split("#");
+        const resolvedSurfacePath = resolve(surfacePath(surfaceFile));
+
+        expect(existsSync(resolvedSurfacePath), surface).toBe(true);
+
+        if (surfaceExport) {
+          const surfaceSource = readFileSync(resolvedSurfacePath, "utf8");
+          const exportedIdentifierPattern = new RegExp(
+            `\\bexport\\s+(?:declare\\s+)?(?:const|let|var|function|class|interface|type|enum)\\s+${surfaceExport}\\b|\\bexport\\s*\\{[^}]*\\b${surfaceExport}\\b[^}]*\\}`,
+            "m"
+          );
+          expect(
+            exportedIdentifierPattern.test(surfaceSource),
+            `${surface} references missing export "${surfaceExport}"`
+          ).toBe(true);
+        }
       });
 
       entry.cssTokens.forEach((token) => {
