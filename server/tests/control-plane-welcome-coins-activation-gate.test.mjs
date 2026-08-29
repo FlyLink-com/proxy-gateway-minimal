@@ -50,7 +50,7 @@ function guardedState(identity = "test-guard-1") {
 }
 
 function fixture(t, environment = BASE_ENVIRONMENT) {
-  const root = mkdtempSync(join(tmpdir(), "gccgw-welcome-coins-gate-"));
+  const root = mkdtempSync(join(tmpdir(), "welcome-coins-gate-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const releasePath = join(root, "releases", RELEASE);
   const currentLink = join(root, "current");
