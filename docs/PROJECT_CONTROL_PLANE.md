@@ -115,13 +115,11 @@ Dated transitional compatibility snapshot of earlier queue and task contracts.
 
 Use it only for historical task IDs and risk, file-scope, validation, and
 approval constraints after resolving current status from native Issues and
-PRs. It must not answer which task is next. Issue #675 owns the B-tier
-migration of its active consumers.
+PRs. It must not answer which task is next.
 
-The current repository-local brief consumers are not yet mechanically
-fail-closed: `agent:brief` and `project handoff-brief` can still surface dated
-snapshot hints. Until #675 lands, treat that output as compatibility context
-only and perform a fresh native Issue/PR read before current sequencing.
+Transitional migration status for snapshot consumers is centralized in
+`docs/PROJECT_CONTEXT.md`; follow that single notice for current compatibility
+handling and rollout state.
 
 ## Ownership
 
