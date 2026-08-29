@@ -21,7 +21,7 @@ function harnessSource() {
 
 test("tracked harness is byte-identical to the physically verified v4 source", () => {
   const bytes = harnessBytes();
-  assert.equal(bytes.includes(0x0d), false, "tracked Python must remain LF-only");
+  assert.equal(Buffer.from(bytes).indexOf(0x0d) === -1, true, "tracked Python must remain LF-only");
   assert.equal(createHash("sha256").update(bytes).digest("hex"), PHYSICALLY_VERIFIED_SHA256);
 });
 
