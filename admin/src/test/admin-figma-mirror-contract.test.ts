@@ -129,6 +129,17 @@ function isDeclarationNameIdentifier(identifier: ts.Identifier) {
   );
 }
 
+function isRuntimeClassHeritageExpression(
+  node: ts.ExpressionWithTypeArguments
+) {
+  return (
+    ts.isHeritageClause(node.parent) &&
+    node.parent.token === ts.SyntaxKind.ExtendsKeyword &&
+    (ts.isClassDeclaration(node.parent.parent) ||
+      ts.isClassExpression(node.parent.parent))
+  );
+}
+
 function sourceUsesIdentifier(sourceFile: ts.SourceFile, identifier: string) {
   let found = false;
 
@@ -137,9 +148,19 @@ function sourceUsesIdentifier(sourceFile: ts.SourceFile, identifier: string) {
       ts.isImportDeclaration(node) ||
       ts.isImportEqualsDeclaration(node) ||
       ts.isExportDeclaration(node) ||
-      ts.isExportAssignment(node) ||
-      ts.isTypeNode(node)
+      ts.isExportAssignment(node)
     ) {
+      return;
+    }
+
+    if (ts.isExpressionWithTypeArguments(node)) {
+      if (isRuntimeClassHeritageExpression(node)) {
+        visit(node.expression);
+      }
+      return;
+    }
+
+    if (ts.isTypeNode(node)) {
       return;
     }
 
@@ -337,6 +358,9 @@ describe("admin Figma mirror contract", () => {
         const Internal = 1;
         type Shape = {};
         type ImportedShape = ImportOnly;
+        interface TypeOnlyDerived extends Shape {}
+        class RuntimeBase {}
+        class RuntimeDerived extends RuntimeBase {}
         export { Internal as Public };
         export type { Shape as PublicShape };
         export * as PublicApi from "./dependency";
@@ -372,6 +396,7 @@ describe("admin Figma mirror contract", () => {
     expect(sourceUsesIdentifier(fixture, "NamedDefault")).toBe(false);
     expect(sourceUsesIdentifier(fixture, "PublicNamespace")).toBe(false);
     expect(sourceUsesIdentifier(fixture, "Shape")).toBe(false);
+    expect(sourceUsesIdentifier(fixture, "RuntimeBase")).toBe(true);
     expect(sourceUsesIdentifier(fixture, "Internal")).toBe(true);
 
     const expressionDefault = ts.createSourceFile(
