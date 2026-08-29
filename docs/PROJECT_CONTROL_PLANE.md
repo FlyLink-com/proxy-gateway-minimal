@@ -117,9 +117,9 @@ Use it only for historical task IDs and risk, file-scope, validation, and
 approval constraints after resolving current status from native Issues and
 PRs. It must not answer which task is next.
 
-Transitional migration status for snapshot consumers is centralized in
-`docs/PROJECT_CONTEXT.md`; follow that single notice for current compatibility
-handling and rollout state.
+For current compatibility handling and rollout status, see
+`docs/PROJECT_CONTEXT.md`. Snapshot-derived hints remain non-authoritative;
+perform a fresh native Issue/PR read before current sequencing.
 
 ## Ownership
 
