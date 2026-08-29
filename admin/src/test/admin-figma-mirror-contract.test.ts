@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import * as ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { ADMIN_UI_CONTRACT } from "../app/admin-ui-contract";
 import {
@@ -27,8 +28,100 @@ import {
 
 const tokenCss = readFileSync(resolve("src/styles/tokens.css"), "utf8").replace(/\r\n?/g, "\n");
 
-function surfacePath(surface: string) {
-  return surface.split("#")[0];
+function collectBindingIdentifiers(name: ts.BindingName, identifiers: Set<string>) {
+  if (ts.isIdentifier(name)) {
+    identifiers.add(name.text);
+    return;
+  }
+
+  name.elements.forEach((element) => {
+    if (ts.isBindingElement(element)) {
+      collectBindingIdentifiers(element.name, identifiers);
+    }
+  });
+}
+
+function explicitExportNames(sourceFile: ts.SourceFile) {
+  const identifiers = new Set<string>();
+
+  sourceFile.statements.forEach((statement) => {
+    if (ts.isExportDeclaration(statement)) {
+      if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+        statement.exportClause.elements.forEach((element) => identifiers.add(element.name.text));
+      } else if (statement.exportClause && ts.isNamespaceExport(statement.exportClause)) {
+        identifiers.add(statement.exportClause.name.text);
+      }
+      return;
+    }
+
+    const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined;
+    if (!modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
+      return;
+    }
+
+    if (modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)) {
+      identifiers.add("default");
+      return;
+    }
+
+    if (ts.isVariableStatement(statement)) {
+      statement.declarationList.declarations.forEach((declaration) => {
+        collectBindingIdentifiers(declaration.name, identifiers);
+      });
+      return;
+    }
+
+    if (
+      ts.isFunctionDeclaration(statement) ||
+      ts.isClassDeclaration(statement) ||
+      ts.isInterfaceDeclaration(statement) ||
+      ts.isTypeAliasDeclaration(statement) ||
+      ts.isEnumDeclaration(statement)
+    ) {
+      if (statement.name) {
+        identifiers.add(statement.name.text);
+      }
+    }
+  });
+
+  return identifiers;
+}
+
+function sourceUsesIdentifier(sourceFile: ts.SourceFile, identifier: string) {
+  let found = false;
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isImportDeclaration(node) ||
+      ts.isImportEqualsDeclaration(node) ||
+      ts.isExportDeclaration(node)
+    ) {
+      return;
+    }
+
+    if (ts.isIdentifier(node) && node.text === identifier) {
+      found = true;
+      return;
+    }
+
+    if (!found) {
+      ts.forEachChild(node, visit);
+    }
+  }
+
+  visit(sourceFile);
+  return found;
+}
+
+function readSurfaceSource(surfacePath: string) {
+  const resolvedPath = resolve(surfacePath);
+  const scriptKind = surfacePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const source = readFileSync(resolvedPath, "utf8");
+
+  return {
+    resolvedPath,
+    sourceFile: ts.createSourceFile(surfacePath, source, ts.ScriptTarget.Latest, true, scriptKind)
+  };
 }
 
 describe("admin Figma mirror contract", () => {
@@ -187,8 +280,35 @@ describe("admin Figma mirror contract", () => {
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.nextTaskLine).toBe("Admin React/CSS grammar alignment from Figma Component Mirror v1");
   });
 
+
+  test("distinguishes public exports from internal and usage-only identifiers", () => {
+    const fixture = ts.createSourceFile(
+      "surface.ts",
+      `
+        import { ImportOnly } from "./dependency";
+        const Internal = 1;
+        type Shape = {};
+        export { Internal as Public };
+        export type { Shape as PublicShape };
+        export const Direct = 2;
+        export default function NamedDefault() {}
+        void Internal;
+      `,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS
+    );
+    const exports = explicitExportNames(fixture);
+
+    expect([...exports].sort()).toEqual(["Direct", "Public", "PublicShape", "default"]);
+    expect(exports.has("Internal")).toBe(false);
+    expect(exports.has("NamedDefault")).toBe(false);
+    expect(sourceUsesIdentifier(fixture, "ImportOnly")).toBe(false);
+    expect(sourceUsesIdentifier(fixture, "Internal")).toBe(true);
+  });
+
   test("maps every mirrored component to React surfaces, grammar roles, tokens, and QA evidence", () => {
-    expect(ADMIN_FIGMA_REACT_PARITY_CONTRACT_VERSION).toBe("admin-figma-react-parity/v1");
+    expect(ADMIN_FIGMA_REACT_PARITY_CONTRACT_VERSION).toBe("admin-figma-react-parity/v2");
     expect(ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS).toEqual(
       ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentSets.map((componentSet) => componentSet.name)
     );
@@ -216,20 +336,22 @@ describe("admin Figma mirror contract", () => {
         entry.react.primarySurface,
         ...entry.react.supportingSurfaces
       ].forEach((surface) => {
-        const [surfaceFile, surfaceExport] = surface.split("#");
-        const resolvedSurfacePath = resolve(surfacePath(surfaceFile));
+        expect(surface.path).toMatch(/^src\/.+\.[cm]?[jt]sx?$/);
+        expect(surface.symbol).toMatch(/^[A-Za-z_$][A-Za-z0-9_$]*$/);
 
-        expect(existsSync(resolvedSurfacePath), surface).toBe(true);
+        const resolvedSurfacePath = resolve(surface.path);
+        expect(existsSync(resolvedSurfacePath), `${surface.kind}:${surface.path}#${surface.symbol}`).toBe(true);
 
-        if (surfaceExport) {
-          const surfaceSource = readFileSync(resolvedSurfacePath, "utf8");
-          const exportedIdentifierPattern = new RegExp(
-            `\\bexport\\s+(?:declare\\s+)?(?:const|let|var|function|class|interface|type|enum)\\s+${surfaceExport}\\b|\\bexport\\s*\\{[^}]*\\b${surfaceExport}\\b[^}]*\\}`,
-            "m"
-          );
+        const { sourceFile } = readSurfaceSource(surface.path);
+        if (surface.kind === "export") {
           expect(
-            exportedIdentifierPattern.test(surfaceSource),
-            `${surface} references missing export "${surfaceExport}"`
+            explicitExportNames(sourceFile).has(surface.symbol),
+            `${surface.path} does not export "${surface.symbol}"`
+          ).toBe(true);
+        } else {
+          expect(
+            sourceUsesIdentifier(sourceFile, surface.symbol),
+            `${surface.path} does not use "${surface.symbol}" outside imports or exports`
           ).toBe(true);
         }
       });
