@@ -83,7 +83,8 @@ function explicitExportNames(sourceFile: ts.SourceFile) {
       ts.isClassDeclaration(statement) ||
       ts.isInterfaceDeclaration(statement) ||
       ts.isTypeAliasDeclaration(statement) ||
-      ts.isEnumDeclaration(statement)
+      ts.isEnumDeclaration(statement) ||
+      ts.isModuleDeclaration(statement)
     ) {
       if (statement.name) {
         identifiers.add(statement.name.text);
@@ -298,6 +299,7 @@ describe("admin Figma mirror contract", () => {
         export { Internal as Public };
         export type { Shape as PublicShape };
         export const Direct = 2;
+        export namespace PublicNamespace {}
         export default function NamedDefault() {}
         void Internal;
       `,
@@ -307,7 +309,13 @@ describe("admin Figma mirror contract", () => {
     );
     const exports = explicitExportNames(fixture);
 
-    expect([...exports].sort()).toEqual(["Direct", "Public", "PublicShape", "default"]);
+    expect([...exports].sort()).toEqual([
+      "Direct",
+      "Public",
+      "PublicNamespace",
+      "PublicShape",
+      "default"
+    ]);
     expect(exports.has("Internal")).toBe(false);
     expect(exports.has("NamedDefault")).toBe(false);
     expect(sourceUsesIdentifier(fixture, "ImportOnly")).toBe(false);
