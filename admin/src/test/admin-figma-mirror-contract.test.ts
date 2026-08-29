@@ -95,6 +95,40 @@ function explicitExportNames(sourceFile: ts.SourceFile) {
   return identifiers;
 }
 
+function isDeclarationNameIdentifier(identifier: ts.Identifier) {
+  const parent = identifier.parent;
+
+  if (ts.isBindingElement(parent)) {
+    return parent.name === identifier || parent.propertyName === identifier;
+  }
+
+  return (
+    ((ts.isVariableDeclaration(parent) ||
+      ts.isParameter(parent) ||
+      ts.isFunctionDeclaration(parent) ||
+      ts.isFunctionExpression(parent) ||
+      ts.isClassDeclaration(parent) ||
+      ts.isClassExpression(parent) ||
+      ts.isInterfaceDeclaration(parent) ||
+      ts.isTypeAliasDeclaration(parent) ||
+      ts.isEnumDeclaration(parent) ||
+      ts.isEnumMember(parent) ||
+      ts.isModuleDeclaration(parent) ||
+      ts.isTypeParameterDeclaration(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isPropertySignature(parent) ||
+      ts.isMethodDeclaration(parent) ||
+      ts.isMethodSignature(parent) ||
+      ts.isGetAccessorDeclaration(parent) ||
+      ts.isSetAccessorDeclaration(parent) ||
+      ts.isPropertyAssignment(parent)) &&
+      parent.name === identifier) ||
+    (ts.isLabeledStatement(parent) && parent.label === identifier) ||
+    ((ts.isBreakStatement(parent) || ts.isContinueStatement(parent)) &&
+      parent.label === identifier)
+  );
+}
+
 function sourceUsesIdentifier(sourceFile: ts.SourceFile, identifier: string) {
   let found = false;
 
@@ -102,12 +136,18 @@ function sourceUsesIdentifier(sourceFile: ts.SourceFile, identifier: string) {
     if (
       ts.isImportDeclaration(node) ||
       ts.isImportEqualsDeclaration(node) ||
-      ts.isExportDeclaration(node)
+      ts.isExportDeclaration(node) ||
+      ts.isExportAssignment(node) ||
+      ts.isTypeNode(node)
     ) {
       return;
     }
 
-    if (ts.isIdentifier(node) && node.text === identifier) {
+    if (
+      ts.isIdentifier(node) &&
+      node.text === identifier &&
+      !isDeclarationNameIdentifier(node)
+    ) {
       found = true;
       return;
     }
@@ -296,9 +336,13 @@ describe("admin Figma mirror contract", () => {
         import { ImportOnly } from "./dependency";
         const Internal = 1;
         type Shape = {};
+        type ImportedShape = ImportOnly;
         export { Internal as Public };
         export type { Shape as PublicShape };
+        export * as PublicApi from "./dependency";
         export const Direct = 2;
+        export const First = 3, Second = 4;
+        export const { value: Destructured, shorthand } = { value: 5, shorthand: 6 };
         export namespace PublicNamespace {}
         export default function NamedDefault() {}
         void Internal;
@@ -310,25 +354,35 @@ describe("admin Figma mirror contract", () => {
     const exports = explicitExportNames(fixture);
 
     expect([...exports].sort()).toEqual([
+      "Destructured",
       "Direct",
+      "First",
       "Public",
+      "PublicApi",
       "PublicNamespace",
       "PublicShape",
-      "default"
+      "Second",
+      "default",
+      "shorthand"
     ]);
     expect(exports.has("Internal")).toBe(false);
     expect(exports.has("NamedDefault")).toBe(false);
     expect(sourceUsesIdentifier(fixture, "ImportOnly")).toBe(false);
+    expect(sourceUsesIdentifier(fixture, "Direct")).toBe(false);
+    expect(sourceUsesIdentifier(fixture, "NamedDefault")).toBe(false);
+    expect(sourceUsesIdentifier(fixture, "PublicNamespace")).toBe(false);
+    expect(sourceUsesIdentifier(fixture, "Shape")).toBe(false);
     expect(sourceUsesIdentifier(fixture, "Internal")).toBe(true);
 
     const expressionDefault = ts.createSourceFile(
       "default-expression.ts",
-      "export default 42;",
+      "const DefaultOnly = 42; export default DefaultOnly;",
       ts.ScriptTarget.Latest,
       true,
       ts.ScriptKind.TS
     );
     expect(explicitExportNames(expressionDefault)).toEqual(new Set(["default"]));
+    expect(sourceUsesIdentifier(expressionDefault, "DefaultOnly")).toBe(false);
   });
 
   test("maps every mirrored component to React surfaces, grammar roles, tokens, and QA evidence", () => {
