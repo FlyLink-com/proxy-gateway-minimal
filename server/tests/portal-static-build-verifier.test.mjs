@@ -120,7 +120,9 @@ test("active Portal metadata uses the current GCC WebOS identity", async () => {
   );
 
   assert.doesNotMatch(source, /GlobalCircle\s+AI/iu);
-  assert.match(source, /GCC WebOS/u);
+  assert.ok(source.includes(
+    "GCC WebOS customer portal for subscription orders, support, and account security."
+  ));
 });
 
 test("portal static build verifier rejects the legacy product identity", async () => {

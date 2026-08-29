@@ -43,15 +43,24 @@ test("admin static build verifier accepts an Admin API shell", async () => {
 
 test("active Admin shell inputs use the current GCC WebOS identity", async () => {
   const activeInputs = [
-    "../../admin/index.html",
-    "../../admin/src/pages/admin-setup-page.tsx",
-    "../../admin/src/components/layout/app-sidebar.tsx"
+    {
+      expectedIdentity: "GCC WebOS operator console for user operations and platform monitoring.",
+      relativePath: "../../admin/index.html"
+    },
+    {
+      expectedIdentity: "GCC WebOS",
+      relativePath: "../../admin/src/pages/admin-setup-page.tsx"
+    },
+    {
+      expectedIdentity: "GCC WebOS",
+      relativePath: "../../admin/src/components/layout/app-sidebar.tsx"
+    }
   ];
 
-  for (const relativePath of activeInputs) {
+  for (const { expectedIdentity, relativePath } of activeInputs) {
     const source = await readFile(new URL(relativePath, import.meta.url), "utf8");
     assert.doesNotMatch(source, /GlobalCircle\s+AI/iu, relativePath);
-    assert.match(source, /GCC WebOS/u, relativePath);
+    assert.ok(source.includes(expectedIdentity), relativePath);
   }
 });
 
