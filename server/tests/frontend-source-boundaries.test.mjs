@@ -209,7 +209,6 @@ void site;
     rootDirectory,
     "admin/src/App.tsx",
     `import preview from "./app/admin-fixture-preview";
-import safeRead from "./app/admin-safe-read-projection";
 import uiProjection from "./app/admin-ui-projection";
 import panel from "./components/primitives/panel-frame";
 import companySite from "./features/company-site/company-site-page";
@@ -219,7 +218,6 @@ import portalRoute from "./features/user-portal/user-portal-route";
 import usagePage from "./pages/subscription-usage-monitor-page";
 void [
   preview,
-  safeRead,
   uiProjection,
   panel,
   companySite,
@@ -452,7 +450,7 @@ test("synthetic current contract passes with exact known debt", (t) => {
   assert.deepEqual(result.knownDebt, {
     adminToPortal: 3,
     adminToSite: 1,
-    fixtureEdges: 6
+    fixtureEdges: 5
   });
   assert.equal(result.productionAuthority, false);
   assert.equal(result.redacted, true);

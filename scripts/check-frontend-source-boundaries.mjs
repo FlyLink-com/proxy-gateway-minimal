@@ -115,7 +115,6 @@ const EXPECTED_ADMIN_TO_SITE_EDGES = new Set([
 
 const EXPECTED_FIXTURE_EDGES = new Set([
   "admin/src/App.tsx -> admin/src/app/admin-fixture-preview.ts",
-  "admin/src/app/admin-safe-read-projection.ts -> admin/src/app/admin-fixture-preview.ts",
   "admin/src/app/admin-ui-projection.ts -> admin/src/app/admin-fixture-preview.ts",
   "admin/src/components/primitives/panel-frame.tsx -> admin/src/app/admin-fixture-preview.ts",
   "admin/src/features/user-portal/user-portal-local.ts -> admin/src/features/user-portal/totp-preview.ts",
