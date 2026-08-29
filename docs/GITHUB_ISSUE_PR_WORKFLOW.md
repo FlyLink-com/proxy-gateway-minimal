@@ -1,6 +1,6 @@
 # GitHub Issue And PR Workflow
 
-Last updated: 2026-07-15, America/Los_Angeles.
+Last updated: 2026-08-28, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: github_issue_pr_workflow
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-28
   production_authority: false
 ```
 
@@ -272,21 +272,68 @@ count semantics, retention states, and the no-sensitive-output boundary.
 
 ## Project Board Use
 
-A GitHub Project board is useful after the issue count becomes large enough to
-need portfolio scanning, usually around 10 to 15 active index cards. Before
-that point, labels and issue lists are usually lighter.
+The organization-owned [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
+is the live portfolio index for this repository. It does not replace Git,
+Issues, PRs, deployment receipts, or production evidence.
 
-If a board is enabled, keep the fields small:
+Keep authority separated:
 
-- Lane
-- Risk
-- Status
-- Source/production state
-- Validation state
-- Production impact
+- An Issue owns the durable goal, scope, declared risk, done criteria, and links
+  to any required Risk A gate; an Issue field or status never grants mutation
+  authority.
+- A PR owns the concrete diff, tests, Deploy Note when applicable, and
+  remaining gates.
+- Project #1 projects live work through six narrow fields: `Status`, `Lane`,
+  `Risk`, `Source / Production State`, `Validation State`, and
+  `Production Impact`.
+- Within that projection, `Lane` is the mutable navigation classification for
+  current item membership. Native Issue/PR records still own item state, scope,
+  declared risk, done criteria, and links; Project fields grant no authority.
+- `project-state/lanes.json` owns reviewed lane definitions and safety
+  boundaries. Dated state snapshots may preserve evidence, but they do not own
+  current Issue, PR, Project, deployment, or runtime facts.
 
-The board is an index, not approval. Risk A work still requires the exact
-runbook, read-only inventory, operator approval, backup, validation, and
+The repository-wide authority transition is not complete. Active compatibility
+surfaces still duplicate dated sequencing or state. They include
+`docs/README.md`, `docs/PROJECT_CONTROL_PLANE.md`,
+`docs/project-state/CURRENT_STATE.md`, `project-state/README.md`,
+`project-state/current.json`, `project-state/tasks.json`, and repository-local
+brief/check tooling; Issue #675 owns the complete inventory and separate B-tier
+migration. Until it lands, this section defines the target boundary rather
+than a completed cutover. Conflicts are transition blockers and must be
+resolved from the relevant domain owner, never by choosing whichever copied
+value appears newer. Repository-local brief consumers do not yet enforce that
+live read mechanically, so their queue-like output remains dated compatibility
+context until #675 completes the migration.
+
+The native Project workflows verified on 2026-08-28 are:
+
+- Auto-add items from `gccwebos-com/proxy-gateway-minimal` matching
+  `is:issue,pr is:open`.
+- Item added -> `Todo`.
+- Item closed -> `Done`.
+- Pull request linked -> `In Progress`.
+- Pull request merged -> `Done`.
+- Item reopened -> `Todo`.
+
+Auto-close Issue and auto-add sub-issues remain disabled. No custom Action,
+PAT, GitHub App, or Milestone was added for this integration. The repository items open at the time were imported once on 2026-08-28;
+Auto-add does not backfill historical matches.
+
+The maintained views are `Portfolio Triage`, `Execution Board`,
+`Review Queue`, and `Risk A Gates`. Use native `Reviewers`,
+`Assignees`, `Linked pull requests`, `Labels`, `Milestone`, and
+`Repository` fields instead of duplicating them.
+
+Do not copy live Issue counts, PR counts, Project statuses, review queues,
+branch counts, or manual completion percentages into canonical docs or state
+JSON. Resolve them from GitHub when a current decision depends on them. A workflow-driven automatic transition to `Done` records only item closure or
+PR merge. `Done` may also be set manually, so it is always an index field; it
+does not prove deployment, runtime validation, production completion, or Risk A
+authorization.
+
+The Project is an index, not approval. Risk A work still requires the exact
+runbook, fresh read-only inventory, operator approval, backup, validation, and
 rollback gates.
 
 ## Operating Rule

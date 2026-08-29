@@ -1,6 +1,6 @@
 # Project Control Plane
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-08-28, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_state_model
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-28
   production_authority: false
 ```
 
@@ -35,7 +35,7 @@ docs/
   explanations, architecture, runbooks, execution records, historical evidence
 
 project-state/
-  machine-readable current state, lanes, tasks, and validation expectations
+  dated coordination snapshots, lanes, task contracts, and validation hints
 
 scripts/ or future tooling
   consistency checks, index checks, stale-state checks, and sensitive-data scans
@@ -44,10 +44,10 @@ GitHub PRs / Issues
   review, discussion, approval, and merge boundaries
 ```
 
-The initial implementation is intentionally small and docs-only. It adds JSON
-state files that make current project direction easier for agents to inspect,
-without adding a database, service, external dependency, or production
-integration.
+The initial implementation was intentionally small and docs-only. Its JSON
+state files preserve dated project direction and constraints for agent
+orientation; they are not a live work index. This model adds no database,
+service, external dependency, or production integration.
 
 ## Boundary
 
@@ -62,11 +62,21 @@ The project control plane is a repository coordination layer. It is not:
 - a self-hosted CI system
 - an agent memory replacement
 
-Any production-adjacent task still starts from:
+`AGENTS.md` always applies. Any production-adjacent task first completes the
+mandatory release/context sequence it defines:
 
 ```text
 AGENTS.md
+docs/CURRENT_RELEASE_STATE.md
+RELEASE_MANIFEST.md
 docs/PROJECT_CONTEXT.md
+git status --short --branch
+```
+
+Then continue through repository navigation and the task-specific Risk A gate:
+
+```text
+docs/README.md
 relevant active runbook
 read-only live inventory
 explicit operator approval for mutation
@@ -76,49 +86,48 @@ explicit operator approval for mutation
 
 ### `project-state/lanes.json`
 
-Machine-readable active work lanes.
+Machine-readable reviewed lane definitions and safety boundaries.
 
 Use it to answer:
 
-- which lane does this task belong to?
-- what docs should an agent read first?
-- which code areas are in scope?
-- which non-goals prevent lane confusion?
-- what risk boundary applies?
+- which lanes are defined and what does each lane mean?
+- what docs and code areas belong to each lane?
+- which non-goals and risk boundaries apply?
+
+Resolve a current item's state, scope, declared risk, and done criteria from its
+native Issue or PR record. Project #1's `Lane` field is the mutable navigation
+classification for current lane membership; validate its value against the
+reviewed definitions in this file. Neither the Project field nor this file
+grants execution authority.
 
 ### `project-state/current.json`
 
-Compact current-state snapshot.
+Dated transitional compatibility snapshot.
 
-Use it to answer:
-
-- what is the current product spine?
-- what production facts are currently documented?
-- what active branch/PR context is in progress?
-- what directions and blockers are active?
-- which facts require live verification before mutation?
-
-This file is allowed to become stale. It must always point readers back to
-`docs/PROJECT_CONTEXT.md` and live verification for drift-prone facts.
+Use it to recover the documented product spine, evidence cutoffs, redacted
+blocker references, and validation hints. Do not use it as live Issue, PR,
+Project, branch, deployment, provider, or runtime state. Resolve drift-prone
+facts from the native domain owner.
 
 ### `project-state/tasks.json`
 
-Machine-readable backlog for the current simplification and product-control
-work.
+Dated transitional compatibility snapshot of earlier queue and task contracts.
 
-Use it to answer:
+Use it only for historical task IDs and risk, file-scope, validation, and
+approval constraints after resolving current status from native Issues and
+PRs. It must not answer which task is next. Issue #675 owns the B-tier
+migration of its active consumers.
 
-- what task is next?
-- what risk tier applies?
-- what files are allowed or forbidden?
-- what validation command is expected?
-- which tasks require A-tier approval?
+The current repository-local brief consumers are not yet mechanically
+fail-closed: `agent:brief` and `project handoff-brief` can still surface dated
+snapshot hints. Until #675 lands, treat that output as compatibility context
+only and perform a fresh native Issue/PR read before current sequencing.
 
 ## Ownership
 
 ```text
 docs/PROJECT_CONTEXT.md:
-  current narrative handoff and operational facts
+  stable narrative context, authority boundaries, and dated evidence pointers
 
 docs/README.md:
   human documentation index
@@ -132,8 +141,11 @@ docs/PROJECT_SIMPLIFICATION_MAP.md:
 docs/MULTI_AGENT_OPERATING_MODEL.md:
   lead/subagent task packet and verification rules
 
-project-state/*.json:
-  compact machine-readable state and task references
+project-state/lanes.json:
+  reviewed lane definitions and safety boundaries
+
+project-state/current.json and project-state/tasks.json:
+  dated compatibility snapshots pending Issue #675; not live sequencing
 ```
 
 Do not duplicate full historical execution records in `project-state`. Keep
@@ -141,17 +153,20 @@ only IDs, summaries, and links.
 
 ## Update Rules
 
-Update `project-state` when any of these change:
+Until Issue #675 completes the consumer migration, update `project-state` only
+to keep its dated compatibility contracts internally truthful when any of
+these reviewed facts change:
 
 - active product spine
 - lane list or lane ownership
-- current branch/PR context for a long-lived project direction
-- current production target summary
-- blocker summary
-- simplification/task backlog
+- evidence cutoff or referenced receipt boundary
+- redacted blocker-reference snapshot
+- legacy task risk, file-scope, validation, or approval constraints
 - validation baseline summary
 
-Do not update `project-state` for every small implementation detail. If a
+Every such update remains dated and non-authoritative for current sequencing.
+Do not copy live Issue, PR, Project, branch, deployment, provider, or runtime
+facts into these snapshots. Resolve them from the native domain owner. If a
 change is only historical evidence, write an execution record and link it from
 the relevant index.
 
@@ -219,27 +234,41 @@ checks become insufficient.
 
 ## Read Order
 
-For a normal project task:
+Always apply `AGENTS.md` and complete its mandatory release/context sequence:
 
 ```text
 AGENTS.md
+docs/CURRENT_RELEASE_STATE.md
+RELEASE_MANIFEST.md
 docs/PROJECT_CONTEXT.md
-project-state/current.json
-project-state/tasks.json
+git status --short --branch
+```
+
+Then open the documentation index:
+
+```text
+docs/README.md
+```
+
+For a normal project task, continue with:
+
+```text
+native live Issue and PR records when current status or sequencing matters
+Project #1, including `Lane`, as mutable navigation classification only
 relevant lane in project-state/lanes.json
+project-state/current.json and project-state/tasks.json only when dated
+  compatibility context is needed
 relevant detailed docs
 ```
 
 For a production task:
 
 ```text
-AGENTS.md
-docs/PROJECT_CONTEXT.md
 relevant Risk A runbook
 latest execution record
-live read-only inventory
+fresh live read-only inventory
 explicit operator approval before mutation
 ```
 
-The control plane improves orientation. It does not replace engineering
-verification.
+The control plane improves orientation. It does not replace native Issue/PR
+state, live verification, or engineering validation.
