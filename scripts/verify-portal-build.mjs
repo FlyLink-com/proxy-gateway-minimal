@@ -12,6 +12,8 @@ const ADMIN_SHELL_MARKERS = [
   "ProvisioningPage"
 ];
 
+const LEGACY_IDENTITY = /GlobalCircle\s+AI/iu;
+
 const SECRET_MARKERS = [
   "SS_PASSWORD",
   "consoleToken",
@@ -198,6 +200,9 @@ export async function verifyPortalBuildDirectory(buildDir) {
     if (!/\.(html|js|css|svg|json|txt)$/i.test(file)) continue;
     const relative = relativeBuildPath(buildDir, file);
     const content = await readFile(file, "utf8");
+    if (LEGACY_IDENTITY.test(content)) {
+      throw new Error(`legacy identity marker found in ${relative}`);
+    }
     assertNoMarkers({
       content,
       file: relative,
@@ -253,6 +258,7 @@ export async function verifyPortalBuildDirectory(buildDir) {
     files: relativeFiles.length,
     safety: {
       noAdminShellMarkers: true,
+      noLegacyIdentity: true,
       noSecretMaterial: true,
       hasPortalHumanChallengeContract: true,
       hasPortalRegistrationContract: true,

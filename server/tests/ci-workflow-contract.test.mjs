@@ -32,6 +32,9 @@ test("CI keeps one stable Validate job, always checks the exact diff, and skips 
     "Run server tests",
     "Run admin tests",
     "Build admin app",
+    "Verify admin build boundary",
+    "Build Portal app",
+    "Verify Portal build boundary",
     "Build public site",
     "Verify public site boundary",
     "Cloudflare public site dry run"

@@ -16,7 +16,7 @@ export function AdminSetupPage({
         <div className="admin-setup-brand">
           <div className="brand-mark">GC</div>
           <div>
-            <strong>GlobalCircle AI</strong>
+            <strong>GCC WebOS</strong>
             <span>Operator Console</span>
           </div>
         </div>
