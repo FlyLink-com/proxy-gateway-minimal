@@ -45,6 +45,13 @@ function explicitExportNames(sourceFile: ts.SourceFile) {
   const identifiers = new Set<string>();
 
   sourceFile.statements.forEach((statement) => {
+    if (ts.isExportAssignment(statement)) {
+      if (!statement.isExportEquals) {
+        identifiers.add("default");
+      }
+      return;
+    }
+
     if (ts.isExportDeclaration(statement)) {
       if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
         statement.exportClause.elements.forEach((element) => identifiers.add(element.name.text));
@@ -305,6 +312,15 @@ describe("admin Figma mirror contract", () => {
     expect(exports.has("NamedDefault")).toBe(false);
     expect(sourceUsesIdentifier(fixture, "ImportOnly")).toBe(false);
     expect(sourceUsesIdentifier(fixture, "Internal")).toBe(true);
+
+    const expressionDefault = ts.createSourceFile(
+      "default-expression.ts",
+      "export default 42;",
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS
+    );
+    expect(explicitExportNames(expressionDefault)).toEqual(new Set(["default"]));
   });
 
   test("maps every mirrored component to React surfaces, grammar roles, tokens, and QA evidence", () => {
