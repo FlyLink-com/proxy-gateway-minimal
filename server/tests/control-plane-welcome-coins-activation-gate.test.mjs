@@ -597,12 +597,12 @@ test("verify rejects a malformed or changed activation state without writing", (
   );
   if (!paths) return;
   const before = readFileSync(paths.environmentPath);
-  const currentHash = "b".repeat(64);
+  const arbitraryHash = "b".repeat(64);
 
   assert.throws(
     () => verifyWelcomeCoinsActivation({
       ...preflightArgs(paths),
-      expectedEnvSha256: currentHash,
+      expectedEnvSha256: arbitraryHash,
       guardReader: () => guardedState()
     }),
     (error) => error?.condition === "target_key_conflict"
