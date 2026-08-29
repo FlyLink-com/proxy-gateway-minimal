@@ -185,7 +185,7 @@ a different service name or needs an explicit owner, set
 ## Lead Retention Operations (Source-Only)
 
 The repository contains a source-only Lead retention CLI and inert systemd
-templates; repository source does not install or enable them by itself. This
+templates. They are not installed or enabled by repository source alone. This
 document does not establish their current production state. Their presence in
 an artifact grants no database, service, deployment, or production authority;
 activation requires fresh inventory and a later exact Risk A Gate.
