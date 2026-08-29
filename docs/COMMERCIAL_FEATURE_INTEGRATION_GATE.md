@@ -18,23 +18,37 @@ provider/runtime changes, schema/auth changes, or release promotion.
 
 ## Admission rule
 
-A source-only integration is allowed only when all of these are true:
+A commercial source integration is allowed only when all of these are true:
 
 1. The target cohort appears in
    [ACTIVE_FRONTEND_MAP.md](ACTIVE_FRONTEND_MAP.md) as
-   `ACTIVE_SOURCE_UNBOUND` or `ACTIVE_PRODUCTION` at the exact PR base.
-2. The target surface and owner match the feature intent.
-3. The entry, bootstrap, route, stylesheet, build output, and verifier are
+   `ACTIVE_PRODUCTION` at the exact PR base and links an exact
+   URL -> deployment -> immutable artifact -> commit -> entry/bootstrap/
+   stylesheet -> output identity chain.
+2. A fresh provider/runtime readback confirms that referenced identity chain
+   is still current; stale, unreadable, redacted, or ambiguous evidence fails
+   closed.
+3. The target surface and owner match the feature intent.
+4. The entry, bootstrap, route, stylesheet, build output, and verifier are
    named explicitly.
-4. Focused boundary tests fail before the implementation and pass after it.
-5. The full surface build and verifier pass on the exact PR head.
-6. The PR makes no production claim and does not consume production approval
-   from a Project field, Issue state, old receipt, or build result.
+5. Focused boundary tests fail before the implementation and pass after it.
+6. The full surface build and verifier pass on the exact PR head.
+7. The PR does not claim its head is deployed or approved for promotion and
+   does not consume production approval from a Project field, Issue state,
+   old receipt, or build result.
 
-`RUNTIME_ONLY_UNKNOWN`, unclassified, unreadable, or ambiguous evidence fails
-closed.
+The map classification is routing metadata, not standalone production
+evidence or execution approval.
+
+`ACTIVE_SOURCE_UNBOUND` may receive only identity reconciliation and
+classification, import/build quarantine-boundary enforcement, and the tests
+or verifiers for those changes. It cannot receive new commercial behavior,
+schema/provider wiring, or release integration. `RUNTIME_ONLY_UNKNOWN`,
+unclassified, unreadable, or ambiguous evidence fails closed.
 
 ## Allowed source targets
+
+After the admission rule is satisfied, target routing is:
 
 | Intent | Allowed current source target | Required validation | Boundary |
 | --- | --- | --- | --- |
@@ -65,7 +79,8 @@ boundary debt, not permission to add more cross-surface coupling.
 | --- | --- |
 | Inventory/classification documentation | Risk C; exact source observation, document-authority check, diff check. |
 | Source feature, import/build boundary, rename, move, or verified source removal | Risk B; one focused PR with intent, tests, builds, verifiers, and no production mutation. |
-| Artifact promotion, deployment, provider/runtime inventory, DNS/CDN/certificate/Nginx change, production replacement, artifact deletion, or rollback | Risk A; separate issue/runbook, fresh exact inventory, explicit operator approval, validation, rollback, mutation, and post-readback. |
+| Provider/runtime read-only inventory | Risk A read-only packet; fresh exact evidence, explicit scope, no mutation, and a dated receipt. |
+| Artifact promotion, deployment, DNS/CDN/certificate/Nginx change, production replacement, artifact deletion, or rollback | Separately approved Risk A mutation gate; fresh exact inventory, exact targets, backup/rollback, explicit operator approval, validation, mutation, and post-readback. |
 
 ## Required PR evidence
 
@@ -76,11 +91,15 @@ A Risk B frontend PR records:
 - touched entry/bootstrap/route/stylesheet/output boundary;
 - focused negative and positive tests;
 - surface build/verifier results on the exact head;
-- production impact `none` and production state `not_deployed`;
+- production impact `none`, capability `production_state: not_deployed`,
+  `production_observation: RUNTIME_ONLY_UNKNOWN` unless a separate fresh
+  read-only receipt proves otherwise, and `deployment_performed: false`;
 - any remaining `RUNTIME_ONLY_UNKNOWN` facts without guessing.
 
 Approval is not transferable. A dated artifact, Project field, old receipt, or
 approval for a different digest/state cannot authorize a new target.
+`production_state` describes this PR's capability, not the current serving
+environment.
 
 Related documents:
 
