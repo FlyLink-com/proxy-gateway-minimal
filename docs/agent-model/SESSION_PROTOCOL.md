@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: agent_model_session_protocol
   superseded_by: null
-  last_verified_at: 2026-07-14
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -44,18 +44,27 @@ Forbidden files/actions: <scope>
 
 For `proxy-gateway-minimal`, read and verify in this order:
 
+`AGENTS.md` always applies; it defines the repository task rules but does not
+replace the current-state reads below.
+
 1. `docs/CURRENT_RELEASE_STATE.md` completely;
 2. `RELEASE_MANIFEST.md` completely;
 3. `docs/PROJECT_CONTEXT.md` completely;
 4. `git status --short --branch`, current branch/HEAD, `origin/master`, and
    remote/worktree context;
-5. `project-state/current.json`, `lanes.json`, and `tasks.json` for compact
-   coordination;
-6. relevant subsystem, workflow, runbook, and open PR/Issue evidence;
-7. fresh live inventory only when the risk and authority require it.
+5. `docs/README.md` and the relevant subsystem, workflow, or runbook;
+6. native Issue and PR records for current state, scope, declared risk, done
+   criteria, review evidence, and sequencing; use Project #1 only as a mutable
+   navigation projection;
+7. `project-state/current.json`, `lanes.json`, and `tasks.json` only when dated
+   compatibility evidence, reviewed lane definitions, or historical task
+   constraints are relevant;
+8. fresh live inventory only when the risk and authority require it.
 
-Treat JSON snapshots and docs as dated where their headers say so. A session
-must not replace current checks with memory or a previous handoff.
+Treat JSON snapshots and docs as dated where their headers say so. Neither
+Project fields nor snapshot-derived brief output can replace a native Issue/PR
+read, authorize Risk A, or prove production. A session must not replace current
+checks with memory or a previous handoff.
 
 ## 3. Fact Ledger
 
@@ -141,15 +150,19 @@ A session may report its assigned scope complete only when:
 - completion of one task is not overstated as phase, branch, repository,
   production, or runtime completion.
 
-For Issue #484, completion means one validated Draft PR exists and remains
-unmerged/not Ready. It does not mean Issue #437, Phase 2, or production work is
-complete.
+As a dated historical example, Issue #484 originally defined completion as one
+validated Draft PR that remained unmerged/not Ready at that cutoff. Its later
+native Issue/PR lifecycle supersedes that snapshot; neither the example nor its
+completion implied Issue #437, Phase 2, or production completion.
 
 ## 9. Machine Interface Reservation
 
-This protocol is documentation only. Current machine-readable coordination
-remains `project-state/*.json`, validated by `npm run project-state:check`.
-Future automation must first prove that the existing JSON and repository-local
-checks are insufficient, then extend them in a separate reviewed B-tier change.
+This protocol is documentation only. `project-state/lanes.json` retains the
+reviewed lane taxonomy, while `current.json` and `tasks.json` are dated
+compatibility snapshots; none is current-work coordination authority.
+`npm run project-state:check` validates their structure and fresh-native-read
+boundary, not the truth of mutable work or production state. Future automation
+must first prove that these repository-local contracts and checks are
+insufficient, then extend them in a separate reviewed B-tier change.
 Do not add a second YAML state file, service, CI workflow, dashboard, provider,
 or external dependency from this protocol.

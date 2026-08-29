@@ -4,25 +4,31 @@ Last verified: 2026-07-15, America/Los_Angeles.
 
 ```yaml
 document_metadata:
-  doc_type: canonical
-  lifecycle: active
-  authority_scope: milestones
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: historical_milestone_snapshot
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
 > Status:
-> - Type: Evidence-backed milestone map
+> - Type: Historical evidence-backed milestone snapshot
 > - Risk: C
 > - Execution authority: Does not authorize source implementation,
 >   production, runtime, provider, deployment, promotion, rollback, or
 >   customer-data actions
 > - Production impact: None
-> - Authority: Derived portfolio crosswalk only; does not rename GitHub phases,
->   Issues, or queue order
-> - Index scope: Map the requested Foundation, Governance, Runtime, and
->   Commercial portfolio labels to current repository evidence
+> - Authority: Historical derived portfolio crosswalk only; no current Issue,
+>   PR, Project, milestone, blocker, or sequencing authority
+> - Index scope: Preserve the Foundation, Governance, Runtime, and Commercial
+>   portfolio observations at the 2026-07-15 cutoff
+
+This file preserves a dated milestone and queue snapshot for audit. Its Issue
+ordering, PR state, repository counts, blockers, and “next gates” are
+historical and invalid for current use. Resolve current work and sequencing from fresh native Issue/PR
+records; Project #1 is navigation only. Nothing in this file authorizes Risk A
+or proves current production state.
 
 ## Interpretation Rule
 
@@ -129,8 +135,8 @@ Governance` complete.
 | Criterion | Evidence state |
 | --- | --- |
 | Source, Merge, Artifact, and Production gates are defined independently. | Met in current source docs. |
-| Machine-readable coordination has one repository-local mechanism. | Met: `project-state/*.json`; this work adds no competing YAML. |
-| Drift-prone GitHub/source snapshots are reconciled after queue changes. | Met for this cutoff by merged PR #482 and this bounded C-tier reconciliation. |
+| Machine-readable lane taxonomy and dated compatibility have one repository-local mechanism. | Met: `project-state/*.json`; current work remains native Issue/PR state and this work adds no competing YAML or queue. |
+| Drift-prone GitHub/source observations are date-bounded and refreshed from their native owners. | Met for this historical cutoff by merged PR #482 and this bounded C-tier reconciliation; not a claim about current GitHub state. |
 | Merge and environment settings independently enforce review. | Not met: ruleset `18935716` requires strict `Validate`, zero approvals, and no review-thread resolution; six environments exist, only `artifact-publication` has a branch policy, and none has reviewer enforcement. |
 | A formal milestone completion decision exists. | Information gap. |
 

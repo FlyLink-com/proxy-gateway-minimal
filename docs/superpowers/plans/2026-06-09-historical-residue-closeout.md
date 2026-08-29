@@ -1,6 +1,33 @@
 # Historical Residue Closeout Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+Last verified: 2026-08-29, America/Los_Angeles.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: historical_implementation_plan
+  superseded_by: null
+  last_verified_at: 2026-08-29
+  production_authority: false
+```
+
+> Status:
+> - Type: Historical implementation plan
+> - Risk: C record; original tasks included separately gated B/A work
+> - Execution authority: None; do not execute its checkbox order or reuse its
+>   project-state queue claims
+> - Production impact: None
+> - Source of truth for: The 2026-06-09 planning record only
+
+This plan is retained for archaeology. Its “current,” queue, status, and task
+instructions are historical observations, not present-day work selection.
+Resolve all current work from fresh native Issue/PR records and use Project #1
+only for navigation.
+
+> **Historical note:** The original plan required an execution skill and used
+> checkbox order for tracking. That instruction is superseded; do not execute
+> this plan or treat its checkboxes as a current queue.
 
 **Goal:** Close stale Aliyun/AWS/channel-lab project residue, productize the current Vultr Japan + Singapore multi-data-plane lane, and make order, credential, usage, and subscription rendering evidence consistent.
 
@@ -25,7 +52,7 @@ Expected PR count:
 3. PR 3: data-plane handoff apply command productization.
 4. PR 4 or production record: exact approved production release and smoke validation.
 
-## Current Evidence
+## Historical Evidence At The 2026-06-09 Cutoff
 
 - `docs/PROJECT_CONTEXT.md` now documents Vultr Japan as the current control plane and Japan + Singapore as data-plane capacity.
 - `project-state/current.json` still contains Aliyun-era active goal and next queue entries.

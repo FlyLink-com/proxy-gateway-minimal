@@ -2735,20 +2735,23 @@ Task 9C proposal but may not regenerate or alter it.
 **Expected PR count:** 1
 **Production impact:** None
 
-After the seven source PRs merge, Task 9A is merged, and Task 9B passes,
-synchronize only the
-existing authorities:
+After the seven source PRs merge, Task 9A is merged, and Task 9B passes, first
+read the fresh native Issue/PR records and exact merged heads. Reconcile only
+the existing reviewed files within their distinct authority scopes:
 
-- `project-state/current.json`
-- `project-state/lanes.json`
-- `project-state/tasks.json`
-- `docs/CURRENT_RELEASE_STATE.md`
-- `RELEASE_MANIFEST.md`
-- `docs/PROJECT_CONTEXT.md`
+- `docs/CURRENT_RELEASE_STATE.md`, `RELEASE_MANIFEST.md`, and
+  `docs/PROJECT_CONTEXT.md` retain their canonical documented scopes;
+- `project-state/lanes.json` retains reviewed taxonomy and safety boundaries
+  only;
+- `project-state/current.json` and `project-state/tasks.json` retain dated
+  compatibility evidence only and must not regain live status, queue,
+  sequencing, blocker, or Project-authority fields.
 
 Do not add `docs/governance/current-state.md` or another parallel snapshot.
-Record merged identities and distinguish source implementation from disabled
-or absent capabilities.
+Record exact merged identities as dated evidence and distinguish source
+implementation from disabled or absent capabilities. Never copy native
+Issue/PR state or Project field values into the compatibility snapshots as a
+current-work claim.
 
 Required final state:
 
@@ -2822,7 +2825,8 @@ Post-mutation mode proves every expected-after whole-file identity, selected
 value, and non-selected byte, plus all other paths and file count unchanged.
 Any base drift, missing/multiple
 anchor, selector overlap, value mismatch or extra byte is blocked. Expected
-result: all commands pass; only the six existing authority files are changed.
+result: all commands pass; only the six reviewed files are changed within the
+distinct authority scopes above.
 Commit once under the separately approved C-tier Gate:
 
 ```powershell
@@ -2835,6 +2839,11 @@ post-mutation validation with `target.kind: commit`, exact head, and
 `parentHead: manifest.baseHead`,
 `project-state:check`, `docs:authority:check`, both diff checks, and the clean
 worktree assertion against the committed head.
+
+Task 9C is not a synchronization of six equal authorities. Any future proposal
+must preserve the domain split above, require fresh native Issue/PR reads for
+current work, and fail closed if a selector would recreate a live queue or
+status owner in `current.json` or `tasks.json`.
 
 ## Traceability Matrix
 

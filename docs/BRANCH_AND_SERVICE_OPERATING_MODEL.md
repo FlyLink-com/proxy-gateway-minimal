@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: branch_and_service_operating_model
   superseded_by: null
-  last_verified_at: 2026-06-15
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -64,7 +64,7 @@ Do not collapse these labels. In particular, `deployed` is not `merged`, and
 | `release/<target>` or artifact label | Candidate source for one reviewed deployment. | Should point back to a commit and artifact hash. | Runtime authority only after explicit deployment approval and validation. |
 | `archive/*`, old worktrees, closed PR branches | Historical reference. | Do not keep as active sources unless revalidated and rebranched. | No runtime authority. |
 
-## Current Branch Inventory
+## Dated Branch Inventory — Refresh Before Use
 
 Point-in-time Git and PR inventory as of the latest GitHub/mainline closeout.
 This table is an orientation aid only; refresh it with `git fetch --prune`,
@@ -77,17 +77,17 @@ This table is an orientation aid only; refresh it with `git fetch --prune`,
 
 ## Service Ownership Map
 
-| Service / surface | Owner lane | Current responsibility | Must not own |
+| Service / surface | Owner lane | Documented responsibility | Must not own |
 | --- | --- | --- | --- |
 | Control plane | Subscription Control Plane | Accounts, portal sessions, orders, subscription artifacts, credential lifecycle, usage ledger, admin/operator API. | Data-plane listener ownership or public Admin exposure. |
-| Vultr Japan data plane | Edge Data Plane / Production Operations | Production VLESS Reality, Hysteria2, TUIC runtime capacity and loopback usage sources. | Customer/order truth. |
-| Singapore data plane | Edge Data Plane / Production Operations | Additional VLESS Reality, Hysteria2, TUIC runtime capacity through remote handoff/apply gates. | Customer/order truth or independent portal database. |
+| Vultr Japan data plane | Edge Data Plane / Production Operations | Dated role evidence covers VLESS Reality, Hysteria2, TUIC capacity and loopback usage sources; current capacity/health requires fresh inventory. | Customer/order truth. |
+| Singapore data plane | Edge Data Plane / Production Operations | Dated role evidence covers additional VLESS Reality, Hysteria2, TUIC capacity through remote handoff/apply gates; current capacity/health requires fresh inventory. | Customer/order truth or independent portal database. |
 | User portal | Product Business + Subscription Control Plane | User login, orders, subscription status, user-scoped usage/status, support requests. | Node-local account state or node selection as a normal user workflow. |
 | Admin/operator panel | Production Operations + Subscription Control Plane | Local/SSH-protected operator review, order status, usage monitor, lifecycle controls. | Public web exposure. |
 | Subscription renderer | Subscription Control Plane | Emit client proxy groups from the durable order/credential ledger. | Ad hoc in-memory maps or node-local account lists. |
 | Runtime adapters | Edge Data Plane | Convert desired credential state into reviewed, config-tested runtime material or remote handoff receipts. | Business decisions, accounts, or package rules. |
 | Usage collector | Subscription Control Plane + Edge Data Plane | Map runtime stats to `edgeCredentialRef`, then order/account rollups. | Present aggregate-only data as per-order usage. |
-| Docs/records/project-state | Architecture + Production Operations | Current-state handoff, runbooks, validation evidence, and historical indexes. | Production approval by themselves. |
+| Docs/records/project-state | Architecture + Production Operations | Stable context, runbooks, validation evidence, reviewed lane taxonomy, dated compatibility contracts, and historical indexes. | Current work sequencing, live production state, or production approval by themselves. |
 
 ## Completion Gates
 
@@ -111,8 +111,10 @@ When closing the current phase, use this order:
    runtime adapters, UI, docs, and deployment records without clear validation.
 4. For each open draft PR, choose exactly one outcome: merge after validation,
    rebase into the current integration lane, or archive/close as superseded.
-5. Update `docs/PROJECT_CONTEXT.md`, `project-state/*.json`, and execution
-   records only after the actual merge/deploy outcome is known.
+5. Update `docs/PROJECT_CONTEXT.md` or dated `project-state` compatibility
+   fields only when the actual merge/deploy outcome changes their documented
+   scope; keep current work state and sequencing in native Issue/PR records,
+   and write execution records only after the outcome is known.
 
 ## Anti-Patterns
 
