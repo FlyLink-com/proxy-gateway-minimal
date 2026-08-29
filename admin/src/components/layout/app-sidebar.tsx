@@ -79,7 +79,7 @@ export function AppSidebar({
       ariaLabel={shellCopy.workspaceAriaLabel}
       brand={{
         mark: "GC",
-        name: "GlobalCircle AI",
+        name: "GCC WebOS",
         subtitle: shellCopy.brandSubtitle
       }}
       pinnedAppGroups={pinnedAppGroups}

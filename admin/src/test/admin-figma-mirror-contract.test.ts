@@ -89,7 +89,10 @@ describe("admin Figma mirror contract", () => {
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("use_figma can execute");
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("write probe succeeded");
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.connectorMessage).toMatch(/use_figma succeeded/i);
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/canonical handoff file/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.authorityBoundary).toMatch(/dated design evidence only/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.authorityBoundary).toMatch(/not the current product identity/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.authorityBoundary).toMatch(/production authority/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/dated design reference/i);
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/seat\/billing prompts/i);
   });
 

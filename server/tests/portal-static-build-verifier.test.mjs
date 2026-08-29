@@ -103,10 +103,35 @@ test("portal static build verifier accepts the Portal commerce shell with protec
     const summary = await verifyPortalBuildDirectory(tempDir);
 
     assert.equal(summary.status, "ok");
+    assert.equal(summary.safety.noLegacyIdentity, true);
     assert.equal(summary.safety.hasCommerceLayoutContract, true);
     assert.equal(summary.safety.hasProtectedRechargeContract, true);
     assert.equal(summary.safety.hasRechargeConfigIdentity, true);
     assert.deepEqual(summary.rechargeConfigIdentity.configuredAdapters, []);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("active Portal metadata uses the current GCC WebOS identity", async () => {
+  const source = await readFile(
+    new URL("../../admin/portal/index.html", import.meta.url),
+    "utf8"
+  );
+
+  assert.doesNotMatch(source, /GlobalCircle\s+AI/iu);
+  assert.match(source, /GCC WebOS/u);
+});
+
+test("portal static build verifier rejects the legacy product identity", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
+  try {
+    await writePortalFixture(tempDir, { javascript: "GlobalCircle AI" });
+
+    await assert.rejects(
+      () => verifyPortalBuildDirectory(tempDir),
+      /legacy identity marker/
+    );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

@@ -8,6 +8,9 @@ const REQUIRED_RUNTIME_MARKERS = [
   "/api/admin/platform/subscription-usage-monitor"
 ];
 
+const LEGACY_IDENTITY = /GlobalCircle\s+AI/iu;
+const TEXT_ARTIFACT_EXTENSIONS = /\.(?:html|js|css|svg|json|txt)$/iu;
+
 const PRIVATE_KEY_MARKERS = [
   "-----BEGIN PRIVATE KEY-----",
   "-----BEGIN ENCRYPTED PRIVATE KEY-----",
@@ -81,6 +84,12 @@ export async function verifyAdminBuildDirectory(buildDirectory) {
 
   for (const file of files) {
     const content = await readFile(file);
+    if (
+      TEXT_ARTIFACT_EXTENSIONS.test(file)
+      && LEGACY_IDENTITY.test(content.toString("utf8"))
+    ) {
+      throw new Error(`legacy identity marker found in ${relativeBuildPath(buildDirectory, file)}`);
+    }
     const privateKeyMarker = PRIVATE_KEY_MARKERS.find((marker) => content.includes(marker));
     if (privateKeyMarker) {
       throw new Error(`private key marker found in ${relativeBuildPath(buildDirectory, file)}`);
@@ -104,6 +113,7 @@ export async function verifyAdminBuildDirectory(buildDirectory) {
     files: relativeFiles.length,
     safety: {
       hasAdminApiContract: true,
+      noLegacyIdentity: true,
       noPrivateKeyMaterial: true,
       noSourceMaps: true
     }

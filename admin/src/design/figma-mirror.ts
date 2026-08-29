@@ -178,7 +178,8 @@ export const ADMIN_FIGMA_WRITE_ACCESS_CHECK = {
   sourceFileMismatch: "Previous recorded file key resolved to a one-page Requirements Map; the canonical handoff file is the multi-frame oZuKNtGPhP6oOQ0MSzpfvn file.",
   diagnosticResult: "get_metadata can read the canonical handoff file, use_figma can execute, and a shared plugin data write probe succeeded.",
   connectorMessage: "use_figma succeeded on page 0:1 with adminos.mcpWriteProbe.",
-  nextStep: "Use the canonical handoff file for future Figma mirror and visual QA work. Avoid Share or seat/billing prompts unless the operator explicitly approves that action."
+  authorityBoundary: "Dated design evidence only; not the current product identity, source, build, deployment, or production authority.",
+  nextStep: "Use this dated design reference only for future Figma mirror and visual QA comparison. Avoid Share or seat/billing prompts unless the operator explicitly approves that action."
 } as const;
 
 export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {

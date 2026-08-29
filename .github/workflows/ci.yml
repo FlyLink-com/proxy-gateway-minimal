@@ -156,6 +156,18 @@ jobs:
         if: steps.changes.outputs.run_full != '0'
         run: npm run admin:build
 
+      - name: Verify admin build boundary
+        if: steps.changes.outputs.run_full != '0'
+        run: npm run admin:verify
+
+      - name: Build Portal app
+        if: steps.changes.outputs.run_full != '0'
+        run: npm run admin:portal:build
+
+      - name: Verify Portal build boundary
+        if: steps.changes.outputs.run_full != '0'
+        run: npm run admin:portal:verify
+
       - name: Build public site
         if: steps.changes.outputs.run_full != '0'
         run: npm run cloudflare:site:build

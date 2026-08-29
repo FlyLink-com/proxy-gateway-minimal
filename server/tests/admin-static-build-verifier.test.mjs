@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -33,8 +33,40 @@ test("admin static build verifier accepts an Admin API shell", async () => {
 
     assert.equal(summary.status, "ok");
     assert.equal(summary.safety.hasAdminApiContract, true);
+    assert.equal(summary.safety.noLegacyIdentity, true);
     assert.equal(summary.safety.noPrivateKeyMaterial, true);
     assert.equal(summary.safety.noSourceMaps, true);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("active Admin shell inputs use the current GCC WebOS identity", async () => {
+  const activeInputs = [
+    "../../admin/index.html",
+    "../../admin/src/pages/admin-setup-page.tsx",
+    "../../admin/src/components/layout/app-sidebar.tsx"
+  ];
+
+  for (const relativePath of activeInputs) {
+    const source = await readFile(new URL(relativePath, import.meta.url), "utf8");
+    assert.doesNotMatch(source, /GlobalCircle\s+AI/iu, relativePath);
+    assert.match(source, /GCC WebOS/u, relativePath);
+  }
+});
+
+test("admin static build verifier rejects the legacy product identity", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));
+  try {
+    await writeAdminFixture(
+      tempDir,
+      `${ADMIN_RUNTIME_MARKERS.join(" ")} GlobalCircle AI`
+    );
+
+    await assert.rejects(
+      () => verifyAdminBuildDirectory(tempDir),
+      /legacy identity marker/
+    );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
