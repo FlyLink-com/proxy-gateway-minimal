@@ -74,7 +74,7 @@ const EXPECTED_WORKFLOW_ACTIONS = {
 const EXPECTED_WORKFLOW_FILES = Object.keys(EXPECTED_WORKFLOW_ACTIONS);
 const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
-    sha: "df4cb1c069e1874edd31b4311f1884172cec0e10",
+    sha: "d23441a48e516b6c34aea4fa41551a30e30af803",
     annotation: "v6",
     count: 19
   },
@@ -99,6 +99,10 @@ const EXPECTED_ACTION_REFERENCE_COUNT = 44;
 // reserved for this canonical one-line form and every other spelling fails closed.
 const CANONICAL_ACTION_REFERENCE_LINE =
   /^ *(?:- +)?uses: +([^ \t#]+)(?: +# +(\S(?:.*\S)?))? *$/u;
+const YAML_BLOCK_SCALAR_HEADER =
+  /: *[>|](?:[+-]|[1-9]|[+-][1-9]|[1-9][+-])? *$/u;
+const YAML_INDIRECTION_TOKEN =
+  /(?:^|[ \t:[{,?])(?:[&*][A-Za-z0-9_-]+|<<:)/u;
 
 function readRepositoryFile(path) {
   return readFileSync(resolve(REPOSITORY_ROOT, path), "utf8");
@@ -115,13 +119,29 @@ function inspectWorkflowActionInventory(workflow, workflowFile) {
   const references = [];
   const violations = [];
   const lines = workflow.replace(/\r\n?/gu, "\n").split("\n");
+  let blockScalarIndent = null;
 
   for (const [lineIndex, line] of lines.entries()) {
     const location = `${workflowFile}:${lineIndex + 1}`;
+    const indentation = line.match(/^ */u)[0].length;
+    if (blockScalarIndent !== null) {
+      if (line.trim() === "" || /^\s*#/u.test(line)) continue;
+      if (indentation > blockScalarIndent) continue;
+      blockScalarIndent = null;
+    }
     const parsed = line.match(CANONICAL_ACTION_REFERENCE_LINE);
 
     if (!parsed) {
-      if (!/^\s*#/u.test(line) && /\buses\b/u.test(line.replace(/\s+#.*$/u, ""))) {
+      if (/^\s*#/u.test(line)) continue;
+      const sourceLine = line.replace(/\s+#.*$/u, "");
+      if (YAML_BLOCK_SCALAR_HEADER.test(sourceLine)) {
+        blockScalarIndent = indentation;
+      }
+      if (sourceLine.includes("\\")) {
+        violations.push(`${location} YAML escapes outside block scalars are forbidden`);
+      } else if (YAML_INDIRECTION_TOKEN.test(sourceLine)) {
+        violations.push(`${location} YAML mapping anchors and aliases are forbidden`);
+      } else if (/\buses\b/u.test(sourceLine)) {
         violations.push(`${location} non-canonical uses syntax: ${line.trim()}`);
       }
       continue;
@@ -177,6 +197,16 @@ test("workflow Action inventory parser fails closed outside the canonical source
     "cross-action SHA": `steps:\n  - uses: actions/upload-artifact@${checkout.sha} # v7`,
     "uppercase SHA": `steps:\n  - uses: actions/checkout@${checkout.sha.toUpperCase()} # v6`,
     "quoted key": `steps:\n  - "uses": actions/checkout@${checkout.sha} # v6`,
+    "unicode-escaped quoted key":
+      "steps:\n  - \"\\u0075ses\": evil/action@v1",
+    "hex-escaped quoted key":
+      "steps:\n  - \"\\x75ses\": evil/action@v1",
+    "escaped alias key":
+      "key: &uses_key \"\\u0075ses\"\nsteps:\n  - *uses_key: evil/action@v1",
+    "escaped anchored step mapping":
+      "template: &hidden_step\n  \"\\u0075ses\": evil/action@v1\nsteps:\n  - *hidden_step",
+    "multiline escaped explicit key":
+      "steps:\n  - ? \"\\u0075" + "\\" + "\n      ses\"\n    : evil/action@v1",
     "flow mapping": `steps:\n  - { uses: actions/checkout@${checkout.sha} }`,
     "space before colon": `steps:\n  - uses : actions/checkout@${checkout.sha} # v6`,
     alias: "steps:\n  - uses: *reviewed_checkout",
@@ -193,6 +223,13 @@ test("workflow Action inventory parser fails closed outside the canonical source
     inspectWorkflowActionInventory(
       `# uses: actions/checkout@v6\nsteps: [] # uses: actions/checkout@v6\n`,
       "comments.yml"
+    ),
+    { references: [], violations: [] }
+  );
+  assert.deepEqual(
+    inspectWorkflowActionInventory(
+      "steps:\n  - run: |\n      printf '\\\\u0075ses\\n'\n      echo 'uses &anchor *alias'\n",
+      "block-scalar.yml"
     ),
     { references: [], violations: [] }
   );
@@ -224,6 +261,15 @@ test("all workflow Action references use the reviewed full commit inventory", ()
     }
     const workflow = readRepositoryFile(`.github/workflows/${workflowFile}`)
       .replace(/\r\n?/gu, "\n");
+    const expectedUnsafeCheckoutOverrides =
+      workflowFile === "governance-validate.yml" ? 1 : 0;
+    const unsafeCheckoutOverrides =
+      workflow.match(/\ballow-unsafe-pr-checkout\b/gu)?.length ?? 0;
+    if (unsafeCheckoutOverrides !== expectedUnsafeCheckoutOverrides) {
+      violations.push(
+        `${workflowFile} expected ${expectedUnsafeCheckoutOverrides} unsafe checkout overrides, found ${unsafeCheckoutOverrides}`
+      );
+    }
     const inspected = inspectWorkflowActionInventory(workflow, workflowFile);
     violations.push(...inspected.violations);
     referenceCount += inspected.references.length;
@@ -355,6 +401,17 @@ test("trusted governance advisory uses only the base validator and immutable tru
   assert.equal((governance.match(/actions\/checkout@[a-f0-9]{40} # v6/g) ?? []).length, 2);
   assert.equal((governance.match(/actions\/setup-node@[a-f0-9]{40} # v6/g) ?? []).length, 1);
   assert.equal((governance.match(/persist-credentials: false/g) ?? []).length, 2);
+  assert.equal((governance.match(/allow-unsafe-pr-checkout: true/g) ?? []).length, 1);
+  const trustedCheckout = governance.slice(
+    governance.indexOf("- name: Checkout trusted base validator"),
+    governance.indexOf("- name: Checkout untrusted candidate state")
+  );
+  const candidateCheckout = governance.slice(
+    governance.indexOf("- name: Checkout untrusted candidate state"),
+    governance.indexOf("- name: Setup Node")
+  );
+  assert.doesNotMatch(trustedCheckout, /allow-unsafe-pr-checkout/);
+  assert.match(candidateCheckout, /allow-unsafe-pr-checkout: true/);
   assert.match(governance, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
   assert.match(governance, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/);
   assert.match(governance, /path: candidate/);
