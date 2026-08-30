@@ -46,10 +46,10 @@ GitHub PRs / Issues
 
 The initial implementation was intentionally small and docs-only. It now also
 includes offline compatibility checking, a reviewed Project v2 configuration
-contract, and a redacted read-only live exporter. The dated JSON state files
-remain orientation inputs rather than a live work index. This model adds no
-database, daemon, runtime mutation, production integration, or Project
-writeback.
+contract, a redacted read-only live exporter, and a pure drift reporter. The
+dated JSON state files remain orientation inputs rather than a live work index.
+This model adds no database, daemon, runtime mutation, or production
+integration.
 
 ## Boundary
 
@@ -138,14 +138,14 @@ Use it to answer:
 - what consistency grace and authority boundaries must a reader preserve?
 
 The contract contains no live items, counts, queue, branch, check, deployment,
-or runtime state. GraphQL field and option IDs are not guessed or copied into
-this semantic contract; tasks that depend on them require a fresh authoritative
-read. The contract is SHA-256 pinned and validated with the other reviewed
-project-state inputs. Its `itemFieldRequirements` keeps managed-repository
-Issues at all six required fields while requiring only `Status` for
-managed-repository pull requests; absence of the other five optional PR slots
-is not a contract violation. Views and native workflows are reviewed static
-expectations, not evidence that the live Project currently matches them.
+or runtime state. GraphQL field and option IDs are discovered by a live export;
+they are not guessed or copied into this semantic contract. The contract is
+SHA-256 pinned and validated with the other reviewed project-state inputs.
+Its `itemFieldRequirements` keeps managed-repository Issues at all six required
+fields while requiring only `Status` for managed-repository pull requests; the
+other five PR slots remain collected but are not missing-field drift. Project
+views and native workflows remain static expectations until a reader explicitly
+collects them, so drift v1 reports both domains as `not_evaluated`.
 
 ## Ownership
 
@@ -260,39 +260,52 @@ symlinks, authority wording, and sensitive-data patterns. It also validates
 the Project v2 contract's six unique fields and options and requires its Lane
 options to match `project-state/lanes.json` exactly.
 
-The repository also provides a bounded read-only Project command:
+Two additional repository commands keep live reads separate from offline CI:
 
 ```text
 gccgw project export --json
+gccgw project drift --input <project-export.json> --json
 ```
 
-`project export` byte-verifies the checked-in Project contract, reads GitHub
-Projects v2 with a temporary environment token, paginates every field and
-Project item, and applies two normalized projection passes plus a before/after
-consistency fence. A successful result embeds the canonical contract digest
-and explicit collection coverage. It emits no free-text item content or
-external-repository identity, reduces a title mismatch to a boolean, replaces
-unexpected option names with non-semantic markers, and never collects source,
-checks, production, or writeback authority. Stable observed field absence,
-ambiguity, type differences, and option differences remain complete export
-evidence. The command performs no mutation and is not added to offline
-`project verify`.
+`project export` reads GitHub Projects v2 with the operator's temporary token,
+paginates all fields and Project items, applies a bounded consistency fence,
+and emits only a redacted allowlist. A mismatched live Project title is reduced
+to a boolean, external-repository native identity is removed, and unexpected
+managed option names are replaced with non-semantic observed markers.
+`project drift` is an offline pure
+evaluation of that normalized export. It accepts only the byte-verified,
+checked-in Project contract and has no alternate-contract flag; a missing or
+non-canonical contract is `indeterminate`. A successful export embeds that
+canonical contract digest, and drift rejects missing or stale export bindings
+instead of interpreting them under different semantics. Stable observed field
+absence, ambiguity, type drift, and option drift remain complete manifest
+evidence rather than exporter failure. The reporter marks repository-wide
+native inventory, source, CI, production, Project views, native workflows, and
+saved-export freshness as not evaluated in v1. Run drift against a newly
+produced export; `generatedAt` records an observation point but does not prove
+present freshness or authorize writeback. Lifecycle age can become proven
+drift only with the export's trusted GitHub HTTP clock; a local-system clock
+requires review.
 
-## Future Tooling
+Exit semantics are fail-closed: `clean_in_evaluated_scope` exits `0`, proven
+`drift` exits `1`, and `review_required`, `indeterminate`, or CLI failure exits
+`2`. Automation must inspect `outcome`, `coverage`, and `reviewCount` together;
+a review finding is not global clean even when no proven drift exists.
 
-Future B-tier readers may add complete, redacted live-evidence adapters for
-native Issue and PR inventory, Project configuration, exact source ancestry,
-and exact-head required checks. Each adapter must declare completeness before
-any dependent comparison can run. Remaining offline checks may cover
-`docs/README.md` pointers, bounded `PROJECT_CONTEXT.md` growth, and genuinely
-stale timestamps or branch names.
+## Next Tooling Stages
+
+Future B-tier slices may add independent, complete native Issue/PR inventory,
+exact source ancestry, and exact-head required-check adapters. Each adapter must
+declare completeness before its dependent drift rules can run. Remaining
+offline checks may cover `docs/README.md` pointers, bounded
+`PROJECT_CONTEXT.md` growth, and genuinely stale timestamps or branch names.
 
 Project field writeback remains a separate later stage. It must default to
-dry-run, bind exact reviewed input and evidence digests, show a bounded
-mutation plan, require exact operator approval, reject concurrent change, and
-read every changed field back. This static-contract slice generates no
-mutation or auto-fix plan. Do not build a service or database until JSON plus
-bounded commands prove insufficient.
+dry-run, bind an exact export and contract digest, show a bounded mutation
+plan, require exact operator approval, reject concurrent drift, and read every
+changed field back. No first-stage command generates a mutation or auto-fix
+plan. Do not build a service or database until JSON plus bounded commands prove
+insufficient.
 
 ## Read Order
 
