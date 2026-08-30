@@ -72,9 +72,15 @@ const EXPECTED_WORKFLOW_ACTIONS = {
   ]
 };
 const EXPECTED_WORKFLOW_FILES = Object.keys(EXPECTED_WORKFLOW_ACTIONS);
+const DEFAULT_CHECKOUT_PIN = "d23441a48e516b6c34aea4fa41551a30e30af803";
+// governance-validate.yml is an immutable trust root in its own trusted job. Its
+// two exact-SHA checkout positions remain on the base-reviewed pin until a
+// separately authorized trust-root rotation can change that workflow.
+const TRUSTED_GOVERNANCE_CHECKOUT_PIN =
+  "df4cb1c069e1874edd31b4311f1884172cec0e10";
 const REVIEWED_ACTION_PINS = {
   "actions/checkout": {
-    sha: "d23441a48e516b6c34aea4fa41551a30e30af803",
+    sha: DEFAULT_CHECKOUT_PIN,
     annotation: "v6",
     count: 19
   },
@@ -95,6 +101,13 @@ const REVIEWED_ACTION_PINS = {
   }
 };
 const EXPECTED_ACTION_REFERENCE_COUNT = 44;
+const EXPECTED_ACTION_REVISION_COUNTS = {
+  [`actions/checkout@${DEFAULT_CHECKOUT_PIN}`]: 17,
+  [`actions/checkout@${TRUSTED_GOVERNANCE_CHECKOUT_PIN}`]: 2,
+  [`actions/download-artifact@${REVIEWED_ACTION_PINS["actions/download-artifact"].sha}`]: 3,
+  [`actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha}`]: 16,
+  [`actions/upload-artifact@${REVIEWED_ACTION_PINS["actions/upload-artifact"].sha}`]: 6
+};
 // Keep this source-only guard dependency-free: every uncommented `uses` token is
 // reserved for this canonical one-line form and every other spelling fails closed.
 const CANONICAL_ACTION_REFERENCE_LINE =
@@ -115,7 +128,24 @@ function jobBlock(workflow, jobName, nextJobName) {
   return workflow.slice(start, end >= 0 ? end : undefined);
 }
 
-function inspectWorkflowActionInventory(workflow, workflowFile) {
+function reviewedPinForWorkflowPosition({ action, referenceIndex, workflowFile }) {
+  const reviewed = REVIEWED_ACTION_PINS[action];
+  if (
+    reviewed &&
+    action === "actions/checkout" &&
+    workflowFile === "governance-validate.yml" &&
+    (referenceIndex === 0 || referenceIndex === 1)
+  ) {
+    return { ...reviewed, sha: TRUSTED_GOVERNANCE_CHECKOUT_PIN };
+  }
+  return reviewed;
+}
+
+function inspectWorkflowActionInventory(
+  workflow,
+  workflowFile,
+  resolveReviewedPin = ({ action }) => REVIEWED_ACTION_PINS[action]
+) {
   const references = [];
   const violations = [];
   const lines = workflow.replace(/\r\n?/gu, "\n").split("\n");
@@ -157,8 +187,9 @@ function inspectWorkflowActionInventory(workflow, workflowFile) {
 
     const action = reference.slice(0, separator);
     const revision = reference.slice(separator + 1);
+    const referenceIndex = references.length;
     references.push({ action, revision });
-    const reviewed = REVIEWED_ACTION_PINS[action];
+    const reviewed = resolveReviewedPin({ action, referenceIndex, workflowFile });
     if (!reviewed) {
       violations.push(`${location} unreviewed Action: ${action}`);
       continue;
@@ -244,6 +275,7 @@ test("all workflow Action references use the reviewed full commit inventory", ()
   const actionCounts = new Map(
     Object.keys(REVIEWED_ACTION_PINS).map((action) => [action, 0])
   );
+  const actionRevisionCounts = new Map();
   const violations = [];
   let referenceCount = 0;
 
@@ -261,16 +293,18 @@ test("all workflow Action references use the reviewed full commit inventory", ()
     }
     const workflow = readRepositoryFile(`.github/workflows/${workflowFile}`)
       .replace(/\r\n?/gu, "\n");
-    const expectedUnsafeCheckoutOverrides =
-      workflowFile === "governance-validate.yml" ? 1 : 0;
     const unsafeCheckoutOverrides =
       workflow.match(/\ballow-unsafe-pr-checkout\b/gu)?.length ?? 0;
-    if (unsafeCheckoutOverrides !== expectedUnsafeCheckoutOverrides) {
+    if (unsafeCheckoutOverrides !== 0) {
       violations.push(
-        `${workflowFile} expected ${expectedUnsafeCheckoutOverrides} unsafe checkout overrides, found ${unsafeCheckoutOverrides}`
+        `${workflowFile} forbids unsafe checkout overrides, found ${unsafeCheckoutOverrides}`
       );
     }
-    const inspected = inspectWorkflowActionInventory(workflow, workflowFile);
+    const inspected = inspectWorkflowActionInventory(
+      workflow,
+      workflowFile,
+      reviewedPinForWorkflowPosition
+    );
     violations.push(...inspected.violations);
     referenceCount += inspected.references.length;
     const observedActions = inspected.references.map(({ action }) => action);
@@ -280,10 +314,15 @@ test("all workflow Action references use the reviewed full commit inventory", ()
         `${workflowFile} Action sequence mismatch: ${JSON.stringify(observedActions)}`
       );
     }
-    for (const { action } of inspected.references) {
+    for (const { action, revision } of inspected.references) {
       if (actionCounts.has(action)) {
         actionCounts.set(action, actionCounts.get(action) + 1);
       }
+      const actionRevision = `${action}@${revision}`;
+      actionRevisionCounts.set(
+        actionRevision,
+        (actionRevisionCounts.get(actionRevision) ?? 0) + 1
+      );
     }
   }
 
@@ -296,6 +335,21 @@ test("all workflow Action references use the reviewed full commit inventory", ()
     const observed = actionCounts.get(action);
     if (observed !== reviewed.count) {
       violations.push(`${action} expected ${reviewed.count} references, found ${observed}`);
+    }
+  }
+  for (const [actionRevision, expected] of Object.entries(
+    EXPECTED_ACTION_REVISION_COUNTS
+  )) {
+    const observed = actionRevisionCounts.get(actionRevision) ?? 0;
+    if (observed !== expected) {
+      violations.push(
+        `${actionRevision} expected ${expected} references, found ${observed}`
+      );
+    }
+  }
+  for (const actionRevision of actionRevisionCounts.keys()) {
+    if (!Object.hasOwn(EXPECTED_ACTION_REVISION_COUNTS, actionRevision)) {
+      violations.push(`unexpected Action revision: ${actionRevision}`);
     }
   }
   assert.deepEqual(
@@ -399,21 +453,17 @@ test("trusted governance advisory uses only the base validator and immutable tru
   assert.equal((workflow.match(/^    name: Governance trusted advisory$/gm) ?? []).length, 1);
   assert.match(workflow, /permissions:\r?\n  contents: read\r?\n  pull-requests: read/);
   assert.equal((governance.match(/actions\/checkout@[a-f0-9]{40} # v6/g) ?? []).length, 2);
+  assert.equal(
+    (governance.match(/actions\/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6/g) ?? []).length,
+    2
+  );
   assert.equal((governance.match(/actions\/setup-node@[a-f0-9]{40} # v6/g) ?? []).length, 1);
   assert.equal((governance.match(/persist-credentials: false/g) ?? []).length, 2);
-  assert.equal((governance.match(/allow-unsafe-pr-checkout: true/g) ?? []).length, 1);
-  const trustedCheckout = governance.slice(
-    governance.indexOf("- name: Checkout trusted base validator"),
-    governance.indexOf("- name: Checkout untrusted candidate state")
-  );
-  const candidateCheckout = governance.slice(
-    governance.indexOf("- name: Checkout untrusted candidate state"),
-    governance.indexOf("- name: Setup Node")
-  );
-  assert.doesNotMatch(trustedCheckout, /allow-unsafe-pr-checkout/);
-  assert.match(candidateCheckout, /allow-unsafe-pr-checkout: true/);
+  assert.doesNotMatch(governance, /allow-unsafe-pr-checkout/);
   assert.match(governance, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
   assert.match(governance, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/);
+  assert.match(governance, /\[\[ "\$BASE_HEAD" =~ \^\[0-9a-f\]\{40\}\$ \]\]/);
+  assert.match(governance, /\[\[ "\$CANDIDATE_HEAD" =~ \^\[0-9a-f\]\{40\}\$ \]\]/);
   assert.match(governance, /path: candidate/);
   assert.match(governance, /sparse-checkout:\s*\|\s*project-state\/gates\.json\s*project-state\/repair-policy\.json/s);
   assert.match(governance, /sparse-checkout-cone-mode: false/);
