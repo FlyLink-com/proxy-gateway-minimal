@@ -61,6 +61,7 @@ test("gccgw CLI help exposes normalized command groups", () => {
   const help = buildCliHelp();
 
   assert.match(help, /gccgw project check/);
+  assert.match(help, /gccgw project export --json/);
   assert.match(help, /gccgw architecture/);
   assert.match(help, /gccgw docs command/);
   assert.match(help, /gccgw self check/);
@@ -76,6 +77,14 @@ test("gccgw CLI resolves project checks to the project-state checker", () => {
     kind: "node-script",
     script: "scripts/check-project-state.mjs",
     args: []
+  });
+});
+
+test("gccgw CLI resolves the read-only Project export command", () => {
+  assert.deepEqual(resolveCliCommand(["project", "export", "--json"]), {
+    kind: "node-script",
+    script: "scripts/project-export.mjs",
+    args: ["--json"]
   });
 });
 
@@ -1901,10 +1910,17 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.ok(names.includes("gccgw node image-first-boot-packet"));
   assert.ok(names.includes("gccgw service status"));
   assert.ok(names.includes("gccgw project verify"));
+  assert.ok(names.includes("gccgw project export"));
   assert.ok(names.includes("gccgw platform issue-subscription"));
   assert.ok(names.includes("gccgw platform issue-portal-initial-account"));
   assert.ok(names.includes("gccgw channel validate"));
   assert.ok(names.includes("gccgw channel subscription-render-proof"));
+
+  const projectExport = commands.find((command) => command.command === "gccgw project export");
+  assert.equal(projectExport.domain, "project");
+  assert.equal(projectExport.riskTier, "C");
+  assert.equal(projectExport.mode, "read-only");
+  assert.equal(projectExport.approvalPrompt, undefined);
 
   const issueSubscription = commands.find((command) => command.command === "gccgw platform issue-subscription");
   assert.equal(issueSubscription.domain, "platform");

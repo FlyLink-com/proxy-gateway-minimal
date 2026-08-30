@@ -22,6 +22,13 @@ Use `npm run cli -- <command>` from the repository root. Prefer read-only
 navigation and inspection commands while developing, and keep command routing
 thin by placing domain behavior in its existing owning module.
 
+For a redacted Project #1 read, use `gccgw project export --json` with a
+temporary `GH_TOKEN` (or `GITHUB_TOKEN`) that can read the organization
+Project. The command byte-verifies the checked-in Project contract, embeds its
+canonical digest, performs no writeback, and is not part of offline
+`project verify`. Treat `generatedAt` only as the observation point of that
+export; it is not current-work or production authority.
+
 ## Validation
 
 Run `node --test server/tests/cli-router.test.mjs` for CLI routing changes, then
