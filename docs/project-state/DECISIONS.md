@@ -1,6 +1,6 @@
 # Project Decisions
 
-Last verified: 2026-07-15, America/Los_Angeles.
+Last verified: 2026-08-29, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: decisions
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -42,13 +42,17 @@ last_verified: <date and timezone>
 Do not put secrets, credentials, protected material, private runtime data,
 database rows, or customer data in a decision record.
 
-## Current Evidence Cutoff
+## Dated Evidence Cutoff
 
 These decisions are reconciled to
 `master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7` on 2026-07-15, after
 PRs #486-#492 and #494 merged. The observed repository has 16 remote branches,
 two open Draft PRs (#476/#479), no open non-Draft PRs, and five open Issues
 (#437/#438/#439/#440/#475).
+
+Those counts and item states are historical evidence only. They are not a
+current queue or inventory; resolve mutable work from fresh native Issue/PR
+records and use Project #1 only as a navigation projection.
 
 Issue #437 was reopened by receipt `issuecomment-4976074286`; PR #482 had been
 recorded as its closer despite explicitly denying resolution. PR #479 remains
@@ -84,18 +88,19 @@ production/runtime evidence cutoff remains dated at `2026-07-11T13:03:40Z`.
 ### DEC-project-state-json
 
 - `status`: `accepted`
-- `decision`: Use `project-state/current.json`, `lanes.json`, and `tasks.json`
-  as the compact machine-readable coordination layer, with Markdown for
-  explanation and live verification for drift-prone facts.
+- `decision`: Use `project-state/lanes.json` for reviewed lane definitions and
+  `current.json` / `tasks.json` as dated compatibility contracts, with Markdown
+  for explanation. Native Issue/PR records own current work state and
+  sequencing; Project #1 is a mutable navigation projection only.
 - `context`: The repository already has JSON state, a checker, and a documented
   control-plane boundary; Issue #484 must not create a competing machine state.
-- `consequences`: This knowledge layer references the JSON files and does not
-  create `project-state.yaml`, a database, service, dashboard, or external
-  dependency.
+- `consequences`: This knowledge layer references the JSON files but does not
+  expose their dated status or queue hints as current work. It does not create
+  `project-state.yaml`, a database, service, dashboard, or external dependency.
 - `evidence`: `docs/PROJECT_CONTROL_PLANE.md`, `project-state/*.json`,
   `scripts/check-project-state.mjs`.
 - `supersedes`: `none`.
-- `last_verified`: 2026-07-14, America/Los_Angeles.
+- `last_verified`: 2026-08-29, America/Los_Angeles.
 
 ### DEC-independent-release-gates
 
@@ -179,13 +184,15 @@ production/runtime evidence cutoff remains dated at `2026-07-11T13:03:40Z`.
 - `supersedes`: `none`.
 - `last_verified`: 2026-07-14, America/Los_Angeles.
 
-## Security And Next-Gate Boundary
+## Historical Security And Next-Gate Boundary (2026-07-15 Cutoff)
 
-GitHub reports 0 open code-scanning alerts, 0 open Dependabot alerts, and 0
-open secret-scanning alerts at the stated source cutoff. Successful CodeQL
-execution remains source-analysis evidence rather than production proof.
+The 2026-07-15 GitHub snapshot recorded 0 open code-scanning alerts, 0 open
+Dependabot alerts, and 0 open secret-scanning alerts at that source cutoff.
+Those counts are historical; successful CodeQL execution remains
+source-analysis evidence rather than production proof.
 
-The ordered path is: establish a new durable #437 successor proposal after the
+At that cutoff, the recorded ordered path was to establish a new durable #437
+successor proposal after the
 blocked, consumed Gate `pr479-forward-pending-rollback-obligation-remediation-20260715-003`;
 complete any newly authorized PR #479 remediation, current-master integration,
 exact-head checks, formal review, Ready, and merge through independent
@@ -194,3 +201,6 @@ ledger/validator, stable CI contexts plus settings Gate, durable artifact
 retention/binding, and minimal organization/runtime-evidence model in separate
 PRs; only then establish independent Artifact and Risk A production-alignment
 Gates.
+
+That sequence is retained for archaeology only and is invalid for current work
+ordering. Fresh native Issue/PR records own current state and sequencing.

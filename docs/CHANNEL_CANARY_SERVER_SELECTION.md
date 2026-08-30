@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: channel_canary_server_selection
   superseded_by: null
-  last_verified_at: 2026-05-26
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -60,9 +60,11 @@ production.
 If this document conflicts with a later approved execution record, the latest
 approved execution record wins for the action it performed.
 
-## Current Boundary
+## Dated Boundary At 2026-05-26
 
-Current facts from project state:
+The following values are historical project-state observations at this
+document's cutoff. They are not current production facts, current host state,
+or work-sequencing evidence:
 
 ```text
 prod-edge-a / prod-edge-b:
@@ -82,9 +84,11 @@ Local Edge Agent:
   not the current channel-upgrade mainline
 ```
 
-The next runtime canary should use a clean, disposable channel canary server or
-a separately approved edge slot. Do not reuse stopped, historical, or
-control-plane hosts just because they are available.
+Any future runtime canary proposal must first read the current native Issue/PR
+records and perform fresh Risk A runtime/provider inventory. If separately
+approved, it should use a clean, disposable channel canary server or an
+independently verified edge slot. Do not reuse a host based on this dated
+snapshot.
 
 ## Naming
 

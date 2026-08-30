@@ -4,17 +4,17 @@ Last updated: 2026-06-16, America/Los_Angeles.
 
 ```yaml
 document_metadata:
-  doc_type: operational
-  lifecycle: active
+  doc_type: evidence
+  lifecycle: historical
   authority_scope: admin_console_rebuild_worktree_organization
   superseded_by: null
-  last_verified_at: 2026-06-16
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
 
 > Status:
-> - Type: Local worktree organization record
+> - Type: Historical local worktree organization record
 > - Risk: C for this record; referenced Admin UI implementation remains B
 > - Production impact: None
 > - Execution authority: Does not authorize production, AWS, Vultr, DNS,
@@ -22,8 +22,10 @@ document_metadata:
 >   credential, subscription URL, raw config/log/env, SQLite row, or
 >   customer-data actions
 
-This record organizes the current New Admin rebuild worktree so the next
-handoff, staging step, or PR does not mix unrelated changes by accident.
+This record preserves the New Admin rebuild worktree organization observed on
+2026-06-16. It does not describe the current worktree, queue, or PR scope. Use
+the fresh native Issue/PR record and inspect the actual worktree before any
+handoff, staging step, or PR.
 
 ## Cleanup Completed
 
@@ -37,10 +39,10 @@ were scratch output, not project state:
 Do not recreate ad hoc inventory files in the repository root. If a scan result
 needs to survive, turn it into a reviewed document under `docs/`.
 
-## Primary Admin UI Rebuild Bundle
+## Then-Current Admin UI Rebuild Bundle
 
-These files form the active New Admin implementation bundle and should be
-reviewed together unless a later split is deliberately chosen:
+At the documented cutoff, these files formed the New Admin implementation
+bundle. This list is historical evidence, not a current staging instruction:
 
 - `admin/src/App.tsx`
 - `admin/src/app/navigation.ts`
@@ -100,15 +102,18 @@ and page-by-page implementation plan:
 These are C-tier by themselves, but they can travel with the B-tier Admin UI
 bundle when they explain the implemented surface and validation evidence.
 
-## Coordination State
+## Dated Handoff Inputs
 
-These files are coordination state, not runtime authority:
+At the documented cutoff, the handoff referenced these files:
 
 - `docs/PROJECT_CONTEXT.md`
 - `project-state/current.json`
 
-Keep them aligned with the real repository state, but do not treat them as
-permission to mutate production or as proof of live production state.
+`docs/PROJECT_CONTEXT.md` is an active context/router. The referenced
+`project-state/current.json` is now a dated compatibility snapshot. Neither is
+current task authority, permission to mutate production, or proof of live
+production state. Resolve current work from fresh native Issue/PR records and
+use Project #1 only for navigation.
 
 ## Separate Backend Bundle
 
@@ -129,7 +134,8 @@ When preparing a commit or PR, use explicit path-bounded staging. Do not use a
 broad `git add .` while this branch contains mixed Admin UI, docs, state, and
 backend changes.
 
-Suggested Admin UI bundle staging set:
+Historical Admin UI bundle staging example (do not run without re-deriving the
+current scope from the native Issue/PR and actual worktree):
 
 ```powershell
 git add `
@@ -165,7 +171,7 @@ git add `
   admin/src/test/subscriptions.test.ts
 ```
 
-Suggested docs/state staging set:
+Historical docs/snapshot staging example (same fresh-scope requirement):
 
 ```powershell
 git add `
@@ -201,7 +207,7 @@ git diff --cached --name-status
 
 ## Validation Snapshot
 
-The current Admin rebuild bundle has already been validated locally with:
+The then-current Admin rebuild bundle was validated locally with:
 
 - `npm run test --prefix admin -- src/test/navigation.test.ts`
 - `npm run admin:test`

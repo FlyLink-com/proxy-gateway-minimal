@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_state_model
   superseded_by: null
-  last_verified_at: 2026-08-28
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -77,6 +77,8 @@ Then continue through repository navigation and the task-specific Risk A gate:
 
 ```text
 docs/README.md
+task-relevant subsystem README
+fresh native Issue and PR records for current scope, state, and sequencing
 relevant active runbook
 read-only live inventory
 explicit operator approval for mutation
@@ -102,7 +104,7 @@ grants execution authority.
 
 ### `project-state/current.json`
 
-Dated transitional compatibility snapshot.
+Dated compatibility snapshot.
 
 Use it to recover the documented product spine, evidence cutoffs, redacted
 blocker references, and validation hints. Do not use it as live Issue, PR,
@@ -111,17 +113,15 @@ facts from the native domain owner.
 
 ### `project-state/tasks.json`
 
-Dated transitional compatibility snapshot of earlier queue and task contracts.
+Dated compatibility snapshot of earlier queue and task contracts.
 
 Use it only for historical task IDs and risk, file-scope, validation, and
 approval constraints after resolving current status from native Issues and
-PRs. It must not answer which task is next. Issue #675 owns the B-tier
-migration of its active consumers.
+PRs. It must not answer which task is next.
 
-The current repository-local brief consumers are not yet mechanically
-fail-closed: `agent:brief` and `project handoff-brief` can still surface dated
-snapshot hints. Until #675 lands, treat that output as compatibility context
-only and perform a fresh native Issue/PR read before current sequencing.
+For current compatibility handling and rollout status, see
+`docs/PROJECT_CONTEXT.md`. Snapshot-derived hints remain non-authoritative;
+perform a fresh native Issue/PR read before current sequencing.
 
 ## Ownership
 
@@ -145,7 +145,8 @@ project-state/lanes.json:
   reviewed lane definitions and safety boundaries
 
 project-state/current.json and project-state/tasks.json:
-  dated compatibility snapshots pending Issue #675; not live sequencing
+  dated compatibility snapshots; not live sequencing
+  repository-local consumers require a fresh native Issue/PR read
 ```
 
 Do not duplicate full historical execution records in `project-state`. Keep
@@ -153,12 +154,11 @@ only IDs, summaries, and links.
 
 ## Update Rules
 
-Until Issue #675 completes the consumer migration, update `project-state` only
-to keep its dated compatibility contracts internally truthful when any of
-these reviewed facts change:
+Update `project-state` only to keep its dated compatibility contracts
+internally truthful when any of these reviewed facts change:
 
-- active product spine
-- lane list or lane ownership
+- stable product-spine definition
+- reviewed lane definitions, risk boundaries, or primary docs/code areas
 - evidence cutoff or referenced receipt boundary
 - redacted blocker-reference snapshot
 - legacy task risk, file-scope, validation, or approval constraints
@@ -170,16 +170,25 @@ facts into these snapshots. Resolve them from the native domain owner. If a
 change is only historical evidence, write an execution record and link it from
 the relevant index.
 
+The complete reviewed bytes of `project-state/current.json`,
+`project-state/lanes.json`, and `project-state/tasks.json` are SHA-256 pinned by
+`scripts/check-project-state.mjs`; only checkout-level `CRLF` to `LF`
+normalization precedes hashing. A legitimate snapshot update and its matching
+checker digest are one coupled B-tier review unit. The reviewer must inspect the
+new JSON bytes and rationale before accepting the digest; a digest-only refresh
+is not a valid repair.
+
 ## Risk Rules
 
 The structured files do not lower risk:
 
 ```text
 C-tier:
-  project-state docs-only changes and state-index updates
+  project-state docs-only changes that do not alter pinned JSON or checker code
 
 B-tier:
-  scripts that validate project-state, docs indexes, or code-module inventory
+  scripts that validate project-state, docs indexes, or code-module inventory;
+  any pinned project-state JSON update together with its checker digest
 
 A-tier:
   anything that mutates production, cloud, DNS, Nginx, systemd, node config,
@@ -253,6 +262,7 @@ docs/README.md
 For a normal project task, continue with:
 
 ```text
+task-relevant subsystem README
 native live Issue and PR records when current status or sequencing matters
 Project #1, including `Lane`, as mutable navigation classification only
 relevant lane in project-state/lanes.json

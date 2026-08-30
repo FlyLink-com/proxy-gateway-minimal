@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_context
   superseded_by: null
-  last_verified_at: 2026-08-28
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -22,7 +22,7 @@ document_metadata:
 >   `b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c` (2026-08-26)
 > - Git-source / recorded-deployment-source state: Drift at these dated
 >   cutoffs; current runtime alignment was not read
-> - Live delivery index:
+> - Delivery navigation projection:
 >   [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1)
 > - Source, artifact, production-promotion and delayed public-health evidence
 >   for A3 were reconciled on 2026-08-26; unrelated mutable GitHub, provider and
@@ -31,8 +31,8 @@ document_metadata:
 >   records the release identity but does not duplicate its runtime evidence
 > - Production impact: None; this Risk C handoff changes no release, runtime,
 >   provider, schema, credential, or customer data
-> - Source of truth for: Compact current project handoff, source capability
->   boundaries, active lanes, and navigation
+> - Source of truth for: Compact project orientation, source capability
+>   boundaries, reviewed lane taxonomy, and navigation
 > - Execution authority: None
 
 This file is the compact entrypoint for continuing
@@ -52,28 +52,26 @@ Use the repository entry order required by `AGENTS.md` and restated by
 4. `git status --short --branch`
 5. `docs/README.md`
 6. The subsystem README relevant to the task
-7. [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) for live Issue/PR
-   coordination when relevant
+7. [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) to navigate relevant
+   Issue/PR items, followed by fresh native records
 8. Live GitHub, deployment, or production inventory required by the task risk
 
-`AGENTS.md` always applies. Project #1 is a mutable work index and navigation
-projection; native Issue and PR records remain authoritative for their own
+`AGENTS.md` always applies. Project #1 is a mutable navigation projection;
+native Issue and PR records remain authoritative for their own
 state, and dated production receipts require fresh task-specific verification.
-`project-state/lanes.json` owns reviewed lane definitions. Existing
-`project-state/current.json` and `project-state/tasks.json` remain transitional
-compatibility snapshots until their active consumers are migrated; neither can
-override fresh GitHub, deployment, or runtime evidence or authorize mutation.
-Issue #675 owns that separate B-tier migration across the remaining active
-documentation/state views and repository-local brief/check tooling. Until it
-lands, resolve current sequencing from native Issue and PR records and use
-Project #1 only for navigation.
+`project-state/lanes.json` owns reviewed lane definitions.
+`project-state/current.json` and `project-state/tasks.json` are dated
+compatibility snapshots; neither can override fresh GitHub, deployment, or
+runtime evidence or authorize mutation. The Issue #675 B-tier migration aligns
+their active documentation, brief, handoff, and checker consumers: generated
+orientation excludes snapshot status/queue fields and mechanically requires a
+fresh native Issue/PR read before current sequencing.
 
-**Authority transition:** The domain-scoped target model is defined, but the
-repository-wide cutover is not complete. Active documents and tools that still
-consume legacy state remain compatibility obligations. Any conflict is a
-transition blocker. Operators and agents must fail closed against a fresh read
-from the relevant domain owner; repository-local brief consumers do not yet
-enforce that boundary mechanically and are owned by Issue #675.
+**Authority boundary:** The repository-local cutover is enforced, but it does
+not make Project #1 or local JSON a work authority. Native Issue/PR records own
+current work state and sequencing, Project #1 remains navigation only, and
+operators and agents must fail closed against the relevant domain owner when
+evidence conflicts or cannot be read.
 
 ## Current Classification
 
@@ -136,11 +134,12 @@ The latest recorded control-plane deployment event used source
 and recorded-deployment-source identities are explicitly distinct. This does
 not establish current runtime alignment or a Portal/Admin static deployment.
 
-Use [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) for live Issue, PR,
-status, lane, risk, validation, and production-impact coordination. Use live
-GitHub queries for current counts, review queues, branches, and Milestones.
-Canonical docs and `project-state/*.json` intentionally do not copy those
-mutable facts.
+Use [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1) only to navigate
+its mutable projections of Issue/PR, status, lane, risk, validation, and
+production-impact fields. Verify current state, scope, review, and sequencing
+from fresh native Issue/PR and exact-SHA Check records; use fresh GitHub queries
+for counts, branches, and Milestones. Canonical docs and
+`project-state/*.json` intentionally do not copy those mutable facts.
 
 ## Current Source Capability Boundary
 
@@ -200,7 +199,7 @@ credential. It does not authorize workflow dispatch, host access, map apply,
 deployment, runtime mutation, or production success; each remains a separate
 exact Risk A gate.
 
-## Active Work Lanes
+## Reviewed Work-Lane Taxonomy
 
 Project #1 projects the work items currently present in that Project and the
 six live coordination fields. Native Issue and PR records, plus fresh
@@ -277,9 +276,11 @@ runtime services, and production data require fresh task-specific inventory.
 
 ## Source Governance And Security Snapshot
 
-Project #1 is now the dynamic repository-work index. Its current item set,
-status distribution, review queue, and Lane/Risk values must be read live; this
-handoff no longer preserves copied Issue, PR, or branch counts.
+Project #1 is a mutable navigation projection of repository work. Its item set,
+status distribution, review view, and Lane/Risk values may be read for
+coordination, but they do not own current Issue/PR state, review state, or
+sequencing; those require fresh native records. This handoff no longer
+preserves copied Issue, PR, or branch counts.
 
 The latest retained security/governance observations remain separately dated:
 
@@ -298,7 +299,12 @@ Issues #597 and #598 retain release-lifecycle and supply-chain work. Project
 status is navigation only and cannot upgrade these dated observations or create
 production authority.
 
-## Active Gaps
+## Dated Gap Observations — Fresh Read Required
+
+The following observations were retained at this handoff's stated evidence
+cutoffs. They are not a live backlog or current completion claim; reconcile the
+relevant native Issue/PR, source, Checks, and task-specific runtime evidence
+before using one to select work.
 
 1. The control-plane identity was verified by promotion-09 on 2026-08-26; Portal,
    Admin, company-site, rendering, and runtime-config identities still require
@@ -328,11 +334,6 @@ production authority.
    requires fresh inventory. Longer recovery windows, rollback retention, SBOM,
    provenance/signing, and the remaining mutable Action references remain
    scoped under #597/#598.
-9. Legacy queue consumers still read dated compatibility state from active
-   documentation, `project-state/current.json`, and `project-state/tasks.json`.
-   Issue #675 owns their separate B-tier migration; until it lands, native
-   Issue and PR records own current status and sequencing.
-
 ## Validation Baseline
 
 Use `docs/VALIDATION_BASELINE.md`.
@@ -361,7 +362,7 @@ Use these entrypoints:
 - `docs/ACCOUNT_RESOURCE_AUTHORITY_LIFECYCLE.md`: exact resource-authority and
   Quote-provenance lifecycle
 - `docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md`: traffic usage evidence plan
-- [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1): live work index
+- [GCC WebOS — Delivery Project #1](https://github.com/orgs/gccwebos-com/projects/1): mutable navigation projection
 - `docs/GITHUB_ISSUE_PR_WORKFLOW.md`: Issue, PR, and Project authority boundaries
 - `docs/production-replacement-records/`: dated production execution evidence
 - `docs/archive/`: superseded plans and historical context

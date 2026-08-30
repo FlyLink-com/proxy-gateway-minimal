@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: github_issue_pr_workflow
   superseded_by: null
-  last_verified_at: 2026-08-28
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -293,18 +293,53 @@ Keep authority separated:
   boundaries. Dated state snapshots may preserve evidence, but they do not own
   current Issue, PR, Project, deployment, or runtime facts.
 
-The repository-wide authority transition is not complete. Active compatibility
-surfaces still duplicate dated sequencing or state. They include
-`docs/README.md`, `docs/PROJECT_CONTROL_PLANE.md`,
-`docs/project-state/CURRENT_STATE.md`, `project-state/README.md`,
-`project-state/current.json`, `project-state/tasks.json`, and repository-local
-brief/check tooling; Issue #675 owns the complete inventory and separate B-tier
-migration. Until it lands, this section defines the target boundary rather
-than a completed cutover. Conflicts are transition blockers and must be
-resolved from the relevant domain owner, never by choosing whichever copied
-value appears newer. Repository-local brief consumers do not yet enforce that
-live read mechanically, so their queue-like output remains dated compatibility
-context until #675 completes the migration.
+Issue #675 completes the repository-local consumer cutover. Active guidance
+classifies `project-state/current.json` and `project-state/tasks.json` as dated
+compatibility snapshots, historicalizes the old human current-state view, and
+removes snapshot queue/status fields from generated brief and handoff output.
+The checker requires explicit observation/live-read boundaries and pins the
+complete reviewed contents of all three compatibility JSON files by SHA-256.
+Only checkout-level `CRLF` to `LF` normalization is allowed before hashing;
+every other byte change fails closed. Handoff output begins with a fresh native
+Issue/PR read. This mechanical boundary does not grant work authority to
+Project #1 or local JSON. Conflicts must still be resolved from the relevant
+native domain owner, never by choosing whichever copied value appears newer.
+
+### Repository-local `current` / `tasks` / `lanes` consumer inventory — 2026-08-29
+
+This inventory was reviewed against `master@0d224051c1bb51b376c236869b00a459ab2d7cb3`.
+It is a dated code/document classification, not a current work queue. Repeat
+the review whenever one of these three snapshot consumers or schemas changes.
+The direct executable and validation inventory for `current.json`, `tasks.json`,
+and `lanes.json` is exhaustive at this cutoff; documentation rows enumerate
+active authority surfaces that were reviewed, rather than every historical or
+navigational mention of `project-state`. The separate `gates.json` and
+`repair-policy.json` governance ledger is not migrated by Issue #675.
+
+| Class | Reviewed paths | Boundary |
+| --- | --- | --- |
+| Active command dispatch | `package.json`, `bin/gccgw.mjs`, `server/services/cli/router.mjs` | Dispatches the checked brief, handoff, and validation commands; it does not derive current work from JSON. |
+| Active validation routing | `scripts/precommit-check.mjs`, `scripts/ci-change-classifier.mjs`, `.github/workflows/ci.yml`, `.github/workflows/production-deploy-dry-run.yml` | Classifies snapshot changes into fail-closed full validation and invokes `project-state:check` directly or through the server test suite; it does not consume JSON status, queue, production, or approval claims. |
+| Classifier-driven artifact routing | `.github/workflows/release-artifact.yml` | Uses the same classifier to fail snapshot changes into full source, Portal, and Admin artifact packaging. It does not run `project-state:check`, validate snapshot semantics, or grant artifact/deployment authority. |
+| Active direct brief consumers | `scripts/agent-brief.mjs`, `scripts/project-handoff-brief.mjs` | Both read the three snapshots. `agent-brief` runs the checker; handoff requires readable JSON and emits only allowlisted stable projections. Neither emits a live queue: current work, ordering, and status require fresh native Issue/PR reads. |
+| Active schema/authority check | `scripts/check-project-state.mjs` | Pins the three reviewed compatibility JSON contents by SHA-256 after checkout-only `CRLF` to `LF` normalization, then rejects queue/status authority, mutable counts, stale approval claims, unsafe paths, and malformed dated snapshots. Any intentional snapshot edit is coupled to review of this checker constant and is therefore B-tier. Its sensitive scan also covers the separate governance ledger; it does not validate live GitHub or production state. |
+| Reviewed machine inputs | `project-state/current.json`, `project-state/tasks.json`, `project-state/lanes.json` | `current.json` and `tasks.json` are dated compatibility snapshots; `lanes.json` is stable taxonomy and safety boundaries only. Their contents and the checker digest manifest form one reviewed B-tier change unit. |
+| Boundary and routing tests | `server/tests/agent-brief.test.mjs`, `server/tests/project-handoff-brief.test.mjs`, `server/tests/project-state-check.test.mjs`, `server/tests/cli-router.test.mjs`, `server/tests/precommit-check.test.mjs`, `server/tests/ci-change-classifier.test.mjs`, `server/tests/ci-workflow-contract.test.mjs`, `server/tests/gate-governance.test.mjs` | Covers output filtering, invalid/stale input failure, schema/semantic bypasses, command routing, validation selection, CI lane/workflow contracts, and governance-state sensitive scanning. |
+| Active governance docs | `README.md`, `README_EN.md`, `docs/AGENT_ONBOARDING.md`, `docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md`, `docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md`, `docs/CHANNEL_CANARY_SERVER_SELECTION.md`, `docs/GITHUB_ISSUE_PR_WORKFLOW.md`, `docs/MULTI_AGENT_OPERATING_MODEL.md`, `docs/NODE_ONBOARDING_RUNBOOK.md`, `docs/PROJECT_CONTEXT.md`, `docs/PROJECT_CONTROL_PLANE.md`, `docs/PROJECT_OPERATING_MODEL.md`, `docs/PROJECT_SIMPLIFICATION_MAP.md`, `docs/README.md`, `docs/RUNTIME_LANE_AUTHORITY.md`, `docs/agent-model/SESSION_PROTOCOL.md`, `docs/project-map/ARCHITECTURE_MAP.md`, `docs/project-map/DEPENDENCY_MAP.md`, `docs/project-state/DECISIONS.md`, `ops/README.md`, `project-state/README.md` | Uses the canonical reading order and domain-scoped authority model. Mutable facts require fresh reads. |
+| Other reviewed active guidance/validation surfaces | `AGENTS.md`, `docs/CURRENT_RELEASE_STATE.md`, `RELEASE_MANIFEST.md`, `docs/VALIDATION_BASELINE.md`, `docs/units/README.md`, `docs/units/VALIDATION_CI_UNIT.md`, `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`, `deployments/production-template/runbook.md`, `.github/pull_request_template.md` | Reviewed as active guidance, runbook, template, or validation surfaces. They reference the snapshots/checker but do not consume JSON queue, current task status, production truth, or approval authority. |
+| Historical compatibility docs | `docs/ADMIN_CONSOLE_REBUILD_WORKTREE_ORGANIZATION.md`, `docs/project-state/BLOCKERS.md`, `docs/project-state/CURRENT_STATE.md`, `docs/project-state/MILESTONES.md` | Preserved as dated historical evidence; never a current queue, production inventory, or approval source. |
+| Historical plan inputs | `docs/superpowers/plans/2026-06-09-historical-residue-closeout.md`, `docs/superpowers/plans/2026-06-11-sgp-protected-material-sync.md`, `docs/superpowers/plans/2026-07-14-governance-state-reconciliation.md` | Historical cutoff plans retained in place for archaeology. Their old sequencing, counts, checkboxes, and controller language is not active instruction. |
+| Reviewed future-plan reference | `docs/superpowers/plans/2026-07-15-governed-repair-framework-implementation.md` | Any future implementation must preserve the distinct authority scopes and may emit only dated compatibility snapshots. |
+
+This list includes unchanged command surfaces so omission cannot be mistaken
+for deactivation. Dated execution records and production receipts outside the
+listed active set remain historical evidence only; a current decision must
+read the relevant native authority again.
+
+`clean-edge-readiness-summary` and `node-image-provisioning-readiness-summary`
+consume a caller-supplied `projectStateCheckPassed` attestation, not any of the
+three snapshot files. They remain downstream fail-closed gates and are not
+direct state consumers in this migration.
 
 The native Project workflows verified on 2026-08-28 are:
 

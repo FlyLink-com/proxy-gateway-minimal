@@ -1,6 +1,6 @@
 # Dependency Map
 
-Last verified: 2026-07-14, America/Los_Angeles.
+Evidence cutoff: 2026-07-14, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: dependency_map
   superseded_by: null
-  last_verified_at: 2026-07-14
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -67,9 +67,12 @@ evidence: []
 evidence_cutoff: <timestamp>
 ```
 
-If automation is later justified, it must extend `project-state/*.json` and
-`scripts/check-project-state.mjs` through a separate reviewed change. Do not
-copy this sketch into `project-state.yaml`.
+If repository-local compatibility automation is later justified, it may extend
+the reviewed lane taxonomy or dated snapshot contracts in
+`project-state/*.json` and `scripts/check-project-state.mjs` through a separate
+reviewed change. Automation for current work must read native Issue/PR records
+and keep Project #1 as navigation only. Do not copy this sketch into
+`project-state.yaml` or create another queue.
 
 ## Required Queries
 
@@ -92,7 +95,7 @@ complete current ledger.
 | Node | Verified relationship | Evidence boundary |
 | --- | --- | --- |
 | Feature | Traffic Accounting collector state, safe provenance, protected projection, and status producers. | `docs/CURRENT_RELEASE_STATE.md` and `project-state/tasks.json`, dated 2026-07-11. |
-| Issue | Issue #437 is the Traffic Accounting Epic and is currently open. | Live GitHub Issue inventory on 2026-07-14. |
+| Issue | Issue #437 is the Traffic Accounting Epic and was observed open on 2026-07-14; current state requires a fresh native Issue read. | Live GitHub Issue inventory on 2026-07-14. |
 | PR | PRs #441, #459, #460, and #464 are recorded as reviewed source capabilities in the documented chain. | `RELEASE_MANIFEST.md`, `docs/CURRENT_RELEASE_STATE.md`, and Git history. This example does not claim they are the complete current PR set. |
 | Artifact | Those documented capabilities are mapped to the `control-plane-app` release recorded as `phase2-control-plane-artifact-alignment-20260710-001`, source `9bc03b41`. | Repository release snapshot; dated evidence, not artifact retrievability proof at this cutoff. |
 | Runtime | The repository snapshot records an observation-only Traffic Evidence Runtime and separates it from offline Runtime Config Identity. | Dated source record only; no live runtime inventory was performed by Issue #484. |
@@ -108,7 +111,10 @@ Issue #484 and its documentation PR:
 - must not use `Refs #437`, `Closes #437`, or an equivalent execution claim in
   the PR body.
 
-## Issue #484 Chain
+## Historical Issue #484 Chain (2026-07-14 Cutoff)
+
+This table records the relationship observed at that cutoff; `Draft` is not a
+current PR-state claim. Read the native Issue/PR records for current state.
 
 | Node | State |
 | --- | --- |

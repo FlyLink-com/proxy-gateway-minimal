@@ -1,9 +1,34 @@
 # SGP Protected Material Sync Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> `superpowers:subagent-driven-development` or
-> `superpowers:executing-plans` to implement this plan task-by-task. Track
-> progress by updating the checkboxes below.
+Last verified: 2026-08-29, America/Los_Angeles.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: historical_implementation_plan
+  superseded_by: null
+  last_verified_at: 2026-08-29
+  production_authority: false
+```
+
+> Status:
+> - Type: Historical implementation plan
+> - Risk: Historical plan; any new source or production work requires fresh
+>   classification and authority
+> - Execution authority: None; do not execute its checkbox order or reuse its
+>   project-state claims
+> - Production impact: None
+> - Source of truth for: The 2026-06-11 planning record only
+
+This plan is retained for archaeology. Its “current,” failure, queue, and task
+instructions are historical observations, not present-day work selection.
+Resolve all current work from fresh native Issue/PR records and use Project #1
+only for navigation.
+
+> **Historical note:** The original plan required an execution skill and used
+> checkbox order for tracking. That instruction is superseded; do not execute
+> this plan or treat its checkboxes as a current queue.
 
 **Goal:** Build a private, node-scoped credential-material pull path so the
 Singapore data-plane agent can apply future-order desired-state refs without
@@ -23,7 +48,7 @@ runner.
 
 ---
 
-## Current Failure
+## Historical Failure At The 2026-06-11 Cutoff
 
 The 2026-06-11 source deployment/live-smoke proved that SGP can pull redacted
 desired-state and attempt runtime apply, but apply receipts failed because the

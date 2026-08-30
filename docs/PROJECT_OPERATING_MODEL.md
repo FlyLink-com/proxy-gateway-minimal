@@ -1,6 +1,6 @@
 # Project Operating Model
 
-Last updated: 2026-05-31, Asia/Shanghai.
+Last updated: 2026-08-29, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_operating_model
   superseded_by: null
-  last_verified_at: 2026-05-31
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -25,11 +25,12 @@ document_metadata:
 ## Summary
 
 This project uses GitHub and the local checkout as the code and documentation
-source of truth, PRs as change boundaries, local Linux as the target manual CI
-fallback while GitHub-hosted Actions is blocked, and production changes only
-through serial Risk A runbooks and execution records. Historical Aliyun manual
-CI evidence remains valid, but Aliyun is now being separated from the CI lane
-so it can be evaluated as the future subscription control plane.
+source of truth, PRs as change boundaries, and repository validation plus
+GitHub Actions as source/build evidence. When hosted Actions is unavailable,
+use only the documented manual fallback in `docs/CI_MANUAL_VALIDATION.md`.
+Production changes remain serialized Risk A work. Historical Aliyun CI and
+runtime records remain audit evidence only; they are not current provider,
+deployment, or sequencing authority.
 
 Use `docs/MULTI_AGENT_OPERATING_MODEL.md` when a task needs multiple agents,
 independent analysis tracks, or explicit subagent task packets.
@@ -39,10 +40,13 @@ client work, validation, operator lab, and production operations.
 Use `docs/units/README.md` when a task needs the detailed design for one
 specific unit and its interfaces.
 Use `docs/PROJECT_SIMPLIFICATION_MAP.md` when a task needs docs slimming,
-module classification, cleanup queue ordering, or a decision on whether a new
-idea belongs on the active product spine.
+module classification, cleanup prioritization principles, or a decision on
+whether a new idea belongs on the product spine. Its dated recommendations are
+not the current work queue.
 Use `docs/PROJECT_CONTROL_PLANE.md` and `project-state/*.json` when a task
-needs compact machine-readable state, lane, and backlog orientation.
+needs reviewed lane definitions or dated compatibility constraints. Resolve
+current item state and sequencing from native Issue/PR records, using Project
+#1 only as a mutable navigation projection.
 Use `docs/VALIDATION_BASELINE.md` when a task needs the current validation
 command matrix; keep historical pass counts in PRs or execution records.
 
@@ -60,16 +64,15 @@ operational controls behind that entry.
 2. Development and validation
    local development, targeted tests, npm test
    GitHub Actions when available
-   local Linux manual CI host while GitHub-hosted Actions is blocked
+   documented local Linux manual fallback only when required
 
 3. Production operations
    subscription control plane, edge data plane
-   AWS EC2, DNS, Nginx, systemd, SQLite, node config
+   approved provider/runtime surfaces, DNS, Nginx, systemd, SQLite, node config
    Risk A runbooks, explicit approval, execution records
 
 4. User delivery
-   sub.globalcirclecat.com
-   ss-sg.globalcirclecat.com
+   currently approved public delivery endpoints resolved from fresh evidence
    Clash/Mihomo subscription refresh and direct node connection
 ```
 
@@ -105,7 +108,8 @@ Operator lab:
   HP Relay and network/channel experiments, not runtime authority
 
 Production operations:
-  AWS, DNS, Nginx, HTTPS, systemd, SQLite, node lifecycle, rollback records
+  approved provider resources, DNS, Nginx, HTTPS, systemd, SQLite,
+  node lifecycle, rollback records
 ```
 
 Business, commercial entitlement, subscription access, and nodes must not be
@@ -117,7 +121,7 @@ interface rules and anti-collapse checks.
 Active code and docs live in:
 
 ```text
-GitHub: gaoyi1020-web/proxy-gateway-minimal
+GitHub: gccwebos-com/proxy-gateway-minimal
 Local:  D:\Projects\proxy-gateway-minimal
 ```
 
@@ -125,24 +129,28 @@ Use `docs/PROJECT_CONTEXT.md` for current handoff state and
 `docs/README.md` for documentation navigation. Use
 `docs/MULTI_AGENT_OPERATING_MODEL.md` for agent role decomposition,
 parallelization rules, task-packet requirements, and subagent verification
-contracts. Use `docs/PROJECT_SIMPLIFICATION_MAP.md` for the current product
-spine, active cleanup lanes, and stop-doing boundaries. Use
-`docs/PROJECT_CONTROL_PLANE.md` and `project-state/*.json` for structured
-orientation only; production facts in those files still require live
-verification before mutation. Use `docs/VALIDATION_BASELINE.md` for current
-validation commands. Historical checkouts and historical design artifacts are
-background only unless current docs explicitly reference them.
+contracts. Use `docs/PROJECT_SIMPLIFICATION_MAP.md` for the stable product
+spine, simplification areas, and stop-doing boundaries. Use
+`docs/PROJECT_CONTROL_PLANE.md` and `project-state/*.json` for reviewed lane
+definitions and dated compatibility orientation only. They are not a live
+backlog. Native Issue/PR records own current work state; Project #1 supplies
+mutable navigation fields only. Production facts still require task-specific
+live verification before mutation. Use `docs/VALIDATION_BASELINE.md` for
+current validation commands. Historical checkouts and historical design
+artifacts are background only unless current docs explicitly reference them.
 
-## Production Model
+## Production Role Model
 
-Current production is still partly co-located, but target production identity
-uses separate control-plane and edge-node names:
+The stable architecture uses provider-neutral control-plane and edge-node role
+names. The latest documented project direction is one Japan control plane with
+Japan/Singapore data-plane capacity, but this operating model does not assert
+current deployment or runtime identity. Read the release/context documents and
+perform fresh Risk A inventory whenever the current provider or host matters:
 
 ```text
-sub-control-a: primary subscription control-plane authority, targeting Aliyun
-  after CI exits and Risk A inventory approves it
+sub-control-a: primary subscription control-plane role
 sub-control-b: future standby / restore target for subscription control
-prod-edge-a: current primary edge data-plane slot
+prod-edge-a: primary edge data-plane slot
 prod-edge-b: iteration / canary edge data-plane slot
 prod-edge-c: future recovery / standby edge data-plane slot
 ```
@@ -179,10 +187,12 @@ per-device refresh URLs and local-agent bootstrap. Repository support exists,
 but broader artifact issuance, legacy query-token retirement, and device-abuse
 enforcement remain separate work with their own gates.
 
-There is no active tenant-migration workstream in the current product plan. Use
-tenant language only when describing the historical SQLite subscription model,
-server-side compatibility records, or already-recorded production actions. The
-active architecture direction is:
+Do not infer an active tenant-migration workstream from this dated model.
+Resolve whether such work exists from fresh native Issue/PR records. In stable
+architecture material, use tenant language only when describing the historical
+SQLite subscription model, server-side compatibility records, or
+already-recorded production actions. The documented architecture direction at
+this cutoff is:
 
 ```text
 local proxy production agent
@@ -247,7 +257,8 @@ design / intent:
 
 execution:
   repository changes, execution record, or approved inventory actually done
-  source-of-truth docs and project-state updated when facts changed
+  native Issue/PR and source-of-truth docs updated when their owned facts changed
+  project-state changed only for reviewed taxonomy or dated compatibility contracts
 
 validation:
   commands or runbook-specific checks actually run
@@ -297,8 +308,10 @@ open blockers and recommended next actions
 ```
 
 Do not treat stage reporting as a closeout requirement after every small PR.
-Routine PRs should rely on their PR body, validation evidence, and updated
-project-state or docs when those are part of the approved scope.
+Routine PRs should rely on their PR body, validation evidence, native Issue/PR
+state, and source-of-truth docs when those are part of the approved scope.
+Do not write live task or runtime state into dated project-state compatibility
+files.
 
 ## Risk Tiers
 

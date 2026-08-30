@@ -174,7 +174,7 @@ export const ADMIN_FIGMA_WRITE_ACCESS_CHECK = {
   attemptedOperation: "Read canonical handoff metadata, execute use_figma, and write a shared-plugin-data probe",
   connectorReportedSeat: "Dev / developer",
   userReportedAccess: "User reported Full access in Figma UI.",
-  desktopEvidence: "Figma Desktop opens the canonical multi-page GlobalCircle AI Admin UI Handoff file; Share shows a Full-seat upgrade prompt and must not be continued by automation.",
+  desktopEvidence: "Archival evidence: Figma Desktop opens the canonical multi-page GlobalCircle AI Admin UI Handoff file; Share shows a Full-seat upgrade prompt and must not be continued by automation.",
   sourceFileMismatch: "Previous recorded file key resolved to a one-page Requirements Map; the canonical handoff file is the multi-frame oZuKNtGPhP6oOQ0MSzpfvn file.",
   diagnosticResult: "get_metadata can read the canonical handoff file, use_figma can execute, and a shared plugin data write probe succeeded.",
   connectorMessage: "use_figma succeeded on page 0:1 with adminos.mcpWriteProbe.",

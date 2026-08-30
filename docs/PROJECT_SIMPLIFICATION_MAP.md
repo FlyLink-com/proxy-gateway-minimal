@@ -1,6 +1,6 @@
 # Project Simplification Map
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-08-29, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_simplification_map
   superseded_by: null
-  last_verified_at: 2026-05-25
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -20,8 +20,8 @@ document_metadata:
 >   HTTPS, production config, node, tenant, secret, SQLite, deploy, or cutover
 >   changes
 > - Production impact: None
-> - Source of truth for: What to simplify first, what to keep active, what to
->   pause, and how to classify future cleanup work
+> - Source of truth for: Stable simplification principles, classification
+>   boundaries, and stop-doing rules; not current task state or sequencing
 
 ## Purpose
 
@@ -39,9 +39,10 @@ the information structure is now carrying too much at once:
 - prototype Local Edge Agent code
 - server-side edge mesh planning
 
-This document provides a compact simplification map. It does not delete history
-or approve implementation. It defines the order and boundaries for future
-docs/code cleanup so agents do not expand every idea into the main product path.
+This document provides a compact simplification map. It does not delete
+history, approve implementation, or provide a live queue. Its recommendation
+sections preserve prioritization context; current work must be resolved from
+native Issue/PR records, with Project #1 used only for navigation.
 
 ## Current Product Spine
 
@@ -58,13 +59,13 @@ stable subscription/import experience
 In concrete terms:
 
 ```text
-sub-control-a on the current Aliyun server / future sub-control-b
+sub-control-a / future sub-control-b provider-neutral control-plane roles
   own subscription state, artifacts, Admin, rendering, and operator actions
-  after separate Risk A promotion
+  only after separately evidenced Risk A promotion
 
 prod-edge-a / prod-edge-b / future prod-edge-c
-  are clean or clean-rebuilt forwarding nodes that carry edge data-plane
-  traffic and report health
+  are conceptual edge data-plane roles; current Japan/Singapore capacity and
+  health require fresh task-specific verification
 
 local-ci-a on local Linux
   owns manual CI validation after bootstrap, with no production secrets or
@@ -80,12 +81,18 @@ Clash/Mihomo
 Workspace authority rule:
 
 ```text
-Aliyun:
-  current business workspace for public site, lead intake, subscription
-  distribution, operator-controlled issuance, and production records
+Aliyun records:
+  historical provider, runtime, CI, and production evidence only; not current
+  workspace, provider, deployment, runtime, or sequencing authority
 
 GitHub master:
   code and durable project-history authority after PR merge
+
+Native Issue and PR records:
+  current item state, scope, declared risk, done criteria, and review evidence
+
+Project #1:
+  mutable work-index and lane-navigation projection only
 
 Local machines / local checkouts:
   development, validation, HP/manual CI, operator handoff, and archived backup
@@ -100,8 +107,9 @@ supporting mechanisms. They should not become competing products.
 Use these rules when deciding whether to add, keep, archive, or refactor work.
 
 ```text
-One current state entrypoint:
-  docs/PROJECT_CONTEXT.md should summarize current facts and point to detail.
+One context and authority router:
+  docs/PROJECT_CONTEXT.md should summarize stable boundaries and point to the
+  native records that own mutable current facts.
 
 One documentation index:
   docs/README.md should route readers to the right current or historical doc.
@@ -120,7 +128,8 @@ One multi-agent model:
   and verification responsibility.
 
 One simplification map:
-  this document defines the cleanup backlog and boundaries.
+  this document defines classification and prioritization boundaries, not the
+  current backlog.
 
 One master/archive boundary:
   docs/MASTER_ARCHIVE_BOUNDARY.md defines what stays on master, what moves to
@@ -133,29 +142,33 @@ One lightweight operating/development environment:
   validation instead of cloud-backed routine development.
 
 One project control plane:
-  docs/PROJECT_CONTROL_PLANE.md and project-state/*.json provide compact
-  machine-readable current state, lanes, and task orientation for agents and
-  future consistency tooling.
+  docs/PROJECT_CONTROL_PLANE.md and project-state/*.json provide reviewed lane
+  definitions and dated compatibility constraints for agents and consistency
+  tooling; they do not provide a live queue.
 ```
 
 Do not add a new long-lived architecture document unless it fits one of the
-active lanes below and has a clear validation or cleanup path.
+classification areas below and has a clear validation or cleanup path.
 
 Do not keep old workspaces, superseded execution packages, stale draft plans, or
 personal/material experiments on the active `master` reading path once their
 useful facts have been indexed and archived.
 
-Do not turn routine development into production operations. Use Aliyun for the
-approved production boundary, not as the default development workspace or CI
-host.
+Do not turn routine development into production operations. Historical Aliyun
+evidence is not a default development, CI, provider, or production boundary.
+Resolve current provider and runtime facts through fresh Risk A inventory.
 
-Do not force every state change into prose. If the update is a compact current
-state, lane, task, or validation summary, prefer `project-state/*.json` plus a
-short doc pointer.
+Do not force every stable taxonomy or dated compatibility change into prose.
+Use `project-state/*.json` only for reviewed lane definitions, observation
+cutoffs, and historical task constraints; use native Issue/PR records for
+current state and sequencing.
 
-## Active Lanes
+## Simplification Areas — Not Project Lanes
 
-### Lane 1: Subscription Control Plane
+These areas preserve stable product and cleanup boundaries. They are not the
+Project #1 Lane taxonomy, an active item inventory, or a task queue.
+
+### Area 1: Subscription Control Plane
 
 Purpose:
 
@@ -182,7 +195,7 @@ Primary code areas:
 
 Keep active. This is core product work.
 
-### Lane 2: Edge Data Plane
+### Area 2: Edge Data Plane
 
 Purpose:
 
@@ -214,7 +227,7 @@ Primary code/config areas:
 Keep active, but all real node, DNS, Nginx, systemd, or production config work
 remains Risk A.
 
-### Lane 3: Local Client Adapter
+### Area 3: Local Client Adapter
 
 Purpose:
 
@@ -236,7 +249,7 @@ Keep active as product prototype work. It should not mutate system proxy,
 routes, drivers, TUN, public listeners, production transport, or device
 credentials until a separate design and risk gate exists.
 
-### Lane 4: Validation And CI
+### Area 4: Validation And CI
 
 Purpose:
 
@@ -260,7 +273,7 @@ Keep active. Future simplification should create a compact validation baseline
 entrypoint rather than adding more historical test-count paragraphs to
 `PROJECT_CONTEXT.md`.
 
-### Lane 5: Operator Lab / HP Relay
+### Area 5: Operator Lab / HP Relay
 
 Purpose:
 
@@ -280,7 +293,7 @@ Status:
 Keep as an experiment lane only. Do not write HP Relay facts into production
 records unless a separate approved promotion path exists.
 
-### Lane 6: Server Edge Mesh
+### Area 6: Server Edge Mesh
 
 Purpose:
 
@@ -299,34 +312,38 @@ Historical reference:
 Keep active as an ops architecture lane. It is not a user VPN, not customer data
 routing, and not the local client adapter product.
 
-## Current Complexity Hotspots
+## Dated Complexity Hotspots
+
+These observations explain the original simplification rationale. Re-check the
+current source and native work records before turning one into a task.
 
 ### Hotspot 1: PROJECT_CONTEXT Is Too Dense
 
 Known fact:
 
-`docs/PROJECT_CONTEXT.md` is the current resume source. It should stay compact:
-current facts, active blockers, latest validation baseline, and links to
-detailed records. Historical execution evidence belongs in the record docs and
-the docs index, not in the handoff body.
+`docs/PROJECT_CONTEXT.md` is the resume-time context and authority router. It
+should stay compact: stable project boundaries, dated source/production
+observations, validation routing, and links to the native records that own
+current work. Historical execution evidence belongs in record docs and the
+docs index, not in the handoff body.
 
 Simplification target:
 
 ```text
 PROJECT_CONTEXT.md
-  keep: current facts, active blockers, latest durable next step
+  keep: stable boundaries, dated observations, native-owner read paths
   move/detail: long historical execution facts remain in record docs
   link: docs/README.md and this simplification map for navigation
 ```
 
 Suggested follow-up:
 
-- Keep future `PROJECT_CONTEXT.md` updates short. Add current state only when it
-  changes current facts, blockers, or next actions.
+- Keep future `PROJECT_CONTEXT.md` updates short. Do not copy mutable Issue/PR
+  status, blockers, or next-action ordering into it.
 - Do not copy long execution details into `PROJECT_CONTEXT.md` while the
   relevant record is reachable from `docs/README.md`.
-- If the handoff starts growing again, split detail into a dedicated current
-  doc or record and link it from the handoff.
+- If the handoff starts growing again, split dated detail into an evidence
+  record and link it from the context document.
 
 ### Hotspot 2: Historical Records Are Correct But Noisy
 
@@ -534,7 +551,11 @@ Suggested follow-up:
 - C-tier PR: add `docs/VALIDATION_BASELINE.md` and point old validation records
   to historical context.
 
-## Recommended Cleanup Queue
+## Historical Cleanup Recommendations — Not Current Sequencing
+
+This list is retained as design history. It does not establish open work,
+priority, completion, or approval; use native Issue/PR records for each current
+decision.
 
 ### C1: Documentation Slimming
 
@@ -689,9 +710,9 @@ Always Risk A. This changes production access semantics.
 
 Goal:
 
-Move from co-located production toward the current Aliyun server as
-subscription control plane, local Linux as manual CI, and replaceable clean
-edge data-plane nodes.
+Maintain a provider-neutral subscription control-plane role, documented manual
+CI fallback, and replaceable edge data-plane roles. Current deployment and
+runtime identities must come from fresh Risk A inventory, not this map.
 
 Scope:
 
@@ -708,7 +729,8 @@ Always Risk A.
 
 Do not do these unless a separate approved task explicitly changes direction:
 
-- do not add another long architecture branch without tying it to an active lane
+- do not add another long architecture branch without tying it to a native
+  Issue and reviewed Project Lane value
 - do not treat HP Relay as production, staging, CI, or prod-edge-c
 - do not treat Server Edge Mesh as a user VPN
 - do not treat WireGuard setup as already approved because a runbook exists
@@ -732,8 +754,8 @@ Do not do these unless a separate approved task explicitly changes direction:
   5. *Legacy Admin UI Work*: Color schemes, layouts, non-CLI console mock-ups,
      decorative widgets, or incremental productization of the old `admin/`
      bundle. The old Admin UI is archived as a local protected reference/testing
-     surface only; future user/operator/admin surfaces should be rebuilt from
-     current Aliyun-first and CLI-first boundaries. See
+     surface only; future user/operator/admin surfaces should follow the
+     current reviewed source boundaries and protected CLI/Admin contracts. See
      `docs/ADMIN_UI_LEGACY_ARCHIVE.md`.
   6. *Documentation Over-Packaging*: Excessive high-level narrative bloating, over-lengthy closeouts, redundant topological diagrams, or slogan-like stage reports.
   7. *Speculative Futuristic Architecture*: Multi-agent cards, futuristic protocol roadmaps, or un-gated conceptual structures.

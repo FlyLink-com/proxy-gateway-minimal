@@ -1,28 +1,34 @@
-# Project Intelligence Current State
+# Historical Project Intelligence Snapshot
 
 Last verified: 2026-07-15, America/Los_Angeles.
 
 ```yaml
 document_metadata:
-  doc_type: canonical
-  lifecycle: active
-  authority_scope: current_state
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: historical_project_state_snapshot
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
 > Status:
-> - Type: Human-readable project intelligence snapshot
+> - Type: Historical human-readable project intelligence snapshot
 > - Risk: C
 > - Execution authority: Does not authorize production, provider, DNS, Nginx,
 >   systemd, firewall, auth, schema, deployment, promotion, rollback,
 >   credential, subscription-material, or customer-data actions
 > - Production impact: None
-> - Authority: Derived/index view only; defers to live evidence and the
->   authoritative documents listed below
-> - Index scope: Current repository evidence and information gaps through
+> - Authority: Historical derived/index view only; no current work or
+>   sequencing authority
+> - Index scope: Repository evidence and information gaps observed through
 >   `master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`
+
+This document preserves the 2026-07-15 handoff byte-for-byte where practical
+for audit and archaeology. Its repository counts, Issue/PR state, blockers,
+checks, and ordered actions are historical and invalid for current use. Resolve current coordination from
+`docs/PROJECT_CONTEXT.md`, native Issue/PR records, and Project #1 as a mutable
+navigation projection; use fresh task-specific inventory for production facts.
 
 ## Precedence And Compatibility
 
@@ -34,13 +40,13 @@ state and does not replace:
 3. `docs/CURRENT_RELEASE_STATE.md`, `RELEASE_MANIFEST.md`, and
    `docs/PROJECT_CONTEXT.md` for their documented scopes; or
 4. `project-state/current.json`, `project-state/lanes.json`, and
-   `project-state/tasks.json` as the existing machine-readable coordination
-   layer.
+   `project-state/tasks.json` as dated compatibility artifacts and reviewed
+   lane/task constraints, not current sequencing.
 
 No `project-state.yaml` is introduced. A future machine schema must extend the
 existing JSON/checker mechanism through a separately reviewed change.
 
-## State Record
+## Recorded State At The Cutoff
 
 | Field | Verified value | Evidence and boundary |
 | --- | --- | --- |
@@ -51,11 +57,11 @@ existing JSON/checker mechanism through a separately reviewed change.
 | `production_release/mutation` | No fresh production or provider inventory was performed and no mutation was authorized or executed by this C-tier reconciliation. | The last documented production/runtime evidence cutoff remains dated at `2026-07-11T13:03:40Z` and must not be restated as fresh live state. |
 | `validation_state` | Exact-master CI `29418796398`, Release Artifact `29418796724`, and CodeQL runs `29418794902`/`29418794903` succeeded for `5b61d9d7`; Cloudflare workflow `29391680029` succeeded through build/verify with deploy skipped. | Source/build evidence only; no production authority. |
 | `blockers` | PR #476 conflicts with `master`. PR #479 is behind `master`; all four review threads are resolved, but Gate `-003` ended blocked with approval consumed and its successful head checks do not prove current-master integration. Live production/runtime state also remains an information gap. | PR #476/#479 and Issue #437 read-only inventory; no Risk A inventory was performed. |
-| `next_actions` | Establish a new #479 successor Gate after blocked `-003`; complete its source/review/merge closure; then continue machine-governance and artifact-retention work through separate PRs. | Ordered governance queue; no action is authorized by this view. |
+| `next_actions` | Establish a new #479 successor Gate after blocked `-003`; complete its source/review/merge closure; then continue machine-governance and artifact-retention work through separate PRs. | Historical ordered queue at the cutoff; superseded and not current action guidance. |
 
-## Known Facts
+## Facts Recorded At The Cutoff
 
-- Current `master` is `5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`,
+- At this cutoff, `master` was `5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`,
   produced by merged PR #494 after source, dependency, security, governance,
   and topology merges through #492.
 - Draft PR #479 is at `58ccdccc6af5ed120541f03d2713857e4a9a8a65`,
@@ -75,7 +81,10 @@ existing JSON/checker mechanism through a separately reviewed change.
 - The repository is a release-managed modular monolith; adapters, control-plane
   services, data-plane runtimes, and release evidence are separate concerns.
 
-## Ordered Next Actions
+## Historical Ordered Actions — Superseded
+
+The following list records the July 15 handoff only. Do not execute or use it
+for current sequencing; perform a fresh native Issue/PR read instead.
 
 1. Establish a new durable successor Gate on #437 after the blocked and
    consumed PR #479 Gate `-003`.
@@ -88,7 +97,7 @@ existing JSON/checker mechanism through a separately reviewed change.
 4. Only then establish independent Artifact and Risk A production-alignment
    Gates.
 
-## Information Gaps
+## Information Gaps Recorded At The Cutoff
 
 - The current live production release identity and runtime health were not
   inventoried because this task has no Risk A authority.

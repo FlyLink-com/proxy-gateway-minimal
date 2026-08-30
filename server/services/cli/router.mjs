@@ -40,7 +40,7 @@ const DOMAIN_SOURCE_DOCS = {
 
 const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["project check", "scripts/check-project-state.mjs", "project", "C", "read-only", "Validate project-state and repository safety markers"],
-  ["project handoff-brief", "scripts/project-handoff-brief.mjs", "project", "C", "report", "Generate a structured Claude handoff brief from cached project context", ["docs/PROJECT_CONTEXT.md"]],
+  ["project handoff-brief", "scripts/project-handoff-brief.mjs", "project", "C", "report", "Generate a dated compatibility handoff scaffold that requires a fresh native Issue/PR read", ["docs/PROJECT_CONTEXT.md"]],
   ["channel validate", "scripts/channel-config-dry-run.mjs", "channel", "B", "dry-run", "Validate channel configuration candidates", undefined, { surface: "operator", aliasOf: "gccgw channel dry-run" }],
   ["channel measure", "scripts/channel-measurement-bundle.mjs", "channel", "C", "report", "Build channel measurement bundle evidence", undefined, { surface: "operator", aliasOf: "gccgw channel measurement-bundle" }],
   ["channel decide", "scripts/channel-system-decision-flow.mjs", "channel", "C", "report", "Build end-to-end channel decision evidence", undefined, { surface: "operator", aliasOf: "gccgw channel system-decision-flow" }],
@@ -1644,14 +1644,15 @@ const PROJECT_ARCHITECTURE_LAYERS = [
   },
   {
     layer: "gate",
-    purpose: "Separate read-only checks, dry-runs, local builds, and production mutations.",
+    purpose: "Separate read-only checks, dry-runs, local builds, and production mutations without deriving current work order from dated state.",
     modules: [
       "gccgw command map",
       "docs/*RUNBOOK*.md",
       "project-state/current.json",
-      "project-state/tasks.json"
+      "project-state/tasks.json",
+      "project-state/lanes.json"
     ],
-    rule: "C-tier is read-only/docs, B-tier is local code/test/build, and A-tier requires explicit approval plus rollback discipline."
+    rule: "The JSON files provide dated constraints and lane definitions only. Fresh native Issue/PR reads own current work; C-tier is read-only/docs, B-tier is local code/test/build, and A-tier requires explicit approval plus rollback discipline."
   }
 ];
 

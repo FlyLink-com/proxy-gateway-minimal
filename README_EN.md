@@ -28,10 +28,11 @@ current facts in this order:
 
 1. [`docs/CURRENT_RELEASE_STATE.md`](docs/CURRENT_RELEASE_STATE.md): the currently documented release and production reconciliation state.
 2. [`RELEASE_MANIFEST.md`](RELEASE_MANIFEST.md): the identity boundary between source, artifacts, releases, deployments, and runtime state.
-3. [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md): project positioning, current phase, work queue, and risk boundaries.
+3. [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md): project positioning, documented boundaries, the native current-work read path, and risk boundaries.
 4. `git status --short --branch`: the path, branch, and worktree state of the current checkout.
 5. [`docs/README.md`](docs/README.md): the complete documentation index, authority scopes, and lifecycle navigation.
 6. The subsystem README relevant to the task: read its responsibility and validation boundary before working in that module.
+7. Native GitHub Issue/PR records: freshly read state, scope, risk, done criteria, and review evidence before selecting, ordering, or declaring current work; Project #1 is navigation only.
 
 `AGENTS.md` defines repository task rules and always applies, but it does not
 replace the current-state reading order above.
@@ -51,7 +52,7 @@ It organizes project capabilities into these workflows:
 project / install / node / package / subscription / channel / config / site-admin / operations
 ```
 
-## Current Project Status
+## Documented Project Phase (Fresh Production Read Required)
 
 The project is in **Phase 2 Operational Reliability**. It is completing runtime
 reliability and release reconciliation on top of a controlled platform
@@ -62,17 +63,18 @@ project_status:
   phase: Phase 2 Operational Reliability
   maturity: controlled platform foundation
   source_model: release-managed monorepo
-  production: partially operational; reconciliation incomplete
+  production: dated evidence exists; current state requires fresh inventory
 ```
 
-Current boundaries:
+Stable and dated boundaries:
 
 - The core architecture is a monolithic Node/Express service, SQLite business
   state, and the `gccgw` operator CLI.
-- The current production design uses one subscription control plane to manage
+- The documented architecture uses one subscription control plane to manage
   accounts, orders, subscription artifacts, credential lifecycles, and usage
-  ledgers. Vultr Japan, Singapore, and other nodes are replaceable data-plane
-  channel capacity.
+  ledgers. Vultr Japan and Singapore have dated role evidence as replaceable
+  data-plane channels; current role, capacity, and health require fresh
+  task-specific inventory.
 - `.env` is the configuration closure point on a target host.
 - `deployments/production-template/` is a non-sensitive production input
   package template.
@@ -457,7 +459,9 @@ is injected, a signed-in durable account may use the `trial` policy to activate
 seven days, refresh visible-once subscription material, or disable the current
 subscription. User Portal does not delete order or subscription records.
 Monthly and annual plans remain request flows. Payment, public production
-Portal, and production auto-issuance are not enabled.
+Portal, and automatic issuance remain disabled by default in repository source.
+This document does not establish their current production-runtime state; that
+requires fresh Risk A inventory.
 
 ## Legacy Clash/Mihomo Compatibility
 
@@ -514,7 +518,7 @@ Important current documents:
 | --- | --- |
 | `docs/CURRENT_RELEASE_STATE.md` | Currently documented release and production reconciliation state |
 | `RELEASE_MANIFEST.md` | Source, artifact, release, deployment, and runtime-state identity model |
-| `docs/PROJECT_CONTEXT.md` | Project positioning, phase, queue, and continuation entrypoint |
+| `docs/PROJECT_CONTEXT.md` | Project positioning, risk boundaries, and the native Issue/PR entrypoint for current work |
 | `docs/VALIDATION_BASELINE.md` | Validation command matrix |
 | `docs/CONFIGURATION_OWNERSHIP_MATRIX.md` | Configuration ownership |
 | `docs/PRODUCTION_INPUT_PACKAGE_FORMAT.md` | Production input package format |
@@ -543,7 +547,7 @@ Important current documents:
 │   └── edge-node/             # provider-neutral edge-node package material
 ├── scripts/                   # Windows helpers, backup/restore, diagnostics
 ├── public/                    # local console and static assets
-├── project-state/             # machine-checkable project state
+├── project-state/             # machine-checkable lane taxonomy and dated compatibility snapshots
 ├── .env.example               # runtime environment template
 └── .gitattributes             # keeps shell scripts LF for Linux archive runs
 ```

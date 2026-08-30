@@ -1,6 +1,33 @@
-# Governance State Reconciliation Implementation Plan
+# Historical Governance State Reconciliation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+Last verified: 2026-08-29, America/Los_Angeles.
+
+```yaml
+document_metadata:
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: historical_implementation_plan
+  superseded_by: null
+  last_verified_at: 2026-08-29
+  production_authority: false
+```
+
+> Status:
+> - Type: Historical implementation plan
+> - Risk: C record; any new work requires fresh classification
+> - Execution authority: None; do not execute its steps, controller actions,
+>   counts, or queue
+> - Production impact: None
+> - Source of truth for: The 2026-07-14 reconciliation record only
+
+This plan is retained for archaeology. Its “current,” Issue/PR counts, review
+state, queue, and controller instructions were observations at the stated
+cutoff, not present-day work selection. Resolve current work from fresh native
+Issue/PR records and use Project #1 only for navigation.
+
+> **Historical note:** The original plan required an execution skill and used
+> checkbox order for tracking. That instruction is superseded; do not execute
+> this plan or treat its checkboxes as a current queue.
 
 **Goal:** Reconcile the repository-backed governance snapshot with `master@2413c101724df45579ebf4b9e0f306d32d9bb1af` after PRs #482 and #483 merged and Issue #437 was restored.
 
@@ -20,7 +47,7 @@
 
 ---
 
-### Task 1: Reconcile the current governance snapshot
+### Task 1: Reconcile the governance snapshot at the 2026-07-14 cutoff
 
 **Files:**
 
@@ -43,7 +70,8 @@
 
 - [x] **Step 1: Replace the source inventory identity and repository counts**
 
-  Use these exact current facts throughout all eleven files:
+  The original reconciliation used these exact cutoff facts throughout all
+  eleven files:
 
   ```yaml
   source_snapshot: 2413c101724df45579ebf4b9e0f306d32d9bb1af
@@ -107,7 +135,7 @@
 
   Keep all release-unit and runtime identities at their existing dated cutoff. Do not claim a new production inventory or production change.
 
-- [x] **Step 5: Update the next-action queue**
+- [x] **Step 5: Record the historical next-action queue**
 
   The queue must be ordered as follows:
 
@@ -144,4 +172,8 @@
   docs: reconcile governance state after CI split
   ```
 
-  Do not push or open a PR during implementation. After the task-level and whole-branch reviews are clean, the controller will finish the branch, push `docs/governance-state-reconciliation-20260714` normally, and open one Draft PR against `master`. The PR body must include the Risk C classification, exact source baseline, validation evidence, #437 reconciliation receipt, and explicit non-authority for Ready, merge, artifact, settings, provider, runtime, or production actions.
+  At the cutoff, the original controller instructions withheld push/PR creation
+  until reviews were clean, then called for branch
+  `docs/governance-state-reconciliation-20260714` and one Draft PR. Those
+  controller instructions are now historical and grant no present execution
+  authority.

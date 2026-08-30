@@ -2104,6 +2104,12 @@ test("gccgw CLI exposes a flattened architecture map for project editor surfaces
   assert.ok(architecture.layers.some((layer) => layer.layer === "storage"));
   assert.ok(architecture.layers.some((layer) => layer.layer === "output"));
   assert.ok(architecture.layers.some((layer) => layer.layer === "gate"));
+  const gateLayer = architecture.layers.find((layer) => layer.layer === "gate");
+  assert.match(gateLayer.rule, /Fresh native Issue\/PR reads own current work/);
+  assert.deepEqual(
+    gateLayer.modules.filter((module) => module.startsWith("project-state/")),
+    ["project-state/current.json", "project-state/tasks.json", "project-state/lanes.json"]
+  );
   assert.ok(architecture.flows.some((flow) => flow.name === "Controlled subscription issuance"));
   assert.doesNotMatch(JSON.stringify(architecture), /subscriptionUrl|token|secret|password/i);
 

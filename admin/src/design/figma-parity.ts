@@ -1,7 +1,7 @@
 import { type AdminComponentRoleGroup } from "./grammar/components";
 import { type AdminHierarchyRole } from "./grammar/hierarchy";
 
-export const ADMIN_FIGMA_REACT_PARITY_CONTRACT_VERSION = "admin-figma-react-parity/v1";
+export const ADMIN_FIGMA_REACT_PARITY_CONTRACT_VERSION = "admin-figma-react-parity/v2";
 
 export const ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS = [
   "StatusChip",
@@ -17,6 +17,18 @@ export const ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS = [
 export type AdminFigmaReactParityComponent =
   (typeof ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS)[number];
 
+export type AdminFigmaReactParitySurfaceReference =
+  | {
+      kind: "export";
+      path: string;
+      symbol: string;
+    }
+  | {
+      kind: "usage";
+      path: string;
+      symbol: string;
+    };
+
 export type AdminFigmaReactParityEntry = {
   figmaComponentSet: AdminFigmaReactParityComponent;
   figmaVariantProperties: readonly string[];
@@ -24,8 +36,8 @@ export type AdminFigmaReactParityEntry = {
   grammarRoles: readonly AdminComponentRoleGroup[];
   hierarchyRoles: readonly AdminHierarchyRole[];
   react: {
-    primarySurface: string;
-    supportingSurfaces: readonly string[];
+    primarySurface: AdminFigmaReactParitySurfaceReference;
+    supportingSurfaces: readonly AdminFigmaReactParitySurfaceReference[];
     propContract: readonly string[];
     propValues: readonly string[];
   };
@@ -75,12 +87,12 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Browser Evidence"
     ],
     react: {
-      primarySurface: "src/components/primitives/status-chip.tsx#StatusChip",
+      primarySurface: { kind: "export", path: "src/components/primitives/status-chip.tsx", symbol: "StatusChip" },
       propContract: ["label", "tone"],
       propValues: ["success", "info", "warning", "danger", "neutral"],
       supportingSurfaces: [
-        "src/components/primitives/metric-card.tsx#MetricTone",
-        "src/components/primitives/panel-frame.tsx#StatusChip usage"
+        { kind: "export", path: "src/components/primitives/metric-card.tsx", symbol: "MetricTone" },
+        { kind: "usage", path: "src/components/primitives/panel-frame.tsx", symbol: "StatusChip" }
       ]
     },
     responsiveRules: [
@@ -124,11 +136,11 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Browser Evidence"
     ],
     react: {
-      primarySurface: "src/components/primitives/metric-card.tsx#MetricCard",
+      primarySurface: { kind: "export", path: "src/components/primitives/metric-card.tsx", symbol: "MetricCard" },
       propContract: ["label", "value", "detail", "tone", "icon", "trend"],
       propValues: ["success", "info", "warning", "danger", "neutral"],
       supportingSurfaces: [
-        "src/pages/dashboard-page.tsx#OverviewMetricCard wrapper"
+        { kind: "usage", path: "src/pages/dashboard-page.tsx", symbol: "OverviewMetricCard" }
       ]
     },
     responsiveRules: [
@@ -172,7 +184,7 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Browser Evidence"
     ],
     react: {
-      primarySurface: "src/components/primitives/panel-frame.tsx#PanelFrame",
+      primarySurface: { kind: "export", path: "src/components/primitives/panel-frame.tsx", symbol: "PanelFrame" },
       propContract: [
         "ariaLabel",
         "category",
@@ -185,7 +197,7 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       ],
       propValues: ["draft", "operator", "preview", "owner", "normal"],
       supportingSurfaces: [
-        "src/pages/admin-console-page-frame.tsx#PanelFrame usage"
+        { kind: "usage", path: "src/pages/admin-console-page-frame.tsx", symbol: "PanelFrame" }
       ]
     },
     responsiveRules: [
@@ -227,13 +239,13 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Browser Evidence"
     ],
     react: {
-      primarySurface: "src/components/primitives/data-table.tsx#DataTable",
+      primarySurface: { kind: "export", path: "src/components/primitives/data-table.tsx", symbol: "DataTable" },
       propContract: ["ariaLabel", "columns", "rows", "state", "selectedRowKey", "onRowSelect"],
       propValues: ["empty", "loading", "stale", "error", "selected"],
       supportingSurfaces: [
-        "src/components/primitives/safe-ref.tsx#SafeRef",
-        "src/pages/portal-requests-page.tsx#DataTable usage",
-        "src/pages/subscription-usage-monitor-page.tsx#DataTable usage"
+        { kind: "export", path: "src/components/primitives/safe-ref.tsx", symbol: "SafeRef" },
+        { kind: "usage", path: "src/pages/portal-requests-page.tsx", symbol: "DataTable" },
+        { kind: "usage", path: "src/pages/subscription-usage-monitor-page.tsx", symbol: "DataTable" }
       ]
     },
     responsiveRules: [
@@ -275,11 +287,11 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Browser Evidence"
     ],
     react: {
-      primarySurface: "src/components/layout/top-bar.tsx#TopBar",
+      primarySurface: { kind: "export", path: "src/components/layout/top-bar.tsx", symbol: "TopBar" },
       propContract: ["activePage", "search", "onSearchChange"],
       propValues: ["dashboard", "portalRequests", "usageMonitor"],
       supportingSurfaces: [
-        "src/components/layout/admin-layout.tsx#TopBar usage"
+        { kind: "usage", path: "src/components/layout/admin-layout.tsx", symbol: "TopBar" }
       ]
     },
     responsiveRules: [
@@ -317,11 +329,11 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Browser Evidence"
     ],
     react: {
-      primarySurface: "src/components/primitives/workspace-sidebar.tsx#WorkspaceSidebar",
+      primarySurface: { kind: "export", path: "src/components/primitives/workspace-sidebar.tsx", symbol: "WorkspaceSidebar" },
       propContract: ["brand", "pinnedApps", "plannedRoutes", "safetyGate"],
       propValues: ["active", "planned"],
       supportingSurfaces: [
-        "src/components/layout/app-sidebar.tsx#AppSidebar"
+        { kind: "export", path: "src/components/layout/app-sidebar.tsx", symbol: "AppSidebar" }
       ]
     },
     responsiveRules: [
@@ -363,14 +375,14 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Browser Evidence"
     ],
     react: {
-      primarySurface: "src/components/primitives/privileged-gate.tsx#PrivilegedGate",
+      primarySurface: { kind: "export", path: "src/components/primitives/privileged-gate.tsx", symbol: "PrivilegedGate" },
       propContract: ["title", "description", "detail", "state", "capability", "ariaLabel"],
       propValues: ["hidden", "gated", "fresh-mfa-required", "unavailable", "readonly", "super-admin"],
       supportingSurfaces: [
-        "src/app/admin-ui-contract.ts#ADMIN_PRIVILEGED_SURFACE_IDS",
-        "src/app/admin-app-manifest.ts#AdminCapabilityContext",
-        "src/components/layout/app-sidebar.tsx#safetyGate",
-        "src/components/layout/top-bar.tsx#Risk A gated chip"
+        { kind: "export", path: "src/app/admin-ui-contract.ts", symbol: "ADMIN_PRIVILEGED_SURFACE_IDS" },
+        { kind: "export", path: "src/app/admin-app-manifest.ts", symbol: "AdminCapabilityContext" },
+        { kind: "usage", path: "src/components/layout/app-sidebar.tsx", symbol: "safetyGate" },
+        { kind: "usage", path: "src/components/layout/top-bar.tsx", symbol: "riskGateLabel" }
       ]
     },
     responsiveRules: [
@@ -415,13 +427,13 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Browser Evidence"
     ],
     react: {
-      primarySurface: "src/components/primitives/state-feedback.tsx#StateFeedback",
+      primarySurface: { kind: "export", path: "src/components/primitives/state-feedback.tsx", symbol: "StateFeedback" },
       propContract: ["title", "description", "chrome", "role", "tone", "checklist"],
       propValues: ["workstream", "case", "table", "none", "status", "alert", "empty", "loading", "stale", "error"],
       supportingSurfaces: [
-        "src/components/primitives/empty-state.tsx#EmptyState",
-        "src/components/primitives/data-table.tsx#DataTableState",
-        "src/pages/admin-console-page-frame.tsx#EmptyState usage"
+        { kind: "export", path: "src/components/primitives/empty-state.tsx", symbol: "EmptyState" },
+        { kind: "export", path: "src/components/primitives/data-table.tsx", symbol: "DataTableState" },
+        { kind: "usage", path: "src/pages/admin-console-page-frame.tsx", symbol: "EmptyState" }
       ]
     },
     responsiveRules: [

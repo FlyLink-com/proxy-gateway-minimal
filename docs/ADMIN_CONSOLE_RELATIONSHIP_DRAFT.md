@@ -7,7 +7,7 @@ document_metadata:
   lifecycle: active
   authority_scope: admin_console_relationship_draft
   superseded_by: null
-  last_verified_at: 2026-08-09
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -74,8 +74,10 @@ The draft uses four front-end principles:
 
 This retained wave table records the delivery boundary when the relationship
 draft was written. It is not the current GitHub queue. Current Operations
-sequencing belongs to #557-#561 and `project-state/*.json`; do not treat every
-surface below as simultaneous implementation work.
+sequencing must be resolved from fresh native Issue/PR records, including the
+current state of #557-#561 and any linked PRs. Project #1 may help navigate
+those records; `project-state/*.json` cannot supply current sequencing. Do not
+treat every surface below as simultaneous implementation work.
 
 | Wave | Linear scope | Delivery boundary |
 | --- | --- | --- |
@@ -86,7 +88,8 @@ surface below as simultaneous implementation work.
 
 Dated WIP limit at this baseline: `GCC-101` / `GCC-112` design-only contract
 work. The rest of this document is a relationship map, not current sequencing
-authority or a commitment to finish every page in one PR.
+authority or a commitment to finish every page in one PR. Resolve current work
+from native Issue/PR records and use Project #1 only for navigation.
 
 ## Object Relationship Model
 

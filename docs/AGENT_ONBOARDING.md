@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: agent_onboarding
   superseded_by: null
-  last_verified_at: 2026-06-15
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -52,16 +52,24 @@ Read these in order before doing project work:
 
 1. `AGENTS.md` - workflow rules, A/B/C risk tiers, validation expectations, and
    safety boundaries.
-2. `docs/PROJECT_CONTEXT.md` - current handoff, active blockers, current
-   architecture view, and latest documented production snapshot.
-3. `docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md` - branch roles, service lanes,
+2. `docs/CURRENT_RELEASE_STATE.md` - dated release and deployment observations;
+   never a substitute for fresh runtime inventory.
+3. `RELEASE_MANIFEST.md` - stable source, artifact, release, deployment, and
+   runtime identity contract.
+4. `docs/PROJECT_CONTEXT.md` - stable project boundaries, authority routing,
+   architecture view, and dated production observations.
+5. `git status --short --branch` - the actual checkout and worktree state.
+6. `docs/README.md`, then the subsystem README relevant to the task.
+7. Fresh native Issue/PR records for current work; use Project #1 only to
+   navigate to the relevant items.
+8. `docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md` - branch roles, service lanes,
    and the difference between planned, coded, tested, deployed, merged, and
    archived.
-4. `docs/VALIDATION_BASELINE.md` - validation commands by risk tier and touched
+9. `docs/VALIDATION_BASELINE.md` - validation commands by risk tier and touched
    surface.
-5. `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` - current Vultr Japan
+10. `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` - documented Vultr Japan
    control-plane plus Vultr Japan/Singapore data-plane direction.
-6. `docs/RUNTIME_LANE_AUTHORITY.md` - current versus staging versus historical
+11. `docs/RUNTIME_LANE_AUTHORITY.md` - documented, staging, and historical
    runtime-lane authority, especially before using Aliyun, AWS, canary,
    retired-node, or generated-runtime records.
 

@@ -1,6 +1,6 @@
 # Runtime Lane Authority Boundary
 
-Last updated: 2026-06-15, America/Los_Angeles.
+Last updated: 2026-08-29, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: runtime_lane_authority
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -20,14 +20,14 @@ document_metadata:
 >   deploy, rollback, secret, token, subscription URL, credential, runtime
 >   config, or customer-data actions
 > - Production impact: None
-> - Source of truth for: Which runtime lanes are current authority, staging
->   evidence, historical reference, or archive-only material
+> - Source of truth for: Reviewed runtime-lane role classifications and safety
+>   boundaries at their stated evidence cutoffs; not current capacity or health
 
 ## Purpose
 
 Use this file before importing old runtime notes, comparing historical node
-records, drafting a node/runbook approval packet, or deciding whether a channel
-or host belongs to the current production model.
+records, drafting a node/runbook approval packet, or comparing a channel or
+host with the documented production model at a dated cutoff.
 
 This file prevents three common mistakes:
 
@@ -39,13 +39,17 @@ This file prevents three common mistakes:
 This file is an authority boundary, not live inventory. Runtime facts that can
 drift still require live read-only verification before any Risk A action.
 
-## Current Authority
+## Documented Lane Roles — Fresh Inventory Required
 
-| Lane | Current role | Authority boundary | Required before mutation |
+The table records reviewed role definitions and dated evidence boundaries. It
+does not prove that a provider, host, channel, service, or release is currently
+available or healthy. Fresh Risk A read-only inventory owns those facts.
+
+| Lane | Documented role | Authority boundary | Required before mutation |
 | --- | --- | --- | --- |
-| Vultr Japan control plane | Current subscription control plane. Owns accounts, orders, subscription artifacts, credential refs, desired-state notifications, render gating, and usage ledger state. | It is the current control-plane lane, but `master` and deployed runtime can still drift. | Live read-only inventory, protected backups, exact approval, validation, and rollback plan. |
-| Vultr Japan data plane | Current production data-plane capacity for VLESS Reality, Hysteria2, and TUIC channels. | Provides runtime capacity only. It does not own accounts, orders, packages, or customer truth. | Runtime/service/listener inventory, config-test where applicable, and receipt/render validation if channel output changes. |
-| Vultr Singapore data plane | Current optional production data-plane capacity for VLESS Reality, Hysteria2, and TUIC channels through the Japan control plane. | Stays out of rendered subscriptions unless matching applied receipts prove current desired-state was applied. It is not an independent user panel or control DB. | Fresh agent/receipt/readiness proof for the scoped order or channel generation being rendered. |
+| Vultr Japan control plane | Documented subscription control-plane role for accounts, orders, subscription artifacts, credential refs, desired-state notifications, render gating, and usage ledger state. | This is a role classification, while `master`, deployed runtime, and current availability can drift. | Live read-only inventory, protected backups, exact approval, validation, and rollback plan. |
+| Vultr Japan data plane | Documented production data-plane role for VLESS Reality, Hysteria2, and TUIC capacity. | Provides runtime capacity only. It does not own accounts, orders, packages, or customer truth; current capacity is unread here. | Runtime/service/listener inventory, config-test where applicable, and receipt/render validation if channel output changes. |
+| Vultr Singapore data plane | Documented optional production data-plane role for VLESS Reality, Hysteria2, and TUIC through the Japan control plane. | Stays out of rendered subscriptions unless matching fresh applied receipts prove the scoped desired state. It is not an independent user panel or control DB. | Fresh agent/receipt/readiness proof for the scoped order or channel generation being rendered. |
 | GitHub `master` | Integrated source baseline after reviewed PR merge. | Not automatically the live server state and not proof that production was upgraded. | Separate release artifact, Risk A promotion gate, and runtime validation. |
 
 ## Staging Evidence
@@ -76,7 +80,8 @@ current production authority:
 When documents disagree, use this order:
 
 1. Live read-only inventory for drift-prone production facts.
-2. `docs/PROJECT_CONTEXT.md` for current handoff and active blockers.
+2. `docs/PROJECT_CONTEXT.md` for context and authority routing, followed by
+   fresh native Issue/PR records for current work or blockers.
 3. `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` for current Vultr direction.
 4. This file for runtime-lane authority classification.
 5. `docs/README.md` indexes for historical execution records.

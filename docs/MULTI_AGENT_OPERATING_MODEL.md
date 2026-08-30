@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: multi_agent_operating_model
   superseded_by: null
-  last_verified_at: 2026-05-27
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -63,16 +63,17 @@ subagent output is evidence, not truth, until the lead verifies it
 parallel work is allowed only when file ownership and external state do not conflict
 ```
 
-## Current Heavyweight Specialist Agents
+## Historical Heavyweight Specialist Profiles
 
 The lead agent remains the global owner for scope, risk, integration, and final
-verification. Under that global lead, the current project has two heavyweight
-specialist agents. They are long-running ownership lanes, not temporary
-reviewers.
+verification. At this document's 2026-05-27 cutoff, two heavyweight specialist
+profiles were recorded as examples. They do not assign current owners, active
+work, or sequencing. Reuse a profile only when a fresh native Issue/PR record
+does so explicitly.
 
-### Subscription Control Platform Agent
+### Historical Subscription Control Platform Profile
 
-Primary mission:
+Mission recorded at the cutoff:
 
 ```text
 build the Aliyun subscription-control platform MVP
@@ -105,7 +106,7 @@ production mutation without A-tier approval
 manual CI as staging or production approval
 ```
 
-Current task boundary:
+Task boundary recorded at the cutoff:
 
 ```text
 repo-only B/C work can continue under this agent
@@ -113,9 +114,9 @@ Aliyun runtime, DNS, firewall, state-copy, public listener, production authority
   or cleanup work remains Risk A and needs separate approval
 ```
 
-### Channel Technical MVP Agent
+### Historical Channel Technical MVP Profile
 
-Primary mission:
+Mission recorded at the cutoff:
 
 ```text
 build the technical MVP for stronger channel capability
@@ -147,7 +148,7 @@ all-user rollout or subscription output activation
 Local Edge Agent production activation unless the project explicitly reopens it
 ```
 
-Current task boundary:
+Task boundary recorded at the cutoff:
 
 ```text
 repo-only C/B channel planning and tooling can continue under this agent
@@ -157,12 +158,14 @@ runtime canaries, server creation, port exposure, operator-device traffic,
 
 ### Lead Verification Rule
 
-The lead agent must verify both heavyweight lanes before claiming completion:
+If a fresh native Issue/PR record explicitly reuses either historical profile,
+the lead agent must verify its output before claiming completion:
 
 ```text
 Subscription Control Platform Agent output:
   check against docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md
-  check against docs/PROJECT_CONTEXT.md and project-state/current.json
+  check against docs/PROJECT_CONTEXT.md and fresh native Issue/PR records
+  use project-state/current.json only for dated compatibility evidence
   check current lane selection against docs/RUNTIME_LANE_AUTHORITY.md
   use docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md only for historical
     compatibility or decision archaeology
@@ -175,6 +178,13 @@ Channel Technical MVP Agent output:
   confirm no runtime canary or production output was implied by repo-only work
 ```
 
+Project #1 is a mutable navigation projection, not task authority.
+`project-state/current.json` and `tasks.json` are dated compatibility snapshots,
+and `lanes.json` owns reviewed taxonomy rather than current membership. Every
+agent must obtain current task state and sequencing from fresh native Issue/PR
+records; no local snapshot or Project field can authorize Risk A work or prove
+runtime state.
+
 ## Agent Roles
 
 ### Lead Agent
@@ -182,7 +192,9 @@ Channel Technical MVP Agent output:
 Responsibilities:
 
 ```text
-read AGENTS.md and docs/PROJECT_CONTEXT.md before project work
+read AGENTS.md, docs/CURRENT_RELEASE_STATE.md, RELEASE_MANIFEST.md,
+docs/PROJECT_CONTEXT.md, git status, docs/README.md, and the subsystem README
+in that order; then fresh-read native Issue/PR records before selecting work
 classify every task as Risk A / B / C
 choose whether work is single-agent, sequential multi-agent, or parallel
 prepare task packets for subagents
@@ -741,16 +753,20 @@ recording secrets while trying to be helpful
 For non-trivial work:
 
 ```text
-1. Lead reads AGENTS.md, PROJECT_CONTEXT.md, and git status.
-2. Lead classifies Risk A / B / C.
-3. Lead identifies independent tracks.
-4. Lead writes explicit task packets.
-5. Subagents analyze or implement within their packets.
-6. Lead reviews outputs and integrates changes.
-7. Lead runs required validation.
-8. Lead updates source-of-truth docs when durable facts changed.
-9. Lead commits and pushes only after verification.
-10. Lead reports result, risks, and validation evidence to the user.
+1. Lead reads AGENTS.md, CURRENT_RELEASE_STATE.md, RELEASE_MANIFEST.md,
+   PROJECT_CONTEXT.md, git status, docs/README.md, and the task-relevant
+   subsystem README in that order.
+2. Lead fresh-reads native Issue/PR records before selecting or ordering work;
+   Project #1 is navigation only.
+3. Lead classifies Risk A / B / C.
+4. Lead identifies independent tracks.
+5. Lead writes explicit task packets.
+6. Subagents analyze or implement within their packets.
+7. Lead reviews outputs and integrates changes.
+8. Lead runs required validation.
+9. Lead updates source-of-truth docs when durable facts changed.
+10. Lead commits and pushes only after verification.
+11. Lead reports result, risks, and validation evidence to the user.
 ```
 
 For small C-tier docs-only changes, a single lead agent may be enough. Use

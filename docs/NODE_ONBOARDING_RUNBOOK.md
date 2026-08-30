@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: node_onboarding_runbook
   superseded_by: null
-  last_verified_at: 2026-06-15
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -102,9 +102,11 @@ model:
     config, or SQLite rows.
 
 12. Close out.
-    Update docs, project-state, Linear/GitHub status, and execution records with
-    redacted evidence, validation result, rollback readiness, and any remaining
-    blockers.
+    Update the native GitHub Issue/PR, owned source-of-truth docs, and execution
+    records with redacted evidence, validation result, rollback readiness, and
+    any remaining blockers. Change `project-state` only when reviewed taxonomy
+    or a dated compatibility contract changed; never copy live task/runtime
+    state into it.
 
 ## Operator Intake Form
 
@@ -245,7 +247,7 @@ forbidden=DNS,Nginx config/reload,provider firewall unless separately approved,p
 | Applied receipts | Current-generation applied receipts match node/channel/order scope | Receipt stale, scoped-only when aggregate required, or nodeRef mismatch |
 | Render gate | Subscription render includes node channels only after matching receipts | Render unlock without matching receipt |
 | Client smoke | Client-facing smoke succeeds without outputting URL/token/YAML | Sensitive output required to prove success |
-| Closeout | Docs/project-state/task tracker updated with redacted evidence | State docs conflict with code or live proof |
+| Closeout | Native Issue/PR, owned docs, and execution record updated with redacted evidence; project-state changes remain taxonomy/dated-contract only | Dated state is presented as live, or owned docs conflict with code or fresh proof |
 
 ## Fail-Closed Rules
 
