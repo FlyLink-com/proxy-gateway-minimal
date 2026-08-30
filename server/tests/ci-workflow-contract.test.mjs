@@ -1,10 +1,104 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const WORKFLOWS_DIRECTORY = resolve(REPOSITORY_ROOT, ".github/workflows");
+const EXPECTED_WORKFLOW_ACTIONS = {
+  "ci.yml": [
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/checkout",
+    "actions/setup-node"
+  ],
+  "control-plane-dependency-artifact.yml": [
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/upload-artifact"
+  ],
+  "control-plane-foundation-toolchain-inventory.yml": ["actions/checkout"],
+  "control-plane-foundation-toolchain-publish.yml": [],
+  "deploy-cloudflare-site.yml": [
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/checkout",
+    "actions/setup-node"
+  ],
+  "governance-validate.yml": [
+    "actions/checkout",
+    "actions/checkout",
+    "actions/setup-node"
+  ],
+  "japan-runtime-config-additive-repair.yml": [
+    "actions/checkout",
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/download-artifact",
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/download-artifact"
+  ],
+  "japan-runtime-config-bootstrap-probe.yml": [
+    "actions/checkout",
+    "actions/setup-node"
+  ],
+  "production-deploy-dry-run.yml": [
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/upload-artifact"
+  ],
+  "release-artifact.yml": [
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/upload-artifact",
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/upload-artifact",
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/upload-artifact"
+  ],
+  "synthetic-performance-baseline.yml": [
+    "actions/checkout",
+    "actions/setup-node",
+    "actions/download-artifact",
+    "actions/upload-artifact"
+  ]
+};
+const EXPECTED_WORKFLOW_FILES = Object.keys(EXPECTED_WORKFLOW_ACTIONS);
+const REVIEWED_ACTION_PINS = {
+  "actions/checkout": {
+    sha: "df4cb1c069e1874edd31b4311f1884172cec0e10",
+    annotation: "v6",
+    count: 19
+  },
+  "actions/download-artifact": {
+    sha: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+    annotation: "v8.0.1",
+    count: 3
+  },
+  "actions/setup-node": {
+    sha: "249970729cb0ef3589644e2896645e5dc5ba9c38",
+    annotation: "v6",
+    count: 16
+  },
+  "actions/upload-artifact": {
+    sha: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    annotation: "v7",
+    count: 6
+  }
+};
+const EXPECTED_ACTION_REFERENCE_COUNT = 44;
+// Keep this source-only guard dependency-free: every uncommented `uses` token is
+// reserved for this canonical one-line form and every other spelling fails closed.
+const CANONICAL_ACTION_REFERENCE_LINE =
+  /^ *(?:- +)?uses: +([^ \t#]+)(?: +# +(\S(?:.*\S)?))? *$/u;
 
 function readRepositoryFile(path) {
   return readFileSync(resolve(REPOSITORY_ROOT, path), "utf8");
@@ -16,6 +110,154 @@ function jobBlock(workflow, jobName, nextJobName) {
   const end = nextJobName ? workflow.indexOf(`  ${nextJobName}:`, start + 1) : -1;
   return workflow.slice(start, end >= 0 ? end : undefined);
 }
+
+function inspectWorkflowActionInventory(workflow, workflowFile) {
+  const references = [];
+  const violations = [];
+  const lines = workflow.replace(/\r\n?/gu, "\n").split("\n");
+
+  for (const [lineIndex, line] of lines.entries()) {
+    const location = `${workflowFile}:${lineIndex + 1}`;
+    const parsed = line.match(CANONICAL_ACTION_REFERENCE_LINE);
+
+    if (!parsed) {
+      if (!/^\s*#/u.test(line) && /\buses\b/u.test(line.replace(/\s+#.*$/u, ""))) {
+        violations.push(`${location} non-canonical uses syntax: ${line.trim()}`);
+      }
+      continue;
+    }
+
+    const reference = parsed[1];
+    const annotation = parsed[2] ?? null;
+    const separator = reference.lastIndexOf("@");
+    if (separator <= 0 || separator === reference.length - 1) {
+      violations.push(`${location} unpinned Action reference: ${reference}`);
+      continue;
+    }
+
+    const action = reference.slice(0, separator);
+    const revision = reference.slice(separator + 1);
+    references.push({ action, revision });
+    const reviewed = REVIEWED_ACTION_PINS[action];
+    if (!reviewed) {
+      violations.push(`${location} unreviewed Action: ${action}`);
+      continue;
+    }
+
+    if (!/^[0-9a-f]{40}$/u.test(revision)) {
+      violations.push(`${location} mutable Action revision: ${reference}`);
+    } else if (revision !== reviewed.sha) {
+      violations.push(`${location} unreviewed Action SHA: ${reference}`);
+    }
+    if (annotation !== reviewed.annotation) {
+      violations.push(
+        `${location} expected # ${reviewed.annotation} readability annotation: ${reference}`
+      );
+    }
+  }
+
+  return { references, violations };
+}
+
+test("workflow Action inventory parser fails closed outside the canonical source grammar", () => {
+  const checkout = REVIEWED_ACTION_PINS["actions/checkout"];
+  const accepted = inspectWorkflowActionInventory(
+    `steps:\n  - uses: actions/checkout@${checkout.sha} # ${checkout.annotation}\n`,
+    "accepted.yml"
+  );
+  assert.deepEqual(accepted.violations, []);
+  assert.deepEqual(
+    accepted.references.map(({ action }) => action),
+    ["actions/checkout"]
+  );
+
+  const rejected = {
+    "mutable tag": "steps:\n  - uses: actions/checkout@v6 # v6",
+    "unreviewed SHA": `steps:\n  - uses: actions/checkout@${"0".repeat(40)} # v6`,
+    "cross-action SHA": `steps:\n  - uses: actions/upload-artifact@${checkout.sha} # v7`,
+    "uppercase SHA": `steps:\n  - uses: actions/checkout@${checkout.sha.toUpperCase()} # v6`,
+    "quoted key": `steps:\n  - "uses": actions/checkout@${checkout.sha} # v6`,
+    "flow mapping": `steps:\n  - { uses: actions/checkout@${checkout.sha} }`,
+    "space before colon": `steps:\n  - uses : actions/checkout@${checkout.sha} # v6`,
+    alias: "steps:\n  - uses: *reviewed_checkout",
+    expression: "steps:\n  - uses: ${{ env.REVIEWED_ACTION }}",
+    "custom tag": `steps:\n  - uses: !reviewed actions/checkout@${checkout.sha}`
+  };
+
+  for (const [description, workflow] of Object.entries(rejected)) {
+    const inspected = inspectWorkflowActionInventory(workflow, `${description}.yml`);
+    assert.ok(inspected.violations.length > 0, description);
+  }
+
+  assert.deepEqual(
+    inspectWorkflowActionInventory(
+      `# uses: actions/checkout@v6\nsteps: [] # uses: actions/checkout@v6\n`,
+      "comments.yml"
+    ),
+    { references: [], violations: [] }
+  );
+});
+
+test("all workflow Action references use the reviewed full commit inventory", () => {
+  const workflowEntries = readdirSync(WORKFLOWS_DIRECTORY, { withFileTypes: true })
+    .filter((entry) => /\.ya?ml$/iu.test(entry.name))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const workflowFiles = workflowEntries.map((entry) => entry.name);
+
+  const actionCounts = new Map(
+    Object.keys(REVIEWED_ACTION_PINS).map((action) => [action, 0])
+  );
+  const violations = [];
+  let referenceCount = 0;
+
+  if (JSON.stringify(workflowFiles) !== JSON.stringify(EXPECTED_WORKFLOW_FILES)) {
+    violations.push(
+      `workflow file inventory mismatch: ${JSON.stringify(workflowFiles)}`
+    );
+  }
+
+  for (const entry of workflowEntries) {
+    const workflowFile = entry.name;
+    if (!entry.isFile()) {
+      violations.push(`${workflowFile} must be a regular file`);
+      continue;
+    }
+    const workflow = readRepositoryFile(`.github/workflows/${workflowFile}`)
+      .replace(/\r\n?/gu, "\n");
+    const inspected = inspectWorkflowActionInventory(workflow, workflowFile);
+    violations.push(...inspected.violations);
+    referenceCount += inspected.references.length;
+    const observedActions = inspected.references.map(({ action }) => action);
+    const expectedActions = EXPECTED_WORKFLOW_ACTIONS[workflowFile];
+    if (JSON.stringify(observedActions) !== JSON.stringify(expectedActions)) {
+      violations.push(
+        `${workflowFile} Action sequence mismatch: ${JSON.stringify(observedActions)}`
+      );
+    }
+    for (const { action } of inspected.references) {
+      if (actionCounts.has(action)) {
+        actionCounts.set(action, actionCounts.get(action) + 1);
+      }
+    }
+  }
+
+  if (referenceCount !== EXPECTED_ACTION_REFERENCE_COUNT) {
+    violations.push(
+      `expected ${EXPECTED_ACTION_REFERENCE_COUNT} Action references, found ${referenceCount}`
+    );
+  }
+  for (const [action, reviewed] of Object.entries(REVIEWED_ACTION_PINS)) {
+    const observed = actionCounts.get(action);
+    if (observed !== reviewed.count) {
+      violations.push(`${action} expected ${reviewed.count} references, found ${observed}`);
+    }
+  }
+  assert.deepEqual(
+    violations,
+    [],
+    `workflow Action pin violations:\n${violations.join("\n")}`
+  );
+});
 
 test("CI keeps one stable Validate job, always checks the exact diff, and skips heavy validation only for docs-only", () => {
   const workflow = readRepositoryFile(".github/workflows/ci.yml");
@@ -75,10 +317,20 @@ test("CI separates read-only governance evidence from manual snapshot validation
   assert.equal((workflow.match(/^    name: Governance evidence$/gm) ?? []).length, 1);
   assert.equal((workflow.match(/^    name: Governance snapshot$/gm) ?? []).length, 1);
   assert.match(governance, /if: github\.event_name != 'workflow_dispatch'/);
-  assert.match(governance, /uses: actions\/checkout@v6/);
+  assert.match(
+    governance,
+    new RegExp(
+      `uses: actions/checkout@${REVIEWED_ACTION_PINS["actions/checkout"].sha} # v6`
+    )
+  );
   assert.match(governance, /fetch-depth: 0/);
   assert.match(governance, /persist-credentials: false/);
-  assert.match(governance, /uses: actions\/setup-node@v6/);
+  assert.match(
+    governance,
+    new RegExp(
+      `uses: actions/setup-node@${REVIEWED_ACTION_PINS["actions/setup-node"].sha} # v6`
+    )
+  );
   assert.match(governance, /node-version: 22/);
   assert.match(governance, /git show "\$CI_DIFF_BASE:project-state\/gates\.json"/);
   assert.match(governance, /git show "\$CI_DIFF_BASE:project-state\/repair-policy\.json"/);

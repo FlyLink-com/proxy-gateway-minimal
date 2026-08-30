@@ -23,6 +23,8 @@ const EXPECTED_RELEASE_UNITS = [
 ];
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const UPLOAD_ARTIFACT_PIN = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a";
+const UPLOAD_ARTIFACT_REFERENCE = `actions/upload-artifact@${UPLOAD_ARTIFACT_PIN}`;
 
 test("creates a minimal portable artifact manifest", (t) => {
   const directory = mkdtempSync(join(tmpdir(), "gccgw-artifact-manifest-"));
@@ -244,7 +246,7 @@ test("Release Artifact workflow packages verified Portal output with its own ide
   assert.match(portalJob, /--artifact "\$artifact"/);
   assert.match(portalJob, /--output \.release-artifacts\/artifact\.json/);
   assert.match(portalJob, /\.release-artifacts\/artifact\.json/);
-  assert.match(portalJob, /uses: actions\/upload-artifact@v7/);
+  assert.ok(portalJob.includes(`uses: ${UPLOAD_ARTIFACT_REFERENCE} # v7`));
   assert.doesNotMatch(portalJob, /\/var\/www\/globalcircle-portal|\b(?:scp|ssh|rsync|nginx)\b/);
 });
 
@@ -256,7 +258,11 @@ test("artifact workflows use the supported upload-artifact runtime", () => {
 
   for (const workflowFile of workflowFiles) {
     const workflow = readFileSync(resolve(workflowsDirectory, workflowFile), "utf8");
-    const uploadActions = [...workflow.matchAll(/actions\/upload-artifact@(v\d+)/g)];
+    const uploadActions = [
+      ...workflow.matchAll(
+        /actions\/upload-artifact@([^\s#]+)(?:\s+#\s*(v[0-9.]+))?/g
+      )
+    ];
 
     uploadStepCount += uploadActions.length;
     assert.doesNotMatch(
@@ -264,8 +270,13 @@ test("artifact workflows use the supported upload-artifact runtime", () => {
       /actions\/upload-artifact@v4/,
       `${workflowFile} must not use the deprecated upload-artifact v4 runtime`
     );
-    for (const [, version] of uploadActions) {
-      assert.equal(version, "v7", `${workflowFile} must use upload-artifact v7`);
+    for (const [, revision, version] of uploadActions) {
+      assert.equal(
+        revision,
+        UPLOAD_ARTIFACT_PIN,
+        `${workflowFile} must pin the reviewed upload-artifact commit`
+      );
+      assert.equal(version, "v7", `${workflowFile} must annotate upload-artifact v7`);
     }
   }
 
@@ -319,7 +330,7 @@ test("Release Artifact workflow packages verified Admin output with the shared m
   assert.match(adminJob, /--source-commit "\$GITHUB_SHA"/);
   assert.match(adminJob, /--artifact "\$artifact"/);
   assert.match(adminJob, /--output \.release-artifacts\/artifact\.json/);
-  assert.match(adminJob, /uses: actions\/upload-artifact@v7/);
+  assert.ok(adminJob.includes(`uses: ${UPLOAD_ARTIFACT_REFERENCE} # v7`));
   assert.doesNotMatch(adminJob, /\/var\/www|\b(?:scp|ssh|rsync|nginx)\b/);
 });
 
