@@ -47,11 +47,35 @@ const MAX_CHECKSUM_BYTES = 4096;
 const MAX_RELEASE_LABEL_BYTES = 512;
 const MAX_PACKAGE_BYTES = 8 * 1024 * 1024;
 const MAX_HTTP_BODY_BYTES = 64 * 1024;
+const MAX_CHILD_STDERR_BYTES = 16 * 1024;
 const HTTP_PROXY_PORT = 18180;
 const STARTUP_TIMEOUT_MS = 30_000;
 const STARTUP_POLL_MS = 200;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
+const MAX_CONSOLE_START_ATTEMPTS = 3;
 const TEST_RUNTIME = Symbol("control-plane-clean-room-artifact-smoke-test-runtime");
+const CLEAN_ROOM_PROXY_CONFIG_BYTES = Buffer.from(`${JSON.stringify({
+  servers: [{
+    id: "clean-room-unreachable",
+    name: "clean-room-unreachable",
+    protocol: "ss",
+    host: "127.0.0.1",
+    port: 1,
+    method: "aes-256-gcm",
+    password: "clean-room-placeholder",
+    status: "disabled",
+    lifecycle: "disabled"
+  }]
+})}\n`);
+
+const DIAGNOSTIC_REASONS = new Set([
+  "spawn_error",
+  "early_exit",
+  "console_port_race",
+  "fixed_proxy_port_race",
+  "console_port_reservation_failed",
+  "startup_deadline"
+]);
 
 const SAFE_CONDITIONS = new Set([
   "invalid_input",
@@ -84,16 +108,22 @@ const SAFE_CONDITIONS = new Set([
 ]);
 
 export class ControlPlaneCleanRoomArtifactSmokeError extends Error {
-  constructor(condition, attentionRequired = false) {
+  constructor(condition, attentionRequired = false, diagnosticReason) {
     super(condition);
     this.name = "ControlPlaneCleanRoomArtifactSmokeError";
     this.condition = condition;
     this.attentionRequired = attentionRequired;
+    if (DIAGNOSTIC_REASONS.has(diagnosticReason)) {
+      Object.defineProperty(this, "diagnosticReason", {
+        value: diagnosticReason,
+        enumerable: false
+      });
+    }
   }
 }
 
-function fail(condition, attentionRequired = false) {
-  throw new ControlPlaneCleanRoomArtifactSmokeError(condition, attentionRequired);
+function fail(condition, attentionRequired = false, diagnosticReason) {
+  throw new ControlPlaneCleanRoomArtifactSmokeError(condition, attentionRequired, diagnosticReason);
 }
 
 function sha256(bytes) {
@@ -456,15 +486,18 @@ async function reserveConsolePort() {
 function spawnService({ executable, cwd, argv, env }) {
   let child;
   try {
-    if (executable !== process.execPath) fail("service_start_failed");
+    if (executable !== process.execPath) fail("service_start_failed", false, "spawn_error");
     child = spawn(executable, argv, {
       cwd,
       env,
-      stdio: "ignore",
+      stdio: ["ignore", "ignore", "pipe"],
       windowsHide: true
     });
-  } catch { fail("service_start_failed"); }
+  } catch { fail("service_start_failed", false, "spawn_error"); }
   let exited = false;
+  let spawnFailed = false;
+  let stderrBytes = 0;
+  const stderrChunks = [];
   let exitResolve;
   const exitPromise = new Promise((resolvePromise) => { exitResolve = resolvePromise; });
   const settle = () => {
@@ -472,9 +505,28 @@ function spawnService({ executable, cwd, argv, env }) {
     exited = true;
     exitResolve();
   };
-  child.once("error", settle);
+  child.stderr?.on("data", (chunk) => {
+    if (stderrBytes >= MAX_CHILD_STDERR_BYTES) return;
+    const bytes = Buffer.from(chunk);
+    const accepted = bytes.subarray(0, MAX_CHILD_STDERR_BYTES - stderrBytes);
+    stderrBytes += accepted.length;
+    stderrChunks.push(accepted);
+  });
+  child.once("error", () => {
+    spawnFailed = true;
+    settle();
+  });
   child.once("exit", settle);
-  return Object.freeze({ child, exitPromise, exited: () => exited });
+  const handle = {
+    exitPromise,
+    exited: () => exited
+  };
+  Object.defineProperties(handle, {
+    child: { value: child, enumerable: false },
+    spawnFailed: { value: () => spawnFailed, enumerable: false },
+    startupStderr: { value: () => Buffer.concat(stderrChunks, stderrBytes), enumerable: false }
+  });
+  return Object.freeze(handle);
 }
 
 function request({ port, path, headers = {} }) {
@@ -525,6 +577,24 @@ function serviceExited(handle) {
   return handle?.exited?.() === true;
 }
 
+function mentionsPort(text, port) {
+  return new RegExp(`(?:\\bport\\s*[:=]\\s*|:)${port}\\b`, "u").test(text);
+}
+
+function serviceExitReason(handle, { consolePort, httpProxyPort = HTTP_PROXY_PORT } = {}) {
+  if (handle?.spawnFailed?.() === true) return "spawn_error";
+  let stderr = "";
+  try {
+    const bytes = handle?.startupStderr?.();
+    if (Buffer.isBuffer(bytes) && bytes.length <= MAX_CHILD_STDERR_BYTES) stderr = bytes.toString("utf8");
+  } catch { /* closed fallback below */ }
+  if (stderr.includes("EADDRINUSE")) {
+    if (Number.isSafeInteger(consolePort) && mentionsPort(stderr, consolePort)) return "console_port_race";
+    if (mentionsPort(stderr, httpProxyPort)) return "fixed_proxy_port_race";
+  }
+  return "early_exit";
+}
+
 function wait(milliseconds) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 }
@@ -563,6 +633,7 @@ function baseRuntime(value = {}) {
     reserveConsolePort: value.reserveConsolePort ?? reserveConsolePort,
     spawnService: value.spawnService ?? spawnService,
     serviceExited: value.serviceExited ?? serviceExited,
+    serviceExitReason: value.serviceExitReason ?? serviceExitReason,
     request: value.request ?? request,
     terminateService: value.terminateService ?? terminateService,
     assertPortReleased: value.assertPortReleased ?? assertPortAvailable,
@@ -629,18 +700,33 @@ function expectedReleaseIdentity(options, input) {
   return Object.freeze({ value: Object.freeze(value), bytes, runtime: Object.freeze({ ...value, identitySha256: sha256(bytes) }) });
 }
 
+function failExitedService(runtime, handle, consolePort) {
+  let reason = "early_exit";
+  try {
+    const candidate = runtime.serviceExitReason(handle, {
+      consolePort,
+      httpProxyPort: HTTP_PROXY_PORT
+    });
+    if (DIAGNOSTIC_REASONS.has(candidate)) reason = candidate;
+  } catch { /* closed fallback */ }
+  if (reason === "fixed_proxy_port_race") {
+    fail("fixed_proxy_port_unavailable", false, reason);
+  }
+  fail("service_start_failed", false, reason);
+}
+
 async function probeReadyHealth({ runtime, handle, consolePort }) {
   const deadline = runtime.now() + STARTUP_TIMEOUT_MS;
   for (;;) {
-    if (runtime.serviceExited(handle)) fail("service_start_failed");
+    if (runtime.serviceExited(handle)) failExitedService(runtime, handle, consolePort);
     try {
       const response = await runtime.request({ port: consolePort, path: "/api/health" });
       validatePublicHealth(response);
       return deadline;
     } catch (error) {
       if (error instanceof ControlPlaneCleanRoomArtifactSmokeError) throw error;
-      if (runtime.serviceExited(handle)) fail("service_start_failed");
-      if (runtime.now() >= deadline) fail("service_probe_failed");
+      if (runtime.serviceExited(handle)) failExitedService(runtime, handle, consolePort);
+      if (runtime.now() >= deadline) fail("service_probe_failed", false, "startup_deadline");
       await runtime.sleep(STARTUP_POLL_MS);
     }
   }
@@ -651,17 +737,23 @@ async function probeProtectedStatus({ runtime, handle, consolePort, token, relea
   let query;
   let authorized;
   try { anonymous = await runtime.request({ port: consolePort, path: "/api/status" }); }
-  catch { fail("service_probe_failed"); }
+  catch {
+    if (runtime.serviceExited(handle)) failExitedService(runtime, handle, consolePort);
+    fail("service_probe_failed");
+  }
   if (anonymous?.statusCode !== 401) fail("status_authentication_invalid");
   try {
     query = await runtime.request({
       port: consolePort,
       path: `/api/status?token=${encodeURIComponent(token)}`
     });
-  } catch { fail("service_probe_failed"); }
+  } catch {
+    if (runtime.serviceExited(handle)) failExitedService(runtime, handle, consolePort);
+    fail("service_probe_failed");
+  }
   if (query?.statusCode !== 401) fail("status_authentication_invalid");
   for (;;) {
-    if (runtime.serviceExited(handle)) fail("service_start_failed");
+    if (runtime.serviceExited(handle)) failExitedService(runtime, handle, consolePort);
     try {
       authorized = await runtime.request({
         port: consolePort,
@@ -669,8 +761,8 @@ async function probeProtectedStatus({ runtime, handle, consolePort, token, relea
         headers: { authorization: `Bearer ${token}` }
       });
     } catch {
-      if (runtime.serviceExited(handle)) fail("service_start_failed");
-      if (runtime.now() >= deadline) fail("service_probe_failed");
+      if (runtime.serviceExited(handle)) failExitedService(runtime, handle, consolePort);
+      if (runtime.now() >= deadline) fail("service_probe_failed", false, "startup_deadline");
       await runtime.sleep(STARTUP_POLL_MS);
       continue;
     }
@@ -681,7 +773,13 @@ async function probeProtectedStatus({ runtime, handle, consolePort, token, relea
     if (value.ok === true
       && value.ports?.httpProxy?.ok === true
       && value.runtime?.httpProxy?.running === true) return;
-    if (runtime.now() >= deadline) fail("service_probe_failed");
+    if (runtime.now() >= deadline) {
+      if (value.ports?.httpProxy?.ok === true && value.runtime?.httpProxy?.running !== true) {
+        try { await runtime.assertPortAvailable(HTTP_PROXY_PORT); }
+        catch { fail("fixed_proxy_port_unavailable", false, "fixed_proxy_port_race"); }
+      }
+      fail("service_probe_failed", false, "startup_deadline");
+    }
     await runtime.sleep(STARTUP_POLL_MS);
   }
 }
@@ -780,46 +878,60 @@ export async function runControlPlaneCleanRoomArtifactSmoke(options = {}) {
     chmodSync(runtimeRoot, 0o700);
     const proxyConfigPath = join(runtimeRoot, "proxy-servers.json");
     const releaseIdentityPath = join(runtimeRoot, "release-identity.json");
-    const subscriptionDbPath = join(runtimeRoot, "subscriptions.sqlite");
-    const controlDbPath = join(runtimeRoot, "control.sqlite");
     const releaseIdentity = expectedReleaseIdentity(normalized, input);
-    writePrivateFile(proxyConfigPath, Buffer.from('{"servers":[]}\n'));
+    writePrivateFile(proxyConfigPath, CLEAN_ROOM_PROXY_CONFIG_BYTES);
     writePrivateFile(releaseIdentityPath, releaseIdentity.bytes);
 
     try { await runtime.assertPortAvailable(HTTP_PROXY_PORT); } catch { fail("fixed_proxy_port_unavailable"); }
-    try { consolePort = await runtime.reserveConsolePort(); } catch { fail("service_start_failed"); }
-    if (!Number.isSafeInteger(consolePort) || consolePort < 1 || consolePort > 65_535
-      || consolePort === HTTP_PROXY_PORT) fail("service_start_failed");
-    const token = runtime.randomToken();
-    if (typeof token !== "string" || token.length < 16 || token.length > 256) fail("service_start_failed");
-    const env = Object.freeze({
-      PATH: "/usr/bin:/bin",
-      LANG: "C",
-      LC_ALL: "C",
-      TZ: "UTC",
-      NODE_ENV: "production",
-      DOTENV_CONFIG_QUIET: "true",
-      CONSOLE_PORT: String(consolePort),
-      CONSOLE_TOKEN: token,
-      PROXY_SERVERS_CONFIG_PATH: proxyConfigPath,
-      SUBSCRIPTION_DB_PATH: subscriptionDbPath,
-      SUBSCRIPTION_CONTROL_DB_PATH: controlDbPath,
-      CONTROL_PLANE_RELEASE_IDENTITY_PATH: releaseIdentityPath
-    });
-    try {
-      handle = runtime.spawnService({
-        executable: process.execPath,
-        cwd: sourceRoot,
-        argv: [relative(sourceRoot, serverEntry).split(sep).join("/")],
-        env
+    let token;
+    let startupDeadline;
+    for (let attempt = 1; attempt <= MAX_CONSOLE_START_ATTEMPTS; attempt += 1) {
+      try { consolePort = await runtime.reserveConsolePort(); }
+      catch { fail("service_start_failed", false, "console_port_reservation_failed"); }
+      if (!Number.isSafeInteger(consolePort) || consolePort < 1 || consolePort > 65_535
+        || consolePort === HTTP_PROXY_PORT) fail("service_start_failed");
+      token = runtime.randomToken();
+      if (typeof token !== "string" || token.length < 16 || token.length > 256) fail("service_start_failed");
+      const env = Object.freeze({
+        PATH: "/usr/bin:/bin",
+        LANG: "C",
+        LC_ALL: "C",
+        TZ: "UTC",
+        NODE_ENV: "production",
+        DOTENV_CONFIG_QUIET: "true",
+        CONSOLE_PORT: String(consolePort),
+        CONSOLE_TOKEN: token,
+        PROXY_SERVERS_CONFIG_PATH: proxyConfigPath,
+        SUBSCRIPTION_DB_PATH: join(runtimeRoot, `subscriptions-${attempt}.sqlite`),
+        SUBSCRIPTION_CONTROL_DB_PATH: join(runtimeRoot, `control-${attempt}.sqlite`),
+        CONTROL_PLANE_RELEASE_IDENTITY_PATH: releaseIdentityPath
       });
+      try {
+        handle = runtime.spawnService({
+          executable: process.execPath,
+          cwd: sourceRoot,
+          argv: [relative(sourceRoot, serverEntry).split(sep).join("/")],
+          env
+        });
+      } catch (error) {
+        if (error instanceof ControlPlaneCleanRoomArtifactSmokeError) throw error;
+        fail("service_start_failed", false, "spawn_error");
+      }
+      if (!handle) fail("service_start_failed", false, "spawn_error");
+      try {
+        startupDeadline = await probeReadyHealth({ runtime, handle, consolePort });
+        break;
+      } catch (error) {
+        const preciseConsoleRace = error?.diagnosticReason === "console_port_race"
+          && runtime.serviceExited(handle);
+        if (!preciseConsoleRace) throw error;
+        if (await runtime.terminateService(handle) !== true) fail("service_shutdown_failed", true);
+        handle = undefined;
+        consolePort = undefined;
+        if (attempt === MAX_CONSOLE_START_ATTEMPTS) throw error;
+      }
     }
-    catch (error) {
-      if (error instanceof ControlPlaneCleanRoomArtifactSmokeError) throw error;
-      fail("service_start_failed");
-    }
-    if (!handle) fail("service_start_failed");
-    const startupDeadline = await probeReadyHealth({ runtime, handle, consolePort });
+    if (!handle || !Number.isFinite(startupDeadline)) fail("service_start_failed", false, "early_exit");
     await probeProtectedStatus({
       runtime,
       handle,
@@ -842,10 +954,20 @@ export async function runControlPlaneCleanRoomArtifactSmoke(options = {}) {
       } catch { cleanupError = new ControlPlaneCleanRoomArtifactSmokeError("service_shutdown_failed", true); }
       if (consolePort !== undefined) {
         try { await runtime.assertPortReleased(consolePort); }
-        catch { cleanupError = cleanupError ?? new ControlPlaneCleanRoomArtifactSmokeError("port_cleanup_failed", true); }
+        catch {
+          if (!primaryError) {
+            cleanupError = cleanupError ?? new ControlPlaneCleanRoomArtifactSmokeError("port_cleanup_failed", true);
+          }
+        }
       }
-      try { await runtime.assertPortReleased(HTTP_PROXY_PORT); }
-      catch { cleanupError = cleanupError ?? new ControlPlaneCleanRoomArtifactSmokeError("port_cleanup_failed", true); }
+      if (!(primaryError?.diagnosticReason === "fixed_proxy_port_race" && runtime.serviceExited(handle))) {
+        try { await runtime.assertPortReleased(HTTP_PROXY_PORT); }
+        catch {
+          if (!primaryError) {
+            cleanupError = cleanupError ?? new ControlPlaneCleanRoomArtifactSmokeError("port_cleanup_failed", true);
+          }
+        }
+      }
     }
     if (prepared) {
       try { prepared.extracted.cleanup(); }

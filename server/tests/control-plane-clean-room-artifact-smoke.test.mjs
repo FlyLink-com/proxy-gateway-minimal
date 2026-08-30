@@ -21,6 +21,7 @@ import {
   runControlPlaneCleanRoomArtifactSmoke,
   runControlPlaneCleanRoomArtifactSmokeCli
 } from "../../scripts/control-plane-clean-room-artifact-smoke.mjs";
+import { createRuntimeState } from "../state.mjs";
 
 const SOURCE_COMMIT = "9".repeat(40);
 const ARTIFACT_RELEASE = "master-597-clean-room";
@@ -28,6 +29,24 @@ const CREATED_AT = "2026-08-30T00:00:00.000Z";
 const SECRET = "clean-room-secret-must-not-leak";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const condition = (name) => (error) => error instanceof ControlPlaneCleanRoomArtifactSmokeError && error.condition === name;
+const diagnosed = (name, reason) => (error) => error instanceof ControlPlaneCleanRoomArtifactSmokeError
+  && error.condition === name
+  && error.diagnosticReason === reason
+  && !Object.keys(error).includes("diagnosticReason");
+
+const CLEAN_ROOM_PROXY_CONFIG = {
+  servers: [{
+    id: "clean-room-unreachable",
+    name: "clean-room-unreachable",
+    protocol: "ss",
+    host: "127.0.0.1",
+    port: 1,
+    method: "aes-256-gcm",
+    password: "clean-room-placeholder",
+    status: "disabled",
+    lifecycle: "disabled"
+  }]
+};
 
 const dependencyRuntime = Object.freeze({
   platform: "linux",
@@ -144,6 +163,7 @@ function successfulRuntime(t, value, overrides = {}) {
   const workspaceRoot = join(value.root, `workspace-${Math.random().toString(16).slice(2)}`);
   const dependencyRoot = join(value.root, `dependency-${Math.random().toString(16).slice(2)}`);
   let serviceEnv = null;
+  let serviceSpawnCount = 0;
   let workspaceCleaned = false;
   let dependencyCleaned = false;
 
@@ -220,6 +240,7 @@ function successfulRuntime(t, value, overrides = {}) {
     },
     spawnService({ executable, cwd, argv, env }) {
       trace.push("service:spawn");
+      serviceSpawnCount += 1;
       assert.equal(executable, process.execPath);
       assert.equal(cwd, join(workspaceRoot, "source"));
       assert.deepEqual(argv, ["server/index.mjs"]);
@@ -243,11 +264,12 @@ function successfulRuntime(t, value, overrides = {}) {
       assert.equal(env.TZ, "UTC");
       assert.equal(env.NODE_ENV, "production");
       assert.equal(env.DOTENV_CONFIG_QUIET, "true");
-      assert.equal(env.CONSOLE_PORT, "45678");
+      assert.match(env.CONSOLE_PORT, /^\d{1,5}$/u);
       assert.equal(env.CONSOLE_TOKEN, SECRET);
-      assert.equal(readFileSync(env.PROXY_SERVERS_CONFIG_PATH, "utf8"), '{"servers":[]}\n');
+      assert.deepEqual(JSON.parse(readFileSync(env.PROXY_SERVERS_CONFIG_PATH, "utf8")), CLEAN_ROOM_PROXY_CONFIG);
       serviceEnv = env;
-      return { synthetic: true };
+      const handle = { synthetic: true, attempt: serviceSpawnCount };
+      return overrides.onSpawn ? overrides.onSpawn({ executable, cwd, argv, env, handle }) : handle;
     },
     serviceExited: () => false,
     async request({ path, headers }) {
@@ -394,6 +416,193 @@ test("clean-room waits for the full HTTP proxy startup state within the shared d
   assert.equal(authorizedCalls, 2);
   assert.equal(harness.workspaceCleaned, true);
   assert.equal(harness.dependencyCleaned, true);
+});
+
+test("clean-room synthetic config composes through the real production runtime state", async (t) => {
+  const value = fixture(t);
+  let state;
+  const harness = successfulRuntime(t, value, {
+    onSpawn({ cwd, env, handle }) {
+      state = createRuntimeState({ rootDir: cwd, env, autoStartHttpProxy: false });
+      return handle;
+    },
+    runtime: {
+      async terminateService() {
+        await state.close();
+        return true;
+      }
+    }
+  });
+
+  await runControlPlaneCleanRoomArtifactSmoke({ ...value.options, runtime: harness.runtime });
+  assert.deepEqual(state.proxyConfig, CLEAN_ROOM_PROXY_CONFIG);
+  assert.equal(state.releaseIdentity.state, "verified");
+});
+
+test("startup diagnostics stay private and distinguish bounded failure classes", async (t) => {
+  await t.test("spawn error", async (st) => {
+    const value = fixture(st);
+    const harness = successfulRuntime(st, value, {
+      runtime: { spawnService() { throw new Error(`${SECRET} raw spawn failure`); } }
+    });
+    await assert.rejects(
+      runControlPlaneCleanRoomArtifactSmoke({ ...value.options, runtime: harness.runtime }),
+      diagnosed("service_start_failed", "spawn_error")
+    );
+  });
+
+  await t.test("early exit", async (st) => {
+    const value = fixture(st);
+    const harness = successfulRuntime(st, value, {
+      runtime: {
+        serviceExited: () => true,
+        serviceExitReason: () => "early_exit"
+      }
+    });
+    await assert.rejects(
+      runControlPlaneCleanRoomArtifactSmoke({ ...value.options, runtime: harness.runtime }),
+      diagnosed("service_start_failed", "early_exit")
+    );
+  });
+
+  await t.test("fixed listener race", async (st) => {
+    const value = fixture(st);
+    const harness = successfulRuntime(st, value, {
+      runtime: {
+        serviceExited: () => true,
+        serviceExitReason: () => "fixed_proxy_port_race"
+      }
+    });
+    await assert.rejects(
+      runControlPlaneCleanRoomArtifactSmoke({ ...value.options, runtime: harness.runtime }),
+      diagnosed("fixed_proxy_port_unavailable", "fixed_proxy_port_race")
+    );
+  });
+
+  await t.test("fixed listener stolen after preflight", async (st) => {
+    const value = fixture(st);
+    let portChecks = 0;
+    const harness = successfulRuntime(st, value, {
+      request({ path, headers, serviceEnv }) {
+        if (path === "/api/health") {
+          return { statusCode: 200, headers: {}, body: Buffer.from('{"ok":true,"ts":1,"authRequired":true}') };
+        }
+        if (!headers?.authorization) return { statusCode: 401, headers: {}, body: Buffer.alloc(0) };
+        const bytes = readFileSync(serviceEnv.CONTROL_PLANE_RELEASE_IDENTITY_PATH);
+        return {
+          statusCode: 200,
+          headers: {},
+          body: Buffer.from(JSON.stringify({
+            ok: true,
+            ports: { httpProxy: { ok: true } },
+            runtime: { httpProxy: { running: false } },
+            releaseIdentity: { ...JSON.parse(bytes), identitySha256: hash(bytes) }
+          }))
+        };
+      },
+      runtime: {
+        async assertPortAvailable() {
+          portChecks += 1;
+          if (portChecks > 1) throw new Error("occupied");
+        },
+        now: (() => {
+          let current = 0;
+          return () => { current += 40_000; return current; };
+        })()
+      }
+    });
+    await assert.rejects(
+      runControlPlaneCleanRoomArtifactSmoke({ ...value.options, runtime: harness.runtime }),
+      diagnosed("fixed_proxy_port_unavailable", "fixed_proxy_port_race")
+    );
+    assert.equal(portChecks, 2);
+  });
+
+  await t.test("console reservation", async (st) => {
+    const value = fixture(st);
+    const harness = successfulRuntime(st, value, {
+      runtime: { reserveConsolePort: async () => { throw new Error("unavailable"); } }
+    });
+    await assert.rejects(
+      runControlPlaneCleanRoomArtifactSmoke({ ...value.options, runtime: harness.runtime }),
+      diagnosed("service_start_failed", "console_port_reservation_failed")
+    );
+  });
+
+  await t.test("startup deadline", async (st) => {
+    const value = fixture(st);
+    const harness = successfulRuntime(st, value, {
+      request() { throw new Error("not ready"); },
+      runtime: {
+        now: (() => {
+          let current = 0;
+          return () => { current += 20_000; return current; };
+        })()
+      }
+    });
+    await assert.rejects(
+      runControlPlaneCleanRoomArtifactSmoke({ ...value.options, runtime: harness.runtime }),
+      diagnosed("service_probe_failed", "startup_deadline")
+    );
+  });
+});
+
+test("a precise console listener race retries with a newly reserved port", async (t) => {
+  const value = fixture(t);
+  let reservation = 0;
+  const harness = successfulRuntime(t, value, {
+    runtime: {
+      reserveConsolePort: async () => [45678, 45679][reservation++],
+      serviceExited: (handle) => handle.attempt === 1,
+      serviceExitReason: (handle) => handle.attempt === 1 ? "console_port_race" : "early_exit"
+    }
+  });
+
+  await runControlPlaneCleanRoomArtifactSmoke({ ...value.options, runtime: harness.runtime });
+  assert.equal(reservation, 2);
+  assert.equal(harness.trace.filter((entry) => entry === "service:spawn").length, 2);
+});
+
+test("external port reuse after confirmed service exit does not mask the primary probe error", async (t) => {
+  const value = fixture(t);
+  const harness = successfulRuntime(t, value, {
+    request() { throw new Error("not ready"); },
+    runtime: {
+      now: (() => {
+        let current = 0;
+        return () => { current += 20_000; return current; };
+      })(),
+      async assertPortReleased() { throw new Error("port reused by another process"); }
+    }
+  });
+
+  await assert.rejects(
+    runControlPlaneCleanRoomArtifactSmoke({ ...value.options, runtime: harness.runtime }),
+    diagnosed("service_probe_failed", "startup_deadline")
+  );
+  assert.equal(harness.workspaceCleaned, true);
+  assert.equal(harness.dependencyCleaned, true);
+});
+
+test("real child stderr is bounded into closed startup reasons", async (t) => {
+  const runtime = createControlPlaneCleanRoomArtifactSmokeTestRuntime();
+  for (const [name, script, consolePort, expected] of [
+    ["early exit", "process.exit(2)", 45678, "early_exit"],
+    ["console race", "process.stderr.write('listen EADDRINUSE 127.0.0.1:45678\\n');process.exit(1)", 45678, "console_port_race"],
+    ["fixed race", "process.stderr.write('listen EADDRINUSE 127.0.0.1:18180\\n');process.exit(1)", 45678, "fixed_proxy_port_race"]
+  ]) {
+    await t.test(name, async () => {
+      const handle = runtime.spawnService({
+        executable: process.execPath,
+        cwd: "/",
+        argv: ["--eval", script],
+        env: { PATH: "/usr/bin:/bin" }
+      });
+      await handle.exitPromise;
+      assert.equal(runtime.serviceExitReason(handle, { consolePort, httpProxyPort: 18180 }), expected);
+      assert.equal(JSON.stringify(handle).includes("EADDRINUSE"), false);
+    });
+  }
 });
 
 test("owned real workspace cleanup permits expected child creation while pinning its root node", () => {
