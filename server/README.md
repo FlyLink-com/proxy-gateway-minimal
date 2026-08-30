@@ -30,6 +30,15 @@ Run the focused `node --test server/tests/<name>.test.mjs` command for the
 changed boundary, then `npm test` and
 `git diff --check origin/master...HEAD`.
 
+## Release identity
+
+`CONTROL_PLANE_RELEASE_IDENTITY_PATH` is optional for compatibility with
+existing deployments. If absent, bearer-protected `/api/status` reports
+`releaseIdentity.state` as `unavailable`. If configured, the service reads one
+canonical identity file during startup and fails closed on an invalid, mutable,
+linked, or permissively writable file. The identity is never added to the
+public `/api/health` response.
+
 ## Boundary
 
 This workspace does not own frontend builds, provider configuration, host
