@@ -839,7 +839,7 @@ export async function runControlPlaneCleanRoomArtifactSmoke(options = {}) {
     if (handle) {
       try {
         if (await runtime.terminateService(handle) !== true) throw new Error("shutdown_incomplete");
-      } catch { cleanupError = cleanupError ?? new ControlPlaneCleanRoomArtifactSmokeError("service_shutdown_failed", true); }
+      } catch { cleanupError = new ControlPlaneCleanRoomArtifactSmokeError("service_shutdown_failed", true); }
       if (consolePort !== undefined) {
         try { await runtime.assertPortReleased(consolePort); }
         catch { cleanupError = cleanupError ?? new ControlPlaneCleanRoomArtifactSmokeError("port_cleanup_failed", true); }
