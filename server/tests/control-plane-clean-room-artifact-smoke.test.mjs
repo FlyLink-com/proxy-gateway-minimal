@@ -396,6 +396,47 @@ test("clean-room waits for the full HTTP proxy startup state within the shared d
   assert.equal(harness.dependencyCleaned, true);
 });
 
+test("owned real workspace cleanup permits expected child creation while pinning its root node", () => {
+  const runtime = createControlPlaneCleanRoomArtifactSmokeTestRuntime();
+  const workspace = runtime.createWorkspace();
+  try {
+    mkdirSync(join(workspace.root, "source"), { mode: 0o700 });
+    writePrivate(join(workspace.root, "source", "entry.mjs"), Buffer.from("export default true;\n"));
+    assert.doesNotThrow(() => workspace.cleanup());
+    assert.equal(existsSync(workspace.root), false);
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test("owned workspace cleanup still rejects mode drift and root-node substitution", async (t) => {
+  await t.test("mode drift", () => {
+    const workspace = createControlPlaneCleanRoomArtifactSmokeTestRuntime().createWorkspace();
+    try {
+      chmodSync(workspace.root, 0o755);
+      assert.throws(() => workspace.cleanup(), condition("cleanup_failed"));
+      assert.equal(existsSync(workspace.root), true);
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true });
+    }
+  });
+
+  await t.test("root-node substitution", () => {
+    const workspace = createControlPlaneCleanRoomArtifactSmokeTestRuntime().createWorkspace();
+    const original = `${workspace.root}-original`;
+    try {
+      renameSync(workspace.root, original);
+      mkdirSync(workspace.root, { mode: 0o700 });
+      assert.throws(() => workspace.cleanup(), condition("cleanup_failed"));
+      assert.equal(existsSync(workspace.root), true);
+      assert.equal(existsSync(original), true);
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true });
+      rmSync(original, { recursive: true, force: true });
+    }
+  });
+});
+
 test("source and dependency release bindings fail before extraction or service start", async (t) => {
   for (const [name, overrides, expectedCondition] of [
     ["source", { sourceCommit: "8".repeat(40) }, "source_binding_mismatch"],

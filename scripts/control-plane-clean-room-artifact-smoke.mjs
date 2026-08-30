@@ -330,13 +330,18 @@ function createWorkspace() {
     const physical = realpathSync(root);
     if (metadata.isSymbolicLink() || !metadata.isDirectory() || physical !== root || mode(metadata) !== 0o700) fail("workspace_invalid");
     const rootIdentity = identity(metadata);
+    const rootOwner = Object.freeze({ uid: metadata.uid, gid: metadata.gid });
     return Object.freeze({
       root,
       cleanup() {
         try {
           const current = lstatSync(root);
           const tempRoot = realpathSync(tmpdir());
-          if (!sameIdentity(rootIdentity, identity(current)) || dirname(root) !== tempRoot
+          if (current.isSymbolicLink() || !current.isDirectory()
+            || !sameNode(rootIdentity, identity(current))
+            || current.uid !== rootOwner.uid || current.gid !== rootOwner.gid
+            || mode(current) !== 0o700 || realpathSync(root) !== root
+            || dirname(root) !== tempRoot
             || !basename(root).startsWith("control-plane-clean-room-")) fail("cleanup_failed", true);
           rmSync(root, { recursive: true, force: true });
         } catch (error) {
