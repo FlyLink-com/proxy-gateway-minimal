@@ -98,6 +98,7 @@
     "platform:wallet-first-setup-delivery-handoffs:schema": "node scripts/platform-wallet-first-setup-delivery-handoffs-schema.mjs",
     "platform:coin-commerce:local-validation": "node scripts/start-local-coin-commerce-validation.mjs",
     "platform:coin-commerce:local-ui-validation": "node scripts/start-local-coin-commerce-ui-validation.mjs",
+    "frontend:boundaries:check": "node scripts/check-frontend-source-boundaries.mjs",
     "docs:authority:check": "node scripts/check-document-authority.mjs",
     "docs:authority:strict": "node scripts/check-document-authority.mjs --strict-files",
     "governance:check": "node scripts/check-gate-governance.mjs --snapshot",
@@ -149,7 +150,8 @@
     "admin:test": "npm run test --prefix admin"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.78.0"
+    "@anthropic-ai/sdk": "^0.78.0",
+    "typescript": "^5.8.0"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
