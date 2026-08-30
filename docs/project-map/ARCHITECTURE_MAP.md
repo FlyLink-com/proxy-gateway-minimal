@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: architecture_map
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
@@ -34,8 +34,8 @@ When statements conflict, use the narrowest current authority for the question:
 | What is live in production now? | Fresh Risk A read-only inventory and target validation. | May point to the required gate; must record `not_verified` without live evidence. |
 | What is the latest documented release identity? | `docs/CURRENT_RELEASE_STATE.md`, subject to its cutoff and newer validated evidence. | Summarizes links only. |
 | What is the source/artifact/release/deployment model? | `RELEASE_MANIFEST.md`. | Cross-references planes and dependencies. |
-| What is the current repo orientation and Phase 2 queue? | `docs/PROJECT_CONTEXT.md` plus current Git/GitHub inventory. | Provides derived state and milestone views. |
-| What is the machine-readable coordination state? | `project-state/current.json`, `lanes.json`, and `tasks.json`, with drift checks. | Must not create a competing YAML or machine state. |
+| What is the current work state and sequencing? | Fresh native Issue/PR records; Project #1 is mutable navigation only. | Provides no competing queue or item status. |
+| What machine-readable orientation is retained? | Reviewed definitions in `project-state/lanes.json` plus dated compatibility contracts in `current.json` and `tasks.json`. | Must not create a competing YAML, machine state, or live queue. |
 | What topology concepts and historical transitions exist? | `docs/PROJECT_TOPOLOGY.md` and other cited architecture docs, reconciled against current context. | Provides a current-first crosswalk and records reconciliation boundaries. |
 | How are agent ownership and delegation governed? | `AGENTS.md` and `docs/MULTI_AGENT_OPERATING_MODEL.md`. | Maps Planner/Architect/Engineer/Reviewer labels onto existing roles. |
 | How should the new knowledge documents be read? | This matrix and the precedence rules in each derived document. | Index/derived view only. |
@@ -54,7 +54,7 @@ The precedence order is:
 ```text
 fresh approved live evidence
   -> current authority document for the exact scope
-  -> dated project-state coordination snapshot
+  -> dated project-state compatibility snapshot
   -> this derived project-intelligence layer
   -> historical or conflicting architecture material
 ```

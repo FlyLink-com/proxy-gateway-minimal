@@ -8,7 +8,7 @@
 - Windows 本机任务优先使用 PowerShell；涉及 Unicode 输出时注意编码问题。
 - 不要在根目录或无明确项目上下文时加载过多技能、插件或外部服务；按当前项目和任务需要最小化启用对应能力。
 - 订阅管理项目的固定本地仓库路径是 `D:\Projects\proxy-gateway-minimal`；`C:\Users\g\Projects\订阅管理\proxy-gateway-minimal` 是迁移前旧 checkout，不作为后续默认工作区；不要把 `C:\Users\g\OneDrive\文档\订阅管理` 当作真实代码仓库。
-- 对 `proxy-gateway-minimal` 继续工作前，依次读取 `docs/CURRENT_RELEASE_STATE.md`、`RELEASE_MANIFEST.md`、`docs/PROJECT_CONTEXT.md`，再核对 `git status --short --branch`。
+- 对 `proxy-gateway-minimal` 继续工作前，依次读取 `docs/CURRENT_RELEASE_STATE.md`、`RELEASE_MANIFEST.md`、`docs/PROJECT_CONTEXT.md`，核对 `git status --short --branch`，再读 `docs/README.md` 和任务相关 subsystem README；选择、排序或声明当前工作前必须 fresh 读取原生 Issue/PR，Project #1 仅作导航投影，`project-state` JSON 仅作带日期的兼容/分类依据。
 - 项目发布或收尾前必须运行对应验证命令，并在回复中说明实际通过/失败结果。
 
 ## Prompt Framework

@@ -3,23 +3,42 @@ import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { findSensitivePatternFindings } from "./check-project-state.mjs";
+import { checkProjectState, findSensitivePatternFindings } from "./check-project-state.mjs";
 
 const DEFAULT_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const REQUIRED_FILES = [
+  "AGENTS.md",
+  "docs/CURRENT_RELEASE_STATE.md",
+  "RELEASE_MANIFEST.md",
   "docs/PROJECT_CONTEXT.md",
+  "docs/README.md",
   "project-state/current.json",
   "project-state/lanes.json",
   "project-state/tasks.json"
 ];
 
 const DOCS_TO_READ_FIRST = [
+  "docs/CURRENT_RELEASE_STATE.md",
+  "RELEASE_MANIFEST.md",
+  "docs/PROJECT_CONTEXT.md",
+  "docs/README.md"
+];
+
+const GUARDED_GUIDANCE_FILES = [
   "AGENTS.md",
   "docs/AGENT_ONBOARDING.md",
+  "docs/VALIDATION_BASELINE.md"
+];
+
+const CANONICAL_ENTRY_SEQUENCE = [
+  "docs/CURRENT_RELEASE_STATE.md",
+  "RELEASE_MANIFEST.md",
   "docs/PROJECT_CONTEXT.md",
-  "docs/VALIDATION_BASELINE.md",
-  "docs/README.md"
+  "git status --short --branch",
+  "docs/README.md",
+  "task-relevant subsystem README",
+  "fresh native GitHub Issue/PR records before selecting or ordering current work"
 ];
 
 const VALIDATION_COMMANDS = [
@@ -75,9 +94,21 @@ function sourceDocsFrom(...states) {
   ];
 }
 
+function snapshotObservedAt(state) {
+  const value = String(state?.observedAt || "");
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+    return "unknown";
+  }
+  const [, yearText, monthText, dayText] = match;
+  const daysInMonth = new Date(Date.UTC(Number(yearText), Number(monthText), 0)).getUTCDate();
+  return Number(dayText) >= 1 && Number(dayText) <= daysInMonth ? value : "unknown";
+}
+
 export function buildAgentBrief({
   rootDir = DEFAULT_ROOT,
   gitStatusText = "",
+  gitStatusError = null,
   now = new Date().toISOString()
 } = {}) {
   const errors = [];
@@ -101,16 +132,21 @@ export function buildAgentBrief({
     ? readJson(rootDir, "project-state/tasks.json", errors)
     : null;
 
-  const docsToReadFirst = DOCS_TO_READ_FIRST.filter((path) => existsSync(join(rootDir, path)));
-  for (const path of DOCS_TO_READ_FIRST) {
-    if (!existsSync(join(rootDir, path))) {
-      warnings.push(`${path}: optional first-read entry is missing`);
+  if (REQUIRED_FILES.every((path) => existsSync(join(rootDir, path)))) {
+    const stateValidation = checkProjectState({ rootDir });
+    if (!stateValidation.ok) {
+      errors.push(
+        `project-state validation failed with ${stateValidation.errors.length} error(s); run npm run project-state:check for local details`
+      );
     }
   }
+
+  const docsToReadFirst = DOCS_TO_READ_FIRST.filter((path) => existsSync(join(rootDir, path)));
 
   const guardedPaths = [
     ...REQUIRED_FILES,
     ...docsToReadFirst,
+    ...GUARDED_GUIDANCE_FILES.filter((path) => existsSync(join(rootDir, path))),
     ...sourceDocsFrom(currentState, lanesState, tasksState)
   ].filter((path) => path.endsWith(".md") || path.endsWith(".json"));
   const sensitiveFindings = findSensitivePatternFindings(rootDir, [...new Set(guardedPaths)]);
@@ -118,16 +154,10 @@ export function buildAgentBrief({
     errors.push(`${finding.path}:${finding.line}: sensitive ${finding.type} pattern matched`);
   }
 
-  const activeBlockers = Array.isArray(currentState?.activeBlockers)
-    ? currentState.activeBlockers.map((blocker) => String(blocker?.id || blocker?.summary || "unnamed-blocker")).slice(0, 8)
-    : [];
-  const activeLanes = Array.isArray(lanesState?.lanes)
-    ? lanesState.lanes.filter((lane) => /active|planned|ready/i.test(String(lane?.status || ""))).map((lane) => String(lane.id)).slice(0, 10)
-    : [];
-  const readyTasks = Array.isArray(tasksState?.tasks)
-    ? tasksState.tasks.filter((task) => /ready|active|blocked/i.test(String(task?.status || ""))).map((task) => String(task.id)).slice(0, 10)
-    : [];
   const git = parseGitStatus(gitStatusText);
+  if (gitStatusError) {
+    errors.push("git status: required repository-state read failed");
+  }
   if (git.dirty) {
     warnings.push("working tree has local changes; inspect before editing and do not revert user work");
   }
@@ -140,13 +170,29 @@ export function buildAgentBrief({
     root: relative(process.cwd(), rootDir) || ".",
     git,
     project: {
-      status: String(currentState?.status || "unknown"),
-      currentMentalModel: String(currentState?.architectureView?.currentMentalModel || "four-layer control/data-plane boundary"),
-      activeLanes,
-      readyTasks,
-      activeBlockers
+      requiresFreshNativeIssuePrRead: true,
+      authorityBoundary: "Project #1 is navigation only; native Issue and PR records own current item state, scope, declared risk, done criteria, and sequencing.",
+      laneDefinitions: {
+        source: "project-state/lanes.json",
+        observedAt: snapshotObservedAt(lanesState),
+        definitionOnly: true,
+        boundary: "Reviewed lane definitions and safety boundaries only; this file does not establish current item membership or active work."
+      },
+      snapshotHint: {
+        compatibilityOnly: true,
+        observedAt: {
+          current: snapshotObservedAt(currentState),
+          tasks: snapshotObservedAt(tasksState)
+        },
+        sources: [
+          "project-state/current.json",
+          "project-state/tasks.json"
+        ],
+        boundary: "Dated compatibility hint only; it is not a live queue, current blocker list, active lane inventory, production fact, or approval."
+      }
     },
     docsToReadFirst,
+    canonicalEntrySequence: [...CANONICAL_ENTRY_SEQUENCE],
     validation: {
       baselineDoc: existsSync(join(rootDir, "docs/VALIDATION_BASELINE.md"))
         ? "docs/VALIDATION_BASELINE.md"
@@ -154,6 +200,8 @@ export function buildAgentBrief({
       commands: VALIDATION_COMMANDS
     },
     riskBoundaries: [
+      "AGENTS.md always applies as the repository rule set.",
+      "Current sequencing requires a fresh native Issue/PR read; Project #1 is navigation only and local project-state snapshots are non-authoritative.",
       "Risk A work requires read-only inventory, dry-run or no-op proof, exact operator approval, validation, and rollback evidence.",
       "Short replies such as 同意, 开始, or 继续 are not production approval.",
       "Do not output secrets, tokens, subscription URLs, credentials, raw runtime config, SQLite rows, or customer data.",
@@ -191,15 +239,20 @@ export function formatAgentBriefText(brief) {
   lines.push(
     "",
     "## Project",
-    `- State: ${brief.project.status}`,
-    `- Model: ${brief.project.currentMentalModel}`,
-    `- Active lanes: ${brief.project.activeLanes.join(", ") || "unknown"}`,
-    `- Ready/blocked tasks: ${brief.project.readyTasks.join(", ") || "unknown"}`,
+    "- Current sequencing: requires a fresh native Issue/PR read",
+    `- Authority: ${brief.project.authorityBoundary}`,
+    `- Lane definitions: ${brief.project.laneDefinitions.boundary}`,
+    `- Lane-definition observation: ${brief.project.laneDefinitions.observedAt}`,
+    `- Snapshot boundary: ${brief.project.snapshotHint.boundary}`,
+    "- Dated compatibility hint observations:",
+    `  - project-state/current.json: ${brief.project.snapshotHint.observedAt.current}`,
+    `  - project-state/tasks.json: ${brief.project.snapshotHint.observedAt.tasks}`,
     "",
-    "## Docs To Read First"
+    "## Canonical Entry Sequence",
+    "AGENTS.md always applies as the repository rule set. Then complete:"
   );
-  for (const path of brief.docsToReadFirst) {
-    lines.push(`- ${path}`);
+  for (const [index, entry] of brief.canonicalEntrySequence.entries()) {
+    lines.push(`${index + 1}. ${entry}`);
   }
 
   lines.push("", "## Validation Baseline");
@@ -272,7 +325,10 @@ function readGitStatus(rootDir) {
     cwd: rootDir,
     encoding: "utf8"
   });
-  return `${result.stdout || ""}${result.stderr || ""}`;
+  if (result.error || result.status !== 0) {
+    throw new Error("git status failed");
+  }
+  return String(result.stdout || "");
 }
 
 export async function runAgentBrief(argv = process.argv.slice(2), {
@@ -293,9 +349,18 @@ export async function runAgentBrief(argv = process.argv.slice(2), {
     return 0;
   }
 
+  let gitStatusText = "";
+  let gitStatusError = null;
+  try {
+    gitStatusText = readStatus(options.rootDir);
+  } catch {
+    gitStatusError = true;
+  }
+
   const brief = buildAgentBrief({
     rootDir: options.rootDir,
-    gitStatusText: readStatus(options.rootDir)
+    gitStatusText,
+    gitStatusError
   });
 
   writeStdout(options.json ? `${JSON.stringify(brief, null, 2)}\n` : formatAgentBriefText(brief));

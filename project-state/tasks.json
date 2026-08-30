@@ -1,9 +1,11 @@
 {
-  "schemaVersion": "2026-08-26.1",
-  "lastUpdated": "2026-08-26",
+  "schemaVersion": "2026-08-29.1",
+  "lastUpdated": "2026-08-29",
+  "observedAt": "2026-08-26",
   "timezone": "America/Los_Angeles",
-  "status": "phase-2-current-queue",
-  "purpose": "Current Phase 2 queue and recently completed gates needed for safe Agent continuation. Older completed work remains traceable in Git history and indexed records.",
+  "status": "dated-compatibility-contract",
+  "purpose": "Dated compatibility receipts for repository-local tooling. Task status values are observations at the stated cutoff, not a live queue or current Issue state. Resolve all current work and sequencing from native Issue and PR records.",
+  "requiresLiveIssueRead": true,
   "sourceDocs": [
     "docs/CURRENT_RELEASE_STATE.md",
     "RELEASE_MANIFEST.md",
@@ -24,36 +26,12 @@
     "sourceSnapshotAtReconciliation": "b5ca23db58c55f2d73ec59ffa9525f85b92a8a9c",
     "productionRuntimeEvidenceCutoff": "2026-08-26",
     "requiresLiveVerification": true,
-    "rule": "Use Git history and docs/archive indexes for completed or superseded tasks; do not re-add them to the current queue without a new Issue and fresh evidence."
+    "rule": "Use Git history and docs/archive indexes for completed or superseded tasks. Do not infer current work, priority, or execution authority from this compatibility record; read native Issue and PR records live."
   },
   "sourceReceipts": {
     "inventoryDate": "2026-08-23",
     "master": "42d17885646d52387f9327f19e2a2e0d70b2b84e",
-    "remoteBranchCount": 117,
-    "openPrCount": 0,
-    "openDraftPrCount": 0,
-    "openNonDraftPrCount": 0,
-    "openIssueCount": 18,
-    "openIssues": [
-      437,
-      438,
-      439,
-      521,
-      522,
-      523,
-      524,
-      525,
-      527,
-      551,
-      557,
-      558,
-      559,
-      560,
-      597,
-      598,
-      632,
-      636
-    ],
+    "boundary": "The original inventory and its mutable counts remain recoverable from Git history. They are intentionally omitted here because dated Issue, PR, and branch counts cannot answer current-state questions.",
     "merged": [
       {
         "pr": 470,
@@ -360,9 +338,7 @@
         "productionState": "not_deployed",
         "artifactEvidence": "CI run 32645695594, CodeQL run 32645695630, Dependency Artifact run 32645695541, and Release Artifact run 32645695598 succeeded; dependency artifact 9494801281 temporary through 2026-09-06"
       }
-    ],
-    "openDrafts": [],
-    "openNonDraftPrs": []
+    ]
   },
   "a3ProductionCloseout": {
     "observedAt": "2026-08-26T13:57:52.8300715Z",
@@ -393,11 +369,12 @@
     "issueReceipt": "https://github.com/gccwebos-com/proxy-gateway-minimal/issues/636#issuecomment-5426441456",
     "boundary": "This receipt does not relabel the 2026-08-23 sourceReceipts counts as freshly observed and grants no authority for another production action."
   },
-  "issue437Reconciliation": {
-    "state": "open",
+  "issue437ReceiptAtObservation": {
+    "observedAt": "2026-08-26",
+    "state": "observed_open_at_cutoff",
     "pr479State": "merged_source_only",
     "productionState": "not_deployed",
-    "reason": "PR #479 merged source-only, but Issue #437 remains open and no production or runtime completion is inferred."
+    "reason": "At the 2026-08-26 cutoff, PR #479 was recorded merged source-only and Issue #437 was recorded open. Resolve both current state and any production or runtime conclusion from fresh native evidence."
   },
   "ciGovernance": {
     "inventoryDate": "2026-08-26",
@@ -421,16 +398,11 @@
     "requiresLiveVerification": true,
     "boundary": "Source remediation and successful workflows do not establish current default-branch alert counts or required security gates."
   },
-  "nextActionQueue": [
-    "Close Issue #597's durable artifact/rollback identity gap before exact-master GitHub artifacts expire on 2026-09-08.",
-    "Address Issue #598 through focused Action pinning, SBOM, provenance, and signing slices.",
-    "Refresh GitHub rulesets, required checks, environments, alert counts, provider state, deployments, and production runtime evidence before relying on them."
-  ],
   "tasks": [
     {
       "id": "A-version-management-vercel-staged-proof",
       "risk": "A",
-      "status": "completed-in-issue-457",
+      "status": "historical-completed-in-issue-457",
       "lane": "version-management",
       "title": "Prove Vercel company-site merges remain staged",
       "goal": "Keep public aliases on the approved deployment while reviewed master merges create READY candidates.",
@@ -452,7 +424,7 @@
     {
       "id": "A-version-management-cloudflare-provider-gate",
       "risk": "A",
-      "status": "completed-in-issue-462",
+      "status": "historical-completed-in-issue-462",
       "lane": "version-management",
       "title": "Separate Cloudflare saved versions from active deployment",
       "goal": "Use versions upload for native master builds while keeping active promotion separately approved.",
@@ -476,7 +448,7 @@
     {
       "id": "B-phase2-collector-foundation",
       "risk": "B",
-      "status": "completed-and-deployed-2026-07-10",
+      "status": "historical-completed-and-deployed-2026-07-10",
       "lane": "traffic-accounting",
       "title": "Establish canonical collector state, provenance, and protected projection",
       "goal": "Provide one redacted operational read model without changing accounting, quota, runtime, or recovery behavior.",
@@ -500,7 +472,7 @@
     {
       "id": "B-phase2-collector-status-producers",
       "risk": "B",
-      "status": "completed-and-deployed-in-pr-464",
+      "status": "historical-completed-and-deployed-in-pr-464",
       "lane": "traffic-accounting",
       "title": "Add protected JP TUIC and SGP sidecar status producers",
       "goal": "Generate redacted status fragments through existing runtime entrypoints without adding a second scheduler or changing accounting.",
@@ -524,7 +496,7 @@
     {
       "id": "A-phase2-evidence-runtime-activation",
       "risk": "A",
-      "status": "completed-observation-only",
+      "status": "historical-completed-observation-only",
       "lane": "production-operations",
       "title": "Activate Japan traffic Evidence Runtime without decision authority",
       "goal": "Wire existing collector, sidecar, and JP dry-run evidence into protected fragments and the Admin read model.",
@@ -546,7 +518,7 @@
     {
       "id": "A-phase2-evidence-reconciliation",
       "risk": "A",
-      "status": "completed-read-only",
+      "status": "historical-completed-read-only",
       "lane": "production-operations",
       "title": "Reconcile traffic evidence and classify identity impact",
       "goal": "Verify projection conservation, producer-specific freshness, and degraded semantics without mutation.",
@@ -568,7 +540,7 @@
     {
       "id": "C-phase2-runtime-identity-sync-gate",
       "risk": "C",
-      "status": "completed-in-pr-465",
+      "status": "historical-completed-in-pr-465",
       "lane": "traffic-accounting",
       "title": "Define runtime identity impact and retention governance",
       "goal": "Treat identity as an impact dimension of existing runtime release units and keep map, ledger, and evidence semantics separate.",
@@ -591,7 +563,7 @@
     {
       "id": "B-phase2-additive-tuic-map-repair",
       "risk": "B",
-      "status": "completed-source-only-in-pr-466",
+      "status": "historical-completed-source-only-in-pr-466",
       "lane": "traffic-accounting",
       "title": "Provide additive-only missing-binding repair capability",
       "goal": "Generate an additive candidate that preserves stale bindings and defaults to no mutation.",
@@ -613,7 +585,7 @@
     {
       "id": "B-version-management-promotion-health-gate",
       "risk": "B",
-      "status": "completed-source-only-in-pr-467",
+      "status": "historical-completed-source-only-in-pr-467",
       "lane": "version-management",
       "title": "Add a bounded condition-driven control-plane promotion health gate",
       "goal": "Separate loopback runtime confidence from public edge confidence and reject restart drift within a bounded window.",
@@ -635,7 +607,7 @@
     {
       "id": "B-version-management-release-config-identity-gate",
       "risk": "B",
-      "status": "completed-source-only-in-pr-468",
+      "status": "historical-completed-source-only-in-pr-468",
       "lane": "version-management",
       "title": "Gate protected control-plane config assembly outside release roots",
       "goal": "Prepare and verify approved release-local config identity in a temporary artifact workspace without mutating active or candidate release roots.",
@@ -659,7 +631,7 @@
     {
       "id": "A-phase2-japan-tuic-limited-repair",
       "risk": "A",
-      "status": "blocked-pending-fresh-approval",
+      "status": "historical-blocked-pending-fresh-approval",
       "lane": "production-operations",
       "title": "Prepare any future Japan TUIC limited repair through fresh evidence",
       "goal": "Accumulate observation evidence, then bind any artifact alignment, additive candidate, or map apply to separate exact approvals.",
@@ -681,7 +653,7 @@
     {
       "id": "A-a3-dependency-materialization-boundary",
       "risk": "A",
-      "status": "completed-promoted-verified",
+      "status": "historical-completed-promoted-verified",
       "lane": "dependency-materialization",
       "title": "Close the A3 dependency materialization and production promotion outcome",
       "goal": "Record the completed Issue #636 execution chain from physical proofs and bounded admission through exact artifact staging, candidate preparation, promotion-09 and terminal health evidence without extending authority to schema or feature activation.",
@@ -713,10 +685,10 @@
     {
       "id": "C-release-maturity-evidence-loop",
       "risk": "C",
-      "status": "active-issue-597",
+      "status": "observed-at-cutoff-issue-597-reference",
       "lane": "version-management",
       "title": "Close the source-to-runtime evidence loop",
-      "goal": "Coordinate Issue #597 so exact source, durable artifact, deployment receipt, live runtime readback, and rollback identity can be compared without treating temporary Actions artifacts as a ready release.",
+      "goal": "At the observation cutoff, Issue #597 described comparison of exact source, durable artifact, deployment receipt, live runtime readback, and rollback identity without treating temporary Actions artifacts as a ready release.",
       "allowedFiles": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -737,10 +709,10 @@
     {
       "id": "B-supply-chain-closure",
       "risk": "B",
-      "status": "active-issue-598",
+      "status": "observed-at-cutoff-issue-598-reference",
       "lane": "version-management",
       "title": "Add full-SHA Action pinning, SBOM, provenance, and signing closure",
-      "goal": "Implement Issue #598 in focused slices while keeping current unsupported publication paths fail-closed.",
+      "goal": "At the observation cutoff, Issue #598 described focused supply-chain slices and fail-closed unsupported publication paths.",
       "allowedFiles": [
         ".github/workflows/*.yml",
         "scripts/",
@@ -763,10 +735,10 @@
     {
       "id": "B-phase2-portal-lifecycle-contract",
       "risk": "B",
-      "status": "active-source-foundation-issue-438",
+      "status": "observed-at-cutoff-source-foundation-issue-438",
       "lane": "portal-lifecycle",
       "title": "Define the Portal user and resource lifecycle contract",
-      "goal": "Continue Issue #438 over the existing account/resource lifecycle, Portal Wallet/Ledger reads, Orders and Recharge surfaces, and Account Resource Authority source without conflating new wallet-first/deferred/Authority extensions with the documented enabled legacy Portal, Coins Wallet, Coins Commerce and XSD recharge state.",
+      "goal": "At the observation cutoff, Issue #438 covered the account/resource lifecycle, Portal Wallet/Ledger reads, Orders and Recharge surfaces, and Account Resource Authority source without conflating gated wallet-first/deferred/Authority extensions with dated legacy-surface evidence.",
       "allowedFiles": [
         "server/services/platform/**/*.mjs",
         "server/services/subscriptions/**/*.mjs",
@@ -792,10 +764,10 @@
     {
       "id": "B-phase2-commercial-foundation-contract",
       "risk": "B",
-      "status": "active-default-off-extension-foundation",
+      "status": "observed-at-cutoff-default-off-extension-foundation",
       "lane": "commercial-foundation",
       "title": "Harden new provider-neutral commercial extension contracts with new providers disabled",
-      "goal": "Continue Issues #439 and #522-#524 from the Wallet/Ledger, Payment/Recharge, provider Adapter, Coins Commerce, fulfillment, and Account Resource Authority source now present in the deployed control plane. Preserve the documented enabled legacy Coins Wallet, Coins Commerce with audience all_active and XSD recharge state while keeping the four wallet-first schemas, wallet-first/deferred/Authority extensions, new providers and new production paths default-off or separately gated.",
+      "goal": "At the observation cutoff, Issues #439 and #522-#524 covered Wallet/Ledger, Payment/Recharge, provider adapters, Coins Commerce, fulfillment, and Account Resource Authority source. Their dated receipt did not prove current runtime state; new schemas, providers, and extension paths remained default-off or separately gated.",
       "allowedFiles": [
         "server/services/platform/**/*.mjs",
         "server/tests/**/*.test.mjs",
@@ -820,10 +792,10 @@
     {
       "id": "B-phase2-code-boundary-cleanup",
       "risk": "B",
-      "status": "inactive-guardrail-when-touched",
+      "status": "historical-inactive-guardrail-when-touched",
       "lane": "code-boundary",
       "title": "Extract only measured code boundaries exposed by active work",
-      "goal": "Perform one behavior-preserving extraction only when active work exposes a measured ownership problem; Issue #440 is not in the current open-Issue inventory and the modular monolith remains intact.",
+      "goal": "The retained historical guardrail allowed one behavior-preserving extraction only for a measured ownership problem. Issue #440 was absent from the dated open-Issue inventory and the modular monolith remained intact at that cutoff.",
       "allowedFiles": [
         "server/state.mjs",
         "server/services/**/*.mjs",
@@ -845,7 +817,7 @@
     {
       "id": "C-operations-plane-source-reality",
       "risk": "C",
-      "status": "completed-in-issue-561",
+      "status": "historical-completed-in-issue-561",
       "lane": "operations-foundation",
       "title": "Reconcile Operations Plane planning with current source reality",
       "goal": "Retain the completed Issue #561 source-reality classification so remaining implementation gaps stay owned by #558-#560 without rebuilding existing capabilities.",

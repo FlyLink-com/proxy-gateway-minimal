@@ -4,25 +4,31 @@ Last verified: 2026-07-15, America/Los_Angeles.
 
 ```yaml
 document_metadata:
-  doc_type: canonical
-  lifecycle: active
-  authority_scope: blockers
+  doc_type: evidence
+  lifecycle: historical
+  authority_scope: historical_blocker_snapshot
   superseded_by: null
-  last_verified_at: 2026-07-15
+  last_verified_at: 2026-08-29
   production_authority: false
 ```
 
 > Status:
-> - Type: Blocker registry and template
+> - Type: Historical blocker registry and template
 > - Risk: C
 > - Execution authority: Does not authorize production, provider, runtime,
 >   deployment, rollback, schema, auth, credential, or customer-data actions
 > - Production impact: None
-> - Authority: Derived/index view only; current blockers require the evidence
->   source named by each record
-> - Index scope: Blocker record format and current source-governance and
->   production-information gaps at
+> - Authority: Historical derived/index view only; no current blocker or
+>   sequencing authority
+> - Index scope: Preserve the blocker format and source-governance and
+>   production-information gaps observed at
 >   `master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`
+
+This file preserves the 2026-07-15 blocker and resolution-queue snapshot for
+audit. Its PR state, Issue state, repository counts, blocker status, and
+ordered resolution queue are historical and invalid for current use. Resolve current blockers and work
+order from fresh native Issue/PR records; Project #1 is navigation only.
+Nothing here authorizes Risk A or proves current production state.
 
 ## Blocker Template
 

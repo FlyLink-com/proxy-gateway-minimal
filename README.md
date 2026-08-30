@@ -24,10 +24,11 @@
 
 1. [`docs/CURRENT_RELEASE_STATE.md`](docs/CURRENT_RELEASE_STATE.md)：当前已记录的发布与生产对账状态。
 2. [`RELEASE_MANIFEST.md`](RELEASE_MANIFEST.md)：源码、制品、发布、部署和运行状态之间的身份边界。
-3. [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md)：项目定位、当前阶段、工作队列和风险边界。
+3. [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md)：项目定位、文档化边界、当前工作原生读取路由和风险边界。
 4. `git status --short --branch`：当前 checkout 的路径、分支和工作树状态。
 5. [`docs/README.md`](docs/README.md)：完整文档索引、权威范围和生命周期导航。
 6. 当前任务涉及的 subsystem README：进入具体模块后再读取其职责与验证边界。
+7. 原生 GitHub Issue/PR：在选择、排序或声明当前工作前 fresh 读取其状态、范围、风险、完成条件与 review 证据；Project #1 仅作导航投影。
 
 `AGENTS.md` 定义仓库任务规则并始终适用，但不替代上述当前状态读取顺序。
 
@@ -46,7 +47,7 @@ node bin/gccgw.mjs project check
 project / install / node / package / subscription / channel / config / site-admin / operations
 ```
 
-## 当前项目状态
+## 文档化项目阶段（当前生产需实时核验）
 
 项目当前处于 **Phase 2 Operational Reliability**，是在受控平台基础上继续完成
 运行可靠性和发布对账，而不是已经结束演进的“收尾项目”。
@@ -56,7 +57,7 @@ project_status:
   phase: Phase 2 Operational Reliability
   maturity: controlled platform foundation
   source_model: release-managed monorepo
-  production: partially operational; reconciliation incomplete
+  production: dated evidence exists; current state requires fresh inventory
 ```
 
 ### 2026-08-10 源码快照
@@ -88,8 +89,9 @@ project_status:
 当前边界：
 
 - 核心架构是单体 Node/Express 服务 + SQLite 业务状态 + `gccgw` operator CLI。
-- 当前生产设计是一个订阅控制面管理账号、订单、订阅 artifact、凭据生命周期和
-  用量账本；Vultr Japan 与 Singapore 等节点只作为可替换数据面通道容量接入。
+- 文档化目标架构是一个订阅控制面管理账号、订单、订阅 artifact、凭据生命周期和
+  用量账本；带日期的证据记录 Vultr Japan 与 Singapore 等节点承担可替换数据面角色，
+  当前角色、容量和健康状态必须通过 fresh task-specific inventory 重新核验。
 - `.env` 是目标主机运行时配置的收口入口。
 - `deployments/production-template/` 是非敏感生产输入包模板。
 - `deployments/production-template/OPERATOR_NOTEPAD.md` 是人工记事本式检查面，不是机器导入文件。
@@ -445,8 +447,8 @@ Admin shell。该预览只能用于 UI 验收和实现交接，不代表公网 A
 当前仓库已有默认关闭的用户侧 7 天自助订阅服务：
 `state.platform.portalSelfServiceSubscriptions` 注入后，已登录 durable 账号可用
 `trial` 策略自动开通 7 天、刷新 visible-once 订阅材料、禁用当前订阅；用户门户不提供
-删除订单/订阅记录的能力。月卡 / 年卡仍是申请路径，支付、生产公网门户和生产自动发放
-仍未启用。
+删除订单/订阅记录的能力。月卡 / 年卡仍是申请路径；仓库默认源码不启用支付、公网门户
+或自动发放。本文不证明当前生产 runtime 的启用状态；相关判断必须基于 fresh Risk A inventory。
 
 ## 历史 Clash/Mihomo 兼容
 
@@ -498,7 +500,7 @@ npm run network:reset
 | --- | --- |
 | `docs/CURRENT_RELEASE_STATE.md` | 当前已记录的发布与生产对账状态 |
 | `RELEASE_MANIFEST.md` | 源码、制品、发布、部署和运行状态身份模型 |
-| `docs/PROJECT_CONTEXT.md` | 项目定位、阶段、队列和继续工作入口 |
+| `docs/PROJECT_CONTEXT.md` | 项目定位、风险边界和当前工作原生 Issue/PR 读取入口 |
 | `docs/VALIDATION_BASELINE.md` | 验证命令矩阵 |
 | `docs/CONFIGURATION_OWNERSHIP_MATRIX.md` | 配置归属 |
 | `docs/PRODUCTION_INPUT_PACKAGE_FORMAT.md` | 生产输入包格式 |
@@ -527,7 +529,7 @@ npm run network:reset
 │   └── edge-node/             # provider-neutral edge-node package materials
 ├── scripts/                   # Windows helpers, backup/restore, diagnostics
 ├── public/                    # local console/static assets
-├── project-state/             # machine-checkable project state
+├── project-state/             # machine-checkable lane taxonomy and dated compatibility snapshots
 ├── .env.example               # runtime env template
 └── .gitattributes             # keeps shell scripts LF for Linux archive runs
 ```
