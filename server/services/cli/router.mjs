@@ -41,6 +41,7 @@ const DOMAIN_SOURCE_DOCS = {
 const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["project check", "scripts/check-project-state.mjs", "project", "C", "read-only", "Validate project-state and repository safety markers"],
   ["project export", "scripts/project-export.mjs", "project", "C", "read-only", "Export a redacted live GitHub Projects v2 projection", ["docs/GITHUB_ISSUE_PR_WORKFLOW.md", "docs/PROJECT_CONTROL_PLANE.md"]],
+  ["project drift", "scripts/project-drift.mjs", "project", "C", "report", "Report deterministic drift within the evidence collected by a Project export", ["docs/GITHUB_ISSUE_PR_WORKFLOW.md", "docs/PROJECT_CONTROL_PLANE.md"]],
   ["project handoff-brief", "scripts/project-handoff-brief.mjs", "project", "C", "report", "Generate a dated compatibility handoff scaffold that requires a fresh native Issue/PR read", ["docs/PROJECT_CONTEXT.md"]],
   ["channel validate", "scripts/channel-config-dry-run.mjs", "channel", "B", "dry-run", "Validate channel configuration candidates", undefined, { surface: "operator", aliasOf: "gccgw channel dry-run" }],
   ["channel measure", "scripts/channel-measurement-bundle.mjs", "channel", "C", "report", "Build channel measurement bundle evidence", undefined, { surface: "operator", aliasOf: "gccgw channel measurement-bundle" }],
@@ -1957,6 +1958,7 @@ Usage:
   gccgw server start
   gccgw project check
   gccgw project export --json
+  gccgw project drift --input <project-export.json> --json
   gccgw project handoff-brief [--focus <text>] [--json] [--dry-run]
   gccgw project verify [--with-admin]
   gccgw env check
@@ -2005,6 +2007,7 @@ Common commands:
   gccgw service status --json
   gccgw project check
   gccgw project export --json
+  gccgw project drift --input project-export.json --json
   gccgw project verify --with-admin
   gccgw env check
   gccgw ops network-status

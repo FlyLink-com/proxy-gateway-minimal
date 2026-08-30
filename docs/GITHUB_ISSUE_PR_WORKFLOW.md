@@ -299,9 +299,8 @@ This document is the canonical human-readable owner for Project #1 field,
 view, and native-workflow semantics. The matching reviewed machine contract is
 `project-state/project-v2-contract.json`. That contract fixes expected names,
 types, options, filters, and workflow transitions; it does not store live item
-values or GraphQL field and option IDs. Any task that depends on those mutable
-identities must discover them through a fresh authoritative read instead of
-treating guessed or historical IDs as authority.
+values. A live export discovers GraphQL field and option IDs on every read
+instead of treating guessed or historical IDs as authority.
 
 All six managed fields are single-select fields:
 
@@ -323,11 +322,11 @@ six mandatory on every Project item:
 | `managed_repository` Issue | `Status`, `Lane`, `Risk`, `Source / Production State`, `Validation State`, `Production Impact` |
 | `managed_repository` pull request | `Status` only |
 
-The other five pull-request fields remain optional Project slots. A future
-reader must still validate any non-null optional value against freshly observed
-field and option identities, while an empty optional slot is not a contract
-violation. Draft, external-repository, and unavailable-content items are
-outside these requiredness rules.
+The live export still collects all six field slots for both kinds. A non-null
+optional PR value must still bind to the observed field and option IDs and use
+a declared option, but an empty optional PR slot is not missing-field drift.
+Draft, external-repository, and unavailable-content items are outside these
+requiredness rules.
 
 The four maintained views are:
 
@@ -352,40 +351,63 @@ The six enabled native workflows are:
 Auto-close Issue and auto-add sub-issues remain disabled. No custom Action,
 PAT, or GitHub App is part of this configuration.
 
-### Read-only Project export
+### Read-only machine projection
 
-Produce a fresh redacted Project #1 projection with:
+Use the repository CLI to produce a redacted live projection and evaluate only
+the evidence domains it actually collected:
 
 ```text
 gccgw project export --json
+gccgw project drift --input <project-export.json> --json
 ```
 
-The command accepts only `--json` and reads its temporary credential from
-`GH_TOKEN` or `GITHUB_TOKEN`; it has no token argument or alternate endpoint.
-Before any live read it byte-verifies
-`project-state/project-v2-contract.json`, and every successful result embeds
-that canonical contract SHA-256.
+`project drift` always loads and byte-verifies the checked-in
+`project-state/project-v2-contract.json`; it has no alternate-contract flag.
+Missing or non-canonical contract bytes make the report `indeterminate` and
+exit `2`, so only a report with `canonicalContract: true` can be clean or
+classify proven drift. Every successful export embeds the canonical contract
+SHA-256 used to produce it; drift rejects a missing or different export digest
+as `indeterminate` instead of reinterpreting an old export under new semantics.
 
-The exporter reads all Project fields and items, including archived and
-non-archived items, with bounded pagination. Each attempt reads two complete
-normalized projections between Project fences and retries the whole operation
-at most once if the Project identity, title, open state, timestamp, counts, or
-safe normalized projection changes.
+The export contains Project identity, the six-field manifest, redacted
+Issue/PR identity and lifecycle state, managed field values, pagination
+completeness, and a bounded consistency fence. It excludes titles, bodies,
+comments, actors, assignees, reviewers, free-text Project values, secrets, raw
+GraphQL responses, and production data; the reviewed Project title itself is
+part of target identity, but export emits only whether the live title matches
+that reviewed value. Issue, PR, and Draft titles are excluded. External-
+repository items use a fixed redacted native shape, and unexpected managed
+option names are represented only by non-semantic observed markers.
 
-Output is a read-only allowlist. Issue, pull-request, and Draft titles, bodies,
-comments, actors, assignees, reviewers, free-text Project values, secrets, and
-raw GraphQL responses are never requested or emitted. A mismatched Project
-title becomes only `titleMatchesContract: false`; external-repository items use
-position-derived IDs and a fixed redacted native shape; unexpected option names
-become non-semantic observed markers. Stable missing, ambiguous, wrong-type,
-and option-set field observations remain machine-readable instead of being
-misreported as an incomplete read.
+The first drift-report version checks the collected Project target, managed
+field configuration, per-native-kind requiredness, and item lifecycle
+projection only. This comparison begins only after export has produced a
+complete normalized manifest; an exporter fail-closed error remains
+`indeterminate`, not proven schema drift. Stable observed `missing`,
+`ambiguous`, wrong-type, and option-set states are complete manifest evidence
+and can therefore be proven schema drift. Project view definitions and native
+workflow configuration, independent repository-wide native inventory, source
+ancestry, exact-head required checks, and production evidence are explicitly
+`not_collected` / `not_evaluated`; absence of that evidence is never converted
+into `aligned`, `Passed`, `Done`, or production authority. The commands perform
+no mutation and are not added to offline CI or `project verify`.
 
-The export explicitly marks repository-wide native inventory, checks, source,
-and production as `not_collected`. `generatedAt` is an observation point, not
-a present-freshness claim or writeback authority. A trusted clock is recorded
-only from a successful GitHub HTTP `Date`; otherwise the local clock is marked
-untrusted. The command performs no mutation, deployment, or production read.
+Always create a fresh export immediately before running drift. A saved
+export's `generatedAt` is only its observation point: drift v1 does not prove
+`exportFreshness`, and neither the timestamp nor a prior report may authorize
+automatic writeback. Time-based native lifecycle drift is proven only when the
+export records a trusted GitHub HTTP observation clock; a local-system clock
+produces `review_required` instead.
+
+| Drift outcome | Exit | Meaning |
+| --- | ---: | --- |
+| `clean_in_evaluated_scope` | 0 | No proven or review finding in the explicitly evaluated domains only. |
+| `drift` | 1 | At least one proven drift finding. |
+| `review_required` | 2 | Evidence needs human review; no automated repair is implied. |
+| `indeterminate` or CLI failure | 2 | Input, authority, completeness, or command evaluation failed closed. |
+
+Automation must read `outcome`, `coverage`, and `reviewCount` together.
+`reviewCount > 0` is never global clean or permission to skip human review.
 
 Issue #675 completes the repository-local consumer cutover. Active guidance
 classifies `project-state/current.json` and `project-state/tasks.json` as dated
