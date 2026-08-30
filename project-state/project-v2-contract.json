@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "contractType": "github-project-v2-static-contract",
+  "verifiedAt": "2026-08-30",
+  "identityBinding": "semantic-only",
+  "target": {
+    "owner": "gccwebos-com",
+    "projectNumber": 1,
+    "repository": "gccwebos-com/proxy-gateway-minimal",
+    "name": "GCC WebOS — Delivery",
+    "expectedClosed": false
+  },
+  "authority": {
+    "projectProjectionOnly": true,
+    "productionAuthority": false,
+    "writebackEnabled": false
+  },
+  "nativeWorkflowGraceSeconds": 900,
+  "managedFields": [
+    {
+      "key": "status",
+      "name": "Status",
+      "type": "single-select",
+      "options": [
+        "Backlog",
+        "Todo",
+        "In Progress",
+        "Blocked",
+        "Done"
+      ]
+    },
+    {
+      "key": "lane",
+      "name": "Lane",
+      "type": "single-select",
+      "options": [
+        "traffic-accounting",
+        "portal-lifecycle",
+        "commercial-foundation",
+        "operations-foundation",
+        "version-management",
+        "dependency-materialization",
+        "legacy-retirement"
+      ]
+    },
+    {
+      "key": "risk",
+      "name": "Risk",
+      "type": "single-select",
+      "options": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "key": "source-production-state",
+      "name": "Source / Production State",
+      "type": "single-select",
+      "options": [
+        "aligned",
+        "drift",
+        "runtime-only",
+        "artifact-only",
+        "unknown"
+      ]
+    },
+    {
+      "key": "validation-state",
+      "name": "Validation State",
+      "type": "single-select",
+      "options": [
+        "Not started",
+        "Running",
+        "Passed",
+        "Blocked"
+      ]
+    },
+    {
+      "key": "production-impact",
+      "name": "Production Impact",
+      "type": "single-select",
+      "options": [
+        "none",
+        "read-only",
+        "mutation gated separately"
+      ]
+    }
+  ],
+  "itemFieldRequirements": [
+    {
+      "scope": "managed_repository",
+      "nativeKind": "issue",
+      "requiredFieldKeys": [
+        "status",
+        "lane",
+        "risk",
+        "source-production-state",
+        "validation-state",
+        "production-impact"
+      ]
+    },
+    {
+      "scope": "managed_repository",
+      "nativeKind": "pull_request",
+      "requiredFieldKeys": [
+        "status"
+      ]
+    }
+  ],
+  "views": [
+    {
+      "key": "portfolio-triage",
+      "name": "Portfolio Triage",
+      "layout": "table",
+      "filter": "is:issue is:open"
+    },
+    {
+      "key": "execution-board",
+      "name": "Execution Board",
+      "layout": "board",
+      "filter": "is:issue is:open",
+      "groupBy": "Status",
+      "sliceBy": "Lane"
+    },
+    {
+      "key": "risk-a-gates",
+      "name": "Risk A Gates",
+      "layout": "board",
+      "filter": "risk:A -status:Done",
+      "groupBy": "Status"
+    },
+    {
+      "key": "review-queue",
+      "name": "Review Queue",
+      "layout": "table",
+      "filter": "is:pr is:open -is:draft"
+    }
+  ],
+  "nativeWorkflows": [
+    {
+      "key": "auto-add-open-repository-items",
+      "name": "Auto-add to project",
+      "trigger": {
+        "type": "item-matches-query",
+        "repository": "gccwebos-com/proxy-gateway-minimal",
+        "filter": "is:issue,pr is:open"
+      },
+      "action": {
+        "type": "add-to-project"
+      }
+    },
+    {
+      "key": "item-added-to-todo",
+      "name": "Item added to project",
+      "trigger": {
+        "type": "item-added"
+      },
+      "action": {
+        "type": "set-field",
+        "field": "Status",
+        "value": "Todo"
+      }
+    },
+    {
+      "key": "item-closed-to-done",
+      "name": "Item closed",
+      "trigger": {
+        "type": "item-closed"
+      },
+      "action": {
+        "type": "set-field",
+        "field": "Status",
+        "value": "Done"
+      }
+    },
+    {
+      "key": "item-reopened-to-todo",
+      "name": "Item reopened",
+      "trigger": {
+        "type": "item-reopened"
+      },
+      "action": {
+        "type": "set-field",
+        "field": "Status",
+        "value": "Todo"
+      }
+    },
+    {
+      "key": "pull-request-linked-to-issue-to-in-progress",
+      "name": "Pull request linked to issue",
+      "trigger": {
+        "type": "pull-request-linked-to-issue"
+      },
+      "action": {
+        "type": "set-field",
+        "field": "Status",
+        "value": "In Progress"
+      }
+    },
+    {
+      "key": "pull-request-merged-to-done",
+      "name": "Pull request merged",
+      "trigger": {
+        "type": "pull-request-merged"
+      },
+      "action": {
+        "type": "set-field",
+        "field": "Status",
+        "value": "Done"
+      }
+    }
+  ]
+}

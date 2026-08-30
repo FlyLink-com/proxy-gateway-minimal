@@ -19,6 +19,10 @@ definitions, and historical task constraints. It is not a live work queue.
 - [tasks.json](tasks.json) records dated historical task IDs and reviewed risk,
   file-scope, validation, and approval constraints. It must not select the next
   task.
+- [project-v2-contract.json](project-v2-contract.json) records the reviewed,
+  non-live six-field, per-native-kind field-requiredness, view, workflow,
+  consistency, and authority contract for organization Project #1. It never
+  stores item values or a current queue.
 - [docs/PROJECT_CONTROL_PLANE.md](../docs/PROJECT_CONTROL_PLANE.md) explains the
   coordination model and precedence rules.
 
@@ -30,13 +34,13 @@ redacted, portable shape, observation cutoff, and explicit live-read boundary.
 Do not copy live Issue/PR counts, Project status, queues, branches, deployments,
 provider state, or runtime state into these files.
 
-The complete reviewed contents of `current.json`, `lanes.json`, and
-`tasks.json` are SHA-256 pinned in `scripts/check-project-state.mjs`. The hash
-normalizes only checkout-level `CRLF` to `LF`; all other byte changes are
-material. An intentional JSON change must update the matching checker digest in
-the same B-tier PR, explain why the compatibility contract changed, and receive
-the same review as the new bytes. Do not refresh a digest merely to make CI
-green.
+The complete reviewed contents of `current.json`, `lanes.json`, `tasks.json`,
+and `project-v2-contract.json` are SHA-256 pinned in
+`scripts/check-project-state.mjs`. The hash normalizes only checkout-level
+`CRLF` to `LF`; all other byte changes are material. An intentional JSON change
+must update the matching checker digest in the same B-tier PR, explain why the
+reviewed contract changed, and receive the same review as the new bytes. Do not
+refresh a digest merely to make CI green.
 
 ## Validation
 
@@ -48,8 +52,10 @@ new digest.
 ## Boundary
 
 These files do not override `docs/CURRENT_RELEASE_STATE.md`,
-`RELEASE_MANIFEST.md`, native Issue/PR records, live GitHub state, deployment
-evidence, or fresh runtime inventory. Project #1 remains a mutable navigation
-projection. Neither Project fields nor these files authorize external action,
-Risk A work, deletion, or production claims, and they must contain no
-credentials, subscription material, raw runtime data, or customer data.
+`RELEASE_MANIFEST.md`, native Issue/PR records, live GitHub state, exact-head
+checks, deployment evidence, or fresh runtime inventory. Project #1 remains a
+mutable navigation projection. The Project contract defines expected
+configuration, not observed values. Neither Project fields nor these files
+authorize external action, Risk A work, deletion, or production claims, and
+they must contain no credentials, subscription material, raw runtime data, or
+customer data.

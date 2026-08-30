@@ -1,6 +1,6 @@
 # GitHub Issue And PR Workflow
 
-Last updated: 2026-08-28, America/Los_Angeles.
+Last updated: 2026-08-30, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: github_issue_pr_workflow
   superseded_by: null
-  last_verified_at: 2026-08-29
+  last_verified_at: 2026-08-30
   production_authority: false
 ```
 
@@ -21,8 +21,8 @@ document_metadata:
 >   deploy, rollback, secret, token, subscription URL, credential, or
 >   customer-data actions
 > - Production impact: None
-> - Source of truth for: How GitHub Issues and PRs split tracking,
->   summarization, validation, and closeout ownership
+> - Source of truth for: How GitHub Issues, PRs, and Project #1 split tracking,
+>   summarization, validation, projection, and closeout ownership
 
 ## Purpose
 
@@ -293,6 +293,65 @@ Keep authority separated:
   boundaries. Dated state snapshots may preserve evidence, but they do not own
   current Issue, PR, Project, deployment, or runtime facts.
 
+### Reviewed Project configuration
+
+This document is the canonical human-readable owner for Project #1 field,
+view, and native-workflow semantics. The matching reviewed machine contract is
+`project-state/project-v2-contract.json`. That contract fixes expected names,
+types, options, filters, and workflow transitions; it does not store live item
+values or GraphQL field and option IDs. Any task that depends on those mutable
+identities must discover them through a fresh authoritative read instead of
+treating guessed or historical IDs as authority.
+
+All six managed fields are single-select fields:
+
+| Contract key | Project field | Exact reviewed options | Semantic owner |
+| --- | --- | --- | --- |
+| `status` | `Status` | `Backlog`, `Todo`, `In Progress`, `Blocked`, `Done` | Native Issue/PR lifecycle remains authoritative; Project workflow or manual projection only. |
+| `lane` | `Lane` | `traffic-accounting`, `portal-lifecycle`, `commercial-foundation`, `operations-foundation`, `version-management`, `dependency-materialization`, `legacy-retirement` | `project-state/lanes.json` owns definitions and safety boundaries. |
+| `risk` | `Risk` | `A`, `B`, `C` | Native Issue/PR declaration and the applicable runbook own risk. |
+| `source-production-state` | `Source / Production State` | `aligned`, `drift`, `runtime-only`, `artifact-only`, `unknown` | Exact source, artifact, deployment, and fresh runtime evidence own the underlying facts. |
+| `validation-state` | `Validation State` | `Not started`, `Running`, `Passed`, `Blocked` | Exact-head required checks and task-specific receipts own validation. |
+| `production-impact` | `Production Impact` | `none`, `read-only`, `mutation gated separately` | The task risk boundary and exact Production Gate own production authority. |
+
+Field requiredness is explicitly scoped by the contract's
+`itemFieldRequirements`; the existence of six managed fields does not make all
+six mandatory on every Project item:
+
+| Project item scope and native kind | Required managed fields |
+| --- | --- |
+| `managed_repository` Issue | `Status`, `Lane`, `Risk`, `Source / Production State`, `Validation State`, `Production Impact` |
+| `managed_repository` pull request | `Status` only |
+
+The other five pull-request fields remain optional Project slots. A future
+reader must still validate any non-null optional value against freshly observed
+field and option identities, while an empty optional slot is not a contract
+violation. Draft, external-repository, and unavailable-content items are
+outside these requiredness rules.
+
+The four maintained views are:
+
+| View | Layout | Exact filter | Grouping |
+| --- | --- | --- | --- |
+| `Portfolio Triage` | table | `is:issue is:open` | none |
+| `Execution Board` | board | `is:issue is:open` | group by `Status`; slice by `Lane` |
+| `Risk A Gates` | board | `risk:A -status:Done` | group by `Status` |
+| `Review Queue` | table | `is:pr is:open -is:draft` | none |
+
+The six enabled native workflows are:
+
+| Workflow | Trigger/filter | Action |
+| --- | --- | --- |
+| `Auto-add to project` | Repository `proxy-gateway-minimal`; `is:issue,pr is:open` | Add matching item. |
+| `Item added to project` | Item added | Set `Status=Todo`. |
+| `Item closed` | Issue or PR closed | Set `Status=Done`. |
+| `Item reopened` | Issue or PR reopened | Set `Status=Todo`. |
+| `Pull request linked to issue` | PR linked to Issue | Set `Status=In Progress`. |
+| `Pull request merged` | PR merged | Set `Status=Done`. |
+
+Auto-close Issue and auto-add sub-issues remain disabled. No custom Action,
+PAT, or GitHub App is part of this configuration.
+
 Issue #675 completes the repository-local consumer cutover. Active guidance
 classifies `project-state/current.json` and `project-state/tasks.json` as dated
 compatibility snapshots, historicalizes the old human current-state view, and
@@ -341,24 +400,11 @@ consume a caller-supplied `projectStateCheckPassed` attestation, not any of the
 three snapshot files. They remain downstream fail-closed gates and are not
 direct state consumers in this migration.
 
-The native Project workflows verified on 2026-08-28 are:
-
-- Auto-add items from `gccwebos-com/proxy-gateway-minimal` matching
-  `is:issue,pr is:open`.
-- Item added -> `Todo`.
-- Item closed -> `Done`.
-- Pull request linked -> `In Progress`.
-- Pull request merged -> `Done`.
-- Item reopened -> `Todo`.
-
-Auto-close Issue and auto-add sub-issues remain disabled. No custom Action,
-PAT, GitHub App, or Milestone was added for this integration. The repository items open at the time were imported once on 2026-08-28;
-Auto-add does not backfill historical matches.
-
-The maintained views are `Portfolio Triage`, `Execution Board`,
-`Review Queue`, and `Risk A Gates`. Use native `Reviewers`,
-`Assignees`, `Linked pull requests`, `Labels`, `Milestone`, and
-`Repository` fields instead of duplicating them.
+The configuration above was read back on 2026-08-30. The repository items open
+at the initial 2026-08-28 setup were imported once; Auto-add does not backfill
+historical matches. Use native `Reviewers`, `Assignees`, `Linked pull
+requests`, `Labels`, `Milestone`, and `Repository` fields instead of
+duplicating them.
 
 Do not copy live Issue counts, PR counts, Project statuses, review queues,
 branch counts, or manual completion percentages into canonical docs or state
