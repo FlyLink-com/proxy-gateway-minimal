@@ -352,6 +352,41 @@ The six enabled native workflows are:
 Auto-close Issue and auto-add sub-issues remain disabled. No custom Action,
 PAT, or GitHub App is part of this configuration.
 
+### Read-only Project export
+
+Produce a fresh redacted Project #1 projection with:
+
+```text
+gccgw project export --json
+```
+
+The command accepts only `--json` and reads its temporary credential from
+`GH_TOKEN` or `GITHUB_TOKEN`; it has no token argument or alternate endpoint.
+Before any live read it byte-verifies
+`project-state/project-v2-contract.json`, and every successful result embeds
+that canonical contract SHA-256.
+
+The exporter reads all Project fields and items, including archived and
+non-archived items, with bounded pagination. Each attempt reads two complete
+normalized projections between Project fences and retries the whole operation
+at most once if the Project identity, title, open state, timestamp, counts, or
+safe normalized projection changes.
+
+Output is a read-only allowlist. Issue, pull-request, and Draft titles, bodies,
+comments, actors, assignees, reviewers, free-text Project values, secrets, and
+raw GraphQL responses are never requested or emitted. A mismatched Project
+title becomes only `titleMatchesContract: false`; external-repository items use
+position-derived IDs and a fixed redacted native shape; unexpected option names
+become non-semantic observed markers. Stable missing, ambiguous, wrong-type,
+and option-set field observations remain machine-readable instead of being
+misreported as an incomplete read.
+
+The export explicitly marks repository-wide native inventory, checks, source,
+and production as `not_collected`. `generatedAt` is an observation point, not
+a present-freshness claim or writeback authority. A trusted clock is recorded
+only from a successful GitHub HTTP `Date`; otherwise the local clock is marked
+untrusted. The command performs no mutation, deployment, or production read.
+
 Issue #675 completes the repository-local consumer cutover. Active guidance
 classifies `project-state/current.json` and `project-state/tasks.json` as dated
 compatibility snapshots, historicalizes the old human current-state view, and

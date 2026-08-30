@@ -45,10 +45,11 @@ GitHub PRs / Issues
 ```
 
 The initial implementation was intentionally small and docs-only. It now also
-includes offline compatibility checking and a reviewed Project v2
-configuration contract. The dated JSON state files remain orientation inputs
-rather than a live work index. This model adds no database, daemon, runtime
-mutation, production integration, or Project writeback.
+includes offline compatibility checking, a reviewed Project v2 configuration
+contract, and a redacted read-only live exporter. The dated JSON state files
+remain orientation inputs rather than a live work index. This model adds no
+database, daemon, runtime mutation, production integration, or Project
+writeback.
 
 ## Boundary
 
@@ -258,6 +259,24 @@ task risk/validation, historical A-tier blocking contracts, unsafe paths and
 symlinks, authority wording, and sensitive-data patterns. It also validates
 the Project v2 contract's six unique fields and options and requires its Lane
 options to match `project-state/lanes.json` exactly.
+
+The repository also provides a bounded read-only Project command:
+
+```text
+gccgw project export --json
+```
+
+`project export` byte-verifies the checked-in Project contract, reads GitHub
+Projects v2 with a temporary environment token, paginates every field and
+Project item, and applies two normalized projection passes plus a before/after
+consistency fence. A successful result embeds the canonical contract digest
+and explicit collection coverage. It emits no free-text item content or
+external-repository identity, reduces a title mismatch to a boolean, replaces
+unexpected option names with non-semantic markers, and never collects source,
+checks, production, or writeback authority. Stable observed field absence,
+ambiguity, type differences, and option differences remain complete export
+evidence. The command performs no mutation and is not added to offline
+`project verify`.
 
 ## Future Tooling
 

@@ -4,6 +4,8 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { PROJECT_V2_CONTRACT_CANONICAL_SHA256 } from "../server/services/governance/project-v2-contract.mjs";
+
 const DEFAULT_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const VALID_RISKS = new Set(["A", "B", "C"]);
 const REQUIRED_STATE_FILES = [
@@ -20,7 +22,7 @@ const REVIEWED_COMPATIBILITY_STATE_SHA256 = new Map([
   ["project-state/lanes.json", "99f806d846b7a3639650238814956e6f06645fa0f96869a98dd19a476667da52"],
   ["project-state/current.json", "081a2f3a56fdb8fef459b7071a47582507f79dbc901d5b182f65e16969c37c26"],
   ["project-state/tasks.json", "d27722ccd62441707084eced794ff68845aadd69a196b807487ab85a29886817"],
-  ["project-state/project-v2-contract.json", "2b264539a6e3629fc5fd939c602573a6419a176184b81e8feeaca0c10a00017b"]
+  ["project-state/project-v2-contract.json", PROJECT_V2_CONTRACT_CANONICAL_SHA256]
 ]);
 const PROJECT_V2_CONTRACT_KEYS = new Set([
   "schemaVersion", "contractType", "verifiedAt", "identityBinding", "target",
