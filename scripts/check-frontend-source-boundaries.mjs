@@ -40,10 +40,10 @@ const RESOLUTION_EXTENSIONS = [
   ".d.ts"
 ];
 const EXPLICIT_TYPESCRIPT_ALTERNATIVES = {
-  ".cjs": [".cts"],
-  ".js": [".ts", ".tsx"],
-  ".jsx": [".tsx"],
-  ".mjs": [".mts"]
+  ".cjs": [".cts", ".d.cts"],
+  ".js": [".ts", ".tsx", ".d.ts"],
+  ".jsx": [".tsx", ".d.ts"],
+  ".mjs": [".mts", ".d.mts"]
 };
 const NON_EXECUTABLE_LEAF_EXTENSIONS = new Set([
   ".avif",
@@ -688,12 +688,13 @@ function resolveLocalImport({
 }) {
   const sourceRoot = path.resolve(rootDirectory, SOURCE_ROOT);
   const cleanSpecifier = specifier.split(/[?#]/u, 1)[0];
-  const unresolvedBase = cleanSpecifier.startsWith("/src/")
-    ? path.resolve(rootDirectory, "admin", cleanSpecifier.slice(1))
-    : path.resolve(
-      path.dirname(path.join(rootDirectory, from)),
-      cleanSpecifier
-    );
+  if (cleanSpecifier.startsWith("/")) {
+    return { error: "unsupported_root_relative_import" };
+  }
+  const unresolvedBase = path.resolve(
+    path.dirname(path.join(rootDirectory, from)),
+    cleanSpecifier
+  );
 
   if (!isInsideDirectory(sourceRoot, unresolvedBase)) {
     return { error: "source_boundary_escape" };
@@ -839,12 +840,13 @@ function isSiteOwned(file) {
 }
 
 function isFixtureOrPreview(file) {
-  return /(?:^|[/_.-])(?:fixture|preview)(?:[/_.-]|$)/iu.test(file);
+  return /(?:^|[/_.-])(?:fixtures?|previews?)(?:[/_.-]|$)/iu.test(file);
 }
 
 function isForbiddenActivePath(file) {
   const normalized = file.toLowerCase();
-  return normalized.startsWith("admin/src/test/")
+  return /(?:^|\/)(?:test|tests|__tests__)(?:\/|$)/u.test(normalized)
+    || /\.(?:test|spec)\.[^/]+$/u.test(normalized)
     || normalized.includes("/archive/")
     || normalized.includes("/quarantine/");
 }

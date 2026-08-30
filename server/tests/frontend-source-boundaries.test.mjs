@@ -635,8 +635,51 @@ test("synthetic absolute /src cross-surface edge fails closed", (t) => {
   );
 
   const result = verifyFrontendSourceBoundaries({ rootDirectory });
-  assertIssue(result, "admin_portal_edge_unexpected");
+  assertIssue(result, "unsupported_root_relative_import");
 });
+
+for (const fixture of [
+  {
+    surface: "Portal",
+    importer: "admin/src/features/user-portal/user-registration-page.tsx",
+    specifier: "/src/features/user-portal/root-relative-shadow",
+    checkerShadow:
+      "admin/src/features/user-portal/root-relative-shadow.ts",
+    viteInput:
+      "admin/portal/src/features/user-portal/root-relative-shadow.ts"
+  },
+  {
+    surface: "Site",
+    importer: "admin/src/features/company-site/company-site-page.tsx",
+    specifier: "/src/features/company-site/root-relative-shadow",
+    checkerShadow:
+      "admin/src/features/company-site/root-relative-shadow.ts",
+    viteInput:
+      "admin/site/src/features/company-site/root-relative-shadow.ts"
+  }
+]) {
+  test(`synthetic ${fixture.surface} root-relative shadow fails closed`, (t) => {
+    const rootDirectory = createPassingFixture(t);
+    appendFixtureFile(
+      rootDirectory,
+      fixture.importer,
+      `\nimport shadow from "${fixture.specifier}";\nvoid shadow;\n`
+    );
+    writeFixtureFile(
+      rootDirectory,
+      fixture.checkerShadow,
+      'export default "checker-shadow";\n'
+    );
+    writeFixtureFile(
+      rootDirectory,
+      fixture.viteInput,
+      'export default "vite-input";\n'
+    );
+
+    const result = verifyFrontendSourceBoundaries({ rootDirectory });
+    assertIssue(result, "unsupported_root_relative_import");
+  });
+}
 
 test("synthetic import.meta.glob fails closed", (t) => {
   const rootDirectory = createPassingFixture(t);
@@ -769,6 +812,43 @@ test("synthetic explicit .mjs resolves to reviewed .mts source", (t) => {
   assertIssue(result, "forbidden_active_reachability");
 });
 
+for (const [runtimeExtension, declarationExtension] of [
+  [".js", ".d.ts"],
+  [".jsx", ".d.ts"],
+  [".mjs", ".d.mts"],
+  [".cjs", ".d.cts"]
+]) {
+  test(
+    `synthetic explicit ${runtimeExtension} declaration shadow fails closed`,
+    (t) => {
+      const rootDirectory = createPassingFixture(t);
+      appendFixtureFile(
+        rootDirectory,
+        "admin/src/App.tsx",
+        `\ntype Hidden = import("./declaration-shadow${runtimeExtension}").Hidden;\nvoid (0 as unknown as Hidden);\n`
+      );
+      writeFixtureFile(
+        rootDirectory,
+        `admin/src/declaration-shadow${runtimeExtension}`,
+        "export default {};\n"
+      );
+      writeFixtureFile(
+        rootDirectory,
+        `admin/src/declaration-shadow${declarationExtension}`,
+        'import type { Hidden } from "./app/archive/runtime-source";\nexport type { Hidden };\n'
+      );
+      writeFixtureFile(
+        rootDirectory,
+        "admin/src/app/archive/runtime-source.ts",
+        "export interface Hidden { value: string }\n"
+      );
+
+      const result = verifyFrontendSourceBoundaries({ rootDirectory });
+      assertIssue(result, "ambiguous_local_import_resolution");
+    }
+  );
+}
+
 test("synthetic TypeScript import type expression is traversed", (t) => {
   const rootDirectory = createPassingFixture(t);
   appendFixtureFile(
@@ -842,7 +922,7 @@ test("synthetic root-relative build input fails closed", (t) => {
   );
 
   const result = verifyFrontendSourceBoundaries({ rootDirectory });
-  assertIssue(result, "source_boundary_escape");
+  assertIssue(result, "unsupported_root_relative_import");
 });
 
 test("synthetic package import alias fails closed", (t) => {
@@ -951,6 +1031,40 @@ test("synthetic Portal-only fixture edge fails exact-set checks", (t) => {
   assertIssue(result, "fixture_edge_unexpected");
 });
 
+for (const fixture of [
+  {
+    label: "Portal fixtures directory",
+    importer: "admin/src/features/user-portal/user-registration-page.tsx",
+    specifier: "./fixtures/runtime-source",
+    repositoryPath:
+      "admin/src/features/user-portal/fixtures/runtime-source.ts"
+  },
+  {
+    label: "Site previews directory",
+    importer: "admin/src/features/company-site/company-site-page.tsx",
+    specifier: "./previews/runtime-source",
+    repositoryPath:
+      "admin/src/features/company-site/previews/runtime-source.ts"
+  }
+]) {
+  test(`synthetic ${fixture.label} edge fails exact-set checks`, (t) => {
+    const rootDirectory = createPassingFixture(t);
+    appendFixtureFile(
+      rootDirectory,
+      fixture.importer,
+      `\nimport hidden from "${fixture.specifier}";\nvoid hidden;\n`
+    );
+    writeFixtureFile(
+      rootDirectory,
+      fixture.repositoryPath,
+      "export default {};\n"
+    );
+
+    const result = verifyFrontendSourceBoundaries({ rootDirectory });
+    assertIssue(result, "fixture_edge_unexpected");
+  });
+}
+
 test("synthetic Portal to Admin reachability fails closed", (t) => {
   const rootDirectory = createPassingFixture(t);
   appendFixtureFile(
@@ -975,15 +1089,22 @@ test("synthetic Site to Portal reachability fails closed", (t) => {
   assertIssue(result, "site_foreign_surface_reachability");
 });
 
-for (const [label, repositoryPath] of [
+for (const [label, repositoryPath, keepExtension = false] of [
   ["test", "admin/src/test/runtime-source.ts"],
+  ["nested test", "admin/src/features/orders/test/runtime-source.ts"],
+  ["nested tests", "admin/src/features/orders/tests/runtime-source.ts"],
+  ["nested __tests__", "admin/src/features/orders/__tests__/runtime-source.ts"],
+  ["test suffix", "admin/src/features/orders/runtime-source.test.ts", true],
+  ["spec suffix", "admin/src/features/orders/runtime-source.spec.ts", true],
   ["archive", "admin/src/app/archive/runtime-source.ts"],
   ["quarantine", "admin/src/app/quarantine/runtime-source.ts"]
 ]) {
   test(`synthetic active ${label} reachability fails closed`, (t) => {
     const rootDirectory = createPassingFixture(t);
-    const specifier = "./" + path.posix.relative("admin/src", repositoryPath)
-      .replace(/\.ts$/u, "");
+    const relative = path.posix.relative("admin/src", repositoryPath);
+    const specifier = "./" + (
+      keepExtension ? relative : relative.replace(/\.ts$/u, "")
+    );
     appendFixtureFile(
       rootDirectory,
       "admin/src/App.tsx",
