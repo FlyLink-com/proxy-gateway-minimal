@@ -76,7 +76,12 @@ Risk A work needs a separate exact approval.
     .some((key) => Object.hasOwn(overrides, key));
   if (!hasStateOverrides) {
     const states = {};
-    for (const filename of ["current.json", "lanes.json", "tasks.json"]) {
+    for (const filename of [
+      "current.json",
+      "lanes.json",
+      "tasks.json",
+      "project-v2-contract.json"
+    ]) {
       const sourcePath = join(REPOSITORY_ROOT, "project-state", filename);
       const text = readFileSync(sourcePath, "utf8");
       states[filename] = JSON.parse(text);

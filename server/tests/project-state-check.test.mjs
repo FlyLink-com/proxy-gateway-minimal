@@ -10,6 +10,12 @@ import {
 } from "../../scripts/check-project-state.mjs";
 
 const REPOSITORY_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+const REVIEWED_PROJECT_STATE_FILENAMES = [
+  "lanes.json",
+  "current.json",
+  "tasks.json",
+  "project-v2-contract.json"
+];
 
 function createActualProjectStateFixture(prefix, mutate = () => {}) {
   const rootDir = mkdtempSync(join(tmpdir(), prefix));
@@ -17,7 +23,7 @@ function createActualProjectStateFixture(prefix, mutate = () => {}) {
   const states = {};
   const originalStates = {};
   const originalTexts = {};
-  for (const filename of ["lanes.json", "current.json", "tasks.json"]) {
+  for (const filename of REVIEWED_PROJECT_STATE_FILENAMES) {
     originalTexts[filename] = readFileSync(
       join(REPOSITORY_ROOT, "project-state", filename),
       "utf8"
@@ -54,6 +60,9 @@ test("project-state check pins every compatibility JSON to reviewed bytes", asyn
     }],
     ["tasks.json", (states) => {
       states["tasks.json"].purpose += " Unreviewed wording.";
+    }],
+    ["project-v2-contract.json", (states) => {
+      states["project-v2-contract.json"].managedFields[0].options.push("Unreviewed");
     }]
   ];
 
@@ -69,7 +78,7 @@ test("project-state check pins every compatibility JSON to reviewed bytes", asyn
         result.errors.join("\n"),
         new RegExp(`project-state/${filename}: content digest must match the reviewed compatibility contract`)
       );
-      for (const otherFilename of ["lanes.json", "current.json", "tasks.json"]) {
+      for (const otherFilename of REVIEWED_PROJECT_STATE_FILENAMES) {
         if (otherFilename !== filename) {
           assert.doesNotMatch(
             result.errors.join("\n"),
@@ -84,7 +93,7 @@ test("project-state check pins every compatibility JSON to reviewed bytes", asyn
 test("project-state reviewed digests accept checkout-only CRLF conversion", () => {
   const rootDir = mkdtempSync(join(tmpdir(), "project-state-reviewed-crlf-"));
   mkdirSync(join(rootDir, "project-state"));
-  for (const filename of ["lanes.json", "current.json", "tasks.json"]) {
+  for (const filename of REVIEWED_PROJECT_STATE_FILENAMES) {
     const text = readFileSync(
       join(REPOSITORY_ROOT, "project-state", filename),
       "utf8"
@@ -103,13 +112,13 @@ test("project-state reviewed digests accept checkout-only CRLF conversion", () =
 });
 
 test("project-state reviewed files reject symlink substitution", async (t) => {
-  for (const targetFilename of ["lanes.json", "current.json", "tasks.json"]) {
+  for (const targetFilename of REVIEWED_PROJECT_STATE_FILENAMES) {
     await t.test(targetFilename, () => {
       const rootDir = mkdtempSync(join(tmpdir(), "project-state-reviewed-symlink-"));
       const outsideDir = mkdtempSync(join(tmpdir(), "project-state-reviewed-outside-"));
       mkdirSync(join(rootDir, "project-state"));
 
-      for (const filename of ["lanes.json", "current.json", "tasks.json"]) {
+      for (const filename of REVIEWED_PROJECT_STATE_FILENAMES) {
         const text = readFileSync(
           join(REPOSITORY_ROOT, "project-state", filename),
           "utf8"
@@ -130,6 +139,151 @@ test("project-state reviewed files reject symlink substitution", async (t) => {
         result.errors.join("\n"),
         new RegExp(`project-state/${targetFilename}: reviewed compatibility file must be a regular non-symlink file within the repository`)
       );
+    });
+  }
+});
+
+test("project-state check validates the reviewed semantic Project v2 contract", () => {
+  const contract = JSON.parse(readFileSync(
+    join(REPOSITORY_ROOT, "project-state", "project-v2-contract.json"),
+    "utf8"
+  ));
+
+  assert.equal(contract.schemaVersion, 1);
+  assert.equal(contract.contractType, "github-project-v2-static-contract");
+  assert.equal(contract.verifiedAt, "2026-08-30");
+  assert.equal(contract.identityBinding, "semantic-only");
+  assert.deepEqual(contract.target, {
+    owner: "gccwebos-com",
+    projectNumber: 1,
+    repository: "gccwebos-com/proxy-gateway-minimal",
+    name: "GCC WebOS — Delivery",
+    expectedClosed: false
+  });
+  assert.deepEqual(contract.authority, {
+    projectProjectionOnly: true,
+    productionAuthority: false,
+    writebackEnabled: false
+  });
+  assert.equal(contract.nativeWorkflowGraceSeconds, 900);
+  assert.deepEqual(
+    contract.managedFields.map(({ key, name, type, options }) => ({ key, name, type, options })),
+    [
+      { key: "status", name: "Status", type: "single-select", options: ["Backlog", "Todo", "In Progress", "Blocked", "Done"] },
+      { key: "lane", name: "Lane", type: "single-select", options: ["traffic-accounting", "portal-lifecycle", "commercial-foundation", "operations-foundation", "version-management", "dependency-materialization", "legacy-retirement"] },
+      { key: "risk", name: "Risk", type: "single-select", options: ["A", "B", "C"] },
+      { key: "source-production-state", name: "Source / Production State", type: "single-select", options: ["aligned", "drift", "runtime-only", "artifact-only", "unknown"] },
+      { key: "validation-state", name: "Validation State", type: "single-select", options: ["Not started", "Running", "Passed", "Blocked"] },
+      { key: "production-impact", name: "Production Impact", type: "single-select", options: ["none", "read-only", "mutation gated separately"] }
+    ]
+  );
+  assert.deepEqual(contract.itemFieldRequirements, [
+    {
+      scope: "managed_repository",
+      nativeKind: "issue",
+      requiredFieldKeys: [
+        "status",
+        "lane",
+        "risk",
+        "source-production-state",
+        "validation-state",
+        "production-impact"
+      ]
+    },
+    {
+      scope: "managed_repository",
+      nativeKind: "pull_request",
+      requiredFieldKeys: ["status"]
+    }
+  ]);
+  assert.deepEqual(contract.views, [
+    { key: "portfolio-triage", name: "Portfolio Triage", layout: "table", filter: "is:issue is:open" },
+    { key: "execution-board", name: "Execution Board", layout: "board", filter: "is:issue is:open", groupBy: "Status", sliceBy: "Lane" },
+    { key: "risk-a-gates", name: "Risk A Gates", layout: "board", filter: "risk:A -status:Done", groupBy: "Status" },
+    { key: "review-queue", name: "Review Queue", layout: "table", filter: "is:pr is:open -is:draft" }
+  ]);
+  assert.equal(contract.nativeWorkflows.length, 6);
+});
+
+test("project-state check fails closed on malformed or live Project v2 contract data", async (t) => {
+  const cases = [
+    ["rejects a non-object contract root", (states) => {
+      states["project-v2-contract.json"] = [];
+    }, /project-v2-contract\.json: expected an object in the reviewed static Project v2 contract/],
+    ["requires exactly six fields", (states) => {
+      states["project-v2-contract.json"].managedFields.pop();
+    }, /managedFields: must contain exactly six reviewed fields/],
+    ["rejects duplicate field keys", (states) => {
+      states["project-v2-contract.json"].managedFields[1].key = "status";
+    }, /managedFields\[1\]\.key: duplicate field key/],
+    ["rejects duplicate field names", (states) => {
+      states["project-v2-contract.json"].managedFields[1].name = "Status";
+    }, /managedFields\[1\]\.name: duplicate field name/],
+    ["rejects unsupported field types", (states) => {
+      states["project-v2-contract.json"].managedFields[0].type = "text";
+    }, /managedFields\[0\]\.type: must be single-select/],
+    ["rejects duplicate options within a field", (states) => {
+      states["project-v2-contract.json"].managedFields[0].options[1] = "Backlog";
+    }, /managedFields\[0\]\.options\[1\]: duplicate option/],
+    ["pins item field requirements by native kind", (states) => {
+      states["project-v2-contract.json"].itemFieldRequirements[1].requiredFieldKeys.push("risk");
+    }, /itemFieldRequirements: must exactly match the reviewed static Project v2 contract/],
+    ["does not allow Issue required fields to shrink", (states) => {
+      states["project-v2-contract.json"].itemFieldRequirements[0].requiredFieldKeys.splice(1, 1);
+    }, /itemFieldRequirements: must exactly match the reviewed static Project v2 contract/],
+    ["requires the item field applicability contract", (states) => {
+      delete states["project-v2-contract.json"].itemFieldRequirements;
+    }, /itemFieldRequirements: required field is missing or empty/],
+    ["requires Lane options to equal lanes.json", (states) => {
+      states["project-v2-contract.json"].managedFields[1].options.reverse();
+    }, /Lane options must exactly match project-state\/lanes\.json/],
+    ["keeps Project lanes disjoint from internal-only lanes", (states) => {
+      states["lanes.json"].githubProjectIndex.internalOnlyLanes.push("traffic-accounting");
+    }, /Lane options must not include internal-only lanes: traffic-accounting/],
+    ["rejects live item data", (states) => {
+      states["project-v2-contract.json"].liveItems = [{ number: 597 }];
+    }, /liveItems: live item\/count\/queue\/runtime data is forbidden/],
+    ["rejects live count data", (states) => {
+      states["project-v2-contract.json"].openIssueCount = 15;
+    }, /openIssueCount: live item\/count\/queue\/runtime data is forbidden/],
+    ["rejects live queue data", (states) => {
+      states["project-v2-contract.json"].reviewQueue = [];
+    }, /reviewQueue: live item\/count\/queue\/runtime data is forbidden/],
+    ["rejects runtime data", (states) => {
+      states["project-v2-contract.json"].runtimeState = "healthy";
+    }, /runtimeState: live item\/count\/queue\/runtime data is forbidden/],
+    ["rejects GraphQL identifiers", (states) => {
+      states["project-v2-contract.json"].managedFields[0].fieldId = "PVTF_fake";
+    }, /fieldId: GraphQL identifiers are forbidden/],
+    ["requires semantic-only identity binding", (states) => {
+      states["project-v2-contract.json"].identityBinding = "graphql-id";
+    }, /identityBinding: must be semantic-only/],
+    ["keeps production authority disabled", (states) => {
+      states["project-v2-contract.json"].authority.productionAuthority = true;
+    }, /authority: must exactly match the reviewed static Project v2 contract/],
+    ["pins the semantic target", (states) => {
+      states["project-v2-contract.json"].target.projectNumber = 2;
+    }, /target: must exactly match the reviewed static Project v2 contract/],
+    ["pins the native workflow grace window", (states) => {
+      states["project-v2-contract.json"].nativeWorkflowGraceSeconds = 0;
+    }, /nativeWorkflowGraceSeconds: must be 900/],
+    ["pins all reviewed view semantics", (states) => {
+      states["project-v2-contract.json"].views[1].sliceBy = "Risk";
+    }, /views: must exactly match the reviewed static Project v2 contract/],
+    ["pins all reviewed workflow semantics", (states) => {
+      states["project-v2-contract.json"].nativeWorkflows[4].action.value = "Todo";
+    }, /nativeWorkflows: must exactly match the reviewed static Project v2 contract/]
+  ];
+
+  for (const [name, mutate, expected] of cases) {
+    await t.test(name, () => {
+      const rootDir = createActualProjectStateFixture(
+        "project-v2-contract-invalid-",
+        mutate
+      );
+      const result = checkProjectState({ rootDir, today: "2026-08-30" });
+      assert.equal(result.ok, false);
+      assert.match(result.errors.join("\n"), expected);
     });
   }
 });
@@ -856,7 +1010,7 @@ test("project-state check rejects semantic Project, production, and stale-receip
     await t.test(fixture.name, () => {
       const rootDir = mkdtempSync(join(tmpdir(), "project-state-semantic-bypass-"));
       mkdirSync(join(rootDir, "project-state"));
-      for (const filename of ["lanes.json", "current.json", "tasks.json"]) {
+      for (const filename of REVIEWED_PROJECT_STATE_FILENAMES) {
         const source = readFileSync(join(REPOSITORY_ROOT, "project-state", filename), "utf8");
         const state = JSON.parse(source);
         if (filename === "current.json") {

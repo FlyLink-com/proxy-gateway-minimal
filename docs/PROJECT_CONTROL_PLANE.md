@@ -1,6 +1,6 @@
 # Project Control Plane
 
-Last updated: 2026-08-28, America/Los_Angeles.
+Last updated: 2026-08-30, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_state_model
   superseded_by: null
-  last_verified_at: 2026-08-29
+  last_verified_at: 2026-08-30
   production_authority: false
 ```
 
@@ -44,10 +44,11 @@ GitHub PRs / Issues
   review, discussion, approval, and merge boundaries
 ```
 
-The initial implementation was intentionally small and docs-only. Its JSON
-state files preserve dated project direction and constraints for agent
-orientation; they are not a live work index. This model adds no database,
-service, external dependency, or production integration.
+The initial implementation was intentionally small and docs-only. It now also
+includes offline compatibility checking and a reviewed Project v2
+configuration contract. The dated JSON state files remain orientation inputs
+rather than a live work index. This model adds no database, daemon, runtime
+mutation, production integration, or Project writeback.
 
 ## Boundary
 
@@ -123,6 +124,28 @@ For current compatibility handling and rollout status, see
 `docs/PROJECT_CONTEXT.md`. Snapshot-derived hints remain non-authoritative;
 perform a fresh native Issue/PR read before current sequencing.
 
+### `project-state/project-v2-contract.json`
+
+Reviewed, non-live configuration contract for organization Project #1.
+
+Use it to answer:
+
+- which six Project fields are managed, and what are their exact names, types,
+  and semantic options?
+- which managed fields are required for repository Issues versus pull requests?
+- which views and native workflow transitions are expected?
+- what consistency grace and authority boundaries must a reader preserve?
+
+The contract contains no live items, counts, queue, branch, check, deployment,
+or runtime state. GraphQL field and option IDs are not guessed or copied into
+this semantic contract; tasks that depend on them require a fresh authoritative
+read. The contract is SHA-256 pinned and validated with the other reviewed
+project-state inputs. Its `itemFieldRequirements` keeps managed-repository
+Issues at all six required fields while requiring only `Status` for
+managed-repository pull requests; absence of the other five optional PR slots
+is not a contract violation. Views and native workflows are reviewed static
+expectations, not evidence that the live Project currently matches them.
+
 ## Ownership
 
 ```text
@@ -141,12 +164,18 @@ docs/PROJECT_SIMPLIFICATION_MAP.md:
 docs/MULTI_AGENT_OPERATING_MODEL.md:
   lead/subagent task packet and verification rules
 
+docs/GITHUB_ISSUE_PR_WORKFLOW.md:
+  canonical Project field, view, workflow, Issue, and PR semantics
+
 project-state/lanes.json:
   reviewed lane definitions and safety boundaries
 
 project-state/current.json and project-state/tasks.json:
   dated compatibility snapshots; not live sequencing
   repository-local consumers require a fresh native Issue/PR read
+
+project-state/project-v2-contract.json:
+  reviewed Project configuration and read-only authority boundary; no live values
 ```
 
 Do not duplicate full historical execution records in `project-state`. Keep
@@ -216,30 +245,35 @@ It is acceptable to store non-secret public domains, public IPs, node labels,
 file paths to redacted records, and references to where a secret is held, as
 long as the secret value itself is not included.
 
-## Future Tooling
+## Implemented Tooling
 
-The first repository-local checker is available:
+The repository-local checker validates the reviewed structured inputs:
 
 ```text
 npm run project-state:check
 ```
 
-It validates JSON parsing, required structured-state files, lane document
-references, task risk/validation fields, A-tier blocked status, and raw secret
-patterns in `project-state` plus declared source docs.
+It validates complete SHA-256 pins, JSON shape, dates, lane document references,
+task risk/validation, historical A-tier blocking contracts, unsafe paths and
+symlinks, authority wording, and sensitive-data patterns. It also validates
+the Project v2 contract's six unique fields and options and requires its Lane
+options to match `project-state/lanes.json` exactly.
 
-Future B-tier tooling can extend this to validate:
+## Future Tooling
 
-- every lane points to existing docs
-- every task has a risk tier and validation command
-- every A-tier task has forbidden mutation without approval
-- docs/README includes active project-state pointers
-- `PROJECT_CONTEXT.md` does not grow uncontrolled historical detail
-- sensitive-data patterns are absent from docs and project-state
-- stale timestamps or stale branch names are flagged
+Future B-tier readers may add complete, redacted live-evidence adapters for
+native Issue and PR inventory, Project configuration, exact source ancestry,
+and exact-head required checks. Each adapter must declare completeness before
+any dependent comparison can run. Remaining offline checks may cover
+`docs/README.md` pointers, bounded `PROJECT_CONTEXT.md` growth, and genuinely
+stale timestamps or branch names.
 
-Do not build a service or database for this until JSON plus simple repository
-checks become insufficient.
+Project field writeback remains a separate later stage. It must default to
+dry-run, bind exact reviewed input and evidence digests, show a bounded
+mutation plan, require exact operator approval, reject concurrent change, and
+read every changed field back. This static-contract slice generates no
+mutation or auto-fix plan. Do not build a service or database until JSON plus
+bounded commands prove insufficient.
 
 ## Read Order
 
