@@ -1,6 +1,10 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import {
   existsSync,
+  lstatSync,
+  realpathSync,
   readdirSync,
   readFileSync,
   statSync
@@ -11,24 +15,53 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const DEFAULT_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SOURCE_ROOT = "admin/src";
 const PARSED_EXTENSIONS = new Set([
+  ".cjs",
   ".css",
+  ".cts",
   ".js",
   ".jsx",
   ".mjs",
+  ".mts",
   ".ts",
   ".tsx"
 ]);
 const RESOLUTION_EXTENSIONS = [
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
   ".mjs",
+  ".js",
+  ".mts",
+  ".ts",
+  ".jsx",
+  ".tsx",
   ".css",
   ".json",
   ".svg",
+  ".cjs",
+  ".cts",
   ".d.ts"
 ];
+const EXPLICIT_TYPESCRIPT_ALTERNATIVES = {
+  ".cjs": [".cts"],
+  ".js": [".ts", ".tsx"],
+  ".jsx": [".tsx"],
+  ".mjs": [".mts"]
+};
+const NON_EXECUTABLE_LEAF_EXTENSIONS = new Set([
+  ".avif",
+  ".eot",
+  ".gif",
+  ".html",
+  ".ico",
+  ".jpeg",
+  ".jpg",
+  ".json",
+  ".md",
+  ".png",
+  ".svg",
+  ".txt",
+  ".webp",
+  ".woff",
+  ".woff2"
+]);
 
 const ENTRYPOINTS = {
   admin: "admin/src/main.tsx",
@@ -50,6 +83,18 @@ const ENTRY_HTML = {
     module: "../src/site-main.tsx"
   }
 };
+
+const EXPECTED_ENTRY_HTML_SHA256 = {
+  "admin/index.html":
+    "35ac077fd177e228dbd9c6e327decaa8cfa1e1e4fb5227b91db6c09e3f1eec11",
+  "admin/portal/index.html":
+    "2b7ed226e2fb6ccdb23c5f989ec0d1f64b337a4bca92604446538d4c7ad81157",
+  "admin/site/index.html":
+    "4ddae734ee33480e3d3ead05f0d9fe95f019fe8077424029ef0d4aa2299a8319"
+};
+
+const EXPECTED_TSCONFIG_SHA256 =
+  "ccfb0d2c7b4c35a224762935ef838bec71bcd61b6a7c4bc3ef140f7a8b178701";
 
 const EXPECTED_ENTRY_IMPORTS = {
   "admin/src/main.tsx": [
@@ -121,6 +166,14 @@ const EXPECTED_FIXTURE_EDGES = new Set([
   "admin/src/pages/subscription-usage-monitor-page.tsx -> admin/src/features/subscriptions/usage-runtime-fixture.ts"
 ]);
 
+const EXPECTED_FIXTURE_EDGES_BY_SURFACE = {
+  admin: EXPECTED_FIXTURE_EDGES,
+  portal: new Set([
+    "admin/src/features/user-portal/user-portal-local.ts -> admin/src/features/user-portal/totp-preview.ts"
+  ]),
+  site: new Set()
+};
+
 const PORTAL_SHARED_FILES = new Set([
   "admin/src/app/public-locale.ts",
   "admin/src/components/modal-frame.tsx",
@@ -138,6 +191,17 @@ const EXPECTED_VITE_LOCAL_IMPORTS = {
     "./vite.portal.config"
   ],
   "admin/vite.site.config.ts": []
+};
+
+const EXPECTED_VITE_CONFIG_SHA256 = {
+  "admin/vite.config.ts":
+    "0e01c02bc34d25324e9432a36118097c98e6e28c74d9a25baddfab9e3273b5f7",
+  "admin/vite.portal.config.ts":
+    "07e106c9ae9ab03871c82c6491cfc0bd6dc84e080e3c085295ef30904b61eadd",
+  "admin/vite.portal.local-api-validation.config.ts":
+    "0c09218b5c602590db98fdf8abf4029cae7e191d83f36fd9dff21253099085ca",
+  "admin/vite.site.config.ts":
+    "fc2e85a9108f9e0ed90535886fec690c89292a2791f2b1f9d31d68aea616bcd6"
 };
 
 const EXPECTED_PUBLIC_FILES = new Set([
@@ -164,258 +228,237 @@ function issue(code, details = {}) {
   return { code, ...details };
 }
 
-function codePositionMask(source) {
-  const mask = new Uint8Array(source.length);
+let cachedTypescript;
+let typescriptLoadAttempted = false;
 
-  function skipQuoted(index, quote) {
-    index += 1;
-    while (index < source.length) {
-      if (source[index] === "\\") {
-        index += 2;
-      } else if (source[index] === quote) {
-        return index + 1;
-      } else {
-        index += 1;
+function loadTypescriptParser() {
+  if (!typescriptLoadAttempted) {
+    typescriptLoadAttempted = true;
+    for (const packageFile of ["package.json", "admin/package.json"]) {
+      try {
+        const requireFromPackage = createRequire(pathToFileURL(
+          path.join(DEFAULT_ROOT, packageFile)
+        ));
+        cachedTypescript = requireFromPackage("typescript");
+        break;
+      } catch {
+        cachedTypescript = null;
       }
     }
-    return index;
   }
+  return cachedTypescript;
+}
 
-  function scanTemplate(index) {
-    index += 1;
-    while (index < source.length) {
-      if (source[index] === "\\") {
-        index += 2;
-      } else if (source[index] === "`") {
-        return index + 1;
-      } else if (source[index] === "$" && source[index + 1] === "{") {
-        index = scanCode(index + 2, true);
-      } else {
-        index += 1;
-      }
-    }
-    return index;
+function typescriptScriptKind(ts, extension) {
+  if (extension === ".tsx") return ts.ScriptKind.TSX;
+  if (extension === ".jsx") return ts.ScriptKind.JSX;
+  if (extension === ".js" || extension === ".mjs" || extension === ".cjs") {
+    return ts.ScriptKind.JS;
   }
+  return ts.ScriptKind.TS;
+}
 
-  function scanCode(index, stopAtTemplateBrace = false) {
-    let braceDepth = 0;
-    while (index < source.length) {
-      const current = source[index];
-      const next = source[index + 1];
-      if (current === "/" && next === "/") {
-        index += 2;
-        while (index < source.length && source[index] !== "\n") index += 1;
-      } else if (current === "/" && next === "*") {
-        index += 2;
-        while (
-          index < source.length
-          && !(source[index] === "*" && source[index + 1] === "/")
-        ) index += 1;
-        index = Math.min(source.length, index + 2);
-      } else if (current === '"' || current === "'") {
-        index = skipQuoted(index, current);
-      } else if (current === "`") {
-        index = scanTemplate(index);
-      } else if (current === "{") {
-        mask[index] = 1;
-        braceDepth += 1;
-        index += 1;
-      } else if (current === "}") {
-        if (stopAtTemplateBrace && braceDepth === 0) return index + 1;
-        mask[index] = 1;
-        braceDepth = Math.max(0, braceDepth - 1);
-        index += 1;
-      } else {
-        mask[index] = 1;
-        index += 1;
-      }
-    }
-    return index;
+function unwrapTypescriptExpression(ts, node) {
+  while (
+    node
+    && (
+      ts.isParenthesizedExpression(node)
+      || ts.isAsExpression(node)
+      || ts.isTypeAssertionExpression(node)
+      || ts.isNonNullExpression(node)
+      || ts.isExpressionWithTypeArguments(node)
+      || ts.isSatisfiesExpression?.(node)
+      || ts.isPartiallyEmittedExpression?.(node)
+    )
+  ) {
+    node = node.expression;
   }
-
-  scanCode(0);
-  return mask;
+  return node;
 }
 
-function isIdentifierStart(character) {
-  return /[A-Za-z_$]/u.test(character ?? "");
+function isImportMetaExpression(ts, node) {
+  const unwrapped = unwrapTypescriptExpression(ts, node);
+  return Boolean(
+    unwrapped
+    && ts.isMetaProperty(unwrapped)
+    && unwrapped.keywordToken === ts.SyntaxKind.ImportKeyword
+    && unwrapped.name.text === "meta"
+  );
 }
 
-function isIdentifierPart(character) {
-  return /[A-Za-z0-9_$]/u.test(character ?? "");
-}
-
-function readIdentifier(source, mask, index) {
-  if (mask[index] !== 1 || !isIdentifierStart(source[index])) return null;
-  let end = index + 1;
-  while (mask[end] === 1 && isIdentifierPart(source[end])) end += 1;
-  return { value: source.slice(index, end), end };
-}
-
-function nextCodeIndex(mask, index) {
-  while (index < mask.length && mask[index] !== 1) index += 1;
-  return index;
-}
-
-function previousCodeIndex(mask, index) {
-  index -= 1;
-  while (index >= 0 && mask[index] !== 1) index -= 1;
-  return index;
-}
-
-function skipModuleTrivia(source, index) {
-  while (index < source.length) {
-    if (/\s/u.test(source[index])) {
-      index += 1;
-    } else if (source[index] === "/" && source[index + 1] === "/") {
-      index += 2;
-      while (index < source.length && source[index] !== "\n") index += 1;
-    } else if (source[index] === "/" && source[index + 1] === "*") {
-      index += 2;
-      while (
-        index < source.length
-        && !(source[index] === "*" && source[index + 1] === "/")
-      ) index += 1;
-      index = Math.min(source.length, index + 2);
-    } else {
-      break;
-    }
+function importMetaMemberName(ts, node) {
+  const unwrapped = unwrapTypescriptExpression(ts, node);
+  if (ts.isPropertyAccessExpression(unwrapped)) {
+    return isImportMetaExpression(ts, unwrapped.expression)
+      ? unwrapped.name.text
+      : null;
   }
-  return index;
-}
-
-function readModuleString(source, index) {
-  const quote = source[index];
-  if (quote !== '"' && quote !== "'") return null;
-  let value = "";
-  let unsupported = false;
-  index += 1;
-  while (index < source.length) {
-    const current = source[index];
-    if (current === "\\") {
-      unsupported = true;
-      index += 2;
-    } else if (current === quote) {
-      return { value, unsupported, end: index + 1 };
-    } else if (current === "\n" || current === "\r") {
-      return { value, unsupported: true, end: index };
-    } else {
-      value += current;
-      index += 1;
-    }
-  }
-  return { value, unsupported: true, end: index };
-}
-
-function findFromSpecifier(source, mask, index) {
-  while (index < source.length) {
-    if (mask[index] === 1 && source[index] === ";") return null;
-    const identifier = readIdentifier(source, mask, index);
-    if (!identifier) {
-      index += 1;
-      continue;
-    }
-    if (identifier.value === "from") {
-      const specifier = readModuleString(
-        source,
-        skipModuleTrivia(source, identifier.end)
-      );
-      if (specifier) return specifier;
-    }
-    index = identifier.end;
+  if (ts.isElementAccessExpression(unwrapped)) {
+    const argument = unwrapTypescriptExpression(ts, unwrapped.argumentExpression);
+    return (
+      isImportMetaExpression(ts, unwrapped.expression)
+      && argument
+      && ts.isStringLiteral(argument)
+    ) ? argument.text : null;
   }
   return null;
 }
 
-function inspectJavaScriptImportSource(source) {
-  const mask = codePositionMask(source);
+function typescriptExpressionTailName(ts, node) {
+  const unwrapped = unwrapTypescriptExpression(ts, node);
+  if (ts.isIdentifier(unwrapped)) return unwrapped.text;
+  if (ts.isPropertyAccessExpression(unwrapped)) return unwrapped.name.text;
+  if (ts.isElementAccessExpression(unwrapped)) {
+    const argument = unwrapTypescriptExpression(ts, unwrapped.argumentExpression);
+    return argument && ts.isStringLiteral(argument) ? argument.text : null;
+  }
+  return null;
+}
+
+function typescriptNodeContainsImportMetaUrl(ts, node) {
+  let found = false;
+  function visit(current) {
+    if (found) return;
+    if (importMetaMemberName(ts, current) === "url") {
+      found = true;
+      return;
+    }
+    ts.forEachChild(current, visit);
+  }
+  visit(node);
+  return found;
+}
+
+function inspectJavaScriptImportSource(source, { extension }) {
+  const ts = loadTypescriptParser();
   const specifiers = [];
   let nonLiteralDynamicImports = 0;
   let unsupportedModuleSpecifiers = 0;
   let importMetaGlobCalls = 0;
   let commonJsRequireCalls = 0;
+  let unsupportedPackageImportAliases = 0;
+  let viteWorkerEntries = 0;
+  let viteUrlEntries = 0;
+  let ambiguousJavaScriptSyntax = 0;
+  let typescriptParserUnavailable = 0;
+  let unsupportedJsxPragmas = 0;
+  let unsupportedTypescriptDirectives = 0;
 
-  function recordSpecifier(specifier) {
-    if (!specifier) return;
-    if (specifier.unsupported) unsupportedModuleSpecifiers += 1;
-    else specifiers.push(specifier.value);
+  if (!ts) {
+    typescriptParserUnavailable = 1;
+    return {
+      specifiers,
+      nonLiteralDynamicImports,
+      unsupportedModuleSpecifiers,
+      commonJsRequireCalls,
+      unsupportedCssImports: 0,
+      cssAssetReferences: 0,
+      unsupportedCssModuleImports: 0,
+      unsupportedCssEscapedSyntax: 0,
+      importMetaGlobCalls,
+      unsupportedPackageImportAliases,
+      viteWorkerEntries,
+      viteUrlEntries,
+      ambiguousJavaScriptSyntax,
+      typescriptParserUnavailable,
+      unsupportedJsxPragmas,
+      unsupportedTypescriptDirectives
+    };
   }
 
-  let index = 0;
-  while (index < source.length) {
-    const identifier = readIdentifier(source, mask, index);
-    if (!identifier) {
-      index += 1;
-      continue;
+  const sourceFile = ts.createSourceFile(
+    "source" + extension,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    typescriptScriptKind(ts, extension)
+  );
+  ambiguousJavaScriptSyntax += sourceFile.parseDiagnostics?.length ?? 0;
+  for (const pragma of ["jsx", "jsxfrag", "jsximportsource", "jsxruntime"]) {
+    if (sourceFile.pragmas?.has(pragma)) unsupportedJsxPragmas += 1;
+  }
+  unsupportedTypescriptDirectives += (
+    (sourceFile.referencedFiles?.length ?? 0)
+    + (sourceFile.typeReferenceDirectives?.length ?? 0)
+    + (sourceFile.libReferenceDirectives?.length ?? 0)
+    + (sourceFile.amdDependencies?.length ?? 0)
+    + (sourceFile.hasNoDefaultLib ? 1 : 0)
+    + (sourceFile.amdModuleName !== undefined ? 1 : 0)
+  );
+
+  function recordModuleSpecifier(node) {
+    if (!node || !ts.isStringLiteral(node)) {
+      unsupportedModuleSpecifiers += 1;
+      return;
     }
-
-    const previous = previousCodeIndex(mask, index);
-    const isProperty = source[previous] === ".";
-
-    if (identifier.value === "require" && !isProperty) {
-      const next = nextCodeIndex(mask, identifier.end);
-      if (source[next] === "(") commonJsRequireCalls += 1;
-      index = identifier.end;
-      continue;
+    const raw = node.getText(sourceFile);
+    if (raw.slice(1, -1).includes("\\")) {
+      unsupportedModuleSpecifiers += 1;
+      return;
     }
-
-    if (
-      isProperty
-      || (identifier.value !== "import" && identifier.value !== "export")
-    ) {
-      index = identifier.end;
-      continue;
+    specifiers.push(node.text);
+    if (node.text.startsWith("#")) {
+      unsupportedPackageImportAliases += 1;
     }
+  }
 
-    if (identifier.value === "export") {
-      recordSpecifier(findFromSpecifier(source, mask, identifier.end));
-      index = identifier.end;
-      continue;
-    }
-
-    const next = nextCodeIndex(mask, identifier.end);
-    if (source[next] === "(") {
-      const argument = readModuleString(
-        source,
-        skipModuleTrivia(source, next + 1)
-      );
-      if (argument) recordSpecifier(argument);
-      else nonLiteralDynamicImports += 1;
-      index = next + 1;
-      continue;
-    }
-
-    if (source[next] === ".") {
-      const metaStart = nextCodeIndex(mask, next + 1);
-      const meta = readIdentifier(source, mask, metaStart);
-      const secondDot = meta
-        ? nextCodeIndex(mask, meta.end)
-        : source.length;
-      const memberStart = source[secondDot] === "."
-        ? nextCodeIndex(mask, secondDot + 1)
-        : source.length;
-      const member = readIdentifier(source, mask, memberStart);
-      const call = member
-        ? nextCodeIndex(mask, member.end)
-        : source.length;
+  function visit(node) {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      if (node.moduleSpecifier) recordModuleSpecifier(node.moduleSpecifier);
+      if (node.attributes || node.assertClause) {
+        unsupportedModuleSpecifiers += 1;
+      }
+    } else if (ts.isImportTypeNode(node)) {
       if (
-        meta?.value === "meta"
-        && (member?.value === "glob" || member?.value === "globEager")
-        && source[call] === "("
-      ) importMetaGlobCalls += 1;
-      index = identifier.end;
-      continue;
+        ts.isLiteralTypeNode(node.argument)
+        && ts.isStringLiteral(node.argument.literal)
+      ) {
+        recordModuleSpecifier(node.argument.literal);
+      } else {
+        unsupportedModuleSpecifiers += 1;
+      }
+      if (node.attributes) unsupportedModuleSpecifiers += 1;
+    } else if (ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name)) {
+      recordModuleSpecifier(node.name);
+    } else if (ts.isImportEqualsDeclaration(node)) {
+      commonJsRequireCalls += 1;
     }
 
-    const direct = readModuleString(
-      source,
-      skipModuleTrivia(source, identifier.end)
-    );
-    if (direct) recordSpecifier(direct);
-    else recordSpecifier(findFromSpecifier(source, mask, identifier.end));
-    index = identifier.end;
+    if (ts.isCallExpression(node)) {
+      const callee = unwrapTypescriptExpression(ts, node.expression);
+      if (callee.kind === ts.SyntaxKind.ImportKeyword) {
+        if (node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0])) {
+          recordModuleSpecifier(node.arguments[0]);
+        } else {
+          nonLiteralDynamicImports += 1;
+        }
+      } else if (typescriptExpressionTailName(ts, callee) === "require") {
+        commonJsRequireCalls += 1;
+      }
+    }
+
+    const metaMember = importMetaMemberName(ts, node);
+    if (metaMember === "glob" || metaMember === "globEager") {
+      importMetaGlobCalls += 1;
+    }
+
+    if (ts.isNewExpression(node)) {
+      const constructorName = typescriptExpressionTailName(ts, node.expression);
+      if (constructorName === "Worker" || constructorName === "SharedWorker") {
+        viteWorkerEntries += 1;
+      }
+      if (
+        constructorName === "URL"
+        && typescriptNodeContainsImportMetaUrl(ts, node)
+      ) {
+        viteUrlEntries += 1;
+      }
+    }
+
+    ts.forEachChild(node, visit);
   }
 
+  visit(sourceFile);
   return {
     specifiers: uniqueSorted(specifiers),
     nonLiteralDynamicImports,
@@ -423,21 +466,108 @@ function inspectJavaScriptImportSource(source) {
     commonJsRequireCalls,
     unsupportedCssImports: 0,
     cssAssetReferences: 0,
-    importMetaGlobCalls
+    unsupportedCssModuleImports: 0,
+    unsupportedCssEscapedSyntax: 0,
+    importMetaGlobCalls,
+    unsupportedPackageImportAliases,
+    viteWorkerEntries,
+    viteUrlEntries,
+    ambiguousJavaScriptSyntax,
+    typescriptParserUnavailable,
+    unsupportedJsxPragmas,
+    unsupportedTypescriptDirectives
   };
 }
 
+function stripCssComments(source) {
+  let output = "";
+  let index = 0;
+  let malformed = false;
+  while (index < source.length) {
+    const current = source[index];
+    const next = source[index + 1];
+    if (current === '"' || current === "'") {
+      const quote = current;
+      output += current;
+      index += 1;
+      while (index < source.length) {
+        output += source[index];
+        if (source[index] === "\\") {
+          index += 1;
+          if (index < source.length) output += source[index];
+        } else if (source[index] === quote) {
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+    } else if (current === "/" && next === "*") {
+      const end = source.indexOf("*/", index + 2);
+      if (end === -1) {
+        malformed = true;
+        break;
+      }
+      output += " ";
+      index = end + 2;
+    } else {
+      output += current;
+      index += 1;
+    }
+  }
+  return { source: output, malformed };
+}
+
+function stripCssStrings(source) {
+  let output = "";
+  let index = 0;
+  while (index < source.length) {
+    const current = source[index];
+    if (current !== '"' && current !== "'") {
+      output += current;
+      index += 1;
+      continue;
+    }
+    const quote = current;
+    output += " ";
+    index += 1;
+    while (index < source.length) {
+      if (source[index] === "\\") {
+        index += 2;
+      } else if (source[index] === quote) {
+        index += 1;
+        break;
+      } else {
+        index += 1;
+      }
+    }
+  }
+  return output;
+}
+
 function inspectCssImportSource(source) {
-  const withoutComments = source.replace(/\/\*[\s\S]*?\*\//gu, "");
-  const importOccurrences = [...withoutComments.matchAll(/@import\b/gu)].length;
-  const rules = [...withoutComments.matchAll(/@import\s+([^;]*);/gu)];
+  const stripped = stripCssComments(source);
+  const withoutComments = stripped.source;
+  const importOccurrences = [...withoutComments.matchAll(/@import\b/giu)].length;
+  const rules = [...withoutComments.matchAll(/@import\s+([^;]*);/giu)];
   const specifiers = [];
-  let unsupportedCssImports = Math.max(0, importOccurrences - rules.length);
+  let unsupportedCssImports = Math.max(0, importOccurrences - rules.length)
+    + (stripped.malformed ? 1 : 0);
+  const unsupportedCssModuleImports = [
+    ...withoutComments.matchAll(/\bcomposes\s*:/giu),
+    ...withoutComments.matchAll(/@value\b/giu)
+  ].length;
+  const unsupportedCssEscapedSyntax = [
+    ...stripCssStrings(withoutComments).matchAll(/\\/gu)
+  ].length;
 
   for (const rule of rules) {
     const value = rule[1].trim();
+    if (value.includes("\\")) {
+      unsupportedCssImports += 1;
+      continue;
+    }
     const quoted = /^(?:"([^"]+)"|'([^']+)')/u.exec(value);
-    const url = /^url\(\s*(?:"([^"]+)"|'([^']+)'|([^\s)]+))\s*\)/u.exec(value);
+    const url = /^url\(\s*(?:"([^"]+)"|'([^']+)'|([^\s)]+))\s*\)/iu.exec(value);
     const specifier = quoted?.[1]
       ?? quoted?.[2]
       ?? url?.[1]
@@ -450,8 +580,8 @@ function inspectCssImportSource(source) {
     }
   }
 
-  const withoutImportRules = withoutComments.replace(/@import\s+[^;]*;/gu, "");
-  const cssAssetReferences = [...withoutImportRules.matchAll(/\burl\s*\(/gu)].length;
+  const withoutImportRules = withoutComments.replace(/@import\s+[^;]*;/giu, "");
+  const cssAssetReferences = [...withoutImportRules.matchAll(/\burl\s*\(/giu)].length;
 
   return {
     specifiers: uniqueSorted(specifiers),
@@ -460,13 +590,22 @@ function inspectCssImportSource(source) {
     commonJsRequireCalls: 0,
     unsupportedCssImports,
     cssAssetReferences,
-    importMetaGlobCalls: 0
+    unsupportedCssModuleImports,
+    unsupportedCssEscapedSyntax,
+    importMetaGlobCalls: 0,
+    unsupportedPackageImportAliases: 0,
+    viteWorkerEntries: 0,
+    viteUrlEntries: 0,
+    ambiguousJavaScriptSyntax: 0,
+    typescriptParserUnavailable: 0,
+    unsupportedJsxPragmas: 0,
+    unsupportedTypescriptDirectives: 0
   };
 }
 
 export function inspectImportSource(source, { extension = ".ts" } = {}) {
   if (extension === ".css") return inspectCssImportSource(source);
-  return inspectJavaScriptImportSource(source);
+  return inspectJavaScriptImportSource(source, { extension });
 }
 
 function importInspectionIssues(inspected, file) {
@@ -477,7 +616,16 @@ function importInspectionIssues(inspected, file) {
     ["commonJsRequireCalls", "unsupported_commonjs_require"],
     ["unsupportedCssImports", "unsupported_css_import"],
     ["cssAssetReferences", "css_asset_reference_unreviewed"],
-    ["importMetaGlobCalls", "unsupported_import_meta_glob"]
+    ["unsupportedCssModuleImports", "unsupported_css_module_import"],
+    ["unsupportedCssEscapedSyntax", "unsupported_css_escape"],
+    ["importMetaGlobCalls", "unsupported_import_meta_glob"],
+    ["unsupportedPackageImportAliases", "unsupported_package_import_alias"],
+    ["viteWorkerEntries", "unsupported_vite_worker_entry"],
+    ["viteUrlEntries", "unsupported_vite_url_entry"],
+    ["ambiguousJavaScriptSyntax", "unsupported_javascript_syntax"],
+    ["typescriptParserUnavailable", "typescript_parser_unavailable"],
+    ["unsupportedJsxPragmas", "unsupported_jsx_pragma"],
+    ["unsupportedTypescriptDirectives", "unsupported_typescript_directive"]
   ]) {
     if (inspected[property] > 0) {
       issues.push(issue(code, {
@@ -490,7 +638,11 @@ function importInspectionIssues(inspected, file) {
 }
 
 function readUtf8(rootDirectory, repositoryPath) {
-  return readFileSync(path.join(rootDirectory, repositoryPath), "utf8");
+  const absolute = path.join(rootDirectory, repositoryPath);
+  if (repositoryPathHasSymlink(rootDirectory, absolute)) {
+    throw new Error("trusted repository input cannot be a symlink");
+  }
+  return readFileSync(absolute, "utf8");
 }
 
 function isFile(candidate) {
@@ -504,7 +656,29 @@ function isFile(candidate) {
 function isInsideDirectory(parentDirectory, candidate) {
   const relative = path.relative(parentDirectory, candidate);
   return relative === ""
-    || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    || (
+      relative !== ".."
+      && !relative.startsWith(".." + path.sep)
+      && !path.isAbsolute(relative)
+    );
+}
+
+function repositoryPathHasSymlink(rootDirectory, candidate) {
+  const root = path.resolve(rootDirectory);
+  const target = path.resolve(candidate);
+  if (!isInsideDirectory(root, target)) return true;
+
+  const relative = path.relative(root, target);
+  let current = root;
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, segment);
+    try {
+      if (lstatSync(current).isSymbolicLink()) return true;
+    } catch {
+      return true;
+    }
+  }
+  return false;
 }
 
 function resolveLocalImport({
@@ -528,6 +702,9 @@ function resolveLocalImport({
   const candidates = [unresolvedBase];
   const extension = path.extname(unresolvedBase);
   if (!extension) {
+    if (existsSync(path.join(unresolvedBase, "package.json"))) {
+      return { error: "unsupported_directory_package_resolution" };
+    }
     for (const candidateExtension of RESOLUTION_EXTENSIONS) {
       candidates.push(unresolvedBase + candidateExtension);
       candidates.push(path.join(
@@ -535,15 +712,24 @@ function resolveLocalImport({
         "index" + candidateExtension
       ));
     }
-  } else if (extension === ".js" || extension === ".jsx") {
+  } else if (Object.hasOwn(EXPLICIT_TYPESCRIPT_ALTERNATIVES, extension)) {
     const withoutExtension = unresolvedBase.slice(0, -extension.length);
-    candidates.push(withoutExtension + ".ts");
-    candidates.push(withoutExtension + ".tsx");
+    for (const alternative of EXPLICIT_TYPESCRIPT_ALTERNATIVES[extension]) {
+      candidates.push(withoutExtension + alternative);
+    }
   }
 
-  const resolved = candidates.find(isFile);
-  if (!resolved) {
+  const resolvedCandidates = uniqueSorted(candidates.filter(isFile));
+  if (resolvedCandidates.length === 0) {
     return { error: "relative_import_unresolved" };
+  }
+  if (resolvedCandidates.length > 1) {
+    return { error: "ambiguous_local_import_resolution" };
+  }
+
+  const [resolved] = resolvedCandidates;
+  if (repositoryPathHasSymlink(rootDirectory, resolved)) {
+    return { error: "source_symlink_unsupported" };
   }
 
   return {
@@ -570,9 +756,24 @@ export function buildLocalImportGraph({
       issues.push(issue("source_file_unreadable", { file: current }));
       continue;
     }
+    if (repositoryPathHasSymlink(rootDirectory, absolute)) {
+      issues.push(issue("source_symlink_unsupported", { file: current }));
+      continue;
+    }
 
     const extension = path.extname(current);
-    if (!PARSED_EXTENSIONS.has(extension)) continue;
+    if (!PARSED_EXTENSIONS.has(extension)) {
+      if (!NON_EXECUTABLE_LEAF_EXTENSIONS.has(extension)) {
+        issues.push(issue("unsupported_source_extension", {
+          file: current,
+          extension
+        }));
+      }
+      continue;
+    }
+    if (current.toLowerCase().endsWith(".module.css")) {
+      issues.push(issue("unsupported_css_module_source", { file: current }));
+    }
 
     let source;
     try {
@@ -642,9 +843,10 @@ function isFixtureOrPreview(file) {
 }
 
 function isForbiddenActivePath(file) {
-  return file.startsWith("admin/src/test/")
-    || file.includes("/archive/")
-    || file.includes("/quarantine/");
+  const normalized = file.toLowerCase();
+  return normalized.startsWith("admin/src/test/")
+    || normalized.includes("/archive/")
+    || normalized.includes("/quarantine/");
 }
 
 function isAllowedPortalFile(file) {
@@ -661,7 +863,7 @@ function isAllowedSiteFile(file) {
 }
 
 function isLocalSpecifier(specifier) {
-  return specifier.startsWith(".") || specifier.startsWith("/src/");
+  return specifier.startsWith(".") || specifier.startsWith("/");
 }
 
 function compareExactSet({
@@ -759,30 +961,114 @@ function readJson(rootDirectory, repositoryPath) {
 
 function listRepositoryFiles(rootDirectory, repositoryPath) {
   const absolute = path.join(rootDirectory, repositoryPath);
+  if (lstatSync(absolute).isSymbolicLink()) {
+    throw new Error("repository input directory cannot be a symlink");
+  }
   const files = [];
   for (const entry of readdirSync(absolute, { withFileTypes: true })) {
     const child = normalizeRepositoryPath(path.join(repositoryPath, entry.name));
+    const childAbsolute = path.join(rootDirectory, child);
+    if (lstatSync(childAbsolute).isSymbolicLink()) {
+      throw new Error("repository input cannot be a symlink");
+    }
     if (entry.isDirectory()) {
       files.push(...listRepositoryFiles(rootDirectory, child));
-    } else {
+    } else if (entry.isFile()) {
       files.push(child);
+    } else {
+      throw new Error("repository input must be a regular file");
     }
   }
   return files.sort(codePointOrder);
 }
 
-function moduleScriptSources(rootDirectory, repositoryPath) {
-  const html = readUtf8(rootDirectory, repositoryPath);
-  const sources = [];
-  for (const match of html.matchAll(/<script\b([^>]*)>/giu)) {
+function stripHtmlComments(source) {
+  let output = "";
+  let index = 0;
+  while (index < source.length) {
+    const start = source.indexOf("<!--", index);
+    if (start === -1) {
+      output += source.slice(index);
+      return { source: output, malformed: false };
+    }
+    output += source.slice(index, start);
+    const end = source.indexOf("-->", start + 4);
+    if (end === -1) return { source: output, malformed: true };
+    index = end + 3;
+  }
+  return { source: output, malformed: false };
+}
+
+function htmlAttribute(attributes, name) {
+  const pattern = new RegExp(
+    `\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>]+))`,
+    "iu"
+  );
+  const match = pattern.exec(attributes);
+  return match?.[1] ?? match?.[2] ?? match?.[3];
+}
+
+function htmlBuildInputs(rootDirectory, repositoryPath) {
+  const stripped = stripHtmlComments(readUtf8(rootDirectory, repositoryPath));
+  const scripts = [];
+  const stylesheets = [];
+
+  for (const match of stripped.source.matchAll(/<script\b([^>]*)>/giu)) {
     const attributes = match[1];
-    const type = /\btype\s*=\s*["']([^"']+)["']/iu.exec(attributes)?.[1];
-    const source = /\bsrc\s*=\s*["']([^"']+)["']/iu.exec(attributes)?.[1];
-    sources.push(type?.toLowerCase() === "module"
+    const type = htmlAttribute(attributes, "type");
+    const source = htmlAttribute(attributes, "src");
+    scripts.push(type?.toLowerCase() === "module"
       ? source ?? "<inline-module>"
       : `<non-module:${source ?? "inline"}>`);
   }
-  return sources.sort(codePointOrder);
+
+  for (const match of stripped.source.matchAll(/<link\b([^>]*)>/giu)) {
+    const attributes = match[1];
+    const rel = htmlAttribute(attributes, "rel");
+    if (!rel?.toLowerCase().split(/\s+/u).includes("stylesheet")) continue;
+    stylesheets.push(htmlAttribute(attributes, "href") ?? "<missing-href>");
+  }
+
+  return {
+    malformed: stripped.malformed,
+    scripts: scripts.sort(codePointOrder),
+    stylesheets: stylesheets.sort(codePointOrder)
+  };
+}
+
+function normalizedSourceSha256(source) {
+  return createHash("sha256")
+    .update(source.replace(/\r\n?/gu, "\n"), "utf8")
+    .digest("hex");
+}
+
+function localPackageReferences(packageJson) {
+  const references = [];
+  for (const bucket of [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies"
+  ]) {
+    for (const [name, value] of Object.entries(packageJson[bucket] ?? {})) {
+      if (
+        typeof value === "string"
+        && /^(?:(?:file|link|workspace):|\.{1,2}[/\\]|[/\\])/iu.test(value)
+      ) {
+        references.push(bucket + ":" + name);
+      }
+    }
+  }
+  return references;
+}
+
+function pathEntryExists(absolute) {
+  try {
+    lstatSync(absolute);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function checkBuildContracts(rootDirectory) {
@@ -797,9 +1083,150 @@ function checkBuildContracts(rootDirectory) {
     return [issue("build_contract_unreadable")];
   }
 
+  const adminResolverFields = [
+    "browser",
+    "exports",
+    "imports",
+    "jsdelivr",
+    "main",
+    "module",
+    "react-native",
+    "source",
+    "unpkg"
+  ].filter((field) => adminPackage[field] !== undefined);
+  if (
+    adminPackage.name !== "proxy-gateway-admin"
+    || adminPackage.private !== true
+    || adminPackage.type !== "module"
+    || adminResolverFields.length > 0
+  ) {
+    issues.push(issue("package_source_alias_drift", {
+      file: "admin/package.json",
+      fields: adminResolverFields
+    }));
+  }
+
+  for (const [file, packageJson] of [
+    ["package.json", rootPackage],
+    ["admin/package.json", adminPackage]
+  ]) {
+    const references = localPackageReferences(packageJson);
+    if (references.length > 0) {
+      issues.push(issue("package_source_dependency_drift", {
+        file,
+        references
+      }));
+    }
+    if (packageJson.workspaces !== undefined) {
+      issues.push(issue("package_workspace_drift", { file }));
+    }
+  }
+
   try {
-    const tsconfig = readJson(rootDirectory, "admin/tsconfig.json");
+    const nestedSourceConfigs = listRepositoryFiles(
+      rootDirectory,
+      SOURCE_ROOT
+    ).filter((file) => (
+      ["jsconfig.json", "package.json", "tsconfig.json"]
+        .includes(path.posix.basename(file).toLowerCase())
+    ));
+    for (const file of nestedSourceConfigs) {
+      issues.push(issue("nested_source_config_unexpected", { file }));
+    }
+  } catch {
+    issues.push(issue("source_config_inventory_unreadable"));
+  }
+
+  for (const file of [
+    "admin/portal/package.json",
+    "admin/site/package.json"
+  ]) {
+    if (pathEntryExists(path.join(rootDirectory, file))) {
+      issues.push(issue("frontend_package_scope_unexpected", { file }));
+    }
+  }
+
+  for (const file of [".npmrc", "admin/.npmrc"]) {
+    if (pathEntryExists(path.join(rootDirectory, file))) {
+      issues.push(issue("npm_config_drift", { file }));
+    }
+  }
+
+  for (const [file, packageJson] of [
+    ["package.json", rootPackage],
+    ["admin/package.json", adminPackage]
+  ]) {
+    if (packageJson.postcss !== undefined) {
+      issues.push(issue("frontend_build_config_unexpected", {
+        file,
+        field: "postcss"
+      }));
+    }
+  }
+
+  const postcssConfigNames = [
+    ".postcssrc",
+    ".postcssrc.cjs",
+    ".postcssrc.cts",
+    ".postcssrc.js",
+    ".postcssrc.json",
+    ".postcssrc.mjs",
+    ".postcssrc.mts",
+    ".postcssrc.ts",
+    ".postcssrc.yaml",
+    ".postcssrc.yml",
+    "postcss.config.cjs",
+    "postcss.config.cts",
+    "postcss.config.js",
+    "postcss.config.json",
+    "postcss.config.mjs",
+    "postcss.config.mts",
+    "postcss.config.ts",
+    "postcss.config.yaml",
+    "postcss.config.yml"
+  ];
+  for (const directory of ["", "admin", "admin/portal", "admin/site"]) {
+    for (const name of postcssConfigNames) {
+      const file = directory ? path.posix.join(directory, name) : name;
+      if (pathEntryExists(path.join(rootDirectory, file))) {
+        issues.push(issue("frontend_build_config_unexpected", { file }));
+      }
+    }
+  }
+
+  for (const name of [
+    "vite.config.cjs",
+    "vite.config.cts",
+    "vite.config.js",
+    "vite.config.mjs",
+    "vite.config.mts"
+  ]) {
+    const file = path.posix.join("admin", name);
+    if (pathEntryExists(path.join(rootDirectory, file))) {
+      issues.push(issue("frontend_build_config_unexpected", { file }));
+    }
+  }
+
+  for (const directory of ["admin", "admin/portal", "admin/site"]) {
+    try {
+      for (const name of readdirSync(path.join(rootDirectory, directory))) {
+        if (name === ".env" || name.startsWith(".env.")) {
+          issues.push(issue("frontend_env_input_unexpected", {
+            file: path.posix.join(directory, name)
+          }));
+        }
+      }
+    } catch {
+      issues.push(issue("frontend_env_inventory_unreadable", { directory }));
+    }
+  }
+
+  try {
+    const tsconfigSource = readUtf8(rootDirectory, "admin/tsconfig.json");
+    const tsconfig = JSON.parse(tsconfigSource);
     if (
+      normalizedSourceSha256(tsconfigSource) !== EXPECTED_TSCONFIG_SHA256
+      ||
       tsconfig.compilerOptions?.baseUrl !== undefined
       || tsconfig.compilerOptions?.paths !== undefined
       || JSON.stringify(tsconfig.include) !== JSON.stringify(["src"])
@@ -812,6 +1239,7 @@ function checkBuildContracts(rootDirectory) {
 
   const expectedScripts = {
     root: {
+      "frontend:boundaries:check": "node scripts/check-frontend-source-boundaries.mjs",
       "admin:build": "npm run build --prefix admin",
       "admin:verify": "npm run verify:admin-build --prefix admin",
       "admin:portal:build": "npm run build:portal --prefix admin",
@@ -843,10 +1271,16 @@ function checkBuildContracts(rootDirectory) {
         }));
       }
     }
+    const lifecycleNames = new Set(
+      Object.keys(expected).flatMap((name) => ["pre" + name, "post" + name])
+    );
     const relevantNames = Object.keys(scripts ?? {}).filter((name) => (
-      scope === "root"
-        ? /^(?:admin:.*(?:build|verify)|cloudflare:site:(?:build|verify|dry-run|validate))$/u.test(name)
-        : /^(?:build(?::.*)?|verify:.*)$/u.test(name)
+      lifecycleNames.has(name)
+      || (
+        scope === "root"
+          ? /^(?:admin:.*(?:build|verify)|cloudflare:site:(?:build|verify|dry-run|validate))$/u.test(name)
+          : /^(?:build(?::.*)?|verify:.*)$/u.test(name)
+      )
     ));
     for (const name of relevantNames) {
       if (!Object.hasOwn(expected, name)) {
@@ -860,12 +1294,33 @@ function checkBuildContracts(rootDirectory) {
 
   for (const [surface, contract] of Object.entries(ENTRY_HTML)) {
     try {
-      const actual = moduleScriptSources(rootDirectory, contract.file);
-      if (actual.length !== 1 || actual[0] !== contract.module) {
+      const actualSha256 = normalizedSourceSha256(
+        readUtf8(rootDirectory, contract.file)
+      );
+      if (actualSha256 !== EXPECTED_ENTRY_HTML_SHA256[contract.file]) {
         issues.push(issue("html_entry_drift", {
           surface,
           file: contract.file,
-          moduleScripts: actual.length
+          reason: "source_snapshot"
+        }));
+      }
+      const actual = htmlBuildInputs(rootDirectory, contract.file);
+      if (
+        actual.malformed
+        || actual.scripts.length !== 1
+        || actual.scripts[0] !== contract.module
+      ) {
+        issues.push(issue("html_entry_drift", {
+          surface,
+          file: contract.file,
+          moduleScripts: actual.scripts.length
+        }));
+      }
+      if (actual.stylesheets.length > 0) {
+        issues.push(issue("html_build_input_unexpected", {
+          surface,
+          file: contract.file,
+          stylesheets: actual.stylesheets
         }));
       }
     } catch {
@@ -876,49 +1331,22 @@ function checkBuildContracts(rootDirectory) {
     }
   }
 
-  let adminConfig = "";
-  let portalConfig = "";
-  let siteConfig = "";
-  try {
-    adminConfig = readUtf8(rootDirectory, "admin/vite.config.ts");
-    portalConfig = readUtf8(rootDirectory, "admin/vite.portal.config.ts");
-    siteConfig = readUtf8(rootDirectory, "admin/vite.site.config.ts");
-  } catch {
-    issues.push(issue("vite_boundary_unreadable"));
-  }
-
-  const configContracts = [
-    {
-      surface: "portal",
-      source: portalConfig,
-      root: /root:\s*path\.resolve\(adminDir,\s*["']portal["']\)/u,
-      output: /outDir:\s*path\.resolve\(adminDir,\s*["']dist-portal["']\)/u,
-      publicDir: /publicDir:\s*path\.resolve\(adminDir,\s*["']public["']\)/u
-    },
-    {
-      surface: "site",
-      source: siteConfig,
-      root: /root:\s*path\.resolve\(adminDir,\s*["']site["']\)/u,
-      output: /outDir:\s*path\.resolve\(adminDir,\s*["']dist-site["']\)/u,
-      publicDir: /publicDir:\s*path\.resolve\(adminDir,\s*["']public["']\)/u
+  for (const [file, expectedSha256] of Object.entries(
+    EXPECTED_VITE_CONFIG_SHA256
+  )) {
+    try {
+      const actualSha256 = normalizedSourceSha256(
+        readUtf8(rootDirectory, file)
+      );
+      if (actualSha256 !== expectedSha256) {
+        issues.push(issue("vite_boundary_drift", {
+          file,
+          reason: "source_snapshot"
+        }));
+      }
+    } catch {
+      issues.push(issue("vite_boundary_unreadable", { file }));
     }
-  ];
-  for (const contract of configContracts) {
-    if (
-      !contract.root.test(contract.source)
-      || !contract.output.test(contract.source)
-      || !contract.publicDir.test(contract.source)
-      || !/emptyOutDir:\s*true/u.test(contract.source)
-      || /\b(?:alias|rollupOptions|lib)\s*:/u.test(contract.source)
-    ) {
-      issues.push(issue("vite_boundary_drift", {
-        surface: contract.surface
-      }));
-    }
-  }
-
-  if (/\b(?:root|publicDir|outDir|alias|rollupOptions|lib)\s*:/u.test(adminConfig)) {
-    issues.push(issue("vite_boundary_drift", { surface: "admin" }));
   }
 
   for (const [file, expected] of Object.entries(EXPECTED_VITE_LOCAL_IMPORTS)) {
@@ -994,9 +1422,22 @@ function checkGraphPolicies(graphs) {
     if (isSiteOwned(edge.to) && !isSiteOwned(edge.from)) {
       adminToSite.add(key);
     }
-    if (isFixtureOrPreview(edge.to)) {
-      fixtureEdges.add(key);
-    }
+  }
+
+  for (const [surface, graph] of Object.entries(graphs)) {
+    const surfaceFixtureEdges = new Set(
+      graph.edges
+        .filter((edge) => isFixtureOrPreview(edge.to))
+        .map(edgeKey)
+    );
+    for (const key of surfaceFixtureEdges) fixtureEdges.add(key);
+    issues.push(...compareExactSet({
+      actual: surfaceFixtureEdges,
+      expected: EXPECTED_FIXTURE_EDGES_BY_SURFACE[surface],
+      missingCode: "known_fixture_edge_missing",
+      unexpectedCode: "fixture_edge_unexpected",
+      details: { surface }
+    }));
   }
 
   issues.push(...compareExactSet({
@@ -1011,13 +1452,6 @@ function checkGraphPolicies(graphs) {
     missingCode: "known_admin_site_edge_missing",
     unexpectedCode: "admin_site_edge_unexpected"
   }));
-  issues.push(...compareExactSet({
-    actual: fixtureEdges,
-    expected: EXPECTED_FIXTURE_EDGES,
-    missingCode: "known_fixture_edge_missing",
-    unexpectedCode: "fixture_edge_unexpected"
-  }));
-
   return {
     issues,
     knownDebt: {
@@ -1083,9 +1517,15 @@ function runCli() {
   return result.ok ? 0 : 1;
 }
 
-if (
-  process.argv[1]
-  && import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+function isCliEntrypoint() {
+  if (!process.argv[1]) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isCliEntrypoint()) {
   process.exitCode = runCli();
 }
