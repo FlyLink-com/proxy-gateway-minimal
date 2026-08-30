@@ -110,6 +110,14 @@ wallet balances. Those values must later come from server-issued contracts.
 
 ### 推荐奖励
 
+> 2026-08-30 reconciliation: `attributed spend` in the original placeholder
+> list below is retained only as layout history. It is not the current reward
+> basis or metric authority. `docs/COINS_FIRST_COMMERCIAL_DECISION.md` replaces
+> it with registrations, first-recharge conversions, credited first-recharge
+> `paid_coins`, pending/available/reversed `reward_coins`, and conversion rate.
+> Protected API and Portal source replacement belong to #523; this docs-only
+> reconciliation does not change the current TSX or claim deployment.
+
 The page reflects the approved all-user referral model:
 
 - every normal Portal user may participate;
