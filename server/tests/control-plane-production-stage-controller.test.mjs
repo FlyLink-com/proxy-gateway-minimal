@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -21,6 +22,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import {
   PRODUCTION_STAGE_CONTROLLER_TYPE,
@@ -31,8 +33,32 @@ import {
   runProductionStageControllerCli,
   stageProductionCandidate,
   verifyProductionCandidateStage
-} from "../../scripts/control-plane-production-stage-controller.mjs";
-import { parseArtifactStageReceipt } from "../../scripts/control-plane-candidate-dependency-gate.mjs";
+} from "../../scripts/control-plane-production-stage-controller-lib.mjs";
+import { parseArtifactStageReceipt } from "../../scripts/control-plane-candidate-dependency-gate-lib.mjs";
+
+const PRODUCTION_STAGE_LIBRARY_PATH = resolve("scripts/control-plane-production-stage-controller-lib.mjs");
+const PRODUCTION_STAGE_CLI_PATH = resolve("scripts/control-plane-production-stage-controller-cli.mjs");
+const PRODUCTION_STAGE_COMPATIBILITY_PATH = resolve("scripts/control-plane-production-stage-controller.mjs");
+const DEPLOYMENT_RUNBOOK_PATH = resolve("docs/GITHUB_DEPLOYMENT_RUNBOOK.md");
+
+function localStaticImports(modulePath) {
+  const source = readFileSync(modulePath, "utf8");
+  return [...source.matchAll(
+    /(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?["'](\.[^"']+)["']/gu
+  )].map((match) => resolve(dirname(modulePath), match[1]));
+}
+
+function transitiveLocalStaticImports(entryPaths) {
+  const visited = new Set();
+  const pending = [...entryPaths];
+  while (pending.length > 0) {
+    const modulePath = pending.pop();
+    if (visited.has(modulePath)) continue;
+    visited.add(modulePath);
+    for (const importedPath of localStaticImports(modulePath)) pending.push(importedPath);
+  }
+  return visited;
+}
 
 const SOURCE_COMMIT = "9".repeat(40);
 const ARTIFACT_RELEASE = "master-92c868e0";
@@ -42,6 +68,24 @@ const CREATED_AT = "2026-08-23T12:00:00.000Z";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const condition = (name) => (error) => error instanceof ProductionStageControllerError && error.condition === name;
 const FIXTURE_MODES = new Map();
+
+test("production bootstrap per-file hash list closes the recursive local static import graph", () => {
+  const runbook = readFileSync(DEPLOYMENT_RUNBOOK_PATH, "utf8");
+  const section = runbook.slice(
+    runbook.indexOf("a separately reviewed minimal controller closure"),
+    runbook.indexOf("The `*-lib.mjs` files above")
+  );
+  const listedPaths = [...section.matchAll(/`((?:scripts|server)\/[^`]+\.mjs)`/gu)]
+    .map((match) => resolve(match[1]));
+  assert.ok(listedPaths.length > 0);
+  const listed = new Set(listedPaths);
+  const imported = transitiveLocalStaticImports(listedPaths);
+  const missing = [...imported].filter((modulePath) => !listed.has(modulePath));
+  assert.deepEqual(
+    missing.map((modulePath) => modulePath.slice(resolve(".").length + 1).replaceAll("\\", "/")),
+    []
+  );
+});
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -115,7 +159,7 @@ function regularEntries(overrides = []) {
   const entries = [
     { name: "package.json", bytes: '{"name":"candidate","version":"1.0.0"}\n' },
     { name: "package-lock.json", bytes: '{"name":"candidate","lockfileVersion":3,"packages":{}}\n' },
-    { name: "scripts/control-plane-db-snapshot-gate.mjs", bytes: "export const safeImport = true;\n" },
+    { name: "scripts/control-plane-db-snapshot-gate-lib.mjs", bytes: "export const safeImport = true;\n" },
     { name: "server/index.js", bytes: "export const staged = true;\n" }
   ];
   return [...entries, ...overrides];
@@ -185,7 +229,7 @@ function fixture(t, { zipEntries = regularEntries(), zipOptions, inputMutation, 
   const artifactManifestBytes = Buffer.from(`${JSON.stringify(artifactManifest, null, 2)}\n`);
   const dependencyArchiveBytes = Buffer.from("bounded dependency tar bytes\n");
   const dependencyManifest = {
-    schemaVersion: "2",
+    schemaVersion: "4",
     type: "control_plane_dependency_artifact",
     state: "verified",
     releaseUnit: "control-plane-app",
@@ -197,6 +241,14 @@ function fixture(t, { zipEntries = regularEntries(), zipOptions, inputMutation, 
     runtime: { platform: "linux", arch: "x64", libc: "glibc-2.39", nodeVersion: "v22.23.1", nodeAbi: "127", npmVersion: "v10.9.2", betterSqlite3Version: "12.10.0" },
     smoke: { betterSqlite3Memory: true, snapshotImport: true },
     tree: { sha256: "4".repeat(64), entryCount: 4, totalBytes: 128, hardlinksBroken: true, symlinksInternal: true },
+    nativeCustody: {
+      schemaVersion: "1", type: "control_plane_welcome_coins_native_custody_bundle", buildProfile: "hardened-linux-x86_64-gcc-v2",
+      receipt: { path: "node_modules/.gccgw-native/welcome-coins-native-build.json", sha256: "5".repeat(64), sizeBytes: 1, mode: "0644" },
+      outerWrapper: { path: "node_modules/.gccgw-native/welcome-coins-activation-outer-wrapper", sha256: "8".repeat(64), sizeBytes: 1, mode: "0755", kind: "static-pie" },
+      outerPostExecBootstrap: { path: "node_modules/.gccgw-native/welcome-coins-outer-post-exec-bootstrap.so", sha256: "9".repeat(64), sizeBytes: 1, mode: "0644", kind: "shared-object" },
+      launcher: { path: "node_modules/.gccgw-native/welcome-coins-custody-launcher", sha256: "6".repeat(64), sizeBytes: 1, mode: "0755", kind: "pie" },
+      postExecBootstrap: { path: "node_modules/.gccgw-native/welcome-coins-post-exec-bootstrap.so", sha256: "7".repeat(64), sizeBytes: 1, mode: "0644", kind: "shared-object" }
+    },
     provenance: { builder: "github-actions", workflow: "control-plane-dependency-artifact.yml" }
   };
   const dependencyManifestBytes = Buffer.from(`${JSON.stringify(dependencyManifest, null, 2)}\n`);
@@ -590,7 +642,7 @@ test("ZIP validation accepts only the exact legacy git-archive DOS metadata shap
     legacy({ name: "package.json", bytes: '{"name":"candidate","version":"1.0.0"}\n' }),
     legacy({ name: "package-lock.json", bytes: '{"name":"candidate","lockfileVersion":3,"packages":{}}\n' }),
     {
-      name: "scripts/control-plane-db-snapshot-gate.mjs",
+      name: "scripts/control-plane-db-snapshot-gate-lib.mjs",
       bytes: "export const safeImport = true;\n",
       mode: 0o100755,
       madeBy: 0x0317,
@@ -1022,4 +1074,44 @@ test("CLI emits one safe JSON error envelope and cannot enable stage without app
     state: "blocked",
     condition: "invalid_input"
   });
+});
+
+test("production stage separates its import-only implementation from unconditional launchers", () => {
+  assert.equal(existsSync(PRODUCTION_STAGE_LIBRARY_PATH), true);
+  assert.equal(existsSync(PRODUCTION_STAGE_CLI_PATH), true);
+  const library = readFileSync(PRODUCTION_STAGE_LIBRARY_PATH, "utf8");
+  const cli = readFileSync(PRODUCTION_STAGE_CLI_PATH, "utf8");
+  const compatibility = readFileSync(PRODUCTION_STAGE_COMPATIBILITY_PATH, "utf8");
+  assert.doesNotMatch(library, /process\.argv\[1\]/);
+  assert.match(cli, /runProductionStageControllerCli/);
+  assert.match(compatibility, /control-plane-production-stage-controller-cli\.mjs/);
+  const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
+  assert.equal(packageJson.scripts["control-plane:production-stage"], "node scripts/control-plane-production-stage-controller-cli.mjs");
+  const probe = `await import(${JSON.stringify(pathToFileURL(PRODUCTION_STAGE_LIBRARY_PATH).href)}); process.stdout.write("imported\\n");`;
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], { encoding: "utf8" });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "imported\n");
+  assert.equal(result.stderr, "");
+});
+
+test("production stage CLI cannot silently succeed through directory or file symlinks", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "gccgw-production-stage-entry-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const directoryAlias = join(root, "scripts-alias");
+  const fileAlias = join(root, "production-stage-alias.mjs");
+  const compatibilityAlias = join(root, "production-stage-compatibility-alias.mjs");
+  try {
+    symlinkSync(dirname(PRODUCTION_STAGE_CLI_PATH), directoryAlias, process.platform === "win32" ? "junction" : "dir");
+    symlinkSync(PRODUCTION_STAGE_CLI_PATH, fileAlias, "file");
+    symlinkSync(PRODUCTION_STAGE_COMPATIBILITY_PATH, compatibilityAlias, "file");
+  } catch {
+    t.skip("symlink creation is unavailable");
+    return;
+  }
+  for (const entry of [join(directoryAlias, "control-plane-production-stage-controller-cli.mjs"), fileAlias, compatibilityAlias]) {
+    const result = spawnSync(process.execPath, [entry, "--unexpected"], { encoding: "utf8" });
+    assert.equal(result.status, 1, `entry=${entry}\nstdout=${result.stdout}\nstderr=${result.stderr}`);
+    assert.equal(result.stdout, "");
+    assert.equal(JSON.parse(result.stderr).condition, "invalid_input");
+  }
 });

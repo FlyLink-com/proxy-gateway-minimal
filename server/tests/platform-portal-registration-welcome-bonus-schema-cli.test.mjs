@@ -4,12 +4,14 @@ import { createHash } from "node:crypto";
 import {
   mkdtempSync,
   readFileSync,
-  rmSync
+  rmSync,
+  symlinkSync,
+  writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import Database from "better-sqlite3";
 
 import {
@@ -23,13 +25,23 @@ import {
 } from "../services/platform/coin-wallet-migrations.mjs";
 import {
   runPortalRegistrationWelcomeBonusSchemaCli
-} from "../../scripts/platform-portal-registration-welcome-bonus-schema.mjs";
+} from "../../scripts/platform-portal-registration-welcome-bonus-schema-lib.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const CLI_PATH = join(
+const IMPLEMENTATION_PATH = join(
+  REPOSITORY_ROOT,
+  "scripts",
+  "platform-portal-registration-welcome-bonus-schema-lib.mjs"
+);
+const COMPATIBILITY_ENTRY_PATH = join(
   REPOSITORY_ROOT,
   "scripts",
   "platform-portal-registration-welcome-bonus-schema.mjs"
+);
+const CLI_PATH = join(
+  REPOSITORY_ROOT,
+  "scripts",
+  "platform-portal-registration-welcome-bonus-schema-cli.mjs"
 );
 const PACKAGE_PATH = join(REPOSITORY_ROOT, "package.json");
 const MIGRATION_ID = REQUIRED_PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATION_ID;
@@ -188,15 +200,16 @@ test("package exposes the future account-wallet schema CLIs", () => {
   const packageJson = JSON.parse(readFileSync(PACKAGE_PATH, "utf8"));
   assert.equal(
     packageJson.scripts["platform:portal-registration-welcome-bonus:schema"],
-    "node scripts/platform-portal-registration-welcome-bonus-schema.mjs"
+    "node scripts/platform-portal-registration-welcome-bonus-schema-cli.mjs"
   );
+  assert.equal(packageJson.scripts["welcome-coins:schema:custody-apply"], undefined);
   assert.equal(
     packageJson.scripts["platform:deferred-resource-transition:schema"],
     "node scripts/platform-deferred-resource-transition-schema.mjs"
   );
 });
 
-test("validate, dry-run, apply, and replay keep the source database and output closed", () => {
+test("validate and dry-run stay read-only while standalone apply requires custody", () => {
   withTempDirectory((directory) => {
     const dbPath = join(directory, "foundation.sqlite");
     createWalletFoundation(dbPath);
@@ -221,23 +234,17 @@ test("validate, dry-run, apply, and replay keep the source database and output c
     assert.deepEqual(dryRunOutput.pendingMigrationIds, MIGRATION_IDS);
     assert.equal(fileSha256(dbPath), sourceHash);
 
-    const applied = runCli(exactApplyArguments(dbPath));
-    assert.equal(applied.status, 0);
-    const appliedOutput = parseOutput(applied, [dbPath]);
-    assert.equal(appliedOutput.schemaState, "ready");
-    assert.equal(appliedOutput.sourceChanged, true);
-    assert.deepEqual(appliedOutput.appliedMigrationIds, MIGRATION_IDS);
-    assert.deepEqual(appliedOutput.pendingMigrationIds, []);
-
-    const replay = runCli(exactApplyArguments(dbPath));
-    assert.equal(replay.status, 0);
-    const replayOutput = parseOutput(replay, [dbPath]);
-    assert.equal(replayOutput.sourceChanged, false);
-    assert.deepEqual(replayOutput.appliedMigrationIds, []);
+    const blockedApply = runCli(exactApplyArguments(dbPath));
+    assert.equal(blockedApply.status, 2);
+    const blockedOutput = parseOutput(blockedApply, [dbPath]);
+    assert.deepEqual(blockedOutput.reasonCodes, ["custody_gate_required"]);
+    assert.equal(blockedOutput.sourceChanged, false);
+    assert.deepEqual(blockedOutput.appliedMigrationIds, []);
+    assert.equal(fileSha256(dbPath), sourceHash);
   });
 });
 
-test("v1-only welcome ledger dry-runs and applies both contract successors", () => {
+test("v1-only welcome ledger dry-runs successors but standalone apply remains blocked", () => {
   withTempDirectory((directory) => {
     const dbPath = join(directory, "legacy.sqlite");
     createWalletFoundation(dbPath);
@@ -260,12 +267,13 @@ test("v1-only welcome ledger dry-runs and applies both contract successors", () 
     assert.deepEqual(dryRunOutput.pendingMigrationIds, MIGRATION_IDS.slice(1));
     assert.equal(fileSha256(dbPath), sourceHash);
 
-    const applied = runCli(exactApplyArguments(dbPath));
-    assert.equal(applied.status, 0);
+    const blockedApply = runCli(exactApplyArguments(dbPath));
+    assert.equal(blockedApply.status, 2);
     assert.deepEqual(
-      parseOutput(applied, [dbPath]).appliedMigrationIds,
-      MIGRATION_IDS.slice(1)
+      parseOutput(blockedApply, [dbPath]).reasonCodes,
+      ["custody_gate_required"]
     );
+    assert.equal(fileSha256(dbPath), sourceHash);
 
     const legacy = new Database(dbPath, { readonly: true, fileMustExist: true });
     try {
@@ -276,7 +284,7 @@ test("v1-only welcome ledger dry-runs and applies both contract successors", () 
          order by migration_id asc
       `).all(...MIGRATION_IDS.slice(0, 2));
       assert.deepEqual(rows, PORTAL_REGISTRATION_WELCOME_BONUS_MIGRATIONS
-        .slice(0, 2)
+        .slice(0, 1)
         .map(({ id, ddlChecksum }) => ({
           migration_id: id,
           ddl_checksum: ddlChecksum
@@ -301,6 +309,156 @@ test("contract rejects rollback, implicit apply, and non-absolute database paths
     assert.deepEqual(output.reasonCodes, [reason]);
     assert.equal(output.sourceChanged, false);
   }
+});
+
+test("schema implementation is import-only and its CLI launcher dispatches unconditionally", () => {
+  const implementation = readFileSync(IMPLEMENTATION_PATH, "utf8");
+  const launcher = readFileSync(CLI_PATH, "utf8");
+
+  assert.doesNotMatch(implementation, /isDirectInvocation|process\.argv\[1\]|process\.exitCode/);
+  assert.doesNotMatch(launcher, /isDirectInvocation|process\.argv\[1\]|realpathSync|import\.meta\.main/);
+  assert.match(
+    launcher,
+    /const outcome = await runPortalRegistrationWelcomeBonusSchemaCli\(\{/
+  );
+  assert.match(launcher, /process\.exitCode = outcome\.exitCode;/);
+});
+
+test("the historical schema entry emits a blocked receipt instead of silent success", () => {
+  const result = spawnSync(process.execPath, [COMPATIBILITY_ENTRY_PATH], {
+    cwd: REPOSITORY_ROOT,
+    encoding: "utf8",
+    env: {},
+    timeout: 15_000,
+    windowsHide: true
+  });
+
+  assert.equal(result.status, 2);
+  assert.deepEqual(parseOutput(result).reasonCodes, ["mode_required"]);
+});
+
+test("standalone apply is rejected before validation and requires the custody gate", async () => {
+  const calls = [];
+  const outcome = await runPortalRegistrationWelcomeBonusSchemaCli({
+    argv: exactApplyArguments(resolve("custody-required.sqlite")),
+    operations: {
+      validatePortalRegistrationWelcomeBonusSchema() {
+        calls.push("validate");
+        return pendingValidation();
+      },
+      dryRunPortalRegistrationWelcomeBonusMigrations() {
+        calls.push("dry-run");
+      },
+      applyPortalRegistrationWelcomeBonusMigrations() {
+        calls.push("apply");
+      }
+    }
+  });
+
+  assert.equal(outcome.exitCode, 2);
+  assert.deepEqual(outcome.output.reasonCodes, ["custody_gate_required"]);
+  assert.equal(outcome.output.sourceChanged, false);
+  assert.deepEqual(calls, []);
+});
+
+test("a symlinked direct CLI entry still emits the custody rejection", () => {
+  withTempDirectory((directory) => {
+    const linkedScripts = join(directory, "scripts-current");
+    symlinkSync(
+      dirname(CLI_PATH),
+      linkedScripts,
+      process.platform === "win32" ? "junction" : "dir"
+    );
+    const linkedCli = join(linkedScripts, basename(CLI_PATH));
+    const result = spawnSync(
+      process.execPath,
+      [linkedCli, ...exactApplyArguments(join(directory, "not-opened.sqlite"))],
+      {
+        cwd: REPOSITORY_ROOT,
+        encoding: "utf8",
+        env: {},
+        timeout: 15_000,
+        windowsHide: true
+      }
+    );
+
+    assert.equal(result.status, 2);
+    assert.deepEqual(
+      parseOutput(result, [directory]).reasonCodes,
+      ["custody_gate_required"]
+    );
+  });
+});
+
+test("a file-symlinked direct CLI entry still emits the custody rejection", () => {
+  withTempDirectory((directory) => {
+    const linkedCli = join(directory, basename(CLI_PATH));
+    symlinkSync(CLI_PATH, linkedCli, "file");
+    const result = spawnSync(
+      process.execPath,
+      [linkedCli, ...exactApplyArguments(join(directory, "not-opened.sqlite"))],
+      {
+        cwd: REPOSITORY_ROOT,
+        encoding: "utf8",
+        env: {},
+        timeout: 15_000,
+        windowsHide: true
+      }
+    );
+
+    assert.equal(result.status, 2);
+    assert.deepEqual(
+      parseOutput(result, [directory]).reasonCodes,
+      ["custody_gate_required"]
+    );
+  });
+});
+
+test("a missing importer argv path does not trigger the schema CLI", () => {
+  withTempDirectory((directory) => {
+    const importerPath = join(directory, "importer.mjs");
+    const missingArgvPath = join(directory, "missing-entry.mjs");
+    writeFileSync(importerPath, `
+process.argv[1] = ${JSON.stringify(missingArgvPath)};
+await import(${JSON.stringify(pathToFileURL(IMPLEMENTATION_PATH).href)});
+process.stdout.write("imported\\n");
+`);
+    const result = spawnSync(process.execPath, [importerPath], {
+      cwd: REPOSITORY_ROOT,
+      encoding: "utf8",
+      env: {},
+      timeout: 15_000,
+      windowsHide: true
+    });
+
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, "imported\n");
+  assert.equal(result.stderr, "");
+  });
+});
+
+test("an argv alias import does not trigger the schema CLI", () => {
+  withTempDirectory((directory) => {
+    const importerPath = join(directory, "importer.mjs");
+    const aliasedArgvPath = join(directory, basename(IMPLEMENTATION_PATH));
+    symlinkSync(IMPLEMENTATION_PATH, aliasedArgvPath, "file");
+    writeFileSync(importerPath, `
+process.argv[1] = ${JSON.stringify(aliasedArgvPath)};
+await import(${JSON.stringify(pathToFileURL(IMPLEMENTATION_PATH).href)});
+process.stdout.write("imported\\n");
+`);
+    const result = spawnSync(process.execPath, [importerPath], {
+      cwd: REPOSITORY_ROOT,
+      encoding: "utf8",
+      env: {},
+      timeout: 15_000,
+      windowsHide: true
+    });
+
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, "imported\n");
+    assert.equal(result.stderr, "");
+  });
 });
 
 test("a blocked validation cannot dispatch a mutation and malformed results fail closed", async () => {

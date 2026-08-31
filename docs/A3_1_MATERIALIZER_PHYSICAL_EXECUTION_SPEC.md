@@ -382,7 +382,8 @@ execution phase that produces the readback. Dry-run must pass before real-run.
   root-owned, non-writable by the service principal, non-replaceable through
   symlinks/hardlinks, and free of named ACLs or capabilities.
 - Plan the pinned invocation
-  `systemd-run --unit=a3-smoke --remain-after-exit --collect --quiet --service-type=oneshot`
+  `systemd-run --unit=a3-smoke --remain-after-exit --quiet --service-type=oneshot`
+  with `CollectMode=inactive`
   with the fixed verified Node binary and fixed smoke entrypoint; no shell and
   no caller-controlled argv/environment. Capture stdout/stderr through the
   root systemd manager into fixed `0600` files using `UMask=0077`; do not use
@@ -403,8 +404,19 @@ execution phase that produces the readback. Dry-run must pass before real-run.
   `serviceUid`, `serviceGid` from `getuid()`/`getgid()` inside the unit;
   while the completed oneshot remains pinned, exact `ActiveState=active`,
   `SubState=exited`, `Result=success`, `ExecMainStatus=0`, `Type=oneshot`,
-  `RemainAfterExit=yes`, `CollectMode=inactive-or-failed`, and exact
-  `ControlGroup` from `systemctl show a3-smoke.service`; then, when the cgroup
+  `RemainAfterExit=yes`, `CollectMode=inactive`, `PrivateNetwork=yes`, an empty
+  `CapabilityBoundingSet`, `ProtectSystem=strict`, `ProtectHome=yes`,
+  `PrivateDevices=yes`, `NoNewPrivileges=yes`, `PrivateTmp=yes`,
+  `ProtectControlGroups=yes`, `Delegate=no`, `Slice=system.slice`,
+  `RestrictAddressFamilies=AF_UNIX`, `RestrictNamespaces=yes`, `UMask=0077`,
+  the exact read-only bind tuple and working directory, and exact `ControlGroup`
+  from `systemctl show a3-smoke.service`. Resolve the same-host
+  `@system-service` and implicit `@default` sets through the fixed
+  `/usr/bin/systemd-analyze --no-pager syscall-filter` inventory, then require
+  the effective `SystemCallFilter` allowlist to be set-equal after alias
+  expansion; reject denylist form, unknown groups, duplicates, missing or extra
+  syscalls, malformed group recursion, tool errors, stderr, and bounded-output
+  overflow. Then, when the cgroup
   path is still realized, `cgroup.events populated=0` and an empty
   `cgroup.procs`. An already trimmed cgroup is also empty at this pinned point.
   Finally stop the unit explicitly, require `inactive/dead` plus an absent

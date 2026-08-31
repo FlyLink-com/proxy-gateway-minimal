@@ -24,6 +24,11 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
+
+const CANDIDATE_GATE_LIBRARY_PATH = resolve("scripts/control-plane-candidate-dependency-gate-lib.mjs");
+const CANDIDATE_GATE_CLI_PATH = resolve("scripts/control-plane-candidate-dependency-gate-cli.mjs");
+const CANDIDATE_GATE_COMPATIBILITY_PATH = resolve("scripts/control-plane-candidate-dependency-gate.mjs");
 
 import {
   CANDIDATE_DEPENDENCY_GATE_TYPE,
@@ -53,9 +58,14 @@ import {
   verifyCandidateDependencies,
   verifyMaterializerReceiptStorageBoundary,
   workerInputCustodyReadback
-} from "../../scripts/control-plane-candidate-dependency-gate.mjs";
+} from "../../scripts/control-plane-candidate-dependency-gate-lib.mjs";
+import * as candidateDependencyGate from "../../scripts/control-plane-candidate-dependency-gate-lib.mjs";
 import { createArtifactManifest } from "../../scripts/create-artifact-manifest.mjs";
-import { auditDependencyTree, buildDependencyArtifactManifest, extractDependencyArchive } from "../../scripts/control-plane-dependency-artifact.mjs";
+import { auditDependencyTree, buildDependencyArtifactManifest, extractDependencyArchive } from "../../scripts/control-plane-dependency-artifact-lib.mjs";
+import {
+  WELCOME_COINS_NATIVE_BUILD_PROFILE,
+  canonicalWelcomeCoinsNativeBuildReceipt
+} from "../../scripts/control-plane-welcome-coins-native-build-lib.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const isWindows = process.platform === "win32";
@@ -72,6 +82,76 @@ function write(path, value, mode = 0o600) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, value, { mode });
   chmodSync(path, mode);
+}
+
+function stageNativeCustodyFixture(root) {
+  const paths = {
+    receipt: "node_modules/.gccgw-native/welcome-coins-native-build.json",
+    outerWrapper: "node_modules/.gccgw-native/welcome-coins-activation-outer-wrapper",
+    outerPostExecBootstrap: "node_modules/.gccgw-native/welcome-coins-outer-post-exec-bootstrap.so",
+    launcher: "node_modules/.gccgw-native/welcome-coins-custody-launcher",
+    postExecBootstrap: "node_modules/.gccgw-native/welcome-coins-post-exec-bootstrap.so"
+  };
+  const elf = ({ interpreter, label }) => {
+    const value = Buffer.alloc(128);
+    value.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0], 0);
+    value.writeUInt16LE(3, 16);
+    value.writeUInt16LE(62, 18);
+    value.writeUInt32LE(1, 20);
+    value.writeBigUInt64LE(64n, 32);
+    value.writeUInt16LE(64, 52);
+    value.writeUInt16LE(56, 54);
+    value.writeUInt16LE(1, 56);
+    value.writeUInt32LE(interpreter ? 3 : 1, 64);
+    value.write(label, 120, "ascii");
+    return value;
+  };
+  const outerWrapperBytes = elf({ interpreter: false, label: "outer-wrapper" });
+  const outerPostExecBootstrapBytes = elf({ interpreter: false, label: "outer-bootstrap" });
+  const launcherBytes = elf({ interpreter: true, label: "launcher" });
+  const postExecBootstrapBytes = elf({ interpreter: false, label: "inner-bootstrap" });
+  const record = (path, bytes, mode, kind) => ({ path, sha256: hash(bytes), sizeBytes: bytes.length, mode, kind });
+  const outputs = {
+    outerWrapper: record(paths.outerWrapper, outerWrapperBytes, "0755", "static-pie"),
+    outerPostExecBootstrap: record(paths.outerPostExecBootstrap, outerPostExecBootstrapBytes, "0644", "shared-object"),
+    launcher: record(paths.launcher, launcherBytes, "0755", "pie"),
+    postExecBootstrap: record(paths.postExecBootstrap, postExecBootstrapBytes, "0644", "shared-object")
+  };
+  const source = (path, marker) => ({ path, sha256: marker.repeat(64), sizeBytes: 1 });
+  const flagHash = (flags) => hash(Buffer.from(JSON.stringify([
+    ...WELCOME_COINS_NATIVE_BUILD_PROFILE.commonFlags,
+    ...flags
+  ])));
+  const receiptBytes = canonicalWelcomeCoinsNativeBuildReceipt({
+    schemaVersion: "1", type: "welcome_coins_native_build", profile: WELCOME_COINS_NATIVE_BUILD_PROFILE.id,
+    sources: {
+      outerWrapper: source("scripts/native/welcome-coins-activation-outer-wrapper.c", "1"),
+      outerPostExecBootstrap: source("scripts/native/welcome-coins-outer-post-exec-bootstrap.c", "2"),
+      launcher: source("scripts/native/welcome-coins-custody-launcher.c", "3"),
+      postExecBootstrap: source("scripts/native/welcome-coins-post-exec-bootstrap.c", "4")
+    },
+    compiler: { identitySha256: "5".repeat(64) },
+    flags: {
+      outerWrapperSha256: flagHash(WELCOME_COINS_NATIVE_BUILD_PROFILE.outerWrapperFlags),
+      outerPostExecBootstrapSha256: flagHash(WELCOME_COINS_NATIVE_BUILD_PROFILE.outerPostExecBootstrapFlags),
+      launcherSha256: flagHash(WELCOME_COINS_NATIVE_BUILD_PROFILE.launcherFlags),
+      postExecBootstrapSha256: flagHash(WELCOME_COINS_NATIVE_BUILD_PROFILE.postExecBootstrapFlags)
+    },
+    outputs
+  });
+  write(join(root, paths.outerWrapper), outerWrapperBytes, 0o755);
+  write(join(root, paths.outerPostExecBootstrap), outerPostExecBootstrapBytes, 0o644);
+  write(join(root, paths.launcher), launcherBytes, 0o755);
+  write(join(root, paths.postExecBootstrap), postExecBootstrapBytes, 0o644);
+  write(join(root, paths.receipt), receiptBytes, 0o644);
+  return {
+    schemaVersion: "1", type: "control_plane_welcome_coins_native_custody_bundle", buildProfile: WELCOME_COINS_NATIVE_BUILD_PROFILE.id,
+    receipt: { path: paths.receipt, sha256: hash(receiptBytes), sizeBytes: receiptBytes.length, mode: "0644" },
+    outerWrapper: outputs.outerWrapper,
+    outerPostExecBootstrap: outputs.outerPostExecBootstrap,
+    launcher: outputs.launcher,
+    postExecBootstrap: outputs.postExecBootstrap
+  };
 }
 
 function mirrorFixtureModes(source, target) {
@@ -210,7 +290,7 @@ function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm, root: fi
   write(join(candidateRoot, "config", "proxy-servers.json"), proxyBytes, 0o640);
   write(join(candidateRoot, "package.json"), packageBytes);
   write(join(candidateRoot, "package-lock.json"), lockBytes);
-  write(join(candidateRoot, "scripts", "control-plane-db-snapshot-gate.mjs"), "export const safeImport = true;\n");
+  write(join(candidateRoot, "scripts", "control-plane-db-snapshot-gate-lib.mjs"), "export const safeImport = true;\n");
   const assemblyRoot = join(root, "assembly-receipts", candidate);
   write(join(assemblyRoot, "release-assembly.json"), `${JSON.stringify(assembly({ active, candidate, envBytes, proxyBytes }))}\n`);
   const manifest = artifactManifest({ mutate: artifactManifestMutate });
@@ -317,6 +397,79 @@ function fixture(t, { artifactMutate, artifactManifestMutate, setupNpm, root: fi
 function condition(expected) {
   return (error) => error instanceof CandidateDependencyGateError && error.condition === expected;
 }
+
+test("candidate artifact modes preserve exactly the two reviewed native executables", () => {
+  assert.equal(typeof candidateDependencyGate.candidateArtifactMaterializationMode, "function");
+
+  const cases = [
+    {
+      relativePath: "node_modules/.gccgw-native/welcome-coins-activation-outer-wrapper",
+      type: "file",
+      sourceMode: 0o755,
+      expectedMode: 0o755
+    },
+    {
+      relativePath: "node_modules/.gccgw-native/welcome-coins-custody-launcher",
+      type: "file",
+      sourceMode: 0o755,
+      expectedMode: 0o755
+    },
+    {
+      relativePath: "node_modules/.gccgw-native/welcome-coins-post-exec-bootstrap.so",
+      type: "file",
+      sourceMode: 0o644,
+      expectedMode: 0o644
+    },
+    {
+      relativePath: "node_modules/.gccgw-native/welcome-coins-outer-post-exec-bootstrap.so",
+      type: "file",
+      sourceMode: 0o644,
+      expectedMode: 0o644
+    },
+    {
+      relativePath: "node_modules/better-sqlite3/index.js",
+      type: "file",
+      sourceMode: 0o600,
+      expectedMode: 0o644
+    },
+    {
+      relativePath: "node_modules/unreviewed-tool",
+      type: "file",
+      sourceMode: 0o755,
+      expectedMode: 0o644
+    },
+    {
+      relativePath: "node_modules/.gccgw-native",
+      type: "directory",
+      sourceMode: 0o700,
+      expectedMode: 0o755
+    }
+  ];
+
+  for (const value of cases) {
+    assert.equal(
+      candidateDependencyGate.candidateArtifactMaterializationMode(value),
+      value.expectedMode,
+      value.relativePath
+    );
+  }
+
+  for (const relativePath of [
+    "node_modules/.gccgw-native/welcome-coins-activation-outer-wrapper",
+    "node_modules/.gccgw-native/welcome-coins-custody-launcher"
+  ]) {
+    for (const type of ["directory", "symlink"]) {
+      assert.throws(
+        () => candidateDependencyGate.candidateArtifactMaterializationMode({
+          relativePath,
+          type,
+          sourceMode: 0o755
+        }),
+        condition("candidate_tree_invalid")
+      );
+    }
+  }
+});
 
 test("candidate consumer wrapper requires fixed identities, layout, root mode, and ownership", () => {
   const base = {
@@ -1078,7 +1231,7 @@ test("production transient contract rejects tool overrides while test runtime re
   const unit = "control-plane-candidate-dependency-build-test";
   const production = createCandidateDependencyGateTestRuntime({ requireRoot: true });
   const input = [resolve(production.workerInputRoot, unit, "package.json"), resolve(production.workerInputRoot, unit, "package-lock.json")];
-  for (const [name, replacement] of Object.entries({ systemdRun: "/opt/systemd-run", systemctl: "/opt/systemctl", env: "relative-env", node: "/opt/node", npm: "/opt/npm", tar: "/opt/tar", python: "/opt/python3", getfacl: "/opt/getfacl", getcap: "/opt/getcap" })) {
+  for (const [name, replacement] of Object.entries({ systemdRun: "/opt/systemd-run", systemctl: "/opt/systemctl", systemdAnalyze: "/opt/systemd-analyze", env: "relative-env", node: "/opt/node", npm: "/opt/npm", tar: "/opt/tar", python: "/opt/python3", getfacl: "/opt/getfacl", getcap: "/opt/getcap" })) {
     assert.throws(() => buildTransientUnitInvocation({ kind: "build", unit, input, runtime: { ...production, tools: { ...production.tools, [name]: replacement } } }), condition("invalid_input"));
   }
   const testing = dynamicRuntime({ tools: { systemdRun: "mock-systemd-run", systemctl: "mock-systemctl", env: "mock-env", node: "mock-node" } });
@@ -1474,7 +1627,8 @@ test("CI artifact materialization uses only the verified artifact extraction and
   write(join(extractedModules, "better-sqlite3", "index.js"), "module.exports = {};\n", 0o600);
   write(join(extractedModules, "better-sqlite3", "package.json"), '{"version":"12.10.0"}\n', 0o600);
   write(join(extractedModules, "better-sqlite3", "build", "Release", "better_sqlite3.node"), "native\n", 0o600);
-  write(join(extractedSource, "scripts", "control-plane-db-snapshot-gate.mjs"), "export const safeImport = true;\n", 0o600);
+  write(join(extractedSource, "scripts", "control-plane-db-snapshot-gate-lib.mjs"), "export const safeImport = true;\n", 0o600);
+  const nativeCustody = stageNativeCustodyFixture(extractedSource);
   const artifactTree = auditDependencyTree(extractedModules, { checkAclCapabilities: () => true });
 
   let verifyCalls = 0;
@@ -1519,6 +1673,7 @@ test("CI artifact materialization uses only the verified artifact extraction and
         manifestSizeBytes: 123,
         archive: { sha256: "d".repeat(64), sizeBytes: 456 },
         tree: artifactTree,
+        nativeCustody,
         smoke: { betterSqlite3Memory: true, snapshotImport: true }
       };
     },
@@ -1699,12 +1854,13 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   write(join(sourceModules, "better-sqlite3", "index.js"), "module.exports = {};\n", 0o644);
   write(join(sourceModules, "better-sqlite3", "package.json"), '{"version":"12.10.0"}\n', 0o644);
   write(join(sourceModules, "better-sqlite3", "build", "Release", "better_sqlite3.node"), "fixture native\n", 0o644);
+  stageNativeCustodyFixture(sourceRoot);
   chmodSync(archivePath, 0o600);
   const tar = spawnSync("/usr/bin/tar", ["--create", "--file", archivePath, "--format=posix", "--sort=name", "--mtime=UTC 1970-01-01", "--owner=0", "--group=0", "--numeric-owner", "--hard-dereference", "--", "node_modules"], { cwd: sourceRoot, encoding: "utf8" });
   assert.equal(tar.status, 0, String(tar.stderr || ""));
   chmodSync(archivePath, 0o400);
   const producerExtractionRoot = join(value.root, "producer-extracted");
-  const snapshotSource = join(value.candidateRoot, "scripts", "control-plane-db-snapshot-gate.mjs");
+  const snapshotSource = join(value.candidateRoot, "scripts", "control-plane-db-snapshot-gate-lib.mjs");
   chmodSync(snapshotSource, 0o644);
   const manifest = buildDependencyArtifactManifest({
     sourceCommit: SOURCE_COMMIT,
@@ -1723,7 +1879,7 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
           enforceOwnership: false,
           checkAclCapabilities: () => true
         });
-        const target = join(extracted.root, "scripts", "control-plane-db-snapshot-gate.mjs");
+        const target = join(extracted.root, "scripts", "control-plane-db-snapshot-gate-lib.mjs");
         mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
         writeFileSync(target, readFileSync(snapshotSource), { mode: 0o400 });
         chmodSync(target, 0o400);
@@ -1743,7 +1899,7 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
     runServiceNativeSmoke({ root, service, fixedNodePath }) {
       smokeRoots.push({ root, uid: service.uid, gid: service.gid });
       const scriptsMetadata = lstatSync(join(root, "scripts"));
-      const snapshotMetadata = lstatSync(join(root, "scripts", "control-plane-db-snapshot-gate.mjs"));
+      const snapshotMetadata = lstatSync(join(root, "scripts", "control-plane-db-snapshot-gate-lib.mjs"));
       smokeSnapshotModes.push({
         scripts: scriptsMetadata.mode & 0o777,
         snapshot: snapshotMetadata.mode & 0o777,
@@ -1855,4 +2011,43 @@ test("Linux materialization consumes a real three-file CI artifact and cleans it
   assert.equal(smokeRoots.length, smokeCountBeforeQuotaDrift);
   assert.equal(existsSync(value.runtime.lockRoot), false);
   assert.deepEqual(readdirSync(join(value.root, "dependency-staging")), []);
+});
+
+test("candidate dependency gate separates its import-only implementation from unconditional launchers", () => {
+  assert.equal(existsSync(CANDIDATE_GATE_LIBRARY_PATH), true);
+  assert.equal(existsSync(CANDIDATE_GATE_CLI_PATH), true);
+  const library = readFileSync(CANDIDATE_GATE_LIBRARY_PATH, "utf8");
+  const cli = readFileSync(CANDIDATE_GATE_CLI_PATH, "utf8");
+  const compatibility = readFileSync(CANDIDATE_GATE_COMPATIBILITY_PATH, "utf8");
+  assert.doesNotMatch(library, /process\.argv\[1\]/);
+  assert.match(cli, /runCandidateDependencyGateCli/);
+  assert.match(cli, /runCandidateDependencyWorker/);
+  assert.match(compatibility, /control-plane-candidate-dependency-gate-cli\.mjs/);
+  const probe = `await import(${JSON.stringify(pathToFileURL(CANDIDATE_GATE_LIBRARY_PATH).href)}); process.stdout.write("imported\\n");`;
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], { encoding: "utf8" });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "imported\n");
+  assert.equal(result.stderr, "");
+});
+
+test("candidate dependency CLI cannot silently succeed through directory or file symlinks", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "gccgw-candidate-gate-entry-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const directoryAlias = join(root, "scripts-alias");
+  const fileAlias = join(root, "candidate-gate-alias.mjs");
+  const compatibilityAlias = join(root, "candidate-gate-compatibility-alias.mjs");
+  try {
+    symlinkSync(dirname(CANDIDATE_GATE_CLI_PATH), directoryAlias, process.platform === "win32" ? "junction" : "dir");
+    symlinkSync(CANDIDATE_GATE_CLI_PATH, fileAlias, "file");
+    symlinkSync(CANDIDATE_GATE_COMPATIBILITY_PATH, compatibilityAlias, "file");
+  } catch {
+    t.skip("symlink creation is unavailable");
+    return;
+  }
+  for (const entry of [join(directoryAlias, "control-plane-candidate-dependency-gate-cli.mjs"), fileAlias, compatibilityAlias]) {
+    const result = spawnSync(process.execPath, [entry, "--unexpected"], { encoding: "utf8" });
+    assert.equal(result.status, 1, `entry=${entry}\nstdout=${result.stdout}\nstderr=${result.stderr}`);
+    assert.equal(result.stdout, "");
+    assert.equal(JSON.parse(result.stderr).condition, "invalid_input");
+  }
 });

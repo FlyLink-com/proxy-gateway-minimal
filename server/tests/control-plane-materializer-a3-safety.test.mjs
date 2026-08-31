@@ -12,7 +12,17 @@
 // backed by fresh production quota readback plus service-native smoke.
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
 import {
@@ -32,12 +42,13 @@ import {
   parseServiceSmokeReadback,
   parseStorageQuotaEvidence,
   preflightCandidateDependencies,
+  validateA3ServiceSmokeSource,
   verifyCandidateDependencies
-} from "../../scripts/control-plane-candidate-dependency-gate.mjs";
+} from "../../scripts/control-plane-candidate-dependency-gate-lib.mjs";
 import {
   parseA3PhysicalValidationArgs,
   runA3PhysicalValidationCli
-} from "../../scripts/control-plane-materializer-a3-physical-validation.mjs";
+} from "../../scripts/control-plane-materializer-a3-physical-validation-lib.mjs";
 
 function condition(name) {
   return (error) => error instanceof CandidateDependencyGateError && error.condition === name;
@@ -226,7 +237,7 @@ test("bounded storage readback accepts only exact ext4 budget and low-water evid
 });
 
 test("bounded materialization binds staging and receipt topology before mutation or readback", () => {
-  const source = readFileSync(new URL("../../scripts/control-plane-candidate-dependency-gate.mjs", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../scripts/control-plane-candidate-dependency-gate-lib.mjs", import.meta.url), "utf8");
   const body = (start, end) => {
     const first = source.indexOf(start);
     const last = source.indexOf(end, first);
@@ -275,7 +286,7 @@ test("bounded materialization binds staging and receipt topology before mutation
 });
 
 test("XFS verify rejects a statically invalid receipt before quota readback", () => {
-  const source = readFileSync(new URL("../../scripts/control-plane-candidate-dependency-gate.mjs", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../scripts/control-plane-candidate-dependency-gate-lib.mjs", import.meta.url), "utf8");
   const start = source.indexOf("export async function verifyCandidateDependencies(");
   const end = source.indexOf("function args(", start);
   assert.ok(start >= 0 && end > start, "missing verify source contract");
@@ -363,6 +374,7 @@ function physicalRuntime(overrides = {}) {
       node: "/usr/bin/node",
       systemdRun: "/usr/bin/systemd-run",
       systemctl: "/usr/bin/systemctl",
+      systemdAnalyze: "/usr/bin/systemd-analyze",
       findmnt: "/usr/bin/findmnt",
       xfsQuota: "/usr/sbin/xfs_quota",
       xfsIo: "/usr/sbin/xfs_io"
@@ -680,28 +692,75 @@ test("buildServiceNativeSmokeInvocation pins principal, readonly bind, network i
   assert.equal(invocation.args.includes("--wait"), false);
   assert.equal(invocation.args.includes("--pipe"), false);
   assert.ok(invocation.args.includes("--property=DynamicUser=no"));
-  assert.ok(invocation.args.includes("--property=RestrictNamespaces=yes"));
-  assert.ok(invocation.args.includes("--property=SystemCallFilter=@system-service"));
   assert.ok(invocation.args.includes("--property=User=4711"));
   assert.ok(invocation.args.includes("--property=Group=4712"));
   assert.ok(invocation.args.includes("--property=PrivateNetwork=yes"));
   assert.ok(invocation.args.includes("--property=CapabilityBoundingSet="));
-  assert.ok(invocation.args.includes("--property=UMask=0077"));
+  for (const property of [
+    "RestrictAddressFamilies=AF_UNIX",
+    "RestrictNamespaces=yes",
+    "SystemCallFilter=@system-service",
+    "PrivateTmp=yes",
+    "ProtectControlGroups=yes",
+    "Delegate=no",
+    "Slice=system.slice",
+    "UMask=0077",
+    "WorkingDirectory=/run/control-plane-a3-service-smoke/control-plane-a3-service-smoke-run-1-validation/project"
+  ]) {
+    assert.ok(invocation.args.includes(`--property=${property}`), property);
+  }
   assert.ok(invocation.args.includes("--property=StandardOutput=file:/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stdout.json"));
   assert.ok(invocation.args.includes("--property=StandardError=file:/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stderr.txt"));
   assert.equal(invocation.captureStdout, "/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stdout.json");
   assert.equal(invocation.captureStderr, "/var/lib/control-plane-a3-1/run-1/probe/service-smoke-validation.stderr.txt");
-  assert.ok(invocation.args.includes(`--property=BindReadOnlyPaths=/var/lib/control-plane-a3-1/run-1/probe/project:/run/control-plane-a3-service-smoke/control-plane-a3-service-smoke-run-1-validation/project:norbind ${invocation.worker}:${invocation.visibleWorker}:norbind`));
+  assert.match(invocation.worker, /control-plane-dependency-artifact-cli\.mjs$/);
+  assert.match(invocation.workerLibrary, /control-plane-dependency-artifact-lib\.mjs$/);
+  assert.match(invocation.workerContract, /control-plane-welcome-coins-native-contract\.mjs$/);
+  assert.match(invocation.visibleWorkerContract, /control-plane-welcome-coins-native-contract\.mjs$/);
+  assert.deepEqual(invocation.bindReadOnlyPaths, [
+    "/var/lib/control-plane-a3-1/run-1/probe/project:/run/control-plane-a3-service-smoke/control-plane-a3-service-smoke-run-1-validation/project:norbind",
+    `${invocation.worker}:${invocation.visibleWorker}:norbind`,
+    `${invocation.workerLibrary}:${invocation.visibleWorkerLibrary}:norbind`,
+    `${invocation.workerContract}:${invocation.visibleWorkerContract}:norbind`
+  ]);
+  assert.ok(invocation.args.includes(`--property=BindReadOnlyPaths=${invocation.bindReadOnlyPaths.join(" ")}`));
   assert.deepEqual(invocation.args.slice(-8), [
     "/usr/bin/node",
     invocation.visibleWorker,
     "--mode", "smoke",
     "--root", "/run/control-plane-a3-service-smoke/control-plane-a3-service-smoke-run-1-validation/project",
-    "--snapshot", "scripts/control-plane-db-snapshot-gate.mjs"
+    "--snapshot", "scripts/control-plane-db-snapshot-gate-lib.mjs"
   ]);
 });
 
+test("A3 native smoke rejects a missing or non-fixed systemd-analyze path before launch", () => {
+  const request = {
+    runLabel: "run-1",
+    root: "/var/lib/control-plane-a3-1/run-1/probe/project",
+    service: { uid: 4711, gid: 4712 }
+  };
+  const fixedTools = physicalRuntime().tools;
+  for (const tools of [
+    { ...fixedTools, systemdAnalyze: "/tmp/systemd-analyze" },
+    Object.fromEntries(Object.entries(fixedTools).filter(([name]) => name !== "systemdAnalyze"))
+  ]) {
+    assert.throws(
+      () => buildServiceNativeSmokeInvocation({ ...request, runtime: physicalRuntime({ tools }) }),
+      condition("invalid_input")
+    );
+  }
+});
+
 const VALID_SERVICE_SMOKE_STDOUT = '{"schemaVersion":"3","type":"control_plane_dependency_artifact","mode":"smoke","state":"verified","smoke":{"betterSqlite3Memory":true,"snapshotImport":true},"processIdentity":{"uid":4711,"gid":4712}}\n';
+const SYSTEMD_SYSCALL_FILTER_CATALOG = [
+  "@default",
+  "    close",
+  "@system-service",
+  "    @default",
+  "    read",
+  "    write",
+  ""
+].join("\n");
 
 function serviceSmokeHarness({
   processStdout = VALID_SERVICE_SMOKE_STDOUT,
@@ -720,6 +779,10 @@ function serviceSmokeHarness({
   completionOverrides = {},
   pinnedStatus = 0,
   pinnedOverrides = {},
+  omittedPinnedProperty = null,
+  syscallFilterCatalog = SYSTEMD_SYSCALL_FILTER_CATALOG,
+  systemdAnalyzeStatus = 0,
+  systemdAnalyzeStderr = "",
   normalizeBindReadOnlyPaths = true,
   bindReadOnlyPathsReadback = null,
   cgroupFilesystemType = 0x63677270,
@@ -748,6 +811,7 @@ function serviceSmokeHarness({
   let unitFailed = initialUnitFailed;
   let bindReadOnlyPaths = "";
   let collectMode = "inactive-or-failed";
+  let launchedProperties = new Map();
   const executePhysicalCommand = (command, args, execution) => {
     calls.push([command, args, execution]);
     if (command === "/usr/bin/systemd-run") {
@@ -758,8 +822,15 @@ function serviceSmokeHarness({
       stopped = false;
       unitLoaded = true;
       unitFailed = false;
-      bindReadOnlyPaths = args.find((value) => value.startsWith("--property=BindReadOnlyPaths=")).slice("--property=BindReadOnlyPaths=".length);
-      collectMode = args.find((value) => value.startsWith("--property=CollectMode="))?.slice("--property=CollectMode=".length)
+      const propertyEntries = args
+        .filter((value) => value.startsWith("--property="))
+        .map((value) => value.slice("--property=".length));
+      launchedProperties = new Map(propertyEntries.map((entry) => {
+        const separator = entry.indexOf("=");
+        return [entry.slice(0, separator), entry.slice(separator + 1)];
+      }));
+      bindReadOnlyPaths = launchedProperties.get("BindReadOnlyPaths") ?? "";
+      collectMode = launchedProperties.get("CollectMode")
         ?? (args.includes("--collect") ? "inactive-or-failed" : "inactive");
       remainingCompletionPolls = completionPolls;
       if (remainingCompletionPolls === 0) {
@@ -767,6 +838,13 @@ function serviceSmokeHarness({
         captures.set(captureStderr, "regular");
       }
       return { status: launchStatus, stdout: "", stderr: launchStatus === 0 ? "" : "start job failed" };
+    }
+    if (command === "/usr/bin/systemd-analyze") {
+      return {
+        status: systemdAnalyzeStatus,
+        stdout: systemdAnalyzeStatus === 0 ? syscallFilterCatalog : "",
+        stderr: systemdAnalyzeStatus === 0 ? systemdAnalyzeStderr : "catalog unavailable"
+      };
     }
     if (command !== "/usr/bin/systemctl") return { status: 70, stdout: "", stderr: "unexpected command" };
     if (args[0] === "stop") {
@@ -819,16 +897,37 @@ function serviceSmokeHarness({
     }
     if (property.includes("Type,RemainAfterExit,CollectMode")) {
       const normalizedBindReadback = normalizeBindReadOnlyPaths ? bindReadOnlyPaths.replaceAll(":norbind", "") : bindReadOnlyPaths;
+      const requestedProperties = new Set(property.slice("--property=".length).split(","));
       const values = {
         ActiveState: "active", SubState: "exited", Result: "success", ExecMainStatus: "0",
-        ControlGroup: `/system.slice/${unit}`, User: "4711", Group: "4712", PrivateNetwork: "yes",
-        CapabilityBoundingSet: "", ProtectSystem: "strict", ProtectHome: "yes", PrivateDevices: "yes",
-        NoNewPrivileges: "yes", BindReadOnlyPaths: typeof bindReadOnlyPathsReadback === "function" ? bindReadOnlyPathsReadback(normalizedBindReadback) : normalizedBindReadback, Type: "oneshot",
-        RemainAfterExit: "yes", CollectMode: collectMode, ...pinnedOverrides
+        ControlGroup: `/system.slice/${unit}`,
+        User: launchedProperties.get("User"),
+        Group: launchedProperties.get("Group"),
+        PrivateNetwork: launchedProperties.get("PrivateNetwork"),
+        CapabilityBoundingSet: launchedProperties.get("CapabilityBoundingSet"),
+        ProtectSystem: launchedProperties.get("ProtectSystem"),
+        ProtectHome: launchedProperties.get("ProtectHome"),
+        PrivateDevices: launchedProperties.get("PrivateDevices"),
+        NoNewPrivileges: launchedProperties.get("NoNewPrivileges"),
+        BindReadOnlyPaths: typeof bindReadOnlyPathsReadback === "function" ? bindReadOnlyPathsReadback(normalizedBindReadback) : normalizedBindReadback, Type: "oneshot",
+        RemainAfterExit: "yes", CollectMode: collectMode,
+        RestrictAddressFamilies: launchedProperties.get("RestrictAddressFamilies"),
+        RestrictNamespaces: launchedProperties.get("RestrictNamespaces"),
+        SystemCallFilter: launchedProperties.get("SystemCallFilter"),
+        PrivateTmp: launchedProperties.get("PrivateTmp"),
+        ProtectControlGroups: launchedProperties.get("ProtectControlGroups"),
+        Delegate: launchedProperties.get("Delegate"),
+        Slice: launchedProperties.get("Slice"),
+        UMask: launchedProperties.get("UMask"),
+        WorkingDirectory: launchedProperties.get("WorkingDirectory"),
+        ...pinnedOverrides
       };
+      if (omittedPinnedProperty !== null) delete values[omittedPinnedProperty];
       return {
         status: pinnedStatus,
-        stdout: pinnedStatus === 0 ? Object.entries(values).map(([name, value]) => `${name}=${value}\n`).join("") : "",
+        stdout: pinnedStatus === 0 ? Object.entries(values)
+          .filter(([name, value]) => requestedProperties.has(name) && value !== undefined)
+          .map(([name, value]) => `${name}=${value}\n`).join("") : "",
         stderr: pinnedStatus === 0 ? "" : "unit unavailable"
       };
     }
@@ -905,10 +1004,135 @@ test("collectServiceNativeSmokeEvidence pins evidence, triangulates identity, th
   assert.equal(evidence.betterSqlite3Memory, true);
   assert.equal(harness.wasStopped(), true);
   assert.equal(harness.captures.size, 0);
-  assert.equal(harness.calls.length, 9);
+  assert.equal(harness.calls.length, 10);
   assert.deepEqual(harness.calls.map(([, args]) => args[0]), [
-    "show", "show", "--unit=control-plane-a3-service-smoke-run-1-validation", "show", "show", "show", "stop", "show", "show"
+    "show", "show", "--unit=control-plane-a3-service-smoke-run-1-validation", "show", "show", "--no-pager", "show", "stop", "show", "show"
   ]);
+});
+
+test("collectServiceNativeSmokeEvidence reads back every emitted sandbox property and the system-call catalog", () => {
+  const harness = serviceSmokeHarness();
+  collectServiceSmoke(harness.runtime);
+  const terminalShow = harness.calls.find(([, args]) => (
+    args[0] === "show" && args.some((value) => value.includes("Type,RemainAfterExit,CollectMode"))
+  ));
+  assert.ok(terminalShow);
+  const requested = terminalShow[1]
+    .find((value) => value.startsWith("--property="))
+    .slice("--property=".length)
+    .split(",");
+  for (const name of [
+    "RestrictAddressFamilies", "RestrictNamespaces", "SystemCallFilter", "PrivateTmp",
+    "ProtectControlGroups", "Delegate", "Slice", "UMask", "WorkingDirectory"
+  ]) {
+    assert.ok(requested.includes(name), name);
+  }
+  const analyze = harness.calls.find(([command]) => command === "/usr/bin/systemd-analyze");
+  assert.deepEqual(analyze?.[1], ["--no-pager", "syscall-filter"]);
+});
+
+test("collectServiceNativeSmokeEvidence accepts alias and exactly expanded system-call readback", () => {
+  for (const SystemCallFilter of ["@system-service", "write close read"]) {
+    const harness = serviceSmokeHarness({ pinnedOverrides: { SystemCallFilter } });
+    const evidence = collectServiceSmoke(harness.runtime);
+    assert.equal(evidence.betterSqlite3Memory, true);
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence rejects missing or drifted emitted sandbox readback", () => {
+  const drifts = {
+    RestrictAddressFamilies: "AF_INET",
+    RestrictNamespaces: "no",
+    PrivateTmp: "no",
+    ProtectControlGroups: "no",
+    Delegate: "yes",
+    Slice: "user.slice",
+    UMask: "0022",
+    WorkingDirectory: "/unexpected"
+  };
+  for (const [name, value] of Object.entries(drifts)) {
+    const wrong = serviceSmokeHarness({ pinnedOverrides: { [name]: value } });
+    assert.throws(
+      () => collectServiceSmoke(wrong.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true,
+      `${name} wrong`
+    );
+    assert.equal(wrong.wasStopped(), true);
+    assert.equal(wrong.captures.size, 0);
+
+    const missing = serviceSmokeHarness({ omittedPinnedProperty: name });
+    assert.throws(
+      () => collectServiceSmoke(missing.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true,
+      `${name} missing`
+    );
+    assert.equal(missing.wasStopped(), true);
+    assert.equal(missing.captures.size, 0);
+  }
+});
+
+test("collectServiceNativeSmokeEvidence rejects ambiguous or drifted system-call readback", () => {
+  for (const SystemCallFilter of [
+    "close read",
+    "close read write mount",
+    "~close read write",
+    "@missing",
+    "close close read write"
+  ]) {
+    const harness = serviceSmokeHarness({ pinnedOverrides: { SystemCallFilter } });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true,
+      SystemCallFilter
+    );
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+
+  const missing = serviceSmokeHarness({ omittedPinnedProperty: "SystemCallFilter" });
+  assert.throws(
+    () => collectServiceSmoke(missing.runtime),
+    (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
+  );
+  assert.equal(missing.wasStopped(), true);
+  assert.equal(missing.captures.size, 0);
+});
+
+test("collectServiceNativeSmokeEvidence rejects malformed or unavailable system-call catalogs", () => {
+  const malformedCatalogs = [
+    "@default\n    close\n@system-service\n    @loop\n@loop\n    @system-service\n",
+    "@default\n    close\n@default\n    read\n@system-service\n    write\n",
+    "@system-service\n    read\n",
+    "@default\n    close\n",
+    "@default\n    close\n@system-service\n",
+    "@default\n    close\n@system-service\n    @missing\n",
+    "@default\n    close\n@system-service\n    read\n    read\n"
+  ];
+  for (const syscallFilterCatalog of malformedCatalogs) {
+    const harness = serviceSmokeHarness({ syscallFilterCatalog });
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
+    );
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
+
+  for (const options of [
+    { systemdAnalyzeStatus: 1 },
+    { systemdAnalyzeStderr: "unexpected warning" },
+    { syscallFilterCatalog: "x".repeat(256 * 1024 + 1) }
+  ]) {
+    const harness = serviceSmokeHarness(options);
+    assert.throws(
+      () => collectServiceSmoke(harness.runtime),
+      (error) => condition("worker_cleanup_uncertain")(error) && error.attentionRequired === true
+    );
+    assert.equal(harness.wasStopped(), true);
+    assert.equal(harness.captures.size, 0);
+  }
 });
 
 test("collectServiceNativeSmokeEvidence gives only the native smoke launch a longer bounded command timeout", () => {
@@ -917,7 +1141,12 @@ test("collectServiceNativeSmokeEvidence gives only the native smoke launch a lon
   const launch = harness.calls.find(([command]) => command === "/usr/bin/systemd-run");
   assert.deepEqual(launch[2], { timeoutMs: 300_000 });
   assert.equal(Object.isFrozen(launch[2]), true);
-  for (const call of harness.calls.filter(([command]) => command !== "/usr/bin/systemd-run")) {
+  const analyze = harness.calls.find(([command]) => command === "/usr/bin/systemd-analyze");
+  assert.deepEqual(analyze[2], { timeoutMs: 15_000, maxOutputBytes: 256 * 1024 });
+  assert.equal(Object.isFrozen(analyze[2]), true);
+  for (const call of harness.calls.filter(([command]) => (
+    command !== "/usr/bin/systemd-run" && command !== "/usr/bin/systemd-analyze"
+  ))) {
     assert.deepEqual(call[2], { timeoutMs: 15_000 });
     assert.equal(Object.isFrozen(call[2]), true);
   }
@@ -1135,7 +1364,7 @@ test("collectServiceNativeSmokeEvidence accepts systemd-normalized readonly bind
   assert.equal(evidence.cgroupEmpty, true);
   const launchBind = harness.calls.find(([command]) => command === "/usr/bin/systemd-run")[1]
     .find((value) => value.startsWith("--property=BindReadOnlyPaths="));
-  assert.equal(launchBind.match(/:norbind/g)?.length, 2);
+  assert.equal(launchBind.match(/:norbind/g)?.length, 4);
   assert.equal(harness.wasStopped(), true);
   assert.equal(harness.captures.size, 0);
 });
@@ -1220,7 +1449,7 @@ test("collectServiceNativeSmokeEvidence cleans interrupted-run captures before a
   assert.equal(harness.wasStopped(), true);
   assert.equal(harness.captures.size, 0);
   assert.deepEqual(harness.calls.map(([, args]) => args[0]), [
-    "show", "stop", "show", "show", "--unit=control-plane-a3-service-smoke-run-1-validation", "show", "show", "show", "stop", "show", "show"
+    "show", "stop", "show", "show", "--unit=control-plane-a3-service-smoke-run-1-validation", "show", "show", "--no-pager", "show", "stop", "show", "show"
   ]);
 });
 
@@ -1282,6 +1511,73 @@ test("collectServiceNativeSmokeEvidence rejects false or throwing source custody
     assert.deepEqual(harness.calls.map(([, args]) => args[0]), ["show", "show"]);
     assert.equal(harness.captures.size, 0);
   }
+});
+
+test("service-native smoke source custody hook receives the exact fourth contract module", () => {
+  const observed = [];
+  const harness = serviceSmokeHarness();
+  harness.runtime.validateA3ServiceSmokeSource = (value) => {
+    observed.push(value);
+    return true;
+  };
+  collectServiceSmoke(harness.runtime);
+  assert.equal(observed.length, 1);
+  assert.deepEqual(Object.keys(observed[0]).sort(), [
+    "root",
+    "snapshotModule",
+    "worker",
+    "workerContract",
+    "workerLibrary"
+  ]);
+  assert.match(observed[0].workerContract, /control-plane-welcome-coins-native-contract\.mjs$/);
+});
+
+test("service-native smoke rejects unsafe fourth contract-module source leaves", async (t) => {
+  const repositoryRoot = resolve(".");
+  const temporaryRoot = mkdtempSync(join(tmpdir(), "service-smoke-contract-"));
+  t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }));
+  const invocationFor = (workerContract) => ({
+    worker: resolve("scripts/control-plane-dependency-artifact-cli.mjs"),
+    workerLibrary: resolve("scripts/control-plane-dependency-artifact-lib.mjs"),
+    workerContract
+  });
+  const supplied = {
+    requireRoot: false,
+    enforceOwnership: false,
+    checkAclCapabilities: () => true
+  };
+  const rejected = (workerContract) => assert.throws(
+    () => validateA3ServiceSmokeSource(invocationFor(workerContract), repositoryRoot, supplied),
+    condition("service_smoke_readback_invalid")
+  );
+
+  await t.test("missing", () => rejected(join(temporaryRoot, "missing.mjs")));
+  await t.test("symlink", (subtest) => {
+    const target = join(temporaryRoot, "target.mjs");
+    const alias = join(temporaryRoot, "alias.mjs");
+    writeFileSync(target, "export const value = true;\n", { mode: 0o600 });
+    try {
+      symlinkSync(target, alias, "file");
+    } catch (error) {
+      if (error?.code === "EPERM") {
+        subtest.skip("Windows file symlink privilege unavailable");
+        return;
+      }
+      throw error;
+    }
+    rejected(alias);
+  });
+  await t.test("writable", () => {
+    const path = join(temporaryRoot, "writable.mjs");
+    writeFileSync(path, "export const value = true;\n");
+    chmodSync(path, 0o666);
+    rejected(path);
+  });
+  await t.test("non-regular replacement", () => {
+    const path = join(temporaryRoot, "replacement.mjs");
+    mkdirSync(path);
+    rejected(path);
+  });
 });
 
 test("collectServiceNativeSmokeEvidence rejects requested, observed and systemctl identity drift", () => {
@@ -1378,6 +1674,7 @@ function productionRuntime(overrides = {}) {
     tools: {
       systemctl: "/usr/bin/systemctl",
       systemdRun: "/usr/bin/systemd-run",
+      systemdAnalyze: "/usr/bin/systemd-analyze",
       env: "/usr/bin/env",
       npm: "/usr/bin/npm",
       node: "/usr/bin/node",
@@ -1445,6 +1742,7 @@ test("production A3 runtime is explicit, fixed-root, and advances past the legac
   assert.equal(integrated.enforceOwnership, true);
   assert.equal(integrated.a3ProjectId, 4242);
   assert.equal(integrated.a3RunLabel, "a3-prod-1");
+  assert.equal(integrated.tools.systemdAnalyze, "/usr/bin/systemd-analyze");
   const smoke = buildProductionServiceNativeSmokeInvocation({
     smokePhase: "postpublish",
     root: "/opt/proxy-gateway-minimal-candidate/releases/candidate",
@@ -1485,6 +1783,7 @@ test("production bounded-artifact runtime is explicit and does not require an XF
   assert.equal(bounded.root, "/opt/proxy-gateway-minimal-candidate");
   assert.equal(bounded.storageMode, "bounded-artifact");
   assert.equal(bounded.a3ProjectId, undefined);
+  assert.equal(bounded.tools.systemdAnalyze, "/usr/bin/systemd-analyze");
 
   const smoke = buildProductionServiceNativeSmokeInvocation({
     smokePhase: "postpublish",

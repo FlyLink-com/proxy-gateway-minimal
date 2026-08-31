@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
   chmodSync,
@@ -8,28 +9,90 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import Database from "better-sqlite3";
 
 import {
+  inspectControlPlaneDatabaseBoundary,
   parseSystemdUnitShowProperties,
   runControlPlaneDatabaseSnapshotGateCli,
   runtimeConditionStartGuardPaths,
-  snapshotControlPlaneDatabase,
   verifyControlPlaneDatabaseStartGuard,
-  verifyControlPlaneDatabaseSnapshot,
-  restoreControlPlaneDatabase
-} from "../../scripts/control-plane-db-snapshot-gate.mjs";
+  verifyControlPlaneDatabaseSnapshot
+} from "../../scripts/control-plane-db-snapshot-gate-lib.mjs";
 
 const CONTROL_PLANE_SNAPSHOT_CONTRACT = new URL(
   "../../docs/CONTROL_PLANE_DB_SNAPSHOT_RESTORE_CONTRACT.md",
   import.meta.url
 );
+const SNAPSHOT_GATE_SOURCE = new URL(
+  "../../scripts/control-plane-db-snapshot-gate-lib.mjs",
+  import.meta.url
+);
+const SNAPSHOT_GATE_PATH = fileURLToPath(SNAPSHOT_GATE_SOURCE);
+const SNAPSHOT_GATE_COMPAT_PATH = fileURLToPath(new URL(
+  "../../scripts/control-plane-db-snapshot-gate.mjs",
+  import.meta.url
+));
+const SNAPSHOT_GATE_CLI_SOURCE = new URL(
+  "../../scripts/control-plane-db-snapshot-gate-cli.mjs",
+  import.meta.url
+);
+const SNAPSHOT_GATE_CLI_PATH = fileURLToPath(SNAPSHOT_GATE_CLI_SOURCE);
+
+function sourceDataUrl(source) {
+  return `data:text/javascript;base64,${Buffer.from(source, "utf8").toString("base64")}`;
+}
+
+async function loadPrivateSnapshotHarness() {
+  let source = readFileSync(SNAPSHOT_GATE_SOURCE, "utf8");
+  const dependencySpecifier = JSON.stringify("better-sqlite3");
+  assert.equal(source.split(dependencySpecifier).length - 1, 1);
+  source = source.replace(dependencySpecifier, JSON.stringify(import.meta.resolve("better-sqlite3")));
+  const migrationSpecifier = JSON.stringify(
+    "../server/services/platform/portal-registration-welcome-bonus-migrations.mjs"
+  );
+  assert.equal(source.split(migrationSpecifier).length - 1, 1);
+  source = source.replace(
+    migrationSpecifier,
+    JSON.stringify(new URL(
+      "../services/platform/portal-registration-welcome-bonus-migrations.mjs",
+      import.meta.url
+    ).href)
+  );
+  for (const name of ["snapshotControlPlaneDatabase", "restoreControlPlaneDatabase"]) {
+    const exported = new RegExp(`^export async function ${name}\\(`, "mu");
+    const privateDeclaration = new RegExp(`^async function ${name}\\(`, "mu");
+    assert.equal(Number(exported.test(source)) + Number(privateDeclaration.test(source)), 1, name);
+    source = source.replace(exported, `async function ${name}(`);
+  }
+  const exportedGuard = /^export function verifyControlPlaneDatabaseStartGuard\(/mu;
+  const privateGuard = /^function verifyControlPlaneDatabaseStartGuardCore\(/mu;
+  if (!privateGuard.test(source)) {
+    assert.equal(exportedGuard.test(source), true);
+    source = source.replace(
+      exportedGuard,
+      "function verifyControlPlaneDatabaseStartGuardCore("
+    );
+  }
+  assert.equal((source.match(/^function verifyControlPlaneDatabaseStartGuardCore\(/gmu) ?? []).length, 1);
+  source += `\nexport { snapshotControlPlaneDatabase, restoreControlPlaneDatabase, verifyControlPlaneDatabaseStartGuardCore, withControlPlaneDatabaseExclusiveCustody };\n`;
+  return import(sourceDataUrl(source));
+}
+
+const privateSnapshotHarness = await loadPrivateSnapshotHarness();
+const snapshotControlPlaneDatabase = privateSnapshotHarness.snapshotControlPlaneDatabase;
+const restoreControlPlaneDatabase = privateSnapshotHarness.restoreControlPlaneDatabase;
+const verifyControlPlaneDatabaseStartGuardCore = privateSnapshotHarness.verifyControlPlaneDatabaseStartGuardCore;
+const withControlPlaneDatabaseExclusiveCustody =
+  privateSnapshotHarness.withControlPlaneDatabaseExclusiveCustody;
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), "gccgw-control-db-snapshot-"));
@@ -125,6 +188,69 @@ function assertNoSqliteSidecars(dbPath) {
   assert.equal(existsSync(`${dbPath}-shm`), false, "no SHM sidecar");
 }
 
+test("production snapshot library does not export stateful snapshot or restore cores", async () => {
+  const productionModule = await import(SNAPSHOT_GATE_SOURCE);
+
+  assert.equal(Object.hasOwn(productionModule, "snapshotControlPlaneDatabase"), false);
+  assert.equal(Object.hasOwn(productionModule, "restoreControlPlaneDatabase"), false);
+});
+
+test("production start-guard verifier rejects an injected reader before reading it", () => {
+  let calls = 0;
+  assert.throws(
+    () => verifyControlPlaneDatabaseStartGuard({
+      serviceUnit: "proxy-gateway-candidate.service",
+      expectedServiceState: "inactive",
+      unitStateReader: () => {
+        calls += 1;
+        return unitStateReader()();
+      }
+    }),
+    (error) => error?.condition === "execution_envelope_required"
+  );
+  assert.equal(calls, 0);
+});
+
+test("logical database identity supports WITHOUT ROWID tables", (t) => {
+  const state = fixture(t);
+  const database = new Database(state.dbPath);
+  database.exec(`
+    create table without_rowid_fixture (
+      key text primary key,
+      value text not null
+    ) without rowid;
+    insert into without_rowid_fixture (key, value) values ('one', 'first');
+  `);
+  database.close();
+
+  const before = inspectControlPlaneDatabaseBoundary({ dbPath: state.dbPath });
+  const writer = new Database(state.dbPath);
+  writer.prepare("update without_rowid_fixture set value = ? where key = ?").run("second", "one");
+  writer.close();
+  const after = inspectControlPlaneDatabaseBoundary({ dbPath: state.dbPath });
+
+  assert.notEqual(after.logicalSha256, before.logicalSha256);
+  assert.equal(after.objectIdentitySha256, before.objectIdentitySha256);
+});
+
+test("logical database identity fails closed when every hidden rowid alias is shadowed", (t) => {
+  const state = fixture(t);
+  const database = new Database(state.dbPath);
+  database.exec(`
+    create table shadowed_rowid_fixture (
+      rowid text,
+      _rowid_ text,
+      oid text
+    );
+  `);
+  database.close();
+
+  assert.throws(
+    () => inspectControlPlaneDatabaseBoundary({ dbPath: state.dbPath }),
+    (error) => error?.condition === "database_boundary_invalid"
+  );
+});
+
 async function makeSnapshot({ dbPath, snapshotDirectory, unitStateReader: readUnitState = unitStateReader() }) {
   return snapshotControlPlaneDatabase({
     dbPath,
@@ -193,7 +319,7 @@ test("systemd show parser fails closed for malformed property sets", () => {
 
 test("snapshot gate resolves systemd inspection through fixed absolute binaries and a minimal environment", () => {
   const source = readFileSync(
-    new URL("../../scripts/control-plane-db-snapshot-gate.mjs", import.meta.url),
+    new URL("../../scripts/control-plane-db-snapshot-gate-lib.mjs", import.meta.url),
     "utf8"
   );
 
@@ -243,7 +369,7 @@ test("runtime condition guard paths are derived only from the validated service 
 });
 
 test("start-guard verification uses the same exact guard check before a service is stopped", () => {
-  const guarded = verifyControlPlaneDatabaseStartGuard({
+  const guarded = verifyControlPlaneDatabaseStartGuardCore({
     serviceUnit: "proxy-gateway-candidate.service",
     expectedServiceState: "active",
     unitStateReader: unitStateReader({ activeState: "active" })
@@ -260,7 +386,7 @@ test("start-guard verification uses the same exact guard check before a service 
   });
 
   assert.throws(
-    () => verifyControlPlaneDatabaseStartGuard({
+    () => verifyControlPlaneDatabaseStartGuardCore({
       serviceUnit: "proxy-gateway-candidate.service",
       expectedServiceState: "active",
       unitStateReader: unitStateReader({
@@ -299,6 +425,80 @@ test("snapshot quiesces a stopped WAL source without leaving sidecars or emittin
   assert.equal(JSON.parse(manifestText).snapshotFile, snapshotPath.split(/[\\/]/).at(-1));
   assertNoSqliteSidecars(state.dbPath);
   assertNoSqliteSidecars(snapshotPath);
+});
+
+test("post-commit exclusive custody blocks a late SQLite writer until the held callback releases", async (t) => {
+  const state = fixture(t);
+  const source = createDatabase(state.dbPath, ["before-held-window"]);
+  source.close();
+  const expectedDatabaseBoundary = inspectControlPlaneDatabaseBoundary({ dbPath: state.dbPath });
+  const guardIdentity = "runtime-condition-v1:11:12:21:22";
+  const events = [];
+
+  const result = await withControlPlaneDatabaseExclusiveCustody({
+    dbPath: state.dbPath,
+    snapshotDirectory: state.snapshotDirectory,
+    serviceUnit: "proxy-gateway-candidate.service",
+    expectedServiceState: "inactive",
+    createdAt: "2026-08-30T12:00:00.000Z",
+    expectedDatabaseBoundary,
+    expectedRuntimeConditionStartGuardIdentity: guardIdentity,
+    unitStateReader: unitStateReader({ runtimeConditionStartGuardIdentity: guardIdentity }),
+    operation: async ({ database }) => {
+      events.push("schema_operation");
+      database.prepare("insert into snapshot_gate_fixture (value) values (?)")
+        .run("committed-before-held-window");
+      return Object.freeze({ state: "schema_ready" });
+    },
+    postCommitCustody: async (held) => {
+      events.push("post_commit_custody_held");
+      assert.deepEqual(Object.keys(held).sort(), [
+        "guardIdentitySha256",
+        "operationResult",
+        "snapshot"
+      ]);
+      assert.throws(() => {
+        const lateWriter = new Database(state.dbPath, { fileMustExist: true });
+        try {
+          lateWriter.pragma("busy_timeout = 0");
+          lateWriter.prepare("insert into snapshot_gate_fixture (value) values (?)")
+            .run("must-not-write-inside-held-window");
+        } finally {
+          lateWriter.close();
+        }
+      }, (error) => /^SQLITE_(?:BUSY|LOCKED)(?:_|$)/u.test(error?.code ?? ""));
+      events.push("late_writer_blocked");
+    }
+  });
+  events.push("custody_returned");
+
+  const writerAfterRelease = new Database(state.dbPath, { fileMustExist: true });
+  try {
+    writerAfterRelease.prepare("insert into snapshot_gate_fixture (value) values (?)")
+      .run("write-after-release");
+  } finally {
+    writerAfterRelease.close();
+  }
+  assert.deepEqual(events, [
+    "schema_operation",
+    "post_commit_custody_held",
+    "late_writer_blocked",
+    "custody_returned"
+  ]);
+  assert.deepEqual(result.operationResult, { state: "schema_ready" });
+  const readback = new Database(state.dbPath, { readonly: true, fileMustExist: true });
+  try {
+    assert.deepEqual(
+      readback.prepare("select value from snapshot_gate_fixture order by rowid").all(),
+      [
+        { value: "before-held-window" },
+        { value: "committed-before-held-window" },
+        { value: "write-after-release" }
+      ]
+    );
+  } finally {
+    readback.close();
+  }
 });
 
 test("snapshot requires an externally established runtime condition start guard before database touch", async (t) => {
@@ -651,6 +851,123 @@ test("CLI failure reports only a safe condition and never echoes an input path",
     condition: "path_must_be_absolute"
   });
   assert.equal(stderr.includes(privateLookingPath), false);
+});
+
+test("snapshot implementation is import-only and its CLI launcher dispatches unconditionally", () => {
+  const implementation = readFileSync(SNAPSHOT_GATE_SOURCE, "utf8");
+  const launcher = readFileSync(SNAPSHOT_GATE_CLI_SOURCE, "utf8");
+
+  assert.doesNotMatch(implementation, /isDirectInvocation|process\.argv\[1\]|process\.exitCode/);
+  assert.doesNotMatch(launcher, /isDirectInvocation|process\.argv\[1\]|realpathSync|import\.meta\.main/);
+  assert.match(
+    launcher,
+    /process\.exitCode = await runControlPlaneDatabaseSnapshotGateCli\(\);/
+  );
+});
+
+function assertDirectSnapshotGateBlocked(result) {
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, "");
+  const lines = result.stderr.trimEnd().split(/\r?\n/);
+  assert.equal(lines.length, 1);
+  assert.deepEqual(JSON.parse(lines[0]), {
+    schemaVersion: "1",
+    type: "control_plane_db_snapshot_gate",
+    mode: null,
+    state: "blocked",
+    condition: "mode_invalid"
+  });
+}
+
+test("the historical snapshot entry emits a blocked receipt instead of silent success", () => {
+  const result = spawnSync(process.execPath, [SNAPSHOT_GATE_COMPAT_PATH], {
+    encoding: "utf8",
+    env: {},
+    timeout: 15_000,
+    windowsHide: true
+  });
+
+  assertDirectSnapshotGateBlocked(result);
+});
+
+test("a symlinked snapshot CLI entry still emits the blocked receipt", (t) => {
+  const state = fixture(t);
+  const linkedScripts = join(state.root, "scripts-current");
+  symlinkSync(
+    dirname(SNAPSHOT_GATE_CLI_PATH),
+    linkedScripts,
+    process.platform === "win32" ? "junction" : "dir"
+  );
+  const linkedCli = join(linkedScripts, basename(SNAPSHOT_GATE_CLI_PATH));
+  const result = spawnSync(process.execPath, [linkedCli], {
+    cwd: state.root,
+    encoding: "utf8",
+    env: {},
+    timeout: 15_000,
+    windowsHide: true
+  });
+
+  assertDirectSnapshotGateBlocked(result);
+});
+
+test("a file-symlinked snapshot CLI entry still emits the blocked receipt", (t) => {
+  const state = fixture(t);
+  const linkedCli = join(state.root, basename(SNAPSHOT_GATE_CLI_PATH));
+  symlinkSync(SNAPSHOT_GATE_CLI_PATH, linkedCli, "file");
+  const result = spawnSync(process.execPath, [linkedCli], {
+    cwd: state.root,
+    encoding: "utf8",
+    env: {},
+    timeout: 15_000,
+    windowsHide: true
+  });
+
+  assertDirectSnapshotGateBlocked(result);
+});
+
+test("a missing importer argv path does not trigger the snapshot CLI", (t) => {
+  const state = fixture(t);
+  const importerPath = join(state.root, "importer.mjs");
+  const missingArgvPath = join(state.root, "missing-entry.mjs");
+  writeFileSync(importerPath, `
+process.argv[1] = ${JSON.stringify(missingArgvPath)};
+await import(${JSON.stringify(SNAPSHOT_GATE_SOURCE.href)});
+process.stdout.write("imported\\n");
+`);
+  const result = spawnSync(process.execPath, [importerPath], {
+    cwd: state.root,
+    encoding: "utf8",
+    env: {},
+    timeout: 15_000,
+    windowsHide: true
+  });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "imported\n");
+  assert.equal(result.stderr, "");
+});
+
+test("an argv alias import does not trigger the snapshot CLI", (t) => {
+  const state = fixture(t);
+  const importerPath = join(state.root, "importer.mjs");
+  const aliasedArgvPath = join(state.root, basename(SNAPSHOT_GATE_PATH));
+  symlinkSync(SNAPSHOT_GATE_PATH, aliasedArgvPath, "file");
+  writeFileSync(importerPath, `
+process.argv[1] = ${JSON.stringify(aliasedArgvPath)};
+await import(${JSON.stringify(SNAPSHOT_GATE_SOURCE.href)});
+process.stdout.write("imported\\n");
+`);
+  const result = spawnSync(process.execPath, [importerPath], {
+    cwd: state.root,
+    encoding: "utf8",
+    env: {},
+    timeout: 15_000,
+    windowsHide: true
+  });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "imported\n");
+  assert.equal(result.stderr, "");
 });
 
 test("CLI verify accepts only its exact argument set and returns a redacted result", async (t) => {

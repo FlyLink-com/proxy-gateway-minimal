@@ -14,22 +14,81 @@ import {
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
-import {
-  activateWelcomeCoins,
-  deactivateWelcomeCoins,
-  preflightWelcomeCoinsActivation,
-  verifyWelcomeCoinsActivation,
-  verifyWelcomeCoinsDeactivation
-} from "../../scripts/control-plane-welcome-coins-activation-gate.mjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const LIBRARY_PATH = resolve(
+  REPOSITORY_ROOT,
+  "scripts/control-plane-welcome-coins-activation-gate-lib.mjs"
+);
 const SCRIPT_PATH = resolve(
+  REPOSITORY_ROOT,
+  "scripts/control-plane-welcome-coins-activation-gate-cli.mjs"
+);
+const COMPATIBILITY_SCRIPT_PATH = resolve(
   REPOSITORY_ROOT,
   "scripts/control-plane-welcome-coins-activation-gate.mjs"
 );
+
+function replaceExactModuleSpecifier(source, specifier, replacement) {
+  const needle = JSON.stringify(specifier);
+  assert.equal(source.split(needle).length - 1, 1, specifier);
+  return source.replace(needle, JSON.stringify(replacement));
+}
+
+function sourceDataUrl(source) {
+  return `data:text/javascript;base64,${Buffer.from(source, "utf8").toString("base64")}`;
+}
+
+async function loadPrivateActivationHarness() {
+  let source = readFileSync(LIBRARY_PATH, "utf8");
+  source = replaceExactModuleSpecifier(source, "dotenv", import.meta.resolve("dotenv"));
+  source = replaceExactModuleSpecifier(
+    source,
+    "./control-plane-db-snapshot-gate-lib.mjs",
+    pathToFileURL(resolve(REPOSITORY_ROOT, "scripts/control-plane-db-snapshot-gate-lib.mjs")).href
+  );
+  source = replaceExactModuleSpecifier(
+    source,
+    "./control-plane-welcome-coins-holder-observer-lib.mjs",
+    pathToFileURL(resolve(
+      REPOSITORY_ROOT,
+      "scripts/control-plane-welcome-coins-holder-observer-lib.mjs"
+    )).href
+  );
+  for (const name of [
+    "preflightWelcomeCoinsActivation",
+    "preflightWelcomeCoinsDeactivation",
+    "activateWelcomeCoins",
+    "verifyWelcomeCoinsActivation",
+    "deactivateWelcomeCoins",
+    "verifyWelcomeCoinsDeactivation"
+  ]) {
+    const exported = new RegExp(`^export function ${name}\\(`, "mu");
+    const privateDeclaration = new RegExp(`^function ${name}\\(`, "mu");
+    assert.equal(Number(exported.test(source)) + Number(privateDeclaration.test(source)), 1, name);
+    source = source.replace(exported, `function ${name}(`);
+  }
+  source += `\nexport {
+    preflightWelcomeCoinsActivation,
+    preflightWelcomeCoinsDeactivation,
+    activateWelcomeCoins,
+    verifyWelcomeCoinsActivation,
+    deactivateWelcomeCoins,
+    verifyWelcomeCoinsDeactivation
+  };\n`;
+  return import(sourceDataUrl(source));
+}
+
+const privateActivationHarness = await loadPrivateActivationHarness();
+const preflightWelcomeCoinsActivation = privateActivationHarness.preflightWelcomeCoinsActivation;
+const preflightWelcomeCoinsDeactivation = privateActivationHarness.preflightWelcomeCoinsDeactivation;
+const activateWelcomeCoins = privateActivationHarness.activateWelcomeCoins;
+const verifyWelcomeCoinsActivation = privateActivationHarness.verifyWelcomeCoinsActivation;
+const deactivateWelcomeCoins = privateActivationHarness.deactivateWelcomeCoins;
+const verifyWelcomeCoinsDeactivation = privateActivationHarness.verifyWelcomeCoinsDeactivation;
 const RELEASE = "control-plane-welcome-coins-gate-test";
 const DIGEST = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BASE_ENVIRONMENT = [
@@ -75,17 +134,70 @@ function preflightArgs(paths) {
   };
 }
 
-function runCli(args, input = "") {
-  return spawnSync(process.execPath, [SCRIPT_PATH, ...args], {
+function runCli(args, input = "", {
+  scriptPath = SCRIPT_PATH,
+  nodeArgs = [],
+  environment = process.env
+} = {}) {
+  return spawnSync(process.execPath, [...nodeArgs, scriptPath, ...args], {
     cwd: REPOSITORY_ROOT,
     encoding: "utf8",
+    env: environment,
     input
   });
+}
+
+function assertInvalidInputReceipt(result) {
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, "");
+  assert.deepEqual(JSON.parse(result.stderr), {
+    schemaVersion: "1",
+    type: "control_plane_welcome_coins_activation_gate",
+    state: "blocked",
+    condition: "invalid_input"
+  });
+}
+
+function symlinkedActivationScript(t, kind) {
+  const root = mkdtempSync(join(tmpdir(), "gccgw-welcome-coins-entry-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  try {
+    if (kind === "directory") {
+      const linkedDirectory = join(root, "scripts-link");
+      symlinkSync(
+        dirname(SCRIPT_PATH),
+        linkedDirectory,
+        process.platform === "win32" ? "junction" : "dir"
+      );
+      return { root, scriptPath: join(linkedDirectory, basename(SCRIPT_PATH)) };
+    }
+    const linkedScript = join(root, "activation-link.mjs");
+    symlinkSync(SCRIPT_PATH, linkedScript, "file");
+    return { root, scriptPath: linkedScript };
+  } catch {
+    t.skip(`${kind} symlink creation is unavailable`);
+    return null;
+  }
 }
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
+
+test("production activation library does not export operational cores", async () => {
+  const productionModule = await import(pathToFileURL(LIBRARY_PATH).href);
+
+  for (const name of [
+    "preflightWelcomeCoinsActivation",
+    "preflightWelcomeCoinsDeactivation",
+    "activateWelcomeCoins",
+    "verifyWelcomeCoinsActivation",
+    "deactivateWelcomeCoins",
+    "verifyWelcomeCoinsDeactivation"
+  ]) {
+    assert.equal(Object.hasOwn(productionModule, name), false, name);
+  }
+});
 
 test("preflight accepts an unconfigured current environment without exposing its content or path", (t) => {
   const paths = fixture(t);
@@ -246,6 +358,16 @@ test("deactivation restores the exact preflight bytes for LF, CRLF, and no-final
       guardReader: () => guardedState()
     });
 
+    assert.deepEqual(preflightWelcomeCoinsDeactivation({
+      ...preflightArgs(paths),
+      expectedActiveEnvSha256: activated.environment.sha256,
+      expectedDisabledEnvSha256: preflight.environment.sha256
+    }), {
+      state: "deactivation_ready",
+      environmentSha256: activated.environment.sha256,
+      disabledEnvironmentSha256: preflight.environment.sha256
+    });
+
     const deactivated = deactivateWelcomeCoins({
       ...preflightArgs(paths),
       expectedEnvSha256: activated.environment.sha256,
@@ -270,6 +392,16 @@ test("deactivation restores the exact preflight bytes for LF, CRLF, and no-final
     assert.equal(verified.mode, "verify-disabled");
     assert.equal(verified.state, "disabled_verified");
     assert.equal(verified.applied, false);
+
+    assert.deepEqual(preflightWelcomeCoinsDeactivation({
+      ...preflightArgs(paths),
+      expectedActiveEnvSha256: preflight.environment.sha256,
+      expectedDisabledEnvSha256: preflight.environment.sha256
+    }), {
+      state: "already_disabled",
+      environmentSha256: preflight.environment.sha256,
+      disabledEnvironmentSha256: preflight.environment.sha256
+    });
 
     const idempotent = deactivateWelcomeCoins({
       ...preflightArgs(paths),
@@ -680,16 +812,95 @@ test("CLI has a closed argument surface and never accepts a current pointer or c
     "--apply"
   ]);
 
-  assert.equal(result.status, 1);
-  assert.equal(result.stdout, "");
-  assert.deepEqual(JSON.parse(result.stderr), {
-    schemaVersion: "1",
-    type: "control_plane_welcome_coins_activation_gate",
-    state: "blocked",
-    condition: "invalid_input"
-  });
+  assertInvalidInputReceipt(result);
   assert.equal(result.stderr.includes(DIGEST), false);
   assert.equal(result.stderr.includes("/not-used/current"), false);
+});
+
+test("standalone CLI rejects mutating modes before stdin or production path access", () => {
+  const cases = [
+    {
+      args: [
+        "--mode", "activate",
+        "--expected-release", RELEASE,
+        "--expected-env-sha256", "c".repeat(64),
+        "--apply"
+      ],
+      input: `${DIGEST}\n`
+    },
+    {
+      args: [
+        "--mode", "deactivate",
+        "--expected-release", RELEASE,
+        "--expected-env-sha256", "c".repeat(64),
+        "--expected-disabled-env-sha256", "d".repeat(64),
+        "--apply"
+      ],
+      input: "must-not-be-read"
+    }
+  ];
+
+  for (const { args, input } of cases) {
+    const result = runCli(args, input);
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.deepEqual(JSON.parse(result.stderr), {
+      schemaVersion: "1",
+      type: "control_plane_welcome_coins_activation_gate",
+      state: "blocked",
+      condition: "execution_envelope_required"
+    });
+    assert.equal(result.stderr.includes(DIGEST), false);
+    assert.equal(result.stderr.includes("must-not-be-read"), false);
+    assert.equal(result.stderr.includes("/opt/proxy-gateway-minimal-candidate/current"), false);
+  }
+});
+
+test("CLI dispatches through a symlinked scripts directory", (t) => {
+  const entry = symlinkedActivationScript(t, "directory");
+  if (!entry) return;
+
+  assertInvalidInputReceipt(runCli(["--unexpected"], "", {
+    scriptPath: entry.scriptPath
+  }));
+});
+
+test("CLI dispatches through a symlinked script file", (t) => {
+  const entry = symlinkedActivationScript(t, "file");
+  if (!entry) return;
+
+  assertInvalidInputReceipt(runCli(["--unexpected"], "", {
+    scriptPath: entry.scriptPath
+  }));
+});
+
+test("the historical activation entry remains a non-silent compatibility launcher", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "gccgw-welcome-coins-compat-entry-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const linkedScript = join(root, "activation-compat-link.mjs");
+  try {
+    symlinkSync(COMPATIBILITY_SCRIPT_PATH, linkedScript, "file");
+  } catch {
+    t.skip("file symlink creation is unavailable");
+    return;
+  }
+  assertInvalidInputReceipt(runCli(["--unexpected"], "", { scriptPath: linkedScript }));
+});
+
+test("importing the activation library with no argv entry has no CLI side effects", () => {
+  const probe = [
+    "delete process.argv[1];",
+    `await import(${JSON.stringify(pathToFileURL(LIBRARY_PATH).href)});`,
+    'process.stdout.write("imported\\n");'
+  ].join("\n");
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], {
+    cwd: REPOSITORY_ROOT,
+    encoding: "utf8"
+  });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "imported\n");
+  assert.equal(result.stderr, "");
 });
 
 test("package and runbook expose the narrow activation gate after snapshot and schema work", () => {
@@ -698,23 +909,18 @@ test("package and runbook expose the narrow activation gate after snapshot and s
 
   assert.equal(
     packageJson.scripts["welcome-coins:activation:preflight"],
-    "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode preflight"
+    "node scripts/control-plane-welcome-coins-activation-gate-cli.mjs --mode preflight"
   );
-  assert.equal(
-    packageJson.scripts["welcome-coins:activation:apply"],
-    "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode activate --apply"
-  );
+  assert.equal(Object.hasOwn(packageJson.scripts, "welcome-coins:activation:transaction"), false);
+  assert.equal(Object.hasOwn(packageJson.scripts, "welcome-coins:activation:apply"), false);
   assert.equal(
     packageJson.scripts["welcome-coins:activation:verify"],
-    "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode verify"
+    "node scripts/control-plane-welcome-coins-activation-gate-cli.mjs --mode verify"
   );
-  assert.equal(
-    packageJson.scripts["welcome-coins:activation:deactivate"],
-    "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode deactivate --apply"
-  );
+  assert.equal(Object.hasOwn(packageJson.scripts, "welcome-coins:activation:deactivate"), false);
   assert.equal(
     packageJson.scripts["welcome-coins:activation:verify-disabled"],
-    "node scripts/control-plane-welcome-coins-activation-gate.mjs --mode verify-disabled"
+    "node scripts/control-plane-welcome-coins-activation-gate-cli.mjs --mode verify-disabled"
   );
   const activationIndex = runbook.indexOf("### Welcome Coins Admission Activation Gate");
   const snapshotIndex = runbook.indexOf("### Control-Plane Database Snapshot Gate");
@@ -723,5 +929,12 @@ test("package and runbook expose the narrow activation gate after snapshot and s
   assert.match(runbook, /stdin-only/i);
   assert.match(runbook, /does not.*wallet-first.*deferred.*Authority.*payment/is);
   assert.match(runbook, /does not.*create.*snapshot.*apply.*schema.*start.*service/is);
-  assert.match(runbook, /deactivate --apply.*verify-disabled/is);
+  assert.match(
+    runbook,
+    /standalone `activate --apply` and `deactivate --apply`[\s\S]*execution_envelope_required[\s\S]*no production mutation authority/i
+  );
+  assert.match(
+    runbook,
+    /separately approved deactivation execution\s+envelope[\s\S]*durably consumes[\s\S]*verify-disabled[\s\S]*deactivation_verified_guarded/is
+  );
 });
