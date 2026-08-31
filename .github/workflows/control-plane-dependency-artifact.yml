@@ -43,17 +43,29 @@ jobs:
       - name: Install locked production dependencies
         run: npm ci --omit=dev --no-audit --no-fund
 
+      - name: Build reviewed Welcome Coins native custody bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/control-plane-welcome-coins-native-build-cli.mjs --mode build --root .
+          mkdir -p .dependency-artifacts/native-a
+          cp --preserve=mode node_modules/.gccgw-native/welcome-coins-activation-outer-wrapper .dependency-artifacts/native-a/
+          cp --preserve=mode node_modules/.gccgw-native/welcome-coins-outer-post-exec-bootstrap.so .dependency-artifacts/native-a/
+          cp --preserve=mode node_modules/.gccgw-native/welcome-coins-custody-launcher .dependency-artifacts/native-a/
+          cp --preserve=mode node_modules/.gccgw-native/welcome-coins-post-exec-bootstrap.so .dependency-artifacts/native-a/
+          cp --preserve=mode node_modules/.gccgw-native/welcome-coins-native-build.json .dependency-artifacts/native-a/
+
       - name: Run native dependency smoke
         run: >-
-          node scripts/control-plane-dependency-artifact.mjs
+          node scripts/control-plane-dependency-artifact-cli.mjs
           --mode smoke
           --root .
-          --snapshot scripts/control-plane-db-snapshot-gate.mjs
+          --snapshot scripts/control-plane-db-snapshot-gate-lib.mjs
 
       - name: Read runtime identity for artifact binding
         run: >-
           node --input-type=module --eval
-          'import { detectDependencyRuntime } from "./scripts/control-plane-dependency-artifact.mjs";
+          'import { detectDependencyRuntime } from "./scripts/control-plane-dependency-artifact-lib.mjs";
           console.log(JSON.stringify(detectDependencyRuntime({ root: "." })))'
 
       - name: Build twice and create deterministic dependency archive
@@ -74,10 +86,17 @@ jobs:
             --pax-option=delete=atime,delete=ctime,delete=SCHILY.dev,delete=SCHILY.ino,delete=SCHILY.nlink \
             -- node_modules
           npm ci --omit=dev --no-audit --no-fund
-          node scripts/control-plane-dependency-artifact.mjs \
+          node scripts/control-plane-welcome-coins-native-build-cli.mjs --mode build --root .
+          node scripts/control-plane-welcome-coins-native-build-cli.mjs --mode verify --root .
+          cmp --silent .dependency-artifacts/native-a/welcome-coins-activation-outer-wrapper node_modules/.gccgw-native/welcome-coins-activation-outer-wrapper
+          cmp --silent .dependency-artifacts/native-a/welcome-coins-outer-post-exec-bootstrap.so node_modules/.gccgw-native/welcome-coins-outer-post-exec-bootstrap.so
+          cmp --silent .dependency-artifacts/native-a/welcome-coins-custody-launcher node_modules/.gccgw-native/welcome-coins-custody-launcher
+          cmp --silent .dependency-artifacts/native-a/welcome-coins-post-exec-bootstrap.so node_modules/.gccgw-native/welcome-coins-post-exec-bootstrap.so
+          cmp --silent .dependency-artifacts/native-a/welcome-coins-native-build.json node_modules/.gccgw-native/welcome-coins-native-build.json
+          node scripts/control-plane-dependency-artifact-cli.mjs \
             --mode smoke \
             --root . \
-            --snapshot scripts/control-plane-db-snapshot-gate.mjs
+            --snapshot scripts/control-plane-db-snapshot-gate-lib.mjs
           tar \
             --create \
             --file .dependency-artifacts/node-modules-b.tar \
@@ -94,6 +113,7 @@ jobs:
           cmp --silent .dependency-artifacts/node-modules-a.tar .dependency-artifacts/node-modules-b.tar
           mv .dependency-artifacts/node-modules-b.tar .dependency-artifacts/node-modules.tar
           rm .dependency-artifacts/node-modules-a.tar
+          rm -rf .dependency-artifacts/native-a
 
       - name: Write dependency artifact manifest
         env:
@@ -114,13 +134,13 @@ jobs:
               exit 1
               ;;
           esac
-          node scripts/control-plane-dependency-artifact.mjs \
+          node scripts/control-plane-dependency-artifact-cli.mjs \
             --mode build \
             --root . \
             --archive .dependency-artifacts/node-modules.tar \
             --source-commit "$source_commit" \
             --release "$release" \
-            --snapshot scripts/control-plane-db-snapshot-gate.mjs \
+            --snapshot scripts/control-plane-db-snapshot-gate-lib.mjs \
             --output .dependency-artifacts/dependency-artifact.json
           printf '%s\n' "$release" > .dependency-artifacts/release-label.txt
 
@@ -140,14 +160,14 @@ jobs:
           source_commit="$(git rev-parse HEAD)"
           test "$source_commit" = "$EXPECTED_SOURCE_COMMIT"
           release="$(cat .dependency-artifacts/release-label.txt)"
-          node scripts/control-plane-dependency-artifact.mjs \
+          node scripts/control-plane-dependency-artifact-cli.mjs \
             --mode verify \
             --root . \
             --archive .dependency-artifacts/node-modules.tar \
             --manifest .dependency-artifacts/dependency-artifact.json \
             --source-commit "$source_commit" \
             --release "$release" \
-            --snapshot scripts/control-plane-db-snapshot-gate.mjs
+            --snapshot scripts/control-plane-db-snapshot-gate-lib.mjs
 
       - name: Assemble exact clean-room artifact input
         env:

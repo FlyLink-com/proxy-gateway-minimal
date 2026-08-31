@@ -1,15 +1,18 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  canonicalDependencyArtifactNativeCustodyMode,
   DEPENDENCY_ARTIFACT_SCHEMA_VERSION,
   DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION,
   DEPENDENCY_ARTIFACT_TYPE,
+  DEPENDENCY_SMOKE_SOURCE_CLOSURE,
   DependencyArtifactError,
   MAX_MANIFEST_BYTES,
   auditDependencyTree,
@@ -18,6 +21,7 @@ import {
   detectDependencyRuntime,
   dependencyArtifactPaths,
   extractDependencyArchive,
+  inspectWelcomeCoinsNativeCustodyBundle,
   parseDependencyArtifactManifest,
   prepareDependencyArtifactTree,
   readDependencyArtifactManifest,
@@ -26,10 +30,336 @@ import {
   runNativeBetterSqliteSmoke,
   validateDependencyArchiveEntries,
   verifyDependencyArtifact
-} from "../../scripts/control-plane-dependency-artifact.mjs";
+} from "../../scripts/control-plane-dependency-artifact-lib.mjs";
+import {
+  canonicalWelcomeCoinsNativeBuildReceipt,
+  WELCOME_COINS_NATIVE_BUILD_PROFILE,
+  WELCOME_COINS_NATIVE_OUTPUTS
+} from "../../scripts/control-plane-welcome-coins-native-build-lib.mjs";
+
+const DEPENDENCY_LIBRARY_PATH = resolve("scripts/control-plane-dependency-artifact-lib.mjs");
+const DEPENDENCY_CLI_PATH = resolve("scripts/control-plane-dependency-artifact-cli.mjs");
+const DEPENDENCY_COMPATIBILITY_PATH = resolve("scripts/control-plane-dependency-artifact.mjs");
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const condition = (name) => (error) => error instanceof DependencyArtifactError && error.condition === name;
+const NATIVE_PATHS = Object.freeze({
+  receipt: "node_modules/.gccgw-native/welcome-coins-native-build.json",
+  outerWrapper: "node_modules/.gccgw-native/welcome-coins-activation-outer-wrapper",
+  outerPostExecBootstrap: "node_modules/.gccgw-native/welcome-coins-outer-post-exec-bootstrap.so",
+  launcher: "node_modules/.gccgw-native/welcome-coins-custody-launcher",
+  postExecBootstrap: "node_modules/.gccgw-native/welcome-coins-post-exec-bootstrap.so"
+});
+function nativeCustodyRecord({
+  receiptBytes = Buffer.from("r"),
+  outerWrapperBytes = Buffer.from("o"),
+  outerPostExecBootstrapBytes = Buffer.from("p"),
+  launcherBytes = Buffer.from("l"),
+  postExecBootstrapBytes = Buffer.from("b")
+} = {}) {
+  return {
+    schemaVersion: "1", type: "control_plane_welcome_coins_native_custody_bundle", buildProfile: WELCOME_COINS_NATIVE_BUILD_PROFILE.id,
+    receipt: { path: NATIVE_PATHS.receipt, sha256: hash(receiptBytes), sizeBytes: receiptBytes.length, mode: "0644" },
+    outerWrapper: { path: NATIVE_PATHS.outerWrapper, sha256: hash(outerWrapperBytes), sizeBytes: outerWrapperBytes.length, mode: "0755", kind: "static-pie" },
+    outerPostExecBootstrap: { path: NATIVE_PATHS.outerPostExecBootstrap, sha256: hash(outerPostExecBootstrapBytes), sizeBytes: outerPostExecBootstrapBytes.length, mode: "0644", kind: "shared-object" },
+    launcher: { path: NATIVE_PATHS.launcher, sha256: hash(launcherBytes), sizeBytes: launcherBytes.length, mode: "0755", kind: "pie" },
+    postExecBootstrap: { path: NATIVE_PATHS.postExecBootstrap, sha256: hash(postExecBootstrapBytes), sizeBytes: postExecBootstrapBytes.length, mode: "0644", kind: "shared-object" }
+  };
+}
+function stageNativeCustodyFixture(root, {
+  outerWrapperMachine = 62,
+  outerWrapperInterpreter = false,
+  outerPostExecBootstrapMachine = 62,
+  outerPostExecBootstrapInterpreter = false,
+  launcherMachine = 62,
+  launcherInterpreter = true,
+  postExecBootstrapMachine = 62,
+  postExecBootstrapInterpreter = false
+} = {}) {
+  const nativeRoot = join(root, "node_modules", ".gccgw-native");
+  mkdirSync(nativeRoot, { recursive: true });
+  const elf = ({ interpreter, machine, label }) => {
+    const value = Buffer.alloc(128);
+    value.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0], 0);
+    value.writeUInt16LE(3, 16);
+    value.writeUInt16LE(machine, 18);
+    value.writeUInt32LE(1, 20);
+    value.writeBigUInt64LE(64n, 32);
+    value.writeUInt16LE(64, 52);
+    value.writeUInt16LE(56, 54);
+    value.writeUInt16LE(1, 56);
+    value.writeUInt32LE(interpreter ? 3 : 1, 64);
+    value.write(label, 120, "ascii");
+    return value;
+  };
+  const bytes = Object.freeze({
+    outerWrapper: elf({ interpreter: outerWrapperInterpreter, machine: outerWrapperMachine, label: "outer-wrapper" }),
+    outerPostExecBootstrap: elf({ interpreter: outerPostExecBootstrapInterpreter, machine: outerPostExecBootstrapMachine, label: "outer-bootstrap" }),
+    launcher: elf({ interpreter: launcherInterpreter, machine: launcherMachine, label: "launcher" }),
+    postExecBootstrap: elf({ interpreter: postExecBootstrapInterpreter, machine: postExecBootstrapMachine, label: "bootstrap" })
+  });
+  const source = (path, marker) => ({ path, sha256: marker.repeat(64), sizeBytes: 1 });
+  const output = (key, mode, kind) => ({
+    path: WELCOME_COINS_NATIVE_OUTPUTS[key],
+    sha256: hash(bytes[key]),
+    sizeBytes: bytes[key].length,
+    mode,
+    kind
+  });
+  const flagDigest = (flags) => hash(Buffer.from(JSON.stringify(flags)));
+  const commonFlags = [...WELCOME_COINS_NATIVE_BUILD_PROFILE.commonFlags];
+  const receiptValue = {
+    schemaVersion: "1", type: "welcome_coins_native_build", profile: WELCOME_COINS_NATIVE_BUILD_PROFILE.id,
+    sources: {
+      outerWrapper: source("scripts/native/welcome-coins-activation-outer-wrapper.c", "1"),
+      outerPostExecBootstrap: source("scripts/native/welcome-coins-outer-post-exec-bootstrap.c", "2"),
+      launcher: source("scripts/native/welcome-coins-custody-launcher.c", "3"),
+      postExecBootstrap: source("scripts/native/welcome-coins-post-exec-bootstrap.c", "4")
+    },
+    compiler: { identitySha256: "5".repeat(64) },
+    flags: {
+      outerWrapperSha256: flagDigest([...commonFlags, ...WELCOME_COINS_NATIVE_BUILD_PROFILE.outerWrapperFlags]),
+      outerPostExecBootstrapSha256: flagDigest([...commonFlags, ...WELCOME_COINS_NATIVE_BUILD_PROFILE.outerPostExecBootstrapFlags]),
+      launcherSha256: flagDigest([...commonFlags, ...WELCOME_COINS_NATIVE_BUILD_PROFILE.launcherFlags]),
+      postExecBootstrapSha256: flagDigest([...commonFlags, ...WELCOME_COINS_NATIVE_BUILD_PROFILE.postExecBootstrapFlags])
+    },
+    outputs: {
+      outerWrapper: output("outerWrapper", "0755", "static-pie"),
+      outerPostExecBootstrap: output("outerPostExecBootstrap", "0644", "shared-object"),
+      launcher: output("launcher", "0755", "pie"),
+      postExecBootstrap: output("postExecBootstrap", "0644", "shared-object")
+    }
+  };
+  const receiptBytes = canonicalWelcomeCoinsNativeBuildReceipt(receiptValue);
+  for (const [key, mode] of [
+    ["outerWrapper", 0o755],
+    ["outerPostExecBootstrap", 0o644],
+    ["launcher", 0o755],
+    ["postExecBootstrap", 0o644]
+  ]) {
+    writeFileSync(join(root, NATIVE_PATHS[key]), bytes[key], { mode });
+    if (process.platform !== "win32") chmodSync(join(root, NATIVE_PATHS[key]), mode);
+  }
+  writeFileSync(join(root, NATIVE_PATHS.receipt), receiptBytes, { mode: 0o644 });
+  if (process.platform !== "win32") chmodSync(join(root, NATIVE_PATHS.receipt), 0o644);
+  return nativeCustodyRecord({
+    receiptBytes,
+    outerWrapperBytes: bytes.outerWrapper,
+    outerPostExecBootstrapBytes: bytes.outerPostExecBootstrap,
+    launcherBytes: bytes.launcher,
+    postExecBootstrapBytes: bytes.postExecBootstrap
+  });
+}
+
+function replaceNativeReceipt(root, mutate) {
+  const path = join(root, NATIVE_PATHS.receipt);
+  const value = JSON.parse(readFileSync(path, "utf8"));
+  mutate(value);
+  writeFileSync(path, `${JSON.stringify(value)}\n`, { mode: 0o644 });
+  if (process.platform !== "win32") chmodSync(path, 0o644);
+}
+
+test("dependency artifact accepts canonical gcc-v2 four-output native receipt", () => {
+  const root = makeRoot("native-v2");
+  try {
+    stageNativeCustodyFixture(root);
+    const custody = inspectWelcomeCoinsNativeCustodyBundle({ root, enforceModes: true });
+    assert.deepEqual(Object.keys(custody), [
+      "schemaVersion",
+      "type",
+      "buildProfile",
+      "receipt",
+      "outerWrapper",
+      "outerPostExecBootstrap",
+      "launcher",
+      "postExecBootstrap"
+    ]);
+    assert.equal(custody.buildProfile, WELCOME_COINS_NATIVE_BUILD_PROFILE.id);
+    assert.equal(custody.outerWrapper.kind, "static-pie");
+    assert.equal(custody.outerPostExecBootstrap.kind, "shared-object");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("native custody inspector rejects every option outside its production contract", () => {
+  const root = makeRoot("native-v2-inspector-extra-option");
+  try {
+    stageNativeCustodyFixture(root);
+    const symbolOption = { root, enforceModes: false };
+    symbolOption[Symbol("runtime")] = {};
+    for (const options of [
+      { root, enforceModes: false, unexpectedRuntime: {} },
+      { root, enforceModes: false, runtime: { platform: "linux", modeFor: () => "0600" } },
+      symbolOption
+    ]) {
+      assert.throws(
+        () => inspectWelcomeCoinsNativeCustodyBundle(options),
+        condition("dependency_native_custody_invalid")
+      );
+    }
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("temporary extraction native custody skips only physical modes and keeps canonical evidence", () => {
+  assert.equal(canonicalDependencyArtifactNativeCustodyMode({
+    platform: "linux", observedMode: "0600", expectedMode: "0755", enforceModes: false
+  }), "0755");
+  assert.throws(
+    () => canonicalDependencyArtifactNativeCustodyMode({
+      platform: "linux", observedMode: "0600", expectedMode: "0755", enforceModes: true
+    }),
+    condition("dependency_native_custody_invalid")
+  );
+  assert.equal(canonicalDependencyArtifactNativeCustodyMode({
+    platform: "linux", observedMode: "0755", expectedMode: "0755", enforceModes: true
+  }), "0755");
+  const root = makeRoot("native-v2-temporary-modes");
+  try {
+    stageNativeCustodyFixture(root);
+    if (process.platform !== "win32") {
+      for (const path of Object.values(NATIVE_PATHS)) chmodSync(join(root, path), 0o600);
+    }
+    const custody = inspectWelcomeCoinsNativeCustodyBundle({ root, enforceModes: false });
+    assert.deepEqual({
+      receipt: custody.receipt.mode,
+      outerWrapper: custody.outerWrapper.mode,
+      outerPostExecBootstrap: custody.outerPostExecBootstrap.mode,
+      launcher: custody.launcher.mode,
+      postExecBootstrap: custody.postExecBootstrap.mode
+    }, {
+      receipt: "0644",
+      outerWrapper: "0755",
+      outerPostExecBootstrap: "0644",
+      launcher: "0755",
+      postExecBootstrap: "0644"
+    });
+  } finally {
+    cleanup(root);
+  }
+
+  for (const [name, arrange] of [
+    ["digest", (fixtureRoot) => replaceNativeReceipt(fixtureRoot, (value) => {
+      value.outputs.outerWrapper.sha256 = "f".repeat(64);
+    })],
+    ["size", (fixtureRoot) => replaceNativeReceipt(fixtureRoot, (value) => {
+      value.outputs.outerWrapper.sizeBytes += 1;
+    })],
+    ["elf", (fixtureRoot) => stageNativeCustodyFixture(fixtureRoot, { launcherMachine: 183 })],
+    ["identity", (fixtureRoot) => {
+      stageNativeCustodyFixture(fixtureRoot);
+      linkSync(join(fixtureRoot, NATIVE_PATHS.launcher), join(fixtureRoot, NATIVE_PATHS.launcher + ".hardlink"));
+    }]
+  ]) {
+    const fixtureRoot = makeRoot(`native-v2-temporary-modes-${name}`);
+    try {
+      if (name !== "elf" && name !== "identity") stageNativeCustodyFixture(fixtureRoot);
+      arrange(fixtureRoot);
+      assert.throws(
+        () => inspectWelcomeCoinsNativeCustodyBundle({ root: fixtureRoot, enforceModes: false }),
+        condition("dependency_native_custody_invalid"),
+        name
+      );
+    } finally {
+      cleanup(fixtureRoot);
+    }
+  }
+});
+
+test("dependency artifact rejects legacy, reordered, drifted or incomplete native v2 receipts", () => {
+  const cases = [
+    ["legacy-profile", (value) => { value.profile = "hardened-linux-x86_64-gcc-v1"; }],
+    ["missing-source", (value) => { delete value.sources.outerWrapper; }],
+    ["source-order", (value) => {
+      value.sources = {
+        launcher: value.sources.launcher,
+        outerWrapper: value.sources.outerWrapper,
+        outerPostExecBootstrap: value.sources.outerPostExecBootstrap,
+        postExecBootstrap: value.sources.postExecBootstrap
+      };
+    }],
+    ["source-path", (value) => { value.sources.outerWrapper.path = "scripts/native/other.c"; }],
+    ["source-size", (value) => { value.sources.outerWrapper.sizeBytes = 0; }],
+    ["flags", (value) => { value.flags.outerWrapperSha256 = "f".repeat(64); }],
+    ["flags-order", (value) => {
+      value.flags = {
+        launcherSha256: value.flags.launcherSha256,
+        outerWrapperSha256: value.flags.outerWrapperSha256,
+        outerPostExecBootstrapSha256: value.flags.outerPostExecBootstrapSha256,
+        postExecBootstrapSha256: value.flags.postExecBootstrapSha256
+      };
+    }],
+    ["output-digest", (value) => { value.outputs.outerWrapper.sha256 = "f".repeat(64); }],
+    ["output-size", (value) => { value.outputs.outerWrapper.sizeBytes += 1; }],
+    ["output-mode", (value) => { value.outputs.outerWrapper.mode = "0644"; }],
+    ["output-kind", (value) => { value.outputs.outerWrapper.kind = "pie"; }],
+    ["output-shape", (value) => {
+      const output = value.outputs.outerWrapper;
+      value.outputs.outerWrapper = {
+        sha256: output.sha256,
+        path: output.path,
+        sizeBytes: output.sizeBytes,
+        mode: output.mode,
+        kind: output.kind
+      };
+    }]
+  ];
+  for (const [name, mutate] of cases) {
+    const root = makeRoot(`native-v2-${name}`);
+    try {
+      stageNativeCustodyFixture(root);
+      replaceNativeReceipt(root, mutate);
+      assert.throws(
+        () => inspectWelcomeCoinsNativeCustodyBundle({ root, enforceModes: true }),
+        condition("dependency_native_custody_invalid"),
+        name
+      );
+    } finally {
+      cleanup(root);
+    }
+  }
+});
+
+test("dependency artifact requires every native v2 output to remain pinned and readable", () => {
+  for (const key of ["outerWrapper", "outerPostExecBootstrap", "launcher", "postExecBootstrap"]) {
+    const root = makeRoot(`native-v2-missing-${key}`);
+    try {
+      stageNativeCustodyFixture(root);
+      unlinkSync(join(root, NATIVE_PATHS[key]));
+      assert.throws(
+        () => inspectWelcomeCoinsNativeCustodyBundle({ root, enforceModes: true }),
+        condition("dependency_native_custody_invalid"),
+        key
+      );
+    } finally {
+      cleanup(root);
+    }
+  }
+});
+
+test("native custody readback rejects wrong ELF machine or swapped executable kinds", () => {
+  for (const [name, options] of [
+    ["wrong-machine", { launcherMachine: 183 }],
+    ["swapped-kinds", {
+      launcherInterpreter: false,
+      postExecBootstrapInterpreter: true
+    }]
+  ]) {
+    const root = makeRoot(`native-${name}`);
+    try {
+      mkdirSync(join(root, "node_modules"), { recursive: true });
+      stageNativeCustodyFixture(root, options);
+      assert.throws(
+        () => inspectWelcomeCoinsNativeCustodyBundle({ root, enforceModes: true }),
+        condition("dependency_native_custody_invalid")
+      );
+    } finally {
+      cleanup(root);
+    }
+  }
+});
 const makeRoot = (name) => {
   const root = resolve(tmpdir(), `gccgw-dependency-artifact-${name}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   mkdirSync(root, { recursive: true });
@@ -47,15 +377,16 @@ function fixture(name = "happy") {
   writeFileSync(join(root, "package.json"), packageJson);
   writeFileSync(join(root, "package-lock.json"), packageLock);
   mkdirSync(join(root, "scripts"), { recursive: true });
-  writeFileSync(join(root, "scripts", "control-plane-db-snapshot-gate.mjs"), "export default true;\n");
+  writeFileSync(join(root, "scripts", "control-plane-db-snapshot-gate-lib.mjs"), "export default true;\n");
   writeFileSync(join(nodeModules, "better-sqlite3", "index.js"), "module.exports = {};\n");
   writeFileSync(join(nodeModules, "better-sqlite3", "package.json"), '{"version":"12.10.0"}\n');
+  const nativeCustody = stageNativeCustodyFixture(root);
   const archiveBytes = Buffer.from("archive-fixture\n");
   const archivePath = join(root, "node-modules.tar");
   writeFileSync(archivePath, archiveBytes);
   const tree = auditDependencyTree(nodeModules, { enforceOwnership: false, checkAclCapabilities: () => true });
   const manifest = {
-    schemaVersion: "2", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: "control-plane-app",
+    schemaVersion: "4", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: "control-plane-app",
     sourceCommit: "a".repeat(40), artifactRelease: "ci-20260819",
     package: { sha256: hash(packageJson), sizeBytes: packageJson.length },
     packageLock: { sha256: hash(packageLock), sizeBytes: packageLock.length },
@@ -63,6 +394,7 @@ function fixture(name = "happy") {
     runtime,
     smoke: { betterSqlite3Memory: true, snapshotImport: true },
     tree: { sha256: tree.sha256, entryCount: tree.entryCount, totalBytes: tree.totalBytes, hardlinksBroken: true, symlinksInternal: true },
+    nativeCustody,
     provenance: { builder: "github-actions", workflow: "control-plane-dependency-artifact.yml" }
   };
   return { root, nodeModules, packageJson, packageLock, archivePath, archiveBytes, manifest, tree };
@@ -110,15 +442,15 @@ test("dependency storage budget is block-aware and preserves an emergency reserv
 
 test("dependency manifest accepts formatting but rejects duplicate keys", () => {
   const value = {
-    schemaVersion: "2", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: "control-plane-app", sourceCommit: "a".repeat(40), artifactRelease: "ci",
+    schemaVersion: "4", type: DEPENDENCY_ARTIFACT_TYPE, state: "verified", releaseUnit: "control-plane-app", sourceCommit: "a".repeat(40), artifactRelease: "ci",
     package: { sha256: "b".repeat(64), sizeBytes: 1 }, packageLock: { sha256: "c".repeat(64), sizeBytes: 1 },
     archive: { fileName: "node-modules.tar", sha256: "d".repeat(64), sizeBytes: 1 }, runtime,
-    smoke: { betterSqlite3Memory: true, snapshotImport: true }, tree: { sha256: "e".repeat(64), entryCount: 1, totalBytes: 1, hardlinksBroken: true, symlinksInternal: true }, provenance: { builder: "github-actions", workflow: "control-plane-dependency-artifact.yml" }
+    smoke: { betterSqlite3Memory: true, snapshotImport: true }, tree: { sha256: "e".repeat(64), entryCount: 1, totalBytes: 1, hardlinksBroken: true, symlinksInternal: true }, nativeCustody: nativeCustodyRecord(), provenance: { builder: "github-actions", workflow: "control-plane-dependency-artifact.yml" }
   };
   const parsed = parseDependencyArtifactManifest({ bytes: Buffer.from(`${JSON.stringify(value, null, 2)}\r\n`) });
   assert.equal(parsed.value.type, DEPENDENCY_ARTIFACT_TYPE);
-  assert.equal(parsed.value.schemaVersion, "2");
-  assert.equal(DEPENDENCY_ARTIFACT_SCHEMA_VERSION, "2");
+  assert.equal(parsed.value.schemaVersion, "4");
+  assert.equal(DEPENDENCY_ARTIFACT_SCHEMA_VERSION, "4");
   assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from(JSON.stringify({ ...value, schemaVersion: "1" })) }), condition("dependency_artifact_invalid"));
   const missingBudget = { ...value, tree: { ...value.tree } };
   delete missingBudget.tree.totalBytes;
@@ -127,7 +459,7 @@ test("dependency manifest accepts formatting but rejects duplicate keys", () => 
   assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from(JSON.stringify({ ...value, archive: { ...value.archive, sizeBytes: 128 * 1024 * 1024 + 1 } })) }), condition("dependency_artifact_invalid"));
   assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from(JSON.stringify({ ...value, tree: { ...value.tree, entryCount: 10001 } })) }), condition("dependency_tree_invalid"));
   assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from(JSON.stringify({ ...value, tree: { ...value.tree, totalBytes: 128 * 1024 * 1024 + 1 } })) }), condition("dependency_tree_invalid"));
-  assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from('{"schemaVersion":"2","schemaVersion":"2"}') }), condition("dependency_artifact_invalid"));
+  assert.throws(() => parseDependencyArtifactManifest({ bytes: Buffer.from('{"schemaVersion":"4","schemaVersion":"4"}') }), condition("dependency_artifact_invalid"));
 });
 
 test("extractor rejects archive path replacement after hashing and before its first mutation", () => {
@@ -192,9 +524,9 @@ test("production consumer paths are derived from the fixed deployment layout", (
   assert.throws(() => dependencyArtifactPaths({ deploymentRoot: "/opt/root", candidateRelease: "../escape" }), condition("dependency_path_invalid"));
 });
 
-test("producer emits a v2 manifest with bounded tree evidence", { skip: process.platform !== "linux" }, () => {
-  const value = fixture("schema-v2-producer-source");
-  const extracted = fixture("schema-v2-producer-extracted");
+test("producer emits a v4 manifest with bounded tree and native custody evidence", { skip: process.platform !== "linux" }, () => {
+  const value = fixture("schema-v4-producer-source");
+  const extracted = fixture("schema-v4-producer-extracted");
   try {
     symlinkSync("index.js", join(extracted.nodeModules, "better-sqlite3", "internal-bin"));
     const expectedTree = auditDependencyTree(extracted.nodeModules, { enforceOwnership: false, checkAclCapabilities: () => true });
@@ -217,7 +549,7 @@ test("producer emits a v2 manifest with bounded tree evidence", { skip: process.
     assert.equal(result.value.schemaVersion, DEPENDENCY_ARTIFACT_SCHEMA_VERSION);
     assert.equal(result.value.tree.totalBytes, expectedTree.totalBytes);
     assert.equal(result.value.tree.entryCount, expectedTree.entryCount);
-    assert.equal(parseDependencyArtifactManifest({ bytes: result.bytes }).value.schemaVersion, "2");
+    assert.equal(parseDependencyArtifactManifest({ bytes: result.bytes }).value.schemaVersion, "4");
   } finally {
     cleanup(extracted.root);
     cleanup(value.root);
@@ -316,11 +648,150 @@ test("native smoke rejects a fixed snapshot path implemented as an escaping syml
   const value = fixture("snapshot-symlink"); let calls = 0;
   try {
     writeFileSync(join(value.root, "outside.mjs"), "export default false;\n");
-    unlinkSync(join(value.root, "scripts", "control-plane-db-snapshot-gate.mjs"));
-    symlinkSync(join(value.root, "outside.mjs"), join(value.root, "scripts", "control-plane-db-snapshot-gate.mjs"));
+    unlinkSync(join(value.root, "scripts", "control-plane-db-snapshot-gate-lib.mjs"));
+    symlinkSync(join(value.root, "outside.mjs"), join(value.root, "scripts", "control-plane-db-snapshot-gate-lib.mjs"));
     assert.throws(() => runNativeBetterSqliteSmoke({ root: value.root, runtime: { nativeSmoke: () => { calls += 1; return true; } } }), condition("dependency_smoke_snapshot_invalid"));
     assert.equal(calls, 0);
   } finally { cleanup(value.root); }
+});
+
+test("fixed dependency smoke source closure matches the current local import graph", () => {
+  const repositoryRoot = resolve(".");
+  const discovered = new Set([DEPENDENCY_SMOKE_SOURCE_CLOSURE[0]]);
+  const localImport = /(?:\bfrom\s+|\bimport\s*(?:\(\s*)?)["'](\.[^"']+)["']/gu;
+  for (const path of DEPENDENCY_SMOKE_SOURCE_CLOSURE) {
+    const source = readFileSync(resolve(repositoryRoot, path), "utf8");
+    for (const match of source.matchAll(localImport)) {
+      discovered.add(
+        relative(repositoryRoot, resolve(dirname(resolve(repositoryRoot, path)), match[1]))
+          .split("\\")
+          .join("/")
+      );
+    }
+  }
+  assert.deepEqual(
+    [...discovered].sort(),
+    [...DEPENDENCY_SMOKE_SOURCE_CLOSURE].sort()
+  );
+});
+
+const SNAPSHOT_SOURCE_MODULES = Object.freeze({
+  "scripts/control-plane-db-snapshot-gate-lib.mjs": [
+    'import "../server/services/platform/portal-registration-welcome-bonus-migrations.mjs";',
+    "export default true;",
+    ""
+  ].join("\n"),
+  "server/services/platform/portal-registration-welcome-bonus-migrations.mjs": [
+    'import "./coin-wallet-migrations.mjs";',
+    "export default true;",
+    ""
+  ].join("\n"),
+  "server/services/platform/coin-wallet-migrations.mjs": "export default true;\n"
+});
+
+function snapshotClosureReplayFixture(name) {
+  const value = fixture(name);
+  const sourceRoot = makeRoot(`${name}-source`);
+  for (const [path, bytes] of Object.entries(SNAPSHOT_SOURCE_MODULES)) {
+    const target = join(sourceRoot, path);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, bytes);
+  }
+  unlinkSync(join(value.root, "scripts", "control-plane-db-snapshot-gate-lib.mjs"));
+  writeFileSync(join(value.nodeModules, "better-sqlite3", "index.js"), [
+    "module.exports = class Database {",
+    "  exec() {}",
+    "  prepare(statement) {",
+    "    return statement.startsWith('SELECT')",
+    "      ? { get: () => ({ v: 7 }) }",
+    "      : { run: () => undefined };",
+    "  }",
+    "  close() {}",
+    "};",
+    ""
+  ].join("\n"));
+  writeFileSync(
+    join(value.nodeModules, "better-sqlite3", "package.json"),
+    '{"version":"12.10.0","main":"index.js"}\n'
+  );
+  const tree = auditDependencyTree(value.nodeModules, {
+    enforceOwnership: false,
+    checkAclCapabilities: () => true
+  });
+  const manifest = {
+    ...value.manifest,
+    tree: {
+      sha256: tree.sha256,
+      entryCount: tree.entryCount,
+      totalBytes: tree.totalBytes,
+      hardlinksBroken: tree.hardlinksBroken,
+      symlinksInternal: tree.symlinksInternal
+    }
+  };
+  const runtimeFixture = {
+    enforceOwnership: false,
+    detect: () => runtime,
+    listArchive: () => Buffer.from("node_modules\0"),
+    extractArchive: () => ({
+      root: value.root,
+      nodeModulesRoot: value.nodeModules,
+      cleanup: () => {}
+    }),
+    checkAclCapabilities: () => true,
+    nodePath: process.execPath
+  };
+  return { ...value, sourceRoot, manifest, runtimeFixture };
+}
+
+function verifySnapshotClosureReplay(value, runtimeOverrides = {}) {
+  return verifyDependencyArtifact({
+    manifestBytes: Buffer.from(`${JSON.stringify(value.manifest, null, 2)}\n`),
+    archivePath: value.archivePath,
+    packageJsonBytes: value.packageJson,
+    packageLockBytes: value.packageLock,
+    expectedSourceCommit: value.manifest.sourceCommit,
+    expectedArtifactRelease: value.manifest.artifactRelease,
+    projectRoot: value.sourceRoot,
+    runtime: { ...value.runtimeFixture, ...runtimeOverrides }
+  });
+}
+
+test("artifact replay stages the fixed transitive snapshot source closure before native import", () => {
+  const value = snapshotClosureReplayFixture("snapshot-source-closure");
+  try {
+    const result = verifySnapshotClosureReplay(value);
+    assert.deepEqual(result.smoke, {
+      betterSqlite3Memory: true,
+      snapshotImport: true
+    });
+    for (const [path, bytes] of Object.entries(SNAPSHOT_SOURCE_MODULES)) {
+      assert.equal(readFileSync(join(value.root, path), "utf8"), bytes, path);
+    }
+  } finally {
+    cleanup(value.sourceRoot);
+    cleanup(value.root);
+  }
+});
+
+test("artifact replay rejects a mixed snapshot closure before staging", () => {
+  const value = snapshotClosureReplayFixture("snapshot-source-mixed-closure");
+  const firstSource = join(value.sourceRoot, DEPENDENCY_SMOKE_SOURCE_CLOSURE[0]);
+  try {
+    assert.throws(
+      () => verifySnapshotClosureReplay(value, {
+        allowTestSnapshotSourceMutation: true,
+        afterSnapshotSourcesPinned() {
+          unlinkSync(firstSource);
+          writeFileSync(firstSource, "export default false;\n");
+        }
+      }),
+      condition("dependency_smoke_snapshot_invalid")
+    );
+    assert.equal(existsSync(join(value.root, DEPENDENCY_SMOKE_SOURCE_CLOSURE[0])), false);
+  } finally {
+    cleanup(value.sourceRoot);
+    cleanup(value.root);
+  }
 });
 
 test("verify CLI requires and enforces source commit and release identity", async () => {
@@ -488,6 +959,7 @@ test("consumer fails closed when the native smoke runner fails", () => {
 
 test("Ubuntu workflow is a CI artifact producer, not a production builder", () => {
   const workflow = readFileSync(resolve(".github/workflows/control-plane-dependency-artifact.yml"), "utf8");
+  const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
   const reverifyIndex = workflow.indexOf("- name: Re-verify dependency artifact and native tree");
   const assembleIndex = workflow.indexOf("- name: Assemble exact clean-room artifact input");
   const cleanRoomSmokeIndex = workflow.indexOf("- name: Run exact control-plane clean-room artifact smoke");
@@ -497,6 +969,8 @@ test("Ubuntu workflow is a CI artifact producer, not a production builder", () =
   const assembleStep = workflow.slice(assembleIndex, cleanRoomSmokeIndex);
   const cleanRoomSmokeStep = workflow.slice(cleanRoomSmokeIndex, uploadIndex);
   const installCommands = workflow.match(/npm ci --omit=dev --no-audit --no-fund/g) ?? [];
+  const snapshotArguments = [...workflow.matchAll(/--snapshot\s+([^\s\\]+)/g)]
+    .map((match) => match[1]);
   const firstArchiveIndex = workflow.indexOf("--file .dependency-artifacts/node-modules-a.tar");
   const secondInstallIndex = workflow.indexOf("npm ci --omit=dev --no-audit --no-fund", firstArchiveIndex);
   const secondArchiveIndex = workflow.indexOf("--file .dependency-artifacts/node-modules-b.tar");
@@ -518,6 +992,20 @@ test("Ubuntu workflow is a CI artifact producer, not a production builder", () =
   assert.match(workflow, /--mode smoke/);
   assert.match(workflow, /--mode build/);
   assert.match(workflow, /--mode verify/);
+  assert.equal((workflow.match(/node scripts\/control-plane-dependency-artifact-cli\.mjs/g) ?? []).length, 4);
+  assert.match(workflow, /from "\.\/scripts\/control-plane-dependency-artifact-lib\.mjs"/);
+  assert.doesNotMatch(workflow, /node scripts\/control-plane-dependency-artifact\.mjs/);
+  assert.doesNotMatch(workflow, /from "\.\/scripts\/control-plane-dependency-artifact\.mjs"/);
+  assert.deepEqual(
+    snapshotArguments,
+    Array(4).fill("scripts/control-plane-db-snapshot-gate-lib.mjs"),
+    "every workflow snapshot argument must import the side-effect-free library"
+  );
+  assert.doesNotMatch(
+    workflow,
+    /--snapshot\s+scripts\/control-plane-db-snapshot-gate\.mjs\b/,
+    "the historical compatibility launcher is not importable smoke input"
+  );
   assert.match(workflow, /--hard-dereference/);
   assert.match(workflow, /--pax-option=delete=atime,delete=ctime,delete=SCHILY\.dev,delete=SCHILY\.ino,delete=SCHILY\.nlink/);
   assert.match(workflow, /node-modules-a\.tar/);
@@ -570,11 +1058,85 @@ test("Ubuntu workflow is a CI artifact producer, not a production builder", () =
   assert.doesNotMatch(workflow, /\b(?:ssh|scp|rsync|systemctl|systemd-run)\b/i);
   assert.doesNotMatch(workflow, /\$\{\{\s*secrets\.|CONSOLE_TOKEN:|SS_PASSWORD:|SUBSCRIPTION_[A-Z_]+:/i);
   assert.doesNotMatch(workflow, /(?:source|cat)\s+[^\n]*\.env/i);
+  assert.equal(packageJson.scripts["control-plane:dependency-artifact"], "node scripts/control-plane-dependency-artifact-cli.mjs");
+});
+
+test("dependency artifact direct execution through a directory symlink cannot silently succeed", (t) => {
+  const root = makeRoot("cli-directory-symlink");
+  const entry = DEPENDENCY_CLI_PATH;
+  const alias = join(root, "scripts-alias");
+  try {
+    try {
+      symlinkSync(dirname(entry), alias, process.platform === "win32" ? "junction" : "dir");
+    } catch (error) {
+      if (["EPERM", "EACCES", "ENOSYS"].includes(error?.code)) return t.skip(`directory symlink unavailable: ${error.code}`);
+      throw error;
+    }
+    const result = spawnSync(process.execPath, [join(alias, "control-plane-dependency-artifact-cli.mjs")], { encoding: "utf8" });
+    assert.equal(result.status, 1, `stdout=${result.stdout}\nstderr=${result.stderr}`);
+    assert.equal(result.stdout, "");
+    assert.deepEqual(JSON.parse(result.stderr.trim()), {
+      schemaVersion: DEPENDENCY_ARTIFACT_SCHEMA_VERSION,
+      type: DEPENDENCY_ARTIFACT_TYPE,
+      mode: null,
+      state: "blocked",
+      condition: "dependency_cli_invalid"
+    });
+  } finally { cleanup(root); }
+});
+
+test("dependency artifact direct execution through a file symlink cannot silently succeed", (t) => {
+  const root = makeRoot("cli-file-symlink");
+  const entry = DEPENDENCY_CLI_PATH;
+  const alias = join(root, "dependency-artifact-alias.mjs");
+  try {
+    try {
+      symlinkSync(entry, alias, "file");
+    } catch (error) {
+      if (["EPERM", "EACCES", "ENOSYS"].includes(error?.code)) return t.skip(`file symlink unavailable: ${error.code}`);
+      throw error;
+    }
+    const result = spawnSync(process.execPath, [alias], { encoding: "utf8" });
+    assert.equal(result.status, 1, `stdout=${result.stdout}\nstderr=${result.stderr}`);
+    assert.equal(result.stdout, "");
+    assert.deepEqual(JSON.parse(result.stderr.trim()), {
+      schemaVersion: DEPENDENCY_ARTIFACT_SCHEMA_VERSION,
+      type: DEPENDENCY_ARTIFACT_TYPE,
+      mode: null,
+      state: "blocked",
+      condition: "dependency_cli_invalid"
+    });
+  } finally { cleanup(root); }
+});
+
+test("the historical dependency entry remains a non-silent compatibility launcher", (t) => {
+  const root = makeRoot("cli-compatibility-symlink");
+  const alias = join(root, "dependency-artifact-compatibility-alias.mjs");
+  try {
+    try {
+      symlinkSync(DEPENDENCY_COMPATIBILITY_PATH, alias, "file");
+    } catch (error) {
+      if (["EPERM", "EACCES", "ENOSYS"].includes(error?.code)) return t.skip(`file symlink unavailable: ${error.code}`);
+      throw error;
+    }
+    const result = spawnSync(process.execPath, [alias], { encoding: "utf8" });
+    assert.equal(result.status, 1, `stdout=${result.stdout}\nstderr=${result.stderr}`);
+    assert.equal(result.stdout, "");
+    assert.equal(JSON.parse(result.stderr.trim()).condition, "dependency_cli_invalid");
+  } finally { cleanup(root); }
+});
+
+test("importing the dependency artifact library has no CLI side effects", () => {
+  const probe = `await import(${JSON.stringify(pathToFileURL(DEPENDENCY_LIBRARY_PATH).href)}); process.stdout.write("imported\\n");`;
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], { encoding: "utf8" });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "imported\n");
+  assert.equal(result.stderr, "");
 });
 
 test("smoke CLI exports a dedicated smoke schema version that does not change the artifact manifest version", () => {
   assert.equal(DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION, "3");
-  assert.equal(DEPENDENCY_ARTIFACT_SCHEMA_VERSION, "2");
+  assert.equal(DEPENDENCY_ARTIFACT_SCHEMA_VERSION, "4");
   assert.notEqual(DEPENDENCY_ARTIFACT_SMOKE_SCHEMA_VERSION, DEPENDENCY_ARTIFACT_SCHEMA_VERSION);
 });
 

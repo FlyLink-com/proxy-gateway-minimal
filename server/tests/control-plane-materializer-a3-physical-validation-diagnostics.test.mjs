@@ -13,6 +13,7 @@
 // is exercised, not bypassed.
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
   mkdtempSync,
@@ -26,14 +27,19 @@ import {
   existsSync as exists
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { createDiagnosticsObserver } from "../../scripts/control-plane-materializer-a3-physical-validation-diagnostics.mjs";
 import {
   runA3PhysicalValidationCli,
   runA3PhysicalValidationCore
-} from "../../scripts/control-plane-materializer-a3-physical-validation.mjs";
-import { runCandidateDependencyA3PhysicalValidation } from "../../scripts/control-plane-candidate-dependency-gate.mjs";
+} from "../../scripts/control-plane-materializer-a3-physical-validation-lib.mjs";
+import { runCandidateDependencyA3PhysicalValidation } from "../../scripts/control-plane-candidate-dependency-gate-lib.mjs";
+
+const A3_VALIDATION_LIBRARY_PATH = resolve("scripts/control-plane-materializer-a3-physical-validation-lib.mjs");
+const A3_VALIDATION_CLI_PATH = resolve("scripts/control-plane-materializer-a3-physical-validation-cli.mjs");
+const A3_VALIDATION_COMPATIBILITY_PATH = resolve("scripts/control-plane-materializer-a3-physical-validation.mjs");
 
 function withDiagnosticsDir(callback) {
   const directory = mkdtempSync(join(tmpdir(), "a3-diag-"));
@@ -101,6 +107,42 @@ test("diagnostics observer records physical command invocations and writes bound
     assert.equal(typeof footer.bodySha256, "string");
     assert.equal(footer.bodySha256.length, 64);
   });
+});
+
+test("A3 physical validation separates its import-only implementation from unconditional launchers", () => {
+  assert.equal(exists(A3_VALIDATION_LIBRARY_PATH), true);
+  assert.equal(exists(A3_VALIDATION_CLI_PATH), true);
+  assert.doesNotMatch(readFileSync(A3_VALIDATION_LIBRARY_PATH, "utf8"), /process\.argv\[1\]/);
+  assert.match(readFileSync(A3_VALIDATION_CLI_PATH, "utf8"), /runA3PhysicalValidationCli/);
+  assert.match(readFileSync(A3_VALIDATION_COMPATIBILITY_PATH, "utf8"), /control-plane-materializer-a3-physical-validation-cli\.mjs/);
+  const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
+  assert.equal(packageJson.scripts["control-plane:materializer:a3-physical-validation"], "node scripts/control-plane-materializer-a3-physical-validation-cli.mjs");
+  const probe = `await import(${JSON.stringify(pathToFileURL(A3_VALIDATION_LIBRARY_PATH).href)}); process.stdout.write("imported\\n");`;
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], { encoding: "utf8" });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "imported\n");
+  assert.equal(result.stderr, "");
+});
+
+test("A3 physical-validation CLI cannot silently succeed through directory or file symlinks", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "gccgw-a3-validation-entry-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const directoryAlias = join(root, "scripts-alias");
+  const fileAlias = join(root, "a3-validation-alias.mjs");
+  const compatibilityAlias = join(root, "a3-validation-compatibility-alias.mjs");
+  try {
+    symlinkSync(dirname(A3_VALIDATION_CLI_PATH), directoryAlias, process.platform === "win32" ? "junction" : "dir");
+    symlinkSync(A3_VALIDATION_CLI_PATH, fileAlias, "file");
+    symlinkSync(A3_VALIDATION_COMPATIBILITY_PATH, compatibilityAlias, "file");
+  } catch {
+    t.skip("symlink creation is unavailable");
+    return;
+  }
+  for (const entry of [join(directoryAlias, "control-plane-materializer-a3-physical-validation-cli.mjs"), fileAlias, compatibilityAlias]) {
+    const result = spawnSync(process.execPath, [entry, "--unexpected"], { encoding: "utf8" });
+    assert.notEqual(result.status, 0, `entry=${entry}\nstdout=${result.stdout}\nstderr=${result.stderr}`);
+    assert.notEqual(result.stderr, "");
+  }
 });
 
 test("diagnostics observer redacts IPv4, all IPv6 forms (incl. bare ::1 and ::), SSH, and secrets", async () => {

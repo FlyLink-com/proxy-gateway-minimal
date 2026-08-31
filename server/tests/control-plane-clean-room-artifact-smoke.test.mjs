@@ -21,6 +21,10 @@ import {
   runControlPlaneCleanRoomArtifactSmoke,
   runControlPlaneCleanRoomArtifactSmokeCli
 } from "../../scripts/control-plane-clean-room-artifact-smoke.mjs";
+import {
+  WELCOME_COINS_NATIVE_BUILD_PROFILE,
+  WELCOME_COINS_NATIVE_OUTPUTS
+} from "../../scripts/control-plane-welcome-coins-native-contract.mjs";
 import { createRuntimeState } from "../state.mjs";
 
 const SOURCE_COMMIT = "9".repeat(40);
@@ -57,6 +61,34 @@ const dependencyRuntime = Object.freeze({
   npmVersion: "v10.9.2",
   betterSqlite3Version: "12.10.0"
 });
+
+function nativeCustodyBundle() {
+  const record = (path, mode, kind = undefined) => ({
+    path,
+    sha256: "6".repeat(64),
+    sizeBytes: 1,
+    mode,
+    ...(kind === undefined ? {} : { kind })
+  });
+  return {
+    schemaVersion: "1",
+    type: "control_plane_welcome_coins_native_custody_bundle",
+    buildProfile: WELCOME_COINS_NATIVE_BUILD_PROFILE.id,
+    receipt: record(WELCOME_COINS_NATIVE_OUTPUTS.receipt, "0644"),
+    outerWrapper: record(WELCOME_COINS_NATIVE_OUTPUTS.outerWrapper, "0755", "static-pie"),
+    outerPostExecBootstrap: record(
+      WELCOME_COINS_NATIVE_OUTPUTS.outerPostExecBootstrap,
+      "0644",
+      "shared-object"
+    ),
+    launcher: record(WELCOME_COINS_NATIVE_OUTPUTS.launcher, "0755", "pie"),
+    postExecBootstrap: record(
+      WELCOME_COINS_NATIVE_OUTPUTS.postExecBootstrap,
+      "0644",
+      "shared-object"
+    )
+  };
+}
 
 function writePrivate(path, bytes) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -96,7 +128,7 @@ function fixture(t, overrides = {}) {
     symlinksInternal: true
   });
   const dependencyManifest = {
-    schemaVersion: "2",
+    schemaVersion: "4",
     type: "control_plane_dependency_artifact",
     state: "verified",
     releaseUnit: "control-plane-app",
@@ -112,6 +144,7 @@ function fixture(t, overrides = {}) {
     runtime: dependencyRuntime,
     smoke: { betterSqlite3Memory: true, snapshotImport: true },
     tree,
+    nativeCustody: nativeCustodyBundle(),
     provenance: {
       builder: "github-actions",
       workflow: "control-plane-dependency-artifact.yml"
@@ -605,7 +638,7 @@ test("real child stderr is bounded into closed startup reasons", async (t) => {
   }
 });
 
-test("owned real workspace cleanup permits expected child creation while pinning its root node", () => {
+test("owned real workspace cleanup permits expected child creation while pinning its root node", { skip: process.platform !== "linux" }, () => {
   const runtime = createControlPlaneCleanRoomArtifactSmokeTestRuntime();
   const workspace = runtime.createWorkspace();
   try {
@@ -618,7 +651,7 @@ test("owned real workspace cleanup permits expected child creation while pinning
   }
 });
 
-test("owned workspace cleanup still rejects mode drift and root-node substitution", async (t) => {
+test("owned workspace cleanup still rejects mode drift and root-node substitution", { skip: process.platform !== "linux" }, async (t) => {
   await t.test("mode drift", () => {
     const workspace = createControlPlaneCleanRoomArtifactSmokeTestRuntime().createWorkspace();
     try {

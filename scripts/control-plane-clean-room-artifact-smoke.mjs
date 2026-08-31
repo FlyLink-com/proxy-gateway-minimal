@@ -25,12 +25,12 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { fileURLToPath } from "node:url";
 
 import { verifyArtifactGitTree } from "./artifact-git-tree-verifier.mjs";
-import { parseArtifactManifest } from "./control-plane-candidate-dependency-gate.mjs";
+import { parseArtifactManifest } from "./control-plane-candidate-dependency-gate-lib.mjs";
 import {
   auditDependencyTree,
   parseDependencyArtifactManifest,
   prepareDependencyArtifactTree
-} from "./control-plane-dependency-artifact.mjs";
+} from "./control-plane-dependency-artifact-lib.mjs";
 import { serializeControlPlaneReleaseIdentity } from "../server/services/platform/control-plane-release-identity.mjs";
 
 export const CONTROL_PLANE_CLEAN_ROOM_ARTIFACT_SMOKE_SCHEMA_VERSION = "1";

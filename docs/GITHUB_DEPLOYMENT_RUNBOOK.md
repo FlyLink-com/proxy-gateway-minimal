@@ -63,10 +63,13 @@ exact Node `22.23.1` runtime:
 The workflow checks out the requested source SHA explicitly, derives the
 manifest commit from `git rev-parse HEAD`, and asserts the two identities are
 equal. Verify mode requires both the expected source commit and release label;
-missing or mismatched identity fails closed. The consumer
-(`scripts/control-plane-dependency-artifact.mjs`) recomputes all of those hashes
+missing or mismatched identity fails closed. The import-only consumer
+(`scripts/control-plane-dependency-artifact-lib.mjs`) recomputes all of those hashes
 and runtime fields from the freshly extracted archive tree before accepting an
-artifact. Missing, tampered, wrong-commit, wrong-release, wrong-lock, wrong-ABI,
+artifact; `scripts/control-plane-dependency-artifact-cli.mjs` is its
+unconditional command launcher, while the historical unsuffixed entry is only
+a non-silent compatibility launcher. Missing, tampered, wrong-commit,
+wrong-release, wrong-lock, wrong-ABI,
 non-Linux, unsafe-tree, or failed-native-smoke inputs fail closed. The old
 host-side dependency builder
 remains disabled until a separate Risk A deployment gate proves artifact
@@ -423,18 +426,28 @@ package command. For the first run, and for every later exact-head Gate, stage
 a separately reviewed minimal controller closure in its own root-owned
 mode-0700 bootstrap directory. The closure consists only of:
 
-- `scripts/control-plane-production-stage-controller.mjs`;
-- `scripts/control-plane-candidate-dependency-gate.mjs`;
-- `scripts/control-plane-dependency-artifact.mjs`;
+- `scripts/control-plane-production-stage-controller-lib.mjs`;
+- `scripts/control-plane-production-stage-controller-cli.mjs`;
+- `scripts/control-plane-candidate-dependency-gate-lib.mjs`;
+- `scripts/control-plane-candidate-dependency-gate-cli.mjs`;
+- `scripts/control-plane-dependency-artifact-lib.mjs`;
+- `scripts/control-plane-welcome-coins-native-contract.mjs`;
+- `scripts/control-plane-dependency-artifact-cli.mjs`;
 - `scripts/control-plane-release-config-gate.mjs`; and
 - `server/services/platform/production-artifact-boundary.mjs`.
+
+The `*-lib.mjs` files above are import-only implementations and the matching
+`*-cli.mjs` files are unconditional launchers; the historical unsuffixed
+candidate and stage entries are compatibility launchers and are not part of
+the bootstrap closure. This avoids inferring CLI execution from a mutable or
+symlinked `argv` path.
 
 Every closure file must be root-owned mode-0600 and individually match the
 per-file SHA-256 recorded for the approved exact source commit. The bootstrap
 directory and six-file input directory must both remain outside the fixed
 deployment tree and must be path-disjoint from each other. Invoke the pinned
 system runtime directly as
-`/usr/bin/node <bootstrap>/scripts/control-plane-production-stage-controller.mjs`;
+`/usr/bin/node <bootstrap>/scripts/control-plane-production-stage-controller-cli.mjs`;
 do not invoke a controller extracted from the unverified source ZIP. After the
 bounded session, remove only the Gate-owned bootstrap and input roots and read
 back their absence. Bootstrap transfer, cleanup, and their hashes remain part
@@ -535,10 +548,21 @@ publication, database restore, and rollback decisions.
 
 ### Welcome Coins Admission Activation Gate
 
-`control-plane-welcome-coins-activation-gate.mjs` is the narrowly scoped
-editor for the first Welcome Coins admission canary. It is not a generic
-`.env` editor. Activation can append only these two runtime settings, and the
-bounded deactivation path can remove only that exact canonical suffix:
+`control-plane-welcome-coins-activation-gate-cli.mjs` is the unconditional
+command launcher for the first Welcome Coins admission canary;
+`control-plane-welcome-coins-activation-gate-lib.mjs` is the import-only
+implementation, and the historical unsuffixed entry is only a non-silent
+compatibility launcher. The gate is not a generic
+`.env` editor.
+The production library exposes one read-only gate CLI plus exactly two
+operation-specific closed production-mutation CLI runners. Preflight,
+activation, verification, deactivation, path injection, guard injection, and
+environment publication remain module-private; local tests reach those exact
+cores only through an in-memory source harness that is not part of the
+candidate runtime surface.
+
+Activation can append only these two runtime settings, and the bounded
+deactivation path can remove only that exact canonical suffix:
 
 - `USER_PORTAL_REGISTRATION_WELCOME_COINS_ENABLED=true`
 - `USER_PORTAL_REGISTRATION_WELCOME_COINS_CANARY_EMAIL_HASHES=<one SHA-256 digest>`
@@ -555,8 +579,15 @@ wallet-first/deferred/setup/Authority flag that is not in its required state.
 It never accepts a generic key, value, email, digest, force, or arbitrary
 disable action as a command-line option.
 
-Only `activate --apply` consumes one 64-character lowercase SHA-256 digest
-from a non-interactive stdin-only stream. The digest, `.env` contents,
+The reviewed absolute candidate path invokes one shared hardened physical
+wrapper. An exact activation envelope dispatches to the activation runner,
+which alone consumes from a non-interactive stdin-only stream one 64-character
+lowercase SHA-256 digest. An exact deactivation envelope has a separate type,
+scope, approval digest, durable consumption record, and closed runner; it
+requires non-interactive exact EOF on stdin and accepts no canary input.
+The standalone `activate --apply` and `deactivate --apply` paths fail closed
+with `execution_envelope_required` and have no production mutation authority.
+The digest, `.env` contents,
 absolute paths, raw errors, PID values, and database values never appear in
 the safe report. The returned environment SHA-256 is an identity binding for
 the immediately following step; it is not protected configuration content.
@@ -567,36 +598,188 @@ Inside one separately approved Risk A change, use the sequence below:
    healthy. It is read-only and returns a safe environment identity only when
    both target settings are absent, base Portal/Wallet/ordinary-Commerce
    prerequisites are true, and the four unrelated safety flags are false.
-2. Establish the snapshot contract's exact runtime start guard, stop the
-   approved service, create and verify a fresh control-database snapshot, then
-   apply and validate the separately approved Welcome Coins schema migrations.
-3. While the same guarded service remains inactive, pass the preflight
-   environment identity to `welcome-coins:activation:apply`; provide the
-   approved digest through stdin only. The helper writes a same-directory
-   owner-preserving temporary file, fsyncs it, atomically renames it over
-   `.env`, fsyncs the parent directory, and rereads the pointer, environment,
-   and start-guard identity.
-4. Run `welcome-coins:activation:verify` with the returned post-write identity
-   before the single approved service start. A pre-publication failure leaves
+2. The separately frozen one-shot transaction wrapper is an outer root
+   orchestrator. It validates and durably consumes the exact execution envelope,
+   acts as the approved operator that establishes the snapshot contract's exact
+   runtime start guard and stops the approved service, and binds a root-only
+   aggregate inventory of zero external main/WAL/SHM holders to the observed
+   database identity. It then starts exactly one closed child as the verified
+   non-root service principal that owns the database. The outer transaction
+   launches `control-plane-welcome-coins-activation-transaction-custody-cli.mjs`,
+   which imports the exported `runWelcomeCoinsSchemaCustodyChildCli` from
+   `control-plane-db-snapshot-gate-lib.mjs`. That library co-locates the private
+   closed-child core, schema core, and exclusive-custody primitive; inside the
+   child, the same SQLite connection remains in exclusive custody throughout
+   checkpoint, fresh snapshot, exact dry-run, apply, validate, and the
+   post-commit activation/verification handoff. Immediately after schema commit
+   it opens a second read-only `BEGIN EXCLUSIVE` hold on that same connection.
+   The separate
+   `control-plane-welcome-coins-schema-custody-gate-lib.mjs` is only a fail-closed
+   inspection/apply/CLI facade and is not imported by the child. The snapshot
+   gate itself only reads and verifies the guard; it never creates or deletes
+   it. The facade's dedicated custody-gate CLI launcher returns
+   `execution_envelope_required`, while the
+   standalone schema CLI launcher returns `custody_gate_required` for
+   `--mode apply`; neither is an
+   equivalent production path. On Linux the exact dry-run reads the retained
+   snapshot FD through `/proc/self/fd`, not the public snapshot path; SQLite FD
+   discovery compares live object identities as well as descriptor numbers.
+   After final guard and artifact cleanup, the gate performs one last full
+   logical readback inside a fresh exclusive transaction; a same-inode write in
+   the mutation-connection close or final guard callback cannot publish
+   `schema_ready`. That logical identity includes the exact schema cookie,
+   normalized journal mode, and an accessible hidden `rowid`; it explicitly
+   distinguishes `WITHOUT ROWID` and fails closed when all hidden rowid aliases
+   are shadowed. The terminal connection is not released until
+   rollback, bounded close retry, and Linux FD closure are reconciled.
+   Before custody, the child must exactly match its real/effective/saved/fs
+   UID/GID slots, sole supplementary service group, five zero capability sets,
+   `NoNewPrivs=1`, `TracerPid=0`, parent PID/start-time, and the fixed-direction
+    FD3/FD4/FD5 identities. Root ownership of the followed `/proc/self` directory
+    is only fail-closed non-dumpable evidence for the reviewed host-procfs
+    boundary. The candidate's fixed native root broker and post-exec bootstrap
+    establish `PR_SET_DUMPABLE=0` before descriptor delivery, and the outer root
+    controller independently reads back the exact child. Missing or
+    namespace-ambiguous proof remains NO-GO. The source/build contract does not
+    replace clean-Linux privileged validation or an exact production approval.
+    The production entry is the fixed, no-argument static-PIE outer wrapper,
+    invoked by its reviewed absolute candidate path rather than through
+    `node`, `npm`, `/usr/bin/env`, a shell, or `PATH` lookup. It selects exact
+    `/usr/bin/node`, synthesizes the permitted environment, establishes the
+    non-dumpable root Node image through the reviewed outer post-exec bootstrap,
+    and requires its pre-import gate before the activation library or package
+    dependencies load. The private artifact binding covers the transaction
+    CLI, activation/snapshot libraries, holder observer, both migration modules,
+    custody CLI, static outer wrapper, native broker, both post-exec bootstraps,
+    native build receipt, the complete materialized `node_modules` tree, and
+    `/usr/bin/node`. Files use content SHA-256 plus opened-file identity; the
+    tree also binds entry count, total bytes, ownership/mode/link constraints,
+    and internal symlinks. Delimiter-bearing names or raw symlink targets fail
+    closed. The binding is revalidated before launch, after `/proc/<pid>/exe`
+    binds both live custody executables, immediately before commit authorization,
+    and on both sides of the private activation callback.
+   Exclusive acquisition is not commit authority: the child must pause before
+   schema mutation after emitting a bounded `exclusive_acquired` aggregate. The
+   root orchestrator then performs a second aggregate holder check, bound to the
+   same database identity, and requires zero external holders other than that
+   exact child. The child claim must match the approved service principal and
+   process/channel identity hashes, and the root observation must report exactly
+   one approved child database holder with those aggregate identities. Only then
+   may it release the one-time commit authorization. A
+    missing, malformed, changed-identity, or nonzero result closes the child
+    without authorizing commit. After commit and final schema validation, the
+    child must emit the exact aggregate-only `schema_ready_custody_held` frame
+    while its second EXCLUSIVE transaction remains open. The parent performs
+    activation and verification inside that hold. The broker first binds the
+    unique child with `pidfd_open`, stops it through that pidfd after receiving
+    the complete held frame, proves the same hardened identity and stopped
+    state, and only then forwards held to root. Root must complete the fixed
+    challenge-bound heartbeat sequence `pre_activation`, `post_activation`,
+    `post_verify`, and `post_terminal_guard`; each acknowledgement is valid
+    only while that same pidfd remains live and stopped. The broker repeats the
+    readback before accepting one
+    `release_after_activation_verified` frame bound to the held-frame SHA-256.
+    Only then may it write FD5 and resume the child through the pidfd.
+    A post-commit failure instead attempts the equally bound
+    `release_after_attention` path and cannot become a normal blocked result.
+    Missing, reordered, mismatched, or unverifiable heartbeat evidence is
+    `attention_required` and cannot produce a successful Receipt.
+   Snapshot/directory evidence loss outranks a simultaneous schema
+    operation failure and remains fail-closed.
+    After commit transmission may have started, controller or terminal failure
+    remains `attention_required`. There is no 120-second child execution
+    deadline while the child is legitimately stopped in the held phase; each
+    heartbeat/native frame exchange has its own 30-second I/O deadline. The
+    120-second bound starts only after the broker accepts release, writes FD5,
+    and resumes the child. The controller's 155-second terminal bound covers
+    that wait, up to 30 seconds of broker cleanup, and a fixed 5-second grace
+    before any identity-rebound containment kill. It is not an external
+    held-phase watchdog. The outer Receipt may add only an allowlisted
+    aggregate `custodyCondition`; it never forwards raw stderr, PID, path,
+    timestamp, size, or database identifiers.
+   Every direct command uses a dedicated, unconditional `*-cli.mjs` launcher;
+   import-only `*-lib.mjs` modules never infer main-module identity from a
+   symlink or `process.argv[1]` and are import-side-effect free. A release/current directory
+   or file symlink therefore cannot turn a selected launcher into a silent
+   success, although production must still invoke the frozen physical candidate
+   path rather than use `current` as release identity. Historical non-`-lib`
+   entry names are compatibility launchers and likewise emit a nonzero safe
+   receipt when invoked without a valid operation; they are not library import
+   targets.
+   The schema custody facade also blocks a direct programmatic mutation call
+   before guard/path access. The snapshot library exports the single-purpose
+    closed-child CLI runner, but neither the generic custody mutator, its schema
+    core, its exclusive primitive, nor a test-only mutation seam. The reviewed
+    wrapper owns the private root-to-service-principal child capability and
+    durable approval consumption.
+    The candidate wrapper and native custody path now exist locally, but this
+    sequence remains NO-GO until clean-Linux privileged validation, final hash
+    freeze and terminal review, and a new exact Risk A execution approval.
+3. While the child still holds the second EXCLUSIVE transaction, the same
+   one-shot root wrapper invokes its private activation and verification
+   operations with the preflight environment identity and approved digest from
+   the wrapper's non-interactive stdin boundary. The durably consumed execution
+   envelope is the sole authority for the wrapper-owned private activation operation.
+   Do not invoke a standalone activation or deactivation apply command: the
+   public activation CLI has no production apply path and fails closed with
+   `execution_envelope_required`. A standalone verify command is read-only,
+   but it cannot substitute for the wrapper-owned private post-activation
+   verification performed inside held database custody.
+   The private operation writes a same-directory owner-preserving temporary
+   file, fsyncs it, atomically renames it over `.env`, fsyncs the parent
+   directory, and rereads the pointer, environment, and start-guard identity
+   before the parent releases database custody. A pre-publication failure leaves
    the old `.env` in place. A post-publication uncertainty is
    `attention_required`: leave the start guard in place and do not
    automatically rewrite the configuration, restore the database, or restart.
-5. Only after an independent runtime and database readback may the exact
-   approved start-guard cleanup occur. A separate operator-controlled new
-   registration is required to prove the canary; an existing account is never
-   retroactively selected.
+4. Only after exact activation verification does the parent send the
+   held-frame-bound verified release, wait for the child to close custody, and
+   accept its matching terminal schema result. The minimal wrapper terminates
+   here as `activation_verified_guarded`: the
+   service remains inactive and the exact start guard remains installed.
+   This success Receipt is post-hoc evidence that the pidfd-bound child remained
+   live and stopped through the verified release under the reviewed Linux
+   process/kernel model. It is not a cross-resource atomic transaction between
+   SQLite and `.env`. `SIGKILL`, OOM, root/broker/child death, kernel or host
+   failure, and power loss can remove an OS lock without a parent release. Such
+   an outcome is `attention_required` when the wrapper can still report; if it
+   cannot report, there is no acceptable success Receipt. In either case, do
+   not start or retry, restore the database, rewrite configuration, or remove
+   the guard before a fresh read-only identity inventory.
+5. Service start, post-start runtime/database health validation, a new
+   operator-controlled registration canary, and final exact start-guard cleanup
+   are later independent Risk A actions. None is implied or authorized by the
+   wrapper receipt. An existing account is never retroactively selected.
 
 The same approved canary session must retain the preflight environment SHA-256
-as its disabled-state identity. If admission must be closed, first establish
-and verify the same inactive runtime start guard, then run `deactivate --apply`
-with both the exact active environment identity and that retained disabled-state
-identity. The gate accepts only an exact canonical active suffix and reconstructs
-the unique byte-for-byte preflight environment matching the retained hash. Run
-`verify-disabled` before any approved restart. An exact already-disabled retry
-is a no-op; target-key drift, a stale identity, or post-publication uncertainty
-leaves the service guarded and requires operator attention.
+as its disabled-state identity. If admission must be closed, use the same
+frozen physical wrapper under a new, separately approved deactivation execution
+envelope. That envelope binds the exact current active environment identity,
+the retained disabled-state identity, release, service principal, complete
+artifact closure, expiry, `retry=false`, and its own approval digest. Before
+any systemd or environment mutation, the closed runner performs fresh read-only
+validation and durably consumes that approval. It then exclusively establishes
+and reads back the runtime start guard while the fixed service is active, stops
+the service, proves `inactive` with `MainPID=0` under the same raw guard
+identity, revalidates artifacts and environment state, invokes the private bounded
+deactivation operation, performs `verify-disabled`, and finishes only
+as `deactivation_verified_guarded` after a terminal inactive-guard readback.
+It does not enter database custody, run schema or snapshot work, start the
+service, remove the guard, or run a canary.
 
-The helper does not create a snapshot, apply schema, start or stop a service,
+A standalone deactivate command is not a production mutation path; the public
+activation CLI fails closed with `execution_envelope_required`. The private
+operation accepts only an exact canonical active suffix and reconstructs the
+unique byte-for-byte preflight environment matching the retained hash. The
+deactivation runner requires exact EOF on stdin; any byte fails before approval
+consumption. A fresh approval may verify an exact already-disabled state as a
+no-op only when both envelope environment identities equal that retained
+disabled identity. The old envelope remains consumed and cannot be retried.
+Target-key drift, a stale identity, or post-publication uncertainty leaves the
+service guarded and requires operator attention before any approved restart.
+
+The standalone activation helper does not create a snapshot, apply schema,
+start or stop a service,
 move a release pointer, create an account, credit Coins, or alter ordinary
 Commerce, wallet-first, deferred runtime, shared nodes, Authority, setup
 delivery, payment, or fulfillment.
