@@ -113,7 +113,7 @@ const EXPECTED_ACTION_REVISION_COUNTS = {
 const CANONICAL_ACTION_REFERENCE_LINE =
   /^ *(?:- +)?uses: +([^ \t#]+)(?: +# +(\S(?:.*\S)?))? *$/u;
 const YAML_BLOCK_SCALAR_HEADER =
-  /: *[>|](?:[+-]|[1-9]|[+-][1-9]|[1-9][+-])? *$/u;
+  /^( *)(?:(- +))?[A-Za-z_][A-Za-z0-9_-]*: *[>|]([+-]|[1-9]|[+-][1-9]|[1-9][+-])? *$/u;
 const YAML_INDIRECTION_TOKEN =
   /(?:^|[ \t:[{,?])(?:[&*][A-Za-z0-9_-]+|<<:)/u;
 
@@ -186,15 +186,22 @@ function inspectWorkflowActionInventory(
   const references = [];
   const violations = [];
   const lines = workflow.replace(/\r\n?/gu, "\n").split("\n");
-  let blockScalarIndent = null;
+  let blockScalar = null;
 
   for (const [lineIndex, line] of lines.entries()) {
     const location = `${workflowFile}:${lineIndex + 1}`;
     const indentation = line.match(/^ */u)[0].length;
-    if (blockScalarIndent !== null) {
-      if (line.trim() === "" || /^\s*#/u.test(line)) continue;
-      if (indentation > blockScalarIndent) continue;
-      blockScalarIndent = null;
+    if (blockScalar !== null) {
+      if (line.trim() === "") continue;
+      if (blockScalar.contentIndent === null) {
+        if (indentation > blockScalar.baseIndent) {
+          blockScalar.contentIndent = indentation;
+          continue;
+        }
+      } else if (indentation >= blockScalar.contentIndent) {
+        continue;
+      }
+      blockScalar = null;
     }
     const parsed = line.match(CANONICAL_ACTION_REFERENCE_LINE);
 
@@ -210,8 +217,20 @@ function inspectWorkflowActionInventory(
         continue;
       }
       if (sourceLine.trim() === "") continue;
-      if (YAML_BLOCK_SCALAR_HEADER.test(sourceLine)) {
-        blockScalarIndent = indentation;
+      const blockHeader = sourceLine.match(YAML_BLOCK_SCALAR_HEADER);
+      if (blockHeader) {
+        // In a compact sequence mapping such as `- run: |`, sibling keys
+        // start after the sequence marker. An explicit digit fixes the content
+        // indentation; otherwise the first non-empty content line fixes it.
+        const baseIndent =
+          blockHeader[1].length + (blockHeader[2]?.length ?? 0);
+        const explicitIndent = blockHeader[3]?.match(/[1-9]/u)?.[0];
+        blockScalar = {
+          baseIndent,
+          contentIndent: explicitIndent
+            ? baseIndent + Number(explicitIndent)
+            : null
+        };
       }
       if (sourceLine.includes("\\")) {
         violations.push(`${location} YAML escapes outside block scalars are forbidden`);
@@ -334,6 +353,20 @@ test("workflow Action inventory parser fails closed outside the canonical source
       'steps:\n  - { name: "line\n      # still string", uses: attacker/action@v1 }',
     "multiline single-quoted flow mapping uses":
       "steps:\n  - { name: 'line\n      # still string', uses: attacker/action@v1 }",
+    "uses after block scalar":
+      "steps:\n  - run: |\n      echo safe\n    uses: attacker/action@v1",
+    "uses after block scalar terminator comment":
+      "steps:\n  - run: |\n      echo safe\n# terminator\n    uses: attacker/action@v1",
+    "uses after scalar-content comment":
+      "steps:\n  - run: |\n      # scalar content\n    uses: attacker/action@v1",
+    "uses after empty block scalar comment":
+      "steps:\n  - run: |\n    # outside scalar\n    uses: attacker/action@v1",
+    "uses after compact sequence block scalar":
+      "steps:\n  -   run: |\n        echo safe\n      uses: attacker/action@v1",
+    "uses after explicit-indent-one block scalar":
+      "steps:\n  - run: |1\n     echo safe\n    uses: attacker/action@v1",
+    "uses after explicit-indent block scalar":
+      "steps:\n  - run: |2\n      echo safe\n    uses: attacker/action@v1",
     "space before colon": `steps:\n  - uses : actions/checkout@${checkout.sha} # v6`,
     alias: "steps:\n  - uses: *reviewed_checkout",
     expression: "steps:\n  - uses: ${{ env.REVIEWED_ACTION }}",
@@ -354,7 +387,7 @@ test("workflow Action inventory parser fails closed outside the canonical source
   );
   assert.deepEqual(
     inspectWorkflowActionInventory(
-      "steps:\n  - run: |\n      printf '\\\\u0075ses\\n'\n      echo 'uses &anchor *alias'\n      dangling \"\n      # uses: attacker/action@v1\n",
+      "steps:\n  - run: |\n\n      printf '\\\\u0075ses\\n'\n      echo 'uses &anchor *alias'\n      dangling \"\n      # uses: attacker/action@v1\n      uses: attacker/action@v1\n",
       "block-scalar.yml"
     ),
     { references: [], violations: [] }
