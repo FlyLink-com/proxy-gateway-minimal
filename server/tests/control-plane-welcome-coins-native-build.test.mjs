@@ -217,6 +217,18 @@ test("fortified native public error writers consume every write result", () => {
   }
 });
 
+test("post-exec constructors stay local without ignored visibility attributes", () => {
+  for (const name of [SOURCE_NAMES[1], SOURCE_NAMES[3]]) {
+    const value = readFileSync(resolve(REPOSITORY_ROOT, "scripts", "native", name), "utf8");
+    assert.match(
+      value,
+      /__attribute__\s*\(\s*\(\s*constructor\s*\)\s*\)\s*\nstatic\s+void/u,
+      name
+    );
+    assert.doesNotMatch(value, /visibility\s*\(/u, name);
+  }
+});
+
 test("builder compiles all four targets twice, compares bytes, inspects ELF, and publishes canonical receipt", (t) => {
   const root = fixture(t);
   const runtime = fakeRuntime();

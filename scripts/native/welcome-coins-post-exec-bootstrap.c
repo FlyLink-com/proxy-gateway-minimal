@@ -303,7 +303,7 @@ static void install_final_descriptors(const int received[3]) {
   }
 }
 
-__attribute__((constructor)) __attribute__((visibility("default")))
+__attribute__((constructor))
 static void welcome_coins_post_exec_bootstrap(void) {
   int descriptors[3] = {-1, -1, -1};
   int post_exec_parent_death_signal = 0;

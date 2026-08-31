@@ -306,7 +306,7 @@ static void require_execution_envelope_descriptor(void) {
   }
 }
 
-__attribute__((constructor)) __attribute__((visibility("default")))
+__attribute__((constructor))
 static void welcome_coins_outer_post_exec_bootstrap(void) {
   char candidate_root[PATH_MAX];
   char wrapper_path[PATH_MAX];
