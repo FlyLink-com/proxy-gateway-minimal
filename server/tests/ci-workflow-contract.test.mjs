@@ -116,6 +116,12 @@ const YAML_BLOCK_SCALAR_HEADER =
   /^( *)(?:(- +))?[A-Za-z_][A-Za-z0-9_-]*: *[>|]([+-]|[1-9]|[+-][1-9]|[1-9][+-])? *$/u;
 const YAML_INDIRECTION_TOKEN =
   /(?:^|[ \t:[{,?])(?:[&*][A-Za-z0-9_-]+|<<:)/u;
+const UNSAFE_PR_CHECKOUT_OVERRIDE =
+  /\ballow-unsafe-pr-checkout\b/giu;
+
+function countUnsafeCheckoutOverrides(workflow) {
+  return workflow.match(UNSAFE_PR_CHECKOUT_OVERRIDE)?.length ?? 0;
+}
 
 function stripYamlComment(line) {
   let quote = null;
@@ -321,6 +327,14 @@ test("workflow Action inventory parser fails closed outside the canonical source
     stripYamlComment('name: safe # "ignored'),
     { content: "name: safe", unterminatedQuote: null }
   );
+  assert.equal(
+    countUnsafeCheckoutOverrides(
+      "with:\n  Allow-Unsafe-PR-Checkout: true\n"
+      + "  ALLOW-UNSAFE-PR-CHECKOUT: false\n"
+      + "# allow-unsafe-pr-checkout\n"
+    ),
+    3
+  );
 
   const rejected = {
     "mutable tag": "steps:\n  - uses: actions/checkout@v6 # v6",
@@ -422,7 +436,7 @@ test("all workflow Action references use the reviewed full commit inventory", ()
     const workflow = readRepositoryFile(`.github/workflows/${workflowFile}`)
       .replace(/\r\n?/gu, "\n");
     const unsafeCheckoutOverrides =
-      workflow.match(/\ballow-unsafe-pr-checkout\b/gu)?.length ?? 0;
+      countUnsafeCheckoutOverrides(workflow);
     if (unsafeCheckoutOverrides !== 0) {
       violations.push(
         `${workflowFile} forbids unsafe checkout overrides, found ${unsafeCheckoutOverrides}`
