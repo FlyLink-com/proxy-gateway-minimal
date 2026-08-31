@@ -1021,12 +1021,11 @@ function withPinnedSnapshotSources(root, runtime, operation) {
       runtime.afterSnapshotSourcesPinned(Object.freeze({ sourceCount: sources.length }));
     }
     for (const source of sources) validatePinnedSnapshotSource(source);
-    const result = operation(Object.freeze(sources.map((source) => Object.freeze({
+    operation(Object.freeze(sources.map((source) => Object.freeze({
       relativePath: source.relativePath,
       bytes: Buffer.from(source.bytes)
     }))));
     for (const source of sources) validatePinnedSnapshotSource(source);
-    return result;
   } catch (error) {
     if (error instanceof DependencyArtifactError) throw error;
     fail("dependency_smoke_snapshot_invalid");
