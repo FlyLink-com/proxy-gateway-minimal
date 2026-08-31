@@ -183,11 +183,25 @@ static void sha256_finish(struct sha256_context *context, unsigned char digest[3
   memset(context, 0, sizeof(*context));
 }
 
+static void write_stderr_best_effort(const char *bytes, size_t size) {
+  size_t offset = 0U;
+  while (offset < size) {
+    ssize_t count = write(STDERR_FILENO, bytes + offset, size - offset);
+    if (count < 0 && errno == EINTR) {
+      continue;
+    }
+    if (count <= 0) {
+      return;
+    }
+    offset += (size_t)count;
+  }
+}
+
 static void emit_blocked(void) {
   static const char output[] =
     "{\"schemaVersion\":\"1\",\"type\":\"control_plane_welcome_coins_production_transaction\","
     "\"state\":\"blocked\",\"condition\":\"outer_runtime_invalid\"}\n";
-  (void)write(STDERR_FILENO, output, sizeof(output) - 1U);
+  write_stderr_best_effort(output, sizeof(output) - 1U);
 }
 
 static void reject_environment_pollution(void) {

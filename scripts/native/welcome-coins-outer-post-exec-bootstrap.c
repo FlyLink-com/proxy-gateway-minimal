@@ -28,11 +28,25 @@
 
 extern char **environ;
 
+static void write_stderr_best_effort(const char *bytes, size_t size) {
+  size_t offset = 0U;
+  while (offset < size) {
+    ssize_t count = write(STDERR_FILENO, bytes + offset, size - offset);
+    if (count < 0 && errno == EINTR) {
+      continue;
+    }
+    if (count <= 0) {
+      return;
+    }
+    offset += (size_t)count;
+  }
+}
+
 static void bootstrap_fail(void) {
   static const char output[] =
     "{\"schemaVersion\":\"1\",\"type\":\"welcome_coins_outer_post_exec_bootstrap\","
     "\"state\":\"blocked\",\"condition\":\"outer_runtime_invalid\"}\n";
-  (void)write(STDERR_FILENO, output, sizeof(output) - 1U);
+  write_stderr_best_effort(output, sizeof(output) - 1U);
   _exit(126);
 }
 

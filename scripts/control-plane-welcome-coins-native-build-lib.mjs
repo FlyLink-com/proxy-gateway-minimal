@@ -17,7 +17,7 @@ import {
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   WELCOME_COINS_NATIVE_BUILD_PROFILE,
   WELCOME_COINS_NATIVE_COMMON_FLAGS,

@@ -101,6 +101,20 @@ static uint64_t host_to_be64(uint64_t value) {
   return ((uint64_t)low << 32U) | high;
 }
 
+static void write_stderr_best_effort(const char *bytes, size_t size) {
+  size_t offset = 0U;
+  while (offset < size) {
+    ssize_t count = write(STDERR_FILENO, bytes + offset, size - offset);
+    if (count < 0 && errno == EINTR) {
+      continue;
+    }
+    if (count <= 0) {
+      return;
+    }
+    offset += (size_t)count;
+  }
+}
+
 static void emit_blocked(const char *condition) {
   char output[256];
   int length = snprintf(
@@ -110,7 +124,7 @@ static void emit_blocked(const char *condition) {
     condition
   );
   if (length > 0 && (size_t)length < sizeof(output)) {
-    (void)write(STDERR_FILENO, output, (size_t)length);
+    write_stderr_best_effort(output, (size_t)length);
   }
 }
 

@@ -208,6 +208,15 @@ test("build profile and output paths are closed constants", () => {
   );
 });
 
+test("fortified native public error writers consume every write result", () => {
+  for (const name of SOURCE_NAMES.slice(0, 3)) {
+    const value = readFileSync(resolve(REPOSITORY_ROOT, "scripts", "native", name), "utf8");
+    assert.match(value, /static\s+void\s+write_stderr_best_effort\s*\(/u, name);
+    assert.match(value, /ssize_t\s+count\s*=\s*write\s*\(/u, name);
+    assert.doesNotMatch(value, /\(void\)\s*write\s*\(/u, name);
+  }
+});
+
 test("builder compiles all four targets twice, compares bytes, inspects ELF, and publishes canonical receipt", (t) => {
   const root = fixture(t);
   const runtime = fakeRuntime();
