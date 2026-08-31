@@ -145,10 +145,13 @@ function stripYamlComment(line) {
       character === "#"
       && (index === 0 || line[index - 1] === " " || line[index - 1] === "\t")
     ) {
-      return line.slice(0, index).trimEnd();
+      return {
+        content: line.slice(0, index).trimEnd(),
+        unterminatedQuote: null
+      };
     }
   }
-  return line;
+  return { content: line, unterminatedQuote: quote };
 }
 
 function readRepositoryFile(path) {
@@ -196,8 +199,17 @@ function inspectWorkflowActionInventory(
     const parsed = line.match(CANONICAL_ACTION_REFERENCE_LINE);
 
     if (!parsed) {
-      if (/^\s*#/u.test(line)) continue;
-      const sourceLine = stripYamlComment(line);
+      const {
+        content: sourceLine,
+        unterminatedQuote
+      } = stripYamlComment(line);
+      if (unterminatedQuote !== null) {
+        violations.push(
+          `${location} multiline or unterminated YAML quoted scalars are forbidden`
+        );
+        continue;
+      }
+      if (sourceLine.trim() === "") continue;
       if (YAML_BLOCK_SCALAR_HEADER.test(sourceLine)) {
         blockScalarIndent = indentation;
       }
@@ -255,19 +267,41 @@ test("workflow Action inventory parser fails closed outside the canonical source
     accepted.references.map(({ action }) => action),
     ["actions/checkout"]
   );
-  assert.equal(
+  assert.deepEqual(
     stripYamlComment('name: "quoted # value" # comment'),
-    'name: "quoted # value"'
+    { content: 'name: "quoted # value"', unterminatedQuote: null }
   );
-  assert.equal(
+  assert.deepEqual(
     stripYamlComment("name: 'it''s # value' # comment"),
-    "name: 'it''s # value'"
+    { content: "name: 'it''s # value'", unterminatedQuote: null }
   );
-  assert.equal(
+  assert.deepEqual(
     stripYamlComment(String.raw`name: "escaped \"#\" and \\ value" # comment`),
-    String.raw`name: "escaped \"#\" and \\ value"`
+    {
+      content: String.raw`name: "escaped \"#\" and \\ value"`,
+      unterminatedQuote: null
+    }
   );
-  assert.equal(stripYamlComment("name: abc#def # comment"), "name: abc#def");
+  assert.deepEqual(
+    stripYamlComment("name: abc#def # comment"),
+    { content: "name: abc#def", unterminatedQuote: null }
+  );
+  assert.deepEqual(
+    stripYamlComment('name: "line'),
+    { content: 'name: "line', unterminatedQuote: '"' }
+  );
+  assert.deepEqual(
+    stripYamlComment("name: 'line"),
+    { content: "name: 'line", unterminatedQuote: "'" }
+  );
+  assert.deepEqual(
+    stripYamlComment('  # "comment-only'),
+    { content: "", unterminatedQuote: null }
+  );
+  assert.deepEqual(
+    stripYamlComment('name: safe # "ignored'),
+    { content: "name: safe", unterminatedQuote: null }
+  );
 
   const rejected = {
     "mutable tag": "steps:\n  - uses: actions/checkout@v6 # v6",
@@ -296,6 +330,10 @@ test("workflow Action inventory parser fails closed outside the canonical source
       "steps:\n  - { name: ok, uses: attacker/action@v1 } # comment",
     "plain scalar hash before flow mapping uses":
       "steps:\n  - { name: abc#def, uses: attacker/action@v1 }",
+    "multiline double-quoted flow mapping uses":
+      'steps:\n  - { name: "line\n      # still string", uses: attacker/action@v1 }',
+    "multiline single-quoted flow mapping uses":
+      "steps:\n  - { name: 'line\n      # still string', uses: attacker/action@v1 }",
     "space before colon": `steps:\n  - uses : actions/checkout@${checkout.sha} # v6`,
     alias: "steps:\n  - uses: *reviewed_checkout",
     expression: "steps:\n  - uses: ${{ env.REVIEWED_ACTION }}",
@@ -316,7 +354,7 @@ test("workflow Action inventory parser fails closed outside the canonical source
   );
   assert.deepEqual(
     inspectWorkflowActionInventory(
-      "steps:\n  - run: |\n      printf '\\\\u0075ses\\n'\n      echo 'uses &anchor *alias'\n",
+      "steps:\n  - run: |\n      printf '\\\\u0075ses\\n'\n      echo 'uses &anchor *alias'\n      dangling \"\n      # uses: attacker/action@v1\n",
       "block-scalar.yml"
     ),
     { references: [], violations: [] }
