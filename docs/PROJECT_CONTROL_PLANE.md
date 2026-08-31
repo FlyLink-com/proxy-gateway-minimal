@@ -1,6 +1,6 @@
 # Project Control Plane
 
-Last updated: 2026-08-28, America/Los_Angeles.
+Last updated: 2026-08-30, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: project_state_model
   superseded_by: null
-  last_verified_at: 2026-08-29
+  last_verified_at: 2026-08-30
   production_authority: false
 ```
 
@@ -44,10 +44,12 @@ GitHub PRs / Issues
   review, discussion, approval, and merge boundaries
 ```
 
-The initial implementation was intentionally small and docs-only. Its JSON
-state files preserve dated project direction and constraints for agent
-orientation; they are not a live work index. This model adds no database,
-service, external dependency, or production integration.
+The initial implementation was intentionally small and docs-only. It now also
+includes offline compatibility checking, a reviewed Project v2 configuration
+contract, a redacted read-only live exporter, and a pure drift reporter. The
+dated JSON state files remain orientation inputs rather than a live work index.
+This model adds no database, daemon, runtime mutation, or production
+integration.
 
 ## Boundary
 
@@ -123,6 +125,28 @@ For current compatibility handling and rollout status, see
 `docs/PROJECT_CONTEXT.md`. Snapshot-derived hints remain non-authoritative;
 perform a fresh native Issue/PR read before current sequencing.
 
+### `project-state/project-v2-contract.json`
+
+Reviewed, non-live configuration contract for organization Project #1.
+
+Use it to answer:
+
+- which six Project fields are managed, and what are their exact names, types,
+  and semantic options?
+- which managed fields are required for repository Issues versus pull requests?
+- which views and native workflow transitions are expected?
+- what consistency grace and authority boundaries must a reader preserve?
+
+The contract contains no live items, counts, queue, branch, check, deployment,
+or runtime state. GraphQL field and option IDs are discovered by a live export;
+they are not guessed or copied into this semantic contract. The contract is
+SHA-256 pinned and validated with the other reviewed project-state inputs.
+Its `itemFieldRequirements` keeps managed-repository Issues at all six required
+fields while requiring only `Status` for managed-repository pull requests; the
+other five PR slots remain collected but are not missing-field drift. Project
+views and native workflows remain static expectations until a reader explicitly
+collects them, so drift v1 reports both domains as `not_evaluated`.
+
 ## Ownership
 
 ```text
@@ -141,12 +165,18 @@ docs/PROJECT_SIMPLIFICATION_MAP.md:
 docs/MULTI_AGENT_OPERATING_MODEL.md:
   lead/subagent task packet and verification rules
 
+docs/GITHUB_ISSUE_PR_WORKFLOW.md:
+  canonical Project field, view, workflow, Issue, and PR semantics
+
 project-state/lanes.json:
   reviewed lane definitions and safety boundaries
 
 project-state/current.json and project-state/tasks.json:
   dated compatibility snapshots; not live sequencing
   repository-local consumers require a fresh native Issue/PR read
+
+project-state/project-v2-contract.json:
+  reviewed Project configuration and read-only authority boundary; no live values
 ```
 
 Do not duplicate full historical execution records in `project-state`. Keep
@@ -216,30 +246,66 @@ It is acceptable to store non-secret public domains, public IPs, node labels,
 file paths to redacted records, and references to where a secret is held, as
 long as the secret value itself is not included.
 
-## Future Tooling
+## Implemented Tooling
 
-The first repository-local checker is available:
+The repository-local checker validates the reviewed structured inputs:
 
 ```text
 npm run project-state:check
 ```
 
-It validates JSON parsing, required structured-state files, lane document
-references, task risk/validation fields, A-tier blocked status, and raw secret
-patterns in `project-state` plus declared source docs.
+It validates complete SHA-256 pins, JSON shape, dates, lane document references,
+task risk/validation, historical A-tier blocking contracts, unsafe paths and
+symlinks, authority wording, and sensitive-data patterns. It also validates
+the Project v2 contract's six unique fields and options and requires its Lane
+options to match `project-state/lanes.json` exactly.
 
-Future B-tier tooling can extend this to validate:
+Two additional repository commands keep live reads separate from offline CI:
 
-- every lane points to existing docs
-- every task has a risk tier and validation command
-- every A-tier task has forbidden mutation without approval
-- docs/README includes active project-state pointers
-- `PROJECT_CONTEXT.md` does not grow uncontrolled historical detail
-- sensitive-data patterns are absent from docs and project-state
-- stale timestamps or stale branch names are flagged
+```text
+gccgw project export --json
+gccgw project drift --input <project-export.json> --json
+```
 
-Do not build a service or database for this until JSON plus simple repository
-checks become insufficient.
+`project export` reads GitHub Projects v2 with the operator's temporary token,
+paginates all fields and Project items, applies a bounded consistency fence,
+and emits only a redacted allowlist. A mismatched live Project title is reduced
+to a boolean, external-repository native identity is removed, and unexpected
+managed option names are replaced with non-semantic observed markers.
+`project drift` is an offline pure
+evaluation of that normalized export. It accepts only the byte-verified,
+checked-in Project contract and has no alternate-contract flag; a missing or
+non-canonical contract is `indeterminate`. A successful export embeds that
+canonical contract digest, and drift rejects missing or stale export bindings
+instead of interpreting them under different semantics. Stable observed field
+absence, ambiguity, type drift, and option drift remain complete manifest
+evidence rather than exporter failure. The reporter marks repository-wide
+native inventory, source, CI, production, Project views, native workflows, and
+saved-export freshness as not evaluated in v1. Run drift against a newly
+produced export; `generatedAt` records an observation point but does not prove
+present freshness or authorize writeback. Lifecycle age can become proven
+drift only with the export's trusted GitHub HTTP clock; a local-system clock
+requires review.
+
+Exit semantics are fail-closed: `clean_in_evaluated_scope` exits `0`, proven
+`drift` exits `1`, and `review_required`, `indeterminate`, or CLI failure exits
+`2`. Automation must inspect `outcome`, `coverage`, and `reviewCount` together;
+a review finding is not global clean even when no proven drift exists.
+
+## Next Tooling Stages
+
+Future B-tier slices may add independent, complete native Issue/PR inventory,
+exact source ancestry, and exact-head required-check adapters. Each adapter must
+declare completeness before its dependent drift rules can run. Remaining
+offline checks may cover `docs/README.md` pointers, bounded
+`PROJECT_CONTEXT.md` growth, and genuinely stale timestamps or branch names.
+
+Project field writeback remains a separate later stage. It must default to
+dry-run, bind an exact export and contract digest, show a bounded mutation
+plan, require exact operator approval, reject concurrent drift, and read every
+changed field back. No first-stage command generates a mutation or auto-fix
+plan. Do not build a service or database until JSON plus bounded commands prove
+insufficient.
 
 ## Read Order
 

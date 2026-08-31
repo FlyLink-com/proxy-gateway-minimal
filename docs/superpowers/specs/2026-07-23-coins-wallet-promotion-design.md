@@ -1,6 +1,6 @@
 # Coins Wallet, Promotion, Recharge, and Commerce Design
 
-Last updated: 2026-07-23, America/Los_Angeles.
+Last updated: 2026-08-30, America/Los_Angeles.
 
 > Status:
 > - Risk: A for schema, authorization, payment-provider, production migration,
@@ -17,7 +17,37 @@ Last updated: 2026-07-23, America/Los_Angeles.
 >   deployment/artifact identity. Frontend integration remains blocked on its
 >   independent Production Surface Identity Record.
 > - Design review: Two independent read-only consistency passes report no
->   remaining implementation blocker in this document.
+>   remaining implementation blocker in the original 2026-07-23 design.
+> - Referral reconciliation: The spend-based referral portions identified
+>   below are historical and are not current implementation authority.
+
+## 2026-08-30 Referral Decision Reconciliation
+
+`docs/COINS_FIRST_COMMERCIAL_DECISION.md` is the current authority for the
+Portal-account referral reward origin, basis, exclusions, and lifecycle. It
+selects the referred account's first verified external recharge after durable
+settlement and exactly-once `paid_coins` posting. Later product spending,
+including captured `paid_coins`, creates no referral reward.
+
+The following original passages are retained for design history but are
+superseded for referral implementation:
+
+- item 14 under `Confirmed Product Decisions`;
+- the commerce-capture selection time under `Reward policy assignments`;
+- the commerce-derived reward metrics under `Attribution and Performance`;
+- the product-spend fields, flow, uniqueness, and refund calculations under
+  `Reward Policies and Accruals`;
+- reward recomputation coupled to historical commerce captures under
+  `Future Additive Source Reversal and Recovery`; and
+- the paid-Coin product-delivery and no-reward-for-recharge assertions under
+  `Promotion tests`.
+
+Do not implement those passages as the current referral rule. Their text is
+not deleted or retroactively rewritten. Wallet lots, holds, immutable ledger,
+Recharge/Payment versus product-order separation, fulfillment, and other
+unrelated boundaries in this design remain subject to their own current source
+and activation evidence. This reconciliation changes no source code, schema,
+provider, balance, deployment, runtime, or production state.
 
 ## Goal
 

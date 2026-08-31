@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-08-15, America/Los_Angeles.
+Last updated: 2026-08-30, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -8,7 +8,7 @@ document_metadata:
   lifecycle: active
   authority_scope: documentation_navigation
   superseded_by: null
-  last_verified_at: 2026-08-29
+  last_verified_at: 2026-08-30
   production_authority: false
 ```
 
@@ -165,6 +165,7 @@ makes no current claim about them.
 | `docs/FUTURE_ACCOUNT_WALLET_FIRST_MODEL.md` | Source-only contract for the separately deferred future `wallet_first_unique_v1` model and its resource-transition reservations. It does not define the registration welcome-Coins promotion. | Active Risk A source-only contract; no production schema apply, feature activation, payment, Coins write, Commerce order, fulfillment, runtime mutation, or historical-account migration authority. | Read before changing the future wallet-first commercial model, per-account resource queueing, deferred reservations, or their activation gate. |
 | `docs/WALLET_FIRST_SETUP_DELIVERY_BOUNDARY.md` | Source-only boundary for wallet-first setup delivery through an explicit authenticated Portal-session `POST`. | Default-off; material stays out of the control DB and documentation, except for the short-lived no-store `POST` response or user-initiated OS clipboard copy. Production escrow key/path configuration, schema apply, deployment, and activation remain future Risk A work. | Read before proposing wallet-first setup delivery, escrow custody, an activation request, or a related schema change. |
 | `docs/COMMERCIAL_MODEL_V1.md` | Commercial Model v1 for primary entitlement packages plus the separate target closed-loop Coins layer and its recharge, product-order, wallet, and fulfillment boundaries. | Active commercial-model baseline; target Coins wording is not current backend or production availability and grants no pricing, provider, runtime, schema, credential, or refund authority. | Read before changing packages, entitlement semantics, Coins domains, quota behavior, renewal, cancellation, recharge, product-order, or fulfillment wording. |
+| `docs/COINS_FIRST_COMMERCIAL_DECISION.md` | Current target decision for the Coins-first catalog and Portal-account referral reward, including the first-verified-external-recharge origin and explicit unresolved price-transition inputs. | Active Risk C product-decision authority; no source implementation, provider, schema, Wallet mutation, fulfillment, deployment, or production authority. | Read before implementing or reviewing catalog values, recharge tiers, referral metrics, referral accrual/reversal, discount policy, renewal pricing, or upgrade/downgrade behavior. |
 | `docs/BILLING_RECHARGE_CONTRACT.md` | Boundary between the legacy traffic-topup compatibility helper and the durable provider-neutral Recharge/Payment store, coordinator, Portal routes, `paid_coins` settlement, and separate product hold/capture flow now present in source. | Active source/test/migration contract; no production DB apply, provider activation, refund/reconciliation execution, Wallet runtime, or fulfillment authority. | Read before changing either legacy top-up behavior or durable Recharge/Payment, Wallet settlement, product-order, reversal, or fulfillment flows. |
 | `docs/PARTNER_ATTRIBUTION_SETTLEMENT_ARCHITECTURE.md` | Provider-agnostic partner attribution and settlement architecture covering partner/campaign source evidence, attribution touch ledger, backend-confirmed settlement candidates, disabled/dry-run provider adapters such as AppsFlyer, Admin reporting, privacy rules, and A-tier activation gates. | Active architecture and task-line baseline; no AppsFlyer credentials, provider postbacks, live Web/S2S events, production schema migration, public campaign launch, partner payout, settlement execution, secret, subscription URL, credential, or customer-data authority. | Read before adding attribution capture, partner/campaign models, AppsFlyer or UTM adapters, settlement candidate logic, partner reporting, fraud/reconciliation guardrails, or production partner-link activation. |
 | `docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md` | Repo-only plan for per-order traffic usage samples, rollups, quota decisions, controlled disable/revoke, and subscription header backfill; traffic evidence is not the immutable financial Coin Ledger. | Active implementation plan; no production, AWS, Vultr, Aliyun, runtime, payment, DB migration, or subscription issuance authority by itself. | Read before implementing usage collectors, traffic rollups, quota enforcement, abuse controls, or traffic-aware subscription headers. |
@@ -228,6 +229,7 @@ conflicts; every document in this layer is an index or derived view.
 | `project-state/current.json` | Dated compatibility snapshot of the product spine, evidence cutoffs, redacted blocker hints, and validation boundaries. | Compatibility snapshot; repository-local consumers enforce a fresh native Issue/PR read and do not expose it as live sequencing. | Read only for dated orientation after the mandatory release/context sequence, then resolve mutable facts from their native owner. |
 | `project-state/lanes.json` | Machine-readable reviewed lane definitions, primary docs, code areas, risk boundaries, and non-goals. | Active taxonomy contract; Project #1 supplies mutable lane membership for navigation only, and neither source grants execution authority. | Read to interpret a lane value after resolving the current item from its native Issue or PR. |
 | `project-state/tasks.json` | Dated compatibility snapshot of historical task IDs and reviewed risk, file-scope, validation, and approval constraints. | Compatibility snapshot; not an active backlog, and brief/handoff consumers exclude its status and queue fields from current sequencing. | Read only after a fresh native Issue/PR lookup when historical constraints are relevant. |
+| `project-state/project-v2-contract.json` | Reviewed semantic contract for Project #1's six managed fields, Issue/PR field requiredness, four views, six native workflows, consistency grace, and authority boundary. | Active static configuration contract; contains no live item values, counts, queue, checks, source, deployment, or runtime evidence. | Read before exporting Project #1, interpreting a drift report, or designing the separately gated writeback stage. |
 
 Current item status, scope, declared risk, done criteria, and sequencing come
 from native Issue and PR records. Project #1 is a mutable navigation projection;

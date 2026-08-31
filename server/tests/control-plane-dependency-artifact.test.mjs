@@ -820,8 +820,14 @@ test("consumer fails closed when the native smoke runner fails", () => {
 test("Ubuntu workflow is a CI artifact producer, not a production builder", () => {
   const workflow = readFileSync(resolve(".github/workflows/control-plane-dependency-artifact.yml"), "utf8");
   const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
+  const reverifyIndex = workflow.indexOf("- name: Re-verify dependency artifact and native tree");
+  const assembleIndex = workflow.indexOf("- name: Assemble exact clean-room artifact input");
+  const cleanRoomSmokeIndex = workflow.indexOf("- name: Run exact control-plane clean-room artifact smoke");
   const uploadIndex = workflow.indexOf("- name: Upload dependency artifact on non-PR refs");
   const uploadStep = workflow.slice(uploadIndex);
+  const cleanRoomSteps = workflow.slice(assembleIndex, uploadIndex);
+  const assembleStep = workflow.slice(assembleIndex, cleanRoomSmokeIndex);
+  const cleanRoomSmokeStep = workflow.slice(cleanRoomSmokeIndex, uploadIndex);
   const installCommands = workflow.match(/npm ci --omit=dev --no-audit --no-fund/g) ?? [];
   const snapshotArguments = [...workflow.matchAll(/--snapshot\s+([^\s\\]+)/g)]
     .map((match) => match[1]);
@@ -830,6 +836,13 @@ test("Ubuntu workflow is a CI artifact producer, not a production builder", () =
   const secondArchiveIndex = workflow.indexOf("--file .dependency-artifacts/node-modules-b.tar");
 
   assert.ok(uploadIndex >= 0, "workflow must define the dependency artifact upload step");
+  assert.ok(
+    reverifyIndex >= 0
+      && assembleIndex > reverifyIndex
+      && cleanRoomSmokeIndex > assembleIndex
+      && uploadIndex > cleanRoomSmokeIndex,
+    "clean-room assembly and smoke must run after dependency verification and before upload"
+  );
   assert.match(workflow, /runs-on: ubuntu-24\.04/);
   assert.match(workflow, /node-version: 22\.23\.1/);
   assert.match(workflow, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
@@ -863,15 +876,48 @@ test("Ubuntu workflow is a CI artifact producer, not a production builder", () =
   assert.match(workflow, /mv \.dependency-artifacts\/node-modules-b\.tar \.dependency-artifacts\/node-modules\.tar/);
   assert.match(
     workflow,
-    /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a\s+# v7/u
+    /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7/
   );
   assert.match(uploadStep, /\.dependency-artifacts\/node-modules\.tar/);
   assert.match(uploadStep, /\.dependency-artifacts\/dependency-artifact\.json/);
   assert.match(uploadStep, /\.dependency-artifacts\/release-label\.txt/);
   assert.match(uploadStep, /include-hidden-files:\s*true/);
   assert.doesNotMatch(uploadStep, /path:\s*\.dependency-artifacts\s*(?:\r?\n|$)/);
+  assert.doesNotMatch(uploadStep, /\.clean-room-input|proxy-gateway-.*\.zip|^\s*\.dependency-artifacts\/artifact\.json\s*$/m);
+
+  assert.match(assembleStep, /umask 077/);
+  assert.match(assembleStep, /install -d -m 0700 \.clean-room-input/);
+  assert.match(assembleStep, /git -c core\.autocrlf=false archive/);
+  assert.match(assembleStep, /':\(exclude\)config\/proxy-servers\.json'/);
+  assert.match(assembleStep, /':\(exclude\)\.env'/);
+  assert.match(assembleStep, /artifact-git-tree-verifier\.mjs/);
+  assert.match(assembleStep, /--exclude-path config\/proxy-servers\.json/);
+  assert.match(assembleStep, /--source-only-boundary/);
+  assert.match(assembleStep, /create-artifact-manifest\.mjs/);
+  assert.match(assembleStep, /--release-unit control-plane-app/);
+  assert.match(assembleStep, /\.release-artifacts\/%s\\n/);
+  for (const file of [
+    "artifact.json",
+    "dependency-artifact.json",
+    "node-modules.tar",
+    "release-label.txt"
+  ]) assert.match(assembleStep, new RegExp(file.replaceAll(".", "\\.")));
+  assert.match(assembleStep, /chmod 0600/);
+  assert.match(assembleStep, /-eq 6/);
+
+  assert.match(cleanRoomSmokeStep, /control-plane-clean-room-artifact-smoke\.mjs/);
+  assert.match(cleanRoomSmokeStep, /--repository \./);
+  assert.match(cleanRoomSmokeStep, /--input-directory \.clean-room-input/);
+  assert.match(cleanRoomSmokeStep, /--expected-source-commit "\$source_commit"/);
+  assert.match(cleanRoomSmokeStep, /--expected-artifact-release "\$release"/);
+  assert.doesNotMatch(cleanRoomSteps, /^\s*uses:/m);
+  assert.doesNotMatch(cleanRoomSteps, /^\s*if:/m);
+  assert.doesNotMatch(cleanRoomSteps, /\$\{\{\s*secrets\./);
+  assert.doesNotMatch(cleanRoomSteps, /\b(?:ssh|scp|rsync|systemctl|systemd-run|curl|wget)\b/i);
+  assert.doesNotMatch(cleanRoomSteps, /\b(?:deploy|provider)\b/i);
   assert.doesNotMatch(workflow, /\b(?:ssh|scp|rsync|systemctl|systemd-run)\b/i);
-  assert.doesNotMatch(workflow, /\.env|CONSOLE_TOKEN|SS_PASSWORD|subscription/i);
+  assert.doesNotMatch(workflow, /\$\{\{\s*secrets\.|CONSOLE_TOKEN:|SS_PASSWORD:|SUBSCRIPTION_[A-Z_]+:/i);
+  assert.doesNotMatch(workflow, /(?:source|cat)\s+[^\n]*\.env/i);
   assert.equal(packageJson.scripts["control-plane:dependency-artifact"], "node scripts/control-plane-dependency-artifact-cli.mjs");
 });
 

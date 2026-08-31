@@ -4,12 +4,15 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { PROJECT_V2_CONTRACT_CANONICAL_SHA256 } from "../server/services/governance/project-v2-contract.mjs";
+
 const DEFAULT_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const VALID_RISKS = new Set(["A", "B", "C"]);
 const REQUIRED_STATE_FILES = [
   "project-state/lanes.json",
   "project-state/current.json",
-  "project-state/tasks.json"
+  "project-state/tasks.json",
+  "project-state/project-v2-contract.json"
 ];
 const GOVERNANCE_STATE_FILES = [
   "project-state/gates.json",
@@ -18,8 +21,172 @@ const GOVERNANCE_STATE_FILES = [
 const REVIEWED_COMPATIBILITY_STATE_SHA256 = new Map([
   ["project-state/lanes.json", "99f806d846b7a3639650238814956e6f06645fa0f96869a98dd19a476667da52"],
   ["project-state/current.json", "081a2f3a56fdb8fef459b7071a47582507f79dbc901d5b182f65e16969c37c26"],
-  ["project-state/tasks.json", "d27722ccd62441707084eced794ff68845aadd69a196b807487ab85a29886817"]
+  ["project-state/tasks.json", "d27722ccd62441707084eced794ff68845aadd69a196b807487ab85a29886817"],
+  ["project-state/project-v2-contract.json", PROJECT_V2_CONTRACT_CANONICAL_SHA256]
 ]);
+const PROJECT_V2_CONTRACT_KEYS = new Set([
+  "schemaVersion", "contractType", "verifiedAt", "identityBinding", "target",
+  "authority", "nativeWorkflowGraceSeconds", "managedFields",
+  "itemFieldRequirements", "views", "nativeWorkflows"
+]);
+const PROJECT_V2_TARGET_KEYS = new Set([
+  "owner", "projectNumber", "repository", "name", "expectedClosed"
+]);
+const PROJECT_V2_AUTHORITY_KEYS = new Set([
+  "projectProjectionOnly", "productionAuthority", "writebackEnabled"
+]);
+const PROJECT_V2_MANAGED_FIELD_KEYS = new Set(["key", "name", "type", "options"]);
+const PROJECT_V2_ITEM_FIELD_REQUIREMENT_KEYS = new Set([
+  "scope", "nativeKind", "requiredFieldKeys"
+]);
+const PROJECT_V2_VIEW_KEYS = new Set([
+  "key", "name", "layout", "filter", "groupBy", "sliceBy"
+]);
+const PROJECT_V2_WORKFLOW_KEYS = new Set(["key", "name", "trigger", "action"]);
+const PROJECT_V2_WORKFLOW_TRIGGER_KEYS = new Set([
+  "type", "repository", "filter"
+]);
+const PROJECT_V2_WORKFLOW_ACTION_KEYS = new Set(["type", "field", "value"]);
+const EXPECTED_PROJECT_V2_TARGET = {
+  owner: "gccwebos-com",
+  projectNumber: 1,
+  repository: "gccwebos-com/proxy-gateway-minimal",
+  name: "GCC WebOS — Delivery",
+  expectedClosed: false
+};
+const EXPECTED_PROJECT_V2_AUTHORITY = {
+  projectProjectionOnly: true,
+  productionAuthority: false,
+  writebackEnabled: false
+};
+const EXPECTED_PROJECT_V2_MANAGED_FIELDS = [
+  {
+    key: "status",
+    name: "Status",
+    type: "single-select",
+    options: ["Backlog", "Todo", "In Progress", "Blocked", "Done"]
+  },
+  {
+    key: "lane",
+    name: "Lane",
+    type: "single-select",
+    options: [
+      "traffic-accounting", "portal-lifecycle", "commercial-foundation",
+      "operations-foundation", "version-management", "dependency-materialization",
+      "legacy-retirement"
+    ]
+  },
+  {
+    key: "risk",
+    name: "Risk",
+    type: "single-select",
+    options: ["A", "B", "C"]
+  },
+  {
+    key: "source-production-state",
+    name: "Source / Production State",
+    type: "single-select",
+    options: ["aligned", "drift", "runtime-only", "artifact-only", "unknown"]
+  },
+  {
+    key: "validation-state",
+    name: "Validation State",
+    type: "single-select",
+    options: ["Not started", "Running", "Passed", "Blocked"]
+  },
+  {
+    key: "production-impact",
+    name: "Production Impact",
+    type: "single-select",
+    options: ["none", "read-only", "mutation gated separately"]
+  }
+];
+const EXPECTED_PROJECT_V2_ITEM_FIELD_REQUIREMENTS = [
+  {
+    scope: "managed_repository",
+    nativeKind: "issue",
+    requiredFieldKeys: [
+      "status", "lane", "risk", "source-production-state",
+      "validation-state", "production-impact"
+    ]
+  },
+  {
+    scope: "managed_repository",
+    nativeKind: "pull_request",
+    requiredFieldKeys: ["status"]
+  }
+];
+const EXPECTED_PROJECT_V2_VIEWS = [
+  {
+    key: "portfolio-triage",
+    name: "Portfolio Triage",
+    layout: "table",
+    filter: "is:issue is:open"
+  },
+  {
+    key: "execution-board",
+    name: "Execution Board",
+    layout: "board",
+    filter: "is:issue is:open",
+    groupBy: "Status",
+    sliceBy: "Lane"
+  },
+  {
+    key: "risk-a-gates",
+    name: "Risk A Gates",
+    layout: "board",
+    filter: "risk:A -status:Done",
+    groupBy: "Status"
+  },
+  {
+    key: "review-queue",
+    name: "Review Queue",
+    layout: "table",
+    filter: "is:pr is:open -is:draft"
+  }
+];
+const EXPECTED_PROJECT_V2_NATIVE_WORKFLOWS = [
+  {
+    key: "auto-add-open-repository-items",
+    name: "Auto-add to project",
+    trigger: {
+      type: "item-matches-query",
+      repository: "gccwebos-com/proxy-gateway-minimal",
+      filter: "is:issue,pr is:open"
+    },
+    action: { type: "add-to-project" }
+  },
+  {
+    key: "item-added-to-todo",
+    name: "Item added to project",
+    trigger: { type: "item-added" },
+    action: { type: "set-field", field: "Status", value: "Todo" }
+  },
+  {
+    key: "item-closed-to-done",
+    name: "Item closed",
+    trigger: { type: "item-closed" },
+    action: { type: "set-field", field: "Status", value: "Done" }
+  },
+  {
+    key: "item-reopened-to-todo",
+    name: "Item reopened",
+    trigger: { type: "item-reopened" },
+    action: { type: "set-field", field: "Status", value: "Todo" }
+  },
+  {
+    key: "pull-request-linked-to-issue-to-in-progress",
+    name: "Pull request linked to issue",
+    trigger: { type: "pull-request-linked-to-issue" },
+    action: { type: "set-field", field: "Status", value: "In Progress" }
+  },
+  {
+    key: "pull-request-merged-to-done",
+    name: "Pull request merged",
+    trigger: { type: "pull-request-merged" },
+    action: { type: "set-field", field: "Status", value: "Done" }
+  }
+];
 const LIVE_AUTHORITY_KEYS = new Set([
   "activeblockers",
   "activedirections",
@@ -966,6 +1133,287 @@ function checkNoLiveAuthorityFields(owner, value, errors, path = owner) {
   }
 }
 
+function checkNoLiveProjectV2Data(value, errors, path = "project-state/project-v2-contract.json") {
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => checkNoLiveProjectV2Data(entry, errors, `${path}[${index}]`));
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    return;
+  }
+
+  for (const [key, entry] of Object.entries(value)) {
+    const fieldPath = `${path}.${key}`;
+    const normalizedKey = canonicalStateKey(key);
+    if (/^(?:id|nodeid|projectid|fieldid|optionid|viewid|workflowid|databaseid|fulldatabaseid)$/.test(normalizedKey)) {
+      errors.push(`${fieldPath}: GraphQL identifiers are forbidden; identity binding must remain semantic-only`);
+    }
+    if (
+      /count(?:s)?$/.test(normalizedKey) ||
+      normalizedKey.includes("queue") ||
+      /^runtime(?:data|state|status|health|inventory|values?)?$/.test(normalizedKey) ||
+      /^(?:live|current|open|active)?(?:project)?items?(?:data|state|states|inventory|list|values?)?$/.test(normalizedKey)
+    ) {
+      errors.push(`${fieldPath}: live item/count/queue/runtime data is forbidden in the static Project v2 contract`);
+    }
+    checkNoLiveProjectV2Data(entry, errors, fieldPath);
+  }
+}
+
+function checkUniqueProjectV2Value(owner, value, seen, label, errors) {
+  if (typeof value !== "string" || value.trim() === "") {
+    errors.push(`${owner}: must be a non-empty string`);
+    return;
+  }
+  if (seen.has(value)) {
+    errors.push(`${owner}: duplicate ${label}`);
+    return;
+  }
+  seen.add(value);
+}
+
+function checkExactReviewedJson(owner, value, expected, errors) {
+  if (JSON.stringify(value) !== JSON.stringify(expected)) {
+    errors.push(`${owner}: must exactly match the reviewed static Project v2 contract`);
+  }
+}
+
+function checkProjectV2Contract(contract, lanesState, errors) {
+  const owner = "project-state/project-v2-contract.json";
+  if (!contract || typeof contract !== "object" || Array.isArray(contract)) {
+    errors.push(`${owner}: expected an object in the reviewed static Project v2 contract`);
+    return;
+  }
+
+  checkNoLiveProjectV2Data(contract, errors, owner);
+  checkRequiredObjectFields(
+    owner,
+    contract,
+    PROJECT_V2_CONTRACT_KEYS,
+    PROJECT_V2_CONTRACT_KEYS,
+    errors
+  );
+  if (contract.schemaVersion !== 1) {
+    errors.push(`${owner}.schemaVersion: must be 1`);
+  }
+  if (contract.contractType !== "github-project-v2-static-contract") {
+    errors.push(`${owner}.contractType: must be github-project-v2-static-contract`);
+  }
+  if (contract.verifiedAt !== "2026-08-30") {
+    errors.push(`${owner}.verifiedAt: must be the reviewed live-readback date 2026-08-30`);
+  }
+  if (contract.identityBinding !== "semantic-only") {
+    errors.push(`${owner}.identityBinding: must be semantic-only`);
+  }
+  if (contract.nativeWorkflowGraceSeconds !== 900) {
+    errors.push(`${owner}.nativeWorkflowGraceSeconds: must be 900`);
+  }
+
+  checkRequiredObjectFields(
+    `${owner}.target`,
+    contract.target,
+    PROJECT_V2_TARGET_KEYS,
+    PROJECT_V2_TARGET_KEYS,
+    errors
+  );
+  checkExactReviewedJson(`${owner}.target`, contract.target, EXPECTED_PROJECT_V2_TARGET, errors);
+  checkRequiredObjectFields(
+    `${owner}.authority`,
+    contract.authority,
+    PROJECT_V2_AUTHORITY_KEYS,
+    PROJECT_V2_AUTHORITY_KEYS,
+    errors
+  );
+  checkExactReviewedJson(`${owner}.authority`, contract.authority, EXPECTED_PROJECT_V2_AUTHORITY, errors);
+
+  const managedFields = contract.managedFields;
+  if (!Array.isArray(managedFields) || managedFields.length !== EXPECTED_PROJECT_V2_MANAGED_FIELDS.length) {
+    errors.push(`${owner}.managedFields: must contain exactly six reviewed fields`);
+  }
+  if (Array.isArray(managedFields)) {
+    const fieldKeys = new Set();
+    const fieldNames = new Set();
+    managedFields.forEach((field, index) => {
+      const fieldOwner = `${owner}.managedFields[${index}]`;
+      const validObject = checkRequiredObjectFields(
+        fieldOwner,
+        field,
+        PROJECT_V2_MANAGED_FIELD_KEYS,
+        PROJECT_V2_MANAGED_FIELD_KEYS,
+        errors
+      );
+      if (!validObject) {
+        return;
+      }
+      checkUniqueProjectV2Value(`${fieldOwner}.key`, field.key, fieldKeys, "field key", errors);
+      checkUniqueProjectV2Value(`${fieldOwner}.name`, field.name, fieldNames, "field name", errors);
+      if (field.type !== "single-select") {
+        errors.push(`${fieldOwner}.type: must be single-select`);
+      }
+      if (!Array.isArray(field.options) || field.options.length === 0) {
+        errors.push(`${fieldOwner}.options: must be a non-empty string array`);
+      } else {
+        const options = new Set();
+        field.options.forEach((option, optionIndex) => {
+          checkUniqueProjectV2Value(
+            `${fieldOwner}.options[${optionIndex}]`,
+            option,
+            options,
+            "option",
+            errors
+          );
+        });
+      }
+    });
+    checkExactReviewedJson(
+      `${owner}.managedFields`,
+      managedFields,
+      EXPECTED_PROJECT_V2_MANAGED_FIELDS,
+      errors
+    );
+    const laneOptions = managedFields.find((field) => field?.key === "lane")?.options;
+    if (
+      !Array.isArray(laneOptions) ||
+      JSON.stringify(laneOptions) !== JSON.stringify(lanesState?.githubProjectIndex?.laneOptions)
+    ) {
+      errors.push(`${owner}.managedFields: Lane options must exactly match project-state/lanes.json githubProjectIndex.laneOptions`);
+    }
+    const internalOnlyLanes = Array.isArray(lanesState?.githubProjectIndex?.internalOnlyLanes)
+      ? lanesState.githubProjectIndex.internalOnlyLanes
+      : [];
+    const internalLaneOverlap = Array.isArray(laneOptions)
+      ? laneOptions.filter((lane) => internalOnlyLanes.includes(lane))
+      : [];
+    if (internalLaneOverlap.length > 0) {
+      errors.push(`${owner}.managedFields: Lane options must not include internal-only lanes: ${internalLaneOverlap.join(", ")}`);
+    }
+  }
+
+  const itemFieldRequirements = contract.itemFieldRequirements;
+  if (
+    !Array.isArray(itemFieldRequirements)
+    || itemFieldRequirements.length !== EXPECTED_PROJECT_V2_ITEM_FIELD_REQUIREMENTS.length
+  ) {
+    errors.push(`${owner}.itemFieldRequirements: must contain exactly two reviewed requirements`);
+  }
+  if (Array.isArray(itemFieldRequirements)) {
+    const requirementKinds = new Set();
+    itemFieldRequirements.forEach((requirement, index) => {
+      const requirementOwner = `${owner}.itemFieldRequirements[${index}]`;
+      const validObject = checkRequiredObjectFields(
+        requirementOwner,
+        requirement,
+        PROJECT_V2_ITEM_FIELD_REQUIREMENT_KEYS,
+        PROJECT_V2_ITEM_FIELD_REQUIREMENT_KEYS,
+        errors
+      );
+      if (!validObject) return;
+      if (requirement.scope !== "managed_repository") {
+        errors.push(`${requirementOwner}.scope: must be managed_repository`);
+      }
+      checkUniqueProjectV2Value(
+        `${requirementOwner}.nativeKind`,
+        requirement.nativeKind,
+        requirementKinds,
+        "native kind",
+        errors
+      );
+      if (!Array.isArray(requirement.requiredFieldKeys) || requirement.requiredFieldKeys.length === 0) {
+        errors.push(`${requirementOwner}.requiredFieldKeys: must be a non-empty string array`);
+      } else {
+        const requiredFieldKeys = new Set();
+        requirement.requiredFieldKeys.forEach((fieldKey, fieldIndex) => {
+          checkUniqueProjectV2Value(
+            `${requirementOwner}.requiredFieldKeys[${fieldIndex}]`,
+            fieldKey,
+            requiredFieldKeys,
+            "required field key",
+            errors
+          );
+          if (!EXPECTED_PROJECT_V2_MANAGED_FIELDS.some((field) => field.key === fieldKey)) {
+            errors.push(`${requirementOwner}.requiredFieldKeys[${fieldIndex}]: must reference a managed field key`);
+          }
+        });
+      }
+    });
+    checkExactReviewedJson(
+      `${owner}.itemFieldRequirements`,
+      itemFieldRequirements,
+      EXPECTED_PROJECT_V2_ITEM_FIELD_REQUIREMENTS,
+      errors
+    );
+  }
+
+  const views = contract.views;
+  if (!Array.isArray(views) || views.length !== EXPECTED_PROJECT_V2_VIEWS.length) {
+    errors.push(`${owner}.views: must contain exactly four reviewed views`);
+  }
+  if (Array.isArray(views)) {
+    const viewKeys = new Set();
+    const viewNames = new Set();
+    views.forEach((view, index) => {
+      const viewOwner = `${owner}.views[${index}]`;
+      const validObject = checkRequiredObjectFields(
+        viewOwner,
+        view,
+        PROJECT_V2_VIEW_KEYS,
+        new Set(["key", "name", "layout", "filter"]),
+        errors
+      );
+      if (!validObject) {
+        return;
+      }
+      checkUniqueProjectV2Value(`${viewOwner}.key`, view.key, viewKeys, "view key", errors);
+      checkUniqueProjectV2Value(`${viewOwner}.name`, view.name, viewNames, "view name", errors);
+    });
+    checkExactReviewedJson(`${owner}.views`, views, EXPECTED_PROJECT_V2_VIEWS, errors);
+  }
+
+  const workflows = contract.nativeWorkflows;
+  if (!Array.isArray(workflows) || workflows.length !== EXPECTED_PROJECT_V2_NATIVE_WORKFLOWS.length) {
+    errors.push(`${owner}.nativeWorkflows: must contain exactly six reviewed native workflows`);
+  }
+  if (Array.isArray(workflows)) {
+    const workflowKeys = new Set();
+    const workflowNames = new Set();
+    workflows.forEach((workflow, index) => {
+      const workflowOwner = `${owner}.nativeWorkflows[${index}]`;
+      const validObject = checkRequiredObjectFields(
+        workflowOwner,
+        workflow,
+        PROJECT_V2_WORKFLOW_KEYS,
+        PROJECT_V2_WORKFLOW_KEYS,
+        errors
+      );
+      if (!validObject) {
+        return;
+      }
+      checkUniqueProjectV2Value(`${workflowOwner}.key`, workflow.key, workflowKeys, "workflow key", errors);
+      checkUniqueProjectV2Value(`${workflowOwner}.name`, workflow.name, workflowNames, "workflow name", errors);
+      checkRequiredObjectFields(
+        `${workflowOwner}.trigger`,
+        workflow.trigger,
+        PROJECT_V2_WORKFLOW_TRIGGER_KEYS,
+        new Set(["type"]),
+        errors
+      );
+      checkRequiredObjectFields(
+        `${workflowOwner}.action`,
+        workflow.action,
+        PROJECT_V2_WORKFLOW_ACTION_KEYS,
+        new Set(["type"]),
+        errors
+      );
+    });
+    checkExactReviewedJson(
+      `${owner}.nativeWorkflows`,
+      workflows,
+      EXPECTED_PROJECT_V2_NATIVE_WORKFLOWS,
+      errors
+    );
+  }
+}
+
 function checkPathReferences(rootDir, owner, paths, errors) {
   if (!Array.isArray(paths)) {
     errors.push(`${owner}: expected path references to be an array`);
@@ -1401,6 +1849,9 @@ export function checkProjectState(options = {}) {
   const tasksState = invalidReviewedPaths.has("project-state/tasks.json")
     ? null
     : readJson(rootDir, "project-state/tasks.json", errors);
+  const projectV2Contract = invalidReviewedPaths.has("project-state/project-v2-contract.json")
+    ? null
+    : readJson(rootDir, "project-state/project-v2-contract.json", errors);
 
   for (const [path, state] of [
     ["project-state/lanes.json", lanesState],
@@ -1414,6 +1865,7 @@ export function checkProjectState(options = {}) {
 
   const laneIds = checkLanes(rootDir, lanesState, errors);
   checkLaneStateContracts(lanesState, errors);
+  checkProjectV2Contract(projectV2Contract, lanesState, errors);
   checkCurrentState(rootDir, currentState, errors);
   checkTasks(rootDir, tasksState, laneIds, errors);
   checkTaskStateContracts(tasksState, errors);

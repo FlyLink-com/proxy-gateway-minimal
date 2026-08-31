@@ -141,7 +141,7 @@ test("CI rebuilds the reviewed native bundle after each npm ci and verifies it b
   assert.equal(Object.hasOwn(packageJson.scripts, "welcome-coins:activation:transaction"), false);
   assert.match(
     workflow,
-    /actions\/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10\s+# v6/u
+    /actions\/checkout@d23441a48e516b6c34aea4fa41551a30e30af803\s+# v6/u
   );
   assert.match(
     workflow,

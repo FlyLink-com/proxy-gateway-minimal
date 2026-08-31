@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout reviewed source
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -168,6 +168,77 @@ jobs:
             --source-commit "$source_commit" \
             --release "$release" \
             --snapshot scripts/control-plane-db-snapshot-gate-lib.mjs
+
+      - name: Assemble exact clean-room artifact input
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          source_commit="$(git rev-parse HEAD)"
+          test "$source_commit" = "$EXPECTED_SOURCE_COMMIT"
+          release="$(cat .dependency-artifacts/release-label.txt)"
+          case "$release" in
+            *[!A-Za-z0-9._-]*|'')
+              echo 'invalid_release_label' >&2
+              exit 1
+              ;;
+          esac
+          test ! -e .clean-room-input
+          install -d -m 0700 .clean-room-input
+          artifact_name="proxy-gateway-${release}.zip"
+          artifact=".clean-room-input/${artifact_name}"
+          git -c core.autocrlf=false archive \
+            --format=zip \
+            --output "$artifact" \
+            HEAD \
+            -- . ':(exclude)config/proxy-servers.json' ':(exclude).env'
+          node scripts/artifact-git-tree-verifier.mjs \
+            --repository . \
+            --commit "$source_commit" \
+            --artifact "$artifact" \
+            --exclude-path config/proxy-servers.json \
+            --source-only-boundary >/dev/null
+          artifact_sha256="$(sha256sum "$artifact" | cut -d' ' -f1)"
+          printf '%s  .release-artifacts/%s\n' \
+            "$artifact_sha256" "$artifact_name" \
+            > "${artifact}.sha256"
+          node scripts/create-artifact-manifest.mjs \
+            --release-unit control-plane-app \
+            --source-commit "$source_commit" \
+            --release "$release" \
+            --artifact "$artifact" \
+            --output .clean-room-input/artifact.json
+          install -m 0600 \
+            .dependency-artifacts/dependency-artifact.json \
+            .clean-room-input/dependency-artifact.json
+          install -m 0600 \
+            .dependency-artifacts/node-modules.tar \
+            .clean-room-input/node-modules.tar
+          install -m 0600 \
+            .dependency-artifacts/release-label.txt \
+            .clean-room-input/release-label.txt
+          chmod 0600 \
+            .clean-room-input/artifact.json \
+            "$artifact" \
+            "${artifact}.sha256"
+          test "$(find .clean-room-input -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 6
+
+      - name: Run exact control-plane clean-room artifact smoke
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit="$(git rev-parse HEAD)"
+          test "$source_commit" = "$EXPECTED_SOURCE_COMMIT"
+          release="$(cat .dependency-artifacts/release-label.txt)"
+          node scripts/control-plane-clean-room-artifact-smoke.mjs \
+            --repository . \
+            --input-directory .clean-room-input \
+            --expected-source-commit "$source_commit" \
+            --expected-artifact-release "$release"
 
       - name: Upload dependency artifact on non-PR refs
         if: github.event_name != 'pull_request'
